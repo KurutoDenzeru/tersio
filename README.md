@@ -11,6 +11,12 @@ Terse replies, compact shell output, and minimal code decisions for [Oh My Pi (O
 
 ## Install
 
+Quick install (macOS/Linux/WSL — checks npm, then bootstraps the CLI):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/KurutoDenzeru/tersio/main/install.sh | sh
+```
+
 OMP plugin (recommended — updates and feature flags handled by OMP):
 
 ```bash
