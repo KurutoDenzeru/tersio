@@ -1,6 +1,6 @@
 {
   "name": "@krtclcdy/tersio",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "✂️ Token-saving OMP add-ons: terse Caveman replies, compact RTK shell output, lean Ponytail code calls — one-command combo presets.",
   "keywords": [
     "omp",
