@@ -11,13 +11,20 @@ Terse replies, compact shell output, and minimal code decisions for [Oh My Pi (O
 
 ## Install
 
-Quick install (macOS/Linux/WSL — checks npm, then bootstraps the CLI):
+**Default** (macOS/Linux/WSL) — one line. Installs the CLI via npm, then runs the main installer (scope + Combo preset menus) in the same pass:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/KurutoDenzeru/tersio/main/install.sh | sh
 ```
 
-OMP plugin (recommended — updates and feature flags handled by OMP):
+Already have npm? Same result in two steps:
+
+```bash
+npm install -g @krtclcdy/tersio@latest
+tersio install
+```
+
+Prefer OMP-managed updates and feature flags? Install as an OMP plugin instead:
 
 ```bash
 omp plugin install @krtclcdy/tersio
@@ -28,13 +35,6 @@ Subset only:
 ```bash
 omp plugin install '@krtclcdy/tersio[caveman,ponytail]'
 omp plugin features @krtclcdy/tersio --disable rtk
-```
-
-npm CLI (installs add-ons into your OMP home):
-
-```bash
-npm install -g @krtclcdy/tersio@latest
-tersio install
 ```
 
 Then restart OMP and enable a preset:
