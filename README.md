@@ -17,13 +17,6 @@ Terse replies, compact shell output, and minimal code decisions for [Oh My Pi (O
 curl -fsSL https://raw.githubusercontent.com/KurutoDenzeru/tersio/main/install.sh | sh
 ```
 
-Already have npm? Same result in two steps:
-
-```bash
-npm install -g @krtclcdy/tersio@latest
-tersio install
-```
-
 Prefer OMP-managed updates and feature flags? Install as an OMP plugin instead:
 
 ```bash
