@@ -42,8 +42,9 @@ test("doctor reports MISSING components against an empty home", () => {
       assert.match(result.stdout, new RegExp(`\\n${section}\\n`));
     }
     assert.match(result.stdout, /Summary: \d+ checks — \d+ ok, \d+ warn, \d+ missing/);
-    // Seeded cache is fresh and not newer: no update warn, plain version row.
-    assert.match(result.stdout, /Tersio CLI: ok 2\.1\.0/);
+    // Seeded cache (latest 2.1.0) is never newer than the running version, so
+    // the row prints the plain version — whatever the release currently is.
+    assert.match(result.stdout, /Tersio CLI: ok \d+\.\d+\.\d+/);
     assert.doesNotMatch(result.stdout, /available — run tersio update/);
   } finally {
     rmSync(home, { recursive: true, force: true });
