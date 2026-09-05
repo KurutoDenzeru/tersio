@@ -803,6 +803,10 @@ async function runDoctor(): Promise<void> {
     updaterIndexText,
     comboIndexText,
     modeReinforcementText,
+    ruleMtime,
+    rtkMtime,
+    ponytailMtime,
+    updateVersion,
   ] = await Promise.all([
     execP(OMP_BIN, ['--version']).then((r) => r.stdout.trim(), () => null),
     fs.readdir(agentDir).catch(() => null),
@@ -820,6 +824,10 @@ async function runDoctor(): Promise<void> {
     readTextIfExists(updaterIndex),
     readTextIfExists(comboIndex),
     readTextIfExists(modeReinforcement),
+    fs.stat(cavemanRule).catch(() => null),
+    fs.stat(rtkBin).catch(() => null),
+    fs.stat(ponytailPkg).catch(() => null),
+    checkForUpdate(),
   ]);
 
   // Categorized output with a tally; section headers group related probes.
@@ -836,6 +844,8 @@ async function runDoctor(): Promise<void> {
   section('Environment');
   check('Node', true, process.version);
   check('OMP CLI', ompVersion !== null, ompVersion ?? '');
+  if (updateVersion) warnLine('Tersio CLI', `${updateVersion} available — run tersio update`);
+  else check('Tersio CLI', true, PACKAGE_VERSION);
   console.log(`  Home: ${HOME}`);
 
   section('Installation');
@@ -846,7 +856,6 @@ async function runDoctor(): Promise<void> {
 
   section('Extensions');
   check('Caveman extension', cavemanIndexText !== null);
-  check('Caveman rule.md', cavemanRuleText !== null);
   check('RTK extension', rtkIndexText !== null);
   check('Updater extension', updaterIndexText !== null);
   check('Combo extension', comboIndexText !== null);
@@ -859,24 +868,29 @@ async function runDoctor(): Promise<void> {
     check('Ponytail in config.yml', configText.includes('ponytail') && configText.includes('pi-extension'));
     check('Combo in config.yml', configText.includes('combo-toggle'));
   }
-  check('Self plugin package', selfPkgText !== null);
+  check('Self plugin package', selfPkgText !== null, parseJsonObject<{ version?: string }>(selfPkgText)?.version ?? '');
   const selfDep = PACKAGE_NAME in (parseJsonObject<{ dependencies?: Record<string, string> }>(pluginsPkgRaw)?.dependencies || {});
   check('Self plugin in plugins/package.json', selfDep);
 
-  section('RTK');
-  check('RTK binary', rtkBinText !== null, rtkBin);
-  if (rtkBinText !== null) {
-    // rtk may exit non-zero while still printing its version — accept either stream.
-    const version = await execP(rtkBin, ['--version'], { timeout: 5000 }).then(
-      (r) => r.stdout.trim() || r.stderr.trim() || null,
-      (e) => {
-        const err = e as { stdout?: string; stderr?: string };
-        return err.stdout?.trim() || err.stderr?.trim() || null;
-      },
-    );
-    if (version) check('RTK version', true, version);
-    else warnLine('RTK version', 'unavailable — binary may not be executable');
+  section('Add-ons');
+  const ruleAge = ruleMtime ? `updated ${relTime(Date.now() - ruleMtime.mtimeMs)}` : '';
+  check('Caveman rule', cavemanRuleText !== null, ruleAge);
+  const rtkVersion = rtkBinText === null ? null : await execP(rtkBin, ['--version'], { timeout: 5000 }).then(
+    (r) => r.stdout.trim() || r.stderr.trim() || null,
+    (e) => {
+      const err = e as { stdout?: string; stderr?: string };
+      return err.stdout?.trim() || err.stderr?.trim() || null;
+    },
+  );
+  const rtkAge = rtkMtime ? `updated ${relTime(Date.now() - rtkMtime.mtimeMs)}` : '';
+  if (rtkBinText === null) check('RTK binary', false, rtkBin);
+  else {
+    const bits = [rtkVersion, rtkAge].filter(Boolean).join(', ');
+    check('RTK binary', true, bits);
+    if (!rtkVersion) warnLine('RTK version', 'unavailable — binary may not be executable');
   }
+  const ponytailAge = ponytailMtime ? `updated ${relTime(Date.now() - ponytailMtime.mtimeMs)}` : '';
+  check('Ponytail', ponytailPkgText !== null, [parseJsonObject<{ version?: string }>(ponytailPkgText)?.version ?? '', ponytailAge].filter(Boolean).join(', '));
 
   const total = tally.ok + tally.missing + tally.warn;
   console.log(`\n  Summary: ${total} checks — ${tally.ok} ok, ${tally.warn} warn, ${tally.missing} missing`);
@@ -1060,6 +1074,66 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
 
 const SCOPE_MAP: Record<string, string> = { user: '1', project: '2', both: '3' };
 const COMBO_MENU: Record<string, string> = { '1': 'off', '2': 'medium', '3': 'balanced', '4': 'max' };
+
+// --- Update check (cached; used by the bare-invocation banner and doctor) ---
+
+const UPDATE_CHECK_TTL_MS = 6 * 60 * 60 * 1000;
+
+function newerThan(a: string, b: string): boolean {
+  const pa = a.replace(/^v/, '').split('.').map((n) => parseInt(n, 10) || 0);
+  const pb = b.replace(/^v/, '').split('.').map((n) => parseInt(n, 10) || 0);
+  for (let i = 0; i < 3; i++) {
+    if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) > (pb[i] || 0);
+  }
+  return false;
+}
+
+async function latestPublishedVersion(): Promise<string | null> {
+  try {
+    const args = IS_WINDOWS
+      ? ['/d', '/s', '/c', 'npm', 'view', PACKAGE_NAME, 'version', '--prefer-online']
+      : ['view', PACKAGE_NAME, 'version', '--prefer-online'];
+    const r = await execP(IS_WINDOWS ? process.env.ComSpec || 'cmd.exe' : 'npm', args, {
+      timeout: 4000,
+      maxBuffer: 1024 * 1024,
+      windowsHide: true,
+      shell: false,
+    });
+    return r.stdout.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+// Returns a newer published version, or null. Reads the registry at most once
+// per TTL (cached under OMP_PLUGINS_DIR) and stays silent on failure.
+async function checkForUpdate(): Promise<string | null> {
+  const cachePath = path.join(OMP_PLUGINS_DIR, 'tersio-update-check.json');
+  const cached = parseJsonObject<{ latest?: string; lastCheck?: number }>(await readTextIfExists(cachePath));
+  const cacheFresh = typeof cached?.lastCheck === 'number' && Date.now() - cached.lastCheck < UPDATE_CHECK_TTL_MS;
+  if (cacheFresh && cached?.latest) return newerThan(cached.latest, PACKAGE_VERSION) ? cached.latest : null;
+
+  const latest = await latestPublishedVersion();
+  if (latest) {
+    await fs.mkdir(OMP_PLUGINS_DIR, { recursive: true }).catch(() => {});
+    await fs.writeFile(cachePath, JSON.stringify({ latest, lastCheck: Date.now() }) + '\n', 'utf8').catch(() => {});
+    return newerThan(latest, PACKAGE_VERSION) ? latest : null;
+  }
+  // Registry unreachable: fall back to a stale cache rather than staying silent.
+  return cached?.latest && newerThan(cached.latest, PACKAGE_VERSION) ? cached.latest : null;
+}
+
+function relTime(ageMs: number): string {
+  const mins = Math.floor(ageMs / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins} min${mins === 1 ? '' : 's'} ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 14) return `${days} day${days === 1 ? '' : 's'} ago`;
+  const weeks = Math.floor(days / 7);
+  return `${weeks} week${weeks === 1 ? '' : 's'} ago`;
+}
 
 async function runLatestUpdate(): Promise<void> {
   const updateScope = scopeFlag || 'user';
@@ -1312,6 +1386,13 @@ async function main(): Promise<void> {
   console.log(`  Platform: ${process.platform}`);
   console.log(`  Arch: ${process.arch}`);
   console.log(`  Home: ${HOME}`);
+
+  // Remind humans a newer release exists; silent for scripts (no TTY) and for
+  // the apply-update payload, which is itself an update run.
+  if (tty() && !applyUpdate && command !== 'uninstall') {
+    const newer = await checkForUpdate();
+    if (newer) console.log(`\n  [update] tersio ${newer} available (installed ${PACKAGE_VERSION}) — run \`tersio update\``);
+  }
 
   const scope = await resolveScope();
 
