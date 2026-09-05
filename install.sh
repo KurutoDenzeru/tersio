@@ -28,11 +28,14 @@ fi
 echo
 echo "Running the main installer..."
 # Interactive shells get the scope + Combo preset menus; piped installs read
-# the prompts from the controlling terminal when one exists, and fully
-# non-interactive shells fall back to the user-scope defaults.
+# the prompts from the controlling terminal when one can be opened (the
+# subshell probe matters: dash aborts the whole script when a special builtin
+# like `:` hits a failed redirection, and CI runners expose /dev/tty as a
+# device node that cannot be opened). Fully non-interactive shells fall back
+# to the user-scope defaults.
 if [ -t 0 ]; then
   exec "$TERSIO" install "$@"
-elif [ -e /dev/tty ] && : < /dev/tty 2>/dev/null; then
+elif ( exec < /dev/tty ) 2>/dev/null; then
   "$TERSIO" install "$@" < /dev/tty
 else
   echo "  Non-interactive shell: defaulting to user-level install."
