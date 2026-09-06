@@ -10,8 +10,18 @@ if ! command -v npm >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "Installing @krtclcdy/tersio via npm..."
-npm install -g @krtclcdy/tersio@latest --no-audit --no-fund
+# Source preference: the GitHub release tarball built by CI per tag, falling
+# back to the npm registry (same package, same integrity checks). Override the
+# source with TERSIO_TARBALL_URL when needed.
+TARBALL_URL="${TERSIO_TARBALL_URL:-https://github.com/KurutoDenzeru/tersio/releases/latest/download/tersio-npm.tgz}"
+TARBALL="$(mktemp -d)/tersio-npm.tgz"
+if curl -fsSL "$TARBALL_URL" -o "$TARBALL" 2>/dev/null && [ -s "$TARBALL" ]; then
+  echo "Installing tersio from the GitHub release tarball..."
+  npm install -g "$TARBALL" --no-audit --no-fund
+else
+  echo "Installing @krtclcdy/tersio via npm..."
+  npm install -g @krtclcdy/tersio@latest --no-audit --no-fund
+fi
 
 # The npm global bin dir may not be on PATH yet in the current shell.
 GLOBAL_BIN="$(npm prefix -g 2>/dev/null)/bin"

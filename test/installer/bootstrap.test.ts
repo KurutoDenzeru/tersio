@@ -28,11 +28,13 @@ function cleanup(...dirs: string[]): void {
   for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
 }
 
+const TARBALL_FALLBACK = 'env TERSIO_TARBALL_URL=file:///nonexistent/tersio-npm.tgz';
+
 (process.platform === "win32" ? test.skip : test)("curl bootstrap installs the CLI, then runs tersio install", () => {
   const { bin, prefix, tersioLog } = fakeEnv();
 
   try {
-    const result = spawnSync("/bin/sh", [script, "--dry-run"], {
+    const result = spawnSync("/bin/sh", ["-c", `${TARBALL_FALLBACK} sh "${script}" --dry-run`], {
       cwd: root,
       encoding: "utf8",
       timeout: 15000,
@@ -40,6 +42,7 @@ function cleanup(...dirs: string[]): void {
     });
 
     assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /Installing @krtclcdy\/tersio via npm\.\.\./);
     assert.match(result.stdout, /fake-npm install -g @krtclcdy\/tersio@latest --no-audit --no-fund/);
     assert.match(result.stdout, /Running the main installer\.\.\./);
     // The follow-up installer ran (forwarded flag included), whichever
@@ -52,11 +55,34 @@ function cleanup(...dirs: string[]): void {
   }
 });
 
+(process.platform === "win32" ? test.skip : test)("release tarball is preferred over the npm registry when reachable", () => {
+  const { bin, prefix, tersioLog } = fakeEnv();
+  const tgz = mkdtempSync(path.join(os.tmpdir(), "tersio-tgz-"));
+  const tarballPath = path.join(tgz, "tersio-npm.tgz");
+  writeFileSync(tarballPath, "fake tarball bytes", "utf8");
+
+  try {
+    const result = spawnSync("/bin/sh", ["-c", `env TERSIO_TARBALL_URL="file://${tarballPath}" sh "${script}"`], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 15000,
+      env: { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH || ""}` },
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /Installing tersio from the GitHub release tarball\.\.\./);
+    assert.match(result.stdout, /fake-npm install -g .*tersio-npm\.tgz --no-audit --no-fund/);
+    assert.match(readFileSync(tersioLog, "utf8"), /(^| )install( |$)/);
+  } finally {
+    cleanup(bin, prefix, tgz);
+  }
+});
+
 (process.platform === "win32" ? test.skip : test)("non-interactive shells default to a user-scope install", () => {
   const { bin, prefix, tersioLog } = fakeEnv();
 
   try {
-    const result = spawnSync("/bin/sh", [script], {
+    const result = spawnSync("/bin/sh", ["-c", `${TARBALL_FALLBACK} sh "${script}"`], {
       cwd: root,
       encoding: "utf8",
       timeout: 15000,

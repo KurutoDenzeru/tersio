@@ -9,13 +9,22 @@ permissions:
   contents: write
 
 jobs:
-  install-script:
+  assets:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Attach install.sh to the release
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build and pack
+        run: |
+          npm ci
+          npm run build
+          npm pack --pack-destination .
+          mv tersio-*.tgz tersio-npm.tgz
+      - name: Attach assets to the release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release upload "${GITHUB_REF_NAME}" install.sh --clobber --repo "${GITHUB_REPOSITORY}" \
-            || gh release create "${GITHUB_REF_NAME}" install.sh --generate-notes --repo "${GITHUB_REPOSITORY}"
+          gh release upload "${GITHUB_REF_NAME}" install.sh tersio-npm.tgz --clobber --repo "${GITHUB_REPOSITORY}" \
+            || gh release create "${GITHUB_REF_NAME}" install.sh tersio-npm.tgz --generate-notes --repo "${GITHUB_REPOSITORY}"
