@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,26 +9,97 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const script = path.join(root, "install.sh");
 
-// POSIX sh script — skipped on Windows CI runners.
-(process.platform === "win32" ? test.skip : test)("curl bootstrap installs the CLI via npm", () => {
-  const fakeBin = mkdtempSync(path.join(os.tmpdir(), "tersio-curl-"));
-  const npm = path.join(fakeBin, "npm");
-  writeFileSync(npm, "#!/bin/sh\nprintf 'fake-npm %s\\n' \"$*\"\n", "utf8");
-  chmodSync(npm, 0o755);
+// POSIX sh script — skipped on Windows CI runners. Fake npm answers the
+// commands install.sh uses (install -g, prefix -g) and a fake tersio records
+// the follow-up installer invocation, whichever tty branch the script picks.
+function fakeEnv(): { bin: string; prefix: string; tersioLog: string } {
+  const bin = mkdtempSync(path.join(os.tmpdir(), "tersio-curl-bin-"));
+  const prefix = mkdtempSync(path.join(os.tmpdir(), "tersio-curl-prefix-"));
+  const tersioLog = path.join(bin, "tersio-args.log");
+  mkdirSync(path.join(prefix, "bin"), { recursive: true });
+  writeFileSync(path.join(bin, "npm"), '#!/bin/sh\nif [ "$1" = "prefix" ]; then echo "' + prefix + '"; else echo "fake-npm $*"; fi\n', "utf8");
+  chmodSync(path.join(bin, "npm"), 0o755);
+  writeFileSync(path.join(prefix, "bin", "tersio"), '#!/bin/sh\necho "$*" >> "' + tersioLog + '"\n', "utf8");
+  chmodSync(path.join(prefix, "bin", "tersio"), 0o755);
+  return { bin, prefix, tersioLog };
+}
+
+function cleanup(...dirs: string[]): void {
+  for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
+}
+
+const TARBALL_FALLBACK = 'env TERSIO_TARBALL_URL=file:///nonexistent/tersio-npm.tgz';
+
+(process.platform === "win32" ? test.skip : test)("curl bootstrap installs the CLI, then runs tersio install", () => {
+  const { bin, prefix, tersioLog } = fakeEnv();
 
   try {
-    const result = spawnSync("sh", [script], {
+    const result = spawnSync("/bin/sh", ["-c", `${TARBALL_FALLBACK} sh "${script}" --dry-run`], {
       cwd: root,
       encoding: "utf8",
       timeout: 15000,
-      env: { ...process.env, PATH: `${fakeBin}${path.delimiter}${process.env.PATH || ""}` },
+      env: { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH || ""}` },
     });
 
     assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /Installing @krtclcdy\/tersio via npm\.\.\./);
     assert.match(result.stdout, /fake-npm install -g @krtclcdy\/tersio@latest --no-audit --no-fund/);
-    assert.match(result.stdout, /tersio install/);
+    assert.match(result.stdout, /Running the main installer\.\.\./);
+    // The follow-up installer ran (forwarded flag included), whichever
+    // interactivity branch the environment supports.
+    const tersioArgs = readFileSync(tersioLog, "utf8");
+    assert.match(tersioArgs, /--dry-run/);
+    assert.match(tersioArgs, /(^| )install( |$)/);
   } finally {
-    rmSync(fakeBin, { recursive: true, force: true });
+    cleanup(bin, prefix);
+  }
+});
+
+(process.platform === "win32" ? test.skip : test)("release tarball is preferred over the npm registry when reachable", () => {
+  const { bin, prefix, tersioLog } = fakeEnv();
+  const tgz = mkdtempSync(path.join(os.tmpdir(), "tersio-tgz-"));
+  const tarballPath = path.join(tgz, "tersio-npm.tgz");
+  writeFileSync(tarballPath, "fake tarball bytes", "utf8");
+
+  try {
+    const result = spawnSync("/bin/sh", ["-c", `env TERSIO_TARBALL_URL="file://${tarballPath}" sh "${script}"`], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 15000,
+      env: { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH || ""}` },
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /Installing tersio from the GitHub release tarball\.\.\./);
+    assert.match(result.stdout, /fake-npm install -g .*tersio-npm\.tgz --no-audit --no-fund/);
+    assert.match(readFileSync(tersioLog, "utf8"), /(^| )install( |$)/);
+  } finally {
+    cleanup(bin, prefix, tgz);
+  }
+});
+
+(process.platform === "win32" ? test.skip : test)("non-interactive shells default to a user-scope install", () => {
+  const { bin, prefix, tersioLog } = fakeEnv();
+
+  try {
+    const result = spawnSync("/bin/sh", ["-c", `${TARBALL_FALLBACK} sh "${script}"`], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 15000,
+      env: { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH || ""}` },
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    const tersioArgs = readFileSync(tersioLog, "utf8");
+    if (/--scope user --yes/.test(tersioArgs)) {
+      assert.match(tersioArgs, /install --scope user --yes/);
+    } else {
+      // Environment exposed a controlling terminal (/dev/tty); the installer
+      // ran interactively — still a full `tersio install` follow-up.
+      assert.match(tersioArgs, /(^| )install( |$)/);
+    }
+  } finally {
+    cleanup(bin, prefix);
   }
 });
 
@@ -46,6 +117,6 @@ const script = path.join(root, "install.sh");
     assert.equal(result.status, 1);
     assert.match(result.stderr, /npm not found/);
   } finally {
-    rmSync(emptyBin, { recursive: true, force: true });
+    cleanup(emptyBin);
   }
 });

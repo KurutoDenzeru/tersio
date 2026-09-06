@@ -163,7 +163,10 @@ function debug(...a: unknown[]): void {
 const RL = readline.createInterface({ input: process.stdin, output: process.stdout });
 let rlOpen = true;
 function ask(q: string): Promise<string> {
-  return new Promise<string>((resolve) => RL.question(q, resolve));
+  return new Promise<string>((resolve) => {
+    if (!rlOpen) { resolve(''); return; }
+    try { RL.question(q, resolve); } catch { resolve(''); }
+  });
 }
 function closeRL(): void { if (rlOpen) { RL.close(); rlOpen = false; } }
 
