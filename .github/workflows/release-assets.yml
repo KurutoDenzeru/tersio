@@ -21,7 +21,7 @@ jobs:
           npm ci
           npm run build
           npm pack --pack-destination .
-          mv tersio-*.tgz tersio-npm.tgz
+          mv krtclcdy-tersio-*.tgz tersio-npm.tgz
       - name: Attach assets to the release
         env:
           GH_TOKEN: ${{ github.token }}
