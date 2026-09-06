@@ -1,3 +1,10 @@
+## v2.3.0
+- The curl one-liner is the default install and runs the full `tersio install` in the same pass: `curl -fsSL https://github.com/KurutoDenzeru/tersio/releases/latest/download/install.sh | sh` lands you at the scope + Combo preset menus. Interactive shells get the menus directly, piped installs read them from the controlling terminal, and CI/non-interactive shells fall back to `tersio install --scope user --yes` with zero prompts. Extra flags forward: `curl ... | sh -s -- --dry-run --scope both`.
+- `install.sh` picks its source dynamically: it prefers the `tersio-npm.tgz` tarball attached to the latest GitHub release (built by CI per tag) and falls back to `npm install -g @krtclcdy/tersio@latest`. `TERSIO_TARBALL_URL` overrides the source for mirrors or pinned versions.
+- `install.sh` is served from GitHub releases (frozen per release, stable `releases/latest/download` URL); a new `release-assets` workflow attaches `install.sh` + the packed tarball to every `v*` tag automatically.
+- Reliability fixes: the `/dev/tty` probe uses a subshell `exec` (dash aborts a script when a special builtin hits a failed redirection, so piped installs crashed on Ubuntu CI), and `ask()` now returns an empty answer on a closed readline instead of throwing `ERR_USE_AFTER_CLOSE` when stdin EOFs between prompts.
+- README: curl listed as the default install; the manual npm two-step removed. 73 tests.
+
 ## v2.2.0
 - Curl bootstrap installer: `curl -fsSL https://raw.githubusercontent.com/KurutoDenzeru/tersio/main/install.sh | sh` checks for npm (friendly Node.js hint if missing), installs the CLI globally, and prints the `tersio install` follow-up. macOS/Linux/WSL.
 - Update banner: running bare `tersio` (or `install`/`reinstall`) prints `[update] tersio X.Y.Z available (installed A.B.C) — run 'tersio update'` when a newer release is on npm. The check is cached for 6 hours under `~/.omp/plugins/tersio-update-check.json`, capped at 4s per fresh lookup, silent on failure, and TTY-gated so scripts and CI stay quiet.
