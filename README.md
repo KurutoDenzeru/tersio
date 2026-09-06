@@ -14,7 +14,7 @@ Terse replies, compact shell output, and minimal code decisions for [Oh My Pi (O
 **Default** (macOS/Linux/WSL) — one line. Installs the CLI via npm, then runs the main installer (scope + Combo preset menus) in the same pass:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/KurutoDenzeru/tersio/main/install.sh | sh
+curl -fsSL https://github.com/KurutoDenzeru/tersio/releases/latest/download/install.sh | sh
 ```
 
 Prefer OMP-managed updates and feature flags? Install as an OMP plugin instead:

@@ -1,7 +1,7 @@
 #!/bin/sh
 # Tersio installer: bootstraps the global npm CLI, then runs the main
 # `tersio install` (scope + Combo preset menus) in the same pass. Usage:
-#   curl -fsSL https://raw.githubusercontent.com/KurutoDenzeru/tersio/main/install.sh | sh
+#   curl -fsSL https://github.com/KurutoDenzeru/tersio/releases/latest/download/install.sh | sh
 # Extra flags are forwarded: curl ... | sh -s -- --dry-run --scope both
 set -eu
 
