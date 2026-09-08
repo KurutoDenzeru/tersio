@@ -160,7 +160,7 @@ The installer writes `<file>.bak` before replacing an extension source; the upda
 ## Requirements
 
 - [OMP](https://github.com/can1357/oh-my-pi)
-- Node.js 18+ with npm
+- Node.js 20.12+ with npm
 
 Windows/WSL have separate OMP homes — install from the environment where OMP runs. Inside WSL, `command -v npm` must resolve to a Linux path, not `/mnt/c/`.
 

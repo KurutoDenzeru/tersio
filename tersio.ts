@@ -11,6 +11,8 @@ import readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { createRequire } from 'node:module';
+import { cancel as clackCancel, confirm as clackConfirm, select as clackSelect, spinner as clackSpinner, tasks as clackTasks } from '@clack/prompts';
+import type { SpinnerResult } from '@clack/prompts';
 
 import {
   CAVEMAN_REMOTE_RULE,
@@ -204,6 +206,9 @@ async function execP(cmd: string, args: string[], opts: ExecOptions = {}): Promi
     ...opts,
   }) as Promise<{ stdout: string; stderr: string }>;
 }
+async function execNetwork(label: string, cmd: string, args: string[], opts: ExecOptions = {}): Promise<{ stdout: string; stderr: string }> {
+  return withInteractiveSpinner(label, () => execP(cmd, args, opts));
+}
 
 interface WriteOptions {
   dryRun?: boolean;
@@ -243,7 +248,7 @@ function normalizeExtensionsKey(lines: string[]): boolean {
 
 async function writeConfigLines(configPath: string, lines: string[], logMsg: string): Promise<void> {
   await fs.mkdir(path.dirname(configPath), { recursive: true });
-  await fs.copyFile(configPath, `${configPath}.bak`).catch(() => {});
+  await fs.copyFile(configPath, `${configPath}.bak`).catch(() => { });
   await fs.writeFile(configPath, lines.join('\n'), 'utf8');
   console.log(logMsg);
 }
@@ -417,7 +422,7 @@ async function stepPonytail(pluginsDir: string, userDir: string, options: Instal
   } else {
     // Try omp plugin install first
     try {
-      await execP(OMP_BIN, ['plugin', 'install', PONYTAIL_GITHUB_SPEC], { cwd: pluginsDir });
+      await execNetwork('Installing Ponytail plugin', OMP_BIN, ['plugin', 'install', PONYTAIL_GITHUB_SPEC], { cwd: pluginsDir });
       console.log('  [ok] omp plugin install ran');
     } catch (e) {
       console.log(`  [warn] omp plugin install failed: ${(e as Error).message}`);
@@ -425,7 +430,7 @@ async function stepPonytail(pluginsDir: string, userDir: string, options: Instal
 
     if (options.reinstall) {
       try {
-        await execP('npm', ['install', PONYTAIL_NPM_SPEC, '--save', '--no-audit', '--no-fund'], { cwd: pluginsDir, timeout: 120000 });
+        await execNetwork('Refreshing Ponytail package', 'npm', ['install', PONYTAIL_NPM_SPEC, '--save', '--no-audit', '--no-fund'], { cwd: pluginsDir, timeout: 120000 });
         console.log('  [ok] Ponytail refreshed');
       } catch (e) {
         console.log(`  [fail] Could not refresh ponytail: ${(e as Error).message}`);
@@ -440,11 +445,11 @@ async function stepPonytail(pluginsDir: string, userDir: string, options: Instal
     if (!ponytailExtExists) {
       console.log('  [info] pi-extension/index.js not found after omp plugin install — trying npm/bun install...');
       try {
-        await execP('npm', ['install'], { cwd: pluginsDir, timeout: 120000 });
+        await execNetwork('Installing Ponytail dependencies', 'npm', ['install'], { cwd: pluginsDir, timeout: 120000 });
         console.log('  [ok] npm install completed');
       } catch {
         try {
-          await execP('bun', ['install'], { cwd: pluginsDir, timeout: 120000 });
+          await execNetwork('Installing Ponytail dependencies', 'bun', ['install'], { cwd: pluginsDir, timeout: 120000 });
           console.log('  [ok] bun install completed');
         } catch (e2) {
           console.log(`  [fail] Could not install ponytail: ${(e2 as Error).message}`);
@@ -460,7 +465,7 @@ async function stepPonytail(pluginsDir: string, userDir: string, options: Instal
       try {
         const dest = path.join(pluginsDir, 'node_modules', '@dietrichgebert', 'ponytail');
         await fs.mkdir(path.dirname(dest), { recursive: true });
-        await execP('git', ['clone', '--depth', '1', 'https://github.com/DietrichGebert/ponytail.git', dest], { timeout: 180000 });
+        await execNetwork('Cloning Ponytail repository', 'git', ['clone', '--depth', '1', 'https://github.com/DietrichGebert/ponytail.git', dest], { timeout: 180000 });
         console.log('  [ok] git clone completed');
         ponytailExtExists = await probeExt();
       } catch (e3) {
@@ -520,10 +525,10 @@ async function stepSelfPlugin(pluginsDir: string, options: InstallOptions): Prom
   await fs.writeFile(pkgPath, JSON.stringify(pkg, null, 2) + '\n', 'utf8');
 
   try {
-    await execP('npm', ['install', '--no-audit', '--no-fund'], { cwd: pluginsDir, timeout: 180000 });
+    await execNetwork('Installing Tersio plugin dependencies', 'npm', ['install', '--no-audit', '--no-fund'], { cwd: pluginsDir, timeout: 180000 });
   } catch {
     try {
-      await execP('bun', ['install'], { cwd: pluginsDir, timeout: 180000 });
+      await execNetwork('Installing Tersio plugin dependencies', 'bun', ['install'], { cwd: pluginsDir, timeout: 180000 });
     } catch (e) {
       console.log(`  [fail] Could not install ${PACKAGE_NAME} into plugins dir: ${(e as Error).message}`);
       console.log(`  [hint] Manual: cd ~/.omp/plugins && npm install ${PACKAGE_NAME}@^${PACKAGE_VERSION} --save --no-audit --no-fund`);
@@ -624,7 +629,7 @@ async function extractRtkArchive(archivePath: string, extractDir: string): Promi
 async function stepRtk(binDir: string, options: InstallOptions): Promise<void> {
   console.log('\n[3/7] Installing RTK binary...');
   try {
-    const release = await fetchJson<RtkRelease>(RTK_RELEASE_API);
+    const release = await withInteractiveSpinner('Finding latest RTK release', () => fetchJson<RtkRelease>(RTK_RELEASE_API));
     const triple = resolveRtkTriple();
     if (!triple) return;
     const asset = findRtkAsset(release, triple);
@@ -641,10 +646,14 @@ async function stepRtk(binDir: string, options: InstallOptions): Promise<void> {
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'omp-rtk-'));
     try {
       const archivePath = path.join(tmpDir, asset.name);
-      const [checksumsText] = await Promise.all([
-        downloadRtkChecksums(release),
-        httpsDownload(asset.browser_download_url, archivePath),
-      ]);
+      const checksumsText = await withInteractiveSpinner('Downloading RTK binary', async (update) => {
+        const [downloadedChecksums] = await Promise.all([
+          downloadRtkChecksums(release),
+          httpsDownload(asset.browser_download_url, archivePath),
+        ]);
+        update('Verifying RTK checksum');
+        return downloadedChecksums;
+      });
       if (!await verifyRtkArchive(archivePath, asset.name, checksumsText)) return;
 
       const extractDir = path.join(tmpDir, 'extracted');
@@ -657,7 +666,7 @@ async function stepRtk(binDir: string, options: InstallOptions): Promise<void> {
       }
 
       await fs.mkdir(path.dirname(binDest), { recursive: true });
-      await fs.copyFile(binDest, `${binDest}.bak`).catch(() => {});
+      await fs.copyFile(binDest, `${binDest}.bak`).catch(() => { });
       await fs.copyFile(found, binDest);
       console.log(`  [write] ${binDest}`);
 
@@ -673,7 +682,7 @@ async function stepRtk(binDir: string, options: InstallOptions): Promise<void> {
         console.log(`  [hint] Verify manually: ${binDest} --version`);
       }
     } finally {
-      await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+      await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => { });
     }
   } catch (e) {
     console.log(`  [fail] RTK: ${(e as Error).message}`);
@@ -725,7 +734,7 @@ async function stepRtkSession(extDir: string, options: WriteOptions): Promise<vo
 async function fetchCavemanRule(options: WriteOptions): Promise<string | null> {
   if (options.dryRun) return (await readTextIfExists(path.join(path.dirname(CAVEMAN_INDEX), 'rule.md'))) || '';
   try {
-    return await httpsGet(CAVEMAN_REMOTE_RULE);
+    return await withInteractiveSpinner('Fetching Caveman rule', () => httpsGet(CAVEMAN_REMOTE_RULE));
   } catch (e) {
     console.log(`  [warn] Could not fetch caveman rule: ${(e as Error).message}`);
     return null;
@@ -788,50 +797,64 @@ async function runDoctor(): Promise<void> {
   const modeReinforcement = path.join(extDir, 'shared', 'mode-reinforcement.js');
   const selfPkg = path.join(pluginsDir, 'node_modules', PACKAGE_NAME, 'package.json');
 
-  // Independent probes run concurrently; logs below keep fixed order.
-  const [
-    ompVersion,
-    agentEntries,
-    extEntries,
-    sharedStateText,
-    configText,
-    ponytailPkgText,
-    ponytailExtText,
-    pluginsPkgRaw,
-    selfPkgText,
-    rtkBinText,
-    cavemanIndexText,
-    cavemanRuleText,
-    rtkIndexText,
-    updaterIndexText,
-    comboIndexText,
-    modeReinforcementText,
-    ruleMtime,
-    rtkMtime,
-    ponytailMtime,
-    updateVersion,
-  ] = await Promise.all([
-    execP(OMP_BIN, ['--version']).then((r) => r.stdout.trim(), () => null),
-    fs.readdir(agentDir).catch(() => null),
-    fs.readdir(extDir).catch(() => null),
-    readTextIfExists(path.join(extDir, 'shared', 'session-state.js')),
-    readTextIfExists(configPath),
-    readTextIfExists(ponytailPkg),
-    readTextIfExists(ponytailExt),
-    readTextIfExists(path.join(pluginsDir, 'package.json')),
-    readTextIfExists(selfPkg),
-    readTextIfExists(rtkBin),
-    readTextIfExists(cavemanIndex),
-    readTextIfExists(cavemanRule),
-    readTextIfExists(rtkIndex),
-    readTextIfExists(updaterIndex),
-    readTextIfExists(comboIndex),
-    readTextIfExists(modeReinforcement),
-    fs.stat(cavemanRule).catch(() => null),
-    fs.stat(rtkBin).catch(() => null),
-    fs.stat(ponytailPkg).catch(() => null),
-    checkForUpdate(),
-  ]);
+  // Independent probes start concurrently; sections report in fixed order as
+  // their data settles. Every probe resolves instead of rejecting.
+  const probes = {
+    ompVersion: execP(OMP_BIN, ['--version']).then((r) => r.stdout.trim(), () => null),
+    agentEntries: fs.readdir(agentDir).catch(() => null),
+    extEntries: fs.readdir(extDir).catch(() => null),
+    sharedStateText: readTextIfExists(path.join(extDir, 'shared', 'session-state.js')),
+    configText: readTextIfExists(configPath),
+    ponytailPkgText: readTextIfExists(ponytailPkg),
+    ponytailExtText: readTextIfExists(ponytailExt),
+    pluginsPkgRaw: readTextIfExists(path.join(pluginsDir, 'package.json')),
+    selfPkgText: readTextIfExists(selfPkg),
+    rtkBinText: readTextIfExists(rtkBin),
+    cavemanIndexText: readTextIfExists(cavemanIndex),
+    cavemanRuleText: readTextIfExists(cavemanRule),
+    rtkIndexText: readTextIfExists(rtkIndex),
+    updaterIndexText: readTextIfExists(updaterIndex),
+    comboIndexText: readTextIfExists(comboIndex),
+    modeReinforcementText: readTextIfExists(modeReinforcement),
+    ruleMtime: fs.stat(cavemanRule).catch(() => null),
+    rtkMtime: fs.stat(rtkBin).catch(() => null),
+    ponytailMtime: fs.stat(ponytailPkg).catch(() => null),
+    updateVersion: checkForUpdate(),
+  };
+  const rtkVersionProbe: Promise<string | null> = probes.rtkBinText.then((text) => text === null ? null : execP(rtkBin, ['--version'], { timeout: 5000 }).then(
+    (r) => r.stdout.trim() || r.stderr.trim() || null,
+    (e) => {
+      const err = e as { stdout?: string; stderr?: string };
+      return err.stdout?.trim() || err.stderr?.trim() || null;
+    },
+  ));
+  const [ompVersion, agentEntries, extEntries, sharedStateText, configText, updateVersion] = await runInteractivePhase('Checking environment and installation', () => Promise.all([
+    probes.ompVersion,
+    probes.agentEntries,
+    probes.extEntries,
+    probes.sharedStateText,
+    probes.configText,
+    probes.updateVersion,
+  ]));
+  const [cavemanIndexText, rtkIndexText, updaterIndexText, comboIndexText, modeReinforcementText, ponytailPkgText, ponytailExtText, pluginsPkgRaw, selfPkgText] = await runInteractivePhase('Checking extensions and plugins', () => Promise.all([
+    probes.cavemanIndexText,
+    probes.rtkIndexText,
+    probes.updaterIndexText,
+    probes.comboIndexText,
+    probes.modeReinforcementText,
+    probes.ponytailPkgText,
+    probes.ponytailExtText,
+    probes.pluginsPkgRaw,
+    probes.selfPkgText,
+  ]));
+  const [cavemanRuleText, ruleMtime, rtkBinText, rtkMtime, rtkVersion, ponytailMtime] = await runInteractivePhase('Checking add-ons', () => Promise.all([
+    probes.cavemanRuleText,
+    probes.ruleMtime,
+    probes.rtkBinText,
+    probes.rtkMtime,
+    rtkVersionProbe,
+    probes.ponytailMtime,
+  ]));
 
   // Categorized output with a tally; section headers group related probes.
   const tally = { ok: 0, missing: 0, warn: 0 };
@@ -878,13 +901,6 @@ async function runDoctor(): Promise<void> {
   section('Add-ons');
   const ruleAge = ruleMtime ? `updated ${relTime(Date.now() - ruleMtime.mtimeMs)}` : '';
   check('Caveman rule', cavemanRuleText !== null, ruleAge);
-  const rtkVersion = rtkBinText === null ? null : await execP(rtkBin, ['--version'], { timeout: 5000 }).then(
-    (r) => r.stdout.trim() || r.stderr.trim() || null,
-    (e) => {
-      const err = e as { stdout?: string; stderr?: string };
-      return err.stdout?.trim() || err.stderr?.trim() || null;
-    },
-  );
   const rtkAge = rtkMtime ? `updated ${relTime(Date.now() - rtkMtime.mtimeMs)}` : '';
   if (rtkBinText === null) check('RTK binary', false, rtkBin);
   else {
@@ -1004,11 +1020,26 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
   }
 
   if (!confirmed) {
-    const answer = await ask('\nProceed? [y/N]: ');
-    if (!answer.toLowerCase().startsWith('y')) {
-      console.log('Aborted.');
+    if (tty()) {
       closeRL();
-      return false;
+      const confirmedChoice = await clackConfirm({ message: 'Remove the listed Tersio files?', initialValue: false });
+      if (typeof confirmedChoice !== 'boolean') {
+        clackCancel('Aborted.');
+        closeRL();
+        return false;
+      }
+      if (!confirmedChoice) {
+        console.log('Aborted.');
+        closeRL();
+        return false;
+      }
+    } else {
+      const answer = await ask('\nProceed? [y/N]: ');
+      if (!answer.toLowerCase().startsWith('y')) {
+        console.log('Aborted.');
+        closeRL();
+        return false;
+      }
     }
   }
 
@@ -1076,7 +1107,6 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
 }
 
 const SCOPE_MAP: Record<string, string> = { user: '1', project: '2', both: '3' };
-const COMBO_MENU: Record<string, string> = { '1': 'off', '2': 'medium', '3': 'balanced', '4': 'max' };
 
 // --- Update check (cached; used by the bare-invocation banner and doctor) ---
 
@@ -1096,7 +1126,7 @@ async function latestPublishedVersion(): Promise<string | null> {
     const args = IS_WINDOWS
       ? ['/d', '/s', '/c', 'npm', 'view', PACKAGE_NAME, 'version', '--prefer-online']
       : ['view', PACKAGE_NAME, 'version', '--prefer-online'];
-    const r = await execP(IS_WINDOWS ? process.env.ComSpec || 'cmd.exe' : 'npm', args, {
+    const r = await execNetwork('Checking npm registry for tersio updates', IS_WINDOWS ? process.env.ComSpec || 'cmd.exe' : 'npm', args, {
       timeout: 4000,
       maxBuffer: 1024 * 1024,
       windowsHide: true,
@@ -1118,8 +1148,8 @@ async function checkForUpdate(): Promise<string | null> {
 
   const latest = await latestPublishedVersion();
   if (latest) {
-    await fs.mkdir(OMP_PLUGINS_DIR, { recursive: true }).catch(() => {});
-    await fs.writeFile(cachePath, JSON.stringify({ latest, lastCheck: Date.now() }) + '\n', 'utf8').catch(() => {});
+    await fs.mkdir(OMP_PLUGINS_DIR, { recursive: true }).catch(() => { });
+    await fs.writeFile(cachePath, JSON.stringify({ latest, lastCheck: Date.now() }) + '\n', 'utf8').catch(() => { });
     return newerThan(latest, PACKAGE_VERSION) ? latest : null;
   }
   // Registry unreachable: fall back to a stale cache rather than staying silent.
@@ -1174,7 +1204,7 @@ async function runLatestUpdate(): Promise<void> {
   } else {
     try {
       const globalArgs = IS_WINDOWS ? ['/d', '/s', '/c', 'npm', 'install', '-g', `${PACKAGE_NAME}@latest`, '--no-audit', '--no-fund'] : ['install', '-g', `${PACKAGE_NAME}@latest`, '--no-audit', '--no-fund'];
-      const globalResult = await execP(npmCommand, globalArgs, {
+      const globalResult = await execNetwork('Updating global Tersio CLI', npmCommand, globalArgs, {
         timeout: 300000,
         maxBuffer: 10 * 1024 * 1024,
         windowsHide: true,
@@ -1190,7 +1220,7 @@ async function runLatestUpdate(): Promise<void> {
   }
 
   try {
-    const result = await execP(npmCommand, npmCommandArgs, {
+    const result = await execNetwork('Running latest Tersio installer', npmCommand, npmCommandArgs, {
       timeout: 300000,
       maxBuffer: 10 * 1024 * 1024,
       windowsHide: true,
@@ -1203,7 +1233,6 @@ async function runLatestUpdate(): Promise<void> {
     const err = e as Error & { stdout?: string; stderr?: string };
     if (err.stdout) process.stdout.write(err.stdout);
     if (err.stderr) process.stderr.write(err.stderr);
-    console.error(`\n[fail] Could not run ${PACKAGE_NAME}@latest: ${err.message}`);
     process.exitCode = 1;
   }
 }
@@ -1221,6 +1250,47 @@ function defaultProfile(): Profile {
 
 function tty(): boolean {
   return Boolean(process.stdin.isTTY && process.stdout.isTTY);
+}
+type InteractiveChoice = { status: 'selected'; value: string } | { status: 'cancelled' | 'unavailable' };
+
+let spinnerDepth = 0;
+
+// Run async work under a TTY-only timer spinner. The spinner is cleared before
+// the caller prints its normal result line, preserving locked output shapes.
+async function withInteractiveSpinner<T>(message: string, work: (update: (message: string) => void) => Promise<T>): Promise<T> {
+  if (!tty() || spinnerDepth > 0) return work(() => { });
+  // Clack manages stdin itself. Close the legacy question interface before its
+  // first use; non-interactive callers never reach this branch.
+  closeRL();
+  const active: SpinnerResult = clackSpinner({ indicator: 'timer' });
+  active.start(message);
+  spinnerDepth += 1;
+  try {
+    return await work((next: string) => { active.message(next); });
+  } finally {
+    active.clear();
+    spinnerDepth -= 1;
+  }
+}
+
+async function askInteractiveChoice(message: string, options: Array<{ value: string; label: string; hint?: string }>, initialValue: string): Promise<InteractiveChoice> {
+  if (!tty()) return { status: 'unavailable' };
+  closeRL();
+  const choice = await clackSelect({ message, options, initialValue });
+  if (typeof choice !== 'string') {
+    clackCancel('Aborted.');
+    return { status: 'cancelled' };
+  }
+  return { status: 'selected', value: choice };
+}
+// Run collecting work under one TTY-only Clack task. Callers print after the
+// task completes, keeping normal output out of the spinner animation.
+async function runInteractivePhase<T>(title: string, collect: () => Promise<T>): Promise<T> {
+  if (!tty()) return collect();
+  closeRL();
+  let result!: T;
+  await clackTasks([{ title, task: async () => { result = await collect(); } }]);
+  return result;
 }
 
 // Determine install scope: reinstall > flag > non-interactive default > prompt.
@@ -1243,6 +1313,16 @@ async function resolveScope(): Promise<string> {
     console.log(`  Scope: user (${install ? 'install default' : '--scope omitted, defaulting to user with --yes'})`);
     return '1';
   }
+  if (tty()) {
+    const choice = await askInteractiveChoice('Install scope', [
+      { value: '1', label: 'User-level', hint: 'all OMP sessions' },
+      { value: '2', label: 'Project-level', hint: 'this repo only' },
+      { value: '3', label: 'Both' },
+    ], '1');
+    if (choice.status === 'selected') return choice.value;
+    closeRL();
+    process.exit(130);
+  }
   console.log('\nInstall scope:');
   console.log('  1) User-level (all OMP sessions)');
   console.log('  2) Project-level (this repo only)');
@@ -1262,16 +1342,16 @@ async function resolveProfile(): Promise<Profile> {
   // Only for a real user at a terminal, only when no default flags were
   // given, and never for --apply-update runs.
   if (tty() && !profileFlagsGiven && !applyUpdate && (install || reinstall)) {
-    console.log('  Session-start defaults — Combo preset:');
-    console.log('    1) off');
-    console.log('    2) medium   (caveman=lite, rtk=on, ponytail=lite)');
-    console.log('    3) balanced (caveman=full, rtk=on, ponytail=full)');
-    console.log('    4) max      (caveman=ultra, rtk=on, ponytail=ultra)');
-    for (;;) {
-      const answer = (await ask('  Choose [1-4] (default 1): ')).trim();
-      if (!answer) { profile.comboDefault = 'off'; break; }
-      if (COMBO_MENU[answer]) { profile.comboDefault = COMBO_MENU[answer]; break; }
-      console.log(`  [fail] Invalid choice: ${answer}. Choose 1, 2, 3, or 4.`);
+    const choice = await askInteractiveChoice('Session-start defaults — Combo preset', [
+      { value: 'off', label: 'off' },
+      { value: 'medium', label: 'medium', hint: 'caveman=lite, rtk=on, ponytail=lite' },
+      { value: 'balanced', label: 'balanced', hint: 'caveman=full, rtk=on, ponytail=full' },
+      { value: 'max', label: 'max', hint: 'caveman=ultra, rtk=on, ponytail=ultra' },
+    ], 'off');
+    if (choice.status === 'selected') profile.comboDefault = choice.value;
+    else {
+      closeRL();
+      process.exit(130);
     }
   }
 
