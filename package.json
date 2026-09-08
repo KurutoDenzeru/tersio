@@ -119,11 +119,14 @@
     "test": "tsx --test test/*.test.ts test/*/*.test.ts"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20.12.0"
   },
   "devDependencies": {
     "@types/node": "^26.4.1",
     "tsx": "^4.23.13",
     "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "@clack/prompts": "^1.8.0"
   }
 }

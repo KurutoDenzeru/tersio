@@ -6,7 +6,7 @@
 set -eu
 
 if ! command -v npm >/dev/null 2>&1; then
-  echo "tersio installer: npm not found — install Node.js 18+ first (https://nodejs.org)" >&2
+  echo "tersio installer: npm not found — install Node.js 20.12+ first (https://nodejs.org)" >&2
   exit 1
 fi
 
