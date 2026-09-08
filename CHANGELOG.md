@@ -1,3 +1,8 @@
+## v2.4.0
+- Interactive CLI via `@clack/prompts` — the framework behind the Vite, Astro, Nuxt, TanStack, and Cloudflare CLIs. On a TTY, the scope and Combo preset prompts become arrow-key radio menus, the uninstall confirmation becomes a `confirm` dialog, and every network-bound step (registry check, Caveman rule fetch, RTK release lookup/download/checksum, Ponytail and self-plugin installs, update refresh and delegate) runs under a live timer spinner. `doctor` probes start concurrently and report through progressive task phases in fixed section order.
+- Non-TTY behavior is unchanged: piped, CI, `--dry-run`, and test runs emit byte-identical plain output with no spinners or prompts. `tersio version`, `tersio help`, and unknown-command output stay plain by design.
+- Dependencies/policy: `@clack/prompts` is the first runtime dependency; `engines.node` rises from `>=18` to `>=20.12.0` (Clack 1.x requirement; Node 18 is EOL). CI matrix moves to Node 20/22/24. 73 tests.
+
 ## v2.3.0
 - The curl one-liner is the default install and runs the full `tersio install` in the same pass: `curl -fsSL https://github.com/KurutoDenzeru/tersio/releases/latest/download/install.sh | sh` lands you at the scope + Combo preset menus. Interactive shells get the menus directly, piped installs read them from the controlling terminal, and CI/non-interactive shells fall back to `tersio install --scope user --yes` with zero prompts. Extra flags forward: `curl ... | sh -s -- --dry-run --scope both`.
 - `install.sh` picks its source dynamically: it prefers the `tersio-npm.tgz` tarball attached to the latest GitHub release (built by CI per tag) and falls back to `npm install -g @krtclcdy/tersio@latest`. `TERSIO_TARBALL_URL` overrides the source for mirrors or pinned versions.
