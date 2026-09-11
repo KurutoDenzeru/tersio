@@ -108,7 +108,8 @@ async function runDoctor(): Promise<void> {
   section('Environment');
   check('Node', true, process.version);
   check('OMP CLI', ompVersion !== null, ompVersion ?? '');
-  if (updateVersion) warnLine('Tersio CLI', `${updateVersion} available — run tersio update`);
+  if (typeof updateVersion === 'string') warnLine('Tersio CLI', `${updateVersion} available — run tersio update`);
+  else if (updateVersion === 'unknown') warnLine('Tersio CLI', `${PACKAGE_VERSION} (version check unreachable)`);
   else check('Tersio CLI', true, PACKAGE_VERSION);
   console.log(`  Home: ${HOME}`);
 

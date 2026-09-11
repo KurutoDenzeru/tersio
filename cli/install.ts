@@ -578,7 +578,7 @@ let updatePromptDone = false;
 // Scripts, pipes, --yes, and --dry-run keep the old straight-to-install path.
 async function runCommandMenu(): Promise<void> {
   const newer = await checkForUpdate();
-  if (newer && !dryRun) {
+  if (typeof newer === 'string' && !dryRun) {
     const answer = await askInteractiveConfirm(`tersio ${newer} is available (installed ${PACKAGE_VERSION}). Install it now?`);
     if (answer.status === 'confirmed' && answer.value) {
       await runLatestUpdate();
@@ -610,8 +610,10 @@ async function runCommandMenu(): Promise<void> {
       await runInstall();
       break;
     case 'check': {
-      const latest = await checkForUpdate();
-      console.log(latest ? `  [update] tersio ${latest} available (installed ${PACKAGE_VERSION})` : `  [ok] tersio ${PACKAGE_VERSION} is the latest`);
+      const latest = await checkForUpdate(true);
+      if (typeof latest === 'string') console.log(`  [update] tersio ${latest} available (installed ${PACKAGE_VERSION})`);
+      else if (latest === 'unknown') console.log(`  [warn] could not reach the npm registry — run \`tersio update\` to retry`);
+      else console.log(`  [ok] tersio ${PACKAGE_VERSION} is the latest`);
       closeRL();
       break;
     }
@@ -658,7 +660,7 @@ async function runInstall(): Promise<void> {
   // the apply-update payload, which is itself an update run.
   if (tty() && !applyUpdate && command !== 'uninstall') {
     const newer = await checkForUpdate();
-    if (newer) {
+    if (typeof newer === 'string') {
       // Bare `tersio` with an update pending: offer it now (Y/n) instead of
       // burying the banner above the install prompts. Yes runs the full
       // update and stops here — the fresh binary owns what follows.

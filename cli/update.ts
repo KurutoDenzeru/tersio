@@ -42,13 +42,15 @@ async function latestPublishedVersion(): Promise<string | null> {
   }
 }
 
-// Returns a newer published version, or null. Reads the registry at most once
-// per TTL (cached under OMP_PLUGINS_DIR) and stays silent on failure.
-async function checkForUpdate(): Promise<string | null> {
+// Returns a newer published version, null when up to date, or 'unknown' when
+// the registry cannot be reached. Reads the registry at most once per TTL
+// (cached under OMP_PLUGINS_DIR) unless force skips the cache — an explicit
+// "check for updates" must never trust a stale cache.
+async function checkForUpdate(force = false): Promise<string | null | 'unknown'> {
   const cachePath = path.join(OMP_PLUGINS_DIR, 'tersio-update-check.json');
   const cached = parseJsonObject<{ latest?: string; lastCheck?: number }>(await readTextIfExists(cachePath));
   const cacheFresh = typeof cached?.lastCheck === 'number' && Date.now() - cached.lastCheck < UPDATE_CHECK_TTL_MS;
-  if (cacheFresh && cached?.latest) return newerThan(cached.latest, PACKAGE_VERSION) ? cached.latest : null;
+  if (!force && cacheFresh && cached?.latest) return newerThan(cached.latest, PACKAGE_VERSION) ? cached.latest : null;
 
   const latest = await latestPublishedVersion();
   if (latest) {
@@ -56,8 +58,9 @@ async function checkForUpdate(): Promise<string | null> {
     await fs.writeFile(cachePath, JSON.stringify({ latest, lastCheck: Date.now() }) + '\n', 'utf8').catch(() => { });
     return newerThan(latest, PACKAGE_VERSION) ? latest : null;
   }
-  // Registry unreachable: fall back to a stale cache rather than staying silent.
-  return cached?.latest && newerThan(cached.latest, PACKAGE_VERSION) ? cached.latest : null;
+  // Registry unreachable: a stale cache naming a newer release is still
+  // actionable; otherwise report unknown so callers never claim "latest".
+  return cached?.latest && newerThan(cached.latest, PACKAGE_VERSION) ? cached.latest : 'unknown';
 }
 
 // Race a probe against a timeout; slow or failing probes resolve null so the

@@ -8,6 +8,7 @@ import {
 } from '../extensions/shared/usage-ledger.ts';
 import type { TokenBreakdown, UsageRow } from '../extensions/shared/usage-ledger.ts';
 import { withInteractiveSpinner } from './interactive.ts';
+import { PACKAGE_VERSION } from './common.ts';
 
 export interface UsageReport {
   total: number;
@@ -26,6 +27,7 @@ export interface UsageReport {
   savedUsd: number;
   costMeasured: number;
   co2g: number;
+  version: string;
 }
 
 export function summarizeUsage(rows: UsageRow[]): UsageReport {
@@ -64,6 +66,7 @@ export function summarizeUsage(rows: UsageRow[]): UsageReport {
     savedUsd,
     costMeasured: session.costMeasured,
     co2g: co2Grams(session.totals.output),
+    version: PACKAGE_VERSION,
   };
 }
 

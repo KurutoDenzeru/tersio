@@ -45,7 +45,7 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
     const inline = html
       .replace(
         "fetch('data.json')",
-        `Promise.resolve({ json: function () { return ${dataJson()}; } }).then(function (r) { return r.json(); }).then`,
+        `Promise.resolve({ json: function () { return ${dataJson()}; } })`,
       )
       .replace('href="brand.webp"', `href="${await faviconDataUri()}"`)
       .replace('src="brand.webp"', `src="${await faviconDataUri()}"`);
