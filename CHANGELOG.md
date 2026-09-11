@@ -1,9 +1,12 @@
-## v2.7.0
-- Bare `tersio` at a terminal is now a Clack command picker (Install, Check for updates, Update everything, Doctor, Usage, Gain dashboard, Uninstall). Pipes, CI, `--yes`, and `--dry-run` keep the old straight-to-install path.
-- Pending release on bare run: `Install it now?` Yes/No offer; Yes runs the full update and stops so the fresh binary owns what follows.
-- `/tersio gain` opens the dashboard in the default browser (file-ready snapshot, shell-hint fallback).
+## v2.8.0
 - `tersio dashboard` / Serve merged into `tersio gain`: one command serves localhost, opens the browser, or exports a file. The 26-week heatmap is gone; token activity is a stacked per-model chart with Daily/Weekly/Cumulative toggle, top models get vendor monogram cards with week-over-week deltas, and Top Commands is now Top Tools.
 - Top Tools splits `bash` calls by lead binary (`bash:git`, `bash:npm`, …) parsed from session tool calls; cache savings estimated from cache-read volume (~$659 on the author's ledger).
+- 96 tests.
+
+## v2.7.0
+- Bare `tersio` at a terminal is now a Clack command picker (Install, Check for updates, Update everything, Doctor, Usage, Gain dashboard, Serve dashboard, Uninstall). Pipes, CI, `--yes`, and `--dry-run` keep the old straight-to-install path.
+- Pending release on bare run: `Install it now?` Yes/No offer; Yes runs the full update and stops so the fresh binary owns what follows.
+- `/tersio gain` opens the dashboard in the default browser (file-ready snapshot, shell-hint fallback).
 - Installer now ships `extensions/tersio-commands` (previously declared but never copied, so `/tersio` never appeared); doctor checks it, uninstall removes it.
 - 96 tests.
 
