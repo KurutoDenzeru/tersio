@@ -115,8 +115,7 @@
   "files": [
     "tersio.js",
     "cli/**/*.js",
-    "cli/dashboard.html",
-    "cli/brand.webp",
+    "dashboard/**/*",
     "extensions/**/*.js"
   ],
   "scripts": {

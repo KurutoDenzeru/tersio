@@ -47,6 +47,7 @@ export interface SessionTokens {
   byDay: Record<string, TokenBreakdown>;
   byDayModel: Record<string, Record<string, number>>;
   byTool: Record<string, number>;
+  byModelMessages: Record<string, number>;
   costMeasured: number;
 }
 
@@ -95,6 +96,7 @@ export function importSessionTokens(): SessionTokens {
   const byDay: Record<string, TokenBreakdown> = {};
   const byDayModel: Record<string, Record<string, number>> = {};
   const byTool: Record<string, number> = {};
+  const byModelMessages: Record<string, number> = {};
   const totals = zeroBreakdown();
   let messages = 0;
   let costMeasured = 0;
@@ -120,6 +122,7 @@ export function importSessionTokens(): SessionTokens {
         addInto(totals, msg.usage);
         byModel[model] ??= zeroBreakdown();
         addInto(byModel[model], msg.usage);
+        byModelMessages[model] = (byModelMessages[model] ?? 0) + 1;
         const day = row.timestamp !== undefined ? dayKey(row.timestamp) : null;
         if (day) {
           byDay[day] ??= zeroBreakdown();
@@ -142,7 +145,7 @@ export function importSessionTokens(): SessionTokens {
       } catch { /* skip corrupt lines */ }
     }
   }
-  return { messages, totals, byModel, byDay, byDayModel, byTool, costMeasured };
+  return { messages, totals, byModel, byDay, byDayModel, byTool, byModelMessages, costMeasured };
 }
 // Lead binary of a shell string: first segment head past `cd` chains and
 // VAR=x assignments (`cd /x && git status` → `git`). Falls back to `bash`.
@@ -159,35 +162,14 @@ function leadBinary(command: unknown): string {
   return 'bash';
 }
 
-// --- Pricing: USD per 1M tokens, LiteLLM-style --------------------------------
-// Rough list rates for the models OMP sessions actually cite. Refresh against
-// LiteLLM pricing data when adding families. Unknown models fall to DEFAULT.
-export interface ModelPrice {
-  input: number;
-  output: number;
-  cacheRead: number;
-  cacheWrite: number;
-}
+// --- Pricing lives in ./pricing.ts (live LiteLLM cache + fallback table) ---
+import { DEFAULT_PRICE, priceFor } from './pricing.ts';
+import { co2GramsFor, energyWhFor } from './carbon.ts';
+import type { ModelPrice } from './pricing.ts';
 
-const PRICE_TABLE: Array<{ match: string; price: ModelPrice }> = [
-  { match: ':free', price: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } },
-  { match: 'opus', price: { input: 15, output: 75, cacheRead: 1.5, cacheWrite: 18.75 } },
-  { match: 'sonnet', price: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 } },
-  { match: 'haiku', price: { input: 0.8, output: 4, cacheRead: 0.08, cacheWrite: 1 } },
-  { match: 'gpt', price: { input: 2.5, output: 10, cacheRead: 1.25, cacheWrite: 2.5 } },
-  { match: 'gemini', price: { input: 1.25, output: 10, cacheRead: 0.125, cacheWrite: 1.25 } },
-  { match: 'glm', price: { input: 0.5, output: 1, cacheRead: 0.05, cacheWrite: 0.5 } },
-];
-
-const DEFAULT_PRICE: ModelPrice = { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 };
-
-export function priceFor(model: string): { price: ModelPrice; known: boolean } {
-  const name = model.toLowerCase();
-  for (const row of PRICE_TABLE) {
-    if (name.includes(row.match)) return { price: row.price, known: true };
-  }
-  return { price: DEFAULT_PRICE, known: false };
-}
+export { DEFAULT_PRICE, priceFor };
+export { co2GramsFor, energyWhFor };
+export type { ModelPrice };
 
 export function usdCost(t: TokenBreakdown, model?: string): { usd: number; priced: boolean } {
   const { price, known } = model ? priceFor(model) : { price: DEFAULT_PRICE, known: false };
@@ -198,12 +180,14 @@ export function usdCost(t: TokenBreakdown, model?: string): { usd: number; price
   };
 }
 
-// ponytail: CO2 is a rough server-energy multiple on output tokens, not metered.
+// CO2 now model-differentiated via ./carbon.ts (EcoLogits 0.8.2 port).
 // Always render with ~est. and never merge with measured figures.
+// The constant below is the served gCO2eq per 1K output tokens for the
+// default (gpt-4o-class) model, kept so single-figure callers stay honest.
 export const CO2_G_PER_1K_OUTPUT = 0.2;
 
-export function co2Grams(outputTokens: number): number {
-  return (outputTokens / 1000) * CO2_G_PER_1K_OUTPUT;
+export function co2Grams(outputTokens: number, model?: string): number {
+  return co2GramsFor(model ?? 'gpt-4o', outputTokens);
 }
 
 export function readUsage(): UsageRow[] {

@@ -2,7 +2,11 @@
 - Update check fix: the menu's "Check for updates" always probes the registry live instead of trusting a 6-hour cache; an unreachable registry now reports unknown rather than a false "latest", and `tersio doctor` warns instead of claiming the CLI is current. Pinned by two regression tests (fresh-stale-cache bypass, offline-unknown).
 - Gain dashboard: the USD cost card gains a 14-day volume sparkline with per-day cost tooltips, ~per-day and top-day estimates (blended rate, labeled ~), and a cache-leverage multiple (saved / cost). The floating dock gets a gradient hairline ring, brand glow, divider, and accent hover on Reload. The footer is two rows with a live version chip and a local-only privacy note.
 - Top Tools is now a full-width impact table (# / tool / calls / share / impact) below Models; the Models list went full width with vendor monograms; heatmap month labels align to the column rhythm.
-- Export fix: the inlined `data.json` chain no longer double-`.then` (offline `file://` snapshots previously rendered empty); `data.json` gains a `version` field for the footer chip. 98 tests.
+- Export fix: the inlined `data.json` chain no longer double-`.then` (offline `file://` snapshots previously rendered empty); `data.json` gains a `version` field for the footer chip. 109 tests.
+- Token buckets follow tokscale (input / output / cache read / cache write, always rendered); per-model USD cost from a new pricing module (live LiteLLM refresh with local cache, built-in fallback, refreshed on `tersio update`).
+- CO2 upgraded from a flat factor to an EcoLogits 0.8.2 port (per-model params, provider grids, served ÷32 amortization) with a methodology hover on the card; derivation credited in `ECO_NOTICE.md`.
+- Dashboard split into `dashboard/` segments (template, styles, app logic); 30-day token line graph with per-model hover cards; GitHub-style heatmap with day tooltips; brand icons via Simple Icons (bot-glyph fallback, never initials); model breakdown hovers (input/output/requests/cache-hit); condensed single-row footer.
+- Export hardening: `$`-pattern payloads no longer corrupt the inlined snapshot (regression-tested).
 
 ## v2.8.0
 - `tersio dashboard` / Serve merged into `tersio gain`: one command serves localhost, opens the browser, or exports a file. The 26-week heatmap is gone; token activity is a stacked per-model chart with Daily/Weekly/Cumulative toggle, top models get vendor monogram cards with week-over-week deltas, and Top Commands is now Top Tools.

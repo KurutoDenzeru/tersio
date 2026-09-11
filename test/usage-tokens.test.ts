@@ -4,8 +4,8 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
-  CO2_G_PER_1K_OUTPUT,
   co2Grams,
+  co2GramsFor,
   importSessionTokens,
   priceFor,
   usdCost,
@@ -41,7 +41,7 @@ test("importer aggregates assistant usage by model and day, skips the rest", () 
     assert.deepEqual(s.byDay["2026-09-02"], { input: 100, output: 10, cacheRead: 0, cacheWrite: 0 });
     assert.deepEqual(s.byDayModel["2026-09-01"], { "claude-sonnet-5": 1700 });
     assert.deepEqual(s.byDayModel["2026-09-02"], { "mystery-model-9": 110 });
-    assert.deepEqual(s.byTool, { "bash:git": 1, "bash:bash": 1 });
+    assert.deepEqual(s.byModelMessages, { "claude-sonnet-5": 1, "mystery-model-9": 1 });
     assert.equal(s.costMeasured, 0.012);
   } finally {
     if (prev === undefined) delete process.env.TERSIO_SESSIONS_DIR;
@@ -51,14 +51,21 @@ test("importer aggregates assistant usage by model and day, skips the rest", () 
 });
 
 test("usdCost prices known models, falls back with priced=false", () => {
-  const t = { input: 1_000_000, output: 0, cacheRead: 0, cacheWrite: 0 };
-  assert.equal(usdCost(t, "claude-sonnet-5").usd, 3);
-  assert.equal(priceFor("claude-sonnet-5").known, true);
-  const unknown = usdCost(t, "mystery-model-9");
-  assert.equal(unknown.usd, 3);
-  assert.equal(unknown.priced, false);
+  const prev = process.env.TERSIO_PRICES_FILE;
+  process.env.TERSIO_PRICES_FILE = path.join("test", "definitely-missing-home", "no-prices.json");
+  try {
+    const t = { input: 1_000_000, output: 0, cacheRead: 0, cacheWrite: 0 };
+    assert.equal(usdCost(t, "claude-sonnet-5").usd, 3);
+    assert.equal(priceFor("claude-sonnet-5").known, true);
+    const unknown = usdCost(t, "mystery-model-9");
+    assert.equal(unknown.usd, 3);
+    assert.equal(unknown.priced, false);
+  } finally {
+    if (prev === undefined) delete process.env.TERSIO_PRICES_FILE;
+    else process.env.TERSIO_PRICES_FILE = prev;
+  }
 });
 
-test("co2Grams scales linearly on the documented factor", () => {
-  assert.equal(co2Grams(5000), 5 * CO2_G_PER_1K_OUTPUT);
+test("co2Grams defaults to the gpt-4o served figure", () => {
+  assert.equal(co2Grams(5000), co2GramsFor("gpt-4o", 5000));
 });

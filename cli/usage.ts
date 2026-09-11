@@ -1,6 +1,7 @@
 // cli/usage.ts — ledger + session-token usage report, tokscale-style.
 import {
-  co2Grams,
+  co2GramsFor,
+  energyWhFor,
   importSessionTokens,
   priceFor,
   readUsage,
@@ -19,6 +20,8 @@ export interface UsageReport {
   messages: number;
   tokens: TokenBreakdown;
   byModel: Record<string, TokenBreakdown>;
+  byModelUsd: Record<string, number>;
+  byModelMessages: Record<string, number>;
   byDay: Record<string, TokenBreakdown>;
   byDayModel: Record<string, Record<string, number>>;
   byTool: Array<[string, number]>;
@@ -27,6 +30,7 @@ export interface UsageReport {
   savedUsd: number;
   costMeasured: number;
   co2g: number;
+  energyWh: number;
   version: string;
 }
 
@@ -42,9 +46,15 @@ export function summarizeUsage(rows: UsageRow[]): UsageReport {
   let usd = 0;
   let priced = true;
   let savedUsd = 0;
+  const byModelUsd: Record<string, number> = {};
+  let co2g = 0;
+  let energyWh = 0;
   for (const [model, t] of Object.entries(session.byModel)) {
     const c = usdCost(t, model);
     usd += c.usd;
+    byModelUsd[model] = c.usd;
+    co2g += co2GramsFor(model, t.output);
+    energyWh += energyWhFor(model, t.output);
     if (!c.priced) priced = false;
     savedUsd += (t.cacheRead / 1e6) * priceFor(model).price.input;
   }
@@ -58,6 +68,8 @@ export function summarizeUsage(rows: UsageRow[]): UsageReport {
     messages: session.messages,
     tokens: session.totals,
     byModel: session.byModel,
+    byModelUsd,
+    byModelMessages: session.byModelMessages,
     byDay: session.byDay,
     byDayModel: session.byDayModel,
     byTool,
@@ -65,7 +77,8 @@ export function summarizeUsage(rows: UsageRow[]): UsageReport {
     priced,
     savedUsd,
     costMeasured: session.costMeasured,
-    co2g: co2Grams(session.totals.output),
+    co2g,
+    energyWh,
     version: PACKAGE_VERSION,
   };
 }
@@ -87,7 +100,7 @@ function printReport(report: UsageReport): void {
   if (models.length) {
     console.log('  By model');
     for (const [model, b] of models) {
-      console.log(`    ${model}: in ${fmt(b.input)} · out ${fmt(b.output)} · cache r/w ${fmt(b.cacheRead)}/${fmt(b.cacheWrite)}`);
+      console.log(`    ${model}: in ${fmt(b.input)} · out ${fmt(b.output)} · cache r/w ${fmt(b.cacheRead)}/${fmt(b.cacheWrite)} · $${(report.byModelUsd[model] ?? 0).toFixed(2)}`);
     }
   }
   if (report.byTool.length) {
