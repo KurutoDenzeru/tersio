@@ -18,7 +18,7 @@ function fixtureDir(): string {
     path.join(dir, "branch", "s1.jsonl"),
     [
       '{"type":"session","version":3,"id":"s1","timestamp":"2026-09-01T10:00:00.000Z","cwd":"/tmp"}',
-      '{"type":"message","id":"a","timestamp":"2026-09-01T10:01:00.000Z","message":{"role":"assistant","model":"claude-sonnet-5","usage":{"input":1000,"output":200,"cacheRead":500,"cacheWrite":0}}}',
+      '{"type":"message","id":"a","timestamp":"2026-09-01T10:01:00.000Z","message":{"role":"assistant","model":"claude-sonnet-5","usage":{"input":1000,"output":200,"cacheRead":500,"cacheWrite":0,"cost":0.012},"content":[{"type":"toolCall","name":"bash","arguments":{"command":"cd /x && git status"}},{"type":"toolCall","name":"bash"},{"type":"text","text":"done"}]}}',
       '{"type":"message","id":"b","timestamp":"2026-09-02T10:01:00.000Z","message":{"role":"assistant","model":"mystery-model-9","usage":{"input":100,"output":10,"cacheRead":0,"cacheWrite":0}}}',
       '{"type":"message","id":"c","timestamp":"2026-09-02T10:02:00.000Z","message":{"role":"user","text":"hi"}}',
       'not json at all',
@@ -39,6 +39,10 @@ test("importer aggregates assistant usage by model and day, skips the rest", () 
     assert.deepEqual(s.byModel["claude-sonnet-5"], { input: 1000, output: 200, cacheRead: 500, cacheWrite: 0 });
     assert.deepEqual(s.byDay["2026-09-01"], { input: 1000, output: 200, cacheRead: 500, cacheWrite: 0 });
     assert.deepEqual(s.byDay["2026-09-02"], { input: 100, output: 10, cacheRead: 0, cacheWrite: 0 });
+    assert.deepEqual(s.byDayModel["2026-09-01"], { "claude-sonnet-5": 1700 });
+    assert.deepEqual(s.byDayModel["2026-09-02"], { "mystery-model-9": 110 });
+    assert.deepEqual(s.byTool, { "bash:git": 1, "bash:bash": 1 });
+    assert.equal(s.costMeasured, 0.012);
   } finally {
     if (prev === undefined) delete process.env.TERSIO_SESSIONS_DIR;
     else process.env.TERSIO_SESSIONS_DIR = prev;

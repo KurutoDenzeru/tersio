@@ -35,7 +35,7 @@ for (const alias of [["help"], ["--help"], ["-h"]]) {
 
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /^Usage:/);
-    for (const command of ["install", "update", "reinstall", "doctor", "uninstall", "usage", "dashboard", "version", "help"]) {
+    for (const command of ["install", "update", "reinstall", "doctor", "uninstall", "usage", "gain", "version", "help"]) {
       assert.match(result.stdout, new RegExp(`^  ${command}\\s`, "m"));
     }
     assert.equal(result.stderr, "");
@@ -228,12 +228,12 @@ test("usage with an empty ledger and no sessions prints the empty state and exit
   assert.match(result.stdout, /No ledger rows or session tokens yet/);
 });
 
-test("dashboard --export writes a self-contained html file", () => {
+test("gain --export writes a self-contained html file", () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-dash-"));
   const out = path.join(dir, "dash.html");
   const ledger = path.join(dir, "usage.jsonl");
   writeFileSync(ledger, '{"ts":1757570000000,"kind":"command","detail":"/tersio usage"}\n', "utf8");
-  const result = spawnSync(process.execPath, [installer, "dashboard", "--export", out], {
+  const result = spawnSync(process.execPath, [installer, "gain", "--export", out], {
     encoding: "utf8",
     cwd: root,
     env: { ...process.env, TERSIO_USAGE_FILE: ledger },
@@ -244,6 +244,6 @@ test("dashboard --export writes a self-contained html file", () => {
   const body = readFileSync(out, "utf8");
   assert.match(body, /Tersio Gain Dashboard/);
   assert.match(body, /\/tersio usage/);
-  assert.doesNotMatch(body.replace(/https:\/\/cdn\.jsdelivr\.net\/npm\/@tailwindcss\/browser@4|https:\/\/unpkg\.com\/lucide@latest|https:\/\/github\.com\/KurutoDenzeru|https:\/\/linkedin\.com\/in\/kurtcalacday\/|https:\/\/instagram\.com\/krtclcdy\//g, ""), /https?:\/\//);
+  assert.doesNotMatch(body.replace(/https:\/\/cdn\.jsdelivr\.net\/npm\/(@tailwindcss\/browser@4|gsap@[\d.]+\/dist\/gsap\.min\.js|gsap@[\d.]+\/dist\/ScrollTrigger\.min\.js|@fontsource\/outfit@5\/index\.css)|https:\/\/unpkg\.com\/lucide@latest|https:\/\/github\.com\/KurutoDenzeru|https:\/\/linkedin\.com\/in\/kurtcalacday\/|https:\/\/instagram\.com\/krtclcdy\//g, ""), /https?:\/\//);
   rmSync(dir, { recursive: true, force: true });
 });

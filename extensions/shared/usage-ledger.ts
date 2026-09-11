@@ -45,6 +45,9 @@ export interface SessionTokens {
   totals: TokenBreakdown;
   byModel: Record<string, TokenBreakdown>;
   byDay: Record<string, TokenBreakdown>;
+  byDayModel: Record<string, Record<string, number>>;
+  byTool: Record<string, number>;
+  costMeasured: number;
 }
 
 function zeroBreakdown(): TokenBreakdown {
@@ -90,8 +93,11 @@ function walkJsonl(dir: string, out: string[], cap: number): void {
 export function importSessionTokens(): SessionTokens {
   const byModel: Record<string, TokenBreakdown> = {};
   const byDay: Record<string, TokenBreakdown> = {};
+  const byDayModel: Record<string, Record<string, number>> = {};
+  const byTool: Record<string, number> = {};
   const totals = zeroBreakdown();
   let messages = 0;
+  let costMeasured = 0;
   const files: string[] = [];
   walkJsonl(sessionsDir(), files, 2000);
   for (const file of files) {
@@ -106,7 +112,7 @@ export function importSessionTokens(): SessionTokens {
       try {
         const row = JSON.parse(line) as {
           timestamp?: string | number;
-          message?: { role?: unknown; model?: unknown; usage?: Record<string, unknown> };
+          message?: { role?: unknown; model?: unknown; usage?: Record<string, unknown>; content?: Array<{ type?: unknown; name?: unknown; arguments?: unknown }> };
         };
         const msg = row.message;
         if (!msg || msg.role !== 'assistant' || !msg.usage) continue;
@@ -118,12 +124,39 @@ export function importSessionTokens(): SessionTokens {
         if (day) {
           byDay[day] ??= zeroBreakdown();
           addInto(byDay[day], msg.usage);
+          const n = msg.usage;
+          const sum = ['input', 'output', 'cacheRead', 'cacheWrite'].reduce((a, k) => a + (typeof n[k] === 'number' && Number.isFinite(n[k]) ? Math.floor(n[k] as number) : 0), 0);
+          if (sum > 0) {
+            byDayModel[day] ??= {};
+            byDayModel[day][model] = (byDayModel[day][model] ?? 0) + sum;
+          }
+        }
+        if (typeof msg.usage.cost === 'number' && Number.isFinite(msg.usage.cost)) costMeasured += msg.usage.cost;
+        for (const part of msg.content ?? []) {
+          if (part?.type === 'toolCall' && typeof part.name === 'string' && part.name) {
+            const key = part.name === 'bash' ? `bash:${leadBinary((part.arguments as { command?: unknown } | null)?.command)}` : part.name;
+            byTool[key] = (byTool[key] ?? 0) + 1;
+          }
         }
         messages += 1;
       } catch { /* skip corrupt lines */ }
     }
   }
-  return { messages, totals, byModel, byDay };
+  return { messages, totals, byModel, byDay, byDayModel, byTool, costMeasured };
+}
+// Lead binary of a shell string: first segment head past `cd` chains and
+// VAR=x assignments (`cd /x && git status` → `git`). Falls back to `bash`.
+const SKIP_HEADS = ['cd', 'echo', 'export', 'true', 'false'];
+function leadBinary(command: unknown): string {
+  if (typeof command !== 'string' || !command.trim()) return 'bash';
+  for (const seg of command.split(/&&|;|\n|\|(?!\|)/)) {
+    const toks = seg.trim().split(/\s+/).filter(Boolean);
+    let i = 0;
+    while (i < toks.length && (toks[i] === 'sudo' || /^[A-Za-z_][A-Za-z0-9_]*=/.test(toks[i]))) i++;
+    const head = (toks[i] ?? '').replace(/^['"]|['"]$/g, '').split('/').pop() ?? '';
+    if (head && !SKIP_HEADS.includes(head)) return head;
+  }
+  return 'bash';
 }
 
 // --- Pricing: USD per 1M tokens, LiteLLM-style --------------------------------

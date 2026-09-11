@@ -8,7 +8,7 @@ import {
   PACKAGE_NAME, PACKAGE_VERSION, RTK_BINARY_NAME, SCOPE_MAP,
   applyUpdate, cavemanDefaultFlag, comboDefaultFlag, command, dryRun, install,
   ponytailDefaultFlag, profileFlagsGiven, reinstall, rtkDefaultFlag, scopeFlag, verbose, yes,
-  dashboardExport, dashboardOpen, dashboardPort,
+  dashboardExport, dashboardPort,
   debug, ensureExtensionAfterConfigEntry, ensureExtensionInConfig, ensurePonytailConfigValue,
   execP, parseJsonObject, parsePonytailConfig, patchPonytailConfig, readPluginsPackage,
   readPonytailConfig, writeIfChanged,
@@ -599,7 +599,6 @@ async function runCommandMenu(): Promise<void> {
     { value: 'doctor', label: 'Doctor', hint: 'verify the installation' },
     { value: 'usage', label: 'Usage', hint: 'token usage and savings report' },
     { value: 'gain', label: 'Gain dashboard', hint: 'open the report in your browser' },
-    { value: 'dashboard', label: 'Serve dashboard', hint: 'localhost server, no browser' },
     { value: 'uninstall', label: 'Uninstall', hint: 'remove tersio' },
   ], 'install');
   if (choice.status !== 'selected') {
@@ -629,11 +628,7 @@ async function runCommandMenu(): Promise<void> {
       closeRL();
       break;
     case 'gain':
-      await runDashboard({ port: dashboardPort, open: true, exportFile: null });
-      closeRL();
-      break;
-    case 'dashboard':
-      await runDashboard({ port: dashboardPort, open: dashboardOpen, exportFile: dashboardExport });
+      await runDashboard({ port: dashboardPort, open: true, exportFile: dashboardExport });
       closeRL();
       break;
     case 'uninstall':

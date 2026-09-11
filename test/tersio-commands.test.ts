@@ -99,7 +99,7 @@ test("/tersio gain exports and opens the dashboard", async () => {
   const h = harness();
   await h.command("gain", h.ctx);
   assert.equal(h.execCalls[0].cmd, "tersio");
-  assert.deepEqual(h.execCalls[0].args.slice(0, 2), ["dashboard", "--export"]);
+  assert.deepEqual(h.execCalls[0].args.slice(0, 2), ["gain", "--export"]);
   assert.match(h.execCalls[0].args[2], /tersio-gain-.*\.html/);
   assert.ok(["open", "xdg-open", "start"].includes(h.execCalls[1].cmd), JSON.stringify(h.execCalls));
   assert.match(h.notifications.join("\n"), /dashboard opened in your browser/);
@@ -108,5 +108,5 @@ test("/tersio gain exports and opens the dashboard", async () => {
 test("/tersio gain falls back to the shell command on failure", async () => {
   const h = harness(async () => ({ stdout: "", stderr: "nope", code: 1 }));
   await h.command("gain", h.ctx);
-  assert.match(h.notifications.join("\n"), /tersio dashboard --open/);
+  assert.match(h.notifications.join("\n"), /tersio gain --open/);
 });

@@ -56,13 +56,13 @@ function usageSummary(): string {
 async function openGainDashboard(pi: ExtensionApi, ctx?: ExtensionCtx): Promise<void> {
   const file = path.join(os.tmpdir(), `tersio-gain-${Date.now()}.html`);
   try {
-    const exported = await pi.exec?.('tersio', ['dashboard', '--export', file], { cwd: ctx?.cwd });
+    const exported = await pi.exec?.('tersio', ['gain', '--export', file], { cwd: ctx?.cwd });
     if (!exported || exported.code !== 0) throw new Error((exported?.stderr || 'export failed').trim());
     const openCmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open';
     await pi.exec?.(openCmd, [file], { cwd: ctx?.cwd });
     ctx?.ui?.notify?.(`tersio gain: dashboard opened in your browser.`, 'info');
   } catch (e) {
-    ctx?.ui?.notify?.(`tersio gain: could not open dashboard (${(e as Error).message}). Run 'tersio dashboard --open' in a shell.`, 'warning');
+    ctx?.ui?.notify?.(`tersio gain: could not open dashboard (${(e as Error).message}). Run 'tersio gain --open' in a shell.`, 'warning');
   }
 }
 

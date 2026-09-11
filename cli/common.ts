@@ -69,11 +69,11 @@ function flagValue(name: string): string | undefined {
 
 // --- CLI flags ---
 
-const COMMANDS = new Set(['install', 'update', 'reinstall', 'doctor', 'uninstall', 'usage', 'dashboard', 'version', 'help']);
+const COMMANDS: Record<string, true> = { install: true, update: true, reinstall: true, doctor: true, uninstall: true, usage: true, gain: true, version: true, help: true };
 const args = process.argv.slice(2);
 const commandArg = args.find((arg, index) => !arg.startsWith('-') && args[index - 1] !== '--scope');
 const command = commandArg?.toLowerCase() || null;
-const unknownCommand = command !== null && !COMMANDS.has(command);
+const unknownCommand = command !== null && !COMMANDS[command];
 const install = command === 'install';
 const update = command === 'update';
 const reinstall = command === 'reinstall';
@@ -85,7 +85,7 @@ const yes = args.includes('--yes') || args.includes('-y') || install || update |
 const verbose = args.includes('--verbose');
 const doctor = command === 'doctor' || args.includes('--doctor');
 const usage = command === 'usage' || args.includes('--usage');
-const dashboard = command === 'dashboard' || args.includes('--dashboard');
+const gain = command === 'gain';
 const dashboardPort = Number.parseInt(flagValue('--port') ?? '', 10) || 0;
 const dashboardOpen = args.includes('--open');
 const dashboardExport = flagValue('--export') ?? null;
@@ -326,7 +326,7 @@ export {
   CAVEMAN_DEFAULTS, PONYTAIL_DEFAULTS, RTK_DEFAULTS, COMBO_PRESET_MODES, COMBO_DEFAULTS,
   parseEnum, flagValue, COMMANDS, commandArg, command, unknownCommand,
   install, update, reinstall, showVersion, showHelp, applyUpdate,
-  dryRun, yes, verbose, doctor, uninstall, usage, dashboard,
+  dryRun, yes, verbose, doctor, uninstall, usage, gain,
   dashboardPort, dashboardOpen, dashboardExport,
   removePonytail, keepPonytail, removeRtk, scopeFlag,
   comboDefaultFlag, cavemanDefaultFlag, ponytailDefaultFlag, rtkDefaultFlag, profileFlagsGiven,

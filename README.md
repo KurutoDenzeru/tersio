@@ -82,7 +82,7 @@ Break-even math, balanced preset (caveman full + rtk + ponytail): `âŒˆoverhead Ã
 | `tersio reinstall` | Fresh install, preserving the Ponytail package |
 | `tersio doctor` | Check OMP, extension, Ponytail, and RTK health |
 | `tersio usage` | Ledger-backed usage + savings report |
-| `tersio dashboard` | Serve the gain dashboard on localhost (`--open`, `--export <file>`, `--port <n>`) |
+| `tersio gain` | Open the gain dashboard (`--open`, `--export <file>`, `--port <n>`; serves localhost only) |
 | `tersio uninstall` | Remove extensions, registration, and the Ponytail plugin (`--keep-ponytail` keeps Ponytail; `--remove-rtk` also removes the RTK binary) |
 | `tersio version` | Print version |
 
@@ -101,7 +101,7 @@ Everything runs under one root. Bare `/tersio` prints status.
 | `/tersio status` | Active modes + combo level; state persists, propagates to subagents, and lights the Combo footer indicator. |
 | `/tersio check` | Add-on version check |
 | `/tersio update <ponytail\|rtk\|caveman\|all> [--dry-run]` | Update add-ons, preview with dry-run |
-| `/tersio gain` | Savings summary; the gain dashboard charts `~/.omp/plugins/tersio-usage.jsonl` (`tersio dashboard` serves on 127.0.0.1, `--export` writes one file). |
+| `/tersio gain` | Savings summary; the gain dashboard charts `~/.omp/plugins/tersio-usage.jsonl` (`tersio gain --open` serves on 127.0.0.1, `--export` writes one file). |
 | `/tersio usage` | Ledger report for this machine (rows in `~/.omp/plugins/tersio-usage.jsonl`, local only) |
 | `/tersio help` | This table |
 | `/caveman`, `/rtk`, `/combo`, `/ai-addons` | Legacy aliases, still work; prefer `/tersio`. |
