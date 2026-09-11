@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { asPromptArray, getSharedComboState, isComboPresetActive, isOmpSubagentPrompt, lastCustomValue, normalizeInputCommand, normalizeMode, paintStatusBar, reconcileSharedComboEntries, sessionEntries, setSharedComboMode } from '../shared/session-state.ts';
+import { activeModesSummary, asPromptArray, getSharedComboState, isComboPresetActive, isOmpSubagentPrompt, lastCustomValue, normalizeInputCommand, normalizeMode, paintStatusBar, reconcileSharedComboEntries, sessionEntries, setSharedComboMode } from '../shared/session-state.ts';
 import { readCavemanDefault } from '../shared/plugin-settings.ts';
 import type { ExtensionApi, ExtensionCtx, InputEvent, SessionEntry, SystemPromptEvent } from '../shared/types.ts';
 
@@ -68,7 +68,10 @@ export default function cavemanSessionExtension(pi: ExtensionApi): void {
     pi.appendEntry?.('caveman-mode', { mode: normalized });
     setSharedComboMode('caveman', normalized);
     syncStatus(ctx);
-    const msg = normalized === 'off' ? 'Caveman mode off.' : `Caveman mode set to ${normalized}.`;
+    const active = activeModesSummary(getSharedComboState());
+    const msg = normalized === 'off'
+      ? `Caveman off. Active: ${active}.`
+      : `Caveman ${normalized} on — terse replies for this session. Active: ${active}.`;
     ctx?.ui?.notify?.(msg, 'info');
     return true;
   }

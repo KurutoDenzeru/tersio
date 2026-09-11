@@ -1,6 +1,6 @@
 import os from 'node:os';
 import path from 'node:path';
-import { asPromptArray, getSharedComboState, isComboPresetActive, isOmpSubagentPrompt, lastCustomValue, normalizeInputCommand, paintStatusBar, reconcileSharedComboEntries, sessionEntries, setSharedComboMode } from '../shared/session-state.ts';
+import { activeModesSummary, asPromptArray, getSharedComboState, isComboPresetActive, isOmpSubagentPrompt, lastCustomValue, normalizeInputCommand, paintStatusBar, reconcileSharedComboEntries, sessionEntries, setSharedComboMode } from '../shared/session-state.ts';
 import { readRtkDefault } from '../shared/plugin-settings.ts';
 import type { ExtensionApi, ExtensionCtx, InputEvent, SessionEntry, SystemPromptEvent } from '../shared/types.ts';
 
@@ -53,7 +53,8 @@ export default function rtkSessionExtension(pi: ExtensionApi): void {
     pi.appendEntry?.('rtk-mode', { enabled });
     setSharedComboMode('rtk', enabled);
     syncStatus(ctx);
-    ctx?.ui?.notify?.(`RTK mode ${enabled ? 'on' : 'off'}.`, 'info');
+    const active = activeModesSummary(getSharedComboState());
+    ctx?.ui?.notify?.(enabled ? `RTK on — compact shell output for this session. Active: ${active}.` : `RTK off. Active: ${active}.`, 'info');
   }
 
   pi.setLabel?.('RTK session toggle');

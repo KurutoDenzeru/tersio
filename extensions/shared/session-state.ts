@@ -53,10 +53,6 @@ function isKnownLevel(value: string): boolean {
   return value === 'custom' || isPresetLevel(value);
 }
 
-function levelForIndividualModes(modes: Modes): ComboLevel {
-  return modes.caveman === 'off' && modes.rtk === 'off' && modes.ponytail === 'off' ? 'off' : 'custom';
-}
-
 function normalizedState(modes: Partial<Modes> | null | undefined, level: ComboLevel = deriveLevel(modes as Modes)): Readonly<ComboState> {
   const state: Modes = {
     caveman: normalizeMode('caveman', modes?.caveman) || 'off',
@@ -142,34 +138,38 @@ export function setSharedComboMode(name: ModeName, value: unknown): Readonly<Com
   const mode = normalizeMode(name, value);
   if (!mode) return getSharedComboState();
   const modes = { ...getSharedComboState(), [name]: mode } as Modes;
-  return publish(normalizedState(modes, levelForIndividualModes(modes)));
+  // Derive the level from the final triplet so a redundant same-value write
+  // (entry replay on resume, upstream ponytail re-affirming its mode) cannot
+  // strand a matching preset at 'custom' and drop the combo bar.
+  return publish(normalizedState(modes));
 }
 
 export function reconcileSharedComboEntries(entries: SessionEntry[] | null | undefined): Readonly<ComboState> {
   let modes: Modes = { ...COMBO_LEVELS.off };
-  let level: ComboLevel = 'off';
   if (Array.isArray(entries)) {
     for (const entry of entries) {
       if (entry?.type !== 'custom') continue;
       if (entry.customType === 'combo-level') {
         const preset = normalizeComboLevel(entry?.data?.level);
-        if (preset) {
-          modes = { ...COMBO_LEVELS[preset] };
-          level = preset;
-        }
+        if (preset) modes = { ...COMBO_LEVELS[preset] };
         continue;
       }
       const name = MODE_ENTRY_TYPES[entry.customType ?? ''] ?? null;
       if (!name) continue;
       const value = name === 'rtk' ? entry?.data?.enabled : entry?.data?.mode;
       const mode = normalizeMode(name, value);
-      if (mode) {
-        modes[name] = mode;
-        level = levelForIndividualModes(modes);
-      }
+      if (mode) modes[name] = mode;
     }
   }
-  return publish(normalizedState(modes, level));
+  // The level always reflects the final mode triplet, never the write order:
+  // a preset entry followed by the same values reconciles back to the preset.
+  return publish(normalizedState(modes));
+}
+
+// One-line session-wide mode summary for change confirmations, e.g.
+// `caveman=ULTRA, rtk=ON, ponytail=ULTRA`.
+export function activeModesSummary(state: { caveman: string; rtk: string; ponytail: string }): string {
+  return `caveman=${state.caveman.toUpperCase()}, rtk=${state.rtk.toUpperCase()}, ponytail=${state.ponytail.toUpperCase()}`;
 }
 
 export function setSharedComboListener(listener: ((state: Readonly<ComboState>) => void) | null): void {

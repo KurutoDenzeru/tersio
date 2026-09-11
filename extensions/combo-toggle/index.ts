@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import {
+  activeModesSummary,
   asPromptArray,
   COMBO_LEVELS,
   getSharedComboState,
@@ -50,7 +51,7 @@ function loadPonytailInstructions(mode: string): string {
     );
     const { getPonytailInstructions } = require(installed) as { getPonytailInstructions?: (mode: string) => string };
     if (typeof getPonytailInstructions === 'function') return getPonytailInstructions(mode);
-  } catch {}
+  } catch { }
   return ponytailFallback(mode);
 }
 
@@ -153,8 +154,9 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
       persistPreset(level);
       useState(setSharedComboLevel(level), ctx);
 
+      const active = activeModesSummary(getSharedComboState());
       ctx?.ui?.notify?.(
-        `Combo ${level} applied: ${levelSummary(getSharedComboState())}`,
+        level === 'off' ? `Combo off — all tersio modes inactive for this session. Active: ${active}.` : `Combo ${level} on — ${active} active for this session.`,
         'info'
       );
 
@@ -172,7 +174,7 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
       if (fallback !== 'off') {
         persistPreset(fallback);
         useState(setSharedComboLevel(fallback), ctx);
-        ctx?.ui?.notify?.(`Combo default applied: ${fallback}`, 'info');
+        ctx?.ui?.notify?.(`Combo default applied: ${fallback} — ${activeModesSummary(getSharedComboState())} active for this session.`, 'info');
       }
     }
   });
