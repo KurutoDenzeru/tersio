@@ -14,6 +14,8 @@ import {
   setSharedComboLevel,
   setSharedComboMode,
 } from '../shared/session-state.ts';
+import os from 'node:os';
+import path from 'node:path';
 import { appendUsage, readUsage } from '../shared/usage-ledger.ts';
 import { checkAddonsSummary, runAddonUpdate } from '../ai-addons-updater/index.ts';
 import type { ExtensionApi, ExtensionCtx } from '../shared/types.ts';
@@ -46,6 +48,22 @@ function usageSummary(): string {
   const parts = Object.entries(byKind).map(([k, n]) => `${k}×${n}`);
   const last = new Date(rows[rows.length - 1].ts).toISOString();
   return `tersio usage: ${rows.length} rows (${parts.join(', ')}), last write ${last}.`;
+}
+
+// Gain opens instantaneously in the default browser: export a file://-ready
+// snapshot (data inlined, no server to babysit) and open it. Falls back to
+// the shell command when export or open fails.
+async function openGainDashboard(pi: ExtensionApi, ctx?: ExtensionCtx): Promise<void> {
+  const file = path.join(os.tmpdir(), `tersio-gain-${Date.now()}.html`);
+  try {
+    const exported = await pi.exec?.('tersio', ['dashboard', '--export', file], { cwd: ctx?.cwd });
+    if (!exported || exported.code !== 0) throw new Error((exported?.stderr || 'export failed').trim());
+    const openCmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open';
+    await pi.exec?.(openCmd, [file], { cwd: ctx?.cwd });
+    ctx?.ui?.notify?.(`tersio gain: dashboard opened in your browser.`, 'info');
+  } catch (e) {
+    ctx?.ui?.notify?.(`tersio gain: could not open dashboard (${(e as Error).message}). Run 'tersio dashboard --open' in a shell.`, 'warning');
+  }
 }
 
 export default function tersioCommandsExtension(pi: ExtensionApi): void {
@@ -151,8 +169,12 @@ export default function tersioCommandsExtension(pi: ExtensionApi): void {
         await runAddonUpdate(pi, ctx, target, dryRun);
         return;
       }
-      if (sub === 'gain' || sub === 'usage') {
-        ctx?.ui?.notify?.(`${usageSummary()}\nFull dashboard: run \`tersio dashboard --open\` in a shell.`, 'info');
+      if (sub === 'gain') {
+        await openGainDashboard(pi, ctx);
+        return;
+      }
+      if (sub === 'usage') {
+        ctx?.ui?.notify?.(usageSummary(), 'info');
         return;
       }
       ctx?.ui?.notify?.(`Unknown subcommand: ${sub}.\n${HELP}`, 'warning');

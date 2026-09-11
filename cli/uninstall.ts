@@ -87,6 +87,7 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
     'rtk-session',
     'ai-addons-updater',
     'combo-toggle',
+    'tersio-commands',
     'shared',
     // Only consumed by ai-addons-updater (removed above); otherwise orphaned.
     'lib',

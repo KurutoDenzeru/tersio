@@ -1,6 +1,6 @@
 // cli/interactive.ts — TTY layer: readline, Clack spinners, selects, task phases.
 import readline from 'node:readline';
-import { cancel as clackCancel, select as clackSelect, spinner as clackSpinner, tasks as clackTasks } from '@clack/prompts';
+import { cancel as clackCancel, confirm as clackConfirm, select as clackSelect, spinner as clackSpinner, tasks as clackTasks } from '@clack/prompts';
 import type { SpinnerResult } from '@clack/prompts';
 import { execP } from './common.ts';
 import type { ExecOptions } from './common.ts';
@@ -20,6 +20,8 @@ function tty(): boolean {
 }
 
 type InteractiveChoice = { status: 'selected'; value: string } | { status: 'cancelled' | 'unavailable' };
+
+type InteractiveConfirm = { status: 'confirmed'; value: boolean } | { status: 'cancelled' | 'unavailable' };
 
 let spinnerDepth = 0;
 
@@ -51,6 +53,16 @@ async function askInteractiveChoice(message: string, options: Array<{ value: str
   }
   return { status: 'selected', value: choice };
 }
+async function askInteractiveConfirm(message: string, initialValue = true): Promise<InteractiveConfirm> {
+  if (!tty()) return { status: 'unavailable' };
+  closeRL();
+  const answer = await clackConfirm({ message, initialValue });
+  if (typeof answer !== 'boolean') {
+    clackCancel('Aborted.');
+    return { status: 'cancelled' };
+  }
+  return { status: 'confirmed', value: answer };
+}
 // Run collecting work under one TTY-only Clack task. Callers print after the
 // task completes, keeping normal output out of the spinner animation.
 async function runInteractivePhase<T>(title: string, collect: () => Promise<T>): Promise<T> {
@@ -66,5 +78,5 @@ async function execNetwork(label: string, cmd: string, args: string[], opts: Exe
 
 export {
   ask, closeRL, tty, withInteractiveSpinner, execNetwork,
-  askInteractiveChoice, runInteractivePhase, InteractiveChoice,
+  askInteractiveChoice, askInteractiveConfirm, runInteractivePhase, InteractiveChoice, InteractiveConfirm,
 };
