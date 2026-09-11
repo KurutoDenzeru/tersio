@@ -81,6 +81,8 @@ Break-even math, balanced preset (caveman full + rtk + ponytail): `⌈overhead �
 | `tersio update` | Refresh the CLI, extensions, and add-ons (RTK binary, Caveman rule, Ponytail) |
 | `tersio reinstall` | Fresh install, preserving the Ponytail package |
 | `tersio doctor` | Check OMP, extension, Ponytail, and RTK health |
+| `tersio usage` | Ledger-backed usage + savings report |
+| `tersio dashboard` | Serve the gain dashboard on localhost (`--open`, `--export <file>`, `--port <n>`) |
 | `tersio uninstall` | Remove extensions, registration, and the Ponytail plugin (`--keep-ponytail` keeps Ponytail; `--remove-rtk` also removes the RTK binary) |
 | `tersio version` | Print version |
 
@@ -145,6 +147,25 @@ Covers noisy commands (`git status`, `git diff`, `read`, `grep`, test, `tsc`, li
 ```
 
 `/combo` persists state and reloads OMP without emitting separate command messages. Presets propagate to task subagents and light the Combo footer indicator; individual commands leave Combo inactive (`/combo status` still reports the mixed state).
+
+### Tersio — unified root command
+
+```text
+/tersio caveman lite|full|ultra|wenyan|off
+/tersio combo off|medium|balanced|max
+/tersio rtk on|off
+/tersio ponytail off|lite|full|ultra|review
+/tersio status         active modes + combo level
+/tersio check          add-on version check
+/tersio update <ponytail|rtk|caveman|all> [--dry-run]
+/tersio gain           savings summary + dashboard hint
+/tersio usage          ledger report for this machine
+/tersio help           this table
+```
+
+`/tersio` bare prints status. The old commands (`/caveman`, `/rtk`, `/combo`, `/ai-addons`) keep working as aliases.
+
+Usage rows land in `~/.omp/plugins/tersio-usage.jsonl` (local only); `tersio dashboard` serves them as a plain-HTML page on 127.0.0.1.
 
 ## Files and backups
 

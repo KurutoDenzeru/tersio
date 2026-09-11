@@ -7,6 +7,7 @@ import {
   execP, parseJsonObject, relTime,
 } from './common.ts';
 import { runInteractivePhase } from './interactive.ts';
+import { ledgerPath, readUsage } from '../extensions/shared/usage-ledger.ts';
 import { checkForUpdate } from './update.ts';
 import { readTextIfExists } from '../extensions/lib/utils.ts';
 
@@ -131,6 +132,10 @@ async function runDoctor(): Promise<void> {
   check('Self plugin package', selfPkgText !== null, parseJsonObject<{ version?: string }>(selfPkgText)?.version ?? '');
   const selfDep = PACKAGE_NAME in (parseJsonObject<{ dependencies?: Record<string, string> }>(pluginsPkgRaw)?.dependencies || {});
   check('Self plugin in plugins/package.json', selfDep);
+
+  section('Usage');
+  const usageRows = readUsage();
+  check('Usage ledger', usageRows.length > 0, usageRows.length ? `${usageRows.length} rows · ${ledgerPath()}` : ledgerPath());
 
   section('Add-ons');
   const ruleAge = ruleMtime ? `updated ${relTime(Date.now() - ruleMtime.mtimeMs)}` : '';

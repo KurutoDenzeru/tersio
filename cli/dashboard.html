@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tersio Gain Dashboard</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; max-width: 760px; margin: 2rem auto; padding: 0 1rem; }
+  h1 { font-size: 1.25rem; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+  th, td { text-align: left; padding: 0.35rem 0.5rem; border-bottom: 1px solid #8884; }
+  .bar { display: inline-block; height: 0.8em; background: #2f81f6; vertical-align: baseline; }
+  .note { opacity: 0.75; font-size: 0.85rem; }
+  .cards { display: flex; gap: 0.75rem; flex-wrap: wrap; margin: 1rem 0; }
+  .card { border: 1px solid #8884; border-radius: 8px; padding: 0.75rem 1rem; min-width: 140px; }
+  .card b { display: block; font-size: 1.4rem; }
+</style>
+</head>
+<body>
+<h1>Tersio Gain Dashboard</h1>
+<p class="note" id="meta">Loading…</p>
+<div class="cards" id="cards"></div>
+<h2>Top commands</h2>
+<table id="top"><thead><tr><th>n</th><th>command</th><th></th></tr></thead><tbody></tbody></table>
+<h2>Savings</h2>
+<p class="note">RTK measured rows appear here once RTK_HOOK_AUDIT=1 imports land.
+Reply-brevity figures are ~est. heuristics, never exact.
+Host token usage: n/a (OMP exposes no token counters).</p>
+<script>
+fetch('data.json').then(function (r) { return r.json(); }).then(function (d) {
+  document.getElementById('meta').textContent =
+    d.total + ' ledger rows · last write ' + (d.lastWrite || 'never');
+  var cards = document.getElementById('cards');
+  Object.keys(d.byKind).sort().forEach(function (k) {
+    var div = document.createElement('div');
+    div.className = 'card';
+    var b = document.createElement('b');
+    b.textContent = String(d.byKind[k]);
+    div.appendChild(b);
+    div.appendChild(document.createTextNode(k));
+    cards.appendChild(div);
+  });
+  var max = 1;
+  d.byDetail.forEach(function (row) { if (row[1] > max) max = row[1]; });
+  var tb = document.querySelector('#top tbody');
+  d.byDetail.forEach(function (row) {
+    var tr = document.createElement('tr');
+    var tdN = document.createElement('td'); tdN.textContent = String(row[1]);
+    var tdC = document.createElement('td'); tdC.textContent = row[0];
+    var tdB = document.createElement('td');
+    var bar = document.createElement('span');
+    bar.className = 'bar';
+    bar.style.width = Math.round(row[1] / max * 160) + 'px';
+    tdB.appendChild(bar);
+    tr.appendChild(tdN); tr.appendChild(tdC); tr.appendChild(tdB);
+    tb.appendChild(tr);
+  });
+}).catch(function () {
+  document.getElementById('meta').textContent = 'Could not load data.json.';
+});
+</script>
+</body>
+</html>
