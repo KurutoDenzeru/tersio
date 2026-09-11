@@ -8,16 +8,20 @@ import {
   PACKAGE_NAME, PACKAGE_VERSION, RTK_BINARY_NAME, SCOPE_MAP,
   applyUpdate, cavemanDefaultFlag, comboDefaultFlag, command, dryRun, install,
   ponytailDefaultFlag, profileFlagsGiven, reinstall, rtkDefaultFlag, scopeFlag, verbose, yes,
+  dashboardExport, dashboardOpen, dashboardPort,
   debug, ensureExtensionAfterConfigEntry, ensureExtensionInConfig, ensurePonytailConfigValue,
   execP, parseJsonObject, parsePonytailConfig, patchPonytailConfig, readPluginsPackage,
   readPonytailConfig, writeIfChanged,
   InstallOptions, WriteOptions,
 } from './common.ts';
 import {
-  ask, askInteractiveChoice, closeRL, execNetwork, tty, withInteractiveSpinner,
+  ask, askInteractiveChoice, askInteractiveConfirm, closeRL, execNetwork, tty, withInteractiveSpinner,
 } from './interactive.ts';
-import { checkForUpdate } from './update.ts';
+import { checkForUpdate, runLatestUpdate } from './update.ts';
 import { runUninstall } from './uninstall.ts';
+import { runDoctor } from './doctor.ts';
+import { runUsage } from './usage.ts';
+import { runDashboard } from './dashboard.ts';
 import {
   CAVEMAN_REMOTE_RULE, RTK_RELEASE_API, RtkRelease, RtkReleaseAsset, fetchJson, findFile, httpsGet,
   httpsDownload, parseChecksum, readTextIfExists, rtkPlatformSpec, sha256File,
@@ -30,6 +34,7 @@ const CAVEMAN_INDEX = path.join(EXT_DIR, 'caveman-session', 'index.js');
 const RTK_SESSION_INDEX = path.join(EXT_DIR, 'rtk-session', 'index.js');
 const UPDATER_INDEX = path.join(EXT_DIR, 'ai-addons-updater', 'index.js');
 const COMBO_TOGGLE_INDEX = path.join(EXT_DIR, 'combo-toggle', 'index.js');
+const TERSIO_COMMANDS_INDEX = path.join(EXT_DIR, 'tersio-commands', 'index.js');
 const MODE_REINFORCEMENT_INDEX = path.join(EXT_DIR, 'shared', 'mode-reinforcement.js');
 const SHARED_TYPES = path.join(EXT_DIR, 'shared', 'types.js');
 const LIB_UTILS = path.join(EXT_DIR, 'lib', 'utils.js');
@@ -46,7 +51,7 @@ const PONYTAIL_GITHUB_SPEC = 'github:DietrichGebert/ponytail';
 const PONYTAIL_NPM_SPEC = '@dietrichgebert/ponytail@latest';
 
 async function stepPonytail(pluginsDir: string, userDir: string, options: InstallOptions): Promise<void> {
-  console.log('\n[1/7] Installing Ponytail plugin...');
+  console.log('\n[1/8] Installing Ponytail plugin...');
   await fs.mkdir(pluginsDir, { recursive: true });
   const pkgPath = path.join(pluginsDir, 'package.json');
   const pkg = await readPluginsPackage(pkgPath);
@@ -147,7 +152,7 @@ async function stepPonytail(pluginsDir: string, userDir: string, options: Instal
 // Settings → Plugins page (OMP enumerates plugins/package.json dependencies).
 // Returns true when the package is verified in plugins/node_modules.
 async function stepSelfPlugin(pluginsDir: string, options: InstallOptions): Promise<boolean> {
-  console.log('\n[2/7] Registering tersio as OMP plugin...');
+  console.log('\n[2/8] Registering tersio as OMP plugin...');
   const pkgPath = path.join(pluginsDir, 'package.json');
   const pkg = await readPluginsPackage(pkgPath);
   pkg.dependencies[PACKAGE_NAME] = `^${PACKAGE_VERSION}`;
@@ -280,7 +285,7 @@ async function extractRtkArchive(archivePath: string, extractDir: string): Promi
 }
 
 async function stepRtk(binDir: string, options: InstallOptions): Promise<void> {
-  console.log('\n[3/7] Installing RTK binary...');
+  console.log('\n[3/8] Installing RTK binary...');
   try {
     const release = await withInteractiveSpinner('Finding latest RTK release', () => fetchJson<RtkRelease>(RTK_RELEASE_API));
     const triple = resolveRtkTriple();
@@ -371,14 +376,14 @@ async function stepSharedSessionState(extDir: string, options: WriteOptions): Pr
 }
 
 async function stepModeReinforcement(extDir: string, ponytailExtPath: string, options: WriteOptions): Promise<void> {
-  console.log('\n[7/7] Installing mode reinforcement extension...');
+  console.log('\n[8/8] Installing mode reinforcement extension...');
   const dest = path.join(extDir, 'shared', 'mode-reinforcement.js');
   if (!await copySources(extDir, [[MODE_REINFORCEMENT_INDEX, path.join('shared', 'mode-reinforcement.js')]], 'shared/mode-reinforcement.js', options)) return;
   await ensureExtensionAfterConfigEntry(path.join(path.dirname(extDir), 'config.yml'), dest, ponytailExtPath, 'mode reinforcement', options);
 }
 
 async function stepRtkSession(extDir: string, options: WriteOptions): Promise<void> {
-  console.log('\n[4/7] Installing RTK session extension...');
+  console.log('\n[4/8] Installing RTK session extension...');
   await copySources(extDir, [[RTK_SESSION_INDEX, path.join('rtk-session', 'index.js')]], 'rtk-session/index.js', options);
 }
 
@@ -395,7 +400,7 @@ async function fetchCavemanRule(options: WriteOptions): Promise<string | null> {
 }
 
 async function stepCaveman(extDir: string, rule: string | null, options: WriteOptions): Promise<void> {
-  console.log('\n[5/7] Installing Caveman session extension...');
+  console.log('\n[5/8] Installing Caveman session extension...');
   const cavemanDir = path.join(extDir, 'caveman-session');
   if (!options.dryRun) await fs.mkdir(cavemanDir, { recursive: true });
 
@@ -412,12 +417,17 @@ async function stepCaveman(extDir: string, rule: string | null, options: WriteOp
   await copySources(extDir, [[CAVEMAN_INDEX, path.join('caveman-session', 'index.js')]], 'caveman-session/index.js', options);
 }
 
+async function stepTersioCommands(extDir: string, options: WriteOptions): Promise<void> {
+  console.log('\n[7/8] Installing Tersio root-command extension...');
+  await copySources(extDir, [[TERSIO_COMMANDS_INDEX, path.join('tersio-commands', 'index.js')]], 'tersio-commands/index.js', options);
+}
+
 async function stepUpdater(extDir: string, options: WriteOptions): Promise<void> {
   await copySources(extDir, [[UPDATER_INDEX, path.join('ai-addons-updater', 'index.js')]], 'ai-addons-updater/index.js', options);
 }
 
 async function stepCombo(extDir: string, options: WriteOptions): Promise<void> {
-  console.log('\n[6/7] Installing Combo toggle extension...');
+  console.log('\n[6/8] Installing Combo toggle extension...');
   const dest = path.join(extDir, 'combo-toggle', 'index.js');
   if (!await copySources(extDir, [[COMBO_TOGGLE_INDEX, path.join('combo-toggle', 'index.js')]], 'combo-toggle/index.js', options)) return;
 
@@ -561,7 +571,83 @@ async function writePluginSettings(profile: Profile, options: WriteOptions): Pro
   console.log(`  [write] Plugin settings in ${lockPath}`);
 }
 
+let updatePromptDone = false;
+
+// Bare `tersio` at a terminal is a command picker, not an install run:
+// update offer first (when pending), then a Clack menu over every command.
+// Scripts, pipes, --yes, and --dry-run keep the old straight-to-install path.
+async function runCommandMenu(): Promise<void> {
+  const newer = await checkForUpdate();
+  if (newer && !dryRun) {
+    const answer = await askInteractiveConfirm(`tersio ${newer} is available (installed ${PACKAGE_VERSION}). Install it now?`);
+    if (answer.status === 'confirmed' && answer.value) {
+      await runLatestUpdate();
+      closeRL();
+      return;
+    }
+    if (answer.status === 'cancelled') {
+      closeRL();
+      process.exit(130);
+    }
+    console.log(`\n  [update] staying on ${PACKAGE_VERSION} — run ` + '`tersio update`' + ` anytime`);
+  }
+  updatePromptDone = true;
+  const choice = await askInteractiveChoice('Tersio — what next?', [
+    { value: 'install', label: 'Install add-ons', hint: 'user/project scope + combo defaults' },
+    { value: 'check', label: 'Check for updates', hint: 'compare installed vs latest release' },
+    { value: 'update', label: 'Update everything', hint: 'CLI plus all ai-addons' },
+    { value: 'doctor', label: 'Doctor', hint: 'verify the installation' },
+    { value: 'usage', label: 'Usage', hint: 'token usage and savings report' },
+    { value: 'gain', label: 'Gain dashboard', hint: 'open the report in your browser' },
+    { value: 'dashboard', label: 'Serve dashboard', hint: 'localhost server, no browser' },
+    { value: 'uninstall', label: 'Uninstall', hint: 'remove tersio' },
+  ], 'install');
+  if (choice.status !== 'selected') {
+    closeRL();
+    process.exit(130);
+  }
+  switch (choice.value) {
+    case 'install':
+      await runInstall();
+      break;
+    case 'check': {
+      const latest = await checkForUpdate();
+      console.log(latest ? `  [update] tersio ${latest} available (installed ${PACKAGE_VERSION})` : `  [ok] tersio ${PACKAGE_VERSION} is the latest`);
+      closeRL();
+      break;
+    }
+    case 'update':
+      await runLatestUpdate();
+      closeRL();
+      break;
+    case 'doctor':
+      await runDoctor();
+      closeRL();
+      break;
+    case 'usage':
+      await runUsage();
+      closeRL();
+      break;
+    case 'gain':
+      await runDashboard({ port: dashboardPort, open: true, exportFile: null });
+      closeRL();
+      break;
+    case 'dashboard':
+      await runDashboard({ port: dashboardPort, open: dashboardOpen, exportFile: dashboardExport });
+      closeRL();
+      break;
+    case 'uninstall':
+      await runUninstall();
+      closeRL();
+      break;
+  }
+}
+
 async function runInstall(): Promise<void> {
+  if (command === null && tty() && !yes) {
+    await runCommandMenu();
+    return;
+  }
   if (reinstall) {
     await runUninstall({ yes: true, removePonytail: false, removeRtk: true });
   }
@@ -577,7 +663,26 @@ async function runInstall(): Promise<void> {
   // the apply-update payload, which is itself an update run.
   if (tty() && !applyUpdate && command !== 'uninstall') {
     const newer = await checkForUpdate();
-    if (newer) console.log(`\n  [update] tersio ${newer} available (installed ${PACKAGE_VERSION}) — run \`tersio update\``);
+    if (newer) {
+      // Bare `tersio` with an update pending: offer it now (Y/n) instead of
+      // burying the banner above the install prompts. Yes runs the full
+      // update and stops here — the fresh binary owns what follows.
+      if (command === null && !dryRun && !yes && !updatePromptDone) {
+        const answer = await askInteractiveConfirm(`tersio ${newer} is available (installed ${PACKAGE_VERSION}). Install it now?`);
+        if (answer.status === 'confirmed' && answer.value) {
+          await runLatestUpdate();
+          closeRL();
+          return;
+        }
+        if (answer.status === 'cancelled') {
+          closeRL();
+          process.exit(130);
+        }
+        console.log(`\n  [update] staying on ${PACKAGE_VERSION} — run \`tersio update\` anytime`);
+      } else {
+        console.log(`\n  [update] tersio ${newer} available (installed ${PACKAGE_VERSION}) — run \`tersio update\``);
+      }
+    }
   }
 
   const scope = await resolveScope();
@@ -617,6 +722,7 @@ async function runInstall(): Promise<void> {
     await stepRtkSession(userExtDir, options);
     await stepCaveman(userExtDir, cavemanRule, options);
     await stepCombo(userExtDir, options);
+    await stepTersioCommands(userExtDir, options);
     await stepModeReinforcement(userExtDir, ponytailExtPath, options);
     await stepUpdater(userExtDir, options);
     if (selfPlugin) await writePluginSettings(profile, options);
@@ -628,6 +734,7 @@ async function runInstall(): Promise<void> {
     await stepSharedSessionState(projectExtDir, options);
     await stepRtkSession(projectExtDir, options);
     await stepCaveman(projectExtDir, cavemanRule, options);
+    await stepTersioCommands(projectExtDir, options);
     await stepUpdater(projectExtDir, options);
     console.log('  [note] Ponytail, RTK binary, and Combo toggle require user-level (global) install');
   }

@@ -94,6 +94,37 @@ test("user dry-run installs mode reinforcement after Ponytail", () => {
   assert.match(result.stdout, /would place mode reinforcement after Ponytail/);
   assert.match(result.stdout, /\[dry-run\] would add @krtclcdy\/tersio/);
 });
+test("user dry-run installs the tersio root-command extension", () => {
+  const missingHome = path.join(root, "test", "definitely-missing-home");
+  const result = spawnSync(
+    process.execPath,
+    [installer, "install", "--dry-run", "--scope", "user"],
+    {
+      encoding: "utf8",
+      cwd: root,
+      env: { ...process.env, HOME: missingHome, USERPROFILE: missingHome },
+    }
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /Installing Tersio root-command extension/);
+  assert.match(result.stdout, /\[dry-run\] would write .*tersio-commands[\\/]index\.js/);
+});
+test("bare dry-run never prompts for the pending update and exits 0", () => {
+  const missingHome = path.join(root, "test", "definitely-missing-home");
+  const result = spawnSync(
+    process.execPath,
+    [installer, "--dry-run"],
+    {
+      encoding: "utf8",
+      cwd: root,
+      env: { ...process.env, HOME: missingHome, USERPROFILE: missingHome },
+    }
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.doesNotMatch(result.stdout, /Install it now\?/);
+});
 
 test("uninstall dry-run previews shared bridge removal", () => {
   const missingHome = path.join(root, "test", "definitely-missing-home");

@@ -29,6 +29,7 @@ async function runDoctor(): Promise<void> {
   const rtkIndex = path.join(extDir, 'rtk-session', 'index.js');
   const updaterIndex = path.join(extDir, 'ai-addons-updater', 'index.js');
   const comboIndex = path.join(extDir, 'combo-toggle', 'index.js');
+  const tersioIndex = path.join(extDir, 'tersio-commands', 'index.js');
   const modeReinforcement = path.join(extDir, 'shared', 'mode-reinforcement.js');
   const selfPkg = path.join(pluginsDir, 'node_modules', PACKAGE_NAME, 'package.json');
 
@@ -50,6 +51,7 @@ async function runDoctor(): Promise<void> {
     rtkIndexText: readTextIfExists(rtkIndex),
     updaterIndexText: readTextIfExists(updaterIndex),
     comboIndexText: readTextIfExists(comboIndex),
+    tersioIndexText: readTextIfExists(tersioIndex),
     modeReinforcementText: readTextIfExists(modeReinforcement),
     ruleMtime: fs.stat(cavemanRule).catch(() => null),
     rtkMtime: fs.stat(rtkBin).catch(() => null),
@@ -71,11 +73,12 @@ async function runDoctor(): Promise<void> {
     probes.configText,
     probes.updateVersion,
   ]));
-  const [cavemanIndexText, rtkIndexText, updaterIndexText, comboIndexText, modeReinforcementText, ponytailPkgText, ponytailExtText, pluginsPkgRaw, selfPkgText] = await runInteractivePhase('Checking extensions and plugins', () => Promise.all([
+  const [cavemanIndexText, rtkIndexText, updaterIndexText, comboIndexText, tersioIndexText, modeReinforcementText, ponytailPkgText, ponytailExtText, pluginsPkgRaw, selfPkgText] = await runInteractivePhase('Checking extensions and plugins', () => Promise.all([
     probes.cavemanIndexText,
     probes.rtkIndexText,
     probes.updaterIndexText,
     probes.comboIndexText,
+    probes.tersioIndexText,
     probes.modeReinforcementText,
     probes.ponytailPkgText,
     probes.ponytailExtText,
@@ -120,6 +123,7 @@ async function runDoctor(): Promise<void> {
   check('RTK extension', rtkIndexText !== null);
   check('Updater extension', updaterIndexText !== null);
   check('Combo extension', comboIndexText !== null);
+  check('Tersio commands extension', tersioIndexText !== null);
   check('Mode reinforcement extension', modeReinforcementText !== null);
 
   section('Plugins');

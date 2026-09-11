@@ -13,15 +13,21 @@ process.env.TERSIO_USAGE_FILE = path.join(dir, "usage.jsonl");
 
 type Handler = (args: string, ctx: ExtensionCtx) => Promise<void>;
 
-function harness() {
+function harness(execImpl?: (cmd: string, args: string[]) => Promise<{ stdout: string; stderr: string; code: number }>) {
   let command: Handler = async () => { };
   const appended: Array<{ type: string; data: Record<string, unknown> }> = [];
   const notifications: string[] = [];
+  const execCalls: Array<{ cmd: string; args: string[] }> = [];
   let reloaded = 0;
   tersioCommandsExtension({
     setLabel() { },
     registerCommand(_name: string, config: { handler: Handler }) { command = config.handler; },
     appendEntry(type: string, data: Record<string, unknown>) { appended.push({ type, data }); },
+    exec: async (cmd: string, args: string[]) => {
+      execCalls.push({ cmd, args });
+      if (execImpl) return execImpl(cmd, args);
+      return { stdout: "", stderr: "", code: 0 };
+    },
   } as unknown as ExtensionApi);
   const ctx = {
     hasUI: true,
@@ -29,7 +35,7 @@ function harness() {
     ui: { setStatus() { }, notify(m: string) { notifications.push(m); } },
     reload: async () => { reloaded += 1; },
   } as unknown as ExtensionCtx;
-  return { command, appended, notifications, reloaded: () => reloaded, ctx };
+  return { command, appended, notifications, execCalls, reloaded: () => reloaded, ctx };
 }
 
 test("/tersio help lists every subcommand", async () => {
@@ -88,4 +94,19 @@ test("/tersio usage reports ledger rows", async () => {
   const h = harness();
   await h.command("usage", h.ctx);
   assert.match(h.notifications.join("\n"), /tersio usage: \d+ rows/);
+});
+test("/tersio gain exports and opens the dashboard", async () => {
+  const h = harness();
+  await h.command("gain", h.ctx);
+  assert.equal(h.execCalls[0].cmd, "tersio");
+  assert.deepEqual(h.execCalls[0].args.slice(0, 2), ["dashboard", "--export"]);
+  assert.match(h.execCalls[0].args[2], /tersio-gain-.*\.html/);
+  assert.ok(["open", "xdg-open", "start"].includes(h.execCalls[1].cmd), JSON.stringify(h.execCalls));
+  assert.match(h.notifications.join("\n"), /dashboard opened in your browser/);
+});
+
+test("/tersio gain falls back to the shell command on failure", async () => {
+  const h = harness(async () => ({ stdout: "", stderr: "nope", code: 1 }));
+  await h.command("gain", h.ctx);
+  assert.match(h.notifications.join("\n"), /tersio dashboard --open/);
 });
