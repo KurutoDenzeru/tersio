@@ -107,10 +107,11 @@
   },
   "files": [
     "tersio.js",
+    "cli/**/*.js",
     "extensions/**/*.js"
   ],
   "scripts": {
-    "clean": "rm -f tersio.js extensions/**/*.js",
+    "clean": "rm -f tersio.js cli/*.js extensions/**/*.js",
     "build": "tsc",
     "prepublishOnly": "npm run build",
     "check": "tsc --noEmit",
