@@ -62,9 +62,9 @@ function fakePi(sessionEntries: SessionEntry[] = []): TestPi {
     commands,
     handlers,
     zod: { z: { object: (shape) => shape, array: () => chain, string: () => chain } },
-    setLabel() {},
+    setLabel() { },
     registerCommand(name, config) { commands.set(name, config.handler); },
-    registerTool() {},
+    registerTool() { },
     on(event, handler) { handlers.set(event, handler); },
     appendEntry(customType, data) { sessionEntries.push({ type: "custom", customType, data }); },
   };
@@ -83,7 +83,7 @@ function context(entries: SessionEntry[] = [], hasUI = false): TestCtx {
       setStatus(name, value) { if (value === undefined) statuses.delete(name); else statuses.set(name, value); },
       notify(message) { notifications.push(message); },
     },
-    async reload() {},
+    async reload() { },
   };
 }
 
@@ -238,11 +238,11 @@ test("individual Caveman change immediately makes Combo CUSTOM and children inhe
   );
 
   await command(caveman, "caveman", "ultra", context(entries, true));
-  assert.equal(getSharedComboState().level, "custom");
-  assert.equal(comboCtx.statuses.get("combo"), undefined);
+  assert.equal(getSharedComboState().level, "max");
+  assert.match(comboCtx.statuses.get("combo")!, /combo MAX: 🪨caveman=ULTRA ⚡rtk=ON 🦥ponytail=ULTRA/);
 });
 
-test("individual RTK change keeps Combo CUSTOM even after values realign", async () => {
+test("individual RTK change returns Combo to its preset when values realign", async () => {
   resetSharedComboState();
   const entries: SessionEntry[] = [];
   const combo = instantiate(comboToggleExtension, entries);
@@ -259,11 +259,11 @@ test("individual RTK change keeps Combo CUSTOM even after values realign", async
   assert.equal(await inject(instantiate(rtkSessionExtension), MARKED_PROMPT), undefined);
 
   await command(rtk, "rtk", "on", context(entries, true));
-  assert.equal(getSharedComboState().level, "custom");
-  assert.equal(comboCtx.statuses.get("combo"), undefined);
+  assert.equal(getSharedComboState().level, "max");
+  assert.match(comboCtx.statuses.get("combo")!, /combo MAX: 🪨caveman=ULTRA ⚡rtk=ON 🦥ponytail=ULTRA/);
 });
 
-test("individually matching max values never activates Combo", async () => {
+test("individually matching preset values activates Combo", async () => {
   resetSharedComboState();
   const entries = [
     { type: "custom", customType: "caveman-mode", data: { mode: "ultra" } },
@@ -275,14 +275,13 @@ test("individually matching max values never activates Combo", async () => {
 
   await command(combo, "combo", "status", comboCtx);
   await command(rtk, "rtk", "on", context(entries, true));
-
   assert.deepEqual(getSharedComboState(), {
-    level: "custom", caveman: "ultra", rtk: "on", ponytail: "ultra",
+    level: "max", caveman: "ultra", rtk: "on", ponytail: "ultra",
   });
-  assert.equal(comboCtx.statuses.get("combo"), undefined);
+  assert.match(comboCtx.statuses.get("combo")!, /combo MAX: 🪨caveman=ULTRA ⚡rtk=ON 🦥ponytail=ULTRA/);
 });
 
-test("Combo status reconciles the latest persisted Ponytail mode without activating its indicator", async () => {
+test("Combo status restores the preset indicator when persisted modes realign", async () => {
   resetSharedComboState();
   const entries: SessionEntry[] = [];
   const combo = instantiate(comboToggleExtension, entries);
@@ -300,6 +299,59 @@ test("Combo status reconciles the latest persisted Ponytail mode without activat
     instruction(await withoutInstalledPonytail(() => inject(instantiate(comboToggleExtension), MARKED_PROMPT))),
     /level: lite/
   );
+
+  entries.push({ type: "custom", customType: "ponytail-mode", data: { mode: "ultra" } });
+  await command(combo, "combo", "status", ctx);
+  assert.deepEqual(getSharedComboState(), {
+    level: "max", caveman: "ultra", rtk: "on", ponytail: "ultra",
+  });
+  assert.match(ctx.statuses.get("combo")!, /combo MAX: 🪨caveman=ULTRA ⚡rtk=ON 🦥ponytail=ULTRA/);
+});
+
+test("redundant trailing entries do not drop a matching preset (#21)", async () => {
+  resetSharedComboState();
+  const entries: SessionEntry[] = [];
+  const combo = instantiate(comboToggleExtension, entries);
+  const ctx = context(entries, true);
+  await command(combo, "combo", "max", ctx);
+  // Entry replay on resume / upstream re-affirming its mode: same values,
+  // appended after combo-level. The preset must survive.
+  entries.push({ type: "custom", customType: "ponytail-mode", data: { mode: "ultra" } });
+  entries.push({ type: "custom", customType: "caveman-mode", data: { mode: "ultra" } });
+  entries.push({ type: "custom", customType: "rtk-mode", data: { enabled: true } });
+  await command(combo, "combo", "status", ctx);
+  assert.deepEqual(getSharedComboState(), {
+    level: "max", caveman: "ultra", rtk: "on", ponytail: "ultra",
+  });
+  assert.match(ctx.statuses.get("combo")!, /combo MAX: 🪨caveman=ULTRA ⚡rtk=ON 🦥ponytail=ULTRA/);
+  resetSharedComboState();
+});
+
+test("mode commands confirm the session-wide active set", async () => {
+  resetSharedComboState();
+  const entries: SessionEntry[] = [];
+  const combo = instantiate(comboToggleExtension, entries);
+  const ctx = context(entries, true);
+  await command(combo, "combo", "max", ctx);
+  assert.equal(
+    ctx.notifications.at(-1),
+    "Combo max on — caveman=ULTRA, rtk=ON, ponytail=ULTRA active for this session."
+  );
+  const caveman = instantiate(cavemanSessionExtension, entries);
+  const cavemanCtx = context(entries, true);
+  await command(caveman, "caveman", "full", cavemanCtx);
+  assert.equal(
+    cavemanCtx.notifications.at(-1),
+    "Caveman full on — terse replies for this session. Active: caveman=FULL, rtk=ON, ponytail=ULTRA."
+  );
+  const rtk = instantiate(rtkSessionExtension, entries);
+  const rtkCtx = context(entries, true);
+  await command(rtk, "rtk", "off", rtkCtx);
+  assert.equal(
+    rtkCtx.notifications.at(-1),
+    "RTK off. Active: caveman=FULL, rtk=OFF, ponytail=ULTRA."
+  );
+  resetSharedComboState();
 });
 
 test("Combo indicator appears only after a Combo preset", async () => {
