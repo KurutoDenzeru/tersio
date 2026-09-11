@@ -1,3 +1,10 @@
+## v2.7.0
+- Bare `tersio` at a terminal is now a Clack command picker (Install, Check for updates, Update everything, Doctor, Usage, Gain dashboard, Serve dashboard, Uninstall). Pipes, CI, `--yes`, and `--dry-run` keep the old straight-to-install path.
+- Pending release on bare run: `Install it now?` Yes/No offer; Yes runs the full update and stops so the fresh binary owns what follows.
+- `/tersio gain` opens the dashboard in the default browser (file-ready snapshot, shell-hint fallback).
+- Installer now ships `extensions/tersio-commands` (previously declared but never copied, so `/tersio` never appeared); doctor checks it, uninstall removes it.
+- 96 tests.
+
 ## v2.6.0
 - Unified `/tersio` root session command: `combo`, `caveman`, `rtk`, `ponytail`, and `ai-addons` collapse under one entry with subcommand routing; README goes `/tersio`-first.
 - Usage ledger + `tersio usage` report: session tokens parsed from OMP transcripts, priced per model (LiteLLM-refreshable table), with USD cost, CO2 estimate, and cache-share stats.
