@@ -1,3 +1,9 @@
+## v2.6.0
+- Unified `/tersio` root session command: `combo`, `caveman`, `rtk`, `ponytail`, and `ai-addons` collapse under one entry with subcommand routing; README goes `/tersio`-first.
+- Usage ledger + `tersio usage` report: session tokens parsed from OMP transcripts, priced per model (LiteLLM-refreshable table), with USD cost, CO2 estimate, and cache-share stats.
+- Gain dashboard (`tersio dashboard`): single-file HTML with token strip, 26-week activity graph, 14-day input-vs-output chart, savings rail, models top-5, floating dock navbar, and transparent webp brand (black bg keyed out of the avif source). Footer socials are inline SVGs with no icon-font dependency. Serves on 127.0.0.1 only; `--export` writes a self-contained file.
+- 92 tests.
+
 ## v2.5.0
 - `tersio update` chases the real latest release instead of a stale `@latest`: the target resolves once via `npm view --prefer-online` and pins `@<exact>` for both the global refresh and the delegated installer (falls back to `@latest` when the registry is unreachable). Dry-run previews the resolved version.
 - Update prints a per-add-on plan before doing anything: current -> latest for Tersio, RTK, Caveman rule, and Ponytail. All probes run concurrently (4-6s cap, best-effort); unreachable sources print `unknown` and never block the update.
