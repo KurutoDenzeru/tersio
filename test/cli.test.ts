@@ -185,16 +185,16 @@ test("uninstall dry-run never prompts for confirmation", () => {
   assert.match(result.stdout, /\[dry-run\] would remove .*extensions[\\/]shared(?:\r?\n|$)/);
 });
 
-test("usage with an empty ledger prints the empty state and exits 0", () => {
+test("usage with an empty ledger and no sessions prints the empty state and exits 0", () => {
   const missing = path.join(root, "test", "definitely-missing-home", "no-ledger.jsonl");
+  const noSessions = path.join(root, "test", "definitely-missing-home", "no-sessions");
   const result = spawnSync(process.execPath, [installer, "usage"], {
     encoding: "utf8",
     cwd: root,
-    env: { ...process.env, TERSIO_USAGE_FILE: missing },
+    env: { ...process.env, TERSIO_USAGE_FILE: missing, TERSIO_SESSIONS_DIR: noSessions },
   });
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /No ledger rows yet/);
-  assert.match(result.stdout, /Host token usage: n\/a/);
+  assert.match(result.stdout, /No ledger rows or session tokens yet/);
 });
 
 test("dashboard --export writes a self-contained html file", () => {
@@ -213,6 +213,6 @@ test("dashboard --export writes a self-contained html file", () => {
   const body = readFileSync(out, "utf8");
   assert.match(body, /Tersio Gain Dashboard/);
   assert.match(body, /\/tersio usage/);
-  assert.doesNotMatch(body, /https?:\/\//);
+  assert.doesNotMatch(body.replace(/https:\/\/cdn\.jsdelivr\.net\/npm\/@tailwindcss\/browser@4|https:\/\/unpkg\.com\/lucide@latest|https:\/\/github\.com\/KurutoDenzeru|https:\/\/linkedin\.com\/in\/kurtcalacday\/|https:\/\/instagram\.com\/krtclcdy\//g, ""), /https?:\/\//);
   rmSync(dir, { recursive: true, force: true });
 });

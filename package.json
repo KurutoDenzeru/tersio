@@ -116,6 +116,7 @@
     "tersio.js",
     "cli/**/*.js",
     "cli/dashboard.html",
+    "cli/favicon.png",
     "extensions/**/*.js"
   ],
   "scripts": {

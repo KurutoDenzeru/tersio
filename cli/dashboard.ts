@@ -19,9 +19,15 @@ export interface DashboardOptions {
 }
 
 const TEMPLATE = path.join(path.dirname(fileURLToPath(import.meta.url)), 'dashboard.html');
+const FAVICON = path.join(path.dirname(fileURLToPath(import.meta.url)), 'favicon.png');
 
 async function templateHtml(): Promise<string> {
   return fs.readFile(TEMPLATE, 'utf8');
+}
+
+async function faviconDataUri(): Promise<string> {
+  const png = await fs.readFile(FAVICON);
+  return `data:image/png;base64,${png.toString('base64')}`;
 }
 
 function dataJson(): string {
@@ -36,19 +42,33 @@ function openBrowser(url: string): void {
 async function runDashboard(options: DashboardOptions): Promise<void> {
   if (options.exportFile) {
     const html = await templateHtml();
-    const inline = html.replace(
-      "fetch('data.json')",
-      `Promise.resolve({ json: function () { return ${dataJson()}; } }).then(function (r) { return r.json(); }).then`,
-    );
+    const inline = html
+      .replace(
+        "fetch('data.json')",
+        `Promise.resolve({ json: function () { return ${dataJson()}; } }).then(function (r) { return r.json(); }).then`,
+      )
+      .replace('href="favicon.png"', `href="${await faviconDataUri()}"`)
+      .replace('src="favicon.png"', `src="${await faviconDataUri()}"`);
     await fs.writeFile(options.exportFile, inline, 'utf8');
     console.log(`[ok] dashboard exported → ${options.exportFile}`);
     return;
   }
   const html = await withInteractiveSpinner('Loading dashboard template', templateHtml);
-  const server = http.createServer((req, res) => {
+  const server = http.createServer(async (req, res) => {
     if (req.url === '/data.json') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(dataJson());
+      return;
+    }
+    if (req.url === '/favicon.png') {
+      try {
+        const png = await fs.readFile(FAVICON);
+        res.writeHead(200, { 'Content-Type': 'image/png' });
+        res.end(png);
+      } catch {
+        res.writeHead(404);
+        res.end();
+      }
       return;
     }
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
