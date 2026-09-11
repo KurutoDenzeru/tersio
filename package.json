@@ -60,6 +60,13 @@
         "extensions": [
           "./extensions/ai-addons-updater/index.js"
         ]
+      },
+      "tersio": {
+        "description": "Unified /tersio root command (caveman, combo, rtk, ponytail, status, check, update, gain, usage)",
+        "default": true,
+        "extensions": [
+          "./extensions/tersio-commands/index.js"
+        ]
       }
     },
     "settings": {
@@ -108,6 +115,8 @@
   "files": [
     "tersio.js",
     "cli/**/*.js",
+    "cli/dashboard.html",
+    "cli/brand.webp",
     "extensions/**/*.js"
   ],
   "scripts": {

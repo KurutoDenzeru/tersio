@@ -33,10 +33,10 @@ omp plugin features @krtclcdy/tersio --disable rtk
 Then restart OMP and enable a preset:
 
 ```text
-/combo medium
+/tersio combo medium
 ```
 
-Individual toggles: `/caveman full` · `/rtk on` · `/ponytail full`. Everything starts off until you enable it.
+Individual toggles: `/tersio caveman full` · `/tersio rtk on` · `/tersio ponytail full`. Everything starts off until you enable it.
 
 Session-start defaults (prompted during `install`, or flags):
 
@@ -44,7 +44,7 @@ Session-start defaults (prompted during `install`, or flags):
 tersio install --combo-default balanced --caveman-default lite --rtk-default on
 ```
 
-Defaults apply to fresh sessions only — anything persisted with `/combo`, `/caveman`, or `/rtk` wins. Stored as plugin settings (`omp plugin config get @krtclcdy/tersio comboDefault`).
+Defaults apply to fresh sessions only — anything persisted with `/tersio combo`, `/tersio caveman`, or `/tersio rtk` wins. Stored as plugin settings (`omp plugin config get @krtclcdy/tersio comboDefault`).
 
 ## What it installs
 
@@ -54,7 +54,7 @@ Defaults apply to fresh sessions only — anything persisted with `/combo`, `/ca
 | **RTK** | Routes noisy shell commands through the RTK binary for compact output |
 | **Ponytail** | Minimal, YAGNI-oriented code decisions |
 | **Combo** | Toggles all three at once. Presets: `off`, `medium`, `balanced`, `max` |
-| **Updater** | `/ai-addons` checks and updates Ponytail, RTK, and Caveman in-session, with dry-run and backups |
+| **Updater** | `/tersio check` and `/tersio update` cover Ponytail, RTK, and Caveman in-session, with dry-run and backups |
 
 User-level installs also register the package in `~/.omp/plugins` (visible in OMP **Settings → Plugins**), directly through the plugin manifest. Active modes reassert after Ponytail's prompt block on every top-level turn, including after history compaction.
 
@@ -81,6 +81,8 @@ Break-even math, balanced preset (caveman full + rtk + ponytail): `⌈overhead �
 | `tersio update` | Refresh the CLI, extensions, and add-ons (RTK binary, Caveman rule, Ponytail) |
 | `tersio reinstall` | Fresh install, preserving the Ponytail package |
 | `tersio doctor` | Check OMP, extension, Ponytail, and RTK health |
+| `tersio usage` | Ledger-backed usage + savings report |
+| `tersio dashboard` | Serve the gain dashboard on localhost (`--open`, `--export <file>`, `--port <n>`) |
 | `tersio uninstall` | Remove extensions, registration, and the Ponytail plugin (`--keep-ponytail` keeps Ponytail; `--remove-rtk` also removes the RTK binary) |
 | `tersio version` | Print version |
 
@@ -88,63 +90,44 @@ Flags: `--dry-run`, `--yes`/`-y`, `--verbose`, `--scope`, `--combo-default`/`--c
 
 ## Commands reference
 
+Everything runs under one root. Bare `/tersio` prints status.
+
+| Command | Purpose |
+|---|---|
+| `/tersio combo off\|medium\|balanced\|max\|status` | preset for all three modes (start here) |
+| `/tersio caveman lite\|full\|ultra\|wenyan\|off\|status` | terse-reply mode |
+| `/tersio rtk on\|off\|status` | compact shell-output toggle |
+| `/tersio ponytail off\|lite\|full\|ultra\|review\|status` | minimal-code level |
+| `/tersio status` | active modes + combo level |
+| `/tersio check` | add-on version check (same as old `/ai-addons check`) |
+| `/tersio update <ponytail\|rtk\|caveman\|all> [--dry-run]` | update add-ons, preview with dry-run |
+| `/tersio gain` | savings summary + dashboard hint |
+| `/tersio usage` | ledger report for this machine |
+| `/tersio help` | this table |
+
+### Combo — one preset for all three
+
+Start here: one setting drives all three modes (`medium` = lite/lite/on, `balanced` = full/full/on, `max` = ultra/ultra/on, `off` = normal). Tweaking a mode individually drops to a `custom` mix.
+
 ### Caveman — terse replies
 
-```text
-/caveman lite         concise, drops pleasantries
-/caveman full         terse caveman style
-/caveman ultra        maximum terse, fragments only
-/caveman wenyan       classical-Chinese-style where clear
-/caveman off          normal mode
-/caveman status       show current mode
-```
-
-`caveman off`, `stop caveman`, and `normal mode` also work.
+Pleasantries and restatements go; substance stays. Ladder: `lite`, `full`, `ultra` (fragments only), `wenyan` (compressed classical-Chinese-inspired register).
 
 ### RTK — compact shell output
 
-```text
-/rtk on               enable compact RTK output
-/rtk off              disable
-/rtk status           show current state
-```
+A real binary, not a prompt trick: `rtk git status|diff|grep|test|tsc|lint` strips noise before output reaches the model. Exact bytes (checksums, patches) bypass it by policy.
 
-Covers noisy commands (`git status`, `git diff`, `read`, `grep`, test, `tsc`, lint).
+### Ponytail — minimal code (YAGNI)
 
-### Ponytail — minimal code
+You Aren't Gonna Need It: smallest working change, no speculative abstractions, no new deps for stdlib jobs. `lite` nudges, `full` enforces, `ultra` challenges the requirement, `review` audits for over-engineering.
 
-```text
-/ponytail lite        light guidance
-/ponytail full        full YAGNI enforcement
-/ponytail ultra       aggressive simplification
-/ponytail off         disable
-/ponytail status      show current state
-```
+`/tersio` persists state and reloads OMP without emitting separate command messages. Presets propagate to task subagents and light the Combo footer indicator; mixed individual settings report via `/tersio status`.
 
-### Updater — check and update add-ons
+### Legacy aliases (still work)
 
-```text
-/ai-addons check                          check all add-on versions
-/ai-addons status                         same as check
-/ai-addons update ponytail                update Ponytail
-/ai-addons update rtk                     update the RTK binary
-/ai-addons update caveman                 update the Caveman rule
-/ai-addons update all                     update all three
-/ai-addons update all --dry-run           preview without changes
-```
+The pre-`/tersio` commands remain registered: `/caveman`, `/rtk`, `/combo`, `/ai-addons`. Prefer `/tersio` in new muscle memory; help output lists the aliases as deprecated-but-working.
 
-### Combo — toggle all three
-
-```text
-/combo off            all three off (default)
-/combo medium         caveman=lite, rtk=on, ponytail=lite
-/combo balanced       caveman=full, rtk=on, ponytail=full
-/combo max            caveman=ultra, rtk=on, ponytail=ultra
-/combo status         show the level and underlying modes
-/combo help           show available levels
-```
-
-`/combo` persists state and reloads OMP without emitting separate command messages. Presets propagate to task subagents and light the Combo footer indicator; individual commands leave Combo inactive (`/combo status` still reports the mixed state).
+Usage rows land in `~/.omp/plugins/tersio-usage.jsonl` (local only); `tersio dashboard` serves them as a plain-HTML page on 127.0.0.1.
 
 ## Files and backups
 
@@ -176,7 +159,7 @@ npm exec --yes --prefer-online --package=@krtclcdy/tersio@latest -- tersio insta
 
 **RTK missing or not executable:** run `tersio reinstall`, then `tersio doctor`. On Linux/macOS: `chmod +x ~/.bun/bin/rtk`.
 
-**Checksum warning or failure:** the installer aborts on RTK checksum mismatch but warns and continues when checksum metadata is unavailable; `/ai-addons update rtk` aborts when metadata is missing.
+**Checksum warning or failure:** the installer aborts on RTK checksum mismatch but warns and continues when checksum metadata is unavailable; `/tersio update rtk` aborts when metadata is missing.
 
 ## License
 

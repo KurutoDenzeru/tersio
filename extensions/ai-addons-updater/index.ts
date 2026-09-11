@@ -90,7 +90,7 @@ function checkPonytail(): Promise<AddonStatus> {
     const remoteVer = remoteJson.version;
     const status = !localVer ? 'not installed'
       : localVer === remoteVer ? 'up to date'
-      : 'update available';
+        : 'update available';
     return `Ponytail ${status}: local=${localVer || '—'} latest=${remoteVer}`;
   });
 }
@@ -110,7 +110,7 @@ function checkRtk(): Promise<AddonStatus> {
     } catch { localVer = null; }
     const status = localVer === null ? 'not installed'
       : normalizeRtkVersion(localVer) === normalizeRtkVersion(latestTag ?? undefined) ? 'up to date'
-      : 'update available';
+        : 'update available';
     return `RTK ${status}: local=${localVer || '—'} latest=${latestTag || '—'}`;
   });
 }
@@ -124,9 +124,34 @@ function checkCaveman(): Promise<AddonStatus> {
     const localHash = local ? shortHash(local) : null;
     const status = !local ? 'rule.md missing'
       : localHash === remoteHash ? 'rule.md up to date'
-      : 'rule.md update available';
+        : 'rule.md update available';
     return `Caveman ${status}: local=${localHash || '—'} remote=${remoteHash}`;
   });
+}
+
+export async function checkAddonsSummary(ctx: AddonUpdaterCtx): Promise<string> {
+  return checkAddons(ctx);
+}
+
+export async function runAddonUpdate(pi: { exec?: AddonUpdaterPi['exec'] }, ctx: AddonUpdaterCtx, target: string, dryRun = false): Promise<string> {
+  const results: string[] = [];
+  const updaters: Record<string, () => Promise<string>> = {
+    ponytail: () => updatePonytail(pi, ctx, dryRun),
+    rtk: () => updateRtk(ctx, dryRun),
+    caveman: () => updateCaveman(ctx, dryRun),
+  };
+  if (target === 'all') {
+    notify(ctx, `ai-addons update all${dryRun ? ' dry-run' : ''}: starting ponytail → rtk → caveman sequentially…`, 'info');
+    for (const name of ['ponytail', 'rtk', 'caveman']) results.push(await updaters[name]());
+    if (!dryRun) results.push(RELOAD_MSG);
+    notify(ctx, `ai-addons update all ${dryRun ? 'dry-run ' : ''}complete.${dryRun ? '' : ` ${RELOAD_MSG}`}`, 'info');
+  } else if (Object.hasOwn(updaters, target)) {
+    results.push(await updaters[target]());
+  } else {
+    const m = 'Usage: /ai-addons update <ponytail|rtk|caveman|all> [--dry-run]';
+    return report(ctx, m, 'warning');
+  }
+  return results.join('\n\n');
 }
 
 async function checkAddons(ctx: AddonUpdaterCtx): Promise<string> {
@@ -225,7 +250,7 @@ async function updateRtk(ctx: AddonUpdaterCtx, dryRun = false): Promise<string> 
     const archiveBuf = await fs.readFile(archivePath);
     const actual = createHash('sha256').update(archiveBuf).digest('hex').toLowerCase();
     if (actual !== expected) {
-      const m = `RTK: checksum mismatch! expected=${expected.slice(0,12)}… actual=${actual.slice(0,12)}…`;
+      const m = `RTK: checksum mismatch! expected=${expected.slice(0, 12)}… actual=${actual.slice(0, 12)}…`;
       return report(ctx, m, 'warning');
     }
     notify(ctx, 'RTK: checksum verified.', 'info');
@@ -285,7 +310,7 @@ async function updateRtk(ctx: AddonUpdaterCtx, dryRun = false): Promise<string> 
     const m = `RTK update failed: ${(e as Error).message}`;
     return report(ctx, m, 'warning');
   } finally {
-    fs.rm(tmp, { recursive: true, force: true }).catch(() => {});
+    fs.rm(tmp, { recursive: true, force: true }).catch(() => { });
   }
 }
 
@@ -341,27 +366,8 @@ export default function aiAddonsUpdaterExtension(pi: AddonUpdaterPi): void {
         return summary;
       }
       if (sub === 'update' && cleanParts[1]) {
-        const target = cleanParts.slice(1).join(' ');
-        const results: string[] = [];
-        const updaters: Record<string, () => Promise<string>> = {
-          ponytail: () => updatePonytail(pi, ctx, dryRun),
-          rtk: () => updateRtk(ctx, dryRun),
-          caveman: () => updateCaveman(ctx, dryRun),
-        };
-        if (target === 'all') {
-          notify(ctx, `ai-addons update all${dryRun ? ' dry-run' : ''}: starting ponytail → rtk → caveman sequentially…`, 'info');
-          for (const name of ['ponytail', 'rtk', 'caveman']) results.push(await updaters[name]());
-          if (!dryRun) results.push(RELOAD_MSG);
-          notify(ctx, `ai-addons update all ${dryRun ? 'dry-run ' : ''}complete.${dryRun ? '' : ` ${RELOAD_MSG}`}`, 'info');
-        } else if (Object.hasOwn(updaters, target)) {
-          results.push(await updaters[target]());
-        } else {
-          const m = 'Usage: /ai-addons update <ponytail|rtk|caveman|all> [--dry-run]';
-          return report(ctx, m, 'warning');
-        }
-        return results.join('\n\n');
+        return runAddonUpdate(pi, ctx, cleanParts.slice(1).join(' '), dryRun);
       }
-
       const m = 'Usage: /ai-addons <check|status|update ponytail|rtk|caveman|all> [--dry-run]';
       return report(ctx, m, 'warning');
     },
