@@ -19,15 +19,15 @@ export interface DashboardOptions {
 }
 
 const TEMPLATE = path.join(path.dirname(fileURLToPath(import.meta.url)), 'dashboard.html');
-const FAVICON = path.join(path.dirname(fileURLToPath(import.meta.url)), 'favicon.png');
+const BRAND = path.join(path.dirname(fileURLToPath(import.meta.url)), 'brand.webp');
 
 async function templateHtml(): Promise<string> {
   return fs.readFile(TEMPLATE, 'utf8');
 }
 
 async function faviconDataUri(): Promise<string> {
-  const png = await fs.readFile(FAVICON);
-  return `data:image/png;base64,${png.toString('base64')}`;
+  const png = await fs.readFile(BRAND);
+  return `data:image/webp;base64,${png.toString('base64')}`;
 }
 
 function dataJson(): string {
@@ -47,8 +47,8 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
         "fetch('data.json')",
         `Promise.resolve({ json: function () { return ${dataJson()}; } }).then(function (r) { return r.json(); }).then`,
       )
-      .replace('href="favicon.png"', `href="${await faviconDataUri()}"`)
-      .replace('src="favicon.png"', `src="${await faviconDataUri()}"`);
+      .replace('href="brand.webp"', `href="${await faviconDataUri()}"`)
+      .replace('src="brand.webp"', `src="${await faviconDataUri()}"`);
     await fs.writeFile(options.exportFile, inline, 'utf8');
     console.log(`[ok] dashboard exported → ${options.exportFile}`);
     return;
@@ -60,10 +60,10 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
       res.end(dataJson());
       return;
     }
-    if (req.url === '/favicon.png') {
+    if (req.url === '/brand.webp') {
       try {
-        const png = await fs.readFile(FAVICON);
-        res.writeHead(200, { 'Content-Type': 'image/png' });
+        const png = await fs.readFile(BRAND);
+        res.writeHead(200, { 'Content-Type': 'image/webp' });
         res.end(png);
       } catch {
         res.writeHead(404);
