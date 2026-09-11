@@ -94,40 +94,17 @@ Everything runs under one root. Bare `/tersio` prints status.
 
 | Command | Purpose |
 |---|---|
-| `/tersio combo off\|medium\|balanced\|max\|status` | preset for all three modes (start here) |
-| `/tersio caveman lite\|full\|ultra\|wenyan\|off\|status` | terse-reply mode |
-| `/tersio rtk on\|off\|status` | compact shell-output toggle |
-| `/tersio ponytail off\|lite\|full\|ultra\|review\|status` | minimal-code level |
-| `/tersio status` | active modes + combo level |
-| `/tersio check` | add-on version check (same as old `/ai-addons check`) |
-| `/tersio update <ponytail\|rtk\|caveman\|all> [--dry-run]` | update add-ons, preview with dry-run |
-| `/tersio gain` | savings summary + dashboard hint |
-| `/tersio usage` | ledger report for this machine |
-| `/tersio help` | this table |
-
-### Combo — one preset for all three
-
-Start here: one setting drives all three modes (`medium` = lite/lite/on, `balanced` = full/full/on, `max` = ultra/ultra/on, `off` = normal). Tweaking a mode individually drops to a `custom` mix.
-
-### Caveman — terse replies
-
-Pleasantries and restatements go; substance stays. Ladder: `lite`, `full`, `ultra` (fragments only), `wenyan` (compressed classical-Chinese-inspired register).
-
-### RTK — compact shell output
-
-A real binary, not a prompt trick: `rtk git status|diff|grep|test|tsc|lint` strips noise before output reaches the model. Exact bytes (checksums, patches) bypass it by policy.
-
-### Ponytail — minimal code (YAGNI)
-
-You Aren't Gonna Need It: smallest working change, no speculative abstractions, no new deps for stdlib jobs. `lite` nudges, `full` enforces, `ultra` challenges the requirement, `review` audits for over-engineering.
-
-`/tersio` persists state and reloads OMP without emitting separate command messages. Presets propagate to task subagents and light the Combo footer indicator; mixed individual settings report via `/tersio status`.
-
-### Legacy aliases (still work)
-
-The pre-`/tersio` commands remain registered: `/caveman`, `/rtk`, `/combo`, `/ai-addons`. Prefer `/tersio` in new muscle memory; help output lists the aliases as deprecated-but-working.
-
-Usage rows land in `~/.omp/plugins/tersio-usage.jsonl` (local only); `tersio dashboard` serves them as a plain-HTML page on 127.0.0.1.
+| `/tersio combo off\|medium\|balanced\|max\|status` | One preset for all three (start here): medium = lite/lite/on, balanced = full/full/on, max = ultra/ultra/on; per-mode tweaks drop to `custom`. |
+| `/tersio caveman lite\|full\|ultra\|wenyan\|off\|status` | Terse replies (substance stays); `ultra` uses fragments only, `wenyan` a compressed classical-Chinese-inspired register. |
+| `/tersio rtk on\|off\|status` | Compact shell output via the real `rtk` binary; exact bytes (checksums, patches) bypass it by policy. |
+| `/tersio ponytail off\|lite\|full\|ultra\|review\|status` | Minimal code (YAGNI): `lite` nudges, `full` enforces, `ultra` challenges the requirement, `review` audits for over-engineering. |
+| `/tersio status` | Active modes + combo level; state persists, propagates to subagents, and lights the Combo footer indicator. |
+| `/tersio check` | Add-on version check |
+| `/tersio update <ponytail\|rtk\|caveman\|all> [--dry-run]` | Update add-ons, preview with dry-run |
+| `/tersio gain` | Savings summary; the gain dashboard charts `~/.omp/plugins/tersio-usage.jsonl` (`tersio dashboard` serves on 127.0.0.1, `--export` writes one file). |
+| `/tersio usage` | Ledger report for this machine (rows in `~/.omp/plugins/tersio-usage.jsonl`, local only) |
+| `/tersio help` | This table |
+| `/caveman`, `/rtk`, `/combo`, `/ai-addons` | Legacy aliases, still work; prefer `/tersio`. |
 
 ## Files and backups
 
