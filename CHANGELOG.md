@@ -1,3 +1,7 @@
+## v2.4.1
+- Fix the combo bar disappearing after idle/resume: the combo level was tracked by session-entry write order, so any individual mode entry after the `combo-level` entry forced the level to `custom` — even a redundant same-value replay. The level now always derives from the final mode triplet, so a preset survives entry replay and individually aligning all three modes to a preset triplet activates the bar.
+- Mode commands confirm the session-wide active set: `/caveman`, `/rtk`, and `/combo` report all three modes (e.g. `Combo max on — caveman=ULTRA, rtk=ON, ponytail=ULTRA active for this session.`). 75 tests.
+
 ## v2.4.0
 - Interactive CLI via `@clack/prompts` — the framework behind the Vite, Astro, Nuxt, TanStack, and Cloudflare CLIs. On a TTY, the scope and Combo preset prompts become arrow-key radio menus, the uninstall confirmation becomes a `confirm` dialog, and every network-bound step (registry check, Caveman rule fetch, RTK release lookup/download/checksum, Ponytail and self-plugin installs, update refresh and delegate) runs under a live timer spinner. `doctor` probes start concurrently and report through progressive task phases in fixed section order.
 - Non-TTY behavior is unchanged: piped, CI, `--dry-run`, and test runs emit byte-identical plain output with no spinners or prompts. `tersio version`, `tersio help`, and unknown-command output stay plain by design.
