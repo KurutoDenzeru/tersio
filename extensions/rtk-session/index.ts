@@ -1,6 +1,6 @@
 import os from 'node:os';
 import path from 'node:path';
-import { activeModesSummary, asPromptArray, getSharedComboState, isComboPresetActive, isOmpSubagentPrompt, lastCustomValue, normalizeInputCommand, paintStatusBar, reconcileSharedComboEntries, sessionEntries, setSharedComboMode } from '../shared/session-state.ts';
+import { activeModesSummary, asPromptArray, getSharedComboState, isComboPresetActive, isOmpSubagentPrompt, lastCustomValue, normalizeInputCommand, normalizeMode, paintStatusBar, reconcileSharedComboEntries, sessionEntries, setSharedComboListener, setSharedComboMode } from '../shared/session-state.ts';
 import { readRtkDefault } from '../shared/plugin-settings.ts';
 import type { ExtensionApi, ExtensionCtx, InputEvent, SessionEntry, SystemPromptEvent } from '../shared/types.ts';
 
@@ -59,6 +59,13 @@ export default function rtkSessionExtension(pi: ExtensionApi): void {
 
   pi.setLabel?.('RTK session toggle');
 
+  // Live mirror: a /tersio or /combo switch publishes shared state — adopt
+  // it at once so the next turn and the rtk_run gate see it, no reload.
+  function syncFromShared(state: { rtk: string }): void {
+    enabled = state.rtk === 'on';
+    syncStatus();
+  }
+  setSharedComboListener(syncFromShared);
   pi.registerCommand?.('rtk', {
     description: 'Toggle RTK compact shell-output guidance for this session',
     handler: async (args, ctx) => {

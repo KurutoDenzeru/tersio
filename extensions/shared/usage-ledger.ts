@@ -40,6 +40,13 @@ export interface TokenBreakdown {
   cacheWrite: number;
 }
 
+export interface RecentRequest {
+  m: string;
+  i: number;
+  o: number;
+  t: number;
+}
+
 export interface SessionTokens {
   messages: number;
   totals: TokenBreakdown;
@@ -49,6 +56,7 @@ export interface SessionTokens {
   byTool: Record<string, number>;
   byModelMessages: Record<string, number>;
   costMeasured: number;
+  recent: RecentRequest[];
 }
 
 function zeroBreakdown(): TokenBreakdown {
@@ -116,11 +124,15 @@ export function importSessionTokens(): SessionTokens {
     walkJsonl(codexSessionsDir(), files, 2000);
   }
   let codexProvider: string | null = null;
+  const recent: RecentRequest[] = [];
   function ingest(model: string, usage: Record<string, unknown>, ts: string | number | undefined): void {
     addInto(totals, usage);
     byModel[model] ??= zeroBreakdown();
     addInto(byModel[model], usage);
     byModelMessages[model] = (byModelMessages[model] ?? 0) + 1;
+    const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.floor(v) : 0);
+    const ms = ts === undefined ? NaN : typeof ts === 'number' ? ts : Date.parse(ts);
+    if (Number.isFinite(ms)) recent.push({ m: model, i: num(usage.input), o: num(usage.output), t: ms });
     const day = ts !== undefined ? dayKey(ts) : null;
     if (day) {
       byDay[day] ??= zeroBreakdown();
@@ -179,7 +191,8 @@ export function importSessionTokens(): SessionTokens {
       } catch { /* skip corrupt lines */ }
     }
   }
-  return { messages, totals, byModel, byDay, byDayModel, byTool, byModelMessages, costMeasured };
+  recent.sort((a, b) => b.t - a.t);
+  return { messages, totals, byModel, byDay, byDayModel, byTool, byModelMessages, costMeasured, recent: recent.slice(0, 25) };
 }
 // Lead binary of a shell string: first segment head past `cd` chains and
 // VAR=x assignments (`cd /x && git status` → `git`). Falls back to `bash`.

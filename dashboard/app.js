@@ -188,6 +188,13 @@
   function dayKey(d) {
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
   }
+  function relTime(ts) {
+    var s = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+    if (s < 60) return 'just now';
+    if (s < 3600) return Math.floor(s / 60) + 'm ago';
+    if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+    return Math.floor(s / 86400) + 'd ago';
+  }
   function modelTotal(byModel, m) {
     var b = byModel[m] || { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
     return b.input + b.output + b.cacheRead + b.cacheWrite;
@@ -760,6 +767,7 @@
     bindCmdTable();
     renderGraph(d.byDay || {});
     renderModels();
+    renderRecent();
     renderCmd();
 
     if (window.lucide) lucide.createIcons();
@@ -768,6 +776,33 @@
       gsap.from('.hero-in', { y: 26, opacity: 0, duration: 0.8, ease: 'power3.out', stagger: 0.08 });
     }
     observe();
+  }
+
+  function renderRecent() {
+    var body = document.getElementById('recent');
+    body.innerHTML = '';
+    var rows = (DATA.recent || []).slice(0, 13);
+    rows.forEach(function (r, i) {
+      var v = vendorOf(r.m);
+      var tr = document.createElement('tr');
+      tr.className = 'tilt' + (i < rows.length - 1 ? ' rowline' : '');
+      var dot = '<span style="display:inline-block;width:8px;height:8px;border-radius:99px;background:' + v.color + ';margin-right:8px"></span>';
+      tr.innerHTML = '<td class="py-2.5 pr-3 truncate" style="max-width: 180px"></td>' +
+        '<td class="text-right py-2.5 pr-3 whitespace-nowrap"></td>' +
+        '<td class="text-right py-2.5 whitespace-nowrap" style="color: var(--dim)"></td>';
+      var tds = tr.children;
+      tds[0].innerHTML = dot + '<span></span>';
+      tds[0].querySelector('span:last-child').textContent = r.m;
+      tds[0].title = r.m;
+      tds[1].innerHTML = '<span style="color:#fb923c"></span> <span style="color:var(--accent)"></span>';
+      tds[1].children[0].textContent = fmt(r.i) + '\u2191';
+      tds[1].children[1].textContent = fmt(r.o) + '\u2193';
+      tds[1].title = fmt(r.i) + ' in / ' + fmt(r.o) + ' out';
+      tds[2].textContent = relTime(r.t);
+      body.appendChild(tr);
+    });
+    document.getElementById('recentTable').style.display = rows.length ? '' : 'none';
+    document.getElementById('emptyRecent').classList.toggle('hidden', rows.length > 0);
   }
 
   var seen = new WeakSet();

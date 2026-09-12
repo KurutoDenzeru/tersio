@@ -42,6 +42,10 @@ test("importer aggregates assistant usage by model and day, skips the rest", () 
     assert.deepEqual(s.byDayModel["2026-09-01"], { "claude-sonnet-5": 1700 });
     assert.deepEqual(s.byDayModel["2026-09-02"], { "mystery-model-9": 110 });
     assert.deepEqual(s.byModelMessages, { "claude-sonnet-5": 1, "mystery-model-9": 1 });
+    assert.deepEqual(s.recent, [
+      { m: "mystery-model-9", i: 100, o: 10, t: Date.parse("2026-09-02T10:01:00.000Z") },
+      { m: "claude-sonnet-5", i: 1000, o: 200, t: Date.parse("2026-09-01T10:01:00.000Z") },
+    ]);
     assert.equal(s.costMeasured, 0.012);
   } finally {
     if (prev === undefined) delete process.env.TERSIO_SESSIONS_DIR;

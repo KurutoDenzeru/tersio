@@ -1,8 +1,8 @@
 // /tersio unified root command — routes every tersio capability through one
 // namespaced entrypoint. Aliases (/caveman, /rtk, /combo, /ai-addons) keep
 // working: this router drives the same shared bridge + session entries the
-// sibling extensions restore from, then reloads so their local mirrors sync
-// (same mechanism /combo already uses to drive its siblings).
+// sibling extensions restore from. Shared-state publishes sync their local
+// mirrors live, so switches notify and take effect next turn — no reload.
 import {
   COMBO_LEVELS,
   activeModesSummary,
@@ -69,9 +69,9 @@ async function openGainDashboard(pi: ExtensionApi, ctx?: ExtensionCtx): Promise<
 export default function tersioCommandsExtension(pi: ExtensionApi): void {
   pi.setLabel?.('Tersio unified root command');
 
-  async function reload(ctx?: ExtensionCtx): Promise<void> {
-    if (ctx?.reload) await ctx.reload();
-  }
+  // Mode switches never reload the session: entries persist, the shared
+  // bridge publishes to every sibling mirror, and the change injects on the
+  // next turn like a normal input message. Only notify below.
 
   pi.registerCommand?.('tersio', {
     description: 'Tersio root: caveman|combo|rtk|ponytail|status|check|update|gain|usage|help',
@@ -99,7 +99,6 @@ export default function tersioCommandsExtension(pi: ExtensionApi): void {
         setSharedComboMode('caveman', mode);
         appendUsage('toggle', `caveman=${mode}`);
         ctx?.ui?.notify?.(`Caveman ${mode} on — Active: ${activeModesSummary(getSharedComboState())}.`, 'info');
-        await reload(ctx);
         return;
       }
       if (sub === 'rtk') {
@@ -117,7 +116,6 @@ export default function tersioCommandsExtension(pi: ExtensionApi): void {
         setSharedComboMode('rtk', enabled);
         appendUsage('toggle', `rtk=${rest}`);
         ctx?.ui?.notify?.(`RTK ${rest} — Active: ${activeModesSummary(getSharedComboState())}.`, 'info');
-        await reload(ctx);
         return;
       }
       if (sub === 'ponytail') {
@@ -130,7 +128,6 @@ export default function tersioCommandsExtension(pi: ExtensionApi): void {
         setSharedComboMode('ponytail', mode);
         appendUsage('toggle', `ponytail=${mode}`);
         ctx?.ui?.notify?.(`Ponytail ${mode} — Active: ${activeModesSummary(getSharedComboState())}.`, 'info');
-        await reload(ctx);
         return;
       }
       if (sub === 'combo') {
@@ -152,7 +149,6 @@ export default function tersioCommandsExtension(pi: ExtensionApi): void {
         setSharedComboLevel(level);
         appendUsage('toggle', `combo=${level}`);
         ctx?.ui?.notify?.(`Combo ${level} on — ${activeModesSummary(getSharedComboState())} active for this session.`, 'info');
-        await reload(ctx);
         return;
       }
       if (sub === 'check') {

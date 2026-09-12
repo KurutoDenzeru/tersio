@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { activeModesSummary, asPromptArray, getSharedComboState, isComboPresetActive, isOmpSubagentPrompt, lastCustomValue, normalizeInputCommand, normalizeMode, paintStatusBar, reconcileSharedComboEntries, sessionEntries, setSharedComboListener, setSharedComboMode } from '../shared/session-state.ts';
 import { dirname, join } from 'node:path';
-import { activeModesSummary, asPromptArray, getSharedComboState, isComboPresetActive, isOmpSubagentPrompt, lastCustomValue, normalizeInputCommand, normalizeMode, paintStatusBar, reconcileSharedComboEntries, sessionEntries, setSharedComboMode } from '../shared/session-state.ts';
 import { readCavemanDefault } from '../shared/plugin-settings.ts';
 import type { ExtensionApi, ExtensionCtx, InputEvent, SessionEntry, SystemPromptEvent } from '../shared/types.ts';
 
@@ -78,6 +78,17 @@ export default function cavemanSessionExtension(pi: ExtensionApi): void {
 
   pi.setLabel?.('Caveman session toggle');
 
+  // Live mirror: a /tersio or /combo switch publishes shared state — adopt
+  // it at once so the next turn injects the new mode with no session reload.
+  // Stable identity, so the bridge set dedupes across re-inits.
+  function syncFromShared(state: { caveman: string }): void {
+    const mode = normalizeMode('caveman', state.caveman);
+    if (mode) {
+      currentMode = mode;
+      syncStatus();
+    }
+  }
+  setSharedComboListener(syncFromShared);
   pi.registerCommand?.('caveman', {
     description: 'Toggle terse caveman replies for this session',
     handler: async (args, ctx) => {

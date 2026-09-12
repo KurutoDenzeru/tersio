@@ -7,7 +7,7 @@ import {
   readUsage,
   usdCost,
 } from '../extensions/shared/usage-ledger.ts';
-import type { TokenBreakdown, UsageRow } from '../extensions/shared/usage-ledger.ts';
+import type { RecentRequest, TokenBreakdown, UsageRow } from '../extensions/shared/usage-ledger.ts';
 import { readRtkGain } from '../extensions/shared/rtk-gain.ts';
 import type { RtkGain } from '../extensions/shared/rtk-gain.ts';
 import { withInteractiveSpinner } from './interactive.ts';
@@ -27,6 +27,7 @@ export interface UsageReport {
   byDay: Record<string, TokenBreakdown>;
   byDayModel: Record<string, Record<string, number>>;
   byTool: Array<[string, number]>;
+  recent: RecentRequest[];
   rtkGain: RtkGain;
   usd: number;
   priced: boolean;
@@ -76,6 +77,7 @@ export function summarizeUsage(rows: UsageRow[]): UsageReport {
     byDay: session.byDay,
     byDayModel: session.byDayModel,
     byTool,
+    recent: session.recent,
     rtkGain: readRtkGain(),
     usd,
     priced,

@@ -28,7 +28,7 @@ const MODE_ENTRY_TYPES: Record<string, ModeName> = {
 
 interface Bridge {
   state: Readonly<ComboState>;
-  listener: ((state: Readonly<ComboState>) => void) | null;
+  listeners: Set<(state: Readonly<ComboState>) => void>;
 }
 
 export function normalizeMode(name: ModeName, value: unknown): string | null {
@@ -66,13 +66,13 @@ function bridge(): Bridge {
   const existing = (globalThis as Record<symbol, unknown>)[BRIDGE_KEY] as Bridge | undefined;
   if (existing?.state) return existing;
   const initial = normalizedState((existing || COMBO_LEVELS.off) as Partial<Modes>);
-  return ((globalThis as Record<symbol, unknown>)[BRIDGE_KEY] = { state: initial, listener: null });
+  return ((globalThis as Record<symbol, unknown>)[BRIDGE_KEY] = { state: initial, listeners: new Set<(state: Readonly<ComboState>) => void>() });
 }
 
 function publish(state: Readonly<ComboState>): Readonly<ComboState> {
   const shared = bridge();
   shared.state = state;
-  shared.listener?.(state);
+  for (const listener of shared.listeners) listener(state);
   return state;
 }
 
@@ -173,7 +173,11 @@ export function activeModesSummary(state: { caveman: string; rtk: string; ponyta
 }
 
 export function setSharedComboListener(listener: ((state: Readonly<ComboState>) => void) | null): void {
-  bridge().listener = typeof listener === 'function' ? listener : null;
+  // Additive: every sibling extension syncs its local mirror on publish, so
+  // a /tersio or /combo switch takes effect next turn with no session reload.
+  // A null listener clears all (no current callers; reserved for teardown).
+  if (typeof listener === 'function') bridge().listeners.add(listener);
+  else bridge().listeners.clear();
 }
 
 export function resetSharedComboState(): Readonly<ComboState> {
