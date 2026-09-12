@@ -153,8 +153,8 @@ function printReport(report: UsageReport): void {
       console.log(l);
     }
   }
-if (report.rtkGain.commands) {
-  const g = report.rtkGain;
+  if (report.rtkGain.commands) {
+    const g = report.rtkGain;
     console.log(`  RTK MEASURED  ${fmt(g.commands)} commands · ${fmt(g.saved)} saved (${g.avgPct.toFixed(1)}%)`);
     const top = g.byCommand.reduce((m, r) => Math.max(m, r.saved), 1);
     const grows = g.byCommand.map((r, idx) => [
@@ -169,8 +169,8 @@ if (report.rtkGain.commands) {
     for (const l of table(['#', 'Command', 'Count', 'Saved', 'Avg%', 'Time', 'Impact'], grows, [true, false, true, true, true, true, false], 30)) {
       console.log(l);
     }
-}
-if (report.byTool.length) {
+  }
+  if (report.byTool.length) {
     console.log('  TOP TOOLS');
     const sum = report.byTool.reduce((a, [, n]) => a + n, 0);
     const top = report.byTool.reduce((m, [, n]) => Math.max(m, n), 1);
@@ -184,17 +184,7 @@ if (report.byTool.length) {
     for (const l of table(['#', 'Tool', 'Calls', 'Share', 'Impact'], trows, [true, false, true, true, false], 24)) {
       console.log(l);
     }
-}
-if (report.total) {
-  console.log('  ACTIVITY');
-  for (const [kind, n] of Object.entries(report.byKind)) {
-    console.log(`    ${kind}: ${n}`);
   }
-  console.log('  Top commands');
-  for (const [detail, n] of report.byDetail) {
-    console.log(`    ${n}x ${detail}`);
-  }
-}
 }
 
 async function runUsage(): Promise<void> {
