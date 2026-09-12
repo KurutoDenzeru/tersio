@@ -52,6 +52,34 @@
     if (sun) sun.classList.toggle('hidden', !dark);
   }
   syncThemeIcon();
+  (function initRail() {
+    var rail = document.getElementById('rail');
+    if (!rail || initRail.done) return;
+    initRail.done = true;
+    var N = 24, ticks = [];
+    for (var i = 0; i < N; i++) {
+      (function(i) {
+        var b = document.createElement('button');
+        b.type = 'button'; b.tabIndex = -1; b.setAttribute('aria-hidden', 'true');
+        b.addEventListener('click', function() {
+          var max = document.documentElement.scrollHeight - window.innerHeight;
+          window.scrollTo({ top: max * (i / (N - 1)), behavior: 'smooth' });
+        });
+        rail.appendChild(b); ticks.push(b);
+      })(i);
+    }
+    var queued = false;
+    function paint() {
+      queued = false;
+      var max = document.documentElement.scrollHeight - window.innerHeight;
+      var f = max > 0 ? window.scrollY / max : 0;
+      ticks.forEach(function(b, j) { b.classList.toggle('lit', j / (N - 1) <= f); });
+    }
+    window.addEventListener('scroll', function() {
+      if (!queued) { queued = true; requestAnimationFrame(paint); }
+    }, { passive: true });
+    paint();
+  })();
   (function initFx() {
     var btn = document.getElementById('fxBtn'), panel = document.getElementById('fxPanel'), cur = document.getElementById('fxCur');
     var keys = Object.keys(CURS), active = -1;
