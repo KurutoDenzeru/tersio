@@ -103,6 +103,7 @@ Break-even math, balanced preset (caveman full + rtk + ponytail): `⌈overhead �
 | `tersio doctor` | Check OMP, extension, Ponytail, and RTK health |
 | `tersio usage` | Ledger-backed usage + savings report |
 | `tersio gain` | Open the gain dashboard (`--open`, `--export <file>`, `--port <n>`; serves localhost only) |
+| `tersio reset` | Clear tersio statistics (usage ledger; `--dry-run`, `--yes`) — sessions and RTK history stay intact |
 | `tersio uninstall` | Remove extensions, registration, and the Ponytail plugin (`--keep-ponytail` keeps Ponytail; `--remove-rtk` also removes the RTK binary) |
 | `tersio version` | Print version |
 

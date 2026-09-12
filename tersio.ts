@@ -3,7 +3,7 @@
 // Usage: node tersio.js [install|update|reinstall|doctor|uninstall|version|help] [options]
 // Requires: node/npm and omp CLI
 import {
-  PACKAGE_BIN, PACKAGE_VERSION, applyUpdate, commandArg, gain, dashboardExport, dashboardOpen, dashboardPort, doctor, showHelp, showVersion, uninstall, unknownCommand, update, usage,
+  PACKAGE_BIN, PACKAGE_VERSION, applyUpdate, commandArg, gain, dashboardExport, dashboardOpen, dashboardPort, doctor, reset, showHelp, showVersion, uninstall, unknownCommand, update, usage,
 } from './cli/common.ts';
 import { closeRL } from './cli/interactive.ts';
 import { runInstall } from './cli/install.ts';
@@ -11,6 +11,7 @@ import { runDoctor } from './cli/doctor.ts';
 import { runLatestUpdate } from './cli/update.ts';
 import { runUninstall } from './cli/uninstall.ts';
 import { runUsage } from './cli/usage.ts';
+import { runReset } from './cli/reset.ts';
 import { runDashboard } from './cli/dashboard.ts';
 
 function printHelp(): void {
@@ -23,6 +24,7 @@ Commands:
   doctor       Check the current installation
   usage        Ledger-backed usage + savings report
   gain         Open the gain dashboard (localhost only)
+  reset        Clear tersio statistics (usage ledger)
   uninstall    Remove the managed extensions
   version      Print the package version
   help         Show this help
@@ -86,6 +88,12 @@ async function main(): Promise<void> {
 
   if (gain) {
     await runDashboard({ port: dashboardPort, open: dashboardOpen, exportFile: dashboardExport });
+    closeRL();
+    return;
+  }
+
+  if (reset) {
+    await runReset();
     closeRL();
     return;
   }

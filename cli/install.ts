@@ -21,6 +21,7 @@ import { printWelcome } from './banner.ts';
 import { checkForUpdate, runLatestUpdate } from './update.ts';
 import { runUninstall } from './uninstall.ts';
 import { runDoctor } from './doctor.ts';
+import { runReset } from './reset.ts';
 import { runUsage } from './usage.ts';
 import { runDashboard } from './dashboard.ts';
 import {
@@ -600,6 +601,7 @@ async function runCommandMenu(): Promise<void> {
     { value: 'doctor', label: 'Doctor', hint: 'verify the installation' },
     { value: 'usage', label: 'Usage', hint: 'token usage and savings report' },
     { value: 'gain', label: 'Gain dashboard', hint: 'open the report in your browser' },
+    { value: 'reset', label: 'Reset statistics', hint: 'clear the tersio usage ledger' },
     { value: 'uninstall', label: 'Uninstall', hint: 'remove tersio' },
   ], 'install');
   if (choice.status !== 'selected') {
@@ -639,6 +641,10 @@ async function runCommandMenu(): Promise<void> {
       break;
     case 'gain':
       await runDashboard({ port: dashboardPort, open: true, exportFile: dashboardExport });
+      closeRL();
+      break;
+    case 'reset':
+      await runReset();
       closeRL();
       break;
     case 'uninstall':

@@ -256,3 +256,14 @@ export function readUsage(): UsageRow[] {
   }
   return rows;
 }
+
+// Delete the ledger file. Returns the rows cleared (0 when already absent).
+// Only tersio-owned data lives here; session transcripts and the RTK
+// database are never touched.
+export function clearUsageLedger(): number {
+  const rows = readUsage().length;
+  try {
+    fs.unlinkSync(ledgerPath());
+  } catch { /* already absent */ }
+  return rows;
+}

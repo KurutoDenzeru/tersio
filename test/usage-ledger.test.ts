@@ -31,3 +31,13 @@ test("corrupt lines are skipped, valid rows survive", () => {
   assert.equal(rows.length, 2);
   assert.equal(rows[0].detail, "/tersio caveman full");
 });
+
+test("clearUsageLedger removes the file and returns rows cleared", async () => {
+  const { clearUsageLedger } = await import("../extensions/shared/usage-ledger.js");
+  appendUsage("command", "/tersio reset");
+  const cleared = clearUsageLedger();
+  assert.equal(cleared, 3);
+  assert.deepEqual(readUsage(), []);
+  assert.equal(fs.existsSync(process.env.TERSIO_USAGE_FILE!), false);
+  assert.equal(clearUsageLedger(), 0);
+});

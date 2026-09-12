@@ -44,14 +44,22 @@
     if (c) c.textContent = new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
   }
   tick(); setInterval(tick, 1000);
-  function syncThemeIcon() {
-    var dark = document.documentElement.getAttribute('data-theme') === 'dark' ||
-      (!document.documentElement.getAttribute('data-theme') && window.matchMedia('(prefers-color-scheme: dark)').matches);
-    var moon = document.getElementById('iconMoon'), sun = document.getElementById('iconSun');
-    if (moon) moon.classList.toggle('hidden', dark);
-    if (sun) sun.classList.toggle('hidden', !dark);
+  function currentTheme() {
+    try { return localStorage.getItem('tersio-theme') || 'system'; } catch (e) { return 'system'; }
   }
-  syncThemeIcon();
+  function paintThemeTabs() {
+    var v = currentTheme();
+    Array.prototype.forEach.call(document.querySelectorAll('[data-theme-val]'), function(b) {
+      b.classList.toggle('on', b.getAttribute('data-theme-val') === v);
+    });
+  }
+  function applyTheme(v) {
+    if (v === 'system') document.documentElement.removeAttribute('data-theme');
+    else document.documentElement.setAttribute('data-theme', v);
+    try { localStorage.setItem('tersio-theme', v); } catch (e) { }
+    paintThemeTabs();
+  }
+  applyTheme(currentTheme());
   (function initRail() {
     var rail = document.getElementById('rail');
     if (!rail || initRail.done) return;
@@ -146,14 +154,15 @@
       if (DATA) render(DATA);
     }).catch(function() { clearTimeout(to); });
   })();
-  document.getElementById('theme').addEventListener('click', function() {
-    var cur = document.documentElement.getAttribute('data-theme');
-    var sysDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    var next = (cur || (sysDark ? 'dark' : 'light')) === 'dark' ? 'light' : 'dark';
-    document.documentElement.setAttribute('data-theme', next);
-    try { localStorage.setItem('tersio-theme', next); } catch (e) { }
-    syncThemeIcon();
+  Array.prototype.forEach.call(document.querySelectorAll('[data-theme-val]'), function(b) {
+    b.addEventListener('click', function() { applyTheme(b.getAttribute('data-theme-val')); });
   });
+  (function() {
+    var sysMedia = window.matchMedia('(prefers-color-scheme: dark)');
+    if (sysMedia && typeof sysMedia.addEventListener === 'function') sysMedia.addEventListener('change', function() {
+      if (currentTheme() === 'system') applyTheme('system');
+    });
+  })();
 
   var PROVIDERS = [
     [/muse/i, 'Meta', 'meta', '#0082fb'],
@@ -309,6 +318,13 @@
     if (other) rows.push(['Other', other, 'var(--dim)']);
     return tipDayHTML(head, weekTotal, rows.length ? rows : [['no activity', 0, 'var(--dim)']]);
   }
+  // Shared empty state (shadcn pattern): icon chip + title + hint. Callers
+  // inject the HTML; render()'s trailing lucide.createIcons() paints icons.
+  function emptyState(icon, title, desc) {
+    return '<span class="empty-icon"><i data-lucide="' + icon + '" class="size-5"></i></span>' +
+      '<p class="empty-title">' + title + '</p>' +
+      '<p class="empty-desc">' + desc + '</p>';
+  }
   function renderGraph(byDay) {
     var g = document.getElementById('graph');
     g.innerHTML = '';
@@ -319,6 +335,15 @@
       var b = byDay[day];
       sums[day] = b.input + b.output + b.cacheRead + b.cacheWrite;
     });
+    var hasData = Object.keys(sums).some(function(k) { return sums[k] > 0; });
+    document.getElementById('emptyGraph').classList.toggle('hidden', hasData);
+    document.getElementById('graph').style.display = hasData ? '' : 'none';
+    document.getElementById('graphMonths').style.display = hasData ? '' : 'none';
+    if (!hasData) {
+      document.getElementById('graphRange').textContent = '';
+      document.getElementById('graphCap').textContent = 'no data in trailing 12 months';
+      return;
+    }
     // per-day values under the active mode
     var dayKeys = [], wk;
     for (wk = 0; wk < 53; wk++) for (var di = 0; di < 7; di++) {
@@ -435,6 +460,7 @@
     var tops = topModels(byModel, 8).filter(function(m) { return modelTotal(byModel, m) > 0; });
     var cards = document.getElementById('modelCards');
     cards.innerHTML = '';
+    if (!tops.length) cards.innerHTML = '<div class="empty md:col-span-3">' + emptyState('boxes', 'No models yet', 'Model token totals will appear here once sessions report tokens.') + '</div>';
     tops.slice(0, 3).forEach(function(m, i) {
       var v = vendorOf(m), d = wow(m);
       var card = document.createElement('div');
@@ -501,7 +527,7 @@
       ol.appendChild(li);
     });
     document.getElementById('modelsCount').textContent = tops.length ? tops.length + ' models' : '';
-    if (!tops.length) ol.innerHTML = '<li class="mono text-sm px-4 py-6" style="color: var(--dim)">no session tokens yet</li>';
+    if (!tops.length) ol.innerHTML = '<li>' + emptyState('boxes', 'No models yet', 'Model token totals will appear here once sessions report tokens.') + '</li>';
     else if ('IntersectionObserver' in window && !reduce) {
       var fio = new IntersectionObserver(function(entries) {
         entries.forEach(function(e) {
@@ -677,6 +703,29 @@
     var el = document.getElementById('usdSpark');
     el.innerHTML = '';
     var keys = Object.keys(byDay).sort().slice(-30);
+    // Zero state: the spark strip is a fixed h-16, so a placeholder inside it
+    // overflows onto the big number. Hide the number, strip, and stats, and
+    // mount one placeholder in the card body instead. Restored below on data.
+    var mid = el.parentElement || null, card = mid && mid.parentElement ? mid.parentElement : null;
+    var usdEl = document.getElementById('usd'), noteEl = document.getElementById('usdNote');
+    var ex = document.getElementById('emptyUsd');
+    if (!keys.length && card && mid) {
+      if (!ex) {
+        ex = document.createElement('div');
+        ex.id = 'emptyUsd'; ex.className = 'empty'; ex.style.marginTop = '16px';
+        ex.innerHTML = emptyState('trending-up', 'No cost data yet', 'Daily spend will spark here once sessions report tokens.');
+        card.insertBefore(ex, mid);
+      }
+      el.style.display = 'none'; mid.style.display = 'none';
+      if (usdEl) usdEl.style.display = 'none';
+      if (noteEl) noteEl.style.display = 'none';
+    } else {
+      if (ex && ex.parentElement) ex.parentElement.removeChild(ex);
+      el.style.display = '';
+      if (mid) mid.style.display = '';
+      if (usdEl) usdEl.style.display = '';
+      if (noteEl) noteEl.style.display = '';
+    }
     var rate = total ? usd / total : 0;
     var max = 1, vols = [];
     keys.forEach(function(k) {
@@ -727,6 +776,11 @@
     var byDay = d.byDay || {};
     renderSpark(byDay, d.usd || 0, d.savedUsd || 0, total);
     document.getElementById('verChip').textContent = 'tersio v' + (d.version || '?');
+    var dp = d.paths || {};
+    [['pathLedger', dp.ledger], ['pathSessions', dp.sessions], ['pathRtk', dp.rtk]].forEach(function(pair) {
+      var pel = document.getElementById(pair[0]);
+      if (pel && pair[1]) { pel.textContent = pair[1]; pel.title = pair[1]; }
+    });
     countUp(document.getElementById('saved'), d.savedUsd || 0, true);
     document.getElementById('co2').textContent = '~' + (d.co2g || 0).toFixed(1) + 'g';
     (function() {
@@ -783,7 +837,7 @@
     var body = document.getElementById('recent');
     body.innerHTML = '';
     var rows = (DATA.recent || []).slice(0, 13);
-    rows.forEach(function (r, i) {
+    rows.forEach(function(r, i) {
       var v = vendorOf(r.m);
       var tr = document.createElement('tr');
       tr.className = 'rrow' + (i < rows.length - 1 ? ' rowline' : '');
@@ -826,13 +880,42 @@
 
   function load() {
     fetch('data.json').then(function(r) { return r.json(); }).then(render).catch(function() {
-      document.getElementById('topTable').style.display = 'none';
-      document.getElementById('emptyTop').classList.remove('hidden');
+      var cards = document.getElementById('modelCards');
+      if (cards && !cards.children.length) cards.innerHTML = '<div class="empty md:col-span-3">' + emptyState('cloud-off', 'Could not load data', 'Serve with tersio gain instead of opening this file directly.') + '</div>';
       if (window.lucide) lucide.createIcons();
       observe();
     });
   }
   document.getElementById('reload').addEventListener('click', load);
+  (function() {
+    var dlg = document.getElementById('settings');
+    if (!dlg || typeof dlg.showModal !== 'function') return;
+    document.getElementById('settingsBtn').addEventListener('click', function() {
+      if (typeof dlg.showModal === 'function') dlg.showModal();
+    });
+    document.getElementById('settingsClose').addEventListener('click', function() { dlg.close(); });
+    dlg.addEventListener('click', function(ev) { if (ev.target === dlg) dlg.close(); });
+  })();
+  (function() {
+    var resetBtn = document.getElementById('reset');
+    if (!resetBtn) return;
+    if (window.location.protocol === 'file:') { resetBtn.style.display = 'none'; return; }
+    var label = document.getElementById('resetLabel');
+    resetBtn.addEventListener('click', function() {
+      if (resetBtn.dataset.armed) {
+        delete resetBtn.dataset.armed;
+        label.textContent = 'Clearing…';
+        fetch('reset', { method: 'POST' }).then(function(r) { return r.json(); }).then(function() {
+          label.textContent = 'Reset';
+          load();
+        }).catch(function() { label.textContent = 'Reset'; });
+      } else {
+        resetBtn.dataset.armed = '1';
+        label.textContent = 'Sure?';
+        setTimeout(function() { delete resetBtn.dataset.armed; if (label.textContent === 'Sure?') label.textContent = 'Reset'; }, 3000);
+      }
+    });
+  })();
   load();
   observe();
 })();

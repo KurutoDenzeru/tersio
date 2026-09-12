@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark light">
-<script>(function(){try{var t=localStorage.getItem('tersio-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+<script>(function(){try{var t=localStorage.getItem('tersio-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);else document.documentElement.removeAttribute('data-theme');}catch(e){}})();</script>
 <title>Tersio Dashboard</title>
 <link rel="icon" type="image/png" href="brand.webp">
 <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
@@ -36,14 +36,62 @@
       <span id="clock">--:--</span>
     </span>
     <span class="hidden sm:block w-px h-5 shrink-0" style="background: var(--line)" aria-hidden="true"></span>
-    <button id="theme" class="btn-push flex shrink-0 items-center p-2 rounded-xl" style="border: 1px solid var(--line); color: var(--ink)" aria-label="Toggle dark mode">
-      <span id="iconMoon"><i data-lucide="moon" class="size-4"></i></span>
-      <span id="iconSun" class="hidden"><i data-lucide="sun" class="size-4"></i></span>
+    <button id="reset" class="btn-push mono flex shrink-0 items-center gap-2 text-xs pl-2.5 pr-3 py-2 rounded-xl" style="border: 1px solid var(--line); color: var(--ink)" aria-label="Reset tersio statistics">
+      <i data-lucide="rotate-ccw" class="size-3.5"></i><span class="hidden md:inline" id="resetLabel">Reset</span>
     </button>
-    <button id="reload" class="btn-push mono flex shrink-0 items-center gap-2 text-xs pl-2.5 pr-3 py-2 rounded-xl" style="border: 1px solid var(--line); color: var(--ink)" aria-label="Reload data">
-      <i data-lucide="refresh-cw" class="size-3.5"></i><span class="hidden md:inline">Reload</span>
+    <button id="settingsBtn" class="btn-push flex shrink-0 items-center p-2 rounded-xl" style="border: 1px solid var(--line); color: var(--ink)" aria-label="Open settings">
+      <i data-lucide="settings" class="size-4"></i>
     </button>
   </header>
+
+  <!-- Settings dialog (shadcn pattern, native modal) -->
+  <dialog id="settings" class="dlg" aria-labelledby="settingsTitle">
+    <div class="dlg-head">
+      <div class="min-w-0">
+        <p class="dlg-title" id="settingsTitle">Settings</p>
+        <p class="dlg-desc">Appearance, data refresh, and where statistics live.</p>
+      </div>
+      <button id="settingsClose" class="btn-push flex shrink-0 items-center p-2 rounded-xl" style="border: 1px solid var(--line); color: var(--ink)" aria-label="Close settings">
+        <i data-lucide="x" class="size-4"></i>
+      </button>
+    </div>
+    <p class="dlg-label">Appearance</p>
+    <div class="dlg-row">
+      <div class="min-w-0">
+        <p class="dlg-name">Theme</p>
+        <p class="dlg-hint">Light, dark, or follow the system.</p>
+      </div>
+      <div class="seg mono text-xs flex items-center gap-1 p-1 rounded-[10px]" style="border: 1px solid var(--line); background: var(--panel)" role="tablist" aria-label="Theme">
+        <button data-theme-val="light" class="px-2.5 py-1.5" role="tab" aria-label="Light" title="Light"><i data-lucide="sun" class="size-4"></i></button>
+        <button data-theme-val="dark" class="px-2.5 py-1.5" role="tab" aria-label="Dark" title="Dark"><i data-lucide="moon" class="size-4"></i></button>
+        <button data-theme-val="system" class="px-2.5 py-1.5" role="tab" aria-label="System" title="System"><i data-lucide="monitor" class="size-4"></i></button>
+      </div>
+    </div>
+    <p class="dlg-label">Data</p>
+    <div class="dlg-row">
+      <div class="min-w-0">
+        <p class="dlg-name">Reload</p>
+        <p class="dlg-hint">Re-read statistics from disk.</p>
+      </div>
+      <button id="reload" class="btn-push mono flex shrink-0 items-center gap-2 text-xs pl-2.5 pr-3 py-2 rounded-xl" style="border: 1px solid var(--line); color: var(--ink)" aria-label="Reload data">
+        <i data-lucide="refresh-cw" class="size-3.5"></i><span>Reload</span>
+      </button>
+    </div>
+    <div class="dlg-paths">
+      <div class="dlg-path">
+        <p class="dlg-name">Usage ledger <span class="dlg-own">tersio-owned · reset clears</span></p>
+        <p class="mono dlg-file" id="pathLedger" title="">–</p>
+      </div>
+      <div class="dlg-path">
+        <p class="dlg-name">Session transcripts <span class="dlg-own">host-owned · never touched</span></p>
+        <p class="mono dlg-file" id="pathSessions" title="">–</p>
+      </div>
+      <div class="dlg-path">
+        <p class="dlg-name">RTK history <span class="dlg-own">rtk-owned · never touched</span></p>
+        <p class="mono dlg-file" id="pathRtk" title="">–</p>
+      </div>
+    </div>
+  </dialog>
 
   <!-- Hero: centered total -->
   <section class="mx-auto max-w-6xl text-center pt-14 pb-10 relative">
@@ -131,6 +179,11 @@
       <span>more</span>
     </div>
     <div class="heatmonth mono mt-2 grid w-full" style="color: var(--dim); grid-template-columns: repeat(53, minmax(0, 1fr)); gap: 3px;" id="graphMonths"></div>
+    <div id="emptyGraph" class="empty hidden">
+      <span class="empty-icon"><i data-lucide="calendar-x" class="size-5"></i></span>
+      <p class="empty-title">No activity yet</p>
+      <p class="empty-desc">Daily token activity will chart here once sessions report tokens.</p>
+    </div>
     </div>
   </section>
 
@@ -177,7 +230,11 @@
         <tbody id="recent"></tbody>
       </table>
     </div>
-    <p id="emptyRecent" class="mono text-sm py-6 text-center hidden" style="color: var(--dim)">No requests yet.</p>
+    <div id="emptyRecent" class="empty hidden">
+      <span class="empty-icon"><i data-lucide="inbox" class="size-5"></i></span>
+      <p class="empty-title">No requests yet</p>
+      <p class="empty-desc">Recent assistant messages will show here once sessions report tokens.</p>
+    </div>
   </section>
   </div>
 
@@ -206,7 +263,11 @@
         <tbody id="cmdBody"></tbody>
       </table>
     </div>
-    <p id="emptyCmd" class="mono text-sm py-6 text-center hidden" style="color: var(--dim)">No tool calls or RTK measurements yet.</p>
+    <div id="emptyCmd" class="empty hidden">
+      <span class="empty-icon"><i data-lucide="wrench" class="size-5"></i></span>
+      <p class="empty-title">No tool data yet</p>
+      <p class="empty-desc">Session tool calls and RTK measurements will appear here once recorded.</p>
+    </div>
     <div id="cmdPager" class="mono text-xs mt-4 flex flex-wrap items-center gap-x-4 gap-y-3" style="color: var(--dim)">
       <span id="cmdRange">Showing 0 of 0</span>
       <span class="seg flex items-center gap-1 p-1 rounded-[10px]" style="border: 1px solid var(--line)" role="group" aria-label="Rows per page">

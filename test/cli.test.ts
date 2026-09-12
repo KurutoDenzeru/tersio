@@ -35,7 +35,7 @@ for (const alias of [["help"], ["--help"], ["-h"]]) {
 
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /^Usage:/);
-    for (const command of ["install", "update", "reinstall", "doctor", "uninstall", "usage", "gain", "version", "help"]) {
+    for (const command of ["install", "update", "reinstall", "doctor", "uninstall", "usage", "gain", "reset", "version", "help"]) {
       assert.match(result.stdout, new RegExp(`^  ${command}\\s`, "m"));
     }
     assert.equal(result.stderr, "");
@@ -249,5 +249,96 @@ test("gain --export writes a self-contained html file", () => {
   assert.match(body, /\$'quoted\$'/);
   assert.equal(body.split("</body>").length - 1, 1);
   assert.equal(body.split("</html>").length - 1, 1);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("reset --dry-run keeps the seeded ledger", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-reset-"));
+  const ledger = path.join(dir, "usage.jsonl");
+  writeFileSync(ledger, '{"ts":1,"kind":"command","detail":"x"}\n{"ts":2,"kind":"toggle","detail":"y"}\n', "utf8");
+  const result = spawnSync(process.execPath, [installer, "reset", "--dry-run"], {
+    encoding: "utf8",
+    cwd: root,
+    env: { ...process.env, TERSIO_USAGE_FILE: ledger },
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /Will remove: 2 usage rows/);
+  assert.match(result.stdout, /\[dry-run\] ledger kept/);
+  assert.equal(existsSync(ledger), true);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("reset --yes clears the seeded ledger", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-reset-"));
+  const ledger = path.join(dir, "usage.jsonl");
+  writeFileSync(ledger, '{"ts":1,"kind":"command","detail":"x"}\n', "utf8");
+  const result = spawnSync(process.execPath, [installer, "reset", "--yes"], {
+    encoding: "utf8",
+    cwd: root,
+    env: { ...process.env, TERSIO_USAGE_FILE: ledger },
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /\[ok\] reset — removed 1 usage rows/);
+  assert.equal(existsSync(ledger), false);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("reset --yes on a missing ledger exits 0 without writing", () => {
+  const ledger = path.join(root, "test", "definitely-missing-home", "no-ledger.jsonl");
+  const result = spawnSync(process.execPath, [installer, "reset", "--yes"], {
+    encoding: "utf8",
+    cwd: root,
+    env: { ...process.env, TERSIO_USAGE_FILE: ledger },
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /already empty/);
+  assert.equal(existsSync(ledger), false);
+});
+
+test("doctor prints record store paths", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-doctor-"));
+  const ledger = path.join(dir, "usage.jsonl");
+  writeFileSync(ledger, '{"ts":1,"kind":"command","detail":"x"}\n', "utf8");
+  const result = spawnSync(process.execPath, [installer, "doctor"], {
+    encoding: "utf8",
+    cwd: root,
+    env: {
+      ...process.env,
+      TERSIO_USAGE_FILE: ledger,
+      TERSIO_SESSIONS_DIR: path.join(dir, "no-sessions"),
+      TERSIO_RTK_DB: path.join(dir, "no-rtk.db"),
+    },
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /^Records$/m);
+  assert.match(result.stdout, new RegExp(`Usage ledger \\(tersio-owned[^)]*\\): ${ledger.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
+  assert.match(result.stdout, /Session transcripts \(host-owned/);
+  assert.match(result.stdout, /RTK history \(rtk-owned/);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("gain --export includes the reset control and empty states", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-dash-"));
+  const out = path.join(dir, "dash.html");
+  const result = spawnSync(process.execPath, [installer, "gain", "--export", out], {
+    encoding: "utf8",
+    cwd: root,
+    env: {
+      ...process.env,
+      TERSIO_USAGE_FILE: path.join(dir, "usage.jsonl"),
+      TERSIO_SESSIONS_DIR: path.join(dir, "no-sessions"),
+      TERSIO_RTK_DB: path.join(dir, "no-rtk.db"),
+    },
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const body = readFileSync(out, "utf8");
+  assert.match(body, /id="reset"/);
+  assert.match(body, /id="emptyGraph"/);
+  assert.match(body, /emptyState\('boxes'/);
+  assert.match(body, /id="settings"/);
+  assert.match(body, /id="settingsBtn"/);
+  assert.match(body, /id="pathLedger"/);
+  assert.match(body, /data-theme-val="system"/);
+  assert.match(body, /data-lucide="monitor"/);
   rmSync(dir, { recursive: true, force: true });
 });
