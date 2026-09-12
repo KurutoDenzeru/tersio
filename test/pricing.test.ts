@@ -132,5 +132,5 @@ test("tersio usage prints per-model USD", () => {
   });
   rmSync(dir, { recursive: true, force: true });
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /claude-sonnet-5: in 1,000,000.*\$3\.00/);
+  assert.match(result.stdout, /claude-sonnet-5.*in 1,000,000.*\$3\.00/);
 });

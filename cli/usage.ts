@@ -113,6 +113,23 @@ function pad(s: string, n: number): string {
   return s.length >= n ? s : s + ' '.repeat(n - s.length);
 }
 
+// Box-drawing table, plain text (piped-safe, byte-stable). Numeric columns
+// right-align; long cells truncate with an ellipsis.
+function table(headers: string[], rows: string[][], right: boolean[] = [], maxW = 32): string[] {
+  const cells = [headers, ...rows].map((r) =>
+    r.map((c) => (c.length > maxW ? c.slice(0, maxW - 1) + '…' : c)),
+  );
+  const widths = headers.map((_, i) => Math.max(...cells.map((r) => r[i].length)));
+  const line = (l: string, m: string, r: string): string =>
+    l + widths.map((w) => '─'.repeat(w + 2)).join(m) + r;
+  const row = (cs: string[]): string =>
+    '│ ' + cs.map((c, i) => (right[i] ? c.padStart(widths[i]) : pad(c, widths[i]))).join(' │ ') + ' │';
+  const out = [line('┌', '┬', '┐'), row(cells[0]), line('├', '┼', '┤')];
+  for (const r of cells.slice(1)) out.push(row(r));
+  out.push(line('└', '┴', '┘'));
+  return out.map((l) => '  ' + l);
+}
+
 function printReport(report: UsageReport): void {
   console.log(`\n=== Tersio Usage v${report.version} · ${fmt(report.messages)} msgs ===`);
   if (report.empty) {
@@ -126,30 +143,47 @@ function printReport(report: UsageReport): void {
   if (models.length) {
     console.log('  BY MODEL');
     const top = models.reduce((m, [, b]) => Math.max(m, b.input + b.output + b.cacheRead + b.cacheWrite), 1);
-    for (const [model, b] of models) {
+    const mrows = models.map(([model, b]) => {
       const mt = b.input + b.output + b.cacheRead + b.cacheWrite;
       const hit = b.input + b.cacheRead ? (b.cacheRead / (b.input + b.cacheRead)) * 100 : 0;
       const usd = report.byModelUsd[model] ?? 0;
-      console.log(`    ${model}: in ${fmt(b.input)} · out ${fmt(b.output)} · cache r/w ${fmt(b.cacheRead)}/${fmt(b.cacheWrite)} · $${usd.toFixed(2)} · hit ${hit.toFixed(1)}% ${bar(mt / top)} ${fmtShort(mt)}`);
+      return [model, `in ${fmt(b.input)}`, `out ${fmt(b.output)}`, `${fmt(b.cacheRead)}/${fmt(b.cacheWrite)}`, `$${usd.toFixed(2)}`, `${hit.toFixed(1)}%`, `${bar(mt / top, 8)} ${fmtShort(mt)}`];
+    });
+    for (const l of table(['Model', 'Input', 'Output', 'Cache r/w', 'USD', 'Hit', 'Share'], mrows, [false, true, true, true, true, true, false])) {
+      console.log(l);
     }
   }
 if (report.rtkGain.commands) {
   const g = report.rtkGain;
-  console.log(`  RTK MEASURED  ${fmt(g.commands)} commands · ${fmt(g.saved)} saved (${g.avgPct.toFixed(1)}%)`);
-  const nameW = Math.min(28, g.byCommand.reduce((m, r) => Math.max(m, r.command.length), 0));
-  const top = g.byCommand.reduce((m, r) => Math.max(m, r.saved), 1);
-  for (const r of g.byCommand) {
-    console.log(`    ${pad(r.command.slice(0, nameW), nameW)} ${String(r.count).padStart(4)}x  ${fmtShort(r.saved).padStart(7)} saved  ${r.avgPct.toFixed(1).padStart(5)}%  ${fmtMs(r.avgMs).padStart(6)}  ${bar(r.saved / top, 10)}`);
-  }
+    console.log(`  RTK MEASURED  ${fmt(g.commands)} commands · ${fmt(g.saved)} saved (${g.avgPct.toFixed(1)}%)`);
+    const top = g.byCommand.reduce((m, r) => Math.max(m, r.saved), 1);
+    const grows = g.byCommand.map((r, idx) => [
+      String(idx + 1),
+      r.command,
+      `${r.count}x`,
+      fmtShort(r.saved),
+      `${r.avgPct.toFixed(1)}%`,
+      fmtMs(r.avgMs),
+      bar(r.saved / top, 8),
+    ]);
+    for (const l of table(['#', 'Command', 'Count', 'Saved', 'Avg%', 'Time', 'Impact'], grows, [true, false, true, true, true, true, false], 30)) {
+      console.log(l);
+    }
 }
 if (report.byTool.length) {
-  console.log('  TOP TOOLS');
-  const sum = report.byTool.reduce((a, [, n]) => a + n, 0);
-  const top = report.byTool.reduce((m, [, n]) => Math.max(m, n), 1);
-  const nameW = Math.min(16, report.byTool.reduce((m, [t]) => Math.max(m, t.length), 0));
-  for (const [tool, n] of report.byTool) {
-    console.log(`    ${pad(tool.slice(0, nameW), nameW)} ${String(n).padStart(5)}  ${String(Math.round((n / sum) * 100)).padStart(3)}%  ${bar(n / top, 10)}`);
-  }
+    console.log('  TOP TOOLS');
+    const sum = report.byTool.reduce((a, [, n]) => a + n, 0);
+    const top = report.byTool.reduce((m, [, n]) => Math.max(m, n), 1);
+    const trows = report.byTool.map(([tool, n], idx) => [
+      String(idx + 1),
+      tool,
+      fmt(n),
+      `${Math.round((n / sum) * 100)}%`,
+      bar(n / top, 8),
+    ]);
+    for (const l of table(['#', 'Tool', 'Calls', 'Share', 'Impact'], trows, [true, false, true, true, false], 24)) {
+      console.log(l);
+    }
 }
 if (report.total) {
   console.log('  ACTIVITY');
