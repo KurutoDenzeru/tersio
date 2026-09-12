@@ -165,11 +165,11 @@
         <thead>
           <tr class="text-left text-[11px] uppercase tracking-[0.14em]" style="color: var(--dim)">
             <th class="font-normal text-right pr-3 py-2 w-10">#</th>
-            <th class="font-normal py-2 pr-3">Tool / Command</th>
-            <th class="font-normal text-right py-2 pr-3">Count</th>
-            <th class="font-normal text-right py-2 pr-3">Saved</th>
-            <th class="font-normal text-right py-2 pr-3">Avg%</th>
-            <th class="font-normal text-right py-2 pr-3">Time</th>
+            <th class="font-normal py-2 pr-3" aria-sort="none"><button class="thsort" data-sort="name">Tool / Command <span class="arr">⇅</span></button></th>
+            <th class="font-normal text-right py-2 pr-3" aria-sort="descending"><button class="thsort num" data-sort="count">Count <span class="arr">↓</span></button></th>
+            <th class="font-normal text-right py-2 pr-3" aria-sort="none"><button class="thsort num" data-sort="saved">Saved <span class="arr">⇅</span></button></th>
+            <th class="font-normal text-right py-2 pr-3" aria-sort="none"><button class="thsort num" data-sort="avgPct">Avg% <span class="arr">⇅</span></button></th>
+            <th class="font-normal text-right py-2 pr-3" aria-sort="none"><button class="thsort num" data-sort="avgMs">Time <span class="arr">⇅</span></button></th>
             <th class="font-normal py-2 min-w-32">Impact</th>
           </tr>
         </thead>
@@ -177,6 +177,16 @@
       </table>
     </div>
     <p id="emptyCmd" class="mono text-sm py-6 text-center hidden" style="color: var(--dim)">No tool calls or RTK measurements yet.</p>
+    <div id="cmdPager" class="mono text-xs mt-4 flex flex-wrap items-center gap-x-4 gap-y-3" style="color: var(--dim)">
+      <span id="cmdRange">Showing 0 of 0</span>
+      <span class="seg flex items-center gap-1 p-1 rounded-[10px]" style="border: 1px solid var(--line)" role="group" aria-label="Rows per page">
+        <button data-pp="10" class="px-2.5 py-1" role="button">10</button>
+        <button data-pp="15" class="on px-2.5 py-1" role="button">15</button>
+        <button data-pp="25" class="px-2.5 py-1" role="button">25</button>
+        <button data-pp="50" class="px-2.5 py-1" role="button">50</button>
+      </span>
+      <span class="ml-auto flex items-center gap-1" id="cmdPages" role="navigation" aria-label="Pages"></span>
+    </div>
     <p class="mono text-[11px] mt-3" style="color: var(--dim)">saved / avg / time are RTK-metered per command — session tools without metering show –. caveman + ponytail gains are instruction-following, bench-measured in BENCHMARK.md.</p>
   </section>
 

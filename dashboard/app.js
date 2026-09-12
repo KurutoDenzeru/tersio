@@ -488,24 +488,46 @@
     }
   }
 
-  // Union of session tool calls + RTK-metered commands, sorted by count.
-  // Session tools were never metered per command: saved / avg / time show –.
+  // Union of session tool calls + RTK-metered commands, sortable + paged.
+  // Session tools were never metered per command: saved / avg / time show – and sort last.
+  var cmdSort = { key: 'count', dir: -1 }, cmdPage = 1, cmdPer = 15, cmdRows = [];
+  function cmdVal(r, key) { return key === 'name' ? r.name.toLowerCase() : r[key]; }
+  function sortCmd() {
+    var k = cmdSort.key, d = cmdSort.dir;
+    cmdRows.sort(function(a, b) {
+      var av = cmdVal(a, k), bv = cmdVal(b, k);
+      if (av === null || av === undefined) return 1;
+      if (bv === null || bv === undefined) return -1;
+      if (av < bv) return -d;
+      if (av > bv) return d;
+      return b.count - a.count;
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('#tools .thsort'), function(btn) {
+      var on = btn.dataset.sort === k;
+      btn.querySelector('.arr').textContent = on ? (d === 1 ? '↑' : '↓') : '⇅';
+      btn.closest('th').setAttribute('aria-sort', on ? (d === 1 ? 'ascending' : 'descending') : 'none');
+    });
+  }
   function renderCmd() {
     var g = (DATA.rtkGain || {});
-    var rows = (DATA.byTool || []).map(function(r) {
+    cmdRows = (DATA.byTool || []).map(function(r) {
       return { name: r[0], count: r[1], saved: null, avgPct: null, avgMs: null };
     });
     (g.byCommand || []).forEach(function(r) {
-      rows.push({ name: r.command, count: r.count, saved: r.saved, avgPct: r.avgPct, avgMs: r.avgMs });
+      cmdRows.push({ name: r.command, count: r.count, saved: r.saved, avgPct: r.avgPct, avgMs: r.avgMs });
     });
-    rows.sort(function(a, b) { return b.count - a.count; });
+    sortCmd();
+    var pages = Math.max(1, Math.ceil(cmdRows.length / cmdPer));
+    if (cmdPage > pages) cmdPage = pages;
     var body = document.getElementById('cmdBody');
     body.innerHTML = '';
     var max = 1;
-    rows.forEach(function(r) { max = Math.max(max, r.count); });
-    rows.slice(0, 20).forEach(function(r, i) {
+    cmdRows.forEach(function(r) { max = Math.max(max, r.count); });
+    var start = (cmdPage - 1) * cmdPer;
+    cmdRows.slice(start, start + cmdPer).forEach(function(r, i) {
+      var n = start + i;
       var tr = document.createElement('tr');
-      tr.className = 'mrow' + (i < Math.min(rows.length, 20) - 1 ? ' rowline' : '');
+      tr.className = 'mrow' + (i < Math.min(cmdRows.length - start, cmdPer) - 1 ? ' rowline' : '');
       tr.innerHTML = '<td class="text-right pr-3 py-2.5 mono text-xs w-10" style="color: var(--dim)"></td>' +
         '<td class="py-2.5 pr-3 truncate" style="max-width: 280px"></td>' +
         '<td class="text-right py-2.5 pr-3 font-bold"></td>' +
@@ -514,7 +536,7 @@
         '<td class="text-right py-2.5 pr-3" style="color: var(--dim)"></td>' +
         '<td class="py-2.5 min-w-32"><div class="bar-track h-1.5 overflow-hidden"><div class="bar-fill h-full"></div></div></td>';
       var tds = tr.children;
-      tds[0].textContent = String(i + 1).padStart(2, '0');
+      tds[0].textContent = String(n + 1).padStart(2, '0');
       tds[1].textContent = r.name;
       tds[1].title = r.name;
       tds[2].textContent = fmt(r.count);
@@ -524,11 +546,65 @@
       tds[6].firstChild.firstChild.style.width = r.count ? Math.round(r.count / max * 100) + '%' : '0';
       body.appendChild(tr);
     });
-    document.getElementById('cmdTable').style.display = rows.length ? '' : 'none';
-    document.getElementById('emptyCmd').classList.toggle('hidden', rows.length > 0);
+    document.getElementById('cmdTable').style.display = cmdRows.length ? '' : 'none';
+    document.getElementById('emptyCmd').classList.toggle('hidden', cmdRows.length > 0);
     var tools = (DATA.byTool || []).length;
     document.getElementById('toolsScope').textContent =
       g.commands ? fmt(tools) + ' tools · ' + fmt(g.commands) + ' commands · ' + fmtShort(g.saved) + ' saved' : 'tool calls in sessions';
+    paintCmdPager(pages);
+  }
+  function paintCmdPager(pages) {
+    var total = cmdRows.length, start = total ? (cmdPage - 1) * cmdPer + 1 : 0;
+    document.getElementById('cmdRange').textContent =
+      'Showing ' + start + '–' + Math.min(total, cmdPage * cmdPer) + ' of ' + total;
+    var wrap = document.getElementById('cmdPages');
+    wrap.innerHTML = '';
+    function btn(label, page, opts) {
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = 'pgbtn mono' + (opts && opts.on ? ' on' : '');
+      b.textContent = label;
+      if (opts && opts.dim) b.setAttribute('aria-label', opts.dim);
+      if (opts && opts.off) b.disabled = true;
+      else b.addEventListener('click', function() { cmdPage = page; renderCmd(); });
+      wrap.appendChild(b);
+      return b;
+    }
+    btn('‹', cmdPage - 1, { dim: 'Previous page', off: cmdPage <= 1 });
+    var nums = [];
+    for (var p = 1; p <= pages; p++) {
+      if (p === 1 || p === pages || Math.abs(p - cmdPage) <= 1) nums.push(p);
+      else if (nums[nums.length - 1] !== '…') nums.push('…');
+    }
+    nums.forEach(function(p) {
+      if (p === '…') {
+        var s = document.createElement('span');
+        s.textContent = '…'; s.style.padding = '0 2px';
+        wrap.appendChild(s);
+      } else btn(String(p), p, { on: p === cmdPage });
+    });
+    btn('›', cmdPage + 1, { dim: 'Next page', off: cmdPage >= pages });
+  }
+  function bindCmdTable() {
+    if (bindCmdTable.done) return;
+    bindCmdTable.done = true;
+    Array.prototype.forEach.call(document.querySelectorAll('#tools .thsort'), function(btn) {
+      btn.addEventListener('click', function() {
+        var k = btn.dataset.sort;
+        if (cmdSort.key === k) cmdSort.dir = -cmdSort.dir;
+        else { cmdSort.key = k; cmdSort.dir = k === 'name' ? 1 : -1; }
+        cmdPage = 1;
+        renderCmd();
+      });
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('#cmdPager [data-pp]'), function(btn) {
+      btn.addEventListener('click', function() {
+        Array.prototype.forEach.call(document.querySelectorAll('#cmdPager [data-pp]'), function(b) { b.classList.remove('on'); });
+        btn.classList.add('on');
+        cmdPer = Number(btn.dataset.pp);
+        cmdPage = 1;
+        renderCmd();
+      });
+    });
   }
 
   function fmtMs(ms) {
@@ -653,6 +729,7 @@
     })();
     renderStrip(t);
     bindGraphTabs();
+    bindCmdTable();
     renderGraph(d.byDay || {});
     renderModels();
     renderCmd();
