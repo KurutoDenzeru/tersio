@@ -1,4 +1,4 @@
-## Unreleased
+## v2.11.0
  - `tersio reset` clears tersio-owned statistics (usage ledger) with `--dry-run` preview and confirm-unless-`--yes`; session transcripts and RTK history are never touched. `tersio doctor` gains a Records section showing every store path with ownership. Gain dashboard gets a served-mode Reset button plus shadcn-style empty states (dashed well, Lucide icon, title, hint) on Activity, Top models, Models, Recent, Tools, and the cost sparkline for zero-data renders. Header controls collapse into a native-modal Settings dialog (icon-only Light/Dark/System theme tabs, reload, and all three store paths with ownership).
 
 ## v2.10.0
