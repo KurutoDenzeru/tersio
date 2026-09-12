@@ -4,10 +4,10 @@ import { bannerLines, bannerTier } from "../cli/banner.ts";
 
 const strip = (s: string): string => s.replace(/\x1b\[[0-9;]*m/g, "");
 
-test("bannerLines renders 5 rows at most 16 wide in every tier", () => {
+test("bannerLines renders 6 rows at most 16 wide in every tier", () => {
   for (const tier of ["true", "256", "plain"] as const) {
     const rows = bannerLines(tier);
-    assert.equal(rows.length, 5);
+    assert.equal(rows.length, 6);
     for (const row of rows) assert.ok(strip(row).length <= 16, `${tier}: ${JSON.stringify(row)}`);
   }
 });

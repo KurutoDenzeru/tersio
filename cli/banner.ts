@@ -1,4 +1,4 @@
-// cli/banner.ts — mini pixel-scissor welcome (16x10 px -> 5 half-block rows).
+// cli/banner.ts — mini pixel-scissor welcome (16x12 px -> 6 half-block rows).
 // OMP-style launch moment for interactive runs: clack intro + note box.
 // TTY-only and skipped on --dry-run, so piped output stays byte-identical.
 import { intro as clackIntro, note as clackNote } from '@clack/prompts';
@@ -20,6 +20,8 @@ const GRID = [
   '..LL.LL...RR.RR.',
   '.LL...LL.RR...RR',
   '..LL.LL...RR.RR.',
+  '..LLLLL...RRRRR.',
+  '....L.......R...',
 ];
 
 // [truecolor rgb, ansi256] per class. Left ring red, right ring yellow.
@@ -55,7 +57,7 @@ function paint(ka: string | null, kb: string | null, tier: Tier): string {
   return `${fg(kb as string)}▄\x1b[0m`;
 }
 
-// Five 16-wide rows. Pure: unit-testable without a TTY.
+// Six 16-wide rows. Pure: unit-testable without a TTY.
 function bannerLines(tier: Tier = bannerTier()): string[] {
   const out: string[] = [];
   for (let r = 0; r < GRID.length; r += 2) {
@@ -79,7 +81,7 @@ function printWelcome(): void {
   shown = true;
   clackIntro(`✂ tersio v${PACKAGE_VERSION}`);
   clackNote(
-    `${bannerLines().join('\n')}\n\n  /tersio combo medium   toggle all three\n  /tersio caveman full    terse replies\n  /tersio rtk on          compact shell output`,
+    `${bannerLines().join('\n')}\n\n  tersio install   set up add-ons\n  tersio update    refresh CLI + add-ons\n  tersio doctor    verify the install`,
     'cut token bloat',
   );
 }

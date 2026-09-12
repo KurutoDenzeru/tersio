@@ -596,8 +596,7 @@ async function runCommandMenu(): Promise<void> {
   updatePromptDone = true;
   const choice = await askInteractiveChoice('Tersio — what next?', [
     { value: 'install', label: 'Install add-ons', hint: 'user/project scope + combo defaults' },
-    { value: 'check', label: 'Check for updates', hint: 'compare installed vs latest release' },
-    { value: 'update', label: 'Update everything', hint: 'CLI plus all ai-addons' },
+    { value: 'check', label: 'Check for updates', hint: 'check CLI version, then update ai-addons' },
     { value: 'doctor', label: 'Doctor', hint: 'verify the installation' },
     { value: 'usage', label: 'Usage', hint: 'token usage and savings report' },
     { value: 'gain', label: 'Gain dashboard', hint: 'open the report in your browser' },
@@ -612,17 +611,24 @@ async function runCommandMenu(): Promise<void> {
       await runInstall();
       break;
     case 'check': {
+      // One bound flow: report the CLI version, then offer the ai-addons
+      // refresh in the same pass — no redundant second "update" option.
       const latest = await checkForUpdate(true);
       if (typeof latest === 'string') console.log(`  [update] tersio ${latest} available (installed ${PACKAGE_VERSION})`);
       else if (latest === 'unknown') console.log(`  [warn] could not reach the npm registry — run \`tersio update\` to retry`);
       else console.log(`  [ok] tersio ${PACKAGE_VERSION} is the latest`);
+      const go = await askInteractiveConfirm('Update ai-addons now (RTK, Caveman rule, Ponytail)?');
+      if (go.status === 'confirmed' && go.value) {
+        await runLatestUpdate();
+      } else if (go.status === 'cancelled') {
+        closeRL();
+        process.exit(130);
+      } else {
+        console.log(`  staying on ${PACKAGE_VERSION} — run \`tersio update\` anytime`);
+      }
       closeRL();
       break;
     }
-    case 'update':
-      await runLatestUpdate();
-      closeRL();
-      break;
     case 'doctor':
       await runDoctor();
       closeRL();
@@ -643,7 +649,10 @@ async function runCommandMenu(): Promise<void> {
 }
 
 async function runInstall(): Promise<void> {
-  if (command === null && tty() && !yes) {
+  // Menu-driven installs must fall through: bare `tersio` re-enters here
+  // with command === null after the picker, and without this guard the
+  // choice loops straight back into runCommandMenu() forever.
+  if (command === null && tty() && !yes && !updatePromptDone) {
     await runCommandMenu();
     return;
   }
