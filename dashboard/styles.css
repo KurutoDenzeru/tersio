@@ -5,6 +5,7 @@
     --cell-0: rgba(24, 24, 27, .07);
     --cell-1: rgba(4, 120, 87, .3); --cell-2: rgba(4, 120, 87, .55);
     --cell-3: rgba(4, 120, 87, .8); --cell-4: #047857;
+    --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.07);
   }
   html[data-theme="light"] { color-scheme: light; }
   html[data-theme="dark"] { color-scheme: dark; }
@@ -16,6 +17,7 @@
       --cell-0: rgba(255, 255, 255, .07);
       --cell-1: rgba(52, 211, 153, .3); --cell-2: rgba(52, 211, 153, .55);
       --cell-3: rgba(52, 211, 153, .8); --cell-4: #34d399;
+    --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.55);
     }
   }
   body { background: var(--bg); color: var(--ink); }
@@ -34,6 +36,7 @@
     --cell-0: rgba(255, 255, 255, .07);
     --cell-1: rgba(52, 211, 153, .3); --cell-2: rgba(52, 211, 153, .55);
     --cell-3: rgba(52, 211, 153, .8); --cell-4: #34d399;
+    --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.55);
   }
   .ticker { animation: tick 36s linear infinite; will-change: transform; }
   .ticker:hover { animation-play-state: paused; }
@@ -47,6 +50,8 @@
   }
   .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-variant-numeric: tabular-nums; }
   .rowline { border-bottom: 1px solid var(--line); }
+  #recentTable, #cmdTable { table-layout: fixed; }
+  #recentTable td:first-child, #cmdTable td:nth-child(2) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .pill { display: inline-flex; align-items: center; gap: 4px; border-radius: 999px; padding: 3px 10px; font-size: 11px; white-space: nowrap; }
   .pill.good { background: var(--accent-soft); color: var(--accent); }
   .pill.bad { background: rgba(248, 113, 113, .12); color: #f87171; }
@@ -84,14 +89,14 @@
   .rise { opacity: 0; transform: translateY(26px); }
   .rise.in { opacity: 1; transform: none; transition: opacity .7s cubic-bezier(.16, 1, .3, 1), transform .7s cubic-bezier(.16, 1, .3, 1); }
   .tilt { transition: transform .25s cubic-bezier(.16, 1, .3, 1), background .25s; }
-  .tilt:hover { transform: translateX(6px); background: var(--accent-soft); }
+  .tilt:hover { transform: translateX(6px); box-shadow: var(--shadow-xs); }
   .seg button { color: var(--dim); border-radius: 8px; transition: background .2s, color .2s; cursor: pointer; }
   .seg button.on { background: var(--accent-soft); color: var(--ink); }
   .seg button:not(.on):hover { color: var(--ink); }
   .mrow { transition: background .25s; }
-  .mrow:hover { background: var(--accent-soft); }
+  .mrow:hover { box-shadow: var(--shadow-xs); }
   .stripcell { transition: background .25s; }
-  .stripcell:hover { background: var(--accent-soft); }
+  .stripcell:hover { box-shadow: var(--shadow-xs); }
   button, .tilt, .cell, .stripcell { cursor: pointer; }
   .btn-push { transition: transform .12s, background .2s; }
   .btn-push:hover { background: var(--accent-soft); }
@@ -131,9 +136,16 @@
   #tip .tr { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 2.5px 0; }
   #tip .sw { width: 9px; height: 9px; border-radius: 2.5px; flex-shrink: 0; }
   #tip .tn { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .scrollarea { overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+  .scrollarea::-webkit-scrollbar { width: 8px; }
+  .scrollarea::-webkit-scrollbar-thumb { background: var(--line); border-radius: 99px; }
+  .scrollarea::-webkit-scrollbar-track { background: transparent; }
+  .rrow { transition: background .2s; cursor: pointer; }
+  .rrow:hover { box-shadow: var(--shadow-xs); }
+  #recentTable thead th { position: sticky; top: 0; background: var(--panel); z-index: 1; }
   #tip .tvr { flex-shrink: 0; }
   .modelcard { transition: background .25s; }
-  .modelcard:hover { background: var(--accent-soft); }
+  .modelcard:hover { box-shadow: var(--shadow-xs); }
 
   .heatmonth { font-size: 10px; }
   #graphMonths span { overflow: visible; white-space: nowrap; }

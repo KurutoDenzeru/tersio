@@ -7,3 +7,4 @@ tersio.js
 cli/**/*.js
 extensions/**/*.js
 test/definitely-missing-home/.omp/logs/
+temp/

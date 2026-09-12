@@ -500,6 +500,7 @@
       hoverModel(li, m);
       ol.appendChild(li);
     });
+    document.getElementById('modelsCount').textContent = tops.length ? tops.length + ' models' : '';
     if (!tops.length) ol.innerHTML = '<li class="mono text-sm px-4 py-6" style="color: var(--dim)">no session tokens yet</li>';
     else if ('IntersectionObserver' in window && !reduce) {
       var fio = new IntersectionObserver(function(entries) {
@@ -785,7 +786,7 @@
     rows.forEach(function (r, i) {
       var v = vendorOf(r.m);
       var tr = document.createElement('tr');
-      tr.className = 'tilt' + (i < rows.length - 1 ? ' rowline' : '');
+      tr.className = 'rrow' + (i < rows.length - 1 ? ' rowline' : '');
       var dot = '<span style="display:inline-block;width:8px;height:8px;border-radius:99px;background:' + v.color + ';margin-right:8px"></span>';
       tr.innerHTML = '<td class="py-2.5 pr-3 truncate" style="max-width: 180px"></td>' +
         '<td class="text-right py-2.5 pr-3 whitespace-nowrap"></td>' +
@@ -801,6 +802,7 @@
       tds[2].textContent = relTime(r.t);
       body.appendChild(tr);
     });
+    document.getElementById('recentCount').textContent = rows.length ? rows.length + ' requests' : '';
     document.getElementById('recentTable').style.display = rows.length ? '' : 'none';
     document.getElementById('emptyRecent').classList.toggle('hidden', rows.length > 0);
   }
