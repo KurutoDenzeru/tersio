@@ -152,54 +152,32 @@
     <ol id="models" class="rounded-xl overflow-hidden" style="border: 1px solid var(--line); background: var(--panel)"></ol>
   </section>
 
-  <!-- Command tools: session tool calls + measured RTK savings, tabbed -->
+  <!-- Command tools: session tool calls + measured RTK savings, one table -->
   <section id="tools" class="rise mt-8 rounded-xl p-5 overflow-hidden" style="border: 1px solid var(--line); background: var(--panel); scroll-margin-top: 90px" aria-label="Command tools">
     <div class="flex items-center gap-2 mb-1">
       <i data-lucide="terminal" class="size-4" style="color: var(--accent)"></i>
       <h2 class="display font-bold tracking-tight text-xl">Command tools</h2>
-      <div class="seg mono text-xs flex items-center gap-1 ml-auto p-1 rounded-[10px]" style="border: 1px solid var(--line)" role="tablist" aria-label="Command view">
-        <button data-tmode="tools" class="on px-3 py-1.5" role="tab">Tools</button>
-        <button data-tmode="rtk" class="px-3 py-1.5" role="tab">By command</button>
-      </div>
+      <span class="mono text-xs ml-auto" style="color: var(--dim)" id="toolsScope">tool calls in sessions</span>
     </div>
-    <p class="mono text-xs mb-4" style="color: var(--dim)" id="toolsScope">tool calls in sessions</p>
-    <div id="paneTools">
-      <div class="overflow-x-auto">
-        <table class="w-full mono text-[13px]" id="topTable">
-          <thead>
-            <tr class="text-left text-[11px] uppercase tracking-[0.14em]" style="color: var(--dim)">
-              <th class="font-normal text-right pr-3 py-2 w-10">#</th>
-              <th class="font-normal py-2 pr-3">Tool</th>
-              <th class="font-normal text-right py-2 pr-3">Calls</th>
-              <th class="font-normal text-right py-2 pr-3">Share</th>
-              <th class="font-normal py-2 min-w-32">Impact</th>
-            </tr>
-          </thead>
-          <tbody id="top"></tbody>
-        </table>
-      </div>
-      <p id="emptyTop" class="mono text-sm py-6 text-center hidden" style="color: var(--dim)">No tool calls yet.</p>
+    <p class="mono text-xs mb-4" style="color: var(--dim)">count · tokens saved · avg rate · avg time · share of executions</p>
+    <div class="overflow-x-auto">
+      <table class="w-full mono text-[13px]" id="cmdTable">
+        <thead>
+          <tr class="text-left text-[11px] uppercase tracking-[0.14em]" style="color: var(--dim)">
+            <th class="font-normal text-right pr-3 py-2 w-10">#</th>
+            <th class="font-normal py-2 pr-3">Tool / Command</th>
+            <th class="font-normal text-right py-2 pr-3">Count</th>
+            <th class="font-normal text-right py-2 pr-3">Saved</th>
+            <th class="font-normal text-right py-2 pr-3">Avg%</th>
+            <th class="font-normal text-right py-2 pr-3">Time</th>
+            <th class="font-normal py-2 min-w-32">Impact</th>
+          </tr>
+        </thead>
+        <tbody id="cmdBody"></tbody>
+      </table>
     </div>
-    <div id="paneRtk" class="hidden">
-      <div class="overflow-x-auto">
-        <table class="w-full mono text-[13px]" id="rtkTable">
-          <thead>
-            <tr class="text-left text-[11px] uppercase tracking-[0.14em]" style="color: var(--dim)">
-              <th class="font-normal text-right pr-3 py-2 w-10">#</th>
-              <th class="font-normal py-2 pr-3">Command</th>
-              <th class="font-normal text-right py-2 pr-3">Count</th>
-              <th class="font-normal text-right py-2 pr-3">Saved</th>
-              <th class="font-normal text-right py-2 pr-3">Avg%</th>
-              <th class="font-normal text-right py-2 pr-3">Time</th>
-              <th class="font-normal py-2 min-w-32">Impact</th>
-            </tr>
-          </thead>
-          <tbody id="rtkBody"></tbody>
-        </table>
-      </div>
-      <p id="emptyRtk" class="mono text-sm py-6 text-center hidden" style="color: var(--dim)">No RTK measurements yet — run commands through rtk.</p>
-      <p class="mono text-[11px] mt-3" style="color: var(--dim)">caveman + ponytail gains are instruction-following, not metered per command — bench-measured in BENCHMARK.md.</p>
-    </div>
+    <p id="emptyCmd" class="mono text-sm py-6 text-center hidden" style="color: var(--dim)">No tool calls or RTK measurements yet.</p>
+    <p class="mono text-[11px] mt-3" style="color: var(--dim)">saved / avg / time are RTK-metered per command — session tools without metering show –. caveman + ponytail gains are instruction-following, bench-measured in BENCHMARK.md.</p>
   </section>
 
   <footer class="mono text-xs mt-12 pt-4" style="color: var(--dim); border-top: 1px solid var(--line)">

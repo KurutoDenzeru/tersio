@@ -488,46 +488,24 @@
     }
   }
 
-  function renderTools() {
-    var body = document.getElementById('top');
-    body.innerHTML = '';
-    var tools = DATA.byTool || [], max = 1, sum = 0;
-    tools.forEach(function(r) { max = Math.max(max, r[1]); sum += r[1]; });
-    tools.forEach(function(r, i) {
-      var tr = document.createElement('tr');
-      tr.className = 'mrow' + (i < tools.length - 1 ? ' rowline' : '');
-      var share = sum ? Math.round(r[1] / sum * 100) : 0;
-      tr.innerHTML = '<td class="text-right pr-3 py-2.5 mono text-xs w-10" style="color: var(--dim)"></td>' +
-        '<td class="py-2.5 pr-3 truncate" style="max-width: 280px"></td>' +
-        '<td class="text-right py-2.5 pr-3 font-bold"></td>' +
-        '<td class="text-right py-2.5 pr-3" style="color: var(--dim)"></td>' +
-        '<td class="py-2.5 min-w-32"><div class="bar-track h-1.5 overflow-hidden"><div class="bar-fill h-full"></div></div></td>';
-      var tds = tr.children;
-      tds[0].textContent = String(i + 1).padStart(2, '0');
-      tds[1].textContent = r[0];
-      tds[1].title = r[0];
-      tds[2].textContent = fmt(r[1]);
-      tds[3].textContent = share + '%';
-      tds[4].firstChild.firstChild.style.width = r[1] ? Math.round(r[1] / max * 100) + '%' : '0';
-      body.appendChild(tr);
+  // Union of session tool calls + RTK-metered commands, sorted by count.
+  // Session tools were never metered per command: saved / avg / time show –.
+  function renderCmd() {
+    var g = (DATA.rtkGain || {});
+    var rows = (DATA.byTool || []).map(function(r) {
+      return { name: r[0], count: r[1], saved: null, avgPct: null, avgMs: null };
     });
-    document.getElementById('topTable').style.display = tools.length ? '' : 'none';
-    document.getElementById('emptyTop').classList.toggle('hidden', tools.length > 0);
-  }
-
-  function fmtMs(ms) {
-    if (ms < 1000) return Math.round(ms) + 'ms';
-    return (ms / 1000).toFixed(1) + 's';
-  }
-  function renderRtk() {
-    var g = (DATA.rtkGain || {}), rows = g.byCommand || [];
-    var body = document.getElementById('rtkBody');
+    (g.byCommand || []).forEach(function(r) {
+      rows.push({ name: r.command, count: r.count, saved: r.saved, avgPct: r.avgPct, avgMs: r.avgMs });
+    });
+    rows.sort(function(a, b) { return b.count - a.count; });
+    var body = document.getElementById('cmdBody');
     body.innerHTML = '';
     var max = 1;
-    rows.forEach(function(r) { max = Math.max(max, r.saved); });
-    rows.forEach(function(r, i) {
+    rows.forEach(function(r) { max = Math.max(max, r.count); });
+    rows.slice(0, 20).forEach(function(r, i) {
       var tr = document.createElement('tr');
-      tr.className = 'mrow' + (i < rows.length - 1 ? ' rowline' : '');
+      tr.className = 'mrow' + (i < Math.min(rows.length, 20) - 1 ? ' rowline' : '');
       tr.innerHTML = '<td class="text-right pr-3 py-2.5 mono text-xs w-10" style="color: var(--dim)"></td>' +
         '<td class="py-2.5 pr-3 truncate" style="max-width: 280px"></td>' +
         '<td class="text-right py-2.5 pr-3 font-bold"></td>' +
@@ -537,37 +515,25 @@
         '<td class="py-2.5 min-w-32"><div class="bar-track h-1.5 overflow-hidden"><div class="bar-fill h-full"></div></div></td>';
       var tds = tr.children;
       tds[0].textContent = String(i + 1).padStart(2, '0');
-      tds[1].textContent = r.command;
-      tds[1].title = r.command;
+      tds[1].textContent = r.name;
+      tds[1].title = r.name;
       tds[2].textContent = fmt(r.count);
-      tds[3].textContent = fmtShort(r.saved);
-      tds[4].textContent = r.avgPct.toFixed(1) + '%';
-      tds[5].textContent = fmtMs(r.avgMs);
-      tds[6].firstChild.firstChild.style.width = r.saved ? Math.round(r.saved / max * 100) + '%' : '0';
+      tds[3].textContent = r.saved === null ? '–' : fmtShort(r.saved);
+      tds[4].textContent = r.avgPct === null ? '–' : r.avgPct.toFixed(1) + '%';
+      tds[5].textContent = r.avgMs === null || r.avgMs === undefined ? '–' : fmtMs(r.avgMs);
+      tds[6].firstChild.firstChild.style.width = r.count ? Math.round(r.count / max * 100) + '%' : '0';
       body.appendChild(tr);
     });
-    document.getElementById('rtkTable').style.display = rows.length ? '' : 'none';
-    document.getElementById('emptyRtk').classList.toggle('hidden', rows.length > 0);
-    rtkSummary = g.commands ? fmt(g.commands) + ' commands · ' + fmtShort(g.saved) + ' saved (' + g.avgPct.toFixed(1) + '%) · measured by rtk' : 'measured by rtk';
-    paintToolsScope();
+    document.getElementById('cmdTable').style.display = rows.length ? '' : 'none';
+    document.getElementById('emptyCmd').classList.toggle('hidden', rows.length > 0);
+    var tools = (DATA.byTool || []).length;
+    document.getElementById('toolsScope').textContent =
+      g.commands ? fmt(tools) + ' tools · ' + fmt(g.commands) + ' commands · ' + fmtShort(g.saved) + ' saved' : 'tool calls in sessions';
   }
-  var TMODE = 'tools', rtkSummary = 'measured by rtk';
-  function paintToolsScope() {
-    document.getElementById('toolsScope').textContent = TMODE === 'rtk' ? rtkSummary : 'tool calls in sessions';
-  }
-  function bindToolsTabs() {
-    if (bindToolsTabs.done) return;
-    bindToolsTabs.done = true;
-    Array.prototype.forEach.call(document.querySelectorAll('#tools [data-tmode]'), function(btn) {
-      btn.addEventListener('click', function() {
-        Array.prototype.forEach.call(document.querySelectorAll('#tools [data-tmode]'), function(b) { b.classList.remove('on'); });
-        btn.classList.add('on');
-        TMODE = btn.getAttribute('data-tmode');
-        document.getElementById('paneTools').classList.toggle('hidden', TMODE !== 'tools');
-        document.getElementById('paneRtk').classList.toggle('hidden', TMODE !== 'rtk');
-        paintToolsScope();
-      });
-    });
+
+  function fmtMs(ms) {
+    if (ms < 1000) return Math.round(ms) + 'ms';
+    return (ms / 1000).toFixed(1) + 's';
   }
 
   function renderStrip(t) {
@@ -686,12 +652,10 @@
       el.textContent = half + '   \u25c6   ' + half;
     })();
     renderStrip(t);
-    bindToolsTabs();
     bindGraphTabs();
     renderGraph(d.byDay || {});
     renderModels();
-    renderTools();
-    renderRtk();
+    renderCmd();
 
     if (window.lucide) lucide.createIcons();
     if (hasGsap) {
