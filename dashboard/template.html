@@ -59,8 +59,9 @@
       <div>
         <div class="flex items-center justify-between gap-2">
           <p class="mono text-[11px] uppercase tracking-[0.14em]" style="color: var(--dim)" id="costLabel">usd cost</p>
-          <span class="flex items-center gap-2">
-            <select id="fx" class="pill mono fx" aria-label="Display currency"></select>
+          <span class="relative">
+            <button id="fxBtn" class="pill mono fxbtn" aria-haspopup="listbox" aria-expanded="false"><span id="fxCur">🇺🇸 USD</span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+            <div id="fxPanel" class="fxpanel hidden" role="listbox" aria-label="Display currency"></div>
           </span>
         </div>
         <p class="mono font-bold tracking-tighter leading-none mt-2 text-6xl lg:text-7xl" id="usd">-</p>

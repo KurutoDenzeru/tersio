@@ -53,17 +53,57 @@
   }
   syncThemeIcon();
   (function initFx() {
-    var sel = document.getElementById('fx');
-    Object.keys(CURS).forEach(function(k) {
-      var o = document.createElement('option');
-      o.value = k; o.textContent = FLAGS[k] + ' ' + k;
-      sel.appendChild(o);
-    });
-    sel.value = fx.cur;
-    sel.addEventListener('change', function() {
-      fx.cur = sel.value;
+    var btn = document.getElementById('fxBtn'), panel = document.getElementById('fxPanel'), cur = document.getElementById('fxCur');
+    var keys = Object.keys(CURS), active = -1;
+    function paint() {
+      cur.textContent = FLAGS[fx.cur] + ' ' + fx.cur;
+      Array.prototype.forEach.call(panel.children, function(o) {
+        o.setAttribute('aria-selected', o.dataset.cur === fx.cur ? 'true' : 'false');
+      });
+    }
+    function setCur(k) {
+      fx.cur = k; active = keys.indexOf(k);
       try { localStorage.setItem('tersio-fx-cur', fx.cur); } catch (e) { }
+      paint();
       if (DATA) render(DATA);
+    }
+    function open(show) {
+      var willOpen = show === undefined ? panel.classList.contains('hidden') : show;
+      panel.classList.toggle('hidden', !willOpen);
+      btn.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+      if (willOpen) mark(keys.indexOf(fx.cur));
+    }
+    function mark(i) {
+      active = (i + keys.length) % keys.length;
+      Array.prototype.forEach.call(panel.children, function(o, j) {
+        o.classList.toggle('active', j === active);
+      });
+      var el = panel.children[active];
+      if (el) el.focus();
+    }
+    keys.forEach(function(k) {
+      var o = document.createElement('button');
+      o.type = 'button'; o.className = 'fxopt mono'; o.dataset.cur = k;
+      o.setAttribute('role', 'option');
+      o.innerHTML = '<span>' + FLAGS[k] + ' ' + k + '</span><svg class="tick" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>';
+      o.addEventListener('click', function() { setCur(k); open(false); btn.focus(); });
+      o.addEventListener('mousemove', function() { mark(keys.indexOf(k)); });
+      panel.appendChild(o);
+    });
+    paint();
+    btn.addEventListener('click', function() { open(); });
+    btn.addEventListener('keydown', function(ev) {
+      if (ev.key === 'ArrowDown' || ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); open(true); }
+    });
+    panel.addEventListener('keydown', function(ev) {
+      if (ev.key === 'Escape') { open(false); btn.focus(); }
+      else if (ev.key === 'ArrowDown') { ev.preventDefault(); mark(active + 1); }
+      else if (ev.key === 'ArrowUp') { ev.preventDefault(); mark(active - 1); }
+      else if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); setCur(keys[active]); open(false); btn.focus(); }
+      else if (ev.key === 'Tab') open(false);
+    });
+    document.addEventListener('click', function(ev) {
+      if (!panel.classList.contains('hidden') && !btn.contains(ev.target) && !panel.contains(ev.target)) open(false);
     });
     if (typeof fetch !== 'function' || typeof AbortController === 'undefined') return;
     var ctl = new AbortController();
