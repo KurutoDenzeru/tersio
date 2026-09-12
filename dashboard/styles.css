@@ -75,11 +75,7 @@
   .btn-push:active { transform: scale(.96); }
   a.social { color: var(--ink); }
   a.social:hover { color: var(--accent); }
-  a.social img { width: 16px; height: 16px; display: block; }
-  @media (prefers-color-scheme: light) {
-    a.social img { filter: invert(1); }
-  }
-  a.social:hover img { filter: drop-shadow(0 0 6px var(--accent-soft)); }
+  a.social svg { width: 16px; height: 16px; display: block; }
   a.social:hover { outline: 1px solid var(--accent); outline-offset: 2px; }
   .cell { width: 100%; aspect-ratio: 1 / 1; border-radius: 3px; background: var(--cell-0); min-width: 0; }
   .cell.key { width: 11px; height: 11px; aspect-ratio: auto; flex-shrink: 0; }
