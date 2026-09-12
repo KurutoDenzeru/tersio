@@ -153,35 +153,29 @@ function printReport(report: UsageReport): void {
       console.log(l);
     }
   }
-  if (report.rtkGain.commands) {
-    const g = report.rtkGain;
-    console.log(`  RTK MEASURED  ${fmt(g.commands)} commands · ${fmt(g.saved)} saved (${g.avgPct.toFixed(1)}%)`);
-    const top = g.byCommand.reduce((m, r) => Math.max(m, r.saved), 1);
-    const grows = g.byCommand.map((r, idx) => [
-      String(idx + 1),
-      r.command,
-      `${r.count}x`,
-      fmtShort(r.saved),
-      `${r.avgPct.toFixed(1)}%`,
-      fmtMs(r.avgMs),
-      bar(r.saved / top, 8),
-    ]);
-    for (const l of table(['#', 'Command', 'Count', 'Saved', 'Avg%', 'Time', 'Impact'], grows, [true, false, true, true, true, true, false], 30)) {
-      console.log(l);
-    }
+  const cmdRows: { name: string; count: number; saved: number | null; avgPct: number | null; avgMs: number | null }[] =
+    report.byTool.map(([tool, n]) => ({ name: tool, count: n, saved: null, avgPct: null, avgMs: null }));
+  for (const r of report.rtkGain.byCommand) {
+    cmdRows.push({ name: r.command, count: r.count, saved: r.saved, avgPct: r.avgPct, avgMs: r.avgMs });
   }
-  if (report.byTool.length) {
-    console.log('  TOP TOOLS');
-    const sum = report.byTool.reduce((a, [, n]) => a + n, 0);
-    const top = report.byTool.reduce((m, [, n]) => Math.max(m, n), 1);
-    const trows = report.byTool.map(([tool, n], idx) => [
+  cmdRows.sort((a, b) => b.count - a.count);
+  if (cmdRows.length) {
+    const g = report.rtkGain;
+    const scope = g.commands
+      ? `  COMMAND TOOLS  ${fmt(report.byTool.length)} tools · ${fmt(g.commands)} commands · ${fmtShort(g.saved)} saved`
+      : '  COMMAND TOOLS';
+    console.log(scope);
+    const top = cmdRows.reduce((m, r) => Math.max(m, r.count), 1);
+    const crows = cmdRows.slice(0, 15).map((r, idx) => [
       String(idx + 1),
-      tool,
-      fmt(n),
-      `${Math.round((n / sum) * 100)}%`,
-      bar(n / top, 8),
+      r.name,
+      fmt(r.count),
+      r.saved === null ? '–' : fmtShort(r.saved),
+      r.avgPct === null ? '–' : `${r.avgPct.toFixed(1)}%`,
+      r.avgMs === null ? '–' : fmtMs(r.avgMs),
+      bar(r.count / top, 8),
     ]);
-    for (const l of table(['#', 'Tool', 'Calls', 'Share', 'Impact'], trows, [true, false, true, true, false], 24)) {
+    for (const l of table(['#', 'Tool/Command', 'Count', 'Saved', 'Avg%', 'Time', 'Impact'], crows, [true, false, true, true, true, true, false], 30)) {
       console.log(l);
     }
   }
