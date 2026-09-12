@@ -47,6 +47,7 @@ export interface SessionTokens {
   byDay: Record<string, TokenBreakdown>;
   byDayModel: Record<string, Record<string, number>>;
   byTool: Record<string, number>;
+  byModelMessages: Record<string, number>;
   costMeasured: number;
 }
 
@@ -65,6 +66,14 @@ export function sessionsDir(): string {
   const override = process.env.TERSIO_SESSIONS_DIR;
   if (override) return override;
   return path.join(os.homedir(), '.omp', 'agent', 'sessions');
+}
+
+export function codexSessionsDir(): string {
+  const override = process.env.TERSIO_CODEX_DIR;
+  if (override) return override;
+  const codexHome = process.env.CODEX_HOME;
+  if (codexHome) return path.join(codexHome, 'sessions');
+  return path.join(os.homedir(), '.codex', 'sessions');
 }
 
 function dayKey(ts: string | number): string | null {
@@ -95,11 +104,35 @@ export function importSessionTokens(): SessionTokens {
   const byDay: Record<string, TokenBreakdown> = {};
   const byDayModel: Record<string, Record<string, number>> = {};
   const byTool: Record<string, number> = {};
+  const byModelMessages: Record<string, number> = {};
   const totals = zeroBreakdown();
   let messages = 0;
   let costMeasured = 0;
   const files: string[] = [];
   walkJsonl(sessionsDir(), files, 2000);
+  // A sessions override signals an isolated environment (tests, fixtures):
+  // only walk the real codex dir when it is explicitly set.
+  if (process.env.TERSIO_SESSIONS_DIR === undefined || process.env.TERSIO_CODEX_DIR !== undefined) {
+    walkJsonl(codexSessionsDir(), files, 2000);
+  }
+  let codexProvider: string | null = null;
+  function ingest(model: string, usage: Record<string, unknown>, ts: string | number | undefined): void {
+    addInto(totals, usage);
+    byModel[model] ??= zeroBreakdown();
+    addInto(byModel[model], usage);
+    byModelMessages[model] = (byModelMessages[model] ?? 0) + 1;
+    const day = ts !== undefined ? dayKey(ts) : null;
+    if (day) {
+      byDay[day] ??= zeroBreakdown();
+      addInto(byDay[day], usage);
+      const sum = ['input', 'output', 'cacheRead', 'cacheWrite'].reduce((a, k) => a + (typeof usage[k] === 'number' && Number.isFinite(usage[k]) ? Math.floor(usage[k] as number) : 0), 0);
+      if (sum > 0) {
+        byDayModel[day] ??= {};
+        byDayModel[day][model] = (byDayModel[day][model] ?? 0) + sum;
+      }
+    }
+    messages += 1;
+  }
   for (const file of files) {
     let text: string;
     try {
@@ -114,23 +147,28 @@ export function importSessionTokens(): SessionTokens {
           timestamp?: string | number;
           message?: { role?: unknown; model?: unknown; usage?: Record<string, unknown>; content?: Array<{ type?: unknown; name?: unknown; arguments?: unknown }> };
         };
+        const codexRow = row as { type?: unknown; payload?: { type?: unknown; model_provider?: unknown; info?: { last_token_usage?: Record<string, unknown> } } };
+        const payload = codexRow.payload;
+        if (payload && typeof payload === 'object') {
+          if (codexRow.type === 'session_meta' && typeof payload.model_provider === 'string') {
+            codexProvider = payload.model_provider;
+          } else if (payload.type === 'token_count') {
+            const last = payload.info?.last_token_usage;
+            if (last) {
+              ingest(codexProvider ? `codex/${codexProvider}` : 'codex', {
+                input: last['input_tokens'],
+                output: last['output_tokens'],
+                cacheRead: last['cached_input_tokens'],
+                cacheWrite: last['cache_write_input_tokens'],
+              }, row.timestamp);
+              continue;
+            }
+          }
+        }
         const msg = row.message;
         if (!msg || msg.role !== 'assistant' || !msg.usage) continue;
         const model = typeof msg.model === 'string' && msg.model ? msg.model : 'unknown';
-        addInto(totals, msg.usage);
-        byModel[model] ??= zeroBreakdown();
-        addInto(byModel[model], msg.usage);
-        const day = row.timestamp !== undefined ? dayKey(row.timestamp) : null;
-        if (day) {
-          byDay[day] ??= zeroBreakdown();
-          addInto(byDay[day], msg.usage);
-          const n = msg.usage;
-          const sum = ['input', 'output', 'cacheRead', 'cacheWrite'].reduce((a, k) => a + (typeof n[k] === 'number' && Number.isFinite(n[k]) ? Math.floor(n[k] as number) : 0), 0);
-          if (sum > 0) {
-            byDayModel[day] ??= {};
-            byDayModel[day][model] = (byDayModel[day][model] ?? 0) + sum;
-          }
-        }
+        ingest(model, msg.usage, row.timestamp);
         if (typeof msg.usage.cost === 'number' && Number.isFinite(msg.usage.cost)) costMeasured += msg.usage.cost;
         for (const part of msg.content ?? []) {
           if (part?.type === 'toolCall' && typeof part.name === 'string' && part.name) {
@@ -138,11 +176,10 @@ export function importSessionTokens(): SessionTokens {
             byTool[key] = (byTool[key] ?? 0) + 1;
           }
         }
-        messages += 1;
       } catch { /* skip corrupt lines */ }
     }
   }
-  return { messages, totals, byModel, byDay, byDayModel, byTool, costMeasured };
+  return { messages, totals, byModel, byDay, byDayModel, byTool, byModelMessages, costMeasured };
 }
 // Lead binary of a shell string: first segment head past `cd` chains and
 // VAR=x assignments (`cd /x && git status` → `git`). Falls back to `bash`.
@@ -159,35 +196,14 @@ function leadBinary(command: unknown): string {
   return 'bash';
 }
 
-// --- Pricing: USD per 1M tokens, LiteLLM-style --------------------------------
-// Rough list rates for the models OMP sessions actually cite. Refresh against
-// LiteLLM pricing data when adding families. Unknown models fall to DEFAULT.
-export interface ModelPrice {
-  input: number;
-  output: number;
-  cacheRead: number;
-  cacheWrite: number;
-}
+// --- Pricing lives in ./pricing.ts (live LiteLLM cache + fallback table) ---
+import { DEFAULT_PRICE, priceFor } from './pricing.ts';
+import { co2GramsFor, energyWhFor } from './carbon.ts';
+import type { ModelPrice } from './pricing.ts';
 
-const PRICE_TABLE: Array<{ match: string; price: ModelPrice }> = [
-  { match: ':free', price: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } },
-  { match: 'opus', price: { input: 15, output: 75, cacheRead: 1.5, cacheWrite: 18.75 } },
-  { match: 'sonnet', price: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 } },
-  { match: 'haiku', price: { input: 0.8, output: 4, cacheRead: 0.08, cacheWrite: 1 } },
-  { match: 'gpt', price: { input: 2.5, output: 10, cacheRead: 1.25, cacheWrite: 2.5 } },
-  { match: 'gemini', price: { input: 1.25, output: 10, cacheRead: 0.125, cacheWrite: 1.25 } },
-  { match: 'glm', price: { input: 0.5, output: 1, cacheRead: 0.05, cacheWrite: 0.5 } },
-];
-
-const DEFAULT_PRICE: ModelPrice = { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 };
-
-export function priceFor(model: string): { price: ModelPrice; known: boolean } {
-  const name = model.toLowerCase();
-  for (const row of PRICE_TABLE) {
-    if (name.includes(row.match)) return { price: row.price, known: true };
-  }
-  return { price: DEFAULT_PRICE, known: false };
-}
+export { DEFAULT_PRICE, priceFor };
+export { co2GramsFor, energyWhFor };
+export type { ModelPrice };
 
 export function usdCost(t: TokenBreakdown, model?: string): { usd: number; priced: boolean } {
   const { price, known } = model ? priceFor(model) : { price: DEFAULT_PRICE, known: false };
@@ -198,12 +214,14 @@ export function usdCost(t: TokenBreakdown, model?: string): { usd: number; price
   };
 }
 
-// ponytail: CO2 is a rough server-energy multiple on output tokens, not metered.
+// CO2 now model-differentiated via ./carbon.ts (EcoLogits 0.8.2 port).
 // Always render with ~est. and never merge with measured figures.
+// The constant below is the served gCO2eq per 1K output tokens for the
+// default (gpt-4o-class) model, kept so single-figure callers stay honest.
 export const CO2_G_PER_1K_OUTPUT = 0.2;
 
-export function co2Grams(outputTokens: number): number {
-  return (outputTokens / 1000) * CO2_G_PER_1K_OUTPUT;
+export function co2Grams(outputTokens: number, model?: string): number {
+  return co2GramsFor(model ?? 'gpt-4o', outputTokens);
 }
 
 export function readUsage(): UsageRow[] {

@@ -9,6 +9,7 @@ import {
 } from './common.ts';
 import { execNetwork } from './interactive.ts';
 import { readTextIfExists } from '../extensions/lib/utils.ts';
+import { refreshPrices } from '../extensions/shared/pricing.ts';
 import {
   CAVEMAN_REMOTE_RULE, RTK_RELEASE_API, RtkRelease,
   fetchJson, httpsGet, normalizeRtkVersion, sha256Hex,
@@ -212,6 +213,11 @@ async function runLatestUpdate(): Promise<void> {
   try {
     await execInherit(npmCommand, npmCommandArgs);
     console.log('\n=== Update complete ===');
+    if (!dryRun) {
+      try {
+        if (await refreshPrices()) console.log('  [ok] model price table refreshed');
+      } catch { /* pricing is best-effort; update already succeeded */ }
+    }
   } catch (e) {
     const err = e as Error;
     console.error(`\n[fail] Could not run ${PACKAGE_NAME}${target}: ${err.message}`);

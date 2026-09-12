@@ -18,11 +18,14 @@ export interface DashboardOptions {
   exportFile: string | null;
 }
 
-const TEMPLATE = path.join(path.dirname(fileURLToPath(import.meta.url)), 'dashboard.html');
-const BRAND = path.join(path.dirname(fileURLToPath(import.meta.url)), 'brand.webp');
+const DASH_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'dashboard');
+const TEMPLATE = path.join(DASH_DIR, 'template.html');
+const STYLES = path.join(DASH_DIR, 'styles.css');
+const APP = path.join(DASH_DIR, 'app.js');
+const BRAND = path.join(DASH_DIR, 'brand.webp');
 
-async function templateHtml(): Promise<string> {
-  return fs.readFile(TEMPLATE, 'utf8');
+async function readSegment(file: string): Promise<string> {
+  return fs.readFile(file, 'utf8');
 }
 
 async function faviconDataUri(): Promise<string> {
@@ -41,23 +44,40 @@ function openBrowser(url: string): void {
 
 async function runDashboard(options: DashboardOptions): Promise<void> {
   if (options.exportFile) {
-    const html = await templateHtml();
-    const inline = html
+    const [template, css, js, icon] = await Promise.all([
+      readSegment(TEMPLATE), readSegment(STYLES), readSegment(APP), faviconDataUri(),
+    ]);
+    // Replacer functions throughout: session data routinely contains `$'`
+    // sequences (shell quoting in tool details), which String.replace would
+    // expand as match-suffix patterns and corrupt the file.
+    const inline = template
+      .replace('<link rel="stylesheet" href="styles.css">', () => `<style>\n${css}</style>`)
+      .replace('<script src="app.js" defer></script>', () => `<script>\n${js}</script>`)
       .replace(
         "fetch('data.json')",
-        `Promise.resolve({ json: function () { return ${dataJson()}; } })`,
+        () => `Promise.resolve({ json: function () { return ${dataJson()}; } })`,
       )
-      .replace('href="brand.webp"', `href="${await faviconDataUri()}"`)
-      .replace('src="brand.webp"', `src="${await faviconDataUri()}"`);
+      .replace('href="brand.webp"', () => `href="${icon}"`)
+      .replace('src="brand.webp"', () => `src="${icon}"`);
     await fs.writeFile(options.exportFile, inline, 'utf8');
     console.log(`[ok] gain exported → ${options.exportFile}`);
     return;
   }
-  const html = await withInteractiveSpinner('Loading dashboard template', templateHtml);
+  const html = await withInteractiveSpinner('Loading dashboard template', () => readSegment(TEMPLATE));
   const server = http.createServer(async (req, res) => {
     if (req.url === '/data.json') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(dataJson());
+      return;
+    }
+    if (req.url === '/styles.css') {
+      res.writeHead(200, { 'Content-Type': 'text/css; charset=utf-8' });
+      res.end(await readSegment(STYLES));
+      return;
+    }
+    if (req.url === '/app.js') {
+      res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' });
+      res.end(await readSegment(APP));
       return;
     }
     if (req.url === '/brand.webp') {

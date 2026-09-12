@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -232,7 +232,8 @@ test("gain --export writes a self-contained html file", () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-dash-"));
   const out = path.join(dir, "dash.html");
   const ledger = path.join(dir, "usage.jsonl");
-  writeFileSync(ledger, '{"ts":1757570000000,"kind":"command","detail":"/tersio usage"}\n', "utf8");
+  writeFileSync(ledger, "{\"ts\":1757570000000,\"kind\":\"command\",\"detail\":\"/tersio usage\"}\n", "utf8");
+  appendFileSync(ledger, "{\"ts\":1757570000001,\"kind\":\"command\",\"detail\":\"/tersio $'quoted$' $& $\"}\n", "utf8");
   const result = spawnSync(process.execPath, [installer, "gain", "--export", out], {
     encoding: "utf8",
     cwd: root,
@@ -242,8 +243,11 @@ test("gain --export writes a self-contained html file", () => {
   const html = existsSync(out) ? "present" : "missing";
   assert.equal(html, "present");
   const body = readFileSync(out, "utf8");
-  assert.match(body, /Tersio Gain Dashboard/);
+  assert.match(body, /Tersio Dashboard/);
   assert.match(body, /\/tersio usage/);
-  assert.doesNotMatch(body, /\.then\.then/);
+  // `$'`/`$&` in data must survive String.replace untouched (single document).
+  assert.match(body, /\$'quoted\$'/);
+  assert.equal(body.split("</body>").length - 1, 1);
+  assert.equal(body.split("</html>").length - 1, 1);
   rmSync(dir, { recursive: true, force: true });
 });

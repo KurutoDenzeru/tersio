@@ -1,8 +1,18 @@
+## v2.10.0
+ - Gain dashboard: Command Tools merges session tool calls and RTK-metered commands into one sortable, paginated table (15/page) with honest gaps for unmetered rows; USD card gains a 10-currency converter with live rates; scroll progress rail; hero gradient fixed in light mode; reload no longer fades the hero.
+ - CLI: OMP-style launch welcome (pixel-scissor banner + tips) via Clack on interactive `tersio` / `tersio install`; `tersio usage` merges Top Tools and RTK into one Command Tools table; zero-value cache-write buckets collapse in CLI and dashboard until a client reports them.
+ - Usage ledger reads Codex session transcripts alongside OMP (`codex/<provider>` rows, cache-write capture).
+ - README rewritten in house style with shieldcn badges; v1.0.0 entry drops the dead upstream-fork link. 116 tests.
+
 ## v2.9.0
 - Update check fix: the menu's "Check for updates" always probes the registry live instead of trusting a 6-hour cache; an unreachable registry now reports unknown rather than a false "latest", and `tersio doctor` warns instead of claiming the CLI is current. Pinned by two regression tests (fresh-stale-cache bypass, offline-unknown).
 - Gain dashboard: the USD cost card gains a 14-day volume sparkline with per-day cost tooltips, ~per-day and top-day estimates (blended rate, labeled ~), and a cache-leverage multiple (saved / cost). The floating dock gets a gradient hairline ring, brand glow, divider, and accent hover on Reload. The footer is two rows with a live version chip and a local-only privacy note.
 - Top Tools is now a full-width impact table (# / tool / calls / share / impact) below Models; the Models list went full width with vendor monograms; heatmap month labels align to the column rhythm.
-- Export fix: the inlined `data.json` chain no longer double-`.then` (offline `file://` snapshots previously rendered empty); `data.json` gains a `version` field for the footer chip. 98 tests.
+- Export fix: the inlined `data.json` chain no longer double-`.then` (offline `file://` snapshots previously rendered empty); `data.json` gains a `version` field for the footer chip. 109 tests.
+- Token buckets follow tokscale (input / output / cache read / cache write, always rendered); per-model USD cost from a new pricing module (live LiteLLM refresh with local cache, built-in fallback, refreshed on `tersio update`).
+- CO2 upgraded from a flat factor to an EcoLogits 0.8.2 port (per-model params, provider grids, served ÷32 amortization) with a methodology hover on the card; derivation credited in `ECO_NOTICE.md`.
+- Dashboard split into `dashboard/` segments (template, styles, app logic); 30-day token line graph with per-model hover cards; GitHub-style heatmap with day tooltips; brand icons via Simple Icons (bot-glyph fallback, never initials); model breakdown hovers (input/output/requests/cache-hit); condensed single-row footer.
+- Export hardening: `$`-pattern payloads no longer corrupt the inlined snapshot (regression-tested).
 
 ## v2.8.0
 - `tersio dashboard` / Serve merged into `tersio gain`: one command serves localhost, opens the browser, or exports a file. The 26-week heatmap is gone; token activity is a stacked per-model chart with Daily/Weekly/Cumulative toggle, top models get vendor monogram cards with week-over-week deltas, and Top Commands is now Top Tools.
@@ -121,6 +131,5 @@
 - `doctor` reports the self-plugin registration and recognizes the plugin-provided Amanai detector.
 
 ## v1.0.0
-- Initial release of the maintained fork of [Fernado03/oh-my-pi-supreme-token-saver](https://github.com/Fernado03/oh-my-pi-supreme-token-saver) (unmaintained upstream, releases v1.2.1–v1.3.10).
-- Published to npm as `oh-my-pi-token-saver`; the CLI command is now `oh-my-pi-token-saver`.
-- Carries over upstream behavior: Caveman, RTK, and Ponytail session modes; Combo presets; `/ai-addons` updater with dry-run; passive Amanai reward detector; installer subcommands (`install`, `update`, `reinstall`, `doctor`, `uninstall`, `version`, `help`) with `--scope`, `--dry-run`, `--yes`, and `--verbose`.
+ - Initial release: `oh-my-pi-token-saver` on npm with the `oh-my-pi-token-saver` CLI command.
+ - Shipped behavior: Caveman, RTK, and Ponytail session modes; Combo presets; `/ai-addons` updater with dry-run; passive Amanai reward detector; installer subcommands (`install`, `update`, `reinstall`, `doctor`, `uninstall`, `version`, `help`) with `--scope`, `--dry-run`, `--yes`, and `--verbose`.

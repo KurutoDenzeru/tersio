@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<script>(function(){try{var t=localStorage.getItem('tersio-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+<title>Tersio Dashboard</title>
+<link rel="icon" type="image/png" href="brand.webp">
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/ScrollTrigger.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/outfit@5/index.css">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body class="min-h-[100dvh] antialiased">
+<div class="bg-blueprint pointer-events-none fixed inset-0" aria-hidden="true"></div>
+
+<main class="overflow-x-clip w-full max-w-full">
+<div class="relative mx-auto max-w-7xl px-4 sm:px-6 pb-16">
+  <!-- Scroll progress rail: fixed left ticks, accent fill by scroll fraction -->
+  <nav id="rail" class="rail hidden md:flex" aria-label="Scroll progress"></nav>
+
+  <!-- Floating dock navbar -->
+  <header class="dock mt-4 flex w-full items-center gap-2 px-3 py-2">
+    <a href="#" class="flex shrink-0 items-center gap-2.5 pl-1 pr-2" aria-label="Tersio dashboard home">
+      <img src="brand.webp" alt="Tersio" width="32" height="32" class="brand size-8 rounded-full">
+      <span class="leading-tight text-left">
+        <span class="block font-bold tracking-tight text-sm">TERSIO DASHBOARD</span>
+        <span class="mono block text-[11px]" style="color: var(--dim)">live token number feed</span>
+      </span>
+    </a>
+    <span class="mono hidden shrink-0 sm:flex items-center gap-2 text-xs px-2 ml-auto" style="color: var(--dim)">
+      <span class="live-dot inline-block size-2 rounded-full"></span>
+      <span id="clock">--:--</span>
+    </span>
+    <span class="hidden sm:block w-px h-5 shrink-0" style="background: var(--line)" aria-hidden="true"></span>
+    <button id="theme" class="btn-push flex shrink-0 items-center p-2 rounded-xl" style="border: 1px solid var(--line); color: var(--ink)" aria-label="Toggle dark mode">
+      <span id="iconMoon"><i data-lucide="moon" class="size-4"></i></span>
+      <span id="iconSun" class="hidden"><i data-lucide="sun" class="size-4"></i></span>
+    </button>
+    <button id="reload" class="btn-push mono flex shrink-0 items-center gap-2 text-xs pl-2.5 pr-3 py-2 rounded-xl" style="border: 1px solid var(--line); color: var(--ink)" aria-label="Reload data">
+      <i data-lucide="refresh-cw" class="size-3.5"></i><span class="hidden md:inline">Reload</span>
+    </button>
+  </header>
+
+  <!-- Hero: centered total -->
+  <section class="mx-auto max-w-6xl text-center pt-14 pb-10 relative">
+    <div class="hero-glow" aria-hidden="true"></div>
+    <p class="hero-in mono text-[11px] uppercase tracking-[0.22em] mb-4 relative" style="color: var(--accent)">Live token feed</p>
+    <p class="hero-in mono font-bold tracking-tighter leading-none text-7xl md:text-8xl relative herototal" id="total">0</p>
+    <div class="hero-in relative mt-6 overflow-hidden" aria-hidden="true" style="mask-image: linear-gradient(90deg, transparent, black 12%, black 88%, transparent)">
+      <div class="ticker mono text-xs whitespace-nowrap inline-block" id="ticker" style="color: var(--dim)"></div>
+    </div>
+  </section>
+
+  <!-- Savings bento: big USD card + nested right rail -->
+  <section class="grid grid-cols-12 grid-flow-dense gap-3" aria-label="Savings">
+    <div class="rise col-span-12 lg:col-span-7 lg:row-span-2 rounded-xl p-6 flex flex-col justify-between" style="border: 1px solid var(--line); background: var(--panel)">
+      <div>
+        <div class="flex items-center justify-between gap-2">
+          <p class="mono text-[11px] uppercase tracking-[0.14em]" style="color: var(--dim)" id="costLabel">usd cost</p>
+          <span class="relative">
+            <button id="fxBtn" class="pill mono fxbtn" aria-haspopup="listbox" aria-expanded="false"><span id="fxCur">🇺🇸 USD</span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+            <div id="fxPanel" class="fxpanel hidden" role="listbox" aria-label="Display currency"></div>
+          </span>
+        </div>
+        <p class="mono font-bold tracking-tighter leading-none mt-2 text-6xl lg:text-7xl" id="usd">-</p>
+      </div>
+      <div class="mt-4">
+        <div class="spark h-16" id="usdSpark"></div>
+        <div class="flex gap-4 mt-3 mono text-xs" style="color: var(--dim)">
+          <span>avg <span id="usdPerDay" style="color: var(--ink)">-</span>/day</span>
+          <span>top <span id="usdTopDay" style="color: var(--ink)">-</span></span>
+          <span title="Cache savings per $1 spent, vs full input price">x<span id="usdLeverage" style="color: var(--accent)">-</span> cache leverage</span>
+        </div>
+      </div>
+      <p class="mono text-[11px] mt-3" style="color: var(--dim)" id="usdNote">per-model price table</p>
+    </div>
+    <div class="col-span-12 lg:col-span-5 lg:row-span-2 grid grid-cols-2 grid-flow-dense gap-3 h-full grid-rows-[auto_1fr]">
+      <div class="rise col-span-2 rounded-xl p-5" style="border: 1px solid var(--line); background: var(--panel)">
+        <div class="flex items-center justify-between gap-2">
+          <div><p class="mono text-[11px] uppercase tracking-[0.14em]" style="color: var(--dim)">saved by cache</p>
+          <p class="mono font-bold text-3xl mt-1" style="color: var(--accent)" id="saved">-</p></div>
+          <span class="pill flat mono" title="Modeled estimate, not measured">est.</span>
+        </div>
+        <p class="mono text-[11px] mt-2" style="color: var(--dim)">est. vs full input price</p>
+      </div>
+      <div class="rise col-span-1 rounded-xl p-5" style="border: 1px solid var(--line); background: var(--panel)">
+        <div class="flex items-center justify-between gap-2">
+          <div><p class="mono text-[11px] uppercase tracking-[0.14em]" style="color: var(--dim)">co2</p>
+          <p class="mono font-bold text-3xl mt-1" id="co2">-</p>
+          <p class="mt-2"><span class="pill flat mono" title="Single-stream ceiling divided by 32-way served concurrency">served ÷32</span></p></div>
+        </div>
+        <p class="mono text-[11px] mt-2" style="color: var(--dim)">est. from output</p>
+      </div>
+      <div class="rise col-span-1 rounded-xl p-5" style="border: 1px solid var(--line); background: var(--panel)">
+        <div class="flex items-center justify-between gap-2">
+          <div><p class="mono text-[11px] uppercase tracking-[0.14em]" style="color: var(--dim)">cache share</p>
+          <p class="mono font-bold text-3xl mt-1" id="cacheShare">-</p>
+          <p class="mt-2"><span class="pill good mono" id="cacheDelta">-</span></p></div>
+        </div>
+        <p class="mono text-[11px] mt-2" style="color: var(--dim)">of tokens cached</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Token strip: nonzero buckets only -->
+  <section class="rise mt-3 flex rounded-xl overflow-hidden" style="border: 1px solid var(--line); background: var(--panel)" id="tokens" aria-label="Tokens by bucket"></section>
+
+  <!-- Activity: full-width year heatmap -->
+  <section id="activity" class="rise mt-8 rounded-xl p-5 overflow-hidden" style="border: 1px solid var(--line); background: var(--panel); scroll-margin-top: 90px" aria-label="Activity graph">
+    <div class="flex items-center gap-2 mb-1">
+      <i data-lucide="calendar-days" class="size-4" style="color: var(--accent)"></i>
+      <h2 class="display font-bold tracking-tight text-xl">Activity</h2>
+      <div class="seg mono text-xs flex items-center gap-1 ml-auto p-1 rounded-[10px]" style="border: 1px solid var(--line)" role="tablist" aria-label="Graph range">
+        <button data-gmode="daily" class="on px-3 py-1.5" role="tab">Daily</button>
+        <button data-gmode="weekly" class="px-3 py-1.5" role="tab">Weekly</button>
+        <button data-gmode="cumulative" class="px-3 py-1.5" role="tab">Cumulative</button>
+      </div>
+    </div>
+    <p class="mono text-xs mb-4" style="color: var(--dim)"><span id="graphRange"></span> · <span id="graphCap">daily values / trailing 12 months</span></p>
+    <div class="pb-1">
+      <div class="grid w-full" style="grid-template-columns: repeat(53, minmax(0, 1fr)); gap: 3px;" id="graph"></div>
+    </div>
+    <div class="mono text-[11px] mt-3 flex items-center gap-1.5" style="color: var(--dim)">
+      <span>less</span>
+      <span class="cell key"></span><span class="cell key l1"></span><span class="cell key l2"></span><span class="cell key l3"></span><span class="cell key l4"></span>
+      <span>more</span>
+    </div>
+    <div class="heatmonth mono mt-2 grid w-full" style="color: var(--dim); grid-template-columns: repeat(53, minmax(0, 1fr)); gap: 3px;" id="graphMonths"></div>
+  </section>
+
+  <!-- Top models: 3 columns -->
+  <section class="mt-8" aria-label="Top models">
+    <div class="flex items-center gap-2 mb-1">
+      <i data-lucide="cpu" class="size-4" style="color: var(--accent)"></i>
+      <h2 class="display font-bold tracking-tight text-xl">Top models</h2>
+      <span class="mono text-xs ml-auto" style="color: var(--dim)">usage across sessions</span>
+    </div>
+    <p class="mono text-xs mb-4" style="color: var(--dim)">week-over-week vs prior 7 days</p>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-3" id="modelCards"></div>
+  </section>
+
+
+  <!-- Models list: full width -->
+  <section class="rise mt-8" aria-label="All models">
+    <div class="flex items-center gap-2 mb-1">
+      <i data-lucide="layers" class="size-4" style="color: var(--accent)"></i>
+      <h2 class="display font-bold tracking-tight text-xl">Models</h2>
+    </div>
+    <p class="mono text-xs mb-4" style="color: var(--dim)">ranked by tokens / top 8</p>
+    <ol id="models" class="rounded-xl overflow-hidden" style="border: 1px solid var(--line); background: var(--panel)"></ol>
+  </section>
+
+  <!-- Command tools: session tool calls + measured RTK savings, one table -->
+  <section id="tools" class="rise mt-8 rounded-xl p-5 overflow-hidden" style="border: 1px solid var(--line); background: var(--panel); scroll-margin-top: 90px" aria-label="Command tools">
+    <div class="flex items-center gap-2 mb-1">
+      <i data-lucide="terminal" class="size-4" style="color: var(--accent)"></i>
+      <h2 class="display font-bold tracking-tight text-xl">Command tools</h2>
+      <span class="mono text-xs ml-auto" style="color: var(--dim)" id="toolsScope">tool calls in sessions</span>
+    </div>
+    <p class="mono text-xs mb-4" style="color: var(--dim)">count · tokens saved · avg rate · avg time · share of executions</p>
+    <div class="overflow-x-auto">
+      <table class="w-full mono text-[13px]" id="cmdTable">
+        <thead>
+          <tr class="text-left text-[11px] uppercase tracking-[0.14em]" style="color: var(--dim)">
+            <th class="font-normal text-right pr-3 py-2 w-10">#</th>
+            <th class="font-normal py-2 pr-3" aria-sort="none"><button class="thsort" data-sort="name">Tool / Command <span class="arr">⇅</span></button></th>
+            <th class="font-normal text-right py-2 pr-3" aria-sort="descending"><button class="thsort num" data-sort="count">Count <span class="arr">↓</span></button></th>
+            <th class="font-normal text-right py-2 pr-3" aria-sort="none"><button class="thsort num" data-sort="saved">Saved <span class="arr">⇅</span></button></th>
+            <th class="font-normal text-right py-2 pr-3" aria-sort="none"><button class="thsort num" data-sort="avgPct">Avg% <span class="arr">⇅</span></button></th>
+            <th class="font-normal text-right py-2 pr-3" aria-sort="none"><button class="thsort num" data-sort="avgMs">Time <span class="arr">⇅</span></button></th>
+            <th class="font-normal py-2 min-w-32">Impact</th>
+          </tr>
+        </thead>
+        <tbody id="cmdBody"></tbody>
+      </table>
+    </div>
+    <p id="emptyCmd" class="mono text-sm py-6 text-center hidden" style="color: var(--dim)">No tool calls or RTK measurements yet.</p>
+    <div id="cmdPager" class="mono text-xs mt-4 flex flex-wrap items-center gap-x-4 gap-y-3" style="color: var(--dim)">
+      <span id="cmdRange">Showing 0 of 0</span>
+      <span class="seg flex items-center gap-1 p-1 rounded-[10px]" style="border: 1px solid var(--line)" role="group" aria-label="Rows per page">
+        <button data-pp="10" class="px-2.5 py-1" role="button">10</button>
+        <button data-pp="15" class="on px-2.5 py-1" role="button">15</button>
+        <button data-pp="25" class="px-2.5 py-1" role="button">25</button>
+        <button data-pp="50" class="px-2.5 py-1" role="button">50</button>
+      </span>
+      <span class="ml-auto flex items-center gap-1" id="cmdPages" role="navigation" aria-label="Pages"></span>
+    </div>
+    <p class="mono text-[11px] mt-3" style="color: var(--dim)">saved / avg / time are RTK-metered per command — session tools without metering show –. caveman + ponytail gains are instruction-following, bench-measured in BENCHMARK.md.</p>
+  </section>
+
+  <footer class="mono text-xs mt-12 pt-4" style="color: var(--dim); border-top: 1px solid var(--line)">
+
+  <footer class="mono text-xs mt-12 pt-4" style="color: var(--dim); border-top: 1px solid var(--line)">
+    <div class="flex flex-wrap items-center gap-x-4 gap-y-3">
+      <span>© 2026 Tersio. KurutoDenzeru. All rights reserved.</span>
+      <span class="pill flat" id="verChip">tersio</span>
+      <span class="ml-auto flex items-center gap-1" style="color: var(--ink)">
+<a href="https://github.com/KurutoDenzeru/tersio" target="_blank" rel="noopener" aria-label="GitHub" class="btn-push social grid size-8 place-items-center rounded-lg"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg></a>
+<a href="https://linkedin.com/in/kurtcalacday/" target="_blank" rel="noopener" aria-label="LinkedIn" class="btn-push social grid size-8 place-items-center rounded-lg"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg></a>
+<a href="https://instagram.com/krtclcdy/" target="_blank" rel="noopener" aria-label="Instagram" class="btn-push social grid size-8 place-items-center rounded-lg"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0C8.74 0 8.333.015 7.053.072 5.775.132 4.905.333 4.14.63c-.789.306-1.459.717-2.126 1.384S.935 3.35.63 4.14C.333 4.905.131 5.775.072 7.053.012 8.333 0 8.74 0 12s.015 3.667.072 4.947c.06 1.277.261 2.148.558 2.913.306.788.717 1.459 1.384 2.126.667.666 1.336 1.079 2.126 1.384.766.296 1.636.499 2.913.558C8.333 23.988 8.74 24 12 24s3.667-.015 4.947-.072c1.277-.06 2.148-.262 2.913-.558.788-.306 1.459-.718 2.126-1.384.666-.667 1.079-1.335 1.384-2.126.296-.765.499-1.636.558-2.913.06-1.28.072-1.687.072-4.947s-.015-3.667-.072-4.947c-.06-1.277-.262-2.149-.558-2.913-.306-.789-.718-1.459-1.384-2.126C21.319 1.347 20.651.935 19.86.63c-.765-.297-1.636-.499-2.913-.558C15.667.012 15.26 0 12 0zm0 2.16c3.203 0 3.585.016 4.85.071 1.17.055 1.805.249 2.227.415.562.217.96.477 1.382.896.419.42.679.819.896 1.381.164.422.36 1.057.413 2.227.057 1.266.07 1.646.07 4.85s-.015 3.585-.074 4.85c-.061 1.17-.256 1.805-.421 2.227-.224.562-.479.96-.899 1.382-.419.419-.824.679-1.38.896-.42.164-1.065.36-2.235.413-1.274.057-1.649.07-4.859.07-3.211 0-3.586-.015-4.859-.074-1.171-.061-1.816-.256-2.236-.421-.569-.224-.96-.479-1.379-.899-.421-.419-.69-.824-.9-1.38-.165-.42-.359-1.065-.42-2.235-.045-1.26-.061-1.649-.061-4.844 0-3.196.016-3.586.061-4.861.061-1.17.255-1.814.42-2.234.21-.57.479-.96.9-1.381.419-.419.81-.689 1.379-.898.42-.166 1.051-.361 2.221-.421 1.275-.045 1.65-.06 4.859-.06l.045.03zm0 3.678c-3.405 0-6.162 2.76-6.162 6.162 0 3.405 2.76 6.162 6.162 6.162 3.405 0 6.162-2.76 6.162-6.162 0-3.405-2.76-6.162-6.162-6.162zM12 16c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4zm7.846-10.405c0 .795-.646 1.44-1.44 1.44-.795 0-1.44-.646-1.44-1.44 0-.794.646-1.439 1.44-1.439.793-.001 1.44.645 1.44 1.439z"/></svg></a>
+</span>
+    </div>
+  </footer>
+</div>
+</main>
+
+<script src="app.js" defer></script>
+</body>
+</html>

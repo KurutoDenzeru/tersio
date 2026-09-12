@@ -17,6 +17,7 @@ import {
 import {
   ask, askInteractiveChoice, askInteractiveConfirm, closeRL, execNetwork, tty, withInteractiveSpinner,
 } from './interactive.ts';
+import { printWelcome } from './banner.ts';
 import { checkForUpdate, runLatestUpdate } from './update.ts';
 import { runUninstall } from './uninstall.ts';
 import { runDoctor } from './doctor.ts';
@@ -577,6 +578,7 @@ let updatePromptDone = false;
 // update offer first (when pending), then a Clack menu over every command.
 // Scripts, pipes, --yes, and --dry-run keep the old straight-to-install path.
 async function runCommandMenu(): Promise<void> {
+  printWelcome();
   const newer = await checkForUpdate();
   if (typeof newer === 'string' && !dryRun) {
     const answer = await askInteractiveConfirm(`tersio ${newer} is available (installed ${PACKAGE_VERSION}). Install it now?`);
@@ -645,6 +647,7 @@ async function runInstall(): Promise<void> {
     await runCommandMenu();
     return;
   }
+  printWelcome();
   if (reinstall) {
     await runUninstall({ yes: true, removePonytail: false, removeRtk: true });
   }
