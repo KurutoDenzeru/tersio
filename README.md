@@ -22,7 +22,6 @@
 ## 🧱 Tech Stack
 
 - [TypeScript](https://www.typescriptlang.org/) + [Node.js](https://nodejs.org/): CLI and OMP extensions, compiled to dependency-free JS for install.
-- [RTK](https://github.com/): Standalone binary (Rust) that compacts shell output; fetched from GitHub releases with checksum verification.
 - Vanilla dashboard: dependency-free HTML/CSS/JS export — no build step, no runtime deps.
 - [js-tiktoken](https://github.com/dqbd/tiktoken): Real `o200k_base` BPE token counts for benchmarks (dev only).
  - [tokscale](https://github.com/junhoyeo/tokscale): Token-bucket convention (input / output / cache read / cache write) for parsing OMP session transcripts.
@@ -107,8 +106,6 @@ Break-even math, balanced preset (caveman full + rtk + ponytail): `⌈overhead �
 | `tersio version` | Print version |
 
 Flags: `--dry-run`, `--yes`/`-y`, `--verbose`, `--scope`, `--combo-default`/`--caveman-default`/`--rtk-default`/`--ponytail-default`. Legacy `--doctor` / `--uninstall` forms still work.
-
-Token buckets (input / output / cache read / cache write) follow [tokscale](https://github.com/junhoyeo/tokscale), which also parses the same OMP session transcripts. CO2 uses an [EcoLogits](https://github.com/genai-impact/ecologits) v0.8.2 port (per-model params, provider grids, served ÷32 amortization); see `extensions/shared/ECO_NOTICE.md`.
 
 ## ⌨️ Commands reference
 
