@@ -763,7 +763,8 @@
     renderCmd();
 
     if (window.lucide) lucide.createIcons();
-    if (hasGsap) {
+    if (hasGsap && !render.introDone) {
+      render.introDone = true;
       gsap.from('.hero-in', { y: 26, opacity: 0, duration: 0.8, ease: 'power3.out', stagger: 0.08 });
     }
     observe();
