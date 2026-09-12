@@ -25,6 +25,8 @@
 - [RTK](https://github.com/): Standalone binary (Rust) that compacts shell output; fetched from GitHub releases with checksum verification.
 - Vanilla dashboard: dependency-free HTML/CSS/JS export — no build step, no runtime deps.
 - [js-tiktoken](https://github.com/dqbd/tiktoken): Real `o200k_base` BPE token counts for benchmarks (dev only).
+ - [tokscale](https://github.com/junhoyeo/tokscale): Token-bucket convention (input / output / cache read / cache write) for parsing OMP session transcripts.
+ - [EcoLogits](https://github.com/genai-impact/ecologits): CO2 model (v0.8.2 port — per-model params, provider grids, served ÷32 amortization).
 
 ## ⚡ Getting Started
 
