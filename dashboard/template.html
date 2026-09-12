@@ -42,7 +42,6 @@
   <section class="mx-auto max-w-6xl text-center pt-14 pb-10">
     <p class="hero-in mono text-[11px] uppercase tracking-[0.22em] mb-4" style="color: var(--accent)">Live token feed</p>
     <p class="hero-in mono font-bold tracking-tighter leading-none text-6xl md:text-7xl" id="total">0</p>
-    <p class="hero-in mono mt-4 text-sm max-w-[62ch] mx-auto" style="color: var(--dim)" id="herosub">session tokens parsed from OMP transcripts. Input, output, cache read, cache write, USD cost, CO2.</p>
   </section>
 
   <!-- Savings bento: big USD card + nested right rail -->
@@ -70,7 +69,7 @@
         <div class="flex items-center justify-between gap-2">
           <div><p class="mono text-[11px] uppercase tracking-[0.14em]" style="color: var(--dim)">saved by cache</p>
           <p class="mono font-bold text-3xl mt-1" style="color: var(--accent)" id="saved">-</p></div>
-          <span class="pill good mono" id="savedDelta">-</span>
+          <span class="pill flat mono" title="Modeled estimate, not measured">est.</span>
         </div>
         <p class="mono text-[11px] mt-2" style="color: var(--dim)">est. vs full input price</p>
       </div>
@@ -78,7 +77,7 @@
         <div class="flex items-center justify-between gap-2">
           <div><p class="mono text-[11px] uppercase tracking-[0.14em]" style="color: var(--dim)">co2</p>
           <p class="mono font-bold text-3xl mt-1" id="co2">-</p>
-          <p class="mt-2"><span class="pill good mono" id="co2Delta">-</span></p></div>
+          <p class="mt-2"><span class="pill flat mono" title="Single-stream ceiling divided by 32-way served concurrency">served ÷32</span></p></div>
         </div>
         <p class="mono text-[11px] mt-2" style="color: var(--dim)">est. from output</p>
       </div>
@@ -96,34 +95,40 @@
   <!-- Token strip: nonzero buckets only -->
   <section class="rise mt-3 flex rounded-xl overflow-hidden" style="border: 1px solid var(--line); background: var(--panel)" id="tokens" aria-label="Tokens by bucket"></section>
 
-  <!-- Top models (rows) + Activity side by side -->
-  <div class="grid grid-cols-1 lg:grid-cols-12 gap-3 mt-8">
-  <section class="lg:col-span-4 min-w-0" aria-label="Top models">
-    <div class="flex items-center gap-2 mb-1">
-      <i data-lucide="cpu" class="size-4" style="color: var(--accent)"></i>
-      <h2 class="display font-bold tracking-tight text-xl">Top models</h2>
-    </div>
-    <p class="mono text-xs mb-4" style="color: var(--dim)">week-over-week vs prior 7 days</p>
-    <div class="grid grid-cols-1 gap-3" id="modelCards"></div>
-  </section>
-  <section id="activity" class="rise lg:col-span-8 min-w-0 rounded-xl p-5 overflow-hidden" style="border: 1px solid var(--line); background: var(--panel); scroll-margin-top: 90px" aria-label="Activity graph">
+  <!-- Activity: full-width year heatmap -->
+  <section id="activity" class="rise mt-8 rounded-xl p-5 overflow-hidden" style="border: 1px solid var(--line); background: var(--panel); scroll-margin-top: 90px" aria-label="Activity graph">
     <div class="flex items-center gap-2 mb-1">
       <i data-lucide="calendar-days" class="size-4" style="color: var(--accent)"></i>
       <h2 class="display font-bold tracking-tight text-xl">Activity</h2>
-      <span class="mono text-xs ml-auto" style="color: var(--dim)" id="graphRange"></span>
+      <div class="seg mono text-xs flex items-center gap-1 ml-auto p-1 rounded-[10px]" style="border: 1px solid var(--line)" role="tablist" aria-label="Graph range">
+        <button data-gmode="daily" class="on px-3 py-1.5" role="tab">Daily</button>
+        <button data-gmode="weekly" class="px-3 py-1.5" role="tab">Weekly</button>
+        <button data-gmode="cumulative" class="px-3 py-1.5" role="tab">Cumulative</button>
+      </div>
     </div>
-    <p class="mono text-xs mb-4" style="color: var(--dim)">daily session tokens / last 26 weeks / darker means more</p>
+    <p class="mono text-xs mb-4" style="color: var(--dim)"><span id="graphRange"></span> · <span id="graphCap">daily values / trailing 12 months</span></p>
     <div class="pb-1">
-      <div class="grid w-full" style="grid-template-columns: repeat(26, minmax(0, 1fr)); gap: 3px;" id="graph"></div>
+      <div class="grid w-full" style="grid-template-columns: repeat(53, minmax(0, 1fr)); gap: 3px;" id="graph"></div>
     </div>
     <div class="mono text-[11px] mt-3 flex items-center gap-1.5" style="color: var(--dim)">
       <span>less</span>
       <span class="cell key"></span><span class="cell key l1"></span><span class="cell key l2"></span><span class="cell key l3"></span><span class="cell key l4"></span>
       <span>more</span>
     </div>
-    <div class="heatmonth mono mt-2 grid w-full" style="color: var(--dim); grid-template-columns: repeat(26, minmax(0, 1fr)); gap: 3px;" id="graphMonths"></div>
+    <div class="heatmonth mono mt-2 grid w-full" style="color: var(--dim); grid-template-columns: repeat(53, minmax(0, 1fr)); gap: 3px;" id="graphMonths"></div>
   </section>
-  </div>
+
+  <!-- Top models: 3 columns -->
+  <section class="mt-8" aria-label="Top models">
+    <div class="flex items-center gap-2 mb-1">
+      <i data-lucide="cpu" class="size-4" style="color: var(--accent)"></i>
+      <h2 class="display font-bold tracking-tight text-xl">Top models</h2>
+      <span class="mono text-xs ml-auto" style="color: var(--dim)">usage across sessions</span>
+    </div>
+    <p class="mono text-xs mb-4" style="color: var(--dim)">week-over-week vs prior 7 days</p>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-3" id="modelCards"></div>
+  </section>
+
 
   <!-- Models list: full width -->
   <section class="rise mt-8" aria-label="All models">
@@ -159,27 +164,12 @@
     <p id="emptyTop" class="mono text-sm py-6 text-center hidden" style="color: var(--dim)">No tool calls yet.</p>
   </section>
 
-  <!-- Token activity: stacked per-model bars -->
-  <section id="modelactivity" class="rise mt-8 rounded-xl p-5" style="border: 1px solid var(--line); background: var(--panel); scroll-margin-top: 90px" aria-label="Token activity">
-    <div class="flex flex-wrap items-center gap-3 mb-1">
-      <i data-lucide="chart-column" class="size-4" style="color: var(--accent)"></i>
-      <h2 class="display font-bold tracking-tight text-xl">Token activity</h2>
-      <span class="mono text-xs ml-auto" style="color: var(--dim)">daily total / last 30 days</span>
-    </div>
-    <p class="mono text-xs mb-4" style="color: var(--dim)">hover a point for the per-model split</p>
-    <div class="relative" id="linewrap">
-      <svg id="line" viewBox="0 0 600 200" preserveAspectRatio="none" class="w-full h-56 block" role="img" aria-label="30-day token line chart"></svg>
-      <p id="lineEmpty" class="mono text-sm py-8 text-center hidden" style="color: var(--dim)">no session tokens in the last 30 days</p>
-    </div>
-    <div class="flex gap-2 mt-2 mono text-[10px]" style="color: var(--dim)" id="lineDays"></div>
-  </section>
-
   <footer class="mono text-xs mt-12 pt-4" style="color: var(--dim); border-top: 1px solid var(--line)">
     <div class="flex flex-wrap items-center gap-x-4 gap-y-3">
       <span>© 2026 Tersio. KurutoDenzeru. All rights reserved.</span>
       <span class="pill flat" id="verChip">tersio</span>
-      <span class="flex items-center gap-1" style="color: var(--ink)">
-<a href="https://github.com/KurutoDenzeru" target="_blank" rel="noopener" aria-label="GitHub" class="btn-push social grid size-8 place-items-center rounded-lg"><img src="https://cdn.simpleicons.org/github/white" width="16" height="16" alt=""></a>
+      <span class="ml-auto flex items-center gap-1" style="color: var(--ink)">
+<a href="https://github.com/KurutoDenzeru/tersio" target="_blank" rel="noopener" aria-label="GitHub" class="btn-push social grid size-8 place-items-center rounded-lg"><img src="https://cdn.simpleicons.org/github/white" width="16" height="16" alt=""></a>
 <a href="https://linkedin.com/in/kurtcalacday/" target="_blank" rel="noopener" aria-label="LinkedIn" class="btn-push social grid size-8 place-items-center rounded-lg"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg></a>
 <a href="https://instagram.com/krtclcdy/" target="_blank" rel="noopener" aria-label="Instagram" class="btn-push social grid size-8 place-items-center rounded-lg"><img src="https://cdn.simpleicons.org/instagram/white" width="16" height="16" alt=""></a>
 </span>

@@ -84,7 +84,7 @@ Break-even math, balanced preset (caveman full + rtk + ponytail): `⌈overhead �
 | `tersio usage` | Ledger-backed usage + savings report |
 | `tersio gain` | Open the gain dashboard (`--open`, `--export <file>`, `--port <n>`; serves localhost only) |
 
-Token buckets (input / output / cache read / cache write) follow [tokscale](https://github.com/junhoyeo/tokscale), which also parses the same OMP session transcripts.
+Token buckets (input / output / cache read / cache write) follow [tokscale](https://github.com/junhoyeo/tokscale), which also parses the same OMP session transcripts. CO2 uses an [EcoLogits](https://github.com/genai-impact/ecologits) v0.8.2 port (per-model params, provider grids, served ÷32 amortization); see `extensions/shared/ECO_NOTICE.md`.
 | `tersio uninstall` | Remove extensions, registration, and the Ponytail plugin (`--keep-ponytail` keeps Ponytail; `--remove-rtk` also removes the RTK binary) |
 | `tersio version` | Print version |
 

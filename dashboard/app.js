@@ -152,42 +152,109 @@
     return rows;
   }
 
+  var GMODE = 'daily';
+  function mondayOf(d) {
+    var m = new Date(d);
+    m.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+    m.setHours(0, 0, 0, 0);
+    return m;
+  }
+  function weekTipHTML(monKey, weekTotal, weekPer) {
+    var mon = new Date(monKey + 'T12:00:00'), sun = new Date(mon);
+    sun.setDate(mon.getDate() + 6);
+    var head = isNaN(mon) ? monKey : mon.toLocaleString('en-US', { month: 'short', day: 'numeric' }).toUpperCase() +
+      ' - ' + (isNaN(sun) ? '' : sun.toLocaleString('en-US', { month: 'short', day: 'numeric' }).toUpperCase());
+    var tops = topModels(DATA.byModel || {}, 8), rows = [], other = 0;
+    tops.forEach(function (m, i) {
+      var v = weekPer[m] || 0;
+      if (v) rows.push([m, v, PALETTE[i % PALETTE.length]]);
+    });
+    Object.keys(weekPer).forEach(function (m) { if (tops.indexOf(m) < 0) other += weekPer[m]; });
+    if (other) rows.push(['Other', other, 'var(--dim)']);
+    return tipDayHTML(head, weekTotal, rows.length ? rows : [['no activity', 0, 'var(--dim)']]);
+  }
   function renderGraph(byDay) {
     var g = document.getElementById('graph');
     g.innerHTML = '';
     var today = new Date(); today.setHours(0, 0, 0, 0);
-    var start = new Date(today); start.setDate(start.getDate() - (25 * 7) - today.getDay());
-    var max = 1, sums = {};
+    var start = new Date(today); start.setDate(start.getDate() - (52 * 7) - today.getDay());
+    var sums = {};
     Object.keys(byDay).forEach(function (day) {
       var b = byDay[day];
       sums[day] = b.input + b.output + b.cacheRead + b.cacheWrite;
-      if (sums[day] > max) max = sums[day];
     });
+    // per-day values under the active mode
+    var dayKeys = [], wk;
+    for (wk = 0; wk < 53; wk++) for (var di = 0; di < 7; di++) {
+      var dd = new Date(start); dd.setDate(dd.getDate() + wk * 7 + di);
+      dayKeys.push(dayKey(dd));
+    }
+    var weekPer = {}, weekTotal = {}, run = 0, cellVal = {};
+    dayKeys.forEach(function (k) {
+      var dt = new Date(k + 'T12:00:00');
+      if (GMODE === 'weekly' && !isNaN(dt)) {
+        var mk = dayKey(mondayOf(dt));
+        weekTotal[mk] = (weekTotal[mk] || 0) + (sums[k] || 0);
+        var per = (DATA.byDayModel || {})[k] || {};
+        if (!weekPer[mk]) weekPer[mk] = {};
+        Object.keys(per).forEach(function (m) { weekPer[mk][m] = (weekPer[mk][m] || 0) + per[m]; });
+      }
+      if (GMODE === 'cumulative') { run += sums[k] || 0; cellVal[k] = run; }
+    });
+    var max = 1;
+    if (GMODE === 'weekly') {
+      Object.keys(weekTotal).forEach(function (k) { max = Math.max(max, weekTotal[k]); });
+    } else if (GMODE === 'cumulative') {
+      max = Math.max(1, run);
+    } else {
+      Object.keys(sums).forEach(function (k) { max = Math.max(max, sums[k]); });
+    }
     var months = document.getElementById('graphMonths');
     months.innerHTML = '';
     var lastMonth = '';
-    for (var w = 0; w < 26; w++) {
+    for (var w = 0; w < 53; w++) {
       var col = document.createElement('div');
       col.style.cssText = 'display:flex;flex-direction:column;gap:3px;min-width:0;';
       var ml = document.createElement('span');
-      ml.className = 'heatmonth w-full truncate';
+      ml.className = 'heatmonth w-full';
       for (var i = 0; i < 7; i++) {
-        var dt = new Date(start); dt.setDate(dt.getDate() + w * 7 + i);
-        var key = dayKey(dt), v = sums[key] || 0, lvl = 0;
+        var cdt = new Date(start); cdt.setDate(cdt.getDate() + w * 7 + i);
+        var key = dayKey(cdt), v, tipFn;
+        if (GMODE === 'weekly') {
+          var mk2 = dayKey(mondayOf(cdt));
+          v = weekTotal[mk2] || 0;
+          tipFn = (function (mk3, vv) {
+            return function () { return weekTipHTML(mk3, vv, weekPer[mk3] || {}); };
+          })(mk2, v);
+        } else if (GMODE === 'cumulative') {
+          v = cellVal[key] || 0;
+          tipFn = (function (kk, vv) {
+            return function () {
+              var rows = dayModelRows(kk);
+              return tipDayHTML('THROUGH ' + dateHead(kk), vv, rows.length ? rows : [['no activity', 0, 'var(--dim)']]);
+            };
+          })(key, v);
+        } else {
+          v = sums[key] || 0;
+          tipFn = (function (kk, vv) {
+            return function () {
+              var rows = dayModelRows(kk);
+              return tipDayHTML(kk, vv, rows.length ? rows : [['no activity', 0, 'var(--dim)']]);
+            };
+          })(key, v);
+        }
+        var lvl = 0;
         if (v > 0) lvl = Math.min(4, 1 + Math.floor((v / max) * 3.99));
         var cell = document.createElement('span');
         cell.className = 'cell' + (lvl ? ' l' + lvl : '');
-        (function (day, total) {
-          cell.addEventListener('mouseenter', function (ev) {
-            var rows = dayModelRows(day);
-            showTip(tipDayHTML(day, total, rows.length ? rows : [['no activity', 0, 'var(--dim)']]), ev.clientX, ev.clientY);
-          });
+        (function (fn) {
+          cell.addEventListener('mouseenter', function (ev) { showTip(fn(), ev.clientX, ev.clientY); });
           cell.addEventListener('mousemove', function (ev) { moveTip(ev.clientX, ev.clientY); });
           cell.addEventListener('mouseleave', hideTip);
-        })(key, v);
+        })(tipFn);
         col.appendChild(cell);
         if (i === 0) {
-          var mm = dt.toLocaleString('en-US', { month: 'short' });
+          var mm = cdt.toLocaleString('en-US', { month: 'short' });
           ml.textContent = mm !== lastMonth ? mm : '';
           lastMonth = mm;
         }
@@ -198,109 +265,25 @@
     Array.prototype.forEach.call(months.children, function (m) { m.style.minWidth = '0'; });
     document.getElementById('graphRange').textContent =
       dayKey(start) + ' to ' + dayKey(today);
+    document.getElementById('graphCap').textContent =
+      GMODE === 'weekly' ? 'weekly totals / trailing 12 months' :
+      GMODE === 'cumulative' ? 'running total / trailing 12 months' :
+      'daily values / trailing 12 months';
+  }
+  function bindGraphTabs() {
+    if (bindGraphTabs.done) return;
+    bindGraphTabs.done = true;
+    Array.prototype.forEach.call(document.querySelectorAll('#activity [data-gmode]'), function (btn) {
+      btn.addEventListener('click', function () {
+        Array.prototype.forEach.call(document.querySelectorAll('#activity [data-gmode]'), function (b) { b.classList.remove('on'); });
+        btn.classList.add('on');
+        GMODE = btn.getAttribute('data-gmode');
+        if (DATA) renderGraph(DATA.byDay || {});
+      });
+    });
   }
 
   // 30-day token line: daily totals, smoothed path, hover dot + per-model tip.
-  function renderLine() {
-    var svg = document.getElementById('line');
-    while (svg.firstChild) svg.removeChild(svg.firstChild);
-    var NS = 'http://www.w3.org/2000/svg';
-    var days = [], today = new Date(); today.setHours(0, 0, 0, 0);
-    for (var i = 29; i >= 0; i--) { var dt = new Date(today); dt.setDate(dt.getDate() - i); days.push(dayKey(dt)); }
-    var pts = days.map(function (k) { return { k: k, v: dayTotal((DATA.byDay || {})[k] || {}) }; });
-    var max = 1, any = false, qi;
-    for (qi = 0; qi < pts.length; qi++) { if (pts[qi].v) { any = true; max = Math.max(max, pts[qi].v); } }
-    document.getElementById('lineEmpty').classList.toggle('hidden', any);
-    svg.style.display = any ? '' : 'none';
-    var labels = document.getElementById('lineDays');
-    labels.innerHTML = '';
-    if (!any) return;
-    var W = 600, H = 200, PAD = 8, TOP = 16;
-    function X(i) { return PAD + i * (W - 2 * PAD) / 29; }
-    function Y(v) { return H - PAD - (v / max) * (H - PAD - TOP); }
-    var gi;
-    for (gi = 1; gi <= 3; gi++) {
-      var ln = document.createElementNS(NS, 'line');
-      var gy = PAD + (H - PAD - TOP) * gi / 4 + TOP * 0;
-      ln.setAttribute('x1', PAD); ln.setAttribute('x2', W - PAD);
-      ln.setAttribute('y1', gy); ln.setAttribute('y2', gy);
-      ln.setAttribute('stroke', 'var(--line)'); ln.setAttribute('stroke-width', '1');
-      svg.appendChild(ln);
-    }
-    var cssAccent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#34d399';
-    var defs = document.createElementNS(NS, 'defs');
-    var grad = document.createElementNS(NS, 'linearGradient');
-    grad.setAttribute('id', 'linefill'); grad.setAttribute('x1', '0'); grad.setAttribute('y1', '0');
-    grad.setAttribute('x2', '0'); grad.setAttribute('y2', '1');
-    var s1 = document.createElementNS(NS, 'stop');
-    s1.setAttribute('offset', '0'); s1.setAttribute('stop-color', cssAccent); s1.setAttribute('stop-opacity', '.35');
-    var s2 = document.createElementNS(NS, 'stop');
-    s2.setAttribute('offset', '1'); s2.setAttribute('stop-color', cssAccent); s2.setAttribute('stop-opacity', '0');
-    grad.appendChild(s1); grad.appendChild(s2); defs.appendChild(grad); svg.appendChild(defs);
-    function smooth(closed) {
-      var d = 'M' + X(0).toFixed(1) + ',' + Y(pts[0].v).toFixed(1);
-      var i, p0, p1, p2, p3, c1x, c1y, c2x, c2y;
-      for (i = 0; i < pts.length - 1; i++) {
-        p0 = pts[Math.max(0, i - 1)]; p1 = pts[i]; p2 = pts[i + 1]; p3 = pts[Math.min(pts.length - 1, i + 2)];
-        c1x = X(i) + (X(i + 1) - X(Math.max(0, i - 1))) / 6;
-        c1y = Y(p1.v) + (Y(p2.v) - Y(p0.v)) / 6;
-        c2x = X(i + 1) - (X(Math.min(29, i + 2)) - X(i)) / 6;
-        c2y = Y(p2.v) - (Y(p3.v) - Y(p1.v)) / 6;
-        d += 'C' + c1x.toFixed(1) + ',' + c1y.toFixed(1) + ' ' + c2x.toFixed(1) + ',' + c2y.toFixed(1) + ' ' + X(i + 1).toFixed(1) + ',' + Y(p2.v).toFixed(1);
-      }
-      if (closed) d += 'L' + X(29).toFixed(1) + ',' + (H - PAD) + 'L' + X(0).toFixed(1) + ',' + (H - PAD) + 'Z';
-      return d;
-    }
-    var area = document.createElementNS(NS, 'path');
-    area.setAttribute('d', smooth(true)); area.setAttribute('fill', 'url(#linefill)');
-    svg.appendChild(area);
-    var line = document.createElementNS(NS, 'path');
-    line.setAttribute('d', smooth(false)); line.setAttribute('fill', 'none');
-    line.setAttribute('stroke', cssAccent); line.setAttribute('stroke-width', '2.5');
-    line.setAttribute('stroke-linejoin', 'round'); line.setAttribute('stroke-linecap', 'round');
-    line.setAttribute('vector-effect', 'non-scaling-stroke');
-    svg.appendChild(line);
-    var hoverG = document.createElementNS(NS, 'g');
-    hoverG.style.display = 'none';
-    var cross = document.createElementNS(NS, 'line');
-    cross.setAttribute('y1', TOP - 6); cross.setAttribute('y2', H - PAD);
-    cross.setAttribute('stroke', 'var(--dim)'); cross.setAttribute('stroke-width', '1');
-    cross.setAttribute('stroke-dasharray', '3 3');
-    var dot = document.createElementNS(NS, 'circle');
-    dot.setAttribute('r', '4.5'); dot.setAttribute('fill', cssAccent);
-    dot.setAttribute('stroke', 'var(--panel)'); dot.setAttribute('stroke-width', '2');
-    hoverG.appendChild(cross); hoverG.appendChild(dot); svg.appendChild(hoverG);
-    var hit = document.createElementNS(NS, 'rect');
-    hit.setAttribute('x', '0'); hit.setAttribute('y', '0');
-    hit.setAttribute('width', W); hit.setAttribute('height', H);
-    hit.setAttribute('fill', 'transparent');
-    hit.addEventListener('mousemove', function (ev) {
-      var r = svg.getBoundingClientRect();
-      var idx = Math.max(0, Math.min(29, Math.round((ev.clientX - r.left) / r.width * 29)));
-      var p = pts[idx];
-      cross.setAttribute('x1', X(idx)); cross.setAttribute('x2', X(idx));
-      dot.setAttribute('cx', X(idx)); dot.setAttribute('cy', Y(p.v));
-      hoverG.style.display = '';
-      var rows = dayModelRows(p.k);
-      var html = tipDayHTML(p.k, p.v, rows.length ? rows : [['no activity', 0, 'var(--dim)']]);
-      showTip(html, ev.clientX, ev.clientY);
-    });
-    hit.addEventListener('mouseleave', function () { hoverG.style.display = 'none'; hideTip(); });
-    svg.appendChild(hit);
-    [['left', 0], ['center', 14], ['right', 29]].forEach(function (pos) {
-      var s = document.createElement('span');
-      s.className = 'flex-1' + (pos[0] === 'center' ? ' text-center' : pos[0] === 'right' ? ' text-right' : '');
-      s.textContent = dateHead(days[pos[1]]);
-      labels.appendChild(s);
-    });
-    if (hasGsap && !reduce) {
-      var len = 2000;
-      line.style.strokeDasharray = String(len);
-      line.style.strokeDashoffset = String(len);
-      gsap.to(line.style, { strokeDashoffset: 0, duration: 1.4, ease: 'power2.out' });
-    }
-  }
-
   function wow(model) {
     var days = allDays().slice(-14), cur = 0, prev = 0;
     days.forEach(function (d, i) {
@@ -311,7 +294,6 @@
     var p = Math.round((cur - prev) / prev * 100);
     return (p >= 0 ? '+' : '') + p + '%';
   }
-
   function renderModels() {
     var byModel = DATA.byModel || {};
     var tops = topModels(byModel, 8).filter(function (m) { return modelTotal(byModel, m) > 0; });
@@ -456,13 +438,13 @@
 
   function money(v) { return '$' + v.toFixed(2); }
 
-  // 14-day volume sparkline + blended-rate daily stats for the USD card.
+  // 30-day volume sparkline + blended-rate daily stats for the USD card.
   // Daily cost is a blended estimate (total USD / total tokens x day
   // tokens), always rendered with ~ and never mixed with measured totals.
   function renderSpark(byDay, usd, savedUsd, total) {
     var el = document.getElementById('usdSpark');
     el.innerHTML = '';
-    var keys = Object.keys(byDay).sort().slice(-14);
+    var keys = Object.keys(byDay).sort().slice(-30);
     var rate = total ? usd / total : 0;
     var max = 1, vols = [];
     keys.forEach(function (k) {
@@ -521,13 +503,6 @@
     DATA = d;
     var t = d.tokens || { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
     var total = t.input + t.output + t.cacheRead + t.cacheWrite;
-    var sub = document.getElementById('herosub');
-    sub.innerHTML = '';
-    ('input ' + fmt(t.input) + ' · output ' + fmt(t.output) + ' · cache read ' + fmt(t.cacheRead) +
-      (t.cacheWrite ? ' · cache write ' + fmt(t.cacheWrite) : '') + ' · ' + money(d.usd || 0)).split(' ').forEach(function (w) {
-      var s = document.createElement('span'); s.textContent = w + ' ';
-      sub.appendChild(s);
-    });
     var totalEl = document.getElementById('total');
     if (hasGsap) {
       var o = { v: 0 };
@@ -543,8 +518,6 @@
     var wAll = weekSplit(byDay, dayTotal);
     setPill('usdDelta', wAll.cur, wAll.prev, false);
     countUp(document.getElementById('saved'), d.savedUsd || 0, true);
-    var wCache = weekSplit(byDay, function (b) { return b.cacheRead || 0; });
-    setPill('savedDelta', wCache.cur, wCache.prev, true);
     document.getElementById('co2').textContent = '~' + (d.co2g || 0).toFixed(1) + 'g';
     (function () {
       var el = document.getElementById('co2');
@@ -555,8 +528,6 @@
       card.addEventListener('mousemove', function (ev) { moveTip(ev.clientX, ev.clientY); });
       card.addEventListener('mouseleave', hideTip);
     })();
-    var wOut = weekSplit(byDay, function (b) { return b.output || 0; });
-    setPill('co2Delta', wOut.cur, wOut.prev, false);
     var share = total ? Math.round((t.cacheRead + t.cacheWrite) / total * 100) : 0;
     document.getElementById('cacheShare').textContent = share + '%';
     var shareOf = function (b) { var s = dayTotal(b); return s ? ((b.cacheRead || 0) + (b.cacheWrite || 0)) / s * 100 : 0; };
@@ -569,21 +540,14 @@
     cd.className = 'pill mono ' + (Math.abs(pp) < 0.05 ? 'flat' : (pp > 0 ? 'good' : 'bad'));
 
     renderStrip(t);
+    bindGraphTabs();
     renderGraph(d.byDay || {});
-    renderLine();
     renderModels();
     renderTools();
 
     if (window.lucide) lucide.createIcons();
     if (hasGsap) {
       gsap.from('.hero-in', { y: 26, opacity: 0, duration: 0.8, ease: 'power3.out', stagger: 0.08 });
-      // Scrub: hero sub words fade in sequence on scroll.
-      if (hasST) {
-        gsap.fromTo('#herosub span', { opacity: 0.15 }, {
-          opacity: 1, ease: 'none', stagger: 0.05,
-          scrollTrigger: { trigger: '#herosub', start: 'top 92%', end: 'top 55%', scrub: true }
-        });
-      }
     }
     observe();
   }
