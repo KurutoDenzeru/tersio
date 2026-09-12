@@ -1,3 +1,8 @@
+## v2.12.0
+ - Install is user-level only: the project-scope prompt, branch, and `--scope project|both` are removed — session extensions must live in `~/.omp/agent/extensions` to load. A stale `--scope project|both` now fails loudly; bare `--scope user` still parses for old scripts. `tersio update` no longer forwards scope.
+ - Fix OMP launch warning: the shared bridge now ships `shared/usage-ledger.js` with its `pricing.js`/`carbon.js` deps, so the `/tersio` root command loads (it was broken since the router gained `usage`/`gain`). Pinned by a dry-run bridge test. 125 tests.
+ - Dashboard: empty-state placeholders no longer render alongside data (`.empty.hidden` beats Tailwind's `.hidden`); Settings store paths truncate with ellipsis inside their cards; footer social icons load from the Simple Icons CDN (LinkedIn stays inline — no v16 CDN slug).
+
 ## v2.11.0
  - `tersio reset` clears tersio-owned statistics (usage ledger) with `--dry-run` preview and confirm-unless-`--yes`; session transcripts and RTK history are never touched. `tersio doctor` gains a Records section showing every store path with ownership. Gain dashboard gets a served-mode Reset button plus shadcn-style empty states (dashed well, Lucide icon, title, hint) on Activity, Top models, Models, Recent, Tools, and the cost sparkline for zero-data renders. Header controls collapse into a native-modal Settings dialog (icon-only Light/Dark/System theme tabs, reload, and all three store paths with ownership).
 

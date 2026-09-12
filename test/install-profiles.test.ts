@@ -85,16 +85,19 @@ test("readPluginSettings tolerates a corrupt lock file", () => {
 type RunResult = { status: number | null; stdout: string; stderr: string };
 
 function run(...args: string[]): RunResult {
+  // Missing home: user-scope dests never exist, so dry-run previews every write.
+  const missingHome = path.join(root, "test", "definitely-missing-home");
   const result = spawnSync(process.execPath, [installer, ...args], {
     cwd: root,
     encoding: "utf8",
     timeout: 15000,
+    env: { ...process.env, HOME: missingHome, USERPROFILE: missingHome },
   });
   return { status: result.status, stdout: result.stdout || "", stderr: result.stderr || "" };
 }
 
 test("installer accepts session-default flags and reports them", () => {
-  const result = run("install", "--dry-run", "--scope", "project", "--yes", "--combo-default", "medium");
+  const result = run("install", "--dry-run", "--yes", "--combo-default", "medium");
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /combo default=medium/);
   assert.match(result.stdout, /rtk-session/);
@@ -115,8 +118,18 @@ test("installer rejects invalid default values", () => {
   assert.match(badCaveman.stderr, /Invalid --caveman-default/);
 });
 
-test("installer dry-run installs every project-scope extension", () => {
-  const result = run("install", "--dry-run", "--scope", "project", "--yes");
+test("installer rejects removed project/both scopes", () => {
+  for (const scope of ["project", "both", "bogus"]) {
+    const bad = run("install", "--dry-run", "--yes", "--scope", scope);
+    assert.equal(bad.status, 1, scope);
+    assert.match(bad.stderr, /Project scope was removed/);
+  }
+  const legacy = run("install", "--dry-run", "--yes", "--scope", "user");
+  assert.equal(legacy.status, 0, legacy.stderr);
+});
+
+test("installer dry-run installs every user-scope extension", () => {
+  const result = run("install", "--dry-run", "--yes");
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /rtk-session/);
   assert.match(result.stdout, /caveman-session\/index/);
@@ -153,7 +166,7 @@ test("package manifest declares features and settings matching the omp schema", 
 });
 
 test("installer accepts --ponytail-default override and reports it", () => {
-  const result = run("install", "--dry-run", "--scope", "project", "--yes", "--ponytail-default", "review");
+  const result = run("install", "--dry-run", "--yes", "--ponytail-default", "review");
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /ponytail=review/);
 });

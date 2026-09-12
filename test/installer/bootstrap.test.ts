@@ -78,7 +78,7 @@ const TARBALL_FALLBACK = 'env TERSIO_TARBALL_URL=file:///nonexistent/tersio-npm.
   }
 });
 
-(process.platform === "win32" ? test.skip : test)("non-interactive shells default to a user-scope install", () => {
+(process.platform === "win32" ? test.skip : test)("non-interactive shells run a user-level install", () => {
   const { bin, prefix, tersioLog } = fakeEnv();
 
   try {
@@ -91,8 +91,9 @@ const TARBALL_FALLBACK = 'env TERSIO_TARBALL_URL=file:///nonexistent/tersio-npm.
 
     assert.equal(result.status, 0, result.stderr);
     const tersioArgs = readFileSync(tersioLog, "utf8");
-    if (/--scope user --yes/.test(tersioArgs)) {
-      assert.match(tersioArgs, /install --scope user --yes/);
+    if (/install --yes/.test(tersioArgs)) {
+      assert.match(tersioArgs, /install --yes/);
+      assert.doesNotMatch(tersioArgs, /--scope/);
     } else {
       // Environment exposed a controlling terminal (/dev/tty); the installer
       // ran interactively — still a full `tersio install` follow-up.

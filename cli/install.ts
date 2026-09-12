@@ -5,9 +5,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   BUN_BIN_DIR, COMBO_PRESET_MODES, EXTENSIONS_KEY_RE, HOME, IS_WINDOWS, OMP_AGENT_DIR, OMP_PLUGINS_DIR, OMP_BIN,
-  PACKAGE_NAME, PACKAGE_VERSION, RTK_BINARY_NAME, SCOPE_MAP,
+  PACKAGE_NAME, PACKAGE_VERSION, RTK_BINARY_NAME,
   applyUpdate, cavemanDefaultFlag, comboDefaultFlag, command, dryRun, install,
-  ponytailDefaultFlag, profileFlagsGiven, reinstall, rtkDefaultFlag, scopeFlag, verbose, yes,
+  ponytailDefaultFlag, profileFlagsGiven, reinstall, rtkDefaultFlag, verbose, yes,
   dashboardExport, dashboardPort,
   debug, ensureExtensionAfterConfigEntry, ensureExtensionInConfig, ensurePonytailConfigValue,
   execP, parseJsonObject, parsePonytailConfig, patchPonytailConfig, readPluginsPackage,
@@ -15,7 +15,7 @@ import {
   InstallOptions, WriteOptions,
 } from './common.ts';
 import {
-  ask, askInteractiveChoice, askInteractiveConfirm, closeRL, execNetwork, tty, withInteractiveSpinner,
+  askInteractiveChoice, askInteractiveConfirm, closeRL, execNetwork, tty, withInteractiveSpinner,
 } from './interactive.ts';
 import { printWelcome } from './banner.ts';
 import { checkForUpdate, runLatestUpdate } from './update.ts';
@@ -41,6 +41,9 @@ const MODE_REINFORCEMENT_INDEX = path.join(EXT_DIR, 'shared', 'mode-reinforcemen
 const SHARED_TYPES = path.join(EXT_DIR, 'shared', 'types.js');
 const LIB_UTILS = path.join(EXT_DIR, 'lib', 'utils.js');
 const SHARED_PLUGIN_SETTINGS = path.join(EXT_DIR, 'shared', 'plugin-settings.js');
+const SHARED_USAGE_LEDGER = path.join(EXT_DIR, 'shared', 'usage-ledger.js');
+const SHARED_PRICING = path.join(EXT_DIR, 'shared', 'pricing.js');
+const SHARED_CARBON = path.join(EXT_DIR, 'shared', 'carbon.js');
 
 interface Profile {
   comboDefault: string;
@@ -374,6 +377,9 @@ async function stepSharedSessionState(extDir: string, options: WriteOptions): Pr
     [SHARED_TYPES, path.join('shared', 'types.js')],
     [LIB_UTILS, path.join('lib', 'utils.js')],
     [SHARED_PLUGIN_SETTINGS, path.join('shared', 'plugin-settings.js')],
+    [SHARED_USAGE_LEDGER, path.join('shared', 'usage-ledger.js')],
+    [SHARED_PRICING, path.join('shared', 'pricing.js')],
+    [SHARED_CARBON, path.join('shared', 'carbon.js')],
   ], 'shared/session-state.js', options);
 }
 
@@ -389,7 +395,7 @@ async function stepRtkSession(extDir: string, options: WriteOptions): Promise<vo
   await copySources(extDir, [[RTK_SESSION_INDEX, path.join('rtk-session', 'index.js')]], 'rtk-session/index.js', options);
 }
 
-// One rule fetch serves user- and project-level installs; dry runs stay offline
+// One rule fetch serves the install; dry runs stay offline
 // and fall back to the bundled rule to preview its destination.
 async function fetchCavemanRule(options: WriteOptions): Promise<string | null> {
   if (options.dryRun) return (await readTextIfExists(path.join(path.dirname(CAVEMAN_INDEX), 'rule.md'))) || '';
@@ -448,52 +454,14 @@ function defaultProfile(): Profile {
   };
 }
 
-// Determine install scope: reinstall > flag > non-interactive default > prompt.
-async function resolveScope(): Promise<string> {
-  if (reinstall) {
-    console.log('  Scope: user (reinstall)');
-    return '1';
-  }
-  if (scopeFlag) {
-    const scope = SCOPE_MAP[scopeFlag];
-    if (!scope) {
-      console.log(`  [fail] Invalid --scope: ${scopeFlag}. Use: user, project, both`);
-      closeRL();
-      process.exit(1);
-    }
-    console.log(`  Scope: ${scopeFlag}`);
-    return scope;
-  }
-  if (install || yes) {
-    console.log(`  Scope: user (${install ? 'install default' : '--scope omitted, defaulting to user with --yes'})`);
-    return '1';
-  }
-  if (tty()) {
-    const choice = await askInteractiveChoice('Install scope', [
-      { value: '1', label: 'User-level', hint: 'all OMP sessions' },
-      { value: '2', label: 'Project-level', hint: 'this repo only' },
-      { value: '3', label: 'Both' },
-    ], '1');
-    if (choice.status === 'selected') return choice.value;
-    closeRL();
-    process.exit(130);
-  }
-  console.log('\nInstall scope:');
-  console.log('  1) User-level (all OMP sessions)');
-  console.log('  2) Project-level (this repo only)');
-  console.log('  3) Both');
-  while (true) {
-    const answer = (await ask('\nChoose [1-3] (default 1): ')).trim() || '1';
-    if (answer === '1' || answer === '2' || answer === '3') return answer;
-    console.log(`  [fail] Invalid scope: ${answer}. Choose 1, 2, or 3.`);
-  }
-}
+// Install is always user-level (all OMP sessions). Project scope was removed:
+// session extensions must live in ~/.omp/agent/extensions to load.
 
 async function resolveProfile(): Promise<Profile> {
   const profile = defaultProfile();
 
   // Single interactive prompt: the Combo preset implies all three modes.
-  // Numbered menu, same pattern as the scope prompt — no typing preset names.
+  // Numbered menu — no typing preset names.
   // Only for a real user at a terminal, only when no default flags were
   // given, and never for --apply-update runs.
   if (tty() && !profileFlagsGiven && !applyUpdate && (install || reinstall)) {
@@ -596,7 +564,7 @@ async function runCommandMenu(): Promise<void> {
   }
   updatePromptDone = true;
   const choice = await askInteractiveChoice('Tersio — what next?', [
-    { value: 'install', label: 'Install add-ons', hint: 'user/project scope + combo defaults' },
+    { value: 'install', label: 'Install add-ons', hint: 'user scope + combo defaults' },
     { value: 'check', label: 'Check for updates', hint: 'check CLI version, then update ai-addons' },
     { value: 'doctor', label: 'Doctor', hint: 'verify the installation' },
     { value: 'usage', label: 'Usage', hint: 'token usage and savings report' },
@@ -700,21 +668,18 @@ async function runInstall(): Promise<void> {
     }
   }
 
-  const scope = await resolveScope();
-
+  console.log('  Scope: user (all OMP sessions)');
 
   // Resolve session defaults: flags > interactive prompt > defaults.
   const profile = await resolveProfile();
 
-
   const userDir = OMP_AGENT_DIR;
   const userExtDir = path.join(userDir, 'extensions');
-  const projectExtDir = path.join(process.cwd(), '.omp', 'extensions');
 
   // apply-update is `tersio update`'s payload run: treat it like reinstall so
   // the add-ons refresh too — Ponytail package via npm, self plugin, RTK
   // binary (always re-downloaded), and the Caveman rule (always re-fetched).
-  const options: InstallOptions = { dryRun, verbose, yes, scope, reinstall: reinstall || applyUpdate };
+  const options: InstallOptions = { dryRun, verbose, yes, reinstall: reinstall || applyUpdate };
 
   // Check prerequisites
   console.log('\nPrerequisites:');
@@ -727,32 +692,20 @@ async function runInstall(): Promise<void> {
 
   const cavemanRule = await fetchCavemanRule(options);
 
-  if (scope === '1' || scope === '3') {
-    console.log('\n--- User-level install ---');
-    await stepSharedSessionState(userExtDir, options);
-    await stepPonytail(OMP_PLUGINS_DIR, userDir, options);
-    const selfPlugin = await stepSelfPlugin(OMP_PLUGINS_DIR, options);
-    const ponytailExtPath = path.join(OMP_PLUGINS_DIR, 'node_modules', '@dietrichgebert', 'ponytail', 'pi-extension', 'index.js');
-    await stepRtk(BUN_BIN_DIR, options);
-    await stepRtkSession(userExtDir, options);
-    await stepCaveman(userExtDir, cavemanRule, options);
-    await stepCombo(userExtDir, options);
-    await stepTersioCommands(userExtDir, options);
-    await stepModeReinforcement(userExtDir, ponytailExtPath, options);
-    await stepUpdater(userExtDir, options);
-    if (selfPlugin) await writePluginSettings(profile, options);
-    await validateConfigExtensions(userDir, options);
-  }
+  console.log('\n--- User-level install ---');
+  await stepSharedSessionState(userExtDir, options);
+  await stepPonytail(OMP_PLUGINS_DIR, userDir, options);
+  const selfPlugin = await stepSelfPlugin(OMP_PLUGINS_DIR, options);
+  const ponytailExtPath = path.join(OMP_PLUGINS_DIR, 'node_modules', '@dietrichgebert', 'ponytail', 'pi-extension', 'index.js');
+  await stepRtk(BUN_BIN_DIR, options);
+  await stepRtkSession(userExtDir, options);
+  await stepCaveman(userExtDir, cavemanRule, options);
+  await stepCombo(userExtDir, options);
+  await stepTersioCommands(userExtDir, options);
+  await stepModeReinforcement(userExtDir, ponytailExtPath, options);
+  await stepUpdater(userExtDir, options);
+  if (selfPlugin) await writePluginSettings(profile, options);
 
-  if (scope === '2' || scope === '3') {
-    console.log('\n--- Project-level install ---');
-    await stepSharedSessionState(projectExtDir, options);
-    await stepRtkSession(projectExtDir, options);
-    await stepCaveman(projectExtDir, cavemanRule, options);
-    await stepTersioCommands(projectExtDir, options);
-    await stepUpdater(projectExtDir, options);
-    console.log('  [note] Ponytail, RTK binary, and Combo toggle require user-level (global) install');
-  }
 
   console.log('\n=== Installation complete ===');
   console.log('\nNext steps:');

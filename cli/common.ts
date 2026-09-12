@@ -24,7 +24,6 @@ interface InstallOptions {
   dryRun: boolean;
   verbose: boolean;
   yes: boolean;
-  scope: string;
   reinstall: boolean;
 }
 
@@ -71,7 +70,7 @@ function flagValue(name: string): string | undefined {
 
 const COMMANDS: Record<string, true> = { install: true, update: true, reinstall: true, doctor: true, uninstall: true, usage: true, gain: true, reset: true, version: true, help: true };
 const args = process.argv.slice(2);
-const commandArg = args.find((arg, index) => !arg.startsWith('-') && args[index - 1] !== '--scope');
+const commandArg = args.find((arg) => !arg.startsWith('-'));
 const command = commandArg?.toLowerCase() || null;
 const unknownCommand = command !== null && !COMMANDS[command];
 const install = command === 'install';
@@ -95,8 +94,13 @@ const removePonytail = args.includes('--remove-ponytail');
 const keepPonytail = args.includes('--keep-ponytail');
 const removeRtk = args.includes('--remove-rtk');
 
-const scopeFlag = flagValue('--scope')?.toLowerCase() ?? null;
-
+// Project scope was removed: tersio installs user-level (all OMP sessions)
+// only. A bare `--scope user` still parses (old scripts); anything else fails.
+const legacyScope = flagValue('--scope')?.toLowerCase() ?? null;
+if (legacyScope !== null && legacyScope !== 'user') {
+  console.error(`[fail] Invalid --scope: ${legacyScope}. Project scope was removed; tersio installs user-level only.`);
+  process.exit(1);
+}
 // --- Profile selection (session-start mode defaults) ---
 
 const comboDefaultFlag = parseEnum(flagValue('--combo-default'), COMBO_DEFAULTS, '--combo-default');
@@ -308,7 +312,6 @@ async function readPluginsPackage(pkgPath: string): Promise<PluginsPackage & { d
   return { ...pkg, name: pkg.name || 'omp-plugins', private: true, dependencies: pkg.dependencies || {} };
 }
 
-const SCOPE_MAP: Record<string, string> = { user: '1', project: '2', both: '3' };
 
 function relTime(ageMs: number): string {
   const mins = Math.floor(ageMs / 60000);
@@ -329,11 +332,11 @@ export {
   install, update, reinstall, showVersion, showHelp, applyUpdate,
   dryRun, yes, verbose, doctor, uninstall, usage, gain, reset,
   dashboardPort, dashboardOpen, dashboardExport,
-  removePonytail, keepPonytail, removeRtk, scopeFlag,
+  removePonytail, keepPonytail, removeRtk,
   comboDefaultFlag, cavemanDefaultFlag, ponytailDefaultFlag, rtkDefaultFlag, profileFlagsGiven,
   debug, execFileP, execP, writeIfChanged, normalizeExtensionsKey, EXTENSIONS_KEY_RE,
   writeConfigLines, ensureExtensionInConfig, ensureExtensionAfterConfigEntry,
   readPonytailConfig, parseJsonObject, parsePonytailConfig, patchPonytailConfig,
-  ensurePonytailConfigValue, readPluginsPackage, SCOPE_MAP, relTime,
+  ensurePonytailConfigValue, readPluginsPackage, relTime,
   InstallOptions, PluginsPackage, PonytailConfig, ExecOptions, WriteOptions,
 };

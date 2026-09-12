@@ -4,8 +4,8 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import {
   BUN_BIN_DIR, IS_WINDOWS, OMP_AGENT_DIR, OMP_PLUGINS_DIR,
-  PACKAGE_BIN, PACKAGE_NAME, PACKAGE_VERSION, RTK_BINARY_NAME, SCOPE_MAP,
-  dryRun, execP, parseJsonObject, scopeFlag, verbose,
+  PACKAGE_BIN, PACKAGE_NAME, PACKAGE_VERSION, RTK_BINARY_NAME,
+  dryRun, execP, parseJsonObject, verbose,
 } from './common.ts';
 import { execNetwork } from './interactive.ts';
 import { readTextIfExists } from '../extensions/lib/utils.ts';
@@ -142,14 +142,7 @@ function planLine(name: string, current: string | null, latest: string | null): 
 }
 
 async function runLatestUpdate(): Promise<void> {
-  const updateScope = scopeFlag || 'user';
-  if (!Object.hasOwn(SCOPE_MAP, updateScope)) {
-    console.error(`[fail] Invalid --scope: ${updateScope}. Use: user, project, both`);
-    process.exitCode = 1;
-    return;
-  }
-
-  const forwardedArgs = ['--yes', '--scope', updateScope];
+  const forwardedArgs = ['--yes'];
   if (dryRun) forwardedArgs.push('--dry-run');
   if (verbose) forwardedArgs.push('--verbose');
 

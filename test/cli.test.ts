@@ -51,11 +51,11 @@ test("an unknown command fails with usage and no installer output", () => {
   assert.doesNotMatch(result.stdout, /Prerequisites:|Installing|Will remove:/);
 });
 
-test("project dry-run previews shared bridge before dependent extensions without writing", () => {
+test("dry-run previews shared bridge before dependent extensions without writing", () => {
   const missingHome = path.join(root, "test", "definitely-missing-home");
   const result = spawnSync(
     process.execPath,
-    [installer, "install", "--dry-run", "--scope", "project"],
+    [installer, "install", "--dry-run"],
     {
       encoding: "utf8",
       cwd: path.join(root, "test"),
@@ -70,7 +70,9 @@ test("project dry-run previews shared bridge before dependent extensions without
   assert.ok(shared >= 0, result.stdout);
   assert.ok(rtk > shared, result.stdout);
   assert.ok(caveman > shared, result.stdout);
-  assert.match(result.stdout, /\[dry-run\] would write .*shared[\\/]session-state\.js/);
+  assert.match(result.stdout, /\[dry-run\] would write .*shared[\\/]usage-ledger\.js/);
+  assert.match(result.stdout, /\[dry-run\] would write .*shared[\\/]pricing\.js/);
+  assert.match(result.stdout, /\[dry-run\] would write .*shared[\\/]carbon\.js/);
   assert.equal(existsSync(path.join(root, "extensions", "shared-session-state.js")), false);
 });
 
@@ -78,7 +80,7 @@ test("user dry-run installs mode reinforcement after Ponytail", () => {
   const missingHome = path.join(root, "test", "definitely-missing-home");
   const result = spawnSync(
     process.execPath,
-    [installer, "install", "--dry-run", "--scope", "user"],
+    [installer, "install", "--dry-run"],
     {
       encoding: "utf8",
       cwd: root,
@@ -98,7 +100,7 @@ test("user dry-run installs the tersio root-command extension", () => {
   const missingHome = path.join(root, "test", "definitely-missing-home");
   const result = spawnSync(
     process.execPath,
-    [installer, "install", "--dry-run", "--scope", "user"],
+    [installer, "install", "--dry-run"],
     {
       encoding: "utf8",
       cwd: root,

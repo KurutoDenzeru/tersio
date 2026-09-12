@@ -1,8 +1,8 @@
 #!/bin/sh
 # Tersio installer: bootstraps the global npm CLI, then runs the main
-# `tersio install` (scope + Combo preset menus) in the same pass. Usage:
+# `tersio install` (Combo preset menu) in the same pass. Usage:
 #   curl -fsSL https://github.com/KurutoDenzeru/tersio/releases/latest/download/install.sh | sh
-# Extra flags are forwarded: curl ... | sh -s -- --dry-run --scope both
+# Extra flags are forwarded: curl ... | sh -s -- --dry-run
 set -eu
 
 if ! command -v npm >/dev/null 2>&1; then
@@ -48,6 +48,6 @@ if [ -t 0 ]; then
 elif ( exec < /dev/tty ) 2>/dev/null; then
   "$TERSIO" install "$@" < /dev/tty
 else
-  echo "  Non-interactive shell: defaulting to user-level install."
-  "$TERSIO" install --scope user --yes "$@"
+  echo "  Non-interactive shell: user-level install."
+  "$TERSIO" install --yes "$@"
 fi

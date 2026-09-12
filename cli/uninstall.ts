@@ -196,5 +196,4 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
   return true;
 }
 
-const SCOPE_MAP: Record<string, string> = { user: '1', project: '2', both: '3' };
 export { runUninstall };

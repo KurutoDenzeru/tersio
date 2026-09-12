@@ -18,7 +18,7 @@ function printHelp(): void {
   console.log(`Usage: ${PACKAGE_BIN} [command] [options]
 
 Commands:
-  install      Install the add-ons (user scope by default)
+  install      Install the add-ons (user scope: all OMP sessions)
   update       Refresh the CLI and add-ons (RTK binary, Caveman rule, Ponytail)
   reinstall    Clean and reinstall the user-scope add-ons
   doctor       Check the current installation
@@ -30,7 +30,7 @@ Commands:
   help         Show this help
 
 Options:
-  --scope user|project|both
+  --scope user (legacy; accepted and ignored — user scope is the only scope)
   --keep-ponytail (uninstall: keep the Ponytail plugin — removed by default)
   --remove-rtk (uninstall: also remove the RTK binary)
   --combo-default off|medium|balanced|max (implies caveman, rtk, ponytail)
