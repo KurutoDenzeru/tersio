@@ -54,6 +54,8 @@
   .pill.good { background: var(--accent-soft); color: var(--accent); }
   .pill.bad { background: rgba(248, 113, 113, .12); color: #f87171; }
   .pill.flat { background: var(--track); color: var(--dim); }
+  select.fx { background: var(--track); color: var(--ink); border: 0; cursor: pointer; appearance: none; -webkit-appearance: none; }
+  select.fx:focus-visible { outline: 1px solid var(--accent); }
   .bar-fill { background: var(--accent); border-radius: 999px; transform-origin: left; transition: width 1s cubic-bezier(.16, 1, .3, 1); }
   .bar-track { background: var(--track); border-radius: 999px; }
   .live-dot { background: var(--accent); box-shadow: 0 0 0 0 var(--accent-soft); animation: ping 2s cubic-bezier(0, 0, .2, 1) infinite; }

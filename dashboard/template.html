@@ -58,8 +58,10 @@
     <div class="rise col-span-12 lg:col-span-7 lg:row-span-2 rounded-xl p-6 flex flex-col justify-between" style="border: 1px solid var(--line); background: var(--panel)">
       <div>
         <div class="flex items-center justify-between gap-2">
-          <p class="mono text-[11px] uppercase tracking-[0.14em]" style="color: var(--dim)">usd cost</p>
-          <span class="pill good mono" id="usdDelta">-</span>
+          <p class="mono text-[11px] uppercase tracking-[0.14em]" style="color: var(--dim)" id="costLabel">usd cost</p>
+          <span class="flex items-center gap-2">
+            <select id="fx" class="pill mono fx" aria-label="Display currency"></select>
+          </span>
         </div>
         <p class="mono font-bold tracking-tighter leading-none mt-2 text-6xl lg:text-7xl" id="usd">-</p>
       </div>

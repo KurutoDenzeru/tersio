@@ -1,4 +1,4 @@
-(function () {
+(function() {
   var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   var hasGsap = !reduce && typeof window.gsap !== 'undefined';
   var hasST = hasGsap && typeof window.ScrollTrigger !== 'undefined';
@@ -13,11 +13,30 @@
     return String(Math.round(n));
   }
 
+  var CURS = {
+    USD: { s: '$', d: 2 }, PHP: { s: '₱', d: 2 }, EUR: { s: '€', d: 2 }, GBP: { s: '£', d: 2 },
+    JPY: { s: '¥', d: 0 }, KRW: { s: '₩', d: 0 }, SGD: { s: 'S$', d: 2 }, AUD: { s: 'A$', d: 2 },
+    CAD: { s: 'C$', d: 2 }, INR: { s: '₹', d: 2 }
+  };
+  var FLAGS = { USD: '🇺🇸', PHP: '🇵🇭', EUR: '🇪🇺', GBP: '🇬🇧', JPY: '🇯🇵', KRW: '🇰🇷', SGD: '🇸🇬', AUD: '🇦🇺', CAD: '🇨🇦', INR: '🇮🇳' };
+  // ponytail: static snapshot; live rates from frankfurter replace it when reachable
+  var fx = { cur: 'USD', rates: { USD: 1, PHP: 58.7, EUR: 0.92, GBP: 0.79, JPY: 149.8, KRW: 1385, SGD: 1.34, AUD: 1.52, CAD: 1.37, INR: 88.2 }, live: false };
+  try {
+    var savedCur = localStorage.getItem('tersio-fx-cur');
+    if (savedCur && CURS[savedCur]) fx.cur = savedCur;
+    var savedFx = JSON.parse(localStorage.getItem('tersio-fx') || 'null');
+    if (savedFx && savedFx.rates && savedFx.rates.USD === 1) fx.rates = savedFx.rates;
+  } catch (e) { }
+  function fxMoney(v) {
+    var c = CURS[fx.cur] || CURS.USD, r = fx.rates[fx.cur] || 1;
+    return c.s + (v * r).toLocaleString('en-US', { minimumFractionDigits: c.d, maximumFractionDigits: c.d });
+  }
+
   function countUp(el, target, money) {
-    function text(v) { return money ? '$' + v.toFixed(2) : fmt(Math.round(v)); }
+    function text(v) { return money ? fxMoney(v) : fmt(Math.round(v)); }
     if (!hasGsap || target <= 0) { el.textContent = text(target); return; }
     var o = { v: 0 };
-    gsap.to(o, { v: target, duration: 1.1, ease: 'power3.out', onUpdate: function () { el.textContent = text(o.v); } });
+    gsap.to(o, { v: target, duration: 1.1, ease: 'power3.out', onUpdate: function() { el.textContent = text(o.v); } });
   }
 
   function tick() {
@@ -33,12 +52,38 @@
     if (sun) sun.classList.toggle('hidden', !dark);
   }
   syncThemeIcon();
-  document.getElementById('theme').addEventListener('click', function () {
+  (function initFx() {
+    var sel = document.getElementById('fx');
+    Object.keys(CURS).forEach(function(k) {
+      var o = document.createElement('option');
+      o.value = k; o.textContent = FLAGS[k] + ' ' + k;
+      sel.appendChild(o);
+    });
+    sel.value = fx.cur;
+    sel.addEventListener('change', function() {
+      fx.cur = sel.value;
+      try { localStorage.setItem('tersio-fx-cur', fx.cur); } catch (e) { }
+      if (DATA) render(DATA);
+    });
+    if (typeof fetch !== 'function' || typeof AbortController === 'undefined') return;
+    var ctl = new AbortController();
+    var to = setTimeout(function() { ctl.abort(); }, 4000);
+    fetch('https://api.frankfurter.app/latest?from=USD', { signal: ctl.signal }).then(function(r) { return r.json(); }).then(function(j) {
+      clearTimeout(to);
+      if (!j || !j.rates) return;
+      var ok = Object.keys(CURS).every(function(k) { return k === 'USD' || typeof j.rates[k] === 'number'; });
+      if (!ok) return;
+      fx.rates = Object.assign({ USD: 1 }, j.rates); fx.live = true;
+      try { localStorage.setItem('tersio-fx', JSON.stringify({ rates: fx.rates, ts: Date.now() })); } catch (e) { }
+      if (DATA) render(DATA);
+    }).catch(function() { clearTimeout(to); });
+  })();
+  document.getElementById('theme').addEventListener('click', function() {
     var cur = document.documentElement.getAttribute('data-theme');
     var sysDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
     var next = (cur || (sysDark ? 'dark' : 'light')) === 'dark' ? 'light' : 'dark';
     document.documentElement.setAttribute('data-theme', next);
-    try { localStorage.setItem('tersio-theme', next); } catch (e) {}
+    try { localStorage.setItem('tersio-theme', next); } catch (e) { }
     syncThemeIcon();
   });
 
@@ -83,13 +128,13 @@
   var DATA = null, RANGE = 'daily', cardsShown = false;
 
   function topModels(byModel, n) {
-    return Object.keys(byModel).sort(function (a, b) { return modelTotal(byModel, b) - modelTotal(byModel, a); }).slice(0, n);
+    return Object.keys(byModel).sort(function(a, b) { return modelTotal(byModel, b) - modelTotal(byModel, a); }).slice(0, n);
   }
 
   function allDays() {
     var set = {};
-    Object.keys(DATA.byDay || {}).forEach(function (d) { set[d] = 1; });
-    Object.keys(DATA.byDayModel || {}).forEach(function (d) { set[d] = 1; });
+    Object.keys(DATA.byDay || {}).forEach(function(d) { set[d] = 1; });
+    Object.keys(DATA.byDayModel || {}).forEach(function(d) { set[d] = 1; });
     return Object.keys(set).sort();
   }
 
@@ -124,7 +169,7 @@
   function shortName(m) { return m.length > 22 ? m.slice(0, 21) + '...' : m; }
   function tipDayHTML(key, total, rows) {
     var h = '<div class="tt">' + dateHead(key) + '</div><div class="tv">' + fmtShort(total) + ' total</div>';
-    rows.forEach(function (r) {
+    rows.forEach(function(r) {
       h += '<div class="tr"><span class="sw" style="background:' + r[2] + '"></span>' +
         '<span class="tn">' + shortName(r[0]) + '</span><span class="tvr">' + fmtShort(r[1]) + '</span></div>';
     });
@@ -152,18 +197,18 @@
     return h;
   }
   function hoverModel(el, m) {
-    el.addEventListener('mouseenter', function (ev) { showTip(tipModelHTML(m), ev.clientX, ev.clientY); });
-    el.addEventListener('mousemove', function (ev) { moveTip(ev.clientX, ev.clientY); });
+    el.addEventListener('mouseenter', function(ev) { showTip(tipModelHTML(m), ev.clientX, ev.clientY); });
+    el.addEventListener('mousemove', function(ev) { moveTip(ev.clientX, ev.clientY); });
     el.addEventListener('mouseleave', hideTip);
   }
   function dayModelRows(key) {
     var per = (DATA.byDayModel || {})[key] || {};
     var tops = topModels(DATA.byModel || {}, 8), rows = [], other = 0;
-    tops.forEach(function (m, i) {
+    tops.forEach(function(m, i) {
       var v = per[m] || 0;
       if (v) rows.push([m, v, PALETTE[i % PALETTE.length]]);
     });
-    Object.keys(per).forEach(function (m) { if (tops.indexOf(m) < 0) other += per[m]; });
+    Object.keys(per).forEach(function(m) { if (tops.indexOf(m) < 0) other += per[m]; });
     if (other) rows.push(['Other', other, 'var(--dim)']);
     return rows;
   }
@@ -181,11 +226,11 @@
     var head = isNaN(mon) ? monKey : mon.toLocaleString('en-US', { month: 'short', day: 'numeric' }).toUpperCase() +
       ' - ' + (isNaN(sun) ? '' : sun.toLocaleString('en-US', { month: 'short', day: 'numeric' }).toUpperCase());
     var tops = topModels(DATA.byModel || {}, 8), rows = [], other = 0;
-    tops.forEach(function (m, i) {
+    tops.forEach(function(m, i) {
       var v = weekPer[m] || 0;
       if (v) rows.push([m, v, PALETTE[i % PALETTE.length]]);
     });
-    Object.keys(weekPer).forEach(function (m) { if (tops.indexOf(m) < 0) other += weekPer[m]; });
+    Object.keys(weekPer).forEach(function(m) { if (tops.indexOf(m) < 0) other += weekPer[m]; });
     if (other) rows.push(['Other', other, 'var(--dim)']);
     return tipDayHTML(head, weekTotal, rows.length ? rows : [['no activity', 0, 'var(--dim)']]);
   }
@@ -195,7 +240,7 @@
     var today = new Date(); today.setHours(0, 0, 0, 0);
     var start = new Date(today); start.setDate(start.getDate() - (52 * 7) - today.getDay());
     var sums = {};
-    Object.keys(byDay).forEach(function (day) {
+    Object.keys(byDay).forEach(function(day) {
       var b = byDay[day];
       sums[day] = b.input + b.output + b.cacheRead + b.cacheWrite;
     });
@@ -206,24 +251,24 @@
       dayKeys.push(dayKey(dd));
     }
     var weekPer = {}, weekTotal = {}, run = 0, cellVal = {};
-    dayKeys.forEach(function (k) {
+    dayKeys.forEach(function(k) {
       var dt = new Date(k + 'T12:00:00');
       if (GMODE === 'weekly' && !isNaN(dt)) {
         var mk = dayKey(mondayOf(dt));
         weekTotal[mk] = (weekTotal[mk] || 0) + (sums[k] || 0);
         var per = (DATA.byDayModel || {})[k] || {};
         if (!weekPer[mk]) weekPer[mk] = {};
-        Object.keys(per).forEach(function (m) { weekPer[mk][m] = (weekPer[mk][m] || 0) + per[m]; });
+        Object.keys(per).forEach(function(m) { weekPer[mk][m] = (weekPer[mk][m] || 0) + per[m]; });
       }
       if (GMODE === 'cumulative') { run += sums[k] || 0; cellVal[k] = run; }
     });
     var max = 1;
     if (GMODE === 'weekly') {
-      Object.keys(weekTotal).forEach(function (k) { max = Math.max(max, weekTotal[k]); });
+      Object.keys(weekTotal).forEach(function(k) { max = Math.max(max, weekTotal[k]); });
     } else if (GMODE === 'cumulative') {
       max = Math.max(1, run);
     } else {
-      Object.keys(sums).forEach(function (k) { max = Math.max(max, sums[k]); });
+      Object.keys(sums).forEach(function(k) { max = Math.max(max, sums[k]); });
     }
     var months = document.getElementById('graphMonths');
     months.innerHTML = '';
@@ -239,21 +284,21 @@
         if (GMODE === 'weekly') {
           var mk2 = dayKey(mondayOf(cdt));
           v = weekTotal[mk2] || 0;
-          tipFn = (function (mk3, vv) {
-            return function () { return weekTipHTML(mk3, vv, weekPer[mk3] || {}); };
+          tipFn = (function(mk3, vv) {
+            return function() { return weekTipHTML(mk3, vv, weekPer[mk3] || {}); };
           })(mk2, v);
         } else if (GMODE === 'cumulative') {
           v = cellVal[key] || 0;
-          tipFn = (function (kk, vv) {
-            return function () {
+          tipFn = (function(kk, vv) {
+            return function() {
               var rows = dayModelRows(kk);
               return tipDayHTML('THROUGH ' + dateHead(kk), vv, rows.length ? rows : [['no activity', 0, 'var(--dim)']]);
             };
           })(key, v);
         } else {
           v = sums[key] || 0;
-          tipFn = (function (kk, vv) {
-            return function () {
+          tipFn = (function(kk, vv) {
+            return function() {
               var rows = dayModelRows(kk);
               return tipDayHTML(kk, vv, rows.length ? rows : [['no activity', 0, 'var(--dim)']]);
             };
@@ -263,9 +308,9 @@
         if (v > 0) lvl = Math.min(4, 1 + Math.floor((v / max) * 3.99));
         var cell = document.createElement('span');
         cell.className = 'cell' + (lvl ? ' l' + lvl : '');
-        (function (fn) {
-          cell.addEventListener('mouseenter', function (ev) { showTip(fn(), ev.clientX, ev.clientY); });
-          cell.addEventListener('mousemove', function (ev) { moveTip(ev.clientX, ev.clientY); });
+        (function(fn) {
+          cell.addEventListener('mouseenter', function(ev) { showTip(fn(), ev.clientX, ev.clientY); });
+          cell.addEventListener('mousemove', function(ev) { moveTip(ev.clientX, ev.clientY); });
           cell.addEventListener('mouseleave', hideTip);
         })(tipFn);
         col.appendChild(cell);
@@ -278,20 +323,20 @@
       g.appendChild(col);
       months.appendChild(ml);
     }
-    Array.prototype.forEach.call(months.children, function (m) { m.style.minWidth = '0'; });
+    Array.prototype.forEach.call(months.children, function(m) { m.style.minWidth = '0'; });
     document.getElementById('graphRange').textContent =
       dayKey(start) + ' to ' + dayKey(today);
     document.getElementById('graphCap').textContent =
       GMODE === 'weekly' ? 'weekly totals / trailing 12 months' :
-      GMODE === 'cumulative' ? 'running total / trailing 12 months' :
-      'daily values / trailing 12 months';
+        GMODE === 'cumulative' ? 'running total / trailing 12 months' :
+          'daily values / trailing 12 months';
   }
   function bindGraphTabs() {
     if (bindGraphTabs.done) return;
     bindGraphTabs.done = true;
-    Array.prototype.forEach.call(document.querySelectorAll('#activity [data-gmode]'), function (btn) {
-      btn.addEventListener('click', function () {
-        Array.prototype.forEach.call(document.querySelectorAll('#activity [data-gmode]'), function (b) { b.classList.remove('on'); });
+    Array.prototype.forEach.call(document.querySelectorAll('#activity [data-gmode]'), function(btn) {
+      btn.addEventListener('click', function() {
+        Array.prototype.forEach.call(document.querySelectorAll('#activity [data-gmode]'), function(b) { b.classList.remove('on'); });
         btn.classList.add('on');
         GMODE = btn.getAttribute('data-gmode');
         if (DATA) renderGraph(DATA.byDay || {});
@@ -302,7 +347,7 @@
   // 30-day token line: daily totals, smoothed path, hover dot + per-model tip.
   function wow(model) {
     var days = allDays().slice(-14), cur = 0, prev = 0;
-    days.forEach(function (d, i) {
+    days.forEach(function(d, i) {
       var v = ((DATA.byDayModel || {})[d] || {})[model] || 0;
       if (i < days.length - 7) prev += v; else cur += v;
     });
@@ -312,10 +357,10 @@
   }
   function renderModels() {
     var byModel = DATA.byModel || {};
-    var tops = topModels(byModel, 8).filter(function (m) { return modelTotal(byModel, m) > 0; });
+    var tops = topModels(byModel, 8).filter(function(m) { return modelTotal(byModel, m) > 0; });
     var cards = document.getElementById('modelCards');
     cards.innerHTML = '';
-    tops.slice(0, 3).forEach(function (m, i) {
+    tops.slice(0, 3).forEach(function(m, i) {
       var v = vendorOf(m), d = wow(m);
       var card = document.createElement('div');
       card.className = 'modelcard relative p-4 rounded-xl overflow-hidden';
@@ -355,8 +400,8 @@
     var ol = document.getElementById('models');
     ol.innerHTML = '';
     var max = 1;
-    tops.forEach(function (m) { max = Math.max(max, modelTotal(byModel, m)); });
-    tops.forEach(function (m, i) {
+    tops.forEach(function(m) { max = Math.max(max, modelTotal(byModel, m)); });
+    tops.forEach(function(m, i) {
       var v = vendorOf(m);
       var li = document.createElement('li');
       li.className = 'mrow flex items-center gap-3 px-4 py-3' + (i < tops.length - 1 ? ' rowline' : '');
@@ -374,7 +419,7 @@
       var right = document.createElement('div'); right.className = 'shrink-0 text-right';
       var n = document.createElement('p'); n.className = 'mono font-bold'; n.textContent = fmt(modelTotal(byModel, m));
       var cost = document.createElement('p'); cost.className = 'mono text-xs'; cost.style.color = 'var(--dim)';
-      cost.textContent = '$' + ((DATA.byModelUsd || {})[m] ?? 0).toFixed(2);
+      cost.textContent = fxMoney((DATA.byModelUsd || {})[m] || 0);
       right.appendChild(n); right.appendChild(cost);
       li.appendChild(badge); li.appendChild(mid); li.appendChild(right);
       hoverModel(li, m);
@@ -382,17 +427,17 @@
     });
     if (!tops.length) ol.innerHTML = '<li class="mono text-sm px-4 py-6" style="color: var(--dim)">no session tokens yet</li>';
     else if ('IntersectionObserver' in window && !reduce) {
-      var fio = new IntersectionObserver(function (entries) {
-        entries.forEach(function (e) {
+      var fio = new IntersectionObserver(function(entries) {
+        entries.forEach(function(e) {
           if (e.isIntersecting) {
-            e.target.querySelectorAll('.bar-fill').forEach(function (f) { f.style.width = f.dataset.w || '0'; });
+            e.target.querySelectorAll('.bar-fill').forEach(function(f) { f.style.width = f.dataset.w || '0'; });
             fio.disconnect();
           }
         });
       }, { threshold: 0.2 });
       fio.observe(ol);
     } else {
-      ol.querySelectorAll('.bar-fill').forEach(function (f) { f.style.width = f.dataset.w || '0'; });
+      ol.querySelectorAll('.bar-fill').forEach(function(f) { f.style.width = f.dataset.w || '0'; });
     }
     if (hasGsap && hasST && !cardsShown && tops.length) {
       cardsShown = true;
@@ -407,8 +452,8 @@
     var body = document.getElementById('top');
     body.innerHTML = '';
     var tools = DATA.byTool || [], max = 1, sum = 0;
-    tools.forEach(function (r) { max = Math.max(max, r[1]); sum += r[1]; });
-    tools.forEach(function (r, i) {
+    tools.forEach(function(r) { max = Math.max(max, r[1]); sum += r[1]; });
+    tools.forEach(function(r, i) {
       var tr = document.createElement('tr');
       tr.className = 'mrow' + (i < tools.length - 1 ? ' rowline' : '');
       var share = sum ? Math.round(r[1] / sum * 100) : 0;
@@ -439,8 +484,8 @@
     var body = document.getElementById('rtkBody');
     body.innerHTML = '';
     var max = 1;
-    rows.forEach(function (r) { max = Math.max(max, r.saved); });
-    rows.forEach(function (r, i) {
+    rows.forEach(function(r) { max = Math.max(max, r.saved); });
+    rows.forEach(function(r, i) {
       var tr = document.createElement('tr');
       tr.className = 'mrow' + (i < rows.length - 1 ? ' rowline' : '');
       tr.innerHTML = '<td class="text-right pr-3 py-2.5 mono text-xs w-10" style="color: var(--dim)"></td>' +
@@ -476,7 +521,7 @@
     ];
     var strip = document.getElementById('tokens');
     strip.innerHTML = '';
-    defs.forEach(function (b, i) {
+    defs.forEach(function(b, i) {
       var cell = document.createElement('div');
       cell.className = 'stripcell flex-1 px-4 py-4' + (i > 0 ? ' sm:border-l' : '');
       cell.style.borderColor = 'var(--line)';
@@ -489,8 +534,6 @@
     });
   }
 
-  function money(v) { return '$' + v.toFixed(2); }
-
   // 30-day volume sparkline + blended-rate daily stats for the USD card.
   // Daily cost is a blended estimate (total USD / total tokens x day
   // tokens), always rendered with ~ and never mixed with measured totals.
@@ -500,56 +543,35 @@
     var keys = Object.keys(byDay).sort().slice(-30);
     var rate = total ? usd / total : 0;
     var max = 1, vols = [];
-    keys.forEach(function (k) {
+    keys.forEach(function(k) {
       var v = dayTotal(byDay[k] || {});
       vols.push({ k: k, v: v });
       max = Math.max(max, v);
     });
-    var top = vols.slice().sort(function (a, b) { return b.v - a.v; })[0] || { k: '', v: 0 };
-    vols.forEach(function (r) {
+    var top = vols.slice().sort(function(a, b) { return b.v - a.v; })[0] || { k: '', v: 0 };
+    vols.forEach(function(r) {
       var s = document.createElement('span');
       if (r.k === top.k && r.v > 0) s.className = 'top';
       s.style.height = r.v ? Math.max(4, Math.round(r.v / max * 100)) + '%' : '0';
       s.dataset.usd = (rate * r.v).toFixed(2);
       s.dataset.tok = r.v;
       s.dataset.day = r.k;
-      s.addEventListener('mouseenter', function (ev) {
-        showTip('<div class="tt">' + dateHead(s.dataset.day) + '</div><div class="tv">~$' + s.dataset.usd + '</div>' +
+      s.addEventListener('mouseenter', function(ev) {
+        showTip('<div class="tt">' + dateHead(s.dataset.day) + '</div><div class="tv">~' + fxMoney(Number(s.dataset.usd)) + '</div>' +
           '<div class="tr"><span class="sw" style="background:var(--accent)"></span>' +
           '<span class="tn">tokens</span><span class="tvr">' + fmt(Number(s.dataset.tok)) + '</span></div>',
           ev.clientX, ev.clientY);
       });
-      s.addEventListener('mousemove', function (ev) { moveTip(ev.clientX, ev.clientY); });
+      s.addEventListener('mousemove', function(ev) { moveTip(ev.clientX, ev.clientY); });
       s.addEventListener('mouseleave', hideTip);
       el.appendChild(s);
     });
     var days = keys.length || 1;
-    document.getElementById('usdPerDay').textContent = '$' + (usd / days).toFixed(2);
-    document.getElementById('usdTopDay').textContent = top.k ? top.k.slice(5) + ' ~$' + (rate * top.v).toFixed(2) : '-';
+    document.getElementById('usdPerDay').textContent = fxMoney(usd / days);
+    document.getElementById('usdTopDay').textContent = top.k ? top.k.slice(5) + ' ~' + fxMoney(rate * top.v) : '-';
     document.getElementById('usdLeverage').textContent = usd ? (savedUsd / usd).toFixed(1) : '-';
   }
 
-  // Week-over-week sums from byDay: { cur, prev } for a token selector.
-  function weekSplit(days, pick) {
-    var keys = Object.keys(days).sort(), cur = 0, prev = 0;
-    var last = keys.slice(-14);
-    last.forEach(function (k, i) {
-      var v = pick(days[k] || {});
-      if (i < last.length - 7) prev += v; else cur += v;
-    });
-    return { cur: cur, prev: prev };
-  }
-  function pillHTML(cur, prev, goodWhenUp) {
-    if (!prev) return { text: cur ? 'new' : '-', cls: 'flat' };
-    var p = (cur - prev) / prev * 100, a = Math.abs(p);
-    var cls = a < 0.5 ? 'flat' : ((p > 0) === goodWhenUp ? 'good' : 'bad');
-    return { text: (p >= 0 ? '▲ +' : '▼ ') + a.toFixed(1) + '% vs prior 7d', cls: cls };
-  }
-  function setPill(id, cur, prev, goodWhenUp) {
-    var el = document.getElementById(id), r = pillHTML(cur, prev, goodWhenUp);
-    el.textContent = r.text;
-    el.className = 'pill mono ' + r.cls;
-  }
   function dayTotal(b) { return (b.input || 0) + (b.output || 0) + (b.cacheRead || 0) + (b.cacheWrite || 0); }
 
   function render(d) {
@@ -559,44 +581,43 @@
     var totalEl = document.getElementById('total');
     if (hasGsap) {
       var o = { v: 0 };
-      gsap.to(o, { v: total, duration: 1.2, ease: 'power3.out', onUpdate: function () { totalEl.textContent = fmt(o.v); } });
+      gsap.to(o, { v: total, duration: 1.2, ease: 'power3.out', onUpdate: function() { totalEl.textContent = fmt(o.v); } });
     } else {
       totalEl.textContent = fmt(total);
     }
+    document.getElementById('costLabel').textContent = fx.cur.toLowerCase() + ' cost';
     countUp(document.getElementById('usd'), d.usd || 0, true);
-    document.getElementById('usdNote').textContent = d.priced ? 'per-model price table' : 'incl. default pricing';
+    document.getElementById('usdNote').textContent = (d.priced ? 'per-model price table' : 'incl. default pricing') + (fx.live ? ' · fx live' : ' · fx snapshot');
     var byDay = d.byDay || {};
     renderSpark(byDay, d.usd || 0, d.savedUsd || 0, total);
     document.getElementById('verChip').textContent = 'tersio v' + (d.version || '?');
-    var wAll = weekSplit(byDay, dayTotal);
-    setPill('usdDelta', wAll.cur, wAll.prev, false);
     countUp(document.getElementById('saved'), d.savedUsd || 0, true);
     document.getElementById('co2').textContent = '~' + (d.co2g || 0).toFixed(1) + 'g';
-    (function () {
+    (function() {
       var el = document.getElementById('co2');
       var card = el ? el.closest('div.rounded-xl') : null;
       if (!card || card.dataset.co2tip) return;
       card.dataset.co2tip = '1';
-      card.addEventListener('mouseenter', function (ev) { showTip(tipCo2HTML(), ev.clientX, ev.clientY); });
-      card.addEventListener('mousemove', function (ev) { moveTip(ev.clientX, ev.clientY); });
+      card.addEventListener('mouseenter', function(ev) { showTip(tipCo2HTML(), ev.clientX, ev.clientY); });
+      card.addEventListener('mousemove', function(ev) { moveTip(ev.clientX, ev.clientY); });
       card.addEventListener('mouseleave', hideTip);
     })();
     var share = total ? Math.round((t.cacheRead + t.cacheWrite) / total * 100) : 0;
     document.getElementById('cacheShare').textContent = share + '%';
-    var shareOf = function (b) { var s = dayTotal(b); return s ? ((b.cacheRead || 0) + (b.cacheWrite || 0)) / s * 100 : 0; };
+    var shareOf = function(b) { var s = dayTotal(b); return s ? ((b.cacheRead || 0) + (b.cacheWrite || 0)) / s * 100 : 0; };
     var keys = Object.keys(byDay).sort(), cPct = 0, pPct = 0, cn = 0, pn = 0;
-    keys.slice(-7).forEach(function (k) { cPct += shareOf(byDay[k]); cn++; });
-    keys.slice(-14, -7).forEach(function (k) { pPct += shareOf(byDay[k]); pn++; });
+    keys.slice(-7).forEach(function(k) { cPct += shareOf(byDay[k]); cn++; });
+    keys.slice(-14, -7).forEach(function(k) { pPct += shareOf(byDay[k]); pn++; });
     var pp = (cn ? cPct / cn : 0) - (pn ? pPct / pn : 0);
     var cd = document.getElementById('cacheDelta');
     cd.textContent = (pp >= 0 ? '▲ +' : '▼ ') + Math.abs(pp).toFixed(1) + 'pp vs prior 7d';
     cd.className = 'pill mono ' + (Math.abs(pp) < 0.05 ? 'flat' : (pp > 0 ? 'good' : 'bad'));
 
-    (function () {
+    (function() {
       var el = document.getElementById('ticker');
       if (!el) return;
       var tops = topModels(DATA.byModel || {}, 5);
-      var parts = tops.map(function (m) {
+      var parts = tops.map(function(m) {
         var b = (DATA.byModel || {})[m];
         var v = b.input + b.output + b.cacheRead + b.cacheWrite;
         var nm = m.toUpperCase().replace(/-(FREE|CONTRIBUTOR.*|NEXT|LATEST)$/, '').replace(/[-.]?\d[\d.]*/, '').replace(/-V(?=-|$)/, '');
@@ -624,21 +645,21 @@
   function observe() {
     var els = document.querySelectorAll('.rise');
     if (!('IntersectionObserver' in window) || reduce) {
-      els.forEach(function (el) { el.classList.add('in'); });
+      els.forEach(function(el) { el.classList.add('in'); });
       return;
     }
-    var io = new IntersectionObserver(function (entries) {
-      entries.forEach(function (e) {
+    var io = new IntersectionObserver(function(entries) {
+      entries.forEach(function(e) {
         if (e.isIntersecting && !seen.has(e.target)) {
           seen.add(e.target); e.target.classList.add('in'); io.unobserve(e.target);
         }
       });
     }, { threshold: 0.12 });
-    els.forEach(function (el) { if (!seen.has(el)) io.observe(el); });
+    els.forEach(function(el) { if (!seen.has(el)) io.observe(el); });
   }
 
   function load() {
-    fetch('data.json').then(function (r) { return r.json(); }).then(render).catch(function () {
+    fetch('data.json').then(function(r) { return r.json(); }).then(render).catch(function() {
       document.getElementById('topTable').style.display = 'none';
       document.getElementById('emptyTop').classList.remove('hidden');
       if (window.lucide) lucide.createIcons();
