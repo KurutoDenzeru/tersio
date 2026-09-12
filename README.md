@@ -1,13 +1,14 @@
+![Fontora](/TersioBanner.webp)
+
 # ✂️ Tersio — Token-saving OMP Add-ons
 
 [![npm version](https://img.shields.io/npm/v/@krtclcdy%2Ftersio?color=cb0000)](https://www.npmjs.com/package/@krtclcdy/tersio)
-[![release](https://img.shields.io/github/v/release/KurutoDenzeru/tersio?color=7c3aed)](https://github.com/KurutoDenzeru/tersio/releases)
-[![license](https://img.shields.io/badge/license-MIT-6e7681)](./LICENSE)
+[![npm downloads](https://img.shields.io/npm/dm/@krtclcdy%2Ftersio?color=30363d)](https://www.npmjs.com/package/@krtclcdy/tersio)
 [![node](https://img.shields.io/node/v/@krtclcdy%2Ftersio?color=30363d)](https://nodejs.org)
 [![CI](https://github.com/KurutoDenzeru/tersio/actions/workflows/ci.yml/badge.svg)](https://github.com/KurutoDenzeru/tersio/actions)
 [![issues](https://img.shields.io/github/issues/KurutoDenzeru/tersio?color=d97706)](https://github.com/KurutoDenzeru/tersio/issues)
 
-✂️ Terse replies, compact shell output, and minimal code decisions for [Oh My Pi (OMP)](https://github.com/can1357/oh-my-pi) — one-command combo presets.
+Terse replies, compact shell output, and minimal code decisions for [Oh My Pi (OMP)](https://github.com/can1357/oh-my-pi) — one-command combo presets.
 
 ## ✨ Features
 
