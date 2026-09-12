@@ -527,8 +527,9 @@
       ol.appendChild(li);
     });
     document.getElementById('modelsCount').textContent = tops.length ? tops.length + ' models' : '';
-    if (!tops.length) ol.innerHTML = '<li>' + emptyState('boxes', 'No models yet', 'Model token totals will appear here once sessions report tokens.') + '</li>';
-    else if ('IntersectionObserver' in window && !reduce) {
+    ol.style.display = tops.length ? '' : 'none';
+    document.getElementById('emptyModels').classList.toggle('hidden', tops.length > 0);
+    if (tops.length && 'IntersectionObserver' in window && !reduce) {
       var fio = new IntersectionObserver(function(entries) {
         entries.forEach(function(e) {
           if (e.isIntersecting) {
@@ -538,7 +539,7 @@
         });
       }, { threshold: 0.2 });
       fio.observe(ol);
-    } else {
+    } else if (tops.length) {
       ol.querySelectorAll('.bar-fill').forEach(function(f) { f.style.width = f.dataset.w || '0'; });
     }
     if (hasGsap && hasST && !cardsShown && tops.length) {

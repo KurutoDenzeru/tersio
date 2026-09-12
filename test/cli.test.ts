@@ -340,5 +340,6 @@ test("gain --export includes the reset control and empty states", () => {
   assert.match(body, /id="pathLedger"/);
   assert.match(body, /data-theme-val="system"/);
   assert.match(body, /data-lucide="monitor"/);
+  assert.match(body, /id="emptyModels"/);
   rmSync(dir, { recursive: true, force: true });
 });

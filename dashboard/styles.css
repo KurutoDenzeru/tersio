@@ -178,7 +178,7 @@
   #reset:hover { box-shadow: 0 0 14px var(--accent-soft); border-color: var(--accent); }
   /* Settings dialog (shadcn pattern over the native modal). */
   .dlg { margin: auto; border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 16px; padding: 20px; width: min(460px, calc(100vw - 32px)); box-shadow: 0 16px 48px rgba(0, 0, 0, .35); }
-  .dlg::backdrop { background: rgba(0, 0, 0, .6); }
+  .dlg::backdrop { background: rgba(0, 0, 0, .8); }
   .dlg-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
   .dlg-title { font-weight: 700; font-size: 16px; letter-spacing: -0.01em; margin: 0; }
   .dlg-desc { font-size: 12px; color: var(--dim); margin: 2px 0 0; }
@@ -192,4 +192,3 @@
   .dlg-file { font-size: 11px; color: var(--dim); margin: 4px 0 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #settingsBtn:hover { box-shadow: 0 0 14px var(--accent-soft); border-color: var(--accent); }
   .dlg .seg button { display: grid; place-items: center; }
-  #models .empty { min-height: 300px; justify-content: center; }
