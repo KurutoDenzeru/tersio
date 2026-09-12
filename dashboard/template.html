@@ -4,7 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark light">
-<title>Tersio Gain Dashboard</title>
+<script>(function(){try{var t=localStorage.getItem('tersio-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+<title>Tersio Dashboard</title>
 <link rel="icon" type="image/png" href="brand.webp">
 <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
 <script src="https://unpkg.com/lucide@latest"></script>
@@ -16,16 +17,16 @@
 <body class="min-h-[100dvh] antialiased">
 <div class="bg-blueprint pointer-events-none fixed inset-0" aria-hidden="true"></div>
 
-<main class="overflow-x-hidden w-full max-w-full">
+<main class="overflow-x-clip w-full max-w-full">
 <div class="relative mx-auto max-w-7xl px-4 sm:px-6 pb-16">
 
   <!-- Floating dock navbar -->
   <header class="dock mt-4 flex w-full items-center gap-2 px-3 py-2">
-    <a href="#" class="flex shrink-0 items-center gap-2.5 pl-1 pr-2" aria-label="Tersio gain home">
+    <a href="#" class="flex shrink-0 items-center gap-2.5 pl-1 pr-2" aria-label="Tersio dashboard home">
       <img src="brand.webp" alt="Tersio" width="32" height="32" class="brand size-8 rounded-full">
       <span class="leading-tight text-left">
-        <span class="block font-bold tracking-tight text-sm">TERSIO GAIN</span>
-        <span class="mono block text-[11px]" style="color: var(--dim)">live ledger</span>
+        <span class="block font-bold tracking-tight text-sm">TERSIO DASHBOARD</span>
+        <span class="mono block text-[11px]" style="color: var(--dim)">live token number feed</span>
       </span>
     </a>
     <span class="mono hidden shrink-0 sm:flex items-center gap-2 text-xs px-2 ml-auto" style="color: var(--dim)">
@@ -33,15 +34,23 @@
       <span id="clock">--:--</span>
     </span>
     <span class="hidden sm:block w-px h-5 shrink-0" style="background: var(--line)" aria-hidden="true"></span>
+    <button id="theme" class="btn-push flex shrink-0 items-center p-2 rounded-xl" style="border: 1px solid var(--line); color: var(--ink)" aria-label="Toggle dark mode">
+      <span id="iconMoon"><i data-lucide="moon" class="size-4"></i></span>
+      <span id="iconSun" class="hidden"><i data-lucide="sun" class="size-4"></i></span>
+    </button>
     <button id="reload" class="btn-push mono flex shrink-0 items-center gap-2 text-xs pl-2.5 pr-3 py-2 rounded-xl" style="border: 1px solid var(--line); color: var(--ink)" aria-label="Reload data">
       <i data-lucide="refresh-cw" class="size-3.5"></i><span class="hidden md:inline">Reload</span>
     </button>
   </header>
 
   <!-- Hero: centered total -->
-  <section class="mx-auto max-w-6xl text-center pt-14 pb-10">
-    <p class="hero-in mono text-[11px] uppercase tracking-[0.22em] mb-4" style="color: var(--accent)">Live token feed</p>
-    <p class="hero-in mono font-bold tracking-tighter leading-none text-6xl md:text-7xl" id="total">0</p>
+  <section class="mx-auto max-w-6xl text-center pt-14 pb-10 relative">
+    <div class="hero-glow" aria-hidden="true"></div>
+    <p class="hero-in mono text-[11px] uppercase tracking-[0.22em] mb-4 relative" style="color: var(--accent)">Live token feed</p>
+    <p class="hero-in mono font-bold tracking-tighter leading-none text-7xl md:text-8xl relative herototal" id="total">0</p>
+    <div class="hero-in relative mt-6 overflow-hidden" aria-hidden="true" style="mask-image: linear-gradient(90deg, transparent, black 12%, black 88%, transparent)">
+      <div class="ticker mono text-xs whitespace-nowrap inline-block" id="ticker" style="color: var(--dim)"></div>
+    </div>
   </section>
 
   <!-- Savings bento: big USD card + nested right rail -->
@@ -57,9 +66,9 @@
       <div class="mt-4">
         <div class="spark h-16" id="usdSpark"></div>
         <div class="flex gap-4 mt-3 mono text-xs" style="color: var(--dim)">
-          <span>~ <span id="usdPerDay" style="color: var(--ink)">-</span>/day</span>
+          <span>avg <span id="usdPerDay" style="color: var(--ink)">-</span>/day</span>
           <span>top <span id="usdTopDay" style="color: var(--ink)">-</span></span>
-          <span>x<span id="usdLeverage" style="color: var(--accent)">-</span> cache leverage</span>
+          <span title="Cache savings per $1 spent, vs full input price">x<span id="usdLeverage" style="color: var(--accent)">-</span> cache leverage</span>
         </div>
       </div>
       <p class="mono text-[11px] mt-3" style="color: var(--dim)" id="usdNote">per-model price table</p>
@@ -163,6 +172,36 @@
     </div>
     <p id="emptyTop" class="mono text-sm py-6 text-center hidden" style="color: var(--dim)">No tool calls yet.</p>
   </section>
+
+  <!-- By Command: measured RTK savings, rtk-gain style -->
+  <section id="bycommand" class="rise mt-8 rounded-xl p-5 overflow-hidden" style="border: 1px solid var(--line); background: var(--panel); scroll-margin-top: 90px" aria-label="By command">
+    <div class="flex items-center gap-2 mb-1">
+      <i data-lucide="scissors" class="size-4" style="color: var(--accent)"></i>
+      <h2 class="display font-bold tracking-tight text-xl">By Command</h2>
+      <span class="mono text-xs ml-auto" style="color: var(--dim)" id="rtkScope">measured by rtk</span>
+    </div>
+    <p class="mono text-xs mb-4" style="color: var(--dim)">count · tokens saved · avg rate · avg time · share of savings</p>
+    <div class="overflow-x-auto">
+      <table class="w-full mono text-[13px]" id="rtkTable">
+        <thead>
+          <tr class="text-left text-[11px] uppercase tracking-[0.14em]" style="color: var(--dim)">
+            <th class="font-normal text-right pr-3 py-2 w-10">#</th>
+            <th class="font-normal py-2 pr-3">Command</th>
+            <th class="font-normal text-right py-2 pr-3">Count</th>
+            <th class="font-normal text-right py-2 pr-3">Saved</th>
+            <th class="font-normal text-right py-2 pr-3">Avg%</th>
+            <th class="font-normal text-right py-2 pr-3">Time</th>
+            <th class="font-normal py-2 min-w-32">Impact</th>
+          </tr>
+        </thead>
+        <tbody id="rtkBody"></tbody>
+      </table>
+    </div>
+    <p id="emptyRtk" class="mono text-sm py-6 text-center hidden" style="color: var(--dim)">No RTK measurements yet — run commands through rtk.</p>
+    <p class="mono text-[11px] mt-3" style="color: var(--dim)">caveman + ponytail gains are instruction-following, not metered per command — bench-measured in BENCHMARK.md (-62.3% replies, -58.6…-70.3% diffs).</p>
+  </section>
+
+  <footer class="mono text-xs mt-12 pt-4" style="color: var(--dim); border-top: 1px solid var(--line)">
 
   <footer class="mono text-xs mt-12 pt-4" style="color: var(--dim); border-top: 1px solid var(--line)">
     <div class="flex flex-wrap items-center gap-x-4 gap-y-3">

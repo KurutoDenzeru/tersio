@@ -8,6 +8,8 @@ import {
   usdCost,
 } from '../extensions/shared/usage-ledger.ts';
 import type { TokenBreakdown, UsageRow } from '../extensions/shared/usage-ledger.ts';
+import { readRtkGain } from '../extensions/shared/rtk-gain.ts';
+import type { RtkGain } from '../extensions/shared/rtk-gain.ts';
 import { withInteractiveSpinner } from './interactive.ts';
 import { PACKAGE_VERSION } from './common.ts';
 
@@ -25,6 +27,7 @@ export interface UsageReport {
   byDay: Record<string, TokenBreakdown>;
   byDayModel: Record<string, Record<string, number>>;
   byTool: Array<[string, number]>;
+  rtkGain: RtkGain;
   usd: number;
   priced: boolean;
   savedUsd: number;
@@ -73,6 +76,7 @@ export function summarizeUsage(rows: UsageRow[]): UsageReport {
     byDay: session.byDay,
     byDayModel: session.byDayModel,
     byTool,
+    rtkGain: readRtkGain(),
     usd,
     priced,
     savedUsd,
@@ -85,6 +89,11 @@ export function summarizeUsage(rows: UsageRow[]): UsageReport {
 
 function fmt(n: number): string {
   return n.toLocaleString('en-US');
+}
+
+function fmtMs(ms: number): string {
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  return `${(ms / 1000).toFixed(1)}s`;
 }
 
 function printReport(report: UsageReport): void {
@@ -101,6 +110,13 @@ function printReport(report: UsageReport): void {
     console.log('  By model');
     for (const [model, b] of models) {
       console.log(`    ${model}: in ${fmt(b.input)} · out ${fmt(b.output)} · cache r/w ${fmt(b.cacheRead)}/${fmt(b.cacheWrite)} · $${(report.byModelUsd[model] ?? 0).toFixed(2)}`);
+    }
+  }
+  if (report.rtkGain.commands) {
+    const g = report.rtkGain;
+    console.log(`  RTK measured  ${fmt(g.commands)} commands · ${fmt(g.saved)} saved (${g.avgPct.toFixed(1)}%)`);
+    for (const r of g.byCommand) {
+      console.log(`    ${r.count}x ${r.command} · ${fmt(r.saved)} saved · ${r.avgPct.toFixed(1)}% · ${fmtMs(r.avgMs)}`);
     }
   }
   if (report.byTool.length) {

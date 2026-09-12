@@ -243,7 +243,7 @@ test("gain --export writes a self-contained html file", () => {
   const html = existsSync(out) ? "present" : "missing";
   assert.equal(html, "present");
   const body = readFileSync(out, "utf8");
-  assert.match(body, /Tersio Gain Dashboard/);
+  assert.match(body, /Tersio Dashboard/);
   assert.match(body, /\/tersio usage/);
   // `$'`/`$&` in data must survive String.replace untouched (single document).
   assert.match(body, /\$'quoted\$'/);

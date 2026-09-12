@@ -6,8 +6,10 @@
     --cell-1: rgba(4, 120, 87, .3); --cell-2: rgba(4, 120, 87, .55);
     --cell-3: rgba(4, 120, 87, .8); --cell-4: #047857;
   }
+  html[data-theme="light"] { color-scheme: light; }
+  html[data-theme="dark"] { color-scheme: dark; }
   @media (prefers-color-scheme: dark) {
-    :root {
+    :root:not([data-theme="light"]) {
       --bg: #09090b; --panel: #101014; --ink: #f4f4f5; --dim: #a1a1aa;
       --line: rgba(255, 255, 255, .09); --accent: #34d399; --accent-soft: rgba(52, 211, 153, .1);
       --track: rgba(255, 255, 255, .07); --grid: rgba(52, 211, 153, .05);
@@ -17,6 +19,28 @@
     }
   }
   body { background: var(--bg); color: var(--ink); }
+  .hero-glow { position: absolute; left: 50%; top: 44%; width: min(720px, 90vw); height: 300px;
+    transform: translate(-50%, -50%); pointer-events: none;
+    background: radial-gradient(ellipse at center, var(--accent-soft) 0%, transparent 65%);
+    animation: breathe 5s ease-in-out infinite; }
+  @keyframes breathe { 0%, 100% { opacity: .55; transform: translate(-50%, -50%) scale(1); } 50% { opacity: 1; transform: translate(-50%, -50%) scale(1.12); } }
+  .herototal { background: linear-gradient(180deg, var(--ink) 55%, var(--accent) 130%);
+    -webkit-background-clip: text; background-clip: text; }
+  html[data-theme="dark"] {
+    --bg: #09090b; --panel: #101014; --ink: #f4f4f5; --dim: #a1a1aa;
+    --line: rgba(255, 255, 255, .09); --accent: #34d399; --accent-soft: rgba(52, 211, 153, .1);
+    --track: rgba(255, 255, 255, .07); --grid: rgba(52, 211, 153, .05);
+    --cell-0: rgba(255, 255, 255, .07);
+    --cell-1: rgba(52, 211, 153, .3); --cell-2: rgba(52, 211, 153, .55);
+    --cell-3: rgba(52, 211, 153, .8); --cell-4: #34d399;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .herototal, html[data-theme="dark"] .herototal { -webkit-text-fill-color: transparent; color: transparent; }
+  }
+  html[data-theme="light"] .herototal { -webkit-text-fill-color: currentColor; color: var(--ink); }
+  .ticker { animation: tick 36s linear infinite; will-change: transform; }
+  .ticker:hover { animation-play-state: paused; }
+  @keyframes tick { from { transform: translateX(0); } to { transform: translateX(-50%); } }
   .display { font-family: "Outfit", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
   .bg-blueprint {
     background-image: linear-gradient(var(--grid) 1px, transparent 1px),
@@ -70,8 +94,9 @@
   .ghostimg { position: absolute; right: -6px; bottom: -10px; width: 88px; height: 88px;
     opacity: .08; pointer-events: none; user-select: none; }
   @media (prefers-color-scheme: light) {
-    .ghostimg { opacity: .05; filter: brightness(0); }
+    :root:not([data-theme="dark"]) .ghostimg { opacity: .06; filter: brightness(0); }
   }
+  html[data-theme="light"] .ghostimg { opacity: .06; filter: brightness(0); }
   #tip { position: fixed; z-index: 100; pointer-events: none; min-width: 230px; max-width: 300px;
     background: color-mix(in srgb, var(--panel) 94%, transparent);
     -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
@@ -91,10 +116,8 @@
   #graphMonths span { overflow: visible; white-space: nowrap; }
   .dock {
     position: sticky; top: 12px; z-index: 50;
-    background: color-mix(in srgb, var(--panel) 84%, transparent);
-    -webkit-backdrop-filter: blur(18px) saturate(160%); backdrop-filter: blur(18px) saturate(160%);
     border: 1px solid var(--line); border-radius: 20px;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, .25);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, .08);
   }
   .dock img.brand { border-radius: 10px; }
   .dock {
@@ -103,7 +126,6 @@
       linear-gradient(120deg, var(--accent-soft), var(--line) 30%, var(--line) 70%, var(--accent-soft)) border-box;
     border: 1px solid transparent;
   }
-  .dock .brand { box-shadow: 0 0 12px var(--accent-soft); }
   #reload:hover { box-shadow: 0 0 14px var(--accent-soft); border-color: var(--accent); }
   .spark { display: flex; align-items: flex-end; gap: 3px; }
   .spark > span { flex: 1; min-width: 3px; border-radius: 2px 2px 0 0; background: var(--accent); opacity: .45; }
@@ -112,4 +134,5 @@
     .rise { opacity: 1; transform: none; }
     .live-dot { animation: none; }
     .tilt, .btn-push, .mrow, .bar-fill { transition: none; }
+    .hero-glow, .ticker { animation: none; }
   }

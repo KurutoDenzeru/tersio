@@ -25,6 +25,22 @@
     if (c) c.textContent = new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
   }
   tick(); setInterval(tick, 1000);
+  function syncThemeIcon() {
+    var dark = document.documentElement.getAttribute('data-theme') === 'dark' ||
+      (!document.documentElement.getAttribute('data-theme') && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    var moon = document.getElementById('iconMoon'), sun = document.getElementById('iconSun');
+    if (moon) moon.classList.toggle('hidden', dark);
+    if (sun) sun.classList.toggle('hidden', !dark);
+  }
+  syncThemeIcon();
+  document.getElementById('theme').addEventListener('click', function () {
+    var cur = document.documentElement.getAttribute('data-theme');
+    var sysDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    var next = (cur || (sysDark ? 'dark' : 'light')) === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    try { localStorage.setItem('tersio-theme', next); } catch (e) {}
+    syncThemeIcon();
+  });
 
   var PROVIDERS = [
     [/muse/i, 'Meta', 'meta', '#0082fb'],
@@ -394,7 +410,7 @@
     tools.forEach(function (r) { max = Math.max(max, r[1]); sum += r[1]; });
     tools.forEach(function (r, i) {
       var tr = document.createElement('tr');
-      tr.className = 'tilt' + (i < tools.length - 1 ? ' rowline' : '');
+      tr.className = 'mrow' + (i < tools.length - 1 ? ' rowline' : '');
       var share = sum ? Math.round(r[1] / sum * 100) : 0;
       tr.innerHTML = '<td class="text-right pr-3 py-2.5 mono text-xs w-10" style="color: var(--dim)"></td>' +
         '<td class="py-2.5 pr-3 truncate" style="max-width: 280px"></td>' +
@@ -412,6 +428,43 @@
     });
     document.getElementById('topTable').style.display = tools.length ? '' : 'none';
     document.getElementById('emptyTop').classList.toggle('hidden', tools.length > 0);
+  }
+
+  function fmtMs(ms) {
+    if (ms < 1000) return Math.round(ms) + 'ms';
+    return (ms / 1000).toFixed(1) + 's';
+  }
+  function renderRtk() {
+    var g = (DATA.rtkGain || {}), rows = g.byCommand || [];
+    var body = document.getElementById('rtkBody');
+    body.innerHTML = '';
+    var max = 1;
+    rows.forEach(function (r) { max = Math.max(max, r.saved); });
+    rows.forEach(function (r, i) {
+      var tr = document.createElement('tr');
+      tr.className = 'mrow' + (i < rows.length - 1 ? ' rowline' : '');
+      tr.innerHTML = '<td class="text-right pr-3 py-2.5 mono text-xs w-10" style="color: var(--dim)"></td>' +
+        '<td class="py-2.5 pr-3 truncate" style="max-width: 280px"></td>' +
+        '<td class="text-right py-2.5 pr-3 font-bold"></td>' +
+        '<td class="text-right py-2.5 pr-3 font-bold"></td>' +
+        '<td class="text-right py-2.5 pr-3" style="color: var(--accent)"></td>' +
+        '<td class="text-right py-2.5 pr-3" style="color: var(--dim)"></td>' +
+        '<td class="py-2.5 min-w-32"><div class="bar-track h-1.5 overflow-hidden"><div class="bar-fill h-full"></div></div></td>';
+      var tds = tr.children;
+      tds[0].textContent = String(i + 1).padStart(2, '0');
+      tds[1].textContent = r.command;
+      tds[1].title = r.command;
+      tds[2].textContent = fmt(r.count);
+      tds[3].textContent = fmtShort(r.saved);
+      tds[4].textContent = r.avgPct.toFixed(1) + '%';
+      tds[5].textContent = fmtMs(r.avgMs);
+      tds[6].firstChild.firstChild.style.width = r.saved ? Math.round(r.saved / max * 100) + '%' : '0';
+      body.appendChild(tr);
+    });
+    document.getElementById('rtkTable').style.display = rows.length ? '' : 'none';
+    document.getElementById('emptyRtk').classList.toggle('hidden', rows.length > 0);
+    document.getElementById('rtkScope').textContent =
+      g.commands ? fmt(g.commands) + ' commands - ' + fmtShort(g.saved) + ' saved (' + g.avgPct.toFixed(1) + '%) - measured by rtk' : 'measured by rtk';
   }
 
   function renderStrip(t) {
@@ -539,11 +592,26 @@
     cd.textContent = (pp >= 0 ? '▲ +' : '▼ ') + Math.abs(pp).toFixed(1) + 'pp vs prior 7d';
     cd.className = 'pill mono ' + (Math.abs(pp) < 0.05 ? 'flat' : (pp > 0 ? 'good' : 'bad'));
 
+    (function () {
+      var el = document.getElementById('ticker');
+      if (!el) return;
+      var tops = topModels(DATA.byModel || {}, 5);
+      var parts = tops.map(function (m) {
+        var b = (DATA.byModel || {})[m];
+        var v = b.input + b.output + b.cacheRead + b.cacheWrite;
+        var nm = m.toUpperCase().replace(/-(FREE|CONTRIBUTOR.*|NEXT|LATEST)$/, '').replace(/[-.]?\d[\d.]*/, '').replace(/-V(?=-|$)/, '');
+        return nm + ' ' + fmtShort(v);
+      });
+      if (!parts.length) return;
+      var half = parts.join('   \u25c6   ');
+      el.textContent = half + '   \u25c6   ' + half;
+    })();
     renderStrip(t);
     bindGraphTabs();
     renderGraph(d.byDay || {});
     renderModels();
     renderTools();
+    renderRtk();
 
     if (window.lucide) lucide.createIcons();
     if (hasGsap) {
