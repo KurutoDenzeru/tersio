@@ -1,4 +1,4 @@
-# Tersio ✂️
+# ✂️ Tersio — Token-saving OMP Add-ons
 
 [![npm version](https://img.shields.io/npm/v/@krtclcdy%2Ftersio?color=cb0000)](https://www.npmjs.com/package/@krtclcdy/tersio)
 [![release](https://img.shields.io/github/v/release/KurutoDenzeru/tersio?color=7c3aed)](https://github.com/KurutoDenzeru/tersio/releases)
@@ -7,9 +7,26 @@
 [![CI](https://github.com/KurutoDenzeru/tersio/actions/workflows/ci.yml/badge.svg)](https://github.com/KurutoDenzeru/tersio/actions)
 [![issues](https://img.shields.io/github/issues/KurutoDenzeru/tersio?color=d97706)](https://github.com/KurutoDenzeru/tersio/issues)
 
-Terse replies, compact shell output, and minimal code decisions for [Oh My Pi (OMP)](https://github.com/can1357/oh-my-pi).
+✂️ Terse replies, compact shell output, and minimal code decisions for [Oh My Pi (OMP)](https://github.com/can1357/oh-my-pi) — one-command combo presets.
 
-## Install
+## ✨ Features
+
+- **Caveman** — Shortens replies, keeps technical substance. Modes: `lite`, `full`, `ultra`, `wenyan`.
+- **RTK** — Routes noisy shell commands through the RTK binary for compact output; exact bytes bypass it by policy.
+- **Ponytail** — Minimal, YAGNI-oriented code decisions, from nudge (`lite`) to requirement-challenger (`ultra`).
+- **Combo** — Toggles all three at once. Presets: `off`, `medium`, `balanced`, `max`.
+- **Updater** — `/tersio check` and `/tersio update` cover Ponytail, RTK, and Caveman in-session, with dry-run and backups.
+- **Gain dashboard** — `tersio gain` serves a local-only savings dashboard: cost with currency conversion, activity graph, command tools, and model breakdowns.
+- **Usage ledger** — `tersio usage` prints a ledger-backed savings report for the machine, local only.
+
+## 🧱 Tech Stack
+
+- [TypeScript](https://www.typescriptlang.org/) + [Node.js](https://nodejs.org/): CLI and OMP extensions, compiled to dependency-free JS for install.
+- [RTK](https://github.com/): Standalone binary (Rust) that compacts shell output; fetched from GitHub releases with checksum verification.
+- Vanilla dashboard: dependency-free HTML/CSS/JS export — no build step, no runtime deps.
+- [js-tiktoken](https://github.com/dqbd/tiktoken): Real `o200k_base` BPE token counts for benchmarks (dev only).
+
+## ⚡ Getting Started
 
 **Default** (macOS/Linux/WSL) — one line. Installs the CLI via npm, then runs the main installer (scope + Combo preset menus) in the same pass:
 
@@ -46,19 +63,20 @@ tersio install --combo-default balanced --caveman-default lite --rtk-default on
 
 Defaults apply to fresh sessions only — anything persisted with `/tersio combo`, `/tersio caveman`, or `/tersio rtk` wins. Stored as plugin settings (`omp plugin config get @krtclcdy/tersio comboDefault`).
 
-## What it installs
+One-off use without installing:
 
-| Add-on | What it does |
-|---|---|
-| **Caveman** | Shortens replies, keeps technical substance. Modes: `lite`, `full`, `ultra`, `wenyan` |
-| **RTK** | Routes noisy shell commands through the RTK binary for compact output |
-| **Ponytail** | Minimal, YAGNI-oriented code decisions |
-| **Combo** | Toggles all three at once. Presets: `off`, `medium`, `balanced`, `max` |
-| **Updater** | `/tersio check` and `/tersio update` cover Ponytail, RTK, and Caveman in-session, with dry-run and backups |
+```bash
+npm exec --yes --prefer-online --package=@krtclcdy/tersio@latest -- tersio install
+```
 
-User-level installs also register the package in `~/.omp/plugins` (visible in OMP **Settings → Plugins**), directly through the plugin manifest. Active modes reassert after Ponytail's prompt block on every top-level turn, including after history compaction.
+### Requirements
 
-## Benchmarks
+- [OMP](https://github.com/can1357/oh-my-pi)
+- Node.js 20.12+ with npm
+
+Windows/WSL have separate OMP homes — install from the environment where OMP runs. Inside WSL, `command -v npm` must resolve to a Linux path, not `/mnt/c/`.
+
+## 📊 Benchmarks
 
 Measured savings against the same workload without the modes. Token counts are real `o200k_base` BPE tokens (js-tiktoken), not chars÷4 estimates. Sample protocol, per-sample data, and caveats in [BENCHMARK.md](./BENCHMARK.md).
 
@@ -73,7 +91,7 @@ Measured savings against the same workload without the modes. Token counts are r
 
 Break-even math, balanced preset (caveman full + rtk + ponytail): `⌈overhead ÷ saving-per-turn⌉ = ⌈480 ÷ 306⌉ = 2 turns`, where a mixed turn (reply + `git status`-class command + code task) costs 944 tok baseline vs 638 tok with Tersio — a 0.68× ratio. Every turn after turn 2 nets ≈ −32%. RTK keeps diffs and failing-test output exact by design (−0.4% and −1.5% there), concentrating savings where noise lives.
 
-## CLI
+## 🖥️ CLI
 
 | Command | Purpose |
 |---|---|
@@ -83,14 +101,14 @@ Break-even math, balanced preset (caveman full + rtk + ponytail): `⌈overhead �
 | `tersio doctor` | Check OMP, extension, Ponytail, and RTK health |
 | `tersio usage` | Ledger-backed usage + savings report |
 | `tersio gain` | Open the gain dashboard (`--open`, `--export <file>`, `--port <n>`; serves localhost only) |
-
-Token buckets (input / output / cache read / cache write) follow [tokscale](https://github.com/junhoyeo/tokscale), which also parses the same OMP session transcripts. CO2 uses an [EcoLogits](https://github.com/genai-impact/ecologits) v0.8.2 port (per-model params, provider grids, served ÷32 amortization); see `extensions/shared/ECO_NOTICE.md`.
 | `tersio uninstall` | Remove extensions, registration, and the Ponytail plugin (`--keep-ponytail` keeps Ponytail; `--remove-rtk` also removes the RTK binary) |
 | `tersio version` | Print version |
 
 Flags: `--dry-run`, `--yes`/`-y`, `--verbose`, `--scope`, `--combo-default`/`--caveman-default`/`--rtk-default`/`--ponytail-default`. Legacy `--doctor` / `--uninstall` forms still work.
 
-## Commands reference
+Token buckets (input / output / cache read / cache write) follow [tokscale](https://github.com/junhoyeo/tokscale), which also parses the same OMP session transcripts. CO2 uses an [EcoLogits](https://github.com/genai-impact/ecologits) v0.8.2 port (per-model params, provider grids, served ÷32 amortization); see `extensions/shared/ECO_NOTICE.md`.
+
+## ⌨️ Commands reference
 
 Everything runs under one root. Bare `/tersio` prints status.
 
@@ -108,7 +126,7 @@ Everything runs under one root. Bare `/tersio` prints status.
 | `/tersio help` | This table |
 | `/caveman`, `/rtk`, `/combo`, `/ai-addons` | Legacy aliases, still work; prefer `/tersio`. |
 
-## Files and backups
+## 🗂️ Files and backups
 
 | What | Path |
 |---|---|
@@ -119,20 +137,9 @@ Everything runs under one root. Bare `/tersio` prints status.
 
 The installer writes `<file>.bak` before replacing an extension source; the updater keeps `rtk.bak` / `rule.md.bak` and restores them if the replacement fails validation.
 
-## Requirements
+User-level installs also register the package in `~/.omp/plugins` (visible in OMP **Settings → Plugins**), directly through the plugin manifest. Active modes reassert after Ponytail's prompt block on every top-level turn, including after history compaction.
 
-- [OMP](https://github.com/can1357/oh-my-pi)
-- Node.js 20.12+ with npm
-
-Windows/WSL have separate OMP homes — install from the environment where OMP runs. Inside WSL, `command -v npm` must resolve to a Linux path, not `/mnt/c/`.
-
-One-off use without installing:
-
-```bash
-npm exec --yes --prefer-online --package=@krtclcdy/tersio@latest -- tersio install
-```
-
-## Troubleshooting
+## 🛠️ Troubleshooting
 
 **Ponytail or Combo command missing:** run `tersio reinstall` in OMP's environment, restart OMP, then `tersio doctor` (repairs `config.yml` registrations).
 
@@ -144,12 +151,10 @@ npm exec --yes --prefer-online --package=@krtclcdy/tersio@latest -- tersio insta
 
 Contributions are always welcome, whether you're fixing bugs, improving docs, or shipping new features that make the project better for everyone.
 
-Check out [Contributing.md](Contributing) to learn how to get started and follow the recommended workflow.
+Check out [Contributing.md](Contributing.md) to learn how to get started and follow the recommended workflow.
 
-<!-- Please adhere to this project's `Code of Conduct`. -->
-
-## ⚖️  License
+## ⚖️ License
 
 This project is released under the MIT License, giving you the freedom to use, modify, and distribute the code with minimal restrictions.
 
-For the full legal text, see the [MIT](LICENSE) file.
+For the full legal text, see the [LICENSE](LICENSE) file.
