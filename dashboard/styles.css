@@ -25,7 +25,8 @@
     animation: breathe 5s ease-in-out infinite; }
   @keyframes breathe { 0%, 100% { opacity: .55; transform: translate(-50%, -50%) scale(1); } 50% { opacity: 1; transform: translate(-50%, -50%) scale(1.12); } }
   .herototal { background: linear-gradient(180deg, var(--ink) 55%, var(--accent) 130%);
-    -webkit-background-clip: text; background-clip: text; }
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent; color: transparent; }
   html[data-theme="dark"] {
     --bg: #09090b; --panel: #101014; --ink: #f4f4f5; --dim: #a1a1aa;
     --line: rgba(255, 255, 255, .09); --accent: #34d399; --accent-soft: rgba(52, 211, 153, .1);
@@ -34,10 +35,6 @@
     --cell-1: rgba(52, 211, 153, .3); --cell-2: rgba(52, 211, 153, .55);
     --cell-3: rgba(52, 211, 153, .8); --cell-4: #34d399;
   }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) .herototal, html[data-theme="dark"] .herototal { -webkit-text-fill-color: transparent; color: transparent; }
-  }
-  html[data-theme="light"] .herototal { -webkit-text-fill-color: currentColor; color: var(--ink); }
   .ticker { animation: tick 36s linear infinite; will-change: transform; }
   .ticker:hover { animation-play-state: paused; }
   @keyframes tick { from { transform: translateX(0); } to { transform: translateX(-50%); } }
