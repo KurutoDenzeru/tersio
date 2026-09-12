@@ -8,7 +8,7 @@ import { promises as fs } from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { readUsage } from '../extensions/shared/usage-ledger.ts';
+import { clearUsageLedger, readUsage } from '../extensions/shared/usage-ledger.ts';
 import { summarizeUsage } from './usage.ts';
 import { withInteractiveSpinner } from './interactive.ts';
 
@@ -65,6 +65,12 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
   }
   const html = await withInteractiveSpinner('Loading dashboard template', () => readSegment(TEMPLATE));
   const server = http.createServer(async (req, res) => {
+    if (req.url === '/reset' && req.method === 'POST') {
+      const rows = clearUsageLedger();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, rows }));
+      return;
+    }
     if (req.url === '/data.json') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(dataJson());

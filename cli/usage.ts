@@ -3,12 +3,14 @@ import {
   co2GramsFor,
   energyWhFor,
   importSessionTokens,
+  ledgerPath,
   priceFor,
   readUsage,
+  sessionsDir,
   usdCost,
 } from '../extensions/shared/usage-ledger.ts';
-import type { TokenBreakdown, UsageRow } from '../extensions/shared/usage-ledger.ts';
-import { readRtkGain } from '../extensions/shared/rtk-gain.ts';
+import type { RecentRequest, TokenBreakdown, UsageRow } from '../extensions/shared/usage-ledger.ts';
+import { readRtkGain, rtkDbPath } from '../extensions/shared/rtk-gain.ts';
 import type { RtkGain } from '../extensions/shared/rtk-gain.ts';
 import { withInteractiveSpinner } from './interactive.ts';
 import { PACKAGE_VERSION } from './common.ts';
@@ -27,6 +29,7 @@ export interface UsageReport {
   byDay: Record<string, TokenBreakdown>;
   byDayModel: Record<string, Record<string, number>>;
   byTool: Array<[string, number]>;
+  recent: RecentRequest[];
   rtkGain: RtkGain;
   usd: number;
   priced: boolean;
@@ -35,6 +38,7 @@ export interface UsageReport {
   co2g: number;
   energyWh: number;
   version: string;
+  paths: { ledger: string; sessions: string; rtk: string };
 }
 
 export function summarizeUsage(rows: UsageRow[]): UsageReport {
@@ -76,6 +80,7 @@ export function summarizeUsage(rows: UsageRow[]): UsageReport {
     byDay: session.byDay,
     byDayModel: session.byDayModel,
     byTool,
+    recent: session.recent,
     rtkGain: readRtkGain(),
     usd,
     priced,
@@ -84,6 +89,7 @@ export function summarizeUsage(rows: UsageRow[]): UsageReport {
     co2g,
     energyWh,
     version: PACKAGE_VERSION,
+    paths: { ledger: ledgerPath(), sessions: sessionsDir(), rtk: rtkDbPath() },
   };
 }
 

@@ -1,3 +1,6 @@
+## Unreleased
+ - `tersio reset` clears tersio-owned statistics (usage ledger) with `--dry-run` preview and confirm-unless-`--yes`; session transcripts and RTK history are never touched. `tersio doctor` gains a Records section showing every store path with ownership. Gain dashboard gets a served-mode Reset button plus shadcn-style empty states (dashed well, Lucide icon, title, hint) on Activity, Top models, Models, Recent, Tools, and the cost sparkline for zero-data renders. Header controls collapse into a native-modal Settings dialog (icon-only Light/Dark/System theme tabs, reload, and all three store paths with ownership).
+
 ## v2.10.0
  - Gain dashboard: Command Tools merges session tool calls and RTK-metered commands into one sortable, paginated table (15/page) with honest gaps for unmetered rows; USD card gains a 10-currency converter with live rates; scroll progress rail; hero gradient fixed in light mode; reload no longer fades the hero.
  - CLI: OMP-style launch welcome (pixel-scissor banner + tips) via Clack on interactive `tersio` / `tersio install`; `tersio usage` merges Top Tools and RTK into one Command Tools table; zero-value cache-write buckets collapse in CLI and dashboard until a client reports them.

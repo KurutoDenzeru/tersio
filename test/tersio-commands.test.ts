@@ -46,13 +46,13 @@ test("/tersio help lists every subcommand", async () => {
   }
 });
 
-test("/tersio caveman full persists entries, bridge, ledger, reload", async () => {
+test("/tersio caveman full persists entries, bridge, ledger, no reload", async () => {
   setSharedComboLevel("off");
   const h = harness();
   await h.command("caveman full", h.ctx);
   assert.deepEqual(h.appended, [{ type: "caveman-mode", data: { mode: "full" } }]);
   assert.equal(getSharedComboState().caveman, "full");
-  assert.equal(h.reloaded(), 1);
+  assert.equal(h.reloaded(), 0);
   assert.match(h.notifications.join("\n"), /Caveman full on/);
 });
 

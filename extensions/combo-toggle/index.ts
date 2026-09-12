@@ -108,7 +108,9 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
     return useState(reconcileSharedComboEntries(sessionEntries(ctx)), ctx);
   }
   function listen(ctx?: ExtensionCtx): void {
-    if (ctx?.hasUI) setSharedComboListener((state) => useState(state));
+    // Stable identity: the bridge set dedupes, so repeated track()/command
+    // calls register once instead of stacking duplicate listeners.
+    if (ctx?.hasUI) setSharedComboListener(useState);
   }
 
   function track(ctx?: ExtensionCtx): void {
@@ -159,8 +161,6 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
         level === 'off' ? `Combo off — all tersio modes inactive for this session. Active: ${active}.` : `Combo ${level} on — ${active} active for this session.`,
         'info'
       );
-
-      if (ctx?.reload) await ctx.reload();
     },
   });
 

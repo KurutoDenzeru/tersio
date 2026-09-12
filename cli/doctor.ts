@@ -7,7 +7,8 @@ import {
   execP, parseJsonObject, relTime,
 } from './common.ts';
 import { runInteractivePhase } from './interactive.ts';
-import { ledgerPath, readUsage } from '../extensions/shared/usage-ledger.ts';
+import { ledgerPath, readUsage, sessionsDir } from '../extensions/shared/usage-ledger.ts';
+import { readRtkGain, rtkDbPath } from '../extensions/shared/rtk-gain.ts';
 import { checkForUpdate } from './update.ts';
 import { readTextIfExists } from '../extensions/lib/utils.ts';
 
@@ -141,6 +142,13 @@ async function runDoctor(): Promise<void> {
   section('Usage');
   const usageRows = readUsage();
   check('Usage ledger', usageRows.length > 0, usageRows.length ? `${usageRows.length} rows · ${ledgerPath()}` : ledgerPath());
+
+  section('Records');
+  console.log(`  Usage ledger (tersio-owned, tersio reset clears): ${ledgerPath()} · ${usageRows.length} rows`);
+  console.log(`  Session transcripts (host-owned, never touched): ${sessionsDir()}`);
+  const rtkDb = rtkDbPath();
+  const rtk = readRtkGain();
+  console.log(`  RTK history (rtk-owned, never touched): ${rtkDb}${rtk.commands ? ` · ${rtk.commands} commands` : ''}`);
 
   section('Add-ons');
   const ruleAge = ruleMtime ? `updated ${relTime(Date.now() - ruleMtime.mtimeMs)}` : '';
