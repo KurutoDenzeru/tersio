@@ -646,7 +646,7 @@
       ['output', t.output, 'arrow-up-from-line'],
       ['cache read', t.cacheRead, 'hard-drive-download'],
       ['cache write', t.cacheWrite, 'hard-drive-upload']
-    ];
+    ].filter(function(b) { return b[1] > 0; });
     var strip = document.getElementById('tokens');
     strip.innerHTML = '';
     defs.forEach(function(b, i) {

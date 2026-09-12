@@ -137,7 +137,7 @@ function printReport(report: UsageReport): void {
     return;
   }
   const t = report.tokens;
-  console.log(`  TOKENS  ${fmt(t.input)} in · ${fmt(t.output)} out · ${fmt(t.cacheRead)} cache read · ${fmt(t.cacheWrite)} written`);
+  console.log(`  TOKENS  ${fmt(t.input)} in · ${fmt(t.output)} out · ${fmt(t.cacheRead)} cache read${t.cacheWrite > 0 ? ` · ${fmt(t.cacheWrite)} written` : ''}`);
   console.log(`  COST    $${report.usd.toFixed(2)}${report.priced ? '' : ' (includes default pricing)'} · ~$${report.savedUsd.toFixed(2)} cache-saved (est.) · ~${report.co2g.toFixed(1)}g CO2 (est.)`);
   const models = Object.entries(report.byModel).filter(([, b]) => b.input + b.output + b.cacheRead + b.cacheWrite > 0).sort((a, b) => (b[1].input + b[1].output) - (a[1].input + a[1].output)).slice(0, 8);
   if (models.length) {

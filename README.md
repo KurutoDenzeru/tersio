@@ -140,6 +140,16 @@ npm exec --yes --prefer-online --package=@krtclcdy/tersio@latest -- tersio insta
 
 **Checksum warning or failure:** the installer aborts on RTK checksum mismatch but warns and continues when checksum metadata is unavailable; `/tersio update rtk` aborts when metadata is missing.
 
-## License
+## 🤝🏻 Contributing
 
-[MIT](./LICENSE)
+Contributions are always welcome, whether you're fixing bugs, improving docs, or shipping new features that make the project better for everyone.
+
+Check out [Contributing.md](Contributing) to learn how to get started and follow the recommended workflow.
+
+<!-- Please adhere to this project's `Code of Conduct`. -->
+
+## ⚖️  License
+
+This project is released under the MIT License, giving you the freedom to use, modify, and distribute the code with minimal restrictions.
+
+For the full legal text, see the [MIT](LICENSE) file.
