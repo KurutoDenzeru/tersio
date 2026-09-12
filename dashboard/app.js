@@ -548,8 +548,26 @@
     });
     document.getElementById('rtkTable').style.display = rows.length ? '' : 'none';
     document.getElementById('emptyRtk').classList.toggle('hidden', rows.length > 0);
-    document.getElementById('rtkScope').textContent =
-      g.commands ? fmt(g.commands) + ' commands - ' + fmtShort(g.saved) + ' saved (' + g.avgPct.toFixed(1) + '%) - measured by rtk' : 'measured by rtk';
+    rtkSummary = g.commands ? fmt(g.commands) + ' commands · ' + fmtShort(g.saved) + ' saved (' + g.avgPct.toFixed(1) + '%) · measured by rtk' : 'measured by rtk';
+    paintToolsScope();
+  }
+  var TMODE = 'tools', rtkSummary = 'measured by rtk';
+  function paintToolsScope() {
+    document.getElementById('toolsScope').textContent = TMODE === 'rtk' ? rtkSummary : 'tool calls in sessions';
+  }
+  function bindToolsTabs() {
+    if (bindToolsTabs.done) return;
+    bindToolsTabs.done = true;
+    Array.prototype.forEach.call(document.querySelectorAll('#tools [data-tmode]'), function(btn) {
+      btn.addEventListener('click', function() {
+        Array.prototype.forEach.call(document.querySelectorAll('#tools [data-tmode]'), function(b) { b.classList.remove('on'); });
+        btn.classList.add('on');
+        TMODE = btn.getAttribute('data-tmode');
+        document.getElementById('paneTools').classList.toggle('hidden', TMODE !== 'tools');
+        document.getElementById('paneRtk').classList.toggle('hidden', TMODE !== 'rtk');
+        paintToolsScope();
+      });
+    });
   }
 
   function renderStrip(t) {
@@ -668,6 +686,7 @@
       el.textContent = half + '   \u25c6   ' + half;
     })();
     renderStrip(t);
+    bindToolsTabs();
     bindGraphTabs();
     renderGraph(d.byDay || {});
     renderModels();
