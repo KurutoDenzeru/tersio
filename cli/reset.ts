@@ -1,31 +1,35 @@
-// cli/reset.ts — clear tersio-owned statistics (usage ledger).
-// Session transcripts (~/.omp/agent/sessions) and the RTK database are
-// host/tool-owned and are never touched; doctor shows where they live.
+// cli/reset.ts — clear tersio-owned statistics: the usage ledger plus a reset
+// watermark that filters session-derived and RTK-metered rows out of every
+// derived view. Session transcripts (~/.omp/agent/sessions) and the RTK
+// database are host/tool-owned and are never touched; the watermark only
+// changes what tersio shows.
 import { cancel as clackCancel, confirm as clackConfirm } from '@clack/prompts';
 import { dryRun, yes } from './common.ts';
 import { ask, closeRL, tty } from './interactive.ts';
-import { clearUsageLedger, ledgerPath, readUsage } from '../extensions/shared/usage-ledger.ts';
-import { sessionsDir } from '../extensions/shared/usage-ledger.ts';
-import { rtkDbPath } from '../extensions/shared/rtk-gain.ts';
+import { clearUsageLedger, importSessionTokens, ledgerPath, markReset, readUsage, sessionsDir } from '../extensions/shared/usage-ledger.ts';
+import { readRtkGain, rtkDbPath } from '../extensions/shared/rtk-gain.ts';
 
 async function runReset(): Promise<boolean> {
   console.log('\n=== Tersio Reset ===\n');
   const rows = readUsage().length;
-  console.log(`Will remove: ${rows} usage rows · ${ledgerPath()}`);
-  console.log(`Left intact: sessions ${sessionsDir()}, rtk ${rtkDbPath()}`);
+  const sessions = importSessionTokens();
+  const rtk = readRtkGain(1);
+  console.log(`Will clear: ${rows} usage ledger rows · ${ledgerPath()}`);
+  console.log(`Will hide (view-level watermark): session-derived statistics (${sessions.messages} messages) · RTK metered rows (${rtk.commands})`);
+  console.log(`Left intact on disk: sessions ${sessionsDir()}, rtk ${rtkDbPath()}`);
 
   if (dryRun) {
-    console.log('[dry-run] ledger kept.');
+    console.log('[dry-run] nothing written.');
     return true;
   }
-  if (rows === 0) {
-    console.log('Nothing to reset — usage ledger is already empty.');
+  if (rows === 0 && sessions.messages === 0 && rtk.commands === 0) {
+    console.log('Nothing to reset — no statistics recorded.');
     return true;
   }
   if (!yes) {
     if (tty()) {
       closeRL();
-      const confirmedChoice = await clackConfirm({ message: 'Clear the usage ledger?', initialValue: false });
+      const confirmedChoice = await clackConfirm({ message: 'Clear tersio statistics?', initialValue: false });
       if (typeof confirmedChoice !== 'boolean') {
         clackCancel('Aborted.');
         closeRL();
@@ -46,7 +50,8 @@ async function runReset(): Promise<boolean> {
     }
   }
   const cleared = clearUsageLedger();
-  console.log(`[ok] reset — removed ${cleared} usage rows`);
+  const ts = markReset();
+  console.log(`[ok] reset — removed ${cleared} usage rows; statistics view starts at ${new Date(ts).toISOString()}`);
   return true;
 }
 

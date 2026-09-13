@@ -5,6 +5,7 @@ import {
   importSessionTokens,
   ledgerPath,
   priceFor,
+  readResetWatermark,
   readUsage,
   sessionsDir,
   usdCost,
@@ -50,6 +51,7 @@ export function summarizeUsage(rows: UsageRow[]): UsageReport {
   }
   const byDetail = Object.entries(detailCounts).sort((a, b) => b[1] - a[1]).slice(0, 10);
   const session = importSessionTokens();
+  const watermark = readResetWatermark();
   let usd = 0;
   let priced = true;
   let savedUsd = 0;
@@ -81,7 +83,7 @@ export function summarizeUsage(rows: UsageRow[]): UsageReport {
     byDayModel: session.byDayModel,
     byTool,
     recent: session.recent,
-    rtkGain: readRtkGain(),
+    rtkGain: readRtkGain(10, watermark || undefined),
     usd,
     priced,
     savedUsd,

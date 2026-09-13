@@ -20,6 +20,34 @@ export function ledgerPath(): string {
   return path.join(os.homedir(), '.omp', 'plugins', 'tersio-usage.jsonl');
 }
 
+// Reset watermark: tersio-owned timestamp marking the last statistics reset.
+// Session transcripts and the RTK database are host/tool-owned and never
+// touched — instead, every derived view (token stats, command tools) filters
+// rows from before the watermark, so "reset" empties what tersio shows
+// without deleting anything it does not own.
+export function resetMarkerPath(): string {
+  const override = process.env.TERSIO_RESET_FILE;
+  if (override) return override;
+  return path.join(os.homedir(), '.omp', 'plugins', 'tersio-reset.json');
+}
+
+export function readResetWatermark(): number {
+  try {
+    const raw = JSON.parse(fs.readFileSync(resetMarkerPath(), 'utf8')) as { ts?: unknown };
+    return typeof raw.ts === 'number' && Number.isFinite(raw.ts) && raw.ts > 0 ? raw.ts : 0;
+  } catch {
+    return 0;
+  }
+}
+
+export function markReset(now = Date.now()): number {
+  try {
+    fs.mkdirSync(path.dirname(resetMarkerPath()), { recursive: true });
+    fs.writeFileSync(resetMarkerPath(), JSON.stringify({ ts: now }) + '\n', 'utf8');
+  } catch { /* best-effort; never break the caller */ }
+  return now;
+}
+
 export function appendUsage(kind: UsageKind, detail: string): void {
   const row = JSON.stringify({ ts: Date.now(), kind, detail }) + '\n';
   try {
@@ -108,6 +136,7 @@ function walkJsonl(dir: string, out: string[], cap: number): void {
 }
 
 export function importSessionTokens(): SessionTokens {
+  const watermark = readResetWatermark();
   const byModel: Record<string, TokenBreakdown> = {};
   const byDay: Record<string, TokenBreakdown> = {};
   const byDayModel: Record<string, Record<string, number>> = {};
@@ -125,13 +154,16 @@ export function importSessionTokens(): SessionTokens {
   }
   let codexProvider: string | null = null;
   const recent: RecentRequest[] = [];
-  function ingest(model: string, usage: Record<string, unknown>, ts: string | number | undefined): void {
+  // Rows from before the reset watermark (and rows with no usable timestamp,
+  // which may predate it) stay out of every derived statistic.
+  function ingest(model: string, usage: Record<string, unknown>, ts: string | number | undefined): boolean {
+    const ms = ts === undefined ? NaN : typeof ts === 'number' ? ts : Date.parse(ts);
+    if (watermark > 0 && (!Number.isFinite(ms) || ms < watermark)) return false;
     addInto(totals, usage);
     byModel[model] ??= zeroBreakdown();
     addInto(byModel[model], usage);
     byModelMessages[model] = (byModelMessages[model] ?? 0) + 1;
     const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.floor(v) : 0);
-    const ms = ts === undefined ? NaN : typeof ts === 'number' ? ts : Date.parse(ts);
     if (Number.isFinite(ms)) recent.push({ m: model, i: num(usage.input), o: num(usage.output), t: ms });
     const day = ts !== undefined ? dayKey(ts) : null;
     if (day) {
@@ -144,6 +176,7 @@ export function importSessionTokens(): SessionTokens {
       }
     }
     messages += 1;
+    return true;
   }
   for (const file of files) {
     let text: string;
@@ -180,8 +213,9 @@ export function importSessionTokens(): SessionTokens {
         const msg = row.message;
         if (!msg || msg.role !== 'assistant' || !msg.usage) continue;
         const model = typeof msg.model === 'string' && msg.model ? msg.model : 'unknown';
-        ingest(model, msg.usage, row.timestamp);
-        if (typeof msg.usage.cost === 'number' && Number.isFinite(msg.usage.cost)) costMeasured += msg.usage.cost;
+        const counted = ingest(model, msg.usage, row.timestamp);
+        if (counted && typeof msg.usage.cost === 'number' && Number.isFinite(msg.usage.cost)) costMeasured += msg.usage.cost;
+        if (!counted) continue;
         for (const part of msg.content ?? []) {
           if (part?.type === 'toolCall' && typeof part.name === 'string' && part.name) {
             const key = part.name === 'bash' ? `bash:${leadBinary((part.arguments as { command?: unknown } | null)?.command)}` : part.name;

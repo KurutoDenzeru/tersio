@@ -655,7 +655,10 @@ async function runInstall(): Promise<void> {
   }
   printWelcome();
   if (reinstall) {
-    await runUninstall({ yes: true, removePonytail: false, removeRtk: true });
+    // removeRtk stays false: reinstall is about to replace the binary, and
+    // deleting it first would leave nothing to wire if the fresh download
+    // fails (rate limit, offline). rtk.ts is removed here and re-wired below.
+    await runUninstall({ yes: true, removePonytail: false, removeRtk: false });
   }
 
   if (dryRun) console.log('[dry-run] No changes will be written.\n');

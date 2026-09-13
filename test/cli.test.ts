@@ -261,39 +261,106 @@ test("reset --dry-run keeps the seeded ledger", () => {
   const result = spawnSync(process.execPath, [installer, "reset", "--dry-run"], {
     encoding: "utf8",
     cwd: root,
-    env: { ...process.env, TERSIO_USAGE_FILE: ledger },
+    input: "n\n",
+    env: {
+      ...process.env,
+      TERSIO_USAGE_FILE: ledger,
+      TERSIO_RESET_FILE: path.join(dir, "reset.json"),
+      TERSIO_SESSIONS_DIR: path.join(dir, "no-sessions"),
+      TERSIO_RTK_DB: path.join(dir, "no-rtk.db"),
+    },
   });
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /Will remove: 2 usage rows/);
-  assert.match(result.stdout, /\[dry-run\] ledger kept/);
+  assert.match(result.stdout, /Will clear: 2 usage ledger rows/);
+  assert.match(result.stdout, /\[dry-run\] nothing written/);
   assert.equal(existsSync(ledger), true);
-  rmSync(dir, { recursive: true, force: true });
 });
 
-test("reset --yes clears the seeded ledger", () => {
+test("reset --yes clears the seeded ledger and writes the watermark", () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-reset-"));
   const ledger = path.join(dir, "usage.jsonl");
+  const marker = path.join(dir, "reset.json");
   writeFileSync(ledger, '{"ts":1,"kind":"command","detail":"x"}\n', "utf8");
   const result = spawnSync(process.execPath, [installer, "reset", "--yes"], {
     encoding: "utf8",
     cwd: root,
-    env: { ...process.env, TERSIO_USAGE_FILE: ledger },
+    env: {
+      ...process.env,
+      TERSIO_USAGE_FILE: ledger,
+      TERSIO_RESET_FILE: marker,
+      TERSIO_SESSIONS_DIR: path.join(dir, "no-sessions"),
+      TERSIO_RTK_DB: path.join(dir, "no-rtk.db"),
+    },
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /\[ok\] reset — removed 1 usage rows; statistics view starts at /);
+  assert.equal(existsSync(ledger), false);
+  assert.equal(existsSync(marker), true);
+});
+
+test("reset asks Y/N and aborts without writing on N", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-reset-"));
+  const ledger = path.join(dir, "usage.jsonl");
+  const marker = path.join(dir, "reset.json");
+  writeFileSync(ledger, '{"ts":1,"kind":"command","detail":"x"}\n', "utf8");
+  const result = spawnSync(process.execPath, [installer, "reset"], {
+    encoding: "utf8",
+    cwd: root,
+    input: "n\n",
+    env: {
+      ...process.env,
+      TERSIO_USAGE_FILE: ledger,
+      TERSIO_RESET_FILE: marker,
+      TERSIO_SESSIONS_DIR: path.join(dir, "no-sessions"),
+      TERSIO_RTK_DB: path.join(dir, "no-rtk.db"),
+    },
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /Proceed\? \[y\/N\]/);
+  assert.match(result.stdout, /Aborted\./);
+  assert.equal(existsSync(ledger), true, "ledger kept on abort");
+  assert.equal(existsSync(marker), false, "no watermark written on abort");
+});
+
+test("reset accepts lowercase y and writes the watermark", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-reset-"));
+  const ledger = path.join(dir, "usage.jsonl");
+  const marker = path.join(dir, "reset.json");
+  writeFileSync(ledger, '{"ts":1,"kind":"command","detail":"x"}\n', "utf8");
+  const result = spawnSync(process.execPath, [installer, "reset"], {
+    encoding: "utf8",
+    cwd: root,
+    input: "y\n",
+    env: {
+      ...process.env,
+      TERSIO_USAGE_FILE: ledger,
+      TERSIO_RESET_FILE: marker,
+      TERSIO_SESSIONS_DIR: path.join(dir, "no-sessions"),
+      TERSIO_RTK_DB: path.join(dir, "no-rtk.db"),
+    },
   });
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /\[ok\] reset — removed 1 usage rows/);
   assert.equal(existsSync(ledger), false);
-  rmSync(dir, { recursive: true, force: true });
+  assert.equal(existsSync(marker), true);
 });
 
-test("reset --yes on a missing ledger exits 0 without writing", () => {
-  const ledger = path.join(root, "test", "definitely-missing-home", "no-ledger.jsonl");
+test("reset --yes on empty stores prints nothing-to-reset without prompting", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-reset-"));
+  const ledger = path.join(dir, "usage.jsonl");
   const result = spawnSync(process.execPath, [installer, "reset", "--yes"], {
     encoding: "utf8",
     cwd: root,
-    env: { ...process.env, TERSIO_USAGE_FILE: ledger },
+    env: {
+      ...process.env,
+      TERSIO_USAGE_FILE: ledger,
+      TERSIO_RESET_FILE: path.join(dir, "reset.json"),
+      TERSIO_SESSIONS_DIR: path.join(dir, "no-sessions"),
+      TERSIO_RTK_DB: path.join(dir, "no-rtk.db"),
+    },
   });
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /already empty/);
+  assert.match(result.stdout, /Nothing to reset — no statistics recorded/);
   assert.equal(existsSync(ledger), false);
 });
 

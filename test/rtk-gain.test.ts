@@ -67,6 +67,34 @@ test("aggregates per-command savings from history.db", { skip: !hasSqlite() }, (
   }
 });
 
+test("cutoff filters the view without touching the db", { skip: !hasSqlite() }, () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-rtk-"));
+  const db = path.join(dir, "history.db");
+  try {
+    execFileSync("sqlite3", [db, [
+      "CREATE TABLE commands (id INTEGER PRIMARY KEY, timestamp TEXT NOT NULL,",
+      "original_cmd TEXT NOT NULL, rtk_cmd TEXT NOT NULL, input_tokens INTEGER NOT NULL,",
+      "output_tokens INTEGER NOT NULL, saved_tokens INTEGER NOT NULL, savings_pct REAL NOT NULL,",
+      "exec_time_ms INTEGER DEFAULT 0, project_path TEXT DEFAULT '');",
+      "INSERT INTO commands VALUES (1,'2026-09-01T00:00:00Z','git status','rtk git status',100,50,50,50.0,20,'/tmp');",
+      "INSERT INTO commands VALUES (2,'2026-09-01T00:01:00Z','git status','rtk git status',200,100,100,50.0,40,'/tmp');",
+      "INSERT INTO commands VALUES (3,'2026-09-13T12:00:00Z','grep foo','rtk grep',1000,900,100,10.0,600,'/tmp');",
+    ].join(" ")]);
+    withDb(db, () => {
+      const cutoff = Date.parse("2026-09-13T00:00:00Z");
+      const g = readRtkGain(10, cutoff);
+      assert.equal(g.commands, 1, "only post-cutoff rows in the view");
+      assert.equal(g.saved, 100);
+      assert.equal(g.byCommand.length, 1);
+      // The database itself is untouched.
+      const all = readRtkGain();
+      assert.equal(all.commands, 3);
+    });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("default db path follows the platform", () => {
   withDb(undefined, () => {
     const p = rtkDbPath();

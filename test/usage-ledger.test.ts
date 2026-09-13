@@ -8,7 +8,6 @@ import { appendUsage, ledgerPath, readUsage } from "../extensions/shared/usage-l
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tersio-ledger-"));
 process.env.TERSIO_USAGE_FILE = path.join(dir, "usage.jsonl");
-
 test("ledger starts empty when the file is missing", () => {
   assert.equal(ledgerPath(), process.env.TERSIO_USAGE_FILE);
   assert.deepEqual(readUsage(), []);
@@ -40,4 +39,54 @@ test("clearUsageLedger removes the file and returns rows cleared", async () => {
   assert.deepEqual(readUsage(), []);
   assert.equal(fs.existsSync(process.env.TERSIO_USAGE_FILE!), false);
   assert.equal(clearUsageLedger(), 0);
+});
+
+test("reset watermark defaults to 0, writes and reads back", async () => {
+  const { resetMarkerPath, readResetWatermark, markReset } = await import("../extensions/shared/usage-ledger.js");
+  process.env.TERSIO_RESET_FILE = path.join(dir, "reset.json");
+  try {
+    assert.equal(fs.existsSync(resetMarkerPath()), false);
+    assert.equal(readResetWatermark(), 0);
+    const ts = markReset();
+    assert.equal(readResetWatermark(), ts);
+    assert.match(fs.readFileSync(resetMarkerPath(), "utf8"), /"ts":\d+/);
+  } finally {
+    delete process.env.TERSIO_RESET_FILE;
+  }
+});
+
+test("session stats honor the reset watermark without touching transcripts", async () => {
+  const mod = await import("../extensions/shared/usage-ledger.js");
+  const sessions = path.join(dir, "sessions");
+  fs.mkdirSync(sessions, { recursive: true });
+  const now = Date.now();
+  const row = (iso: string) => JSON.stringify({ timestamp: iso, message: { role: "assistant", model: "m-test", usage: { input: 100, output: 10 }, content: [] } }) + "\n";
+  fs.writeFileSync(path.join(sessions, "s.jsonl"), [
+    row(new Date(now - 60_000).toISOString()), // before watermark
+    row(new Date(now + 60_000).toISOString()), // after watermark
+    JSON.stringify({ message: { role: "assistant", model: "m-test", usage: { input: 500, output: 5 } } }), // no timestamp
+  ].join("\n"), "utf8");
+  const prevReset = process.env.TERSIO_RESET_FILE;
+  const prevSessions = process.env.TERSIO_SESSIONS_DIR;
+  process.env.TERSIO_SESSIONS_DIR = sessions;
+  try {
+    delete process.env.TERSIO_RESET_FILE;
+    const unfiltered = mod.importSessionTokens();
+    assert.equal(unfiltered.messages, 3);
+    assert.equal(unfiltered.totals.input, 700);
+
+    process.env.TERSIO_RESET_FILE = path.join(dir, "reset.json");
+    mod.markReset(now);
+    const filtered = mod.importSessionTokens();
+    assert.equal(filtered.messages, 1, "only post-watermark rows count");
+    assert.equal(filtered.totals.input, 100);
+    assert.equal(filtered.totals.output, 10);
+    // The host-owned transcript file is untouched.
+    assert.equal(fs.existsSync(path.join(sessions, "s.jsonl")), true);
+  } finally {
+    if (prevReset === undefined) delete process.env.TERSIO_RESET_FILE;
+    else process.env.TERSIO_RESET_FILE = prevReset;
+    if (prevSessions === undefined) delete process.env.TERSIO_SESSIONS_DIR;
+    else process.env.TERSIO_SESSIONS_DIR = prevSessions;
+  }
 });

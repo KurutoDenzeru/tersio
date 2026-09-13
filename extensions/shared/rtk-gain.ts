@@ -53,16 +53,22 @@ function query(db: string, sql: string): string[][] {
     .map((line) => line.split('\t'));
 }
 
-export function readRtkGain(limit = 10): RtkGain {
+export function readRtkGain(limit = 10, cutoffMs?: number): RtkGain {
   try {
     if (!fs.existsSync(rtkDbPath())) return EMPTY;
+    // View-level cutoff only: rows stay in rtk's own database untouched.
+    // strftime('%s') normalizes ISO-8601 timestamps to epoch seconds; rows
+    // with unparseable timestamps (0) drop out of a filtered view.
+    const where = cutoffMs && cutoffMs > 0
+      ? `WHERE CAST(strftime('%s', timestamp) AS INTEGER) >= ${Math.floor(cutoffMs / 1000)}`
+      : '';
     const [[commands = '0', saved = '0', input = '0', avgPct = '0', totalMs = '0'] = []] = query(
       rtkDbPath(),
-      'SELECT COUNT(*), COALESCE(SUM(saved_tokens),0), COALESCE(SUM(input_tokens),0), COALESCE(AVG(savings_pct),0), COALESCE(SUM(exec_time_ms),0) FROM commands;',
+      `SELECT COUNT(*), COALESCE(SUM(saved_tokens),0), COALESCE(SUM(input_tokens),0), COALESCE(AVG(savings_pct),0), COALESCE(SUM(exec_time_ms),0) FROM commands ${where};`,
     );
     const byCommand = query(
       rtkDbPath(),
-      `SELECT rtk_cmd, COUNT(*), SUM(saved_tokens), AVG(savings_pct), AVG(exec_time_ms) FROM commands GROUP BY rtk_cmd ORDER BY SUM(saved_tokens) DESC LIMIT ${Math.max(1, Math.floor(limit))};`,
+      `SELECT rtk_cmd, COUNT(*), SUM(saved_tokens), AVG(savings_pct), AVG(exec_time_ms) FROM commands ${where} GROUP BY rtk_cmd ORDER BY SUM(saved_tokens) DESC LIMIT ${Math.max(1, Math.floor(limit))};`,
     ).map(([command, count, savedRow, pct, ms]) => ({
       command,
       count: Number(count) || 0,
