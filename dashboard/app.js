@@ -778,7 +778,7 @@
     renderSpark(byDay, d.usd || 0, d.savedUsd || 0, total);
     document.getElementById('verChip').textContent = 'tersio v' + (d.version || '?');
     var dp = d.paths || {};
-    [['pathLedger', dp.ledger], ['pathSessions', dp.sessions], ['pathRtk', dp.rtk]].forEach(function(pair) {
+    [['pathLedger', dp.ledger], ['pathSessions', dp.sessions]].forEach(function(pair) {
       var pel = document.getElementById(pair[0]);
       if (pel && pair[1]) { pel.textContent = pair[1]; pel.title = pair[1]; }
     });

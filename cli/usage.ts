@@ -11,7 +11,7 @@ import {
   usdCost,
 } from '../extensions/shared/usage-ledger.ts';
 import type { RecentRequest, TokenBreakdown, UsageRow } from '../extensions/shared/usage-ledger.ts';
-import { readRtkGain, rtkDbPath } from '../extensions/shared/rtk-gain.ts';
+import { readRtkGain } from '../extensions/shared/rtk-gain.ts';
 import type { RtkGain } from '../extensions/shared/rtk-gain.ts';
 import { withInteractiveSpinner } from './interactive.ts';
 import { PACKAGE_VERSION } from './common.ts';
@@ -39,7 +39,7 @@ export interface UsageReport {
   co2g: number;
   energyWh: number;
   version: string;
-  paths: { ledger: string; sessions: string; rtk: string };
+  paths: { ledger: string; sessions: string };
 }
 
 export function summarizeUsage(rows: UsageRow[]): UsageReport {
@@ -91,7 +91,7 @@ export function summarizeUsage(rows: UsageRow[]): UsageReport {
     co2g,
     energyWh,
     version: PACKAGE_VERSION,
-    paths: { ledger: ledgerPath(), sessions: sessionsDir(), rtk: rtkDbPath() },
+    paths: { ledger: ledgerPath(), sessions: sessionsDir() },
   };
 }
 
