@@ -201,3 +201,13 @@
   #reset { color: var(--danger); }
   #reset:hover { border-color: var(--danger); box-shadow: 0 0 14px var(--danger-border); }
   .dlg .seg button { display: grid; place-items: center; }
+
+  /* Toaster (shadcn/ui sonner-style, dependency-free) */
+  .toaster { position: fixed; inset: auto 16px 16px auto; z-index: 100; display: flex; flex-direction: column; gap: 8px; width: min(360px, calc(100vw - 32px)); border: 0; padding: 0; background: transparent; overflow: visible; }
+  .toast { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border: 1px solid var(--line); background: var(--panel); border-radius: 12px; box-shadow: var(--shadow-xs), 0 8px 24px rgba(0, 0, 0, .22); animation: toast-in .18s ease-out; }
+  .toast.out { animation: toast-out .18s ease-in forwards; }
+  .toast-icon { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; background: var(--accent-soft); color: var(--accent); flex: none; }
+  .toast-title { font-size: 13px; font-weight: 600; margin: 0; }
+  .toast-desc { font-size: 12px; color: var(--dim); margin: 1px 0 0; }
+  @keyframes toast-in { from { opacity: 0; transform: translateY(8px) scale(.98); } }
+  @keyframes toast-out { to { opacity: 0; transform: translateY(6px) scale(.98); } }

@@ -887,6 +887,27 @@
       observe();
     });
   }
+  function toast(title, desc, icon) {
+    var wrap = document.querySelector('.toaster');
+    if (!wrap) {
+      wrap = document.createElement('div');
+      wrap.className = 'toaster';
+      wrap.popover = 'manual';
+      document.body.appendChild(wrap);
+      if (wrap.showPopover) wrap.showPopover(); // top layer: paints above the native settings dialog
+    }
+    var el = document.createElement('div');
+    el.className = 'toast';
+    el.innerHTML = '<span class="toast-icon"><i data-lucide="' + (icon || 'check') + '" class="size-4"></i></span><div><p class="toast-title"></p><p class="toast-desc"></p></div>';
+    el.querySelector('.toast-title').textContent = title;
+    el.querySelector('.toast-desc').textContent = desc;
+    wrap.appendChild(el);
+    if (window.lucide) lucide.createIcons();
+    setTimeout(function() {
+      el.classList.add('out');
+      setTimeout(function() { el.remove(); }, 200);
+    }, 4000);
+  }
   document.getElementById('reload').addEventListener('click', load);
   (function() {
     var dlg = document.getElementById('settings');
@@ -909,7 +930,11 @@
         fetch('reset', { method: 'POST' }).then(function(r) { return r.json(); }).then(function() {
           label.textContent = 'Reset';
           load();
-        }).catch(function() { label.textContent = 'Reset'; });
+          toast('Statistics reset', 'The usage statistics view now starts fresh. Transcripts and RTK history were never touched.', 'rotate-ccw');
+        }).catch(function() {
+          label.textContent = 'Reset';
+          toast('Reset failed', 'Could not reach the server. Try again.', 'circle-alert');
+        });
       } else {
         resetBtn.dataset.armed = '1';
         label.textContent = 'Sure?';
