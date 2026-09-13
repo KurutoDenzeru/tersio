@@ -112,6 +112,28 @@ test("user dry-run installs the tersio root-command extension", () => {
   assert.match(result.stdout, /Installing Tersio root-command extension/);
   assert.match(result.stdout, /\[dry-run\] would write .*tersio-commands[\\/]index\.js/);
 });
+test("reinstall --dry-run previews uninstall then install without writing", () => {
+  const missingHome = path.join(root, "test", "definitely-missing-home");
+  const result = spawnSync(
+    process.execPath,
+    [installer, "reinstall", "--dry-run", "--yes"],
+    {
+      encoding: "utf8",
+      timeout: 60000,
+      cwd: root,
+      env: { ...process.env, HOME: missingHome, USERPROFILE: missingHome },
+    }
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  const uninstall = result.stdout.indexOf("=== Tersio Uninstall ===");
+  const install = result.stdout.indexOf("Installing Ponytail plugin");
+  assert.ok(uninstall >= 0, result.stdout);
+  assert.ok(install > uninstall, "uninstall runs before the fresh install");
+  assert.match(result.stdout, /\[dry-run\] would remove /);
+  assert.match(result.stdout, /=== Installation complete ===/);
+});
+
 test("bare dry-run never prompts for the pending update and exits 0", () => {
   const missingHome = path.join(root, "test", "definitely-missing-home");
   const result = spawnSync(
@@ -224,7 +246,7 @@ test("usage with an empty ledger and no sessions prints the empty state and exit
   const result = spawnSync(process.execPath, [installer, "usage"], {
     encoding: "utf8",
     cwd: root,
-    env: { ...process.env, TERSIO_USAGE_FILE: missing, TERSIO_SESSIONS_DIR: noSessions },
+    env: { ...process.env, TERSIO_USAGE_FILE: missing, TERSIO_SESSIONS_DIR: noSessions, TERSIO_RESET_FILE: path.join(root, "test", "definitely-missing-home", "no-reset.json") },
   });
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /No ledger rows or session tokens yet/);
@@ -239,7 +261,7 @@ test("gain --export writes a self-contained html file", () => {
   const result = spawnSync(process.execPath, [installer, "gain", "--export", out], {
     encoding: "utf8",
     cwd: root,
-    env: { ...process.env, TERSIO_USAGE_FILE: ledger },
+    env: { ...process.env, TERSIO_USAGE_FILE: ledger, TERSIO_RESET_FILE: path.join(dir, "reset.json") },
   });
   assert.equal(result.status, 0, result.stderr);
   const html = existsSync(out) ? "present" : "missing";
@@ -376,6 +398,7 @@ test("doctor prints record store paths", () => {
       TERSIO_USAGE_FILE: ledger,
       TERSIO_SESSIONS_DIR: path.join(dir, "no-sessions"),
       TERSIO_RTK_DB: path.join(dir, "no-rtk.db"),
+      TERSIO_RESET_FILE: path.join(dir, "reset.json"),
     },
   });
   assert.equal(result.status, 0, result.stderr);
@@ -397,6 +420,7 @@ test("gain --export includes the reset control and empty states", () => {
       TERSIO_USAGE_FILE: path.join(dir, "usage.jsonl"),
       TERSIO_SESSIONS_DIR: path.join(dir, "no-sessions"),
       TERSIO_RTK_DB: path.join(dir, "no-rtk.db"),
+      TERSIO_RESET_FILE: path.join(dir, "reset.json"),
     },
   });
   assert.equal(result.status, 0, result.stderr);

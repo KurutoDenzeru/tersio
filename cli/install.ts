@@ -480,14 +480,14 @@ function defaultProfile(): Profile {
 // Install is always user-level (all OMP sessions). Project scope was removed:
 // session extensions must live in ~/.omp/agent/extensions to load.
 
-async function resolveProfile(): Promise<Profile> {
+async function resolveProfile(forceReinstall = false): Promise<Profile> {
   const profile = defaultProfile();
 
   // Single interactive prompt: the Combo preset implies all three modes.
   // Numbered menu — no typing preset names.
   // Only for a real user at a terminal, only when no default flags were
   // given, and never for --apply-update runs.
-  if (tty() && !profileFlagsGiven && !applyUpdate && (install || reinstall)) {
+  if (tty() && !profileFlagsGiven && !applyUpdate && (install || forceReinstall || reinstall)) {
     const choice = await askInteractiveChoice('Session-start defaults — Combo preset', [
       { value: 'off', label: 'off' },
       { value: 'medium', label: 'medium', hint: 'caveman=lite, rtk=on, ponytail=lite' },
@@ -588,11 +588,12 @@ async function runCommandMenu(): Promise<void> {
   updatePromptDone = true;
   const choice = await askInteractiveChoice('Tersio — what next?', [
     { value: 'install', label: 'Install add-ons', hint: 'user scope + combo defaults' },
-    { value: 'check', label: 'Check for updates', hint: 'check CLI version, then update ai-addons' },
+    { value: 'update', label: 'Update', hint: 'CLI version check, then refresh add-ons (RTK, Caveman rule, Ponytail)' },
+    { value: 'reinstall', label: 'Reinstall', hint: 'clean and reinstall the add-ons, Ponytail package kept' },
     { value: 'doctor', label: 'Doctor', hint: 'verify the installation' },
     { value: 'usage', label: 'Usage', hint: 'token usage and savings report' },
     { value: 'gain', label: 'Gain dashboard', hint: 'open the report in your browser' },
-    { value: 'reset', label: 'Reset statistics', hint: 'clear the tersio usage ledger' },
+    { value: 'reset', label: 'Reset statistics', hint: 'clear statistics; transcripts and RTK history stay' },
     { value: 'uninstall', label: 'Uninstall', hint: 'remove tersio' },
   ], 'install');
   if (choice.status !== 'selected') {
@@ -603,14 +604,14 @@ async function runCommandMenu(): Promise<void> {
     case 'install':
       await runInstall();
       break;
-    case 'check': {
-      // One bound flow: report the CLI version, then offer the ai-addons
+    case 'update': {
+      // One bound flow: report the CLI version, then offer the add-on
       // refresh in the same pass — no redundant second "update" option.
       const latest = await checkForUpdate(true);
       if (typeof latest === 'string') console.log(`  [update] tersio ${latest} available (installed ${PACKAGE_VERSION})`);
       else if (latest === 'unknown') console.log(`  [warn] could not reach the npm registry — run \`tersio update\` to retry`);
       else console.log(`  [ok] tersio ${PACKAGE_VERSION} is the latest`);
-      const go = await askInteractiveConfirm('Update ai-addons now (RTK, Caveman rule, Ponytail)?');
+      const go = await askInteractiveConfirm('Update add-ons now (RTK, Caveman rule, Ponytail)?');
       if (go.status === 'confirmed' && go.value) {
         await runLatestUpdate();
       } else if (go.status === 'cancelled') {
@@ -622,6 +623,10 @@ async function runCommandMenu(): Promise<void> {
       closeRL();
       break;
     }
+    case 'reinstall':
+      await runInstall({ reinstall: true });
+      closeRL();
+      break;
     case 'doctor':
       await runDoctor();
       closeRL();
@@ -645,7 +650,8 @@ async function runCommandMenu(): Promise<void> {
   }
 }
 
-async function runInstall(): Promise<void> {
+async function runInstall(overrides: { reinstall?: boolean } = {}): Promise<void> {
+  const isReinstall = overrides.reinstall ?? reinstall;
   // Menu-driven installs must fall through: bare `tersio` re-enters here
   // with command === null after the picker, and without this guard the
   // choice loops straight back into runCommandMenu() forever.
@@ -654,7 +660,7 @@ async function runInstall(): Promise<void> {
     return;
   }
   printWelcome();
-  if (reinstall) {
+  if (isReinstall) {
     // removeRtk stays false: reinstall is about to replace the binary, and
     // deleting it first would leave nothing to wire if the fresh download
     // fails (rate limit, offline). rtk.ts is removed here and re-wired below.
@@ -697,7 +703,7 @@ async function runInstall(): Promise<void> {
   console.log('  Scope: user (all OMP sessions)');
 
   // Resolve session defaults: flags > interactive prompt > defaults.
-  const profile = await resolveProfile();
+  const profile = await resolveProfile(isReinstall);
 
   const userDir = OMP_AGENT_DIR;
   const userExtDir = path.join(userDir, 'extensions');
@@ -705,7 +711,7 @@ async function runInstall(): Promise<void> {
   // apply-update is `tersio update`'s payload run: treat it like reinstall so
   // the add-ons refresh too — Ponytail package via npm, self plugin, RTK
   // binary (always re-downloaded), and the Caveman rule (always re-fetched).
-  const options: InstallOptions = { dryRun, verbose, yes, reinstall: reinstall || applyUpdate };
+  const options: InstallOptions = { dryRun, verbose, yes, reinstall: isReinstall || applyUpdate };
 
   // Check prerequisites
   console.log('\nPrerequisites:');

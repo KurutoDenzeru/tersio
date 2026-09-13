@@ -128,6 +128,7 @@ test("tersio usage prints per-model USD", () => {
       TERSIO_SESSIONS_DIR: dir,
       TERSIO_USAGE_FILE: path.join(dir, "missing.jsonl"),
       TERSIO_PRICES_FILE: path.join(dir, "missing-prices.json"),
+      TERSIO_RESET_FILE: path.join(dir, "missing-reset.json"),
     },
   });
   rmSync(dir, { recursive: true, force: true });

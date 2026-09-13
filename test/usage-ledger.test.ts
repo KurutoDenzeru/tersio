@@ -8,6 +8,8 @@ import { appendUsage, ledgerPath, readUsage } from "../extensions/shared/usage-l
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tersio-ledger-"));
 process.env.TERSIO_USAGE_FILE = path.join(dir, "usage.jsonl");
+// Keep the host's real reset watermark (if any) out of these tests.
+process.env.TERSIO_RESET_FILE = path.join(dir, "reset.json");
 test("ledger starts empty when the file is missing", () => {
   assert.equal(ledgerPath(), process.env.TERSIO_USAGE_FILE);
   assert.deepEqual(readUsage(), []);
@@ -43,16 +45,11 @@ test("clearUsageLedger removes the file and returns rows cleared", async () => {
 
 test("reset watermark defaults to 0, writes and reads back", async () => {
   const { resetMarkerPath, readResetWatermark, markReset } = await import("../extensions/shared/usage-ledger.js");
-  process.env.TERSIO_RESET_FILE = path.join(dir, "reset.json");
-  try {
-    assert.equal(fs.existsSync(resetMarkerPath()), false);
-    assert.equal(readResetWatermark(), 0);
-    const ts = markReset();
-    assert.equal(readResetWatermark(), ts);
-    assert.match(fs.readFileSync(resetMarkerPath(), "utf8"), /"ts":\d+/);
-  } finally {
-    delete process.env.TERSIO_RESET_FILE;
-  }
+  assert.equal(fs.existsSync(resetMarkerPath()), false);
+  assert.equal(readResetWatermark(), 0);
+  const ts = markReset();
+  assert.equal(readResetWatermark(), ts);
+  assert.match(fs.readFileSync(resetMarkerPath(), "utf8"), /"ts":\d+/);
 });
 
 test("session stats honor the reset watermark without touching transcripts", async () => {
@@ -66,16 +63,16 @@ test("session stats honor the reset watermark without touching transcripts", asy
     row(new Date(now + 60_000).toISOString()), // after watermark
     JSON.stringify({ message: { role: "assistant", model: "m-test", usage: { input: 500, output: 5 } } }), // no timestamp
   ].join("\n"), "utf8");
-  const prevReset = process.env.TERSIO_RESET_FILE;
   const prevSessions = process.env.TERSIO_SESSIONS_DIR;
+  const prevReset = process.env.TERSIO_RESET_FILE;
   process.env.TERSIO_SESSIONS_DIR = sessions;
   try {
-    delete process.env.TERSIO_RESET_FILE;
+    process.env.TERSIO_RESET_FILE = path.join(dir, "no-marker.json");
     const unfiltered = mod.importSessionTokens();
     assert.equal(unfiltered.messages, 3);
     assert.equal(unfiltered.totals.input, 700);
 
-    process.env.TERSIO_RESET_FILE = path.join(dir, "reset.json");
+    process.env.TERSIO_RESET_FILE = path.join(dir, "stats-reset.json");
     mod.markReset(now);
     const filtered = mod.importSessionTokens();
     assert.equal(filtered.messages, 1, "only post-watermark rows count");
@@ -84,9 +81,9 @@ test("session stats honor the reset watermark without touching transcripts", asy
     // The host-owned transcript file is untouched.
     assert.equal(fs.existsSync(path.join(sessions, "s.jsonl")), true);
   } finally {
-    if (prevReset === undefined) delete process.env.TERSIO_RESET_FILE;
-    else process.env.TERSIO_RESET_FILE = prevReset;
     if (prevSessions === undefined) delete process.env.TERSIO_SESSIONS_DIR;
     else process.env.TERSIO_SESSIONS_DIR = prevSessions;
+    if (prevReset === undefined) delete process.env.TERSIO_RESET_FILE;
+    else process.env.TERSIO_RESET_FILE = prevReset;
   }
 });

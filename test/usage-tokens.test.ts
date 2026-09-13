@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
@@ -10,6 +10,11 @@ import {
   priceFor,
   usdCost,
 } from "../extensions/shared/usage-ledger.js";
+
+// Fixture rows use 2026-09-01 timestamps — keep any host reset watermark
+// (which would filter them out of the derived view) out of these tests.
+process.env.TERSIO_RESET_FILE = path.join(os.tmpdir(), "tersio-tests-no-reset-marker.json");
+if (existsSync(process.env.TERSIO_RESET_FILE)) rmSync(process.env.TERSIO_RESET_FILE);
 
 function fixtureDir(): string {
   const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-sessions-"));
