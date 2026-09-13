@@ -1,108 +1,122 @@
 # Tersio Token Benchmark
 
-Measured before/after token costs for `caveman`, `rtk`, `ponytail`, and `combo` presets, plus runtime/memory deltas from the current refactor.
+Measured before/after token costs for `caveman`, `rtk`, `ponytail`, and `combo` presets, plus runtime/memory deltas against the pre-refactor v2.9.0 tag. Full rerun 2026-09-13.
 
 ## Method
 
-- **Tokenizer.** All counts use `o200k_base` (js-tiktoken) — real BPE tokens, not chars÷4 estimates. Measured 2026-09-05, Node v26.8.1.
-- **Overhead (measured).** Exact prompt text each mode injects, extracted from the extension sources in this repo (`INSTRUCTIONS`, `RTK_PROMPT`, bundled `rule.md`, combo fallback, reinforcement line).
-- **Reply and code savings (measured samples).** 3 reply questions × 4 registers and 2 code tasks, each written twice: plain and ruleset-compressed. Samples are authored to each ruleset and disclosed as such — your model's compliance varies (see Caveats).
-- **RTK (measured).** Real command runs in this repo, raw output vs `rtk` output, same command.
-- **Runtime/memory (measured).** Same machine, both builds freshly compiled; wall time = median of 5 runs, RSS = median of 3 via `/usr/bin/time -l`.
+- **Tokenizer.** All counts use `o200k_base` (js-tiktoken) — real BPE tokens, not chars÷4 estimates. Measured 2026-09-13, Node v26.8.1.
+- **Overhead (measured).** Exact prompt text each mode injects, extracted programmatically from the extension sources in this repo (`INSTRUCTIONS`, `RTK_PROMPT`, bundled `rule.md`, combo fallback, reinforcement line) — plus the installed Ponytail plugin's real instructions (v4.9.0).
+- **Reply and code savings (measured samples).** 3 reply questions × 4 registers and 2 code tasks, each written twice: plain and ruleset-compressed. Samples are re-authored to each ruleset for every rerun and disclosed as such — your model's compliance varies (see Caveats).
+- **RTK (measured).** Real command runs in this repo, raw output vs `rtk` output, same command, same working tree.
+- **Runtime/memory (measured).** Same machine (darwin 25.6.0, arm64), both builds freshly compiled via `tsc`; wall time = median of 5 runs, peak RSS = median of 3 via `/usr/bin/time -l`.
 
 ## 1. Session overhead (measured, once per session)
 
-| Injected text | Chars | Tokens (real) | chars÷4 estimate was |
-|---|---:|---:|---:|
-| caveman lite | 200 | 46 | 50 |
-| caveman full (instruction + `rule.md`) | 653 | 172 | 163 |
-| caveman ultra | 314 | 68 | 79 |
-| caveman wenyan | 263 | 58 | 66 |
-| rtk on (`RTK_PROMPT`) | 627 | 165 | 157 |
-| ponytail (bundled fallback, floor) | 355 | 76 | 75 |
-| mode reinforcement line | 284 | 67 | 71 |
+| Injected text | Chars | Tokens (real) |
+|---|---:|---:|
+| caveman lite | 200 | 46 |
+| caveman full (instruction + `rule.md`) | 653 | 172 |
+| caveman ultra | 314 | 68 |
+| caveman wenyan | 263 | 58 |
+| rtk on (`RTK_PROMPT`) | 627 | 165 |
+| ponytail lite (bundled fallback, floor) | 270 | 54 |
+| ponytail full (bundled fallback, floor) | 297 | 60 |
+| ponytail ultra (bundled fallback, floor) | 298 | 60 |
+| ponytail lite (installed plugin v4.9.0) | 5,202 | 1,260 |
+| ponytail full (installed plugin v4.9.0) | 5,229 | 1,264 |
+| ponytail ultra (installed plugin v4.9.0) | 5,267 | 1,275 |
+| mode reinforcement line | 284 | 67 |
 
-Ponytail's real cost is the upstream plugin instructions (external, varies by version); 76 is the bundled-fallback floor.
-
-**Combo preset totals (measured sums):** medium = 46+165+76+67 ≈ **354 tok** · balanced = 172+165+76+67 ≈ **480 tok** · max = 68+165+76+67 ≈ **376 tok**.
+**Combo preset totals.** With the bundled-fallback floor (plugin missing or unloaded): medium ≈ **332 tok** · balanced ≈ **464 tok** · max ≈ **360 tok**. With the real installed Ponytail plugin: medium ≈ **1,538 tok** · balanced ≈ **1,668 tok** · max ≈ **1,575 tok**. The upstream Ponytail instruction block grew to ~1.3K tokens per level — budget for it, or run the fallback when the preset alone must pay for itself fast.
 
 ## 2. Before/after: Caveman replies
 
-Same question answered plain vs ruleset-compressed. 3 samples, tokens per reply.
+Same question answered plain vs ruleset-compressed. Fresh samples, 3 questions, tokens per reply.
 
-| Register | s1 (explain shell line) | s2 (flaky CI tests) | s3 (explain TypeError) | Mean | Overhead | Pays off after |
+| Register | s1 (explain `set -euo pipefail`) | s2 (flaky CI tests) | s3 (undefined `.map` in React) | Mean | Overhead | Pays off after |
 |---|---:|---:|---:|---:|---:|---|
-| plain | 121 | 162 | 154 | 146 | — | — |
-| `/caveman lite` | 44 | 85 | 73 | 67 | 46 | 1 reply |
-| `/caveman full` | 37 | 88 | 58 | 61 | 172 | 3 replies |
-| `/caveman ultra` | 27 | 42 | 33 | 34 | 68 | 1 reply |
+| plain | 162 | 178 | 173 | 171 | — | — |
+| `/caveman lite` | 69 | 90 | 65 | 75 | 46 | 1 reply |
+| `/caveman full` | 49 | 63 | 46 | 53 | 172 | 2 replies |
+| `/caveman ultra` | 25 | 36 | 24 | 28 | 68 | 1 reply |
 
-Mean saving vs plain: **lite −53.8% (0.46×) · full −58.1% (0.42×) · ultra −76.7% (0.23×)**. Median (p50) vs plain 154: lite 73 (−52.6%) · full 58 (−62.3%) · ultra 33 (−78.6%).
+Mean saving vs plain: **lite −56.1% (0.44×) · full −69.0% (0.31×) · ultra −83.6% (0.16×)**. Median (p50) vs plain 173: lite 69 (−60.1%) · full 49 (−71.7%) · ultra 25 (−85.5%).
 
-Pays-off math, `⌈overhead ÷ mean saving⌉`: lite `⌈46 ÷ 78.3⌉ = 1 reply` · full `⌈172 ÷ 84.7⌉ = 3 replies` · ultra `⌈68 ÷ 111.7⌉ = 1 reply`.
+Pays-off math, `⌈overhead ÷ mean saving⌉`: lite `⌈46 ÷ 96⌉ = 1 reply` · full `⌈172 ÷ 118⌉ = 2 replies` · ultra `⌈68 ÷ 143⌉ = 1 reply`.
 
 ## 3. Before/after: Ponytail code tasks
 
-Same task implemented bloated vs minimal-ladder. Tokens per diff.
+Same task implemented bloated vs ponytail at each level. Fresh samples, tokens per diff. Overhead per level in §1 (floor = bundled fallback, installed = real plugin).
 
-| Task | Bloated | Ponytail | Saving | Overhead | Pays off after |
+| Register | retry logic (tok) | request timeout (tok) | Mean | Overhead | Pays off after |
 |---|---:|---:|---:|---:|---|
-| add retry logic to fetch helper | 481 | 143 | −70.3% | 76 | first task |
-| add configurable request timeout | 261 | 108 | −58.6% | (same) | first task |
+| bloated baseline | 462 | 326 | 394 | — | — |
+| `/ponytail lite` | 121 | 57 | 89 | 54 floor · 1,260 installed | 1 task (floor) · 5 (installed) |
+| `/ponytail full` | 88 | 55 | 71.5 | 60 floor · 1,264 installed | 1 task (floor) · 4 (installed) |
+| `/ponytail ultra` | 88 | 40 | 64 | 60 floor · 1,275 installed | 1 task (floor) · 4 (installed) |
 
-Ratio: mean bloated 371 tok vs mean minimal 125.5 tok = **0.34×**. Overhead 76 tok vs mean saving 245.5 tok per task → repaid inside the first task (`76 ÷ 245.5 = 0.31`).
+Mean saving vs bloated 394: **lite −77.4% (0.23×) · full −81.9% (0.18×) · ultra −83.8% (0.16×)**. Ultra's edge narrows here because its output includes the requirement challenge — on `timeout` it beat full (−87.7% vs −83.1%); on `retry` it spends prose arguing the retry loop should not exist yet.
+
+Pays-off math, `⌈overhead ÷ mean saving⌉`: floor repays inside the first task at every level (54–60 vs 305–330 saved). Installed plugin: lite `⌈1260 ÷ 305⌉ = 5` tasks · full `⌈1264 ÷ 322.5⌉ = 4` · ultra `⌈1275 ÷ 330⌉ = 4` — fine for sustained sessions, negative on one-shot asks.
 
 ## 4. Before/after: RTK shell output
 
-Real runs in this repo; tokens per command output.
+Real runs in this repo (dirty working tree, 129-test suite); tokens per command output.
 
 | Command | Raw | Via RTK | Saving |
 |---|---:|---:|---:|
-| `git status` | 32 | 21 | −34% |
-| `grep -rn dryRun tersio.ts` | 537 | 469 | −13% |
-| `find test -name '*.test.ts'` | 120 | 82 | −32% |
-| `ls extensions` | 22 | 22 | 0% |
-| `git diff HEAD~1` | 458 | 456 | −0.4% |
-| `npm test` (65 pass) | 1,274 | 1,255 | −1.5% |
+| `git status` | 182 | 72 | −60.4% |
+| `grep -rn dryRun cli/install.ts` | 376 | 274 | −27.1% |
+| `find test -name '*.test.ts'` | 205 | 168 | −18.0% |
+| `ls extensions` | 27 | 27 | 0% |
+| `git diff HEAD~1` | 12,684 | 8,504 | −33.0% |
+| `npm test` (direct CLI passthrough) | 2,597 | 2,577 | −0.8% |
 
-Reading: RTK pays on listings and grep hits; keeps diffs and test output exact by design (you patch from diffs, you diagnose from failures). One exception: in hook-wrapped sessions (`rtk init -g`), test-suite output is summarized and `rtk gain` recorded **−97.5% on `npm test`** across 4 runs — the direct-CLI passthrough above is the conservative number.
+Reading: RTK pays on status, grep, find, and large diffs; keeps failing output exact by design (you diagnose from failures). In hook-wrapped sessions the test suite is summarized instead of passed through: rtk's history.db records `rtk test npm test` at **−97.5% average savings across 4 runs** — the passthrough row above is the conservative direct-CLI number.
+
+As of 2026-09-13 the tersio installer wires rtk into OMP automatically (`rtk init -g --agent omp`, tool_call rewrite extension at `~/.omp/agent/extensions/rtk.ts`), so OMP bash commands rewrite to rtk and meter into `history.db` without manual prefixing.
 
 ## 5. Combined session economics
 
-Example mixed turn (one reply + one grep + one code task), balanced preset:
+Example mixed turn (one reply + one grep + one code task), balanced preset, fresh samples:
 
 | | Before | After |
 |---|---:|---:|
-| reply + grep + code diff | 944 tok | 638 tok |
-| per-turn saving | | **−32%** |
-| one-time session overhead | | 480 tok |
+| reply + grep + code diff | 941 tok | 399 tok |
+| per-turn saving | | **−57.6%** |
+| one-time session overhead | | 464 tok (floor) · 1,668 tok (installed Ponytail) |
 
-First mixed turn nets ≈ −2%, every turn after nets ≈ −32%.
+With the floor overhead: break-even lands inside the first turn (`⌈464 ÷ 542⌉ = 1`), first turn nets ≈ +8%, every turn after nets ≈ −57.6%. With the real installed Ponytail instructions: the first turn costs more than baseline (`542 − 1668 < 0`), turn 4 breaks even, and every turn after nets ≈ −57.6%.
 
-Break-even math: `⌈480 ÷ 306⌉ = 2 turns` to repay overhead; steady-state ratio `638 ÷ 944 = 0.68×` per mixed turn.
+Steady-state ratio `399 ÷ 941 = 0.42×` per mixed turn.
 
-## 6. Runtime + memory delta (main vs current branch)
+## 6. Runtime + memory delta (v2.9.0 tag vs current main)
 
-Same machine (darwin 25.6.0, arm64), Node v26.8.1, both builds fresh via `tsc`.
+Same machine, both builds fresh via `tsc`. v2.9.0 is the last tag before the concurrency refactor landed on main.
 
-| Case | main | branch | Δ |
+| Case | v2.9.0 | main | Δ |
 |---|---:|---:|---:|
-| `install --dry-run --scope both --yes` (median wall) | 0.910 s | 0.687 s | **−24.5%** |
-| `--doctor` (median wall) | 0.460 s | 0.405 s | **−12.0%** |
-| install dry-run peak RSS (median) | 142.7 MiB | 142.0 MiB | −0.5% (within noise) |
-| `--doctor` peak RSS (median) | 141.9 MiB | 141.6 MiB | −0.2% (within noise) |
-| Source TS LOC | 2,818 | 2,717 | −101 (−3.6%) |
+| `install --dry-run --yes` (median wall of 5) | 0.751 s | 0.645 s | **−14.1%** |
+| `--doctor` (median wall of 5) | 3.197 s | 0.452 s | **−85.9%**¹ |
+| install dry-run peak RSS (median of 3) | 139.8 MiB | 140.5 MiB | +0.5% (within noise) |
+| `--doctor` peak RSS (median of 3) | 140.0 MiB | 140.5 MiB | +0.4% (within noise) |
+| Source TS LOC | 3,861 | 4,589 | +728² |
 
-Wall-time wins come from the refactor's concurrency changes — concurrent companion reads in `copySources` (Audit66), doctor probes batched with FS probes (Audit65), single shared caveman rule fetch (Audit69). Memory is flat: Node's ~142 MiB baseline dominates.
+¹ The doctor win combines the refactor's batched probes and the update-check cache added after v2.9.0.
+² LOC grew because dashboard/CLI features landed since v2.9.0; the refactor-era deletion (−101 LOC) is retained on main.
+
+Wall-time wins come from concurrent companion reads in `copySources`, batched doctor probes, and single shared caveman rule fetch. Memory is flat: Node's ~140 MiB baseline dominates.
 
 ## 7. Verify on your workload
 
 1. Run the same task list twice (modes off, then target preset) in fresh OMP sessions.
 2. Record per-session input/output tokens from the provider usage panel.
 3. Net saving = (off − on) − preset overhead from §1.
+4. With the OMP wiring installed, check metered reality afterwards: `rtk gain` and the gain dashboard's Command tools table.
 
 ## 8. Caveats
 
 - Reply/code samples are authored to each ruleset, not live model sessions — treat percentages as what the ruleset asks for, not a compliance guarantee. Ultra/wenyan can harm clarity; re-prompt on confusion.
-- RTK keeps diffs and failing-test output exact by design; savings concentrate on listings, grep, and (hook-wrapped) passing suites.
-- Ponytail upstream instruction size is external; re-measure after plugin updates. Wenyan not sampled (CJK tokenization is a separate study).
+- RTK keeps failing-test output exact by design in direct CLI use; savings concentrate on listings, grep, large diffs, and (hook-wired) passing suites. The OMP rewrite extension rewrites bash tool calls only — native tool calls (`read`/`edit`/`eval`) stay unmetered by design of rtk's hook surface.
+- Ponytail upstream instruction size is external and grew 76 → 1,264 tokens between reruns; re-measure after plugin updates. Wenyan not sampled (CJK tokenization is a separate study).
+- Metered rtk figures come from `history.db` (rtk-owned, never touched by tersio).
