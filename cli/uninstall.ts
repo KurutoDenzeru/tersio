@@ -107,6 +107,7 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
 
   if (shouldRemoveRtk) {
     console.log(`  ${rtkBin}`);
+    console.log(`  ${path.join(extDir, 'rtk.ts')} (rtk OMP wiring)`);
   }
 
   if (!confirmed) {
@@ -189,8 +190,13 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
     await removeUninstallTarget(selfPluginDir, shouldDryRun);
   }
 
-  // Remove RTK binary if requested
-  if (shouldRemoveRtk) await removeUninstallTarget(rtkBin, shouldDryRun, false);
+  // Remove RTK binary if requested. rtk.ts is rtk-owned but installed by our
+  // wiring step; with the binary gone it would pass through harmlessly, so
+  // only drop it on a full rtk removal.
+  if (shouldRemoveRtk) {
+    await removeUninstallTarget(rtkBin, shouldDryRun, false);
+    await removeUninstallTarget(path.join(extDir, 'rtk.ts'), shouldDryRun);
+  }
 
   console.log('\nDone. Restart OMP for changes to take effect.');
   return true;

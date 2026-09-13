@@ -24,6 +24,7 @@ import { runDoctor } from './doctor.ts';
 import { runReset } from './reset.ts';
 import { runUsage } from './usage.ts';
 import { runDashboard } from './dashboard.ts';
+import { wireRtkOmp } from './rtk-wiring.ts';
 import {
   CAVEMAN_REMOTE_RULE, RTK_RELEASE_API, RtkRelease, RtkReleaseAsset, fetchJson, findFile, httpsGet,
   httpsDownload, parseChecksum, readTextIfExists, rtkPlatformSpec, sha256File,
@@ -263,6 +264,15 @@ function shortError(e: unknown): string {
   return (((e as Error & { stderr?: string }).stderr) || (e as Error).message || '').trim().slice(0, 200);
 }
 
+async function fileExists(p: string): Promise<boolean> {
+  try {
+    await fs.access(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function extractRtkArchive(archivePath: string, extractDir: string): Promise<boolean> {
   await fs.mkdir(extractDir, { recursive: true });
   if (archivePath.endsWith('.zip')) {
@@ -291,14 +301,15 @@ async function extractRtkArchive(archivePath: string, extractDir: string): Promi
 
 async function stepRtk(binDir: string, options: InstallOptions): Promise<void> {
   console.log('\n[3/8] Installing RTK binary...');
+  const binDest = path.join(binDir, RTK_BINARY_NAME);
+  // Download failure must not skip wiring: a pre-existing rtk binary is
+  // exactly as good for the OMP hook, so wire whatever ends up at binDest.
   try {
     const release = await withInteractiveSpinner('Finding latest RTK release', () => fetchJson<RtkRelease>(RTK_RELEASE_API));
     const triple = resolveRtkTriple();
     if (!triple) return;
     const asset = findRtkAsset(release, triple);
     if (!asset) return;
-    const binDest = path.join(binDir, RTK_BINARY_NAME);
-
     if (options.dryRun) {
       console.log(`  [dry-run] would download ${asset.name} from release ${release.tag_name}`);
       console.log('  [dry-run] would verify checksum against checksums.txt');
@@ -339,7 +350,7 @@ async function stepRtk(binDir: string, options: InstallOptions): Promise<void> {
       }
 
       try {
-        const v = (await execP(binDest, ['--version'], { timeout: 10000, shell: false })).stdout.trim();
+        const v = (await execP(binDest, ['--version'], { timeout: 30000, shell: false })).stdout.trim();
         console.log(`  [ok] ${binDest} → ${v}`);
       } catch {
         console.log(`  [hint] Verify manually: ${binDest} --version`);
@@ -351,6 +362,18 @@ async function stepRtk(binDir: string, options: InstallOptions): Promise<void> {
     console.log(`  [fail] RTK: ${(e as Error).message}`);
     console.log('  [hint] Manual: https://github.com/rtk-ai/rtk/releases');
   }
+
+  if (options.dryRun) {
+    await wireRtkOmp(binDest, options);
+    return;
+  }
+  if (!(await fileExists(binDest))) {
+    console.log('  [skip] no rtk binary to wire — install rtk, then run: rtk init -g --agent omp');
+    return;
+  }
+  // Binary alone never meters OMP sessions — wire rtk's tool_call
+  // extension so bash commands rewrite to rtk and land in history.db.
+  await wireRtkOmp(binDest, options);
 }
 
 // Copy repo source files into the target extension dir. First entry is

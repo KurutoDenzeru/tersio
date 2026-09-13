@@ -36,9 +36,6 @@
       <span id="clock">--:--</span>
     </span>
     <span class="hidden sm:block w-px h-5 shrink-0" style="background: var(--line)" aria-hidden="true"></span>
-    <button id="reset" class="btn-push mono flex shrink-0 items-center gap-2 text-xs pl-2.5 pr-3 py-2 rounded-xl" style="border: 1px solid var(--line); color: var(--ink)" aria-label="Reset tersio statistics">
-      <i data-lucide="rotate-ccw" class="size-3.5"></i><span class="hidden md:inline" id="resetLabel">Reset</span>
-    </button>
     <button id="settingsBtn" class="btn-push flex shrink-0 items-center p-2 rounded-xl" style="border: 1px solid var(--line); color: var(--ink)" aria-label="Open settings">
       <i data-lucide="settings" class="size-4"></i>
     </button>
@@ -49,7 +46,7 @@
     <div class="dlg-head">
       <div class="min-w-0">
         <p class="dlg-title" id="settingsTitle">Settings</p>
-        <p class="dlg-desc">Appearance, data refresh, and where statistics live.</p>
+        <p class="dlg-desc">Appearance, data, and where statistics live.</p>
       </div>
       <button id="settingsClose" class="btn-push flex shrink-0 items-center p-2 rounded-xl" style="border: 1px solid var(--line); color: var(--ink)" aria-label="Close settings">
         <i data-lucide="x" class="size-4"></i>
@@ -89,6 +86,18 @@
       <div class="dlg-path">
         <p class="dlg-name">RTK history <span class="dlg-own">rtk-owned · never touched</span></p>
         <p class="mono dlg-file" id="pathRtk" title="">–</p>
+      </div>
+    </div>
+    <div class="dlg-danger">
+      <p class="dlg-label">Danger zone</p>
+      <div class="dlg-row">
+        <div class="min-w-0">
+          <p class="dlg-name">Reset statistics</p>
+          <p class="dlg-hint">Clears the usage ledger. Click twice to confirm.</p>
+        </div>
+        <button id="reset" class="btn-push mono flex shrink-0 items-center gap-2 text-xs pl-2.5 pr-3 py-2 rounded-xl" style="border: 1px solid var(--danger-border)" aria-label="Reset tersio statistics">
+          <i data-lucide="rotate-ccw" class="size-3.5"></i><span id="resetLabel">Reset</span>
+        </button>
       </div>
     </div>
   </dialog>

@@ -47,6 +47,7 @@ async function runDoctor(): Promise<void> {
     pluginsPkgRaw: readTextIfExists(path.join(pluginsDir, 'package.json')),
     selfPkgText: readTextIfExists(selfPkg),
     rtkBinText: readTextIfExists(rtkBin),
+    rtkOmpText: readTextIfExists(path.join(extDir, 'rtk.ts')),
     cavemanIndexText: readTextIfExists(cavemanIndex),
     cavemanRuleText: readTextIfExists(cavemanRule),
     rtkIndexText: readTextIfExists(rtkIndex),
@@ -86,12 +87,13 @@ async function runDoctor(): Promise<void> {
     probes.pluginsPkgRaw,
     probes.selfPkgText,
   ]));
-  const [cavemanRuleText, ruleMtime, rtkBinText, rtkMtime, rtkVersion, ponytailMtime] = await runInteractivePhase('Checking add-ons', () => Promise.all([
+  const [cavemanRuleText, ruleMtime, rtkBinText, rtkMtime, rtkVersion, rtkOmpText, ponytailMtime] = await runInteractivePhase('Checking add-ons', () => Promise.all([
     probes.cavemanRuleText,
     probes.ruleMtime,
     probes.rtkBinText,
     probes.rtkMtime,
     rtkVersionProbe,
+    probes.rtkOmpText,
     probes.ponytailMtime,
   ]));
 
@@ -159,6 +161,8 @@ async function runDoctor(): Promise<void> {
     const bits = [rtkVersion, rtkAge].filter(Boolean).join(', ');
     check('RTK binary', true, bits);
     if (!rtkVersion) warnLine('RTK version', 'unavailable — binary may not be executable');
+    if (rtkOmpText === null) check('RTK OMP wiring (rtk.ts)', false, `run: rtk init -g --agent omp`);
+    else check('RTK OMP wiring (rtk.ts)', true, path.join(extDir, 'rtk.ts'));
   }
   const ponytailAge = ponytailMtime ? `updated ${relTime(Date.now() - ponytailMtime.mtimeMs)}` : '';
   check('Ponytail', ponytailPkgText !== null, [parseJsonObject<{ version?: string }>(ponytailPkgText)?.version ?? '', ponytailAge].filter(Boolean).join(', '));
