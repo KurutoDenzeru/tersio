@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -46,6 +46,33 @@ test("doctor reports MISSING components against an empty home", () => {
     // the row prints the plain version — whatever the release currently is.
     assert.match(result.stdout, /Tersio CLI: ok \d+\.\d+\.\d+/);
     assert.doesNotMatch(result.stdout, /available — run tersio update/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("doctor reports the rtk OMP wiring when the binary and rtk.ts exist", () => {
+  const home = missingHome();
+  try {
+    const extDir = path.join(home, ".omp", "agent", "extensions");
+    mkdirSync(extDir, { recursive: true });
+    writeFileSync(path.join(extDir, "rtk.ts"), "// rtk omp wiring", "utf8");
+    const binDir = path.join(home, ".bun", "bin");
+    mkdirSync(binDir, { recursive: true });
+    const rtkBin = path.join(binDir, "rtk");
+    writeFileSync(rtkBin, "#!/bin/sh\necho rtk 0.49.0\n", "utf8");
+    chmodSync(rtkBin, 0o755);
+
+    const result = spawnSync(process.execPath, [installer, "doctor"], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 15000,
+      env: { ...process.env, HOME: home, USERPROFILE: home },
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /RTK binary: ok rtk 0\.49\.0/);
+    assert.match(result.stdout, /RTK OMP wiring \(rtk\.ts\): ok/);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

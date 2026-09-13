@@ -26,6 +26,7 @@ function seed(home: string) {
     mkdirSync(path.join(extDir, dir), { recursive: true });
     writeFileSync(path.join(extDir, dir, "index.js"), "// seeded", "utf8");
   }
+  writeFileSync(path.join(extDir, "rtk.ts"), "// rtk omp wiring", "utf8");
   writeFileSync(
     path.join(home, ".omp", "agent", "config.yml"),
     ["extensions:", "  - ./extensions/caveman-session/index.js", "  - ./extensions/combo-toggle/index.js", "  - ./extensions/shared/mode-reinforcement.js", "  - ./extensions/ponytail-pi-extension/index.js", ""].join("\n"),
@@ -71,6 +72,7 @@ test("uninstall removes extension dirs, self registration, and combo config entr
     // Ponytail ships with the presets, so a full uninstall removes it; the rtk binary stays.
     assert.ok(!existsSync(path.join(home, ".omp", "plugins", "node_modules", PONYTAIL)), "ponytail removed by default");
     assert.ok(existsSync(path.join(home, ".bun", "bin", "rtk")), "rtk binary kept");
+    assert.ok(existsSync(path.join(extDir, "rtk.ts")), "rtk OMP wiring kept with the binary");
     assert.doesNotMatch(config, /ponytail/);
   } finally {
     rmSync(home, { recursive: true, force: true });
@@ -109,6 +111,7 @@ test("uninstall with removal flags drops ponytail, its lock entry, and the rtk b
     const lock = JSON.parse(readFileSync(path.join(home, ".omp", "plugins", "omp-plugins.lock.json"), "utf8"));
     assert.ok(!(PONYTAIL in lock.plugins), "ponytail lock entry removed");
     assert.ok(!existsSync(path.join(home, ".bun", "bin", "rtk")), "rtk binary removed");
+    assert.ok(!existsSync(path.join(home, ".omp", "agent", "extensions", "rtk.ts")), "rtk OMP wiring removed with the binary");
     const config = readFileSync(path.join(home, ".omp", "agent", "config.yml"), "utf8");
     assert.doesNotMatch(config, /ponytail/);
   } finally {
