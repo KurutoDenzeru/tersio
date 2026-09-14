@@ -10,6 +10,7 @@ import { execFile } from 'node:child_process';
 
 export interface WiringOptions {
   dryRun?: boolean;
+  quiet?: boolean;
 }
 
 function shortWiringError(e: unknown): string {
@@ -35,14 +36,14 @@ function execFileP(cmd: string, args: string[], timeout: number): Promise<{ stdo
 // Idempotent: rtk rewrites its extension file on every init run, so
 // reinstalling tersio refreshes the wiring for free.
 export async function wireRtkOmp(rtkBin: string, options: WiringOptions = {}): Promise<boolean> {
-  console.log('  Wiring rtk → OMP (bash tool_call rewrite)...');
+  if (!options.quiet) console.log('  Wiring rtk → OMP (bash tool_call rewrite)...');
   if (options.dryRun) {
-    console.log('  [dry-run] would run: rtk init -g --agent omp');
+    if (!options.quiet) console.log('  [dry-run] would run: rtk init -g --agent omp');
     return true;
   }
   try {
     await execFileP(rtkBin, ['init', '-g', '--agent', 'omp'], 30000);
-    console.log('  [ok] rtk OMP extension wired (~/.omp/agent/extensions/rtk.ts)');
+    if (!options.quiet) console.log('  [ok] rtk OMP extension wired (~/.omp/agent/extensions/rtk.ts)');
     return true;
   } catch (first) {
     // A freshly written binary can lose its first exec to macOS Gatekeeper
@@ -50,7 +51,7 @@ export async function wireRtkOmp(rtkBin: string, options: WiringOptions = {}): P
     await new Promise((resolve) => setTimeout(resolve, 2000));
     try {
       await execFileP(rtkBin, ['init', '-g', '--agent', 'omp'], 30000);
-      console.log('  [ok] rtk OMP extension wired (~/.omp/agent/extensions/rtk.ts)');
+      if (!options.quiet) console.log('  [ok] rtk OMP extension wired (~/.omp/agent/extensions/rtk.ts)');
       return true;
     } catch (e) {
       void first;

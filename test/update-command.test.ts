@@ -36,10 +36,9 @@ test("update refreshes the globally installed CLI before delegating", () => {
     );
 
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /fake-npm install -g @krtclcdy\/tersio@latest --no-audit --no-fund/);
-    assert.match(result.stdout, /\[ok\] CLI updated to @krtclcdy\/tersio@latest/);
+    assert.match(result.stdout, /Updating Tersio:/);
     assert.match(result.stdout, /fake-npm exec --yes --prefer-online --package=@krtclcdy\/tersio@latest/);
-    assert.match(result.stdout, /=== Update complete ===/);
+    assert.match(result.stdout, /Done — tersio .*\. Restart OMP\./);
   } finally {
     rmSync(fakeBin, { recursive: true, force: true });
   }
@@ -72,9 +71,10 @@ test("update dry-run previews the global CLI refresh without running npm -g", ()
     );
 
     assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /tersio update \(dry-run\):/);
     assert.match(result.stdout, /\[dry-run\] would run: npm install -g @krtclcdy\/tersio@latest/);
     assert.doesNotMatch(result.stdout, /fake-npm install -g/);
-    assert.match(result.stdout, /fake-npm exec --yes --prefer-online --package=@krtclcdy\/tersio@latest/);
+    assert.match(result.stdout, /\[dry-run\] would delegate: npm exec --yes --prefer-online --package=@krtclcdy\/tersio@latest/);
   } finally {
     rmSync(fakeBin, { recursive: true, force: true });
   }
@@ -109,9 +109,9 @@ test("update delegates to the latest package non-interactively", () => {
     assert.equal(result.status, 0, result.stderr);
     assert.match(
       result.stdout,
-      /fake-npm exec --yes --prefer-online --package=@krtclcdy\/tersio@latest -- tersio --apply-update --yes --dry-run/
+      /\[dry-run\] would delegate: npm exec --yes --prefer-online --package=@krtclcdy\/tersio@latest -- tersio --apply-update --yes --dry-run/
     );
-    assert.match(result.stdout, /=== Update complete ===/);
+    assert.doesNotMatch(result.stdout, /fake-npm exec/);
   } finally {
     rmSync(fakeBin, { recursive: true, force: true });
   }

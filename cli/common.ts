@@ -25,6 +25,7 @@ interface InstallOptions {
   verbose: boolean;
   yes: boolean;
   reinstall: boolean;
+  quiet?: boolean;
 }
 
 interface PluginsPackage {
@@ -137,6 +138,7 @@ async function execP(cmd: string, args: string[], opts: ExecOptions = {}): Promi
 
 interface WriteOptions {
   dryRun?: boolean;
+  quiet?: boolean;
 }
 
 async function writeIfChanged(dest: string, content: string, options: WriteOptions = {}): Promise<boolean> {
@@ -146,7 +148,7 @@ async function writeIfChanged(dest: string, content: string, options: WriteOptio
     return false;
   }
   if (options.dryRun) {
-    console.log(`  [dry-run] would write ${dest}`);
+    if (!options.quiet) console.log(`  [dry-run] would write ${dest}`);
     return true;
   }
   await fs.mkdir(path.dirname(dest), { recursive: true });
@@ -155,7 +157,7 @@ async function writeIfChanged(dest: string, content: string, options: WriteOptio
     debug(`${path.basename(dest)} → ${path.basename(dest)}.bak`);
   }
   await fs.writeFile(dest, content, 'utf8');
-  console.log(`  [write] ${dest}`);
+  if (!options.quiet) console.log(`  [write] ${dest}`);
   return true;
 }
 
@@ -171,11 +173,11 @@ function normalizeExtensionsKey(lines: string[]): boolean {
   return true;
 }
 
-async function writeConfigLines(configPath: string, lines: string[], logMsg: string): Promise<void> {
+async function writeConfigLines(configPath: string, lines: string[], logMsg: string, options: WriteOptions = {}): Promise<void> {
   await fs.mkdir(path.dirname(configPath), { recursive: true });
   await fs.copyFile(configPath, `${configPath}.bak`).catch(() => { });
   await fs.writeFile(configPath, lines.join('\n'), 'utf8');
-  console.log(logMsg);
+  if (!options.quiet) console.log(logMsg);
 }
 
 async function ensureExtensionInConfig(configPath: string, extensionPath: string, label: string, options: WriteOptions = {}): Promise<boolean> {
@@ -193,7 +195,7 @@ async function ensureExtensionInConfig(configPath: string, extensionPath: string
   const extLineIdx = lines.findIndex((l) => EXTENSIONS_KEY_RE.test(l));
 
   if (options.dryRun) {
-    console.log(`  [dry-run] would add ${label} to config.yml: ${normalizedPath}`);
+    if (!options.quiet) console.log(`  [dry-run] would add ${label} to config.yml: ${normalizedPath}`);
     return true;
   }
 
@@ -207,7 +209,7 @@ async function ensureExtensionInConfig(configPath: string, extensionPath: string
     lines.splice(extLineIdx + 1, 0, line);
   }
 
-  await writeConfigLines(configPath, lines, `  [write] Added ${label} to config.yml`);
+  await writeConfigLines(configPath, lines, `  [write] Added ${label} to config.yml`, options);
   return true;
 }
 
@@ -222,7 +224,7 @@ async function ensureExtensionAfterConfigEntry(configPath: string, extensionPath
 
   if (existingIndex !== -1 && afterIndex !== -1 && existingIndex === afterIndex + 1) return false;
   if (options.dryRun) {
-    console.log(`  [dry-run] would place ${label} after Ponytail in config.yml: ${normalizedPath}`);
+    if (!options.quiet) console.log(`  [dry-run] would place ${label} after Ponytail in config.yml: ${normalizedPath}`);
     return true;
   }
 
@@ -240,7 +242,7 @@ async function ensureExtensionAfterConfigEntry(configPath: string, extensionPath
     }
   }
 
-  await writeConfigLines(configPath, lines, `  [write] Placed ${label} after Ponytail in config.yml`);
+  await writeConfigLines(configPath, lines, `  [write] Placed ${label} after Ponytail in config.yml`, options);
   return true;
 }
 
@@ -280,7 +282,7 @@ async function patchPonytailConfig(
 ): Promise<void> {
   const config = readPonytailConfig();
   if (options.dryRun) {
-    console.log(`  [dry-run] ${dryRunNote} in ${config.path}`);
+    if (!options.quiet) console.log(`  [dry-run] ${dryRunNote} in ${config.path}`);
     return;
   }
   const cfg = parsePonytailConfig(await readTextIfExists(config.path));
@@ -290,7 +292,7 @@ async function patchPonytailConfig(
   }
   await fs.mkdir(config.dir, { recursive: true });
   await fs.writeFile(config.path, JSON.stringify(cfg, null, 2) + '\n', 'utf8');
-  console.log(`  [write] ${writeNote} in ${config.path}`);
+  if (!options.quiet) console.log(`  [write] ${writeNote} in ${config.path}`);
 }
 
 async function ensurePonytailConfigValue<K extends keyof PonytailConfig>(

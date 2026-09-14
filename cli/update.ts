@@ -134,11 +134,20 @@ async function probeUpdatePlan(cliLatest: string | null): Promise<UpdatePlan> {
   };
 }
 
-function planLine(name: string, current: string | null, latest: string | null): void {
-  if (!current && !latest) console.log(`  ${name}: unknown`);
-  else if (!latest) console.log(`  ${name}: ${current} (latest unknown)`);
-  else if (current === latest) console.log(`  ${name}: ${current} (up to date)`);
-  else console.log(`  ${name}: ${current ?? 'missing'} → ${latest}`);
+// One line per add-on: only stale entries print, current ones stay quiet.
+// Returns the labels that actually need refreshing.
+function planLines(plan: UpdatePlan): string[] {
+  const out: string[] = [];
+  const push = (name: string, current: string | null, latest: string | null): void => {
+    if (!current && !latest) out.push(`${name}: unknown`);
+    else if (!latest) out.push(`${name}: ${current} (latest unknown)`);
+    else if (current !== latest) out.push(`${name}: ${current ?? 'missing'} → ${latest}`);
+  };
+  push('Tersio', PACKAGE_VERSION, plan.cli);
+  push('RTK', plan.rtk[0], plan.rtk[1]);
+  push('Caveman rule', plan.rule[0], plan.rule[1]);
+  push('Ponytail', plan.ponytail[0], plan.ponytail[1]);
+  return out;
 }
 
 async function runLatestUpdate(): Promise<void> {
@@ -148,8 +157,6 @@ async function runLatestUpdate(): Promise<void> {
 
   const npmCommand = IS_WINDOWS ? process.env.ComSpec || 'cmd.exe' : 'npm';
 
-  console.log('=== Updating Tersio ===');
-
   // Resolve the target explicitly: `npm view --prefer-online` beats the local
   // metadata cache, so a stale `@latest` can never pin an older release.
   const cliLatest = await latestPublishedVersion();
@@ -158,34 +165,36 @@ async function runLatestUpdate(): Promise<void> {
   // Current → latest per add-on. Best-effort; unreachable probes print as
   // unknown and never block the update.
   const plan = await probeUpdatePlan(cliLatest);
-  planLine('Tersio', PACKAGE_VERSION, plan.cli);
-  planLine('RTK', plan.rtk[0], plan.rtk[1]);
-  planLine('Caveman rule', plan.rule[0], plan.rule[1]);
-  planLine('Ponytail', plan.ponytail[0], plan.ponytail[1]);
-  console.log('');
+  const stale = planLines(plan);
+  if (dryRun) {
+    console.log(stale.length === 0 ? `tersio ${PACKAGE_VERSION} — up to date` : `tersio update (dry-run):\n  ${stale.join('\n  ')}`);
+    console.log(`  [dry-run] would run: npm install -g ${PACKAGE_NAME}${target} --no-audit --no-fund --prefer-online`);
+    console.log(`  [dry-run] would delegate: npm exec --yes --prefer-online --package=${PACKAGE_NAME}${target} -- tersio --apply-update ${forwardedArgs.join(' ')}`);
+    return;
+  }
+  if (stale.length === 0) {
+    console.log(`tersio ${PACKAGE_VERSION} — up to date`);
+    return;
+  }
+  console.log(`Updating ${stale.join(', ')}`);
 
   // The npx delegation below only refreshes the OMP-side files; the globally
   // installed CLI keeps its old version until npm -g runs. Refresh both.
   const globalArgs = IS_WINDOWS
     ? ['/d', '/s', '/c', 'npm', 'install', '-g', `${PACKAGE_NAME}${target}`, '--no-audit', '--no-fund', '--prefer-online']
     : ['install', '-g', `${PACKAGE_NAME}${target}`, '--no-audit', '--no-fund', '--prefer-online'];
-  if (dryRun) {
-    console.log(`  [dry-run] would run: npm install -g ${PACKAGE_NAME}${target} --no-audit --no-fund --prefer-online`);
-  } else {
-    try {
-      const globalResult = await execNetwork(`Updating global Tersio CLI to ${PACKAGE_NAME}${target}`, npmCommand, globalArgs, {
-        timeout: 300000,
-        maxBuffer: 10 * 1024 * 1024,
-        windowsHide: true,
-        shell: false,
-      });
-      if (globalResult.stdout) process.stdout.write(globalResult.stdout);
-      if (globalResult.stderr) process.stderr.write(globalResult.stderr);
-      console.log(`  [ok] CLI updated to ${PACKAGE_NAME}${target}`);
-    } catch (e) {
-      console.log(`  [warn] Global CLI update skipped: ${(e as Error).message}`);
-      console.log(`  [hint] Manual: npm install -g ${PACKAGE_NAME}${target} --no-audit --no-fund --prefer-online`);
-    }
+  try {
+    const globalResult = await execNetwork(`Updating global Tersio CLI to ${PACKAGE_NAME}${target}`, npmCommand, globalArgs, {
+      timeout: 300000,
+      maxBuffer: 10 * 1024 * 1024,
+      windowsHide: true,
+      shell: false,
+    });
+    // npm -g echoes its own added/changed summary; only failures surface here.
+    if (globalResult.stderr) process.stderr.write(globalResult.stderr);
+  } catch (e) {
+    console.log(`  [warn] Global CLI update skipped: ${(e as Error).message}`);
+    console.log(`  [hint] Manual: npm install -g ${PACKAGE_NAME}${target} --no-audit --no-fund --prefer-online`);
   }
 
   const npmArgs = [
@@ -200,20 +209,20 @@ async function runLatestUpdate(): Promise<void> {
   ];
   const npmCommandArgs = IS_WINDOWS ? ['/d', '/s', '/c', 'npm', ...npmArgs] : npmArgs;
 
-  // Inherited stdio, no outer spinner: the delegated installer renders its
-  // own Clack UI live, which capture-then-dump would corrupt into stray bars.
-  console.log(`  Running ${PACKAGE_NAME}${target} installer...`);
+  // Inherited stdio, no outer spinner. The delegated installer runs quiet
+  // (banner and per-file writes suppressed); this parent owns both the plan
+  // line above and the closing summary below — one voice, no repeats.
   try {
     await execInherit(npmCommand, npmCommandArgs);
-    console.log('\n=== Update complete ===');
+    console.log(`Done — tersio ${plan.cli ?? PACKAGE_VERSION}. Restart OMP.`);
     if (!dryRun) {
       try {
-        if (await refreshPrices()) console.log('  [ok] model price table refreshed');
+        await refreshPrices();
       } catch { /* pricing is best-effort; update already succeeded */ }
     }
   } catch (e) {
     const err = e as Error;
-    console.error(`\n[fail] Could not run ${PACKAGE_NAME}${target}: ${err.message}`);
+    console.error(`[fail] Could not run ${PACKAGE_NAME}${target}: ${err.message}`);
     process.exitCode = 1;
   }
 }

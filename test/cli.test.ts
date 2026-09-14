@@ -89,8 +89,8 @@ test("user dry-run installs mode reinforcement after Ponytail", () => {
   );
 
   assert.equal(result.status, 0, result.stderr);
-  const ponytail = result.stdout.indexOf("Installing Ponytail plugin");
-  const reinforcement = result.stdout.indexOf("Installing mode reinforcement extension");
+  const ponytail = result.stdout.indexOf("[1/8] Ponytail");
+  const reinforcement = result.stdout.indexOf("[8/8] Mode reinforcement");
   assert.ok(ponytail >= 0, result.stdout);
   assert.ok(reinforcement > ponytail, result.stdout);
   assert.match(result.stdout, /would place mode reinforcement after Ponytail/);
@@ -109,7 +109,7 @@ test("user dry-run installs the tersio root-command extension", () => {
   );
 
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /Installing Tersio root-command extension/);
+  assert.match(result.stdout, /\[7\/8\] Tersio commands/);
   assert.match(result.stdout, /\[dry-run\] would write .*tersio-commands[\\/]index\.js/);
 });
 test("reinstall --dry-run previews uninstall then install without writing", () => {
@@ -127,11 +127,11 @@ test("reinstall --dry-run previews uninstall then install without writing", () =
 
   assert.equal(result.status, 0, result.stderr);
   const uninstall = result.stdout.indexOf("=== Tersio Uninstall ===");
-  const install = result.stdout.indexOf("Installing Ponytail plugin");
+  const install = result.stdout.indexOf("[1/8] Ponytail");
   assert.ok(uninstall >= 0, result.stdout);
   assert.ok(install > uninstall, "uninstall runs before the fresh install");
   assert.match(result.stdout, /\[dry-run\] would remove /);
-  assert.match(result.stdout, /=== Installation complete ===/);
+  assert.match(result.stdout, /Done — restart OMP/);
 });
 
 test("bare dry-run never prompts for the pending update and exits 0", () => {
