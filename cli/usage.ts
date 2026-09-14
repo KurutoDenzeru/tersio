@@ -7,6 +7,7 @@ import {
   priceFor,
   readResetWatermark,
   readUsage,
+  refreshPricesIfStale,
   sessionsDir,
   usdCost,
 } from '../extensions/shared/usage-ledger.ts';
@@ -41,8 +42,8 @@ export interface UsageReport {
   version: string;
   paths: { ledger: string; sessions: string };
 }
-
 export function summarizeUsage(rows: UsageRow[]): UsageReport {
+  refreshPricesIfStale();
   const byKind: Record<string, number> = {};
   const detailCounts: Record<string, number> = {};
   for (const r of rows) {

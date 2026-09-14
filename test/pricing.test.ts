@@ -28,20 +28,21 @@ function restoreEnv(prev: Record<string, string | undefined>): void {
   }
 }
 
-test("priceFor falls back to the built-in table without a cache", () => {
+test("priceFor reports unknown without a cache, live when cached", async () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-prices-"));
   const prev = setEnv({ TERSIO_PRICES_FILE: path.join(dir, "missing.json") });
   try {
-    assert.equal(priceFor("claude-sonnet-5").price.input, 3);
-    assert.equal(priceFor("claude-sonnet-5").known, true);
-    assert.equal(priceFor("mystery-model-9").known, false);
+    // No cache: every model is unknown, default-priced, honestly flagged.
+    assert.equal(priceFor("claude-sonnet-5").known, false);
+    assert.equal(priceFor("claude-sonnet-5").live, false);
+    assert.equal(priceFor("some-future-model-99").known, false);
   } finally {
     restoreEnv(prev);
     rmSync(dir, { recursive: true, force: true });
   }
 });
 
-test("live cache wins by exact id and expires by TTL", () => {
+test("live cache wins by exact id and stays usable when stale", () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-prices-"));
   const file = path.join(dir, "prices.json");
   const prev = setEnv({ TERSIO_PRICES_FILE: file });
@@ -50,21 +51,36 @@ test("live cache wins by exact id and expires by TTL", () => {
       file,
       JSON.stringify({
         fetchedAt: Date.now(),
-        exact: { "mystery-model-9": { input: 1, output: 2, cacheRead: 0.5, cacheWrite: 1 } },
+        exact: { "uncached-test-model": [1, 2, 0.5, 1] },
       }),
       "utf8",
     );
-    const hit = priceFor("mystery-model-9");
+    const hit = priceFor("uncached-test-model");
     assert.equal(hit.price.input, 1);
     assert.equal(hit.known, true);
     assert.equal(hit.live, true);
+    // Stale cache stays readable (stale-while-revalidate); old object shape too.
     writeFileSync(
       file,
-      JSON.stringify({ fetchedAt: 1, exact: { "mystery-model-9": { input: 1, output: 2, cacheRead: 0.5, cacheWrite: 1 } } }),
+      JSON.stringify({ fetchedAt: 1, exact: { "uncached-test-model": [1, 2, 0.5, 1] } }),
       "utf8",
     );
-    assert.equal(loadLivePrices(), null);
-    assert.equal(priceFor("mystery-model-9").known, false);
+    assert.notEqual(loadLivePrices(), null);
+    assert.equal(priceFor("uncached-test-model").known, true);
+    writeFileSync(
+      file,
+      JSON.stringify({ fetchedAt: 1, exact: { "uncached-test-model": { input: 1, output: 2, cacheRead: 0.5, cacheWrite: 1 } } }),
+      "utf8",
+    );
+    assert.equal(priceFor("uncached-test-model").price.input, 1);
+    // Provider-prefixed ids resolve from the bare model name.
+    writeFileSync(
+      file,
+      JSON.stringify({ fetchedAt: Date.now(), exact: { "azure/gpt-4o": [2.5, 10, 1.25, 2.5] } }),
+      "utf8",
+    );
+    assert.equal(priceFor("gpt-4o").price.input, 2.5);
+    assert.equal(priceFor("gpt-4o").live, true);
   } finally {
     restoreEnv(prev);
     rmSync(dir, { recursive: true, force: true });
@@ -112,12 +128,17 @@ test("refreshPrices returns false on fetch failure", async () => {
   }
 });
 
-test("tersio usage prints per-model USD", () => {
+test("tersio usage prices from the live cache", () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-sessions-"));
   mkdirSync(path.join(dir, "branch"), { recursive: true });
   writeFileSync(
     path.join(dir, "branch", "s1.jsonl"),
     '{"type":"message","id":"a","timestamp":"2026-09-01T10:01:00.000Z","message":{"role":"assistant","model":"claude-sonnet-5","usage":{"input":1000000,"output":0,"cacheRead":0,"cacheWrite":0}}}\n',
+    "utf8",
+  );
+  writeFileSync(
+    path.join(dir, "prices.json"),
+    JSON.stringify({ fetchedAt: Date.now(), exact: { "claude-sonnet-5": [2, 10, 0.2, 2.5] } }),
     "utf8",
   );
   const root = path.resolve("test", "..");
@@ -127,11 +148,11 @@ test("tersio usage prints per-model USD", () => {
       ...process.env,
       TERSIO_SESSIONS_DIR: dir,
       TERSIO_USAGE_FILE: path.join(dir, "missing.jsonl"),
-      TERSIO_PRICES_FILE: path.join(dir, "missing-prices.json"),
+      TERSIO_PRICES_FILE: path.join(dir, "prices.json"),
       TERSIO_RESET_FILE: path.join(dir, "missing-reset.json"),
     },
   });
   rmSync(dir, { recursive: true, force: true });
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /claude-sonnet-5.*in 1,000,000.*\$3\.00/);
+  assert.match(result.stdout, /claude-sonnet-5.*in 1,000,000.*\$2\.00/);
 });

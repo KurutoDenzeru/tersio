@@ -244,11 +244,11 @@ function leadBinary(command: unknown): string {
 }
 
 // --- Pricing lives in ./pricing.ts (live LiteLLM cache + fallback table) ---
-import { DEFAULT_PRICE, priceFor } from './pricing.ts';
+import { DEFAULT_PRICE, priceFor, refreshPricesIfStale } from './pricing.ts';
 import { co2GramsFor, energyWhFor } from './carbon.ts';
 import type { ModelPrice } from './pricing.ts';
 
-export { DEFAULT_PRICE, priceFor };
+export { DEFAULT_PRICE, priceFor, refreshPricesIfStale };
 export { co2GramsFor, energyWhFor };
 export type { ModelPrice };
 
