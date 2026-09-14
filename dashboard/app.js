@@ -879,14 +879,29 @@
     els.forEach(function(el) { if (!seen.has(el)) io.observe(el); });
   }
 
+  var lastJson = '';
   function load() {
-    fetch('data.json').then(function(r) { return r.json(); }).then(render).catch(function() {
+    // Served mode only: file:// exports have no data.json endpoint, so
+    // polling there would just burn cycles on 404s.
+    if (window.location.protocol === 'file:') return;
+    // Skip background tabs: no render work while hidden, instant refresh on return.
+    if (document.hidden) return;
+    fetch('data.json').then(function(r) { return r.json(); }).then(function(d) {
+      var json = JSON.stringify(d);
+      if (json === lastJson) return;
+      lastJson = json;
+      render(d);
+    }).catch(function() {
       var cards = document.getElementById('modelCards');
       if (cards && !cards.children.length) cards.innerHTML = '<div class="empty md:col-span-3">' + emptyState('cloud-off', 'Could not load data', 'Serve with tersio gain instead of opening this file directly.') + '</div>';
       if (window.lucide) lucide.createIcons();
       observe();
     });
   }
+  // Live view: re-read data.json every 5s while served and visible; identical
+  // payloads skip render. The manual Reload button stays as an instant refresh.
+  setInterval(load, 5000);
+  document.addEventListener('visibilitychange', function() { if (!document.hidden) load(); });
   function toast(title, desc, icon) {
     var wrap = document.querySelector('.toaster');
     if (!wrap) {
