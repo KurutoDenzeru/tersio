@@ -36,9 +36,9 @@ function harness(): Harness {
     return {
       handlers,
       commands,
-      setLabel: () => {},
+      setLabel: () => { },
       registerCommand: (name, config) => { commands.set(name, config.handler as (arg: string, ctx: ExtensionCtx) => Promise<unknown>); },
-      registerTool: () => {},
+      registerTool: () => { },
       on: (event, handler) => { handlers.set(event, handler as (event: unknown, ctx: ExtensionCtx) => Promise<unknown>); },
       appendEntry: (customType, data) => { entries.push({ type: "custom", customType, data } as SessionEntry); },
       zod: { z: { object: (shape) => shape, array: () => ({ min: () => ({ describe: () => ({}) }) }), string: () => ({}) } },
@@ -49,7 +49,7 @@ function harness(): Harness {
     hasUI: true,
     ui: {
       setStatus: (key: string, value?: string) => { if (value === undefined) statuses.delete(key); else statuses.set(key, value); },
-      notify: () => {},
+      notify: () => { },
     },
     sessionManager: { getBranch: () => entries },
   } as unknown as ExtensionCtx;
@@ -140,6 +140,33 @@ test("every preset suppresses individual bars; off and custom behave correctly",
   assert.ok(!custom.statuses.has("combo"), "no combo bar for a custom mix");
   assert.ok(custom.statuses.has("caveman") && custom.statuses.has("rtk"), "individual bars restored for a custom mix");
   resetSharedComboState();
+});
+test("combo default applies past unrelated session entries", async () => {
+  // The statusbar gap: the old gate checked `!sessionEntries(ctx).length`,
+  // so any pre-existing entry blocked the combo default and the bar never
+  // painted. Only persisted *mode* entries may block it.
+  const home = mkdtempSync(path.join(os.tmpdir(), "combo-fallback-"));
+  mkdirSync(path.join(home, ".omp", "plugins"), { recursive: true });
+  writeFileSync(
+    path.join(home, ".omp", "plugins", "omp-plugins.lock.json"),
+    JSON.stringify({ plugins: {}, settings: { "@krtclcdy/tersio": { comboDefault: "balanced" } } }),
+    "utf8",
+  );
+  const previous = process.env.HOME;
+  process.env.HOME = home;
+  try {
+    resetSharedComboState();
+    const h = harness();
+    h.entries.push({ type: "note", customType: "something-else", data: {} } as unknown as SessionEntry);
+    await h.pi.combo.handlers.get("session_start")!({}, h.ctx);
+    assert.equal(getSharedComboState().level, "balanced");
+    assert.match(h.statuses.get("combo") || "", /BALANCED/);
+  } finally {
+    if (previous === undefined) delete process.env.HOME;
+    else process.env.HOME = previous;
+    rmSync(home, { recursive: true, force: true });
+    resetSharedComboState();
+  }
 });
 
 test("combo default persists preset entries so resume keeps the bar", async () => {

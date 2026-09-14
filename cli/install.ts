@@ -4,8 +4,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  BUN_BIN_DIR, COMBO_PRESET_MODES, EXTENSIONS_KEY_RE, HOME, IS_WINDOWS, OMP_AGENT_DIR, OMP_PLUGINS_DIR, OMP_BIN,
-  PACKAGE_NAME, PACKAGE_VERSION, RTK_BINARY_NAME,
+  BUN_BIN_DIR, CAVEMAN_DEFAULTS, COMBO_PRESET_MODES, EXTENSIONS_KEY_RE, HOME, IS_WINDOWS, OMP_AGENT_DIR, OMP_PLUGINS_DIR, OMP_BIN,
+  PACKAGE_NAME, PACKAGE_VERSION, PONYTAIL_DEFAULTS, RTK_BINARY_NAME,
   applyUpdate, cavemanDefaultFlag, comboDefaultFlag, command, dryRun, install,
   ponytailDefaultFlag, profileFlagsGiven, reinstall, rtkDefaultFlag, verbose, yes,
   dashboardExport, dashboardPort,
@@ -477,11 +477,40 @@ function defaultProfile(): Profile {
   };
 }
 
-// Install is always user-level (all OMP sessions). Project scope was removed:
-// session extensions must live in ~/.omp/agent/extensions to load.
+// Stored profile from the live lock file: update/reinstall runs without flags
+// or prompts must preserve the user's choice, never reset it to off.
+interface StoredSettings {
+  comboDefault?: unknown;
+  cavemanDefault?: unknown;
+  rtkDefault?: unknown;
+  ponytailDefault?: unknown;
+}
+
+async function storedProfile(): Promise<Profile> {
+  const base = defaultProfile();
+  const raw = await readTextIfExists(path.join(OMP_PLUGINS_DIR, 'omp-plugins.lock.json'));
+  if (!raw) return base;
+  let stored: StoredSettings;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || !('settings' in parsed)) return base;
+    const settings = (parsed as { settings: unknown }).settings;
+    if (!settings || typeof settings !== 'object' || !(PACKAGE_NAME in settings)) return base;
+    const entry = (settings as Record<string, unknown>)[PACKAGE_NAME];
+    if (!entry || typeof entry !== 'object') return base;
+    stored = entry as StoredSettings;
+  } catch { return base; }
+  if (typeof stored.comboDefault === 'string' && stored.comboDefault in COMBO_PRESET_MODES) base.comboDefault = stored.comboDefault;
+  if (typeof stored.cavemanDefault === 'string' && CAVEMAN_DEFAULTS.has(stored.cavemanDefault)) base.cavemanDefault = stored.cavemanDefault;
+  if (typeof stored.rtkDefault === 'boolean') base.rtkDefault = stored.rtkDefault;
+  if (typeof stored.ponytailDefault === 'string' && PONYTAIL_DEFAULTS.has(stored.ponytailDefault)) base.ponytailDefault = stored.ponytailDefault;
+  return base;
+}
 
 async function resolveProfile(forceReinstall = false): Promise<Profile> {
-  const profile = defaultProfile();
+  // Seed from the lock file so flag-less update/reinstall runs keep the
+  // user's configured defaults instead of resetting them to off.
+  const profile = await storedProfile();
 
   // Single interactive prompt: the Combo preset implies all three modes.
   // Numbered menu — no typing preset names.
@@ -493,7 +522,7 @@ async function resolveProfile(forceReinstall = false): Promise<Profile> {
       { value: 'medium', label: 'medium', hint: 'caveman=lite, rtk=on, ponytail=lite' },
       { value: 'balanced', label: 'balanced', hint: 'caveman=full, rtk=on, ponytail=full' },
       { value: 'max', label: 'max', hint: 'caveman=ultra, rtk=on, ponytail=ultra' },
-    ], 'off');
+    ], profile.comboDefault);
     if (choice.status === 'selected') profile.comboDefault = choice.value;
     else {
       closeRL();

@@ -176,3 +176,30 @@ test("installer rejects invalid --ponytail-default values", () => {
   assert.equal(bad.status, 1);
   assert.match(bad.stderr, /Invalid --ponytail-default/);
 });
+
+test("apply-update without flags preserves stored combo defaults", () => {
+  // The clobber regression: `tersio update` delegates to --apply-update with
+  // no flags and no prompt, and resolveProfile rebuilt from all-off —
+  // wiping the user's configured default on every update.
+  const home = mkdtempSync(path.join(os.tmpdir(), "omp-preserve-test-"));
+  try {
+    writeLock(home, {
+      "@krtclcdy/tersio": {
+        comboDefault: "balanced",
+        cavemanDefault: "full",
+        rtkDefault: true,
+        ponytailDefault: "full",
+      },
+    });
+    const result = spawnSync(process.execPath, [installer, "--apply-update", "--dry-run", "--yes"], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 15000,
+      env: { ...process.env, HOME: home, USERPROFILE: home },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /combo default=balanced \(caveman=full · rtk=on · ponytail=full\)/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});

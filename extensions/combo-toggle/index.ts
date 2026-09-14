@@ -16,9 +16,10 @@ import {
   sessionEntries,
   setSharedComboLevel,
   setSharedComboListener,
+  setSharedComboMode,
   systemPromptIncludes,
 } from '../shared/session-state.ts';
-import { readComboDefault } from '../shared/plugin-settings.ts';
+import { readComboDefault, readPonytailDefault } from '../shared/plugin-settings.ts';
 import type { ComboState, ExtensionApi, ExtensionCtx, SystemPromptEvent } from '../shared/types.ts';
 
 const require = createRequire(import.meta.url);
@@ -167,14 +168,30 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
   pi.on('session_start', async (_event, ctx) => {
     track(ctx);
     if (!ctx?.hasUI) syncStatus(ctx);
-    // Installer/user-configured default applies only to a fresh session with
-    // no persisted state — real session state always wins.
-    if (getSharedComboState().level === 'off' && !sessionEntries(ctx).length) {
+    // Installer/user-configured default applies only when no persisted *mode*
+    // state exists — unrelated session entries must not block it, or the
+    // combo bar never paints on sessions that already carry other entries.
+    const entries = sessionEntries(ctx);
+    const hasModeState = entries.some((e) => e?.type === 'custom' && (
+      e.customType === 'combo-level' || e.customType === 'caveman-mode' ||
+      e.customType === 'rtk-mode' || e.customType === 'ponytail-mode'));
+    if (getSharedComboState().level === 'off' && !hasModeState) {
       const fallback = readComboDefault();
       if (fallback !== 'off') {
         persistPreset(fallback);
         useState(setSharedComboLevel(fallback), ctx);
         ctx?.ui?.notify?.(`Combo default applied: ${fallback} — ${activeModesSummary(getSharedComboState())} active for this session.`, 'info');
+      }
+    }
+    // Standalone ponytail default: no sibling extension restores it (upstream
+    // owns the command), so apply it here when nothing persisted a
+    // ponytail-mode entry. Skipped when it matches the active preset — the
+    // preset entry already covers that, no redundant write.
+    if (!entries.some((e) => e?.type === 'custom' && e.customType === 'ponytail-mode')) {
+      const ponytailFallback = readPonytailDefault();
+      if (ponytailFallback !== 'off' && ponytailFallback !== getSharedComboState().ponytail) {
+        pi.appendEntry?.('ponytail-mode', { mode: ponytailFallback });
+        useState(setSharedComboMode('ponytail', ponytailFallback), ctx);
       }
     }
   });
