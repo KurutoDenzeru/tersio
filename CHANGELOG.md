@@ -1,3 +1,6 @@
+## v2.14.0
+ - Bare `tersio` picker now mirrors the full CLI command order (install, update, reinstall, doctor, usage, gain, reset, uninstall) with reinstall driven through the same path as the flag; dashboard reset shows a toast confirmation (sonner-style, dependency-free). Docs drop the RTK history path from user-facing statistics.
+
 ## v2.13.0
  - RTK is now wired into OMP by default: the installer runs `rtk init -g --agent omp` after the binary lands, so OMP rewrites eligible bash tool calls to `rtk` and every rewritten run meters into `history.db` and the gain dashboard's Command tools. Wiring decouples from download success (rate-limited or checksum-failed releases still wire a pre-existing binary), dry-run previews it, uninstall `--remove-rtk` removes the `rtk.ts` extension with the binary, and `tersio doctor` gains an `RTK OMP wiring (rtk.ts)` check. Native tool calls (`read`/`edit`/`eval`) stay unmetered — rtk's hook surface is bash-only. Fixes #28.
  - Dashboard: the Reset control moves from the header into a red danger-zone section at the bottom of the Settings dialog (destructive tint per theme, red hover glow, two-click confirm unchanged); stacked dialog rows gain a 14px gap. Header now holds the gear only.
