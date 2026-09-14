@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { wireRtkOmp } from "../cli/rtk-wiring.ts";
@@ -37,7 +37,7 @@ test("dry-run prints the would-run line and never executes the binary", async ()
 test("success path runs init -g --agent omp once", async () => {
   const { dir, log } = tempHome();
   try {
-    const ok = await wireRtkOmp(fakeRtk(dir), { });
+    const ok = await wireRtkOmp(fakeRtk(dir), {});
     assert.equal(ok, true);
     const calls = readFileSync(log, "utf8").trim().split("\n");
     assert.deepEqual(calls, ["init -g --agent omp"]);
@@ -49,10 +49,31 @@ test("success path runs init -g --agent omp once", async () => {
 test("failing binary returns false without throwing", async () => {
   const { dir, log } = tempHome();
   try {
-    const ok = await wireRtkOmp(fakeRtk(dir, 3), { });
+    const ok = await wireRtkOmp(fakeRtk(dir, 3), {});
     assert.equal(ok, false);
     assert.match(readFileSync(log, "utf8"), /init/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("success path registers rtk.ts in a fake HOME config.yml", async () => {
+  const { dir } = tempHome();
+  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-rtk-home-"));
+  const prevHome = process.env.HOME;
+  try {
+    process.env.HOME = home;
+    const cfgDir = path.join(home, ".omp", "agent");
+    mkdirSync(cfgDir, { recursive: true });
+    writeFileSync(path.join(cfgDir, "config.yml"), "extensions:\n  - /x/combo-toggle/index.js\n", "utf8");
+    const ok = await wireRtkOmp(fakeRtk(dir), { quiet: true });
+    assert.equal(ok, true);
+    const cfg = readFileSync(path.join(cfgDir, "config.yml"), "utf8");
+    assert.match(cfg, /extensions\/rtk\.ts/);
+    assert.match(cfg, /combo-toggle/);
+    if (prevHome === undefined) delete process.env.HOME; else process.env.HOME = prevHome;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
   }
 });

@@ -153,7 +153,9 @@ async function runDoctor(): Promise<void> {
   const rtkAge = rtkMtime ? `updated ${relTime(Date.now() - rtkMtime.mtimeMs)}` : '';
   check('RTK binary', rtkBinText !== null, rtkBinText === null ? rtkBin : [rtkVersion, rtkAge].filter(Boolean).join(', '));
   if (rtkBinText !== null && !rtkVersion) warnLine('RTK version', 'unavailable — binary may not be executable');
+  const rtkRegistered = rtkOmpText !== null && (configText ?? '').includes('extensions/rtk.ts');
   check('RTK OMP wiring (rtk.ts)', rtkOmpText !== null, rtkOmpText === null ? 'run: rtk init -g --agent omp' : '');
+  if (rtkOmpText !== null && !rtkRegistered) warnLine('RTK in config.yml', 'rtk.ts not listed — OMP will not load it; rerun install');
   const ponytailAge = ponytailMtime ? `updated ${relTime(Date.now() - ponytailMtime.mtimeMs)}` : '';
   check('Ponytail', ponytailPkgText !== null, [parseJsonObject<{ version?: string }>(ponytailPkgText)?.version ?? '', ponytailAge].filter(Boolean).join(', '));
 
