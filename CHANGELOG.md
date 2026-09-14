@@ -1,5 +1,12 @@
-## v2.14.0
- - Bare `tersio` picker now mirrors the full CLI command order (install, update, reinstall, doctor, usage, gain, reset, uninstall) with reinstall driven through the same path as the flag; dashboard reset shows a toast confirmation (sonner-style, dependency-free). Docs drop the RTK history path from user-facing statistics.
+## v2.15.0
+ - `/tersio` router slimmed: redundant mode-switch branches (`caveman`, `rtk`, `ponytail`, `combo`) removed — each redirects to its own dedicated command (`/caveman`, `/rtk`, `/combo`, `/ponytail`). One spelling per switch.
+ - Combo defaults preserved across update: seed from live lock file, flagless update path keeps defaults, ponytailDefault applied via config.yml and plugin-settings, default gate relaxed.
+ - Graphify knowledge graph wired: AGENTS.md rules (query, path, explain, wiki, update), .gitignore for graphify-out/ wiki, .gitattributes merge driver for graph.json.
+ - Dynamic LiteLLM pricing: full-feed cache from proxy, lazy background refresh on stale or missing, static pricing table removed from source.
+ - Gain dashboard auto-refreshes every 5s while served and visible.
+ - Installer routes curl via bun by default, falls back to npm; CLI and installer gain `--bun`/`--npm`/`--ref` flags.
+ - Doctor output polished: merged sections, trimmed noise, added `[OK]`/`[FAIL]` status per line. Banner: side-by-side layout polish.
+
 
 ## v2.13.0
  - RTK is now wired into OMP by default: the installer runs `rtk init -g --agent omp` after the binary lands, so OMP rewrites eligible bash tool calls to `rtk` and every rewritten run meters into `history.db` and the gain dashboard's Command tools. Wiring decouples from download success (rate-limited or checksum-failed releases still wire a pre-existing binary), dry-run previews it, uninstall `--remove-rtk` removes the `rtk.ts` extension with the binary, and `tersio doctor` gains an `RTK OMP wiring (rtk.ts)` check. Native tool calls (`read`/`edit`/`eval`) stay unmetered — rtk's hook surface is bash-only. Fixes #28.
