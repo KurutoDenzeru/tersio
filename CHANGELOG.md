@@ -1,3 +1,10 @@
+## v2.16.0
+ - Update and install output condensed: the delegated `tersio update` payload runs quiet (no repeated banner, no per-file writes), the parent owns one plan line and one closing summary. Failures still surface per add-on.
+ - Install is non-technical and minimal: `[1/8]` numbering and absolute paths gone — each add-on prints one plain line (`Ponytail — refresh plugin`, `RTK — download binary and wire into OMP`, …). File paths move behind `--verbose`. RTK dry-run stays offline (no GitHub API probe, so rate limits no longer print `[fail]`).
+ - `tersio update` now reports every add-on's status (Tersio, RTK, Caveman rule, Ponytail) — up to date, version jump, or honest unknown — instead of only the stale ones.
+ - Fix RTK metering after install/update/reinstall: `rtk init` writes `rtk.ts` but never registers it, and OMP only loads extensions listed in config.yml, so bash commands silently stopped rewriting. The wire step now appends `extensions/rtk.ts` to config.yml (idempotent, backs up first), and `tersio doctor` warns when the file exists but is unlisted. Native tool calls (`read`/`edit`/`grep`/`glob`) stay unmetered — rtk's hook surface is bash-only.
+ - Docs: dropped the throwaway output-example files and the stale README command rows. 139 tests.
+
 ## v2.15.0
  - `/tersio` router slimmed: redundant mode-switch branches (`caveman`, `rtk`, `ponytail`, `combo`) removed — each redirects to its own dedicated command (`/caveman`, `/rtk`, `/combo`, `/ponytail`). One spelling per switch.
  - Combo defaults preserved across update: seed from live lock file, flagless update path keeps defaults, ponytailDefault applied via config.yml and plugin-settings, default gate relaxed.
