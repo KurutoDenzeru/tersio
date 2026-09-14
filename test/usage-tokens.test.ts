@@ -88,16 +88,15 @@ test("importer captures codex cache-write tokens with provider label", () => {
   }
 });
 
-test("usdCost prices known models, falls back with priced=false", () => {
+test("usdCost flags unpriced models with priced=false", () => {
   const prev = process.env.TERSIO_PRICES_FILE;
   process.env.TERSIO_PRICES_FILE = path.join("test", "definitely-missing-home", "no-prices.json");
   try {
     const t = { input: 1_000_000, output: 0, cacheRead: 0, cacheWrite: 0 };
-    assert.equal(usdCost(t, "claude-sonnet-5").usd, 3);
-    assert.equal(priceFor("claude-sonnet-5").known, true);
-    const unknown = usdCost(t, "mystery-model-9");
-    assert.equal(unknown.usd, 3);
+    const unknown = usdCost(t, "some-future-model-99");
+    assert.equal(unknown.usd, 2);
     assert.equal(unknown.priced, false);
+    assert.equal(priceFor("some-future-model-99").known, false);
   } finally {
     if (prev === undefined) delete process.env.TERSIO_PRICES_FILE;
     else process.env.TERSIO_PRICES_FILE = prev;

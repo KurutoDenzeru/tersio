@@ -32,6 +32,7 @@ export function readPluginSettings(): Record<string, unknown> {
 
 const COMBO_LEVELS = new Set(['off', 'medium', 'balanced', 'max']);
 const CAVEMAN_MODES = new Set(['off', 'lite', 'full', 'ultra', 'wenyan']);
+const PONYTAIL_MODES = new Set(['off', 'lite', 'full', 'ultra', 'review']);
 
 function readStringDefault(key: string, valid: Set<string>): string {
   const raw = readPluginSettings()[key];
@@ -49,4 +50,8 @@ export function readCavemanDefault(): string {
 export function readRtkDefault(): boolean {
   const raw = readPluginSettings().rtkDefault;
   return typeof raw === 'boolean' ? raw : false;
+}
+
+export function readPonytailDefault(): string {
+  return readStringDefault('ponytailDefault', PONYTAIL_MODES);
 }

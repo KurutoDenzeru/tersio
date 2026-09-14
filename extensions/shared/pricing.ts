@@ -1,7 +1,9 @@
-// extensions/shared/pricing.ts — model pricing with live LiteLLM refresh.
-// Lookup order: exact id in the live cache → built-in substring table → default.
-// Network only in refreshPrices (called from `tersio update`); every reader is
-// sync and offline-safe. Best-effort throughout: pricing never breaks a caller.
+// extensions/shared/pricing.ts — dynamic model pricing from LiteLLM.
+// Lookup order: exact id in the live cache → provider-prefix strip → default.
+// The cache is the full LiteLLM feed (3k+ ids), refreshed lazily in background
+// and on `tersio update`; every reader is sync and offline-safe. No static
+// per-model table — list prices rot, the feed does not. Unknown models report
+// the default with known:false so the dashboard labels them honestly.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -13,23 +15,14 @@ export interface ModelPrice {
   cacheWrite: number;
 }
 
-// Rough list rates (USD per 1M tokens) for the models OMP sessions cite.
-// Refresh against LiteLLM pricing data when adding families.
-const PRICE_TABLE: Array<{ match: string; price: ModelPrice }> = [
-  { match: ':free', price: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } },
-  { match: 'opus', price: { input: 15, output: 75, cacheRead: 1.5, cacheWrite: 18.75 } },
-  { match: 'sonnet', price: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 } },
-  { match: 'haiku', price: { input: 0.8, output: 4, cacheRead: 0.08, cacheWrite: 1 } },
-  { match: 'gpt', price: { input: 2.5, output: 10, cacheRead: 1.25, cacheWrite: 2.5 } },
-  { match: 'gemini', price: { input: 1.25, output: 10, cacheRead: 0.125, cacheWrite: 1.25 } },
-  { match: 'glm', price: { input: 0.5, output: 1, cacheRead: 0.05, cacheWrite: 0.5 } },
-];
-
-export const DEFAULT_PRICE: ModelPrice = { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 };
+// Sonnet-class default for unpriced models; always paired with known:false.
+export const DEFAULT_PRICE: ModelPrice = { input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2.5 };
 
 const LITELLM_URL = 'https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json';
+// Live cache refreshes lazily: readers use the file even when stale, and only
+// one refresh runs per process. `tersio update` still forces a fresh fetch.
 const CACHE_TTL_MS = 7 * 24 * 3600 * 1000;
-const KEEP_RE = /claude|sonnet|opus|haiku|gpt|gemini|glm|deepseek|qwen|kimi|mistral|grok|llama|muse|nemotron|ministral|codestral|qwen/i;
+let refreshInflight: Promise<boolean> | null = null;
 
 export function pricesCachePath(): string {
   const override = process.env.TERSIO_PRICES_FILE;
@@ -43,7 +36,29 @@ export function pricesUrl(): string {
 
 export interface LivePrices {
   fetchedAt: number;
-  exact: Record<string, ModelPrice>;
+  // Compact tuples [input, output, cacheRead, cacheWrite] per LiteLLM id —
+  // the full feed caches to ~1MB instead of multi-MB objects.
+  exact: Record<string, [number, number, number, number]>;
+  deprecated?: string[];
+}
+
+function toPrice(t: [number, number, number, number]): ModelPrice {
+  return { input: t[0], output: t[1], cacheRead: t[2], cacheWrite: t[3] };
+}
+
+// Tolerate both cache shapes: compact tuples (new) and ModelPrice objects
+// (written by older refreshes) — a version bump never orphans the cache.
+function asPrice(v: unknown): ModelPrice | null {
+  if (Array.isArray(v) && v.length === 4 && v.every((n) => typeof n === 'number' && Number.isFinite(n) && n >= 0)) {
+    return toPrice(v as [number, number, number, number]);
+  }
+  if (v && typeof v === 'object') {
+    const o = v as Record<string, unknown>;
+    if (['input', 'output', 'cacheRead', 'cacheWrite'].every((k) => typeof o[k] === 'number' && Number.isFinite(o[k]) && (o[k] as number) >= 0)) {
+      return o as unknown as ModelPrice;
+    }
+  }
+  return null;
 }
 
 export function loadLivePrices(): LivePrices | null {
@@ -54,10 +69,17 @@ export function loadLivePrices(): LivePrices | null {
     return null;
   }
   try {
-    const parsed = JSON.parse(raw) as Partial<LivePrices>;
+    const parsed = JSON.parse(raw) as { fetchedAt?: unknown; exact?: unknown; deprecated?: unknown };
     if (typeof parsed.fetchedAt !== 'number' || !parsed.exact || typeof parsed.exact !== 'object') return null;
-    if (Date.now() - parsed.fetchedAt > CACHE_TTL_MS) return null;
-    return { fetchedAt: parsed.fetchedAt, exact: parsed.exact };
+    const exact: Record<string, [number, number, number, number]> = {};
+    for (const [k, v] of Object.entries(parsed.exact as Record<string, unknown>)) {
+      const p = asPrice(v);
+      if (p) exact[k] = [p.input, p.output, p.cacheRead, p.cacheWrite];
+    }
+    if (!Object.keys(exact).length) return null;
+    // Stale entries stay usable; refreshPricesIfStale refreshes in background.
+    const deprecated = Array.isArray(parsed.deprecated) ? (parsed.deprecated as unknown[]).filter((d): d is string => typeof d === 'string') : [];
+    return { fetchedAt: parsed.fetchedAt, exact, deprecated };
   } catch {
     return null;
   }
@@ -70,59 +92,77 @@ function num(v: unknown): number | null {
 export function priceFor(model: string, live?: LivePrices | null): { price: ModelPrice; known: boolean; live: boolean } {
   const table = live === undefined ? loadLivePrices() : live;
   if (table) {
-    const hit = table.exact[model] ?? table.exact[model.toLowerCase()];
-    if (hit && [hit.input, hit.output, hit.cacheRead, hit.cacheWrite].every((v) => typeof v === 'number')) {
-      return { price: hit, known: true, live: true };
-    }
-  }
-  const name = model.toLowerCase();
-  for (const row of PRICE_TABLE) {
-    if (name.includes(row.match)) return { price: row.price, known: true, live: false };
+    const hit = asPrice(table.exact[model] ?? table.exact[model.toLowerCase()]);
+    if (hit) return { price: hit, known: true, live: true };
+    // Provider-prefixed ids ("azure/gpt-4o", "dashscope/qwen-max"): match the
+    // first cached id that ends with the bare model name.
+    const name = model.toLowerCase();
+    const key = Object.keys(table.exact).find((k) => k.toLowerCase() === name || k.toLowerCase().endsWith(`/${name}`));
+    const prefixed = key ? asPrice(table.exact[key]) : null;
+    if (prefixed) return { price: prefixed, known: true, live: true };
   }
   return { price: DEFAULT_PRICE, known: false, live: false };
 }
-
-// Fetch LiteLLM pricing, keep relevant families, write the cache. False on
-// any failure (offline, timeout, shape change) — callers fall back silently.
+// Fetch LiteLLM pricing, keep every id with valid input/output rates, write
+// the cache. False on any failure (offline, timeout, shape change) — callers
+// fall back silently.
 export async function refreshPrices(): Promise<boolean> {
-  let res: Response;
-  try {
-    const ctl = new AbortController();
-    const timer = setTimeout(() => ctl.abort(), 15000);
+  if (refreshInflight) return refreshInflight;
+  refreshInflight = (async () => {
+    let res: Response;
     try {
-      res = await fetch(pricesUrl(), { signal: ctl.signal });
-    } finally {
-      clearTimeout(timer);
+      const ctl = new AbortController();
+      const timer = setTimeout(() => ctl.abort(), 15000);
+      try {
+        res = await fetch(pricesUrl(), { signal: ctl.signal });
+      } finally {
+        clearTimeout(timer);
+      }
+      if (!res.ok) return false;
+    } catch {
+      return false;
     }
-    if (!res.ok) return false;
-  } catch {
-    return false;
-  }
-  let data: Record<string, Record<string, unknown>>;
+    let data: Record<string, Record<string, unknown>>;
+    try {
+      data = (await res.json()) as Record<string, Record<string, unknown>>;
+    } catch {
+      return false;
+    }
+    const exact: Record<string, [number, number, number, number]> = {};
+    const deprecated: string[] = [];
+    for (const [id, row] of Object.entries(data)) {
+      if (!row || typeof row !== 'object') continue;
+      const input = num(row.input_cost_per_token);
+      const output = num(row.output_cost_per_token);
+      if (input === null || output === null) continue;
+      exact[id] = [
+        input * 1e6,
+        output * 1e6,
+        (num(row.cache_read_input_token_cost) ?? input) * 1e6,
+        (num(row.cache_creation_input_token_cost) ?? input) * 1e6,
+      ];
+      if (typeof row.deprecation_date === 'string' && row.deprecation_date) deprecated.push(id);
+    }
+    if (!Object.keys(exact).length) return false;
+    try {
+      fs.mkdirSync(path.dirname(pricesCachePath()), { recursive: true });
+      fs.writeFileSync(pricesCachePath(), JSON.stringify({ fetchedAt: Date.now(), exact, deprecated }), 'utf8');
+      return true;
+    } catch {
+      return false;
+    }
+  })();
   try {
-    data = (await res.json()) as Record<string, Record<string, unknown>>;
-  } catch {
-    return false;
+    return await refreshInflight;
+  } finally {
+    refreshInflight = null;
   }
-  const exact: Record<string, ModelPrice> = {};
-  for (const [id, row] of Object.entries(data)) {
-    if (!row || typeof row !== 'object' || !KEEP_RE.test(id)) continue;
-    const input = num(row.input_cost_per_token);
-    const output = num(row.output_cost_per_token);
-    if (input === null || output === null) continue;
-    exact[id] = {
-      input: input * 1e6,
-      output: output * 1e6,
-      cacheRead: (num(row.cache_read_input_token_cost) ?? input) * 1e6,
-      cacheWrite: (num(row.cache_creation_input_token_cost) ?? input) * 1e6,
-    };
-  }
-  if (!Object.keys(exact).length) return false;
-  try {
-    fs.mkdirSync(path.dirname(pricesCachePath()), { recursive: true });
-    fs.writeFileSync(pricesCachePath(), JSON.stringify({ fetchedAt: Date.now(), exact }), 'utf8');
-    return true;
-  } catch {
-    return false;
-  }
+}
+
+// Fire-and-forget refresh when the cache is stale or missing. Readers keep
+// using the stale file (or the built-in table) — pricing never blocks.
+export function refreshPricesIfStale(): void {
+  const live = loadLivePrices();
+  if (live && Date.now() - live.fetchedAt <= CACHE_TTL_MS) return;
+  void refreshPrices().catch(() => false);
 }

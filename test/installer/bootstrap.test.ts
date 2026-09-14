@@ -19,6 +19,8 @@ function fakeEnv(): { bin: string; prefix: string; tersioLog: string } {
   mkdirSync(path.join(prefix, "bin"), { recursive: true });
   writeFileSync(path.join(bin, "npm"), '#!/bin/sh\nif [ "$1" = "prefix" ]; then echo "' + prefix + '"; else echo "fake-npm $*"; fi\n', "utf8");
   chmodSync(path.join(bin, "npm"), 0o755);
+  writeFileSync(path.join(bin, "bun"), '#!/bin/sh\necho "fake-bun $*"\n', "utf8");
+  chmodSync(path.join(bin, "bun"), 0o755);
   writeFileSync(path.join(prefix, "bin", "tersio"), '#!/bin/sh\necho "$*" >> "' + tersioLog + '"\n', "utf8");
   chmodSync(path.join(prefix, "bin", "tersio"), 0o755);
   return { bin, prefix, tersioLog };
@@ -30,15 +32,17 @@ function cleanup(...dirs: string[]): void {
 
 const TARBALL_FALLBACK = 'env TERSIO_TARBALL_URL=file:///nonexistent/tersio-npm.tgz';
 
+// npm-lane tests force --npm: bun outranks npm on default, so they must
+// pin the lane to exercise the tarball/registry fallback.
 (process.platform === "win32" ? test.skip : test)("curl bootstrap installs the CLI, then runs tersio install", () => {
   const { bin, prefix, tersioLog } = fakeEnv();
 
   try {
-    const result = spawnSync("/bin/sh", ["-c", `${TARBALL_FALLBACK} sh "${script}" --dry-run`], {
+    const result = spawnSync("/bin/sh", ["-c", `${TARBALL_FALLBACK} PATH="${bin}:/usr/bin:/bin" sh "${script}" --npm --dry-run`], {
       cwd: root,
       encoding: "utf8",
       timeout: 15000,
-      env: { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH || ""}` },
+      env: { ...process.env, PATH: `${bin}${path.delimiter}/usr/bin${path.delimiter}/bin` },
     });
 
     assert.equal(result.status, 0, result.stderr);
@@ -62,7 +66,7 @@ const TARBALL_FALLBACK = 'env TERSIO_TARBALL_URL=file:///nonexistent/tersio-npm.
   writeFileSync(tarballPath, "fake tarball bytes", "utf8");
 
   try {
-    const result = spawnSync("/bin/sh", ["-c", `env TERSIO_TARBALL_URL="file://${tarballPath}" sh "${script}"`], {
+    const result = spawnSync("/bin/sh", ["-c", `env TERSIO_TARBALL_URL="file://${tarballPath}" sh "${script}" --npm`], {
       cwd: root,
       encoding: "utf8",
       timeout: 15000,
@@ -82,7 +86,7 @@ const TARBALL_FALLBACK = 'env TERSIO_TARBALL_URL=file:///nonexistent/tersio-npm.
   const { bin, prefix, tersioLog } = fakeEnv();
 
   try {
-    const result = spawnSync("/bin/sh", ["-c", `${TARBALL_FALLBACK} sh "${script}"`], {
+    const result = spawnSync("/bin/sh", ["-c", `${TARBALL_FALLBACK} sh "${script}" --npm`], {
       cwd: root,
       encoding: "utf8",
       timeout: 15000,
@@ -108,7 +112,7 @@ const TARBALL_FALLBACK = 'env TERSIO_TARBALL_URL=file:///nonexistent/tersio-npm.
   const emptyBin = mkdtempSync(path.join(os.tmpdir(), "tersio-curl-empty-"));
 
   try {
-    const result = spawnSync("/bin/sh", [script], {
+    const result = spawnSync("/bin/sh", [script, "--npm"], {
       cwd: root,
       encoding: "utf8",
       timeout: 15000,
@@ -119,5 +123,65 @@ const TARBALL_FALLBACK = 'env TERSIO_TARBALL_URL=file:///nonexistent/tersio-npm.
     assert.match(result.stderr, /npm not found/);
   } finally {
     cleanup(emptyBin);
+  }
+});
+
+(process.platform === "win32" ? test.skip : test)("curl bootstrap prefers bun over npm by default", () => {
+  const { bin, prefix, tersioLog } = fakeEnv();
+
+  try {
+    const result = spawnSync("/bin/sh", ["-c", `sh "${script}" --dry-run`], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 15000,
+      // Isolated PATH: no system dirs, so the real tersio on the dev
+      // machine cannot shadow the fake prefix binary the bun lane resolves.
+      env: { ...process.env, PATH: `${bin}${path.delimiter}${prefix}/bin${path.delimiter}/usr/bin${path.delimiter}/bin` },
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /Installing @krtclcdy\/tersio via bun\.\.\./);
+    assert.match(result.stdout, /fake-bun install -g @krtclcdy\/tersio@latest/);
+    assert.match(readFileSync(tersioLog, "utf8"), /(^| )install( |$)/);
+  } finally {
+    cleanup(bin, prefix);
+  }
+});
+
+(process.platform === "win32" ? test.skip : test)("curl bootstrap --npm skips bun even when bun exists", () => {
+  const { bin, prefix, tersioLog } = fakeEnv();
+
+  try {
+    const result = spawnSync("/bin/sh", ["-c", `${TARBALL_FALLBACK} sh "${script}" --npm --dry-run`], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 15000,
+      env: { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH || ""}` },
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /Installing @krtclcdy\/tersio via npm\.\.\./);
+    assert.doesNotMatch(result.stdout, /fake-bun/);
+    assert.match(readFileSync(tersioLog, "utf8"), /--dry-run/);
+  } finally {
+    cleanup(bin, prefix);
+  }
+});
+
+(process.platform === "win32" ? test.skip : test)("curl bootstrap --bun fails with a hint when bun is missing", () => {
+  const { bin, prefix } = fakeEnv();
+
+  try {
+    const result = spawnSync("/bin/sh", ["-c", `rm "${bin}/bun" && sh "${script}" --bun`], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 15000,
+      env: { ...process.env, PATH: `${bin}${path.delimiter}/usr/bin${path.delimiter}/bin` },
+    });
+
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /bun not found/);
+  } finally {
+    cleanup(bin, prefix);
   }
 });

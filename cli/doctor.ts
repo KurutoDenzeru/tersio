@@ -2,7 +2,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import {
-  BUN_BIN_DIR, HOME, OMP_AGENT_DIR, OMP_PLUGINS_DIR, OMP_BIN,
+  BUN_BIN_DIR, OMP_AGENT_DIR, OMP_PLUGINS_DIR, OMP_BIN,
   PACKAGE_NAME, PACKAGE_VERSION, RTK_BINARY_NAME,
   execP, parseJsonObject, relTime,
 } from './common.ts';
@@ -67,45 +67,48 @@ async function runDoctor(): Promise<void> {
       return err.stdout?.trim() || err.stderr?.trim() || null;
     },
   ));
-  const [ompVersion, agentEntries, extEntries, sharedStateText, configText, updateVersion] = await runInteractivePhase('Checking environment and installation', () => Promise.all([
-    probes.ompVersion,
-    probes.agentEntries,
-    probes.extEntries,
-    probes.sharedStateText,
-    probes.configText,
-    probes.updateVersion,
-  ]));
-  const [cavemanIndexText, rtkIndexText, updaterIndexText, comboIndexText, tersioIndexText, modeReinforcementText, ponytailPkgText, ponytailExtText, pluginsPkgRaw, selfPkgText] = await runInteractivePhase('Checking extensions and plugins', () => Promise.all([
-    probes.cavemanIndexText,
-    probes.rtkIndexText,
-    probes.updaterIndexText,
-    probes.comboIndexText,
-    probes.tersioIndexText,
-    probes.modeReinforcementText,
-    probes.ponytailPkgText,
-    probes.ponytailExtText,
-    probes.pluginsPkgRaw,
-    probes.selfPkgText,
-  ]));
-  const [cavemanRuleText, ruleMtime, rtkBinText, rtkMtime, rtkVersion, rtkOmpText, ponytailMtime] = await runInteractivePhase('Checking add-ons', () => Promise.all([
-    probes.cavemanRuleText,
-    probes.ruleMtime,
-    probes.rtkBinText,
-    probes.rtkMtime,
-    rtkVersionProbe,
-    probes.rtkOmpText,
-    probes.ponytailMtime,
+  const [[ompVersion, agentEntries, extEntries, sharedStateText, configText, updateVersion], [cavemanIndexText, rtkIndexText, updaterIndexText, comboIndexText, tersioIndexText, modeReinforcementText, ponytailPkgText, ponytailExtText, pluginsPkgRaw, selfPkgText], [cavemanRuleText, ruleMtime, rtkBinText, rtkMtime, rtkVersion, rtkOmpText, ponytailMtime]] = await runInteractivePhase('Checking installation', () => Promise.all([
+    Promise.all([
+      probes.ompVersion,
+      probes.agentEntries,
+      probes.extEntries,
+      probes.sharedStateText,
+      probes.configText,
+      probes.updateVersion,
+    ]),
+    Promise.all([
+      probes.cavemanIndexText,
+      probes.rtkIndexText,
+      probes.updaterIndexText,
+      probes.comboIndexText,
+      probes.tersioIndexText,
+      probes.modeReinforcementText,
+      probes.ponytailPkgText,
+      probes.ponytailExtText,
+      probes.pluginsPkgRaw,
+      probes.selfPkgText,
+    ]),
+    Promise.all([
+      probes.cavemanRuleText,
+      probes.ruleMtime,
+      probes.rtkBinText,
+      probes.rtkMtime,
+      rtkVersionProbe,
+      probes.rtkOmpText,
+      probes.ponytailMtime,
+    ]),
   ]));
 
-  // Categorized output with a tally; section headers group related probes.
+  // Categorized output with a tally; success rows stay quiet (no path echoes)
+  // while failures print the expected path or fix so they stay actionable.
   const tally = { ok: 0, missing: 0, warn: 0 };
   function check(label: string, ok: boolean, detail = ''): void {
-    if (ok) { tally.ok++; console.log(`  ${label}: ok${detail ? ` ${detail}` : ''}`); }
-    else { tally.missing++; console.log(`  ${label}: MISSING${detail ? ` ${detail}` : ''}`); }
+    if (ok) { tally.ok++; console.log(`  ✅ ${label}: ok${detail ? ` ${detail}` : ''}`); }
+    else { tally.missing++; console.log(`  ❌ ${label}: MISSING${detail ? ` ${detail}` : ''}`); }
   }
   function warnLine(label: string, detail: string): void {
     tally.warn++;
-    console.log(`  ${label}: warn ${detail}`);
+    console.log(`  ⚠️ ${label}: warn ${detail}`);
   }
 
   section('Environment');
@@ -114,38 +117,30 @@ async function runDoctor(): Promise<void> {
   if (typeof updateVersion === 'string') warnLine('Tersio CLI', `${updateVersion} available — run tersio update`);
   else if (updateVersion === 'unknown') warnLine('Tersio CLI', `${PACKAGE_VERSION} (version check unreachable)`);
   else check('Tersio CLI', true, PACKAGE_VERSION);
-  console.log(`  Home: ${HOME}`);
 
   section('Installation');
-  check('OMP agent dir', agentEntries !== null, agentDir);
-  check('OMP extensions dir', extEntries !== null, extDir);
-  check('OMP config.yml', configText !== null, configPath);
+  check('OMP agent dir', agentEntries !== null, agentEntries === null ? agentDir : '');
+  check('OMP extensions dir', extEntries !== null, extEntries === null ? extDir : '');
+  check('OMP config.yml', configText !== null, configText === null ? configPath : '');
   check('Shared session bridge', sharedStateText !== null);
 
-  section('Extensions');
+  section('Extensions & plugins');
   check('Caveman extension', cavemanIndexText !== null);
   check('RTK extension', rtkIndexText !== null);
   check('Updater extension', updaterIndexText !== null);
   check('Combo extension', comboIndexText !== null);
   check('Tersio commands extension', tersioIndexText !== null);
   check('Mode reinforcement extension', modeReinforcementText !== null);
-
-  section('Plugins');
-  check('Ponytail package', ponytailPkgText !== null);
   check('Ponytail extension', ponytailExtText !== null);
-  if (configText) {
-    check('Ponytail in config.yml', configText.includes('ponytail') && configText.includes('pi-extension'));
-    check('Combo in config.yml', configText.includes('combo-toggle'));
-  }
+  check('Ponytail in config.yml', (configText ?? '').includes('ponytail') && (configText ?? '').includes('pi-extension'));
+  check('Combo in config.yml', (configText ?? '').includes('combo-toggle'));
   check('Self plugin package', selfPkgText !== null, parseJsonObject<{ version?: string }>(selfPkgText)?.version ?? '');
   const selfDep = PACKAGE_NAME in (parseJsonObject<{ dependencies?: Record<string, string> }>(pluginsPkgRaw)?.dependencies || {});
   check('Self plugin in plugins/package.json', selfDep);
 
-  section('Usage');
+  section('Usage & records');
   const usageRows = readUsage();
-  check('Usage ledger', usageRows.length > 0, usageRows.length ? `${usageRows.length} rows · ${ledgerPath()}` : ledgerPath());
-
-  section('Records');
+  check('Usage ledger', true, usageRows.length ? `${usageRows.length} rows` : 'empty — no records yet');
   console.log(`  Usage ledger (tersio-owned, tersio reset clears): ${ledgerPath()} · ${usageRows.length} rows`);
   console.log(`  Session transcripts (host-owned, never touched): ${sessionsDir()}`);
   const rtkDb = rtkDbPath();
@@ -156,19 +151,14 @@ async function runDoctor(): Promise<void> {
   const ruleAge = ruleMtime ? `updated ${relTime(Date.now() - ruleMtime.mtimeMs)}` : '';
   check('Caveman rule', cavemanRuleText !== null, ruleAge);
   const rtkAge = rtkMtime ? `updated ${relTime(Date.now() - rtkMtime.mtimeMs)}` : '';
-  if (rtkBinText === null) check('RTK binary', false, rtkBin);
-  else {
-    const bits = [rtkVersion, rtkAge].filter(Boolean).join(', ');
-    check('RTK binary', true, bits);
-    if (!rtkVersion) warnLine('RTK version', 'unavailable — binary may not be executable');
-    if (rtkOmpText === null) check('RTK OMP wiring (rtk.ts)', false, `run: rtk init -g --agent omp`);
-    else check('RTK OMP wiring (rtk.ts)', true, path.join(extDir, 'rtk.ts'));
-  }
+  check('RTK binary', rtkBinText !== null, rtkBinText === null ? rtkBin : [rtkVersion, rtkAge].filter(Boolean).join(', '));
+  if (rtkBinText !== null && !rtkVersion) warnLine('RTK version', 'unavailable — binary may not be executable');
+  check('RTK OMP wiring (rtk.ts)', rtkOmpText !== null, rtkOmpText === null ? 'run: rtk init -g --agent omp' : '');
   const ponytailAge = ponytailMtime ? `updated ${relTime(Date.now() - ponytailMtime.mtimeMs)}` : '';
   check('Ponytail', ponytailPkgText !== null, [parseJsonObject<{ version?: string }>(ponytailPkgText)?.version ?? '', ponytailAge].filter(Boolean).join(', '));
 
   const total = tally.ok + tally.missing + tally.warn;
-  console.log(`\n  Summary: ${total} checks — ${tally.ok} ok, ${tally.warn} warn, ${tally.missing} missing`);
+  console.log(`\n  Summary: ${total} checks — ✅ ${tally.ok} ok, ⚠️ ${tally.warn} warn, ❌ ${tally.missing} missing`);
 }
 
 function section(name: string): void {

@@ -16,12 +16,12 @@ test("ledger starts empty when the file is missing", () => {
 });
 
 test("appended rows round-trip in order", () => {
-  appendUsage("command", "/tersio caveman full");
+  appendUsage("command", "/caveman full");
   appendUsage("toggle", "caveman=full");
   const rows = readUsage();
   assert.equal(rows.length, 2);
   assert.equal(rows[0].kind, "command");
-  assert.equal(rows[0].detail, "/tersio caveman full");
+  assert.equal(rows[0].detail, "/caveman full");
   assert.equal(typeof rows[0].ts, "number");
   assert.equal(rows[1].kind, "toggle");
 });
@@ -30,7 +30,7 @@ test("corrupt lines are skipped, valid rows survive", () => {
   fs.appendFileSync(process.env.TERSIO_USAGE_FILE!, "not json\n{\"ts\":\"x\",\"kind\":1}\n", "utf8");
   const rows = readUsage();
   assert.equal(rows.length, 2);
-  assert.equal(rows[0].detail, "/tersio caveman full");
+  assert.equal(rows[0].detail, "/caveman full");
 });
 
 test("clearUsageLedger removes the file and returns rows cleared", async () => {
