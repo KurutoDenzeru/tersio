@@ -134,20 +134,25 @@ async function probeUpdatePlan(cliLatest: string | null): Promise<UpdatePlan> {
   };
 }
 
-// One line per add-on: only stale entries print, current ones stay quiet.
-// Returns the labels that actually need refreshing.
-function planLines(plan: UpdatePlan): string[] {
-  const out: string[] = [];
+// Every add-on prints its status: version jump when stale, "up to date"
+// otherwise, honest "unknown" when the probe cannot reach its source.
+function planLines(plan: UpdatePlan): { stale: string[]; status: string[] } {
+  const stale: string[] = [];
+  const status: string[] = [];
   const push = (name: string, current: string | null, latest: string | null): void => {
-    if (!current && !latest) out.push(`${name}: unknown`);
-    else if (!latest) out.push(`${name}: ${current} (latest unknown)`);
-    else if (current !== latest) out.push(`${name}: ${current ?? 'missing'} → ${latest}`);
+    if (!current && !latest) status.push(`${name}: unknown`);
+    else if (!latest) status.push(`${name}: ${current} (latest unknown)`);
+    else if (current === latest) status.push(`${name}: ${current} (up to date)`);
+    else {
+      status.push(`${name}: ${current ?? 'missing'} → ${latest}`);
+      stale.push(`${name}: ${current ?? 'missing'} → ${latest}`);
+    }
   };
   push('Tersio', PACKAGE_VERSION, plan.cli);
   push('RTK', plan.rtk[0], plan.rtk[1]);
   push('Caveman rule', plan.rule[0], plan.rule[1]);
   push('Ponytail', plan.ponytail[0], plan.ponytail[1]);
-  return out;
+  return { stale, status };
 }
 
 async function runLatestUpdate(): Promise<void> {
@@ -165,13 +170,14 @@ async function runLatestUpdate(): Promise<void> {
   // Current → latest per add-on. Best-effort; unreachable probes print as
   // unknown and never block the update.
   const plan = await probeUpdatePlan(cliLatest);
-  const stale = planLines(plan);
+  const { stale, status } = planLines(plan);
   if (dryRun) {
-    console.log(stale.length === 0 ? `tersio ${PACKAGE_VERSION} — up to date` : `tersio update (dry-run):\n  ${stale.join('\n  ')}`);
+    console.log(`tersio update (dry-run):\n  ${status.join('\n  ')}`);
     console.log(`  [dry-run] would run: npm install -g ${PACKAGE_NAME}${target} --no-audit --no-fund --prefer-online`);
     console.log(`  [dry-run] would delegate: npm exec --yes --prefer-online --package=${PACKAGE_NAME}${target} -- tersio --apply-update ${forwardedArgs.join(' ')}`);
     return;
   }
+  console.log(`Checking for updates:\n  ${status.join('\n  ')}`);
   if (stale.length === 0) {
     console.log(`tersio ${PACKAGE_VERSION} — up to date`);
     return;

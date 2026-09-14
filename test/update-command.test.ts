@@ -36,7 +36,7 @@ test("update refreshes the globally installed CLI before delegating", () => {
     );
 
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /Updating Tersio:/);
+    assert.match(result.stdout, /Checking for updates:/);
     assert.match(result.stdout, /fake-npm exec --yes --prefer-online --package=@krtclcdy\/tersio@latest/);
     assert.match(result.stdout, /Done — tersio .*\. Restart OMP\./);
   } finally {
@@ -71,7 +71,7 @@ test("update dry-run previews the global CLI refresh without running npm -g", ()
     );
 
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /tersio update \(dry-run\):/);
+    assert.match(result.stdout, /Tersio: /);
     assert.match(result.stdout, /\[dry-run\] would run: npm install -g @krtclcdy\/tersio@latest/);
     assert.doesNotMatch(result.stdout, /fake-npm install -g/);
     assert.match(result.stdout, /\[dry-run\] would delegate: npm exec --yes --prefer-online --package=@krtclcdy\/tersio@latest/);

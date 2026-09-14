@@ -1,0 +1,15 @@
+Preview — no changes will be written.
+
+Installing Tersio v2.15.0
+  Defaults: combo=off (caveman=off · rtk=off · ponytail=off)
+  Shared files — sync session bridge
+  Ponytail — refresh plugin
+  Tersio — register plugin
+  RTK — download binary and wire into OMP
+  RTK session — install session mode
+  Caveman — fetch rule and install session mode
+  Combo — install preset switch
+  Tersio commands — install /tersio root command
+  Session helpers — sync shared files
+
+Done — restart OMP, then /combo medium.

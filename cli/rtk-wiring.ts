@@ -7,10 +7,13 @@
 // Deliberately free of cli/common.ts imports (argv side effects) so tests
 // can load it directly.
 import { execFile } from 'node:child_process';
-
 export interface WiringOptions {
   dryRun?: boolean;
   quiet?: boolean;
+}
+
+function debugWire(options: WiringOptions, msg: string): void {
+  if (!options.quiet) console.log(`  ${msg}`);
 }
 
 function shortWiringError(e: unknown): string {
@@ -36,14 +39,11 @@ function execFileP(cmd: string, args: string[], timeout: number): Promise<{ stdo
 // Idempotent: rtk rewrites its extension file on every init run, so
 // reinstalling tersio refreshes the wiring for free.
 export async function wireRtkOmp(rtkBin: string, options: WiringOptions = {}): Promise<boolean> {
-  if (!options.quiet) console.log('  Wiring rtk → OMP (bash tool_call rewrite)...');
-  if (options.dryRun) {
-    if (!options.quiet) console.log('  [dry-run] would run: rtk init -g --agent omp');
-    return true;
-  }
+  if (!options.dryRun) debugWire(options, 'Wiring rtk → OMP (bash tool_call rewrite)…');
+  if (options.dryRun) return true;
   try {
     await execFileP(rtkBin, ['init', '-g', '--agent', 'omp'], 30000);
-    if (!options.quiet) console.log('  [ok] rtk OMP extension wired (~/.omp/agent/extensions/rtk.ts)');
+    debugWire(options, 'rtk OMP extension wired');
     return true;
   } catch (first) {
     // A freshly written binary can lose its first exec to macOS Gatekeeper
@@ -51,7 +51,7 @@ export async function wireRtkOmp(rtkBin: string, options: WiringOptions = {}): P
     await new Promise((resolve) => setTimeout(resolve, 2000));
     try {
       await execFileP(rtkBin, ['init', '-g', '--agent', 'omp'], 30000);
-      if (!options.quiet) console.log('  [ok] rtk OMP extension wired (~/.omp/agent/extensions/rtk.ts)');
+      debugWire(options, 'rtk OMP extension wired');
       return true;
     } catch (e) {
       void first;

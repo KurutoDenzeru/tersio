@@ -99,9 +99,9 @@ function run(...args: string[]): RunResult {
 test("installer accepts session-default flags and reports them", () => {
   const result = run("install", "--dry-run", "--yes", "--combo-default", "medium");
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /combo default=medium/);
-  assert.match(result.stdout, /rtk-session/);
-  assert.match(result.stdout, /ai-addons-updater/);
+  assert.match(result.stdout, /Defaults: combo=medium/);
+  assert.match(result.stdout, /RTK session — install session mode/);
+  assert.match(result.stdout, /Session helpers — sync shared files/);
 });
 
 test("installer rejects invalid default values", () => {
@@ -131,9 +131,9 @@ test("installer rejects removed project/both scopes", () => {
 test("installer dry-run installs every user-scope extension", () => {
   const result = run("install", "--dry-run", "--yes");
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /rtk-session/);
-  assert.match(result.stdout, /caveman-session\/index/);
-  assert.match(result.stdout, /ai-addons-updater/);
+  assert.match(result.stdout, /RTK session — install session mode/);
+  assert.match(result.stdout, /Caveman — fetch rule and install session mode/);
+  assert.match(result.stdout, /Session helpers — sync shared files/);
 });
 
 // --- Manifest feature/setting shape ---
@@ -198,7 +198,7 @@ test("apply-update without flags preserves stored combo defaults", () => {
       env: { ...process.env, HOME: home, USERPROFILE: home },
     });
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /combo default=balanced \(caveman=full · rtk=on · ponytail=full\)/);
+    assert.match(result.stdout, /Defaults: combo=balanced \(caveman=full · rtk=on · ponytail=full\)/);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

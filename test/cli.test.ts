@@ -64,15 +64,15 @@ test("dry-run previews shared bridge before dependent extensions without writing
   );
 
   assert.equal(result.status, 0, result.stderr);
-  const shared = result.stdout.indexOf(path.join("shared", "session-state.js"));
-  const rtk = result.stdout.indexOf("rtk-session");
-  const caveman = result.stdout.indexOf("caveman-session");
+  const shared = result.stdout.indexOf("Shared files — sync session bridge");
+  const rtk = result.stdout.indexOf("RTK session — install session mode");
+  const caveman = result.stdout.indexOf("Caveman — fetch rule and install session mode");
   assert.ok(shared >= 0, result.stdout);
   assert.ok(rtk > shared, result.stdout);
   assert.ok(caveman > shared, result.stdout);
-  assert.match(result.stdout, /\[dry-run\] would write .*shared[\\/]usage-ledger\.js/);
-  assert.match(result.stdout, /\[dry-run\] would write .*shared[\\/]pricing\.js/);
-  assert.match(result.stdout, /\[dry-run\] would write .*shared[\\/]carbon\.js/);
+  assert.match(result.stdout, /Ponytail — refresh plugin/);
+  assert.match(result.stdout, /Tersio — register plugin/);
+  assert.doesNotMatch(result.stdout, /\/tmp|\/Users|\.omp\/agent\/extensions\/shared\/session-state\.js/);
   assert.equal(existsSync(path.join(root, "extensions", "shared-session-state.js")), false);
 });
 
@@ -89,12 +89,12 @@ test("user dry-run installs mode reinforcement after Ponytail", () => {
   );
 
   assert.equal(result.status, 0, result.stderr);
-  const ponytail = result.stdout.indexOf("[1/8] Ponytail");
-  const reinforcement = result.stdout.indexOf("[8/8] Mode reinforcement");
+  const ponytail = result.stdout.indexOf("Ponytail — refresh plugin");
+  const reinforcement = result.stdout.indexOf("Session helpers — sync shared files");
   assert.ok(ponytail >= 0, result.stdout);
   assert.ok(reinforcement > ponytail, result.stdout);
-  assert.match(result.stdout, /would place mode reinforcement after Ponytail/);
-  assert.match(result.stdout, /\[dry-run\] would add @krtclcdy\/tersio/);
+  assert.match(result.stdout, /Combo — install preset switch/);
+  assert.match(result.stdout, /Tersio — register plugin/);
 });
 test("user dry-run installs the tersio root-command extension", () => {
   const missingHome = path.join(root, "test", "definitely-missing-home");
@@ -109,7 +109,23 @@ test("user dry-run installs the tersio root-command extension", () => {
   );
 
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /\[7\/8\] Tersio commands/);
+  assert.match(result.stdout, /Tersio commands — install \/tersio root command/);
+  assert.doesNotMatch(result.stdout, /tersio-commands[\\/]index\.js/);
+});
+test("verbose dry-run reveals file paths hidden by default", () => {
+  const missingHome = path.join(root, "test", "definitely-missing-home");
+  const result = spawnSync(
+    process.execPath,
+    [installer, "install", "--dry-run", "--verbose"],
+    {
+      encoding: "utf8",
+      cwd: root,
+      env: { ...process.env, HOME: missingHome, USERPROFILE: missingHome },
+    }
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /\[dry-run\] would write .*shared[\\/]session-state\.js/);
   assert.match(result.stdout, /\[dry-run\] would write .*tersio-commands[\\/]index\.js/);
 });
 test("reinstall --dry-run previews uninstall then install without writing", () => {
@@ -127,7 +143,7 @@ test("reinstall --dry-run previews uninstall then install without writing", () =
 
   assert.equal(result.status, 0, result.stderr);
   const uninstall = result.stdout.indexOf("=== Tersio Uninstall ===");
-  const install = result.stdout.indexOf("[1/8] Ponytail");
+  const install = result.stdout.indexOf("Ponytail — refresh plugin");
   assert.ok(uninstall >= 0, result.stdout);
   assert.ok(install > uninstall, "uninstall runs before the fresh install");
   assert.match(result.stdout, /\[dry-run\] would remove /);

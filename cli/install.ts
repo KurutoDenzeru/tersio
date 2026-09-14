@@ -57,17 +57,16 @@ const PONYTAIL_GITHUB_SPEC = 'github:DietrichGebert/ponytail';
 const PONYTAIL_NPM_SPEC = '@dietrichgebert/ponytail@latest';
 
 async function stepPonytail(pluginsDir: string, userDir: string, options: InstallOptions): Promise<void> {
-  if (!options.quiet) console.log('\n[1/8] Ponytail');
+  if (!options.quiet) console.log('  Ponytail — refresh plugin');
   await fs.mkdir(pluginsDir, { recursive: true });
   const pkgPath = path.join(pluginsDir, 'package.json');
   const pkg = await readPluginsPackage(pkgPath);
   pkg.dependencies['@dietrichgebert/ponytail'] = PONYTAIL_GITHUB_SPEC;
 
   if (options.dryRun) {
-    if (!options.quiet) console.log(`  [dry-run] would write ${pkgPath}`);
+    if (verbose && !options.quiet) console.log(`  [dry-run] would write ${pkgPath}`);
   } else {
     await fs.writeFile(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
-    if (!options.quiet) console.log('  [write] package.json');
   }
 
   const ponytailExtPath = path.join(pluginsDir, 'node_modules', '@dietrichgebert', 'ponytail', 'pi-extension', 'index.js');
@@ -78,8 +77,8 @@ async function stepPonytail(pluginsDir: string, userDir: string, options: Instal
     debug('Ponytail pi-extension already installed; skipping network refresh');
   } else if (options.dryRun) {
     // Dry runs preview the wiring below without touching the network.
-    if (!options.quiet) console.log(`  [dry-run] would run: omp plugin install ${PONYTAIL_GITHUB_SPEC}`);
-    if (options.reinstall && !options.quiet) {
+    if (verbose && !options.quiet) console.log(`  [dry-run] would run: omp plugin install ${PONYTAIL_GITHUB_SPEC}`);
+    if (options.reinstall && verbose && !options.quiet) {
       console.log(`  [dry-run] would run: npm install ${PONYTAIL_NPM_SPEC} --save --no-audit --no-fund`);
     }
     ponytailExtExists = true;
@@ -87,7 +86,6 @@ async function stepPonytail(pluginsDir: string, userDir: string, options: Instal
     // Try omp plugin install first
     try {
       await execNetwork('Installing Ponytail plugin', OMP_BIN, ['plugin', 'install', PONYTAIL_GITHUB_SPEC], { cwd: pluginsDir });
-      if (!options.quiet) console.log('  [ok] omp plugin install ran');
     } catch (e) {
       console.log(`  [warn] omp plugin install failed: ${(e as Error).message}`);
     }
@@ -95,7 +93,6 @@ async function stepPonytail(pluginsDir: string, userDir: string, options: Instal
     if (options.reinstall) {
       try {
         await execNetwork('Refreshing Ponytail package', 'npm', ['install', PONYTAIL_NPM_SPEC, '--save', '--no-audit', '--no-fund'], { cwd: pluginsDir, timeout: 120000 });
-        if (!options.quiet) console.log('  [ok] Ponytail refreshed');
       } catch (e) {
         console.log(`  [fail] Could not refresh ponytail: ${(e as Error).message}`);
         console.log(`  [hint] Manual: cd ~/.omp/plugins && npm install ${PONYTAIL_NPM_SPEC} --save --no-audit --no-fund`);
@@ -110,11 +107,9 @@ async function stepPonytail(pluginsDir: string, userDir: string, options: Instal
       if (!options.quiet) console.log('  [info] pi-extension/index.js not found after omp plugin install — trying npm/bun install...');
       try {
         await execNetwork('Installing Ponytail dependencies', 'npm', ['install'], { cwd: pluginsDir, timeout: 120000 });
-        if (!options.quiet) console.log('  [ok] npm install completed');
       } catch {
         try {
           await execNetwork('Installing Ponytail dependencies', 'bun', ['install'], { cwd: pluginsDir, timeout: 120000 });
-          if (!options.quiet) console.log('  [ok] bun install completed');
         } catch (e2) {
           console.log(`  [fail] Could not install ponytail: ${(e2 as Error).message}`);
           console.log('  [hint] Manual: cd ~/.omp/plugins && npm install');
@@ -130,7 +125,6 @@ async function stepPonytail(pluginsDir: string, userDir: string, options: Instal
         const dest = path.join(pluginsDir, 'node_modules', '@dietrichgebert', 'ponytail');
         await fs.mkdir(path.dirname(dest), { recursive: true });
         await execNetwork('Cloning Ponytail repository', 'git', ['clone', '--depth', '1', 'https://github.com/DietrichGebert/ponytail.git', dest], { timeout: 180000 });
-        if (!options.quiet) console.log('  [ok] git clone completed');
         ponytailExtExists = await probeExt();
       } catch (e3) {
         console.log(`  [fail] git clone failed: ${(e3 as Error).message}`);
@@ -144,7 +138,7 @@ async function stepPonytail(pluginsDir: string, userDir: string, options: Instal
     console.log('  [hint] The /ponytail command won\'t work, but ponytail skills will still load');
   } else if (!options.dryRun && !options.quiet) {
     // Wire extension into config.yml so /ponytail command loads
-    console.log('  [ok] Ponytail pi-extension found');
+    debug('Ponytail pi-extension found');
   }
   // Still set Ponytail config defaults even without the extension command
   const configPath = path.join(userDir, 'config.yml');
@@ -158,7 +152,7 @@ async function stepPonytail(pluginsDir: string, userDir: string, options: Instal
 // Settings → Plugins page (OMP enumerates plugins/package.json dependencies).
 // Returns true when the package is verified in plugins/node_modules.
 async function stepSelfPlugin(pluginsDir: string, options: InstallOptions): Promise<boolean> {
-  if (!options.quiet) console.log('\n[2/8] Self-plugin');
+  if (!options.quiet) console.log('  Tersio — register plugin');
   const pkgPath = path.join(pluginsDir, 'package.json');
   const pkg = await readPluginsPackage(pkgPath);
   pkg.dependencies[PACKAGE_NAME] = `^${PACKAGE_VERSION}`;
@@ -170,8 +164,8 @@ async function stepSelfPlugin(pluginsDir: string, options: InstallOptions): Prom
   }
 
   if (options.dryRun) {
-    if (!options.quiet) console.log(`  [dry-run] would add ${PACKAGE_NAME}@^${PACKAGE_VERSION} to ${pkgPath}`);
-    if (!options.quiet) console.log(`  [dry-run] would run: npm install --no-audit --no-fund (in ${pluginsDir})`);
+    if (verbose && !options.quiet) console.log(`  [dry-run] would add ${PACKAGE_NAME}@^${PACKAGE_VERSION} to ${pkgPath}`);
+    if (verbose && !options.quiet) console.log(`  [dry-run] would run: npm install --no-audit --no-fund (in ${pluginsDir})`);
     return false;
   }
 
@@ -180,7 +174,6 @@ async function stepSelfPlugin(pluginsDir: string, options: InstallOptions): Prom
     const installedPkgRaw = await readTextIfExists(path.join(pluginsDir, 'node_modules', PACKAGE_NAME, 'package.json'));
     if (parseJsonObject<{ version?: string }>(installedPkgRaw)?.version === PACKAGE_VERSION) {
       debug(`${PACKAGE_NAME} already installed at v${PACKAGE_VERSION}; skipping npm install`);
-      if (!options.quiet) console.log('  [ok] tersio listed in OMP plugins');
       return true;
     }
   }
@@ -205,7 +198,7 @@ async function stepSelfPlugin(pluginsDir: string, options: InstallOptions): Prom
     console.log(`  [warn] ${PACKAGE_NAME} not found in plugins/node_modules after install`);
     return false;
   }
-  if (!options.quiet) console.log('  [ok] tersio listed in OMP plugins');
+  debug('tersio listed in OMP plugins');
   return true;
 }
 
@@ -238,19 +231,19 @@ async function downloadRtkChecksums(release: RtkRelease): Promise<string | null>
   }
 }
 
-async function verifyRtkArchive(archivePath: string, assetName: string, checksumsText: string | null): Promise<boolean> {
+async function verifyRtkArchive(archivePath: string, assetName: string, checksumsText: string | null, options: WriteOptions = {}): Promise<boolean> {
   if (!checksumsText) {
-    console.log('  [warn] No checksums.txt available — skipping verification');
+    if (!options.quiet) console.log('  [warn] No checksums.txt available — skipping verification');
     return true;
   }
   const expected = parseChecksum(checksumsText, assetName);
   const actual = await sha256File(archivePath);
   if (!expected) {
-    console.log(`  [warn] checksums.txt missing entry for ${assetName} — skipping verification`);
+    if (!options.quiet) console.log(`  [warn] checksums.txt missing entry for ${assetName} — skipping verification`);
     return true;
   }
   if (actual === expected) {
-    console.log(`  [ok] Checksum verified for ${assetName}`);
+    debug(`Checksum verified for ${assetName}`);
     return true;
   }
   console.log(`  [fail] Checksum mismatch for ${assetName}`);
@@ -300,23 +293,22 @@ async function extractRtkArchive(archivePath: string, extractDir: string): Promi
 }
 
 async function stepRtk(binDir: string, options: InstallOptions): Promise<void> {
-  if (!options.quiet) console.log('\n[3/8] RTK binary');
+  if (!options.quiet) console.log('  RTK — download binary and wire into OMP');
   const binDest = path.join(binDir, RTK_BINARY_NAME);
   // Download failure must not skip wiring: a pre-existing rtk binary is
   // exactly as good for the OMP hook, so wire whatever ends up at binDest.
+  // Dry runs stay offline: no registry probe, just the plan line above.
+  if (options.dryRun) {
+    if (verbose && !options.quiet) console.log(`  [dry-run] would download rtk binary and install to ${binDest}`);
+    await wireRtkOmp(binDest, options);
+    return;
+  }
   try {
     const release = await withInteractiveSpinner('Finding latest RTK release', () => fetchJson<RtkRelease>(RTK_RELEASE_API));
     const triple = resolveRtkTriple();
     if (!triple) return;
     const asset = findRtkAsset(release, triple);
     if (!asset) return;
-    if (options.dryRun) {
-      if (!options.quiet) console.log(`  [dry-run] would download ${asset.name} from release ${release.tag_name}`);
-      if (!options.quiet) console.log('  [dry-run] would verify checksum against checksums.txt');
-      if (!options.quiet) console.log(`  [dry-run] would extract and install to ${binDest}`);
-      return;
-    }
-
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'omp-rtk-'));
     try {
       const archivePath = path.join(tmpDir, asset.name);
@@ -328,7 +320,7 @@ async function stepRtk(binDir: string, options: InstallOptions): Promise<void> {
         update('Verifying RTK checksum');
         return downloadedChecksums;
       });
-      if (!await verifyRtkArchive(archivePath, asset.name, checksumsText)) return;
+      if (!await verifyRtkArchive(archivePath, asset.name, checksumsText, options)) return;
 
       const extractDir = path.join(tmpDir, 'extracted');
       if (!await extractRtkArchive(archivePath, extractDir)) return;
@@ -342,7 +334,6 @@ async function stepRtk(binDir: string, options: InstallOptions): Promise<void> {
       await fs.mkdir(path.dirname(binDest), { recursive: true });
       await fs.copyFile(binDest, `${binDest}.bak`).catch(() => { });
       await fs.copyFile(found, binDest);
-      if (!options.quiet) console.log(`  [write] ${binDest}`);
 
       if (!IS_WINDOWS) {
         await fs.chmod(binDest, 0o755);
@@ -350,8 +341,7 @@ async function stepRtk(binDir: string, options: InstallOptions): Promise<void> {
       }
 
       try {
-        const v = (await execP(binDest, ['--version'], { timeout: 30000, shell: false })).stdout.trim();
-        if (!options.quiet) console.log(`  [ok] ${binDest} → ${v}`);
+        await execP(binDest, ['--version'], { timeout: 30000, shell: false });
       } catch {
         console.log(`  [hint] Verify manually: ${binDest} --version`);
       }
@@ -381,7 +371,7 @@ async function stepRtk(binDir: string, options: InstallOptions): Promise<void> {
 async function copySources(extDir: string, files: Array<[string, string]>, skipLabel: string, options: WriteOptions): Promise<boolean> {
   const src = await readTextIfExists(files[0][0]);
   if (!src) {
-    if (!options.quiet) console.log(`  [skip] ${skipLabel} not found in repo`);
+    if (!options.quiet && options.dryRun) console.log(`  [skip] ${skipLabel} not found in repo`);
     return false;
   }
   await writeIfChanged(path.join(extDir, files[0][1]), src, options);
@@ -395,6 +385,7 @@ async function copySources(extDir: string, files: Array<[string, string]>, skipL
 }
 
 async function stepSharedSessionState(extDir: string, options: WriteOptions): Promise<void> {
+  if (!options.quiet) console.log('  Shared files — sync session bridge');
   await copySources(extDir, [
     [SHARED_SESSION_STATE, path.join('shared', 'session-state.js')],
     [SHARED_TYPES, path.join('shared', 'types.js')],
@@ -407,14 +398,14 @@ async function stepSharedSessionState(extDir: string, options: WriteOptions): Pr
 }
 
 async function stepModeReinforcement(extDir: string, ponytailExtPath: string, options: WriteOptions): Promise<void> {
-  if (!options.quiet) console.log('\n[8/8] Mode reinforcement');
+  if (!options.quiet) console.log('  Session helpers — sync shared files');
   const dest = path.join(extDir, 'shared', 'mode-reinforcement.js');
   if (!await copySources(extDir, [[MODE_REINFORCEMENT_INDEX, path.join('shared', 'mode-reinforcement.js')]], 'shared/mode-reinforcement.js', options)) return;
   await ensureExtensionAfterConfigEntry(path.join(path.dirname(extDir), 'config.yml'), dest, ponytailExtPath, 'mode reinforcement', options);
 }
 
 async function stepRtkSession(extDir: string, options: WriteOptions): Promise<void> {
-  if (!options.quiet) console.log('\n[4/8] RTK session');
+  if (!options.quiet) console.log('  RTK session — install session mode');
   await copySources(extDir, [[RTK_SESSION_INDEX, path.join('rtk-session', 'index.js')]], 'rtk-session/index.js', options);
 }
 
@@ -431,13 +422,13 @@ async function fetchCavemanRule(options: WriteOptions): Promise<string | null> {
 }
 
 async function stepCaveman(extDir: string, rule: string | null, options: WriteOptions): Promise<void> {
-  if (!options.quiet) console.log('\n[5/8] Caveman');
+  if (!options.quiet) console.log('  Caveman — fetch rule and install session mode');
   const cavemanDir = path.join(extDir, 'caveman-session');
   if (!options.dryRun) await fs.mkdir(cavemanDir, { recursive: true });
 
   const ruleDest = path.join(cavemanDir, 'rule.md');
   if (rule === null && (await readTextIfExists(ruleDest)) !== null) {
-    if (!options.quiet) console.log('  [info] Keeping existing rule.md');
+    debug('Keeping existing rule.md');
   } else if (rule === null) {
     console.log('  [skip] Caveman rule.md unavailable');
     console.log(`  [hint] Manual: ${CAVEMAN_REMOTE_RULE}`);
@@ -449,7 +440,7 @@ async function stepCaveman(extDir: string, rule: string | null, options: WriteOp
 }
 
 async function stepTersioCommands(extDir: string, options: WriteOptions): Promise<void> {
-  if (!options.quiet) console.log('\n[7/8] Tersio commands');
+  if (!options.quiet) console.log('  Tersio commands — install /tersio root command');
   await copySources(extDir, [[TERSIO_COMMANDS_INDEX, path.join('tersio-commands', 'index.js')]], 'tersio-commands/index.js', options);
 }
 
@@ -458,7 +449,7 @@ async function stepUpdater(extDir: string, options: WriteOptions): Promise<void>
 }
 
 async function stepCombo(extDir: string, options: WriteOptions): Promise<void> {
-  if (!options.quiet) console.log('\n[6/8] Combo');
+  if (!options.quiet) console.log('  Combo — install preset switch');
   const dest = path.join(extDir, 'combo-toggle', 'index.js');
   if (!await copySources(extDir, [[COMBO_TOGGLE_INDEX, path.join('combo-toggle', 'index.js')]], 'combo-toggle/index.js', options)) return;
 
@@ -540,7 +531,7 @@ async function resolveProfile(forceReinstall = false, opts: { quiet?: boolean } 
   if (rtkDefaultFlag !== undefined) profile.rtkDefault = rtkDefaultFlag === 'on';
   if (ponytailDefaultFlag !== undefined) profile.ponytailDefault = ponytailDefaultFlag;
 
-  if (!opts.quiet || dryRun) console.log(`  Profile: combo default=${profile.comboDefault} (caveman=${profile.cavemanDefault} · rtk=${profile.rtkDefault ? 'on' : 'off'} · ponytail=${profile.ponytailDefault})`);
+  if ((!opts.quiet && verbose) || dryRun) console.log(`  Defaults: combo=${profile.comboDefault} (caveman=${profile.cavemanDefault} · rtk=${profile.rtkDefault ? 'on' : 'off'} · ponytail=${profile.ponytailDefault})`);
   return profile;
 }
 
@@ -565,7 +556,7 @@ async function writePluginSettings(profile: Profile, options: WriteOptions): Pro
   };
 
   if (options.dryRun) {
-    console.log(`  [dry-run] would write plugin settings (${PACKAGE_NAME}) to ${lockPath}`);
+    if (verbose && !options.quiet) console.log(`  [dry-run] would write plugin settings (${PACKAGE_NAME}) to ${lockPath}`);
     return;
   }
   await fs.mkdir(pluginsDir, { recursive: true });
@@ -678,10 +669,10 @@ async function runInstall(overrides: { reinstall?: boolean } = {}): Promise<void
     await runUninstall({ yes: true, removePonytail: false, removeRtk: false });
   }
 
-  if (dryRun && !quiet) console.log('[dry-run] No changes will be written.\n');
+  if (dryRun && !quiet) console.log('Preview — no changes will be written.\n');
 
   if (!quiet) {
-    console.log(`Tersio v${PACKAGE_VERSION} — ${process.platform}/${process.arch} · user scope`);
+    console.log(`Installing Tersio v${PACKAGE_VERSION}`);
   }
 
   // Remind humans a newer release exists; silent for scripts (no TTY) and for
@@ -723,7 +714,7 @@ async function runInstall(overrides: { reinstall?: boolean } = {}): Promise<void
 
   try {
     const v = (await execP(OMP_BIN, ['--version'])).stdout.trim();
-    if (!quiet) console.log(`  omp ${v}`);
+    if (verbose && !quiet) console.log(`  omp ${v}`);
   } catch {
     console.log('  [fail] omp not found — ensure it\'s installed');
   }

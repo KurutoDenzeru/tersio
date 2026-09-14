@@ -21,7 +21,7 @@ function run(...args: string[]) {
 test("combo preset implies caveman, rtk, and ponytail defaults", () => {
   const result = run("install", "--dry-run", "--yes", "--combo-default", "balanced");
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /combo default=balanced \(caveman=full · rtk=on · ponytail=full\)/);
+  assert.match(result.stdout, /Defaults: combo=balanced \(caveman=full · rtk=on · ponytail=full\)/);
 });
 
 test("caveman and rtk flags override the combo preset", () => {
@@ -30,5 +30,5 @@ test("caveman and rtk flags override the combo preset", () => {
     "--combo-default", "max", "--caveman-default", "lite", "--rtk-default", "off",
   );
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /combo default=max \(caveman=lite · rtk=off · ponytail=ultra\)/);
+  assert.match(result.stdout, /Defaults: combo=max \(caveman=lite · rtk=off · ponytail=ultra\)/);
 });
