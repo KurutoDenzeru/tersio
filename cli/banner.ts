@@ -74,16 +74,20 @@ function bannerLines(tier: Tier = bannerTier()): string[] {
 
 let shown = false;
 
-// OMP-style welcome: intro line + note box with art and tips.
+// OMP-style welcome: intro line + note box with art left, commands right.
 // No-op unless interactive (and never on --dry-run).
 function printWelcome(): void {
   if (shown || dryRun || !tty()) return;
   shown = true;
   clackIntro(`✂ tersio v${PACKAGE_VERSION}`);
-  clackNote(
-    `${bannerLines().join('\n')}\n\n  tersio install   set up add-ons\n  tersio update    refresh CLI + add-ons\n  tersio doctor    verify the install`,
-    'cut token bloat',
-  );
+  const tips = [
+    'tersio install   set up add-ons',
+    'tersio update    refresh CLI + add-ons',
+    'tersio doctor    verify the install',
+  ];
+  const art = bannerLines();
+  const rows = art.map((line, i) => (i >= 1 && i <= 3 ? `${line}  ${tips[i - 1]}` : line));
+  clackNote(rows.join('\n'));
 }
 
 export { bannerLines, bannerTier, printWelcome };

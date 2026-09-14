@@ -402,7 +402,7 @@ test("doctor prints record store paths", () => {
     },
   });
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /^Records$/m);
+  assert.match(result.stdout, /^Usage & records$/m);
   assert.match(result.stdout, new RegExp(`Usage ledger \\(tersio-owned[^)]*\\): ${ledger.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
   assert.match(result.stdout, /Session transcripts \(host-owned/);
   assert.match(result.stdout, /RTK history \(rtk-owned/);

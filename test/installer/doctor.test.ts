@@ -34,14 +34,14 @@ test("doctor reports MISSING components against an empty home", () => {
     });
 
     assert.equal(result.status, 0, result.stderr);
-    for (const line of ["OMP extensions dir: MISSING", "Shared session bridge: MISSING", "Caveman extension: MISSING", "RTK extension: MISSING", "Combo extension: MISSING", "RTK binary: MISSING"]) {
+    for (const line of ["OMP extensions dir: MISSING", "Shared session bridge: MISSING", "Caveman extension: MISSING", "RTK extension: MISSING", "Combo extension: MISSING", "❌ RTK binary: MISSING", "RTK OMP wiring (rtk.ts): MISSING run: rtk init -g --agent omp", "Usage ledger: ok empty — no records yet"]) {
       assert.match(result.stdout, new RegExp(line.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
     }
-    // Categorized output: section headers plus a closing tally.
-    for (const section of ["Environment", "Installation", "Extensions", "Plugins", "Add-ons"]) {
-      assert.match(result.stdout, new RegExp(`\\n${section}\\n`));
+    // Categorized output: merged section headers plus a closing tally.
+    for (const sectionName of ["Environment", "Installation", "Extensions & plugins", "Usage & records", "Add-ons"]) {
+      assert.match(result.stdout, new RegExp(`\\n${sectionName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\n`));
     }
-    assert.match(result.stdout, /Summary: \d+ checks — \d+ ok, \d+ warn, \d+ missing/);
+    assert.match(result.stdout, /Summary: \d+ checks — ✅ \d+ ok, ⚠️ \d+ warn, ❌ \d+ missing/);
     // Seeded cache (latest 2.1.0) is never newer than the running version, so
     // the row prints the plain version — whatever the release currently is.
     assert.match(result.stdout, /Tersio CLI: ok \d+\.\d+\.\d+/);
@@ -71,8 +71,8 @@ test("doctor reports the rtk OMP wiring when the binary and rtk.ts exist", () =>
     });
 
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /RTK binary: ok rtk 0\.49\.0/);
-    assert.match(result.stdout, /RTK OMP wiring \(rtk\.ts\): ok/);
+    assert.match(result.stdout, /✅ RTK binary: ok rtk 0\.49\.0/);
+    assert.match(result.stdout, /✅ RTK OMP wiring \(rtk\.ts\): ok/);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }
