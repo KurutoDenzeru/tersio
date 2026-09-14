@@ -80,20 +80,16 @@ test("/combo max syncs sibling mirrors with no reload", async () => {
   resetSharedComboState();
 });
 
-test("/tersio caveman full persists, notifies, injects, no reload", async () => {
+test("/tersio no longer duplicates mode switches", async () => {
   resetSharedComboState();
   const tersio = mini();
-  const caveman = mini();
   tersioCommandsExtension(tersio.api);
-  cavemanSessionExtension(caveman.api);
   const { ctx, notifications, reloaded } = ctxWithReloadCounter();
 
-  await tersio.commands.get("tersio")!("caveman full", ctx);
+  await tersio.commands.get("tersio")!("combo max", ctx);
 
   assert.equal(reloaded(), 0);
-  assert.equal(getSharedComboState().caveman, "full");
-  assert.match(notifications.join("\n"), /Caveman full on/);
-  const cave = (await caveman.handlers.get("before_agent_start")!(MAIN_PROMPT, ctx)) as { systemPrompt: string[] };
-  assert.match(cave.systemPrompt.join("\n"), /Caveman full active/);
+  assert.equal(getSharedComboState().level, "off", "redirect writes nothing");
+  assert.match(notifications.join("\n"), /Use \/combo instead/);
   resetSharedComboState();
 });

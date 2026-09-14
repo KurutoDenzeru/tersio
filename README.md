@@ -52,10 +52,10 @@ omp plugin features @krtclcdy/tersio --disable rtk
 Then restart OMP and enable a preset:
 
 ```text
-/tersio combo medium
+/combo balanced
 ```
 
-Individual toggles: `/tersio caveman full` · `/tersio rtk on` · `/tersio ponytail full`. Everything starts off until you enable it.
+Individual toggles: `/caveman full` · `/rtk on` · `/ponytail full`. Everything starts off until you enable it.
 
 Session-start defaults (prompted during `install`, or flags):
 
@@ -63,7 +63,7 @@ Session-start defaults (prompted during `install`, or flags):
 tersio install --combo-default balanced --caveman-default lite --rtk-default on
 ```
 
-Defaults apply to fresh sessions only — anything persisted with `/tersio combo`, `/tersio caveman`, or `/tersio rtk` wins. Stored as plugin settings (`omp plugin config get @krtclcdy/tersio comboDefault`).
+Defaults apply to fresh sessions only — anything persisted with `/combo`, `/caveman`, or `/rtk` wins. Stored as plugin settings (`omp plugin config get @krtclcdy/tersio comboDefault`).
 
 One-off use without installing:
 
@@ -116,21 +116,21 @@ Flags: `--dry-run`, `--yes`/`-y`, `--verbose`, `--combo-default`/`--caveman-defa
 
 ## ⌨️ Commands reference
 
-Everything runs under one root. Bare `/tersio` prints status.
+Mode switches live on their own commands; bare `/tersio` prints status.
 
 | Command | Purpose |
 |---|---|
-| `/tersio combo off\|medium\|balanced\|max\|status` | One preset for all three (start here): medium = lite/lite/on, balanced = full/full/on, max = ultra/ultra/on; per-mode tweaks drop to `custom`. |
-| `/tersio caveman lite\|full\|ultra\|wenyan\|off\|status` | Terse replies (substance stays); `ultra` uses fragments only, `wenyan` a compressed classical-Chinese-inspired register. |
-| `/tersio rtk on\|off\|status` | Compact shell output via the real `rtk` binary; exact bytes (checksums, patches) bypass it by policy. |
-| `/tersio ponytail off\|lite\|full\|ultra\|review\|status` | Minimal code (YAGNI): `lite` nudges, `full` enforces, `ultra` challenges the requirement, `review` audits for over-engineering. |
+| `/combo off\|medium\|balanced\|max\|status` | One preset for all three (start here): medium = lite/lite/on, balanced = full/full/on, max = ultra/ultra/on; per-mode tweaks drop to `custom`. |
+| `/caveman lite\|full\|ultra\|wenyan\|off\|status` | Terse replies (substance stays); `ultra` uses fragments only, `wenyan` a compressed classical-Chinese-inspired register. |
+| `/rtk on\|off\|status` | Compact shell output via the real `rtk` binary; exact bytes (checksums, patches) bypass it by policy. |
+| `/ponytail off\|lite\|full\|ultra\|review\|status` | Minimal code (YAGNI): `lite` nudges, `full` enforces, `ultra` challenges the requirement, `review` audits for over-engineering (upstream command). |
 | `/tersio status` | Active modes + combo level; state persists, propagates to subagents, and lights the Combo footer indicator. |
 | `/tersio check` | Add-on version check |
 | `/tersio update <ponytail\|rtk\|caveman\|all> [--dry-run]` | Update add-ons, preview with dry-run |
 | `/tersio gain` | Savings summary; the gain dashboard charts `~/.omp/plugins/tersio-usage.jsonl` (`tersio gain --open` serves on 127.0.0.1, `--export` writes one file). |
 | `/tersio usage` | Ledger report for this machine (rows in `~/.omp/plugins/tersio-usage.jsonl`, local only) |
 | `/tersio help` | This table |
-| `/caveman`, `/rtk`, `/combo`, `/ai-addons` | Legacy aliases, still work; prefer `/tersio`. |
+| `/ai-addons` | Add-on updater alias, still works. |
 
 ## 🗂️ Files and backups
 
