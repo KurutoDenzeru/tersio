@@ -10,24 +10,6 @@
 
 Terse replies, compact shell output, and minimal code decisions for [Oh My Pi (OMP)](https://github.com/can1357/oh-my-pi) — one-command combo presets.
 
-## ✨ Features
-
-- **Caveman** — Shortens replies, keeps technical substance. Modes: `lite`, `full`, `ultra`, `wenyan`.
-- **RTK** — Routes noisy shell commands through the RTK binary for compact output; exact bytes bypass it by policy. The installer wires rtk into OMP automatically (`rtk init -g --agent omp`), so bash tool calls rewrite to `rtk` before execution and meter into the gain dashboard.
-- **Ponytail** — Minimal, YAGNI-oriented code decisions, from nudge (`lite`) to requirement-challenger (`ultra`).
-- **Combo** — Toggles all three at once. Presets: `off`, `medium`, `balanced`, `max`.
-- **Updater** — `/tersio check` and `/tersio update` cover Ponytail, RTK, and Caveman in-session, with dry-run and backups.
-- **Gain dashboard** — `tersio gain` serves a local-only savings dashboard: cost with currency conversion, activity graph, command tools, and model breakdowns.
-- **Usage ledger** — `tersio usage` prints a ledger-backed savings report for the machine, local only.
-
-## 🧱 Tech Stack
-
-- [TypeScript](https://www.typescriptlang.org/) + [Node.js](https://nodejs.org/): CLI and OMP extensions, compiled to dependency-free JS for install.
-- Vanilla dashboard: dependency-free HTML/CSS/JS export — no build step, no runtime deps.
-- [js-tiktoken](https://github.com/dqbd/tiktoken): Real `o200k_base` BPE token counts for benchmarks (dev only).
- - [tokscale](https://github.com/junhoyeo/tokscale): Token-bucket convention (input / output / cache read / cache write) for parsing OMP session transcripts.
- - [EcoLogits](https://github.com/genai-impact/ecologits): CO2 model (v0.8.2 port — per-model params, provider grids, served ÷32 amortization).
-
 ## ⚡ Getting Started
 
 **Default** (macOS/Linux/WSL) — one line. Installs the CLI via npm, then runs the main installer (scope + Combo preset menus) in the same pass:

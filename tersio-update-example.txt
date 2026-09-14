@@ -1,7 +1,0 @@
-tersio update (dry-run):
-  Tersio: 2.15.0 (up to date)
-  RTK: 0.49.0 (latest unknown)
-  Caveman rule: b2c5f95c (up to date)
-  Ponytail: 4.10.0 (up to date)
-  [dry-run] would run: npm install -g @krtclcdy/tersio@2.15.0 --no-audit --no-fund --prefer-online
-  [dry-run] would delegate: npm exec --yes --prefer-online --package=@krtclcdy/tersio@2.15.0 -- tersio --apply-update --yes --dry-run
