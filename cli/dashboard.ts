@@ -102,6 +102,7 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
     res.end(html);
   });
   server.listen(options.port, '127.0.0.1', () => {
+    try { process.title = 'tersio gain'; } catch { /* non-POSIX shells keep node */ }
     const address = server.address();
     const port = typeof address === 'object' && address ? address.port : options.port;
     const url = `http://127.0.0.1:${port}`;

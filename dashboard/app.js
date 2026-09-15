@@ -164,7 +164,9 @@
     });
   })();
 
+  var OPENAI_SVG = '<svg viewBox="0 0 24 24" fill="#000" aria-hidden="true"><path d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z"/></svg>';
   var PROVIDERS = [
+    [/openai|codex|gpt-|o1/i, 'OpenAI', 'openai', '#fff', OPENAI_SVG],
     [/muse/i, 'Meta', 'meta', '#0082fb'],
     [/deepseek/i, 'DeepSeek', 'deepseek', '#4d6bfe'],
     [/qwen|qwq/i, 'Qwen', 'qwen', '#6950EF'],
@@ -175,21 +177,27 @@
     [/nemotron|nvidia/i, 'NVIDIA', 'nvidia', '#76b900'],
     [/mistral/i, 'Mistral', 'mistralai', '#ff7000'],
     [/claude|anthropic/i, 'Anthropic', 'anthropic', '#d97757'],
-    [/gemini|google/i, 'Google', 'googlegemini', '#4285f4'],
+    [/gemini|google/i, 'Google', 'googlegemini', '#8E75B2'],
   ];
   function vendorOf(model) {
     for (var i = 0; i < PROVIDERS.length; i++) {
-      if (PROVIDERS[i][0].test(model)) return { name: PROVIDERS[i][1], slug: PROVIDERS[i][2], color: PROVIDERS[i][3] };
+      if (PROVIDERS[i][0].test(model)) return { name: PROVIDERS[i][1], slug: PROVIDERS[i][2], color: PROVIDERS[i][3], svg: PROVIDERS[i][4] };
     }
     return { name: 'Other', slug: '', color: '#71717a' };
   }
-  // Brand glyph from the Simple Icons CDN; a missing slug (or offline export)
-  // falls back to a neutral bot glyph. Never a bare initial.
+  // Brand glyph: inline SVG when the provider ships one (OpenAI), else the
+  // Simple Icons CDN; unknown / Other providers render a clean Lucide
+  // sparkles icon with no solid background as a placeholder.
   function brandHTML(v, small) {
-    var icon = v.slug
-      ? '<img src="https://cdn.simpleicons.org/' + v.slug + '/white" alt="" loading="lazy" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'grid\';">'
-      : '';
-    var fb = '<i data-lucide="bot" class="fb"' + (v.slug ? '' : ' style="display:grid"') + '></i>';
+    if (v.svg) {
+      return '<span class="brandmark' + (small ? ' sm' : '') + '" style="background:' + v.color + '" title="' + v.name + '">' + v.svg + '</span>';
+    }
+    if (!v.slug) {
+      return '<span class="brandmark placeholder' + (small ? ' sm' : '') + '" title="' + v.name + '">' +
+        '<i data-lucide="sparkles" class="fb" style="display:grid"></i></span>';
+    }
+    var icon = '<img src="https://cdn.simpleicons.org/' + v.slug + '/white" alt="" loading="lazy" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'grid\';">';
+    var fb = '<i data-lucide="sparkles" class="fb"></i>';
     return '<span class="brandmark' + (small ? ' sm' : '') + '" style="background:' + v.color + '" title="' + v.name + '">' + icon + fb + '</span>';
   }
   var PALETTE = ['#34d399', '#818cf8', '#22d3ee', '#fbbf24', '#f472b6', '#a78bfa', '#fb923c', '#2dd4bf'];
@@ -203,6 +211,24 @@
     if (s < 3600) return Math.floor(s / 60) + 'm ago';
     if (s < 86400) return Math.floor(s / 3600) + 'h ago';
     return Math.floor(s / 86400) + 'd ago';
+  }
+  // Per-request generation time + output throughput from the message-level
+  // `duration` (ms). Missing → '–'. Throughput uses output tokens since
+  // that is what streams to the user during the measured window.
+  function fmtDur(ms) {
+    if (ms === undefined) return '–';
+    var s = ms / 1000;
+    return (s < 10 ? s.toFixed(1) : Math.round(s)) + 's';
+  }
+  function speedText(r) {
+    if (r.d === undefined) return '–';
+    var tps = r.d > 0 ? r.o / (r.d / 1000) : 0;
+    return fmtDur(r.d) + ' ⚡' + (tps < 10 ? tps.toFixed(1) : Math.round(tps)) + '/s';
+  }
+  function speedTitle(r) {
+    if (r.d === undefined) return 'no duration recorded';
+    var tps = r.d > 0 ? r.o / (r.d / 1000) : 0;
+    return '⏱ ' + (r.d / 1000).toFixed(1) + 's elapsed with the model, ⚡ ' + r.o + ' output tokens (' + tps.toFixed(1) + ' tok/s)';
   }
   function modelTotal(byModel, m) {
     var b = byModel[m] || { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
@@ -234,6 +260,7 @@
   function showTip(html, x, y) {
     var t = tip();
     t.innerHTML = html;
+    if (window.lucide) lucide.createIcons();
     t.classList.add('show');
     moveTip(x, y);
   }
@@ -265,23 +292,89 @@
     var denom = b.input + b.cacheRead;
     var hit = denom ? (b.cacheRead / denom * 100).toFixed(1) + '%' : '-';
     var total = b.input + b.output + b.cacheRead + b.cacheWrite;
-    var h = '<div class="tt">' + shortName(m) + '</div><div class="tv">' + fmtShort(total) + ' total</div>';
-    h += '<div class="tr"><span class="sw" style="background:var(--accent)"></span><span class="tn">input</span><span class="tvr">' + fmt(b.input) + '</span></div>';
-    h += '<div class="tr"><span class="sw" style="background:var(--dim)"></span><span class="tn">output</span><span class="tvr">' + fmt(b.output) + '</span></div>';
+    var cb = ((DATA.byModelBucketUsd || {})[m]) || { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+    var h = '<div class="tt">' + shortName(m) + '</div><div class="tv">' + fmtShort(total) + ' total (' + fxMoney(cb.input + cb.output + cb.cacheRead + cb.cacheWrite) + ')</div>';
+    h += '<div class="tr"><span class="sw" style="background:var(--accent)"></span><span class="tn">input</span><span class="tvr">' + fmt(b.input) + ' (' + fxMoney(cb.input) + ')</span></div>';
+    h += '<div class="tr"><span class="sw" style="background:var(--dim)"></span><span class="tn">output</span><span class="tvr">' + fmt(b.output) + ' (' + fxMoney(cb.output) + ')</span></div>';
+    if (b.cacheRead > 0) h += '<div class="tr"><span class="sw" style="background:var(--dim)"></span><span class="tn">cache read</span><span class="tvr">' + fmt(b.cacheRead) + ' (' + fxMoney(cb.cacheRead) + ')</span></div>';
+    if (b.cacheWrite > 0) h += '<div class="tr"><span class="sw" style="background:var(--dim)"></span><span class="tn">cache write</span><span class="tvr">' + fmt(b.cacheWrite) + ' (' + fxMoney(cb.cacheWrite) + ')</span></div>';
     h += '<div class="tr"><span class="sw" style="background:var(--dim)"></span><span class="tn">requests</span><span class="tvr">' + fmt(req) + '</span></div>';
     h += '<div class="tr"><span class="sw" style="background:var(--dim)"></span><span class="tn">cache hit</span><span class="tvr">' + hit + '</span></div>';
     return h;
   }
+  function stampLocal(ts) {
+    var d = new Date(ts);
+    function p(n) { return String(n).padStart(2, '0'); }
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+  }
+  function tipRecentHTML(r) {
+    var tps = r.d !== undefined && r.d > 0 ? r.o / (r.d / 1000) : 0;
+    var h = '<div class="tt">' + shortName(r.m) + '</div><div class="tv">' + stampLocal(r.t) + '</div>';
+    h += '<div class="tr"><span class="sw" style="background:#fb923c"></span><span class="tn">input</span><span class="tvr">' + fmt(r.i) + '</span></div>';
+    h += '<div class="tr"><span class="sw" style="background:var(--accent)"></span><span class="tn">output</span><span class="tvr">' + fmt(r.o) + '</span></div>';
+    if ((r.cr || 0) > 0) h += '<div class="tr"><span class="sw" style="background:var(--dim)"></span><span class="tn">cache</span><span class="tvr">' + fmtShort(r.cr) + '</span></div>';
+    if ((r.cw || 0) > 0) h += '<div class="tr"><span class="sw" style="background:var(--dim)"></span><span class="tn">cache write</span><span class="tvr">' + fmtShort(r.cw) + '</span></div>';
+    h += '<div class="tr"><span class="sw" style="background:var(--dim)"></span><span class="tn">elapsed</span><span class="tvr">' + fmtDur(r.d) + '</span></div>';
+    h += '<div class="tr"><span class="sw" style="background:var(--dim)"></span><span class="tn">speed</span><span class="tvr">' + (r.d !== undefined ? (tps < 10 ? tps.toFixed(1) : Math.round(tps)) + ' tok/s' : '–') + '</span></div>';
+    return h;
+  }
+  // Zone indicators: Lucide face per savings-bento metric. Coarse by design;
+  // captions say est. where modeled. Icons paint via showTip/render createIcons.
+  function zoneIcon(glyph, cls) { return '<i data-lucide="' + glyph + '" class="zface ' + cls + '"></i>'; }
+  function co2Zone(g) {
+    if (!(g > 0)) return ['minus', 'no data', ''];
+    if (g <= 50) return ['sprout', 'light', 'good'];
+    if (g <= 500) return ['smile', 'moderate', 'good'];
+    if (g <= 2000) return ['meh', 'heavy', 'warn'];
+    return ['flame', 'very high', 'bad'];
+  }
+  function levZone(x) {
+    if (!(x > 0)) return ['minus', 'no savings yet', ''];
+    if (x >= 3) return ['rocket', 'high leverage', 'good'];
+    if (x >= 1) return ['smile', 'solid', 'good'];
+    return ['meh', 'light', 'warn'];
+  }
+  function shareZone(p) {
+    if (!(p > 0)) return ['minus', 'uncached', ''];
+    if (p >= 80) return ['rocket', 'high', 'good'];
+    if (p >= 50) return ['smile', 'good', 'good'];
+    return ['meh', 'low', 'warn'];
+  }
   function tipCo2HTML() {
+    var z = co2Zone(DATA.co2g || 0);
     var h = '<div class="tt">CO2</div><div class="tv">~' + (DATA.co2g || 0).toFixed(1) + 'g est.</div>';
+    h += '<div class="tr"><span class="sw" style="background:var(--accent)"></span><span class="tn">zone</span><span class="tvr">' + zoneIcon(z[0], z[2]) + ' ' + z[1] + '</span></div>';
     h += '<div class="tr"><span class="sw" style="background:var(--accent)"></span><span class="tn">energy</span><span class="tvr">~' + (DATA.energyWh || 0).toFixed(1) + ' Wh</span></div>';
-    h += '<div class="tr"><span class="sw" style="background:var(--dim)"></span><span class="tn">method</span><span class="tvr">EcoLogits 0.8.2 port</span></div>';
-    h += '<div class="tr"><span class="sw" style="background:var(--dim)"></span><span class="tn">served</span><span class="tvr">ceiling / 32</span></div>';
-    h += '<div class="tr"><span class="sw" style="background:var(--dim)"></span><span class="tn">grid</span><span class="tvr">per provider</span></div>';
+    return h;
+  }
+  function tipSavedHTML() {
+    var usd = DATA.usd || 0, saved = DATA.savedUsd || 0;
+    var lev = usd ? saved / usd : 0;
+    var z = levZone(lev);
+    var t = DATA.tokens || { cacheRead: 0 };
+    var h = '<div class="tt">Saved by cache</div><div class="tv">' + fxMoney(saved) + ' est.</div>';
+    h += '<div class="tr"><span class="sw" style="background:var(--accent)"></span><span class="tn">zone</span><span class="tvr">' + zoneIcon(z[0], z[2]) + ' ' + z[1] + '</span></div>';
+    h += '<div class="tr"><span class="sw" style="background:var(--accent)"></span><span class="tn">leverage</span><span class="tvr">x' + lev.toFixed(1) + ' per $1</span></div>';
+    h += '<div class="tr"><span class="sw" style="background:var(--dim)"></span><span class="tn">cache read</span><span class="tvr">' + fmtShort(t.cacheRead || 0) + '</span></div>';
+    return h;
+  }
+  function tipShareHTML(share, pp) {
+    var z = shareZone(share);
+    var t = DATA.tokens || { cacheRead: 0, cacheWrite: 0 };
+    var h = '<div class="tt">Cache share</div><div class="tv">' + share + '%</div>';
+    h += '<div class="tr"><span class="sw" style="background:var(--accent)"></span><span class="tn">zone</span><span class="tvr">' + zoneIcon(z[0], z[2]) + ' ' + z[1] + '</span></div>';
+    h += '<div class="tr"><span class="sw" style="background:var(--accent)"></span><span class="tn">read</span><span class="tvr">' + fmtShort(t.cacheRead || 0) + '</span></div>';
+    if ((t.cacheWrite || 0) > 0) h += '<div class="tr"><span class="sw" style="background:var(--dim)"></span><span class="tn">write</span><span class="tvr">' + fmtShort(t.cacheWrite) + '</span></div>';
+    h += '<div class="tr"><span class="sw" style="background:var(--dim)"></span><span class="tn">7d trend</span><span class="tvr">' + (pp >= 0 ? '+' : '') + pp.toFixed(1) + 'pp</span></div>';
     return h;
   }
   function hoverModel(el, m) {
     el.addEventListener('mouseenter', function(ev) { showTip(tipModelHTML(m), ev.clientX, ev.clientY); });
+    el.addEventListener('mousemove', function(ev) { moveTip(ev.clientX, ev.clientY); });
+    el.addEventListener('mouseleave', hideTip);
+  }
+  function hoverRecent(el, r) {
+    el.addEventListener('mouseenter', function(ev) { showTip(tipRecentHTML(r), ev.clientX, ev.clientY); });
     el.addEventListener('mousemove', function(ev) { moveTip(ev.clientX, ev.clientY); });
     el.addEventListener('mouseleave', hideTip);
   }
@@ -455,9 +548,10 @@
     var p = Math.round((cur - prev) / prev * 100);
     return (p >= 0 ? '+' : '') + p + '%';
   }
+  var modelPage = 1, modelPer = 10, recentPage = 1, recentPer = 15;
   function renderModels() {
     var byModel = DATA.byModel || {};
-    var tops = topModels(byModel, 8).filter(function(m) { return modelTotal(byModel, m) > 0; });
+    var tops = topModels(byModel, Object.keys(byModel).length).filter(function(m) { return modelTotal(byModel, m) > 0; });
     var cards = document.getElementById('modelCards');
     cards.innerHTML = '';
     if (!tops.length) cards.innerHTML = '<div class="empty md:col-span-3">' + emptyState('boxes', 'No models yet', 'Model token totals will appear here once sessions report tokens.') + '</div>';
@@ -465,12 +559,23 @@
       var v = vendorOf(m), d = wow(m);
       var card = document.createElement('div');
       card.className = 'modelcard relative p-4 rounded-xl overflow-hidden';
-      if (v.slug) {
+      if (v.svg) {
+        var ghostSvg = document.createElement('span');
+        ghostSvg.className = 'ghostimg'; ghostSvg.setAttribute('aria-hidden', 'true');
+        ghostSvg.innerHTML = v.svg;
+        card.appendChild(ghostSvg);
+      } else if (v.slug) {
         var ghost = document.createElement('img');
         ghost.className = 'ghostimg'; ghost.alt = '';
         ghost.src = 'https://cdn.simpleicons.org/' + v.slug + '/white';
         ghost.setAttribute('aria-hidden', 'true');
         card.appendChild(ghost);
+      } else {
+        var ghostSparkle = document.createElement('i');
+        ghostSparkle.setAttribute('data-lucide', 'sparkles');
+        ghostSparkle.className = 'ghosticon';
+        ghostSparkle.setAttribute('aria-hidden', 'true');
+        card.appendChild(ghostSparkle);
       }
       card.style.cssText = 'border: 1px solid var(--line); background: var(--panel)';
       var head = document.createElement('p');
@@ -502,10 +607,13 @@
     ol.innerHTML = '';
     var max = 1;
     tops.forEach(function(m) { max = Math.max(max, modelTotal(byModel, m)); });
-    tops.forEach(function(m, i) {
+    var modelPages = Math.max(1, Math.ceil(tops.length / modelPer));
+    if (modelPage > modelPages) modelPage = modelPages;
+    var modelStart = (modelPage - 1) * modelPer;
+    tops.slice(modelStart, modelStart + modelPer).forEach(function(m, i) {
       var v = vendorOf(m);
       var li = document.createElement('li');
-      li.className = 'mrow flex items-center gap-3 px-4 py-3' + (i < tops.length - 1 ? ' rowline' : '');
+      li.className = 'mrow flex items-center gap-3 px-4 py-3' + (i < Math.min(tops.length - modelStart, modelPer) - 1 ? ' rowline' : '');
       var badgeWrap = document.createElement('span');
       badgeWrap.innerHTML = brandHTML(v, true);
       var badge = badgeWrap.firstChild;
@@ -527,6 +635,7 @@
       ol.appendChild(li);
     });
     document.getElementById('modelsCount').textContent = tops.length ? tops.length + ' models' : '';
+    paintPager('modelPages', 'modelRange', modelPage, modelPer, tops.length, function(p) { modelPage = p; renderModels(); });
     ol.style.display = tops.length ? '' : 'none';
     document.getElementById('emptyModels').classList.toggle('hidden', tops.length > 0);
     if (tops.length && 'IntersectionObserver' in window && !reduce) {
@@ -616,26 +725,31 @@
       g.commands ? fmt(tools) + ' tools · ' + fmt(g.commands) + ' commands · ' + fmtShort(g.saved) + ' saved' : 'tool calls in sessions';
     paintCmdPager(pages);
   }
-  function paintCmdPager(pages) {
-    var total = cmdRows.length, start = total ? (cmdPage - 1) * cmdPer + 1 : 0;
-    document.getElementById('cmdRange').textContent =
-      'Showing ' + start + '–' + Math.min(total, cmdPage * cmdPer) + ' of ' + total;
-    var wrap = document.getElementById('cmdPages');
+  // Shared page-number painter: prev/next plus windowed numbers with
+  // ellipsis. onPick(page) rerenders the owning card. Same controls as the
+  // Command tools pager; Models and Recent reuse it verbatim.
+  function paintPager(wrapId, rangeId, page, per, total, onPick) {
+    var start = total ? (page - 1) * per + 1 : 0;
+    document.getElementById(rangeId).textContent =
+      'Showing ' + start + '–' + Math.min(total, page * per) + ' of ' + total;
+    var wrap = document.getElementById(wrapId);
     wrap.innerHTML = '';
-    function btn(label, page, opts) {
+    var pages = Math.max(1, Math.ceil(total / per));
+    if (page > pages) onPick(pages);
+    function btn(label, next, opts) {
       var b = document.createElement('button');
       b.type = 'button'; b.className = 'pgbtn mono' + (opts && opts.on ? ' on' : '');
       b.textContent = label;
       if (opts && opts.dim) b.setAttribute('aria-label', opts.dim);
       if (opts && opts.off) b.disabled = true;
-      else b.addEventListener('click', function() { cmdPage = page; renderCmd(); });
+      else b.addEventListener('click', function() { onPick(next); });
       wrap.appendChild(b);
       return b;
     }
-    btn('‹', cmdPage - 1, { dim: 'Previous page', off: cmdPage <= 1 });
+    btn('‹', page - 1, { dim: 'Previous page', off: page <= 1 });
     var nums = [];
     for (var p = 1; p <= pages; p++) {
-      if (p === 1 || p === pages || Math.abs(p - cmdPage) <= 1) nums.push(p);
+      if (p === 1 || p === pages || Math.abs(p - page) <= 1) nums.push(p);
       else if (nums[nums.length - 1] !== '…') nums.push('…');
     }
     nums.forEach(function(p) {
@@ -643,9 +757,27 @@
         var s = document.createElement('span');
         s.textContent = '…'; s.style.padding = '0 2px';
         wrap.appendChild(s);
-      } else btn(String(p), p, { on: p === cmdPage });
+      } else btn(String(p), p, { on: p === page });
     });
-    btn('›', cmdPage + 1, { dim: 'Next page', off: cmdPage >= pages });
+    btn('›', page + 1, { dim: 'Next page', off: page >= pages });
+  }
+  function paintCmdPager(pages) {
+    var total = cmdRows.length;
+    if (cmdPage > pages) cmdPage = pages;
+    paintPager('cmdPages', 'cmdRange', cmdPage, cmdPer, total, function(p) { cmdPage = p; renderCmd(); });
+  }
+  function bindPerPage(sel, get, set, render) {
+    Array.prototype.forEach.call(document.querySelectorAll(sel + ' [data-pp]'), function(btn) {
+      if (btn.dataset.bound) return;
+      btn.dataset.bound = '1';
+      btn.addEventListener('click', function() {
+        if (Number(btn.dataset.pp) === get()) return;
+        Array.prototype.forEach.call(document.querySelectorAll(sel + ' [data-pp]'), function(b) { b.classList.remove('on'); });
+        btn.classList.add('on');
+        set(Number(btn.dataset.pp));
+        render();
+      });
+    });
   }
   function bindCmdTable() {
     if (bindCmdTable.done) return;
@@ -659,17 +791,10 @@
         renderCmd();
       });
     });
-    Array.prototype.forEach.call(document.querySelectorAll('#cmdPager [data-pp]'), function(btn) {
-      btn.addEventListener('click', function() {
-        Array.prototype.forEach.call(document.querySelectorAll('#cmdPager [data-pp]'), function(b) { b.classList.remove('on'); });
-        btn.classList.add('on');
-        cmdPer = Number(btn.dataset.pp);
-        cmdPage = 1;
-        renderCmd();
-      });
-    });
+    bindPerPage('#cmdPager', function() { return cmdPer; }, function(n) { cmdPer = n; cmdPage = 1; }, renderCmd);
+    bindPerPage('section[aria-label="All models"]', function() { return modelPer; }, function(n) { modelPer = n; modelPage = 1; }, renderModels);
+    bindPerPage('section[aria-label="Recent requests"]', function() { return recentPer; }, function(n) { recentPer = n; recentPage = 1; }, renderRecent);
   }
-
   function fmtMs(ms) {
     if (ms < 1000) return Math.round(ms) + 'ms';
     return (ms / 1000).toFixed(1) + 's';
@@ -783,7 +908,19 @@
       if (pel && pair[1]) { pel.textContent = pair[1]; pel.title = pair[1]; }
     });
     countUp(document.getElementById('saved'), d.savedUsd || 0, true);
-    document.getElementById('co2').textContent = '~' + (d.co2g || 0).toFixed(1) + 'g';
+    (function() {
+      var lev = (d.usd || 0) ? (d.savedUsd || 0) / d.usd : 0;
+      var z = levZone(lev);
+      var note = document.getElementById('usdNote');
+      note.innerHTML = ((d.priced ? 'per-model price table' : 'incl. default pricing') + (fx.live ? ' · fx live' : ' · fx snapshot') + ' · ') + zoneIcon(z[0], z[2]) + ' ' + z[1];
+      note.title = 'Cache leverage x' + lev.toFixed(1) + ' — cache savings per $1 spent, vs full input price';
+    })();
+    (function() {
+      var z = co2Zone(d.co2g || 0);
+      var el = document.getElementById('co2');
+      el.innerHTML = '~' + (d.co2g || 0).toFixed(1) + 'g ' + zoneIcon(z[0], z[2]);
+      el.title = z[1] + ' footprint (est.)';
+    })();
     (function() {
       var el = document.getElementById('co2');
       var card = el ? el.closest('div.rounded-xl') : null;
@@ -793,16 +930,39 @@
       card.addEventListener('mousemove', function(ev) { moveTip(ev.clientX, ev.clientY); });
       card.addEventListener('mouseleave', hideTip);
     })();
+    (function() {
+      var el = document.getElementById('saved');
+      var card = el ? el.closest('div.rounded-xl') : null;
+      if (!card || card.dataset.savetip) return;
+      card.dataset.savetip = '1';
+      card.addEventListener('mouseenter', function(ev) { showTip(tipSavedHTML(), ev.clientX, ev.clientY); });
+      card.addEventListener('mousemove', function(ev) { moveTip(ev.clientX, ev.clientY); });
+      card.addEventListener('mouseleave', hideTip);
+    })();
     var share = total ? Math.round((t.cacheRead + t.cacheWrite) / total * 100) : 0;
-    document.getElementById('cacheShare').textContent = share + '%';
+    var shareZ = shareZone(share);
+    document.getElementById('cacheShare').innerHTML = share + '% ' + zoneIcon(shareZ[0], shareZ[2]);
+    document.getElementById('cacheShare').title = shareZ[1] + ' cache share';
     var shareOf = function(b) { var s = dayTotal(b); return s ? ((b.cacheRead || 0) + (b.cacheWrite || 0)) / s * 100 : 0; };
     var keys = Object.keys(byDay).sort(), cPct = 0, pPct = 0, cn = 0, pn = 0;
     keys.slice(-7).forEach(function(k) { cPct += shareOf(byDay[k]); cn++; });
     keys.slice(-14, -7).forEach(function(k) { pPct += shareOf(byDay[k]); pn++; });
     var pp = (cn ? cPct / cn : 0) - (pn ? pPct / pn : 0);
     var cd = document.getElementById('cacheDelta');
-    cd.textContent = (pp >= 0 ? '▲ +' : '▼ ') + Math.abs(pp).toFixed(1) + 'pp vs prior 7d';
-    cd.className = 'pill mono ' + (Math.abs(pp) < 0.05 ? 'flat' : (pp > 0 ? 'good' : 'bad'));
+    var cs = document.getElementById('cacheShare');
+    cs.dataset.share = String(share);
+    cs.dataset.pp = pp.toFixed(1);
+    (function() {
+      var el = document.getElementById('cacheShare');
+      var card = el ? el.closest('div.rounded-xl') : null;
+      if (!card || card.dataset.sharetip) return;
+      card.dataset.sharetip = '1';
+      card.addEventListener('mouseenter', function(ev) {
+        showTip(tipShareHTML(Number(el.dataset.share || 0), Number(el.dataset.pp || 0)), ev.clientX, ev.clientY);
+      });
+      card.addEventListener('mousemove', function(ev) { moveTip(ev.clientX, ev.clientY); });
+      card.addEventListener('mouseleave', hideTip);
+    })();
 
     (function() {
       var el = document.getElementById('ticker');
@@ -833,33 +993,38 @@
     }
     observe();
   }
-
   function renderRecent() {
     var body = document.getElementById('recent');
     body.innerHTML = '';
-    var rows = (DATA.recent || []).slice(0, 13);
+    var all = DATA.recent || [];
+    var recentPages = Math.max(1, Math.ceil(all.length / recentPer));
+    if (recentPage > recentPages) recentPage = recentPages;
+    var recentStart = (recentPage - 1) * recentPer;
+    var rows = all.slice(recentStart, recentStart + recentPer);
     rows.forEach(function(r, i) {
       var v = vendorOf(r.m);
       var tr = document.createElement('tr');
-      tr.className = 'rrow' + (i < rows.length - 1 ? ' rowline' : '');
+      tr.className = 'rrow' + (i < Math.min(all.length - recentStart, recentPer) - 1 ? ' rowline' : '');
       var dot = '<span style="display:inline-block;width:8px;height:8px;border-radius:99px;background:' + v.color + ';margin-right:8px"></span>';
-      tr.innerHTML = '<td class="py-2.5 pr-3 truncate" style="max-width: 180px"></td>' +
+      tr.innerHTML = '<td class="py-2.5 pr-3 truncate" style="min-width: 0"></td>' +
+        '<td class="text-right py-2.5 pr-3 whitespace-nowrap"></td>' +
         '<td class="text-right py-2.5 pr-3 whitespace-nowrap"></td>' +
         '<td class="text-right py-2.5 whitespace-nowrap" style="color: var(--dim)"></td>';
       var tds = tr.children;
       tds[0].innerHTML = dot + '<span></span>';
       tds[0].querySelector('span:last-child').textContent = r.m;
-      tds[0].title = r.m;
       tds[1].innerHTML = '<span style="color:#fb923c"></span> <span style="color:var(--accent)"></span>';
-      tds[1].children[0].textContent = fmt(r.i) + '\u2191';
-      tds[1].children[1].textContent = fmt(r.o) + '\u2193';
-      tds[1].title = fmt(r.i) + ' in / ' + fmt(r.o) + ' out';
-      tds[2].textContent = relTime(r.t);
+      tds[1].children[0].textContent = fmt(r.i) + '↑';
+      tds[1].children[1].textContent = fmt(r.o) + '↓';
+      tds[2].textContent = speedText(r);
+      tds[3].textContent = relTime(r.t);
+      hoverRecent(tr, r);
       body.appendChild(tr);
     });
-    document.getElementById('recentCount').textContent = rows.length ? rows.length + ' requests' : '';
-    document.getElementById('recentTable').style.display = rows.length ? '' : 'none';
-    document.getElementById('emptyRecent').classList.toggle('hidden', rows.length > 0);
+    document.getElementById('recentCount').textContent = all.length ? all.length + ' requests' : '';
+    paintPager('recentPages', 'recentRange', recentPage, recentPer, all.length, function(p) { recentPage = p; renderRecent(); });
+    document.getElementById('recentTable').style.display = all.length ? '' : 'none';
+    document.getElementById('emptyRecent').classList.toggle('hidden', all.length > 0);
   }
 
   var seen = new WeakSet();

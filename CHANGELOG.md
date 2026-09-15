@@ -1,3 +1,11 @@
+## v2.17.0
+ - Gain dashboard: Models card shows top 10 with pager; Recent requests pages at 15 per page (Command-tools pattern).
+ - Both cards gain the 10/15/25/50 per-page picker (shared helper); footers pin to card bottom and always render (empty reads `Showing 0-0 of 0`); cards grow dynamically and split 50/50.
+ - Model tooltips show per-bucket cost in parentheses plus a costed total; tooltips widened with tabular numerals.
+ - Recent requests gains a Time column (`5.5s ⚡61/s`: elapsed time + output tok/s, legend in subtitle) and per-row hover tooltips (exact timestamp, input/output/cache/elapsed/speed).
+ - Savings bento gains Lucide zone faces (CO2, leverage, cache share) with matching hover tooltips; CO2 tooltip trimmed to zone + energy.
+ - Gain dashboard: version chip moves from footer to settings dialog description; served process titles itself `tersio gain` so it reads as tersio in `ps`/Activity Monitor.
+
 ## v2.16.0
  - Update and install output condensed: the delegated `tersio update` payload runs quiet (no repeated banner, no per-file writes), the parent owns one plan line and one closing summary. Failures still surface per add-on.
  - Install is non-technical and minimal: `[1/8]` numbering and absolute paths gone — each add-on prints one plain line (`Ponytail — refresh plugin`, `RTK — download binary and wire into OMP`, …). File paths move behind `--verbose`. RTK dry-run stays offline (no GitHub API probe, so rate limits no longer print `[fail]`).

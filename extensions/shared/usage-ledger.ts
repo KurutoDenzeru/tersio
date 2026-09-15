@@ -73,6 +73,9 @@ export interface RecentRequest {
   i: number;
   o: number;
   t: number;
+  d?: number;
+  cr?: number;
+  cw?: number;
 }
 
 export interface SessionTokens {
@@ -89,6 +92,12 @@ export interface SessionTokens {
 
 function zeroBreakdown(): TokenBreakdown {
   return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+}
+// Message-level generation time in ms. OMP writes `duration` (ms, float);
+// codex token_count rows carry none. Non-positive/non-finite → undefined
+// so renderers print – instead of a fake 0.0s.
+function durOf(v: unknown): number | undefined {
+  return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : undefined;
 }
 
 function addInto(into: TokenBreakdown, u: { input?: unknown; output?: unknown; cacheRead?: unknown; cacheWrite?: unknown }): void {
@@ -155,8 +164,7 @@ export function importSessionTokens(): SessionTokens {
   let codexProvider: string | null = null;
   const recent: RecentRequest[] = [];
   // Rows from before the reset watermark (and rows with no usable timestamp,
-  // which may predate it) stay out of every derived statistic.
-  function ingest(model: string, usage: Record<string, unknown>, ts: string | number | undefined): boolean {
+  function ingest(model: string, usage: Record<string, unknown>, ts: string | number | undefined, durMs?: unknown): boolean {
     const ms = ts === undefined ? NaN : typeof ts === 'number' ? ts : Date.parse(ts);
     if (watermark > 0 && (!Number.isFinite(ms) || ms < watermark)) return false;
     addInto(totals, usage);
@@ -164,7 +172,7 @@ export function importSessionTokens(): SessionTokens {
     addInto(byModel[model], usage);
     byModelMessages[model] = (byModelMessages[model] ?? 0) + 1;
     const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.floor(v) : 0);
-    if (Number.isFinite(ms)) recent.push({ m: model, i: num(usage.input), o: num(usage.output), t: ms });
+    if (Number.isFinite(ms)) recent.push({ m: model, i: num(usage.input), o: num(usage.output), t: ms, d: durOf(durMs), cr: num(usage.cacheRead), cw: num(usage.cacheWrite) });
     const day = ts !== undefined ? dayKey(ts) : null;
     if (day) {
       byDay[day] ??= zeroBreakdown();
@@ -190,7 +198,7 @@ export function importSessionTokens(): SessionTokens {
       try {
         const row = JSON.parse(line) as {
           timestamp?: string | number;
-          message?: { role?: unknown; model?: unknown; usage?: Record<string, unknown>; content?: Array<{ type?: unknown; name?: unknown; arguments?: unknown }> };
+          message?: { role?: unknown; model?: unknown; usage?: Record<string, unknown>; duration?: unknown; content?: Array<{ type?: unknown; name?: unknown; arguments?: unknown }> };
         };
         const codexRow = row as { type?: unknown; payload?: { type?: unknown; model_provider?: unknown; info?: { last_token_usage?: Record<string, unknown> } } };
         const payload = codexRow.payload;
@@ -213,7 +221,7 @@ export function importSessionTokens(): SessionTokens {
         const msg = row.message;
         if (!msg || msg.role !== 'assistant' || !msg.usage) continue;
         const model = typeof msg.model === 'string' && msg.model ? msg.model : 'unknown';
-        const counted = ingest(model, msg.usage, row.timestamp);
+        const counted = ingest(model, msg.usage, row.timestamp, msg.duration);
         if (counted && typeof msg.usage.cost === 'number' && Number.isFinite(msg.usage.cost)) costMeasured += msg.usage.cost;
         if (!counted) continue;
         for (const part of msg.content ?? []) {
@@ -252,12 +260,19 @@ export { DEFAULT_PRICE, priceFor, refreshPricesIfStale };
 export { co2GramsFor, energyWhFor };
 export type { ModelPrice };
 
-export function usdCost(t: TokenBreakdown, model?: string): { usd: number; priced: boolean } {
+export function usdCost(t: TokenBreakdown, model?: string): { usd: number; priced: boolean; buckets: { input: number; output: number; cacheRead: number; cacheWrite: number } } {
   const { price, known } = model ? priceFor(model) : { price: DEFAULT_PRICE, known: false };
   const m = 1 / 1_000_000;
+  const buckets = {
+    input: t.input * price.input * m,
+    output: t.output * price.output * m,
+    cacheRead: t.cacheRead * price.cacheRead * m,
+    cacheWrite: t.cacheWrite * price.cacheWrite * m,
+  };
   return {
-    usd: (t.input * price.input + t.output * price.output + t.cacheRead * price.cacheRead + t.cacheWrite * price.cacheWrite) * m,
+    usd: buckets.input + buckets.output + buckets.cacheRead + buckets.cacheWrite,
     priced: model ? known : false,
+    buckets,
   };
 }
 

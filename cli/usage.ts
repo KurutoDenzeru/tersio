@@ -27,6 +27,7 @@ export interface UsageReport {
   tokens: TokenBreakdown;
   byModel: Record<string, TokenBreakdown>;
   byModelUsd: Record<string, number>;
+  byModelBucketUsd: Record<string, { input: number; output: number; cacheRead: number; cacheWrite: number }>;
   byModelMessages: Record<string, number>;
   byDay: Record<string, TokenBreakdown>;
   byDayModel: Record<string, Record<string, number>>;
@@ -57,12 +58,14 @@ export function summarizeUsage(rows: UsageRow[]): UsageReport {
   let priced = true;
   let savedUsd = 0;
   const byModelUsd: Record<string, number> = {};
+  const byModelBucketUsd: Record<string, { input: number; output: number; cacheRead: number; cacheWrite: number }> = {};
   let co2g = 0;
   let energyWh = 0;
   for (const [model, t] of Object.entries(session.byModel)) {
     const c = usdCost(t, model);
     usd += c.usd;
     byModelUsd[model] = c.usd;
+    byModelBucketUsd[model] = c.buckets;
     co2g += co2GramsFor(model, t.output);
     energyWh += energyWhFor(model, t.output);
     if (!c.priced) priced = false;
@@ -79,6 +82,7 @@ export function summarizeUsage(rows: UsageRow[]): UsageReport {
     tokens: session.totals,
     byModel: session.byModel,
     byModelUsd,
+    byModelBucketUsd,
     byModelMessages: session.byModelMessages,
     byDay: session.byDay,
     byDayModel: session.byDayModel,

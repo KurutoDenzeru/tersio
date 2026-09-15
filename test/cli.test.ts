@@ -450,5 +450,9 @@ test("gain --export includes the reset control and empty states", () => {
   assert.match(body, /data-theme-val="system"/);
   assert.match(body, /data-lucide="monitor"/);
   assert.match(body, /id="emptyModels"/);
+  assert.match(body, /id="modelPages"/);
+  assert.match(body, /id="recentPages"/);
+  assert.match(body, /ranked by tokens \/ top 10/);
+  assert.match(body, /byModelBucketUsd/);
   rmSync(dir, { recursive: true, force: true });
 });
