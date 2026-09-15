@@ -1,4 +1,4 @@
-![Banner](/TersioBanner.webp)
+![Banner](/assets/Banner.webp)
 
 # ✂️ Tersio — Token-saving OMP Add-ons
 
@@ -8,7 +8,7 @@
 [![Build](https://shieldcn.dev/github/ci/KurutoDenzeru/tersio.svg?variant=branded&size=xs&logo=githubactions&label=Build)](https://github.com/KurutoDenzeru/tersio/actions)
 [![MIT](https://shieldcn.dev/badge/license-MIT-2563eb.svg?variant=branded&size=xs&logo=opensourceinitiative)](./LICENSE)
 
-Terse replies, compact shell output, and minimal code decisions for [Oh My Pi (OMP)](https://github.com/can1357/oh-my-pi) — one-command combo presets.
+ Terse replies, compact shell output, and minimal code decisions for [Oh My Pi (OMP)](https://github.com/can1357/oh-my-pi) — one-command combo presets.
 
 ## ⚡ Getting Started
 
@@ -79,6 +79,22 @@ Measured savings against the same workload without the modes. Token counts are r
 | Shell output, rtk — `npm test` (passthrough) — BPE tok | 2,597 → 2,577 tok | **−0.8%** |
 
 Break-even math, balanced preset (caveman full + rtk + ponytail): a mixed turn costs 941 tok baseline vs 399 with Tersio (0.42×, **−57.6% per turn**). Overhead repays in turn 1 with the bundled floor (464 tok); turn 4 with the real installed Ponytail plugin (v4.9.0, 1,264 tok). RTK concentrates savings where noise lives — hook-wired sessions record **−97.5% on summarized test suites** (rtk `history.db`, 4 runs).
+
+## 📈 Gain Dashboard
+
+`tersio gain --open` serves a local dashboard (127.0.0.1 only) that charts your own savings from `~/.omp/plugins/tersio-usage.jsonl`. Three views:
+
+**Live feed and savings.** Token throughput, cost, savings bento, and recent activity — the top of the dashboard.
+
+![Gain dashboard: live token feed, cost, savings, and activity](/assets/GainHero.webp)
+
+**Top models and recent requests.** Per-model cost breakdown plus the last requests with elapsed time and token speed.
+
+![Gain dashboard: top models with per-model cost, recent requests with elapsed time and token speed](/assets/GainModels.webp)
+
+**Command tools.** Token savings, average rate, and timing per shell tool.
+
+![Gain dashboard: command tools with token savings, average rate, and timing](/assets/GainTools.webp)
 
 ## 🖥️ CLI
 
