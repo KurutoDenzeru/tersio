@@ -68,6 +68,12 @@ export interface TokenBreakdown {
   cacheWrite: number;
 }
 
+// Run outcome for one assistant message. OMP writes stopReason on every turn
+// (toolUse | stop | aborted | error) and, when the request failed, an HTTP
+// errorStatus plus errorMessage. `toolUse` is an ordinary turn that handed off
+// to tools, so it reads as completed rather than as a distinct state.
+export type RunStatus = 'completed' | 'aborted' | 'error';
+
 export interface RecentRequest {
   m: string;
   i: number;
@@ -76,6 +82,13 @@ export interface RecentRequest {
   d?: number;
   cr?: number;
   cw?: number;
+  // Measured spend for this message, from the transcript's usage.cost.total.
+  // Left undefined when the host recorded no cost — never backfilled with an
+  // estimate, so a measured figure is never mistaken for a modeled one.
+  usd?: number;
+  st: RunStatus;
+  code?: number;
+  note?: string;
 }
 
 export interface SessionTokens {
@@ -98,6 +111,35 @@ function zeroBreakdown(): TokenBreakdown {
 // so renderers print – instead of a fake 0.0s.
 function durOf(v: unknown): number | undefined {
   return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : undefined;
+}
+
+// Measured cost for one message. OMP writes usage.cost as
+// { input, output, cacheRead, cacheWrite, total }; a bare number shows up in
+// older fixtures. Anything else means "not recorded" — deliberately not 0, so
+// the dashboard can tell a genuinely free run from an unrecorded one.
+function costOf(usage: Record<string, unknown>): number | undefined {
+  const c = usage.cost;
+  if (typeof c === 'number') return Number.isFinite(c) ? c : undefined;
+  if (c && typeof c === 'object') {
+    const total = (c as { total?: unknown }).total;
+    if (typeof total === 'number' && Number.isFinite(total)) return total;
+  }
+  return undefined;
+}
+
+// First line only: real messages carry multi-line provider errors, and this
+// ends up in a tooltip.
+function statusOf(msg: { stopReason?: unknown; errorStatus?: unknown; errorMessage?: unknown; isError?: unknown }): { st: RunStatus; code?: number; note?: string } {
+  const stop = typeof msg.stopReason === 'string' ? msg.stopReason : '';
+  const note = typeof msg.errorMessage === 'string' && msg.errorMessage.trim()
+    ? msg.errorMessage.split('\n')[0].trim().slice(0, 180)
+    : undefined;
+  if (stop === 'error' || msg.isError === true) {
+    const code = typeof msg.errorStatus === 'number' && Number.isFinite(msg.errorStatus) ? msg.errorStatus : undefined;
+    return { st: 'error', code, note };
+  }
+  if (stop === 'aborted') return { st: 'aborted', note };
+  return { st: 'completed', note };
 }
 
 function addInto(into: TokenBreakdown, u: { input?: unknown; output?: unknown; cacheRead?: unknown; cacheWrite?: unknown }): void {
@@ -144,6 +186,11 @@ function walkJsonl(dir: string, out: string[], cap: number): void {
   }
 }
 
+// Recent requests are their own full-width table in the dashboard, so this is
+// a payload bound rather than a "few highlights" bound. Rows are small
+// (model, tokens, timing, status), so a few hundred cost little to ship.
+const RECENT_LIMIT = 200;
+
 export function importSessionTokens(): SessionTokens {
   const watermark = readResetWatermark();
   const byModel: Record<string, TokenBreakdown> = {};
@@ -164,7 +211,7 @@ export function importSessionTokens(): SessionTokens {
   let codexProvider: string | null = null;
   const recent: RecentRequest[] = [];
   // Rows from before the reset watermark (and rows with no usable timestamp,
-  function ingest(model: string, usage: Record<string, unknown>, ts: string | number | undefined, durMs?: unknown): boolean {
+  function ingest(model: string, usage: Record<string, unknown>, ts: string | number | undefined, durMs?: unknown, run?: { st: RunStatus; code?: number; note?: string }): boolean {
     const ms = ts === undefined ? NaN : typeof ts === 'number' ? ts : Date.parse(ts);
     if (watermark > 0 && (!Number.isFinite(ms) || ms < watermark)) return false;
     addInto(totals, usage);
@@ -172,7 +219,22 @@ export function importSessionTokens(): SessionTokens {
     addInto(byModel[model], usage);
     byModelMessages[model] = (byModelMessages[model] ?? 0) + 1;
     const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.floor(v) : 0);
-    if (Number.isFinite(ms)) recent.push({ m: model, i: num(usage.input), o: num(usage.output), t: ms, d: durOf(durMs), cr: num(usage.cacheRead), cw: num(usage.cacheWrite) });
+    if (Number.isFinite(ms)) {
+      const outcome = run ?? { st: 'completed' as RunStatus };
+      recent.push({
+        m: model,
+        i: num(usage.input),
+        o: num(usage.output),
+        t: ms,
+        d: durOf(durMs),
+        cr: num(usage.cacheRead),
+        cw: num(usage.cacheWrite),
+        usd: costOf(usage),
+        st: outcome.st,
+        code: outcome.code,
+        note: outcome.note,
+      });
+    }
     const day = ts !== undefined ? dayKey(ts) : null;
     if (day) {
       byDay[day] ??= zeroBreakdown();
@@ -198,7 +260,19 @@ export function importSessionTokens(): SessionTokens {
       try {
         const row = JSON.parse(line) as {
           timestamp?: string | number;
-          message?: { role?: unknown; model?: unknown; usage?: Record<string, unknown>; duration?: unknown; content?: Array<{ type?: unknown; name?: unknown; arguments?: unknown }> };
+          message?: {
+            role?: unknown;
+            model?: unknown;
+            usage?: Record<string, unknown>;
+            duration?: unknown;
+            completedAt?: unknown;
+            timestamp?: unknown;
+            stopReason?: unknown;
+            errorStatus?: unknown;
+            errorMessage?: unknown;
+            isError?: unknown;
+            content?: Array<{ type?: unknown; name?: unknown; arguments?: unknown }>;
+          };
         };
         const codexRow = row as { type?: unknown; payload?: { type?: unknown; model_provider?: unknown; info?: { last_token_usage?: Record<string, unknown> } } };
         const payload = codexRow.payload;
@@ -221,8 +295,11 @@ export function importSessionTokens(): SessionTokens {
         const msg = row.message;
         if (!msg || msg.role !== 'assistant' || !msg.usage) continue;
         const model = typeof msg.model === 'string' && msg.model ? msg.model : 'unknown';
-        const counted = ingest(model, msg.usage, row.timestamp, msg.duration);
-        if (counted && typeof msg.usage.cost === 'number' && Number.isFinite(msg.usage.cost)) costMeasured += msg.usage.cost;
+        const explicitDur = msg.duration;
+        const computedDur = (typeof msg.completedAt === 'number' && typeof msg.timestamp === 'number') ? msg.completedAt - msg.timestamp : undefined;
+        const counted = ingest(model, msg.usage, row.timestamp, typeof explicitDur === 'number' ? explicitDur : computedDur, statusOf(msg));
+        const measured = costOf(msg.usage);
+        if (counted && measured !== undefined) costMeasured += measured;
         if (!counted) continue;
         for (const part of msg.content ?? []) {
           if (part?.type === 'toolCall' && typeof part.name === 'string' && part.name) {
@@ -234,7 +311,7 @@ export function importSessionTokens(): SessionTokens {
     }
   }
   recent.sort((a, b) => b.t - a.t);
-  return { messages, totals, byModel, byDay, byDayModel, byTool, byModelMessages, costMeasured, recent: recent.slice(0, 25) };
+  return { messages, totals, byModel, byDay, byDayModel, byTool, byModelMessages, costMeasured, recent: recent.slice(0, RECENT_LIMIT) };
 }
 // Lead binary of a shell string: first segment head past `cd` chains and
 // VAR=x assignments (`cd /x && git status` → `git`). Falls back to `bash`.

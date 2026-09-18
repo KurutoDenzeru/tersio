@@ -103,6 +103,22 @@ export function paintStatusBar(ui: UiApi | undefined, key: string, emoji: string
   ui?.setStatus?.(key, theme?.fg ? `${indicator} ${theme.fg('muted', label)}` : `${indicator} ${label}`);
 }
 
+// Which context a status bar should remember to paint through.
+//
+// A UI-less event — a headless child session_start, or a top-level
+// session_start that fires before the TUI attaches — must never become the
+// remembered context. Two things went wrong when it did: the old
+// `ctx || lastCtx` fallback only triggered for a *falsy* ctx, so a truthy
+// ctx without `ui` returned early anyway, and remembering it destroyed the one
+// paintable context we had. Every later bare syncStatus() then went mute —
+// and the bare call is the bridge-listener path, which is how a mode change
+// made by a sibling extension reaches this bar. The symptom is a bar frozen on
+// a preset the session no longer has: it shows "combo BALANCED" while caveman
+// and rtk are already off.
+export function paintableCtx(remembered: ExtensionCtx | undefined, next: ExtensionCtx | undefined): ExtensionCtx | undefined {
+  return next?.ui?.setStatus ? next : remembered;
+}
+
 // Last-wins scan for a custom session entry; skips entries whose value fails
 // to parse so a corrupt write never shadows an older valid one.
 export function lastCustomValue<T>(entries: SessionEntry[] | null | undefined, customType: string, pick: (data: SessionEntry['data']) => T | null | undefined): T | null {

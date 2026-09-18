@@ -48,8 +48,8 @@ test("importer aggregates assistant usage by model and day, skips the rest", () 
     assert.deepEqual(s.byDayModel["2026-09-02"], { "mystery-model-9": 110 });
     assert.deepEqual(s.byModelMessages, { "claude-sonnet-5": 1, "mystery-model-9": 1 });
     assert.deepEqual(s.recent, [
-      { m: "mystery-model-9", i: 100, o: 10, t: Date.parse("2026-09-02T10:01:00.000Z"), d: undefined, cr: 0, cw: 0 },
-      { m: "claude-sonnet-5", i: 1000, o: 200, t: Date.parse("2026-09-01T10:01:00.000Z"), d: 4200, cr: 500, cw: 0 },
+      { m: "mystery-model-9", i: 100, o: 10, t: Date.parse("2026-09-02T10:01:00.000Z"), d: undefined, cr: 0, cw: 0, usd: undefined, st: "completed", code: undefined, note: undefined },
+      { m: "claude-sonnet-5", i: 1000, o: 200, t: Date.parse("2026-09-01T10:01:00.000Z"), d: 4200, cr: 500, cw: 0, usd: 0.012, st: "completed", code: undefined, note: undefined },
     ]);
     assert.equal(s.costMeasured, 0.012);
   } finally {
@@ -84,6 +84,41 @@ test("importer captures codex cache-write tokens with provider label", () => {
     else process.env.TERSIO_SESSIONS_DIR = prevSessions;
     if (prevCodex === undefined) delete process.env.TERSIO_CODEX_DIR;
     else process.env.TERSIO_CODEX_DIR = prevCodex;
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("carries measured cost and run status through to recent rows", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-status-"));
+  writeFileSync(
+    path.join(dir, "s.jsonl"),
+    [
+      // Real OMP shape: usage.cost is an object with a total, and a failed run
+      // carries the HTTP errorStatus plus the provider's message.
+      '{"type":"message","id":"a","timestamp":"2026-09-03T10:00:00.000Z","message":{"role":"assistant","model":"glm-5.3-flash","stopReason":"error","errorStatus":404,"errorMessage":"404 model not found\\nsecond line","usage":{"input":10,"output":2,"cacheRead":0,"cacheWrite":0,"cost":{"input":0.0001,"output":0.0002,"total":0.0003}}}}',
+      '{"type":"message","id":"b","timestamp":"2026-09-03T10:01:00.000Z","message":{"role":"assistant","model":"glm-5.3-flash","stopReason":"aborted","errorMessage":"Interrupted by user","usage":{"input":5,"output":1,"cacheRead":0,"cacheWrite":0,"cost":{"total":0.000187}}}}',
+      '{"type":"message","id":"c","timestamp":"2026-09-03T10:02:00.000Z","message":{"role":"assistant","model":"glm-5.3-flash","stopReason":"toolUse","usage":{"input":7,"output":3,"cacheRead":0,"cacheWrite":0,"cost":{"total":0}}}}',
+    ].join("\n") + "\n",
+    "utf8",
+  );
+  const prev = process.env.TERSIO_SESSIONS_DIR;
+  process.env.TERSIO_SESSIONS_DIR = dir;
+  try {
+    const s = importSessionTokens();
+    assert.equal(s.recent.length, 3);
+    const [c, b, a] = s.recent; // newest first
+    assert.deepEqual([a.st, a.code, a.note], ["error", 404, "404 model not found"], "error keeps its status and first line only");
+    assert.equal(a.usd, 0.0003, "object-shaped usage.cost is read, not skipped");
+    assert.deepEqual([b.st, b.note], ["aborted", "Interrupted by user"]);
+    assert.equal(b.usd, 0.000187);
+    assert.equal(c.st, "completed", "toolUse is an ordinary completed turn");
+    assert.equal(c.usd, 0, "a recorded zero is a measurement, not a missing value");
+    // Previously always 0: the old check required usage.cost to be a number,
+    // but the host writes an object, so measured cost never accumulated.
+    assert.ok(Math.abs(s.costMeasured - (0.0003 + 0.000187)) < 1e-12, `costMeasured was ${s.costMeasured}`);
+  } finally {
+    if (prev === undefined) delete process.env.TERSIO_SESSIONS_DIR;
+    else process.env.TERSIO_SESSIONS_DIR = prev;
     rmSync(dir, { recursive: true, force: true });
   }
 });

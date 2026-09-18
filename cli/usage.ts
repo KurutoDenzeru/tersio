@@ -1,4 +1,5 @@
 // cli/usage.ts — ledger + session-token usage report, tokscale-style.
+import path from 'node:path';
 import {
   co2GramsFor,
   energyWhFor,
@@ -17,6 +18,13 @@ import type { RtkGain } from '../extensions/shared/rtk-gain.ts';
 import { withInteractiveSpinner } from './interactive.ts';
 import { PACKAGE_VERSION } from './common.ts';
 
+// `est` is tersio's modeled cost for the same message. The dashboard shows
+// the measured figure when the host recorded one and falls back to this, so
+// the two are never blended into a single unlabeled number.
+export interface RecentRequestRow extends RecentRequest {
+  est: number;
+}
+
 export interface UsageReport {
   total: number;
   byKind: Record<string, number>;
@@ -32,7 +40,7 @@ export interface UsageReport {
   byDay: Record<string, TokenBreakdown>;
   byDayModel: Record<string, Record<string, number>>;
   byTool: Array<[string, number]>;
-  recent: RecentRequest[];
+  recent: RecentRequestRow[];
   rtkGain: RtkGain;
   usd: number;
   priced: boolean;
@@ -43,6 +51,13 @@ export interface UsageReport {
   version: string;
   paths: { ledger: string; sessions: string };
 }
+// RTK's history is machine-wide, so every project's commands have to reach
+// the table or a busy repo silently stands in for all of them. The old cap of
+// 10 rows ranked by tokens saved hid whole projects whose commands save little
+// to nothing; 2000 groups covers a long history (~1.7k today) while still
+// bounding /data.json.
+const RTK_COMMAND_ROWS = 2000;
+
 export function summarizeUsage(rows: UsageRow[]): UsageReport {
   refreshPricesIfStale();
   const byKind: Record<string, number> = {};
@@ -87,8 +102,11 @@ export function summarizeUsage(rows: UsageRow[]): UsageReport {
     byDay: session.byDay,
     byDayModel: session.byDayModel,
     byTool,
-    recent: session.recent,
-    rtkGain: readRtkGain(10, watermark || undefined),
+    recent: session.recent.map((r) => ({
+      ...r,
+      est: usdCost({ input: r.i, output: r.o, cacheRead: r.cr ?? 0, cacheWrite: r.cw ?? 0 }, r.m).usd,
+    })),
+    rtkGain: readRtkGain(RTK_COMMAND_ROWS, watermark || undefined),
     usd,
     priced,
     savedUsd,
@@ -166,29 +184,31 @@ function printReport(report: UsageReport): void {
       console.log(l);
     }
   }
-  const cmdRows: { name: string; count: number; saved: number | null; avgPct: number | null; avgMs: number | null }[] =
-    report.byTool.map(([tool, n]) => ({ name: tool, count: n, saved: null, avgPct: null, avgMs: null }));
+  const cmdRows: { name: string; project: string; count: number; saved: number | null; avgPct: number | null; avgMs: number | null }[] =
+    report.byTool.map(([tool, n]) => ({ name: tool, project: '', count: n, saved: null, avgPct: null, avgMs: null }));
   for (const r of report.rtkGain.byCommand) {
-    cmdRows.push({ name: r.command, count: r.count, saved: r.saved, avgPct: r.avgPct, avgMs: r.avgMs });
+    cmdRows.push({ name: r.command, project: r.project, count: r.count, saved: r.saved, avgPct: r.avgPct, avgMs: r.avgMs });
   }
   cmdRows.sort((a, b) => b.count - a.count);
   if (cmdRows.length) {
     const g = report.rtkGain;
+    const projects = new Set(g.byCommand.map((r) => r.project).filter(Boolean));
     const scope = g.commands
-      ? `  COMMAND TOOLS  ${fmt(report.byTool.length)} tools · ${fmt(g.commands)} commands · ${fmtShort(g.saved)} saved`
+      ? `  COMMAND TOOLS  ${fmt(report.byTool.length)} tools · ${fmt(g.commands)} commands · ${fmtShort(g.saved)} saved · ${fmt(projects.size)} projects`
       : '  COMMAND TOOLS';
     console.log(scope);
     const top = cmdRows.reduce((m, r) => Math.max(m, r.count), 1);
     const crows = cmdRows.slice(0, 15).map((r, idx) => [
       String(idx + 1),
       r.name,
+      r.project ? path.basename(r.project) : '–',
       fmt(r.count),
       r.saved === null ? '–' : fmtShort(r.saved),
       r.avgPct === null ? '–' : `${r.avgPct.toFixed(1)}%`,
       r.avgMs === null ? '–' : fmtMs(r.avgMs),
       bar(r.count / top, 8),
     ]);
-    for (const l of table(['#', 'Tool/Command', 'Count', 'Saved', 'Avg%', 'Time', 'Impact'], crows, [true, false, true, true, true, true, false], 30)) {
+    for (const l of table(['#', 'Tool/Command', 'Project', 'Count', 'Saved', 'Avg%', 'Time', 'Impact'], crows, [true, false, false, true, true, true, true, false], 30)) {
       console.log(l);
     }
   }

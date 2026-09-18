@@ -41,6 +41,18 @@
     --danger: #f87171; --danger-border: rgba(248, 113, 113, .3); --danger-soft: rgba(248, 113, 113, .07);
     --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.55);
   }
+  html[data-theme="dark"] .modelsSection {
+    --panel: #ffffff;
+    --ink: #18181b;
+    --dim: #52525b;
+    --line: rgba(24, 24, 27, .12);
+    --track: rgba(24, 24, 27, .08);
+    --cell-0: rgba(24, 24, 27, .07);
+    --accent-soft: rgba(4, 120, 87, .12);
+    --accent: #047857;
+    color-scheme: light;
+  }
+  html[data-theme="dark"] .modelsSection .brandmark.placeholder { background: #fff !important; color: #000 !important; }
   .ticker { animation: tick 36s linear infinite; will-change: transform; }
   .ticker:hover { animation-play-state: paused; }
   @keyframes tick { from { transform: translateX(0); } to { transform: translateX(-50%); } }
@@ -58,6 +70,16 @@
   .pill { display: inline-flex; align-items: center; gap: 4px; border-radius: 999px; padding: 3px 10px; font-size: 11px; white-space: nowrap; }
   .pill.good { background: var(--accent-soft); color: var(--accent); }
   .pill.bad { background: rgba(248, 113, 113, .12); color: #f87171; }
+  /* .pill.flat was referenced by the est. / served chips but never defined, so
+     they rendered as bare text. Muted fill matches the badge family. */
+  .pill.flat { background: var(--track); color: var(--dim); }
+  /* shadcn/ui badge variants, used for per-request run status. Neutral by
+     default so the destructive (error) badge is the only thing that shouts. */
+  .badge { display: inline-flex; align-items: center; border-radius: 999px; padding: 2px 9px; font-size: 11px; line-height: 1.55; white-space: nowrap; border: 1px solid transparent; }
+  .badge.secondary { background: var(--track); color: var(--dim); }
+  .badge.outline { border-color: var(--line); color: var(--ink); background: transparent; }
+  .badge.destructive { background: var(--danger-soft); color: var(--danger); border-color: var(--danger-border); }
+  #tip .tnote { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); font-size: 11px; line-height: 1.5; color: var(--dim); white-space: normal; word-break: break-word; }
   .zface { display: inline-block; vertical-align: -2px; width: 14px; height: 14px; }
   .zface.good { color: var(--accent); }
   .zface.warn { color: #fbbf24; }
@@ -101,7 +123,7 @@
   .seg button.on { background: var(--accent-soft); color: var(--ink); }
   .seg button:not(.on):hover { color: var(--ink); }
   .mrow { transition: background .25s; }
-  .mrow:hover { box-shadow: var(--shadow-xs); }
+  .mrow:hover { background: var(--track); box-shadow: var(--shadow-xs); }
   .stripcell { transition: background .25s; }
   .stripcell:hover { box-shadow: var(--shadow-xs); }
   button, .tilt, .cell, .stripcell { cursor: pointer; }
@@ -122,6 +144,7 @@
   .cell.l3 { background: var(--cell-3); } .cell.l4 { background: var(--cell-4); }
   .brandmark { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; flex-shrink: 0; color: #fff; }
   .brandmark.placeholder { background: transparent !important; border: 1px solid var(--line); color: var(--dim); }
+html[data-theme="dark"] .brandmark.placeholder { background: #fff !important; color: #000 !important; }
   .brandmark img { width: 18px; height: 18px; }
   .brandmark svg { width: 18px; height: 18px; display: block; }
   .brandmark.sm { width: 28px; height: 28px; border-radius: 8px; }
@@ -154,7 +177,7 @@
   .scrollarea::-webkit-scrollbar-thumb { background: var(--line); border-radius: 99px; }
   .scrollarea::-webkit-scrollbar-track { background: transparent; }
   .rrow { transition: background .2s; cursor: pointer; }
-  .rrow:hover { box-shadow: var(--shadow-xs); }
+  .rrow:hover { background: var(--track); box-shadow: var(--shadow-xs); }
   #recentTable thead th { position: sticky; top: 0; background: var(--panel); z-index: 1; }
   #tip .tvr { flex-shrink: 0; white-space: nowrap; font-variant-numeric: tabular-nums; }
   .modelcard { transition: background .25s; }

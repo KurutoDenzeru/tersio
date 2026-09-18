@@ -1,11 +1,23 @@
+# Node.js
 node
-.DS_Store
 node_modules
-dist
 *.tsbuildinfo
+
+# macOS
+.DS_Store
+
+# Build output
+dist
+graphify-out/
+temp/
+
+# Generated JavaScript files
 tersio.js
 cli/**/*.js
 extensions/**/*.js
+
+# Test artifacts
 test/definitely-missing-home/.omp/logs/
-graphify-out/
-temp/
+
+# Project-specific files
+.commandcode

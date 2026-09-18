@@ -193,20 +193,18 @@
   </section>
 
   <!-- Top models: 3 columns -->
-  <section class="mt-8" aria-label="Top models">
+  <section class="mt-8 modelsSection" aria-label="Top models">
     <div class="flex items-center gap-2 mb-1">
       <i data-lucide="cpu" class="size-4" style="color: var(--accent)"></i>
       <h2 class="display font-bold tracking-tight text-xl truncate min-w-0">Top models</h2>
       <span class="mono text-xs ml-auto" style="color: var(--dim)">usage across sessions</span>
     </div>
-    <p class="mono text-xs mb-4" style="color: var(--dim)">week-over-week vs prior 7 days</p>
     <div class="grid grid-cols-1 md:grid-cols-3 gap-3" id="modelCards"></div>
   </section>
 
 
-  <!-- Models + recent: twin cards -->
-  <div class="rise grid grid-cols-12 grid-flow-dense gap-3 mt-8">
-  <section class="col-span-12 lg:col-span-6 rounded-xl p-5 overflow-hidden flex flex-col" style="border: 1px solid var(--line); background: var(--panel)" aria-label="All models">
+  <!-- Models: own full-width section (split out of the old 50/50 twin card) -->
+<section class="rise mt-8 rounded-xl p-5 overflow-hidden flex flex-col modelsSection" style="border: 1px solid var(--line); background: var(--panel)" aria-label="All models">
     <div class="flex items-center gap-2 mb-1">
       <i data-lucide="layers" class="size-4" style="color: var(--accent)"></i>
       <h2 class="display font-bold tracking-tight text-xl truncate min-w-0">Models</h2>
@@ -230,22 +228,29 @@
       <p class="empty-desc">Model token totals will appear here once sessions report tokens.</p>
     </div>
   </section>
-  <section class="col-span-12 lg:col-span-6 rounded-xl p-5 overflow-hidden flex flex-col" style="border: 1px solid var(--line); background: var(--panel)" aria-label="Recent requests">
+
+  <!-- Recent requests: full-width, sitting with the other per-request views
+       right after Models. When is absolutely stamped, so the column reads as
+       a real timeline and sorts honestly against Time. -->
+  <section class="rise mt-8 rounded-xl p-5 overflow-hidden flex flex-col" style="border: 1px solid var(--line); background: var(--panel); scroll-margin-top: 90px" aria-label="Recent requests">
     <div class="flex items-center gap-2 mb-1">
       <i data-lucide="history" class="size-4" style="color: var(--accent)"></i>
       <h2 class="display font-bold tracking-tight text-xl truncate min-w-0">Recent requests</h2>
       <span class="mono text-xs ml-auto truncate shrink-0" style="color: var(--dim)" id="recentCount"></span>
     </div>
-    <p class="mono text-xs mb-4 truncate" style="color: var(--dim)" title="Time = elapsed time with the model; Speed = output tokens per second">latest assistant messages · ⏱ elapsed · ⚡ tok/s</p>
-    <div class="scrollarea overflow-x-auto">
+    <p class="mono text-xs mb-4 truncate" style="color: var(--dim)" title="Time = elapsed time with the model; Speed = output tokens per second">latest assistant messages · local time · sort any column · cost is measured when the host recorded it</p>
+    <div class="scrollarea overflow-x-auto" style="max-height: 560px">
       <table class="w-full mono text-[13px]" id="recentTable">
-        <colgroup><col><col style="width:120px"><col style="width:110px"><col style="width:80px"></colgroup>
+        <colgroup><col><col style="width:96px"><col style="width:96px"><col style="width:120px"><col style="width:116px"><col style="width:120px"><col style="width:158px"></colgroup>
         <thead>
           <tr class="text-left text-[11px] uppercase tracking-[0.14em]" style="color: var(--dim)">
-            <th class="font-normal py-2 pr-3">Model</th>
-            <th class="font-normal text-right py-2 pr-3">In / Out</th>
-            <th class="font-normal text-right py-2 pr-3" title="Elapsed time with the model / output token speed">Time</th>
-            <th class="font-normal text-right py-2">When</th>
+            <th class="font-normal py-2 pr-3" aria-sort="none"><button class="thsort" data-sort="model">Model <span class="arr">⇅</span></button></th>
+            <th class="font-normal text-right py-2 pr-3" aria-sort="none"><button class="thsort num" data-sort="input">Input <span class="arr">⇅</span></button></th>
+            <th class="font-normal text-right py-2 pr-3" aria-sort="none"><button class="thsort num" data-sort="output">Output <span class="arr">⇅</span></button></th>
+            <th class="font-normal text-right py-2 pr-3" aria-sort="none"><button class="thsort num" data-sort="time" title="Elapsed time with the model / output token speed">Time <span class="arr">⇅</span></button></th>
+            <th class="font-normal py-2 pr-3" aria-sort="none"><button class="thsort" data-sort="status">Status <span class="arr">⇅</span></button></th>
+            <th class="font-normal text-right py-2 pr-3" aria-sort="none"><button class="thsort num" data-sort="cost">Cost <span class="arr">⇅</span></button></th>
+            <th class="font-normal text-right py-2" aria-sort="none"><button class="thsort num" data-sort="when" title="Local timestamp: month day, hour:minute:second">When <span class="arr">⇅</span></button></th>
           </tr>
         </thead>
         <tbody id="recent"></tbody>
@@ -260,30 +265,33 @@
       <span id="recentRange">Showing 0 of 0</span>
       <span class="seg flex items-center gap-1 p-1 rounded-[10px]" style="border: 1px solid var(--line)" role="group" aria-label="Requests per page">
         <button data-pp="10" class="px-2.5 py-1" role="button">10</button>
-        <button data-pp="15" class="on px-2.5 py-1" role="button">15</button>
-        <button data-pp="25" class="px-2.5 py-1" role="button">25</button>
+        <button data-pp="15" class="px-2.5 py-1" role="button">15</button>
+        <button data-pp="25" class="on px-2.5 py-1" role="button">25</button>
         <button data-pp="50" class="px-2.5 py-1" role="button">50</button>
       </span>
       <span class="ml-auto flex items-center gap-1" id="recentPages" role="navigation" aria-label="Recent pages"></span>
     </div>
   </section>
-  </div>
 
   <!-- Command tools: own card, header outside like Models -->
   <section id="tools" class="rise mt-8 rounded-xl p-5 overflow-hidden" style="border: 1px solid var(--line); background: var(--panel); scroll-margin-top: 90px" aria-label="Command tools">
     <div class="flex items-center gap-2 mb-1">
       <i data-lucide="terminal" class="size-4" style="color: var(--accent)"></i>
       <h2 class="display font-bold tracking-tight text-xl truncate min-w-0">Command tools</h2>
-      <span class="mono text-xs ml-auto truncate min-w-0" style="color: var(--dim)" id="toolsScope">tool calls in sessions</span>
+      <div class="flex items-center gap-2 ml-auto min-w-0">
+        <select id="cmdProject" class="mono text-xs px-2 py-1.5 rounded-[10px]" style="border: 1px solid var(--line); background: var(--panel); color: var(--ink); max-width: 190px" aria-label="Filter command tools by project"></select>
+        <span class="mono text-xs truncate min-w-0" style="color: var(--dim)" id="toolsScope">tool calls in sessions</span>
+      </div>
     </div>
     <p class="mono text-xs mb-4 truncate" style="color: var(--dim)">count · tokens saved · avg rate · avg time · share of executions</p>
     <div class="overflow-x-auto">
       <table class="w-full mono text-[13px]" id="cmdTable">
-        <colgroup><col style="width:40px"><col><col style="width:90px"><col style="width:90px"><col style="width:90px"><col style="width:90px"><col style="width:140px"></colgroup>
+        <colgroup><col style="width:40px"><col><col style="width:120px"><col style="width:90px"><col style="width:90px"><col style="width:90px"><col style="width:90px"><col style="width:140px"></colgroup>
         <thead>
           <tr class="text-left text-[11px] uppercase tracking-[0.14em]" style="color: var(--dim)">
             <th class="font-normal text-right pr-3 py-2 w-10">#</th>
             <th class="font-normal py-2 pr-3" aria-sort="none"><button class="thsort" data-sort="name">Tool / Command <span class="arr">⇅</span></button></th>
+            <th class="font-normal py-2 pr-3" aria-sort="none"><button class="thsort" data-sort="project">Project <span class="arr">⇅</span></button></th>
             <th class="font-normal text-right py-2 pr-3" aria-sort="descending"><button class="thsort num" data-sort="count">Count <span class="arr">↓</span></button></th>
             <th class="font-normal text-right py-2 pr-3" aria-sort="none"><button class="thsort num" data-sort="saved">Saved <span class="arr">⇅</span></button></th>
             <th class="font-normal text-right py-2 pr-3" aria-sort="none"><button class="thsort num" data-sort="avgPct">Avg% <span class="arr">⇅</span></button></th>

@@ -12,6 +12,7 @@ import {
   isComboPresetActive,
   isOmpSubagentPrompt,
   normalizeComboLevel,
+  paintableCtx,
   reconcileSharedComboEntries,
   sessionEntries,
   setSharedComboLevel,
@@ -62,8 +63,8 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
   let lastCtx: ExtensionCtx | undefined = undefined;
 
   function syncStatus(ctx?: ExtensionCtx): void {
-    if (ctx) lastCtx = ctx;
-    const c = ctx || lastCtx;
+    lastCtx = paintableCtx(lastCtx, ctx);
+    const c = lastCtx;
     if (!c?.ui?.setStatus) return;
     // Single unified bar replaces the three per-extension bars while a preset is
     // active. In custom/off, the individual bars come back and combo stays clear.

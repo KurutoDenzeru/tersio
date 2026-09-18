@@ -198,3 +198,30 @@ test("combo default persists preset entries so resume keeps the bar", async () =
     resetSharedComboState();
   }
 });
+
+test("a UI-less event must not deafen the bar to later bridge updates", async () => {
+  // Reported symptom: the bar kept showing "combo BALANCED" while the session's
+  // modes had actually gone off. Cause: syncStatus remembered a ctx with no `ui`
+  // (a session_start that fires before the TUI attaches), so the bridge-listener
+  // path — which calls syncStatus() with no ctx and therefore paints through the
+  // remembered one — silently returned early forever, freezing the bar.
+  resetSharedComboState();
+  const { statuses, pi, ctx } = harness();
+  await pi.combo.handlers.get("session_start")!({}, ctx);
+  await pi.caveman.handlers.get("session_start")!({}, ctx);
+  await pi.rtk.handlers.get("session_start")!({}, ctx);
+  await pi.combo.commands.get("combo")!("balanced", ctx);
+  assert.match(statuses.get("combo") || "", /BALANCED/);
+
+  // Pre-attach session_start: hasUI false and no ui object at all.
+  const headless = { hasUI: false, sessionManager: ctx.sessionManager } as unknown as ExtensionCtx;
+  await pi.combo.handlers.get("session_start")!({}, headless);
+
+  // A sibling mode change publishes through the bridge; combo's listener runs
+  // with no ctx, so it must still paint through the remembered interactive ctx.
+  await pi.caveman.commands.get("caveman")!("off", ctx);
+
+  assert.equal(getSharedComboState().level, "custom", "the mix is no longer a preset");
+  assert.equal(statuses.get("combo"), undefined, "combo bar clears rather than freezing on BALANCED");
+  resetSharedComboState();
+});

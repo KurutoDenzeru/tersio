@@ -1,6 +1,6 @@
 import os from 'node:os';
 import path from 'node:path';
-import { activeModesSummary, asPromptArray, getSharedComboState, isComboPresetActive, isOmpSubagentPrompt, lastCustomValue, normalizeInputCommand, normalizeMode, paintStatusBar, reconcileSharedComboEntries, sessionEntries, setSharedComboListener, setSharedComboMode } from '../shared/session-state.ts';
+import { activeModesSummary, asPromptArray, getSharedComboState, isComboPresetActive, isOmpSubagentPrompt, lastCustomValue, normalizeInputCommand, normalizeMode, paintStatusBar, paintableCtx, reconcileSharedComboEntries, sessionEntries, setSharedComboListener, setSharedComboMode } from '../shared/session-state.ts';
 import { readRtkDefault } from '../shared/plugin-settings.ts';
 import type { ExtensionApi, ExtensionCtx, InputEvent, SessionEntry, SystemPromptEvent } from '../shared/types.ts';
 
@@ -37,8 +37,8 @@ export default function rtkSessionExtension(pi: ExtensionApi): void {
   let lastCtx: ExtensionCtx | undefined = undefined;
 
   function syncStatus(ctx?: ExtensionCtx): void {
-    if (ctx) lastCtx = ctx;
-    const c = ctx || lastCtx;
+    lastCtx = paintableCtx(lastCtx, ctx);
+    const c = lastCtx;
     if (!c?.ui?.setStatus) return;
     // Combo owns the bar when any preset is active; keep ours empty to avoid duplication.
     if (isComboPresetActive() || !enabled) {

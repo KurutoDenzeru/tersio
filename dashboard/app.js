@@ -27,9 +27,25 @@
     var savedFx = JSON.parse(localStorage.getItem('tersio-fx') || 'null');
     if (savedFx && savedFx.rates && savedFx.rates.USD === 1) fx.rates = savedFx.rates;
   } catch (e) { }
+  // Magnitude-aware decimals. Model prices keep falling, so a flat 2dp rounds
+  // real spend down to "$0.00"; small amounts keep enough digits to stay
+  // readable (0.000187, not 0). Larger amounts use the currency's own scale.
+  function moneyDecimals(v, base) {
+    var a = Math.abs(v);
+    if (a >= 0.1 || a === 0) return base;
+    if (a >= 0.001) return Math.max(base, 4);
+    if (a >= 0.00001) return Math.max(base, 6);
+    return Math.max(base, 8);
+  }
   function fxMoney(v) {
-    var c = CURS[fx.cur] || CURS.USD, r = fx.rates[fx.cur] || 1;
-    return c.s + (v * r).toLocaleString('en-US', { minimumFractionDigits: c.d, maximumFractionDigits: c.d });
+    var c = CURS[fx.cur] || CURS.USD, r = fx.rates[fx.cur] || 1, amt = v * r;
+    var d = moneyDecimals(amt, c.d);
+    return c.s + amt.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+  }
+  // Tooltips build innerHTML, and error notes come from providers, so they are
+  // never interpolated raw.
+  function esc(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
   function countUp(el, target, money) {
@@ -177,7 +193,7 @@
     [/nemotron|nvidia/i, 'NVIDIA', 'nvidia', '#76b900'],
     [/mistral/i, 'Mistral', 'mistralai', '#ff7000'],
     [/claude|anthropic/i, 'Anthropic', 'anthropic', '#d97757'],
-    [/gemini|google/i, 'Google', 'googlegemini', '#8E75B2'],
+    [/gemini|google|gemma/i, 'Google', 'google', '#4285F4'],
   ];
   function vendorOf(model) {
     for (var i = 0; i < PROVIDERS.length; i++) {
@@ -205,12 +221,12 @@
   function dayKey(d) {
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
   }
-  function relTime(ts) {
-    var s = Math.max(0, Math.floor((Date.now() - ts) / 1000));
-    if (s < 60) return 'just now';
-    if (s < 3600) return Math.floor(s / 60) + 'm ago';
-    if (s < 86400) return Math.floor(s / 3600) + 'h ago';
-    return Math.floor(s / 86400) + 'd ago';
+  // Absolute local stamp for the When column: "Sep 18, 11:14:08 PM". The
+  // column is sortable, and a relative label made that ordering unreadable.
+  function whenStamp(ts) {
+    var d = new Date(ts);
+    return d.toLocaleString('en-US', { month: 'short', day: 'numeric' }) + ', ' +
+      d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' });
   }
   // Per-request generation time + output throughput from the message-level
   // `duration` (ms). Missing → '–'. Throughput uses output tokens since
@@ -307,15 +323,39 @@
     function p(n) { return String(n).padStart(2, '0'); }
     return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
   }
+  // Per-request outcome. OMP records stopReason on every assistant turn and,
+  // on failure, the HTTP errorStatus + errorMessage; toolUse turns are
+  // ordinary completed turns, so only error and aborted stand apart.
+  var STATUS_RANK = { error: 0, aborted: 1, completed: 2 };
+  function statusRank(r) { var k = STATUS_RANK[r.st]; return k === undefined ? 2 : k; }
+  function statusLabel(r) {
+    if (r.st === 'error') return 'error' + (r.code ? ' ' + r.code : '');
+    return r.st === 'aborted' ? 'aborted' : 'completed';
+  }
+  function statusColor(r) { return r.st === 'error' ? '#f87171' : r.st === 'aborted' ? '#fbbf24' : 'var(--accent)'; }
+  // Cost precedence. A recorded charge > 0 is authoritative and shown bare.
+  // A recording of exactly 0 usually means a free/local provider (every row on
+  // a local model reports 0) and would blank the column, so those fall back to
+  // the modeled figure carrying the dashboard's usual "~" estimate marker.
+  // costRecorded() still reports the raw 0 so the tooltip can show both.
+  function costRecorded(r) { return typeof r.usd === 'number'; }
+  function costIsMeasured(r) { return costRecorded(r) && r.usd > 0; }
+  function displayCost(r) { return costIsMeasured(r) ? r.usd : (r.est || 0); }
+
   function tipRecentHTML(r) {
     var tps = r.d !== undefined && r.d > 0 ? r.o / (r.d / 1000) : 0;
-    var h = '<div class="tt">' + shortName(r.m) + '</div><div class="tv">' + stampLocal(r.t) + '</div>';
+    var isEst = !costIsMeasured(r);
+    var h = '<div class="tt">' + esc(shortName(r.m)) + '</div><div class="tv">' + stampLocal(r.t) + '</div>';
     h += '<div class="tr"><span class="sw" style="background:#fb923c"></span><span class="tn">input</span><span class="tvr">' + fmt(r.i) + '</span></div>';
     h += '<div class="tr"><span class="sw" style="background:var(--accent)"></span><span class="tn">output</span><span class="tvr">' + fmt(r.o) + '</span></div>';
-    if ((r.cr || 0) > 0) h += '<div class="tr"><span class="sw" style="background:var(--dim)"></span><span class="tn">cache</span><span class="tvr">' + fmtShort(r.cr) + '</span></div>';
-    if ((r.cw || 0) > 0) h += '<div class="tr"><span class="sw" style="background:var(--dim)"></span><span class="tn">cache write</span><span class="tvr">' + fmtShort(r.cw) + '</span></div>';
+    if ((r.cr || 0) > 0) h += '<div class="tr"><span class="sw" style="background:var(--dim)"></span><span class="tn">cache read</span><span class="tvr">' + fmt(r.cr) + '</span></div>';
+    if ((r.cw || 0) > 0) h += '<div class="tr"><span class="sw" style="background:var(--dim)"></span><span class="tn">cache write</span><span class="tvr">' + fmt(r.cw) + '</span></div>';
     h += '<div class="tr"><span class="sw" style="background:var(--dim)"></span><span class="tn">elapsed</span><span class="tvr">' + fmtDur(r.d) + '</span></div>';
     h += '<div class="tr"><span class="sw" style="background:var(--dim)"></span><span class="tn">speed</span><span class="tvr">' + (r.d !== undefined ? (tps < 10 ? tps.toFixed(1) : Math.round(tps)) + ' tok/s' : '–') + '</span></div>';
+    h += '<div class="tr"><span class="sw" style="background:' + statusColor(r) + '"></span><span class="tn">status</span><span class="tvr">' + statusLabel(r) + '</span></div>';
+    h += '<div class="tr"><span class="sw" style="background:var(--accent)"></span><span class="tn">cost ' + (isEst ? '(est.)' : '(measured)') + '</span><span class="tvr">' + (isEst ? '~' : '') + fxMoney(displayCost(r)) + '</span></div>';
+    if (costRecorded(r)) h += '<div class="tr"><span class="sw" style="background:var(--dim)"></span><span class="tn">charged</span><span class="tvr">' + fxMoney(r.usd) + '</span></div>';
+    if (r.note) h += '<div class="tnote">' + esc(r.note) + '</div>';
     return h;
   }
   // Zone indicators: Lucide face per savings-bento metric. Coarse by design;
@@ -537,18 +577,35 @@
     });
   }
 
-  // 30-day token line: daily totals, smoothed path, hover dot + per-model tip.
-  function wow(model) {
-    var days = allDays().slice(-14), cur = 0, prev = 0;
-    days.forEach(function(d, i) {
-      var v = ((DATA.byDayModel || {})[d] || {})[model] || 0;
-      if (i < days.length - 7) prev += v; else cur += v;
-    });
-    if (!prev) return cur ? 'new' : '-';
-    var p = Math.round((cur - prev) / prev * 100);
-    return (p >= 0 ? '+' : '') + p + '%';
+  var modelPage = 1, modelPer = 10, recentPage = 1, recentPer = 25;
+  // Recent requests default to newest-first, which is how the transcript
+  // arrives; every column is sortable like the command table.
+  var recentSort = { key: 'when', dir: -1 }, recentRows = [];
+  function recentVal(r, key) {
+    if (key === 'model') return r.m.toLowerCase();
+    if (key === 'input') return r.i;
+    if (key === 'output') return r.o;
+    if (key === 'time') return r.d === undefined ? null : r.d;
+    if (key === 'status') return statusRank(r);
+    if (key === 'cost') return displayCost(r);
+    return r.t;
   }
-  var modelPage = 1, modelPer = 10, recentPage = 1, recentPer = 15;
+  function sortRecent() {
+    var k = recentSort.key, d = recentSort.dir;
+    recentRows.sort(function(a, b) {
+      var av = recentVal(a, k), bv = recentVal(b, k);
+      if (av === null || av === undefined) return 1;
+      if (bv === null || bv === undefined) return -1;
+      if (av < bv) return -d;
+      if (av > bv) return d;
+      return b.t - a.t;
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('#recentTable .thsort'), function(btn) {
+      var on = btn.dataset.sort === k;
+      btn.querySelector('.arr').textContent = on ? (d === 1 ? '↑' : '↓') : '⇅';
+      btn.closest('th').setAttribute('aria-sort', on ? (d === 1 ? 'ascending' : 'descending') : 'none');
+    });
+  }
   function renderModels() {
     var byModel = DATA.byModel || {};
     var tops = topModels(byModel, Object.keys(byModel).length).filter(function(m) { return modelTotal(byModel, m) > 0; });
@@ -556,7 +613,7 @@
     cards.innerHTML = '';
     if (!tops.length) cards.innerHTML = '<div class="empty md:col-span-3">' + emptyState('boxes', 'No models yet', 'Model token totals will appear here once sessions report tokens.') + '</div>';
     tops.slice(0, 3).forEach(function(m, i) {
-      var v = vendorOf(m), d = wow(m);
+      var v = vendorOf(m);
       var card = document.createElement('div');
       card.className = 'modelcard relative p-4 rounded-xl overflow-hidden';
       if (v.svg) {
@@ -593,13 +650,6 @@
       var tot = document.createElement('p'); tot.className = 'mono font-bold text-lg shrink-0'; tot.textContent = fmtShort(modelTotal(byModel, m));
       row.appendChild(badge); row.appendChild(mid); row.appendChild(tot);
       card.appendChild(head); card.appendChild(row);
-      if (d !== 'new') {
-        var delta = document.createElement('p');
-        delta.className = 'mono text-xs mt-3';
-        delta.style.color = d.charAt(0) === '-' ? '#f87171' : 'var(--accent)';
-        delta.textContent = d;
-        card.appendChild(delta);
-      }
       hoverModel(card, m);
       cards.appendChild(card);
     });
@@ -662,8 +712,43 @@
 
   // Union of session tool calls + RTK-metered commands, sortable + paged.
   // Session tools were never metered per command: saved / avg / time show – and sort last.
-  var cmdSort = { key: 'count', dir: -1 }, cmdPage = 1, cmdPer = 15, cmdRows = [];
-  function cmdVal(r, key) { return key === 'name' ? r.name.toLowerCase() : r[key]; }
+  // RTK rows arrive per (command, project) because rtk's history is machine-wide:
+  // fusing projects let one repo's `rtk grep` stand in for every project's.
+  var cmdSort = { key: 'count', dir: -1 }, cmdPage = 1, cmdPer = 15, cmdRows = [], cmdProject = '';
+  function cmdVal(r, key) {
+    if (key === 'name') return r.name.toLowerCase();
+    if (key === 'project') return (r.project || '').toLowerCase();
+    return r[key];
+  }
+  function baseName(p) {
+    if (!p) return '–';
+    var parts = String(p).replace(/\/+$/, '').split('/');
+    return parts[parts.length - 1] || p;
+  }
+  // Options come from the rows themselves so the list follows the machine.
+  // Repaint is skipped while the option set is unchanged: render runs every
+  // 5s and a rebuild would close an open dropdown mid-selection.
+  function paintProjectFilter(all) {
+    var sel = document.getElementById('cmdProject');
+    if (!sel) return;
+    var seen = {};
+    all.forEach(function(r) { if (r.project) seen[r.project] = 1; });
+    var keys = Object.keys(seen).sort();
+    if (cmdProject && keys.indexOf(cmdProject) < 0) cmdProject = '';
+    var sig = keys.join('\n') + '\u0000' + cmdProject;
+    if (sel.dataset.sig === sig) return;
+    sel.dataset.sig = sig;
+    sel.innerHTML = '';
+    var any = document.createElement('option');
+    any.value = ''; any.textContent = 'All projects (' + keys.length + ')';
+    sel.appendChild(any);
+    keys.forEach(function(k) {
+      var o = document.createElement('option');
+      o.value = k; o.textContent = baseName(k); o.title = k;
+      sel.appendChild(o);
+    });
+    sel.value = cmdProject;
+  }
   function sortCmd() {
     var k = cmdSort.key, d = cmdSort.dir;
     cmdRows.sort(function(a, b) {
@@ -682,12 +767,14 @@
   }
   function renderCmd() {
     var g = (DATA.rtkGain || {});
-    cmdRows = (DATA.byTool || []).map(function(r) {
-      return { name: r[0], count: r[1], saved: null, avgPct: null, avgMs: null };
+    var all = (DATA.byTool || []).map(function(r) {
+      return { name: r[0], project: '', count: r[1], saved: null, avgPct: null, avgMs: null };
     });
     (g.byCommand || []).forEach(function(r) {
-      cmdRows.push({ name: r.command, count: r.count, saved: r.saved, avgPct: r.avgPct, avgMs: r.avgMs });
+      all.push({ name: r.command, project: r.project || '', count: r.count, saved: r.saved, avgPct: r.avgPct, avgMs: r.avgMs });
     });
+    paintProjectFilter(all);
+    cmdRows = cmdProject ? all.filter(function(r) { return r.project === cmdProject; }) : all;
     sortCmd();
     var pages = Math.max(1, Math.ceil(cmdRows.length / cmdPer));
     if (cmdPage > pages) cmdPage = pages;
@@ -702,6 +789,7 @@
       tr.className = 'mrow' + (i < Math.min(cmdRows.length - start, cmdPer) - 1 ? ' rowline' : '');
       tr.innerHTML = '<td class="text-right pr-3 py-2.5 mono text-xs w-10" style="color: var(--dim)"></td>' +
         '<td class="py-2.5 pr-3 truncate" style="max-width: 280px"></td>' +
+        '<td class="py-2.5 pr-3 truncate" style="max-width: 120px; color: var(--dim)"></td>' +
         '<td class="text-right py-2.5 pr-3 font-bold"></td>' +
         '<td class="text-right py-2.5 pr-3 font-bold"></td>' +
         '<td class="text-right py-2.5 pr-3" style="color: var(--accent)"></td>' +
@@ -711,11 +799,13 @@
       tds[0].textContent = String(n + 1).padStart(2, '0');
       tds[1].textContent = r.name;
       tds[1].title = r.name;
-      tds[2].textContent = fmt(r.count);
-      tds[3].textContent = r.saved === null ? '–' : fmtShort(r.saved);
-      tds[4].textContent = r.avgPct === null ? '–' : r.avgPct.toFixed(1) + '%';
-      tds[5].textContent = r.avgMs === null || r.avgMs === undefined ? '–' : fmtMs(r.avgMs);
-      tds[6].firstChild.firstChild.style.width = r.count ? Math.round(r.count / max * 100) + '%' : '0';
+      tds[2].textContent = baseName(r.project);
+      tds[2].title = r.project || 'session tool call (no project recorded)';
+      tds[3].textContent = fmt(r.count);
+      tds[4].textContent = r.saved === null ? '–' : fmtShort(r.saved);
+      tds[5].textContent = r.avgPct === null ? '–' : r.avgPct.toFixed(1) + '%';
+      tds[6].textContent = r.avgMs === null || r.avgMs === undefined ? '–' : fmtMs(r.avgMs);
+      tds[7].firstChild.firstChild.style.width = r.count ? Math.round(r.count / max * 100) + '%' : '0';
       body.appendChild(tr);
     });
     document.getElementById('cmdTable').style.display = cmdRows.length ? '' : 'none';
@@ -792,8 +882,23 @@
       });
     });
     bindPerPage('#cmdPager', function() { return cmdPer; }, function(n) { cmdPer = n; cmdPage = 1; }, renderCmd);
+    var pf = document.getElementById('cmdProject');
+    if (pf) pf.addEventListener('change', function() { cmdProject = pf.value; cmdPage = 1; renderCmd(); });
     bindPerPage('section[aria-label="All models"]', function() { return modelPer; }, function(n) { modelPer = n; modelPage = 1; }, renderModels);
     bindPerPage('section[aria-label="Recent requests"]', function() { return recentPer; }, function(n) { recentPer = n; recentPage = 1; }, renderRecent);
+  }
+  function bindRecentTable() {
+    if (bindRecentTable.done) return;
+    bindRecentTable.done = true;
+    Array.prototype.forEach.call(document.querySelectorAll('#recentTable .thsort'), function(btn) {
+      btn.addEventListener('click', function() {
+        var k = btn.dataset.sort;
+        if (recentSort.key === k) recentSort.dir = -recentSort.dir;
+        else { recentSort.key = k; recentSort.dir = k === 'model' || k === 'status' ? 1 : -1; }
+        recentPage = 1;
+        renderRecent();
+      });
+    });
   }
   function fmtMs(ms) {
     if (ms < 1000) return Math.round(ms) + 'ms';
@@ -981,6 +1086,7 @@
     renderStrip(t);
     bindGraphTabs();
     bindCmdTable();
+    bindRecentTable();
     renderGraph(d.byDay || {});
     renderModels();
     renderRecent();
@@ -993,36 +1099,71 @@
     }
     observe();
   }
+  // shadcn/ui badge: default/secondary/destructive/outline carry the meaning,
+  // the label carries the detail. Built as DOM nodes so provider error notes
+  // never reach innerHTML.
+  function statusBadge(r) {
+    var b = document.createElement('span');
+    b.className = 'badge';
+    if (r.st === 'error') {
+      b.classList.add('destructive');
+      b.textContent = statusLabel(r);
+      b.title = 'error' + (r.code ? ' ' + r.code : '') + (r.note ? ' — ' + r.note : '');
+    } else if (r.st === 'aborted') {
+      b.classList.add('outline');
+      b.textContent = 'aborted';
+      b.title = r.note || 'Interrupted by user';
+    } else {
+      b.classList.add('secondary');
+      b.textContent = 'completed';
+      if (r.note) b.title = r.note;
+    }
+    return b;
+  }
   function renderRecent() {
     var body = document.getElementById('recent');
     body.innerHTML = '';
     var all = DATA.recent || [];
-    var recentPages = Math.max(1, Math.ceil(all.length / recentPer));
+    recentRows = all.slice();
+    sortRecent();
+    var recentPages = Math.max(1, Math.ceil(recentRows.length / recentPer));
     if (recentPage > recentPages) recentPage = recentPages;
     var recentStart = (recentPage - 1) * recentPer;
-    var rows = all.slice(recentStart, recentStart + recentPer);
+    var rows = recentRows.slice(recentStart, recentStart + recentPer);
     rows.forEach(function(r, i) {
       var v = vendorOf(r.m);
+      var measured = costIsMeasured(r);
       var tr = document.createElement('tr');
-      tr.className = 'rrow' + (i < Math.min(all.length - recentStart, recentPer) - 1 ? ' rowline' : '');
-      var dot = '<span style="display:inline-block;width:8px;height:8px;border-radius:99px;background:' + v.color + ';margin-right:8px"></span>';
+      tr.className = 'rrow' + (i < Math.min(recentRows.length - recentStart, recentPer) - 1 ? ' rowline' : '');
       tr.innerHTML = '<td class="py-2.5 pr-3 truncate" style="min-width: 0"></td>' +
-        '<td class="text-right py-2.5 pr-3 whitespace-nowrap"></td>' +
+        '<td class="text-right py-2.5 pr-3 whitespace-nowrap" style="color:#fb923c"></td>' +
+        '<td class="text-right py-2.5 pr-3 whitespace-nowrap" style="color:var(--accent)"></td>' +
+        '<td class="text-right py-2.5 pr-3 whitespace-nowrap" style="color:var(--dim)">–</td>' +
+        '<td class="py-2.5 pr-3 whitespace-nowrap"></td>' +
         '<td class="text-right py-2.5 pr-3 whitespace-nowrap"></td>' +
         '<td class="text-right py-2.5 whitespace-nowrap" style="color: var(--dim)"></td>';
       var tds = tr.children;
+      var dot = '<span style="display:inline-block;width:8px;height:8px;border-radius:99px;background:' + v.color + ';margin-right:8px"></span>';
       tds[0].innerHTML = dot + '<span></span>';
       tds[0].querySelector('span:last-child').textContent = r.m;
-      tds[1].innerHTML = '<span style="color:#fb923c"></span> <span style="color:var(--accent)"></span>';
-      tds[1].children[0].textContent = fmt(r.i) + '↑';
-      tds[1].children[1].textContent = fmt(r.o) + '↓';
-      tds[2].textContent = speedText(r);
-      tds[3].textContent = relTime(r.t);
+      tds[1].textContent = fmt(r.i);
+      tds[2].textContent = fmt(r.o);
+      tds[3].textContent = speedText(r);
+      tds[4].appendChild(statusBadge(r));
+      tds[5].textContent = (measured ? '' : '~') + fxMoney(displayCost(r));
+      tds[5].title = measured
+        ? 'measured — charged by the provider'
+        : (costRecorded(r)
+          ? 'est. — provider charged ' + fxMoney(r.usd) + ' (free or local), modeled from tokens'
+          : 'est. — modeled from tokens');
+      if (measured) tds[5].style.color = 'var(--ink)';
+      tds[6].textContent = whenStamp(r.t);
+      tds[6].title = stampLocal(r.t);
       hoverRecent(tr, r);
       body.appendChild(tr);
     });
-    document.getElementById('recentCount').textContent = all.length ? all.length + ' requests' : '';
-    paintPager('recentPages', 'recentRange', recentPage, recentPer, all.length, function(p) { recentPage = p; renderRecent(); });
+    document.getElementById('recentCount').textContent = all.length ? recentRows.length + ' requests' : '';
+    paintPager('recentPages', 'recentRange', recentPage, recentPer, recentRows.length, function(p) { recentPage = p; renderRecent(); });
     document.getElementById('recentTable').style.display = all.length ? '' : 'none';
     document.getElementById('emptyRecent').classList.toggle('hidden', all.length > 0);
   }
