@@ -20,4 +20,4 @@ extensions/**/*.js
 test/definitely-missing-home/.omp/logs/
 
 # Project-specific files
-.commandcode
+website

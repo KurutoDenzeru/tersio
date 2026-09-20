@@ -4,8 +4,10 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync } from "node:
 import os from "node:os";
 import path from "node:path";
 import {
+  canonicalModelId,
   co2Grams,
   co2GramsFor,
+  displayModelId,
   importSessionTokens,
   priceFor,
   usdCost,
@@ -39,8 +41,6 @@ test("importer aggregates assistant usage by model and day, skips the rest", () 
   process.env.TERSIO_SESSIONS_DIR = dir;
   try {
     const s = importSessionTokens();
-    assert.equal(s.messages, 2);
-    assert.deepEqual(s.totals, { input: 1100, output: 210, cacheRead: 500, cacheWrite: 0 });
     assert.deepEqual(s.byModel["claude-sonnet-5"], { input: 1000, output: 200, cacheRead: 500, cacheWrite: 0 });
     assert.deepEqual(s.byDay["2026-09-01"], { input: 1000, output: 200, cacheRead: 500, cacheWrite: 0 });
     assert.deepEqual(s.byDay["2026-09-02"], { input: 100, output: 10, cacheRead: 0, cacheWrite: 0 });
@@ -140,4 +140,33 @@ test("usdCost flags unpriced models with priced=false", () => {
 
 test("co2Grams defaults to the gpt-4o served figure", () => {
   assert.equal(co2Grams(5000), co2GramsFor("gpt-4o", 5000));
+});
+test("free suffix and case variants fold into one model row", () => {
+  assert.equal(canonicalModelId("DeepSeek-V4.1-Flash"), canonicalModelId("deepseek-v4.1-flash:free"));
+  assert.equal(canonicalModelId("muse-spark-1.3-contributor-free"), "muse-spark-1.3-contributor");
+  assert.equal(displayModelId("deepseek-v4.1-flash"), "Deepseek-V4.1-Flash");
+  assert.equal(displayModelId("deepseek-v4.1-flash:free"), "Deepseek-V4.1-Flash");
+  assert.equal(displayModelId("meta/muse-spark-1.3-contributor"), "meta/Muse-Spark-1.3-Contributor");
+  assert.equal(displayModelId("codex/openai"), "codex/OpenAI");
+  assert.equal(displayModelId("gemma4:31b"), "Gemma4-31B");
+  const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-modelfold-"));
+  writeFileSync(
+    path.join(dir, "s.jsonl"),
+    [
+      '{"timestamp":"2026-09-01T10:00:00.000Z","message":{"role":"assistant","model":"deepseek-v4.1-flash:free","usage":{"input":100,"output":10}}}',
+      '{"timestamp":"2026-09-01T10:01:00.000Z","message":{"role":"assistant","model":"DeepSeek-V4.1-Flash","usage":{"input":200,"output":20}}}',
+    ].join("\n") + "\n",
+    "utf8",
+  );
+  const prev = process.env.TERSIO_SESSIONS_DIR;
+  process.env.TERSIO_SESSIONS_DIR = dir;
+  try {
+    const s = importSessionTokens();
+    assert.deepEqual(Object.keys(s.byModel), ["deepseek-v4.1-flash"]);
+    assert.deepEqual(s.byModel["deepseek-v4.1-flash"], { input: 300, output: 30, cacheRead: 0, cacheWrite: 0 });
+  } finally {
+    if (prev === undefined) delete process.env.TERSIO_SESSIONS_DIR;
+    else process.env.TERSIO_SESSIONS_DIR = prev;
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

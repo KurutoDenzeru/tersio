@@ -250,13 +250,29 @@
     var b = byModel[m] || { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
     return b.input + b.output + b.cacheRead + b.cacheWrite;
   }
-
-  var DATA = null, RANGE = 'daily', cardsShown = false;
-
+  var DATA = null, cardsShown = false;
   function topModels(byModel, n) {
     return Object.keys(byModel).sort(function(a, b) { return modelTotal(byModel, b) - modelTotal(byModel, a); }).slice(0, n);
   }
-
+  // Display form for folded keys: namespace stays lowercase, model segments
+  // title-case with version dots kept (`deepseek-v4.1-flash` →
+  // `Deepseek-V4.1-Flash`). Keys arrive folded, so this prettifies only.
+  function displayModel(m) {
+    var bare = String(m).replace(/(?::free|-free)$/i, '');
+    function cap(s) {
+      var low = s.toLowerCase();
+      if (low === 'openai') return 'OpenAI';
+      if (low === 'ai') return 'AI';
+      if (/^\d+[a-z]+$/.test(low)) return low.toUpperCase();
+      if (s.length <= 2) return s.toUpperCase();
+      return s[0].toUpperCase() + s.slice(1).toLowerCase();
+    }
+    function seg(s) { return s.split('.').map(cap).join('.'); }
+    function words(s) { return s.split(/[-_:]+/).filter(Boolean).map(seg).join('-'); }
+    var slash = bare.indexOf('/');
+    if (slash >= 0) return bare.slice(0, slash).toLowerCase() + '/' + words(bare.slice(slash + 1));
+    return words(bare);
+  }
   function allDays() {
     var set = {};
     Object.keys(DATA.byDay || {}).forEach(function(d) { set[d] = 1; });
@@ -293,7 +309,7 @@
     var dt = new Date(key + 'T12:00:00');
     return isNaN(dt) ? key : dt.toLocaleString('en-US', { month: 'short', day: 'numeric' }).toUpperCase();
   }
-  function shortName(m) { return m.length > 22 ? m.slice(0, 21) + '...' : m; }
+  function shortName(m) { var d = displayModel(m); return d.length > 22 ? d.slice(0, 21) + '...' : d; }
   function tipDayHTML(key, total, rows) {
     var h = '<div class="tt">' + dateHead(key) + '</div><div class="tv">' + fmtShort(total) + ' total</div>';
     rows.forEach(function(r) {
@@ -417,6 +433,222 @@
     el.addEventListener('mouseenter', function(ev) { showTip(tipRecentHTML(r), ev.clientX, ev.clientY); });
     el.addEventListener('mousemove', function(ev) { moveTip(ev.clientX, ev.clientY); });
     el.addEventListener('mouseleave', hideTip);
+  }
+  // Model detail dialog: shadcn chart language over daily model volume.
+  // byDayModel is keyed by DAY (Record<day, Record<model, tokens>>); the old
+  // mdSeries read it keyed by model and rendered all-zero charts. Area chart
+  // with gradient + hover crosshair, downsampled rounded bars, token-mix
+  // donut, KPI strip, 30/90/ALL range tabs.
+  var mdModel = null, mdSpan = 'all', mdHover = { pts: [], days: [] };
+  function mdSeries(m) {
+    var days = allDays();
+    var per = DATA.byDayModel || {};
+    return days.map(function(d) { return { day: d, v: ((per[d] || {})[m] || 0) }; });
+  }
+  function mdSlice(series) {
+    if (mdSpan === 'all' || series.length <= mdSpan) return series;
+    return series.slice(series.length - mdSpan);
+  }
+  function mdMonthTicks(days) {
+    if (!days.length) return [];
+    var seen = {}, out = [];
+    days.forEach(function(d) {
+      var t = d.slice(0, 7);
+      if (!seen[t]) { seen[t] = 1; out.push({ day: d, label: new Date(d + 'T12:00:00').toLocaleString('en-US', { month: 'short' }) }); }
+    });
+    return out.slice(-6);
+  }
+  function mdShortDay(d) { return new Date(d + 'T12:00:00').toLocaleString('en-US', { month: 'short', day: 'numeric' }); }
+  function mdAreaChart(svg, pts, days) {
+    var W = 560, H = 190, max = 1, i, x, y;
+    pts.forEach(function(p) { max = Math.max(max, p); });
+    var step = pts.length > 1 ? (W - 16) / (pts.length - 1) : 0;
+    function X(i) { return 8 + i * step; }
+    function Y(p) { return 14 + (1 - p / max) * (H - 36); }
+    var grid = '';
+    for (i = 1; i <= 3; i++) { y = 14 + (H - 36) * i / 3; grid += '<line class="grid" x1="8" y1="' + y.toFixed(1) + '" x2="' + (W - 8) + '" y2="' + y.toFixed(1) + '"/>'; }
+    var d = pts.map(function(p, i) { return (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(p).toFixed(1); }).join(' ');
+    var last = pts.length ? { x: X(pts.length - 1), y: Y(pts[pts.length - 1]) } : { x: 8, y: H - 22 };
+    svg.innerHTML = '<defs><linearGradient id="mdGrad" x1="0" y1="0" x2="0" y2="1">' +
+      '<stop offset="0" style="stop-color:var(--accent)" stop-opacity="0.35"/>' +
+      '<stop offset="1" style="stop-color:var(--accent)" stop-opacity="0"/></linearGradient></defs>' +
+      grid +
+      (pts.length ? '<path class="area" d="' + d + ' L' + last.x.toFixed(1) + ' ' + (H - 22) + ' L8 ' + (H - 22) + ' Z"/>' : '') +
+      (pts.length ? '<path class="line" d="' + d + '"/>' : '') +
+      (pts.length ? '<circle class="dot" cx="' + last.x.toFixed(1) + '" cy="' + last.y.toFixed(1) + '" r="4"/>' : '') +
+      (pts.length ? '<circle class="hoverdot" id="mdHoverDot" cx="-10" cy="-10" r="4" style="display:none"/>' : '');
+    mdHover = { pts: pts, days: days };
+    svg.onmousemove = function(ev) {
+      var tip = document.getElementById('mdTip');
+      if (!tip || !mdHover.pts.length) return;
+      var r = svg.getBoundingClientRect();
+      var fx = (ev.clientX - r.left) / r.width * W;
+      var idx = Math.max(0, Math.min(mdHover.pts.length - 1, Math.round((fx - 8) / (step || 1))));
+      var dot = document.getElementById('mdHoverDot');
+      if (dot) { dot.setAttribute('cx', X(idx).toFixed(1)); dot.setAttribute('cy', Y(mdHover.pts[idx]).toFixed(1)); dot.style.display = ''; }
+      tip.textContent = mdShortDay(mdHover.days[idx]) + ' · ' + fmtShort(mdHover.pts[idx]);
+      tip.style.display = 'block';
+      // Raw % positioning overflows past the dialog edge on the first/last
+      // points (the dialog clips it). Measure and pin inside the card.
+      var chart = svg.closest ? svg.closest('.md-chart') : null;
+      var px = svg.offsetLeft + (X(idx) / W) * svg.clientWidth;
+      if (chart) {
+        var half = tip.offsetWidth / 2;
+        px = Math.max(half + 4, Math.min(chart.clientWidth - half - 4, px));
+      }
+      tip.style.left = px + 'px';
+      tip.style.top = '8px';
+    };
+    svg.onmouseleave = function() {
+      var tip = document.getElementById('mdTip');
+      if (tip) tip.style.display = 'none';
+      var dot = document.getElementById('mdHoverDot');
+      if (dot) dot.style.display = 'none';
+    };
+  }
+  function mdBars(el, vals, days) {
+    el.innerHTML = '';
+    var max = 1, i, total = 0, active = 0, peak = 0, peakI = 0;
+    vals.forEach(function(v, k) { max = Math.max(max, v); total += v; if (v > 0) { active++; if (v > peak) { peak = v; peakI = k; } } });
+    var n = vals.length, bucket = 1;
+    if (n > 90) bucket = Math.ceil(n / 90);
+    for (i = 0; i < n; i += bucket) {
+      var sum = 0, c = 0;
+      for (var j = i; j < Math.min(n, i + bucket); j++) { sum += vals[j]; c++; }
+      var avg = sum / c;
+      var s = document.createElement('span');
+      if (!avg) s.className = 'zero';
+      else if (avg === max) s.className = 'top';
+      s.style.height = Math.max(avg ? 5 : 2, Math.round(avg / max * 100)) + '%';
+      s.title = mdShortDay(days[i]) + ' · ' + fmtShort(Math.round(sum));
+      el.appendChild(s);
+    }
+    // Sparse models leave the bars mostly flat: name the peak day, its share
+    // of the period, and the per-active-day average instead of empty space.
+    var note = document.getElementById('mdBarsNote');
+    if (note) {
+      if (!active) note.textContent = 'no activity in range';
+      else note.textContent = 'Peak ' + mdShortDay(days[peakI]) + ' · ' + fmtShort(peak) + ' (' + (total ? Math.round(peak / total * 100) : 0) + '% of period) · avg ' + fmtShort(Math.round(total / active)) + ' / active day';
+    }
+  }
+  function mdDonut(svg, parts) {
+    var r = 54, C = 2 * Math.PI * r, off = 0;
+    var total = parts.reduce(function(a, p) { return a + p.v; }, 0) || 1;
+    var html = '<circle class="tk" cx="70" cy="70" r="' + r + '"/>';
+    parts.forEach(function(p) {
+      var len = p.v / total * C;
+      if (len <= 0) return;
+      html += '<circle cx="70" cy="70" r="' + r + '" style="stroke:' + p.color + '" stroke-dasharray="' + len.toFixed(1) + ' ' + (C - len).toFixed(1) + '" stroke-dashoffset="' + (-off).toFixed(1) + '" stroke-linecap="butt"/>';
+      off += len;
+    });
+    svg.innerHTML = html;
+    document.getElementById('mdMixTotal').textContent = fmtShort(total);
+    document.getElementById('mdMixLegend').innerHTML = parts.filter(function(p) { return p.v > 0; }).map(function(p) {
+      return '<div class="row"><span class="dot" style="background:' + p.color + '"></span><span>' + p.label + '</span><span class="pct">' + (p.v / total * 100).toFixed(1) + '% · ' + fmtShort(p.v) + '</span></div>';
+    }).join('');
+  }
+  function mdMonths(el, days) {
+    el.innerHTML = '';
+    mdMonthTicks(days).forEach(function(t) {
+      var s = document.createElement('span');
+      s.textContent = t.label;
+      el.appendChild(s);
+    });
+  }
+  function mdKpi(k, v, d, up) {
+    return '<div class="md-kpi"><p class="k mono">' + k + '</p><p class="v">' + v + '</p><p class="d mono ' + (up ? 'up' : 'flat') + '">' + d + '</p></div>';
+  }
+  function mdStat(k, v, s) {
+    return '<div class="md-stat"><p class="k mono">' + k + '</p><p class="v mono">' + v + '</p>' + (s ? '<p class="s mono">' + s + '</p>' : '') + '</div>';
+  }
+  function mdRange(days) {
+    if (!days.length) return '–';
+    return mdShortDay(days[0]).toUpperCase() + ' → ' + mdShortDay(days[days.length - 1]).toUpperCase();
+  }
+  function mdTrendText(vals) {
+    var max = 0, i;
+    vals.forEach(function(x) { max = Math.max(max, x); });
+    if (vals.length < 14) return max ? { t: 'peak ' + fmtShort(max) + ' in a day', up: true } : { t: 'no activity yet', up: false };
+    var a = 0, b = 0;
+    for (i = vals.length - 14; i < vals.length; i++) a += vals[i];
+    for (i = Math.max(0, vals.length - 28); i < vals.length - 14; i++) b += vals[i];
+    if (!b) return { t: fmtShort(a) + ' / 2 wks', up: a > 0 };
+    var pct = (a - b) / b * 100;
+    return { t: (pct >= 0 ? '+' : '') + pct.toFixed(0) + '% vs prior 2 wks', up: pct >= 0 };
+  }
+  function renderModelDialog(m) {
+    var byModel = DATA.byModel || {};
+    var tops = topModels(byModel, Object.keys(byModel).length);
+    var rank = tops.indexOf(m) + 1;
+    var b = byModel[m] || { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+    var total = modelTotal(byModel, m);
+    var grand = 1;
+    tops.forEach(function(k) { grand += modelTotal(byModel, k); });
+    var v = vendorOf(m);
+    var req = ((DATA.byModelMessages || {})[m]) || 0;
+    var usd = ((DATA.byModelUsd || {})[m]) || 0;
+    var denom = b.input + b.cacheRead;
+    var hit = denom ? (b.cacheRead / denom * 100) : 0;
+    var series = mdSlice(mdSeries(m));
+    var days = series.map(function(p) { return p.day; });
+    var vals = series.map(function(p) { return p.v; });
+    var active = vals.filter(function(x) { return x > 0; }).length;
+    var tr = mdTrendText(mdSeries(m).map(function(p) { return p.v; }));
+    document.getElementById('mdBadge').innerHTML = brandHTML(v, false);
+    var title = document.getElementById('mdTitle');
+    title.textContent = displayModel(m);
+    title.title = m;
+    document.getElementById('mdSub').textContent = v.name + ' · ' + fmt(req) + ' requests · ' + (total / grand * 100).toFixed(1) + '% of volume';
+    document.getElementById('mdRank').textContent = rank ? '#' + String(rank).padStart(2, '0') : '#–';
+    var trend = document.getElementById('mdTrend');
+    trend.textContent = tr.t;
+    trend.className = 'md-trend mono' + (tr.up ? ' up' : '');
+    document.getElementById('mdKpis').innerHTML =
+      mdKpi('Tokens', fmtShort(total), mdRange(days), true) +
+      mdKpi('Spend', fxMoney(usd), req ? fxMoney(usd / req) + ' / req' : 'no requests', usd > 0) +
+      mdKpi('Cache hit', hit.toFixed(0) + '%', fmtShort(b.cacheRead) + ' cached', hit >= 50) +
+      mdKpi('Requests', fmt(req), active + ' active days', active > 0);
+    document.getElementById('mdMomRange').textContent = mdRange(days);
+    mdAreaChart(document.getElementById('mdSpark'), vals, days);
+    mdMonths(document.getElementById('mdMonths'), days);
+    var act = document.getElementById('mdActive');
+    act.textContent = active + ' / ' + days.length + ' days';
+    act.className = 'md-trend mono' + (active ? ' up' : '');
+    mdBars(document.getElementById('mdBars'), vals, days);
+    mdMonths(document.getElementById('mdBarsMonths'), days);
+    mdDonut(document.getElementById('mdMix'), [
+      { label: 'Input', v: b.input, color: 'var(--accent)' },
+      { label: 'Output', v: b.output, color: '#818cf8' },
+      { label: 'Cache read', v: b.cacheRead, color: '#22d3ee' },
+      { label: 'Cache write', v: b.cacheWrite, color: 'var(--dim)' },
+    ]);
+    document.getElementById('mdStats').innerHTML =
+      mdStat('Input', fmtShort(b.input), null) +
+      mdStat('Output', fmtShort(b.output), null) +
+      mdStat('Cache read', fmtShort(b.cacheRead), hit.toFixed(0) + '% hit') +
+      mdStat('Cache write', fmtShort(b.cacheWrite), null);
+    if (window.lucide) lucide.createIcons();
+    if (hasGsap && !reduce) {
+      gsap.fromTo('#modelDialog .md-kpi', { y: 12, opacity: 0.2 }, { y: 0, opacity: 1, duration: 0.4, ease: 'power2.out', stagger: 0.05, overwrite: true });
+      gsap.fromTo('#modelDialog .md-chart', { y: 14, opacity: 0.2 }, { y: 0, opacity: 1, duration: 0.45, ease: 'power2.out', stagger: 0.07, overwrite: true });
+      gsap.fromTo('#modelDialog .md-stat', { scale: 0.94, opacity: 0.2 }, { scale: 1, opacity: 1, duration: 0.4, ease: 'power2.out', stagger: 0.04, overwrite: true });
+    }
+  }
+  function openModelDialog(m) {
+    var dlg = document.getElementById('modelDialog');
+    if (!dlg || typeof dlg.showModal !== 'function') return;
+    mdModel = m;
+    Array.prototype.forEach.call(document.querySelectorAll('#modelDialog [data-mdspan]'), function(btn) {
+      var on = btn.getAttribute('data-mdspan') === String(mdSpan);
+      btn.classList.toggle('on', on);
+      btn.onclick = function() {
+        mdSpan = btn.getAttribute('data-mdspan') === 'all' ? 'all' : Number(btn.getAttribute('data-mdspan'));
+        Array.prototype.forEach.call(document.querySelectorAll('#modelDialog [data-mdspan]'), function(o) { o.classList.toggle('on', o === btn); });
+        renderModelDialog(mdModel);
+      };
+    });
+    renderModelDialog(m);
+    if (!dlg.open) dlg.showModal();
   }
   function dayModelRows(key) {
     var per = (DATA.byDayModel || {})[key] || {};
@@ -634,7 +866,8 @@
         ghostSparkle.setAttribute('aria-hidden', 'true');
         card.appendChild(ghostSparkle);
       }
-      card.style.cssText = 'border: 1px solid var(--line); background: var(--panel)';
+      card.style.cssText = 'border: 1px solid var(--line); background: var(--panel); cursor: pointer';
+      card.setAttribute('role', 'button');
       var head = document.createElement('p');
       head.className = 'mono text-xs mb-3'; head.style.color = 'var(--dim)';
       head.textContent = '0' + (i + 1);
@@ -644,13 +877,14 @@
       badgeWrap.innerHTML = brandHTML(v, false);
       var badge = badgeWrap.firstChild;
       var mid = document.createElement('div'); mid.className = 'min-w-0 flex-1';
-      var nm = document.createElement('p'); nm.className = 'mono text-sm font-bold truncate'; nm.textContent = m;
+      var nm = document.createElement('p'); nm.className = 'mono text-sm font-bold truncate'; nm.textContent = displayModel(m); nm.title = m;
       var vn = document.createElement('p'); vn.className = 'mono text-xs truncate'; vn.style.color = 'var(--dim)'; vn.textContent = v.name;
       mid.appendChild(nm); mid.appendChild(vn);
       var tot = document.createElement('p'); tot.className = 'mono font-bold text-lg shrink-0'; tot.textContent = fmtShort(modelTotal(byModel, m));
       row.appendChild(badge); row.appendChild(mid); row.appendChild(tot);
       card.appendChild(head); card.appendChild(row);
       hoverModel(card, m);
+      (function(model) { card.addEventListener('click', function() { openModelDialog(model); }); })(m);
       cards.appendChild(card);
     });
     var ol = document.getElementById('models');
@@ -668,7 +902,7 @@
       badgeWrap.innerHTML = brandHTML(v, true);
       var badge = badgeWrap.firstChild;
       var mid = document.createElement('div'); mid.className = 'min-w-0 flex-1';
-      var nm = document.createElement('p'); nm.className = 'mono text-sm truncate'; nm.textContent = m;
+      var nm = document.createElement('p'); nm.className = 'mono text-sm truncate'; nm.textContent = displayModel(m); nm.title = m;
       var track = document.createElement('div'); track.className = 'bar-track mt-1.5 h-1.5 overflow-hidden';
       var fill = document.createElement('div'); fill.className = 'bar-fill h-full';
       var mv = modelTotal(byModel, m);
@@ -682,6 +916,7 @@
       right.appendChild(n); right.appendChild(cost);
       li.appendChild(badge); li.appendChild(mid); li.appendChild(right);
       hoverModel(li, m);
+      (function(model) { li.addEventListener('click', function() { openModelDialog(model); }); })(m);
       ol.appendChild(li);
     });
     document.getElementById('modelsCount').textContent = tops.length ? tops.length + ' models' : '';
@@ -712,42 +947,11 @@
 
   // Union of session tool calls + RTK-metered commands, sortable + paged.
   // Session tools were never metered per command: saved / avg / time show – and sort last.
-  // RTK rows arrive per (command, project) because rtk's history is machine-wide:
-  // fusing projects let one repo's `rtk grep` stand in for every project's.
-  var cmdSort = { key: 'count', dir: -1 }, cmdPage = 1, cmdPer = 15, cmdRows = [], cmdProject = '';
+  // Rows group by command alone, machine-wide: same command in any repo is one row.
+  var cmdSort = { key: 'count', dir: -1 }, cmdPage = 1, cmdPer = 15, cmdRows = [];
   function cmdVal(r, key) {
     if (key === 'name') return r.name.toLowerCase();
-    if (key === 'project') return (r.project || '').toLowerCase();
     return r[key];
-  }
-  function baseName(p) {
-    if (!p) return '–';
-    var parts = String(p).replace(/\/+$/, '').split('/');
-    return parts[parts.length - 1] || p;
-  }
-  // Options come from the rows themselves so the list follows the machine.
-  // Repaint is skipped while the option set is unchanged: render runs every
-  // 5s and a rebuild would close an open dropdown mid-selection.
-  function paintProjectFilter(all) {
-    var sel = document.getElementById('cmdProject');
-    if (!sel) return;
-    var seen = {};
-    all.forEach(function(r) { if (r.project) seen[r.project] = 1; });
-    var keys = Object.keys(seen).sort();
-    if (cmdProject && keys.indexOf(cmdProject) < 0) cmdProject = '';
-    var sig = keys.join('\n') + '\u0000' + cmdProject;
-    if (sel.dataset.sig === sig) return;
-    sel.dataset.sig = sig;
-    sel.innerHTML = '';
-    var any = document.createElement('option');
-    any.value = ''; any.textContent = 'All projects (' + keys.length + ')';
-    sel.appendChild(any);
-    keys.forEach(function(k) {
-      var o = document.createElement('option');
-      o.value = k; o.textContent = baseName(k); o.title = k;
-      sel.appendChild(o);
-    });
-    sel.value = cmdProject;
   }
   function sortCmd() {
     var k = cmdSort.key, d = cmdSort.dir;
@@ -767,14 +971,16 @@
   }
   function renderCmd() {
     var g = (DATA.rtkGain || {});
-    var all = (DATA.byTool || []).map(function(r) {
-      return { name: r[0], project: '', count: r[1], saved: null, avgPct: null, avgMs: null };
-    });
-    (g.byCommand || []).forEach(function(r) {
-      all.push({ name: r.command, project: r.project || '', count: r.count, saved: r.saved, avgPct: r.avgPct, avgMs: r.avgMs });
-    });
-    paintProjectFilter(all);
-    cmdRows = cmdProject ? all.filter(function(r) { return r.project === cmdProject; }) : all;
+    var byName = {};
+    function add(name, count, saved, avgPct, avgMs) {
+      var r = byName[name];
+      if (!r) { byName[name] = { name: name, count: count, saved: saved, avgPct: avgPct, avgMs: avgMs }; return; }
+      r.count += count;
+      if (saved !== null && saved !== undefined) r.saved = (r.saved || 0) + saved;
+    }
+    (DATA.byTool || []).forEach(function(r) { add(r[0], r[1], null, null, null); });
+    (g.byCommand || []).forEach(function(r) { add(r.command, r.count, r.saved, r.avgPct, r.avgMs); });
+    cmdRows = Object.keys(byName).map(function(k) { return byName[k]; });
     sortCmd();
     var pages = Math.max(1, Math.ceil(cmdRows.length / cmdPer));
     if (cmdPage > pages) cmdPage = pages;
@@ -789,7 +995,6 @@
       tr.className = 'mrow' + (i < Math.min(cmdRows.length - start, cmdPer) - 1 ? ' rowline' : '');
       tr.innerHTML = '<td class="text-right pr-3 py-2.5 mono text-xs w-10" style="color: var(--dim)"></td>' +
         '<td class="py-2.5 pr-3 truncate" style="max-width: 280px"></td>' +
-        '<td class="py-2.5 pr-3 truncate" style="max-width: 120px; color: var(--dim)"></td>' +
         '<td class="text-right py-2.5 pr-3 font-bold"></td>' +
         '<td class="text-right py-2.5 pr-3 font-bold"></td>' +
         '<td class="text-right py-2.5 pr-3" style="color: var(--accent)"></td>' +
@@ -799,20 +1004,17 @@
       tds[0].textContent = String(n + 1).padStart(2, '0');
       tds[1].textContent = r.name;
       tds[1].title = r.name;
-      tds[2].textContent = baseName(r.project);
-      tds[2].title = r.project || 'session tool call (no project recorded)';
-      tds[3].textContent = fmt(r.count);
-      tds[4].textContent = r.saved === null ? '–' : fmtShort(r.saved);
-      tds[5].textContent = r.avgPct === null ? '–' : r.avgPct.toFixed(1) + '%';
-      tds[6].textContent = r.avgMs === null || r.avgMs === undefined ? '–' : fmtMs(r.avgMs);
-      tds[7].firstChild.firstChild.style.width = r.count ? Math.round(r.count / max * 100) + '%' : '0';
+      tds[2].textContent = fmt(r.count);
+      tds[3].textContent = r.saved === null ? '–' : fmtShort(r.saved);
+      tds[4].textContent = r.avgPct === null ? '–' : r.avgPct.toFixed(1) + '%';
+      tds[5].textContent = r.avgMs === null || r.avgMs === undefined ? '–' : fmtMs(r.avgMs);
+      tds[6].firstChild.firstChild.style.width = r.count ? Math.round(r.count / max * 100) + '%' : '0';
       body.appendChild(tr);
     });
     document.getElementById('cmdTable').style.display = cmdRows.length ? '' : 'none';
     document.getElementById('emptyCmd').classList.toggle('hidden', cmdRows.length > 0);
-    var tools = (DATA.byTool || []).length;
     document.getElementById('toolsScope').textContent =
-      g.commands ? fmt(tools) + ' tools · ' + fmt(g.commands) + ' commands · ' + fmtShort(g.saved) + ' saved' : 'tool calls in sessions';
+      g.commands ? fmt(cmdRows.length) + ' commands · ' + fmt(g.commands) + ' runs · ' + fmtShort(g.saved) + ' saved' : 'tool calls in sessions';
     paintCmdPager(pages);
   }
   // Shared page-number painter: prev/next plus windowed numbers with
@@ -882,8 +1084,6 @@
       });
     });
     bindPerPage('#cmdPager', function() { return cmdPer; }, function(n) { cmdPer = n; cmdPage = 1; }, renderCmd);
-    var pf = document.getElementById('cmdProject');
-    if (pf) pf.addEventListener('change', function() { cmdProject = pf.value; cmdPage = 1; renderCmd(); });
     bindPerPage('section[aria-label="All models"]', function() { return modelPer; }, function(n) { modelPer = n; modelPage = 1; }, renderModels);
     bindPerPage('section[aria-label="Recent requests"]', function() { return recentPer; }, function(n) { recentPer = n; recentPage = 1; }, renderRecent);
   }
@@ -1008,7 +1208,7 @@
     renderSpark(byDay, d.usd || 0, d.savedUsd || 0, total);
     document.getElementById('verChip').textContent = 'tersio v' + (d.version || '?');
     var dp = d.paths || {};
-    [['pathLedger', dp.ledger], ['pathSessions', dp.sessions]].forEach(function(pair) {
+    [['pathLedger', dp.ledger], ['pathSessions', dp.sessions], ['pathUsageDb', dp.usageDb]].forEach(function(pair) {
       var pel = document.getElementById(pair[0]);
       if (pel && pair[1]) { pel.textContent = pair[1]; pel.title = pair[1]; }
     });
@@ -1145,7 +1345,7 @@
       var tds = tr.children;
       var dot = '<span style="display:inline-block;width:8px;height:8px;border-radius:99px;background:' + v.color + ';margin-right:8px"></span>';
       tds[0].innerHTML = dot + '<span></span>';
-      tds[0].querySelector('span:last-child').textContent = r.m;
+      tds[0].querySelector('span:last-child').textContent = displayModel(r.m);
       tds[1].textContent = fmt(r.i);
       tds[2].textContent = fmt(r.o);
       tds[3].textContent = speedText(r);
@@ -1158,7 +1358,6 @@
           : 'est. — modeled from tokens');
       if (measured) tds[5].style.color = 'var(--ink)';
       tds[6].textContent = whenStamp(r.t);
-      tds[6].title = stampLocal(r.t);
       hoverRecent(tr, r);
       body.appendChild(tr);
     });
@@ -1232,12 +1431,16 @@
   document.getElementById('reload').addEventListener('click', load);
   (function() {
     var dlg = document.getElementById('settings');
-    if (!dlg || typeof dlg.showModal !== 'function') return;
-    document.getElementById('settingsBtn').addEventListener('click', function() {
-      if (typeof dlg.showModal === 'function') dlg.showModal();
-    });
-    document.getElementById('settingsClose').addEventListener('click', function() { dlg.close(); });
-    dlg.addEventListener('click', function(ev) { if (ev.target === dlg) dlg.close(); });
+    if (dlg && typeof dlg.showModal === 'function') {
+      document.getElementById('settingsBtn').addEventListener('click', function() { dlg.showModal(); });
+      document.getElementById('settingsClose').addEventListener('click', function() { dlg.close(); });
+      dlg.addEventListener('click', function(ev) { if (ev.target === dlg) dlg.close(); });
+    }
+    var md = document.getElementById('modelDialog');
+    if (md && typeof md.showModal === 'function') {
+      document.getElementById('mdClose').addEventListener('click', function() { md.close(); });
+      md.addEventListener('click', function(ev) { if (ev.target === md) md.close(); });
+    }
   })();
   (function() {
     var resetBtn = document.getElementById('reset');

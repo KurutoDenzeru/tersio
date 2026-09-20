@@ -59,8 +59,8 @@ test("aggregates per-command savings from history.db", { skip: !hasSqlite() }, (
       assert.equal(g.input, 1300);
       assert.ok(Math.abs(g.avgPct - (250 / 1300) * 100) < 1e-9);
       assert.equal(g.byCommand.length, 2);
-      assert.deepEqual(g.byCommand[0], { command: "rtk git status", project: "/tmp", count: 2, saved: 150, avgPct: 50, avgMs: 30 });
-      assert.deepEqual(g.byCommand[1], { command: "rtk grep", project: "/tmp", count: 1, saved: 100, avgPct: 10, avgMs: 600 });
+      assert.deepEqual(g.byCommand[0], { command: "rtk git status", count: 2, saved: 150, avgPct: 50, avgMs: 30 });
+      assert.deepEqual(g.byCommand[1], { command: "rtk grep", count: 1, saved: 100, avgPct: 10, avgMs: 600 });
     });
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -102,7 +102,7 @@ test("default db path follows the platform", () => {
   });
 });
 
-test("multi-line commands stay one row and keep their project", { skip: !hasSqlite() }, () => {
+test("multi-line commands stay one row", { skip: !hasSqlite() }, () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-rtk-"));
   const db = path.join(dir, "history.db");
   try {
@@ -121,7 +121,6 @@ test("multi-line commands stay one row and keep their project", { skip: !hasSqli
       const g = readRtkGain(50);
       assert.equal(g.byCommand.length, 2, "one row per command, not one per physical line");
       for (const r of g.byCommand) {
-        assert.equal(r.project, "/repos/multi", "project survives the multi-line neighbour");
         assert.ok(!r.command.includes("\n"), "commands are flattened for the table");
       }
     });
@@ -130,7 +129,7 @@ test("multi-line commands stay one row and keep their project", { skip: !hasSqli
   }
 });
 
-test("keeps projects separate so a quiet repo is not swallowed by a busy one", { skip: !hasSqlite() }, () => {
+test("same command across repos folds into one row", { skip: !hasSqlite() }, () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-rtk-"));
   const db = path.join(dir, "history.db");
   try {
@@ -149,11 +148,8 @@ test("keeps projects separate so a quiet repo is not swallowed by a busy one", {
       const g = readRtkGain(50);
       assert.equal(g.commands, 5, "totals stay machine-wide");
       const grep = g.byCommand.filter((r) => r.command === "rtk grep");
-      assert.equal(grep.length, 2, "same command in two repos is two rows");
-      assert.deepEqual(
-        grep.map((r) => [r.project, r.count]).sort(),
-        [["/repos/busy", 2], ["/repos/quiet", 1]],
-      );
+      assert.equal(grep.length, 1, "same command in two repos is one row");
+      assert.equal(grep[0].count, 3);
       // A zero-saving command still reaches the table; the old rows were
       // ranked by tokens saved and capped at 10, which dropped these entirely.
       assert.ok(g.byCommand.some((r) => r.command === "rtk bun run build (passthrough)"));

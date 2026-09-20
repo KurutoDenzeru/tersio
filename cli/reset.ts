@@ -7,6 +7,7 @@ import { cancel as clackCancel, confirm as clackConfirm } from '@clack/prompts';
 import { dryRun, yes } from './common.ts';
 import { ask, closeRL, tty } from './interactive.ts';
 import { clearUsageLedger, importSessionTokens, ledgerPath, markReset, readUsage, sessionsDir } from '../extensions/shared/usage-ledger.ts';
+import { clearUsageDb, usageDbPath } from '../extensions/shared/usage-store.ts';
 import { readRtkGain, rtkDbPath } from '../extensions/shared/rtk-gain.ts';
 
 async function runReset(): Promise<boolean> {
@@ -14,7 +15,7 @@ async function runReset(): Promise<boolean> {
   const rows = readUsage().length;
   const sessions = importSessionTokens();
   const rtk = readRtkGain(1);
-  console.log(`Will clear: ${rows} usage ledger rows · ${ledgerPath()}`);
+  console.log(`Will clear: ${rows} usage ledger rows · ${ledgerPath()} + usage.db ${usageDbPath()}`);
   console.log(`Will hide (view-level watermark): session-derived statistics (${sessions.messages} messages) · RTK metered rows (${rtk.commands})`);
   console.log(`Left intact on disk: sessions ${sessionsDir()}, rtk ${rtkDbPath()}`);
 
@@ -50,8 +51,9 @@ async function runReset(): Promise<boolean> {
     }
   }
   const cleared = clearUsageLedger();
+  const dbCleared = clearUsageDb();
   const ts = markReset();
-  console.log(`[ok] reset — removed ${cleared} usage rows; statistics view starts at ${new Date(ts).toISOString()}`);
+  console.log(`[ok] reset — removed ${cleared} usage rows${dbCleared ? ' + usage.db' : ''}; statistics view starts at ${new Date(ts).toISOString()}`);
   return true;
 }
 

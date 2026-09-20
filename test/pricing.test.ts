@@ -154,5 +154,5 @@ test("tersio usage prices from the live cache", () => {
   });
   rmSync(dir, { recursive: true, force: true });
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /claude-sonnet-5.*in 1,000,000.*\$2\.00/);
+  assert.match(result.stdout, /Claude-Sonnet-5.*1,000,000.*\$2\.00/);
 });

@@ -83,6 +83,10 @@
         <p class="dlg-name">Session transcripts <span class="dlg-own">host-owned · never touched</span></p>
         <p class="mono dlg-file" id="pathSessions" title="">–</p>
       </div>
+      <div class="dlg-path">
+        <p class="dlg-name">Usage DB <span class="dlg-own">tersio-owned · reset clears</span></p>
+        <p class="mono dlg-file" id="pathUsageDb" title="">–</p>
+      </div>
     </div>
     <div class="dlg-danger">
       <p class="dlg-label">Danger zone</p>
@@ -95,6 +99,76 @@
           <i data-lucide="rotate-ccw" class="size-3.5"></i><span id="resetLabel">Reset</span>
         </button>
       </div>
+    </div>
+  </dialog>
+
+  <!-- Model detail dialog (shadcn chart language, native modal): kpi strip,
+       gradient area chart with range tabs, rounded bars, token-mix donut. -->
+  <dialog id="modelDialog" class="dlg mdlg" aria-labelledby="mdTitle">
+    <div class="dlg-head">
+      <div class="min-w-0 flex items-center gap-3">
+        <span id="mdBadge"></span>
+        <div class="min-w-0">
+          <p class="dlg-title truncate" id="mdTitle">Model</p>
+          <p class="dlg-desc mono" id="mdSub">–</p>
+        </div>
+      </div>
+      <div class="flex shrink-0 items-center gap-2">
+        <span class="md-rankpill mono" id="mdRank">#–</span>
+        <button id="mdClose" class="btn-push flex shrink-0 items-center p-2 rounded-xl" style="border: 1px solid var(--line); color: var(--ink)" aria-label="Close model details">
+          <i data-lucide="x" class="size-4"></i>
+        </button>
+      </div>
+    </div>
+    <div class="md-body">
+    <div class="md-kpis" id="mdKpis"></div>
+    <div class="md-chart">
+      <div class="md-chart-head">
+        <div class="min-w-0">
+          <p class="md-chart-title">Token volume</p>
+          <p class="md-chart-sub mono" id="mdMomRange">–</p>
+        </div>
+        <div class="flex shrink-0 items-center gap-2">
+          <span class="md-trend mono" id="mdTrend"></span>
+          <span class="seg mono text-xs flex items-center gap-1 p-1 rounded-[10px]" style="border: 1px solid var(--line)" role="group" aria-label="Chart range">
+            <button data-mdspan="30" class="px-2.5 py-1" role="button">30D</button>
+            <button data-mdspan="90" class="px-2.5 py-1" role="button">90D</button>
+            <button data-mdspan="all" class="on px-2.5 py-1" role="button">ALL</button>
+          </span>
+        </div>
+      </div>
+      <svg id="mdSpark" viewBox="0 0 560 190" preserveAspectRatio="none" aria-hidden="true"></svg>
+      <div class="md-tip mono" id="mdTip"></div>
+      <div class="md-months mono" id="mdMonths" aria-hidden="true"></div>
+    </div>
+    <div class="md-cols">
+      <div class="md-chart">
+        <div class="md-chart-head">
+          <div class="min-w-0">
+            <p class="md-chart-title">Daily activity</p>
+            <p class="md-chart-sub mono" id="mdBarsSub">tokens per day</p>
+          </div>
+          <span class="md-trend mono" id="mdActive"></span>
+        </div>
+        <div class="md-bars" id="mdBars" aria-hidden="true"></div>
+        <div class="md-months mono" id="mdBarsMonths" aria-hidden="true"></div>
+        <div class="md-note mono" id="mdBarsNote"></div>
+      </div>
+      <div class="md-chart">
+        <div class="md-chart-head">
+          <div class="min-w-0">
+            <p class="md-chart-title">Token mix</p>
+            <p class="md-chart-sub mono">input vs output vs cache</p>
+          </div>
+        </div>
+        <div class="md-donut-wrap">
+          <svg id="mdMix" viewBox="0 0 140 140" aria-hidden="true"></svg>
+          <div class="md-donut-center"><p class="mono" id="mdMixTotal">–</p></div>
+        </div>
+        <div class="md-legend mono" id="mdMixLegend"></div>
+      </div>
+    </div>
+    <div class="md-grid" id="mdStats"></div>
     </div>
   </dialog>
 
@@ -279,19 +353,17 @@
       <i data-lucide="terminal" class="size-4" style="color: var(--accent)"></i>
       <h2 class="display font-bold tracking-tight text-xl truncate min-w-0">Command tools</h2>
       <div class="flex items-center gap-2 ml-auto min-w-0">
-        <select id="cmdProject" class="mono text-xs px-2 py-1.5 rounded-[10px]" style="border: 1px solid var(--line); background: var(--panel); color: var(--ink); max-width: 190px" aria-label="Filter command tools by project"></select>
         <span class="mono text-xs truncate min-w-0" style="color: var(--dim)" id="toolsScope">tool calls in sessions</span>
       </div>
     </div>
     <p class="mono text-xs mb-4 truncate" style="color: var(--dim)">count · tokens saved · avg rate · avg time · share of executions</p>
     <div class="overflow-x-auto">
       <table class="w-full mono text-[13px]" id="cmdTable">
-        <colgroup><col style="width:40px"><col><col style="width:120px"><col style="width:90px"><col style="width:90px"><col style="width:90px"><col style="width:90px"><col style="width:140px"></colgroup>
+        <colgroup><col style="width:40px"><col><col style="width:90px"><col style="width:90px"><col style="width:90px"><col style="width:90px"><col style="width:140px"></colgroup>
         <thead>
           <tr class="text-left text-[11px] uppercase tracking-[0.14em]" style="color: var(--dim)">
             <th class="font-normal text-right pr-3 py-2 w-10">#</th>
             <th class="font-normal py-2 pr-3" aria-sort="none"><button class="thsort" data-sort="name">Tool / Command <span class="arr">⇅</span></button></th>
-            <th class="font-normal py-2 pr-3" aria-sort="none"><button class="thsort" data-sort="project">Project <span class="arr">⇅</span></button></th>
             <th class="font-normal text-right py-2 pr-3" aria-sort="descending"><button class="thsort num" data-sort="count">Count <span class="arr">↓</span></button></th>
             <th class="font-normal text-right py-2 pr-3" aria-sort="none"><button class="thsort num" data-sort="saved">Saved <span class="arr">⇅</span></button></th>
             <th class="font-normal text-right py-2 pr-3" aria-sort="none"><button class="thsort num" data-sort="avgPct">Avg% <span class="arr">⇅</span></button></th>

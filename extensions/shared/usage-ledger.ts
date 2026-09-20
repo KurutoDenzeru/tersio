@@ -106,10 +106,7 @@ export interface SessionTokens {
 function zeroBreakdown(): TokenBreakdown {
   return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 }
-// Message-level generation time in ms. OMP writes `duration` (ms, float);
-// codex token_count rows carry none. Non-positive/non-finite → undefined
-// so renderers print – instead of a fake 0.0s.
-function durOf(v: unknown): number | undefined {
+export function durOf(v: unknown): number | undefined {
   return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : undefined;
 }
 
@@ -117,7 +114,7 @@ function durOf(v: unknown): number | undefined {
 // { input, output, cacheRead, cacheWrite, total }; a bare number shows up in
 // older fixtures. Anything else means "not recorded" — deliberately not 0, so
 // the dashboard can tell a genuinely free run from an unrecorded one.
-function costOf(usage: Record<string, unknown>): number | undefined {
+export function costOf(usage: Record<string, unknown>): number | undefined {
   const c = usage.cost;
   if (typeof c === 'number') return Number.isFinite(c) ? c : undefined;
   if (c && typeof c === 'object') {
@@ -129,7 +126,7 @@ function costOf(usage: Record<string, unknown>): number | undefined {
 
 // First line only: real messages carry multi-line provider errors, and this
 // ends up in a tooltip.
-function statusOf(msg: { stopReason?: unknown; errorStatus?: unknown; errorMessage?: unknown; isError?: unknown }): { st: RunStatus; code?: number; note?: string } {
+export function statusOf(msg: { stopReason?: unknown; errorStatus?: unknown; errorMessage?: unknown; isError?: unknown }): { st: RunStatus; code?: number; note?: string } {
   const stop = typeof msg.stopReason === 'string' ? msg.stopReason : '';
   const note = typeof msg.errorMessage === 'string' && msg.errorMessage.trim()
     ? msg.errorMessage.split('\n')[0].trim().slice(0, 180)
@@ -163,15 +160,14 @@ export function codexSessionsDir(): string {
   return path.join(os.homedir(), '.codex', 'sessions');
 }
 
-function dayKey(ts: string | number): string | null {
+export function dayKey(ts: string | number): string | null {
   const ms = typeof ts === 'number' ? ts : Date.parse(ts);
   if (!Number.isFinite(ms)) return null;
   const d = new Date(ms);
   const p = (n: number): string => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
-
-function walkJsonl(dir: string, out: string[], cap: number): void {
+export function walkJsonl(dir: string, out: string[], cap: number): void {
   let entries: fs.Dirent[];
   try {
     entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -185,22 +181,109 @@ function walkJsonl(dir: string, out: string[], cap: number): void {
     else if (e.isFile() && e.name.endsWith('.jsonl')) out.push(full);
   }
 }
-
 // Recent requests are their own full-width table in the dashboard, so this is
 // a payload bound rather than a "few highlights" bound. Rows are small
 // (model, tokens, timing, status), so a few hundred cost little to ship.
-const RECENT_LIMIT = 200;
+export const RECENT_LIMIT = 200;
+const FREE_SUFFIX = /(?::free|-free)$/i;
+// Session-parse buffer shared by live reads and usage.db syncs: identical
+// inputs produce identical aggregates, so the store is a cache, never a fork.
+export interface SessionAccum {
+  byModel: Record<string, TokenBreakdown>;
+  byDay: Record<string, TokenBreakdown>;
+  byDayModel: Record<string, Record<string, number>>;
+  byTool: Record<string, number>;
+  byModelMessages: Record<string, number>;
+  totals: TokenBreakdown;
+  messages: number;
+  costMeasured: number;
+  recent: RecentRequest[];
+}
+export function newSessionAccum(): SessionAccum {
+  return { byModel: {}, byDay: {}, byDayModel: {}, byTool: {}, byModelMessages: {}, totals: zeroBreakdown(), messages: 0, costMeasured: 0, recent: [] };
+}
+export function ingestSessionRow(accum: SessionAccum, model: string, usage: Record<string, unknown>, ts: string | number | undefined, durMs?: unknown, run?: { st: RunStatus; code?: number; note?: string }, toolNames?: string[]): boolean {
+  const watermark = readResetWatermark();
+  const ms = ts === undefined ? NaN : typeof ts === 'number' ? ts : Date.parse(ts);
+  if (watermark > 0 && (!Number.isFinite(ms) || ms < watermark)) return false;
+  addInto(accum.totals, usage);
+  const key = model.replace(FREE_SUFFIX, '').toLowerCase();
+  accum.byModel[key] ??= zeroBreakdown();
+  addInto(accum.byModel[key], usage);
+  accum.byModelMessages[key] = (accum.byModelMessages[key] ?? 0) + 1;
+  const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.floor(v) : 0);
+  if (Number.isFinite(ms)) {
+    const outcome = run ?? { st: 'completed' as RunStatus };
+    accum.recent.push({ m: key, i: num(usage.input), o: num(usage.output), t: ms, d: durOf(durMs), cr: num(usage.cacheRead), cw: num(usage.cacheWrite), usd: costOf(usage), st: outcome.st, code: outcome.code, note: outcome.note });
+  }
+  const day = ts !== undefined ? dayKey(ts) : null;
+  if (day) {
+    accum.byDay[day] ??= zeroBreakdown();
+    addInto(accum.byDay[day], usage);
+    const sum = ['input', 'output', 'cacheRead', 'cacheWrite'].reduce((a, k) => a + (typeof usage[k] === 'number' && Number.isFinite(usage[k]) ? Math.floor(usage[k] as number) : 0), 0);
+    if (sum > 0) {
+      accum.byDayModel[day] ??= {};
+      accum.byDayModel[day][key] = (accum.byDayModel[day][key] ?? 0) + sum;
+    }
+  }
+  accum.messages += 1;
+  const measured = costOf(usage);
+  if (measured !== undefined) accum.costMeasured += measured;
+  for (const name of toolNames ?? []) accum.byTool[name] = (accum.byTool[name] ?? 0) + 1;
+  return true;
+}
+export type SessionLineKind = 'codex_provider' | 'token_row' | 'assistant_row' | 'skip';
+export function classifySessionLine(row: { timestamp?: string | number; type?: unknown; message?: { role?: unknown; model?: unknown; usage?: Record<string, unknown>; duration?: unknown; completedAt?: unknown; timestamp?: unknown; stopReason?: unknown; errorStatus?: unknown; errorMessage?: unknown; isError?: unknown; content?: Array<{ type?: unknown; name?: unknown; arguments?: unknown }> }; payload?: { type?: unknown; model_provider?: unknown; info?: { last_token_usage?: Record<string, unknown> } } }): { kind: SessionLineKind; provider?: string; model?: string; usage?: Record<string, unknown>; durMs?: number; run?: { st: RunStatus; code?: number; note?: string }; tools?: string[]; ms?: number } {
+  const payload = row.payload;
+  if (payload && typeof payload === 'object') {
+    if (row.type === 'session_meta' && typeof payload.model_provider === 'string') return { kind: 'codex_provider', provider: payload.model_provider };
+    if (payload.type === 'token_count') {
+      const last = payload.info?.last_token_usage;
+      if (last) {
+        const provider = typeof payload.model_provider === 'string' ? payload.model_provider : undefined;
+        const ts = row.timestamp === undefined ? NaN : typeof row.timestamp === 'number' ? row.timestamp : Date.parse(row.timestamp);
+        return { kind: 'token_row', provider, model: 'codex', usage: { input: last['input_tokens'], output: last['output_tokens'], cacheRead: last['cached_input_tokens'], cacheWrite: last['cache_write_input_tokens'] }, ms: Number.isFinite(ts) ? ts : undefined };
+      }
+    }
+  }
+  const msg = row.message;
+  if (!msg || msg.role !== 'assistant' || !msg.usage) return { kind: 'skip' };
+  const model = typeof msg.model === 'string' && msg.model ? msg.model : 'unknown';
+  const computedDur = (typeof msg.completedAt === 'number' && typeof msg.timestamp === 'number') ? msg.completedAt - msg.timestamp : undefined;
+  const tools: string[] = [];
+  for (const part of msg.content ?? []) {
+    if (part?.type === 'toolCall' && typeof part.name === 'string' && part.name) {
+      tools.push(part.name === 'bash' ? `bash:${leadBinary((part.arguments as { command?: unknown } | null)?.command)}` : part.name);
+    }
+  }
+  return { kind: 'assistant_row', model, usage: msg.usage, durMs: typeof msg.duration === 'number' ? msg.duration : computedDur, run: statusOf(msg), tools };
+}
+// Fold `:free`/`-free` suffixes and case variants into one chart key, so the
+// same model from two providers stops splitting into separate rows.
+export function canonicalModelId(model: string): string {
+  return model.replace(FREE_SUFFIX, '').toLowerCase();
+}
+// LiteLLM-style display: namespace stays lowercase, model segments title-case
+// with version dots kept (`deepseek-v4.1-flash` → `Deepseek-V4.1-Flash`).
+export function displayModelId(model: string): string {
+  const bare = model.replace(FREE_SUFFIX, '');
+  const cap = (s: string): string => {
+    const low = s.toLowerCase();
+    if (low === 'openai') return 'OpenAI';
+    if (low === 'ai') return 'AI';
+    if (/^\d+[a-z]+$/.test(low)) return low.toUpperCase();
+    if (s.length <= 2) return s.toUpperCase();
+    return s[0].toUpperCase() + s.slice(1).toLowerCase();
+  };
+  const seg = (s: string): string => s.split('.').map(cap).join('.');
+  const words = (s: string): string => s.split(/[-_:]+/).filter(Boolean).map(seg).join('-');
+  const slash = bare.indexOf('/');
+  if (slash >= 0) return `${bare.slice(0, slash).toLowerCase()}/${words(bare.slice(slash + 1))}`;
+  return words(bare);
+}
 
 export function importSessionTokens(): SessionTokens {
-  const watermark = readResetWatermark();
-  const byModel: Record<string, TokenBreakdown> = {};
-  const byDay: Record<string, TokenBreakdown> = {};
-  const byDayModel: Record<string, Record<string, number>> = {};
-  const byTool: Record<string, number> = {};
-  const byModelMessages: Record<string, number> = {};
-  const totals = zeroBreakdown();
-  let messages = 0;
-  let costMeasured = 0;
+  const accum = newSessionAccum();
   const files: string[] = [];
   walkJsonl(sessionsDir(), files, 2000);
   // A sessions override signals an isolated environment (tests, fixtures):
@@ -209,45 +292,6 @@ export function importSessionTokens(): SessionTokens {
     walkJsonl(codexSessionsDir(), files, 2000);
   }
   let codexProvider: string | null = null;
-  const recent: RecentRequest[] = [];
-  // Rows from before the reset watermark (and rows with no usable timestamp,
-  function ingest(model: string, usage: Record<string, unknown>, ts: string | number | undefined, durMs?: unknown, run?: { st: RunStatus; code?: number; note?: string }): boolean {
-    const ms = ts === undefined ? NaN : typeof ts === 'number' ? ts : Date.parse(ts);
-    if (watermark > 0 && (!Number.isFinite(ms) || ms < watermark)) return false;
-    addInto(totals, usage);
-    byModel[model] ??= zeroBreakdown();
-    addInto(byModel[model], usage);
-    byModelMessages[model] = (byModelMessages[model] ?? 0) + 1;
-    const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.floor(v) : 0);
-    if (Number.isFinite(ms)) {
-      const outcome = run ?? { st: 'completed' as RunStatus };
-      recent.push({
-        m: model,
-        i: num(usage.input),
-        o: num(usage.output),
-        t: ms,
-        d: durOf(durMs),
-        cr: num(usage.cacheRead),
-        cw: num(usage.cacheWrite),
-        usd: costOf(usage),
-        st: outcome.st,
-        code: outcome.code,
-        note: outcome.note,
-      });
-    }
-    const day = ts !== undefined ? dayKey(ts) : null;
-    if (day) {
-      byDay[day] ??= zeroBreakdown();
-      addInto(byDay[day], usage);
-      const sum = ['input', 'output', 'cacheRead', 'cacheWrite'].reduce((a, k) => a + (typeof usage[k] === 'number' && Number.isFinite(usage[k]) ? Math.floor(usage[k] as number) : 0), 0);
-      if (sum > 0) {
-        byDayModel[day] ??= {};
-        byDayModel[day][model] = (byDayModel[day][model] ?? 0) + sum;
-      }
-    }
-    messages += 1;
-    return true;
-  }
   for (const file of files) {
     let text: string;
     try {
@@ -255,68 +299,35 @@ export function importSessionTokens(): SessionTokens {
     } catch {
       continue;
     }
-    for (const line of text.split('\n')) {
-      if (!line.trim()) continue;
-      try {
-        const row = JSON.parse(line) as {
-          timestamp?: string | number;
-          message?: {
-            role?: unknown;
-            model?: unknown;
-            usage?: Record<string, unknown>;
-            duration?: unknown;
-            completedAt?: unknown;
-            timestamp?: unknown;
-            stopReason?: unknown;
-            errorStatus?: unknown;
-            errorMessage?: unknown;
-            isError?: unknown;
-            content?: Array<{ type?: unknown; name?: unknown; arguments?: unknown }>;
-          };
-        };
-        const codexRow = row as { type?: unknown; payload?: { type?: unknown; model_provider?: unknown; info?: { last_token_usage?: Record<string, unknown> } } };
-        const payload = codexRow.payload;
-        if (payload && typeof payload === 'object') {
-          if (codexRow.type === 'session_meta' && typeof payload.model_provider === 'string') {
-            codexProvider = payload.model_provider;
-          } else if (payload.type === 'token_count') {
-            const last = payload.info?.last_token_usage;
-            if (last) {
-              ingest(codexProvider ? `codex/${codexProvider}` : 'codex', {
-                input: last['input_tokens'],
-                output: last['output_tokens'],
-                cacheRead: last['cached_input_tokens'],
-                cacheWrite: last['cache_write_input_tokens'],
-              }, row.timestamp);
-              continue;
-            }
-          }
-        }
-        const msg = row.message;
-        if (!msg || msg.role !== 'assistant' || !msg.usage) continue;
-        const model = typeof msg.model === 'string' && msg.model ? msg.model : 'unknown';
-        const explicitDur = msg.duration;
-        const computedDur = (typeof msg.completedAt === 'number' && typeof msg.timestamp === 'number') ? msg.completedAt - msg.timestamp : undefined;
-        const counted = ingest(model, msg.usage, row.timestamp, typeof explicitDur === 'number' ? explicitDur : computedDur, statusOf(msg));
-        const measured = costOf(msg.usage);
-        if (counted && measured !== undefined) costMeasured += measured;
-        if (!counted) continue;
-        for (const part of msg.content ?? []) {
-          if (part?.type === 'toolCall' && typeof part.name === 'string' && part.name) {
-            const key = part.name === 'bash' ? `bash:${leadBinary((part.arguments as { command?: unknown } | null)?.command)}` : part.name;
-            byTool[key] = (byTool[key] ?? 0) + 1;
-          }
-        }
-      } catch { /* skip corrupt lines */ }
-    }
+    processSessionText(accum, { get codexProvider() { return codexProvider; }, set codexProvider(v: string | null) { codexProvider = v; } }, text);
   }
-  recent.sort((a, b) => b.t - a.t);
-  return { messages, totals, byModel, byDay, byDayModel, byTool, byModelMessages, costMeasured, recent: recent.slice(0, RECENT_LIMIT) };
+  accum.recent.sort((a, b) => b.t - a.t);
+  return { messages: accum.messages, totals: accum.totals, byModel: accum.byModel, byDay: accum.byDay, byDayModel: accum.byDayModel, byTool: accum.byTool, byModelMessages: accum.byModelMessages, costMeasured: accum.costMeasured, recent: accum.recent.slice(0, RECENT_LIMIT) };
+}
+export function processSessionText(accum: SessionAccum, state: { codexProvider: string | null }, text: string): void {
+  for (const line of text.split('\n')) {
+    if (!line.trim()) continue;
+    try {
+      const row = JSON.parse(line) as Parameters<typeof classifySessionLine>[0];
+      const parsed = classifySessionLine(row);
+      if (parsed.kind === 'codex_provider') {
+        if (parsed.provider) state.codexProvider = parsed.provider;
+        continue;
+      }
+      if (parsed.kind === 'token_row') {
+        const model = parsed.provider ? `codex/${parsed.provider}` : (state.codexProvider ? `codex/${state.codexProvider}` : 'codex');
+        ingestSessionRow(accum, model, parsed.usage ?? {}, row.timestamp, undefined, { st: 'completed' as RunStatus });
+        continue;
+      }
+      if (parsed.kind !== 'assistant_row' || !parsed.model || !parsed.usage) continue;
+      ingestSessionRow(accum, parsed.model, parsed.usage, row.timestamp, parsed.durMs, parsed.run, parsed.tools);
+    } catch { /* skip corrupt lines */ }
+  }
 }
 // Lead binary of a shell string: first segment head past `cd` chains and
 // VAR=x assignments (`cd /x && git status` → `git`). Falls back to `bash`.
 const SKIP_HEADS = ['cd', 'echo', 'export', 'true', 'false'];
-function leadBinary(command: unknown): string {
+export function leadBinary(command: unknown): string {
   if (typeof command !== 'string' || !command.trim()) return 'bash';
   for (const seg of command.split(/&&|;|\n|\|(?!\|)/)) {
     const toks = seg.trim().split(/\s+/).filter(Boolean);

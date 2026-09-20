@@ -257,15 +257,18 @@ test("uninstall dry-run never prompts for confirmation", () => {
 });
 
 test("usage with an empty ledger and no sessions prints the empty state and exits 0", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-usage-empty-"));
   const missing = path.join(root, "test", "definitely-missing-home", "no-ledger.jsonl");
   const noSessions = path.join(root, "test", "definitely-missing-home", "no-sessions");
   const result = spawnSync(process.execPath, [installer, "usage"], {
     encoding: "utf8",
     cwd: root,
-    env: { ...process.env, TERSIO_USAGE_FILE: missing, TERSIO_SESSIONS_DIR: noSessions, TERSIO_RESET_FILE: path.join(root, "test", "definitely-missing-home", "no-reset.json") },
+    env: { ...process.env, TERSIO_USAGE_FILE: missing, TERSIO_SESSIONS_DIR: noSessions, TERSIO_RESET_FILE: path.join(root, "test", "definitely-missing-home", "no-reset.json"), TERSIO_USAGE_DB: path.join(dir, "usage.db") },
   });
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /No ledger rows or session tokens yet/);
+  assert.match(result.stdout, /· stored ===/);
+  rmSync(dir, { recursive: true, force: true });
 });
 
 test("gain --export writes a self-contained html file", () => {
@@ -306,6 +309,7 @@ test("reset --dry-run keeps the seeded ledger", () => {
       TERSIO_RESET_FILE: path.join(dir, "reset.json"),
       TERSIO_SESSIONS_DIR: path.join(dir, "no-sessions"),
       TERSIO_RTK_DB: path.join(dir, "no-rtk.db"),
+      TERSIO_USAGE_DB: path.join(dir, "no-usage.db"),
     },
   });
   assert.equal(result.status, 0, result.stderr);
@@ -328,6 +332,7 @@ test("reset --yes clears the seeded ledger and writes the watermark", () => {
       TERSIO_RESET_FILE: marker,
       TERSIO_SESSIONS_DIR: path.join(dir, "no-sessions"),
       TERSIO_RTK_DB: path.join(dir, "no-rtk.db"),
+      TERSIO_USAGE_DB: path.join(dir, "no-usage.db"),
     },
   });
   assert.equal(result.status, 0, result.stderr);
@@ -351,6 +356,7 @@ test("reset asks Y/N and aborts without writing on N", () => {
       TERSIO_RESET_FILE: marker,
       TERSIO_SESSIONS_DIR: path.join(dir, "no-sessions"),
       TERSIO_RTK_DB: path.join(dir, "no-rtk.db"),
+      TERSIO_USAGE_DB: path.join(dir, "no-usage.db"),
     },
   });
   assert.equal(result.status, 0, result.stderr);
@@ -375,6 +381,7 @@ test("reset accepts lowercase y and writes the watermark", () => {
       TERSIO_RESET_FILE: marker,
       TERSIO_SESSIONS_DIR: path.join(dir, "no-sessions"),
       TERSIO_RTK_DB: path.join(dir, "no-rtk.db"),
+      TERSIO_USAGE_DB: path.join(dir, "no-usage.db"),
     },
   });
   assert.equal(result.status, 0, result.stderr);
@@ -395,6 +402,7 @@ test("reset --yes on empty stores prints nothing-to-reset without prompting", ()
       TERSIO_RESET_FILE: path.join(dir, "reset.json"),
       TERSIO_SESSIONS_DIR: path.join(dir, "no-sessions"),
       TERSIO_RTK_DB: path.join(dir, "no-rtk.db"),
+      TERSIO_USAGE_DB: path.join(dir, "no-usage.db"),
     },
   });
   assert.equal(result.status, 0, result.stderr);
@@ -414,6 +422,7 @@ test("doctor prints record store paths", () => {
       TERSIO_USAGE_FILE: ledger,
       TERSIO_SESSIONS_DIR: path.join(dir, "no-sessions"),
       TERSIO_RTK_DB: path.join(dir, "no-rtk.db"),
+      TERSIO_USAGE_DB: path.join(dir, "no-usage.db"),
       TERSIO_RESET_FILE: path.join(dir, "reset.json"),
     },
   });
@@ -421,7 +430,7 @@ test("doctor prints record store paths", () => {
   assert.match(result.stdout, /^Usage & records$/m);
   assert.match(result.stdout, new RegExp(`Usage ledger \\(tersio-owned[^)]*\\): ${ledger.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
   assert.match(result.stdout, /Session transcripts \(host-owned/);
-  assert.match(result.stdout, /RTK history \(rtk-owned/);
+  assert.match(result.stdout, /Usage DB \(tersio-owned/);
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -436,6 +445,7 @@ test("gain --export includes the reset control and empty states", () => {
       TERSIO_USAGE_FILE: path.join(dir, "usage.jsonl"),
       TERSIO_SESSIONS_DIR: path.join(dir, "no-sessions"),
       TERSIO_RTK_DB: path.join(dir, "no-rtk.db"),
+      TERSIO_USAGE_DB: path.join(dir, "no-usage.db"),
       TERSIO_RESET_FILE: path.join(dir, "reset.json"),
     },
   });
@@ -447,8 +457,8 @@ test("gain --export includes the reset control and empty states", () => {
   assert.match(body, /id="settings"/);
   assert.match(body, /id="settingsBtn"/);
   assert.match(body, /id="pathLedger"/);
-  assert.match(body, /data-theme-val="system"/);
-  assert.match(body, /data-lucide="monitor"/);
+  assert.match(body, /id="modelDialog"/);
+  assert.match(body, /openModelDialog/);
   assert.match(body, /id="emptyModels"/);
   assert.match(body, /id="modelPages"/);
   assert.match(body, /id="recentPages"/);

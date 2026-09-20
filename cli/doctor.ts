@@ -8,10 +8,10 @@ import {
 } from './common.ts';
 import { runInteractivePhase } from './interactive.ts';
 import { ledgerPath, readUsage, sessionsDir } from '../extensions/shared/usage-ledger.ts';
+import { usageDbPath } from '../extensions/shared/usage-store.ts';
 import { readRtkGain, rtkDbPath } from '../extensions/shared/rtk-gain.ts';
 import { checkForUpdate } from './update.ts';
 import { readTextIfExists } from '../extensions/lib/utils.ts';
-
 async function runDoctor(): Promise<void> {
   console.log('\n=== Tersio Doctor ===');
 
@@ -143,6 +143,7 @@ async function runDoctor(): Promise<void> {
   check('Usage ledger', true, usageRows.length ? `${usageRows.length} rows` : 'empty — no records yet');
   console.log(`  Usage ledger (tersio-owned, tersio reset clears): ${ledgerPath()} · ${usageRows.length} rows`);
   console.log(`  Session transcripts (host-owned, never touched): ${sessionsDir()}`);
+  console.log(`  Usage DB (tersio-owned, tersio reset clears): ${usageDbPath()}`);
   const rtkDb = rtkDbPath();
   const rtk = readRtkGain();
   console.log(`  RTK history (rtk-owned, never touched): ${rtkDb}${rtk.commands ? ` · ${rtk.commands} commands` : ''}`);

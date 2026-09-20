@@ -8,10 +8,8 @@
 // isn't metered); their gains are bench-measured in BENCHMARK.md and cited
 // as static figures wherever RTK rows appear.
 //
-// Rows are grouped by (command, project) rather than command alone: RTK's
-// history is machine-wide, so fusing projects made one busy repo's `rtk grep`
-// count as everyone's and let high-saving commands from other projects crowd
-// every other project out of the table entirely.
+// Rows group by command alone, machine-wide: one row per command no matter
+// which repo ran it. Project filtering stays out — wasted column, same logic.
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -19,7 +17,6 @@ import path from 'node:path';
 
 export interface RtkCommandRow {
   command: string;
-  project: string;
   count: number;
   saved: number;
   avgPct: number;
@@ -85,10 +82,9 @@ export function readRtkGain(limit = 10, cutoffMs?: number): RtkGain {
     );
     const byCommand = query(
       rtkDbPath(),
-      `SELECT substr(${CMD_ONE_LINE}, 1, ${MAX_CMD_CHARS}), COALESCE(project_path, ''), COUNT(*), COALESCE(SUM(saved_tokens),0), COALESCE(AVG(savings_pct),0), COALESCE(AVG(exec_time_ms),0) FROM commands ${where} GROUP BY rtk_cmd, project_path ORDER BY SUM(saved_tokens) DESC LIMIT ${Math.max(1, Math.floor(limit))};`,
-    ).map(([command, project, count, savedRow, pct, ms]) => ({
+      `SELECT substr(${CMD_ONE_LINE}, 1, ${MAX_CMD_CHARS}), COUNT(*), COALESCE(SUM(saved_tokens),0), COALESCE(AVG(savings_pct),0), COALESCE(AVG(exec_time_ms),0) FROM commands ${where} GROUP BY rtk_cmd ORDER BY SUM(saved_tokens) DESC LIMIT ${Math.max(1, Math.floor(limit))};`,
+    ).map(([command, count, savedRow, pct, ms]) => ({
       command,
-      project,
       count: Number(count) || 0,
       saved: Number(savedRow) || 0,
       avgPct: Number(pct) || 0,

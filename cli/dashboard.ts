@@ -50,13 +50,21 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
     // Replacer functions throughout: session data routinely contains `$'`
     // sequences (shell quoting in tool details), which String.replace would
     // expand as match-suffix patterns and corrupt the file.
+    // RTK-metered command lines routinely contain literal `</script>` (Vue
+    // SFC probes), which would close the inlined <script> early and dump the
+    // rest of the JSON as page text. Escape it; JSON.parse never sees the
+    // backslash form inside a string literal, the browser decodes it first.
     const inline = template
       .replace('<link rel="stylesheet" href="styles.css">', () => `<style>\n${css}</style>`)
       .replace('<script src="app.js" defer></script>', () => `<script>\n${js}</script>`)
       .replace(
         "fetch('data.json')",
-        () => `Promise.resolve({ json: function () { return ${dataJson()}; } })`,
+        () => `Promise.resolve({ json: function () { return ${dataJson().replace(/<\/(script)/gi, '<\\/$1')}; } })`,
       )
+      // Exported file runs on file:// where load() early-returns before the
+      // stub above ever runs, so nothing ever renders. Drop that guard in
+      // the export only; template.html keeps it to avoid 404 polling loops.
+      .replace("if (window.location.protocol === 'file:') return;", () => `if (false) return;`)
       .replace('href="brand.webp"', () => `href="${icon}"`)
       .replace('src="brand.webp"', () => `src="${icon}"`);
     await fs.writeFile(options.exportFile, inline, 'utf8');

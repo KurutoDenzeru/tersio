@@ -126,7 +126,7 @@
   .mrow:hover { background: var(--track); box-shadow: var(--shadow-xs); }
   .stripcell { transition: background .25s; }
   .stripcell:hover { box-shadow: var(--shadow-xs); }
-  button, .tilt, .cell, .stripcell { cursor: pointer; }
+  button, .tilt, .cell, .stripcell, .modelcard, .mrow { cursor: pointer; }
   .btn-push { transition: transform .12s, background .2s; }
   .btn-push:hover { background: var(--accent-soft); }
   .btn-push:active { transform: scale(.96); }
@@ -245,3 +245,60 @@ html[data-theme="dark"] .brandmark.placeholder { background: #fff !important; co
   .toast-desc { font-size: 12px; color: var(--dim); margin: 1px 0 0; }
   @keyframes toast-in { from { opacity: 0; transform: translateY(8px) scale(.98); } }
   @keyframes toast-out { to { opacity: 0; transform: translateY(6px) scale(.98); } }
+  /* Model detail dialog (shadcn chart language, native modal). KPI strip,
+     gradient area chart with range tabs, rounded bars, token-mix donut. */
+  .dlg.mdlg { width: min(880px, calc(100vw - 32px)); max-height: min(88vh, 960px); padding: 0; overflow: hidden; display: none; flex-direction: column; }
+  .dlg.mdlg[open] { display: flex; }
+  .dlg.mdlg .dlg-head { padding: 20px 20px 0; }
+  .md-body { overflow-y: auto; padding: 0 20px 20px; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--line) transparent; display: grid; gap: 12px; margin-top: 16px; }
+  .md-rankpill { border: 1px solid var(--line); background: var(--accent-soft); color: var(--accent); border-radius: 999px; padding: 4px 12px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+  .md-kpis { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-flow: dense; gap: 8px; }
+  @media (min-width: 640px) { .md-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+  .md-kpi { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; background: var(--panel); }
+  .md-kpi p { margin: 0; }
+  .md-kpi .k { font-size: 10px; text-transform: uppercase; letter-spacing: .14em; color: var(--dim); }
+  .md-kpi .v { font-size: 22px; font-weight: 800; letter-spacing: -0.02em; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .md-kpi .d { font-size: 11px; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .md-kpi .d.up { color: var(--accent); }
+  .md-kpi .d.flat { color: var(--dim); }
+  .md-chart { position: relative; border: 1px solid var(--line); border-radius: 12px; padding: 14px; background: var(--panel); }
+  .md-chart-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+  .md-chart-title { font-size: 13px; font-weight: 700; letter-spacing: -0.01em; margin: 0; }
+  .md-chart-sub { font-size: 11px; color: var(--dim); margin: 2px 0 0; text-transform: uppercase; letter-spacing: .12em; }
+  .md-trend { font-size: 11px; font-weight: 700; white-space: nowrap; border-radius: 999px; padding: 3px 10px; background: var(--track); color: var(--dim); }
+  .md-trend.up { background: var(--accent-soft); color: var(--accent); }
+  #mdSpark { width: 100%; height: 190px; display: block; }
+  #mdSpark .grid { stroke: var(--line); stroke-width: 1; }
+  #mdSpark .area { fill: url(#mdGrad); stroke: none; }
+  #mdSpark .line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+  #mdSpark .dot { fill: var(--accent); stroke: var(--panel); stroke-width: 2; }
+  #mdSpark .hoverdot { fill: var(--accent); stroke: var(--panel); stroke-width: 2; }
+  .md-tip { position: absolute; pointer-events: none; background: var(--panel); color: var(--ink); border: 1px solid var(--line); box-shadow: 0 8px 24px rgba(0, 0, 0, .28); border-radius: 8px; padding: 6px 10px; font-size: 11px; line-height: 1.5; white-space: nowrap; max-width: calc(100% - 28px); overflow: hidden; text-overflow: ellipsis; transform: translate(-50%, -110%); display: none; z-index: 5; font-variant-numeric: tabular-nums; }
+  .md-cols { display: grid; grid-template-columns: minmax(0, 1fr); grid-auto-flow: dense; gap: 12px; }
+  @media (min-width: 720px) { .md-cols { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); } }
+  .md-months { display: flex; justify-content: space-between; margin-top: 6px; font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: .12em; }
+  .md-bars { display: flex; align-items: flex-end; gap: 3px; height: 132px; background-image: linear-gradient(var(--line) 1px, transparent 1px); background-size: 100% 33px; background-position: 0 bottom; }
+  .md-bars > span { flex: 1; min-width: 3px; border-radius: 4px 4px 2px 2px; background: var(--accent); opacity: .4; cursor: default; }
+  .md-bars > span:hover { opacity: 1; }
+  .md-bars > span.top { opacity: 1; box-shadow: 0 0 8px var(--accent-soft); }
+  .md-bars > span.zero { background: var(--track); opacity: 1; box-shadow: none; }
+  .md-note { font-size: 11px; color: var(--dim); margin: 8px 0 0; font-variant-numeric: tabular-nums; }
+  .md-donut-wrap { position: relative; width: 150px; height: 150px; margin: 4px auto 8px; }
+  #mdMix { width: 150px; height: 150px; display: block; transform: rotate(-90deg); }
+  #mdMix circle { fill: none; stroke-width: 16; }
+  #mdMix .tk { stroke: var(--track); }
+  .md-donut-center { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; }
+  .md-donut-center p { margin: 0; font-size: 17px; font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+  .md-legend { display: grid; gap: 6px; font-size: 11px; }
+  .md-legend .row { display: flex; align-items: center; gap: 8px; }
+  .md-legend .dot { width: 8px; height: 8px; border-radius: 999px; flex-shrink: 0; }
+  .md-legend .pct { margin-left: auto; color: var(--dim); font-variant-numeric: tabular-nums; }
+  .md-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-flow: dense; gap: 8px; }
+  @media (min-width: 640px) { .md-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+  .md-stat { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; background: var(--panel); }
+  .md-stat p { margin: 0; }
+  .md-stat .k { font-size: 10px; text-transform: uppercase; letter-spacing: .14em; color: var(--dim); }
+  .md-stat .v { font-size: 20px; font-weight: 800; letter-spacing: -0.02em; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .md-stat .s { font-size: 11px; color: var(--dim); margin-top: 2px; }
+  #mdBadge .brandmark { width: 44px; height: 44px; border-radius: 12px; }
+  @media (prefers-reduced-motion: reduce) { .md-bars > span { transition: none; } }

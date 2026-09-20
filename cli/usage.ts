@@ -2,6 +2,7 @@
 import path from 'node:path';
 import {
   co2GramsFor,
+  displayModelId,
   energyWhFor,
   importSessionTokens,
   ledgerPath,
@@ -12,9 +13,10 @@ import {
   sessionsDir,
   usdCost,
 } from '../extensions/shared/usage-ledger.ts';
-import type { RecentRequest, TokenBreakdown, UsageRow } from '../extensions/shared/usage-ledger.ts';
+import type { RecentRequest, SessionTokens, TokenBreakdown, UsageRow } from '../extensions/shared/usage-ledger.ts';
 import { readRtkGain } from '../extensions/shared/rtk-gain.ts';
 import type { RtkGain } from '../extensions/shared/rtk-gain.ts';
+import { readUsageDb, syncUsageDb, usageDbPath } from '../extensions/shared/usage-store.ts';
 import { withInteractiveSpinner } from './interactive.ts';
 import { PACKAGE_VERSION } from './common.ts';
 
@@ -49,13 +51,11 @@ export interface UsageReport {
   co2g: number;
   energyWh: number;
   version: string;
-  paths: { ledger: string; sessions: string };
+  source: 'live' | 'stored' | 'stored-stale';
+  paths: { ledger: string; sessions: string; usageDb: string };
 }
-// RTK's history is machine-wide, so every project's commands have to reach
-// the table or a busy repo silently stands in for all of them. The old cap of
-// 10 rows ranked by tokens saved hid whole projects whose commands save little
-// to nothing; 2000 groups covers a long history (~1.7k today) while still
-// bounding /data.json.
+// RTK's history is machine-wide; rows group by command alone. 2000 groups
+// covers a long history while still bounding /data.json.
 const RTK_COMMAND_ROWS = 2000;
 
 export function summarizeUsage(rows: UsageRow[]): UsageReport {
@@ -67,7 +67,22 @@ export function summarizeUsage(rows: UsageRow[]): UsageReport {
     detailCounts[r.detail] = (detailCounts[r.detail] ?? 0) + 1;
   }
   const byDetail = Object.entries(detailCounts).sort((a, b) => b[1] - a[1]).slice(0, 10);
-  const session = importSessionTokens();
+  // usage.db is a cache of the same per-message rows: sync best-effort, read
+  // stored, fall back to the live parse when the store is missing or stale.
+  let synced = false;
+  try {
+    synced = syncUsageDb();
+  } catch {
+    synced = false;
+  }
+  let stored: SessionTokens | null = null;
+  try {
+    stored = readUsageDb()?.tokens ?? null;
+  } catch {
+    stored = null;
+  }
+  const session: SessionTokens = stored ?? importSessionTokens();
+  const source: UsageReport['source'] = stored ? (synced ? 'stored' : 'stored-stale') : 'live';
   const watermark = readResetWatermark();
   let usd = 0;
   let priced = true;
@@ -114,7 +129,8 @@ export function summarizeUsage(rows: UsageRow[]): UsageReport {
     co2g,
     energyWh,
     version: PACKAGE_VERSION,
-    paths: { ledger: ledgerPath(), sessions: sessionsDir() },
+    source,
+    paths: { ledger: ledgerPath(), sessions: sessionsDir(), usageDb: usageDbPath() },
   };
 }
 
@@ -162,7 +178,7 @@ function table(headers: string[], rows: string[][], right: boolean[] = [], maxW 
 }
 
 function printReport(report: UsageReport): void {
-  console.log(`\n=== Tersio Usage v${report.version} · ${fmt(report.messages)} msgs ===`);
+  console.log(`\n=== Tersio Usage v${report.version} · ${fmt(report.messages)} msgs · ${report.source} ===`);
   if (report.empty) {
     console.log('  No ledger rows or session tokens yet — run session commands first.');
     return;
@@ -178,37 +194,35 @@ function printReport(report: UsageReport): void {
       const mt = b.input + b.output + b.cacheRead + b.cacheWrite;
       const hit = b.input + b.cacheRead ? (b.cacheRead / (b.input + b.cacheRead)) * 100 : 0;
       const usd = report.byModelUsd[model] ?? 0;
-      return [model, `in ${fmt(b.input)}`, `out ${fmt(b.output)}`, `${fmt(b.cacheRead)}/${fmt(b.cacheWrite)}`, `$${usd.toFixed(2)}`, `${hit.toFixed(1)}%`, `${bar(mt / top, 8)} ${fmtShort(mt)}`];
+      return [displayModelId(model), fmt(b.input), fmt(b.output), `${fmt(b.cacheRead)}/${fmt(b.cacheWrite)}`, `$${usd.toFixed(2)}`, `${hit.toFixed(1)}%`, `${bar(mt / top, 8)} ${fmtShort(mt)}`];
     });
     for (const l of table(['Model', 'Input', 'Output', 'Cache r/w', 'USD', 'Hit', 'Share'], mrows, [false, true, true, true, true, true, false])) {
       console.log(l);
     }
   }
-  const cmdRows: { name: string; project: string; count: number; saved: number | null; avgPct: number | null; avgMs: number | null }[] =
-    report.byTool.map(([tool, n]) => ({ name: tool, project: '', count: n, saved: null, avgPct: null, avgMs: null }));
+  const cmdRows: { name: string; count: number; saved: number | null; avgPct: number | null; avgMs: number | null }[] =
+    report.byTool.map(([tool, n]) => ({ name: tool, count: n, saved: null, avgPct: null, avgMs: null }));
   for (const r of report.rtkGain.byCommand) {
-    cmdRows.push({ name: r.command, project: r.project, count: r.count, saved: r.saved, avgPct: r.avgPct, avgMs: r.avgMs });
+    cmdRows.push({ name: r.command, count: r.count, saved: r.saved, avgPct: r.avgPct, avgMs: r.avgMs });
   }
   cmdRows.sort((a, b) => b.count - a.count);
   if (cmdRows.length) {
     const g = report.rtkGain;
-    const projects = new Set(g.byCommand.map((r) => r.project).filter(Boolean));
     const scope = g.commands
-      ? `  COMMAND TOOLS  ${fmt(report.byTool.length)} tools · ${fmt(g.commands)} commands · ${fmtShort(g.saved)} saved · ${fmt(projects.size)} projects`
+      ? `  COMMAND TOOLS  ${fmt(cmdRows.length)} commands · ${fmt(g.commands)} runs · ${fmtShort(g.saved)} saved`
       : '  COMMAND TOOLS';
     console.log(scope);
     const top = cmdRows.reduce((m, r) => Math.max(m, r.count), 1);
     const crows = cmdRows.slice(0, 15).map((r, idx) => [
       String(idx + 1),
       r.name,
-      r.project ? path.basename(r.project) : '–',
       fmt(r.count),
       r.saved === null ? '–' : fmtShort(r.saved),
       r.avgPct === null ? '–' : `${r.avgPct.toFixed(1)}%`,
       r.avgMs === null ? '–' : fmtMs(r.avgMs),
       bar(r.count / top, 8),
     ]);
-    for (const l of table(['#', 'Tool/Command', 'Project', 'Count', 'Saved', 'Avg%', 'Time', 'Impact'], crows, [true, false, false, true, true, true, true, false], 30)) {
+    for (const l of table(['#', 'Tool/Command', 'Count', 'Saved', 'Avg%', 'Time', 'Impact'], crows, [true, false, true, true, true, true, false], 30)) {
       console.log(l);
     }
   }
