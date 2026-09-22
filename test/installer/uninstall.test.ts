@@ -28,7 +28,7 @@ function seed(home: string) {
   writeFileSync(path.join(extDir, "rtk.ts"), "// rtk omp wiring", "utf8");
   writeFileSync(
     path.join(home, ".omp", "agent", "config.yml"),
-    ["extensions:", "  - ./extensions/caveman-session/index.js", "  - ./extensions/combo-toggle/index.js", "  - ./extensions/shared/mode-reinforcement.js", "  - ./extensions/ponytail-pi-extension/index.js", ""].join("\n"),
+    ["extensions:", "  - ./extensions/caveman-session/index.ts", "  - ./extensions/combo-toggle/index.ts", "  - ./extensions/shared/mode-reinforcement.ts", "  - ./extensions/ponytail-pi-extension/index.js", ""].join("\n"),
     "utf8",
   );
   const pluginsDir = path.join(home, ".omp", "plugins");

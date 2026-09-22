@@ -8,7 +8,7 @@ import {
   loadLivePrices,
   priceFor,
   refreshPrices,
-} from "../../extensions/shared/pricing.js";
+} from "../../extensions/shared/pricing.ts";
 
 function setEnv(vars: Record<string, string | undefined>): Record<string, string | undefined> {
   const prev: Record<string, string | undefined> = {};

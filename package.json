@@ -36,36 +36,36 @@
         "description": "Caveman terse-reply session mode (/caveman)",
         "default": true,
         "extensions": [
-          "./extensions/caveman-session/index.js"
+          "./extensions/caveman-session/index.ts"
         ]
       },
       "rtk": {
         "description": "RTK compact shell-output session mode (/rtk)",
         "default": true,
         "extensions": [
-          "./extensions/rtk-session/index.js"
+          "./extensions/rtk-session/index.ts"
         ]
       },
       "ponytail": {
         "description": "Combo toggle bar and Ponytail mode reinforcement (/combo, mode reinforcement)",
         "default": true,
         "extensions": [
-          "./extensions/combo-toggle/index.js",
-          "./extensions/shared/mode-reinforcement.js"
+          "./extensions/combo-toggle/index.ts",
+          "./extensions/shared/mode-reinforcement.ts"
         ]
       },
       "updater": {
         "description": "In-session /ai-addons updater for Ponytail, RTK, and Caveman",
         "default": true,
         "extensions": [
-          "./extensions/ai-addons-updater/index.js"
+          "./extensions/ai-addons-updater/index.ts"
         ]
       },
       "tersio": {
         "description": "Unified /tersio root command (caveman, combo, rtk, ponytail, status, check, update, gain, usage)",
         "default": true,
         "extensions": [
-          "./extensions/tersio-commands/index.js"
+          "./extensions/tersio-commands/index.ts"
         ]
       }
     },
@@ -133,7 +133,7 @@
     "tersio.js",
     "cli/**/*.js",
     "dashboard/**/*",
-    "extensions/**/*.js"
+    "extensions/**/*.ts"
   ],
   "scripts": {
     "clean": "rm -f tersio.js cli/*.js extensions/**/*.js",

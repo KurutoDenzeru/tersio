@@ -1,8 +1,8 @@
 import { expect, test } from "vitest";
 
-import cavemanSessionExtension from "../../extensions/caveman-session/index.js";
-import { resetSharedComboState } from "../../extensions/shared/session-state.js";
-import type { ExtensionApi, ExtensionCtx, SessionEntry } from "../../extensions/shared/types.js";
+import cavemanSessionExtension from "../../extensions/caveman-session/index.ts";
+import { resetSharedComboState } from "../../extensions/shared/session-state.ts";
+import type { ExtensionApi, ExtensionCtx, SessionEntry } from "../../extensions/shared/types.ts";
 
 process.env.HOME = new URL("../definitely-missing-home", import.meta.url).pathname;
 process.env.USERPROFILE = process.env.HOME;

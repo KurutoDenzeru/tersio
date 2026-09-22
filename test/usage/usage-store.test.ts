@@ -9,8 +9,8 @@ import {
   readUsageDb,
   syncUsageDb,
   usageDbPath,
-} from "../../extensions/shared/usage-store.js";
-import { markReset } from "../../extensions/shared/usage-ledger.js";
+} from "../../extensions/shared/usage-store.ts";
+import { markReset } from "../../extensions/shared/usage-ledger.ts";
 
 function hasSqlite(): boolean {
   try {

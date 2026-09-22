@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { rtkPlatformSpec } from "../../extensions/lib/utils.js";
+import { rtkPlatformSpec } from "../../extensions/lib/utils.ts";
 
 test("rtkPlatformSpec resolves known platform/arch pairs", () => {
   expect(rtkPlatformSpec("darwin", "arm64")).toEqual({

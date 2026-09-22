@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { appendUsage, ledgerPath, readUsage } from "../../extensions/shared/usage-ledger.js";
+import { appendUsage, ledgerPath, readUsage } from "../../extensions/shared/usage-ledger.ts";
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tersio-ledger-"));
 process.env.TERSIO_USAGE_FILE = path.join(dir, "usage.jsonl");
@@ -33,7 +33,7 @@ test("corrupt lines are skipped, valid rows survive", () => {
 });
 
 test("clearUsageLedger removes the file and returns rows cleared", async () => {
-  const { clearUsageLedger } = await import("../../extensions/shared/usage-ledger.js");
+  const { clearUsageLedger } = await import("../../extensions/shared/usage-ledger.ts");
   appendUsage("command", "/tersio reset");
   const cleared = clearUsageLedger();
   expect(cleared).toBe(3);
@@ -43,7 +43,7 @@ test("clearUsageLedger removes the file and returns rows cleared", async () => {
 });
 
 test("reset watermark defaults to 0, writes and reads back", async () => {
-  const { resetMarkerPath, readResetWatermark, markReset } = await import("../../extensions/shared/usage-ledger.js");
+  const { resetMarkerPath, readResetWatermark, markReset } = await import("../../extensions/shared/usage-ledger.ts");
   expect(fs.existsSync(resetMarkerPath())).toBe(false);
   expect(readResetWatermark()).toBe(0);
   const ts = markReset();
@@ -52,7 +52,7 @@ test("reset watermark defaults to 0, writes and reads back", async () => {
 });
 
 test("session stats honor the reset watermark without touching transcripts", async () => {
-  const mod = await import("../../extensions/shared/usage-ledger.js");
+  const mod = await import("../../extensions/shared/usage-ledger.ts");
   const sessions = path.join(dir, "sessions");
   fs.mkdirSync(sessions, { recursive: true });
   const now = Date.now();

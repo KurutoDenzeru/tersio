@@ -25,13 +25,13 @@ async function runDoctor(): Promise<void> {
   // Ponytail
   const ponytailPkg = path.join(pluginsDir, 'node_modules', '@dietrichgebert', 'ponytail', 'package.json');
   const ponytailExt = path.join(pluginsDir, 'node_modules', '@dietrichgebert', 'ponytail', 'pi-extension', 'index.js');
-  const cavemanIndex = path.join(extDir, 'caveman-session', 'index.js');
+  const cavemanIndex = path.join(extDir, 'caveman-session', 'index.ts');
   const cavemanRule = path.join(extDir, 'caveman-session', 'rule.md');
-  const rtkIndex = path.join(extDir, 'rtk-session', 'index.js');
-  const updaterIndex = path.join(extDir, 'ai-addons-updater', 'index.js');
-  const comboIndex = path.join(extDir, 'combo-toggle', 'index.js');
-  const tersioIndex = path.join(extDir, 'tersio-commands', 'index.js');
-  const modeReinforcement = path.join(extDir, 'shared', 'mode-reinforcement.js');
+  const rtkIndex = path.join(extDir, 'rtk-session', 'index.ts');
+  const updaterIndex = path.join(extDir, 'ai-addons-updater', 'index.ts');
+  const comboIndex = path.join(extDir, 'combo-toggle', 'index.ts');
+  const tersioIndex = path.join(extDir, 'tersio-commands', 'index.ts');
+  const modeReinforcement = path.join(extDir, 'shared', 'mode-reinforcement.ts');
   const selfPkg = path.join(pluginsDir, 'node_modules', PACKAGE_NAME, 'package.json');
 
   // Independent probes start concurrently; sections report in fixed order as
@@ -40,7 +40,7 @@ async function runDoctor(): Promise<void> {
     ompVersion: execP(OMP_BIN, ['--version']).then((r) => r.stdout.trim(), () => null),
     agentEntries: fs.readdir(agentDir).catch(() => null),
     extEntries: fs.readdir(extDir).catch(() => null),
-    sharedStateText: readTextIfExists(path.join(extDir, 'shared', 'session-state.js')),
+    sharedStateText: readTextIfExists(path.join(extDir, 'shared', 'session-state.ts')),
     configText: readTextIfExists(configPath),
     ponytailPkgText: readTextIfExists(ponytailPkg),
     ponytailExtText: readTextIfExists(ponytailExt),

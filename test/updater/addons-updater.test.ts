@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, "../..");
-const updaterPath = path.join(root, "extensions", "ai-addons-updater", "index.js");
+const updaterPath = path.join(root, "extensions", "ai-addons-updater", "index.ts");
 const updaterUrl = new URL("file:///" + updaterPath.replace(/\\/g, "/"));
 
 const { parseChecksum, default: updaterExtension } = await import(updaterUrl.href);

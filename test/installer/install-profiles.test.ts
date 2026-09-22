@@ -10,7 +10,7 @@ import {
   readComboDefault,
   readPluginSettings,
   readRtkDefault,
-} from "../../extensions/shared/plugin-settings.js";
+} from "../../extensions/shared/plugin-settings.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const installer = path.join(root, "tersio.js");

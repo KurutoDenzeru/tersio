@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { readRtkGain, rtkDbPath } from "../../extensions/shared/rtk-gain.js";
+import { readRtkGain, rtkDbPath } from "../../extensions/shared/rtk-gain.ts";
 
 function withDb(db: string | undefined, fn: () => void): void {
   const prev = process.env.TERSIO_RTK_DB;

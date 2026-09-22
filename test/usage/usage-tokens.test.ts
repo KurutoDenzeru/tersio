@@ -10,7 +10,7 @@ import {
   importSessionTokens,
   priceFor,
   usdCost,
-} from "../../extensions/shared/usage-ledger.js";
+} from "../../extensions/shared/usage-ledger.ts";
 
 // Fixture rows use 2026-09-01 timestamps — keep any host reset watermark
 // (which would filter them out of the derived view) out of these tests.

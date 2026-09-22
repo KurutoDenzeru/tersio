@@ -4,7 +4,7 @@ import {
   isComboPresetActive,
   resetSharedComboState,
   setSharedComboLevel,
-} from "../../extensions/shared/session-state.js";
+} from "../../extensions/shared/session-state.ts";
 
 test("deriveLevel maps every preset back to its level, including balanced", () => {
   expect(deriveLevel({ caveman: "off", rtk: "off", ponytail: "off" })).toBe("off");

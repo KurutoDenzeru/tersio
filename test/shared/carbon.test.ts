@@ -5,7 +5,7 @@ import {
   carbonParamsFor,
   co2GramsFor,
   footprintFor,
-} from "../../extensions/shared/carbon.js";
+} from "../../extensions/shared/carbon.ts";
 
 test("unknown models fall back to the gpt-4o default", () => {
   const { paramSource: _a, ...fallback } = footprintFor("zzz-unknown-9", 1000);

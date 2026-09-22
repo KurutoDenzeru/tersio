@@ -8,11 +8,11 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import cavemanSessionExtension from "../../extensions/caveman-session/index.js";
-import comboToggleExtension from "../../extensions/combo-toggle/index.js";
-import rtkSessionExtension from "../../extensions/rtk-session/index.js";
-import { getSharedComboState, resetSharedComboState } from "../../extensions/shared/session-state.js";
-import type { ExtensionApi, ExtensionCtx, SessionEntry } from "../../extensions/shared/types.js";
+import cavemanSessionExtension from "../../extensions/caveman-session/index.ts";
+import comboToggleExtension from "../../extensions/combo-toggle/index.ts";
+import rtkSessionExtension from "../../extensions/rtk-session/index.ts";
+import { getSharedComboState, resetSharedComboState } from "../../extensions/shared/session-state.ts";
+import type { ExtensionApi, ExtensionCtx, SessionEntry } from "../../extensions/shared/types.ts";
 
 // ponytail: hermetic HOME — the combo fallback reads the real lock file, so
 // without this the suite depends on the developer's own comboDefault.

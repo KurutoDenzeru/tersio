@@ -40,8 +40,8 @@ function relativeSpecs(body: string): string[] {
 }
 
 // Compiled .js output is gitignored by design; the tracked source of truth
-// is always the .ts file (tests import ../extensions/shared/*.js, sources
-// import the same modules as .ts).
+// is always the .ts file (tests and sources import the same modules as .ts;
+// only the compiled CLI keeps requiring ../extensions/* counterparts).
 function candidates(source: string, spec: string): string[] {
   const stem = path.posix.join(path.posix.dirname(source), spec).replace(/\.(ts|js)$/, "");
   return [`${stem}.ts`, `${stem}/index.ts`];

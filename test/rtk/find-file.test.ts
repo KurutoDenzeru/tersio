@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { findFile } from "../../extensions/lib/utils.js";
+import { findFile } from "../../extensions/lib/utils.ts";
 
 function fixture(): string {
   const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-find-"));

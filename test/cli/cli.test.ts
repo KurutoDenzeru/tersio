@@ -109,7 +109,7 @@ test("user dry-run installs the tersio root-command extension", () => {
 
   expect(result.status, result.stderr).toBe(0);
   expect(result.stdout).toMatch(/Tersio commands — install \/tersio root command/);
-  expect(result.stdout).not.toMatch(/tersio-commands[\\/]index\.js/);
+  expect(result.stdout).not.toMatch(/tersio-commands[\\/]index\.ts/);
 });
 test("verbose dry-run reveals file paths hidden by default", () => {
   const missingHome = path.join(root, "test", "definitely-missing-home");
@@ -124,8 +124,8 @@ test("verbose dry-run reveals file paths hidden by default", () => {
   );
 
   expect(result.status, result.stderr).toBe(0);
-  expect(result.stdout).toMatch(/\[dry-run\] would write .*shared[\\/]session-state\.js/);
-  expect(result.stdout).toMatch(/\[dry-run\] would write .*tersio-commands[\\/]index\.js/);
+  expect(result.stdout).toMatch(/\[dry-run\] would write .*shared[\\/]session-state\.ts/);
+  expect(result.stdout).toMatch(/\[dry-run\] would write .*tersio-commands[\\/]index\.ts/);
 });
 test("reinstall --dry-run previews uninstall then install without writing", () => {
   const missingHome = path.join(root, "test", "definitely-missing-home");

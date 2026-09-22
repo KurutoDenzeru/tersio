@@ -1,16 +1,16 @@
 import { expect, test } from "vitest";
 import { fileURLToPath } from "node:url";
 
-import cavemanSessionExtension from "../../extensions/caveman-session/index.js";
-import comboToggleExtension from "../../extensions/combo-toggle/index.js";
-import modeReinforcementExtension from "../../extensions/shared/mode-reinforcement.js";
-import rtkSessionExtension from "../../extensions/rtk-session/index.js";
+import cavemanSessionExtension from "../../extensions/caveman-session/index.ts";
+import comboToggleExtension from "../../extensions/combo-toggle/index.ts";
+import modeReinforcementExtension from "../../extensions/shared/mode-reinforcement.ts";
+import rtkSessionExtension from "../../extensions/rtk-session/index.ts";
 import {
   OMP_SUBAGENT_MARKER,
   getSharedComboState,
   resetSharedComboState,
-} from "../../extensions/shared/session-state.js";
-import type { ExtensionApi, ExtensionCtx, SessionEntry } from "../../extensions/shared/types.js";
+} from "../../extensions/shared/session-state.ts";
+import type { ExtensionApi, ExtensionCtx, SessionEntry } from "../../extensions/shared/types.ts";
 
 // ponytail: hermetic HOME — session-start fallbacks read the real lock file,
 // so without this the suite depends on the developer's own defaults.

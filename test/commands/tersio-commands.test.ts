@@ -3,8 +3,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import tersioCommandsExtension from "../../extensions/tersio-commands/index.js";
-import type { ExtensionApi, ExtensionCtx } from "../../extensions/shared/types.js";
+import tersioCommandsExtension from "../../extensions/tersio-commands/index.ts";
+import type { ExtensionApi, ExtensionCtx } from "../../extensions/shared/types.ts";
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tersio-router-"));
 process.env.TERSIO_USAGE_FILE = path.join(dir, "usage.jsonl");
