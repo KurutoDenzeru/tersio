@@ -1,3 +1,10 @@
+## v2.19.0
+ - Usage gains a sqlite cache (`usage.db`): best-effort sync with live-parse fallback, `tersio reset`/`doctor` cover the new store, and the report marks its source (live/stored/stored-stale).
+ - Gain dashboard: dark mode, sortable Recent table, duration derived from timestamps; the currency picker POSTs to `/currency` so close → reopen keeps the choice (each run is a fresh port/origin, so localStorage alone could not).
+ - New `tersio settings` command: session-start defaults (combo, caveman, rtk, ponytail, currency) in a box-drawing table, non-interactive flags, `--dry-run` preview, bare-`tersio` menu entry. Profile read/write factored into `cli/profile.ts` so install and settings share it.
+ - Display currency: `--currency <code>` on `usage`/`gain` (10 currencies, offline snapshot rates; flag wins, then the stored default, then USD), declared in `omp.settings` for OMP's plugin page.
+ - Fix: `extensions/shared/usage-store.ts` was referenced but never committed (red CI on fresh clones); a repo-integrity test now fails locally whenever tracked sources import untracked files. 161 tests.
+
 ## v2.17.0
  - Gain dashboard: Models card shows top 10 with pager; Recent requests pages at 15 per page (Command-tools pattern).
  - Both cards gain the 10/15/25/50 per-page picker (shared helper); footers pin to card bottom and always render (empty reads `Showing 0-0 of 0`); cards grow dynamically and split 50/50.
