@@ -1,11 +1,10 @@
-import test from "node:test";
-import assert from "node:assert/strict";
+import { expect, test } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import tersioCommandsExtension from "../extensions/tersio-commands/index.js";
-import type { ExtensionApi, ExtensionCtx } from "../extensions/shared/types.js";
+import tersioCommandsExtension from "../../extensions/tersio-commands/index.ts";
+import type { ExtensionApi, ExtensionCtx } from "../../extensions/shared/types.ts";
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tersio-router-"));
 process.env.TERSIO_USAGE_FILE = path.join(dir, "usage.jsonl");
@@ -41,7 +40,7 @@ test("/tersio help lists every subcommand", async () => {
   const h = harness();
   await h.command("help", h.ctx);
   for (const sub of ["status", "check", "update", "gain", "usage"]) {
-    assert.match(h.notifications.join("\n"), new RegExp(`/tersio ${sub}`));
+    expect(h.notifications.join("\n")).toMatch(new RegExp(`/tersio ${sub}`));
   }
 });
 
@@ -49,40 +48,40 @@ test("/tersio mode switches redirect to their own commands", async () => {
   for (const sub of ["caveman full", "rtk on", "ponytail full", "combo max"]) {
     const h = harness();
     await h.command(sub, h.ctx);
-    assert.equal(h.appended.length, 0, `${sub} writes no entries`);
-    assert.match(h.notifications.join("\n"), new RegExp(`Use /${sub.split(" ")[0]} instead`));
+    expect(h.appended.length, `${sub} writes no entries`).toBe(0);
+    expect(h.notifications.join("\n")).toMatch(new RegExp(`Use /${sub.split(" ")[0]} instead`));
   }
 });
 
 test("/tersio unknown warns with help", async () => {
   const h = harness();
   await h.command("frobnicate", h.ctx);
-  assert.match(h.notifications.join("\n"), /Unknown subcommand/);
+  expect(h.notifications.join("\n")).toMatch(/Unknown subcommand/);
 });
 
 test("/tersio update without target shows usage", async () => {
   const h = harness();
   await h.command("update", h.ctx);
-  assert.match(h.notifications.join("\n"), /Usage: \/tersio update/);
+  expect(h.notifications.join("\n")).toMatch(/Usage: \/tersio update/);
 });
 
 test("/tersio usage reports ledger rows", async () => {
   const h = harness();
   await h.command("usage", h.ctx);
-  assert.match(h.notifications.join("\n"), /tersio usage: \d+ rows/);
+  expect(h.notifications.join("\n")).toMatch(/tersio usage: \d+ rows/);
 });
 test("/tersio gain exports and opens the dashboard", async () => {
   const h = harness();
   await h.command("gain", h.ctx);
-  assert.equal(h.execCalls[0].cmd, "tersio");
-  assert.deepEqual(h.execCalls[0].args.slice(0, 2), ["gain", "--export"]);
-  assert.match(h.execCalls[0].args[2], /tersio-gain-.*\.html/);
-  assert.ok(["open", "xdg-open", "start"].includes(h.execCalls[1].cmd), JSON.stringify(h.execCalls));
-  assert.match(h.notifications.join("\n"), /dashboard opened in your browser/);
+  expect(h.execCalls[0].cmd).toBe("tersio");
+  expect(h.execCalls[0].args.slice(0, 2)).toEqual(["gain", "--export"]);
+  expect(h.execCalls[0].args[2]).toMatch(/tersio-gain-.*\.html/);
+  expect(["open", "xdg-open", "start"].includes(h.execCalls[1].cmd), JSON.stringify(h.execCalls)).toBeTruthy();
+  expect(h.notifications.join("\n")).toMatch(/dashboard opened in your browser/);
 });
 
 test("/tersio gain falls back to the shell command on failure", async () => {
   const h = harness(async () => ({ stdout: "", stderr: "nope", code: 1 }));
   await h.command("gain", h.ctx);
-  assert.match(h.notifications.join("\n"), /tersio gain --open/);
+  expect(h.notifications.join("\n")).toMatch(/tersio gain --open/);
 });

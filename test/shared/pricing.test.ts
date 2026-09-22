@@ -1,5 +1,4 @@
-import test from "node:test";
-import assert from "node:assert/strict";
+import { expect, test } from "vitest";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
@@ -9,7 +8,7 @@ import {
   loadLivePrices,
   priceFor,
   refreshPrices,
-} from "../extensions/shared/pricing.js";
+} from "../../extensions/shared/pricing.ts";
 
 function setEnv(vars: Record<string, string | undefined>): Record<string, string | undefined> {
   const prev: Record<string, string | undefined> = {};
@@ -33,9 +32,9 @@ test("priceFor reports unknown without a cache, live when cached", async () => {
   const prev = setEnv({ TERSIO_PRICES_FILE: path.join(dir, "missing.json") });
   try {
     // No cache: every model is unknown, default-priced, honestly flagged.
-    assert.equal(priceFor("claude-sonnet-5").known, false);
-    assert.equal(priceFor("claude-sonnet-5").live, false);
-    assert.equal(priceFor("some-future-model-99").known, false);
+    expect(priceFor("claude-sonnet-5").known).toBe(false);
+    expect(priceFor("claude-sonnet-5").live).toBe(false);
+    expect(priceFor("some-future-model-99").known).toBe(false);
   } finally {
     restoreEnv(prev);
     rmSync(dir, { recursive: true, force: true });
@@ -56,31 +55,31 @@ test("live cache wins by exact id and stays usable when stale", () => {
       "utf8",
     );
     const hit = priceFor("uncached-test-model");
-    assert.equal(hit.price.input, 1);
-    assert.equal(hit.known, true);
-    assert.equal(hit.live, true);
+    expect(hit.price.input).toBe(1);
+    expect(hit.known).toBe(true);
+    expect(hit.live).toBe(true);
     // Stale cache stays readable (stale-while-revalidate); old object shape too.
     writeFileSync(
       file,
       JSON.stringify({ fetchedAt: 1, exact: { "uncached-test-model": [1, 2, 0.5, 1] } }),
       "utf8",
     );
-    assert.notEqual(loadLivePrices(), null);
-    assert.equal(priceFor("uncached-test-model").known, true);
+    expect(loadLivePrices()).not.toBe(null);
+    expect(priceFor("uncached-test-model").known).toBe(true);
     writeFileSync(
       file,
       JSON.stringify({ fetchedAt: 1, exact: { "uncached-test-model": { input: 1, output: 2, cacheRead: 0.5, cacheWrite: 1 } } }),
       "utf8",
     );
-    assert.equal(priceFor("uncached-test-model").price.input, 1);
+    expect(priceFor("uncached-test-model").price.input).toBe(1);
     // Provider-prefixed ids resolve from the bare model name.
     writeFileSync(
       file,
       JSON.stringify({ fetchedAt: Date.now(), exact: { "azure/gpt-4o": [2.5, 10, 1.25, 2.5] } }),
       "utf8",
     );
-    assert.equal(priceFor("gpt-4o").price.input, 2.5);
-    assert.equal(priceFor("gpt-4o").live, true);
+    expect(priceFor("gpt-4o").price.input).toBe(2.5);
+    expect(priceFor("gpt-4o").live).toBe(true);
   } finally {
     restoreEnv(prev);
     rmSync(dir, { recursive: true, force: true });
@@ -105,9 +104,9 @@ test("refreshPrices parses a LiteLLM payload and caches it", async () => {
     TERSIO_PRICES_URL: `data:application/json,${payload}`,
   });
   try {
-    assert.equal(await refreshPrices(), true);
-    assert.equal(priceFor("claude-sonnet-9").price.input, 4);
-    assert.equal(priceFor("claude-sonnet-9").live, true);
+    expect(await refreshPrices()).toBe(true);
+    expect(priceFor("claude-sonnet-9").price.input).toBe(4);
+    expect(priceFor("claude-sonnet-9").live).toBe(true);
   } finally {
     restoreEnv(prev);
     rmSync(dir, { recursive: true, force: true });
@@ -121,7 +120,7 @@ test("refreshPrices returns false on fetch failure", async () => {
     TERSIO_PRICES_URL: "http://127.0.0.1:1/definitely-not-here.json",
   });
   try {
-    assert.equal(await refreshPrices(), false);
+    expect(await refreshPrices()).toBe(false);
   } finally {
     restoreEnv(prev);
     rmSync(dir, { recursive: true, force: true });
@@ -157,6 +156,6 @@ test("tersio usage prices from the live cache", () => {
     },
   });
   rmSync(dir, { recursive: true, force: true });
-  assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /Claude-Sonnet-5.*1,000,000.*\$2\.00/);
+  expect(result.status, result.stderr).toBe(0);
+  expect(result.stdout).toMatch(/Claude-Sonnet-5.*1,000,000.*\$2\.00/);
 });

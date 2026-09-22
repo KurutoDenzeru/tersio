@@ -1,12 +1,11 @@
-import test from "node:test";
-import assert from "node:assert/strict";
+import { expect, test } from "vitest";
 import { spawnSync } from "node:child_process";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const updateJs = path.join(root, "cli", "update.js").replace(/\\/g, "/");
 
 const PROBE = "import('" + updateJs + "').then(async (m) => {"
@@ -34,9 +33,9 @@ function setup(fakeNpmBody: string, cache: unknown): { dir: string; env: Env } {
 
 function probe(env: Env): Record<string, unknown> {
   const result = spawnSync(process.execPath, ["-e", PROBE], { encoding: "utf8", env });
-  assert.equal(result.status, 0, result.stderr);
+  expect(result.status, result.stderr).toBe(0);
   const line = result.stdout.split("\n").find((l) => l.startsWith("TERSIO-PROBE:"));
-  assert.ok(line, result.stdout + result.stderr);
+  expect(line, result.stdout + result.stderr).toBeTruthy();
   return JSON.parse((line as string).slice("TERSIO-PROBE:".length));
 }
 
@@ -44,8 +43,8 @@ test("explicit check bypasses a fresh stale cache", () => {
   const { dir, env } = setup("#!/bin/sh\necho 9.9.9\n", { latest: "2.8.0", lastCheck: Date.now() });
   try {
     const out = probe(env);
-    assert.equal(out.cached, null);
-    assert.equal(out.forced, "9.9.9");
+    expect(out.cached).toBe(null);
+    expect(out.forced).toBe("9.9.9");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -55,8 +54,8 @@ test("unreachable registry reports unknown, never latest", () => {
   const { dir, env } = setup("#!/bin/sh\nexit 1\n", null);
   try {
     const out = probe(env);
-    assert.equal(out.cached, "unknown");
-    assert.equal(out.forced, "unknown");
+    expect(out.cached).toBe("unknown");
+    expect(out.forced).toBe("unknown");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

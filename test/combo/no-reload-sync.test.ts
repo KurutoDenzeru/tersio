@@ -2,18 +2,17 @@
 // publish shared state, notify — and never reload the session. Sibling
 // mirrors sync live via bridge listeners, so the next turn injects the new
 // mode like a normal input message.
-import test from "node:test";
-import assert from "node:assert/strict";
+import { expect, test } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import cavemanSessionExtension from "../../extensions/caveman-session/index.js";
-import comboToggleExtension from "../../extensions/combo-toggle/index.js";
-import rtkSessionExtension from "../../extensions/rtk-session/index.js";
-import tersioCommandsExtension from "../../extensions/tersio-commands/index.js";
-import { getSharedComboState, resetSharedComboState } from "../../extensions/shared/session-state.js";
-import type { ExtensionApi, ExtensionCtx } from "../../extensions/shared/types.js";
+import cavemanSessionExtension from "../../extensions/caveman-session/index.ts";
+import comboToggleExtension from "../../extensions/combo-toggle/index.ts";
+import rtkSessionExtension from "../../extensions/rtk-session/index.ts";
+import tersioCommandsExtension from "../../extensions/tersio-commands/index.ts";
+import { getSharedComboState, resetSharedComboState } from "../../extensions/shared/session-state.ts";
+import type { ExtensionApi, ExtensionCtx } from "../../extensions/shared/types.ts";
 
 // Hermetic HOME + usage file: combo falls back to lock-file defaults and the
 // tersio router appends ledger rows without touching the real machine.
@@ -71,12 +70,12 @@ test("/combo max syncs sibling mirrors with no reload", async () => {
 
   await combo.commands.get("combo")!("max", ctx);
 
-  assert.equal(reloaded(), 0);
-  assert.match(notifications.join("\n"), /Combo max on/);
+  expect(reloaded()).toBe(0);
+  expect(notifications.join("\n")).toMatch(/Combo max on/);
   const cave = (await caveman.handlers.get("before_agent_start")!(MAIN_PROMPT, ctx)) as { systemPrompt: string[] };
-  assert.match(cave.systemPrompt.join("\n"), /Caveman ultra/);
+  expect(cave.systemPrompt.join("\n")).toMatch(/Caveman ultra/);
   const rtkOut = (await rtk.handlers.get("before_agent_start")!(MAIN_PROMPT, ctx)) as { systemPrompt: string[] };
-  assert.match(rtkOut.systemPrompt.join("\n"), /RTK mode active/);
+  expect(rtkOut.systemPrompt.join("\n")).toMatch(/RTK mode active/);
   resetSharedComboState();
 });
 
@@ -88,8 +87,8 @@ test("/tersio no longer duplicates mode switches", async () => {
 
   await tersio.commands.get("tersio")!("combo max", ctx);
 
-  assert.equal(reloaded(), 0);
-  assert.equal(getSharedComboState().level, "off", "redirect writes nothing");
-  assert.match(notifications.join("\n"), /Use \/combo instead/);
+  expect(reloaded()).toBe(0);
+  expect(getSharedComboState().level, "redirect writes nothing").toBe("off");
+  expect(notifications.join("\n")).toMatch(/Use \/combo instead/);
   resetSharedComboState();
 });

@@ -2,15 +2,14 @@
 // picking one POSTs to /currency, the server persists it in the plugin lock
 // file, and a later `tersio gain` (a new origin each run, so localStorage
 // alone cannot survive) defaults to it.
-import test from "node:test";
-import assert from "node:assert/strict";
+import { expect, test } from "vitest";
 import { spawn, type ChildProcess } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const installer = path.join(root, "tersio.js");
 
 function serverEnv(home: string): NodeJS.ProcessEnv {
@@ -86,26 +85,26 @@ test("gain persists dashboard currency across restarts", async () => {
     const first = await startGain(home);
     try {
       const bad = await postCurrency(first.url, JSON.stringify({ currency: "bogus" }));
-      assert.equal(bad.status, 400);
+      expect(bad.status).toBe(400);
       const ok = await postCurrency(first.url, JSON.stringify({ currency: "PHP" }));
-      assert.equal(ok.status, 200);
-      assert.deepEqual(ok.json, { ok: true, currency: "PHP" });
+      expect(ok.status).toBe(200);
+      expect(ok.json).toEqual({ ok: true, currency: "PHP" });
       const malformed = await postCurrency(first.url, "{ not json");
-      assert.equal(malformed.status, 400);
+      expect(malformed.status).toBe(400);
     } finally {
       await stopGain(first.child);
     }
     const lock = JSON.parse(
       readFileSync(path.join(home, ".omp", "plugins", "omp-plugins.lock.json"), "utf8"),
     ) as { settings?: Record<string, { currency?: string }> };
-    assert.equal(lock.settings?.["@krtclcdy/tersio"]?.currency, "PHP");
+    expect(lock.settings?.["@krtclcdy/tersio"]?.currency).toBe("PHP");
 
     const second = await startGain(home);
     try {
       const res = await fetch(`${second.url}/data.json`);
-      assert.equal(res.status, 200);
+      expect(res.status).toBe(200);
       const data = (await res.json()) as { currency?: string };
-      assert.equal(data.currency, "PHP", "reopened dashboard defaults to the saved currency");
+      expect(data.currency, "reopened dashboard defaults to the saved currency").toBe("PHP");
     } finally {
       await stopGain(second.child);
     }

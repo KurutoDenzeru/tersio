@@ -1,59 +1,58 @@
-import test from "node:test";
-import assert from "node:assert/strict";
+import { expect, test } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { appendUsage, ledgerPath, readUsage } from "../extensions/shared/usage-ledger.js";
+import { appendUsage, ledgerPath, readUsage } from "../../extensions/shared/usage-ledger.ts";
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tersio-ledger-"));
 process.env.TERSIO_USAGE_FILE = path.join(dir, "usage.jsonl");
 // Keep the host's real reset watermark (if any) out of these tests.
 process.env.TERSIO_RESET_FILE = path.join(dir, "reset.json");
 test("ledger starts empty when the file is missing", () => {
-  assert.equal(ledgerPath(), process.env.TERSIO_USAGE_FILE);
-  assert.deepEqual(readUsage(), []);
+  expect(ledgerPath()).toBe(process.env.TERSIO_USAGE_FILE);
+  expect(readUsage()).toEqual([]);
 });
 
 test("appended rows round-trip in order", () => {
   appendUsage("command", "/caveman full");
   appendUsage("toggle", "caveman=full");
   const rows = readUsage();
-  assert.equal(rows.length, 2);
-  assert.equal(rows[0].kind, "command");
-  assert.equal(rows[0].detail, "/caveman full");
-  assert.equal(typeof rows[0].ts, "number");
-  assert.equal(rows[1].kind, "toggle");
+  expect(rows.length).toBe(2);
+  expect(rows[0].kind).toBe("command");
+  expect(rows[0].detail).toBe("/caveman full");
+  expect(typeof rows[0].ts).toBe("number");
+  expect(rows[1].kind).toBe("toggle");
 });
 
 test("corrupt lines are skipped, valid rows survive", () => {
   fs.appendFileSync(process.env.TERSIO_USAGE_FILE!, "not json\n{\"ts\":\"x\",\"kind\":1}\n", "utf8");
   const rows = readUsage();
-  assert.equal(rows.length, 2);
-  assert.equal(rows[0].detail, "/caveman full");
+  expect(rows.length).toBe(2);
+  expect(rows[0].detail).toBe("/caveman full");
 });
 
 test("clearUsageLedger removes the file and returns rows cleared", async () => {
-  const { clearUsageLedger } = await import("../extensions/shared/usage-ledger.js");
+  const { clearUsageLedger } = await import("../../extensions/shared/usage-ledger.ts");
   appendUsage("command", "/tersio reset");
   const cleared = clearUsageLedger();
-  assert.equal(cleared, 3);
-  assert.deepEqual(readUsage(), []);
-  assert.equal(fs.existsSync(process.env.TERSIO_USAGE_FILE!), false);
-  assert.equal(clearUsageLedger(), 0);
+  expect(cleared).toBe(3);
+  expect(readUsage()).toEqual([]);
+  expect(fs.existsSync(process.env.TERSIO_USAGE_FILE!)).toBe(false);
+  expect(clearUsageLedger()).toBe(0);
 });
 
 test("reset watermark defaults to 0, writes and reads back", async () => {
-  const { resetMarkerPath, readResetWatermark, markReset } = await import("../extensions/shared/usage-ledger.js");
-  assert.equal(fs.existsSync(resetMarkerPath()), false);
-  assert.equal(readResetWatermark(), 0);
+  const { resetMarkerPath, readResetWatermark, markReset } = await import("../../extensions/shared/usage-ledger.ts");
+  expect(fs.existsSync(resetMarkerPath())).toBe(false);
+  expect(readResetWatermark()).toBe(0);
   const ts = markReset();
-  assert.equal(readResetWatermark(), ts);
-  assert.match(fs.readFileSync(resetMarkerPath(), "utf8"), /"ts":\d+/);
+  expect(readResetWatermark()).toBe(ts);
+  expect(fs.readFileSync(resetMarkerPath(), "utf8")).toMatch(/"ts":\d+/);
 });
 
 test("session stats honor the reset watermark without touching transcripts", async () => {
-  const mod = await import("../extensions/shared/usage-ledger.js");
+  const mod = await import("../../extensions/shared/usage-ledger.ts");
   const sessions = path.join(dir, "sessions");
   fs.mkdirSync(sessions, { recursive: true });
   const now = Date.now();
@@ -69,17 +68,17 @@ test("session stats honor the reset watermark without touching transcripts", asy
   try {
     process.env.TERSIO_RESET_FILE = path.join(dir, "no-marker.json");
     const unfiltered = mod.importSessionTokens();
-    assert.equal(unfiltered.messages, 3);
-    assert.equal(unfiltered.totals.input, 700);
+    expect(unfiltered.messages).toBe(3);
+    expect(unfiltered.totals.input).toBe(700);
 
     process.env.TERSIO_RESET_FILE = path.join(dir, "stats-reset.json");
     mod.markReset(now);
     const filtered = mod.importSessionTokens();
-    assert.equal(filtered.messages, 1, "only post-watermark rows count");
-    assert.equal(filtered.totals.input, 100);
-    assert.equal(filtered.totals.output, 10);
+    expect(filtered.messages, "only post-watermark rows count").toBe(1);
+    expect(filtered.totals.input).toBe(100);
+    expect(filtered.totals.output).toBe(10);
     // The host-owned transcript file is untouched.
-    assert.equal(fs.existsSync(path.join(sessions, "s.jsonl")), true);
+    expect(fs.existsSync(path.join(sessions, "s.jsonl"))).toBe(true);
   } finally {
     if (prevSessions === undefined) delete process.env.TERSIO_SESSIONS_DIR;
     else process.env.TERSIO_SESSIONS_DIR = prevSessions;

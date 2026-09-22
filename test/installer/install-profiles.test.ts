@@ -1,5 +1,4 @@
-import test from "node:test";
-import assert from "node:assert/strict";
+import { expect, test } from "vitest";
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -11,9 +10,9 @@ import {
   readComboDefault,
   readPluginSettings,
   readRtkDefault,
-} from "../extensions/shared/plugin-settings.js";
+} from "../../extensions/shared/plugin-settings.ts";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const installer = path.join(root, "tersio.js");
 
 // Each scenario runs under its own HOME so the lock-file fixtures never
@@ -42,19 +41,19 @@ function writeLock(home: string, settings: Record<string, unknown>): void {
 
 test("readPluginSettings returns defaults when no lock file exists", () => {
   withHome(() => {
-    assert.equal(readComboDefault(), "off");
-    assert.equal(readCavemanDefault(), "off");
-    assert.equal(readRtkDefault(), false);
-    assert.deepEqual(readPluginSettings(), {});
+    expect(readComboDefault()).toBe("off");
+    expect(readCavemanDefault()).toBe("off");
+    expect(readRtkDefault()).toBe(false);
+    expect(readPluginSettings()).toEqual({});
   });
 });
 
 test("readPluginSettings picks up values from the omp lock file", () => {
   withHome((home) => {
     writeLock(home, { "@krtclcdy/tersio": { comboDefault: "max", cavemanDefault: "wenyan", rtkDefault: true } });
-    assert.equal(readComboDefault(), "max");
-    assert.equal(readCavemanDefault(), "wenyan");
-    assert.equal(readRtkDefault(), true);
+    expect(readComboDefault()).toBe("max");
+    expect(readCavemanDefault()).toBe("wenyan");
+    expect(readRtkDefault()).toBe(true);
   });
 });
 
@@ -64,9 +63,9 @@ test("readPluginSettings ignores invalid values and other plugins", () => {
       "other-plugin": { comboDefault: "max" },
       "@krtclcdy/tersio": { comboDefault: "yolo", cavemanDefault: 42, rtkDefault: "yes" },
     });
-    assert.equal(readComboDefault(), "off");
-    assert.equal(readCavemanDefault(), "off");
-    assert.equal(readRtkDefault(), false);
+    expect(readComboDefault()).toBe("off");
+    expect(readCavemanDefault()).toBe("off");
+    expect(readRtkDefault()).toBe(false);
   });
 });
 
@@ -75,8 +74,8 @@ test("readPluginSettings tolerates a corrupt lock file", () => {
     const dir = path.join(home, ".omp", "plugins");
     mkdirSync(dir, { recursive: true });
     writeFileSync(path.join(dir, "omp-plugins.lock.json"), "{ not json", "utf8");
-    assert.equal(readComboDefault(), "off");
-    assert.deepEqual(readPluginSettings(), {});
+    expect(readComboDefault()).toBe("off");
+    expect(readPluginSettings()).toEqual({});
   });
 });
 
@@ -98,42 +97,42 @@ function run(...args: string[]): RunResult {
 
 test("installer accepts session-default flags and reports them", () => {
   const result = run("install", "--dry-run", "--yes", "--combo-default", "medium");
-  assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /Defaults: combo=medium/);
-  assert.match(result.stdout, /RTK session — install session mode/);
-  assert.match(result.stdout, /Session helpers — sync shared files/);
+  expect(result.status, result.stderr).toBe(0);
+  expect(result.stdout).toMatch(/Defaults: combo=medium/);
+  expect(result.stdout).toMatch(/RTK session — install session mode/);
+  expect(result.stdout).toMatch(/Session helpers — sync shared files/);
 });
 
 test("installer rejects invalid default values", () => {
   const badCombo = run("install", "--dry-run", "--yes", "--combo-default", "ultra");
-  assert.equal(badCombo.status, 1);
-  assert.match(badCombo.stderr, /Invalid --combo-default/);
+  expect(badCombo.status).toBe(1);
+  expect(badCombo.stderr).toMatch(/Invalid --combo-default/);
 
   const badRtk = run("install", "--dry-run", "--yes", "--rtk-default", "maybe");
-  assert.equal(badRtk.status, 1);
-  assert.match(badRtk.stderr, /Invalid --rtk-default/);
+  expect(badRtk.status).toBe(1);
+  expect(badRtk.stderr).toMatch(/Invalid --rtk-default/);
 
   const badCaveman = run("install", "--dry-run", "--yes", "--caveman-default", "max");
-  assert.equal(badCaveman.status, 1);
-  assert.match(badCaveman.stderr, /Invalid --caveman-default/);
+  expect(badCaveman.status).toBe(1);
+  expect(badCaveman.stderr).toMatch(/Invalid --caveman-default/);
 });
 
 test("installer rejects removed project/both scopes", () => {
   for (const scope of ["project", "both", "bogus"]) {
     const bad = run("install", "--dry-run", "--yes", "--scope", scope);
-    assert.equal(bad.status, 1, scope);
-    assert.match(bad.stderr, /Project scope was removed/);
+    expect(bad.status, scope).toBe(1);
+    expect(bad.stderr).toMatch(/Project scope was removed/);
   }
   const legacy = run("install", "--dry-run", "--yes", "--scope", "user");
-  assert.equal(legacy.status, 0, legacy.stderr);
+  expect(legacy.status, legacy.stderr).toBe(0);
 });
 
 test("installer dry-run installs every user-scope extension", () => {
   const result = run("install", "--dry-run", "--yes");
-  assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /RTK session — install session mode/);
-  assert.match(result.stdout, /Caveman — fetch rule and install session mode/);
-  assert.match(result.stdout, /Session helpers — sync shared files/);
+  expect(result.status, result.stderr).toBe(0);
+  expect(result.stdout).toMatch(/RTK session — install session mode/);
+  expect(result.stdout).toMatch(/Caveman — fetch rule and install session mode/);
+  expect(result.stdout).toMatch(/Session helpers — sync shared files/);
 });
 
 // --- Manifest feature/setting shape ---
@@ -146,40 +145,40 @@ test("package manifest declares features and settings matching the omp schema", 
   const settings = manifest.omp?.settings ?? {};
 
   for (const name of ["caveman", "rtk", "ponytail", "updater"]) {
-    assert.ok(name in features, `feature ${name} declared`);
+    expect(name in features, `feature ${name} declared`).toBeTruthy();
     const feature = features[name] as { default?: boolean; extensions?: string[] };
-    assert.equal(feature.default, true, `feature ${name} defaults on`);
+    expect(feature.default, `feature ${name} defaults on`).toBe(true);
     for (const ext of feature.extensions ?? []) {
       const compiled = path.join(root, ext);
-      assert.ok(existsSync(compiled), `feature ${name} entry exists: ${ext}`);
+      expect(existsSync(compiled), `feature ${name} entry exists: ${ext}`).toBeTruthy();
     }
   }
 
   const combo = settings.comboDefault as { type?: string; values?: string[]; default?: string };
-  assert.equal(combo.type, "enum");
-  assert.deepEqual(combo.values, ["off", "medium", "balanced", "max"]);
-  assert.equal(combo.default, "off");
+  expect(combo.type).toBe("enum");
+  expect(combo.values).toEqual(["off", "medium", "balanced", "max"]);
+  expect(combo.default).toBe("off");
 
   const rtk = settings.rtkDefault as { type?: string; default?: boolean };
-  assert.equal(rtk.type, "boolean");
-  assert.equal(rtk.default, false);
+  expect(rtk.type).toBe("boolean");
+  expect(rtk.default).toBe(false);
 
   const currency = settings.currency as { type?: string; values?: string[]; default?: string };
-  assert.equal(currency.type, "enum");
-  assert.deepEqual(currency.values, ["USD", "PHP", "EUR", "GBP", "JPY", "KRW", "SGD", "AUD", "CAD", "INR"]);
-  assert.equal(currency.default, "USD");
+  expect(currency.type).toBe("enum");
+  expect(currency.values).toEqual(["USD", "PHP", "EUR", "GBP", "JPY", "KRW", "SGD", "AUD", "CAD", "INR"]);
+  expect(currency.default).toBe("USD");
 });
 
 test("installer accepts --ponytail-default override and reports it", () => {
   const result = run("install", "--dry-run", "--yes", "--ponytail-default", "review");
-  assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /ponytail=review/);
+  expect(result.status, result.stderr).toBe(0);
+  expect(result.stdout).toMatch(/ponytail=review/);
 });
 
 test("installer rejects invalid --ponytail-default values", () => {
   const bad = run("install", "--dry-run", "--yes", "--ponytail-default", "max");
-  assert.equal(bad.status, 1);
-  assert.match(bad.stderr, /Invalid --ponytail-default/);
+  expect(bad.status).toBe(1);
+  expect(bad.stderr).toMatch(/Invalid --ponytail-default/);
 });
 
 test("apply-update without flags preserves stored combo defaults", () => {
@@ -202,8 +201,8 @@ test("apply-update without flags preserves stored combo defaults", () => {
       timeout: 15000,
       env: { ...process.env, HOME: home, USERPROFILE: home },
     });
-    assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /Defaults: combo=balanced \(caveman=full · rtk=on · ponytail=full\)/);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/Defaults: combo=balanced \(caveman=full · rtk=on · ponytail=full\)/);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

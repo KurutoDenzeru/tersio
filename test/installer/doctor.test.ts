@@ -1,5 +1,4 @@
-import test from "node:test";
-import assert from "node:assert/strict";
+import { expect, test } from "vitest";
 import { spawnSync } from "node:child_process";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
@@ -33,19 +32,19 @@ test("doctor reports MISSING components against an empty home", () => {
       env: { ...process.env, HOME: home, USERPROFILE: home },
     });
 
-    assert.equal(result.status, 0, result.stderr);
+    expect(result.status, result.stderr).toBe(0);
     for (const line of ["OMP extensions dir: MISSING", "Shared session bridge: MISSING", "Caveman extension: MISSING", "RTK extension: MISSING", "Combo extension: MISSING", "❌ RTK binary: MISSING", "RTK OMP wiring (rtk.ts): MISSING run: rtk init -g --agent omp", "Usage ledger: ok empty — no records yet"]) {
-      assert.match(result.stdout, new RegExp(line.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+      expect(result.stdout).toMatch(new RegExp(line.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
     }
     // Categorized output: merged section headers plus a closing tally.
     for (const sectionName of ["Environment", "Installation", "Extensions & plugins", "Usage & records", "Add-ons"]) {
-      assert.match(result.stdout, new RegExp(`\\n${sectionName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\n`));
+      expect(result.stdout).toMatch(new RegExp(`\\n${sectionName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\n`));
     }
-    assert.match(result.stdout, /Summary: \d+ checks — ✅ \d+ ok, ⚠️ \d+ warn, ❌ \d+ missing/);
+    expect(result.stdout).toMatch(/Summary: \d+ checks — ✅ \d+ ok, ⚠️ \d+ warn, ❌ \d+ missing/);
     // Seeded cache (latest 2.1.0) is never newer than the running version, so
     // the row prints the plain version — whatever the release currently is.
-    assert.match(result.stdout, /Tersio CLI: ok \d+\.\d+\.\d+/);
-    assert.doesNotMatch(result.stdout, /available — run tersio update/);
+    expect(result.stdout).toMatch(/Tersio CLI: ok \d+\.\d+\.\d+/);
+    expect(result.stdout).not.toMatch(/available — run tersio update/);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }
@@ -70,9 +69,9 @@ test("doctor reports the rtk OMP wiring when the binary and rtk.ts exist", () =>
       env: { ...process.env, HOME: home, USERPROFILE: home },
     });
 
-    assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /✅ RTK binary: ok rtk 0\.49\.0/);
-    assert.match(result.stdout, /✅ RTK OMP wiring \(rtk\.ts\): ok/);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/✅ RTK binary: ok rtk 0\.49\.0/);
+    expect(result.stdout).toMatch(/✅ RTK OMP wiring \(rtk\.ts\): ok/);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

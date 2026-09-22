@@ -13,14 +13,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
+      - uses: oven-sh/setup-bun@v2
       - name: Build and pack
         run: |
-          npm ci
-          npm run build
-          npm pack --pack-destination .
+          bun install --frozen-lockfile
+          bun run build
+          bun pm pack --destination .
           mv krtclcdy-tersio-*.tgz tersio-npm.tgz
       - name: Attach assets to the release
         env:

@@ -14,10 +14,10 @@ You can fork this repo by clicking the fork button in the top right corner of th
 git clone https://github.com/KurutoDenzeru/tersio.git
 ```
 
-3. Install dependencies using npm.
+3. Install dependencies using Bun.
 
 ```bash
-npm install
+bun install
 ```
 
 4. Start the development server.
@@ -60,10 +60,11 @@ https://www.conventionalcommits.org/ or check out the
 
 ## Testing
 
-Tests are written using [Build](https://docs.npmjs.com/cli/v6/commands/npm-build/). You can run all the tests from the root of the repository.
+Tests are written using [Vitest](https://vitest.dev/). You can run all the tests from the root of the repository.
 
 ```bash
-npm run build
+bun run build
+bun run test
 ```
 
 Please ensure that the tests are passing when submitting a pull request. If you're adding new components or features, creating tests would be appreciated.

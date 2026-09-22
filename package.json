@@ -4,7 +4,6 @@
   "description": "✂️ Token-saving OMP add-ons: terse Caveman replies, compact RTK shell output, lean Ponytail code calls — one-command combo presets.",
   "keywords": [
     "omp",
-    "tersio",
     "token-saving",
     "ai-tools",
     "developer-tools",
@@ -19,10 +18,6 @@
     "type": "git",
     "url": "git+https://github.com/KurutoDenzeru/tersio.git"
   },
-  "homepage": "https://github.com/KurutoDenzeru/tersio",
-  "bugs": {
-    "url": "https://github.com/KurutoDenzeru/tersio/issues"
-  },
   "type": "module",
   "bin": {
     "tersio": "tersio.js"
@@ -36,43 +31,43 @@
         "description": "Caveman terse-reply session mode (/caveman)",
         "default": true,
         "extensions": [
-          "./extensions/caveman-session/index.js"
+          "./extensions/caveman-session/index.ts"
         ]
       },
       "rtk": {
         "description": "RTK compact shell-output session mode (/rtk)",
         "default": true,
         "extensions": [
-          "./extensions/rtk-session/index.js"
+          "./extensions/rtk-session/index.ts"
         ]
       },
       "ponytail": {
-        "description": "Combo toggle bar and Ponytail mode reinforcement (/combo, mode reinforcement)",
+        "description": "Combo presets + Ponytail mode reinforcement (/combo)",
         "default": true,
         "extensions": [
-          "./extensions/combo-toggle/index.js",
-          "./extensions/shared/mode-reinforcement.js"
+          "./extensions/combo-toggle/index.ts",
+          "./extensions/shared/mode-reinforcement.ts"
         ]
       },
       "updater": {
-        "description": "In-session /ai-addons updater for Ponytail, RTK, and Caveman",
+        "description": "In-session updater for Ponytail, RTK, and Caveman (/ai-addons)",
         "default": true,
         "extensions": [
-          "./extensions/ai-addons-updater/index.js"
+          "./extensions/ai-addons-updater/index.ts"
         ]
       },
       "tersio": {
-        "description": "Unified /tersio root command (caveman, combo, rtk, ponytail, status, check, update, gain, usage)",
+        "description": "Unified /tersio root command",
         "default": true,
         "extensions": [
-          "./extensions/tersio-commands/index.js"
+          "./extensions/tersio-commands/index.ts"
         ]
       }
     },
     "settings": {
       "comboDefault": {
         "type": "enum",
-        "description": "Combo preset applied on session start when no session state exists",
+        "description": "Session-start default (no saved state)",
         "values": [
           "off",
           "medium",
@@ -83,7 +78,7 @@
       },
       "cavemanDefault": {
         "type": "enum",
-        "description": "Caveman mode applied on session start when no session state exists",
+        "description": "Session-start default (no saved state)",
         "values": [
           "off",
           "lite",
@@ -95,12 +90,12 @@
       },
       "rtkDefault": {
         "type": "boolean",
-        "description": "RTK mode applied on session start when no session state exists",
+        "description": "Session-start default (no saved state)",
         "default": false
       },
       "ponytailDefault": {
         "type": "enum",
-        "description": "Ponytail mode applied on session start when no session state exists (follows combo preset unless overridden)",
+        "description": "Session-start default; follows the combo preset unless overridden",
         "values": [
           "off",
           "lite",
@@ -133,24 +128,24 @@
     "tersio.js",
     "cli/**/*.js",
     "dashboard/**/*",
-    "extensions/**/*.js"
+    "extensions/**/*.ts"
   ],
   "scripts": {
     "clean": "rm -f tersio.js cli/*.js extensions/**/*.js",
     "build": "tsc",
-    "prepublishOnly": "npm run build",
+    "prepublishOnly": "bun run build",
     "check": "tsc --noEmit",
     "doctor": "node tersio.js --doctor",
     "dry-run": "node tersio.js --dry-run --scope user --yes",
-    "test": "tsx --test test/*.test.ts test/*/*.test.ts"
+    "test": "vitest run"
   },
   "engines": {
     "node": ">=20.12.0"
   },
   "devDependencies": {
     "@types/node": "^26.4.1",
-    "tsx": "^4.23.13",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.1"
   },
   "dependencies": {
     "@clack/prompts": "^1.8.0"

@@ -1,5 +1,4 @@
-import test from "node:test";
-import assert from "node:assert/strict";
+import { expect, test } from "vitest";
 import { spawnSync } from "node:child_process";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
@@ -45,15 +44,15 @@ const TARBALL_FALLBACK = 'env TERSIO_TARBALL_URL=file:///nonexistent/tersio-npm.
       env: { ...process.env, PATH: `${bin}${path.delimiter}/usr/bin${path.delimiter}/bin` },
     });
 
-    assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /Installing @krtclcdy\/tersio via npm\.\.\./);
-    assert.match(result.stdout, /fake-npm install -g @krtclcdy\/tersio@latest --no-audit --no-fund/);
-    assert.match(result.stdout, /Running the main installer\.\.\./);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/Installing @krtclcdy\/tersio via npm\.\.\./);
+    expect(result.stdout).toMatch(/fake-npm install -g @krtclcdy\/tersio@latest --no-audit --no-fund/);
+    expect(result.stdout).toMatch(/Running the main installer\.\.\./);
     // The follow-up installer ran (forwarded flag included), whichever
     // interactivity branch the environment supports.
     const tersioArgs = readFileSync(tersioLog, "utf8");
-    assert.match(tersioArgs, /--dry-run/);
-    assert.match(tersioArgs, /(^| )install( |$)/);
+    expect(tersioArgs).toMatch(/--dry-run/);
+    expect(tersioArgs).toMatch(/(^| )install( |$)/);
   } finally {
     cleanup(bin, prefix);
   }
@@ -73,10 +72,10 @@ const TARBALL_FALLBACK = 'env TERSIO_TARBALL_URL=file:///nonexistent/tersio-npm.
       env: { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH || ""}` },
     });
 
-    assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /Installing tersio from the GitHub release tarball\.\.\./);
-    assert.match(result.stdout, /fake-npm install -g .*tersio-npm\.tgz --no-audit --no-fund/);
-    assert.match(readFileSync(tersioLog, "utf8"), /(^| )install( |$)/);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/Installing tersio from the GitHub release tarball\.\.\./);
+    expect(result.stdout).toMatch(/fake-npm install -g .*tersio-npm\.tgz --no-audit --no-fund/);
+    expect(readFileSync(tersioLog, "utf8")).toMatch(/(^| )install( |$)/);
   } finally {
     cleanup(bin, prefix, tgz);
   }
@@ -93,15 +92,15 @@ const TARBALL_FALLBACK = 'env TERSIO_TARBALL_URL=file:///nonexistent/tersio-npm.
       env: { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH || ""}` },
     });
 
-    assert.equal(result.status, 0, result.stderr);
+    expect(result.status, result.stderr).toBe(0);
     const tersioArgs = readFileSync(tersioLog, "utf8");
     if (/install --yes/.test(tersioArgs)) {
-      assert.match(tersioArgs, /install --yes/);
-      assert.doesNotMatch(tersioArgs, /--scope/);
+      expect(tersioArgs).toMatch(/install --yes/);
+      expect(tersioArgs).not.toMatch(/--scope/);
     } else {
       // Environment exposed a controlling terminal (/dev/tty); the installer
       // ran interactively — still a full `tersio install` follow-up.
-      assert.match(tersioArgs, /(^| )install( |$)/);
+      expect(tersioArgs).toMatch(/(^| )install( |$)/);
     }
   } finally {
     cleanup(bin, prefix);
@@ -119,8 +118,8 @@ const TARBALL_FALLBACK = 'env TERSIO_TARBALL_URL=file:///nonexistent/tersio-npm.
       env: { ...process.env, PATH: emptyBin },
     });
 
-    assert.equal(result.status, 1);
-    assert.match(result.stderr, /npm not found/);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(/npm not found/);
   } finally {
     cleanup(emptyBin);
   }
@@ -139,10 +138,10 @@ const TARBALL_FALLBACK = 'env TERSIO_TARBALL_URL=file:///nonexistent/tersio-npm.
       env: { ...process.env, PATH: `${bin}${path.delimiter}${prefix}/bin${path.delimiter}/usr/bin${path.delimiter}/bin` },
     });
 
-    assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /Installing @krtclcdy\/tersio via bun\.\.\./);
-    assert.match(result.stdout, /fake-bun install -g @krtclcdy\/tersio@latest/);
-    assert.match(readFileSync(tersioLog, "utf8"), /(^| )install( |$)/);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/Installing @krtclcdy\/tersio via bun\.\.\./);
+    expect(result.stdout).toMatch(/fake-bun install -g @krtclcdy\/tersio@latest/);
+    expect(readFileSync(tersioLog, "utf8")).toMatch(/(^| )install( |$)/);
   } finally {
     cleanup(bin, prefix);
   }
@@ -159,10 +158,10 @@ const TARBALL_FALLBACK = 'env TERSIO_TARBALL_URL=file:///nonexistent/tersio-npm.
       env: { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH || ""}` },
     });
 
-    assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /Installing @krtclcdy\/tersio via npm\.\.\./);
-    assert.doesNotMatch(result.stdout, /fake-bun/);
-    assert.match(readFileSync(tersioLog, "utf8"), /--dry-run/);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/Installing @krtclcdy\/tersio via npm\.\.\./);
+    expect(result.stdout).not.toMatch(/fake-bun/);
+    expect(readFileSync(tersioLog, "utf8")).toMatch(/--dry-run/);
   } finally {
     cleanup(bin, prefix);
   }
@@ -179,8 +178,8 @@ const TARBALL_FALLBACK = 'env TERSIO_TARBALL_URL=file:///nonexistent/tersio-npm.
       env: { ...process.env, PATH: `${bin}${path.delimiter}/usr/bin${path.delimiter}/bin` },
     });
 
-    assert.equal(result.status, 1);
-    assert.match(result.stderr, /bun not found/);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(/bun not found/);
   } finally {
     cleanup(bin, prefix);
   }

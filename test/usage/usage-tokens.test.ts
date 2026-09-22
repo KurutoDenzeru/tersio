@@ -1,5 +1,4 @@
-import test from "node:test";
-import assert from "node:assert/strict";
+import { expect, test } from "vitest";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -11,7 +10,7 @@ import {
   importSessionTokens,
   priceFor,
   usdCost,
-} from "../extensions/shared/usage-ledger.js";
+} from "../../extensions/shared/usage-ledger.ts";
 
 // Fixture rows use 2026-09-01 timestamps — keep any host reset watermark
 // (which would filter them out of the derived view) out of these tests.
@@ -41,17 +40,17 @@ test("importer aggregates assistant usage by model and day, skips the rest", () 
   process.env.TERSIO_SESSIONS_DIR = dir;
   try {
     const s = importSessionTokens();
-    assert.deepEqual(s.byModel["claude-sonnet-5"], { input: 1000, output: 200, cacheRead: 500, cacheWrite: 0 });
-    assert.deepEqual(s.byDay["2026-09-01"], { input: 1000, output: 200, cacheRead: 500, cacheWrite: 0 });
-    assert.deepEqual(s.byDay["2026-09-02"], { input: 100, output: 10, cacheRead: 0, cacheWrite: 0 });
-    assert.deepEqual(s.byDayModel["2026-09-01"], { "claude-sonnet-5": 1700 });
-    assert.deepEqual(s.byDayModel["2026-09-02"], { "mystery-model-9": 110 });
-    assert.deepEqual(s.byModelMessages, { "claude-sonnet-5": 1, "mystery-model-9": 1 });
-    assert.deepEqual(s.recent, [
+    expect(s.byModel["claude-sonnet-5"]).toEqual({ input: 1000, output: 200, cacheRead: 500, cacheWrite: 0 });
+    expect(s.byDay["2026-09-01"]).toEqual({ input: 1000, output: 200, cacheRead: 500, cacheWrite: 0 });
+    expect(s.byDay["2026-09-02"]).toEqual({ input: 100, output: 10, cacheRead: 0, cacheWrite: 0 });
+    expect(s.byDayModel["2026-09-01"]).toEqual({ "claude-sonnet-5": 1700 });
+    expect(s.byDayModel["2026-09-02"]).toEqual({ "mystery-model-9": 110 });
+    expect(s.byModelMessages).toEqual({ "claude-sonnet-5": 1, "mystery-model-9": 1 });
+    expect(s.recent).toEqual([
       { m: "mystery-model-9", i: 100, o: 10, t: Date.parse("2026-09-02T10:01:00.000Z"), d: undefined, cr: 0, cw: 0, usd: undefined, st: "completed", code: undefined, note: undefined },
       { m: "claude-sonnet-5", i: 1000, o: 200, t: Date.parse("2026-09-01T10:01:00.000Z"), d: 4200, cr: 500, cw: 0, usd: 0.012, st: "completed", code: undefined, note: undefined },
     ]);
-    assert.equal(s.costMeasured, 0.012);
+    expect(s.costMeasured).toBe(0.012);
   } finally {
     if (prev === undefined) delete process.env.TERSIO_SESSIONS_DIR;
     else process.env.TERSIO_SESSIONS_DIR = prev;
@@ -75,10 +74,10 @@ test("importer captures codex cache-write tokens with provider label", () => {
   process.env.TERSIO_CODEX_DIR = dir;
   try {
     const s = importSessionTokens();
-    assert.equal(s.messages, 1);
-    assert.deepEqual(s.totals, { input: 500, output: 50, cacheRead: 100, cacheWrite: 250 });
-    assert.deepEqual(s.byModel["codex/openai"], { input: 500, output: 50, cacheRead: 100, cacheWrite: 250 });
-    assert.deepEqual(s.byDayModel["2026-09-01"], { "codex/openai": 900 });
+    expect(s.messages).toBe(1);
+    expect(s.totals).toEqual({ input: 500, output: 50, cacheRead: 100, cacheWrite: 250 });
+    expect(s.byModel["codex/openai"]).toEqual({ input: 500, output: 50, cacheRead: 100, cacheWrite: 250 });
+    expect(s.byDayModel["2026-09-01"]).toEqual({ "codex/openai": 900 });
   } finally {
     if (prevSessions === undefined) delete process.env.TERSIO_SESSIONS_DIR;
     else process.env.TERSIO_SESSIONS_DIR = prevSessions;
@@ -105,17 +104,17 @@ test("carries measured cost and run status through to recent rows", () => {
   process.env.TERSIO_SESSIONS_DIR = dir;
   try {
     const s = importSessionTokens();
-    assert.equal(s.recent.length, 3);
+    expect(s.recent.length).toBe(3);
     const [c, b, a] = s.recent; // newest first
-    assert.deepEqual([a.st, a.code, a.note], ["error", 404, "404 model not found"], "error keeps its status and first line only");
-    assert.equal(a.usd, 0.0003, "object-shaped usage.cost is read, not skipped");
-    assert.deepEqual([b.st, b.note], ["aborted", "Interrupted by user"]);
-    assert.equal(b.usd, 0.000187);
-    assert.equal(c.st, "completed", "toolUse is an ordinary completed turn");
-    assert.equal(c.usd, 0, "a recorded zero is a measurement, not a missing value");
+    expect([a.st, a.code, a.note], "error keeps its status and first line only").toEqual(["error", 404, "404 model not found"]);
+    expect(a.usd, "object-shaped usage.cost is read, not skipped").toBe(0.0003);
+    expect([b.st, b.note]).toEqual(["aborted", "Interrupted by user"]);
+    expect(b.usd).toBe(0.000187);
+    expect(c.st, "toolUse is an ordinary completed turn").toBe("completed");
+    expect(c.usd, "a recorded zero is a measurement, not a missing value").toBe(0);
     // Previously always 0: the old check required usage.cost to be a number,
     // but the host writes an object, so measured cost never accumulated.
-    assert.ok(Math.abs(s.costMeasured - (0.0003 + 0.000187)) < 1e-12, `costMeasured was ${s.costMeasured}`);
+    expect(Math.abs(s.costMeasured - (0.0003 + 0.000187)) < 1e-12, `costMeasured was ${s.costMeasured}`).toBeTruthy();
   } finally {
     if (prev === undefined) delete process.env.TERSIO_SESSIONS_DIR;
     else process.env.TERSIO_SESSIONS_DIR = prev;
@@ -129,9 +128,9 @@ test("usdCost flags unpriced models with priced=false", () => {
   try {
     const t = { input: 1_000_000, output: 0, cacheRead: 0, cacheWrite: 0 };
     const unknown = usdCost(t, "some-future-model-99");
-    assert.equal(unknown.usd, 2);
-    assert.equal(unknown.priced, false);
-    assert.equal(priceFor("some-future-model-99").known, false);
+    expect(unknown.usd).toBe(2);
+    expect(unknown.priced).toBe(false);
+    expect(priceFor("some-future-model-99").known).toBe(false);
   } finally {
     if (prev === undefined) delete process.env.TERSIO_PRICES_FILE;
     else process.env.TERSIO_PRICES_FILE = prev;
@@ -139,16 +138,16 @@ test("usdCost flags unpriced models with priced=false", () => {
 });
 
 test("co2Grams defaults to the gpt-4o served figure", () => {
-  assert.equal(co2Grams(5000), co2GramsFor("gpt-4o", 5000));
+  expect(co2Grams(5000)).toBe(co2GramsFor("gpt-4o", 5000));
 });
 test("free suffix and case variants fold into one model row", () => {
-  assert.equal(canonicalModelId("DeepSeek-V4.1-Flash"), canonicalModelId("deepseek-v4.1-flash:free"));
-  assert.equal(canonicalModelId("muse-spark-1.3-contributor-free"), "muse-spark-1.3-contributor");
-  assert.equal(displayModelId("deepseek-v4.1-flash"), "Deepseek-V4.1-Flash");
-  assert.equal(displayModelId("deepseek-v4.1-flash:free"), "Deepseek-V4.1-Flash");
-  assert.equal(displayModelId("meta/muse-spark-1.3-contributor"), "meta/Muse-Spark-1.3-Contributor");
-  assert.equal(displayModelId("codex/openai"), "codex/OpenAI");
-  assert.equal(displayModelId("gemma4:31b"), "Gemma4-31B");
+  expect(canonicalModelId("DeepSeek-V4.1-Flash")).toBe(canonicalModelId("deepseek-v4.1-flash:free"));
+  expect(canonicalModelId("muse-spark-1.3-contributor-free")).toBe("muse-spark-1.3-contributor");
+  expect(displayModelId("deepseek-v4.1-flash")).toBe("Deepseek-V4.1-Flash");
+  expect(displayModelId("deepseek-v4.1-flash:free")).toBe("Deepseek-V4.1-Flash");
+  expect(displayModelId("meta/muse-spark-1.3-contributor")).toBe("meta/Muse-Spark-1.3-Contributor");
+  expect(displayModelId("codex/openai")).toBe("codex/OpenAI");
+  expect(displayModelId("gemma4:31b")).toBe("Gemma4-31B");
   const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-modelfold-"));
   writeFileSync(
     path.join(dir, "s.jsonl"),
@@ -162,8 +161,8 @@ test("free suffix and case variants fold into one model row", () => {
   process.env.TERSIO_SESSIONS_DIR = dir;
   try {
     const s = importSessionTokens();
-    assert.deepEqual(Object.keys(s.byModel), ["deepseek-v4.1-flash"]);
-    assert.deepEqual(s.byModel["deepseek-v4.1-flash"], { input: 300, output: 30, cacheRead: 0, cacheWrite: 0 });
+    expect(Object.keys(s.byModel)).toEqual(["deepseek-v4.1-flash"]);
+    expect(s.byModel["deepseek-v4.1-flash"]).toEqual({ input: 300, output: 30, cacheRead: 0, cacheWrite: 0 });
   } finally {
     if (prev === undefined) delete process.env.TERSIO_SESSIONS_DIR;
     else process.env.TERSIO_SESSIONS_DIR = prev;

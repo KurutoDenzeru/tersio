@@ -1,5 +1,4 @@
-import test from "node:test";
-import assert from "node:assert/strict";
+import { expect, test } from "vitest";
 import { spawnSync } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
@@ -7,9 +6,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const installer = path.join(root, "tersio.js");
-const { version } = createRequire(import.meta.url)("../package.json");
+const { version } = createRequire(import.meta.url)("../../package.json");
 
 function run(...args: string[]) {
   return spawnSync(process.execPath, [installer, ...args], {
@@ -23,9 +22,9 @@ for (const alias of [["version"], ["--version"], ["-v"]]) {
   test(`${alias[0]} prints only the package version`, () => {
     const result = run(...alias);
 
-    assert.equal(result.status, 0, result.stderr);
-    assert.equal(result.stdout, `${version}\n`);
-    assert.equal(result.stderr, "");
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toBe(`${version}\n`);
+    expect(result.stderr).toBe("");
   });
 }
 
@@ -33,22 +32,22 @@ for (const alias of [["help"], ["--help"], ["-h"]]) {
   test(`${alias[0]} prints help`, () => {
     const result = run(...alias);
 
-    assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /^Usage:/);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/^Usage:/);
     for (const command of ["install", "update", "reinstall", "doctor", "uninstall", "usage", "gain", "reset", "settings", "version", "help"]) {
-      assert.match(result.stdout, new RegExp(`^  ${command}\\s`, "m"));
+      expect(result.stdout).toMatch(new RegExp(`^  ${command}\\s`, "m"));
     }
-    assert.equal(result.stderr, "");
+    expect(result.stderr).toBe("");
   });
 }
 
 test("an unknown command fails with usage and no installer output", () => {
   const result = run("definitely-not-a-command");
 
-  assert.equal(result.status, 1);
-  assert.match(result.stderr, /Unknown command: definitely-not-a-command/);
-  assert.match(result.stdout, /^Usage:/);
-  assert.doesNotMatch(result.stdout, /Prerequisites:|Installing|Will remove:/);
+  expect(result.status).toBe(1);
+  expect(result.stderr).toMatch(/Unknown command: definitely-not-a-command/);
+  expect(result.stdout).toMatch(/^Usage:/);
+  expect(result.stdout).not.toMatch(/Prerequisites:|Installing|Will remove:/);
 });
 
 test("dry-run previews shared bridge before dependent extensions without writing", () => {
@@ -63,17 +62,17 @@ test("dry-run previews shared bridge before dependent extensions without writing
     }
   );
 
-  assert.equal(result.status, 0, result.stderr);
+  expect(result.status, result.stderr).toBe(0);
   const shared = result.stdout.indexOf("Shared files — sync session bridge");
   const rtk = result.stdout.indexOf("RTK session — install session mode");
   const caveman = result.stdout.indexOf("Caveman — fetch rule and install session mode");
-  assert.ok(shared >= 0, result.stdout);
-  assert.ok(rtk > shared, result.stdout);
-  assert.ok(caveman > shared, result.stdout);
-  assert.match(result.stdout, /Ponytail — refresh plugin/);
-  assert.match(result.stdout, /Tersio — register plugin/);
-  assert.doesNotMatch(result.stdout, /\/tmp|\/Users|\.omp\/agent\/extensions\/shared\/session-state\.js/);
-  assert.equal(existsSync(path.join(root, "extensions", "shared-session-state.js")), false);
+  expect(shared >= 0, result.stdout).toBeTruthy();
+  expect(rtk > shared, result.stdout).toBeTruthy();
+  expect(caveman > shared, result.stdout).toBeTruthy();
+  expect(result.stdout).toMatch(/Ponytail — refresh plugin/);
+  expect(result.stdout).toMatch(/Tersio — register plugin/);
+  expect(result.stdout).not.toMatch(/\/tmp|\/Users|\.omp\/agent\/extensions\/shared\/session-state\.js/);
+  expect(existsSync(path.join(root, "extensions", "shared-session-state.js"))).toBe(false);
 });
 
 test("user dry-run installs mode reinforcement after Ponytail", () => {
@@ -88,13 +87,13 @@ test("user dry-run installs mode reinforcement after Ponytail", () => {
     }
   );
 
-  assert.equal(result.status, 0, result.stderr);
+  expect(result.status, result.stderr).toBe(0);
   const ponytail = result.stdout.indexOf("Ponytail — refresh plugin");
   const reinforcement = result.stdout.indexOf("Session helpers — sync shared files");
-  assert.ok(ponytail >= 0, result.stdout);
-  assert.ok(reinforcement > ponytail, result.stdout);
-  assert.match(result.stdout, /Combo — install preset switch/);
-  assert.match(result.stdout, /Tersio — register plugin/);
+  expect(ponytail >= 0, result.stdout).toBeTruthy();
+  expect(reinforcement > ponytail, result.stdout).toBeTruthy();
+  expect(result.stdout).toMatch(/Combo — install preset switch/);
+  expect(result.stdout).toMatch(/Tersio — register plugin/);
 });
 test("user dry-run installs the tersio root-command extension", () => {
   const missingHome = path.join(root, "test", "definitely-missing-home");
@@ -108,9 +107,9 @@ test("user dry-run installs the tersio root-command extension", () => {
     }
   );
 
-  assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /Tersio commands — install \/tersio root command/);
-  assert.doesNotMatch(result.stdout, /tersio-commands[\\/]index\.js/);
+  expect(result.status, result.stderr).toBe(0);
+  expect(result.stdout).toMatch(/Tersio commands — install \/tersio root command/);
+  expect(result.stdout).not.toMatch(/tersio-commands[\\/]index\.ts/);
 });
 test("verbose dry-run reveals file paths hidden by default", () => {
   const missingHome = path.join(root, "test", "definitely-missing-home");
@@ -124,9 +123,9 @@ test("verbose dry-run reveals file paths hidden by default", () => {
     }
   );
 
-  assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /\[dry-run\] would write .*shared[\\/]session-state\.js/);
-  assert.match(result.stdout, /\[dry-run\] would write .*tersio-commands[\\/]index\.js/);
+  expect(result.status, result.stderr).toBe(0);
+  expect(result.stdout).toMatch(/\[dry-run\] would write .*shared[\\/]session-state\.ts/);
+  expect(result.stdout).toMatch(/\[dry-run\] would write .*tersio-commands[\\/]index\.ts/);
 });
 test("reinstall --dry-run previews uninstall then install without writing", () => {
   const missingHome = path.join(root, "test", "definitely-missing-home");
@@ -141,13 +140,13 @@ test("reinstall --dry-run previews uninstall then install without writing", () =
     }
   );
 
-  assert.equal(result.status, 0, result.stderr);
+  expect(result.status, result.stderr).toBe(0);
   const uninstall = result.stdout.indexOf("=== Tersio Uninstall ===");
   const install = result.stdout.indexOf("Ponytail — refresh plugin");
-  assert.ok(uninstall >= 0, result.stdout);
-  assert.ok(install > uninstall, "uninstall runs before the fresh install");
-  assert.match(result.stdout, /\[dry-run\] would remove /);
-  assert.match(result.stdout, /Done — restart OMP/);
+  expect(uninstall >= 0, result.stdout).toBeTruthy();
+  expect(install > uninstall, "uninstall runs before the fresh install").toBeTruthy();
+  expect(result.stdout).toMatch(/\[dry-run\] would remove /);
+  expect(result.stdout).toMatch(/Done — restart OMP/);
 });
 
 test("bare dry-run never prompts for the pending update and exits 0", () => {
@@ -162,8 +161,8 @@ test("bare dry-run never prompts for the pending update and exits 0", () => {
     }
   );
 
-  assert.equal(result.status, 0, result.stderr);
-  assert.doesNotMatch(result.stdout, /Install it now\?/);
+  expect(result.status, result.stderr).toBe(0);
+  expect(result.stdout).not.toMatch(/Install it now\?/);
 });
 
 test("uninstall dry-run previews shared bridge removal", () => {
@@ -179,9 +178,9 @@ test("uninstall dry-run previews shared bridge removal", () => {
     }
   );
 
-  assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /\[dry-run\] would remove .*extensions[\\/]shared(?:\r?\n|$)/);
-  assert.match(result.stdout, /\[dry-run\] would remove .*extensions[\\/]aaa-combo-boot(?:\r?\n|$)/);
+  expect(result.status, result.stderr).toBe(0);
+  expect(result.stdout).toMatch(/\[dry-run\] would remove .*extensions[\\/]shared(?:\r?\n|$)/);
+  expect(result.stdout).toMatch(/\[dry-run\] would remove .*extensions[\\/]aaa-combo-boot(?:\r?\n|$)/);
 });
 
 test("uninstall dry-run with --remove-ponytail previews full ponytail removal", () => {
@@ -210,10 +209,10 @@ test("uninstall dry-run with --remove-ponytail previews full ponytail removal", 
       }
     );
 
-    assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /\[dry-run\] would remove @dietrichgebert\/ponytail from .*package\.json/);
-    assert.match(result.stdout, /\[dry-run\] would remove .*@dietrichgebert[\\/]ponytail(?:\r?\n|$)/);
-    assert.match(result.stdout, /\[dry-run\] would remove @dietrichgebert\/ponytail from .*omp-plugins\.lock\.json/);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/\[dry-run\] would remove @dietrichgebert\/ponytail from .*package\.json/);
+    expect(result.stdout).toMatch(/\[dry-run\] would remove .*@dietrichgebert[\\/]ponytail(?:\r?\n|$)/);
+    expect(result.stdout).toMatch(/\[dry-run\] would remove @dietrichgebert\/ponytail from .*omp-plugins\.lock\.json/);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }
@@ -230,12 +229,12 @@ test("uninstall dry-run includes ponytail by default; --keep-ponytail omits it",
     });
 
   const def = spawn(["uninstall", "--dry-run", "--yes"]);
-  assert.equal(def.status, 0, def.stderr);
-  assert.match(def.stdout, /dietrichgebert/, "ponytail removal is part of the default dry-run plan");
+  expect(def.status, def.stderr).toBe(0);
+  expect(def.stdout, "ponytail removal is part of the default dry-run plan").toMatch(/dietrichgebert/);
 
   const keep = spawn(["uninstall", "--dry-run", "--yes", "--keep-ponytail"]);
-  assert.equal(keep.status, 0, keep.stderr);
-  assert.doesNotMatch(keep.stdout, /dietrichgebert/);
+  expect(keep.status, keep.stderr).toBe(0);
+  expect(keep.stdout).not.toMatch(/dietrichgebert/);
 });
 
 test("uninstall dry-run never prompts for confirmation", () => {
@@ -251,9 +250,9 @@ test("uninstall dry-run never prompts for confirmation", () => {
     }
   );
 
-  assert.equal(result.status, 0, result.stderr);
-  assert.doesNotMatch(result.stdout, /Proceed\?/);
-  assert.match(result.stdout, /\[dry-run\] would remove .*extensions[\\/]shared(?:\r?\n|$)/);
+  expect(result.status, result.stderr).toBe(0);
+  expect(result.stdout).not.toMatch(/Proceed\?/);
+  expect(result.stdout).toMatch(/\[dry-run\] would remove .*extensions[\\/]shared(?:\r?\n|$)/);
 });
 
 test("usage with an empty ledger and no sessions prints the empty state and exits 0", () => {
@@ -265,9 +264,9 @@ test("usage with an empty ledger and no sessions prints the empty state and exit
     cwd: root,
     env: { ...process.env, TERSIO_USAGE_FILE: missing, TERSIO_SESSIONS_DIR: noSessions, TERSIO_RESET_FILE: path.join(root, "test", "definitely-missing-home", "no-reset.json"), TERSIO_USAGE_DB: path.join(dir, "usage.db") },
   });
-  assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /No ledger rows or session tokens yet/);
-  assert.match(result.stdout, /· stored ===/);
+  expect(result.status, result.stderr).toBe(0);
+  expect(result.stdout).toMatch(/No ledger rows or session tokens yet/);
+  expect(result.stdout).toMatch(/· stored ===/);
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -282,16 +281,16 @@ test("gain --export writes a self-contained html file", () => {
     cwd: root,
     env: { ...process.env, TERSIO_USAGE_FILE: ledger, TERSIO_RESET_FILE: path.join(dir, "reset.json") },
   });
-  assert.equal(result.status, 0, result.stderr);
+  expect(result.status, result.stderr).toBe(0);
   const html = existsSync(out) ? "present" : "missing";
-  assert.equal(html, "present");
+  expect(html).toBe("present");
   const body = readFileSync(out, "utf8");
-  assert.match(body, /Tersio Dashboard/);
-  assert.match(body, /\/tersio usage/);
+  expect(body).toMatch(/Tersio Dashboard/);
+  expect(body).toMatch(/\/tersio usage/);
   // `$'`/`$&` in data must survive String.replace untouched (single document).
-  assert.match(body, /\$'quoted\$'/);
-  assert.equal(body.split("</body>").length - 1, 1);
-  assert.equal(body.split("</html>").length - 1, 1);
+  expect(body).toMatch(/\$'quoted\$'/);
+  expect(body.split("</body>").length - 1).toBe(1);
+  expect(body.split("</html>").length - 1).toBe(1);
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -312,10 +311,10 @@ test("reset --dry-run keeps the seeded ledger", () => {
       TERSIO_USAGE_DB: path.join(dir, "no-usage.db"),
     },
   });
-  assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /Will clear: 2 usage ledger rows/);
-  assert.match(result.stdout, /\[dry-run\] nothing written/);
-  assert.equal(existsSync(ledger), true);
+  expect(result.status, result.stderr).toBe(0);
+  expect(result.stdout).toMatch(/Will clear: 2 usage ledger rows/);
+  expect(result.stdout).toMatch(/\[dry-run\] nothing written/);
+  expect(existsSync(ledger)).toBe(true);
 });
 
 test("reset --yes clears the seeded ledger and writes the watermark", () => {
@@ -335,10 +334,10 @@ test("reset --yes clears the seeded ledger and writes the watermark", () => {
       TERSIO_USAGE_DB: path.join(dir, "no-usage.db"),
     },
   });
-  assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /\[ok\] reset — removed 1 usage rows; statistics view starts at /);
-  assert.equal(existsSync(ledger), false);
-  assert.equal(existsSync(marker), true);
+  expect(result.status, result.stderr).toBe(0);
+  expect(result.stdout).toMatch(/\[ok\] reset — removed 1 usage rows; statistics view starts at /);
+  expect(existsSync(ledger)).toBe(false);
+  expect(existsSync(marker)).toBe(true);
 });
 
 test("reset asks Y/N and aborts without writing on N", () => {
@@ -359,11 +358,11 @@ test("reset asks Y/N and aborts without writing on N", () => {
       TERSIO_USAGE_DB: path.join(dir, "no-usage.db"),
     },
   });
-  assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /Proceed\? \[y\/N\]/);
-  assert.match(result.stdout, /Aborted\./);
-  assert.equal(existsSync(ledger), true, "ledger kept on abort");
-  assert.equal(existsSync(marker), false, "no watermark written on abort");
+  expect(result.status, result.stderr).toBe(0);
+  expect(result.stdout).toMatch(/Proceed\? \[y\/N\]/);
+  expect(result.stdout).toMatch(/Aborted\./);
+  expect(existsSync(ledger), "ledger kept on abort").toBe(true);
+  expect(existsSync(marker), "no watermark written on abort").toBe(false);
 });
 
 test("reset accepts lowercase y and writes the watermark", () => {
@@ -384,10 +383,10 @@ test("reset accepts lowercase y and writes the watermark", () => {
       TERSIO_USAGE_DB: path.join(dir, "no-usage.db"),
     },
   });
-  assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /\[ok\] reset — removed 1 usage rows/);
-  assert.equal(existsSync(ledger), false);
-  assert.equal(existsSync(marker), true);
+  expect(result.status, result.stderr).toBe(0);
+  expect(result.stdout).toMatch(/\[ok\] reset — removed 1 usage rows/);
+  expect(existsSync(ledger)).toBe(false);
+  expect(existsSync(marker)).toBe(true);
 });
 
 test("reset --yes on empty stores prints nothing-to-reset without prompting", () => {
@@ -405,9 +404,9 @@ test("reset --yes on empty stores prints nothing-to-reset without prompting", ()
       TERSIO_USAGE_DB: path.join(dir, "no-usage.db"),
     },
   });
-  assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /Nothing to reset — no statistics recorded/);
-  assert.equal(existsSync(ledger), false);
+  expect(result.status, result.stderr).toBe(0);
+  expect(result.stdout).toMatch(/Nothing to reset — no statistics recorded/);
+  expect(existsSync(ledger)).toBe(false);
 });
 
 test("doctor prints record store paths", () => {
@@ -426,11 +425,11 @@ test("doctor prints record store paths", () => {
       TERSIO_RESET_FILE: path.join(dir, "reset.json"),
     },
   });
-  assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /^Usage & records$/m);
-  assert.match(result.stdout, new RegExp(`Usage ledger \\(tersio-owned[^)]*\\): ${ledger.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
-  assert.match(result.stdout, /Session transcripts \(host-owned/);
-  assert.match(result.stdout, /Usage DB \(tersio-owned/);
+  expect(result.status, result.stderr).toBe(0);
+  expect(result.stdout).toMatch(/^Usage & records$/m);
+  expect(result.stdout).toMatch(new RegExp(`Usage ledger \\(tersio-owned[^)]*\\): ${ledger.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
+  expect(result.stdout).toMatch(/Session transcripts \(host-owned/);
+  expect(result.stdout).toMatch(/Usage DB \(tersio-owned/);
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -449,20 +448,20 @@ test("gain --export includes the reset control and empty states", () => {
       TERSIO_RESET_FILE: path.join(dir, "reset.json"),
     },
   });
-  assert.equal(result.status, 0, result.stderr);
+  expect(result.status, result.stderr).toBe(0);
   const body = readFileSync(out, "utf8");
-  assert.match(body, /id="reset"/);
-  assert.match(body, /id="emptyGraph"/);
-  assert.match(body, /emptyState\('boxes'/);
-  assert.match(body, /id="settings"/);
-  assert.match(body, /id="settingsBtn"/);
-  assert.match(body, /id="pathLedger"/);
-  assert.match(body, /id="modelDialog"/);
-  assert.match(body, /openModelDialog/);
-  assert.match(body, /id="emptyModels"/);
-  assert.match(body, /id="modelPages"/);
-  assert.match(body, /id="recentPages"/);
-  assert.match(body, /ranked by tokens \/ top 10/);
-  assert.match(body, /byModelBucketUsd/);
+  expect(body).toMatch(/id="reset"/);
+  expect(body).toMatch(/id="emptyGraph"/);
+  expect(body).toMatch(/emptyState\('boxes'/);
+  expect(body).toMatch(/id="settings"/);
+  expect(body).toMatch(/id="settingsBtn"/);
+  expect(body).toMatch(/id="pathLedger"/);
+  expect(body).toMatch(/id="modelDialog"/);
+  expect(body).toMatch(/openModelDialog/);
+  expect(body).toMatch(/id="emptyModels"/);
+  expect(body).toMatch(/id="modelPages"/);
+  expect(body).toMatch(/id="recentPages"/);
+  expect(body).toMatch(/ranked by tokens \/ top 10/);
+  expect(body).toMatch(/byModelBucketUsd/);
   rmSync(dir, { recursive: true, force: true });
 });

@@ -194,6 +194,14 @@ async function ensureExtensionInConfig(configPath: string, extensionPath: string
   const raw = await readTextIfExists(configPath);
   let lines = (raw || '').split('\n');
 
+  // Drop legacy compiled twins (same dir/name, .js): previous installs
+  // registered them, and OMP must never load both copies. Match on the
+  // trailing path so absolute and relative entries are both caught.
+  if (normalizedPath.endsWith('.ts')) {
+    const legacyTail = `${normalizedPath.slice(0, -3)}.js`.split('/').slice(-2).join('/');
+    lines = lines.filter((l) => !l.trim().replace(/^\.\//, '').endsWith(legacyTail));
+  }
+
   if (lines.some((l) => l.includes(normalizedPath))) {
     debug(`${label} already in config.yml`);
     return false;
@@ -225,7 +233,13 @@ async function ensureExtensionAfterConfigEntry(configPath: string, extensionPath
   const normalizedAfterPath = afterPath.replace(/\\/g, '/');
   const line = `  - ${normalizedPath}`;
   const raw = await readTextIfExists(configPath);
-  const lines = (raw || '').split('\n');
+  let lines = (raw || '').split('\n');
+
+  // Same legacy-twin drop as ensureExtensionInConfig above.
+  if (normalizedPath.endsWith('.ts')) {
+    const legacyTail = `${normalizedPath.slice(0, -3)}.js`.split('/').slice(-2).join('/');
+    lines = lines.filter((l) => !l.trim().replace(/^\.\//, '').endsWith(legacyTail));
+  }
   const existingIndex = lines.findIndex((entry) => entry.includes(normalizedPath));
   const afterIndex = lines.findIndex((entry) => entry.includes(normalizedAfterPath));
 

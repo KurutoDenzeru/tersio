@@ -35,19 +35,19 @@ import type { Profile } from './profile.ts';
 
 // Paths to extension source files (relative to this script)
 const EXT_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'extensions');
-const SHARED_SESSION_STATE = path.join(EXT_DIR, 'shared', 'session-state.js');
-const CAVEMAN_INDEX = path.join(EXT_DIR, 'caveman-session', 'index.js');
-const RTK_SESSION_INDEX = path.join(EXT_DIR, 'rtk-session', 'index.js');
-const UPDATER_INDEX = path.join(EXT_DIR, 'ai-addons-updater', 'index.js');
-const COMBO_TOGGLE_INDEX = path.join(EXT_DIR, 'combo-toggle', 'index.js');
-const TERSIO_COMMANDS_INDEX = path.join(EXT_DIR, 'tersio-commands', 'index.js');
-const MODE_REINFORCEMENT_INDEX = path.join(EXT_DIR, 'shared', 'mode-reinforcement.js');
-const SHARED_TYPES = path.join(EXT_DIR, 'shared', 'types.js');
-const LIB_UTILS = path.join(EXT_DIR, 'lib', 'utils.js');
-const SHARED_PLUGIN_SETTINGS = path.join(EXT_DIR, 'shared', 'plugin-settings.js');
-const SHARED_USAGE_LEDGER = path.join(EXT_DIR, 'shared', 'usage-ledger.js');
-const SHARED_PRICING = path.join(EXT_DIR, 'shared', 'pricing.js');
-const SHARED_CARBON = path.join(EXT_DIR, 'shared', 'carbon.js');
+const SHARED_SESSION_STATE = path.join(EXT_DIR, 'shared', 'session-state.ts');
+const CAVEMAN_INDEX = path.join(EXT_DIR, 'caveman-session', 'index.ts');
+const RTK_SESSION_INDEX = path.join(EXT_DIR, 'rtk-session', 'index.ts');
+const UPDATER_INDEX = path.join(EXT_DIR, 'ai-addons-updater', 'index.ts');
+const COMBO_TOGGLE_INDEX = path.join(EXT_DIR, 'combo-toggle', 'index.ts');
+const TERSIO_COMMANDS_INDEX = path.join(EXT_DIR, 'tersio-commands', 'index.ts');
+const MODE_REINFORCEMENT_INDEX = path.join(EXT_DIR, 'shared', 'mode-reinforcement.ts');
+const SHARED_TYPES = path.join(EXT_DIR, 'shared', 'types.ts');
+const LIB_UTILS = path.join(EXT_DIR, 'lib', 'utils.ts');
+const SHARED_PLUGIN_SETTINGS = path.join(EXT_DIR, 'shared', 'plugin-settings.ts');
+const SHARED_USAGE_LEDGER = path.join(EXT_DIR, 'shared', 'usage-ledger.ts');
+const SHARED_PRICING = path.join(EXT_DIR, 'shared', 'pricing.ts');
+const SHARED_CARBON = path.join(EXT_DIR, 'shared', 'carbon.ts');
 
 const PONYTAIL_GITHUB_SPEC = 'github:DietrichGebert/ponytail';
 const PONYTAIL_NPM_SPEC = '@dietrichgebert/ponytail@latest';
@@ -383,26 +383,26 @@ async function copySources(extDir: string, files: Array<[string, string]>, skipL
 async function stepSharedSessionState(extDir: string, options: WriteOptions): Promise<void> {
   if (!options.quiet) console.log('  Shared files — sync session bridge');
   await copySources(extDir, [
-    [SHARED_SESSION_STATE, path.join('shared', 'session-state.js')],
-    [SHARED_TYPES, path.join('shared', 'types.js')],
-    [LIB_UTILS, path.join('lib', 'utils.js')],
-    [SHARED_PLUGIN_SETTINGS, path.join('shared', 'plugin-settings.js')],
-    [SHARED_USAGE_LEDGER, path.join('shared', 'usage-ledger.js')],
-    [SHARED_PRICING, path.join('shared', 'pricing.js')],
-    [SHARED_CARBON, path.join('shared', 'carbon.js')],
+    [SHARED_SESSION_STATE, path.join('shared', 'session-state.ts')],
+    [SHARED_TYPES, path.join('shared', 'types.ts')],
+    [LIB_UTILS, path.join('lib', 'utils.ts')],
+    [SHARED_PLUGIN_SETTINGS, path.join('shared', 'plugin-settings.ts')],
+    [SHARED_USAGE_LEDGER, path.join('shared', 'usage-ledger.ts')],
+    [SHARED_PRICING, path.join('shared', 'pricing.ts')],
+    [SHARED_CARBON, path.join('shared', 'carbon.ts')],
   ], 'shared/session-state.js', options);
 }
 
 async function stepModeReinforcement(extDir: string, ponytailExtPath: string, options: WriteOptions): Promise<void> {
   if (!options.quiet) console.log('  Session helpers — sync shared files');
-  const dest = path.join(extDir, 'shared', 'mode-reinforcement.js');
-  if (!await copySources(extDir, [[MODE_REINFORCEMENT_INDEX, path.join('shared', 'mode-reinforcement.js')]], 'shared/mode-reinforcement.js', options)) return;
+  const dest = path.join(extDir, 'shared', 'mode-reinforcement.ts');
+  if (!await copySources(extDir, [[MODE_REINFORCEMENT_INDEX, path.join('shared', 'mode-reinforcement.ts')]], 'shared/mode-reinforcement.ts', options)) return;
   await ensureExtensionAfterConfigEntry(path.join(path.dirname(extDir), 'config.yml'), dest, ponytailExtPath, 'mode reinforcement', options);
 }
 
 async function stepRtkSession(extDir: string, options: WriteOptions): Promise<void> {
   if (!options.quiet) console.log('  RTK session — install session mode');
-  await copySources(extDir, [[RTK_SESSION_INDEX, path.join('rtk-session', 'index.js')]], 'rtk-session/index.js', options);
+  await copySources(extDir, [[RTK_SESSION_INDEX, path.join('rtk-session', 'index.ts')]], 'rtk-session/index.ts', options);
 }
 
 // One rule fetch serves the install; dry runs stay offline
@@ -432,22 +432,22 @@ async function stepCaveman(extDir: string, rule: string | null, options: WriteOp
     await writeIfChanged(ruleDest, rule, options);
   }
 
-  await copySources(extDir, [[CAVEMAN_INDEX, path.join('caveman-session', 'index.js')]], 'caveman-session/index.js', options);
+  await copySources(extDir, [[CAVEMAN_INDEX, path.join('caveman-session', 'index.ts')]], 'caveman-session/index.ts', options);
 }
 
 async function stepTersioCommands(extDir: string, options: WriteOptions): Promise<void> {
   if (!options.quiet) console.log('  Tersio commands — install /tersio root command');
-  await copySources(extDir, [[TERSIO_COMMANDS_INDEX, path.join('tersio-commands', 'index.js')]], 'tersio-commands/index.js', options);
+  await copySources(extDir, [[TERSIO_COMMANDS_INDEX, path.join('tersio-commands', 'index.ts')]], 'tersio-commands/index.ts', options);
 }
 
 async function stepUpdater(extDir: string, options: WriteOptions): Promise<void> {
-  await copySources(extDir, [[UPDATER_INDEX, path.join('ai-addons-updater', 'index.js')]], 'ai-addons-updater/index.js', options);
+  await copySources(extDir, [[UPDATER_INDEX, path.join('ai-addons-updater', 'index.ts')]], 'ai-addons-updater/index.ts', options);
 }
 
 async function stepCombo(extDir: string, options: WriteOptions): Promise<void> {
   if (!options.quiet) console.log('  Combo — install preset switch');
-  const dest = path.join(extDir, 'combo-toggle', 'index.js');
-  if (!await copySources(extDir, [[COMBO_TOGGLE_INDEX, path.join('combo-toggle', 'index.js')]], 'combo-toggle/index.js', options)) return;
+  const dest = path.join(extDir, 'combo-toggle', 'index.ts');
+  if (!await copySources(extDir, [[COMBO_TOGGLE_INDEX, path.join('combo-toggle', 'index.ts')]], 'combo-toggle/index.ts', options)) return;
 
   // Auto-register combo in config.yml
   const configPath = path.join(path.dirname(extDir), 'config.yml');
