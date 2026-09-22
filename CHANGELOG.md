@@ -1,3 +1,6 @@
+## v2.20.1
+ - Fix: v2.20.0 shipped `extensions/**/*.ts` without the compiled `.js` the CLI requires at runtime, so npm-installed users crashed with `ERR_MODULE_NOT_FOUND` on first run (no banner, update dead). The tarball carries both again; a tarball-contents test now fails the build if any CLI-used extension module lacks either counterpart. 177 tests.
+
 ## v2.20.0
  - Tooling modernized: Vitest replaces the custom `tsx --test` runner (161 → 176 tests), Bun replaces npm for installs/CI (`bun.lock` in, `package-lock.json` out), and `package.json` metadata tightened.
  - OMP extensions now ship as TypeScript sources instead of compiled JS (supported per OMP extension-authoring docs); reinstall drops legacy `.js` twin lines from `config.yml` so OMP never loads both copies.
