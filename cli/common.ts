@@ -5,6 +5,8 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { createRequire } from 'node:module';
 import { readTextIfExists } from '../extensions/lib/utils.ts';
+import { parseCurrencyFlag, readStoredCurrency } from './currency.ts';
+import type { CurrencyCode } from './currency.ts';
 
 const IS_WINDOWS = process.platform === 'win32';
 const RTK_BINARY_NAME = IS_WINDOWS ? 'rtk.exe' : 'rtk';
@@ -69,7 +71,7 @@ function flagValue(name: string): string | undefined {
 
 // --- CLI flags ---
 
-const COMMANDS: Record<string, true> = { install: true, update: true, reinstall: true, doctor: true, uninstall: true, usage: true, gain: true, reset: true, version: true, help: true };
+const COMMANDS: Record<string, true> = { install: true, update: true, reinstall: true, doctor: true, uninstall: true, usage: true, gain: true, reset: true, settings: true, version: true, help: true };
 const args = process.argv.slice(2);
 const commandArg = args.find((arg) => !arg.startsWith('-'));
 const command = commandArg?.toLowerCase() || null;
@@ -87,9 +89,14 @@ const doctor = command === 'doctor' || args.includes('--doctor');
 const usage = command === 'usage' || args.includes('--usage');
 const gain = command === 'gain';
 const reset = command === 'reset';
+const settings = command === 'settings';
 const dashboardPort = Number.parseInt(flagValue('--port') ?? '', 10) || 0;
 const dashboardOpen = args.includes('--open');
 const dashboardExport = flagValue('--export') ?? null;
+// Display currency for usage/gain: --currency flag wins, then the stored
+// plugin default (tersio settings), then USD.
+const currency: CurrencyCode = parseCurrencyFlag(flagValue('--currency')) ?? readStoredCurrency();
+const currencyGiven = flagValue('--currency') !== undefined;
 const uninstall = command === 'uninstall' || args.includes('--uninstall');
 const removePonytail = args.includes('--remove-ponytail');
 const keepPonytail = args.includes('--keep-ponytail');
@@ -332,8 +339,8 @@ export {
   CAVEMAN_DEFAULTS, PONYTAIL_DEFAULTS, RTK_DEFAULTS, COMBO_PRESET_MODES, COMBO_DEFAULTS,
   parseEnum, flagValue, COMMANDS, commandArg, command, unknownCommand,
   install, update, reinstall, showVersion, showHelp, applyUpdate,
-  dryRun, yes, verbose, doctor, uninstall, usage, gain, reset,
-  dashboardPort, dashboardOpen, dashboardExport,
+  dryRun, yes, verbose, doctor, uninstall, usage, gain, reset, settings,
+  dashboardPort, dashboardOpen, dashboardExport, currency, currencyGiven,
   removePonytail, keepPonytail, removeRtk,
   comboDefaultFlag, cavemanDefaultFlag, ponytailDefaultFlag, rtkDefaultFlag, profileFlagsGiven,
   debug, execFileP, execP, writeIfChanged, normalizeExtensionsKey, EXTENSIONS_KEY_RE,

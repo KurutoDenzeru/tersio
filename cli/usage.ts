@@ -18,7 +18,9 @@ import { readRtkGain } from '../extensions/shared/rtk-gain.ts';
 import type { RtkGain } from '../extensions/shared/rtk-gain.ts';
 import { readUsageDb, syncUsageDb, usageDbPath } from '../extensions/shared/usage-store.ts';
 import { withInteractiveSpinner } from './interactive.ts';
-import { PACKAGE_VERSION } from './common.ts';
+import { PACKAGE_VERSION, currency } from './common.ts';
+import { formatCurrency } from './currency.ts';
+import type { CurrencyCode } from './currency.ts';
 
 // `est` is tersio's modeled cost for the same message. The dashboard shows
 // the measured figure when the host recorded one and falls back to this, so
@@ -51,6 +53,7 @@ export interface UsageReport {
   co2g: number;
   energyWh: number;
   version: string;
+  currency: CurrencyCode;
   source: 'live' | 'stored' | 'stored-stale';
   paths: { ledger: string; sessions: string; usageDb: string };
 }
@@ -129,6 +132,7 @@ export function summarizeUsage(rows: UsageRow[]): UsageReport {
     co2g,
     energyWh,
     version: PACKAGE_VERSION,
+    currency,
     source,
     paths: { ledger: ledgerPath(), sessions: sessionsDir(), usageDb: usageDbPath() },
   };
@@ -161,8 +165,8 @@ function pad(s: string, n: number): string {
 }
 
 // Box-drawing table, plain text (piped-safe, byte-stable). Numeric columns
-// right-align; long cells truncate with an ellipsis.
-function table(headers: string[], rows: string[][], right: boolean[] = [], maxW = 32): string[] {
+// right-align; long cells truncate with an ellipsis. Shared with cli/settings.ts.
+function textTable(headers: string[], rows: string[][], right: boolean[] = [], maxW = 32): string[] {
   const cells = [headers, ...rows].map((r) =>
     r.map((c) => (c.length > maxW ? c.slice(0, maxW - 1) + '…' : c)),
   );
@@ -185,7 +189,7 @@ function printReport(report: UsageReport): void {
   }
   const t = report.tokens;
   console.log(`  TOKENS  ${fmt(t.input)} in · ${fmt(t.output)} out · ${fmt(t.cacheRead)} cache read${t.cacheWrite > 0 ? ` · ${fmt(t.cacheWrite)} written` : ''}`);
-  console.log(`  COST    $${report.usd.toFixed(2)}${report.priced ? '' : ' (includes default pricing)'} · ~$${report.savedUsd.toFixed(2)} cache-saved (est.) · ~${report.co2g.toFixed(1)}g CO2 (est.)`);
+  console.log(`  COST    ${formatCurrency(report.usd, report.currency)}${report.priced ? '' : ' (includes default pricing)'} · ~${formatCurrency(report.savedUsd, report.currency)} cache-saved (est.) · ~${report.co2g.toFixed(1)}g CO2 (est.)`);
   const models = Object.entries(report.byModel).filter(([, b]) => b.input + b.output + b.cacheRead + b.cacheWrite > 0).sort((a, b) => (b[1].input + b[1].output) - (a[1].input + a[1].output)).slice(0, 8);
   if (models.length) {
     console.log('  BY MODEL');
@@ -194,9 +198,9 @@ function printReport(report: UsageReport): void {
       const mt = b.input + b.output + b.cacheRead + b.cacheWrite;
       const hit = b.input + b.cacheRead ? (b.cacheRead / (b.input + b.cacheRead)) * 100 : 0;
       const usd = report.byModelUsd[model] ?? 0;
-      return [displayModelId(model), fmt(b.input), fmt(b.output), `${fmt(b.cacheRead)}/${fmt(b.cacheWrite)}`, `$${usd.toFixed(2)}`, `${hit.toFixed(1)}%`, `${bar(mt / top, 8)} ${fmtShort(mt)}`];
+      return [displayModelId(model), fmt(b.input), fmt(b.output), `${fmt(b.cacheRead)}/${fmt(b.cacheWrite)}`, formatCurrency(usd, report.currency), `${hit.toFixed(1)}%`, `${bar(mt / top, 8)} ${fmtShort(mt)}`];
     });
-    for (const l of table(['Model', 'Input', 'Output', 'Cache r/w', 'USD', 'Hit', 'Share'], mrows, [false, true, true, true, true, true, false])) {
+    for (const l of textTable(['Model', 'Input', 'Output', 'Cache r/w', report.currency, 'Hit', 'Share'], mrows, [false, true, true, true, true, true, false])) {
       console.log(l);
     }
   }
@@ -222,7 +226,7 @@ function printReport(report: UsageReport): void {
       r.avgMs === null ? '–' : fmtMs(r.avgMs),
       bar(r.count / top, 8),
     ]);
-    for (const l of table(['#', 'Tool/Command', 'Count', 'Saved', 'Avg%', 'Time', 'Impact'], crows, [true, false, true, true, true, true, false], 30)) {
+    for (const l of textTable(['#', 'Tool/Command', 'Count', 'Saved', 'Avg%', 'Time', 'Impact'], crows, [true, false, true, true, true, true, false], 30)) {
       console.log(l);
     }
   }
@@ -233,4 +237,4 @@ async function runUsage(): Promise<void> {
   printReport(report);
 }
 
-export { runUsage };
+export { runUsage, textTable };

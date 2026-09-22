@@ -35,7 +35,7 @@ for (const alias of [["help"], ["--help"], ["-h"]]) {
 
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /^Usage:/);
-    for (const command of ["install", "update", "reinstall", "doctor", "uninstall", "usage", "gain", "reset", "version", "help"]) {
+    for (const command of ["install", "update", "reinstall", "doctor", "uninstall", "usage", "gain", "reset", "settings", "version", "help"]) {
       assert.match(result.stdout, new RegExp(`^  ${command}\\s`, "m"));
     }
     assert.equal(result.stderr, "");

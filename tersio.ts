@@ -3,7 +3,7 @@
 // Usage: node tersio.js [install|update|reinstall|doctor|uninstall|version|help] [options]
 // Requires: node/npm and omp CLI
 import {
-  PACKAGE_BIN, PACKAGE_VERSION, applyUpdate, commandArg, gain, dashboardExport, dashboardOpen, dashboardPort, doctor, reset, showHelp, showVersion, uninstall, unknownCommand, update, usage,
+  PACKAGE_BIN, PACKAGE_VERSION, applyUpdate, commandArg, gain, dashboardExport, dashboardOpen, dashboardPort, doctor, reset, settings, showHelp, showVersion, uninstall, unknownCommand, update, usage,
 } from './cli/common.ts';
 import { closeRL } from './cli/interactive.ts';
 import { runInstall } from './cli/install.ts';
@@ -12,6 +12,7 @@ import { runLatestUpdate } from './cli/update.ts';
 import { runUninstall } from './cli/uninstall.ts';
 import { runUsage } from './cli/usage.ts';
 import { runReset } from './cli/reset.ts';
+import { runSettings } from './cli/settings.ts';
 import { runDashboard } from './cli/dashboard.ts';
 
 function printHelp(): void {
@@ -25,6 +26,7 @@ Commands:
   usage        Ledger-backed usage + savings report
   gain         Open the gain dashboard (localhost only)
   reset        Clear tersio statistics (usage ledger)
+  settings     View/change session-start defaults (combo, caveman, rtk, ponytail)
   uninstall    Remove the managed extensions
   version      Print the package version
   help         Show this help
@@ -43,6 +45,7 @@ Options:
   --port <n> (gain: pin port, default ephemeral)
   --open (gain: open browser)
   --export <file> (gain: write HTML file instead of serving)
+  --currency <code> (usage|gain: display currency; flag wins, then tersio settings default, then USD)
   --version, -v
   --help, -h`);
 }
@@ -95,6 +98,11 @@ async function main(): Promise<void> {
   if (reset) {
     await runReset();
     closeRL();
+    return;
+  }
+
+  if (settings) {
+    await runSettings();
     return;
   }
 

@@ -4,8 +4,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  BUN_BIN_DIR, CAVEMAN_DEFAULTS, COMBO_PRESET_MODES, IS_WINDOWS, OMP_AGENT_DIR, OMP_PLUGINS_DIR, OMP_BIN,
-  PACKAGE_NAME, PACKAGE_VERSION, PONYTAIL_DEFAULTS, RTK_BINARY_NAME,
+  BUN_BIN_DIR, COMBO_PRESET_MODES, IS_WINDOWS, OMP_AGENT_DIR, OMP_PLUGINS_DIR, OMP_BIN,
+  PACKAGE_NAME, PACKAGE_VERSION, RTK_BINARY_NAME,
   applyUpdate, cavemanDefaultFlag, comboDefaultFlag, command, dryRun, install,
   ponytailDefaultFlag, profileFlagsGiven, reinstall, rtkDefaultFlag, verbose, yes,
   dashboardExport, dashboardPort,
@@ -22,6 +22,7 @@ import { checkForUpdate, runLatestUpdate } from './update.ts';
 import { runUninstall } from './uninstall.ts';
 import { runDoctor } from './doctor.ts';
 import { runReset } from './reset.ts';
+import { runSettings } from './settings.ts';
 import { runUsage } from './usage.ts';
 import { runDashboard } from './dashboard.ts';
 import { wireRtkOmp } from './rtk-wiring.ts';
@@ -29,6 +30,8 @@ import {
   CAVEMAN_REMOTE_RULE, RTK_RELEASE_API, RtkRelease, RtkReleaseAsset, fetchJson, findFile, httpsGet,
   httpsDownload, parseChecksum, readTextIfExists, rtkPlatformSpec, sha256File,
 } from '../extensions/lib/utils.ts';
+import { storedProfile, writePluginSettings } from './profile.ts';
+import type { Profile } from './profile.ts';
 
 // Paths to extension source files (relative to this script)
 const EXT_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'extensions');
@@ -45,13 +48,6 @@ const SHARED_PLUGIN_SETTINGS = path.join(EXT_DIR, 'shared', 'plugin-settings.js'
 const SHARED_USAGE_LEDGER = path.join(EXT_DIR, 'shared', 'usage-ledger.js');
 const SHARED_PRICING = path.join(EXT_DIR, 'shared', 'pricing.js');
 const SHARED_CARBON = path.join(EXT_DIR, 'shared', 'carbon.js');
-
-interface Profile {
-  comboDefault: string;
-  cavemanDefault: string;
-  rtkDefault: boolean;
-  ponytailDefault: string;
-}
 
 const PONYTAIL_GITHUB_SPEC = 'github:DietrichGebert/ponytail';
 const PONYTAIL_NPM_SPEC = '@dietrichgebert/ponytail@latest';
@@ -459,45 +455,6 @@ async function stepCombo(extDir: string, options: WriteOptions): Promise<void> {
 }
 
 
-function defaultProfile(): Profile {
-  return {
-    comboDefault: 'off',
-    cavemanDefault: 'off',
-    rtkDefault: false,
-    ponytailDefault: 'off',
-  };
-}
-
-// Stored profile from the live lock file: update/reinstall runs without flags
-// or prompts must preserve the user's choice, never reset it to off.
-interface StoredSettings {
-  comboDefault?: unknown;
-  cavemanDefault?: unknown;
-  rtkDefault?: unknown;
-  ponytailDefault?: unknown;
-}
-
-async function storedProfile(): Promise<Profile> {
-  const base = defaultProfile();
-  const raw = await readTextIfExists(path.join(OMP_PLUGINS_DIR, 'omp-plugins.lock.json'));
-  if (!raw) return base;
-  let stored: StoredSettings;
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object' || !('settings' in parsed)) return base;
-    const settings = (parsed as { settings: unknown }).settings;
-    if (!settings || typeof settings !== 'object' || !(PACKAGE_NAME in settings)) return base;
-    const entry = (settings as Record<string, unknown>)[PACKAGE_NAME];
-    if (!entry || typeof entry !== 'object') return base;
-    stored = entry as StoredSettings;
-  } catch { return base; }
-  if (typeof stored.comboDefault === 'string' && stored.comboDefault in COMBO_PRESET_MODES) base.comboDefault = stored.comboDefault;
-  if (typeof stored.cavemanDefault === 'string' && CAVEMAN_DEFAULTS.has(stored.cavemanDefault)) base.cavemanDefault = stored.cavemanDefault;
-  if (typeof stored.rtkDefault === 'boolean') base.rtkDefault = stored.rtkDefault;
-  if (typeof stored.ponytailDefault === 'string' && PONYTAIL_DEFAULTS.has(stored.ponytailDefault)) base.ponytailDefault = stored.ponytailDefault;
-  return base;
-}
-
 async function resolveProfile(forceReinstall = false, opts: { quiet?: boolean } = {}): Promise<Profile> {
   // Seed from the lock file so flag-less update/reinstall runs keep the
   // user's configured defaults instead of resetting them to off.
@@ -535,35 +492,6 @@ async function resolveProfile(forceReinstall = false, opts: { quiet?: boolean } 
   return profile;
 }
 
-// Persist the profile as omp plugin settings so `omp plugin config get`
-// reflects the choice and the extensions pick it up on session start.
-async function writePluginSettings(profile: Profile, options: WriteOptions): Promise<void> {
-  const pluginsDir = OMP_PLUGINS_DIR;
-  const lockPath = path.join(pluginsDir, 'omp-plugins.lock.json');
-  let config: { plugins?: Record<string, unknown>; settings?: Record<string, Record<string, unknown>> } = {};
-  const existing = await readTextIfExists(lockPath);
-  if (existing) {
-    try { config = JSON.parse(existing); } catch { config = {}; }
-  }
-  config.plugins = config.plugins || {};
-  config.settings = config.settings || {};
-  config.settings[PACKAGE_NAME] = {
-    ...(config.settings[PACKAGE_NAME] || {}),
-    comboDefault: profile.comboDefault,
-    cavemanDefault: profile.cavemanDefault,
-    rtkDefault: profile.rtkDefault,
-    ponytailDefault: profile.ponytailDefault,
-  };
-
-  if (options.dryRun) {
-    if (verbose && !options.quiet) console.log(`  [dry-run] would write plugin settings (${PACKAGE_NAME}) to ${lockPath}`);
-    return;
-  }
-  await fs.mkdir(pluginsDir, { recursive: true });
-  await fs.writeFile(lockPath, JSON.stringify(config, null, 2) + '\n', 'utf8');
-  console.log(`  [write] Plugin settings in ${lockPath}`);
-}
-
 let updatePromptDone = false;
 
 // Bare `tersio` at a terminal is a command picker, not an install run:
@@ -594,6 +522,7 @@ async function runCommandMenu(): Promise<void> {
     { value: 'usage', label: 'Usage', hint: 'token usage and savings report' },
     { value: 'gain', label: 'Gain dashboard', hint: 'open the report in your browser' },
     { value: 'reset', label: 'Reset statistics', hint: 'clear statistics; transcripts and RTK history stay' },
+    { value: 'settings', label: 'Settings', hint: 'defaults: combo, caveman, rtk, ponytail, currency' },
     { value: 'uninstall', label: 'Uninstall', hint: 'remove tersio' },
   ], 'install');
   if (choice.status !== 'selected') {
@@ -640,6 +569,9 @@ async function runCommandMenu(): Promise<void> {
     case 'reset':
       await runReset();
       closeRL();
+      break;
+    case 'settings':
+      await runSettings();
       break;
     case 'uninstall':
       await runUninstall();
