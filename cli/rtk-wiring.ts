@@ -14,6 +14,7 @@ import { execFile } from 'node:child_process';
 export interface WiringOptions {
   dryRun?: boolean;
   quiet?: boolean;
+  verbose?: boolean;
 }
 
 function debugWire(options: WiringOptions, msg: string): void {
@@ -60,7 +61,7 @@ function rtkExtensionPath(): string {
 
 // OMP loads only listed extensions: append rtk.ts after the existing entries
 // (or create the key) so a fresh wire takes effect on next OMP start.
-async function ensureRtkInConfig(options: WiringOptions): Promise<void> {
+export async function ensureRtkInConfig(options: WiringOptions): Promise<void> {
   const home = process.env.HOME || process.env.USERPROFILE || os.homedir();
   const configPath = path.join(home, '.omp', 'agent', 'config.yml');
   const extPath = rtkExtensionPath().replace(/\\/g, '/');

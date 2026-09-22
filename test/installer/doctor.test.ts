@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -20,6 +20,10 @@ function missingHome(): string {
     "utf8",
   );
   return home;
+}
+
+function resultFileMissing(home: string, rel: string): boolean {
+  return !existsSync(path.join(home, ".omp", "agent", "extensions", rel));
 }
 
 test("doctor reports MISSING components against an empty home", () => {
@@ -45,6 +49,82 @@ test("doctor reports MISSING components against an empty home", () => {
     // the row prints the plain version — whatever the release currently is.
     expect(result.stdout).toMatch(/Tersio CLI: ok \d+\.\d+\.\d+/);
     expect(result.stdout).not.toMatch(/available — run tersio update/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("doctor --fix dry-run previews repairs without writing", () => {
+  const home = missingHome();
+  try {
+    const result = spawnSync(process.execPath, [installer, "doctor", "--fix", "--dry-run"], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 15000,
+      env: { ...process.env, HOME: home, USERPROFILE: home },
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/Summary: \d+ checks/);
+    expect(result.stdout).toMatch(/\[dry-run\] would repair \d+ missing/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("doctor --fix repairs missing extension files in an empty home", () => {
+  const home = missingHome();
+  try {
+    const missing = ["caveman-session/index.ts", "rtk-session/index.ts", "combo-toggle/index.ts", "tersio-commands/index.ts", "ai-addons-updater/index.ts"];
+    for (const rel of missing) {
+      expect(resultFileMissing(home, rel)).toBe(true);
+    }
+    const result = spawnSync(process.execPath, [installer, "doctor", "--fix", "extensions", "--yes"], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 30000,
+      env: { ...process.env, HOME: home, USERPROFILE: home },
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/\[ok\] extensions/);
+    for (const rel of missing) {
+      expect(resultFileMissing(home, rel)).toBe(false);
+    }
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+}, 30000);
+
+test("doctor --fix repairs config.yml registrations in an empty home", () => {
+  const home = missingHome();
+  try {
+    const result = spawnSync(process.execPath, [installer, "doctor", "--fix", "registrations", "--yes"], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 30000,
+      env: { ...process.env, HOME: home, USERPROFILE: home },
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/\[ok\] registrations/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("doctor --fix rejects an invalid scope", () => {
+  const home = missingHome();
+  try {
+    const result = spawnSync(process.execPath, [installer, "doctor", "--fix", "bogus"], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 15000,
+      env: { ...process.env, HOME: home, USERPROFILE: home },
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(/Invalid --fix scope: bogus/);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

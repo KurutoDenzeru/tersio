@@ -4,15 +4,23 @@ import path from 'node:path';
 import {
   BUN_BIN_DIR, OMP_AGENT_DIR, OMP_PLUGINS_DIR, OMP_BIN,
   PACKAGE_NAME, PACKAGE_VERSION, RTK_BINARY_NAME,
+  args, dryRun, fix, yes,
   execP, parseJsonObject, relTime,
 } from './common.ts';
-import { runInteractivePhase } from './interactive.ts';
+import { askInteractiveChoice, askInteractiveConfirm, runInteractivePhase } from './interactive.ts';
 import { ledgerPath, readUsage, sessionsDir } from '../extensions/shared/usage-ledger.ts';
 import { usageDbPath } from '../extensions/shared/usage-store.ts';
 import { readRtkGain, rtkDbPath } from '../extensions/shared/rtk-gain.ts';
 import { checkForUpdate } from './update.ts';
 import { readTextIfExists } from '../extensions/lib/utils.ts';
-async function runDoctor(): Promise<void> {
+
+interface DoctorSummary {
+  ok: number;
+  warn: number;
+  missing: number;
+}
+
+async function runDoctor(recheck = false): Promise<DoctorSummary> {
   console.log('\n=== Tersio Doctor ===');
 
   // Directories
@@ -162,6 +170,91 @@ async function runDoctor(): Promise<void> {
 
   const total = tally.ok + tally.missing + tally.warn;
   console.log(`\n  Summary: ${total} checks — ✅ ${tally.ok} ok, ⚠️ ${tally.warn} warn, ❌ ${tally.missing} missing`);
+
+  if (!recheck && tally.missing + tally.warn > 0 && (fix || dryRun)) {
+    await runDoctorFix(tally);
+  } else if (!recheck && tally.missing + tally.warn > 0) {
+    console.log('\n  Run `tersio doctor --fix` to repair the rows above.');
+  }
+  return tally;
+}
+
+type FixTarget = 'extensions' | 'registrations' | 'rtk' | 'ponytail' | 'cli';
+type FixRequest = FixTarget | 'all';
+
+function fixScope(): FixTarget | null {
+  const eq = args.find((a) => a.startsWith('--fix='));
+  if (eq !== undefined) {
+    const raw = eq.slice('--fix='.length).trim().toLowerCase();
+    if (raw === '') return null;
+    return checkFixScope(raw);
+  }
+  const i = args.indexOf('--fix');
+  if (i === -1) return null;
+  const next = args[i + 1];
+  if (next === undefined || next.startsWith('-')) return null;
+  return checkFixScope(next.trim().toLowerCase());
+}
+
+function checkFixScope(raw: string): FixTarget {
+  const valid: FixTarget[] = ['extensions', 'registrations', 'rtk', 'ponytail', 'cli'];
+  if (!valid.includes(raw as FixTarget)) {
+    console.error(`[fail] Invalid --fix scope: ${raw}. Valid: ${valid.join(', ')}`);
+    process.exit(1);
+  }
+  return raw as FixTarget;
+}
+
+async function runDoctorFix(tally: DoctorSummary): Promise<void> {
+  const problems: string[] = [];
+  if (tally.missing > 0) problems.push(`${tally.missing} missing`);
+  if (tally.warn > 0) problems.push(`${tally.warn} warn`);
+  if (dryRun) {
+    console.log(`\n  [dry-run] would repair ${problems.join(' + ')} (extensions, config.yml registrations, rtk wiring, ponytail refresh, CLI update)`);
+    return;
+  }
+  const scoped = fixScope();
+  let targets: FixRequest[];
+  if (scoped) {
+    targets = [scoped];
+    if (!yes) {
+      const go = await askInteractiveConfirm(`Repair "${scoped}" now?`);
+      if (go.status !== 'confirmed' || !go.value) { process.exitCode = 130; return; }
+    }
+  } else if (yes) {
+    targets = ['all'];
+  } else {
+    const picked = await askInteractiveChoice('Doctor — what should I repair?', [
+      { value: 'all', label: 'Fix everything', hint: `${tally.missing + tally.warn} rows` },
+      { value: 'extensions', label: 'Missing extension files', hint: 'copy sources from this CLI' },
+      { value: 'registrations', label: 'config.yml registrations', hint: 'combo, ponytail, rtk.ts entries' },
+      { value: 'rtk', label: 'RTK binary + wiring', hint: 'download checksum-verified binary, rtk init' },
+      { value: 'ponytail', label: 'Ponytail package', hint: 'omp plugin install + npm refresh' },
+      { value: 'cli', label: 'CLI update', hint: 'latest tersio + delegated refresh' },
+    ], 'all');
+    if (picked.status !== 'selected') { process.exitCode = 130; return; }
+    if (picked.value === 'all') targets = ['all'];
+    else {
+      const go = await askInteractiveConfirm(`Repair "${picked.value}" now?`);
+      if (go.status !== 'confirmed' || !go.value) { process.exitCode = 130; return; }
+      targets = [picked.value as FixTarget];
+    }
+  }
+  const { runDoctorRepairs } = await import('./doctor-fix.ts');
+  const failed = await runDoctorRepairs(targets);
+  if (failed.length > 0) {
+    console.log(`\n  Doctor --fix: ${failed.length} repair(s) failed (${failed.join(', ')}) — rerun or see [fail] lines above.`);
+    process.exitCode = 1;
+    return;
+  }
+  if (targets.includes('cli')) {
+    console.log('\n  Doctor --fix: CLI refresh delegated — rerun `tersio doctor` after it lands.');
+    return;
+  }
+  console.log('\n  Doctor --fix: repairs done — rechecking.');
+  const again = await runDoctor(true);
+  if (again.missing + again.warn === 0) console.log('  Doctor --fix: all checks pass. Restart OMP.');
+  else console.log(`  Doctor --fix: still ${again.missing} missing + ${again.warn} warn — rerun or repair manually.`);
 }
 
 function section(name: string): void {

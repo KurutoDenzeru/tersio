@@ -86,6 +86,7 @@ const dryRun = args.includes('--dry-run');
 const yes = args.includes('--yes') || args.includes('-y') || install || update || reinstall || applyUpdate;
 const verbose = args.includes('--verbose');
 const doctor = command === 'doctor' || args.includes('--doctor');
+const fix = args.includes('--fix') || args.some((a) => a.startsWith('--fix='));
 const usage = command === 'usage' || args.includes('--usage');
 const gain = command === 'gain';
 const reset = command === 'reset';
@@ -146,6 +147,7 @@ async function execP(cmd: string, args: string[], opts: ExecOptions = {}): Promi
 interface WriteOptions {
   dryRun?: boolean;
   quiet?: boolean;
+  verbose?: boolean;
 }
 
 async function writeIfChanged(dest: string, content: string, options: WriteOptions = {}): Promise<boolean> {
@@ -352,8 +354,8 @@ export {
   PACKAGE_NAME, PACKAGE_BIN, PACKAGE_VERSION,
   CAVEMAN_DEFAULTS, PONYTAIL_DEFAULTS, RTK_DEFAULTS, COMBO_PRESET_MODES, COMBO_DEFAULTS,
   parseEnum, flagValue, COMMANDS, commandArg, command, unknownCommand,
-  install, update, reinstall, showVersion, showHelp, applyUpdate,
-  dryRun, yes, verbose, doctor, uninstall, usage, gain, reset, settings,
+  install, update, reinstall, showVersion, showHelp, applyUpdate, args,
+  dryRun, yes, verbose, doctor, fix, uninstall, usage, gain, reset, settings,
   dashboardPort, dashboardOpen, dashboardExport, currency, currencyGiven,
   removePonytail, keepPonytail, removeRtk,
   comboDefaultFlag, cavemanDefaultFlag, ponytailDefaultFlag, rtkDefaultFlag, profileFlagsGiven,

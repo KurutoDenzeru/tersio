@@ -22,7 +22,7 @@ Commands:
   install      Install the add-ons (user scope: all OMP sessions)
   update       Refresh the CLI and add-ons (RTK binary, Caveman rule, Ponytail)
   reinstall    Clean and reinstall the user-scope add-ons
-  doctor       Check the current installation
+  doctor       Check the current installation (--fix repairs, --dry-run previews)
   usage        Ledger-backed usage + savings report
   gain         Open the gain dashboard (localhost only)
   reset        Clear tersio statistics (usage ledger)
@@ -32,6 +32,7 @@ Commands:
   help         Show this help
 
 Options:
+  --fix (doctor: repairs all; --fix=<scope> repairs one of extensions, registrations, rtk, ponytail, cli)
   --scope user (legacy; accepted and ignored — user scope is the only scope)
   --keep-ponytail (uninstall: keep the Ponytail plugin — removed by default)
   --remove-rtk (uninstall: also remove the RTK binary)

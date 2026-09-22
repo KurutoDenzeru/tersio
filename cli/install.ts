@@ -554,10 +554,24 @@ async function runCommandMenu(): Promise<void> {
       await runInstall({ reinstall: true });
       closeRL();
       break;
-    case 'doctor':
-      await runDoctor();
+    case 'doctor': {
+      const summary = await runDoctor();
+      if (!dryRun && summary.missing + summary.warn > 0) {
+        const fixIt = await askInteractiveConfirm('Doctor found problems — repair them now?');
+        if (fixIt.status === 'confirmed' && fixIt.value) {
+          const { runDoctorRepairs } = await import('./doctor-fix.ts');
+          const failed = await runDoctorRepairs(['all']);
+          if (failed.length === 0) {
+            console.log('\n  Repairs done — rechecking.');
+            await runDoctor();
+          } else {
+            console.log(`\n  ${failed.length} repair(s) failed (${failed.join(', ')}) — see [fail] lines above.`);
+          }
+        }
+      }
       closeRL();
       break;
+    }
     case 'usage':
       await runUsage();
       closeRL();
