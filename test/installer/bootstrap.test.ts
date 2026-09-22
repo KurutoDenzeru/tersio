@@ -20,7 +20,7 @@ function fakeEnv(): { bin: string; prefix: string; tersioLog: string } {
   chmodSync(path.join(bin, "npm"), 0o755);
   writeFileSync(path.join(bin, "bun"), '#!/bin/sh\necho "fake-bun $*"\n', "utf8");
   chmodSync(path.join(bin, "bun"), 0o755);
-  writeFileSync(path.join(prefix, "bin", "tersio"), '#!/bin/sh\necho "$*" >> "' + tersioLog + '"\n', "utf8");
+  writeFileSync(path.join(prefix, "bin", "tersio"), '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "fake-tersio 0.0.0"; else echo "$*" >> "' + tersioLog + '"; fi\n', "utf8");
   chmodSync(path.join(prefix, "bin", "tersio"), 0o755);
   return { bin, prefix, tersioLog };
 }
@@ -102,6 +102,30 @@ const TARBALL_FALLBACK = 'env TERSIO_TARBALL_URL=file:///nonexistent/tersio-npm.
       // ran interactively — still a full `tersio install` follow-up.
       expect(tersioArgs).toMatch(/(^| )install( |$)/);
     }
+  } finally {
+    cleanup(bin, prefix);
+  }
+});
+
+(process.platform === "win32" ? test.skip : test)("curl bootstrap aborts with a hint when the installed tersio fails its smoke check", () => {
+  const bin = mkdtempSync(path.join(os.tmpdir(), "tersio-curl-bin-"));
+  const prefix = mkdtempSync(path.join(os.tmpdir(), "tersio-curl-prefix-"));
+  mkdirSync(path.join(prefix, "bin"), { recursive: true });
+  writeFileSync(path.join(bin, "npm"), '#!/bin/sh\nif [ "$1" = "prefix" ]; then echo "' + prefix + '"; else echo "fake-npm $*"; fi\n', "utf8");
+  chmodSync(path.join(bin, "npm"), 0o755);
+  writeFileSync(path.join(prefix, "bin", "tersio"), '#!/bin/sh\necho "Error [ERR_MODULE_NOT_FOUND]" >&2\nexit 1\n', "utf8");
+  chmodSync(path.join(prefix, "bin", "tersio"), 0o755);
+
+  try {
+    const result = spawnSync("/bin/sh", ["-c", `${TARBALL_FALLBACK} PATH="${bin}:/usr/bin:/bin" sh "${script}" --npm --dry-run`], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 15000,
+      env: { ...process.env, PATH: `${bin}${path.delimiter}/usr/bin${path.delimiter}/bin` },
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(/failed its smoke check/);
   } finally {
     cleanup(bin, prefix);
   }

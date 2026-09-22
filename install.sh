@@ -133,6 +133,13 @@ fi
 
 echo
 echo "Running the main installer..."
+# A broken payload crashes on boot — smoke-check before `tersio install` runs.
+"$TERSIO" --version >/dev/null 2>&1 || {
+  echo "tersio installer: the installed tersio failed its smoke check (--version)." >&2
+  echo "The release payload may be broken — retry once fixed, or pin a known-good version:" >&2
+  echo "  npm install -g @krtclcdy/tersio@latest --no-audit --no-fund" >&2
+  exit 1
+}
 # Interactive shells get the scope + Combo preset menus; piped installs read
 # the prompts from the controlling terminal when one can be opened (the
 # subshell probe matters: dash aborts the whole script when a special builtin

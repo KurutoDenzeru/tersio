@@ -184,6 +184,25 @@ async function runLatestUpdate(): Promise<void> {
   }
   console.log(`Updating ${stale.join(', ')}`);
 
+  // Broken payloads (v2.20.0) crash on boot — smoke-check the target before touching anything installed.
+  const smokeArgs = IS_WINDOWS
+    ? ['/d', '/s', '/c', 'npm', 'exec', '--yes', '--prefer-online', `--package=${PACKAGE_NAME}${target}`, '--', PACKAGE_BIN, '--version']
+    : ['exec', '--yes', '--prefer-online', `--package=${PACKAGE_NAME}${target}`, '--', PACKAGE_BIN, '--version'];
+  try {
+    await execP(npmCommand, smokeArgs, {
+      timeout: 120000,
+      maxBuffer: 1024 * 1024,
+      windowsHide: true,
+      shell: false,
+    });
+  } catch (e) {
+    console.error(`[fail] Update payload ${PACKAGE_NAME}${target} failed its smoke check — staying on ${PACKAGE_VERSION}.`);
+    console.error(`[fail] ${(e as Error).message.split('\n')[0]}`);
+    console.error(`[hint] Retry once released fixed; manual: npm install -g ${PACKAGE_NAME}@latest --no-audit --no-fund --prefer-online`);
+    process.exitCode = 1;
+    return;
+  }
+
   // The npx delegation below only refreshes the OMP-side files; the globally
   // installed CLI keeps its old version until npm -g runs. Refresh both.
   const globalArgs = IS_WINDOWS

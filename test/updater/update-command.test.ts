@@ -113,6 +113,48 @@ test("update delegates to the latest package non-interactively", () => {
   }
 });
 
+test("update aborts before the global install when the payload fails its smoke check", () => {
+  const fakeBin = mkdtempSync(path.join(os.tmpdir(), "omp-update-smoke-"));
+  const npm = path.join(fakeBin, process.platform === "win32" ? "npm.cmd" : "npm");
+  const home = mkdtempSync(path.join(os.tmpdir(), "omp-update-smoke-home-"));
+
+  try {
+    if (process.platform === "win32") {
+      writeFileSync(npm, '@echo off\r\necho %* | findstr /C:"--version" >nul\r\nif not errorlevel 1 (echo ERR_MODULE_NOT_FOUND 1>&2 & exit /b 1)\r\necho %* | findstr /C:"view" >nul\r\nif not errorlevel 1 (echo 9.9.9) else (echo fake-npm %*)\r\n', "utf8");
+    } else {
+      writeFileSync(
+        npm,
+        '#!/bin/sh\nif [ "$1" = "view" ]; then echo "9.9.9"; else for a in "$@"; do if [ "$a" = "--version" ]; then echo "ERR_MODULE_NOT_FOUND" >&2; exit 1; fi; done; printf \'fake-npm %s\\n\' "$*"; fi\n',
+        "utf8"
+      );
+      chmodSync(npm, 0o755);
+    }
+
+    const result = spawnSync(
+      process.execPath,
+      [installer, "update"],
+      {
+        cwd: root,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          PATH: `${fakeBin}${path.delimiter}${process.env.PATH || ""}`,
+          HOME: home,
+        },
+        timeout: 15000,
+      }
+    );
+
+    expect(result.status, result.stderr).toBe(1);
+    expect(result.stderr).toMatch(/failed its smoke check/);
+    expect(result.stdout).not.toMatch(/fake-npm install -g/);
+    expect(result.stdout).not.toMatch(/fake-npm exec/);
+  } finally {
+    rmSync(fakeBin, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test("update pins the resolved version instead of trusting @latest", () => {
   const fakeBin = mkdtempSync(path.join(os.tmpdir(), "omp-update-pin-"));
   const npm = path.join(fakeBin, process.platform === "win32" ? "npm.cmd" : "npm");
