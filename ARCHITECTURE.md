@@ -6,7 +6,7 @@ Tersio is one npm package with two faces: a **CLI** (`tersio install|update|doct
 
 ```mermaid
 flowchart TB
-  subgraph CLI["CLI (node tersio.js)"]
+  subgraph CLI["CLI (node tersio.ts)"]
     INST["cli/install.ts<br/>copies extensions to<br/>~/.omp/agent/extensions + rtk.ts wiring"]
     DASH["cli/dashboard.ts<br/>gain dashboard (127.0.0.1)"]
     DOC["cli/doctor.ts · update.ts · uninstall.ts"]
