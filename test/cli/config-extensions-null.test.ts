@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { ensureExtensionAfterConfigEntry, ensureExtensionInConfig, normalizeExtensionsKey } from "../../cli/common.js";
+import { ensureExtensionAfterConfigEntry, ensureExtensionInConfig, normalizeExtensionsKey } from "../../cli/common.ts";
 
 // The normalizer lives in cli/common.ts (import-safe: no CLI side effects),
 // so this exercises the shared behavior directly instead of the source text.
