@@ -1,3 +1,7 @@
+## v2.21.0
+ - New: `tersio doctor --fix` repairs whatever doctor flags — missing extension files copied from the running CLI, config.yml registrations (combo, ponytail, rtk.ts, mode reinforcement), self-plugin registration, the checksum-verified RTK binary + `rtk init` wiring, a Ponytail refresh, and the CLI update itself. Bare `--fix` prompts for scope (`--fix <scope>` pins one; `--yes` fixes all; `--dry-run` previews), then re-runs doctor to prove it. The bare `tersio` menu offers the repair after a failing doctor run.
+ - Fix: a broken release payload can no longer half-update the machine. `tersio update` smoke-checks the target (`npm exec --package=<target> -- tersio --version`, side-effect free) before touching the global CLI or OMP files, and aborts with a hint when the payload fails. `install.sh` runs the same `--version` check before `tersio install`. 183 tests.
+
 ## v2.20.1
  - Fix: v2.20.0 shipped `extensions/**/*.ts` without the compiled `.js` the CLI requires at runtime, so npm-installed users crashed with `ERR_MODULE_NOT_FOUND` on first run (no banner, update dead). The tarball carries both again; a tarball-contents test now fails the build if any CLI-used extension module lacks either counterpart. 177 tests.
 
