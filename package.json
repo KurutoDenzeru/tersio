@@ -138,7 +138,7 @@
   "scripts": {
     "clean": "rm -f tersio.js cli/*.js extensions/**/*.js",
     "build": "tsc",
-    "prepublishOnly": "npm run build",
+    "prepublishOnly": "bun run build",
     "check": "tsc --noEmit",
     "doctor": "node tersio.js --doctor",
     "dry-run": "node tersio.js --dry-run --scope user --yes",

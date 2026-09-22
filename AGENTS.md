@@ -15,9 +15,9 @@
 
 ## Setup commands
 
-- Install deps: `npm install`
-- Build: `npm run build`
-- Run tests: `npm test`
+- Install deps: `bun install`
+- Build: `bun run build`
+- Run tests: `bun run test` (`bun run`, not `bun test` — the latter is Bun's own runner)
 
 ---
 
@@ -40,8 +40,8 @@ Follows the [Airbnb JavaScript Style Guide](https://github.com/airbnb/javascript
 Before calling any task done, **run these commands** — do not mark it done if either exits with errors:
 
 ```bash
-npm run build
-npm test
+bun run build
+bun run test
 ```
 
 Then confirm:
