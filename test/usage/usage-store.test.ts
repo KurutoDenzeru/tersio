@@ -1,5 +1,4 @@
-import test from "node:test";
-import assert from "node:assert/strict";
+import { expect, test } from "vitest";
 import { execSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
@@ -10,8 +9,8 @@ import {
   readUsageDb,
   syncUsageDb,
   usageDbPath,
-} from "../extensions/shared/usage-store.js";
-import { markReset } from "../extensions/shared/usage-ledger.js";
+} from "../../extensions/shared/usage-store.js";
+import { markReset } from "../../extensions/shared/usage-ledger.js";
 
 function hasSqlite(): boolean {
   try {
@@ -61,52 +60,52 @@ test("missing usage db reads null without throwing", () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-usage-db-"));
   try {
     withEnv(dir, () => {
-      assert.equal(readUsageDb(), null);
+      expect(readUsageDb()).toBe(null);
     });
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 });
 
-test("sync persists folded model rows and reads them back", { skip: !hasSqlite() }, () => {
+test.skipIf(!hasSqlite())("sync persists folded model rows and reads them back", () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-usage-db-"));
   try {
     withEnv(dir, () => {
       seedSessions(dir);
-      assert.equal(usageDbPath(), process.env.TERSIO_USAGE_DB);
-      assert.equal(syncUsageDb(), true);
+      expect(usageDbPath()).toBe(process.env.TERSIO_USAGE_DB);
+      expect(syncUsageDb()).toBe(true);
       const stored = readUsageDb();
-      assert.ok(stored);
-      assert.deepEqual(Object.keys(stored.tokens.byModel), ["deepseek-v4.1-flash"]);
-      assert.deepEqual(stored.tokens.byModel["deepseek-v4.1-flash"], { input: 300, output: 30, cacheRead: 50, cacheWrite: 0 });
-      assert.equal(stored.tokens.messages, 2);
-      assert.equal(stored.tokens.recent.length, 2);
-      assert.deepEqual(stored.tokens.byTool, { read: 1 });
-      assert.ok(stored.syncedAt > 0);
+      expect(stored).toBeTruthy();
+      expect(Object.keys(stored.tokens.byModel)).toEqual(["deepseek-v4.1-flash"]);
+      expect(stored.tokens.byModel["deepseek-v4.1-flash"]).toEqual({ input: 300, output: 30, cacheRead: 50, cacheWrite: 0 });
+      expect(stored.tokens.messages).toBe(2);
+      expect(stored.tokens.recent.length).toBe(2);
+      expect(stored.tokens.byTool).toEqual({ read: 1 });
+      expect(stored.syncedAt > 0).toBeTruthy();
       // Second sync is a no-op (mtime+size ledger matches).
-      assert.equal(syncUsageDb(), true);
+      expect(syncUsageDb()).toBe(true);
       // Reset watermark filters the stored view without touching the file.
       markReset(Date.parse("2026-09-01T10:30:00.000Z"));
       const filtered = readUsageDb();
-      assert.equal(filtered?.tokens.messages, 1);
-      assert.equal(existsSync(process.env.TERSIO_USAGE_DB!), true);
+      expect(filtered?.tokens.messages).toBe(1);
+      expect(existsSync(process.env.TERSIO_USAGE_DB!)).toBe(true);
     });
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 });
 
-test("clearUsageDb removes the store file", { skip: !hasSqlite() }, () => {
+test.skipIf(!hasSqlite())("clearUsageDb removes the store file", () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-usage-db-"));
   try {
     withEnv(dir, () => {
       seedSessions(dir);
-      assert.equal(syncUsageDb(), true);
-      assert.equal(existsSync(process.env.TERSIO_USAGE_DB!), true);
-      assert.equal(clearUsageDb(), 1);
-      assert.equal(existsSync(process.env.TERSIO_USAGE_DB!), false);
-      assert.equal(clearUsageDb(), 0);
-      assert.equal(readUsageDb(), null);
+      expect(syncUsageDb()).toBe(true);
+      expect(existsSync(process.env.TERSIO_USAGE_DB!)).toBe(true);
+      expect(clearUsageDb()).toBe(1);
+      expect(existsSync(process.env.TERSIO_USAGE_DB!)).toBe(false);
+      expect(clearUsageDb()).toBe(0);
+      expect(readUsageDb()).toBe(null);
     });
   } finally {
     rmSync(dir, { recursive: true, force: true });

@@ -1,11 +1,10 @@
-import test from "node:test";
-import assert from "node:assert/strict";
+import { expect, test } from "vitest";
 import { execFileSync, execSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { readRtkGain, rtkDbPath } from "../extensions/shared/rtk-gain.js";
+import { readRtkGain, rtkDbPath } from "../../extensions/shared/rtk-gain.js";
 
 function withDb(db: string | undefined, fn: () => void): void {
   const prev = process.env.TERSIO_RTK_DB;
@@ -32,14 +31,14 @@ test("missing rtk db returns empty gain without throwing", () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-rtk-"));
   try {
     withDb(path.join(dir, "nope.db"), () => {
-      assert.deepEqual(readRtkGain(), { commands: 0, saved: 0, input: 0, avgPct: 0, totalMs: 0, byCommand: [] });
+      expect(readRtkGain()).toEqual({ commands: 0, saved: 0, input: 0, avgPct: 0, totalMs: 0, byCommand: [] });
     });
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 });
 
-test("aggregates per-command savings from history.db", { skip: !hasSqlite() }, () => {
+test.skipIf(!hasSqlite())("aggregates per-command savings from history.db", () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-rtk-"));
   const db = path.join(dir, "history.db");
   try {
@@ -54,20 +53,20 @@ test("aggregates per-command savings from history.db", { skip: !hasSqlite() }, (
     ].join(" ")]);
     withDb(db, () => {
       const g = readRtkGain();
-      assert.equal(g.commands, 3);
-      assert.equal(g.saved, 250);
-      assert.equal(g.input, 1300);
-      assert.ok(Math.abs(g.avgPct - (250 / 1300) * 100) < 1e-9);
-      assert.equal(g.byCommand.length, 2);
-      assert.deepEqual(g.byCommand[0], { command: "rtk git status", count: 2, saved: 150, avgPct: 50, avgMs: 30 });
-      assert.deepEqual(g.byCommand[1], { command: "rtk grep", count: 1, saved: 100, avgPct: 10, avgMs: 600 });
+      expect(g.commands).toBe(3);
+      expect(g.saved).toBe(250);
+      expect(g.input).toBe(1300);
+      expect(Math.abs(g.avgPct - (250 / 1300) * 100) < 1e-9).toBeTruthy();
+      expect(g.byCommand.length).toBe(2);
+      expect(g.byCommand[0]).toEqual({ command: "rtk git status", count: 2, saved: 150, avgPct: 50, avgMs: 30 });
+      expect(g.byCommand[1]).toEqual({ command: "rtk grep", count: 1, saved: 100, avgPct: 10, avgMs: 600 });
     });
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 });
 
-test("cutoff filters the view without touching the db", { skip: !hasSqlite() }, () => {
+test.skipIf(!hasSqlite())("cutoff filters the view without touching the db", () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-rtk-"));
   const db = path.join(dir, "history.db");
   try {
@@ -83,12 +82,12 @@ test("cutoff filters the view without touching the db", { skip: !hasSqlite() }, 
     withDb(db, () => {
       const cutoff = Date.parse("2026-09-13T00:00:00Z");
       const g = readRtkGain(10, cutoff);
-      assert.equal(g.commands, 1, "only post-cutoff rows in the view");
-      assert.equal(g.saved, 100);
-      assert.equal(g.byCommand.length, 1);
+      expect(g.commands, "only post-cutoff rows in the view").toBe(1);
+      expect(g.saved).toBe(100);
+      expect(g.byCommand.length).toBe(1);
       // The database itself is untouched.
       const all = readRtkGain();
-      assert.equal(all.commands, 3);
+      expect(all.commands).toBe(3);
     });
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -98,11 +97,11 @@ test("cutoff filters the view without touching the db", { skip: !hasSqlite() }, 
 test("default db path follows the platform", () => {
   withDb(undefined, () => {
     const p = rtkDbPath();
-    assert.ok(p.endsWith("history.db"), p);
+    expect(p.endsWith("history.db"), p).toBeTruthy();
   });
 });
 
-test("multi-line commands stay one row", { skip: !hasSqlite() }, () => {
+test.skipIf(!hasSqlite())("multi-line commands stay one row", () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-rtk-"));
   const db = path.join(dir, "history.db");
   try {
@@ -119,9 +118,9 @@ test("multi-line commands stay one row", { skip: !hasSqlite() }, () => {
     ].join(" ")]);
     withDb(db, () => {
       const g = readRtkGain(50);
-      assert.equal(g.byCommand.length, 2, "one row per command, not one per physical line");
+      expect(g.byCommand.length, "one row per command, not one per physical line").toBe(2);
       for (const r of g.byCommand) {
-        assert.ok(!r.command.includes("\n"), "commands are flattened for the table");
+        expect(!r.command.includes("\n"), "commands are flattened for the table").toBeTruthy();
       }
     });
   } finally {
@@ -129,7 +128,7 @@ test("multi-line commands stay one row", { skip: !hasSqlite() }, () => {
   }
 });
 
-test("same command across repos folds into one row", { skip: !hasSqlite() }, () => {
+test.skipIf(!hasSqlite())("same command across repos folds into one row", () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-rtk-"));
   const db = path.join(dir, "history.db");
   try {
@@ -146,14 +145,14 @@ test("same command across repos folds into one row", { skip: !hasSqlite() }, () 
     ].join(" ")]);
     withDb(db, () => {
       const g = readRtkGain(50);
-      assert.equal(g.commands, 5, "totals stay machine-wide");
+      expect(g.commands, "totals stay machine-wide").toBe(5);
       const grep = g.byCommand.filter((r) => r.command === "rtk grep");
-      assert.equal(grep.length, 1, "same command in two repos is one row");
-      assert.equal(grep[0].count, 3);
+      expect(grep.length, "same command in two repos is one row").toBe(1);
+      expect(grep[0].count).toBe(3);
       // A zero-saving command still reaches the table; the old rows were
       // ranked by tokens saved and capped at 10, which dropped these entirely.
-      assert.ok(g.byCommand.some((r) => r.command === "rtk bun run build (passthrough)"));
-      assert.equal(g.byCommand.find((r) => r.command.startsWith("rtk ls -d "))?.command.length, 200);
+      expect(g.byCommand.some((r) => r.command === "rtk bun run build (passthrough)")).toBeTruthy();
+      expect(g.byCommand.find((r) => r.command.startsWith("rtk ls -d "))?.command.length).toBe(200);
     });
   } finally {
     rmSync(dir, { recursive: true, force: true });

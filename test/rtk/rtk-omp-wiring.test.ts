@@ -1,9 +1,8 @@
-import test from "node:test";
-import assert from "node:assert/strict";
+import { expect, test } from "vitest";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { wireRtkOmp } from "../cli/rtk-wiring.ts";
+import { wireRtkOmp } from "../../cli/rtk-wiring.ts";
 
 // Fake rtk binary: records its argv into a log beside it, exits with
 // $RTK_WIRE_EXIT (default 0). Hermetic — never touches a real OMP dir.
@@ -27,8 +26,8 @@ test("dry-run prints the would-run line and never executes the binary", async ()
   const { dir, log } = tempHome();
   try {
     const ok = await wireRtkOmp(fakeRtk(dir), { dryRun: true });
-    assert.equal(ok, true);
-    assert.equal(existsSync(log), false, "fake binary must not run in dry-run");
+    expect(ok).toBe(true);
+    expect(existsSync(log), "fake binary must not run in dry-run").toBe(false);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -38,9 +37,9 @@ test("success path runs init -g --agent omp once", async () => {
   const { dir, log } = tempHome();
   try {
     const ok = await wireRtkOmp(fakeRtk(dir), {});
-    assert.equal(ok, true);
+    expect(ok).toBe(true);
     const calls = readFileSync(log, "utf8").trim().split("\n");
-    assert.deepEqual(calls, ["init -g --agent omp"]);
+    expect(calls).toEqual(["init -g --agent omp"]);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -50,8 +49,8 @@ test("failing binary returns false without throwing", async () => {
   const { dir, log } = tempHome();
   try {
     const ok = await wireRtkOmp(fakeRtk(dir, 3), {});
-    assert.equal(ok, false);
-    assert.match(readFileSync(log, "utf8"), /init/);
+    expect(ok).toBe(false);
+    expect(readFileSync(log, "utf8")).toMatch(/init/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -67,10 +66,10 @@ test("success path registers rtk.ts in a fake HOME config.yml", async () => {
     mkdirSync(cfgDir, { recursive: true });
     writeFileSync(path.join(cfgDir, "config.yml"), "extensions:\n  - /x/combo-toggle/index.js\n", "utf8");
     const ok = await wireRtkOmp(fakeRtk(dir), { quiet: true });
-    assert.equal(ok, true);
+    expect(ok).toBe(true);
     const cfg = readFileSync(path.join(cfgDir, "config.yml"), "utf8");
-    assert.match(cfg, /extensions\/rtk\.ts/);
-    assert.match(cfg, /combo-toggle/);
+    expect(cfg).toMatch(/extensions\/rtk\.ts/);
+    expect(cfg).toMatch(/combo-toggle/);
     if (prevHome === undefined) delete process.env.HOME; else process.env.HOME = prevHome;
   } finally {
     rmSync(dir, { recursive: true, force: true });

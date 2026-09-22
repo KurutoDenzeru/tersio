@@ -1,27 +1,26 @@
-import test from "node:test";
-import assert from "node:assert/strict";
+import { expect, test } from "vitest";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-import { convertUsd, formatCurrency } from "../cli/currency.js";
+import { convertUsd, formatCurrency } from "../../cli/currency.js";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const installer = path.join(root, "tersio.js");
 
 test("formatCurrency defaults to USD with magnitude-aware decimals", () => {
-  assert.equal(formatCurrency(1.5, "USD"), "$1.50");
-  assert.equal(formatCurrency(0.000187, "USD"), "$0.000187");
-  assert.equal(formatCurrency(0, "USD"), "$0.00");
+  expect(formatCurrency(1.5, "USD")).toBe("$1.50");
+  expect(formatCurrency(0.000187, "USD")).toBe("$0.000187");
+  expect(formatCurrency(0, "USD")).toBe("$0.00");
 });
 
 test("formatCurrency converts through the snapshot rates", () => {
-  assert.equal(convertUsd(1, "PHP"), 58.7);
-  assert.equal(formatCurrency(1, "PHP"), "₱58.70");
-  assert.equal(formatCurrency(1, "JPY"), "¥150");
-  assert.equal(formatCurrency(2, "EUR"), "€1.84");
+  expect(convertUsd(1, "PHP")).toBe(58.7);
+  expect(formatCurrency(1, "PHP")).toBe("₱58.70");
+  expect(formatCurrency(1, "JPY")).toBe("¥150");
+  expect(formatCurrency(2, "EUR")).toBe("€1.84");
 });
 
 function fixtureSessions(): string {
@@ -70,19 +69,19 @@ test("usage defaults to USD and converts with --currency", () => {
       cwd: root,
       env: usageEnv(dir, sessions),
     });
-    assert.equal(usd.status, 0, usd.stderr);
-    assert.match(usd.stdout, /\$0\.0041/);
-    assert.match(usd.stdout, /USD │/);
+    expect(usd.status, usd.stderr).toBe(0);
+    expect(usd.stdout).toMatch(/\$0\.0041/);
+    expect(usd.stdout).toMatch(/USD │/);
 
     const php = spawnSync(process.execPath, [installer, "usage", "--currency", "php"], {
       encoding: "utf8",
       cwd: root,
       env: usageEnv(dir, sessions),
     });
-    assert.equal(php.status, 0, php.stderr);
-    assert.match(php.stdout, /₱0\.24/);
-    assert.match(php.stdout, /PHP │/);
-    assert.doesNotMatch(php.stdout, /\$0\.0041/);
+    expect(php.status, php.stderr).toBe(0);
+    expect(php.stdout).toMatch(/₱0\.24/);
+    expect(php.stdout).toMatch(/PHP │/);
+    expect(php.stdout).not.toMatch(/\$0\.0041/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
     rmSync(sessions, { recursive: true, force: true });
@@ -99,17 +98,17 @@ test("usage prefers the stored currency default, flag overrides it", () => {
       cwd: root,
       env: usageEnv(dir, sessions),
     });
-    assert.equal(stored.status, 0, stored.stderr);
-    assert.match(stored.stdout, /₱0\.24/, "stored PHP default applies without a flag");
+    expect(stored.status, stored.stderr).toBe(0);
+    expect(stored.stdout, "stored PHP default applies without a flag").toMatch(/₱0\.24/);
 
     const flag = spawnSync(process.execPath, [installer, "usage", "--currency", "EUR"], {
       encoding: "utf8",
       cwd: root,
       env: usageEnv(dir, sessions),
     });
-    assert.equal(flag.status, 0, flag.stderr);
-    assert.match(flag.stdout, /€0\.0038/, "explicit flag beats the stored default");
-    assert.doesNotMatch(flag.stdout, /₱0\.24/);
+    expect(flag.status, flag.stderr).toBe(0);
+    expect(flag.stdout, "explicit flag beats the stored default").toMatch(/€0\.0038/);
+    expect(flag.stdout).not.toMatch(/₱0\.24/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
     rmSync(sessions, { recursive: true, force: true });
@@ -126,8 +125,8 @@ test("usage falls back to USD on a corrupt or unknown stored currency", () => {
       cwd: root,
       env: usageEnv(dir, sessions),
     });
-    assert.equal(bad.status, 0, bad.stderr);
-    assert.match(bad.stdout, /\$0\.0041/);
+    expect(bad.status, bad.stderr).toBe(0);
+    expect(bad.stdout).toMatch(/\$0\.0041/);
 
     writeFileSync(
       path.join(dir, ".omp", "plugins", "omp-plugins.lock.json"),
@@ -139,8 +138,8 @@ test("usage falls back to USD on a corrupt or unknown stored currency", () => {
       cwd: root,
       env: usageEnv(dir, sessions),
     });
-    assert.equal(corrupt.status, 0, corrupt.stderr);
-    assert.match(corrupt.stdout, /\$0\.0041/);
+    expect(corrupt.status, corrupt.stderr).toBe(0);
+    expect(corrupt.stdout).toMatch(/\$0\.0041/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
     rmSync(sessions, { recursive: true, force: true });
@@ -152,8 +151,8 @@ test("usage rejects an unknown --currency", () => {
     encoding: "utf8",
     cwd: root,
   });
-  assert.equal(result.status, 1);
-  assert.match(result.stderr, /Invalid --currency/);
+  expect(result.status).toBe(1);
+  expect(result.stderr).toMatch(/Invalid --currency/);
 });
 
 test("gain --export bakes the requested currency into data.json", () => {
@@ -172,9 +171,9 @@ test("gain --export bakes the requested currency into data.json", () => {
         TERSIO_RESET_FILE: path.join(dir, "reset.json"),
       },
     });
-    assert.equal(result.status, 0, result.stderr);
+    expect(result.status, result.stderr).toBe(0);
     const body = readFileSync(out, "utf8");
-    assert.match(body, /"currency":"PHP"/);
+    expect(body).toMatch(/"currency":"PHP"/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

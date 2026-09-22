@@ -1,5 +1,4 @@
-import test from "node:test";
-import assert from "node:assert/strict";
+import { expect, test } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -16,7 +15,7 @@ function fixture(): string {
 test("findFile locates a nested binary by exact name", async () => {
   const dir = fixture();
   try {
-    assert.equal(await findFile(dir, "rtk"), path.join(dir, "nested", "deep", "rtk"));
+    expect(await findFile(dir, "rtk")).toBe(path.join(dir, "nested", "deep", "rtk"));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -25,9 +24,9 @@ test("findFile locates a nested binary by exact name", async () => {
 test("findFile skips doc files when matching rtk-like names", async () => {
   const dir = fixture();
   try {
-    assert.equal(await findFile(dir, "README.md"), path.join(dir, "README.md"));
-    assert.equal(await findFile(dir, "missing"), null);
-    assert.equal(await findFile("/nonexistent-tersio-dir", "rtk"), null);
+    expect(await findFile(dir, "README.md")).toBe(path.join(dir, "README.md"));
+    expect(await findFile(dir, "missing")).toBe(null);
+    expect(await findFile("/nonexistent-tersio-dir", "rtk")).toBe(null);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

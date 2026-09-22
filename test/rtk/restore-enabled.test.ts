@@ -1,5 +1,4 @@
-import test from "node:test";
-import assert from "node:assert/strict";
+import { expect, test } from "vitest";
 
 import rtkSessionExtension from "../../extensions/rtk-session/index.js";
 import type { ExtensionApi, ExtensionCtx, SessionEntry } from "../../extensions/shared/types.js";
@@ -42,5 +41,5 @@ test("restore skips a corrupt latest rtk-mode entry and uses the older valid one
   ];
   const { handlers, notifications } = harness(entries);
   await handlers.get("session_start")!({}, context(entries, notifications));
-  assert.equal(notifications.at(-1), "RTK loaded: on");
+  expect(notifications.at(-1)).toBe("RTK loaded: on");
 });

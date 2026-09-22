@@ -1,12 +1,11 @@
-import test from "node:test";
-import assert from "node:assert/strict";
+import { expect, test } from "vitest";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const installer = path.join(root, "tersio.js");
 
 function writeLock(home: string, settings: Record<string, unknown>): void {
@@ -38,12 +37,12 @@ test("settings --dry-run previews without writing", () => {
       timeout: 15000,
       env: { ...process.env, HOME: home, USERPROFILE: home },
     });
-    assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /│ Setting +│ Current +│ Valid values +│/);
-    assert.match(result.stdout, /│ combo +│ off +│/);
-    assert.match(result.stdout, /Stored: @krtclcdy\/tersio in .*omp-plugins\.lock\.json/);
-    assert.match(result.stdout, /\[dry-run\] would set defaults: combo=balanced \(caveman=full · rtk=on · ponytail=full\)/);
-    assert.equal(readLock(home).comboDefault, "off", "dry-run must not write");
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/│ Setting +│ Current +│ Valid values +│/);
+    expect(result.stdout).toMatch(/│ combo +│ off +│/);
+    expect(result.stdout).toMatch(/Stored: @krtclcdy\/tersio in .*omp-plugins\.lock\.json/);
+    expect(result.stdout).toMatch(/\[dry-run\] would set defaults: combo=balanced \(caveman=full · rtk=on · ponytail=full\)/);
+    expect(readLock(home).comboDefault, "dry-run must not write").toBe("off");
   } finally {
     rmSync(home, { recursive: true, force: true });
   }
@@ -67,12 +66,12 @@ test("settings --currency writes the display default without touching modes", ()
       timeout: 15000,
       env: { ...process.env, HOME: home, USERPROFILE: home },
     });
-    assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /currency=PHP/);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/currency=PHP/);
     const saved = readLock(home);
-    assert.equal(saved.currency, "PHP");
-    assert.equal(saved.comboDefault, "balanced", "mode defaults preserved");
-    assert.equal(saved.ponytailDefault, "full", "mode defaults preserved");
+    expect(saved.currency).toBe("PHP");
+    expect(saved.comboDefault, "mode defaults preserved").toBe("balanced");
+    expect(saved.ponytailDefault, "mode defaults preserved").toBe("full");
   } finally {
     rmSync(home, { recursive: true, force: true });
   }
@@ -88,9 +87,9 @@ test("settings table hides the currency default (dashboard owns it)", () => {
       timeout: 15000,
       env: { ...process.env, HOME: home, USERPROFILE: home },
     });
-    assert.equal(result.status, 0, result.stderr);
-    assert.doesNotMatch(result.stdout, /│ currency /);
-    assert.match(result.stdout, /would set defaults: combo=off.*currency=JPY/);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).not.toMatch(/│ currency /);
+    expect(result.stdout).toMatch(/would set defaults: combo=off.*currency=JPY/);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }
@@ -110,17 +109,17 @@ test("settings with flags writes combo preset + overrides", () => {
         env: { ...process.env, HOME: home, USERPROFILE: home },
       },
     );
-    assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /Defaults: combo=medium \(caveman=ultra · rtk=on · ponytail=lite\)/);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/Defaults: combo=medium \(caveman=ultra · rtk=on · ponytail=lite\)/);
     const saved = readLock(home);
-    assert.equal(saved.comboDefault, "medium");
-    assert.equal(saved.cavemanDefault, "ultra");
-    assert.equal(saved.rtkDefault, true);
-    assert.equal(saved.ponytailDefault, "lite");
+    expect(saved.comboDefault).toBe("medium");
+    expect(saved.cavemanDefault).toBe("ultra");
+    expect(saved.rtkDefault).toBe(true);
+    expect(saved.ponytailDefault).toBe("lite");
     const raw = JSON.parse(readFileSync(path.join(home, ".omp", "plugins", "omp-plugins.lock.json"), "utf8")) as {
       settings?: Record<string, unknown>;
     };
-    assert.deepEqual(raw.settings?.["other-plugin"], { comboDefault: "max" }, "other plugins preserved");
+    expect(raw.settings?.["other-plugin"], "other plugins preserved").toEqual({ comboDefault: "max" });
   } finally {
     rmSync(home, { recursive: true, force: true });
   }
@@ -135,9 +134,9 @@ test("settings without flags and no TTY prints usage", () => {
       timeout: 15000,
       env: { ...process.env, HOME: home, USERPROFILE: home },
     });
-    assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /│ Setting +│ Current +│ Valid values +│/);
-    assert.match(result.stdout, /Usage: tersio settings/);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/│ Setting +│ Current +│ Valid values +│/);
+    expect(result.stdout).toMatch(/Usage: tersio settings/);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

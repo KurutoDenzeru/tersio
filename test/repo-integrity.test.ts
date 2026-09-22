@@ -4,8 +4,7 @@
 // fresh checkout (CI, clones) failed at `tsc` with "Cannot find module".
 // Disk existence is not enough — the target must be git-tracked, otherwise
 // it only exists on the author's machine.
-import test from "node:test";
-import assert from "node:assert/strict";
+import { expect, test } from "vitest";
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -15,7 +14,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 function trackedFiles(): Set<string> {
   const result = spawnSync("git", ["ls-files"], { cwd: root, encoding: "utf8" });
-  assert.equal(result.status, 0, `git ls-files failed: ${result.stderr}`);
+  expect(result.status, `git ls-files failed: ${result.stderr}`).toBe(0);
   return new Set(
     result.stdout.split("\n").map((line) => line.trim()).filter(Boolean),
   );
@@ -51,7 +50,7 @@ function candidates(source: string, spec: string): string[] {
 test("tracked sources only import git-tracked files", () => {
   const tracked = trackedFiles();
   const sources = [...tracked].filter((file) => file.endsWith(".ts")).sort();
-  assert.ok(sources.length > 0, "expected tracked .ts sources");
+  expect(sources.length > 0, "expected tracked .ts sources").toBeTruthy();
   const violations: string[] = [];
   for (const source of sources) {
     const body = readFileSync(path.join(root, source), "utf8");
@@ -61,10 +60,6 @@ test("tracked sources only import git-tracked files", () => {
       }
     }
   }
-  assert.deepEqual(
-    violations,
-    [],
-    `tracked sources reference files that are not committed — a fresh clone fails at tsc. ` +
-      `Commit the targets or fix the imports:\n${violations.join("\n")}`,
-  );
+  expect(violations, `tracked sources reference files that are not committed — a fresh clone fails at tsc. ` +
+      `Commit the targets or fix the imports:\n${violations.join("\n")}`,).toEqual([]);
 });

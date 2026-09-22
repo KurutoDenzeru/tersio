@@ -1,5 +1,4 @@
-import test from "node:test";
-import assert from "node:assert/strict";
+import { expect, test } from "vitest";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
@@ -57,23 +56,23 @@ test("uninstall removes extension dirs, self registration, and combo config entr
     seed(home);
     const result = run(home, "uninstall", "--yes");
 
-    assert.equal(result.status, 0, result.stderr);
+    expect(result.status, result.stderr).toBe(0);
     const extDir = path.join(home, ".omp", "agent", "extensions");
     for (const dir of ["caveman-session", "rtk-session", "combo-toggle", "shared", "lib", "aaa-combo-boot", "ai-addons-updater"]) {
-      assert.ok(!existsSync(path.join(extDir, dir)), `${dir} removed`);
+      expect(!existsSync(path.join(extDir, dir)), `${dir} removed`).toBeTruthy();
     }
     const pkg = JSON.parse(readFileSync(path.join(home, ".omp", "plugins", "package.json"), "utf8"));
-    assert.ok(!(SELF in pkg.dependencies), "self dep removed");
-    assert.ok(!existsSync(path.join(home, ".omp", "plugins", "node_modules", SELF)), "self package removed");
+    expect(!(SELF in pkg.dependencies), "self dep removed").toBeTruthy();
+    expect(!existsSync(path.join(home, ".omp", "plugins", "node_modules", SELF)), "self package removed").toBeTruthy();
     const config = readFileSync(path.join(home, ".omp", "agent", "config.yml"), "utf8");
-    assert.doesNotMatch(config, /combo-toggle/);
-    assert.doesNotMatch(config, /mode-reinforcement/);
-    assert.match(config, /caveman-session/);
+    expect(config).not.toMatch(/combo-toggle/);
+    expect(config).not.toMatch(/mode-reinforcement/);
+    expect(config).toMatch(/caveman-session/);
     // Ponytail ships with the presets, so a full uninstall removes it; the rtk binary stays.
-    assert.ok(!existsSync(path.join(home, ".omp", "plugins", "node_modules", PONYTAIL)), "ponytail removed by default");
-    assert.ok(existsSync(path.join(home, ".bun", "bin", "rtk")), "rtk binary kept");
-    assert.ok(existsSync(path.join(extDir, "rtk.ts")), "rtk OMP wiring kept with the binary");
-    assert.doesNotMatch(config, /ponytail/);
+    expect(!existsSync(path.join(home, ".omp", "plugins", "node_modules", PONYTAIL)), "ponytail removed by default").toBeTruthy();
+    expect(existsSync(path.join(home, ".bun", "bin", "rtk")), "rtk binary kept").toBeTruthy();
+    expect(existsSync(path.join(extDir, "rtk.ts")), "rtk OMP wiring kept with the binary").toBeTruthy();
+    expect(config).not.toMatch(/ponytail/);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }
@@ -85,14 +84,14 @@ test("uninstall --keep-ponytail keeps the plugin, dep, lock entry, and config li
     seed(home);
     const result = run(home, "uninstall", "--yes", "--keep-ponytail");
 
-    assert.equal(result.status, 0, result.stderr);
-    assert.ok(existsSync(path.join(home, ".omp", "plugins", "node_modules", PONYTAIL)), "ponytail package kept");
+    expect(result.status, result.stderr).toBe(0);
+    expect(existsSync(path.join(home, ".omp", "plugins", "node_modules", PONYTAIL)), "ponytail package kept").toBeTruthy();
     const pkg = JSON.parse(readFileSync(path.join(home, ".omp", "plugins", "package.json"), "utf8"));
-    assert.ok(PONYTAIL in pkg.dependencies, "ponytail dep kept");
+    expect(PONYTAIL in pkg.dependencies, "ponytail dep kept").toBeTruthy();
     const lock = JSON.parse(readFileSync(path.join(home, ".omp", "plugins", "omp-plugins.lock.json"), "utf8"));
-    assert.ok(PONYTAIL in lock.plugins, "ponytail lock entry kept");
+    expect(PONYTAIL in lock.plugins, "ponytail lock entry kept").toBeTruthy();
     const config = readFileSync(path.join(home, ".omp", "agent", "config.yml"), "utf8");
-    assert.match(config, /ponytail/);
+    expect(config).toMatch(/ponytail/);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }
@@ -104,16 +103,16 @@ test("uninstall with removal flags drops ponytail, its lock entry, and the rtk b
     seed(home);
     const result = run(home, "uninstall", "--yes", "--remove-ponytail", "--remove-rtk");
 
-    assert.equal(result.status, 0, result.stderr);
-    assert.ok(!existsSync(path.join(home, ".omp", "plugins", "node_modules", PONYTAIL)), "ponytail package removed");
+    expect(result.status, result.stderr).toBe(0);
+    expect(!existsSync(path.join(home, ".omp", "plugins", "node_modules", PONYTAIL)), "ponytail package removed").toBeTruthy();
     const pkg = JSON.parse(readFileSync(path.join(home, ".omp", "plugins", "package.json"), "utf8"));
-    assert.ok(!(PONYTAIL in pkg.dependencies), "ponytail dep removed");
+    expect(!(PONYTAIL in pkg.dependencies), "ponytail dep removed").toBeTruthy();
     const lock = JSON.parse(readFileSync(path.join(home, ".omp", "plugins", "omp-plugins.lock.json"), "utf8"));
-    assert.ok(!(PONYTAIL in lock.plugins), "ponytail lock entry removed");
-    assert.ok(!existsSync(path.join(home, ".bun", "bin", "rtk")), "rtk binary removed");
-    assert.ok(!existsSync(path.join(home, ".omp", "agent", "extensions", "rtk.ts")), "rtk OMP wiring removed with the binary");
+    expect(!(PONYTAIL in lock.plugins), "ponytail lock entry removed").toBeTruthy();
+    expect(!existsSync(path.join(home, ".bun", "bin", "rtk")), "rtk binary removed").toBeTruthy();
+    expect(!existsSync(path.join(home, ".omp", "agent", "extensions", "rtk.ts")), "rtk OMP wiring removed with the binary").toBeTruthy();
     const config = readFileSync(path.join(home, ".omp", "agent", "config.yml"), "utf8");
-    assert.doesNotMatch(config, /ponytail/);
+    expect(config).not.toMatch(/ponytail/);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }
@@ -129,10 +128,10 @@ test("uninstall dry-run changes no files", () => {
     const beforeConfig = readFileSync(configPath, "utf8");
     const result = run(home, "uninstall", "--yes", "--dry-run", "--remove-ponytail", "--remove-rtk");
 
-    assert.equal(result.status, 0, result.stderr);
-    assert.equal(readFileSync(pluginsPkg, "utf8"), beforePkg);
-    assert.equal(readFileSync(configPath, "utf8"), beforeConfig);
-    assert.ok(existsSync(path.join(home, ".omp", "agent", "extensions", "shared")));
+    expect(result.status, result.stderr).toBe(0);
+    expect(readFileSync(pluginsPkg, "utf8")).toBe(beforePkg);
+    expect(readFileSync(configPath, "utf8")).toBe(beforeConfig);
+    expect(existsSync(path.join(home, ".omp", "agent", "extensions", "shared"))).toBeTruthy();
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

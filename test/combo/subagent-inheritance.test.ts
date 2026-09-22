@@ -1,5 +1,4 @@
-import test from "node:test";
-import assert from "node:assert/strict";
+import { expect, test } from "vitest";
 import { fileURLToPath } from "node:url";
 
 import cavemanSessionExtension from "../../extensions/caveman-session/index.js";
@@ -129,18 +128,18 @@ test("parent Combo max is inherited by separately instantiated marked children",
   const childRtk = instantiate(rtkSessionExtension);
   const childCombo = instantiate(comboToggleExtension);
 
-  assert.deepEqual(getSharedComboState(), {
+  expect(getSharedComboState()).toEqual({
     level: "max", caveman: "ultra", rtk: "on", ponytail: "ultra",
   });
-  assert.match(instruction(await inject(childCaveman, MARKED_PROMPT)), /Caveman ultra active/);
-  assert.match(instruction(await inject(childRtk, MARKED_PROMPT)), /RTK mode active/);
+  expect(instruction(await inject(childCaveman, MARKED_PROMPT))).toMatch(/Caveman ultra active/);
+  expect(instruction(await inject(childRtk, MARKED_PROMPT))).toMatch(/RTK mode active/);
 
   const ponytail = instruction(await withoutInstalledPonytail(() => inject(childCombo, MARKED_PROMPT)));
-  assert.match(ponytail, /PONYTAIL MODE ACTIVE — level: ultra/);
-  assert.match(ponytail, /root cause/i);
-  assert.match(ponytail, /Standard library/i);
-  assert.match(ponytail, /YAGNI/);
-  assert.match(ponytail, /Verify/);
+  expect(ponytail).toMatch(/PONYTAIL MODE ACTIVE — level: ultra/);
+  expect(ponytail).toMatch(/root cause/i);
+  expect(ponytail).toMatch(/Standard library/i);
+  expect(ponytail).toMatch(/YAGNI/);
+  expect(ponytail).toMatch(/Verify/);
 });
 
 test("medium maps to Caveman lite, RTK on, and Ponytail lite", async () => {
@@ -149,15 +148,12 @@ test("medium maps to Caveman lite, RTK on, and Ponytail lite", async () => {
   await command(parent, "combo", "medium", context([], true));
   const prompt = ["System instructions.", OMP_SUBAGENT_MARKER];
 
-  assert.deepEqual(getSharedComboState(), {
+  expect(getSharedComboState()).toEqual({
     level: "medium", caveman: "lite", rtk: "on", ponytail: "lite",
   });
-  assert.match(instruction(await inject(instantiate(cavemanSessionExtension), prompt)), /Caveman lite active/);
-  assert.match(instruction(await inject(instantiate(rtkSessionExtension), prompt)), /RTK mode active/);
-  assert.match(
-    instruction(await withoutInstalledPonytail(() => inject(instantiate(comboToggleExtension), prompt))),
-    /PONYTAIL MODE ACTIVE — level: lite/
-  );
+  expect(instruction(await inject(instantiate(cavemanSessionExtension), prompt))).toMatch(/Caveman lite active/);
+  expect(instruction(await inject(instantiate(rtkSessionExtension), prompt))).toMatch(/RTK mode active/);
+  expect(instruction(await withoutInstalledPonytail(() => inject(instantiate(comboToggleExtension), prompt)))).toMatch(/PONYTAIL MODE ACTIVE — level: lite/);
 });
 
 test("Combo off gives marked children no inherited guidance", async () => {
@@ -167,11 +163,11 @@ test("Combo off gives marked children no inherited guidance", async () => {
   await command(parent, "combo", "max", ctx);
   await command(parent, "combo", "off", ctx);
 
-  assert.deepEqual(getSharedComboState(), {
+  expect(getSharedComboState()).toEqual({
     level: "off", caveman: "off", rtk: "off", ponytail: "off",
   });
   for (const factory of [cavemanSessionExtension, rtkSessionExtension, comboToggleExtension]) {
-    assert.equal(await inject(instantiate(factory), MARKED_PROMPT), undefined);
+    expect(await inject(instantiate(factory), MARKED_PROMPT)).toBe(undefined);
   }
 });
 
@@ -183,7 +179,7 @@ test("unmarked headless prompts never inherit active parent modes", async () => 
   for (const factory of [cavemanSessionExtension, rtkSessionExtension, comboToggleExtension]) {
     const child = instantiate(factory);
     await child.handlers.get("session_start")?.({}, context([], false));
-    assert.equal(await inject(child, UNMARKED_PROMPT), undefined);
+    expect(await inject(child, UNMARKED_PROMPT)).toBe(undefined);
   }
 });
 
@@ -195,11 +191,8 @@ test("headless child session_start cannot reset the parent bridge", async () => 
 
   await childCombo.handlers.get("session_start")!({}, context([], false));
 
-  assert.equal(getSharedComboState().level, "max");
-  assert.match(
-    instruction(await withoutInstalledPonytail(() => inject(childCombo, MARKED_PROMPT))),
-    /level: ultra/
-  );
+  expect(getSharedComboState().level).toBe("max");
+  expect(instruction(await withoutInstalledPonytail(() => inject(childCombo, MARKED_PROMPT)))).toMatch(/level: ultra/);
 });
 
 test("interactive top-level session_start with no entries resets bridge off", async () => {
@@ -210,9 +203,9 @@ test("interactive top-level session_start with no entries resets bridge off", as
 
   await nextSession.handlers.get("session_start")!({}, context([], true));
 
-  assert.equal(getSharedComboState().level, "off");
+  expect(getSharedComboState().level).toBe("off");
   for (const factory of [cavemanSessionExtension, rtkSessionExtension, comboToggleExtension]) {
-    assert.equal(await inject(instantiate(factory), MARKED_PROMPT), undefined);
+    expect(await inject(instantiate(factory), MARKED_PROMPT)).toBe(undefined);
   }
 });
 
@@ -226,20 +219,17 @@ test("individual Caveman change immediately makes Combo CUSTOM and children inhe
 
   await command(caveman, "caveman", "lite", context(entries, true));
 
-  assert.deepEqual(getSharedComboState(), {
+  expect(getSharedComboState()).toEqual({
     level: "custom", caveman: "lite", rtk: "on", ponytail: "ultra",
   });
-  assert.equal(comboCtx.statuses.get("combo"), undefined);
-  assert.match(instruction(await inject(instantiate(cavemanSessionExtension), MARKED_PROMPT)), /Caveman lite active/);
-  assert.match(instruction(await inject(instantiate(rtkSessionExtension), MARKED_PROMPT)), /RTK mode active/);
-  assert.match(
-    instruction(await withoutInstalledPonytail(() => inject(instantiate(comboToggleExtension), MARKED_PROMPT))),
-    /level: ultra/
-  );
+  expect(comboCtx.statuses.get("combo")).toBe(undefined);
+  expect(instruction(await inject(instantiate(cavemanSessionExtension), MARKED_PROMPT))).toMatch(/Caveman lite active/);
+  expect(instruction(await inject(instantiate(rtkSessionExtension), MARKED_PROMPT))).toMatch(/RTK mode active/);
+  expect(instruction(await withoutInstalledPonytail(() => inject(instantiate(comboToggleExtension), MARKED_PROMPT)))).toMatch(/level: ultra/);
 
   await command(caveman, "caveman", "ultra", context(entries, true));
-  assert.equal(getSharedComboState().level, "max");
-  assert.match(comboCtx.statuses.get("combo")!, /combo MAX: 🪨caveman=ULTRA ⚡rtk=ON 🦥ponytail=ULTRA/);
+  expect(getSharedComboState().level).toBe("max");
+  expect(comboCtx.statuses.get("combo")!).toMatch(/combo MAX: 🪨caveman=ULTRA ⚡rtk=ON 🦥ponytail=ULTRA/);
 });
 
 test("individual RTK change returns Combo to its preset when values realign", async () => {
@@ -252,15 +242,15 @@ test("individual RTK change returns Combo to its preset when values realign", as
 
   await command(rtk, "rtk", "off", context(entries, true));
 
-  assert.deepEqual(getSharedComboState(), {
+  expect(getSharedComboState()).toEqual({
     level: "custom", caveman: "ultra", rtk: "off", ponytail: "ultra",
   });
-  assert.equal(comboCtx.statuses.get("combo"), undefined);
-  assert.equal(await inject(instantiate(rtkSessionExtension), MARKED_PROMPT), undefined);
+  expect(comboCtx.statuses.get("combo")).toBe(undefined);
+  expect(await inject(instantiate(rtkSessionExtension), MARKED_PROMPT)).toBe(undefined);
 
   await command(rtk, "rtk", "on", context(entries, true));
-  assert.equal(getSharedComboState().level, "max");
-  assert.match(comboCtx.statuses.get("combo")!, /combo MAX: 🪨caveman=ULTRA ⚡rtk=ON 🦥ponytail=ULTRA/);
+  expect(getSharedComboState().level).toBe("max");
+  expect(comboCtx.statuses.get("combo")!).toMatch(/combo MAX: 🪨caveman=ULTRA ⚡rtk=ON 🦥ponytail=ULTRA/);
 });
 
 test("individually matching preset values activates Combo", async () => {
@@ -275,10 +265,10 @@ test("individually matching preset values activates Combo", async () => {
 
   await command(combo, "combo", "status", comboCtx);
   await command(rtk, "rtk", "on", context(entries, true));
-  assert.deepEqual(getSharedComboState(), {
+  expect(getSharedComboState()).toEqual({
     level: "max", caveman: "ultra", rtk: "on", ponytail: "ultra",
   });
-  assert.match(comboCtx.statuses.get("combo")!, /combo MAX: 🪨caveman=ULTRA ⚡rtk=ON 🦥ponytail=ULTRA/);
+  expect(comboCtx.statuses.get("combo")!).toMatch(/combo MAX: 🪨caveman=ULTRA ⚡rtk=ON 🦥ponytail=ULTRA/);
 });
 
 test("Combo status restores the preset indicator when persisted modes realign", async () => {
@@ -291,21 +281,18 @@ test("Combo status restores the preset indicator when persisted modes realign", 
 
   await command(combo, "combo", "status", ctx);
 
-  assert.deepEqual(getSharedComboState(), {
+  expect(getSharedComboState()).toEqual({
     level: "custom", caveman: "ultra", rtk: "on", ponytail: "lite",
   });
-  assert.equal(ctx.notifications.at(-1), "Combo: INACTIVE (caveman=ultra rtk=on ponytail=lite)");
-  assert.match(
-    instruction(await withoutInstalledPonytail(() => inject(instantiate(comboToggleExtension), MARKED_PROMPT))),
-    /level: lite/
-  );
+  expect(ctx.notifications.at(-1)).toBe("Combo: INACTIVE (caveman=ultra rtk=on ponytail=lite)");
+  expect(instruction(await withoutInstalledPonytail(() => inject(instantiate(comboToggleExtension), MARKED_PROMPT)))).toMatch(/level: lite/);
 
   entries.push({ type: "custom", customType: "ponytail-mode", data: { mode: "ultra" } });
   await command(combo, "combo", "status", ctx);
-  assert.deepEqual(getSharedComboState(), {
+  expect(getSharedComboState()).toEqual({
     level: "max", caveman: "ultra", rtk: "on", ponytail: "ultra",
   });
-  assert.match(ctx.statuses.get("combo")!, /combo MAX: 🪨caveman=ULTRA ⚡rtk=ON 🦥ponytail=ULTRA/);
+  expect(ctx.statuses.get("combo")!).toMatch(/combo MAX: 🪨caveman=ULTRA ⚡rtk=ON 🦥ponytail=ULTRA/);
 });
 
 test("redundant trailing entries do not drop a matching preset (#21)", async () => {
@@ -320,10 +307,10 @@ test("redundant trailing entries do not drop a matching preset (#21)", async () 
   entries.push({ type: "custom", customType: "caveman-mode", data: { mode: "ultra" } });
   entries.push({ type: "custom", customType: "rtk-mode", data: { enabled: true } });
   await command(combo, "combo", "status", ctx);
-  assert.deepEqual(getSharedComboState(), {
+  expect(getSharedComboState()).toEqual({
     level: "max", caveman: "ultra", rtk: "on", ponytail: "ultra",
   });
-  assert.match(ctx.statuses.get("combo")!, /combo MAX: 🪨caveman=ULTRA ⚡rtk=ON 🦥ponytail=ULTRA/);
+  expect(ctx.statuses.get("combo")!).toMatch(/combo MAX: 🪨caveman=ULTRA ⚡rtk=ON 🦥ponytail=ULTRA/);
   resetSharedComboState();
 });
 
@@ -333,24 +320,15 @@ test("mode commands confirm the session-wide active set", async () => {
   const combo = instantiate(comboToggleExtension, entries);
   const ctx = context(entries, true);
   await command(combo, "combo", "max", ctx);
-  assert.equal(
-    ctx.notifications.at(-1),
-    "Combo max on — caveman=ULTRA, rtk=ON, ponytail=ULTRA active for this session."
-  );
+  expect(ctx.notifications.at(-1)).toBe("Combo max on — caveman=ULTRA, rtk=ON, ponytail=ULTRA active for this session.");
   const caveman = instantiate(cavemanSessionExtension, entries);
   const cavemanCtx = context(entries, true);
   await command(caveman, "caveman", "full", cavemanCtx);
-  assert.equal(
-    cavemanCtx.notifications.at(-1),
-    "Caveman full on — terse replies for this session. Active: caveman=FULL, rtk=ON, ponytail=ULTRA."
-  );
+  expect(cavemanCtx.notifications.at(-1)).toBe("Caveman full on — terse replies for this session. Active: caveman=FULL, rtk=ON, ponytail=ULTRA.");
   const rtk = instantiate(rtkSessionExtension, entries);
   const rtkCtx = context(entries, true);
   await command(rtk, "rtk", "off", rtkCtx);
-  assert.equal(
-    rtkCtx.notifications.at(-1),
-    "RTK off. Active: caveman=FULL, rtk=OFF, ponytail=ULTRA."
-  );
+  expect(rtkCtx.notifications.at(-1)).toBe("RTK off. Active: caveman=FULL, rtk=OFF, ponytail=ULTRA.");
   resetSharedComboState();
 });
 
@@ -361,11 +339,11 @@ test("Combo indicator appears only after a Combo preset", async () => {
   const ctx = context(entries, true);
 
   await command(combo, "combo", "medium", ctx);
-  assert.match(ctx.statuses.get("combo")!, /combo MEDIUM: 🪨caveman=LITE ⚡rtk=ON 🦥ponytail=LITE/);
+  expect(ctx.statuses.get("combo")!).toMatch(/combo MEDIUM: 🪨caveman=LITE ⚡rtk=ON 🦥ponytail=LITE/);
 
   entries.push({ type: "custom", customType: "ponytail-mode", data: { mode: "ultra" } });
   await command(combo, "combo", "status", ctx);
-  assert.equal(ctx.statuses.get("combo"), undefined);
+  expect(ctx.statuses.get("combo")).toBe(undefined);
 });
 
 test("mode reinforcement follows each top-level turn without persisting duplicates", async () => {
@@ -380,14 +358,11 @@ test("mode reinforcement follows each top-level turn without persisting duplicat
 
   for (const prompt of ["First turn.", "Later turn with long history."]) {
     const result = await inject(reinforcement, prompt, ctx);
-    assert.equal(
-      instruction(result),
-      "SUPREME TOKEN SAVER MODES ACTIVE: caveman=wenyan · rtk=on · ponytail=ultra. Keep these active for the entire response: concise Caveman prose, RTK for eligible noisy shell output, and the smallest correct Ponytail solution. Do not weaken or disable a mode unless the user explicitly asks."
-    );
+    expect(instruction(result)).toBe("SUPREME TOKEN SAVER MODES ACTIVE: caveman=wenyan · rtk=on · ponytail=ultra. Keep these active for the entire response: concise Caveman prose, RTK for eligible noisy shell output, and the smallest correct Ponytail solution. Do not weaken or disable a mode unless the user explicitly asks.");
   }
 
   const first = await inject(reinforcement, "Prompt.", ctx);
-  assert.equal(await inject(reinforcement, ["Prompt.", instruction(first)], ctx), undefined);
+  expect(await inject(reinforcement, ["Prompt.", instruction(first)], ctx)).toBe(undefined);
 });
 
 
@@ -397,7 +372,7 @@ test("Combo does not duplicate existing Ponytail guidance", async () => {
   await command(parent, "combo", "medium", context([], true));
   const prompt = [OMP_SUBAGENT_MARKER, "PONYTAIL MODE ACTIVE — level: lite"];
 
-  assert.equal(await inject(instantiate(comboToggleExtension), prompt), undefined);
+  expect(await inject(instantiate(comboToggleExtension), prompt)).toBe(undefined);
 });
 
 test("caveman restores mode from session_branch instead of using stale in-memory state", async () => {
@@ -412,7 +387,7 @@ test("caveman restores mode from session_branch instead of using stale in-memory
     context([{ type: "custom", customType: "caveman-mode", data: { mode: "off" } }], true)
   );
 
-  assert.equal(await inject(pi, UNMARKED_PROMPT), undefined);
+  expect(await inject(pi, UNMARKED_PROMPT)).toBe(undefined);
 });
 
 test("rtk restores enabled state from session_branch instead of using stale in-memory state", async () => {
@@ -427,5 +402,5 @@ test("rtk restores enabled state from session_branch instead of using stale in-m
     context([{ type: "custom", customType: "rtk-mode", data: { enabled: false } }], true)
   );
 
-  assert.equal(await inject(pi, UNMARKED_PROMPT), undefined);
+  expect(await inject(pi, UNMARKED_PROMPT)).toBe(undefined);
 });

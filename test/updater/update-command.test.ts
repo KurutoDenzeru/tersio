@@ -1,12 +1,11 @@
-import test from "node:test";
-import assert from "node:assert/strict";
+import { expect, test } from "vitest";
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const installer = path.join(root, "tersio.js");
 
 test("update refreshes the globally installed CLI before delegating", () => {
@@ -35,10 +34,10 @@ test("update refreshes the globally installed CLI before delegating", () => {
       }
     );
 
-    assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /Checking for updates:/);
-    assert.match(result.stdout, /fake-npm exec --yes --prefer-online --package=@krtclcdy\/tersio@latest/);
-    assert.match(result.stdout, /Done — tersio .*\. Restart OMP\./);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/Checking for updates:/);
+    expect(result.stdout).toMatch(/fake-npm exec --yes --prefer-online --package=@krtclcdy\/tersio@latest/);
+    expect(result.stdout).toMatch(/Done — tersio .*\. Restart OMP\./);
   } finally {
     rmSync(fakeBin, { recursive: true, force: true });
   }
@@ -70,11 +69,11 @@ test("update dry-run previews the global CLI refresh without running npm -g", ()
       }
     );
 
-    assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /Tersio: /);
-    assert.match(result.stdout, /\[dry-run\] would run: npm install -g @krtclcdy\/tersio@latest/);
-    assert.doesNotMatch(result.stdout, /fake-npm install -g/);
-    assert.match(result.stdout, /\[dry-run\] would delegate: npm exec --yes --prefer-online --package=@krtclcdy\/tersio@latest/);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/Tersio: /);
+    expect(result.stdout).toMatch(/\[dry-run\] would run: npm install -g @krtclcdy\/tersio@latest/);
+    expect(result.stdout).not.toMatch(/fake-npm install -g/);
+    expect(result.stdout).toMatch(/\[dry-run\] would delegate: npm exec --yes --prefer-online --package=@krtclcdy\/tersio@latest/);
   } finally {
     rmSync(fakeBin, { recursive: true, force: true });
   }
@@ -106,12 +105,9 @@ test("update delegates to the latest package non-interactively", () => {
       }
     );
 
-    assert.equal(result.status, 0, result.stderr);
-    assert.match(
-      result.stdout,
-      /\[dry-run\] would delegate: npm exec --yes --prefer-online --package=@krtclcdy\/tersio@latest -- tersio --apply-update --yes --dry-run/
-    );
-    assert.doesNotMatch(result.stdout, /fake-npm exec/);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/\[dry-run\] would delegate: npm exec --yes --prefer-online --package=@krtclcdy\/tersio@latest -- tersio --apply-update --yes --dry-run/);
+    expect(result.stdout).not.toMatch(/fake-npm exec/);
   } finally {
     rmSync(fakeBin, { recursive: true, force: true });
   }
@@ -145,11 +141,11 @@ test("update pins the resolved version instead of trusting @latest", () => {
       }
     );
 
-    assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /Tersio: .* → 9\.9\.9/);
-    assert.match(result.stdout, /\[dry-run\] would run: npm install -g @krtclcdy\/tersio@9\.9\.9/);
-    assert.match(result.stdout, /--package=@krtclcdy\/tersio@9\.9\.9/);
-    assert.doesNotMatch(result.stdout, /@latest/);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/Tersio: .* → 9\.9\.9/);
+    expect(result.stdout).toMatch(/\[dry-run\] would run: npm install -g @krtclcdy\/tersio@9\.9\.9/);
+    expect(result.stdout).toMatch(/--package=@krtclcdy\/tersio@9\.9\.9/);
+    expect(result.stdout).not.toMatch(/@latest/);
   } finally {
     rmSync(fakeBin, { recursive: true, force: true });
     rmSync(home, { recursive: true, force: true });

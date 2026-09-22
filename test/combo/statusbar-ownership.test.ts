@@ -3,8 +3,7 @@
 // alongside it. This regressed when the `balanced` preset was added: caveman and
 // rtk's suppression checks hardcoded medium/max, so balanced leaked through and
 // the status bar showed both `🪨 caveman: FULL` and the combo bar.
-import test from "node:test";
-import assert from "node:assert/strict";
+import { expect, test } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -67,14 +66,14 @@ test("combo balanced suppresses the individual caveman and rtk bars", async () =
   await pi.rtk.handlers.get("session_start")!({}, ctx);
 
   await pi.combo.commands.get("combo")!("balanced", ctx);
-  assert.ok(statuses.has("combo"), "combo bar present");
-  assert.doesNotMatch(statuses.get("combo") || "", /caveman: FULL/);
+  expect(statuses.has("combo"), "combo bar present").toBeTruthy();
+  expect(statuses.get("combo") || "").not.toMatch(/caveman: FULL/);
 
   // The race that surfaced the bug: caveman/rtk reconcile after combo paints.
   await pi.caveman.handlers.get("agent_start")!({}, ctx);
   await pi.rtk.handlers.get("agent_start")!({}, ctx);
-  assert.deepEqual([...statuses.keys()], ["combo"], "combo bar is the only status line under balanced");
-  assert.match(statuses.get("combo") || "", /BALANCED/);
+  expect([...statuses.keys()], "combo bar is the only status line under balanced").toEqual(["combo"]);
+  expect(statuses.get("combo") || "").toMatch(/BALANCED/);
   resetSharedComboState();
 });
 
@@ -96,11 +95,11 @@ test("fresh host suppresses individual bars from persisted entries before combo 
   const noUiCtx = { ...ctx, hasUI: false } as ExtensionCtx;
   await pi.caveman.handlers.get("session_start")!({}, noUiCtx);
   await pi.rtk.handlers.get("session_start")!({}, noUiCtx);
-  assert.ok(!statuses.has("caveman"), "caveman bar suppressed from persisted combo-level");
-  assert.ok(!statuses.has("rtk"), "rtk bar suppressed from persisted combo-level");
+  expect(!statuses.has("caveman"), "caveman bar suppressed from persisted combo-level").toBeTruthy();
+  expect(!statuses.has("rtk"), "rtk bar suppressed from persisted combo-level").toBeTruthy();
   await pi.combo.handlers.get("session_start")!({}, noUiCtx);
-  assert.match(statuses.get("combo") || "", /BALANCED/, "combo bar painted from persisted state");
-  assert.deepEqual([...statuses.keys()], ["combo"]);
+  expect(statuses.get("combo") || "", "combo bar painted from persisted state").toMatch(/BALANCED/);
+  expect([...statuses.keys()]).toEqual(["combo"]);
   resetSharedComboState();
 });
 
@@ -114,7 +113,7 @@ test("every preset suppresses individual bars; off and custom behave correctly",
     await h.pi.combo.commands.get("combo")!(preset, h.ctx);
     await h.pi.caveman.handlers.get("agent_start")!({}, h.ctx);
     await h.pi.rtk.handlers.get("agent_start")!({}, h.ctx);
-    assert.deepEqual([...h.statuses.keys()], ["combo"], `${preset} leaves only the combo bar`);
+    expect([...h.statuses.keys()], `${preset} leaves only the combo bar`).toEqual(["combo"]);
   }
 
   // /combo off persists caveman=off + rtk=off: everything off, no bars.
@@ -126,7 +125,7 @@ test("every preset suppresses individual bars; off and custom behave correctly",
   await off.pi.combo.commands.get("combo")!("off", off.ctx);
   await off.pi.caveman.handlers.get("agent_start")!({}, off.ctx);
   await off.pi.rtk.handlers.get("agent_start")!({}, off.ctx);
-  assert.equal(off.statuses.size, 0, "combo off turns everything off: no bars");
+  expect(off.statuses.size, "combo off turns everything off: no bars").toBe(0);
 
   // Custom mix (individual modes set, combo inactive): individual bars return.
   resetSharedComboState();
@@ -137,8 +136,8 @@ test("every preset suppresses individual bars; off and custom behave correctly",
   await custom.pi.caveman.commands.get("caveman")!("full", custom.ctx);
   await custom.pi.rtk.commands.get("rtk")!("on", custom.ctx);
   await custom.pi.combo.handlers.get("agent_start")!({}, custom.ctx);
-  assert.ok(!custom.statuses.has("combo"), "no combo bar for a custom mix");
-  assert.ok(custom.statuses.has("caveman") && custom.statuses.has("rtk"), "individual bars restored for a custom mix");
+  expect(!custom.statuses.has("combo"), "no combo bar for a custom mix").toBeTruthy();
+  expect(custom.statuses.has("caveman") && custom.statuses.has("rtk"), "individual bars restored for a custom mix").toBeTruthy();
   resetSharedComboState();
 });
 test("combo default applies past unrelated session entries", async () => {
@@ -159,8 +158,8 @@ test("combo default applies past unrelated session entries", async () => {
     const h = harness();
     h.entries.push({ type: "note", customType: "something-else", data: {} } as unknown as SessionEntry);
     await h.pi.combo.handlers.get("session_start")!({}, h.ctx);
-    assert.equal(getSharedComboState().level, "balanced");
-    assert.match(h.statuses.get("combo") || "", /BALANCED/);
+    expect(getSharedComboState().level).toBe("balanced");
+    expect(h.statuses.get("combo") || "").toMatch(/BALANCED/);
   } finally {
     if (previous === undefined) delete process.env.HOME;
     else process.env.HOME = previous;
@@ -183,14 +182,11 @@ test("combo default persists preset entries so resume keeps the bar", async () =
     resetSharedComboState();
     const h = harness();
     await h.pi.combo.handlers.get("session_start")!({}, h.ctx);
-    assert.deepEqual(
-      h.entries.map((e) => e.customType).sort(),
-      ["caveman-mode", "combo-level", "ponytail-mode", "rtk-mode"],
-    );
-    assert.equal(h.entries.find((e) => e.customType === "combo-level")?.data?.level, "balanced");
-    assert.equal(getSharedComboState().level, "balanced");
-    assert.match(h.statuses.get("combo") || "", /BALANCED/);
-    assert.match(h.statuses.get("combo") || "", /ponytail=FULL/);
+    expect(h.entries.map((e) => e.customType).sort()).toEqual(["caveman-mode", "combo-level", "ponytail-mode", "rtk-mode"]);
+    expect(h.entries.find((e) => e.customType === "combo-level")?.data?.level).toBe("balanced");
+    expect(getSharedComboState().level).toBe("balanced");
+    expect(h.statuses.get("combo") || "").toMatch(/BALANCED/);
+    expect(h.statuses.get("combo") || "").toMatch(/ponytail=FULL/);
   } finally {
     if (previous === undefined) delete process.env.HOME;
     else process.env.HOME = previous;
@@ -211,7 +207,7 @@ test("a UI-less event must not deafen the bar to later bridge updates", async ()
   await pi.caveman.handlers.get("session_start")!({}, ctx);
   await pi.rtk.handlers.get("session_start")!({}, ctx);
   await pi.combo.commands.get("combo")!("balanced", ctx);
-  assert.match(statuses.get("combo") || "", /BALANCED/);
+  expect(statuses.get("combo") || "").toMatch(/BALANCED/);
 
   // Pre-attach session_start: hasUI false and no ui object at all.
   const headless = { hasUI: false, sessionManager: ctx.sessionManager } as unknown as ExtensionCtx;
@@ -221,7 +217,7 @@ test("a UI-less event must not deafen the bar to later bridge updates", async ()
   // with no ctx, so it must still paint through the remembered interactive ctx.
   await pi.caveman.commands.get("caveman")!("off", ctx);
 
-  assert.equal(getSharedComboState().level, "custom", "the mix is no longer a preset");
-  assert.equal(statuses.get("combo"), undefined, "combo bar clears rather than freezing on BALANCED");
+  expect(getSharedComboState().level, "the mix is no longer a preset").toBe("custom");
+  expect(statuses.get("combo"), "combo bar clears rather than freezing on BALANCED").toBe(undefined);
   resetSharedComboState();
 });
