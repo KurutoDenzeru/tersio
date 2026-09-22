@@ -1,3 +1,8 @@
+## v2.20.0
+ - Tooling modernized: Vitest replaces the custom `tsx --test` runner (161 → 176 tests), Bun replaces npm for installs/CI (`bun.lock` in, `package-lock.json` out), and `package.json` metadata tightened.
+ - OMP extensions now ship as TypeScript sources instead of compiled JS (supported per OMP extension-authoring docs); reinstall drops legacy `.js` twin lines from `config.yml` so OMP never loads both copies.
+ - Tests reorganized into folders mirroring the source tree (`cli/`, `usage/`, `updater/`, `shared/`, `commands/`); new caveman command/injection and ponytail fallback coverage. 176 tests.
+
 ## v2.19.0
  - Usage gains a sqlite cache (`usage.db`): best-effort sync with live-parse fallback, `tersio reset`/`doctor` cover the new store, and the report marks its source (live/stored/stored-stale).
  - Gain dashboard: dark mode, sortable Recent table, duration derived from timestamps; the currency picker POSTs to `/currency` so close → reopen keeps the choice (each run is a fresh port/origin, so localStorage alone could not).
