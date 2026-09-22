@@ -4,7 +4,6 @@
   "description": "✂️ Token-saving OMP add-ons: terse Caveman replies, compact RTK shell output, lean Ponytail code calls — one-command combo presets.",
   "keywords": [
     "omp",
-    "tersio",
     "token-saving",
     "ai-tools",
     "developer-tools",
@@ -18,10 +17,6 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/KurutoDenzeru/tersio.git"
-  },
-  "homepage": "https://github.com/KurutoDenzeru/tersio",
-  "bugs": {
-    "url": "https://github.com/KurutoDenzeru/tersio/issues"
   },
   "type": "module",
   "bin": {
@@ -47,7 +42,7 @@
         ]
       },
       "ponytail": {
-        "description": "Combo toggle bar and Ponytail mode reinforcement (/combo, mode reinforcement)",
+        "description": "Combo presets + Ponytail mode reinforcement (/combo)",
         "default": true,
         "extensions": [
           "./extensions/combo-toggle/index.ts",
@@ -55,14 +50,14 @@
         ]
       },
       "updater": {
-        "description": "In-session /ai-addons updater for Ponytail, RTK, and Caveman",
+        "description": "In-session updater for Ponytail, RTK, and Caveman (/ai-addons)",
         "default": true,
         "extensions": [
           "./extensions/ai-addons-updater/index.ts"
         ]
       },
       "tersio": {
-        "description": "Unified /tersio root command (caveman, combo, rtk, ponytail, status, check, update, gain, usage)",
+        "description": "Unified /tersio root command",
         "default": true,
         "extensions": [
           "./extensions/tersio-commands/index.ts"
@@ -72,7 +67,7 @@
     "settings": {
       "comboDefault": {
         "type": "enum",
-        "description": "Combo preset applied on session start when no session state exists",
+        "description": "Session-start default (no saved state)",
         "values": [
           "off",
           "medium",
@@ -83,7 +78,7 @@
       },
       "cavemanDefault": {
         "type": "enum",
-        "description": "Caveman mode applied on session start when no session state exists",
+        "description": "Session-start default (no saved state)",
         "values": [
           "off",
           "lite",
@@ -95,12 +90,12 @@
       },
       "rtkDefault": {
         "type": "boolean",
-        "description": "RTK mode applied on session start when no session state exists",
+        "description": "Session-start default (no saved state)",
         "default": false
       },
       "ponytailDefault": {
         "type": "enum",
-        "description": "Ponytail mode applied on session start when no session state exists (follows combo preset unless overridden)",
+        "description": "Session-start default; follows the combo preset unless overridden",
         "values": [
           "off",
           "lite",
