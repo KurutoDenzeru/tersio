@@ -105,12 +105,12 @@ Break-even math, balanced preset (caveman full + rtk + ponytail): a mixed turn c
 | `tersio reinstall` | Fresh install, preserving the Ponytail package |
 | `tersio doctor` | Check OMP, extension, Ponytail, and RTK health |
 | `tersio usage` | Ledger-backed usage + savings report |
-| `tersio gain` | Open the gain dashboard (`--open`, `--export <file>`, `--port <n>`; serves localhost only) |
+| `tersio gain` | Open the gain dashboard (`--open`, `--export <file>`, `--port <n>`, `--currency <code>`; serves localhost only) |
 | `tersio reset` | Clear tersio statistics: usage ledger + a watermark that hides pre-reset rows from every derived view (Y/N confirm, `--dry-run`, `--yes`) — session transcripts and RTK history stay intact on disk |
 | `tersio uninstall` | Remove extensions, registration, and the Ponytail plugin (`--keep-ponytail` keeps Ponytail; `--remove-rtk` also removes the RTK binary and its `rtk.ts` OMP wiring) |
 | `tersio version` | Print version |
 
-Flags: `--dry-run`, `--yes`/`-y`, `--verbose`, `--combo-default`/`--caveman-default`/`--rtk-default`/`--ponytail-default`. Legacy `--doctor` / `--uninstall` forms still work.
+Flags: `--dry-run`, `--yes`/`-y`, `--verbose`, `--combo-default`/`--caveman-default`/`--rtk-default`/`--ponytail-default`, `--currency <code>` (usage|gain display currency; flag wins, then the `tersio settings` default, then USD). Legacy `--doctor` / `--uninstall` forms still work.
 
 ## ⌨️ Commands reference
 

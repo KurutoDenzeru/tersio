@@ -109,6 +109,23 @@
           "review"
         ],
         "default": "off"
+      },
+      "currency": {
+        "type": "enum",
+        "description": "Display currency for usage/gain reports (--currency overrides per run)",
+        "values": [
+          "USD",
+          "PHP",
+          "EUR",
+          "GBP",
+          "JPY",
+          "KRW",
+          "SGD",
+          "AUD",
+          "CAD",
+          "INR"
+        ],
+        "default": "USD"
       }
     }
   },

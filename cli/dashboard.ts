@@ -10,6 +10,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { clearUsageLedger, markReset, readUsage } from '../extensions/shared/usage-ledger.ts';
 import { summarizeUsage } from './usage.ts';
+import { isCurrencyCode } from './currency.ts';
+import type { CurrencyCode } from './currency.ts';
+import { storedProfile, writePluginSettings } from './profile.ts';
 import { withInteractiveSpinner } from './interactive.ts';
 
 export interface DashboardOptions {
@@ -35,6 +38,29 @@ async function faviconDataUri(): Promise<string> {
 
 function dataJson(): string {
   return JSON.stringify(summarizeUsage(readUsage()));
+}
+
+// Persist the dashboard's picker choice so close → reopen keeps it: each
+// `tersio gain` run serves a fresh ephemeral port (a new origin), so the
+// browser's localStorage alone cannot survive a restart. The stored default
+// feeds data.json and `tersio usage` on the next run.
+async function saveDashboardCurrency(raw: unknown): Promise<CurrencyCode | null> {
+  if (typeof raw !== 'string') return null;
+  const code = raw.trim().toUpperCase();
+  if (!isCurrencyCode(code)) return null;
+  const profile = await storedProfile();
+  profile.currency = code;
+  await writePluginSettings(profile, {});
+  return code;
+}
+
+function readBody(req: http.IncomingMessage): Promise<string> {
+  return new Promise((resolve) => {
+    let body = '';
+    req.on('data', (chunk: unknown) => { body += String(chunk); });
+    req.on('end', () => { resolve(body); });
+    req.on('error', () => { resolve(''); });
+  });
 }
 
 function openBrowser(url: string): void {
@@ -80,6 +106,21 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
       res.end(JSON.stringify({ ok: true, rows }));
       return;
     }
+    if (req.url === '/currency' && req.method === 'POST') {
+      let code: unknown = null;
+      try {
+        code = (JSON.parse(await readBody(req)) as { currency?: unknown }).currency ?? null;
+      } catch { code = null; }
+      const saved = await saveDashboardCurrency(code);
+      if (saved === null) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: 'unknown currency' }));
+      } else {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, currency: saved }));
+      }
+      return;
+    }
     if (req.url === '/data.json') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(dataJson());
@@ -119,4 +160,4 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
   });
 }
 
-export { runDashboard };
+export { runDashboard, saveDashboardCurrency };

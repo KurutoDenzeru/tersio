@@ -146,6 +146,10 @@ test("tersio usage prices from the live cache", () => {
     encoding: "utf8",
     env: {
       ...process.env,
+      // Isolate HOME: usage display currency falls back to the stored plugin
+      // default, so an ambient lock file would otherwise leak into assertions.
+      HOME: dir,
+      USERPROFILE: dir,
       TERSIO_SESSIONS_DIR: dir,
       TERSIO_USAGE_FILE: path.join(dir, "missing.jsonl"),
       TERSIO_PRICES_FILE: path.join(dir, "prices.json"),

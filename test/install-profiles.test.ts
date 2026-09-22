@@ -163,6 +163,11 @@ test("package manifest declares features and settings matching the omp schema", 
   const rtk = settings.rtkDefault as { type?: string; default?: boolean };
   assert.equal(rtk.type, "boolean");
   assert.equal(rtk.default, false);
+
+  const currency = settings.currency as { type?: string; values?: string[]; default?: string };
+  assert.equal(currency.type, "enum");
+  assert.deepEqual(currency.values, ["USD", "PHP", "EUR", "GBP", "JPY", "KRW", "SGD", "AUD", "CAD", "INR"]);
+  assert.equal(currency.default, "USD");
 });
 
 test("installer accepts --ponytail-default override and reports it", () => {

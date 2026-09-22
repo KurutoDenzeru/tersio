@@ -116,6 +116,14 @@
     function setCur(k) {
       fx.cur = k; active = keys.indexOf(k);
       try { localStorage.setItem('tersio-fx-cur', fx.cur); } catch (e) { }
+      // Served mode: also persist server-side so close → reopen keeps the
+      // choice. Every `tersio gain` run is a fresh ephemeral port (a new
+      // origin), so localStorage alone cannot survive a restart.
+      if (window.location.protocol !== 'file:' && typeof fetch === 'function') {
+        try {
+          fetch('currency', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ currency: k }) }).catch(function() { });
+        } catch (e) { }
+      }
       paint();
       if (DATA) render(DATA);
     }
@@ -1192,6 +1200,22 @@
 
   function render(d) {
     DATA = d;
+    // Server-provided default currency (tersio gain --currency); a saved
+    // picker choice in localStorage always wins.
+    if (!render.fxInit) {
+      render.fxInit = true;
+      var saved = null;
+      try { saved = localStorage.getItem('tersio-fx-cur'); } catch (e) { }
+      if (!saved && d.currency && CURS[d.currency]) {
+        fx.cur = d.currency;
+        var curEl = document.getElementById('fxCur');
+        if (curEl) curEl.textContent = FLAGS[fx.cur] + ' ' + fx.cur;
+        var panel = document.getElementById('fxPanel');
+        if (panel) Array.prototype.forEach.call(panel.children, function(o) {
+          o.setAttribute('aria-selected', o.dataset.cur === fx.cur ? 'true' : 'false');
+        });
+      }
+    }
     var t = d.tokens || { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
     var total = t.input + t.output + t.cacheRead + t.cacheWrite;
     var totalEl = document.getElementById('total');
