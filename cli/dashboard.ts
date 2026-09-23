@@ -173,8 +173,8 @@ function computeDoctorRows(): DoctorRow[] {
   const ext = (label: string, p: string): void => {
     rows.push({ label, ok: ok(p), detail: ok(p) ? 'installed' : p, group: 'Extensions' });
   };
-  const addon = (label: string, present: boolean, detail: string): void => {
-    rows.push({ label, ok: present, detail, group: 'Add-ons' });
+  const addon = (label: string, present: boolean, detail: string, group = 'Add-ons'): void => {
+    rows.push({ label, ok: present, detail, group });
   };
   ext('Caveman extension', path.join(extDir, 'caveman-session', 'index.ts'));
   ext('RTK extension', path.join(extDir, 'rtk-session', 'index.ts'));
@@ -199,7 +199,7 @@ function computeDoctorRows(): DoctorRow[] {
   const prices = pricesCachePath();
   const pricesAge = ageStr(prices);
   const pricesAt = absTime(prices);
-  addon('Prices feed', pricesAge !== null, pricesAge && pricesAt ? `(pulled ${pricesAge} · ${pricesAt})` : prices);
+  addon('Prices feed', pricesAge !== null, pricesAge && pricesAt ? `(pulled ${pricesAge} · ${pricesAt})` : prices, 'Usage');
   return rows;
 }
 

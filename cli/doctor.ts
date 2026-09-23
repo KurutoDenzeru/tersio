@@ -92,6 +92,12 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   // Categorized output with a tally; success rows stay quiet (no path echoes)
   // while failures print the expected path or fix so they stay actionable.
   const tally = { ok: 0, missing: 0, warn: 0 };
+  function absDate(ms: number): string {
+    const d = new Date(ms);
+    const q = (n: number): string => String(n).padStart(2, '0');
+    const h24 = d.getHours();
+    return `${q(d.getMonth() + 1)}-${q(d.getDate())}-${d.getFullYear()}, ${q(h24 % 12 || 12)}:${q(d.getMinutes())} ${h24 >= 12 ? 'PM' : 'AM'}`;
+  }
   function check(label: string, ok: boolean, detail = ''): void {
     if (ok) { tally.ok++; console.log(`  ✅ ${label}: ok${detail ? ` ${detail}` : ''}`); }
     else { tally.missing++; console.log(`  ❌ ${label}: MISSING${detail ? ` ${detail}` : ''}`); }
@@ -117,15 +123,11 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   check('Ponytail extension', ponytailExtText !== null);
 
   section('Usage & records');
-  console.log(`  Usage DB (tersio-owned, tersio reset clears): ${usageDbPath()}`);
+  console.log(`  Usage DB (tersio-owned · local hosted): ${usageDbPath()}`);
+  const pricesAge = pricesMtime ? `(pulled ${relTime(Date.now() - pricesMtime.mtimeMs)} · ${absDate(pricesMtime.mtimeMs)})` : '';
+  check('Prices feed', pricesMtime !== null, pricesAge || pricesCachePath());
 
   section('Add-ons');
-  const absDate = (ms: number): string => {
-    const d = new Date(ms);
-    const q = (n: number): string => String(n).padStart(2, '0');
-    const h24 = d.getHours();
-    return `${q(d.getMonth() + 1)}-${q(d.getDate())}-${d.getFullYear()}, ${q(h24 % 12 || 12)}:${q(d.getMinutes())} ${h24 >= 12 ? 'PM' : 'AM'}`;
-  };
   const ruleAge = ruleMtime ? `(updated ${relTime(Date.now() - ruleMtime.mtimeMs)} · ${absDate(ruleMtime.mtimeMs)})` : '';
   check('Caveman rule', cavemanRuleText !== null, ruleAge);
   const rtkAge = rtkMtime ? `(updated ${relTime(Date.now() - rtkMtime.mtimeMs)} · ${absDate(rtkMtime.mtimeMs)})` : '';
@@ -137,8 +139,6 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   const ponytailAge = ponytailMtime ? `(updated ${relTime(Date.now() - ponytailMtime.mtimeMs)} · ${absDate(ponytailMtime.mtimeMs)})` : '';
   const ponytailVer = parseJsonObject<{ version?: string }>(ponytailPkgText)?.version ?? '';
   check('Ponytail', ponytailPkgText !== null, [ponytailVer, ponytailAge].filter(Boolean).join(' '));
-  const pricesAge = pricesMtime ? `(pulled ${relTime(Date.now() - pricesMtime.mtimeMs)} · ${absDate(pricesMtime.mtimeMs)})` : '';
-  check('Prices feed', pricesMtime !== null, pricesAge || pricesCachePath());
 
   const total = tally.ok + tally.missing + tally.warn;
   console.log(`\n  Summary: ${total} checks — ✅ ${tally.ok} ok, ⚠️ ${tally.warn} warn, ❌ ${tally.missing} missing`);
