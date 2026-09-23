@@ -23,11 +23,11 @@ flowchart TB
     end
     subgraph SHARED["extensions/shared/"]
       SS["session-state.ts<br/>in-process bridge (Symbol.for)<br/>+ last-wins session entries"]
-      LEDGER["usage-ledger.ts<br/>~/.omp/plugins/tersio-usage.jsonl"]
+      LEDGER["usage-ledger.ts<br/>~/.tersio/usage.db"]
       PS["plugin-settings.ts<br/>session-start defaults"]
     end
     BIN["rtk binary (~/.bun/bin/rtk)"]
-    PONY["@dietrichgebert/ponytail plugin<br/>(/ponytail)"]
+    PONY["@dietrichgebert/ponytail<br/>bundled tersio dep (/ponytail)"]
   end
 
   INST -->|registers| EXT
@@ -65,4 +65,4 @@ sequenceDiagram
 - **Subagents inherit:** `isOmpSubagentPrompt` makes subagent turns read shared state instead of local flags.
 - **Reinforcement:** `mode-reinforcement.ts` re-appends the mode block after Ponytail's prompt and after compaction; last-wins entry scan ignores corrupt writes.
 - **Ledger is best-effort:** append-only JSONL; `tersio reset` writes a watermark instead of deleting host-owned files.
-- **Features are optional:** `omp.features` in `package.json` gates each extension file, so `tersio[caveman,ponytail]` subsets load only those.
+- **Always on:** `omp.extensions` in `package.json` loads every mode extension. Only `updater` stays an optional feature.

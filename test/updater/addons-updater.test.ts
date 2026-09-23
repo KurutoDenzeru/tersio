@@ -83,7 +83,7 @@ test("parseChecksum returns null for malformed content and different asset", () 
   expect(parseChecksum(mismatched, "ponytail-1.2.3.tgz")).toBe(null);
 });
 
-test("/ai-addons update ponytail invokes npm install @dietrichgebert/ponytail@latest with correct args and cwd", async () => {
+test("/ai-addons update ponytail reports the bundled copy without touching npm", async () => {
   const execCalls: { cmd: string; args: string[]; opts: { cwd: string } }[] = [];
   const execMock: ExecMock = async (cmd, args, opts) => {
     execCalls.push({ cmd, args, opts });
@@ -99,22 +99,11 @@ test("/ai-addons update ponytail invokes npm install @dietrichgebert/ponytail@la
 
   const result = await handler("update ponytail", fakeCtx);
 
-  expect(execCalls.length, "pi.exec should be called exactly once").toBe(1);
-  const call = execCalls[0];
-  expect(call.cmd).toBe("npm");
-  expect(call.args).toEqual([
-    "install",
-    "@dietrichgebert/ponytail@latest",
-    "--save",
-    "--no-audit",
-    "--no-fund",
-  ]);
-  expect(call.opts.cwd).toBe(PLUGINS_DIR);
-
-  expect(String(result)).toMatch(/ponytail/i);
-  expect(String(result)).toMatch(/finished|complete|done|updated/i);
+  expect(execCalls.length, "bundled ponytail must not shell out to npm").toBe(0);
+  expect(String(result)).toMatch(/bundled with tersio/i);
+  expect(String(result)).toMatch(/tersio update/);
 });
-test("/ai-addons update ponytail without host exec reports failure instead of throwing", async () => {
+test("/ai-addons update ponytail without host exec still reports the bundled copy", async () => {
   const fakePi = createFakePi(async () => ({ stdout: "", stderr: "", code: 0 }));
   delete (fakePi as Partial<FakePi>).exec;
   const fakeCtx = createFakeCtx();
@@ -124,5 +113,5 @@ test("/ai-addons update ponytail without host exec reports failure instead of th
   expect(handler, "ai-addons command handler not registered via registerCommand").toBeTruthy();
 
   const result = await handler("update ponytail", fakeCtx);
-  expect(result).toMatch(/does not provide exec/);
+  expect(result).toMatch(/bundled with tersio/i);
 });

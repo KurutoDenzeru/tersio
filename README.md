@@ -18,17 +18,16 @@
 curl -fsSL https://github.com/KurutoDenzeru/tersio/releases/latest/download/install.sh | sh
 ```
 
-Prefer OMP-managed updates and feature flags? Install as an OMP plugin instead:
+Prefer OMP-managed updates? Install as an OMP plugin instead:
 
 ```bash
 omp plugin install @krtclcdy/tersio
 ```
 
-Subset only:
+All modes load always. Only the updater stays toggleable:
 
 ```bash
-omp plugin install '@krtclcdy/tersio[caveman,ponytail]'
-omp plugin features @krtclcdy/tersio --disable rtk
+omp plugin features @krtclcdy/tersio --disable updater
 ```
 
 Then restart OMP and enable a preset:
@@ -82,7 +81,7 @@ Break-even math, balanced preset (caveman full + rtk + ponytail): a mixed turn c
 
 ## 📈 Gain Dashboard
 
-`tersio gain --open` serves a local dashboard (127.0.0.1 only) that charts your own savings from `~/.omp/plugins/tersio-usage.jsonl`. Three views:
+`tersio gain --open` serves a local dashboard (127.0.0.1 only) that charts your own savings from `~/.tersio/usage.db`. Three views:
 
 **Live feed and savings.** Token throughput, cost, savings bento, and recent activity — the top of the dashboard.
 
@@ -125,8 +124,8 @@ Mode switches live on their own commands; bare `/tersio` prints status.
 | `/tersio status` | Active modes + combo level; state persists, propagates to subagents, and lights the Combo footer indicator. |
 | `/tersio check` | Add-on version check |
 | `/tersio update <ponytail\|rtk\|caveman\|all> [--dry-run]` | Update add-ons, preview with dry-run |
-| `/tersio gain` | Savings summary; the gain dashboard charts `~/.omp/plugins/tersio-usage.jsonl` (`tersio gain --open` serves on 127.0.0.1, `--export` writes one file). |
-| `/tersio usage` | Ledger report for this machine (rows in `~/.omp/plugins/tersio-usage.jsonl`, local only) |
+| `/tersio gain` | Savings summary; the gain dashboard charts `~/.tersio/usage.db` (`tersio gain --open` serves on 127.0.0.1, `--export` writes one file). |
+| `/tersio usage` | Ledger report for this machine (rows in `~/.tersio/usage.db`, local only) |
 | `/tersio help` | This table |
 | `/ai-addons` | Add-on updater alias, still works. |
 
@@ -136,7 +135,7 @@ Mode switches live on their own commands; bare `/tersio` prints status.
 |---|---|
 | Caveman / RTK / Updater / Combo extensions | `~/.omp/agent/extensions/{caveman-session,rtk-session,ai-addons-updater,combo-toggle}/` |
 | RTK OMP wiring (rtk-owned) | `~/.omp/agent/extensions/rtk.ts` — written by the installer via `rtk init -g --agent omp`; auto-loads, no config entry |
-| Ponytail package | `~/.omp/plugins/node_modules/@dietrichgebert/ponytail/` |
+| Ponytail package (bundled tersio dependency — one Plugins row, updates with `tersio update`) | `~/.omp/plugins/node_modules/@dietrichgebert/ponytail/` |
 | RTK binary | `~/.bun/bin/rtk` (`rtk.exe` on Windows) |
 | Extension registrations | `~/.omp/agent/config.yml` |
 

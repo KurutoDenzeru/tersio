@@ -2,16 +2,14 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import {
-  BUN_BIN_DIR, OMP_AGENT_DIR, OMP_PLUGINS_DIR, OMP_BIN,
-  PACKAGE_NAME, PACKAGE_VERSION, RTK_BINARY_NAME,
+  BUN_BIN_DIR, OMP_AGENT_DIR, OMP_PLUGINS_DIR,
+  RTK_BINARY_NAME,
   args, dryRun, fix, yes,
   execP, parseJsonObject, relTime,
 } from './common.ts';
 import { askInteractiveChoice, askInteractiveConfirm, runInteractivePhase } from './interactive.ts';
-import { ledgerPath, readUsage, sessionsDir } from '../extensions/shared/usage-ledger.ts';
 import { usageDbPath } from '../extensions/shared/usage-store.ts';
-import { readRtkGain, rtkDbPath } from '../extensions/shared/rtk-gain.ts';
-import { checkForUpdate } from './update.ts';
+import { pricesCachePath } from '../extensions/shared/pricing.ts';
 import { readTextIfExists } from '../extensions/lib/utils.ts';
 
 interface DoctorSummary {
@@ -37,36 +35,26 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   const cavemanRule = path.join(extDir, 'caveman-session', 'rule.md');
   const rtkIndex = path.join(extDir, 'rtk-session', 'index.ts');
   const updaterIndex = path.join(extDir, 'ai-addons-updater', 'index.ts');
-  const comboIndex = path.join(extDir, 'combo-toggle', 'index.ts');
-  const tersioIndex = path.join(extDir, 'tersio-commands', 'index.ts');
-  const modeReinforcement = path.join(extDir, 'shared', 'mode-reinforcement.ts');
-  const selfPkg = path.join(pluginsDir, 'node_modules', PACKAGE_NAME, 'package.json');
 
   // Independent probes start concurrently; sections report in fixed order as
   // their data settles. Every probe resolves instead of rejecting.
   const probes = {
-    ompVersion: execP(OMP_BIN, ['--version']).then((r) => r.stdout.trim(), () => null),
     agentEntries: fs.readdir(agentDir).catch(() => null),
     extEntries: fs.readdir(extDir).catch(() => null),
     sharedStateText: readTextIfExists(path.join(extDir, 'shared', 'session-state.ts')),
     configText: readTextIfExists(configPath),
     ponytailPkgText: readTextIfExists(ponytailPkg),
     ponytailExtText: readTextIfExists(ponytailExt),
-    pluginsPkgRaw: readTextIfExists(path.join(pluginsDir, 'package.json')),
-    selfPkgText: readTextIfExists(selfPkg),
     rtkBinText: readTextIfExists(rtkBin),
     rtkOmpText: readTextIfExists(path.join(extDir, 'rtk.ts')),
     cavemanIndexText: readTextIfExists(cavemanIndex),
     cavemanRuleText: readTextIfExists(cavemanRule),
     rtkIndexText: readTextIfExists(rtkIndex),
     updaterIndexText: readTextIfExists(updaterIndex),
-    comboIndexText: readTextIfExists(comboIndex),
-    tersioIndexText: readTextIfExists(tersioIndex),
-    modeReinforcementText: readTextIfExists(modeReinforcement),
     ruleMtime: fs.stat(cavemanRule).catch(() => null),
     rtkMtime: fs.stat(rtkBin).catch(() => null),
     ponytailMtime: fs.stat(ponytailPkg).catch(() => null),
-    updateVersion: checkForUpdate(),
+    pricesMtime: fs.stat(pricesCachePath()).catch(() => null),
   };
   const rtkVersionProbe: Promise<string | null> = probes.rtkBinText.then((text) => text === null ? null : execP(rtkBin, ['--version'], { timeout: 5000 }).then(
     (r) => r.stdout.trim() || r.stderr.trim() || null,
@@ -75,26 +63,19 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
       return err.stdout?.trim() || err.stderr?.trim() || null;
     },
   ));
-  const [[ompVersion, agentEntries, extEntries, sharedStateText, configText, updateVersion], [cavemanIndexText, rtkIndexText, updaterIndexText, comboIndexText, tersioIndexText, modeReinforcementText, ponytailPkgText, ponytailExtText, pluginsPkgRaw, selfPkgText], [cavemanRuleText, ruleMtime, rtkBinText, rtkMtime, rtkVersion, rtkOmpText, ponytailMtime]] = await runInteractivePhase('Checking installation', () => Promise.all([
+  const [[agentEntries, extEntries, sharedStateText, configText], [cavemanIndexText, rtkIndexText, updaterIndexText, ponytailPkgText, ponytailExtText], [cavemanRuleText, ruleMtime, rtkBinText, rtkMtime, rtkVersion, rtkOmpText, ponytailMtime, pricesMtime]] = await runInteractivePhase('Checking installation', () => Promise.all([
     Promise.all([
-      probes.ompVersion,
       probes.agentEntries,
       probes.extEntries,
       probes.sharedStateText,
       probes.configText,
-      probes.updateVersion,
     ]),
     Promise.all([
       probes.cavemanIndexText,
       probes.rtkIndexText,
       probes.updaterIndexText,
-      probes.comboIndexText,
-      probes.tersioIndexText,
-      probes.modeReinforcementText,
       probes.ponytailPkgText,
       probes.ponytailExtText,
-      probes.pluginsPkgRaw,
-      probes.selfPkgText,
     ]),
     Promise.all([
       probes.cavemanRuleText,
@@ -104,12 +85,19 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
       rtkVersionProbe,
       probes.rtkOmpText,
       probes.ponytailMtime,
+      probes.pricesMtime,
     ]),
   ]));
 
   // Categorized output with a tally; success rows stay quiet (no path echoes)
   // while failures print the expected path or fix so they stay actionable.
   const tally = { ok: 0, missing: 0, warn: 0 };
+  function absDate(ms: number): string {
+    const d = new Date(ms);
+    const q = (n: number): string => String(n).padStart(2, '0');
+    const h24 = d.getHours();
+    return `${q(d.getMonth() + 1)}-${q(d.getDate())}-${d.getFullYear()}, ${q(h24 % 12 || 12)}:${q(d.getMinutes())} ${h24 >= 12 ? 'PM' : 'AM'}`;
+  }
   function check(label: string, ok: boolean, detail = ''): void {
     if (ok) { tally.ok++; console.log(`  ✅ ${label}: ok${detail ? ` ${detail}` : ''}`); }
     else { tally.missing++; console.log(`  ❌ ${label}: MISSING${detail ? ` ${detail}` : ''}`); }
@@ -121,10 +109,6 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
 
   section('Environment');
   check('Node', true, process.version);
-  check('OMP CLI', ompVersion !== null, ompVersion ?? '');
-  if (typeof updateVersion === 'string') warnLine('Tersio CLI', `${updateVersion} available — run tersio update`);
-  else if (updateVersion === 'unknown') warnLine('Tersio CLI', `${PACKAGE_VERSION} (version check unreachable)`);
-  else check('Tersio CLI', true, PACKAGE_VERSION);
 
   section('Installation');
   check('OMP agent dir', agentEntries !== null, agentEntries === null ? agentDir : '');
@@ -136,37 +120,25 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   check('Caveman extension', cavemanIndexText !== null);
   check('RTK extension', rtkIndexText !== null);
   check('Updater extension', updaterIndexText !== null);
-  check('Combo extension', comboIndexText !== null);
-  check('Tersio commands extension', tersioIndexText !== null);
-  check('Mode reinforcement extension', modeReinforcementText !== null);
   check('Ponytail extension', ponytailExtText !== null);
-  check('Ponytail in config.yml', (configText ?? '').includes('ponytail') && (configText ?? '').includes('pi-extension'));
-  check('Combo in config.yml', (configText ?? '').includes('combo-toggle'));
-  check('Self plugin package', selfPkgText !== null, parseJsonObject<{ version?: string }>(selfPkgText)?.version ?? '');
-  const selfDep = PACKAGE_NAME in (parseJsonObject<{ dependencies?: Record<string, string> }>(pluginsPkgRaw)?.dependencies || {});
-  check('Self plugin in plugins/package.json', selfDep);
 
   section('Usage & records');
-  const usageRows = readUsage();
-  check('Usage ledger', true, usageRows.length ? `${usageRows.length} rows` : 'empty — no records yet');
-  console.log(`  Usage ledger (tersio-owned, tersio reset clears): ${ledgerPath()} · ${usageRows.length} rows`);
-  console.log(`  Session transcripts (host-owned, never touched): ${sessionsDir()}`);
-  console.log(`  Usage DB (tersio-owned, tersio reset clears): ${usageDbPath()}`);
-  const rtkDb = rtkDbPath();
-  const rtk = readRtkGain();
-  console.log(`  RTK history (rtk-owned, never touched): ${rtkDb}${rtk.commands ? ` · ${rtk.commands} commands` : ''}`);
+  console.log(`  Usage DB (tersio-owned · local hosted): ${usageDbPath()}`);
+  const pricesAge = pricesMtime ? `(pulled ${relTime(Date.now() - pricesMtime.mtimeMs)} · ${absDate(pricesMtime.mtimeMs)})` : '';
+  check('Prices feed', pricesMtime !== null, pricesAge || pricesCachePath());
 
   section('Add-ons');
-  const ruleAge = ruleMtime ? `updated ${relTime(Date.now() - ruleMtime.mtimeMs)}` : '';
+  const ruleAge = ruleMtime ? `(updated ${relTime(Date.now() - ruleMtime.mtimeMs)} · ${absDate(ruleMtime.mtimeMs)})` : '';
   check('Caveman rule', cavemanRuleText !== null, ruleAge);
-  const rtkAge = rtkMtime ? `updated ${relTime(Date.now() - rtkMtime.mtimeMs)}` : '';
-  check('RTK binary', rtkBinText !== null, rtkBinText === null ? rtkBin : [rtkVersion, rtkAge].filter(Boolean).join(', '));
+  const rtkAge = rtkMtime ? `(updated ${relTime(Date.now() - rtkMtime.mtimeMs)} · ${absDate(rtkMtime.mtimeMs)})` : '';
+  check('RTK binary', rtkBinText !== null, rtkBinText === null ? rtkBin : [rtkVersion, rtkAge].filter(Boolean).join(' '));
   if (rtkBinText !== null && !rtkVersion) warnLine('RTK version', 'unavailable — binary may not be executable');
   const rtkRegistered = rtkOmpText !== null && (configText ?? '').includes('extensions/rtk.ts');
   check('RTK OMP wiring (rtk.ts)', rtkOmpText !== null, rtkOmpText === null ? 'run: rtk init -g --agent omp' : '');
   if (rtkOmpText !== null && !rtkRegistered) warnLine('RTK in config.yml', 'rtk.ts not listed — OMP will not load it; rerun install');
-  const ponytailAge = ponytailMtime ? `updated ${relTime(Date.now() - ponytailMtime.mtimeMs)}` : '';
-  check('Ponytail', ponytailPkgText !== null, [parseJsonObject<{ version?: string }>(ponytailPkgText)?.version ?? '', ponytailAge].filter(Boolean).join(', '));
+  const ponytailAge = ponytailMtime ? `(updated ${relTime(Date.now() - ponytailMtime.mtimeMs)} · ${absDate(ponytailMtime.mtimeMs)})` : '';
+  const ponytailVer = parseJsonObject<{ version?: string }>(ponytailPkgText)?.version ?? '';
+  check('Ponytail', ponytailPkgText !== null, [ponytailVer, ponytailAge].filter(Boolean).join(' '));
 
   const total = tally.ok + tally.missing + tally.warn;
   console.log(`\n  Summary: ${total} checks — ✅ ${tally.ok} ok, ⚠️ ${tally.warn} warn, ❌ ${tally.missing} missing`);
@@ -229,7 +201,7 @@ async function runDoctorFix(tally: DoctorSummary): Promise<void> {
       { value: 'extensions', label: 'Missing extension files', hint: 'copy sources from this CLI' },
       { value: 'registrations', label: 'config.yml registrations', hint: 'combo, ponytail, rtk.ts entries' },
       { value: 'rtk', label: 'RTK binary + wiring', hint: 'download checksum-verified binary, rtk init' },
-      { value: 'ponytail', label: 'Ponytail package', hint: 'omp plugin install + npm refresh' },
+      { value: 'ponytail', label: 'Ponytail package', hint: 'bundled reinstall via tersio dep' },
       { value: 'cli', label: 'CLI update', hint: 'latest tersio + delegated refresh' },
     ], 'all');
     if (picked.status !== 'selected') { process.exitCode = 130; return; }

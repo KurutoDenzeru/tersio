@@ -7,6 +7,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { tersioDataPath } from '../lib/utils.ts';
 
 export interface ModelPrice {
   input: number;
@@ -27,7 +28,7 @@ let refreshInflight: Promise<boolean> | null = null;
 export function pricesCachePath(): string {
   const override = process.env.TERSIO_PRICES_FILE;
   if (override) return override;
-  return path.join(os.homedir(), '.omp', 'plugins', 'tersio-prices.json');
+  return tersioDataPath('prices.json', 'tersio-prices.json');
 }
 
 export function pricesUrl(): string {

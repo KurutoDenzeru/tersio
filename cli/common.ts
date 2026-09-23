@@ -41,6 +41,7 @@ interface PluginsPackage {
 const CAVEMAN_DEFAULTS = new Set(['off', 'lite', 'full', 'ultra', 'wenyan']);
 const PONYTAIL_DEFAULTS = new Set(['off', 'lite', 'full', 'ultra', 'review']);
 const RTK_DEFAULTS = new Set(['on', 'off']);
+const DIAG_SCHEDULES = new Set(['manual', 'daily', 'weekly', 'monthly']);
 
 // ponytail: Combo preset implies all three modes. Mirrors COMBO_LEVELS in
 // extensions/shared/session-state.ts (rtk as boolean here). Single source.
@@ -75,6 +76,15 @@ const COMMANDS: Record<string, true> = { install: true, update: true, reinstall:
 const args = process.argv.slice(2);
 const commandArg = args.find((arg) => !arg.startsWith('-'));
 const command = commandArg?.toLowerCase() || null;
+// Positional after the command: `tersio settings diagnosis` jumps straight
+// to one prompt instead of walking the whole chain. Index-based so flag
+// values (e.g. `--combo-default balanced`) never count as positionals.
+const settingArg = ((): string | null => {
+  const at = args.indexOf(commandArg ?? '');
+  const next = at >= 0 ? args[at + 1] : undefined;
+  if (!next || next.startsWith('-')) return null;
+  return next.toLowerCase();
+})();
 const unknownCommand = command !== null && !COMMANDS[command];
 const install = command === 'install';
 const update = command === 'update';
@@ -116,6 +126,7 @@ const comboDefaultFlag = parseEnum(flagValue('--combo-default'), COMBO_DEFAULTS,
 const cavemanDefaultFlag = parseEnum(flagValue('--caveman-default'), CAVEMAN_DEFAULTS, '--caveman-default');
 const ponytailDefaultFlag = parseEnum(flagValue('--ponytail-default'), PONYTAIL_DEFAULTS, '--ponytail-default');
 const rtkDefaultFlag = parseEnum(flagValue('--rtk-default'), RTK_DEFAULTS, '--rtk-default');
+const diagScheduleFlag = parseEnum(flagValue('--diag-schedule'), DIAG_SCHEDULES, '--diag-schedule');
 
 const profileFlagsGiven = [comboDefaultFlag, cavemanDefaultFlag, rtkDefaultFlag, ponytailDefaultFlag]
   .some((flag) => flag !== undefined);
@@ -352,13 +363,13 @@ function relTime(ageMs: number): string {
 export {
   IS_WINDOWS, RTK_BINARY_NAME, HOME, OMP_AGENT_DIR, OMP_PLUGINS_DIR, BUN_BIN_DIR, OMP_BIN,
   PACKAGE_NAME, PACKAGE_BIN, PACKAGE_VERSION,
-  CAVEMAN_DEFAULTS, PONYTAIL_DEFAULTS, RTK_DEFAULTS, COMBO_PRESET_MODES, COMBO_DEFAULTS,
-  parseEnum, flagValue, COMMANDS, commandArg, command, unknownCommand,
+  CAVEMAN_DEFAULTS, PONYTAIL_DEFAULTS, RTK_DEFAULTS, DIAG_SCHEDULES, COMBO_PRESET_MODES, COMBO_DEFAULTS,
+  parseEnum, flagValue, COMMANDS, commandArg, command, settingArg, unknownCommand,
   install, update, reinstall, showVersion, showHelp, applyUpdate, args,
   dryRun, yes, verbose, doctor, fix, uninstall, usage, gain, reset, settings,
   dashboardPort, dashboardOpen, dashboardExport, currency, currencyGiven,
   removePonytail, keepPonytail, removeRtk,
-  comboDefaultFlag, cavemanDefaultFlag, ponytailDefaultFlag, rtkDefaultFlag, profileFlagsGiven,
+  comboDefaultFlag, cavemanDefaultFlag, ponytailDefaultFlag, rtkDefaultFlag, diagScheduleFlag, profileFlagsGiven,
   debug, execFileP, execP, writeIfChanged, normalizeExtensionsKey, EXTENSIONS_KEY_RE,
   writeConfigLines, ensureExtensionInConfig, ensureExtensionAfterConfigEntry,
   readPonytailConfig, parseJsonObject, parsePonytailConfig, patchPonytailConfig,

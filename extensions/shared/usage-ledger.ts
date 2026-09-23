@@ -5,6 +5,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { tersioDataPath } from '../lib/utils.ts';
 
 export type UsageKind = 'command' | 'toggle' | 'install' | 'update' | 'rtk-audit';
 
@@ -17,7 +18,7 @@ export interface UsageRow {
 export function ledgerPath(): string {
   const override = process.env.TERSIO_USAGE_FILE;
   if (override) return override;
-  return path.join(os.homedir(), '.omp', 'plugins', 'tersio-usage.jsonl');
+  return tersioDataPath('usage.jsonl', 'tersio-usage.jsonl');
 }
 
 // Reset watermark: tersio-owned timestamp marking the last statistics reset.
@@ -28,7 +29,7 @@ export function ledgerPath(): string {
 export function resetMarkerPath(): string {
   const override = process.env.TERSIO_RESET_FILE;
   if (override) return override;
-  return path.join(os.homedir(), '.omp', 'plugins', 'tersio-reset.json');
+  return tersioDataPath('reset.json', 'tersio-reset.json');
 }
 
 export function readResetWatermark(): number {

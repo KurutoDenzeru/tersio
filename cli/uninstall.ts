@@ -69,8 +69,8 @@ async function removeUninstallTarget(target: string, shouldDryRun: boolean, recu
 async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
   const shouldDryRun = options.dryRun ?? dryRun;
   const confirmed = (options.yes ?? yes) || shouldDryRun;
-  // Ponytail ships with Tersio's presets, so a full uninstall removes it too;
-  // --keep-ponytail opts out and reinstall always preserves it.
+  // Ponytail is bundled with Tersio's presets, so a full uninstall removes
+  // its copy too; --keep-ponytail opts out and reinstall always preserves it.
   const shouldRemovePonytail = options.removePonytail ?? (removePonytail || !keepPonytail);
   const shouldRemoveRtk = options.removeRtk ?? removeRtk;
 
@@ -153,8 +153,8 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
     }
   }
 
-  // Remove the Ponytail plugin package the installer added (dep, files,
-  // lock entry); the config.yml entry was filtered above.
+  // Remove the bundled Ponytail copy (dep entry exists only on
+  // pre-bundle installs); the config.yml entry was filtered above.
   if (shouldRemovePonytail) {
     const pluginsPkgPath = path.join(pluginsDir, 'package.json');
     await updateJsonFile(pluginsPkgPath,

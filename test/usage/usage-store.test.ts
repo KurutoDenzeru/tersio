@@ -95,6 +95,50 @@ test.skipIf(!hasSqlite())("sync persists folded model rows and reads them back",
   }
 });
 
+test.skipIf(!hasSqlite())("sync keeps rows for deleted transcripts", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-usage-db-"));
+  try {
+    withEnv(dir, () => {
+      seedSessions(dir);
+      expect(syncUsageDb()).toBe(true);
+      expect(readUsageDb()?.tokens.messages).toBe(2);
+      rmSync(path.join(dir, "sessions", "s.jsonl"));
+      expect(syncUsageDb()).toBe(true);
+      const stored = readUsageDb();
+      expect(stored?.tokens.messages).toBe(2);
+      expect(Object.keys(stored?.tokens.byModel ?? {})).toEqual(["deepseek-v4.1-flash"]);
+    });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("usageDbPath migrates the legacy plugins copy into ~/.tersio", () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-home-"));
+  const prevHome = process.env.HOME;
+  const prevProfile = process.env.USERPROFILE;
+  const prevDb = process.env.TERSIO_USAGE_DB;
+  delete process.env.TERSIO_USAGE_DB;
+  process.env.HOME = home;
+  process.env.USERPROFILE = home;
+  try {
+    const legacy = path.join(home, ".omp", "plugins", "tersio-usage.db");
+    mkdirSync(path.dirname(legacy), { recursive: true });
+    writeFileSync(legacy, "seed", "utf8");
+    expect(usageDbPath()).toBe(path.join(home, ".tersio", "usage.db"));
+    expect(existsSync(path.join(home, ".tersio", "usage.db"))).toBe(true);
+    expect(existsSync(legacy)).toBe(false);
+  } finally {
+    if (prevHome === undefined) delete process.env.HOME;
+    else process.env.HOME = prevHome;
+    if (prevProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = prevProfile;
+    if (prevDb === undefined) delete process.env.TERSIO_USAGE_DB;
+    else process.env.TERSIO_USAGE_DB = prevDb;
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test.skipIf(!hasSqlite())("clearUsageDb removes the store file", () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-usage-db-"));
   try {

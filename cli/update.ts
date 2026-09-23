@@ -8,7 +8,7 @@ import {
   dryRun, execP, parseJsonObject, verbose,
 } from './common.ts';
 import { execNetwork } from './interactive.ts';
-import { readTextIfExists } from '../extensions/lib/utils.ts';
+import { readTextIfExists, tersioDataPath } from '../extensions/lib/utils.ts';
 import { refreshPrices } from '../extensions/shared/pricing.ts';
 import {
   CAVEMAN_REMOTE_RULE, RTK_RELEASE_API, RtkRelease,
@@ -48,7 +48,7 @@ async function latestPublishedVersion(): Promise<string | null> {
 // (cached under OMP_PLUGINS_DIR) unless force skips the cache — an explicit
 // "check for updates" must never trust a stale cache.
 async function checkForUpdate(force = false): Promise<string | null | 'unknown'> {
-  const cachePath = path.join(OMP_PLUGINS_DIR, 'tersio-update-check.json');
+  const cachePath = tersioDataPath('update-check.json', 'tersio-update-check.json');
   const cached = parseJsonObject<{ latest?: string; lastCheck?: number }>(await readTextIfExists(cachePath));
   const cacheFresh = typeof cached?.lastCheck === 'number' && Date.now() - cached.lastCheck < UPDATE_CHECK_TTL_MS;
   if (!force && cacheFresh && cached?.latest) return newerThan(cached.latest, PACKAGE_VERSION) ? cached.latest : null;
@@ -78,20 +78,6 @@ async function settle<T>(work: Promise<T>, ms: number): Promise<T | null> {
   }
 }
 
-// Plain `npm view <spec> version` with no spinner, for background probes.
-async function npmViewVersion(spec: string, timeoutMs: number): Promise<string | null> {
-  try {
-    const exe = IS_WINDOWS ? process.env.ComSpec || 'cmd.exe' : 'npm';
-    const args = IS_WINDOWS
-      ? ['/d', '/s', '/c', 'npm', 'view', spec, 'version', '--prefer-online']
-      : ['view', spec, 'version', '--prefer-online'];
-    const r = await execP(exe, args, { timeout: timeoutMs, maxBuffer: 1024 * 1024, windowsHide: true, shell: false });
-    return r.stdout.trim() || null;
-  } catch {
-    return null;
-  }
-}
-
 // Run a child with inherited stdio for live output. Used when the child
 // renders its own interactive UI (the delegated installer runs Clack
 // spinners), which a concurrent outer spinner would corrupt into stray bars.
@@ -108,7 +94,9 @@ interface UpdatePlan {
   cli: string | null;
   rtk: [string | null, string | null];
   rule: [string | null, string | null];
-  ponytail: [string | null, string | null];
+  // Bundled with tersio: only the local copy is probed. Missing marks
+  // stale; present is never stale on its own.
+  ponytail: string | null;
 }
 
 // Current → latest per add-on. Every probe is capped and nullable; the plan
@@ -117,20 +105,19 @@ async function probeUpdatePlan(cliLatest: string | null): Promise<UpdatePlan> {
   const rtkBin = path.join(BUN_BIN_DIR, RTK_BINARY_NAME);
   const ponytailPkg = path.join(OMP_PLUGINS_DIR, 'node_modules', '@dietrichgebert', 'ponytail', 'package.json');
   const ruleDest = path.join(OMP_AGENT_DIR, 'extensions', 'caveman-session', 'rule.md');
-  const [rtkLocal, rtkRelease, ruleLocalText, ruleRemoteText, ponytailLocalText, ponytailLatest] = await Promise.all([
+  const [rtkLocal, rtkRelease, ruleLocalText, ruleRemoteText, ponytailLocalText] = await Promise.all([
     settle(execP(rtkBin, ['--version'], { timeout: 5000 }).then((r) => normalizeRtkVersion(r.stdout.trim() || r.stderr.trim()) || null), 6000),
     settle(fetchJson<RtkRelease>(RTK_RELEASE_API).then((r) => normalizeRtkVersion(r.tag_name) || null), 4000),
     readTextIfExists(ruleDest),
     settle(httpsGet(CAVEMAN_REMOTE_RULE), 4000),
     readTextIfExists(ponytailPkg),
-    settle(npmViewVersion('@dietrichgebert/ponytail', 4000), 5000),
   ]);
   const shortHash = (text: string | null): string | null => text === null ? null : sha256Hex(text).slice(0, 8);
   return {
     cli: cliLatest,
     rtk: [rtkLocal, rtkRelease],
     rule: [shortHash(ruleLocalText), shortHash(ruleRemoteText)],
-    ponytail: [ponytailLocalText ? parseJsonObject<{ version?: string }>(ponytailLocalText)?.version ?? null : null, ponytailLatest],
+    ponytail: ponytailLocalText ? parseJsonObject<{ version?: string }>(ponytailLocalText)?.version ?? null : null,
   };
 }
 
@@ -151,7 +138,11 @@ function planLines(plan: UpdatePlan): { stale: string[]; status: string[] } {
   push('Tersio', PACKAGE_VERSION, plan.cli);
   push('RTK', plan.rtk[0], plan.rtk[1]);
   push('Caveman rule', plan.rule[0], plan.rule[1]);
-  push('Ponytail', plan.ponytail[0], plan.ponytail[1]);
+  if (plan.ponytail) status.push(`Ponytail: ${plan.ponytail} (bundled with tersio)`);
+  else {
+    status.push('Ponytail: missing → bundled reinstall');
+    stale.push('Ponytail: missing → bundled reinstall');
+  }
   return { stale, status };
 }
 

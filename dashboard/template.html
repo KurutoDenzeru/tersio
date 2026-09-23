@@ -41,63 +41,120 @@
     </button>
   </header>
 
-  <!-- Settings dialog (shadcn pattern, native modal) -->
-  <dialog id="settings" class="dlg" aria-labelledby="settingsTitle">
-    <div class="dlg-head">
-      <div class="min-w-0">
-        <p class="dlg-title" id="settingsTitle">Settings</p>
-        <p class="dlg-desc">Appearance, data, and where statistics live. <span id="verChip" class="mono">tersio</span></p>
-      </div>
-      <button id="settingsClose" class="btn-push flex shrink-0 items-center p-2 rounded-xl" style="border: 1px solid var(--line); color: var(--ink)" aria-label="Close settings">
-        <i data-lucide="x" class="size-4"></i>
-      </button>
-    </div>
-    <p class="dlg-label">Appearance</p>
-    <div class="dlg-row">
-      <div class="min-w-0">
-        <p class="dlg-name">Theme</p>
-        <p class="dlg-hint">Light, dark, or follow the system.</p>
-      </div>
-      <div class="seg mono text-xs flex items-center gap-1 p-1 rounded-[10px]" style="border: 1px solid var(--line); background: var(--panel)" role="tablist" aria-label="Theme">
-        <button data-theme-val="light" class="px-2.5 py-1.5" role="tab" aria-label="Light" title="Light"><i data-lucide="sun" class="size-4"></i></button>
-        <button data-theme-val="dark" class="px-2.5 py-1.5" role="tab" aria-label="Dark" title="Dark"><i data-lucide="moon" class="size-4"></i></button>
-        <button data-theme-val="system" class="px-2.5 py-1.5" role="tab" aria-label="System" title="System"><i data-lucide="monitor" class="size-4"></i></button>
-      </div>
-    </div>
-    <p class="dlg-label">Data</p>
-    <div class="dlg-row">
-      <div class="min-w-0">
-        <p class="dlg-name">Reload</p>
-        <p class="dlg-hint">Re-read statistics from disk.</p>
-      </div>
-      <button id="reload" class="btn-push mono flex shrink-0 items-center gap-2 text-xs pl-2.5 pr-3 py-2 rounded-xl" style="border: 1px solid var(--line); color: var(--ink)" aria-label="Reload data">
-        <i data-lucide="refresh-cw" class="size-3.5"></i><span>Reload</span>
-      </button>
-    </div>
-    <div class="dlg-paths">
-      <div class="dlg-path">
-        <p class="dlg-name">Usage ledger <span class="dlg-own">tersio-owned · reset clears</span></p>
-        <p class="mono dlg-file" id="pathLedger" title="">–</p>
-      </div>
-      <div class="dlg-path">
-        <p class="dlg-name">Session transcripts <span class="dlg-own">host-owned · never touched</span></p>
-        <p class="mono dlg-file" id="pathSessions" title="">–</p>
-      </div>
-      <div class="dlg-path">
-        <p class="dlg-name">Usage DB <span class="dlg-own">tersio-owned · reset clears</span></p>
-        <p class="mono dlg-file" id="pathUsageDb" title="">–</p>
-      </div>
-    </div>
-    <div class="dlg-danger">
-      <p class="dlg-label">Danger zone</p>
-      <div class="dlg-row">
-        <div class="min-w-0">
-          <p class="dlg-name">Reset statistics</p>
-          <p class="dlg-hint">Clears tersio statistics. Host-owned files stay intact. Click twice to confirm.</p>
+  <!-- Settings modal (ChatGPT pattern): sidebar nav + content panes -->
+  <dialog id="settings" class="dlg setdlg" aria-labelledby="settingsTitle">
+    <div class="set-shell">
+      <aside class="set-side" aria-label="Settings sections">
+        <div class="set-search">
+          <i data-lucide="search" class="size-4"></i>
+          <input id="setSearch" type="search" placeholder="Search settings" aria-label="Search settings" autocomplete="off">
         </div>
-        <button id="reset" class="btn-push mono flex shrink-0 items-center gap-2 text-xs pl-2.5 pr-3 py-2 rounded-xl" style="border: 1px solid var(--danger-border)" aria-label="Reset tersio statistics">
-          <i data-lucide="rotate-ccw" class="size-3.5"></i><span id="resetLabel">Reset</span>
-        </button>
+        <nav class="set-nav" id="setNav" aria-label="Settings">
+          <button class="set-navitem on" data-pane="general"><i data-lucide="settings" class="size-4"></i><span>General</span></button>
+          <button class="set-navitem" data-pane="connection"><i data-lucide="plug" class="size-4"></i><span>Connection</span></button>
+          <button class="set-navitem" data-pane="diagnosis"><i data-lucide="stethoscope" class="size-4"></i><span>Diagnosis</span></button>
+          <button class="set-navitem" data-pane="data"><i data-lucide="database" class="size-4"></i><span>Data</span></button>
+        </nav>
+        <p class="mono set-ver" id="verChip">tersio</p>
+      </aside>
+      <div class="set-main">
+        <div class="set-head">
+          <p class="dlg-title" id="settingsTitle">General</p>
+          <button id="settingsClose" class="btn-push flex shrink-0 items-center p-2 rounded-xl" style="border: 1px solid var(--line); color: var(--ink)" aria-label="Close settings">
+            <i data-lucide="x" class="size-4"></i>
+          </button>
+        </div>
+        <div class="set-panes">
+          <section class="set-pane on" data-pane="general" aria-label="General">
+            <p class="dlg-label">Appearance</p>
+            <div class="dlg-row">
+              <div class="min-w-0">
+                <p class="dlg-name">Theme</p>
+                <p class="dlg-hint">Light, dark, or follow the system.</p>
+              </div>
+              <div class="seg mono text-xs flex items-center gap-1 p-1 rounded-[10px]" style="border: 1px solid var(--line); background: var(--panel)" role="tablist" aria-label="Theme">
+                <button data-theme-val="light" class="px-2.5 py-1.5" role="tab" aria-label="Light" title="Light"><i data-lucide="sun" class="size-4"></i></button>
+                <button data-theme-val="dark" class="px-2.5 py-1.5" role="tab" aria-label="Dark" title="Dark"><i data-lucide="moon" class="size-4"></i></button>
+                <button data-theme-val="system" class="px-2.5 py-1.5" role="tab" aria-label="System" title="System"><i data-lucide="monitor" class="size-4"></i></button>
+              </div>
+            </div>
+            <div class="dlg-row">
+              <div class="min-w-0">
+                <p class="dlg-name">Currency</p>
+                <p class="dlg-hint">Display currency for cost figures. Persists to tersio settings.</p>
+              </div>
+              <span class="selwrap">
+                <button id="setCurBtn" class="selbtn mono" aria-haspopup="listbox" aria-expanded="false"><span id="setCurLabel">USD</span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+                <span id="setCurPanel" class="selpanel hidden" role="listbox" aria-label="Display currency"></span>
+              </span>
+            </div>
+          </section>
+          <section class="set-pane" data-pane="connection" aria-label="Connection">
+            <div class="set-list" id="setHealth"></div>
+          </section>
+          <section class="set-pane" data-pane="diagnosis" aria-label="Diagnosis">
+            <p class="dlg-hint set-note">What works and what does not. Repair with <span class="mono">tersio doctor --fix</span>.</p>
+            <div class="dlg-row">
+              <div class="min-w-0">
+                <p class="dlg-name">Auto-check</p>
+                <p class="dlg-hint" id="setDiagChecked">Never checked.</p>
+              </div>
+              <span class="selwrap">
+                <button id="setSchedBtn" class="selbtn mono" aria-haspopup="listbox" aria-expanded="false"><span id="setSchedLabel">Manual</span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+                <span id="setSchedPanel" class="selpanel hidden" role="listbox" aria-label="Diagnosis schedule"></span>
+              </span>
+            </div>
+            <div class="dlg-row">
+              <div class="min-w-0">
+                <p class="dlg-name">Scan</p>
+                <p class="dlg-hint">Runs every check fresh and refreshes the list below.</p>
+              </div>
+              <button id="setDiagRefresh" class="btn-push mono flex shrink-0 items-center gap-2 text-xs pl-2.5 pr-3 py-2 rounded-xl" style="border: 1px solid var(--line); color: var(--ink)" aria-label="Scan now">
+                <i data-lucide="scan-line" class="size-3.5"></i><span>Scan</span>
+              </button>
+            </div>
+            <div class="set-list" id="setDoctor"></div>
+            <div class="set-fixbox">
+              <div class="min-w-0">
+                <p class="dlg-name">Fix issues</p>
+                <p class="dlg-hint">Repairs extension files, config registrations, and the bundled ponytail copy. RTK binary and CLI update stay manual.</p>
+              </div>
+              <button id="setFixIssues" class="btn-push mono flex shrink-0 items-center gap-2 text-xs pl-2.5 pr-3 py-2 rounded-xl" style="border: 1px solid var(--line); color: var(--ink)" aria-label="Fix diagnosed issues">
+                <i data-lucide="wrench" class="size-3.5"></i><span id="setFixLabel">Fix issues</span>
+              </button>
+            </div>
+          </section>
+          </section>
+          <section class="set-pane" data-pane="data" aria-label="Data">
+            <div class="dlg-row">
+              <div class="min-w-0">
+                <p class="dlg-name">Reload</p>
+                <p class="dlg-hint">Re-read statistics from disk.</p>
+              </div>
+              <button id="reload" class="btn-push mono flex shrink-0 items-center gap-2 text-xs pl-2.5 pr-3 py-2 rounded-xl" style="border: 1px solid var(--line); color: var(--ink)" aria-label="Reload data">
+                <i data-lucide="refresh-cw" class="size-3.5"></i><span>Reload</span>
+              </button>
+            </div>
+            <div class="dlg-paths">
+              <div class="dlg-path">
+                <p class="dlg-name">Usage DB <span class="dlg-own">tersio-owned · local hosted</span></p>
+                <p class="mono dlg-file" id="pathUsageDb" title="">–</p>
+              </div>
+            </div>
+            <div class="dlg-danger">
+              <p class="dlg-label">Danger zone</p>
+              <div class="dlg-row">
+                <div class="min-w-0">
+                  <p class="dlg-name">Reset statistics</p>
+                  <p class="dlg-hint">Clears tersio statistics. Host-owned files stay intact. Click twice to confirm.</p>
+                </div>
+                <button id="reset" class="btn-push mono flex shrink-0 items-center gap-2 text-xs pl-2.5 pr-3 py-2 rounded-xl" style="border: 1px solid var(--danger-border)" aria-label="Reset tersio statistics">
+                  <i data-lucide="rotate-ccw" class="size-3.5"></i><span id="resetLabel">Reset</span>
+                </button>
+              </div>
+            </div>
+          </section>
+        </div>
       </div>
     </div>
   </dialog>
@@ -405,6 +462,7 @@
 </div>
 </main>
 
+<script>window.__TERSIO_SNAP = null;</script>
 <script src="app.js" defer></script>
 </body>
 </html>

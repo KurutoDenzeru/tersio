@@ -69,7 +69,7 @@ test("dry-run previews shared bridge before dependent extensions without writing
   expect(shared >= 0, result.stdout).toBeTruthy();
   expect(rtk > shared, result.stdout).toBeTruthy();
   expect(caveman > shared, result.stdout).toBeTruthy();
-  expect(result.stdout).toMatch(/Ponytail — refresh plugin/);
+  expect(result.stdout).toMatch(/Ponytail — ensure bundled plugin/);
   expect(result.stdout).toMatch(/Tersio — register plugin/);
   expect(result.stdout).not.toMatch(/\/tmp|\/Users|\.omp\/agent\/extensions\/shared\/session-state\.js/);
   expect(existsSync(path.join(root, "extensions", "shared-session-state.js"))).toBe(false);
@@ -88,7 +88,7 @@ test("user dry-run installs mode reinforcement after Ponytail", () => {
   );
 
   expect(result.status, result.stderr).toBe(0);
-  const ponytail = result.stdout.indexOf("Ponytail — refresh plugin");
+  const ponytail = result.stdout.indexOf("Ponytail — ensure bundled plugin");
   const reinforcement = result.stdout.indexOf("Session helpers — sync shared files");
   expect(ponytail >= 0, result.stdout).toBeTruthy();
   expect(reinforcement > ponytail, result.stdout).toBeTruthy();
@@ -142,7 +142,7 @@ test("reinstall --dry-run previews uninstall then install without writing", () =
 
   expect(result.status, result.stderr).toBe(0);
   const uninstall = result.stdout.indexOf("=== Tersio Uninstall ===");
-  const install = result.stdout.indexOf("Ponytail — refresh plugin");
+  const install = result.stdout.indexOf("Ponytail — ensure bundled plugin");
   expect(uninstall >= 0, result.stdout).toBeTruthy();
   expect(install > uninstall, "uninstall runs before the fresh install").toBeTruthy();
   expect(result.stdout).toMatch(/\[dry-run\] would remove /);
@@ -427,9 +427,10 @@ test("doctor prints record store paths", () => {
   });
   expect(result.status, result.stderr).toBe(0);
   expect(result.stdout).toMatch(/^Usage & records$/m);
-  expect(result.stdout).toMatch(new RegExp(`Usage ledger \\(tersio-owned[^)]*\\): ${ledger.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
-  expect(result.stdout).toMatch(/Session transcripts \(host-owned/);
   expect(result.stdout).toMatch(/Usage DB \(tersio-owned/);
+  expect(result.stdout).not.toMatch(/Usage ledger/);
+  expect(result.stdout).not.toMatch(/Session transcripts/);
+  expect(result.stdout).not.toMatch(/RTK history/);
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -455,7 +456,7 @@ test("gain --export includes the reset control and empty states", () => {
   expect(body).toMatch(/emptyState\('boxes'/);
   expect(body).toMatch(/id="settings"/);
   expect(body).toMatch(/id="settingsBtn"/);
-  expect(body).toMatch(/id="pathLedger"/);
+  expect(body).toMatch(/id="pathUsageDb"/);
   expect(body).toMatch(/id="modelDialog"/);
   expect(body).toMatch(/openModelDialog/);
   expect(body).toMatch(/id="emptyModels"/);

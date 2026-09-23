@@ -78,6 +78,34 @@ test("uninstall removes extension dirs, self registration, and combo config entr
   }
 });
 
+test("uninstall removes the bundled ponytail copy even with no legacy dep entry", () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-uninstall-"));
+  try {
+    seed(home);
+    // Post-bundle state: no separate dep or lock entry, only the
+    // tersio-owned directory.
+    const pluginsDir = path.join(home, ".omp", "plugins");
+    writeFileSync(
+      path.join(pluginsDir, "package.json"),
+      JSON.stringify({ dependencies: { [SELF]: "y" } }),
+      "utf8",
+    );
+    writeFileSync(
+      path.join(pluginsDir, "omp-plugins.lock.json"),
+      JSON.stringify({ plugins: { [SELF]: {} }, settings: {} }),
+      "utf8",
+    );
+    const result = run(home, "uninstall", "--yes");
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(!existsSync(path.join(pluginsDir, "node_modules", PONYTAIL)), "bundled ponytail removed").toBeTruthy();
+    const config = readFileSync(path.join(home, ".omp", "agent", "config.yml"), "utf8");
+    expect(config).not.toMatch(/ponytail/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test("uninstall --keep-ponytail keeps the plugin, dep, lock entry, and config line", () => {
   const home = mkdtempSync(path.join(os.tmpdir(), "tersio-uninstall-"));
   try {
