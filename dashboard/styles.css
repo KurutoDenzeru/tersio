@@ -197,6 +197,7 @@
     .live-dot { animation: none; }
     .tilt, .btn-push, .mrow, .bar-fill { transition: none; }
     .hero-glow, .ticker { animation: none; }
+    .skel { animation: none; }
   }
   /* Empty states (shadcn pattern): dashed well, icon chip, title + hint. */
   .empty { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 2px; border: 1px dashed var(--line); border-radius: 12px; padding: 32px 16px; }
@@ -241,8 +242,9 @@
   .set-navitem.hide { display: none; }
   .set-ver { margin-top: auto; font-size: 11px; color: var(--dim); padding: 0 10px; }
   .set-main { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-  .set-x { position: absolute; top: 14px; right: 14px; z-index: 5; display: flex; align-items: center; padding: 8px; border-radius: 10px; border: 1px solid var(--line); color: var(--ink); background: var(--panel); }
-  .set-panes { overflow-y: auto; min-height: 0; padding: 36px 20px 20px; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+  .set-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 20px 0; }
+  .set-pane > .dlg-row:first-child { margin-top: 14px; }
+  .set-panes { overflow-y: auto; min-height: 0; padding: 0 20px 20px; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
   .set-pane { display: none; }
   .set-pane.on { display: block; animation: set-in .16s ease-out; }
   @keyframes set-in { from { opacity: 0; transform: translateY(6px); } }
@@ -274,6 +276,13 @@
   #setDoctor { max-height: 380px; overflow-y: auto; min-height: 0; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
   .set-group { font-size: 11px; text-transform: uppercase; letter-spacing: .14em; color: var(--dim); margin: 12px 0 2px; }
   .set-group:first-child { margin-top: 4px; }
+  .skel-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 2px; border-bottom: 1px solid var(--line); }
+  .skel-col { flex: 1; min-width: 0; }
+  .skel { display: block; border-radius: 6px; background: var(--track); animation: skel-pulse 1.2s ease-in-out infinite; }
+  .skel.t { height: 14px; width: 42%; }
+  .skel.s { height: 11px; width: 64%; margin-top: 6px; }
+  .skel.v { height: 12px; width: 64px; flex-shrink: 0; }
+  @keyframes skel-pulse { 0%, 100% { opacity: .45; } 50% { opacity: 1; } }
   .set-pane[data-pane="diagnosis"] .dlg-row { margin-bottom: 14px; }
   .set-fixrow { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
   .set-fixhint { font-size: 11px; color: var(--dim); }

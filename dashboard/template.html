@@ -58,9 +58,12 @@
         <p class="mono set-ver" id="verChip">tersio</p>
       </aside>
       <div class="set-main">
-        <button id="settingsClose" class="btn-push set-x" aria-label="Close settings">
-          <i data-lucide="x" class="size-4"></i>
-        </button>
+        <div class="set-head">
+          <p class="dlg-title" id="settingsTitle">General</p>
+          <button id="settingsClose" class="btn-push flex shrink-0 items-center p-2 rounded-xl" style="border: 1px solid var(--line); color: var(--ink)" aria-label="Close settings">
+            <i data-lucide="x" class="size-4"></i>
+          </button>
+        </div>
         <div class="set-panes">
           <section class="set-pane on" data-pane="general" aria-label="General">
             <p class="dlg-label">Appearance</p>
@@ -87,11 +90,9 @@
             </div>
           </section>
           <section class="set-pane" data-pane="connection" aria-label="Connection">
-            <p class="dlg-label">Connection</p>
             <div class="set-list" id="setHealth"></div>
           </section>
           <section class="set-pane" data-pane="diagnosis" aria-label="Diagnosis">
-            <p class="dlg-label">Doctor diagnosis</p>
             <p class="dlg-hint set-note">What works and what does not. Repair with <span class="mono">tersio doctor --fix</span>.</p>
             <div class="dlg-row">
               <div class="min-w-0">
@@ -125,7 +126,6 @@
           </section>
           </section>
           <section class="set-pane" data-pane="data" aria-label="Data">
-            <p class="dlg-label">Data</p>
             <div class="dlg-row">
               <div class="min-w-0">
                 <p class="dlg-name">Reload</p>
@@ -137,7 +137,7 @@
             </div>
             <div class="dlg-paths">
               <div class="dlg-path">
-                <p class="dlg-name">Usage DB <span class="dlg-own">local file · reset clears</span></p>
+                <p class="dlg-name">Usage DB <span class="dlg-own">tersio-owned · local hosted</span></p>
                 <p class="mono dlg-file" id="pathUsageDb" title="">–</p>
               </div>
             </div>

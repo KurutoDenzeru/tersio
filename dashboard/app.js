@@ -1465,7 +1465,10 @@
     var dlg = document.getElementById('settings');
     if (!dlg) return;
     var nav = document.getElementById('setNav');
+    var title = document.getElementById('settingsTitle');
+    var TITLES = { general: 'General', connection: 'Connection', diagnosis: 'Diagnosis', data: 'Data' };
     function show(name) {
+      if (title) title.textContent = TITLES[name] || 'Settings';
       Array.prototype.forEach.call(nav.querySelectorAll('.set-navitem'), function(b) {
         b.classList.toggle('on', b.dataset.pane === name);
       });
@@ -1582,10 +1585,17 @@
     }
     function loadDoctor(fresh) {
       var el = document.getElementById('setDoctor');
-      el.innerHTML = row('Diagnosis', 'checking…', null);
+      el.innerHTML = skeleton();
+      var snapMode = window.location.protocol === 'file:';
       apiGet(fresh ? 'doctor?fresh=1' : 'doctor').then(function(r) { return r.json(); }).then(function(d) {
         paintDoctor(d);
+        if (fresh && snapMode) toast('Snapshot export', 'Live scan needs tersio gain.', 'scan-line');
       }).catch(function() { el.innerHTML = row('Diagnosis', 'unreachable', false); });
+    }
+    function skeleton() {
+      var h = '';
+      for (var i = 0; i < 5; i++) h += '<div class="skel-row" aria-hidden="true"><span class="skel-col"><span class="skel t"></span><span class="skel s"></span></span><span class="skel v"></span></div>';
+      return h;
     }
     document.getElementById('setDiagRefresh').addEventListener('click', function() { loadDoctor(true); });
     document.getElementById('setFixIssues').addEventListener('click', function() {
