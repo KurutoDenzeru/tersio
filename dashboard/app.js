@@ -1579,8 +1579,7 @@
       var el = document.getElementById('setHealth');
       apiGet('health').then(function(r) { return r.json(); }).then(function(h) {
         el.innerHTML =
-          row('Status', h.omp ? 'Connected' : 'Offline', !!h.omp, h.omp ? 'wrapped with omp ' + escH(h.omp) : 'omp CLI not found') +
-          row('Data home', escH(h.home || ''), true);
+          row('Status', h.omp ? 'Connected' : 'Offline', !!h.omp, h.omp ? 'wrapped with omp ' + escH(h.omp) : 'omp CLI not found');
       }).catch(function() { el.innerHTML = row('Status', 'unreachable', false); });
     }
     function loadDoctor(fresh) {
