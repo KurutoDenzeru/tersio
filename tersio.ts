@@ -34,7 +34,7 @@ Commands:
 Options:
   --fix (doctor: repairs all; --fix=<scope> repairs one of extensions, registrations, rtk, ponytail, cli)
   --scope user (legacy; accepted and ignored — user scope is the only scope)
-  --keep-ponytail (uninstall: keep the Ponytail plugin — removed by default)
+  --keep-ponytail (uninstall: keep the bundled Ponytail copy — removed by default)
   --remove-rtk (uninstall: also remove the RTK binary)
   --combo-default off|medium|balanced|max (implies caveman, rtk, ponytail)
   --caveman-default off|lite|full|ultra|wenyan (override; default follows combo)

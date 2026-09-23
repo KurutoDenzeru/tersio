@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  BUN_BIN_DIR, OMP_AGENT_DIR, OMP_PLUGINS_DIR, OMP_BIN,
+  BUN_BIN_DIR, OMP_AGENT_DIR, OMP_PLUGINS_DIR,
   PACKAGE_NAME, PACKAGE_VERSION, RTK_BINARY_NAME,
   dryRun, verbose,
   debug, ensureExtensionAfterConfigEntry, ensureExtensionInConfig,
@@ -37,8 +37,6 @@ const SOURCES: Array<[string, string]> = [
   [path.join(EXT_DIR, 'tersio-commands', 'index.ts'), path.join('tersio-commands', 'index.ts')],
   [path.join(EXT_DIR, 'shared', 'mode-reinforcement.ts'), path.join('shared', 'mode-reinforcement.ts')],
 ];
-const PONYTAIL_GITHUB_SPEC = 'github:DietrichGebert/ponytail';
-const PONYTAIL_NPM_SPEC = '@dietrichgebert/ponytail@latest';
 
 async function fixExtensions(extDir: string): Promise<void> {
   console.log('  Doctor --fix: restoring extension files');
@@ -132,22 +130,23 @@ async function fixRtk(binDir: string): Promise<void> {
 }
 
 async function fixPonytail(pluginsDir: string, agentDir: string): Promise<void> {
-  console.log('  Doctor --fix: refreshing Ponytail package');
+  console.log('  Doctor --fix: restoring bundled Ponytail');
   await fs.mkdir(pluginsDir, { recursive: true });
   const pkgPath = path.join(pluginsDir, 'package.json');
   const pkg = await readPluginsPackage(pkgPath);
-  pkg.dependencies['@dietrichgebert/ponytail'] = PONYTAIL_GITHUB_SPEC;
+  // Drop the legacy separate entry: ponytail is a tersio dependency now.
+  if ('@dietrichgebert/ponytail' in pkg.dependencies) {
+    delete pkg.dependencies['@dietrichgebert/ponytail'];
+    console.log('  [migrate] dropped separate @dietrichgebert/ponytail dependency (now bundled with tersio)');
+  }
+  if (!(PACKAGE_NAME in pkg.dependencies)) pkg.dependencies[PACKAGE_NAME] = `^${PACKAGE_VERSION}`;
   if (dryRun) {
-    console.log(`  [dry-run] would run: omp plugin install ${PONYTAIL_GITHUB_SPEC}`);
-    console.log(`  [dry-run] would run: npm install ${PONYTAIL_NPM_SPEC} --save --no-audit --no-fund`);
+    console.log('  [dry-run] would run: npm install --no-audit --no-fund (in plugins dir)');
     return;
   }
   await fs.writeFile(pkgPath, JSON.stringify(pkg, null, 2) + '\n', 'utf8');
-  await execNetwork('Installing Ponytail plugin', OMP_BIN, ['plugin', 'install', PONYTAIL_GITHUB_SPEC], { cwd: pluginsDir }).catch((e) => {
-    console.log(`  [warn] omp plugin install failed: ${(e as Error).message}`);
-  });
-  await execNetwork('Refreshing Ponytail package', 'npm', ['install', PONYTAIL_NPM_SPEC, '--save', '--no-audit', '--no-fund'], { cwd: pluginsDir, timeout: 120000 }).catch((e) => {
-    throw new Error(`ponytail refresh failed: ${(e as Error).message}`);
+  await execNetwork('Restoring bundled Ponytail', 'npm', ['install', '--no-audit', '--no-fund'], { cwd: pluginsDir, timeout: 180000 }).catch((e) => {
+    throw new Error(`bundled ponytail restore failed: ${(e as Error).message}`);
   });
   await ensureExtensionInConfig(
     path.join(agentDir, 'config.yml'),

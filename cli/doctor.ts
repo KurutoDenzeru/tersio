@@ -229,7 +229,7 @@ async function runDoctorFix(tally: DoctorSummary): Promise<void> {
       { value: 'extensions', label: 'Missing extension files', hint: 'copy sources from this CLI' },
       { value: 'registrations', label: 'config.yml registrations', hint: 'combo, ponytail, rtk.ts entries' },
       { value: 'rtk', label: 'RTK binary + wiring', hint: 'download checksum-verified binary, rtk init' },
-      { value: 'ponytail', label: 'Ponytail package', hint: 'omp plugin install + npm refresh' },
+      { value: 'ponytail', label: 'Ponytail package', hint: 'bundled reinstall via tersio dep' },
       { value: 'cli', label: 'CLI update', hint: 'latest tersio + delegated refresh' },
     ], 'all');
     if (picked.status !== 'selected') { process.exitCode = 130; return; }

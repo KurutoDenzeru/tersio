@@ -49,92 +49,59 @@ const SHARED_USAGE_LEDGER = path.join(EXT_DIR, 'shared', 'usage-ledger.ts');
 const SHARED_PRICING = path.join(EXT_DIR, 'shared', 'pricing.ts');
 const SHARED_CARBON = path.join(EXT_DIR, 'shared', 'carbon.ts');
 
-const PONYTAIL_GITHUB_SPEC = 'github:DietrichGebert/ponytail';
-const PONYTAIL_NPM_SPEC = '@dietrichgebert/ponytail@latest';
-
 async function stepPonytail(pluginsDir: string, userDir: string, options: InstallOptions): Promise<void> {
-  if (!options.quiet) console.log('  Ponytail — refresh plugin');
+  if (!options.quiet) console.log('  Ponytail — ensure bundled plugin');
   await fs.mkdir(pluginsDir, { recursive: true });
   const pkgPath = path.join(pluginsDir, 'package.json');
   const pkg = await readPluginsPackage(pkgPath);
-  pkg.dependencies['@dietrichgebert/ponytail'] = PONYTAIL_GITHUB_SPEC;
+  // Migration: ponytail was a separate plugin row. It is now a tersio
+  // dependency, so drop the legacy row. Runs after stepSelfPlugin.
+  let migrated = false;
+  if ('@dietrichgebert/ponytail' in pkg.dependencies) {
+    delete pkg.dependencies['@dietrichgebert/ponytail'];
+    migrated = true;
+  }
 
   if (options.dryRun) {
     if (verbose && !options.quiet) console.log(`  [dry-run] would write ${pkgPath}`);
-  } else {
+    if (migrated && verbose && !options.quiet) console.log(`  [dry-run] would drop the separate @dietrichgebert/ponytail dependency (bundled with tersio)`);
+  } else if (migrated) {
     await fs.writeFile(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
+    if (!options.quiet) console.log('  [migrate] dropped separate @dietrichgebert/ponytail dependency (now bundled with tersio)');
   }
 
   const ponytailExtPath = path.join(pluginsDir, 'node_modules', '@dietrichgebert', 'ponytail', 'pi-extension', 'index.js');
   const probeExt = async (): Promise<boolean> => (await readTextIfExists(ponytailExtPath)) !== null;
-  // Fast path: extension already present and no refresh asked — skip network.
+  // Fast path: bundled copy already present and no refresh asked — skip network.
   let ponytailExtExists = !options.reinstall && !options.dryRun ? await probeExt() : false;
   if (ponytailExtExists) {
-    debug('Ponytail pi-extension already installed; skipping network refresh');
+    debug('Bundled Ponytail pi-extension already installed; skipping network refresh');
   } else if (options.dryRun) {
     // Dry runs preview the wiring below without touching the network.
-    if (verbose && !options.quiet) console.log(`  [dry-run] would run: omp plugin install ${PONYTAIL_GITHUB_SPEC}`);
-    if (options.reinstall && verbose && !options.quiet) {
-      console.log(`  [dry-run] would run: npm install ${PONYTAIL_NPM_SPEC} --save --no-audit --no-fund`);
-    }
+    if (verbose && !options.quiet) console.log('  [dry-run] would run: npm install --no-audit --no-fund (in plugins dir)');
     ponytailExtExists = true;
   } else {
-    // Try omp plugin install first
+    // Self-plugin npm install already materialized the bundled copy.
+    // Reinstall here only when the probe still misses.
     try {
-      await execNetwork('Installing Ponytail plugin', OMP_BIN, ['plugin', 'install', PONYTAIL_GITHUB_SPEC], { cwd: pluginsDir });
-    } catch (e) {
-      console.log(`  [warn] omp plugin install failed: ${(e as Error).message}`);
-    }
-
-    if (options.reinstall) {
+      await execNetwork('Installing bundled Ponytail', 'npm', ['install', '--no-audit', '--no-fund'], { cwd: pluginsDir, timeout: 180000 });
+    } catch {
       try {
-        await execNetwork('Refreshing Ponytail package', 'npm', ['install', PONYTAIL_NPM_SPEC, '--save', '--no-audit', '--no-fund'], { cwd: pluginsDir, timeout: 120000 });
+        await execNetwork('Installing bundled Ponytail', 'bun', ['install'], { cwd: pluginsDir, timeout: 180000 });
       } catch (e) {
-        console.log(`  [fail] Could not refresh ponytail: ${(e as Error).message}`);
-        console.log(`  [hint] Manual: cd ~/.omp/plugins && npm install ${PONYTAIL_NPM_SPEC} --save --no-audit --no-fund`);
+        console.log(`  [fail] Could not install bundled ponytail: ${(e as Error).message}`);
+        console.log('  [hint] Manual: cd ~/.omp/plugins && npm install --no-audit --no-fund');
       }
     }
-
-    // Verify the pi-extension/index.js actually exists
     ponytailExtExists = await probeExt();
-
-    // Fallback: try bun install or npm install
-    if (!ponytailExtExists) {
-      if (!options.quiet) console.log('  [info] pi-extension/index.js not found after omp plugin install — trying npm/bun install...');
-      try {
-        await execNetwork('Installing Ponytail dependencies', 'npm', ['install'], { cwd: pluginsDir, timeout: 120000 });
-      } catch {
-        try {
-          await execNetwork('Installing Ponytail dependencies', 'bun', ['install'], { cwd: pluginsDir, timeout: 120000 });
-        } catch (e2) {
-          console.log(`  [fail] Could not install ponytail: ${(e2 as Error).message}`);
-          console.log('  [hint] Manual: cd ~/.omp/plugins && npm install');
-        }
-      }
-      ponytailExtExists = await probeExt();
-    }
-
-    // Last-resort fallback: git clone the repo into node_modules
-    if (!ponytailExtExists) {
-      if (!options.quiet) console.log('  [info] npm/bun did not produce pi-extension — trying git clone...');
-      try {
-        const dest = path.join(pluginsDir, 'node_modules', '@dietrichgebert', 'ponytail');
-        await fs.mkdir(path.dirname(dest), { recursive: true });
-        await execNetwork('Cloning Ponytail repository', 'git', ['clone', '--depth', '1', 'https://github.com/DietrichGebert/ponytail.git', dest], { timeout: 180000 });
-        ponytailExtExists = await probeExt();
-      } catch (e3) {
-        console.log(`  [fail] git clone failed: ${(e3 as Error).message}`);
-        console.log('  [hint] Install git or check network: https://github.com/DietrichGebert/ponytail');
-      }
-    }
   }
 
   if (!ponytailExtExists) {
-    console.log('  [skip] Ponytail pi-extension/index.js still not found — skill-only mode');
+    console.log('  [skip] Bundled Ponytail pi-extension/index.js still not found — skill-only mode');
     console.log('  [hint] The /ponytail command won\'t work, but ponytail skills will still load');
   } else if (!options.dryRun && !options.quiet) {
     // Wire extension into config.yml so /ponytail command loads
-    debug('Ponytail pi-extension found');
+    debug('Bundled Ponytail pi-extension found');
   }
   // Still set Ponytail config defaults even without the extension command
   const configPath = path.join(userDir, 'config.yml');
@@ -677,9 +644,9 @@ async function runInstall(overrides: { reinstall?: boolean } = {}): Promise<void
     }
   };
   await capture('shared', () => stepSharedSessionState(userExtDir, options));
-  await capture('ponytail', () => stepPonytail(OMP_PLUGINS_DIR, userDir, options));
   let selfPlugin = false;
   await capture('self-plugin', async () => { selfPlugin = await stepSelfPlugin(OMP_PLUGINS_DIR, options); });
+  await capture('ponytail', () => stepPonytail(OMP_PLUGINS_DIR, userDir, options));
   const ponytailExtPath = path.join(OMP_PLUGINS_DIR, 'node_modules', '@dietrichgebert', 'ponytail', 'pi-extension', 'index.js');
   await capture('rtk', () => stepRtk(BUN_BIN_DIR, options));
   await capture('rtk session', () => stepRtkSession(userExtDir, options));

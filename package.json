@@ -25,42 +25,22 @@
   "omp": {
     "name": "Tersio",
     "description": "Toggleable Caveman/RTK/Ponytail session modes with Combo presets",
-    "extensions": [],
+    "extensions": [
+      "./extensions/caveman-session/index.ts",
+      "./extensions/rtk-session/index.ts",
+      "./extensions/combo-toggle/index.ts",
+      "./extensions/shared/mode-reinforcement.ts",
+      "./extensions/tersio-commands/index.ts"
+    ],
+    "skills": [
+      "./node_modules/@dietrichgebert/ponytail/skills"
+    ],
     "features": {
-      "caveman": {
-        "description": "Caveman terse-reply session mode (/caveman)",
-        "default": true,
-        "extensions": [
-          "./extensions/caveman-session/index.ts"
-        ]
-      },
-      "rtk": {
-        "description": "RTK compact shell-output session mode (/rtk)",
-        "default": true,
-        "extensions": [
-          "./extensions/rtk-session/index.ts"
-        ]
-      },
-      "ponytail": {
-        "description": "Combo presets + Ponytail mode reinforcement (/combo)",
-        "default": true,
-        "extensions": [
-          "./extensions/combo-toggle/index.ts",
-          "./extensions/shared/mode-reinforcement.ts"
-        ]
-      },
       "updater": {
         "description": "In-session updater for Ponytail, RTK, and Caveman (/ai-addons)",
         "default": true,
         "extensions": [
           "./extensions/ai-addons-updater/index.ts"
-        ]
-      },
-      "tersio": {
-        "description": "Unified /tersio root command",
-        "default": true,
-        "extensions": [
-          "./extensions/tersio-commands/index.ts"
         ]
       }
     },
@@ -149,6 +129,7 @@
     "vitest": "^5.0.1"
   },
   "dependencies": {
-    "@clack/prompts": "^1.8.0"
+    "@clack/prompts": "^1.8.0",
+    "@dietrichgebert/ponytail": "^4.10.0"
   }
 }
