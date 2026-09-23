@@ -31,7 +31,10 @@ export interface DashboardOptions {
 const DASH_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'dashboard');
 const TEMPLATE = path.join(DASH_DIR, 'template.html');
 const STYLES = path.join(DASH_DIR, 'styles.css');
-const APP = path.join(DASH_DIR, 'app.js');
+const CORE_JS = path.join(DASH_DIR, 'core.js');
+const CHARTS_JS = path.join(DASH_DIR, 'charts.js');
+const SETTINGS_JS = path.join(DASH_DIR, 'settings.js');
+const SHARE_JS = path.join(DASH_DIR, 'share.js');
 const BRAND = path.join(DASH_DIR, 'brand.webp');
 
 async function readSegment(file: string): Promise<string> {
@@ -277,8 +280,9 @@ function openBrowser(url: string): void {
 
 async function runDashboard(options: DashboardOptions): Promise<void> {
   if (options.exportFile) {
-    const [template, css, js, icon] = await Promise.all([
-      readSegment(TEMPLATE), readSegment(STYLES), readSegment(APP), faviconDataUri(),
+    const [template, css, core, charts, settings, share, icon] = await Promise.all([
+      readSegment(TEMPLATE), readSegment(STYLES), readSegment(CORE_JS), readSegment(CHARTS_JS),
+      readSegment(SETTINGS_JS), readSegment(SHARE_JS), faviconDataUri(),
     ]);
     // Replacer functions throughout: session data routinely contains `$'`
     // sequences (shell quoting in tool details), which String.replace would
@@ -289,7 +293,10 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
     // backslash form inside a string literal, the browser decodes it first.
     const inline = template
       .replace('<link rel="stylesheet" href="styles.css">', () => `<style>\n${css}</style>`)
-      .replace('<script src="app.js" defer></script>', () => `<script>\n${js}</script>`)
+      .replace('<script src="core.js" defer></script>', () => `<script>\n${core}</script>`)
+      .replace('<script src="charts.js" defer></script>', () => `<script>\n${charts}</script>`)
+      .replace('<script src="settings.js" defer></script>', () => `<script>\n${settings}</script>`)
+      .replace('<script src="share.js" defer></script>', () => `<script>\n${share}</script>`)
       .replace('window.__TERSIO_SNAP = null;', () => `window.__TERSIO_SNAP = ${JSON.stringify({ health: JSON.parse(healthJson()), doctor: getDoctorReport(false) }).replace(/<\/(script)/gi, '<\\/$1')};`)
       .replace(
         "fetch('data.json')",
@@ -300,7 +307,7 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
       // the export only; template.html keeps it to avoid 404 polling loops.
       .replace("if (window.location.protocol === 'file:') return;", () => `if (false) return;`)
       .replace('href="brand.webp"', () => `href="${icon}"`)
-      .replace('src="brand.webp"', () => `src="${icon}"`);
+      .replace(/src="brand.webp"/g, () => `src="${icon}"`);
     await fs.writeFile(options.exportFile, inline, 'utf8');
     console.log(`[ok] gain exported → ${options.exportFile}`);
     return;
@@ -374,9 +381,15 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
       res.end(await readSegment(STYLES));
       return;
     }
-    if (req.url === '/app.js') {
+    const scripts: Record<string, string> = {
+      '/core.js': CORE_JS,
+      '/charts.js': CHARTS_JS,
+      '/settings.js': SETTINGS_JS,
+      '/share.js': SHARE_JS,
+    };
+    if (req.url !== undefined && req.url in scripts) {
       res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' });
-      res.end(await readSegment(APP));
+      res.end(await readSegment(scripts[req.url]));
       return;
     }
     if (req.url === '/brand.webp') {
