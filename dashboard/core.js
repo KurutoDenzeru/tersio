@@ -263,7 +263,7 @@
       render(d);
     }).catch(function() {
       var cards = document.getElementById('modelCards');
-      if (cards && !cards.children.length) cards.innerHTML = '<div class="empty md:col-span-3">' + emptyState('cloud-off', 'Could not load data', 'Serve with tersio gain instead of opening this file directly.') + '</div>';
+      if (cards && !cards.children.length) cards.innerHTML = '<div class="empty md:col-span-3">' + T.emptyState('cloud-off', 'Could not load data', 'Serve with tersio gain instead of opening this file directly.') + '</div>';
       if (window.lucide) lucide.createIcons();
       observe();
     });
@@ -350,7 +350,8 @@
   T.showTip = showTip;
   T.moveTip = moveTip;
   T.hideTip = hideTip;
-  T.emptyState = emptyState;
+  T.observe = observe;
   T.reduce = reduce;
   T.hasGsap = hasGsap;
+  T.hasST = hasST;
 })();

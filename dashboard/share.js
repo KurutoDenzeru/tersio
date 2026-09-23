@@ -103,6 +103,15 @@
     function svgCard() {
       var s = shareStats();
       function e(x) { return String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;'); }
+      // Render honors the active theme: explicit choice wins, otherwise the
+      // OS preference (same rule as applyTheme).
+      var themeChoice = null;
+      try { themeChoice = localStorage.getItem('tersio-theme'); } catch (err) { }
+      var dark = themeChoice ? themeChoice === 'dark'
+        : !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      var pal = dark
+        ? { bg: '#09090b', ink: '#f4f4f5', dim: '#a1a1aa', accent: '#34d399' }
+        : { bg: '#ffffff', ink: '#18181b', dim: '#52525b', accent: '#047857' };
       var h = heatVals(182);
       var cw = 32, gap = 9, step = cw + gap, gx = 64, gy = 340, grid = '';
       for (var gd = 0; gd < 7; gd++) {
@@ -110,31 +119,31 @@
           var gv = h.vals[gw * 7 + gd];
           var gs = h.max ? Math.sqrt(gv / h.max) : 0;
           var go = gv ? (0.45 + 0.55 * gs).toFixed(2) : 0.13;
-          grid += '<rect x="' + (gx + gw * step) + '" y="' + (gy + gd * step) + '" width="' + cw + '" height="' + cw + '" rx="8" fill="#34d399" opacity="' + go + '"/>';
+          grid += '<rect x="' + (gx + gw * step) + '" y="' + (gy + gd * step) + '" width="' + cw + '" height="' + cw + '" rx="8" fill="' + pal.accent + '" opacity="' + go + '"/>';
         }
       }
       var streakTxt = s.streak + (s.streak === 1 ? ' day' : ' days');
       var logo = brandURI ? '<clipPath id="blogo"><rect x="1012" y="40" width="124" height="124" rx="62"/></clipPath>' +
         '<image x="1012" y="40" width="124" height="124" clip-path="url(#blogo)" href="' + brandURI + '"/>' : '';
       return '<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="850" viewBox="0 0 1200 850">' +
-        '<rect width="1200" height="850" rx="28" fill="#09090b"/>' +
-        '<path d="M1090 700 L980 800 h70 l-8 60 80 -96 h-70 l8 -64 z" fill="none" stroke="#34d399" stroke-width="14" opacity="0.08" stroke-linejoin="round"/>' +
-        '<text x="64" y="80" font-family="monospace" font-size="26" letter-spacing="6" fill="#34d399">TERSIO · USAGE PROFILE</text>' +
-        '<text x="60" y="250" font-family="monospace" font-size="130" font-weight="bold" fill="#f4f4f5">' + e(fmtShort(s.total) + ' tokens') + '</text>' +
-        '<text x="64" y="300" font-family="monospace" font-size="30" fill="#a1a1aa">across ' + e(fmt(s.runs)) + ' agent runs</text>' +
+        '<rect width="1200" height="850" rx="28" fill="' + pal.bg + '"/>' +
+        '<path d="M1090 700 L980 800 h70 l-8 60 80 -96 h-70 l8 -64 z" fill="none" stroke="' + pal.accent + '" stroke-width="14" opacity="0.08" stroke-linejoin="round"/>' +
+        '<text x="64" y="80" font-family="monospace" font-size="26" letter-spacing="6" fill="' + pal.accent + '">TERSIO · USAGE PROFILE</text>' +
+        '<text x="60" y="250" font-family="monospace" font-size="130" font-weight="bold" fill="' + pal.ink + '">' + e(fmtShort(s.total) + ' tokens') + '</text>' +
+        '<text x="64" y="300" font-family="monospace" font-size="30" fill="' + pal.dim + '">across ' + e(fmt(s.runs)) + ' agent runs</text>' +
         grid +
-        '<text x="64" y="680" font-family="monospace" font-size="24" letter-spacing="3" fill="#a1a1aa">AVG / RUN</text>' +
-        '<text x="64" y="725" font-family="monospace" font-size="40" font-weight="bold" fill="#f4f4f5">' + e(fmtShort(s.avg) + ' / run') + '</text>' +
-        '<text x="430" y="680" font-family="monospace" font-size="24" letter-spacing="3" fill="#a1a1aa">SAVED</text>' +
-        '<text x="430" y="725" font-family="monospace" font-size="40" font-weight="bold" fill="#f4f4f5">' + e(fxMoney(s.saved)) + '</text>' +
-        '<text x="830" y="680" font-family="monospace" font-size="24" letter-spacing="3" fill="#a1a1aa">DAY STREAK</text>' +
-        '<text x="830" y="725" font-family="monospace" font-size="40" font-weight="bold" fill="#f4f4f5">' + e(streakTxt) + '</text>' +
-        '<text x="64" y="775" font-family="monospace" font-size="24" letter-spacing="3" fill="#a1a1aa">BEST DAY</text>' +
-        '<text x="64" y="820" font-family="monospace" font-size="40" font-weight="bold" fill="#f4f4f5">' + e(fmtShort(s.best)) + '</text>' +
-        '<text x="430" y="775" font-family="monospace" font-size="24" letter-spacing="3" fill="#a1a1aa">EST. COST</text>' +
-        '<text x="430" y="820" font-family="monospace" font-size="40" font-weight="bold" fill="#f4f4f5">' + e(fxMoney(s.cost)) + '</text>' +
-        '<text x="830" y="775" font-family="monospace" font-size="24" letter-spacing="3" fill="#a1a1aa">MODELS</text>' +
-        '<text x="830" y="820" font-family="monospace" font-size="40" font-weight="bold" fill="#f4f4f5">' + e(s.models) + '</text>' +
+        '<text x="64" y="680" font-family="monospace" font-size="24" letter-spacing="3" fill="' + pal.dim + '">AVG / RUN</text>' +
+        '<text x="64" y="725" font-family="monospace" font-size="40" font-weight="bold" fill="' + pal.ink + '">' + e(fmtShort(s.avg) + ' / run') + '</text>' +
+        '<text x="430" y="680" font-family="monospace" font-size="24" letter-spacing="3" fill="' + pal.dim + '">SAVED</text>' +
+        '<text x="430" y="725" font-family="monospace" font-size="40" font-weight="bold" fill="' + pal.ink + '">' + e(fxMoney(s.saved)) + '</text>' +
+        '<text x="830" y="680" font-family="monospace" font-size="24" letter-spacing="3" fill="' + pal.dim + '">DAY STREAK</text>' +
+        '<text x="830" y="725" font-family="monospace" font-size="40" font-weight="bold" fill="' + pal.ink + '">' + e(streakTxt) + '</text>' +
+        '<text x="64" y="775" font-family="monospace" font-size="24" letter-spacing="3" fill="' + pal.dim + '">BEST DAY</text>' +
+        '<text x="64" y="820" font-family="monospace" font-size="40" font-weight="bold" fill="' + pal.ink + '">' + e(fmtShort(s.best)) + '</text>' +
+        '<text x="430" y="775" font-family="monospace" font-size="24" letter-spacing="3" fill="' + pal.dim + '">EST. COST</text>' +
+        '<text x="430" y="820" font-family="monospace" font-size="40" font-weight="bold" fill="' + pal.ink + '">' + e(fxMoney(s.cost)) + '</text>' +
+        '<text x="830" y="775" font-family="monospace" font-size="24" letter-spacing="3" fill="' + pal.dim + '">MODELS</text>' +
+        '<text x="830" y="820" font-family="monospace" font-size="40" font-weight="bold" fill="' + pal.ink + '">' + e(s.models) + '</text>' +
         logo + '</svg>';
     }
     function pngBlob(cb) {
