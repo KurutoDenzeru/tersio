@@ -137,22 +137,30 @@ test("installer dry-run installs every user-scope extension", () => {
 
 // --- Manifest feature/setting shape ---
 
-test("package manifest declares features and settings matching the omp schema", () => {
+test("package manifest declares always-on extensions plus updater feature and settings", () => {
   const manifest = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")) as {
-    omp?: { features?: Record<string, unknown>; settings?: Record<string, unknown> };
+    omp?: { extensions?: string[]; features?: Record<string, unknown>; settings?: Record<string, unknown> };
   };
-  const features = manifest.omp?.features ?? {};
-  const settings = manifest.omp?.settings ?? {};
-
-  for (const name of ["caveman", "rtk", "ponytail", "updater"]) {
-    expect(name in features, `feature ${name} declared`).toBeTruthy();
-    const feature = features[name] as { default?: boolean; extensions?: string[] };
-    expect(feature.default, `feature ${name} defaults on`).toBe(true);
-    for (const ext of feature.extensions ?? []) {
-      const compiled = path.join(root, ext);
-      expect(existsSync(compiled), `feature ${name} entry exists: ${ext}`).toBeTruthy();
-    }
+  for (const ext of manifest.omp?.extensions ?? []) {
+    const compiled = path.join(root, ext);
+    expect(existsSync(compiled), `always-on entry exists: ${ext}`).toBeTruthy();
   }
+  expect(manifest.omp?.extensions).toEqual([
+    "./extensions/caveman-session/index.ts",
+    "./extensions/rtk-session/index.ts",
+    "./extensions/combo-toggle/index.ts",
+    "./extensions/shared/mode-reinforcement.ts",
+    "./extensions/tersio-commands/index.ts",
+  ]);
+  const features = manifest.omp?.features ?? {};
+  expect(Object.keys(features)).toEqual(["updater"]);
+  const updater = features.updater as { default?: boolean; extensions?: string[] };
+  expect(updater.default, "updater defaults on").toBe(true);
+  for (const ext of updater.extensions ?? []) {
+    const compiled = path.join(root, ext);
+    expect(existsSync(compiled), `updater entry exists: ${ext}`).toBeTruthy();
+  }
+  const settings = manifest.omp?.settings ?? {};
 
   const combo = settings.comboDefault as { type?: string; values?: string[]; default?: string };
   expect(combo.type).toBe("enum");

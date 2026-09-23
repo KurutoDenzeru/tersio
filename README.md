@@ -18,17 +18,16 @@
 curl -fsSL https://github.com/KurutoDenzeru/tersio/releases/latest/download/install.sh | sh
 ```
 
-Prefer OMP-managed updates and feature flags? Install as an OMP plugin instead:
+Prefer OMP-managed updates? Install as an OMP plugin instead:
 
 ```bash
 omp plugin install @krtclcdy/tersio
 ```
 
-Subset only:
+All modes load always. Only the updater stays toggleable:
 
 ```bash
-omp plugin install '@krtclcdy/tersio[caveman,ponytail]'
-omp plugin features @krtclcdy/tersio --disable rtk
+omp plugin features @krtclcdy/tersio --disable updater
 ```
 
 Then restart OMP and enable a preset:
@@ -136,7 +135,7 @@ Mode switches live on their own commands; bare `/tersio` prints status.
 |---|---|
 | Caveman / RTK / Updater / Combo extensions | `~/.omp/agent/extensions/{caveman-session,rtk-session,ai-addons-updater,combo-toggle}/` |
 | RTK OMP wiring (rtk-owned) | `~/.omp/agent/extensions/rtk.ts` — written by the installer via `rtk init -g --agent omp`; auto-loads, no config entry |
-| Ponytail package | `~/.omp/plugins/node_modules/@dietrichgebert/ponytail/` |
+| Ponytail package (bundled tersio dependency — one Plugins row, updates with `tersio update`) | `~/.omp/plugins/node_modules/@dietrichgebert/ponytail/` |
 | RTK binary | `~/.bun/bin/rtk` (`rtk.exe` on Windows) |
 | Extension registrations | `~/.omp/agent/config.yml` |
 
