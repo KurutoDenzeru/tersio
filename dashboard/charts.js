@@ -1,201 +1,9 @@
 (function() {
-  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  var hasGsap = !reduce && typeof window.gsap !== 'undefined';
-  var hasST = hasGsap && typeof window.ScrollTrigger !== 'undefined';
-  if (hasST) gsap.registerPlugin(ScrollTrigger);
-
-  function fmt(n) { return Number(n).toLocaleString('en-US'); }
-  function fmtShort(n) {
-    if (n >= 1e12) return (n / 1e12).toFixed(1) + 'T';
-    if (n >= 1e9) return (n / 1e9).toFixed(1) + 'B';
-    if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
-    if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
-    return String(Math.round(n));
-  }
-
-  var CURS = {
-    USD: { s: '$', d: 2 }, PHP: { s: '₱', d: 2 }, EUR: { s: '€', d: 2 }, GBP: { s: '£', d: 2 },
-    JPY: { s: '¥', d: 0 }, KRW: { s: '₩', d: 0 }, SGD: { s: 'S$', d: 2 }, AUD: { s: 'A$', d: 2 },
-    CAD: { s: 'C$', d: 2 }, INR: { s: '₹', d: 2 }
-  };
-  var FLAGS = { USD: '🇺🇸', PHP: '🇵🇭', EUR: '🇪🇺', GBP: '🇬🇧', JPY: '🇯🇵', KRW: '🇰🇷', SGD: '🇸🇬', AUD: '🇦🇺', CAD: '🇨🇦', INR: '🇮🇳' };
-  // ponytail: static snapshot; live rates from frankfurter replace it when reachable
-  var fx = { cur: 'USD', rates: { USD: 1, PHP: 58.7, EUR: 0.92, GBP: 0.79, JPY: 149.8, KRW: 1385, SGD: 1.34, AUD: 1.52, CAD: 1.37, INR: 88.2 }, live: false };
-  try {
-    var savedCur = localStorage.getItem('tersio-fx-cur');
-    if (savedCur && CURS[savedCur]) fx.cur = savedCur;
-    var savedFx = JSON.parse(localStorage.getItem('tersio-fx') || 'null');
-    if (savedFx && savedFx.rates && savedFx.rates.USD === 1) fx.rates = savedFx.rates;
-  } catch (e) { }
-  var repaintFxPicker = function() {};
-  // Shared by the hero picker and the settings currency pane: persist
-  // server-side (fresh ephemeral port per run, so localStorage alone dies
-  // on restart) and re-render live figures.
-  function applyCurrency(k) {
-    if (!CURS[k]) return;
-    fx.cur = k;
-    try { localStorage.setItem('tersio-fx-cur', fx.cur); } catch (e) { }
-    if (window.location.protocol !== 'file:' && typeof fetch === 'function') {
-      try {
-        fetch('currency', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ currency: k }) }).catch(function() { });
-      } catch (e) { }
-    }
-    repaintFxPicker();
-    if (typeof DATA !== 'undefined' && DATA) render(DATA);
-  }
-  // Magnitude-aware decimals. Model prices keep falling, so a flat 2dp rounds
-  // real spend down to "$0.00"; small amounts keep enough digits to stay
-  // readable (0.000187, not 0). Larger amounts use the currency's own scale.
-  function moneyDecimals(v, base) {
-    var a = Math.abs(v);
-    if (a >= 0.1 || a === 0) return base;
-    if (a >= 0.001) return Math.max(base, 4);
-    if (a >= 0.00001) return Math.max(base, 6);
-    return Math.max(base, 8);
-  }
-  function fxMoney(v) {
-    var c = CURS[fx.cur] || CURS.USD, r = fx.rates[fx.cur] || 1, amt = v * r;
-    var d = moneyDecimals(amt, c.d);
-    return c.s + amt.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
-  }
-  // Tooltips build innerHTML, and error notes come from providers, so they are
-  // never interpolated raw.
-  function esc(s) {
-    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  }
-
-  function countUp(el, target, money) {
-    function text(v) { return money ? fxMoney(v) : fmt(Math.round(v)); }
-    if (!hasGsap || target <= 0) { el.textContent = text(target); return; }
-    var o = { v: 0 };
-    gsap.to(o, { v: target, duration: 1.1, ease: 'power3.out', onUpdate: function() { el.textContent = text(o.v); } });
-  }
-
-  function tick() {
-    var c = document.getElementById('clock');
-    if (c) c.textContent = new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-  }
-  tick(); setInterval(tick, 1000);
-  function currentTheme() {
-    try { return localStorage.getItem('tersio-theme') || 'system'; } catch (e) { return 'system'; }
-  }
-  function paintThemeTabs() {
-    var v = currentTheme();
-    Array.prototype.forEach.call(document.querySelectorAll('[data-theme-val]'), function(b) {
-      b.classList.toggle('on', b.getAttribute('data-theme-val') === v);
-    });
-  }
-  function applyTheme(v) {
-    if (v === 'system') document.documentElement.removeAttribute('data-theme');
-    else document.documentElement.setAttribute('data-theme', v);
-    try { localStorage.setItem('tersio-theme', v); } catch (e) { }
-    paintThemeTabs();
-  }
-  applyTheme(currentTheme());
-  (function initRail() {
-    var rail = document.getElementById('rail');
-    if (!rail || initRail.done) return;
-    initRail.done = true;
-    var N = 24, ticks = [];
-    for (var i = 0; i < N; i++) {
-      (function(i) {
-        var b = document.createElement('button');
-        b.type = 'button'; b.tabIndex = -1; b.setAttribute('aria-hidden', 'true');
-        b.addEventListener('click', function() {
-          var max = document.documentElement.scrollHeight - window.innerHeight;
-          window.scrollTo({ top: max * (i / (N - 1)), behavior: 'smooth' });
-        });
-        rail.appendChild(b); ticks.push(b);
-      })(i);
-    }
-    var queued = false;
-    function paint() {
-      queued = false;
-      var max = document.documentElement.scrollHeight - window.innerHeight;
-      var f = max > 0 ? window.scrollY / max : 0;
-      ticks.forEach(function(b, j) { b.classList.toggle('lit', j / (N - 1) <= f); });
-    }
-    window.addEventListener('scroll', function() {
-      if (!queued) { queued = true; requestAnimationFrame(paint); }
-    }, { passive: true });
-    paint();
-  })();
-  (function initFx() {
-    var btn = document.getElementById('fxBtn'), panel = document.getElementById('fxPanel'), cur = document.getElementById('fxCur');
-    var keys = Object.keys(CURS), active = -1;
-    function paint() {
-      cur.textContent = FLAGS[fx.cur] + ' ' + fx.cur;
-      Array.prototype.forEach.call(panel.children, function(o) {
-        o.setAttribute('aria-selected', o.dataset.cur === fx.cur ? 'true' : 'false');
-      });
-    }
-    function setCur(k) {
-      fx.cur = k; active = keys.indexOf(k);
-      applyCurrency(k);
-      paint();
-    }
-    function open(show) {
-      var willOpen = show === undefined ? panel.classList.contains('hidden') : show;
-      panel.classList.toggle('hidden', !willOpen);
-      btn.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
-      if (willOpen) mark(keys.indexOf(fx.cur));
-    }
-    function mark(i) {
-      active = (i + keys.length) % keys.length;
-      Array.prototype.forEach.call(panel.children, function(o, j) {
-        o.classList.toggle('active', j === active);
-      });
-      var el = panel.children[active];
-      if (el) el.focus();
-    }
-    keys.forEach(function(k) {
-      var o = document.createElement('button');
-      o.type = 'button'; o.className = 'fxopt mono'; o.dataset.cur = k;
-      o.setAttribute('role', 'option');
-      o.innerHTML = '<span>' + FLAGS[k] + ' ' + k + '</span><svg class="tick" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>';
-      o.addEventListener('click', function() { setCur(k); open(false); btn.focus(); });
-      o.addEventListener('mousemove', function() { mark(keys.indexOf(k)); });
-      panel.appendChild(o);
-    });
-    paint();
-    repaintFxPicker = paint;
-    btn.addEventListener('click', function() { open(); });
-    btn.addEventListener('keydown', function(ev) {
-      if (ev.key === 'ArrowDown' || ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); open(true); }
-    });
-    panel.addEventListener('keydown', function(ev) {
-      if (ev.key === 'Escape') { open(false); btn.focus(); }
-      else if (ev.key === 'ArrowDown') { ev.preventDefault(); mark(active + 1); }
-      else if (ev.key === 'ArrowUp') { ev.preventDefault(); mark(active - 1); }
-      else if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); setCur(keys[active]); open(false); btn.focus(); }
-      else if (ev.key === 'Tab') open(false);
-    });
-    document.addEventListener('click', function(ev) {
-      if (!panel.classList.contains('hidden') && !btn.contains(ev.target) && !panel.contains(ev.target)) open(false);
-    });
-    if (typeof fetch !== 'function' || typeof AbortController === 'undefined') return;
-    var ctl = new AbortController();
-    var to = setTimeout(function() { ctl.abort(); }, 4000);
-    fetch('https://api.frankfurter.app/latest?from=USD', { signal: ctl.signal }).then(function(r) { return r.json(); }).then(function(j) {
-      clearTimeout(to);
-      if (!j || !j.rates) return;
-      var ok = Object.keys(CURS).every(function(k) { return k === 'USD' || typeof j.rates[k] === 'number'; });
-      if (!ok) return;
-      fx.rates = Object.assign({ USD: 1 }, j.rates); fx.live = true;
-      try { localStorage.setItem('tersio-fx', JSON.stringify({ rates: fx.rates, ts: Date.now() })); } catch (e) { }
-      if (DATA) render(DATA);
-    }).catch(function() { clearTimeout(to); });
-  })();
-  Array.prototype.forEach.call(document.querySelectorAll('[data-theme-val]'), function(b) {
-    b.addEventListener('click', function() { applyTheme(b.getAttribute('data-theme-val')); });
-  });
-  (function() {
-    var sysMedia = window.matchMedia('(prefers-color-scheme: dark)');
-    if (sysMedia && typeof sysMedia.addEventListener === 'function') sysMedia.addEventListener('change', function() {
-      if (currentTheme() === 'system') applyTheme('system');
-    });
-  })();
-
+  var T = window.Tersio;
+  var fmt = T.fmt, fmtShort = T.fmtShort, CURS = T.CURS, FLAGS = T.FLAGS, fx = T.fx,
+    fxMoney = T.fxMoney, esc = T.esc, countUp = T.countUp,
+    showTip = T.showTip, moveTip = T.moveTip, hideTip = T.hideTip,
+    emptyState = T.emptyState, reduce = T.reduce, hasGsap = T.hasGsap;
   var OPENAI_SVG = '<svg viewBox="0 0 24 24" fill="#000" aria-hidden="true"><path d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z"/></svg>';
   var PROVIDERS = [
     [/openai|codex|gpt-|o1/i, 'OpenAI', 'openai', '#fff', OPENAI_SVG],
@@ -266,7 +74,7 @@
     var b = byModel[m] || { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
     return b.input + b.output + b.cacheRead + b.cacheWrite;
   }
-  var DATA = null, cardsShown = false;
+  var cardsShown = false;
   function topModels(byModel, n) {
     return Object.keys(byModel).sort(function(a, b) { return modelTotal(byModel, b) - modelTotal(byModel, a); }).slice(0, n);
   }
@@ -291,36 +99,11 @@
   }
   function allDays() {
     var set = {};
-    Object.keys(DATA.byDay || {}).forEach(function(d) { set[d] = 1; });
-    Object.keys(DATA.byDayModel || {}).forEach(function(d) { set[d] = 1; });
+    Object.keys(T.getData().byDay || {}).forEach(function(d) { set[d] = 1; });
+    Object.keys(T.getData().byDayModel || {}).forEach(function(d) { set[d] = 1; });
     return Object.keys(set).sort();
   }
 
-  var tipEl = null;
-  function tip() {
-    if (!tipEl) {
-      tipEl = document.createElement('div');
-      tipEl.id = 'tip'; tipEl.className = 'mono'; tipEl.setAttribute('role', 'tooltip');
-      document.body.appendChild(tipEl);
-    }
-    return tipEl;
-  }
-  function showTip(html, x, y) {
-    var t = tip();
-    t.innerHTML = html;
-    if (window.lucide) lucide.createIcons();
-    t.classList.add('show');
-    moveTip(x, y);
-  }
-  function moveTip(x, y) {
-    if (!tipEl) return;
-    var w = 300, h = tipEl.offsetHeight || 220;
-    var lx = x + 16 > window.innerWidth - w ? x - w - 12 : x + 16;
-    var ly = y + 16 > window.innerHeight - h ? y - h - 12 : y + 16;
-    tipEl.style.left = Math.max(8, lx) + 'px';
-    tipEl.style.top = Math.max(8, ly) + 'px';
-  }
-  function hideTip() { if (tipEl) tipEl.classList.remove('show'); }
   function dateHead(key) {
     var dt = new Date(key + 'T12:00:00');
     return isNaN(dt) ? key : dt.toLocaleString('en-US', { month: 'short', day: 'numeric' }).toUpperCase();
@@ -335,12 +118,12 @@
     return h;
   }
   function tipModelHTML(m) {
-    var b = (DATA.byModel || {})[m] || { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
-    var req = ((DATA.byModelMessages || {})[m]) || 0;
+    var b = (T.getData().byModel || {})[m] || { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+    var req = ((T.getData().byModelMessages || {})[m]) || 0;
     var denom = b.input + b.cacheRead;
     var hit = denom ? (b.cacheRead / denom * 100).toFixed(1) + '%' : '-';
     var total = b.input + b.output + b.cacheRead + b.cacheWrite;
-    var cb = ((DATA.byModelBucketUsd || {})[m]) || { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+    var cb = ((T.getData().byModelBucketUsd || {})[m]) || { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
     var h = '<div class="tt">' + shortName(m) + '</div><div class="tv">' + fmtShort(total) + ' total (' + fxMoney(cb.input + cb.output + cb.cacheRead + cb.cacheWrite) + ')</div>';
     h += '<div class="tr"><span class="sw" style="background:var(--accent)"></span><span class="tn">input</span><span class="tvr">' + fmt(b.input) + ' (' + fxMoney(cb.input) + ')</span></div>';
     h += '<div class="tr"><span class="sw" style="background:var(--dim)"></span><span class="tn">output</span><span class="tvr">' + fmt(b.output) + ' (' + fxMoney(cb.output) + ')</span></div>';
@@ -413,17 +196,17 @@
     return ['meh', 'low', 'warn'];
   }
   function tipCo2HTML() {
-    var z = co2Zone(DATA.co2g || 0);
-    var h = '<div class="tt">CO2</div><div class="tv">~' + (DATA.co2g || 0).toFixed(1) + 'g est.</div>';
+    var z = co2Zone(T.getData().co2g || 0);
+    var h = '<div class="tt">CO2</div><div class="tv">~' + (T.getData().co2g || 0).toFixed(1) + 'g est.</div>';
     h += '<div class="tr"><span class="sw" style="background:var(--accent)"></span><span class="tn">zone</span><span class="tvr">' + zoneIcon(z[0], z[2]) + ' ' + z[1] + '</span></div>';
-    h += '<div class="tr"><span class="sw" style="background:var(--accent)"></span><span class="tn">energy</span><span class="tvr">~' + (DATA.energyWh || 0).toFixed(1) + ' Wh</span></div>';
+    h += '<div class="tr"><span class="sw" style="background:var(--accent)"></span><span class="tn">energy</span><span class="tvr">~' + (T.getData().energyWh || 0).toFixed(1) + ' Wh</span></div>';
     return h;
   }
   function tipSavedHTML() {
-    var usd = DATA.usd || 0, saved = DATA.savedUsd || 0;
+    var usd = T.getData().usd || 0, saved = T.getData().savedUsd || 0;
     var lev = usd ? saved / usd : 0;
     var z = levZone(lev);
-    var t = DATA.tokens || { cacheRead: 0 };
+    var t = T.getData().tokens || { cacheRead: 0 };
     var h = '<div class="tt">Saved by cache</div><div class="tv">' + fxMoney(saved) + ' est.</div>';
     h += '<div class="tr"><span class="sw" style="background:var(--accent)"></span><span class="tn">zone</span><span class="tvr">' + zoneIcon(z[0], z[2]) + ' ' + z[1] + '</span></div>';
     h += '<div class="tr"><span class="sw" style="background:var(--accent)"></span><span class="tn">leverage</span><span class="tvr">x' + lev.toFixed(1) + ' per $1</span></div>';
@@ -432,7 +215,7 @@
   }
   function tipShareHTML(share, pp) {
     var z = shareZone(share);
-    var t = DATA.tokens || { cacheRead: 0, cacheWrite: 0 };
+    var t = T.getData().tokens || { cacheRead: 0, cacheWrite: 0 };
     var h = '<div class="tt">Cache share</div><div class="tv">' + share + '%</div>';
     h += '<div class="tr"><span class="sw" style="background:var(--accent)"></span><span class="tn">zone</span><span class="tvr">' + zoneIcon(z[0], z[2]) + ' ' + z[1] + '</span></div>';
     h += '<div class="tr"><span class="sw" style="background:var(--accent)"></span><span class="tn">read</span><span class="tvr">' + fmtShort(t.cacheRead || 0) + '</span></div>';
@@ -458,7 +241,7 @@
   var mdModel = null, mdSpan = 'all', mdHover = { pts: [], days: [] };
   function mdSeries(m) {
     var days = allDays();
-    var per = DATA.byDayModel || {};
+    var per = T.getData().byDayModel || {};
     return days.map(function(d) { return { day: d, v: ((per[d] || {})[m] || 0) }; });
   }
   function mdSlice(series) {
@@ -593,7 +376,7 @@
     return { t: (pct >= 0 ? '+' : '') + pct.toFixed(0) + '% vs prior 2 wks', up: pct >= 0 };
   }
   function renderModelDialog(m) {
-    var byModel = DATA.byModel || {};
+    var byModel = T.getData().byModel || {};
     var tops = topModels(byModel, Object.keys(byModel).length);
     var rank = tops.indexOf(m) + 1;
     var b = byModel[m] || { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
@@ -601,8 +384,8 @@
     var grand = 1;
     tops.forEach(function(k) { grand += modelTotal(byModel, k); });
     var v = vendorOf(m);
-    var req = ((DATA.byModelMessages || {})[m]) || 0;
-    var usd = ((DATA.byModelUsd || {})[m]) || 0;
+    var req = ((T.getData().byModelMessages || {})[m]) || 0;
+    var usd = ((T.getData().byModelUsd || {})[m]) || 0;
     var denom = b.input + b.cacheRead;
     var hit = denom ? (b.cacheRead / denom * 100) : 0;
     var series = mdSlice(mdSeries(m));
@@ -667,8 +450,8 @@
     if (!dlg.open) dlg.showModal();
   }
   function dayModelRows(key) {
-    var per = (DATA.byDayModel || {})[key] || {};
-    var tops = topModels(DATA.byModel || {}, 8), rows = [], other = 0;
+    var per = (T.getData().byDayModel || {})[key] || {};
+    var tops = topModels(T.getData().byModel || {}, 8), rows = [], other = 0;
     tops.forEach(function(m, i) {
       var v = per[m] || 0;
       if (v) rows.push([m, v, PALETTE[i % PALETTE.length]]);
@@ -690,7 +473,7 @@
     sun.setDate(mon.getDate() + 6);
     var head = isNaN(mon) ? monKey : mon.toLocaleString('en-US', { month: 'short', day: 'numeric' }).toUpperCase() +
       ' - ' + (isNaN(sun) ? '' : sun.toLocaleString('en-US', { month: 'short', day: 'numeric' }).toUpperCase());
-    var tops = topModels(DATA.byModel || {}, 8), rows = [], other = 0;
+    var tops = topModels(T.getData().byModel || {}, 8), rows = [], other = 0;
     tops.forEach(function(m, i) {
       var v = weekPer[m] || 0;
       if (v) rows.push([m, v, PALETTE[i % PALETTE.length]]);
@@ -737,7 +520,7 @@
       if (GMODE === 'weekly' && !isNaN(dt)) {
         var mk = dayKey(mondayOf(dt));
         weekTotal[mk] = (weekTotal[mk] || 0) + (sums[k] || 0);
-        var per = (DATA.byDayModel || {})[k] || {};
+        var per = (T.getData().byDayModel || {})[k] || {};
         if (!weekPer[mk]) weekPer[mk] = {};
         Object.keys(per).forEach(function(m) { weekPer[mk][m] = (weekPer[mk][m] || 0) + per[m]; });
       }
@@ -820,7 +603,7 @@
         Array.prototype.forEach.call(document.querySelectorAll('#activity [data-gmode]'), function(b) { b.classList.remove('on'); });
         btn.classList.add('on');
         GMODE = btn.getAttribute('data-gmode');
-        if (DATA) renderGraph(DATA.byDay || {});
+        if (T.getData()) renderGraph(T.getData().byDay || {});
       });
     });
   }
@@ -855,7 +638,7 @@
     });
   }
   function renderModels() {
-    var byModel = DATA.byModel || {};
+    var byModel = T.getData().byModel || {};
     var tops = topModels(byModel, Object.keys(byModel).length).filter(function(m) { return modelTotal(byModel, m) > 0; });
     var cards = document.getElementById('modelCards');
     cards.innerHTML = '';
@@ -928,7 +711,7 @@
       var right = document.createElement('div'); right.className = 'shrink-0 text-right';
       var n = document.createElement('p'); n.className = 'mono font-bold'; n.textContent = fmt(modelTotal(byModel, m));
       var cost = document.createElement('p'); cost.className = 'mono text-xs'; cost.style.color = 'var(--dim)';
-      cost.textContent = fxMoney((DATA.byModelUsd || {})[m] || 0);
+      cost.textContent = fxMoney((T.getData().byModelUsd || {})[m] || 0);
       right.appendChild(n); right.appendChild(cost);
       li.appendChild(badge); li.appendChild(mid); li.appendChild(right);
       hoverModel(li, m);
@@ -986,7 +769,7 @@
     });
   }
   function renderCmd() {
-    var g = (DATA.rtkGain || {});
+    var g = (T.getData().rtkGain || {});
     var byName = {};
     function add(name, count, saved, avgPct, avgMs) {
       var r = byName[name];
@@ -994,7 +777,7 @@
       r.count += count;
       if (saved !== null && saved !== undefined) r.saved = (r.saved || 0) + saved;
     }
-    (DATA.byTool || []).forEach(function(r) { add(r[0], r[1], null, null, null); });
+    (T.getData().byTool || []).forEach(function(r) { add(r[0], r[1], null, null, null); });
     (g.byCommand || []).forEach(function(r) { add(r.command, r.count, r.saved, r.avgPct, r.avgMs); });
     cmdRows = Object.keys(byName).map(function(k) { return byName[k]; });
     sortCmd();
@@ -1206,12 +989,12 @@
 
   function dayTotal(b) { return (b.input || 0) + (b.output || 0) + (b.cacheRead || 0) + (b.cacheWrite || 0); }
 
-  function render(d) {
-    DATA = d;
+  function renderMain(d) {
+    T.getData() = d;
     // Server-provided default currency (tersio gain --currency); a saved
     // picker choice in localStorage always wins.
-    if (!render.fxInit) {
-      render.fxInit = true;
+    if (!renderMain.fxInit) {
+      renderMain.fxInit = true;
       var saved = null;
       try { saved = localStorage.getItem('tersio-fx-cur'); } catch (e) { }
       if (!saved && d.currency && CURS[d.currency]) {
@@ -1304,9 +1087,9 @@
     (function() {
       var el = document.getElementById('ticker');
       if (!el) return;
-      var tops = topModels(DATA.byModel || {}, 5);
+      var tops = topModels(T.getData().byModel || {}, 5);
       var parts = tops.map(function(m) {
-        var b = (DATA.byModel || {})[m];
+        var b = (T.getData().byModel || {})[m];
         var v = b.input + b.output + b.cacheRead + b.cacheWrite;
         var nm = m.toUpperCase().replace(/-(FREE|CONTRIBUTOR.*|NEXT|LATEST)$/, '').replace(/[-.]?\d[\d.]*/, '').replace(/-V(?=-|$)/, '');
         return nm + ' ' + fmtShort(v);
@@ -1325,8 +1108,8 @@
     renderCmd();
 
     if (window.lucide) lucide.createIcons();
-    if (hasGsap && !render.introDone) {
-      render.introDone = true;
+    if (hasGsap && !renderMain.introDone) {
+      renderMain.introDone = true;
       gsap.from('.hero-in', { y: 26, opacity: 0, duration: 0.8, ease: 'power3.out', stagger: 0.08 });
     }
     observe();
@@ -1355,7 +1138,7 @@
   function renderRecent() {
     var body = document.getElementById('recent');
     body.innerHTML = '';
-    var all = DATA.recent || [];
+    var all = T.getData().recent || [];
     recentRows = all.slice();
     sortRecent();
     var recentPages = Math.max(1, Math.ceil(recentRows.length / recentPer));
@@ -1398,476 +1181,6 @@
     document.getElementById('recentTable').style.display = all.length ? '' : 'none';
     document.getElementById('emptyRecent').classList.toggle('hidden', all.length > 0);
   }
-
-  var seen = new WeakSet();
-  function observe() {
-    var els = document.querySelectorAll('.rise');
-    if (!('IntersectionObserver' in window) || reduce) {
-      els.forEach(function(el) { el.classList.add('in'); });
-      return;
-    }
-    var io = new IntersectionObserver(function(entries) {
-      entries.forEach(function(e) {
-        if (e.isIntersecting && !seen.has(e.target)) {
-          seen.add(e.target); e.target.classList.add('in'); io.unobserve(e.target);
-        }
-      });
-    }, { threshold: 0.12 });
-    els.forEach(function(el) { if (!seen.has(el)) io.observe(el); });
-  }
-
-  var lastJson = '';
-  function load() {
-    // Served mode only: file:// exports have no data.json endpoint, so
-    // polling there would just burn cycles on 404s.
-    if (window.location.protocol === 'file:') return;
-    // Skip background tabs: no render work while hidden, instant refresh on return.
-    if (document.hidden) return;
-    fetch('data.json').then(function(r) { return r.json(); }).then(function(d) {
-      var json = JSON.stringify(d);
-      if (json === lastJson) return;
-      lastJson = json;
-      render(d);
-    }).catch(function() {
-      var cards = document.getElementById('modelCards');
-      if (cards && !cards.children.length) cards.innerHTML = '<div class="empty md:col-span-3">' + emptyState('cloud-off', 'Could not load data', 'Serve with tersio gain instead of opening this file directly.') + '</div>';
-      if (window.lucide) lucide.createIcons();
-      observe();
-    });
-  }
-  // Live view: re-read data.json every 5s while served and visible; identical
-  // payloads skip render. The manual Reload button stays as an instant refresh.
-  setInterval(load, 5000);
-  document.addEventListener('visibilitychange', function() { if (!document.hidden) load(); });
-  function toast(title, desc, icon) {
-    var wrap = document.querySelector('.toaster');
-    if (!wrap) {
-      wrap = document.createElement('div');
-      wrap.className = 'toaster';
-      wrap.popover = 'manual';
-      document.body.appendChild(wrap);
-      if (wrap.showPopover) wrap.showPopover(); // top layer: paints above the native settings dialog
-    }
-    var el = document.createElement('div');
-    el.className = 'toast';
-    el.innerHTML = '<span class="toast-icon"><i data-lucide="' + (icon || 'check') + '" class="size-4"></i></span><div><p class="toast-title"></p><p class="toast-desc"></p></div>';
-    el.querySelector('.toast-title').textContent = title;
-    el.querySelector('.toast-desc').textContent = desc;
-    wrap.appendChild(el);
-    if (window.lucide) lucide.createIcons();
-    setTimeout(function() {
-      el.classList.add('out');
-      setTimeout(function() { el.remove(); }, 200);
-    }, 4000);
-  }
-  (function initShare() {
-    function dayStr(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
-    function streak(byDay) {
-      var cur = new Date(); cur.setHours(0, 0, 0, 0);
-      var key = dayStr(cur);
-      if (!byDay[key]) { cur.setDate(cur.getDate() - 1); key = dayStr(cur); if (!byDay[key]) return 0; }
-      var n = 0;
-      while (byDay[key]) { n++; cur.setDate(cur.getDate() - 1); key = dayStr(cur); }
-      return n;
-    }
-    function shareStats() {
-      var t = (DATA && DATA.tokens) || { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
-      var total = t.input + t.output + t.cacheRead + t.cacheWrite;
-      var runs = (DATA && DATA.messages) || 0;
-      var byModel = (DATA && DATA.byModel) || {};
-      var models = Object.keys(byModel).length;
-      var cost = (DATA && DATA.usd) || 0;
-      var best = 0, bestDay = '';
-      Object.keys((DATA && DATA.byDay) || {}).forEach(function(k) {
-        var b = (DATA && DATA.byDay)[k];
-        var v = b.input + b.output + b.cacheRead + b.cacheWrite;
-        if (v > best) { best = v; bestDay = k; }
-      });
-      return { total: total, runs: runs, avg: runs ? Math.round(total / runs) : 0, saved: (DATA && DATA.savedUsd) || 0, streak: streak((DATA && DATA.byDay) || {}), best: best, bestDay: bestDay, cost: cost, models: models };
-    }
-    function shareText() {
-      var s = shareStats();
-      return fmtShort(s.total) + ' tokens / ' + fmt(s.runs) + ' runs / ' + fmtShort(s.avg) + ' per run. Saved ' + fxMoney(s.saved) + ' via cache. ' + s.streak + '-day streak. My AI spend, tracked with Tersio.';
-    }
-    var brandURI = null, brandQueued = false;
-    function loadBrand() {
-      if (brandURI || brandQueued || typeof fetch !== 'function') return;
-      brandQueued = true;
-      fetch('brand.webp').then(function(r) { return r.blob(); }).then(function(b) {
-        var fr = new FileReader();
-        fr.onload = function() { brandURI = fr.result; };
-        fr.readAsDataURL(b);
-      }).catch(function() { });
-    }
-    loadBrand();
-    function paint() {
-      var s = shareStats();
-      document.getElementById('shareTotal').textContent = fmtShort(s.total) + ' tokens';
-      document.getElementById('shareRuns').textContent = 'across ' + fmt(s.runs) + ' agent runs';
-      document.getElementById('shareAvg').textContent = fmtShort(s.avg) + ' / run';
-      document.getElementById('shareSaved').textContent = fxMoney(s.saved);
-      document.getElementById('shareBest').textContent = fmtShort(s.best);
-      document.getElementById('shareBest').title = s.bestDay || '';
-      document.getElementById('shareCost').textContent = fxMoney(s.cost);
-      document.getElementById('shareModels').textContent = String(s.models);
-      document.getElementById('shareStreak').textContent = s.streak + (s.streak === 1 ? ' day' : ' days');
-      document.getElementById('shareBest').textContent = fmtShort(s.best);
-      document.getElementById('shareBest').title = s.bestDay || '';
-      document.getElementById('shareCost').textContent = fxMoney(s.cost);
-      document.getElementById('shareModels').textContent = String(s.models);
-      document.getElementById('shareStreak').textContent = s.streak + (s.streak === 1 ? ' day' : ' days');
-      paintHeat();
-    }
-    function heatVals(count) {
-      var byDay = (DATA && DATA.byDay) || {};
-      var d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - (count - 1));
-      var vals = [], max = 0;
-      for (var i = 0; i < count; i++) {
-        var k = dayStr(d);
-        var b = byDay[k], v = b ? dayTotal(b) : 0;
-        vals.push(v); if (v > max) max = v;
-        d.setDate(d.getDate() + 1);
-      }
-      return { vals: vals, max: max };
-    }
-    function heatLevel(v, max) {
-      var s = max ? Math.sqrt(v / max) : 0;
-      return !v ? '' : s >= 0.7 ? ' l4' : s >= 0.45 ? ' l3' : s >= 0.2 ? ' l2' : ' l1';
-    }
-    function paintHeat() {
-      var el = document.getElementById('shareHeat');
-      if (!el) return;
-      // GitHub layout: 26 weekly columns × 7 weekday rows, oldest first.
-      var h = heatVals(182), out = [];
-      for (var d = 0; d < 7; d++) {
-        for (var w = 0; w < 26; w++) {
-          out.push('<span class="cell' + heatLevel(h.vals[w * 7 + d], h.max) + '"></span>');
-        }
-      }
-      el.innerHTML = out.join('');
-    }
-    function copyText(text, okMsg) {
-      function done() { toast('Copied', okMsg, 'copy'); }
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(text).then(done, function() { fallback(); });
-      } else fallback();
-      function fallback() {
-        try {
-          var ta = document.createElement('textarea');
-          ta.value = text; document.body.appendChild(ta); ta.select();
-          document.execCommand('copy'); ta.remove(); done();
-        } catch (e) { toast('Copy failed', 'Select the text manually.', 'circle-alert'); }
-      }
-    }
-    function svgCard() {
-      var s = shareStats();
-      function e(x) { return String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;'); }
-      var h = heatVals(182);
-      var cw = 32, gap = 9, step = cw + gap, gx = 64, gy = 340, grid = '';
-      for (var gd = 0; gd < 7; gd++) {
-        for (var gw = 0; gw < 26; gw++) {
-          var gv = h.vals[gw * 7 + gd];
-          var gs = h.max ? Math.sqrt(gv / h.max) : 0;
-          var go = gv ? (0.45 + 0.55 * gs).toFixed(2) : 0.13;
-          grid += '<rect x="' + (gx + gw * step) + '" y="' + (gy + gd * step) + '" width="' + cw + '" height="' + cw + '" rx="8" fill="#34d399" opacity="' + go + '"/>';
-        }
-      }
-      var streakTxt = s.streak + (s.streak === 1 ? ' day' : ' days');
-      var logo = brandURI ? '<clipPath id="blogo"><rect x="1012" y="40" width="124" height="124" rx="62"/></clipPath>' +
-        '<image x="1012" y="40" width="124" height="124" clip-path="url(#blogo)" href="' + brandURI + '"/>' : '';
-      return '<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="850" viewBox="0 0 1200 850">' +
-        '<rect width="1200" height="850" rx="28" fill="#09090b"/>' +
-        '<path d="M1090 700 L980 800 h70 l-8 60 80 -96 h-70 l8 -64 z" fill="none" stroke="#34d399" stroke-width="14" opacity="0.08" stroke-linejoin="round"/>' +
-        '<text x="64" y="80" font-family="monospace" font-size="26" letter-spacing="6" fill="#34d399">TERSIO · USAGE PROFILE</text>' +
-        '<text x="60" y="250" font-family="monospace" font-size="130" font-weight="bold" fill="#f4f4f5">' + e(fmtShort(s.total) + ' tokens') + '</text>' +
-        '<text x="64" y="300" font-family="monospace" font-size="30" fill="#a1a1aa">across ' + e(fmt(s.runs)) + ' agent runs</text>' +
-        grid +
-        '<text x="64" y="680" font-family="monospace" font-size="24" letter-spacing="3" fill="#a1a1aa">AVG / RUN</text>' +
-        '<text x="64" y="725" font-family="monospace" font-size="40" font-weight="bold" fill="#f4f4f5">' + e(fmtShort(s.avg) + ' / run') + '</text>' +
-        '<text x="430" y="680" font-family="monospace" font-size="24" letter-spacing="3" fill="#a1a1aa">SAVED</text>' +
-        '<text x="430" y="725" font-family="monospace" font-size="40" font-weight="bold" fill="#f4f4f5">' + e(fxMoney(s.saved)) + '</text>' +
-        '<text x="830" y="680" font-family="monospace" font-size="24" letter-spacing="3" fill="#a1a1aa">DAY STREAK</text>' +
-        '<text x="830" y="725" font-family="monospace" font-size="40" font-weight="bold" fill="#f4f4f5">' + e(streakTxt) + '</text>' +
-        '<text x="64" y="775" font-family="monospace" font-size="24" letter-spacing="3" fill="#a1a1aa">BEST DAY</text>' +
-        '<text x="64" y="820" font-family="monospace" font-size="40" font-weight="bold" fill="#f4f4f5">' + e(fmtShort(s.best)) + '</text>' +
-        '<text x="430" y="775" font-family="monospace" font-size="24" letter-spacing="3" fill="#a1a1aa">EST. COST</text>' +
-        '<text x="430" y="820" font-family="monospace" font-size="40" font-weight="bold" fill="#f4f4f5">' + e(fxMoney(s.cost)) + '</text>' +
-        '<text x="830" y="775" font-family="monospace" font-size="24" letter-spacing="3" fill="#a1a1aa">MODELS</text>' +
-        '<text x="830" y="820" font-family="monospace" font-size="40" font-weight="bold" fill="#f4f4f5">' + e(s.models) + '</text>' +
-        logo + '</svg>';
-    }
-    function pngBlob(cb) {
-      try {
-        var img = new Image();
-        var svg = new Blob([svgCard()], { type: 'image/svg+xml;charset=utf-8' });
-        var url = URL.createObjectURL(svg);
-        img.onload = function() {
-          try {
-            var c = document.createElement('canvas');
-            c.width = 1200; c.height = 850;
-            c.getContext('2d').drawImage(img, 0, 0, 1200, 850);
-            URL.revokeObjectURL(url);
-            if (c.toBlob) c.toBlob(function(b) { cb(b); }, 'image/png');
-            else cb(null);
-          } catch (e) { cb(null); }
-        };
-        img.onerror = function() { URL.revokeObjectURL(url); cb(null); };
-        img.src = url;
-      } catch (e) { cb(null); }
-    }
-    function copyImage(into) {
-      pngBlob(function(b) {
-        if (!b || !navigator.clipboard || !window.ClipboardItem) {
-          copyText(shareText(), 'Share text copied (image copy unsupported here).');
-          return;
-        }
-        navigator.clipboard.write([new ClipboardItem({ 'image/png': b })]).then(function() {
-          toast('Image copied', into, 'image');
-        }, function() {
-          copyText(shareText(), 'Share text copied (image copy blocked).');
-        });
-      });
-    }
-    document.getElementById('shareX').addEventListener('click', function() {
-      window.open('https://x.com/intent/post?text=' + encodeURIComponent(shareText() + ' #Tersio'), '_blank', 'noopener,width=560,height=460');
-    });
-    document.getElementById('shareReddit').addEventListener('click', function() {
-      window.open('https://www.reddit.com/submit?title=' + encodeURIComponent('My Tersio usage profile') + '&text=' + encodeURIComponent(shareText()), '_blank', 'noopener');
-    });
-    document.getElementById('shareCopy').addEventListener('click', function() { copyImage('Card copied — paste it straight into your post.'); });
-    document.getElementById('shareLinkedIn').addEventListener('click', function() {
-      window.open('https://www.linkedin.com/feed/', '_blank', 'noopener');
-      copyImage('Image copied — paste it into the LinkedIn composer.');
-    });
-    document.getElementById('sharePng').addEventListener('click', function() {
-      pngBlob(function(b) {
-        if (!b) { toast('Save failed', 'Browser blocked the render.', 'circle-alert'); return; }
-        try {
-          var a = document.createElement('a');
-          a.download = 'tersio-usage.png';
-          a.href = URL.createObjectURL(b);
-          a.click();
-          setTimeout(function() { URL.revokeObjectURL(a.href); }, 5000);
-          toast('Saved', 'Card downloaded as PNG.', 'download');
-        } catch (e) { toast('Save failed', 'Browser blocked the render.', 'circle-alert'); }
-      });
-    });
-    var origRender = render;
-    render = function(d) { origRender(d); paint(); };
-    paint();
-    var sh = document.getElementById('shareDialog');
-    if (sh && typeof sh.showModal === 'function') {
-      document.getElementById('shareBtn').addEventListener('click', function() { paint(); sh.showModal(); });
-      document.getElementById('shareClose').addEventListener('click', function() { sh.close(); });
-      sh.addEventListener('click', function(ev) { if (ev.target === sh) sh.close(); });
-      sh.addEventListener('close', function() { document.body.style.overflow = ''; });
-      new MutationObserver(function() {
-        if (sh.open) document.body.style.overflow = 'hidden';
-      }).observe(sh, { attributes: true, attributeFilter: ['open'] });
-    }
-  })();
-  (function initSettings() {
-    var dlg = document.getElementById('settings');
-    if (!dlg) return;
-    var nav = document.getElementById('setNav');
-    var title = document.getElementById('settingsTitle');
-    var TITLES = { general: 'General', connection: 'Connection', diagnosis: 'Diagnosis', data: 'Data' };
-    function show(name) {
-      if (title) title.textContent = TITLES[name] || 'Settings';
-      Array.prototype.forEach.call(nav.querySelectorAll('.set-navitem'), function(b) {
-        b.classList.toggle('on', b.dataset.pane === name);
-      });
-      Array.prototype.forEach.call(dlg.querySelectorAll('.set-pane'), function(p) {
-        p.classList.toggle('on', p.dataset.pane === name);
-      });
-    }
-    nav.addEventListener('click', function(ev) {
-      var b = ev.target.closest ? ev.target.closest('.set-navitem') : null;
-      if (b) show(b.dataset.pane);
-    });
-    var search = document.getElementById('setSearch');
-    search.addEventListener('input', function() {
-      var q = search.value.trim().toLowerCase();
-      Array.prototype.forEach.call(nav.querySelectorAll('.set-navitem'), function(b) {
-        b.classList.toggle('hide', !!q && b.textContent.toLowerCase().indexOf(q) < 0);
-      });
-    });
-    function escH(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); }
-    function row(k, v, ok, sub) {
-      return '<div class="set-row"><span><span class="k">' + k + '</span>' +
-        (sub ? '<p class="s mono">' + sub + '</p>' : '') + '</span>' +
-        '<span class="v"><span class="set-dot' + (ok === true ? ' ok' : ok === false ? ' bad' : '') + '"></span>' + v + '</span></div>';
-    }
-    var SNAP = window.__TERSIO_SNAP || null;
-    function apiGet(name) {
-      if (SNAP && SNAP[name]) return Promise.resolve({ json: function() { return SNAP[name]; } });
-      return fetch(name);
-    }
-    // shadcn-style select: button + listbox panel, shared by currency/schedule.
-    // Panel uses fixed positioning from the button rect so scroll containers
-    // never clip it halfway.
-    function buildSelect(btnId, panelId, labelId, options, current, onPick) {
-      var btn = document.getElementById(btnId), panel = document.getElementById(panelId);
-      function labelOf(val) {
-        for (var i = 0; i < options.length; i++) if (options[i].val === val) return options[i].label;
-        return options.length ? options[0].label : val;
-      }
-      function paint(val) {
-        document.getElementById(labelId).textContent = labelOf(val);
-        Array.prototype.forEach.call(panel.children, function(o) {
-          o.setAttribute('aria-selected', o.dataset.val === val ? 'true' : 'false');
-        });
-      }
-      options.forEach(function(opt) {
-        var o = document.createElement('button');
-        o.type = 'button'; o.className = 'selopt mono'; o.dataset.val = opt.val;
-        o.setAttribute('role', 'option');
-        o.innerHTML = '<span>' + opt.label + '</span><svg class="tick" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>';
-        o.addEventListener('click', function() { open(false); onPick(opt.val); paint(opt.val); });
-        panel.appendChild(o);
-      });
-      function open(showIt) {
-        var will = showIt === undefined ? panel.classList.contains('hidden') : showIt;
-        panel.classList.toggle('hidden', !will);
-        btn.setAttribute('aria-expanded', will ? 'true' : 'false');
-        if (will) {
-          var r = btn.getBoundingClientRect();
-          panel.style.top = Math.min(window.innerHeight - panel.offsetHeight - 8, r.bottom + 6) + 'px';
-          panel.style.left = Math.max(8, r.right - panel.offsetWidth) + 'px';
-        }
-      }
-      btn.addEventListener('click', function() { open(); });
-      document.addEventListener('click', function(ev) {
-        if (!panel.classList.contains('hidden') && !btn.contains(ev.target) && !panel.contains(ev.target)) open(false);
-      });
-      paint(current);
-      return { paint: paint };
-    }
-    var curSel = buildSelect('setCurBtn', 'setCurPanel', 'setCurLabel',
-      Object.keys(CURS).map(function(k) { return { val: k, label: FLAGS[k] + ' ' + k }; }),
-      fx.cur, function(k) { applyCurrency(k); });
-    var SCHEDS = [
-      { val: 'manual', label: 'Manual' },
-      { val: 'daily', label: 'Daily' },
-      { val: 'weekly', label: 'Weekly' },
-      { val: 'monthly', label: 'Monthly' },
-    ];
-    var schedSel = buildSelect('setSchedBtn', 'setSchedPanel', 'setSchedLabel', SCHEDS, 'manual', function(v) {
-      if (window.location.protocol === 'file:') return;
-      fetch('doctor', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ schedule: v }) })
-        .then(function(r) { return r.json(); }).then(function(d) { paintDoctor(d); }).catch(function() { });
-    });
-    function ago(ts) {
-      var s = Math.max(0, Math.round((Date.now() - ts) / 1000));
-      if (s < 60) return 'just now';
-      if (s < 3600) return Math.floor(s / 60) + 'm ago';
-      if (s < 86400) return Math.floor(s / 3600) + 'h ago';
-      return Math.floor(s / 86400) + 'd ago';
-    }
-    function paintDoctor(d) {
-      var el = document.getElementById('setDoctor');
-      var groups = [], seen = {};
-      (d.rows || []).forEach(function(r) {
-        var g = r.group || 'Other';
-        if (!seen[g]) { seen[g] = true; groups.push(g); }
-      });
-      el.innerHTML = groups.map(function(g) {
-        var items = (d.rows || []).filter(function(r) { return (r.group || 'Other') === g; }).map(function(r) {
-          return row(escH(r.label), r.ok ? 'pass' : 'fix', !!r.ok, escH(r.detail || ''));
-        }).join('');
-        return '<p class="set-group">' + escH(g) + '</p>' + items;
-      }).join('') || row('Diagnosis', 'empty', false);
-      document.getElementById('setDiagChecked').textContent = d.checkedAt ? 'Checked ' + ago(d.checkedAt) + '.' : 'Never checked.';
-      schedSel.paint(d.schedule || 'manual');
-    }
-    function loadHealth() {
-      var el = document.getElementById('setHealth');
-      apiGet('health').then(function(r) { return r.json(); }).then(function(h) {
-        el.innerHTML =
-          row('Status', h.omp ? 'Connected' : 'Offline', !!h.omp, h.omp ? 'wrapped with omp ' + escH(h.omp) : 'omp CLI not found');
-      }).catch(function() { el.innerHTML = row('Status', 'unreachable', false); });
-    }
-    function loadDoctor(fresh) {
-      var el = document.getElementById('setDoctor');
-      el.innerHTML = skeleton();
-      var snapMode = window.location.protocol === 'file:';
-      apiGet(fresh ? 'doctor?fresh=1' : 'doctor').then(function(r) { return r.json(); }).then(function(d) {
-        paintDoctor(d);
-        if (fresh && snapMode) toast('Snapshot export', 'Live scan needs tersio gain.', 'scan-line');
-      }).catch(function() { el.innerHTML = row('Diagnosis', 'unreachable', false); });
-    }
-    function skeleton() {
-      var h = '';
-      for (var i = 0; i < 5; i++) h += '<div class="skel-row" aria-hidden="true"><span class="skel-col"><span class="skel t"></span><span class="skel s"></span></span><span class="skel v"></span></div>';
-      return h;
-    }
-    document.getElementById('setDiagRefresh').addEventListener('click', function() { loadDoctor(true); });
-    document.getElementById('setFixIssues').addEventListener('click', function() {
-      var label = document.getElementById('setFixLabel');
-      if (window.location.protocol === 'file:') { toast('Serve with tersio gain', 'Fix runs on the live server only.', 'wrench'); return; }
-      label.textContent = 'Fixing…';
-      fetch('doctor/fix', { method: 'POST' }).then(function(r) { return r.json(); }).then(function(d) {
-        label.textContent = 'Fix issues';
-        if (d.failed && d.failed.length) toast('Fix incomplete', d.failed.join(', '), 'circle-alert');
-        else toast('Fix done', 'Repairs applied. Restart OMP.', 'wrench');
-        loadDoctor(true);
-      }).catch(function() {
-        label.textContent = 'Fix issues';
-        toast('Fix failed', 'Could not reach the server.', 'circle-alert');
-      });
-    });
-    var opened = false;
-    dlg.addEventListener('close', function() { opened = false; document.body.style.overflow = ''; });
-    new MutationObserver(function() {
-      if (dlg.open && !opened) {
-        opened = true; show('general');
-        document.body.style.overflow = 'hidden';
-        curSel.paint(fx.cur);
-        loadHealth(); loadDoctor(false);
-      }
-    }).observe(dlg, { attributes: true, attributeFilter: ['open'] });
-  })();
-  (function() {
-    var dlg = document.getElementById('settings');
-    if (dlg && typeof dlg.showModal === 'function') {
-      document.getElementById('settingsBtn').addEventListener('click', function() { dlg.showModal(); });
-      document.getElementById('settingsClose').addEventListener('click', function() { dlg.close(); });
-      dlg.addEventListener('click', function(ev) { if (ev.target === dlg) dlg.close(); });
-    }
-    var md = document.getElementById('modelDialog');
-    if (md && typeof md.showModal === 'function') {
-      document.getElementById('mdClose').addEventListener('click', function() { md.close(); });
-      md.addEventListener('click', function(ev) { if (ev.target === md) md.close(); });
-      md.addEventListener('close', function() { document.body.style.overflow = ''; });
-      new MutationObserver(function() {
-        if (md.open) document.body.style.overflow = 'hidden';
-      }).observe(md, { attributes: true, attributeFilter: ['open'] });
-    }
-  })();
-  (function() {
-    var resetBtn = document.getElementById('reset');
-    if (!resetBtn) return;
-    if (window.location.protocol === 'file:') { resetBtn.style.display = 'none'; return; }
-    var label = document.getElementById('resetLabel');
-    resetBtn.addEventListener('click', function() {
-      if (resetBtn.dataset.armed) {
-        delete resetBtn.dataset.armed;
-        label.textContent = 'Clearing…';
-        fetch('reset', { method: 'POST' }).then(function(r) { return r.json(); }).then(function() {
-          label.textContent = 'Reset';
-          load();
-          toast('Statistics reset', 'The usage statistics view now starts fresh. Transcripts and RTK history were never touched.', 'rotate-ccw');
-        }).catch(function() {
-          label.textContent = 'Reset';
-          toast('Reset failed', 'Could not reach the server. Try again.', 'circle-alert');
-        });
-      } else {
-        resetBtn.dataset.armed = '1';
-        label.textContent = 'Sure?';
-        setTimeout(function() { delete resetBtn.dataset.armed; if (label.textContent === 'Sure?') label.textContent = 'Reset'; }, 3000);
-      }
-    });
-  })();
-  load();
-  observe();
+  T.renderMain = renderMain;
+  T.dayTotal = dayTotal;
 })();
