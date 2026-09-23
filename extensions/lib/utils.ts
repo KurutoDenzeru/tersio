@@ -2,9 +2,10 @@
 // Node built-ins only — this module must stay dependency-free.
 
 import { createHash } from 'node:crypto';
-import { createWriteStream } from 'node:fs';
+import { createWriteStream, existsSync, mkdirSync, renameSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import https from 'node:https';
+import os from 'node:os';
 import path from 'node:path';
 
 export interface HttpOptions {
@@ -155,6 +156,32 @@ export async function findFile(dir: string, name: string): Promise<string | null
 
 export async function readTextIfExists(p: string): Promise<string | null> {
   try { return await fs.readFile(p, 'utf8'); } catch { return null; }
+}
+
+// Tersio-owned data home: ~/.tersio (Windows: %USERPROFILE%\.tersio).
+// First use moves legacy ~/.omp/plugins/tersio-* files over, so existing
+// installs keep their history.
+const migratedTersioFiles = new Set<string>();
+
+export function tersioHome(): string {
+  return path.join(os.homedir(), '.tersio');
+}
+
+export function tersioDataPath(name: string, legacy: string): string {
+  const dest = path.join(tersioHome(), name);
+  if (!migratedTersioFiles.has(name)) {
+    migratedTersioFiles.add(name);
+    try {
+      if (!existsSync(dest)) {
+        const src = path.join(os.homedir(), '.omp', 'plugins', legacy);
+        if (existsSync(src)) {
+          mkdirSync(tersioHome(), { recursive: true });
+          renameSync(src, dest);
+        }
+      }
+    } catch { /* best-effort; callers tolerate a missing file */ }
+  }
+  return dest;
 }
 
 export function normalizeRtkVersion(value: string | undefined): string {

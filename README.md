@@ -81,7 +81,7 @@ Break-even math, balanced preset (caveman full + rtk + ponytail): a mixed turn c
 
 ## 📈 Gain Dashboard
 
-`tersio gain --open` serves a local dashboard (127.0.0.1 only) that charts your own savings from `~/.omp/plugins/tersio-usage.jsonl`. Three views:
+`tersio gain --open` serves a local dashboard (127.0.0.1 only) that charts your own savings from `~/.tersio/usage.db`. Three views:
 
 **Live feed and savings.** Token throughput, cost, savings bento, and recent activity — the top of the dashboard.
 
@@ -124,8 +124,8 @@ Mode switches live on their own commands; bare `/tersio` prints status.
 | `/tersio status` | Active modes + combo level; state persists, propagates to subagents, and lights the Combo footer indicator. |
 | `/tersio check` | Add-on version check |
 | `/tersio update <ponytail\|rtk\|caveman\|all> [--dry-run]` | Update add-ons, preview with dry-run |
-| `/tersio gain` | Savings summary; the gain dashboard charts `~/.omp/plugins/tersio-usage.jsonl` (`tersio gain --open` serves on 127.0.0.1, `--export` writes one file). |
-| `/tersio usage` | Ledger report for this machine (rows in `~/.omp/plugins/tersio-usage.jsonl`, local only) |
+| `/tersio gain` | Savings summary; the gain dashboard charts `~/.tersio/usage.db` (`tersio gain --open` serves on 127.0.0.1, `--export` writes one file). |
+| `/tersio usage` | Ledger report for this machine (rows in `~/.tersio/usage.db`, local only) |
 | `/tersio help` | This table |
 | `/ai-addons` | Add-on updater alias, still works. |
 

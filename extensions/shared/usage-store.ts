@@ -22,12 +22,13 @@ import {
   sessionsDir,
   walkJsonl,
 } from './usage-ledger.ts';
+import { tersioDataPath } from '../lib/utils.ts';
 import type { RunStatus, SessionTokens } from './usage-ledger.ts';
 
 export function usageDbPath(): string {
   const override = process.env.TERSIO_USAGE_DB;
   if (override) return override;
-  return path.join(os.homedir(), '.omp', 'plugins', 'tersio-usage.db');
+  return tersioDataPath('usage.db', 'tersio-usage.db');
 }
 
 export interface StoredUsage {
@@ -172,8 +173,9 @@ function insertSql(file: string, r: StoredRow): string {
     `${nullNum(r.code)},${nullStr(r.note)},${esc(JSON.stringify(r.tools))});`;
 }
 
-// Incremental sync: unchanged transcripts are skipped via mtime+size, changed
-// ones are deleted and re-inserted, removed ones are dropped. True on success
+// Incremental sync: unchanged transcripts are skipped via mtime+size,
+// changed ones are deleted and re-inserted. Rows for deleted transcripts
+// are kept, so OMP session rotation never erases history. True on success
 // (including nothing-to-do), false when sqlite3 or disk is unavailable.
 export function syncUsageDb(): boolean {
   let db: string;
@@ -207,8 +209,7 @@ export function syncUsageDb(): boolean {
     const prev = known[file];
     if (!prev || prev.mtime !== entry.mtime || prev.size !== entry.size) changed.push(file);
   }
-  const removed = Object.keys(known).filter((p) => current[p] === undefined);
-  if (!changed.length && !removed.length) return true;
+  if (!changed.length) return true;
   const chunks: string[] = [];
   let chunkBytes = 0;
   const flush = (): boolean => {
@@ -228,7 +229,7 @@ export function syncUsageDb(): boolean {
     if (chunkBytes < 400_000) return true;
     return flush();
   };
-  for (const file of [...changed, ...removed]) {
+  for (const file of changed) {
     if (!push(`DELETE FROM messages WHERE file=${esc(file)};DELETE FROM files WHERE path=${esc(file)};`)) return false;
   }
   try {

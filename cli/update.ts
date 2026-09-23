@@ -8,7 +8,7 @@ import {
   dryRun, execP, parseJsonObject, verbose,
 } from './common.ts';
 import { execNetwork } from './interactive.ts';
-import { readTextIfExists } from '../extensions/lib/utils.ts';
+import { readTextIfExists, tersioDataPath } from '../extensions/lib/utils.ts';
 import { refreshPrices } from '../extensions/shared/pricing.ts';
 import {
   CAVEMAN_REMOTE_RULE, RTK_RELEASE_API, RtkRelease,
@@ -48,7 +48,7 @@ async function latestPublishedVersion(): Promise<string | null> {
 // (cached under OMP_PLUGINS_DIR) unless force skips the cache — an explicit
 // "check for updates" must never trust a stale cache.
 async function checkForUpdate(force = false): Promise<string | null | 'unknown'> {
-  const cachePath = path.join(OMP_PLUGINS_DIR, 'tersio-update-check.json');
+  const cachePath = tersioDataPath('update-check.json', 'tersio-update-check.json');
   const cached = parseJsonObject<{ latest?: string; lastCheck?: number }>(await readTextIfExists(cachePath));
   const cacheFresh = typeof cached?.lastCheck === 'number' && Date.now() - cached.lastCheck < UPDATE_CHECK_TTL_MS;
   if (!force && cacheFresh && cached?.latest) return newerThan(cached.latest, PACKAGE_VERSION) ? cached.latest : null;

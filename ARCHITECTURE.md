@@ -23,7 +23,7 @@ flowchart TB
     end
     subgraph SHARED["extensions/shared/"]
       SS["session-state.ts<br/>in-process bridge (Symbol.for)<br/>+ last-wins session entries"]
-      LEDGER["usage-ledger.ts<br/>~/.omp/plugins/tersio-usage.jsonl"]
+      LEDGER["usage-ledger.ts<br/>~/.tersio/usage.db"]
       PS["plugin-settings.ts<br/>session-start defaults"]
     end
     BIN["rtk binary (~/.bun/bin/rtk)"]
