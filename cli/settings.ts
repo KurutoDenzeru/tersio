@@ -6,7 +6,7 @@
 import path from 'node:path';
 import {
   CAVEMAN_DEFAULTS, COMBO_DEFAULTS, COMBO_PRESET_MODES, OMP_PLUGINS_DIR, PACKAGE_NAME,
-  PONYTAIL_DEFAULTS, cavemanDefaultFlag, comboDefaultFlag, currency, currencyGiven, dryRun,
+  PONYTAIL_DEFAULTS, cavemanDefaultFlag, comboDefaultFlag, currency, currencyGiven, diagScheduleFlag, dryRun,
   ponytailDefaultFlag, profileFlagsGiven, rtkDefaultFlag,
 } from './common.ts';
 import { CURRENCY_CODES } from './currency.ts';
@@ -15,6 +15,8 @@ import { textTable } from './usage.ts';
 import { askInteractiveChoice, closeRL, tty } from './interactive.ts';
 import { formatProfile, storedProfile, writePluginSettings } from './profile.ts';
 import type { Profile } from './profile.ts';
+import { readDiagSchedule, setDiagSchedule } from './dashboard.ts';
+import type { DiagSchedule } from './dashboard.ts';
 
 function applyFlags(base: Profile): Profile {
   const next: Profile = { ...base };
@@ -75,6 +77,17 @@ async function askProfile(current: Profile): Promise<Profile | null> {
   return next;
 }
 
+async function askDiagSchedule(current: DiagSchedule): Promise<DiagSchedule | null> {
+  const picked = await askInteractiveChoice('Diagnosis auto-check', [
+    { value: 'manual', label: 'manual', hint: 'check on open' },
+    { value: 'daily', label: 'daily' },
+    { value: 'weekly', label: 'weekly' },
+    { value: 'monthly', label: 'monthly' },
+  ], current);
+  if (picked.status !== 'selected') return null;
+  return picked.value as DiagSchedule;
+}
+
 function printSettingsTable(current: Profile): void {
   console.log('\n=== Tersio Settings ===');
   // Currency lives here no longer: the gain dashboard owns displaying and
@@ -85,6 +98,7 @@ function printSettingsTable(current: Profile): void {
     ['caveman', current.cavemanDefault, [...CAVEMAN_DEFAULTS].join(' | ')],
     ['rtk', current.rtkDefault ? 'on' : 'off', 'on | off'],
     ['ponytail', current.ponytailDefault, [...PONYTAIL_DEFAULTS].join(' | ')],
+    ['diagnosis', readDiagSchedule(), 'manual | daily | weekly | monthly'],
   ];
   for (const l of textTable(['Setting', 'Current', 'Valid values'], rows, [false, false, false], 64)) {
     console.log(l);
@@ -97,7 +111,9 @@ async function runSettings(): Promise<void> {
   printSettingsTable(current);
 
   let next: Profile | null;
-  if (profileFlagsGiven || currencyGiven) {
+  let nextDiag: DiagSchedule = readDiagSchedule();
+  if (diagScheduleFlag !== undefined) nextDiag = diagScheduleFlag as DiagSchedule;
+  if (profileFlagsGiven || currencyGiven || diagScheduleFlag !== undefined) {
     next = applyFlags(current);
   } else if (tty()) {
     next = await askProfile(current);
@@ -106,20 +122,28 @@ async function runSettings(): Promise<void> {
       process.exit(130);
       return;
     }
+    const picked = await askDiagSchedule(nextDiag);
+    if (picked === null) {
+      closeRL();
+      process.exit(130);
+      return;
+    }
+    nextDiag = picked;
   } else {
     console.log('\n  No flags given and no TTY — nothing to change.');
-    console.log('  Usage: tersio settings [--combo-default off|medium|balanced|max] [--caveman-default off|lite|full|ultra|wenyan] [--rtk-default on|off] [--ponytail-default off|lite|full|ultra|review] [--currency USD|PHP|EUR|GBP|JPY|KRW|SGD|AUD|CAD|INR] [--dry-run]');
+    console.log('  Usage: tersio settings [--combo-default off|medium|balanced|max] [--caveman-default off|lite|full|ultra|wenyan] [--rtk-default on|off] [--ponytail-default off|lite|full|ultra|review] [--currency USD|PHP|EUR|GBP|JPY|KRW|SGD|AUD|CAD|INR] [--diag-schedule manual|daily|weekly|monthly] [--dry-run]');
     closeRL();
     return;
   }
 
   if (dryRun) {
-    console.log(`\n  [dry-run] would set defaults: ${formatProfile(next)}`);
+    console.log(`\n  [dry-run] would set defaults: ${formatProfile(next)} · diagnosis=${nextDiag}`);
     closeRL();
     return;
   }
   await writePluginSettings(next, {});
-  console.log(`  Defaults: ${formatProfile(next)}`);
+  setDiagSchedule(nextDiag);
+  console.log(`  Defaults: ${formatProfile(next)} · diagnosis=${nextDiag}`);
   console.log('  Applies to fresh sessions only — anything persisted with /combo, /caveman, or /rtk wins.');
   console.log('  Currency applies to usage/gain reports; --currency overrides it per run.');
   closeRL();

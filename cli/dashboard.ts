@@ -5,19 +5,19 @@
 // which lacks it; the listening server itself keeps the process alive.
 import { spawn } from 'node:child_process';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { promises as fs } from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { clearUsageLedger, markReset, readUsage } from '../extensions/shared/usage-ledger.ts';
-import { usageDbPath } from '../extensions/shared/usage-store.ts';
+import { pricesCachePath } from '../extensions/shared/pricing.ts';
 import { summarizeUsage } from './usage.ts';
 import { isCurrencyCode } from './currency.ts';
 import type { CurrencyCode } from './currency.ts';
 import {
   BUN_BIN_DIR, OMP_AGENT_DIR, OMP_BIN, OMP_PLUGINS_DIR,
-  PACKAGE_NAME, PACKAGE_VERSION, RTK_BINARY_NAME,
+  PACKAGE_VERSION, RTK_BINARY_NAME,
 } from './common.ts';
 import { storedProfile, writePluginSettings } from './profile.ts';
 import { withInteractiveSpinner } from './interactive.ts';
@@ -95,7 +95,7 @@ function tersioHomePath(): string {
   return path.join(process.env.HOME || process.env.USERPROFILE || '', '.tersio');
 }
 
-interface DoctorRow { label: string; ok: boolean; detail: string }
+interface DoctorRow { label: string; ok: boolean; detail: string; group: string }
 
 interface DoctorReport { rows: DoctorRow[]; checkedAt: number; schedule: DiagSchedule }
 
@@ -109,6 +109,10 @@ const DIAG_TTL_MS: Record<DiagSchedule, number> = {
 };
 
 function diagPaths(): { report: string } {
+  // Hermetic env (tests) overrides the DB path: keep the report next to it
+  // so test runs never touch the real ~/.tersio/diag.json.
+  const dbOverride = process.env.TERSIO_USAGE_DB;
+  if (dbOverride) return { report: path.join(path.dirname(dbOverride), 'diag.json') };
   const home = process.env.HOME || process.env.USERPROFILE || '';
   return { report: path.join(home, '.tersio', 'diag.json') };
 }
@@ -131,41 +135,102 @@ function writeDiagReport(report: DoctorReport): void {
   } catch { /* best-effort */ }
 }
 
+function ageStr(p: string): string | null {
+  try {
+    return relAge(Date.now() - statSync(p).mtimeMs);
+  } catch {
+    return null;
+  }
+}
+
+function absTime(p: string): string | null {
+  try {
+    const d = new Date(statSync(p).mtimeMs);
+    const q = (n: number): string => String(n).padStart(2, '0');
+    const h24 = d.getHours();
+    return `${q(d.getMonth() + 1)}-${q(d.getDate())}-${d.getFullYear()}, ${q(h24 % 12 || 12)}:${q(d.getMinutes())} ${h24 >= 12 ? 'PM' : 'AM'}`;
+  } catch {
+    return null;
+  }
+}
+
+function relAge(ms: number): string {
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins} min${mins === 1 ? '' : 's'} ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+  const days = Math.floor(hours / 24);
+  return `${days} day${days === 1 ? '' : 's'} ago`;
+}
+
 function computeDoctorRows(): DoctorRow[] {
   const rows: DoctorRow[] = [];
   const extDir = path.join(OMP_AGENT_DIR, 'extensions');
-  const configPath = path.join(OMP_AGENT_DIR, 'config.yml');
-  const omp = ompVersion();
-  rows.push({ label: 'OMP CLI', ok: omp !== null, detail: omp ?? 'not found' });
-  rows.push({ label: 'Tersio CLI', ok: true, detail: `v${PACKAGE_VERSION}` });
-  const files: Array<[string, string]> = [
-    ['Caveman extension', path.join(extDir, 'caveman-session', 'index.ts')],
-    ['RTK extension', path.join(extDir, 'rtk-session', 'index.ts')],
-    ['Combo extension', path.join(extDir, 'combo-toggle', 'index.ts')],
-    ['Tersio commands', path.join(extDir, 'tersio-commands', 'index.ts')],
-    ['Mode reinforcement', path.join(extDir, 'shared', 'mode-reinforcement.ts')],
-    ['Ponytail extension', path.join(OMP_PLUGINS_DIR, 'node_modules', '@dietrichgebert', 'ponytail', 'pi-extension', 'index.js')],
-    ['Self plugin', path.join(OMP_PLUGINS_DIR, 'node_modules', PACKAGE_NAME, 'package.json')],
-    ['RTK binary', path.join(BUN_BIN_DIR, RTK_BINARY_NAME)],
-  ];
-  for (const [label, p] of files) {
-    const ok = existsSync(p);
-    rows.push({ label, ok, detail: ok ? 'installed' : p });
-  }
-  let config = '';
-  try { config = readFileSync(configPath, 'utf8'); } catch { config = ''; }
-  rows.push({ label: 'Ponytail registered', ok: config.includes('pi-extension'), detail: config ? 'config.yml' : configPath });
-  rows.push({ label: 'Combo registered', ok: config.includes('combo-toggle'), detail: config ? 'config.yml' : configPath });
-  rows.push({ label: 'Usage store', ok: existsSync(usageDbPath()), detail: usageDbPath() });
+  const rtkBin = path.join(BUN_BIN_DIR, RTK_BINARY_NAME);
+  const ponytailPkg = path.join(OMP_PLUGINS_DIR, 'node_modules', '@dietrichgebert', 'ponytail', 'package.json');
+  const ok = (p: string): boolean => existsSync(p);
+  const ext = (label: string, p: string): void => {
+    rows.push({ label, ok: ok(p), detail: ok(p) ? 'installed' : p, group: 'Extensions' });
+  };
+  const addon = (label: string, present: boolean, detail: string): void => {
+    rows.push({ label, ok: present, detail, group: 'Add-ons' });
+  };
+  ext('Caveman extension', path.join(extDir, 'caveman-session', 'index.ts'));
+  ext('RTK extension', path.join(extDir, 'rtk-session', 'index.ts'));
+  ext('Ponytail extension', path.join(OMP_PLUGINS_DIR, 'node_modules', '@dietrichgebert', 'ponytail', 'pi-extension', 'index.js'));
+  const rule = path.join(extDir, 'caveman-session', 'rule.md');
+  const ruleAge = ageStr(rule);
+  const ruleAt = absTime(rule);
+  addon('Caveman rule', ruleAge !== null, ruleAge && ruleAt ? `(updated ${ruleAge} · ${ruleAt})` : rule);
+  const rtkVer = ok(rtkBin) ? rtkVersion(rtkBin) : null;
+  const rtkAge = ageStr(rtkBin);
+  const rtkAt = absTime(rtkBin);
+  addon('RTK binary', rtkVer !== null, rtkVer && rtkAge && rtkAt ? `${rtkVer} (updated ${rtkAge} · ${rtkAt})` : rtkBin);
+  const wiring = path.join(extDir, 'rtk.ts');
+  addon('RTK OMP wiring (rtk.ts)', ok(wiring), ok(wiring) ? 'loaded' : wiring);
+  let ponytailVer: string | null = null;
+  try {
+    ponytailVer = (JSON.parse(readFileSync(ponytailPkg, 'utf8')) as { version?: string }).version ?? null;
+  } catch { ponytailVer = null; }
+  const ponytailAge = ageStr(ponytailPkg);
+  const ponytailAt = absTime(ponytailPkg);
+  addon('Ponytail', ponytailVer !== null, ponytailVer && ponytailAge && ponytailAt ? `${ponytailVer} (updated ${ponytailAge} · ${ponytailAt})` : ponytailPkg);
+  const prices = pricesCachePath();
+  const pricesAge = ageStr(prices);
+  const pricesAt = absTime(prices);
+  addon('Prices feed', pricesAge !== null, pricesAge && pricesAt ? `(pulled ${pricesAge} · ${pricesAt})` : prices);
   return rows;
 }
 
 // Retained diagnosis: recompute when forced, missing, or older than the
 // schedule. Otherwise return the saved report so users never re-run.
+// Labels retired from the report. A saved report containing any of them
+// is stale by definition and always recomputes.
+const RETIRED_DIAG_LABELS = new Set([
+  'OMP CLI',
+  'Tersio CLI',
+  'Tersio commands',
+  'Mode reinforcement',
+  'Combo registered',
+  'Combo extension',
+  'Self plugin',
+  'Ponytail registered',
+  'Usage store',
+]);
+
+function isRetiredReport(report: DoctorReport): boolean {
+  return report.rows.some((r) => RETIRED_DIAG_LABELS.has(r.label));
+}
+
+// Retained diagnosis: recompute when forced, missing, retired, or older
+// than the schedule. Otherwise return the saved report.
 function getDoctorReport(force: boolean): DoctorReport {
   const saved = readDiagReport();
   const ttl = saved ? DIAG_TTL_MS[saved.schedule] : 0;
-  if (!force && saved && (ttl === 0 || Date.now() - saved.checkedAt < ttl)) return saved;
+  // Manual always recomputes on open; dated schedules reuse the saved
+  // report until stale. Otherwise a retained snapshot hides new rows.
+  if (!force && saved && !isRetiredReport(saved) && ttl > 0 && Date.now() - saved.checkedAt < ttl) return saved;
   const report: DoctorReport = { rows: computeDoctorRows(), checkedAt: Date.now(), schedule: saved?.schedule ?? 'manual' };
   writeDiagReport(report);
   return report;
@@ -176,6 +241,10 @@ function setDiagSchedule(schedule: DiagSchedule): DoctorReport {
   base.schedule = schedule;
   writeDiagReport(base);
   return base;
+}
+
+function readDiagSchedule(): DiagSchedule {
+  return readDiagReport()?.schedule ?? 'manual';
 }
 
 // Persist the dashboard's picker choice so close → reopen keeps it: each
@@ -334,4 +403,4 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
   });
 }
 
-export { runDashboard, saveDashboardCurrency };
+export { runDashboard, saveDashboardCurrency, readDiagSchedule, setDiagSchedule, DiagSchedule };

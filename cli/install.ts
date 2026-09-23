@@ -72,8 +72,10 @@ async function stepPonytail(pluginsDir: string, userDir: string, options: Instal
 
   const ponytailExtPath = path.join(pluginsDir, 'node_modules', '@dietrichgebert', 'ponytail', 'pi-extension', 'index.js');
   const probeExt = async (): Promise<boolean> => (await readTextIfExists(ponytailExtPath)) !== null;
-  // Fast path: bundled copy already present and no refresh asked — skip network.
-  let ponytailExtExists = !options.reinstall && !options.dryRun ? await probeExt() : false;
+  // Fast path: bundled copy already present and no refresh asked — skip
+  // network. Migration always reinstalls: the probe may hit the stale legacy
+  // copy, and only npm install prunes it into the tersio-owned one.
+  let ponytailExtExists = !options.reinstall && !options.dryRun && !migrated ? await probeExt() : false;
   if (ponytailExtExists) {
     debug('Bundled Ponytail pi-extension already installed; skipping network refresh');
   } else if (options.dryRun) {
