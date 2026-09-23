@@ -7,7 +7,7 @@ import path from 'node:path';
 import {
   CAVEMAN_DEFAULTS, COMBO_DEFAULTS, COMBO_PRESET_MODES, OMP_PLUGINS_DIR, PACKAGE_NAME,
   PONYTAIL_DEFAULTS, cavemanDefaultFlag, comboDefaultFlag, currency, currencyGiven, diagScheduleFlag, dryRun,
-  ponytailDefaultFlag, profileFlagsGiven, rtkDefaultFlag,
+  ponytailDefaultFlag, profileFlagsGiven, rtkDefaultFlag, settingArg,
 } from './common.ts';
 import { CURRENCY_CODES } from './currency.ts';
 import type { CurrencyCode } from './currency.ts';
@@ -88,6 +88,80 @@ async function askDiagSchedule(current: DiagSchedule): Promise<DiagSchedule | nu
   return picked.value as DiagSchedule;
 }
 
+const SETTING_NAMES = ['combo', 'caveman', 'rtk', 'ponytail', 'currency', 'diagnosis'] as const;
+
+function settingsUsage(): void {
+  console.log('  Usage: tersio settings [combo|caveman|rtk|ponytail|currency|diagnosis] [--combo-default off|medium|balanced|max] [--caveman-default off|lite|full|ultra|wenyan] [--rtk-default on|off] [--ponytail-default off|lite|full|ultra|review] [--currency USD|PHP|EUR|GBP|JPY|KRW|SGD|AUD|CAD|INR] [--diag-schedule manual|daily|weekly|monthly] [--dry-run]');
+}
+
+// Single-setting jump: `tersio settings diagnosis` prompts only that value
+// instead of walking the whole chain. Returns false when aborted.
+async function runSingleSetting(name: string, current: Profile, nextDiag: DiagSchedule): Promise<{ profile: Profile; diag: DiagSchedule } | null> {
+  const next: Profile = { ...current };
+  let diag = nextDiag;
+  switch (name) {
+    case 'combo': {
+      const combo = await askInteractiveChoice('Session-start defaults — Combo preset', [
+        { value: 'off', label: 'off' },
+        { value: 'medium', label: 'medium', hint: 'caveman=lite, rtk=on, ponytail=lite' },
+        { value: 'balanced', label: 'balanced', hint: 'caveman=full, rtk=on, ponytail=full' },
+        { value: 'max', label: 'max', hint: 'caveman=ultra, rtk=on, ponytail=ultra' },
+      ], current.comboDefault);
+      if (combo.status !== 'selected') return null;
+      const preset = COMBO_PRESET_MODES[combo.value] ?? COMBO_PRESET_MODES.off;
+      next.comboDefault = combo.value;
+      next.cavemanDefault = preset.caveman;
+      next.rtkDefault = preset.rtk;
+      next.ponytailDefault = preset.ponytail;
+      break;
+    }
+    case 'caveman': {
+      const picked = await askInteractiveChoice('Caveman default', [...CAVEMAN_DEFAULTS].map((v) => ({
+        value: v, label: v,
+      })), next.cavemanDefault);
+      if (picked.status !== 'selected') return null;
+      next.cavemanDefault = picked.value;
+      break;
+    }
+    case 'rtk': {
+      const picked = await askInteractiveChoice('RTK default', [
+        { value: 'on', label: 'on' },
+        { value: 'off', label: 'off' },
+      ], next.rtkDefault ? 'on' : 'off');
+      if (picked.status !== 'selected') return null;
+      next.rtkDefault = picked.value === 'on';
+      break;
+    }
+    case 'ponytail': {
+      const picked = await askInteractiveChoice('Ponytail default', [...PONYTAIL_DEFAULTS].map((v) => ({
+        value: v, label: v,
+      })), next.ponytailDefault);
+      if (picked.status !== 'selected') return null;
+      next.ponytailDefault = picked.value;
+      break;
+    }
+    case 'currency': {
+      const picked = await askInteractiveChoice('Display currency (usage/gain reports)', CURRENCY_CODES.map((v) => ({
+        value: v, label: v,
+      })), next.currency);
+      if (picked.status !== 'selected') return null;
+      next.currency = picked.value as CurrencyCode;
+      break;
+    }
+    case 'diagnosis': {
+      const picked = await askDiagSchedule(diag);
+      if (picked === null) return null;
+      diag = picked;
+      break;
+    }
+    default: {
+      console.error(`[fail] Invalid setting: ${name}. Valid: ${SETTING_NAMES.join(', ')}`);
+      process.exit(1);
+    }
+  }
+  return { profile: next, diag };
+}
+
 function printSettingsTable(current: Profile): void {
   console.log('\n=== Tersio Settings ===');
   // Currency lives here no longer: the gain dashboard owns displaying and
@@ -113,7 +187,28 @@ async function runSettings(): Promise<void> {
   let next: Profile | null;
   let nextDiag: DiagSchedule = readDiagSchedule();
   if (diagScheduleFlag !== undefined) nextDiag = diagScheduleFlag as DiagSchedule;
-  if (profileFlagsGiven || currencyGiven || diagScheduleFlag !== undefined) {
+  if (settingArg !== null) {
+    if (!(SETTING_NAMES as readonly string[]).includes(settingArg)) {
+      console.error(`[fail] Invalid setting: ${settingArg}. Valid: ${SETTING_NAMES.join(', ')}`);
+      closeRL();
+      process.exit(1);
+      return;
+    }
+    if (!tty()) {
+      console.log('\n  Single-setting jump needs a terminal.');
+      settingsUsage();
+      closeRL();
+      return;
+    }
+    const single = await runSingleSetting(settingArg, current, nextDiag);
+    if (single === null) {
+      closeRL();
+      process.exit(130);
+      return;
+    }
+    next = single.profile;
+    nextDiag = single.diag;
+  } else if (profileFlagsGiven || currencyGiven || diagScheduleFlag !== undefined) {
     next = applyFlags(current);
   } else if (tty()) {
     next = await askProfile(current);
@@ -131,7 +226,7 @@ async function runSettings(): Promise<void> {
     nextDiag = picked;
   } else {
     console.log('\n  No flags given and no TTY — nothing to change.');
-    console.log('  Usage: tersio settings [--combo-default off|medium|balanced|max] [--caveman-default off|lite|full|ultra|wenyan] [--rtk-default on|off] [--ponytail-default off|lite|full|ultra|review] [--currency USD|PHP|EUR|GBP|JPY|KRW|SGD|AUD|CAD|INR] [--diag-schedule manual|daily|weekly|monthly] [--dry-run]');
+    settingsUsage();
     closeRL();
     return;
   }

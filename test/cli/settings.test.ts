@@ -125,6 +125,17 @@ test("settings with flags writes combo preset + overrides", () => {
   }
 });
 
+test("settings rejects an unknown setting name", () => {
+  const result = spawnSync(process.execPath, [installer, "settings", "bogus"], {
+    encoding: "utf8",
+    cwd: root,
+    env: { ...process.env, HOME: mkdtempSync(path.join(os.tmpdir(), "tersio-settings-")), USERPROFILE: process.env.HOME },
+    timeout: 15000,
+  });
+  expect(result.status).toBe(1);
+  expect(result.stderr).toMatch(/Invalid setting: bogus/);
+});
+
 test("settings without flags and no TTY prints usage", () => {
   const home = mkdtempSync(path.join(os.tmpdir(), "tersio-settings-"));
   try {
