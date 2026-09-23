@@ -58,12 +58,9 @@
         <p class="mono set-ver" id="verChip">tersio</p>
       </aside>
       <div class="set-main">
-        <div class="set-head">
-          <p class="dlg-title" id="settingsTitle">Settings</p>
-          <button id="settingsClose" class="btn-push flex shrink-0 items-center p-2 rounded-xl" style="border: 1px solid var(--line); color: var(--ink)" aria-label="Close settings">
-            <i data-lucide="x" class="size-4"></i>
-          </button>
-        </div>
+        <button id="settingsClose" class="btn-push set-x" aria-label="Close settings">
+          <i data-lucide="x" class="size-4"></i>
+        </button>
         <div class="set-panes">
           <section class="set-pane on" data-pane="general" aria-label="General">
             <p class="dlg-label">Appearance</p>
@@ -90,17 +87,11 @@
             </div>
           </section>
           <section class="set-pane" data-pane="connection" aria-label="Connection">
-            <p class="dlg-label">OMP connection</p>
-            <p class="dlg-hint set-note">Local harness status. Refreshed on open.</p>
+            <p class="dlg-label">Connection</p>
             <div class="set-list" id="setHealth"></div>
           </section>
           <section class="set-pane" data-pane="diagnosis" aria-label="Diagnosis">
-            <div class="set-split">
-              <p class="dlg-label">Doctor diagnosis</p>
-              <button id="setDiagRefresh" class="btn-push mono flex shrink-0 items-center gap-2 text-xs pl-2.5 pr-3 py-2 rounded-xl" style="border: 1px solid var(--line); color: var(--ink)" aria-label="Re-run diagnosis">
-                <i data-lucide="refresh-cw" class="size-3.5"></i><span>Re-run</span>
-              </button>
-            </div>
+            <p class="dlg-label">Doctor diagnosis</p>
             <p class="dlg-hint set-note">What works and what does not. Repair with <span class="mono">tersio doctor --fix</span>.</p>
             <div class="dlg-row">
               <div class="min-w-0">
@@ -112,13 +103,26 @@
                 <span id="setSchedPanel" class="selpanel hidden" role="listbox" aria-label="Diagnosis schedule"></span>
               </span>
             </div>
-            <div class="set-list set-scroll" id="setDoctor"></div>
-            <div class="set-fixrow">
-              <button id="setFixIssues" class="btn-push mono flex items-center gap-2 text-xs pl-2.5 pr-3 py-2 rounded-xl" style="border: 1px solid var(--line); color: var(--ink)" aria-label="Fix diagnosed issues">
+            <div class="dlg-row">
+              <div class="min-w-0">
+                <p class="dlg-name">Scan</p>
+                <p class="dlg-hint">Runs every check fresh and refreshes the list below.</p>
+              </div>
+              <button id="setDiagRefresh" class="btn-push mono flex shrink-0 items-center gap-2 text-xs pl-2.5 pr-3 py-2 rounded-xl" style="border: 1px solid var(--line); color: var(--ink)" aria-label="Scan now">
+                <i data-lucide="scan-line" class="size-3.5"></i><span>Scan</span>
+              </button>
+            </div>
+            <div class="set-list" id="setDoctor"></div>
+            <div class="set-fixbox">
+              <div class="min-w-0">
+                <p class="dlg-name">Fix issues</p>
+                <p class="dlg-hint">Repairs extension files, config registrations, and the bundled ponytail copy. RTK binary and CLI update stay manual.</p>
+              </div>
+              <button id="setFixIssues" class="btn-push mono flex shrink-0 items-center gap-2 text-xs pl-2.5 pr-3 py-2 rounded-xl" style="border: 1px solid var(--line); color: var(--ink)" aria-label="Fix diagnosed issues">
                 <i data-lucide="wrench" class="size-3.5"></i><span id="setFixLabel">Fix issues</span>
               </button>
-              <span class="mono set-fixhint">repairs extensions, registrations, ponytail</span>
             </div>
+          </section>
           </section>
           <section class="set-pane" data-pane="data" aria-label="Data">
             <p class="dlg-label">Data</p>
@@ -133,11 +137,7 @@
             </div>
             <div class="dlg-paths">
               <div class="dlg-path">
-                <p class="dlg-name">Usage ledger <span class="dlg-own">tersio-owned · reset clears</span></p>
-                <p class="mono dlg-file" id="pathLedger" title="">–</p>
-              </div>
-              <div class="dlg-path">
-                <p class="dlg-name">Usage DB <span class="dlg-own">tersio-owned · reset clears</span></p>
+                <p class="dlg-name">Usage DB <span class="dlg-own">local file · reset clears</span></p>
                 <p class="mono dlg-file" id="pathUsageDb" title="">–</p>
               </div>
             </div>

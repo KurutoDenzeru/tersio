@@ -1558,8 +1558,16 @@
     }
     function paintDoctor(d) {
       var el = document.getElementById('setDoctor');
-      el.innerHTML = (d.rows || []).map(function(r) {
-        return row(escH(r.label), r.ok ? 'pass' : 'fix', !!r.ok, escH(r.detail || ''));
+      var groups = [], seen = {};
+      (d.rows || []).forEach(function(r) {
+        var g = r.group || 'Other';
+        if (!seen[g]) { seen[g] = true; groups.push(g); }
+      });
+      el.innerHTML = groups.map(function(g) {
+        var items = (d.rows || []).filter(function(r) { return (r.group || 'Other') === g; }).map(function(r) {
+          return row(escH(r.label), r.ok ? 'pass' : 'fix', !!r.ok, escH(r.detail || ''));
+        }).join('');
+        return '<p class="set-group">' + escH(g) + '</p>' + items;
       }).join('') || row('Diagnosis', 'empty', false);
       document.getElementById('setDiagChecked').textContent = d.checkedAt ? 'Checked ' + ago(d.checkedAt) + '.' : 'Never checked.';
       schedSel.paint(d.schedule || 'manual');
