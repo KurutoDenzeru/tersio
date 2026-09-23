@@ -27,6 +27,22 @@
     var savedFx = JSON.parse(localStorage.getItem('tersio-fx') || 'null');
     if (savedFx && savedFx.rates && savedFx.rates.USD === 1) fx.rates = savedFx.rates;
   } catch (e) { }
+  var repaintFxPicker = function() {};
+  // Shared by the hero picker and the settings currency pane: persist
+  // server-side (fresh ephemeral port per run, so localStorage alone dies
+  // on restart) and re-render live figures.
+  function applyCurrency(k) {
+    if (!CURS[k]) return;
+    fx.cur = k;
+    try { localStorage.setItem('tersio-fx-cur', fx.cur); } catch (e) { }
+    if (window.location.protocol !== 'file:' && typeof fetch === 'function') {
+      try {
+        fetch('currency', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ currency: k }) }).catch(function() { });
+      } catch (e) { }
+    }
+    repaintFxPicker();
+    if (typeof DATA !== 'undefined' && DATA) render(DATA);
+  }
   // Magnitude-aware decimals. Model prices keep falling, so a flat 2dp rounds
   // real spend down to "$0.00"; small amounts keep enough digits to stay
   // readable (0.000187, not 0). Larger amounts use the currency's own scale.
@@ -115,17 +131,8 @@
     }
     function setCur(k) {
       fx.cur = k; active = keys.indexOf(k);
-      try { localStorage.setItem('tersio-fx-cur', fx.cur); } catch (e) { }
-      // Served mode: also persist server-side so close → reopen keeps the
-      // choice. Every `tersio gain` run is a fresh ephemeral port (a new
-      // origin), so localStorage alone cannot survive a restart.
-      if (window.location.protocol !== 'file:' && typeof fetch === 'function') {
-        try {
-          fetch('currency', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ currency: k }) }).catch(function() { });
-        } catch (e) { }
-      }
+      applyCurrency(k);
       paint();
-      if (DATA) render(DATA);
     }
     function open(show) {
       var willOpen = show === undefined ? panel.classList.contains('hidden') : show;
@@ -151,6 +158,7 @@
       panel.appendChild(o);
     });
     paint();
+    repaintFxPicker = paint;
     btn.addEventListener('click', function() { open(); });
     btn.addEventListener('keydown', function(ev) {
       if (ev.key === 'ArrowDown' || ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); open(true); }
@@ -1453,6 +1461,150 @@
     }, 4000);
   }
   document.getElementById('reload').addEventListener('click', load);
+  (function initSettings() {
+    var dlg = document.getElementById('settings');
+    if (!dlg) return;
+    var nav = document.getElementById('setNav');
+    function show(name) {
+      Array.prototype.forEach.call(nav.querySelectorAll('.set-navitem'), function(b) {
+        b.classList.toggle('on', b.dataset.pane === name);
+      });
+      Array.prototype.forEach.call(dlg.querySelectorAll('.set-pane'), function(p) {
+        p.classList.toggle('on', p.dataset.pane === name);
+      });
+    }
+    nav.addEventListener('click', function(ev) {
+      var b = ev.target.closest ? ev.target.closest('.set-navitem') : null;
+      if (b) show(b.dataset.pane);
+    });
+    var search = document.getElementById('setSearch');
+    search.addEventListener('input', function() {
+      var q = search.value.trim().toLowerCase();
+      Array.prototype.forEach.call(nav.querySelectorAll('.set-navitem'), function(b) {
+        b.classList.toggle('hide', !!q && b.textContent.toLowerCase().indexOf(q) < 0);
+      });
+    });
+    function escH(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); }
+    function row(k, v, ok, sub) {
+      return '<div class="set-row"><span><span class="k">' + k + '</span>' +
+        (sub ? '<p class="s mono">' + sub + '</p>' : '') + '</span>' +
+        '<span class="v"><span class="set-dot' + (ok === true ? ' ok' : ok === false ? ' bad' : '') + '"></span>' + v + '</span></div>';
+    }
+    var SNAP = window.__TERSIO_SNAP || null;
+    function apiGet(name) {
+      if (SNAP && SNAP[name]) return Promise.resolve({ json: function() { return SNAP[name]; } });
+      return fetch(name);
+    }
+    // shadcn-style select: button + listbox panel, shared by currency/schedule.
+    // Panel uses fixed positioning from the button rect so scroll containers
+    // never clip it halfway.
+    function buildSelect(btnId, panelId, labelId, options, current, onPick) {
+      var btn = document.getElementById(btnId), panel = document.getElementById(panelId);
+      function labelOf(val) {
+        for (var i = 0; i < options.length; i++) if (options[i].val === val) return options[i].label;
+        return options.length ? options[0].label : val;
+      }
+      function paint(val) {
+        document.getElementById(labelId).textContent = labelOf(val);
+        Array.prototype.forEach.call(panel.children, function(o) {
+          o.setAttribute('aria-selected', o.dataset.val === val ? 'true' : 'false');
+        });
+      }
+      options.forEach(function(opt) {
+        var o = document.createElement('button');
+        o.type = 'button'; o.className = 'selopt mono'; o.dataset.val = opt.val;
+        o.setAttribute('role', 'option');
+        o.innerHTML = '<span>' + opt.label + '</span><svg class="tick" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>';
+        o.addEventListener('click', function() { open(false); onPick(opt.val); paint(opt.val); });
+        panel.appendChild(o);
+      });
+      function open(showIt) {
+        var will = showIt === undefined ? panel.classList.contains('hidden') : showIt;
+        panel.classList.toggle('hidden', !will);
+        btn.setAttribute('aria-expanded', will ? 'true' : 'false');
+        if (will) {
+          var r = btn.getBoundingClientRect();
+          panel.style.top = Math.min(window.innerHeight - panel.offsetHeight - 8, r.bottom + 6) + 'px';
+          panel.style.left = Math.max(8, r.right - panel.offsetWidth) + 'px';
+        }
+      }
+      btn.addEventListener('click', function() { open(); });
+      document.addEventListener('click', function(ev) {
+        if (!panel.classList.contains('hidden') && !btn.contains(ev.target) && !panel.contains(ev.target)) open(false);
+      });
+      paint(current);
+      return { paint: paint };
+    }
+    var curSel = buildSelect('setCurBtn', 'setCurPanel', 'setCurLabel',
+      Object.keys(CURS).map(function(k) { return { val: k, label: FLAGS[k] + ' ' + k }; }),
+      fx.cur, function(k) { applyCurrency(k); });
+    var SCHEDS = [
+      { val: 'manual', label: 'Manual' },
+      { val: 'daily', label: 'Daily' },
+      { val: 'weekly', label: 'Weekly' },
+      { val: 'monthly', label: 'Monthly' },
+    ];
+    var schedSel = buildSelect('setSchedBtn', 'setSchedPanel', 'setSchedLabel', SCHEDS, 'manual', function(v) {
+      if (window.location.protocol === 'file:') return;
+      fetch('doctor', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ schedule: v }) })
+        .then(function(r) { return r.json(); }).then(function(d) { paintDoctor(d); }).catch(function() { });
+    });
+    function ago(ts) {
+      var s = Math.max(0, Math.round((Date.now() - ts) / 1000));
+      if (s < 60) return 'just now';
+      if (s < 3600) return Math.floor(s / 60) + 'm ago';
+      if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+      return Math.floor(s / 86400) + 'd ago';
+    }
+    function paintDoctor(d) {
+      var el = document.getElementById('setDoctor');
+      el.innerHTML = (d.rows || []).map(function(r) {
+        return row(escH(r.label), r.ok ? 'pass' : 'fix', !!r.ok, escH(r.detail || ''));
+      }).join('') || row('Diagnosis', 'empty', false);
+      document.getElementById('setDiagChecked').textContent = d.checkedAt ? 'Checked ' + ago(d.checkedAt) + '.' : 'Never checked.';
+      schedSel.paint(d.schedule || 'manual');
+    }
+    function loadHealth() {
+      var el = document.getElementById('setHealth');
+      apiGet('health').then(function(r) { return r.json(); }).then(function(h) {
+        el.innerHTML =
+          row('Status', h.omp ? 'Connected' : 'Offline', !!h.omp, h.omp ? 'wrapped with omp ' + escH(h.omp) : 'omp CLI not found') +
+          row('Data home', escH(h.home || ''), true);
+      }).catch(function() { el.innerHTML = row('Status', 'unreachable', false); });
+    }
+    function loadDoctor(fresh) {
+      var el = document.getElementById('setDoctor');
+      el.innerHTML = row('Diagnosis', 'checking…', null);
+      apiGet(fresh ? 'doctor?fresh=1' : 'doctor').then(function(r) { return r.json(); }).then(function(d) {
+        paintDoctor(d);
+      }).catch(function() { el.innerHTML = row('Diagnosis', 'unreachable', false); });
+    }
+    document.getElementById('setDiagRefresh').addEventListener('click', function() { loadDoctor(true); });
+    document.getElementById('setFixIssues').addEventListener('click', function() {
+      var label = document.getElementById('setFixLabel');
+      if (window.location.protocol === 'file:') { toast('Serve with tersio gain', 'Fix runs on the live server only.', 'wrench'); return; }
+      label.textContent = 'Fixing…';
+      fetch('doctor/fix', { method: 'POST' }).then(function(r) { return r.json(); }).then(function(d) {
+        label.textContent = 'Fix issues';
+        if (d.failed && d.failed.length) toast('Fix incomplete', d.failed.join(', '), 'circle-alert');
+        else toast('Fix done', 'Repairs applied. Restart OMP.', 'wrench');
+        loadDoctor(true);
+      }).catch(function() {
+        label.textContent = 'Fix issues';
+        toast('Fix failed', 'Could not reach the server.', 'circle-alert');
+      });
+    });
+    var opened = false;
+    dlg.addEventListener('close', function() { opened = false; document.body.style.overflow = ''; });
+    new MutationObserver(function() {
+      if (dlg.open && !opened) {
+        opened = true; show('general');
+        document.body.style.overflow = 'hidden';
+        curSel.paint(fx.cur);
+        loadHealth(); loadDoctor(false);
+      }
+    }).observe(dlg, { attributes: true, attributeFilter: ['open'] });
+  })();
   (function() {
     var dlg = document.getElementById('settings');
     if (dlg && typeof dlg.showModal === 'function') {
@@ -1464,6 +1616,10 @@
     if (md && typeof md.showModal === 'function') {
       document.getElementById('mdClose').addEventListener('click', function() { md.close(); });
       md.addEventListener('click', function(ev) { if (ev.target === md) md.close(); });
+      md.addEventListener('close', function() { document.body.style.overflow = ''; });
+      new MutationObserver(function() {
+        if (md.open) document.body.style.overflow = 'hidden';
+      }).observe(md, { attributes: true, attributeFilter: ['open'] });
     }
   })();
   (function() {
