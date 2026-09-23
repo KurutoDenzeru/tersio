@@ -300,7 +300,7 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
       // the export only; template.html keeps it to avoid 404 polling loops.
       .replace("if (window.location.protocol === 'file:') return;", () => `if (false) return;`)
       .replace('href="brand.webp"', () => `href="${icon}"`)
-      .replace('src="brand.webp"', () => `src="${icon}"`);
+      .replace(/src="brand.webp"/g, () => `src="${icon}"`);
     await fs.writeFile(options.exportFile, inline, 'utf8');
     console.log(`[ok] gain exported → ${options.exportFile}`);
     return;

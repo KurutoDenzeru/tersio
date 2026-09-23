@@ -457,6 +457,7 @@ test("gain --export includes the reset control and empty states", () => {
   expect(body).toMatch(/id="settings"/);
   expect(body).toMatch(/id="settingsBtn"/);
   expect(body).toMatch(/id="pathUsageDb"/);
+  expect(body).toMatch(/id="shareDialog"/);
   expect(body).toMatch(/id="modelDialog"/);
   expect(body).toMatch(/openModelDialog/);
   expect(body).toMatch(/id="emptyModels"/);
