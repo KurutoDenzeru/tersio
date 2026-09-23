@@ -100,6 +100,29 @@ test("dashboard files evaluate and expose the shared namespace", () => {
   }
 });
 
+test("model dialog charts render without throwing", () => {
+  const T = boot();
+  const charts = T as unknown as {
+    renderMain: (d: unknown) => void;
+    openModelDialog: (m: string) => void;
+  };
+  const d = {
+    tokens: { input: 1000, output: 200, cacheRead: 5000, cacheWrite: 0 },
+    usd: 0.05, priced: true, savedUsd: 0.02, costMeasured: 0, co2g: 1, energyWh: 0.1,
+    version: "x", currency: "USD", source: "live", messages: 3,
+    byModel: { "m/a": { input: 1000, output: 200, cacheRead: 5000, cacheWrite: 0 } },
+    byModelMessages: { "m/a": 3 }, byModelUsd: { "m/a": 0.05 },
+    byModelBucketUsd: { "m/a": { input: 0.01, output: 0.02, cacheRead: 0.01, cacheWrite: 0 } },
+    byDay: { "2026-09-23": { input: 1000, output: 200, cacheRead: 5000, cacheWrite: 0 } },
+    byDayModel: { "2026-09-23": { "m/a": 6200 } },
+    byTool: [], recent: [], rtkGain: { commands: 0 }, paths: {},
+    total: 0, byKind: {}, byDetail: [], lastWrite: null, empty: false,
+  };
+  (T.render as (dd: unknown) => void)(d);
+  expect(typeof charts.openModelDialog).toBe("function");
+  expect(() => (charts.openModelDialog as (m: string) => void)("m/a")).not.toThrow();
+});
+
 test("dashboard full render completes against fixture data", () => {
   const T = boot();
   const render = T.render as (d: unknown) => void;

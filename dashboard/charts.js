@@ -264,18 +264,19 @@
     var step = pts.length > 1 ? (W - 16) / (pts.length - 1) : 0;
     function X(i) { return 8 + i * step; }
     function Y(p) { return 14 + (1 - p / max) * (H - 36); }
+    // shadcn CartesianGrid language: subtle dashed horizontals only.
     var grid = '';
-    for (i = 1; i <= 3; i++) { y = 14 + (H - 36) * i / 3; grid += '<line class="grid" x1="8" y1="' + y.toFixed(1) + '" x2="' + (W - 8) + '" y2="' + y.toFixed(1) + '"/>'; }
+    for (i = 1; i <= 3; i++) { y = 14 + (H - 36) * i / 3; grid += '<line class="grid" x1="8" y1="' + y.toFixed(1) + '" x2="' + (W - 8) + '" y2="' + y.toFixed(1) + '" stroke-dasharray="3 4"/>'; }
     var d = pts.map(function(p, i) { return (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(p).toFixed(1); }).join(' ');
     var last = pts.length ? { x: X(pts.length - 1), y: Y(pts[pts.length - 1]) } : { x: 8, y: H - 22 };
     svg.innerHTML = '<defs><linearGradient id="mdGrad" x1="0" y1="0" x2="0" y2="1">' +
-      '<stop offset="0" style="stop-color:var(--accent)" stop-opacity="0.35"/>' +
-      '<stop offset="1" style="stop-color:var(--accent)" stop-opacity="0"/></linearGradient></defs>' +
+      '<stop offset="0" style="stop-color:var(--accent)" stop-opacity="0.32"/>' +
+      '<stop offset="1" style="stop-color:var(--accent)" stop-opacity="0.02"/></linearGradient></defs>' +
       grid +
       (pts.length ? '<path class="area" d="' + d + ' L' + last.x.toFixed(1) + ' ' + (H - 22) + ' L8 ' + (H - 22) + ' Z"/>' : '') +
-      (pts.length ? '<path class="line" d="' + d + '"/>' : '') +
-      (pts.length ? '<circle class="dot" cx="' + last.x.toFixed(1) + '" cy="' + last.y.toFixed(1) + '" r="4"/>' : '') +
-      (pts.length ? '<circle class="hoverdot" id="mdHoverDot" cx="-10" cy="-10" r="4" style="display:none"/>' : '');
+      (pts.length ? '<path class="line" d="' + d + '" stroke-width="2.5"/>' : '') +
+      (pts.length ? '<circle class="dot" cx="' + last.x.toFixed(1) + '" cy="' + last.y.toFixed(1) + '" r="5"/>' : '') +
+      (pts.length ? '<circle class="hoverdot" id="mdHoverDot" cx="-10" cy="-10" r="5" style="display:none"/>' : '');
     mdHover = { pts: pts, days: days };
     svg.onmousemove = function(ev) {
       var tip = document.getElementById('mdTip');
@@ -285,7 +286,7 @@
       var idx = Math.max(0, Math.min(mdHover.pts.length - 1, Math.round((fx - 8) / (step || 1))));
       var dot = document.getElementById('mdHoverDot');
       if (dot) { dot.setAttribute('cx', X(idx).toFixed(1)); dot.setAttribute('cy', Y(mdHover.pts[idx]).toFixed(1)); dot.style.display = ''; }
-      tip.textContent = mdShortDay(mdHover.days[idx]) + ' · ' + fmtShort(mdHover.pts[idx]);
+      tip.innerHTML = '<div class="tt">' + mdShortDay(mdHover.days[idx]) + '</div><div class="tv">' + fmtShort(mdHover.pts[idx]) + ' tokens</div>';
       tip.style.display = 'block';
       // Raw % positioning overflows past the dialog edge on the first/last
       // points (the dialog clips it). Measure and pin inside the card.
@@ -320,6 +321,13 @@
       else if (avg === max) s.className = 'top';
       s.style.height = Math.max(avg ? 5 : 2, Math.round(avg / max * 100)) + '%';
       s.title = mdShortDay(days[i]) + ' · ' + fmtShort(Math.round(sum));
+      (function(day, tokens) {
+        s.addEventListener('mouseenter', function(ev) {
+          showTip('<div class="tt">' + day + '</div><div class="tv">' + tokens + ' tokens</div>', ev.clientX, ev.clientY);
+        });
+        s.addEventListener('mousemove', function(ev) { moveTip(ev.clientX, ev.clientY); });
+        s.addEventListener('mouseleave', hideTip);
+      })(mdShortDay(days[i]), fmtShort(Math.round(sum)));
       el.appendChild(s);
     }
     // Sparse models leave the bars mostly flat: name the peak day, its share
@@ -333,18 +341,31 @@
   function mdDonut(svg, parts) {
     var r = 54, C = 2 * Math.PI * r, off = 0;
     var total = parts.reduce(function(a, p) { return a + p.v; }, 0) || 1;
+    var live = parts.filter(function(p) { return p.v > 0; });
+    // shadcn pie paddingAngle: breathing room between segments.
+    var gap = live.length > 1 ? 4 : 0;
     var html = '<circle class="tk" cx="70" cy="70" r="' + r + '"/>';
     parts.forEach(function(p) {
       var len = p.v / total * C;
       if (len <= 0) return;
-      html += '<circle cx="70" cy="70" r="' + r + '" style="stroke:' + p.color + '" stroke-dasharray="' + len.toFixed(1) + ' ' + (C - len).toFixed(1) + '" stroke-dashoffset="' + (-off).toFixed(1) + '" stroke-linecap="butt"/>';
+      html += '<circle cx="70" cy="70" r="' + r + '" style="stroke:' + p.color + '" stroke-dasharray="' + Math.max(len - gap, 0.5).toFixed(1) + ' ' + (C - len + gap).toFixed(1) + '" stroke-dashoffset="' + (-off - gap / 2).toFixed(1) + '" stroke-linecap="butt"/>';
       off += len;
     });
     svg.innerHTML = html;
     document.getElementById('mdMixTotal').textContent = fmtShort(total);
-    document.getElementById('mdMixLegend').innerHTML = parts.filter(function(p) { return p.v > 0; }).map(function(p) {
-      return '<div class="row"><span class="dot" style="background:' + p.color + '"></span><span>' + p.label + '</span><span class="pct">' + (p.v / total * 100).toFixed(1) + '% · ' + fmtShort(p.v) + '</span></div>';
+    var legend = document.getElementById('mdMixLegend');
+    legend.innerHTML = live.map(function(p) {
+      return '<div class="row" data-mix="' + p.label + '"><span class="dot" style="background:' + p.color + '"></span><span>' + p.label + '</span><span class="pct">' + (p.v / total * 100).toFixed(1) + '% · ' + fmtShort(p.v) + '</span></div>';
     }).join('');
+    Array.prototype.forEach.call(legend.children, function(rowEl) {
+      var part = live.filter(function(p) { return p.label === rowEl.getAttribute('data-mix'); })[0];
+      if (!part) return;
+      rowEl.addEventListener('mouseenter', function(ev) {
+        showTip('<div class="tt">' + part.label + '</div><div class="tv">' + fmtShort(part.v) + ' (' + (part.v / total * 100).toFixed(1) + '%)</div>', ev.clientX, ev.clientY);
+      });
+      rowEl.addEventListener('mousemove', function(ev) { moveTip(ev.clientX, ev.clientY); });
+      rowEl.addEventListener('mouseleave', hideTip);
+    });
   }
   function mdMonths(el, days) {
     el.innerHTML = '';
@@ -1181,6 +1202,7 @@
     document.getElementById('emptyRecent').classList.toggle('hidden', all.length > 0);
   }
   T.renderMain = renderMain;
+  T.openModelDialog = openModelDialog;
   T.dayTotal = dayTotal;
   T.emptyState = emptyState;
 })();
