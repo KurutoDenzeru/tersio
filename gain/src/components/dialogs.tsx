@@ -3,10 +3,14 @@
 // profile card, and the footer in template.html + settings.js + share.js.
 // Shadcn Dialog + Select carry the structure; the row language, danger
 // zone, and share actions stay identical to the original.
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useTheme } from "@/components/theme-provider";
 import { fmt, fmtShort, relAge } from "@/lib/format";
 import {
@@ -20,47 +24,107 @@ import {
 import type { DoctorReport, HealthReport, UsageReport } from "@/lib/data";
 import { useToast } from "./toaster";
 import { CurrencyPicker } from "./savings";
+import { HoverTip } from "./common";
 import { Icon } from "./icon";
 
 type Pane = "general" | "connection" | "diagnosis" | "data";
 
+function OmpLogo() {
+  return (
+    <svg viewBox="0 0 120 90" aria-hidden="true" className="size-full">
+      <rect x="10" y="8" width="100" height="12" rx="2" fill="#fafafa" />
+      <rect x="25" y="20" width="12" height="62" rx="2" fill="#fafafa" />
+      <rect x="75" y="20" width="12" height="45" rx="2" fill="#fafafa" />
+      <rect x="71" y="55" width="20" height="16" rx="3" fill="#f97316" />
+      <rect x="76" y="59" width="3" height="8" rx="1" fill="#0d0d0d" />
+      <rect x="82" y="59" width="3" height="8" rx="1" fill="#0d0d0d" />
+      <circle cx="18" cy="14" r="2" fill="#f97316" opacity="0.8" />
+      <circle cx="102" cy="14" r="2" fill="#f97316" opacity="0.8" />
+    </svg>
+  );
+}
+
 function HealthPane() {
   const [health, setHealth] = useState<HealthReport | null | undefined>(undefined);
-  useEffect(() => {
-    void fetchHealth().then(setHealth);
+  const [refreshing, setRefreshing] = useState(false);
+  const [checkedAt, setCheckedAt] = useState<number | null>(null);
+  const load = useCallback(() => {
+    setRefreshing(true);
+    void fetchHealth().then((report) => {
+      setHealth(report);
+      if (report) setCheckedAt(Date.now());
+      setRefreshing(false);
+    });
   }, []);
-  if (health === undefined) {
-    return (
-      <div>
-        {Array.from({ length: 3 }).map((_, i) => (
-          <div key={i} className="flex items-center justify-between gap-3 border-b border-line px-0.5 py-3.5" aria-hidden="true">
-            <span className="min-w-0 flex-1">
-              <span className="block h-3.5 w-[42%] rounded-md bg-track animate-skel-pulse" />
-              <span className="mt-1.5 block h-[11px] w-[64%] rounded-md bg-track animate-skel-pulse" />
-            </span>
-            <span className="block h-3 w-16 shrink-0 rounded-md bg-track animate-skel-pulse" />
-          </div>
-        ))}
-      </div>
-    );
-  }
-  const dot = (ok: boolean | null): React.ReactNode => (
-    <span className={`size-2 shrink-0 rounded-full ${ok === true ? "bg-accent" : ok === false ? "bg-danger" : "bg-track"}`} />
-  );
-  // Same row pattern as General: name + hint left, status control right.
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const ready = !!health?.omp;
+  const unavailable = health === null;
+  const status = unavailable ? "Unavailable" : ready ? "Available" : "Not detected on PATH";
+  const path = health?.ompPath;
+
   return (
     <div>
-      <p className="mt-[18px] mb-2 text-[11px] tracking-[0.14em] text-dim uppercase">Connection</p>
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex items-start justify-between gap-3 border-b border-line pb-4">
         <div className="min-w-0">
-          <p className="m-0 text-[13px] font-semibold">Status</p>
-          <p className="mt-0.5 mb-0 text-xs text-dim">{health?.omp ? `wrapped with omp ${health.omp}` : "omp CLI not found"}</p>
+          <p className="m-0 text-[13px] font-semibold">Coding agents</p>
+          <p className="mt-0.5 mb-0 text-xs text-dim">Manage AI agent CLIs installed on this computer.</p>
         </div>
-        <span className="mono text-xs flex shrink-0 items-center gap-2 text-dim">
-          {dot(health ? !!health.omp : null)}
-          {health ? (health.omp ? "Connected" : "Offline") : "unreachable"}
-        </span>
+        <Button type="button" variant="outline" size="sm" onClick={load} disabled={refreshing} aria-label="Refresh coding agent status">
+          {refreshing ? <Spinner /> : <Icon name="refresh-cw" />}
+          Refresh
+        </Button>
       </div>
+      {health === undefined ? (
+        <div className="flex items-center gap-4 border-b border-line py-4" role="status">
+          <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-track">
+            <Spinner />
+          </span>
+          <div className="grid gap-2">
+            <Skeleton className="h-4 w-32" />
+            <Skeleton className="h-3 w-48" />
+          </div>
+        </div>
+      ) : (
+        <a
+          href="https://omp.sh"
+          target="_blank"
+          rel="noreferrer"
+          className="flex min-w-0 items-center gap-3 border-b border-line py-4 transition-colors hover:bg-track/40 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent"
+          aria-label="Open Oh My Pi"
+        >
+          <span className="grid size-10 shrink-0 place-items-center overflow-hidden rounded-lg bg-track p-1.5">
+            <OmpLogo />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+              <span className="text-sm font-semibold">Oh My Pi</span>
+              {health?.omp && <span className="mono text-xs text-dim">{health.omp}</span>}
+            </div>
+            <div className="mt-1 min-w-0 text-xs text-dim">
+              {path ? (
+                <HoverTip content={path}>
+                  <span className="mono block truncate">{path}</span>
+                </HoverTip>
+              ) : ready ? (
+                <span>Available as omp on PATH.</span>
+              ) : health === null ? (
+                <span>Health information is unavailable.</span>
+              ) : (
+                <span>Not detected on PATH as omp.</span>
+              )}
+            </div>
+          </div>
+          <Badge variant={ready ? "secondary" : unavailable ? "destructive" : "outline"} className="ml-auto shrink-0 gap-1.5">
+            <span className={`size-1.5 rounded-full ${ready ? "bg-accent" : unavailable ? "bg-danger" : "bg-track"}`} />
+            {status}
+          </Badge>
+          <Icon name="chevron-right" className="shrink-0 text-dim" />
+        </a>
+      )}
+      {checkedAt && <p className="mt-3 text-xs text-dim" role="status">Checked just now</p>}
     </div>
   );
 }
@@ -79,33 +143,33 @@ function DoctorPane() {
     });
     return seen;
   })();
+  const schedule = report?.schedule ?? "manual";
+  const scheduleLabel = `${schedule[0].toUpperCase()}${schedule.slice(1)}`;
   return (
     <div>
-      <p className="mt-[18px] mb-2 text-[11px] tracking-[0.14em] text-dim uppercase">System Health</p>
-      <p className="mt-0.5 mb-2.5 text-xs text-dim">
-        What works and what does not. Repair with <span className="mono">tersio doctor --fix</span>.
-      </p>
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
           <p className="m-0 text-[13px] font-semibold">Auto-check</p>
           <p className="mt-0.5 mb-0 text-xs text-dim">{report?.checkedAt ? `Checked ${relAge(report.checkedAt)}.` : "Never checked."}</p>
         </div>
         <Select
-          value={report?.schedule ?? "manual"}
+          value={schedule}
           onValueChange={(v) => {
             if (isFileExport()) return;
             void postDoctorSchedule(v as DoctorReport["schedule"]).then((d) => d && setReport(d));
           }}
         >
-          <SelectTrigger className="inline-flex cursor-pointer items-center gap-1.5 rounded-[10px] border border-line bg-panel px-2.5 py-[7px] text-xs text-ink hover:border-accent mono h-auto" aria-label="Diagnosis schedule">
-            <SelectValue />
+          <SelectTrigger size="sm" aria-label="Diagnosis schedule">
+            <SelectValue>{scheduleLabel}</SelectValue>
           </SelectTrigger>
           <SelectContent>
-            {["manual", "daily", "weekly", "monthly"].map((s) => (
-              <SelectItem key={s} value={s}>
-                {s[0].toUpperCase() + s.slice(1)}
-              </SelectItem>
-            ))}
+            <SelectGroup>
+              {["manual", "daily", "weekly", "monthly"].map((s) => (
+                <SelectItem key={s} value={s}>
+                  {s[0].toUpperCase() + s.slice(1)}
+                </SelectItem>
+              ))}
+            </SelectGroup>
           </SelectContent>
         </Select>
       </div>
@@ -209,7 +273,6 @@ function DataPane({ data, onReload }: { data: UsageReport | null; onReload: () =
   }, [armed]);
   return (
     <div>
-      <p className="mt-[18px] mb-2 text-[11px] tracking-[0.14em] text-dim uppercase">Data</p>
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
           <p className="m-0 text-[13px] font-semibold">Reload</p>
@@ -230,9 +293,11 @@ function DataPane({ data, onReload }: { data: UsageReport | null; onReload: () =
           <p className="m-0 text-[13px] font-semibold">
             Usage DB <span className="text-[11px] font-normal text-dim">tersio-owned · local hosted</span>
           </p>
-          <p className="mono mt-1 mb-0 truncate text-[11px] text-dim" title={data?.paths.usageDb ?? ""}>
-            {data?.paths.usageDb ?? "–"}
-          </p>
+          <HoverTip content={data?.paths.usageDb ?? "–"}>
+            <p className="mono mt-1 mb-0 truncate text-[11px] text-dim">
+              {data?.paths.usageDb ?? "–"}
+            </p>
+          </HoverTip>
         </div>
       </div>
       <div className="mt-4 rounded-xl border border-danger-border bg-danger-soft p-3">
@@ -290,6 +355,41 @@ const TITLES: Record<Pane, string> = {
   data: "Data",
 };
 
+const SETTINGS_SEARCH: Array<{ pane: Pane; label: string; terms: string }> = [
+  { pane: "general", label: "Theme", terms: "general appearance theme light dark system color scheme mode" },
+  { pane: "general", label: "Currency", terms: "currency display cost usd euro" },
+  { pane: "connection", label: "Coding agents", terms: "connection provider coding agents agent oh my pi omp status path version refresh ready available" },
+  { pane: "diagnosis", label: "Auto-check schedule", terms: "diagnosis system health auto-check schedule manual daily weekly monthly" },
+  { pane: "diagnosis", label: "Scan", terms: "diagnosis scan check" },
+  { pane: "diagnosis", label: "Fix issues", terms: "diagnosis repair fix issues" },
+  { pane: "data", label: "Reload data", terms: "data reload refresh statistics disk database usage db path" },
+  { pane: "data", label: "Reset statistics", terms: "data danger zone reset clear statistics" },
+];
+
+function HighlightMatch({ text, query, fullWhenAlias = false }: { text: string; query: string; fullWhenAlias?: boolean }) {
+  if (!query) return text;
+  const ranges = query
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((token) => {
+      const index = text.toLowerCase().indexOf(token);
+      return index >= 0 ? { start: index, end: index + token.length } : null;
+    })
+    .filter((range): range is { start: number; end: number } => range !== null)
+    .sort((a, b) => a.start - b.start);
+  if (ranges.length === 0) return fullWhenAlias ? <mark className="rounded-[2px] bg-amber-300 px-0.5 text-inherit dark:bg-amber-300/40">{text}</mark> : text;
+  const parts: React.ReactNode[] = [];
+  let cursor = 0;
+  for (const [index, range] of ranges.entries()) {
+    if (range.start < cursor) continue;
+    if (range.start > cursor) parts.push(text.slice(cursor, range.start));
+    parts.push(<mark key={`${range.start}-${index}`} className="rounded-[2px] bg-amber-300 px-0.5 text-inherit dark:bg-amber-300/40">{text.slice(range.start, range.end)}</mark>);
+    cursor = range.end;
+  }
+  if (cursor < text.length) parts.push(text.slice(cursor));
+  return parts;
+}
+
 export function SettingsDialog({
   open,
   onClose,
@@ -308,23 +408,77 @@ export function SettingsDialog({
   const { theme, setTheme } = useTheme();
   const [pane, setPane] = useState<Pane>("general");
   const [query, setQuery] = useState("");
-  const shown = PANES.filter((p) => !query || p.label.toLowerCase().includes(query.trim().toLowerCase()));
+  const normalizedQuery = query.trim().toLowerCase();
+  const queryTokens = normalizedQuery.split(/\s+/).filter(Boolean);
+  const matchesSettings = (terms: string): boolean => queryTokens.every((token) => terms.includes(token));
+  const matches = normalizedQuery
+    ? SETTINGS_SEARCH.filter((item) => matchesSettings(item.terms))
+    : [];
+  const matchingPanes = new Set(matches.map((item) => item.pane));
+  const shown = PANES.filter((p) => !normalizedQuery || matchingPanes.has(p.id));
+  const updateQuery = (value: string): void => {
+    setQuery(value);
+    const next = value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const match = SETTINGS_SEARCH.find((item) => next.every((token) => item.terms.includes(token)));
+    if (match) setPane(match.pane);
+  };
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="block w-[min(920px,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] gap-0 overflow-hidden rounded-2xl border border-line bg-panel p-0 text-ink shadow-[0_16px_48px_rgba(0,0,0,.35)]" showCloseButton={false} aria-describedby={undefined}>
+      <DialogContent className="block w-[min(920px,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] sm:max-w-[920px] gap-0 overflow-hidden rounded-2xl border border-line bg-panel p-0 text-ink shadow-[0_16px_48px_rgba(0,0,0,.35)]" showCloseButton={false} aria-describedby={undefined}>
         <div className="grid max-h-[inherit] min-h-[min(70vh,700px)] grid-cols-[240px_minmax(0,1fr)] max-sm:grid-cols-1">
           <aside className="flex min-h-0 flex-col gap-2.5 border-r border-line bg-panel px-3 py-4 max-sm:border-r-0 max-sm:border-b" aria-label="Settings sections">
             <div className="flex items-center gap-2 rounded-[10px] border border-line px-2.5 py-2 text-dim">
               <Icon name="search" className="size-4" />
-              <input type="search" placeholder="Search settings" aria-label="Search settings" autoComplete="off" value={query} onChange={(e) => setQuery(e.target.value)} className="min-w-0 flex-1 bg-transparent text-[13px] text-ink outline-none [&::-webkit-search-cancel-button]:hidden" />
-            </div>
-            <nav className="grid gap-0.5 overflow-y-auto" aria-label="Settings">
-              {shown.map((p) => (
-                <button key={p.id} type="button" className={`flex w-full items-center gap-2.5 rounded-[10px] px-2.5 py-2 text-left text-[13px] text-ink hover:bg-track ${pane === p.id ? "bg-track font-semibold" : "bg-transparent font-normal"}`} onClick={() => setPane(p.id)}>
-                  <Icon name={p.icon} className="size-4" />
-                  <span>{p.label}</span>
+              <input
+                type="search"
+                placeholder="Search settings"
+                aria-label="Search settings"
+                aria-controls="settings-search-results"
+                autoComplete="off"
+                value={query}
+                onChange={(e) => updateQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") updateQuery("");
+                }}
+                className="min-w-0 flex-1 bg-transparent text-[13px] text-ink outline-none [&::-webkit-search-cancel-button]:hidden"
+              />
+              {query && (
+                <button
+                  type="button"
+                  className="grid size-5 place-items-center rounded-md text-dim hover:bg-track hover:text-ink"
+                  aria-label="Clear settings search"
+                  onClick={() => updateQuery("")}
+                >
+                  <Icon name="x" className="size-3" />
                 </button>
-              ))}
+              )}
+            </div>
+            <nav id="settings-search-results" className="grid gap-0.5 overflow-y-auto" aria-label="Settings">
+              {shown.map((p) => {
+                const paneMatches = matches.filter((item) => item.pane === p.id);
+                return (
+                  <div key={p.id} className="contents">
+                    <button type="button" className={`flex w-full items-center gap-2.5 rounded-[10px] px-2.5 py-2 text-left text-[13px] text-ink hover:bg-track ${pane === p.id ? "bg-track font-semibold" : "bg-transparent font-normal"}`} onClick={() => setPane(p.id)}>
+                      <Icon name={p.icon} className="size-4" />
+                      <span><HighlightMatch text={p.label} query={normalizedQuery} /></span>
+                      {normalizedQuery && <span className="ml-auto text-[10px] text-dim">{paneMatches.length} match{paneMatches.length === 1 ? "" : "es"}</span>}
+                    </button>
+                    {normalizedQuery && paneMatches.map((item) => (
+                      <button
+                        key={`${item.pane}-${item.label}`}
+                        type="button"
+                        className="ml-7 mr-2 rounded-lg px-2 py-1.5 text-left text-xs text-dim hover:bg-track hover:text-ink"
+                        onClick={() => setPane(item.pane)}
+                      >
+                        <HighlightMatch text={item.label} query={normalizedQuery} fullWhenAlias />
+                      </button>
+                    ))}
+                  </div>
+                );
+              })}
+              {normalizedQuery && shown.length === 0 && (
+                <p className="px-2.5 py-3 text-xs text-dim">No matching settings</p>
+              )}
             </nav>
             <p className="mono mt-auto px-2.5 text-[11px] text-dim">tersio v{data?.version ?? "?"}</p>
           </aside>
@@ -343,33 +497,32 @@ export function SettingsDialog({
             <div className="min-h-0 overflow-y-auto overscroll-contain px-5 pt-4 pb-5 [scrollbar-width:thin] [scrollbar-color:var(--line)_transparent]">
               {pane === "general" && (
                 <section aria-label="General">
-                  <p className="mt-0 mb-2 text-[11px] tracking-[0.14em] text-dim uppercase">Appearance</p>
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
                       <p className="m-0 text-[13px] font-semibold">Theme</p>
                       <p className="mt-0.5 mb-0 text-xs text-dim">Light, dark, or follow the system.</p>
                     </div>
-                    <ToggleGroup
-                      value={[theme]}
-                      onValueChange={(v) => {
-                        const next = v[v.length - 1];
-                        if (next === "light" || next === "dark" || next === "system") setTheme(next);
+                    <Tabs
+                      value={theme}
+                      onValueChange={(value) => {
+                        if (value === "light" || value === "dark" || value === "system") setTheme(value);
                       }}
-                      className="mono text-xs p-1 rounded-[10px] border border-line bg-panel [&_[data-state=on]]:bg-accent-soft [&_[data-state=on]]:text-ink [&_button:not([data-state=on])]:hover:text-ink"
-                      aria-label="Theme"
+                      className="w-fit"
                     >
-                      {(
-                        [
-                          ["light", "sun", "Light"],
-                          ["dark", "moon", "Dark"],
-                          ["system", "monitor", "System"],
-                        ] as const
-                      ).map(([v, icon, label]) => (
-                        <ToggleGroupItem key={v} value={v} className="grid place-items-center rounded-lg px-2.5 py-1.5 text-dim" aria-label={label} title={label}>
-                          <Icon name={icon} className="size-4" />
-                        </ToggleGroupItem>
-                      ))}
-                    </ToggleGroup>
+                      <TabsList className="rounded-[10px] border border-line bg-panel p-1">
+                        {(
+                          [
+                            ["light", "sun", "Light"],
+                            ["dark", "moon", "Dark"],
+                            ["system", "monitor", "System"],
+                          ] as const
+                        ).map(([value, icon, label]) => (
+                          <TabsTrigger key={value} value={value} aria-label={label}>
+                            <Icon name={icon} />
+                          </TabsTrigger>
+                        ))}
+                      </TabsList>
+                    </Tabs>
                   </div>
                   <div className="mt-3.5 flex items-center justify-between gap-3">
                     <div className="min-w-0">
@@ -434,6 +587,9 @@ export function ShareDialog({
   money: (v: number) => string;
 }) {
   const toast = useToast();
+  const brandDataUrlRef = useRef<string | null>(null);
+  const imageBlobRef = useRef<Blob | null>(null);
+  const imageBlobPromiseRef = useRef<Promise<Blob> | null>(null);
   const t = data?.tokens ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
   const total = t.input + t.output + t.cacheRead + t.cacheWrite;
   const runs = data?.messages ?? 0;
@@ -449,6 +605,86 @@ export function ShareDialog({
   });
   const streak = streakOf(byDay);
   const text = `${fmtShort(total)} tokens / ${fmt(runs)} runs / ${fmtShort(runs ? Math.round(total / runs) : 0)} per run. Saved ${money(saved)} via cache. ${streak}-day streak. My AI spend, tracked with Tersio.`;
+
+  const createPngBlob = (): Promise<Blob> => new Promise((resolve, reject) => {
+    const img = new Image();
+    const svg = new Blob([svgCard()], { type: "image/svg+xml;charset=utf-8" });
+    const url = URL.createObjectURL(svg);
+    img.onload = () => {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = 1200;
+        canvas.height = 850;
+        const context = canvas.getContext("2d");
+        if (!context) {
+          URL.revokeObjectURL(url);
+          reject(new Error("Canvas is unavailable"));
+          return;
+        }
+        context.drawImage(img, 0, 0, 1200, 850);
+        canvas.toBlob((blob) => {
+          URL.revokeObjectURL(url);
+          if (blob) resolve(blob);
+          else reject(new Error("PNG render failed"));
+        }, "image/png");
+      } catch (error) {
+        URL.revokeObjectURL(url);
+        reject(error);
+      }
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("Preview render failed"));
+    };
+    img.src = url;
+  });
+
+  const copyBlob = (blob: Blob): Promise<void> => {
+    if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") {
+      return Promise.reject(new Error("Image clipboard is unavailable"));
+    }
+    return navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+  };
+
+  const copyImage = (): Promise<void> => {
+    const blob = imageBlobRef.current;
+    if (blob) return copyBlob(blob);
+    const pending = imageBlobPromiseRef.current;
+    return pending ? pending.then(copyBlob) : Promise.reject(new Error("Preview image is not ready"));
+  };
+
+  useEffect(() => {
+    imageBlobRef.current = null;
+    imageBlobPromiseRef.current = null;
+    if (!open) return undefined;
+    const brandReady = brandDataUrlRef.current
+      ? Promise.resolve(brandDataUrlRef.current)
+      : fetch("brand.webp")
+        .then((response) => response.blob())
+        .then((blob) => new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result));
+          reader.onerror = () => reject(reader.error ?? new Error("Brand read failed"));
+          reader.readAsDataURL(blob);
+        }))
+        .then((dataUrl) => {
+          brandDataUrlRef.current = dataUrl;
+          return dataUrl;
+        });
+    const pending = brandReady.then(() => createPngBlob()).then((blob) => {
+      imageBlobRef.current = blob;
+      return blob;
+    }, (error: unknown) => {
+      imageBlobPromiseRef.current = null;
+      throw error;
+    });
+    imageBlobPromiseRef.current = pending;
+    void pending.catch(() => undefined);
+    return () => {
+      imageBlobRef.current = null;
+      imageBlobPromiseRef.current = null;
+    };
+  }, [open, data]);
 
   const copyText = (body: string, okMsg: string): void => {
     const done = (): void => toast("Copied", okMsg, "copy");
@@ -467,6 +703,24 @@ export function ShareDialog({
         toast("Copy failed", "Select the text manually.", "circle-alert");
       }
     }
+  };
+
+  const shareImage = (openSocial: () => Window | null, network: string): void => {
+    const socialWindow = openSocial();
+    void copyImage().then(
+      () => toast("Image copied", `Paste it into the ${network} composer.`, "copy"),
+      () => {
+        if (!socialWindow) copyText(text, "Image copy failed; share text copied instead.");
+        else toast("Image copy failed", "Use Download and attach the PNG in the composer.", "circle-alert");
+      },
+    );
+  };
+
+  const copyPreviewImage = (): void => {
+    void copyImage().then(
+      () => toast("Image copied", "Usage preview copied as PNG.", "copy"),
+      () => toast("Image copy failed", "Use Download instead.", "circle-alert"),
+    );
   };
 
   // PNG export renders the profile card as SVG, then rasterizes it. Same
@@ -501,9 +755,14 @@ export function ShareDialog({
       }
     }
     const streakTxt = `${streak}${streak === 1 ? " day" : " days"}`;
+    const logo = brandDataUrlRef.current
+      ? `<defs><clipPath id="brandClip"><rect x="1012" y="40" width="124" height="124" rx="62"/></clipPath></defs>` +
+        `<image x="1012" y="40" width="124" height="124" clip-path="url(#brandClip)" href="${brandDataUrlRef.current}"/>`
+      : "";
     return (
       '<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="850" viewBox="0 0 1200 850">' +
       `<rect width="1200" height="850" rx="28" fill="${pal.bg}"/>` +
+      `<path d="M1090 700 L980 800 h70 l-8 60 80 -96 h-70 l8 -64 z" fill="none" stroke="${pal.accent}" stroke-width="14" opacity="0.08" stroke-linejoin="round"/>` +
       `<text x="64" y="80" font-family="monospace" font-size="26" letter-spacing="6" fill="${pal.accent}">TERSIO · USAGE PROFILE</text>` +
       `<text x="60" y="250" font-family="monospace" font-size="130" font-weight="bold" fill="${pal.ink}">${e(`${fmtShort(total)} tokens`)}</text>` +
       `<text x="64" y="300" font-family="monospace" font-size="30" fill="${pal.dim}">across ${e(fmt(runs))} agent runs</text>` +
@@ -520,46 +779,21 @@ export function ShareDialog({
       `<text x="430" y="820" font-family="monospace" font-size="40" font-weight="bold" fill="${pal.ink}">${e(money(cost))}</text>` +
       `<text x="830" y="775" font-family="monospace" font-size="24" letter-spacing="3" fill="${pal.dim}">MODELS</text>` +
       `<text x="830" y="820" font-family="monospace" font-size="40" font-weight="bold" fill="${pal.ink}">${e(String(models))}</text>` +
+      logo +
       "</svg>"
     );
   };
 
   const downloadPng = (): void => {
-    try {
-      const img = new Image();
-      const svg = new Blob([svgCard()], { type: "image/svg+xml;charset=utf-8" });
-      const url = URL.createObjectURL(svg);
-      img.onload = () => {
-        try {
-          const c = document.createElement("canvas");
-          c.width = 1200;
-          c.height = 850;
-          c.getContext("2d")?.drawImage(img, 0, 0, 1200, 850);
-          URL.revokeObjectURL(url);
-          c.toBlob((b) => {
-            if (!b) {
-              toast("Save failed", "Browser blocked the render.", "circle-alert");
-              return;
-            }
-            const a = document.createElement("a");
-            a.download = "tersio-usage.png";
-            a.href = URL.createObjectURL(b);
-            a.click();
-            setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-            toast("Saved", "Card downloaded as PNG.", "download");
-          }, "image/png");
-        } catch {
-          toast("Save failed", "Browser blocked the render.", "circle-alert");
-        }
-      };
-      img.onerror = () => {
-        URL.revokeObjectURL(url);
-        toast("Save failed", "Browser blocked the render.", "circle-alert");
-      };
-      img.src = url;
-    } catch {
-      toast("Save failed", "Browser blocked the render.", "circle-alert");
-    }
+    void createPngBlob().then((blob) => {
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.download = "tersio-usage.png";
+      link.href = url;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+      toast("Saved", "Card downloaded as PNG.", "download");
+    }, () => toast("Save failed", "Browser blocked the render.", "circle-alert"));
   };
 
   const cells = (() => {
@@ -585,12 +819,12 @@ export function ShareDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="block w-[min(660px,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] gap-0 overflow-y-auto rounded-2xl border border-line bg-panel p-5 text-ink shadow-[0_16px_48px_rgba(0,0,0,.35)]" showCloseButton={false} aria-describedby={undefined}>
+      <DialogContent className="block w-[min(660px,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] sm:max-w-[660px] gap-0 overflow-y-auto rounded-2xl border border-line bg-panel p-5 text-ink shadow-[0_16px_48px_rgba(0,0,0,.35)]" showCloseButton={false} aria-describedby={undefined}>
         <div className="pointer-events-none absolute top-0 left-1/2 h-[180px] w-[min(480px,90%)] -translate-x-1/2 -translate-y-[40%] bg-[radial-gradient(ellipse_at_center,var(--accent-soft)_0%,transparent_65%)]" aria-hidden="true" />
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <DialogTitle className="m-0 text-base font-bold tracking-[-0.01em]">Share your usage</DialogTitle>
-            <p className="mt-0.5 mb-0 text-xs text-dim">Download the card or post your stats.</p>
+            <p className="mt-0.5 mb-0 text-xs text-dim">Copy the preview image or share your stats.</p>
           </div>
           <button
             type="button"
@@ -646,47 +880,56 @@ export function ShareDialog({
         </div>
         <div className="mono text-xs mt-4 flex flex-wrap items-center gap-2">
           <span className="flex items-center gap-2">
-            <button
-              type="button"
-              className="inline-flex cursor-pointer items-center gap-1.5 rounded-[10px] border border-line bg-transparent px-[9px] py-[7px] text-xs text-ink hover:border-accent [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]"
-              aria-label="Share on X"
-              title="Share on X"
-              onClick={() => window.open(`https://x.com/intent/post?text=${encodeURIComponent(`${text} #Tersio`)}`, "_blank", "noopener,width=560,height=460")}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-              </svg>
-            </button>
+            <HoverTip key="x" content="Share on X">
+              <button
+                type="button"
+                className="inline-flex cursor-pointer items-center gap-1.5 rounded-[10px] border border-line bg-transparent px-[9px] py-[7px] text-xs text-ink hover:border-accent [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]"
+                aria-label="Share on X"
+                onClick={() => shareImage(
+                  () => window.open(`https://x.com/intent/post?text=${encodeURIComponent(`${text} #Tersio`)}`, "_blank", "noopener,noreferrer,width=560,height=460"),
+                  "X",
+                )}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+                </svg>
+              </button>
+            </HoverTip>
+            <HoverTip key="reddit" content="Share on Reddit">
             <button
               type="button"
               className="inline-flex cursor-pointer items-center gap-1.5 rounded-[10px] border border-line bg-transparent px-[9px] py-[7px] text-xs text-ink hover:border-accent [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]"
               aria-label="Share on Reddit"
-              title="Share on Reddit"
-              onClick={() => window.open(`https://www.reddit.com/submit?title=${encodeURIComponent("My Tersio usage profile")}&text=${encodeURIComponent(text)}`, "_blank", "noopener")}
+              onClick={() => shareImage(
+                () => window.open(`https://www.reddit.com/submit?title=${encodeURIComponent("My Tersio usage profile")}&text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer"),
+                "Reddit",
+              )}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                 <path d="M12 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0zm5.01 4.744c.688 0 1.25.561 1.25 1.249a1.25 1.25 0 0 1-2.498.056l-2.597-.547-.8 3.747c1.824.07 3.48.632 4.674 1.488.308-.309.73-.491 1.207-.491.968 0 1.754.786 1.754 1.754 0 .716-.435 1.333-1.01 1.614a3.111 3.111 0 0 1 .042.52c0 2.694-3.13 4.87-7.004 4.87-3.874 0-7.004-2.176-7.004-4.87 0-.183.015-.366.043-.534A1.748 1.748 0 0 1 4.028 12c0-.968.786-1.754 1.754-1.754.463 0 .898.196 1.207.49 1.207-.883 2.878-1.43 4.744-1.487l.885-4.182a.342.342 0 0 1 .14-.197.35.35 0 0 1 .238-.042l2.906.617a1.214 1.214 0 0 1 1.108-.701zM9.25 12C8.561 12 8 12.562 8 13.25c0 .687.561 1.248 1.25 1.248.687 0 1.248-.561 1.248-1.249 0-.688-.561-1.249-1.249-1.249zm5.5 0c-.687 0-1.248.561-1.248 1.25 0 .687.561 1.248 1.249 1.248.688 0 1.249-.561 1.249-1.249 0-.688-.562-1.249-1.25-1.249zm-5.466 3.99a.327.327 0 0 0-.231.094.33.33 0 0 0 0 .463c.842.842 2.484.913 2.961.913.477 0 2.105-.056 2.961-.913a.361.361 0 0 0 .029-.463.33.33 0 0 0-.464 0c-.547.533-1.684.73-2.512.73-.828 0-1.979-.196-2.512-.73a.326.326 0 0 0-.232-.095z" />
               </svg>
             </button>
+            </HoverTip>
+            <HoverTip key="linkedin" content="Share on LinkedIn">
             <button
               type="button"
               className="inline-flex cursor-pointer items-center gap-1.5 rounded-[10px] border border-line bg-transparent px-[9px] py-[7px] text-xs text-ink hover:border-accent [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]"
               aria-label="Share on LinkedIn"
-              title="Share on LinkedIn"
-              onClick={() => {
-                window.open("https://www.linkedin.com/feed/", "_blank", "noopener");
-                copyText(text, "Image copied — paste it into the LinkedIn composer.");
-              }}
+              onClick={() => shareImage(
+                () => window.open("https://www.linkedin.com/feed/", "_blank", "noopener,noreferrer"),
+                "LinkedIn",
+              )}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                 <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
               </svg>
             </button>
+            </HoverTip>
           </span>
           <span className="flex items-center gap-2 ml-auto">
-            <button type="button" className="inline-flex cursor-pointer items-center gap-1.5 rounded-[10px] border border-line bg-transparent px-3 py-[7px] text-xs text-ink hover:border-accent [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]" aria-label="Copy share text" onClick={() => copyText(text, "Share text copied.")}>
+            <button type="button" className="inline-flex cursor-pointer items-center gap-1.5 rounded-[10px] border border-line bg-transparent px-3 py-[7px] text-xs text-ink hover:border-accent [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]" aria-label="Copy usage preview as image" onClick={copyPreviewImage}>
               <Icon name="copy" className="size-3.5" />
-              <span>Copy</span>
+              <span>Copy image</span>
             </button>
             <button type="button" className="inline-flex cursor-pointer items-center gap-1.5 rounded-[10px] border border-line bg-transparent px-3 py-[7px] text-xs text-ink hover:border-accent [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]" aria-label="Download card as PNG" onClick={downloadPng}>
               <Icon name="download" className="size-3.5" />
@@ -705,16 +948,16 @@ export function Footer() {
       <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
         <span>© 2026 Tersio. KurutoDenzeru. All rights reserved.</span>
         <span className="ml-auto flex items-center gap-1 text-ink">
-          <a href="https://github.com/KurutoDenzeru/tersio" target="_blank" rel="noopener" aria-label="GitHub" className="grid size-8 place-items-center rounded-lg text-ink hover:text-accent [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96] [&_img]:block [&_img]:size-4">
-            <img height="16" width="16" src="https://cdn.jsdelivr.net/npm/simple-icons@v16/icons/github.svg" alt="GitHub" />
+          <a href="https://github.com/KurutoDenzeru/tersio" target="_blank" rel="noopener" aria-label="GitHub" className="grid size-8 place-items-center rounded-lg text-ink hover:text-accent [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]">
+            <span className="size-4 bg-current" style={{ WebkitMaskImage: "url('https://cdn.jsdelivr.net/npm/simple-icons@v16/icons/github.svg')", WebkitMaskPosition: "center", WebkitMaskRepeat: "no-repeat", WebkitMaskSize: "contain" }} />
           </a>
           <a href="https://linkedin.com/in/kurtcalacday/" target="_blank" rel="noopener" aria-label="LinkedIn" className="grid size-8 place-items-center rounded-lg text-ink hover:text-accent [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96] [&_svg]:block [&_svg]:size-4">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
               <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
             </svg>
           </a>
-          <a href="https://instagram.com/krtclcdy/" target="_blank" rel="noopener" aria-label="Instagram" className="grid size-8 place-items-center rounded-lg text-ink hover:text-accent [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96] [&_img]:block [&_img]:size-4">
-            <img height="16" width="16" src="https://cdn.jsdelivr.net/npm/simple-icons@v16/icons/instagram.svg" alt="Instagram" />
+          <a href="https://instagram.com/krtclcdy/" target="_blank" rel="noopener" aria-label="Instagram" className="grid size-8 place-items-center rounded-lg text-ink hover:text-accent [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]">
+            <span className="size-4 bg-current" style={{ WebkitMaskImage: "url('https://cdn.jsdelivr.net/npm/simple-icons@v16/icons/instagram.svg')", WebkitMaskPosition: "center", WebkitMaskRepeat: "no-repeat", WebkitMaskSize: "contain" }} />
           </a>
         </span>
       </div>

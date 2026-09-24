@@ -3,11 +3,13 @@
 // modes, per-cell model breakdown tooltips, month labels. Shadcn Tooltip
 // carries the hover cards.
 import { useMemo, useState } from "react";
-import { Card } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PALETTE, dateHead, dayKey, dayTotal, fmtShort, mondayKey, topModels } from "@/lib/format";
 import type { TokenBreakdown } from "@/lib/format";
 import type { UsageReport } from "@/lib/data";
-import { EmptyState, HoverTip, SegTabs } from "./common";
+import { TooltipRow } from "@/components/ui/tooltip-surface";
+import { EmptyState, HoverTip } from "./common";
 import { Icon } from "./icon";
 
 type Mode = "daily" | "weekly" | "cumulative";
@@ -30,16 +32,19 @@ function dayRows(byDayModel: Record<string, Record<string, number>>, byModel: Re
 
 function TipBody({ title, total, rows }: { title: string; total: number; rows: Array<[string, number, string]> }) {
   return (
-    <div className="mono">
-      <div className="text-[11px] font-bold uppercase tracking-[.14em]">{title}</div>
-      <div className="my-[2px] mb-2 text-[13px]">{fmtShort(total)} total</div>
-      {rows.map(([m, v, c]) => (
-        <div key={m} className="flex items-center gap-2.5 py-[3px] text-xs">
-          <span className="size-[9px] shrink-0 rounded-[2.5px]" style={{ background: c }} />
-          <span className="min-w-0 flex-1 truncate">{m.length > 22 ? `${m.slice(0, 21)}...` : m}</span>
-          <span className="shrink-0 whitespace-nowrap tabular-nums">{fmtShort(v)}</span>
-        </div>
-      ))}
+    <div className="grid gap-1.5">
+      <div className="font-medium text-foreground">{title}</div>
+      <div className="text-muted-foreground">{fmtShort(total)} total</div>
+      <div className="grid gap-1.5">
+        {rows.map(([m, v, c]) => (
+          <TooltipRow
+            key={m}
+            color={c}
+            label={m.length > 22 ? `${m.slice(0, 21)}...` : m}
+            value={fmtShort(v)}
+          />
+        ))}
+      </div>
     </div>
   );
 }
@@ -145,46 +150,55 @@ export function Activity({ data }: { data: UsageReport | null }) {
   const cap = mode === "weekly" ? "weekly totals / trailing 12 months" : mode === "cumulative" ? "running total / trailing 12 months" : "daily values / trailing 12 months";
 
   return (
-    <section id="activity" data-reveal className="mt-8 translate-y-[26px] opacity-0 transition-[opacity,transform] duration-700 ease-[cubic-bezier(.16,1,.3,1)] data-[reveal=in]:translate-y-0 data-[reveal=in]:opacity-100" style={{ scrollMarginTop: 90 }} aria-label="Activity graph">
-      <div className="flex items-center gap-2 mb-1">
-        <Icon name="calendar-days" className="size-4" />
-        <h2 className="font-display font-bold tracking-tight text-xl truncate min-w-0">Activity</h2>
-        <SegTabs options={["daily", "weekly", "cumulative"] as Mode[]} value={mode} onPick={setMode} label="Graph range" />
-      </div>
-      <p className="mono text-xs mb-4 truncate text-dim">
-        <span>
-          {grid.hasData ? `${grid.start} to ${grid.today}` : ""}
-        </span>{" "}
-        · <span>{grid.hasData ? cap : "no data in trailing 12 months"}</span>
-      </p>
-      <Card className="rounded-xl p-5 overflow-hidden" style={{ borderColor: "var(--line)", background: "var(--panel)" }}>
+    <Card
+      id="activity"
+      data-reveal
+      className="mt-8 translate-y-[26px] overflow-hidden border-line bg-panel opacity-0 transition-[opacity,transform] duration-700 ease-[cubic-bezier(.16,1,.3,1)] data-[reveal=in]:translate-y-0 data-[reveal=in]:opacity-100"
+      style={{ scrollMarginTop: 90 }}
+      aria-label="Activity graph"
+    >
+      <CardHeader>
+        <div className="flex items-center gap-2">
+          <Icon name="calendar-days" className="size-4" />
+          <CardTitle className="font-display text-xl tracking-tight">Activity</CardTitle>
+          <Tabs value={mode} onValueChange={(value) => setMode(value as Mode)} className="ml-auto w-fit">
+            <TabsList className="h-auto rounded-[10px] border border-line bg-panel p-1">
+              <TabsTrigger value="daily" className="h-auto px-3 py-1.5 text-xs">Daily</TabsTrigger>
+              <TabsTrigger value="weekly" className="h-auto px-3 py-1.5 text-xs">Weekly</TabsTrigger>
+              <TabsTrigger value="cumulative" className="h-auto px-3 py-1.5 text-xs">Cumulative</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
+        <CardDescription className="mono text-xs text-dim">
+          {grid.hasData ? `${grid.start} to ${grid.today} · ${cap}` : "no data in trailing 12 months"}
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
         {grid.hasData ? (
           <>
             <div className="pb-1">
               <div className="grid w-full" style={{ gridTemplateColumns: "repeat(53, minmax(0, 1fr))", gap: 3 }}>
                 {grid.weeks.map((w, wi) => (
                   <div key={wi} style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
-                    {w.cells.map((c) => {
-                      return (
-                        <HoverTip key={c.key} content={<TipBody title={c.title} total={c.total} rows={c.rows} />}>
-                          <span className={cellClass(c.v, maxOf(grid.weeks))} style={{ cursor: "default" }} />
-                        </HoverTip>
-                      );
-                    })}
+                    {w.cells.map((c) => (
+                      <HoverTip key={c.key} content={<TipBody title={c.title} total={c.total} rows={c.rows} />}>
+                        <span className={cellClass(c.v, maxOf(grid.weeks))} style={{ cursor: "default" }} />
+                      </HoverTip>
+                    ))}
                   </div>
                 ))}
               </div>
             </div>
-            <div className="mono text-[11px] mt-3 flex items-center gap-1.5 text-dim">
+            <div className="mono mt-3 flex items-center gap-1.5 text-[11px] text-dim">
               <span>less</span>
-              <span className="h-[11px] w-[11px] shrink-0 cursor-pointer rounded-[3px] bg-cell-0" />
-              <span className="h-[11px] w-[11px] shrink-0 cursor-pointer rounded-[3px] bg-cell-1" />
-              <span className="h-[11px] w-[11px] shrink-0 cursor-pointer rounded-[3px] bg-cell-2" />
-              <span className="h-[11px] w-[11px] shrink-0 cursor-pointer rounded-[3px] bg-cell-3" />
-              <span className="h-[11px] w-[11px] shrink-0 cursor-pointer rounded-[3px] bg-cell-4" />
+              <span className="h-[11px] w-[11px] shrink-0 rounded-[3px] bg-cell-0" />
+              <span className="h-[11px] w-[11px] shrink-0 rounded-[3px] bg-cell-1" />
+              <span className="h-[11px] w-[11px] shrink-0 rounded-[3px] bg-cell-2" />
+              <span className="h-[11px] w-[11px] shrink-0 rounded-[3px] bg-cell-3" />
+              <span className="h-[11px] w-[11px] shrink-0 rounded-[3px] bg-cell-4" />
               <span>more</span>
             </div>
-            <div className="mono text-[10px] mt-2 grid w-full text-dim" style={{ gridTemplateColumns: "repeat(53, minmax(0, 1fr))", gap: 3 }}>
+            <div className="mono mt-2 grid w-full text-[10px] text-dim" style={{ gridTemplateColumns: "repeat(53, minmax(0, 1fr))", gap: 3 }}>
               {grid.weeks.map((w, wi) => (
                 <span key={wi} style={{ minWidth: 0, overflow: "visible", whiteSpace: "nowrap" }}>
                   {w.month}
@@ -195,8 +209,8 @@ export function Activity({ data }: { data: UsageReport | null }) {
         ) : (
           <EmptyState icon="calendar-x" title="No activity yet" desc="Daily token activity will chart here once sessions report tokens." />
         )}
-      </Card>
-    </section>
+      </CardContent>
+    </Card>
   );
 }
 

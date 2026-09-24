@@ -2,9 +2,11 @@
 // dashboard/charts.js: session tool calls + RTK-metered commands grouped
 // by command, sortable, paged, with honest gaps (–) for unmetered rows.
 import { useMemo, useState } from "react";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { fmt, fmtMs, fmtShort } from "@/lib/format";
 import type { UsageReport } from "@/lib/data";
-import { EmptyState, PageButtons, PerPage, usePager } from "./common";
+import { EmptyState, HoverTip, PageButtons, PerPage, usePager } from "./common";
 import { Icon } from "./icon";
 
 interface CmdRow {
@@ -60,7 +62,7 @@ export function Tools({ data }: { data: UsageReport | null }) {
   const th = (label: string, key: Key, num?: boolean): React.ReactNode => {
     const on = sort.key === key;
     return (
-      <th aria-sort={on ? (sort.dir === 1 ? "ascending" : "descending") : "none"}>
+      <TableHead aria-sort={on ? (sort.dir === 1 ? "ascending" : "descending") : "none"}>
         <button
           type="button"
           className={`[all:unset] inline-flex! cursor-pointer! items-center! gap-[5px]! hover:text-ink focus-visible:rounded-[4px] focus-visible:outline focus-visible:outline-1 focus-visible:outline-accent${num ? " float-right!" : ""}`}
@@ -72,77 +74,80 @@ export function Tools({ data }: { data: UsageReport | null }) {
         >
           {label} <span className={on ? "text-[10px] text-accent" : "text-[10px] text-dim opacity-[.55]"}>{on ? (sort.dir === 1 ? "↑" : "↓") : "⇅"}</span>
         </button>
-      </th>
+      </TableHead>
     );
   };
 
   return (
-    <section id="tools" data-reveal className="mt-8 translate-y-[26px] rounded-xl border border-line bg-panel p-5 opacity-0 transition-[opacity,transform] duration-700 ease-[cubic-bezier(.16,1,.3,1)] data-[reveal=in]:translate-y-0 data-[reveal=in]:opacity-100 overflow-hidden" style={{ scrollMarginTop: 90 }} aria-label="Command tools">
-      <div className="flex items-center gap-2 mb-1">
-        <Icon name="terminal" className="size-4" />
-        <h2 className="font-display font-bold tracking-tight text-xl truncate min-w-0">Command tools</h2>
-        <div className="flex items-center gap-2 ml-auto min-w-0">
-          <span className="mono text-xs truncate min-w-0 text-dim">
-            {scope}
-          </span>
+    <Card
+      id="tools"
+      data-reveal
+      className="mt-8 translate-y-[26px] overflow-hidden border-line bg-panel opacity-0 transition-[opacity,transform] duration-700 ease-[cubic-bezier(.16,1,.3,1)] data-[reveal=in]:translate-y-0 data-[reveal=in]:opacity-100"
+      style={{ scrollMarginTop: 90 }}
+      aria-label="Command tools"
+    >
+      <CardHeader>
+        <div className="flex items-center gap-2">
+          <Icon name="terminal" className="size-4" />
+          <CardTitle className="font-display text-xl tracking-tight">Command tools</CardTitle>
+          <span className="mono ml-auto min-w-0 truncate text-xs text-dim">{scope}</span>
         </div>
-      </div>
-      <p className="mono text-xs mb-4 truncate text-dim">
-        count · tokens saved · avg rate · avg time · share of executions
-      </p>
+        <CardDescription className="mono text-xs text-dim">count · tokens saved · avg rate · avg time · share of executions</CardDescription>
+      </CardHeader>
+      <CardContent>
       {rows.length > 0 ? (
-        <div className="overflow-x-auto">
-          <table className="w-full mono text-[13px]" id="cmdTable">
-            <colgroup><col style={{ width: 40 }} /><col /><col style={{ width: 90 }} /><col style={{ width: 90 }} /><col style={{ width: 90 }} /><col style={{ width: 90 }} /><col style={{ width: 140 }} /></colgroup>
-            <thead>
-              <tr className="text-left text-[11px] uppercase tracking-[0.14em] text-dim">
-                <th className="font-normal text-right pr-3 py-2 w-10">#</th>
-                {th("Tool / Command", "name")}
-                {th("Count", "count", true)}
-                {th("Saved", "saved", true)}
-                {th("Avg%", "avgPct", true)}
-                {th("Time", "avgMs", true)}
-                <th className="font-normal py-2 min-w-32">Impact</th>
-              </tr>
-            </thead>
-            <tbody>
-              {slice.map((r, i) => (
-                <tr key={r.name} className="cursor-pointer transition-[background] duration-200 hover:bg-track hover:shadow-tersio">
-                  <td className="text-right pr-3 py-2.5 mono text-xs text-dim w-10">
-                    {String((p - 1) * per + i + 1).padStart(2, "0")}
-                  </td>
-                  <td className="py-2.5 pr-3 truncate" style={{ maxWidth: 280 }} title={r.name}>
+        <Table className="mono text-[13px]" id="cmdTable">
+          <colgroup><col style={{ width: 40 }} /><col /><col style={{ width: 90 }} /><col style={{ width: 90 }} /><col style={{ width: 90 }} /><col style={{ width: 90 }} /><col style={{ width: 140 }} /></colgroup>
+          <TableHeader className="[&_tr]:text-left [&_tr]:text-[11px] [&_tr]:uppercase [&_tr]:tracking-[0.14em] [&_tr]:text-dim">
+            <TableRow>
+              <TableHead className="w-10 py-2 pr-3 text-right font-normal">#</TableHead>
+              {th("Tool / Command", "name")}
+              {th("Count", "count", true)}
+              {th("Saved", "saved", true)}
+              {th("Avg%", "avgPct", true)}
+              {th("Time", "avgMs", true)}
+              <TableHead className="min-w-32 py-2 font-normal">Impact</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {slice.map((r, i) => (
+              <TableRow key={r.name} className="cursor-pointer hover:bg-track hover:shadow-tersio">
+                <TableCell className="w-10 py-2.5 pr-3 text-right text-xs text-dim">
+                  {String((p - 1) * per + i + 1).padStart(2, "0")}
+                </TableCell>
+                <HoverTip content={r.name}>
+                  <TableCell className="max-w-[280px] truncate py-2.5 pr-3">
                     {r.name}
-                  </td>
-                  <td className="text-right py-2.5 pr-3 font-bold">{fmt(r.count)}</td>
-                  <td className="text-right py-2.5 pr-3 font-bold">{r.saved === null ? "–" : fmtShort(r.saved)}</td>
-                  <td className="text-right py-2.5 pr-3 text-accent">
-                    {r.avgPct === null ? "–" : `${r.avgPct.toFixed(1)}%`}
-                  </td>
-                  <td className="text-right py-2.5 pr-3 text-dim">
-                    {r.avgMs === null ? "–" : fmtMs(r.avgMs)}
-                  </td>
-                  <td className="py-2.5 min-w-32">
-                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-track">
-                      <div className="h-full origin-left rounded-full bg-accent transition-[width] duration-1000 ease-[cubic-bezier(.16,1,.3,1)]" style={{ width: r.count ? `${Math.round((r.count / max) * 100)}%` : "0" }} />
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                  </TableCell>
+                </HoverTip>
+                <TableCell className="py-2.5 pr-3 text-right font-bold">{fmt(r.count)}</TableCell>
+                <TableCell className="py-2.5 pr-3 text-right font-bold">{r.saved === null ? "–" : fmtShort(r.saved)}</TableCell>
+                <TableCell className="py-2.5 pr-3 text-right text-accent">
+                  {r.avgPct === null ? "–" : `${r.avgPct.toFixed(1)}%`}
+                </TableCell>
+                <TableCell className="py-2.5 pr-3 text-right text-dim">
+                  {r.avgMs === null ? "–" : fmtMs(r.avgMs)}
+                </TableCell>
+                <TableCell className="min-w-32 py-2.5">
+                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-track">
+                    <div className="h-full origin-left rounded-full bg-accent transition-[width] duration-1000 ease-[cubic-bezier(.16,1,.3,1)]" style={{ width: r.count ? `${Math.round((r.count / max) * 100)}%` : "0" }} />
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
       ) : (
         <EmptyState icon="wrench" title="No tool data yet" desc="Session tool calls and RTK measurements will appear here once recorded." />
       )}
-      <div className="mono text-xs mt-4 flex flex-wrap items-center gap-x-4 gap-y-3 text-dim">
-        <span>{range}</span>
-        <PerPage options={[10, 15, 25, 50]} value={per} onPick={(n) => { setPer(n); setPage(1); }} label="Rows per page" />
-        <PageButtons pages={pages} page={p} onPick={setPage} label="Pages" />
-      </div>
-      <p className="mono text-[11px] mt-3 text-dim">
-        bash commands run through the rtk-wired OMP hook meter automatically; rows without metering show –. caveman + ponytail gains are instruction-following, bench-measured in BENCHMARK.md.
-      </p>
-    </section>
+        </CardContent>
+        <CardFooter className="mono justify-between gap-4 border-t text-xs text-dim">
+          <span>{range}</span>
+          <div className="flex items-center gap-4">
+            <PerPage options={[10, 15, 25, 50]} value={per} onPick={(n) => { setPer(n); setPage(1); }} label="Rows per page" />
+            <PageButtons pages={pages} page={p} onPick={setPage} label="Pages" />
+          </div>
+        </CardFooter>
+      </Card>
   );
 }

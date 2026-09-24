@@ -26,12 +26,12 @@ export function Dock({ onShare, onSettings }: { onShare: () => void; onSettings:
       <a href="#" className="flex shrink-0 items-center gap-2.5 pl-1 pr-2" aria-label="Tersio dashboard home">
         <img src="brand.webp" alt="Tersio" width="32" height="32" className="size-8 rounded-[10px]" />
         <span className="text-left leading-tight">
-          <span className="block text-sm font-bold tracking-tight">TERSIO DASHBOARD</span>
-          <span className="mono block text-[11px] text-dim">live token number feed</span>
+          <span className="block text-sm font-bold tracking-tight">TERSIO</span>
+          <span className="mono block text-[11px] text-dim">dashboard</span>
         </span>
       </a>
       <span className="mono ml-auto hidden shrink-0 items-center gap-2 px-2 text-xs text-dim sm:flex">
-        <span className="inline-block size-2 animate-ping-soft rounded-full bg-accent [box-shadow:0_0_0_0_var(--accent-soft)]" />
+        <span className="inline-block size-2 rounded-full bg-accent" />
         <span>{clock}</span>
       </span>
       <span className="hidden h-5 w-px shrink-0 bg-line sm:block" aria-hidden="true" />

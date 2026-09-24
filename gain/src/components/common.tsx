@@ -1,10 +1,11 @@
 // Shared dashboard primitives: empty states, pager, segmented tabs,
 // hover cards. Same behavior as dashboard/charts.js paintPager +
 // emptyState + showTip/moveTip/hideTip.
-import React, { useMemo, useState } from "react";
+import React, { useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "cn";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { TooltipSurface } from "@/components/ui/tooltip-surface";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Icon } from "./icon";
 
@@ -109,15 +110,17 @@ export function PerPage({
         if (n !== value) onPick(n);
       }}
     >
-      <SelectTrigger className="mono text-xs h-auto gap-1 p-1" aria-label={label}>
+      <SelectTrigger size="sm" aria-label={label}>
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
-        {options.map((n) => (
-          <SelectItem key={n} value={String(n)}>
-            {n} / page
-          </SelectItem>
-        ))}
+        <SelectGroup>
+          {options.map((n) => (
+            <SelectItem key={n} value={String(n)}>
+              {n} / page
+            </SelectItem>
+          ))}
+        </SelectGroup>
       </SelectContent>
     </Select>
   );
@@ -148,7 +151,7 @@ export function SegTabs<T extends string>({
         <ToggleGroupItem
           key={o}
           value={o}
-          className="cursor-pointer rounded-lg text-dim transition-[background,color] duration-200 data-[state=on]:bg-accent-soft data-[state=on]:text-ink hover:text-ink px-3 py-1.5"
+          className="h-auto cursor-pointer rounded-lg text-dim transition-[background,color] duration-200 data-[state=on]:bg-accent-soft data-[state=on]:text-ink hover:text-ink px-3 py-1.5 text-xs"
           aria-label={o}
         >
           {o}
@@ -158,24 +161,65 @@ export function SegTabs<T extends string>({
   );
 }
 
-// Hover card. Port of showTip/moveTip/hideTip in dashboard/core.js: a
-// fixed card that follows the cursor, flipping inside the viewport.
-// Handlers attach directly to the child (no wrapper node), so table rows
-// and cards keep their exact DOM shape.
-export function HoverTip({ content, children }: { content: React.ReactNode; children: React.ReactElement } ) {
+export function HoverTip({ content, children }: { content: React.ReactNode; children: React.ReactElement }) {
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
-  const move = (clientX: number, clientY: number): void => {
-    const w = 300;
-    const lx = clientX + 16 > window.innerWidth - w ? clientX - w - 12 : clientX + 16;
-    const ly = clientY + 16 > window.innerHeight - 240 ? clientY - 232 : clientY + 16;
-    setPos({ x: Math.max(8, lx), y: Math.max(8, ly) });
+  const [focused, setFocused] = useState(false);
+  const surfaceRef = useRef<HTMLDivElement>(null);
+  const anchor = useRef<{ x: number; y: number } | null>(null);
+  const id = `tooltip-${useId().replace(/:/g, "")}`;
+  const measure = (x: number, y: number): { x: number; y: number } => {
+    const gap = 12;
+    const margin = 8;
+    const width = surfaceRef.current?.offsetWidth || 0;
+    const height = surfaceRef.current?.offsetHeight || 0;
+    let left = x + gap;
+    let top = y + gap;
+    if (left + width > window.innerWidth - margin) left = x - width - gap;
+    if (top + height > window.innerHeight - margin) top = y - height - gap;
+    return {
+      x: Math.max(margin, Math.min(left, Math.max(margin, window.innerWidth - width - margin))),
+      y: Math.max(margin, Math.min(top, Math.max(margin, window.innerHeight - height - margin))),
+    };
   };
+  const move = (clientX: number, clientY: number): void => {
+    anchor.current = { x: clientX, y: clientY };
+    setPos(measure(clientX, clientY));
+  };
+  const focus = (event: React.FocusEvent): void => {
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    setFocused(true);
+    move(rect.right, rect.top);
+  };
+  const blur = (event: React.FocusEvent): void => {
+    if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+    setFocused(false);
+    if (!event.currentTarget.matches(":hover")) setPos(null);
+  };
+  useLayoutEffect(() => {
+    if (!pos || !anchor.current || !surfaceRef.current) return;
+    const next = measure(anchor.current.x, anchor.current.y);
+    if (next.x !== pos.x || next.y !== pos.y) setPos(next);
+  }, [pos, content]);
+
   const child = children as React.ReactElement<{
+    "aria-describedby"?: string;
+    onFocus?: (e: React.FocusEvent) => void;
+    onBlur?: (e: React.FocusEvent) => void;
     onMouseEnter?: (e: React.MouseEvent) => void;
     onMouseMove?: (e: React.MouseEvent) => void;
     onMouseLeave?: (e: React.MouseEvent) => void;
   }>;
+  const describedBy = [child.props["aria-describedby"], id].filter(Boolean).join(" ") || undefined;
   const el = React.cloneElement(child, {
+    "aria-describedby": pos ? describedBy : child.props["aria-describedby"],
+    onFocus: (e: React.FocusEvent) => {
+      child.props.onFocus?.(e);
+      focus(e);
+    },
+    onBlur: (e: React.FocusEvent) => {
+      child.props.onBlur?.(e);
+      blur(e);
+    },
     onMouseEnter: (e: React.MouseEvent) => {
       child.props.onMouseEnter?.(e);
       move(e.clientX, e.clientY);
@@ -186,7 +230,10 @@ export function HoverTip({ content, children }: { content: React.ReactNode; chil
     },
     onMouseLeave: (e: React.MouseEvent) => {
       child.props.onMouseLeave?.(e);
-      setPos(null);
+      if (!focused) {
+        anchor.current = null;
+        setPos(null);
+      }
     },
   });
   return (
@@ -194,14 +241,15 @@ export function HoverTip({ content, children }: { content: React.ReactNode; chil
       {el}
       {pos &&
         createPortal(
-          <div
-            id="tip"
-            className="mono pointer-events-none fixed z-100 min-w-[250px] max-w-[370px] rounded-xl border border-line bg-panel px-3.5 py-3 opacity-100 shadow-tersio transition-opacity duration-150"
+          <TooltipSurface
+            ref={surfaceRef}
+            id={id}
             role="tooltip"
+            className="pointer-events-none fixed z-100 max-w-[370px] text-foreground"
             style={{ left: pos.x, top: pos.y }}
           >
             {content}
-          </div>,
+          </TooltipSurface>,
           document.body,
         )}
     </>

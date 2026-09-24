@@ -201,8 +201,8 @@ export function statusRank(st: string): number {
 }
 
 export function statusLabel(r: { st: string; code?: number }): string {
-  if (r.st === "error") return "error" + (r.code ? " " + r.code : "");
-  return r.st === "aborted" ? "aborted" : "completed";
+  const label = r.st === "error" ? "error" + (r.code ? " " + r.code : "") : r.st === "aborted" ? "aborted" : "completed";
+  return label[0].toUpperCase() + label.slice(1);
 }
 
 export function statusColor(st: string): string {

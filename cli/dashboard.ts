@@ -16,7 +16,7 @@ import { summarizeUsage } from './usage.ts';
 import { isCurrencyCode } from './currency.ts';
 import type { CurrencyCode } from './currency.ts';
 import {
-  BUN_BIN_DIR, OMP_AGENT_DIR, OMP_BIN, OMP_PLUGINS_DIR,
+  BUN_BIN_DIR, OMP_AGENT_DIR, OMP_PLUGINS_DIR,
   PACKAGE_VERSION, RTK_BINARY_NAME,
 } from './common.ts';
 import { storedProfile, writePluginSettings } from './profile.ts';
@@ -72,11 +72,27 @@ function dataJson(): string {
 
 // Local-only health + diagnosis for the settings modal. No network: version
 // probes run with short timeouts, file checks are existsSync.
-function ompVersion(): string | null {
+function ompPath(): string | null {
+  const names = process.platform === 'win32' ? ['omp.cmd', 'omp.exe', 'omp.bat', 'omp'] : ['omp'];
+  for (const dir of (process.env.PATH || '').split(path.delimiter).filter(Boolean)) {
+    for (const name of names) {
+      const candidate = path.join(dir, name);
+      try {
+        if (statSync(candidate).isFile()) return candidate;
+      } catch { /* continue searching PATH */ }
+    }
+  }
+  return null;
+}
+
+function ompVersion(bin = ompPath()): string | null {
+  if (!bin) return null;
   try {
-    const exe = process.platform === 'win32' ? (process.env.ComSpec || 'cmd.exe') : OMP_BIN;
-    const args = process.platform === 'win32' ? ['/d', '/s', '/c', 'omp', '--version'] : ['--version'];
-    return execFileSync(exe, args, { encoding: 'utf8', timeout: 5000, windowsHide: true }).trim() || null;
+    if (process.platform === 'win32') {
+      const exe = process.env.ComSpec || 'cmd.exe';
+      return execFileSync(exe, ['/d', '/s', '/c', bin, '--version'], { encoding: 'utf8', timeout: 5000, windowsHide: true }).trim() || null;
+    }
+    return execFileSync(bin, ['--version'], { encoding: 'utf8', timeout: 5000, windowsHide: true }).trim() || null;
   } catch {
     return null;
   }
@@ -103,11 +119,13 @@ function ompDefaultModel(): string | null {
 function healthJson(): string {
   const rtkBin = path.join(BUN_BIN_DIR, RTK_BINARY_NAME);
   const rtkPresent = existsSync(rtkBin);
+  const detectedOmpPath = ompPath();
   return JSON.stringify({
     tersio: PACKAGE_VERSION,
     node: process.version,
     platform: `${process.platform}/${process.arch}`,
-    omp: ompVersion(),
+    omp: ompVersion(detectedOmpPath),
+    ompPath: detectedOmpPath,
     provider: ompDefaultModel(),
     rtk: { present: rtkPresent, version: rtkPresent ? rtkVersion(rtkBin) : null, path: rtkBin },
     home: tersioHomePath(),

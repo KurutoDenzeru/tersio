@@ -6,6 +6,8 @@
 import { useEffect, useState } from "react";
 import { useTheme } from "@/components/theme-provider";
 import { useDashboardData, useFx } from "@/lib/data";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import { Dock, Hero } from "./components/hero";
 import { Savings } from "./components/savings";
 import { Activity } from "./components/activity";
@@ -84,10 +86,33 @@ function useReveal(): void {
   }, []);
 }
 
+function DashboardLoading() {
+  return (
+    <div className="relative mx-auto max-w-7xl px-4 pb-16 sm:px-6" aria-busy="true" aria-label="Loading dashboard">
+      <div className="grid min-h-72 place-items-center py-12">
+        <div className="flex items-center gap-2 text-sm text-dim">
+          <Spinner />
+          Loading usage
+        </div>
+      </div>
+      <div className="grid grid-cols-12 gap-3">
+        <Skeleton className="col-span-12 min-h-72 rounded-xl bg-panel lg:col-span-7" />
+        <Skeleton className="col-span-12 min-h-48 rounded-xl bg-panel lg:col-span-5" />
+        <Skeleton className="col-span-6 min-h-40 rounded-xl bg-panel" />
+        <Skeleton className="col-span-6 min-h-40 rounded-xl bg-panel" />
+      </div>
+      <div className="mt-8 flex flex-col gap-4 rounded-xl border border-line bg-panel p-5">
+        <Skeleton className="h-5 w-28" />
+        <Skeleton className="h-32 w-full" />
+      </div>
+    </div>
+  );
+}
+
 function Shell() {
   useDataThemeAttr();
   useReveal();
-  const data = useDashboardData();
+  const { data, loading } = useDashboardData();
   const { fx, money, applyCurrency } = useFx(data?.currency);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
@@ -101,13 +126,17 @@ function Shell() {
       <main className="w-full max-w-full overflow-x-clip">
         <div className="relative mx-auto max-w-7xl px-4 pb-16 sm:px-6">
           <Dock onShare={() => setShareOpen(true)} onSettings={() => setSettingsOpen(true)} />
-          <Hero data={data} />
-          <Savings data={data} fx={fx} money={money} onCurrency={applyCurrency} />
-          <Activity data={data} />
-          <Models data={data} money={money} />
-          <Recent data={data} money={money} />
-          <Tools data={data} />
-          <Footer />
+          {loading ? <DashboardLoading /> : (
+            <>
+              <Hero data={data} />
+              <Savings data={data} fx={fx} money={money} onCurrency={applyCurrency} />
+              <Activity data={data} />
+              <Models data={data} money={money} />
+              <Recent data={data} money={money} />
+              <Tools data={data} />
+              <Footer />
+            </>
+          )}
         </div>
       </main>
       <SettingsDialog

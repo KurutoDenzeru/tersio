@@ -68,6 +68,7 @@ export interface HealthReport {
   node: string;
   platform: string;
   omp: string | null;
+  ompPath: string | null;
   provider: string | null;
   rtk: { present: boolean; version: string | null; path: string };
   home: string;
@@ -111,8 +112,9 @@ async function getJSON<T>(path: string): Promise<T> {
   return (await res.json()) as T;
 }
 
-export function useDashboardData(): UsageReport | null {
+export function useDashboardData(): { data: UsageReport | null; loading: boolean } {
   const [data, setData] = useState<UsageReport | null>(() => snap()?.data ?? null);
+  const [loading, setLoading] = useState(() => !isFileExport() && !snap()?.data);
   const lastJson = useRef<string>(data ? JSON.stringify(data) : "");
 
   const load = useCallback(async () => {
@@ -122,8 +124,11 @@ export function useDashboardData(): UsageReport | null {
       if (json === lastJson.current) return;
       lastJson.current = json;
       setData(d);
+      setLoading(false);
     } catch {
       // Served mode only has the endpoint; file:// exports use the snapshot.
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -150,7 +155,7 @@ export function useDashboardData(): UsageReport | null {
     };
   }, [load]);
 
-  return data;
+  return { data, loading };
 }
 
 export interface FxState {

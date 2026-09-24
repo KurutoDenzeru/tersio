@@ -1,25 +1,26 @@
 // Top models + Models table + model detail dialog. Ports renderModels(),
-// renderModelDialog(), mdAreaChart(), mdBars(), mdDonut() and the tooltip
-// builders in dashboard/charts.js. Shadcn Card/Table/Dialog structure;
-// the SVG area chart, bars, and donut keep the original shadcn chart
-// language (gradient area, dashed grid, rounded bars, padded donut).
+// renderModelDialog(), mdAreaChart(), mdDonut() and the tooltip builders in
+// dashboard/charts.js. Shadcn Card/Dialog structure; the area chart and donut
+// keep the original shadcn chart language (gradient area, dashed grid, and
+// padded donut).
 import { useMemo, useState } from "react";
-import { Card } from "@/components/ui/card";
-import { ChartContainer, ChartTooltip } from "@/components/ui/chart";
+import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
+import type { ChartConfig } from "@/components/ui/chart";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { TooltipRow } from "@/components/ui/tooltip-surface";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { Area, AreaChart as RechartsArea, CartesianGrid, Cell, Pie, PieChart, XAxis, YAxis } from "recharts";
+import { Area, AreaChart as RechartsArea, Bar, BarChart, CartesianGrid, Cell, XAxis, YAxis } from "recharts";
 import {
   displayModel,
   fmt,
   fmtShort,
   modelTotal,
-  shortName,
   topModels,
   vendorOf,
 } from "@/lib/format";
 import type { UsageReport } from "@/lib/data";
-import { Brandmark } from "./brand";
+import { BrandSilhouette, Brandmark } from "./brand";
 import { EmptyState, HoverTip, PageButtons, PerPage, usePager } from "./common";
 import { Icon } from "./icon";
 
@@ -30,25 +31,20 @@ function ModelTip({ m, data, money }: { m: string; data: UsageReport; money: (v:
   const hit = denom ? `${((b.cacheRead / denom) * 100).toFixed(1)}%` : "-";
   const total = b.input + b.output + b.cacheRead + b.cacheWrite;
   const cb = data.byModelBucketUsd[m] ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
-  const row = (color: string, k: string, v: string): React.ReactNode => (
-    <div className="flex items-center gap-2.5 py-[3px] text-xs">
-      <span className="size-[9px] shrink-0 rounded-[2.5px]" style={{ background: color }} />
-      <span className="min-w-0 flex-1 truncate">{k}</span>
-      <span className="shrink-0 whitespace-nowrap tabular-nums">{v}</span>
-    </div>
-  );
   return (
-    <div className="mono">
-      <div className="text-[11px] font-bold uppercase tracking-[.14em]">{shortName(m)}</div>
-      <div className="my-[2px] mb-2 text-[13px]">
-        {fmtShort(total)} total ({money(cb.input + cb.output + cb.cacheRead + cb.cacheWrite)})
+    <div className="grid gap-1.5">
+      <div className="font-medium text-foreground">{displayModel(m)}</div>
+      <div className="text-muted-foreground">
+        {fmtShort(total)} total · {money(cb.input + cb.output + cb.cacheRead + cb.cacheWrite)}
       </div>
-      {row("var(--accent)", "input", `${fmt(b.input)} (${money(cb.input)})`)}
-      {row("var(--dim)", "output", `${fmt(b.output)} (${money(cb.output)})`)}
-      {b.cacheRead > 0 && row("var(--dim)", "cache read", `${fmt(b.cacheRead)} (${money(cb.cacheRead)})`)}
-      {b.cacheWrite > 0 && row("var(--dim)", "cache write", `${fmt(b.cacheWrite)} (${money(cb.cacheWrite)})`)}
-      {row("var(--dim)", "requests", fmt(req))}
-      {row("var(--dim)", "cache hit", hit)}
+      <div className="grid gap-1.5">
+        <TooltipRow color="var(--accent)" label="Input" value={`${fmt(b.input)} (${money(cb.input)})`} />
+        <TooltipRow color="var(--dim)" label="Output" value={`${fmt(b.output)} (${money(cb.output)})`} />
+        {b.cacheRead > 0 && <TooltipRow color="var(--dim)" label="Cache read" value={`${fmt(b.cacheRead)} (${money(cb.cacheRead)})`} />}
+        {b.cacheWrite > 0 && <TooltipRow color="var(--dim)" label="Cache write" value={`${fmt(b.cacheWrite)} (${money(cb.cacheWrite)})`} />}
+        <TooltipRow color="var(--dim)" label="Requests" value={fmt(req)} />
+        <TooltipRow color="var(--dim)" label="Cache hit" value={hit} />
+      </div>
     </div>
   );
 }
@@ -89,16 +85,20 @@ function AreaChart({ vals, days }: { vals: number[]; days: string[] }) {
         <YAxis hide domain={[0, "dataMax"]} />
         <ChartTooltip
           cursor={{ stroke: "var(--line)" }}
-          content={({ active, payload }) => {
-            if (!active || !payload?.length) return null;
-            const p = payload[0].payload as { day: string; tokens: number };
-            return (
-              <div className="mono rounded-[10px] border border-line bg-panel px-3 py-2 text-[11px]">
-                <div>{shortDay(p.day)}</div>
-                <div>{fmtShort(p.tokens)} tokens</div>
-              </div>
-            );
-          }}
+          content={
+            <ChartTooltipContent
+              labelFormatter={(label) => typeof label === "string" ? shortDay(label) : String(label)}
+              formatter={(value) => (
+                <>
+                  <span className="h-2.5 w-2.5 shrink-0 rounded-[2px] bg-accent" />
+                  Tokens
+                  <span className="ml-auto font-mono font-medium text-foreground tabular-nums">
+                    {fmtShort(Number(value))} <span className="font-normal text-muted-foreground">tokens</span>
+                  </span>
+                </>
+              )}
+            />
+          }
         />
         <Area
           dataKey="tokens"
@@ -115,124 +115,60 @@ function AreaChart({ vals, days }: { vals: number[]; days: string[] }) {
   );
 }
 
-function Bars({ vals, days }: { vals: number[]; days: string[] }) {
-  const max = Math.max(1, ...vals);
-  const shortDay = (day: string): string =>
-    new Date(`${day}T12:00:00`).toLocaleString("en-US", { month: "short", day: "numeric" });
-  const n = vals.length;
-  const bucket = n > 90 ? Math.ceil(n / 90) : 1;
-  const bars: Array<{ avg: number; sum: number; day: string; top: boolean }> = [];
-  for (let i = 0; i < n; i += bucket) {
-    let sum = 0;
-    let c = 0;
-    for (let j = i; j < Math.min(n, i + bucket); j++) {
-      sum += vals[j];
-      c++;
-    }
-    bars.push({ avg: sum / c, sum, day: days[i], top: false });
-  }
-  const peak = Math.max(0, ...bars.map((b) => b.avg));
-  bars.forEach((b) => {
-    b.top = b.avg > 0 && b.avg === peak;
-  });
+function TokenMixChart({ parts }: { parts: Array<{ label: string; v: number; color: string }> }) {
+  const total = parts.reduce((sum, part) => sum + part.v, 0) || 1;
+  const data = parts.map((part) => ({
+    ...part,
+    share: total ? (part.v / total) * 100 : 0,
+  }));
+  const config: ChartConfig = Object.fromEntries(parts.map((part) => [part.label, { label: part.label, color: part.color }]));
   return (
-    <div className="flex h-[132px] items-end gap-[3px] bg-[linear-gradient(var(--line)_1px,transparent_1px)] bg-bottom bg-[length:100%_33px]" aria-hidden="true">
-      {bars.map((b, i) => (
-        <HoverTip
-          key={i}
-          content={
-            <div className="mono">
-              <div className="text-[11px] font-bold uppercase tracking-[.14em]">{shortDay(b.day)}</div>
-              <div className="my-[2px] mb-2 text-[13px]">{fmtShort(Math.round(b.sum))} tokens</div>
-            </div>
-          }
-        >
-          <span
-            className={`min-w-[3px] flex-1 cursor-default rounded-t-[4px] hover:opacity-100 ${
-              b.avg === 0
-                ? "bg-track opacity-100 shadow-none"
-                : b.top
-                  ? "bg-accent opacity-100 [box-shadow:0_0_8px_var(--accent-soft)]"
-                  : "bg-accent opacity-40"
-            }`}
-            style={{ height: `${Math.max(b.avg ? 5 : 2, Math.round((b.avg / max) * 100))}%` }}
+    <div className="grid gap-3">
+      <ChartContainer config={config} className="h-[150px] w-full">
+        <BarChart data={data} layout="vertical" margin={{ top: 4, right: 12, bottom: 4, left: 8 }} accessibilityLayer>
+          <CartesianGrid horizontal={false} stroke="var(--line)" strokeDasharray="3 4" />
+          <XAxis type="number" domain={[0, 100]} hide />
+          <YAxis
+            type="category"
+            dataKey="label"
+            axisLine={false}
+            tickLine={false}
+            width={88}
+            tick={{ fill: "var(--dim)", fontSize: 11, fontFamily: "var(--font-mono)" }}
           />
-        </HoverTip>
-      ))}
-    </div>
-  );
-}
-
-// Token mix as a shadcn chart (recharts Pie under ChartContainer):
-// padded segments, track ring, center total, original legend rows.
-function Donut({ parts }: { parts: Array<{ label: string; v: number; color: string }> }) {
-  const total = parts.reduce((a, p) => a + p.v, 0) || 1;
-  const live = parts.filter((p) => p.v > 0);
-  return (
-    <div>
-      <div className="relative mx-auto my-1 mb-2 size-[150px]">
-        {live.length === 0 && (
-          <div
-            aria-hidden="true"
-            style={{
-              position: "absolute",
-              inset: 0,
-              margin: "auto",
-              width: 124,
-              height: 124,
-              borderRadius: 999,
-              border: "16px solid var(--track)",
-            }}
+          <ChartTooltip
+            cursor={{ fill: "var(--track)", opacity: 0.4 }}
+            content={
+              <ChartTooltipContent
+                labelFormatter={(label) => String(label)}
+                formatter={(value, name, item) => {
+                  const part = item?.payload as { v: number; color: string; label: string } | undefined;
+                  return (
+                    <>
+                      <span className="size-2.5 shrink-0 rounded-[2px]" style={{ background: part?.color }} />
+                      {part?.label ?? name}
+                      <span className="ml-auto font-mono font-medium text-foreground tabular-nums">
+                        {fmtShort(part?.v ?? 0)} <span className="font-normal text-muted-foreground">({Number(value).toFixed(1)}%)</span>
+                      </span>
+                    </>
+                  );
+                }}
+              />
+            }
           />
-        )}
-        <ChartContainer
-          config={Object.fromEntries(parts.map((p) => [p.label, { label: p.label, color: p.color }]))}
-          className="mx-auto aspect-square w-[150px]"
-        >
-          <PieChart>
-            <ChartTooltip
-              content={({ active, payload }) => {
-                if (!active || !payload?.length) return null;
-                const p = payload[0].payload as { label: string; v: number };
-                return (
-                  <div className="mono rounded-[10px] border border-line bg-panel px-3 py-2 text-[11px]">
-                    <div>{p.label}</div>
-                    <div>
-                      {fmtShort(p.v)} ({((p.v / total) * 100).toFixed(1)}%)
-                    </div>
-                  </div>
-                );
-              }}
-            />
-            <Pie
-              data={parts}
-              dataKey="v"
-              nameKey="label"
-              innerRadius={46}
-              outerRadius={62}
-              paddingAngle={live.length > 1 ? 4 : 0}
-              strokeWidth={0}
-              startAngle={-270}
-              isAnimationActive={false}
-            >
-              {parts.map((p) => (
-                <Cell key={p.label} fill={p.v > 0 ? p.color : "var(--track)"} />
-              ))}
-            </Pie>
-          </PieChart>
-        </ChartContainer>
-        <div className="absolute inset-0 grid place-items-center text-center [&_p]:m-0 [&_p]:text-[17px] [&_p]:font-extrabold [&_p]:tracking-[-0.02em] [&_p]:tabular-nums">
-          <p className="mono">{fmtShort(total)}</p>
-        </div>
-      </div>
-      <div className="grid gap-1.5 text-[11px] mono">
-        {live.map((p) => (
-          <div key={p.label} className="-mx-1 flex cursor-default items-center gap-2 rounded-[7px] px-1 py-[2px] hover:bg-track" title={`${fmtShort(p.v)} (${((p.v / total) * 100).toFixed(1)}%)`}>
-            <span className="size-2 shrink-0 rounded-full" style={{ background: p.color }} />
-            <span>{p.label}</span>
-            <span className="ml-auto tabular-nums text-dim">
-              {((p.v / total) * 100).toFixed(1)}% · {fmtShort(p.v)}
-            </span>
+          <Bar dataKey="share" radius={[0, 6, 6, 0]} isAnimationActive={false}>
+            {data.map((part) => (
+              <Cell key={part.label} fill={part.v > 0 ? part.color : "var(--track)"} />
+            ))}
+          </Bar>
+        </BarChart>
+      </ChartContainer>
+      <div className="grid grid-cols-2 gap-x-5 gap-y-2 text-[11px]">
+        {data.map((part) => (
+          <div key={part.label} className="flex min-w-0 items-center gap-2">
+            <span className="size-2 shrink-0 rounded-full" style={{ background: part.color }} />
+            <span className="truncate text-dim">{part.label}</span>
+            <span className="ml-auto font-mono tabular-nums text-foreground">{part.share.toFixed(1)}%</span>
           </div>
         ))}
       </div>
@@ -287,112 +223,96 @@ function ModelDialog({ m, data, money, onClose }: { m: string | null; data: Usag
   const range = days.length
     ? `${new Date(`${days[0]}T12:00:00`).toLocaleString("en-US", { month: "short", day: "numeric" }).toUpperCase()} → ${new Date(`${days[days.length - 1]}T12:00:00`).toLocaleString("en-US", { month: "short", day: "numeric" }).toUpperCase()}`
     : "–";
-  const kpi = (k: string, val: string, d: string, up: boolean): React.ReactNode => (
-    <div className="rounded-xl border border-line bg-panel px-3.5 py-3 [&_p]:m-0">
-      <p className="text-[10px] uppercase tracking-[.14em] text-dim mono">{k}</p>
-      <p className="mt-1 text-[22px] font-extrabold tracking-[-0.02em] tabular-nums">{val}</p>
-      <p className={`mt-[2px] text-[11px] tabular-nums mono ${up ? "text-accent" : "text-dim"}`}>{d}</p>
-    </div>
-  );
-  const stat = (k: string, val: string, s?: string): React.ReactNode => (
-    <div className="rounded-xl border border-line bg-panel px-3.5 py-3 [&_p]:m-0">
-      <p className="text-[10px] uppercase tracking-[.14em] text-dim mono">{k}</p>
-      <p className="mt-1 text-[20px] font-extrabold tracking-[-0.02em] tabular-nums mono">{val}</p>
-      {s && <p className="mt-[2px] text-[11px] text-dim mono">{s}</p>}
-    </div>
+  const kpi = (k: string, val: string, detail: string, up: boolean): React.ReactNode => (
+    <Card size="sm" className="gap-0 bg-panel [--card-spacing:--spacing(3.5)]">
+      <CardHeader>
+        <CardTitle className="mono text-[10px] tracking-[.14em] text-dim uppercase">{k}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <p className="m-0 text-[22px] font-extrabold tracking-[-0.02em] tabular-nums">{val}</p>
+        <p className={`mt-[2px] mb-0 text-[11px] tabular-nums mono ${up ? "text-accent" : "text-dim"}`}>{detail}</p>
+      </CardContent>
+    </Card>
   );
   return (
     <Dialog open={m !== null} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="w-[min(880px,calc(100vw-32px))] max-w-[calc(100vw-2rem)] sm:max-w-[calc(100vw-2rem)] [max-height:min(88vh,960px)] flex flex-col overflow-hidden border border-line bg-panel p-0 text-ink gap-0" showCloseButton={false} aria-describedby={undefined}>
-        <div className="flex items-start justify-between gap-3 px-5 pt-5">
-          <div className="min-w-0 flex items-center gap-3">
-            <Brandmark model={m} />
-            <div className="min-w-0">
-              <DialogTitle className="m-0 text-base font-bold tracking-[-0.01em] truncate" title={m}>
-                {displayModel(m)}
-              </DialogTitle>
-              <p className="my-[2px] mb-0 text-xs text-dim mono">
-                {v.name} · {fmt(req)} requests · {((total / grand) * 100).toFixed(1)}% of volume
-              </p>
+      <DialogContent className="w-[min(880px,calc(100vw-32px))] max-w-[calc(100vw-2rem)] sm:max-w-[880px] [max-height:min(88vh,960px)] flex flex-col overflow-hidden border border-line bg-panel p-0 text-ink gap-0" showCloseButton={false} aria-describedby={undefined}>
+        <div className="shrink-0 border-b border-line px-5 pb-4 pt-5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <Brandmark model={m} />
+              <div className="min-w-0">
+                <HoverTip content={m}>
+                  <DialogTitle className="m-0 truncate text-base font-bold tracking-[-0.01em]">
+                    {displayModel(m)}
+                  </DialogTitle>
+                </HoverTip>
+                <p className="my-[2px] mb-0 text-xs text-dim mono">
+                  {v.name} · {fmt(req)} requests · {((total / grand) * 100).toFixed(1)}% of volume
+                </p>
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <span className="whitespace-nowrap rounded-full border border-line bg-accent-soft px-3 py-1 text-xs font-bold text-accent mono">#{rank ? String(rank).padStart(2, "0") : "–"}</span>
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex shrink-0 items-center rounded-xl border border-line p-2 text-ink [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]"
+                aria-label="Close model details"
+              >
+                <Icon name="x" className="size-4" />
+              </button>
             </div>
           </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <span className="whitespace-nowrap rounded-full border border-line bg-accent-soft px-3 py-1 text-xs font-bold text-accent mono">#{rank ? String(rank).padStart(2, "0") : "–"}</span>
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex shrink-0 items-center rounded-xl border border-line p-2 text-ink [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]"
-              aria-label="Close model details"
-            >
-              <Icon name="x" className="size-4" />
-            </button>
-          </div>
         </div>
-        <div className="mt-4 grid gap-3 overflow-y-auto overscroll-contain px-5 pb-5 [scrollbar-color:var(--line)_transparent] [scrollbar-width:thin]">
+        <div className="grid min-h-0 flex-1 gap-3 overflow-y-auto overscroll-contain px-5 pt-4 pb-5 [scrollbar-color:var(--line)_transparent] [scrollbar-width:thin]">
           <div className="grid grid-flow-dense grid-cols-2 gap-2 sm:grid-cols-4">
             {kpi("Tokens", fmtShort(total), range, true)}
             {kpi("Spend", money(usd), req ? `${money(usd / req)} / req` : "no requests", usd > 0)}
             {kpi("Cache hit", `${hit.toFixed(0)}%`, `${fmtShort(b.cacheRead)} cached`, hit >= 50)}
             {kpi("Requests", fmt(req), `${active} active days`, active > 0)}
           </div>
-          <div className="relative rounded-xl border border-line bg-panel p-3.5">
-            <div className="mb-2 flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="m-0 text-[13px] font-bold tracking-[-0.01em]">Token volume</p>
-                <p className="my-[2px] mb-0 text-[11px] uppercase tracking-[.12em] text-dim mono">{range}</p>
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <span className={`whitespace-nowrap rounded-full px-2.5 py-[3px] text-[11px] font-bold mono ${trend.up ? "bg-accent-soft text-accent" : "bg-track text-dim"}`}>{trend.t}</span>
-                <ToggleGroup
-                  value={[span]}
-                  onValueChange={(v) => {
-                    const next = v[v.length - 1];
-                    if (next === "30" || next === "90" || next === "all") setSpan(next);
-                  }}
-                  className="mono text-xs p-1 rounded-[10px] border border-line"
-                  aria-label="Chart range"
-                >
-                  {(["30", "90", "all"] as Span[]).map((s) => (
-                    <ToggleGroupItem key={s} value={s} className="grid cursor-pointer place-items-center rounded-lg px-2.5 py-1 text-dim transition-[background,color] duration-200 hover:text-ink data-[state=on]:bg-accent-soft data-[state=on]:text-ink" aria-label={s === "all" ? "ALL" : `${s}D`}>
-                      {s === "all" ? "ALL" : `${s}D`}
-                    </ToggleGroupItem>
-                  ))}
-                </ToggleGroup>
-              </div>
-            </div>
-            <AreaChart vals={vals} days={days} />
-            <div className="mt-1.5 flex justify-between text-[10px] uppercase tracking-[.12em] text-dim mono" aria-hidden="true">
-              {monthTicks(days).map((t, i) => (
-                <span key={i}>{t}</span>
-              ))}
-            </div>
-          </div>
-          <div className="grid grid-flow-dense gap-3 min-[720px]:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
-            <div className="relative rounded-xl border border-line bg-panel p-3.5">
-              <div className="mb-2 flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="m-0 text-[13px] font-bold tracking-[-0.01em]">Daily activity</p>
-                  <p className="my-[2px] mb-0 text-[11px] uppercase tracking-[.12em] text-dim mono">tokens per day</p>
+          <Card className="gap-0 bg-panel [--card-spacing:--spacing(3.5)]">
+            <CardHeader>
+              <CardTitle className="text-[13px] font-bold tracking-[-0.01em]">Token volume</CardTitle>
+              <CardDescription className="mono text-[11px] uppercase tracking-[.12em] text-dim">{range}</CardDescription>
+              <CardAction>
+                <div className="flex shrink-0 items-center gap-2">
+                  <span className={`whitespace-nowrap rounded-full px-2.5 py-[3px] text-[11px] font-bold mono ${trend.up ? "bg-accent-soft text-accent" : "bg-track text-dim"}`}>{trend.t}</span>
+                  <ToggleGroup
+                    value={[span]}
+                    onValueChange={(v) => {
+                      const next = v[v.length - 1];
+                      if (next === "30" || next === "90" || next === "all") setSpan(next);
+                    }}
+                    className="mono rounded-[10px] border border-line p-1 text-xs"
+                    aria-label="Chart range"
+                  >
+                    {(["30", "90", "all"] as Span[]).map((s) => (
+                      <ToggleGroupItem key={s} value={s} className="h-auto cursor-pointer rounded-lg px-2.5 py-1 text-xs text-dim transition-[background,color] duration-200 hover:text-ink data-[state=on]:bg-accent-soft data-[state=on]:text-ink" aria-label={s === "all" ? "ALL" : `${s}D`}>
+                        {s === "all" ? "ALL" : `${s}D`}
+                      </ToggleGroupItem>
+                    ))}
+                  </ToggleGroup>
                 </div>
-                <span className={`whitespace-nowrap rounded-full px-2.5 py-[3px] text-[11px] font-bold mono ${active ? "bg-accent-soft text-accent" : "bg-track text-dim"}`}>
-                  {active} / {days.length} days
-                </span>
-              </div>
-              <Bars vals={vals} days={days} />
+              </CardAction>
+            </CardHeader>
+            <CardContent>
+              <AreaChart vals={vals} days={days} />
               <div className="mt-1.5 flex justify-between text-[10px] uppercase tracking-[.12em] text-dim mono" aria-hidden="true">
                 {monthTicks(days).map((t, i) => (
                   <span key={i}>{t}</span>
                 ))}
               </div>
-            </div>
-            <div className="relative rounded-xl border border-line bg-panel p-3.5">
-              <div className="mb-2 flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="m-0 text-[13px] font-bold tracking-[-0.01em]">Token mix</p>
-                  <p className="my-[2px] mb-0 text-[11px] uppercase tracking-[.12em] text-dim mono">input vs output vs cache</p>
-                </div>
-              </div>
-              <Donut
+            </CardContent>
+          </Card>
+          <Card className="gap-0 bg-panel [--card-spacing:--spacing(3.5)]">
+            <CardHeader>
+              <CardTitle className="text-[13px] font-bold tracking-[-0.01em]">Token mix</CardTitle>
+              <CardDescription className="mono text-[11px] uppercase tracking-[.12em] text-dim">Input vs output vs cache</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <TokenMixChart
                 parts={[
                   { label: "Input", v: b.input, color: "var(--accent)" },
                   { label: "Output", v: b.output, color: "#818cf8" },
@@ -400,14 +320,8 @@ function ModelDialog({ m, data, money, onClose }: { m: string | null; data: Usag
                   { label: "Cache write", v: b.cacheWrite, color: "var(--dim)" },
                 ]}
               />
-            </div>
-          </div>
-          <div className="grid grid-flow-dense grid-cols-2 gap-2 sm:grid-cols-4">
-            {stat("Input", fmtShort(b.input))}
-            {stat("Output", fmtShort(b.output))}
-            {stat("Cache read", fmtShort(b.cacheRead), `${hit.toFixed(0)}% hit`)}
-            {stat("Cache write", fmtShort(b.cacheWrite))}
-          </div>
+            </CardContent>
+          </Card>
         </div>
       </DialogContent>
     </Dialog>
@@ -429,15 +343,16 @@ export function Models({ data, money }: { data: UsageReport | null; money: (v: n
 
   return (
     <>
-      <section className="mt-8 dark:[color-scheme:dark]" aria-label="Top models">
-        <div className="flex items-center gap-2 mb-1">
-          <Icon name="cpu" className="size-4" />
-          <h2 className="font-display font-bold tracking-tight text-xl truncate min-w-0">Top models</h2>
-          <span className="mono text-xs ml-auto text-dim">
-            usage across sessions
-          </span>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+      <Card className="mt-8 border-line bg-panel dark:[color-scheme:dark]" aria-label="Top models">
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Icon name="cpu" className="size-4" />
+            <CardTitle className="font-display text-xl tracking-tight">Top models</CardTitle>
+            <span className="mono ml-auto text-xs text-dim">usage across sessions</span>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
           {tops.length === 0 && (
             <div className="flex flex-col items-center gap-[2px] rounded-xl border border-dashed border-line px-4 py-8 text-center md:col-span-3">
               <EmptyState icon="boxes" title="No models yet" desc="Model token totals will appear here once sessions report tokens." />
@@ -451,16 +366,22 @@ export function Models({ data, money }: { data: UsageReport | null; money: (v: n
                   role="button"
                   tabIndex={0}
                   onClick={() => setOpen(m)}
-                  onKeyDown={(e) => e.key === "Enter" && setOpen(m)}
-                  className="transition-[background] duration-[250ms] hover:shadow-tersio relative cursor-pointer overflow-hidden rounded-xl border-line bg-panel p-4"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setOpen(m);
+                    }
+                  }}
+                  className="relative cursor-pointer gap-0 overflow-hidden rounded-xl border-line bg-panel p-4 transition-[background] duration-[250ms] hover:shadow-tersio"
                 >
-                  <p className="mono text-xs mb-3 text-dim">
+                  <BrandSilhouette model={m} />
+                  <p className="pointer-events-none relative z-10 mb-2 text-xs leading-none text-dim mono">
                     0{i + 1}
                   </p>
-                  <div className="flex items-center gap-3">
+                  <div className="relative z-10 flex items-center gap-3">
                     <Brandmark model={m} />
                     <div className="min-w-0 flex-1">
-                      <p className="mono text-sm font-bold truncate" title={m}>
+                       <p className="mono text-sm font-bold truncate">
                         {displayModel(m)}
                       </p>
                       <p className="mono text-xs truncate text-dim">
@@ -473,20 +394,26 @@ export function Models({ data, money }: { data: UsageReport | null; money: (v: n
               </HoverTip>
             );
           })}
-        </div>
-      </section>
+          </div>
+          </CardContent>
+      </Card>
 
-      <section data-reveal className="mt-8 translate-y-[26px] rounded-xl border border-line bg-panel p-5 opacity-0 transition-[opacity,transform] duration-700 ease-[cubic-bezier(.16,1,.3,1)] data-[reveal=in]:translate-y-0 data-[reveal=in]:opacity-100 overflow-hidden flex flex-col dark:[color-scheme:dark]" aria-label="All models">
-        <div className="flex items-center gap-2 mb-1">
-          <Icon name="layers" className="size-4" />
-          <h2 className="font-display font-bold tracking-tight text-xl truncate min-w-0">Models</h2>
-          <span className="mono text-xs ml-auto truncate shrink-0 text-dim">
-            {tops.length ? `${tops.length} models` : ""}
-          </span>
-        </div>
-        <p className="mono text-xs mb-4 text-dim">
-          ranked by tokens / top 10
-        </p>
+      <Card
+        data-reveal
+        className="mt-8 translate-y-[26px] overflow-hidden border-line bg-panel opacity-0 transition-[opacity,transform] duration-700 ease-[cubic-bezier(.16,1,.3,1)] data-[reveal=in]:translate-y-0 data-[reveal=in]:opacity-100 dark:[color-scheme:dark]"
+        aria-label="All models"
+      >
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Icon name="layers" className="size-4" />
+            <CardTitle className="font-display text-xl tracking-tight">Models</CardTitle>
+            <span className="mono ml-auto shrink-0 truncate text-xs text-dim">
+              {tops.length ? `${tops.length} models` : ""}
+            </span>
+          </div>
+          <CardDescription className="mono text-xs text-dim">ranked by tokens / top 10</CardDescription>
+        </CardHeader>
+        <CardContent>
         {tops.length > 0 ? (
           <div className="overflow-y-auto overscroll-contain [scrollbar-color:var(--line)_transparent] [scrollbar-width:thin]">
             <ol id="models" className="overflow-hidden">
@@ -502,7 +429,7 @@ export function Models({ data, money }: { data: UsageReport | null; money: (v: n
                         <Brandmark model={m} small />
                       </span>
                       <div className="min-w-0 flex-1">
-                        <p className="mono text-sm truncate" title={m}>
+                         <p className="mono text-sm truncate">
                           {displayModel(m)}
                         </p>
                         <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-track">
@@ -524,12 +451,15 @@ export function Models({ data, money }: { data: UsageReport | null; money: (v: n
         ) : (
           <EmptyState icon="boxes" title="No models yet" desc="Model token totals will appear here once sessions report tokens." />
         )}
-        <div className="mono text-xs mt-4 pt-4 flex flex-wrap items-center gap-x-4 gap-y-3 mt-auto text-dim border-t border-line">
+        </CardContent>
+        <CardFooter className="mono justify-between gap-4 border-t text-xs text-dim">
           <span>{range}</span>
-          <PerPage options={[10, 15, 25, 50]} value={per} onPick={(n) => { setPer(n); setPage(1); }} label="Models per page" />
-          <PageButtons pages={pages} page={p} onPick={setPage} label="Model pages" />
-        </div>
-      </section>
+          <div className="flex items-center gap-4">
+            <PerPage options={[10, 15, 25, 50]} value={per} onPick={(n) => { setPer(n); setPage(1); }} label="Models per page" />
+            <PageButtons pages={pages} page={p} onPick={setPage} label="Model pages" />
+          </div>
+        </CardFooter>
+      </Card>
 
       {data && <ModelDialog m={open} data={data} money={money} onClose={() => setOpen(null)} />}
     </>

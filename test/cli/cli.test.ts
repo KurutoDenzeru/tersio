@@ -286,6 +286,8 @@ test("gain --export writes a self-contained html file", () => {
   expect(html).toBe("present");
   const body = readFileSync(out, "utf8");
   expect(body).toMatch(/Tersio Dashboard/);
+  expect(body).toMatch(/Oh My Pi/);
+  expect(body).toMatch(/ompPath/);
   expect(body).toMatch(/\/tersio usage/);
   // `$'`/`$&` in data must survive String.replace untouched (single document).
   expect(body).toMatch(/\$'quoted\$'/);
