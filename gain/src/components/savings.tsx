@@ -25,10 +25,12 @@ export function CurrencyPicker({
   cur,
   onPick,
   id,
+  variant = "select",
 }: {
   cur: string;
   onPick: (code: string) => void;
   id: string;
+  variant?: "pill" | "select";
 }) {
   return (
     <Select
@@ -37,7 +39,11 @@ export function CurrencyPicker({
         if (v) onPick(v);
       }}
     >
-      <SelectTrigger id={id} className="pill mono fxbtn h-auto border-0" aria-label="Display currency">
+      <SelectTrigger
+        id={id}
+        className={variant === "pill" ? "pill mono fxbtn h-auto border-0" : "selbtn mono h-auto"}
+        aria-label="Display currency"
+      >
         <SelectValue>{`${FLAGS[cur] ?? ""} ${cur}`}</SelectValue>
       </SelectTrigger>
       <SelectContent>
@@ -153,7 +159,7 @@ export function Savings({
               <p className="mono text-[11px] uppercase tracking-[0.14em]" style={{ color: "var(--dim)" }}>
                 {fx.cur.toLowerCase()} cost
               </p>
-              <CurrencyPicker cur={fx.cur} onPick={onCurrency} id="fxCur" />
+              <CurrencyPicker cur={fx.cur} onPick={onCurrency} id="fxCur" variant="pill" />
             </div>
             <p className="mono font-bold tracking-tighter leading-none mt-2 text-6xl lg:text-7xl">{money(usd)}</p>
           </div>

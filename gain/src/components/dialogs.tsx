@@ -96,7 +96,7 @@ function DoctorPane() {
             void postDoctorSchedule(v as DoctorReport["schedule"]).then((d) => d && setReport(d));
           }}
         >
-          <SelectTrigger className="selbtn mono" aria-label="Diagnosis schedule">
+          <SelectTrigger className="selbtn mono h-auto" aria-label="Diagnosis schedule">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

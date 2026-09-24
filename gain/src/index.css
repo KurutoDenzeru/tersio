@@ -532,4 +532,6 @@
    control-right pattern with a single 14px row rhythm. The old
    diagnosis-only extra bottom margin is retired so panes match. */
 .set-pane[data-pane="diagnosis"] .dlg-row { margin-bottom: 0; }
-.set-pane > .set-list:first-child { margin-top: 14px; }
+/* Every pane starts 18px below the header, like General and Connection. */
+.set-pane[data-pane="diagnosis"] > :first-child { margin-top: 18px; }
+.set-pane[data-pane="data"] > .dlg-row:first-child { margin-top: 18px; }
