@@ -2,7 +2,6 @@
 // dashboard/charts.js: newest-first default, every column sortable,
 // measured vs modeled cost, status badges, per-row hover cards.
 import { useMemo, useState } from "react";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   costIsMeasured,
   displayCost,
@@ -97,7 +96,7 @@ export function Recent({ data, money }: { data: UsageReport | null; money: (v: n
   const th = (label: string, key: Key, num?: boolean, title?: string): React.ReactNode => {
     const on = sort.key === key;
     return (
-      <TableHead aria-sort={on ? (sort.dir === 1 ? "ascending" : "descending") : "none"}>
+      <th aria-sort={on ? (sort.dir === 1 ? "ascending" : "descending") : "none"}>
         <button
           type="button"
           className={`thsort${num ? " num" : ""}`}
@@ -114,7 +113,7 @@ export function Recent({ data, money }: { data: UsageReport | null; money: (v: n
         >
           {label} <span className="arr">{on ? (sort.dir === 1 ? "↑" : "↓") : "⇅"}</span>
         </button>
-      </TableHead>
+      </th>
     );
   };
 
@@ -132,9 +131,10 @@ export function Recent({ data, money }: { data: UsageReport | null; money: (v: n
       </p>
       {rows.length > 0 ? (
         <div className="scrollarea overflow-x-auto" style={{ maxHeight: 560 }}>
-          <Table className="w-full mono text-[13px]">
-            <TableHeader>
-              <TableRow className="text-left text-[11px] uppercase tracking-[0.14em]" style={{ color: "var(--dim)" }}>
+          <table className="w-full mono text-[13px]" id="recentTable">
+            <colgroup><col /><col style={{ width: 96 }} /><col style={{ width: 96 }} /><col style={{ width: 120 }} /><col style={{ width: 116 }} /><col style={{ width: 120 }} /><col style={{ width: 158 }} /></colgroup>
+            <thead>
+              <tr className="text-left text-[11px] uppercase tracking-[0.14em]" style={{ color: "var(--dim)" }}>
                 {th("Model", "model")}
                 {th("Input", "input", true)}
                 {th("Output", "output", true)}
@@ -142,32 +142,32 @@ export function Recent({ data, money }: { data: UsageReport | null; money: (v: n
                 {th("Status", "status")}
                 {th("Cost", "cost", true)}
                 {th("When", "when", true, "Local timestamp: month day, hour:minute:second")}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+              </tr>
+            </thead>
+            <tbody>
               {slice.map((r, i) => {
                 const v = vendorOf(r.m);
                 const measured = costIsMeasured(r);
                 return (
                   <HoverTip key={`${r.t}-${i}`} content={<RecentTip r={r} money={money} />}>
-                    <TableRow className="rrow">
-                      <TableCell className="py-2.5 pr-3 truncate" style={{ minWidth: 0 }}>
+                    <tr className="rrow">
+                      <td className="py-2.5 pr-3 truncate" style={{ minWidth: 0 }}>
                         <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: 99, background: v.color, marginRight: 8 }} />
                         {displayModel(r.m)}
-                      </TableCell>
-                      <TableCell className="text-right py-2.5 pr-3 whitespace-nowrap" style={{ color: "#fb923c" }}>
+                      </td>
+                      <td className="text-right py-2.5 pr-3 whitespace-nowrap" style={{ color: "#fb923c" }}>
                         {fmt(r.i)}
-                      </TableCell>
-                      <TableCell className="text-right py-2.5 pr-3 whitespace-nowrap" style={{ color: "var(--accent)" }}>
+                      </td>
+                      <td className="text-right py-2.5 pr-3 whitespace-nowrap" style={{ color: "var(--accent)" }}>
                         {fmt(r.o)}
-                      </TableCell>
-                      <TableCell className="text-right py-2.5 pr-3 whitespace-nowrap" style={{ color: "var(--dim)" }} title={`⏱ ${r.d !== undefined ? `${(r.d / 1000).toFixed(1)}s elapsed with the model, ⚡ ${r.o} output tokens` : "no duration recorded"}`}>
+                      </td>
+                      <td className="text-right py-2.5 pr-3 whitespace-nowrap" style={{ color: "var(--dim)" }} title={`⏱ ${r.d !== undefined ? `${(r.d / 1000).toFixed(1)}s elapsed with the model, ⚡ ${r.o} output tokens` : "no duration recorded"}`}>
                         {speedText(r)}
-                      </TableCell>
-                      <TableCell className="py-2.5 pr-3 whitespace-nowrap">
+                      </td>
+                      <td className="py-2.5 pr-3 whitespace-nowrap">
                         <StatusBadge r={r} />
-                      </TableCell>
-                      <TableCell
+                      </td>
+                      <td
                         className="text-right py-2.5 pr-3 whitespace-nowrap"
                         style={measured ? { color: "var(--ink)" } : undefined}
                         title={
@@ -179,16 +179,16 @@ export function Recent({ data, money }: { data: UsageReport | null; money: (v: n
                         }
                       >
                         {(measured ? "" : "~") + money(displayCost(r))}
-                      </TableCell>
-                      <TableCell className="text-right py-2.5 whitespace-nowrap" style={{ color: "var(--dim)" }}>
+                      </td>
+                      <td className="text-right py-2.5 whitespace-nowrap" style={{ color: "var(--dim)" }}>
                         {whenStamp(r.t)}
-                      </TableCell>
-                    </TableRow>
+                      </td>
+                    </tr>
                   </HoverTip>
                 );
               })}
-            </TableBody>
-          </Table>
+            </tbody>
+          </table>
         </div>
       ) : (
         <EmptyState icon="inbox" title="No requests yet" desc="Recent assistant messages will show here once sessions report tokens." />

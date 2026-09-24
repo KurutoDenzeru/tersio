@@ -5,8 +5,10 @@
 // language (gradient area, dashed grid, rounded bars, padded donut).
 import { useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table";
+import { ChartContainer, ChartTooltip } from "@/components/ui/chart";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Area, AreaChart as RechartsArea, CartesianGrid, Cell, Pie, PieChart, XAxis, YAxis } from "recharts";
 import {
   displayModel,
   fmt,
@@ -61,56 +63,54 @@ function seriesFor(data: UsageReport, m: string): Array<{ day: string; v: number
   return days.map((d) => ({ day: d, v: per[d]?.[m] ?? 0 }));
 }
 
+function shortDay(day: string): string {
+  return new Date(`${day}T12:00:00`).toLocaleString("en-US", { month: "short", day: "numeric" });
+}
+
+// Token volume as a shadcn chart (recharts under ChartContainer): gradient
+// area, dashed horizontals only, end dot, custom hover card. Same language
+// as the original mdAreaChart().
 function AreaChart({ vals, days }: { vals: number[]; days: string[] }) {
-  const W = 560;
-  const H = 190;
-  const max = Math.max(1, ...vals);
-  const step = vals.length > 1 ? (W - 16) / (vals.length - 1) : 0;
-  const X = (i: number): number => 8 + i * step;
-  const Y = (p: number): number => 14 + (1 - p / max) * (H - 36);
-  const d = vals.map((p, i) => `${i ? "L" : "M"}${X(i).toFixed(1)} ${Y(p).toFixed(1)}`).join(" ");
-  const last = vals.length ? { x: X(vals.length - 1), y: Y(vals[vals.length - 1]) } : { x: 8, y: H - 22 };
-  const [hover, setHover] = useState<number | null>(null);
-  const shortDay = (day: string): string =>
-    new Date(`${day}T12:00:00`).toLocaleString("en-US", { month: "short", day: "numeric" });
+  const chartData = vals.map((v, i) => ({ day: days[i], tokens: v }));
   return (
-    <div className="relative">
-      <svg
-        id="mdSpark"
-        viewBox="0 0 560 190"
-        preserveAspectRatio="none"
-        aria-hidden="true"
-        style={{ width: "100%", height: 190, display: "block" }}
-        onMouseMove={(ev) => {
-          const r = (ev.target as SVGElement).ownerSVGElement?.getBoundingClientRect();
-          if (!r || !vals.length) return;
-          const fx = ((ev.clientX - r.left) / r.width) * W;
-          setHover(Math.max(0, Math.min(vals.length - 1, Math.round((fx - 8) / (step || 1)))));
-        }}
-        onMouseLeave={() => setHover(null)}
-      >
+    <ChartContainer
+      config={{ tokens: { label: "Tokens", color: "var(--accent)" } }}
+      className="h-[190px] w-full"
+    >
+      <RechartsArea data={chartData} margin={{ top: 14, right: 8, bottom: 0, left: 8 }}>
         <defs>
           <linearGradient id="mdGrad" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0" style={{ stopColor: "var(--accent)", stopOpacity: 0.32 }} />
             <stop offset="1" style={{ stopColor: "var(--accent)", stopOpacity: 0.02 }} />
           </linearGradient>
         </defs>
-        {[1, 2, 3].map((i) => {
-          const y = 14 + ((H - 36) * i) / 3;
-          return <line key={i} className="grid" x1="8" y1={y} x2={W - 8} y2={y} strokeDasharray="3 4" />;
-        })}
-        {vals.length > 0 && <path className="area" d={`${d} L${last.x.toFixed(1)} ${H - 22} L8 ${H - 22} Z`} />}
-        {vals.length > 0 && <path className="line" d={d} strokeWidth="2.5" />}
-        {vals.length > 0 && <circle className="dot" cx={last.x} cy={last.y} r="5" />}
-        {hover !== null && vals.length > 0 && <circle className="hoverdot" cx={X(hover)} cy={Y(vals[hover])} r="5" />}
-      </svg>
-      {hover !== null && vals.length > 0 && (
-        <div className="md-tip mono" style={{ display: "block", left: `${(X(hover) / W) * 100}%`, top: 8, transform: "translate(-50%, 0)" }}>
-          <div className="tt">{shortDay(days[hover])}</div>
-          <div className="tv">{fmtShort(vals[hover])} tokens</div>
-        </div>
-      )}
-    </div>
+        <CartesianGrid vertical={false} stroke="var(--line)" strokeDasharray="3 4" />
+        <XAxis dataKey="day" hide />
+        <YAxis hide domain={[0, "dataMax"]} />
+        <ChartTooltip
+          cursor={{ stroke: "var(--line)" }}
+          content={({ active, payload }) => {
+            if (!active || !payload?.length) return null;
+            const p = payload[0].payload as { day: string; tokens: number };
+            return (
+              <div className="mono rounded-[10px] border px-3 py-2 text-[11px]" style={{ background: "var(--panel)", borderColor: "var(--line)" }}>
+                <div className="tt">{shortDay(p.day)}</div>
+                <div className="tv">{fmtShort(p.tokens)} tokens</div>
+              </div>
+            );
+          }}
+        />
+        <Area
+          dataKey="tokens"
+          type="monotone"
+          fill="url(#mdGrad)"
+          stroke="var(--accent)"
+          strokeWidth={2.5}
+          dot={false}
+          activeDot={{ r: 5, fill: "var(--accent)", stroke: "var(--panel)", strokeWidth: 2 }}
+        />
+      </RechartsArea>
+    </ChartContainer>
   );
 }
 
@@ -156,38 +156,63 @@ function Bars({ vals, days }: { vals: number[]; days: string[] }) {
   );
 }
 
+// Token mix as a shadcn chart (recharts Pie under ChartContainer):
+// padded segments, track ring, center total, original legend rows.
 function Donut({ parts }: { parts: Array<{ label: string; v: number; color: string }> }) {
-  const r = 54;
-  const C = 2 * Math.PI * r;
   const total = parts.reduce((a, p) => a + p.v, 0) || 1;
   const live = parts.filter((p) => p.v > 0);
-  const gap = live.length > 1 ? 4 : 0;
-  let off = 0;
-  const segs = parts.flatMap((p) => {
-    const len = (p.v / total) * C;
-    if (len <= 0) return [];
-    const el = (
-      <circle
-        key={p.label}
-        cx="70"
-        cy="70"
-        r={r}
-        style={{ stroke: p.color }}
-        strokeDasharray={`${Math.max(len - gap, 0.5).toFixed(1)} ${(C - len + gap).toFixed(1)}`}
-        strokeDashoffset={(-off - gap / 2).toFixed(1)}
-        strokeLinecap="butt"
-      />
-    );
-    off += len;
-    return [el];
-  });
   return (
     <div>
       <div className="md-donut-wrap">
-        <svg id="mdMix" viewBox="0 0 140 140" aria-hidden="true" style={{ width: 150, height: 150, display: "block", transform: "rotate(-90deg)" }}>
-          <circle className="tk" cx="70" cy="70" r={r} />
-          {segs}
-        </svg>
+        {live.length === 0 && (
+          <div
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              inset: 0,
+              margin: "auto",
+              width: 124,
+              height: 124,
+              borderRadius: 999,
+              border: "16px solid var(--track)",
+            }}
+          />
+        )}
+        <ChartContainer
+          config={Object.fromEntries(parts.map((p) => [p.label, { label: p.label, color: p.color }]))}
+          className="mx-auto aspect-square w-[150px]"
+        >
+          <PieChart>
+            <ChartTooltip
+              content={({ active, payload }) => {
+                if (!active || !payload?.length) return null;
+                const p = payload[0].payload as { label: string; v: number };
+                return (
+                  <div className="mono rounded-[10px] border px-3 py-2 text-[11px]" style={{ background: "var(--panel)", borderColor: "var(--line)" }}>
+                    <div className="tt">{p.label}</div>
+                    <div className="tv">
+                      {fmtShort(p.v)} ({((p.v / total) * 100).toFixed(1)}%)
+                    </div>
+                  </div>
+                );
+              }}
+            />
+            <Pie
+              data={parts}
+              dataKey="v"
+              nameKey="label"
+              innerRadius={46}
+              outerRadius={62}
+              paddingAngle={live.length > 1 ? 4 : 0}
+              strokeWidth={0}
+              startAngle={-270}
+            >
+              {parts.map((p) => (
+                <Cell key={p.label} fill={p.v > 0 ? p.color : "var(--track)"} />
+              ))}
+            </Pie>
+          </PieChart>
+        </ChartContainer>
         <div className="md-donut-center">
           <p className="mono">{fmtShort(total)}</p>
         </div>
@@ -270,8 +295,8 @@ function ModelDialog({ m, data, money, onClose }: { m: string | null; data: Usag
   );
   return (
     <Dialog open={m !== null} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="dlg mdlg max-w-none" showCloseButton={false} aria-describedby={undefined}>
-        <DialogHeader className="dlg-head">
+      <DialogContent className="dlg mdlg max-w-none gap-0" showCloseButton={false} aria-describedby={undefined}>
+        <div className="dlg-head">
           <div className="min-w-0 flex items-center gap-3">
             <Brandmark model={m} />
             <div className="min-w-0">
@@ -283,8 +308,19 @@ function ModelDialog({ m, data, money, onClose }: { m: string | null; data: Usag
               </p>
             </div>
           </div>
-          <span className="md-rankpill mono">#{rank ? String(rank).padStart(2, "0") : "–"}</span>
-        </DialogHeader>
+          <div className="flex shrink-0 items-center gap-2">
+            <span className="md-rankpill mono">#{rank ? String(rank).padStart(2, "0") : "–"}</span>
+            <button
+              type="button"
+              onClick={onClose}
+              className="btn-push flex shrink-0 items-center p-2 rounded-xl"
+              style={{ border: "1px solid var(--line)", color: "var(--ink)" }}
+              aria-label="Close model details"
+            >
+              <Icon name="x" className="size-4" />
+            </button>
+          </div>
+        </div>
         <div className="md-body">
           <div className="md-kpis">
             {kpi("Tokens", fmtShort(total), range, true)}
@@ -300,13 +336,22 @@ function ModelDialog({ m, data, money, onClose }: { m: string | null; data: Usag
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 <span className={`md-trend mono${trend.up ? " up" : ""}`}>{trend.t}</span>
-                <span className="seg mono text-xs flex items-center gap-1 p-1 rounded-[10px]" style={{ border: "1px solid var(--line)" }} role="group" aria-label="Chart range">
+                <ToggleGroup
+                  value={[span]}
+                  onValueChange={(v) => {
+                    const next = v[v.length - 1];
+                    if (next === "30" || next === "90" || next === "all") setSpan(next);
+                  }}
+                  className="seg mono text-xs p-1 rounded-[10px]"
+                  style={{ border: "1px solid var(--line)" }}
+                  aria-label="Chart range"
+                >
                   {(["30", "90", "all"] as Span[]).map((s) => (
-                    <button key={s} type="button" role="button" className={`px-2.5 py-1${span === s ? " on" : ""}`} onClick={() => setSpan(s)}>
+                    <ToggleGroupItem key={s} value={s} className="px-2.5 py-1" aria-label={s === "all" ? "ALL" : `${s}D`}>
                       {s === "all" ? "ALL" : `${s}D`}
-                    </button>
+                    </ToggleGroupItem>
                   ))}
-                </span>
+                </ToggleGroup>
               </div>
             </div>
             <AreaChart vals={vals} days={days} />
@@ -439,36 +484,37 @@ export function Models({ data, money }: { data: UsageReport | null; money: (v: n
         </p>
         {tops.length > 0 ? (
           <div className="scrollarea">
-            <Table>
-              <TableBody>
-                {rows.map((m) => {
-                  const mv = modelTotal(byModel, m);
-                  return (
-                    <HoverTip key={m} content={data ? <ModelTip m={m} data={data} money={money} /> : "–"}>
-                      <TableRow className="mrow cursor-pointer" onClick={() => setOpen(m)}>
-                        <TableCell>
-                          <Brandmark model={m} small />
-                        </TableCell>
-                        <TableCell className="min-w-0">
-                          <p className="mono text-sm truncate" title={m}>
-                            {displayModel(m)}
-                          </p>
-                          <div className="bar-track mt-1.5 h-1.5 overflow-hidden">
-                            <div className="bar-fill h-full" style={{ width: `${Math.round((mv / max) * 100)}%` }} />
-                          </div>
-                        </TableCell>
-                        <TableCell className="shrink-0 text-right">
-                          <p className="mono font-bold">{fmt(mv)}</p>
-                          <p className="mono text-xs" style={{ color: "var(--dim)" }}>
-                            {money(data?.byModelUsd[m] ?? 0)}
-                          </p>
-                        </TableCell>
-                      </TableRow>
-                    </HoverTip>
-                  );
-                })}
-              </TableBody>
-            </Table>
+            <ol id="models" className="overflow-hidden">
+              {rows.map((m, i) => {
+                const mv = modelTotal(byModel, m);
+                return (
+                  <HoverTip key={m} content={data ? <ModelTip m={m} data={data} money={money} /> : "–"}>
+                    <li
+                      className={`mrow flex items-center gap-3 px-4 py-3${i < rows.length - 1 ? " rowline" : ""} cursor-pointer`}
+                      onClick={() => setOpen(m)}
+                    >
+                      <span>
+                        <Brandmark model={m} small />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="mono text-sm truncate" title={m}>
+                          {displayModel(m)}
+                        </p>
+                        <div className="bar-track mt-1.5 h-1.5 overflow-hidden">
+                          <div className="bar-fill h-full" style={{ width: `${Math.round((mv / max) * 100)}%` }} />
+                        </div>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <p className="mono font-bold">{fmt(mv)}</p>
+                        <p className="mono text-xs" style={{ color: "var(--dim)" }}>
+                          {money(data?.byModelUsd[m] ?? 0)}
+                        </p>
+                      </div>
+                    </li>
+                  </HoverTip>
+                );
+              })}
+            </ol>
           </div>
         ) : (
           <EmptyState icon="boxes" title="No models yet" desc="Model token totals will appear here once sessions report tokens." />

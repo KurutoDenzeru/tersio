@@ -113,11 +113,11 @@ export function Savings({
     () =>
       (
         [
-          ["input", t.input],
-          ["output", t.output],
-          ["cache read", t.cacheRead],
-          ["cache write", t.cacheWrite],
-        ] as Array<[string, number]>
+          ["input", t.input, "arrow-down-to-line"],
+          ["output", t.output, "arrow-up-from-line"],
+          ["cache read", t.cacheRead, "hard-drive-download"],
+          ["cache write", t.cacheWrite, "hard-drive-upload"],
+        ] as Array<[string, number, string]>
       ).filter((b) => b[1] > 0),
     [t],
   );
@@ -280,9 +280,10 @@ export function Savings({
       </section>
 
       <section className="rise mt-3 flex rounded-xl overflow-hidden" style={{ border: "1px solid var(--line)", background: "var(--panel)" }} aria-label="Tokens by bucket">
-        {strip.map(([label, v], i) => (
+        {strip.map(([label, v, icon], i) => (
           <div key={label} className={`stripcell flex-1 px-4 py-4${i > 0 ? " sm:border-l" : ""}`} style={{ borderColor: "var(--line)" }}>
             <div className="flex items-center gap-2 mono text-[11px] uppercase tracking-[0.14em]" style={{ color: "var(--dim)" }}>
+              <Icon name={icon} className="size-3.5" />
               <span>{label}</span>
             </div>
             <p className="mono font-bold text-3xl mt-1">{fmt(v)}</p>

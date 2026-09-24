@@ -4,7 +4,8 @@
 // Shadcn Dialog + Select carry the structure; the row language, danger
 // zone, and share actions stay identical to the original.
 import { useEffect, useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useTheme } from "@/components/theme-provider";
 import { fmt, fmtShort, relAge } from "@/lib/format";
@@ -310,7 +311,7 @@ export function SettingsDialog({
   const shown = PANES.filter((p) => !query || p.label.toLowerCase().includes(query.trim().toLowerCase()));
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="dlg setdlg max-w-none" showCloseButton={false} aria-describedby={undefined}>
+      <DialogContent className="dlg setdlg max-w-none gap-0" showCloseButton={false} aria-describedby={undefined}>
         <div className="set-shell">
           <aside className="set-side" aria-label="Settings sections">
             <div className="set-search">
@@ -349,7 +350,16 @@ export function SettingsDialog({
                       <p className="dlg-name">Theme</p>
                       <p className="dlg-hint">Light, dark, or follow the system.</p>
                     </div>
-                    <div className="seg mono text-xs flex items-center gap-1 p-1 rounded-[10px]" style={{ border: "1px solid var(--line)", background: "var(--panel)" }} role="tablist" aria-label="Theme">
+                    <ToggleGroup
+                      value={[theme]}
+                      onValueChange={(v) => {
+                        const next = v[v.length - 1];
+                        if (next === "light" || next === "dark" || next === "system") setTheme(next);
+                      }}
+                      className="seg mono text-xs p-1 rounded-[10px]"
+                      style={{ border: "1px solid var(--line)", background: "var(--panel)" }}
+                      aria-label="Theme"
+                    >
                       {(
                         [
                           ["light", "sun", "Light"],
@@ -357,19 +367,11 @@ export function SettingsDialog({
                           ["system", "monitor", "System"],
                         ] as const
                       ).map(([v, icon, label]) => (
-                        <button
-                          key={v}
-                          type="button"
-                          role="tab"
-                          aria-label={label}
-                          title={label}
-                          className={`px-2.5 py-1.5${theme === v ? " on" : ""}`}
-                          onClick={() => setTheme(v)}
-                        >
+                        <ToggleGroupItem key={v} value={v} className="px-2.5 py-1.5" aria-label={label} title={label}>
                           <Icon name={icon} className="size-4" />
-                        </button>
+                        </ToggleGroupItem>
                       ))}
-                    </div>
+                    </ToggleGroup>
                   </div>
                   <div className="dlg-row">
                     <div className="min-w-0">
@@ -469,6 +471,99 @@ export function ShareDialog({
     }
   };
 
+  // PNG export renders the profile card as SVG, then rasterizes it. Same
+  // 1200x850 layout and theme rule as the original share.js svgCard().
+  const svgCard = (): string => {
+    const e = (x: string): string => x.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+    let themeChoice: string | null = null;
+    try {
+      themeChoice = localStorage.getItem("tersio-theme");
+    } catch {
+      themeChoice = null;
+    }
+    const dark = themeChoice
+      ? themeChoice === "dark"
+      : !!window.matchMedia?.("(prefers-color-scheme: dark)").matches;
+    const pal = dark
+      ? { bg: "#09090b", ink: "#f4f4f5", dim: "#a1a1aa", accent: "#34d399" }
+      : { bg: "#ffffff", ink: "#18181b", dim: "#52525b", accent: "#047857" };
+    const hv = cells;
+    const cw = 32;
+    const gap = 9;
+    const step = cw + gap;
+    const gx = 64;
+    const gy = 340;
+    let grid = "";
+    for (let gd = 0; gd < 7; gd++) {
+      for (let gw = 0; gw < 26; gw++) {
+        const gv = hv.vals[gw * 7 + gd] ?? 0;
+        const gs = hv.max ? Math.sqrt(gv / hv.max) : 0;
+        const go = gv ? (0.45 + 0.55 * gs).toFixed(2) : 0.13;
+        grid += `<rect x="${gx + gw * step}" y="${gy + gd * step}" width="${cw}" height="${cw}" rx="8" fill="${pal.accent}" opacity="${go}"/>`;
+      }
+    }
+    const streakTxt = `${streak}${streak === 1 ? " day" : " days"}`;
+    return (
+      '<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="850" viewBox="0 0 1200 850">' +
+      `<rect width="1200" height="850" rx="28" fill="${pal.bg}"/>` +
+      `<text x="64" y="80" font-family="monospace" font-size="26" letter-spacing="6" fill="${pal.accent}">TERSIO · USAGE PROFILE</text>` +
+      `<text x="60" y="250" font-family="monospace" font-size="130" font-weight="bold" fill="${pal.ink}">${e(`${fmtShort(total)} tokens`)}</text>` +
+      `<text x="64" y="300" font-family="monospace" font-size="30" fill="${pal.dim}">across ${e(fmt(runs))} agent runs</text>` +
+      grid +
+      `<text x="64" y="680" font-family="monospace" font-size="24" letter-spacing="3" fill="${pal.dim}">AVG / RUN</text>` +
+      `<text x="64" y="725" font-family="monospace" font-size="40" font-weight="bold" fill="${pal.ink}">${e(`${fmtShort(runs ? Math.round(total / runs) : 0)} / run`)}</text>` +
+      `<text x="430" y="680" font-family="monospace" font-size="24" letter-spacing="3" fill="${pal.dim}">SAVED</text>` +
+      `<text x="430" y="725" font-family="monospace" font-size="40" font-weight="bold" fill="${pal.ink}">${e(money(saved))}</text>` +
+      `<text x="830" y="680" font-family="monospace" font-size="24" letter-spacing="3" fill="${pal.dim}">DAY STREAK</text>` +
+      `<text x="830" y="725" font-family="monospace" font-size="40" font-weight="bold" fill="${pal.ink}">${e(streakTxt)}</text>` +
+      `<text x="64" y="775" font-family="monospace" font-size="24" letter-spacing="3" fill="${pal.dim}">BEST DAY</text>` +
+      `<text x="64" y="820" font-family="monospace" font-size="40" font-weight="bold" fill="${pal.ink}">${e(fmtShort(best))}</text>` +
+      `<text x="430" y="775" font-family="monospace" font-size="24" letter-spacing="3" fill="${pal.dim}">EST. COST</text>` +
+      `<text x="430" y="820" font-family="monospace" font-size="40" font-weight="bold" fill="${pal.ink}">${e(money(cost))}</text>` +
+      `<text x="830" y="775" font-family="monospace" font-size="24" letter-spacing="3" fill="${pal.dim}">MODELS</text>` +
+      `<text x="830" y="820" font-family="monospace" font-size="40" font-weight="bold" fill="${pal.ink}">${e(String(models))}</text>` +
+      "</svg>"
+    );
+  };
+
+  const downloadPng = (): void => {
+    try {
+      const img = new Image();
+      const svg = new Blob([svgCard()], { type: "image/svg+xml;charset=utf-8" });
+      const url = URL.createObjectURL(svg);
+      img.onload = () => {
+        try {
+          const c = document.createElement("canvas");
+          c.width = 1200;
+          c.height = 850;
+          c.getContext("2d")?.drawImage(img, 0, 0, 1200, 850);
+          URL.revokeObjectURL(url);
+          c.toBlob((b) => {
+            if (!b) {
+              toast("Save failed", "Browser blocked the render.", "circle-alert");
+              return;
+            }
+            const a = document.createElement("a");
+            a.download = "tersio-usage.png";
+            a.href = URL.createObjectURL(b);
+            a.click();
+            setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+            toast("Saved", "Card downloaded as PNG.", "download");
+          }, "image/png");
+        } catch {
+          toast("Save failed", "Browser blocked the render.", "circle-alert");
+        }
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        toast("Save failed", "Browser blocked the render.", "circle-alert");
+      };
+      img.src = url;
+    } catch {
+      toast("Save failed", "Browser blocked the render.", "circle-alert");
+    }
+  };
+
   const cells = (() => {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
@@ -492,9 +587,9 @@ export function ShareDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="dlg shdlg max-w-none" showCloseButton={false} aria-describedby={undefined}>
+      <DialogContent className="dlg shdlg max-w-none gap-0" showCloseButton={false} aria-describedby={undefined}>
         <div className="sh-glow" aria-hidden="true" />
-        <DialogHeader className="dlg-head">
+        <div className="dlg-head">
           <div className="min-w-0">
             <DialogTitle className="dlg-title">Share your usage</DialogTitle>
             <p className="dlg-desc">Download the card or post your stats.</p>
@@ -508,7 +603,7 @@ export function ShareDialog({
           >
             <Icon name="x" className="size-4" />
           </button>
-        </DialogHeader>
+        </div>
         <div className="share-card sh-card">
           <span className="ghosticon" aria-hidden="true">
             <Icon name="zap" className="size-4" />
@@ -592,6 +687,10 @@ export function ShareDialog({
             <button type="button" className="btn-push share-btn" aria-label="Copy share text" onClick={() => copyText(text, "Share text copied.")}>
               <Icon name="copy" className="size-3.5" />
               <span>Copy</span>
+            </button>
+            <button type="button" className="btn-push share-btn" aria-label="Download card as PNG" onClick={downloadPng}>
+              <Icon name="download" className="size-3.5" />
+              <span>Download</span>
             </button>
           </span>
         </div>

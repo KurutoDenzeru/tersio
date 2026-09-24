@@ -3,6 +3,8 @@
 // emptyState + showTip/moveTip/hideTip.
 import React, { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Icon } from "./icon";
 
 export function EmptyState({ icon, title, desc }: { icon: string; title: string; desc: string }) {
@@ -97,19 +99,24 @@ export function PerPage({
   label: string;
 }) {
   return (
-    <span className="seg flex items-center gap-1 p-1 rounded-[10px]" style={{ border: "1px solid var(--line)" }} role="group" aria-label={label}>
-      {options.map((n) => (
-        <button
-          key={n}
-          type="button"
-          role="button"
-          className={`px-2.5 py-1${n === value ? " on" : ""}`}
-          onClick={() => onPick(n)}
-        >
-          {n}
-        </button>
-      ))}
-    </span>
+    <Select
+      value={String(value)}
+      onValueChange={(v) => {
+        const n = Number(v);
+        if (n !== value) onPick(n);
+      }}
+    >
+      <SelectTrigger className="seg mono text-xs h-auto gap-1 p-1" aria-label={label}>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {options.map((n) => (
+          <SelectItem key={n} value={String(n)}>
+            {n} / page
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }
 
@@ -125,24 +132,22 @@ export function SegTabs<T extends string>({
   label: string;
 }) {
   return (
-    <div
-      className="seg mono text-xs flex items-center gap-1 ml-auto p-1 rounded-[10px]"
+    <ToggleGroup
+      value={[value]}
+      onValueChange={(v) => {
+        const next = v[v.length - 1] as T | undefined;
+        if (next && next !== value) onPick(next);
+      }}
+      className="seg mono text-xs ml-auto p-1 rounded-[10px]"
       style={{ border: "1px solid var(--line)", background: "var(--panel)" }}
-      role="tablist"
       aria-label={label}
     >
       {options.map((o) => (
-        <button
-          key={o}
-          type="button"
-          role="tab"
-          className={`px-3 py-1.5${o === value ? " on" : ""}`}
-          onClick={() => onPick(o)}
-        >
+        <ToggleGroupItem key={o} value={o} className="px-3 py-1.5" aria-label={o}>
           {o}
-        </button>
+        </ToggleGroupItem>
       ))}
-    </div>
+    </ToggleGroup>
   );
 }
 

@@ -522,3 +522,8 @@
    tersio dialogs. Their own widths (settings 920, model 880, share 660)
    win instead. */
 .dlg.setdlg, .dlg.mdlg, .dlg.shdlg { max-width: calc(100vw - 2rem); }
+
+/* Shadcn option controls speak the original seg language: dim idle,
+   accent-soft pill when selected. */
+.seg [data-state="on"] { background: var(--accent-soft); color: var(--ink); }
+.seg button:not([data-state="on"]):hover { color: var(--ink); }

@@ -2,7 +2,6 @@
 // dashboard/charts.js: session tool calls + RTK-metered commands grouped
 // by command, sortable, paged, with honest gaps (–) for unmetered rows.
 import { useMemo, useState } from "react";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { fmt, fmtMs, fmtShort } from "@/lib/format";
 import type { UsageReport } from "@/lib/data";
 import { EmptyState, PageButtons, PerPage, usePager } from "./common";
@@ -61,7 +60,7 @@ export function Tools({ data }: { data: UsageReport | null }) {
   const th = (label: string, key: Key, num?: boolean): React.ReactNode => {
     const on = sort.key === key;
     return (
-      <TableHead aria-sort={on ? (sort.dir === 1 ? "ascending" : "descending") : "none"}>
+      <th aria-sort={on ? (sort.dir === 1 ? "ascending" : "descending") : "none"}>
         <button
           type="button"
           className={`thsort${num ? " num" : ""}`}
@@ -73,7 +72,7 @@ export function Tools({ data }: { data: UsageReport | null }) {
         >
           {label} <span className="arr">{on ? (sort.dir === 1 ? "↑" : "↓") : "⇅"}</span>
         </button>
-      </TableHead>
+      </th>
     );
   };
 
@@ -93,44 +92,45 @@ export function Tools({ data }: { data: UsageReport | null }) {
       </p>
       {rows.length > 0 ? (
         <div className="overflow-x-auto">
-          <Table className="w-full mono text-[13px]">
-            <TableHeader>
-              <TableRow className="text-left text-[11px] uppercase tracking-[0.14em]" style={{ color: "var(--dim)" }}>
-                <TableHead className="font-normal text-right pr-3 py-2 w-10">#</TableHead>
+          <table className="w-full mono text-[13px]" id="cmdTable">
+            <colgroup><col style={{ width: 40 }} /><col /><col style={{ width: 90 }} /><col style={{ width: 90 }} /><col style={{ width: 90 }} /><col style={{ width: 90 }} /><col style={{ width: 140 }} /></colgroup>
+            <thead>
+              <tr className="text-left text-[11px] uppercase tracking-[0.14em]" style={{ color: "var(--dim)" }}>
+                <th className="font-normal text-right pr-3 py-2 w-10">#</th>
                 {th("Tool / Command", "name")}
                 {th("Count", "count", true)}
                 {th("Saved", "saved", true)}
                 {th("Avg%", "avgPct", true)}
                 {th("Time", "avgMs", true)}
-                <TableHead className="font-normal py-2 min-w-32">Impact</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+                <th className="font-normal py-2 min-w-32">Impact</th>
+              </tr>
+            </thead>
+            <tbody>
               {slice.map((r, i) => (
-                <TableRow key={r.name} className="mrow">
-                  <TableCell className="text-right pr-3 py-2.5 mono text-xs w-10" style={{ color: "var(--dim)" }}>
+                <tr key={r.name} className="mrow">
+                  <td className="text-right pr-3 py-2.5 mono text-xs w-10" style={{ color: "var(--dim)" }}>
                     {String((p - 1) * per + i + 1).padStart(2, "0")}
-                  </TableCell>
-                  <TableCell className="py-2.5 pr-3 truncate" style={{ maxWidth: 280 }} title={r.name}>
+                  </td>
+                  <td className="py-2.5 pr-3 truncate" style={{ maxWidth: 280 }} title={r.name}>
                     {r.name}
-                  </TableCell>
-                  <TableCell className="text-right py-2.5 pr-3 font-bold">{fmt(r.count)}</TableCell>
-                  <TableCell className="text-right py-2.5 pr-3 font-bold">{r.saved === null ? "–" : fmtShort(r.saved)}</TableCell>
-                  <TableCell className="text-right py-2.5 pr-3" style={{ color: "var(--accent)" }}>
+                  </td>
+                  <td className="text-right py-2.5 pr-3 font-bold">{fmt(r.count)}</td>
+                  <td className="text-right py-2.5 pr-3 font-bold">{r.saved === null ? "–" : fmtShort(r.saved)}</td>
+                  <td className="text-right py-2.5 pr-3" style={{ color: "var(--accent)" }}>
                     {r.avgPct === null ? "–" : `${r.avgPct.toFixed(1)}%`}
-                  </TableCell>
-                  <TableCell className="text-right py-2.5 pr-3" style={{ color: "var(--dim)" }}>
+                  </td>
+                  <td className="text-right py-2.5 pr-3" style={{ color: "var(--dim)" }}>
                     {r.avgMs === null ? "–" : fmtMs(r.avgMs)}
-                  </TableCell>
-                  <TableCell className="py-2.5 min-w-32">
+                  </td>
+                  <td className="py-2.5 min-w-32">
                     <div className="bar-track h-1.5 overflow-hidden">
                       <div className="bar-fill h-full" style={{ width: r.count ? `${Math.round((r.count / max) * 100)}%` : "0" }} />
                     </div>
-                  </TableCell>
-                </TableRow>
+                  </td>
+                </tr>
               ))}
-            </TableBody>
-          </Table>
+            </tbody>
+          </table>
         </div>
       ) : (
         <EmptyState icon="wrench" title="No tool data yet" desc="Session tool calls and RTK measurements will appear here once recorded." />
