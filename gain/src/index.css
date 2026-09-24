@@ -517,3 +517,8 @@
    force display:none here, or settings / model / share stay invisible. */
 .dlg.setdlg { display: block; }
 .dlg.mdlg { display: flex; }
+
+/* Shadcn content caps width at sm:max-w-sm on desktop, which squeezes the
+   tersio dialogs. Their own widths (settings 920, model 880, share 660)
+   win instead. */
+.dlg.setdlg, .dlg.mdlg, .dlg.shdlg { max-width: calc(100vw - 2rem); }

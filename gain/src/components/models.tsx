@@ -76,6 +76,7 @@ function AreaChart({ vals, days }: { vals: number[]; days: string[] }) {
   return (
     <div className="relative">
       <svg
+        id="mdSpark"
         viewBox="0 0 560 190"
         preserveAspectRatio="none"
         aria-hidden="true"
@@ -183,7 +184,7 @@ function Donut({ parts }: { parts: Array<{ label: string; v: number; color: stri
   return (
     <div>
       <div className="md-donut-wrap">
-        <svg viewBox="0 0 140 140" aria-hidden="true" style={{ width: 150, height: 150, display: "block", transform: "rotate(-90deg)" }}>
+        <svg id="mdMix" viewBox="0 0 140 140" aria-hidden="true" style={{ width: 150, height: 150, display: "block", transform: "rotate(-90deg)" }}>
           <circle className="tk" cx="70" cy="70" r={r} />
           {segs}
         </svg>
