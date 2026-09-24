@@ -25,7 +25,7 @@ export function Brandmark({ model, small }: { model: string; small?: boolean }) 
   if (!v.slug || failed) {
     return (
       <span className={`${cls} placeholder`} title={v.name}>
-        <Icon name="sparkles" className="fb" />
+        <Icon name="sparkles" className="fb" style={{ display: "grid" }} />
       </span>
     );
   }

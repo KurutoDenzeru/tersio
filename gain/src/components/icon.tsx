@@ -10,11 +10,11 @@ function toPascal(name: string): string {
     .join("");
 }
 
-export function Icon({ name, className }: { name: string; className?: string }) {
+export function Icon({ name, className, style }: { name: string; className?: string; style?: React.CSSProperties }) {
   const Cmp = useMemo(() => {
     const key = toPascal(name);
-    const found = (icons as Record<string, React.ComponentType<{ className?: string }>>)[key];
+    const found = (icons as Record<string, React.ComponentType<{ className?: string; style?: React.CSSProperties }>>)[key];
     return found ?? Sparkles;
   }, [name]);
-  return <Cmp className={className} />;
+  return <Cmp className={className} style={style} />;
 }

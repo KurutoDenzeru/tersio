@@ -310,7 +310,7 @@ export function SettingsDialog({
   const shown = PANES.filter((p) => !query || p.label.toLowerCase().includes(query.trim().toLowerCase()));
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="dlg setdlg max-w-none" aria-describedby={undefined}>
+      <DialogContent className="dlg setdlg max-w-none" showCloseButton={false} aria-describedby={undefined}>
         <div className="set-shell">
           <aside className="set-side" aria-label="Settings sections">
             <div className="set-search">
@@ -492,7 +492,7 @@ export function ShareDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="dlg shdlg max-w-none" aria-describedby={undefined}>
+      <DialogContent className="dlg shdlg max-w-none" showCloseButton={false} aria-describedby={undefined}>
         <div className="sh-glow" aria-hidden="true" />
         <DialogHeader className="dlg-head">
           <div className="min-w-0">

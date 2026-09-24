@@ -511,3 +511,9 @@
   .md-stat .s { font-size: 11px; color: var(--dim); margin-top: 2px; }
   #mdBadge .brandmark { width: 44px; height: 44px; border-radius: 12px; }
   @media (prefers-reduced-motion: reduce) { .md-bars > span { transition: none; } }
+
+/* Base UI dialogs mount only while open (plain divs, no [open]
+   attribute like the native modal the original CSS targeted). Never
+   force display:none here, or settings / model / share stay invisible. */
+.dlg.setdlg { display: block; }
+.dlg.mdlg { display: flex; }

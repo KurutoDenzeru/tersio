@@ -269,7 +269,7 @@ function ModelDialog({ m, data, money, onClose }: { m: string | null; data: Usag
   );
   return (
     <Dialog open={m !== null} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="dlg mdlg max-w-none" aria-describedby={undefined}>
+      <DialogContent className="dlg mdlg max-w-none" showCloseButton={false} aria-describedby={undefined}>
         <DialogHeader className="dlg-head">
           <div className="min-w-0 flex items-center gap-3">
             <Brandmark model={m} />
