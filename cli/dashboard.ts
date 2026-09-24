@@ -36,6 +36,26 @@ const CHARTS_JS = path.join(DASH_DIR, 'charts.js');
 const SETTINGS_JS = path.join(DASH_DIR, 'settings.js');
 const SHARE_JS = path.join(DASH_DIR, 'share.js');
 const BRAND = path.join(DASH_DIR, 'brand.webp');
+// shadcn gain app (gain/). When its production bundle exists the server
+// binds to it; otherwise it falls back to the legacy dashboard/ segments.
+const GAIN_DIST = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'gain', 'dist');
+const GAIN_INDEX = path.join(GAIN_DIST, 'index.html');
+const GAIN_BRAND = path.join(GAIN_DIST, 'brand.webp');
+
+function useGainBundle(): boolean {
+  return existsSync(GAIN_INDEX);
+}
+
+function contentType(file: string): string {
+  if (file.endsWith('.html')) return 'text/html; charset=utf-8';
+  if (file.endsWith('.js')) return 'text/javascript; charset=utf-8';
+  if (file.endsWith('.css')) return 'text/css; charset=utf-8';
+  if (file.endsWith('.webp')) return 'image/webp';
+  if (file.endsWith('.svg')) return 'image/svg+xml';
+  if (file.endsWith('.png')) return 'image/png';
+  if (file.endsWith('.woff2')) return 'font/woff2';
+  return 'application/octet-stream';
+}
 
 async function readSegment(file: string): Promise<string> {
   return fs.readFile(file, 'utf8');
@@ -278,41 +298,61 @@ function openBrowser(url: string): void {
   spawn(cmd, [url], { detached: true, stdio: 'ignore' }).unref();
 }
 
-async function runDashboard(options: DashboardOptions): Promise<void> {
-  if (options.exportFile) {
-    const [template, css, core, charts, settings, share, icon] = await Promise.all([
-      readSegment(TEMPLATE), readSegment(STYLES), readSegment(CORE_JS), readSegment(CHARTS_JS),
-      readSegment(SETTINGS_JS), readSegment(SHARE_JS), faviconDataUri(),
-    ]);
-    // Replacer functions throughout: session data routinely contains `$'`
-    // sequences (shell quoting in tool details), which String.replace would
-    // expand as match-suffix patterns and corrupt the file.
-    // RTK-metered command lines routinely contain literal `</script>` (Vue
-    // SFC probes), which would close the inlined <script> early and dump the
-    // rest of the JSON as page text. Escape it; JSON.parse never sees the
-    // backslash form inside a string literal, the browser decodes it first.
-    const inline = template
-      .replace('<link rel="stylesheet" href="styles.css">', () => `<style>\n${css}</style>`)
-      .replace('<script src="core.js" defer></script>', () => `<script>\n${core}</script>`)
-      .replace('<script src="charts.js" defer></script>', () => `<script>\n${charts}</script>`)
-      .replace('<script src="settings.js" defer></script>', () => `<script>\n${settings}</script>`)
-      .replace('<script src="share.js" defer></script>', () => `<script>\n${share}</script>`)
-      .replace('window.__TERSIO_SNAP = null;', () => `window.__TERSIO_SNAP = ${JSON.stringify({ health: JSON.parse(healthJson()), doctor: getDoctorReport(false) }).replace(/<\/(script)/gi, '<\\/$1')};`)
-      .replace(
-        "fetch('data.json')",
-        () => `Promise.resolve({ json: function () { return ${dataJson().replace(/<\/(script)/gi, '<\\/$1')}; } })`,
-      )
-      // Exported file runs on file:// where load() early-returns before the
-      // stub above ever runs, so nothing ever renders. Drop that guard in
-      // the export only; template.html keeps it to avoid 404 polling loops.
-      .replace("if (window.location.protocol === 'file:') return;", () => `if (false) return;`)
+// Replacer functions throughout: session data routinely contains `$'`
+// sequences (shell quoting in tool details), which String.replace would
+// expand as match-suffix patterns and corrupt the file.
+// RTK-metered command lines routinely contain literal `</script>` (Vue
+// SFC probes), which would close the inlined <script> early and dump the
+// rest of the JSON as page text. Escape it; JSON.parse never sees the
+// backslash form inside a string literal, the browser decodes it first.
+function escapeInline(json: string): string {
+  return json.replace(/<\/(script)/gi, '<\\/$1');
+}
+
+async function exportDashboard(exportFile: string): Promise<void> {
+  if (useGainBundle()) {
+    const [bundle, icon] = await Promise.all([readSegment(GAIN_INDEX), faviconDataUri()]);
+    const inline = bundle
+      .replace('window.__TERSIO_SNAP = null;', () => `window.__TERSIO_SNAP = ${escapeInline(JSON.stringify({ data: JSON.parse(dataJson()), health: JSON.parse(healthJson()), doctor: getDoctorReport(false) }))};`)
       .replace('href="brand.webp"', () => `href="${icon}"`)
       .replace(/src="brand.webp"/g, () => `src="${icon}"`);
-    await fs.writeFile(options.exportFile, inline, 'utf8');
-    console.log(`[ok] gain exported → ${options.exportFile}`);
+    await fs.writeFile(exportFile, inline, 'utf8');
+    console.log(`[ok] gain exported → ${exportFile}`);
     return;
   }
-  const html = await withInteractiveSpinner('Loading dashboard template', () => readSegment(TEMPLATE));
+  const [template, css, core, charts, settings, share, legacyIcon] = await Promise.all([
+    readSegment(TEMPLATE), readSegment(STYLES), readSegment(CORE_JS), readSegment(CHARTS_JS),
+    readSegment(SETTINGS_JS), readSegment(SHARE_JS), faviconDataUri(),
+  ]);
+  const inline = template
+    .replace('<link rel="stylesheet" href="styles.css">', () => `<style>\n${css}</style>`)
+    .replace('<script src="core.js" defer></script>', () => `<script>\n${core}</script>`)
+    .replace('<script src="charts.js" defer></script>', () => `<script>\n${charts}</script>`)
+    .replace('<script src="settings.js" defer></script>', () => `<script>\n${settings}</script>`)
+    .replace('<script src="share.js" defer></script>', () => `<script>\n${share}</script>`)
+    .replace('window.__TERSIO_SNAP = null;', () => `window.__TERSIO_SNAP = ${escapeInline(JSON.stringify({ health: JSON.parse(healthJson()), doctor: getDoctorReport(false) }))};`)
+    .replace(
+      "fetch('data.json')",
+      () => `Promise.resolve({ json: function () { return ${escapeInline(dataJson())}; } })`,
+    )
+    // Exported file runs on file:// where load() early-returns before the
+    // stub above ever runs, so nothing ever renders. Drop that guard in
+    // the export only; template.html keeps it to avoid 404 polling loops.
+    .replace("if (window.location.protocol === 'file:') return;", () => `if (false) return;`)
+    .replace('href="brand.webp"', () => `href="${legacyIcon}"`)
+    .replace(/src="brand.webp"/g, () => `src="${legacyIcon}"`);
+  await fs.writeFile(exportFile, inline, 'utf8');
+  console.log(`[ok] gain exported → ${exportFile}`);
+}
+
+async function runDashboard(options: DashboardOptions): Promise<void> {
+  if (options.exportFile) {
+    await exportDashboard(options.exportFile);
+    return;
+  }
+  const html = useGainBundle()
+    ? null
+    : await withInteractiveSpinner('Loading dashboard template', () => readSegment(TEMPLATE));
   const server = http.createServer(async (req, res) => {
     if (req.url === '/reset' && req.method === 'POST') {
       const rows = clearUsageLedger();
@@ -393,18 +433,38 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
       return;
     }
     if (req.url === '/brand.webp') {
-      try {
-        const png = await fs.readFile(BRAND);
-        res.writeHead(200, { 'Content-Type': 'image/webp' });
-        res.end(png);
-      } catch {
-        res.writeHead(404);
-        res.end();
+      // Prefer the bundled brand; fall back to the legacy dashboard copy.
+      for (const file of [GAIN_BRAND, BRAND]) {
+        try {
+          const png = await fs.readFile(file);
+          res.writeHead(200, { 'Content-Type': 'image/webp' });
+          res.end(png);
+          return;
+        } catch { /* try the next copy */ }
       }
+      res.writeHead(404);
+      res.end();
+      return;
+    }
+    if (useGainBundle()) {
+      // shadcn bundle: index.html at /, sibling files (brand.webp,
+      // vite.svg) by path. No path escapes outside gain/dist.
+      const name = (req.url ?? '/').split('?')[0];
+      const file = path.normalize(path.join(GAIN_DIST, name === '/' ? 'index.html' : name.slice(1)));
+      if (file === GAIN_DIST || file.startsWith(GAIN_DIST + path.sep)) {
+        try {
+          const body = await fs.readFile(file);
+          res.writeHead(200, { 'Content-Type': contentType(file) });
+          res.end(body);
+          return;
+        } catch { /* fall through to index */ }
+      }
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(await readSegment(GAIN_INDEX));
       return;
     }
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-    res.end(html);
+    res.end(html ?? '');
   });
   server.listen(options.port, '127.0.0.1', () => {
     try { process.title = 'tersio gain'; } catch { /* non-POSIX shells keep node */ }
