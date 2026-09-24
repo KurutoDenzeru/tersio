@@ -1,3 +1,12 @@
+## v2.22.0
+ - Gain dashboard rebuilt as a responsive Vite + React + shadcn/ui application. Cards, Tables, Selects, Tabs, Charts, Badges, Skeletons, tooltips, pagination, loading states, theme controls, model details, and settings now share one component and token system instead of the legacy inline dashboard.
+ - Settings gains working search with highlighted matches, grouped General/Connection/Diagnosis/Data panes, a read-only OMP coding-agent status card, theme tabs, schedules, data paths, and safe reset/reload actions. Diagnosis and doctor flows gained clearer grouped findings, repair coverage, and persistent data-home handling.
+ - Usage history now lives under `~/.tersio`; OMP and Codex cache-read/cache-write buckets feed the CLI and dashboard consistently, including explicit zero cache-write reporting, measured-cost data, and USD currency persistence.
+ - Share Usage renders the complete branded preview as a PNG and reuses one cached image for Copy, Download, X, Reddit, and LinkedIn. The preview includes the Tersio mark, lightning watermark, token metrics, and theme-aware social controls.
+ - Gain charts and model details now use shadcn/Recharts patterns: a complete 14-day USD area window, compact activity tabs, vendor silhouettes, model token volume, a four-bucket token-mix bar chart, pagination, and theme-aware status badges.
+ - Release/runtime hardening: generated CLI/extension JavaScript ships beside TypeScript, the packed Gain bundle is included for npm consumers, the tarball layout is regression-tested, and the dashboard export remains self-contained.
+
+
 ## v2.21.0
  - New: `tersio doctor --fix` repairs whatever doctor flags — missing extension files copied from the running CLI, config.yml registrations (combo, ponytail, rtk.ts, mode reinforcement), self-plugin registration, the checksum-verified RTK binary + `rtk init` wiring, a Ponytail refresh, and the CLI update itself. Bare `--fix` prompts for scope (`--fix <scope>` pins one; `--yes` fixes all; `--dry-run` previews), then re-runs doctor to prove it. The bare `tersio` menu offers the repair after a failing doctor run.
  - Fix: a broken release payload can no longer half-update the machine. `tersio update` smoke-checks the target (`npm exec --package=<target> -- tersio --version`, side-effect free) before touching the global CLI or OMP files, and aborts with a hint when the payload fails. `install.sh` runs the same `--version` check before `tersio install`. 183 tests.

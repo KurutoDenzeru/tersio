@@ -45,6 +45,8 @@ test("packed tarball carries both .js (CLI runtime) and .ts (OMP) for every CLI-
   const bases = cliExtensionBases();
   expect(bases.size > 0, "expected cli/*.ts to import extension modules").toBe(true);
   const packed = packedFiles();
+  expect(packed).toContain("gain/dist/index.html");
+  expect(packed).toContain("gain/dist/brand.webp");
   for (const base of [...bases].sort()) {
     expect(packed, `missing compiled runtime: extensions/${base}.js`).toContain(`extensions/${base}.js`);
     expect(packed, `missing OMP source: extensions/${base}.ts`).toContain(`extensions/${base}.ts`);
