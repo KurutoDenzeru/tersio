@@ -1,5 +1,4 @@
-// Activity heatmap. Port of renderGraph() + bindGraphTabs() in
-// dashboard/charts.js: trailing 12-month grid, Daily/Weekly/Cumulative
+// Activity heatmap with trailing 12-month grid and Daily/Weekly/Cumulative
 // modes, per-cell model breakdown tooltips, month labels. Shadcn Tooltip
 // carries the hover cards.
 import { useMemo, useState } from "react";

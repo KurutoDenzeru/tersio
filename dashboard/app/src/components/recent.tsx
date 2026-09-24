@@ -1,5 +1,4 @@
-// Recent requests table. Port of renderRecent() + sortRecent() in
-// dashboard/charts.js: newest-first default, every column sortable,
+// Recent requests table: newest-first default, every column sortable,
 // measured vs modeled cost, status badges, per-row hover cards.
 import { useMemo, useState } from "react";
 import {

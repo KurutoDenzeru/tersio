@@ -1,8 +1,4 @@
-// Top models + Models table + model detail dialog. Ports renderModels(),
-// renderModelDialog(), mdAreaChart(), mdDonut() and the tooltip builders in
-// dashboard/charts.js. Shadcn Card/Dialog structure; the area chart and donut
-// keep the original shadcn chart language (gradient area, dashed grid, and
-// padded donut).
+// Top models, Models table, and model detail dialog with shadcn charts.
 import { useMemo, useState } from "react";
 import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";

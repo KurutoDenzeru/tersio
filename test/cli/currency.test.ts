@@ -156,11 +156,11 @@ test("usage rejects an unknown --currency", () => {
   expect(result.stderr).toMatch(/Invalid --currency/);
 });
 
-test("gain --export bakes the requested currency into data.json", () => {
+test("dashboard --export bakes the requested currency into data.json", () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-cur-gain-"));
   const out = path.join(dir, "dash.html");
   try {
-    const result = spawnSync(process.execPath, [installer, "gain", "--export", out, "--currency", "PHP"], {
+    const result = spawnSync(process.execPath, [installer, "dashboard", "--export", out, "--currency", "PHP"], {
       encoding: "utf8",
       cwd: root,
       env: {

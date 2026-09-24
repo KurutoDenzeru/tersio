@@ -1,5 +1,4 @@
-// cli/dashboard.ts — gain dashboard. Serves the single plain-HTML
-// template (no deps, no build) plus a /data.json endpoint from the ledger.
+// cli/dashboard.ts — serves the built shadcn Dashboard with local usage APIs.
 // Binds 127.0.0.1 only; --export writes a file://-ready file instead.
 // Note: no Promise.withResolvers here — engines still allow Node 20.12,
 // which lacks it; the listening server itself keeps the process alive.
@@ -20,7 +19,6 @@ import {
   PACKAGE_VERSION, RTK_BINARY_NAME,
 } from './common.ts';
 import { storedProfile, writePluginSettings } from './profile.ts';
-import { withInteractiveSpinner } from './interactive.ts';
 
 export interface DashboardOptions {
   port: number;
@@ -28,22 +26,13 @@ export interface DashboardOptions {
   exportFile: string | null;
 }
 
-const DASH_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'dashboard');
-const TEMPLATE = path.join(DASH_DIR, 'template.html');
-const STYLES = path.join(DASH_DIR, 'styles.css');
-const CORE_JS = path.join(DASH_DIR, 'core.js');
-const CHARTS_JS = path.join(DASH_DIR, 'charts.js');
-const SETTINGS_JS = path.join(DASH_DIR, 'settings.js');
-const SHARE_JS = path.join(DASH_DIR, 'share.js');
-const BRAND = path.join(DASH_DIR, 'brand.webp');
-// shadcn gain app (gain/). When its production bundle exists the server
-// binds to it; otherwise it falls back to the legacy dashboard/ segments.
-const GAIN_DIST = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'gain', 'dist');
-const GAIN_INDEX = path.join(GAIN_DIST, 'index.html');
-const GAIN_BRAND = path.join(GAIN_DIST, 'brand.webp');
+const DASHBOARD_DIST = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'dashboard', 'dist');
+const DASHBOARD_INDEX = path.join(DASHBOARD_DIST, 'index.html');
+const DASHBOARD_BRAND = path.join(DASHBOARD_DIST, 'brand.webp');
 
-function useGainBundle(): boolean {
-  return existsSync(GAIN_INDEX);
+function requireDashboardBundle(): void {
+  if (existsSync(DASHBOARD_INDEX)) return;
+  throw new Error('Dashboard bundle missing. Run `bun run build` before using `tersio dashboard`.');
 }
 
 function contentType(file: string): string {
@@ -61,9 +50,9 @@ async function readSegment(file: string): Promise<string> {
   return fs.readFile(file, 'utf8');
 }
 
-async function faviconDataUri(): Promise<string> {
-  const png = await fs.readFile(BRAND);
-  return `data:image/webp;base64,${png.toString('base64')}`;
+async function brandDataUri(): Promise<string> {
+  const brand = await fs.readFile(DASHBOARD_BRAND);
+  return `data:image/webp;base64,${brand.toString('base64')}`;
 }
 
 function dataJson(): string {
@@ -289,7 +278,7 @@ function readDiagSchedule(): DiagSchedule {
 }
 
 // Persist the dashboard's picker choice so close → reopen keeps it: each
-// `tersio gain` run serves a fresh ephemeral port (a new origin), so the
+// `tersio dashboard` run serves a fresh ephemeral port (a new origin), so the
 // browser's localStorage alone cannot survive a restart. The stored default
 // feeds data.json and `tersio usage` on the next run.
 async function saveDashboardCurrency(raw: unknown): Promise<CurrencyCode | null> {
@@ -328,39 +317,15 @@ function escapeInline(json: string): string {
 }
 
 async function exportDashboard(exportFile: string): Promise<void> {
-  if (useGainBundle()) {
-    const [bundle, icon] = await Promise.all([readSegment(GAIN_INDEX), faviconDataUri()]);
-    const inline = bundle
-      .replace('window.__TERSIO_SNAP = null;', () => `window.__TERSIO_SNAP = ${escapeInline(JSON.stringify({ data: JSON.parse(dataJson()), health: JSON.parse(healthJson()), doctor: getDoctorReport(false) }))};`)
-      .replace('href="brand.webp"', () => `href="${icon}"`)
-      .replace(/src="brand.webp"/g, () => `src="${icon}"`);
-    await fs.writeFile(exportFile, inline, 'utf8');
-    console.log(`[ok] gain exported → ${exportFile}`);
-    return;
-  }
-  const [template, css, core, charts, settings, share, legacyIcon] = await Promise.all([
-    readSegment(TEMPLATE), readSegment(STYLES), readSegment(CORE_JS), readSegment(CHARTS_JS),
-    readSegment(SETTINGS_JS), readSegment(SHARE_JS), faviconDataUri(),
-  ]);
-  const inline = template
-    .replace('<link rel="stylesheet" href="styles.css">', () => `<style>\n${css}</style>`)
-    .replace('<script src="core.js" defer></script>', () => `<script>\n${core}</script>`)
-    .replace('<script src="charts.js" defer></script>', () => `<script>\n${charts}</script>`)
-    .replace('<script src="settings.js" defer></script>', () => `<script>\n${settings}</script>`)
-    .replace('<script src="share.js" defer></script>', () => `<script>\n${share}</script>`)
-    .replace('window.__TERSIO_SNAP = null;', () => `window.__TERSIO_SNAP = ${escapeInline(JSON.stringify({ health: JSON.parse(healthJson()), doctor: getDoctorReport(false) }))};`)
-    .replace(
-      "fetch('data.json')",
-      () => `Promise.resolve({ json: function () { return ${escapeInline(dataJson())}; } })`,
-    )
-    // Exported file runs on file:// where load() early-returns before the
-    // stub above ever runs, so nothing ever renders. Drop that guard in
-    // the export only; template.html keeps it to avoid 404 polling loops.
-    .replace("if (window.location.protocol === 'file:') return;", () => `if (false) return;`)
-    .replace('href="brand.webp"', () => `href="${legacyIcon}"`)
-    .replace(/src="brand.webp"/g, () => `src="${legacyIcon}"`);
+  requireDashboardBundle();
+  const [bundle, icon] = await Promise.all([readSegment(DASHBOARD_INDEX), brandDataUri()]);
+  const inline = bundle
+    .replace('window.__TERSIO_SNAP = null;', () => `window.__TERSIO_SNAP = ${escapeInline(JSON.stringify({ data: JSON.parse(dataJson()), health: JSON.parse(healthJson()), doctor: getDoctorReport(false) }))};`)
+    .replace(/href="brand\.webp"/g, () => `href="${icon}"`)
+    .replace(/src="brand\.webp"/g, () => `src="${icon}"`)
+    .replace('fetch("brand.webp")', () => `Promise.resolve({ ok: true, blob: async () => new Blob([atob("${icon.split(',')[1]}")], { type: "image/webp" }) })`);
   await fs.writeFile(exportFile, inline, 'utf8');
-  console.log(`[ok] gain exported → ${exportFile}`);
+  console.log(`[ok] Dashboard exported → ${exportFile}`);
 }
 
 async function runDashboard(options: DashboardOptions): Promise<void> {
@@ -368,9 +333,7 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
     await exportDashboard(options.exportFile);
     return;
   }
-  const html = useGainBundle()
-    ? null
-    : await withInteractiveSpinner('Loading dashboard template', () => readSegment(TEMPLATE));
+  requireDashboardBundle();
   const server = http.createServer(async (req, res) => {
     if (req.url === '/reset' && req.method === 'POST') {
       const rows = clearUsageLedger();
@@ -434,62 +397,25 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
       res.end(JSON.stringify(getDoctorReport(fresh)));
       return;
     }
-    if (req.url === '/styles.css') {
-      res.writeHead(200, { 'Content-Type': 'text/css; charset=utf-8' });
-      res.end(await readSegment(STYLES));
-      return;
-    }
-    const scripts: Record<string, string> = {
-      '/core.js': CORE_JS,
-      '/charts.js': CHARTS_JS,
-      '/settings.js': SETTINGS_JS,
-      '/share.js': SHARE_JS,
-    };
-    if (req.url !== undefined && req.url in scripts) {
-      res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' });
-      res.end(await readSegment(scripts[req.url]));
-      return;
-    }
-    if (req.url === '/brand.webp') {
-      // Prefer the bundled brand; fall back to the legacy dashboard copy.
-      for (const file of [GAIN_BRAND, BRAND]) {
-        try {
-          const png = await fs.readFile(file);
-          res.writeHead(200, { 'Content-Type': 'image/webp' });
-          res.end(png);
-          return;
-        } catch { /* try the next copy */ }
-      }
-      res.writeHead(404);
-      res.end();
-      return;
-    }
-    if (useGainBundle()) {
-      // shadcn bundle: index.html at /, sibling files (brand.webp,
-      // vite.svg) by path. No path escapes outside gain/dist.
-      const name = (req.url ?? '/').split('?')[0];
-      const file = path.normalize(path.join(GAIN_DIST, name === '/' ? 'index.html' : name.slice(1)));
-      if (file === GAIN_DIST || file.startsWith(GAIN_DIST + path.sep)) {
-        try {
-          const body = await fs.readFile(file);
-          res.writeHead(200, { 'Content-Type': contentType(file) });
-          res.end(body);
-          return;
-        } catch { /* fall through to index */ }
-      }
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      res.end(await readSegment(GAIN_INDEX));
-      return;
+    const name = (req.url ?? '/').split('?')[0];
+    const file = path.normalize(path.join(DASHBOARD_DIST, name === '/' ? 'index.html' : name.slice(1)));
+    if (file === DASHBOARD_DIST || file.startsWith(DASHBOARD_DIST + path.sep)) {
+      try {
+        const body = await fs.readFile(file);
+        res.writeHead(200, { 'Content-Type': contentType(file) });
+        res.end(body);
+        return;
+      } catch { /* fall through to index */ }
     }
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-    res.end(html ?? '');
+    res.end(await readSegment(DASHBOARD_INDEX));
   });
   server.listen(options.port, '127.0.0.1', () => {
-    try { process.title = 'tersio gain'; } catch { /* non-POSIX shells keep node */ }
+    try { process.title = 'tersio dashboard'; } catch { /* non-POSIX shells keep node */ }
     const address = server.address();
     const port = typeof address === 'object' && address ? address.port : options.port;
     const url = `http://127.0.0.1:${port}`;
-    console.log(`[ok] gain live → ${url} (Ctrl-C to stop)`);
+    console.log(`[ok] Dashboard live → ${url} (Ctrl-C to stop)`);
     if (options.open) openBrowser(url);
   });
 }

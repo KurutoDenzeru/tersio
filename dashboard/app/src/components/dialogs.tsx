@@ -185,7 +185,7 @@ function DoctorPane() {
           onClick={() => {
             void fetchDoctor(true).then((d) => {
               if (d) setReport(d);
-              else if (isFileExport()) toast("Snapshot export", "Live scan needs tersio gain.", "scan-line");
+              else if (isFileExport()) toast("Snapshot export", "Live scan needs tersio dashboard.", "scan-line");
             });
           }}
         >
@@ -239,7 +239,7 @@ function DoctorPane() {
           disabled={fixing}
           onClick={() => {
             if (isFileExport()) {
-              toast("Serve with tersio gain", "Fix runs on the live server only.", "wrench");
+              toast("Serve with tersio dashboard", "Fix runs on the live server only.", "wrench");
               return;
             }
             setFixing(true);

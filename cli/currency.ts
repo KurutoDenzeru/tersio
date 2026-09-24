@@ -1,6 +1,6 @@
 // cli/currency.ts — display-currency helpers (USD-base, offline snapshot rates).
-// Same 10 currencies, symbols, and snapshot rates as the gain dashboard's
-// converter (dashboard/app.js); the dashboard replaces rates with live
+// Same 10 currencies, symbols, and snapshot rates as the dashboard's
+// converter (dashboard/app); the dashboard replaces rates with live
 // frankfurter figures when reachable, the CLI always uses the snapshot.
 
 import { existsSync, readFileSync } from 'node:fs';

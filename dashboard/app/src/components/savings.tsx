@@ -1,7 +1,4 @@
-// Savings bento + token strip. Port of renderMain() savings block,
-// renderSpark(), and renderStrip() in dashboard/charts.js. Shadcn Card +
-// Select carry the structure; the sparkline, zone faces, and money rules
-// stay identical to the original.
+// Savings bento and token strip with shadcn Card and Select structure.
 import { useMemo } from "react";
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";

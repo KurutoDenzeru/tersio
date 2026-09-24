@@ -72,7 +72,7 @@ function flagValue(name: string): string | undefined {
 
 // --- CLI flags ---
 
-const COMMANDS: Record<string, true> = { install: true, update: true, reinstall: true, doctor: true, uninstall: true, usage: true, gain: true, reset: true, settings: true, version: true, help: true };
+const COMMANDS: Record<string, true> = { install: true, update: true, reinstall: true, doctor: true, uninstall: true, usage: true, dashboard: true, reset: true, settings: true, version: true, help: true };
 const args = process.argv.slice(2);
 const commandArg = args.find((arg) => !arg.startsWith('-'));
 const command = commandArg?.toLowerCase() || null;
@@ -98,13 +98,13 @@ const verbose = args.includes('--verbose');
 const doctor = command === 'doctor' || args.includes('--doctor');
 const fix = args.includes('--fix') || args.some((a) => a.startsWith('--fix='));
 const usage = command === 'usage' || args.includes('--usage');
-const gain = command === 'gain';
+const dashboard = command === 'dashboard';
 const reset = command === 'reset';
 const settings = command === 'settings';
 const dashboardPort = Number.parseInt(flagValue('--port') ?? '', 10) || 0;
 const dashboardOpen = args.includes('--open');
 const dashboardExport = flagValue('--export') ?? null;
-// Display currency for usage/gain: --currency flag wins, then the stored
+// Display currency for usage/dashboard: --currency flag wins, then the stored
 // plugin default (tersio settings), then USD.
 const currency: CurrencyCode = parseCurrencyFlag(flagValue('--currency')) ?? readStoredCurrency();
 const currencyGiven = flagValue('--currency') !== undefined;
@@ -366,7 +366,7 @@ export {
   CAVEMAN_DEFAULTS, PONYTAIL_DEFAULTS, RTK_DEFAULTS, DIAG_SCHEDULES, COMBO_PRESET_MODES, COMBO_DEFAULTS,
   parseEnum, flagValue, COMMANDS, commandArg, command, settingArg, unknownCommand,
   install, update, reinstall, showVersion, showHelp, applyUpdate, args,
-  dryRun, yes, verbose, doctor, fix, uninstall, usage, gain, reset, settings,
+  dryRun, yes, verbose, doctor, fix, uninstall, usage, dashboard, reset, settings,
   dashboardPort, dashboardOpen, dashboardExport, currency, currencyGiven,
   removePonytail, keepPonytail, removeRtk,
   comboDefaultFlag, cavemanDefaultFlag, ponytailDefaultFlag, rtkDefaultFlag, diagScheduleFlag, profileFlagsGiven,

@@ -87,7 +87,7 @@
       },
       "currency": {
         "type": "enum",
-        "description": "Display currency for usage/gain reports (--currency overrides per run)",
+        "description": "Display currency for usage/dashboard reports (--currency overrides per run)",
         "values": [
           "USD",
           "PHP",
@@ -107,19 +107,21 @@
   "files": [
     "tersio.js",
     "cli/**/*.js",
-    "dashboard/**/*",
-    "gain/dist/**/*",
+    "dashboard/dist/**/*",
     "extensions/**/*.js",
     "extensions/**/*.ts"
   ],
   "scripts": {
-    "clean": "rm -f tersio.js cli/*.js extensions/**/*.js && rm -rf gain/dist",
-    "build": "tsc && bun run build:gain",
-    "build:gain": "bun install --cwd gain --frozen-lockfile && bun run --cwd gain build",
+    "clean": "rm -f tersio.js cli/*.js extensions/**/*.js && rm -rf dashboard/dist",
+    "build": "tsc && bun run build:dashboard",
+    "build:dashboard": "bun install --cwd dashboard/app --frozen-lockfile && bun run --cwd dashboard/app build",
     "prepublishOnly": "bun run build",
     "check": "tsc --noEmit",
     "doctor": "node tersio.js --doctor",
     "dry-run": "node tersio.js --dry-run --scope user --yes",
+    "lint": "oxlint cli extensions test tersio.ts",
+    "lint:dashboard": "bun run --cwd dashboard/app lint",
+    "lint:fix": "oxlint cli extensions test tersio.ts --fix",
     "test": "vitest run"
   },
   "engines": {
@@ -127,6 +129,7 @@
   },
   "devDependencies": {
     "@types/node": "^26.4.1",
+    "oxlint": "^1.85.0",
     "typescript": "^7.0.2",
     "vitest": "^5.0.1"
   },

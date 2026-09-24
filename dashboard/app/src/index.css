@@ -175,7 +175,7 @@
 }
 
 
-/* Tersio dashboard design tokens, ported from dashboard/styles.css. */
+/* Tersio dashboard design tokens. */
   :root {
     --bg: #f4f4f5; --panel: #ffffff; --ink: #18181b; --dim: #52525b;
     --line: rgba(24, 24, 27, .12); --accent: #047857; --accent-soft: rgba(4, 120, 87, .12);

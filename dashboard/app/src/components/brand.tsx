@@ -1,6 +1,5 @@
-// Vendor brandmark. Port of brandHTML() in dashboard/charts.js: inline
-// OpenAI glyph when shipped, Simple Icons CDN with a Lucide fallback
-// otherwise, clean sparkles placeholder for unknown providers.
+// Vendor brandmark with an inline OpenAI glyph, Simple Icons CDN fallback, and
+// a clean sparkles placeholder for unknown providers.
 import { useState } from "react";
 import { cn } from "cn";
 import { vendorOf } from "@/lib/format";

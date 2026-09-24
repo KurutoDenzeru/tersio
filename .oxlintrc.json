@@ -1,0 +1,29 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "categories": {
+    "correctness": "warn",
+    "suspicious": "warn"
+  },
+  "plugins": ["eslint", "typescript", "import", "unicorn", "vitest"],
+  "env": {
+    "node": true,
+    "es2026": true
+  },
+  "ignorePatterns": ["dashboard/dist/**", "graphify-out/**", "node_modules/**", "coverage/**"],
+  "rules": {
+    "vitest/valid-expect": "off"
+  },
+  "overrides": [
+    {
+      "files": ["test/**/*.ts"],
+      "env": {
+        "vitest": true,
+        "node": true
+      },
+      "rules": {
+        "eslint/no-control-regex": "off",
+        "vitest/no-standalone-expect": "off"
+      }
+    }
+  ]
+}

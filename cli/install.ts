@@ -489,7 +489,7 @@ async function runCommandMenu(): Promise<void> {
     { value: 'reinstall', label: 'Reinstall', hint: 'clean and reinstall the add-ons, Ponytail package kept' },
     { value: 'doctor', label: 'Doctor', hint: 'verify the installation' },
     { value: 'usage', label: 'Usage', hint: 'token usage and savings report' },
-    { value: 'gain', label: 'Gain dashboard', hint: 'open the report in your browser' },
+    { value: 'dashboard', label: 'Dashboard', hint: 'open the report in your browser' },
     { value: 'reset', label: 'Reset statistics', hint: 'clear statistics; transcripts and RTK history stay' },
     { value: 'settings', label: 'Settings', hint: 'defaults: combo, caveman, rtk, ponytail, currency' },
     { value: 'uninstall', label: 'Uninstall', hint: 'remove tersio' },
@@ -545,7 +545,7 @@ async function runCommandMenu(): Promise<void> {
       await runUsage();
       closeRL();
       break;
-    case 'gain':
+    case 'dashboard':
       await runDashboard({ port: dashboardPort, open: true, exportFile: dashboardExport });
       closeRL();
       break;
