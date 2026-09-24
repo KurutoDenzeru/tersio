@@ -72,6 +72,7 @@ test("usage defaults to USD and converts with --currency", () => {
     expect(usd.status, usd.stderr).toBe(0);
     expect(usd.stdout).toMatch(/\$0\.0041/);
     expect(usd.stdout).toMatch(/USD │/);
+    expect(usd.stdout).toMatch(/500 cache read · 0 cache write/);
 
     const php = spawnSync(process.execPath, [installer, "usage", "--currency", "php"], {
       encoding: "utf8",

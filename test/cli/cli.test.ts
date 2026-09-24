@@ -286,6 +286,8 @@ test("gain --export writes a self-contained html file", () => {
   expect(html).toBe("present");
   const body = readFileSync(out, "utf8");
   expect(body).toMatch(/Tersio Dashboard/);
+  expect(body).toMatch(/Oh My Pi/);
+  expect(body).toMatch(/ompPath/);
   expect(body).toMatch(/\/tersio usage/);
   // `$'`/`$&` in data must survive String.replace untouched (single document).
   expect(body).toMatch(/\$'quoted\$'/);
@@ -451,18 +453,14 @@ test("gain --export includes the reset control and empty states", () => {
   });
   expect(result.status, result.stderr).toBe(0);
   const body = readFileSync(out, "utf8");
-  expect(body).toMatch(/id="reset"/);
-  expect(body).toMatch(/id="emptyGraph"/);
-  expect(body).toMatch(/emptyState\('boxes'/);
-  expect(body).toMatch(/id="settings"/);
-  expect(body).toMatch(/id="settingsBtn"/);
-  expect(body).toMatch(/id="pathUsageDb"/);
-  expect(body).toMatch(/id="shareDialog"/);
-  expect(body).toMatch(/id="modelDialog"/);
-  expect(body).toMatch(/openModelDialog/);
-  expect(body).toMatch(/id="emptyModels"/);
-  expect(body).toMatch(/id="modelPages"/);
-  expect(body).toMatch(/id="recentPages"/);
+  expect(body).toMatch(/Reset statistics/);
+  expect(body).toMatch(/Danger zone/);
+  expect(body).toMatch(/No activity yet/);
+  expect(body).toMatch(/No models yet/);
+  expect(body).toMatch(/No requests yet/);
+  expect(body).toMatch(/No tool data yet/);
+  expect(body).toMatch(/Share your usage/);
+  expect(body).toMatch(/Diagnosis/);
   expect(body).toMatch(/ranked by tokens \/ top 10/);
   expect(body).toMatch(/byModelBucketUsd/);
   rmSync(dir, { recursive: true, force: true });
