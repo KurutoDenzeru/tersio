@@ -1,8 +1,6 @@
-// Dock header + hero. Port of the template.html dock and hero section:
-// sticky dock with brand, live clock, share + settings buttons; centered
-// total with ticker of top models.
+// Dock header + compact live telemetry hero.
 import { useEffect, useState } from "react";
-import { fmt, fmtShort, modelTotal, topModels } from "@/lib/format";
+import { fmt } from "@/lib/format";
 import type { UsageReport } from "@/lib/data";
 import { Icon } from "./icon";
 
@@ -17,6 +15,30 @@ function useClock(): string {
     return () => clearInterval(id);
   }, []);
   return now;
+}
+
+function useCountUp(target: number): number {
+  const [value, setValue] = useState(0);
+
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      const frame = requestAnimationFrame(() => setValue(target));
+      return () => cancelAnimationFrame(frame);
+    }
+
+    const startedAt = performance.now();
+    let frame = 0;
+    const tick = (now: number): void => {
+      const progress = Math.min((now - startedAt) / 1400, 1);
+      const eased = 1 - Math.pow(1 - progress, 4);
+      setValue(Math.round(target * eased));
+      if (progress < 1) frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [target]);
+
+  return value;
 }
 
 export function Dock({ onShare, onSettings }: { onShare: () => void; onSettings: () => void }) {
@@ -58,34 +80,21 @@ export function Dock({ onShare, onSettings }: { onShare: () => void; onSettings:
 export function Hero({ data }: { data: UsageReport | null }) {
   const t = data?.tokens ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
   const total = t.input + t.output + t.cacheRead + t.cacheWrite;
-  const tops = data ? topModels(data.byModel, 5) : [];
-  const parts = tops.map((m) => {
-    const v = modelTotal(data?.byModel ?? {}, m);
-    const nm = m
-      .toUpperCase()
-      .replace(/-(FREE|CONTRIBUTOR.*|NEXT|LATEST)$/, "")
-      .replace(/[-.]?\d[\d.]*/, "")
-      .replace(/-V(?=-|$)/, "");
-    return `${nm} ${fmtShort(v)}`;
-  });
-  const half = parts.join("   ◆   ");
+  const displayedTotal = useCountUp(total);
   return (
-    <section className="relative mx-auto max-w-6xl pt-14 pb-10 text-center">
-      <div
-        className="pointer-events-none absolute top-[44%] left-1/2 h-[300px] w-[min(720px,90vw)] -translate-x-1/2 -translate-y-1/2 animate-breathe bg-[radial-gradient(ellipse_at_center,var(--accent-soft)_0%,transparent_65%)]"
-        aria-hidden="true"
-      />
-      <p className="mono relative mb-4 text-[11px] tracking-[0.22em] text-accent uppercase">Live token feed</p>
-      <p className="mono relative bg-[linear-gradient(180deg,var(--ink)_55%,var(--accent)_130%)] bg-clip-text text-7xl leading-none font-bold tracking-tighter text-transparent md:text-8xl">
-        {fmt(total)}
-      </p>
-      <div
-        className="relative mt-6 overflow-hidden [mask-image:linear-gradient(90deg,transparent,black_12%,black_88%,transparent)]"
-        aria-hidden="true"
-      >
-        <div className="mono inline-block animate-tick text-xs whitespace-nowrap text-dim [will-change:transform] hover:[animation-play-state:paused]">
-          {parts.length ? `${half}   ◆   ${half}` : ""}
+    <section className="mx-auto max-w-7xl pt-10 pb-6" aria-labelledby="hero-total">
+      <div>
+        <div className="flex items-center justify-center gap-2">
+          <span className="size-1.5 rounded-full bg-accent" aria-hidden="true" />
+          <p className="mono text-[10px] tracking-[0.18em] text-dim uppercase">Live token telemetry</p>
         </div>
+        <p
+          id="hero-total"
+          className="mono mt-4 bg-[linear-gradient(180deg,var(--ink)_58%,var(--accent)_125%)] bg-clip-text text-6xl leading-none font-bold tracking-[-0.06em] text-transparent tabular-nums sm:text-7xl md:text-8xl"
+        >
+          {fmt(displayedTotal)}
+        </p>
+        <p className="mono mt-2 text-center text-xs text-dim">tokens observed</p>
       </div>
     </section>
   );
