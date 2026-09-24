@@ -47,6 +47,10 @@ function ModelTip({ m, data, money }: { m: string; data: UsageReport; money: (v:
 
 type Span = "30" | "90" | "all";
 
+function prefersReducedMotion(): boolean {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
 function seriesFor(data: UsageReport, m: string): Array<{ day: string; v: number }> {
   const days = Array.from(
     new Set([...Object.keys(data.byDay ?? {}), ...Object.keys(data.byDayModel ?? {})]),
@@ -104,7 +108,9 @@ function AreaChart({ vals, days }: { vals: number[]; days: string[] }) {
           strokeWidth={2.5}
           dot={false}
           activeDot={{ r: 5, fill: "var(--accent)", stroke: "var(--panel)", strokeWidth: 2 }}
-          isAnimationActive={false}
+          isAnimationActive={!prefersReducedMotion()}
+          animationDuration={900}
+          animationEasing="linear"
         />
       </RechartsArea>
     </ChartContainer>
@@ -152,7 +158,13 @@ function TokenMixChart({ parts }: { parts: Array<{ label: string; v: number; col
               />
             }
           />
-          <Bar dataKey="share" radius={[0, 6, 6, 0]} isAnimationActive={false}>
+          <Bar
+            dataKey="share"
+            radius={[0, 6, 6, 0]}
+            isAnimationActive={!prefersReducedMotion()}
+            animationDuration={900}
+            animationEasing="linear"
+          >
             {data.map((part) => (
               <Cell key={part.label} fill={part.v > 0 ? part.color : "var(--track)"} />
             ))}

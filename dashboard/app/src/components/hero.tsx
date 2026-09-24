@@ -83,7 +83,7 @@ export function Hero({ data }: { data: UsageReport | null }) {
   const displayedTotal = useCountUp(total);
   return (
     <section className="mx-auto max-w-7xl pt-10 pb-6" aria-labelledby="hero-total">
-      <div>
+      <div className="text-center">
         <div className="flex items-center justify-center gap-2">
           <span className="size-1.5 rounded-full bg-accent" aria-hidden="true" />
           <p className="mono text-[10px] tracking-[0.18em] text-dim uppercase">Live token telemetry</p>
@@ -94,7 +94,7 @@ export function Hero({ data }: { data: UsageReport | null }) {
         >
           {fmt(displayedTotal)}
         </p>
-        <p className="mono mt-2 text-center text-xs text-dim">tokens observed</p>
+        <p className="mono mt-2 text-xs text-dim">tokens observed</p>
       </div>
     </section>
   );

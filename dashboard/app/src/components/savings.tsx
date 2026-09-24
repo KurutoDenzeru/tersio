@@ -56,6 +56,10 @@ const sparkChartConfig = {
   },
 } satisfies ChartConfig;
 
+function prefersReducedMotion(): boolean {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
 function Spark({ days, usd, money }: { days: Array<{ k: string; v: number }>; usd: number; money: (v: number) => string }) {
   const rate = usd && days.length ? usd / days.reduce((a, d) => a + d.v, 0) : 0;
   return (
@@ -110,7 +114,9 @@ function Spark({ days, usd, money }: { days: Array<{ k: string; v: number }>; us
           strokeWidth={2}
           dot={false}
           activeDot={{ r: 4, fill: "var(--color-tokens)", stroke: "var(--panel)", strokeWidth: 2 }}
-          isAnimationActive={false}
+          isAnimationActive={!prefersReducedMotion()}
+          animationDuration={900}
+          animationEasing="linear"
         />
       </AreaChart>
     </ChartContainer>
