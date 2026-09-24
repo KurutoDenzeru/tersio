@@ -17,7 +17,7 @@ function useClock(): string {
   return now;
 }
 
-function useCountUp(target: number): number {
+export function useCountUp(target: number): number {
   const [value, setValue] = useState(0);
 
   useEffect(() => {
@@ -47,10 +47,7 @@ export function Dock({ onShare, onSettings }: { onShare: () => void; onSettings:
     <header className="sticky top-3 z-50 mt-4 flex w-full items-center gap-2 rounded-[20px] border border-transparent px-3 py-2 [background:linear-gradient(var(--panel),var(--panel))_padding-box,linear-gradient(120deg,var(--accent-soft),var(--line)_30%,var(--line)_70%,var(--accent-soft))_border-box] [box-shadow:0_1px_2px_rgba(0,0,0,.08)]">
       <a href="#" className="flex shrink-0 items-center gap-2.5 pl-1 pr-2" aria-label="Tersio dashboard home">
         <img src="brand.webp" alt="Tersio" width="32" height="32" className="size-8 rounded-[10px]" />
-        <span className="text-left leading-tight">
-          <span className="block text-sm font-bold tracking-tight">TERSIO</span>
-          <span className="mono block text-[11px] text-dim">dashboard</span>
-        </span>
+        <span className="text-sm font-semibold tracking-tight">Tersio <span className="ml-1 font-normal text-dim">Dashboard</span></span>
       </a>
       <span className="mono ml-auto hidden shrink-0 items-center gap-2 px-2 text-xs text-dim sm:flex">
         <span className="inline-block size-2 rounded-full bg-accent" />

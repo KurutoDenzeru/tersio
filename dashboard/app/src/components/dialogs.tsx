@@ -10,7 +10,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { useTheme } from "@/components/theme-provider";
 import { fmt, fmtShort, relAge } from "@/lib/format";
 import {
@@ -146,7 +148,9 @@ function DoctorPane() {
   const schedule = report?.schedule ?? "manual";
   const scheduleLabel = `${schedule[0].toUpperCase()}${schedule.slice(1)}`;
   return (
-    <div>
+    <div className="flex h-full min-h-0 flex-col">
+      <ScrollArea className="min-h-0 flex-1">
+        <div className="pr-2.5 pb-5">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
           <p className="m-0 text-[13px] font-semibold">Auto-check</p>
@@ -193,41 +197,54 @@ function DoctorPane() {
           <span>Scan</span>
         </button>
       </div>
-      <div className="grid gap-0.5" style={{ maxHeight: 380, overflowY: "auto" }}>
-        {!report && (
-          <div>
-            {Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="flex items-center justify-between gap-3 border-b border-line px-0.5 py-3.5" aria-hidden="true">
-                <span className="min-w-0 flex-1">
-                  <span className="block h-3.5 w-[42%] rounded-md bg-track animate-skel-pulse" />
-                  <span className="mt-1.5 block h-[11px] w-[64%] rounded-md bg-track animate-skel-pulse" />
-                </span>
-                <span className="block h-3 w-16 shrink-0 rounded-md bg-track animate-skel-pulse" />
-              </div>
-            ))}
-          </div>
-        )}
-        {groups.map((g) => (
-          <div key={g}>
-            <p className="mt-3 mb-0.5 text-[11px] tracking-[0.14em] text-dim uppercase first:mt-1">{g}</p>
-            {(report?.rows ?? [])
+      <Table className="mt-4 border-y border-line">
+        <TableCaption className="sr-only">Diagnosis check results</TableCaption>
+        <TableHeader className="sticky top-0 z-10 bg-panel">
+          <TableRow>
+            <TableHead className="h-9 pl-3 text-[11px] tracking-[0.12em] text-dim uppercase">Check</TableHead>
+            <TableHead className="h-9 w-28 pr-3 text-right text-[11px] tracking-[0.12em] text-dim uppercase">Status</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {!report && Array.from({ length: 5 }).map((_, i) => (
+            <TableRow key={i} aria-hidden="true">
+              <TableCell className="py-3 pl-3">
+                <Skeleton className="h-4 w-[42%]" />
+                <Skeleton className="mt-1.5 h-3 w-[64%]" />
+              </TableCell>
+              <TableCell className="py-3 pr-3 text-right">
+                <Skeleton className="ml-auto h-5 w-16 rounded-full" />
+              </TableCell>
+            </TableRow>
+          ))}
+          {groups.map((g) => [
+            <TableRow key={`${g}-group`} className="hover:bg-transparent">
+              <TableCell colSpan={2} className="bg-track/50 px-3 py-2 text-[10px] font-semibold tracking-[0.14em] text-dim uppercase">
+                {g}
+              </TableCell>
+            </TableRow>,
+            ...(report?.rows ?? [])
               .filter((r) => (r.group || "Other") === g)
               .map((r) => (
-                <div key={r.label} className="flex items-center justify-between gap-3 border-b border-line px-0.5 py-3.5 text-sm last:border-b-0">
-                  <span>
-                    <span className="font-semibold">{r.label}</span>
-                    {r.detail && <p className="mt-0.5 mb-0 text-xs text-dim mono">{r.detail}</p>}
-                  </span>
-                  <span className="flex shrink-0 items-center gap-2 text-xs whitespace-nowrap text-dim">
-                    <span className={`size-2 shrink-0 rounded-full ${r.ok ? "bg-accent" : "bg-danger"}`} />
-                    {r.ok ? "pass" : "fix"}
-                  </span>
-                </div>
-              ))}
-          </div>
-        ))}
-      </div>
-      <div className="sticky bottom-0 mt-3 flex items-center justify-between gap-3 rounded-xl border border-warn-border bg-warn-soft px-3.5 py-3">
+                <TableRow key={r.label}>
+                  <TableCell className="py-3 pl-3">
+                    <p className="m-0 font-semibold text-ink">{r.label}</p>
+                    {r.detail && <p className="mono mt-0.5 mb-0 max-w-[480px] truncate text-xs text-dim">{r.detail}</p>}
+                  </TableCell>
+                  <TableCell className="py-3 pr-3 text-right">
+                    <Badge variant={r.ok ? "success" : "destructive"}>
+                      <span className={`size-1.5 rounded-full ${r.ok ? "bg-accent" : "bg-danger"}`} />
+                      {r.ok ? "Pass" : "Fix"}
+                    </Badge>
+                  </TableCell>
+                </TableRow>
+              )),
+          ])}
+        </TableBody>
+      </Table>
+        </div>
+      </ScrollArea>
+      <div className="flex shrink-0 items-center justify-between gap-3 rounded-xl border border-warn-border bg-warn-soft px-3.5 py-3">
         <div className="min-w-0">
           <p className="m-0 text-[13px] font-semibold">Fix issues</p>
           <p className="mt-0.5 mb-0 text-xs text-dim">Repairs extension files, config registrations, and the bundled ponytail copy. RTK binary and CLI update stay manual.</p>
@@ -424,8 +441,8 @@ export function SettingsDialog({
   };
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="block w-[min(920px,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] sm:max-w-[920px] gap-0 overflow-hidden rounded-2xl border border-line bg-panel p-0 text-ink shadow-[0_16px_48px_rgba(0,0,0,.35)]" showCloseButton={false} aria-describedby={undefined}>
-        <div className="grid max-h-[inherit] min-h-[min(70vh,700px)] grid-cols-[240px_minmax(0,1fr)] max-sm:grid-cols-1">
+      <DialogContent className="block h-[min(88vh,800px)] max-h-[calc(100dvh-2rem)] w-[min(920px,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] sm:max-w-[920px] gap-0 overflow-hidden rounded-2xl border border-line bg-panel p-0 text-ink shadow-[0_16px_48px_rgba(0,0,0,.35)]" showCloseButton={false} aria-describedby={undefined}>
+        <div className="grid h-full min-h-0 max-h-full grid-cols-[240px_minmax(0,1fr)] max-sm:grid-cols-1">
           <aside className="flex min-h-0 flex-col gap-2.5 border-r border-line bg-panel px-3 py-4 max-sm:border-r-0 max-sm:border-b" aria-label="Settings sections">
             <div className="flex items-center gap-2 rounded-[10px] border border-line px-2.5 py-2 text-dim">
               <Icon name="search" className="size-4" />
@@ -494,7 +511,7 @@ export function SettingsDialog({
                 <Icon name="x" className="size-4" />
               </button>
             </div>
-            <div className="min-h-0 overflow-y-auto overscroll-contain px-5 pt-4 pb-5 [scrollbar-width:thin] [scrollbar-color:var(--line)_transparent]">
+            <div className={`min-h-0 overscroll-contain px-5 pt-4 ${pane === "diagnosis" ? "flex flex-1 overflow-hidden pb-5" : "overflow-y-auto pb-5 [scrollbar-width:thin] [scrollbar-color:var(--line)_transparent]"}`}>
               {pane === "general" && (
                 <section aria-label="General">
                   <div className="flex items-center justify-between gap-3">
@@ -539,7 +556,7 @@ export function SettingsDialog({
                 </section>
               )}
               {pane === "diagnosis" && (
-                <section aria-label="Diagnosis">
+                <section className="min-h-0 flex-1" aria-label="Diagnosis">
                   <DoctorPane />
                 </section>
               )}
