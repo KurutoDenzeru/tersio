@@ -1,8 +1,8 @@
 // Tersio gain dashboard. Same sections and data contract as
 // dashboard/template.html + cli/dashboard.ts: dock, hero, savings bento,
 // token strip, activity, top models, models, recent, command tools,
-// settings, model detail, share, footer. Built on shadcn/ui primitives
-// with the original design tokens in index.css.
+// settings, model detail, share, footer. Styled with Tailwind utilities over
+// the tersio design tokens declared in index.css.
 import { useEffect, useState } from "react";
 import { useTheme } from "@/components/theme-provider";
 import { useDashboardData, useFx } from "@/lib/data";
@@ -42,11 +42,18 @@ function useDataThemeAttr(): void {
   }, [theme]);
 }
 
+// Scroll reveal. Sections opt in with a `data-reveal` attribute and the
+// matching utilities; this flips the attribute to "in" once the section
+// enters the viewport, which is what the data-[reveal=in]: variants key off.
 function useReveal(): void {
   useEffect(() => {
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const reveal = (el: Element): void => {
+      el.classList.add("in");
+      if (el.hasAttribute("data-reveal")) el.setAttribute("data-reveal", "in");
+    };
     if (reduce || !("IntersectionObserver" in window)) {
-      document.querySelectorAll(".rise").forEach((el) => el.classList.add("in"));
+      document.querySelectorAll(".rise, [data-reveal]").forEach(reveal);
       return;
     }
     const seen = new WeakSet<Element>();
@@ -55,7 +62,7 @@ function useReveal(): void {
         entries.forEach((e) => {
           if (e.isIntersecting && !seen.has(e.target)) {
             seen.add(e.target);
-            e.target.classList.add("in");
+            reveal(e.target);
             io.unobserve(e.target);
           }
         });
@@ -63,7 +70,7 @@ function useReveal(): void {
       { threshold: 0.12 },
     );
     const watch = (): void => {
-      document.querySelectorAll(".rise").forEach((el) => {
+      document.querySelectorAll(".rise, [data-reveal]").forEach((el) => {
         if (!seen.has(el)) io.observe(el);
       });
     };
@@ -87,9 +94,12 @@ function Shell() {
 
   return (
     <>
-      <div className="bg-blueprint pointer-events-none fixed inset-0" aria-hidden="true" />
-      <main className="overflow-x-clip w-full max-w-full">
-        <div className="relative mx-auto max-w-7xl px-4 sm:px-6 pb-16">
+      <div
+        className="pointer-events-none fixed inset-0 [background-image:linear-gradient(var(--grid)_1px,transparent_1px),linear-gradient(90deg,var(--grid)_1px,transparent_1px)] [background-size:44px_44px] [mask-image:radial-gradient(ellipse_90%_70%_at_50%_0%,black_30%,transparent_75%)]"
+        aria-hidden="true"
+      />
+      <main className="w-full max-w-full overflow-x-clip">
+        <div className="relative mx-auto max-w-7xl px-4 pb-16 sm:px-6">
           <Dock onShare={() => setShareOpen(true)} onSettings={() => setSettingsOpen(true)} />
           <Hero data={data} />
           <Savings data={data} fx={fx} money={money} onCurrency={applyCurrency} />

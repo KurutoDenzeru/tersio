@@ -31,13 +31,13 @@ function dayRows(byDayModel: Record<string, Record<string, number>>, byModel: Re
 function TipBody({ title, total, rows }: { title: string; total: number; rows: Array<[string, number, string]> }) {
   return (
     <div className="mono">
-      <div className="tt">{title}</div>
-      <div className="tv">{fmtShort(total)} total</div>
+      <div className="text-[11px] font-bold uppercase tracking-[.14em]">{title}</div>
+      <div className="my-[2px] mb-2 text-[13px]">{fmtShort(total)} total</div>
       {rows.map(([m, v, c]) => (
-        <div key={m} className="tr">
-          <span className="sw" style={{ background: c }} />
-          <span className="tn">{m.length > 22 ? `${m.slice(0, 21)}...` : m}</span>
-          <span className="tvr">{fmtShort(v)}</span>
+        <div key={m} className="flex items-center gap-2.5 py-[3px] text-xs">
+          <span className="size-[9px] shrink-0 rounded-[2.5px]" style={{ background: c }} />
+          <span className="min-w-0 flex-1 truncate">{m.length > 22 ? `${m.slice(0, 21)}...` : m}</span>
+          <span className="shrink-0 whitespace-nowrap tabular-nums">{fmtShort(v)}</span>
         </div>
       ))}
     </div>
@@ -145,13 +145,13 @@ export function Activity({ data }: { data: UsageReport | null }) {
   const cap = mode === "weekly" ? "weekly totals / trailing 12 months" : mode === "cumulative" ? "running total / trailing 12 months" : "daily values / trailing 12 months";
 
   return (
-    <section id="activity" className="rise mt-8" style={{ scrollMarginTop: 90 }} aria-label="Activity graph">
+    <section id="activity" data-reveal className="mt-8 translate-y-[26px] opacity-0 transition-[opacity,transform] duration-700 ease-[cubic-bezier(.16,1,.3,1)] data-[reveal=in]:translate-y-0 data-[reveal=in]:opacity-100" style={{ scrollMarginTop: 90 }} aria-label="Activity graph">
       <div className="flex items-center gap-2 mb-1">
         <Icon name="calendar-days" className="size-4" />
-        <h2 className="display font-bold tracking-tight text-xl truncate min-w-0">Activity</h2>
+        <h2 className="font-display font-bold tracking-tight text-xl truncate min-w-0">Activity</h2>
         <SegTabs options={["daily", "weekly", "cumulative"] as Mode[]} value={mode} onPick={setMode} label="Graph range" />
       </div>
-      <p className="mono text-xs mb-4 truncate" style={{ color: "var(--dim)" }}>
+      <p className="mono text-xs mb-4 truncate text-dim">
         <span>
           {grid.hasData ? `${grid.start} to ${grid.today}` : ""}
         </span>{" "}
@@ -175,16 +175,16 @@ export function Activity({ data }: { data: UsageReport | null }) {
                 ))}
               </div>
             </div>
-            <div className="mono text-[11px] mt-3 flex items-center gap-1.5" style={{ color: "var(--dim)" }}>
+            <div className="mono text-[11px] mt-3 flex items-center gap-1.5 text-dim">
               <span>less</span>
-              <span className="cell key" />
-              <span className="cell key l1" />
-              <span className="cell key l2" />
-              <span className="cell key l3" />
-              <span className="cell key l4" />
+              <span className="h-[11px] w-[11px] shrink-0 cursor-pointer rounded-[3px] bg-cell-0" />
+              <span className="h-[11px] w-[11px] shrink-0 cursor-pointer rounded-[3px] bg-cell-1" />
+              <span className="h-[11px] w-[11px] shrink-0 cursor-pointer rounded-[3px] bg-cell-2" />
+              <span className="h-[11px] w-[11px] shrink-0 cursor-pointer rounded-[3px] bg-cell-3" />
+              <span className="h-[11px] w-[11px] shrink-0 cursor-pointer rounded-[3px] bg-cell-4" />
               <span>more</span>
             </div>
-            <div className="heatmonth mono mt-2 grid w-full" style={{ color: "var(--dim)", gridTemplateColumns: "repeat(53, minmax(0, 1fr))", gap: 3 }}>
+            <div className="mono text-[10px] mt-2 grid w-full text-dim" style={{ gridTemplateColumns: "repeat(53, minmax(0, 1fr))", gap: 3 }}>
               {grid.weeks.map((w, wi) => (
                 <span key={wi} style={{ minWidth: 0, overflow: "visible", whiteSpace: "nowrap" }}>
                   {w.month}
@@ -206,8 +206,11 @@ function maxOf(weeks: Array<{ cells: Array<{ v: number }> }>): number {
   return max;
 }
 
+const CELL_BG = ["bg-cell-0", "bg-cell-1", "bg-cell-2", "bg-cell-3", "bg-cell-4"];
+
 function cellClass(v: number, max: number): string {
-  if (!v) return "cell";
+  const base = "aspect-square w-full min-w-0 rounded-[3px]";
+  if (!v) return `${base} ${CELL_BG[0]}`;
   const lvl = Math.min(4, 1 + Math.floor((v / max) * 3.99));
-  return `cell l${lvl}`;
+  return `${base} ${CELL_BG[lvl]}`;
 }

@@ -36,16 +36,16 @@ function RecentTip({ r, money }: { r: RecentRequestRow; money: (v: number) => st
   const tps = r.d !== undefined && r.d > 0 ? r.o / (r.d / 1000) : 0;
   const est = !costIsMeasured(r);
   const row = (color: string, k: string, v: string): React.ReactNode => (
-    <div className="tr">
-      <span className="sw" style={{ background: color }} />
-      <span className="tn">{k}</span>
-      <span className="tvr">{v}</span>
+    <div className="flex items-center gap-2.5 py-[3px] text-xs">
+      <span className="size-[9px] shrink-0 rounded-[2.5px]" style={{ background: color }} />
+      <span className="min-w-0 flex-1 truncate">{k}</span>
+      <span className="shrink-0 whitespace-nowrap tabular-nums">{v}</span>
     </div>
   );
   return (
     <div className="mono">
-      <div className="tt">{shortName(r.m)}</div>
-      <div className="tv">{stampLocal(r.t)}</div>
+      <div className="text-[11px] font-bold uppercase tracking-[.14em]">{shortName(r.m)}</div>
+      <div className="my-[2px] mb-2 text-[13px]">{stampLocal(r.t)}</div>
       {row("#fb923c", "input", fmt(r.i))}
       {row("var(--accent)", "output", fmt(r.o))}
       {(r.cr ?? 0) > 0 && row("var(--dim)", "cache read", fmt(r.cr ?? 0))}
@@ -55,13 +55,19 @@ function RecentTip({ r, money }: { r: RecentRequestRow; money: (v: number) => st
       {row(statusColor(r.st), "status", statusLabel(r))}
       {row("var(--accent)", `cost ${est ? "(est.)" : "(measured)"}`, `${est ? "~" : ""}${money(displayCost(r))}`)}
       {typeof r.usd === "number" && row("var(--dim)", "charged", money(r.usd))}
-      {r.note && <div className="tnote">{r.note}</div>}
+      {r.note && <div className="mt-2 border-t border-line pt-2 text-[11px] leading-normal text-dim [overflow-wrap:break-word]">{r.note}</div>}
     </div>
   );
 }
 
 function StatusBadge({ r }: { r: RecentRequestRow }) {
-  const cls = r.st === "error" ? "badge destructive" : r.st === "aborted" ? "badge outline" : "badge secondary";
+  const base = "inline-flex items-center whitespace-nowrap rounded-full border px-[9px] py-[2px] text-[11px] leading-[1.55]";
+  const cls =
+    r.st === "error"
+      ? `${base} border-danger-border bg-danger-soft text-danger`
+      : r.st === "aborted"
+        ? `${base} border-line bg-transparent text-ink`
+        : `${base} border-transparent bg-track text-dim`;
   const title = r.st === "error" ? `error${r.code ? ` ${r.code}` : ""}${r.note ? ` — ${r.note}` : ""}` : r.st === "aborted" ? r.note || "Interrupted by user" : r.note || "";
   return (
     <span className={cls} title={title || undefined}>
@@ -96,10 +102,10 @@ export function Recent({ data, money }: { data: UsageReport | null; money: (v: n
   const th = (label: string, key: Key, num?: boolean, title?: string): React.ReactNode => {
     const on = sort.key === key;
     return (
-      <th aria-sort={on ? (sort.dir === 1 ? "ascending" : "descending") : "none"}>
+      <th aria-sort={on ? (sort.dir === 1 ? "ascending" : "descending") : "none"} className="sticky top-0 z-10 bg-panel">
         <button
           type="button"
-          className={`thsort${num ? " num" : ""}`}
+          className={`[all:unset] inline-flex! cursor-pointer! items-center! gap-[5px]! hover:text-ink focus-visible:rounded-[4px] focus-visible:outline focus-visible:outline-1 focus-visible:outline-accent${num ? " float-right!" : ""}`}
           data-sort={key}
           title={title}
           onClick={() => {
@@ -111,30 +117,30 @@ export function Recent({ data, money }: { data: UsageReport | null; money: (v: n
             );
           }}
         >
-          {label} <span className="arr">{on ? (sort.dir === 1 ? "↑" : "↓") : "⇅"}</span>
+          {label} <span className={on ? "text-[10px] text-accent" : "text-[10px] text-dim opacity-[.55]"}>{on ? (sort.dir === 1 ? "↑" : "↓") : "⇅"}</span>
         </button>
       </th>
     );
   };
 
   return (
-    <section className="rise mt-8 rounded-xl p-5 overflow-hidden flex flex-col" style={{ border: "1px solid var(--line)", background: "var(--panel)", scrollMarginTop: 90 }} aria-label="Recent requests">
+    <section data-reveal className="mt-8 translate-y-[26px] rounded-xl border border-line bg-panel p-5 opacity-0 transition-[opacity,transform] duration-700 ease-[cubic-bezier(.16,1,.3,1)] data-[reveal=in]:translate-y-0 data-[reveal=in]:opacity-100 overflow-hidden flex flex-col" style={{ scrollMarginTop: 90 }} aria-label="Recent requests">
       <div className="flex items-center gap-2 mb-1">
         <Icon name="history" className="size-4" />
-        <h2 className="display font-bold tracking-tight text-xl truncate min-w-0">Recent requests</h2>
-        <span className="mono text-xs ml-auto truncate shrink-0" style={{ color: "var(--dim)" }}>
+        <h2 className="font-display font-bold tracking-tight text-xl truncate min-w-0">Recent requests</h2>
+        <span className="mono text-xs ml-auto truncate shrink-0 text-dim">
           {rows.length ? `${rows.length} requests` : ""}
         </span>
       </div>
-      <p className="mono text-xs mb-4 truncate" style={{ color: "var(--dim)" }} title="Time = elapsed time with the model; Speed = output tokens per second">
+      <p className="mono text-xs mb-4 truncate text-dim" title="Time = elapsed time with the model; Speed = output tokens per second">
         latest assistant messages · local time · sort any column · cost is measured when the host recorded it
       </p>
       {rows.length > 0 ? (
-        <div className="scrollarea overflow-x-auto" style={{ maxHeight: 560 }}>
-          <table className="w-full mono text-[13px]" id="recentTable">
+        <div className="overflow-y-auto overscroll-contain [scrollbar-color:var(--line)_transparent] [scrollbar-width:thin] overflow-x-auto" style={{ maxHeight: 560 }}>
+          <table className="w-full mono text-[13px] table-fixed" id="recentTable">
             <colgroup><col /><col style={{ width: 96 }} /><col style={{ width: 96 }} /><col style={{ width: 120 }} /><col style={{ width: 116 }} /><col style={{ width: 120 }} /><col style={{ width: 158 }} /></colgroup>
             <thead>
-              <tr className="text-left text-[11px] uppercase tracking-[0.14em]" style={{ color: "var(--dim)" }}>
+              <tr className="text-left text-[11px] uppercase tracking-[0.14em] text-dim">
                 {th("Model", "model")}
                 {th("Input", "input", true)}
                 {th("Output", "output", true)}
@@ -150,26 +156,25 @@ export function Recent({ data, money }: { data: UsageReport | null; money: (v: n
                 const measured = costIsMeasured(r);
                 return (
                   <HoverTip key={`${r.t}-${i}`} content={<RecentTip r={r} money={money} />}>
-                    <tr className="rrow">
+                    <tr className="cursor-pointer transition-[background] duration-200 hover:bg-track hover:shadow-tersio">
                       <td className="py-2.5 pr-3 truncate" style={{ minWidth: 0 }}>
-                        <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: 99, background: v.color, marginRight: 8 }} />
+                        <span className="mr-2 inline-block size-2 rounded-full" style={{ background: v.color }} />
                         {displayModel(r.m)}
                       </td>
-                      <td className="text-right py-2.5 pr-3 whitespace-nowrap" style={{ color: "#fb923c" }}>
+                      <td className="text-right py-2.5 pr-3 whitespace-nowrap text-[#fb923c]">
                         {fmt(r.i)}
                       </td>
-                      <td className="text-right py-2.5 pr-3 whitespace-nowrap" style={{ color: "var(--accent)" }}>
+                      <td className="text-right py-2.5 pr-3 whitespace-nowrap text-accent">
                         {fmt(r.o)}
                       </td>
-                      <td className="text-right py-2.5 pr-3 whitespace-nowrap" style={{ color: "var(--dim)" }} title={`⏱ ${r.d !== undefined ? `${(r.d / 1000).toFixed(1)}s elapsed with the model, ⚡ ${r.o} output tokens` : "no duration recorded"}`}>
+                      <td className="text-right py-2.5 pr-3 whitespace-nowrap text-dim" title={`⏱ ${r.d !== undefined ? `${(r.d / 1000).toFixed(1)}s elapsed with the model, ⚡ ${r.o} output tokens` : "no duration recorded"}`}>
                         {speedText(r)}
                       </td>
                       <td className="py-2.5 pr-3 whitespace-nowrap">
                         <StatusBadge r={r} />
                       </td>
                       <td
-                        className="text-right py-2.5 pr-3 whitespace-nowrap"
-                        style={measured ? { color: "var(--ink)" } : undefined}
+                        className={`text-right py-2.5 pr-3 whitespace-nowrap ${measured ? "text-ink" : "text-dim"}`}
                         title={
                           measured
                             ? "measured — charged by the provider"
@@ -180,7 +185,7 @@ export function Recent({ data, money }: { data: UsageReport | null; money: (v: n
                       >
                         {(measured ? "" : "~") + money(displayCost(r))}
                       </td>
-                      <td className="text-right py-2.5 whitespace-nowrap" style={{ color: "var(--dim)" }}>
+                      <td className="text-right py-2.5 whitespace-nowrap text-dim">
                         {whenStamp(r.t)}
                       </td>
                     </tr>
@@ -193,7 +198,7 @@ export function Recent({ data, money }: { data: UsageReport | null; money: (v: n
       ) : (
         <EmptyState icon="inbox" title="No requests yet" desc="Recent assistant messages will show here once sessions report tokens." />
       )}
-      <div className="mono text-xs mt-4 pt-4 flex flex-wrap items-center gap-x-4 gap-y-3 mt-auto" style={{ color: "var(--dim)", borderTop: "1px solid var(--line)" }}>
+      <div className="mono text-xs mt-4 pt-4 flex flex-wrap items-center gap-x-4 gap-y-3 mt-auto text-dim border-t border-line">
         <span>{range}</span>
         <PerPage options={[10, 15, 25, 50]} value={per} onPick={(n) => { setPer(n); setPage(1); }} label="Requests per page" />
         <PageButtons pages={pages} page={p} onPick={setPage} label="Recent pages" />

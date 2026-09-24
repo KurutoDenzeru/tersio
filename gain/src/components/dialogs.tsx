@@ -33,30 +33,30 @@ function HealthPane() {
     return (
       <div>
         {Array.from({ length: 3 }).map((_, i) => (
-          <div key={i} className="skel-row" aria-hidden="true">
-            <span className="skel-col">
-              <span className="skel t" />
-              <span className="skel s" />
+          <div key={i} className="flex items-center justify-between gap-3 border-b border-line px-0.5 py-3.5" aria-hidden="true">
+            <span className="min-w-0 flex-1">
+              <span className="block h-3.5 w-[42%] rounded-md bg-track animate-skel-pulse" />
+              <span className="mt-1.5 block h-[11px] w-[64%] rounded-md bg-track animate-skel-pulse" />
             </span>
-            <span className="skel v" />
+            <span className="block h-3 w-16 shrink-0 rounded-md bg-track animate-skel-pulse" />
           </div>
         ))}
       </div>
     );
   }
   const dot = (ok: boolean | null): React.ReactNode => (
-    <span className={`set-dot${ok === true ? " ok" : ok === false ? " bad" : ""}`} />
+    <span className={`size-2 shrink-0 rounded-full ${ok === true ? "bg-accent" : ok === false ? "bg-danger" : "bg-track"}`} />
   );
   // Same row pattern as General: name + hint left, status control right.
   return (
     <div>
-      <p className="dlg-label">Connection</p>
-      <div className="dlg-row">
+      <p className="mt-[18px] mb-2 text-[11px] tracking-[0.14em] text-dim uppercase">Connection</p>
+      <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <p className="dlg-name">Status</p>
-          <p className="dlg-hint">{health?.omp ? `wrapped with omp ${health.omp}` : "omp CLI not found"}</p>
+          <p className="m-0 text-[13px] font-semibold">Status</p>
+          <p className="mt-0.5 mb-0 text-xs text-dim">{health?.omp ? `wrapped with omp ${health.omp}` : "omp CLI not found"}</p>
         </div>
-        <span className="mono text-xs flex shrink-0 items-center gap-2" style={{ color: "var(--dim)" }}>
+        <span className="mono text-xs flex shrink-0 items-center gap-2 text-dim">
           {dot(health ? !!health.omp : null)}
           {health ? (health.omp ? "Connected" : "Offline") : "unreachable"}
         </span>
@@ -81,13 +81,14 @@ function DoctorPane() {
   })();
   return (
     <div>
-      <p className="dlg-hint set-note">
+      <p className="mt-[18px] mb-2 text-[11px] tracking-[0.14em] text-dim uppercase">System Health</p>
+      <p className="mt-0.5 mb-2.5 text-xs text-dim">
         What works and what does not. Repair with <span className="mono">tersio doctor --fix</span>.
       </p>
-      <div className="dlg-row">
+      <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <p className="dlg-name">Auto-check</p>
-          <p className="dlg-hint">{report?.checkedAt ? `Checked ${relAge(report.checkedAt)}.` : "Never checked."}</p>
+          <p className="m-0 text-[13px] font-semibold">Auto-check</p>
+          <p className="mt-0.5 mb-0 text-xs text-dim">{report?.checkedAt ? `Checked ${relAge(report.checkedAt)}.` : "Never checked."}</p>
         </div>
         <Select
           value={report?.schedule ?? "manual"}
@@ -96,7 +97,7 @@ function DoctorPane() {
             void postDoctorSchedule(v as DoctorReport["schedule"]).then((d) => d && setReport(d));
           }}
         >
-          <SelectTrigger className="selbtn mono h-auto" aria-label="Diagnosis schedule">
+          <SelectTrigger className="inline-flex cursor-pointer items-center gap-1.5 rounded-[10px] border border-line bg-panel px-2.5 py-[7px] text-xs text-ink hover:border-accent mono h-auto" aria-label="Diagnosis schedule">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -108,15 +109,14 @@ function DoctorPane() {
           </SelectContent>
         </Select>
       </div>
-      <div className="dlg-row">
+      <div className="mt-3.5 flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <p className="dlg-name">Scan</p>
-          <p className="dlg-hint">Runs every check fresh and refreshes the list below.</p>
+          <p className="m-0 text-[13px] font-semibold">Scan</p>
+          <p className="mt-0.5 mb-0 text-xs text-dim">Runs every check fresh and refreshes the list below.</p>
         </div>
         <button
           type="button"
-          className="btn-push mono flex shrink-0 items-center gap-2 text-xs pl-2.5 pr-3 py-2 rounded-xl"
-          style={{ border: "1px solid var(--line)", color: "var(--ink)" }}
+          className="mono flex shrink-0 items-center gap-2 text-xs pl-2.5 pr-3 py-2 rounded-xl border border-line text-ink [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]"
           aria-label="Scan now"
           onClick={() => {
             void fetchDoctor(true).then((d) => {
@@ -129,33 +129,33 @@ function DoctorPane() {
           <span>Scan</span>
         </button>
       </div>
-      <div className="set-list" style={{ maxHeight: 380, overflowY: "auto" }}>
+      <div className="grid gap-0.5" style={{ maxHeight: 380, overflowY: "auto" }}>
         {!report && (
           <div>
             {Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="skel-row" aria-hidden="true">
-                <span className="skel-col">
-                  <span className="skel t" />
-                  <span className="skel s" />
+              <div key={i} className="flex items-center justify-between gap-3 border-b border-line px-0.5 py-3.5" aria-hidden="true">
+                <span className="min-w-0 flex-1">
+                  <span className="block h-3.5 w-[42%] rounded-md bg-track animate-skel-pulse" />
+                  <span className="mt-1.5 block h-[11px] w-[64%] rounded-md bg-track animate-skel-pulse" />
                 </span>
-                <span className="skel v" />
+                <span className="block h-3 w-16 shrink-0 rounded-md bg-track animate-skel-pulse" />
               </div>
             ))}
           </div>
         )}
         {groups.map((g) => (
           <div key={g}>
-            <p className="set-group">{g}</p>
+            <p className="mt-3 mb-0.5 text-[11px] tracking-[0.14em] text-dim uppercase first:mt-1">{g}</p>
             {(report?.rows ?? [])
               .filter((r) => (r.group || "Other") === g)
               .map((r) => (
-                <div key={r.label} className="set-row">
+                <div key={r.label} className="flex items-center justify-between gap-3 border-b border-line px-0.5 py-3.5 text-sm last:border-b-0">
                   <span>
-                    <span className="k">{r.label}</span>
-                    {r.detail && <p className="s mono">{r.detail}</p>}
+                    <span className="font-semibold">{r.label}</span>
+                    {r.detail && <p className="mt-0.5 mb-0 text-xs text-dim mono">{r.detail}</p>}
                   </span>
-                  <span className="v">
-                    <span className={`set-dot${r.ok ? " ok" : " bad"}`} />
+                  <span className="flex shrink-0 items-center gap-2 text-xs whitespace-nowrap text-dim">
+                    <span className={`size-2 shrink-0 rounded-full ${r.ok ? "bg-accent" : "bg-danger"}`} />
                     {r.ok ? "pass" : "fix"}
                   </span>
                 </div>
@@ -163,15 +163,14 @@ function DoctorPane() {
           </div>
         ))}
       </div>
-      <div className="set-fixbox">
+      <div className="sticky bottom-0 mt-3 flex items-center justify-between gap-3 rounded-xl border border-warn-border bg-warn-soft px-3.5 py-3">
         <div className="min-w-0">
-          <p className="dlg-name">Fix issues</p>
-          <p className="dlg-hint">Repairs extension files, config registrations, and the bundled ponytail copy. RTK binary and CLI update stay manual.</p>
+          <p className="m-0 text-[13px] font-semibold">Fix issues</p>
+          <p className="mt-0.5 mb-0 text-xs text-dim">Repairs extension files, config registrations, and the bundled ponytail copy. RTK binary and CLI update stay manual.</p>
         </div>
         <button
           type="button"
-          className="btn-push mono flex shrink-0 items-center gap-2 text-xs pl-2.5 pr-3 py-2 rounded-xl"
-          style={{ border: "1px solid var(--line)", color: "var(--ink)" }}
+          className="mono flex shrink-0 items-center gap-2 text-xs pl-2.5 pr-3 py-2 rounded-xl border border-line text-ink [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]"
           aria-label="Fix diagnosed issues"
           disabled={fixing}
           onClick={() => {
@@ -210,15 +209,15 @@ function DataPane({ data, onReload }: { data: UsageReport | null; onReload: () =
   }, [armed]);
   return (
     <div>
-      <div className="dlg-row">
+      <p className="mt-[18px] mb-2 text-[11px] tracking-[0.14em] text-dim uppercase">Data</p>
+      <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <p className="dlg-name">Reload</p>
-          <p className="dlg-hint">Re-read statistics from disk.</p>
+          <p className="m-0 text-[13px] font-semibold">Reload</p>
+          <p className="mt-0.5 mb-0 text-xs text-dim">Re-read statistics from disk.</p>
         </div>
         <button
           type="button"
-          className="btn-push mono flex shrink-0 items-center gap-2 text-xs pl-2.5 pr-3 py-2 rounded-xl"
-          style={{ border: "1px solid var(--line)", color: "var(--ink)" }}
+          className="mono flex shrink-0 items-center gap-2 text-xs pl-2.5 pr-3 py-2 rounded-xl border border-line text-ink [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]"
           aria-label="Reload data"
           onClick={onReload}
         >
@@ -226,27 +225,26 @@ function DataPane({ data, onReload }: { data: UsageReport | null; onReload: () =
           <span>Reload</span>
         </button>
       </div>
-      <div className="dlg-paths">
-        <div className="dlg-path">
-          <p className="dlg-name">
-            Usage DB <span className="dlg-own">tersio-owned · local hosted</span>
+      <div className="mt-3 grid gap-2">
+        <div className="min-w-0 overflow-hidden rounded-[10px] border border-line px-3 py-2">
+          <p className="m-0 text-[13px] font-semibold">
+            Usage DB <span className="text-[11px] font-normal text-dim">tersio-owned · local hosted</span>
           </p>
-          <p className="mono dlg-file" title={data?.paths.usageDb ?? ""}>
+          <p className="mono mt-1 mb-0 truncate text-[11px] text-dim" title={data?.paths.usageDb ?? ""}>
             {data?.paths.usageDb ?? "–"}
           </p>
         </div>
       </div>
-      <div className="dlg-danger">
-        <p className="dlg-label">Danger zone</p>
-        <div className="dlg-row">
+      <div className="mt-4 rounded-xl border border-danger-border bg-danger-soft p-3">
+        <p className="m-0 mb-2.5 text-[11px] tracking-[0.14em] text-danger uppercase">Danger zone</p>
+        <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
-            <p className="dlg-name">Reset statistics</p>
-            <p className="dlg-hint">Clears tersio statistics. Host-owned files stay intact. Click twice to confirm.</p>
+            <p className="m-0 text-[13px] font-semibold">Reset statistics</p>
+            <p className="mt-0.5 mb-0 text-xs text-dim">Clears tersio statistics. Host-owned files stay intact. Click twice to confirm.</p>
           </div>
           <button
             type="button"
-            className="btn-push mono flex shrink-0 items-center gap-2 text-xs pl-2.5 pr-3 py-2 rounded-xl"
-            style={{ border: "1px solid var(--danger-border)" }}
+            className="mono flex shrink-0 items-center gap-2 text-xs pl-2.5 pr-3 py-2 rounded-xl border border-danger-border text-danger [transition:transform_.12s,background_.2s,box-shadow_.2s] hover:bg-accent-soft hover:shadow-[0_0_14px_var(--danger-border)] active:scale-[.96]"
             aria-label="Reset tersio statistics"
             disabled={busy}
             onClick={() => {
@@ -313,44 +311,43 @@ export function SettingsDialog({
   const shown = PANES.filter((p) => !query || p.label.toLowerCase().includes(query.trim().toLowerCase()));
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="dlg setdlg max-w-none gap-0" showCloseButton={false} aria-describedby={undefined}>
-        <div className="set-shell">
-          <aside className="set-side" aria-label="Settings sections">
-            <div className="set-search">
+      <DialogContent className="block w-[min(920px,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] gap-0 overflow-hidden rounded-2xl border border-line bg-panel p-0 text-ink shadow-[0_16px_48px_rgba(0,0,0,.35)]" showCloseButton={false} aria-describedby={undefined}>
+        <div className="grid max-h-[inherit] min-h-[min(70vh,700px)] grid-cols-[240px_minmax(0,1fr)] max-sm:grid-cols-1">
+          <aside className="flex min-h-0 flex-col gap-2.5 border-r border-line bg-panel px-3 py-4 max-sm:border-r-0 max-sm:border-b" aria-label="Settings sections">
+            <div className="flex items-center gap-2 rounded-[10px] border border-line px-2.5 py-2 text-dim">
               <Icon name="search" className="size-4" />
-              <input type="search" placeholder="Search settings" aria-label="Search settings" autoComplete="off" value={query} onChange={(e) => setQuery(e.target.value)} />
+              <input type="search" placeholder="Search settings" aria-label="Search settings" autoComplete="off" value={query} onChange={(e) => setQuery(e.target.value)} className="min-w-0 flex-1 bg-transparent text-[13px] text-ink outline-none [&::-webkit-search-cancel-button]:hidden" />
             </div>
-            <nav className="set-nav" aria-label="Settings">
+            <nav className="grid gap-0.5 overflow-y-auto" aria-label="Settings">
               {shown.map((p) => (
-                <button key={p.id} type="button" className={`set-navitem${pane === p.id ? " on" : ""}`} onClick={() => setPane(p.id)}>
+                <button key={p.id} type="button" className={`flex w-full items-center gap-2.5 rounded-[10px] px-2.5 py-2 text-left text-[13px] text-ink hover:bg-track ${pane === p.id ? "bg-track font-semibold" : "bg-transparent font-normal"}`} onClick={() => setPane(p.id)}>
                   <Icon name={p.icon} className="size-4" />
                   <span>{p.label}</span>
                 </button>
               ))}
             </nav>
-            <p className="mono set-ver">tersio v{data?.version ?? "?"}</p>
+            <p className="mono mt-auto px-2.5 text-[11px] text-dim">tersio v{data?.version ?? "?"}</p>
           </aside>
-          <div className="set-main">
-            <div className="set-head">
-              <DialogTitle className="dlg-title">{TITLES[pane]}</DialogTitle>
+          <div className="relative flex min-h-0 min-w-0 flex-col">
+            <div className="flex items-center justify-between gap-3 px-5 pt-4">
+              <DialogTitle className="m-0 text-base font-bold tracking-[-0.01em]">{TITLES[pane]}</DialogTitle>
               <button
                 type="button"
-                className="btn-push flex shrink-0 items-center p-2 rounded-xl"
-                style={{ border: "1px solid var(--line)", color: "var(--ink)" }}
+                className="flex shrink-0 items-center p-2 rounded-xl border border-line text-ink [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]"
                 aria-label="Close settings"
                 onClick={onClose}
               >
                 <Icon name="x" className="size-4" />
               </button>
             </div>
-            <div className="set-panes">
+            <div className="min-h-0 overflow-y-auto overscroll-contain px-5 pt-4 pb-5 [scrollbar-width:thin] [scrollbar-color:var(--line)_transparent]">
               {pane === "general" && (
                 <section aria-label="General">
-                  <p className="dlg-label">Appearance</p>
-                  <div className="dlg-row">
+                  <p className="mt-0 mb-2 text-[11px] tracking-[0.14em] text-dim uppercase">Appearance</p>
+                  <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="dlg-name">Theme</p>
-                      <p className="dlg-hint">Light, dark, or follow the system.</p>
+                      <p className="m-0 text-[13px] font-semibold">Theme</p>
+                      <p className="mt-0.5 mb-0 text-xs text-dim">Light, dark, or follow the system.</p>
                     </div>
                     <ToggleGroup
                       value={[theme]}
@@ -358,8 +355,7 @@ export function SettingsDialog({
                         const next = v[v.length - 1];
                         if (next === "light" || next === "dark" || next === "system") setTheme(next);
                       }}
-                      className="seg mono text-xs p-1 rounded-[10px]"
-                      style={{ border: "1px solid var(--line)", background: "var(--panel)" }}
+                      className="mono text-xs p-1 rounded-[10px] border border-line bg-panel [&_[data-state=on]]:bg-accent-soft [&_[data-state=on]]:text-ink [&_button:not([data-state=on])]:hover:text-ink"
                       aria-label="Theme"
                     >
                       {(
@@ -369,16 +365,16 @@ export function SettingsDialog({
                           ["system", "monitor", "System"],
                         ] as const
                       ).map(([v, icon, label]) => (
-                        <ToggleGroupItem key={v} value={v} className="px-2.5 py-1.5" aria-label={label} title={label}>
+                        <ToggleGroupItem key={v} value={v} className="grid place-items-center rounded-lg px-2.5 py-1.5 text-dim" aria-label={label} title={label}>
                           <Icon name={icon} className="size-4" />
                         </ToggleGroupItem>
                       ))}
                     </ToggleGroup>
                   </div>
-                  <div className="dlg-row">
+                  <div className="mt-3.5 flex items-center justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="dlg-name">Currency</p>
-                      <p className="dlg-hint">Display currency for cost figures. Persists to tersio settings.</p>
+                      <p className="m-0 text-[13px] font-semibold">Currency</p>
+                      <p className="mt-0.5 mb-0 text-xs text-dim">Display currency for cost figures. Persists to tersio settings.</p>
                     </div>
                     <CurrencyPicker cur={cur} onPick={onCurrency} id="setCur" />
                   </div>
@@ -589,60 +585,62 @@ export function ShareDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="dlg shdlg max-w-none gap-0" showCloseButton={false} aria-describedby={undefined}>
-        <div className="sh-glow" aria-hidden="true" />
-        <div className="dlg-head">
+      <DialogContent className="block w-[min(660px,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] gap-0 overflow-y-auto rounded-2xl border border-line bg-panel p-5 text-ink shadow-[0_16px_48px_rgba(0,0,0,.35)]" showCloseButton={false} aria-describedby={undefined}>
+        <div className="pointer-events-none absolute top-0 left-1/2 h-[180px] w-[min(480px,90%)] -translate-x-1/2 -translate-y-[40%] bg-[radial-gradient(ellipse_at_center,var(--accent-soft)_0%,transparent_65%)]" aria-hidden="true" />
+        <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <DialogTitle className="dlg-title">Share your usage</DialogTitle>
-            <p className="dlg-desc">Download the card or post your stats.</p>
+            <DialogTitle className="m-0 text-base font-bold tracking-[-0.01em]">Share your usage</DialogTitle>
+            <p className="mt-0.5 mb-0 text-xs text-dim">Download the card or post your stats.</p>
           </div>
           <button
             type="button"
-            className="btn-push flex shrink-0 items-center p-2 rounded-xl"
-            style={{ border: "1px solid var(--line)", color: "var(--ink)" }}
+            className="flex shrink-0 items-center p-2 rounded-xl border border-line text-ink [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]"
             aria-label="Close share"
             onClick={onClose}
           >
             <Icon name="x" className="size-4" />
           </button>
         </div>
-        <div className="share-card sh-card">
-          <span className="ghosticon" aria-hidden="true">
+        <div className="relative mt-3.5 overflow-hidden rounded-xl border border-line bg-bg p-5">
+          <span className="pointer-events-none absolute right-[-8px] bottom-[-14px] h-[120px] w-[120px] text-dim opacity-[.06] select-none [&_svg]:block [&_svg]:size-[110px]" aria-hidden="true">
             <Icon name="zap" className="size-4" />
           </span>
-          <img src="brand.webp" alt="" width="44" height="44" className="share-logo" aria-hidden="true" />
-          <p className="mono share-kicker">tersio · usage profile</p>
-          <p className="mono share-total">{fmtShort(total)} tokens</p>
-          <p className="mono share-sub">across {fmt(runs)} agent runs</p>
-          <div className="sh-heat" aria-hidden="true">
+          <img src="brand.webp" alt="" width="44" height="44" className="absolute top-4 right-4 size-11 rounded-xl" aria-hidden="true" />
+          <p className="mono m-0 text-[11px] tracking-[0.18em] text-accent uppercase">tersio · usage profile</p>
+          <p className="mono m-0 mt-1.5 text-[clamp(2rem,5vw,3rem)] font-extrabold tracking-[-0.03em] tabular-nums">{fmtShort(total)} tokens</p>
+          <p className="mono m-0 mt-1 text-xs text-dim">across {fmt(runs)} agent runs</p>
+          <div className="mt-4 grid grid-cols-[repeat(26,minmax(0,1fr))] gap-[3px]" aria-hidden="true">
             {Array.from({ length: 7 }).flatMap((_, d) =>
-              Array.from({ length: 26 }).map((__, w) => <span key={`${d}-${w}`} className={`cell${level(cells.vals[w * 7 + d] ?? 0)}`} />),
+              Array.from({ length: 26 }).map((__, w) => {
+                const l = level(cells.vals[w * 7 + d] ?? 0);
+                return <span key={`${d}-${w}`} className={`aspect-square w-full min-w-0 cursor-pointer rounded-[3px] ${l === " l4" ? "bg-cell-4" : l === " l3" ? "bg-cell-3" : l === " l2" ? "bg-cell-2" : l === " l1" ? "bg-cell-1" : "bg-cell-0"}`} />;
+              }),
             )}
           </div>
-          <div className="share-grid mono">
+          <div className="mono mt-3.5 grid grid-cols-3 gap-2">
             <div>
-              <p className="share-mini-k">avg / run</p>
-              <p className="share-mini-v">{fmtShort(runs ? Math.round(total / runs) : 0)} / run</p>
+              <p className="m-0 text-[10px] tracking-[0.14em] text-dim uppercase">avg / run</p>
+              <p className="m-0 mt-0.5 truncate text-[15px] font-bold tabular-nums">{fmtShort(runs ? Math.round(total / runs) : 0)} / run</p>
             </div>
             <div>
-              <p className="share-mini-k">saved</p>
-              <p className="share-mini-v">{money(saved)}</p>
+              <p className="m-0 text-[10px] tracking-[0.14em] text-dim uppercase">saved</p>
+              <p className="m-0 mt-0.5 truncate text-[15px] font-bold tabular-nums">{money(saved)}</p>
             </div>
             <div>
-              <p className="share-mini-k">day streak</p>
-              <p className="share-mini-v">{streak + (streak === 1 ? " day" : " days")}</p>
+              <p className="m-0 text-[10px] tracking-[0.14em] text-dim uppercase">day streak</p>
+              <p className="m-0 mt-0.5 truncate text-[15px] font-bold tabular-nums">{streak + (streak === 1 ? " day" : " days")}</p>
             </div>
             <div>
-              <p className="share-mini-k">best day</p>
-              <p className="share-mini-v">{fmtShort(best)}</p>
+              <p className="m-0 text-[10px] tracking-[0.14em] text-dim uppercase">best day</p>
+              <p className="m-0 mt-0.5 truncate text-[15px] font-bold tabular-nums">{fmtShort(best)}</p>
             </div>
             <div>
-              <p className="share-mini-k">est. cost</p>
-              <p className="share-mini-v">{money(cost)}</p>
+              <p className="m-0 text-[10px] tracking-[0.14em] text-dim uppercase">est. cost</p>
+              <p className="m-0 mt-0.5 truncate text-[15px] font-bold tabular-nums">{money(cost)}</p>
             </div>
             <div>
-              <p className="share-mini-k">models</p>
-              <p className="share-mini-v">{String(models)}</p>
+              <p className="m-0 text-[10px] tracking-[0.14em] text-dim uppercase">models</p>
+              <p className="m-0 mt-0.5 truncate text-[15px] font-bold tabular-nums">{String(models)}</p>
             </div>
           </div>
         </div>
@@ -650,7 +648,7 @@ export function ShareDialog({
           <span className="flex items-center gap-2">
             <button
               type="button"
-              className="btn-push share-btn share-icon"
+              className="inline-flex cursor-pointer items-center gap-1.5 rounded-[10px] border border-line bg-transparent px-[9px] py-[7px] text-xs text-ink hover:border-accent [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]"
               aria-label="Share on X"
               title="Share on X"
               onClick={() => window.open(`https://x.com/intent/post?text=${encodeURIComponent(`${text} #Tersio`)}`, "_blank", "noopener,width=560,height=460")}
@@ -661,7 +659,7 @@ export function ShareDialog({
             </button>
             <button
               type="button"
-              className="btn-push share-btn share-icon"
+              className="inline-flex cursor-pointer items-center gap-1.5 rounded-[10px] border border-line bg-transparent px-[9px] py-[7px] text-xs text-ink hover:border-accent [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]"
               aria-label="Share on Reddit"
               title="Share on Reddit"
               onClick={() => window.open(`https://www.reddit.com/submit?title=${encodeURIComponent("My Tersio usage profile")}&text=${encodeURIComponent(text)}`, "_blank", "noopener")}
@@ -672,7 +670,7 @@ export function ShareDialog({
             </button>
             <button
               type="button"
-              className="btn-push share-btn share-icon"
+              className="inline-flex cursor-pointer items-center gap-1.5 rounded-[10px] border border-line bg-transparent px-[9px] py-[7px] text-xs text-ink hover:border-accent [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]"
               aria-label="Share on LinkedIn"
               title="Share on LinkedIn"
               onClick={() => {
@@ -686,11 +684,11 @@ export function ShareDialog({
             </button>
           </span>
           <span className="flex items-center gap-2 ml-auto">
-            <button type="button" className="btn-push share-btn" aria-label="Copy share text" onClick={() => copyText(text, "Share text copied.")}>
+            <button type="button" className="inline-flex cursor-pointer items-center gap-1.5 rounded-[10px] border border-line bg-transparent px-3 py-[7px] text-xs text-ink hover:border-accent [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]" aria-label="Copy share text" onClick={() => copyText(text, "Share text copied.")}>
               <Icon name="copy" className="size-3.5" />
               <span>Copy</span>
             </button>
-            <button type="button" className="btn-push share-btn" aria-label="Download card as PNG" onClick={downloadPng}>
+            <button type="button" className="inline-flex cursor-pointer items-center gap-1.5 rounded-[10px] border border-line bg-transparent px-3 py-[7px] text-xs text-ink hover:border-accent [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]" aria-label="Download card as PNG" onClick={downloadPng}>
               <Icon name="download" className="size-3.5" />
               <span>Download</span>
             </button>
@@ -703,19 +701,19 @@ export function ShareDialog({
 
 export function Footer() {
   return (
-    <footer className="mono text-xs mt-12 pt-4" style={{ color: "var(--dim)", borderTop: "1px solid var(--line)" }}>
+    <footer className="mono text-xs mt-12 pt-4 text-dim border-t border-line">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
         <span>© 2026 Tersio. KurutoDenzeru. All rights reserved.</span>
-        <span className="ml-auto flex items-center gap-1" style={{ color: "var(--ink)" }}>
-          <a href="https://github.com/KurutoDenzeru/tersio" target="_blank" rel="noopener" aria-label="GitHub" className="btn-push social grid size-8 place-items-center rounded-lg">
+        <span className="ml-auto flex items-center gap-1 text-ink">
+          <a href="https://github.com/KurutoDenzeru/tersio" target="_blank" rel="noopener" aria-label="GitHub" className="grid size-8 place-items-center rounded-lg text-ink hover:text-accent [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96] [&_img]:block [&_img]:size-4">
             <img height="16" width="16" src="https://cdn.jsdelivr.net/npm/simple-icons@v16/icons/github.svg" alt="GitHub" />
           </a>
-          <a href="https://linkedin.com/in/kurtcalacday/" target="_blank" rel="noopener" aria-label="LinkedIn" className="btn-push social grid size-8 place-items-center rounded-lg">
+          <a href="https://linkedin.com/in/kurtcalacday/" target="_blank" rel="noopener" aria-label="LinkedIn" className="grid size-8 place-items-center rounded-lg text-ink hover:text-accent [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96] [&_svg]:block [&_svg]:size-4">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
               <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
             </svg>
           </a>
-          <a href="https://instagram.com/krtclcdy/" target="_blank" rel="noopener" aria-label="Instagram" className="btn-push social grid size-8 place-items-center rounded-lg">
+          <a href="https://instagram.com/krtclcdy/" target="_blank" rel="noopener" aria-label="Instagram" className="grid size-8 place-items-center rounded-lg text-ink hover:text-accent [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96] [&_img]:block [&_img]:size-4">
             <img height="16" width="16" src="https://cdn.jsdelivr.net/npm/simple-icons@v16/icons/instagram.svg" alt="Instagram" />
           </a>
         </span>

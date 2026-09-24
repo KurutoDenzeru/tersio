@@ -63,31 +63,31 @@ export function Tools({ data }: { data: UsageReport | null }) {
       <th aria-sort={on ? (sort.dir === 1 ? "ascending" : "descending") : "none"}>
         <button
           type="button"
-          className={`thsort${num ? " num" : ""}`}
+          className={`[all:unset] inline-flex! cursor-pointer! items-center! gap-[5px]! hover:text-ink focus-visible:rounded-[4px] focus-visible:outline focus-visible:outline-1 focus-visible:outline-accent${num ? " float-right!" : ""}`}
           data-sort={key}
           onClick={() => {
             setPage(1);
             setSort((s) => (s.key === key ? { key, dir: s.dir === 1 ? -1 : 1 } : { key, dir: key === "name" ? 1 : -1 }));
           }}
         >
-          {label} <span className="arr">{on ? (sort.dir === 1 ? "↑" : "↓") : "⇅"}</span>
+          {label} <span className={on ? "text-[10px] text-accent" : "text-[10px] text-dim opacity-[.55]"}>{on ? (sort.dir === 1 ? "↑" : "↓") : "⇅"}</span>
         </button>
       </th>
     );
   };
 
   return (
-    <section id="tools" className="rise mt-8 rounded-xl p-5 overflow-hidden" style={{ border: "1px solid var(--line)", background: "var(--panel)", scrollMarginTop: 90 }} aria-label="Command tools">
+    <section id="tools" data-reveal className="mt-8 translate-y-[26px] rounded-xl border border-line bg-panel p-5 opacity-0 transition-[opacity,transform] duration-700 ease-[cubic-bezier(.16,1,.3,1)] data-[reveal=in]:translate-y-0 data-[reveal=in]:opacity-100 overflow-hidden" style={{ scrollMarginTop: 90 }} aria-label="Command tools">
       <div className="flex items-center gap-2 mb-1">
         <Icon name="terminal" className="size-4" />
-        <h2 className="display font-bold tracking-tight text-xl truncate min-w-0">Command tools</h2>
+        <h2 className="font-display font-bold tracking-tight text-xl truncate min-w-0">Command tools</h2>
         <div className="flex items-center gap-2 ml-auto min-w-0">
-          <span className="mono text-xs truncate min-w-0" style={{ color: "var(--dim)" }}>
+          <span className="mono text-xs truncate min-w-0 text-dim">
             {scope}
           </span>
         </div>
       </div>
-      <p className="mono text-xs mb-4 truncate" style={{ color: "var(--dim)" }}>
+      <p className="mono text-xs mb-4 truncate text-dim">
         count · tokens saved · avg rate · avg time · share of executions
       </p>
       {rows.length > 0 ? (
@@ -95,7 +95,7 @@ export function Tools({ data }: { data: UsageReport | null }) {
           <table className="w-full mono text-[13px]" id="cmdTable">
             <colgroup><col style={{ width: 40 }} /><col /><col style={{ width: 90 }} /><col style={{ width: 90 }} /><col style={{ width: 90 }} /><col style={{ width: 90 }} /><col style={{ width: 140 }} /></colgroup>
             <thead>
-              <tr className="text-left text-[11px] uppercase tracking-[0.14em]" style={{ color: "var(--dim)" }}>
+              <tr className="text-left text-[11px] uppercase tracking-[0.14em] text-dim">
                 <th className="font-normal text-right pr-3 py-2 w-10">#</th>
                 {th("Tool / Command", "name")}
                 {th("Count", "count", true)}
@@ -107,8 +107,8 @@ export function Tools({ data }: { data: UsageReport | null }) {
             </thead>
             <tbody>
               {slice.map((r, i) => (
-                <tr key={r.name} className="mrow">
-                  <td className="text-right pr-3 py-2.5 mono text-xs w-10" style={{ color: "var(--dim)" }}>
+                <tr key={r.name} className="cursor-pointer transition-[background] duration-200 hover:bg-track hover:shadow-tersio">
+                  <td className="text-right pr-3 py-2.5 mono text-xs text-dim w-10">
                     {String((p - 1) * per + i + 1).padStart(2, "0")}
                   </td>
                   <td className="py-2.5 pr-3 truncate" style={{ maxWidth: 280 }} title={r.name}>
@@ -116,15 +116,15 @@ export function Tools({ data }: { data: UsageReport | null }) {
                   </td>
                   <td className="text-right py-2.5 pr-3 font-bold">{fmt(r.count)}</td>
                   <td className="text-right py-2.5 pr-3 font-bold">{r.saved === null ? "–" : fmtShort(r.saved)}</td>
-                  <td className="text-right py-2.5 pr-3" style={{ color: "var(--accent)" }}>
+                  <td className="text-right py-2.5 pr-3 text-accent">
                     {r.avgPct === null ? "–" : `${r.avgPct.toFixed(1)}%`}
                   </td>
-                  <td className="text-right py-2.5 pr-3" style={{ color: "var(--dim)" }}>
+                  <td className="text-right py-2.5 pr-3 text-dim">
                     {r.avgMs === null ? "–" : fmtMs(r.avgMs)}
                   </td>
                   <td className="py-2.5 min-w-32">
-                    <div className="bar-track h-1.5 overflow-hidden">
-                      <div className="bar-fill h-full" style={{ width: r.count ? `${Math.round((r.count / max) * 100)}%` : "0" }} />
+                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-track">
+                      <div className="h-full origin-left rounded-full bg-accent transition-[width] duration-1000 ease-[cubic-bezier(.16,1,.3,1)]" style={{ width: r.count ? `${Math.round((r.count / max) * 100)}%` : "0" }} />
                     </div>
                   </td>
                 </tr>
@@ -135,12 +135,12 @@ export function Tools({ data }: { data: UsageReport | null }) {
       ) : (
         <EmptyState icon="wrench" title="No tool data yet" desc="Session tool calls and RTK measurements will appear here once recorded." />
       )}
-      <div className="mono text-xs mt-4 flex flex-wrap items-center gap-x-4 gap-y-3" style={{ color: "var(--dim)" }}>
+      <div className="mono text-xs mt-4 flex flex-wrap items-center gap-x-4 gap-y-3 text-dim">
         <span>{range}</span>
         <PerPage options={[10, 15, 25, 50]} value={per} onPick={(n) => { setPer(n); setPage(1); }} label="Rows per page" />
         <PageButtons pages={pages} page={p} onPick={setPage} label="Pages" />
       </div>
-      <p className="mono text-[11px] mt-3" style={{ color: "var(--dim)" }}>
+      <p className="mono text-[11px] mt-3 text-dim">
         bash commands run through the rtk-wired OMP hook meter automatically; rows without metering show –. caveman + ponytail gains are instruction-following, bench-measured in BENCHMARK.md.
       </p>
     </section>

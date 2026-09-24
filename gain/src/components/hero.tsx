@@ -22,26 +22,23 @@ function useClock(): string {
 export function Dock({ onShare, onSettings }: { onShare: () => void; onSettings: () => void }) {
   const clock = useClock();
   return (
-    <header className="dock mt-4 flex w-full items-center gap-2 px-3 py-2">
+    <header className="sticky top-3 z-50 mt-4 flex w-full items-center gap-2 rounded-[20px] border border-transparent px-3 py-2 [background:linear-gradient(var(--panel),var(--panel))_padding-box,linear-gradient(120deg,var(--accent-soft),var(--line)_30%,var(--line)_70%,var(--accent-soft))_border-box] [box-shadow:0_1px_2px_rgba(0,0,0,.08)]">
       <a href="#" className="flex shrink-0 items-center gap-2.5 pl-1 pr-2" aria-label="Tersio dashboard home">
-        <img src="brand.webp" alt="Tersio" width="32" height="32" className="brand size-8 rounded-full" />
-        <span className="leading-tight text-left">
-          <span className="block font-bold tracking-tight text-sm">TERSIO DASHBOARD</span>
-          <span className="mono block text-[11px]" style={{ color: "var(--dim)" }}>
-            live token number feed
-          </span>
+        <img src="brand.webp" alt="Tersio" width="32" height="32" className="size-8 rounded-[10px]" />
+        <span className="text-left leading-tight">
+          <span className="block text-sm font-bold tracking-tight">TERSIO DASHBOARD</span>
+          <span className="mono block text-[11px] text-dim">live token number feed</span>
         </span>
       </a>
-      <span className="mono hidden shrink-0 sm:flex items-center gap-2 text-xs px-2 ml-auto" style={{ color: "var(--dim)" }}>
-        <span className="live-dot inline-block size-2 rounded-full" />
+      <span className="mono ml-auto hidden shrink-0 items-center gap-2 px-2 text-xs text-dim sm:flex">
+        <span className="inline-block size-2 animate-ping-soft rounded-full bg-accent [box-shadow:0_0_0_0_var(--accent-soft)]" />
         <span>{clock}</span>
       </span>
-      <span className="hidden sm:block w-px h-5 shrink-0" style={{ background: "var(--line)" }} aria-hidden="true" />
+      <span className="hidden h-5 w-px shrink-0 bg-line sm:block" aria-hidden="true" />
       <button
         type="button"
         onClick={onShare}
-        className="btn-push flex shrink-0 items-center p-2 rounded-xl"
-        style={{ border: "1px solid var(--line)", color: "var(--ink)" }}
+        className="flex shrink-0 items-center rounded-xl border border-line p-2 text-ink [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]"
         aria-label="Share your usage"
       >
         <Icon name="share-2" className="size-4" />
@@ -49,8 +46,7 @@ export function Dock({ onShare, onSettings }: { onShare: () => void; onSettings:
       <button
         type="button"
         onClick={onSettings}
-        className="btn-push flex shrink-0 items-center p-2 rounded-xl"
-        style={{ border: "1px solid var(--line)", color: "var(--ink)" }}
+        className="flex shrink-0 items-center rounded-xl border border-line p-2 text-ink [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]"
         aria-label="Open settings"
       >
         <Icon name="settings" className="size-4" />
@@ -74,20 +70,20 @@ export function Hero({ data }: { data: UsageReport | null }) {
   });
   const half = parts.join("   ◆   ");
   return (
-    <section className="mx-auto max-w-6xl text-center pt-14 pb-10 relative">
-      <div className="hero-glow" aria-hidden="true" />
-      <p className="hero-in mono text-[11px] uppercase tracking-[0.22em] mb-4 relative" style={{ color: "var(--accent)" }}>
-        Live token feed
-      </p>
-      <p className="hero-in mono font-bold tracking-tighter leading-none text-7xl md:text-8xl relative herototal">
+    <section className="relative mx-auto max-w-6xl pt-14 pb-10 text-center">
+      <div
+        className="pointer-events-none absolute top-[44%] left-1/2 h-[300px] w-[min(720px,90vw)] -translate-x-1/2 -translate-y-1/2 animate-breathe bg-[radial-gradient(ellipse_at_center,var(--accent-soft)_0%,transparent_65%)]"
+        aria-hidden="true"
+      />
+      <p className="mono relative mb-4 text-[11px] tracking-[0.22em] text-accent uppercase">Live token feed</p>
+      <p className="mono relative bg-[linear-gradient(180deg,var(--ink)_55%,var(--accent)_130%)] bg-clip-text text-7xl leading-none font-bold tracking-tighter text-transparent md:text-8xl">
         {fmt(total)}
       </p>
       <div
-        className="hero-in relative mt-6 overflow-hidden"
+        className="relative mt-6 overflow-hidden [mask-image:linear-gradient(90deg,transparent,black_12%,black_88%,transparent)]"
         aria-hidden="true"
-        style={{ maskImage: "linear-gradient(90deg, transparent, black 12%, black 88%, transparent)" }}
       >
-        <div className="ticker mono text-xs whitespace-nowrap inline-block" style={{ color: "var(--dim)" }}>
+        <div className="mono inline-block animate-tick text-xs whitespace-nowrap text-dim [will-change:transform] hover:[animation-play-state:paused]">
           {parts.length ? `${half}   ◆   ${half}` : ""}
         </div>
       </div>

@@ -31,16 +31,16 @@ function ModelTip({ m, data, money }: { m: string; data: UsageReport; money: (v:
   const total = b.input + b.output + b.cacheRead + b.cacheWrite;
   const cb = data.byModelBucketUsd[m] ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
   const row = (color: string, k: string, v: string): React.ReactNode => (
-    <div className="tr">
-      <span className="sw" style={{ background: color }} />
-      <span className="tn">{k}</span>
-      <span className="tvr">{v}</span>
+    <div className="flex items-center gap-2.5 py-[3px] text-xs">
+      <span className="size-[9px] shrink-0 rounded-[2.5px]" style={{ background: color }} />
+      <span className="min-w-0 flex-1 truncate">{k}</span>
+      <span className="shrink-0 whitespace-nowrap tabular-nums">{v}</span>
     </div>
   );
   return (
     <div className="mono">
-      <div className="tt">{shortName(m)}</div>
-      <div className="tv">
+      <div className="text-[11px] font-bold uppercase tracking-[.14em]">{shortName(m)}</div>
+      <div className="my-[2px] mb-2 text-[13px]">
         {fmtShort(total)} total ({money(cb.input + cb.output + cb.cacheRead + cb.cacheWrite)})
       </div>
       {row("var(--accent)", "input", `${fmt(b.input)} (${money(cb.input)})`)}
@@ -93,9 +93,9 @@ function AreaChart({ vals, days }: { vals: number[]; days: string[] }) {
             if (!active || !payload?.length) return null;
             const p = payload[0].payload as { day: string; tokens: number };
             return (
-              <div className="mono rounded-[10px] border px-3 py-2 text-[11px]" style={{ background: "var(--panel)", borderColor: "var(--line)" }}>
-                <div className="tt">{shortDay(p.day)}</div>
-                <div className="tv">{fmtShort(p.tokens)} tokens</div>
+              <div className="mono rounded-[10px] border border-line bg-panel px-3 py-2 text-[11px]">
+                <div>{shortDay(p.day)}</div>
+                <div>{fmtShort(p.tokens)} tokens</div>
               </div>
             );
           }}
@@ -108,6 +108,7 @@ function AreaChart({ vals, days }: { vals: number[]; days: string[] }) {
           strokeWidth={2.5}
           dot={false}
           activeDot={{ r: 5, fill: "var(--accent)", stroke: "var(--panel)", strokeWidth: 2 }}
+          isAnimationActive={false}
         />
       </RechartsArea>
     </ChartContainer>
@@ -135,19 +136,25 @@ function Bars({ vals, days }: { vals: number[]; days: string[] }) {
     b.top = b.avg > 0 && b.avg === peak;
   });
   return (
-    <div className="md-bars" aria-hidden="true">
+    <div className="flex h-[132px] items-end gap-[3px] bg-[linear-gradient(var(--line)_1px,transparent_1px)] bg-bottom bg-[length:100%_33px]" aria-hidden="true">
       {bars.map((b, i) => (
         <HoverTip
           key={i}
           content={
             <div className="mono">
-              <div className="tt">{shortDay(b.day)}</div>
-              <div className="tv">{fmtShort(Math.round(b.sum))} tokens</div>
+              <div className="text-[11px] font-bold uppercase tracking-[.14em]">{shortDay(b.day)}</div>
+              <div className="my-[2px] mb-2 text-[13px]">{fmtShort(Math.round(b.sum))} tokens</div>
             </div>
           }
         >
           <span
-            className={b.avg === 0 ? "zero" : b.top ? "top" : undefined}
+            className={`min-w-[3px] flex-1 cursor-default rounded-t-[4px] hover:opacity-100 ${
+              b.avg === 0
+                ? "bg-track opacity-100 shadow-none"
+                : b.top
+                  ? "bg-accent opacity-100 [box-shadow:0_0_8px_var(--accent-soft)]"
+                  : "bg-accent opacity-40"
+            }`}
             style={{ height: `${Math.max(b.avg ? 5 : 2, Math.round((b.avg / max) * 100))}%` }}
           />
         </HoverTip>
@@ -163,7 +170,7 @@ function Donut({ parts }: { parts: Array<{ label: string; v: number; color: stri
   const live = parts.filter((p) => p.v > 0);
   return (
     <div>
-      <div className="md-donut-wrap">
+      <div className="relative mx-auto my-1 mb-2 size-[150px]">
         {live.length === 0 && (
           <div
             aria-hidden="true"
@@ -188,9 +195,9 @@ function Donut({ parts }: { parts: Array<{ label: string; v: number; color: stri
                 if (!active || !payload?.length) return null;
                 const p = payload[0].payload as { label: string; v: number };
                 return (
-                  <div className="mono rounded-[10px] border px-3 py-2 text-[11px]" style={{ background: "var(--panel)", borderColor: "var(--line)" }}>
-                    <div className="tt">{p.label}</div>
-                    <div className="tv">
+                  <div className="mono rounded-[10px] border border-line bg-panel px-3 py-2 text-[11px]">
+                    <div>{p.label}</div>
+                    <div>
                       {fmtShort(p.v)} ({((p.v / total) * 100).toFixed(1)}%)
                     </div>
                   </div>
@@ -206,6 +213,7 @@ function Donut({ parts }: { parts: Array<{ label: string; v: number; color: stri
               paddingAngle={live.length > 1 ? 4 : 0}
               strokeWidth={0}
               startAngle={-270}
+              isAnimationActive={false}
             >
               {parts.map((p) => (
                 <Cell key={p.label} fill={p.v > 0 ? p.color : "var(--track)"} />
@@ -213,16 +221,16 @@ function Donut({ parts }: { parts: Array<{ label: string; v: number; color: stri
             </Pie>
           </PieChart>
         </ChartContainer>
-        <div className="md-donut-center">
+        <div className="absolute inset-0 grid place-items-center text-center [&_p]:m-0 [&_p]:text-[17px] [&_p]:font-extrabold [&_p]:tracking-[-0.02em] [&_p]:tabular-nums">
           <p className="mono">{fmtShort(total)}</p>
         </div>
       </div>
-      <div className="md-legend mono">
+      <div className="grid gap-1.5 text-[11px] mono">
         {live.map((p) => (
-          <div key={p.label} className="row" title={`${fmtShort(p.v)} (${((p.v / total) * 100).toFixed(1)}%)`}>
-            <span className="dot" style={{ background: p.color }} />
+          <div key={p.label} className="-mx-1 flex cursor-default items-center gap-2 rounded-[7px] px-1 py-[2px] hover:bg-track" title={`${fmtShort(p.v)} (${((p.v / total) * 100).toFixed(1)}%)`}>
+            <span className="size-2 shrink-0 rounded-full" style={{ background: p.color }} />
             <span>{p.label}</span>
-            <span className="pct">
+            <span className="ml-auto tabular-nums text-dim">
               {((p.v / total) * 100).toFixed(1)}% · {fmtShort(p.v)}
             </span>
           </div>
@@ -280,74 +288,72 @@ function ModelDialog({ m, data, money, onClose }: { m: string | null; data: Usag
     ? `${new Date(`${days[0]}T12:00:00`).toLocaleString("en-US", { month: "short", day: "numeric" }).toUpperCase()} → ${new Date(`${days[days.length - 1]}T12:00:00`).toLocaleString("en-US", { month: "short", day: "numeric" }).toUpperCase()}`
     : "–";
   const kpi = (k: string, val: string, d: string, up: boolean): React.ReactNode => (
-    <div className="md-kpi">
-      <p className="k mono">{k}</p>
-      <p className="v">{val}</p>
-      <p className={`d mono ${up ? "up" : "flat"}`}>{d}</p>
+    <div className="rounded-xl border border-line bg-panel px-3.5 py-3 [&_p]:m-0">
+      <p className="text-[10px] uppercase tracking-[.14em] text-dim mono">{k}</p>
+      <p className="mt-1 text-[22px] font-extrabold tracking-[-0.02em] tabular-nums">{val}</p>
+      <p className={`mt-[2px] text-[11px] tabular-nums mono ${up ? "text-accent" : "text-dim"}`}>{d}</p>
     </div>
   );
   const stat = (k: string, val: string, s?: string): React.ReactNode => (
-    <div className="md-stat">
-      <p className="k mono">{k}</p>
-      <p className="v mono">{val}</p>
-      {s && <p className="s mono">{s}</p>}
+    <div className="rounded-xl border border-line bg-panel px-3.5 py-3 [&_p]:m-0">
+      <p className="text-[10px] uppercase tracking-[.14em] text-dim mono">{k}</p>
+      <p className="mt-1 text-[20px] font-extrabold tracking-[-0.02em] tabular-nums mono">{val}</p>
+      {s && <p className="mt-[2px] text-[11px] text-dim mono">{s}</p>}
     </div>
   );
   return (
     <Dialog open={m !== null} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="dlg mdlg max-w-none gap-0" showCloseButton={false} aria-describedby={undefined}>
-        <div className="dlg-head">
+      <DialogContent className="w-[min(880px,calc(100vw-32px))] max-w-[calc(100vw-2rem)] sm:max-w-[calc(100vw-2rem)] [max-height:min(88vh,960px)] flex flex-col overflow-hidden border border-line bg-panel p-0 text-ink gap-0" showCloseButton={false} aria-describedby={undefined}>
+        <div className="flex items-start justify-between gap-3 px-5 pt-5">
           <div className="min-w-0 flex items-center gap-3">
             <Brandmark model={m} />
             <div className="min-w-0">
-              <DialogTitle className="dlg-title truncate" title={m}>
+              <DialogTitle className="m-0 text-base font-bold tracking-[-0.01em] truncate" title={m}>
                 {displayModel(m)}
               </DialogTitle>
-              <p className="dlg-desc mono">
+              <p className="my-[2px] mb-0 text-xs text-dim mono">
                 {v.name} · {fmt(req)} requests · {((total / grand) * 100).toFixed(1)}% of volume
               </p>
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            <span className="md-rankpill mono">#{rank ? String(rank).padStart(2, "0") : "–"}</span>
+            <span className="whitespace-nowrap rounded-full border border-line bg-accent-soft px-3 py-1 text-xs font-bold text-accent mono">#{rank ? String(rank).padStart(2, "0") : "–"}</span>
             <button
               type="button"
               onClick={onClose}
-              className="btn-push flex shrink-0 items-center p-2 rounded-xl"
-              style={{ border: "1px solid var(--line)", color: "var(--ink)" }}
+              className="flex shrink-0 items-center rounded-xl border border-line p-2 text-ink [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]"
               aria-label="Close model details"
             >
               <Icon name="x" className="size-4" />
             </button>
           </div>
         </div>
-        <div className="md-body">
-          <div className="md-kpis">
+        <div className="mt-4 grid gap-3 overflow-y-auto overscroll-contain px-5 pb-5 [scrollbar-color:var(--line)_transparent] [scrollbar-width:thin]">
+          <div className="grid grid-flow-dense grid-cols-2 gap-2 sm:grid-cols-4">
             {kpi("Tokens", fmtShort(total), range, true)}
             {kpi("Spend", money(usd), req ? `${money(usd / req)} / req` : "no requests", usd > 0)}
             {kpi("Cache hit", `${hit.toFixed(0)}%`, `${fmtShort(b.cacheRead)} cached`, hit >= 50)}
             {kpi("Requests", fmt(req), `${active} active days`, active > 0)}
           </div>
-          <div className="md-chart">
-            <div className="md-chart-head">
+          <div className="relative rounded-xl border border-line bg-panel p-3.5">
+            <div className="mb-2 flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <p className="md-chart-title">Token volume</p>
-                <p className="md-chart-sub mono">{range}</p>
+                <p className="m-0 text-[13px] font-bold tracking-[-0.01em]">Token volume</p>
+                <p className="my-[2px] mb-0 text-[11px] uppercase tracking-[.12em] text-dim mono">{range}</p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                <span className={`md-trend mono${trend.up ? " up" : ""}`}>{trend.t}</span>
+                <span className={`whitespace-nowrap rounded-full px-2.5 py-[3px] text-[11px] font-bold mono ${trend.up ? "bg-accent-soft text-accent" : "bg-track text-dim"}`}>{trend.t}</span>
                 <ToggleGroup
                   value={[span]}
                   onValueChange={(v) => {
                     const next = v[v.length - 1];
                     if (next === "30" || next === "90" || next === "all") setSpan(next);
                   }}
-                  className="seg mono text-xs p-1 rounded-[10px]"
-                  style={{ border: "1px solid var(--line)" }}
+                  className="mono text-xs p-1 rounded-[10px] border border-line"
                   aria-label="Chart range"
                 >
                   {(["30", "90", "all"] as Span[]).map((s) => (
-                    <ToggleGroupItem key={s} value={s} className="px-2.5 py-1" aria-label={s === "all" ? "ALL" : `${s}D`}>
+                    <ToggleGroupItem key={s} value={s} className="grid cursor-pointer place-items-center rounded-lg px-2.5 py-1 text-dim transition-[background,color] duration-200 hover:text-ink data-[state=on]:bg-accent-soft data-[state=on]:text-ink" aria-label={s === "all" ? "ALL" : `${s}D`}>
                       {s === "all" ? "ALL" : `${s}D`}
                     </ToggleGroupItem>
                   ))}
@@ -355,35 +361,35 @@ function ModelDialog({ m, data, money, onClose }: { m: string | null; data: Usag
               </div>
             </div>
             <AreaChart vals={vals} days={days} />
-            <div className="md-months mono" aria-hidden="true">
+            <div className="mt-1.5 flex justify-between text-[10px] uppercase tracking-[.12em] text-dim mono" aria-hidden="true">
               {monthTicks(days).map((t, i) => (
                 <span key={i}>{t}</span>
               ))}
             </div>
           </div>
-          <div className="md-cols">
-            <div className="md-chart">
-              <div className="md-chart-head">
+          <div className="grid grid-flow-dense gap-3 min-[720px]:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+            <div className="relative rounded-xl border border-line bg-panel p-3.5">
+              <div className="mb-2 flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="md-chart-title">Daily activity</p>
-                  <p className="md-chart-sub mono">tokens per day</p>
+                  <p className="m-0 text-[13px] font-bold tracking-[-0.01em]">Daily activity</p>
+                  <p className="my-[2px] mb-0 text-[11px] uppercase tracking-[.12em] text-dim mono">tokens per day</p>
                 </div>
-                <span className={`md-trend mono${active ? " up" : ""}`}>
+                <span className={`whitespace-nowrap rounded-full px-2.5 py-[3px] text-[11px] font-bold mono ${active ? "bg-accent-soft text-accent" : "bg-track text-dim"}`}>
                   {active} / {days.length} days
                 </span>
               </div>
               <Bars vals={vals} days={days} />
-              <div className="md-months mono" aria-hidden="true">
+              <div className="mt-1.5 flex justify-between text-[10px] uppercase tracking-[.12em] text-dim mono" aria-hidden="true">
                 {monthTicks(days).map((t, i) => (
                   <span key={i}>{t}</span>
                 ))}
               </div>
             </div>
-            <div className="md-chart">
-              <div className="md-chart-head">
+            <div className="relative rounded-xl border border-line bg-panel p-3.5">
+              <div className="mb-2 flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="md-chart-title">Token mix</p>
-                  <p className="md-chart-sub mono">input vs output vs cache</p>
+                  <p className="m-0 text-[13px] font-bold tracking-[-0.01em]">Token mix</p>
+                  <p className="my-[2px] mb-0 text-[11px] uppercase tracking-[.12em] text-dim mono">input vs output vs cache</p>
                 </div>
               </div>
               <Donut
@@ -396,7 +402,7 @@ function ModelDialog({ m, data, money, onClose }: { m: string | null; data: Usag
               />
             </div>
           </div>
-          <div className="md-grid">
+          <div className="grid grid-flow-dense grid-cols-2 gap-2 sm:grid-cols-4">
             {stat("Input", fmtShort(b.input))}
             {stat("Output", fmtShort(b.output))}
             {stat("Cache read", fmtShort(b.cacheRead), `${hit.toFixed(0)}% hit`)}
@@ -423,17 +429,17 @@ export function Models({ data, money }: { data: UsageReport | null; money: (v: n
 
   return (
     <>
-      <section className="mt-8 modelsSection" aria-label="Top models">
+      <section className="mt-8 dark:[color-scheme:dark]" aria-label="Top models">
         <div className="flex items-center gap-2 mb-1">
           <Icon name="cpu" className="size-4" />
-          <h2 className="display font-bold tracking-tight text-xl truncate min-w-0">Top models</h2>
-          <span className="mono text-xs ml-auto" style={{ color: "var(--dim)" }}>
+          <h2 className="font-display font-bold tracking-tight text-xl truncate min-w-0">Top models</h2>
+          <span className="mono text-xs ml-auto text-dim">
             usage across sessions
           </span>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           {tops.length === 0 && (
-            <div className="empty md:col-span-3">
+            <div className="flex flex-col items-center gap-[2px] rounded-xl border border-dashed border-line px-4 py-8 text-center md:col-span-3">
               <EmptyState icon="boxes" title="No models yet" desc="Model token totals will appear here once sessions report tokens." />
             </div>
           )}
@@ -446,10 +452,9 @@ export function Models({ data, money }: { data: UsageReport | null; money: (v: n
                   tabIndex={0}
                   onClick={() => setOpen(m)}
                   onKeyDown={(e) => e.key === "Enter" && setOpen(m)}
-                  className="modelcard relative p-4 rounded-xl overflow-hidden"
-                  style={{ borderColor: "var(--line)", background: "var(--panel)", cursor: "pointer" }}
+                  className="transition-[background] duration-[250ms] hover:shadow-tersio relative cursor-pointer overflow-hidden rounded-xl border-line bg-panel p-4"
                 >
-                  <p className="mono text-xs mb-3" style={{ color: "var(--dim)" }}>
+                  <p className="mono text-xs mb-3 text-dim">
                     0{i + 1}
                   </p>
                   <div className="flex items-center gap-3">
@@ -458,7 +463,7 @@ export function Models({ data, money }: { data: UsageReport | null; money: (v: n
                       <p className="mono text-sm font-bold truncate" title={m}>
                         {displayModel(m)}
                       </p>
-                      <p className="mono text-xs truncate" style={{ color: "var(--dim)" }}>
+                      <p className="mono text-xs truncate text-dim">
                         {v.name}
                       </p>
                     </div>
@@ -471,26 +476,26 @@ export function Models({ data, money }: { data: UsageReport | null; money: (v: n
         </div>
       </section>
 
-      <section className="rise mt-8 rounded-xl p-5 overflow-hidden flex flex-col modelsSection" style={{ border: "1px solid var(--line)", background: "var(--panel)" }} aria-label="All models">
+      <section data-reveal className="mt-8 translate-y-[26px] rounded-xl border border-line bg-panel p-5 opacity-0 transition-[opacity,transform] duration-700 ease-[cubic-bezier(.16,1,.3,1)] data-[reveal=in]:translate-y-0 data-[reveal=in]:opacity-100 overflow-hidden flex flex-col dark:[color-scheme:dark]" aria-label="All models">
         <div className="flex items-center gap-2 mb-1">
           <Icon name="layers" className="size-4" />
-          <h2 className="display font-bold tracking-tight text-xl truncate min-w-0">Models</h2>
-          <span className="mono text-xs ml-auto truncate shrink-0" style={{ color: "var(--dim)" }}>
+          <h2 className="font-display font-bold tracking-tight text-xl truncate min-w-0">Models</h2>
+          <span className="mono text-xs ml-auto truncate shrink-0 text-dim">
             {tops.length ? `${tops.length} models` : ""}
           </span>
         </div>
-        <p className="mono text-xs mb-4" style={{ color: "var(--dim)" }}>
+        <p className="mono text-xs mb-4 text-dim">
           ranked by tokens / top 10
         </p>
         {tops.length > 0 ? (
-          <div className="scrollarea">
+          <div className="overflow-y-auto overscroll-contain [scrollbar-color:var(--line)_transparent] [scrollbar-width:thin]">
             <ol id="models" className="overflow-hidden">
               {rows.map((m, i) => {
                 const mv = modelTotal(byModel, m);
                 return (
                   <HoverTip key={m} content={data ? <ModelTip m={m} data={data} money={money} /> : "–"}>
                     <li
-                      className={`mrow flex items-center gap-3 px-4 py-3${i < rows.length - 1 ? " rowline" : ""} cursor-pointer`}
+                      className={`transition-[background] duration-[250ms] hover:bg-track hover:shadow-tersio flex items-center gap-3 px-4 py-3 cursor-pointer${i < rows.length - 1 ? " border-b border-line" : ""}`}
                       onClick={() => setOpen(m)}
                     >
                       <span>
@@ -500,13 +505,13 @@ export function Models({ data, money }: { data: UsageReport | null; money: (v: n
                         <p className="mono text-sm truncate" title={m}>
                           {displayModel(m)}
                         </p>
-                        <div className="bar-track mt-1.5 h-1.5 overflow-hidden">
-                          <div className="bar-fill h-full" style={{ width: `${Math.round((mv / max) * 100)}%` }} />
+                        <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-track">
+                          <div className="h-full origin-left rounded-full bg-accent transition-[width] duration-1000 ease-[cubic-bezier(.16,1,.3,1)]" style={{ width: `${Math.round((mv / max) * 100)}%` }} />
                         </div>
                       </div>
                       <div className="shrink-0 text-right">
                         <p className="mono font-bold">{fmt(mv)}</p>
-                        <p className="mono text-xs" style={{ color: "var(--dim)" }}>
+                        <p className="mono text-xs text-dim">
                           {money(data?.byModelUsd[m] ?? 0)}
                         </p>
                       </div>
@@ -519,7 +524,7 @@ export function Models({ data, money }: { data: UsageReport | null; money: (v: n
         ) : (
           <EmptyState icon="boxes" title="No models yet" desc="Model token totals will appear here once sessions report tokens." />
         )}
-        <div className="mono text-xs mt-4 pt-4 flex flex-wrap items-center gap-x-4 gap-y-3 mt-auto" style={{ color: "var(--dim)", borderTop: "1px solid var(--line)" }}>
+        <div className="mono text-xs mt-4 pt-4 flex flex-wrap items-center gap-x-4 gap-y-3 mt-auto text-dim border-t border-line">
           <span>{range}</span>
           <PerPage options={[10, 15, 25, 50]} value={per} onPick={(n) => { setPer(n); setPage(1); }} label="Models per page" />
           <PageButtons pages={pages} page={p} onPick={setPage} label="Model pages" />

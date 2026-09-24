@@ -3,18 +3,19 @@
 // emptyState + showTip/moveTip/hideTip.
 import React, { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
+import { cn } from "cn";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Icon } from "./icon";
 
 export function EmptyState({ icon, title, desc }: { icon: string; title: string; desc: string }) {
   return (
-    <div className="empty">
-      <span className="empty-icon">
+    <div className="flex flex-col items-center gap-[2px] rounded-xl border border-dashed border-line px-4 py-8 text-center">
+      <span className="mb-2.5 grid size-10 place-items-center rounded-full bg-track text-dim">
         <Icon name={icon} className="size-5" />
       </span>
-      <p className="empty-title">{title}</p>
-      <p className="empty-desc">{desc}</p>
+      <p className="m-0 text-sm font-semibold text-ink">{title}</p>
+      <p className="m-0 max-w-[340px] text-xs text-dim">{desc}</p>
     </div>
   );
 }
@@ -47,11 +48,13 @@ export function PageButtons({
     }
     return out;
   }, [pages, page]);
+  const pgbtn =
+    "inline-flex h-[26px] min-w-[26px] cursor-pointer items-center justify-center rounded-[7px] border border-line bg-transparent px-[7px] text-dim hover:not-disabled:border-accent hover:not-disabled:text-ink disabled:cursor-default disabled:opacity-35 focus-visible:outline focus-visible:outline-1 focus-visible:outline-accent";
   return (
     <span className="ml-auto flex items-center gap-1" role="navigation" aria-label={label}>
       <button
         type="button"
-        className="pgbtn mono"
+        className={cn(pgbtn, "mono")}
         aria-label="Previous page"
         disabled={page <= 1}
         onClick={() => onPick(page - 1)}
@@ -67,7 +70,7 @@ export function PageButtons({
           <button
             key={p}
             type="button"
-            className={`pgbtn mono${p === page ? " on" : ""}`}
+            className={cn(pgbtn, "mono", p === page && "border-transparent bg-accent-soft font-bold text-accent")}
             onClick={() => onPick(p)}
           >
             {p}
@@ -76,7 +79,7 @@ export function PageButtons({
       )}
       <button
         type="button"
-        className="pgbtn mono"
+        className={cn(pgbtn, "mono")}
         aria-label="Next page"
         disabled={page >= pages}
         onClick={() => onPick(page + 1)}
@@ -106,7 +109,7 @@ export function PerPage({
         if (n !== value) onPick(n);
       }}
     >
-      <SelectTrigger className="seg mono text-xs h-auto gap-1 p-1" aria-label={label}>
+      <SelectTrigger className="mono text-xs h-auto gap-1 p-1" aria-label={label}>
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
@@ -138,12 +141,16 @@ export function SegTabs<T extends string>({
         const next = v[v.length - 1] as T | undefined;
         if (next && next !== value) onPick(next);
       }}
-      className="seg mono text-xs ml-auto p-1 rounded-[10px]"
-      style={{ border: "1px solid var(--line)", background: "var(--panel)" }}
+      className="mono text-xs ml-auto p-1 rounded-[10px] border border-line bg-panel"
       aria-label={label}
     >
       {options.map((o) => (
-        <ToggleGroupItem key={o} value={o} className="px-3 py-1.5" aria-label={o}>
+        <ToggleGroupItem
+          key={o}
+          value={o}
+          className="cursor-pointer rounded-lg text-dim transition-[background,color] duration-200 data-[state=on]:bg-accent-soft data-[state=on]:text-ink hover:text-ink px-3 py-1.5"
+          aria-label={o}
+        >
           {o}
         </ToggleGroupItem>
       ))}
@@ -187,7 +194,12 @@ export function HoverTip({ content, children }: { content: React.ReactNode; chil
       {el}
       {pos &&
         createPortal(
-          <div id="tip" className="mono show" role="tooltip" style={{ left: pos.x, top: pos.y }}>
+          <div
+            id="tip"
+            className="mono pointer-events-none fixed z-100 min-w-[250px] max-w-[370px] rounded-xl border border-line bg-panel px-3.5 py-3 opacity-100 shadow-tersio transition-opacity duration-150"
+            role="tooltip"
+            style={{ left: pos.x, top: pos.y }}
+          >
             {content}
           </div>,
           document.body,
