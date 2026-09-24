@@ -116,7 +116,6 @@ export function useDashboardData(): UsageReport | null {
   const lastJson = useRef<string>(data ? JSON.stringify(data) : "");
 
   const load = useCallback(async () => {
-    if (typeof document !== "undefined" && document.hidden) return;
     try {
       const d = await getJSON<UsageReport>("data.json");
       const json = JSON.stringify(d);
@@ -130,8 +129,12 @@ export function useDashboardData(): UsageReport | null {
 
   useEffect(() => {
     if (isFileExport()) return;
-    load();
-    const id = setInterval(load, 5000);
+    // Initial load always runs (even in a background tab); the poll below
+    // skips hidden tabs and refreshes instantly on return.
+    void load();
+    const id = setInterval(() => {
+      if (!document.hidden) void load();
+    }, 5000);
     const onVis = (): void => {
       if (!document.hidden) void load();
     };

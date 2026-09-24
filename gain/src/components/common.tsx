@@ -3,13 +3,13 @@
 // emptyState + showTip/moveTip/hideTip.
 import React, { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { Button } from "@/components/ui/button";
+import { Icon } from "./icon";
 
 export function EmptyState({ icon, title, desc }: { icon: string; title: string; desc: string }) {
   return (
     <div className="empty">
       <span className="empty-icon">
-        <i data-lucide={icon} className="size-5" />
+        <Icon name={icon} className="size-5" />
       </span>
       <p className="empty-title">{title}</p>
       <p className="empty-desc">{desc}</p>
@@ -144,35 +144,6 @@ export function SegTabs<T extends string>({
       ))}
     </div>
   );
-}
-
-export function IconButton({
-  label,
-  icon,
-  onClick,
-  children,
-}: {
-  label: string;
-  icon: string;
-  onClick?: () => void;
-  children?: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      onClick={onClick}
-      className="btn-push flex shrink-0 items-center p-2 rounded-xl"
-      style={{ border: "1px solid var(--line)", color: "var(--ink)" }}
-    >
-      <i data-lucide={icon} className="size-4" />
-      {children}
-    </button>
-  );
-}
-
-export function MenuButton(props: React.ComponentProps<typeof Button>) {
-  return <Button variant="outline" size="sm" className="mono text-xs" {...props} />;
 }
 
 // Hover card. Port of showTip/moveTip/hideTip in dashboard/core.js: a

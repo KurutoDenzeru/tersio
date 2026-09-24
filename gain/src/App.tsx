@@ -42,8 +42,44 @@ function useDataThemeAttr(): void {
   }, [theme]);
 }
 
+function useReveal(): void {
+  useEffect(() => {
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduce || !("IntersectionObserver" in window)) {
+      document.querySelectorAll(".rise").forEach((el) => el.classList.add("in"));
+      return;
+    }
+    const seen = new WeakSet<Element>();
+    const io = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((e) => {
+          if (e.isIntersecting && !seen.has(e.target)) {
+            seen.add(e.target);
+            e.target.classList.add("in");
+            io.unobserve(e.target);
+          }
+        });
+      },
+      { threshold: 0.12 },
+    );
+    const watch = (): void => {
+      document.querySelectorAll(".rise").forEach((el) => {
+        if (!seen.has(el)) io.observe(el);
+      });
+    };
+    watch();
+    const mo = new MutationObserver(watch);
+    mo.observe(document.getElementById("root") ?? document.body, { childList: true, subtree: true });
+    return () => {
+      io.disconnect();
+      mo.disconnect();
+    };
+  }, []);
+}
+
 function Shell() {
   useDataThemeAttr();
+  useReveal();
   const data = useDashboardData();
   const { fx, money, applyCurrency } = useFx(data?.currency);
   const [settingsOpen, setSettingsOpen] = useState(false);
