@@ -527,3 +527,9 @@
    accent-soft pill when selected. */
 .seg [data-state="on"] { background: var(--accent-soft); color: var(--ink); }
 .seg button:not([data-state="on"]):hover { color: var(--ink); }
+
+/* Unified settings rhythm: every pane follows the General label-left /
+   control-right pattern with a single 14px row rhythm. The old
+   diagnosis-only extra bottom margin is retired so panes match. */
+.set-pane[data-pane="diagnosis"] .dlg-row { margin-bottom: 0; }
+.set-pane > .set-list:first-child { margin-top: 14px; }

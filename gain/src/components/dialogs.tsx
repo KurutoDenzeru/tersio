@@ -47,14 +47,16 @@ function HealthPane() {
   const dot = (ok: boolean | null): React.ReactNode => (
     <span className={`set-dot${ok === true ? " ok" : ok === false ? " bad" : ""}`} />
   );
+  // Same row pattern as General: name + hint left, status control right.
   return (
-    <div className="set-list">
-      <div className="set-row">
-        <span>
-          <span className="k">Status</span>
-          {health && <p className="s mono">{health.omp ? `wrapped with omp ${health.omp}` : "omp CLI not found"}</p>}
-        </span>
-        <span className="v">
+    <div>
+      <p className="dlg-label">Connection</p>
+      <div className="dlg-row">
+        <div className="min-w-0">
+          <p className="dlg-name">Status</p>
+          <p className="dlg-hint">{health?.omp ? `wrapped with omp ${health.omp}` : "omp CLI not found"}</p>
+        </div>
+        <span className="mono text-xs flex shrink-0 items-center gap-2" style={{ color: "var(--dim)" }}>
           {dot(health ? !!health.omp : null)}
           {health ? (health.omp ? "Connected" : "Offline") : "unreachable"}
         </span>
