@@ -1,6 +1,6 @@
 // cli/interactive.ts — TTY layer: readline, Clack spinners, selects, task phases.
 import readline from 'node:readline';
-import { cancel as clackCancel, confirm as clackConfirm, select as clackSelect, spinner as clackSpinner, tasks as clackTasks } from '@clack/prompts';
+import { cancel as clackCancel, confirm as clackConfirm, multiselect as clackMultiselect, select as clackSelect, spinner as clackSpinner, tasks as clackTasks } from '@clack/prompts';
 import type { SpinnerResult } from '@clack/prompts';
 import { execP } from './common.ts';
 import type { ExecOptions } from './common.ts';
@@ -20,6 +20,8 @@ function tty(): boolean {
 }
 
 type InteractiveChoice = { status: 'selected'; value: string } | { status: 'cancelled' | 'unavailable' };
+
+type InteractiveMultiChoice = { status: 'selected'; value: string[] } | { status: 'cancelled' | 'unavailable' };
 
 type InteractiveConfirm = { status: 'confirmed'; value: boolean } | { status: 'cancelled' | 'unavailable' };
 
@@ -63,6 +65,19 @@ async function askInteractiveConfirm(message: string, initialValue = true): Prom
   }
   return { status: 'confirmed', value: answer };
 }
+
+// Space-toggled multi-select. Same TTY guard as askInteractiveChoice, so
+// non-interactive callers get `unavailable` and fall back to detection.
+async function askInteractiveMultiChoice(message: string, options: Array<{ value: string; label: string; hint?: string }>, initialValues: string[]): Promise<InteractiveMultiChoice> {
+  if (!tty()) return { status: 'unavailable' };
+  closeRL();
+  const choice = await clackMultiselect({ message, options, initialValues, required: false });
+  if (typeof choice === 'symbol') {
+    clackCancel('Aborted.');
+    return { status: 'cancelled' };
+  }
+  return { status: 'selected', value: choice };
+}
 // Run collecting work under one TTY-only Clack task. Callers print after the
 // task completes, keeping normal output out of the spinner animation.
 async function runInteractivePhase<T>(title: string, collect: () => Promise<T>): Promise<T> {
@@ -78,5 +93,5 @@ async function execNetwork(label: string, cmd: string, args: string[], opts: Exe
 
 export {
   ask, closeRL, tty, withInteractiveSpinner, execNetwork,
-  askInteractiveChoice, askInteractiveConfirm, runInteractivePhase, InteractiveChoice, InteractiveConfirm,
+  askInteractiveChoice, askInteractiveConfirm, askInteractiveMultiChoice, runInteractivePhase, InteractiveChoice, InteractiveConfirm, InteractiveMultiChoice,
 };

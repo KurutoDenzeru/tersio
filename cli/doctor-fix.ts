@@ -12,6 +12,7 @@ import {
 } from './common.ts';
 import { execNetwork } from './interactive.ts';
 import { wireRtkOmp, ensureRtkInConfig } from './rtk-wiring.ts';
+import { installOpenCodeRtk } from './opencode-wiring.ts';
 import {
   CAVEMAN_REMOTE_RULE, RTK_RELEASE_API, RtkRelease, fetchJson, findFile, httpsGet,
   httpsDownload, parseChecksum, readTextIfExists, rtkPlatformSpec, sha256File,
@@ -22,6 +23,7 @@ type FixTarget = 'extensions' | 'registrations' | 'rtk' | 'ponytail' | 'cli';
 type FixRequest = FixTarget | 'all';
 
 const EXT_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'extensions');
+const OPENCODE_RTK_PLUGIN = path.join(EXT_DIR, 'opencode', 'rtk-plugin.ts');
 const SOURCES: Array<[string, string]> = [
   [path.join(EXT_DIR, 'shared', 'session-state.ts'), path.join('shared', 'session-state.ts')],
   [path.join(EXT_DIR, 'shared', 'types.ts'), path.join('shared', 'types.ts')],
@@ -99,9 +101,13 @@ async function fixRtk(binDir: string): Promise<void> {
   console.log('  Doctor --fix: repairing RTK binary + wiring');
   const binDest = path.join(binDir, RTK_BINARY_NAME);
   if (dryRun) {
-    console.log(`  [dry-run] would download a checksum-verified rtk to ${binDest} and wire it into OMP`);
+    console.log(`  [dry-run] would download a checksum-verified rtk to ${binDest}, wire it into OMP, and refresh the OpenCode 2 plugin + AGENTS.md guidance`);
     return;
   }
+  // The OpenCode plugin is a plain file write with no network dependency, so
+  // repair it first. Running it after the download meant a network failure —
+  // the common case offline — left the OpenCode rows unrepaired.
+  await repairOpenCodeRtk();
   const spec = rtkPlatformSpec();
   if (!spec) throw new Error(`unsupported platform ${process.platform}/${process.arch}`);
   const release = await fetchJson<RtkRelease>(RTK_RELEASE_API);
@@ -135,6 +141,23 @@ async function fixRtk(binDir: string): Promise<void> {
     await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => { });
   }
   if (!(await wireRtkOmp(binDest, { dryRun, verbose }))) throw new Error('rtk wiring failed');
+}
+
+// Same RTK contract, second host: the OMP hook above cannot reach an OpenCode
+// 2 server, so the V2 plugin and its guidance block need repairing too. Doctor
+// prints "run: tersio install" for a missing plugin, so `--fix` has to honor
+// that or the warning is unactionable through the path doctor points at.
+export async function repairOpenCodeRtk(): Promise<boolean> {
+  const pluginSource = await readTextIfExists(OPENCODE_RTK_PLUGIN);
+  if (!pluginSource) {
+    debug('opencode rtk plugin source missing — skipped OpenCode repair');
+    return false;
+  }
+  const result = await installOpenCodeRtk(pluginSource, { dryRun, verbose });
+  const changed = [result.plugin && 'plugin', result.guidance && 'guidance']
+    .filter(Boolean).join(' + ');
+  console.log(`  OpenCode: ${changed || 'already up to date'}`);
+  return result.plugin || result.guidance;
 }
 
 async function fixPonytail(pluginsDir: string): Promise<void> {

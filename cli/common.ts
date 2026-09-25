@@ -5,6 +5,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { createRequire } from 'node:module';
 import { readTextIfExists } from '../extensions/lib/utils.ts';
+import { HOSTS } from './agent-hosts.ts';
 import { parseCurrencyFlag, readStoredCurrency } from './currency.ts';
 import type { CurrencyCode } from './currency.ts';
 
@@ -126,6 +127,27 @@ const cavemanDefaultFlag = parseEnum(flagValue('--caveman-default'), CAVEMAN_DEF
 const ponytailDefaultFlag = parseEnum(flagValue('--ponytail-default'), PONYTAIL_DEFAULTS, '--ponytail-default');
 const rtkDefaultFlag = parseEnum(flagValue('--rtk-default'), RTK_DEFAULTS, '--rtk-default');
 const diagScheduleFlag = parseEnum(flagValue('--diag-schedule'), DIAG_SCHEDULES, '--diag-schedule');
+// Valid host ids come from the registry, so adding a host there is enough to
+// make `--agent <id>` accept it. No second list to keep in sync.
+const AGENT_IDS = new Set(HOSTS.map((h) => h.id));
+// --agent accepts a list (`--agent omp,opencode`) or repeats of a single value.
+// An empty result is meaningful: it means "no hosts", distinct from unset.
+const agentFlag: string[] | undefined = (() => {
+  const collected = args.flatMap((a) => {
+    if (a === '--agent') return [flagValue('--agent') ?? ''];
+    if (a.startsWith('--agent=')) return [a.slice('--agent='.length)];
+    return [];
+  });
+  if (collected.length === 0) return undefined;
+  const names = collected.flatMap((v) => v.split(',')).map((v) => v.trim().toLowerCase()).filter(Boolean);
+  for (const n of names) {
+    if (!AGENT_IDS.has(n)) {
+      console.error(`[fail] Invalid --agent: ${n}. Valid: ${[...AGENT_IDS].join(', ')}`);
+      process.exit(1);
+    }
+  }
+  return [...new Set(names)];
+})();
 
 const profileFlagsGiven = [comboDefaultFlag, cavemanDefaultFlag, rtkDefaultFlag, ponytailDefaultFlag]
   .some((flag) => flag !== undefined);
@@ -370,6 +392,7 @@ export {
   dashboardPort, dashboardOpen, dashboardExport, currency, currencyGiven,
   removePonytail, keepPonytail, removeRtk,
   comboDefaultFlag, cavemanDefaultFlag, ponytailDefaultFlag, rtkDefaultFlag, diagScheduleFlag, profileFlagsGiven,
+  agentFlag, AGENT_IDS,
   debug, execFileP, execP, writeIfChanged, normalizeExtensionsKey, EXTENSIONS_KEY_RE,
   writeConfigLines, ensureExtensionInConfig, removeExtensionFromConfig,
   readPonytailConfig, parseJsonObject, parsePonytailConfig, patchPonytailConfig,

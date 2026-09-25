@@ -109,7 +109,7 @@ Upstream Ponytail's fair agentic benchmark reports 54% less code, 22% fewer toke
 
 | Command | Purpose |
 |---|---|
-| `tersio install` | Install (user scope: all OMP sessions) |
+| `tersio install` | Install, asking which coding agents to install for (`--agent omp,opencode` skips the prompt) |
 | `tersio update` | Refresh the CLI, extensions, and add-ons (RTK binary, Caveman rule, Ponytail) |
 | `tersio reinstall` | Fresh install, preserving the Ponytail package |
 | `tersio doctor` | Check OMP, extension, Ponytail, and RTK health (`--fix` repairs, `--fix=<scope>` one scope, `--dry-run` previews) |
@@ -120,6 +120,32 @@ Upstream Ponytail's fair agentic benchmark reports 54% less code, 22% fewer toke
 | `tersio version` | Print version |
 
 Flags: `--dry-run`, `--yes`/`-y`, `--verbose`, `--combo-default`/`--caveman-default`/`--rtk-default`/`--ponytail-default`, `--currency <code>` (usage/dashboard display currency; flag wins, then the `tersio settings` default, then USD). Legacy `--doctor` / `--uninstall` forms still work.
+
+### Coding agents
+
+`tersio install` asks which hosts to install for. All eleven agents in [#17](https://github.com/KurutoDenzeru/tersio/issues/17) are supported.
+
+| Host | `--agent` id | Rules file | Skills | RTK auto-rewrite |
+|---|---|---|---|---|
+| Oh My Pi | `omp` | — (live extension) | ✅ | ✅ (rtk-owned hook) |
+| OpenCode 2 | `opencode` | `AGENTS.md` | ✅ | ✅ (V2 plugin) |
+| Claude Code | `claude-code` | `CLAUDE.md` | ✅ | ✅ |
+| OpenAI Codex | `codex` | `AGENTS.md` | ✅ | ✅ |
+| Gemini CLI | `gemini-cli` | `GEMINI.md` | ✅ | ✅ |
+| GitHub Copilot CLI | `copilot-cli` | `copilot-instructions.md` | ✅ | ✅ |
+| Cursor | `cursor` | `rules/tersio.mdc` | ✅ | ✅ |
+| Grok Build | `grok-build` | `rules/tersio.md` | ✅ | ✅ |
+| Pi | `pi` | `AGENTS.md` | ✅ | ✅ |
+| OpenClaw | `openclaw` | `AGENTS.md` | ✅ | — guidance only |
+| Hermes | `hermes` | — (none global) | ✅ | ✅ |
+
+Two hosts deviate on purpose. **Hermes** has no user-global instruction file at all (`SOUL.md` is its only global context file; `AGENTS.md` is project-scope), so its modes arrive as skills. **OpenClaw** can rewrite tool arguments only from a native TypeScript plugin, so it ships RTK guidance rather than a static hook.
+
+Each host is written independently: one host failing never stops the others or the OMP install. Every path, format, and hook wire protocol comes from that host's own documentation, recorded in `cli/agent-hosts.ts` next to the entry it justifies.
+
+The choice is stored in `~/.tersio/agents.json` and reused on every later install, reinstall, and update. Change it with `tersio settings agents`, or non-interactively with `tersio settings --agent claude-code`. Non-interactive runs (`--yes`, CI, pipes) auto-detect instead of prompting: every host whose config directory already exists is included, so a host you never installed never gets a directory created for it. Doctor only checks the hosts you selected.
+
+Host config directories honor each tool's own relocation variable (`CODEX_HOME`, `COPILOT_HOME`, `CURSOR_CONFIG_DIR`, `GROK_HOME`, `PI_CODING_AGENT_DIR`, `HERMES_HOME`).
 
 ## ⌨️ Commands reference
 
@@ -145,9 +171,12 @@ Mode switches live on their own commands; bare `/tersio` prints status.
 |---|---|
 | Caveman / RTK / Combo / Tersio commands | `~/.omp/plugins/node_modules/@krtclcdy/tersio/extensions/{caveman-session,rtk-session,combo-toggle,tersio-commands}/` — loaded from Tersio's OMP plugin manifest |
 | RTK OMP wiring (rtk-owned) | `~/.omp/agent/extensions/rtk.ts` — written by the installer via `rtk init -g --agent omp`; auto-loads, no config entry |
+| OpenCode v2 RTK plugin (tersio-owned) | `~/.config/opencode/plugins/tersio-rtk.ts` — V2-native `Plugin.define` + `ctx.tool.hook("execute.before")`; auto-discovered, no config entry |
+| OpenCode RTK guidance (tersio-owned) | `~/.config/opencode/AGENTS.md` — marked `tersio:rtk` block, fallback when the plugin is disabled |
 | Ponytail package (bundled Tersio dependency — one Plugins row, updates with `tersio update`) | `~/.omp/plugins/node_modules/@dietrichgebert/ponytail/` — loaded as a nested plugin dependency |
 | RTK binary | Installer writes `~/.bun/bin/rtk` (`rtk.exe` on Windows). Runtime resolves `PATH` first, then this managed path. |
 | Legacy config cleanup | `~/.omp/agent/config.yml` — doctor removes retired or duplicate extension entries |
+| Chosen coding agents | `~/.tersio/agents.json` — read/written by `tersio install` and `tersio settings agents` |
 
 The installer writes `<file>.bak` before replacing an extension source; the updater keeps `rtk.bak` / `rule.md.bak` and restores them if the replacement fails validation.
 
@@ -160,6 +189,8 @@ User-level installs also register the package in `~/.omp/plugins` (visible in OM
 **RTK missing or not executable:** run `tersio reinstall`, then `tersio doctor`. On Linux/macOS: `chmod +x ~/.bun/bin/rtk`.
 
 **RTK commands not metered in the Dashboard:** check `tersio doctor` — the `RTK OMP wiring (rtk.ts)` row must be ok. Missing: run `rtk init -g --agent omp` (needs rtk ≥ 0.49) and restart OMP. Native tool calls (`read`/`edit`/`eval`) stay unmetered — only bash tool calls pass through rtk.
+
+**OpenCode commands not rewritten:** OpenCode 2 is a separate host from OMP and needs its own plugin, because `rtk init -g --opencode` still emits a V1 file that OpenCode 2 refuses to load ([rtk#3463](https://github.com/rtk-ai/rtk/issues/3463), [rtk#3898](https://github.com/rtk-ai/rtk/issues/3898)). `tersio install` writes the V2 plugin instead. Only the `shell` tool is rewritten; a compound command such as `echo x && git status` has no single RTK equivalent and passes through unchanged. Set `TERSIO_RTK=off` to disable the hook. Native tool calls (`read`/`edit`/`glob`/`grep`) stay unmetered on every host.
 
 **Checksum warning or failure:** the installer aborts on RTK checksum mismatch but warns and continues when checksum metadata is unavailable; `/tersio update rtk` aborts when metadata is missing.
 

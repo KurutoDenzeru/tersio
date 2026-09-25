@@ -8,6 +8,9 @@ import {
   debug, parseJsonObject, writeConfigLines, writeIfChanged,
 } from './common.ts';
 import { ask, closeRL, tty } from './interactive.ts';
+import { openCodeAgentsPath, openCodePluginPath, removeOpenCodeRtk } from './opencode-wiring.ts';
+import { byId, clearAgents, selectedHosts } from './agents.ts';
+import { removeHost } from './host-writers.ts';
 import { readTextIfExists } from '../extensions/lib/utils.ts';
 
 interface UninstallOptions {
@@ -110,6 +113,11 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
     console.log(`  ${path.join(extDir, 'rtk.ts')} (rtk OMP wiring)`);
   }
 
+  if (shouldRemoveRtk) {
+    console.log(`  ${openCodePluginPath()} (opencode v2 rtk plugin)`);
+    console.log(`  ${openCodeAgentsPath()} (rtk guidance block)`);
+  }
+
   if (!confirmed) {
     if (tty()) {
       closeRL();
@@ -196,6 +204,25 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
   if (shouldRemoveRtk) {
     await removeUninstallTarget(rtkBin, shouldDryRun, false);
     await removeUninstallTarget(path.join(extDir, 'rtk.ts'), shouldDryRun);
+  }
+
+  // OpenCode's V2 plugin is ours, not rtk's, so it goes with --remove-rtk for
+  // the same reason ~/.omp/agent/extensions/rtk.ts does: with the binary gone
+  // the hook would pass through harmlessly, but the file is ours to clean up.
+  if (shouldRemoveRtk) {
+    await removeOpenCodeRtk({ dryRun: shouldDryRun, quiet: true });
+  }
+
+  // Hosts outside OMP/OpenCode: strip our rules block, drop our skills, and
+  // prune our hook from the host's config. Gated on --remove-rtk because the
+  // rewriter is only meaningful while the rtk binary is installed.
+  if (shouldRemoveRtk) {
+    for (const id of selectedHosts()) {
+      const host = byId(id);
+      if (!host || id === 'omp' || id === 'opencode') continue;
+      await removeHost(host, { dryRun: shouldDryRun, quiet: true });
+    }
+    await clearAgents();
   }
 
   console.log('\nDone. Restart OMP for changes to take effect.');

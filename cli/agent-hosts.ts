@@ -1,0 +1,323 @@
+// cli/agent-hosts.ts — the host registry for every coding agent Tersio targets.
+//
+// One entry per host, each carrying only what differs between hosts: where its
+// instruction file lives, how it detects itself, and which of the three
+// capabilities it has (rules, skills, shell-rewrite hook). Everything shared
+// lives in cli/rules-pack.ts.
+//
+// Paths, formats, and wire protocols here come from each host's own docs; the
+// `source` field on every entry records which page was used, because a host
+// that changes format is the main way this file rots.
+//
+// The capability flags are load-bearing, not decorative:
+//   - `rules`   the host loads a user-global instruction file, so the portable
+//               mode text has somewhere to go.
+//   - `skills`  the host reads skills/<name>/SKILL.md, so modes can also be
+//               invoked as slash commands rather than always-on guidance.
+//   - `rewrite` the host has a documented pre-execution hook that can replace
+//               the shell command string. Without it RTK ships as guidance
+//               only, and the README must not claim automatic filtering.
+
+export interface HostRewrite {
+  /** Absolute path of the hook config file, relative to $HOME where possible. */
+  configFile: string;
+  /** Format the config file must have. */
+  configFormat: 'claude-json' | 'gemini-json' | 'copilot-json' | 'cursor-json' | 'grok-json' | 'hermes-yaml';
+  /** Event name as the host spells it. */
+  event: string;
+  /** Regex or literal matcher for the shell tool. */
+  matcher: string;
+  /**
+   * Where the shell command string lives in the hook's stdin payload. More than
+   * one path when a host accepts both spellings — Grok documents camelCase
+   * `toolInput` and also forwards Claude's snake_case `tool_input`.
+   */
+  inputPath: string | string[];
+  /** How the rewritten command is returned. */
+  protocol: 'hookSpecificOutput-updatedInput'
+  | 'hookSpecificOutput-toolInput'
+  | 'modifiedArgs'
+  | 'updatedInput'
+  | 'hermes-modify';
+  /** True when a non-zero exit or malformed output BLOCKS the tool call. */
+  failClosed: boolean;
+}
+
+export interface AgentHost {
+  id: string;
+  label: string;
+  /** User-global config dir, `$HOME`-relative or absolute. */
+  configDir: string;
+  /** Env var that relocates configDir, when the host supports one. */
+  configDirEnv?: string;
+  /** Binary to probe on PATH; empty string when the host has no CLI. */
+  binary: string;
+  rules: boolean;
+  skills: boolean;
+  rewrite: boolean;
+  /** User-global instruction file, `$HOME`-relative. Null when there is none. */
+  rulesFile: string | null;
+  /** User-global skills dir, `$HOME`-relative. Null when unsupported. */
+  skillsDir: string | null;
+  rewriteConfig?: HostRewrite;
+  /** Docs URL that justifies the paths above. */
+  source: string;
+  /** Caveats an emitter must respect, shown by `tersio doctor`. */
+  caveats?: string;
+}
+
+const HOME_REL = (p: string): string => p;
+
+/**
+ * Ordered by the matrix in issue #17. `omp` and `opencode` are handled by their
+ * own wiring modules — they ship real mode extensions, not rules packs — so they
+ * are listed here for selection and detection but carry no emitter fields.
+ */
+const HOSTS: AgentHost[] = [
+  {
+    id: 'omp',
+    label: 'Oh My Pi (OMP)',
+    configDir: '.omp',
+    binary: 'omp',
+    // OMP ships real mode extensions through its own plugin manifest, so the
+    // generic rules/skills/hook emitters deliberately do not touch it — they
+    // would duplicate the live extension with a static file. Its capabilities
+    // are still recorded truthfully for the doctor matrix and the README.
+    rules: true,
+    skills: true,
+    rewrite: true,
+    rulesFile: null,
+    skillsDir: null,
+    source: 'https://omp.sh/docs/context-files',
+  },
+  {
+    id: 'opencode',
+    label: 'OpenCode 2',
+    configDir: '.config/opencode',
+    binary: 'opencode',
+    // Same as omp: OpenCode gets a real V2 plugin from cli/opencode-wiring.ts,
+    // not a static rules pack.
+    rules: true,
+    skills: true,
+    rewrite: true,
+    rulesFile: null,
+    skillsDir: null,
+    source: 'https://opencode.ai/docs/rules',
+  },
+  {
+    id: 'claude-code',
+    label: 'Claude Code',
+    configDir: '.claude',
+    binary: 'claude',
+    rules: true,
+    skills: true,
+    rewrite: true,
+    rulesFile: '.claude/CLAUDE.md',
+    skillsDir: '.claude/skills',
+    caveats: 'Skill folder named `synced` is reserved and skipped. Never overwrite CLAUDE.md or settings.json — merge instead.',
+    rewriteConfig: {
+      configFile: '.claude/settings.json',
+      configFormat: 'claude-json',
+      event: 'PreToolUse',
+      matcher: 'Bash',
+      inputPath: 'tool_input.command',
+      protocol: 'hookSpecificOutput-updatedInput',
+      failClosed: false,
+    },
+    source: 'https://docs.claude.com/en/docs/claude-code/hooks',
+  },
+  {
+    id: 'codex',
+    label: 'OpenAI Codex',
+    configDir: '.codex',
+    configDirEnv: 'CODEX_HOME',
+    binary: 'codex',
+    rules: true,
+    skills: true,
+    rewrite: true,
+    rulesFile: '.codex/AGENTS.md',
+    skillsDir: '.agents/skills',
+    caveats: 'A stale AGENTS.override.md silently suppresses AGENTS.md. Combined instruction chain is capped at 32 KiB (project_doc_max_bytes).',
+    rewriteConfig: {
+      configFile: '.codex/hooks.json',
+      configFormat: 'claude-json',
+      event: 'PreToolUse',
+      matcher: '^Bash$',
+      inputPath: 'tool_input.command',
+      protocol: 'hookSpecificOutput-updatedInput',
+      failClosed: false,
+    },
+    source: 'https://learn.chatgpt.com/docs/hooks',
+  },
+  {
+    id: 'gemini-cli',
+    label: 'Gemini CLI',
+    configDir: '.gemini',
+    binary: 'gemini',
+    rules: true,
+    skills: true,
+    rewrite: true,
+    rulesFile: '.gemini/GEMINI.md',
+    skillsDir: '.gemini/skills',
+    caveats: 'Global GEMINI.md is concatenated with workspace files, never replaced. Hooks fail open on a non-zero exit, so a broken rewriter silently degrades to no rewriting.',
+    rewriteConfig: {
+      configFile: '.gemini/settings.json',
+      configFormat: 'gemini-json',
+      event: 'BeforeTool',
+      matcher: 'run_shell_command',
+      inputPath: 'tool_input.command',
+      protocol: 'hookSpecificOutput-toolInput',
+      failClosed: false,
+    },
+    source: 'https://github.com/google-gemini/gemini-cli/blob/main/docs/hooks/reference.md',
+  },
+  {
+    id: 'copilot-cli',
+    label: 'GitHub Copilot CLI',
+    configDir: '.copilot',
+    configDirEnv: 'COPILOT_HOME',
+    binary: 'copilot',
+    rules: true,
+    skills: true,
+    rewrite: true,
+    rulesFile: '.copilot/copilot-instructions.md',
+    skillsDir: '.copilot/skills',
+    caveats: 'Instruction files combine rather than override, and need a session restart. preToolUse is fail-CLOSED on error but fail-open on timeout.',
+    rewriteConfig: {
+      configFile: '.copilot/hooks/tersio-rtk.json',
+      configFormat: 'copilot-json',
+      event: 'preToolUse',
+      matcher: '^(bash|command|powershell)$',
+      inputPath: 'toolArgs.command',
+      protocol: 'modifiedArgs',
+      failClosed: true,
+    },
+    source: 'https://docs.github.com/en/copilot/reference/hooks-reference',
+  },
+  {
+    id: 'cursor',
+    label: 'Cursor',
+    configDir: '.cursor',
+    configDirEnv: 'CURSOR_CONFIG_DIR',
+    binary: 'agent',
+    rules: true,
+    skills: true,
+    rewrite: true,
+    // User rules need .mdc frontmatter; a plain .md is ignored by the engine.
+    rulesFile: '.cursor/rules/tersio.mdc',
+    skillsDir: '.cursor/skills',
+    caveats: 'Rules need .mdc frontmatter or they are silently ignored. Use preToolUse with matcher "Shell" — beforeShellExecution rejects updated_input and BLOCKS the call.',
+    rewriteConfig: {
+      configFile: '.cursor/hooks.json',
+      configFormat: 'cursor-json',
+      event: 'preToolUse',
+      matcher: 'Shell',
+      inputPath: 'tool_input.command',
+      protocol: 'updatedInput',
+      failClosed: true,
+    },
+    source: 'https://cursor.com/docs/agent/hooks',
+  },
+  {
+    id: 'grok-build',
+    label: 'Grok Build',
+    configDir: '.grok',
+    configDirEnv: 'GROK_HOME',
+    binary: 'grok',
+    rules: true,
+    skills: true,
+    rewrite: true,
+    rulesFile: '.grok/rules/tersio.md',
+    skillsDir: '.grok/skills',
+    caveats: 'Global hooks live in ~/.grok/hooks/*.json and are always trusted; project hooks need --trust. A non-zero exit drops the rewrite, so always exit 0.',
+    rewriteConfig: {
+      configFile: '.grok/hooks/tersio-rtk.json',
+      configFormat: 'claude-json',
+      event: 'PreToolUse',
+      matcher: 'Bash',
+      // Grok's own payload is camelCase; it also forwards Claude-style
+      // snake_case unchanged, so accept either rather than guess.
+      inputPath: ['toolInput.command', 'tool_input.command'],
+      protocol: 'hookSpecificOutput-updatedInput',
+      failClosed: false,
+    },
+    source: 'https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager/docs/user-guide/10-hooks.md',
+  },
+  {
+    id: 'pi',
+    label: 'Pi',
+    configDir: '.pi/agent',
+    configDirEnv: 'PI_CODING_AGENT_DIR',
+    binary: 'pi',
+    rules: true,
+    skills: true,
+    rewrite: true,
+    rulesFile: '.pi/agent/AGENTS.md',
+    skillsDir: '.pi/agent/skills',
+    caveats: 'AGENTS.override.md replaces rather than merges. Never write SYSTEM.md — it replaces the default system prompt outright.',
+    rewriteConfig: {
+      configFile: '.pi/agent/extensions/tersio-rtk.ts',
+      configFormat: 'claude-json',
+      event: 'tool_call',
+      matcher: 'bash',
+      inputPath: 'input.command',
+      protocol: 'hookSpecificOutput-updatedInput',
+      failClosed: false,
+    },
+    source: 'https://pi.dev/docs/latest/extensions',
+  },
+  {
+    id: 'openclaw',
+    label: 'OpenClaw',
+    configDir: '.openclaw',
+    configDirEnv: 'OPENCLAW_STATE_DIR',
+    binary: 'openclaw',
+    rules: true,
+    skills: true,
+    rewrite: false,
+    rulesFile: '.openclaw/workspace/AGENTS.md',
+    skillsDir: '.agents/skills',
+    caveats: 'Shell rewrite needs a native TypeScript plugin registering before_tool_call; a static hook file cannot rewrite tool args. Guidance only until then.',
+    source: 'https://docs.openclaw.ai/plugins/hooks',
+  },
+
+  {
+    id: 'hermes',
+    label: 'Hermes',
+    configDir: '.hermes',
+    configDirEnv: 'HERMES_HOME',
+    binary: 'hermes',
+    // Hermes has no user-global instruction file at all: SOUL.md is its only
+    // global context file, and AGENTS.md is project-scope only. So the portable
+    // mode text reaches Hermes through skills, not a rules pack.
+    rules: false,
+    skills: true,
+    rewrite: true,
+    rulesFile: null,
+    skillsDir: '.hermes/skills',
+    caveats: 'No user-global AGENTS.md: SOUL.md is the only global context file. A project context file is scanned for prompt-injection patterns and dropped whole on a hit, so the block must avoid phrases like "ignore previous instructions" or hidden HTML comments.',
+    rewriteConfig: {
+      configFile: '.hermes/config.yaml',
+      configFormat: 'hermes-yaml',
+      event: 'pre_tool_call',
+      matcher: '*',
+      inputPath: 'args.command',
+      protocol: 'hermes-modify',
+      failClosed: true,
+    },
+    source: 'https://hermes-agent.nousresearch.com/docs/user-guide/features/hooks',
+  },
+];
+
+/**
+ * Hosts whose real install is a live extension or plugin owned by a dedicated
+ * wiring module, not the generic rules/skills/hook emitters. Every caller
+ * skips them the same way, so the rule lives here once.
+ */
+const OWN_PATH_HOSTS = ['omp', 'opencode'];
+
+function byId(id: string): AgentHost | undefined {
+  return HOSTS.find((h) => h.id === id);
+}
+
+export { HOSTS, byId, HOME_REL, OWN_PATH_HOSTS };

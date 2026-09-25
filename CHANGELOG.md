@@ -1,3 +1,11 @@
+## Unreleased
+ - Adds OpenCode 2 support: `tersio install` writes a V2-native RTK rewrite plugin to `~/.config/opencode/plugins/tersio-rtk.ts` plus a marked `tersio:rtk` guidance block in `~/.config/opencode/AGENTS.md`. Verified against opencode v2.0.16 — `ls -la cli` rewrote to `rtk ls -la cli` and metered 568 → 188 tokens.
+ - OpenCode needs a Tersio-owned plugin because `rtk init --opencode` still emits a V1 file that OpenCode 2 rejects (rtk#3463, rtk#3898). The plugin is self-contained (no `@opencode/plugin` import), fails open, skips already-routed commands, and honors `TERSIO_RTK=off`.
+ - Doctor reports the OpenCode plugin and guidance as warnings when absent, since OpenCode is an optional second host. `tersio uninstall --remove-rtk` removes the plugin and strips only the marked block from `AGENTS.md`.
+ - `doctor --fix rtk` now repairs the OpenCode 2 plugin and its AGENTS.md guidance, and runs that write before the rtk download so a network failure no longer leaves the OpenCode rows unrepaired. Regression test drives the real CLI with no `PATH`, proving the repair survives a failed download.
+ - Install now asks which coding agents to install for, via a Clack multiselect (`omp`, `opencode`). The choice persists in `~/.tersio/agents.json`, is settable non-interactively with `--agent omp,opencode`, and is editable later with `tersio settings agents`. Hosts are resolved before the Combo preset question, so an OpenCode-only run never asks about OMP-only modes. Non-interactive runs auto-detect, keeping `install --yes` and CI unchanged.
+ - Adds the nine remaining coding agents from #17: Claude Code, OpenAI Codex, Gemini CLI, GitHub Copilot CLI, Cursor, Grok Build, Pi, OpenClaw, and Hermes. Each gets a marked rules block, per-mode Agent Skills, and — where the host documents a pre-execution hook — an RTK shell-rewrite hook generated for that host's exact wire protocol (five distinct ones). `tersio install` now offers all eleven hosts in the agent multiselect and `--agent` accepts any of them.
+
 ## v2.23.0
  - Improves RTK, Caveman, and Ponytail fidelity across OMP plugin loading, session state, fallback paths, and packaged extension ownership.
  - Adds weighted RTK savings reporting, OMP-specific adoption and recall diagnostics, path-aware RTK lookup, and fail-open behavior.

@@ -10,6 +10,11 @@ import { askInteractiveChoice, askInteractiveConfirm, runInteractivePhase } from
 import { usageDbPath } from '../extensions/shared/usage-store.ts';
 import { pricesCachePath } from '../extensions/shared/pricing.ts';
 import { readTextIfExists, resolveRtkBinary } from '../extensions/lib/utils.ts';
+import { openCodeAgentsPath, openCodePluginPath } from './opencode-wiring.ts';
+import { byId, detectedAgents, hostPath, selectedHosts, storedAgents } from './agents.ts';
+import { OWN_PATH_HOSTS } from './agent-hosts.ts';
+import { HOOK_SCRIPT_NAME } from './host-writers.ts';
+import { START as TERSIO_START } from './rules-pack.ts';
 
 interface DoctorSummary {
   ok: number;
@@ -55,6 +60,8 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
     ruleMtime: fs.stat(cavemanRule).catch(() => null),
     ponytailMtime: fs.stat(ponytailPkg).catch(() => null),
     pricesMtime: fs.stat(pricesCachePath()).catch(() => null),
+    openCodePluginText: readTextIfExists(openCodePluginPath()),
+    openCodeAgentsText: readTextIfExists(openCodeAgentsPath()),
   };
   const rtkVersionProbe: Promise<string | null> = rtkBin ? execP(rtkBin, ['--version'], { timeout: 5000 }).then(
     (r) => r.stdout.trim() || r.stderr.trim() || null,
@@ -88,6 +95,10 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
       probes.pricesMtime,
     ]),
   ]));
+  const [openCodePluginText, openCodeAgentsText] = await Promise.all([
+    probes.openCodePluginText,
+    probes.openCodeAgentsText,
+  ]);
 
   // Categorized output with a tally; success rows stay quiet (no path echoes)
   // while failures print the expected path or fix so they stay actionable.
@@ -141,6 +152,56 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   const rtkAge = rtkMtime ? `(updated ${relTime(Date.now() - rtkMtime.mtimeMs)} · ${absDate(rtkMtime.mtimeMs)})` : '';
   check('RTK binary', rtkBin !== null, rtkBinText === null ? 'not found in PATH' : [rtkVersion, rtkAge].filter(Boolean).join(' '));
   if (rtkBinText !== null && !rtkVersion) warnLine('RTK version', 'unavailable — binary may not be executable');
+  // OpenCode rows only apply when the user selected that host. Without a
+  // stored choice, fall back to detection so a fresh machine warns only
+  // about a host it actually has. Selecting `omp` alone must not leave a
+  // permanent warning about something the user deliberately declined.
+  const chosenAgents = storedAgents();
+  const openCodeSelected = chosenAgents === null
+    ? detectedAgents().includes('opencode')
+    : chosenAgents.includes('opencode');
+  if (openCodeSelected) {
+    if (openCodePluginText === null) {
+      warnLine('OpenCode v2 RTK plugin', 'not installed — run: tersio install');
+    } else {
+      check('OpenCode v2 RTK plugin', openCodePluginText.includes('tersio-rtk'), openCodePluginPath());
+    }
+    if (openCodeAgentsText === null) {
+      warnLine('OpenCode rtk guidance', `no ${openCodeAgentsPath()}`);
+    } else if (openCodeAgentsText.includes('tersio:rtk:start')) {
+      check('OpenCode rtk guidance', true, openCodeAgentsPath());
+    } else {
+      warnLine('OpenCode rtk guidance', 'marked block missing — run: tersio install');
+    }
+  }
+
+  // Every other host gets a compact row: did we write its rules block, and —
+  // where the host documents one — its rewrite hook. Only selected hosts are
+  // reported, so opting out leaves no permanent warning behind.
+  for (const id of selectedHosts()) {
+    const host = byId(id);
+    // omp and opencode have their own wiring modules and their own doctor rows.
+    if (!host || OWN_PATH_HOSTS.includes(id)) continue;
+    // A host with no user-global instruction file (Hermes) is reached through
+    // skills, so report that instead of a rules row that could never pass.
+    if (host.rulesFile !== null) {
+      const rulesFile = hostPath(host, host.rulesFile);
+      const text = await readTextIfExists(rulesFile);
+      if (text !== null && text.includes(TERSIO_START)) check(`${host.label} rules`, true, rulesFile);
+      else warnLine(`${host.label} rules`, 'not installed — run: tersio install');
+    } else if (host.skillsDir) {
+      const skill = hostPath(host, `${host.skillsDir}/tersio-rtk/SKILL.md`);
+      const ok = await readTextIfExists(skill) !== null;
+      check(`${host.label} skills`, ok, ok ? skill : 'not installed — run: tersio install');
+    }
+
+    const cfg = host.rewriteConfig;
+    if (!cfg) continue;
+    const hookFile = hostPath(host, cfg.configFile);
+    const hookText = await readTextIfExists(hookFile);
+    if (hookText !== null && hookText.includes(HOOK_SCRIPT_NAME)) check(`${host.label} rtk hook`, true, hookFile);
+    else warnLine(`${host.label} rtk hook`, 'not installed — run: tersio install');
+  }
   const rtkRegistered = rtkOmpText !== null && (configText ?? '').includes('extensions/rtk.ts');
   check('RTK OMP wiring (rtk.ts)', rtkOmpText !== null, rtkOmpText === null ? 'run: rtk init -g --agent omp' : '');
   if (rtkOmpText !== null && !rtkRegistered) warnLine('RTK in config.yml', 'rtk.ts not listed — OMP will not load it; rerun install');

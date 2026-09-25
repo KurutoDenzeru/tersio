@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  agentFlag,
   BUN_BIN_DIR, COMBO_PRESET_MODES, IS_WINDOWS, OMP_AGENT_DIR, OMP_PLUGINS_DIR, OMP_BIN,
   PACKAGE_NAME, PACKAGE_VERSION, RTK_BINARY_NAME,
   applyUpdate, cavemanDefaultFlag, comboDefaultFlag, command, dryRun, install,
@@ -14,9 +15,6 @@ import {
   writeIfChanged,
   InstallOptions, WriteOptions,
 } from './common.ts';
-import {
-  askInteractiveChoice, askInteractiveConfirm, closeRL, execNetwork, tty, withInteractiveSpinner,
-} from './interactive.ts';
 import { printWelcome } from './banner.ts';
 import { checkForUpdate, runLatestUpdate } from './update.ts';
 import { runUninstall } from './uninstall.ts';
@@ -25,11 +23,16 @@ import { runReset } from './reset.ts';
 import { runUsage } from './usage.ts';
 import { runDashboard } from './dashboard.ts';
 import { wireRtkOmp } from './rtk-wiring.ts';
+import { installOpenCodeRtk, openCodeAgentsPath, openCodePluginPath } from './opencode-wiring.ts';
+import { agentChoices, byId as hostById, detectedAgents, labelFor as hostLabel, storedAgents, writeAgents } from './agents.ts';
+import { installHost } from './host-writers.ts';
+import type { AgentId } from './agents.ts';
+import { defaultProfile, storedProfile, writePluginSettings } from './profile.ts';
+import { askInteractiveMultiChoice, askInteractiveChoice, askInteractiveConfirm, closeRL, execNetwork, tty, withInteractiveSpinner } from './interactive.ts';
 import {
   CAVEMAN_REMOTE_RULE, RTK_RELEASE_API, RtkRelease, RtkReleaseAsset, fetchJson, findFile, httpsGet,
   httpsDownload, parseChecksum, readTextIfExists, rtkPlatformSpec, sha256File,
 } from '../extensions/lib/utils.ts';
-import { storedProfile, writePluginSettings } from './profile.ts';
 import type { Profile } from './profile.ts';
 
 // Paths to extension source files (relative to this script)
@@ -43,6 +46,7 @@ const COMBO_TOGGLE_INDEX = path.join(EXT_DIR, 'combo-toggle', 'index.ts');
 const TERSIO_COMMANDS_INDEX = path.join(EXT_DIR, 'tersio-commands', 'index.ts');
 const SHARED_TYPES = path.join(EXT_DIR, 'shared', 'types.ts');
 const LIB_UTILS = path.join(EXT_DIR, 'lib', 'utils.ts');
+const OPENCODE_RTK_PLUGIN = path.join(EXT_DIR, 'opencode', 'rtk-plugin.ts');
 const SHARED_PLUGIN_SETTINGS = path.join(EXT_DIR, 'shared', 'plugin-settings.ts');
 const SHARED_USAGE_LEDGER = path.join(EXT_DIR, 'shared', 'usage-ledger.ts');
 const SHARED_PRICING = path.join(EXT_DIR, 'shared', 'pricing.ts');
@@ -326,6 +330,64 @@ async function stepRtk(binDir: string, options: InstallOptions): Promise<void> {
   await wireRtkOmp(binDest, options);
 }
 
+// OpenCode 2 is a separate host with no OMP relationship: its RTK hook is a
+// V2 plugin we own, because `rtk init --opencode` still emits a V1 file that
+// V2 refuses to load. Best-effort — a machine with no OpenCode config dir
+// still gets a clean install, and the write itself is idempotent.
+async function stepOpenCode(options: InstallOptions): Promise<void> {
+  const source = await readTextIfExists(OPENCODE_RTK_PLUGIN);
+  if (!source) {
+    if (!options.quiet) console.log('  [skip] opencode rtk plugin source missing');
+    return;
+  }
+  if (!options.quiet) console.log('  OpenCode — install V2 rtk plugin and AGENTS.md guidance');
+  if (options.dryRun) {
+    if (options.verbose) {
+      console.log(`  [dry-run] would write ${openCodePluginPath()}`);
+      console.log(`  [dry-run] would update the tersio:rtk block in ${openCodeAgentsPath()}`);
+    }
+    return;
+  }
+  await installOpenCodeRtk(source, options);
+}
+
+function labelFor(agent: AgentId): string {
+  return hostLabel(agent);
+}
+
+// Which hosts this run installs for.
+//
+// Precedence: --agent flag, then the stored choice, then an interactive
+// multiselect, then auto-detection. Detection is the non-interactive default
+// so `install --yes`, reinstall, and CI behave exactly as they did before this
+// prompt existed — OpenCode files land only where OpenCode is actually
+// installed, and never surprise a user who only runs OMP.
+async function resolveAgents(): Promise<AgentId[]> {
+  if (agentFlag !== undefined) {
+    const chosen = agentFlag as AgentId[];
+    if (!dryRun) await writeAgents(chosen);
+    return chosen;
+  }
+
+  const stored = storedAgents();
+  if (stored !== null) return stored;
+
+  const detected = detectedAgents();
+  if (!tty() || applyUpdate) return detected;
+
+  const choice = await askInteractiveMultiChoice('Install for which coding agents?', agentChoices(), detected);
+  if (choice.status === 'selected') {
+    const chosen = choice.value as AgentId[];
+    if (!dryRun) await writeAgents(chosen);
+    return chosen;
+  }
+  if (choice.status === 'cancelled') {
+    closeRL();
+    process.exit(130);
+  }
+  return detected;
+}
+
 // Copy repo source files into the target extension dir. First entry is
 // required (skip label on missing); rest are optional companions.
 async function copySources(extDir: string, files: Array<[string, string]>, skipLabel: string, options: WriteOptions): Promise<boolean> {
@@ -601,8 +663,19 @@ async function runInstall(overrides: { reinstall?: boolean } = {}): Promise<void
     }
   }
 
-  // Resolve session defaults: flags > interactive prompt > defaults.
-  const profile = await resolveProfile(isReinstall, { quiet });
+  // Hosts are resolved first: the Combo preset prompt below is an OMP concept,
+  // so asking an OpenCode-only user about it would be a question about a mode
+  // they are not installing.
+  const agents = await resolveAgents();
+  const wantOmp = agents.includes('omp');
+  const wantOpenCode = agents.includes('opencode');
+  if (!quiet) {
+    console.log(`  Hosts: ${agents.length > 0 ? agents.map(labelFor).join(' + ') : 'none selected'}`);
+  }
+
+  // Resolve session defaults: flags > interactive prompt > defaults. The
+  // prompt is OMP-only, since combo/caveman/ponytail have no OpenCode port.
+  const profile = wantOmp ? await resolveProfile(isReinstall, { quiet }) : defaultProfile();
 
   const userDir = OMP_AGENT_DIR;
   const userExtDir = path.join(userDir, 'extensions');
@@ -612,14 +685,18 @@ async function runInstall(overrides: { reinstall?: boolean } = {}): Promise<void
   // binary (always re-downloaded), and the Caveman rule (always re-fetched).
   const options: InstallOptions = { dryRun, verbose, yes, reinstall: isReinstall || applyUpdate, quiet };
 
-  try {
-    const v = (await execP(OMP_BIN, ['--version'])).stdout.trim();
-    if (verbose && !quiet) console.log(`  omp ${v}`);
-  } catch {
-    console.log('  [fail] omp not found — ensure it\'s installed');
+  // The rtk binary itself is host-agnostic, so it installs whenever any host
+  // is selected; only the per-host wiring is gated.
+  let cavemanRule: string | null = null;
+  if (wantOmp) {
+    try {
+      const v = (await execP(OMP_BIN, ['--version'])).stdout.trim();
+      if (verbose && !quiet) console.log(`  omp ${v}`);
+    } catch {
+      console.log('  [fail] omp not found — ensure it\'s installed');
+    }
+    cavemanRule = await fetchCavemanRule(options);
   }
-
-  const cavemanRule = await fetchCavemanRule(options);
 
   const failures: string[] = [];
   const capture = async (label: string, work: () => Promise<void>): Promise<void> => {
@@ -630,22 +707,52 @@ async function runInstall(overrides: { reinstall?: boolean } = {}): Promise<void
       console.log(`  [fail] ${label}: ${shortError(e)}`);
     }
   };
-  await capture('shared', () => stepSharedSessionState(userExtDir, options));
+
   let selfPlugin = false;
-  await capture('self-plugin', async () => { selfPlugin = await stepSelfPlugin(OMP_PLUGINS_DIR, options); });
-  await capture('ponytail', () => stepPonytail(OMP_PLUGINS_DIR, options));
-  await capture('rtk', () => stepRtk(BUN_BIN_DIR, options));
-  await capture('rtk session', () => stepRtkSession(userExtDir, options));
-  await capture('caveman', () => stepCaveman(path.join(OMP_PLUGINS_DIR, 'node_modules', '@krtclcdy', 'tersio', 'extensions'), cavemanRule, options));
-  await capture('combo', () => stepCombo(userExtDir, options));
-  await capture('commands', () => stepTersioCommands(userExtDir, options));
-  await capture('updater', () => stepUpdater(userExtDir, options));
+  if (wantOpenCode) await capture('opencode', () => stepOpenCode(options));
+  // Hosts beyond OMP and OpenCode get a rules pack, skills, and (where the host
+  // documents it) an RTK shell-rewrite hook. Each host is independent: one
+  // failing host must not stop the others or the OMP install.
+  for (const id of agents) {
+    if (id === 'omp' || id === 'opencode') continue;
+    const host = hostById(id);
+    if (!host) continue;
+    await capture(host.label, async () => {
+      if (!quiet) console.log(`  ${host.label} — rules pack, skills${host.rewrite ? ', rtk hook' : ' (rtk guidance only)'}`);
+      const result = await installHost(host, { dryRun, verbose, quiet });
+      if (!quiet && result.files.length === 0 && result.skipped.length === 0) {
+        console.log(`  [skip] ${host.label} has no installable files`);
+      }
+    });
+  }
+  if (wantOmp) {
+    await capture('rtk', () => stepRtk(BUN_BIN_DIR, options));
+    await capture('shared', () => stepSharedSessionState(userExtDir, options));
+    await capture('self-plugin', async () => { selfPlugin = await stepSelfPlugin(OMP_PLUGINS_DIR, options); });
+    await capture('ponytail', () => stepPonytail(OMP_PLUGINS_DIR, options));
+    await capture('rtk session', () => stepRtkSession(userExtDir, options));
+    await capture('caveman', () => stepCaveman(path.join(OMP_PLUGINS_DIR, 'node_modules', '@krtclcdy', 'tersio', 'extensions'), cavemanRule, options));
+    await capture('combo', () => stepCombo(userExtDir, options));
+    await capture('commands', () => stepTersioCommands(userExtDir, options));
+    await capture('updater', () => stepUpdater(userExtDir, options));
+  }
   if (selfPlugin) await capture('settings', () => writePluginSettings(profile, options));
 
   if (quiet) {
     if (failures.length > 0) console.log(`  add-ons: ${failures.length} failed (${failures.join(', ')}) — see [fail] lines above`);
   } else {
-    console.log(failures.length === 0 ? '\nDone — restart OMP, then /combo medium.' : `\nDone with ${failures.length} failure(s) — see [fail] lines above.`);
+    // Restart hint must name the hosts actually installed: an OpenCode-only
+    // run has no OMP to restart and no /combo command to reach, and a
+    // multi-host run needs every one of them restarted.
+    const others = agents.filter((a) => a !== 'omp');
+    const restart = wantOmp
+      ? others.length > 0
+        ? `restart OMP, then /combo medium; also restart ${others.map(labelFor).join(', ')}.`
+        : 'restart OMP, then /combo medium.'
+      : others.length > 0
+        ? `restart ${others.map(labelFor).join(', ')}.`
+        : 'restart OpenCode.';
+    console.log(failures.length === 0 ? `\nDone — ${restart}` : `\nDone with ${failures.length} failure(s) — see [fail] lines above.`);
   }
 
   closeRL();

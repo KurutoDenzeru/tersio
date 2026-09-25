@@ -5,17 +5,19 @@
 // stored profile.
 import path from 'node:path';
 import {
-  CAVEMAN_DEFAULTS, COMBO_DEFAULTS, COMBO_PRESET_MODES, OMP_PLUGINS_DIR, PACKAGE_NAME,
+  agentFlag, CAVEMAN_DEFAULTS, COMBO_DEFAULTS, COMBO_PRESET_MODES, OMP_PLUGINS_DIR, PACKAGE_NAME,
   PONYTAIL_DEFAULTS, cavemanDefaultFlag, comboDefaultFlag, currency, currencyGiven, diagScheduleFlag, dryRun,
   ponytailDefaultFlag, profileFlagsGiven, rtkDefaultFlag, settingArg,
 } from './common.ts';
 import { CURRENCY_CODES } from './currency.ts';
 import type { CurrencyCode } from './currency.ts';
 import { textTable } from './usage.ts';
-import { askInteractiveChoice, closeRL, tty } from './interactive.ts';
+import { askInteractiveChoice, askInteractiveMultiChoice, closeRL, tty } from './interactive.ts';
 import { formatProfile, storedProfile, writePluginSettings } from './profile.ts';
 import type { Profile } from './profile.ts';
 import { readDiagSchedule, setDiagSchedule } from './dashboard.ts';
+import { agentChoices, byId, detectedAgents, storedAgents, writeAgents, HOSTS } from './agents.ts';
+import type { AgentId } from './agents.ts';
 import type { DiagSchedule } from './dashboard.ts';
 
 function applyFlags(base: Profile): Profile {
@@ -88,10 +90,19 @@ async function askDiagSchedule(current: DiagSchedule): Promise<DiagSchedule | nu
   return picked.value as DiagSchedule;
 }
 
-const SETTING_NAMES = ['combo', 'caveman', 'rtk', 'ponytail', 'currency', 'diagnosis'] as const;
+const SETTING_NAMES = ['combo', 'caveman', 'rtk', 'ponytail', 'currency', 'diagnosis', 'agents'] as const;
+
+// Host selection lives in ~/.tersio/agents.json, not the omp lock file, so it
+// is read and written through cli/agents.ts rather than the Profile shape.
+async function askAgents(current: string[]): Promise<string[] | null> {
+  const picked = await askInteractiveMultiChoice('Install for which coding agents?', agentChoices(), current);
+  if (picked.status !== 'selected') return null;
+  return picked.value;
+}
 
 function settingsUsage(): void {
-  console.log('  Usage: tersio settings [combo|caveman|rtk|ponytail|currency|diagnosis] [--combo-default off|medium|balanced|max] [--caveman-default off|lite|full|ultra|wenyan-lite|wenyan-full|wenyan-ultra] [--rtk-default on|off] [--ponytail-default off|lite|full|ultra] [--currency USD|PHP|EUR|GBP|JPY|KRW|SGD|AUD|CAD|INR] [--diag-schedule manual|daily|weekly|monthly] [--dry-run]');
+  console.log('  Usage: tersio settings [combo|caveman|rtk|ponytail|currency|diagnosis|agents] [--combo-default off|medium|balanced|max] [--caveman-default off|lite|full|ultra|wenyan-lite|wenyan-full|wenyan-ultra] [--rtk-default on|off] [--ponytail-default off|lite|full|ultra] [--currency USD|PHP|EUR|GBP|JPY|KRW|SGD|AUD|CAD|INR] [--diag-schedule manual|daily|weekly|monthly] [--agent <host>] [--dry-run]');
+  console.log(`  Hosts: ${HOSTS.map((h) => h.id).join(', ')}`);
 }
 
 // Single-setting jump: `tersio settings diagnosis` prompts only that value
@@ -162,7 +173,7 @@ async function runSingleSetting(name: string, current: Profile, nextDiag: DiagSc
   return { profile: next, diag };
 }
 
-function printSettingsTable(current: Profile): void {
+function printSettingsTable(current: Profile, currentAgents: string[]): void {
   console.log('\n=== Tersio Settings ===');
   // Currency lives here no longer: the dashboard owns displaying and
   // persisting it (its picker POSTs to /currency); settings can still set
@@ -173,16 +184,49 @@ function printSettingsTable(current: Profile): void {
     ['rtk', current.rtkDefault ? 'on' : 'off', 'on | off'],
     ['ponytail', current.ponytailDefault, [...PONYTAIL_DEFAULTS].join(' | ')],
     ['diagnosis', readDiagSchedule(), 'manual | daily | weekly | monthly'],
+    ['agents', currentAgents.length > 0 ? currentAgents.join(', ') : 'auto-detect', HOSTS.map((h) => h.id).join(' | ')],
   ];
   for (const l of textTable(['Setting', 'Current', 'Valid values'], rows, [false, false, false], 64)) {
     console.log(l);
   }
   console.log(`  Stored: ${PACKAGE_NAME} in ${path.join(OMP_PLUGINS_DIR, 'omp-plugins.lock.json')}`);
+  console.log('  Agents: ~/.tersio/agents.json — read with `tersio settings agents`');
 }
-
 async function runSettings(): Promise<void> {
   const current = await storedProfile();
-  printSettingsTable(current);
+  const currentAgents = storedAgents();
+  printSettingsTable(current, currentAgents ?? detectedAgents());
+
+  // Host selection is separate state in ~/.tersio/agents.json, not the omp
+  // lock file, so it is resolved before the profile chain and written apart.
+  if (agentFlag !== undefined || settingArg === 'agents') {
+    if (!tty() && agentFlag === undefined) {
+      console.log('\n  `tersio settings agents` needs a terminal. Use --agent omp|opencode instead.');
+      settingsUsage();
+      closeRL();
+      return;
+    }
+    let nextAgents: string[] | null = null;
+    if (agentFlag !== undefined) nextAgents = agentFlag;
+    else nextAgents = await askAgents(currentAgents ?? detectedAgents());
+    if (nextAgents === null) {
+      closeRL();
+      process.exit(130);
+      return;
+    }
+    const asIds = nextAgents as AgentId[];
+    if (dryRun) {
+      console.log(`\n  [dry-run] would install for: ${asIds.length > 0 ? asIds.join(', ') : 'no hosts'}`);
+      closeRL();
+      return;
+    }
+    await writeAgents(asIds);
+    console.log(`  Agents: ${asIds.length > 0 ? asIds.join(', ') : 'no hosts'} — run \`tersio install\` to apply.`);
+    if (settingArg === 'agents') {
+      closeRL();
+      return;
+    }
+  }
 
   let next: Profile | null;
   let nextDiag: DiagSchedule = readDiagSchedule();
