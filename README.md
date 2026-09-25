@@ -95,6 +95,11 @@ Break-even math, balanced preset (caveman full + rtk + ponytail): a mixed turn c
 
 ![Dashboard: command tools with token savings, average rate, and timing](/assets/GainTools.webp)
 
+### Measurement references
+
+- **[EcoLogits](https://github.com/mlco2/ecologits)** informs Tersio's local CO₂ and energy estimates. Tersio ports the model to TypeScript; EcoLogits is not a runtime dependency.
+- **[Tokscale](https://github.com/junhoyeo/tokscale)** informs Tersio's Input, Output, Cache Read, and Cache Write accounting from local OMP sessions. Tokscale is a reference, not a runtime dependency.
+
 ## 🖥️ CLI
 
 | Command | Purpose |
