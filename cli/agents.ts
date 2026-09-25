@@ -7,18 +7,14 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { promises as fs } from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { HOSTS, OWN_PATH_HOSTS, byId } from './agent-hosts.ts';
 import type { AgentHost } from './agent-hosts.ts';
+import { homeDir } from '../extensions/lib/utils.ts';
 type AgentId = string;
 
-function home(): string {
-  return process.env.HOME || process.env.USERPROFILE || os.homedir();
-}
-
 function agentsFile(): string {
-  return path.join(home(), '.tersio', 'agents.json');
+  return path.join(homeDir(), '.tersio', 'agents.json');
 }
 
 function isAgent(value: unknown): value is AgentId {
@@ -39,7 +35,7 @@ export function hostConfigDir(host: AgentHost): string {
     const relocated = process.env[host.configDirEnv];
     if (relocated) return relocated;
   }
-  return path.join(home(), host.configDir);
+  return path.join(homeDir(), host.configDir);
 }
 
 /** Resolve a host-relative path, swapping the `$HOME` prefix for a relocated one. */
@@ -53,7 +49,7 @@ export function hostPath(host: AgentHost, relPath: string): string {
         : path.join(relocated, relPath);
     }
   }
-  return path.join(home(), relPath);
+  return path.join(homeDir(), relPath);
 }
 
 /** Hosts the user selected, or auto-detected when nothing is stored. */

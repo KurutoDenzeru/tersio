@@ -1,17 +1,9 @@
 import { expect, test } from "vitest";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import type { SpawnSyncReturns } from "node:child_process";
-import os from "node:os";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import { runTersio, tempHome } from "../helpers/home.ts";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const installer = path.join(root, "tersio.js");
-
-function tempHome(): string {
-  return mkdtempSync(path.join(os.tmpdir(), "tersio-agents-"));
-}
 
 function agentsFile(home: string): string {
   return path.join(home, ".tersio", "agents.json");
@@ -29,12 +21,7 @@ function seedHosts(home: string, hosts: string[]): void {
 }
 
 function run(home: string, argv: string[]): SpawnSyncReturns<string> {
-  return spawnSync(process.execPath, [installer, ...argv], {
-    cwd: root,
-    encoding: "utf8",
-    timeout: 60000,
-    env: { ...process.env, HOME: home, USERPROFILE: home },
-  });
+  return runTersio(home, argv, 60000);
 }
 
 // Host selection decides which files land where, so the observable contract is

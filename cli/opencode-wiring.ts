@@ -7,8 +7,12 @@
 //
 // No cli/common.ts imports (argv side effects) so tests can load it.
 import { promises as fs } from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
+import { applyMarkedBlock, removeMarkedBlock, RTK } from './rules-pack.ts';
+import { homeDir, readTextIfExists } from '../extensions/lib/utils.ts';
+
+// Re-exported so callers can keep importing blocks from the wiring module.
+export { applyMarkedBlock, removeMarkedBlock };
 
 export interface OpenCodeWiringOptions {
   dryRun?: boolean;
@@ -21,22 +25,16 @@ const PLUGIN_ID = 'tersio-rtk';
 const START = '<!-- tersio:rtk:start -->';
 const END = '<!-- tersio:rtk:end -->';
 
-const GUIDANCE = `## Rust Token Killer (rtk)
-
-Use \`rtk\` for noisy shell commands. It filters output before the model reads it.
-Call the explicit commands: \`rtk git status\`, \`rtk git diff\`, \`rtk grep <pattern> <path>\`, \`rtk find <path>\`, \`rtk read <file>\`, \`rtk ls <path>\`, \`rtk test <cmd>\`, \`rtk deps\`.
-Do not use rtk for exact bytes: patches, checksums, state changes, and diffs you must read verbatim.
+// Same text as the shared rtk rule, plus the line that tells the model the
+// plugin already rewrites commands. Derived so the two cannot drift.
+const GUIDANCE = `${RTK}
 The \`${PLUGIN_ID}\` plugin rewrites supported commands automatically, so explicit prefixes are only needed when the plugin is disabled.`;
 
 const BLOCK = `${START}\n\n${GUIDANCE}\n\n${END}\n`;
 
-function home(): string {
-  return process.env.HOME || process.env.USERPROFILE || os.homedir();
-}
-
 /** OpenCode's global config dir. V2 reads `plugins` here and `AGENTS.md` here. */
 export function openCodeConfigDir(): string {
-  return path.join(home(), '.config', 'opencode');
+  return path.join(homeDir(), '.config', 'opencode');
 }
 
 export function openCodePluginPath(): string {
@@ -47,47 +45,15 @@ export function openCodeAgentsPath(): string {
   return path.join(openCodeConfigDir(), 'AGENTS.md');
 }
 
-// Replace an existing marked block, append one when absent, and leave a file
-// without markers untouched — a user's own AGENTS.md is theirs to own.
-export function applyMarkedBlock(existing: string | null, block: string, start: string, end: string): string {
-  const base = existing === null ? '' : existing;
-  if (!base.trim()) return block;
-  const from = base.indexOf(start);
-  const to = base.indexOf(end);
-  if (from !== -1 && to !== -1 && to > from) {
-    const before = base.slice(0, from);
-    const after = base.slice(to + end.length).replace(/^\n/, '');
-    return `${before}${block.trimEnd()}${after ? `\n${after}` : '\n'}`;
-  }
-  const prefix = base.endsWith('\n') ? '' : '\n';
-  return `${base}${prefix}\n${block}`;
-}
-
-// Removes the block and the blank line it introduced. Returns null when the
-// file ends up empty so callers can delete it instead of leaving a stub.
-export function removeMarkedBlock(existing: string, start: string, end: string): string | null {
-  const from = existing.indexOf(start);
-  const to = existing.indexOf(end);
-  if (from === -1 || to === -1 || to <= from) return existing;
-  const before = existing.slice(0, from).replace(/\n+$/, '\n');
-  const after = existing.slice(to + end.length).replace(/^\n+/, '');
-  const merged = `${before}${after}`;
-  return merged.trim() ? merged : null;
-}
 
 async function writeFile(dest: string, content: string, options: OpenCodeWiringOptions): Promise<boolean> {
-  let existing: string | null = null;
-  try {
-    existing = await fs.readFile(dest, 'utf8');
-  } catch {
-    existing = null;
-  }
+  const existing = await readTextIfExists(dest);
   if (existing === content) {
-    if (!options.quiet) console.log(`  [skip] ${dest} already up to date`);
+    if (!options.quiet && options.verbose) console.log(`  [skip] ${dest} already up to date`);
     return false;
   }
   if (options.dryRun) {
-    if (options.verbose) console.log(`  [dry-run] would write ${dest}`);
+    if (options.verbose && !options.quiet) console.log(`  [dry-run] would write ${dest}`);
     return true;
   }
   await fs.mkdir(path.dirname(dest), { recursive: true });
@@ -95,14 +61,6 @@ async function writeFile(dest: string, content: string, options: OpenCodeWiringO
   await fs.writeFile(dest, content, 'utf8');
   if (!options.quiet) console.log(`  [write] ${dest}`);
   return true;
-}
-
-async function readTextIfExists(p: string): Promise<string | null> {
-  try {
-    return await fs.readFile(p, 'utf8');
-  } catch {
-    return null;
-  }
 }
 
 /** Writes the plugin and guidance block; returns which artifacts changed. */

@@ -8,6 +8,36 @@
 const START = '<!-- tersio:start -->';
 const END = '<!-- tersio:end -->';
 
+/**
+ * Generic marked-block editing, shared by every host file we write. Markers are
+ * passed in because OpenCode uses its own pair. A file without markers is the
+ * user's to own, so we only ever touch the span between a matching pair.
+ */
+export function applyMarkedBlock(existing: string | null, block: string, start: string, end: string): string {
+  const base = existing ?? '';
+  if (!base.trim()) return block;
+  const from = base.indexOf(start);
+  const to = base.indexOf(end);
+  if (from !== -1 && to !== -1 && to > from) {
+    const before = base.slice(0, from);
+    const after = base.slice(to + end.length).replace(/^\n/, '');
+    return `${before}${block.trimEnd()}${after ? `\n${after}` : '\n'}`;
+  }
+  const prefix = base.endsWith('\n') ? '' : '\n';
+  return `${base}${prefix}\n${block}`;
+}
+
+/** Removes the block and the blank line it introduced. Null when nothing is left. */
+export function removeMarkedBlock(existing: string, start: string, end: string): string | null {
+  const from = existing.indexOf(start);
+  const to = existing.indexOf(end);
+  if (from === -1 || to === -1 || to <= from) return existing;
+  const before = existing.slice(0, from).replace(/\n+$/, '\n');
+  const after = existing.slice(to + end.length).replace(/^\n+/, '');
+  const merged = `${before}${after}`;
+  return merged.trim() ? merged : null;
+}
+
 const CAVEMAN = `## Caveman (terse replies)
 
 Respond concise. Drop pleasantries, filler, and hedging. Keep complete technical

@@ -33,48 +33,66 @@ function applyFlags(base: Profile): Profile {
   return next;
 }
 
+/** Every profile setting the interactive chain walks, in prompt order. */
+const CHOICE_SETTINGS = ['combo', 'caveman', 'rtk', 'ponytail', 'currency'] as const;
+type ChoiceSetting = (typeof CHOICE_SETTINGS)[number];
+
+const plainChoices = (values: Iterable<string>) => [...values].map((v) => ({ value: v, label: v }));
+
+/**
+ * Prompts for one setting and writes the answer into `next`. Shared by the full
+ * chain and `tersio settings <name>`, so the two cannot drift.
+ * False means the user aborted.
+ */
+async function askOne(name: ChoiceSetting, next: Profile): Promise<boolean> {
+  switch (name) {
+    case 'combo': {
+      const picked = await askInteractiveChoice('Session-start defaults — Combo preset', [
+        { value: 'off', label: 'off' },
+        { value: 'medium', label: 'medium', hint: 'caveman=lite, rtk=on, ponytail=lite' },
+        { value: 'balanced', label: 'balanced', hint: 'caveman=full, rtk=on, ponytail=full' },
+        { value: 'max', label: 'max', hint: 'caveman=ultra, rtk=on, ponytail=ultra' },
+      ], next.comboDefault);
+      if (picked.status !== 'selected') return false;
+      const preset = COMBO_PRESET_MODES[picked.value] ?? COMBO_PRESET_MODES.off;
+      next.comboDefault = picked.value;
+      next.cavemanDefault = preset.caveman;
+      next.rtkDefault = preset.rtk;
+      next.ponytailDefault = preset.ponytail;
+      return true;
+    }
+    case 'caveman': {
+      const picked = await askInteractiveChoice('Caveman default', plainChoices(CAVEMAN_DEFAULTS), next.cavemanDefault);
+      if (picked.status !== 'selected') return false;
+      next.cavemanDefault = picked.value;
+      return true;
+    }
+    case 'rtk': {
+      const picked = await askInteractiveChoice('RTK default', plainChoices(['on', 'off']), next.rtkDefault ? 'on' : 'off');
+      if (picked.status !== 'selected') return false;
+      next.rtkDefault = picked.value === 'on';
+      return true;
+    }
+    case 'ponytail': {
+      const picked = await askInteractiveChoice('Ponytail default', plainChoices(PONYTAIL_DEFAULTS), next.ponytailDefault);
+      if (picked.status !== 'selected') return false;
+      next.ponytailDefault = picked.value;
+      return true;
+    }
+    case 'currency': {
+      const picked = await askInteractiveChoice('Display currency (usage/dashboard reports)', plainChoices(CURRENCY_CODES), next.currency);
+      if (picked.status !== 'selected') return false;
+      next.currency = picked.value as CurrencyCode;
+      return true;
+    }
+  }
+}
+
 async function askProfile(current: Profile): Promise<Profile | null> {
-  const combo = await askInteractiveChoice('Session-start defaults — Combo preset', [
-    { value: 'off', label: 'off' },
-    { value: 'medium', label: 'medium', hint: 'caveman=lite, rtk=on, ponytail=lite' },
-    { value: 'balanced', label: 'balanced', hint: 'caveman=full, rtk=on, ponytail=full' },
-    { value: 'max', label: 'max', hint: 'caveman=ultra, rtk=on, ponytail=ultra' },
-  ], current.comboDefault);
-  if (combo.status !== 'selected') return null;
-  const preset = COMBO_PRESET_MODES[combo.value] ?? COMBO_PRESET_MODES.off;
-  const next: Profile = {
-    comboDefault: combo.value,
-    cavemanDefault: preset.caveman,
-    rtkDefault: preset.rtk,
-    ponytailDefault: preset.ponytail,
-    currency: current.currency,
-  };
-
-  const caveman = await askInteractiveChoice('Caveman default', [...CAVEMAN_DEFAULTS].map((v) => ({
-    value: v, label: v,
-  })), next.cavemanDefault);
-  if (caveman.status !== 'selected') return null;
-  next.cavemanDefault = caveman.value;
-
-  const rtk = await askInteractiveChoice('RTK default', [
-    { value: 'on', label: 'on' },
-    { value: 'off', label: 'off' },
-  ], next.rtkDefault ? 'on' : 'off');
-  if (rtk.status !== 'selected') return null;
-  next.rtkDefault = rtk.value === 'on';
-
-  const ponytail = await askInteractiveChoice('Ponytail default', [...PONYTAIL_DEFAULTS].map((v) => ({
-    value: v, label: v,
-  })), next.ponytailDefault);
-  if (ponytail.status !== 'selected') return null;
-  next.ponytailDefault = ponytail.value;
-
-  const cur = await askInteractiveChoice('Display currency (usage/dashboard reports)', CURRENCY_CODES.map((v) => ({
-    value: v, label: v,
-  })), next.currency);
-  if (cur.status !== 'selected') return null;
-  next.currency = cur.value as CurrencyCode;
-
+  const next: Profile = { ...current };
+  for (const name of CHOICE_SETTINGS) {
+    if (!(await askOne(name, next))) return null;
+  }
   return next;
 }
 
@@ -107,69 +125,19 @@ function settingsUsage(): void {
 // Single-setting jump: `tersio settings diagnosis` prompts only that value
 // instead of walking the whole chain. Returns false when aborted.
 async function runSingleSetting(name: string, current: Profile, nextDiag: DiagSchedule): Promise<{ profile: Profile; diag: DiagSchedule } | null> {
-  const next: Profile = { ...current };
-  let diag = nextDiag;
-  switch (name) {
-    case 'combo': {
-      const combo = await askInteractiveChoice('Session-start defaults — Combo preset', [
-        { value: 'off', label: 'off' },
-        { value: 'medium', label: 'medium', hint: 'caveman=lite, rtk=on, ponytail=lite' },
-        { value: 'balanced', label: 'balanced', hint: 'caveman=full, rtk=on, ponytail=full' },
-        { value: 'max', label: 'max', hint: 'caveman=ultra, rtk=on, ponytail=ultra' },
-      ], current.comboDefault);
-      if (combo.status !== 'selected') return null;
-      const preset = COMBO_PRESET_MODES[combo.value] ?? COMBO_PRESET_MODES.off;
-      next.comboDefault = combo.value;
-      next.cavemanDefault = preset.caveman;
-      next.rtkDefault = preset.rtk;
-      next.ponytailDefault = preset.ponytail;
-      break;
-    }
-    case 'caveman': {
-      const picked = await askInteractiveChoice('Caveman default', [...CAVEMAN_DEFAULTS].map((v) => ({
-        value: v, label: v,
-      })), next.cavemanDefault);
-      if (picked.status !== 'selected') return null;
-      next.cavemanDefault = picked.value;
-      break;
-    }
-    case 'rtk': {
-      const picked = await askInteractiveChoice('RTK default', [
-        { value: 'on', label: 'on' },
-        { value: 'off', label: 'off' },
-      ], next.rtkDefault ? 'on' : 'off');
-      if (picked.status !== 'selected') return null;
-      next.rtkDefault = picked.value === 'on';
-      break;
-    }
-    case 'ponytail': {
-      const picked = await askInteractiveChoice('Ponytail default', [...PONYTAIL_DEFAULTS].map((v) => ({
-        value: v, label: v,
-      })), next.ponytailDefault);
-      if (picked.status !== 'selected') return null;
-      next.ponytailDefault = picked.value;
-      break;
-    }
-    case 'currency': {
-      const picked = await askInteractiveChoice('Display currency (usage/dashboard reports)', CURRENCY_CODES.map((v) => ({
-        value: v, label: v,
-      })), next.currency);
-      if (picked.status !== 'selected') return null;
-      next.currency = picked.value as CurrencyCode;
-      break;
-    }
-    case 'diagnosis': {
-      const picked = await askDiagSchedule(diag);
-      if (picked === null) return null;
-      diag = picked;
-      break;
-    }
-    default: {
-      console.error(`[fail] Invalid setting: ${name}. Valid: ${SETTING_NAMES.join(', ')}`);
-      process.exit(1);
-    }
+
+  if (name === 'diagnosis') {
+    const picked = await askDiagSchedule(nextDiag);
+    if (picked === null) return null;
+    return { profile: current, diag: picked };
   }
-  return { profile: next, diag };
+  if (!CHOICE_SETTINGS.includes(name as ChoiceSetting)) {
+    console.error(`[fail] Invalid setting: ${name}. Valid: ${SETTING_NAMES.join(', ')}`);
+    process.exit(1);
+  }
+  const next: Profile = { ...current };
+  if (!(await askOne(name as ChoiceSetting, next))) return null;
+  return { profile: next, diag: nextDiag };
 }
 
 function printSettingsTable(current: Profile, currentAgents: string[]): void {

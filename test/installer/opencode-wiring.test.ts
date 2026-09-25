@@ -1,42 +1,14 @@
 import { expect, test } from "vitest";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { spawnSync } from "node:child_process";
-import os from "node:os";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import {
-  applyMarkedBlock,
-  installOpenCodeRtk,
-  openCodeAgentsPath,
-  openCodePluginPath,
-  removeMarkedBlock,
-  removeOpenCodeRtk,
-} from "../../cli/opencode-wiring.ts";
+import { spawnSync } from "node:child_process";
+import { applyMarkedBlock, installOpenCodeRtk, openCodeAgentsPath, openCodePluginPath, removeMarkedBlock, removeOpenCodeRtk } from "../../cli/opencode-wiring.ts";
+import { installer, repoRoot, tempHome, withHome } from "../helpers/home.ts";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+const root = repoRoot;
 const PLUGIN_SOURCE = readFileSync(path.join(root, "extensions", "opencode", "rtk-plugin.ts"), "utf8");
-const installer = path.join(root, "tersio.js");
 const START = "<!-- tersio:rtk:start -->";
 const END = "<!-- tersio:rtk:end -->";
-
-function tempHome(): string {
-  return mkdtempSync(path.join(os.tmpdir(), "tersio-opencode-"));
-}
-
-function withHome<T>(home: string, work: () => Promise<T> | T): Promise<T> {
-  const prev = process.env.HOME;
-  const prevProfile = process.env.USERPROFILE;
-  process.env.HOME = home;
-  process.env.USERPROFILE = home;
-  return (async () => {
-    try {
-      return await work();
-    } finally {
-      if (prev === undefined) delete process.env.HOME; else process.env.HOME = prev;
-      if (prevProfile === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = prevProfile;
-    }
-  })();
-}
 
 // Consumer-visible invariants only: the plugin lands where OpenCode V2
 // auto-discovers it, the guidance block is idempotent, and removal restores

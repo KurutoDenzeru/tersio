@@ -8,9 +8,9 @@
 // Deliberately free of cli/common.ts imports (argv side effects) so tests
 // can load it directly.
 import { promises as fs } from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
+import { homeDir } from '../extensions/lib/utils.ts';
 export interface WiringOptions {
   dryRun?: boolean;
   quiet?: boolean;
@@ -55,15 +55,13 @@ export async function wireRtkOmp(rtkBin: string, options: WiringOptions = {}): P
 // The rtk.ts path rtk init writes (mirrors OMP_AGENT_DIR in cli/common.ts
 // without importing it — see header note on argv side effects).
 function rtkExtensionPath(): string {
-  const home = process.env.HOME || process.env.USERPROFILE || os.homedir();
-  return path.join(home, '.omp', 'agent', 'extensions', 'rtk.ts');
+  return path.join(homeDir(), '.omp', 'agent', 'extensions', 'rtk.ts');
 }
 
 // OMP loads only listed extensions: append rtk.ts after the existing entries
 // (or create the key) so a fresh wire takes effect on next OMP start.
 export async function ensureRtkInConfig(options: WiringOptions): Promise<void> {
-  const home = process.env.HOME || process.env.USERPROFILE || os.homedir();
-  const configPath = path.join(home, '.omp', 'agent', 'config.yml');
+  const configPath = path.join(homeDir(), '.omp', 'agent', 'config.yml');
   const extPath = rtkExtensionPath().replace(/\\/g, '/');
   let raw: string | null = null;
   try {

@@ -1,46 +1,14 @@
 import { expect, test } from "vitest";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import type { SpawnSyncReturns } from "node:child_process";
-import { spawnSync } from "node:child_process";
-import os from "node:os";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { spawnSync } from "node:child_process";
 import { HOSTS, byId, OWN_PATH_HOSTS } from "../../cli/agent-hosts.ts";
 import { installHost, mergeHookEntry, pruneHookEntry, renderHookConfig, removeHost, stripBlock } from "../../cli/host-writers.ts";
 import { START } from "../../cli/rules-pack.ts";
+import { runTersio, tempHome, withHome } from "../helpers/home.ts";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const installer = path.join(root, "tersio.js");
 const ALL = HOSTS.map((h) => h.id);
-
-function tempHome(): string {
-  return mkdtempSync(path.join(os.tmpdir(), "tersio-hosts-"));
-}
-
-function withHome<T>(home: string, work: () => Promise<T> | T): Promise<T> {
-  const prev = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE };
-  process.env.HOME = home;
-  process.env.USERPROFILE = home;
-  return (async () => {
-    try {
-      return await work();
-    } finally {
-      for (const [k, v] of Object.entries(prev)) {
-        if (v === undefined) delete process.env[k];
-        else process.env[k] = v;
-      }
-    }
-  })();
-}
-
-function run(home: string, argv: string[]): SpawnSyncReturns<string> {
-  return spawnSync(process.execPath, [installer, ...argv], {
-    cwd: root,
-    encoding: "utf8",
-    timeout: 120000,
-    env: { ...process.env, HOME: home, USERPROFILE: home },
-  });
-}
+const run = (home: string, argv: string[]) => runTersio(home, argv);
 
 // Registry integrity: a host entry that points nowhere or claims a capability
 // the docs do not support is the failure mode that silently breaks a user.

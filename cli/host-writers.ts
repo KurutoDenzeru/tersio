@@ -8,11 +8,10 @@
 
 import { existsSync } from 'node:fs';
 import { promises as fs } from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import type { AgentHost, HostRewrite } from './agent-hosts.ts';
-import { END, START, packCommands, rulesBody } from './rules-pack.ts';
-import { readTextIfExists } from '../extensions/lib/utils.ts';
+import { applyMarkedBlock, END, removeMarkedBlock, START, packCommands, rulesBody } from './rules-pack.ts';
+import { homeDir, readTextIfExists } from '../extensions/lib/utils.ts';
 
 export interface WriteOptions {
   dryRun?: boolean;
@@ -26,42 +25,19 @@ export interface HostArtifacts {
   skipped: string[];
 }
 
-function home(): string {
-  return process.env.HOME || process.env.USERPROFILE || os.homedir();
-}
-
 function abs(homeRelative: string): string {
-  return path.join(home(), homeRelative);
+  return path.join(homeDir(), homeRelative);
 }
 
 /**
  * Replace a marked block, append one when absent, leave unmarked files alone.
  * A user's instruction file is theirs; we manage only the span between markers.
  */
-export function applyBlock(existing: string | null, block: string): string {
-  const base = existing ?? '';
-  if (!base.trim()) return block;
-  const from = base.indexOf(START);
-  const to = base.indexOf(END);
-  if (from !== -1 && to !== -1 && to > from) {
-    const before = base.slice(0, from);
-    const after = base.slice(to + END.length).replace(/^\n/, '');
-    return `${before}${block.trimEnd()}${after ? `\n${after}` : '\n'}`;
-  }
-  const prefix = base.endsWith('\n') ? '' : '\n';
-  return `${base}${prefix}\n${block}`;
-}
+export const applyBlock = (existing: string | null, block: string): string =>
+  applyMarkedBlock(existing, block, START, END);
 
-/** Remove the block and the blank line it introduced. Null when nothing is left. */
-export function stripBlock(existing: string): string | null {
-  const from = existing.indexOf(START);
-  const to = existing.indexOf(END);
-  if (from === -1 || to === -1 || to <= from) return existing;
-  const before = existing.slice(0, from).replace(/\n+$/, '\n');
-  const after = existing.slice(to + END.length).replace(/^\n+/, '');
-  const merged = `${before}${after}`;
-  return merged.trim() ? merged : null;
-}
+export const stripBlock = (existing: string): string | null =>
+  removeMarkedBlock(existing, START, END);
 
 async function writeIfChanged(dest: string, content: string, options: WriteOptions): Promise<boolean> {
   const existing = await readTextIfExists(dest);

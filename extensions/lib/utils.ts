@@ -172,6 +172,14 @@ export async function readTextIfExists(p: string): Promise<string | null> {
   try { return await fs.readFile(p, 'utf8'); } catch { return null; }
 }
 
+/**
+ * The user's home dir. Env first, not os.homedir(), so a test that overrides
+ * HOME actually redirects the paths these modules build.
+ */
+export function homeDir(): string {
+  return process.env.HOME || process.env.USERPROFILE || os.homedir();
+}
+
 // Tersio-owned data home: ~/.tersio (Windows: %USERPROFILE%\.tersio).
 // First use moves legacy ~/.omp/plugins/tersio-* files over, so existing
 // installs keep their history.

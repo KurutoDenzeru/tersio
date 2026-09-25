@@ -4,24 +4,14 @@ import type { SpawnSyncReturns } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { agentChoices, hostHint } from "../../cli/agents.ts";
 import { HOSTS, byId, OWN_PATH_HOSTS } from "../../cli/agent-hosts.ts";
+import { installer, repoRoot, runTersio, tempHome } from "../helpers/home.ts";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const installer = path.join(root, "tersio.js");
-
-function tempHome(): string {
-  return mkdtempSync(path.join(os.tmpdir(), "tersio-prompt-"));
-}
+const root = repoRoot;
 
 function run(home: string, argv: string[]): SpawnSyncReturns<string> {
-  return spawnSync(process.execPath, [installer, ...argv], {
-    cwd: root,
-    encoding: "utf8",
-    timeout: 60000,
-    env: { ...process.env, HOME: home, USERPROFILE: home },
-  });
+  return runTersio(home, argv, 60000);
 }
 
 // The reported failure: `~/.tersio/agents.json` already held a choice, so the
