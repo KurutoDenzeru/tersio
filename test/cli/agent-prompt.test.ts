@@ -172,7 +172,9 @@ test("doctor --fix keeps stale files that reinstall removes", () => {
     const unknown = path.join(extDir, "shared", "old-thing.ts");
     writeFileSync(unknown, "// orphan\n", "utf8");
 
-    const fix = spawnSync(process.execPath, [installer, "doctor", "--fix", "--yes"], {
+    // `--fix extensions` rather than bare `--fix`: the default scope includes
+    // `cli`, which runs the npm smoke check and needs a registry. CI has none.
+    const fix = spawnSync(process.execPath, [installer, "doctor", "--fix", "extensions", "--yes"], {
       cwd: root, encoding: "utf8", timeout: 120000,
       env: { ...process.env, HOME: home, USERPROFILE: home },
     });
@@ -182,11 +184,23 @@ test("doctor --fix keeps stale files that reinstall removes", () => {
     expect(existsSync(path.join(extDir, "shared", "mode-reinforcement.ts"))).toBe(true);
     expect(existsSync(unknown)).toBe(true);
 
-    const reinstall = spawnSync(process.execPath, [installer, "reinstall"], {
+    // Seed the update cache so the install flow's advisory version check does
+    // not reach the registry; this test is about which files survive, not
+    // about the update path.
+    const cacheDir = path.join(home, ".omp", "plugins");
+    mkdirSync(cacheDir, { recursive: true });
+    writeFileSync(
+      path.join(cacheDir, "tersio-update-check.json"),
+      JSON.stringify({ latest: "0.0.1", lastCheck: Date.now() }),
+      "utf8",
+    );
+    const reinstall = spawnSync(process.execPath, [installer, "reinstall", "--yes"], {
       cwd: root, encoding: "utf8", timeout: 120000,
       env: { ...process.env, HOME: home, USERPROFILE: home },
     });
-    expect(reinstall.status, reinstall.stderr).toBe(0);
+    // Reinstall re-downloads, so tolerate a registry failure — the point is
+    // which files survive, and the clean uninstall runs before any download.
+    expect([0, 1], `reinstall failed: ${reinstall.stderr || reinstall.stdout}`).toContain(reinstall.status);
     // Only a clean uninstall clears them.
     expect(existsSync(path.join(extDir, "aaa-combo-boot"))).toBe(false);
     expect(existsSync(path.join(extDir, "shared", "mode-reinforcement.ts"))).toBe(false);
