@@ -47,8 +47,6 @@ npm exec --yes --prefer-online --package=@krtclcdy/tersio@latest -- tersio insta
 - Node.js 20.12+ with npm
 - At least one supported coding agent
 
-Oh My Pi is managed through the same CLI like every other agent. A bare `omp plugin install @krtclcdy/tersio` still works for the OMP extension files alone, but it skips agent selection, the RTK binary, and every non-OMP host — use `tersio install` unless you specifically want OMP-only.
-
 Windows/WSL have separate agent homes — install from the environment where your agent runs. Inside WSL, `command -v npm` must resolve to a Linux path, not `/mnt/c/`.
 
 ## 📊 Benchmarks
@@ -113,7 +111,7 @@ Flags: `--dry-run`, `--yes`/`-y`, `--verbose`, `--combo-default`/`--caveman-defa
 
 ### Coding agents
 
-The CLI is the installer for every host. `tersio install` asks which agents to install for; all eleven from [#17](https://github.com/KurutoDenzeru/tersio/issues/17) are supported.
+The CLI is the installer for every host. `tersio install` asks which agents to install for, and all eleven below are supported.
 
 | Host | `--agent` id | Rules file | Skills | RTK auto-rewrite |
 |---|---|---|---|---|

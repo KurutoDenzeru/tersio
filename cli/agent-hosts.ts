@@ -69,7 +69,7 @@ export interface AgentHost {
 const HOME_REL = (p: string): string => p;
 
 /**
- * Ordered by the matrix in issue #17. `omp` and `opencode` are handled by their
+ * Ordered by how the hosts relate to the project. `omp` and `opencode` are handled by their
  * own wiring modules — they ship real mode extensions, not rules packs — so they
  * are listed here for selection and detection but carry no emitter fields.
  */

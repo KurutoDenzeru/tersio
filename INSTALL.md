@@ -35,8 +35,6 @@ Two things do **not** port: the live Combo state bridge and the status bar are O
 
 Nothing else. The RTK binary is downloaded and checksum-verified for you.
 
-Oh My Pi is installed through the same CLI as every other agent. `omp plugin install @krtclcdy/tersio` still works, but it only writes the OMP extension files — it skips agent selection, the RTK binary, and every other host. Use `tersio install`.
-
 ## Install
 
 **macOS, Linux, WSL — one line.** This installs the CLI via npm, then runs the installer, which asks which agents to install for:

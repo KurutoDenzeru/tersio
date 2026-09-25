@@ -1,7 +1,7 @@
 // cli/rules-pack.ts — single source for the portable half of Tersio's modes.
 //
 // The OMP host injects mode text through a live session bridge, so it can
-// switch modes mid-session. Every other host in issue #17 loads static
+// switch modes mid-session. Every other host loads static
 // instruction files at session start, so they get a rules pack instead: one
 // canonical body of text rendered per host, written with idempotent markers so
 // reinstall replaces the block and never duplicates it.
