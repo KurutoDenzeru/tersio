@@ -15,9 +15,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { HOSTS, byId } from './agent-hosts.ts';
+import { HOSTS, OWN_PATH_HOSTS, byId } from './agent-hosts.ts';
 import type { AgentHost } from './agent-hosts.ts';
-
 type AgentId = string;
 
 function home(): string {
@@ -120,17 +119,29 @@ export async function clearAgents(): Promise<void> {
   await fs.rm(agentsFile(), { force: true });
 }
 
-/** Menu rows for the install multiselect, one per host we can actually install. */
+/**
+ * Menu rows for the install multiselect, one per host we can actually install.
+ * The hint says what this host actually gets, so the choice is informed rather
+ * than a list of names — OMP and OpenCode ship live extensions rather than a
+ * static rules pack, and OpenClaw cannot rewrite shell commands at all.
+ *
+ * Hints are kept to a short form on purpose: an eleven-row menu in an 80-column
+ * terminal has no spare width, and a hint that wraps turns one host into three
+ * lines and pushes the rest of the list into pagination.
+ */
+export function hostHint(host: AgentHost): string {
+  const parts: string[] = [];
+  if (OWN_PATH_HOSTS.includes(host.id)) parts.push('live');
+  else {
+    if (host.rules) parts.push('rules');
+    if (host.skills) parts.push('skills');
+  }
+  parts.push(host.rewrite ? 'rtk hook' : 'rtk guidance');
+  return isHostPresent(host) ? `${parts.join(' · ')} ✓` : parts.join(' · ');
+}
+
 export function agentChoices(): Array<{ value: string; label: string; hint: string }> {
-  return HOSTS.map((h) => ({
-    value: h.id,
-    label: h.label,
-    hint: [
-      h.rules ? 'rules pack' : null,
-      h.skills ? 'skills' : null,
-      h.rewrite ? 'rtk auto-rewrite' : 'rtk guidance only',
-    ].filter(Boolean).join(' · '),
-  }));
+  return HOSTS.map((h) => ({ value: h.id, label: h.label, hint: hostHint(h) }));
 }
 
 function labelFor(id: AgentId): string {

@@ -357,11 +357,15 @@ function labelFor(agent: AgentId): string {
 
 // Which hosts this run installs for.
 //
-// Precedence: --agent flag, then the stored choice, then an interactive
-// multiselect, then auto-detection. Detection is the non-interactive default
-// so `install --yes`, reinstall, and CI behave exactly as they did before this
-// prompt existed — OpenCode files land only where OpenCode is actually
-// installed, and never surprise a user who only runs OMP.
+// Precedence: --agent flag, then the interactive multiselect, then the stored
+// choice, then auto-detection.
+//
+// The prompt is asked at a terminal even when a choice is already stored, and
+// seeded with that choice. Honouring the stored value silently meant a user who
+// installed before the prompt existed could never see or change the selection
+// from the install flow at all — the menu only appeared on a machine that had
+// no stored record yet. Non-interactive runs (--yes, CI, pipes) and
+// --apply-update still skip straight to the stored choice or detection.
 async function resolveAgents(): Promise<AgentId[]> {
   if (agentFlag !== undefined) {
     const chosen = agentFlag as AgentId[];
@@ -370,12 +374,14 @@ async function resolveAgents(): Promise<AgentId[]> {
   }
 
   const stored = storedAgents();
-  if (stored !== null) return stored;
-
   const detected = detectedAgents();
-  if (!tty() || applyUpdate) return detected;
+  if (!tty() || applyUpdate) return stored ?? detected;
 
-  const choice = await askInteractiveMultiChoice('Install for which coding agents?', agentChoices(), detected);
+  // Seed from the stored choice when there is one, else from detection, and
+  // union in anything already on disk so a host the user has but never
+  // selected is visible in the menu rather than silently off.
+  const seed = stored ?? detected;
+  const choice = await askInteractiveMultiChoice('Install for which coding agents?', agentChoices(), seed);
   if (choice.status === 'selected') {
     const chosen = choice.value as AgentId[];
     if (!dryRun) await writeAgents(chosen);
@@ -385,7 +391,7 @@ async function resolveAgents(): Promise<AgentId[]> {
     closeRL();
     process.exit(130);
   }
-  return detected;
+  return stored ?? detected;
 }
 
 // Copy repo source files into the target extension dir. First entry is
@@ -535,8 +541,8 @@ async function runCommandMenu(): Promise<void> {
   }
   updatePromptDone = true;
   const choice = await askInteractiveChoice('Tersio — what next?', [
-    { value: 'install', label: 'Install add-ons', hint: 'user scope + combo defaults' },
-    { value: 'update', label: 'Update', hint: 'CLI version check, then refresh add-ons (RTK, Caveman rule, Ponytail)' },
+    { value: 'install', label: 'Install / reinstall', hint: 'pick coding agents, then install modes for them' },
+    { value: 'agents', label: 'Coding agents', hint: 'choose which agents Tersio installs into' },
     { value: 'reinstall', label: 'Reinstall', hint: 'clean and reinstall the add-ons, Ponytail package kept' },
     { value: 'doctor', label: 'Doctor', hint: 'verify the installation' },
     { value: 'usage', label: 'Usage', hint: 'token usage and savings report' },
@@ -552,6 +558,21 @@ async function runCommandMenu(): Promise<void> {
     case 'install':
       await runInstall();
       break;
+    case 'agents': {
+      const stored = storedAgents();
+      const seed = stored ?? detectedAgents();
+      const picked = await askInteractiveMultiChoice('Install for which coding agents?', agentChoices(), seed);
+      if (picked.status === 'cancelled') { closeRL(); process.exit(130); }
+      if (picked.status === 'selected') {
+        const chosen = picked.value as AgentId[];
+        await writeAgents(chosen);
+        console.log(`\n  Agents: ${chosen.length > 0 ? chosen.map(labelFor).join(', ') : 'none'}`);
+        const go = await askInteractiveConfirm('Run the install now?', true);
+        if (go.status === 'confirmed' && go.value) await runInstall();
+        else if (go.status === 'cancelled') { closeRL(); process.exit(130); }
+      }
+      break;
+    }
     case 'update': {
       // One bound flow: the version check already ran above, so report it
       // and offer the refresh in the same breath — no second "update" quiz.

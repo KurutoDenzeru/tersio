@@ -8,6 +8,9 @@
  - Fixes `--agent` silently keeping only the first value when repeated (`--agent omp --agent cursor` installed omp alone); it now unions every occurrence, accepts `--agent=` inline form, and rejects a missing value with the valid list.
  - Uninstall now previews every selected agent, not just Oh My Pi and OpenCode, so the consent prompt shows what a non-OMP machine will lose.
  - Reframes the docs around the unified CLI: new `INSTALL.md` covers the install and agent-selection flow end to end, and the README leads with `tersio install` and `--agent` rather than the Oh My Pi plugin. Version-specific OpenCode wording is replaced with plain "OpenCode" throughout.
+ - Fixes the install agent menu never appearing once a choice was stored. `~/.tersio/agents.json` was returned before the prompt, so anyone who installed before the multiselect existed could not see or change their host selection from the install flow at all. The prompt is now asked at a terminal even when a choice exists, seeded with it; `--yes`, CI, pipes, and `--apply-update` still skip straight to the stored value or detection.
+ - Adds a **Coding agents** entry to the bare `tersio` menu, so the host selection is reachable without running a full install.
+ - Agent menu hints now describe what each host actually gets (live extensions vs rules pack, rtk hook vs guidance) in a short form that fits an 80-column terminal, and mark hosts already present on the machine with a check.
 
 ## v2.23.0
  - Improves RTK, Caveman, and Ponytail fidelity across OMP plugin loading, session state, fallback paths, and packaged extension ownership.
