@@ -1,15 +1,9 @@
-// cli/agents.ts — which coding-agent hosts Tersio installs into, and how each
-// is detected.
+// cli/agents.ts — which hosts Tersio installs into, and how each is detected.
+// Host paths and capabilities live in cli/agent-hosts.ts; this owns the choice.
 //
-// The host list itself lives in cli/agent-hosts.ts, which carries each host's
-// docs-backed paths and capabilities. This module owns the *choice*: what the
-// user picked, what gets auto-detected, and where that is persisted.
-//
-// The choice is persisted in ~/.tersio/agents.json rather than the omp plugin
-// lock file, because the lock file is OMP's own state and an OpenCode-only user
-// has no omp plugin to hang settings off. A durable record is also what lets
-// doctor stay quiet about a host the user deliberately opted out of, instead of
-// warning forever about something they chose not to install.
+// The choice goes in ~/.tersio/agents.json, not the omp lock file: a non-OMP
+// user has no omp plugin to hang settings off, and a durable record is what lets
+// doctor stay quiet about a host the user opted out of.
 
 import { existsSync, readFileSync } from 'node:fs';
 import { promises as fs } from 'node:fs';
@@ -48,11 +42,7 @@ export function hostConfigDir(host: AgentHost): string {
   return path.join(home(), host.configDir);
 }
 
-/**
- * Resolve a host-relative path (`<configDir>/...`) to an absolute one,
- * honoring the host's own relocation env var. Registry paths are all
- * `$HOME`-relative, so a host that relocates needs its prefix swapped.
- */
+/** Resolve a host-relative path, swapping the `$HOME` prefix for a relocated one. */
 export function hostPath(host: AgentHost, relPath: string): string {
   const prefix = host.configDir;
   if (host.configDirEnv) {
@@ -76,11 +66,9 @@ export function isHostPresent(host: AgentHost): boolean {
   return existsSync(hostConfigDir(host));
 }
 
-/**
- * Hosts from the stored choice, or null when nothing valid is stored. Null is
- * distinct from an empty list on purpose: "no record" means ask or detect,
- * while an empty list means the user explicitly chose no optional hosts.
- */
+/** The stored choice, or null when there is no usable record. Null is distinct
+ * from an empty list: "no record" means ask or detect, empty means the user
+ * deliberately chose no optional hosts. */
 export function storedAgents(): AgentId[] | null {
   let parsed: unknown;
   try {
@@ -94,13 +82,11 @@ export function storedAgents(): AgentId[] | null {
 
 /**
  * Hosts to install for when nothing was chosen: every supported host whose
- * config dir already exists. Keeps `install --yes`, reinstall, and CI behaving
- * exactly as they did before the prompt existed — a host nobody installed
- * never gets a directory created for it.
+ * config dir already exists, so a host nobody installed never gets a directory
+ * created for it.
  *
- * OMP is special-cased to always be included: it is the flagship host and the
- * installer has always created ~/.omp even where omp is not yet installed, so
- * gating it on directory detection would regress fresh machines.
+ * OMP is always included — the installer has always created ~/.omp even where
+ * omp is not installed, so gating it on detection would regress fresh machines.
  */
 export function detectedAgents(): AgentId[] {
   const detected = HOSTS.filter(isHostPresent).map((h) => h.id);
@@ -120,14 +106,9 @@ export async function clearAgents(): Promise<void> {
 }
 
 /**
- * Menu rows for the install multiselect, one per host we can actually install.
- * The hint says what this host actually gets, so the choice is informed rather
- * than a list of names — OMP and OpenCode ship live extensions rather than a
- * static rules pack, and OpenClaw cannot rewrite shell commands at all.
- *
- * Hints are kept to a short form on purpose: an eleven-row menu in an 80-column
- * terminal has no spare width, and a hint that wraps turns one host into three
- * lines and pushes the rest of the list into pagination.
+ * Menu rows for the install multiselect. The hint says what the host actually
+ * gets, kept short: in an 80-column terminal a wrapping hint turns one row into
+ * three lines and pushes the rest of the list into pagination.
  */
 export function hostHint(host: AgentHost): string {
   const parts: string[] = [];

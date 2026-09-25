@@ -1,20 +1,9 @@
-// cli/rules-pack.ts — single source for the portable half of Tersio's modes.
+// cli/rules-pack.ts — the portable half of Tersio's modes, as data.
 //
-// The OMP host injects mode text through a live session bridge, so it can
-// switch modes mid-session. Every other host loads static
-// instruction files at session start, so they get a rules pack instead: one
-// canonical body of text rendered per host, written with idempotent markers so
-// reinstall replaces the block and never duplicates it.
-//
-// What is portable and what is not:
-//   - Caveman, Ponytail, and RTK guidance are prose. They port verbatim.
-//   - Combo state, the status bar, and the in-process bridge are host
-//     machinery with no portable equivalent. They stay OMP-only and are
-//     deliberately absent here rather than faked.
-//
-// Content lives here as data so `cli/agents.ts` can render it without
-// importing the OMP extension sources, which carry side effects and read
-// ~/.omp on load.
+// OMP injects mode text through a live bridge and can switch mid-session. Every
+// other host reads static files at startup, so it gets these instead. Combo
+// state, the status bar, and the bridge have no portable equivalent and stay
+// OMP-only rather than being faked.
 
 /** Marker pair shared by every host file we write. */
 const START = '<!-- tersio:start -->';
@@ -43,46 +32,28 @@ Call the explicit commands: \`rtk git status\`, \`rtk git diff\`,
 Do not use rtk for exact bytes: patches, checksums, state changes, and diffs you
 must read verbatim.`;
 
-/**
- * Some hosts enable a mode by a command instead of a rules file. When a host
- * gets a slash command, this is its body.
- */
-const RTK_COMMAND_BODY = `${RTK.replace(/^## Rust Token Killer \(rtk\)\n\n/, '')}
-Native tool calls (read/edit/glob/grep) stay unmetered — only shell commands
-pass through rtk.`;
-
 const CAVEMAN_COMMAND_BODY = `${CAVEMAN.replace(/^## Caveman \(terse replies\)\n\n/, '')}
 Switch levels with \`/caveman <level>\`: lite, full, ultra.`;
 
 const PONYTAIL_COMMAND_BODY = `${PONYTAIL.replace(/^## Ponytail \(minimal code\)\n\n/, '')}
 Switch levels with \`/ponytail <level>\`: lite, full, ultra.`;
 
-export interface RulesPack {
-  /** The full instruction body, already rendered for a markdown host. */
-  body: string;
-  /** Slash-command bodies, keyed by command name. */
-  commands: Record<string, string>;
-}
+const RTK_COMMAND_BODY = `${RTK.replace(/^## Rust Token Killer \(rtk\)\n\n/, '')}
+Native tool calls (read/edit/glob/grep) stay unmetered — only shell commands
+pass through rtk.`;
 
 /** The portable rules body, shared by every markdown-instruction host. */
 export function rulesBody(): string {
   return [CAVEMAN, PONYTAIL, RTK].join('\n\n');
 }
 
+/** Slash-command bodies, keyed by mode, for hosts that expose modes as commands. */
 export function packCommands(): Record<string, string> {
   return {
     caveman: CAVEMAN_COMMAND_BODY,
     ponytail: PONYTAIL_COMMAND_BODY,
     rtk: RTK_COMMAND_BODY,
   };
-}
-
-/**
- * Wraps a body in markers so a later run can replace exactly this block and
- * leave the rest of the user's file untouched.
- */
-export function markedBlock(body: string): string {
-  return `${START}\n\n${body}\n\n${END}\n`;
 }
 
 export { START, END, CAVEMAN, PONYTAIL, RTK };

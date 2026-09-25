@@ -1,17 +1,13 @@
 // cli/opencode-wiring.ts — install, refresh, and remove the OpenCode
-// integration: an RTK rewrite plugin plus RTK guidance in global AGENTS.md.
+// integration: an RTK rewrite plugin plus guidance in global AGENTS.md.
 //
-// Why Tersio ships this instead of `rtk init -g --opencode`: rtk still writes
-// a V1 plugin (rtk-ai/rtk#3463, #3898), and V2 rejects it with
-// "Plugin must export a default definition with an id". Guidance-only would
-// work, but it stops being automatic, which is the whole point of the hook.
+// Tersio ships its own plugin because `rtk init -g --opencode` still writes one
+// OpenCode rejects (rtk-ai/rtk#3463, #3898). Guidance-only would work but stops
+// being automatic, which is the point of the hook. The guidance block is a
+// fallback, not a duplicate: a user who prefers model-driven routing can delete
+// the plugin and keep the rules.
 //
-// Guidance is a fallback, not a duplicate: OpenCode keeps the plugin
-// registration across restarts while a user who prefers model-driven routing
-// can delete the plugin file and keep the rules.
-//
-// Deliberately free of cli/common.ts imports (argv side effects) so tests can
-// load it directly.
+// Free of cli/common.ts imports (argv side effects) so tests can load it.
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';

@@ -1,34 +1,26 @@
 // Tersio OpenCode plugin — RTK shell-command rewrite.
 //
-// OpenCode's current plugin API replaced an earlier incompatible one. The old
-// shape exported a function returning a string-keyed hook object; the current
-// one default-exports a definition with an `id` and `setup(ctx)`, and
-// registers hooks on the domain that owns them. Plugins in the old shape do
-// not load, and a stale one can also stop loading silently after the
-// 1.18.x auto-discovery change. This file targets the current API.
+// OpenCode's current plugin API is incompatible with the one before it: the old
+// shape exported a function returning a string-keyed hook object, this one
+// default-exports a definition with an `id` and `setup(ctx)` and registers hooks
+// on the domain that owns them. Old-shape plugins do not load, and a stale one
+// can also stop loading silently after the 1.18.x auto-discovery change.
+// Verified against opencode 2.0.16: `ctx.tool.hook("execute.before", …)` fires
+// with `event.tool === "shell"` and a mutable `event.input`.
 //
-// Verified against opencode 2.0.16: `ctx.tool.hook("execute.before", …)`
-// fires with `event.tool === "shell"` and a mutable `event.input`; assigning a
-// new `command` on it changes the command that actually executes.
+// Rewrite rules live in the rtk binary, so an rtk upgrade needs no plugin edit.
 //
-// Rewrite rules live in the rtk binary (`rtk rewrite`), not here, so an rtk
-// upgrade takes effect with no plugin edit.
-//
-// rtk rewrite exit contract (rtk >= 0.50):
-//   0 — rewritten, stdout is the new command
-//   1 — no RTK equivalent, stdout empty
-//   3 — rewritten, with a shell-metacharacter warning
-// Branch on stdout, never on the exit code: upstream hooks use
+// rtk rewrite exit contract: 0 rewritten, 1 no equivalent, 3 rewritten with a
+// warning. Branch on stdout, never the exit code — upstream hooks use
 // `REWRITTEN=$(rtk rewrite "$CMD") || exit 0`.
 //
-// Fail-open: a missing binary, a spawn error, or a timeout leaves the original
-// command untouched.
+// Fail-open: a missing binary, spawn error, or timeout leaves the command alone.
 //
-// The types below mirror `@opencode/plugin` structurally instead of importing
-// it. `Plugin.define` is the identity function, so the import buys nothing at
-// runtime, and a self-contained file loads in a user config dir that has no
-// `node_modules` — OpenCode only auto-installs packages it finds in a
-// `plugins` array or a config-directory `package.json`.
+// Types mirror @opencode/plugin structurally instead of importing it:
+// Plugin.define is the identity function, so the import buys nothing at runtime,
+// and a self-contained file loads in a config dir with no node_modules — OpenCode
+// only auto-installs packages it finds in a `plugins` array or a config-dir
+// package.json.
 
 import { spawn } from 'node:child_process';
 

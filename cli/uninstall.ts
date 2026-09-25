@@ -72,12 +72,9 @@ async function removeUninstallTarget(target: string, shouldDryRun: boolean, recu
 }
 
 /**
- * Hosts that actually have Tersio files on this machine, with what each has.
- *
- * The stored selection is a preference, not evidence: a host can be selected
- * and then fail its write, or the selection can name a host that was never
- * installed. Listing those is noise that hides the hosts which are really
- * there, so each candidate is probed for its own artifacts.
+ * Hosts with Tersio files on this machine, and what each has. The stored
+ * selection is a preference, not evidence: a host can be selected and then fail
+ * its write, and listing it as installed hides the hosts that are really there.
  */
 async function hostsWithTersioFiles(): Promise<Array<{ host: AgentHost; artifacts: string[] }>> {
   const found: Array<{ host: AgentHost; artifacts: string[] }> = [];

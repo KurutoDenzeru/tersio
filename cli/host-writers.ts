@@ -1,19 +1,12 @@
-// cli/host-writers.ts — writes one host's files: rules pack, skills, and the
-// RTK shell-rewrite hook.
+// cli/host-writers.ts — writes one host's files: rules pack, skills, and the RTK
+// shell-rewrite hook. Each writer is gated on what the host supports, so a host
+// missing a capability gets nothing rather than a file it will ignore.
 //
-// Three capabilities, three writers, each gated on what the host actually
-// supports (see cli/agent-hosts.ts). A host missing a capability gets nothing
-// rather than a file it will ignore.
-//
-// The rewrite script is the interesting part: every host in the matrix that
-// supports rewriting uses a different wire protocol for handing back a new
-// command string, so the script is generated per protocol instead of being one
-// universal file. The rtk binary stays the source of rewrite rules — the
-// generated script only marshals stdin to `rtk rewrite` and stdout back to the
-// host's expected shape.
-//
-// Fail-open is the default everywhere a host allows it. A rewriter that breaks
-// must leave the user's command running, never block it.
+// The rewrite script is generated per host because the five protocols in play
+// disagree on how a new command is returned. Rewrite rules stay in the rtk
+// binary; the generated script only marshals stdin to `rtk rewrite` and stdout
+// back into the host's shape, and always exits 0 so a failure degrades to no
+// filtering rather than a blocked command.
 
 import { existsSync } from 'node:fs';
 import { promises as fs } from 'node:fs';

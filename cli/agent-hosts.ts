@@ -1,22 +1,14 @@
-// cli/agent-hosts.ts — the host registry for every coding agent Tersio targets.
+// cli/agent-hosts.ts — the host registry. One entry per agent, carrying only
+// what differs between hosts. Shared mode text lives in cli/rules-pack.ts.
 //
-// One entry per host, each carrying only what differs between hosts: where its
-// instruction file lives, how it detects itself, and which of the three
-// capabilities it has (rules, skills, shell-rewrite hook). Everything shared
-// lives in cli/rules-pack.ts.
+// Every path, format, and wire protocol comes from that host's own docs, cited
+// in `source` — a host changing format is how this file rots.
 //
-// Paths, formats, and wire protocols here come from each host's own docs; the
-// `source` field on every entry records which page was used, because a host
-// that changes format is the main way this file rots.
-//
-// The capability flags are load-bearing, not decorative:
-//   - `rules`   the host loads a user-global instruction file, so the portable
-//               mode text has somewhere to go.
-//   - `skills`  the host reads skills/<name>/SKILL.md, so modes can also be
-//               invoked as slash commands rather than always-on guidance.
-//   - `rewrite` the host has a documented pre-execution hook that can replace
-//               the shell command string. Without it RTK ships as guidance
-//               only, and the README must not claim automatic filtering.
+// The capability flags are load-bearing: `rules` means a user-global instruction
+// file exists, `skills` means skills/<name>/SKILL.md is read, and `rewrite`
+// means a documented pre-execution hook can replace the shell command. A host
+// without `rewrite` gets guidance only, so the README must not claim
+// automatic filtering for it.
 
 export interface HostRewrite {
   /** Absolute path of the hook config file, relative to $HOME where possible. */

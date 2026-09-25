@@ -355,17 +355,13 @@ function labelFor(agent: AgentId): string {
   return hostLabel(agent);
 }
 
-// Which hosts this run installs for.
+// Which hosts this run installs for: --agent flag, then the interactive
+// multiselect, then the stored choice, then auto-detection.
 //
-// Precedence: --agent flag, then the interactive multiselect, then the stored
-// choice, then auto-detection.
-//
-// The prompt is asked at a terminal even when a choice is already stored, and
-// seeded with that choice. Honouring the stored value silently meant a user who
-// installed before the prompt existed could never see or change the selection
-// from the install flow at all — the menu only appeared on a machine that had
-// no stored record yet. Non-interactive runs (--yes, CI, pipes) and
-// --apply-update still skip straight to the stored choice or detection.
+// The prompt is asked at a terminal even when a choice is stored, seeded with
+// it. Returning the stored value silently meant anyone who installed before the
+// prompt existed could never change their selection. --yes, CI, pipes, and
+// --apply-update still skip to the stored value or detection.
 async function resolveAgents(): Promise<AgentId[]> {
   if (agentFlag !== undefined) {
     const chosen = agentFlag as AgentId[];
