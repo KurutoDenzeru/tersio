@@ -2,6 +2,11 @@
  - Consolidates the Vite + React + shadcn/ui Dashboard under `dashboard/`, removes the legacy runtime and `gain/` app, and makes `tersio dashboard` the sole public Dashboard command.
  - Adds animated telemetry and chart reveals, a bounded shadcn Diagnosis Table + ScrollArea, reduced-motion support, a seven-day USD cost sparkline, and credits EcoLogits and Tokscale as measurement references.
  - Reduces metered CI usage by deduplicating PR checks, validating only the merged main result, and cancelling superseded runs.
+ - RTK off now gates the automatic hook through shared `RTK_DISABLED` state, command percentages use weighted saved/input totals, and CLI probes resolve RTK from `PATH` instead of Bun-only paths.
+ - Caveman now ships the current upstream rules and six explicit Wenyan levels; Ponytail review remains a separate one-shot command and no longer appears as a session default.
+ - Dashboard and usage reports now show OMP-specific RTK adoption plus local recall diagnostics. Doctor flags duplicate OMP registrations, and `doctor --fix registrations` removes them.
+ - Extension ownership now has one path: OMP plugin manifests load Tersio and Ponytail extensions; `config.yml` keeps only rtk-owned wiring. Doctor removes legacy manifest-owned entries and fixes preserve the package registration.
+ - Caveman now ships `rule.md` inside the published plugin, and doctor, updater, and update diagnostics inspect that effective package path. Offline installs use the bundled upstream rules when the fetch fails.
 
 ## v2.22.0
  - Dashboard rebuilt as a responsive Vite + React + shadcn/ui application. Cards, Tables, Selects, Tabs, Charts, Badges, Skeletons, tooltips, pagination, loading states, theme controls, model details, and settings now share one component and token system instead of the legacy inline dashboard.

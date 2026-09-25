@@ -80,6 +80,7 @@ async function writePluginSettings(profile: Profile, options: WriteOptions): Pro
   config.settings[PACKAGE_NAME] = {
     ...(config.settings[PACKAGE_NAME] || {}),
     comboDefault: profile.comboDefault,
+    comboSetupComplete: true,
     cavemanDefault: profile.cavemanDefault,
     rtkDefault: profile.rtkDefault,
     ponytailDefault: profile.ponytailDefault,

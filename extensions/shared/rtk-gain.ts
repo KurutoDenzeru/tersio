@@ -76,13 +76,13 @@ export function readRtkGain(limit = 10, cutoffMs?: number): RtkGain {
     const where = cutoffMs && cutoffMs > 0
       ? `WHERE CAST(strftime('%s', timestamp) AS INTEGER) >= ${Math.floor(cutoffMs / 1000)}`
       : '';
-    const [[commands = '0', saved = '0', input = '0', avgPct = '0', totalMs = '0'] = []] = query(
+    const [[commands = '0', saved = '0', input = '0', totalMs = '0'] = []] = query(
       rtkDbPath(),
-      `SELECT COUNT(*), COALESCE(SUM(saved_tokens),0), COALESCE(SUM(input_tokens),0), COALESCE(AVG(savings_pct),0), COALESCE(SUM(exec_time_ms),0) FROM commands ${where};`,
+      `SELECT COUNT(*), COALESCE(SUM(saved_tokens),0), COALESCE(SUM(input_tokens),0), COALESCE(SUM(exec_time_ms),0) FROM commands ${where};`,
     );
     const byCommand = query(
       rtkDbPath(),
-      `SELECT substr(${CMD_ONE_LINE}, 1, ${MAX_CMD_CHARS}), COUNT(*), COALESCE(SUM(saved_tokens),0), COALESCE(AVG(savings_pct),0), COALESCE(AVG(exec_time_ms),0) FROM commands ${where} GROUP BY rtk_cmd ORDER BY SUM(saved_tokens) DESC LIMIT ${Math.max(1, Math.floor(limit))};`,
+      `SELECT substr(${CMD_ONE_LINE}, 1, ${MAX_CMD_CHARS}), COUNT(*), COALESCE(SUM(saved_tokens),0), COALESCE(100.0 * SUM(saved_tokens) / NULLIF(SUM(input_tokens), 0), 0), COALESCE(AVG(exec_time_ms),0) FROM commands ${where} GROUP BY rtk_cmd ORDER BY SUM(saved_tokens) DESC LIMIT ${Math.max(1, Math.floor(limit))};`,
     ).map(([command, count, savedRow, pct, ms]) => ({
       command,
       count: Number(count) || 0,

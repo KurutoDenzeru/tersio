@@ -4,7 +4,7 @@
 // the installer profile step. Tolerant: any parse failure yields {} so every
 // caller falls back to its own default.
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 export const PLUGIN_NAME = '@krtclcdy/tersio';
@@ -31,8 +31,8 @@ export function readPluginSettings(): Record<string, unknown> {
 }
 
 const COMBO_LEVELS = new Set(['off', 'medium', 'balanced', 'max']);
-const CAVEMAN_MODES = new Set(['off', 'lite', 'full', 'ultra', 'wenyan']);
-const PONYTAIL_MODES = new Set(['off', 'lite', 'full', 'ultra', 'review']);
+const CAVEMAN_MODES = new Set(['off', 'lite', 'full', 'ultra', 'wenyan', 'wenyan-lite', 'wenyan-full', 'wenyan-ultra']);
+const PONYTAIL_MODES = new Set(['off', 'lite', 'full', 'ultra']);
 
 function readStringDefault(key: string, valid: Set<string>): string {
   const raw = readPluginSettings()[key];
@@ -54,4 +54,35 @@ export function readRtkDefault(): boolean {
 
 export function readPonytailDefault(): string {
   return readStringDefault('ponytailDefault', PONYTAIL_MODES);
+}
+
+export function isComboSetupComplete(): boolean {
+  return readPluginSettings().comboSetupComplete === true;
+}
+
+const COMBO_MODE_DEFAULTS = {
+  off: { cavemanDefault: 'off', rtkDefault: false, ponytailDefault: 'off' },
+  medium: { cavemanDefault: 'lite', rtkDefault: true, ponytailDefault: 'lite' },
+  balanced: { cavemanDefault: 'full', rtkDefault: true, ponytailDefault: 'full' },
+  max: { cavemanDefault: 'ultra', rtkDefault: true, ponytailDefault: 'ultra' },
+} as const;
+
+export function saveComboSetup(level: string): boolean {
+  if (!(level in COMBO_MODE_DEFAULTS)) return false;
+  const lockPath = lockPaths()[0];
+  let lock: { plugins?: Record<string, unknown>; settings?: Record<string, Record<string, unknown>> } = {};
+  if (existsSync(lockPath)) {
+    try { lock = JSON.parse(readFileSync(lockPath, 'utf8')) as typeof lock; } catch { lock = {}; }
+  }
+  lock.plugins ||= {};
+  lock.settings ||= {};
+  lock.settings[PLUGIN_NAME] = {
+    ...lock.settings[PLUGIN_NAME],
+    comboDefault: level,
+    ...COMBO_MODE_DEFAULTS[level as keyof typeof COMBO_MODE_DEFAULTS],
+    comboSetupComplete: true,
+  };
+  mkdirSync(path.dirname(lockPath), { recursive: true });
+  writeFileSync(lockPath, JSON.stringify(lock, null, 2) + '\n', 'utf8');
+  return true;
 }

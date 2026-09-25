@@ -8,16 +8,20 @@ import type { ExtensionApi, ExtensionCtx, InputEvent, SessionEntry, SystemPrompt
 const CAVERN_DIR = dirname(fileURLToPath(import.meta.url));
 const RULE_PATH = join(CAVERN_DIR, 'rule.md');
 
-const FALLBACK_FULL_RULE = `Respond terse like smart caveman. All technical substance stay. Only fluff die.
+const FALLBACK_FULL_RULE = `Caveman full active for this session.
+Respond terse like smart caveman. Keep all technical substance. Drop filler, pleasantries, and hedging.
 
 Rules:
-- Drop articles (a/an/the), filler (just/really/basically), pleasantries, hedging.
-- Fragments OK. Short synonyms. Technical terms exact. Code unchanged.
-- Pattern: [thing] [action] [reason]. [next step].
-- Not: 'Sure! I'd be happy to help you with that.'
-- Yes: 'Bug in auth middleware. Fix:'
+- Drop articles where meaning stays clear. Keep fragments and short sentences.
+- Keep technical terms, code, commands, paths, API names, numbers, units, and errors exact.
+- Never invent abbreviations or causal arrows. Do not add words to sound caveman.
+- Use ASD-STE100 Simplified Technical English. Keep one idea per sentence, target 20 words, active voice, and consistent terms.
+- Make no tool-call narration. Use no decorative tables or emoji.
+- Preserve the user's reply language. Compress style, not language.
+- Drop caveman for security warnings, irreversible actions, ambiguous multi-step sequences, or requests to clarify.
+- Write code, comments, commits, docs, issues, pull requests, and third-party messages in normal prose.
 
-Auto-clarity: drop caveman for security warnings, irreversible actions, or when user seems confused. Resume after.`;
+Default: **full**. Switch: \`/caveman lite|full|ultra|wenyan-lite|wenyan-full|wenyan-ultra|off\`. Stop: "stop caveman" or "normal mode".`;
 
 // ponytail: synchronous read each full-mode injection; ceiling = small file, cold session start. Upgrade path: cache file contents + mtime, invalidate on change.
 function readFullRule(): string {
@@ -30,9 +34,10 @@ const INSTRUCTIONS: Record<string, string | (() => string)> = {
 Respond concise. Drop pleasantries, filler, and hedging. Keep complete technical substance. Code, commands, paths, errors, commits, and PR text stay normal/exact.`,
   full: () => `Caveman full active for this session.\n${readFullRule()}`,
   ultra: `Caveman ultra active for this session.
-Maximum terse prose. Fragments preferred. No pleasantries, no tour, no recap unless needed. Keep all technical substance exact. Code, commands, commits, PR text, paths, and errors stay normal/exact. Drop caveman for security warnings, irreversible actions, or user confusion.`,
-  wenyan: `Caveman wenyan active for this session.
-Use ultra-terse classical-Chinese-style prose only where it preserves clarity for the user. Keep technical terms, code, commands, commits, PR text, paths, and errors exact. If clarity would suffer, use caveman full instead.`,
+Maximum terse prose. Strip conjunctions only when meaning stays clear. State each fact once. Use no invented abbreviations or causal arrows. Keep code, commands, commits, PR text, paths, API names, numbers, units, and errors exact. Drop caveman for security warnings, irreversible actions, ambiguous multi-step sequences, or user confusion.`,
+  'wenyan-lite': `Caveman wenyan-lite active for this session. Use semi-classical terse prose. Keep grammar structure, user language, technical terms, code, commands, paths, API names, numbers, units, and errors exact. Drop caveman when clarity or safety needs normal prose.`,
+  'wenyan-full': `Caveman wenyan-full active for this session. Use maximum classical terseness where meaning stays clear. Use classical sentence patterns, verbs before objects, and optional omitted subjects. Keep user language, technical terms, code, commands, paths, API names, numbers, units, and errors exact. Drop caveman when clarity or safety needs normal prose.`,
+  'wenyan-ultra': `Caveman wenyan-ultra active for this session. Use extreme classical abbreviation while keeping a classical Chinese feel and meaning clear. Keep user language, technical terms, code, commands, paths, API names, numbers, units, and errors exact. Drop caveman when clarity or safety needs normal prose.`,
 };
 
 function resolveMode(entries: SessionEntry[] | null | undefined, fallback: string = DEFAULT_MODE): string {
@@ -102,7 +107,7 @@ export default function cavemanSessionExtension(pi: ExtensionApi): void {
         return;
       }
       if (!setMode(arg, ctx)) {
-        ctx?.ui?.notify?.('Usage: /caveman [lite|full|ultra|wenyan|off|status]', 'warning');
+        ctx?.ui?.notify?.('Usage: /caveman [lite|full|ultra|wenyan-lite|wenyan-full|wenyan-ultra|off|status]', 'warning');
       }
     },
   });
@@ -122,7 +127,7 @@ export default function cavemanSessionExtension(pi: ExtensionApi): void {
     // Persisted session state wins; a fresh session falls back to the
     // installer/user-configured default (off unless configured).
     const persisted = resolveMode(entries, '');
-    currentMode = persisted || readCavemanDefault();
+    currentMode = persisted || normalizeMode('caveman', readCavemanDefault()) || DEFAULT_MODE;
     syncStatus(ctx);
   }
 

@@ -37,9 +37,8 @@ interface PluginsPackage {
   [key: string]: unknown;
 }
 
-// Session-start mode defaults for fresh installs.
-const CAVEMAN_DEFAULTS = new Set(['off', 'lite', 'full', 'ultra', 'wenyan']);
-const PONYTAIL_DEFAULTS = new Set(['off', 'lite', 'full', 'ultra', 'review']);
+const CAVEMAN_DEFAULTS = new Set(['off', 'lite', 'full', 'ultra', 'wenyan-lite', 'wenyan-full', 'wenyan-ultra']);
+const PONYTAIL_DEFAULTS = new Set(['off', 'lite', 'full', 'ultra']);
 const RTK_DEFAULTS = new Set(['on', 'off']);
 const DIAG_SCHEDULES = new Set(['manual', 'daily', 'weekly', 'monthly']);
 
@@ -215,7 +214,23 @@ async function ensureExtensionInConfig(configPath: string, extensionPath: string
     lines = lines.filter((l) => !l.trim().replace(/^\.\//, '').endsWith(legacyTail));
   }
 
-  if (lines.some((l) => l.includes(normalizedPath))) {
+  const matchingEntries = lines.filter((entry) => entry.trim().replace(/^-\s*/, '').replace(/^['"]|['"]$/g, '') === normalizedPath);
+  if (matchingEntries.length > 1) {
+    if (options.dryRun) {
+      if (verbose && !options.quiet) console.log(`  [dry-run] would remove ${matchingEntries.length - 1} duplicate ${label} registration${matchingEntries.length === 2 ? '' : 's'}`);
+      return true;
+    }
+    let kept = false;
+    lines = lines.filter((entry) => {
+      if (entry.trim().replace(/^-\s*/, '').replace(/^['"]|['"]$/g, '') !== normalizedPath) return true;
+      if (kept) return false;
+      kept = true;
+      return true;
+    });
+    await writeConfigLines(configPath, lines, `  [write] Removed duplicate ${label} registration`, options);
+    return true;
+  }
+  if (matchingEntries.length === 1) {
     debug(`${label} already in config.yml`);
     return false;
   }
@@ -241,42 +256,27 @@ async function ensureExtensionInConfig(configPath: string, extensionPath: string
   return true;
 }
 
-async function ensureExtensionAfterConfigEntry(configPath: string, extensionPath: string, afterPath: string, label: string, options: WriteOptions = {}): Promise<boolean> {
-  const normalizedPath = extensionPath.replace(/\\/g, '/');
-  const normalizedAfterPath = afterPath.replace(/\\/g, '/');
-  const line = `  - ${normalizedPath}`;
+
+async function removeExtensionFromConfig(configPath: string, extensionPath: string, label: string, options: WriteOptions = {}): Promise<boolean> {
+  const normalizedPath = extensionPath.replace(/\\/g, '/').replace(/^\.\//, '');
+  const extensionSuffix = normalizedPath.includes('/extensions/')
+    ? normalizedPath.slice(normalizedPath.indexOf('/extensions/') + 1)
+    : normalizedPath;
   const raw = await readTextIfExists(configPath);
-  let lines = (raw || '').split('\n');
-
-  // Same legacy-twin drop as ensureExtensionInConfig above.
-  if (normalizedPath.endsWith('.ts')) {
-    const legacyTail = `${normalizedPath.slice(0, -3)}.js`.split('/').slice(-2).join('/');
-    lines = lines.filter((l) => !l.trim().replace(/^\.\//, '').endsWith(legacyTail));
-  }
-  const existingIndex = lines.findIndex((entry) => entry.includes(normalizedPath));
-  const afterIndex = lines.findIndex((entry) => entry.includes(normalizedAfterPath));
-
-  if (existingIndex !== -1 && afterIndex !== -1 && existingIndex === afterIndex + 1) return false;
+  if (raw === null) return false;
+  const lines = raw.split('\n');
+  const matches = (entry: string): boolean => {
+    const value = entry.trim().replace(/^-\s*/, '').replace(/^['"]|['"]$/g, '').replace(/\\/g, '/').replace(/^\.\//, '');
+    return value === extensionSuffix || value.endsWith(`/${extensionSuffix}`);
+  };
+  const kept = lines.filter((entry) => !matches(entry));
+  const removed = lines.length - kept.length;
+  if (removed === 0) return false;
   if (options.dryRun) {
-    if (verbose && !options.quiet) console.log(`  [dry-run] would place ${label} after Ponytail in config.yml`);
+    if (verbose && !options.quiet) console.log(`  [dry-run] would remove ${label} registration${removed === 1 ? '' : 's'}`);
     return true;
   }
-
-  if (existingIndex !== -1) lines.splice(existingIndex, 1);
-  const refreshedAfterIndex = lines.findIndex((entry) => entry.includes(normalizedAfterPath));
-  if (refreshedAfterIndex !== -1) {
-    lines.splice(refreshedAfterIndex + 1, 0, line);
-  } else {
-    const extensionsIndex = lines.findIndex((entry) => EXTENSIONS_KEY_RE.test(entry));
-    if (extensionsIndex === -1) {
-      lines.push('extensions:', line, '');
-    } else {
-      normalizeExtensionsKey(lines);
-      lines.splice(extensionsIndex + 1, 0, line);
-    }
-  }
-
-  await writeConfigLines(configPath, lines, `  [write] Placed ${label} after Ponytail in config.yml`, options);
+  await writeConfigLines(configPath, kept, `  [write] Removed duplicate ${label} registration`, options);
   return true;
 }
 
@@ -371,7 +371,7 @@ export {
   removePonytail, keepPonytail, removeRtk,
   comboDefaultFlag, cavemanDefaultFlag, ponytailDefaultFlag, rtkDefaultFlag, diagScheduleFlag, profileFlagsGiven,
   debug, execFileP, execP, writeIfChanged, normalizeExtensionsKey, EXTENSIONS_KEY_RE,
-  writeConfigLines, ensureExtensionInConfig, ensureExtensionAfterConfigEntry,
+  writeConfigLines, ensureExtensionInConfig, removeExtensionFromConfig,
   readPonytailConfig, parseJsonObject, parsePonytailConfig, patchPonytailConfig,
   ensurePonytailConfigValue, readPluginsPackage, relTime,
   InstallOptions, PluginsPackage, PonytailConfig, ExecOptions, WriteOptions,

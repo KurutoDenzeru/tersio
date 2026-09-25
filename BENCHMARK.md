@@ -10,24 +10,18 @@ Measured before/after token costs for `caveman`, `rtk`, `ponytail`, and `combo` 
 - **RTK (measured).** Real command runs in this repo, raw output vs `rtk` output, same command, same working tree.
 - **Runtime/memory (measured).** Same machine (darwin 25.6.0, arm64), both builds freshly compiled via `tsc`; wall time = median of 5 runs, peak RSS = median of 3 via `/usr/bin/time -l`.
 
-## 1. Session overhead (measured, once per session)
+## 1. Current prompt payload
 
-| Injected text | Chars | Tokens (real) |
-|---|---:|---:|
-| caveman lite | 200 | 46 |
-| caveman full (instruction + `rule.md`) | 653 | 172 |
-| caveman ultra | 314 | 68 |
-| caveman wenyan | 263 | 58 |
-| rtk on (`RTK_PROMPT`) | 627 | 165 |
-| ponytail lite (bundled fallback, floor) | 270 | 54 |
-| ponytail full (bundled fallback, floor) | 297 | 60 |
-| ponytail ultra (bundled fallback, floor) | 298 | 60 |
-| ponytail lite (installed plugin v4.9.0) | 5,202 | 1,260 |
-| ponytail full (installed plugin v4.9.0) | 5,229 | 1,264 |
-| ponytail ultra (installed plugin v4.9.0) | 5,267 | 1,275 |
-| mode reinforcement line | 284 | 67 |
+Current upstream-equivalent prompts are larger than the old terse activation banner. Measured with `omp toks --json` on 2026-09-25:
 
-**Combo preset totals.** With the bundled-fallback floor (plugin missing or unloaded): medium ≈ **332 tok** · balanced ≈ **464 tok** · max ≈ **360 tok**. With the real installed Ponytail plugin: medium ≈ **1,538 tok** · balanced ≈ **1,668 tok** · max ≈ **1,575 tok**. The upstream Ponytail instruction block grew to ~1.3K tokens per level — budget for it, or run the fallback when the preset alone must pay for itself fast.
+| Injected text | o200k tokens |
+|---|---:|
+| Caveman full (`rule.md`) | ≈1,650 |
+| Ponytail full, installed v4.10.0 | 1,264 |
+| RTK session guidance | ≈40 |
+| retired mode reinforcement | 0 |
+
+The retired reinforcement duplicated the Caveman, RTK, and Ponytail directives. Removing it saves the prior 67-token block each turn. Caveman's larger prompt buys current upstream rules and removes stale mode behavior. Keep Combo off by default for short sessions.
 
 ## 2. Before/after: Caveman replies
 
@@ -78,17 +72,14 @@ As of 2026-09-13 the tersio installer wires rtk into OMP automatically (`rtk ini
 
 ## 5. Combined session economics
 
-Example mixed turn (one reply + one grep + one code task), balanced preset, fresh samples:
+Older mixed-surface sample (one reply + one grep + one code task):
 
 | | Before | After |
 |---|---:|---:|
-| reply + grep + code diff | 941 tok | 399 tok |
-| per-turn saving | | **−57.6%** |
-| one-time session overhead | | 464 tok (floor) · 1,668 tok (installed Ponytail) |
+| reply text + command output + code diff | 941 tok | 399 tok |
+| sampled-surface reduction | | **−57.6%** |
 
-With the floor overhead: break-even lands inside the first turn (`⌈464 ÷ 542⌉ = 1`), first turn nets ≈ +8%, every turn after nets ≈ −57.6%. With the real installed Ponytail instructions: the first turn costs more than baseline (`542 − 1668 < 0`), turn 4 breaks even, and every turn after nets ≈ −57.6%.
-
-Steady-state ratio `399 ÷ 941 = 0.42×` per mixed turn.
+This sample is not a provider-bill benchmark. It omits system prompts, provider overhead, cache reads, reasoning tokens, retries, and long-session context. Use current session telemetry for bill economics.
 
 ## 6. Runtime + memory delta (v2.9.0 tag vs current main)
 
@@ -120,3 +111,9 @@ Wall-time wins come from concurrent companion reads in `copySources`, batched do
 - RTK keeps failing-test output exact by design in direct CLI use; savings concentrate on listings, grep, large diffs, and (hook-wired) passing suites. The OMP rewrite extension rewrites bash tool calls only — native tool calls (`read`/`edit`/`eval`) stay unmetered by design of rtk's hook surface.
 - Ponytail upstream instruction size is external and grew 76 → 1,264 tokens between reruns; re-measure after plugin updates. Wenyan not sampled (CJK tokenization is a separate study).
 - Metered rtk figures come from `history.db` (rtk-owned, never touched by tersio).
+
+## 9. Native tool-result compression trial (2026-09-25)
+
+OMP `snapcompact.toolResults` was tested with temporary config overlays. The durable user config was not changed. One-turn `read` and `grep` trials completed with `toolResults: false` and `true`; both kept the tool result readable and the model returned the required response. The fixture was too small to measure billing savings. Result: no default change. Revisit only with a long, vision-capable workload that exceeds Snapcompact's per-result thresholds.
+
+Prompt payload after fidelity fixes: Caveman full `rule.md` is 1,650 o200k tokens, installed Ponytail full is 1,264, and the retired reinforcement block is removed. Upstream-equivalent prose now costs more than the old terse activation banner, but removes stale or ambiguous behavior.

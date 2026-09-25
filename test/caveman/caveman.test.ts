@@ -1,8 +1,10 @@
 import { expect, test } from "vitest";
-
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import cavemanSessionExtension from "../../extensions/caveman-session/index.ts";
 import { resetSharedComboState } from "../../extensions/shared/session-state.ts";
-import type { ExtensionApi, ExtensionCtx, SessionEntry } from "../../extensions/shared/types.ts";
+import type { ExtensionApi, SessionEntry } from "../../extensions/shared/types.ts";
 
 process.env.HOME = new URL("../definitely-missing-home", import.meta.url).pathname;
 process.env.USERPROFILE = process.env.HOME;
@@ -56,10 +58,12 @@ test("bare /caveman and /caveman on enable full", async () => {
 });
 
 test("each mode confirms with an on notification, off with an off notification", async () => {
-  for (const mode of ["lite", "ultra", "wenyan"]) {
+  for (const mode of ["lite", "ultra", "wenyan-lite", "wenyan-full", "wenyan-ultra"]) {
     const notifications = await caveman([], mode);
     expect(notifications.at(-1)).toMatch(new RegExp(`Caveman ${mode} on — terse replies`));
   }
+  const legacy = await caveman([], "wenyan");
+  expect(legacy.at(-1)).toMatch(/Caveman wenyan-full on — terse replies/);
   const notifications = await caveman([], "off");
   expect(notifications.at(-1)).toMatch(/^Caveman off\. Active: /);
 });
@@ -71,7 +75,7 @@ test("status reports the current mode, unknown args show usage", async () => {
   await pi.commands.get("caveman")!("status", ctx);
   expect(ctx.notifications.at(-1)).toBe("Caveman: ultra");
   await pi.commands.get("caveman")!("bogus", ctx);
-  expect(ctx.notifications.at(-1)).toBe("Usage: /caveman [lite|full|ultra|wenyan|off|status]");
+  expect(ctx.notifications.at(-1)).toBe("Usage: /caveman [lite|full|ultra|wenyan-lite|wenyan-full|wenyan-ultra|off|status]");
 });
 
 test("natural-language off commands switch the mode off", async () => {
@@ -98,7 +102,7 @@ test("session_start restores the persisted mode, fresh sessions use the default"
   resetSharedComboState();
   const restored = harness([{ type: "custom", customType: "caveman-mode", data: { mode: "wenyan" } }]);
   await restored.pi.handlers.get("session_start")!({}, restored.ctx);
-  expect(restored.ctx.notifications.at(-1)).toBe("Caveman loaded: wenyan");
+  expect(restored.ctx.notifications.at(-1)).toBe("Caveman loaded: wenyan-full");
 
   resetSharedComboState();
   const fresh = harness();
@@ -106,8 +110,31 @@ test("session_start restores the persisted mode, fresh sessions use the default"
   expect(fresh.ctx.notifications.at(-1)).toBe("Caveman loaded: off");
 });
 
+test("legacy plugin default normalizes to wenyan-full and injects rules", async () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-caveman-default-"));
+  const lockDir = path.join(home, ".omp", "plugins");
+  mkdirSync(lockDir, { recursive: true });
+  writeFileSync(path.join(lockDir, "omp-plugins.lock.json"), JSON.stringify({
+    settings: { "@krtclcdy/tersio": { cavemanDefault: "wenyan" } },
+  }), "utf8");
+  const previousHome = process.env.HOME;
+  process.env.HOME = home;
+  try {
+    resetSharedComboState();
+    const { pi, ctx } = harness();
+    await pi.handlers.get("session_start")!({}, ctx);
+    expect(ctx.notifications.at(-1)).toBe("Caveman loaded: wenyan-full");
+    const injected = await pi.handlers.get("before_agent_start")!({ systemPrompt: "Base." }, ctx) as { systemPrompt: string[] };
+    expect(injected.systemPrompt.at(-1)).toMatch(/maximum classical terseness/i);
+  } finally {
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test("before_agent_start injects the per-mode instruction, nothing when off", async () => {
-  for (const [mode, pattern] of [["lite", /Caveman lite active/], ["ultra", /Maximum terse prose/], ["wenyan", /wenyan/i]] as const) {
+  for (const [mode, pattern] of [["lite", /Caveman lite active/], ["ultra", /Maximum terse prose/], ["wenyan-full", /maximum classical terseness/i], ["wenyan-lite", /semi-classical/i], ["wenyan-ultra", /extreme classical/i]] as const) {
     resetSharedComboState();
     const { pi, ctx } = harness();
     await pi.commands.get("caveman")!(mode, ctx);
@@ -129,4 +156,7 @@ test("full mode injects the rule file", async () => {
   const result = await pi.handlers.get("before_agent_start")!({ systemPrompt: "Base." }, ctx) as { systemPrompt: string[] };
   expect(result.systemPrompt.at(-1)).toMatch(/Caveman full active/);
   expect(result.systemPrompt.at(-1)).toMatch(/Only fluff die/);
-});
+  expect(result.systemPrompt.at(-1)).toMatch(/ASD-STE100 Simplified Technical English/);
+  expect(result.systemPrompt.at(-1)).toMatch(/No tool-call narration/);
+  expect(result.systemPrompt.at(-1)).toMatch(/wenyan-lite\|wenyan-full\|wenyan-ultra/);
+ });

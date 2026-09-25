@@ -33,10 +33,6 @@ async function injectMarked(ponytail: string): Promise<string> {
   return prompt?.at(-1) ?? "";
 }
 
-test("review fallback targets avoidable complexity", async () => {
-  expect(await injectMarked("review")).toMatch(/PONYTAIL MODE ACTIVE — level: review/);
-  expect(await injectMarked("review")).toMatch(/avoidable complexity/);
-});
 
 test("lite and full fallbacks carry their intensities", async () => {
   expect(await injectMarked("lite")).toMatch(/simplest correct solution/);
@@ -52,6 +48,10 @@ test("existing ponytail guidance is not duplicated", async () => {
     undefined,
   );
   expect(result).toBe(undefined);
+});
+
+test("review is not a runtime mode", async () => {
+  expect(await injectMarked("review")).toBe("");
 });
 
 test("off mode and unmarked prompts get no injection", async () => {

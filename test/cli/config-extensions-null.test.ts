@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { ensureExtensionAfterConfigEntry, ensureExtensionInConfig, normalizeExtensionsKey } from "../../cli/common.ts";
+import { ensureExtensionInConfig, normalizeExtensionsKey, removeExtensionFromConfig } from "../../cli/common.ts";
 
 // The normalizer lives in cli/common.ts (import-safe: no CLI side effects),
 // so this exercises the shared behavior directly instead of the source text.
@@ -36,29 +36,23 @@ test("ensure drops the legacy compiled twin instead of duplicating it", async ()
   }
 });
 
-test("ensure drops relative legacy twins too", async () => {
-  const { dir, file } = withConfig("extensions:\n  - ./extensions/shared/mode-reinforcement.js\n");
-  try {
-    await ensureExtensionAfterConfigEntry(
-      file,
-      "/home/u/.omp/agent/extensions/shared/mode-reinforcement.ts",
-      "/home/u/.omp/plugins/node_modules/@dietrichgebert/ponytail/pi-extension/index.js",
-      "mode reinforcement",
-      {},
-    );
-    const body = readFileSync(file, "utf8");
-    expect(body).toMatch(/mode-reinforcement\.ts/);
-    expect(body).not.toMatch(/mode-reinforcement\.js/);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
 
 test("ensure leaves .js entries alone when the new path is also .js", async () => {
   const { dir, file } = withConfig("extensions:\n  - /x/ponytail/pi-extension/index.js\n");
   try {
     await ensureExtensionInConfig(file, "/x/ponytail/pi-extension/index.js", "ponytail", {});
     expect(readFileSync(file, "utf8")).toMatch(/pi-extension\/index\.js/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("retired extension cleanup removes absolute and relative matching registrations", async () => {
+  const { dir, file } = withConfig("extensions:\n  - /x/agent/extensions/shared/mode-reinforcement.ts\n  - ./extensions/shared/mode-reinforcement.ts\n  - /x/read.ts\n");
+  try {
+    expect(await removeExtensionFromConfig(file, "/x/agent/extensions/shared/mode-reinforcement.ts", "retired mode reinforcement", {})).toBe(true);
+    expect(readFileSync(file, "utf8")).toBe("extensions:\n  - /x/read.ts\n");
+    expect(await removeExtensionFromConfig(file, "/x/agent/extensions/shared/mode-reinforcement.ts", "retired mode reinforcement", {})).toBe(false);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

@@ -2,7 +2,7 @@
 // Node built-ins only — this module must stay dependency-free.
 
 import { createHash } from 'node:crypto';
-import { createWriteStream, existsSync, mkdirSync, renameSync } from 'node:fs';
+import { accessSync, constants, createWriteStream, existsSync, mkdirSync, renameSync, statSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import https from 'node:https';
 import os from 'node:os';
@@ -10,6 +10,7 @@ import path from 'node:path';
 
 export interface HttpOptions {
   maxRedirects?: number;
+  signal?: AbortSignal;
 }
 
 // Promise.withResolvers is Node 22+; the package supports Node 18+.
@@ -22,7 +23,7 @@ export function withResolvers<T>(): PromiseWithResolvers<T> {
 }
 
 export const RTK_RELEASE_API = 'https://api.github.com/repos/rtk-ai/rtk/releases/latest';
-export const CAVEMAN_REMOTE_RULE = 'https://raw.githubusercontent.com/JuliusBrussee/caveman/main/src/rules/caveman-activate.md';
+export const CAVEMAN_REMOTE_RULE = 'https://raw.githubusercontent.com/JuliusBrussee/caveman/main/skills/caveman/SKILL.md';
 
 export interface RtkPlatformSpec {
   triple: string;
@@ -47,6 +48,19 @@ const RTK_PLATFORM_SPECS: Record<string, RtkPlatformSpec> = {
   'darwin/x64': { triple: 'x86_64-apple-darwin', ext: '.tar.gz', binary: 'rtk' },
   'darwin/arm64': { triple: 'aarch64-apple-darwin', ext: '.tar.gz', binary: 'rtk' },
 };
+export function resolveRtkBinary(managedDir = path.join(os.homedir(), '.bun', 'bin')): string | null {
+  const name = process.platform === 'win32' ? 'rtk.exe' : 'rtk';
+  const candidates = (process.env.PATH || '').split(path.delimiter).filter(Boolean).map((dir) => path.join(dir, name));
+  if (managedDir) candidates.push(path.join(managedDir, name));
+  for (const candidate of candidates) {
+    try {
+      if (!statSync(candidate).isFile()) continue;
+      accessSync(candidate, constants.X_OK);
+      return candidate;
+    } catch { /* keep searching */ }
+  }
+  return null;
+}
 
 export function rtkPlatformSpec(platform: string = process.platform, arch: string = process.arch): RtkPlatformSpec | null {
   return RTK_PLATFORM_SPECS[`${platform}/${arch}`] || null;
@@ -63,12 +77,12 @@ function redirectNext(res: { statusCode?: number; headers: { location?: string }
 export function httpsGet(url: string, opts: HttpOptions = {}): Promise<string> {
   const { promise, resolve, reject } = withResolvers<string>();
   const maxRedirects = opts.maxRedirects ?? 5;
-  const req = https.get(url, { headers: { 'User-Agent': 'tersio', Accept: 'application/json,*/*' } }, (res) => {
+  const req = https.get(url, { headers: { 'User-Agent': 'tersio', Accept: 'application/json,*/*' }, signal: opts.signal }, (res) => {
     const next = redirectNext(res, url);
     if (next) {
       if (maxRedirects <= 0) { res.resume(); reject(new Error(`Too many redirects fetching ${url}`)); return; }
       res.resume();
-      resolve(httpsGet(next, { maxRedirects: maxRedirects - 1 }));
+      resolve(httpsGet(next, { maxRedirects: maxRedirects - 1, signal: opts.signal }));
       return;
     }
     if (res.statusCode !== 200) { res.resume(); reject(new Error(`HTTP ${res.statusCode} for ${url}`)); return; }

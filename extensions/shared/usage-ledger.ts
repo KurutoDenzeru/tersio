@@ -5,7 +5,8 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { tersioDataPath } from '../lib/utils.ts';
+import { resolveRtkBinary, tersioDataPath } from '../lib/utils.ts';
+import { execFileSync } from 'node:child_process';
 
 export type UsageKind = 'command' | 'toggle' | 'install' | 'update' | 'rtk-audit';
 
@@ -104,6 +105,21 @@ export interface SessionTokens {
   recent: RecentRequest[];
 }
 
+export interface RtkAdoption {
+  sessions: number;
+  bashCalls: number;
+  eligibleCalls: number;
+  rtkCalls: number;
+  missedCalls: number;
+  adoptionPct: number;
+}
+
+export interface RtkRecallDiagnostics {
+  mode: 'sqlite' | 'tee' | 'disabled' | 'unknown';
+  entries: number;
+  available: boolean;
+}
+
 function zeroBreakdown(): TokenBreakdown {
   return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 }
@@ -187,6 +203,11 @@ export function walkJsonl(dir: string, out: string[], cap: number): void {
 // (model, tokens, timing, status), so a few hundred cost little to ship.
 export const RECENT_LIMIT = 200;
 const FREE_SUFFIX = /(?::free|-free)$/i;
+const RTK_ELIGIBLE_HEADS = new Set([
+  'rtk', 'git', 'grep', 'rg', 'find', 'cat', 'ls', 'tree', 'diff', 'log',
+  'npm', 'npx', 'pnpm', 'bun', 'bunx', 'cargo', 'go', 'python', 'pytest',
+  'ruff', 'mypy', 'docker', 'kubectl', 'psql', 'aws', 'gh', 'glab', 'wc',
+]);
 // Session-parse buffer shared by live reads and usage.db syncs: identical
 // inputs produce identical aggregates, so the store is a cache, never a fork.
 export interface SessionAccum {
@@ -253,9 +274,13 @@ export function classifySessionLine(row: { timestamp?: string | number; type?: u
   const computedDur = (typeof msg.completedAt === 'number' && typeof msg.timestamp === 'number') ? msg.completedAt - msg.timestamp : undefined;
   const tools: string[] = [];
   for (const part of msg.content ?? []) {
-    if (part?.type === 'toolCall' && typeof part.name === 'string' && part.name) {
-      tools.push(part.name === 'bash' ? `bash:${leadBinary((part.arguments as { command?: unknown } | null)?.command)}` : part.name);
+    if (part?.type !== 'toolCall' || typeof part.name !== 'string' || !part.name) continue;
+    if (part.name !== 'bash') {
+      tools.push(part.name);
+      continue;
     }
+    const command = (part.arguments as { command?: unknown } | null)?.command;
+    tools.push(`bash:${leadBinary(command)}`);
   }
   return { kind: 'assistant_row', model, usage: msg.usage, durMs: typeof msg.duration === 'number' ? msg.duration : computedDur, run: statusOf(msg), tools };
 }
@@ -305,6 +330,80 @@ export function importSessionTokens(): SessionTokens {
   accum.recent.sort((a, b) => b.t - a.t);
   return { messages: accum.messages, totals: accum.totals, byModel: accum.byModel, byDay: accum.byDay, byDayModel: accum.byDayModel, byTool: accum.byTool, byModelMessages: accum.byModelMessages, costMeasured: accum.costMeasured, recent: accum.recent.slice(0, RECENT_LIMIT) };
 }
+
+const adoptionFileCache = new Map<string, { size: number; mtimeMs: number; counts: { bashCalls: number; eligibleCalls: number; rtkCalls: number } }>();
+
+function parseAdoptionFile(file: string): { counts: { bashCalls: number; eligibleCalls: number; rtkCalls: number }; sessions: number } {
+  const counts = { bashCalls: 0, eligibleCalls: 0, rtkCalls: 0 };
+  let text: string;
+  try {
+    text = fs.readFileSync(file, 'utf8');
+  } catch {
+    return { counts, sessions: 0 };
+  }
+  let sawBash = false;
+  for (const line of text.split('\n')) {
+    if (!line.includes('tool_execution_start')) continue;
+    try {
+      const row = JSON.parse(line) as {
+        type?: string;
+        customType?: string;
+        data?: { toolName?: unknown; args?: { command?: unknown } };
+      };
+      if (row.type !== 'custom' || row.customType !== 'tool_execution_start' || row.data?.toolName !== 'bash') continue;
+      const command = row.data.args?.command;
+      if (typeof command !== 'string') continue;
+      sawBash = true;
+      counts.bashCalls += 1;
+      const head = leadBinary(command);
+      if (RTK_ELIGIBLE_HEADS.has(head)) counts.eligibleCalls += 1;
+      if (head === 'rtk') counts.rtkCalls += 1;
+    } catch { /* skip corrupt line */ }
+  }
+  return { counts, sessions: sawBash ? 1 : 0 };
+}
+
+export function clearRtkAdoptionCache(): void {
+  adoptionFileCache.clear();
+}
+
+export function readRtkAdoption(): RtkAdoption {
+  const files: string[] = [];
+  walkJsonl(sessionsDir(), files, 2000);
+  if (process.env.TERSIO_SESSIONS_DIR === undefined || process.env.TERSIO_CODEX_DIR !== undefined) {
+    walkJsonl(codexSessionsDir(), files, 2000);
+  }
+  const live = new Set(files);
+  for (const file of adoptionFileCache.keys()) {
+    if (!live.has(file)) adoptionFileCache.delete(file);
+  }
+  let bashCalls = 0;
+  let eligibleCalls = 0;
+  let rtkCalls = 0;
+  let sessions = 0;
+  for (const file of files) {
+    let stat: fs.Stats;
+    try {
+      stat = fs.statSync(file);
+    } catch {
+      continue;
+    }
+    let entry = adoptionFileCache.get(file);
+    if (!entry || entry.size !== stat.size || entry.mtimeMs !== stat.mtimeMs) {
+      const parsed = parseAdoptionFile(file);
+      entry = { size: stat.size, mtimeMs: stat.mtimeMs, counts: parsed.counts };
+      adoptionFileCache.set(file, entry);
+      sessions += parsed.sessions;
+    } else if (entry.counts.bashCalls > 0) {
+      sessions += 1;
+    }
+    bashCalls += entry.counts.bashCalls;
+    eligibleCalls += entry.counts.eligibleCalls;
+    rtkCalls += entry.counts.rtkCalls;
+  }
+  const missedCalls = Math.max(0, eligibleCalls - rtkCalls);
+  return { sessions, bashCalls, eligibleCalls, rtkCalls, missedCalls, adoptionPct: eligibleCalls ? (rtkCalls / eligibleCalls) * 100 : 0 };
+}
 export function processSessionText(accum: SessionAccum, state: { codexProvider: string | null }, text: string): void {
   for (const line of text.split('\n')) {
     if (!line.trim()) continue;
@@ -323,6 +422,25 @@ export function processSessionText(accum: SessionAccum, state: { codexProvider: 
       if (parsed.kind !== 'assistant_row' || !parsed.model || !parsed.usage) continue;
       ingestSessionRow(accum, parsed.model, parsed.usage, row.timestamp, parsed.durMs, parsed.run, parsed.tools);
     } catch { /* skip corrupt lines */ }
+  }
+}
+
+export function readRtkRecallDiagnostics(binary: string | null = resolveRtkBinary()): RtkRecallDiagnostics {
+  if (!binary) return { mode: 'unknown', entries: 0, available: false };
+  try {
+    const configPath = process.env.RTK_CONFIG
+      || (process.platform === 'darwin'
+        ? path.join(os.homedir(), 'Library', 'Application Support', 'rtk', 'config.toml')
+        : path.join(process.env.XDG_DATA_HOME || path.join(os.homedir(), '.local', 'share'), 'rtk', 'config.toml'));
+    let config = '';
+    try { config = fs.readFileSync(configPath, 'utf8'); } catch { /* use RTK CLI fallback */ }
+    const modeMatch = /^\s*mode\s*=\s*"(sqlite|tee|disabled)"/m.exec(config);
+    const mode = (modeMatch?.[1] ?? 'unknown') as RtkRecallDiagnostics['mode'];
+    const output = execFileSync(binary, ['recall', '--list'], { encoding: 'utf8', timeout: 5000, windowsHide: true });
+    const entries = /\((\d+)\s+(?:entries?|stored)\)/i.exec(output)?.[1] ?? /^\s*(\d+)\s+entries?/im.exec(output)?.[1] ?? '0';
+    return { mode, entries: Number(entries) || 0, available: true };
+  } catch {
+    return { mode: 'unknown', entries: 0, available: false };
   }
 }
 // Lead binary of a shell string: first segment head past `cd` chains and

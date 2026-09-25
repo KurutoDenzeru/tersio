@@ -75,7 +75,7 @@ test("dry-run previews shared bridge before dependent extensions without writing
   expect(existsSync(path.join(root, "extensions", "shared-session-state.js"))).toBe(false);
 });
 
-test("user dry-run installs mode reinforcement after Ponytail", () => {
+test("user dry-run installs commands without retired reinforcement", () => {
   const missingHome = path.join(root, "test", "definitely-missing-home");
   const result = spawnSync(
     process.execPath,
@@ -88,12 +88,10 @@ test("user dry-run installs mode reinforcement after Ponytail", () => {
   );
 
   expect(result.status, result.stderr).toBe(0);
-  const ponytail = result.stdout.indexOf("Ponytail — ensure bundled plugin");
-  const reinforcement = result.stdout.indexOf("Session helpers — sync shared files");
-  expect(ponytail >= 0, result.stdout).toBeTruthy();
-  expect(reinforcement > ponytail, result.stdout).toBeTruthy();
+  expect(result.stdout).toMatch(/Ponytail — ensure bundled plugin/);
   expect(result.stdout).toMatch(/Combo — install preset switch/);
   expect(result.stdout).toMatch(/Tersio — register plugin/);
+  expect(result.stdout).not.toMatch(/mode reinforcement/i);
 });
 test("user dry-run installs the tersio root-command extension", () => {
   const missingHome = path.join(root, "test", "definitely-missing-home");

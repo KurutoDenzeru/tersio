@@ -6,7 +6,7 @@
 // it only exists on the author's machine.
 import { expect, test } from "vitest";
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -49,7 +49,7 @@ function candidates(source: string, spec: string): string[] {
 
 test("tracked sources only import git-tracked files", () => {
   const tracked = trackedFiles();
-  const sources = [...tracked].filter((file) => file.endsWith(".ts")).sort();
+  const sources = [...tracked].filter((file) => file.endsWith(".ts") && existsSync(path.join(root, file))).toSorted();
   expect(sources.length > 0, "expected tracked .ts sources").toBeTruthy();
   const violations: string[] = [];
   for (const source of sources) {

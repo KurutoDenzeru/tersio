@@ -47,18 +47,18 @@ test.skipIf(!hasSqlite())("aggregates per-command savings from history.db", () =
       "original_cmd TEXT NOT NULL, rtk_cmd TEXT NOT NULL, input_tokens INTEGER NOT NULL,",
       "output_tokens INTEGER NOT NULL, saved_tokens INTEGER NOT NULL, savings_pct REAL NOT NULL,",
       "exec_time_ms INTEGER DEFAULT 0, project_path TEXT DEFAULT '');",
-      "INSERT INTO commands VALUES (1,'2026-09-01T00:00:00Z','git status','rtk git status',100,50,50,50.0,20,'/tmp');",
-      "INSERT INTO commands VALUES (2,'2026-09-01T00:01:00Z','git status','rtk git status',200,100,100,50.0,40,'/tmp');",
+      "INSERT INTO commands VALUES (1,'2026-09-01T00:00:00Z','git status','rtk git status',100,50,50,90.0,20,'/tmp');",
+      "INSERT INTO commands VALUES (2,'2026-09-01T00:01:00Z','git status','rtk git status',900,800,100,10.0,40,'/tmp');",
       "INSERT INTO commands VALUES (3,'2026-09-01T00:02:00Z','grep foo','rtk grep',1000,900,100,10.0,600,'/tmp');",
     ].join(" ")]);
     withDb(db, () => {
       const g = readRtkGain();
       expect(g.commands).toBe(3);
       expect(g.saved).toBe(250);
-      expect(g.input).toBe(1300);
-      expect(Math.abs(g.avgPct - (250 / 1300) * 100) < 1e-9).toBeTruthy();
+      expect(g.input).toBe(2000);
+      expect(Math.abs(g.avgPct - (250 / 2000) * 100) < 1e-9).toBeTruthy();
       expect(g.byCommand.length).toBe(2);
-      expect(g.byCommand[0]).toEqual({ command: "rtk git status", count: 2, saved: 150, avgPct: 50, avgMs: 30 });
+      expect(g.byCommand[0]).toEqual({ command: "rtk git status", count: 2, saved: 150, avgPct: 15, avgMs: 30 });
       expect(g.byCommand[1]).toEqual({ command: "rtk grep", count: 1, saved: 100, avgPct: 10, avgMs: 600 });
     });
   } finally {

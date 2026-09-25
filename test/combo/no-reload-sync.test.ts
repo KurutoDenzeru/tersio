@@ -75,7 +75,7 @@ test("/combo max syncs sibling mirrors with no reload", async () => {
   const cave = (await caveman.handlers.get("before_agent_start")!(MAIN_PROMPT, ctx)) as { systemPrompt: string[] };
   expect(cave.systemPrompt.join("\n")).toMatch(/Caveman ultra/);
   const rtkOut = (await rtk.handlers.get("before_agent_start")!(MAIN_PROMPT, ctx)) as { systemPrompt: string[] };
-  expect(rtkOut.systemPrompt.join("\n")).toMatch(/RTK mode active/);
+  expect(rtkOut.systemPrompt.join("\n")).toMatch(/RTK guidance active/);
   resetSharedComboState();
 });
 

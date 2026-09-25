@@ -18,7 +18,6 @@ flowchart TB
       CAV["caveman-session<br/>/caveman"]
       RTK["rtk-session<br/>/rtk + rtk_run tool"]
       COMBO["combo-toggle<br/>/combo presets"]
-      REINF["shared/mode-reinforcement<br/>re-asserts modes each turn"]
       TCMD["tersio-commands<br/>/tersio status|dashboard|usage"]
       UPD["ai-addons-updater<br/>/ai-addons"]
     end
@@ -27,7 +26,7 @@ flowchart TB
       LEDGER["usage-ledger.ts<br/>~/.tersio/usage.db"]
       PS["plugin-settings.ts<br/>session-start defaults"]
     end
-    BIN["rtk binary (~/.bun/bin/rtk)"]
+    BIN["rtk binary (PATH, then ~/.bun/bin)"]
     PONY["@dietrichgebert/ponytail<br/>bundled tersio dep (/ponytail)"]
   end
 
@@ -35,7 +34,6 @@ flowchart TB
   EXT -->|reads/writes| SS
   COMBO & TCMD -->|publish state| SS
   SS -->|listener mirror, no reload| CAV & RTK
-  CAV & RTK & REINF & COMBO -->|inject prompt block on<br/>before_agent_start| HOST
   RTK -->|exec| BIN
   COMBO -->|loads instructions| PONY
   TCMD & CLI --> LEDGER
@@ -65,6 +63,8 @@ sequenceDiagram
 
 - **Bridge, not reload:** `session-state.ts` uses a `Symbol.for` global bridge; a toggle publishes and siblings mirror live. Custom session entries are the persistence layer — `reconcileSharedComboEntries` rebuilds state on resume/branch.
 - **Subagents inherit:** `isOmpSubagentPrompt` makes subagent turns read shared state instead of local flags.
-- **Reinforcement:** `mode-reinforcement.ts` re-appends the mode block after Ponytail's prompt and after compaction; last-wins entry scan ignores corrupt writes.
+- **Prompt persistence:** Caveman, RTK, and Ponytail extensions inject active modes each turn. The former separate reinforcement extension is retired because it duplicated the same directives.
 - **Ledger is best-effort:** append-only JSONL; `tersio reset` writes a watermark instead of deleting host-owned files.
 - **Always on:** `omp.extensions` in `package.json` loads every mode extension. Only `updater` stays an optional feature.
+- **Single owner:** OMP plugin manifests load Tersio extensions and nested Ponytail. `config.yml` holds only rtk-owned wiring; doctor removes retired, duplicate, or legacy manifest-owned entries.
+- **Caveman rule ownership:** `extensions/caveman-session/rule.md` ships beside the manifest-loaded extension. Doctor and updater inspect that installed plugin path, not the retired agent copy.

@@ -1,6 +1,4 @@
-import os from 'node:os';
-import path from 'node:path';
-import { activeModesSummary, asPromptArray, getSharedComboState, isComboPresetActive, isOmpSubagentPrompt, lastCustomValue, normalizeInputCommand, normalizeMode, paintStatusBar, paintableCtx, reconcileSharedComboEntries, sessionEntries, setSharedComboListener, setSharedComboMode } from '../shared/session-state.ts';
+import { activeModesSummary, asPromptArray, getSharedComboState, isComboPresetActive, isOmpSubagentPrompt, lastCustomValue, normalizeInputCommand, paintStatusBar, paintableCtx, reconcileSharedComboEntries, sessionEntries, setSharedComboListener, setSharedComboMode } from '../shared/session-state.ts';
 import { readRtkDefault } from '../shared/plugin-settings.ts';
 import type { ExtensionApi, ExtensionCtx, InputEvent, SessionEntry, SystemPromptEvent } from '../shared/types.ts';
 
@@ -17,13 +15,12 @@ function resolveEnabled(entries: SessionEntry[] | null | undefined): boolean | n
   return lastCustomValue(entries, 'rtk-mode', (data) => asBoolean(data?.enabled));
 }
 
-const IS_WINDOWS = process.platform === 'win32';
-const HOME = os.homedir();
-const RTK_BINARY = path.join(HOME, '.bun', 'bin', IS_WINDOWS ? 'rtk.exe' : 'rtk');
+function setRtkProcessEnabled(enabled: boolean): void {
+  if (enabled) delete process.env.RTK_DISABLED;
+  else process.env.RTK_DISABLED = '1';
+}
 
-const RTK_PROMPT = `RTK mode active for this session.
-Use Rust Token Killer for shell output that would otherwise be noisy. Prefer explicit RTK commands in bash: \`rtk git status\`, \`rtk git diff\`, \`rtk read <file>\`, \`rtk grep <pattern> <path>\`, \`rtk find <glob> <path>\`, \`rtk test <cmd...>\`, \`rtk tsc\`, \`rtk lint\`, or \`rtk <tool> ...\` for supported dev commands.
-Do not use RTK when exact raw output is required, when a specialized OMP tool is required by system policy, or when the command changes state and RTK would hide important confirmation text. Specialized OMP tools still win: read/glob/grep/edit/lsp stay preferred over shell equivalents.`;
+const RTK_PROMPT = `RTK guidance active. RTK automatically rewrites eligible Bash calls through the installed rtk hook. Prefer rtk for noisy shell output, but use exact raw output for state changes, checksums, patches, and diagnostics that need full bytes.`;
 
 interface ZodChain {
   min: (n: number) => ZodChain;
@@ -52,7 +49,7 @@ export default function rtkSessionExtension(pi: ExtensionApi): void {
     enabled = Boolean(next);
     pi.appendEntry?.('rtk-mode', { enabled });
     setSharedComboMode('rtk', enabled);
-    syncStatus(ctx);
+    setRtkProcessEnabled(enabled);
     const active = activeModesSummary(getSharedComboState());
     ctx?.ui?.notify?.(enabled ? `RTK on — compact shell output for this session. Active: ${active}.` : `RTK off. Active: ${active}.`, 'info');
   }
@@ -63,6 +60,7 @@ export default function rtkSessionExtension(pi: ExtensionApi): void {
   // it at once so the next turn and the rtk_run gate see it, no reload.
   function syncFromShared(state: { rtk: string }): void {
     enabled = state.rtk === 'on';
+    setRtkProcessEnabled(enabled);
     syncStatus();
   }
   setSharedComboListener(syncFromShared);
@@ -102,7 +100,7 @@ export default function rtkSessionExtension(pi: ExtensionApi): void {
         };
       }
       onUpdate?.({ content: [{ type: 'text', text: `rtk ${params.args.join(' ')}` }], details: { phase: 'start' } });
-      const result = await pi.exec!(RTK_BINARY, params.args, { signal, cwd: ctx?.cwd || pi.cwd });
+      const result = await pi.exec!('rtk', params.args, { signal, cwd: ctx?.cwd || pi.cwd });
       const text = [result.stdout, result.stderr].filter(Boolean).join('\n');
       return {
         isError: result.code !== 0,
@@ -129,6 +127,7 @@ export default function rtkSessionExtension(pi: ExtensionApi): void {
     // installer/user-configured default (off unless configured).
     const persisted = resolveEnabled(entries);
     enabled = typeof persisted === 'boolean' ? persisted : readRtkDefault();
+    setRtkProcessEnabled(enabled);
     syncStatus(ctx);
   }
 

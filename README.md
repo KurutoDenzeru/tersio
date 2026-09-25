@@ -38,6 +38,8 @@ Then restart OMP and enable a preset:
 
 Individual toggles: `/caveman full` · `/rtk on` · `/ponytail full`. Everything starts off until you enable it.
 
+When Tersio is installed through OMP, the first interactive launch asks for a session-start Combo preset once (`off`, `medium`, `balanced`, or `max`) and saves it as `comboDefault`. Running `tersio install` performs the same setup through the CLI.
+
 Session-start defaults (prompted during `install`, or flags):
 
 ```bash
@@ -61,23 +63,24 @@ Windows/WSL have separate OMP homes — install from the environment where OMP r
 
 ## 📊 Benchmarks
 
-Measured savings against the same workload without the modes. Token counts are real `o200k_base` BPE tokens (js-tiktoken), not chars÷4 estimates. Sample protocol, per-sample data, and caveats in [BENCHMARK.md](./BENCHMARK.md).
+Measured surfaces use different boundaries. Do not treat reply-text, code-diff, and shell-output reductions as total bill savings. Full protocol and caveats are in [BENCHMARK.md](./BENCHMARK.md).
 
 | Measured surface (n) | Baseline → Tersio | Δ |
 |---|---|---|
-| Terse reply, caveman lite — BPE tok (3 samples, p50) | 173 → 69 tok | **−60.1%** |
-| Terse reply, caveman full — BPE tok (3 samples, p50) | 173 → 49 tok | **−71.7%** |
-| Terse reply, caveman ultra — BPE tok (3 samples, p50) | 173 → 25 tok | **−85.5%** |
-| Code diff, ponytail lite — BPE tok (2 tasks) | 326–462 → 57–121 tok | **−73.8…−82.5%** |
-| Code diff, ponytail full — BPE tok (2 tasks) | 326–462 → 55–88 tok | **−81.0…−83.1%** |
-| Code diff, ponytail ultra — BPE tok (2 tasks) | 326–462 → 40–88 tok | **−81.0…−87.7%** |
-| Shell output, rtk — `git status` — BPE tok | 182 → 72 tok | **−60.4%** |
-| Shell output, rtk — repo `grep` — BPE tok | 376 → 274 tok | **−27.1%** |
-| Shell output, rtk — `find` — BPE tok | 205 → 168 tok | **−18.0%** |
-| Shell output, rtk — `git diff` — BPE tok | 12,684 → 8,504 tok | **−33.0%** |
-| Shell output, rtk — `npm test` (passthrough) — BPE tok | 2,597 → 2,577 tok | **−0.8%** |
+| Terse reply, caveman lite — BPE tokens (3 samples, p50) | 173 → 69 | **−60.1% reply text** |
+| Terse reply, caveman full — BPE tokens (3 samples, p50) | 173 → 49 | **−71.7% reply text** |
+| Terse reply, caveman ultra — BPE tokens (3 samples, p50) | 173 → 25 | **−85.5% reply text** |
+| Code diff, ponytail lite — BPE tokens (2 tasks) | 326–462 → 57–121 | **−73.8…−82.5% diff** |
+| Code diff, ponytail full — BPE tokens (2 tasks) | 326–462 → 55–88 | **−81.0…−83.1% diff** |
+| Code diff, ponytail ultra — BPE tokens (2 tasks) | 326–462 → 40–88 | **−81.0…−87.7% diff** |
+| Shell output, rtk `git status` | 182 → 72 | **−60.4% command output** |
+| Shell output, rtk repo `grep` | 376 → 274 | **−27.1% command output** |
+| Shell output, rtk `find` | 205 → 168 | **−18.0% command output** |
+| Shell output, rtk `git diff` | 12,684 → 8,504 | **−33.0% command output** |
 
-Break-even math, balanced preset (caveman full + rtk + ponytail): a mixed turn costs 941 tok baseline vs 399 with Tersio (0.42×, **−57.6% per turn**). Overhead repays in turn 1 with the bundled floor (464 tok); turn 4 with the real installed Ponytail plugin (v4.9.0, 1,264 tok). RTK concentrates savings where noise lives — hook-wired sessions record **−97.5% on summarized test suites** (rtk `history.db`, 4 runs).
+The Command tools table reports weighted RTK command-output savings and OMP-specific adoption from executed Bash records. It does not estimate provider billing.
+Upstream Ponytail's fair agentic benchmark reports 54% less code, 22% fewer tokens, 20% lower cost, and 100% retained safety. RTK estimates command-output tokens, not bill savings. Caveman and Ponytail compliance varies by model. Measure your own sessions with `tersio usage` and the dashboard.
+
 
 ## 📈 Dashboard
 
@@ -123,9 +126,9 @@ Mode switches live on their own commands; bare `/tersio` prints status.
 | Command | Purpose |
 |---|---|
 | `/combo off\|medium\|balanced\|max\|status` | One preset for all three (start here): medium = lite/lite/on, balanced = full/full/on, max = ultra/ultra/on; per-mode tweaks drop to `custom`. |
-| `/caveman lite\|full\|ultra\|wenyan\|off\|status` | Terse replies (substance stays); `ultra` uses fragments only, `wenyan` a compressed classical-Chinese-inspired register. |
-| `/rtk on\|off\|status` | Compact shell output via the real `rtk` binary; exact bytes (checksums, patches) bypass it by policy. |
-| `/ponytail off\|lite\|full\|ultra\|review\|status` | Minimal code (YAGNI): `lite` nudges, `full` enforces, `ultra` challenges the requirement, `review` audits for over-engineering (upstream command). |
+| `/caveman lite\|full\|ultra\|wenyan-lite\|wenyan-full\|wenyan-ultra\|off\|status` | Terse replies with upstream-aligned Caveman levels. Legacy `wenyan` restores as `wenyan-full`. |
+| `/rtk on\|off\|status` | Controls RTK session guidance, `rtk_run`, and the automatic hook through shared `RTK_DISABLED` state. Exact bytes bypass RTK. |
+| `/ponytail off\|lite\|full\|ultra\|status` | Minimal code using upstream Ponytail modes. Review runs separately through `/ponytail-review`. |
 | `/tersio status` | Active modes + combo level; state persists, propagates to subagents, and lights the Combo footer indicator. |
 | `/tersio check` | Add-on version check |
 | `/tersio update <ponytail\|rtk\|caveman\|all> [--dry-run]` | Update add-ons, preview with dry-run |
@@ -138,11 +141,11 @@ Mode switches live on their own commands; bare `/tersio` prints status.
 
 | What | Path |
 |---|---|
-| Caveman / RTK / Updater / Combo extensions | `~/.omp/agent/extensions/{caveman-session,rtk-session,ai-addons-updater,combo-toggle}/` |
+| Caveman / RTK / Combo / Tersio commands | `~/.omp/plugins/node_modules/@krtclcdy/tersio/extensions/{caveman-session,rtk-session,combo-toggle,tersio-commands}/` — loaded from Tersio's OMP plugin manifest |
 | RTK OMP wiring (rtk-owned) | `~/.omp/agent/extensions/rtk.ts` — written by the installer via `rtk init -g --agent omp`; auto-loads, no config entry |
-| Ponytail package (bundled tersio dependency — one Plugins row, updates with `tersio update`) | `~/.omp/plugins/node_modules/@dietrichgebert/ponytail/` |
-| RTK binary | `~/.bun/bin/rtk` (`rtk.exe` on Windows) |
-| Extension registrations | `~/.omp/agent/config.yml` |
+| Ponytail package (bundled Tersio dependency — one Plugins row, updates with `tersio update`) | `~/.omp/plugins/node_modules/@dietrichgebert/ponytail/` — loaded as a nested plugin dependency |
+| RTK binary | Installer writes `~/.bun/bin/rtk` (`rtk.exe` on Windows). Runtime resolves `PATH` first, then this managed path. |
+| Legacy config cleanup | `~/.omp/agent/config.yml` — doctor removes retired or duplicate extension entries |
 
 The installer writes `<file>.bak` before replacing an extension source; the updater keeps `rtk.bak` / `rule.md.bak` and restores them if the replacement fails validation.
 
@@ -150,7 +153,7 @@ User-level installs also register the package in `~/.omp/plugins` (visible in OM
 
 ## 🛠️ Troubleshooting
 
-**Ponytail or Combo command missing:** run `tersio reinstall` in OMP's environment, restart OMP, then `tersio doctor` (repairs `config.yml` registrations).
+**Ponytail or Combo command missing:** confirm `~/.omp/plugins/package.json` lists `@krtclcdy/tersio`, then run `tersio reinstall`, restart OMP, and check `tersio doctor`.
 
 **RTK missing or not executable:** run `tersio reinstall`, then `tersio doctor`. On Linux/macOS: `chmod +x ~/.bun/bin/rtk`.
 

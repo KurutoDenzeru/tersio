@@ -4,9 +4,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   BUN_BIN_DIR, OMP_AGENT_DIR, OMP_PLUGINS_DIR,
-  PACKAGE_NAME, PACKAGE_VERSION, RTK_BINARY_NAME,
+  PACKAGE_NAME, PACKAGE_VERSION, RTK_BINARY_NAME, removeExtensionFromConfig,
   dryRun, verbose,
-  debug, ensureExtensionAfterConfigEntry, ensureExtensionInConfig,
+  debug,
   execP, readPluginsPackage,
   writeIfChanged,
 } from './common.ts';
@@ -31,30 +31,38 @@ const SOURCES: Array<[string, string]> = [
   [path.join(EXT_DIR, 'shared', 'pricing.ts'), path.join('shared', 'pricing.ts')],
   [path.join(EXT_DIR, 'shared', 'carbon.ts'), path.join('shared', 'carbon.ts')],
   [path.join(EXT_DIR, 'caveman-session', 'index.ts'), path.join('caveman-session', 'index.ts')],
+  [path.join(EXT_DIR, 'caveman-session', 'rule.md'), path.join('caveman-session', 'rule.md')],
   [path.join(EXT_DIR, 'rtk-session', 'index.ts'), path.join('rtk-session', 'index.ts')],
   [path.join(EXT_DIR, 'ai-addons-updater', 'index.ts'), path.join('ai-addons-updater', 'index.ts')],
   [path.join(EXT_DIR, 'combo-toggle', 'index.ts'), path.join('combo-toggle', 'index.ts')],
   [path.join(EXT_DIR, 'tersio-commands', 'index.ts'), path.join('tersio-commands', 'index.ts')],
-  [path.join(EXT_DIR, 'shared', 'mode-reinforcement.ts'), path.join('shared', 'mode-reinforcement.ts')],
 ];
 
-async function fixExtensions(extDir: string): Promise<void> {
-  console.log('  Doctor --fix: restoring extension files');
-  await fs.mkdir(extDir, { recursive: true });
-  const texts = await Promise.all(SOURCES.map(([from]) => readTextIfExists(from)));
-  const writes = [];
-  for (let i = 0; i < SOURCES.length; i++) {
-    if (texts[i] !== null) writes.push(writeIfChanged(path.join(extDir, SOURCES[i][1]), texts[i] as string, { dryRun, verbose }));
-    else console.log(`  [warn] bundled source missing: ${SOURCES[i][0]}`);
+async function fixExtensions(pluginsDir: string): Promise<void> {
+  console.log('  Doctor --fix: restoring plugin extension files');
+  const tersioPluginDir = path.join(pluginsDir, 'node_modules', '@krtclcdy', 'tersio');
+  const pluginExtDir = path.join(tersioPluginDir, 'extensions');
+  await fs.mkdir(pluginExtDir, { recursive: true });
+
+  for (const [from, to] of SOURCES) {
+    const text = await readTextIfExists(from);
+    if (text === null) console.log(`  [warn] bundled source missing: ${from}`);
+    else await writeIfChanged(path.join(pluginExtDir, to), text, { dryRun, verbose });
   }
-  await Promise.all(writes);
-  if ((await readTextIfExists(path.join(extDir, 'caveman-session', 'rule.md'))) === null) {
-    const rule = await Promise.race([
-      httpsGet(CAVEMAN_REMOTE_RULE).catch(() => null),
-      new Promise<null>((resolve) => setTimeout(() => resolve(null), 8000)),
-    ]);
-    if (rule !== null) await writeIfChanged(path.join(extDir, 'caveman-session', 'rule.md'), rule, { dryRun, verbose });
-    else console.log('  [warn] Caveman rule unreachable — kept existing rule.md');
+
+  const ruleDest = path.join(pluginExtDir, 'caveman-session', 'rule.md');
+  if ((await readTextIfExists(ruleDest)) === null) {
+    const bundled = await readTextIfExists(path.join(EXT_DIR, 'caveman-session', 'rule.md'));
+    if (bundled !== null) {
+      await writeIfChanged(ruleDest, bundled, { dryRun, verbose });
+    } else {
+      const rule = await Promise.race([
+        httpsGet(CAVEMAN_REMOTE_RULE).catch(() => null),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 8000)),
+      ]);
+      if (rule !== null) await writeIfChanged(ruleDest, rule, { dryRun, verbose });
+      else console.log('  [warn] Caveman rule unreachable and no bundled rule exists');
+    }
   }
 }
 
@@ -69,12 +77,12 @@ async function fixRegistrations(agentDir: string, pluginsDir: string): Promise<v
     }
   }
   const extDir = path.join(agentDir, 'extensions');
-  const ponytailExtPath = path.join(pluginsDir, 'node_modules', '@dietrichgebert', 'ponytail', 'pi-extension', 'index.js');
-  await ensureExtensionInConfig(configPath, ponytailExtPath, 'ponytail', { dryRun, verbose });
-  await ensureExtensionInConfig(configPath, path.join(extDir, 'combo-toggle', 'index.ts'), 'combo', { dryRun, verbose });
   const rtkTs = path.join(extDir, 'rtk.ts');
   if ((await readTextIfExists(rtkTs)) !== null) await ensureRtkInConfig({ dryRun, verbose });
-  await ensureExtensionAfterConfigEntry(configPath, path.join(extDir, 'shared', 'mode-reinforcement.ts'), ponytailExtPath, 'mode reinforcement', { dryRun, verbose });
+  const ponytailExtPath = path.join(pluginsDir, 'node_modules', '@dietrichgebert', 'ponytail', 'pi-extension', 'index.js');
+  await removeExtensionFromConfig(configPath, path.join(extDir, 'combo-toggle', 'index.ts'), 'manifest-loaded combo', { dryRun, verbose });
+  await removeExtensionFromConfig(configPath, ponytailExtPath, 'manifest-loaded ponytail', { dryRun, verbose });
+  await removeExtensionFromConfig(configPath, path.join(extDir, 'shared', 'mode-reinforcement.ts'), 'retired mode reinforcement', { dryRun, verbose });
   const pkgPath = path.join(pluginsDir, 'package.json');
   const pkg = await readPluginsPackage(pkgPath);
   if (!(PACKAGE_NAME in pkg.dependencies)) {
@@ -129,7 +137,7 @@ async function fixRtk(binDir: string): Promise<void> {
   if (!(await wireRtkOmp(binDest, { dryRun, verbose }))) throw new Error('rtk wiring failed');
 }
 
-async function fixPonytail(pluginsDir: string, agentDir: string): Promise<void> {
+async function fixPonytail(pluginsDir: string): Promise<void> {
   console.log('  Doctor --fix: restoring bundled Ponytail');
   await fs.mkdir(pluginsDir, { recursive: true });
   const pkgPath = path.join(pluginsDir, 'package.json');
@@ -148,11 +156,6 @@ async function fixPonytail(pluginsDir: string, agentDir: string): Promise<void> 
   await execNetwork('Restoring bundled Ponytail', 'npm', ['install', '--no-audit', '--no-fund'], { cwd: pluginsDir, timeout: 180000 }).catch((e) => {
     throw new Error(`bundled ponytail restore failed: ${(e as Error).message}`);
   });
-  await ensureExtensionInConfig(
-    path.join(agentDir, 'config.yml'),
-    path.join(pluginsDir, 'node_modules', '@dietrichgebert', 'ponytail', 'pi-extension', 'index.js'),
-    'ponytail', { dryRun, verbose },
-  );
 }
 
 async function fixCli(): Promise<void> {
@@ -174,10 +177,10 @@ async function runDoctorRepairs(targets: FixRequest[]): Promise<string[]> {
       console.log(`  [fail] ${label}: ${((e as Error).message || '').slice(0, 200)}`);
     }
   };
-  if (want('extensions')) await attempt('extensions', () => fixExtensions(path.join(OMP_AGENT_DIR, 'extensions')));
+  if (want('extensions')) await attempt('extensions', () => fixExtensions(OMP_PLUGINS_DIR));
   if (want('registrations')) await attempt('registrations', () => fixRegistrations(OMP_AGENT_DIR, OMP_PLUGINS_DIR));
   if (want('rtk')) await attempt('rtk', () => fixRtk(BUN_BIN_DIR));
-  if (want('ponytail')) await attempt('ponytail', () => fixPonytail(OMP_PLUGINS_DIR, OMP_AGENT_DIR));
+  if (want('ponytail')) await attempt('ponytail', () => fixPonytail(OMP_PLUGINS_DIR));
   if (want('cli')) await attempt('cli', fixCli);
   return failed;
 }

@@ -91,7 +91,13 @@ export function Tools({ data }: { data: UsageReport | null }) {
           <CardTitle className="font-display text-xl tracking-tight">Command tools</CardTitle>
           <span className="mono ml-auto min-w-0 truncate text-xs text-dim">{scope}</span>
         </div>
-        <CardDescription className="mono text-xs text-dim">count · tokens saved · avg rate · avg time · share of executions</CardDescription>
+        <CardDescription className="mono text-xs text-dim">count · tokens saved · weighted rate · avg time · share of executions</CardDescription>
+        <div className="mono grid gap-2 border-y border-line py-3 text-xs text-dim sm:grid-cols-4">
+          <span>Eligible RTK <strong className="text-accent">{(data?.rtkAdoption.adoptionPct ?? 0).toFixed(1)}%</strong></span>
+          <span>RTK calls <strong className="text-ink">{fmt(data?.rtkAdoption.rtkCalls ?? 0)}</strong></span>
+          <span>Missed <strong className="text-ink">{fmt(data?.rtkAdoption.missedCalls ?? 0)}</strong></span>
+          <span>Recall <strong className="text-ink">{data?.rtkRecall.available ? `${data.rtkRecall.mode} · ${data.rtkRecall.entries}` : "unavailable"}</strong></span>
+        </div>
       </CardHeader>
       <CardContent>
       {rows.length > 0 ? (

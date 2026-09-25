@@ -8,7 +8,7 @@ process.env.USERPROFILE = process.env.HOME;
 
 type EventHandler = (event: unknown, ctx: ExtensionCtx | undefined) => Promise<unknown>;
 
-function harness(entries: SessionEntry[]): { handlers: Map<string, EventHandler>; notifications: string[] } {
+function harness(_entries: SessionEntry[]): { handlers: Map<string, EventHandler>; notifications: string[] } {
   const handlers = new Map<string, EventHandler>();
   const notifications: string[] = [];
   const chain = { min: () => chain, describe: () => chain };

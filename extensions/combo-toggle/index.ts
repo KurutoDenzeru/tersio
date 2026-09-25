@@ -20,14 +20,18 @@ import {
   setSharedComboMode,
   systemPromptIncludes,
 } from '../shared/session-state.ts';
-import { readComboDefault, readPonytailDefault } from '../shared/plugin-settings.ts';
+import {
+  isComboSetupComplete,
+  readComboDefault,
+  readPonytailDefault,
+  saveComboSetup,
+} from '../shared/plugin-settings.ts';
 import type { ComboState, ExtensionApi, ExtensionCtx, SystemPromptEvent } from '../shared/types.ts';
 
 const require = createRequire(import.meta.url);
 
 const PONYTAIL_FALLBACK_INTENSITY: Record<string, string> = {
   lite: 'Prefer the simplest correct solution.',
-  review: 'Review only for avoidable complexity; recommend the smallest correct replacement.',
 };
 
 function ponytailFallback(mode: string): string {
@@ -61,6 +65,7 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
   pi.setLabel?.('Combo session toggle (all 3 add-ons)');
 
   let lastCtx: ExtensionCtx | undefined = undefined;
+  let setupPrompted = false;
 
   function syncStatus(ctx?: ExtensionCtx): void {
     lastCtx = paintableCtx(lastCtx, ctx);
@@ -166,9 +171,27 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
     },
   });
 
+  async function runFirstRunSetup(ctx?: ExtensionCtx): Promise<void> {
+    if (setupPrompted || !ctx?.hasUI || !ctx.ui?.select || isComboSetupComplete()) return;
+    setupPrompted = true;
+    const choice = await ctx.ui.select('Session-start defaults — Combo preset', [
+      { label: 'off', description: 'Keep every Tersio mode inactive' },
+      { label: 'medium', description: 'caveman=lite, rtk=on, ponytail=lite' },
+      { label: 'balanced', description: 'caveman=full, rtk=on, ponytail=full' },
+      { label: 'max', description: 'caveman=ultra, rtk=on, ponytail=ultra' },
+    ], { selectionMarker: 'radio', helpText: 'You can change this later with /tersio settings.' });
+    const level = choice || 'off';
+    if (saveComboSetup(level) && level !== 'off') {
+      persistPreset(level);
+      useState(setSharedComboLevel(level), ctx);
+      ctx.ui.notify?.(`Combo default saved: ${level} — ${activeModesSummary(getSharedComboState())} will activate on fresh sessions.`, 'info');
+    }
+  }
+
   pi.on('session_start', async (_event, ctx) => {
     track(ctx);
     if (!ctx?.hasUI) syncStatus(ctx);
+    await runFirstRunSetup(ctx);
     // Installer/user-configured default applies only when no persisted *mode*
     // state exists — unrelated session entries must not block it, or the
     // combo bar never paints on sessions that already carry other entries.
@@ -200,6 +223,7 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
   for (const event of ['session_branch', 'session_tree', 'agent_start']) {
     pi.on(event, async (_event, ctx) => {
       track(ctx);
+      if (event === 'agent_start') await runFirstRunSetup(ctx);
     });
   }
 

@@ -1,5 +1,4 @@
 // cli/usage.ts — ledger + session-token usage report, tokscale-style.
-import path from 'node:path';
 import {
   co2GramsFor,
   displayModelId,
@@ -8,12 +7,15 @@ import {
   ledgerPath,
   priceFor,
   readResetWatermark,
+  readRtkAdoption,
+  readRtkRecallDiagnostics,
   readUsage,
   refreshPricesIfStale,
   sessionsDir,
   usdCost,
 } from '../extensions/shared/usage-ledger.ts';
-import type { RecentRequest, SessionTokens, TokenBreakdown, UsageRow } from '../extensions/shared/usage-ledger.ts';
+import type { RecentRequest, RtkAdoption, RtkRecallDiagnostics, SessionTokens, TokenBreakdown, UsageRow } from '../extensions/shared/usage-ledger.ts';
+import { resolveRtkBinary } from '../extensions/lib/utils.ts';
 import { readRtkGain } from '../extensions/shared/rtk-gain.ts';
 import type { RtkGain } from '../extensions/shared/rtk-gain.ts';
 import { readUsageDb, syncUsageDb, usageDbPath } from '../extensions/shared/usage-store.ts';
@@ -46,6 +48,8 @@ export interface UsageReport {
   byTool: Array<[string, number]>;
   recent: RecentRequestRow[];
   rtkGain: RtkGain;
+  rtkAdoption: RtkAdoption;
+  rtkRecall: RtkRecallDiagnostics;
   usd: number;
   priced: boolean;
   savedUsd: number;
@@ -125,6 +129,8 @@ export function summarizeUsage(rows: UsageRow[]): UsageReport {
       est: usdCost({ input: r.i, output: r.o, cacheRead: r.cr ?? 0, cacheWrite: r.cw ?? 0 }, r.m).usd,
     })),
     rtkGain: readRtkGain(RTK_COMMAND_ROWS, watermark || undefined),
+    rtkAdoption: readRtkAdoption(),
+    rtkRecall: readRtkRecallDiagnostics(resolveRtkBinary()),
     usd,
     priced,
     savedUsd,
@@ -190,6 +196,7 @@ function printReport(report: UsageReport): void {
   const t = report.tokens;
   console.log(`  TOKENS  ${fmt(t.input)} in · ${fmt(t.output)} out · ${fmt(t.cacheRead)} cache read · ${fmt(t.cacheWrite)} cache write`);
   console.log(`  COST    ${formatCurrency(report.usd, report.currency)}${report.priced ? '' : ' (includes default pricing)'} · ~${formatCurrency(report.savedUsd, report.currency)} cache-saved (est.) · ~${report.co2g.toFixed(1)}g CO2 (est.)`);
+  console.log(`  RTK      ${fmt(report.rtkAdoption.rtkCalls)}/${fmt(report.rtkAdoption.eligibleCalls)} eligible OMP Bash calls use RTK (${report.rtkAdoption.adoptionPct.toFixed(1)}%) · ${fmt(report.rtkAdoption.missedCalls)} missed · recall ${report.rtkRecall.available ? `${report.rtkRecall.mode} (${report.rtkRecall.entries})` : 'unavailable'}`);
   const models = Object.entries(report.byModel).filter(([, b]) => b.input + b.output + b.cacheRead + b.cacheWrite > 0).sort((a, b) => (b[1].input + b[1].output) - (a[1].input + a[1].output)).slice(0, 8);
   if (models.length) {
     console.log('  BY MODEL');

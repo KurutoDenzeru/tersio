@@ -3,14 +3,13 @@ import { fileURLToPath } from "node:url";
 
 import cavemanSessionExtension from "../../extensions/caveman-session/index.ts";
 import comboToggleExtension from "../../extensions/combo-toggle/index.ts";
-import modeReinforcementExtension from "../../extensions/shared/mode-reinforcement.ts";
 import rtkSessionExtension from "../../extensions/rtk-session/index.ts";
 import {
   OMP_SUBAGENT_MARKER,
   getSharedComboState,
   resetSharedComboState,
 } from "../../extensions/shared/session-state.ts";
-import type { ExtensionApi, ExtensionCtx, SessionEntry } from "../../extensions/shared/types.ts";
+import type { ExtensionApi, SessionEntry } from "../../extensions/shared/types.ts";
 
 // ponytail: hermetic HOME — session-start fallbacks read the real lock file,
 // so without this the suite depends on the developer's own defaults.
@@ -132,7 +131,7 @@ test("parent Combo max is inherited by separately instantiated marked children",
     level: "max", caveman: "ultra", rtk: "on", ponytail: "ultra",
   });
   expect(instruction(await inject(childCaveman, MARKED_PROMPT))).toMatch(/Caveman ultra active/);
-  expect(instruction(await inject(childRtk, MARKED_PROMPT))).toMatch(/RTK mode active/);
+  expect(instruction(await inject(childRtk, MARKED_PROMPT))).toMatch(/RTK guidance active/);
 
   const ponytail = instruction(await withoutInstalledPonytail(() => inject(childCombo, MARKED_PROMPT)));
   expect(ponytail).toMatch(/PONYTAIL MODE ACTIVE — level: ultra/);
@@ -152,7 +151,7 @@ test("medium maps to Caveman lite, RTK on, and Ponytail lite", async () => {
     level: "medium", caveman: "lite", rtk: "on", ponytail: "lite",
   });
   expect(instruction(await inject(instantiate(cavemanSessionExtension), prompt))).toMatch(/Caveman lite active/);
-  expect(instruction(await inject(instantiate(rtkSessionExtension), prompt))).toMatch(/RTK mode active/);
+  expect(instruction(await inject(instantiate(rtkSessionExtension), prompt))).toMatch(/RTK guidance active/);
   expect(instruction(await withoutInstalledPonytail(() => inject(instantiate(comboToggleExtension), prompt)))).toMatch(/PONYTAIL MODE ACTIVE — level: lite/);
 });
 
@@ -224,7 +223,7 @@ test("individual Caveman change immediately makes Combo CUSTOM and children inhe
   });
   expect(comboCtx.statuses.get("combo")).toBe(undefined);
   expect(instruction(await inject(instantiate(cavemanSessionExtension), MARKED_PROMPT))).toMatch(/Caveman lite active/);
-  expect(instruction(await inject(instantiate(rtkSessionExtension), MARKED_PROMPT))).toMatch(/RTK mode active/);
+  expect(instruction(await inject(instantiate(rtkSessionExtension), MARKED_PROMPT))).toMatch(/RTK guidance active/);
   expect(instruction(await withoutInstalledPonytail(() => inject(instantiate(comboToggleExtension), MARKED_PROMPT)))).toMatch(/level: ultra/);
 
   await command(caveman, "caveman", "ultra", context(entries, true));
@@ -346,24 +345,6 @@ test("Combo indicator appears only after a Combo preset", async () => {
   expect(ctx.statuses.get("combo")).toBe(undefined);
 });
 
-test("mode reinforcement follows each top-level turn without persisting duplicates", async () => {
-  resetSharedComboState();
-  const entries = [
-    { type: "custom", customType: "caveman-mode", data: { mode: "wenyan" } },
-    { type: "custom", customType: "rtk-mode", data: { enabled: true } },
-    { type: "custom", customType: "ponytail-mode", data: { mode: "ultra" } },
-  ];
-  const reinforcement = instantiate(modeReinforcementExtension, entries);
-  const ctx = context(entries, true);
-
-  for (const prompt of ["First turn.", "Later turn with long history."]) {
-    const result = await inject(reinforcement, prompt, ctx);
-    expect(instruction(result)).toBe("SUPREME TOKEN SAVER MODES ACTIVE: caveman=wenyan · rtk=on · ponytail=ultra. Keep these active for the entire response: concise Caveman prose, RTK for eligible noisy shell output, and the smallest correct Ponytail solution. Do not weaken or disable a mode unless the user explicitly asks.");
-  }
-
-  const first = await inject(reinforcement, "Prompt.", ctx);
-  expect(await inject(reinforcement, ["Prompt.", instruction(first)], ctx)).toBe(undefined);
-});
 
 
 test("Combo does not duplicate existing Ponytail guidance", async () => {

@@ -100,7 +100,7 @@ test("installer accepts session-default flags and reports them", () => {
   expect(result.status, result.stderr).toBe(0);
   expect(result.stdout).toMatch(/Defaults: combo=medium/);
   expect(result.stdout).toMatch(/RTK session — install session mode/);
-  expect(result.stdout).toMatch(/Session helpers — sync shared files/);
+  expect(result.stdout).toMatch(/Tersio commands — install \/tersio root command/);
 });
 
 test("installer rejects invalid default values", () => {
@@ -132,7 +132,31 @@ test("installer dry-run installs every user-scope extension", () => {
   expect(result.status, result.stderr).toBe(0);
   expect(result.stdout).toMatch(/RTK session — install session mode/);
   expect(result.stdout).toMatch(/Caveman — fetch rule and install session mode/);
-  expect(result.stdout).toMatch(/Session helpers — sync shared files/);
+  expect(result.stdout).toMatch(/Tersio commands — install \/tersio root command/);
+  expect(result.stdout).not.toMatch(/mode reinforcement/i);
+});
+
+test("installer does not add manifest-owned extensions to config.yml", () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-install-registrations-"));
+  const previous = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE };
+  process.env.HOME = home;
+  process.env.USERPROFILE = home;
+  try {
+    const result = spawnSync(process.execPath, [installer, "install", "--dry-run", "--yes"], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 15000,
+      env: { ...process.env, HOME: home, USERPROFILE: home },
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).not.toMatch(/would.*config\.yml.*(?:combo|ponytail)/i);
+  } finally {
+    if (previous.HOME === undefined) delete process.env.HOME;
+    else process.env.HOME = previous.HOME;
+    if (previous.USERPROFILE === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = previous.USERPROFILE;
+    rmSync(home, { recursive: true, force: true });
+  }
 });
 
 // --- Manifest feature/setting shape ---
@@ -149,7 +173,6 @@ test("package manifest declares always-on extensions plus updater feature and se
     "./extensions/caveman-session/index.ts",
     "./extensions/rtk-session/index.ts",
     "./extensions/combo-toggle/index.ts",
-    "./extensions/shared/mode-reinforcement.ts",
     "./extensions/tersio-commands/index.ts",
   ]);
   const features = manifest.omp?.features ?? {};
@@ -178,13 +201,13 @@ test("package manifest declares always-on extensions plus updater feature and se
 });
 
 test("installer accepts --ponytail-default override and reports it", () => {
-  const result = run("install", "--dry-run", "--yes", "--ponytail-default", "review");
+  const result = run("install", "--dry-run", "--yes", "--ponytail-default", "full");
   expect(result.status, result.stderr).toBe(0);
-  expect(result.stdout).toMatch(/ponytail=review/);
+  expect(result.stdout).toMatch(/ponytail=full/);
 });
 
-test("installer rejects invalid --ponytail-default values", () => {
-  const bad = run("install", "--dry-run", "--yes", "--ponytail-default", "max");
+test("installer rejects review as a Ponytail default", () => {
+  const bad = run("install", "--dry-run", "--yes", "--ponytail-default", "review");
   expect(bad.status).toBe(1);
   expect(bad.stderr).toMatch(/Invalid --ponytail-default/);
 });

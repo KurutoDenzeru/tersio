@@ -39,6 +39,21 @@ export interface RtkGain {
   byCommand: RtkCommandRow[];
 }
 
+export interface RtkAdoption {
+  sessions: number;
+  bashCalls: number;
+  eligibleCalls: number;
+  rtkCalls: number;
+  missedCalls: number;
+  adoptionPct: number;
+}
+
+export interface RtkRecallDiagnostics {
+  mode: "sqlite" | "tee" | "disabled" | "unknown";
+  entries: number;
+  available: boolean;
+}
+
 export interface UsageReport {
   messages: number;
   tokens: TokenBreakdown;
@@ -51,6 +66,8 @@ export interface UsageReport {
   byTool: Array<[string, number]>;
   recent: RecentRequestRow[];
   rtkGain: RtkGain;
+  rtkAdoption: RtkAdoption;
+  rtkRecall: RtkRecallDiagnostics;
   usd: number;
   priced: boolean;
   savedUsd: number;

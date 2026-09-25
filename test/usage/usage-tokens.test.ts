@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync } from "node:fs";
+import { appendFileSync, existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
@@ -8,7 +8,9 @@ import {
   co2GramsFor,
   displayModelId,
   importSessionTokens,
+  clearRtkAdoptionCache,
   priceFor,
+  readRtkAdoption,
   usdCost,
 } from "../../extensions/shared/usage-ledger.ts";
 
@@ -24,7 +26,7 @@ function fixtureDir(): string {
     path.join(dir, "branch", "s1.jsonl"),
     [
       '{"type":"session","version":3,"id":"s1","timestamp":"2026-09-01T10:00:00.000Z","cwd":"/tmp"}',
-      '{"type":"message","id":"a","timestamp":"2026-09-01T10:01:00.000Z","message":{"role":"assistant","model":"claude-sonnet-5","duration":4200,"usage":{"input":1000,"output":200,"cacheRead":500,"cacheWrite":125,"cost":0.012},"content":[{"type":"toolCall","name":"bash","arguments":{"command":"cd /x && git status"}},{"type":"toolCall","name":"bash"},{"type":"text","text":"done"}]}}',
+      '{"type":"message","id":"a","timestamp":"2026-09-01T10:01:00.000Z","message":{"role":"assistant","model":"claude-sonnet-5","duration":4200,"usage":{"input":1000,"output":200,"cacheRead":500,"cacheWrite":125,"cost":0.012},"content":[{"type":"toolCall","name":"bash","arguments":{"command":"rtk git status"}},{"type":"toolCall","name":"bash","arguments":{"command":"cd /x && git status"}},{"type":"toolCall","name":"read"}]}}',
       '{"type":"message","id":"b","timestamp":"2026-09-02T10:01:00.000Z","message":{"role":"assistant","model":"mystery-model-9","usage":{"input":100,"output":10,"cacheRead":0,"cacheWrite":0}}}',
       '{"type":"message","id":"c","timestamp":"2026-09-02T10:02:00.000Z","message":{"role":"user","text":"hi"}}',
       'not json at all',
@@ -52,6 +54,29 @@ test("importer aggregates assistant usage by model and day, skips the rest", () 
     ]);
     expect(s.costMeasured).toBe(0.012);
   } finally {
+    if (prev === undefined) delete process.env.TERSIO_SESSIONS_DIR;
+    else process.env.TERSIO_SESSIONS_DIR = prev;
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("adoption reads executed Bash commands, not assistant tool-call intent", () => {
+  const dir = fixtureDir();
+  appendFileSync(path.join(dir, "branch", "s1.jsonl"), [
+    JSON.stringify({ type: "custom", customType: "tool_execution_start", data: { toolName: "bash", args: { command: "git status --short" } } }),
+    JSON.stringify({ type: "custom", customType: "tool_execution_start", data: { toolName: "bash", args: { command: "rtk git status --short" } } }),
+    JSON.stringify({ type: "custom", customType: "tool_execution_start", data: { toolName: "bash", args: { command: "python3 script.py" } } }),
+  ].join("\n") + "\n", "utf8");
+  const prev = process.env.TERSIO_SESSIONS_DIR;
+  process.env.TERSIO_SESSIONS_DIR = dir;
+  try {
+    clearRtkAdoptionCache();
+    expect(readRtkAdoption()).toEqual({ sessions: 1, bashCalls: 3, eligibleCalls: 2, rtkCalls: 1, missedCalls: 1, adoptionPct: 50 });
+    expect(readRtkAdoption()).toEqual({ sessions: 1, bashCalls: 3, eligibleCalls: 2, rtkCalls: 1, missedCalls: 1, adoptionPct: 50 });
+    appendFileSync(path.join(dir, "branch", "s1.jsonl"), `${JSON.stringify({ type: "custom", customType: "tool_execution_start", data: { toolName: "bash", args: { command: "rtk git diff" } } })}\n`, "utf8");
+    expect(readRtkAdoption()).toEqual({ sessions: 1, bashCalls: 4, eligibleCalls: 3, rtkCalls: 2, missedCalls: 1, adoptionPct: (2 / 3) * 100 });
+  } finally {
+    clearRtkAdoptionCache();
     if (prev === undefined) delete process.env.TERSIO_SESSIONS_DIR;
     else process.env.TERSIO_SESSIONS_DIR = prev;
     rmSync(dir, { recursive: true, force: true });

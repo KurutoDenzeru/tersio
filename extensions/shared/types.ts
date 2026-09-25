@@ -22,6 +22,11 @@ export type SessionEntry = {
 };
 
 export interface UiApi {
+  select?: (
+    title: string,
+    options: Array<string | { label: string; description?: string }>,
+    dialogOptions?: Record<string, unknown>,
+  ) => Promise<string | undefined>;
   setStatus?: (name: string, value: string | undefined) => void;
   notify?: (message: string, level?: string) => void;
   theme?: {

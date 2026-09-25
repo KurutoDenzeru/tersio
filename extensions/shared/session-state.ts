@@ -12,9 +12,9 @@ export const COMBO_LEVELS: Record<string, Readonly<ComboState>> = Object.freeze(
 });
 
 const MODE_VALUES: Record<string, Set<string>> = {
-  caveman: new Set(['off', 'lite', 'full', 'ultra', 'wenyan']),
+  caveman: new Set(['off', 'lite', 'full', 'ultra', 'wenyan', 'wenyan-lite', 'wenyan-full', 'wenyan-ultra']),
   rtk: new Set(['off', 'on']),
-  ponytail: new Set(['off', 'lite', 'full', 'ultra', 'review']),
+  ponytail: new Set(['off', 'lite', 'full', 'ultra']),
 };
 
 type ModeName = 'caveman' | 'rtk' | 'ponytail';
@@ -34,7 +34,8 @@ interface Bridge {
 export function normalizeMode(name: ModeName, value: unknown): string | null {
   if (name === 'rtk' && typeof value === 'boolean') return value ? 'on' : 'off';
   const mode = String(value ?? '').trim().toLowerCase();
-  return MODE_VALUES[name]?.has(mode) ? mode : null;
+  if (!MODE_VALUES[name]?.has(mode)) return null;
+  return name === 'caveman' && mode === 'wenyan' ? 'wenyan-full' : mode;
 }
 
 export function deriveLevel(modes: Modes | null | undefined): ComboLevel {

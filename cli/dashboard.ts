@@ -15,10 +15,11 @@ import { summarizeUsage } from './usage.ts';
 import { isCurrencyCode } from './currency.ts';
 import type { CurrencyCode } from './currency.ts';
 import {
-  BUN_BIN_DIR, OMP_AGENT_DIR, OMP_PLUGINS_DIR,
-  PACKAGE_VERSION, RTK_BINARY_NAME,
+  OMP_AGENT_DIR, OMP_PLUGINS_DIR, PACKAGE_VERSION,
 } from './common.ts';
 import { storedProfile, writePluginSettings } from './profile.ts';
+import { PACKAGE_NAME } from './common.ts';
+import { resolveRtkBinary } from '../extensions/lib/utils.ts';
 
 export interface DashboardOptions {
   port: number;
@@ -106,8 +107,8 @@ function ompDefaultModel(): string | null {
 }
 
 function healthJson(): string {
-  const rtkBin = path.join(BUN_BIN_DIR, RTK_BINARY_NAME);
-  const rtkPresent = existsSync(rtkBin);
+  const rtkBin = resolveRtkBinary();
+  const rtkPresent = rtkBin !== null;
   const detectedOmpPath = ompPath();
   return JSON.stringify({
     tersio: PACKAGE_VERSION,
@@ -116,7 +117,7 @@ function healthJson(): string {
     omp: ompVersion(detectedOmpPath),
     ompPath: detectedOmpPath,
     provider: ompDefaultModel(),
-    rtk: { present: rtkPresent, version: rtkPresent ? rtkVersion(rtkBin) : null, path: rtkBin },
+    rtk: { present: rtkPresent, version: rtkPresent ? rtkVersion(rtkBin as string) : null, path: rtkBin || 'not found in PATH' },
     home: tersioHomePath(),
   });
 }
@@ -197,26 +198,38 @@ function relAge(ms: number): string {
 function computeDoctorRows(): DoctorRow[] {
   const rows: DoctorRow[] = [];
   const extDir = path.join(OMP_AGENT_DIR, 'extensions');
-  const rtkBin = path.join(BUN_BIN_DIR, RTK_BINARY_NAME);
+  const rtkBin = resolveRtkBinary();
   const ponytailPkg = path.join(OMP_PLUGINS_DIR, 'node_modules', '@dietrichgebert', 'ponytail', 'package.json');
+  const tersioPluginDir = path.join(OMP_PLUGINS_DIR, 'node_modules', ...PACKAGE_NAME.split('/'));
   const ok = (p: string): boolean => existsSync(p);
+  const configPath = path.join(OMP_AGENT_DIR, 'config.yml');
   const ext = (label: string, p: string): void => {
     rows.push({ label, ok: ok(p), detail: ok(p) ? 'installed' : p, group: 'Extensions' });
   };
   const addon = (label: string, present: boolean, detail: string, group = 'Add-ons'): void => {
     rows.push({ label, ok: present, detail, group });
   };
-  ext('Caveman extension', path.join(extDir, 'caveman-session', 'index.ts'));
-  ext('RTK extension', path.join(extDir, 'rtk-session', 'index.ts'));
+  let explicitEntries: string[] = [];
+  try {
+    explicitEntries = readFileSync(configPath, 'utf8').split('\n')
+      .map((line) => line.trim().replace(/^-\s*/, '').replace(/^['"]|['"]$/g, ''))
+      .filter((line) => line.startsWith('/') || line.startsWith('.'));
+  } catch { /* missing config is reported by extension rows */ }
+  const duplicateExtensions = [...new Set(explicitEntries.filter((entry, index) => explicitEntries.indexOf(entry) !== index))];
+  addon('Unique config registrations', duplicateExtensions.length === 0, duplicateExtensions.length ? duplicateExtensions.join(', ') : 'ok', 'Extensions');
+  const retiredReinforcement = explicitEntries.filter((entry) => entry.endsWith('/shared/mode-reinforcement.ts')).length;
+  addon('No retired reinforcement', retiredReinforcement === 0, retiredReinforcement ? `${retiredReinforcement} registration(s)` : 'ok', 'Extensions');
+  ext('Caveman extension', path.join(tersioPluginDir, 'extensions', 'caveman-session', 'index.ts'));
+  ext('RTK extension', path.join(tersioPluginDir, 'extensions', 'rtk-session', 'index.ts'));
   ext('Ponytail extension', path.join(OMP_PLUGINS_DIR, 'node_modules', '@dietrichgebert', 'ponytail', 'pi-extension', 'index.js'));
-  const rule = path.join(extDir, 'caveman-session', 'rule.md');
+  const rule = path.join(tersioPluginDir, 'extensions', 'caveman-session', 'rule.md');
   const ruleAge = ageStr(rule);
   const ruleAt = absTime(rule);
   addon('Caveman rule', ruleAge !== null, ruleAge && ruleAt ? `(updated ${ruleAge} · ${ruleAt})` : rule);
-  const rtkVer = ok(rtkBin) ? rtkVersion(rtkBin) : null;
-  const rtkAge = ageStr(rtkBin);
-  const rtkAt = absTime(rtkBin);
-  addon('RTK binary', rtkVer !== null, rtkVer && rtkAge && rtkAt ? `${rtkVer} (updated ${rtkAge} · ${rtkAt})` : rtkBin);
+  const rtkVer = rtkBin ? rtkVersion(rtkBin) : null;
+  const rtkAge = rtkBin ? ageStr(rtkBin) : null;
+  const rtkAt = rtkBin ? absTime(rtkBin) : null;
+  addon('RTK binary', rtkVer !== null, rtkVer && rtkAge && rtkAt ? `${rtkVer} (updated ${rtkAge} · ${rtkAt})` : rtkBin || 'not found in PATH');
   const wiring = path.join(extDir, 'rtk.ts');
   addon('RTK OMP wiring (rtk.ts)', ok(wiring), ok(wiring) ? 'loaded' : wiring);
   let ponytailVer: string | null = null;

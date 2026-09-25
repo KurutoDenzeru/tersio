@@ -91,7 +91,7 @@ async function askDiagSchedule(current: DiagSchedule): Promise<DiagSchedule | nu
 const SETTING_NAMES = ['combo', 'caveman', 'rtk', 'ponytail', 'currency', 'diagnosis'] as const;
 
 function settingsUsage(): void {
-  console.log('  Usage: tersio settings [combo|caveman|rtk|ponytail|currency|diagnosis] [--combo-default off|medium|balanced|max] [--caveman-default off|lite|full|ultra|wenyan] [--rtk-default on|off] [--ponytail-default off|lite|full|ultra|review] [--currency USD|PHP|EUR|GBP|JPY|KRW|SGD|AUD|CAD|INR] [--diag-schedule manual|daily|weekly|monthly] [--dry-run]');
+  console.log('  Usage: tersio settings [combo|caveman|rtk|ponytail|currency|diagnosis] [--combo-default off|medium|balanced|max] [--caveman-default off|lite|full|ultra|wenyan-lite|wenyan-full|wenyan-ultra] [--rtk-default on|off] [--ponytail-default off|lite|full|ultra] [--currency USD|PHP|EUR|GBP|JPY|KRW|SGD|AUD|CAD|INR] [--diag-schedule manual|daily|weekly|monthly] [--dry-run]');
 }
 
 // Single-setting jump: `tersio settings diagnosis` prompts only that value

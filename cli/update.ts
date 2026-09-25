@@ -3,17 +3,18 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import {
-  BUN_BIN_DIR, IS_WINDOWS, OMP_AGENT_DIR, OMP_PLUGINS_DIR,
-  PACKAGE_BIN, PACKAGE_NAME, PACKAGE_VERSION, RTK_BINARY_NAME,
+  IS_WINDOWS, OMP_PLUGINS_DIR,
+  PACKAGE_BIN, PACKAGE_NAME, PACKAGE_VERSION,
   dryRun, execP, parseJsonObject, verbose,
 } from './common.ts';
 import { execNetwork } from './interactive.ts';
-import { readTextIfExists, tersioDataPath } from '../extensions/lib/utils.ts';
+import { readTextIfExists, resolveRtkBinary, tersioDataPath } from '../extensions/lib/utils.ts';
 import { refreshPrices } from '../extensions/shared/pricing.ts';
 import {
-  CAVEMAN_REMOTE_RULE, RTK_RELEASE_API, RtkRelease,
-  fetchJson, httpsGet, normalizeRtkVersion, sha256Hex,
+  CAVEMAN_REMOTE_RULE, RTK_RELEASE_API,
+  httpsGet, normalizeRtkVersion, sha256Hex,
 } from '../extensions/lib/utils.ts';
+import type { RtkRelease } from '../extensions/lib/utils.ts';
 
 const UPDATE_CHECK_TTL_MS = 6 * 60 * 60 * 1000;
 
@@ -102,21 +103,22 @@ interface UpdatePlan {
 // Current → latest per add-on. Every probe is capped and nullable; the plan
 // prints `unknown` for anything unreachable and the update proceeds anyway.
 async function probeUpdatePlan(cliLatest: string | null): Promise<UpdatePlan> {
-  const rtkBin = path.join(BUN_BIN_DIR, RTK_BINARY_NAME);
+  const rtkBin = resolveRtkBinary();
   const ponytailPkg = path.join(OMP_PLUGINS_DIR, 'node_modules', '@dietrichgebert', 'ponytail', 'package.json');
-  const ruleDest = path.join(OMP_AGENT_DIR, 'extensions', 'caveman-session', 'rule.md');
+  const tersioRule = path.join(OMP_PLUGINS_DIR, 'node_modules', '@krtclcdy', 'tersio', 'extensions', 'caveman-session', 'rule.md');
+  const controller = new AbortController();
   const [rtkLocal, rtkRelease, ruleLocalText, ruleRemoteText, ponytailLocalText] = await Promise.all([
-    settle(execP(rtkBin, ['--version'], { timeout: 5000 }).then((r) => normalizeRtkVersion(r.stdout.trim() || r.stderr.trim()) || null), 6000),
-    settle(fetchJson<RtkRelease>(RTK_RELEASE_API).then((r) => normalizeRtkVersion(r.tag_name) || null), 4000),
-    readTextIfExists(ruleDest),
-    settle(httpsGet(CAVEMAN_REMOTE_RULE), 4000),
+    settle(rtkBin ? execP(rtkBin, ['--version'], { timeout: 5000 }).then((r) => normalizeRtkVersion(r.stdout.trim() || r.stderr.trim()) || null) : Promise.resolve(null), 6000),
+    settle(httpsGet(RTK_RELEASE_API, { signal: controller.signal }).then((text) => normalizeRtkVersion((JSON.parse(text) as RtkRelease).tag_name) || null), 1500),
+    readTextIfExists(tersioRule),
+    settle(httpsGet(CAVEMAN_REMOTE_RULE, { signal: controller.signal }).then((text) => sha256Hex(text).slice(0, 8)), 1500),
     readTextIfExists(ponytailPkg),
   ]);
-  const shortHash = (text: string | null): string | null => text === null ? null : sha256Hex(text).slice(0, 8);
+  controller.abort();
   return {
     cli: cliLatest,
     rtk: [rtkLocal, rtkRelease],
-    rule: [shortHash(ruleLocalText), shortHash(ruleRemoteText)],
+    rule: [ruleLocalText ? sha256Hex(ruleLocalText).slice(0, 8) : null, ruleRemoteText],
     ponytail: ponytailLocalText ? parseJsonObject<{ version?: string }>(ponytailLocalText)?.version ?? null : null,
   };
 }

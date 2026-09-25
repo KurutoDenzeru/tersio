@@ -2,15 +2,14 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import {
-  BUN_BIN_DIR, OMP_AGENT_DIR, OMP_PLUGINS_DIR,
-  RTK_BINARY_NAME,
+  OMP_AGENT_DIR, OMP_PLUGINS_DIR,
   args, dryRun, fix, yes,
   execP, parseJsonObject, relTime,
 } from './common.ts';
 import { askInteractiveChoice, askInteractiveConfirm, runInteractivePhase } from './interactive.ts';
 import { usageDbPath } from '../extensions/shared/usage-store.ts';
 import { pricesCachePath } from '../extensions/shared/pricing.ts';
-import { readTextIfExists } from '../extensions/lib/utils.ts';
+import { readTextIfExists, resolveRtkBinary } from '../extensions/lib/utils.ts';
 
 interface DoctorSummary {
   ok: number;
@@ -26,43 +25,44 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   const extDir = path.join(agentDir, 'extensions');
   const configPath = path.join(agentDir, 'config.yml');
   const pluginsDir = OMP_PLUGINS_DIR;
-  const rtkBin = path.join(BUN_BIN_DIR, RTK_BINARY_NAME);
+  const rtkBin = resolveRtkBinary();
 
   // Ponytail
   const ponytailPkg = path.join(pluginsDir, 'node_modules', '@dietrichgebert', 'ponytail', 'package.json');
   const ponytailExt = path.join(pluginsDir, 'node_modules', '@dietrichgebert', 'ponytail', 'pi-extension', 'index.js');
-  const cavemanIndex = path.join(extDir, 'caveman-session', 'index.ts');
-  const cavemanRule = path.join(extDir, 'caveman-session', 'rule.md');
-  const rtkIndex = path.join(extDir, 'rtk-session', 'index.ts');
-  const updaterIndex = path.join(extDir, 'ai-addons-updater', 'index.ts');
+  const tersioPluginDir = path.join(pluginsDir, 'node_modules', '@krtclcdy', 'tersio');
+  const cavemanIndex = path.join(tersioPluginDir, 'extensions', 'caveman-session', 'index.ts');
+  const cavemanRule = path.join(tersioPluginDir, 'extensions', 'caveman-session', 'rule.md');
+  const rtkIndex = path.join(tersioPluginDir, 'extensions', 'rtk-session', 'index.ts');
+  const updaterIndex = path.join(tersioPluginDir, 'extensions', 'ai-addons-updater', 'index.ts');
 
   // Independent probes start concurrently; sections report in fixed order as
   // their data settles. Every probe resolves instead of rejecting.
   const probes = {
     agentEntries: fs.readdir(agentDir).catch(() => null),
     extEntries: fs.readdir(extDir).catch(() => null),
-    sharedStateText: readTextIfExists(path.join(extDir, 'shared', 'session-state.ts')),
+    sharedStateText: readTextIfExists(path.join(tersioPluginDir, 'extensions', 'shared', 'session-state.ts')),
     configText: readTextIfExists(configPath),
     ponytailPkgText: readTextIfExists(ponytailPkg),
     ponytailExtText: readTextIfExists(ponytailExt),
-    rtkBinText: readTextIfExists(rtkBin),
+    rtkBinText: rtkBin ? readTextIfExists(rtkBin) : Promise.resolve(null),
     rtkOmpText: readTextIfExists(path.join(extDir, 'rtk.ts')),
     cavemanIndexText: readTextIfExists(cavemanIndex),
     cavemanRuleText: readTextIfExists(cavemanRule),
     rtkIndexText: readTextIfExists(rtkIndex),
     updaterIndexText: readTextIfExists(updaterIndex),
+    rtkMtime: rtkBin ? fs.stat(rtkBin).catch(() => null) : Promise.resolve(null),
     ruleMtime: fs.stat(cavemanRule).catch(() => null),
-    rtkMtime: fs.stat(rtkBin).catch(() => null),
     ponytailMtime: fs.stat(ponytailPkg).catch(() => null),
     pricesMtime: fs.stat(pricesCachePath()).catch(() => null),
   };
-  const rtkVersionProbe: Promise<string | null> = probes.rtkBinText.then((text) => text === null ? null : execP(rtkBin, ['--version'], { timeout: 5000 }).then(
+  const rtkVersionProbe: Promise<string | null> = rtkBin ? execP(rtkBin, ['--version'], { timeout: 5000 }).then(
     (r) => r.stdout.trim() || r.stderr.trim() || null,
     (e) => {
       const err = e as { stdout?: string; stderr?: string };
       return err.stdout?.trim() || err.stderr?.trim() || null;
     },
-  ));
+  ) : Promise.resolve(null);
   const [[agentEntries, extEntries, sharedStateText, configText], [cavemanIndexText, rtkIndexText, updaterIndexText, ponytailPkgText, ponytailExtText], [cavemanRuleText, ruleMtime, rtkBinText, rtkMtime, rtkVersion, rtkOmpText, ponytailMtime, pricesMtime]] = await runInteractivePhase('Checking installation', () => Promise.all([
     Promise.all([
       probes.agentEntries,
@@ -117,6 +117,14 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   check('Shared session bridge', sharedStateText !== null);
 
   section('Extensions & plugins');
+  const explicitEntries = (configText ?? '').split('\n')
+    .map((line) => line.trim().replace(/^-\s*/, '').replace(/^['"]|['"]$/g, ''))
+    .filter((line) => line.startsWith('/') || line.startsWith('.'));
+  const duplicateExtensions = [...new Set(explicitEntries.filter((entry, index) => explicitEntries.indexOf(entry) !== index))];
+  const retiredReinforcement = explicitEntries.filter((entry) => entry.endsWith('/shared/mode-reinforcement.ts')).length;
+  check('Unique config registrations', duplicateExtensions.length === 0, duplicateExtensions.join(', '));
+  if (retiredReinforcement === 0) check('No retired reinforcement', true);
+  else warnLine('Retired reinforcement registration', `${retiredReinforcement} found; run doctor --fix registrations`);
   check('Caveman extension', cavemanIndexText !== null);
   check('RTK extension', rtkIndexText !== null);
   check('Updater extension', updaterIndexText !== null);
@@ -131,7 +139,7 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   const ruleAge = ruleMtime ? `(updated ${relTime(Date.now() - ruleMtime.mtimeMs)} · ${absDate(ruleMtime.mtimeMs)})` : '';
   check('Caveman rule', cavemanRuleText !== null, ruleAge);
   const rtkAge = rtkMtime ? `(updated ${relTime(Date.now() - rtkMtime.mtimeMs)} · ${absDate(rtkMtime.mtimeMs)})` : '';
-  check('RTK binary', rtkBinText !== null, rtkBinText === null ? rtkBin : [rtkVersion, rtkAge].filter(Boolean).join(' '));
+  check('RTK binary', rtkBin !== null, rtkBinText === null ? 'not found in PATH' : [rtkVersion, rtkAge].filter(Boolean).join(' '));
   if (rtkBinText !== null && !rtkVersion) warnLine('RTK version', 'unavailable — binary may not be executable');
   const rtkRegistered = rtkOmpText !== null && (configText ?? '').includes('extensions/rtk.ts');
   check('RTK OMP wiring (rtk.ts)', rtkOmpText !== null, rtkOmpText === null ? 'run: rtk init -g --agent omp' : '');
@@ -182,7 +190,7 @@ async function runDoctorFix(tally: DoctorSummary): Promise<void> {
   if (tally.missing > 0) problems.push(`${tally.missing} missing`);
   if (tally.warn > 0) problems.push(`${tally.warn} warn`);
   if (dryRun) {
-    console.log(`\n  [dry-run] would repair ${problems.join(' + ')} (extensions, config.yml registrations, rtk wiring, ponytail refresh, CLI update)`);
+    console.log(`\n  [dry-run] would repair ${problems.join(' + ')} (extensions, stale config.yml entries, rtk wiring, ponytail refresh, CLI update)`);
     return;
   }
   const scoped = fixScope();
@@ -199,7 +207,7 @@ async function runDoctorFix(tally: DoctorSummary): Promise<void> {
     const picked = await askInteractiveChoice('Doctor — what should I repair?', [
       { value: 'all', label: 'Fix everything', hint: `${tally.missing + tally.warn} rows` },
       { value: 'extensions', label: 'Missing extension files', hint: 'copy sources from this CLI' },
-      { value: 'registrations', label: 'config.yml registrations', hint: 'combo, ponytail, rtk.ts entries' },
+      { value: 'registrations', label: 'config.yml registrations', hint: 'remove stale entries; keep manifest-owned extensions out' },
       { value: 'rtk', label: 'RTK binary + wiring', hint: 'download checksum-verified binary, rtk init' },
       { value: 'ponytail', label: 'Ponytail package', hint: 'bundled reinstall via tersio dep' },
       { value: 'cli', label: 'CLI update', hint: 'latest tersio + delegated refresh' },

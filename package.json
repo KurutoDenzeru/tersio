@@ -29,7 +29,6 @@
       "./extensions/caveman-session/index.ts",
       "./extensions/rtk-session/index.ts",
       "./extensions/combo-toggle/index.ts",
-      "./extensions/shared/mode-reinforcement.ts",
       "./extensions/tersio-commands/index.ts"
     ],
     "skills": [
@@ -56,6 +55,11 @@
         ],
         "default": "off"
       },
+      "comboSetupComplete": {
+        "type": "boolean",
+        "description": "Whether the first interactive OMP launch has completed the Combo preset prompt",
+        "default": false
+      },
       "cavemanDefault": {
         "type": "enum",
         "description": "Session-start default (no saved state)",
@@ -64,7 +68,9 @@
           "lite",
           "full",
           "ultra",
-          "wenyan"
+          "wenyan-lite",
+          "wenyan-full",
+          "wenyan-ultra"
         ],
         "default": "off"
       },
@@ -80,8 +86,7 @@
           "off",
           "lite",
           "full",
-          "ultra",
-          "review"
+          "ultra"
         ],
         "default": "off"
       },
@@ -109,7 +114,8 @@
     "cli/**/*.js",
     "dashboard/dist/**/*",
     "extensions/**/*.js",
-    "extensions/**/*.ts"
+    "extensions/**/*.ts",
+    "extensions/caveman-session/rule.md"
   ],
   "scripts": {
     "clean": "rm -f tersio.js cli/*.js extensions/**/*.js && rm -rf dashboard/dist",

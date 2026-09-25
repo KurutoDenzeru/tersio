@@ -9,7 +9,7 @@ import {
   applyUpdate, cavemanDefaultFlag, comboDefaultFlag, command, dryRun, install,
   ponytailDefaultFlag, profileFlagsGiven, reinstall, rtkDefaultFlag, verbose, yes,
   dashboardExport, dashboardPort,
-  debug, ensureExtensionAfterConfigEntry, ensureExtensionInConfig, ensurePonytailConfigValue,
+  debug, ensurePonytailConfigValue,
   execP, parseJsonObject, readPluginsPackage,
   writeIfChanged,
   InstallOptions, WriteOptions,
@@ -22,7 +22,6 @@ import { checkForUpdate, runLatestUpdate } from './update.ts';
 import { runUninstall } from './uninstall.ts';
 import { runDoctor } from './doctor.ts';
 import { runReset } from './reset.ts';
-import { runSettings } from './settings.ts';
 import { runUsage } from './usage.ts';
 import { runDashboard } from './dashboard.ts';
 import { wireRtkOmp } from './rtk-wiring.ts';
@@ -37,11 +36,11 @@ import type { Profile } from './profile.ts';
 const EXT_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'extensions');
 const SHARED_SESSION_STATE = path.join(EXT_DIR, 'shared', 'session-state.ts');
 const CAVEMAN_INDEX = path.join(EXT_DIR, 'caveman-session', 'index.ts');
+const CAVEMAN_RULE = path.join(EXT_DIR, 'caveman-session', 'rule.md');
 const RTK_SESSION_INDEX = path.join(EXT_DIR, 'rtk-session', 'index.ts');
 const UPDATER_INDEX = path.join(EXT_DIR, 'ai-addons-updater', 'index.ts');
 const COMBO_TOGGLE_INDEX = path.join(EXT_DIR, 'combo-toggle', 'index.ts');
 const TERSIO_COMMANDS_INDEX = path.join(EXT_DIR, 'tersio-commands', 'index.ts');
-const MODE_REINFORCEMENT_INDEX = path.join(EXT_DIR, 'shared', 'mode-reinforcement.ts');
 const SHARED_TYPES = path.join(EXT_DIR, 'shared', 'types.ts');
 const LIB_UTILS = path.join(EXT_DIR, 'lib', 'utils.ts');
 const SHARED_PLUGIN_SETTINGS = path.join(EXT_DIR, 'shared', 'plugin-settings.ts');
@@ -49,7 +48,7 @@ const SHARED_USAGE_LEDGER = path.join(EXT_DIR, 'shared', 'usage-ledger.ts');
 const SHARED_PRICING = path.join(EXT_DIR, 'shared', 'pricing.ts');
 const SHARED_CARBON = path.join(EXT_DIR, 'shared', 'carbon.ts');
 
-async function stepPonytail(pluginsDir: string, userDir: string, options: InstallOptions): Promise<void> {
+async function stepPonytail(pluginsDir: string, options: InstallOptions): Promise<void> {
   if (!options.quiet) console.log('  Ponytail — ensure bundled plugin');
   await fs.mkdir(pluginsDir, { recursive: true });
   const pkgPath = path.join(pluginsDir, 'package.json');
@@ -102,12 +101,8 @@ async function stepPonytail(pluginsDir: string, userDir: string, options: Instal
     console.log('  [skip] Bundled Ponytail pi-extension/index.js still not found — skill-only mode');
     console.log('  [hint] The /ponytail command won\'t work, but ponytail skills will still load');
   } else if (!options.dryRun && !options.quiet) {
-    // Wire extension into config.yml so /ponytail command loads
-    debug('Bundled Ponytail pi-extension found');
+    debug('Bundled Ponytail pi-extension found; OMP loads it from the plugin manifest');
   }
-  // Still set Ponytail config defaults even without the extension command
-  const configPath = path.join(userDir, 'config.yml');
-  await ensureExtensionInConfig(configPath, ponytailExtPath, 'ponytail', options);
   await ensurePonytailConfigValue('defaultMode', 'off', options);
   // hideStatus=true keeps the upstream ponytail bar hidden; combo owns the bar.
   await ensurePonytailConfigValue('hideStatus', true, options);
@@ -362,12 +357,6 @@ async function stepSharedSessionState(extDir: string, options: WriteOptions): Pr
   ], 'shared/session-state.js', options);
 }
 
-async function stepModeReinforcement(extDir: string, ponytailExtPath: string, options: WriteOptions): Promise<void> {
-  if (!options.quiet) console.log('  Session helpers — sync shared files');
-  const dest = path.join(extDir, 'shared', 'mode-reinforcement.ts');
-  if (!await copySources(extDir, [[MODE_REINFORCEMENT_INDEX, path.join('shared', 'mode-reinforcement.ts')]], 'shared/mode-reinforcement.ts', options)) return;
-  await ensureExtensionAfterConfigEntry(path.join(path.dirname(extDir), 'config.yml'), dest, ponytailExtPath, 'mode reinforcement', options);
-}
 
 async function stepRtkSession(extDir: string, options: WriteOptions): Promise<void> {
   if (!options.quiet) console.log('  RTK session — install session mode');
@@ -377,10 +366,15 @@ async function stepRtkSession(extDir: string, options: WriteOptions): Promise<vo
 // One rule fetch serves the install; dry runs stay offline
 // and fall back to the bundled rule to preview its destination.
 async function fetchCavemanRule(options: WriteOptions): Promise<string | null> {
-  if (options.dryRun) return (await readTextIfExists(path.join(path.dirname(CAVEMAN_INDEX), 'rule.md'))) || '';
+  const bundled = await readTextIfExists(CAVEMAN_RULE);
+  if (options.dryRun) return bundled;
   try {
     return await withInteractiveSpinner('Fetching Caveman rule', () => httpsGet(CAVEMAN_REMOTE_RULE));
   } catch (e) {
+    if (bundled !== null) {
+      debug(`Using bundled Caveman rule: ${(e as Error).message}`);
+      return bundled;
+    }
     console.log(`  [warn] Could not fetch caveman rule: ${(e as Error).message}`);
     return null;
   }
@@ -413,14 +407,9 @@ async function stepUpdater(extDir: string, options: WriteOptions): Promise<void>
   await copySources(extDir, [[UPDATER_INDEX, path.join('ai-addons-updater', 'index.ts')]], 'ai-addons-updater/index.ts', options);
 }
 
-async function stepCombo(extDir: string, options: WriteOptions): Promise<void> {
+async function stepCombo(extDir: string, options: InstallOptions): Promise<void> {
   if (!options.quiet) console.log('  Combo — install preset switch');
-  const dest = path.join(extDir, 'combo-toggle', 'index.ts');
-  if (!await copySources(extDir, [[COMBO_TOGGLE_INDEX, path.join('combo-toggle', 'index.ts')]], 'combo-toggle/index.ts', options)) return;
-
-  // Auto-register combo in config.yml
-  const configPath = path.join(path.dirname(extDir), 'config.yml');
-  await ensureExtensionInConfig(configPath, dest, 'combo', options);
+  await copySources(extDir, [[COMBO_TOGGLE_INDEX, path.join('combo-toggle', 'index.ts')]], 'combo-toggle/index.ts', options);
 }
 
 
@@ -491,7 +480,6 @@ async function runCommandMenu(): Promise<void> {
     { value: 'usage', label: 'Usage', hint: 'token usage and savings report' },
     { value: 'dashboard', label: 'Dashboard', hint: 'open the report in your browser' },
     { value: 'reset', label: 'Reset statistics', hint: 'clear statistics; transcripts and RTK history stay' },
-    { value: 'settings', label: 'Settings', hint: 'defaults: combo, caveman, rtk, ponytail, currency' },
     { value: 'uninstall', label: 'Uninstall', hint: 'remove tersio' },
   ], 'install');
   if (choice.status !== 'selected') {
@@ -552,9 +540,6 @@ async function runCommandMenu(): Promise<void> {
     case 'reset':
       await runReset();
       closeRL();
-      break;
-    case 'settings':
-      await runSettings();
       break;
     case 'uninstall':
       await runUninstall();
@@ -648,14 +633,12 @@ async function runInstall(overrides: { reinstall?: boolean } = {}): Promise<void
   await capture('shared', () => stepSharedSessionState(userExtDir, options));
   let selfPlugin = false;
   await capture('self-plugin', async () => { selfPlugin = await stepSelfPlugin(OMP_PLUGINS_DIR, options); });
-  await capture('ponytail', () => stepPonytail(OMP_PLUGINS_DIR, userDir, options));
-  const ponytailExtPath = path.join(OMP_PLUGINS_DIR, 'node_modules', '@dietrichgebert', 'ponytail', 'pi-extension', 'index.js');
+  await capture('ponytail', () => stepPonytail(OMP_PLUGINS_DIR, options));
   await capture('rtk', () => stepRtk(BUN_BIN_DIR, options));
   await capture('rtk session', () => stepRtkSession(userExtDir, options));
-  await capture('caveman', () => stepCaveman(userExtDir, cavemanRule, options));
+  await capture('caveman', () => stepCaveman(path.join(OMP_PLUGINS_DIR, 'node_modules', '@krtclcdy', 'tersio', 'extensions'), cavemanRule, options));
   await capture('combo', () => stepCombo(userExtDir, options));
   await capture('commands', () => stepTersioCommands(userExtDir, options));
-  await capture('reinforcement', () => stepModeReinforcement(userExtDir, ponytailExtPath, options));
   await capture('updater', () => stepUpdater(userExtDir, options));
   if (selfPlugin) await capture('settings', () => writePluginSettings(profile, options));
 

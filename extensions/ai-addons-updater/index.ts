@@ -23,6 +23,7 @@ import {
   normalizeRtkVersion,
   readTextIfExists,
   rtkPlatformSpec,
+  resolveRtkBinary,
 } from '../lib/utils.ts';
 
 const IS_WINDOWS = process.platform === 'win32';
@@ -30,9 +31,18 @@ const HOME = os.homedir();
 
 const PONYTAIL_REMOTE = 'https://raw.githubusercontent.com/DietrichGebert/ponytail/main/package.json';
 const PONYTAIL_LOCAL = path.join(HOME, '.omp', 'plugins', 'node_modules', '@dietrichgebert', 'ponytail', 'package.json');
-const RTK_BINARY = path.join(HOME, '.bun', 'bin', IS_WINDOWS ? 'rtk.exe' : 'rtk');
-const CAVEMAN_LOCAL = path.join(HOME, '.omp', 'agent', 'extensions', 'caveman-session', 'rule.md');
-
+const RTK_BINARY = resolveRtkBinary();
+const CAVEMAN_LOCAL = path.join(
+  HOME,
+  '.omp',
+  'plugins',
+  'node_modules',
+  '@krtclcdy',
+  'tersio',
+  'extensions',
+  'caveman-session',
+  'rule.md',
+);
 const RELOAD_MSG = 'Reminder: restart OMP (or reload extensions) for updates to take effect.';
 
 // --- Types ---
@@ -104,6 +114,7 @@ function checkRtk(): Promise<AddonStatus> {
     const latestTag = release.tag_name || null;
     let localVer: string | null = null;
     try {
+      if (!RTK_BINARY) throw new Error('rtk not found in PATH');
       const out = execFileSync(RTK_BINARY, ['--version'], { encoding: 'utf8', windowsHide: true, shell: false, timeout: 10000 }) || '';
       if (out) localVer = out.trim().split(/\r?\n/)[0];
     } catch { localVer = null; }
@@ -188,6 +199,7 @@ async function updateRtk(ctx: AddonUpdaterCtx, dryRun = false): Promise<string> 
   }
   const tag = release.tag_name || 'unknown';
   const assets = Array.isArray(release.assets) ? release.assets : [];
+  if (!RTK_BINARY) return report(ctx, 'RTK: executable not found in PATH', 'warning');
 
   // Cross-platform asset selection (mirrors installer stepRtk)
   const PLATFORM = process.platform;
