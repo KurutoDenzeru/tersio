@@ -1,3 +1,8 @@
+## v2.22.1
+ - Consolidates the Vite + React + shadcn/ui Dashboard under `dashboard/`, removes the legacy runtime and `gain/` app, and makes `tersio dashboard` the sole public Dashboard command.
+ - Adds animated telemetry and chart reveals, a bounded shadcn Diagnosis Table + ScrollArea, reduced-motion support, a seven-day USD cost sparkline, and credits EcoLogits and Tokscale as measurement references.
+ - Reduces metered CI usage by deduplicating PR checks, validating only the merged main result, and cancelling superseded runs.
+
 ## v2.22.0
  - Dashboard rebuilt as a responsive Vite + React + shadcn/ui application. Cards, Tables, Selects, Tabs, Charts, Badges, Skeletons, tooltips, pagination, loading states, theme controls, model details, and settings now share one component and token system instead of the legacy inline dashboard.
  - Settings gains working search with highlighted matches, grouped General/Connection/Diagnosis/Data panes, a read-only OMP coding-agent status card, theme tabs, schedules, data paths, and safe reset/reload actions. Diagnosis and doctor flows gained clearer grouped findings, repair coverage, and persistent data-home handling.
