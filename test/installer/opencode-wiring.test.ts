@@ -240,9 +240,15 @@ test("doctor --fix rtk repairs a missing OpenCode plugin even when the rtk downl
 
     spawnSync(process.execPath, [installer, "doctor", "--fix", "rtk", "--yes"], { cwd: root, encoding: "utf8", env, timeout: 120000 });
 
-    expect(existsSync(openCodePluginPath()), "the OpenCode plugin must be written by the rtk repair scope").toBe(true);
-    expect(readFileSync(openCodePluginPath(), "utf8")).toBe(PLUGIN_SOURCE);
-    expect(readFileSync(openCodeAgentsPath(), "utf8")).toContain(START);
+    // Resolve against the spawned HOME explicitly. `openCodePluginPath()` reads
+    // *this* process's HOME, which on a developer machine already has the
+    // plugin installed — the assertions would then pass for the wrong reason
+    // and only fail in CI.
+    const pluginInHome = path.join(home, ".config", "opencode", "plugins", "tersio-rtk.ts");
+    const agentsInHome = path.join(home, ".config", "opencode", "AGENTS.md");
+    expect(existsSync(pluginInHome), "the OpenCode plugin must be written by the rtk repair scope").toBe(true);
+    expect(readFileSync(pluginInHome, "utf8")).toBe(PLUGIN_SOURCE);
+    expect(readFileSync(agentsInHome, "utf8")).toContain(START);
 
     const after = spawnSync(process.execPath, [installer, "doctor"], { cwd: root, encoding: "utf8", env, timeout: 20000 });
     expect(after.stdout, after.stderr).toMatch(/✅ OpenCode v2 RTK plugin: ok/);
