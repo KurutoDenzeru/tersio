@@ -1,5 +1,5 @@
-// cli/opencode-wiring.ts — install, refresh, and remove the OpenCode 2
-// integration: a V2 RTK rewrite plugin plus RTK guidance in global AGENTS.md.
+// cli/opencode-wiring.ts — install, refresh, and remove the OpenCode
+// integration: an RTK rewrite plugin plus RTK guidance in global AGENTS.md.
 //
 // Why Tersio ships this instead of `rtk init -g --opencode`: rtk still writes
 // a V1 plugin (rtk-ai/rtk#3463, #3898), and V2 rejects it with
@@ -112,7 +112,7 @@ async function readTextIfExists(p: string): Promise<string | null> {
 }
 
 /**
- * Writes the V2 plugin and the AGENTS.md guidance block.
+ * Writes the plugin and the AGENTS.md guidance block.
  * Returns which artifacts this run actually changed.
  */
 export async function installOpenCodeRtk(

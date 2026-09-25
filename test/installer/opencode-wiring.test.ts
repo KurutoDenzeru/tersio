@@ -42,7 +42,7 @@ function withHome<T>(home: string, work: () => Promise<T> | T): Promise<T> {
 // auto-discovers it, the guidance block is idempotent, and removal restores
 // the user's own AGENTS.md byte for byte.
 
-test("install writes the V2 plugin and guidance into the opencode config dir", async () => {
+test("install writes the plugin and guidance into the opencode config dir", async () => {
   const home = tempHome();
   try {
     await withHome(home, async () => {
@@ -235,7 +235,7 @@ test("doctor --fix rtk repairs a missing OpenCode plugin even when the rtk downl
     mkdirSync(path.join(home, ".config", "opencode"), { recursive: true });
 
     const before = spawnSync(process.execPath, [installer, "doctor"], { cwd: root, encoding: "utf8", env, timeout: 20000 });
-    expect(before.stdout, before.stderr).toMatch(/⚠️ OpenCode v2 RTK plugin: warn not installed/);
+    expect(before.stdout, before.stderr).toMatch(/⚠️ OpenCode RTK plugin: warn not installed/);
     expect(before.stdout, before.stderr).toMatch(/⚠️ OpenCode rtk guidance: warn/);
 
     spawnSync(process.execPath, [installer, "doctor", "--fix", "rtk", "--yes"], { cwd: root, encoding: "utf8", env, timeout: 120000 });
@@ -251,7 +251,7 @@ test("doctor --fix rtk repairs a missing OpenCode plugin even when the rtk downl
     expect(readFileSync(agentsInHome, "utf8")).toContain(START);
 
     const after = spawnSync(process.execPath, [installer, "doctor"], { cwd: root, encoding: "utf8", env, timeout: 20000 });
-    expect(after.stdout, after.stderr).toMatch(/✅ OpenCode v2 RTK plugin: ok/);
+    expect(after.stdout, after.stderr).toMatch(/✅ OpenCode RTK plugin: ok/);
     expect(after.stdout, after.stderr).toMatch(/✅ OpenCode rtk guidance: ok/);
   } finally {
     rmSync(home, { recursive: true, force: true });

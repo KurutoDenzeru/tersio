@@ -49,7 +49,7 @@ test("--agent omp installs OMP wiring and skips the OpenCode plugin", () => {
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toMatch(/Hosts: Oh My Pi \(OMP\)/);
     expect(result.stdout).toMatch(/Caveman — fetch rule and install session mode/);
-    expect(result.stdout).not.toMatch(/OpenCode — install V2 rtk plugin/);
+    expect(result.stdout).not.toMatch(/OpenCode — install rtk plugin/);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }
@@ -62,8 +62,8 @@ test("--agent opencode installs only the OpenCode plugin, not the OMP modes", ()
     const result = run(home, ["install", "--yes", "--dry-run", "--agent", "opencode"]);
 
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toMatch(/Hosts: OpenCode 2/);
-    expect(result.stdout).toMatch(/OpenCode — install V2 rtk plugin/);
+    expect(result.stdout).toMatch(/Hosts: OpenCode/);
+    expect(result.stdout).toMatch(/OpenCode — install rtk plugin/);
     // OMP-only steps must not run: no shared bridge, no Ponytail, no combo.
     expect(result.stdout).not.toMatch(/Combo — install preset switch/);
     expect(result.stdout).not.toMatch(/Ponytail — ensure bundled plugin/);
@@ -96,9 +96,57 @@ test("a comma list selects several hosts and persists them", () => {
     const result = run(home, ["install", "--yes", "--dry-run", "--agent", "omp,opencode"]);
 
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toMatch(/Hosts: Oh My Pi \(OMP\) \+ OpenCode 2/);
+    expect(result.stdout).toMatch(/Hosts: Oh My Pi \(OMP\) \+ OpenCode/);
     // --dry-run must not write the persisted choice.
     expect(existsSync(agentsFile(home))).toBe(false);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+// Regression: --agent was read through flagValue(), which returns only the
+// first occurrence, so `--agent omp --agent cursor` silently installed omp
+// alone instead of failing or unioning.
+test("a repeated --agent flag unions the hosts instead of keeping the first", () => {
+  const home = tempHome();
+  try {
+    seedHosts(home, ["omp", "cursor"]);
+    const result = run(home, ["install", "--yes", "--dry-run", "--agent", "omp", "--agent", "cursor"]);
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/Hosts: Oh My Pi \(OMP\) \+ Cursor$/m);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("repeated and inline --agent forms combine, and duplicates collapse", () => {
+  const home = tempHome();
+  try {
+    seedHosts(home, ["omp"]);
+    const result = run(home, [
+      "install", "--yes", "--dry-run",
+      "--agent", "omp,claude-code",
+      "--agent=grok-build",
+      "--agent", "omp",
+    ]);
+
+    expect(result.status, result.stderr).toBe(0);
+    // omp appears three times across the flags but must be installed once.
+    expect(result.stdout).toMatch(/Hosts: Oh My Pi \(OMP\) \+ Claude Code \+ Grok Build$/m);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("--agent with no value fails loudly instead of installing nothing", () => {
+  const home = tempHome();
+  try {
+    seedHosts(home, ["omp"]);
+    const result = run(home, ["install", "--yes", "--agent"]);
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toMatch(/--agent needs a value/);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }
@@ -130,7 +178,7 @@ test("a stored choice wins over detection on later runs", () => {
     expect(result.status, result.stderr).toBe(0);
     // Both hosts are present, but the stored choice excludes OpenCode.
     expect(result.stdout).toMatch(/Hosts: Oh My Pi \(OMP\)$/m);
-    expect(result.stdout).not.toMatch(/OpenCode — install V2 rtk plugin/);
+    expect(result.stdout).not.toMatch(/OpenCode — install rtk plugin/);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }
@@ -164,7 +212,7 @@ test("a corrupt agents file falls back to detection instead of crashing", () => 
     const result = run(home, ["install", "--yes", "--dry-run"]);
 
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toMatch(/Hosts: Oh My Pi \(OMP\) \+ OpenCode 2/);
+    expect(result.stdout).toMatch(/Hosts: Oh My Pi \(OMP\) \+ OpenCode/);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }
@@ -181,7 +229,7 @@ test("settings --agent persists the choice for later installs", () => {
 
     // The stored value must actually change what install does.
     const after = run(home, ["install", "--yes", "--dry-run"]);
-    expect(after.stdout).toMatch(/Hosts: OpenCode 2/);
+    expect(after.stdout).toMatch(/Hosts: OpenCode/);
     expect(after.stdout).not.toMatch(/Combo — install preset switch/);
   } finally {
     rmSync(home, { recursive: true, force: true });
@@ -212,7 +260,7 @@ test("doctor stays quiet about OpenCode once the user opted out", () => {
     const result = run(home, ["doctor"]);
 
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).not.toMatch(/OpenCode v2 RTK plugin/);
+    expect(result.stdout).not.toMatch(/OpenCode RTK plugin/);
     expect(result.stdout).not.toMatch(/OpenCode rtk guidance/);
   } finally {
     rmSync(home, { recursive: true, force: true });
@@ -229,7 +277,7 @@ test("doctor still reports OpenCode rows when the host is selected", () => {
     const result = run(home, ["doctor"]);
 
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toMatch(/OpenCode v2 RTK plugin/);
+    expect(result.stdout).toMatch(/OpenCode RTK plugin/);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }
@@ -243,7 +291,7 @@ test("an OpenCode-only run does not claim OMP was installed", () => {
 
     expect(result.status, result.stderr).toBe(0);
     // The completion hint must not tell an OpenCode-only user to restart OMP.
-    expect(result.stdout).toMatch(/Done — restart OpenCode 2\./);
+    expect(result.stdout).toMatch(/Done — restart OpenCode\./);
     expect(result.stdout).not.toMatch(/Done — restart OMP/);
   } finally {
     rmSync(home, { recursive: true, force: true });

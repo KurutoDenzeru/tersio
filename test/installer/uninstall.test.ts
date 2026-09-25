@@ -164,3 +164,29 @@ test("uninstall dry-run changes no files", () => {
     rmSync(home, { recursive: true, force: true });
   }
 });
+
+// The preview is the consent prompt, so a host whose files are about to be
+// removed must be named in it. This previously listed only OMP and OpenCode.
+test("uninstall previews every selected agent, not just OMP and OpenCode", () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-uninstall-agents-"));
+  try {
+    mkdirSync(path.join(home, ".omp", "agent"), { recursive: true });
+    const install = spawnSync(
+      process.execPath,
+      [installer, "install", "--yes", "--agent", "omp,opencode,cursor,hermes,claude-code"],
+      { cwd: root, encoding: "utf8", timeout: 120000, env: { ...process.env, HOME: home, USERPROFILE: home } },
+    );
+    expect(install.status, install.stderr).toBe(0);
+
+    const result = run(home, "uninstall", "--yes", "--dry-run", "--remove-rtk");
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/Cursor/);
+    expect(result.stdout).toMatch(/Hermes/);
+    expect(result.stdout).toMatch(/Claude Code/);
+    // No version-specific OpenCode wording in user-facing output.
+    expect(result.stdout).not.toMatch(/opencode v2/i);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+}, 300000);

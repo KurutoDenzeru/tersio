@@ -10,6 +10,7 @@ import {
 import { ask, closeRL, tty } from './interactive.ts';
 import { openCodeAgentsPath, openCodePluginPath, removeOpenCodeRtk } from './opencode-wiring.ts';
 import { byId, clearAgents, selectedHosts } from './agents.ts';
+import { OWN_PATH_HOSTS } from './agent-hosts.ts';
 import { removeHost } from './host-writers.ts';
 import { readTextIfExists } from '../extensions/lib/utils.ts';
 
@@ -113,9 +114,18 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
     console.log(`  ${path.join(extDir, 'rtk.ts')} (rtk OMP wiring)`);
   }
 
+  // Every other selected agent contributes files too, and the user should see
+  // them in the preview before confirming: a list that silently omits nine
+  // hosts is not an informed consent prompt.
+  const agentHosts = selectedHosts()
+    .map((id) => byId(id))
+    .filter((h): h is NonNullable<typeof h> => h !== undefined && !OWN_PATH_HOSTS.includes(h.id));
   if (shouldRemoveRtk) {
-    console.log(`  ${openCodePluginPath()} (opencode v2 rtk plugin)`);
-    console.log(`  ${openCodeAgentsPath()} (rtk guidance block)`);
+    console.log(`  ${openCodePluginPath()} (opencode rtk plugin)`);
+    console.log(`  ${openCodeAgentsPath()} (opencode rtk guidance block)`);
+    for (const host of agentHosts) {
+      console.log(`  ${host.label} — rules, skills, and rtk hook`);
+    }
   }
 
   if (!confirmed) {
@@ -206,7 +216,7 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
     await removeUninstallTarget(path.join(extDir, 'rtk.ts'), shouldDryRun);
   }
 
-  // OpenCode's V2 plugin is ours, not rtk's, so it goes with --remove-rtk for
+  // OpenCode's plugin is ours, not rtk's, so it goes with --remove-rtk for
   // the same reason ~/.omp/agent/extensions/rtk.ts does: with the binary gone
   // the hook would pass through harmlessly, but the file is ours to clean up.
   if (shouldRemoveRtk) {

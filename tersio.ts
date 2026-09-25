@@ -19,20 +19,21 @@ function printHelp(): void {
   console.log(`Usage: ${PACKAGE_BIN} [command] [options]
 
 Commands:
-  install      Install the add-ons (user scope: all OMP sessions)
-  update       Refresh the CLI and add-ons (RTK binary, Caveman rule, Ponytail)
-  reinstall    Clean and reinstall the user-scope add-ons
-  doctor       Check the current installation (--fix repairs, --dry-run previews)
+  install      Install, asking which coding agents to install for
+  update       Refresh the CLI, every selected agent's files, and shared add-ons
+  reinstall    Clean and reinstall the selected agents
+  doctor       Check the install and every selected agent (--fix repairs, --dry-run previews)
   usage        Ledger-backed usage + savings report
   dashboard     Open the Dashboard (localhost only)
   reset        Clear tersio statistics (usage ledger)
-  settings     View/change session-start defaults (combo, caveman, rtk, ponytail)
-  uninstall    Remove the managed extensions
+  settings     View/change session-start defaults and the selected agents
+  uninstall    Remove the selected agents' files and shared add-ons
   version      Print the package version
   help         Show this help
 
 Options:
   --fix (doctor: repairs all; --fix=<scope> repairs one of extensions, registrations, rtk, ponytail, cli)
+  --agent <ids> (install/settings: comma list or repeated; e.g. --agent omp,claude-code)
   --scope user (legacy; accepted and ignored — user scope is the only scope)
   --keep-ponytail (uninstall: keep the bundled Ponytail copy — removed by default)
   --remove-rtk (uninstall: also remove the RTK binary)

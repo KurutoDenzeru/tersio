@@ -1,12 +1,13 @@
-// Tersio OpenCode V2 plugin — RTK shell-command rewrite.
+// Tersio OpenCode plugin — RTK shell-command rewrite.
 //
-// OpenCode 2.0 replaced the V1 plugin API. A V1 plugin exports a function that
-// returns a string-keyed hook object; V2 default-exports a definition with an
-// `id` and `setup(ctx)`, and registers hooks on the domain that owns them. V1
-// implementations do not run on V2, and a stale V1 file can also stop loading
-// silently after the 1.18.x auto-discovery change. This file is V2-native.
+// OpenCode's current plugin API replaced an earlier incompatible one. The old
+// shape exported a function returning a string-keyed hook object; the current
+// one default-exports a definition with an `id` and `setup(ctx)`, and
+// registers hooks on the domain that owns them. Plugins in the old shape do
+// not load, and a stale one can also stop loading silently after the
+// 1.18.x auto-discovery change. This file targets the current API.
 //
-// Verified against opencode v2.0.16: `ctx.tool.hook("execute.before", …)`
+// Verified against opencode 2.0.16: `ctx.tool.hook("execute.before", …)`
 // fires with `event.tool === "shell"` and a mutable `event.input`; assigning a
 // new `command` on it changes the command that actually executes.
 //

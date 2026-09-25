@@ -162,9 +162,9 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
     : chosenAgents.includes('opencode');
   if (openCodeSelected) {
     if (openCodePluginText === null) {
-      warnLine('OpenCode v2 RTK plugin', 'not installed — run: tersio install');
+      warnLine('OpenCode RTK plugin', 'not installed — run: tersio install');
     } else {
-      check('OpenCode v2 RTK plugin', openCodePluginText.includes('tersio-rtk'), openCodePluginPath());
+      check('OpenCode RTK plugin', openCodePluginText.includes('tersio-rtk'), openCodePluginPath());
     }
     if (openCodeAgentsText === null) {
       warnLine('OpenCode rtk guidance', `no ${openCodeAgentsPath()}`);

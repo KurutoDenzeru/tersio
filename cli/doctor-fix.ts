@@ -101,7 +101,7 @@ async function fixRtk(binDir: string): Promise<void> {
   console.log('  Doctor --fix: repairing RTK binary + wiring');
   const binDest = path.join(binDir, RTK_BINARY_NAME);
   if (dryRun) {
-    console.log(`  [dry-run] would download a checksum-verified rtk to ${binDest}, wire it into OMP, and refresh the OpenCode 2 plugin + AGENTS.md guidance`);
+    console.log(`  [dry-run] would download a checksum-verified rtk to ${binDest}, wire it into OMP, and refresh the OpenCode plugin + AGENTS.md guidance`);
     return;
   }
   // The OpenCode plugin is a plain file write with no network dependency, so
@@ -144,7 +144,7 @@ async function fixRtk(binDir: string): Promise<void> {
 }
 
 // Same RTK contract, second host: the OMP hook above cannot reach an OpenCode
-// 2 server, so the V2 plugin and its guidance block need repairing too. Doctor
+// server, so the plugin and its guidance block need repairing too. Doctor
 // prints "run: tersio install" for a missing plugin, so `--fix` has to honor
 // that or the warning is unactionable through the path doctor points at.
 export async function repairOpenCodeRtk(): Promise<boolean> {

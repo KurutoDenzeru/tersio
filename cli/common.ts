@@ -130,14 +130,27 @@ const diagScheduleFlag = parseEnum(flagValue('--diag-schedule'), DIAG_SCHEDULES,
 // Valid host ids come from the registry, so adding a host there is enough to
 // make `--agent <id>` accept it. No second list to keep in sync.
 const AGENT_IDS = new Set(HOSTS.map((h) => h.id));
-// --agent accepts a list (`--agent omp,opencode`) or repeats of a single value.
+// --agent accepts a list (`--agent omp,opencode`) or repeats of a single value
+// (`--agent omp --agent cursor`). Scan argv directly rather than via
+// flagValue(), which returns only the first occurrence and so silently
+// collapsed repeats to one host.
 // An empty result is meaningful: it means "no hosts", distinct from unset.
 const agentFlag: string[] | undefined = (() => {
-  const collected = args.flatMap((a) => {
-    if (a === '--agent') return [flagValue('--agent') ?? ''];
-    if (a.startsWith('--agent=')) return [a.slice('--agent='.length)];
-    return [];
-  });
+  const collected: string[] = [];
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (arg === '--agent') {
+      const next = args[i + 1];
+      if (next === undefined || next.startsWith('-')) {
+        console.error('[fail] --agent needs a value. Valid: ' + [...AGENT_IDS].join(', '));
+        process.exit(1);
+      }
+      collected.push(next);
+      i += 1;
+    } else if (arg.startsWith('--agent=')) {
+      collected.push(arg.slice('--agent='.length));
+    }
+  }
   if (collected.length === 0) return undefined;
   const names = collected.flatMap((v) => v.split(',')).map((v) => v.trim().toLowerCase()).filter(Boolean);
   for (const n of names) {

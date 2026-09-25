@@ -30,8 +30,8 @@ flowchart TB
     PONY["@dietrichgebert/ponytail<br/>bundled tersio dep (/ponytail)"]
   end
 
-  subgraph OC["OpenCode 2 host (optional, independent)"]
-    OCPLUG["~/.config/opencode/plugins/tersio-rtk.ts<br/>V2 Plugin.define + ctx.tool.hook('execute.before')<br/>rewrites the shell tool via rtk rewrite"]
+  subgraph OC["OpenCode host (optional, independent)"]
+    OCPLUG["~/.config/opencode/plugins/tersio-rtk.ts<br/>Plugin.define + ctx.tool.hook('execute.before')<br/>rewrites the shell tool via rtk rewrite"]
     OCGUIDE["~/.config/opencode/AGENTS.md<br/>marked tersio:rtk block (guidance fallback)"]
     OCWIRE["cli/opencode-wiring.ts<br/>install / remove / doctor probe"]
   end
@@ -77,8 +77,8 @@ sequenceDiagram
 - **Always on:** `omp.extensions` in `package.json` loads every mode extension. Only `updater` stays an optional feature.
 - **Single owner:** OMP plugin manifests load Tersio extensions and nested Ponytail. `config.yml` holds only rtk-owned wiring; doctor removes retired, duplicate, or legacy manifest-owned entries.
 - **Caveman rule ownership:** `extensions/caveman-session/rule.md` ships beside the manifest-loaded extension. Doctor and updater inspect that installed plugin path, not the retired agent copy.
-- **OpenCode is a second host, not a peer:** OpenCode 2 gets only the RTK shell rewrite plus AGENTS.md guidance. Combo state, the session bridge, and the status bar stay OMP-only because OpenCode has no equivalent of the in-process bridge.
-- **Tersio owns the OpenCode plugin:** `rtk init --opencode` emits a V1 plugin that OpenCode 2 rejects, so `cli/opencode-wiring.ts` writes the V2 file instead. Rewrite rules stay in the rtk binary, so an rtk upgrade needs no plugin edit.
+- **OpenCode is a second host, not a peer:** OpenCode gets only the RTK shell rewrite plus AGENTS.md guidance. Combo state, the session bridge, and the status bar stay OMP-only because OpenCode has no equivalent of the in-process bridge.
+- **Tersio owns the OpenCode plugin:** `rtk init --opencode` emits a plugin in a format OpenCode rejects, so `cli/opencode-wiring.ts` writes its own. Rewrite rules stay in the rtk binary, so an rtk upgrade needs no plugin edit.
 - **Optional host, warning only:** doctor reports a missing OpenCode plugin or guidance block as a warning, never a failure, because most machines never run OpenCode.
 - **Host selection is separate state:** the chosen hosts live in `~/.tersio/agents.json`, not the OMP plugin lock file, because a non-OMP user has no OMP plugin to hang settings off. OMP is always included by detection; every other host auto-detects only when its own config directory already exists, so a host nobody installed never gets a directory created for it. Each host's directory honors its own relocation variable.
 - **One registry, one source of truth:** `cli/agent-hosts.ts` holds every host's docs-backed paths and capabilities; `cli/rules-pack.ts` holds the mode text. `cli/host-writers.ts` renders a host's files from those two and nothing else, so adding a host means adding a registry entry, not a new code path. `omp` and `opencode` are in the registry for selection and detection but are installed by their own wiring modules — the generic emitters would duplicate a live extension with a static file.

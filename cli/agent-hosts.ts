@@ -92,10 +92,10 @@ const HOSTS: AgentHost[] = [
   },
   {
     id: 'opencode',
-    label: 'OpenCode 2',
+    label: 'OpenCode',
     configDir: '.config/opencode',
     binary: 'opencode',
-    // Same as omp: OpenCode gets a real V2 plugin from cli/opencode-wiring.ts,
+    // Same as omp: OpenCode gets a real plugin from cli/opencode-wiring.ts,
     // not a static rules pack.
     rules: true,
     skills: true,

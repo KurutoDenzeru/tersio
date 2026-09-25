@@ -330,17 +330,17 @@ async function stepRtk(binDir: string, options: InstallOptions): Promise<void> {
   await wireRtkOmp(binDest, options);
 }
 
-// OpenCode 2 is a separate host with no OMP relationship: its RTK hook is a
-// V2 plugin we own, because `rtk init --opencode` still emits a V1 file that
-// V2 refuses to load. Best-effort — a machine with no OpenCode config dir
-// still gets a clean install, and the write itself is idempotent.
+// OpenCode is a separate host with no OMP relationship: its RTK hook is a
+// plugin we own, because `rtk init --opencode` still emits one in a format
+// OpenCode rejects. Best-effort — a machine with no OpenCode config dir still
+// gets a clean install, and the write itself is idempotent.
 async function stepOpenCode(options: InstallOptions): Promise<void> {
   const source = await readTextIfExists(OPENCODE_RTK_PLUGIN);
   if (!source) {
     if (!options.quiet) console.log('  [skip] opencode rtk plugin source missing');
     return;
   }
-  if (!options.quiet) console.log('  OpenCode — install V2 rtk plugin and AGENTS.md guidance');
+  if (!options.quiet) console.log('  OpenCode — install rtk plugin and AGENTS.md guidance');
   if (options.dryRun) {
     if (options.verbose) {
       console.log(`  [dry-run] would write ${openCodePluginPath()}`);
