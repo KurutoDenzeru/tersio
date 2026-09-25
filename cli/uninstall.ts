@@ -1,5 +1,5 @@
 // cli/uninstall.ts — remove managed extensions, plugins, and binaries.
-import { promises as fs } from 'node:fs';
+import { existsSync, promises as fs } from 'node:fs';
 import path from 'node:path';
 import { cancel as clackCancel, confirm as clackConfirm } from '@clack/prompts';
 import {
@@ -13,7 +13,7 @@ import { byId, clearAgents, hostPath, selectedHosts } from './agents.ts';
 import type { AgentHost } from './agents.ts';
 import { HOOK_SCRIPT_NAME, removeHost } from './host-writers.ts';
 import { START as TERSIO_START } from './rules-pack.ts';
-import { readTextIfExists } from '../extensions/lib/utils.ts';
+import { homeDir, readTextIfExists } from '../extensions/lib/utils.ts';
 
 interface UninstallOptions {
   yes?: boolean;
@@ -144,20 +144,30 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
     // Legacy always-on combo helper; imports shared/session-state.js, so it
     // breaks with a module-not-found warning once the shared dir is removed.
     'aaa-combo-boot',
-  ].map((dir) => path.join(extDir, dir));
+  ].map((dir) => path.join(extDir, dir))
+    // Only what is actually there. A Pi-only or OpenCode-only machine never had
+    // these directories, and listing them as "will remove" was noise that hid
+    // the hosts that really were installed.
+    .filter((target) => existsSync(target));
+
+// The Pi rewrite is rtk's own extension, written by `rtk init --agent pi`.
+// It is removed with the rtk binary for the same reason OMP's is.
+const piRtkExt = path.join(homeDir(), '.pi', 'agent', 'extensions', 'rtk.ts');
+if (shouldRemoveRtk && existsSync(piRtkExt)) targets.push(piRtkExt);
 
   console.log('Will remove:');
   for (const t of targets) {
     console.log(`  ${t}`);
   }
 
-  if (shouldRemovePonytail) {
+  if (shouldRemovePonytail && existsSync(ponytailPkgDir)) {
     console.log(`  ${ponytailPkgDir} (ponytail plugin package)`);
   }
 
   if (shouldRemoveRtk) {
-    console.log(`  ${rtkBin}`);
-    console.log(`  ${path.join(extDir, 'rtk.ts')} (rtk OMP wiring)`);
+    if (existsSync(rtkBin)) console.log(`  ${rtkBin}`);
+    const ompRtkExt = path.join(extDir, 'rtk.ts');
+    if (existsSync(ompRtkExt)) console.log(`  ${ompRtkExt} (rtk OMP wiring)`);
   }
 
   // Show only the hosts that actually have Tersio files on disk, each with what
@@ -227,16 +237,18 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
       (data) => dropKey(data.dependencies, '@dietrichgebert/ponytail'),
       `would remove @dietrichgebert/ponytail from ${pluginsPkgPath}`,
       'Removed @dietrichgebert/ponytail from plugins/package.json', shouldDryRun);
-    try {
-      if (shouldDryRun) console.log(`  [dry-run] would remove ${ponytailPkgDir}`);
-      else {
-        await fs.rm(ponytailPkgDir, { recursive: true, force: true });
-        console.log(`  [rm] ${ponytailPkgDir}`);
-        await fs.rm(path.dirname(ponytailPkgDir));
-        console.log(`  [rm] ${path.dirname(ponytailPkgDir)} (empty scope)`);
+    if (existsSync(ponytailPkgDir)) {
+      try {
+        if (shouldDryRun) console.log(`  [dry-run] would remove ${ponytailPkgDir}`);
+        else {
+          await fs.rm(ponytailPkgDir, { recursive: true, force: true });
+          console.log(`  [rm] ${ponytailPkgDir}`);
+          await fs.rm(path.dirname(ponytailPkgDir));
+          console.log(`  [rm] ${path.dirname(ponytailPkgDir)} (empty scope)`);
+        }
+      } catch {
+        debug('Could not remove ponytail package dir (scope may hold other packages)');
       }
-    } catch {
-      debug('Could not remove ponytail package dir (scope may hold other packages)');
     }
     const lockPath = path.join(pluginsDir, 'omp-plugins.lock.json');
     await updateJsonFile(lockPath,
@@ -260,8 +272,9 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
   // wiring step; with the binary gone it would pass through harmlessly, so
   // only drop it on a full rtk removal.
   if (shouldRemoveRtk) {
-    await removeUninstallTarget(rtkBin, shouldDryRun, false);
-    await removeUninstallTarget(path.join(extDir, 'rtk.ts'), shouldDryRun);
+    if (existsSync(rtkBin)) await removeUninstallTarget(rtkBin, shouldDryRun, false);
+    const ompRtkExt = path.join(extDir, 'rtk.ts');
+    if (existsSync(ompRtkExt)) await removeUninstallTarget(ompRtkExt, shouldDryRun);
   }
 
   // Only the hosts the preview listed are actually removed. Running removal

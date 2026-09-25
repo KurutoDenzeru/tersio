@@ -286,3 +286,29 @@ test("uninstall removes the previewed agents and keeps the user's own content", 
     rmSync(home, { recursive: true, force: true });
   }
 }, 300000);
+
+test("uninstall previews only files that exist, and lists the Pi rtk extension", () => {
+  // A Pi-only machine never had the OMP extension directories, but the preview
+  // listed all of them as "will remove" — noise that buried the one real line.
+  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-uninstall-preview-"));
+  try {
+    const piExt = path.join(home, ".pi", "agent", "extensions", "rtk.ts");
+    mkdirSync(path.dirname(piExt), { recursive: true });
+    writeFileSync(piExt, "export default async function () {}\n", "utf8");
+    writeFileSync(path.join(home, ".pi", "agent", "AGENTS.md"), "<!-- tersio:start -->\nrule\n<!-- tersio:end -->\n", "utf8");
+    mkdirSync(path.join(home, ".tersio"), { recursive: true });
+    writeFileSync(path.join(home, ".tersio", "agents.json"), JSON.stringify({ agents: ["pi"] }), "utf8");
+
+    const result = run(home, "uninstall", "--dry-run", "--remove-rtk");
+    expect(result.status, result.stderr).toBe(0);
+    const listed = result.stdout.split("\n").filter((l) => l.startsWith("  ") && !l.includes("[dry-run]"));
+    // The real artifact is named.
+    expect(listed.some((l) => l.includes(piExt)), `expected the Pi extension in:\n${listed.join("\n")}`).toBe(true);
+    // Nothing that was never created is promised.
+    for (const ghost of ["/.omp/agent/extensions/caveman-session", "/.omp/agent/extensions/rtk-session"]) {
+      expect(listed.some((l) => l.includes(ghost)), `must not list absent ${ghost}`).toBe(false);
+    }
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+}, 60000);

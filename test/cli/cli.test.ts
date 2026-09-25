@@ -143,7 +143,7 @@ test("reinstall --dry-run previews uninstall then install without writing", () =
   const install = result.stdout.indexOf("Ponytail — ensure bundled plugin");
   expect(uninstall >= 0, result.stdout).toBeTruthy();
   expect(install > uninstall, "uninstall runs before the fresh install").toBeTruthy();
-  expect(result.stdout).toMatch(/\[dry-run\] would remove /);
+  expect(result.stdout, "a clean machine has nothing to remove, so no removal is promised").not.toMatch(/\[dry-run\] would remove /);
   expect(result.stdout).toMatch(/Done — restart OMP/);
 });
 
@@ -164,28 +164,36 @@ test("bare dry-run never prompts for the pending update and exits 0", () => {
 });
 
 test("uninstall dry-run previews shared bridge removal", () => {
-  const missingHome = path.join(root, "test", "definitely-missing-home");
-  const result = spawnSync(
-    process.execPath,
-    [installer, "uninstall", "--dry-run", "--yes"],
-    {
-      cwd: root,
-      encoding: "utf8",
-      timeout: 10000,
-      env: { ...process.env, HOME: missingHome, USERPROFILE: missingHome },
+  // Seeded with the files it previews. This used to run against a
+  // deliberately-missing home and assert the preview anyway, which pinned the
+  // old behavior of listing every OMP directory whether or not it existed.
+  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-uninstall-preview-"));
+  try {
+    const extDir = path.join(home, ".omp", "agent", "extensions");
+    for (const dir of ["shared", "aaa-combo-boot"]) {
+      mkdirSync(path.join(extDir, dir), { recursive: true });
+      writeFileSync(path.join(extDir, dir, "index.js"), "// seeded", "utf8");
     }
-  );
-
-  expect(result.status, result.stderr).toBe(0);
-  expect(result.stdout).toMatch(/\[dry-run\] would remove .*extensions[\\/]shared(?:\r?\n|$)/);
-  expect(result.stdout).toMatch(/\[dry-run\] would remove .*extensions[\\/]aaa-combo-boot(?:\r?\n|$)/);
+    const result = spawnSync(process.execPath, [installer, "uninstall", "--dry-run", "--yes"], {
+      cwd: root, encoding: "utf8", timeout: 30000,
+      env: { ...process.env, HOME: home, USERPROFILE: home },
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/\[dry-run\] would remove .*extensions[\\/]shared(?:\r?\n|$)/);
+    expect(result.stdout).toMatch(/\[dry-run\] would remove .*extensions[\\/]aaa-combo-boot(?:\r?\n|$)/);
+    // Dry run wrote nothing.
+    expect(existsSync(path.join(extDir, "shared", "index.js"))).toBe(true);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
 });
 
 test("uninstall dry-run with --remove-ponytail previews full ponytail removal", () => {
   const home = mkdtempSync(path.join(os.tmpdir(), "tersio-uninstall-"));
   try {
     const pluginsDir = path.join(home, ".omp", "plugins");
-    mkdirSync(path.join(pluginsDir, "node_modules", "@dietrichgebert"), { recursive: true });
+    mkdirSync(path.join(pluginsDir, "node_modules", "@dietrichgebert", "ponytail"), { recursive: true });
+    writeFileSync(path.join(pluginsDir, "node_modules", "@dietrichgebert", "ponytail", "package.json"), '{"version":"4.9.0"}', "utf8");
     writeFileSync(
       path.join(pluginsDir, "package.json"),
       JSON.stringify({ name: "omp-plugins", private: true, dependencies: { "@dietrichgebert/ponytail": "github:DietrichGebert/ponytail" } }),
@@ -217,22 +225,32 @@ test("uninstall dry-run with --remove-ponytail previews full ponytail removal", 
 });
 
 test("uninstall dry-run includes ponytail by default; --keep-ponytail omits it", () => {
-  const missingHome = path.join(root, "test", "definitely-missing-home");
-  const spawn = (args: string[]) =>
-    spawnSync(process.execPath, [installer, ...args], {
-      cwd: root,
-      encoding: "utf8",
-      timeout: 10000,
-      env: { ...process.env, HOME: missingHome, USERPROFILE: missingHome },
-    });
+  // Seeded with a real ponytail install. Against a missing home there is
+  // nothing to remove and the plan correctly stays silent, so the original
+  // version of this test passed for the wrong reason.
+  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-uninstall-keep-"));
+  try {
+    const pluginsDir = path.join(home, ".omp", "plugins");
+    mkdirSync(path.join(pluginsDir, "node_modules", "@dietrichgebert", "ponytail"), { recursive: true });
+    writeFileSync(path.join(pluginsDir, "node_modules", "@dietrichgebert", "ponytail", "package.json"), '{"version":"4.9.0"}', "utf8");
+    const spawn = (args: string[]) =>
+      spawnSync(process.execPath, [installer, ...args], {
+        cwd: root,
+        encoding: "utf8",
+        timeout: 30000,
+        env: { ...process.env, HOME: home, USERPROFILE: home },
+      });
 
-  const def = spawn(["uninstall", "--dry-run", "--yes"]);
-  expect(def.status, def.stderr).toBe(0);
-  expect(def.stdout, "ponytail removal is part of the default dry-run plan").toMatch(/dietrichgebert/);
+    const def = spawn(["uninstall", "--dry-run", "--yes"]);
+    expect(def.status, def.stderr).toBe(0);
+    expect(def.stdout, "ponytail removal is part of the default dry-run plan").toMatch(/dietrichgebert/);
 
-  const keep = spawn(["uninstall", "--dry-run", "--yes", "--keep-ponytail"]);
-  expect(keep.status, keep.stderr).toBe(0);
-  expect(keep.stdout).not.toMatch(/dietrichgebert/);
+    const keep = spawn(["uninstall", "--dry-run", "--yes", "--keep-ponytail"]);
+    expect(keep.status, keep.stderr).toBe(0);
+    expect(keep.stdout).not.toMatch(/dietrichgebert/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
 });
 
 test("uninstall dry-run never prompts for confirmation", () => {
@@ -250,7 +268,9 @@ test("uninstall dry-run never prompts for confirmation", () => {
 
   expect(result.status, result.stderr).toBe(0);
   expect(result.stdout).not.toMatch(/Proceed\?/);
-  expect(result.stdout).toMatch(/\[dry-run\] would remove .*extensions[\\/]shared(?:\r?\n|$)/);
+  // A missing home has nothing to preview; the point of this test is only that
+  // a dry run never stops for confirmation.
+  expect(result.stdout, "nothing exists, so nothing is promised").not.toMatch(/\[dry-run\] would remove /);
 });
 
 test("usage with an empty ledger and no sessions prints the empty state and exits 0", () => {
