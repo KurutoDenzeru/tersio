@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import type { SpawnSyncReturns } from "node:child_process";
 import path from "node:path";
-import { runTersio, tempHome } from "../helpers/home.ts";
+import { hermeticPath, runTersio, seedFakeRtk, tempHome } from "../helpers/home.ts";
 
 
 function agentsFile(home: string): string {
@@ -20,8 +20,8 @@ function seedHosts(home: string, hosts: string[]): void {
   }
 }
 
-function run(home: string, argv: string[]): SpawnSyncReturns<string> {
-  return runTersio(home, argv, 60000);
+function run(home: string, argv: string[], pathOverride?: string): SpawnSyncReturns<string> {
+  return runTersio(home, argv, 60000, pathOverride);
 }
 
 // Host selection decides which files land where, so the observable contract is
@@ -68,7 +68,11 @@ test("--agent pi writes a loadable Pi extension, not a JSON hook config", () => 
   const home = tempHome();
   try {
     seedHosts(home, ["omp"]);
-    const result = run(home, ["install", "--yes", "--agent", "pi"]);
+    // The extension comes from `rtk init`, so the test supplies the binary.
+    // Depending on the developer's real rtk made this pass locally and fail in
+    // CI, which has none in ~/.bun/bin.
+    seedFakeRtk(home);
+    const result = run(home, ["install", "--yes", "--agent", "pi"], hermeticPath());
     expect(result.status, result.stderr).toBe(0);
 
     const ext = path.join(home, ".pi", "agent", "extensions", "rtk.ts");
@@ -81,6 +85,14 @@ test("--agent pi writes a loadable Pi extension, not a JSON hook config", () => 
     // And doctor must see a real module, not a marker string.
     const doctor = run(home, ["doctor"]);
     expect(doctor.stdout, doctor.stderr).toMatch(/Pi rtk extension: ok/);
+
+    // Reinstall must not stall on rtk's "overwrite the non-stock extension?"
+    // prompt. It used to: the second run found our own file and rtk asked
+    // before replacing it, so a reinstall hung or silently did nothing.
+    const again = run(home, ["install", "--yes", "--agent", "pi"], hermeticPath());
+    expect(again.status, again.stderr).toBe(0);
+    expect(again.stdout, "reinstall must not fail to wire").not.toMatch(/could not wire|refusing to overwrite/);
+    expect(existsSync(ext), "the extension must survive a reinstall").toBe(true);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

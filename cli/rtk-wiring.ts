@@ -92,8 +92,8 @@ export async function ensureRtkInConfig(options: WiringOptions): Promise<void> {
   }
 }
 
-async function runRtkInitAgent(rtkBin: string, agent: string): Promise<boolean> {
-  const args = ['init', '-g', '--agent', agent];
+async function runRtkInitAgent(rtkBin: string, agent: string, extra: string[] = []): Promise<boolean> {
+  const args = ['init', '-g', '--agent', agent, ...extra];
   try {
     await execFileP(rtkBin, args, 30000);
     return true;
@@ -122,17 +122,36 @@ const PI_EXT_DIR = ['.pi', 'agent', 'extensions'];
 export async function wireRtkPi(rtkBin: string, options: WiringOptions = {}): Promise<boolean> {
   if (!options.dryRun) debugWire(options, 'Wiring rtk → Pi (bash tool_call rewrite)…');
   if (options.dryRun) return true;
+  // rtk 0.49 added `--agent pi`. An older binary ignores the flag and writes an
+  // OMP extension instead, which would look like success while leaving Pi
+  // unwired — so check the advertised support before running it.
+  if (!(await rtkSupportsAgent(rtkBin, 'pi'))) {
+    console.log(`  [skip] ${rtkBin} has no --agent pi support — upgrade rtk, then run: rtk init -g --agent pi`);
+    return false;
+  }
   const ext = path.join(homeDir(), ...PI_EXT_DIR, 'rtk.ts');
-  const wired = await runRtkInitAgent(rtkBin, 'pi');
+  const present = await readTextIfExists(ext);
+  // A Pi extension already on disk is ours to refresh, so overwrite it without
+  // a prompt: rtk asks before replacing a non-stock file, which made a
+  // reinstall hang or silently do nothing.
+  const wired = await runRtkInitAgent(rtkBin, 'pi', present === null ? [] : ['--yes']);
   if (!wired) return false;
-  // Nothing to wire when rtk did not write the file: report that rather than
-  // claiming success, so doctor stays honest about a failed rewrite.
   if (!(await readTextIfExists(ext))) {
     console.log(`  [warn] rtk init --agent pi did not write ${ext}`);
     return false;
   }
   debugWire(options, 'rtk Pi extension wired');
   return true;
+}
+
+/** True when the binary's help lists `agent` among --agent's values. */
+async function rtkSupportsAgent(rtkBin: string, agent: string): Promise<boolean> {
+  try {
+    const help = await execFileP(rtkBin, ['init', '--help'], 15000);
+    return help.stdout.includes(agent);
+  } catch {
+    return false;
+  }
 }
 
 // A Pi-only run installs no rtk binary of its own, so wire whatever rtk the

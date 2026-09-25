@@ -1,6 +1,6 @@
 // Shared temp-HOME harness. Installer and wiring tests all need the same three
 // things: a throwaway home, HOME pointed at it, and cleanup afterwards.
-import { mkdtempSync, rmSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,6 +17,56 @@ export function tempHome(prefix = "tersio-test-"): string {
 
 export function removeHome(home: string): void {
   rmSync(home, { recursive: true, force: true });
+}
+
+/**
+ * Writes an executable stub rtk into the temp home's managed bin dir.
+ *
+ * `rtk init -g --agent <agent>` is what installs the Pi and OMP extensions, so
+ * any test asserting those files must supply the binary itself. Relying on the
+ * developer's real rtk made the test pass locally and fail in CI, which has no
+ * rtk in `~/.bun/bin`. The stub writes the real extension shape — a TypeScript
+ * module with a default export — so the assertion tests our wiring, not rtk.
+ */
+export function seedFakeRtk(home: string): string {
+  const binDir = path.join(home, ".bun", "bin");
+  mkdirSync(binDir, { recursive: true });
+  const bin = path.join(binDir, process.platform === "win32" ? "rtk.exe" : "rtk");
+  writeFileSync(bin, [
+    "#!/bin/sh",
+    "# Minimal stand-in for the rtk binary: the installer only asks it to init.",
+    'if [ "$1" = "init" ] && [ "$2" = "--help" ]; then',
+    "  echo 'Usage: rtk init [OPTIONS]'",
+    "  echo '      --agent <AGENT>  Target agent to install hooks for'",
+    "  echo '          - omp:  Oh My Pi (OMP)'",
+    "  echo '          - pi:   Pi coding agent'",
+    "  exit 0",
+    "fi",
+    'agent=omp',
+    'prev=""',
+    'yes=0',
+    'for arg in "$@"; do',
+    '  [ "$prev" = "--agent" ] && agent="$arg"',
+    '  [ "$arg" = "--yes" ] && yes=1',
+    '  prev="$arg"',
+    "done",
+    'dir="$HOME/.omp/agent/extensions"',
+    '[ "$agent" = "pi" ] && dir="$HOME/.pi/agent/extensions"',
+    'if [ -f "$dir/rtk.ts" ] && [ "$yes" -ne 1 ]; then',
+    '  echo "refusing to overwrite the non-stock Pi extension at $dir/rtk.ts" >&2',
+    "  exit 1",
+    "fi",
+    'mkdir -p "$dir"',
+    'cat > "$dir/rtk.ts" <<EOF',
+    '// RTK extension stub (test double).',
+    'export default async function (pi) {',
+    '  pi.on("tool_call", async (event) => event);',
+    '}',
+    'EOF',
+    'echo "stub rtk: wrote $dir/rtk.ts for $agent"',
+  ].join("\n"), "utf8");
+  chmodSync(bin, 0o755);
+  return bin;
 }
 
 /**
@@ -37,12 +87,30 @@ export async function withHome<T>(home: string, work: () => Promise<T> | T): Pro
   }
 }
 
-/** Runs the real CLI with HOME pointed at `home`. */
-export function runTersio(home: string, argv: string[], timeout = 120000): SpawnSyncReturns<string> {
+/**
+ * Runs the real CLI with HOME pointed at `home`.
+ * Pass `pathOverride` to hide the developer's own binaries, so a test that
+ * supplies a stub rtk cannot be shadowed by a real rtk earlier on PATH.
+ */
+export function runTersio(home: string, argv: string[], timeout = 120000, pathOverride?: string): SpawnSyncReturns<string> {
   return spawnSync(process.execPath, [installer, ...argv], {
     cwd: repoRoot,
     encoding: "utf8",
     timeout,
-    env: { ...process.env, HOME: home, USERPROFILE: home },
+    env: {
+      ...process.env,
+      HOME: home,
+      USERPROFILE: home,
+      ...(pathOverride ? { PATH: pathOverride } : {}),
+    },
   });
+}
+
+/**
+ * A PATH that cannot reach the developer's rtk: the system dirs for the shell
+ * and node, nothing else. Stub binaries live in the temp home and are found
+ * through HOME, so they are unaffected.
+ */
+export function hermeticPath(): string {
+  return ["/usr/bin", "/bin", "/usr/sbin", "/sbin"].join(path.delimiter);
 }
