@@ -1,14 +1,9 @@
-// cli/agent-hosts.ts — the host registry. One entry per agent, carrying only
-// what differs between hosts. Shared mode text lives in cli/rules-pack.ts.
+// cli/agent-hosts.ts — the host registry. One entry per agent carrying only
+// what differs between hosts; shared mode text lives in cli/rules-pack.ts.
 //
-// Every path, format, and wire protocol comes from that host's own docs, cited
-// in `source` — a host changing format is how this file rots.
-//
-// The capability flags are load-bearing: `rules` means a user-global instruction
-// file exists, `skills` means skills/<name>/SKILL.md is read, and `rewrite`
-// means a documented pre-execution hook can replace the shell command. A host
-// without `rewrite` gets guidance only, so the README must not claim
-// automatic filtering for it.
+// Paths and protocols come from each host's own docs, cited in `source`.
+// Capability flags are load-bearing: `rewrite` means a documented
+// pre-execution hook exists, so a host without it gets guidance only.
 
 export interface HostRewrite {
   /** Absolute path of the hook config file, relative to $HOME where possible. */
@@ -20,9 +15,8 @@ export interface HostRewrite {
   /** Regex or literal matcher for the shell tool. */
   matcher: string;
   /**
-   * Where the shell command string lives in the hook's stdin payload. More than
-   * one path when a host accepts both spellings — Grok documents camelCase
-   * `toolInput` and also forwards Claude's snake_case `tool_input`.
+   * Where the shell command lives in the hook's stdin payload. An array when a
+   * host accepts both spellings (Grok: `toolInput` and `tool_input`).
    */
   inputPath: string | string[];
   /** How the rewritten command is returned. */
@@ -61,9 +55,8 @@ export interface AgentHost {
 const HOME_REL = (p: string): string => p;
 
 /**
- * Ordered by how the hosts relate to the project. `omp` and `opencode` are handled by their
- * own wiring modules — they ship real mode extensions, not rules packs — so they
- * are listed here for selection and detection but carry no emitter fields.
+ * `omp` and `opencode` ship live extensions via their own wiring modules, so
+ * they are listed for selection and detection but carry no emitter fields.
  */
 const HOSTS: AgentHost[] = [
   {
@@ -71,10 +64,8 @@ const HOSTS: AgentHost[] = [
     label: 'Oh My Pi (OMP)',
     configDir: '.omp',
     binary: 'omp',
-    // OMP ships real mode extensions through its own plugin manifest, so the
-    // generic rules/skills/hook emitters deliberately do not touch it — they
-    // would duplicate the live extension with a static file. Its capabilities
-    // are still recorded truthfully for the doctor matrix and the README.
+    // Live extension, so generic emitters skip this host: a static file would
+    // duplicate it. Flags stay truthful for the doctor matrix.
     rules: true,
     skills: true,
     rewrite: true,
@@ -301,11 +292,7 @@ const HOSTS: AgentHost[] = [
   },
 ];
 
-/**
- * Hosts whose real install is a live extension or plugin owned by a dedicated
- * wiring module, not the generic rules/skills/hook emitters. Every caller
- * skips them the same way, so the rule lives here once.
- */
+/** Hosts owned by a dedicated wiring module rather than the generic emitters. */
 const OWN_PATH_HOSTS = ['omp', 'opencode'];
 
 function byId(id: string): AgentHost | undefined {

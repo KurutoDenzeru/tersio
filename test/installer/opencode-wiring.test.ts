@@ -218,12 +218,10 @@ test("marked-block helpers are symmetric and leave foreign content alone", () =>
   expect(removeMarkedBlock("  \n", start, end)).toBe("  \n");
 });
 
-// Regression: doctor warns "not installed — run: tersio install" for the
-// OpenCode plugin, but `doctor --fix rtk` never touched ~/.config/opencode.
-// The repair also ran *after* the rtk download, so an offline failure (the
-// normal case in a sandboxed test env) skipped it entirely. Asserted strictly:
-// the plugin must exist and the warning must clear regardless of whether the
-// network half of the scope succeeded.
+// Regression: doctor warned "run: tersio install" for the plugin, but
+// `doctor --fix rtk` never touched ~/.config/opencode, and the repair ran after
+// the rtk download so an offline failure skipped it. Asserted strictly: the
+// plugin must exist regardless of whether the network half succeeded.
 test("doctor --fix rtk repairs a missing OpenCode plugin even when the rtk download fails", () => {
   const home = tempHome();
   try {
@@ -240,10 +238,9 @@ test("doctor --fix rtk repairs a missing OpenCode plugin even when the rtk downl
 
     spawnSync(process.execPath, [installer, "doctor", "--fix", "rtk", "--yes"], { cwd: root, encoding: "utf8", env, timeout: 120000 });
 
-    // Resolve against the spawned HOME explicitly. `openCodePluginPath()` reads
-    // *this* process's HOME, which on a developer machine already has the
-    // plugin installed — the assertions would then pass for the wrong reason
-    // and only fail in CI.
+    // Resolve against the spawned HOME. `openCodePluginPath()` reads *this*
+    // process's HOME, where the plugin is already installed — the assertions
+    // would pass for the wrong reason and fail only in CI.
     const pluginInHome = path.join(home, ".config", "opencode", "plugins", "tersio-rtk.ts");
     const agentsInHome = path.join(home, ".config", "opencode", "AGENTS.md");
     expect(existsSync(pluginInHome), "the OpenCode plugin must be written by the rtk repair scope").toBe(true);

@@ -1,9 +1,9 @@
 // cli/agents.ts — which hosts Tersio installs into, and how each is detected.
-// Host paths and capabilities live in cli/agent-hosts.ts; this owns the choice.
+// Paths and capabilities live in cli/agent-hosts.ts; this owns the choice.
 //
-// The choice goes in ~/.tersio/agents.json, not the omp lock file: a non-OMP
-// user has no omp plugin to hang settings off, and a durable record is what lets
-// doctor stay quiet about a host the user opted out of.
+// The choice lives in ~/.tersio/agents.json, not the omp lock file: a non-OMP
+// user has no omp plugin to hang settings off, and a durable record keeps
+// doctor quiet about a host the user opted out of.
 
 import { existsSync, readFileSync } from 'node:fs';
 import { promises as fs } from 'node:fs';
@@ -81,12 +81,9 @@ export function storedAgents(): AgentId[] | null {
 }
 
 /**
- * Hosts to install for when nothing was chosen: every supported host whose
- * config dir already exists, so a host nobody installed never gets a directory
- * created for it.
- *
- * OMP is always included — the installer has always created ~/.omp even where
- * omp is not installed, so gating it on detection would regress fresh machines.
+ * Default: every supported host whose config dir exists, so a host nobody
+ * installed never gets a directory created. OMP is always included — the
+ * installer has always created ~/.omp, so gating on detection would regress.
  */
 export function detectedAgents(): AgentId[] {
   const detected = HOSTS.filter(isHostPresent).map((h) => h.id);
@@ -106,9 +103,8 @@ export async function clearAgents(): Promise<void> {
 }
 
 /**
- * Menu rows for the install multiselect. The hint says what the host actually
- * gets, kept short: in an 80-column terminal a wrapping hint turns one row into
- * three lines and pushes the rest of the list into pagination.
+ * Menu rows for the install multiselect. Hints stay short: in an 80-column
+ * terminal a wrapping hint turns one row into three and forces pagination.
  */
 export function hostHint(host: AgentHost): string {
   const parts: string[] = [];

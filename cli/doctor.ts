@@ -152,10 +152,8 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   const rtkAge = rtkMtime ? `(updated ${relTime(Date.now() - rtkMtime.mtimeMs)} · ${absDate(rtkMtime.mtimeMs)})` : '';
   check('RTK binary', rtkBin !== null, rtkBinText === null ? 'not found in PATH' : [rtkVersion, rtkAge].filter(Boolean).join(' '));
   if (rtkBinText !== null && !rtkVersion) warnLine('RTK version', 'unavailable — binary may not be executable');
-  // OpenCode rows only apply when the user selected that host. Without a
-  // stored choice, fall back to detection so a fresh machine warns only
-  // about a host it actually has. Selecting `omp` alone must not leave a
-  // permanent warning about something the user deliberately declined.
+  // OpenCode rows apply only when selected. With no stored choice, fall back to
+  // detection: selecting `omp` alone must not leave a permanent declined-host warning.
   const chosenAgents = storedAgents();
   const openCodeSelected = chosenAgents === null
     ? detectedAgents().includes('opencode')

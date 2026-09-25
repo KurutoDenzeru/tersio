@@ -1,9 +1,8 @@
 // cli/rules-pack.ts — the portable half of Tersio's modes, as data.
 //
-// OMP injects mode text through a live bridge and can switch mid-session. Every
-// other host reads static files at startup, so it gets these instead. Combo
-// state, the status bar, and the bridge have no portable equivalent and stay
-// OMP-only rather than being faked.
+// OMP injects modes through a live bridge and can switch mid-session. Every
+// other host reads static files at startup. Combo state, status bar, and the
+// bridge have no portable equivalent, so they stay OMP-only.
 
 /** Marker pair shared by every host file we write. */
 const START = '<!-- tersio:start -->';

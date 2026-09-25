@@ -1,12 +1,10 @@
 // cli/host-writers.ts — writes one host's files: rules pack, skills, and the RTK
-// shell-rewrite hook. Each writer is gated on what the host supports, so a host
-// missing a capability gets nothing rather than a file it will ignore.
+// shell-rewrite hook. Each writer is gated on what the host supports.
 //
-// The rewrite script is generated per host because the five protocols in play
-// disagree on how a new command is returned. Rewrite rules stay in the rtk
-// binary; the generated script only marshals stdin to `rtk rewrite` and stdout
-// back into the host's shape, and always exits 0 so a failure degrades to no
-// filtering rather than a blocked command.
+// The rewrite script is generated per host because the protocols disagree on
+// how a new command is returned. Rewrite rules stay in the rtk binary; the
+// script only marshals stdin/stdout and always exits 0, so failure degrades to
+// no filtering rather than a blocked command.
 
 import { existsSync } from 'node:fs';
 import { promises as fs } from 'node:fs';
@@ -37,9 +35,8 @@ function abs(homeRelative: string): string {
 }
 
 /**
- * Replace an existing marked block, append one when absent, and leave a file
- * without markers untouched. A user's own instruction file is theirs to own, so
- * we only ever manage the span between our markers.
+ * Replace a marked block, append one when absent, leave unmarked files alone.
+ * A user's instruction file is theirs; we manage only the span between markers.
  */
 export function applyBlock(existing: string | null, block: string): string {
   const base = existing ?? '';
@@ -86,11 +83,9 @@ async function writeIfChanged(dest: string, content: string, options: WriteOptio
 // --- rules pack -----------------------------------------------------------
 
 /**
- * Cursor needs .mdc frontmatter; a plain .md in .cursor/rules is ignored. The
- * frontmatter is also the only marker in that file, so a removal can only
- * identify our rule by the frontmatter itself. That is safe because the file
- * name is ours: tersio.mdc is a file Tersio creates and no other rule shares
- * it. Anything else in the file the user wrote is preserved on removal.
+ * Cursor ignores a plain .md in .cursor/rules, so the .mdc needs frontmatter —
+ * and that frontmatter is the only marker available. Safe because the file
+ * name is ours: no other rule shares tersio.mdc. User content is preserved.
  */
 function mdcFrontmatter(): string {
   return ['---', 'alwaysApply: true', 'description: Tersio token-saving modes', '---', ''].join('\n');
@@ -134,9 +129,9 @@ function renderSkill(mode: string, body: string): string {
 // --- RTK shell-rewrite hook ----------------------------------------------
 
 /**
- * The rewriter reads a hook payload on stdin and, when rtk has an equivalent,
- * writes back the host's expected rewrite object. It never blocks: any failure
- * path prints nothing (or an explicit allow), so the original command runs.
+ * Renders the rewriter: reads a hook payload on stdin, writes back the host's
+ * rewrite object when rtk has an equivalent. Never blocks — every failure path
+ * lets the original command run.
  */
 export function renderRewriteScript(cfg: HostRewrite): string {
   // Dotted read of the host's own stdin shape, e.g. tool_input.command. A host
@@ -148,10 +143,8 @@ export function renderRewriteScript(cfg: HostRewrite): string {
       .reduce<string>((acc, key) => `(${acc} && typeof ${acc} === 'object' ? ${acc}[${JSON.stringify(key)}] : undefined)`, 'input'))
     .join(' ?? ');
 
-  // The generated file is .mjs, so `require` does not exist. Reading fd 0 with
-  // the already-imported fs module keeps the script ESM-clean; a bare
-  // `require('node:fs')` here silently made every host fail open instead of
-  // rewriting anything.
+  // .mjs output, so `require` is absent and the import must stay ESM. A bare
+  // require here made every host silently fail open instead of rewriting.
   const guard = `// Tersio RTK rewriter. Fail-open: any error leaves the command untouched.
 import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
@@ -274,10 +267,7 @@ export interface HostInstallResult extends HostArtifacts {
   rewriteInstalled: boolean;
 }
 
-/**
- * Installs everything a host supports. Returns what was written so install and
- * doctor can report per-host results without re-deriving the file list.
- */
+/** Installs everything the host supports; returns what was written. */
 export async function installHost(host: AgentHost, options: WriteOptions = {}): Promise<HostInstallResult> {
   const files: string[] = [];
   const skipped: string[] = [];
@@ -324,9 +314,8 @@ export async function installHost(host: AgentHost, options: WriteOptions = {}): 
 }
 
 /**
- * Removes one host's files. Only files Tersio created are touched: the rules
- * block is stripped rather than the file deleted, and a hook config keeps
- * whatever other hooks the user registered.
+ * Removes one host's files. Only files Tersio created: the rules block is
+ * stripped, not the file deleted, and a hook config keeps other hooks.
  */
 export async function removeHost(host: AgentHost, options: WriteOptions = {}): Promise<string[]> {
   const removed: string[] = [];
@@ -416,9 +405,8 @@ export async function removeHost(host: AgentHost, options: WriteOptions = {}): P
 }
 
 /**
- * Merge a freshly rendered hook config into whatever the host's file already
- * holds, replacing only the tersio entry. Keeps unrelated hooks intact; a
- * malformed existing file is left untouched and reported rather than destroyed.
+ * Merges a rendered hook config into the host's file, replacing only our entry.
+ * Unrelated hooks survive; a malformed file is left alone and reported.
  */
 export function mergeHookEntry(existing: string, rendered: string): string {
   let current: unknown;
@@ -458,10 +446,9 @@ function replaceTersioEntries(current: unknown[], fresh: unknown[]): unknown[] {
 }
 
 /**
- * Remove our hook entries from a host config, keeping everything else. Returns
- * null when nothing but our own hook remains, so the caller can delete the file
- * rather than leave an empty shell. YAML configs (Hermes) are edited by line,
- * which is safe here because we only ever remove a contiguous block we wrote.
+ * Removes our hook entries, keeping everything else. Null when nothing but ours
+ * remains, so the caller can delete the file. YAML is edited by line, which is
+ * safe because we only remove a contiguous block we wrote.
  */
 export function pruneHookEntry(existing: string): string | null {
   if (existing.includes(HOOK_SCRIPT_NAME) && !existing.trimStart().startsWith('{')) {
@@ -494,11 +481,9 @@ function isTersioEntry(entry: unknown): boolean {
 }
 
 /**
- * Remove the list item that references our script. The whole item is dropped,
- * not just the command line: after removing `command:` the sibling keys
- * (`timeout`, `fail_closed`) would be left dangling under a list that no
- * longer has an entry, which is invalid YAML. A list item is a `- ` line plus
- * every following line indented deeper than that opener.
+ * Drops the whole list item holding our script, not just the command line:
+ * sibling keys would dangle under a list with no entry, which is invalid YAML.
+ * A list item is the `- ` line plus every line indented deeper.
  */
 function pruneYamlBlock(existing: string): string | null {
   const lines = existing.split('\n');
@@ -531,9 +516,8 @@ function pruneYamlBlock(existing: string): string | null {
 }
 
 /**
- * Drop a mapping key left with no value after its list is removed. `hooks:` /
- * `pre_tool_call:` with nothing under them parses as null, which some hosts
- * reject, so the empty scaffolding goes with the entry that filled it.
+ * Drops a mapping key left empty by the removal. A bare `hooks:` parses as null,
+ * which some hosts reject, so the scaffolding goes with the entry that filled it.
  */
 function dropEmptiedYamlKeys(text: string): string {
   const lines = text.split('\n');

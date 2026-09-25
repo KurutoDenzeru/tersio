@@ -143,10 +143,9 @@ async function fixRtk(binDir: string): Promise<void> {
   if (!(await wireRtkOmp(binDest, { dryRun, verbose }))) throw new Error('rtk wiring failed');
 }
 
-// Same RTK contract, second host: the OMP hook above cannot reach an OpenCode
-// server, so the plugin and its guidance block need repairing too. Doctor
-// prints "run: tersio install" for a missing plugin, so `--fix` has to honor
-// that or the warning is unactionable through the path doctor points at.
+// The OMP hook cannot reach an OpenCode server, so that host needs its plugin
+// and guidance repaired. Doctor prints "run: tersio install" for a missing
+// plugin, so --fix must honor it or the warning is unactionable.
 export async function repairOpenCodeRtk(): Promise<boolean> {
   const pluginSource = await readTextIfExists(OPENCODE_RTK_PLUGIN);
   if (!pluginSource) {

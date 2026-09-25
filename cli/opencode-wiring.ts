@@ -1,13 +1,11 @@
 // cli/opencode-wiring.ts — install, refresh, and remove the OpenCode
-// integration: an RTK rewrite plugin plus guidance in global AGENTS.md.
+// integration: an RTK rewrite plugin plus global AGENTS.md guidance.
 //
-// Tersio ships its own plugin because `rtk init -g --opencode` still writes one
-// OpenCode rejects (rtk-ai/rtk#3463, #3898). Guidance-only would work but stops
-// being automatic, which is the point of the hook. The guidance block is a
-// fallback, not a duplicate: a user who prefers model-driven routing can delete
-// the plugin and keep the rules.
+// We ship our own plugin because `rtk init -g --opencode` writes one OpenCode
+// rejects (rtk-ai/rtk#3463, #3898). The guidance block is a fallback for users
+// who prefer model-driven routing and delete the plugin.
 //
-// Free of cli/common.ts imports (argv side effects) so tests can load it.
+// No cli/common.ts imports (argv side effects) so tests can load it.
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -107,10 +105,7 @@ async function readTextIfExists(p: string): Promise<string | null> {
   }
 }
 
-/**
- * Writes the plugin and the AGENTS.md guidance block.
- * Returns which artifacts this run actually changed.
- */
+/** Writes the plugin and guidance block; returns which artifacts changed. */
 export async function installOpenCodeRtk(
   pluginSource: string,
   options: OpenCodeWiringOptions = {},

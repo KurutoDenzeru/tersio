@@ -1,8 +1,7 @@
 // cli/settings.ts — view/edit session-start defaults (combo/caveman/rtk/ponytail)
 // plus the display-currency default for usage/dashboard reports.
-// Non-interactive: `tersio settings --combo-default balanced` (plus per-mode
-// override flags and --currency). Interactive: clack selects seeded from the
-// stored profile.
+// Non-interactive: `tersio settings --combo-default balanced`, plus per-mode
+// overrides and --currency. Interactive: selects seeded from the stored profile.
 import path from 'node:path';
 import {
   agentFlag, CAVEMAN_DEFAULTS, COMBO_DEFAULTS, COMBO_PRESET_MODES, OMP_PLUGINS_DIR, PACKAGE_NAME,
