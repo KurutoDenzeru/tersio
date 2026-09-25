@@ -121,6 +121,31 @@ test("installing pi repairs the unparsable extension an older tersio left behind
   }
 });
 
+test("pi wiring finds a tersio-managed rtk that is not on PATH", () => {
+  // resolveRtkBinary's default managed dir is os.homedir(), which ignores an
+  // overridden HOME. A rtk that `tersio install` put in the *active* home's
+  // ~/.bun/bin was invisible to the Pi step, which reported "no rtk binary" on
+  // a machine that had one — and Pi silently got no rewrite at all.
+  //
+  // The stub drops a marker, so this proves the temp home's binary ran. Merely
+  // checking that an extension appeared would pass even with the bug: a
+  // developer machine has a real rtk in the real ~/.bun/bin, which the
+  // defective default finds and which then writes a perfectly good extension.
+  const home = tempHome();
+  try {
+    seedHosts(home, ["omp"]);
+    const marker = path.join(home, "rtk-was-here.txt");
+    seedFakeRtk(home, marker);
+    const result = run(home, ["install", "--yes", "--agent", "pi"], hermeticPath());
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout, "the managed rtk must be found").not.toMatch(/no rtk binary/);
+    expect(existsSync(marker), "the rtk used must be the one in the active home").toBe(true);
+    expect(existsSync(path.join(home, ".pi", "agent", "extensions", "rtk.ts"))).toBe(true);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test("an unknown --agent is rejected with the full valid list", () => {
   const home = tempHome();
   try {

@@ -165,8 +165,13 @@ async function rtkSupportsAgent(rtkBin: string, agent: string): Promise<boolean>
 }
 
 // A Pi-only run installs no rtk binary of its own, so wire whatever rtk the
-// machine already has. PATH is searched before the managed dir, so a Homebrew
-// or custom install wires just as well as a tersio-managed one.
+// machine already has. PATH is searched first, so a Homebrew or custom install
+// works as well as a tersio-managed one.
+//
+// The managed dir is built from homeDir(), not left to resolveRtkBinary's
+// default: that default is os.homedir(), which ignores an overridden HOME — so
+// a rtk that `tersio install` put in ~/.bun/bin was invisible here, and a Pi
+// install reported "no rtk binary" on a machine that had one.
 export function findRtk(): string | null {
-  return resolveRtkBinary();
+  return resolveRtkBinary(path.join(homeDir(), '.bun', 'bin'));
 }

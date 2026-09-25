@@ -18,22 +18,27 @@ export function tempHome(prefix = "tersio-test-"): string {
 export function removeHome(home: string): void {
   rmSync(home, { recursive: true, force: true });
 }
-
 /**
  * Writes an executable stub rtk into the temp home's managed bin dir.
  *
  * `rtk init -g --agent <agent>` is what installs the Pi and OMP extensions, so
  * any test asserting those files must supply the binary itself. Relying on the
- * developer's real rtk made the test pass locally and fail in CI, which has no
- * rtk in `~/.bun/bin`. The stub writes the real extension shape — a TypeScript
- * module with a default export — so the assertion tests our wiring, not rtk.
+ * developer's real rtk made tests pass locally and fail in CI, which has none
+ * in `~/.bun/bin`. The stub mirrors the real binary's observable behavior:
+ * `init --help` lists the agents, a file it wrote itself is reported up to
+ * date, and any other file triggers an overwrite prompt that a
+ * non-interactive shell answers "no".
+ *
+ * `markerPath`, when given, is touched on every run so a test can prove this
+ * stub — not the developer's rtk — is the binary the CLI executed.
  */
-export function seedFakeRtk(home: string): string {
+export function seedFakeRtk(home: string, markerPath?: string): string {
   const binDir = path.join(home, ".bun", "bin");
   mkdirSync(binDir, { recursive: true });
   const bin = path.join(binDir, process.platform === "win32" ? "rtk.exe" : "rtk");
   writeFileSync(bin, [
     "#!/bin/sh",
+    ...(markerPath ? [`: > ${JSON.stringify(markerPath)}`] : []),
     "# Minimal stand-in for the rtk binary: the installer only asks it to init.",
     'if [ "$1" = "init" ] && [ "$2" = "--help" ]; then',
     "  echo 'Usage: rtk init [OPTIONS]'",
