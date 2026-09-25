@@ -98,6 +98,29 @@ test("--agent pi writes a loadable Pi extension, not a JSON hook config", () => 
   }
 });
 
+test("installing pi repairs the unparsable extension an older tersio left behind", () => {
+  // The bug this fixes shipped to users: a 288-byte JSON object at the .ts
+  // path. rtk refuses to overwrite a file it did not write, and in a
+  // non-interactive shell it defaults to "no" and ignores stdin, so those
+  // installs stayed broken no matter how many times the user reinstalled.
+  const home = tempHome();
+  try {
+    seedHosts(home, ["omp"]);
+    seedFakeRtk(home);
+    const ext = path.join(home, ".pi", "agent", "extensions", "rtk.ts");
+    mkdirSync(path.dirname(ext), { recursive: true });
+    writeFileSync(ext, '{\n  "hooks": {\n    "tool_call": []\n  }\n}\n', "utf8");
+
+    const result = run(home, ["install", "--yes", "--agent", "pi"], hermeticPath());
+    expect(result.status, result.stderr).toBe(0);
+    const body = readFileSync(ext, "utf8");
+    expect(body, "the stale JSON must be gone").not.toMatch(/"hooks"/);
+    expect(body, "repaired file must be a Pi module").toMatch(/export\s+default/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test("an unknown --agent is rejected with the full valid list", () => {
   const home = tempHome();
   try {

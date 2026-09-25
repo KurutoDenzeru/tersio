@@ -130,11 +130,21 @@ export async function wireRtkPi(rtkBin: string, options: WiringOptions = {}): Pr
     return false;
   }
   const ext = path.join(homeDir(), ...PI_EXT_DIR, 'rtk.ts');
-  const present = await readTextIfExists(ext);
-  // A Pi extension already on disk is ours to refresh, so overwrite it without
-  // a prompt: rtk asks before replacing a non-stock file, which made a
-  // reinstall hang or silently do nothing.
-  const wired = await runRtkInitAgent(rtkBin, 'pi', present === null ? [] : ['--yes']);
+  const existing = await readTextIfExists(ext);
+  // rtk asks before replacing a file it did not write, and in a non-interactive
+  // shell it defaults to "no" and ignores stdin — so a user carrying the broken
+  // JSON this project wrote before the fix would stay broken forever. An empty
+  // file is non-stock to rtk too, so the stale copy is removed, not blanked.
+  // rtk's own extension is left in place: `rtk init` then reports it up to date.
+  if (existing !== null && !/export\s+default/.test(existing)) {
+    if (options.dryRun) {
+      debugWire(options, `would replace the unparsable Pi extension at ${ext}`);
+      return true;
+    }
+    await fs.rm(ext, { force: true });
+    debugWire(options, `removed the unparsable Pi extension at ${ext}`);
+  }
+  const wired = await runRtkInitAgent(rtkBin, 'pi');
   if (!wired) return false;
   if (!(await readTextIfExists(ext))) {
     console.log(`  [warn] rtk init --agent pi did not write ${ext}`);
