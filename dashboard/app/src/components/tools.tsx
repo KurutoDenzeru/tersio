@@ -1,5 +1,4 @@
-// Command tools table. Port of the renderCmd() union in
-// dashboard/charts.js: session tool calls + RTK-metered commands grouped
+// Command tools table: session tool calls + RTK-metered commands grouped
 // by command, sortable, paged, with honest gaps (–) for unmetered rows.
 import { useMemo, useState } from "react";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";

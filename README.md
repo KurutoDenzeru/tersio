@@ -79,21 +79,26 @@ Measured savings against the same workload without the modes. Token counts are r
 
 Break-even math, balanced preset (caveman full + rtk + ponytail): a mixed turn costs 941 tok baseline vs 399 with Tersio (0.42×, **−57.6% per turn**). Overhead repays in turn 1 with the bundled floor (464 tok); turn 4 with the real installed Ponytail plugin (v4.9.0, 1,264 tok). RTK concentrates savings where noise lives — hook-wired sessions record **−97.5% on summarized test suites** (rtk `history.db`, 4 runs).
 
-## 📈 Gain Dashboard
+## 📈 Dashboard
 
-`tersio gain --open` serves a local dashboard (127.0.0.1 only) that charts your own savings from `~/.tersio/usage.db`. Three views:
+`tersio dashboard --open` serves a local dashboard (127.0.0.1 only) that charts your own savings from `~/.tersio/usage.db`. Three views:
 
 **Live feed and savings.** Token throughput, cost, savings bento, and recent activity — the top of the dashboard.
 
-![Gain dashboard: live token feed, cost, savings, and activity](/assets/GainHero.webp)
+![Dashboard: live token feed, cost, savings, and activity](/assets/GainHero.webp)
 
 **Top models and recent requests.** Per-model cost breakdown plus the last requests with elapsed time and token speed.
 
-![Gain dashboard: top models with per-model cost, recent requests with elapsed time and token speed](/assets/GainModels.webp)
+![Dashboard: top models with per-model cost, recent requests with elapsed time and token speed](/assets/GainModels.webp)
 
 **Command tools.** Token savings, average rate, and timing per shell tool.
 
-![Gain dashboard: command tools with token savings, average rate, and timing](/assets/GainTools.webp)
+![Dashboard: command tools with token savings, average rate, and timing](/assets/GainTools.webp)
+
+### Measurement references
+
+- **[EcoLogits](https://github.com/mlco2/ecologits)** informs Tersio's local CO₂ and energy estimates. Tersio ports the model to TypeScript; EcoLogits is not a runtime dependency.
+- **[Tokscale](https://github.com/junhoyeo/tokscale)** informs Tersio's Input, Output, Cache Read, and Cache Write accounting from local OMP sessions. Tokscale is a reference, not a runtime dependency.
 
 ## 🖥️ CLI
 
@@ -104,12 +109,12 @@ Break-even math, balanced preset (caveman full + rtk + ponytail): a mixed turn c
 | `tersio reinstall` | Fresh install, preserving the Ponytail package |
 | `tersio doctor` | Check OMP, extension, Ponytail, and RTK health (`--fix` repairs, `--fix=<scope>` one scope, `--dry-run` previews) |
 | `tersio usage` | Ledger-backed usage + savings report |
-| `tersio gain` | Open the gain dashboard (`--open`, `--export <file>`, `--port <n>`, `--currency <code>`; serves localhost only) |
+| `tersio dashboard` | Open the Dashboard (`--open`, `--export <file>`, `--port <n>`, `--currency <code>`; serves localhost only) |
 | `tersio reset` | Clear tersio statistics: usage ledger + a watermark that hides pre-reset rows from every derived view (Y/N confirm, `--dry-run`, `--yes`) — session transcripts and RTK history stay intact on disk |
 | `tersio uninstall` | Remove extensions, registration, and the Ponytail plugin (`--keep-ponytail` keeps Ponytail; `--remove-rtk` also removes the RTK binary and its `rtk.ts` OMP wiring) |
 | `tersio version` | Print version |
 
-Flags: `--dry-run`, `--yes`/`-y`, `--verbose`, `--combo-default`/`--caveman-default`/`--rtk-default`/`--ponytail-default`, `--currency <code>` (usage|gain display currency; flag wins, then the `tersio settings` default, then USD). Legacy `--doctor` / `--uninstall` forms still work.
+Flags: `--dry-run`, `--yes`/`-y`, `--verbose`, `--combo-default`/`--caveman-default`/`--rtk-default`/`--ponytail-default`, `--currency <code>` (usage/dashboard display currency; flag wins, then the `tersio settings` default, then USD). Legacy `--doctor` / `--uninstall` forms still work.
 
 ## ⌨️ Commands reference
 
@@ -124,7 +129,7 @@ Mode switches live on their own commands; bare `/tersio` prints status.
 | `/tersio status` | Active modes + combo level; state persists, propagates to subagents, and lights the Combo footer indicator. |
 | `/tersio check` | Add-on version check |
 | `/tersio update <ponytail\|rtk\|caveman\|all> [--dry-run]` | Update add-ons, preview with dry-run |
-| `/tersio gain` | Savings summary; the gain dashboard charts `~/.tersio/usage.db` (`tersio gain --open` serves on 127.0.0.1, `--export` writes one file). |
+| `/tersio dashboard` | Open the Dashboard. |
 | `/tersio usage` | Ledger report for this machine (rows in `~/.tersio/usage.db`, local only) |
 | `/tersio help` | This table |
 | `/ai-addons` | Add-on updater alias, still works. |
@@ -149,7 +154,7 @@ User-level installs also register the package in `~/.omp/plugins` (visible in OM
 
 **RTK missing or not executable:** run `tersio reinstall`, then `tersio doctor`. On Linux/macOS: `chmod +x ~/.bun/bin/rtk`.
 
-**RTK commands not metered in the gain dashboard:** check `tersio doctor` — the `RTK OMP wiring (rtk.ts)` row must be ok. Missing: run `rtk init -g --agent omp` (needs rtk ≥ 0.49) and restart OMP. Native tool calls (`read`/`edit`/`eval`) stay unmetered — only bash tool calls pass through rtk.
+**RTK commands not metered in the Dashboard:** check `tersio doctor` — the `RTK OMP wiring (rtk.ts)` row must be ok. Missing: run `rtk init -g --agent omp` (needs rtk ≥ 0.49) and restart OMP. Native tool calls (`read`/`edit`/`eval`) stay unmetered — only bash tool calls pass through rtk.
 
 **Checksum warning or failure:** the installer aborts on RTK checksum mismatch but warns and continues when checksum metadata is unavailable; `/tersio update rtk` aborts when metadata is missing.
 

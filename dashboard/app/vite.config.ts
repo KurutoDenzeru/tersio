@@ -15,6 +15,8 @@ export default defineConfig({
   // Tersio serves the bundle from an ephemeral 127.0.0.1 port and also
   // exports a file:// snapshot: one self-contained html file, no /assets.
   build: {
+    outDir: path.resolve(__dirname, "../dist"),
+    emptyOutDir: true,
     assetsInlineLimit: 100 * 1024 * 1024,
     chunkSizeWarningLimit: 1024,
   },

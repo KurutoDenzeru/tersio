@@ -1,7 +1,4 @@
-// Savings bento + token strip. Port of renderMain() savings block,
-// renderSpark(), and renderStrip() in dashboard/charts.js. Shadcn Card +
-// Select carry the structure; the sparkline, zone faces, and money rules
-// stay identical to the original.
+// Savings bento and token strip with shadcn Card and Select structure.
 import { useMemo } from "react";
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,6 +8,7 @@ import { TooltipRow } from "@/components/ui/tooltip-surface";
 import { CURS, FLAGS, co2Zone, dayTotal, fmt, fmtShort, levZone, shareZone } from "@/lib/format";
 import type { FxState, UsageReport } from "@/lib/data";
 import { HoverTip } from "./common";
+import { useCountUp } from "./hero";
 import { Icon } from "./icon";
 
 // Zone faces: the tersio palette's own colour classes, per the mapping contract.
@@ -18,6 +16,11 @@ const ZFACE_CLS: Record<string, string> = { good: "text-accent", warn: "text-[#f
 
 function TipRow({ color, k, v }: { color: string; k: string; v: string }) {
   return <TooltipRow color={color} label={k} value={v} />;
+}
+
+function AnimatedValue({ value, format }: { value: number; format: (value: number) => string }) {
+  const displayedValue = useCountUp(value);
+  return format(displayedValue);
 }
 
 export function CurrencyPicker({
@@ -58,6 +61,10 @@ const sparkChartConfig = {
     color: "var(--accent)",
   },
 } satisfies ChartConfig;
+
+function prefersReducedMotion(): boolean {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
 
 function Spark({ days, usd, money }: { days: Array<{ k: string; v: number }>; usd: number; money: (v: number) => string }) {
   const rate = usd && days.length ? usd / days.reduce((a, d) => a + d.v, 0) : 0;
@@ -113,7 +120,9 @@ function Spark({ days, usd, money }: { days: Array<{ k: string; v: number }>; us
           strokeWidth={2}
           dot={false}
           activeDot={{ r: 4, fill: "var(--color-tokens)", stroke: "var(--panel)", strokeWidth: 2 }}
-          isAnimationActive={false}
+          isAnimationActive={!prefersReducedMotion()}
+          animationDuration={900}
+          animationEasing="linear"
         />
       </AreaChart>
     </ChartContainer>
@@ -147,7 +156,7 @@ export function Savings({
     const days: Array<{ k: string; v: number }> = [];
     const end = new Date();
     end.setHours(0, 0, 0, 0);
-    for (let offset = 13; offset >= 0; offset -= 1) {
+    for (let offset = 6; offset >= 0; offset -= 1) {
       const date = new Date(end);
       date.setDate(end.getDate() - offset);
       const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
@@ -207,7 +216,7 @@ export function Savings({
             </CardAction>
           </CardHeader>
           <CardContent>
-            <p className="mono font-bold tracking-tighter leading-none text-6xl lg:text-7xl">{money(usd)}</p>
+            <p className="mono font-bold tracking-tighter leading-none text-6xl lg:text-7xl"><AnimatedValue value={usd} format={money} /></p>
             <div className="mt-4">
               {sparkDays.length ? (
                 <Spark days={sparkDays} usd={usd} money={money} />
@@ -258,7 +267,7 @@ export function Savings({
                 </CardAction>
               </CardHeader>
               <CardContent>
-                <p className="mono font-bold text-3xl text-accent">{money(saved)}</p>
+                <p className="mono font-bold text-3xl text-accent"><AnimatedValue value={saved} format={money} /></p>
                 <CardDescription className="mono mt-2 text-[11px] text-dim">est. vs full input price</CardDescription>
               </CardContent>
             </Card>
@@ -282,7 +291,7 @@ export function Savings({
                </CardHeader>
                <CardContent>
                  <p className="mono font-bold text-3xl">
-                   ~{co2.toFixed(1)}g <Icon name={co2Z[0]} className={`inline-block size-3.5 align-[-2px] ${ZFACE_CLS[co2Z[2]] ?? ""}`} />
+                   ~<AnimatedValue value={co2} format={(value) => `${value.toFixed(1)}g`} /> <Icon name={co2Z[0]} className={`inline-block size-3.5 align-[-2px] ${ZFACE_CLS[co2Z[2]] ?? ""}`} />
                  </p>
                 <span className="mono mt-2 inline-flex w-fit rounded-full bg-track px-2.5 py-[3px] text-[11px] text-dim">served ÷32</span>
                </CardContent>
@@ -308,7 +317,7 @@ export function Savings({
                </CardHeader>
                <CardContent>
                  <p className="mono font-bold text-3xl">
-                   {share}% <Icon name={shareZ[0]} className={`inline-block size-3.5 align-[-2px] ${ZFACE_CLS[shareZ[2]] ?? ""}`} />
+                   <AnimatedValue value={share} format={(value) => `${value.toFixed(0)}%`} /> <Icon name={shareZ[0]} className={`inline-block size-3.5 align-[-2px] ${ZFACE_CLS[shareZ[2]] ?? ""}`} />
                  </p>
                  <CardDescription className="mono mt-2 text-[11px] text-dim">of tokens cached</CardDescription>
                </CardContent>
@@ -331,7 +340,7 @@ export function Savings({
               </CardTitle>
             </CardHeader>
             <CardContent className="min-w-0">
-              <p className="mono truncate text-xl font-bold tabular-nums">{fmt(v)}</p>
+              <p className="mono truncate text-xl font-bold tabular-nums"><AnimatedValue value={v} format={fmt} /></p>
             </CardContent>
           </Card>
         ))}

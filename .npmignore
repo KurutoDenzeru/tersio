@@ -1,7 +1,6 @@
 # npm pack/publish consults this file instead of .gitignore.
-# Build output (tersio.js, extensions/**/*.js, gain/dist) must ship in the tarball;
-# .gitignore cannot be used for packing, or runtime files are skipped.
+# Only the generated Dashboard runtime ships.
 test/
-gain/*
-!gain/dist/
-!gain/dist/**
+dashboard/*
+!dashboard/dist/
+!dashboard/dist/**

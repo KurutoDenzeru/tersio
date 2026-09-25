@@ -1,6 +1,4 @@
-// Shared dashboard primitives: empty states, pager, segmented tabs,
-// hover cards. Same behavior as dashboard/charts.js paintPager +
-// emptyState + showTip/moveTip/hideTip.
+// Shared dashboard primitives: empty states, pager, segmented tabs, and hover cards.
 import React, { useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "cn";

@@ -1,5 +1,4 @@
-// Ported from dashboard/core.js and dashboard/charts.js.
-// Pure formatting, currency, vendor, and zone helpers. Same rules, same
+// Formatting, currency, vendor, and zone helpers shared by Dashboard views.
 // numbers: magnitude-aware money decimals, static FX snapshot with live
 // frankfurter refresh, folded-key display names, provider registry.
 

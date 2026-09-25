@@ -1,6 +1,6 @@
 // test/gain-currency.test.ts — the dashboard owns the display currency:
 // picking one POSTs to /currency, the server persists it in the plugin lock
-// file, and a later `tersio gain` (a new origin each run, so localStorage
+// file, and a later `tersio dashboard` (a new origin each run, so localStorage
 // alone cannot survive) defaults to it.
 import { expect, test } from "vitest";
 import { spawn, type ChildProcess } from "node:child_process";
@@ -25,7 +25,7 @@ function serverEnv(home: string): NodeJS.ProcessEnv {
   };
 }
 
-function startGain(home: string): Promise<{ child: ChildProcess; url: string }> {
+function startDashboard(home: string): Promise<{ child: ChildProcess; url: string }> {
   return new Promise((resolve, reject) => {
     let settled = false;
     const done = (fn: () => void): void => {
@@ -35,19 +35,19 @@ function startGain(home: string): Promise<{ child: ChildProcess; url: string }> 
         fn();
       }
     };
-    const child = spawn(process.execPath, [installer, "gain", "--port", "0"], {
+    const child = spawn(process.execPath, [installer, "dashboard", "--port", "0"], {
       cwd: root,
       env: serverEnv(home),
     });
     let out = "";
     const timer = setTimeout(() => {
       child.kill("SIGKILL");
-      done(() => { reject(new Error(`gain server did not come up: ${out}`)); });
+      done(() => { reject(new Error(`dashboard server did not come up: ${out}`)); });
     }, 15000);
     child.on("error", (err) => { done(() => { reject(err); }); });
     const watch = (chunk: unknown): void => {
       out += String(chunk);
-      const match = /\[ok\] gain live → (http:\/\/\S+)/.exec(out);
+      const match = /\[ok\] Dashboard live → (http:\/\/\S+)/.exec(out);
       if (match) done(() => { resolve({ child, url: match[1] }); });
     };
     child.stdout?.on("data", watch);
@@ -55,7 +55,7 @@ function startGain(home: string): Promise<{ child: ChildProcess; url: string }> 
   });
 }
 
-function stopGain(child: ChildProcess): Promise<void> {
+function stopDashboard(child: ChildProcess): Promise<void> {
   return new Promise((resolve) => {
     let settled = false;
     const done = (): void => {
@@ -79,10 +79,10 @@ async function postCurrency(url: string, body: string): Promise<{ status: number
   return { status: res.status, json: await res.json() };
 }
 
-test("gain persists dashboard currency across restarts", async () => {
+test("dashboard persists display currency across restarts", async () => {
   const home = mkdtempSync(path.join(os.tmpdir(), "tersio-gain-cur-"));
   try {
-    const first = await startGain(home);
+    const first = await startDashboard(home);
     try {
       const bad = await postCurrency(first.url, JSON.stringify({ currency: "bogus" }));
       expect(bad.status).toBe(400);
@@ -92,21 +92,21 @@ test("gain persists dashboard currency across restarts", async () => {
       const malformed = await postCurrency(first.url, "{ not json");
       expect(malformed.status).toBe(400);
     } finally {
-      await stopGain(first.child);
+      await stopDashboard(first.child);
     }
     const lock = JSON.parse(
       readFileSync(path.join(home, ".omp", "plugins", "omp-plugins.lock.json"), "utf8"),
     ) as { settings?: Record<string, { currency?: string }> };
     expect(lock.settings?.["@krtclcdy/tersio"]?.currency).toBe("PHP");
 
-    const second = await startGain(home);
+    const second = await startDashboard(home);
     try {
       const res = await fetch(`${second.url}/data.json`);
       expect(res.status).toBe(200);
       const data = (await res.json()) as { currency?: string };
       expect(data.currency, "reopened dashboard defaults to the saved currency").toBe("PHP");
     } finally {
-      await stopGain(second.child);
+      await stopDashboard(second.child);
     }
   } finally {
     rmSync(home, { recursive: true, force: true });

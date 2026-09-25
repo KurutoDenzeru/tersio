@@ -1,0 +1,32 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "categories": {
+    "correctness": "warn",
+    "suspicious": "warn"
+  },
+  "plugins": [
+    "eslint",
+    "typescript",
+    "react",
+    "jsx-a11y",
+    "react-perf",
+    "import",
+    "unicorn"
+  ],
+  "env": {
+    "browser": true,
+    "es2026": true
+  },
+  "settings": {
+    "react": {
+      "version": "19.2"
+    }
+  },
+  "ignorePatterns": ["dist/**", "node_modules/**", "src/components/ui/**"],
+  "rules": {
+    "react/rules-of-hooks": "error",
+    "react/exhaustive-deps": "warn",
+    "react/react-in-jsx-scope": "off",
+    "jsx-a11y/prefer-tag-over-role": "off"
+  }
+}

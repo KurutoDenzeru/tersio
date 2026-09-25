@@ -1,5 +1,5 @@
 // Shared usage ledger: append-only JSON-lines file. One source of truth read
-// by `tersio usage`, `/tersio usage`, and the gain dashboard.
+// by `tersio usage`, `/tersio usage`, and the Dashboard.
 // Best-effort by design: a ledger failure never breaks the caller, and
 // corrupt lines are skipped on read (same pattern as the config normalizer).
 import fs from 'node:fs';

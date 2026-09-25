@@ -1,5 +1,5 @@
 // cli/settings.ts — view/edit session-start defaults (combo/caveman/rtk/ponytail)
-// plus the display-currency default for usage/gain reports.
+// plus the display-currency default for usage/dashboard reports.
 // Non-interactive: `tersio settings --combo-default balanced` (plus per-mode
 // override flags and --currency). Interactive: clack selects seeded from the
 // stored profile.
@@ -68,7 +68,7 @@ async function askProfile(current: Profile): Promise<Profile | null> {
   if (ponytail.status !== 'selected') return null;
   next.ponytailDefault = ponytail.value;
 
-  const cur = await askInteractiveChoice('Display currency (usage/gain reports)', CURRENCY_CODES.map((v) => ({
+  const cur = await askInteractiveChoice('Display currency (usage/dashboard reports)', CURRENCY_CODES.map((v) => ({
     value: v, label: v,
   })), next.currency);
   if (cur.status !== 'selected') return null;
@@ -141,7 +141,7 @@ async function runSingleSetting(name: string, current: Profile, nextDiag: DiagSc
       break;
     }
     case 'currency': {
-      const picked = await askInteractiveChoice('Display currency (usage/gain reports)', CURRENCY_CODES.map((v) => ({
+      const picked = await askInteractiveChoice('Display currency (usage/dashboard reports)', CURRENCY_CODES.map((v) => ({
         value: v, label: v,
       })), next.currency);
       if (picked.status !== 'selected') return null;
@@ -164,7 +164,7 @@ async function runSingleSetting(name: string, current: Profile, nextDiag: DiagSc
 
 function printSettingsTable(current: Profile): void {
   console.log('\n=== Tersio Settings ===');
-  // Currency lives here no longer: the gain dashboard owns displaying and
+  // Currency lives here no longer: the dashboard owns displaying and
   // persisting it (its picker POSTs to /currency); settings can still set
   // the stored default via --currency or the prompt below.
   const rows = [
@@ -240,7 +240,7 @@ async function runSettings(): Promise<void> {
   setDiagSchedule(nextDiag);
   console.log(`  Defaults: ${formatProfile(next)} · diagnosis=${nextDiag}`);
   console.log('  Applies to fresh sessions only — anything persisted with /combo, /caveman, or /rtk wins.');
-  console.log('  Currency applies to usage/gain reports; --currency overrides it per run.');
+  console.log('  Currency applies to usage/dashboard reports; --currency overrides it per run.');
   closeRL();
 }
 

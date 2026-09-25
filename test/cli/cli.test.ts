@@ -34,7 +34,7 @@ for (const alias of [["help"], ["--help"], ["-h"]]) {
 
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toMatch(/^Usage:/);
-    for (const command of ["install", "update", "reinstall", "doctor", "uninstall", "usage", "gain", "reset", "settings", "version", "help"]) {
+    for (const command of ["install", "update", "reinstall", "doctor", "uninstall", "usage", "dashboard", "reset", "settings", "version", "help"]) {
       expect(result.stdout).toMatch(new RegExp(`^  ${command}\\s`, "m"));
     }
     expect(result.stderr).toBe("");
@@ -270,13 +270,13 @@ test("usage with an empty ledger and no sessions prints the empty state and exit
   rmSync(dir, { recursive: true, force: true });
 });
 
-test("gain --export writes a self-contained html file", () => {
+test("dashboard --export writes a self-contained html file", () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-dash-"));
   const out = path.join(dir, "dash.html");
   const ledger = path.join(dir, "usage.jsonl");
   writeFileSync(ledger, "{\"ts\":1757570000000,\"kind\":\"command\",\"detail\":\"/tersio usage\"}\n", "utf8");
   appendFileSync(ledger, "{\"ts\":1757570000001,\"kind\":\"command\",\"detail\":\"/tersio $'quoted$' $& $\"}\n", "utf8");
-  const result = spawnSync(process.execPath, [installer, "gain", "--export", out], {
+  const result = spawnSync(process.execPath, [installer, "dashboard", "--export", out], {
     encoding: "utf8",
     cwd: root,
     env: { ...process.env, TERSIO_USAGE_FILE: ledger, TERSIO_RESET_FILE: path.join(dir, "reset.json") },
@@ -294,6 +294,13 @@ test("gain --export writes a self-contained html file", () => {
   expect(body.split("</body>").length - 1).toBe(1);
   expect(body.split("</html>").length - 1).toBe(1);
   rmSync(dir, { recursive: true, force: true });
+});
+
+test("gain is no longer a public dashboard command", () => {
+  const result = run("gain", "--export", path.join(os.tmpdir(), "tersio-obsolete-gain.html"));
+  expect(result.status).toBe(1);
+  expect(result.stderr).toMatch(/Unknown command: gain/);
+  expect(existsSync(path.join(os.tmpdir(), "tersio-obsolete-gain.html"))).toBe(false);
 });
 
 test("reset --dry-run keeps the seeded ledger", () => {
@@ -436,10 +443,10 @@ test("doctor prints record store paths", () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-test("gain --export includes the reset control and empty states", () => {
+test("dashboard --export includes the reset control and empty states", () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-dash-"));
   const out = path.join(dir, "dash.html");
-  const result = spawnSync(process.execPath, [installer, "gain", "--export", out], {
+  const result = spawnSync(process.execPath, [installer, "dashboard", "--export", out], {
     encoding: "utf8",
     cwd: root,
     env: {

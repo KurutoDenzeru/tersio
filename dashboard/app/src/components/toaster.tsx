@@ -1,5 +1,5 @@
-// Toast notifications. Port of toast() in dashboard/core.js: bottom-right
-// stack, accent icon, title + description, 4s auto-dismiss.
+// Toast notifications: bottom-right stack, accent icon, title + description,
+// and 4s auto-dismiss.
 import { createContext, useCallback, useContext, useState } from "react";
 import { Icon } from "./icon";
 

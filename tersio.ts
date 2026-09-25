@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // tersio.ts — Install Tersio (caveman/rtk/ponytail) add-ons on any OMP device.
-// Usage: node tersio.js [install|update|reinstall|doctor|uninstall|version|help] [options]
+// Usage: node tersio.js [install|update|reinstall|doctor|dashboard|uninstall|version|help] [options]
 // Requires: node/npm and omp CLI
 import {
-  PACKAGE_BIN, PACKAGE_VERSION, applyUpdate, commandArg, gain, dashboardExport, dashboardOpen, dashboardPort, doctor, reset, settings, showHelp, showVersion, uninstall, unknownCommand, update, usage,
+  PACKAGE_BIN, PACKAGE_VERSION, applyUpdate, commandArg, dashboard, dashboardExport, dashboardOpen, dashboardPort, doctor, reset, settings, showHelp, showVersion, uninstall, unknownCommand, update, usage,
 } from './cli/common.ts';
 import { closeRL } from './cli/interactive.ts';
 import { runInstall } from './cli/install.ts';
@@ -24,7 +24,7 @@ Commands:
   reinstall    Clean and reinstall the user-scope add-ons
   doctor       Check the current installation (--fix repairs, --dry-run previews)
   usage        Ledger-backed usage + savings report
-  gain         Open the gain dashboard (localhost only)
+  dashboard     Open the Dashboard (localhost only)
   reset        Clear tersio statistics (usage ledger)
   settings     View/change session-start defaults (combo, caveman, rtk, ponytail)
   uninstall    Remove the managed extensions
@@ -43,10 +43,10 @@ Options:
   --yes, -y
   --dry-run
   --verbose
-  --port <n> (gain: pin port, default ephemeral)
-  --open (gain: open browser)
-  --export <file> (gain: write HTML file instead of serving)
-  --currency <code> (usage|gain: display currency; flag wins, then tersio settings default, then USD)
+  --port <n> (dashboard: pin port, default ephemeral)
+  --open (dashboard: open browser)
+  --export <file> (dashboard: write HTML file instead of serving)
+  --currency <code> (usage|dashboard: display currency; flag wins, then tersio settings default, then USD)
   --version, -v
   --help, -h`);
 }
@@ -90,7 +90,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  if (gain) {
+  if (dashboard) {
     await runDashboard({ port: dashboardPort, open: dashboardOpen, exportFile: dashboardExport });
     closeRL();
     return;

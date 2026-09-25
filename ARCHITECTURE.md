@@ -1,6 +1,6 @@
 # Architecture
 
-Tersio is one npm package with two faces: a **CLI** (`tersio install|update|doctor|gain…`) and an **OMP plugin** whose feature-gated extensions load inside the OMP host.
+Tersio is one npm package with two faces: a **CLI** (`tersio install|update|doctor|dashboard…`) and an **OMP plugin** whose feature-gated extensions load inside the OMP host.
 
 ## Components
 
@@ -8,7 +8,8 @@ Tersio is one npm package with two faces: a **CLI** (`tersio install|update|doct
 flowchart TB
   subgraph CLI["CLI (node tersio.ts)"]
     INST["cli/install.ts<br/>copies extensions to<br/>~/.omp/agent/extensions + rtk.ts wiring"]
-    DASH["cli/dashboard.ts<br/>gain dashboard (127.0.0.1)"]
+    DASH["cli/dashboard.ts<br/>Dashboard dist runtime (127.0.0.1)"]
+    APP["dashboard/app/<br/>Vite + React + shadcn source"]
     DOC["cli/doctor.ts · update.ts · uninstall.ts"]
   end
 
@@ -18,7 +19,7 @@ flowchart TB
       RTK["rtk-session<br/>/rtk + rtk_run tool"]
       COMBO["combo-toggle<br/>/combo presets"]
       REINF["shared/mode-reinforcement<br/>re-asserts modes each turn"]
-      TCMD["tersio-commands<br/>/tersio status|gain|usage"]
+      TCMD["tersio-commands<br/>/tersio status|dashboard|usage"]
       UPD["ai-addons-updater<br/>/ai-addons"]
     end
     subgraph SHARED["extensions/shared/"]
@@ -38,6 +39,7 @@ flowchart TB
   RTK -->|exec| BIN
   COMBO -->|loads instructions| PONY
   TCMD & CLI --> LEDGER
+  APP -->|build| DASH
   DASH -->|summarize| LEDGER
 ```
 
@@ -56,7 +58,7 @@ sequenceDiagram
   A->>X: before_agent_start
   X-->>A: system prompt + mode blocks (caveman rule, RTK prompt, ponytail)
   A->>A: turn runs (rtk_run tool → rtk binary when on)
-  U->>A: /tersio gain → usage-ledger rows → dashboard
+  U->>A: /tersio dashboard → usage-ledger rows → Dashboard
 ```
 
 ## Key invariants

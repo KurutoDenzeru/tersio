@@ -1,5 +1,5 @@
 // cli/profile.ts — session-start defaults profile (combo/caveman/rtk/ponytail)
-// plus the display-currency default for usage/gain reports.
+// plus the display-currency default for usage/dashboard reports.
 // Single source for reading/writing the omp plugin settings lock entry.
 // Extracted from cli/install.ts so both install and settings share it.
 import { promises as fs } from 'node:fs';

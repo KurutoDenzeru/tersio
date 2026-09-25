@@ -39,7 +39,7 @@ function harness(execImpl?: (cmd: string, args: string[]) => Promise<{ stdout: s
 test("/tersio help lists every subcommand", async () => {
   const h = harness();
   await h.command("help", h.ctx);
-  for (const sub of ["status", "check", "update", "gain", "usage"]) {
+  for (const sub of ["status", "check", "update", "dashboard", "usage"]) {
     expect(h.notifications.join("\n")).toMatch(new RegExp(`/tersio ${sub}`));
   }
 });
@@ -70,18 +70,25 @@ test("/tersio usage reports ledger rows", async () => {
   await h.command("usage", h.ctx);
   expect(h.notifications.join("\n")).toMatch(/tersio usage: \d+ rows/);
 });
-test("/tersio gain exports and opens the dashboard", async () => {
+test("/tersio dashboard exports and opens the Dashboard", async () => {
   const h = harness();
-  await h.command("gain", h.ctx);
+  await h.command("dashboard", h.ctx);
   expect(h.execCalls[0].cmd).toBe("tersio");
-  expect(h.execCalls[0].args.slice(0, 2)).toEqual(["gain", "--export"]);
-  expect(h.execCalls[0].args[2]).toMatch(/tersio-gain-.*\.html/);
+  expect(h.execCalls[0].args.slice(0, 2)).toEqual(["dashboard", "--export"]);
+  expect(h.execCalls[0].args[2]).toMatch(/tersio-dashboard-.*\.html/);
   expect(["open", "xdg-open", "start"].includes(h.execCalls[1].cmd), JSON.stringify(h.execCalls)).toBeTruthy();
-  expect(h.notifications.join("\n")).toMatch(/dashboard opened in your browser/);
+  expect(h.notifications.join("\n")).toMatch(/dashboard: opened in your browser/);
 });
 
-test("/tersio gain falls back to the shell command on failure", async () => {
+test("/tersio dashboard falls back to the shell command on failure", async () => {
   const h = harness(async () => ({ stdout: "", stderr: "nope", code: 1 }));
+  await h.command("dashboard", h.ctx);
+  expect(h.notifications.join("\n")).toMatch(/tersio dashboard --open/);
+});
+
+test("/tersio gain is no longer a dashboard alias", async () => {
+  const h = harness();
   await h.command("gain", h.ctx);
-  expect(h.notifications.join("\n")).toMatch(/tersio gain --open/);
+  expect(h.execCalls).toHaveLength(0);
+  expect(h.notifications.join("\n")).toMatch(/Unknown subcommand: gain/);
 });
