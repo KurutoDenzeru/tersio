@@ -63,24 +63,26 @@ Windows/WSL have separate OMP homes — install from the environment where OMP r
 
 ## 📊 Benchmarks
 
-Measured surfaces use different boundaries. Do not treat reply-text, code-diff, and shell-output reductions as total bill savings. Full protocol and caveats are in [BENCHMARK.md](./BENCHMARK.md).
+Every mode is measured against a base run with all modes off. Measured surfaces use different boundaries. Do not treat reply-text, code-output, and shell-output reductions as total bill savings. Full protocol and caveats are in [BENCHMARK.md](./BENCHMARK.md).
 
-| Measured surface (n) | Baseline → Tersio | Δ |
-|---|---|---|
-| Terse reply, caveman lite — BPE tokens (3 samples, p50) | 173 → 69 | **−60.1% reply text** |
-| Terse reply, caveman full — BPE tokens (3 samples, p50) | 173 → 49 | **−71.7% reply text** |
-| Terse reply, caveman ultra — BPE tokens (3 samples, p50) | 173 → 25 | **−85.5% reply text** |
-| Code diff, ponytail lite — BPE tokens (2 tasks) | 326–462 → 57–121 | **−73.8…−82.5% diff** |
-| Code diff, ponytail full — BPE tokens (2 tasks) | 326–462 → 55–88 | **−81.0…−83.1% diff** |
-| Code diff, ponytail ultra — BPE tokens (2 tasks) | 326–462 → 40–88 | **−81.0…−87.7% diff** |
-| Shell output, rtk `git status` | 182 → 72 | **−60.4% command output** |
-| Shell output, rtk repo `grep` | 376 → 274 | **−27.1% command output** |
-| Shell output, rtk `find` | 205 → 168 | **−18.0% command output** |
-| Shell output, rtk `git diff` | 12,684 → 8,504 | **−33.0% command output** |
+| Mode | Surface (n) | Base → Tersio | Δ |
+|---|---|---|---|
+| `/caveman full` | Terse reply, o200k tokens (3 samples, p50) | 124 → 107 | **−13.7% reply text** |
+| `/caveman ultra` | Terse reply, o200k tokens (3 samples, p50) | 124 → 109 | **−12.1% reply text** |
+| `/ponytail lite` | Code reply, o200k tokens (3 samples, p50) | 306 → 177 | **−42.2% code** |
+| `/ponytail full` | Code reply, o200k tokens (3 samples, p50) | 306 → 208 | **−32.0% code** |
+| `/ponytail ultra` | Code reply, o200k tokens (3 samples, p50) | 306 → 112 | **−63.4% code** |
+| `/combo medium` | Code reply, o200k tokens (3 samples, p50) | 306 → 132 | **−56.9% code** |
+| `/rtk on` — `bun run test` | Command output (3 runs, p50) | 4,003 → 54 | **−98.7% output** |
+| `/rtk on` — `find . -name '*.test.ts'` | Command output (3 runs, p50) | 10,908 → 248 | **−97.7% output** |
+| `/rtk on` — `ls -la .` | Command output (3 runs, p50) | 983 → 275 | **−72.0% output** |
+| `/rtk on` — `git status` | Command output (3 runs, p50) | 72 → 18 | **−75.0% output** |
+| `/rtk on` — `bun run build` | Command output (3 runs, p50) | 140 → 114 | **−18.6% output** |
 
-The Command tools table reports weighted RTK command-output savings and OMP-specific adoption from executed Bash records. It does not estimate provider billing.
+Prompt overhead is included in [BENCHMARK.md](./BENCHMARK.md) with a full prompt-base example. Summary: `/rtk on` pays back immediately, `/ponytail ultra` repays in about 7 code tasks, `/combo medium` in about 8, and every Caveman level costs more in prompt than it saves in reply text.
+
+The Command tools dashboard reports weighted RTK command-output savings and OMP-specific adoption from executed Bash records. It does not estimate provider billing.
 Upstream Ponytail's fair agentic benchmark reports 54% less code, 22% fewer tokens, 20% lower cost, and 100% retained safety. RTK estimates command-output tokens, not bill savings. Caveman and Ponytail compliance varies by model. Measure your own sessions with `tersio usage` and the dashboard.
-
 
 ## 📈 Dashboard
 
