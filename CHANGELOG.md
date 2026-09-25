@@ -1,3 +1,11 @@
+## v2.23.0
+ - Improves RTK, Caveman, and Ponytail fidelity across OMP plugin loading, session state, fallback paths, and packaged extension ownership.
+ - Adds weighted RTK savings reporting, OMP-specific adoption and recall diagnostics, path-aware RTK lookup, and fail-open behavior.
+ - Aligns Caveman with current upstream rules: six explicit modes, full packaged `rule.md`, legacy Wenyan migration, clarity safeguards, and offline fallback support.
+ - Keeps Ponytail runtime modes aligned with upstream, separates review from session defaults, and strengthens Combo/subagent inheritance.
+ - Consolidates extension ownership under OMP plugin manifests. Doctor and repair flows now inspect effective package paths and remove stale or duplicate registrations.
+ - Updates the Dashboard and CLI diagnostics to reflect effective plugin state, including missing packaged rules and duplicate extension registrations.
+
 ## v2.22.1
  - Consolidates the Vite + React + shadcn/ui Dashboard under `dashboard/`, removes the legacy runtime and `gain/` app, and makes `tersio dashboard` the sole public Dashboard command.
  - Adds animated telemetry and chart reveals, a bounded shadcn Diagnosis Table + ScrollArea, reduced-motion support, a seven-day USD cost sparkline, and credits EcoLogits and Tokscale as measurement references.
