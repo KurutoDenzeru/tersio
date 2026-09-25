@@ -538,7 +538,6 @@ async function runCommandMenu(): Promise<void> {
   updatePromptDone = true;
   const choice = await askInteractiveChoice('Tersio — what next?', [
     { value: 'install', label: 'Install / reinstall', hint: 'pick coding agents, then install modes for them' },
-    { value: 'reinstall', label: 'Reinstall', hint: 'clean and reinstall the add-ons, Ponytail package kept' },
     { value: 'doctor', label: 'Doctor', hint: 'verify the installation' },
     { value: 'usage', label: 'Usage', hint: 'token usage and savings report' },
     { value: 'dashboard', label: 'Dashboard', hint: 'open the report in your browser' },
@@ -550,30 +549,15 @@ async function runCommandMenu(): Promise<void> {
     process.exit(130);
   }
   switch (choice.value) {
-    case 'install':
-      await runInstall();
-      break;
-    case 'update': {
-      // One bound flow: the version check already ran above, so report it
-      // and offer the refresh in the same breath — no second "update" quiz.
-      if (typeof newer === 'string') console.log(`  tersio ${newer} available (installed ${PACKAGE_VERSION})`);
-      else console.log(`  tersio ${PACKAGE_VERSION} is the latest`);
-      const go = await askInteractiveConfirm('Update now (CLI + RTK, Caveman rule, Ponytail)?');
-      if (go.status === 'confirmed' && go.value) {
-        await runLatestUpdate();
-      } else if (go.status === 'cancelled') {
-        closeRL();
-        process.exit(130);
-      } else {
-        console.log(`  staying on ${PACKAGE_VERSION} — run \`tersio update\` anytime`);
-      }
-      closeRL();
+    case 'install': {
+      // Install and reinstall differ only by a clean uninstall first. One entry
+      // with an explicit choice beats two near-identical rows the user has to
+      // tell apart; a plain install is the common case, so it is the default.
+      const go = await askInteractiveConfirm('Clean reinstall first? (removes current files, then reinstalls)', false);
+      if (go.status === 'cancelled') { closeRL(); process.exit(130); }
+      await runInstall(go.status === 'confirmed' && go.value ? { reinstall: true } : {});
       break;
     }
-    case 'reinstall':
-      await runInstall({ reinstall: true });
-      closeRL();
-      break;
     case 'doctor': {
       const summary = await runDoctor();
       if (!dryRun && summary.missing + summary.warn > 0) {

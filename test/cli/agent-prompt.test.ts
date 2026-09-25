@@ -124,13 +124,29 @@ test("--agent is documented in help", () => {
   }
 });
 
-
-test("the bare menu has no separate coding-agents entry", () => {
-  // Agent selection happens inside the install flow, so a second menu entry
-  // offering the same choice was redundant.
+test("the bare menu has one install entry, not separate install and reinstall", () => {
   const source = readFileSync(path.join(root, "cli", "install.ts"), "utf8");
   const menu = source.match(/askInteractiveChoice\('Tersio — what next\?', \[([\s\S]*?)\], 'install'\)/);
   expect(menu, "the bare tersio menu must still exist").not.toBeNull();
-  expect(menu?.[1] ?? "", "no redundant coding-agents entry").not.toMatch(/value: 'agents'/);
-  expect(source, "no orphaned agents case in the menu switch").not.toMatch(/case 'agents'/);
+  const entries = [...(menu?.[1] ?? "").matchAll(/value: '([a-z-]+)'/g)].map((m) => m[1]);
+  // Install and reinstall differ only by a clean uninstall first, so they are
+  // one row plus a confirmation rather than two near-identical rows.
+  expect(entries, "no separate reinstall row").not.toContain("reinstall");
+  expect(entries.filter((e) => e === "install")).toHaveLength(1);
+  // Agent selection happens inside the install flow, not as its own menu entry.
+  expect(entries).not.toContain("agents");
+});
+
+test("every bare-menu entry has a switch case and vice versa", () => {
+  // A case with no menu entry is unreachable: the update offer is asked before
+  // the menu renders, so a declined update could never reach an `update` case.
+  const source = readFileSync(path.join(root, "cli", "install.ts"), "utf8");
+  const body = source.slice(source.indexOf("async function runCommandMenu"));
+  const menu = body.match(/askInteractiveChoice\('Tersio — what next\?', \[([\s\S]*?)\], 'install'\)/);
+  const entries = [...(menu?.[1] ?? "").matchAll(/value: '([a-z-]+)'/g)].map((m) => m[1]);
+  const switchBody = body.slice(body.indexOf("switch (choice.value)"));
+  const cases = [...switchBody.matchAll(/case '([a-z-]+)'\s*:/g)].map((m) => m[1]);
+
+  expect(cases.filter((c) => !entries.includes(c)), "unreachable cases").toEqual([]);
+  expect(entries.filter((e) => !cases.includes(e)), "menu entries with no case").toEqual([]);
 });
