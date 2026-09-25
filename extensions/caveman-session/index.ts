@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { activeModesSummary, asPromptArray, getSharedComboState, isComboPresetActive, isOmpSubagentPrompt, lastCustomValue, normalizeInputCommand, normalizeMode, paintStatusBar, paintableCtx, reconcileSharedComboEntries, sessionEntries, setSharedComboListener, setSharedComboMode } from '../shared/session-state.ts';
+import { activeModesSummary, asPromptArray, getSharedComboState, isComboPresetActive, isOmpSubagentPrompt, lastCustomValue, normalizeInputCommand, normalizeMode, paintStatusBar, paintableCtx, reconcileSharedComboEntries, registerSessionLifecycle, sessionEntries, setSharedComboListener, setSharedComboMode } from '../shared/session-state.ts';
 import { dirname, join } from 'node:path';
 import { readCavemanDefault } from '../shared/plugin-settings.ts';
 import type { ExtensionApi, ExtensionCtx, InputEvent, SessionEntry, SystemPromptEvent } from '../shared/types.ts';
@@ -131,27 +131,11 @@ export default function cavemanSessionExtension(pi: ExtensionApi): void {
     syncStatus(ctx);
   }
 
-  pi.on('session_start', async (_event, ctx) => {
-    restoreMode(ctx);
-    ctx?.ui?.notify?.(`Caveman loaded: ${currentMode}`, 'info');
-  });
-
-  pi.on('session_branch', async (_event, ctx) => {
-    restoreMode(ctx);
-  });
-
-  pi.on('session_tree', async (_event, ctx) => {
-    restoreMode(ctx);
-  });
-
-  pi.on('agent_start', async (_event, ctx) => {
-    isActive = true;
-    syncStatus(ctx);
-  });
-
-  pi.on('agent_end', async (_event, ctx) => {
-    isActive = false;
-    syncStatus(ctx);
+  registerSessionLifecycle(pi, {
+    restore: restoreMode,
+    notify: (ctx) => { ctx?.ui?.notify?.(`Caveman loaded: ${currentMode}`, 'info'); },
+    onTurnStart: (ctx) => { isActive = true; syncStatus(ctx); },
+    onTurnEnd: (ctx) => { isActive = false; syncStatus(ctx); },
   });
 
   pi.on('before_agent_start', async (event: SystemPromptEvent) => {

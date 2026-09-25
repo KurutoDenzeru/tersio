@@ -101,7 +101,7 @@ Valid ids: `omp`, `opencode`, `claude-code`, `codex`, `gemini-cli`, `copilot-cli
 | GitHub Copilot CLI | `copilot-cli` | `copilot-instructions.md` | ✅ | ✅ |
 | Cursor | `cursor` | `rules/tersio.mdc` | ✅ | ✅ |
 | Grok Build | `grok-build` | `rules/tersio.md` | ✅ | ✅ |
-| Pi | `pi` | `AGENTS.md` | ✅ | ✅ |
+| Pi | `pi` | `AGENTS.md` | ✅ | ✅ (rtk-owned extension) |
 | OpenClaw | `openclaw` | `AGENTS.md` | ✅ | — guidance only |
 | Hermes | `hermes` | — (none global) | ✅ | ✅ |
 

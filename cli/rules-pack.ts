@@ -85,4 +85,4 @@ export function packCommands(): Record<string, string> {
   };
 }
 
-export { START, END, CAVEMAN, PONYTAIL, RTK };
+export { START, END, RTK };

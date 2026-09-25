@@ -52,9 +52,17 @@ test("a host declaring an emitter path must have the capability that writes it",
   }
 });
 
-test("a host claiming rewrite always has a hook config to write", () => {
+test("a host claiming rewrite either renders a hook config or is rtk-init wired", () => {
+  // omp and opencode ship live extensions. Pi is the same shape in a different
+  // language: it loads .ts modules via jiti, so its rewrite comes from
+  // `rtk init --agent pi` rather than a JSON hook file. Every other rewrite
+  // host must render one.
   for (const host of HOSTS) {
     if (OWN_PATH_HOSTS.includes(host.id) || !host.rewrite) continue;
+    if (host.id === "pi") {
+      expect(host.rewriteConfig, "pi must not claim a JSON hook config").toBeUndefined();
+      continue;
+    }
     const cfg = host.rewriteConfig;
     expect(cfg, `${host.id} claims rewrite but has no rewriteConfig`).toBeDefined();
     expect(cfg?.configFile, host.id).toBeTruthy();

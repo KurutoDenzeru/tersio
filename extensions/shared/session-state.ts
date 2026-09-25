@@ -1,4 +1,4 @@
-import type { ComboLevel, ComboState, ExtensionCtx, SessionEntry, UiApi } from './types.ts';
+import type { ComboLevel, ComboState, ExtensionApi, ExtensionCtx, SessionEntry, UiApi } from './types.ts';
 
 const BRIDGE_KEY = Symbol.for('tersio/combo-session-state');
 
@@ -135,6 +135,33 @@ export function lastCustomValue<T>(entries: SessionEntry[] | null | undefined, c
 
 export function sessionEntries(ctx: ExtensionCtx | undefined): SessionEntry[] {
   return ctx?.sessionManager?.getBranch?.() || ctx?.sessionManager?.getEntries?.() || [];
+}
+
+/**
+ * Registers the session-lifecycle handlers every mode extension repeats:
+ * restore on start/branch/tree, and repaint the status bar around a turn.
+ *
+ * `restore` must publish the reconciled combo state to the shared bridge
+ * before painting — bar suppression reads that bridge, which is empty in a
+ * fresh host until the combo extension reconciles, and its reconcile is
+ * UI-gated. Doing it inside `restore` keeps each mode's derivation local
+ * while the ordering stays identical across extensions.
+ */
+export function registerSessionLifecycle(pi: ExtensionApi, hooks: {
+  restore: (ctx?: ExtensionCtx) => void;
+  notify: (ctx?: ExtensionCtx) => void;
+  onTurnStart: (ctx?: ExtensionCtx) => void;
+  onTurnEnd: (ctx?: ExtensionCtx) => void;
+}): void {
+  pi.on('session_start', async (_event, ctx) => {
+    hooks.restore(ctx);
+    hooks.notify(ctx);
+  });
+  for (const event of ['session_branch', 'session_tree'] as const) {
+    pi.on(event, async (_event, ctx) => { hooks.restore(ctx); });
+  }
+  pi.on('agent_start', async (_event, ctx) => { hooks.onTurnStart(ctx); });
+  pi.on('agent_end', async (_event, ctx) => { hooks.onTurnEnd(ctx); });
 }
 
 export function getSharedComboState(): Readonly<ComboState> {

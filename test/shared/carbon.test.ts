@@ -46,6 +46,13 @@ test("zero output tokens yields zero footprint", () => {
   });
 });
 
-test("footprint is deterministic", () => {
-  expect(footprintFor("deepseek-v4", 7777)).toEqual(footprintFor("deepseek-v4", 7777));
+test("footprint scales linearly with output tokens", () => {
+  const one = footprintFor("deepseek-v4", 1000);
+  const two = footprintFor("deepseek-v4", 2000);
+  // Doubling output tokens must double energy and emissions, not just stay
+  // self-consistent. Asserting a call against itself proved nothing.
+  expect(two.energyWh).toBeCloseTo(one.energyWh * 2, 9);
+  expect(two.gco2).toBeCloseTo(one.gco2 * 2, 12);
+  expect(two.provider).toBe(one.provider);
+  expect(two.concurrency).toBe(one.concurrency);
 });

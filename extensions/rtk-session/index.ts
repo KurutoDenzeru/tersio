@@ -1,4 +1,4 @@
-import { activeModesSummary, asPromptArray, getSharedComboState, isComboPresetActive, isOmpSubagentPrompt, lastCustomValue, normalizeInputCommand, paintStatusBar, paintableCtx, reconcileSharedComboEntries, sessionEntries, setSharedComboListener, setSharedComboMode } from '../shared/session-state.ts';
+import { activeModesSummary, asPromptArray, getSharedComboState, isComboPresetActive, isOmpSubagentPrompt, lastCustomValue, normalizeInputCommand, paintStatusBar, paintableCtx, reconcileSharedComboEntries, registerSessionLifecycle, sessionEntries, setSharedComboListener, setSharedComboMode } from '../shared/session-state.ts';
 import { readRtkDefault } from '../shared/plugin-settings.ts';
 import type { ExtensionApi, ExtensionCtx, InputEvent, SessionEntry, SystemPromptEvent } from '../shared/types.ts';
 
@@ -131,27 +131,11 @@ export default function rtkSessionExtension(pi: ExtensionApi): void {
     syncStatus(ctx);
   }
 
-  pi.on('session_start', async (_event, ctx) => {
-    restoreEnabled(ctx);
-    ctx?.ui?.notify?.(`RTK loaded: ${enabled ? 'on' : 'off'}`, 'info');
-  });
-
-  pi.on('session_branch', async (_event, ctx) => {
-    restoreEnabled(ctx);
-  });
-
-  pi.on('session_tree', async (_event, ctx) => {
-    restoreEnabled(ctx);
-  });
-
-  pi.on('agent_start', async (_event, ctx) => {
-    isActive = true;
-    syncStatus(ctx);
-  });
-
-  pi.on('agent_end', async (_event, ctx) => {
-    isActive = false;
-    syncStatus(ctx);
+  registerSessionLifecycle(pi, {
+    restore: restoreEnabled,
+    notify: (ctx) => { ctx?.ui?.notify?.(`RTK loaded: ${enabled ? 'on' : 'off'}`, 'info'); },
+    onTurnStart: (ctx) => { isActive = true; syncStatus(ctx); },
+    onTurnEnd: (ctx) => { isActive = false; syncStatus(ctx); },
   });
 
   pi.on<SystemPromptEvent>('before_agent_start', async (event) => {

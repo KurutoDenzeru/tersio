@@ -79,10 +79,6 @@ export function stripMdcFrontmatter(existing: string): string {
   return lines.slice(close + 1).join('\n');
 }
 
-export function renderRulesFile(host: AgentHost): string {
-  const body = applyBlock(null, `${START}\n\n${rulesBody()}\n\n${END}\n`);
-  return host.rulesFile?.endsWith('.mdc') ? mdcFrontmatter() + body : body;
-}
 
 // --- skills ---------------------------------------------------------------
 

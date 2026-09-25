@@ -483,11 +483,8 @@ export function usdCost(t: TokenBreakdown, model?: string): { usd: number; price
   };
 }
 
-// CO2 now model-differentiated via ./carbon.ts (EcoLogits 0.8.2 port).
+// CO2 is model-differentiated via ./carbon.ts (EcoLogits 0.8.2 port).
 // Always render with ~est. and never merge with measured figures.
-// The constant below is the served gCO2eq per 1K output tokens for the
-// default (gpt-4o-class) model, kept so single-figure callers stay honest.
-export const CO2_G_PER_1K_OUTPUT = 0.2;
 
 export function co2Grams(outputTokens: number, model?: string): number {
   return co2GramsFor(model ?? 'gpt-4o', outputTokens);

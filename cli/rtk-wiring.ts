@@ -10,7 +10,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
-import { homeDir } from '../extensions/lib/utils.ts';
+import { homeDir, readTextIfExists, resolveRtkBinary } from '../extensions/lib/utils.ts';
 export interface WiringOptions {
   dryRun?: boolean;
   quiet?: boolean;
@@ -46,7 +46,7 @@ function execFileP(cmd: string, args: string[], timeout: number): Promise<{ stdo
 export async function wireRtkOmp(rtkBin: string, options: WiringOptions = {}): Promise<boolean> {
   if (!options.dryRun) debugWire(options, 'Wiring rtk → OMP (bash tool_call rewrite)…');
   if (options.dryRun) return true;
-  const wired = await runRtkInit(rtkBin, options);
+  const wired = await runRtkInitAgent(rtkBin, 'omp');
   if (!wired) return false;
   await ensureRtkInConfig(options);
   return true;
@@ -92,24 +92,52 @@ export async function ensureRtkInConfig(options: WiringOptions): Promise<void> {
   }
 }
 
-async function runRtkInit(rtkBin: string, options: WiringOptions): Promise<boolean> {
+async function runRtkInitAgent(rtkBin: string, agent: string): Promise<boolean> {
+  const args = ['init', '-g', '--agent', agent];
   try {
-    await execFileP(rtkBin, ['init', '-g', '--agent', 'omp'], 30000);
-    debugWire(options, 'rtk OMP extension wired');
+    await execFileP(rtkBin, args, 30000);
     return true;
   } catch (first) {
     // A freshly written binary can lose its first exec to macOS Gatekeeper
     // verification; give it one settle-and-retry before reporting failure.
     await new Promise((resolve) => setTimeout(resolve, 2000));
     try {
-      await execFileP(rtkBin, ['init', '-g', '--agent', 'omp'], 30000);
-      debugWire(options, 'rtk OMP extension wired');
+      await execFileP(rtkBin, args, 30000);
       return true;
     } catch (e) {
       void first;
-      console.log(`  [warn] could not wire rtk → OMP: ${shortWiringError(e)}`);
-      console.log('  [hint] Manual: rtk init -g --agent omp (needs rtk >= 0.49)');
+      console.log(`  [warn] could not wire rtk → ${agent}: ${shortWiringError(e)}`);
+      console.log(`  [hint] Manual: rtk init -g --agent ${agent} (needs rtk >= 0.49)`);
       return false;
     }
   }
+}
+
+// Pi loads ~/.pi/agent/extensions/*.ts through jiti and has no JSON hook file at
+// all, so the generic emitter cannot serve it: it would write a JSON object into
+// a .ts path, which fails to parse and silently disables rewriting. `rtk init`
+// writes the real extension, and the same file serves Pi and OMP.
+const PI_EXT_DIR = ['.pi', 'agent', 'extensions'];
+
+export async function wireRtkPi(rtkBin: string, options: WiringOptions = {}): Promise<boolean> {
+  if (!options.dryRun) debugWire(options, 'Wiring rtk → Pi (bash tool_call rewrite)…');
+  if (options.dryRun) return true;
+  const ext = path.join(homeDir(), ...PI_EXT_DIR, 'rtk.ts');
+  const wired = await runRtkInitAgent(rtkBin, 'pi');
+  if (!wired) return false;
+  // Nothing to wire when rtk did not write the file: report that rather than
+  // claiming success, so doctor stays honest about a failed rewrite.
+  if (!(await readTextIfExists(ext))) {
+    console.log(`  [warn] rtk init --agent pi did not write ${ext}`);
+    return false;
+  }
+  debugWire(options, 'rtk Pi extension wired');
+  return true;
+}
+
+// A Pi-only run installs no rtk binary of its own, so wire whatever rtk the
+// machine already has. PATH is searched before the managed dir, so a Homebrew
+// or custom install wires just as well as a tersio-managed one.
+export function findRtk(): string | null {
+  return resolveRtkBinary();
 }

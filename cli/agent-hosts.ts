@@ -52,8 +52,6 @@ export interface AgentHost {
   caveats?: string;
 }
 
-const HOME_REL = (p: string): string => p;
-
 /**
  * `omp` and `opencode` ship live extensions via their own wiring modules, so
  * they are listed for selection and detection but carry no emitter fields.
@@ -234,19 +232,14 @@ const HOSTS: AgentHost[] = [
     binary: 'pi',
     rules: true,
     skills: true,
+    // Pi has no JSON hook file: it loads ~/.pi/agent/extensions/*.ts through
+    // jiti, so the rewrite is a TypeScript module written by `rtk init`.
+    // Emitting a JSON config into a .ts path would not parse, which silently
+    // disables rewriting. cli/rtk-wiring.ts owns this host.
     rewrite: true,
     rulesFile: '.pi/agent/AGENTS.md',
     skillsDir: '.pi/agent/skills',
     caveats: 'AGENTS.override.md replaces rather than merges. Never write SYSTEM.md — it replaces the default system prompt outright.',
-    rewriteConfig: {
-      configFile: '.pi/agent/extensions/tersio-rtk.ts',
-      configFormat: 'claude-json',
-      event: 'tool_call',
-      matcher: 'bash',
-      inputPath: 'input.command',
-      protocol: 'hookSpecificOutput-updatedInput',
-      failClosed: false,
-    },
     source: 'https://pi.dev/docs/latest/extensions',
   },
   {
@@ -299,4 +292,4 @@ function byId(id: string): AgentHost | undefined {
   return HOSTS.find((h) => h.id === id);
 }
 
-export { HOSTS, byId, HOME_REL, OWN_PATH_HOSTS };
+export { HOSTS, byId, OWN_PATH_HOSTS };

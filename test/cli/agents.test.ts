@@ -60,6 +60,32 @@ test("--agent opencode installs only the OpenCode plugin, not the OMP modes", ()
   }
 });
 
+test("--agent pi writes a loadable Pi extension, not a JSON hook config", () => {
+  // Regression: pi was listed with a rewriteConfig pointing at a .ts path, so
+  // the generic emitter wrote a JSON object into ~/.pi/agent/extensions/rtk.ts.
+  // Pi loads that directory with jiti, so the file failed to parse and bash
+  // commands were never rewritten — while doctor still reported a hook.
+  const home = tempHome();
+  try {
+    seedHosts(home, ["omp"]);
+    const result = run(home, ["install", "--yes", "--agent", "pi"]);
+    expect(result.status, result.stderr).toBe(0);
+
+    const ext = path.join(home, ".pi", "agent", "extensions", "rtk.ts");
+    expect(existsSync(ext), "Pi must get an rtk extension").toBe(true);
+    const body = readFileSync(ext, "utf8");
+    // Pi's contract: a TypeScript module with a default export factory.
+    expect(body, "extension must export a default factory").toMatch(/export\s+default/);
+    expect(body.trimStart().startsWith("{"), "must not be a bare JSON object").toBe(false);
+
+    // And doctor must see a real module, not a marker string.
+    const doctor = run(home, ["doctor"]);
+    expect(doctor.stdout, doctor.stderr).toMatch(/Pi rtk extension: ok/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test("an unknown --agent is rejected with the full valid list", () => {
   const home = tempHome();
   try {

@@ -15,7 +15,7 @@ import { summarizeUsage } from './usage.ts';
 import { isCurrencyCode } from './currency.ts';
 import type { CurrencyCode } from './currency.ts';
 import {
-  OMP_AGENT_DIR, OMP_PLUGINS_DIR, PACKAGE_VERSION,
+  OMP_AGENT_DIR, OMP_PLUGINS_DIR, PACKAGE_VERSION, relTime, absDate,
 } from './common.ts';
 import { storedProfile, writePluginSettings } from './profile.ts';
 import { PACKAGE_NAME } from './common.ts';
@@ -168,7 +168,7 @@ function writeDiagReport(report: DoctorReport): void {
 
 function ageStr(p: string): string | null {
   try {
-    return relAge(Date.now() - statSync(p).mtimeMs);
+    return relTime(Date.now() - statSync(p).mtimeMs);
   } catch {
     return null;
   }
@@ -176,23 +176,10 @@ function ageStr(p: string): string | null {
 
 function absTime(p: string): string | null {
   try {
-    const d = new Date(statSync(p).mtimeMs);
-    const q = (n: number): string => String(n).padStart(2, '0');
-    const h24 = d.getHours();
-    return `${q(d.getMonth() + 1)}-${q(d.getDate())}-${d.getFullYear()}, ${q(h24 % 12 || 12)}:${q(d.getMinutes())} ${h24 >= 12 ? 'PM' : 'AM'}`;
+    return absDate(statSync(p).mtimeMs);
   } catch {
     return null;
   }
-}
-
-function relAge(ms: number): string {
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins} min${mins === 1 ? '' : 's'} ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
-  const days = Math.floor(hours / 24);
-  return `${days} day${days === 1 ? '' : 's'} ago`;
 }
 
 function computeDoctorRows(): DoctorRow[] {

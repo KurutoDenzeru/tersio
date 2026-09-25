@@ -22,7 +22,7 @@ import { runDoctor } from './doctor.ts';
 import { runReset } from './reset.ts';
 import { runUsage } from './usage.ts';
 import { runDashboard } from './dashboard.ts';
-import { wireRtkOmp } from './rtk-wiring.ts';
+import { findRtk, wireRtkOmp, wireRtkPi } from './rtk-wiring.ts';
 import { installOpenCodeRtk, openCodeAgentsPath, openCodePluginPath } from './opencode-wiring.ts';
 import { agentChoices, byId as hostById, detectedAgents, labelFor as hostLabel, storedAgents, writeAgents } from './agents.ts';
 import { installHost } from './host-writers.ts';
@@ -351,6 +351,26 @@ async function stepOpenCode(options: InstallOptions): Promise<void> {
   await installOpenCodeRtk(source, options);
 }
 
+// Pi loads its extensions from ~/.pi/agent/extensions as TypeScript modules, so
+// the rewrite comes from `rtk init --agent pi` rather than our JSON emitter.
+// Same file as OMP's, so this is one extra init call and nothing to own.
+async function stepPi(options: InstallOptions): Promise<void> {
+  if (!options.quiet) console.log('  Pi — rules pack, skills, rtk extension');
+  // A Pi-only run installs no rtk binary of its own, so wire whatever rtk the
+  // machine already has. PATH is checked before the managed dir, so a Homebrew
+  // or custom install wires just as well as a tersio-managed one.
+  const rtkBin = findRtk();
+  if (!rtkBin) {
+    if (!options.quiet) console.log('  [skip] no rtk binary — install rtk, then run: rtk init -g --agent pi');
+    return;
+  }
+  if (options.dryRun) {
+    if (options.verbose) console.log(`  [dry-run] would run: ${rtkBin} init -g --agent pi`);
+    return;
+  }
+  await wireRtkPi(rtkBin, options);
+}
+
 function labelFor(agent: AgentId): string {
   return hostLabel(agent);
 }
@@ -514,6 +534,24 @@ async function resolveProfile(forceReinstall = false, opts: { quiet?: boolean } 
   return profile;
 }
 
+// One owner for the "a newer version exists" prompt. Returns false when the
+// caller must stop: the user declined nothing and cancelled, so the process
+// has already exited, or the update ran and the fresh binary owns what follows.
+async function offerUpdate(newer: string): Promise<boolean> {
+  const answer = await askInteractiveConfirm(`tersio ${newer} is available (installed ${PACKAGE_VERSION}). Install it now?`);
+  if (answer.status === 'confirmed' && answer.value) {
+    await runLatestUpdate();
+    closeRL();
+    return false;
+  }
+  if (answer.status === 'cancelled') {
+    closeRL();
+    process.exit(130);
+  }
+  console.log(`\n  [update] staying on ${PACKAGE_VERSION} — run \`tersio update\` anytime`);
+  return true;
+}
+
 let updatePromptDone = false;
 
 // Bare `tersio` at a terminal is a command picker, not an install run:
@@ -522,19 +560,7 @@ let updatePromptDone = false;
 async function runCommandMenu(): Promise<void> {
   printWelcome();
   const newer = await checkForUpdate();
-  if (typeof newer === 'string' && !dryRun) {
-    const answer = await askInteractiveConfirm(`tersio ${newer} is available (installed ${PACKAGE_VERSION}). Install it now?`);
-    if (answer.status === 'confirmed' && answer.value) {
-      await runLatestUpdate();
-      closeRL();
-      return;
-    }
-    if (answer.status === 'cancelled') {
-      closeRL();
-      process.exit(130);
-    }
-    console.log(`\n  [update] staying on ${PACKAGE_VERSION} — run ` + '`tersio update`' + ` anytime`);
-  }
+  if (typeof newer === 'string' && !dryRun && !(await offerUpdate(newer))) return;
   updatePromptDone = true;
   const choice = await askInteractiveChoice('Tersio — what next?', [
     { value: 'install', label: 'Install', hint: 'pick coding agents, then install modes for them' },
@@ -630,17 +656,7 @@ async function runInstall(overrides: { reinstall?: boolean } = {}): Promise<void
       // burying the banner above the install prompts. Yes runs the full
       // update and stops here — the fresh binary owns what follows.
       if (command === null && !dryRun && !yes && !updatePromptDone) {
-        const answer = await askInteractiveConfirm(`tersio ${newer} is available (installed ${PACKAGE_VERSION}). Install it now?`);
-        if (answer.status === 'confirmed' && answer.value) {
-          await runLatestUpdate();
-          closeRL();
-          return;
-        }
-        if (answer.status === 'cancelled') {
-          closeRL();
-          process.exit(130);
-        }
-        console.log(`\n  [update] staying on ${PACKAGE_VERSION} — run \`tersio update\` anytime`);
+        if (!(await offerUpdate(newer))) return;
       } else {
         console.log(`\n  [update] tersio ${newer} available (installed ${PACKAGE_VERSION}) — run \`tersio update\``);
       }
@@ -702,7 +718,10 @@ async function runInstall(overrides: { reinstall?: boolean } = {}): Promise<void
     const host = hostById(id);
     if (!host) continue;
     await capture(host.label, async () => {
-      if (!quiet) console.log(`  ${host.label} — rules pack, skills${host.rewrite ? ', rtk hook' : ' (rtk guidance only)'}`);
+      // Pi's rewrite is a TypeScript extension from `rtk init`, not a hook
+      // config, so it is wired outside the generic emitter.
+      if (id === 'pi') await stepPi(options);
+      if (!quiet) console.log(`  ${host.label} — rules pack, skills${host.rewrite && id !== 'pi' ? ', rtk hook' : ''}`);
       const result = await installHost(host, { dryRun, verbose, quiet });
       if (!quiet && result.files.length === 0 && result.skipped.length === 0) {
         console.log(`  [skip] ${host.label} has no installable files`);

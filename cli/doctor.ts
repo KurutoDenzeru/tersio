@@ -4,7 +4,7 @@ import path from 'node:path';
 import {
   OMP_AGENT_DIR, OMP_PLUGINS_DIR,
   args, dryRun, fix, yes,
-  execP, parseJsonObject, relTime,
+  execP, parseJsonObject, relTime, absDate,
 } from './common.ts';
 import { askInteractiveChoice, askInteractiveConfirm, runInteractivePhase } from './interactive.ts';
 import { usageDbPath } from '../extensions/shared/usage-store.ts';
@@ -103,12 +103,6 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   // Categorized output with a tally; success rows stay quiet (no path echoes)
   // while failures print the expected path or fix so they stay actionable.
   const tally = { ok: 0, missing: 0, warn: 0 };
-  function absDate(ms: number): string {
-    const d = new Date(ms);
-    const q = (n: number): string => String(n).padStart(2, '0');
-    const h24 = d.getHours();
-    return `${q(d.getMonth() + 1)}-${q(d.getDate())}-${d.getFullYear()}, ${q(h24 % 12 || 12)}:${q(d.getMinutes())} ${h24 >= 12 ? 'PM' : 'AM'}`;
-  }
   function check(label: string, ok: boolean, detail = ''): void {
     if (ok) { tally.ok++; console.log(`  ✅ ${label}: ok${detail ? ` ${detail}` : ''}`); }
     else { tally.missing++; console.log(`  ❌ ${label}: MISSING${detail ? ` ${detail}` : ''}`); }
@@ -199,6 +193,16 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
     const hookText = await readTextIfExists(hookFile);
     if (hookText !== null && hookText.includes(HOOK_SCRIPT_NAME)) check(`${host.label} rtk hook`, true, hookFile);
     else warnLine(`${host.label} rtk hook`, 'not installed — run: tersio install');
+  }
+  // Pi has no hook config to inspect: its rewrite is a .ts extension written by
+  // `rtk init`, so check that file parses as a module instead of looking for a
+  // marker string that would never exist in it.
+  if (selectedHosts().includes('pi')) {
+    const piExt = hostPath(byId('pi')!, '.pi/agent/extensions/rtk.ts');
+    const piText = await readTextIfExists(piExt);
+    if (piText === null) warnLine('Pi rtk extension', 'not installed — run: tersio install');
+    else if (/export\s+default/.test(piText)) check('Pi rtk extension', true, piExt);
+    else warnLine('Pi rtk extension', 'not a Pi module — rerun: rtk init -g --agent pi');
   }
   const rtkRegistered = rtkOmpText !== null && (configText ?? '').includes('extensions/rtk.ts');
   check('RTK OMP wiring (rtk.ts)', rtkOmpText !== null, rtkOmpText === null ? 'run: rtk init -g --agent omp' : '');

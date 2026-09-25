@@ -123,7 +123,7 @@ The CLI is the installer for every host. `tersio install` asks which agents to i
 | GitHub Copilot CLI | `copilot-cli` | `copilot-instructions.md` | ✅ | ✅ |
 | Cursor | `cursor` | `rules/tersio.mdc` | ✅ | ✅ |
 | Grok Build | `grok-build` | `rules/tersio.md` | ✅ | ✅ |
-| Pi | `pi` | `AGENTS.md` | ✅ | ✅ |
+| Pi | `pi` | `AGENTS.md` | ✅ | ✅ (rtk-owned extension) |
 | OpenClaw | `openclaw` | `AGENTS.md` | ✅ | — guidance only |
 | Hermes | `hermes` | — (none global) | ✅ | ✅ |
 
@@ -163,6 +163,7 @@ Mode switches live on their own commands; bare `/tersio` prints status.
 | **Oh My Pi** — Ponytail | `~/.omp/plugins/node_modules/@dietrichgebert/ponytail/` — bundled dependency, updated with `tersio update` |
 | **OpenCode** — RTK plugin (tersio-owned) | `~/.config/opencode/plugins/tersio-rtk.ts` — auto-discovered, no config entry |
 | **OpenCode** — RTK guidance (tersio-owned) | `~/.config/opencode/AGENTS.md` — marked `tersio:rtk` block, fallback when the plugin is disabled |
+| **Pi** — RTK extension (rtk-owned) | `~/.pi/agent/extensions/rtk.ts` — written via `rtk init -g --agent pi`; auto-loads, no config entry |
 | **Other agents** — rules block | One marked `tersio` block in each host's own instruction file (see the matrix above) |
 | **Other agents** — skills | `tersio-caveman`, `tersio-ponytail`, `tersio-rtk` directories in each host's skills dir |
 | **Other agents** — RTK rewrite hook | `tersio-rtk-rewrite.mjs` plus one merged entry in each host's own hook config |
@@ -185,6 +186,8 @@ Removing with `tersio uninstall --remove-rtk` is non-destructive outside Oh My P
 **RTK commands not metered:** check the per-agent `rtk hook` row in `tersio doctor`. For Oh My Pi specifically, `rtk init -g --agent omp` (needs rtk ≥ 0.49) and a restart. RTK only rewrites shell commands — an agent's native file/search tools stay unmetered on every host, and a compound command such as `echo x && git status` has no single RTK equivalent, so it passes through unchanged.
 
 **OpenCode commands not rewritten:** OpenCode needs its own plugin, because `rtk init -g --opencode` still emits a file OpenCode refuses to load ([rtk#3463](https://github.com/rtk-ai/rtk/issues/3463), [rtk#3898](https://github.com/rtk-ai/rtk/issues/3898)). `tersio install` writes a compatible one instead. Set `TERSIO_RTK=off` to disable the hook.
+
+**Pi commands not rewritten:** Pi loads `~/.pi/agent/extensions` as TypeScript modules, so it cannot use a JSON hook file. `tersio install` runs `rtk init -g --agent pi` to write `~/.pi/agent/extensions/rtk.ts`. If that file is missing or is not a Pi module, `tersio doctor` says so; rerun `rtk init -g --agent pi` (needs rtk ≥ 0.49) and restart Pi.
 
 **An agent you did not select is missing from the install:** that is expected — only selected hosts are written. Change the selection with `tersio settings agents`.
 

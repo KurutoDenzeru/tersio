@@ -395,6 +395,14 @@ function relTime(ageMs: number): string {
   const weeks = Math.floor(days / 7);
   return `${weeks} week${weeks === 1 ? '' : 's'} ago`;
 }
+
+/** Absolute mtime stamp shared by doctor rows and the dashboard detail. */
+function absDate(ms: number): string {
+  const d = new Date(ms);
+  const q = (n: number): string => String(n).padStart(2, '0');
+  const h24 = d.getHours();
+  return `${q(d.getMonth() + 1)}-${q(d.getDate())}-${d.getFullYear()}, ${q(h24 % 12 || 12)}:${q(d.getMinutes())} ${h24 >= 12 ? 'PM' : 'AM'}`;
+}
 export {
   IS_WINDOWS, RTK_BINARY_NAME, HOME, OMP_AGENT_DIR, OMP_PLUGINS_DIR, BUN_BIN_DIR, OMP_BIN,
   PACKAGE_NAME, PACKAGE_BIN, PACKAGE_VERSION,
@@ -409,6 +417,6 @@ export {
   debug, execFileP, execP, writeIfChanged, normalizeExtensionsKey, EXTENSIONS_KEY_RE,
   writeConfigLines, ensureExtensionInConfig, removeExtensionFromConfig,
   readPonytailConfig, parseJsonObject, parsePonytailConfig, patchPonytailConfig,
-  ensurePonytailConfigValue, readPluginsPackage, relTime,
+  ensurePonytailConfigValue, readPluginsPackage, relTime, absDate,
   InstallOptions, PluginsPackage, PonytailConfig, ExecOptions, WriteOptions,
 };
