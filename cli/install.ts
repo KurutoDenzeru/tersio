@@ -537,8 +537,9 @@ async function runCommandMenu(): Promise<void> {
   }
   updatePromptDone = true;
   const choice = await askInteractiveChoice('Tersio — what next?', [
-    { value: 'install', label: 'Install / reinstall', hint: 'pick coding agents, then install modes for them' },
-    { value: 'doctor', label: 'Doctor', hint: 'verify the installation' },
+    { value: 'install', label: 'Install', hint: 'pick coding agents, then install modes for them' },
+    { value: 'reinstall', label: 'Reinstall', hint: 'wipe stale files first — doctor --fix does not remove leftovers' },
+    { value: 'doctor', label: 'Doctor', hint: 'verify, and --fix repair what is missing' },
     { value: 'usage', label: 'Usage', hint: 'token usage and savings report' },
     { value: 'dashboard', label: 'Dashboard', hint: 'open the report in your browser' },
     { value: 'reset', label: 'Reset statistics', hint: 'clear statistics; transcripts and RTK history stay' },
@@ -549,15 +550,13 @@ async function runCommandMenu(): Promise<void> {
     process.exit(130);
   }
   switch (choice.value) {
-    case 'install': {
-      // Install and reinstall differ only by a clean uninstall first. One entry
-      // with an explicit choice beats two near-identical rows the user has to
-      // tell apart; a plain install is the common case, so it is the default.
-      const go = await askInteractiveConfirm('Clean reinstall first? (removes current files, then reinstalls)', false);
-      if (go.status === 'cancelled') { closeRL(); process.exit(130); }
-      await runInstall(go.status === 'confirmed' && go.value ? { reinstall: true } : {});
+    case 'install':
+      await runInstall();
       break;
-    }
+    case 'reinstall':
+      await runInstall({ reinstall: true });
+      closeRL();
+      break;
     case 'doctor': {
       const summary = await runDoctor();
       if (!dryRun && summary.missing + summary.warn > 0) {

@@ -12,7 +12,7 @@
  - Agent menu hints now describe what each host actually gets (live extensions vs rules pack, rtk hook vs guidance) in a short form that fits an 80-column terminal, and mark hosts already present on the machine with a check.
  - The bare `tersio` menu no longer carries a separate **Coding agents** entry: agent selection now happens inside the install flow, so a second route to the same choice was redundant.
  - Uninstall now previews only the agents that actually have Tersio files on disk, and removes exactly those. It previously listed the whole stored selection — a host that was selected but never installed appeared in the consent prompt, and removal ran over hosts that had no files. Each candidate is now probed for its own artifacts, OpenCode's own marker and plugin file included, and each host is listed with what it actually has.
- - The bare `tersio` menu drops the separate **Reinstall** row. Install and reinstall differ only by a clean uninstall first, so they are now one **Install / reinstall** row plus a confirmation that defaults to No. Also removes the unreachable `update` switch case: the update offer is asked before the menu renders, so a declined update could never reach it.
+ - The bare `tersio` menu drops the unreachable `update` case: the update offer is asked before the menu renders, so a declined update could never reach it. **Install** and **Reinstall** stay separate rows, with hints saying which one clears stale files — `doctor --fix` restores what is missing but never deletes leftovers, so only a reinstall does that.
 
 ## v2.23.0
  - Improves RTK, Caveman, and Ponytail fidelity across OMP plugin loading, session state, fallback paths, and packaged extension ownership.
