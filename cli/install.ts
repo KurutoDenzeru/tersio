@@ -542,7 +542,6 @@ async function runCommandMenu(): Promise<void> {
   updatePromptDone = true;
   const choice = await askInteractiveChoice('Tersio — what next?', [
     { value: 'install', label: 'Install / reinstall', hint: 'pick coding agents, then install modes for them' },
-    { value: 'agents', label: 'Coding agents', hint: 'choose which agents Tersio installs into' },
     { value: 'reinstall', label: 'Reinstall', hint: 'clean and reinstall the add-ons, Ponytail package kept' },
     { value: 'doctor', label: 'Doctor', hint: 'verify the installation' },
     { value: 'usage', label: 'Usage', hint: 'token usage and savings report' },
@@ -558,21 +557,6 @@ async function runCommandMenu(): Promise<void> {
     case 'install':
       await runInstall();
       break;
-    case 'agents': {
-      const stored = storedAgents();
-      const seed = stored ?? detectedAgents();
-      const picked = await askInteractiveMultiChoice('Install for which coding agents?', agentChoices(), seed);
-      if (picked.status === 'cancelled') { closeRL(); process.exit(130); }
-      if (picked.status === 'selected') {
-        const chosen = picked.value as AgentId[];
-        await writeAgents(chosen);
-        console.log(`\n  Agents: ${chosen.length > 0 ? chosen.map(labelFor).join(', ') : 'none'}`);
-        const go = await askInteractiveConfirm('Run the install now?', true);
-        if (go.status === 'confirmed' && go.value) await runInstall();
-        else if (go.status === 'cancelled') { closeRL(); process.exit(130); }
-      }
-      break;
-    }
     case 'update': {
       // One bound flow: the version check already ran above, so report it
       // and offer the refresh in the same breath — no second "update" quiz.

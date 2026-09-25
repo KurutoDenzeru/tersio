@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -186,6 +186,102 @@ test("uninstall previews every selected agent, not just OMP and OpenCode", () =>
     expect(result.stdout).toMatch(/Claude Code/);
     // No version-specific OpenCode wording in user-facing output.
     expect(result.stdout).not.toMatch(/opencode v2/i);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+}, 300000);
+
+// The preview is the consent prompt, so it must name what is actually on disk.
+// The stored selection is a preference: a host can be selected and then fail
+// its write, and listing it as installed is noise that hides the hosts which
+// are really there.
+test("uninstall previews only the agents that actually have files", () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-uninstall-scope-"));
+  try {
+    mkdirSync(path.join(home, ".omp", "agent"), { recursive: true });
+    mkdirSync(path.join(home, ".tersio"), { recursive: true });
+    // Five selected, but only three are installed.
+    writeFileSync(
+      path.join(home, ".tersio", "agents.json"),
+      JSON.stringify({ agents: ["omp", "opencode", "cursor", "grok-build", "pi"] }),
+      "utf8",
+    );
+    const install = spawnSync(
+      process.execPath,
+      [installer, "install", "--yes", "--agent", "omp,opencode,cursor"],
+      { cwd: root, encoding: "utf8", timeout: 120000, env: { ...process.env, HOME: home, USERPROFILE: home } },
+    );
+    expect(install.status, install.stderr).toBe(0);
+
+    const result = run(home, "uninstall", "--yes", "--dry-run", "--remove-rtk");
+
+    expect(result.status, result.stderr).toBe(0);
+    // Installed hosts appear, with what they have.
+    expect(result.stdout).toMatch(/Cursor — rules, caveman skill/);
+    expect(result.stdout).toMatch(/opencode rtk plugin/);
+    // Selected but never installed hosts must not appear anywhere.
+    expect(result.stdout).not.toMatch(/Grok Build/);
+    expect(result.stdout).not.toMatch(/\bPi —/);
+    // No version-specific OpenCode wording in user-facing output.
+    expect(result.stdout).not.toMatch(/opencode v2/i);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+}, 300000);
+
+test("uninstall on a fresh home removes no agent files even when hosts are selected", () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-uninstall-fresh-"));
+  try {
+    mkdirSync(path.join(home, ".omp", "agent"), { recursive: true });
+    mkdirSync(path.join(home, ".tersio"), { recursive: true });
+    writeFileSync(
+      path.join(home, ".tersio", "agents.json"),
+      JSON.stringify({ agents: ["omp", "opencode", "cursor", "grok-build", "pi"] }),
+      "utf8",
+    );
+
+    const result = run(home, "uninstall", "--yes", "--dry-run", "--remove-rtk");
+
+    expect(result.status, result.stderr).toBe(0);
+    for (const label of ["Grok Build", "Cursor", "Pi"]) {
+      expect(result.stdout, label).not.toContain(`${label} —`);
+    }
+    expect(result.stdout).not.toMatch(/would remove .*\.config\/opencode/);
+    expect(result.stdout).not.toMatch(/would remove .*\.cursor\//);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+}, 300000);
+
+test("uninstall removes the previewed agents and keeps the user's own content", () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-uninstall-roundtrip-"));
+  try {
+    mkdirSync(path.join(home, ".omp", "agent"), { recursive: true });
+    const install = spawnSync(
+      process.execPath,
+      [installer, "install", "--yes", "--agent", "omp,opencode,cursor,claude-code"],
+      { cwd: root, encoding: "utf8", timeout: 120000, env: { ...process.env, HOME: home, USERPROFILE: home } },
+    );
+    expect(install.status, install.stderr).toBe(0);
+
+    const cursorRule = path.join(home, ".cursor", "rules", "tersio.mdc");
+    const claudeMd = path.join(home, ".claude", "CLAUDE.md");
+    appendFileSync(cursorRule, "\n## my own rule\n");
+    appendFileSync(claudeMd, "\n## mine\n");
+
+    const result = run(home, "uninstall", "--yes", "--remove-rtk");
+    expect(result.status, result.stderr).toBe(0);
+
+    // Everything Tersio wrote is gone.
+    expect(existsSync(path.join(home, ".cursor", "skills", "tersio-caveman"))).toBe(false);
+    expect(existsSync(path.join(home, ".cursor", "tersio-rtk-rewrite.mjs"))).toBe(false);
+    expect(existsSync(path.join(home, ".claude", "skills", "tersio-rtk"))).toBe(false);
+    expect(existsSync(path.join(home, ".config", "opencode", "plugins", "tersio-rtk.ts"))).toBe(false);
+    // The user's own content survives.
+    expect(readFileSync(cursorRule, "utf8")).toContain("my own rule");
+    expect(readFileSync(claudeMd, "utf8")).toContain("mine");
+    // The stored selection is cleared so a later install re-detects.
+    expect(existsSync(path.join(home, ".tersio", "agents.json"))).toBe(false);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

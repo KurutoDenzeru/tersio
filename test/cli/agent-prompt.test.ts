@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import { spawnSync } from "node:child_process";
 import type { SpawnSyncReturns } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -112,17 +112,25 @@ test("hints state the host's real capabilities", () => {
   expect(hostHint(hermes!)).toContain('skills');
 });
 
-test("the main menu offers a dedicated coding-agents entry", () => {
+test("--agent is documented in help", () => {
   const home = tempHome();
   try {
     mkdirSync(path.join(home, ".omp", "agent"), { recursive: true });
-    // The bare `tersio` menu is TTY-only, so assert on the help/command surface
-    // instead: the entry must exist in the source menu, which the install flow
-    // reaches without any other prompt.
     const result = run(home, ["help"]);
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toMatch(/--agent/);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }
+});
+
+
+test("the bare menu has no separate coding-agents entry", () => {
+  // Agent selection happens inside the install flow, so a second menu entry
+  // offering the same choice was redundant.
+  const source = readFileSync(path.join(root, "cli", "install.ts"), "utf8");
+  const menu = source.match(/askInteractiveChoice\('Tersio — what next\?', \[([\s\S]*?)\], 'install'\)/);
+  expect(menu, "the bare tersio menu must still exist").not.toBeNull();
+  expect(menu?.[1] ?? "", "no redundant coding-agents entry").not.toMatch(/value: 'agents'/);
+  expect(source, "no orphaned agents case in the menu switch").not.toMatch(/case 'agents'/);
 });

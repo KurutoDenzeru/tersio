@@ -9,9 +9,10 @@ import {
 } from './common.ts';
 import { ask, closeRL, tty } from './interactive.ts';
 import { openCodeAgentsPath, openCodePluginPath, removeOpenCodeRtk } from './opencode-wiring.ts';
-import { byId, clearAgents, selectedHosts } from './agents.ts';
-import { OWN_PATH_HOSTS } from './agent-hosts.ts';
-import { removeHost } from './host-writers.ts';
+import { byId, clearAgents, hostPath, selectedHosts } from './agents.ts';
+import type { AgentHost } from './agents.ts';
+import { HOOK_SCRIPT_NAME, removeHost } from './host-writers.ts';
+import { START as TERSIO_START } from './rules-pack.ts';
 import { readTextIfExists } from '../extensions/lib/utils.ts';
 
 interface UninstallOptions {
@@ -70,6 +71,54 @@ async function removeUninstallTarget(target: string, shouldDryRun: boolean, recu
   }
 }
 
+/**
+ * Hosts that actually have Tersio files on this machine, with what each has.
+ *
+ * The stored selection is a preference, not evidence: a host can be selected
+ * and then fail its write, or the selection can name a host that was never
+ * installed. Listing those is noise that hides the hosts which are really
+ * there, so each candidate is probed for its own artifacts.
+ */
+async function hostsWithTersioFiles(): Promise<Array<{ host: AgentHost; artifacts: string[] }>> {
+  const found: Array<{ host: AgentHost; artifacts: string[] }> = [];
+  for (const id of selectedHosts()) {
+    const host = byId(id);
+    if (!host) continue;
+    const artifacts: string[] = [];
+
+    if (host.id === 'opencode') {
+      // OpenCode's guidance block uses its own marker (cli/opencode-wiring.ts),
+      // not the generic rules marker, and its plugin is a plain file rather than
+      // a hook config, so probe both explicitly.
+      if (await readTextIfExists(openCodePluginPath()) !== null) artifacts.push('rtk plugin');
+      const agents = await readTextIfExists(openCodeAgentsPath());
+      if (agents !== null && agents.includes('tersio:rtk:start')) artifacts.push('guidance');
+      if (artifacts.length > 0) found.push({ host, artifacts });
+      continue;
+    }
+    // OMP's artifacts are the extension directories already listed above.
+    if (host.id === 'omp') continue;
+
+    if (host.rulesFile) {
+      const text = await readTextIfExists(hostPath(host, host.rulesFile));
+      if (text !== null && text.includes(TERSIO_START)) artifacts.push('rules');
+    }
+    if (host.skillsDir) {
+      for (const mode of ['caveman', 'ponytail', 'rtk'] as const) {
+        const skill = await readTextIfExists(hostPath(host, `${host.skillsDir}/tersio-${mode}/SKILL.md`));
+        if (skill !== null) artifacts.push(`${mode} skill`);
+      }
+    }
+    const cfg = host.rewriteConfig;
+    if (cfg) {
+      const hookText = await readTextIfExists(hostPath(host, cfg.configFile));
+      if (hookText !== null && hookText.includes(HOOK_SCRIPT_NAME)) artifacts.push('rtk hook');
+    }
+    if (artifacts.length > 0) found.push({ host, artifacts });
+  }
+  return found;
+}
+
 async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
   const shouldDryRun = options.dryRun ?? dryRun;
   const confirmed = (options.yes ?? yes) || shouldDryRun;
@@ -114,17 +163,19 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
     console.log(`  ${path.join(extDir, 'rtk.ts')} (rtk OMP wiring)`);
   }
 
-  // Every other selected agent contributes files too, and the user should see
-  // them in the preview before confirming: a list that silently omits nine
-  // hosts is not an informed consent prompt.
-  const agentHosts = selectedHosts()
-    .map((id) => byId(id))
-    .filter((h): h is NonNullable<typeof h> => h !== undefined && !OWN_PATH_HOSTS.includes(h.id));
+  // Show only the hosts that actually have Tersio files on disk, each with what
+  // it has. The stored selection is a preference, not evidence: a host can be
+  // selected and fail to write, and listing it as if it were installed is noise
+  // that hides the hosts which are really there.
+  const installedHosts = await hostsWithTersioFiles();
   if (shouldRemoveRtk) {
-    console.log(`  ${openCodePluginPath()} (opencode rtk plugin)`);
-    console.log(`  ${openCodeAgentsPath()} (opencode rtk guidance block)`);
-    for (const host of agentHosts) {
-      console.log(`  ${host.label} — rules, skills, and rtk hook`);
+    if (installedHosts.some((h) => h.host.id === 'opencode')) {
+      console.log(`  ${openCodePluginPath()} (opencode rtk plugin)`);
+      console.log(`  ${openCodeAgentsPath()} (opencode rtk guidance block)`);
+    }
+    for (const { host, artifacts } of installedHosts) {
+      if (host.id === 'opencode' || host.id === 'omp') continue;
+      console.log(`  ${host.label} — ${artifacts.join(', ')}`);
     }
   }
 
@@ -216,20 +267,20 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
     await removeUninstallTarget(path.join(extDir, 'rtk.ts'), shouldDryRun);
   }
 
-  // OpenCode's plugin is ours, not rtk's, so it goes with --remove-rtk for
-  // the same reason ~/.omp/agent/extensions/rtk.ts does: with the binary gone
-  // the hook would pass through harmlessly, but the file is ours to clean up.
+  // Only the hosts the preview listed are actually removed. Running removal
+  // over the whole stored selection would touch a host the user never got
+  // files for, and would report removals the preview never promised.
   if (shouldRemoveRtk) {
-    await removeOpenCodeRtk({ dryRun: shouldDryRun, quiet: true });
-  }
-
-  // Hosts outside OMP/OpenCode: strip our rules block, drop our skills, and
-  // prune our hook from the host's config. Gated on --remove-rtk because the
-  // rewriter is only meaningful while the rtk binary is installed.
-  if (shouldRemoveRtk) {
-    for (const id of selectedHosts()) {
-      const host = byId(id);
-      if (!host || id === 'omp' || id === 'opencode') continue;
+    if (installedHosts.some((h) => h.host.id === 'opencode')) {
+      // OpenCode's plugin is ours, not rtk's, so it goes with --remove-rtk for
+      // the same reason ~/.omp/agent/extensions/rtk.ts does: with the binary
+      // gone the hook would pass through harmlessly, but the file is ours.
+      await removeOpenCodeRtk({ dryRun: shouldDryRun, quiet: true });
+    }
+    for (const { host } of installedHosts) {
+      if (host.id === 'omp' || host.id === 'opencode') continue;
+      // Strip our rules block, drop our skills, and prune our hook from the
+      // host's config, leaving everything else the user put there.
       await removeHost(host, { dryRun: shouldDryRun, quiet: true });
     }
     await clearAgents();
