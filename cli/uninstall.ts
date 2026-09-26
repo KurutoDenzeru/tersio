@@ -11,6 +11,7 @@ import {
 import { ask, closeRL, tty } from './interactive.ts';
 import { readTextIfExists } from '../extensions/lib/utils.ts';
 import { detectHosts, readSelection, removeHosts, resolveSelection } from './agents.ts';
+import { removeOpenCodeRtk } from './opencode-wiring.ts';
 
 interface UninstallOptions {
   yes?: boolean;
@@ -224,6 +225,11 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
       }
     }
     for (const e of errors) console.log(`  [fail] ${e.host}: ${e.error}`);
+
+    // OpenCode's rewrite lives in a plugin the generic emitters cannot remove.
+    if (extra.includes('opencode')) {
+      await removeOpenCodeRtk(home, { dryRun: shouldDryRun, quiet: false });
+    }
   }
 
   console.log('\nDone. Restart OMP for changes to take effect.');

@@ -25,6 +25,7 @@ import { runReset } from './reset.ts';
 import { runUsage } from './usage.ts';
 import { runDashboard } from './dashboard.ts';
 import { wireRtkOmp, wireRtkAgent, rtkAgentFor } from './rtk-wiring.ts';
+import { installOpenCodeRtk } from './opencode-wiring.ts';
 import {
   CAVEMAN_REMOTE_RULE, RTK_RELEASE_API, RtkRelease, RtkReleaseAsset, fetchJson, findFile, httpsGet,
   httpsDownload, parseChecksum, readTextIfExists, resolveRtkBinary, rtkPlatformSpec, sha256File,
@@ -49,6 +50,12 @@ const SHARED_PLUGIN_SETTINGS = path.join(EXT_DIR, 'shared', 'plugin-settings.ts'
 const SHARED_USAGE_LEDGER = path.join(EXT_DIR, 'shared', 'usage-ledger.ts');
 const SHARED_PRICING = path.join(EXT_DIR, 'shared', 'pricing.ts');
 const SHARED_CARBON = path.join(EXT_DIR, 'shared', 'carbon.ts');
+/**
+ * OpenCode's plugin, read from the extension source rather than imported: it
+ * is a self-contained ESM file with no build step, and it is written verbatim
+ * into the user's config dir where there is no node_modules to import from.
+ */
+const OPENCODE_PLUGIN_SOURCE = path.join(EXT_DIR, 'opencode', 'rtk-plugin.ts');
 
 async function stepPonytail(pluginsDir: string, options: InstallOptions): Promise<void> {
   if (!options.quiet) console.log('  Ponytail — ensure bundled plugin');
@@ -466,6 +473,15 @@ async function stepAgentHosts(options: InstallOptions): Promise<void> {
     if (wired && !options.dryRun && !options.quiet) {
       console.log(`  [ok] ${id}: rtk ${agent} extension wired`);
     }
+  }
+
+  // OpenCode needs a plugin rather than a static hook, and rtk's own plugin is
+  // in a format current OpenCode rejects, so tersio writes its own.
+  if (extra.includes('opencode')) {
+    await installOpenCodeRtk(home, OPENCODE_PLUGIN_SOURCE, {
+      dryRun: options.dryRun,
+      quiet: options.quiet,
+    });
   }
 
   if (!options.dryRun) writeSelection(home, selection.ids);

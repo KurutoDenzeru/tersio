@@ -312,10 +312,11 @@ test("a host with a real hook gets the automatic-rewrite wording", () => {
 // --- skills ----------------------------------------------------------------
 
 test("each skills host gets three skills whose name matches the directory", () => {
+  const noGenericSkills = new Set(["omp", "opencode"]);
   for (const host of HOSTS) {
     const skills = planHost(host, HOME).artifacts.filter((a) => a.kind === "skill");
-    // An own-path host gets its skills from a wiring module, not these emitters.
-    if (!host.skills || isOwnPath(host)) {
+    // omp gets skills from its own plugin; opencode documents none globally.
+    if (!host.skills || isOwnPath(host) || noGenericSkills.has(host.id)) {
       expect(skills, `${host.id} should get no generic skills`).toHaveLength(0);
       continue;
     }
@@ -425,7 +426,7 @@ test("a host with no documented rewrite gets no hook file at all", () => {
 });
 
 test("a live-extension host gets no static hook, only its rules and skills", () => {
-  for (const id of ["omp", "pi"]) {
+  for (const id of ["omp", "opencode", "pi"]) {
     const plan = planHost(HOSTS.find((h) => h.id === id)!, HOME);
     expect(plan.liveExtension, `${id} should be a live-extension host`).toBe(true);
     expect(plan.rewriteInstalled, `${id} must not get a static hook`).toBe(false);
@@ -438,7 +439,7 @@ test("a host whose rewrite is pending gets guidance, not a promise of automation
   // ships no rewrite for them yet. Their rules and skills must therefore say
   // "do it by hand", because a user who reads "filters output before the model
   // reads it" would reasonably expect it to be happening.
-  for (const id of ["opencode", "command-code"]) {
+  for (const id of ["command-code"]) {
     const plan = planHost(HOSTS.find((h) => h.id === id)!, HOME);
     expect(plan.liveExtension, id).toBe(false);
     expect(plan.guidanceOnly, `${id} should be guidance-only until wired`).toBe(true);
@@ -450,12 +451,15 @@ test("a host whose rewrite is pending gets guidance, not a promise of automation
     }
   }
 
-  // opencode is also pending, but it is an own-path host: it gets no generic
-  // artifacts at all, so this assertion guards against a vacuous pass rather
-  // than checking wording that is not there.
+  // opencode gets its rewrite from a real plugin, so its rules carry the
+  // auto-rewrite wording rather than the manual fallback.
   const opencode = planHost(HOSTS.find((h) => h.id === "opencode")!, HOME);
-  expect(opencode.guidanceOnly).toBe(true);
-  expect(opencode.artifacts, "own-path host should write nothing generically").toEqual([]);
+  expect(opencode.liveExtension).toBe(true);
+  expect(opencode.rewriteInstalled).toBe(false);
+  const rules = opencode.artifacts.find((a) => a.kind === "rules");
+  expect(rules, "opencode should get a global AGENTS.md block").toBeDefined();
+  expect(rules!.absPath.endsWith(path.join(".config", "opencode", "AGENTS.md"))).toBe(true);
+  expect(rules!.content).toContain("filters output before the model reads it");
 });
 
 test("every planned artifact has an absolute path", () => {

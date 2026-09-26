@@ -111,14 +111,17 @@ const HOSTS: AgentHost[] = [
     configDir: '.config/opencode',
     binaries: ['opencode'],
     // Same as omp: OpenCode gets a real plugin from cli/opencode-wiring.ts,
-    // because its documented hook API cannot rewrite a tool input.
+    // because its documented hook surface cannot rewrite a tool input.
     rules: true,
     skills: true,
     rewrite: true,
-    rulesFile: null,
+    // V2 reads a global AGENTS.md from the config dir. No global skills
+    // location is documented -- `.opencode/skills/` is project-scoped -- so the
+    // skills flag stays true while the path stays null.
+    rulesFile: '.config/opencode/AGENTS.md',
     skillsDir: null,
-    caveats: 'Current OpenCode discovers only AGENTS.md; the CLAUDE.md and ~/.claude/skills fallbacks are gone. rtk init still emits a pre-v2 plugin that current OpenCode rejects (rtk-ai/rtk#3463), so tersio must ship its own — not wired yet, so RTK is guidance only here.',
-    rewriteOwner: 'pending',
+    caveats: 'Current OpenCode discovers only AGENTS.md; the CLAUDE.md and ~/.claude/skills fallbacks are gone. rtk init still emits a pre-v2 plugin that current OpenCode refuses to load (rtk-ai/rtk#3463), so tersio ships its own plugin via cli/opencode-wiring.ts. Set TERSIO_RTK=off to disable the rewrite.',
+    rewriteOwner: 'plugin',
     source: 'https://opencode.ai/docs/rules',
   },
   {

@@ -27,10 +27,15 @@ test("every host is fully populated", () => {
   }
 });
 
+// Hosts with no global skills location, so the generic emitters write none for
+// them. omp is own-path (its plugin owns its skills); opencode documents skills
+// only at project scope (`.opencode/skills/`), with no global directory.
+const NO_GENERIC_SKILLS = new Set(["omp", "opencode"]);
+
 test("rules and skills flags agree with the paths they claim", () => {
   for (const host of HOSTS) {
-    // An own-path host (omp, opencode) legitimately leaves both null: a wiring
-    // module writes its instruction file and skills. Anywhere else, a null path
+    // An own-path host (omp) legitimately leaves both null: a wiring module
+    // writes its instruction file and skills. Anywhere else, a null path
     // beside a true flag is a half-filled entry.
     const own = isOwnPath(host);
     if (own) {
@@ -42,7 +47,7 @@ test("rules and skills flags agree with the paths they claim", () => {
     } else if (!host.rules) {
       expect(host.rulesFile, `${host.id} has no rules but names a rulesFile`).toBeNull();
     }
-    if (host.skills && !own) {
+    if (host.skills && !own && !NO_GENERIC_SKILLS.has(host.id)) {
       expect(host.skillsDir, `${host.id} claims skills but has no skillsDir`).toBeTruthy();
     } else if (!host.skills) {
       expect(host.skillsDir, `${host.id} has no skills but names a skillsDir`).toBeNull();
@@ -72,9 +77,19 @@ test("a rewrite-capable host either has a hook config or names its owner", () =>
   }
 });
 
-test("the wired live-extension hosts are omp and pi, both via rtk", () => {
+test("the wired live-extension hosts are omp, opencode, and pi", () => {
   const owned = HOSTS.filter(isLiveExtension).map((h) => `${h.id}:${h.rewriteOwner}`).toSorted();
-  expect(owned).toEqual(["omp:wiring", "pi:wiring"]);
+  expect(owned).toEqual(["omp:wiring", "opencode:plugin", "pi:wiring"]);
+});
+
+test("opencode ships its own plugin, because rtk's is a pre-v2 shape", () => {
+  const opencode = byId("opencode");
+  expect(opencode?.rewrite).toBe(true);
+  expect(opencode?.rewriteOwner).toBe("plugin");
+  expect(isLiveExtension(opencode!)).toBe(true);
+  // V2 reads a global AGENTS.md from the config dir.
+  expect(opencode?.rulesFile).toBe(".config/opencode/AGENTS.md");
+  expect(opencode?.caveats).toMatch(/rtk-ai\/rtk#3463/);
 });
 
 test("agy is guidance-only, and so is command-code until its mod exists", () => {
@@ -95,18 +110,11 @@ test("agy is guidance-only, and so is command-code until its mod exists", () => 
   expect(cmd?.caveats).toMatch(/not written yet/);
 });
 
-test("opencode is pending too, because its plugin module is not on this branch", () => {
-  const opencode = byId("opencode");
-  expect(opencode?.rewrite).toBe(true);
-  expect(opencode?.rewriteOwner).toBe("pending");
-  expect(isLiveExtension(opencode!)).toBe(false);
-});
-
-test("the hosts that get no working auto-rewrite are the two without a surface plus the two pending", () => {
+test("the hosts that get no working auto-rewrite are the two without a surface plus the one pending", () => {
   const guidance = HOSTS.filter(isGuidanceOnly).map((h) => h.id).toSorted();
-  // openclaw and agy have no documented rewrite surface at all; opencode and
-  // command-code do, but tersio does not ship it yet.
-  expect(guidance).toEqual(["agy", "command-code", "openclaw", "opencode"]);
+  // openclaw and agy have no documented rewrite surface at all; command-code
+  // could, but its mod is not written yet.
+  expect(guidance).toEqual(["agy", "command-code", "openclaw"]);
 });
 
 test("every host ships a working rewrite or says plainly that it does not", () => {
