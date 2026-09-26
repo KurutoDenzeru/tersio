@@ -104,6 +104,13 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
       : undefined,
   });
   const extra = selection.ids.filter((id) => id !== 'omp');
+  // List what the selected agents will lose, so the confirm covers them. Only
+  // files that are actually on disk are named; a stale plan would make the
+  // preview overstate what happens.
+  const agentPaths: string[] = [];
+  for (const row of reportHosts(extra, home)) {
+    agentPaths.push(...row.present);
+  }
 
   const extDir = path.join(OMP_AGENT_DIR, 'extensions');
   const configPath = path.join(OMP_AGENT_DIR, 'config.yml');
@@ -125,7 +132,7 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
     'aaa-combo-boot',
   ].map((dir) => path.join(extDir, dir));
 
-  console.log('Will remove:');
+  console.log('Will remove — Oh My Pi extensions:');
   for (const t of targets) {
     console.log(`  ${t}`);
   }
@@ -139,16 +146,34 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
     console.log(`  ${path.join(extDir, 'rtk.ts')} (rtk OMP wiring)`);
   }
 
-  // List what the selected agents will lose, so the confirm covers them. Only
-  // files that are actually on disk are named; a stale plan would make the
-  // preview overstate what happens.
-  const agentPaths: string[] = [];
-  for (const row of reportHosts(extra, home)) {
-    agentPaths.push(...row.present);
-  }
+  // The agent paths and the Oh My Pi layer are separate decisions. Printing
+  // them as one wall made it look like a single action, and the Oh My Pi layer
+  // was removed without ever being asked about.
   if (agentPaths.length > 0) {
-    console.log(`  ${selection.ids.filter((id) => id !== 'omp').join(', ')} (agent hosts):`);
-    for (const p of agentPaths) console.log(`    ${p}`);
+    console.log(`\nWill remove — from ${selection.ids.filter((id) => id !== 'omp').join(', ')}:`);
+    for (const p of agentPaths) console.log(`  ${p}`);
+  }
+
+  // Ask about the Oh My Pi layer explicitly. Dropping the agent files while
+  // leaving the plugin installed is a legitimate outcome, and it used to be
+  // unreachable because the layer was removed unconditionally.
+  let removeOmpLayer = true;
+  if (!confirmed && tty()) {
+    closeRL();
+    const answer = await clackConfirm({
+      message: 'Also remove the Oh My Pi extension layer and Ponytail?',
+      initialValue: true,
+    });
+    if (typeof answer !== 'boolean') {
+      clackCancel('Aborted.');
+      closeRL();
+      return false;
+    }
+    removeOmpLayer = answer;
+  }
+
+  if (!removeOmpLayer) {
+    console.log('\nKeeping the Oh My Pi extension layer. Re-run with --yes to remove it.');
   }
 
   if (!confirmed) {

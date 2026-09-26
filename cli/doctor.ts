@@ -110,6 +110,39 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
     console.log(`  ⚠️ ${label}: warn ${detail}`);
   }
 
+  // Agent hosts lead the report: they are what the product is for, and the OMP
+  // sections below are supporting detail for one host of several. Always
+  // printed, so a user who has not configured any yet is told how, instead of
+  // the section silently not existing. Each row reports the rewrite path the
+  // host actually got, because "wired" and "wired to a hook the host ignores"
+  // look identical from the outside.
+  const home = os.homedir();
+  // No `ask`: doctor reports, it never prompts, but it shares the same
+  // resolution so it cannot describe a different host set than install acts on.
+  const selection = await resolveAgentSelection({
+    flag: agentFlag,
+    stored: readSelection(home).hosts,
+    detected: detectHosts(home),
+  });
+  const otherHosts = selection.ids.filter((id) => id !== 'omp');
+  section('Agent hosts');
+  if (otherHosts.length === 0) {
+    // Derived from the registry so dropping a host cannot leave a stale id
+    // advertised here.
+    console.log('  ℹ️  none configured — `tersio install --agent <id>` adds one');
+    console.log(`      known ids: ${HOSTS.map((h) => h.id).join(', ')}`);
+  } else {
+    for (const row of reportHosts(otherHosts, home)) {
+      const label = row.host.label;
+      if (row.status === 'warn') {
+        const first = row.missing[0] ? ` (${row.missing[0]})` : '';
+        warnLine(label, `${row.missing.length} file(s) missing${first} — run: tersio install --agent ${row.host.id}`);
+      } else {
+        check(label, true, row.detail.replace(`${label}: `, ''));
+      }
+    }
+  }
+
   section('Environment');
   check('Node', true, process.version);
 
@@ -150,39 +183,6 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   const ponytailAge = ponytailMtime ? `(updated ${relTime(Date.now() - ponytailMtime.mtimeMs)} · ${absDate(ponytailMtime.mtimeMs)})` : '';
   const ponytailVer = parseJsonObject<{ version?: string }>(ponytailPkgText)?.version ?? '';
   check('Ponytail', ponytailPkgText !== null, [ponytailVer, ponytailAge].filter(Boolean).join(' '));
-
-  // Agent hosts — a category of its own, because they are installed by the
-  // generic emitters rather than by the OMP path above. Always printed, so a
-  // user who has not configured any yet is told how, instead of the section
-  // silently not existing. Each row reports the rewrite path the host actually
-  // got, because "wired" and "wired to a hook the host ignores" look identical
-  // from the outside.
-  const home = os.homedir();
-  // No `ask`: doctor reports, it never prompts, but it shares the same
-  // resolution so it cannot describe a different host set than install acts on.
-  const selection = await resolveAgentSelection({
-    flag: agentFlag,
-    stored: readSelection(home).hosts,
-    detected: detectHosts(home),
-  });
-  const otherHosts = selection.ids.filter((id) => id !== 'omp');
-  section('Agent hosts');
-  if (otherHosts.length === 0) {
-    // Derived from the registry so dropping a host cannot leave a stale id
-    // advertised here.
-    console.log('  ℹ️  none configured — `tersio install --agent <id>` adds one');
-    console.log(`      known ids: ${HOSTS.map((h) => h.id).join(', ')}`);
-  } else {
-    for (const row of reportHosts(otherHosts, home)) {
-      const label = row.host.label;
-      if (row.status === 'warn') {
-        const first = row.missing[0] ? ` (${row.missing[0]})` : '';
-        warnLine(label, `${row.missing.length} file(s) missing${first} — run: tersio install --agent ${row.host.id}`);
-      } else {
-        check(label, true, row.detail.replace(`${label}: `, ''));
-      }
-    }
-  }
 
   const total = tally.ok + tally.missing + tally.warn;
   console.log(`\n  Summary: ${total} checks — ✅ ${tally.ok} ok, ⚠️ ${tally.warn} warn, ❌ ${tally.missing} missing`);

@@ -468,15 +468,14 @@ async function stepAgentHosts(options: InstallOptions): Promise<void> {
 
   const extra = selection.ids.filter((id) => id !== 'omp');
   if (extra.length === 0) {
-    if (interactive && !options.quiet) console.log('  no additional agents selected — nothing to install for them');
+    if (interactive && !options.quiet) console.log('  no coding agents selected');
     if (!options.dryRun && selection.ids.length > 0) writeSelection(home, selection.ids);
     return;
   }
 
   if (!options.quiet) {
     const names = extra.map((id) => HOSTS.find((h) => h.id === id)?.label ?? id).join(', ');
-    console.log(`\n=== Agent hosts (${extra.length}) ===`);
-    console.log(`  ${names}`);
+    console.log(`\n  Coding agents — ${names}`);
   }
 
   const { results, errors } = await applyHosts(extra, home, {
@@ -748,6 +747,13 @@ async function runInstall(overrides: { reinstall?: boolean } = {}): Promise<void
       console.log(`  [fail] ${label}: ${shortError(e)}`);
     }
   };
+  // Coding agents first, so the multiselect is the first thing a user sees and
+  // the output leads with what the product is actually for. The Oh My Pi
+  // extension layer follows as its own section rather than framing the run.
+  await capture('agent hosts', () => stepAgentHosts(options));
+
+  if (!quiet) console.log('\n  Oh My Pi — live commands and extensions');
+
   await capture('shared', () => stepSharedSessionState(userExtDir, options));
   let selfPlugin = false;
   await capture('self-plugin', async () => { selfPlugin = await stepSelfPlugin(OMP_PLUGINS_DIR, options); });
@@ -759,12 +765,12 @@ async function runInstall(overrides: { reinstall?: boolean } = {}): Promise<void
   await capture('commands', () => stepTersioCommands(userExtDir, options));
   await capture('updater', () => stepUpdater(userExtDir, options));
   if (selfPlugin) await capture('settings', () => writePluginSettings(profile, options));
-  await capture('agent hosts', () => stepAgentHosts(options));
 
   if (quiet) {
     if (failures.length > 0) console.log(`  add-ons: ${failures.length} failed (${failures.join(', ')}) — see [fail] lines above`);
   } else {
-    console.log(failures.length === 0 ? '\nDone — restart OMP, then /combo medium.' : `\nDone with ${failures.length} failure(s) — see [fail] lines above.`);
+    // Not OMP-specific: the run may have installed nothing but coding agents.
+    console.log(failures.length === 0 ? '\nDone — restart your agents to pick up the changes.' : `\nDone with ${failures.length} failure(s) — see [fail] lines above.`);
   }
 
   closeRL();
