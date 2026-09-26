@@ -16,7 +16,7 @@ Tersio installs three coding modes into whichever agents you already use — **t
 | **Ponytail** | Minimal code: root causes, standard library, YAGNI, no speculative abstractions |
 | **RTK** | Runs noisy shell commands through the [rtk](https://github.com/rtk-ai/rtk) binary, which filters the output before the model reads it |
 
-[Oh My Pi (OMP)](https://github.com/can1357/oh-my-pi) is the reference host, and the only one whose extension API can change state mid-session — so it gets live mode switching, the Combo bar, and subagent inheritance on top of the same three modes every other host gets.
+Tersio is one CLI for every supported agent. The install writes into each agent's own config directory and never a shared one, so you can pick any combination, change it later, or add an agent without reinstalling the others.
 
 ## ⚡ Getting Started
 
@@ -57,27 +57,12 @@ The selection is saved to `~/.tersio/agents.json` and reused by every later inst
 
 Two notes on the Google rows: `agy` keeps its global rules at `~/.gemini/GEMINI.md` but moved its workspace skills to `.agents/skills/`, and Gemini CLI itself is sunset for free, Pro, and Ultra accounts — `agy` is its successor.
 
-Oh My Pi users can install as a plugin instead, which lets OMP manage updates:
+Run `tersio install` again at any point to change the selection. It asks which agents to set up, so there is one install path for all twelve — nothing is scoped to a single agent's plugin system.
 
 ```bash
-omp plugin install @krtclcdy/tersio
+tersio install                      # prompt for the agents
+tersio install --agent claude-code  # or name them
 ```
-
-All modes load always. Only the updater stays toggleable:
-
-```bash
-omp plugin features @krtclcdy/tersio --disable updater
-```
-
-Then restart OMP and enable a preset:
-
-```text
-/combo balanced
-```
-
-Individual toggles: `/caveman full` · `/rtk on` · `/ponytail full`. Everything starts off until you enable it.
-
-When Tersio is installed through OMP, the first interactive launch asks for a session-start Combo preset once (`off`, `medium`, `balanced`, or `max`) and saves it as `comboDefault`. Running `tersio install` performs the same setup through the CLI.
 
 Session-start defaults (prompted during `install`, or flags):
 
@@ -85,7 +70,7 @@ Session-start defaults (prompted during `install`, or flags):
 tersio install --combo-default balanced --caveman-default lite --rtk-default on
 ```
 
-Defaults apply to fresh sessions only — anything persisted with `/combo`, `/caveman`, or `/rtk` wins. Stored as plugin settings (`omp plugin config get @krtclcdy/tersio comboDefault`).
+Defaults apply to fresh sessions only. Anything persisted with a live command wins, where the host has one.
 
 One-off use without installing:
 
@@ -102,7 +87,7 @@ Windows/WSL have separate home directories — install from the environment wher
 
 ## 📊 Benchmarks
 
-Measured on Oh My Pi, the reference host. Every mode is measured against a base run with all modes off. Measured surfaces use different boundaries. Do not treat reply-text, code-output, and shell-output reductions as total bill savings. Full protocol and caveats are in [BENCHMARK.md](./BENCHMARK.md).
+Measured on Oh My Pi, the host with the most instrumentation available. Every mode is measured against a base run with all modes off. Measured surfaces use different boundaries. Do not treat reply-text, code-output, and shell-output reductions as total bill savings. Full protocol and caveats are in [BENCHMARK.md](./BENCHMARK.md).
 
 | Mode | Surface (n) | Base → Tersio | Δ |
 |---|---|---|---|

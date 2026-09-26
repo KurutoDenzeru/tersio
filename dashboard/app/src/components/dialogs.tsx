@@ -66,13 +66,14 @@ function HealthPane() {
   const unavailable = health === null;
   const status = unavailable ? "Unavailable" : ready ? "Available" : "Not detected on PATH";
   const path = health?.ompPath;
+  const agents = health?.agents ?? [];
 
   return (
     <div>
       <div className="flex items-start justify-between gap-3 border-b border-line pb-4">
         <div className="min-w-0">
           <p className="m-0 text-[13px] font-semibold">Coding agents</p>
-          <p className="mt-0.5 mb-0 text-xs text-dim">Manage AI agent CLIs installed on this computer.</p>
+          <p className="mt-0.5 mb-0 text-xs text-dim">Manage the AI agent CLIs tersio is set up for.</p>
         </div>
         <Button type="button" variant="outline" size="sm" onClick={load} disabled={refreshing} aria-label="Refresh coding agent status">
           {refreshing ? <Spinner /> : <Icon name="refresh-cw" />}
@@ -127,6 +128,50 @@ function HealthPane() {
         </a>
       )}
       {checkedAt && <p className="mt-3 text-xs text-dim" role="status">Checked just now</p>}
+      {agents.length > 0 && (
+        <div className="mt-5 border-t border-line pt-4">
+          <p className="m-0 text-[13px] font-semibold">Connected agents</p>
+          <p className="mt-0.5 mb-0 text-xs text-dim">
+            Every agent tersio supports. Selected means tersio installs for it; the wiring column is what it
+            actually gets.
+          </p>
+          <ul className="mt-3 grid gap-1.5">
+            {agents.map((a) => (
+              <li
+                key={a.id}
+                className="flex min-w-0 items-center gap-3 rounded-lg border border-line px-3 py-2"
+              >
+                <span
+                  className={`size-1.5 shrink-0 rounded-full ${
+                    a.configured ? "bg-accent" : a.selected ? "bg-warn" : "bg-track"
+                  }`}
+                  aria-hidden
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+                    <span className="text-[13px] font-medium">{a.label}</span>
+                    <span className="mono text-[11px] text-dim">{a.id}</span>
+                  </div>
+                  <p className="mt-0.5 mb-0 truncate text-[11px] text-dim">
+                    {a.wiring}
+                    {a.selected && a.missing > 0 ? ` · ${a.missing} file(s) missing` : ""}
+                    {a.selected && a.missing === 0 ? " · up to date" : ""}
+                  </p>
+                </div>
+                <Badge
+                  variant={a.configured ? "secondary" : a.selected ? "destructive" : "outline"}
+                  className="ml-auto shrink-0"
+                >
+                  {a.configured ? "Configured" : a.selected ? "Incomplete" : "Not selected"}
+                </Badge>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-3 text-[11px] text-dim">
+            Change the selection with <span className="mono">tersio install</span>.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
@@ -592,6 +637,14 @@ function streakOf(byDay: UsageReport["byDay"]): number {
   return n;
 }
 
+// Share targets. These are fixed, first-party hosts, never user input: only
+// the share text is interpolated, and it is percent-encoded into a query
+// parameter. Hoisted so the destination is a named constant rather than a URL
+// assembled inline at the call site.
+const SHARE_X = "https://x.com/intent/post";
+const SHARE_REDDIT = "https://www.reddit.com/submit";
+const SHARE_LINKEDIN = "https://www.linkedin.com/feed/";
+
 export function ShareDialog({
   open,
   onClose,
@@ -903,7 +956,7 @@ export function ShareDialog({
                 className="inline-flex cursor-pointer items-center gap-1.5 rounded-[10px] border border-line bg-transparent px-[9px] py-[7px] text-xs text-ink hover:border-accent [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]"
                 aria-label="Share on X"
                 onClick={() => shareImage(
-                  () => window.open(`https://x.com/intent/post?text=${encodeURIComponent(`${text} #Tersio`)}`, "_blank", "noopener,noreferrer,width=560,height=460"),
+                  () => window.open(`${SHARE_X}?text=${encodeURIComponent(`${text} #Tersio`)}`, "_blank", "noopener,noreferrer,width=560,height=460"),
                   "X",
                 )}
               >
@@ -918,7 +971,7 @@ export function ShareDialog({
               className="inline-flex cursor-pointer items-center gap-1.5 rounded-[10px] border border-line bg-transparent px-[9px] py-[7px] text-xs text-ink hover:border-accent [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]"
               aria-label="Share on Reddit"
               onClick={() => shareImage(
-                () => window.open(`https://www.reddit.com/submit?title=${encodeURIComponent("My Tersio usage profile")}&text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer"),
+                () => window.open(`${SHARE_REDDIT}?title=${encodeURIComponent("My Tersio usage profile")}&text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer"),
                 "Reddit",
               )}
             >
@@ -933,7 +986,7 @@ export function ShareDialog({
               className="inline-flex cursor-pointer items-center gap-1.5 rounded-[10px] border border-line bg-transparent px-[9px] py-[7px] text-xs text-ink hover:border-accent [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]"
               aria-label="Share on LinkedIn"
               onClick={() => shareImage(
-                () => window.open("https://www.linkedin.com/feed/", "_blank", "noopener,noreferrer"),
+                () => window.open(SHARE_LINKEDIN, "_blank", "noopener,noreferrer"),
                 "LinkedIn",
               )}
             >

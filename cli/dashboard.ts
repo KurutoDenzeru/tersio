@@ -18,6 +18,7 @@ import {
   OMP_AGENT_DIR, OMP_PLUGINS_DIR, PACKAGE_VERSION,
 } from './common.ts';
 import { storedProfile, writePluginSettings } from './profile.ts';
+import { agentChoices, readSelection, reportHosts } from './agents.ts';
 import { PACKAGE_NAME } from './common.ts';
 import { resolveRtkBinary } from '../extensions/lib/utils.ts';
 
@@ -106,6 +107,31 @@ function ompDefaultModel(): string | null {
   }
 }
 
+/**
+ * One row per supported agent for the dashboard's Connection pane. Reads the
+ * same registry the installer does, so a host cannot appear here with wiring
+ * the installer would not give it. Filesystem only — no subprocess, so the
+ * settings modal stays instant.
+ */
+export function agentsJson(home: string = process.env.HOME || process.env.USERPROFILE || ''): Array<Record<string, unknown>> {
+  const selected = readSelection(home).hosts;
+  const rows = new Map(reportHosts(selected, home).map((r) => [r.host.id, r]));
+  return agentChoices().map((choice) => {
+    const row = rows.get(choice.value);
+    const isSelected = selected.includes(choice.value);
+    return {
+      id: choice.value,
+      label: choice.label,
+      selected: isSelected,
+      // Configured means every file this host needs is on disk.
+      configured: isSelected && !!row && row.missing.length === 0,
+      missing: row ? row.missing.length : 0,
+      present: row ? row.present.length : 0,
+      wiring: choice.hint,
+    };
+  });
+}
+
 function healthJson(): string {
   const rtkBin = resolveRtkBinary();
   const rtkPresent = rtkBin !== null;
@@ -118,6 +144,7 @@ function healthJson(): string {
     ompPath: detectedOmpPath,
     provider: ompDefaultModel(),
     rtk: { present: rtkPresent, version: rtkPresent ? rtkVersion(rtkBin as string) : null, path: rtkBin || 'not found in PATH' },
+    agents: agentsJson(),
     home: tersioHomePath(),
   });
 }
@@ -329,11 +356,36 @@ function escapeInline(json: string): string {
   return json.replace(/<\/(script)/gi, '<\\/$1');
 }
 
+/** Any value that survives a JSON round trip. These payloads are re-inlined into the exported page. */
+type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
+
+/**
+ * The payload inlined into an exported dashboard. Each sub-report is parsed
+ * independently and degrades to null, so one bad report costs that panel
+ * instead of failing the whole export.
+ */
+function snapJson(): string {
+  const parse = (text: string): JsonValue => {
+    try {
+      // Boundary cast: the source is tersio's own JSON, and the value is
+      // immediately re-serialized, so there is nothing to narrow further.
+      return JSON.parse(text) as JsonValue;
+    } catch {
+      return null;
+    }
+  };
+  return escapeInline(JSON.stringify({
+    data: parse(dataJson()),
+    health: parse(healthJson()),
+    doctor: getDoctorReport(false),
+  }));
+}
+
 async function exportDashboard(exportFile: string): Promise<void> {
   requireDashboardBundle();
   const [bundle, icon] = await Promise.all([readSegment(DASHBOARD_INDEX), brandDataUri()]);
   const inline = bundle
-    .replace('window.__TERSIO_SNAP = null;', () => `window.__TERSIO_SNAP = ${escapeInline(JSON.stringify({ data: JSON.parse(dataJson()), health: JSON.parse(healthJson()), doctor: getDoctorReport(false) }))};`)
+    .replace('window.__TERSIO_SNAP = null;', () => `window.__TERSIO_SNAP = ${snapJson()};`)
     .replace(/href="brand\.webp"/g, () => `href="${icon}"`)
     .replace(/src="brand\.webp"/g, () => `src="${icon}"`)
     .replace('fetch("brand.webp")', () => `Promise.resolve({ ok: true, blob: async () => new Blob([atob("${icon.split(',')[1]}")], { type: "image/webp" }) })`);
