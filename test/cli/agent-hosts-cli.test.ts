@@ -56,14 +56,20 @@ test("--agent is listed in help with every known host id", () => {
   }
 });
 
-test("doctor stays silent about agent hosts when none is selected", () => {
+test("doctor always shows the agent-hosts category, even with none configured", () => {
   const { home, cleanup } = tempHome();
   try {
     const result = run(home, "doctor");
     expect(result.status, result.stderr).toBe(0);
-    // An OMP-only install must see exactly the output it had before this
-    // feature existed.
-    expect(result.stdout).not.toContain("Agent hosts");
+    // A category that only appears once you have used it is not a category, so
+    // the section is permanent and tells the user how to add one.
+    expect(result.stdout).toMatch(/\nAgent hosts\n/);
+    expect(result.stdout).toContain("none configured");
+    expect(result.stdout).toContain("tersio install --agent <id>");
+    // Every known id is listed, so the hint is actionable without --help.
+    for (const id of ["claude-code", "codex", "copilot-cli", "cursor", "grok-build", "command-code", "agy"]) {
+      expect(result.stdout, `id list omits ${id}`).toContain(id);
+    }
   } finally {
     cleanup();
   }
@@ -214,6 +220,8 @@ test("a host row counts toward the doctor summary tally", () => {
     const before = run(home, "doctor");
     writeSelection(home, ["claude-code", "agy", "cursor"]);
     const after = run(home, "doctor");
+    // The empty-category hint is not a check, so only the three real rows join
+    // the tally.
     expect(checkCount(before.stdout)).toBeGreaterThan(0);
     expect(checkCount(after.stdout), "three host rows should join the tally").toBe(checkCount(before.stdout) + 3);
   } finally {
@@ -221,7 +229,7 @@ test("a host row counts toward the doctor summary tally", () => {
   }
 });
 
-test("a selection file full of junk does not break doctor", () => {
+test("a selection file full of junk leaves the category empty rather than broken", () => {
   const { home, cleanup } = tempHome();
   try {
     mkdirSync(path.join(home, ".tersio"), { recursive: true });
@@ -229,7 +237,7 @@ test("a selection file full of junk does not break doctor", () => {
     const result = run(home, "doctor");
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toMatch(/Summary: \d+ checks/);
-    expect(result.stdout).not.toContain("Agent hosts");
+    expect(result.stdout).toContain("none configured");
   } finally {
     cleanup();
   }

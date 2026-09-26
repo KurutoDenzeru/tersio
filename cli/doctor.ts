@@ -150,15 +150,21 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   const ponytailVer = parseJsonObject<{ version?: string }>(ponytailPkgText)?.version ?? '';
   check('Ponytail', ponytailPkgText !== null, [ponytailVer, ponytailAge].filter(Boolean).join(' '));
 
-  // One row per selected non-OMP host. Prints nothing when no other host is
-  // selected, so an OMP-only install keeps exactly the output it had. Each row
-  // reports the rewrite path it actually got, because "wired" and "wired to a
-  // hook the host ignores" look identical from the outside.
+  // Agent hosts — a category of its own, because they are installed by the
+  // generic emitters rather than by the OMP path above. Always printed, so a
+  // user who has not configured any yet is told how, instead of the section
+  // silently not existing. Each row reports the rewrite path the host actually
+  // got, because "wired" and "wired to a hook the host ignores" look identical
+  // from the outside.
   const home = os.homedir();
   const selection = resolveSelection(agentFlag, readSelection(home).hosts, detectHosts(home));
   const otherHosts = selection.ids.filter((id) => id !== 'omp');
-  if (otherHosts.length > 0) {
-    section('Agent hosts');
+  section('Agent hosts');
+  if (otherHosts.length === 0) {
+    console.log('  ℹ️  none configured — `tersio install --agent <id>` adds one');
+    console.log('      known ids: omp, opencode, claude-code, codex, copilot-cli, cursor,');
+    console.log('                 grok-build, pi, openclaw, hermes, command-code, agy');
+  } else {
     for (const row of reportHosts(otherHosts, home)) {
       const label = row.host.label;
       if (row.status === 'warn') {
