@@ -10,7 +10,7 @@ import {
 } from './common.ts';
 import { ask, askInteractiveMultiChoice, closeRL, tty } from './interactive.ts';
 import { readTextIfExists } from '../extensions/lib/utils.ts';
-import { agentChoices, readSelection, removeHosts, resolveAgentSelection, writeSelection } from './agents.ts';
+import { agentChoices, readSelection, removeHosts, reportHosts, resolveAgentSelection, writeSelection } from './agents.ts';
 import { removeOpenCodeRtk } from './opencode-wiring.ts';
 
 interface UninstallOptions {
@@ -79,6 +79,32 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
 
   console.log('\n=== Tersio Uninstall ===\n');
 
+  // Ask which agents to clear BEFORE the destructive confirm, mirroring install.
+  // Asking afterwards meant the confirm ran first and the agent prompt only
+  // appeared once the OMP files were already gone.
+  const home = os.homedir();
+  const stored = readSelection(home).hosts;
+  // Unlike install, detection is deliberately NOT unioned in here. Removal acts
+  // on what tersio actually wrote, and a host that merely happens to be
+  // installed was never a tersio install target. Unioning would advertise
+  // removals for hosts the user never selected.
+  const selection = await resolveAgentSelection({
+    flag: agentFlag,
+    stored,
+    detected: [],
+    ask: tty() && !confirmed && agentFlag.length === 0
+      ? async () => {
+        const answer = await askInteractiveMultiChoice(
+          'Remove tersio from which coding agents?',
+          agentChoices(),
+          stored,
+        );
+        return answer.status === 'selected' ? answer.value : null;
+      }
+      : undefined,
+  });
+  const extra = selection.ids.filter((id) => id !== 'omp');
+
   const extDir = path.join(OMP_AGENT_DIR, 'extensions');
   const configPath = path.join(OMP_AGENT_DIR, 'config.yml');
   const rtkBin = path.join(BUN_BIN_DIR, RTK_BINARY_NAME);
@@ -111,6 +137,18 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
   if (shouldRemoveRtk) {
     console.log(`  ${rtkBin}`);
     console.log(`  ${path.join(extDir, 'rtk.ts')} (rtk OMP wiring)`);
+  }
+
+  // List what the selected agents will lose, so the confirm covers them. Only
+  // files that are actually on disk are named; a stale plan would make the
+  // preview overstate what happens.
+  const agentPaths: string[] = [];
+  for (const row of reportHosts(extra, home)) {
+    agentPaths.push(...row.present);
+  }
+  if (agentPaths.length > 0) {
+    console.log(`  ${selection.ids.filter((id) => id !== 'omp').join(', ')} (agent hosts):`);
+    for (const p of agentPaths) console.log(`    ${p}`);
   }
 
   if (!confirmed) {
@@ -205,28 +243,6 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
   // what we wrote: a merged file loses its marked block, a config the user also
   // owns keeps everything but our entry, and a file we named is deleted once it
   // configures no hook.
-  const home = os.homedir();
-  const stored = readSelection(home).hosts;
-  // Unlike install, detection is deliberately NOT unioned in here. Removal acts
-  // on what tersio actually wrote, and a host that merely happens to be
-  // installed was never a tersio install target. Unioning would advertise
-  // removals for hosts the user never selected.
-  const selection = await resolveAgentSelection({
-    flag: agentFlag,
-    stored,
-    detected: [],
-    ask: tty() && !confirmed && agentFlag.length === 0
-      ? async () => {
-        const answer = await askInteractiveMultiChoice(
-          'Remove tersio from which coding agents?',
-          agentChoices(),
-          stored,
-        );
-        return answer.status === 'selected' ? answer.value : null;
-      }
-      : undefined,
-  });
-  const extra = selection.ids.filter((id) => id !== 'omp');
   if (extra.length > 0) {
     // The header prints under --dry-run too: a preview that silently omits a
     // section is not a preview of the real run.

@@ -15,15 +15,13 @@ import path from 'node:path';
 export type HookConfigFormat =
   | 'claude-json'
   | 'copilot-json'
-  | 'cursor-json'
-  | 'hermes-yaml';
+  | 'cursor-json';
 
 /** The shape a host expects a rewrite to come back in. */
 export type RewriteProtocol =
   | 'hookSpecificOutput-updatedInput'
   | 'modifiedArgs'
-  | 'updated_input'
-  | 'hermes-modify';
+  | 'updated_input';
 
 export interface HostRewrite {
   /** Config file the host reads, `$HOME`-relative. */
@@ -260,46 +258,6 @@ const HOSTS: AgentHost[] = [
     source: 'https://pi.dev/docs/latest/extensions',
   },
   {
-    id: 'openclaw',
-    label: 'OpenClaw',
-    configDir: '.openclaw',
-    configDirEnv: 'OPENCLAW_STATE_DIR',
-    binaries: ['openclaw'],
-    rules: true,
-    skills: true,
-    rewrite: false,
-    rulesFile: '.openclaw/workspace/AGENTS.md',
-    skillsDir: '.agents/skills',
-    caveats: 'Shell rewrite needs a native TypeScript plugin registering before_tool_call; a static hook file cannot rewrite tool args. Guidance only until then.',
-    source: 'https://docs.openclaw.ai/plugins/hooks',
-  },
-  {
-    id: 'hermes',
-    label: 'Hermes',
-    configDir: '.hermes',
-    configDirEnv: 'HERMES_HOME',
-    binaries: ['hermes'],
-    // Hermes has no user-global instruction file at all: SOUL.md is its only
-    // global context file, and AGENTS.md is project-scope only. So the portable
-    // mode text reaches Hermes through skills, not a rules pack.
-    rules: false,
-    skills: true,
-    rewrite: true,
-    rulesFile: null,
-    skillsDir: '.hermes/skills',
-    caveats: 'No user-global AGENTS.md: SOUL.md is the only global context file. A project context file is scanned for prompt-injection patterns and dropped whole on a hit, so the block must avoid phrases like "ignore previous instructions" or hidden HTML comments.',
-    rewriteConfig: {
-      configFile: '.hermes/config.yaml',
-      configFormat: 'hermes-yaml',
-      event: 'pre_tool_call',
-      matcher: '*',
-      inputPath: 'args.command',
-      protocol: 'hermes-modify',
-      failClosed: true,
-    },
-    source: 'https://hermes-agent.nousresearch.com/docs/user-guide/features/hooks',
-  },
-  {
     id: 'command-code',
     label: 'Command Code',
     configDir: '.commandcode',
@@ -317,22 +275,6 @@ const HOSTS: AgentHost[] = [
     caveats: 'Reads AGENTS.md, never CLAUDE.md. No config-dir env var: ~/.commandcode resolves from HOME/USERPROFILE only. The ModApi is documented as experimental, so a shipped mod must pin a Command Code version. A bare `cmd` is never probed on win32. The mod itself is not written yet, so RTK is guidance only.',
     rewriteOwner: 'pending',
     source: 'https://commandcode.ai/docs/mods',
-  },
-  {
-    id: 'agy',
-    label: 'Antigravity CLI',
-    configDir: '.gemini/antigravity-cli',
-    binaries: ['agy'],
-    rules: true,
-    skills: true,
-    // Five hook events exist, but PreToolUse returns a permission `decision`
-    // rather than a rewritten input, and plugins are declarative (JSON and
-    // Markdown only) with no code or script extension point. Guidance only.
-    rewrite: false,
-    rulesFile: '.gemini/GEMINI.md',
-    skillsDir: '.gemini/antigravity-cli/skills',
-    caveats: 'Successor to Gemini CLI, which is sunset for free/Pro/Ultra accounts. Global context stays at ~/.gemini/GEMINI.md, but workspace skills moved to .agents/skills/ and PreToolUse cannot rewrite a command. Known path bug: the CLI writes hooks under ~/.gemini/antigravity-cli/ yet reads ~/.gemini/config/ — see antigravity-cli#49. Arg names are PascalCase (run_command → toolCall.args.CommandLine).',
-    source: 'https://antigravity.google/docs/hooks/',
   },
 ];
 

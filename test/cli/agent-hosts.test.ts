@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import path from "node:path";
 import { HOSTS, byId, hasStaticHook, isGuidanceOnly, isLiveExtension, isOwnPath, hostPath } from "../../cli/agent-hosts.ts";
 
-// The registry is the single source of truth for twelve hosts, so most of these
+// The registry is the single source of truth for nine hosts, so most of these
 // are invariant checks: they fail when someone adds a host with a half-filled
 // entry, which is cheaper to catch here than in a user's home directory.
 
@@ -92,29 +92,23 @@ test("opencode ships its own plugin, because rtk's is a pre-v2 shape", () => {
   expect(opencode?.caveats).toMatch(/rtk-ai\/rtk#3463/);
 });
 
-test("agy is guidance-only, and so is command-code until its mod exists", () => {
-  // Both hosts CAN rewrite — the docs say so. Neither does yet, so both must
+test("command-code is guidance-only until its mod exists", () => {
+  // The host CAN rewrite -- the docs say so -- but we ship no mod, so it must
   // report guidance rather than claim an auto-rewrite that never runs.
-  const agy = byId("agy");
-  expect(agy).toBeDefined();
-  expect(isGuidanceOnly(agy!)).toBe(true);
-  expect(hasStaticHook(agy!)).toBe(false);
-
   const cmd = byId("command-code");
   expect(cmd).toBeDefined();
   expect(isLiveExtension(cmd!)).toBe(false);
   expect(isGuidanceOnly(cmd!)).toBe(true);
+  expect(hasStaticHook(cmd!)).toBe(false);
   // It still declares the capability and names the gap, so doctor can say why.
   expect(cmd?.rewrite).toBe(true);
   expect(cmd?.rewriteOwner).toBe("pending");
   expect(cmd?.caveats).toMatch(/not written yet/);
 });
 
-test("the hosts that get no working auto-rewrite are the two without a surface plus the one pending", () => {
+test("command-code is the only host with no working auto-rewrite", () => {
   const guidance = HOSTS.filter(isGuidanceOnly).map((h) => h.id).toSorted();
-  // openclaw and agy have no documented rewrite surface at all; command-code
-  // could, but its mod is not written yet.
-  expect(guidance).toEqual(["agy", "command-code", "openclaw"]);
+  expect(guidance).toEqual(["command-code"]);
 });
 
 test("every host ships a working rewrite or says plainly that it does not", () => {
@@ -131,9 +125,9 @@ test("every hook config names a supported format, protocol, event, and input pat
   for (const host of HOSTS) {
     const cfg = host.rewriteConfig;
     if (!cfg) continue;
-    expect(["claude-json", "copilot-json", "cursor-json", "hermes-yaml"], `${host.id} format`).toContain(cfg.configFormat);
+    expect(["claude-json", "copilot-json", "cursor-json"], `${host.id} format`).toContain(cfg.configFormat);
     expect(
-      ["hookSpecificOutput-updatedInput", "modifiedArgs", "updated_input", "hermes-modify"],
+      ["hookSpecificOutput-updatedInput", "modifiedArgs", "updated_input"],
       `${host.id} protocol`,
     ).toContain(cfg.protocol);
     expect(cfg.event.length, `${host.id} event`).toBeGreaterThan(0);
@@ -146,10 +140,9 @@ test("every hook config names a supported format, protocol, event, and input pat
   }
 });
 
-test("the four rewrite wire protocols are each represented", () => {
+test("the three rewrite wire protocols are each represented", () => {
   const protocols = new Set(HOSTS.map((h) => h.rewriteConfig?.protocol).filter(Boolean));
   expect([...protocols].toSorted()).toEqual([
-    "hermes-modify",
     "hookSpecificOutput-updatedInput",
     "modifiedArgs",
     "updated_input",
@@ -168,25 +161,21 @@ test("a fail-closed host is deliberate, since a broken rewriter would block the 
 });
 
 test("Gemini CLI stays out of the registry", () => {
-  // Sunset for free/Pro/Ultra accounts on 2026-06-18; agy is the successor.
-  // Re-adding it needs an explicit decision, not an accident.
+  // Sunset for free/Pro/Ultra accounts on 2026-06-18. Re-adding it, or its
+  // Antigravity CLI successor, needs an explicit decision, not an accident.
   expect(byId("gemini-cli")).toBeUndefined();
-  expect(byId("agy")).toBeDefined();
-  expect(byId("agy")?.source).toContain("antigravity.google");
+  expect(byId("agy")).toBeUndefined();
 });
 
-test("the registry holds exactly the twelve documented hosts", () => {
+test("the registry holds exactly the nine documented hosts", () => {
   expect(HOSTS.map((h) => h.id).toSorted()).toEqual([
-    "agy",
     "claude-code",
     "codex",
     "command-code",
     "copilot-cli",
     "cursor",
     "grok-build",
-    "hermes",
     "omp",
-    "openclaw",
     "opencode",
     "pi",
   ]);
@@ -198,18 +187,6 @@ test("Command Code never probes a bare cmd first, which would hit the Windows sh
   expect(host?.binaries[0], "cmd must not be the first probe").toBe("command-code");
   expect(host?.binaries).toContain("cmd");
   expect(host?.caveats).toMatch(/win32/);
-});
-
-test("the two hosts that cannot auto-rewrite at all are OpenClaw and agy", () => {
-  const noSurface = HOSTS.filter((h) => !h.rewrite).map((h) => h.id).toSorted();
-  expect(noSurface).toEqual(["agy", "openclaw"]);
-});
-
-test("hermes has rules disabled because it has no user-global instruction file", () => {
-  const hermes = byId("hermes");
-  expect(hermes?.rules).toBe(false);
-  expect(hermes?.rulesFile).toBeNull();
-  expect(hermes?.skills).toBe(true);
 });
 
 test("hostPath is $HOME-relative when no relocation env var is set", () => {
@@ -241,14 +218,4 @@ test("a blank relocation env var falls back to the home directory", () => {
   } finally {
     delete process.env.COPILOT_HOME;
   }
-});
-
-test("agy keeps its rules file outside its own config dir, and says why", () => {
-  // Global context is still ~/.gemini/GEMINI.md even though settings moved to
-  // ~/.gemini/antigravity-cli — so the path must resolve against $HOME.
-  const host = byId("agy")!;
-  expect(host.rulesFile).toBe(".gemini/GEMINI.md");
-  expect(host.configDir).toBe(".gemini/antigravity-cli");
-  expect(hostPath(host, host.rulesFile!, "/home/u")).toBe(path.join("/home/u", ".gemini", "GEMINI.md"));
-  expect(host.caveats).toMatch(/GEMINI\.md/);
 });

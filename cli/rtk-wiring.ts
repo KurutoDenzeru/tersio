@@ -92,9 +92,8 @@ export async function ensureRtkInConfig(options: WiringOptions): Promise<void> {
 // rtk's own init owns the extension format for the hosts it supports, so
 // tersio delegates rather than writing its own. `rtk init --agent pi` emits
 // ~/.pi/agent/extensions/rtk.ts, the same shape OMP loads. Verified against
-// rtk 0.50.0, which supports claude, cursor, pi, hermes, and antigravity -- but
-// for claude it writes instructions only (no hook) and for antigravity nothing
-// at all, so those two stay with tersio's own emitters.
+// rtk 0.50.0, which also accepts claude and cursor -- but for claude it writes
+// instructions only with no hook, so those stay with tersio's own emitters.
 const RTK_AGENTS = { omp: 'omp', pi: 'pi' } as const;
 
 export type RtkAgent = (typeof RTK_AGENTS)[keyof typeof RTK_AGENTS];

@@ -92,6 +92,10 @@ export interface AgentHealth {
   present: number;
   /** Human wiring class, e.g. `hook · auto-rewrite`. */
   wiring: string;
+  /** Absolute path of the agent's binary on PATH, or null when not installed. */
+  binPath?: string | null;
+  /** `agent --version` output, or null when not installed or it failed. */
+  version?: string | null;
 }
 
 export interface HealthReport {

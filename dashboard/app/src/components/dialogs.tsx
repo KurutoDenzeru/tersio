@@ -82,21 +82,19 @@ const AGENT_STATUS: Record<
  */
 function AgentListRow({
   agent,
-  version,
-  binPath,
   href,
   unavailable,
 }: {
   agent: AgentRow;
-  version?: string | null;
-  binPath?: string | null;
   href?: string;
   unavailable: boolean;
 }) {
   const state = agent.configured ? "configured" : agent.selected ? "selected" : "off";
   const status = AGENT_STATUS[state];
   // The binary path is the most useful second line when we have it, since it
-  // is what makes an "Available" host verifiable at a glance.
+  // is what makes an installed host verifiable at a glance.
+  const binPath = agent.binPath ?? null;
+  const version = agent.version ?? null;
   const detail = binPath || agent.wiring;
   const Wrapper = href ? "a" : "div";
   return (
@@ -172,6 +170,8 @@ function HealthPane() {
       missing: 0,
       present: 0,
       wiring: "reference host · rtk extension · auto-rewrite",
+      binPath: health?.ompPath ?? null,
+      version: health?.omp ?? null,
     }];
 
   return (
@@ -204,8 +204,6 @@ function HealthPane() {
             <AgentListRow
               key={agent.id}
               agent={agent}
-              version={agent.id === "omp" ? health?.omp : null}
-              binPath={agent.id === "omp" ? health?.ompPath : null}
               href={agent.id === "omp" ? "https://omp.sh" : undefined}
               unavailable={unavailable}
             />

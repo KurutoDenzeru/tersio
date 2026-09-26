@@ -164,6 +164,36 @@ export function detectHosts(home: string, env: NodeJS.ProcessEnv = process.env):
   return found;
 }
 
+/**
+ * Absolute path of a host's binary on PATH, or null when it is not installed.
+ *
+ * Shared with the dashboard so both agree on what "installed" means. The bare
+ * `cmd` name is never probed on Windows, where it resolves to the system shell.
+ */
+export function findHostBinary(host: AgentHost, env: NodeJS.ProcessEnv = process.env): string | null {
+  if (process.platform === 'win32') {
+    const relocated = host.configDirEnv ? env[host.configDirEnv] : undefined;
+    if (relocated && relocated.trim() !== '') return null;
+  }
+  const raw = env.PATH ?? env.Path ?? env.path ?? '';
+  if (!raw) return null;
+  const sep = process.platform === 'win32' ? ';' : ':';
+  const exts = process.platform === 'win32' ? ['.exe', '.cmd', '.bat', ''] : [''];
+  for (const binary of host.binaries) {
+    if (process.platform === 'win32' && binary === 'cmd') continue;
+    for (const dir of raw.split(sep)) {
+      if (!dir) continue;
+      for (const ext of exts) {
+        const candidate = path.join(dir, binary + ext);
+        try {
+          if (fsSync.statSync(candidate).isFile()) return candidate;
+        } catch { /* keep looking */ }
+      }
+    }
+  }
+  return null;
+}
+
 function hasBinary(name: string, env: NodeJS.ProcessEnv): boolean {
   // Never probe a bare `cmd` on Windows: it resolves to the system shell, so a
   // probe would report Command Code installed on every Windows machine.

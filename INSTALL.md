@@ -28,10 +28,11 @@ before you pick one.
 
 | Class | What you get | Hosts |
 |---|---|---|
-| **Hook** | Rules, skills, and a real auto-rewrite. Tersio generates a small rewriter script plus a hook entry in the agent's own config | Claude Code, Codex, Copilot CLI, Cursor, Grok Build, Hermes |
-| **Extension** | Rules and skills, with the rewrite owned by the agent or by rtk as a real extension file | Oh My Pi, Pi |
-| **Guidance** | Rules and skills only. The RTK text tells the model to prefix commands by hand | OpenClaw, Antigravity CLI, Command Code |
-| **Not yet** | Nothing is written; the host's wiring module is still to come | OpenCode |
+| **Hook** | Rules, skills, and a real auto-rewrite. Tersio generates a small rewriter script plus a hook entry in the agent's own config | Claude Code, Codex, Copilot CLI, Cursor, Grok Build |
+| **Extension** | Rules and skills, with the rewrite owned by the agent or by rtk as a real extension file | Oh My Pi, Pi, OpenCode |
+| **Guidance** | Rules and skills only. The RTK text tells the model to prefix commands by hand | Command Code |
+
+Not supported: Gemini CLI, Antigravity CLI, OpenClaw, and Hermes. `tersio install` never writes to them, and `tersio uninstall` never removes anything it did not write.
 
 `tersio doctor` reports which class each selected host is in, so you never have
 to take this table on faith.
@@ -59,9 +60,9 @@ its own hook entry, and uninstall removes exactly those.
 ~/.codex/tersio-rtk-rewrite.mjs
 ```
 
-`~/.agents/skills/` is the shared Agent Skills directory, so these also load in
-OpenClaw. `CODEX_HOME` relocates `~/.codex/`; the shared skills directory is
-deliberately *not* moved with it.
+`~/.agents/skills/` is the shared Agent Skills directory, so these also load in any
+other agent that reads it. `CODEX_HOME` relocates `~/.codex/`; the shared skills
+directory is deliberately *not* moved with it.
 
 ### GitHub Copilot CLI — `copilot-cli`
 
@@ -99,19 +100,6 @@ the required `---` block.
 Grok forwards the command field in either `toolInput` or `tool_input`, so the
 rewriter accepts both rather than guessing.
 
-### Hermes — `hermes`
-
-```text
-~/.hermes/skills/tersio-{caveman,ponytail,rtk}/SKILL.md
-~/.hermes/config.yaml
-~/.hermes/tersio-rtk-rewrite.mjs
-```
-
-**No rules file.** `SOUL.md` is Hermes's only user-global context file, and
-`AGENTS.md` is project-scoped, so the modes arrive as skills instead. Hermes also
-scans context files for prompt-injection patterns and drops one that trips it, so
-Tersio's skill files deliberately carry no HTML comments.
-
 ### Oh My Pi — `omp`
 
 Rules and skills are written by the OMP plugin; the rewrite is rtk's own
@@ -129,33 +117,6 @@ inheritance.
 The rewrite is rtk's own extension at `~/.pi/agent/extensions/rtk.ts`, written by
 `rtk init -g --agent pi`. rtk owns that format, so a Tersio release is not needed
 when it changes.
-
-### OpenClaw — `openclaw`
-
-```text
-~/.openclaw/workspace/AGENTS.md
-~/.agents/skills/tersio-{caveman,ponytail,rtk}/SKILL.md
-```
-
-Guidance only. OpenClaw can rewrite tool arguments solely from a native
-TypeScript plugin registering `before_tool_call`; a static hook file cannot. The
-RTK text therefore says to prefix commands by hand.
-
-### Antigravity CLI — `agy`
-
-```text
-~/.gemini/GEMINI.md
-~/.gemini/antigravity-cli/skills/tersio-{caveman,ponytail,rtk}/SKILL.md
-```
-
-Guidance only. `agy` documents five hook events, but `PreToolUse` returns a
-permission decision rather than a rewritten input, and its plugins are
-declarative — JSON and Markdown, with no code or script extension point.
-
-Antigravity CLI is the successor to Gemini CLI, which stopped serving free, Pro,
-and Ultra accounts on 2026-06-18. Its global rules file is unchanged
-(`~/.gemini/GEMINI.md`) but its workspace skills moved to `.agents/skills/`, so a
-Gemini CLI skills install has to be re-pointed.
 
 ### Command Code — `command-code`
 
@@ -191,7 +152,7 @@ These hold for every host, and they are enforced by tests:
   block, deletes files Tersio created outright, and reports anything it kept
   because your own content is still in it. A file that held nothing but
   Tersio's block is removed; a file you also write to is left in place.
-- **Shared directories stay.** Codex and OpenClaw share `~/.agents/skills/`.
+- **Shared directories stay.** Codex and Pi use the shared `~/.agents/skills/` convention.
   Both write the same files, so the content is identical either way and
   uninstall never removes the directory itself.
 

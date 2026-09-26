@@ -167,8 +167,6 @@ if (!rewritten) process.exit(0);
     modifiedArgs: `process.stdout.write(JSON.stringify({ modifiedArgs: { command: rewritten } }));`,
     // Cursor: flat updated_input.
     updated_input: `process.stdout.write(JSON.stringify({ permission: 'allow', updated_input: { command: rewritten } }));`,
-    // Hermes: shell-hook protocol, {"action":"modify","args":{...}}.
-    'hermes-modify': `process.stdout.write(JSON.stringify({ action: 'modify', args: { command: rewritten } }));`,
   };
 
   return `${guard}
@@ -210,16 +208,6 @@ export function renderHookConfig(host: AgentHost, scriptAbs: string): string | n
         version: 1,
         hooks: { [cfg.event]: [{ matcher: cfg.matcher, hooks: [newHookEntry(command)] }] },
       }, null, 2)}\n`;
-    case 'hermes-yaml':
-      return [
-        'hooks:',
-        `  ${cfg.event}:`,
-        `    - matcher: "${cfg.matcher}"`,
-        `      command: ${command}`,
-        '      timeout: 10',
-        '      fail_closed: true',
-        '',
-      ].join('\n');
     case 'claude-json':
     default:
       return `${JSON.stringify({
@@ -381,10 +369,8 @@ export function planHost(host: AgentHost, home: string, existing: ExistingHostFi
       artifacts.push({
         kind: 'hook-config',
         absPath: configAbs,
-        content: cfg.configFormat === 'hermes-yaml'
-          ? rendered
-          : mergeHookConfig(existing.hookConfig ?? null, rendered, cfg.event),
-        merge: cfg.configFormat === 'hermes-yaml' ? 'block' : 'json',
+        content: mergeHookConfig(existing.hookConfig ?? null, rendered, cfg.event),
+        merge: 'json',
       });
       rewriteInstalled = true;
     }

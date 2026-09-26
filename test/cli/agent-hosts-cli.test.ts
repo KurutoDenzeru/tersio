@@ -47,7 +47,7 @@ test("--agent is listed in help with every known host id", () => {
     expect(result.stdout).toMatch(/--agent <ids>/);
     for (const id of [
       "omp", "opencode", "claude-code", "codex", "copilot-cli", "cursor",
-      "grok-build", "pi", "openclaw", "hermes", "command-code", "agy",
+      "grok-build", "pi", "command-code",
     ]) {
       expect(result.stdout, `help does not list ${id}`).toContain(id);
     }
@@ -67,7 +67,7 @@ test("doctor always shows the agent-hosts category, even with none configured", 
     expect(result.stdout).toContain("none configured");
     expect(result.stdout).toContain("tersio install --agent <id>");
     // Every known id is listed, so the hint is actionable without --help.
-    for (const id of ["claude-code", "codex", "copilot-cli", "cursor", "grok-build", "command-code", "agy"]) {
+    for (const id of ["claude-code", "codex", "copilot-cli", "cursor", "grok-build", "command-code"]) {
       expect(result.stdout, `id list omits ${id}`).toContain(id);
     }
   } finally {
@@ -78,16 +78,16 @@ test("doctor always shows the agent-hosts category, even with none configured", 
 test("doctor reports one row per saved host and points at the install command", () => {
   const { home, cleanup } = tempHome();
   try {
-    writeSelection(home, ["claude-code", "agy"]);
+    writeSelection(home, ["claude-code", "command-code"]);
     const result = run(home, "doctor");
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toMatch(/\nAgent hosts\n/);
     expect(result.stdout).toContain("Claude Code");
-    expect(result.stdout).toContain("Antigravity CLI");
+    expect(result.stdout).toContain("Command Code");
     // Both are uninstalled here, so both must be actionable rather than silent.
     expect(result.stdout).toMatch(/Claude Code: warn/);
     expect(result.stdout).toMatch(/tersio install --agent claude-code/);
-    expect(result.stdout).toMatch(/tersio install --agent agy/);
+    expect(result.stdout).toMatch(/tersio install --agent command-code/);
   } finally {
     cleanup();
   }
@@ -110,12 +110,12 @@ test("--agent accepts both comma-separated and repeated forms", () => {
   const { home, cleanup } = tempHome();
   try {
     writeSelection(home, ["claude-code"]);
-    const commas = run(home, "doctor", "--agent=cursor,agy");
-    const repeated = run(home, "doctor", "--agent", "cursor", "--agent", "agy");
+    const commas = run(home, "doctor", "--agent=cursor,command-code");
+    const repeated = run(home, "doctor", "--agent", "cursor", "--agent", "command-code");
     for (const result of [commas, repeated]) {
       expect(result.status, result.stderr).toBe(0);
       expect(result.stdout).toContain("Cursor");
-      expect(result.stdout).toContain("Antigravity CLI");
+      expect(result.stdout).toContain("Command Code");
       expect(result.stdout).not.toContain("Claude Code");
     }
   } finally {
@@ -126,19 +126,19 @@ test("--agent accepts both comma-separated and repeated forms", () => {
 test("a doctor row goes healthy once the host's files are on disk", () => {
   const { home, cleanup } = tempHome();
   try {
-    writeSelection(home, ["agy"]);
-    // agy is guidance-only: rules plus all three skills, and no hook to fake.
-    mkdirSync(path.join(home, ".gemini"), { recursive: true });
-    writeFileSync(path.join(home, ".gemini", "GEMINI.md"), "<!-- tersio:start -->\nrules\n<!-- tersio:end -->\n", "utf8");
+    writeSelection(home, ["command-code"]);
+    // command-code is guidance-only: rules plus all three skills, and no hook.
+    mkdirSync(path.join(home, ".commandcode"), { recursive: true });
+    writeFileSync(path.join(home, ".commandcode", "AGENTS.md"), "<!-- tersio:start -->\nrules\n<!-- tersio:end -->\n", "utf8");
     for (const mode of ["caveman", "ponytail", "rtk"]) {
-      const dir = path.join(home, ".gemini", "antigravity-cli", "skills", `tersio-${mode}`);
+      const dir = path.join(home, ".commandcode", "skills", `tersio-${mode}`);
       mkdirSync(dir, { recursive: true });
       writeFileSync(path.join(dir, "SKILL.md"), `---\nname: tersio-${mode}\ndescription: d\n---\nbody\n`, "utf8");
     }
 
     const result = run(home, "doctor");
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toMatch(/Antigravity CLI: ok/);
+    expect(result.stdout).toMatch(/Command Code: ok/);
     // The row must say guidance, not claim a rewrite hook was installed.
     expect(result.stdout).toMatch(/guidance only/);
   } finally {
@@ -149,13 +149,13 @@ test("a doctor row goes healthy once the host's files are on disk", () => {
 test("a doctor row stays a warning while any of the host's files is missing", () => {
   const { home, cleanup } = tempHome();
   try {
-    writeSelection(home, ["agy"]);
-    mkdirSync(path.join(home, ".gemini"), { recursive: true });
-    writeFileSync(path.join(home, ".gemini", "GEMINI.md"), "<!-- tersio:start -->\nr\n<!-- tersio:end -->\n", "utf8");
+    writeSelection(home, ["command-code"]);
+    mkdirSync(path.join(home, ".commandcode"), { recursive: true });
+    writeFileSync(path.join(home, ".commandcode", "AGENTS.md"), "<!-- tersio:start -->\nr\n<!-- tersio:end -->\n", "utf8");
     // All three skills deliberately absent, so the row must stay a warning.
     const result = run(home, "doctor");
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toMatch(/Antigravity CLI: warn/);
+    expect(result.stdout).toMatch(/Command Code: warn/);
     expect(result.stdout).toMatch(/3 file\(s\) missing/);
   } finally {
     cleanup();
@@ -218,7 +218,7 @@ test("a host row counts toward the doctor summary tally", () => {
   const { home, cleanup } = tempHome();
   try {
     const before = run(home, "doctor");
-    writeSelection(home, ["claude-code", "agy", "cursor"]);
+    writeSelection(home, ["claude-code", "command-code", "cursor"]);
     const after = run(home, "doctor");
     // The empty-category hint is not a check, so only the three real rows join
     // the tally.

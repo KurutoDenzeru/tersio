@@ -1,10 +1,11 @@
 #!/usr/bin/env node
-// tersio.ts — Install Tersio (caveman/rtk/ponytail) add-ons on any OMP device.
+// tersio.ts — Install Tersio (caveman/rtk/ponytail) into the coding agents on this machine.
 // Usage: node tersio.js [install|update|reinstall|doctor|dashboard|uninstall|version|help] [options]
-// Requires: node/npm and omp CLI
+// Requires: node/npm, and at least one supported agent
 import {
   PACKAGE_BIN, PACKAGE_VERSION, applyUpdate, commandArg, dashboard, dashboardExport, dashboardOpen, dashboardPort, doctor, reset, settings, showHelp, showVersion, uninstall, unknownCommand, update, usage,
 } from './cli/common.ts';
+import { HOSTS } from './cli/agent-hosts.ts';
 import { closeRL } from './cli/interactive.ts';
 import { runInstall } from './cli/install.ts';
 import { runDoctor } from './cli/doctor.ts';
@@ -14,6 +15,21 @@ import { runUsage } from './cli/usage.ts';
 import { runReset } from './cli/reset.ts';
 import { runSettings } from './cli/settings.ts';
 import { runDashboard } from './cli/dashboard.ts';
+
+/**
+ * The `--agent` id list, derived from the registry and wrapped for the help
+ * column. Hard-coding it meant dropping a host left a stale id advertised here.
+ */
+function agentIdHelp(): string {
+  const ids = HOSTS.map((h) => h.id);
+  const out: string[] = [];
+  for (let i = 0; i < ids.length; i += 6) {
+    const chunk = ids.slice(i, i + 6).join(', ');
+    const last = i + 6 >= ids.length;
+    out.push(`                   ${out.length === 0 ? 'Known ids: ' : ''}${chunk}${last ? '.' : ','}`);
+  }
+  return out.join('\n');
+}
 
 function printHelp(): void {
   console.log(`Usage: ${PACKAGE_BIN} [command] [options]
@@ -33,9 +49,8 @@ Commands:
 
 Options:
   --agent <ids>    Target coding agents for the generic rules/skills/hook install.
-                   Repeatable and comma-separated. Known ids: omp, opencode,
-                   claude-code, codex, copilot-cli, cursor, grok-build, pi,
-                   openclaw, hermes, command-code, agy.
+                   Repeatable and comma-separated.
+${agentIdHelp()}
                    Saved to ~/.tersio/agents.json and reused by later runs.
   --fix (doctor: repairs all; --fix=<scope> repairs one of extensions, registrations, rtk, ponytail, cli, hosts)
   --scope user (legacy; accepted and ignored — user scope is the only scope)

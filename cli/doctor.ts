@@ -12,6 +12,7 @@ import { usageDbPath } from '../extensions/shared/usage-store.ts';
 import { pricesCachePath } from '../extensions/shared/pricing.ts';
 import { readTextIfExists, resolveRtkBinary } from '../extensions/lib/utils.ts';
 import { detectHosts, readSelection, reportHosts, resolveAgentSelection } from './agents.ts';
+import { HOSTS } from './agent-hosts.ts';
 
 interface DoctorSummary {
   ok: number;
@@ -167,9 +168,10 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   const otherHosts = selection.ids.filter((id) => id !== 'omp');
   section('Agent hosts');
   if (otherHosts.length === 0) {
+    // Derived from the registry so dropping a host cannot leave a stale id
+    // advertised here.
     console.log('  ℹ️  none configured — `tersio install --agent <id>` adds one');
-    console.log('      known ids: omp, opencode, claude-code, codex, copilot-cli, cursor,');
-    console.log('                 grok-build, pi, openclaw, hermes, command-code, agy');
+    console.log(`      known ids: ${HOSTS.map((h) => h.id).join(', ')}`);
   } else {
     for (const row of reportHosts(otherHosts, home)) {
       const label = row.host.label;

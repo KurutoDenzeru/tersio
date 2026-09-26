@@ -87,14 +87,13 @@ function scriptFor(host: AgentHost): string {
   return artifact.content;
 }
 
-test("the static-hook host set is the six with a documented input rewrite", () => {
+test("the static-hook host set is the five with a documented input rewrite", () => {
   expect(STATIC_HOOK_HOSTS.map((h) => h.id).toSorted()).toEqual([
     "claude-code",
     "codex",
     "copilot-cli",
     "cursor",
     "grok-build",
-    "hermes",
   ]);
 });
 
@@ -128,10 +127,6 @@ for (const host of STATIC_HOOK_HOSTS) {
         case "updated_input":
           expect(parsed.permission).toBe("allow");
           expect((parsed.updated_input as Record<string, unknown>).command).toBe(REWRITTEN);
-          break;
-        case "hermes-modify":
-          expect(parsed.action).toBe("modify");
-          expect((parsed.args as Record<string, unknown>).command).toBe(REWRITTEN);
           break;
       }
     } finally {
@@ -289,7 +284,7 @@ test("Cursor's rule file carries the frontmatter its engine requires", () => {
 });
 
 test("a host that cannot auto-rewrite is told to do it by hand", () => {
-  for (const id of ["agy", "openclaw", "command-code"]) {
+  for (const id of ["command-code"]) {
     const host = HOSTS.find((h) => h.id === id)!;
     const rules = planHost(host, HOME).artifacts.find((a) => a.kind === "rules")!;
     expect(rules.content, `${id} claims an automatic rewrite`).toContain("prefix noisy commands");

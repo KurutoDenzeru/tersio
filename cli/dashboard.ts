@@ -18,7 +18,8 @@ import {
   OMP_AGENT_DIR, OMP_PLUGINS_DIR, PACKAGE_VERSION,
 } from './common.ts';
 import { storedProfile, writePluginSettings } from './profile.ts';
-import { agentChoices, readSelection, reportHosts } from './agents.ts';
+import { agentChoices, findHostBinary, readSelection, reportHosts } from './agents.ts';
+import { HOSTS } from './agent-hosts.ts';
 import { PACKAGE_NAME } from './common.ts';
 import { resolveRtkBinary } from '../extensions/lib/utils.ts';
 
@@ -107,21 +108,60 @@ function ompDefaultModel(): string | null {
   }
 }
 
+/** Bound on a version probe. One slow agent must not stall the whole pane. */
+const VERSION_TIMEOUT_MS = 4000;
+
+/**
+ * `<bin> --version` for any host, with a short timeout. The dashboard reports a
+ * version for every agent the user has installed, so this runs in parallel and
+ * is bounded; an agent that hangs costs the timeout, not the pane.
+ */
+function hostVersion(bin: string): string | null {
+  try {
+    if (process.platform === 'win32') {
+      const exe = process.env.ComSpec || 'cmd.exe';
+      return execFileSync(exe, ['/d', '/s', '/c', bin, '--version'], { encoding: 'utf8', timeout: VERSION_TIMEOUT_MS, windowsHide: true }).trim() || null;
+    }
+    return execFileSync(bin, ['--version'], { encoding: 'utf8', timeout: VERSION_TIMEOUT_MS, windowsHide: true }).trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+export { agentsJsonAsync as agentsJson };
+
 /**
  * One row per supported agent for the dashboard's Connection pane. Reads the
  * same registry the installer does, so a host cannot appear here with wiring
- * the installer would not give it. Filesystem only — no subprocess, so the
- * settings modal stays instant.
+ * the installer would not give it.
+ *
+ * Binary paths come from a PATH walk (no subprocess) and are resolved for every
+ * host. Versions cost a spawn each, so they are only probed for hosts that
+ * actually have a binary, and all of them run concurrently.
  */
-export function agentsJson(home: string = process.env.HOME || process.env.USERPROFILE || ''): Array<Record<string, unknown>> {
+async function agentsJsonAsync(
+  home: string = process.env.HOME || process.env.USERPROFILE || '',
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<Array<Record<string, unknown>>> {
   const selected = readSelection(home).hosts;
   const rows = new Map(reportHosts(selected, home).map((r) => [r.host.id, r]));
+  // `env` is threaded through rather than read from process.env inside, so a
+  // caller passing a sandbox home does not get the real machine's PATH back.
+  const found = new Map(HOSTS.map((h) => [h.id, findHostBinary(h, env)]));
+  const versions = new Map(await Promise.all(
+    HOSTS.map(async (h) => {
+      const bin = found.get(h.id) ?? null;
+      return [h.id, bin ? hostVersion(bin) : null] as const;
+    }),
+  ));
+
   return agentChoices().map((choice) => {
+    const binPath = found.get(choice.value) ?? null;
     // OMP is installed by its own plugin path, never by the generic emitters,
     // so it never appears in agents.json. Reporting it "Not selected" beside a
     // detected omp binary reads as a contradiction, so its row is computed from
     // the OMP install directly.
-    if (choice.value === 'omp') return ompRow(home);
+    if (choice.value === 'omp') return ompRow(home, binPath, versions.get('omp') ?? null);
     const row = rows.get(choice.value);
     const isSelected = selected.includes(choice.value);
     return {
@@ -133,6 +173,8 @@ export function agentsJson(home: string = process.env.HOME || process.env.USERPR
       missing: row ? row.missing.length : 0,
       present: row ? row.present.length : 0,
       wiring: choice.hint,
+      binPath,
+      version: versions.get(choice.value) ?? null,
     };
   });
 }
@@ -145,7 +187,7 @@ export function agentsJson(home: string = process.env.HOME || process.env.USERPR
  * real os.homedir(), so using them here would read the developer's own ~/.omp
  * regardless of the home the caller asked about.
  */
-function ompRow(home: string): Record<string, unknown> {
+function ompRow(home: string, binPath: string | null, version: string | null): Record<string, unknown> {
   const present = [
     path.join(home, '.omp', 'agent', 'extensions', 'rtk.ts'),
     path.join(home, '.omp', 'plugins', 'node_modules', PACKAGE_NAME),
@@ -164,10 +206,12 @@ function ompRow(home: string): Record<string, unknown> {
     missing: 2 - present.length,
     present: present.length,
     wiring: 'plugin · live commands',
+    binPath,
+    version,
   };
 }
 
-function healthJson(): string {
+async function healthJson(): Promise<string> {
   const rtkBin = resolveRtkBinary();
   const rtkPresent = rtkBin !== null;
   const detectedOmpPath = ompPath();
@@ -179,7 +223,7 @@ function healthJson(): string {
     ompPath: detectedOmpPath,
     provider: ompDefaultModel(),
     rtk: { present: rtkPresent, version: rtkPresent ? rtkVersion(rtkBin as string) : null, path: rtkBin || 'not found in PATH' },
-    agents: agentsJson(),
+    agents: await agentsJsonAsync(),
     home: tersioHomePath(),
   });
 }
@@ -399,7 +443,7 @@ type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string
  * independently and degrades to null, so one bad report costs that panel
  * instead of failing the whole export.
  */
-function snapJson(): string {
+async function snapJson(): Promise<string> {
   const parse = (text: string): JsonValue => {
     try {
       // Boundary cast: the source is tersio's own JSON, and the value is
@@ -411,16 +455,16 @@ function snapJson(): string {
   };
   return escapeInline(JSON.stringify({
     data: parse(dataJson()),
-    health: parse(healthJson()),
+    health: parse(await healthJson()),
     doctor: getDoctorReport(false),
   }));
 }
 
 async function exportDashboard(exportFile: string): Promise<void> {
   requireDashboardBundle();
-  const [bundle, icon] = await Promise.all([readSegment(DASHBOARD_INDEX), brandDataUri()]);
+  const [bundle, icon, snap] = await Promise.all([readSegment(DASHBOARD_INDEX), brandDataUri(), snapJson()]);
   const inline = bundle
-    .replace('window.__TERSIO_SNAP = null;', () => `window.__TERSIO_SNAP = ${snapJson()};`)
+    .replace('window.__TERSIO_SNAP = null;', () => `window.__TERSIO_SNAP = ${snap};`)
     .replace(/href="brand\.webp"/g, () => `href="${icon}"`)
     .replace(/src="brand\.webp"/g, () => `src="${icon}"`)
     .replace('fetch("brand.webp")', () => `Promise.resolve({ ok: true, blob: async () => new Blob([atob("${icon.split(',')[1]}")], { type: "image/webp" }) })`);
@@ -464,7 +508,7 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
     }
     if (req.url === '/health') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(healthJson());
+      res.end(await healthJson());
       return;
     }
     if (req.url === '/doctor' && req.method === 'POST') {

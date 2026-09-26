@@ -49,8 +49,7 @@ test("the agent menu lists every host and says what wiring it will get", () => {
   expect(byId_.get("claude-code")).toMatch(/hook · auto-rewrite/);
   expect(byId_.get("opencode")).toMatch(/plugin · auto-rewrite/);
   expect(byId_.get("pi")).toMatch(/rtk extension · auto-rewrite/);
-  expect(byId_.get("agy")).toBe("guidance only · no auto-rewrite");
-  expect(byId_.get("openclaw")).toBe("guidance only · no auto-rewrite");
+  expect(byId_.get("command-code")).toBe("guidance only · no auto-rewrite");
   // omp is the reference host, and the menu says so.
   expect(byId_.get("omp")).toMatch(/^reference host · /);
 });
@@ -64,12 +63,12 @@ test("normalizeIds keeps registry order, drops unknowns, and de-duplicates", () 
 test("an explicit --agent wins over the prompt, the saved set, and detection", async () => {
   let asked = false;
   const result = await resolveAgentSelection({
-    flag: ["agy"],
+    flag: ["command-code"],
     stored: ["claude-code"],
     detected: ["cursor"],
     ask: async () => { asked = true; return ["pi"]; },
   });
-  expect(result.ids).toEqual(["agy"]);
+  expect(result.ids).toEqual(["command-code"]);
   expect(result.source).toBe("flag");
   expect(asked, "the prompt must not run when --agent is given").toBe(false);
 });
@@ -91,9 +90,9 @@ test("the prompt decides, and a cancelled prompt falls back to the automatic set
   const asked = await resolveAgentSelection({
     stored: ["claude-code"],
     detected: ["cursor"],
-    ask: async () => ["agy"],
+    ask: async () => ["command-code"],
   });
-  expect(asked.ids).toEqual(["agy"]);
+  expect(asked.ids).toEqual(["command-code"]);
   expect(asked.source).toBe("prompt");
 
   const cancelled = await resolveAgentSelection({
@@ -122,11 +121,11 @@ test("the automatic set unions the saved hosts with what is on the machine", asy
   // was silently skipped and never written.
   const result = await resolveAgentSelection({
     stored: ["claude-code"],
-    detected: ["cursor", "agy"],
+    detected: ["cursor", "command-code"],
   });
-  expect(result.ids).toEqual(["claude-code", "cursor", "agy"]);
+  expect(result.ids).toEqual(["claude-code", "cursor", "command-code"]);
   expect(result.source).toBe("auto");
-  expect(result.addedByDetection).toEqual(["cursor", "agy"]);
+  expect(result.addedByDetection).toEqual(["cursor", "command-code"]);
 });
 
 test("nothing saved and nothing detected is a valid answer", async () => {
@@ -146,13 +145,13 @@ test("the selection round-trips through ~/.tersio/agents.json", () => {
   const { home, cleanup } = tempHome();
   try {
     expect(readSelection(home).hosts).toEqual([]);
-    writeSelection(home, ["agy", "cursor"]);
+    writeSelection(home, ["command-code", "cursor"]);
     // Stored in registry order, not the order given, so the file is stable
     // whatever order --agent listed them in.
-    expect(readSelection(home).hosts).toEqual(["cursor", "agy"]);
+    expect(readSelection(home).hosts).toEqual(["cursor", "command-code"]);
     expect(readSelection(home).updatedAt).toBeGreaterThan(0);
-    writeSelection(home, ["agy"]);
-    expect(readSelection(home).hosts).toEqual(["agy"]);
+    writeSelection(home, ["command-code"]);
+    expect(readSelection(home).hosts).toEqual(["command-code"]);
   } finally {
     cleanup();
   }
@@ -166,8 +165,8 @@ test("a corrupt or absent selection file reads as empty rather than throwing", (
     expect(readSelection(home).hosts).toEqual([]);
     write(home, ".tersio/agents.json", '{"hosts": "not-an-array"}');
     expect(readSelection(home).hosts).toEqual([]);
-    write(home, ".tersio/agents.json", '{"hosts": ["agy", 7, null]}');
-    expect(readSelection(home).hosts).toEqual(["agy"]);
+    write(home, ".tersio/agents.json", '{"hosts": ["command-code", 7, null]}');
+    expect(readSelection(home).hosts).toEqual(["command-code"]);
   } finally {
     cleanup();
   }
@@ -203,9 +202,9 @@ test("detection finds a host by a binary on PATH", () => {
   const { home, cleanup } = tempHome();
   try {
     const binDir = mkdtempSync(path.join(os.tmpdir(), "tersio-bin-"));
-    writeFileSync(path.join(binDir, "agy"), "#!/bin/sh\n", { mode: 0o755 });
+    writeFileSync(path.join(binDir, "command-code"), "#!/bin/sh\n", { mode: 0o755 });
     const found = detectHosts(home, { PATH: binDir });
-    expect(found).toContain("agy");
+    expect(found).toContain("command-code");
     rmSync(binDir, { recursive: true, force: true });
   } finally {
     cleanup();
@@ -291,13 +290,13 @@ test("a dry run reports the plan and writes nothing", async () => {
 test("a host that cannot rewrite gets guidance and no hook file", async () => {
   const { home, cleanup } = tempHome();
   try {
-    const host = byId("agy")!;
+    const host = byId("command-code")!;
     await applyHost(host, home);
-    expect(existsSync(path.join(home, ".gemini", "GEMINI.md"))).toBe(true);
-    expect(existsSync(path.join(home, ".gemini", "antigravity-cli", "skills", "tersio-rtk", "SKILL.md"))).toBe(true);
-    expect(read(home, ".gemini/GEMINI.md")).toContain("prefix noisy commands");
+    expect(existsSync(path.join(home, ".commandcode", "AGENTS.md"))).toBe(true);
+    expect(existsSync(path.join(home, ".commandcode", "skills", "tersio-rtk", "SKILL.md"))).toBe(true);
+    expect(read(home, ".commandcode/AGENTS.md")).toContain("prefix noisy commands");
     // No hook file anywhere for a host whose hooks cannot rewrite.
-    expect(existsSync(path.join(home, ".gemini", "hooks.json"))).toBe(false);
+    expect(existsSync(path.join(home, ".commandcode", "hooks.json"))).toBe(false);
   } finally {
     cleanup();
   }
@@ -306,7 +305,7 @@ test("a host that cannot rewrite gets guidance and no hook file", async () => {
 test("a failure on one host does not stop the others", async () => {
   const { home, cleanup } = tempHome();
   try {
-    const { results, errors } = await applyHosts(["claude-code", "agy", "cursor"], home);
+    const { results, errors } = await applyHosts(["claude-code", "command-code", "cursor"], home);
     expect(results.length).toBe(3);
     expect(errors).toEqual([]);
   } finally {
@@ -436,7 +435,7 @@ test("removing a host that was never installed touches nothing", async () => {
 test("a full apply then remove leaves no tersio file behind", async () => {
   const { home, cleanup } = tempHome();
   try {
-    const hosts = ["claude-code", "codex", "copilot-cli", "cursor", "grok-build", "hermes", "agy", "command-code"];
+    const hosts = ["claude-code", "codex", "copilot-cli", "cursor", "grok-build", "opencode", "command-code"];
     await applyHosts(hosts, home);
     await removeHosts(hosts, home);
     const leftovers: string[] = [];
@@ -481,7 +480,7 @@ test("a fully installed host reports healthy, with no repair pending", () => {
 test("a healthy row is quiet about repair and names the rewrite path", () => {
   const { home, cleanup } = tempHome();
   try {
-    expect(reportHost(byId("agy")!, home)).toMatchObject({ status: "warn", repair: "install" });
+    expect(reportHost(byId("command-code")!, home)).toMatchObject({ status: "warn", repair: "install" });
   } finally {
     cleanup();
   }
@@ -490,8 +489,8 @@ test("a healthy row is quiet about repair and names the rewrite path", () => {
 test("doctor reports one row per selected host", () => {
   const { home, cleanup } = tempHome();
   try {
-    const rows = reportHosts(["claude-code", "agy", "bogus"], home);
-    expect(rows.map((r) => r.host.id)).toEqual(["claude-code", "agy"]);
+    const rows = reportHosts(["claude-code", "command-code", "bogus"], home);
+    expect(rows.map((r) => r.host.id)).toEqual(["claude-code", "command-code"]);
     for (const row of rows) {
       expect(row.detail.length).toBeGreaterThan(0);
       expect(row.missing.length).toBeGreaterThan(0);
