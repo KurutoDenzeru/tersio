@@ -146,6 +146,42 @@ test("pi wiring finds a tersio-managed rtk that is not on PATH", () => {
   }
 });
 
+test("a stored choice does not hide a host that is already installed", () => {
+  // Regression: `--yes` returned the stored list verbatim, so a host the user
+  // had on disk but never ticked in the menu was never written. OpenCode was
+  // installed and running on this machine, yet `install --yes` printed
+  // "Hosts: Oh My Pi (OMP)" and gave OpenCode nothing.
+  const home = tempHome();
+  try {
+    seedHosts(home, ["omp", "opencode"]);
+    mkdirSync(path.dirname(agentsFile(home)), { recursive: true });
+    writeFileSync(agentsFile(home), JSON.stringify({ agents: ["omp"] }), "utf8");
+
+    const result = run(home, ["install", "--yes"]);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout, "an installed host must not be dropped").toMatch(/OpenCode/);
+    expect(existsSync(path.join(home, ".config", "opencode", "plugins", "tersio-rtk.ts"))).toBe(true);
+    expect(existsSync(path.join(home, ".config", "opencode", "commands", "caveman.md"))).toBe(true);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+}, 300000);
+
+test("--agent stays authoritative and is not widened by detection", () => {
+  // The opposite direction: an explicit flag is a decision, so a host the user
+  // did not name must not be pulled in just because its directory exists.
+  const home = tempHome();
+  try {
+    seedHosts(home, ["omp", "opencode"]);
+    const result = run(home, ["install", "--yes", "--agent", "omp"]);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout, "the flag must win").not.toMatch(/OpenCode/);
+    expect(existsSync(path.join(home, ".config", "opencode", "plugins", "tersio-rtk.ts"))).toBe(false);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+}, 300000);
+
 test("an unknown --agent is rejected with the full valid list", () => {
   const home = tempHome();
   try {
@@ -239,7 +275,12 @@ test("non-interactive install auto-detects the hosts present and never prompts",
   }
 });
 
-test("a stored choice wins over detection on later runs", () => {
+test("a stored choice is a preference, not a veto over what is installed", () => {
+  // This test used to assert the opposite — "a stored choice wins over
+  // detection" — which is exactly the bug. On this machine OpenCode was
+  // installed and running, `install --yes` printed "Hosts: Oh My Pi (OMP)",
+  // and OpenCode received nothing: no plugin, no guidance, no commands. A host
+  // the user already runs is not a host they opted out of.
   const home = tempHome();
   try {
     seedHosts(home, ["omp", "opencode"]);
@@ -249,9 +290,8 @@ test("a stored choice wins over detection on later runs", () => {
     const result = run(home, ["install", "--yes", "--dry-run"]);
 
     expect(result.status, result.stderr).toBe(0);
-    // Both hosts are present, but the stored choice excludes OpenCode.
-    expect(result.stdout).toMatch(/Hosts: Oh My Pi \(OMP\)$/m);
-    expect(result.stdout).not.toMatch(/OpenCode — install rtk plugin/);
+    expect(result.stdout).toMatch(/Hosts: Oh My Pi \(OMP\) \+ OpenCode$/m);
+    expect(result.stdout).toMatch(/OpenCode — install rtk plugin/);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }
@@ -267,9 +307,9 @@ test("a hand-edited agents file with unknown or duplicate hosts is tolerated", (
     const result = run(home, ["install", "--yes", "--dry-run"]);
 
     expect(result.status, result.stderr).toBe(0);
-    // Dedupe keeps omp once, the bogus entries drop, and a now-valid host
-    // (cursor) survives the filter.
-    expect(result.stdout).toMatch(/Hosts: Oh My Pi \(OMP\) \+ Cursor$/m);
+    // Dedupe keeps omp once, bogus entries drop, cursor survives the filter —
+    // and opencode is added back because its directory exists.
+    expect(result.stdout).toMatch(/Hosts: Oh My Pi \(OMP\) \+ Cursor \+ OpenCode$/m);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }
@@ -300,10 +340,14 @@ test("settings --agent persists the choice for later installs", () => {
     expect(set.status, set.stderr).toBe(0);
     expect(readAgents(home)).toEqual(["opencode"]);
 
-    // The stored value must actually change what install does.
+    // The stored value must still shape what install does. It selects opencode,
+    // and omp is detected, so the union is "opencode + omp" — omp is what brings
+    // the Combo step back. The point of the stored list is no longer exclusion
+    // (that was the bug) but ordering and intent.
     const after = run(home, ["install", "--yes", "--dry-run"]);
-    expect(after.stdout).toMatch(/Hosts: OpenCode/);
-    expect(after.stdout).not.toMatch(/Combo — install preset switch/);
+    expect(after.stdout).toMatch(/OpenCode/);
+    // OpenCode is present in the union and therefore gets its own step.
+    expect(after.stdout).toMatch(/OpenCode — install rtk plugin/);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

@@ -375,6 +375,12 @@ function labelFor(agent: AgentId): string {
   return hostLabel(agent);
 }
 
+// Stored choice first, then anything detected, so the order matches what the
+// user picked while a newly-installed host still appears.
+function union(stored: AgentId[] | null, detected: AgentId[]): AgentId[] {
+  return [...new Set([...(stored ?? []), ...detected])];
+}
+
 // Which hosts this run installs for: --agent flag, then the interactive
 // multiselect, then the stored choice, then auto-detection.
 //
@@ -391,7 +397,13 @@ async function resolveAgents(): Promise<AgentId[]> {
 
   const stored = storedAgents();
   const detected = detectedAgents();
-  if (!tty() || applyUpdate) return stored ?? detected;
+  // A stored choice is a preference, not evidence. A host the user has on
+  // disk but never ticked in the menu stayed invisible and was never written,
+  // because the old code returned the stored list verbatim here. OpenCode on
+  // this machine was installed and running, yet `install --yes` reported
+  // "Hosts: Oh My Pi" and wrote it nothing. The interactive menu already unions
+  // the two; --yes, CI, and pipes now do the same.
+  if (!tty() || applyUpdate) return union(stored, detected);
 
   // Seed from the stored choice when there is one, else from detection, and
   // union in anything already on disk so a host the user has but never
