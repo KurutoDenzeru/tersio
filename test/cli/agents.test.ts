@@ -18,7 +18,7 @@ import {
   writeSelection,
 } from "../../cli/agents.ts";
 import { HOOK_MARKER } from "../../cli/host-writers.ts";
-import { START, END } from "../../cli/rules-pack.ts";
+import { START } from "../../cli/rules-pack.ts";
 
 function tempHome(): { home: string; cleanup: () => void } {
   const home = mkdtempSync(path.join(os.tmpdir(), "tersio-agents-"));
