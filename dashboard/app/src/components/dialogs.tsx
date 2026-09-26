@@ -46,6 +46,102 @@ function OmpLogo() {
   );
 }
 
+/**
+ * Mark tile for the agents that have no logo of their own here. Uses the same
+ * geometry as the OMP tile rather than inventing brand marks we do not ship.
+ */
+function AgentMark({ id, label }: { id: string; label: string }) {
+  const initials = label
+    .split(/[\s-]+/)
+    .filter((w) => /[A-Za-z]/.test(w[0] ?? ""))
+    .slice(0, 2)
+    .map((w) => w[0]!.toUpperCase())
+    .join("");
+  return (
+    <span aria-hidden className="text-[13px] leading-none font-semibold text-dim select-none">
+      {initials || id.slice(0, 2).toUpperCase()}
+    </span>
+  );
+}
+
+type AgentRow = NonNullable<HealthReport["agents"]>[number];
+
+const AGENT_STATUS: Record<
+  "configured" | "selected" | "off",
+  { label: string; variant: "success" | "destructive" | "outline"; dot: string }
+> = {
+  configured: { label: "Configured", variant: "success", dot: "bg-accent" },
+  selected: { label: "Incomplete", variant: "destructive", dot: "bg-danger" },
+  off: { label: "Not selected", variant: "outline", dot: "bg-track" },
+};
+
+/**
+ * One agent row. Every supported agent uses this, so OMP is a row in the same
+ * list rather than a separate card above it -- previously it was rendered
+ * twice, once as "Available" and again as "Not selected".
+ */
+function AgentListRow({
+  agent,
+  version,
+  binPath,
+  href,
+  unavailable,
+}: {
+  agent: AgentRow;
+  version?: string | null;
+  binPath?: string | null;
+  href?: string;
+  unavailable: boolean;
+}) {
+  const state = agent.configured ? "configured" : agent.selected ? "selected" : "off";
+  const status = AGENT_STATUS[state];
+  // The binary path is the most useful second line when we have it, since it
+  // is what makes an "Available" host verifiable at a glance.
+  const detail = binPath || agent.wiring;
+  const Wrapper = href ? "a" : "div";
+  return (
+    <Wrapper
+      {...(href ? { href, target: "_blank", rel: "noreferrer" } : {})}
+      className="flex min-w-0 items-center gap-3 border-b border-line py-4 transition-colors hover:bg-track/40 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent"
+      aria-label={`${agent.label} — ${status.label}`}
+    >
+      <span className="grid size-10 shrink-0 place-items-center overflow-hidden rounded-lg bg-track p-1.5">
+        {agent.id === "omp" ? <OmpLogo /> : <AgentMark id={agent.id} label={agent.label} />}
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+          <span className="text-sm font-semibold">{agent.label}</span>
+          {version ? (
+            <span className="mono text-xs text-dim">{version}</span>
+          ) : (
+            <span className="mono text-xs text-dim">{agent.id}</span>
+          )}
+        </div>
+        <div className="mt-1 min-w-0 text-xs text-dim">
+          {unavailable ? (
+            <span>Health information is unavailable.</span>
+          ) : binPath ? (
+            <HoverTip content={binPath}>
+              <span className="mono block truncate">{binPath}</span>
+            </HoverTip>
+          ) : (
+            <span className="block truncate">
+              {detail}
+              {agent.selected && agent.missing > 0 ? ` · ${agent.missing} file(s) missing` : ""}
+              {agent.selected && agent.missing === 0 ? " · up to date" : ""}
+            </span>
+          )}
+        </div>
+      </div>
+      <Badge variant={status.variant} className="ml-auto shrink-0 gap-1.5">
+        <span className={`size-1.5 rounded-full ${status.dot}`} />
+        {unavailable ? "Unavailable" : status.label}
+      </Badge>
+      {href && <Icon name="chevron-right" className="shrink-0 text-dim" />}
+    </Wrapper>
+  );
+}
+
 function HealthPane() {
   const [health, setHealth] = useState<HealthReport | null | undefined>(undefined);
   const [refreshing, setRefreshing] = useState(false);
@@ -62,18 +158,30 @@ function HealthPane() {
     load();
   }, [load]);
 
-  const ready = !!health?.omp;
   const unavailable = health === null;
-  const status = unavailable ? "Unavailable" : ready ? "Available" : "Not detected on PATH";
-  const path = health?.ompPath;
   const agents = health?.agents ?? [];
+  // An older tersio build, or an exported snapshot from one, has no agents
+  // payload. Fall back to the single OMP row so the pane is never empty.
+  const rows: AgentRow[] = agents.length > 0
+    ? agents
+    : [{
+      id: "omp",
+      label: "Oh My Pi (OMP)",
+      selected: false,
+      configured: !!health?.omp,
+      missing: 0,
+      present: 0,
+      wiring: "reference host · rtk extension · auto-rewrite",
+    }];
 
   return (
     <div>
       <div className="flex items-start justify-between gap-3 border-b border-line pb-4">
         <div className="min-w-0">
           <p className="m-0 text-[13px] font-semibold">Coding agents</p>
-          <p className="mt-0.5 mb-0 text-xs text-dim">Manage the AI agent CLIs tersio is set up for.</p>
+          <p className="mt-0.5 mb-0 text-xs text-dim">
+            Every agent tersio supports. Configured means it is set up and every file is in place.
+          </p>
         </div>
         <Button type="button" variant="outline" size="sm" onClick={load} disabled={refreshing} aria-label="Refresh coding agent status">
           {refreshing ? <Spinner /> : <Icon name="refresh-cw" />}
@@ -91,87 +199,24 @@ function HealthPane() {
           </div>
         </div>
       ) : (
-        <a
-          href="https://omp.sh"
-          target="_blank"
-          rel="noreferrer"
-          className="flex min-w-0 items-center gap-3 border-b border-line py-4 transition-colors hover:bg-track/40 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent"
-          aria-label="Open Oh My Pi"
-        >
-          <span className="grid size-10 shrink-0 place-items-center overflow-hidden rounded-lg bg-track p-1.5">
-            <OmpLogo />
-          </span>
-          <div className="min-w-0 flex-1">
-            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-              <span className="text-sm font-semibold">Oh My Pi</span>
-              {health?.omp && <span className="mono text-xs text-dim">{health.omp}</span>}
-            </div>
-            <div className="mt-1 min-w-0 text-xs text-dim">
-              {path ? (
-                <HoverTip content={path}>
-                  <span className="mono block truncate">{path}</span>
-                </HoverTip>
-              ) : ready ? (
-                <span>Available as omp on PATH.</span>
-              ) : health === null ? (
-                <span>Health information is unavailable.</span>
-              ) : (
-                <span>Not detected on PATH as omp.</span>
-              )}
-            </div>
-          </div>
-          <Badge variant={ready ? "secondary" : unavailable ? "destructive" : "outline"} className="ml-auto shrink-0 gap-1.5">
-            <span className={`size-1.5 rounded-full ${ready ? "bg-accent" : unavailable ? "bg-danger" : "bg-track"}`} />
-            {status}
-          </Badge>
-          <Icon name="chevron-right" className="shrink-0 text-dim" />
-        </a>
-      )}
-      {checkedAt && <p className="mt-3 text-xs text-dim" role="status">Checked just now</p>}
-      {agents.length > 0 && (
-        <div className="mt-5 border-t border-line pt-4">
-          <p className="m-0 text-[13px] font-semibold">Connected agents</p>
-          <p className="mt-0.5 mb-0 text-xs text-dim">
-            Every agent tersio supports. Selected means tersio installs for it; the wiring column is what it
-            actually gets.
-          </p>
-          <ul className="mt-3 grid gap-1.5">
-            {agents.map((a) => (
-              <li
-                key={a.id}
-                className="flex min-w-0 items-center gap-3 rounded-lg border border-line px-3 py-2"
-              >
-                <span
-                  className={`size-1.5 shrink-0 rounded-full ${
-                    a.configured ? "bg-accent" : a.selected ? "bg-warn" : "bg-track"
-                  }`}
-                  aria-hidden
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
-                    <span className="text-[13px] font-medium">{a.label}</span>
-                    <span className="mono text-[11px] text-dim">{a.id}</span>
-                  </div>
-                  <p className="mt-0.5 mb-0 truncate text-[11px] text-dim">
-                    {a.wiring}
-                    {a.selected && a.missing > 0 ? ` · ${a.missing} file(s) missing` : ""}
-                    {a.selected && a.missing === 0 ? " · up to date" : ""}
-                  </p>
-                </div>
-                <Badge
-                  variant={a.configured ? "secondary" : a.selected ? "destructive" : "outline"}
-                  className="ml-auto shrink-0"
-                >
-                  {a.configured ? "Configured" : a.selected ? "Incomplete" : "Not selected"}
-                </Badge>
-              </li>
-            ))}
-          </ul>
-          <p className="mt-3 text-[11px] text-dim">
-            Change the selection with <span className="mono">tersio install</span>.
-          </p>
+        <div>
+          {rows.map((agent) => (
+            <AgentListRow
+              key={agent.id}
+              agent={agent}
+              version={agent.id === "omp" ? health?.omp : null}
+              binPath={agent.id === "omp" ? health?.ompPath : null}
+              href={agent.id === "omp" ? "https://omp.sh" : undefined}
+              unavailable={unavailable}
+            />
+          ))}
         </div>
       )}
+      <p className="mt-3 text-xs text-dim" role="status">
+        {checkedAt ? "Checked just now" : "Not checked yet"}{" "}
+        <span className="text-dim">· change the selection with</span>{" "}
+        <span className="mono">tersio install</span>
+      </p>
     </div>
   );
 }

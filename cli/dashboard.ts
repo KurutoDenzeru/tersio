@@ -117,6 +117,11 @@ export function agentsJson(home: string = process.env.HOME || process.env.USERPR
   const selected = readSelection(home).hosts;
   const rows = new Map(reportHosts(selected, home).map((r) => [r.host.id, r]));
   return agentChoices().map((choice) => {
+    // OMP is installed by its own plugin path, never by the generic emitters,
+    // so it never appears in agents.json. Reporting it "Not selected" beside a
+    // detected omp binary reads as a contradiction, so its row is computed from
+    // the OMP install directly.
+    if (choice.value === 'omp') return ompRow(home);
     const row = rows.get(choice.value);
     const isSelected = selected.includes(choice.value);
     return {
@@ -130,6 +135,36 @@ export function agentsJson(home: string = process.env.HOME || process.env.USERPR
       wiring: choice.hint,
     };
   });
+}
+
+/**
+ * What the OMP install actually wrote, which is the only honest source here.
+ *
+ * Paths are built from the same `home` as the rest of this function. The
+ * module-level OMP_AGENT_DIR / OMP_PLUGINS_DIR constants resolve against the
+ * real os.homedir(), so using them here would read the developer's own ~/.omp
+ * regardless of the home the caller asked about.
+ */
+function ompRow(home: string): Record<string, unknown> {
+  const present = [
+    path.join(home, '.omp', 'agent', 'extensions', 'rtk.ts'),
+    path.join(home, '.omp', 'plugins', 'node_modules', PACKAGE_NAME),
+  ].filter((p) => {
+    try {
+      return existsSync(p);
+    } catch {
+      return false;
+    }
+  });
+  return {
+    id: 'omp',
+    label: 'Oh My Pi (OMP)',
+    selected: true,
+    configured: present.length > 0,
+    missing: 2 - present.length,
+    present: present.length,
+    wiring: 'plugin · live commands',
+  };
 }
 
 function healthJson(): string {

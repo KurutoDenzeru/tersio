@@ -35,13 +35,35 @@ test("the Connection pane lists every supported agent, not just one", () => {
   }
 });
 
-test("with nothing selected, every agent reads as not selected and unconfigured", () => {
+test("with nothing selected, every agent except OMP reads as not selected", () => {
   const { home, cleanup } = tempHome();
   try {
     for (const r of rows(home)) {
+      if (r.id === "omp") continue;
       expect(r.selected, r.id).toBe(false);
       expect(r.configured, r.id).toBe(false);
     }
+  } finally {
+    cleanup();
+  }
+});
+
+test("the OMP row reflects the OMP install, not agents.json", () => {
+  // OMP is installed by its own plugin path and never lands in agents.json, so
+  // it used to read "Not selected" right next to a detected omp binary. It is
+  // always part of an install, and configured only once something is on disk.
+  const { home, cleanup } = tempHome();
+  try {
+    const bare = rows(home).find((r) => r.id === "omp")!;
+    expect(bare.selected, "OMP is always in scope").toBe(true);
+    expect(bare.configured, "nothing installed yet").toBe(false);
+
+    mkdirSync(path.join(home, ".omp", "agent", "extensions"), { recursive: true });
+    writeFileSync(path.join(home, ".omp", "agent", "extensions", "rtk.ts"), "export default {}\n", "utf8");
+
+    const wired = rows(home).find((r) => r.id === "omp")!;
+    expect(wired.configured, "the rtk extension is on disk").toBe(true);
+    expect(wired.present).toBe(1);
   } finally {
     cleanup();
   }
@@ -123,7 +145,7 @@ test("a corrupt selection file degrades to nothing rather than throwing", () => 
     writeFileSync(path.join(home, ".tersio", "agents.json"), "{ not json", "utf8");
     const list = rows(home);
     expect(list).toHaveLength(HOSTS.length);
-    expect(list.every((r) => !r.selected)).toBe(true);
+    expect(list.filter((r) => r.id !== "omp").every((r) => !r.selected)).toBe(true);
   } finally {
     cleanup();
   }
