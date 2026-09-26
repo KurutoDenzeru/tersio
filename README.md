@@ -1,6 +1,6 @@
 ![Banner](/assets/Banner.webp)
 
-# ✂️ Tersio — Token-saving OMP Add-ons
+# ✂️ Tersio — Terse replies, filtered shell output, minimal code
 
 [![npm version](https://shieldcn.dev/npm/@krtclcdy%2Ftersio.svg?variant=branded&size=xs&logo=npm)](https://www.npmjs.com/package/@krtclcdy/tersio)
 [![node](https://shieldcn.dev/badge/node-%3E%3D20.12-22c55e.svg?variant=branded&size=xs&logo=nodedotjs)](https://nodejs.org)
@@ -8,15 +8,54 @@
 [![Build](https://shieldcn.dev/github/ci/KurutoDenzeru/tersio.svg?variant=branded&size=xs&logo=githubactions&label=Build)](https://github.com/KurutoDenzeru/tersio/actions)
 [![MIT](https://shieldcn.dev/badge/license-MIT-2563eb.svg?variant=branded&size=xs&logo=opensourceinitiative)](./LICENSE)
 
- Terse replies, compact shell output, and minimal code decisions for [Oh My Pi (OMP)](https://github.com/can1357/oh-my-pi) — one-command combo presets.
+Tersio installs three coding modes into whichever agents you already use — **twelve supported** — and keeps the savings in one local ledger and dashboard.
+
+| Mode | What it changes |
+|---|---|
+| **Caveman** | Terse replies: drops filler and hedging, keeps complete technical substance |
+| **Ponytail** | Minimal code: root causes, standard library, YAGNI, no speculative abstractions |
+| **RTK** | Runs noisy shell commands through the [rtk](https://github.com/rtk-ai/rtk) binary, which filters the output before the model reads it |
+
+[Oh My Pi (OMP)](https://github.com/can1357/oh-my-pi) is the reference host and the only one with the live-session extras: mid-session mode switching, the Combo bar, and subagent inheritance. Every other host gets the portable half — the rules pack, the skills, and a rewrite hook where that host documents one.
 
 ## ⚡ Getting Started
 
-**Default** (macOS/Linux/WSL) — one line. Installs the CLI via npm, then runs the main installer (scope + Combo preset menus) in the same pass:
+One line. Installs the CLI via npm, then runs the installer:
 
 ```bash
 curl -fsSL https://github.com/KurutoDenzeru/tersio/releases/latest/download/install.sh | sh
 ```
+
+Then tell it which agents to set up:
+
+```bash
+tersio install --agent claude-code,cursor
+```
+
+The selection is saved to `~/.tersio/agents.json` and reused by every later install, reinstall, and update. Run `tersio install` with no `--agent` to auto-detect the agents you already have, and `tersio doctor` to see what landed. Every file written, per host, is in **[INSTALL.md](./INSTALL.md)**.
+
+### Supported agents
+
+`--agent` takes any id below. Repeatable and comma-separated.
+
+| Agent | `--agent` | Rules file | Skills | RTK auto-rewrite |
+|---|---|---|---|---|
+| Oh My Pi | `omp` | — live bridge | ✅ | ✅ live extension |
+| Claude Code | `claude-code` | `CLAUDE.md` | ✅ | ✅ hook |
+| OpenAI Codex | `codex` | `AGENTS.md` | ✅ | ✅ hook |
+| GitHub Copilot CLI | `copilot-cli` | `copilot-instructions.md` | ✅ | ✅ hook |
+| Cursor | `cursor` | `rules/tersio.mdc` | ✅ | ✅ hook |
+| Grok Build | `grok-build` | `rules/tersio.md` | ✅ | ✅ hook |
+| Hermes | `hermes` | — none global | ✅ | ✅ hook |
+| Pi | `pi` | `AGENTS.md` | ✅ | ✅ rtk extension |
+| OpenCode | `opencode` | — pending | — | ⚠️ guidance only |
+| Command Code | `command-code` | `AGENTS.md` | ✅ | ⚠️ guidance only |
+| OpenClaw | `openclaw` | `AGENTS.md` | ✅ | ⚠️ guidance only |
+| Antigravity CLI | `agy` | `AGENTS.md` | ✅ | ⚠️ guidance only |
+
+**Read the ⚠️ rows literally.** Those four hosts either document no way to rewrite a shell command, or Tersio does not ship one yet. They get the rules pack and skills, and the RTK text tells the model to prefix commands by hand instead. `tersio doctor` states which case each host is in, so none of this is a claim you have to take on faith.
+
+Two notes on the Google rows: `agy` keeps its global rules at `~/.gemini/GEMINI.md` but moved its workspace skills to `.agents/skills/`, and Gemini CLI itself is sunset for free, Pro, and Ultra accounts — `agy` is its successor.
 
 Prefer OMP-managed updates? Install as an OMP plugin instead:
 
@@ -56,14 +95,14 @@ npm exec --yes --prefer-online --package=@krtclcdy/tersio@latest -- tersio insta
 
 ### Requirements
 
-- [OMP](https://github.com/can1357/oh-my-pi)
 - Node.js 20.12+ with npm
+- At least one supported agent, or [OMP](https://github.com/can1357/oh-my-pi) for the live-session extras
 
-Windows/WSL have separate OMP homes — install from the environment where OMP runs. Inside WSL, `command -v npm` must resolve to a Linux path, not `/mnt/c/`.
+Windows/WSL have separate home directories — install from the environment where the agent runs. Inside WSL, `command -v npm` must resolve to a Linux path, not `/mnt/c/`.
 
 ## 📊 Benchmarks
 
-Every mode is measured against a base run with all modes off. Measured surfaces use different boundaries. Do not treat reply-text, code-output, and shell-output reductions as total bill savings. Full protocol and caveats are in [BENCHMARK.md](./BENCHMARK.md).
+Measured on Oh My Pi, the reference host. Every mode is measured against a base run with all modes off. Measured surfaces use different boundaries. Do not treat reply-text, code-output, and shell-output reductions as total bill savings. Full protocol and caveats are in [BENCHMARK.md](./BENCHMARK.md).
 
 | Mode | Surface (n) | Base → Tersio | Δ |
 |---|---|---|---|
@@ -109,21 +148,21 @@ Upstream Ponytail's fair agentic benchmark reports 54% less code, 22% fewer toke
 
 | Command | Purpose |
 |---|---|
-| `tersio install` | Install (user scope: all OMP sessions) |
+| `tersio install` | Install the CLI, RTK, and the selected agents (`--agent <ids>` picks them; omit to auto-detect) |
 | `tersio update` | Refresh the CLI, extensions, and add-ons (RTK binary, Caveman rule, Ponytail) |
 | `tersio reinstall` | Fresh install, preserving the Ponytail package |
-| `tersio doctor` | Check OMP, extension, Ponytail, and RTK health (`--fix` repairs, `--fix=<scope>` one scope, `--dry-run` previews) |
+| `tersio doctor` | Check OMP, extensions, add-ons, and every selected agent (`--fix` repairs, `--fix=<scope>` one scope, `--dry-run` previews) |
 | `tersio usage` | Ledger-backed usage + savings report |
 | `tersio dashboard` | Open the Dashboard (`--open`, `--export <file>`, `--port <n>`, `--currency <code>`; serves localhost only) |
 | `tersio reset` | Clear tersio statistics: usage ledger + a watermark that hides pre-reset rows from every derived view (Y/N confirm, `--dry-run`, `--yes`) — session transcripts and RTK history stay intact on disk |
 | `tersio uninstall` | Remove extensions, registration, and the Ponytail plugin (`--keep-ponytail` keeps Ponytail; `--remove-rtk` also removes the RTK binary and its `rtk.ts` OMP wiring) |
 | `tersio version` | Print version |
 
-Flags: `--dry-run`, `--yes`/`-y`, `--verbose`, `--combo-default`/`--caveman-default`/`--rtk-default`/`--ponytail-default`, `--currency <code>` (usage/dashboard display currency; flag wins, then the `tersio settings` default, then USD). Legacy `--doctor` / `--uninstall` forms still work.
+Flags: `--agent <ids>` (repeatable, comma-separated), `--dry-run`, `--yes`/`-y`, `--verbose`, `--combo-default`/`--caveman-default`/`--rtk-default`/`--ponytail-default`, `--currency <code>` (usage/dashboard display currency; flag wins, then the `tersio settings` default, then USD). Legacy `--doctor` / `--uninstall` forms still work.
 
 ## ⌨️ Commands reference
 
-Mode switches live on their own commands; bare `/tersio` prints status.
+Mode switches live on their own commands; bare `/tersio` prints status. **These are Oh My Pi commands** — the reference host. Other agents get the modes as rules and skills rather than as live switches; see [INSTALL.md](./INSTALL.md).
 
 | Command | Purpose |
 |---|---|
@@ -141,10 +180,15 @@ Mode switches live on their own commands; bare `/tersio` prints status.
 
 ## 🗂️ Files and backups
 
+Tersio writes to each agent's own configuration, never a shared one. Per-agent paths and the exact file list are in [INSTALL.md](./INSTALL.md); the OMP paths are below.
+
 | What | Path |
 |---|---|
 | Caveman / RTK / Combo / Tersio commands | `~/.omp/plugins/node_modules/@krtclcdy/tersio/extensions/{caveman-session,rtk-session,combo-toggle,tersio-commands}/` — loaded from Tersio's OMP plugin manifest |
 | RTK OMP wiring (rtk-owned) | `~/.omp/agent/extensions/rtk.ts` — written by the installer via `rtk init -g --agent omp`; auto-loads, no config entry |
+| RTK Pi wiring (rtk-owned) | `~/.pi/agent/extensions/rtk.ts` — written via `rtk init -g --agent pi`; rtk owns the format |
+| Other agents' rules, skills, and hooks | See [INSTALL.md](./INSTALL.md) — every artifact is inside that agent's own config dir, between `<!-- tersio:start -->` and `<!-- tersio:end -->` where the file is shared |
+| Selected agents | `~/.tersio/agents.json` — the `--agent` list, reused by later runs |
 | Ponytail package (bundled Tersio dependency — one Plugins row, updates with `tersio update`) | `~/.omp/plugins/node_modules/@dietrichgebert/ponytail/` — loaded as a nested plugin dependency |
 | RTK binary | Installer writes `~/.bun/bin/rtk` (`rtk.exe` on Windows). Runtime resolves `PATH` first, then this managed path. |
 | Legacy config cleanup | `~/.omp/agent/config.yml` — doctor removes retired or duplicate extension entries |
