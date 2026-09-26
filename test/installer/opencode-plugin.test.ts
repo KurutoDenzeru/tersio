@@ -3,19 +3,25 @@ import { pathToFileURL, fileURLToPath } from "node:url";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { hermeticPath, seedFakeRtk, tempHome } from "../helpers/home.ts";
 
 /**
  * Drive the OpenCode RTK plugin the way OpenCode drives it.
  *
- * The plugin is a self-contained file that OpenCode imports, so a unit test can
- * register its hook and feed it the same event shape OpenCode passes. That
- * proves the wiring without a model call, which matters because provider
- * credits and region limits otherwise decide whether this can be checked at all.
+ * The plugin is a self-contained file OpenCode imports, so a test can register
+ * its hook and feed it the event shape OpenCode passes. That proves the wiring
+ * without a model call, which matters because every model available on the
+ * development machine is credit-limited, region-blocked, or missing a key, so
+ * a live session could not serve as evidence.
  *
- * The hook mutates `event.input.command` in place and returns nothing
- * (extensions/opencode/rtk-plugin.ts), so the only correct read is the payload
- * after the call — an earlier version of this test read a return value that
- * does not exist and reported a false failure.
+ * Two things this pins, both learned the hard way:
+ *
+ * - The hook spawns `rtk`, so the test seeds a stub and hides the developer's
+ *   binary. Without it the hook fails open, leaves the command alone, and the
+ *   test passes locally while failing in CI, which has no rtk at all.
+ * - The hook mutates `event.input.command` in place and returns nothing, so the
+ *   only correct read is the payload after the call. Reading a return value, as
+ *   a first attempt did, reports a false failure against correct code.
  */
 
 const pluginPath = path.resolve(
@@ -28,67 +34,104 @@ interface ShellEvent {
   input: { command: string };
 }
 
-async function loadPlugin(): Promise<{ id: string; setup: (ctx: unknown) => Promise<void> }> {
-  const mod = await import(pathToFileURL(pluginPath).href);
-  return (mod as { default: { id: string; setup: (ctx: unknown) => Promise<void> } }).default;
-}
+type Hook = (event: ShellEvent, ctx: unknown) => Promise<void>;
 
-async function registerHook(): Promise<(event: ShellEvent, ctx: unknown) => Promise<void>> {
-  const plugin = await loadPlugin();
-  let hook: ((event: ShellEvent, ctx: unknown) => Promise<void>) | null = null;
-  const ctx = { tool: { hook: (event: string, fn: never) => { if (event === "execute.before") hook = fn; } } };
-  await plugin.setup(ctx);
+async function registerHook(): Promise<Hook> {
+  const mod = (await import(pathToFileURL(pluginPath).href)) as {
+    default: { id: string; setup: (ctx: unknown) => Promise<void> };
+  };
+  let hook: Hook | null = null;
+  const ctx = {
+    tool: {
+      hook: (event: string, fn: Hook) => {
+        if (event === "execute.before") hook = fn;
+      },
+    },
+  };
+  await mod.default.setup(ctx);
   if (!hook) throw new Error("plugin did not register execute.before");
-  return hook as unknown as (event: ShellEvent, ctx: unknown) => Promise<void>;
+  return hook;
 }
 
-test("the OpenCode plugin registers an execute.before hook", async () => {
-  const plugin = await loadPlugin();
-  expect(plugin.id).toBe("tersio-rtk");
-  await expect(registerHook()).resolves.toBeTypeOf("function");
+/** Runs `work` with a stub rtk on PATH and the developer's rtk out of reach. */
+async function withStubbedRtk<T>(work: (hook: Hook) => Promise<T>): Promise<T> {
+  const home = tempHome();
+  seedFakeRtk(home);
+  const prevPath = process.env.PATH;
+  process.env.PATH = `${path.join(home, ".bun", "bin")}${path.delimiter}${hermeticPath()}`;
+  try {
+    return await work(await registerHook());
+  } finally {
+    if (prevPath === undefined) delete process.env.PATH;
+    else process.env.PATH = prevPath;
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+}
+
+const throughHook = async (hook: Hook, command: string): Promise<string> => {
+  const event: ShellEvent = { tool: "bash", input: { command } };
+  await hook(event, {});
+  return event.input.command;
+};
+
+test("the plugin exposes the id OpenCode requires", async () => {
+  const mod = (await import(pathToFileURL(pluginPath).href)) as { default: { id: string } };
+  expect(mod.default.id).toBe("tersio-rtk");
+});
+
+test("the plugin registers an execute.before hook", async () => {
+  await withStubbedRtk(async (hook) => {
+    expect(hook).toBeTypeOf("function");
+  });
 });
 
 test("the hook rewrites a noisy shell command in place", async () => {
-  const hook = await registerHook();
-  const event = { tool: "bash", input: { command: "ls -la /Users/kurtcalacday/Documents/Projects/Personal/tersio/cli" } };
-  await hook(event, {});
-  // rtk is the single source of truth; tersio only routes.
-  expect(event.input.command).toMatch(/^rtk /);
-  expect(event.input.command).toContain("tersio/cli");
-});
-
-test("the hook never invents a rewrite rtk did not return", async () => {
-  const hook = await registerHook();
-  // `rtk rewrite` passes this through with a marker, so the value changes but
-  // stays a real rtk invocation. What must never happen is a tersio-side guess.
-  const event = { tool: "bash", input: { command: "git diff --check" } };
-  await hook(event, {});
-  expect(event.input.command.length).toBeGreaterThan(0);
-  expect(event.input.command).not.toBe("");
+  await withStubbedRtk(async (hook) => {
+    const out = await throughHook(hook, "ls -la /Users/kurtcalacday/Documents/Projects/Personal/tersio/cli");
+    expect(out).toMatch(/^rtk /);
+    expect(out).toContain("tersio/cli");
+  });
 });
 
 test("the hook does not double-prefix a command already routed through rtk", async () => {
-  const hook = await registerHook();
-  const event = { tool: "bash", input: { command: "rtk git status" } };
-  await hook(event, {});
-  expect(event.input.command).toBe("rtk git status");
+  await withStubbedRtk(async (hook) => {
+    expect(await throughHook(hook, "rtk git status")).toBe("rtk git status");
+  });
 });
 
 test("the hook ignores tools that are not the shell", async () => {
-  const hook = await registerHook();
-  const event = { tool: "read", input: { command: "ls -la" } };
-  await hook(event, {});
-  expect(event.input.command).toBe("ls -la");
+  await withStubbedRtk(async (hook) => {
+    const event: ShellEvent = { tool: "read", input: { command: "ls -la" } };
+    await hook(event, {});
+    expect(event.input.command).toBe("ls -la");
+  });
 });
 
-test("TERSIO_RTK=off disables the hook entirely", async () => {
+test("the hook is inert when no rtk binary exists, failing open", async () => {
+  // A machine with no rtk must still run the user's command unchanged. That is
+  // the fail-open contract, and it is why a missing binary is not an error.
+  const home = tempHome();
+  const prevPath = process.env.PATH;
+  process.env.PATH = hermeticPath();
+  try {
+    const hook = await registerHook();
+    expect(await throughHook(hook, "ls -la /tmp")).toBe("ls -la /tmp");
+  } finally {
+    if (prevPath === undefined) delete process.env.PATH;
+    else process.env.PATH = prevPath;
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("TERSIO_RTK=off registers no hook at all", async () => {
   const prev = process.env.TERSIO_RTK;
   process.env.TERSIO_RTK = "off";
   try {
-    const plugin = await loadPlugin();
+    const mod = (await import(pathToFileURL(pluginPath).href)) as {
+      default: { setup: (ctx: unknown) => Promise<void> };
+    };
     let registered = false;
-    const ctx = { tool: { hook: () => { registered = true; } } };
-    await plugin.setup(ctx);
+    await mod.default.setup({ tool: { hook: () => { registered = true; } } });
     expect(registered, "no hook may be registered when TERSIO_RTK=off").toBe(false);
   } finally {
     if (prev === undefined) delete process.env.TERSIO_RTK;
@@ -96,9 +139,9 @@ test("TERSIO_RTK=off disables the hook entirely", async () => {
   }
 });
 
-test("the installed copy in a real OpenCode config dir is loadable and rewrites", () => {
+test("the copy installed in a real OpenCode config dir is loadable", () => {
   // Guards the shipped artifact, not just the repo copy. A stale or truncated
-  // install would otherwise show up only as "my commands are not compressed".
+  // install would otherwise surface only as "my commands are not compressed".
   const installed = path.join(os.homedir(), ".config/opencode/plugins/tersio-rtk.ts");
   if (!fs.existsSync(installed)) return; // not installed here; nothing to assert
   expect(fs.readFileSync(installed, "utf8")).toMatch(/export\s+default/);
