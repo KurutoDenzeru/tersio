@@ -1,15 +1,17 @@
 // cli/doctor.ts — installation health checks.
 import { promises as fs } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import {
   OMP_AGENT_DIR, OMP_PLUGINS_DIR,
-  args, dryRun, fix, yes,
+  agentFlag, args, dryRun, fix, yes,
   execP, parseJsonObject, relTime,
 } from './common.ts';
 import { askInteractiveChoice, askInteractiveConfirm, runInteractivePhase } from './interactive.ts';
 import { usageDbPath } from '../extensions/shared/usage-store.ts';
 import { pricesCachePath } from '../extensions/shared/pricing.ts';
 import { readTextIfExists, resolveRtkBinary } from '../extensions/lib/utils.ts';
+import { detectHosts, readSelection, reportHosts, resolveSelection } from './agents.ts';
 
 interface DoctorSummary {
   ok: number;
@@ -147,6 +149,26 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   const ponytailAge = ponytailMtime ? `(updated ${relTime(Date.now() - ponytailMtime.mtimeMs)} · ${absDate(ponytailMtime.mtimeMs)})` : '';
   const ponytailVer = parseJsonObject<{ version?: string }>(ponytailPkgText)?.version ?? '';
   check('Ponytail', ponytailPkgText !== null, [ponytailVer, ponytailAge].filter(Boolean).join(' '));
+
+  // One row per selected non-OMP host. Prints nothing when no other host is
+  // selected, so an OMP-only install keeps exactly the output it had. Each row
+  // reports the rewrite path it actually got, because "wired" and "wired to a
+  // hook the host ignores" look identical from the outside.
+  const home = os.homedir();
+  const selection = resolveSelection(agentFlag, readSelection(home).hosts, detectHosts(home));
+  const otherHosts = selection.ids.filter((id) => id !== 'omp');
+  if (otherHosts.length > 0) {
+    section('Agent hosts');
+    for (const row of reportHosts(otherHosts, home)) {
+      const label = row.host.label;
+      if (row.status === 'warn') {
+        const first = row.missing[0] ? ` (${row.missing[0]})` : '';
+        warnLine(label, `${row.missing.length} file(s) missing${first} — run: tersio install --agent ${row.host.id}`);
+      } else {
+        check(label, true, row.detail.replace(`${label}: `, ''));
+      }
+    }
+  }
 
   const total = tally.ok + tally.missing + tally.warn;
   console.log(`\n  Summary: ${total} checks — ✅ ${tally.ok} ok, ⚠️ ${tally.warn} warn, ❌ ${tally.missing} missing`);

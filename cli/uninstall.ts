@@ -1,14 +1,16 @@
 // cli/uninstall.ts — remove managed extensions, plugins, and binaries.
 import { promises as fs } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { cancel as clackCancel, confirm as clackConfirm } from '@clack/prompts';
 import {
   BUN_BIN_DIR, OMP_AGENT_DIR, OMP_PLUGINS_DIR, PACKAGE_NAME, RTK_BINARY_NAME,
-  dryRun, keepPonytail, removePonytail, removeRtk, yes,
-  debug, parseJsonObject, writeConfigLines, writeIfChanged,
+  agentFlag, dryRun, keepPonytail, removePonytail, removeRtk, yes,
+  debug, writeConfigLines,
 } from './common.ts';
 import { ask, closeRL, tty } from './interactive.ts';
 import { readTextIfExists } from '../extensions/lib/utils.ts';
+import { detectHosts, readSelection, removeHosts, resolveSelection } from './agents.ts';
 
 interface UninstallOptions {
   yes?: boolean;
@@ -196,6 +198,32 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
   if (shouldRemoveRtk) {
     await removeUninstallTarget(rtkBin, shouldDryRun, false);
     await removeUninstallTarget(path.join(extDir, 'rtk.ts'), shouldDryRun);
+  }
+
+  // Strip tersio's content from every other selected host. This removes only
+  // what we wrote: a merged file loses its marked block, a config the user also
+  // owns keeps everything but our entry, and a file we named is deleted once it
+  // configures no hook.
+  const home = os.homedir();
+  const selection = resolveSelection(agentFlag, readSelection(home).hosts, detectHosts(home));
+  const extra = selection.ids.filter((id) => id !== 'omp');
+  if (extra.length > 0) {
+    // The header prints under --dry-run too: a preview that silently omits a
+    // section is not a preview of the real run.
+    console.log('\n=== Agent hosts ===\n');
+    const { results, errors } = await removeHosts(extra, home, { dryRun: shouldDryRun, quiet: false });
+    for (const r of results) {
+      const what = r.removed.length === 0
+        ? 'nothing of ours found'
+        : shouldDryRun
+          ? `would remove ${r.removed.length} path(s)`
+          : `removed ${r.removed.length} path(s)`;
+      console.log(`  ${shouldDryRun ? '[dry-run]' : '[ok]'} ${r.host.label}: ${what}`);
+      if (r.kept.length > 0 && !shouldDryRun) {
+        console.log(`         kept ${r.kept.length} file(s) that also hold your own content`);
+      }
+    }
+    for (const e of errors) console.log(`  [fail] ${e.host}: ${e.error}`);
   }
 
   console.log('\nDone. Restart OMP for changes to take effect.');

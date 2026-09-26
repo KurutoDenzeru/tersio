@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import {
   BUN_BIN_DIR, COMBO_PRESET_MODES, IS_WINDOWS, OMP_AGENT_DIR, OMP_PLUGINS_DIR, OMP_BIN,
   PACKAGE_NAME, PACKAGE_VERSION, RTK_BINARY_NAME,
-  applyUpdate, cavemanDefaultFlag, comboDefaultFlag, command, dryRun, install,
+  agentFlag, applyUpdate, cavemanDefaultFlag, comboDefaultFlag, command, dryRun, install,
   ponytailDefaultFlag, profileFlagsGiven, reinstall, rtkDefaultFlag, verbose, yes,
   dashboardExport, dashboardPort,
   debug, ensurePonytailConfigValue,
@@ -30,6 +30,8 @@ import {
   httpsDownload, parseChecksum, readTextIfExists, rtkPlatformSpec, sha256File,
 } from '../extensions/lib/utils.ts';
 import { storedProfile, writePluginSettings } from './profile.ts';
+import { applyHosts, detectHosts, readSelection, resolveSelection, writeSelection } from './agents.ts';
+import { HOSTS } from './agent-hosts.ts';
 import type { Profile } from './profile.ts';
 
 // Paths to extension source files (relative to this script)
@@ -407,6 +409,49 @@ async function stepUpdater(extDir: string, options: WriteOptions): Promise<void>
   await copySources(extDir, [[UPDATER_INDEX, path.join('ai-addons-updater', 'index.ts')]], 'ai-addons-updater/index.ts', options);
 }
 
+/**
+ * Writes the rules pack, skills, and RTK hook for every selected non-OMP host.
+ *
+ * A no-op unless the selection actually contains another host, so an existing
+ * OMP-only install sees no new output and no new files. omp itself is handled
+ * above by the live-bridge path, so it is filtered out here rather than
+ * duplicated.
+ */
+async function stepAgentHosts(options: InstallOptions): Promise<void> {
+  const home = os.homedir();
+  const saved = readSelection(home);
+  const selection = resolveSelection(agentFlag, saved.hosts, detectHosts(home));
+  const extra = selection.ids.filter((id) => id !== 'omp');
+  if (extra.length === 0) return;
+
+  if (!options.quiet) {
+    const names = extra.map((id) => HOSTS.find((h) => h.id === id)?.label ?? id).join(', ');
+    console.log(`\n=== Agent hosts (${extra.length}) ===`);
+    console.log(`  ${names}`);
+  }
+
+  const { results, errors } = await applyHosts(extra, home, {
+    dryRun: options.dryRun,
+    quiet: options.quiet,
+    onlyChanged: true,
+  });
+
+  for (const r of results) {
+    if (options.dryRun) {
+      console.log(`  [dry-run] ${r.host.label}: would write ${r.planned.length} file(s)`);
+      continue;
+    }
+    if (r.written.length === 0) {
+      if (!options.quiet) console.log(`  [ok] ${r.host.label}: already up to date`);
+      continue;
+    }
+    console.log(`  [write] ${r.host.label}: ${r.written.length} file(s)`);
+  }
+  for (const e of errors) console.log(`  [fail] ${e.host}: ${e.error}`);
+
+  if (!options.dryRun) writeSelection(home, selection.ids);
+}
+
 async function stepCombo(extDir: string, options: InstallOptions): Promise<void> {
   if (!options.quiet) console.log('  Combo — install preset switch');
   await copySources(extDir, [[COMBO_TOGGLE_INDEX, path.join('combo-toggle', 'index.ts')]], 'combo-toggle/index.ts', options);
@@ -641,6 +686,7 @@ async function runInstall(overrides: { reinstall?: boolean } = {}): Promise<void
   await capture('commands', () => stepTersioCommands(userExtDir, options));
   await capture('updater', () => stepUpdater(userExtDir, options));
   if (selfPlugin) await capture('settings', () => writePluginSettings(profile, options));
+  await capture('agent hosts', () => stepAgentHosts(options));
 
   if (quiet) {
     if (failures.length > 0) console.log(`  add-ons: ${failures.length} failed (${failures.join(', ')}) — see [fail] lines above`);

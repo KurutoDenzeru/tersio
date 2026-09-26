@@ -32,7 +32,12 @@ Commands:
   help         Show this help
 
 Options:
-  --fix (doctor: repairs all; --fix=<scope> repairs one of extensions, registrations, rtk, ponytail, cli)
+  --agent <ids>    Target coding agents for the generic rules/skills/hook install.
+                   Repeatable and comma-separated. Known ids: omp, opencode,
+                   claude-code, codex, copilot-cli, cursor, grok-build, pi,
+                   openclaw, hermes, command-code, agy.
+                   Saved to ~/.tersio/agents.json and reused by later runs.
+  --fix (doctor: repairs all; --fix=<scope> repairs one of extensions, registrations, rtk, ponytail, cli, hosts)
   --scope user (legacy; accepted and ignored — user scope is the only scope)
   --keep-ponytail (uninstall: keep the bundled Ponytail copy — removed by default)
   --remove-rtk (uninstall: also remove the RTK binary)
