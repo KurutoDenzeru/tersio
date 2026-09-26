@@ -26,7 +26,7 @@ Three behaviors, ported to each agent:
 
 RTK needs a binary (`~/.bun/bin/rtk`) and a hook that each agent runs before a shell command. The CLI downloads the binary once and writes each host's hook in that host's own dialect.
 
-Two things do **not** port: the live Combo state bridge and the status bar are Oh My Pi features with no equivalent elsewhere. Other agents get the mode text, not a runtime toggle.
+Most agents also expose the modes as slash commands, but in two different ways. **Runtime toggle** (Oh My Pi, and OpenCode through prompt commands) means the command changes something the host itself consults, so the mode holds until changed. **Prompt command** (Claude Code, Codex, Gemini CLI, Copilot CLI, Cursor, Grok Build, Hermes, OpenClaw) means the command injects the mode text into the conversation, so it applies to that turn onward but is not a switch anything else can read. What does **not** port anywhere is the live Combo state bridge and the status bar: those are Oh My Pi features with no equivalent in any other host.
 
 ## Requirements
 

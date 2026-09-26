@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { applyMarkedBlock, installOpenCodeRtk, openCodeAgentsPath, openCodePluginPath, removeMarkedBlock, removeOpenCodeRtk } from "../../cli/opencode-wiring.ts";
+import { packCommands } from "../../cli/rules-pack.ts";
 import { installer, repoRoot, tempHome, withHome } from "../helpers/home.ts";
 
 const root = repoRoot;
@@ -19,7 +20,7 @@ test("install writes the plugin and guidance into the opencode config dir", asyn
   try {
     await withHome(home, async () => {
       const result = await installOpenCodeRtk(PLUGIN_SOURCE, { quiet: true });
-      expect(result).toEqual({ plugin: true, guidance: true });
+      expect(result).toEqual({ plugin: true, guidance: true, commands: 4 });
 
       const plugin = readFileSync(openCodePluginPath(), "utf8");
       expect(plugin).toBe(PLUGIN_SOURCE);
@@ -44,7 +45,7 @@ test("reinstall is idempotent and never duplicates the guidance block", async ()
     await withHome(home, async () => {
       await installOpenCodeRtk(PLUGIN_SOURCE, { quiet: true });
       const second = await installOpenCodeRtk(PLUGIN_SOURCE, { quiet: true });
-      expect(second).toEqual({ plugin: false, guidance: false });
+      expect(second).toEqual({ plugin: false, guidance: false, commands: 0 });
 
       const agents = readFileSync(openCodeAgentsPath(), "utf8");
       expect(agents.split(START)).toHaveLength(2);
@@ -226,3 +227,105 @@ test("doctor --fix rtk repairs a missing OpenCode plugin even when the rtk downl
     rmSync(home, { recursive: true, force: true });
   }
 }, 150000);
+
+// OpenCode custom commands (https://opencode.ai/docs/commands): a markdown file
+// per command in ~/.config/opencode/commands/, the filename becoming the slash
+// command. These are prompt templates, not runtime hooks — they cannot flip
+// extension state the way OMP's /caveman does, so the prompt states the mode
+// for the rest of the conversation instead.
+
+test("install writes the four command files with valid frontmatter and $ARGUMENTS", async () => {
+  const home = tempHome();
+  try {
+    await withHome(home, async () => {
+      await installOpenCodeRtk(PLUGIN_SOURCE, { quiet: true });
+      for (const name of ["caveman", "rtk", "ponytail", "combo"]) {
+        const file = path.join(home, ".config", "opencode", "commands", `${name}.md`);
+        expect(existsSync(file), `${name}.md must be written`).toBe(true);
+        const text = readFileSync(file, "utf8");
+        // OpenCode needs frontmatter with a description, or the command has none.
+        expect(text, `${name}.md frontmatter`).toMatch(/^---\ndescription: .+\n---\n/);
+        expect(text, `${name}.md must take an argument`).toContain("$ARGUMENTS");
+        expect(text, `${name}.md must be removable by marker`).toContain("<!-- tersio:command -->");
+      }
+    });
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("the command text is the same mode body every other host receives", async () => {
+  // Derived from cli/rules-pack.ts, so this guards the derivation rather than
+  // re-asserting the text: if the two ever diverge, this fails.
+  const home = tempHome();
+  try {
+    await withHome(home, async () => {
+      await installOpenCodeRtk(PLUGIN_SOURCE, { quiet: true });
+      const bodies = packCommands();
+      const caveman = readFileSync(path.join(home, ".config", "opencode", "commands", "caveman.md"), "utf8");
+      const rtkCmd = readFileSync(path.join(home, ".config", "opencode", "commands", "rtk.md"), "utf8");
+      for (const line of bodies.caveman.split("\n").slice(0, 2)) {
+        expect(caveman, "caveman body must match rules-pack").toContain(line);
+      }
+      for (const line of bodies.rtk.split("\n").slice(0, 2)) {
+        expect(rtkCmd, "rtk body must match rules-pack").toContain(line);
+      }
+    });
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("combo documents the four presets so /combo balanced is usable", async () => {
+  const home = tempHome();
+  try {
+    await withHome(home, async () => {
+      await installOpenCodeRtk(PLUGIN_SOURCE, { quiet: true });
+      const combo = readFileSync(path.join(home, ".config", "opencode", "commands", "combo.md"), "utf8");
+      for (const level of ["off", "medium", "balanced", "max"]) {
+        expect(combo, `combo must document ${level}`).toContain(`\`${level}\``);
+      }
+    });
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("uninstall removes every Tersio command and leaves the user's alone", async () => {
+  const home = tempHome();
+  try {
+    await withHome(home, async () => {
+      const dir = path.join(home, ".config", "opencode", "commands");
+      mkdirSync(dir, { recursive: true });
+      // A user command, and a user file that happens to share one of our names.
+      writeFileSync(path.join(dir, "mine.md"), "---\ndescription: mine\n---\n\nkeep me\n", "utf8");
+      writeFileSync(path.join(dir, "caveman.md"), "---\ndescription: my own\n---\n\nmy rules\n", "utf8");
+
+      await installOpenCodeRtk(PLUGIN_SOURCE, { quiet: true });
+      // Our overwrite of the user's caveman.md is recoverable.
+      expect(readFileSync(path.join(dir, "caveman.md.bak"), "utf8")).toContain("my rules");
+
+      await removeOpenCodeRtk({ quiet: true });
+      expect(existsSync(path.join(dir, "caveman.md")), "ours must be gone").toBe(false);
+      expect(existsSync(path.join(dir, "rtk.md")), "ours must be gone").toBe(false);
+      expect(existsSync(path.join(dir, "ponytail.md")), "ours must be gone").toBe(false);
+      expect(existsSync(path.join(dir, "combo.md")), "ours must be gone").toBe(false);
+      expect(existsSync(path.join(dir, "caveman.md.bak")), "the .bak must be cleaned too").toBe(false);
+      expect(existsSync(path.join(dir, "mine.md")), "the user's own command must survive").toBe(true);
+    });
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("dry-run writes no command files", async () => {
+  const home = tempHome();
+  try {
+    await withHome(home, async () => {
+      await installOpenCodeRtk(PLUGIN_SOURCE, { quiet: true, dryRun: true });
+      expect(existsSync(path.join(home, ".config", "opencode", "commands", "caveman.md"))).toBe(false);
+    });
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});

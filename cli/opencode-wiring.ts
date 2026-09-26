@@ -8,7 +8,7 @@
 // No cli/common.ts imports (argv side effects) so tests can load it.
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { applyMarkedBlock, removeMarkedBlock, RTK } from './rules-pack.ts';
+import { applyMarkedBlock, packCommands, removeMarkedBlock, RTK } from './rules-pack.ts';
 import { homeDir, readTextIfExists } from '../extensions/lib/utils.ts';
 
 // Re-exported so callers can keep importing blocks from the wiring module.
@@ -45,6 +45,114 @@ export function openCodeAgentsPath(): string {
   return path.join(openCodeConfigDir(), 'AGENTS.md');
 }
 
+/**
+ * OpenCode's global custom-command directory. A markdown file per command; the
+ * filename becomes the slash command (https://opencode.ai/docs/commands).
+ */
+export function openCodeCommandsDir(): string {
+  return path.join(openCodeConfigDir(), 'commands');
+}
+
+/** The command files Tersio owns, so removal never touches a user's own. */
+export function openCodeCommandFiles(): string[] {
+  return ['caveman.md', 'rtk.md', 'combo.md', 'ponytail.md'].map((f) => path.join(openCodeCommandsDir(), f));
+}
+
+// An OpenCode command is a prompt template sent to the model, not a runtime
+// hook: it cannot flip extension state the way OMP's /caveman does. So the
+// prompt states the mode for the rest of the conversation instead of claiming a
+// toggle the host cannot perform. The mode text is the same body every other
+// host gets, so the two cannot drift.
+// The `tersio:command` marker is what identifies a file as ours. Removal
+// matches on it. Matching on prose in the description instead left three of
+// the four commands behind, because only some descriptions mentioned Tersio.
+const OWNED = '<!-- tersio:command -->';
+
+function commandFile(description: string, body: string, usage: string): string {
+  return [
+    '---',
+    `description: ${description}`,
+    '---',
+    '',
+    OWNED,
+    '',
+    body.trim(),
+    '',
+    usage,
+    '',
+    'Requested level: $ARGUMENTS',
+    '',
+    'If the level above is empty, keep the mode you are already in. If it is',
+    '`off`, stop applying the mode for the rest of this conversation. Valid',
+    'levels are listed above. Apply the mode from this message onward; it stays',
+    'in effect until the user changes it or starts a new session.',
+    '',
+  ].join('\n');
+}
+
+const COMBO_TABLE = [
+  '| level | caveman | rtk | ponytail |',
+  '|---|---|---|---|',
+  '| `off` | off | off | off |',
+  '| `medium` | lite | on | lite |',
+  '| `balanced` | full | on | full |',
+  '| `max` | ultra | on | ultra |',
+].join('\n');
+
+const COMBO_BODY = `Tersio Combo turns the three token-saving modes on together.
+
+${COMBO_TABLE}`;
+
+export function renderOpenCodeCommands(): Record<string, string> {
+  const bodies = packCommands();
+  return {
+    'caveman.md': commandFile('Reply concisely: drop filler, keep technical substance', bodies.caveman,
+      'Caveman levels: `off`, `lite`, `full`, `ultra`, `wenyan-lite`, `wenyan-full`, `wenyan-ultra`.'),
+    'rtk.md': commandFile('Compress noisy shell output with rtk', bodies.rtk,
+      'RTK levels: `off`, `on`.'),
+    'ponytail.md': commandFile('Write the minimum correct code', bodies.ponytail,
+      'Ponytail levels: `off`, `lite`, `full`, `ultra`.'),
+    'combo.md': commandFile('Set all three Tersio modes at once', COMBO_BODY,
+      'Combo levels: `off`, `medium`, `balanced`, `max`.'),
+  };
+}
+
+/** Writes each command file; returns how many changed. */
+export async function installOpenCodeCommands(options: OpenCodeWiringOptions = {}): Promise<number> {
+  const rendered = renderOpenCodeCommands();
+  let changed = 0;
+  for (const [name, body] of Object.entries(rendered)) {
+    if (await writeFile(path.join(openCodeCommandsDir(), name), body, options)) changed += 1;
+  }
+  return changed;
+}
+
+/** Removes only the command files Tersio wrote, plus the .bak copies it left. */
+export async function removeOpenCodeCommands(options: OpenCodeWiringOptions = {}): Promise<boolean> {
+  let removed = false;
+  for (const file of openCodeCommandFiles()) {
+    // A user's own command must survive, so ownership is decided by our marker
+    // rather than by the filename. A user who wrote their own caveman.md keeps
+    // it; ours is only replaced when we overwrote it, and the .bak holds theirs.
+    const text = await readTextIfExists(file);
+    if (text === null || !text.includes(OWNED)) {
+      continue;
+    }
+    for (const target of [file, `${file}.bak`]) {
+      if ((await readTextIfExists(target)) === null) continue;
+      if (options.dryRun) {
+        console.log(`  [dry-run] would remove ${target}`);
+        removed = true;
+        continue;
+      }
+      await fs.rm(target, { force: true });
+      console.log(`  [rm] ${target}`);
+      removed = true;
+    }
+  }
+  return removed;
+}
+
 
 async function writeFile(dest: string, content: string, options: OpenCodeWiringOptions): Promise<boolean> {
   const existing = await readTextIfExists(dest);
@@ -63,16 +171,17 @@ async function writeFile(dest: string, content: string, options: OpenCodeWiringO
   return true;
 }
 
-/** Writes the plugin and guidance block; returns which artifacts changed. */
+/** Writes the plugin, guidance block, and command files. */
 export async function installOpenCodeRtk(
   pluginSource: string,
   options: OpenCodeWiringOptions = {},
-): Promise<{ plugin: boolean; guidance: boolean }> {
+): Promise<{ plugin: boolean; guidance: boolean; commands: number }> {
   const plugin = await writeFile(openCodePluginPath(), pluginSource, options);
   const agents = openCodeAgentsPath();
   const next = applyMarkedBlock(await readTextIfExists(agents), BLOCK, START, END);
   const guidance = await writeFile(agents, next, options);
-  return { plugin, guidance };
+  const commands = await installOpenCodeCommands(options);
+  return { plugin, guidance, commands };
 }
 
 /** Removes both artifacts and the .bak copies the writer leaves behind. */
@@ -110,6 +219,8 @@ export async function removeOpenCodeRtk(options: OpenCodeWiringOptions = {}): Pr
       removed = true;
     }
   }
+
+  if (await removeOpenCodeCommands(options)) removed = true;
 
   return removed;
 }

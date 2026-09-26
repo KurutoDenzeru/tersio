@@ -113,19 +113,21 @@ Flags: `--dry-run`, `--yes`/`-y`, `--verbose`, `--combo-default`/`--caveman-defa
 
 The CLI is the installer for every host. `tersio install` asks which agents to install for, and all eleven below are supported.
 
-| Host | `--agent` id | Rules file | Skills | RTK auto-rewrite |
-|---|---|---|---|---|
-| Oh My Pi | `omp` | — (live extension) | ✅ | ✅ (rtk-owned hook) |
-| OpenCode | `opencode` | `AGENTS.md` | ✅ | ✅ (plugin) |
-| Claude Code | `claude-code` | `CLAUDE.md` | ✅ | ✅ |
-| OpenAI Codex | `codex` | `AGENTS.md` | ✅ | ✅ |
-| Gemini CLI | `gemini-cli` | `GEMINI.md` | ✅ | ✅ |
-| GitHub Copilot CLI | `copilot-cli` | `copilot-instructions.md` | ✅ | ✅ |
-| Cursor | `cursor` | `rules/tersio.mdc` | ✅ | ✅ |
-| Grok Build | `grok-build` | `rules/tersio.md` | ✅ | ✅ |
-| Pi | `pi` | `AGENTS.md` | ✅ | ✅ (rtk-owned extension) |
-| OpenClaw | `openclaw` | `AGENTS.md` | ✅ | — guidance only |
-| Hermes | `hermes` | — (none global) | ✅ | ✅ |
+| Host | `--agent` id | Rules file | Skills | Slash commands | RTK auto-rewrite |
+|---|---|---|---|---|---|
+| Oh My Pi | `omp` | — (live extension) | ✅ | ✅ **5, runtime** | ✅ (rtk-owned hook) |
+| OpenCode | `opencode` | `AGENTS.md` | — | ✅ **4, prompt** | ✅ (plugin) |
+| Claude Code | `claude-code` | `CLAUDE.md` | ✅ (are commands) | ✅ **3, prompt** | ✅ |
+| OpenAI Codex | `codex` | `AGENTS.md` | ✅ (are commands) | ✅ **3, prompt** | ✅ |
+| Gemini CLI | `gemini-cli` | `GEMINI.md` | ✅ | ⚠️ 3, TOML not emitted | ✅ |
+| GitHub Copilot CLI | `copilot-cli` | `copilot-instructions.md` | ✅ | ⚠️ skills only | ✅ |
+| Cursor | `cursor` | `rules/tersio.mdc` | ✅ | ⚠️ path unverified | ✅ |
+| Grok Build | `grok-build` | `rules/tersio.md` | ✅ (are commands) | ✅ **3, prompt** | ✅ |
+| Pi | `pi` | `AGENTS.md` | ✅ | ✅ runtime-capable | ✅ (rtk-owned extension) |
+| OpenClaw | `openclaw` | `AGENTS.md` | ✅ | ✅ runtime-capable | — guidance only |
+| Hermes | `hermes` | — (none global) | ✅ (are commands) | ✅ runtime-capable | ✅ |
+
+**runtime** means the command changes state the host itself reads, so the mode holds until changed. **prompt** means it injects the mode text into the conversation: it applies from that turn onward, but nothing else in the host can observe or query it. Oh My Pi is the only host where a `/combo` level behaves like a real switch.
 
 Two hosts deviate on purpose. **Hermes** has no user-global instruction file at all (`SOUL.md` is its only global context file; `AGENTS.md` is project-scope), so its modes arrive as skills. **OpenClaw** can rewrite tool arguments only from a native TypeScript plugin, so it ships RTK guidance rather than a static hook.
 
