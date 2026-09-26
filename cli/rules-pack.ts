@@ -19,16 +19,20 @@ const END = '<!-- tersio:end -->';
  */
 export function applyMarkedBlock(existing: string | null, block: string, start: string, end: string): string {
   const base = existing ?? '';
-  if (!base.trim()) return block;
+  // Normalised once so every return path emits the same bytes. Without this the
+  // first write ends without a newline and the second adds one, so reinstall
+  // rewrote the file forever and `--only-changed` never settled.
+  const normalized = block.trimEnd();
+  if (!base.trim()) return `${normalized}\n`;
   const from = base.indexOf(start);
   const to = base.indexOf(end);
   if (from !== -1 && to !== -1 && to > from) {
     const before = base.slice(0, from);
     const after = base.slice(to + end.length).replace(/^\n/, '');
-    return `${before}${block.trimEnd()}${after ? `\n${after}` : '\n'}`;
+    return `${before}${normalized}${after ? `\n${after}` : '\n'}`;
   }
   const prefix = base.endsWith('\n') ? '' : '\n';
-  return `${base}${prefix}\n${block}`;
+  return `${base}${prefix}\n${normalized}\n`;
 }
 
 /** Removes the block and the blank line it introduced. Null when nothing is left. */
