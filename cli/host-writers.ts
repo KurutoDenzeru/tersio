@@ -49,22 +49,6 @@ const HOOK_MARKER = 'tersio-rtk';
 
 // --- rules -----------------------------------------------------------------
 
-/**
- * Cursor ignores a rule file without frontmatter, so it is the one host whose
- * rules artifact is not a plain marked block.
- */
-function renderCursorRule(body: string): string {
-  return [
-    '---',
-    'description: Tersio modes (caveman, ponytail, rtk).',
-    'alwaysApply: true',
-    '---',
-    '',
-    body,
-    '',
-  ].join('\n');
-}
-
 /** The rules text for a host, whether or not it can auto-rewrite. */
 function bodyFor(host: AgentHost): string {
   return isGuidanceOnly(host) ? guidanceRulesBody() : rulesBody();
@@ -86,7 +70,7 @@ function skillBodyFor(host: AgentHost): string {
 /** The marked block, including the markers, for a merge into a user file. */
 export function renderRulesBlock(host: AgentHost, existing: string | null): string {
   const block = `${START}\n<!-- Managed by tersio. Edits inside this block are overwritten. -->\n\n${bodyFor(host)}\n\n${END}`;
-  return host.id === 'cursor' ? renderCursorRule(block) : applyMarkedBlock(existing, block, START, END);
+  return applyMarkedBlock(existing, block, START, END);
 }
 
 // --- skills ----------------------------------------------------------------
@@ -155,7 +139,7 @@ if (!rewritten) process.exit(0);
 `;
 
   const outputs: Record<RewriteProtocol, string> = {
-    // Claude Code / Codex / Grok: updatedInput replaces the whole input object.
+    // Claude Code / Codex: updatedInput replaces the whole input object.
     'hookSpecificOutput-updatedInput': `process.stdout.write(JSON.stringify({
   hookSpecificOutput: {
     hookEventName: '${cfg.event}',
@@ -163,8 +147,6 @@ if (!rewritten) process.exit(0);
     updatedInput: { command: rewritten },
   },
 }));`,
-    // Cursor: flat updated_input.
-    updated_input: `process.stdout.write(JSON.stringify({ permission: 'allow', updated_input: { command: rewritten } }));`,
   };
 
   return `${guard}
@@ -195,18 +177,9 @@ export function renderHookConfig(host: AgentHost, scriptAbs: string): string | n
   if (!cfg) return null;
   const command = hookScriptCommand(scriptAbs);
 
-  switch (cfg.configFormat) {
-    case 'cursor-json':
-      return `${JSON.stringify({
-        version: 1,
-        hooks: { [cfg.event]: [{ matcher: cfg.matcher, hooks: [newHookEntry(command)] }] },
-      }, null, 2)}\n`;
-    case 'claude-json':
-    default:
-      return `${JSON.stringify({
-        hooks: { [cfg.event]: [{ matcher: cfg.matcher, hooks: [newHookEntry(command)] }] },
-      }, null, 2)}\n`;
-  }
+  return `${JSON.stringify({
+    hooks: { [cfg.event]: [{ matcher: cfg.matcher, hooks: [newHookEntry(command)] }] },
+  }, null, 2)}\n`;
 }
 
 // --- hook config merging ---------------------------------------------------
@@ -329,9 +302,8 @@ export function planHost(host: AgentHost, home: string, existing: ExistingHostFi
       kind: 'rules',
       absPath: hostPath(host, host.rulesFile, home),
       content: renderRulesBlock(host, existing.rulesFile ?? null),
-      // Cursor owns a dedicated rule file, so it is written whole; everything
-      // else merges into a file the user also writes to.
-      merge: host.id === 'cursor' ? 'whole' : 'block',
+      // Every supported host merges into a file the user also writes to.
+      merge: 'block',
     });
   }
 

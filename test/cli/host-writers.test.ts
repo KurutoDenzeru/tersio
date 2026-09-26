@@ -87,11 +87,10 @@ function scriptFor(host: AgentHost): string {
   return artifact.content;
 }
 
-test("the static-hook host set is the three with a documented input rewrite", () => {
+test("the static-hook host set is the two with a documented input rewrite", () => {
   expect(STATIC_HOOK_HOSTS.map((h) => h.id).toSorted()).toEqual([
     "claude-code",
     "codex",
-    "cursor",
   ]);
 });
 
@@ -119,10 +118,6 @@ for (const host of STATIC_HOOK_HOSTS) {
           expect((specific.updatedInput as Record<string, unknown>).command).toBe(REWRITTEN);
           break;
         }
-        case "updated_input":
-          expect(parsed.permission).toBe("allow");
-          expect((parsed.updated_input as Record<string, unknown>).command).toBe(REWRITTEN);
-          break;
       }
     } finally {
       box.cleanup();
@@ -218,8 +213,8 @@ test("a command rtk would not change is not rewritten", () => {
 });
 
 test("the rewriter never blocks the tool, whatever rtk does", () => {
-  // The script must exit 0 on every path: a non-zero exit is how the
-  // fail-closed hosts (Copilot, Cursor, Hermes) would BLOCK the tool call.
+  // The script must exit 0 on every path: a non-zero exit is how a host
+  // configured to fail closed would BLOCK the tool call.
   const box = sandbox();
   try {
     for (const host of STATIC_HOOK_HOSTS) {
@@ -261,13 +256,16 @@ test("a user's unmarked file is appended to, never overwritten", () => {
   expect(artifact.content).toContain("Always run bun run test.");
 });
 
-test("Cursor's rule file carries the frontmatter its engine requires", () => {
-  const host = HOSTS.find((h) => h.id === "cursor")!;
-  const artifact = planHost(host, HOME).artifacts.find((a) => a.kind === "rules")!;
-  expect(artifact.merge).toBe("whole");
-  expect(artifact.content.startsWith("---\n")).toBe(true);
-  expect(artifact.content).toMatch(/^alwaysApply: true$/m);
-  expect(artifact.absPath.endsWith(path.join(".cursor", "rules", "tersio.mdc"))).toBe(true);
+test("every rules artifact merges between markers rather than owning the file", () => {
+  // Cursor was the only host with a dedicated rule file needing frontmatter.
+  // With it gone, every supported host merges into a file the user also writes
+  // to, so a whole-file write would clobber their content.
+  for (const host of HOSTS) {
+    for (const artifact of planHost(host, HOME).artifacts.filter((a) => a.kind === "rules")) {
+      expect(artifact.merge, `${host.id} would overwrite the user's rules file`).toBe("block");
+      expect(artifact.content, `${host.id} rules are unmarked`).toContain(START);
+    }
+  }
 });
 
 test("a host with a real hook gets the automatic-rewrite wording", () => {

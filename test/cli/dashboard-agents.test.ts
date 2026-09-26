@@ -154,7 +154,7 @@ test("each row names the wiring the installer would give that host", async () =>
     const byId = new Map((await rows(home)).map((r) => [r.id, r.wiring]));
     expect(byId.get("claude-code")).toMatch(/hook · auto-rewrite/);
     expect(byId.get("codex")).toMatch(/hook · auto-rewrite/);
-    expect(byId.get("cursor")).toMatch(/hook · auto-rewrite/);
+    expect(byId.get("codex")).toMatch(/hook · auto-rewrite/);
     expect(byId.get("opencode")).toMatch(/plugin · auto-rewrite/);
     expect(byId.get("pi")).toMatch(/rtk extension · auto-rewrite/);
     // No supported host is guidance-only any more, so the hint must never say so.

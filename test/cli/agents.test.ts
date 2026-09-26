@@ -50,7 +50,7 @@ test("the agent menu lists every host and says what wiring it will get", () => {
   expect(byId_.get("opencode")).toMatch(/plugin · auto-rewrite/);
   expect(byId_.get("pi")).toMatch(/rtk extension · auto-rewrite/);
   expect(byId_.get("codex")).toMatch(/hook · auto-rewrite/);
-  expect(byId_.get("cursor")).toMatch(/hook · auto-rewrite/);
+  expect(byId_.get("claude-code")).toMatch(/hook · auto-rewrite/);
   // No host is guidance-only any more, so the hint must never say so.
   for (const hint of byId_.values()) {
     expect(hint).not.toBe("guidance only · no auto-rewrite");
@@ -60,7 +60,7 @@ test("the agent menu lists every host and says what wiring it will get", () => {
 });
 
 test("normalizeIds keeps registry order, drops unknowns, and de-duplicates", () => {
-  expect(normalizeIds(["cursor", "claude-code", "cursor", "not-a-host"])).toEqual(["claude-code", "cursor"]);
+  expect(normalizeIds(["codex", "claude-code", "codex", "not-a-host"])).toEqual(["claude-code", "codex"]);
   expect(normalizeIds(["nope"])).toEqual([]);
   expect(normalizeIds([])).toEqual([]);
 });
@@ -70,7 +70,7 @@ test("an explicit --agent wins over the prompt, the saved set, and detection", a
   const result = await resolveAgentSelection({
     flag: ["pi"],
     stored: ["claude-code"],
-    detected: ["cursor"],
+    detected: ["codex"],
     ask: async () => { asked = true; return ["pi"]; },
   });
   expect(result.ids).toEqual(["pi"]);
@@ -86,15 +86,15 @@ test("an explicit --agent naming an uninstalled host is honoured, which is how y
 });
 
 test("an all-unknown --agent falls through instead of selecting nothing", async () => {
-  const result = await resolveAgentSelection({ flag: ["bogus"], stored: ["cursor"], detected: [] });
-  expect(result.ids).toEqual(["cursor"]);
+  const result = await resolveAgentSelection({ flag: ["bogus"], stored: ["codex"], detected: [] });
+  expect(result.ids).toEqual(["codex"]);
   expect(result.source).toBe("auto");
 });
 
 test("the prompt decides, and a cancelled prompt falls back to the automatic set", async () => {
   const asked = await resolveAgentSelection({
     stored: ["claude-code"],
-    detected: ["cursor"],
+    detected: ["codex"],
     ask: async () => ["pi"],
   });
   expect(asked.ids).toEqual(["pi"]);
@@ -102,17 +102,17 @@ test("the prompt decides, and a cancelled prompt falls back to the automatic set
 
   const cancelled = await resolveAgentSelection({
     stored: ["claude-code"],
-    detected: ["cursor"],
+    detected: ["codex"],
     ask: async () => null,
   });
-  expect(cancelled.ids).toEqual(["claude-code", "cursor"]);
+  expect(cancelled.ids).toEqual(["claude-code", "codex"]);
   expect(cancelled.source).toBe("auto");
 });
 
 test("an empty answer from the prompt is a valid way to clear the set", async () => {
   // required: false, so picking nothing is an answer rather than a cancel.
   const result = await resolveAgentSelection({
-    stored: ["claude-code", "cursor"],
+    stored: ["claude-code", "codex"],
     detected: [],
     ask: async () => [],
   });
@@ -126,11 +126,11 @@ test("the automatic set unions the saved hosts with what is on the machine", asy
   // was silently skipped and never written.
   const result = await resolveAgentSelection({
     stored: ["claude-code"],
-    detected: ["cursor", "pi"],
+    detected: ["codex", "pi"],
   });
-  expect(result.ids).toEqual(["claude-code", "cursor", "pi"]);
+  expect(result.ids).toEqual(["claude-code", "codex", "pi"]);
   expect(result.source).toBe("auto");
-  expect(result.addedByDetection).toEqual(["cursor", "pi"]);
+  expect(result.addedByDetection).toEqual(["codex", "pi"]);
 });
 
 test("nothing saved and nothing detected is a valid answer", async () => {
@@ -150,10 +150,10 @@ test("the selection round-trips through ~/.tersio/agents.json", () => {
   const { home, cleanup } = tempHome();
   try {
     expect(readSelection(home).hosts).toEqual([]);
-    writeSelection(home, ["pi", "cursor"]);
+    writeSelection(home, ["pi", "codex"]);
     // Stored in registry order, not the order given, so the file is stable
     // whatever order --agent listed them in.
-    expect(readSelection(home).hosts).toEqual(["cursor", "pi"]);
+    expect(readSelection(home).hosts).toEqual(["codex", "pi"]);
     expect(readSelection(home).updatedAt).toBeGreaterThan(0);
     writeSelection(home, ["pi"]);
     expect(readSelection(home).hosts).toEqual(["pi"]);
@@ -182,9 +182,9 @@ test("a corrupt or absent selection file reads as empty rather than throwing", (
 test("detection finds a host by its config directory", () => {
   const { home, cleanup } = tempHome();
   try {
-    mkdirSync(path.join(home, ".cursor", "rules"), { recursive: true });
+    mkdirSync(path.join(home, ".codex", "rules"), { recursive: true });
     const found = detectHosts(home, { PATH: "" });
-    expect(found).toContain("cursor");
+    expect(found).toContain("codex");
   } finally {
     cleanup();
   }
@@ -311,7 +311,7 @@ test("a live-extension host gets its rules and skills but no hook file", async (
 test("a failure on one host does not stop the others", async () => {
   const { home, cleanup } = tempHome();
   try {
-    const { results, errors } = await applyHosts(["claude-code", "pi", "cursor"], home);
+    const { results, errors } = await applyHosts(["claude-code", "pi", "codex"], home);
     expect(results.length).toBe(3);
     expect(errors).toEqual([]);
   } finally {
@@ -437,10 +437,10 @@ test("removal takes the rewriter script with it", async () => {
 test("removing a host that was never installed touches nothing", async () => {
   const { home, cleanup } = tempHome();
   try {
-    const result = await removeHost(byId("cursor")!, home);
+    const result = await removeHost(byId("codex")!, home);
     expect(result.removed).toEqual([]);
     expect(result.kept).toEqual([]);
-    expect(existsSync(path.join(home, ".cursor"))).toBe(false);
+    expect(existsSync(path.join(home, ".codex"))).toBe(false);
   } finally {
     cleanup();
   }
@@ -449,7 +449,7 @@ test("removing a host that was never installed touches nothing", async () => {
 test("a full apply then remove leaves no tersio file behind", async () => {
   const { home, cleanup } = tempHome();
   try {
-    const hosts = ["claude-code", "codex", "cursor", "opencode", "pi"];
+    const hosts = ["claude-code", "codex", "opencode", "pi"];
     await applyHosts(hosts, home);
     await removeHosts(hosts, home);
     const leftovers: string[] = [];

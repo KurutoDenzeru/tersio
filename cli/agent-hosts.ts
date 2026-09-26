@@ -12,14 +12,10 @@
 import path from 'node:path';
 
 /** How a host's `PreToolUse`-style hook is configured on disk. */
-export type HookConfigFormat =
-  | 'claude-json'
-  | 'cursor-json';
+export type HookConfigFormat = 'claude-json';
 
 /** The shape a host expects a rewrite to come back in. */
-export type RewriteProtocol =
-  | 'hookSpecificOutput-updatedInput'
-  | 'updated_input';
+export type RewriteProtocol = 'hookSpecificOutput-updatedInput';
 
 export interface HostRewrite {
   /** Config file the host reads, `$HOME`-relative. */
@@ -163,30 +159,6 @@ const HOSTS: AgentHost[] = [
       failClosed: false,
     },
     source: 'https://learn.chatgpt.com/docs/hooks',
-  },
-  {
-    id: 'cursor',
-    label: 'Cursor',
-    configDir: '.cursor',
-    configDirEnv: 'CURSOR_CONFIG_DIR',
-    binaries: ['agent'],
-    rules: true,
-    skills: true,
-    rewrite: true,
-    // User rules need .mdc frontmatter; a plain .md is ignored by the engine.
-    rulesFile: '.cursor/rules/tersio.mdc',
-    skillsDir: '.cursor/skills',
-    caveats: 'Rules need .mdc frontmatter or they are silently ignored. Use preToolUse with matcher "Shell" — beforeShellExecution rejects updated_input and BLOCKS the call.',
-    rewriteConfig: {
-      configFile: '.cursor/hooks.json',
-      configFormat: 'cursor-json',
-      event: 'preToolUse',
-      matcher: 'Shell',
-      inputPath: 'tool_input.command',
-      protocol: 'updated_input',
-      failClosed: true,
-    },
-    source: 'https://cursor.com/docs/agent/hooks',
   },
   {
     id: 'pi',

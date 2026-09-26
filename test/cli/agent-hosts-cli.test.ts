@@ -46,7 +46,7 @@ test("--agent is listed in help with every known host id", () => {
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toMatch(/--agent <ids>/);
     for (const id of [
-      "omp", "opencode", "claude-code", "codex", "cursor", "pi",
+      "omp", "opencode", "claude-code", "codex", "pi",
     ]) {
       expect(result.stdout, `help does not list ${id}`).toContain(id);
     }
@@ -66,7 +66,7 @@ test("doctor always shows the agent-hosts category, even with none configured", 
     expect(result.stdout).toContain("none configured");
     expect(result.stdout).toContain("tersio install --agent <id>");
     // Every known id is listed, so the hint is actionable without --help.
-    for (const id of ["claude-code", "codex", "cursor", "pi"]) {
+    for (const id of ["claude-code", "codex", "pi"]) {
       expect(result.stdout, `id list omits ${id}`).toContain(id);
     }
   } finally {
@@ -96,9 +96,9 @@ test("an --agent flag on doctor overrides the saved selection", () => {
   const { home, cleanup } = tempHome();
   try {
     writeSelection(home, ["claude-code"]);
-    const result = run(home, "doctor", "--agent", "cursor");
+    const result = run(home, "doctor", "--agent", "codex");
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toContain("Cursor");
+    expect(result.stdout).toContain("OpenAI Codex");
     expect(result.stdout).not.toContain("Claude Code");
   } finally {
     cleanup();
@@ -109,12 +109,12 @@ test("--agent accepts both comma-separated and repeated forms", () => {
   const { home, cleanup } = tempHome();
   try {
     writeSelection(home, ["claude-code"]);
-    const commas = run(home, "doctor", "--agent=cursor,codex");
-    const repeated = run(home, "doctor", "--agent", "cursor", "--agent", "codex");
+    const commas = run(home, "doctor", "--agent=codex,opencode");
+    const repeated = run(home, "doctor", "--agent", "codex", "--agent", "opencode");
     for (const result of [commas, repeated]) {
       expect(result.status, result.stderr).toBe(0);
-      expect(result.stdout).toContain("Cursor");
       expect(result.stdout).toContain("OpenAI Codex");
+      expect(result.stdout).toContain("OpenCode");
       expect(result.stdout).not.toContain("Claude Code");
     }
   } finally {
@@ -187,9 +187,9 @@ test("a wired live-extension host says who owns its rewrite instead of claiming 
 test("every host reports a working rewrite class, because none is guidance-only", () => {
   const { home, cleanup } = tempHome();
   try {
-    // With Pi gone, every supported host either has a static hook or
-    // a named owner. So no row may ever claim "guidance only" again.
-    for (const id of ["claude-code", "codex", "cursor", "pi", "opencode"]) {
+    // Every supported host either has a static hook or a named owner, so no row
+    // may ever claim "guidance only" again.
+    for (const id of ["claude-code", "codex", "pi", "opencode"]) {
       const result = run(home, "doctor", "--agent", id);
       expect(result.status, result.stderr).toBe(0);
       expect(result.stdout, `${id} reported guidance only`).not.toMatch(/guidance only/);
@@ -209,7 +209,7 @@ test("a host row counts toward the doctor summary tally", () => {
   const { home, cleanup } = tempHome();
   try {
     const before = run(home, "doctor");
-    writeSelection(home, ["claude-code", "pi", "cursor"]);
+    writeSelection(home, ["claude-code", "pi", "codex"]);
     const after = run(home, "doctor");
     // The empty-category hint is not a check, so only the three real rows join
     // the tally.

@@ -70,7 +70,9 @@ function AgentMark({ id, label }: { id: string; label: string }) {
  *
  * `claude`, `cursor` and `opencode` come from Simple Icons; `pi` comes from
  * pi.dev's own press kit, because Simple Icons' `pi` slug is Raspberry Pi and
- * would be the wrong company. Oh My Pi keeps the hand-drawn mark below, and
+ * would be the wrong company. `codex` is OpenAI's ChatGPT mark from Wikimedia
+ * Commons, which OpenAI publishes as public domain; Simple Icons no longer
+ * carries an `openai` slug. Oh My Pi keeps the hand-drawn mark below, and
  * anything with no verifiable mark falls back to a monogram.
  */
 const AGENT_ICONS: Record<string, string> = {
@@ -78,6 +80,7 @@ const AGENT_ICONS: Record<string, string> = {
   cursor: "/agents/cursor.svg",
   opencode: "/agents/opencode.svg",
   pi: "/agents/pi.svg",
+  codex: "/agents/codex.svg",
 };
 
 type AgentRow = NonNullable<HealthReport["agents"]>[number];
@@ -710,6 +713,28 @@ const SHARE_X = "https://x.com/intent/post";
 const SHARE_REDDIT = "https://www.reddit.com/submit";
 const SHARE_LINKEDIN = "https://www.linkedin.com/feed/";
 
+/** Hosts we are willing to open a share window on. */
+const SHARE_HOSTS = new Set(["x.com", "www.reddit.com", "www.linkedin.com"]);
+
+/**
+ * The single place a share window is opened.
+ *
+ * Every destination is a fixed first-party constant with the caller's text
+ * percent-encoded into a query parameter, so nothing user-supplied can reach
+ * the host or path. The allowlist makes that structural rather than a promise,
+ * and `noopener` is applied here so no share target gets a handle on this page.
+ */
+function openShare(url: string, features = "noopener,noreferrer"): Window | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== "https:" || !SHARE_HOSTS.has(parsed.hostname)) return null;
+  return window.open(url, "_blank", features);
+}
+
 /**
  * Share targets built from a fixed base plus an encoded query. The only caller
  * input is percent-encoded into a parameter, so it can never become the host.
@@ -1033,7 +1058,7 @@ export function ShareDialog({
                 className="inline-flex cursor-pointer items-center gap-1.5 rounded-[10px] border border-line bg-transparent px-[9px] py-[7px] text-xs text-ink hover:border-accent [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]"
                 aria-label="Share on X"
                 onClick={() => shareImage(
-                  () => window.open(xShareUrl(text), "_blank", "noopener,noreferrer,width=560,height=460"),
+                  () => openShare(xShareUrl(text), "noopener,noreferrer,width=560,height=460"),
                   "X",
                 )}
               >
@@ -1048,7 +1073,7 @@ export function ShareDialog({
               className="inline-flex cursor-pointer items-center gap-1.5 rounded-[10px] border border-line bg-transparent px-[9px] py-[7px] text-xs text-ink hover:border-accent [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]"
               aria-label="Share on Reddit"
               onClick={() => shareImage(
-                () => window.open(redditShareUrl(text), "_blank", "noopener,noreferrer"),
+                () => openShare(redditShareUrl(text)),
                 "Reddit",
               )}
             >
@@ -1063,7 +1088,7 @@ export function ShareDialog({
               className="inline-flex cursor-pointer items-center gap-1.5 rounded-[10px] border border-line bg-transparent px-[9px] py-[7px] text-xs text-ink hover:border-accent [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]"
               aria-label="Share on LinkedIn"
               onClick={() => shareImage(
-                () => window.open(SHARE_LINKEDIN, "_blank", "noopener,noreferrer"),
+                () => openShare(SHARE_LINKEDIN),
                 "LinkedIn",
               )}
             >

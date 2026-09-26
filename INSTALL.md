@@ -13,7 +13,7 @@ span between `<!-- tersio:start -->` and `<!-- tersio:end -->`.
 
 ```bash
 curl -fsSL https://github.com/KurutoDenzeru/tersio/releases/latest/download/install.sh | sh
-tersio install --agent claude-code,cursor
+tersio install --agent claude-code,codex
 tersio doctor
 ```
 
@@ -28,10 +28,10 @@ before you pick one.
 
 | Class | What you get | Hosts |
 |---|---|---|
-| **Hook** | Rules, skills, and a real auto-rewrite. Tersio generates a small rewriter script plus a hook entry in the agent's own config | Claude Code, Codex, Cursor |
+| **Hook** | Rules, skills, and a real auto-rewrite. Tersio generates a small rewriter script plus a hook entry in the agent's own config | Claude Code, Codex |
 | **Extension** | Rules and skills, with the rewrite owned by the agent or by rtk as a real extension file | Oh My Pi, Pi, OpenCode |
 
-Not supported: Gemini CLI, Antigravity CLI, OpenClaw, Hermes, Grok Build, GitHub Copilot CLI, and Command Code. `tersio install` never writes to them, and `tersio uninstall` never removes anything it did not write.
+Not supported: Gemini CLI, Antigravity CLI, OpenClaw, Hermes, Grok Build, GitHub Copilot CLI, Command Code, and Cursor. `tersio install` never writes to them, and `tersio uninstall` never removes anything it did not write.
 
 `tersio doctor` reports which class each selected host is in, so you never have
 to take this table on faith.
@@ -63,24 +63,17 @@ its own hook entry, and uninstall removes exactly those.
 other agent that reads it. `CODEX_HOME` relocates `~/.codex/`; the shared skills
 directory is deliberately *not* moved with it.
 
-### Cursor — `cursor`
-
-```text
-~/.cursor/rules/tersio.mdc
-~/.cursor/skills/tersio-{caveman,ponytail,rtk}/SKILL.md
-~/.cursor/hooks.json
-~/.cursor/tersio-rtk-rewrite.mjs
-```
-
-Cursor ignores a rule file without frontmatter, so `tersio.mdc` is written with
-the required `---` block.
-
 ### Oh My Pi — `omp`
 
 Rules and skills are written by the OMP plugin; the rewrite is rtk's own
-extension, written by `rtk init -g --agent omp`. OMP is the reference host and
-the only one with live mid-session switching, the Combo bar, and subagent
-inheritance.
+extension, written by `rtk init -g --agent omp`.
+
+OMP is the only host that also gets the live-session tier: mid-session mode
+switching, the Combo bar, and subagent inheritance. That is a capability
+difference, not a primacy one — it exists because OMP has an extension API that
+can change state mid-session, and the other four do not. Nothing else in
+Tersio is OMP-specific: the rules, the skills, the rewrite, the CLI, the
+dashboard, and the ledger are the same code on every host.
 
 ### Pi — `pi`
 
@@ -129,7 +122,7 @@ rewrite path the host actually got, and names the install command when something
 is missing. To see what would change without writing anything:
 
 ```bash
-tersio install --agent cursor --dry-run
+tersio install --agent codex --dry-run
 ```
 
 ## Oh My Pi extras

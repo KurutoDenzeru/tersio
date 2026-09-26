@@ -129,7 +129,7 @@ test("every hook config names a supported format, protocol, event, and input pat
   for (const host of HOSTS) {
     const cfg = host.rewriteConfig;
     if (!cfg) continue;
-    expect(["claude-json", "cursor-json"], `${host.id} format`).toContain(cfg.configFormat);
+    expect(["claude-json"], `${host.id} format`).toContain(cfg.configFormat);
     expect(
       ["hookSpecificOutput-updatedInput", "updated_input"],
       `${host.id} protocol`,
@@ -144,12 +144,12 @@ test("every hook config names a supported format, protocol, event, and input pat
   }
 });
 
-test("the two rewrite wire protocols are each represented", () => {
+test("every static hook speaks the one wire protocol the registry declares", () => {
+  // Claude Code and Codex were the last two hosts sharing this shape. Cursor's
+  // flat `updated_input` went with it, so the protocol union is now a single
+  // member and a new hook shape has to be added deliberately.
   const protocols = new Set(HOSTS.map((h) => h.rewriteConfig?.protocol).filter(Boolean));
-  expect([...protocols].toSorted()).toEqual([
-    "hookSpecificOutput-updatedInput",
-    "updated_input",
-  ]);
+  expect([...protocols].toSorted()).toEqual(["hookSpecificOutput-updatedInput"]);
 });
 
 test("a fail-closed host is deliberate, since a broken rewriter would block the tool", () => {
@@ -170,11 +170,10 @@ test("Gemini CLI stays out of the registry", () => {
   expect(byId("agy")).toBeUndefined();
 });
 
-test("the registry holds exactly the six documented hosts", () => {
+test("the registry holds exactly the five documented hosts", () => {
   expect(HOSTS.map((h) => h.id).toSorted()).toEqual([
     "claude-code",
     "codex",
-    "cursor",
     "omp",
     "opencode",
     "pi",
@@ -211,12 +210,12 @@ test("a relocation env var moves only paths inside the config dir", () => {
 });
 
 test("a blank relocation env var falls back to the home directory", () => {
-  const host = byId("cursor")!;
-  process.env.CURSOR_CONFIG_DIR = "   ";
+  const host = byId("pi")!;
+  process.env.PI_CODING_AGENT_DIR = "   ";
   try {
-    expect(hostPath(host, ".cursor/hooks.json", "/home/u"))
-      .toBe(path.join("/home/u", ".cursor", "hooks.json"));
+    expect(hostPath(host, ".pi/agent/AGENTS.md", "/home/u"))
+      .toBe(path.join("/home/u", ".pi", "agent", "AGENTS.md"));
   } finally {
-    delete process.env.CURSOR_CONFIG_DIR;
+    delete process.env.PI_CODING_AGENT_DIR;
   }
 });
