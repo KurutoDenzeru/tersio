@@ -13,7 +13,6 @@ import path from 'node:path';
 import {
   CAVEMAN_REMOTE_RULE as CAVEMAN_REMOTE,
   RTK_RELEASE_API,
-  RtkRelease,
   fetchJson,
   findFile,
   httpsGet,
@@ -25,6 +24,11 @@ import {
   rtkPlatformSpec,
   resolveRtkBinary,
 } from '../lib/utils.ts';
+// RtkRelease is an interface, so it must be imported as a type. As a value
+// import it is erased at build but kept in the emitted ESM, and Node then
+// throws "does not provide an export named 'RtkRelease'" while loading the
+// extension — which took /ai-addons down entirely.
+import type { RtkRelease } from '../lib/utils.ts';
 
 const IS_WINDOWS = process.platform === 'win32';
 const HOME = os.homedir();
