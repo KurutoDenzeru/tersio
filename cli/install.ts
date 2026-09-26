@@ -24,10 +24,10 @@ import { runDoctor } from './doctor.ts';
 import { runReset } from './reset.ts';
 import { runUsage } from './usage.ts';
 import { runDashboard } from './dashboard.ts';
-import { wireRtkOmp } from './rtk-wiring.ts';
+import { wireRtkOmp, wireRtkAgent, rtkAgentFor } from './rtk-wiring.ts';
 import {
   CAVEMAN_REMOTE_RULE, RTK_RELEASE_API, RtkRelease, RtkReleaseAsset, fetchJson, findFile, httpsGet,
-  httpsDownload, parseChecksum, readTextIfExists, rtkPlatformSpec, sha256File,
+  httpsDownload, parseChecksum, readTextIfExists, resolveRtkBinary, rtkPlatformSpec, sha256File,
 } from '../extensions/lib/utils.ts';
 import { storedProfile, writePluginSettings } from './profile.ts';
 import { applyHosts, detectHosts, readSelection, resolveSelection, writeSelection } from './agents.ts';
@@ -416,6 +416,10 @@ async function stepUpdater(extDir: string, options: WriteOptions): Promise<void>
  * OMP-only install sees no new output and no new files. omp itself is handled
  * above by the live-bridge path, so it is filtered out here rather than
  * duplicated.
+ *
+ * A host whose rewrite is an rtk-owned extension file is wired by rtk's own
+ * init rather than by these emitters: rtk owns that format, so a tersio release
+ * is not needed when rtk changes it.
  */
 async function stepAgentHosts(options: InstallOptions): Promise<void> {
   const home = os.homedir();
@@ -448,6 +452,21 @@ async function stepAgentHosts(options: InstallOptions): Promise<void> {
     console.log(`  [write] ${r.host.label}: ${r.written.length} file(s)`);
   }
   for (const e of errors) console.log(`  [fail] ${e.host}: ${e.error}`);
+
+  // Delegate the extension-file hosts to rtk, which owns that format.
+  for (const id of extra) {
+    const agent = rtkAgentFor(id);
+    if (!agent) continue;
+    const rtkBin = resolveRtkBinary();
+    if (!rtkBin) {
+      if (!options.quiet) console.log(`  [skip] ${id}: rtk binary not found, so no ${agent} extension`);
+      continue;
+    }
+    const wired = await wireRtkAgent(rtkBin, agent, { dryRun: options.dryRun, quiet: options.quiet });
+    if (wired && !options.dryRun && !options.quiet) {
+      console.log(`  [ok] ${id}: rtk ${agent} extension wired`);
+    }
+  }
 
   if (!options.dryRun) writeSelection(home, selection.ids);
 }

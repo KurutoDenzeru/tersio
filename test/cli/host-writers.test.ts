@@ -289,7 +289,7 @@ test("Cursor's rule file carries the frontmatter its engine requires", () => {
 });
 
 test("a host that cannot auto-rewrite is told to do it by hand", () => {
-  for (const id of ["agy", "openclaw"]) {
+  for (const id of ["agy", "openclaw", "command-code"]) {
     const host = HOSTS.find((h) => h.id === id)!;
     const rules = planHost(host, HOME).artifacts.find((a) => a.kind === "rules")!;
     expect(rules.content, `${id} claims an automatic rewrite`).toContain("prefix noisy commands");
@@ -425,12 +425,37 @@ test("a host with no documented rewrite gets no hook file at all", () => {
 });
 
 test("a live-extension host gets no static hook, only its rules and skills", () => {
-  for (const id of ["omp", "opencode", "pi", "command-code"]) {
+  for (const id of ["omp", "pi"]) {
     const plan = planHost(HOSTS.find((h) => h.id === id)!, HOME);
     expect(plan.liveExtension, `${id} should be a live-extension host`).toBe(true);
     expect(plan.rewriteInstalled, `${id} must not get a static hook`).toBe(false);
     expect(plan.artifacts.filter((a) => a.kind === "hook-script"), id).toHaveLength(0);
   }
+});
+
+test("a host whose rewrite is pending gets guidance, not a promise of automation", () => {
+  // opencode and command-code both support rewriting in principle, but tersio
+  // ships no rewrite for them yet. Their rules and skills must therefore say
+  // "do it by hand", because a user who reads "filters output before the model
+  // reads it" would reasonably expect it to be happening.
+  for (const id of ["opencode", "command-code"]) {
+    const plan = planHost(HOSTS.find((h) => h.id === id)!, HOME);
+    expect(plan.liveExtension, id).toBe(false);
+    expect(plan.guidanceOnly, `${id} should be guidance-only until wired`).toBe(true);
+    for (const artifact of plan.artifacts) {
+      expect(artifact.content, `${id} ${artifact.kind} promises automation`)
+        .toContain("prefix noisy commands");
+      expect(artifact.content, `${id} ${artifact.kind} promises automation`)
+        .not.toContain("filters output before the model reads it");
+    }
+  }
+
+  // opencode is also pending, but it is an own-path host: it gets no generic
+  // artifacts at all, so this assertion guards against a vacuous pass rather
+  // than checking wording that is not there.
+  const opencode = planHost(HOSTS.find((h) => h.id === "opencode")!, HOME);
+  expect(opencode.guidanceOnly).toBe(true);
+  expect(opencode.artifacts, "own-path host should write nothing generically").toEqual([]);
 });
 
 test("every planned artifact has an absolute path", () => {

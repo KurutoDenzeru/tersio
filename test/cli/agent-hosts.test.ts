@@ -72,14 +72,51 @@ test("a rewrite-capable host either has a hook config or names its owner", () =>
   }
 });
 
-test("the live-extension hosts are exactly the four with a named owner", () => {
+test("the wired live-extension hosts are omp and pi, both via rtk", () => {
   const owned = HOSTS.filter(isLiveExtension).map((h) => `${h.id}:${h.rewriteOwner}`).toSorted();
-  expect(owned).toEqual([
-    "command-code:mod",
-    "omp:wiring",
-    "opencode:plugin",
-    "pi:wiring",
-  ]);
+  expect(owned).toEqual(["omp:wiring", "pi:wiring"]);
+});
+
+test("agy is guidance-only, and so is command-code until its mod exists", () => {
+  // Both hosts CAN rewrite — the docs say so. Neither does yet, so both must
+  // report guidance rather than claim an auto-rewrite that never runs.
+  const agy = byId("agy");
+  expect(agy).toBeDefined();
+  expect(isGuidanceOnly(agy!)).toBe(true);
+  expect(hasStaticHook(agy!)).toBe(false);
+
+  const cmd = byId("command-code");
+  expect(cmd).toBeDefined();
+  expect(isLiveExtension(cmd!)).toBe(false);
+  expect(isGuidanceOnly(cmd!)).toBe(true);
+  // It still declares the capability and names the gap, so doctor can say why.
+  expect(cmd?.rewrite).toBe(true);
+  expect(cmd?.rewriteOwner).toBe("pending");
+  expect(cmd?.caveats).toMatch(/not written yet/);
+});
+
+test("opencode is pending too, because its plugin module is not on this branch", () => {
+  const opencode = byId("opencode");
+  expect(opencode?.rewrite).toBe(true);
+  expect(opencode?.rewriteOwner).toBe("pending");
+  expect(isLiveExtension(opencode!)).toBe(false);
+});
+
+test("the hosts that get no working auto-rewrite are the two without a surface plus the two pending", () => {
+  const guidance = HOSTS.filter(isGuidanceOnly).map((h) => h.id).toSorted();
+  // openclaw and agy have no documented rewrite surface at all; opencode and
+  // command-code do, but tersio does not ship it yet.
+  expect(guidance).toEqual(["agy", "command-code", "openclaw", "opencode"]);
+});
+
+test("every host ships a working rewrite or says plainly that it does not", () => {
+  // The property that matters: no host can claim an auto-rewrite that is not
+  // installed. A host is honest if it has a static hook, a wired owner, or no
+  // rewrite capability claimed at all.
+  for (const host of HOSTS) {
+    if (isGuidanceOnly(host)) continue;
+    expect(hasStaticHook(host) || isLiveExtension(host), `${host.id} claims a rewrite it does not have`).toBe(true);
+  }
 });
 
 test("every hook config names a supported format, protocol, event, and input path", () => {
@@ -155,21 +192,9 @@ test("Command Code never probes a bare cmd first, which would hit the Windows sh
   expect(host?.caveats).toMatch(/win32/);
 });
 
-test("agy is guidance-only and command-code is a live extension", () => {
-  const agy = byId("agy");
-  expect(agy).toBeDefined();
-  expect(isGuidanceOnly(agy!)).toBe(true);
-  expect(hasStaticHook(agy!)).toBe(false);
-
-  const cmd = byId("command-code");
-  expect(cmd).toBeDefined();
-  expect(isLiveExtension(cmd!)).toBe(true);
-  expect(hasStaticHook(cmd!)).toBe(false);
-});
-
-test("the two hosts that cannot auto-rewrite are exactly OpenClaw and agy", () => {
-  const guidance = HOSTS.filter(isGuidanceOnly).map((h) => h.id).toSorted();
-  expect(guidance).toEqual(["agy", "openclaw"]);
+test("the two hosts that cannot auto-rewrite at all are OpenClaw and agy", () => {
+  const noSurface = HOSTS.filter((h) => !h.rewrite).map((h) => h.id).toSorted();
+  expect(noSurface).toEqual(["agy", "openclaw"]);
 });
 
 test("hermes has rules disabled because it has no user-global instruction file", () => {

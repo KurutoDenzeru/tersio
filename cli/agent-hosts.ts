@@ -44,6 +44,17 @@ export interface HostRewrite {
   failClosed: boolean;
 }
 
+/**
+ * Which module owns this host's rewrite when there is no static hook file.
+ *
+ * `pending` is the honest value for a host whose rewrite we have *not* shipped:
+ * the host supports one, but nothing tersio installs performs it, so the user
+ * gets guidance only. It is a distinct value rather than an absent one because
+ * `tersio doctor` reports it, and a host that silently claims a working
+ * auto-rewrite is the exact failure this registry exists to prevent.
+ */
+export type RewriteOwner = 'wiring' | 'plugin' | 'mod' | 'pending';
+
 export interface AgentHost {
   id: string;
   label: string;
@@ -72,7 +83,7 @@ export interface AgentHost {
    * test asserts a rewrite-capable host either has a hook config or names its
    * owner, so silence cannot slip through.
    */
-  rewriteOwner?: 'wiring' | 'plugin' | 'mod';
+  rewriteOwner?: RewriteOwner;
   /** Caveats an emitter must respect, shown by `tersio doctor`. */
   caveats?: string;
 }
@@ -106,8 +117,8 @@ const HOSTS: AgentHost[] = [
     rewrite: true,
     rulesFile: null,
     skillsDir: null,
-    caveats: 'Current OpenCode discovers only AGENTS.md; the CLAUDE.md and ~/.claude/skills fallbacks are gone. rtk init still emits a pre-v2 plugin, so tersio ships its own via cli/opencode-wiring.ts.',
-    rewriteOwner: 'plugin',
+    caveats: 'Current OpenCode discovers only AGENTS.md; the CLAUDE.md and ~/.claude/skills fallbacks are gone. rtk init still emits a pre-v2 plugin that current OpenCode rejects (rtk-ai/rtk#3463), so tersio must ship its own — not wired yet, so RTK is guidance only here.',
+    rewriteOwner: 'pending',
     source: 'https://opencode.ai/docs/rules',
   },
   {
@@ -241,7 +252,7 @@ const HOSTS: AgentHost[] = [
     rewrite: true,
     rulesFile: '.pi/agent/AGENTS.md',
     skillsDir: '.pi/agent/skills',
-    caveats: 'AGENTS.override.md replaces rather than merges. Never write SYSTEM.md — it replaces the default system prompt outright. No wiring module emits the TS extension yet, so tersio installs guidance only until one lands.',
+    caveats: 'AGENTS.override.md replaces rather than merges. Never write SYSTEM.md — it replaces the default system prompt outright. The TS extension is rtk\'s own, written by `rtk init -g --agent pi`; rtk owns that format, so no tersio release is needed when it changes.',
     rewriteOwner: 'wiring',
     source: 'https://pi.dev/docs/latest/extensions',
   },
@@ -300,8 +311,8 @@ const HOSTS: AgentHost[] = [
     rewrite: true,
     rulesFile: '.commandcode/AGENTS.md',
     skillsDir: '.commandcode/skills',
-    caveats: 'Reads AGENTS.md, never CLAUDE.md. No config-dir env var: ~/.commandcode resolves from HOME/USERPROFILE only. The ModApi is documented as experimental, so the shipped mod must pin a Command Code version. A bare `cmd` is never probed on win32.',
-    rewriteOwner: 'mod',
+    caveats: 'Reads AGENTS.md, never CLAUDE.md. No config-dir env var: ~/.commandcode resolves from HOME/USERPROFILE only. The ModApi is documented as experimental, so a shipped mod must pin a Command Code version. A bare `cmd` is never probed on win32. The mod itself is not written yet, so RTK is guidance only.',
+    rewriteOwner: 'pending',
     source: 'https://commandcode.ai/docs/mods',
   },
   {
@@ -332,16 +343,21 @@ export function hasStaticHook(host: AgentHost): boolean {
 }
 
 /**
- * Hosts whose rewrite runs as live host code rather than a static hook. The
- * generic emitters deliberately skip these; `rewriteOwner` names the module.
+ * Hosts whose rewrite runs as live host code rather than a static hook, and
+ * which we actually wire. A `pending` owner is excluded: we do not ship that
+ * rewrite yet, so the host behaves as guidance-only.
  */
 export function isLiveExtension(host: AgentHost): boolean {
-  return host.rewrite && host.rewriteConfig === undefined;
+  return host.rewrite && host.rewriteConfig === undefined && host.rewriteOwner !== 'pending';
 }
 
-/** Hosts that get RTK guidance in their rules/skills instead of a hook. */
+/**
+ * Hosts the user gets RTK guidance for rather than a working auto-rewrite —
+ * either because the host has no documented rewrite surface, or because we have
+ * not shipped ours yet.
+ */
 export function isGuidanceOnly(host: AgentHost): boolean {
-  return !host.rewrite;
+  return !host.rewrite || host.rewriteOwner === 'pending';
 }
 
 /**

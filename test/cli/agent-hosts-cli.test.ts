@@ -156,22 +156,47 @@ test("a doctor row stays a warning while any of the host's files is missing", ()
   }
 });
 
-test("a live-extension host says who owns its rewrite instead of claiming a hook", () => {
+test("a wired live-extension host says who owns its rewrite instead of claiming a hook", () => {
   const { home, cleanup } = tempHome();
   try {
-    // command-code is live-extension: rules + skills, no static hook.
+    // pi is wired by rtk's own init, so it gets rules + skills and no static
+    // hook from tersio.
+    writeSelection(home, ["pi"]);
+    mkdirSync(path.join(home, ".pi", "agent"), { recursive: true });
+    writeFileSync(path.join(home, ".pi", "agent", "AGENTS.md"), "<!-- tersio:start -->\nr\n<!-- tersio:end -->\n", "utf8");
+    for (const mode of ["caveman", "ponytail", "rtk"]) {
+      const dir = path.join(home, ".pi", "agent", "skills", `tersio-${mode}`);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(path.join(dir, "SKILL.md"), `---\nname: tersio-${mode}\ndescription: d\n---\n`, "utf8");
+    }
+    const result = run(home, "doctor");
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/Pi: ok/);
+    expect(result.stdout).toMatch(/rewrite owned by wiring/);
+  } finally {
+    cleanup();
+  }
+});
+
+test("a host whose rewrite is pending is reported as guidance, never as wired", () => {
+  const { home, cleanup } = tempHome();
+  try {
+    // command-code supports a mod, but tersio ships none yet, so the row must
+    // not imply a working auto-rewrite.
     writeSelection(home, ["command-code"]);
     mkdirSync(path.join(home, ".commandcode"), { recursive: true });
     writeFileSync(path.join(home, ".commandcode", "AGENTS.md"), "<!-- tersio:start -->\nr\n<!-- tersio:end -->\n", "utf8");
     for (const mode of ["caveman", "ponytail", "rtk"]) {
       const dir = path.join(home, ".commandcode", "skills", `tersio-${mode}`);
       mkdirSync(dir, { recursive: true });
-      writeFileSync(path.join(dir, "SKILL.md"), "---\nname: x\ndescription: d\n---\n", "utf8");
+      writeFileSync(path.join(dir, "SKILL.md"), `---\nname: tersio-${mode}\ndescription: d\n---\n`, "utf8");
     }
     const result = run(home, "doctor");
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toMatch(/Command Code: ok/);
-    expect(result.stdout).toMatch(/rewrite owned by mod/);
+    expect(result.stdout).toMatch(/guidance only/);
+    expect(result.stdout, "must not claim a rewrite it does not ship")
+      .not.toMatch(/rewrite owned by mod/);
   } finally {
     cleanup();
   }
