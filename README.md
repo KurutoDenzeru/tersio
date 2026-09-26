@@ -16,7 +16,7 @@ Tersio installs three coding modes into whichever agents you already use — **t
 | **Ponytail** | Minimal code: root causes, standard library, YAGNI, no speculative abstractions |
 | **RTK** | Runs noisy shell commands through the [rtk](https://github.com/rtk-ai/rtk) binary, which filters the output before the model reads it |
 
-[Oh My Pi (OMP)](https://github.com/can1357/oh-my-pi) is the reference host and the only one with the live-session extras: mid-session mode switching, the Combo bar, and subagent inheritance. Every other host gets the portable half — the rules pack, the skills, and a rewrite hook where that host documents one.
+[Oh My Pi (OMP)](https://github.com/can1357/oh-my-pi) is the reference host, and the only one whose extension API can change state mid-session — so it gets live mode switching, the Combo bar, and subagent inheritance on top of the same three modes every other host gets.
 
 ## ⚡ Getting Started
 
@@ -40,24 +40,24 @@ The selection is saved to `~/.tersio/agents.json` and reused by every later inst
 
 | Agent | `--agent` | Rules file | Skills | RTK auto-rewrite |
 |---|---|---|---|---|
-| Oh My Pi | `omp` | — live bridge | ✅ | ✅ live extension |
 | Claude Code | `claude-code` | `CLAUDE.md` | ✅ | ✅ hook |
 | OpenAI Codex | `codex` | `AGENTS.md` | ✅ | ✅ hook |
 | GitHub Copilot CLI | `copilot-cli` | `copilot-instructions.md` | ✅ | ✅ hook |
 | Cursor | `cursor` | `rules/tersio.mdc` | ✅ | ✅ hook |
 | Grok Build | `grok-build` | `rules/tersio.md` | ✅ | ✅ hook |
 | Hermes | `hermes` | — none global | ✅ | ✅ hook |
+| OpenCode | `opencode` | `AGENTS.md` | ⚠️ project-only | ✅ plugin |
 | Pi | `pi` | `AGENTS.md` | ✅ | ✅ rtk extension |
-| OpenCode | `opencode` | — pending | — | ⚠️ guidance only |
-| Command Code | `command-code` | `AGENTS.md` | ✅ | ⚠️ guidance only |
+| Oh My Pi | `omp` | ✅ | ✅ | ✅ rtk extension |
 | OpenClaw | `openclaw` | `AGENTS.md` | ✅ | ⚠️ guidance only |
+| Command Code | `command-code` | `AGENTS.md` | ✅ | ⚠️ guidance only |
 | Antigravity CLI | `agy` | `AGENTS.md` | ✅ | ⚠️ guidance only |
 
-**Read the ⚠️ rows literally.** Those four hosts either document no way to rewrite a shell command, or Tersio does not ship one yet. They get the rules pack and skills, and the RTK text tells the model to prefix commands by hand instead. `tersio doctor` states which case each host is in, so none of this is a claim you have to take on faith.
+**Read the ⚠️ rows literally.** OpenClaw, Command Code, and Antigravity CLI document no way to rewrite a shell command, so they get the rules pack and skills and the RTK text tells the model to prefix commands by hand. `tersio doctor` states which case each host is in, so none of this is a claim you have to take on faith.
 
 Two notes on the Google rows: `agy` keeps its global rules at `~/.gemini/GEMINI.md` but moved its workspace skills to `.agents/skills/`, and Gemini CLI itself is sunset for free, Pro, and Ultra accounts — `agy` is its successor.
 
-Prefer OMP-managed updates? Install as an OMP plugin instead:
+Oh My Pi users can install as a plugin instead, which lets OMP manage updates:
 
 ```bash
 omp plugin install @krtclcdy/tersio
@@ -96,7 +96,7 @@ npm exec --yes --prefer-online --package=@krtclcdy/tersio@latest -- tersio insta
 ### Requirements
 
 - Node.js 20.12+ with npm
-- At least one supported agent, or [OMP](https://github.com/can1357/oh-my-pi) for the live-session extras
+- Any of the twelve supported agents — nothing else is required
 
 Windows/WSL have separate home directories — install from the environment where the agent runs. Inside WSL, `command -v npm` must resolve to a Linux path, not `/mnt/c/`.
 
@@ -162,7 +162,9 @@ Flags: `--agent <ids>` (repeatable, comma-separated), `--dry-run`, `--yes`/`-y`,
 
 ## ⌨️ Commands reference
 
-Mode switches live on their own commands; bare `/tersio` prints status. **These are Oh My Pi commands** — the reference host. Other agents get the modes as rules and skills rather than as live switches; see [INSTALL.md](./INSTALL.md).
+**Oh My Pi only.** These are live session commands: `/combo` changes the mode for the rest of the session and the state is persisted. Other agents have no equivalent runtime hook, so they receive the same modes as rules and skills instead — the behaviour is equivalent, the switching is not live. See [INSTALL.md](./INSTALL.md) for what each host actually gets.
+
+Mode switches live on their own commands; bare `/tersio` prints status.
 
 | Command | Purpose |
 |---|---|
