@@ -46,8 +46,7 @@ test("--agent is listed in help with every known host id", () => {
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toMatch(/--agent <ids>/);
     for (const id of [
-      "omp", "opencode", "claude-code", "codex", "copilot-cli", "cursor",
-      "grok-build", "pi", "command-code",
+      "omp", "opencode", "claude-code", "codex", "cursor", "pi",
     ]) {
       expect(result.stdout, `help does not list ${id}`).toContain(id);
     }
@@ -67,7 +66,7 @@ test("doctor always shows the agent-hosts category, even with none configured", 
     expect(result.stdout).toContain("none configured");
     expect(result.stdout).toContain("tersio install --agent <id>");
     // Every known id is listed, so the hint is actionable without --help.
-    for (const id of ["claude-code", "codex", "copilot-cli", "cursor", "grok-build", "command-code"]) {
+    for (const id of ["claude-code", "codex", "cursor", "pi"]) {
       expect(result.stdout, `id list omits ${id}`).toContain(id);
     }
   } finally {
@@ -78,16 +77,16 @@ test("doctor always shows the agent-hosts category, even with none configured", 
 test("doctor reports one row per saved host and points at the install command", () => {
   const { home, cleanup } = tempHome();
   try {
-    writeSelection(home, ["claude-code", "command-code"]);
+    writeSelection(home, ["claude-code", "pi"]);
     const result = run(home, "doctor");
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toMatch(/\nAgent hosts\n/);
     expect(result.stdout).toContain("Claude Code");
-    expect(result.stdout).toContain("Command Code");
+    expect(result.stdout).toContain("Pi");
     // Both are uninstalled here, so both must be actionable rather than silent.
     expect(result.stdout).toMatch(/Claude Code: warn/);
     expect(result.stdout).toMatch(/tersio install --agent claude-code/);
-    expect(result.stdout).toMatch(/tersio install --agent command-code/);
+    expect(result.stdout).toMatch(/tersio install --agent pi/);
   } finally {
     cleanup();
   }
@@ -110,12 +109,12 @@ test("--agent accepts both comma-separated and repeated forms", () => {
   const { home, cleanup } = tempHome();
   try {
     writeSelection(home, ["claude-code"]);
-    const commas = run(home, "doctor", "--agent=cursor,command-code");
-    const repeated = run(home, "doctor", "--agent", "cursor", "--agent", "command-code");
+    const commas = run(home, "doctor", "--agent=cursor,codex");
+    const repeated = run(home, "doctor", "--agent", "cursor", "--agent", "codex");
     for (const result of [commas, repeated]) {
       expect(result.status, result.stderr).toBe(0);
       expect(result.stdout).toContain("Cursor");
-      expect(result.stdout).toContain("Command Code");
+      expect(result.stdout).toContain("OpenAI Codex");
       expect(result.stdout).not.toContain("Claude Code");
     }
   } finally {
@@ -126,21 +125,22 @@ test("--agent accepts both comma-separated and repeated forms", () => {
 test("a doctor row goes healthy once the host's files are on disk", () => {
   const { home, cleanup } = tempHome();
   try {
-    writeSelection(home, ["command-code"]);
-    // command-code is guidance-only: rules plus all three skills, and no hook.
-    mkdirSync(path.join(home, ".commandcode"), { recursive: true });
-    writeFileSync(path.join(home, ".commandcode", "AGENTS.md"), "<!-- tersio:start -->\nrules\n<!-- tersio:end -->\n", "utf8");
+    writeSelection(home, ["pi"]);
+    // pi is a live-extension host: rules plus all three skills, and no hook.
+    mkdirSync(path.join(home, ".pi/agent"), { recursive: true });
+    writeFileSync(path.join(home, ".pi/agent", "AGENTS.md"), "<!-- tersio:start -->\nrules\n<!-- tersio:end -->\n", "utf8");
     for (const mode of ["caveman", "ponytail", "rtk"]) {
-      const dir = path.join(home, ".commandcode", "skills", `tersio-${mode}`);
+      const dir = path.join(home, ".pi/agent", "skills", `tersio-${mode}`);
       mkdirSync(dir, { recursive: true });
       writeFileSync(path.join(dir, "SKILL.md"), `---\nname: tersio-${mode}\ndescription: d\n---\nbody\n`, "utf8");
     }
 
     const result = run(home, "doctor");
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toMatch(/Command Code: ok/);
-    // The row must say guidance, not claim a rewrite hook was installed.
-    expect(result.stdout).toMatch(/guidance only/);
+    expect(result.stdout).toMatch(/Pi: ok/);
+    // The row must name the owner, not claim a hook file tersio did not write.
+    expect(result.stdout).toMatch(/rewrite owned by wiring/);
+    expect(result.stdout).not.toMatch(/rewrite hook installed/);
   } finally {
     cleanup();
   }
@@ -149,13 +149,13 @@ test("a doctor row goes healthy once the host's files are on disk", () => {
 test("a doctor row stays a warning while any of the host's files is missing", () => {
   const { home, cleanup } = tempHome();
   try {
-    writeSelection(home, ["command-code"]);
-    mkdirSync(path.join(home, ".commandcode"), { recursive: true });
-    writeFileSync(path.join(home, ".commandcode", "AGENTS.md"), "<!-- tersio:start -->\nr\n<!-- tersio:end -->\n", "utf8");
+    writeSelection(home, ["pi"]);
+    mkdirSync(path.join(home, ".pi/agent"), { recursive: true });
+    writeFileSync(path.join(home, ".pi/agent", "AGENTS.md"), "<!-- tersio:start -->\nr\n<!-- tersio:end -->\n", "utf8");
     // All three skills deliberately absent, so the row must stay a warning.
     const result = run(home, "doctor");
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toMatch(/Command Code: warn/);
+    expect(result.stdout).toMatch(/Pi: warn/);
     expect(result.stdout).toMatch(/3 file\(s\) missing/);
   } finally {
     cleanup();
@@ -184,25 +184,16 @@ test("a wired live-extension host says who owns its rewrite instead of claiming 
   }
 });
 
-test("a host whose rewrite is pending is reported as guidance, never as wired", () => {
+test("every host reports a working rewrite class, because none is guidance-only", () => {
   const { home, cleanup } = tempHome();
   try {
-    // command-code supports a mod, but tersio ships none yet, so the row must
-    // not imply a working auto-rewrite.
-    writeSelection(home, ["command-code"]);
-    mkdirSync(path.join(home, ".commandcode"), { recursive: true });
-    writeFileSync(path.join(home, ".commandcode", "AGENTS.md"), "<!-- tersio:start -->\nr\n<!-- tersio:end -->\n", "utf8");
-    for (const mode of ["caveman", "ponytail", "rtk"]) {
-      const dir = path.join(home, ".commandcode", "skills", `tersio-${mode}`);
-      mkdirSync(dir, { recursive: true });
-      writeFileSync(path.join(dir, "SKILL.md"), `---\nname: tersio-${mode}\ndescription: d\n---\n`, "utf8");
+    // With Pi gone, every supported host either has a static hook or
+    // a named owner. So no row may ever claim "guidance only" again.
+    for (const id of ["claude-code", "codex", "cursor", "pi", "opencode"]) {
+      const result = run(home, "doctor", "--agent", id);
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout, `${id} reported guidance only`).not.toMatch(/guidance only/);
     }
-    const result = run(home, "doctor");
-    expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toMatch(/Command Code: ok/);
-    expect(result.stdout).toMatch(/guidance only/);
-    expect(result.stdout, "must not claim a rewrite it does not ship")
-      .not.toMatch(/rewrite owned by mod/);
   } finally {
     cleanup();
   }
@@ -218,7 +209,7 @@ test("a host row counts toward the doctor summary tally", () => {
   const { home, cleanup } = tempHome();
   try {
     const before = run(home, "doctor");
-    writeSelection(home, ["claude-code", "command-code", "cursor"]);
+    writeSelection(home, ["claude-code", "pi", "cursor"]);
     const after = run(home, "doctor");
     // The empty-category hint is not a check, so only the three real rows join
     // the tally.

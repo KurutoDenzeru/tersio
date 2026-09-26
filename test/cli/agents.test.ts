@@ -49,7 +49,12 @@ test("the agent menu lists every host and says what wiring it will get", () => {
   expect(byId_.get("claude-code")).toMatch(/hook · auto-rewrite/);
   expect(byId_.get("opencode")).toMatch(/plugin · auto-rewrite/);
   expect(byId_.get("pi")).toMatch(/rtk extension · auto-rewrite/);
-  expect(byId_.get("command-code")).toBe("guidance only · no auto-rewrite");
+  expect(byId_.get("codex")).toMatch(/hook · auto-rewrite/);
+  expect(byId_.get("cursor")).toMatch(/hook · auto-rewrite/);
+  // No host is guidance-only any more, so the hint must never say so.
+  for (const hint of byId_.values()) {
+    expect(hint).not.toBe("guidance only · no auto-rewrite");
+  }
   // omp is the reference host, and the menu says so.
   expect(byId_.get("omp")).toMatch(/^reference host · /);
 });
@@ -63,12 +68,12 @@ test("normalizeIds keeps registry order, drops unknowns, and de-duplicates", () 
 test("an explicit --agent wins over the prompt, the saved set, and detection", async () => {
   let asked = false;
   const result = await resolveAgentSelection({
-    flag: ["command-code"],
+    flag: ["pi"],
     stored: ["claude-code"],
     detected: ["cursor"],
     ask: async () => { asked = true; return ["pi"]; },
   });
-  expect(result.ids).toEqual(["command-code"]);
+  expect(result.ids).toEqual(["pi"]);
   expect(result.source).toBe("flag");
   expect(asked, "the prompt must not run when --agent is given").toBe(false);
 });
@@ -76,8 +81,8 @@ test("an explicit --agent wins over the prompt, the saved set, and detection", a
 test("an explicit --agent naming an uninstalled host is honoured, which is how you install it", async () => {
   // Detection is irrelevant here: naming a host you do not have yet is the
   // whole point of --agent.
-  const result = await resolveAgentSelection({ flag: ["command-code"], stored: [], detected: [] });
-  expect(result.ids).toEqual(["command-code"]);
+  const result = await resolveAgentSelection({ flag: ["pi"], stored: [], detected: [] });
+  expect(result.ids).toEqual(["pi"]);
 });
 
 test("an all-unknown --agent falls through instead of selecting nothing", async () => {
@@ -90,9 +95,9 @@ test("the prompt decides, and a cancelled prompt falls back to the automatic set
   const asked = await resolveAgentSelection({
     stored: ["claude-code"],
     detected: ["cursor"],
-    ask: async () => ["command-code"],
+    ask: async () => ["pi"],
   });
-  expect(asked.ids).toEqual(["command-code"]);
+  expect(asked.ids).toEqual(["pi"]);
   expect(asked.source).toBe("prompt");
 
   const cancelled = await resolveAgentSelection({
@@ -121,11 +126,11 @@ test("the automatic set unions the saved hosts with what is on the machine", asy
   // was silently skipped and never written.
   const result = await resolveAgentSelection({
     stored: ["claude-code"],
-    detected: ["cursor", "command-code"],
+    detected: ["cursor", "pi"],
   });
-  expect(result.ids).toEqual(["claude-code", "cursor", "command-code"]);
+  expect(result.ids).toEqual(["claude-code", "cursor", "pi"]);
   expect(result.source).toBe("auto");
-  expect(result.addedByDetection).toEqual(["cursor", "command-code"]);
+  expect(result.addedByDetection).toEqual(["cursor", "pi"]);
 });
 
 test("nothing saved and nothing detected is a valid answer", async () => {
@@ -145,13 +150,13 @@ test("the selection round-trips through ~/.tersio/agents.json", () => {
   const { home, cleanup } = tempHome();
   try {
     expect(readSelection(home).hosts).toEqual([]);
-    writeSelection(home, ["command-code", "cursor"]);
+    writeSelection(home, ["pi", "cursor"]);
     // Stored in registry order, not the order given, so the file is stable
     // whatever order --agent listed them in.
-    expect(readSelection(home).hosts).toEqual(["cursor", "command-code"]);
+    expect(readSelection(home).hosts).toEqual(["cursor", "pi"]);
     expect(readSelection(home).updatedAt).toBeGreaterThan(0);
-    writeSelection(home, ["command-code"]);
-    expect(readSelection(home).hosts).toEqual(["command-code"]);
+    writeSelection(home, ["pi"]);
+    expect(readSelection(home).hosts).toEqual(["pi"]);
   } finally {
     cleanup();
   }
@@ -165,8 +170,8 @@ test("a corrupt or absent selection file reads as empty rather than throwing", (
     expect(readSelection(home).hosts).toEqual([]);
     write(home, ".tersio/agents.json", '{"hosts": "not-an-array"}');
     expect(readSelection(home).hosts).toEqual([]);
-    write(home, ".tersio/agents.json", '{"hosts": ["command-code", 7, null]}');
-    expect(readSelection(home).hosts).toEqual(["command-code"]);
+    write(home, ".tersio/agents.json", '{"hosts": ["pi", 7, null]}');
+    expect(readSelection(home).hosts).toEqual(["pi"]);
   } finally {
     cleanup();
   }
@@ -202,9 +207,9 @@ test("detection finds a host by a binary on PATH", () => {
   const { home, cleanup } = tempHome();
   try {
     const binDir = mkdtempSync(path.join(os.tmpdir(), "tersio-bin-"));
-    writeFileSync(path.join(binDir, "command-code"), "#!/bin/sh\n", { mode: 0o755 });
+    writeFileSync(path.join(binDir, "pi"), "#!/bin/sh\n", { mode: 0o755 });
     const found = detectHosts(home, { PATH: binDir });
-    expect(found).toContain("command-code");
+    expect(found).toContain("pi");
     rmSync(binDir, { recursive: true, force: true });
   } finally {
     cleanup();
@@ -287,16 +292,17 @@ test("a dry run reports the plan and writes nothing", async () => {
   }
 });
 
-test("a host that cannot rewrite gets guidance and no hook file", async () => {
+test("a live-extension host gets its rules and skills but no hook file", async () => {
   const { home, cleanup } = tempHome();
   try {
-    const host = byId("command-code")!;
+    // pi's rewrite is rtk's own extension, so tersio writes no hook for it.
+    const host = byId("pi")!;
     await applyHost(host, home);
-    expect(existsSync(path.join(home, ".commandcode", "AGENTS.md"))).toBe(true);
-    expect(existsSync(path.join(home, ".commandcode", "skills", "tersio-rtk", "SKILL.md"))).toBe(true);
-    expect(read(home, ".commandcode/AGENTS.md")).toContain("prefix noisy commands");
-    // No hook file anywhere for a host whose hooks cannot rewrite.
-    expect(existsSync(path.join(home, ".commandcode", "hooks.json"))).toBe(false);
+    expect(existsSync(path.join(home, ".pi", "agent", "AGENTS.md"))).toBe(true);
+    expect(existsSync(path.join(home, ".pi", "agent", "skills", "tersio-rtk", "SKILL.md"))).toBe(true);
+    expect(read(home, ".pi/agent/AGENTS.md")).toContain("filters output before the model reads it");
+    expect(existsSync(path.join(home, ".pi", "agent", "hooks.json"))).toBe(false);
+    expect(existsSync(path.join(home, ".pi", "agent", "tersio-rtk-rewrite.mjs"))).toBe(false);
   } finally {
     cleanup();
   }
@@ -305,7 +311,7 @@ test("a host that cannot rewrite gets guidance and no hook file", async () => {
 test("a failure on one host does not stop the others", async () => {
   const { home, cleanup } = tempHome();
   try {
-    const { results, errors } = await applyHosts(["claude-code", "command-code", "cursor"], home);
+    const { results, errors } = await applyHosts(["claude-code", "pi", "cursor"], home);
     expect(results.length).toBe(3);
     expect(errors).toEqual([]);
   } finally {
@@ -391,16 +397,24 @@ test("removal keeps a user's settings.json and takes only our hook out of it", a
   }
 });
 
-test("removal deletes a hook config tersio named, once it is empty", async () => {
+test("removal empties our hook entry without deleting the user's config file", async () => {
   const { home, cleanup } = tempHome();
   try {
-    const host = byId("grok-build")!;
+    // No supported host uses a tersio-named hook config any more, so every hook
+    // config is a file the user also owns and must survive with only our entry
+    // removed. That makes the delete-when-empty branch unreachable today.
+    for (const host of HOSTS.filter((h) => h.rewriteConfig)) {
+      expect(isTersioOwned(host.rewriteConfig!.configFile), `${host.id} owns a tersio-named config`).toBe(false);
+    }
+
+    const host = byId("codex")!;
     await applyHost(host, home);
-    const cfg = path.join(home, ".grok", "hooks", "tersio-rtk.json");
+    const cfg = path.join(home, ".codex", "hooks.json");
     expect(existsSync(cfg)).toBe(true);
-    expect(isTersioOwned(cfg)).toBe(true);
     await removeHost(host, home);
-    expect(existsSync(cfg), "left tersio's own hook config behind").toBe(false);
+    expect(existsSync(cfg), "deleted a config file the user owns").toBe(true);
+    const after = JSON.parse(readFileSync(cfg, "utf8")) as Record<string, unknown>;
+    expect(JSON.stringify(after)).not.toContain("tersio-rtk-rewrite.mjs");
   } finally {
     cleanup();
   }
@@ -435,7 +449,7 @@ test("removing a host that was never installed touches nothing", async () => {
 test("a full apply then remove leaves no tersio file behind", async () => {
   const { home, cleanup } = tempHome();
   try {
-    const hosts = ["claude-code", "codex", "copilot-cli", "cursor", "grok-build", "opencode", "command-code"];
+    const hosts = ["claude-code", "codex", "cursor", "opencode", "pi"];
     await applyHosts(hosts, home);
     await removeHosts(hosts, home);
     const leftovers: string[] = [];
@@ -480,7 +494,7 @@ test("a fully installed host reports healthy, with no repair pending", () => {
 test("a healthy row is quiet about repair and names the rewrite path", () => {
   const { home, cleanup } = tempHome();
   try {
-    expect(reportHost(byId("command-code")!, home)).toMatchObject({ status: "warn", repair: "install" });
+    expect(reportHost(byId("pi")!, home)).toMatchObject({ status: "warn", repair: "install" });
   } finally {
     cleanup();
   }
@@ -489,8 +503,8 @@ test("a healthy row is quiet about repair and names the rewrite path", () => {
 test("doctor reports one row per selected host", () => {
   const { home, cleanup } = tempHome();
   try {
-    const rows = reportHosts(["claude-code", "command-code", "bogus"], home);
-    expect(rows.map((r) => r.host.id)).toEqual(["claude-code", "command-code"]);
+    const rows = reportHosts(["claude-code", "pi", "bogus"], home);
+    expect(rows.map((r) => r.host.id)).toEqual(["claude-code", "pi"]);
     for (const row of rows) {
       expect(row.detail.length).toBeGreaterThan(0);
       expect(row.missing.length).toBeGreaterThan(0);

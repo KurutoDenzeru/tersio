@@ -28,16 +28,16 @@ async function rows(home: string, env: NodeJS.ProcessEnv = { PATH: "" }): Promis
   return (await agentsJson(home, env)) as unknown as Row[];
 }
 
-/** Writes every file command-code needs: a global AGENTS.md and three skills. */
+/** Writes every file pi needs: a global AGENTS.md and three skills. */
 function installCommandCodeFully(home: string): void {
-  mkdirSync(path.join(home, ".commandcode"), { recursive: true });
+  mkdirSync(path.join(home, ".pi/agent"), { recursive: true });
   writeFileSync(
-    path.join(home, ".commandcode", "AGENTS.md"),
+    path.join(home, ".pi/agent", "AGENTS.md"),
     `# mine\n\n${START}\nrules\n${END}\n`,
     "utf8",
   );
   for (const mode of ["caveman", "ponytail", "rtk"]) {
-    const dir = path.join(home, ".commandcode", "skills", `tersio-${mode}`);
+    const dir = path.join(home, ".pi/agent", "skills", `tersio-${mode}`);
     mkdirSync(dir, { recursive: true });
     writeFileSync(path.join(dir, "SKILL.md"), `---\nname: tersio-${mode}\ndescription: d\n---\n`, "utf8");
   }
@@ -118,10 +118,10 @@ test("a selected agent is not called configured until its files are on disk", as
 test("a fully installed agent reports configured with nothing missing", async () => {
   const { home, cleanup } = tempHome();
   try {
-    writeSelection(home, ["command-code"]);
+    writeSelection(home, ["pi"]);
     installCommandCodeFully(home);
 
-    const row = (await rows(home)).find((r) => r.id === "command-code")!;
+    const row = (await rows(home)).find((r) => r.id === "pi")!;
     expect(row.selected).toBe(true);
     expect(row.missing).toBe(0);
     // One AGENTS.md plus three skills; the host has no static hook.
@@ -135,11 +135,11 @@ test("a fully installed agent reports configured with nothing missing", async ()
 test("a partially installed agent counts what is present, so the gap is visible", async () => {
   const { home, cleanup } = tempHome();
   try {
-    writeSelection(home, ["command-code"]);
-    mkdirSync(path.join(home, ".commandcode"), { recursive: true });
-    writeFileSync(path.join(home, ".commandcode", "AGENTS.md"), `${START}\nr\n${END}\n`, "utf8");
+    writeSelection(home, ["pi"]);
+    mkdirSync(path.join(home, ".pi/agent"), { recursive: true });
+    writeFileSync(path.join(home, ".pi/agent", "AGENTS.md"), `${START}\nr\n${END}\n`, "utf8");
 
-    const row = (await rows(home)).find((r) => r.id === "command-code")!;
+    const row = (await rows(home)).find((r) => r.id === "pi")!;
     expect(row.present).toBe(1);
     expect(row.missing).toBe(3);
     expect(row.configured).toBe(false);
@@ -153,9 +153,14 @@ test("each row names the wiring the installer would give that host", async () =>
   try {
     const byId = new Map((await rows(home)).map((r) => [r.id, r.wiring]));
     expect(byId.get("claude-code")).toMatch(/hook · auto-rewrite/);
+    expect(byId.get("codex")).toMatch(/hook · auto-rewrite/);
+    expect(byId.get("cursor")).toMatch(/hook · auto-rewrite/);
     expect(byId.get("opencode")).toMatch(/plugin · auto-rewrite/);
     expect(byId.get("pi")).toMatch(/rtk extension · auto-rewrite/);
-    expect(byId.get("command-code")).toBe("guidance only · no auto-rewrite");
+    // No supported host is guidance-only any more, so the hint must never say so.
+    for (const hint of byId.values()) {
+      expect(hint).not.toBe("guidance only · no auto-rewrite");
+    }
   } finally {
     cleanup();
   }

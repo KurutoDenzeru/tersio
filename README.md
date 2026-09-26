@@ -8,7 +8,7 @@
 [![Build](https://shieldcn.dev/github/ci/KurutoDenzeru/tersio.svg?variant=branded&size=xs&logo=githubactions&label=Build)](https://github.com/KurutoDenzeru/tersio/actions)
 [![MIT](https://shieldcn.dev/badge/license-MIT-2563eb.svg?variant=branded&size=xs&logo=opensourceinitiative)](./LICENSE)
 
-Tersio installs three coding modes into whichever agents you already use — **nine supported** — and keeps the savings in one local ledger and dashboard.
+Tersio installs three coding modes into whichever agents you already use — **six supported** — and keeps the savings in one local ledger and dashboard.
 
 | Mode | What it changes |
 |---|---|
@@ -42,19 +42,16 @@ The selection is saved to `~/.tersio/agents.json` and reused by every later inst
 |---|---|---|---|---|
 | Claude Code | `claude-code` | `CLAUDE.md` | ✅ | ✅ hook |
 | OpenAI Codex | `codex` | `AGENTS.md` | ✅ | ✅ hook |
-| GitHub Copilot CLI | `copilot-cli` | `copilot-instructions.md` | ✅ | ✅ hook |
 | Cursor | `cursor` | `rules/tersio.mdc` | ✅ | ✅ hook |
-| Grok Build | `grok-build` | `rules/tersio.md` | ✅ | ✅ hook |
 | OpenCode | `opencode` | `AGENTS.md` | ⚠️ project-only | ✅ plugin |
 | Pi | `pi` | `AGENTS.md` | ✅ | ✅ rtk extension |
 | Oh My Pi | `omp` | ✅ | ✅ | ✅ rtk extension |
-| Command Code | `command-code` | `AGENTS.md` | ✅ | ⚠️ guidance only |
 
-**Read the ⚠️ rows literally.** Command Code's documented hooks can allow, deny, or annotate, but never rewrite a shell command, so it gets the rules pack and skills and the RTK text tells the model to prefix commands by hand. `tersio doctor` states which case each host is in, so none of this is a claim you have to take on faith.
+Every supported host ships a working auto-rewrite, so there is no guidance-only row to read carefully. `tersio doctor` states which mechanism each host actually got — a generated hook, rtk's extension, or a plugin — so you never have to take the table on faith.
 
-Not supported: Gemini CLI is sunset for free, Pro, and Ultra accounts, and its Antigravity CLI successor, OpenClaw, and Hermes are all out of scope. `tersio install` will not touch them.
+Not supported: Gemini CLI is sunset for free, Pro, and Ultra accounts, and its Antigravity CLI successor, OpenClaw, Hermes, Grok Build, GitHub Copilot CLI, and Command Code are all out of scope. `tersio install` will not touch them, and `tersio uninstall` will not remove anything it did not write.
 
-Run `tersio install` again at any point to change the selection. It asks which agents to set up, so there is one install path for all nine — nothing is scoped to a single agent's plugin system. `tersio uninstall` asks the same way, before it removes anything.
+Run `tersio install` again at any point to change the selection. It asks which agents to set up, so there is one install path for all six — nothing is scoped to a single agent's plugin system. `tersio uninstall` asks the same way, before it removes anything.
 
 ```bash
 tersio install                      # prompt for the agents
@@ -78,7 +75,7 @@ npm exec --yes --prefer-online --package=@krtclcdy/tersio@latest -- tersio insta
 ### Requirements
 
 - Node.js 20.12+ with npm
-- Any of the nine supported agents — nothing else is required
+- Any of the six supported agents — nothing else is required
 
 Windows/WSL have separate home directories — install from the environment where the agent runs. Inside WSL, `command -v npm` must resolve to a Linux path, not `/mnt/c/`.
 

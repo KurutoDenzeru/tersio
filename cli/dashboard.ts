@@ -58,6 +58,32 @@ async function brandDataUri(): Promise<string> {
   return `data:image/webp;base64,${brand.toString('base64')}`;
 }
 
+/**
+ * Vendored brand marks for the Connection pane, as data URIs.
+ *
+ * Vite copies `public/agents/*.svg` next to the bundle and the app references
+ * them by URL, which works when the dashboard is served but not in a single
+ * exported HTML file. Inlining them here keeps an export self-contained, the
+ * same reason the brand image is inlined. A mark missing from disk is skipped
+ * rather than fatal: the row falls back to its monogram.
+ */
+async function agentIconReplacements(): Promise<Array<[RegExp, string]>> {
+  const out: Array<[RegExp, string]> = [];
+  let entries: string[] = [];
+  try {
+    entries = await fs.readdir(path.join(DASHBOARD_DIST, 'agents'));
+  } catch {
+    return out;
+  }
+  for (const name of entries) {
+    if (!name.endsWith('.svg')) continue;
+    const svg = await fs.readFile(path.join(DASHBOARD_DIST, 'agents', name), 'utf8');
+    const uri = `data:image/svg+xml;base64,${Buffer.from(svg, 'utf8').toString('base64')}`;
+    out.push([new RegExp(`agents/${name.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')}`, 'g'), uri]);
+  }
+  return out;
+}
+
 function dataJson(): string {
   return JSON.stringify(summarizeUsage(readUsage()));
 }
@@ -462,12 +488,16 @@ async function snapJson(): Promise<string> {
 
 async function exportDashboard(exportFile: string): Promise<void> {
   requireDashboardBundle();
-  const [bundle, icon, snap] = await Promise.all([readSegment(DASHBOARD_INDEX), brandDataUri(), snapJson()]);
-  const inline = bundle
+  const [bundle, icon, snap, agentIcons] = await Promise.all([
+    readSegment(DASHBOARD_INDEX), brandDataUri(), snapJson(), agentIconReplacements(),
+  ]);
+  let inline = bundle
     .replace('window.__TERSIO_SNAP = null;', () => `window.__TERSIO_SNAP = ${snap};`)
     .replace(/href="brand\.webp"/g, () => `href="${icon}"`)
     .replace(/src="brand\.webp"/g, () => `src="${icon}"`)
     .replace('fetch("brand.webp")', () => `Promise.resolve({ ok: true, blob: async () => new Blob([atob("${icon.split(',')[1]}")], { type: "image/webp" }) })`);
+  // Brand marks last, so a path can never collide with the image substitutions.
+  for (const [pattern, uri] of agentIcons) inline = inline.replace(pattern, () => uri);
   await fs.writeFile(exportFile, inline, 'utf8');
   console.log(`[ok] Dashboard exported → ${exportFile}`);
 }

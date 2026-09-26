@@ -163,8 +163,6 @@ if (!rewritten) process.exit(0);
     updatedInput: { command: rewritten },
   },
 }));`,
-    // Copilot: flat modifiedArgs, substituting the tool arguments.
-    modifiedArgs: `process.stdout.write(JSON.stringify({ modifiedArgs: { command: rewritten } }));`,
     // Cursor: flat updated_input.
     updated_input: `process.stdout.write(JSON.stringify({ permission: 'allow', updated_input: { command: rewritten } }));`,
   };
@@ -198,11 +196,6 @@ export function renderHookConfig(host: AgentHost, scriptAbs: string): string | n
   const command = hookScriptCommand(scriptAbs);
 
   switch (cfg.configFormat) {
-    case 'copilot-json':
-      return `${JSON.stringify({
-        version: 1,
-        hooks: { [cfg.event]: [{ name: HOOK_MARKER, type: 'command', bash: command, command, timeoutSec: 10 }] },
-      }, null, 2)}\n`;
     case 'cursor-json':
       return `${JSON.stringify({
         version: 1,

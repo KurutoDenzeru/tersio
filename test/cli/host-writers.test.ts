@@ -87,13 +87,11 @@ function scriptFor(host: AgentHost): string {
   return artifact.content;
 }
 
-test("the static-hook host set is the five with a documented input rewrite", () => {
+test("the static-hook host set is the three with a documented input rewrite", () => {
   expect(STATIC_HOOK_HOSTS.map((h) => h.id).toSorted()).toEqual([
     "claude-code",
     "codex",
-    "copilot-cli",
     "cursor",
-    "grok-build",
   ]);
 });
 
@@ -121,9 +119,6 @@ for (const host of STATIC_HOOK_HOSTS) {
           expect((specific.updatedInput as Record<string, unknown>).command).toBe(REWRITTEN);
           break;
         }
-        case "modifiedArgs":
-          expect((parsed.modifiedArgs as Record<string, unknown>).command).toBe(REWRITTEN);
-          break;
         case "updated_input":
           expect(parsed.permission).toBe("allow");
           expect((parsed.updated_input as Record<string, unknown>).command).toBe(REWRITTEN);
@@ -165,20 +160,12 @@ for (const host of STATIC_HOOK_HOSTS) {
   });
 }
 
-test("grok accepts either spelling of the command field", () => {
-  const host = HOSTS.find((h) => h.id === "grok-build")!;
-  expect(Array.isArray(host.rewriteConfig!.inputPath)).toBe(true);
-  const box = sandbox();
-  try {
-    const scriptPath = path.join(box.dir, HOOK_SCRIPT_NAME);
-    writeFileSync(scriptPath, scriptFor(host));
-    fakeRtk(box, `printf '%s\\n' '${REWRITTEN}'`);
-    for (let i = 0; i < 2; i++) {
-      const { stdout } = runRewriter(box, scriptPath, payloadFor(host, "git status", i));
-      expect(stdout.trim(), `spelling ${i} produced nothing`).not.toBe("");
-    }
-  } finally {
-    box.cleanup();
+test("every static hook declares a single spelling for the command field", () => {
+  // Grok was the only host forwarding both toolInput and tool_input, and it is
+  // no longer supported. A multi-path inputPath is now a gap in coverage, not a
+  // documented requirement, so assert the simpler contract holds.
+  for (const host of STATIC_HOOK_HOSTS) {
+    expect(Array.isArray(host.rewriteConfig!.inputPath), `${host.id} accepts two spellings`).toBe(false);
   }
 });
 
@@ -281,20 +268,6 @@ test("Cursor's rule file carries the frontmatter its engine requires", () => {
   expect(artifact.content.startsWith("---\n")).toBe(true);
   expect(artifact.content).toMatch(/^alwaysApply: true$/m);
   expect(artifact.absPath.endsWith(path.join(".cursor", "rules", "tersio.mdc"))).toBe(true);
-});
-
-test("a host that cannot auto-rewrite is told to do it by hand", () => {
-  for (const id of ["command-code"]) {
-    const host = HOSTS.find((h) => h.id === id)!;
-    const rules = planHost(host, HOME).artifacts.find((a) => a.kind === "rules")!;
-    expect(rules.content, `${id} claims an automatic rewrite`).toContain("prefix noisy commands");
-    expect(rules.content, `${id} must not promise automation`).not.toContain("filters output before the model reads it");
-
-    // Skills must agree with the rules file, not contradict it.
-    for (const skill of planHost(host, HOME).artifacts.filter((a) => a.kind === "skill")) {
-      expect(skill.content, `${id} skill promises an automatic rewrite`).toContain("prefix noisy commands");
-    }
-  }
 });
 
 test("a host with a real hook gets the automatic-rewrite wording", () => {
@@ -429,32 +402,20 @@ test("a live-extension host gets no static hook, only its rules and skills", () 
   }
 });
 
-test("a host whose rewrite is pending gets guidance, not a promise of automation", () => {
-  // opencode and command-code both support rewriting in principle, but tersio
-  // ships no rewrite for them yet. Their rules and skills must therefore say
-  // "do it by hand", because a user who reads "filters output before the model
-  // reads it" would reasonably expect it to be happening.
-  for (const id of ["command-code"]) {
-    const plan = planHost(HOSTS.find((h) => h.id === id)!, HOME);
-    expect(plan.liveExtension, id).toBe(false);
-    expect(plan.guidanceOnly, `${id} should be guidance-only until wired`).toBe(true);
+test("every host's rules promise the automatic rewrite, because none is guidance-only", () => {
+  // With every supported host either hook-driven or extension-driven, no row may
+  // claim guidance-only. This is the inverse of the removed pending-host test:
+  // if a future host has no rewrite surface, this fails and the wording needs
+  // revisiting.
+  for (const host of HOSTS) {
+    const plan = planHost(host, HOME);
+    expect(plan.guidanceOnly, `${host.id} regressed to guidance-only`).toBe(false);
     for (const artifact of plan.artifacts) {
-      expect(artifact.content, `${id} ${artifact.kind} promises automation`)
-        .toContain("prefix noisy commands");
-      expect(artifact.content, `${id} ${artifact.kind} promises automation`)
-        .not.toContain("filters output before the model reads it");
+      if (artifact.kind !== "rules") continue;
+      expect(artifact.content, `${host.id} rules do not promise automation`)
+        .toContain("filters output before the model reads it");
     }
   }
-
-  // opencode gets its rewrite from a real plugin, so its rules carry the
-  // auto-rewrite wording rather than the manual fallback.
-  const opencode = planHost(HOSTS.find((h) => h.id === "opencode")!, HOME);
-  expect(opencode.liveExtension).toBe(true);
-  expect(opencode.rewriteInstalled).toBe(false);
-  const rules = opencode.artifacts.find((a) => a.kind === "rules");
-  expect(rules, "opencode should get a global AGENTS.md block").toBeDefined();
-  expect(rules!.absPath.endsWith(path.join(".config", "opencode", "AGENTS.md"))).toBe(true);
-  expect(rules!.content).toContain("filters output before the model reads it");
 });
 
 test("every planned artifact has an absolute path", () => {

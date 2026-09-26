@@ -28,11 +28,10 @@ before you pick one.
 
 | Class | What you get | Hosts |
 |---|---|---|
-| **Hook** | Rules, skills, and a real auto-rewrite. Tersio generates a small rewriter script plus a hook entry in the agent's own config | Claude Code, Codex, Copilot CLI, Cursor, Grok Build |
+| **Hook** | Rules, skills, and a real auto-rewrite. Tersio generates a small rewriter script plus a hook entry in the agent's own config | Claude Code, Codex, Cursor |
 | **Extension** | Rules and skills, with the rewrite owned by the agent or by rtk as a real extension file | Oh My Pi, Pi, OpenCode |
-| **Guidance** | Rules and skills only. The RTK text tells the model to prefix commands by hand | Command Code |
 
-Not supported: Gemini CLI, Antigravity CLI, OpenClaw, and Hermes. `tersio install` never writes to them, and `tersio uninstall` never removes anything it did not write.
+Not supported: Gemini CLI, Antigravity CLI, OpenClaw, Hermes, Grok Build, GitHub Copilot CLI, and Command Code. `tersio install` never writes to them, and `tersio uninstall` never removes anything it did not write.
 
 `tersio doctor` reports which class each selected host is in, so you never have
 to take this table on faith.
@@ -64,18 +63,6 @@ its own hook entry, and uninstall removes exactly those.
 other agent that reads it. `CODEX_HOME` relocates `~/.codex/`; the shared skills
 directory is deliberately *not* moved with it.
 
-### GitHub Copilot CLI — `copilot-cli`
-
-```text
-~/.copilot/copilot-instructions.md
-~/.copilot/skills/tersio-{caveman,ponytail,rtk}/SKILL.md
-~/.copilot/hooks/tersio-rtk.json
-~/.copilot/hooks/tersio-rtk-rewrite.mjs
-```
-
-Copilot's `preToolUse` is fail-closed, so the rewriter always exits `0` — a
-failure downgrades to no rewriting rather than blocking your command.
-
 ### Cursor — `cursor`
 
 ```text
@@ -87,18 +74,6 @@ failure downgrades to no rewriting rather than blocking your command.
 
 Cursor ignores a rule file without frontmatter, so `tersio.mdc` is written with
 the required `---` block.
-
-### Grok Build — `grok-build`
-
-```text
-~/.grok/rules/tersio.md
-~/.grok/skills/tersio-{caveman,ponytail,rtk}/SKILL.md
-~/.grok/hooks/tersio-rtk.json
-~/.grok/hooks/tersio-rtk-rewrite.mjs
-```
-
-Grok forwards the command field in either `toolInput` or `tool_input`, so the
-rewriter accepts both rather than guessing.
 
 ### Oh My Pi — `omp`
 
@@ -117,19 +92,6 @@ inheritance.
 The rewrite is rtk's own extension at `~/.pi/agent/extensions/rtk.ts`, written by
 `rtk init -g --agent pi`. rtk owns that format, so a Tersio release is not needed
 when it changes.
-
-### Command Code — `command-code`
-
-```text
-~/.commandcode/AGENTS.md
-~/.commandcode/skills/tersio-{caveman,ponytail,rtk}/SKILL.md
-```
-
-Guidance only for now. Command Code's documented hooks can allow, deny, or
-annotate, but never rewrite an input. Its mod API *can* — `beforeToolCall`
-returns an `input` that replaces what the tool executes with — so the rewrite
-lands there in a later release. The binary is `cmd` (`cmdc` on Windows, where
-`cmd` is the system shell); Tersio probes `command-code` first for that reason.
 
 ### OpenCode — `opencode`
 

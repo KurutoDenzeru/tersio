@@ -92,23 +92,27 @@ test("opencode ships its own plugin, because rtk's is a pre-v2 shape", () => {
   expect(opencode?.caveats).toMatch(/rtk-ai\/rtk#3463/);
 });
 
-test("command-code is guidance-only until its mod exists", () => {
-  // The host CAN rewrite -- the docs say so -- but we ship no mod, so it must
-  // report guidance rather than claim an auto-rewrite that never runs.
-  const cmd = byId("command-code");
-  expect(cmd).toBeDefined();
-  expect(isLiveExtension(cmd!)).toBe(false);
-  expect(isGuidanceOnly(cmd!)).toBe(true);
-  expect(hasStaticHook(cmd!)).toBe(false);
-  // It still declares the capability and names the gap, so doctor can say why.
-  expect(cmd?.rewrite).toBe(true);
-  expect(cmd?.rewriteOwner).toBe("pending");
-  expect(cmd?.caveats).toMatch(/not written yet/);
+test("pi is a live-extension host, wired by rtk's own init", () => {
+  const pi = byId("pi");
+  expect(pi).toBeDefined();
+  expect(isLiveExtension(pi!)).toBe(true);
+  expect(hasStaticHook(pi!), "pi gets an extension, not a static hook file").toBe(false);
+  expect(isGuidanceOnly(pi!)).toBe(false);
+  expect(pi?.rewriteOwner).toBe("wiring");
+  expect(pi?.caveats).toMatch(/rtk init -g --agent pi/);
 });
 
-test("command-code is the only host with no working auto-rewrite", () => {
-  const guidance = HOSTS.filter(isGuidanceOnly).map((h) => h.id).toSorted();
-  expect(guidance).toEqual(["command-code"]);
+test("every live-extension host names its owner", () => {
+  for (const host of HOSTS.filter(isLiveExtension)) {
+    expect(host.rewriteOwner, `${host.id} is live but names no owner`).toBeDefined();
+  }
+});
+
+test("no host is guidance-only any more", () => {
+  // Every supported host either has a static hook or a named owner, so the
+  // guidance-only branch is currently unreachable. If a future host lands with
+  // no rewrite surface, this fails and the row wording needs revisiting.
+  expect(HOSTS.filter(isGuidanceOnly).map((h) => h.id)).toEqual([]);
 });
 
 test("every host ships a working rewrite or says plainly that it does not", () => {
@@ -125,9 +129,9 @@ test("every hook config names a supported format, protocol, event, and input pat
   for (const host of HOSTS) {
     const cfg = host.rewriteConfig;
     if (!cfg) continue;
-    expect(["claude-json", "copilot-json", "cursor-json"], `${host.id} format`).toContain(cfg.configFormat);
+    expect(["claude-json", "cursor-json"], `${host.id} format`).toContain(cfg.configFormat);
     expect(
-      ["hookSpecificOutput-updatedInput", "modifiedArgs", "updated_input"],
+      ["hookSpecificOutput-updatedInput", "updated_input"],
       `${host.id} protocol`,
     ).toContain(cfg.protocol);
     expect(cfg.event.length, `${host.id} event`).toBeGreaterThan(0);
@@ -140,11 +144,10 @@ test("every hook config names a supported format, protocol, event, and input pat
   }
 });
 
-test("the three rewrite wire protocols are each represented", () => {
+test("the two rewrite wire protocols are each represented", () => {
   const protocols = new Set(HOSTS.map((h) => h.rewriteConfig?.protocol).filter(Boolean));
   expect([...protocols].toSorted()).toEqual([
     "hookSpecificOutput-updatedInput",
-    "modifiedArgs",
     "updated_input",
   ]);
 });
@@ -167,26 +170,24 @@ test("Gemini CLI stays out of the registry", () => {
   expect(byId("agy")).toBeUndefined();
 });
 
-test("the registry holds exactly the nine documented hosts", () => {
+test("the registry holds exactly the six documented hosts", () => {
   expect(HOSTS.map((h) => h.id).toSorted()).toEqual([
     "claude-code",
     "codex",
-    "command-code",
-    "copilot-cli",
     "cursor",
-    "grok-build",
     "omp",
     "opencode",
     "pi",
   ]);
 });
 
-test("Command Code never probes a bare cmd first, which would hit the Windows shell", () => {
-  const host = byId("command-code");
-  expect(host).toBeDefined();
-  expect(host?.binaries[0], "cmd must not be the first probe").toBe("command-code");
-  expect(host?.binaries).toContain("cmd");
-  expect(host?.caveats).toMatch(/win32/);
+test("no host probes a bare cmd, which would hit the Windows shell", () => {
+  // Command Code was the only host with a `cmd` binary; it is no longer
+  // supported. This stays as a guard so a future host cannot reintroduce a
+  // probe that resolves to cmd.exe on Windows.
+  for (const host of HOSTS) {
+    expect(host.binaries, `${host.id} probes the bare cmd`).not.toContain("cmd");
+  }
 });
 
 test("hostPath is $HOME-relative when no relocation env var is set", () => {
@@ -210,12 +211,12 @@ test("a relocation env var moves only paths inside the config dir", () => {
 });
 
 test("a blank relocation env var falls back to the home directory", () => {
-  const host = byId("copilot-cli")!;
-  process.env.COPILOT_HOME = "   ";
+  const host = byId("cursor")!;
+  process.env.CURSOR_CONFIG_DIR = "   ";
   try {
-    expect(hostPath(host, ".copilot/hooks/tersio-rtk.json", "/home/u"))
-      .toBe(path.join("/home/u", ".copilot", "hooks", "tersio-rtk.json"));
+    expect(hostPath(host, ".cursor/hooks.json", "/home/u"))
+      .toBe(path.join("/home/u", ".cursor", "hooks.json"));
   } finally {
-    delete process.env.COPILOT_HOME;
+    delete process.env.CURSOR_CONFIG_DIR;
   }
 });

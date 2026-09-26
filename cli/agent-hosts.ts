@@ -14,13 +14,11 @@ import path from 'node:path';
 /** How a host's `PreToolUse`-style hook is configured on disk. */
 export type HookConfigFormat =
   | 'claude-json'
-  | 'copilot-json'
   | 'cursor-json';
 
 /** The shape a host expects a rewrite to come back in. */
 export type RewriteProtocol =
   | 'hookSpecificOutput-updatedInput'
-  | 'modifiedArgs'
   | 'updated_input';
 
 export interface HostRewrite {
@@ -45,13 +43,12 @@ export interface HostRewrite {
 /**
  * Which module owns this host's rewrite when there is no static hook file.
  *
- * `pending` is the honest value for a host whose rewrite we have *not* shipped:
- * the host supports one, but nothing tersio installs performs it, so the user
- * gets guidance only. It is a distinct value rather than an absent one because
- * `tersio doctor` reports it, and a host that silently claims a working
+ * Every supported host either has a static hook or a named owner, so a
+ * `rewrite: true` host with neither is a half-filled entry. That invariant is
+ * asserted in the registry tests, because a host that silently claims a working
  * auto-rewrite is the exact failure this registry exists to prevent.
  */
-export type RewriteOwner = 'wiring' | 'plugin' | 'mod' | 'pending';
+export type RewriteOwner = 'wiring' | 'plugin';
 
 export interface AgentHost {
   id: string;
@@ -168,29 +165,6 @@ const HOSTS: AgentHost[] = [
     source: 'https://learn.chatgpt.com/docs/hooks',
   },
   {
-    id: 'copilot-cli',
-    label: 'GitHub Copilot CLI',
-    configDir: '.copilot',
-    configDirEnv: 'COPILOT_HOME',
-    binaries: ['copilot'],
-    rules: true,
-    skills: true,
-    rewrite: true,
-    rulesFile: '.copilot/copilot-instructions.md',
-    skillsDir: '.copilot/skills',
-    caveats: 'Instruction files combine rather than override, and need a session restart. preToolUse is fail-CLOSED on error but fail-open on timeout.',
-    rewriteConfig: {
-      configFile: '.copilot/hooks/tersio-rtk.json',
-      configFormat: 'copilot-json',
-      event: 'preToolUse',
-      matcher: '^(bash|command|powershell)$',
-      inputPath: 'toolArgs.command',
-      protocol: 'modifiedArgs',
-      failClosed: true,
-    },
-    source: 'https://docs.github.com/en/copilot/reference/hooks-reference',
-  },
-  {
     id: 'cursor',
     label: 'Cursor',
     configDir: '.cursor',
@@ -215,31 +189,6 @@ const HOSTS: AgentHost[] = [
     source: 'https://cursor.com/docs/agent/hooks',
   },
   {
-    id: 'grok-build',
-    label: 'Grok Build',
-    configDir: '.grok',
-    configDirEnv: 'GROK_HOME',
-    binaries: ['grok'],
-    rules: true,
-    skills: true,
-    rewrite: true,
-    rulesFile: '.grok/rules/tersio.md',
-    skillsDir: '.grok/skills',
-    caveats: 'Global hooks live in ~/.grok/hooks/*.json and are always trusted; project hooks need --trust. A non-zero exit drops the rewrite, so always exit 0.',
-    rewriteConfig: {
-      configFile: '.grok/hooks/tersio-rtk.json',
-      configFormat: 'claude-json',
-      event: 'PreToolUse',
-      matcher: 'Bash',
-      // Grok's own payload is camelCase; it also forwards Claude-style
-      // snake_case unchanged, so accept either rather than guess.
-      inputPath: ['toolInput.command', 'tool_input.command'],
-      protocol: 'hookSpecificOutput-updatedInput',
-      failClosed: false,
-    },
-    source: 'https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager/docs/user-guide/10-hooks.md',
-  },
-  {
     id: 'pi',
     label: 'Pi',
     configDir: '.pi/agent',
@@ -256,25 +205,6 @@ const HOSTS: AgentHost[] = [
     caveats: 'AGENTS.override.md replaces rather than merges. Never write SYSTEM.md — it replaces the default system prompt outright. The TS extension is rtk\'s own, written by `rtk init -g --agent pi`; rtk owns that format, so no tersio release is needed when it changes.',
     rewriteOwner: 'wiring',
     source: 'https://pi.dev/docs/latest/extensions',
-  },
-  {
-    id: 'command-code',
-    label: 'Command Code',
-    configDir: '.commandcode',
-    binaries: ['command-code', 'cmdc', 'cmd'],
-    rules: true,
-    skills: true,
-    // Its documented hooks can only allow, deny, or annotate — never rewrite.
-    // The ModApi can: beforeToolCall returns {input}, which replaces what the
-    // tool executes with. So this is a live-extension host, and its mod must
-    // land in ~/.commandcode/mods/ (user scope) because print mode loads
-    // user-scope mods only and project mods are trust-gated.
-    rewrite: true,
-    rulesFile: '.commandcode/AGENTS.md',
-    skillsDir: '.commandcode/skills',
-    caveats: 'Reads AGENTS.md, never CLAUDE.md. No config-dir env var: ~/.commandcode resolves from HOME/USERPROFILE only. The ModApi is documented as experimental, so a shipped mod must pin a Command Code version. A bare `cmd` is never probed on win32. The mod itself is not written yet, so RTK is guidance only.',
-    rewriteOwner: 'pending',
-    source: 'https://commandcode.ai/docs/mods',
   },
 ];
 
@@ -293,16 +223,15 @@ export function hasStaticHook(host: AgentHost): boolean {
  * rewrite yet, so the host behaves as guidance-only.
  */
 export function isLiveExtension(host: AgentHost): boolean {
-  return host.rewrite && host.rewriteConfig === undefined && host.rewriteOwner !== 'pending';
+  return host.rewrite && host.rewriteConfig === undefined;
 }
 
 /**
- * Hosts the user gets RTK guidance for rather than a working auto-rewrite —
- * either because the host has no documented rewrite surface, or because we have
- * not shipped ours yet.
+ * Hosts the user gets RTK guidance for rather than a working auto-rewrite,
+ * because the host has no documented pre-execution surface we can drive.
  */
 export function isGuidanceOnly(host: AgentHost): boolean {
-  return !host.rewrite || host.rewriteOwner === 'pending';
+  return !host.rewrite;
 }
 
 /**
