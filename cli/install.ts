@@ -15,7 +15,7 @@ import {
   InstallOptions, WriteOptions,
 } from './common.ts';
 import {
-  askInteractiveChoice, askInteractiveConfirm, closeRL, execNetwork, tty, withInteractiveSpinner,
+  askInteractiveChoice, askInteractiveConfirm, askInteractiveMultiChoice, closeRL, execNetwork, tty, withInteractiveSpinner,
 } from './interactive.ts';
 import { printWelcome } from './banner.ts';
 import { checkForUpdate, runLatestUpdate } from './update.ts';
@@ -31,7 +31,7 @@ import {
   httpsDownload, parseChecksum, readTextIfExists, resolveRtkBinary, rtkPlatformSpec, sha256File,
 } from '../extensions/lib/utils.ts';
 import { storedProfile, writePluginSettings } from './profile.ts';
-import { applyHosts, detectHosts, readSelection, resolveSelection, writeSelection } from './agents.ts';
+import { applyHosts, agentChoices, detectHosts, readSelection, resolveAgentSelection, writeSelection } from './agents.ts';
 import { HOSTS } from './agent-hosts.ts';
 import type { Profile } from './profile.ts';
 
@@ -428,12 +428,50 @@ async function stepUpdater(extDir: string, options: WriteOptions): Promise<void>
  * init rather than by these emitters: rtk owns that format, so a tersio release
  * is not needed when rtk changes it.
  */
+/**
+ * Asks which agents to set up, and writes the answer for later runs.
+ *
+ * Asked at a terminal even when a choice is already saved, seeded with it, so
+ * the selection stays changeable after the first install. Skipped for an
+ * explicit `--agent`, and for `--yes`, `--apply-update`, pipes, and CI, which
+ * fall back to the saved set unioned with what is detected.
+ */
 async function stepAgentHosts(options: InstallOptions): Promise<void> {
   const home = os.homedir();
-  const saved = readSelection(home);
-  const selection = resolveSelection(agentFlag, saved.hosts, detectHosts(home));
+  const stored = readSelection(home).hosts;
+  const detected = detectHosts(home);
+  const interactive = tty() && !options.yes && !applyUpdate && agentFlag.length === 0;
+
+  const selection = await resolveAgentSelection({
+    flag: agentFlag,
+    stored,
+    detected,
+    ask: interactive
+      ? async () => {
+        const answer = await askInteractiveMultiChoice(
+          'Install for which coding agents?',
+          agentChoices(),
+          // Seed with the union so a detected host is pre-ticked and visible
+          // rather than silently absent.
+          [...new Set([...stored, ...detected])],
+        );
+        return answer.status === 'selected' ? answer.value : null;
+      }
+      : undefined,
+  });
+
+  if (interactive && selection.addedByDetection.length > 0 && selection.source === 'prompt') {
+    if (!options.quiet) {
+      console.log(`  [note] also found: ${selection.addedByDetection.join(', ')}`);
+    }
+  }
+
   const extra = selection.ids.filter((id) => id !== 'omp');
-  if (extra.length === 0) return;
+  if (extra.length === 0) {
+    if (interactive && !options.quiet) console.log('  no additional agents selected — nothing to install for them');
+    if (!options.dryRun && selection.ids.length > 0) writeSelection(home, selection.ids);
+    return;
+  }
 
   if (!options.quiet) {
     const names = extra.map((id) => HOSTS.find((h) => h.id === id)?.label ?? id).join(', ');

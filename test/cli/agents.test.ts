@@ -2,8 +2,9 @@ import { expect, test } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { byId } from "../../cli/agent-hosts.ts";
+import { HOSTS, byId } from "../../cli/agent-hosts.ts";
 import {
+  agentChoices,
   applyHost,
   applyHosts,
   detectHosts,
@@ -14,7 +15,7 @@ import {
   removeHosts,
   reportHost,
   reportHosts,
-  resolveSelection,
+  resolveAgentSelection,
   writeSelection,
 } from "../../cli/agents.ts";
 import { HOOK_MARKER } from "../../cli/host-writers.ts";
@@ -38,34 +39,107 @@ function read(home: string, rel: string): string {
 
 // --- selection -------------------------------------------------------------
 
+test("the agent menu lists every host and says what wiring it will get", () => {
+  const choices = agentChoices();
+  expect(choices.map((c) => c.value)).toEqual(HOSTS.map((h) => h.id));
+  const byId_ = new Map(choices.map((c) => [c.value, c.hint]));
+
+  // The hint is the only thing telling the user what the rewrite will do, so
+  // each wiring class has to be distinguishable.
+  expect(byId_.get("claude-code")).toMatch(/hook · auto-rewrite/);
+  expect(byId_.get("opencode")).toMatch(/plugin · auto-rewrite/);
+  expect(byId_.get("pi")).toMatch(/rtk extension · auto-rewrite/);
+  expect(byId_.get("agy")).toBe("guidance only · no auto-rewrite");
+  expect(byId_.get("openclaw")).toBe("guidance only · no auto-rewrite");
+  // omp is the reference host, and the menu says so.
+  expect(byId_.get("omp")).toMatch(/^reference host · /);
+});
+
 test("normalizeIds keeps registry order, drops unknowns, and de-duplicates", () => {
   expect(normalizeIds(["cursor", "claude-code", "cursor", "not-a-host"])).toEqual(["claude-code", "cursor"]);
   expect(normalizeIds(["nope"])).toEqual([]);
   expect(normalizeIds([])).toEqual([]);
 });
 
-test("an explicit --agent wins over both the saved set and detection", () => {
-  expect(resolveSelection(["agy"], ["claude-code"], ["cursor"])).toEqual({ ids: ["agy"], source: "flag" });
+test("an explicit --agent wins over the prompt, the saved set, and detection", async () => {
+  let asked = false;
+  const result = await resolveAgentSelection({
+    flag: ["agy"],
+    stored: ["claude-code"],
+    detected: ["cursor"],
+    ask: async () => { asked = true; return ["pi"]; },
+  });
+  expect(result.ids).toEqual(["agy"]);
+  expect(result.source).toBe("flag");
+  expect(asked, "the prompt must not run when --agent is given").toBe(false);
 });
 
-test("an explicit --agent naming an uninstalled host is honoured, which is how you install it", () => {
+test("an explicit --agent naming an uninstalled host is honoured, which is how you install it", async () => {
   // Detection is irrelevant here: naming a host you do not have yet is the
   // whole point of --agent.
-  expect(resolveSelection(["command-code"], [], []).ids).toEqual(["command-code"]);
+  const result = await resolveAgentSelection({ flag: ["command-code"], stored: [], detected: [] });
+  expect(result.ids).toEqual(["command-code"]);
 });
 
-test("an all-unknown --agent falls through instead of selecting nothing", () => {
-  expect(resolveSelection(["bogus"], ["cursor"], [])).toEqual({ ids: ["cursor"], source: "saved" });
+test("an all-unknown --agent falls through instead of selecting nothing", async () => {
+  const result = await resolveAgentSelection({ flag: ["bogus"], stored: ["cursor"], detected: [] });
+  expect(result.ids).toEqual(["cursor"]);
+  expect(result.source).toBe("auto");
 });
 
-test("the saved selection beats detection", () => {
-  expect(resolveSelection(undefined, ["claude-code"], ["cursor", "agy"]))
-    .toEqual({ ids: ["claude-code"], source: "saved" });
+test("the prompt decides, and a cancelled prompt falls back to the automatic set", async () => {
+  const asked = await resolveAgentSelection({
+    stored: ["claude-code"],
+    detected: ["cursor"],
+    ask: async () => ["agy"],
+  });
+  expect(asked.ids).toEqual(["agy"]);
+  expect(asked.source).toBe("prompt");
+
+  const cancelled = await resolveAgentSelection({
+    stored: ["claude-code"],
+    detected: ["cursor"],
+    ask: async () => null,
+  });
+  expect(cancelled.ids).toEqual(["claude-code", "cursor"]);
+  expect(cancelled.source).toBe("auto");
 });
 
-test("detection is the last resort, and nothing selected is a valid answer", () => {
-  expect(resolveSelection(undefined, [], ["cursor"])).toEqual({ ids: ["cursor"], source: "detected" });
-  expect(resolveSelection(undefined, [], [])).toEqual({ ids: [], source: "none" });
+test("an empty answer from the prompt is a valid way to clear the set", async () => {
+  // required: false, so picking nothing is an answer rather than a cancel.
+  const result = await resolveAgentSelection({
+    stored: ["claude-code", "cursor"],
+    detected: [],
+    ask: async () => [],
+  });
+  expect(result.ids).toEqual([]);
+  expect(result.source).toBe("prompt");
+});
+
+test("the automatic set unions the saved hosts with what is on the machine", async () => {
+  // A saved choice is a preference, not evidence. Returning it verbatim meant a
+  // host that was installed and running, but never ticked in an earlier menu,
+  // was silently skipped and never written.
+  const result = await resolveAgentSelection({
+    stored: ["claude-code"],
+    detected: ["cursor", "agy"],
+  });
+  expect(result.ids).toEqual(["claude-code", "cursor", "agy"]);
+  expect(result.source).toBe("auto");
+  expect(result.addedByDetection).toEqual(["cursor", "agy"]);
+});
+
+test("nothing saved and nothing detected is a valid answer", async () => {
+  const result = await resolveAgentSelection({ stored: [], detected: [] });
+  expect(result.ids).toEqual([]);
+  expect(result.source).toBe("none");
+});
+
+test("uninstall resolves from the saved set only, never from detection", async () => {
+  // Removal acts on what tersio wrote. A host that merely happens to be
+  // installed was never a target, so detection must not widen it.
+  const result = await resolveAgentSelection({ stored: ["claude-code"], detected: [] });
+  expect(result.ids).toEqual(["claude-code"]);
 });
 
 test("the selection round-trips through ~/.tersio/agents.json", () => {

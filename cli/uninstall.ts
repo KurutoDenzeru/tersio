@@ -8,9 +8,9 @@ import {
   agentFlag, dryRun, keepPonytail, removePonytail, removeRtk, yes,
   debug, writeConfigLines,
 } from './common.ts';
-import { ask, closeRL, tty } from './interactive.ts';
+import { ask, askInteractiveMultiChoice, closeRL, tty } from './interactive.ts';
 import { readTextIfExists } from '../extensions/lib/utils.ts';
-import { detectHosts, readSelection, removeHosts, resolveSelection } from './agents.ts';
+import { agentChoices, readSelection, removeHosts, resolveAgentSelection, writeSelection } from './agents.ts';
 import { removeOpenCodeRtk } from './opencode-wiring.ts';
 
 interface UninstallOptions {
@@ -206,7 +206,26 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
   // owns keeps everything but our entry, and a file we named is deleted once it
   // configures no hook.
   const home = os.homedir();
-  const selection = resolveSelection(agentFlag, readSelection(home).hosts, detectHosts(home));
+  const stored = readSelection(home).hosts;
+  // Unlike install, detection is deliberately NOT unioned in here. Removal acts
+  // on what tersio actually wrote, and a host that merely happens to be
+  // installed was never a tersio install target. Unioning would advertise
+  // removals for hosts the user never selected.
+  const selection = await resolveAgentSelection({
+    flag: agentFlag,
+    stored,
+    detected: [],
+    ask: tty() && !confirmed && agentFlag.length === 0
+      ? async () => {
+        const answer = await askInteractiveMultiChoice(
+          'Remove tersio from which coding agents?',
+          agentChoices(),
+          stored,
+        );
+        return answer.status === 'selected' ? answer.value : null;
+      }
+      : undefined,
+  });
   const extra = selection.ids.filter((id) => id !== 'omp');
   if (extra.length > 0) {
     // The header prints under --dry-run too: a preview that silently omits a
@@ -229,6 +248,12 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
     // OpenCode's rewrite lives in a plugin the generic emitters cannot remove.
     if (extra.includes('opencode')) {
       await removeOpenCodeRtk(home, { dryRun: shouldDryRun, quiet: false });
+    }
+
+    // Keep the saved set in step with what is left, so a later install does not
+    // resurrect agents the user just cleared out.
+    if (!shouldDryRun && selection.source === 'prompt') {
+      writeSelection(home, selection.ids.filter((id) => id !== 'omp'));
     }
   }
 

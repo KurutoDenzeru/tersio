@@ -17,7 +17,7 @@
 import { promises as fs } from 'node:fs';
 import fsSync from 'node:fs';
 import path from 'node:path';
-import { HOSTS, byId, isOwnPath, type AgentHost } from './agent-hosts.ts';
+import { HOSTS, byId, hasStaticHook, isLiveExtension, isOwnPath, type AgentHost } from './agent-hosts.ts';
 import { planHost, removeFromHookConfig, type HostArtifact, type HostPlan } from './host-writers.ts';
 import { removeMarkedBlock, START, END } from './rules-pack.ts';
 
@@ -38,29 +38,82 @@ export function normalizeIds(ids: readonly string[]): string[] {
   return HOSTS.filter((h) => wanted.has(h.id)).map((h) => h.id);
 }
 
+/** One row in the agent menu, with a hint naming the wiring the host will get. */
+export interface AgentChoice {
+  value: string;
+  label: string;
+  hint: string;
+}
+
+/** What a host's rewrite will actually be, so the menu can say so up front. */
+function wiringHint(host: AgentHost): string {
+  if (hasStaticHook(host)) return 'hook · auto-rewrite';
+  if (isLiveExtension(host)) {
+    if (host.rewriteOwner === 'plugin') return 'plugin · auto-rewrite';
+    return 'rtk extension · auto-rewrite';
+  }
+  return 'guidance only · no auto-rewrite';
+}
+
+/** The agent menu, in registry order, with the reference host first. */
+export function agentChoices(): AgentChoice[] {
+  return HOSTS.map((host) => ({
+    value: host.id,
+    label: host.label,
+    hint: host.id === 'omp' ? `reference host · ${wiringHint(host)}` : wiringHint(host),
+  }));
+}
+
+export type AskAgents = () => Promise<string[] | null>;
+
+export type SelectionSource = 'flag' | 'prompt' | 'auto' | 'none';
+
+export interface SelectionResult {
+  ids: string[];
+  source: SelectionSource;
+  /** Hosts present on the machine that the stored set did not mention. */
+  addedByDetection: string[];
+}
+
 /**
- * Resolves which hosts a run should act on.
+ * Resolves which hosts a run acts on.
  *
  * Precedence: an explicit `--agent` wins outright, even when a host is not
  * installed, because naming a host you do not have yet is how you install it.
- * Failing that, the saved selection. Failing that, auto-detected hosts. `omp` is
- * never auto-selected from nothing, since it is the historical default and
- * silently including it would change behaviour for everyone.
+ * Failing that, an interactive prompt when one is available. Failing that, the
+ * union of the saved set and what is detected.
+ *
+ * That last step is a union rather than "saved wins", and it is deliberate. A
+ * saved choice is a preference, not evidence of what is installed: returning it
+ * verbatim meant a host that was present and running, but never ticked in an
+ * earlier menu, was silently skipped and never written. The prompt is still
+ * seeded with the union so those hosts are visible and pre-ticked rather than
+ * invisible.
  */
-export function resolveSelection(
-  explicit: readonly string[] | undefined,
-  saved: readonly string[],
-  detected: readonly string[],
-): { ids: string[]; source: 'flag' | 'saved' | 'detected' | 'none' } {
-  if (explicit && explicit.length > 0) {
-    const ids = normalizeIds(explicit);
-    if (ids.length > 0) return { ids, source: 'flag' };
+export async function resolveAgentSelection(opts: {
+  flag?: readonly string[];
+  stored: readonly string[];
+  detected: readonly string[];
+  ask?: AskAgents;
+}): Promise<SelectionResult> {
+  const fromFlag = normalizeIds(opts.flag ?? []);
+  if (fromFlag.length > 0) {
+    return { ids: fromFlag, source: 'flag', addedByDetection: [] };
   }
-  const fromSaved = normalizeIds(saved);
-  if (fromSaved.length > 0) return { ids: fromSaved, source: 'saved' };
-  const fromDetected = normalizeIds(detected);
-  if (fromDetected.length > 0) return { ids: fromDetected, source: 'detected' };
-  return { ids: [], source: 'none' };
+
+  const stored = normalizeIds(opts.stored);
+  const detected = normalizeIds(opts.detected);
+  const union = normalizeIds([...stored, ...detected]);
+  const addedByDetection = union.filter((id) => !stored.includes(id));
+
+  if (opts.ask) {
+    const answer = await opts.ask();
+    if (answer !== null) {
+      return { ids: normalizeIds(answer), source: 'prompt', addedByDetection };
+    }
+  }
+
+  return { ids: union, source: union.length > 0 ? 'auto' : 'none', addedByDetection };
 }
 
 export function readSelection(home: string): Selection {
@@ -86,8 +139,8 @@ export function writeSelection(home: string, ids: readonly string[]): void {
 
 /**
  * Hosts that look present on this machine: a config dir, or a binary on PATH.
- * Detection only narrows the default set — it never adds a host the user did
- * not name, and it never includes a host whose directory is merely empty.
+ * Detection only widens the default set — it never overrides a host the user
+ * named explicitly, and it never includes a host whose directory is empty.
  */
 export function detectHosts(home: string, env: NodeJS.ProcessEnv = process.env): string[] {
   const found: string[] = [];

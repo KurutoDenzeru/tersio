@@ -11,7 +11,7 @@ import { askInteractiveChoice, askInteractiveConfirm, runInteractivePhase } from
 import { usageDbPath } from '../extensions/shared/usage-store.ts';
 import { pricesCachePath } from '../extensions/shared/pricing.ts';
 import { readTextIfExists, resolveRtkBinary } from '../extensions/lib/utils.ts';
-import { detectHosts, readSelection, reportHosts, resolveSelection } from './agents.ts';
+import { detectHosts, readSelection, reportHosts, resolveAgentSelection } from './agents.ts';
 
 interface DoctorSummary {
   ok: number;
@@ -157,7 +157,13 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   // got, because "wired" and "wired to a hook the host ignores" look identical
   // from the outside.
   const home = os.homedir();
-  const selection = resolveSelection(agentFlag, readSelection(home).hosts, detectHosts(home));
+  // No `ask`: doctor reports, it never prompts, but it shares the same
+  // resolution so it cannot describe a different host set than install acts on.
+  const selection = await resolveAgentSelection({
+    flag: agentFlag,
+    stored: readSelection(home).hosts,
+    detected: detectHosts(home),
+  });
   const otherHosts = selection.ids.filter((id) => id !== 'omp');
   section('Agent hosts');
   if (otherHosts.length === 0) {
