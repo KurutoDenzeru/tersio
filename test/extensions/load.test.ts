@@ -1,5 +1,6 @@
 import { expect, test } from "vitest";
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import type { ExtensionApi } from "../../extensions/shared/types.ts";
@@ -109,8 +110,12 @@ interface OmpManifest {
   omp: { extensions: string[]; features: Record<string, { extensions?: string[] }> };
 }
 
-test("the OMP manifest lists every extension that has a slash command", async () => {
-  const pkg = (await import("../../package.json")).default as unknown as OmpManifest;
+test("the OMP manifest lists every extension that has a slash command", () => {
+  // Read with fs rather than `import("../../package.json")`: the repo-integrity
+  // guard requires every relative import in a tracked source to resolve to a
+  // .ts file, and a JSON manifest never can. That guard is right — a broken
+  // import must not reach a fresh clone — so this file stays clear of it.
+  const pkg = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")) as unknown as OmpManifest;
   const declared: string[] = [...pkg.omp.extensions, ...(pkg.omp.features.updater.extensions ?? [])];
   // Every command above needs its file listed, or OMP never loads it.
   for (const { dir } of EXPECTED) {
