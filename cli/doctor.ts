@@ -1,15 +1,18 @@
 // cli/doctor.ts — installation health checks.
 import { promises as fs } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import {
   OMP_AGENT_DIR, OMP_PLUGINS_DIR,
-  args, dryRun, fix, yes,
+  agentFlag, args, dryRun, fix, yes,
   execP, parseJsonObject, relTime,
 } from './common.ts';
 import { askInteractiveChoice, askInteractiveConfirm, runInteractivePhase } from './interactive.ts';
 import { usageDbPath } from '../extensions/shared/usage-store.ts';
 import { pricesCachePath } from '../extensions/shared/pricing.ts';
 import { readTextIfExists, resolveRtkBinary } from '../extensions/lib/utils.ts';
+import { detectHosts, readSelection, reportHosts, resolveAgentSelection } from './agents.ts';
+import { HOSTS } from './agent-hosts.ts';
 
 interface DoctorSummary {
   ok: number;
@@ -105,6 +108,39 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   function warnLine(label: string, detail: string): void {
     tally.warn++;
     console.log(`  ⚠️ ${label}: warn ${detail}`);
+  }
+
+  // Agent hosts lead the report: they are what the product is for, and the OMP
+  // sections below are supporting detail for one host of several. Always
+  // printed, so a user who has not configured any yet is told how, instead of
+  // the section silently not existing. Each row reports the rewrite path the
+  // host actually got, because "wired" and "wired to a hook the host ignores"
+  // look identical from the outside.
+  const home = os.homedir();
+  // No `ask`: doctor reports, it never prompts, but it shares the same
+  // resolution so it cannot describe a different host set than install acts on.
+  const selection = await resolveAgentSelection({
+    flag: agentFlag,
+    stored: readSelection(home).hosts,
+    detected: detectHosts(home),
+  });
+  const otherHosts = selection.ids.filter((id) => id !== 'omp');
+  section('Agent hosts');
+  if (otherHosts.length === 0) {
+    // Derived from the registry so dropping a host cannot leave a stale id
+    // advertised here.
+    console.log('  ℹ️  none configured — `tersio install --agent <id>` adds one');
+    console.log(`      known ids: ${HOSTS.map((h) => h.id).join(', ')}`);
+  } else {
+    for (const row of reportHosts(otherHosts, home)) {
+      const label = row.host.label;
+      if (row.status === 'warn') {
+        const first = row.missing[0] ? ` (${row.missing[0]})` : '';
+        warnLine(label, `${row.missing.length} file(s) missing${first} — run: tersio install --agent ${row.host.id}`);
+      } else {
+        check(label, true, row.detail.replace(`${label}: `, ''));
+      }
+    }
   }
 
   section('Environment');

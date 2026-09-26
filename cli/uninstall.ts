@@ -1,14 +1,17 @@
 // cli/uninstall.ts — remove managed extensions, plugins, and binaries.
 import { promises as fs } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { cancel as clackCancel, confirm as clackConfirm } from '@clack/prompts';
 import {
   BUN_BIN_DIR, OMP_AGENT_DIR, OMP_PLUGINS_DIR, PACKAGE_NAME, RTK_BINARY_NAME,
-  dryRun, keepPonytail, removePonytail, removeRtk, yes,
-  debug, parseJsonObject, writeConfigLines, writeIfChanged,
+  agentFlag, dryRun, keepPonytail, removePonytail, removeRtk, yes,
+  debug, writeConfigLines,
 } from './common.ts';
-import { ask, closeRL, tty } from './interactive.ts';
+import { ask, askInteractiveMultiChoice, closeRL, tty } from './interactive.ts';
 import { readTextIfExists } from '../extensions/lib/utils.ts';
+import { agentChoices, readSelection, removeHosts, reportHosts, resolveAgentSelection, writeSelection } from './agents.ts';
+import { removeOpenCodeRtk } from './opencode-wiring.ts';
 
 interface UninstallOptions {
   yes?: boolean;
@@ -76,6 +79,39 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
 
   console.log('\n=== Tersio Uninstall ===\n');
 
+  // Ask which agents to clear BEFORE the destructive confirm, mirroring install.
+  // Asking afterwards meant the confirm ran first and the agent prompt only
+  // appeared once the OMP files were already gone.
+  const home = os.homedir();
+  const stored = readSelection(home).hosts;
+  // Unlike install, detection is deliberately NOT unioned in here. Removal acts
+  // on what tersio actually wrote, and a host that merely happens to be
+  // installed was never a tersio install target. Unioning would advertise
+  // removals for hosts the user never selected.
+  const selection = await resolveAgentSelection({
+    flag: agentFlag,
+    stored,
+    detected: [],
+    ask: tty() && !confirmed && agentFlag.length === 0
+      ? async () => {
+        const answer = await askInteractiveMultiChoice(
+          'Remove tersio from which coding agents?',
+          agentChoices(),
+          stored,
+        );
+        return answer.status === 'selected' ? answer.value : null;
+      }
+      : undefined,
+  });
+  const extra = selection.ids.filter((id) => id !== 'omp');
+  // List what the selected agents will lose, so the confirm covers them. Only
+  // files that are actually on disk are named; a stale plan would make the
+  // preview overstate what happens.
+  const agentPaths: string[] = [];
+  for (const row of reportHosts(extra, home)) {
+    agentPaths.push(...row.present);
+  }
+
   const extDir = path.join(OMP_AGENT_DIR, 'extensions');
   const configPath = path.join(OMP_AGENT_DIR, 'config.yml');
   const rtkBin = path.join(BUN_BIN_DIR, RTK_BINARY_NAME);
@@ -96,7 +132,7 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
     'aaa-combo-boot',
   ].map((dir) => path.join(extDir, dir));
 
-  console.log('Will remove:');
+  console.log('Will remove — Oh My Pi extensions:');
   for (const t of targets) {
     console.log(`  ${t}`);
   }
@@ -108,6 +144,36 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
   if (shouldRemoveRtk) {
     console.log(`  ${rtkBin}`);
     console.log(`  ${path.join(extDir, 'rtk.ts')} (rtk OMP wiring)`);
+  }
+
+  // The agent paths and the Oh My Pi layer are separate decisions. Printing
+  // them as one wall made it look like a single action, and the Oh My Pi layer
+  // was removed without ever being asked about.
+  if (agentPaths.length > 0) {
+    console.log(`\nWill remove — from ${selection.ids.filter((id) => id !== 'omp').join(', ')}:`);
+    for (const p of agentPaths) console.log(`  ${p}`);
+  }
+
+  // Ask about the Oh My Pi layer explicitly. Dropping the agent files while
+  // leaving the plugin installed is a legitimate outcome, and it used to be
+  // unreachable because the layer was removed unconditionally.
+  let removeOmpLayer = true;
+  if (!confirmed && tty()) {
+    closeRL();
+    const answer = await clackConfirm({
+      message: 'Also remove the Oh My Pi extension layer and Ponytail?',
+      initialValue: true,
+    });
+    if (typeof answer !== 'boolean') {
+      clackCancel('Aborted.');
+      closeRL();
+      return false;
+    }
+    removeOmpLayer = answer;
+  }
+
+  if (!removeOmpLayer) {
+    console.log('\nKeeping the Oh My Pi extension layer. Re-run with --yes to remove it.');
   }
 
   if (!confirmed) {
@@ -196,6 +262,40 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
   if (shouldRemoveRtk) {
     await removeUninstallTarget(rtkBin, shouldDryRun, false);
     await removeUninstallTarget(path.join(extDir, 'rtk.ts'), shouldDryRun);
+  }
+
+  // Strip tersio's content from every other selected host. This removes only
+  // what we wrote: a merged file loses its marked block, a config the user also
+  // owns keeps everything but our entry, and a file we named is deleted once it
+  // configures no hook.
+  if (extra.length > 0) {
+    // The header prints under --dry-run too: a preview that silently omits a
+    // section is not a preview of the real run.
+    console.log('\n=== Agent hosts ===\n');
+    const { results, errors } = await removeHosts(extra, home, { dryRun: shouldDryRun, quiet: false });
+    for (const r of results) {
+      const what = r.removed.length === 0
+        ? 'nothing of ours found'
+        : shouldDryRun
+          ? `would remove ${r.removed.length} path(s)`
+          : `removed ${r.removed.length} path(s)`;
+      console.log(`  ${shouldDryRun ? '[dry-run]' : '[ok]'} ${r.host.label}: ${what}`);
+      if (r.kept.length > 0 && !shouldDryRun) {
+        console.log(`         kept ${r.kept.length} file(s) that also hold your own content`);
+      }
+    }
+    for (const e of errors) console.log(`  [fail] ${e.host}: ${e.error}`);
+
+    // OpenCode's rewrite lives in a plugin the generic emitters cannot remove.
+    if (extra.includes('opencode')) {
+      await removeOpenCodeRtk(home, { dryRun: shouldDryRun, quiet: false });
+    }
+
+    // Keep the saved set in step with what is left, so a later install does not
+    // resurrect agents the user just cleared out.
+    if (!shouldDryRun && selection.source === 'prompt') {
+      writeSelection(home, selection.ids.filter((id) => id !== 'omp'));
+    }
   }
 
   console.log('\nDone. Restart OMP for changes to take effect.');

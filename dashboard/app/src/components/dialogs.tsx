@@ -46,6 +46,180 @@ function OmpLogo() {
   );
 }
 
+/**
+ * Mark tile for the agents that have no logo of their own here. Uses the same
+ * geometry as the OMP tile rather than inventing brand marks we do not ship.
+ */
+function AgentMark({ id, label }: { id: string; label: string }) {
+  const initials = label
+    .split(/[\s-]+/)
+    .filter((w) => /[A-Za-z]/.test(w[0] ?? ""))
+    .slice(0, 2)
+    .map((w) => w[0]!.toUpperCase())
+    .join("");
+  return (
+    <span aria-hidden className="text-[13px] leading-none font-semibold text-dim select-none">
+      {initials || id.slice(0, 2).toUpperCase()}
+    </span>
+  );
+}
+
+// Agent brand marks, inlined as React so they can inherit `currentColor`.
+//
+// These were vendored SVGs loaded through <img>, which cannot inherit a CSS
+// colour: the monochrome marks had to be baked to near-white for the dark tile
+// and were therefore invisible on the light theme. Inlined, they follow the
+// theme for free, and there is no separate asset to keep in sync with.
+//
+// Provenance, since a wrong mark is worse than none:
+//   claude   -- Simple Icons (slug `claude`), brand orange, legible on both
+//   cursor   -- Simple Icons (slug `cursor`)
+//   opencode -- Simple Icons (slug `opencode`)
+//   codex    -- OpenAI's ChatGPT mark via Wikimedia Commons, public domain,
+//               artist OpenAI. Simple Icons no longer carries an `openai` slug.
+//   pi       -- pi.dev's own press kit. Simple Icons' `pi` slug is Raspberry Pi.
+// Anything without a verifiable mark falls back to a monogram.
+
+function ClaudeMark({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="#D97757" role="img" aria-hidden="true" className={className}>
+      <path d="m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z"/>
+    </svg>
+  );
+}
+
+function CursorMark({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" role="img" aria-hidden="true" className={className}>
+      <path d="M11.503.131 1.891 5.678a.84.84 0 0 0-.42.726v11.188c0 .3.162.575.42.724l9.609 5.55a1 1 0 0 0 .998 0l9.61-5.55a.84.84 0 0 0 .42-.724V6.404a.84.84 0 0 0-.42-.726L12.497.131a1.01 1.01 0 0 0-.996 0M2.657 6.338h18.55c.263 0 .43.287.297.515L12.23 22.918c-.062.107-.229.064-.229-.06V12.335a.59.59 0 0 0-.295-.51l-9.11-5.257c-.109-.063-.064-.23.061-.23"/>
+    </svg>
+  );
+}
+
+function OpenCodeMark({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" role="img" aria-hidden="true" className={className}>
+      <path d="M22 24H2V0h20zM17 4.8H7v14.4h10z"/>
+    </svg>
+  );
+}
+
+function CodexMark({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 320 320" fill="currentColor" role="img" aria-hidden="true" className={className}>
+      <path d='m297.06 130.97c7.26-21.79 4.76-45.66-6.85-65.48-17.46-30.4-52.56-46.04-86.84-38.68-15.25-17.18-37.16-26.95-60.13-26.81-35.04-.08-66.13 22.48-76.91 55.82-22.51 4.61-41.94 18.7-53.31 38.67-17.59 30.32-13.58 68.54 9.92 94.54-7.26 21.79-4.76 45.66 6.85 65.48 17.46 30.4 52.56 46.04 86.84 38.68 15.24 17.18 37.16 26.95 60.13 26.8 35.06.09 66.16-22.49 76.94-55.86 22.51-4.61 41.94-18.7 53.31-38.67 17.57-30.32 13.55-68.51-9.94-94.51zm-120.28 168.11c-14.03.02-27.62-4.89-38.39-13.88.49-.26 1.34-.73 1.89-1.07l63.72-36.8c3.26-1.85 5.26-5.32 5.24-9.07v-89.83l26.93 15.55c.29.14.48.42.52.74v74.39c-.04 33.08-26.83 59.9-59.91 59.97zm-128.84-55.03c-7.03-12.14-9.56-26.37-7.15-40.18.47.28 1.3.79 1.89 1.13l63.72 36.8c3.23 1.89 7.23 1.89 10.47 0l77.79-44.92v31.1c.02.32-.13.63-.38.83l-64.41 37.19c-28.69 16.52-65.33 6.7-81.92-21.95zm-16.77-139.09c7-12.16 18.05-21.46 31.21-26.29 0 .55-.03 1.52-.03 2.2v73.61c-.02 3.74 1.98 7.21 5.23 9.06l77.79 44.91-26.93 15.55c-.27.18-.61.21-.91.08l-64.42-37.22c-28.63-16.58-38.45-53.21-21.95-81.89zm221.26 51.49-77.79-44.92 26.93-15.54c.27-.18.61-.21.91-.08l64.42 37.19c28.68 16.57 38.51 53.26 21.94 81.94-7.01 12.14-18.05 21.44-31.2 26.28v-75.81c.03-3.74-1.96-7.2-5.2-9.06zm26.8-40.34c-.47-.29-1.3-.79-1.89-1.13l-63.72-36.8c-3.23-1.89-7.23-1.89-10.47 0l-77.79 44.92v-31.1c-.02-.32.13-.63.38-.83l64.41-37.16c28.69-16.55 65.37-6.7 81.91 22 6.99 12.12 9.52 26.31 7.15 40.1zm-168.51 55.43-26.94-15.55c-.29-.14-.48-.42-.52-.74v-74.39c.02-33.12 26.89-59.96 60.01-59.94 14.01 0 27.57 4.92 38.34 13.88-.49.26-1.33.73-1.89 1.07l-63.72 36.8c-3.26 1.85-5.26 5.31-5.24 9.06l-.04 89.79zm14.63-31.54 34.65-20.01 34.65 20v40.01l-34.65 20-34.65-20z'/>
+    </svg>
+  );
+}
+
+function PiMark({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 800 800" fill="currentColor" role="img" aria-hidden="true" className={className}>
+      <path fill="#F09082" d="M165.29 165.29H517.36V400H400V282.65H165.29Z"/>
+      <path fill="#4D9ABF" d="M165.29 282.65H282.65V400H400V517.36H282.65V634.72H165.29Z"/>
+      <path fill="#F1BE58" d="M517.36 400H634.72V634.72H517.36Z"/>
+    </svg>
+  );
+}
+
+
+/** Maps a host id to its brand mark. Anything unverified gets a monogram. */
+const AGENT_MARKS: Record<string, (props: { className?: string }) => React.ReactElement> = {
+  "claude-code": ClaudeMark,
+  cursor: CursorMark,
+  opencode: OpenCodeMark,
+  codex: CodexMark,
+  pi: PiMark,
+};
+
+function AgentBrandMark({ id, label }: { id: string; label: string }) {
+  const Mark = AGENT_MARKS[id];
+  // currentColor so the mark follows the theme; the tile already sets the text
+  // colour the row uses, so no per-icon colour is needed.
+  if (Mark) return <Mark className="size-full" />;
+  return <AgentMark id={id} label={label} />;
+}
+
+type AgentRow = NonNullable<HealthReport["agents"]>[number];
+
+const AGENT_STATUS: Record<
+  "configured" | "selected" | "off",
+  { label: string; variant: "success" | "destructive" | "outline"; dot: string }
+> = {
+  configured: { label: "Configured", variant: "success", dot: "bg-accent" },
+  selected: { label: "Incomplete", variant: "destructive", dot: "bg-danger" },
+  off: { label: "Not selected", variant: "outline", dot: "bg-track" },
+};
+
+/**
+ * One agent row. Every supported agent uses this, so OMP is a row in the same
+ * list rather than a separate card above it -- previously it was rendered
+ * twice, once as "Available" and again as "Not selected".
+ */
+function AgentListRow({
+  agent,
+  href,
+  unavailable,
+}: {
+  agent: AgentRow;
+  href?: string;
+  unavailable: boolean;
+}) {
+  const state = agent.configured ? "configured" : agent.selected ? "selected" : "off";
+  const status = AGENT_STATUS[state];
+  // The binary path is the most useful second line when we have it, since it
+  // is what makes an installed host verifiable at a glance.
+  const binPath = agent.binPath ?? null;
+  const version = agent.version ?? null;
+  const detail = binPath || agent.wiring;
+  const Wrapper = href ? "a" : "div";
+  return (
+    <Wrapper
+      {...(href ? { href, target: "_blank", rel: "noreferrer" } : {})}
+      className="flex min-w-0 items-center gap-3 border-b border-line py-4 transition-colors hover:bg-track/40 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent"
+      aria-label={`${agent.label} — ${status.label}`}
+    >
+      <span className="grid size-10 shrink-0 place-items-center overflow-hidden rounded-lg bg-track p-1.5 text-ink">
+        {agent.id === "omp" ? (
+          <OmpLogo />
+        ) : (
+          <AgentBrandMark id={agent.id} label={agent.label} />
+        )}
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+          <span className="text-sm font-semibold">{agent.label}</span>
+          {version ? (
+            <span className="mono text-xs text-dim">{version}</span>
+          ) : (
+            <span className="mono text-xs text-dim">{agent.id}</span>
+          )}
+        </div>
+        <div className="mt-1 min-w-0 text-xs text-dim">
+          {unavailable ? (
+            <span>Health information is unavailable.</span>
+          ) : binPath ? (
+            <HoverTip content={binPath}>
+              <span className="mono block truncate">{binPath}</span>
+            </HoverTip>
+          ) : (
+            <span className="block truncate">
+              {detail}
+              {agent.selected && agent.missing > 0 ? ` · ${agent.missing} file(s) missing` : ""}
+              {agent.selected && agent.missing === 0 ? " · up to date" : ""}
+            </span>
+          )}
+        </div>
+      </div>
+      <Badge variant={status.variant} className="ml-auto shrink-0 gap-1.5">
+        <span className={`size-1.5 rounded-full ${status.dot}`} />
+        {unavailable ? "Unavailable" : status.label}
+      </Badge>
+      {href && <Icon name="chevron-right" className="shrink-0 text-dim" />}
+    </Wrapper>
+  );
+}
+
 function HealthPane() {
   const [health, setHealth] = useState<HealthReport | null | undefined>(undefined);
   const [refreshing, setRefreshing] = useState(false);
@@ -62,17 +236,32 @@ function HealthPane() {
     load();
   }, [load]);
 
-  const ready = !!health?.omp;
   const unavailable = health === null;
-  const status = unavailable ? "Unavailable" : ready ? "Available" : "Not detected on PATH";
-  const path = health?.ompPath;
+  const agents = health?.agents ?? [];
+  // An older tersio build, or an exported snapshot from one, has no agents
+  // payload. Fall back to the single OMP row so the pane is never empty.
+  const rows: AgentRow[] = agents.length > 0
+    ? agents
+    : [{
+      id: "omp",
+      label: "Oh My Pi (OMP)",
+      selected: false,
+      configured: !!health?.omp,
+      missing: 0,
+      present: 0,
+      wiring: "reference host · rtk extension · auto-rewrite",
+      binPath: health?.ompPath ?? null,
+      version: health?.omp ?? null,
+    }];
 
   return (
     <div>
       <div className="flex items-start justify-between gap-3 border-b border-line pb-4">
         <div className="min-w-0">
           <p className="m-0 text-[13px] font-semibold">Coding agents</p>
-          <p className="mt-0.5 mb-0 text-xs text-dim">Manage AI agent CLIs installed on this computer.</p>
+          <p className="mt-0.5 mb-0 text-xs text-dim">
+            Every agent tersio supports. Configured means it is set up and every file is in place.
+          </p>
         </div>
         <Button type="button" variant="outline" size="sm" onClick={load} disabled={refreshing} aria-label="Refresh coding agent status">
           {refreshing ? <Spinner /> : <Icon name="refresh-cw" />}
@@ -90,43 +279,22 @@ function HealthPane() {
           </div>
         </div>
       ) : (
-        <a
-          href="https://omp.sh"
-          target="_blank"
-          rel="noreferrer"
-          className="flex min-w-0 items-center gap-3 border-b border-line py-4 transition-colors hover:bg-track/40 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent"
-          aria-label="Open Oh My Pi"
-        >
-          <span className="grid size-10 shrink-0 place-items-center overflow-hidden rounded-lg bg-track p-1.5">
-            <OmpLogo />
-          </span>
-          <div className="min-w-0 flex-1">
-            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-              <span className="text-sm font-semibold">Oh My Pi</span>
-              {health?.omp && <span className="mono text-xs text-dim">{health.omp}</span>}
-            </div>
-            <div className="mt-1 min-w-0 text-xs text-dim">
-              {path ? (
-                <HoverTip content={path}>
-                  <span className="mono block truncate">{path}</span>
-                </HoverTip>
-              ) : ready ? (
-                <span>Available as omp on PATH.</span>
-              ) : health === null ? (
-                <span>Health information is unavailable.</span>
-              ) : (
-                <span>Not detected on PATH as omp.</span>
-              )}
-            </div>
-          </div>
-          <Badge variant={ready ? "secondary" : unavailable ? "destructive" : "outline"} className="ml-auto shrink-0 gap-1.5">
-            <span className={`size-1.5 rounded-full ${ready ? "bg-accent" : unavailable ? "bg-danger" : "bg-track"}`} />
-            {status}
-          </Badge>
-          <Icon name="chevron-right" className="shrink-0 text-dim" />
-        </a>
+        <div>
+          {rows.map((agent) => (
+            <AgentListRow
+              key={agent.id}
+              agent={agent}
+              href={agent.id === "omp" ? "https://omp.sh" : undefined}
+              unavailable={unavailable}
+            />
+          ))}
+        </div>
       )}
-      {checkedAt && <p className="mt-3 text-xs text-dim" role="status">Checked just now</p>}
+      <p className="mt-3 text-xs text-dim" role="status">
+        {checkedAt ? "Checked just now" : "Not checked yet"}{" "}
+        <span className="text-dim">· change the selection with</span>{" "}
+        <span className="mono">tersio install</span>
+      </p>
     </div>
   );
 }
@@ -592,6 +760,48 @@ function streakOf(byDay: UsageReport["byDay"]): number {
   return n;
 }
 
+// Share targets. These are fixed, first-party hosts, never user input: only
+// the share text is interpolated, and it is percent-encoded into a query
+// parameter. Hoisted so the destination is a named constant rather than a URL
+// assembled inline at the call site.
+const SHARE_X = "https://x.com/intent/post";
+const SHARE_REDDIT = "https://www.reddit.com/submit";
+const SHARE_LINKEDIN = "https://www.linkedin.com/feed/";
+
+/** Hosts we are willing to open a share window on. */
+const SHARE_HOSTS = new Set(["x.com", "www.reddit.com", "www.linkedin.com"]);
+
+/**
+ * The single place a share window is opened.
+ *
+ * Every destination is a fixed first-party constant with the caller's text
+ * percent-encoded into a query parameter, so nothing user-supplied can reach
+ * the host or path. The allowlist makes that structural rather than a promise,
+ * and `noopener` is applied here so no share target gets a handle on this page.
+ */
+function openShare(url: string, features = "noopener,noreferrer"): Window | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== "https:" || !SHARE_HOSTS.has(parsed.hostname)) return null;
+  return window.open(url, "_blank", features);
+}
+
+/**
+ * Share targets built from a fixed base plus an encoded query. The only caller
+ * input is percent-encoded into a parameter, so it can never become the host.
+ */
+function xShareUrl(text: string): string {
+  return `${SHARE_X}?text=${encodeURIComponent(`${text} #Tersio`)}`;
+}
+
+function redditShareUrl(text: string): string {
+  return `${SHARE_REDDIT}?title=${encodeURIComponent("My Tersio usage profile")}&text=${encodeURIComponent(text)}`;
+}
+
 export function ShareDialog({
   open,
   onClose,
@@ -903,7 +1113,7 @@ export function ShareDialog({
                 className="inline-flex cursor-pointer items-center gap-1.5 rounded-[10px] border border-line bg-transparent px-[9px] py-[7px] text-xs text-ink hover:border-accent [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]"
                 aria-label="Share on X"
                 onClick={() => shareImage(
-                  () => window.open(`https://x.com/intent/post?text=${encodeURIComponent(`${text} #Tersio`)}`, "_blank", "noopener,noreferrer,width=560,height=460"),
+                  () => openShare(xShareUrl(text), "noopener,noreferrer,width=560,height=460"),
                   "X",
                 )}
               >
@@ -918,7 +1128,7 @@ export function ShareDialog({
               className="inline-flex cursor-pointer items-center gap-1.5 rounded-[10px] border border-line bg-transparent px-[9px] py-[7px] text-xs text-ink hover:border-accent [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]"
               aria-label="Share on Reddit"
               onClick={() => shareImage(
-                () => window.open(`https://www.reddit.com/submit?title=${encodeURIComponent("My Tersio usage profile")}&text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer"),
+                () => openShare(redditShareUrl(text)),
                 "Reddit",
               )}
             >
@@ -933,7 +1143,7 @@ export function ShareDialog({
               className="inline-flex cursor-pointer items-center gap-1.5 rounded-[10px] border border-line bg-transparent px-[9px] py-[7px] text-xs text-ink hover:border-accent [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]"
               aria-label="Share on LinkedIn"
               onClick={() => shareImage(
-                () => window.open("https://www.linkedin.com/feed/", "_blank", "noopener,noreferrer"),
+                () => openShare(SHARE_LINKEDIN),
                 "LinkedIn",
               )}
             >

@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import {
   BUN_BIN_DIR, COMBO_PRESET_MODES, IS_WINDOWS, OMP_AGENT_DIR, OMP_PLUGINS_DIR, OMP_BIN,
   PACKAGE_NAME, PACKAGE_VERSION, RTK_BINARY_NAME,
-  applyUpdate, cavemanDefaultFlag, comboDefaultFlag, command, dryRun, install,
+  agentFlag, applyUpdate, cavemanDefaultFlag, comboDefaultFlag, command, dryRun, install,
   ponytailDefaultFlag, profileFlagsGiven, reinstall, rtkDefaultFlag, verbose, yes,
   dashboardExport, dashboardPort,
   debug, ensurePonytailConfigValue,
@@ -15,7 +15,7 @@ import {
   InstallOptions, WriteOptions,
 } from './common.ts';
 import {
-  askInteractiveChoice, askInteractiveConfirm, closeRL, execNetwork, tty, withInteractiveSpinner,
+  askInteractiveChoice, askInteractiveConfirm, askInteractiveMultiChoice, closeRL, execNetwork, tty, withInteractiveSpinner,
 } from './interactive.ts';
 import { printWelcome } from './banner.ts';
 import { checkForUpdate, runLatestUpdate } from './update.ts';
@@ -24,12 +24,15 @@ import { runDoctor } from './doctor.ts';
 import { runReset } from './reset.ts';
 import { runUsage } from './usage.ts';
 import { runDashboard } from './dashboard.ts';
-import { wireRtkOmp } from './rtk-wiring.ts';
+import { wireRtkOmp, wireRtkAgent, rtkAgentFor } from './rtk-wiring.ts';
+import { installOpenCodeRtk } from './opencode-wiring.ts';
 import {
   CAVEMAN_REMOTE_RULE, RTK_RELEASE_API, RtkRelease, RtkReleaseAsset, fetchJson, findFile, httpsGet,
-  httpsDownload, parseChecksum, readTextIfExists, rtkPlatformSpec, sha256File,
+  httpsDownload, parseChecksum, readTextIfExists, resolveRtkBinary, rtkPlatformSpec, sha256File,
 } from '../extensions/lib/utils.ts';
 import { storedProfile, writePluginSettings } from './profile.ts';
+import { applyHosts, agentChoices, detectHosts, readSelection, resolveAgentSelection, writeSelection } from './agents.ts';
+import { HOSTS } from './agent-hosts.ts';
 import type { Profile } from './profile.ts';
 
 // Paths to extension source files (relative to this script)
@@ -47,6 +50,12 @@ const SHARED_PLUGIN_SETTINGS = path.join(EXT_DIR, 'shared', 'plugin-settings.ts'
 const SHARED_USAGE_LEDGER = path.join(EXT_DIR, 'shared', 'usage-ledger.ts');
 const SHARED_PRICING = path.join(EXT_DIR, 'shared', 'pricing.ts');
 const SHARED_CARBON = path.join(EXT_DIR, 'shared', 'carbon.ts');
+/**
+ * OpenCode's plugin, read from the extension source rather than imported: it
+ * is a self-contained ESM file with no build step, and it is written verbatim
+ * into the user's config dir where there is no node_modules to import from.
+ */
+const OPENCODE_PLUGIN_SOURCE = path.join(EXT_DIR, 'opencode', 'rtk-plugin.ts');
 
 async function stepPonytail(pluginsDir: string, options: InstallOptions): Promise<void> {
   if (!options.quiet) console.log('  Ponytail — ensure bundled plugin');
@@ -407,6 +416,114 @@ async function stepUpdater(extDir: string, options: WriteOptions): Promise<void>
   await copySources(extDir, [[UPDATER_INDEX, path.join('ai-addons-updater', 'index.ts')]], 'ai-addons-updater/index.ts', options);
 }
 
+/**
+ * Writes the rules pack, skills, and RTK hook for every selected non-OMP host.
+ *
+ * A no-op unless the selection actually contains another host, so an existing
+ * OMP-only install sees no new output and no new files. omp itself is handled
+ * above by the live-bridge path, so it is filtered out here rather than
+ * duplicated.
+ *
+ * A host whose rewrite is an rtk-owned extension file is wired by rtk's own
+ * init rather than by these emitters: rtk owns that format, so a tersio release
+ * is not needed when rtk changes it.
+ */
+/**
+ * Asks which agents to set up, and writes the answer for later runs.
+ *
+ * Asked at a terminal even when a choice is already saved, seeded with it, so
+ * the selection stays changeable after the first install. Skipped for an
+ * explicit `--agent`, and for `--yes`, `--apply-update`, pipes, and CI, which
+ * fall back to the saved set unioned with what is detected.
+ */
+async function stepAgentHosts(options: InstallOptions): Promise<void> {
+  const home = os.homedir();
+  const stored = readSelection(home).hosts;
+  const detected = detectHosts(home);
+  const interactive = tty() && !options.yes && !applyUpdate && agentFlag.length === 0;
+
+  const selection = await resolveAgentSelection({
+    flag: agentFlag,
+    stored,
+    detected,
+    ask: interactive
+      ? async () => {
+        const answer = await askInteractiveMultiChoice(
+          'Install for which coding agents?',
+          agentChoices(),
+          // Seed with the union so a detected host is pre-ticked and visible
+          // rather than silently absent.
+          [...new Set([...stored, ...detected])],
+        );
+        return answer.status === 'selected' ? answer.value : null;
+      }
+      : undefined,
+  });
+
+  if (interactive && selection.addedByDetection.length > 0 && selection.source === 'prompt') {
+    if (!options.quiet) {
+      console.log(`  [note] also found: ${selection.addedByDetection.join(', ')}`);
+    }
+  }
+
+  const extra = selection.ids.filter((id) => id !== 'omp');
+  if (extra.length === 0) {
+    if (interactive && !options.quiet) console.log('  no coding agents selected');
+    if (!options.dryRun && selection.ids.length > 0) writeSelection(home, selection.ids);
+    return;
+  }
+
+  if (!options.quiet) {
+    const names = extra.map((id) => HOSTS.find((h) => h.id === id)?.label ?? id).join(', ');
+    console.log(`\n  Coding agents — ${names}`);
+  }
+
+  const { results, errors } = await applyHosts(extra, home, {
+    dryRun: options.dryRun,
+    quiet: options.quiet,
+    onlyChanged: true,
+  });
+
+  for (const r of results) {
+    if (options.dryRun) {
+      console.log(`  [dry-run] ${r.host.label}: would write ${r.planned.length} file(s)`);
+      continue;
+    }
+    if (r.written.length === 0) {
+      if (!options.quiet) console.log(`  [ok] ${r.host.label}: already up to date`);
+      continue;
+    }
+    console.log(`  [write] ${r.host.label}: ${r.written.length} file(s)`);
+  }
+  for (const e of errors) console.log(`  [fail] ${e.host}: ${e.error}`);
+
+  // Delegate the extension-file hosts to rtk, which owns that format.
+  for (const id of extra) {
+    const agent = rtkAgentFor(id);
+    if (!agent) continue;
+    const rtkBin = resolveRtkBinary();
+    if (!rtkBin) {
+      if (!options.quiet) console.log(`  [skip] ${id}: rtk binary not found, so no ${agent} extension`);
+      continue;
+    }
+    const wired = await wireRtkAgent(rtkBin, agent, { dryRun: options.dryRun, quiet: options.quiet });
+    if (wired && !options.dryRun && !options.quiet) {
+      console.log(`  [ok] ${id}: rtk ${agent} extension wired`);
+    }
+  }
+
+  // OpenCode needs a plugin rather than a static hook, and rtk's own plugin is
+  // in a format current OpenCode rejects, so tersio writes its own.
+  if (extra.includes('opencode')) {
+    await installOpenCodeRtk(home, OPENCODE_PLUGIN_SOURCE, {
+      dryRun: options.dryRun,
+      quiet: options.quiet,
+    });
+  }
+
+  if (!options.dryRun) writeSelection(home, selection.ids);
+}
+
 async function stepCombo(extDir: string, options: InstallOptions): Promise<void> {
   if (!options.quiet) console.log('  Combo — install preset switch');
   await copySources(extDir, [[COMBO_TOGGLE_INDEX, path.join('combo-toggle', 'index.ts')]], 'combo-toggle/index.ts', options);
@@ -630,6 +747,13 @@ async function runInstall(overrides: { reinstall?: boolean } = {}): Promise<void
       console.log(`  [fail] ${label}: ${shortError(e)}`);
     }
   };
+  // Coding agents first, so the multiselect is the first thing a user sees and
+  // the output leads with what the product is actually for. The Oh My Pi
+  // extension layer follows as its own section rather than framing the run.
+  await capture('agent hosts', () => stepAgentHosts(options));
+
+  if (!quiet) console.log('\n  Oh My Pi — live commands and extensions');
+
   await capture('shared', () => stepSharedSessionState(userExtDir, options));
   let selfPlugin = false;
   await capture('self-plugin', async () => { selfPlugin = await stepSelfPlugin(OMP_PLUGINS_DIR, options); });
@@ -645,7 +769,8 @@ async function runInstall(overrides: { reinstall?: boolean } = {}): Promise<void
   if (quiet) {
     if (failures.length > 0) console.log(`  add-ons: ${failures.length} failed (${failures.join(', ')}) — see [fail] lines above`);
   } else {
-    console.log(failures.length === 0 ? '\nDone — restart OMP, then /combo medium.' : `\nDone with ${failures.length} failure(s) — see [fail] lines above.`);
+    // Not OMP-specific: the run may have installed nothing but coding agents.
+    console.log(failures.length === 0 ? '\nDone — restart your agents to pick up the changes.' : `\nDone with ${failures.length} failure(s) — see [fail] lines above.`);
   }
 
   closeRL();

@@ -130,6 +130,36 @@ const diagScheduleFlag = parseEnum(flagValue('--diag-schedule'), DIAG_SCHEDULES,
 const profileFlagsGiven = [comboDefaultFlag, cavemanDefaultFlag, rtkDefaultFlag, ponytailDefaultFlag]
   .some((flag) => flag !== undefined);
 
+/**
+ * Every value given for a repeatable flag. Handles `--agent a --agent b`,
+ * `--agent a,b`, and `--agent=a,b` together, so callers get one flat list and
+ * do not have to care which form the user typed.
+ */
+function flagValues(name: string): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === name) {
+      const next = args[i + 1];
+      // A following flag is not a value, so `--agent --dry-run` is empty
+      // rather than swallowing the next option.
+      if (next !== undefined && !next.startsWith('-')) {
+        out.push(next);
+        i++;
+      }
+    } else if (arg.startsWith(`${name}=`)) {
+      out.push(arg.slice(name.length + 1));
+    }
+  }
+  return out
+    .flatMap((value) => value.split(','))
+    .map((value) => value.trim())
+    .filter((value) => value !== '');
+}
+
+/** Host ids from `--agent`, for install/doctor/uninstall to act on. */
+const agentFlag: string[] = flagValues('--agent');
+
 function debug(...a: unknown[]): void {
   if (verbose) console.log('  [debug]', ...a);
 }
@@ -369,7 +399,7 @@ export {
   dryRun, yes, verbose, doctor, fix, uninstall, usage, dashboard, reset, settings,
   dashboardPort, dashboardOpen, dashboardExport, currency, currencyGiven,
   removePonytail, keepPonytail, removeRtk,
-  comboDefaultFlag, cavemanDefaultFlag, ponytailDefaultFlag, rtkDefaultFlag, diagScheduleFlag, profileFlagsGiven,
+  comboDefaultFlag, cavemanDefaultFlag, ponytailDefaultFlag, rtkDefaultFlag, diagScheduleFlag, profileFlagsGiven, agentFlag,
   debug, execFileP, execP, writeIfChanged, normalizeExtensionsKey, EXTENSIONS_KEY_RE,
   writeConfigLines, ensureExtensionInConfig, removeExtensionFromConfig,
   readPonytailConfig, parseJsonObject, parsePonytailConfig, patchPonytailConfig,

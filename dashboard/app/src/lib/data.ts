@@ -80,6 +80,24 @@ export interface UsageReport {
   paths: { ledger: string; sessions: string; usageDb: string };
 }
 
+/** One supported coding agent, as the installer would wire it. */
+export interface AgentHealth {
+  id: string;
+  label: string;
+  /** In the saved selection, i.e. tersio installs for it. */
+  selected: boolean;
+  /** Selected and every file it needs is on disk. */
+  configured: boolean;
+  missing: number;
+  present: number;
+  /** Human wiring class, e.g. `hook · auto-rewrite`. */
+  wiring: string;
+  /** Absolute path of the agent's binary on PATH, or null when not installed. */
+  binPath?: string | null;
+  /** `agent --version` output, or null when not installed or it failed. */
+  version?: string | null;
+}
+
 export interface HealthReport {
   tersio: string;
   node: string;
@@ -88,6 +106,8 @@ export interface HealthReport {
   ompPath: string | null;
   provider: string | null;
   rtk: { present: boolean; version: string | null; path: string };
+  /** Absent on an older tersio build, hence optional. */
+  agents?: AgentHealth[];
   home: string;
 }
 

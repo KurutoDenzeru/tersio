@@ -144,7 +144,10 @@ test("reinstall --dry-run previews uninstall then install without writing", () =
   expect(uninstall >= 0, result.stdout).toBeTruthy();
   expect(install > uninstall, "uninstall runs before the fresh install").toBeTruthy();
   expect(result.stdout).toMatch(/\[dry-run\] would remove /);
-  expect(result.stdout).toMatch(/Done — restart OMP/);
+  // The closing line is host-agnostic: a run may have installed nothing but
+  // coding agents, so it must not tell the user to restart OMP.
+  expect(result.stdout).toMatch(/Done — restart your agents/);
+  expect(result.stdout).not.toMatch(/Done — restart OMP/);
 });
 
 test("bare dry-run never prompts for the pending update and exits 0", () => {

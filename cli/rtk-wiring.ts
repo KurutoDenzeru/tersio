@@ -44,12 +44,7 @@ function execFileP(cmd: string, args: string[], timeout: number): Promise<{ stdo
 // Idempotent: rtk rewrites its extension file on every init run, so
 // reinstalling tersio refreshes the wiring for free.
 export async function wireRtkOmp(rtkBin: string, options: WiringOptions = {}): Promise<boolean> {
-  if (!options.dryRun) debugWire(options, 'Wiring rtk → OMP (bash tool_call rewrite)…');
-  if (options.dryRun) return true;
-  const wired = await runRtkInit(rtkBin, options);
-  if (!wired) return false;
-  await ensureRtkInConfig(options);
-  return true;
+  return wireRtkAgent(rtkBin, 'omp', options);
 }
 
 // The rtk.ts path rtk init writes (mirrors OMP_AGENT_DIR in cli/common.ts
@@ -94,10 +89,40 @@ export async function ensureRtkInConfig(options: WiringOptions): Promise<void> {
   }
 }
 
-async function runRtkInit(rtkBin: string, options: WiringOptions): Promise<boolean> {
+// rtk's own init owns the extension format for the hosts it supports, so
+// tersio delegates rather than writing its own. `rtk init --agent pi` emits
+// ~/.pi/agent/extensions/rtk.ts, the same shape OMP loads. Verified against
+// rtk 0.50.0, which also accepts claude and cursor -- but for claude it writes
+// instructions only with no hook, so those stay with tersio's own emitters.
+const RTK_AGENTS = { omp: 'omp', pi: 'pi' } as const;
+
+export type RtkAgent = (typeof RTK_AGENTS)[keyof typeof RTK_AGENTS];
+
+/** The rtk agent name for a host tersio delegates wiring to, if any. */
+export function rtkAgentFor(hostId: string): RtkAgent | null {
+  const agent = (RTK_AGENTS as Record<string, RtkAgent | undefined>)[hostId];
+  return agent ?? null;
+}
+
+// Wires a host whose rewrite is an rtk-owned extension file. Fail-open: a
+// failed wire only downgrades to manual `rtk` prefixing.
+export async function wireRtkAgent(rtkBin: string, agent: RtkAgent, options: WiringOptions = {}): Promise<boolean> {
+  if (!options.dryRun) debugWire(options, `Wiring rtk → ${agent} (bash tool_call rewrite)…`);
+  if (options.dryRun) return true;
+  const wired = await runRtkInit(rtkBin, agent, options);
+  if (!wired) return false;
+  if (agent === 'omp') await ensureRtkInConfig(options);
+  return true;
+}
+
+export async function wireRtkPi(rtkBin: string, options: WiringOptions = {}): Promise<boolean> {
+  return wireRtkAgent(rtkBin, 'pi', options);
+}
+
+async function runRtkInit(rtkBin: string, agent: RtkAgent, options: WiringOptions): Promise<boolean> {
   try {
-    await execFileP(rtkBin, ['init', '-g', '--agent', 'omp'], 30000);
-    debugWire(options, 'rtk OMP extension wired');
+    await execFileP(rtkBin, ['init', '-g', '--agent', agent], 30000);
+    debugWire(options, `rtk ${agent} extension wired`);
     return true;
   } catch (first) {
     // A freshly written binary can lose its first exec to macOS Gatekeeper
@@ -109,8 +134,8 @@ async function runRtkInit(rtkBin: string, options: WiringOptions): Promise<boole
       return true;
     } catch (e) {
       void first;
-      console.log(`  [warn] could not wire rtk → OMP: ${shortWiringError(e)}`);
-      console.log('  [hint] Manual: rtk init -g --agent omp (needs rtk >= 0.49)');
+      console.log(`  [warn] could not wire rtk → ${agent}: ${shortWiringError(e)}`);
+      console.log(`  [hint] Manual: rtk init -g --agent ${agent} (needs rtk >= 0.49)`);
       return false;
     }
   }
