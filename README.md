@@ -38,13 +38,15 @@ The selection is saved to `~/.tersio/agents.json` and reused by every later inst
 
 `--agent` takes any id below. Repeatable and comma-separated.
 
-| Agent | `--agent` | Rules file | Skills | RTK auto-rewrite |
-|---|---|---|---|---|
-| Claude Code | `claude-code` | `CLAUDE.md` | ✅ | ✅ hook |
-| OpenAI Codex | `codex` | `AGENTS.md` | ✅ | ✅ hook |
-| OpenCode | `opencode` | `AGENTS.md` | ⚠️ project-only | ✅ plugin |
-| Pi | `pi` | `AGENTS.md` | ✅ | ✅ rtk extension |
-| Oh My Pi | `omp` | ✅ | ✅ | ✅ rtk extension |
+| Agent | `--agent` | Rules file | Skills | Live modes | RTK auto-rewrite |
+|---|---|---|---|---|---|
+| Claude Code | `claude-code` | `CLAUDE.md` | ✅ 3 | — static only | ✅ hook |
+| OpenAI Codex | `codex` | `AGENTS.md` | ✅ 3 | — static only | ✅ hook |
+| OpenCode | `opencode` | `AGENTS.md` | ⚠️ project-only | — static only | ✅ plugin |
+| Pi | `pi` | `AGENTS.md` | ✅ 3 | ✅ | ✅ rtk extension |
+| Oh My Pi | `omp` | — none | — none | ✅ | ✅ rtk extension |
+
+**Live modes** means the mode switches mid-session: `/caveman`, `/rtk` and `/combo` take effect on the next turn and inject into every turn after. The other three hosts get the same three modes as **static** instructions — the rules text and a skill, read once per session, with no command to switch them. Oh My Pi has no rules file and no skills on purpose: it delivers all three modes through its extension layer, so a session that never loads that layer gets nothing. `/ponytail` on Oh My Pi belongs to the bundled upstream Ponytail plugin, not to Tersio's tree, which is why Pi has the mode but no `/ponytail` command.
 
 Every supported host ships a working auto-rewrite, so there is no guidance-only row to read carefully. `tersio doctor` states which mechanism each host actually got — a generated hook, rtk's extension, or a plugin — so you never have to take the table on faith.
 
