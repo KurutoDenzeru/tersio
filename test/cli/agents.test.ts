@@ -700,8 +700,53 @@ test("the removal plan shrinks as files are removed, and never overstates", asyn
     await removeHost(byId("claude-code")!, home);
     const after = planRemove(["claude-code"], home);
     expect(before).toBe(6);
-    expect(after.files).toBeLessThan(before);
-    for (const line of after.hosts[0].lines) expect(existsSync(line.path)).toBe(true);
+    // Removal keeps the user's own settings.json, emptied to `{}`. That file
+    // is not a tersio artifact any more, so the host drops out entirely rather
+    // than lingering in the menu as a host with one file left to remove.
+    expect(after.files).toBe(0);
+    expect(after.hosts).toEqual([]);
+  } finally {
+    cleanup();
+  }
+});
+
+test("a host with no tersio content left does not read as installed", async () => {
+  const { home, cleanup } = tempHome();
+  try {
+    // The exact residue an uninstall leaves behind: the user's own rules file
+    // with our block already stripped, and a hook config emptied to `{}`.
+    // Both paths exist, neither holds anything of ours, so neither may count —
+    // otherwise the row can never leave the uninstall menu.
+    mkdirSync(path.join(home, ".codex"), { recursive: true });
+    writeFileSync(
+      path.join(home, ".codex", "AGENTS.md"),
+      "# Global instructions\n\nSpeak plainly.\n",
+    );
+    writeFileSync(path.join(home, ".codex", "hooks.json"), "{}\n");
+
+    const host = byId("codex")!;
+    const state = installedState(home);
+    expect(state.get("codex")).toMatchObject({ count: 0, installed: false });
+    expect(planRemove(["codex"], home).hosts).toEqual([]);
+    // doctor agrees: the rules block really is missing, so install is the repair.
+    expect(reportHost(host, home)).toMatchObject({ status: "warn", repair: "install" });
+    expect(installedRows(state).map((c) => c.value)).not.toContain("codex");
+  } finally {
+    cleanup();
+  }
+});
+
+test("a rules file still holding our block does read as installed", async () => {
+  const { home, cleanup } = tempHome();
+  try {
+    const host = byId("codex")!;
+    mkdirSync(path.join(home, ".codex"), { recursive: true });
+    writeFileSync(path.join(home, ".codex", "AGENTS.md"), "# Global instructions\n");
+    await applyHost(host, home);
+    const state = installedState(home);
+    expect(state.get("codex")?.installed).toBe(true);
+    expect(planRemove(["codex"], home).files).toBe(6);
+    expect(reportHost(host, home).status).toBe("ok");
   } finally {
     cleanup();
   }

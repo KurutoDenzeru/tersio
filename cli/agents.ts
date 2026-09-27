@@ -15,7 +15,14 @@ import { promises as fs } from 'node:fs';
 import fsSync from 'node:fs';
 import path from 'node:path';
 import { HOSTS, byId, hasStaticHook, isLiveExtension, isOwnPath, type AgentHost } from './agent-hosts.ts';
-import { planHost, removeFromHookConfig, type ExistingHostFiles, type HostArtifact, type HostPlan } from './host-writers.ts';
+import {
+  hasMarkedHookEntry,
+  planHost,
+  removeFromHookConfig,
+  type ExistingHostFiles,
+  type HostArtifact,
+  type HostPlan,
+} from './host-writers.ts';
 import { removeMarkedBlock, START, END } from './rules-pack.ts';
 import { reportOmpLayer } from './omp-layer.ts';
 import { reportPiLayer } from './pi-layer.ts';
@@ -148,6 +155,43 @@ export function installedState(home: string): Map<string, HostInstallState> {
 /** Host ids tersio has already installed something for. */
 export function installedHostIds(state: ReadonlyMap<string, HostInstallState>): string[] {
   return normalizeIds([...state].filter(([, info]) => info.installed).map(([id]) => id));
+}
+
+/**
+ * Whether an artifact is really tersio's on disk, which is not the same as the
+ * path existing.
+ *
+ * Every artifact of kind `rules` and `hook-config` lands in a file the user
+ * also owns, and that file outlives the install: uninstall strips our block
+ * from `~/.codex/AGENTS.md` but leaves the user's own text, and empties
+ * `~/.claude/settings.json` to `{}` without deleting it. Counting mere
+ * existence therefore reported both hosts as installed forever, so the rows
+ * could never leave the uninstall menu and a second run kept asking to remove
+ * artifacts that held nothing of ours. Presence has to mean "our content is
+ * still in there".
+ *
+ * Artifacts tersio created outright — a skill, the rewriter script — are ours
+ * by path, so for those the file existing is the whole test and the read is
+ * skipped.
+ */
+function artifactPresent(artifact: HostArtifact, host: AgentHost): boolean {
+  if (artifact.merge === 'whole') return existsSyncSafe(artifact.absPath);
+
+  let text: string;
+  try {
+    text = fsSync.readFileSync(artifact.absPath, 'utf8');
+  } catch {
+    return false;
+  }
+  // Both merge modes are keyed off a marker, which is the same identity
+  // removal uses. A merge mode with no identity to look for is treated as
+  // absent rather than guessed at.
+  if (artifact.merge === 'block') return text.includes(START) && text.includes(END);
+  if (artifact.merge === 'json') {
+    const event = host.rewriteConfig?.event;
+    return event !== undefined && hasMarkedHookEntry(text, event);
+  }
+  return false;
 }
 
 /** True when the path is a directory. The layer's artifacts are directories. */
@@ -616,7 +660,7 @@ export function planRemove(ids: readonly string[], home: string): RemovalPlan {
       // planHost is the source of the artifact list; the filesystem only says
       // which still hold our content, so the label stays a real kind.
       const lines = planHost(host, home).artifacts
-        .filter((artifact) => existsSyncSafe(artifact.absPath))
+        .filter((artifact) => artifactPresent(artifact, host))
         .map((artifact) => ({ label: ARTIFACT_LABELS[artifact.kind], path: artifact.absPath }));
       return { host, wiring: wiringHint(host), lines };
     })
@@ -648,7 +692,7 @@ export function reportHost(host: AgentHost, home: string): HostRow {
   const present: string[] = [];
   const missing: string[] = [];
   for (const artifact of plan.artifacts) {
-    if (existsSyncSafe(artifact.absPath)) present.push(artifact.absPath);
+    if (artifactPresent(artifact, host)) present.push(artifact.absPath);
     else missing.push(artifact.absPath);
   }
 

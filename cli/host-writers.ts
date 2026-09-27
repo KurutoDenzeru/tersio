@@ -233,6 +233,20 @@ export function mergeHookConfig(existing: string | null, ours: string, event: st
 }
 
 /**
+ * True when a parsed config still carries our entry for this event.
+ *
+ * The read-only half of `removeFromHookConfig`: removal asks "is one of ours in
+ * here", and a caller counting what tersio owns has to ask the same question
+ * rather than "does the file exist". A user's `settings.json` outlives the
+ * install, and an existence check counted it forever.
+ */
+export function hasMarkedHookEntry(text: string, event: string): boolean {
+  const base = safeParseJson(text);
+  if (base === null) return false;
+  return findMarkedEntry(base, event) !== null;
+}
+
+/**
  * Removes only our entry from a host's hook config, preserving every other
  * hook. Returns the config unchanged when none of ours was present, so a
  * caller can tell "nothing to do" from "removed".
