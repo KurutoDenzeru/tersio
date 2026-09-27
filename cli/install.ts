@@ -307,23 +307,26 @@ async function extractRtkArchive(archivePath: string, extractDir: string): Promi
   return false;
 }
 
-async function stepRtk(binDir: string, options: InstallOptions): Promise<void> {
-  if (!options.quiet) console.log('  RTK — download binary and wire into OMP');
+/**
+ * Downloads the rtk binary and returns its path, or null when there is nothing
+ * at that path. Wiring is the caller's job: which host needs an rtk-owned
+ * extension is a per-host decision, and doing it here wrote `rtk.ts` into the
+ * Oh My Pi extensions on every install, whichever host was picked.
+ */
+async function stepRtk(binDir: string, options: InstallOptions): Promise<string | null> {
+  if (!options.quiet) console.log('  RTK — download binary');
   const binDest = path.join(binDir, RTK_BINARY_NAME);
-  // Download failure must not skip wiring: a pre-existing rtk binary is
-  // exactly as good for the OMP hook, so wire whatever ends up at binDest.
   // Dry runs stay offline: no registry probe, just the plan line above.
   if (options.dryRun) {
     if (verbose && !options.quiet) console.log(`  [dry-run] would download rtk binary and install to ${binDest}`);
-    await wireRtkOmp(binDest, options);
-    return;
+    return binDest;
   }
   try {
     const release = await withInteractiveSpinner('Finding latest RTK release', () => fetchJson<RtkRelease>(RTK_RELEASE_API));
     const triple = resolveRtkTriple();
-    if (!triple) return;
+    if (!triple) return null;
     const asset = findRtkAsset(release, triple);
-    if (!asset) return;
+    if (!asset) return null;
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'omp-rtk-'));
     try {
       const archivePath = path.join(tmpDir, asset.name);
@@ -335,15 +338,15 @@ async function stepRtk(binDir: string, options: InstallOptions): Promise<void> {
         update('Verifying RTK checksum');
         return downloadedChecksums;
       });
-      if (!await verifyRtkArchive(archivePath, asset.name, checksumsText, options)) return;
+      if (!await verifyRtkArchive(archivePath, asset.name, checksumsText, options)) return null;
 
       const extractDir = path.join(tmpDir, 'extracted');
-      if (!await extractRtkArchive(archivePath, extractDir)) return;
+      if (!await extractRtkArchive(archivePath, extractDir)) return null;
 
       const found = await findFile(extractDir, RTK_BINARY_NAME);
       if (!found) {
         console.log(`  [fail] Could not find ${RTK_BINARY_NAME} in extracted archive`);
-        return;
+        return null;
       }
 
       await fs.mkdir(path.dirname(binDest), { recursive: true });
@@ -368,17 +371,9 @@ async function stepRtk(binDir: string, options: InstallOptions): Promise<void> {
     console.log('  [hint] Manual: https://github.com/rtk-ai/rtk/releases');
   }
 
-  if (options.dryRun) {
-    await wireRtkOmp(binDest, options);
-    return;
-  }
-  if (!(await fileExists(binDest))) {
-    console.log('  [skip] no rtk binary to wire — install rtk, then run: rtk init -g --agent omp');
-    return;
-  }
-  // Binary alone never meters OMP sessions — wire rtk's tool_call
-  // extension so bash commands rewrite to rtk and land in history.db.
-  await wireRtkOmp(binDest, options);
+  // A failed download must not skip wiring: a pre-existing binary at binDest is
+  // exactly as good, so report whatever ended up there and let the host decide.
+  return (await fileExists(binDest)) ? binDest : null;
 }
 
 // Copy repo source files into the target extension dir. First entry is
@@ -524,7 +519,7 @@ function printOmpPlan(home: string): void {
  * skipped for an explicit `--agent`, and for `--yes`, `--apply-update`, pipes,
  * and CI, which fall back to the saved set unioned with what is detected.
  */
-async function stepAgentHosts(options: InstallOptions, cavemanRule: string | null): Promise<boolean> {
+async function stepAgentHosts(options: InstallOptions, cavemanRule: string | null): Promise<string[] | null> {
   const home = os.homedir();
   const stored = readSelection(home).hosts;
   const detected = detectHosts(home);
@@ -570,10 +565,14 @@ async function stepAgentHosts(options: InstallOptions, cavemanRule: string | nul
   // completion — so Escape looked like it did nothing while files kept landing.
   if (cancelled) {
     closeRL();
-    return false;
+    return null;
   }
 
-  if (interactive && selection.addedByDetection.length > 0 && selection.source === 'prompt') {
+  // "Also found" is for a run nobody watched: a script or a --yes run takes
+  // the union of the saved set and what is detected, and the host it silently
+  // added is worth naming. In the menu the user is looking at every host with
+  // its state, so the line only told them what the screen already said.
+  if (!interactive && selection.addedByDetection.length > 0) {
     if (!options.quiet) {
       console.log(`  [note] also found: ${selection.addedByDetection.join(', ')}`);
     }
@@ -584,7 +583,7 @@ async function stepAgentHosts(options: InstallOptions, cavemanRule: string | nul
   if (extra.length === 0) {
     if (interactive && !options.quiet) console.log('  no coding agents selected');
     if (!options.dryRun && selection.ids.length > 0) writeSelection(home, selection.ids);
-    return true;
+    return selection.ids;
   }
 
   if (!options.quiet) printInstallPlan(await planInstall(extra, home), home);
@@ -644,7 +643,7 @@ async function stepAgentHosts(options: InstallOptions, cavemanRule: string | nul
   }
 
   if (!options.dryRun) writeSelection(home, selection.ids);
-  return true;
+  return selection.ids;
 }
 
 async function stepCombo(extDir: string, options: InstallOptions): Promise<void> {
@@ -881,36 +880,57 @@ async function runInstall(overrides: { reinstall?: boolean } = {}): Promise<void
       console.log(`  [fail] ${label}: ${shortError(e)}`);
     }
   };
+  // rtk's binary comes before the hosts. Every generated rewriter shells out to
+  // `rtk rewrite`, and the extension-file hosts are wired by rtk's own init,
+  // which needs the binary already on disk. It used to be fetched after the
+  // hosts were wired, so a first-time install on a machine without rtk on PATH
+  // reported "rtk binary not found" for the very host it had just fetched it for.
+  let rtkBin: string | null = null;
+  await capture('rtk', async () => { rtkBin = await stepRtk(BUN_BIN_DIR, options); });
+
   // Coding agents first, so the multiselect is the first thing a user sees and
-  // the output leads with what the product is actually for. The Oh My Pi
-  // extension layer follows as its own section rather than framing the run.
-  let cancelled = false;
-  await capture('agent hosts', async () => { cancelled = !(await stepAgentHosts(options, cavemanRule)); });
+  // the output leads with what the product is actually for. The step reports
+  // which hosts it resolved to, or null when the picker was cancelled, because
+  // the layer below installs only for the hosts that were actually picked.
+  let selected: string[] | null = [];
+  await capture('agent hosts', async () => { selected = await stepAgentHosts(options, cavemanRule); });
   // Escape at the agent picker means stop, not "carry on without the coding
-  // agents": the layer steps below would still write eight sets of files. Only
-  // an explicit cancel aborts — a step that throws is still reported and the
-  // run continues, as it did before.
-  if (cancelled) {
+  // agents": the steps below would still write files the user did not ask for.
+  // Only an explicit cancel aborts — a step that throws is still reported and
+  // the run continues, as it did before.
+  if (selected === null) {
     console.log('\nNothing was installed.');
     closeRL();
     return;
   }
 
-  // The layer's file list, printed before the steps so the run names what it
-  // writes rather than only what each step is called.
-  if (!quiet) printOmpPlan(os.homedir());
+  // The Oh My Pi layer installs for OMP, and for a run that named no host at
+  // all: an empty selection is not a request for some other agent, it is the
+  // pre-multi-host default of `tersio install` doing its job. What must never
+  // happen is naming one host and getting another's artifacts too — choosing
+  // Codex used to also write seven extension directories, the Ponytail package
+  // and the rtk wiring on top of the four files that were asked for.
+  const wantsOmpLayer = selected.length === 0 || selected.includes('omp');
+  if (wantsOmpLayer) {
+    // The layer's file list, printed before the steps so the run names what it
+    // writes rather than only what each step is called.
+    if (!quiet) printOmpPlan(os.homedir());
 
-  await capture('shared', () => stepSharedSessionState(userExtDir, options));
-  let selfPlugin = false;
-  await capture('self-plugin', async () => { selfPlugin = await stepSelfPlugin(OMP_PLUGINS_DIR, options); });
-  await capture('ponytail', () => stepPonytail(OMP_PLUGINS_DIR, options));
-  await capture('rtk', () => stepRtk(BUN_BIN_DIR, options));
-  await capture('rtk session', () => stepRtkSession(userExtDir, options));
-  await capture('caveman', () => stepCaveman(path.join(OMP_PLUGINS_DIR, 'node_modules', '@krtclcdy', 'tersio', 'extensions'), cavemanRule, options));
-  await capture('combo', () => stepCombo(userExtDir, options));
-  await capture('commands', () => stepTersioCommands(userExtDir, options));
-  await capture('updater', () => stepUpdater(userExtDir, options));
-  if (selfPlugin) await capture('settings', () => writePluginSettings(profile, options));
+    await capture('shared', () => stepSharedSessionState(userExtDir, options));
+    let selfPlugin = false;
+    await capture('self-plugin', async () => { selfPlugin = await stepSelfPlugin(OMP_PLUGINS_DIR, options); });
+    await capture('ponytail', () => stepPonytail(OMP_PLUGINS_DIR, options));
+    await capture('rtk session', () => stepRtkSession(userExtDir, options));
+    await capture('caveman', () => stepCaveman(path.join(OMP_PLUGINS_DIR, 'node_modules', '@krtclcdy', 'tersio', 'extensions'), cavemanRule, options));
+    await capture('combo', () => stepCombo(userExtDir, options));
+    await capture('commands', () => stepTersioCommands(userExtDir, options));
+    await capture('updater', () => stepUpdater(userExtDir, options));
+    // Binary alone never meters OMP sessions — wire rtk's tool_call extension so
+    // bash commands rewrite to rtk and land in history.db.
+    if (rtkBin) await wireRtkOmp(rtkBin, options);
+    else console.log('  [skip] no rtk binary to wire — install rtk, then run: rtk init -g --agent omp');
+    if (selfPlugin) await capture('settings', () => writePluginSettings(profile, options));
+  }
 
   if (quiet) {
     if (failures.length > 0) console.log(`  add-ons: ${failures.length} failed (${failures.join(', ')}) — see [fail] lines above`);

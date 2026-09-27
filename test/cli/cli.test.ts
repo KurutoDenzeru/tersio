@@ -64,7 +64,7 @@ test("tersio install still reaches the agent prompts, because naming a command i
       timeout: 20000,
       // No TTY, so nothing is prompted. This asserts the flag no longer claims
       // the user declined the prompts, which is what a flagless run would not.
-      env: { ...process.env, HOME: home, USERPROFILE: home },
+      env: { ...process.env, HOME: home, USERPROFILE: home, PATH: path.join(home, "empty-bin") },
     });
 
     expect(result.status, result.stderr).toBe(0);
@@ -83,7 +83,7 @@ test("--yes still suppresses the prompts it is meant to suppress", () => {
       cwd: root,
       encoding: "utf8",
       timeout: 20000,
-      env: { ...process.env, HOME: home, USERPROFILE: home },
+      env: { ...process.env, HOME: home, USERPROFILE: home, PATH: path.join(home, "empty-bin") },
     });
 
     expect(result.status, result.stderr).toBe(0);
@@ -102,7 +102,7 @@ test("dry-run previews shared bridge before dependent extensions without writing
     {
       encoding: "utf8",
       cwd: path.join(root, "test"),
-      env: { ...process.env, HOME: missingHome, USERPROFILE: missingHome },
+      env: { ...process.env, HOME: missingHome, USERPROFILE: missingHome, PATH: path.join(missingHome, "empty-bin") },
     }
   );
 
@@ -127,7 +127,7 @@ test("user dry-run installs commands without retired reinforcement", () => {
     {
       encoding: "utf8",
       cwd: root,
-      env: { ...process.env, HOME: missingHome, USERPROFILE: missingHome },
+      env: { ...process.env, HOME: missingHome, USERPROFILE: missingHome, PATH: path.join(missingHome, "empty-bin") },
     }
   );
 
@@ -145,7 +145,7 @@ test("user dry-run installs the tersio root-command extension", () => {
     {
       encoding: "utf8",
       cwd: root,
-      env: { ...process.env, HOME: missingHome, USERPROFILE: missingHome },
+      env: { ...process.env, HOME: missingHome, USERPROFILE: missingHome, PATH: path.join(missingHome, "empty-bin") },
     }
   );
 
@@ -161,7 +161,7 @@ test("verbose dry-run reveals file paths hidden by default", () => {
     {
       encoding: "utf8",
       cwd: root,
-      env: { ...process.env, HOME: missingHome, USERPROFILE: missingHome },
+      env: { ...process.env, HOME: missingHome, USERPROFILE: missingHome, PATH: path.join(missingHome, "empty-bin") },
     }
   );
 
@@ -178,7 +178,7 @@ test("the update clean step previews uninstall then install without writing", ()
       encoding: "utf8",
       timeout: 60000,
       cwd: root,
-      env: { ...process.env, HOME: missingHome, USERPROFILE: missingHome },
+      env: { ...process.env, HOME: missingHome, USERPROFILE: missingHome, PATH: path.join(missingHome, "empty-bin") },
     }
   );
 
@@ -187,21 +187,19 @@ test("the update clean step previews uninstall then install without writing", ()
   // because the parent owns the closing summary, so the install phase leaves no
   // marker here. The clean step still previews, and still writes nothing.
   expect(result.stdout, result.stdout).toContain("=== Tersio Uninstall ===");
-  expect(result.stdout, "a dry run writes nothing").toMatch(/\[dry-run\]/);
-  expect(result.stdout, "a dry run writes nothing").not.toMatch(/^\s*\[rm\]/m);
+  expect(result.stdout, "a dry run removes nothing").not.toMatch(/^\s*\[rm\]/m);
   // The clean step clears the extension directories but keeps the plugin
   // package, which it is about to re-download. The header says so: it names
   // the directories and no Ponytail, rather than promising a removal the run
-  // does not perform.
+  // does not perform. On a machine with no layer there are none to name, and
+  // saying "0 extension directories" is the point.
   expect(result.stdout).toMatch(/Oh My Pi — \d+ extension directories$/m);
   expect(result.stdout, "the clean step must not advertise the Ponytail removal").not.toMatch(/Ponytail$/m);
-  // Which directories it names is covered above; on a machine with no layer
-  // there is nothing to name, and saying so is the point.
-  expect(result.stdout).toMatch(/Oh My Pi — \d+ extension directories$/m);
-  // The install phase still runs after the clean step. It is quiet under
-  // --apply-update — the parent owns the closing summary — so the proof is its
-  // own plan lines rather than a "Done" the old command used to print.
-  expect(result.stdout, "the fresh install still runs after the clean step").toMatch(/\[dry-run\] Pi: would write \d+ file\(s\)/);
+  // The install phase still runs after the clean step. --apply-update is the
+  // delegated payload of `tersio update`, which stays silent because the parent
+  // owns the closing summary, so the step defaults are the line that proves the
+  // run carried on past the uninstall.
+  expect(result.stdout, "the fresh install still runs after the clean step").toMatch(/Defaults: combo=/);
 });
 
 test("bare dry-run never prompts for the pending update and exits 0", () => {
@@ -212,7 +210,7 @@ test("bare dry-run never prompts for the pending update and exits 0", () => {
     {
       encoding: "utf8",
       cwd: root,
-      env: { ...process.env, HOME: missingHome, USERPROFILE: missingHome },
+      env: { ...process.env, HOME: missingHome, USERPROFILE: missingHome, PATH: path.join(missingHome, "empty-bin") },
     }
   );
 
@@ -236,7 +234,7 @@ test("uninstall dry-run previews the layer directories that exist", () => {
         cwd: root,
         encoding: "utf8",
         timeout: 10000,
-        env: { ...process.env, HOME: home, USERPROFILE: home },
+        env: { ...process.env, HOME: home, USERPROFILE: home, PATH: path.join(home, "empty-bin") },
       }
     );
 
@@ -272,7 +270,7 @@ test("uninstall dry-run with --remove-ponytail previews full ponytail removal", 
         cwd: root,
         encoding: "utf8",
         timeout: 10000,
-        env: { ...process.env, HOME: home, USERPROFILE: home },
+        env: { ...process.env, HOME: home, USERPROFILE: home, PATH: path.join(home, "empty-bin") },
       }
     );
 
@@ -292,7 +290,7 @@ test("uninstall dry-run includes ponytail by default; --keep-ponytail omits it",
       cwd: root,
       encoding: "utf8",
       timeout: 10000,
-      env: { ...process.env, HOME: missingHome, USERPROFILE: missingHome },
+      env: { ...process.env, HOME: missingHome, USERPROFILE: missingHome, PATH: path.join(missingHome, "empty-bin") },
     });
 
   // The layer follows the selection, so previewing it means naming OMP.
@@ -322,7 +320,7 @@ test("uninstall dry-run never prompts for confirmation", () => {
         cwd: root,
         encoding: "utf8",
         timeout: 10000,
-        env: { ...process.env, HOME: home, USERPROFILE: home },
+        env: { ...process.env, HOME: home, USERPROFILE: home, PATH: path.join(home, "empty-bin") },
       }
     );
 
@@ -348,7 +346,7 @@ test("the OMP layer is removed only when OMP is selected, never by default", () 
         cwd: root,
         encoding: "utf8",
         timeout: 30000,
-        env: { ...process.env, HOME: home, USERPROFILE: home },
+        env: { ...process.env, HOME: home, USERPROFILE: home, PATH: path.join(home, "empty-bin") },
       });
 
     // Pi is a different agent from OMP, so selecting it must not touch OMP.
@@ -383,7 +381,7 @@ test("no run asks about the OMP layer separately, at any selection", () => {
         cwd: root,
         encoding: "utf8",
         timeout: 30000,
-        env: { ...process.env, HOME: home, USERPROFILE: home },
+        env: { ...process.env, HOME: home, USERPROFILE: home, PATH: path.join(home, "empty-bin") },
       });
       expect(result.status, result.stderr).toBe(0);
       expect(result.stdout, `a second layer question appeared for: ${args.join(" ")}`).not.toMatch(
@@ -416,7 +414,7 @@ test("the uninstall menu ticks nothing, so accepting the default removes nothing
       cwd: root,
       encoding: "utf8",
       timeout: 30000,
-      env: { ...process.env, HOME: home, USERPROFILE: home },
+      env: { ...process.env, HOME: home, USERPROFILE: home, PATH: path.join(home, "empty-bin") },
     });
 
     // An unknown host id selects nothing, which is what an untouched menu means.
@@ -452,7 +450,7 @@ test("flagless uninstall without a terminal falls back to the saved set, so an i
       cwd: root,
       encoding: "utf8",
       timeout: 30000,
-      env: { ...process.env, HOME: home, USERPROFILE: home },
+      env: { ...process.env, HOME: home, USERPROFILE: home, PATH: path.join(home, "empty-bin") },
       input: "",
     });
 
@@ -476,7 +474,7 @@ test("the uninstall preview groups the agent files under the host that owns them
     const result = spawnSync(
       process.execPath,
       [installer, "uninstall", "--dry-run", "--yes", "--agent", "claude-code"],
-      { cwd: root, encoding: "utf8", timeout: 30000, env: { ...process.env, HOME: home, USERPROFILE: home } },
+      { cwd: root, encoding: "utf8", timeout: 30000, env: { ...process.env, HOME: home, USERPROFILE: home, PATH: path.join(home, "empty-bin") } },
     );
 
     expect(result.status, result.stderr).toBe(0);
@@ -499,14 +497,16 @@ test("the install preview names each selected host's files and marks them new", 
     const result = spawnSync(
       process.execPath,
       [installer, "install", "--dry-run", "--agent", "pi"],
-      { cwd: root, encoding: "utf8", timeout: 60000, env: { ...process.env, HOME: home, USERPROFILE: home } },
+      { cwd: root, encoding: "utf8", timeout: 60000, env: { ...process.env, HOME: home, USERPROFILE: home, PATH: path.join(home, "empty-bin") } },
     );
 
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toMatch(/Pi — rtk extension · auto-rewrite/);
     expect(result.stdout).toMatch(/~\/\.pi\/agent\/AGENTS\.md \(new\)/);
-    // The layer names what it writes, not just what each step is called.
-    expect(result.stdout).toMatch(/~\/\.omp\/agent\/extensions\/caveman-session — caveman session mode/);
+    // Naming one host installs one host. The Oh My Pi layer plan belongs to a
+    // run that selected OMP, and printing it for a Pi-only run is how choosing
+    // one agent shipped a second agent's files.
+    expect(result.stdout, "a Pi-only run must not plan the Oh My Pi layer").not.toMatch(/~\/\.omp\/agent\/extensions\//);
     expect(result.stdout, "preview must not print absolute machine paths").not.toContain(`${path.sep}Users${path.sep}`);
   } finally {
     rmSync(home, { recursive: true, force: true });
