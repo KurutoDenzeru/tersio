@@ -186,13 +186,13 @@ test("doctor reports Oh My Pi in the host list when the tersio plugin is install
     expect(complete.status, complete.stderr).toBe(0);
     // The row lives inside Agent hosts, not in a section of its own, and it
     // counts extension directories because those are OMP's artifacts.
-    expect(complete.stdout).toMatch(/Agent hosts\n[\s\S]*?✅ Oh My Pi \(OMP\): ok plugin \+ 7 extension directories/);
+    expect(complete.stdout).toMatch(/Agent hosts\n[\s\S]*?✅ Oh My Pi \(OMP\): ok plugin \+ 7 extension directories · ~\/?\.omp/);
 
     // A partially installed layer warns and names the repair, rather than
     // reporting a healthy host.
     rmSync(path.join(extDir, "lib"), { recursive: true, force: true });
     const partial = run();
-    expect(partial.stdout).toMatch(/⚠️ Oh My Pi \(OMP\): warn 1 extension dir\(s\) missing — run: tersio install --agent omp/);
+    expect(partial.stdout).toMatch(/⚠️ Oh My Pi \(OMP\): warn 1 extension dir\(s\) missing · ~?\/?[\w./-]*extensions — run: tersio install --agent omp/);
 
     // Not installed at all: the row stays silent rather than reporting a host
     // the machine never had.

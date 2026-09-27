@@ -3,7 +3,7 @@ import { existsSync, promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {
-  OMP_AGENT_DIR, OMP_PLUGINS_DIR,
+  OMP_AGENT_DIR, OMP_PLUGINS_DIR, RTK_BINARY_NAME,
   agentFlag, args, dryRun, fix, yes,
   execP, parseJsonObject, relTime,
 } from './common.ts';
@@ -11,10 +11,10 @@ import { askInteractiveChoice, askInteractiveConfirm, runInteractivePhase } from
 import { usageDbPath } from '../extensions/shared/usage-store.ts';
 import { pricesCachePath } from '../extensions/shared/pricing.ts';
 import { readTextIfExists, resolveRtkBinary } from '../extensions/lib/utils.ts';
-import { installedHostIds, installedState, readSelection, reportHosts } from './agents.ts';
-import { HOSTS } from './agent-hosts.ts';
-import { reportOmpLayer } from './omp-layer.ts';
-import { reportPiLayer } from './pi-layer.ts';
+import { displayPath, findHostBinary, installedHostIds, installedState, readSelection, reportHosts } from './agents.ts';
+import { HOSTS, byId } from './agent-hosts.ts';
+import { reportOmpLayer, ompLayer } from './omp-layer.ts';
+import { reportPiLayer, piLayer } from './pi-layer.ts';
 
 interface DoctorSummary {
   ok: number;
@@ -127,13 +127,28 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
     // advertised here.
     console.log('  ℹ️  none installed — `tersio install --agent <id>` adds one');
   } else {
+    // Every host row names what was found and where, so a row is checkable
+    // rather than just a verdict. The binary is the useful path when there is
+    // one; a host set up with no CLI on PATH — Codex on a machine that only has
+    // the desktop app — falls back to its config dir, which is still real.
+    interface HostProbe { bin: string | null; version: string | null }
+    const probes = new Map<string, HostProbe>(await Promise.all(otherHosts.map(async (id): Promise<[string, HostProbe]> => {
+      const host = byId(id);
+      const bin = host ? findHostBinary(host) : null;
+      if (!bin) return [id, { bin: null, version: null }];
+      const out = await execP(bin, ['--version'], { timeout: 5000 }).then((r) => r.stdout.trim() || null, () => null);
+      return [id, { bin, version: out }];
+    })));
     for (const row of reportHosts(otherHosts, home)) {
       const label = row.host.label;
+      const probe = probes.get(row.host.id);
+      const where = probe?.bin ?? displayPath(path.join(home, row.host.configDir), home);
+      const who = probe?.version ? `${probe.version} ` : '';
       if (row.status === 'warn') {
         const first = row.missing[0] ? ` (${row.missing[0]})` : '';
-        warnLine(label, `${row.missing.length} file(s) missing${first} — run: tersio install --agent ${row.host.id}`);
+        warnLine(label, `${who}${row.missing.length} file(s) missing${first} · ${where} — run: tersio install --agent ${row.host.id}`);
       } else {
-        check(label, true, row.detail.replace(`${label}: `, ''));
+        check(label, true, `${who}${row.detail.replace(`${label}: `, '')} · ${where}`);
       }
     }
   }
@@ -152,10 +167,13 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   if (ompReport.installed) {
     const ompLabel = 'Oh My Pi (OMP)';
     const extCount = ompReport.extensions.length;
+    // The layer row names where those directories are, the same way the host
+    // rows above do: the path is what makes the row checkable.
+    const where = displayPath(ompLayer(home, RTK_BINARY_NAME).extDir, home);
     if (ompReport.missing.length === 0) {
-      check(ompLabel, true, `plugin + ${extCount} extension director${extCount === 1 ? 'y' : 'ies'}`);
+      check(ompLabel, true, `plugin + ${extCount} extension director${extCount === 1 ? 'y' : 'ies'} · ${where}`);
     } else {
-      warnLine(ompLabel, `${ompReport.missing.length} extension dir(s) missing — run: tersio install --agent omp`);
+      warnLine(ompLabel, `${ompReport.missing.length} extension dir(s) missing · ${where} — run: tersio install --agent omp`);
     }
   }
 
@@ -166,10 +184,11 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   if (piReport.installed) {
     const piLabel = 'Pi extension layer';
     const present = piReport.extensions.length;
+    const where = displayPath(piLayer(home).extDir, home);
     if (piReport.missing.length === 0) {
-      check(piLabel, true, `${present} extension/module director${present === 1 ? 'y' : 'ies'}`);
+      check(piLabel, true, `${present} extension/module director${present === 1 ? 'y' : 'ies'} · ${where}`);
     } else {
-      warnLine(piLabel, `${piReport.missing.length} extension dir(s) missing — run: tersio install --agent pi`);
+      warnLine(piLabel, `${piReport.missing.length} extension dir(s) missing · ${where} — run: tersio install --agent pi`);
     }
   }
 
