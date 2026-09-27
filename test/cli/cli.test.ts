@@ -34,7 +34,7 @@ for (const alias of [["help"], ["--help"], ["-h"]]) {
 
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toMatch(/^Usage:/);
-    for (const command of ["install", "update", "reinstall", "doctor", "uninstall", "usage", "dashboard", "reset", "settings", "version", "help"]) {
+    for (const command of ["install", "update", "doctor", "uninstall", "usage", "dashboard", "reset", "settings", "version", "help"]) {
       expect(result.stdout).toMatch(new RegExp(`^  ${command}\\s`, "m"));
     }
     expect(result.stderr).toBe("");
@@ -169,11 +169,11 @@ test("verbose dry-run reveals file paths hidden by default", () => {
   expect(result.stdout).toMatch(/\[dry-run\] would write .*shared[\\/]session-state\.ts/);
   expect(result.stdout).toMatch(/\[dry-run\] would write .*tersio-commands[\\/]index\.ts/);
 });
-test("reinstall --dry-run previews uninstall then install without writing", () => {
+test("the update clean step previews uninstall then install without writing", () => {
   const missingHome = path.join(root, "test", "definitely-missing-home");
   const result = spawnSync(
     process.execPath,
-    [installer, "reinstall", "--dry-run", "--yes"],
+    [installer, "install", "--apply-update", "--dry-run", "--yes"],
     {
       encoding: "utf8",
       timeout: 60000,
@@ -183,21 +183,25 @@ test("reinstall --dry-run previews uninstall then install without writing", () =
   );
 
   expect(result.status, result.stderr).toBe(0);
-  const uninstall = result.stdout.indexOf("=== Tersio Uninstall ===");
-  const install = result.stdout.indexOf("Ponytail — ensure bundled plugin");
-  expect(uninstall >= 0, result.stdout).toBeTruthy();
-  expect(install > uninstall, "uninstall runs before the fresh install").toBeTruthy();
+  // `tersio update` delegates through --apply-update, which installs quietly
+  // because the parent owns the closing summary, so the install phase leaves no
+  // marker here. The clean step still previews, and still writes nothing.
+  expect(result.stdout, result.stdout).toContain("=== Tersio Uninstall ===");
+  expect(result.stdout, "a dry run writes nothing").toMatch(/\[dry-run\]/);
+  expect(result.stdout, "a dry run writes nothing").not.toMatch(/^\s*\[rm\]/m);
   // The clean step clears the extension directories but keeps the plugin
   // package, which it is about to re-download. The header says so: it names
   // the directories and no Ponytail, rather than promising a removal the run
   // does not perform.
   expect(result.stdout).toMatch(/Oh My Pi — \d+ extension directories$/m);
-  expect(result.stdout, "reinstall must not advertise the Ponytail removal").not.toMatch(/Ponytail$/m);
-  expect(result.stdout).toMatch(/\[dry-run\] would remove .*extensions[\\/]shared(?:\r?\n|$)/);
-  // The closing line is host-agnostic: a run may have installed nothing but
-  // coding agents, so it must not tell the user to restart OMP.
-  expect(result.stdout).toMatch(/Done — restart your agents/);
-  expect(result.stdout).not.toMatch(/Done — restart OMP/);
+  expect(result.stdout, "the clean step must not advertise the Ponytail removal").not.toMatch(/Ponytail$/m);
+  // Which directories it names is covered above; on a machine with no layer
+  // there is nothing to name, and saying so is the point.
+  expect(result.stdout).toMatch(/Oh My Pi — \d+ extension directories$/m);
+  // The install phase still runs after the clean step. It is quiet under
+  // --apply-update — the parent owns the closing summary — so the proof is its
+  // own plan lines rather than a "Done" the old command used to print.
+  expect(result.stdout, "the fresh install still runs after the clean step").toMatch(/\[dry-run\] Pi: would write \d+ file\(s\)/);
 });
 
 test("bare dry-run never prompts for the pending update and exits 0", () => {
@@ -216,22 +220,34 @@ test("bare dry-run never prompts for the pending update and exits 0", () => {
   expect(result.stdout).not.toMatch(/Install it now\?/);
 });
 
-test("uninstall dry-run previews shared bridge removal", () => {
-  const missingHome = path.join(root, "test", "definitely-missing-home");
-  const result = spawnSync(
-    process.execPath,
-    [installer, "uninstall", "--dry-run", "--yes", "--agent", "omp"],
-    {
-      cwd: root,
-      encoding: "utf8",
-      timeout: 10000,
-      env: { ...process.env, HOME: missingHome, USERPROFILE: missingHome },
-    }
-  );
+test("uninstall dry-run previews the layer directories that exist", () => {
+  // The preview used to name the whole layer list whether or not anything was
+  // there, so it promised "8 extension directories" on a machine holding 6 and
+  // named a retired directory that had never been installed. It must name what
+  // is on disk and stay quiet about the rest.
+  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-uninstall-plan-"));
+  try {
+    const extDir = path.join(home, ".omp", "agent", "extensions");
+    for (const dir of ["shared", "combo-toggle"]) mkdirSync(path.join(extDir, dir), { recursive: true });
+    const result = spawnSync(
+      process.execPath,
+      [installer, "uninstall", "--dry-run", "--yes", "--agent", "omp"],
+      {
+        cwd: root,
+        encoding: "utf8",
+        timeout: 10000,
+        env: { ...process.env, HOME: home, USERPROFILE: home },
+      }
+    );
 
-  expect(result.status, result.stderr).toBe(0);
-  expect(result.stdout).toMatch(/\[dry-run\] would remove .*extensions[\\/]shared(?:\r?\n|$)/);
-  expect(result.stdout).toMatch(/\[dry-run\] would remove .*extensions[\\/]aaa-combo-boot(?:\r?\n|$)/);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/\[dry-run\] would remove .*extensions[\\/]shared(?:\r?\n|$)/);
+    expect(result.stdout).toMatch(/\[dry-run\] would remove .*extensions[\\/]combo-toggle(?:\r?\n|$)/);
+    expect(result.stdout, "a retired directory that is not installed is not named").not.toMatch(/aaa-combo-boot/);
+    expect(result.stdout, "an absent directory is not named").not.toMatch(/caveman-session/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
 });
 
 test("uninstall dry-run with --remove-ponytail previews full ponytail removal", () => {
@@ -296,21 +312,26 @@ test("uninstall dry-run includes ponytail by default; --keep-ponytail omits it",
 });
 
 test("uninstall dry-run never prompts for confirmation", () => {
-  const missingHome = path.join(root, "test", "definitely-missing-home");
-  const result = spawnSync(
-    process.execPath,
-    [installer, "uninstall", "--dry-run", "--agent", "omp"],
-    {
-      cwd: root,
-      encoding: "utf8",
-      timeout: 10000,
-      env: { ...process.env, HOME: missingHome, USERPROFILE: missingHome },
-    }
-  );
+  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-uninstall-quiet-"));
+  try {
+    mkdirSync(path.join(home, ".omp", "agent", "extensions", "shared"), { recursive: true });
+    const result = spawnSync(
+      process.execPath,
+      [installer, "uninstall", "--dry-run", "--agent", "omp"],
+      {
+        cwd: root,
+        encoding: "utf8",
+        timeout: 10000,
+        env: { ...process.env, HOME: home, USERPROFILE: home },
+      }
+    );
 
-  expect(result.status, result.stderr).toBe(0);
-  expect(result.stdout).not.toMatch(/Proceed\?/);
-  expect(result.stdout).toMatch(/\[dry-run\] would remove .*extensions[\\/]shared(?:\r?\n|$)/);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).not.toMatch(/Proceed\?/);
+    expect(result.stdout).toMatch(/\[dry-run\] would remove .*extensions[\\/]shared(?:\r?\n|$)/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
 });
 
 test("the OMP layer is removed only when OMP is selected, never by default", () => {

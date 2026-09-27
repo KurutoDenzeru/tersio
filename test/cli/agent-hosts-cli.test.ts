@@ -55,7 +55,7 @@ test("--agent is listed in help with every known host id", () => {
   }
 });
 
-test("doctor always shows the agent-hosts category, even with none configured", () => {
+test("doctor always shows the agent-hosts category, even with none installed", () => {
   const { home, cleanup } = tempHome();
   try {
     const result = run(home, "doctor");
@@ -63,7 +63,7 @@ test("doctor always shows the agent-hosts category, even with none configured", 
     // A category that only appears once you have used it is not a category, so
     // the section is permanent and tells the user how to add one.
     expect(result.stdout).toMatch(/\nAgent hosts\n/);
-    expect(result.stdout).toContain("none configured");
+    expect(result.stdout).toContain("none installed");
     expect(result.stdout).toContain("tersio install --agent <id>");
     // Every known id is listed, so the hint is actionable without --help.
     for (const id of ["claude-code", "codex", "pi"]) {
@@ -228,7 +228,7 @@ test("a selection file full of junk leaves the category empty rather than broken
     const result = run(home, "doctor");
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toMatch(/Summary: \d+ checks/);
-    expect(result.stdout).toContain("none configured");
+    expect(result.stdout).toContain("none installed");
   } finally {
     cleanup();
   }

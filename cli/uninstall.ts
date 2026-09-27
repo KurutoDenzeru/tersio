@@ -1,4 +1,5 @@
 // cli/uninstall.ts — remove managed extensions, plugins, and binaries.
+import { existsSync } from 'node:fs';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -15,6 +16,7 @@ import {
   planRemove, readSelection, removeHosts, resolveAgentSelection, writeSelection,
 } from './agents.ts';
 import { ompExtensionTargets, ompLayer } from './omp-layer.ts';
+import { piExtensionTargets, piLayer } from './pi-layer.ts';
 import { removeOpenCodeRtk } from './opencode-wiring.ts';
 import { removePiTersio } from './pi-wiring.ts';
 import { removePiRtk } from './rtk-wiring.ts';
@@ -154,7 +156,14 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
   const pluginsDir = layer.pluginsDir;
   const ponytailPkgDir = layer.ponytailPackage;
   const rtkBin = layer.rtkBinary;
-  const targets = ompExtensionTargets(layer);
+  const targets = ompExtensionTargets(layer).filter((target) => existsSync(target));
+  // Pi's live behavior is a directory tree the generic emitters never see, and
+  // removePiTersio deletes all of it. The menu counts these dirs, so the plan
+  // has to name them: a count the preview never shows is a promise the run
+  // makes and the user cannot check.
+  const piTargets = extra.includes('pi')
+    ? piExtensionTargets(piLayer(home)).filter((target) => existsSync(target))
+    : [];
 
   // Oh My Pi is one row in the menu above, not a separate question. Asking again
   // meant picking "Pi" and then being asked about a different agent named "Oh
@@ -178,11 +187,23 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
     ].filter(Boolean);
     console.log(`  Oh My Pi — ${targets.length} extension director${targets.length === 1 ? 'y' : 'ies'}${also.length > 0 ? `, ${also.join(', ')}` : ''}`);
     for (const target of targets) console.log(`    ${displayPath(target, home)}`);
-    if (removeOmpLayer && shouldRemovePonytail) console.log(`    ${displayPath(ponytailPkgDir, home)} — ponytail plugin package`);
-    if (removeOmpLayer && shouldRemoveRtk) {
-      console.log(`    ${displayPath(rtkBin, home)} — rtk binary`);
-      console.log(`    ${displayPath(layer.rtkExtension, home)} — rtk OMP wiring`);
+    // Both of these are printed only when they are on disk. An absent package
+    // or binary is not something the run can remove, and naming it made the
+    // section read as a bigger removal than the one that follows.
+    if (removeOmpLayer && shouldRemovePonytail && existsSync(ponytailPkgDir)) {
+      console.log(`    ${displayPath(ponytailPkgDir, home)} — ponytail plugin package`);
     }
+    if (removeOmpLayer && shouldRemoveRtk) {
+      if (existsSync(rtkBin)) console.log(`    ${displayPath(rtkBin, home)} — rtk binary`);
+      if (existsSync(layer.rtkExtension)) console.log(`    ${displayPath(layer.rtkExtension, home)} — rtk OMP wiring`);
+    }
+  }
+
+  if (piTargets.length > 0) {
+    const piRtk = piLayer(home).rtkExtension;
+    console.log(`\n  Pi — ${piTargets.length} extension/module director${piTargets.length === 1 ? 'y' : 'ies'}`);
+    for (const target of piTargets) console.log(`    ${displayPath(target, home)}`);
+    if (existsSync(piRtk)) console.log(`    ${displayPath(piRtk, home)} — rtk Pi wiring`);
   }
 
   // Only what is still ours is named, per host: a stale plan would overstate
@@ -202,7 +223,7 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
   // With nothing selected there is nothing to confirm. Asking "remove the
   // listed files?" over an empty plan invited a reflexive Yes to a run that
   // could only ever do nothing. So: say what happened, then stop.
-  if (!removeOmpExtensions && plan.files === 0) {
+  if (!removeOmpExtensions && plan.files === 0 && piTargets.length === 0) {
     console.log('\n  Nothing selected — no files were removed.');
     if (!confirmed) closeRL();
     return false;

@@ -84,10 +84,15 @@ const ARTIFACT_LABELS: Record<HostArtifact['kind'], string> = {
  * row is already done".
  */
 export interface HostInstallState {
-  count: number;
+  /** Host artifacts on disk that still hold tersio's content. */
+  files: number;
+  /**
+   * Extension directories a live layer owns. Zero for the file-writing hosts;
+   * Pi also has both, and they are counted apart so a row cannot sum them into
+   * one number wearing the wrong unit.
+   */
+  dirs: number;
   installed: boolean;
-  /** True when `count` is extension directories rather than files. */
-  dirs: boolean;
 }
 
 /**
@@ -107,11 +112,14 @@ export function agentChoices(state?: ReadonlyMap<string, HostInstallState>): Age
         hint: wiringHint(host),
       };
     }
-    const unit = info.dirs ? (info.count === 1 ? 'dir' : 'dirs') : (info.count === 1 ? 'file' : 'files');
+    const plural = (n: number, one: string): string => `${n} ${one}${n === 1 ? '' : 's'}`;
+    const size = [info.files ? plural(info.files, 'file') : null, info.dirs ? plural(info.dirs, 'dir') : null]
+      .filter(Boolean)
+      .join(' + ') || 'nothing';
     const mark = info.installed ? 'installed' : 'not installed';
     return {
       value: host.id,
-      label: `${host.label} — ${info.count} ${unit} · ${mark}`,
+      label: `${host.label} — ${size} · ${mark}`,
       hint: wiringHint(host),
     };
   });
@@ -138,17 +146,16 @@ export function installedState(home: string): Map<string, HostInstallState> {
   const counts = new Map(planRemove(HOSTS.map((h) => h.id), home).hosts.map((p) => [p.host.id, p.lines.length]));
   for (const host of HOSTS) {
     if (host.id === 'omp') continue;
-    const count = counts.get(host.id) ?? 0;
-    // Pi also owns an extension tree the generic emitters never see, so its
-    // count is its files plus the directories the layer found.
-    const layerDirs = host.id === 'pi' ? reportPiLayer(home, isDir).extensions.length : 0;
-    const total = count + layerDirs;
-    state.set(host.id, { count: total, installed: total > 0, dirs: layerDirs > 0 });
+    const files = counts.get(host.id) ?? 0;
+    // Pi also owns an extension tree the generic emitters never see, so its row
+    // is files plus layer directories — reported apart, never summed.
+    const dirs = host.id === 'pi' ? reportPiLayer(home, isDir).extensions.length : 0;
+    state.set(host.id, { files, dirs, installed: files + dirs > 0 });
   }
   // Oh My Pi owns no host artifacts: its files are the layer's extension dirs.
   const layer = reportOmpLayer(home, isDir);
-  const count = layer.extensions.length;
-  state.set('omp', { count, installed: layer.installed && count > 0, dirs: true });
+  const dirs = layer.extensions.length;
+  state.set('omp', { files: 0, dirs, installed: layer.installed && dirs > 0 });
   return state;
 }
 

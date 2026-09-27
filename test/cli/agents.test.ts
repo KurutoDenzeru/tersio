@@ -71,11 +71,11 @@ test("the agent menu lists every host and says what wiring it will get", () => {
 
 test("the menu labels every host with what is already installed", () => {
   const state = new Map([
-    ["omp", { count: 7, installed: true, dirs: true }],
-    ["opencode", { count: 1, installed: true, dirs: false }],
-    ["claude-code", { count: 6, installed: true, dirs: false }],
-    ["codex", { count: 6, installed: true, dirs: false }],
-    ["pi", { count: 4, installed: true, dirs: false }],
+    ["omp", { files: 0, dirs: 7, installed: true }],
+    ["opencode", { files: 1, dirs: 0, installed: true }],
+    ["claude-code", { files: 6, dirs: 0, installed: true }],
+    ["codex", { files: 6, dirs: 0, installed: true }],
+    ["pi", { files: 4, dirs: 0, installed: true }],
   ]);
   const labels = new Map(agentChoices(state).map((c) => [c.value, c.label]));
 
@@ -89,14 +89,22 @@ test("the menu labels every host with what is already installed", () => {
   expect(labels.get("omp")).toBe("Oh My Pi (OMP) — 7 dirs · installed");
 });
 
+test("a host with files and layer directories reports both, never one sum", () => {
+  // The real row: Pi has 3 skills and a 7-directory extension tree. Summing
+  // them and printing the unit for whichever was non-zero made the menu promise
+  // "11 dirs" while the plan only ever named files.
+  const state = new Map([["pi", { files: 3, dirs: 7, installed: true }]]);
+  expect(agentChoices(state).find((c) => c.value === "pi")!.label).toBe("Pi — 3 files + 7 dirs · installed");
+});
+
 test("the menu says a host with nothing on disk is not installed", () => {
   const state = new Map([
-    ["omp", { count: 0, installed: false, dirs: true }],
-    ["pi", { count: 0, installed: false, dirs: false }],
+    ["omp", { files: 0, dirs: 0, installed: false }],
+    ["pi", { files: 0, dirs: 0, installed: false }],
   ]);
   const labels = new Map(agentChoices(state).map((c) => [c.value, c.label]));
-  expect(labels.get("omp")).toBe("Oh My Pi (OMP) — 0 dirs · not installed");
-  expect(labels.get("pi")).toBe("Pi — 0 files · not installed");
+  expect(labels.get("omp")).toBe("Oh My Pi (OMP) — nothing · not installed");
+  expect(labels.get("pi")).toBe("Pi — nothing · not installed");
   // A host missing from the map entirely (the dashboard, which has no
   // filesystem to read) keeps the bare name rather than a fake count.
   expect(agentChoices().find((c) => c.value === "pi")!.label).toBe("Pi");
@@ -108,11 +116,11 @@ test("an uninstall menu offers only what is on disk", () => {
   // "Claude Code — 0 files · not installed" line made a one-host menu look
   // like a five-host decision.
   const state = new Map([
-    ["omp", { count: 7, installed: true, dirs: true }],
-    ["opencode", { count: 0, installed: false, dirs: false }],
-    ["claude-code", { count: 0, installed: false, dirs: false }],
-    ["codex", { count: 0, installed: false, dirs: false }],
-    ["pi", { count: 4, installed: true, dirs: false }],
+    ["omp", { files: 0, dirs: 7, installed: true }],
+    ["opencode", { files: 0, dirs: 0, installed: false }],
+    ["claude-code", { files: 0, dirs: 0, installed: false }],
+    ["codex", { files: 0, dirs: 0, installed: false }],
+    ["pi", { files: 4, dirs: 0, installed: true }],
   ]);
   expect(installedRows(state).map((c) => c.value)).toEqual(["omp", "pi"]);
   // Install keeps every row: there the question is "which do you want", so a
@@ -125,7 +133,7 @@ test("an uninstall menu offers only what is on disk", () => {
 test("a host the state map does not mention keeps its row", () => {
   // The dashboard reads no filesystem, so it calls agentChoices with no state
   // at all. Filtering those out would leave the dashboard with nothing.
-  const sparse = new Map([["pi", { count: 4, installed: true, dirs: false }]]);
+  const sparse = new Map([["pi", { files: 4, dirs: 0, installed: true }]]);
   // Only a host the map names as not-installed is dropped; an unmapped host is
   // unknown, not absent, so it keeps its row.
   expect(installedRows(sparse).map((c) => c.value)).toEqual(HOSTS.map((h) => h.id));
@@ -147,13 +155,16 @@ test("installedState reads the disk, not the saved selection", () => {
     writeFileSync(path.join(piSkill, "SKILL.md"), "x", "utf8");
 
     const state = installedState(home);
-    expect(state.get("pi")!.count, "a file on disk is installed regardless of the saved list").toBe(1);
+    expect(state.get("pi")!.files, "a file on disk is installed regardless of the saved list").toBe(1);
     expect(state.get("pi")!.installed).toBe(true);
     for (const ghost of ["opencode", "claude-code", "codex"]) {
-      expect(state.get(ghost)!.count, `${ghost} is named in the saved list but has no files`).toBe(0);
+      expect(state.get(ghost)!.files, `${ghost} is named in the saved list but has no files`).toBe(0);
       expect(state.get(ghost)!.installed).toBe(false);
     }
-    expect(state.get("omp")!.dirs, "OMP's artifacts are extension directories").toBe(true);
+    // OMP owns no host files at all: its row is layer directories, counted
+    // apart from files so the two can never be summed into one unit.
+    expect(state.get("omp")!.files, "OMP has no host files").toBe(0);
+    expect(state.get("omp")!.dirs, "OMP's artifacts are extension directories").toBe(0);
     expect(installedHostIds(state)).toEqual(["pi"]);
   } finally {
     rmSync(home, { recursive: true, force: true });
@@ -726,7 +737,7 @@ test("a host with no tersio content left does not read as installed", async () =
 
     const host = byId("codex")!;
     const state = installedState(home);
-    expect(state.get("codex")).toMatchObject({ count: 0, installed: false });
+    expect(state.get("codex")).toMatchObject({ files: 0, dirs: 0, installed: false });
     expect(planRemove(["codex"], home).hosts).toEqual([]);
     // doctor agrees: the rules block really is missing, so install is the repair.
     expect(reportHost(host, home)).toMatchObject({ status: "warn", repair: "install" });
