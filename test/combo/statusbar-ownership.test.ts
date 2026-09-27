@@ -21,6 +21,7 @@ process.env.USERPROFILE = process.env.HOME;
 
 interface Harness {
   statuses: Map<string, string>;
+  notifications: string[];
   entries: SessionEntry[];
   pi: { combo: ExtensionApi; caveman: ExtensionApi; rtk: ExtensionApi; handlers: Map<string, (event: unknown, ctx: ExtensionCtx) => Promise<unknown>> };
   ctx: ExtensionCtx;
@@ -28,6 +29,7 @@ interface Harness {
 
 function harness(): Harness {
   const statuses = new Map<string, string>();
+  const notifications: string[] = [];
   const entries: SessionEntry[] = [];
   const mk = (): ExtensionApi & { handlers: Map<string, (event: unknown, ctx: ExtensionCtx) => Promise<unknown>>; commands: Map<string, (arg: string, ctx: ExtensionCtx) => Promise<unknown>> } => {
     const handlers = new Map<string, (event: unknown, ctx: ExtensionCtx) => Promise<unknown>>();
@@ -48,32 +50,31 @@ function harness(): Harness {
     hasUI: true,
     ui: {
       setStatus: (key: string, value?: string) => { if (value === undefined) statuses.delete(key); else statuses.set(key, value); },
-      notify: () => { },
+      notify: (message: string) => { notifications.push(message); },
     },
     sessionManager: { getBranch: () => entries },
   } as unknown as ExtensionCtx;
   comboToggleExtension(pi.combo);
   cavemanSessionExtension(pi.caveman);
   rtkSessionExtension(pi.rtk);
-  return { statuses, entries, pi, ctx };
+  return { statuses, notifications, entries, pi, ctx };
 }
 
-test("combo balanced suppresses the individual caveman and rtk bars", async () => {
+test("combo balanced announces one line and paints no status row", async () => {
   resetSharedComboState();
-  const { statuses, pi, ctx } = harness();
+  const { statuses, notifications, pi, ctx } = harness();
   await pi.combo.handlers.get("session_start")!({}, ctx);
   await pi.caveman.handlers.get("session_start")!({}, ctx);
   await pi.rtk.handlers.get("session_start")!({}, ctx);
 
   await pi.combo.commands.get("combo")!("balanced", ctx);
-  expect(statuses.has("combo"), "combo bar present").toBeTruthy();
-  expect(statuses.get("combo") || "").not.toMatch(/caveman: FULL/);
+  expect(notifications.at(-1)).toBe("Combo balanced on: 🧩 combo BALANCED: 🪨caveman=FULL ⚡rtk=ON 🦥ponytail=FULL");
 
-  // The race that surfaced the bug: caveman/rtk reconcile after combo paints.
+  // The race that surfaced the original bug: caveman/rtk reconcile after combo
+  // takes the state. Nothing may reach the footer.
   await pi.caveman.handlers.get("agent_start")!({}, ctx);
   await pi.rtk.handlers.get("agent_start")!({}, ctx);
-  expect([...statuses.keys()], "combo bar is the only status line under balanced").toEqual(["combo"]);
-  expect(statuses.get("combo") || "").toMatch(/BALANCED/);
+  expect([...statuses.keys()], "balanced paints no status row at all").toEqual([]);
   resetSharedComboState();
 });
 
@@ -98,8 +99,7 @@ test("fresh host suppresses individual bars from persisted entries before combo 
   expect(!statuses.has("caveman"), "caveman bar suppressed from persisted combo-level").toBeTruthy();
   expect(!statuses.has("rtk"), "rtk bar suppressed from persisted combo-level").toBeTruthy();
   await pi.combo.handlers.get("session_start")!({}, noUiCtx);
-  expect(statuses.get("combo") || "", "combo bar painted from persisted state").toMatch(/BALANCED/);
-  expect([...statuses.keys()]).toEqual(["combo"]);
+  expect([...statuses.keys()], "persisted preset paints nothing").toEqual([]);
   resetSharedComboState();
 });
 
@@ -113,7 +113,8 @@ test("every preset suppresses individual bars; off and custom behave correctly",
     await h.pi.combo.commands.get("combo")!(preset, h.ctx);
     await h.pi.caveman.handlers.get("agent_start")!({}, h.ctx);
     await h.pi.rtk.handlers.get("agent_start")!({}, h.ctx);
-    expect([...h.statuses.keys()], `${preset} leaves only the combo bar`).toEqual(["combo"]);
+    expect([...h.statuses.keys()], `${preset} leaves the footer clear`).toEqual([]);
+    expect(h.notifications.at(-1)).toMatch(new RegExp(`^Combo ${preset} on: `));
   }
 
   // /combo off persists caveman=off + rtk=off: everything off, no bars.
@@ -122,10 +123,16 @@ test("every preset suppresses individual bars; off and custom behave correctly",
   await off.pi.combo.handlers.get("session_start")!({}, off.ctx);
   await off.pi.caveman.handlers.get("session_start")!({}, off.ctx);
   await off.pi.rtk.handlers.get("session_start")!({}, off.ctx);
+  // On, then off: an already-dark session has nothing to announce, so the
+  // transition is what makes the off line worth a line in the conversation.
+  await off.pi.combo.commands.get("combo")!("balanced", off.ctx);
   await off.pi.combo.commands.get("combo")!("off", off.ctx);
   await off.pi.caveman.handlers.get("agent_start")!({}, off.ctx);
   await off.pi.rtk.handlers.get("agent_start")!({}, off.ctx);
   expect(off.statuses.size, "combo off turns everything off: no bars").toBe(0);
+  const comboLines = off.notifications.filter((n) => n.startsWith("Combo "));
+  expect(comboLines, "both transitions announced once each").toHaveLength(2);
+  expect(comboLines.at(-1)).toMatch(/^Combo off: /);
 
   // Custom mix (individual modes set, combo inactive): individual bars return.
   resetSharedComboState();
@@ -136,8 +143,10 @@ test("every preset suppresses individual bars; off and custom behave correctly",
   await custom.pi.caveman.commands.get("caveman")!("full", custom.ctx);
   await custom.pi.rtk.commands.get("rtk")!("on", custom.ctx);
   await custom.pi.combo.handlers.get("agent_start")!({}, custom.ctx);
-  expect(!custom.statuses.has("combo"), "no combo bar for a custom mix").toBeTruthy();
   expect(custom.statuses.has("caveman") && custom.statuses.has("rtk"), "individual bars restored for a custom mix").toBeTruthy();
+  // Only the sibling commands speak here: an individual mode in a session that
+  // never had a preset is not a combo transition.
+  expect(custom.notifications.filter((n) => n.startsWith("Combo ")), "no combo line for a custom mix").toEqual([]);
   resetSharedComboState();
 });
 test("combo default applies past unrelated session entries", async () => {
@@ -159,7 +168,7 @@ test("combo default applies past unrelated session entries", async () => {
     h.entries.push({ type: "note", customType: "something-else", data: {} } as unknown as SessionEntry);
     await h.pi.combo.handlers.get("session_start")!({}, h.ctx);
     expect(getSharedComboState().level).toBe("balanced");
-    expect(h.statuses.get("combo") || "").toMatch(/BALANCED/);
+    expect(h.notifications.at(-1)).toMatch(/^Combo balanced on: /);
   } finally {
     if (previous === undefined) delete process.env.HOME;
     else process.env.HOME = previous;
@@ -168,7 +177,7 @@ test("combo default applies past unrelated session entries", async () => {
   }
 });
 
-test("combo default persists preset entries so resume keeps the bar", async () => {
+test("combo default persists preset entries so resume keeps the preset", async () => {
   const home = mkdtempSync(path.join(os.tmpdir(), "combo-fallback-"));
   mkdirSync(path.join(home, ".omp", "plugins"), { recursive: true });
   writeFileSync(
@@ -185,8 +194,7 @@ test("combo default persists preset entries so resume keeps the bar", async () =
     expect(h.entries.map((e) => e.customType).sort()).toEqual(["caveman-mode", "combo-level", "ponytail-mode", "rtk-mode"]);
     expect(h.entries.find((e) => e.customType === "combo-level")?.data?.level).toBe("balanced");
     expect(getSharedComboState().level).toBe("balanced");
-    expect(h.statuses.get("combo") || "").toMatch(/BALANCED/);
-    expect(h.statuses.get("combo") || "").toMatch(/ponytail=FULL/);
+    expect(h.notifications.at(-1)).toMatch(/ponytail=FULL/);
   } finally {
     if (previous === undefined) delete process.env.HOME;
     else process.env.HOME = previous;
@@ -195,29 +203,32 @@ test("combo default persists preset entries so resume keeps the bar", async () =
   }
 });
 
-test("a UI-less event must not deafen the bar to later bridge updates", async () => {
-  // Reported symptom: the bar kept showing "combo BALANCED" while the session's
-  // modes had actually gone off. Cause: syncStatus remembered a ctx with no `ui`
-  // (a session_start that fires before the TUI attaches), so the bridge-listener
-  // path — which calls syncStatus() with no ctx and therefore paints through the
-  // remembered one — silently returned early forever, freezing the bar.
+test("a UI-less event must not deafen the line to later bridge updates", async () => {
+  // The bar used to freeze on "combo BALANCED" after a pre-attach session_start
+  // because the remembered ctx had no `ui`. The announcement has the same
+  // dependency, so the same regression is checked here: the line must still
+  // follow the bridge, and must not repeat itself for an unchanged state.
   resetSharedComboState();
-  const { statuses, pi, ctx } = harness();
+  const { notifications, pi, ctx } = harness();
   await pi.combo.handlers.get("session_start")!({}, ctx);
   await pi.caveman.handlers.get("session_start")!({}, ctx);
   await pi.rtk.handlers.get("session_start")!({}, ctx);
   await pi.combo.commands.get("combo")!("balanced", ctx);
-  expect(statuses.get("combo") || "").toMatch(/BALANCED/);
+  expect(notifications.at(-1)).toMatch(/^Combo balanced on: /);
 
   // Pre-attach session_start: hasUI false and no ui object at all.
   const headless = { hasUI: false, sessionManager: ctx.sessionManager } as unknown as ExtensionCtx;
   await pi.combo.handlers.get("session_start")!({}, headless);
+  const afterHeadless = notifications.length;
+  await pi.combo.handlers.get("session_start")!({}, headless);
+  expect(notifications.length, "an unchanged state does not repeat the line").toBe(afterHeadless);
 
   // A sibling mode change publishes through the bridge; combo's listener runs
-  // with no ctx, so it must still paint through the remembered interactive ctx.
+  // with no ctx, so it must still reach the remembered interactive ctx.
   await pi.caveman.commands.get("caveman")!("off", ctx);
 
   expect(getSharedComboState().level, "the mix is no longer a preset").toBe("custom");
-  expect(statuses.get("combo"), "combo bar clears rather than freezing on BALANCED").toBe(undefined);
+  expect(notifications.filter((n) => n.startsWith("Combo ")), "each state announced once").toHaveLength(2);
+  expect(notifications.find((n) => n.startsWith("Combo custom"))).toMatch(/^Combo custom: /);
   resetSharedComboState();
 });

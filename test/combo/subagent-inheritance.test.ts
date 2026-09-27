@@ -212,20 +212,24 @@ test("individual Caveman change immediately makes Combo CUSTOM and children inhe
   const comboCtx = context(entries, true);
   await command(combo, "combo", "max", comboCtx);
   const caveman = instantiate(cavemanSessionExtension, entries);
+  const announced = comboCtx.notifications.length;
 
   await command(caveman, "caveman", "lite", context(entries, true));
 
   expect(getSharedComboState()).toEqual({
     level: "custom", caveman: "lite", rtk: "on", ponytail: "ultra",
   });
-  expect(comboCtx.statuses.get("combo")).toBe(undefined);
+  // The bar used to be the indicator here. Leaving the preset has to say so, or
+  // the "Combo max on" line above reads as the current state.
+  expect(comboCtx.notifications.slice(announced)).toHaveLength(1);
+  expect(comboCtx.notifications.at(-1)).toMatch(/^Combo custom: .*combo CUSTOM: /);
   expect(instruction(await inject(instantiate(cavemanSessionExtension), MARKED_PROMPT))).toMatch(/Caveman lite active/);
   expect(instruction(await inject(instantiate(rtkSessionExtension), MARKED_PROMPT))).toMatch(/RTK guidance active/);
   expect(instruction(await withoutInstalledPonytail(() => inject(instantiate(comboToggleExtension), MARKED_PROMPT)))).toMatch(/level: ultra/);
 
   await command(caveman, "caveman", "ultra", context(entries, true));
   expect(getSharedComboState().level).toBe("max");
-  expect(comboCtx.statuses.get("combo")!).toMatch(/combo MAX: 🪨caveman=ULTRA ⚡rtk=ON 🦥ponytail=ULTRA/);
+  expect(comboCtx.notifications).toContain("Combo max on: 🧩 combo MAX: 🪨caveman=ULTRA ⚡rtk=ON 🦥ponytail=ULTRA");
 });
 
 test("individual RTK change returns Combo to its preset when values realign", async () => {
@@ -235,18 +239,20 @@ test("individual RTK change returns Combo to its preset when values realign", as
   const comboCtx = context(entries, true);
   await command(combo, "combo", "max", comboCtx);
   const rtk = instantiate(rtkSessionExtension, entries);
+  const announced = comboCtx.notifications.length;
 
   await command(rtk, "rtk", "off", context(entries, true));
 
   expect(getSharedComboState()).toEqual({
     level: "custom", caveman: "ultra", rtk: "off", ponytail: "ultra",
   });
-  expect(comboCtx.statuses.get("combo")).toBe(undefined);
+  expect(comboCtx.notifications.slice(announced)).toHaveLength(1);
+  expect(comboCtx.notifications.at(-1)).toMatch(/^Combo custom: .*combo CUSTOM: /);
   expect(await inject(instantiate(rtkSessionExtension), MARKED_PROMPT)).toBe(undefined);
 
   await command(rtk, "rtk", "on", context(entries, true));
   expect(getSharedComboState().level).toBe("max");
-  expect(comboCtx.statuses.get("combo")!).toMatch(/combo MAX: 🪨caveman=ULTRA ⚡rtk=ON 🦥ponytail=ULTRA/);
+  expect(comboCtx.notifications).toContain("Combo max on: 🧩 combo MAX: 🪨caveman=ULTRA ⚡rtk=ON 🦥ponytail=ULTRA");
 });
 
 test("individually matching preset values activates Combo", async () => {
@@ -264,7 +270,7 @@ test("individually matching preset values activates Combo", async () => {
   expect(getSharedComboState()).toEqual({
     level: "max", caveman: "ultra", rtk: "on", ponytail: "ultra",
   });
-  expect(comboCtx.statuses.get("combo")!).toMatch(/combo MAX: 🪨caveman=ULTRA ⚡rtk=ON 🦥ponytail=ULTRA/);
+  expect(comboCtx.notifications).toContain("Combo max on: 🧩 combo MAX: 🪨caveman=ULTRA ⚡rtk=ON 🦥ponytail=ULTRA");
 });
 
 test("Combo status restores the preset indicator when persisted modes realign", async () => {
@@ -288,7 +294,7 @@ test("Combo status restores the preset indicator when persisted modes realign", 
   expect(getSharedComboState()).toEqual({
     level: "max", caveman: "ultra", rtk: "on", ponytail: "ultra",
   });
-  expect(ctx.statuses.get("combo")!).toMatch(/combo MAX: 🪨caveman=ULTRA ⚡rtk=ON 🦥ponytail=ULTRA/);
+  expect(ctx.notifications).toContain("Combo max on: 🧩 combo MAX: 🪨caveman=ULTRA ⚡rtk=ON 🦥ponytail=ULTRA");
 });
 
 test("redundant trailing entries do not drop a matching preset (#21)", async () => {
@@ -306,7 +312,7 @@ test("redundant trailing entries do not drop a matching preset (#21)", async () 
   expect(getSharedComboState()).toEqual({
     level: "max", caveman: "ultra", rtk: "on", ponytail: "ultra",
   });
-  expect(ctx.statuses.get("combo")!).toMatch(/combo MAX: 🪨caveman=ULTRA ⚡rtk=ON 🦥ponytail=ULTRA/);
+  expect(ctx.notifications).toContain("Combo max on: 🧩 combo MAX: 🪨caveman=ULTRA ⚡rtk=ON 🦥ponytail=ULTRA");
   resetSharedComboState();
 });
 
@@ -316,7 +322,7 @@ test("mode commands confirm the session-wide active set", async () => {
   const combo = instantiate(comboToggleExtension, entries);
   const ctx = context(entries, true);
   await command(combo, "combo", "max", ctx);
-  expect(ctx.notifications.at(-1)).toBe("Combo max on — caveman=ULTRA, rtk=ON, ponytail=ULTRA active for this session.");
+  expect(ctx.notifications.at(-1)).toBe("Combo max on: 🧩 combo MAX: 🪨caveman=ULTRA ⚡rtk=ON 🦥ponytail=ULTRA");
   const caveman = instantiate(cavemanSessionExtension, entries);
   const cavemanCtx = context(entries, true);
   await command(caveman, "caveman", "full", cavemanCtx);
@@ -335,11 +341,14 @@ test("Combo indicator appears only after a Combo preset", async () => {
   const ctx = context(entries, true);
 
   await command(combo, "combo", "medium", ctx);
-  expect(ctx.statuses.get("combo")!).toMatch(/combo MEDIUM: 🪨caveman=LITE ⚡rtk=ON 🦥ponytail=LITE/);
+  expect(ctx.notifications.at(-1)).toMatch(/^Combo medium on: .*combo MEDIUM: 🪨caveman=LITE ⚡rtk=ON 🦥ponytail=LITE/);
 
   entries.push({ type: "custom", customType: "ponytail-mode", data: { mode: "ultra" } });
   await command(combo, "combo", "status", ctx);
-  expect(ctx.statuses.get("combo")).toBe(undefined);
+  // Drifting off the preset reports INACTIVE and adds no preset line, and the
+  // footer stays empty: the state is carried by the conversation now.
+  expect(ctx.notifications.at(-1)).toBe("Combo: INACTIVE (caveman=lite rtk=on ponytail=ultra)");
+  expect(ctx.statuses.size).toBe(0);
 });
 
 
