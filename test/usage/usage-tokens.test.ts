@@ -82,6 +82,41 @@ test("adoption reads executed Bash commands, not assistant tool-call intent", ()
     rmSync(dir, { recursive: true, force: true });
   }
 });
+test("a codex transcript is recorded under the model turn_context names", () => {
+  // The provider is not the model: session_meta carries model_provider, which
+  // is whoever served the request ("openai" here, and "9router" behind a
+  // third-party router). turn_context is the only place the model id appears,
+  // and it is a bare id — which is also the key priceFor matches, so the old
+  // `codex/openai` label missed the price table and fell back to the default.
+  const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-codex-model-"));
+  mkdirSync(path.join(dir, "2026"), { recursive: true });
+  writeFileSync(
+    path.join(dir, "2026", "rollout-test.jsonl"),
+    [
+      '{"timestamp":"2026-09-01T10:00:00.000Z","type":"session_meta","payload":{"model_provider":"openai"}}',
+      '{"timestamp":"2026-09-01T10:00:30.000Z","type":"turn_context","payload":{"model":"gpt-6-luna"}}',
+      '{"timestamp":"2026-09-01T10:01:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":500,"output_tokens":50,"cached_input_tokens":100,"cache_write_input_tokens":250,"total_tokens":900}}}}',
+    ].join("\n") + "\n",
+    "utf8",
+  );
+  const prevSessions = process.env.TERSIO_SESSIONS_DIR;
+  const prevCodex = process.env.TERSIO_CODEX_DIR;
+  process.env.TERSIO_SESSIONS_DIR = path.join("test", "definitely-missing-home", "no-sessions");
+  process.env.TERSIO_CODEX_DIR = dir;
+  try {
+    const s = importSessionTokens();
+    expect(s.messages).toBe(1);
+    expect(Object.keys(s.byModel)).toEqual(["gpt-6-luna"]);
+    expect(s.byModel["codex/openai"], "the provider must not be recorded as the model").toBeUndefined();
+  } finally {
+    if (prevSessions === undefined) delete process.env.TERSIO_SESSIONS_DIR;
+    else process.env.TERSIO_SESSIONS_DIR = prevSessions;
+    if (prevCodex === undefined) delete process.env.TERSIO_CODEX_DIR;
+    else process.env.TERSIO_CODEX_DIR = prevCodex;
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("importer captures codex cache-write tokens with provider label", () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-codex-"));
   mkdirSync(path.join(dir, "2026"), { recursive: true });
@@ -172,6 +207,9 @@ test("free suffix and case variants fold into one model row", () => {
   expect(displayModelId("deepseek-v4.1-flash:free")).toBe("Deepseek-V4.1-Flash");
   expect(displayModelId("meta/muse-spark-1.3-contributor")).toBe("meta/Muse-Spark-1.3-Contributor");
   expect(displayModelId("codex/openai")).toBe("codex/OpenAI");
+  // A model id is now what a Codex row records, and "Gpt-6-Luna" is not a name
+  // anyone recognises.
+  expect(displayModelId("gpt-6-luna")).toBe("GPT-6-Luna");
   expect(displayModelId("gemma4:31b")).toBe("Gemma4-31B");
   const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-modelfold-"));
   writeFileSync(

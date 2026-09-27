@@ -281,17 +281,25 @@ export function ingestSessionRow(accum: SessionAccum, model: string, usage: Reco
   for (const name of toolNames ?? []) accum.byTool[name] = (accum.byTool[name] ?? 0) + 1;
   return true;
 }
-export type SessionLineKind = 'codex_provider' | 'token_row' | 'assistant_row' | 'skip';
-export function classifySessionLine(row: { timestamp?: string | number; type?: unknown; message?: { role?: unknown; model?: unknown; usage?: Record<string, unknown>; duration?: unknown; completedAt?: unknown; timestamp?: unknown; stopReason?: unknown; errorStatus?: unknown; errorMessage?: unknown; isError?: unknown; content?: Array<{ type?: unknown; name?: unknown; arguments?: unknown }> }; payload?: { type?: unknown; model_provider?: unknown; info?: { last_token_usage?: Record<string, unknown> } } }): { kind: SessionLineKind; provider?: string; model?: string; usage?: Record<string, unknown>; durMs?: number; run?: { st: RunStatus; code?: number; note?: string }; tools?: string[]; ms?: number } {
+export type SessionLineKind = 'codex_provider' | 'codex_model' | 'token_row' | 'assistant_row' | 'skip';
+export function classifySessionLine(row: { timestamp?: string | number; type?: unknown; message?: { role?: unknown; model?: unknown; usage?: Record<string, unknown>; duration?: unknown; completedAt?: unknown; timestamp?: unknown; stopReason?: unknown; errorStatus?: unknown; errorMessage?: unknown; isError?: unknown; content?: Array<{ type?: unknown; name?: unknown; arguments?: unknown }> }; payload?: { type?: unknown; model?: unknown; model_provider?: unknown; info?: { last_token_usage?: Record<string, unknown> } } }): { kind: SessionLineKind; provider?: string; model?: string; usage?: Record<string, unknown>; durMs?: number; run?: { st: RunStatus; code?: number; note?: string }; tools?: string[]; ms?: number } {
   const payload = row.payload;
   if (payload && typeof payload === 'object') {
     if (row.type === 'session_meta' && typeof payload.model_provider === 'string') return { kind: 'codex_provider', provider: payload.model_provider };
+    // A Codex transcript states the model once per turn, in turn_context. The
+    // token_count rows that follow carry the usage but no model, so this is the
+    // only place the real model name exists — and it is what the ledger must
+    // record: the session_meta provider is the API provider ("openai", and
+    // "9router" on a machine behind a third-party router), not the model.
+    if (row.type === 'turn_context' && typeof payload.model === 'string' && payload.model) {
+      return { kind: 'codex_model', model: payload.model };
+    }
     if (payload.type === 'token_count') {
       const last = payload.info?.last_token_usage;
       if (last) {
         const provider = typeof payload.model_provider === 'string' ? payload.model_provider : undefined;
         const ts = row.timestamp === undefined ? NaN : typeof row.timestamp === 'number' ? row.timestamp : Date.parse(row.timestamp);
-        return { kind: 'token_row', provider, model: 'codex', usage: { input: last['input_tokens'], output: last['output_tokens'], cacheRead: last['cached_input_tokens'], cacheWrite: last['cache_write_input_tokens'] }, ms: Number.isFinite(ts) ? ts : undefined };
+        return { kind: 'token_row', provider, usage: { input: last['input_tokens'], output: last['output_tokens'], cacheRead: last['cached_input_tokens'], cacheWrite: last['cache_write_input_tokens'] }, ms: Number.isFinite(ts) ? ts : undefined };
       }
     }
   }
@@ -390,6 +398,7 @@ export function displayModelId(model: string): string {
   const cap = (s: string): string => {
     const low = s.toLowerCase();
     if (low === 'openai') return 'OpenAI';
+    if (low === 'gpt') return 'GPT';
     if (low === 'ai') return 'AI';
     if (/^\d+[a-z]+$/.test(low)) return low.toUpperCase();
     if (s.length <= 2) return s.toUpperCase();
@@ -417,6 +426,7 @@ export function importSessionTokens(): SessionTokens {
     walkJsonl(piSessionsDir(), files, 5000);
   }
   let codexProvider: string | null = null;
+  let codexModel: string | null = null;
   for (const file of files) {
     let text: string;
     try {
@@ -424,7 +434,12 @@ export function importSessionTokens(): SessionTokens {
     } catch {
       continue;
     }
-    processSessionText(accum, { get codexProvider() { return codexProvider; }, set codexProvider(v: string | null) { codexProvider = v; } }, text);
+    processSessionText(accum, {
+      get codexProvider() { return codexProvider; },
+      set codexProvider(v: string | null) { codexProvider = v; },
+      get codexModel() { return codexModel; },
+      set codexModel(v: string | null) { codexModel = v; },
+    }, text);
   }
   // OpenCode message bodies are single JSON documents, not JSONL.
   const ocFiles: string[] = [];
@@ -567,7 +582,7 @@ export function readRtkAdoption(): RtkAdoption {
   const missedCalls = Math.max(0, eligibleCalls - rtkCalls);
   return { sessions, bashCalls, eligibleCalls, rtkCalls, missedCalls, adoptionPct: eligibleCalls ? (rtkCalls / eligibleCalls) * 100 : 0 };
 }
-export function processSessionText(accum: SessionAccum, state: { codexProvider: string | null }, text: string): void {
+export function processSessionText(accum: SessionAccum, state: { codexProvider: string | null; codexModel: string | null }, text: string): void {
   for (const line of text.split('\n')) {
     if (!line.trim()) continue;
     try {
@@ -577,8 +592,18 @@ export function processSessionText(accum: SessionAccum, state: { codexProvider: 
         if (parsed.provider) state.codexProvider = parsed.provider;
         continue;
       }
+      if (parsed.kind === 'codex_model') {
+        if (parsed.model) state.codexModel = parsed.model;
+        continue;
+      }
       if (parsed.kind === 'token_row') {
-        const model = parsed.provider ? `codex/${parsed.provider}` : (state.codexProvider ? `codex/${state.codexProvider}` : 'codex');
+        // The bare model id, because that is the key prices are stored under:
+        // priceFor matches an exact id or one ending in `/<id>`, so a
+        // `codex/` prefix matched nothing and every Codex row priced at the
+        // default. With no model in the transcript the provider is all there is,
+        // and it stays namespaced so it cannot collide with a real model id.
+        const model = state.codexModel
+          ?? (parsed.provider ? `codex/${parsed.provider}` : (state.codexProvider ? `codex/${state.codexProvider}` : 'codex'));
         ingestSessionRow(accum, model, parsed.usage ?? {}, row.timestamp, undefined, { st: 'completed' as RunStatus });
         continue;
       }

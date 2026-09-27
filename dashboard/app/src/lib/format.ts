@@ -111,6 +111,7 @@ export function displayModel(m: string): string {
   function cap(s: string): string {
     const low = s.toLowerCase();
     if (low === "openai") return "OpenAI";
+    if (low === "gpt") return "GPT";
     if (low === "ai") return "AI";
     if (/^\d+[a-z]+$/.test(low)) return low.toUpperCase();
     if (s.length <= 2) return s.toUpperCase();
