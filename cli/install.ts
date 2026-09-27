@@ -524,7 +524,7 @@ function printOmpPlan(home: string): void {
  * skipped for an explicit `--agent`, and for `--yes`, `--apply-update`, pipes,
  * and CI, which fall back to the saved set unioned with what is detected.
  */
-async function stepAgentHosts(options: InstallOptions, cavemanRule: string | null): Promise<void> {
+async function stepAgentHosts(options: InstallOptions, cavemanRule: string | null): Promise<boolean> {
   const home = os.homedir();
   const stored = readSelection(home).hosts;
   const detected = detectHosts(home);
@@ -565,11 +565,12 @@ async function stepAgentHosts(options: InstallOptions, cavemanRule: string | nul
       }
       : undefined,
   });
-  // Cancel is an abort. Falling through would fall back to the automatic
-  // union, so quitting the menu would install for every detected host.
+  // Cancel is an abort, and the abort has to reach the run: returning here only
+  // skipped the coding agents, and the OMP layer steps below carried on to
+  // completion — so Escape looked like it did nothing while files kept landing.
   if (cancelled) {
     closeRL();
-    return;
+    return false;
   }
 
   if (interactive && selection.addedByDetection.length > 0 && selection.source === 'prompt') {
@@ -583,7 +584,7 @@ async function stepAgentHosts(options: InstallOptions, cavemanRule: string | nul
   if (extra.length === 0) {
     if (interactive && !options.quiet) console.log('  no coding agents selected');
     if (!options.dryRun && selection.ids.length > 0) writeSelection(home, selection.ids);
-    return;
+    return true;
   }
 
   if (!options.quiet) printInstallPlan(await planInstall(extra, home), home);
@@ -643,6 +644,7 @@ async function stepAgentHosts(options: InstallOptions, cavemanRule: string | nul
   }
 
   if (!options.dryRun) writeSelection(home, selection.ids);
+  return true;
 }
 
 async function stepCombo(extDir: string, options: InstallOptions): Promise<void> {
@@ -882,7 +884,17 @@ async function runInstall(overrides: { reinstall?: boolean } = {}): Promise<void
   // Coding agents first, so the multiselect is the first thing a user sees and
   // the output leads with what the product is actually for. The Oh My Pi
   // extension layer follows as its own section rather than framing the run.
-  await capture('agent hosts', () => stepAgentHosts(options, cavemanRule));
+  let cancelled = false;
+  await capture('agent hosts', async () => { cancelled = !(await stepAgentHosts(options, cavemanRule)); });
+  // Escape at the agent picker means stop, not "carry on without the coding
+  // agents": the layer steps below would still write eight sets of files. Only
+  // an explicit cancel aborts — a step that throws is still reported and the
+  // run continues, as it did before.
+  if (cancelled) {
+    console.log('\nNothing was installed.');
+    closeRL();
+    return;
+  }
 
   // The layer's file list, printed before the steps so the run names what it
   // writes rather than only what each step is called.
