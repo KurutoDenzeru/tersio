@@ -156,6 +156,10 @@ const PROVIDERS: Array<[RegExp, string, string, string]> = [
   [/mistral/i, "Mistral", "mistralai", "#ff7000"],
   [/claude|anthropic/i, "Anthropic", "anthropic", "#d97757"],
   [/gemini|google|gemma/i, "Google", "google", "#4285F4"],
+  // Simple Icons slug: the X mark, which is also xAI's. Inline in brand.tsx
+  // rather than loaded from the CDN, because the img is themed (black in
+  // light, white in dark) and would vanish on a tile in one of them.
+  [/grok|xai/i, "xAI", "x", "#fff"],
 ];
 
 export function vendorOf(model: string): Vendor {
