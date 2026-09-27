@@ -242,6 +242,35 @@ test("usdCost flags unpriced models with priced=false", () => {
 test("co2Grams defaults to the gpt-4o served figure", () => {
   expect(co2Grams(5000)).toBe(co2GramsFor("gpt-4o", 5000));
 });
+test("a host-reported SWE id prices as its Cognition model, tier intact", () => {
+  // Hosts report Cognition's SWE models under ids the price table never uses.
+  // Without the alias they took the default — 4x the input rate on the family
+  // that shipped them. The alias only picks what to look up, so a tier keeps its
+  // own row and its own cost.
+  const live = {
+    fetchedAt: 0,
+    exact: {
+      "cognition/swe-1.6": [0.5, 2.5, 0.2, 0.5] as [number, number, number, number],
+      "cognition/swe-1.7": [0.5, 2.5, 0.2, 0.5] as [number, number, number, number],
+      "cognition/swe-1.7-lightning": [2.5, 12.5, 1, 2.5] as [number, number, number, number],
+    },
+  };
+  for (const id of ["swe-1-6", "swe-1.6", "swe-1-6-slow"]) {
+    const p = priceFor(id, live);
+    expect(p.known, `${id} priced`).toBe(true);
+    expect([p.price.input, p.price.output], id).toEqual([0.5, 2.5]);
+  }
+  // The tier is priced as itself: Lightning is 5x the base output rate, and
+  // aliasing it to plain 1.7 would report the cheaper number for the fast one.
+  const lightning = priceFor("swe-1-7-lightning", live);
+  expect(lightning.known).toBe(true);
+  expect([lightning.price.input, lightning.price.output]).toEqual([2.5, 12.5]);
+  // A SWE model the table does not list stays honestly unpriced.
+  expect(priceFor("swe-grep", live).known).toBe(false);
+  // A model that does not match an alias is unaffected.
+  expect(priceFor("gpt-4o", live).known).toBe(false);
+});
+
 test("free suffix and case variants fold into one model row", () => {
   expect(canonicalModelId("DeepSeek-V4.1-Flash")).toBe(canonicalModelId("deepseek-v4.1-flash:free"));
   expect(canonicalModelId("muse-spark-1.3-contributor-free")).toBe("muse-spark-1.3-contributor");

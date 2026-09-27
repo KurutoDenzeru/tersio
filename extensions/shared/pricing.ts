@@ -56,6 +56,8 @@ function asPrice(v: unknown): ModelPrice | null {
   if (v && typeof v === 'object') {
     const o = v as Record<string, unknown>;
     if (['input', 'output', 'cacheRead', 'cacheWrite'].every((k) => typeof o[k] === 'number' && Number.isFinite(o[k]) && (o[k] as number) >= 0)) {
+      // SAFETY: the guard above proves all four ModelPrice keys are present and
+      // are finite non-negative numbers, which is the whole shape of ModelPrice.
       return o as unknown as ModelPrice;
     }
   }
@@ -90,6 +92,26 @@ function num(v: unknown): number | null {
   return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null;
 }
 
+/**
+ * Host-reported model ids that the price table does not use, mapped to the id it
+ * keys them under.
+ *
+ * The alias decides what to look up and nothing else. The recorded model keeps
+ * whatever suffix the host gave it, so a provider-local tier stays its own row
+ * and its own cost instead of collapsing into the base model and reporting the
+ * base model's price as if it were this one's.
+ *
+ * Tier spellings come first, because a Lightning or slow variant is priced as
+ * itself: Cognition lists `cognition/swe-1.7` and `cognition/swe-1.7-lightning`
+ * at very different rates, and a host reporting `swe-1-7-lightning` must not
+ * land on the slower or faster one's number by accident.
+ */
+const MODEL_ALIASES: Array<[RegExp, string]> = [
+  [/^swe-1[.-]?7[-.]?lightning/i, 'cognition/swe-1.7-lightning'],
+  [/^swe-1[.-]?6/i, 'cognition/swe-1.6'],
+  [/^swe-1[.-]?7/i, 'cognition/swe-1.7'],
+];
+
 export function priceFor(model: string, live?: LivePrices | null): { price: ModelPrice; known: boolean; live: boolean } {
   const table = live === undefined ? loadLivePrices() : live;
   if (table) {
@@ -101,6 +123,14 @@ export function priceFor(model: string, live?: LivePrices | null): { price: Mode
     const key = Object.keys(table.exact).find((k) => k.toLowerCase() === name || k.toLowerCase().endsWith(`/${name}`));
     const prefixed = key ? asPrice(table.exact[key]) : null;
     if (prefixed) return { price: prefixed, known: true, live: true };
+    // Cognition's SWE family: hosts report `swe-1-6-slow` and the table keys
+    // it `cognition/swe-1.6`, so without this every SWE row priced at the
+    // default — 4x the input rate on the family that shipped it.
+    const alias = MODEL_ALIASES.find(([re]) => re.test(name))?.[1];
+    if (alias) {
+      const aliased = asPrice(table.exact[alias]);
+      if (aliased) return { price: aliased, known: true, live: true };
+    }
   }
   return { price: DEFAULT_PRICE, known: false, live: false };
 }
