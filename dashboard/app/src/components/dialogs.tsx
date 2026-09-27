@@ -168,10 +168,15 @@ function AgentListRow({
   const state = agent.configured ? "configured" : agent.selected ? "selected" : "off";
   const status = AGENT_STATUS[state];
   // The binary path is the most useful second line when we have it, since it
-  // is what makes an installed host verifiable at a glance.
+  // is what makes an installed host verifiable at a glance. A selected host
+  // without a CLI on PATH — Codex on a machine that only has the desktop app —
+  // falls back to its config dir, which is still a real path to check. An
+  // unselected one keeps its wiring class instead: that is the only thing the
+  // row can usefully say about a host that is not set up.
   const binPath = agent.binPath ?? null;
+  const shownPath = binPath ?? (agent.selected ? (agent.configDir ?? null) : null);
   const version = agent.version ?? null;
-  const detail = binPath || agent.wiring;
+  const detail = shownPath || agent.wiring;
   const Wrapper = href ? "a" : "div";
   return (
     <Wrapper
@@ -198,9 +203,9 @@ function AgentListRow({
         <div className="mt-1 min-w-0 text-xs text-dim">
           {unavailable ? (
             <span>Health information is unavailable.</span>
-          ) : binPath ? (
-            <HoverTip content={binPath}>
-              <span className="mono block truncate">{binPath}</span>
+          ) : shownPath ? (
+            <HoverTip content={shownPath}>
+              <span className="mono block truncate">{shownPath}</span>
             </HoverTip>
           ) : (
             <span className="block truncate">
@@ -284,7 +289,7 @@ function HealthPane() {
             <AgentListRow
               key={agent.id}
               agent={agent}
-              href={agent.id === "omp" ? "https://omp.sh" : undefined}
+              href={agent.source ?? undefined}
               unavailable={unavailable}
             />
           ))}
@@ -780,14 +785,16 @@ const SHARE_HOSTS = new Set(["x.com", "www.reddit.com", "www.linkedin.com"]);
  * and `noopener` is applied here so no share target gets a handle on this page.
  */
 function openShare(url: string, features = "noopener,noreferrer"): Window | null {
-  let parsed: URL;
+  let target: URL;
   try {
-    parsed = new URL(url);
+    target = new URL(url);
   } catch {
     return null;
   }
-  if (parsed.protocol !== "https:" || !SHARE_HOSTS.has(parsed.hostname)) return null;
-  return window.open(url, "_blank", features);
+  if (target.protocol !== "https:" || !SHARE_HOSTS.has(target.hostname)) return null;
+  // The value opened is the parsed URL, not the caller's string, so the
+  // allowlist above is what reached the call rather than a promise beside it.
+  return window.open(target.toString(), "_blank", features);
 }
 
 /**

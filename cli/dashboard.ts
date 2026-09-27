@@ -18,8 +18,8 @@ import {
   OMP_AGENT_DIR, OMP_PLUGINS_DIR, PACKAGE_VERSION,
 } from './common.ts';
 import { storedProfile, writePluginSettings } from './profile.ts';
-import { agentChoices, findHostBinary, readSelection, reportHosts } from './agents.ts';
-import { HOSTS } from './agent-hosts.ts';
+import { agentChoices, displayPath, findHostBinary, readSelection, reportHosts } from './agents.ts';
+import { HOSTS, byId } from './agent-hosts.ts';
 import { PACKAGE_NAME } from './common.ts';
 import { resolveRtkBinary } from '../extensions/lib/utils.ts';
 
@@ -164,6 +164,7 @@ async function agentsJsonAsync(
     if (choice.value === 'omp') return ompRow(home, binPath, versions.get('omp') ?? null);
     const row = rows.get(choice.value);
     const isSelected = selected.includes(choice.value);
+    const host = byId(choice.value);
     return {
       id: choice.value,
       label: choice.label,
@@ -175,6 +176,13 @@ async function agentsJsonAsync(
       wiring: choice.hint,
       binPath,
       version: versions.get(choice.value) ?? null,
+      // The registry's docs URL, so every row can link to the page its
+      // integration is documented on instead of one hardcoded host.
+      source: host?.source ?? null,
+      // A host can be fully configured with no CLI on PATH — Codex on a machine
+      // that only has the desktop app — and then the row had no path to verify
+      // it with. The config dir is real and is where this host's files live.
+      configDir: host ? displayPath(path.join(home, host.configDir), home) : null,
     };
   });
 }
@@ -208,6 +216,8 @@ function ompRow(home: string, binPath: string | null, version: string | null): R
     wiring: 'plugin · live commands',
     binPath,
     version,
+    source: byId('omp')?.source ?? null,
+    configDir: displayPath(path.join(home, '.omp'), home),
   };
 }
 
@@ -316,7 +326,6 @@ function computeDoctorRows(): DoctorRow[] {
       group: 'Agent hosts',
     });
   }
-  const extDir = path.join(OMP_AGENT_DIR, 'extensions');
   const rtkBin = resolveRtkBinary();
   const ponytailPkg = path.join(OMP_PLUGINS_DIR, 'node_modules', '@dietrichgebert', 'ponytail', 'package.json');
   const tersioPluginDir = path.join(OMP_PLUGINS_DIR, 'node_modules', ...PACKAGE_NAME.split('/'));
@@ -349,8 +358,6 @@ function computeDoctorRows(): DoctorRow[] {
   const rtkAge = rtkBin ? ageStr(rtkBin) : null;
   const rtkAt = rtkBin ? absTime(rtkBin) : null;
   addon('RTK binary', rtkVer !== null, rtkVer && rtkAge && rtkAt ? `${rtkVer} (updated ${rtkAge} · ${rtkAt})` : rtkBin || 'not found in PATH');
-  const wiring = path.join(extDir, 'rtk.ts');
-  addon('RTK OMP wiring (rtk.ts)', ok(wiring), ok(wiring) ? 'loaded' : wiring);
   let ponytailVer: string | null = null;
   try {
     ponytailVer = (JSON.parse(readFileSync(ponytailPkg, 'utf8')) as { version?: string }).version ?? null;

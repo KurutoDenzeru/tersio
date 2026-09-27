@@ -96,6 +96,10 @@ export interface AgentHealth {
   binPath?: string | null;
   /** `agent --version` output, or null when not installed or it failed. */
   version?: string | null;
+  /** The registry's docs URL for this host, or null when it has none. */
+  source?: string | null;
+  /** `$HOME`-relative config dir, the path to show when there is no binary. */
+  configDir?: string | null;
 }
 
 export interface HealthReport {
