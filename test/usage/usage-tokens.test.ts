@@ -13,6 +13,7 @@ import {
   readRtkAdoption,
   usdCost,
 } from "../../extensions/shared/usage-ledger.ts";
+import { readUsageDb, syncUsageDb } from "../../extensions/shared/usage-store.ts";
 
 // Fixture rows use 2026-09-01 timestamps — keep any host reset watermark
 // (which would filter them out of the derived view) out of these tests.
@@ -114,6 +115,47 @@ test("a codex transcript is recorded under the model turn_context names", () => 
     if (prevCodex === undefined) delete process.env.TERSIO_CODEX_DIR;
     else process.env.TERSIO_CODEX_DIR = prevCodex;
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("the usage.db sync records the codex model too, not just the live import", () => {
+  // Two readers exist: importSessionTokens for the CLI report, and the sync that
+  // fills usage.db for the dashboard. They each decided the codex label for
+  // themselves, so the sync kept writing codex/<provider> after the import had
+  // been fixed — the fix was in the code and not on the screen.
+  const codex = mkdtempSync(path.join(os.tmpdir(), "tersio-sync-codex-"));
+  const db = path.join(codex, "usage.db");
+  mkdirSync(path.join(codex, "sessions"), { recursive: true });
+  writeFileSync(
+    path.join(codex, "sessions", "rollout-test.jsonl"),
+    [
+      '{"timestamp":"2026-09-01T10:00:00.000Z","type":"session_meta","payload":{"model_provider":"openai"}}',
+      '{"timestamp":"2026-09-01T10:00:30.000Z","type":"turn_context","payload":{"model":"gpt-6-luna"}}',
+      '{"timestamp":"2026-09-01T10:01:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":500,"output_tokens":50,"cached_input_tokens":100,"cache_write_input_tokens":250,"total_tokens":900}}}}',
+    ].join("\n") + "\n",
+    "utf8",
+  );
+  const prev = {
+    sessions: process.env.TERSIO_SESSIONS_DIR,
+    codex: process.env.TERSIO_CODEX_DIR,
+    db: process.env.TERSIO_USAGE_DB,
+  };
+  process.env.TERSIO_SESSIONS_DIR = path.join("test", "definitely-missing-home", "no-sessions");
+  process.env.TERSIO_CODEX_DIR = path.join(codex, "sessions");
+  process.env.TERSIO_USAGE_DB = db;
+  try {
+    expect(syncUsageDb()).toBe(true);
+    const stored = readUsageDb();
+    expect(stored).not.toBeNull();
+    expect(Object.keys(stored!.tokens.byModel), "the dashboard reads this, not the live import").toEqual(["gpt-6-luna"]);
+  } finally {
+    if (prev.sessions === undefined) delete process.env.TERSIO_SESSIONS_DIR;
+    else process.env.TERSIO_SESSIONS_DIR = prev.sessions;
+    if (prev.codex === undefined) delete process.env.TERSIO_CODEX_DIR;
+    else process.env.TERSIO_CODEX_DIR = prev.codex;
+    if (prev.db === undefined) delete process.env.TERSIO_USAGE_DB;
+    else process.env.TERSIO_USAGE_DB = prev.db;
+    rmSync(codex, { recursive: true, force: true });
   }
 });
 

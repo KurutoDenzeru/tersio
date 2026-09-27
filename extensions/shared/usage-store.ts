@@ -15,6 +15,7 @@ import {
   canonicalModelId,
   classifyOpencodeMessage,
   classifySessionLine,
+  codexModelLabel,
   codexSessionsDir,
   costOf,
   durOf,
@@ -119,6 +120,13 @@ interface StoredRow {
 function parseFile(text: string): StoredRow[] {
   const rows: StoredRow[] = [];
   let codexProvider: string | null = null;
+  let codexModel: string | null = null;
+  const codexState = {
+    get codexProvider() { return codexProvider; },
+    set codexProvider(v: string | null) { codexProvider = v; },
+    get codexModel() { return codexModel; },
+    set codexModel(v: string | null) { codexModel = v; },
+  };
   for (const line of text.split('\n')) {
     if (!line.trim()) continue;
     try {
@@ -128,15 +136,21 @@ function parseFile(text: string): StoredRow[] {
         if (parsed.provider) codexProvider = parsed.provider;
         continue;
       }
+      // The sync the dashboard reads had no notion of turn_context, so it kept
+      // labelling every Codex row codex/<provider> after the live import had
+      // been fixed. Both readers now take the label from one helper.
+      if (parsed.kind === 'codex_model') {
+        if (parsed.model) codexModel = parsed.model;
+        continue;
+      }
       const ts = row.timestamp;
       const ms = ts === undefined ? NaN : typeof ts === 'number' ? ts : Date.parse(ts);
       const t = Number.isFinite(ms) ? ms : null;
       if (parsed.kind === 'token_row') {
-        const provider = parsed.provider ?? codexProvider;
         const usage = parsed.usage ?? {};
         rows.push({
           t,
-          model: canonicalModelId(provider ? `codex/${provider}` : 'codex'),
+          model: canonicalModelId(codexModelLabel(codexState, parsed.provider)),
           i: intOf(usage.input),
           o: intOf(usage.output),
           d: undefined,
@@ -215,6 +229,25 @@ function insertSql(file: string, r: StoredRow): string {
 // changed ones are deleted and re-inserted. Rows for deleted transcripts
 // are kept, so OMP session rotation never erases history. True on success
 // (including nothing-to-do), false when sqlite3 or disk is unavailable.
+/**
+ * Bump when a parser change would produce different rows for a file that has
+ * not changed on disk.
+ *
+ * The sync skips a file whose mtime and size match what it recorded, and those
+ * say nothing about which code read it. So a parser fix reached new transcripts
+ * only: every session already ingested kept the old label forever, which is how
+ * a corrected Codex model name could sit in the code while the dashboard went
+ * on reporting the provider. This makes that a one-time re-read.
+ */
+const PARSER_VERSION = '2';
+
+function readParserVersion(db: string): string | null {
+  try {
+    for (const [v] of query(db, `SELECT v FROM meta WHERE k='parser_version';`)) return String(v);
+  } catch { /* fresh db */ }
+  return null;
+}
+
 export function syncUsageDb(): boolean {
   let db: string;
   try {
@@ -239,6 +272,7 @@ export function syncUsageDb(): boolean {
     return false;
   }
   const known = readFiles(db);
+  const restale = readParserVersion(db) !== PARSER_VERSION;
   const current: Record<string, { mtime: number; size: number }> = {};
   const changed: string[] = [];
   for (const file of files) {
@@ -251,9 +285,12 @@ export function syncUsageDb(): boolean {
     const entry = { mtime: st.mtimeMs, size: st.size };
     current[file] = entry;
     const prev = known[file];
-    if (!prev || prev.mtime !== entry.mtime || prev.size !== entry.size) changed.push(file);
+    if (restale || !prev || prev.mtime !== entry.mtime || prev.size !== entry.size) changed.push(file);
   }
-  if (!changed.length) return true;
+  if (!changed.length) {
+    if (restale) run(db, `INSERT OR REPLACE INTO meta (k, v) VALUES ('parser_version',${esc(PARSER_VERSION)});`);
+    return true;
+  }
   const chunks: string[] = [];
   let chunkBytes = 0;
   const flush = (): boolean => {
@@ -292,6 +329,7 @@ export function syncUsageDb(): boolean {
     return false;
   }
   if (!push(`INSERT OR REPLACE INTO meta (k, v) VALUES ('last_sync',${esc(String(Date.now()))});`)) return false;
+  if (!push(`INSERT OR REPLACE INTO meta (k, v) VALUES ('parser_version',${esc(PARSER_VERSION)});`)) return false;
   return flush();
 }
 

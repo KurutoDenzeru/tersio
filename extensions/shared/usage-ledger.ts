@@ -582,6 +582,26 @@ export function readRtkAdoption(): RtkAdoption {
   const missedCalls = Math.max(0, eligibleCalls - rtkCalls);
   return { sessions, bashCalls, eligibleCalls, rtkCalls, missedCalls, adoptionPct: eligibleCalls ? (rtkCalls / eligibleCalls) * 100 : 0 };
 }
+/**
+ * The label a Codex token row is recorded under.
+ *
+ * A transcript states its model once per turn in turn_context; the token rows
+ * carry usage only. The provider is the fallback for a transcript that names no
+ * model, and it stays namespaced so it cannot collide with a real model id.
+ *
+ * Shared by both readers — the live import and the usage.db sync the dashboard
+ * reads. Two copies of this decision is exactly how the sync kept writing
+ * `codex/openai` after the import had been fixed.
+ */
+export function codexModelLabel(
+  state: { codexProvider: string | null; codexModel: string | null },
+  provider?: string,
+): string {
+  if (state.codexModel) return state.codexModel;
+  const named = provider ?? state.codexProvider;
+  return named ? `codex/${named}` : 'codex';
+}
+
 export function processSessionText(accum: SessionAccum, state: { codexProvider: string | null; codexModel: string | null }, text: string): void {
   for (const line of text.split('\n')) {
     if (!line.trim()) continue;
@@ -600,11 +620,8 @@ export function processSessionText(accum: SessionAccum, state: { codexProvider: 
         // The bare model id, because that is the key prices are stored under:
         // priceFor matches an exact id or one ending in `/<id>`, so a
         // `codex/` prefix matched nothing and every Codex row priced at the
-        // default. With no model in the transcript the provider is all there is,
-        // and it stays namespaced so it cannot collide with a real model id.
-        const model = state.codexModel
-          ?? (parsed.provider ? `codex/${parsed.provider}` : (state.codexProvider ? `codex/${state.codexProvider}` : 'codex'));
-        ingestSessionRow(accum, model, parsed.usage ?? {}, row.timestamp, undefined, { st: 'completed' as RunStatus });
+        // default.
+        ingestSessionRow(accum, codexModelLabel(state, parsed.provider), parsed.usage ?? {}, row.timestamp, undefined, { st: 'completed' as RunStatus });
         continue;
       }
       if (parsed.kind !== 'assistant_row' || !parsed.model || !parsed.usage) continue;
