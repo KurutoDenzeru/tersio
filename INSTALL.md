@@ -19,7 +19,7 @@ tersio doctor
 
 `--agent` is repeatable and comma-separated. Omit it to auto-detect the agents
 already on your machine. The selection is saved to `~/.tersio/agents.json` and
-reused by every later `install`, `reinstall`, and `update`.
+reused by every later `install` and `update`.
 
 ## Two classes of host
 

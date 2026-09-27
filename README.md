@@ -32,7 +32,7 @@ Then tell it which agents to set up:
 tersio install --agent claude-code,codex
 ```
 
-The selection is saved to `~/.tersio/agents.json` and reused by every later install, reinstall, and update. Run `tersio install` with no `--agent` to auto-detect the agents you already have, and `tersio doctor` to see what landed. Every file written, per host, is in **[INSTALL.md](./INSTALL.md)**.
+The selection is saved to `~/.tersio/agents.json` and reused by every later install and update. Run `tersio install` with no `--agent` to auto-detect the agents you already have, and `tersio doctor` to see what landed. Every file written, per host, is in **[INSTALL.md](./INSTALL.md)**.
 
 ### Supported agents
 
