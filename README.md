@@ -126,8 +126,7 @@ Upstream Ponytail's fair agentic benchmark reports 54% less code, 22% fewer toke
 | Command | Purpose |
 |---|---|
 | `tersio install` | Install the CLI, RTK, and the selected agents (`--agent <ids>` picks them; omit to auto-detect) |
-| `tersio update` | Refresh the CLI, extensions, and add-ons (RTK binary, Caveman rule, Ponytail) |
-| `tersio reinstall` | Fresh install, preserving the Ponytail package |
+| `tersio update` | Refresh the CLI, extensions, and add-ons (RTK binary, Caveman rule, Ponytail). The clean-then-install path runs under `--apply-update`. |
 | `tersio doctor` | Check OMP, extensions, add-ons, and every selected agent (`--fix` repairs, `--fix=<scope>` one scope, `--dry-run` previews) |
 | `tersio usage` | Ledger-backed usage + savings report |
 | `tersio dashboard` | Open the Dashboard (`--open`, `--export <file>`, `--port <n>`, `--currency <code>`; serves localhost only) |
@@ -157,32 +156,11 @@ Mode switches live on their own commands; bare `/tersio` prints status.
 | `/tersio help` | This table |
 | `/ai-addons` | Add-on updater alias, still works. |
 
-## 🗂️ Files and backups
-
-Tersio writes to each agent's own configuration, never a shared one. Per-agent paths and the exact file list are in [INSTALL.md](./INSTALL.md); the OMP paths are below.
-
-| What | Path |
-|---|---|
-| Caveman / RTK / Combo / Tersio commands | `~/.omp/plugins/node_modules/@krtclcdy/tersio/extensions/{caveman-session,rtk-session,combo-toggle,tersio-commands}/` — loaded from Tersio's OMP plugin manifest |
-| RTK OMP wiring (rtk-owned) | `~/.omp/agent/extensions/rtk.ts` — written by the installer via `rtk init -g --agent omp`; auto-loads, no config entry |
-| Pi extension layer | `~/.pi/agent/extensions/{caveman-session,rtk-session,combo-toggle,tersio-commands,ai-addons-updater}/` plus `shared/` and `lib/` — one directory per extension with an `index.ts` Pi loads through jiti, the same layout the OMP layer has |
-| RTK Pi wiring (rtk-owned) | `~/.pi/agent/extensions/rtk.ts` — written via `rtk init -g --agent pi`; rtk owns the format, and uninstall leaves it alone |
-| Session-start defaults | `~/.tersio/settings.json` — one tersio-owned file that OMP and Pi both read, so a choice made in either host starts the same way in the other |
-| Other agents' rules, skills, and hooks | See [INSTALL.md](./INSTALL.md) — every artifact is inside that agent's own config dir, between `<!-- tersio:start -->` and `<!-- tersio:end -->` where the file is shared |
-| Selected agents | `~/.tersio/agents.json` — the `--agent` list, reused by later runs. Uninstall only offers hosts that have something on disk, and takes one at a time |
-| Ponytail package (bundled Tersio dependency — one Plugins row, updates with `tersio update`) | `~/.omp/plugins/node_modules/@dietrichgebert/ponytail/` — loaded as a nested plugin dependency |
-| RTK binary | Installer writes `~/.bun/bin/rtk` (`rtk.exe` on Windows). Runtime resolves `PATH` first, then this managed path. |
-| Legacy config cleanup | `~/.omp/agent/config.yml` — doctor removes retired or duplicate extension entries |
-
-The installer writes `<file>.bak` before replacing an extension source; the updater keeps `rtk.bak` / `rule.md.bak` and restores them if the replacement fails validation.
-
-User-level installs also register the package in `~/.omp/plugins` (visible in OMP **Settings → Plugins**), directly through the plugin manifest. Active modes reassert after Ponytail's prompt block on every top-level turn, including after history compaction.
-
 ## 🛠️ Troubleshooting
 
-**Ponytail or Combo command missing:** confirm `~/.omp/plugins/package.json` lists `@krtclcdy/tersio`, then run `tersio reinstall`, restart OMP, and check `tersio doctor`.
+**Ponytail or Combo command missing:** confirm `~/.omp/plugins/package.json` lists `@krtclcdy/tersio`, then run `tersio install --agent omp`, restart OMP, and check `tersio doctor`.
 
-**RTK missing or not executable:** run `tersio reinstall`, then `tersio doctor`. On Linux/macOS: `chmod +x ~/.bun/bin/rtk`.
+**RTK missing or not executable:** run `tersio update`, then `tersio doctor`. On Linux/macOS: `chmod +x ~/.bun/bin/rtk`.
 
 **RTK commands not metered in the Dashboard:** check `tersio doctor` — the `RTK OMP wiring (rtk.ts)` row must be ok. Missing: run `rtk init -g --agent omp` (needs rtk ≥ 0.49) and restart OMP. Native tool calls (`read`/`edit`/`eval`) stay unmetered — only bash tool calls pass through rtk.
 
