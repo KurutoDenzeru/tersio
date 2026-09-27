@@ -21,7 +21,7 @@ tersio doctor
 already on your machine. The selection is saved to `~/.tersio/agents.json` and
 reused by every later `install`, `reinstall`, and `update`.
 
-## The three classes of host
+## Two classes of host
 
 Not every agent can be wired the same way, and the difference is worth knowing
 before you pick one.
@@ -30,6 +30,10 @@ before you pick one.
 |---|---|---|
 | **Hook** | Rules, skills, and a real auto-rewrite. Tersio generates a small rewriter script plus a hook entry in the agent's own config | Claude Code, Codex |
 | **Extension** | Rules and skills, with the rewrite owned by the agent or by rtk as a real extension file | Oh My Pi, Pi, OpenCode |
+
+Claude Code and Codex both have plugin systems that could carry the hook and
+skills as one installable unit. Tersio does not use them yet, and the reasons
+differ per host — see [Plugin ports](#plugin-ports).
 
 Not supported: Gemini CLI, Antigravity CLI, OpenClaw, Hermes, Grok Build, GitHub Copilot CLI, Command Code, and Cursor. `tersio install` never writes to them, and `tersio uninstall` never removes anything it did not write.
 
@@ -50,6 +54,10 @@ to take this table on faith.
 `CLAUDE.md` and `settings.json` are yours; Tersio edits only its own block and
 its own hook entry, and uninstall removes exactly those.
 
+A plugin under `~/.claude/skills/` would carry the skills and the hook as one
+directory, auto-loading with no install step. Not used yet — see
+[Plugin ports](#plugin-ports).
+
 ### OpenAI Codex — `codex`
 
 ```text
@@ -62,6 +70,11 @@ its own hook entry, and uninstall removes exactly those.
 `~/.agents/skills/` is the shared Agent Skills directory, so these also load in any
 other agent that reads it. `CODEX_HOME` relocates `~/.codex/`; the shared skills
 directory is deliberately *not* moved with it.
+
+Codex has a plugin system that would carry the skills and the hook as one
+unit, and it would let the rewriter resolve through `PLUGIN_ROOT` instead of a
+path baked into `hooks.json`. Not used yet — see
+[Plugin ports](#plugin-ports).
 
 ### Oh My Pi — `omp`
 
@@ -111,9 +124,41 @@ only removed with `--remove-rtk`.
 
 ### OpenCode — `opencode`
 
-Nothing is written yet. `rtk init` still emits a pre-v2 plugin that current
-OpenCode refuses to load ([rtk-ai/rtk#3463](https://github.com/rtk-ai/rtk/issues/3463)),
-so Tersio has to ship its own plugin. That module is not in this release.
+```text
+~/.config/opencode/plugins/tersio-rtk.ts
+~/.config/opencode/AGENTS.md
+```
+
+The rewrite is a real OpenCode plugin, written by Tersio. OpenCode auto-discovers
+`.ts` and `.js` files from that directory, so it loads by being placed there —
+no config entry and no marketplace. It uses the v2 shape (`Plugin.define` with
+`id` and `setup(ctx)`, hooks registered through `ctx.tool.hook('execute.before')`)
+because `rtk init --opencode` still emits a pre-v2 plugin that current OpenCode
+refuses to load ([rtk-ai/rtk#3463](https://github.com/rtk-ai/rtk/issues/3463)).
+
+No skills are written. OpenCode documents no *global* skills directory — skills
+are project-scoped at `.opencode/skills/` — so that capability is left unclaimed
+rather than pointed at an invented path.
+
+## Plugin ports
+
+Each host gets its plugin system or its extension API. Where that stands, and
+what a plugin port would change, is one document per host under
+[`plugins/`](./plugins):
+
+| Host | Port | Notes |
+|---|---|---|
+| [Oh My Pi](./plugins/omp/PORT.md) | complete | five extensions plus `shared/` and `lib/`; live mode switching |
+| [Pi](./plugins/pi/PORT.md) | complete | the same tree written against Pi's own ExtensionAPI |
+| [OpenCode](./plugins/opencode/PORT.md) | complete | a real plugin module, auto-discovered |
+| [Claude Code](./plugins/claude-code/PORT.md) | **portable now** | a plugin directory auto-loads with no install step; the blocker is the double-fire risk with an existing `settings.json` hook |
+| [Codex](./plugins/codex/PORT.md) | plugin available, **not the default** | installing one needs a marketplace plus a hook trust step, where the static hook is a silent file write |
+
+The two hook hosts are deliberately not ported yet. Claude Code's port is a
+directory copy and is worth doing; Codex's would make the install a user action
+that a CLI cannot complete silently. Neither changes what a host gets today —
+rules, skills and a working rewrite — so porting is an install-shape
+improvement, not a capability one.
 
 ## Merge and removal rules
 
