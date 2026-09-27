@@ -4,6 +4,7 @@
 // Shadcn Dialog + Select carry the structure; the row language, danger
 // zone, and share actions stay identical to the original.
 import { useCallback, useEffect, useRef, useState } from "react";
+import { cn } from "cn";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -167,6 +168,12 @@ function AgentListRow({
 }) {
   const state = agent.configured ? "configured" : agent.selected ? "selected" : "off";
   const status = AGENT_STATUS[state];
+  // Greyed when the host is not on the machine: no binary on PATH and none of
+  // tersio's files installed for it either. Both signals are needed — Codex has
+  // no CLI at all on a machine that only has the desktop app, and greying that
+  // row would grey out a host in daily use. Only the absence of both means the
+  // agent is simply not here.
+  const installed = agent.binPath != null || agent.configured;
   // The binary path is the most useful second line when we have it, since it
   // is what makes an installed host verifiable at a glance. A selected host
   // without a CLI on PATH — Codex on a machine that only has the desktop app —
@@ -181,7 +188,10 @@ function AgentListRow({
   return (
     <Wrapper
       {...(href ? { href, target: "_blank", rel: "noreferrer" } : {})}
-      className="flex min-w-0 items-center gap-3 border-b border-line py-4 transition-colors hover:bg-track/40 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent"
+      className={cn(
+        "flex min-w-0 items-center gap-3 border-b border-line py-4 transition-colors focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent",
+        installed ? "hover:bg-track/40" : "opacity-60",
+      )}
       aria-label={`${agent.label} — ${status.label}`}
     >
       <span className="grid size-10 shrink-0 place-items-center overflow-hidden rounded-lg bg-track p-1.5 text-ink">
@@ -792,9 +802,13 @@ function openShare(url: string, features = "noopener,noreferrer"): Window | null
     return null;
   }
   if (target.protocol !== "https:" || !SHARE_HOSTS.has(target.hostname)) return null;
-  // The value opened is the parsed URL, not the caller's string, so the
-  // allowlist above is what reached the call rather than a promise beside it.
-  return window.open(target.toString(), "_blank", features);
+  // Rebuilt from the parsed parts rather than reusing the caller's string, so
+  // the opened value cannot be anything the allowlist did not clear.
+  // SAFETY: `target` reached this line only by parsing as https with a
+  // hostname in SHARE_HOSTS, so origin + path + query is a first-party share
+  // target by construction, not by the caller's promise.
+  const safe = `${target.origin}${target.pathname}${target.search}`;
+  return window.open(safe, "_blank", features);
 }
 
 /**
