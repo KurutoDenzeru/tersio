@@ -12,7 +12,7 @@ import {
 import { ask, askInteractiveChoice, askInteractiveConfirm, closeRL, tty } from './interactive.ts';
 import { readTextIfExists } from '../extensions/lib/utils.ts';
 import {
-  displayPath, installedHostIds, installedRows, installedState,
+  displayPath, installedHostIds, installedRows, installedState, type RemovalLine,
   planRemove, readSelection, removeHosts, resolveAgentSelection, writeSelection,
 } from './agents.ts';
 import { ompExtensionTargets, ompLayer } from './omp-layer.ts';
@@ -69,6 +69,28 @@ function dropKey(section: unknown, key: string): boolean {
   if (!(key in record)) return false;
   delete record[key];
   return true;
+}
+
+interface RemovalGroup {
+  label: string;
+  lines: RemovalLine[];
+}
+
+/**
+ * Consecutive runs of one artifact label into one group.
+ *
+ * `planHost` emits artifacts in kind order, so a host's paths arrive as rules,
+ * then skills, then the rewrite hook. Three labels repeated per line read as
+ * thirty words of repetition; three grouped lines read as three.
+ */
+function groupByLabel(lines: RemovalLine[]): RemovalGroup[] {
+  const groups: RemovalGroup[] = [];
+  for (const line of lines) {
+    const last = groups.at(-1);
+    if (last && last.label === line.label) last.lines.push(line);
+    else groups.push({ label: line.label, lines: [line] });
+  }
+  return groups;
 }
 
 async function removeUninstallTarget(target: string, shouldDryRun: boolean, recursive = true): Promise<void> {
@@ -199,25 +221,34 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
     }
   }
 
-  if (piTargets.length > 0) {
-    const piRtk = piLayer(home).rtkExtension;
-    console.log(`\n  Pi — ${piTargets.length} extension/module director${piTargets.length === 1 ? 'y' : 'ies'}`);
-    for (const target of piTargets) console.log(`    ${displayPath(target, home)}`);
-    if (existsSync(piRtk)) console.log(`    ${displayPath(piRtk, home)} — rtk Pi wiring`);
-  }
-
   // Only what is still ours is named, per host: a stale plan would overstate
   // what happens, and a host with nothing left is dropped rather than printing
-  // an empty section.
+  // an empty section. One section per host, layer directories and files
+  // together: two sections for one host said its name twice and filed half its
+  // artifacts under a "Coding agents" heading that named nothing.
   const plan = planRemove(extra, home);
-  if (plan.hosts.length > 0) {
-    console.log(`\n  Coding agents — ${plan.files} file(s) to remove`);
-    for (const preview of plan.hosts) {
-      console.log(`    ${preview.host.label} — ${preview.wiring}`);
-      for (const line of preview.lines) console.log(`      ${displayPath(line.path, home)}`);
+  const piRtk = piLayer(home).rtkExtension;
+  for (const preview of plan.hosts) {
+    const isPi = preview.host.id === 'pi';
+    const dirs = isPi ? piTargets : [];
+    const wiring = isPi && existsSync(piRtk) ? 1 : 0;
+    const total = preview.lines.length + dirs.length + wiring;
+    console.log(`\n  ${preview.host.label} — ${preview.wiring} — ${total} artifact${total === 1 ? '' : 's'} to remove`);
+    if (dirs.length > 0) {
+      console.log(`    extension tree — ${dirs.length} dirs`);
+      for (const target of dirs) console.log(`      ${displayPath(target, home)}`);
+      if (wiring) console.log(`      ${displayPath(piRtk, home)} — rtk Pi wiring`);
     }
-  } else if (extra.length > 0) {
-    console.log(`\n  Coding agents — nothing of ours found for ${extra.join(', ')}`);
+    // planHost emits artifacts in kind order, so a run of one label is one
+    // group: rules, then skills, then the rewrite hook.
+    for (const group of groupByLabel(preview.lines)) {
+      const label = group.label.endsWith('s') ? group.label : `${group.label}s`;
+      console.log(`    ${label} — ${group.lines.length}`);
+      for (const line of group.lines) console.log(`      ${displayPath(line.path, home)}`);
+    }
+  }
+  if (plan.hosts.length === 0 && extra.length > 0) {
+    console.log(`\n  Nothing of ours found for ${extra.join(', ')}`);
   }
 
   // With nothing selected there is nothing to confirm. Asking "remove the
