@@ -12,14 +12,13 @@ const START = '<!-- tersio:start -->';
 const END = '<!-- tersio:end -->';
 
 /**
- * Generic marked-block editing, shared by every host file we merge into.
- * A file without markers is the user's to own, so we only ever touch the span
- * between a matching pair. Terse-owned files (a skill, a `.mdc` rule) do not
- * need markers at all and are written whole.
+ * Generic marked-block editing. A file without markers is the user's to own,
+ * so we only ever touch the span between a matching pair. Terse-owned files (a
+ * skill, a `.mdc` rule) are written whole and need no markers.
  */
 export function applyMarkedBlock(existing: string | null, block: string, start: string, end: string): string {
   const base = existing ?? '';
-  // Normalised once so every return path emits the same bytes. Without this the
+  // Normalised once so every return path emits the same bytes: otherwise the
   // first write ends without a newline and the second adds one, so reinstall
   // rewrote the file forever and `--only-changed` never settled.
   const normalized = block.trimEnd();

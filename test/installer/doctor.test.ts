@@ -37,13 +37,20 @@ test("doctor reports MISSING components against an empty home", () => {
     });
 
     expect(result.status, result.stderr).toBe(0);
-    for (const line of ["OMP extensions dir: MISSING", "Shared session bridge: MISSING", "Caveman extension: MISSING", "RTK extension: MISSING", "❌ RTK binary: MISSING", "RTK OMP wiring (rtk.ts): MISSING run: rtk init -g --agent omp"]) {
+    for (const line of ["Caveman extension: MISSING", "RTK extension: MISSING", "❌ RTK binary: MISSING"]) {
       expect(result.stdout).toMatch(new RegExp(line.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
     }
-    // Categorized output: merged section headers plus a closing tally.
-    for (const sectionName of ["Environment", "Installation", "Extensions & plugins", "Usage & records", "Add-ons"]) {
+    // Categorized output: merged section headers plus a closing tally. There is
+    // no Environment or Installation section — Environment's only row was a Node
+    // check hardcoded to pass, and Installation restated what the Oh My Pi host
+    // row now reports. The RTK OMP wiring row is gone from Add-ons too.
+    for (const sectionName of ["Extensions & plugins", "Usage & records", "Add-ons"]) {
       expect(result.stdout).toMatch(new RegExp(`\\n${sectionName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\n`));
     }
+    expect(result.stdout).not.toMatch(/\nEnvironment\n/);
+    expect(result.stdout).not.toMatch(/\nInstallation\n/);
+    expect(result.stdout).not.toMatch(/RTK OMP wiring/);
+    expect(result.stdout).not.toMatch(/Shared session bridge/);
     expect(result.stdout).toMatch(/Summary: \d+ checks — ✅ \d+ ok, ⚠️ \d+ warn, ❌ \d+ missing/);
     expect(result.stdout).not.toMatch(/Tersio CLI/);
     expect(result.stdout).not.toMatch(/available — run tersio update/);
@@ -155,12 +162,50 @@ test("doctor --fix rejects an invalid scope", () => {
   }
 });
 
-test("doctor reports the rtk OMP wiring when the binary and rtk.ts exist", () => {
+test("doctor reports Oh My Pi in the host list when the tersio plugin is installed", () => {
   const home = missingHome();
+  const run = () => spawnSync(process.execPath, [installer, "doctor"], {
+    cwd: root,
+    encoding: "utf8",
+    timeout: 15000,
+    env: { ...process.env, HOME: home, USERPROFILE: home, PATH: path.join(home, "empty-bin") },
+  });
   try {
     const extDir = path.join(home, ".omp", "agent", "extensions");
-    mkdirSync(extDir, { recursive: true });
-    writeFileSync(path.join(extDir, "rtk.ts"), "// rtk omp wiring", "utf8");
+    const pluginDir = path.join(home, ".omp", "plugins", "node_modules", "@krtclcdy", "tersio");
+    mkdirSync(pluginDir, { recursive: true });
+    // Every extension directory the layer owns, so the row is not warning.
+    for (const dir of [
+      "caveman-session", "rtk-session", "ai-addons-updater",
+      "combo-toggle", "tersio-commands", "shared", "lib",
+    ]) {
+      mkdirSync(path.join(extDir, dir), { recursive: true });
+    }
+
+    const complete = run();
+    expect(complete.status, complete.stderr).toBe(0);
+    // The row lives inside Agent hosts, not in a section of its own, and it
+    // counts extension directories because those are OMP's artifacts.
+    expect(complete.stdout).toMatch(/Agent hosts\n[\s\S]*?✅ Oh My Pi \(OMP\): ok plugin \+ 7 extension directories/);
+
+    // A partially installed layer warns and names the repair, rather than
+    // reporting a healthy host.
+    rmSync(path.join(extDir, "lib"), { recursive: true, force: true });
+    const partial = run();
+    expect(partial.stdout).toMatch(/⚠️ Oh My Pi \(OMP\): warn 1 extension dir\(s\) missing — run: tersio install --agent omp/);
+
+    // Not installed at all: the row stays silent rather than reporting a host
+    // the machine never had.
+    rmSync(pluginDir, { recursive: true, force: true });
+    expect(run().stdout).not.toMatch(/Oh My Pi \(OMP\)/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("doctor reports the rtk binary version when the binary is on PATH", () => {
+  const home = missingHome();
+  try {
     const binDir = path.join(home, "fake-bin");
     mkdirSync(binDir, { recursive: true });
     const rtkBin = path.join(binDir, "rtk");
@@ -176,7 +221,9 @@ test("doctor reports the rtk OMP wiring when the binary and rtk.ts exist", () =>
 
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toMatch(/✅ RTK binary: ok rtk 0\.49\.0/);
-    expect(result.stdout).toMatch(/✅ RTK OMP wiring \(rtk\.ts\): ok/);
+    // The rtk.ts wiring row is no longer printed; the Oh My Pi host row covers
+    // the layer it belonged to.
+    expect(result.stdout).not.toMatch(/RTK OMP wiring/);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

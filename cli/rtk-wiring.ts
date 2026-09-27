@@ -119,6 +119,40 @@ export async function wireRtkPi(rtkBin: string, options: WiringOptions = {}): Pr
   return wireRtkAgent(rtkBin, 'pi', options);
 }
 
+/**
+ * The Pi extension rtk's own init writes. Home-passed (rather than reading
+ * `$HOME` like `rtkExtensionPath` above) so uninstall and tests can point it
+ * at a throwaway directory. Honors `PI_CODING_AGENT_DIR` the same way the
+ * registry's `hostPath` does: only paths inside the config dir move with it.
+ */
+export function piRtkExtensionPath(home: string): string {
+  const relocated = process.env.PI_CODING_AGENT_DIR;
+  const base = relocated && relocated.trim() !== ''
+    ? relocated
+    : path.join(home, '.pi', 'agent');
+  return path.join(base, 'extensions', 'rtk.ts');
+}
+
+/**
+ * Removes Pi's rtk wiring. The generic emitters only know the rules file and
+ * the skills, so without this a Pi uninstall leaves the rewrite live and Pi
+ * keeps rewriting after tersio is gone. Mirrors `removeOpenCodeRtk`: the
+ * shared rtk binary is untouched, only this host's extension file goes.
+ */
+export async function removePiRtk(home: string, options: WiringOptions = {}): Promise<boolean> {
+  const target = piRtkExtensionPath(home);
+  let found = false;
+  try {
+    await fs.access(target);
+    found = true;
+  } catch { /* absent is the normal case */ }
+  if (!found) return false;
+  const shown = target.replace(`${home}/`, '~/');
+  if (!options.quiet) console.log(`  ${options.dryRun ? '[dry-run] would remove' : '[rm]'} ${shown}`);
+  if (!options.dryRun) await fs.rm(target, { force: true });
+  return true;
+}
+
 async function runRtkInit(rtkBin: string, agent: RtkAgent, options: WiringOptions): Promise<boolean> {
   try {
     await execFileP(rtkBin, ['init', '-g', '--agent', agent], 30000);

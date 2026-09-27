@@ -6,11 +6,9 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 import {
   activeModesSummary,
-  asPromptArray,
   COMBO_LEVELS,
   getSharedComboState,
   isComboPresetActive,
-  isOmpSubagentPrompt,
   normalizeComboLevel,
   paintableCtx,
   reconcileSharedComboEntries,
@@ -18,8 +16,8 @@ import {
   setSharedComboLevel,
   setSharedComboListener,
   setSharedComboMode,
-  systemPromptIncludes,
 } from '../shared/session-state.ts';
+import { asPromptArray, isOmpSubagentPrompt, systemPromptIncludes } from '../shared/omp-prompt.ts';
 import {
   isComboSetupComplete,
   readComboDefault,

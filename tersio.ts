@@ -56,6 +56,7 @@ ${agentIdHelp()}
   --scope user (legacy; accepted and ignored — user scope is the only scope)
   --keep-ponytail (uninstall: keep the bundled Ponytail copy — removed by default)
   --remove-rtk (uninstall: also remove the RTK binary)
+  --keep-omp-layer (uninstall: keep the Oh My Pi extensions and Ponytail; clears the agent files only)
   --combo-default off|medium|balanced|max (implies caveman, rtk, ponytail)
   --caveman-default off|lite|full|ultra|wenyan-lite|wenyan-full|wenyan-ultra (override; default follows combo)
   --ponytail-default off|lite|full|ultra (override; default follows combo)

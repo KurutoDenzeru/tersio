@@ -55,12 +55,10 @@ function bodyFor(host: AgentHost): string {
 }
 
 /**
- * Skills written to a root shared by convention (`.agents/skills`) are a single
- * file that two hosts both claim, so their content cannot depend on which host
- * is asking — Codex would otherwise ship the auto-rewrite wording to the same
- * path OpenClaw writes the manual wording to, and whichever installed last
- * would win. The manual text is the safe superset: where a hook really does
- * rewrite, the instruction is merely redundant, never wrong.
+ * Skills written to a root shared by convention (`.agents/skills`) are one file
+ * two hosts both claim, so their content cannot depend on who is asking: the
+ * manual text is the safe superset, since where a hook really does rewrite the
+ * instruction is merely redundant, never wrong.
  */
 function skillBodyFor(host: AgentHost): string {
   if (host.skillsDir !== null && SHARED_SKILL_DIRS.has(host.skillsDir)) return guidanceRulesBody();
@@ -98,15 +96,13 @@ export function renderSkill(mode: string, description: string, body: string): st
 
 /** Claude Code reserves this folder name for its own sync feature. */
 const RESERVED_SKILL_DIRS = new Set(['synced']);
-
 // --- RTK rewriter ----------------------------------------------------------
 
 /**
  * Renders the rewriter: reads a hook payload on stdin, writes back the host's
  * rewrite object when rtk has an equivalent. Never blocks — every failure path
  * leaves the original command running.
- */
-export function renderRewriteScript(cfg: HostRewrite): string {
+ */export function renderRewriteScript(cfg: HostRewrite): string {
   // Dotted read of the host's own stdin shape, e.g. tool_input.command. A host
   // that forwards more than one spelling gets a first-wins chain.
   const paths = Array.isArray(cfg.inputPath) ? cfg.inputPath : [cfg.inputPath];
@@ -168,10 +164,7 @@ function newHookEntry(command: string): HookEntry {
   return { name: HOOK_MARKER, type: 'command', command, timeout: 10 };
 }
 
-/**
- * Renders the hook config this host needs, carrying only our own entry.
- * Splicing into an existing file is `mergeHookConfig`'s job.
- */
+/** Renders the hook config this host needs, carrying only our own entry. */
 export function renderHookConfig(host: AgentHost, scriptAbs: string): string | null {
   const cfg = host.rewriteConfig;
   if (!cfg) return null;
@@ -220,8 +213,7 @@ function findMarkedEntry(config: Record<string, unknown>, event: string): HookEn
  * identified by HOOK_MARKER, which also makes removal exact.
  *
  * Returns just our config when there is nothing parseable to merge into — a
- * corrupt or unrecognised file is the user's to fix, and refusing to clobber
- * it is the safe failure.
+ * corrupt file is the user's to fix, and refusing to clobber it is safe.
  */
 export function mergeHookConfig(existing: string | null, ours: string, event: string): string {
   const base = safeParseJson(existing);
@@ -244,8 +236,7 @@ export function mergeHookConfig(existing: string | null, ours: string, event: st
  * Removes only our entry from a host's hook config, preserving every other
  * hook. Returns the config unchanged when none of ours was present, so a
  * caller can tell "nothing to do" from "removed".
- */
-export function removeFromHookConfig(existing: string, event: string): string {
+ */export function removeFromHookConfig(existing: string, event: string): string {
   const base = safeParseJson(existing);
   if (base === null) return existing;
   const baseHooks = (base.hooks ?? {}) as Record<string, unknown>;
@@ -316,8 +307,8 @@ export function planHost(host: AgentHost, home: string, existing: ExistingHostFi
         kind: 'skill',
         absPath: path.join(skillsRoot, dirName, 'SKILL.md'),
         content: renderSkill(mode, description, skillBodyFor(host)),
-        // Terse owns the skill directory outright, and Hermes scans skill files
-        // for injection patterns, so these carry no markers.
+        // Skills are ours outright, and Hermes scans skill files for injection
+        // patterns, so these carry no markers.
         merge: 'whole',
       });
     }

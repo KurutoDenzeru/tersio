@@ -1,15 +1,22 @@
-// Plugin settings reader for the Tersio extensions.
-// Reads omp's persisted plugin state (~/.omp/plugins/omp-plugins.lock.json),
-// written by `omp plugin config set @krtclcdy/tersio <key> <value>` and by
-// the installer profile step. Tolerant: any parse failure yields {} so every
-// caller falls back to its own default.
+// Session-start defaults for the Tersio extensions, read from the first file
+// that carries them.
+//
+// ~/.tersio/settings.json is the store: it is tersio-owned, so OMP, Pi, and
+// any future host read the same choice. The OMP lock file is still read as a
+// fallback, so an install made before this file existed keeps its defaults.
+// Tolerant throughout: any parse failure yields {} so every caller falls back
+// to its own default.
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 export const PLUGIN_NAME = '@krtclcdy/tersio';
 
-function lockPaths(): string[] {
+function tersioSettingsFile(): string {
+  return path.join(os.homedir(), '.tersio', 'settings.json');
+}
+
+function ompLockPaths(): string[] {
   const configHome = process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config');
   return [
     path.join(os.homedir(), '.omp', 'plugins', 'omp-plugins.lock.json'),
@@ -17,15 +24,27 @@ function lockPaths(): string[] {
   ];
 }
 
-// `settings[PLUGIN_NAME]` in the lock file; empty object when missing.
+function readJsonObject(file: string): Record<string, unknown> {
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(file, 'utf8'));
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : {};
+  } catch { return {}; }
+}
+
+// The tersio-owned store, falling back to OMP's `settings[PLUGIN_NAME]`. The
+// first file that yields any key wins, so a choice made after the store
+// existed is never shadowed by the older lock entry.
 export function readPluginSettings(): Record<string, unknown> {
-  for (const p of lockPaths()) {
+  const own = readJsonObject(tersioSettingsFile());
+  if (Object.keys(own).length > 0) return own;
+  for (const p of ompLockPaths()) {
     if (!existsSync(p)) continue;
-    try {
-      const config = JSON.parse(readFileSync(p, 'utf8')) as { settings?: Record<string, Record<string, unknown>> };
-      const values = config.settings?.[PLUGIN_NAME];
-      if (values && typeof values === 'object' && !Array.isArray(values)) return values;
-    } catch { /* tolerate corrupt file */ }
+    const values = readJsonObject(p).settings;
+    if (!values || typeof values !== 'object' || Array.isArray(values)) continue;
+    const entry = (values as Record<string, unknown>)[PLUGIN_NAME];
+    if (entry && typeof entry === 'object' && !Array.isArray(entry)) return entry as Record<string, unknown>;
   }
   return {};
 }
@@ -69,20 +88,19 @@ const COMBO_MODE_DEFAULTS = {
 
 export function saveComboSetup(level: string): boolean {
   if (!(level in COMBO_MODE_DEFAULTS)) return false;
-  const lockPath = lockPaths()[0];
-  let lock: { plugins?: Record<string, unknown>; settings?: Record<string, Record<string, unknown>> } = {};
-  if (existsSync(lockPath)) {
-    try { lock = JSON.parse(readFileSync(lockPath, 'utf8')) as typeof lock; } catch { lock = {}; }
-  }
-  lock.plugins ||= {};
-  lock.settings ||= {};
-  lock.settings[PLUGIN_NAME] = {
-    ...lock.settings[PLUGIN_NAME],
+  const file = tersioSettingsFile();
+  const current = readJsonObject(file);
+  mkdirSync(path.dirname(file), { recursive: true });
+  writeFileSync(file, JSON.stringify({
+    ...current,
     comboDefault: level,
     ...COMBO_MODE_DEFAULTS[level as keyof typeof COMBO_MODE_DEFAULTS],
     comboSetupComplete: true,
-  };
-  mkdirSync(path.dirname(lockPath), { recursive: true });
-  writeFileSync(lockPath, JSON.stringify(lock, null, 2) + '\n', 'utf8');
+  }, null, 2) + '\n', 'utf8');
   return true;
+}
+
+/** Absolute path of the tersio-owned defaults store, for the CLI's plan lines. */
+export function tersioSettingsPath(): string {
+  return tersioSettingsFile();
 }

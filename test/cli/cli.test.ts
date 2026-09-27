@@ -50,6 +50,50 @@ test("an unknown command fails with usage and no installer output", () => {
   expect(result.stdout).not.toMatch(/Prerequisites:|Installing|Will remove:/);
 });
 
+test("tersio install still reaches the agent prompts, because naming a command is not --yes", () => {
+  // `--yes` means "do not prompt me". Folding the command name into that flag
+  // made every explicit `tersio install` skip the agent menu, so the one command
+  // that exists to offer the choice was the one command that could not. Only
+  // bare `tersio` printed the picker, which is not a discoverable way to set up
+  // a new host.
+  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-yes-"));
+  try {
+    const result = spawnSync(process.execPath, [installer, "install", "--dry-run"], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 20000,
+      // No TTY, so nothing is prompted. This asserts the flag no longer claims
+      // the user declined the prompts, which is what a flagless run would not.
+      env: { ...process.env, HOME: home, USERPROFILE: home },
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    // The agent step must still run and still report. Under the old flag a
+    // command-named install short-circuited the menu gate entirely.
+    expect(result.stdout, result.stdout).toMatch(/Coding agents|Oh My Pi/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("--yes still suppresses the prompts it is meant to suppress", () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-yes-flag-"));
+  try {
+    const result = spawnSync(process.execPath, [installer, "install", "--dry-run", "--yes"], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 20000,
+      env: { ...process.env, HOME: home, USERPROFILE: home },
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    // Same work either way; the flag is about prompting, not about scope.
+    expect(result.stdout).toMatch(/Coding agents|Oh My Pi/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test("dry-run previews shared bridge before dependent extensions without writing", () => {
   const missingHome = path.join(root, "test", "definitely-missing-home");
   const result = spawnSync(
@@ -143,7 +187,13 @@ test("reinstall --dry-run previews uninstall then install without writing", () =
   const install = result.stdout.indexOf("Ponytail — ensure bundled plugin");
   expect(uninstall >= 0, result.stdout).toBeTruthy();
   expect(install > uninstall, "uninstall runs before the fresh install").toBeTruthy();
-  expect(result.stdout).toMatch(/\[dry-run\] would remove /);
+  // The clean step clears the extension directories but keeps the plugin
+  // package, which it is about to re-download. The header says so: it names
+  // the directories and no Ponytail, rather than promising a removal the run
+  // does not perform.
+  expect(result.stdout).toMatch(/Oh My Pi — \d+ extension directories$/m);
+  expect(result.stdout, "reinstall must not advertise the Ponytail removal").not.toMatch(/Ponytail$/m);
+  expect(result.stdout).toMatch(/\[dry-run\] would remove .*extensions[\\/]shared(?:\r?\n|$)/);
   // The closing line is host-agnostic: a run may have installed nothing but
   // coding agents, so it must not tell the user to restart OMP.
   expect(result.stdout).toMatch(/Done — restart your agents/);
@@ -170,7 +220,7 @@ test("uninstall dry-run previews shared bridge removal", () => {
   const missingHome = path.join(root, "test", "definitely-missing-home");
   const result = spawnSync(
     process.execPath,
-    [installer, "uninstall", "--dry-run", "--yes"],
+    [installer, "uninstall", "--dry-run", "--yes", "--agent", "omp"],
     {
       cwd: root,
       encoding: "utf8",
@@ -201,7 +251,7 @@ test("uninstall dry-run with --remove-ponytail previews full ponytail removal", 
     );
     const result = spawnSync(
       process.execPath,
-      [installer, "uninstall", "--dry-run", "--yes", "--remove-ponytail"],
+      [installer, "uninstall", "--dry-run", "--yes", "--agent", "omp", "--remove-ponytail"],
       {
         cwd: root,
         encoding: "utf8",
@@ -229,20 +279,27 @@ test("uninstall dry-run includes ponytail by default; --keep-ponytail omits it",
       env: { ...process.env, HOME: missingHome, USERPROFILE: missingHome },
     });
 
-  const def = spawn(["uninstall", "--dry-run", "--yes"]);
+  // The layer follows the selection, so previewing it means naming OMP.
+  const def = spawn(["uninstall", "--dry-run", "--yes", "--agent", "omp"]);
   expect(def.status, def.stderr).toBe(0);
   expect(def.stdout, "ponytail removal is part of the default dry-run plan").toMatch(/dietrichgebert/);
 
-  const keep = spawn(["uninstall", "--dry-run", "--yes", "--keep-ponytail"]);
+  const keep = spawn(["uninstall", "--dry-run", "--yes", "--agent", "omp", "--keep-ponytail"]);
   expect(keep.status, keep.stderr).toBe(0);
   expect(keep.stdout).not.toMatch(/dietrichgebert/);
+
+  // Omitting OMP keeps the whole layer: a preview that silently omitted the
+  // section would read as "nothing to remove here".
+  const noOmp = spawn(["uninstall", "--dry-run", "--yes"]);
+  expect(noOmp.status, noOmp.stderr).toBe(0);
+  expect(noOmp.stdout).toMatch(/Nothing selected — no files were removed/);
 });
 
 test("uninstall dry-run never prompts for confirmation", () => {
   const missingHome = path.join(root, "test", "definitely-missing-home");
   const result = spawnSync(
     process.execPath,
-    [installer, "uninstall", "--dry-run"],
+    [installer, "uninstall", "--dry-run", "--agent", "omp"],
     {
       cwd: root,
       encoding: "utf8",
@@ -254,6 +311,185 @@ test("uninstall dry-run never prompts for confirmation", () => {
   expect(result.status, result.stderr).toBe(0);
   expect(result.stdout).not.toMatch(/Proceed\?/);
   expect(result.stdout).toMatch(/\[dry-run\] would remove .*extensions[\\/]shared(?:\r?\n|$)/);
+});
+
+test("the OMP layer is removed only when OMP is selected, never by default", () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-keep-layer-"));
+  try {
+    const extDir = path.join(home, ".omp", "agent", "extensions");
+    mkdirSync(path.join(extDir, "caveman-session"), { recursive: true });
+    writeFileSync(path.join(extDir, "caveman-session", "index.ts"), "keep me\n", "utf8");
+    const claudeSkills = path.join(home, ".claude", "skills", "tersio-caveman");
+    mkdirSync(claudeSkills, { recursive: true });
+    writeFileSync(path.join(claudeSkills, "SKILL.md"), "mine\n", "utf8");
+    const run = (args: string[]) =>
+      spawnSync(process.execPath, [installer, ...args], {
+        cwd: root,
+        encoding: "utf8",
+        timeout: 30000,
+        env: { ...process.env, HOME: home, USERPROFILE: home },
+      });
+
+    // Pi is a different agent from OMP, so selecting it must not touch OMP.
+    const piOnly = run(["uninstall", "--yes", "--agent", "pi"]);
+    expect(piOnly.status, piOnly.stderr).toBe(0);
+    // Pi has no files in this fixture, so the run finds nothing to remove and
+    // stops before the confirm rather than asking over an empty plan.
+    expect(piOnly.stdout).toMatch(/Nothing selected — no files were removed/);
+    expect(existsSync(path.join(extDir, "caveman-session", "index.ts")), "OMP layer removed by a Pi-only run").toBe(true);
+
+    // Selecting OMP is the explicit opt-in that removes the layer.
+    const withOmp = run(["uninstall", "--yes", "--agent", "omp,claude-code"]);
+    expect(withOmp.status, withOmp.stderr).toBe(0);
+    expect(withOmp.stdout).toMatch(/Oh My Pi — \d+ extension director/);
+    expect(existsSync(path.join(extDir, "caveman-session", "index.ts")), "OMP layer kept despite being selected").toBe(false);
+    // The agent files are still cleared: this is about the layer, not the run.
+    expect(existsSync(claudeSkills), "agent files must still be removed").toBe(false);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("no run asks about the OMP layer separately, at any selection", () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-omp-question-"));
+  try {
+    // The old flow asked "Also remove the Oh My Pi extension layer and
+    // Ponytail?" on top of the agent multiselect, so ticking Pi still asked
+    // about a different agent and defaulted to removing its files. The layer is
+    // now driven by the multiselect, where OMP is a row like any other.
+    for (const args of [["uninstall", "--yes"], ["uninstall", "--yes", "--agent", "pi"], ["uninstall", "--yes", "--agent", "omp"]]) {
+      const result = spawnSync(process.execPath, [installer, ...args], {
+        cwd: root,
+        encoding: "utf8",
+        timeout: 30000,
+        env: { ...process.env, HOME: home, USERPROFILE: home },
+      });
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout, `a second layer question appeared for: ${args.join(" ")}`).not.toMatch(
+        /Also remove the Oh My Pi extension layer/,
+      );
+    }
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("the uninstall menu ticks nothing, so accepting the default removes nothing", () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-unseeded-"));
+  try {
+    // A saved selection is what install wrote earlier. It must not pre-tick
+    // the uninstall menu: a bare Enter is the reflex answer to a menu, and
+    // seeding it made that Enter delete every agent tersio had been installed
+    // into. Nothing is installed here, so a seeded run would still advertise a
+    // full multi-agent removal.
+    mkdirSync(path.join(home, ".tersio"), { recursive: true });
+    writeFileSync(
+      path.join(home, ".tersio", "agents.json"),
+      JSON.stringify({ hosts: ["opencode", "claude-code", "codex", "pi"], updatedAt: 0 }),
+      "utf8",
+    );
+    mkdirSync(path.join(home, ".omp", "agent", "extensions", "caveman-session"), { recursive: true });
+    writeFileSync(path.join(home, ".omp", "agent", "extensions", "caveman-session", "index.ts"), "keep me\n", "utf8");
+
+    const result = spawnSync(process.execPath, [installer, "uninstall", "--yes", "--agent", "nothing-selected-here"], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 30000,
+      env: { ...process.env, HOME: home, USERPROFILE: home },
+    });
+
+    // An unknown host id selects nothing, which is what an untouched menu means.
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/Nothing selected — no files were removed/);
+    expect(existsSync(path.join(home, ".omp", "agent", "extensions", "caveman-session", "index.ts"))).toBe(true);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("flagless uninstall without a terminal falls back to the saved set, so an installed harness is still listed", () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-seeded-"));
+  try {
+    // The saved selection names four hosts; only Pi has anything on disk.
+    // With no terminal there is no menu, so the run falls back to the saved
+    // set and must still produce a plan naming Pi rather than the
+    // "Nothing selected" dead end.
+    mkdirSync(path.join(home, ".tersio"), { recursive: true });
+    writeFileSync(
+      path.join(home, ".tersio", "agents.json"),
+      JSON.stringify({ hosts: ["opencode", "claude-code", "codex", "pi"], updatedAt: 0 }),
+      "utf8",
+    );
+    const piSkills = path.join(home, ".pi", "agent", "skills", "tersio-caveman");
+    mkdirSync(piSkills, { recursive: true });
+    writeFileSync(path.join(piSkills, "SKILL.md"), "<!-- tersio:start -->\nrules\n<!-- tersio:end -->\n", "utf8");
+
+    // No --agent flag and no --yes, with piped stdin so there is no
+    // terminal: the flagless path is the one that falls through to the
+    // saved-set fallback.
+    const result = spawnSync(process.execPath, [installer, "uninstall"], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 30000,
+      env: { ...process.env, HOME: home, USERPROFILE: home },
+      input: "",
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    // Reaching the plan at all is the point: the fallback has to produce
+    // a plan naming Pi rather than the "Nothing selected" dead end.
+    expect(result.stdout).not.toMatch(/Nothing selected — no files were removed/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+
+test("the uninstall preview groups the agent files under the host that owns them", () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-preview-"));
+  try {
+    const skills = path.join(home, ".claude", "skills", "tersio-caveman");
+    mkdirSync(skills, { recursive: true });
+    writeFileSync(path.join(skills, "SKILL.md"), "mine\n", "utf8");
+
+    const result = spawnSync(
+      process.execPath,
+      [installer, "uninstall", "--dry-run", "--yes", "--agent", "claude-code"],
+      { cwd: root, encoding: "utf8", timeout: 30000, env: { ...process.env, HOME: home, USERPROFILE: home } },
+    );
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/Claude Code — hook · auto-rewrite/);
+    // Only what exists is named, so a stale plan cannot overstate the removal.
+    expect(result.stdout).toMatch(/~\/\.claude\/skills\/tersio-caveman\/SKILL\.md/);
+    expect(result.stdout, "an absent file must not appear in the removal plan").not.toMatch(/~\/\.claude\/settings\.json/);
+    // The unselected host stays out of the plan entirely.
+    // Scoped to the agent section's indentation: the OMP layer header also
+    // contains the substring "Pi —".
+    expect(result.stdout, "an unselected host was previewed").not.toMatch(/^\s{4}Pi —/m);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("the install preview names each selected host's files and marks them new", () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-install-preview-"));
+  try {
+    const result = spawnSync(
+      process.execPath,
+      [installer, "install", "--dry-run", "--agent", "pi"],
+      { cwd: root, encoding: "utf8", timeout: 60000, env: { ...process.env, HOME: home, USERPROFILE: home } },
+    );
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/Pi — rtk extension · auto-rewrite/);
+    expect(result.stdout).toMatch(/~\/\.pi\/agent\/AGENTS\.md \(new\)/);
+    // The layer names what it writes, not just what each step is called.
+    expect(result.stdout).toMatch(/~\/\.omp\/agent\/extensions\/caveman-session — caveman session mode/);
+    expect(result.stdout, "preview must not print absolute machine paths").not.toContain(`${path.sep}Users${path.sep}`);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
 });
 
 test("usage with an empty ledger and no sessions prints the empty state and exits 0", () => {

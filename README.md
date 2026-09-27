@@ -50,7 +50,7 @@ Every supported host ships a working auto-rewrite, so there is no guidance-only 
 
 Not supported: Gemini CLI is sunset for free, Pro, and Ultra accounts, and its Antigravity CLI successor, OpenClaw, Hermes, Grok Build, GitHub Copilot CLI, Command Code, and Cursor are all out of scope. `tersio install` will not touch them, and `tersio uninstall` will not remove anything it did not write.
 
-Run `tersio install` again at any point to change the selection. It asks which agents to set up, so there is one install path for all five — nothing is scoped to a single agent's plugin system. `tersio uninstall` asks the same way, before it removes anything.
+Run `tersio install` again at any point to change the selection. It asks which agents to set up, so there is one install path for all five — nothing is scoped to a single agent's plugin system. Both prompts are followed by a plan: install names every file it will write, per agent, marking each as new or already in place; uninstall names every file it will remove, per agent, listing only what is actually on disk. The two menus differ where it matters — install pre-ticks your saved agents, uninstall ticks nothing, because a tick there deletes. Ticking **Oh My Pi (OMP)** in the uninstall list removes its extensions and Ponytail, in the same menu rather than a separate question.
 
 ```bash
 tersio install                      # prompt for the agents
@@ -97,12 +97,12 @@ Measured on Oh My Pi, the host with the most instrumentation available. Every mo
 
 Prompt overhead is included in [BENCHMARK.md](./BENCHMARK.md) with a full prompt-base example. Summary: `/rtk on` pays back immediately, `/ponytail ultra` repays in about 7 code tasks, `/combo medium` in about 8, and every Caveman level costs more in prompt than it saves in reply text.
 
-The Command tools dashboard reports weighted RTK command-output savings and OMP-specific adoption from executed Bash records. It does not estimate provider billing.
+The Command tools dashboard reports weighted RTK command-output savings and Bash adoption from executed records (OMP, Codex, and Pi sessions). It does not estimate provider billing.
 Upstream Ponytail's fair agentic benchmark reports 54% less code, 22% fewer tokens, 20% lower cost, and 100% retained safety. RTK estimates command-output tokens, not bill savings. Caveman and Ponytail compliance varies by model. Measure your own sessions with `tersio usage` and the dashboard.
 
 ## 📈 Dashboard
 
-`tersio dashboard --open` serves a local dashboard (127.0.0.1 only) that charts your own savings from `~/.tersio/usage.db`. Three views:
+`tersio dashboard --open` serves a local dashboard (127.0.0.1 only) that charts your own savings from `~/.tersio/usage.db`. Session tokens come from OMP, Codex, Pi, and OpenCode transcripts on this machine. Three views:
 
 **Live feed and savings.** Token throughput, cost, savings bento, and recent activity — the top of the dashboard.
 
@@ -132,7 +132,7 @@ Upstream Ponytail's fair agentic benchmark reports 54% less code, 22% fewer toke
 | `tersio usage` | Ledger-backed usage + savings report |
 | `tersio dashboard` | Open the Dashboard (`--open`, `--export <file>`, `--port <n>`, `--currency <code>`; serves localhost only) |
 | `tersio reset` | Clear tersio statistics: usage ledger + a watermark that hides pre-reset rows from every derived view (Y/N confirm, `--dry-run`, `--yes`) — session transcripts and RTK history stay intact on disk |
-| `tersio uninstall` | Remove extensions, registration, and the Ponytail plugin (`--keep-ponytail` keeps Ponytail; `--remove-rtk` also removes the RTK binary and its `rtk.ts` OMP wiring) |
+| `tersio uninstall` | Ask which agents to clear, then print and remove exactly the files each one will lose. Each row shows how many files that agent has (`Pi — 4 files`), and nothing is pre-ticked — press Space on what you want gone. Enter on an untouched menu removes nothing and stops. Ticking **Oh My Pi (OMP)** also removes its extensions and Ponytail (`--keep-ponytail` keeps Ponytail; `--keep-omp-layer` keeps the whole Oh My Pi layer; `--remove-rtk` also removes the RTK binary and its `rtk.ts` OMP wiring). Ticking **Pi** also removes its `rtk.ts` Pi wiring |
 | `tersio version` | Print version |
 
 Flags: `--agent <ids>` (repeatable, comma-separated), `--dry-run`, `--yes`/`-y`, `--verbose`, `--combo-default`/`--caveman-default`/`--rtk-default`/`--ponytail-default`, `--currency <code>` (usage/dashboard display currency; flag wins, then the `tersio settings` default, then USD). Legacy `--doctor` / `--uninstall` forms still work.
@@ -165,9 +165,11 @@ Tersio writes to each agent's own configuration, never a shared one. Per-agent p
 |---|---|
 | Caveman / RTK / Combo / Tersio commands | `~/.omp/plugins/node_modules/@krtclcdy/tersio/extensions/{caveman-session,rtk-session,combo-toggle,tersio-commands}/` — loaded from Tersio's OMP plugin manifest |
 | RTK OMP wiring (rtk-owned) | `~/.omp/agent/extensions/rtk.ts` — written by the installer via `rtk init -g --agent omp`; auto-loads, no config entry |
-| RTK Pi wiring (rtk-owned) | `~/.pi/agent/extensions/rtk.ts` — written via `rtk init -g --agent pi`; rtk owns the format |
+| Pi extension layer | `~/.pi/agent/extensions/{caveman-session,rtk-session,combo-toggle,tersio-commands,ai-addons-updater}/` plus `shared/` and `lib/` — one directory per extension with an `index.ts` Pi loads through jiti, the same layout the OMP layer has |
+| RTK Pi wiring (rtk-owned) | `~/.pi/agent/extensions/rtk.ts` — written via `rtk init -g --agent pi`; rtk owns the format, and uninstall leaves it alone |
+| Session-start defaults | `~/.tersio/settings.json` — one tersio-owned file that OMP and Pi both read, so a choice made in either host starts the same way in the other |
 | Other agents' rules, skills, and hooks | See [INSTALL.md](./INSTALL.md) — every artifact is inside that agent's own config dir, between `<!-- tersio:start -->` and `<!-- tersio:end -->` where the file is shared |
-| Selected agents | `~/.tersio/agents.json` — the `--agent` list, reused by later runs |
+| Selected agents | `~/.tersio/agents.json` — the `--agent` list, reused by later runs. Uninstall only offers hosts that have something on disk, and takes one at a time |
 | Ponytail package (bundled Tersio dependency — one Plugins row, updates with `tersio update`) | `~/.omp/plugins/node_modules/@dietrichgebert/ponytail/` — loaded as a nested plugin dependency |
 | RTK binary | Installer writes `~/.bun/bin/rtk` (`rtk.exe` on Windows). Runtime resolves `PATH` first, then this managed path. |
 | Legacy config cleanup | `~/.omp/agent/config.yml` — doctor removes retired or duplicate extension entries |

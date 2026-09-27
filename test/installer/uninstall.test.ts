@@ -54,7 +54,10 @@ test("uninstall removes extension dirs, self registration, and combo config entr
   const home = mkdtempSync(path.join(os.tmpdir(), "tersio-uninstall-"));
   try {
     seed(home);
-    const result = run(home, "uninstall", "--yes");
+    // A full uninstall names OMP: the extension layer follows the selection,
+    // so a flagless run now keeps it rather than deleting a plugin nobody
+    // named.
+    const result = run(home, "uninstall", "--yes", "--agent", "omp");
 
     expect(result.status, result.stderr).toBe(0);
     const extDir = path.join(home, ".omp", "agent", "extensions");
@@ -95,7 +98,7 @@ test("uninstall removes the bundled ponytail copy even with no legacy dep entry"
       JSON.stringify({ plugins: { [SELF]: {} }, settings: {} }),
       "utf8",
     );
-    const result = run(home, "uninstall", "--yes");
+    const result = run(home, "uninstall", "--yes", "--agent", "omp");
 
     expect(result.status, result.stderr).toBe(0);
     expect(!existsSync(path.join(pluginsDir, "node_modules", PONYTAIL)), "bundled ponytail removed").toBeTruthy();
@@ -110,7 +113,7 @@ test("uninstall --keep-ponytail keeps the plugin, dep, lock entry, and config li
   const home = mkdtempSync(path.join(os.tmpdir(), "tersio-uninstall-"));
   try {
     seed(home);
-    const result = run(home, "uninstall", "--yes", "--keep-ponytail");
+    const result = run(home, "uninstall", "--yes", "--agent", "omp", "--keep-ponytail");
 
     expect(result.status, result.stderr).toBe(0);
     expect(existsSync(path.join(home, ".omp", "plugins", "node_modules", PONYTAIL)), "ponytail package kept").toBeTruthy();
@@ -129,7 +132,7 @@ test("uninstall with removal flags drops ponytail, its lock entry, and the rtk b
   const home = mkdtempSync(path.join(os.tmpdir(), "tersio-uninstall-"));
   try {
     seed(home);
-    const result = run(home, "uninstall", "--yes", "--remove-ponytail", "--remove-rtk");
+    const result = run(home, "uninstall", "--yes", "--agent", "omp", "--remove-ponytail", "--remove-rtk");
 
     expect(result.status, result.stderr).toBe(0);
     expect(!existsSync(path.join(home, ".omp", "plugins", "node_modules", PONYTAIL)), "ponytail package removed").toBeTruthy();
@@ -146,6 +149,47 @@ test("uninstall with removal flags drops ponytail, its lock entry, and the rtk b
   }
 });
 
+test("uninstall --agent pi removes the pi skills, rules, and rtk extension but keeps the layer and binary", () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-uninstall-"));
+  try {
+    seed(home);
+    mkdirSync(path.join(home, ".pi", "agent", "extensions"), { recursive: true });
+    writeFileSync(path.join(home, ".pi", "agent", "AGENTS.md"), "<!-- tersio:start -->\nrules\n<!-- tersio:end -->\n", "utf8");
+    for (const mode of ["caveman", "ponytail", "rtk"]) {
+      const dir = path.join(home, ".pi", "agent", "skills", `tersio-${mode}`);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(path.join(dir, "SKILL.md"), "mine\n", "utf8");
+    }
+    const piRtk = path.join(home, ".pi", "agent", "extensions", "rtk.ts");
+    writeFileSync(piRtk, "// rtk pi wiring", "utf8");
+    const piTersio = path.join(home, ".pi", "agent", "extensions", "tersio.ts");
+    writeFileSync(piTersio, "// tersio pi extension", "utf8");
+    const result = run(home, "uninstall", "--yes", "--agent", "pi");
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(!existsSync(piRtk), "pi rtk extension removed").toBeTruthy();
+    expect(!existsSync(piTersio), "pi tersio extension removed").toBeTruthy();
+    expect(!existsSync(path.join(home, ".pi", "agent", "skills", "tersio-caveman")), "pi skills removed").toBeTruthy();
+    expect(!existsSync(path.join(home, ".pi", "agent", "AGENTS.md")), "block-only AGENTS.md removed").toBeTruthy();
+    expect(result.stdout).toMatch(/extensions\/rtk\.ts/);
+    // The plan names only the selected host: unselected agents stay out of
+    // both the preview and the run.
+    expect(result.stdout).toMatch(/Pi — rtk extension/);
+    expect(result.stdout).not.toMatch(/Claude Code — hook/);
+    expect(result.stdout).not.toMatch(/OpenAI Codex — hook/);
+    expect(result.stdout).not.toMatch(/OpenCode — plugin/);
+    expect(result.stdout).not.toMatch(/Oh My Pi — \d+ extension director/);
+    // Host-agnostic closing line: a Pi-only run must not say restart OMP.
+    expect(result.stdout).toMatch(/Done — restart your agents/);
+    expect(result.stdout).not.toMatch(/Restart OMP/);
+    // A Pi-only run must not touch the OMP layer or the shared binary.
+    expect(existsSync(path.join(home, ".omp", "agent", "extensions", "caveman-session", "index.js")), "OMP layer kept").toBeTruthy();
+    expect(existsSync(path.join(home, ".bun", "bin", "rtk")), "rtk binary kept").toBeTruthy();
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test("uninstall dry-run changes no files", () => {
   const home = mkdtempSync(path.join(os.tmpdir(), "tersio-uninstall-"));
   try {
@@ -154,7 +198,7 @@ test("uninstall dry-run changes no files", () => {
     const configPath = path.join(home, ".omp", "agent", "config.yml");
     const beforePkg = readFileSync(pluginsPkg, "utf8");
     const beforeConfig = readFileSync(configPath, "utf8");
-    const result = run(home, "uninstall", "--yes", "--dry-run", "--remove-ponytail", "--remove-rtk");
+    const result = run(home, "uninstall", "--yes", "--dry-run", "--agent", "omp", "--remove-ponytail", "--remove-rtk");
 
     expect(result.status, result.stderr).toBe(0);
     expect(readFileSync(pluginsPkg, "utf8")).toBe(beforePkg);

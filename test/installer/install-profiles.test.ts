@@ -33,13 +33,21 @@ function withHome<T>(fn: (home: string) => T): T {
   }
 }
 
-function writeLock(home: string, settings: Record<string, unknown>): void {
+// The store is ~/.tersio/settings.json, one tersio-owned file every host
+// reads. The OMP lock file is still a read fallback, so it is exercised too.
+function writeStore(home: string, settings: Record<string, unknown>): void {
+  const dir = path.join(home, ".tersio");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(path.join(dir, "settings.json"), JSON.stringify(settings), "utf8");
+}
+
+function writeOmpLock(home: string, settings: Record<string, unknown>): void {
   const dir = path.join(home, ".omp", "plugins");
   mkdirSync(dir, { recursive: true });
   writeFileSync(path.join(dir, "omp-plugins.lock.json"), JSON.stringify({ plugins: {}, settings }), "utf8");
 }
 
-test("readPluginSettings returns defaults when no lock file exists", () => {
+test("readPluginSettings returns defaults when no store exists", () => {
   withHome(() => {
     expect(readComboDefault()).toBe("off");
     expect(readCavemanDefault()).toBe("off");
@@ -48,32 +56,55 @@ test("readPluginSettings returns defaults when no lock file exists", () => {
   });
 });
 
-test("readPluginSettings picks up values from the omp lock file", () => {
+test("readPluginSettings reads the tersio store", () => {
   withHome((home) => {
-    writeLock(home, { "@krtclcdy/tersio": { comboDefault: "max", cavemanDefault: "wenyan", rtkDefault: true } });
+    writeStore(home, { comboDefault: "max", cavemanDefault: "wenyan", rtkDefault: true });
     expect(readComboDefault()).toBe("max");
     expect(readCavemanDefault()).toBe("wenyan");
     expect(readRtkDefault()).toBe(true);
   });
 });
 
-test("readPluginSettings ignores invalid values and other plugins", () => {
+test("readPluginSettings ignores values outside their own vocabulary", () => {
   withHome((home) => {
-    writeLock(home, {
-      "other-plugin": { comboDefault: "max" },
-      "@krtclcdy/tersio": { comboDefault: "yolo", cavemanDefault: 42, rtkDefault: "yes" },
-    });
+    writeStore(home, { comboDefault: "yolo", cavemanDefault: 42, rtkDefault: "yes" });
     expect(readComboDefault()).toBe("off");
     expect(readCavemanDefault()).toBe("off");
     expect(readRtkDefault()).toBe(false);
   });
 });
 
-test("readPluginSettings tolerates a corrupt lock file", () => {
+test("readPluginSettings still reads the omp lock file, and ignores other plugins there", () => {
   withHome((home) => {
-    const dir = path.join(home, ".omp", "plugins");
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(path.join(dir, "omp-plugins.lock.json"), "{ not json", "utf8");
+    // The fallback exists so an install made before the store existed keeps its
+    // defaults, and it must skip another plugin's entry rather than adopt it.
+    writeOmpLock(home, { "other-plugin": { comboDefault: "max" } });
+    expect(readComboDefault()).toBe("off");
+    writeOmpLock(home, {
+      "other-plugin": { comboDefault: "max" },
+      "@krtclcdy/tersio": { comboDefault: "balanced" },
+    });
+    expect(readComboDefault()).toBe("balanced");
+  });
+});
+
+test("readPluginSettings prefers the store over a stale lock entry", () => {
+  withHome((home) => {
+    writeOmpLock(home, { "@krtclcdy/tersio": { comboDefault: "max" } });
+    writeStore(home, { comboDefault: "medium" });
+    expect(readComboDefault()).toBe("medium");
+  });
+});
+
+test("readPluginSettings tolerates a corrupt store and a corrupt lock file", () => {
+  withHome((home) => {
+    const store = path.join(home, ".tersio");
+    mkdirSync(store, { recursive: true });
+    writeFileSync(path.join(store, "settings.json"), "{ not json", "utf8");
+    expect(readComboDefault()).toBe("off");
+    expect(readPluginSettings()).toEqual({});
+    writeOmpLock(home, {});
+    writeFileSync(path.join(home, ".omp", "plugins", "omp-plugins.lock.json"), "{ not json", "utf8");
     expect(readComboDefault()).toBe("off");
     expect(readPluginSettings()).toEqual({});
   });
@@ -218,13 +249,11 @@ test("apply-update without flags preserves stored combo defaults", () => {
   // wiping the user's configured default on every update.
   const home = mkdtempSync(path.join(os.tmpdir(), "omp-preserve-test-"));
   try {
-    writeLock(home, {
-      "@krtclcdy/tersio": {
-        comboDefault: "balanced",
-        cavemanDefault: "full",
-        rtkDefault: true,
-        ponytailDefault: "full",
-      },
+    writeStore(home, {
+      comboDefault: "balanced",
+      cavemanDefault: "full",
+      rtkDefault: true,
+      ponytailDefault: "full",
     });
     const result = spawnSync(process.execPath, [installer, "--apply-update", "--dry-run", "--yes"], {
       cwd: root,

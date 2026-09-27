@@ -3,12 +3,12 @@
 // Non-interactive: `tersio settings --combo-default balanced` (plus per-mode
 // override flags and --currency). Interactive: clack selects seeded from the
 // stored profile.
-import path from 'node:path';
 import {
-  CAVEMAN_DEFAULTS, COMBO_DEFAULTS, COMBO_PRESET_MODES, OMP_PLUGINS_DIR, PACKAGE_NAME,
+  CAVEMAN_DEFAULTS, COMBO_DEFAULTS, COMBO_PRESET_MODES, PACKAGE_NAME,
   PONYTAIL_DEFAULTS, cavemanDefaultFlag, comboDefaultFlag, currency, currencyGiven, diagScheduleFlag, dryRun,
   ponytailDefaultFlag, profileFlagsGiven, rtkDefaultFlag, settingArg,
 } from './common.ts';
+import { tersioSettingsPath } from '../extensions/shared/plugin-settings.ts';
 import { CURRENCY_CODES } from './currency.ts';
 import type { CurrencyCode } from './currency.ts';
 import { textTable } from './usage.ts';
@@ -177,7 +177,7 @@ function printSettingsTable(current: Profile): void {
   for (const l of textTable(['Setting', 'Current', 'Valid values'], rows, [false, false, false], 64)) {
     console.log(l);
   }
-  console.log(`  Stored: ${PACKAGE_NAME} in ${path.join(OMP_PLUGINS_DIR, 'omp-plugins.lock.json')}`);
+  console.log(`  Stored: ${PACKAGE_NAME} in ${tersioSettingsPath()}`);
 }
 
 async function runSettings(): Promise<void> {

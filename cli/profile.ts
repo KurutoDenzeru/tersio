@@ -1,17 +1,18 @@
 // cli/profile.ts — session-start defaults profile (combo/caveman/rtk/ponytail)
 // plus the display-currency default for usage/dashboard reports.
-// Single source for reading/writing the omp plugin settings lock entry.
-// Extracted from cli/install.ts so both install and settings share it.
+// Stored in ~/.tersio/settings.json, the same file the extensions read, so
+// OMP and Pi start from one choice. Extracted from cli/install.ts so both
+// install and settings share it.
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import {
-  CAVEMAN_DEFAULTS, COMBO_PRESET_MODES, OMP_PLUGINS_DIR, PACKAGE_NAME, PONYTAIL_DEFAULTS,
-  verbose,
+  CAVEMAN_DEFAULTS, COMBO_PRESET_MODES, PONYTAIL_DEFAULTS, verbose,
 } from './common.ts';
 import type { WriteOptions } from './common.ts';
 import { DEFAULT_CURRENCY, isCurrencyCode } from './currency.ts';
 import type { CurrencyCode } from './currency.ts';
 import { readTextIfExists } from '../extensions/lib/utils.ts';
+import { tersioSettingsPath } from '../extensions/shared/plugin-settings.ts';
 
 interface Profile {
   comboDefault: string;
@@ -39,21 +40,17 @@ interface StoredSettings {
   currency?: unknown;
 }
 
-// Stored profile from the live lock file: update/reinstall runs without flags
-// or prompts must preserve the user's choice, never reset it to off.
+// Stored profile from the live defaults file: update/reinstall runs without
+// flags or prompts must preserve the user's choice, never reset it to off.
 async function storedProfile(): Promise<Profile> {
   const base = defaultProfile();
-  const raw = await readTextIfExists(path.join(OMP_PLUGINS_DIR, 'omp-plugins.lock.json'));
+  const raw = await readTextIfExists(tersioSettingsPath());
   if (!raw) return base;
   let stored: StoredSettings;
   try {
     const parsed: unknown = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object' || !('settings' in parsed)) return base;
-    const settings = (parsed as { settings: unknown }).settings;
-    if (!settings || typeof settings !== 'object' || !(PACKAGE_NAME in settings)) return base;
-    const entry = (settings as Record<string, unknown>)[PACKAGE_NAME];
-    if (!entry || typeof entry !== 'object') return base;
-    stored = entry as StoredSettings;
+    if (!parsed || typeof parsed !== 'object') return base;
+    stored = parsed as StoredSettings;
   } catch { return base; }
   if (typeof stored.comboDefault === 'string' && stored.comboDefault in COMBO_PRESET_MODES) base.comboDefault = stored.comboDefault;
   if (typeof stored.cavemanDefault === 'string' && CAVEMAN_DEFAULTS.has(stored.cavemanDefault)) base.cavemanDefault = stored.cavemanDefault;
@@ -65,20 +62,19 @@ async function storedProfile(): Promise<Profile> {
   return base;
 }
 
-// Persist the profile as omp plugin settings so `omp plugin config get`
-// reflects the choice and the extensions pick it up on session start.
+// Persist the profile to the file the extensions read at session start.
 async function writePluginSettings(profile: Profile, options: WriteOptions): Promise<void> {
-  const pluginsDir = OMP_PLUGINS_DIR;
-  const lockPath = path.join(pluginsDir, 'omp-plugins.lock.json');
-  let config: { plugins?: Record<string, unknown>; settings?: Record<string, Record<string, unknown>> } = {};
-  const existing = await readTextIfExists(lockPath);
+  const file = tersioSettingsPath();
+  let current: Record<string, unknown> = {};
+  const existing = await readTextIfExists(file);
   if (existing) {
-    try { config = JSON.parse(existing); } catch { config = {}; }
+    try {
+      const parsed: unknown = JSON.parse(existing);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) current = parsed as Record<string, unknown>;
+    } catch { current = {}; }
   }
-  config.plugins = config.plugins || {};
-  config.settings = config.settings || {};
-  config.settings[PACKAGE_NAME] = {
-    ...(config.settings[PACKAGE_NAME] || {}),
+  const config: Record<string, unknown> = {
+    ...current,
     comboDefault: profile.comboDefault,
     comboSetupComplete: true,
     cavemanDefault: profile.cavemanDefault,
@@ -88,13 +84,14 @@ async function writePluginSettings(profile: Profile, options: WriteOptions): Pro
   };
 
   if (options.dryRun) {
-    if (verbose && !options.quiet) console.log(`  [dry-run] would write plugin settings (${PACKAGE_NAME}) to ${lockPath}`);
+    if (verbose && !options.quiet) console.log(`  [dry-run] would write session defaults to ${file}`);
     return;
   }
-  await fs.mkdir(pluginsDir, { recursive: true });
-  await fs.writeFile(lockPath, JSON.stringify(config, null, 2) + '\n', 'utf8');
-  console.log(`  [write] Plugin settings in ${lockPath}`);
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.writeFile(file, JSON.stringify(config, null, 2) + '\n', 'utf8');
+  console.log(`  [write] Session defaults in ${file}`);
 }
+
 
 function formatProfile(profile: Profile): string {
   return `combo=${profile.comboDefault} (caveman=${profile.cavemanDefault} · rtk=${profile.rtkDefault ? 'on' : 'off'} · ponytail=${profile.ponytailDefault}) · currency=${profile.currency}`;

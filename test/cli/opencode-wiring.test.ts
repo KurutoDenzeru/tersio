@@ -51,7 +51,7 @@ test("installing writes the plugin where OpenCode v2 looks for it", async () => 
   const { home, cleanup } = tempHome();
   try {
     const src = readFileSync(PLUGIN_SOURCE, "utf8");
-    const changed = await installOpenCodeRtk(home, src, { quiet: true });
+    const changed = await installOpenCodeRtk(home, PLUGIN_SOURCE, { quiet: true });
     expect(changed).toBe(true);
     expect(openCodePluginPath(home)).toBe(path.join(home, ".config", "opencode", "plugins", "tersio-rtk.ts"));
     expect(existsSync(openCodePluginPath(home))).toBe(true);
@@ -62,12 +62,28 @@ test("installing writes the plugin where OpenCode v2 looks for it", async () => 
   }
 });
 
+test("installing from the source path writes the file's content, not the path", async () => {
+  const { home, cleanup } = tempHome();
+  try {
+    // Regression guard: the production call site passes the source *path*,
+    // and an earlier revision wrote that path verbatim into the plugin file,
+    // which OpenCode then failed to load. The writer must resolve path to
+    // content; the unit tests masked this by passing content directly.
+    await installOpenCodeRtk(home, PLUGIN_SOURCE, { quiet: true });
+    const written = readFileSync(openCodePluginPath(home), "utf8");
+    expect(written).toBe(readFileSync(PLUGIN_SOURCE, "utf8"));
+    expect(written).toContain("export default plugin");
+    expect(written).not.toBe(PLUGIN_SOURCE);
+  } finally {
+    cleanup();
+  }
+});
+
 test("reinstalling the same plugin writes nothing and leaves no backup", async () => {
   const { home, cleanup } = tempHome();
   try {
-    const src = readFileSync(PLUGIN_SOURCE, "utf8");
-    await installOpenCodeRtk(home, src, { quiet: true });
-    const second = await installOpenCodeRtk(home, src, { quiet: true });
+    await installOpenCodeRtk(home, PLUGIN_SOURCE, { quiet: true });
+    const second = await installOpenCodeRtk(home, PLUGIN_SOURCE, { quiet: true });
     expect(second, "idempotent reinstall should report no change").toBe(false);
     expect(existsSync(`${openCodePluginPath(home)}.bak`)).toBe(false);
   } finally {
@@ -78,8 +94,7 @@ test("reinstalling the same plugin writes nothing and leaves no backup", async (
 test("a dry run writes nothing at all", async () => {
   const { home, cleanup } = tempHome();
   try {
-    const src = readFileSync(PLUGIN_SOURCE, "utf8");
-    const changed = await installOpenCodeRtk(home, src, { dryRun: true, quiet: true });
+    const changed = await installOpenCodeRtk(home, PLUGIN_SOURCE, { dryRun: true, quiet: true });
     expect(changed).toBe(true);
     expect(existsSync(openCodePluginPath(home))).toBe(false);
     expect(existsSync(openCodeConfigDir(home))).toBe(false);
@@ -93,7 +108,7 @@ test("uninstall removes the plugin and its backup, and reports when there was no
   try {
     const src = readFileSync(PLUGIN_SOURCE, "utf8");
     expect(await removeOpenCodeRtk(home, { quiet: true }), "nothing installed yet").toBe(false);
-    await installOpenCodeRtk(home, src, { quiet: true });
+    await installOpenCodeRtk(home, PLUGIN_SOURCE, { quiet: true });
     // Simulate a rewrite that left a backup behind.
     writeFileSync(`${openCodePluginPath(home)}.bak`, src, "utf8");
 
@@ -109,8 +124,7 @@ test("uninstall removes the plugin and its backup, and reports when there was no
 test("uninstalling under a dry run leaves the plugin in place", async () => {
   const { home, cleanup } = tempHome();
   try {
-    const src = readFileSync(PLUGIN_SOURCE, "utf8");
-    await installOpenCodeRtk(home, src, { quiet: true });
+    await installOpenCodeRtk(home, PLUGIN_SOURCE, { quiet: true });
     expect(await removeOpenCodeRtk(home, { dryRun: true, quiet: true })).toBe(true);
     expect(existsSync(openCodePluginPath(home))).toBe(true);
   } finally {
@@ -122,7 +136,7 @@ test("the rules pack merges into the user's own global AGENTS.md", async () => {
   const { home, cleanup } = tempHome();
   try {
     // The generic emitters own AGENTS.md, so the wiring must not touch it.
-    await installOpenCodeRtk(home, readFileSync(PLUGIN_SOURCE, "utf8"), { quiet: true });
+    await installOpenCodeRtk(home, PLUGIN_SOURCE, { quiet: true });
     const agents = openCodeAgentsPath(home);
     expect(existsSync(agents), "wiring must not write AGENTS.md").toBe(false);
 

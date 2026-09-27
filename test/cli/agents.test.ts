@@ -8,8 +8,14 @@ import {
   applyHost,
   applyHosts,
   detectHosts,
+  displayPath,
+  installedHostIds,
+  installedRows,
+  installedState,
   isTersioOwned,
   normalizeIds,
+  planInstall,
+  planRemove,
   readSelection,
   removeHost,
   removeHosts,
@@ -18,7 +24,7 @@ import {
   resolveAgentSelection,
   writeSelection,
 } from "../../cli/agents.ts";
-import { HOOK_MARKER } from "../../cli/host-writers.ts";
+import { HOOK_MARKER, planHost } from "../../cli/host-writers.ts";
 import { START } from "../../cli/rules-pack.ts";
 
 function tempHome(): { home: string; cleanup: () => void } {
@@ -55,8 +61,103 @@ test("the agent menu lists every host and says what wiring it will get", () => {
   for (const hint of byId_.values()) {
     expect(hint).not.toBe("guidance only · no auto-rewrite");
   }
-  // omp is the reference host, and the menu says so.
-  expect(byId_.get("omp")).toMatch(/^reference host · /);
+  // The hint stays the wiring; everything the user needs while scanning lives
+  // in the label, because clack 1.8 renders a hint only on the cursor row and
+  // ticked rows.
+  const omp = choices.find((c) => c.value === "omp")!;
+  expect(omp.label).toContain("extensions + Ponytail");
+  expect(omp.hint).toMatch(/rtk extension · auto-rewrite/);
+});
+
+test("the menu labels every host with what is already installed", () => {
+  const state = new Map([
+    ["omp", { count: 7, installed: true, dirs: true }],
+    ["opencode", { count: 1, installed: true, dirs: false }],
+    ["claude-code", { count: 6, installed: true, dirs: false }],
+    ["codex", { count: 6, installed: true, dirs: false }],
+    ["pi", { count: 4, installed: true, dirs: false }],
+  ]);
+  const labels = new Map(agentChoices(state).map((c) => [c.value, c.label]));
+
+  // "Is this already set up?" is the question the menu exists to answer, so the
+  // count and the marker both ride in the label where every row shows them.
+  expect(labels.get("pi")).toBe("Pi — 4 files · installed");
+  expect(labels.get("opencode")).toBe("OpenCode — 1 file · installed");
+  expect(labels.get("claude-code")).toContain("6 files · installed");
+  // OMP's artifacts are extension directories, not host files. Calling them
+  // files would put a number on a row that is counting the wrong kind of thing.
+  expect(labels.get("omp")).toBe("Oh My Pi (OMP) — 7 dirs · installed");
+});
+
+test("the menu says a host with nothing on disk is not installed", () => {
+  const state = new Map([
+    ["omp", { count: 0, installed: false, dirs: true }],
+    ["pi", { count: 0, installed: false, dirs: false }],
+  ]);
+  const labels = new Map(agentChoices(state).map((c) => [c.value, c.label]));
+  expect(labels.get("omp")).toBe("Oh My Pi (OMP) — 0 dirs · not installed");
+  expect(labels.get("pi")).toBe("Pi — 0 files · not installed");
+  // A host missing from the map entirely (the dashboard, which has no
+  // filesystem to read) keeps the bare name rather than a fake count.
+  expect(agentChoices().find((c) => c.value === "pi")!.label).toBe("Pi");
+});
+
+test("an uninstall menu offers only what is on disk", () => {
+  // The menu exists to answer "what can be taken away". A row for a host with
+  // nothing of ours on the machine is an offer to delete nothing, and a
+  // "Claude Code — 0 files · not installed" line made a one-host menu look
+  // like a five-host decision.
+  const state = new Map([
+    ["omp", { count: 7, installed: true, dirs: true }],
+    ["opencode", { count: 0, installed: false, dirs: false }],
+    ["claude-code", { count: 0, installed: false, dirs: false }],
+    ["codex", { count: 0, installed: false, dirs: false }],
+    ["pi", { count: 4, installed: true, dirs: false }],
+  ]);
+  expect(installedRows(state).map((c) => c.value)).toEqual(["omp", "pi"]);
+  // Install keeps every row: there the question is "which do you want", so a
+  // host with nothing yet still belongs.
+  expect(agentChoices(state).map((c) => c.value)).toEqual(
+    HOSTS.map((h) => h.id),
+  );
+});
+
+test("a host the state map does not mention keeps its row", () => {
+  // The dashboard reads no filesystem, so it calls agentChoices with no state
+  // at all. Filtering those out would leave the dashboard with nothing.
+  const sparse = new Map([["pi", { count: 4, installed: true, dirs: false }]]);
+  // Only a host the map names as not-installed is dropped; an unmapped host is
+  // unknown, not absent, so it keeps its row.
+  expect(installedRows(sparse).map((c) => c.value)).toEqual(HOSTS.map((h) => h.id));
+  expect(installedRows(new Map()).length).toBe(HOSTS.length);
+});
+
+test("installedState reads the disk, not the saved selection", () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-state-"));
+  try {
+    // A saved selection naming hosts that are not on disk must not make them
+    // look installed, and a host with files but no saved entry must look
+    // installed. That inversion is what left an installed OMP unticked.
+    mkdirSync(path.join(home, ".tersio"), { recursive: true });
+    writeFileSync(path.join(home, ".tersio", "agents.json"),
+      JSON.stringify({ hosts: ["opencode", "claude-code", "codex", "pi"], updatedAt: 0 }), "utf8");
+
+    const piSkill = path.join(home, ".pi", "agent", "skills", "tersio-caveman");
+    mkdirSync(piSkill, { recursive: true });
+    writeFileSync(path.join(piSkill, "SKILL.md"), "x", "utf8");
+
+    const state = installedState(home);
+    expect(state.get("pi")!.count, "a file on disk is installed regardless of the saved list").toBe(1);
+    expect(state.get("pi")!.installed).toBe(true);
+    for (const ghost of ["opencode", "claude-code", "codex"]) {
+      expect(state.get(ghost)!.count, `${ghost} is named in the saved list but has no files`).toBe(0);
+      expect(state.get(ghost)!.installed).toBe(false);
+    }
+    expect(state.get("omp")!.dirs, "OMP's artifacts are extension directories").toBe(true);
+    expect(installedHostIds(state)).toEqual(["pi"]);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
 });
 
 test("normalizeIds keeps registry order, drops unknowns, and de-duplicates", () => {
@@ -527,4 +628,90 @@ test("a missing rewrite hook is called out, because a host that ignores it looks
   } finally {
     cleanup();
   }
+});
+
+// --- install and removal plans --------------------------------------------
+
+test("the install plan names every file a host needs, and marks it new", async () => {
+  const { home, cleanup } = tempHome();
+  try {
+    const plan = await planInstall(["claude-code"], home);
+    expect(plan.selected.map((h) => h.id)).toEqual(["claude-code"]);
+    expect(plan.newFiles).toBe(6);
+    expect(plan.unchanged).toBe(0);
+    expect(plan.hosts[0].wiring).toMatch(/hook/);
+    // The plan and the apply must name the same files, or the preview lies.
+    expect(plan.hosts[0].lines.map((l) => l.path).toSorted()).toEqual(
+      planHost(byId("claude-code")!, home).artifacts.map((a) => a.absPath).toSorted(),
+    );
+    for (const line of plan.hosts[0].lines) expect(line.new).toBe(true);
+  } finally {
+    cleanup();
+  }
+});
+
+test("the install plan reports a file already on disk as in place, not new", async () => {
+  const { home, cleanup } = tempHome();
+  try {
+    await applyHost(byId("claude-code")!, home);
+    const plan = await planInstall(["claude-code"], home);
+    expect(plan.newFiles).toBe(0);
+    expect(plan.unchanged).toBe(6);
+    for (const line of plan.hosts[0].lines) expect(line.new).toBe(false);
+  } finally {
+    cleanup();
+  }
+});
+
+test("the install plan covers only the selected hosts", async () => {
+  const { home, cleanup } = tempHome();
+  try {
+    await applyHosts(["claude-code", "pi"], home);
+    const plan = await planInstall(["pi"], home);
+    expect(plan.selected.map((h) => h.id)).toEqual(["pi"]);
+    // pi's rewrite is an rtk-owned extension, so it has skills and rules only.
+    expect(plan.hosts[0].lines.length).toBe(4);
+    for (const line of plan.hosts[0].lines) expect(line.path.startsWith(path.join(home, ".pi"))).toBe(true);
+  } finally {
+    cleanup();
+  }
+});
+
+test("the removal plan lists only files on disk and drops an untouched host", async () => {
+  const { home, cleanup } = tempHome();
+  try {
+    await applyHost(byId("claude-code")!, home);
+    // A host that was never installed has nothing to remove, so it must not
+    // appear in the plan at all.
+    const plan = planRemove(["claude-code", "pi"], home);
+    expect(plan.hosts.map((h) => h.host.id)).toEqual(["claude-code"]);
+    expect(plan.files).toBe(6);
+    for (const line of plan.hosts[0].lines) expect(existsSync(line.path)).toBe(true);
+  } finally {
+    cleanup();
+  }
+});
+
+test("the removal plan shrinks as files are removed, and never overstates", async () => {
+  const { home, cleanup } = tempHome();
+  try {
+    await applyHost(byId("claude-code")!, home);
+    const before = planRemove(["claude-code"], home).files;
+    await removeHost(byId("claude-code")!, home);
+    const after = planRemove(["claude-code"], home);
+    expect(before).toBe(6);
+    expect(after.files).toBeLessThan(before);
+    for (const line of after.hosts[0].lines) expect(existsSync(line.path)).toBe(true);
+  } finally {
+    cleanup();
+  }
+});
+
+test("displayPath shortens a path under home and leaves anything else alone", () => {
+  const home = path.join(path.sep, "home", "dev");
+  expect(displayPath(path.join(home, ".claude", "CLAUDE.md"), home)).toBe("~/.claude/CLAUDE.md");
+  expect(displayPath(path.join(path.sep, "opt", "x"), home)).toBe(path.join(path.sep, "opt", "x"));
+  // A sibling directory that merely shares the home prefix is not under it.
+  expect(displayPath(`${home}-other${path.sep}x`, home)).toBe(`${home}-other${path.sep}x`);
+  expect(displayPath(path.join(home, "a", "b"), home)).not.toContain("home");
 });

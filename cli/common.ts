@@ -92,7 +92,13 @@ const showVersion = command === 'version' || args.includes('--version') || args.
 const showHelp = command === 'help' || args.includes('--help') || args.includes('-h');
 const applyUpdate = args.includes('--apply-update');
 const dryRun = args.includes('--dry-run');
-const yes = args.includes('--yes') || args.includes('-y') || install || update || reinstall || applyUpdate;
+// `--yes` is the user saying "don't prompt me". Naming a command is not that
+// request: `tersio install` at a terminal must still ask which agents, or the
+// menu is unreachable from the command that exists to offer it. Folding the
+// command name into this flag made every explicit install skip the agent
+// selection, so the only way to reach the menu was bare `tersio`.
+const assumeYes = args.includes('--yes') || args.includes('-y');
+const yes = assumeYes || update || reinstall || applyUpdate;
 const verbose = args.includes('--verbose');
 const doctor = command === 'doctor' || args.includes('--doctor');
 const fix = args.includes('--fix') || args.some((a) => a.startsWith('--fix='));
@@ -111,6 +117,10 @@ const uninstall = command === 'uninstall' || args.includes('--uninstall');
 const removePonytail = args.includes('--remove-ponytail');
 const keepPonytail = args.includes('--keep-ponytail');
 const removeRtk = args.includes('--remove-rtk');
+// Keep the Oh My Pi extension layer while still clearing the agent files. The
+// prompt asks for this at a terminal; the flag makes the same choice available
+// to scripts, which have no prompt to ask.
+const keepOmpLayer = args.includes('--keep-omp-layer');
 
 // Project scope was removed: tersio installs user-level (all OMP sessions)
 // only. A bare `--scope user` still parses (old scripts); anything else fails.
@@ -398,7 +408,7 @@ export {
   install, update, reinstall, showVersion, showHelp, applyUpdate, args,
   dryRun, yes, verbose, doctor, fix, uninstall, usage, dashboard, reset, settings,
   dashboardPort, dashboardOpen, dashboardExport, currency, currencyGiven,
-  removePonytail, keepPonytail, removeRtk,
+  removePonytail, keepPonytail, removeRtk, keepOmpLayer,
   comboDefaultFlag, cavemanDefaultFlag, ponytailDefaultFlag, rtkDefaultFlag, diagScheduleFlag, profileFlagsGiven, agentFlag,
   debug, execFileP, execP, writeIfChanged, normalizeExtensionsKey, EXTENSIONS_KEY_RE,
   writeConfigLines, ensureExtensionInConfig, removeExtensionFromConfig,

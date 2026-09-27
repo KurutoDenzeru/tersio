@@ -30,6 +30,7 @@ export interface HostRewrite {
    * host forwards more than one spelling (Grok accepts both cases).
    */
   inputPath: string | string[];
+
   /** How the rewritten command is returned. */
   protocol: RewriteProtocol;
   /** True when a non-zero exit or malformed output BLOCKS the tool call. */
@@ -38,11 +39,9 @@ export interface HostRewrite {
 
 /**
  * Which module owns this host's rewrite when there is no static hook file.
- *
- * Every supported host either has a static hook or a named owner, so a
- * `rewrite: true` host with neither is a half-filled entry. That invariant is
- * asserted in the registry tests, because a host that silently claims a working
- * auto-rewrite is the exact failure this registry exists to prevent.
+ * Every supported host has one or the other — asserted in the registry tests,
+ * because a host silently claiming a working auto-rewrite is the exact failure
+ * this registry exists to prevent.
  */
 export type RewriteOwner = 'wiring' | 'plugin';
 

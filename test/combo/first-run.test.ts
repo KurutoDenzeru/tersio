@@ -47,8 +47,7 @@ function harness(selection: string | undefined, hasUI = true): { handlers: Map<s
 }
 
 function readSettings(home: string): Record<string, unknown> {
-  const lock = JSON.parse(readFileSync(path.join(home, ".omp", "plugins", "omp-plugins.lock.json"), "utf8")) as { settings?: Record<string, Record<string, unknown>> };
-  return lock.settings?.["@krtclcdy/tersio"] ?? {};
+  return JSON.parse(readFileSync(path.join(home, ".tersio", "settings.json"), "utf8")) as Record<string, unknown>;
 }
 
 test("interactive OMP install selects and persists a Combo default", async () => {

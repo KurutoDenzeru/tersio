@@ -1,0 +1,110 @@
+// extensions/pi/tersio-commands/index.ts — /tersio root command for Pi:
+// status, check, update, dashboard, usage, help.
+//
+// Mode switches live on their own commands (/caveman, /rtk, /combo, and the
+// upstream /ponytail): the router keeps no redundant copies. The shared-state
+// bridge publishes sync sibling mirrors live, so a switch notify takes effect
+// next turn — no reload. Same subcommands as
+// extensions/tersio-commands/index.ts; the OMP divergences that mattered here
+// were the dropped setLabel (Pi's setLabel names a session entry) and Pi's
+// documented failure contract, which both this file and the ported addon
+// updater already satisfy.
+//
+// This file owns no prompt section: it only reports state and delegates.
+
+import os from 'node:os';
+import path from 'node:path';
+import { getSharedComboState, notify, reconcileSharedComboEntries, sessionEntries } from '../shared/pi-session-state.ts';
+import { appendUsage, readUsage } from '../shared/usage-ledger.ts';
+import { checkAddonsSummary, runAddonUpdate } from '../ai-addons-updater/index.ts';
+import type { ExtensionCtx, PiExtensionAPI } from '../shared/pi-types.ts';
+
+const HELP = [
+  '/tersio status — active modes + combo level',
+  '/tersio check — add-on version check',
+  '/tersio update <ponytail|rtk|caveman|all> [--dry-run]',
+  '/tersio dashboard — open the Dashboard',
+  '/tersio usage — ledger report for this machine',
+  '/tersio help — this table',
+  'mode switches: /caveman /rtk /combo (tersio) + /ponytail (upstream)',
+].join('\n');
+
+function statusLine(): string {
+  const s = getSharedComboState();
+  const level = s.level === 'custom' ? 'INACTIVE' : s.level.toUpperCase();
+  return `tersio — caveman=${s.caveman.toUpperCase()} · rtk=${s.rtk.toUpperCase()} · ponytail=${s.ponytail.toUpperCase()} (combo ${level})`;
+}
+
+function usageSummary(): string {
+  const rows = readUsage();
+  if (rows.length === 0) return 'tersio usage: no ledger yet — run commands first.';
+  const byKind: Record<string, number> = {};
+  for (const r of rows) byKind[r.kind] = (byKind[r.kind] ?? 0) + 1;
+  const parts = Object.entries(byKind).map(([k, n]) => `${k}×${n}`);
+  const last = new Date(rows[rows.length - 1].ts).toISOString();
+  return `tersio usage: ${rows.length} rows (${parts.join(', ')}), last write ${last}.`;
+}
+
+async function openDashboard(pi: PiExtensionAPI, ctx?: ExtensionCtx): Promise<void> {
+  const file = path.join(os.tmpdir(), `tersio-dashboard-${Date.now()}.html`);
+  try {
+    // ctx.cwd is the only cwd on Pi; there is no pi.cwd to fall back to.
+    const exported = await pi.exec?.('tersio', ['dashboard', '--export', file], { cwd: ctx?.cwd });
+    if (!exported || exported.code !== 0) throw new Error((exported?.stderr || 'export failed').trim());
+    const openCmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open';
+    await pi.exec?.(openCmd, [file], { cwd: ctx?.cwd });
+    notify(ctx, `tersio dashboard: opened in your browser.`);
+  } catch (e) {
+    notify(ctx, `tersio dashboard: could not open (${(e as Error).message}). Run 'tersio dashboard --open' in a shell.`, 'warning');
+  }
+}
+
+export default function tersioCommandsExtension(pi: PiExtensionAPI): void {
+  pi.registerCommand?.('tersio', {
+    description: 'Tersio root: status|check|update|dashboard|usage|help',
+    handler: async (args, ctx) => {
+      const parts = String(args || '').trim().toLowerCase().split(/\s+/).filter(Boolean);
+      const [sub] = [parts[0]];
+      appendUsage('command', `/tersio ${parts.join(' ')}`.trim());
+
+      if (!sub || sub === 'status') {
+        if (ctx?.hasUI) reconcileSharedComboEntries(sessionEntries(ctx));
+        notify(ctx, statusLine());
+        return;
+      }
+      if (sub === 'help') {
+        notify(ctx, HELP);
+        return;
+      }
+      if (sub === 'check') {
+        await checkAddonsSummary(ctx);
+        return;
+      }
+      if (sub === 'update') {
+        const dryRun = parts.includes('--dry-run');
+        const target = parts.filter((p) => p !== '--dry-run' && p !== 'update' && p !== 'tersio').join(' ');
+        if (!target) {
+          notify(ctx, 'Usage: /tersio update <ponytail|rtk|caveman|all> [--dry-run]', 'warning');
+          return;
+        }
+        await runAddonUpdate(pi, ctx, target, dryRun);
+        return;
+      }
+      if (sub === 'dashboard') {
+        await openDashboard(pi, ctx);
+        return;
+      }
+      if (sub === 'usage') {
+        notify(ctx, usageSummary());
+        return;
+      }
+      // Removed mode switches redirect to their own commands so only one
+      // spelling exists to learn: /caveman, /rtk, /combo, /ponytail.
+      if (sub === 'caveman' || sub === 'rtk' || sub === 'combo' || sub === 'ponytail') {
+        notify(ctx, `Use /${sub} instead — /tersio no longer duplicates mode switches.\n${HELP}`, 'warning');
+        return;
+      }
+      notify(ctx, `Unknown subcommand: ${sub}.\n${HELP}`, 'warning');
+    },
+  });
+}

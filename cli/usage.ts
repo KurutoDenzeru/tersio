@@ -196,7 +196,7 @@ function printReport(report: UsageReport): void {
   const t = report.tokens;
   console.log(`  TOKENS  ${fmt(t.input)} in · ${fmt(t.output)} out · ${fmt(t.cacheRead)} cache read · ${fmt(t.cacheWrite)} cache write`);
   console.log(`  COST    ${formatCurrency(report.usd, report.currency)}${report.priced ? '' : ' (includes default pricing)'} · ~${formatCurrency(report.savedUsd, report.currency)} cache-saved (est.) · ~${report.co2g.toFixed(1)}g CO2 (est.)`);
-  console.log(`  RTK      ${fmt(report.rtkAdoption.rtkCalls)}/${fmt(report.rtkAdoption.eligibleCalls)} eligible OMP Bash calls use RTK (${report.rtkAdoption.adoptionPct.toFixed(1)}%) · ${fmt(report.rtkAdoption.missedCalls)} missed · recall ${report.rtkRecall.available ? `${report.rtkRecall.mode} (${report.rtkRecall.entries})` : 'unavailable'}`);
+  console.log(`  RTK      ${fmt(report.rtkAdoption.rtkCalls)}/${fmt(report.rtkAdoption.eligibleCalls)} eligible Bash calls use RTK (${report.rtkAdoption.adoptionPct.toFixed(1)}%) · ${fmt(report.rtkAdoption.missedCalls)} missed · recall ${report.rtkRecall.available ? `${report.rtkRecall.mode} (${report.rtkRecall.entries})` : 'unavailable'}`);
   const models = Object.entries(report.byModel).filter(([, b]) => b.input + b.output + b.cacheRead + b.cacheWrite > 0).sort((a, b) => (b[1].input + b[1].output) - (a[1].input + a[1].output)).slice(0, 8);
   if (models.length) {
     console.log('  BY MODEL');

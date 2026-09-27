@@ -68,11 +68,13 @@ directory is deliberately *not* moved with it.
 Rules and skills are written by the OMP plugin; the rewrite is rtk's own
 extension, written by `rtk init -g --agent omp`.
 
-OMP is the only host that also gets the live-session tier: mid-session mode
-switching, the Combo bar, and subagent inheritance. That is a capability
-difference, not a primacy one — it exists because OMP has an extension API that
-can change state mid-session, and the other four do not. Nothing else in
-Tersio is OMP-specific: the rules, the skills, the rewrite, the CLI, the
+OMP is the reference host for the live-session tier: mid-session mode switching,
+the Combo bar, and subagent inheritance. Pi gets the same tier through its own
+extension tree, written against its own ExtensionAPI — same commands, same
+state, different prompt plumbing. That is a capability difference, not a
+primacy one, and it exists because these two hosts have an extension API that
+can change state mid-session and the other three do not. Nothing else in
+Tersio is host-specific: the rules, the skills, the rewrite, the CLI, the
 dashboard, and the ledger are the same code on every host.
 
 ### Pi — `pi`
@@ -80,11 +82,32 @@ dashboard, and the ledger are the same code on every host.
 ```text
 ~/.pi/agent/AGENTS.md
 ~/.pi/agent/skills/tersio-{caveman,ponytail,rtk}/SKILL.md
+~/.pi/agent/extensions/{caveman-session,rtk-session,combo-toggle,tersio-commands,ai-addons-updater}/index.ts
+~/.pi/agent/extensions/{shared,lib}/
 ```
 
 The rewrite is rtk's own extension at `~/.pi/agent/extensions/rtk.ts`, written by
 `rtk init -g --agent pi`. rtk owns that format, so a Tersio release is not needed
 when it changes.
+
+The live modes are the extension tree Tersio writes beside it, from
+`extensions/pi/`. It is the same layer OMP gets, laid out the way Pi loads it:
+one directory per extension, each with an `index.ts` Pi picks up through jiti at
+`<agent-dir>/extensions/<dir>/index.ts`, with `shared/` and `lib/` beside them
+imported by the extension modules. So `/caveman`, `/rtk`, `/ponytail`, and
+`/combo` switch modes mid-session, `/tersio` reports status, `/ai-addons`
+updates the add-ons, and the active modes inject into every turn.
+
+The modules are written against Pi's ExtensionAPI, not a copy of OMP's. The
+differences that matter: modes are injected by writing
+`event.systemPromptOptions.sections` rather than by returning a replacement
+prompt, each mode owns one sealed section name, a failed tool result is thrown
+rather than returned, and there is no `session_branch` event, so mode restore
+hangs off `session_start` and `session_tree`.
+
+Uninstalling Pi removes the whole tree with the rules and skills above. rtk's
+own `rtk.ts` is removed too when Pi is selected, but the shared rtk binary is
+only removed with `--remove-rtk`.
 
 ### OpenCode — `opencode`
 
@@ -106,7 +129,20 @@ These hold for every host, and they are enforced by tests:
 - **Uninstall is precise.** `tersio uninstall --agent <id>` strips the marked
   block, deletes files Tersio created outright, and reports anything it kept
   because your own content is still in it. A file that held nothing but
-  Tersio's block is removed; a file you also write to is left in place.
+  Tersio's block is removed; a file you also write to is left in place. Before
+  removing anything it prints the plan: each selected agent's files grouped
+  under that agent, and only files actually on disk are named.
+
+  The menu offers only the agents that have something on disk, and takes one at
+  a time. An agent Tersio never wrote to is not listed: there would be nothing
+  to remove, and a `Claude Code — 0 files` row turns a one-agent decision into
+  a five-agent one. A second row clears every installed agent at once when
+  there is more than one, and it sits last, so the highlighted row — what a
+  bare Enter takes — is a single agent. The confirm after it still defaults to
+  No. The Oh My Pi extensions and the Ponytail package go by picking **Oh My Pi
+  (OMP)** in that same menu, not by a separate question. `--keep-omp-layer`
+  does the same for scripts. `install` asks the same way, one agent per run,
+  with an **All detected** row at the end for the machine-wide case.
 - **Shared directories stay.** Codex and Pi use the shared `~/.agents/skills/` convention.
   Both write the same files, so the content is identical either way and
   uninstall never removes the directory itself.

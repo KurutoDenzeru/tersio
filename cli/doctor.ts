@@ -1,5 +1,5 @@
 // cli/doctor.ts — installation health checks.
-import { promises as fs } from 'node:fs';
+import { existsSync, promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {
@@ -13,6 +13,8 @@ import { pricesCachePath } from '../extensions/shared/pricing.ts';
 import { readTextIfExists, resolveRtkBinary } from '../extensions/lib/utils.ts';
 import { detectHosts, readSelection, reportHosts, resolveAgentSelection } from './agents.ts';
 import { HOSTS } from './agent-hosts.ts';
+import { reportOmpLayer } from './omp-layer.ts';
+import { reportPiLayer } from './pi-layer.ts';
 
 interface DoctorSummary {
   ok: number;
@@ -25,7 +27,6 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
 
   // Directories
   const agentDir = OMP_AGENT_DIR;
-  const extDir = path.join(agentDir, 'extensions');
   const configPath = path.join(agentDir, 'config.yml');
   const pluginsDir = OMP_PLUGINS_DIR;
   const rtkBin = resolveRtkBinary();
@@ -42,14 +43,10 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   // Independent probes start concurrently; sections report in fixed order as
   // their data settles. Every probe resolves instead of rejecting.
   const probes = {
-    agentEntries: fs.readdir(agentDir).catch(() => null),
-    extEntries: fs.readdir(extDir).catch(() => null),
-    sharedStateText: readTextIfExists(path.join(tersioPluginDir, 'extensions', 'shared', 'session-state.ts')),
     configText: readTextIfExists(configPath),
     ponytailPkgText: readTextIfExists(ponytailPkg),
     ponytailExtText: readTextIfExists(ponytailExt),
     rtkBinText: rtkBin ? readTextIfExists(rtkBin) : Promise.resolve(null),
-    rtkOmpText: readTextIfExists(path.join(extDir, 'rtk.ts')),
     cavemanIndexText: readTextIfExists(cavemanIndex),
     cavemanRuleText: readTextIfExists(cavemanRule),
     rtkIndexText: readTextIfExists(rtkIndex),
@@ -66,11 +63,8 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
       return err.stdout?.trim() || err.stderr?.trim() || null;
     },
   ) : Promise.resolve(null);
-  const [[agentEntries, extEntries, sharedStateText, configText], [cavemanIndexText, rtkIndexText, updaterIndexText, ponytailPkgText, ponytailExtText], [cavemanRuleText, ruleMtime, rtkBinText, rtkMtime, rtkVersion, rtkOmpText, ponytailMtime, pricesMtime]] = await runInteractivePhase('Checking installation', () => Promise.all([
+  const [[configText], [cavemanIndexText, rtkIndexText, updaterIndexText, ponytailPkgText, ponytailExtText], [cavemanRuleText, ruleMtime, rtkBinText, rtkMtime, rtkVersion, ponytailMtime, pricesMtime]] = await runInteractivePhase('Checking installation', () => Promise.all([
     Promise.all([
-      probes.agentEntries,
-      probes.extEntries,
-      probes.sharedStateText,
       probes.configText,
     ]),
     Promise.all([
@@ -86,7 +80,6 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
       probes.rtkBinText,
       probes.rtkMtime,
       rtkVersionProbe,
-      probes.rtkOmpText,
       probes.ponytailMtime,
       probes.pricesMtime,
     ]),
@@ -143,14 +136,36 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
     }
   }
 
-  section('Environment');
-  check('Node', true, process.version);
+  // OMP belongs in the host list, not in a section of its own: it is one host
+  // among several, and its artifacts are extension directories rather than
+  // files. The row appears only when the plugin is actually installed, so a
+  // machine that never had the Oh My Pi layer is not told it is missing.
+  const ompReport = reportOmpLayer(home, existsSync);
+  if (ompReport.installed) {
+    const ompLabel = 'Oh My Pi (OMP)';
+    const extCount = ompReport.extensions.length;
+    if (ompReport.missing.length === 0) {
+      check(ompLabel, true, `plugin + ${extCount} extension director${extCount === 1 ? 'y' : 'ies'}`);
+    } else {
+      warnLine(ompLabel, `${ompReport.missing.length} extension dir(s) missing — run: tersio install --agent omp`);
+    }
+  }
 
-  section('Installation');
-  check('OMP agent dir', agentEntries !== null, agentEntries === null ? agentDir : '');
-  check('OMP extensions dir', extEntries !== null, extEntries === null ? extDir : '');
-  check('OMP config.yml', configText !== null, configText === null ? configPath : '');
-  check('Shared session bridge', sharedStateText !== null);
+  // Pi's extension layer, same shape as OMP's: a row appears only when the
+  // tree is actually on disk, so a machine that never installed it is not
+  // told it is missing.
+  const piReport = reportPiLayer(home, existsSync);
+  if (piReport.installed) {
+    const piLabel = 'Pi extension layer';
+    const present = piReport.extensions.length;
+    if (piReport.missing.length === 0) {
+      check(piLabel, true, `${present} extension/module director${present === 1 ? 'y' : 'ies'}`);
+    } else {
+      warnLine(piLabel, `${piReport.missing.length} extension dir(s) missing — run: tersio install --agent pi`);
+    }
+  }
+
+
 
   section('Extensions & plugins');
   const explicitEntries = (configText ?? '').split('\n')
@@ -177,9 +192,6 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   const rtkAge = rtkMtime ? `(updated ${relTime(Date.now() - rtkMtime.mtimeMs)} · ${absDate(rtkMtime.mtimeMs)})` : '';
   check('RTK binary', rtkBin !== null, rtkBinText === null ? 'not found in PATH' : [rtkVersion, rtkAge].filter(Boolean).join(' '));
   if (rtkBinText !== null && !rtkVersion) warnLine('RTK version', 'unavailable — binary may not be executable');
-  const rtkRegistered = rtkOmpText !== null && (configText ?? '').includes('extensions/rtk.ts');
-  check('RTK OMP wiring (rtk.ts)', rtkOmpText !== null, rtkOmpText === null ? 'run: rtk init -g --agent omp' : '');
-  if (rtkOmpText !== null && !rtkRegistered) warnLine('RTK in config.yml', 'rtk.ts not listed — OMP will not load it; rerun install');
   const ponytailAge = ponytailMtime ? `(updated ${relTime(Date.now() - ponytailMtime.mtimeMs)} · ${absDate(ponytailMtime.mtimeMs)})` : '';
   const ponytailVer = parseJsonObject<{ version?: string }>(ponytailPkgText)?.version ?? '';
   check('Ponytail', ponytailPkgText !== null, [ponytailVer, ponytailAge].filter(Boolean).join(' '));

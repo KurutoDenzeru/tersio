@@ -13,12 +13,16 @@ import path from 'node:path';
 import {
   RECENT_LIMIT,
   canonicalModelId,
+  classifyOpencodeMessage,
   classifySessionLine,
   codexSessionsDir,
   costOf,
   durOf,
+  hasPositiveUsage,
   ingestSessionRow,
   newSessionAccum,
+  opencodeSessionsDir,
+  piSessionsDir,
   sessionsDir,
   walkJsonl,
 } from './usage-ledger.ts';
@@ -53,7 +57,11 @@ function nullStr(v: string | undefined): string {
 }
 
 function run(db: string, sql: string): void {
-  execFileSync('sqlite3', [db, sql], { stdio: ['ignore', 'ignore', 'ignore'], timeout: 30000 });
+  // .bail on keeps a chunk atomic: the sqlite CLI otherwise keeps executing
+  // past a failed statement and COMMITs the partial chunk, which deletes rows
+  // without re-inserting them. .timeout waits out the dashboard server's
+  // concurrent reads instead of failing busy at COMMIT.
+  execFileSync('sqlite3', ['-cmd', '.bail on', '-cmd', '.timeout 10000', db, sql], { stdio: ['ignore', 'ignore', 'ignore'], timeout: 30000 });
 }
 
 function query(db: string, sql: string): string[][] {
@@ -143,6 +151,7 @@ function parseFile(text: string): StoredRow[] {
         continue;
       }
       if (parsed.kind !== 'assistant_row' || !parsed.model || !parsed.usage) continue;
+      if (!hasPositiveUsage(parsed.usage)) continue;
       const usage = parsed.usage;
       const dur = durOf(parsed.durMs);
       const run = parsed.run ?? { st: 'completed' as RunStatus };
@@ -164,6 +173,35 @@ function parseFile(text: string): StoredRow[] {
     } catch { /* skip corrupt lines */ }
   }
   return rows;
+}
+
+// One OpenCode message file into stored rows. Mirrors processOpencodeFile on
+// the live path: same classifier, same completed status, same zero skip.
+function parseOpencodeFile(text: string): StoredRow[] {
+  let obj: unknown;
+  try {
+    obj = JSON.parse(text);
+  } catch {
+    return [];
+  }
+  const parsed = classifyOpencodeMessage(obj as Parameters<typeof classifyOpencodeMessage>[0]);
+  if (!parsed) return [];
+  const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.floor(v) : 0);
+  const usage = parsed.usage;
+  return [{
+    t: parsed.ms ?? null,
+    model: canonicalModelId(parsed.model),
+    i: num(usage.input),
+    o: num(usage.output),
+    d: durOf(parsed.durMs),
+    cr: num(usage.cacheRead),
+    cw: num(usage.cacheWrite),
+    usd: costOf(usage),
+    st: 'completed',
+    code: undefined,
+    note: undefined,
+    tools: [],
+  }];
 }
 
 function insertSql(file: string, r: StoredRow): string {
@@ -190,6 +228,12 @@ export function syncUsageDb(): boolean {
     walkJsonl(sessionsDir(), files, 2000);
     if (process.env.TERSIO_SESSIONS_DIR === undefined || process.env.TERSIO_CODEX_DIR !== undefined) {
       walkJsonl(codexSessionsDir(), files, 2000);
+    }
+    if (process.env.TERSIO_SESSIONS_DIR === undefined || process.env.TERSIO_PI_DIR !== undefined) {
+      walkJsonl(piSessionsDir(), files, 5000);
+    }
+    if (process.env.TERSIO_SESSIONS_DIR === undefined || process.env.TERSIO_OPENCODE_DIR !== undefined) {
+      walkJsonl(opencodeSessionsDir(), files, 5000, '.json');
     }
   } catch {
     return false;
@@ -236,7 +280,10 @@ export function syncUsageDb(): boolean {
     for (const file of changed) {
       const entry = current[file];
       const text = fs.readFileSync(file, 'utf8');
-      for (const r of parseFile(text)) {
+      // OpenCode message bodies are single JSON documents, parsed by their
+      // own classifier; everything else is JSONL through parseFile.
+      const parsed = file.endsWith('.json') ? parseOpencodeFile(text) : parseFile(text);
+      for (const r of parsed) {
         if (!push(insertSql(file, r))) return false;
       }
       if (!push(`INSERT OR REPLACE INTO files (path, mtime, size) VALUES (${esc(file)},${entry.mtime},${entry.size});`)) return false;

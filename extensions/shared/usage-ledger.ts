@@ -177,6 +177,33 @@ export function codexSessionsDir(): string {
   return path.join(os.homedir(), '.codex', 'sessions');
 }
 
+// Pi transcripts live beside its config, so they relocate with it. Pi rows
+// already match the assistant-row shape the classifier reads (role, model,
+// usage, toolCall content) — the importer simply never walked this dir.
+export function piSessionsDir(): string {
+  const override = process.env.TERSIO_PI_DIR;
+  if (override) return override;
+  const relocated = process.env.PI_CODING_AGENT_DIR;
+  const base = relocated && relocated.trim() !== '' ? relocated : path.join(os.homedir(), '.pi', 'agent');
+  return path.join(base, 'sessions');
+}
+
+// OpenCode v2 keeps one JSON file per message under storage/message, not a
+// sqlite table and not JSONL: opencode.db holds indexes, the message bodies
+// live here. Probed in order — XDG first, then this machine's actual
+// location, then the macOS default.
+export function opencodeSessionsDir(): string {
+  const override = process.env.TERSIO_OPENCODE_DIR;
+  if (override) return override;
+  const xdg = process.env.XDG_DATA_HOME;
+  if (xdg && xdg.trim() !== '') return path.join(xdg, 'opencode', 'storage', 'message');
+  const local = path.join(os.homedir(), '.local', 'share', 'opencode', 'storage', 'message');
+  try {
+    if (fs.existsSync(local)) return local;
+  } catch { /* fall through to the platform default */ }
+  return path.join(os.homedir(), 'Library', 'Application Support', 'opencode', 'storage', 'message');
+}
+
 export function dayKey(ts: string | number): string | null {
   const ms = typeof ts === 'number' ? ts : Date.parse(ts);
   if (!Number.isFinite(ms)) return null;
@@ -184,7 +211,7 @@ export function dayKey(ts: string | number): string | null {
   const p = (n: number): string => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
-export function walkJsonl(dir: string, out: string[], cap: number): void {
+export function walkJsonl(dir: string, out: string[], cap: number, ext = '.jsonl'): void {
   let entries: fs.Dirent[];
   try {
     entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -194,8 +221,8 @@ export function walkJsonl(dir: string, out: string[], cap: number): void {
   for (const e of entries) {
     if (out.length >= cap) return;
     const full = path.join(dir, e.name);
-    if (e.isDirectory()) walkJsonl(full, out, cap);
-    else if (e.isFile() && e.name.endsWith('.jsonl')) out.push(full);
+    if (e.isDirectory()) walkJsonl(full, out, cap, ext);
+    else if (e.isFile() && e.name.endsWith(ext)) out.push(full);
   }
 }
 // Recent requests are their own full-width table in the dashboard, so this is
@@ -284,6 +311,73 @@ export function classifySessionLine(row: { timestamp?: string | number; type?: u
   }
   return { kind: 'assistant_row', model, usage: msg.usage, durMs: typeof msg.duration === 'number' ? msg.duration : computedDur, run: statusOf(msg), tools };
 }
+
+// True when at least one token bucket holds a positive finite count. Pi emits
+// an empty assistant row per turn (zero usage, empty content) before the real
+// response lands; counting those doubles its message tallies and fills the
+// recent table with 0/0 rows, so both ingestion paths skip them.
+export function hasPositiveUsage(usage: Record<string, unknown>): boolean {
+  for (const k of ['input', 'output', 'cacheRead', 'cacheWrite']) {
+    const v = usage[k];
+    if (typeof v === 'number' && Number.isFinite(v) && v > 0) return true;
+  }
+  return false;
+}
+
+export interface OpencodeMessage {
+  role?: unknown;
+  tokens?: { input?: unknown; output?: unknown; reasoning?: unknown; cache?: { read?: unknown; write?: unknown } } | null;
+  modelID?: unknown;
+  providerID?: unknown;
+  time?: { created?: unknown; completed?: unknown } | null;
+  cost?: unknown;
+  finish?: unknown;
+}
+
+// One OpenCode message file, as data. Assistant rows carry tokens as
+// { input, output, reasoning, cache: { read, write } }, a numeric measured
+// cost, and millisecond { created, completed } timing. Anything else — user
+// rows, rows without tokens, zero-token rows — is null, never a guess.
+// OpenCode files carry no tool parts, so unlike the JSONL hosts this source
+// feeds tokens and requests only, not per-tool or adoption stats.
+export function classifyOpencodeMessage(obj: OpencodeMessage | null | undefined): { model: string; usage: Record<string, unknown>; ms: number | undefined; durMs: number | undefined } | null {
+  if (!obj || typeof obj !== 'object' || obj.role !== 'assistant') return null;
+  const t = obj.tokens;
+  if (!t || typeof t !== 'object') return null;
+  const usage: Record<string, unknown> = {
+    input: t.input,
+    output: t.output,
+    cacheRead: t.cache?.read,
+    cacheWrite: t.cache?.write,
+    cost: (obj as Record<string, unknown>).cost,
+  };
+  if (!hasPositiveUsage(usage)) return null;
+  const provider = typeof obj.providerID === 'string' && obj.providerID ? obj.providerID : 'unknown';
+  const model = typeof obj.modelID === 'string' && obj.modelID ? obj.modelID : 'unknown';
+  const num = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : undefined);
+  const created = num(obj.time?.created);
+  const completed = num(obj.time?.completed);
+  return {
+    model: `opencode/${provider}/${model}`,
+    usage,
+    ms: created,
+    durMs: created !== undefined && completed !== undefined && completed > created ? completed - created : undefined,
+  };
+}
+
+// One OpenCode message file into the shared accum. The file is a single JSON
+// document, not JSONL, so this is separate from processSessionText.
+export function processOpencodeFile(accum: SessionAccum, text: string): void {
+  let obj: unknown;
+  try {
+    obj = JSON.parse(text);
+  } catch {
+    return;
+  }
+  const parsed = classifyOpencodeMessage(obj as OpencodeMessage);
+  if (!parsed) return;
+  ingestSessionRow(accum, parsed.model, parsed.usage, parsed.ms, parsed.durMs, { st: 'completed' as RunStatus });
+}
 // Fold `:free`/`-free` suffixes and case variants into one chart key, so the
 // same model from two providers stops splitting into separate rows.
 export function canonicalModelId(model: string): string {
@@ -317,6 +411,11 @@ export function importSessionTokens(): SessionTokens {
   if (process.env.TERSIO_SESSIONS_DIR === undefined || process.env.TERSIO_CODEX_DIR !== undefined) {
     walkJsonl(codexSessionsDir(), files, 2000);
   }
+  // Pi rows already match the assistant-row shape; the importer just never
+  // walked here. Same isolation rule as codex.
+  if (process.env.TERSIO_SESSIONS_DIR === undefined || process.env.TERSIO_PI_DIR !== undefined) {
+    walkJsonl(piSessionsDir(), files, 5000);
+  }
   let codexProvider: string | null = null;
   for (const file of files) {
     let text: string;
@@ -326,6 +425,20 @@ export function importSessionTokens(): SessionTokens {
       continue;
     }
     processSessionText(accum, { get codexProvider() { return codexProvider; }, set codexProvider(v: string | null) { codexProvider = v; } }, text);
+  }
+  // OpenCode message bodies are single JSON documents, not JSONL.
+  const ocFiles: string[] = [];
+  if (process.env.TERSIO_SESSIONS_DIR === undefined || process.env.TERSIO_OPENCODE_DIR !== undefined) {
+    walkJsonl(opencodeSessionsDir(), ocFiles, 5000, '.json');
+  }
+  for (const file of ocFiles) {
+    let text: string;
+    try {
+      text = fs.readFileSync(file, 'utf8');
+    } catch {
+      continue;
+    }
+    processOpencodeFile(accum, text);
   }
   accum.recent.sort((a, b) => b.t - a.t);
   return { messages: accum.messages, totals: accum.totals, byModel: accum.byModel, byDay: accum.byDay, byDayModel: accum.byDayModel, byTool: accum.byTool, byModelMessages: accum.byModelMessages, costMeasured: accum.costMeasured, recent: accum.recent.slice(0, RECENT_LIMIT) };
@@ -363,17 +476,65 @@ function parseAdoptionFile(file: string): { counts: { bashCalls: number; eligibl
   return { counts, sessions: sawBash ? 1 : 0 };
 }
 
+// Pi twin of parseAdoptionFile. Pi writes no tool_execution_start execution
+// rows, so the best available signal is the bash toolCall in the assistant
+// message content — intent rather than a confirmed execution, and noted as
+// such. A tool result normally follows, so the two agree in practice.
+function parsePiAdoptionFile(file: string): { counts: { bashCalls: number; eligibleCalls: number; rtkCalls: number }; sessions: number } {
+  const counts = { bashCalls: 0, eligibleCalls: 0, rtkCalls: 0 };
+  let text: string;
+  try {
+    text = fs.readFileSync(file, 'utf8');
+  } catch {
+    return { counts, sessions: 0 };
+  }
+  let sawBash = false;
+  for (const line of text.split('\n')) {
+    if (!line.includes('"toolCall"')) continue;
+    try {
+      const row = JSON.parse(line) as {
+        type?: unknown;
+        message?: { content?: Array<{ type?: unknown; name?: unknown; arguments?: { command?: unknown } }> };
+      };
+      if (row.type !== 'message' || !Array.isArray(row.message?.content)) continue;
+      for (const part of row.message.content) {
+        if (part?.type !== 'toolCall' || part.name !== 'bash') continue;
+        const command = part.arguments?.command;
+        if (typeof command !== 'string') continue;
+        sawBash = true;
+        counts.bashCalls += 1;
+        const head = leadBinary(command);
+        if (RTK_ELIGIBLE_HEADS.has(head)) counts.eligibleCalls += 1;
+        if (head === 'rtk') counts.rtkCalls += 1;
+      }
+    } catch { /* skip corrupt line */ }
+  }
+  return { counts, sessions: sawBash ? 1 : 0 };
+}
+
 export function clearRtkAdoptionCache(): void {
   adoptionFileCache.clear();
 }
 
 export function readRtkAdoption(): RtkAdoption {
-  const files: string[] = [];
-  walkJsonl(sessionsDir(), files, 2000);
+  const ompFiles: string[] = [];
+  walkJsonl(sessionsDir(), ompFiles, 2000);
+  const codexFiles: string[] = [];
+  const piFiles: string[] = [];
   if (process.env.TERSIO_SESSIONS_DIR === undefined || process.env.TERSIO_CODEX_DIR !== undefined) {
-    walkJsonl(codexSessionsDir(), files, 2000);
+    walkJsonl(codexSessionsDir(), codexFiles, 2000);
   }
-  const live = new Set(files);
+  if (process.env.TERSIO_SESSIONS_DIR === undefined || process.env.TERSIO_PI_DIR !== undefined) {
+    walkJsonl(piSessionsDir(), piFiles, 5000);
+  }
+  // OpenCode message files carry no tool parts, so adoption has no OpenCode
+  // source: tokens and requests only.
+  const groups: Array<{ files: string[]; parse: (file: string) => { counts: { bashCalls: number; eligibleCalls: number; rtkCalls: number }; sessions: number } }> = [
+    { files: ompFiles, parse: parseAdoptionFile },
+    { files: codexFiles, parse: parseAdoptionFile },
+    { files: piFiles, parse: parsePiAdoptionFile },
+  ];
+  const live = new Set(groups.flatMap((g) => g.files));
   for (const file of adoptionFileCache.keys()) {
     if (!live.has(file)) adoptionFileCache.delete(file);
   }
@@ -381,25 +542,27 @@ export function readRtkAdoption(): RtkAdoption {
   let eligibleCalls = 0;
   let rtkCalls = 0;
   let sessions = 0;
-  for (const file of files) {
-    let stat: fs.Stats;
-    try {
-      stat = fs.statSync(file);
-    } catch {
-      continue;
+  for (const { files, parse } of groups) {
+    for (const file of files) {
+      let stat: fs.Stats;
+      try {
+        stat = fs.statSync(file);
+      } catch {
+        continue;
+      }
+      let entry = adoptionFileCache.get(file);
+      if (!entry || entry.size !== stat.size || entry.mtimeMs !== stat.mtimeMs) {
+        const parsed = parse(file);
+        entry = { size: stat.size, mtimeMs: stat.mtimeMs, counts: parsed.counts };
+        adoptionFileCache.set(file, entry);
+        sessions += parsed.sessions;
+      } else if (entry.counts.bashCalls > 0) {
+        sessions += 1;
+      }
+      bashCalls += entry.counts.bashCalls;
+      eligibleCalls += entry.counts.eligibleCalls;
+      rtkCalls += entry.counts.rtkCalls;
     }
-    let entry = adoptionFileCache.get(file);
-    if (!entry || entry.size !== stat.size || entry.mtimeMs !== stat.mtimeMs) {
-      const parsed = parseAdoptionFile(file);
-      entry = { size: stat.size, mtimeMs: stat.mtimeMs, counts: parsed.counts };
-      adoptionFileCache.set(file, entry);
-      sessions += parsed.sessions;
-    } else if (entry.counts.bashCalls > 0) {
-      sessions += 1;
-    }
-    bashCalls += entry.counts.bashCalls;
-    eligibleCalls += entry.counts.eligibleCalls;
-    rtkCalls += entry.counts.rtkCalls;
   }
   const missedCalls = Math.max(0, eligibleCalls - rtkCalls);
   return { sessions, bashCalls, eligibleCalls, rtkCalls, missedCalls, adoptionPct: eligibleCalls ? (rtkCalls / eligibleCalls) * 100 : 0 };
@@ -420,6 +583,7 @@ export function processSessionText(accum: SessionAccum, state: { codexProvider: 
         continue;
       }
       if (parsed.kind !== 'assistant_row' || !parsed.model || !parsed.usage) continue;
+      if (!hasPositiveUsage(parsed.usage)) continue;
       ingestSessionRow(accum, parsed.model, parsed.usage, row.timestamp, parsed.durMs, parsed.run, parsed.tools);
     } catch { /* skip corrupt lines */ }
   }

@@ -3,9 +3,7 @@
 // converter (dashboard/app); the dashboard replaces rates with live
 // frankfurter figures when reachable, the CLI always uses the snapshot.
 
-import { existsSync, readFileSync } from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
+import { readPluginSettings } from '../extensions/shared/plugin-settings.ts';
 
 const CURRENCY_CODES = [
   'USD',
@@ -39,25 +37,16 @@ function parseCurrencyFlag(raw: string | undefined): CurrencyCode | undefined {
   return v;
 }
 
-// Stored default from the omp plugin lock file (written by tersio settings);
-// USD when missing, corrupt, or holding an unknown code. Sync so flag
-// parsing in cli/common.ts can fall back to it at startup.
+// Stored default from the tersio store (written by `tersio settings`, and by
+// the dashboard when the currency is changed there). USD when missing,
+// corrupt, or holding an unknown code. Sync so flag parsing in cli/common.ts
+// can fall back to it at startup, which is why this reads the file rather than
+// going through the async settings reader.
 function readStoredCurrency(): CurrencyCode {
-  const home = process.env.HOME || process.env.USERPROFILE || os.homedir();
-  const lock = path.join(home, '.omp', 'plugins', 'omp-plugins.lock.json');
-  if (!existsSync(lock)) return DEFAULT_CURRENCY;
-  try {
-    const parsed: unknown = JSON.parse(readFileSync(lock, 'utf8'));
-    if (!parsed || typeof parsed !== 'object' || !('settings' in parsed)) return DEFAULT_CURRENCY;
-    const entry = (parsed as { settings?: Record<string, unknown> }).settings?.['@krtclcdy/tersio'];
-    if (!entry || typeof entry !== 'object') return DEFAULT_CURRENCY;
-    const raw = (entry as { currency?: unknown }).currency;
-    return typeof raw === 'string' && isCurrencyCode(raw.trim().toUpperCase())
-      ? (raw.trim().toUpperCase() as CurrencyCode)
-      : DEFAULT_CURRENCY;
-  } catch {
-    return DEFAULT_CURRENCY;
-  }
+  const raw = readPluginSettings().currency;
+  return typeof raw === 'string' && isCurrencyCode(raw.trim().toUpperCase())
+    ? (raw.trim().toUpperCase() as CurrencyCode)
+    : DEFAULT_CURRENCY;
 }
 
 const CURRENCY_META: Record<CurrencyCode, { symbol: string; decimals: number }> = {

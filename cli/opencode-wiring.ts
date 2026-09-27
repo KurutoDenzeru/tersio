@@ -18,11 +18,7 @@ export interface OpenCodeWiringOptions {
   quiet?: boolean;
 }
 
-/**
- * OpenCode's global config dir. V2 reads `plugins` and `AGENTS.md` from here.
- * Overridable for tests, since `~/.config/opencode` is the documented location
- * and guessing a second one would be worse than not supporting it.
- */
+/** OpenCode's global config dir, where V2 reads `plugins` and `AGENTS.md`. */
 export function openCodeConfigDir(home: string): string {
   return path.join(home, '.config', 'opencode');
 }
@@ -43,8 +39,7 @@ async function writeFile(
   const current = await readTextIfExists(target);
   if (current === content) return false;
   if (!options.quiet) {
-    // The install dry-run preview must stay free of absolute paths, so the
-    // target is shown relative to $HOME.
+    // The dry-run preview must stay free of absolute paths.
     const shown = process.env.HOME ? target.replace(`${process.env.HOME}/`, '~/') : path.basename(target);
     console.log(`  ${options.dryRun ? '[dry-run] would write' : '[write]'} ${shown}`);
   }
@@ -58,7 +53,12 @@ async function writeFile(
 }
 
 /**
- * Writes the plugin. The rules pack is *not* handled here: the generic
+ * Reads the plugin source file and writes its content where OpenCode v2
+ * looks for it. The source argument is a path, not the content itself:
+ * writing the path verbatim produced a plugin file holding one path string,
+ * which OpenCode fails to load ("failed, local" on its plugin screen).
+ *
+ * The rules pack is *not* handled here: the generic
  * emitters already merge it into OpenCode's global AGENTS.md between markers,
  * and two writers on one file would fight over the same span.
  */
@@ -67,7 +67,15 @@ export async function installOpenCodeRtk(
   pluginSource: string,
   options: OpenCodeWiringOptions = {},
 ): Promise<boolean> {
-  return writeFile(openCodePluginPath(home), pluginSource, options);
+  const content = await readTextIfExists(pluginSource);
+  if (content === null) {
+    if (!options.quiet) {
+      console.log(`  [fail] OpenCode plugin source not found: ${pluginSource}`);
+      console.log('  [hint] Reinstall tersio — extensions/opencode/rtk-plugin.ts ships with the CLI');
+    }
+    return false;
+  }
+  return writeFile(openCodePluginPath(home), content, options);
 }
 
 /**

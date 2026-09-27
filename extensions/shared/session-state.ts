@@ -1,8 +1,10 @@
-import type { ComboLevel, ComboState, ExtensionCtx, SessionEntry, UiApi } from './types.ts';
+import type { ComboLevel, ComboState, SessionEntry, SharedCtx, SharedUi } from './types.ts';
+
+// The OMP system-prompt helpers this module used to own now live in
+// ./omp-prompt.ts: they describe a host-specific injection contract, and a
+// host-free module must not re-export one. The OMP ports import them directly.
 
 const BRIDGE_KEY = Symbol.for('tersio/combo-session-state');
-
-export const OMP_SUBAGENT_MARKER = 'You are operating on a piece of work assigned to you by the main agent.';
 
 export const COMBO_LEVELS: Record<string, Readonly<ComboState>> = Object.freeze({
   off: Object.freeze({ level: 'off', caveman: 'off', rtk: 'off', ponytail: 'off' }),
@@ -81,25 +83,13 @@ export function normalizeInputCommand(value: unknown): string {
   return String(value || '').trim().toLowerCase().replace(/[.!?\s]+$/, '');
 }
 
-export function asPromptArray(systemPrompt: string | string[]): string[] {
-  return Array.isArray(systemPrompt) ? systemPrompt : [systemPrompt];
-}
-
-export function systemPromptIncludes(systemPrompt: string | string[], marker: string): boolean {
-  return asPromptArray(systemPrompt).some((prompt) => typeof prompt === 'string' && prompt.includes(marker));
-}
-
-export function isOmpSubagentPrompt(systemPrompt: string | string[]): boolean {
-  return systemPromptIncludes(systemPrompt, OMP_SUBAGENT_MARKER);
-}
 
 export function normalizeComboLevel(value: unknown): ComboLevel | null {
   const level = String(value || '').trim().toLowerCase();
   return isPresetLevel(level) ? level : null;
 }
 
-export function paintStatusBar(ui: UiApi | undefined, key: string, emoji: string, label: string, isActive: boolean): void {
-  const theme = ui?.theme;
+export function paintStatusBar(ui: SharedUi | undefined, key: string, emoji: string, label: string, isActive: boolean, theme?: { fg?: (role: string, text: string) => string }): void {
   const indicator = isActive && theme?.fg ? theme.fg('accent', emoji) : emoji;
   ui?.setStatus?.(key, theme?.fg ? `${indicator} ${theme.fg('muted', label)}` : `${indicator} ${label}`);
 }
@@ -116,7 +106,7 @@ export function paintStatusBar(ui: UiApi | undefined, key: string, emoji: string
 // made by a sibling extension reaches this bar. The symptom is a bar frozen on
 // a preset the session no longer has: it shows "combo BALANCED" while caveman
 // and rtk are already off.
-export function paintableCtx(remembered: ExtensionCtx | undefined, next: ExtensionCtx | undefined): ExtensionCtx | undefined {
+export function paintableCtx<T extends SharedCtx>(remembered: T | undefined, next: T | undefined): T | undefined {
   return next?.ui?.setStatus ? next : remembered;
 }
 
@@ -133,7 +123,7 @@ export function lastCustomValue<T>(entries: SessionEntry[] | null | undefined, c
   return null;
 }
 
-export function sessionEntries(ctx: ExtensionCtx | undefined): SessionEntry[] {
+export function sessionEntries(ctx: SharedCtx | undefined): SessionEntry[] {
   return ctx?.sessionManager?.getBranch?.() || ctx?.sessionManager?.getEntries?.() || [];
 }
 

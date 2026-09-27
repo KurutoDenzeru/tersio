@@ -8,28 +8,27 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const installer = path.join(root, "tersio.js");
 
+// The store is ~/.tersio/settings.json: one tersio-owned file every host
+// reads, so OMP and Pi start from the same choice. The OMP lock file is still
+// read as a fallback, but nothing writes it any more.
 function writeLock(home: string, settings: Record<string, unknown>): void {
-  const dir = path.join(home, ".omp", "plugins");
+  const dir = path.join(home, ".tersio");
   mkdirSync(dir, { recursive: true });
-  writeFileSync(path.join(dir, "omp-plugins.lock.json"), JSON.stringify({ plugins: {}, settings }), "utf8");
+  writeFileSync(path.join(dir, "settings.json"), JSON.stringify(settings), "utf8");
 }
 
 function readLock(home: string): Record<string, unknown> {
-  const raw = readFileSync(path.join(home, ".omp", "plugins", "omp-plugins.lock.json"), "utf8");
-  const parsed = JSON.parse(raw) as { settings?: Record<string, unknown> };
-  return (parsed.settings?.["@krtclcdy/tersio"] ?? {}) as Record<string, unknown>;
+  return JSON.parse(readFileSync(path.join(home, ".tersio", "settings.json"), "utf8")) as Record<string, unknown>;
 }
 
 test("settings --dry-run previews without writing", () => {
   const home = mkdtempSync(path.join(os.tmpdir(), "tersio-settings-"));
   try {
     writeLock(home, {
-      "@krtclcdy/tersio": {
-        comboDefault: "off",
-        cavemanDefault: "off",
-        rtkDefault: false,
-        ponytailDefault: "off",
-      },
+      comboDefault: "off",
+      cavemanDefault: "off",
+      rtkDefault: false,
+      ponytailDefault: "off",
     });
     const result = spawnSync(process.execPath, [installer, "settings", "--dry-run", "--combo-default", "balanced"], {
       cwd: root,
@@ -40,7 +39,7 @@ test("settings --dry-run previews without writing", () => {
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toMatch(/│ Setting +│ Current +│ Valid values +│/);
     expect(result.stdout).toMatch(/│ combo +│ off +│/);
-    expect(result.stdout).toMatch(/Stored: @krtclcdy\/tersio in .*omp-plugins\.lock\.json/);
+    expect(result.stdout).toMatch(/Stored: @krtclcdy\/tersio in .*\.tersio\/settings\.json/);
     expect(result.stdout).toMatch(/\[dry-run\] would set defaults: combo=balanced \(caveman=full · rtk=on · ponytail=full\)/);
     expect(readLock(home).comboDefault, "dry-run must not write").toBe("off");
   } finally {
@@ -52,13 +51,11 @@ test("settings --currency writes the display default without touching modes", ()
   const home = mkdtempSync(path.join(os.tmpdir(), "tersio-settings-"));
   try {
     writeLock(home, {
-      "@krtclcdy/tersio": {
-        comboDefault: "balanced",
-        cavemanDefault: "full",
-        rtkDefault: true,
-        ponytailDefault: "full",
-        currency: "USD",
-      },
+      comboDefault: "balanced",
+      cavemanDefault: "full",
+      rtkDefault: true,
+      ponytailDefault: "full",
+      currency: "USD",
     });
     const result = spawnSync(process.execPath, [installer, "settings", "--currency", "php"], {
       cwd: root,
@@ -80,7 +77,7 @@ test("settings --currency writes the display default without touching modes", ()
 test("settings table hides the currency default (dashboard owns it)", () => {
   const home = mkdtempSync(path.join(os.tmpdir(), "tersio-settings-"));
   try {
-    writeLock(home, { "@krtclcdy/tersio": { currency: "JPY" } });
+    writeLock(home, { currency: "JPY" });
     const result = spawnSync(process.execPath, [installer, "settings", "--dry-run", "--combo-default", "off"], {
       cwd: root,
       encoding: "utf8",
@@ -98,7 +95,7 @@ test("settings table hides the currency default (dashboard owns it)", () => {
 test("settings with flags writes combo preset + overrides", () => {
   const home = mkdtempSync(path.join(os.tmpdir(), "tersio-settings-"));
   try {
-    writeLock(home, { "other-plugin": { comboDefault: "max" } });
+    writeLock(home, { comboDefault: "max", unrelated: "keep me" });
     const result = spawnSync(
       process.execPath,
       [installer, "settings", "--combo-default", "medium", "--caveman-default", "ultra"],
@@ -116,10 +113,9 @@ test("settings with flags writes combo preset + overrides", () => {
     expect(saved.cavemanDefault).toBe("ultra");
     expect(saved.rtkDefault).toBe(true);
     expect(saved.ponytailDefault).toBe("lite");
-    const raw = JSON.parse(readFileSync(path.join(home, ".omp", "plugins", "omp-plugins.lock.json"), "utf8")) as {
-      settings?: Record<string, unknown>;
-    };
-    expect(raw.settings?.["other-plugin"], "other plugins preserved").toEqual({ comboDefault: "max" });
+    // The store is flat and tersio-owned, so the one thing that must survive a
+    // write is anything the file already held that tersio does not own.
+    expect(readLock(home).unrelated, "unrelated keys preserved").toBe("keep me");
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

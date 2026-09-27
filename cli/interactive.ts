@@ -1,6 +1,6 @@
 // cli/interactive.ts — TTY layer: readline, Clack spinners, selects, task phases.
 import readline from 'node:readline';
-import { cancel as clackCancel, confirm as clackConfirm, multiselect as clackMultiselect, select as clackSelect, spinner as clackSpinner, tasks as clackTasks } from '@clack/prompts';
+import { cancel as clackCancel, confirm as clackConfirm, select as clackSelect, spinner as clackSpinner, tasks as clackTasks } from '@clack/prompts';
 import type { SpinnerResult } from '@clack/prompts';
 import { execP } from './common.ts';
 import type { ExecOptions } from './common.ts';
@@ -22,8 +22,6 @@ function tty(): boolean {
 type InteractiveChoice = { status: 'selected'; value: string } | { status: 'cancelled' | 'unavailable' };
 
 type InteractiveConfirm = { status: 'confirmed'; value: boolean } | { status: 'cancelled' | 'unavailable' };
-
-type InteractiveMultiChoice = { status: 'selected'; value: string[] } | { status: 'cancelled' | 'unavailable' };
 
 let spinnerDepth = 0;
 
@@ -55,32 +53,24 @@ async function askInteractiveChoice(message: string, options: Array<{ value: str
   }
   return { status: 'selected', value: choice };
 }
+/**
+ * Yes/No confirmation.
+ *
+ * A bare `y` accepts regardless of the default. Enter still takes the default,
+ * which is the safe answer on a destructive prompt, but that made Enter a trap
+ * on the confirmations that default to No: the muscle-memory answer produced
+ * "Aborted." and left the user believing nothing had been removed. The shortcut
+ * makes the intent legible without inverting the safe default.
+ */
 async function askInteractiveConfirm(message: string, initialValue = true): Promise<InteractiveConfirm> {
   if (!tty()) return { status: 'unavailable' };
   closeRL();
-  const answer = await clackConfirm({ message, initialValue });
+  const answer = await clackConfirm({ message: `${message} (y/n)`, initialValue });
   if (typeof answer !== 'boolean') {
     clackCancel('Aborted.');
     return { status: 'cancelled' };
   }
   return { status: 'confirmed', value: answer };
-}
-// Multi-select over the coding agents. `required: false` so an empty selection
-// is a valid answer — installing for nobody is a legitimate way to clear the
-// set, and forcing a pick would make the menu impossible to back out of.
-async function askInteractiveMultiChoice(
-  message: string,
-  options: Array<{ value: string; label: string; hint?: string }>,
-  initialValues: string[],
-): Promise<InteractiveMultiChoice> {
-  if (!tty()) return { status: 'unavailable' };
-  closeRL();
-  const choice = await clackMultiselect({ message, options, initialValues, required: false });
-  if (typeof choice === 'symbol') {
-    clackCancel('Aborted.');
-    return { status: 'cancelled' };
-  }
-  return { status: 'selected', value: choice };
 }
 // Run collecting work under one TTY-only Clack task. Callers print after the
 // task completes, keeping normal output out of the spinner animation.
@@ -97,6 +87,6 @@ async function execNetwork(label: string, cmd: string, args: string[], opts: Exe
 
 export {
   ask, closeRL, tty, withInteractiveSpinner, execNetwork,
-  askInteractiveChoice, askInteractiveConfirm, askInteractiveMultiChoice, runInteractivePhase,
-  InteractiveChoice, InteractiveConfirm, InteractiveMultiChoice,
+  askInteractiveChoice, askInteractiveConfirm, runInteractivePhase,
+  InteractiveChoice, InteractiveConfirm,
 };

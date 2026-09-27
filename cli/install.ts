@@ -1,5 +1,5 @@
 // cli/install.ts — install/reinstall flow and all setup steps.
-import { promises as fs } from 'node:fs';
+import { existsSync, promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,7 +15,7 @@ import {
   InstallOptions, WriteOptions,
 } from './common.ts';
 import {
-  askInteractiveChoice, askInteractiveConfirm, askInteractiveMultiChoice, closeRL, execNetwork, tty, withInteractiveSpinner,
+  askInteractiveChoice, askInteractiveConfirm, closeRL, execNetwork, tty, withInteractiveSpinner,
 } from './interactive.ts';
 import { printWelcome } from './banner.ts';
 import { checkForUpdate, runLatestUpdate } from './update.ts';
@@ -26,13 +26,18 @@ import { runUsage } from './usage.ts';
 import { runDashboard } from './dashboard.ts';
 import { wireRtkOmp, wireRtkAgent, rtkAgentFor } from './rtk-wiring.ts';
 import { installOpenCodeRtk } from './opencode-wiring.ts';
+import { installPiTersio } from './pi-wiring.ts';
 import {
   CAVEMAN_REMOTE_RULE, RTK_RELEASE_API, RtkRelease, RtkReleaseAsset, fetchJson, findFile, httpsGet,
   httpsDownload, parseChecksum, readTextIfExists, resolveRtkBinary, rtkPlatformSpec, sha256File,
 } from '../extensions/lib/utils.ts';
 import { storedProfile, writePluginSettings } from './profile.ts';
-import { applyHosts, agentChoices, detectHosts, readSelection, resolveAgentSelection, writeSelection } from './agents.ts';
-import { HOSTS } from './agent-hosts.ts';
+import {
+  applyHosts, agentChoices, detectHosts, displayPath, installedHostIds, installedState,
+  normalizeIds, planInstall, readSelection, resolveAgentSelection, writeSelection,
+  type InstallPlan,
+} from './agents.ts';
+import { ompLayer } from './omp-layer.ts';
 import type { Profile } from './profile.ts';
 
 // Paths to extension source files (relative to this script)
@@ -56,6 +61,47 @@ const SHARED_CARBON = path.join(EXT_DIR, 'shared', 'carbon.ts');
  * into the user's config dir where there is no node_modules to import from.
  */
 const OPENCODE_PLUGIN_SOURCE = path.join(EXT_DIR, 'opencode', 'rtk-plugin.ts');
+
+// The directory names come from cli/pi-layer.ts, which the uninstall removal
+// also reads, so a plan and a removal cannot name different sets.
+import { PI_EXTENSION_DIRS, PI_MODULE_DIRS } from './pi-layer.ts';
+/**
+ * Pi's extension tree, as `[repo path, path under the Pi ext dir]` pairs.
+ *
+ * Pi loads each `<agent-dir>/extensions/<dir>/index.ts` at one level with no
+ * recursion (core/extensions/loader.ts, resolvePackageExtensions), so shared
+ * modules sit BESIDE the extension dirs — where the OMP layer already keeps
+ * them, giving both hosts one layout and one `../shared/x.ts` spelling.
+ *
+ * The repo puts extensions/shared/ two levels higher than the installed tree
+ * does, so extensions/pi/ carries repo-only shims. Those are deliberately
+ * absent here: shipping one would fail to resolve on disk, and shipping a
+ * canonical file under a shim name would split the mode bridge across two
+ * module instances.
+ */
+function piTreeSources(): Array<[string, string]> {
+  const piExt = path.join(EXT_DIR, 'pi');
+  const pairs: Array<[string, string]> = [
+    [path.join(piExt, 'shared', 'pi-types.ts'), path.join('shared', 'pi-types.ts')],
+    [path.join(piExt, 'shared', 'pi-session-state.ts'), path.join('shared', 'pi-session-state.ts')],
+    [SHARED_SESSION_STATE, path.join('shared', 'session-state.ts')],
+    [SHARED_TYPES, path.join('shared', 'types.ts')],
+    [SHARED_PLUGIN_SETTINGS, path.join('shared', 'plugin-settings.ts')],
+    [LIB_UTILS, path.join('lib', 'utils.ts')],
+    [SHARED_USAGE_LEDGER, path.join('shared', 'usage-ledger.ts')],
+    [SHARED_PRICING, path.join('shared', 'pricing.ts')],
+    [SHARED_CARBON, path.join('shared', 'carbon.ts')],
+  ];
+  for (const dir of PI_EXTENSION_DIRS) {
+    pairs.push([path.join(piExt, dir, 'index.ts'), path.join(dir, 'index.ts')]);
+  }
+  return pairs;
+}
+
+export { piTreeSources };
+
+/** Menu row that resolves to every detected host. Not a host id. */
+const ALL_HOSTS = '__all__';
 
 async function stepPonytail(pluginsDir: string, options: InstallOptions): Promise<void> {
   if (!options.quiet) console.log('  Ponytail — ensure bundled plugin');
@@ -416,55 +462,122 @@ async function stepUpdater(extDir: string, options: WriteOptions): Promise<void>
   await copySources(extDir, [[UPDATER_INDEX, path.join('ai-addons-updater', 'index.ts')]], 'ai-addons-updater/index.ts', options);
 }
 
+// How each live-extension host gets its rewrite, for the plan line that stands
+// in for a file list. omp and pi are wired by rtk's own init via
+// cli/rtk-wiring.ts; opencode gets a plugin from cli/opencode-wiring.ts.
+const LIVE_WIRING_NOTE: Record<string, string> = {
+  omp: 'no static files — rtk writes ~/.omp/agent/extensions/rtk.ts',
+  opencode: 'no static files — tersio writes its own OpenCode plugin',
+  pi: 'tersio writes ~/.pi/agent/extensions/tersio.ts, rtk writes ~/.pi/agent/extensions/rtk.ts',
+};
+
 /**
- * Writes the rules pack, skills, and RTK hook for every selected non-OMP host.
- *
- * A no-op unless the selection actually contains another host, so an existing
- * OMP-only install sees no new output and no new files. omp itself is handled
- * above by the live-bridge path, so it is filtered out here rather than
- * duplicated.
- *
- * A host whose rewrite is an rtk-owned extension file is wired by rtk's own
- * init rather than by these emitters: rtk owns that format, so a tersio release
- * is not needed when rtk changes it.
+ * Prints what an install will do to the selected coding agents. The input is
+ * `planInstall` output — the same planner `applyHosts` writes from — so every
+ * line is a file the run really touches. Paths are `$HOME`-relative because a
+ * preview has no reason to print the machine layout.
  */
+function printInstallPlan(plan: InstallPlan, home: string): void {
+  const names = plan.selected.map((host) => host.label).join(', ');
+  const tally = `${plan.newFiles} new file(s)` + (plan.unchanged > 0 ? `, ${plan.unchanged} already in place` : '');
+  console.log(`\n  Coding agents — ${names} (${tally})`);
+  for (const preview of plan.hosts) {
+    const fresh = preview.lines.filter((line) => line.new);
+    if (fresh.length === 0) {
+      const held = preview.lines.length;
+      const note = held > 0
+        ? `already up to date (${held} file${held === 1 ? '' : 's'})`
+        : (LIVE_WIRING_NOTE[preview.host.id] ?? 'no static files');
+      console.log(`    ${preview.host.label} — ${preview.wiring} · ${note}`);
+      continue;
+    }
+    console.log(`    ${preview.host.label} — ${preview.wiring} · ${fresh.length} new`);
+    for (const line of fresh) console.log(`      ${displayPath(line.path, home)} (new)`);
+  }
+}
+
 /**
- * Asks which agents to set up, and writes the answer for later runs.
+ * Prints what the Oh My Pi layer install will write.
  *
- * Asked at a terminal even when a choice is already saved, seeded with it, so
- * the selection stays changeable after the first install. Skipped for an
- * explicit `--agent`, and for `--yes`, `--apply-update`, pipes, and CI, which
- * fall back to the saved set unioned with what is detected.
+ * The extension list comes from `omp-layer.ts`, the same source the uninstall
+ * preview and the uninstall run read, so "installed" and "removed" can never
+ * name different directories.
  */
-async function stepAgentHosts(options: InstallOptions): Promise<void> {
+/** Prints the OMP layer install, from the list the uninstall also reads. */
+function printOmpPlan(home: string): void {
+  const layer = ompLayer(home, RTK_BINARY_NAME);
+  const pending = layer.installed.filter((entry) => !existsSync(entry.path));
+  console.log(`\n  Oh My Pi — ${layer.installed.length} extension directories, Ponytail, rtk`);
+  if (pending.length === 0) {
+    console.log('    already up to date');
+    return;
+  }
+  for (const entry of pending) console.log(`    ${displayPath(entry.path, home)} — ${entry.label} (new)`);
+  console.log(`    ${displayPath(layer.ponytailPackage, home)} — ponytail plugin package`);
+  console.log(`    ${displayPath(layer.rtkBinary, home)} — rtk binary`);
+  console.log(`    ${displayPath(layer.rtkExtension, home)} — rtk OMP wiring`);
+}
+
+/**
+ * Asks which agents to set up, and writes the answer for later runs. Asked at
+ * a terminal even when a choice is saved, so the selection stays changeable;
+ * skipped for an explicit `--agent`, and for `--yes`, `--apply-update`, pipes,
+ * and CI, which fall back to the saved set unioned with what is detected.
+ */
+async function stepAgentHosts(options: InstallOptions, cavemanRule: string | null): Promise<void> {
   const home = os.homedir();
   const stored = readSelection(home).hosts;
   const detected = detectHosts(home);
   const interactive = tty() && !options.yes && !applyUpdate && agentFlag.length === 0;
+  // Seeded from the filesystem, not the saved selection: that file is a
+  // preference that goes stale the moment anything is cleaned by hand, and it
+  // never named Oh My Pi, whose layer is written by the layer steps rather than
+  // the host emitters.
+  const state = installedState(home);
+  const installed = installedHostIds(state);
 
+  let cancelled = false;
   const selection = await resolveAgentSelection({
     flag: agentFlag,
     stored,
     detected,
+    // Single select, one host per run, for the same reason as uninstall: a
+    // tick list made Enter submit whatever was highlighted, and a saved set of
+    // five hosts made the answer a scroll rather than a decision. `All
+    // detected` keeps multi-host installs one keystroke away.
     ask: interactive
       ? async () => {
-        const answer = await askInteractiveMultiChoice(
-          'Install for which coding agents?',
-          agentChoices(),
-          // Seed with the union so a detected host is pre-ticked and visible
-          // rather than silently absent.
-          [...new Set([...stored, ...detected])],
-        );
-        return answer.status === 'selected' ? answer.value : null;
+        const rows = agentChoices(state);
+        if (rows.length === 0) return [];
+        const all = normalizeIds([...installed, ...stored, ...detected]);
+        // The bulk row goes last and is never the default: a first-position
+        // "All detected" turns the Enter reflex into "write files for every
+        // agent on this machine".
+        const options = all.length > 1
+          ? [...rows, { value: ALL_HOSTS, label: `All detected (${all.length})`, hint: all.join(', ') }]
+          : rows;
+        const answer = await askInteractiveChoice('Install for which coding agent?', options, rows[0].value);
+        if (answer.status !== 'selected') {
+          cancelled = true;
+          return [];
+        }
+        return answer.value === ALL_HOSTS ? all : [answer.value];
       }
       : undefined,
   });
+  // Cancel is an abort. Falling through would fall back to the automatic
+  // union, so quitting the menu would install for every detected host.
+  if (cancelled) {
+    closeRL();
+    return;
+  }
 
   if (interactive && selection.addedByDetection.length > 0 && selection.source === 'prompt') {
     if (!options.quiet) {
       console.log(`  [note] also found: ${selection.addedByDetection.join(', ')}`);
     }
   }
+
 
   const extra = selection.ids.filter((id) => id !== 'omp');
   if (extra.length === 0) {
@@ -473,10 +586,7 @@ async function stepAgentHosts(options: InstallOptions): Promise<void> {
     return;
   }
 
-  if (!options.quiet) {
-    const names = extra.map((id) => HOSTS.find((h) => h.id === id)?.label ?? id).join(', ');
-    console.log(`\n  Coding agents — ${names}`);
-  }
+  if (!options.quiet) printInstallPlan(await planInstall(extra, home), home);
 
   const { results, errors } = await applyHosts(extra, home, {
     dryRun: options.dryRun,
@@ -484,15 +594,15 @@ async function stepAgentHosts(options: InstallOptions): Promise<void> {
     onlyChanged: true,
   });
 
+  // Only the hosts that changed are reported. The plan above already said which
+  // were up to date, and repeating it here per host turned a no-op re-run into
+  // twenty-plus lines asserting that nothing had happened.
   for (const r of results) {
     if (options.dryRun) {
       console.log(`  [dry-run] ${r.host.label}: would write ${r.planned.length} file(s)`);
       continue;
     }
-    if (r.written.length === 0) {
-      if (!options.quiet) console.log(`  [ok] ${r.host.label}: already up to date`);
-      continue;
-    }
+    if (r.written.length === 0) continue;
     console.log(`  [write] ${r.host.label}: ${r.written.length} file(s)`);
   }
   for (const e of errors) console.log(`  [fail] ${e.host}: ${e.error}`);
@@ -516,6 +626,17 @@ async function stepAgentHosts(options: InstallOptions): Promise<void> {
   // in a format current OpenCode rejects, so tersio writes its own.
   if (extra.includes('opencode')) {
     await installOpenCodeRtk(home, OPENCODE_PLUGIN_SOURCE, {
+      dryRun: options.dryRun,
+      quiet: options.quiet,
+    });
+  }
+
+  // Pi gets the same live extension layer OMP gets, not one flat module: one
+  // directory per extension under <agent-dir>/extensions, each with an
+  // index.ts Pi loads through jiti. The rule travels with its module so caveman
+  // full mode reads the same text the installer fetched.
+  if (extra.includes('pi')) {
+    await installPiTersio(home, { sources: piTreeSources(), rules: [['caveman-session', cavemanRule]] }, {
       dryRun: options.dryRun,
       quiet: options.quiet,
     });
@@ -683,7 +804,19 @@ async function runInstall(overrides: { reinstall?: boolean } = {}): Promise<void
     // removeRtk stays false: reinstall is about to replace the binary, and
     // deleting it first would leave nothing to wire if the fresh download
     // fails (rate limit, offline). rtk.ts is removed here and re-wired below.
-    await runUninstall({ yes: true, removePonytail: false, removeRtk: false });
+    // The clean step clears the extension directories (replaceOmpExtensions)
+    // but keeps the plugin package, which it is about to re-download. Deleting
+    // that first meant a failed download left the machine with neither the old
+    // copy nor the new one. `--agent omp` is passed too: the layer is now
+    // driven by the selection rather than a prompt, so a flagless reinstall
+    // would otherwise skip the directories it needs to replace.
+    await runUninstall({
+      yes: true,
+      removePonytail: false,
+      removeRtk: false,
+      replaceOmpExtensions: true,
+      ...(agentFlag.length > 0 ? {} : { agentFlagOverride: ['omp'] }),
+    });
   }
 
   if (dryRun && !quiet) console.log('Preview — no changes will be written.\n');
@@ -750,9 +883,11 @@ async function runInstall(overrides: { reinstall?: boolean } = {}): Promise<void
   // Coding agents first, so the multiselect is the first thing a user sees and
   // the output leads with what the product is actually for. The Oh My Pi
   // extension layer follows as its own section rather than framing the run.
-  await capture('agent hosts', () => stepAgentHosts(options));
+  await capture('agent hosts', () => stepAgentHosts(options, cavemanRule));
 
-  if (!quiet) console.log('\n  Oh My Pi — live commands and extensions');
+  // The layer's file list, printed before the steps so the run names what it
+  // writes rather than only what each step is called.
+  if (!quiet) printOmpPlan(os.homedir());
 
   await capture('shared', () => stepSharedSessionState(userExtDir, options));
   let selfPlugin = false;

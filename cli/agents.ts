@@ -2,14 +2,11 @@
 // writing a host's files.
 //
 // Split from the OMP install path on purpose: install.ts, uninstall.ts, and
-// doctor.ts are all built around ~/.omp, and routing eleven other hosts through
+// doctor.ts are built around ~/.omp, and routing a dozen other hosts through
 // them would mean rewriting the working OMP path to suit them. This module owns
-// the generic half, and each command calls into it.
-//
-// The OMP path is untouched. omp and opencode are listed here for selection and
-// detection only — their rewrite is owned by cli/rtk-wiring.ts and
-// cli/opencode-wiring.ts, so this module writes their rules and skills only if
-// the registry names a path, and never a hook.
+// the generic half. The OMP path is untouched, and omp/opencode are listed here
+// for selection and detection only — their rewrite belongs to cli/rtk-wiring.ts
+// and cli/opencode-wiring.ts.
 //
 // Deliberately free of cli/common.ts imports (argv side effects) so tests can
 // load it directly. `home` is always passed in rather than read from the
@@ -18,8 +15,10 @@ import { promises as fs } from 'node:fs';
 import fsSync from 'node:fs';
 import path from 'node:path';
 import { HOSTS, byId, hasStaticHook, isLiveExtension, isOwnPath, type AgentHost } from './agent-hosts.ts';
-import { planHost, removeFromHookConfig, type HostArtifact, type HostPlan } from './host-writers.ts';
+import { planHost, removeFromHookConfig, type ExistingHostFiles, type HostArtifact, type HostPlan } from './host-writers.ts';
 import { removeMarkedBlock, START, END } from './rules-pack.ts';
+import { reportOmpLayer } from './omp-layer.ts';
+import { reportPiLayer } from './pi-layer.ts';
 
 const SELECTION_FILE = 'agents.json';
 
@@ -46,7 +45,7 @@ export interface AgentChoice {
 }
 
 /** What a host's rewrite will actually be, so the menu can say so up front. */
-function wiringHint(host: AgentHost): string {
+export function wiringHint(host: AgentHost): string {
   if (hasStaticHook(host)) return 'hook · auto-rewrite';
   if (isLiveExtension(host)) {
     if (host.rewriteOwner === 'plugin') return 'plugin · auto-rewrite';
@@ -55,13 +54,109 @@ function wiringHint(host: AgentHost): string {
   return 'guidance only · no auto-rewrite';
 }
 
-/** The agent menu, in registry order, with the reference host first. */
-export function agentChoices(): AgentChoice[] {
-  return HOSTS.map((host) => ({
-    value: host.id,
-    label: host.label,
-    hint: host.id === 'omp' ? `reference host · ${wiringHint(host)}` : wiringHint(host),
-  }));
+/** `$HOME`-relative form of a path, for previews that must stay readable. */
+export function displayPath(target: string, home: string): string {
+  if (!home) return target;
+  const prefix = home.endsWith(path.sep) ? home : `${home}${path.sep}`;
+  if (!target.startsWith(prefix)) return target;
+  return `~/${target.slice(prefix.length).split(path.sep).join('/')}`;
+}
+
+/** Short, user-facing name for what a planned artifact is. */
+const ARTIFACT_LABELS: Record<HostArtifact['kind'], string> = {
+  rules: 'rules',
+  skill: 'skill',
+  'hook-config': 'hook config',
+  'hook-script': 'rtk hook',
+};
+
+
+/**
+ * What tersio has already put on this machine for one host. `installed` is what
+ * the menu cares about: the difference between "this row is empty" and "this
+ * row is already done".
+ */
+export interface HostInstallState {
+  count: number;
+  installed: boolean;
+  /** True when `count` is extension directories rather than files. */
+  dirs: boolean;
+}
+
+/**
+ * The agent menu, in registry order. The install marker goes in the *label*,
+ * not the hint: clack 1.8 renders a hint only on the cursor row and on ticked
+ * rows, so anything in the hint was invisible on exactly the rows being
+ * compared. Without `state` the rows are bare names, which is all the dashboard
+ * needs — it has no filesystem to read.
+ */
+export function agentChoices(state?: ReadonlyMap<string, HostInstallState>): AgentChoice[] {
+  return HOSTS.map((host) => {
+    const info = state?.get(host.id);
+    if (!info) {
+      return {
+        value: host.id,
+        label: host.id === 'omp' ? `${host.label} (extensions + Ponytail)` : host.label,
+        hint: wiringHint(host),
+      };
+    }
+    const unit = info.dirs ? (info.count === 1 ? 'dir' : 'dirs') : (info.count === 1 ? 'file' : 'files');
+    const mark = info.installed ? 'installed' : 'not installed';
+    return {
+      value: host.id,
+      label: `${host.label} — ${info.count} ${unit} · ${mark}`,
+      hint: wiringHint(host),
+    };
+  });
+}
+
+/**
+ * The rows an uninstall menu should offer, given what is on disk. A host with
+ * nothing of ours is not offered at all: a "Claude Code — 0 files · not
+ * installed" row answers a question nobody asked. A host absent from `state` is
+ * kept, because the dashboard calls agentChoices with no filesystem to read.
+ */
+export function installedRows(state: ReadonlyMap<string, HostInstallState>): AgentChoice[] {
+  return agentChoices(state).filter((choice) => state.get(choice.value)?.installed !== false);
+}
+
+/**
+ * What tersio has installed for each host, read from the filesystem. Both menus
+ * seed from this, not from the saved selection: that file is a preference, so
+ * it can name a host since cleaned by hand and omit one that is very much
+ * installed. The disk is the only honest source.
+ */
+export function installedState(home: string): Map<string, HostInstallState> {
+  const state = new Map<string, HostInstallState>();
+  const counts = new Map(planRemove(HOSTS.map((h) => h.id), home).hosts.map((p) => [p.host.id, p.lines.length]));
+  for (const host of HOSTS) {
+    if (host.id === 'omp') continue;
+    const count = counts.get(host.id) ?? 0;
+    // Pi also owns an extension tree the generic emitters never see, so its
+    // count is its files plus the directories the layer found.
+    const layerDirs = host.id === 'pi' ? reportPiLayer(home, isDir).extensions.length : 0;
+    const total = count + layerDirs;
+    state.set(host.id, { count: total, installed: total > 0, dirs: layerDirs > 0 });
+  }
+  // Oh My Pi owns no host artifacts: its files are the layer's extension dirs.
+  const layer = reportOmpLayer(home, isDir);
+  const count = layer.extensions.length;
+  state.set('omp', { count, installed: layer.installed && count > 0, dirs: true });
+  return state;
+}
+
+/** Host ids tersio has already installed something for. */
+export function installedHostIds(state: ReadonlyMap<string, HostInstallState>): string[] {
+  return normalizeIds([...state].filter(([, info]) => info.installed).map(([id]) => id));
+}
+
+/** True when the path is a directory. The layer's artifacts are directories. */
+function isDir(target: string): boolean {
+  try {
+    return fsSync.statSync(target).isDirectory();
+  } catch {
+    return false;
+  }
 }
 
 export type AskAgents = () => Promise<string[] | null>;
@@ -76,19 +171,14 @@ export interface SelectionResult {
 }
 
 /**
- * Resolves which hosts a run acts on.
+ * Resolves which hosts a run acts on: an explicit `--agent` wins outright, even
+ * for a host not installed, because naming one you do not have yet is how you
+ * install it. Failing that a prompt, then the union of saved and detected.
  *
- * Precedence: an explicit `--agent` wins outright, even when a host is not
- * installed, because naming a host you do not have yet is how you install it.
- * Failing that, an interactive prompt when one is available. Failing that, the
- * union of the saved set and what is detected.
- *
- * That last step is a union rather than "saved wins", and it is deliberate. A
- * saved choice is a preference, not evidence of what is installed: returning it
- * verbatim meant a host that was present and running, but never ticked in an
- * earlier menu, was silently skipped and never written. The prompt is still
- * seeded with the union so those hosts are visible and pre-ticked rather than
- * invisible.
+ * That last step is a union rather than "saved wins" because a saved choice is
+ * a preference, not evidence: returning it verbatim silently skipped a host
+ * that was present and running but never ticked. The prompt is seeded with the
+ * union so those hosts are visible and pre-ticked.
  */
 export async function resolveAgentSelection(opts: {
   flag?: readonly string[];
@@ -166,7 +256,6 @@ export function detectHosts(home: string, env: NodeJS.ProcessEnv = process.env):
 
 /**
  * Absolute path of a host's binary on PATH, or null when it is not installed.
- *
  * Shared with the dashboard so both agree on what "installed" means. The bare
  * `cmd` name is never probed on Windows, where it resolves to the system shell.
  */
@@ -249,8 +338,8 @@ async function writeArtifact(
   options: ApplyOptions,
 ): Promise<{ path: string; changed: boolean }> {
   // Every merge mode is resolved by planHost against the file's current
-  // content, so the artifact is written verbatim. The only decision left is
-  // whether that differs from what is already on disk.
+  // content, so the artifact is written verbatim; the only decision left is
+  // whether that differs from what is on disk.
   const changed = artifact.content !== existing;
   if (options.dryRun) return { path: artifact.absPath, changed };
   if (!changed && options.onlyChanged) return { path: artifact.absPath, changed: false };
@@ -259,10 +348,7 @@ async function writeArtifact(
   return { path: artifact.absPath, changed };
 }
 
-/**
- * Writes one host's artifacts, reading the current state of the files it is
- * about to touch so a merge sees the user's real content.
- */
+/** Writes one host's artifacts, reading the files it is about to touch first. */
 export async function applyHost(host: AgentHost, home: string, options: ApplyOptions = {}): Promise<ApplyResult> {
   const existing: { rulesFile?: string | null; hookConfig?: string | null } = {};
   if (host.rules && host.rulesFile) {
@@ -318,13 +404,12 @@ export interface RemoveResult {
 }
 
 /**
- * Strips only tersio's own content, never a user's file.
- *
- * A merged file loses the marked block; if nothing of the user's is left, the
- * whole file goes. A file tersio created outright (a skill, a hook script) is
- * removed completely. A config file the user also owns keeps everything except
- * our entry, even when that leaves it nearly empty — deleting a user's
- * `settings.json` to tidy up one hook is not a trade worth making.
+ * Strips only tersio's own content, never a user's file. A merged file loses
+ * the marked block and goes entirely if nothing of the user's is left; a file
+ * tersio created outright (a skill, a hook script) is removed completely. A
+ * config file the user also owns keeps everything but our entry, even when that
+ * leaves it nearly empty — deleting a user's `settings.json` to tidy up one
+ * hook is not a trade worth making.
  */
 export async function removeHost(host: AgentHost, home: string, options: ApplyOptions = {}): Promise<RemoveResult> {
   const plan = planHost(host, home);
@@ -355,9 +440,8 @@ export async function removeHost(host: AgentHost, home: string, options: ApplyOp
     }
 
     if (artifact.kind === 'skill' || artifact.kind === 'hook-script') {
-      // Skill dirs and the rewriter script are ours outright. Remove the
-      // containing directory for a skill so no empty folder is left behind,
-      // but never the shared parent — the user may keep their own skills there.
+      // A skill takes its containing directory so no empty folder is left
+      // behind, but never the shared parent — the user may keep their own.
       const target = artifact.kind === 'skill' ? path.dirname(artifact.absPath) : artifact.absPath;
       await fs.rm(target, { recursive: true, force: true });
       result.removed.push(target);
@@ -393,10 +477,9 @@ export async function removeHost(host: AgentHost, home: string, options: ApplyOp
 }
 
 /**
- * True when a hook config no longer configures any hook. Used only to decide
- * whether a file *tersio named* can be deleted outright, so a vestigial
- * `version` key must not count as content. A file the user owns is never
- * deleted on this basis, whatever it contains.
+ * True when a hook config no longer configures any hook, so a vestigial
+ * `version` key does not count as content. Decides only whether a file *tersio
+ * named* can be deleted outright; a file the user owns never is.
  */
 function isEffectivelyEmptyHookConfig(text: string): boolean {
   try {
@@ -429,6 +512,118 @@ export async function removeHosts(
   return { results, errors };
 }
 
+// --- install planning -------------------------------------------------------
+
+/** One line of the install plan: a label, a path, and whether it is new. */
+export interface PlanLine {
+  label: string;
+  path: string;
+  /** True when the file is not on disk yet, so the run creates it. */
+  new: boolean;
+}
+
+export interface HostPlanPreview {
+  host: AgentHost;
+  /** The wiring this host will get, in the same words the menu used. */
+  wiring: string;
+  lines: PlanLine[];
+}
+
+export interface InstallPlan {
+  /** The hosts the run writes, in registry order. */
+  selected: AgentHost[];
+  hosts: HostPlanPreview[];
+  /** Total new files across every selected host. */
+  newFiles: number;
+  /** Files already correct, so the run leaves them alone. */
+  unchanged: number;
+}
+
+/**
+ * What an install will do to one host, as data. Built from `planHost` and the
+ * live filesystem, so the preview and `applyHosts` can never disagree: both ask
+ * the same planner for the same artifacts. A rewrite owned by a wiring module
+ * (omp, opencode, pi) has no artifact here, so the plan says so in words.
+ *
+ * The decision is the one `applyHost` makes, not whether a path exists. A
+ * `block` merge renders against the file's *current* content, so existence
+ * reported a merged rules file as "already in place" while the run rewrote it.
+ */
+async function planHostInstall(host: AgentHost, home: string): Promise<HostPlanPreview> {
+  // The same two files `applyHost` reads: a merge rendered as if the file were
+  // empty is how the plan and the writer come to disagree.
+  const existing: ExistingHostFiles = {};
+  if (host.rules && host.rulesFile) existing.rulesFile = await readIfExists(path.join(home, host.rulesFile));
+  if (host.rewriteConfig) {
+    existing.hookConfig = await readIfExists(path.join(home, host.rewriteConfig.configFile));
+  }
+  const plan = planHost(host, home, existing);
+  const lines: PlanLine[] = plan.artifacts.map((artifact) => ({
+    label: ARTIFACT_LABELS[artifact.kind],
+    path: artifact.absPath,
+    new: !existsSyncSafe(artifact.absPath),
+  }));
+  return { host, wiring: wiringHint(host), lines };
+}
+
+/**
+ * The install plan for a resolved host selection, printed before anything is
+ * written. Async because a merge must read what is on disk before it renders.
+ */
+export async function planInstall(ids: readonly string[], home: string): Promise<InstallPlan> {
+  const selected = normalizeIds(ids).map((id) => byId(id)).filter((host): host is AgentHost => host !== undefined);
+  const hosts = await Promise.all(selected.map((host) => planHostInstall(host, home)));
+  const lines = hosts.flatMap((preview) => preview.lines);
+  return {
+    selected,
+    hosts,
+    newFiles: lines.filter((line) => line.new).length,
+    unchanged: lines.filter((line) => !line.new).length,
+  };
+}
+
+// --- removal planning -------------------------------------------------------
+
+/** One path in the removal plan, grouped under the host that owns it. */
+export interface RemovalLine {
+  label: string;
+  path: string;
+}
+
+export interface HostRemovalPreview {
+  host: AgentHost;
+  /** The wiring this host had, in the same words the menu used. */
+  wiring: string;
+  lines: RemovalLine[];
+}
+
+export interface RemovalPlan {
+  hosts: HostRemovalPreview[];
+  files: number;
+}
+
+/**
+ * What an uninstall will do to a resolved host selection, as data. Only
+ * artifacts still holding tersio's content are listed, so the preview cannot
+ * imply more is at stake than the run will touch. A host with nothing left is
+ * dropped entirely: "nothing found" is a result, not a plan.
+ */
+export function planRemove(ids: readonly string[], home: string): RemovalPlan {
+  const hosts = normalizeIds(ids)
+    .map((id) => byId(id))
+    .filter((host): host is AgentHost => host !== undefined)
+    .map((host) => {
+      // planHost is the source of the artifact list; the filesystem only says
+      // which still hold our content, so the label stays a real kind.
+      const lines = planHost(host, home).artifacts
+        .filter((artifact) => existsSyncSafe(artifact.absPath))
+        .map((artifact) => ({ label: ARTIFACT_LABELS[artifact.kind], path: artifact.absPath }));
+      return { host, wiring: wiringHint(host), lines };
+    })
+    .filter((preview) => preview.lines.length > 0);
+  return { hosts, files: hosts.reduce((sum, preview) => sum + preview.lines.length, 0) };
+}
+
 // --- reporting -------------------------------------------------------------
 
 export type HostRowStatus = 'ok' | 'warn' | 'missing' | 'guidance' | 'live';
@@ -444,9 +639,9 @@ export interface HostRow {
 }
 
 /**
- * Inspects a host and reports one row. This is what `tersio doctor` prints per
- * host, and `doctor --fix` drives off the same `repair` string, so a row can
- * never claim a repair that install would not perform.
+ * Inspects a host and reports one row. `tersio doctor` prints it, and
+ * `doctor --fix` drives off the same `repair` string, so a row can never claim
+ * a repair that install would not perform.
  */
 export function reportHost(host: AgentHost, home: string): HostRow {
   const plan: HostPlan = planHost(host, home);
