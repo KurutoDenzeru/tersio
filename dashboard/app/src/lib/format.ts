@@ -160,6 +160,11 @@ const PROVIDERS: Array<[RegExp, string, string, string]> = [
   // rather than loaded from the CDN, because the img is themed (black in
   // light, white in dark) and would vanish on a tile in one of them.
   [/grok|xai/i, "xAI", "x", "#fff"],
+  // Cognition's SWE models. Hosts report them under provider-local ids
+  // (`swe-1-6-slow`), and the slug is the Devin mark, which devin.ai serves as
+  // a vector. Simple Icons has neither Cognition nor Devin, so brand.tsx inlines
+  // it alongside OpenAI's and X's.
+  [/swe-|cognition/i, "Cognition", "devin", "#fff"],
 ];
 
 export function vendorOf(model: string): Vendor {
