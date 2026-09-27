@@ -71,7 +71,7 @@ function flagValue(name: string): string | undefined {
 
 // --- CLI flags ---
 
-const COMMANDS: Record<string, true> = { install: true, update: true, reinstall: true, doctor: true, uninstall: true, usage: true, dashboard: true, reset: true, settings: true, version: true, help: true };
+const COMMANDS: Record<string, true> = { install: true, update: true, doctor: true, uninstall: true, usage: true, dashboard: true, reset: true, settings: true, version: true, help: true };
 const args = process.argv.slice(2);
 const commandArg = args.find((arg) => !arg.startsWith('-'));
 const command = commandArg?.toLowerCase() || null;
@@ -87,7 +87,6 @@ const settingArg = ((): string | null => {
 const unknownCommand = command !== null && !COMMANDS[command];
 const install = command === 'install';
 const update = command === 'update';
-const reinstall = command === 'reinstall';
 const showVersion = command === 'version' || args.includes('--version') || args.includes('-v');
 const showHelp = command === 'help' || args.includes('--help') || args.includes('-h');
 const applyUpdate = args.includes('--apply-update');
@@ -98,7 +97,7 @@ const dryRun = args.includes('--dry-run');
 // command name into this flag made every explicit install skip the agent
 // selection, so the only way to reach the menu was bare `tersio`.
 const assumeYes = args.includes('--yes') || args.includes('-y');
-const yes = assumeYes || update || reinstall || applyUpdate;
+const yes = assumeYes || update || applyUpdate;
 const verbose = args.includes('--verbose');
 const doctor = command === 'doctor' || args.includes('--doctor');
 const fix = args.includes('--fix') || args.some((a) => a.startsWith('--fix='));
@@ -405,7 +404,7 @@ export {
   PACKAGE_NAME, PACKAGE_BIN, PACKAGE_VERSION,
   CAVEMAN_DEFAULTS, PONYTAIL_DEFAULTS, RTK_DEFAULTS, DIAG_SCHEDULES, COMBO_PRESET_MODES, COMBO_DEFAULTS,
   parseEnum, flagValue, COMMANDS, commandArg, command, settingArg, unknownCommand,
-  install, update, reinstall, showVersion, showHelp, applyUpdate, args,
+  install, update, showVersion, showHelp, applyUpdate, args,
   dryRun, yes, verbose, doctor, fix, uninstall, usage, dashboard, reset, settings,
   dashboardPort, dashboardOpen, dashboardExport, currency, currencyGiven,
   removePonytail, keepPonytail, removeRtk, keepOmpLayer,

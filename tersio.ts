@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // tersio.ts — Install Tersio (caveman/rtk/ponytail) into the coding agents on this machine.
-// Usage: node tersio.js [install|update|reinstall|doctor|dashboard|uninstall|version|help] [options]
+// Usage: node tersio.js [install|update|doctor|dashboard|uninstall|version|help] [options]
 // Requires: node/npm, and at least one supported agent
 import {
   PACKAGE_BIN, PACKAGE_VERSION, applyUpdate, commandArg, dashboard, dashboardExport, dashboardOpen, dashboardPort, doctor, reset, settings, showHelp, showVersion, uninstall, unknownCommand, update, usage,
@@ -37,7 +37,6 @@ function printHelp(): void {
 Commands:
   install      Install the add-ons (user scope: all OMP sessions)
   update       Refresh the CLI and add-ons (RTK binary, Caveman rule, Ponytail)
-  reinstall    Clean and reinstall the user-scope add-ons
   doctor       Check the current installation (--fix repairs, --dry-run previews)
   usage        Ledger-backed usage + savings report
   dashboard     Open the Dashboard (localhost only)

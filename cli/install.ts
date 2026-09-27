@@ -7,7 +7,7 @@ import {
   BUN_BIN_DIR, COMBO_PRESET_MODES, IS_WINDOWS, OMP_AGENT_DIR, OMP_PLUGINS_DIR, OMP_BIN,
   PACKAGE_NAME, PACKAGE_VERSION, RTK_BINARY_NAME,
   agentFlag, applyUpdate, cavemanDefaultFlag, comboDefaultFlag, command, dryRun, install,
-  ponytailDefaultFlag, profileFlagsGiven, reinstall, rtkDefaultFlag, verbose, yes,
+  ponytailDefaultFlag, profileFlagsGiven, rtkDefaultFlag, verbose, yes,
   dashboardExport, dashboardPort,
   debug, ensurePonytailConfigValue,
   execP, parseJsonObject, readPluginsPackage,
@@ -64,7 +64,7 @@ const OPENCODE_PLUGIN_SOURCE = path.join(EXT_DIR, 'opencode', 'rtk-plugin.ts');
 
 // The directory names come from cli/pi-layer.ts, which the uninstall removal
 // also reads, so a plan and a removal cannot name different sets.
-import { PI_EXTENSION_DIRS, PI_MODULE_DIRS } from './pi-layer.ts';
+import { PI_EXTENSION_DIRS } from './pi-layer.ts';
 /**
  * Pi's extension tree, as `[repo path, path under the Pi ext dir]` pairs.
  *
@@ -660,7 +660,7 @@ async function resolveProfile(forceReinstall = false, opts: { quiet?: boolean } 
   // Numbered menu — no typing preset names.
   // Only for a real user at a terminal, only when no default flags were
   // given, and never for --apply-update runs.
-  if (tty() && !profileFlagsGiven && !applyUpdate && (install || forceReinstall || reinstall)) {
+  if (tty() && !profileFlagsGiven && !applyUpdate && (install || forceReinstall)) {
     const choice = await askInteractiveChoice('Session-start defaults — Combo preset', [
       { value: 'off', label: 'off' },
       { value: 'medium', label: 'medium', hint: 'caveman=lite, rtk=on, ponytail=lite' },
@@ -713,7 +713,6 @@ async function runCommandMenu(): Promise<void> {
   const choice = await askInteractiveChoice('Tersio — what next?', [
     { value: 'install', label: 'Install add-ons', hint: 'user scope + combo defaults' },
     { value: 'update', label: 'Update', hint: 'CLI version check, then refresh add-ons (RTK, Caveman rule, Ponytail)' },
-    { value: 'reinstall', label: 'Reinstall', hint: 'clean and reinstall the add-ons, Ponytail package kept' },
     { value: 'doctor', label: 'Doctor', hint: 'verify the installation' },
     { value: 'usage', label: 'Usage', hint: 'token usage and savings report' },
     { value: 'dashboard', label: 'Dashboard', hint: 'open the report in your browser' },
@@ -745,10 +744,6 @@ async function runCommandMenu(): Promise<void> {
       closeRL();
       break;
     }
-    case 'reinstall':
-      await runInstall({ reinstall: true });
-      closeRL();
-      break;
     case 'doctor': {
       const summary = await runDoctor();
       if (!dryRun && summary.missing + summary.warn > 0) {
@@ -787,7 +782,11 @@ async function runCommandMenu(): Promise<void> {
 }
 
 async function runInstall(overrides: { reinstall?: boolean } = {}): Promise<void> {
-  const isReinstall = overrides.reinstall ?? reinstall;
+  // No `tersio reinstall` command any more — `tersio doctor` reports a broken
+  // install and `tersio update` refreshes it. update's delegated payload still
+  // takes the clean-then-install path, so the stale-directory sweep the command
+  // used to own is not lost with it.
+  const isReinstall = overrides.reinstall ?? applyUpdate;
   // Menu-driven installs must fall through: bare `tersio` re-enters here
   // with command === null after the picker, and without this guard the
   // choice loops straight back into runCommandMenu() forever.

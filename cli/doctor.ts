@@ -11,7 +11,7 @@ import { askInteractiveChoice, askInteractiveConfirm, runInteractivePhase } from
 import { usageDbPath } from '../extensions/shared/usage-store.ts';
 import { pricesCachePath } from '../extensions/shared/pricing.ts';
 import { readTextIfExists, resolveRtkBinary } from '../extensions/lib/utils.ts';
-import { detectHosts, readSelection, reportHosts, resolveAgentSelection } from './agents.ts';
+import { installedHostIds, installedState, readSelection, reportHosts } from './agents.ts';
 import { HOSTS } from './agent-hosts.ts';
 import { reportOmpLayer } from './omp-layer.ts';
 import { reportPiLayer } from './pi-layer.ts';
@@ -110,20 +110,22 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   // host actually got, because "wired" and "wired to a hook the host ignores"
   // look identical from the outside.
   const home = os.homedir();
-  // No `ask`: doctor reports, it never prompts, but it shares the same
-  // resolution so it cannot describe a different host set than install acts on.
-  const selection = await resolveAgentSelection({
-    flag: agentFlag,
-    stored: readSelection(home).hosts,
-    detected: detectHosts(home),
-  });
-  const otherHosts = selection.ids.filter((id) => id !== 'omp');
+  // A row follows what the user has, not what the machine could have. A host
+  // whose config dir merely exists is *detected*, not installed, and four
+  // "warn 6 file(s) missing — run: tersio install" rows for agents that were
+  // never used is noise that buries the two rows that matter. Installed or
+  // saved is the bar, and the saved half is what keeps "I installed this and it
+  // went missing" visible. An explicit `--agent` still wins outright, as it
+  // does everywhere else. OMP and the Pi layer below already worked this way.
+  const wanted = agentFlag.length > 0
+    ? new Set(agentFlag)
+    : new Set([...installedHostIds(installedState(home)), ...readSelection(home).hosts]);
+  const otherHosts = HOSTS.filter((h) => h.id !== 'omp' && wanted.has(h.id)).map((h) => h.id);
   section('Agent hosts');
   if (otherHosts.length === 0) {
     // Derived from the registry so dropping a host cannot leave a stale id
     // advertised here.
-    console.log('  ℹ️  none configured — `tersio install --agent <id>` adds one');
-    console.log(`      known ids: ${HOSTS.map((h) => h.id).join(', ')}`);
+    console.log('  ℹ️  none installed — `tersio install --agent <id>` adds one');
   } else {
     for (const row of reportHosts(otherHosts, home)) {
       const label = row.host.label;
@@ -134,6 +136,12 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
         check(label, true, row.detail.replace(`${label}: `, ''));
       }
     }
+  }
+  // The hosts this report says nothing about, in one line. Omitting the rows
+  // must not also omit the discovery: the id is all anyone needs to add one.
+  const notInstalled = HOSTS.filter((h) => h.id !== 'omp' && !wanted.has(h.id)).map((h) => h.id);
+  if (notInstalled.length > 0) {
+    console.log(`  ℹ️  not installed: ${notInstalled.join(', ')} — \`tersio install --agent <id>\``);
   }
 
   // OMP belongs in the host list, not in a section of its own: it is one host
