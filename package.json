@@ -32,7 +32,7 @@
     "dashboard/dist/**/*",
     "extensions/**/*.js",
     "extensions/**/*.ts",
-    "extensions/caveman-session/rule.md"
+    "extensions/omp/caveman-session/rule.md"
   ],
   "scripts": {
     "clean": "rm -f tersio.js cli/*.js extensions/**/*.js && rm -rf dashboard/dist",
@@ -70,10 +70,10 @@
     "name": "Tersio",
     "description": "Toggleable Caveman/RTK/Ponytail session modes with Combo presets",
     "extensions": [
-      "./extensions/caveman-session/index.ts",
-      "./extensions/rtk-session/index.ts",
-      "./extensions/combo-toggle/index.ts",
-      "./extensions/tersio-commands/index.ts"
+      "./extensions/omp/caveman-session/index.ts",
+      "./extensions/omp/rtk-session/index.ts",
+      "./extensions/omp/combo-toggle/index.ts",
+      "./extensions/omp/tersio-commands/index.ts"
     ],
     "skills": [
       "./node_modules/@dietrichgebert/ponytail/skills"
@@ -83,7 +83,7 @@
         "description": "In-session updater for Ponytail, RTK, and Caveman (/ai-addons)",
         "default": true,
         "extensions": [
-          "./extensions/ai-addons-updater/index.ts"
+          "./extensions/omp/ai-addons-updater/index.ts"
         ]
       }
     },

@@ -33,10 +33,10 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   const ponytailPkg = path.join(pluginsDir, 'node_modules', '@dietrichgebert', 'ponytail', 'package.json');
   const ponytailExt = path.join(pluginsDir, 'node_modules', '@dietrichgebert', 'ponytail', 'pi-extension', 'index.js');
   const tersioPluginDir = path.join(pluginsDir, 'node_modules', '@krtclcdy', 'tersio');
-  const cavemanIndex = path.join(tersioPluginDir, 'extensions', 'caveman-session', 'index.ts');
-  const cavemanRule = path.join(tersioPluginDir, 'extensions', 'caveman-session', 'rule.md');
-  const rtkIndex = path.join(tersioPluginDir, 'extensions', 'rtk-session', 'index.ts');
-  const updaterIndex = path.join(tersioPluginDir, 'extensions', 'ai-addons-updater', 'index.ts');
+  const cavemanIndex = path.join(tersioPluginDir, 'extensions', 'omp', 'caveman-session', 'index.ts');
+  const cavemanRule = path.join(tersioPluginDir, 'extensions', 'omp', 'caveman-session', 'rule.md');
+  const rtkIndex = path.join(tersioPluginDir, 'extensions', 'omp', 'rtk-session', 'index.ts');
+  const updaterIndex = path.join(tersioPluginDir, 'extensions', 'omp', 'ai-addons-updater', 'index.ts');
 
   // Independent probes start concurrently; sections report in fixed order as
   // their data settles. Every probe resolves instead of rejecting.

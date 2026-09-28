@@ -1,4 +1,4 @@
-// Caveman mode on Pi. Port of extensions/caveman-session/index.ts: same levels,
+// Caveman mode on Pi. Port of extensions/omp/caveman-session/index.ts: same levels,
 // /caveman command, `caveman` status key, combo suppression and restore
 // precedence. The Pi-only differences: the text goes into a sealed section
 // because returning systemPrompt would replace the whole prompt; session_start

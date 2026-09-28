@@ -7,10 +7,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import cavemanSessionExtension from "../../extensions/caveman-session/index.ts";
-import comboToggleExtension from "../../extensions/combo-toggle/index.ts";
-import rtkSessionExtension from "../../extensions/rtk-session/index.ts";
-import tersioCommandsExtension from "../../extensions/tersio-commands/index.ts";
+import cavemanSessionExtension from "../../extensions/omp/caveman-session/index.ts";
+import comboToggleExtension from "../../extensions/omp/combo-toggle/index.ts";
+import rtkSessionExtension from "../../extensions/omp/rtk-session/index.ts";
+import tersioCommandsExtension from "../../extensions/omp/tersio-commands/index.ts";
 import { getSharedComboState, resetSharedComboState } from "../../extensions/shared/session-state.ts";
 import type { ExtensionApi, ExtensionCtx } from "../../extensions/shared/types.ts";
 

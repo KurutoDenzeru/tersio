@@ -352,10 +352,10 @@ function computeDoctorRows(): DoctorRow[] {
   addon('Unique config registrations', duplicateExtensions.length === 0, duplicateExtensions.length ? duplicateExtensions.join(', ') : 'ok', 'Extensions');
   const retiredReinforcement = explicitEntries.filter((entry) => entry.endsWith('/shared/mode-reinforcement.ts')).length;
   addon('No retired reinforcement', retiredReinforcement === 0, retiredReinforcement ? `${retiredReinforcement} registration(s)` : 'ok', 'Extensions');
-  ext('Caveman extension', path.join(tersioPluginDir, 'extensions', 'caveman-session', 'index.ts'));
-  ext('RTK extension', path.join(tersioPluginDir, 'extensions', 'rtk-session', 'index.ts'));
+  ext('Caveman extension', path.join(tersioPluginDir, 'extensions', 'omp', 'caveman-session', 'index.ts'));
+  ext('RTK extension', path.join(tersioPluginDir, 'extensions', 'omp', 'rtk-session', 'index.ts'));
   ext('Ponytail extension', path.join(OMP_PLUGINS_DIR, 'node_modules', '@dietrichgebert', 'ponytail', 'pi-extension', 'index.js'));
-  const rule = path.join(tersioPluginDir, 'extensions', 'caveman-session', 'rule.md');
+  const rule = path.join(tersioPluginDir, 'extensions', 'omp', 'caveman-session', 'rule.md');
   const ruleAge = ageStr(rule);
   const ruleAt = absTime(rule);
   addon('Caveman rule', ruleAge !== null, ruleAge && ruleAt ? `(updated ${ruleAge} · ${ruleAt})` : rule);

@@ -57,8 +57,8 @@ test("packed tarball carries both .js (CLI runtime) and .ts (OMP) for every CLI-
 
 test("packed tarball carries the effective Caveman rule and six explicit levels", () => {
   const packed = packedFiles();
-  expect(packed, "manifest-loaded Caveman must receive its sibling rule.md").toContain("extensions/caveman-session/rule.md");
-  const source = readFileSync(path.join(root, "extensions", "caveman-session", "rule.md"), "utf8");
+  expect(packed, "manifest-loaded Caveman must receive its sibling rule.md").toContain("extensions/omp/caveman-session/rule.md");
+  const source = readFileSync(path.join(root, "extensions", "omp", "caveman-session", "rule.md"), "utf8");
   for (const level of ["lite", "full", "ultra", "wenyan-lite", "wenyan-full", "wenyan-ultra"]) {
     expect(source, `bundled Caveman rule lists ${level}`).toMatch(new RegExp(`\\b${level}\\b`));
   }

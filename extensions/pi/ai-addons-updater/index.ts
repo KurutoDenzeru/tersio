@@ -2,7 +2,7 @@
 // modules only, one slash command. Ponytail and Caveman update fully; RTK is
 // checksum-verified but unsigned (checksums.txt ships SHA256 only).
 //
-// Port of extensions/ai-addons-updater/index.ts. Pi has no setLabel for an
+// Port of extensions/omp/ai-addons-updater/index.ts. Pi has no setLabel for an
 // extension, its command handlers resolve to void, and its extensions load from
 // a bare config dir, so the add-on paths are re-derived from this file's own
 // location.

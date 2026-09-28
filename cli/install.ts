@@ -43,13 +43,13 @@ import type { Profile } from './profile.ts';
 // Paths to extension source files (relative to this script)
 const EXT_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'extensions');
 const SHARED_SESSION_STATE = path.join(EXT_DIR, 'shared', 'session-state.ts');
-const SHARED_OMP_PROMPT = path.join(EXT_DIR, 'shared', 'omp-prompt.ts');
-const CAVEMAN_INDEX = path.join(EXT_DIR, 'caveman-session', 'index.ts');
-const CAVEMAN_RULE = path.join(EXT_DIR, 'caveman-session', 'rule.md');
-const RTK_SESSION_INDEX = path.join(EXT_DIR, 'rtk-session', 'index.ts');
-const UPDATER_INDEX = path.join(EXT_DIR, 'ai-addons-updater', 'index.ts');
-const COMBO_TOGGLE_INDEX = path.join(EXT_DIR, 'combo-toggle', 'index.ts');
-const TERSIO_COMMANDS_INDEX = path.join(EXT_DIR, 'tersio-commands', 'index.ts');
+const OMP_PROMPT = path.join(EXT_DIR, 'omp', 'omp-prompt.ts');
+const CAVEMAN_INDEX = path.join(EXT_DIR, 'omp', 'caveman-session', 'index.ts');
+const CAVEMAN_RULE = path.join(EXT_DIR, 'omp', 'caveman-session', 'rule.md');
+const RTK_SESSION_INDEX = path.join(EXT_DIR, 'omp', 'rtk-session', 'index.ts');
+const UPDATER_INDEX = path.join(EXT_DIR, 'omp', 'ai-addons-updater', 'index.ts');
+const COMBO_TOGGLE_INDEX = path.join(EXT_DIR, 'omp', 'combo-toggle', 'index.ts');
+const TERSIO_COMMANDS_INDEX = path.join(EXT_DIR, 'omp', 'tersio-commands', 'index.ts');
 const SHARED_TYPES = path.join(EXT_DIR, 'shared', 'types.ts');
 const LIB_UTILS = path.join(EXT_DIR, 'lib', 'utils.ts');
 const SHARED_PLUGIN_SETTINGS = path.join(EXT_DIR, 'shared', 'plugin-settings.ts');
@@ -79,7 +79,7 @@ function piTreeSources(): Array<[string, string]> {
     [SHARED_USAGE_LEDGER, path.join('shared', 'usage-ledger.ts')],
     [SHARED_PRICING, path.join('shared', 'pricing.ts')],
     [SHARED_CARBON, path.join('shared', 'carbon.ts')],
-    [SHARED_OMP_PROMPT, path.join('shared', 'omp-prompt.ts')],
+    [OMP_PROMPT, path.join('shared', 'omp-prompt.ts')],
   ];
   for (const dir of PI_EXTENSION_DIRS) {
     pairs.push([path.join(piExt, dir, 'index.ts'), path.join(dir, 'index.ts')]);
@@ -389,7 +389,7 @@ async function stepSharedSessionState(extDir: string, options: WriteOptions): Pr
     [SHARED_USAGE_LEDGER, path.join('shared', 'usage-ledger.ts')],
     [SHARED_PRICING, path.join('shared', 'pricing.ts')],
     [SHARED_CARBON, path.join('shared', 'carbon.ts')],
-    [SHARED_OMP_PROMPT, path.join('shared', 'omp-prompt.ts')],
+    [OMP_PROMPT, path.join('shared', 'omp-prompt.ts')],
   ], 'shared/session-state.js', options);
 }
 

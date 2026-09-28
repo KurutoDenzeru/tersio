@@ -30,12 +30,12 @@ const SOURCES: Array<[string, string]> = [
   [path.join(EXT_DIR, 'shared', 'usage-ledger.ts'), path.join('shared', 'usage-ledger.ts')],
   [path.join(EXT_DIR, 'shared', 'pricing.ts'), path.join('shared', 'pricing.ts')],
   [path.join(EXT_DIR, 'shared', 'carbon.ts'), path.join('shared', 'carbon.ts')],
-  [path.join(EXT_DIR, 'caveman-session', 'index.ts'), path.join('caveman-session', 'index.ts')],
-  [path.join(EXT_DIR, 'caveman-session', 'rule.md'), path.join('caveman-session', 'rule.md')],
-  [path.join(EXT_DIR, 'rtk-session', 'index.ts'), path.join('rtk-session', 'index.ts')],
-  [path.join(EXT_DIR, 'ai-addons-updater', 'index.ts'), path.join('ai-addons-updater', 'index.ts')],
-  [path.join(EXT_DIR, 'combo-toggle', 'index.ts'), path.join('combo-toggle', 'index.ts')],
-  [path.join(EXT_DIR, 'tersio-commands', 'index.ts'), path.join('tersio-commands', 'index.ts')],
+  [path.join(EXT_DIR, 'omp', 'caveman-session', 'index.ts'), path.join('omp', 'caveman-session', 'index.ts')],
+  [path.join(EXT_DIR, 'omp', 'caveman-session', 'rule.md'), path.join('omp', 'caveman-session', 'rule.md')],
+  [path.join(EXT_DIR, 'omp', 'rtk-session', 'index.ts'), path.join('omp', 'rtk-session', 'index.ts')],
+  [path.join(EXT_DIR, 'omp', 'ai-addons-updater', 'index.ts'), path.join('omp', 'ai-addons-updater', 'index.ts')],
+  [path.join(EXT_DIR, 'omp', 'combo-toggle', 'index.ts'), path.join('omp', 'combo-toggle', 'index.ts')],
+  [path.join(EXT_DIR, 'omp', 'tersio-commands', 'index.ts'), path.join('omp', 'tersio-commands', 'index.ts')],
 ];
 
 async function fixExtensions(pluginsDir: string): Promise<void> {
@@ -52,7 +52,7 @@ async function fixExtensions(pluginsDir: string): Promise<void> {
 
   const ruleDest = path.join(pluginExtDir, 'caveman-session', 'rule.md');
   if ((await readTextIfExists(ruleDest)) === null) {
-    const bundled = await readTextIfExists(path.join(EXT_DIR, 'caveman-session', 'rule.md'));
+    const bundled = await readTextIfExists(path.join(EXT_DIR, 'omp', 'caveman-session', 'rule.md'));
     if (bundled !== null) {
       await writeIfChanged(ruleDest, bundled, { dryRun, verbose });
     } else {

@@ -1,11 +1,11 @@
 import { expect, test } from "vitest";
 import { fileURLToPath } from "node:url";
 
-import cavemanSessionExtension from "../../extensions/caveman-session/index.ts";
-import comboToggleExtension from "../../extensions/combo-toggle/index.ts";
-import rtkSessionExtension from "../../extensions/rtk-session/index.ts";
+import cavemanSessionExtension from "../../extensions/omp/caveman-session/index.ts";
+import comboToggleExtension from "../../extensions/omp/combo-toggle/index.ts";
+import rtkSessionExtension from "../../extensions/omp/rtk-session/index.ts";
 import { getSharedComboState, resetSharedComboState } from "../../extensions/shared/session-state.ts";
-import { OMP_SUBAGENT_MARKER } from "../../extensions/shared/omp-prompt.ts";
+import { OMP_SUBAGENT_MARKER } from "../../extensions/omp/omp-prompt.ts";
 import type { ExtensionApi, SessionEntry } from "../../extensions/shared/types.ts";
 
 // ponytail: hermetic HOME — session-start fallbacks read the real lock file,

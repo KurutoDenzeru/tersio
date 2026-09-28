@@ -1,8 +1,8 @@
 import { expect, test } from "vitest";
 
-import comboToggleExtension from "../../extensions/combo-toggle/index.ts";
+import comboToggleExtension from "../../extensions/omp/combo-toggle/index.ts";
 import { resetSharedComboState, setSharedComboMode } from "../../extensions/shared/session-state.ts";
-import { OMP_SUBAGENT_MARKER } from "../../extensions/shared/omp-prompt.ts";
+import { OMP_SUBAGENT_MARKER } from "../../extensions/omp/omp-prompt.ts";
 import type { ExtensionApi, ExtensionCtx } from "../../extensions/shared/types.ts";
 
 process.env.HOME = new URL("../definitely-missing-home", import.meta.url).pathname;

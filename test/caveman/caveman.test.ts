@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import cavemanSessionExtension from "../../extensions/caveman-session/index.ts";
+import cavemanSessionExtension from "../../extensions/omp/caveman-session/index.ts";
 import { resetSharedComboState } from "../../extensions/shared/session-state.ts";
 import type { ExtensionApi, SessionEntry } from "../../extensions/shared/types.ts";
 

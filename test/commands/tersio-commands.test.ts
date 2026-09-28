@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import tersioCommandsExtension from "../../extensions/tersio-commands/index.ts";
+import tersioCommandsExtension from "../../extensions/omp/tersio-commands/index.ts";
 import type { ExtensionApi, ExtensionCtx } from "../../extensions/shared/types.ts";
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tersio-router-"));

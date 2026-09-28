@@ -1,4 +1,4 @@
-// rtk mode on Pi. Port of extensions/rtk-session/index.ts: same /rtk command,
+// rtk mode on Pi. Port of extensions/omp/rtk-session/index.ts: same /rtk command,
 // same `rtk` status key, same combo suppression, RTK_DISABLED flag, restore
 // precedence and rtk_run tool. The Pi-only differences: the prompt goes into a
 // sealed section because returning systemPrompt would replace the whole prompt;

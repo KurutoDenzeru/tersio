@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync
 import os from "node:os";
 import path from "node:path";
 
-import comboToggleExtension from "../../extensions/combo-toggle/index.ts";
+import comboToggleExtension from "../../extensions/omp/combo-toggle/index.ts";
 import { resetSharedComboState } from "../../extensions/shared/session-state.ts";
 import type { ExtensionApi, ExtensionCtx, SessionEntry } from "../../extensions/shared/types.ts";
 

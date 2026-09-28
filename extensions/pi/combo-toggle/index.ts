@@ -1,5 +1,5 @@
 // /combo for Pi: set caveman, rtk and ponytail at once. The state machine,
-// commands and status-bar ownership match extensions/combo-toggle/index.ts; the
+// commands and status-bar ownership match extensions/omp/combo-toggle/index.ts; the
 // divergences are all forced by Pi's ExtensionAPI — no setLabel, no
 // session_branch (session_tree stands in), ctx.ui.select takes plain strings,
 // upstream ponytail is not installed so its intensity text is inlined, and

@@ -1,4 +1,4 @@
-// extensions/shared/omp-prompt.ts — OMP's system-prompt surface.
+// extensions/omp/omp-prompt.ts — OMP's system-prompt surface.
 //
 // OMP hands an extension the built prompt as `string | string[]` and takes back
 // a replacement of the same shape, so appending to it is a return value. Pi
