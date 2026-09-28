@@ -8,9 +8,9 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const installer = path.join(root, "tersio.js");
 
-// Command-level coverage for the multi-host wiring: argv -> selection ->
-// files on disk -> doctor row. The unit suite in agents.test.ts proves the
-// filesystem behaviour directly; this proves the three commands reach it.
+// Command-level coverage for the host wiring: argv -> selection -> files on
+// disk -> doctor row. The unit suite in agents.test.ts proves the filesystem
+// behaviour directly; this proves the commands reach it.
 
 function tempHome(): { home: string; cleanup: () => void } {
   const home = mkdtempSync(path.join(os.tmpdir(), "tersio-cli-hosts-"));
@@ -39,16 +39,26 @@ function writeSelection(home: string, hosts: string[]): void {
   writeFileSync(path.join(home, ".tersio", "agents.json"), JSON.stringify({ hosts, updatedAt: 1 }), "utf8");
 }
 
+/** Creates every directory Pi's extension tree is made of. */
+function seedPiTree(home: string): void {
+  for (const dir of [
+    "caveman-session", "rtk-session", "ai-addons-updater", "combo-toggle", "tersio-commands", "shared", "lib",
+  ]) {
+    mkdirSync(path.join(home, ".pi", "agent", "extensions", dir), { recursive: true });
+  }
+}
+
 test("--agent is listed in help with every known host id", () => {
   const { home, cleanup } = tempHome();
   try {
     const result = run(home, "help");
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toMatch(/--agent <ids>/);
-    for (const id of [
-      "omp", "opencode", "claude-code", "codex", "pi",
-    ]) {
+    for (const id of ["omp", "pi"]) {
       expect(result.stdout, `help does not list ${id}`).toContain(id);
+    }
+    for (const id of ["opencode", "claude-code", "codex"]) {
+      expect(result.stdout, `help still advertises ${id}`).not.toContain(id);
     }
   } finally {
     cleanup();
@@ -65,10 +75,6 @@ test("doctor always shows the agent-hosts category, even with none installed", (
     expect(result.stdout).toMatch(/\nAgent hosts\n/);
     expect(result.stdout).toContain("none installed");
     expect(result.stdout).toContain("tersio install --agent <id>");
-    // Every known id is listed, so the hint is actionable without --help.
-    for (const id of ["claude-code", "codex", "pi"]) {
-      expect(result.stdout, `id list omits ${id}`).toContain(id);
-    }
   } finally {
     cleanup();
   }
@@ -77,19 +83,15 @@ test("doctor always shows the agent-hosts category, even with none installed", (
 test("doctor reports one row per saved host and points at the install command", () => {
   const { home, cleanup } = tempHome();
   try {
-    writeSelection(home, ["claude-code", "pi"]);
+    writeSelection(home, ["pi"]);
     const result = run(home, "doctor");
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toMatch(/\nAgent hosts\n/);
-    expect(result.stdout).toContain("Claude Code");
-    expect(result.stdout).toContain("Pi");
-    // Both are uninstalled here, so both must be actionable rather than silent.
-    expect(result.stdout).toMatch(/Claude Code: warn/);
-    expect(result.stdout).toMatch(/tersio install --agent claude-code/);
-    // Pi owns no static file, so it is never a warn row and has nothing to
-    // repair. A host that ships its modes from an extension tree cannot report
-    // missing files, and pretending otherwise is what this assertion used to do.
-    expect(result.stdout).not.toMatch(/Pi: warn/);
+    expect(result.stdout).toMatch(/Pi: warn/);
+    expect(result.stdout).toMatch(/tersio install --agent pi/);
+    // The row is a warning here because the tree is not on disk, and the count
+    // is directories: neither host ships static files any more.
+    expect(result.stdout).toMatch(/7 of 7 extension\/module/);
   } finally {
     cleanup();
   }
@@ -98,11 +100,11 @@ test("doctor reports one row per saved host and points at the install command", 
 test("an --agent flag on doctor overrides the saved selection", () => {
   const { home, cleanup } = tempHome();
   try {
-    writeSelection(home, ["claude-code"]);
-    const result = run(home, "doctor", "--agent", "codex");
+    writeSelection(home, ["pi"]);
+    const result = run(home, "doctor", "--agent", "omp");
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toContain("OpenAI Codex");
-    expect(result.stdout).not.toContain("Claude Code");
+    expect(result.stdout).toContain("Oh My Pi (OMP)");
+    expect(result.stdout).not.toMatch(/\n\s*Pi: /);
   } finally {
     cleanup();
   }
@@ -111,96 +113,45 @@ test("an --agent flag on doctor overrides the saved selection", () => {
 test("--agent accepts both comma-separated and repeated forms", () => {
   const { home, cleanup } = tempHome();
   try {
-    writeSelection(home, ["claude-code"]);
-    const commas = run(home, "doctor", "--agent=codex,opencode");
-    const repeated = run(home, "doctor", "--agent", "codex", "--agent", "opencode");
+    const commas = run(home, "doctor", "--agent=omp,pi");
+    const repeated = run(home, "doctor", "--agent", "omp", "--agent", "pi");
     for (const result of [commas, repeated]) {
       expect(result.status, result.stderr).toBe(0);
-      expect(result.stdout).toContain("OpenAI Codex");
-      expect(result.stdout).toContain("OpenCode");
-      expect(result.stdout).not.toContain("Claude Code");
+      expect(result.stdout).toContain("Oh My Pi (OMP)");
+      expect(result.stdout).toMatch(/\bPi: /);
     }
   } finally {
     cleanup();
   }
 });
 
-test("a doctor row goes healthy once the host's files are on disk", () => {
+test("a doctor row goes healthy once the host's extension tree is on disk", () => {
   const { home, cleanup } = tempHome();
   try {
     writeSelection(home, ["pi"]);
-    // pi is a live-extension host: rules plus all three skills, and no hook.
-    mkdirSync(path.join(home, ".pi/agent"), { recursive: true });
-    writeFileSync(path.join(home, ".pi/agent", "AGENTS.md"), "<!-- tersio:start -->\nrules\n<!-- tersio:end -->\n", "utf8");
-    for (const mode of ["caveman", "ponytail", "rtk"]) {
-      const dir = path.join(home, ".pi/agent", "skills", `tersio-${mode}`);
-      mkdirSync(dir, { recursive: true });
-      writeFileSync(path.join(dir, "SKILL.md"), `---\nname: tersio-${mode}\ndescription: d\n---\nbody\n`, "utf8");
-    }
+    seedPiTree(home);
 
     const result = run(home, "doctor");
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toMatch(/Pi: ok/);
-    // The row must name the owner, not claim a hook file tersio did not write.
-    expect(result.stdout).toMatch(/rewrite owned by wiring/);
-    expect(result.stdout).not.toMatch(/rewrite hook installed/);
+    // The row names the rewrite's real owner instead of a hook file tersio
+    // does not write.
+    expect(result.stdout).toMatch(/rewrite via rtk extension/);
   } finally {
     cleanup();
   }
 });
 
-test("a doctor row stays a warning while any of the host's files is missing", () => {
+test("a doctor row stays a warning while the tree is only half written", () => {
   const { home, cleanup } = tempHome();
   try {
-    // A host that owns files, so "some are missing" is expressible. pi cannot
-    // be: it installs no static file, so there is nothing to be missing.
-    writeSelection(home, ["claude-code"]);
-    // The skill artifact is the SKILL.md file, not its directory.
-    mkdirSync(path.join(home, ".claude", "skills", "tersio-caveman"), { recursive: true });
-    writeFileSync(path.join(home, ".claude", "skills", "tersio-caveman", "SKILL.md"), "mine\n", "utf8");
-    writeFileSync(path.join(home, ".claude", "CLAUDE.md"), "<!-- tersio:start -->\nr\n<!-- tersio:end -->\n", "utf8");
-    // Two of its six files present, so the row must stay a warning.
-    const result = run(home, "doctor");
-    expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toMatch(/Claude Code: warn/);
-    expect(result.stdout).toMatch(/4 file\(s\) missing/);
-  } finally {
-    cleanup();
-  }
-});
-
-test("a wired live-extension host says who owns its rewrite instead of claiming a hook", () => {
-  const { home, cleanup } = tempHome();
-  try {
-    // pi is wired by rtk's own init, so it gets rules + skills and no static
-    // hook from tersio.
     writeSelection(home, ["pi"]);
-    mkdirSync(path.join(home, ".pi", "agent"), { recursive: true });
-    writeFileSync(path.join(home, ".pi", "agent", "AGENTS.md"), "<!-- tersio:start -->\nr\n<!-- tersio:end -->\n", "utf8");
-    for (const mode of ["caveman", "ponytail", "rtk"]) {
-      const dir = path.join(home, ".pi", "agent", "skills", `tersio-${mode}`);
-      mkdirSync(dir, { recursive: true });
-      writeFileSync(path.join(dir, "SKILL.md"), `---\nname: tersio-${mode}\ndescription: d\n---\n`, "utf8");
-    }
+    mkdirSync(path.join(home, ".pi", "agent", "extensions", "caveman-session"), { recursive: true });
+
     const result = run(home, "doctor");
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toMatch(/Pi: ok/);
-    expect(result.stdout).toMatch(/rewrite owned by wiring/);
-  } finally {
-    cleanup();
-  }
-});
-
-test("every host reports a working rewrite class, because none is guidance-only", () => {
-  const { home, cleanup } = tempHome();
-  try {
-    // Every supported host either has a static hook or a named owner, so no row
-    // may ever claim "guidance only" again.
-    for (const id of ["claude-code", "codex", "pi", "opencode"]) {
-      const result = run(home, "doctor", "--agent", id);
-      expect(result.status, result.stderr).toBe(0);
-      expect(result.stdout, `${id} reported guidance only`).not.toMatch(/guidance only/);
-    }
+    expect(result.stdout).toMatch(/Pi: warn/);
+    expect(result.stdout).toMatch(/6 of 7 extension\/module/);
   } finally {
     cleanup();
   }
@@ -216,12 +167,12 @@ test("a host row counts toward the doctor summary tally", () => {
   const { home, cleanup } = tempHome();
   try {
     const before = run(home, "doctor");
-    writeSelection(home, ["claude-code", "pi", "codex"]);
+    writeSelection(home, ["omp", "pi"]);
     const after = run(home, "doctor");
-    // The empty-category hint is not a check, so only the three real rows join
+    // The empty-category hint is not a check, so only the two real rows join
     // the tally.
     expect(checkCount(before.stdout)).toBeGreaterThan(0);
-    expect(checkCount(after.stdout), "three host rows should join the tally").toBe(checkCount(before.stdout) + 3);
+    expect(checkCount(after.stdout), "two host rows should join the tally").toBe(checkCount(before.stdout) + 2);
   } finally {
     cleanup();
   }
@@ -241,20 +192,19 @@ test("a selection file full of junk leaves the category empty rather than broken
   }
 });
 
-test("uninstall --dry-run reports the agent hosts it would strip without touching disk", () => {
+test("uninstall --dry-run names the earlier-release paths without touching disk", () => {
   const { home, cleanup } = tempHome();
   try {
-    writeSelection(home, ["claude-code"]);
-    const rules = path.join(home, ".claude", "CLAUDE.md");
+    writeSelection(home, ["pi"]);
+    const rules = path.join(home, ".pi", "agent", "AGENTS.md");
     mkdirSync(path.dirname(rules), { recursive: true });
     writeFileSync(rules, "# mine\n\n<!-- tersio:start -->\nr\n<!-- tersio:end -->\n", "utf8");
 
-    const result = run(home, "uninstall", "--agent", "claude-code", "--dry-run", "--yes", "--verbose");
+    const result = run(home, "uninstall", "--agent", "pi", "--dry-run", "--yes", "--verbose");
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toMatch(/=== Agent hosts ===/);
-    expect(result.stdout).toMatch(/\[dry-run\] Claude Code: would remove/);
+    expect(result.stdout).toMatch(/\.pi\/agent\/AGENTS\.md \(earlier release\)/);
+    expect(result.stdout).toMatch(/\[dry-run\] would remove/);
     // The file must survive a dry run untouched.
-    expect(existsSync(rules)).toBe(true);
     expect(readFileSync(rules, "utf8")).toContain("# mine");
   } finally {
     cleanup();
@@ -264,16 +214,18 @@ test("uninstall --dry-run reports the agent hosts it would strip without touchin
 test("uninstall strips our block and keeps the user's own text", () => {
   const { home, cleanup } = tempHome();
   try {
-    writeSelection(home, ["claude-code"]);
-    const rules = path.join(home, ".claude", "CLAUDE.md");
+    writeSelection(home, ["pi"]);
+    const rules = path.join(home, ".pi", "agent", "AGENTS.md");
     mkdirSync(path.dirname(rules), { recursive: true });
     writeFileSync(rules, "# mine\n\n<!-- tersio:start -->\nr\n<!-- tersio:end -->\n", "utf8");
+    seedPiTree(home);
 
-    const result = run(home, "uninstall", "--agent", "claude-code", "--yes");
+    const result = run(home, "uninstall", "--agent", "pi", "--yes");
     expect(result.status, result.stderr).toBe(0);
     const after = readFileSync(rules, "utf8");
     expect(after).not.toContain("tersio:start");
     expect(after).toContain("# mine");
+    expect(existsSync(path.join(home, ".pi", "agent", "extensions", "caveman-session"))).toBe(false);
   } finally {
     cleanup();
   }

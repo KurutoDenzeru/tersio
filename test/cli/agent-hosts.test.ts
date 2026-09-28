@@ -1,10 +1,10 @@
 import { expect, test } from "vitest";
-import path from "node:path";
-import { HOSTS, byId, hasStaticHook, isGuidanceOnly, isLiveExtension, hostPath } from "../../cli/agent-hosts.ts";
+import { HOSTS, byId, REWRITE_WIRING } from "../../cli/agent-hosts.ts";
 
-// The registry is the single source of truth for nine hosts, so most of these
-// are invariant checks: they fail when someone adds a host with a half-filled
-// entry, which is cheaper to catch here than in a user's home directory.
+// The registry is the single source of truth for the two supported hosts, so
+// most of these are invariant checks: they fail when someone adds a host with a
+// half-filled entry, which is cheaper to catch here than in a user's home
+// directory.
 
 test("every host id is unique and kebab-case", () => {
   const ids = HOSTS.map((h) => h.id);
@@ -27,202 +27,48 @@ test("every host is fully populated", () => {
   }
 });
 
-test("rules and skills flags agree with the paths they claim", () => {
+test("every retired path is $HOME-relative and a path of ours or the user's", () => {
   for (const host of HOSTS) {
-    // A flag and the path it names have to agree in both directions: a true
-    // flag with no path is a half-filled entry, and a path with no flag is one
-    // nothing will ever write.
-    if (host.rules) {
-      expect(host.rulesFile, `${host.id} claims rules but has no rulesFile`).toBeTruthy();
-    } else {
-      expect(host.rulesFile, `${host.id} has no rules but names a rulesFile`).toBeNull();
-    }
-    if (host.skills) {
-      expect(host.skillsDir, `${host.id} claims skills but has no skillsDir`).toBeTruthy();
-    } else {
-      expect(host.skillsDir, `${host.id} has no skills but names a skillsDir`).toBeNull();
-    }
-    // The two hosts whose extension tree injects the rules on every turn must
-    // not also write a static copy. The copy is always-on, so it would outlive
-    // `/combo off` and leave the mode on with no way to turn it off; it would
-    // duplicate the injection; and it would land inside whatever global
-    // instructions the user keeps in that file. `wiring` is the marker for those
-    // hosts — omp and pi. OpenCode is not one: its plugin only rewrites shell
-    // commands, nothing injects its rules, so a rules file is its delivery.
-    if (host.rewriteOwner === 'wiring') {
-      expect(host.rules, `${host.id} injects its rules and must not also write one`).toBe(false);
-      expect(host.rulesFile, `${host.id} injects its rules and must not name a rulesFile`).toBeNull();
-    }
-    for (const p of [host.rulesFile, host.skillsDir]) {
-      if (p) expect(p, `${host.id} path must be $HOME-relative`).toMatch(/^\.[^/]/);
+    for (const entry of host.retired ?? []) {
+      expect(entry.path, `${host.id} retired path must be $HOME-relative`).toMatch(/^\.[^/]/);
+      expect(["ours", "merged"], `${host.id} retired kind`).toContain(entry.kind);
     }
   }
 });
 
-test("a rewrite-capable host either has a hook config or names its owner", () => {
-  // Structural, not prose: a host with no static hook file must point at the
-  // module that writes one, so doctor can report it and silence cannot ship.
-  for (const host of HOSTS) {
-    if (!host.rewrite) {
-      expect(host.rewriteOwner, `${host.id} cannot rewrite at all, so it owns nothing`).toBeUndefined();
-      continue;
-    }
-    if (host.rewriteConfig) {
-      expect(host.rewriteOwner, `${host.id} has a static hook and needs no owner`).toBeUndefined();
-      continue;
-    }
-    expect(
-      host.rewriteOwner,
-      `${host.id} can rewrite but has neither a hook config nor a rewriteOwner`,
-    ).toBeDefined();
+test("the registry holds exactly the two Pi-family hosts", () => {
+  expect(HOSTS.map((h) => h.id).toSorted()).toEqual(["omp", "pi"]);
+});
+
+test("the removed hosts are out of the registry", () => {
+  // Re-adding one is a deliberate decision about a host's own docs, not a
+  // side effect of picking a new one up.
+  for (const id of ["claude-code", "codex", "opencode", "gemini-cli", "cursor", "agy"]) {
+    expect(byId(id), `${id} is back in the registry`).toBeUndefined();
   }
 });
 
-test("the wired live-extension hosts are omp, opencode, and pi", () => {
-  const owned = HOSTS.filter(isLiveExtension).map((h) => `${h.id}:${h.rewriteOwner}`).toSorted();
-  expect(owned).toEqual(["omp:wiring", "opencode:plugin", "pi:wiring"]);
-});
-
-test("opencode ships its own plugin, because rtk's is a pre-v2 shape", () => {
-  const opencode = byId("opencode");
-  expect(opencode?.rewrite).toBe(true);
-  expect(opencode?.rewriteOwner).toBe("plugin");
-  expect(isLiveExtension(opencode!)).toBe(true);
-  // V2 reads a global AGENTS.md from the config dir.
-  // No rules file: the plugin injects the modes itself, so a static one would
-  // outlive `/combo off`. The skills stay, because the plugin's only per-turn
-  // delivery is `autoinvoke` on them.
-  expect(opencode?.rulesFile).toBeNull();
-  // The shared Agent Skills root, which OpenCode reads as a global compatibility
-  // source. Its own copy was the same three files at a second path.
-  expect(opencode?.skillsDir).toBe(".agents/skills");
-  expect(opencode?.caveats).toMatch(/rtk-ai\/rtk#3463/);
-});
-
-test("pi is a live-extension host, wired by rtk's own init", () => {
-  const pi = byId("pi");
-  expect(pi).toBeDefined();
-  expect(isLiveExtension(pi!)).toBe(true);
-  expect(hasStaticHook(pi!), "pi gets an extension, not a static hook file").toBe(false);
-  expect(isGuidanceOnly(pi!)).toBe(false);
-  expect(pi?.rewriteOwner).toBe("wiring");
-  expect(pi?.caveats).toMatch(/rtk init -g --agent pi/);
-});
-
-test("every live-extension host names its owner", () => {
-  for (const host of HOSTS.filter(isLiveExtension)) {
-    expect(host.rewriteOwner, `${host.id} is live but names no owner`).toBeDefined();
-  }
-});
-
-test("no host is guidance-only any more", () => {
-  // Every supported host either has a static hook or a named owner, so the
-  // guidance-only branch is currently unreachable. If a future host lands with
-  // no rewrite surface, this fails and the row wording needs revisiting.
-  expect(HOSTS.filter(isGuidanceOnly).map((h) => h.id)).toEqual([]);
-});
-
-test("every host ships a working rewrite or says plainly that it does not", () => {
-  // The property that matters: no host can claim an auto-rewrite that is not
-  // installed. A host is honest if it has a static hook, a wired owner, or no
-  // rewrite capability claimed at all.
-  for (const host of HOSTS) {
-    if (isGuidanceOnly(host)) continue;
-    expect(hasStaticHook(host) || isLiveExtension(host), `${host.id} claims a rewrite it does not have`).toBe(true);
-  }
-});
-
-test("every hook config names a supported format, protocol, event, and input path", () => {
-  for (const host of HOSTS) {
-    const cfg = host.rewriteConfig;
-    if (!cfg) continue;
-    expect(["claude-json"], `${host.id} format`).toContain(cfg.configFormat);
-    expect(
-      ["hookSpecificOutput-updatedInput", "updated_input"],
-      `${host.id} protocol`,
-    ).toContain(cfg.protocol);
-    expect(cfg.event.length, `${host.id} event`).toBeGreaterThan(0);
-    expect(cfg.matcher.length, `${host.id} matcher`).toBeGreaterThan(0);
-    const paths = Array.isArray(cfg.inputPath) ? cfg.inputPath : [cfg.inputPath];
-    for (const p of paths) {
-      expect(p, `${host.id} inputPath must be a dotted path`).toMatch(/^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+$/);
-    }
-    expect(cfg.configFile, `${host.id} configFile must be $HOME-relative`).toMatch(/^\.[^/]/);
-  }
-});
-
-test("every static hook speaks the one wire protocol the registry declares", () => {
-  // Claude Code and Codex were the last two hosts sharing this shape. Cursor's
-  // flat `updated_input` went with it, so the protocol union is now a single
-  // member and a new hook shape has to be added deliberately.
-  const protocols = new Set(HOSTS.map((h) => h.rewriteConfig?.protocol).filter(Boolean));
-  expect([...protocols].toSorted()).toEqual(["hookSpecificOutput-updatedInput"]);
-});
-
-test("a fail-closed host is deliberate, since a broken rewriter would block the tool", () => {
-  for (const host of HOSTS) {
-    if (host.rewriteConfig?.failClosed) {
-      expect(
-        host.caveats ?? "",
-        `${host.id} is failClosed but its caveat does not mention the failure mode`,
-      ).toMatch(/fail|error|timeout|block/i);
-    }
-  }
-});
-
-test("Gemini CLI stays out of the registry", () => {
-  // Sunset for free/Pro/Ultra accounts on 2026-06-18. Re-adding it, or its
-  // Antigravity CLI successor, needs an explicit decision, not an accident.
-  expect(byId("gemini-cli")).toBeUndefined();
-  expect(byId("agy")).toBeUndefined();
-});
-
-test("the registry holds exactly the five documented hosts", () => {
-  expect(HOSTS.map((h) => h.id).toSorted()).toEqual([
-    "claude-code",
-    "codex",
-    "omp",
-    "opencode",
-    "pi",
-  ]);
+test("omp is never auto-detected, so a selection that dropped it stays dropped", () => {
+  expect(byId("omp")?.autoDetect).toBe(false);
+  expect(byId("pi")?.autoDetect).toBeUndefined();
 });
 
 test("no host probes a bare cmd, which would hit the Windows shell", () => {
-  // Command Code was the only host with a `cmd` binary; it is no longer
-  // supported. This stays as a guard so a future host cannot reintroduce a
-  // probe that resolves to cmd.exe on Windows.
   for (const host of HOSTS) {
     expect(host.binaries, `${host.id} probes the bare cmd`).not.toContain("cmd");
   }
 });
 
-test("hostPath is $HOME-relative when no relocation env var is set", () => {
-  const host = byId("claude-code")!;
-  expect(hostPath(host, ".claude/settings.json", "/home/u")).toBe(path.join("/home/u", ".claude", "settings.json"));
+test("pi's rewrite is rtk's own module, and the caveat says so", () => {
+  const pi = byId("pi");
+  expect(pi?.caveats).toMatch(/rtk init -g --agent pi/);
+  expect(pi?.configDirEnv).toBe("PI_CODING_AGENT_DIR");
+  expect(pi?.nativeInstall?.command).toBe("pi install npm:@krtclcdy/tersio");
 });
 
-test("a relocation env var moves only paths inside the config dir", () => {
-  const host = byId("codex")!;
-  process.env.CODEX_HOME = "/opt/codex";
-  try {
-    // Inside the config dir, so it moves.
-    expect(hostPath(host, ".codex/hooks.json", "/home/u")).toBe(path.join("/opt/codex", "hooks.json"));
-    expect(hostPath(host, ".codex", "/home/u")).toBe("/opt/codex");
-    // A shared-convention path outside the config dir belongs to the home dir
-    // and must not move, or Codex skills would break under CODEX_HOME.
-    expect(hostPath(host, ".agents/skills", "/home/u")).toBe(path.join("/home/u", ".agents", "skills"));
-  } finally {
-    delete process.env.CODEX_HOME;
-  }
-});
-
-test("a blank relocation env var falls back to the home directory", () => {
-  const host = byId("pi")!;
-  process.env.PI_CODING_AGENT_DIR = "   ";
-  try {
-    expect(hostPath(host, ".pi/agent/AGENTS.md", "/home/u"))
-      .toBe(path.join("/home/u", ".pi", "agent", "AGENTS.md"));
-  } finally {
-    delete process.env.PI_CODING_AGENT_DIR;
+test("every host reports the same rewrite wiring, because rtk owns it", () => {
+  expect(REWRITE_WIRING).toBe("rtk extension · auto-rewrite");
+  for (const host of HOSTS) {
+    expect(host.caveats, `${host.id} says nothing about the rewrite`).toMatch(/rtk/);
   }
 });

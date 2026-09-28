@@ -6,7 +6,6 @@ import { agentsJson } from "../../cli/dashboard.ts";
 import { HOSTS } from "../../cli/agent-hosts.ts";
 import { PI_EXTENSION_DIRS, PI_MODULE_DIRS } from "../../cli/pi-layer.ts";
 import { writeSelection } from "../../cli/agents.ts";
-import { START, END } from "../../cli/rules-pack.ts";
 
 function tempHome(): { home: string; cleanup: () => void } {
   const home = mkdtempSync(path.join(os.tmpdir(), "tersio-dash-agents-"));
@@ -29,13 +28,8 @@ async function rows(home: string, env: NodeJS.ProcessEnv = { PATH: "" }): Promis
   return (await agentsJson(home, env)) as unknown as Row[];
 }
 
-/** Writes every file pi needs: a global AGENTS.md and three skills. */
-/**
- * A complete pi install: the extension tree, which is all pi owns. pi writes no
- * static file — its rules come from the tree, and a skill would be a second copy
- * of prose the tree already injects every turn.
- */
-function installCommandCodeFully(home: string): void {
+/** Writes a complete pi install: the extension tree, which is all pi owns. */
+function installPiFully(home: string): void {
   // The whole layer, not just the five extensions: a real install writes the
   // shared modules beside them, and a partial tree is a partial install.
   for (const dir of [...PI_EXTENSION_DIRS, ...PI_MODULE_DIRS]) {
@@ -104,11 +98,11 @@ test("every row carries the binary path, so an installed host is verifiable", as
   }
 });
 
-test("a selected agent is not called configured until its files are on disk", async () => {
+test("a selected agent is not called configured until its tree is on disk", async () => {
   const { home, cleanup } = tempHome();
   try {
-    writeSelection(home, ["claude-code"]);
-    const row = (await rows(home)).find((r) => r.id === "claude-code")!;
+    writeSelection(home, ["pi"]);
+    const row = (await rows(home)).find((r) => r.id === "pi")!;
     expect(row.selected).toBe(true);
     expect(row.configured, "selected but nothing installed yet").toBe(false);
     expect(row.missing).toBeGreaterThan(0);
@@ -121,14 +115,14 @@ test("a fully installed agent reports configured with nothing missing", async ()
   const { home, cleanup } = tempHome();
   try {
     writeSelection(home, ["pi"]);
-    installCommandCodeFully(home);
+    installPiFully(home);
 
     const row = (await rows(home)).find((r) => r.id === "pi")!;
     expect(row.selected).toBe(true);
-    // No static files and none missing, so the badge has to be judged on the
-    // layer — which is the only thing pi actually installs.
+    // The tree is the only thing pi installs, so the badge is judged on it: a
+    // half-written tree is not a configured host.
     expect(row.missing).toBe(0);
-    expect(row.present).toBe(0);
+    expect(row.present).toBe(PI_EXTENSION_DIRS.length + PI_MODULE_DIRS.length);
     expect(row.configured, "a full layer is a configured host").toBe(true);
   } finally {
     cleanup();
@@ -156,12 +150,10 @@ test("each row names the wiring the installer would give that host", async () =>
   const { home, cleanup } = tempHome();
   try {
     const byId = new Map((await rows(home)).map((r) => [r.id, r.wiring]));
-    expect(byId.get("claude-code")).toMatch(/hook · auto-rewrite/);
-    expect(byId.get("codex")).toMatch(/hook · auto-rewrite/);
-    expect(byId.get("codex")).toMatch(/hook · auto-rewrite/);
-    expect(byId.get("opencode")).toMatch(/plugin · auto-rewrite/);
-    expect(byId.get("pi")).toMatch(/rtk extension · auto-rewrite/);
-    // No supported host is guidance-only any more, so the hint must never say so.
+    for (const id of HOSTS.map((h) => h.id)) {
+      expect(byId.get(id), `${id} names no wiring`).toMatch(/rtk extension · auto-rewrite/);
+    }
+    // No supported host is guidance-only, so the hint must never say so.
     for (const hint of byId.values()) {
       expect(hint).not.toBe("guidance only · no auto-rewrite");
     }

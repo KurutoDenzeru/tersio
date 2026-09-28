@@ -172,11 +172,8 @@ test("uninstall --agent pi clears its extension tree, keeps the layer and binary
     expect(existsSync(userRules), "a user's rules file is left alone").toBeTruthy();
     expect(readFileSync(userRules, "utf8"), "and left byte-for-byte").toBe("# my rules\n");
     expect(result.stdout).toMatch(/extensions\/rtk\.ts/);
-    // The plan names only the selected host: unselected agents stay out of
-    // both the preview and the run.
-    expect(result.stdout).not.toMatch(/Claude Code — hook/);
-    expect(result.stdout).not.toMatch(/OpenAI Codex — hook/);
-    expect(result.stdout).not.toMatch(/OpenCode — plugin/);
+    // The plan names only the selected host: the unselected OMP layer stays out
+    // of both the preview and the run.
     expect(result.stdout).not.toMatch(/Oh My Pi — \d+ extension director/);
     // Host-agnostic closing line: a Pi-only run must not say restart OMP.
     expect(result.stdout).toMatch(/Done — restart your agents/);
