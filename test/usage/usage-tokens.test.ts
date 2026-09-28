@@ -15,8 +15,7 @@ import {
 } from "../../extensions/shared/usage-ledger.ts";
 import { readUsageDb, syncUsageDb } from "../../extensions/shared/usage-store.ts";
 
-// Fixture rows use 2026-09-01 timestamps — keep any host reset watermark
-// (which would filter them out of the derived view) out of these tests.
+// Fixture rows use 2026-09-01 timestamps — keep any host reset watermark (which would filter them out of the derived...
 process.env.TERSIO_RESET_FILE = path.join(os.tmpdir(), "tersio-tests-no-reset-marker.json");
 if (existsSync(process.env.TERSIO_RESET_FILE)) rmSync(process.env.TERSIO_RESET_FILE);
 
@@ -84,11 +83,7 @@ test("adoption reads executed Bash commands, not assistant tool-call intent", ()
   }
 });
 test("a codex transcript is recorded under the model turn_context names", () => {
-  // The provider is not the model: session_meta carries model_provider, which
-  // is whoever served the request ("openai" here, and "9router" behind a
-  // third-party router). turn_context is the only place the model id appears,
-  // and it is a bare id — which is also the key priceFor matches, so the old
-  // `codex/openai` label missed the price table and fell back to the default.
+  // The provider is not the model: session_meta carries model_provider, which is whoever served the request ("openai" here...
   const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-codex-model-"));
   mkdirSync(path.join(dir, "2026"), { recursive: true });
   writeFileSync(
@@ -119,10 +114,7 @@ test("a codex transcript is recorded under the model turn_context names", () => 
 });
 
 test("the usage.db sync records the codex model too, not just the live import", () => {
-  // Two readers exist: importSessionTokens for the CLI report, and the sync that
-  // fills usage.db for the dashboard. They each decided the codex label for
-  // themselves, so the sync kept writing codex/<provider> after the import had
-  // been fixed — the fix was in the code and not on the screen.
+  // Two readers exist: importSessionTokens for the CLI report, and the sync that fills usage.db for the dashboard.
   const codex = mkdtempSync(path.join(os.tmpdir(), "tersio-sync-codex-"));
   const db = path.join(codex, "usage.db");
   mkdirSync(path.join(codex, "sessions"), { recursive: true });
@@ -194,8 +186,7 @@ test("carries measured cost and run status through to recent rows", () => {
   writeFileSync(
     path.join(dir, "s.jsonl"),
     [
-      // Real OMP shape: usage.cost is an object with a total, and a failed run
-      // carries the HTTP errorStatus plus the provider's message.
+      // Real OMP shape: usage.cost is an object with a total, and a failed run carries the HTTP errorStatus plus the provider's...
       '{"type":"message","id":"a","timestamp":"2026-09-03T10:00:00.000Z","message":{"role":"assistant","model":"glm-5.3-flash","stopReason":"error","errorStatus":404,"errorMessage":"404 model not found\\nsecond line","usage":{"input":10,"output":2,"cacheRead":0,"cacheWrite":0,"cost":{"input":0.0001,"output":0.0002,"total":0.0003}}}}',
       '{"type":"message","id":"b","timestamp":"2026-09-03T10:01:00.000Z","message":{"role":"assistant","model":"glm-5.3-flash","stopReason":"aborted","errorMessage":"Interrupted by user","usage":{"input":5,"output":1,"cacheRead":0,"cacheWrite":0,"cost":{"total":0.000187}}}}',
       '{"type":"message","id":"c","timestamp":"2026-09-03T10:02:00.000Z","message":{"role":"assistant","model":"glm-5.3-flash","stopReason":"toolUse","usage":{"input":7,"output":3,"cacheRead":0,"cacheWrite":0,"cost":{"total":0}}}}',
@@ -214,8 +205,7 @@ test("carries measured cost and run status through to recent rows", () => {
     expect(b.usd).toBe(0.000187);
     expect(c.st, "toolUse is an ordinary completed turn").toBe("completed");
     expect(c.usd, "a recorded zero is a measurement, not a missing value").toBe(0);
-    // Previously always 0: the old check required usage.cost to be a number,
-    // but the host writes an object, so measured cost never accumulated.
+    // Previously always 0: the old check required usage.cost to be a number, but the host writes an object, so measured cost...
     expect(Math.abs(s.costMeasured - (0.0003 + 0.000187)) < 1e-12, `costMeasured was ${s.costMeasured}`).toBeTruthy();
   } finally {
     if (prev === undefined) delete process.env.TERSIO_SESSIONS_DIR;
@@ -244,9 +234,6 @@ test("co2Grams defaults to the gpt-4o served figure", () => {
 });
 test("a host-reported SWE id prices as its Cognition model, tier intact", () => {
   // Hosts report Cognition's SWE models under ids the price table never uses.
-  // Without the alias they took the default — 4x the input rate on the family
-  // that shipped them. The alias only picks what to look up, so a tier keeps its
-  // own row and its own cost.
   const live = {
     fetchedAt: 0,
     exact: {
@@ -260,8 +247,7 @@ test("a host-reported SWE id prices as its Cognition model, tier intact", () => 
     expect(p.known, `${id} priced`).toBe(true);
     expect([p.price.input, p.price.output], id).toEqual([0.5, 2.5]);
   }
-  // The tier is priced as itself: Lightning is 5x the base output rate, and
-  // aliasing it to plain 1.7 would report the cheaper number for the fast one.
+  // The tier is priced as itself: Lightning is 5x the base output rate, and aliasing it to plain 1.7 would report the...
   const lightning = priceFor("swe-1-7-lightning", live);
   expect(lightning.known).toBe(true);
   expect([lightning.price.input, lightning.price.output]).toEqual([2.5, 12.5]);
@@ -278,8 +264,7 @@ test("free suffix and case variants fold into one model row", () => {
   expect(displayModelId("deepseek-v4.1-flash:free")).toBe("Deepseek-V4.1-Flash");
   expect(displayModelId("meta/muse-spark-1.3-contributor")).toBe("meta/Muse-Spark-1.3-Contributor");
   expect(displayModelId("codex/openai")).toBe("codex/OpenAI");
-  // A model id is now what a Codex row records, and "Gpt-6-Luna" is not a name
-  // anyone recognises.
+  // A model id is now what a Codex row records, and "Gpt-6-Luna" is not a name anyone recognises.
   expect(displayModelId("gpt-6-luna")).toBe("GPT-6-Luna");
   expect(displayModelId("gemma4:31b")).toBe("Gemma4-31B");
   const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-modelfold-"));

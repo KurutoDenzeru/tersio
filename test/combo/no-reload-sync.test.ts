@@ -1,7 +1,4 @@
-// No-reload sync: /combo and /tersio mode switches must persist entries,
-// publish shared state, notify — and never reload the session. Sibling
-// mirrors sync live via bridge listeners, so the next turn injects the new
-// mode like a normal input message.
+// No-reload sync: /combo and /tersio mode switches must persist entries, publish shared state, notify — and never reload...
 import { expect, test } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
@@ -14,8 +11,7 @@ import tersioCommandsExtension from "../../extensions/omp/tersio-commands/index.
 import { getSharedComboState, resetSharedComboState } from "../../extensions/shared/session-state.ts";
 import type { ExtensionApi, ExtensionCtx } from "../../extensions/shared/types.ts";
 
-// Hermetic HOME + usage file: combo falls back to lock-file defaults and the
-// tersio router appends ledger rows without touching the real machine.
+// Hermetic HOME + usage file: combo falls back to lock-file defaults and the tersio router appends ledger rows without...
 process.env.HOME = new URL("../definitely-missing-home", import.meta.url).pathname;
 process.env.USERPROFILE = process.env.HOME;
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tersio-noreload-"));

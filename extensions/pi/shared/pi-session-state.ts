@@ -1,14 +1,8 @@
-// Pi's view of the host-free mode state in extensions/shared/. Persistence is
-// identical to OMP's (same entries, same branch shape), so only the prompt
-// surface differs: a mode writes its own sealed section rather than returning a
-// replacement prompt. The bridge is a process-global symbol, not `pi.events`:
-// extensions share one JS realm, and a message bus would turn every turn into an
-// async handshake.
+// Pi's view of the host-free mode state in extensions/shared/.
 export * from '../shared/session-state.ts';
 import type { ExtensionCtx } from './pi-types.ts';
 
-// One section per extension, so two never overwrite each other. Fails open, and
-// falsy content is omitted by Pi, so '' switches the mode off.
+// One section per extension, so two never overwrite each other.
 export function injectPiSection(
   event: { systemPromptOptions?: { sections?: Record<string, unknown> } | null } | null | undefined,
   section: string,

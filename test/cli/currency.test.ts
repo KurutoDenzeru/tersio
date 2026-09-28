@@ -50,8 +50,7 @@ function usageEnv(dir: string, sessions: string): NodeJS.ProcessEnv {
   };
 }
 
-// Seeded into the tersio store, which is where the defaults live. The OMP lock
-// file is still read as a fallback for installs made before the store existed.
+// Seeded into the tersio store, which is where the defaults live.
 function writeSettingsLock(home: string, tersio: Record<string, unknown>): void {
   const dir = path.join(home, ".tersio");
   mkdirSync(dir, { recursive: true });

@@ -1,5 +1,4 @@
-// /combo session toggle — set all three (caveman, rtk, ponytail) at once.
-// Modes: off | medium | balanced | max
+// /combo session toggle — set all three (caveman, rtk, ponytail) at once. Modes: off | medium | balanced | max
 
 import {
   activeModesSummary,
@@ -36,10 +35,7 @@ function levelSummary(state: ComboState): string {
 }
 
 function loadPonytailInstructions(mode: string): string {
-  // The bundled ponytail package used to be required out of
-  // ~/.omp/plugins/node_modules — a non-literal require of a user-writable
-  // path, and the only one in the codebase. The inline text is what the Pi port
-  // already ships, so both ports now answer from the same place.
+  // The bundled ponytail package used to be required out of ~/.omp/plugins/node_modules — a non-literal require of a...
   return ponytailFallback(mode);
 }
 
@@ -51,45 +47,30 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
   let announced = '';
   let announcedPreset = false;
 
-  /** The one line that carries the state the status bar used to carry. */
+  // The one line that carries the state the status bar used to carry.
   function comboLine(state: Readonly<ComboState>): string {
     const modes = `🪨caveman=${state.caveman.toUpperCase()} ⚡rtk=${state.rtk.toUpperCase()} 🦥ponytail=${state.ponytail.toUpperCase()}`;
-    // A preset is "on"; off and a custom mix are not, and calling a custom mix
-    // "on" would claim a preset the session does not have.
+    // A preset is "on"; off and a custom mix are not, and calling a custom mix "on" would claim a preset the session does not...
     const head = state.level === 'off' || state.level === 'custom' ? state.level : `${state.level} on`;
     return `Combo ${head}: 🧩 combo ${state.level.toUpperCase()}: ${modes}`;
   }
 
-  /**
-   * Combo state goes in the conversation, not the footer.
-   *
-   * A permanent status row costs a line of screen for a value that only moves
-   * when someone types /combo or a session starts, so it is announced once per
-   * change instead. A session that starts dark, and a lone /caveman in a custom
-   * mix, say nothing: those keep the sibling bars they already had.
-   */
+  // Combo state goes in the conversation, not the footer.
   function announce(state: Readonly<ComboState>, ctx?: ExtensionCtx): void {
     const signature = `${state.level}:${state.caveman}:${state.rtk}:${state.ponytail}`;
     if (signature === announced) return;
     const c = paintableCtx(lastCtx, ctx);
-    // The bridge listener runs before the caller's own useState and carries no
-    // ctx, so this is the first call on a session that has just started. Bail
-    // without recording the signature, or the state is marked announced with
-    // nothing shown and the caller's ctx-bearing call is deduped away.
+    // The bridge listener runs before the caller's own useState and carries no ctx, so this is the first call on a session...
     if (!c?.ui) return;
     const preset = state.level !== 'off' && state.level !== 'custom';
-    // Moving off a preset has to be said, or the line that turned it on reads
-    // as the current state. Moving within a dark session says nothing: those
-    // modes keep the sibling bars they already had.
+    // Moving off a preset has to be said, or the line that turned it on reads as the current state.
     const speak = preset || announcedPreset;
     announced = signature;
     announcedPreset = preset;
     lastCtx = c;
-    // Ours, and no longer painted: clear it so a reload cannot leave the old
-    // bar stranded. A module reload resets `announced`, so this runs on resume.
+    // Ours, and no longer painted: clear it so a reload cannot leave the old bar stranded.
     c.ui.setStatus?.('combo', undefined);
-    // The siblings suppress themselves while a preset is active, but a race
-    // during session_start can paint one first, so clear those too.
+    // The siblings suppress themselves while a preset is active, but a race during session_start can paint one first, so...
     if (preset) {
       c.ui.setStatus?.('caveman', undefined);
       c.ui.setStatus?.('rtk', undefined);
@@ -98,9 +79,7 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
     if (speak) c.ui.notify?.(comboLine(state), 'info');
   }
 
-  // ponytail: same persistence as /combo — siblings (incl. upstream ponytail)
-  // restore from these entries, so the fallback must write them too or the
-  // preset evaporates on resume and ponytail never activates.
+  // ponytail: same persistence as /combo — siblings (incl.
   function persistPreset(level: string): void {
     const modes = COMBO_LEVELS[level];
     pi.appendEntry?.('caveman-mode', { mode: modes.caveman });
@@ -119,8 +98,7 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
     return useState(reconcileSharedComboEntries(sessionEntries(ctx)), ctx);
   }
   function listen(ctx?: ExtensionCtx): void {
-    // Stable identity: the bridge set dedupes, so repeated track()/command
-    // calls register once instead of stacking duplicate listeners.
+    // Stable identity: the bridge set dedupes, so repeated track()/command calls register once instead of stacking duplicate...
     if (ctx?.hasUI) setSharedComboListener(useState);
   }
 
@@ -189,13 +167,10 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
 
   pi.on('session_start', async (_event, ctx) => {
     track(ctx);
-    // No UI yet (a pre-attach start) still counts as a state to announce, so
-    // the line is not lost when the TUI attaches later.
+    // No UI yet (a pre-attach start) still counts as a state to announce, so the line is not lost when the TUI attaches later.
     if (!ctx?.hasUI) announce(getSharedComboState(), ctx);
     await runFirstRunSetup(ctx);
-    // Installer/user-configured default applies only when no persisted *mode*
-    // state exists — unrelated session entries must not block it, or the
-    // combo bar never paints on sessions that already carry other entries.
+    // Installer/user-configured default applies only when no persisted *mode* state exists — unrelated session entries must...
     const entries = sessionEntries(ctx);
     const hasModeState = entries.some((e) => e?.type === 'custom' && (
       e.customType === 'combo-level' || e.customType === 'caveman-mode' ||
@@ -207,10 +182,7 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
         useState(setSharedComboLevel(fallback), ctx);
       }
     }
-    // Standalone ponytail default: no sibling extension restores it (upstream
-    // owns the command), so apply it here when nothing persisted a
-    // ponytail-mode entry. Skipped when it matches the active preset — the
-    // preset entry already covers that, no redundant write.
+    // Standalone ponytail default: no sibling extension restores it (upstream owns the command), so apply it here when...
     if (!entries.some((e) => e?.type === 'custom' && e.customType === 'ponytail-mode')) {
       const ponytailFallback = readPonytailDefault();
       if (ponytailFallback !== 'off' && ponytailFallback !== getSharedComboState().ponytail) {

@@ -57,8 +57,7 @@ export default function rtkSessionExtension(pi: ExtensionApi): void {
 
   pi.setLabel?.('RTK session toggle');
 
-  // Live mirror: a /tersio or /combo switch publishes shared state — adopt
-  // it at once so the next turn and the rtk_run gate see it, no reload.
+  // Live mirror: a /tersio or /combo switch publishes shared state — adopt it at once so the next turn and the rtk_run gate...
   function syncFromShared(state: { rtk: string }): void {
     enabled = state.rtk === 'on';
     setRtkProcessEnabled(enabled);
@@ -119,13 +118,9 @@ export default function rtkSessionExtension(pi: ExtensionApi): void {
   });
   function restoreEnabled(ctx?: ExtensionCtx): void {
     const entries = sessionEntries(ctx);
-    // Publish the persisted combo state (incl. combo-level) before painting:
-    // bar suppression reads the in-process bridge, which is empty in a fresh
-    // host until the combo extension reconciles — and its reconcile is
-    // UI-gated. Deriving it here makes suppression independent of load order.
+    // Publish the persisted combo state first: bar suppression reads the bridge. bar suppression reads the bridge.
     reconcileSharedComboEntries(entries);
-    // Persisted session state wins; a fresh session falls back to the
-    // installer/user-configured default (off unless configured).
+    // Persisted session state wins; a fresh session falls back to the installer/user-configured default (off unless...
     const persisted = resolveEnabled(entries);
     enabled = typeof persisted === 'boolean' ? persisted : readRtkDefault();
     setRtkProcessEnabled(enabled);

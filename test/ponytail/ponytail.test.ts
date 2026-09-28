@@ -30,7 +30,6 @@ async function injectMarked(ponytail: string): Promise<string> {
   return prompt?.at(-1) ?? "";
 }
 
-
 test("lite and full fallbacks carry their intensities", async () => {
   expect(await injectMarked("lite")).toMatch(/simplest correct solution/);
   expect(await injectMarked("full")).toMatch(/minimum correct solution/);

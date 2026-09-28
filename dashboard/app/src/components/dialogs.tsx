@@ -1,8 +1,4 @@
-// Settings, share, and footer. Ports the settings dialog (General /
-// Connection / Diagnosis / Data panes), the share dialog with usage
-// profile card, and the footer in template.html + settings.js + share.js.
-// Shadcn Dialog + Select carry the structure; the row language, danger
-// zone, and share actions stay identical to the original.
+// Settings, share, and footer. Ports the settings dialog (General / Connection / Diagnosis / Data panes), the share...
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "cn";
 import { Button } from "@/components/ui/button";
@@ -47,10 +43,7 @@ function OmpLogo() {
   );
 }
 
-/**
- * Mark tile for the agents that have no logo of their own here. Uses the same
- * geometry as the OMP tile rather than inventing brand marks we do not ship.
- */
+// Mark tile for the agents that have no logo of their own here.
 function AgentMark({ id, label }: { id: string; label: string }) {
   const initials = label
     .split(/[\s-]+/)
@@ -66,15 +59,6 @@ function AgentMark({ id, label }: { id: string; label: string }) {
 }
 
 // Agent brand marks, inlined as React so they can inherit `currentColor`.
-//
-// These were vendored SVGs loaded through <img>, which cannot inherit a CSS
-// colour: the monochrome marks had to be baked to near-white for the dark tile
-// and were therefore invisible on the light theme. Inlined, they follow the
-// theme for free, and there is no separate asset to keep in sync with.
-//
-// Provenance, since a wrong mark is worse than none:
-//   pi       -- pi.dev's own press kit. Simple Icons' `pi` slug is Raspberry Pi.
-// Anything without a verifiable mark falls back to a monogram.
 
 function PiMark({ className }: { className?: string }) {
   return (
@@ -86,16 +70,14 @@ function PiMark({ className }: { className?: string }) {
   );
 }
 
-
-/** Maps a host id to its brand mark. Anything unverified gets a monogram. */
+// Maps a host id to its brand mark. Anything unverified gets a monogram.
 const AGENT_MARKS: Record<string, (props: { className?: string }) => React.ReactElement> = {
   pi: PiMark,
 };
 
 function AgentBrandMark({ id, label }: { id: string; label: string }) {
   const Mark = AGENT_MARKS[id];
-  // currentColor so the mark follows the theme; the tile already sets the text
-  // colour the row uses, so no per-icon colour is needed.
+  // currentColor so the mark follows the theme; the tile already sets the text colour the row uses, so no per-icon colour...
   if (Mark) return <Mark className="size-full" />;
   return <AgentMark id={id} label={label} />;
 }
@@ -111,11 +93,7 @@ const AGENT_STATUS: Record<
   off: { label: "Not selected", variant: "outline", dot: "bg-track" },
 };
 
-/**
- * One agent row. Every supported agent uses this, so OMP is a row in the same
- * list rather than a separate card above it -- previously it was rendered
- * twice, once as "Available" and again as "Not selected".
- */
+// One agent row. Every supported agent uses this, so OMP is a row in the same list rather than a separate card above it...
 function AgentListRow({
   agent,
   href,
@@ -127,17 +105,9 @@ function AgentListRow({
 }) {
   const state = agent.configured ? "configured" : agent.selected ? "selected" : "off";
   const status = AGENT_STATUS[state];
-  // Greyed when the host is not on the machine: no binary on PATH and none of
-  // tersio's extension tree installed for it either. Both signals are needed —
-  // a host with its files but no CLI on PATH is still in daily use, and
-  // greying that row would be wrong. Only the absence of both means the agent
-  // is simply not here.
+  // Greyed when the host is not on the machine: no binary on PATH and none of tersio's extension tree installed for it...
   const installed = agent.binPath != null || agent.configured;
-  // The binary path is the most useful second line when we have it, since it
-  // is what makes an installed host verifiable at a glance. A selected host
-  // without a CLI on PATH falls back to its config dir, which is still a real
-  // path to check. An unselected one keeps its wiring class instead: that is
-  // the only thing the row can usefully say about a host that is not set up.
+  // The binary path is the most useful second line when we have it, since it is what makes an installed host verifiable at...
   const binPath = agent.binPath ?? null;
   const shownPath = binPath ?? (agent.selected ? (agent.configDir ?? null) : null);
   const version = agent.version ?? null;
@@ -211,8 +181,7 @@ function HealthPane() {
 
   const unavailable = health === null;
   const agents = health?.agents ?? [];
-  // An older tersio build, or an exported snapshot from one, has no agents
-  // payload. Fall back to the single OMP row so the pane is never empty.
+  // An older tersio build, or an exported snapshot from one, has no agents payload.
   const rows: AgentRow[] = agents.length > 0
     ? agents
     : [{
@@ -733,25 +702,15 @@ function streakOf(byDay: UsageReport["byDay"]): number {
   return n;
 }
 
-// Share targets. These are fixed, first-party hosts, never user input: only
-// the share text is interpolated, and it is percent-encoded into a query
-// parameter. Hoisted so the destination is a named constant rather than a URL
-// assembled inline at the call site.
+// Share targets: fixed first-party hosts, never user input.
 const SHARE_X = "https://x.com/intent/post";
 const SHARE_REDDIT = "https://www.reddit.com/submit";
 const SHARE_LINKEDIN = "https://www.linkedin.com/feed/";
 
-/** Hosts we are willing to open a share window on. */
+// Hosts we are willing to open a share window on.
 const SHARE_HOSTS = new Set(["x.com", "www.reddit.com", "www.linkedin.com"]);
 
-/**
- * The single place a share window is opened.
- *
- * Every destination is a fixed first-party constant with the caller's text
- * percent-encoded into a query parameter, so nothing user-supplied can reach
- * the host or path. The allowlist makes that structural rather than a promise,
- * and `noopener` is applied here so no share target gets a handle on this page.
- */
+// The single place a share window is opened. Every destination is a fixed first-party constant with the caller's text...
 function openShare(url: string, features = "noopener,noreferrer"): Window | null {
   let target: URL;
   try {
@@ -760,19 +719,12 @@ function openShare(url: string, features = "noopener,noreferrer"): Window | null
     return null;
   }
   if (target.protocol !== "https:" || !SHARE_HOSTS.has(target.hostname)) return null;
-  // Rebuilt from the parsed parts rather than reusing the caller's string, so
-  // the opened value cannot be anything the allowlist did not clear.
-  // SAFETY: `target` reached this line only by parsing as https with a
-  // hostname in SHARE_HOSTS, so origin + path + query is a first-party share
-  // target by construction, not by the caller's promise.
+  // Rebuilt from the parsed parts rather than reusing the caller's string, so the opened value cannot be anything the...
   const safe = `${target.origin}${target.pathname}${target.search}`;
   return window.open(safe, "_blank", features);
 }
 
-/**
- * Share targets built from a fixed base plus an encoded query. The only caller
- * input is percent-encoded into a parameter, so it can never become the host.
- */
+// Share targets built from a fixed base plus an encoded query.
 function xShareUrl(text: string): string {
   return `${SHARE_X}?text=${encodeURIComponent(`${text} #Tersio`)}`;
 }
@@ -929,8 +881,7 @@ export function ShareDialog({
     );
   };
 
-  // PNG export renders the profile card as SVG, then rasterizes it. Same
-  // 1200x850 layout and theme rule as the original share.js svgCard().
+  // PNG export renders the profile card as SVG, then rasterizes it.
   const svgCard = (): string => {
     const e = (x: string): string => x.replace(/&/g, "&amp;").replace(/</g, "&lt;");
     let themeChoice: string | null = null;

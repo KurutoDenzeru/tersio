@@ -30,7 +30,7 @@ function write(home: string, rel: string, content: string): string {
   return abs;
 }
 
-/** Creates the directories a host's layer is made of. */
+// Creates the directories a host's layer is made of.
 function seedLayer(home: string, hostId: "omp" | "pi", which?: readonly string[]): string[] {
   const report = hostLayer(byId(hostId)!, home);
   const entries = which
@@ -39,7 +39,6 @@ function seedLayer(home: string, hostId: "omp" | "pi", which?: readonly string[]
   for (const entry of entries) mkdirSync(entry.path, { recursive: true });
   return entries.map((e) => e.path);
 }
-
 
 test("the agent menu lists every host and says what wiring it will get", () => {
   const choices = agentChoices();
@@ -86,7 +85,6 @@ test("a host the state map does not mention keeps its row", () => {
   expect(installedRows(sparse).map((c) => c.value)).toEqual(HOSTS.map((h) => h.id));
   expect(installedRows(new Map()).length).toBe(HOSTS.length);
 });
-
 
 test("hostLayer reports the extension tree, so a partial install reads as partial", () => {
   const { home, cleanup } = tempHome();
@@ -140,7 +138,6 @@ test("normalizeIds keeps registry order, drops unknowns, and de-duplicates", () 
   expect(normalizeIds(["codex", "claude-code", "opencode"])).toEqual([]);
   expect(normalizeIds([])).toEqual([]);
 });
-
 
 test("an explicit --agent wins over the prompt, the saved set, and detection", async () => {
   let asked = false;
@@ -230,7 +227,6 @@ test("a corrupt or absent selection file reads as empty rather than throwing", (
   }
 });
 
-
 test("detection finds a host by its config directory", () => {
   const { home, cleanup } = tempHome();
   try {
@@ -272,7 +268,6 @@ test("detection ignores a relocation env var pointing somewhere empty", () => {
     cleanup();
   }
 });
-
 
 test("a retired rules file only loses our block, never the user's own text", () => {
   const { home, cleanup } = tempHome();
@@ -331,8 +326,6 @@ test("a retired directory we created is removed, and a dry run removes nothing",
     cleanup();
   }
 });
-
-// --- paths -----------------------------------------------------------------
 
 test("displayPath shortens a path under home and leaves anything else alone", () => {
   const home = path.join(path.sep, "home", "u");

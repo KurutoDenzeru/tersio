@@ -1,11 +1,4 @@
-// rtk mode on Pi. Port of extensions/omp/rtk-session/index.ts: same /rtk command,
-// same `rtk` status key, same combo suppression, RTK_DISABLED flag, restore
-// precedence and rtk_run tool. The Pi-only differences: the prompt goes into a
-// sealed section because returning systemPrompt would replace the whole prompt;
-// the tool schema is a plain literal because the installed tree has no
-// node_modules to import typebox from; failures throw, because Pi treats a
-// returned object as success; and there is no session_branch, no pi.cwd, and no
-// setLabel equivalent.
+// rtk mode on Pi. Port of extensions/omp/rtk-session/index.ts.
 
 import {
   activeModesSummary,
@@ -48,9 +41,7 @@ function setRtkProcessEnabled(enabled: boolean): void {
 
 const RTK_PROMPT = `RTK guidance active. RTK automatically rewrites eligible Bash calls through the installed rtk hook. Prefer rtk for noisy shell output, but use exact raw output for state changes, checksums, patches, and diagnostics that need full bytes.`;
 
-// Cast once, deliberately: Pi hands extensions `typebox`, but this module is
-// loaded by jiti from a user config dir with no node_modules, so the schema is
-// the same object described as a literal.
+// Cast once, deliberately: Pi hands extensions `typebox`, but this module is loaded by jiti from a user config dir with...
 const RTK_PARAMS = {
   type: 'object',
   properties: {
@@ -80,8 +71,7 @@ export default function rtkSessionExtension(pi: PiExtensionAPI): void {
       c.ui.setStatus('rtk', undefined);
       return;
     }
-    // Theme from the context that can actually paint, which is not always the
-    // incoming one.
+    // Theme from the context that can actually paint, which is not always the incoming one.
     paintStatusBar(c.ui, 'rtk', '⚡', 'rtk: ON', isActive, c.ui.theme);
   }
 
@@ -94,9 +84,7 @@ export default function rtkSessionExtension(pi: PiExtensionAPI): void {
     notify(ctx, enabled ? `RTK on — compact shell output for this session. Active: ${active}.` : `RTK off. Active: ${active}.`);
   }
 
-  // Live mirror of shared state, so a /combo or /tersio switch lands on the
-  // next turn with no reload. The bridge is a process-global symbol: one Pi
-  // process is one realm.
+  // Live mirror of shared state, so a /combo or /tersio switch lands on the next turn with no reload.
   function syncFromShared(state: { rtk: string }): void {
     enabled = state.rtk === 'on';
     setRtkProcessEnabled(enabled);
@@ -137,8 +125,7 @@ export default function rtkSessionExtension(pi: PiExtensionAPI): void {
       const result = await pi.exec?.('rtk', params.args, { signal, cwd: ctx?.cwd });
       if (!result) throw new Error('Pi exposes no exec() to this extension, so rtk cannot run.');
       const text = [result.stdout, result.stderr].filter(Boolean).join('\n');
-      // A non-zero exit is a failed run, so rtk's own stderr reaches the model
-      // as a failure rather than as a successful transcript.
+      // A non-zero exit is a failed run, so rtk's own stderr reaches the model as a failure rather than as a successful...
       if (result.code !== 0) {
         throw new Error(text || `rtk exited ${result.code}`);
       }
@@ -159,9 +146,7 @@ export default function rtkSessionExtension(pi: PiExtensionAPI): void {
 
   function restoreEnabled(ctx?: ExtensionCtx): void {
     const entries = sessionEntries(ctx);
-    // Publish the persisted combo state before painting: bar suppression reads
-    // the in-process bridge, which is empty until the combo extension
-    // reconciles, and that reconcile is UI-gated.
+    // Publish the persisted combo state first: bar suppression reads the bridge.
     reconcileSharedComboEntries(entries);
     const persisted = resolveEnabled(entries);
     enabled = typeof persisted === 'boolean' ? persisted : readRtkDefault();
@@ -190,8 +175,7 @@ export default function rtkSessionExtension(pi: PiExtensionAPI): void {
 
   pi.on?.('before_agent_start', (event) => {
     const e = event as PiBeforeAgentStartEvent;
-    // Always write, empty when off: Pi omits falsy content, so the mode
-    // switches off in one write instead of leaving a stale section behind.
+    // Always write, empty when off: Pi omits falsy content, so the mode switches off in one write instead of leaving a stale...
     injectPiSection(e, SECTION, enabled ? RTK_PROMPT : '');
   });
 }

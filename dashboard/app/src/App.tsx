@@ -1,4 +1,4 @@
-// Tersio Dashboard. Same sections and data contract as cli/dashboard.ts:
+// The React dashboard: same sections and data contract as cli/dashboard.ts.
 // token strip, activity, top models, models, recent, command tools,
 // settings, model detail, share, footer. Styled with Tailwind utilities over
 // the tersio design tokens declared in index.css.

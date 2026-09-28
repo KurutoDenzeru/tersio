@@ -1,7 +1,4 @@
-// Shared usage ledger: append-only JSON-lines file. One source of truth read
-// by `tersio usage`, `/tersio usage`, and the Dashboard.
-// Best-effort by design: a ledger failure never breaks the caller, and
-// corrupt lines are skipped on read (same pattern as the config normalizer).
+// Shared usage ledger: append-only JSON-lines file.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -23,10 +20,6 @@ export function ledgerPath(): string {
 }
 
 // Reset watermark: tersio-owned timestamp marking the last statistics reset.
-// Session transcripts and the RTK database are host/tool-owned and never
-// touched — instead, every derived view (token stats, command tools) filters
-// rows from before the watermark, so "reset" empties what tersio shows
-// without deleting anything it does not own.
 export function resetMarkerPath(): string {
   const override = process.env.TERSIO_RESET_FILE;
   if (override) return override;
@@ -58,11 +51,7 @@ export function appendUsage(kind: UsageKind, detail: string): void {
   } catch { /* ledger is best-effort; never break the caller */ }
 }
 
-// --- Session tokens, tokscale-style ------------------------------------------
-// OMP writes per-assistant-message usage into ~/.omp/agent/sessions/**/*.jsonl:
-// message.role === 'assistant', message.usage = { input, output, cacheRead,
-// cacheWrite }, message.model, plus a per-line timestamp. Same source tokscale
-// parses for its oh-my-pi client. Best-effort: unreadable files are skipped.
+// --- Session tokens, tokscale-style ------------------------------------------ OMP writes per-assistant-message usage...
 export interface TokenBreakdown {
   input: number;
   output: number;
@@ -70,10 +59,7 @@ export interface TokenBreakdown {
   cacheWrite: number;
 }
 
-// Run outcome for one assistant message. OMP writes stopReason on every turn
-// (toolUse | stop | aborted | error) and, when the request failed, an HTTP
-// errorStatus plus errorMessage. `toolUse` is an ordinary turn that handed off
-// to tools, so it reads as completed rather than as a distinct state.
+// Run outcome for one assistant message. OMP writes stopReason on every turn (toolUse | stop | aborted | error) and, when...
 export type RunStatus = 'completed' | 'aborted' | 'error';
 
 export interface RecentRequest {
@@ -85,8 +71,6 @@ export interface RecentRequest {
   cr?: number;
   cw?: number;
   // Measured spend for this message, from the transcript's usage.cost.total.
-  // Left undefined when the host recorded no cost — never backfilled with an
-  // estimate, so a measured figure is never mistaken for a modeled one.
   usd?: number;
   st: RunStatus;
   code?: number;
@@ -127,10 +111,7 @@ export function durOf(v: unknown): number | undefined {
   return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : undefined;
 }
 
-// Measured cost for one message. OMP writes usage.cost as
-// { input, output, cacheRead, cacheWrite, total }; a bare number shows up in
-// older fixtures. Anything else means "not recorded" — deliberately not 0, so
-// the dashboard can tell a genuinely free run from an unrecorded one.
+// Measured cost for one message. OMP writes usage.cost as { input, output, cacheRead, cacheWrite, total };
 export function costOf(usage: Record<string, unknown>): number | undefined {
   const c = usage.cost;
   if (typeof c === 'number') return Number.isFinite(c) ? c : undefined;
@@ -141,8 +122,7 @@ export function costOf(usage: Record<string, unknown>): number | undefined {
   return undefined;
 }
 
-// First line only: real messages carry multi-line provider errors, and this
-// ends up in a tooltip.
+// First line only: real messages carry multi-line provider errors, and this ends up in a tooltip.
 export function statusOf(msg: { stopReason?: unknown; errorStatus?: unknown; errorMessage?: unknown; isError?: unknown }): { st: RunStatus; code?: number; note?: string } {
   const stop = typeof msg.stopReason === 'string' ? msg.stopReason : '';
   const note = typeof msg.errorMessage === 'string' && msg.errorMessage.trim()
@@ -177,9 +157,7 @@ export function codexSessionsDir(): string {
   return path.join(os.homedir(), '.codex', 'sessions');
 }
 
-// Pi transcripts live beside its config, so they relocate with it. Pi rows
-// already match the assistant-row shape the classifier reads (role, model,
-// usage, toolCall content) — the importer simply never walked this dir.
+// Pi transcripts live beside its config, so they relocate with it.
 export function piSessionsDir(): string {
   const override = process.env.TERSIO_PI_DIR;
   if (override) return override;
@@ -188,10 +166,7 @@ export function piSessionsDir(): string {
   return path.join(base, 'sessions');
 }
 
-// OpenCode v2 keeps one JSON file per message under storage/message, not a
-// sqlite table and not JSONL: opencode.db holds indexes, the message bodies
-// live here. Probed in order — XDG first, then this machine's actual
-// location, then the macOS default.
+// OpenCode v2 keeps one JSON file per message under storage/message, not a table and not JSONL.
 export function opencodeSessionsDir(): string {
   const override = process.env.TERSIO_OPENCODE_DIR;
   if (override) return override;
@@ -225,9 +200,7 @@ export function walkJsonl(dir: string, out: string[], cap: number, ext = '.jsonl
     else if (e.isFile() && e.name.endsWith(ext)) out.push(full);
   }
 }
-// Recent requests are their own full-width table in the dashboard, so this is
-// a payload bound rather than a "few highlights" bound. Rows are small
-// (model, tokens, timing, status), so a few hundred cost little to ship.
+// Recent requests are their own full-width table in the dashboard, so this is a payload bound rather than a "few...
 export const RECENT_LIMIT = 200;
 const FREE_SUFFIX = /(?::free|-free)$/i;
 const RTK_ELIGIBLE_HEADS = new Set([
@@ -235,8 +208,7 @@ const RTK_ELIGIBLE_HEADS = new Set([
   'npm', 'npx', 'pnpm', 'bun', 'bunx', 'cargo', 'go', 'python', 'pytest',
   'ruff', 'mypy', 'docker', 'kubectl', 'psql', 'aws', 'gh', 'glab', 'wc',
 ]);
-// Session-parse buffer shared by live reads and usage.db syncs: identical
-// inputs produce identical aggregates, so the store is a cache, never a fork.
+// Session-parse buffer shared by live reads and usage.db syncs.
 export interface SessionAccum {
   byModel: Record<string, TokenBreakdown>;
   byDay: Record<string, TokenBreakdown>;
@@ -286,11 +258,7 @@ export function classifySessionLine(row: { timestamp?: string | number; type?: u
   const payload = row.payload;
   if (payload && typeof payload === 'object') {
     if (row.type === 'session_meta' && typeof payload.model_provider === 'string') return { kind: 'codex_provider', provider: payload.model_provider };
-    // A Codex transcript states the model once per turn, in turn_context. The
-    // token_count rows that follow carry the usage but no model, so this is the
-    // only place the real model name exists — and it is what the ledger must
-    // record: the session_meta provider is the API provider ("openai", and
-    // "9router" on a machine behind a third-party router), not the model.
+    // A Codex transcript states the model once per turn, in turn_context.
     if (row.type === 'turn_context' && typeof payload.model === 'string' && payload.model) {
       return { kind: 'codex_model', model: payload.model };
     }
@@ -320,10 +288,7 @@ export function classifySessionLine(row: { timestamp?: string | number; type?: u
   return { kind: 'assistant_row', model, usage: msg.usage, durMs: typeof msg.duration === 'number' ? msg.duration : computedDur, run: statusOf(msg), tools };
 }
 
-// True when at least one token bucket holds a positive finite count. Pi emits
-// an empty assistant row per turn (zero usage, empty content) before the real
-// response lands; counting those doubles its message tallies and fills the
-// recent table with 0/0 rows, so both ingestion paths skip them.
+// True when at least one token bucket holds a positive finite count.
 export function hasPositiveUsage(usage: Record<string, unknown>): boolean {
   for (const k of ['input', 'output', 'cacheRead', 'cacheWrite']) {
     const v = usage[k];
@@ -342,12 +307,7 @@ export interface OpencodeMessage {
   finish?: unknown;
 }
 
-// One OpenCode message file, as data. Assistant rows carry tokens as
-// { input, output, reasoning, cache: { read, write } }, a numeric measured
-// cost, and millisecond { created, completed } timing. Anything else — user
-// rows, rows without tokens, zero-token rows — is null, never a guess.
-// OpenCode files carry no tool parts, so unlike the JSONL hosts this source
-// feeds tokens and requests only, not per-tool or adoption stats.
+// One OpenCode message file; assistant rows carry the token buckets.
 export function classifyOpencodeMessage(obj: OpencodeMessage | null | undefined): { model: string; usage: Record<string, unknown>; ms: number | undefined; durMs: number | undefined } | null {
   if (!obj || typeof obj !== 'object' || obj.role !== 'assistant') return null;
   const t = obj.tokens;
@@ -373,8 +333,7 @@ export function classifyOpencodeMessage(obj: OpencodeMessage | null | undefined)
   };
 }
 
-// One OpenCode message file into the shared accum. The file is a single JSON
-// document, not JSONL, so this is separate from processSessionText.
+// One OpenCode message file into the shared accum.
 export function processOpencodeFile(accum: SessionAccum, text: string): void {
   let obj: unknown;
   try {
@@ -386,13 +345,11 @@ export function processOpencodeFile(accum: SessionAccum, text: string): void {
   if (!parsed) return;
   ingestSessionRow(accum, parsed.model, parsed.usage, parsed.ms, parsed.durMs, { st: 'completed' as RunStatus });
 }
-// Fold `:free`/`-free` suffixes and case variants into one chart key, so the
-// same model from two providers stops splitting into separate rows.
+// Fold `:free`/`-free` suffixes and case variants into one chart key, so the same model from two providers stops...
 export function canonicalModelId(model: string): string {
   return model.replace(FREE_SUFFIX, '').toLowerCase();
 }
-// LiteLLM-style display: namespace stays lowercase, model segments title-case
-// with version dots kept (`deepseek-v4.1-flash` → `Deepseek-V4.1-Flash`).
+// LiteLLM-style display: namespace stays lowercase, model segments title-case with version dots kept...
 export function displayModelId(model: string): string {
   const bare = model.replace(FREE_SUFFIX, '');
   const cap = (s: string): string => {
@@ -415,13 +372,11 @@ export function importSessionTokens(): SessionTokens {
   const accum = newSessionAccum();
   const files: string[] = [];
   walkJsonl(sessionsDir(), files, 2000);
-  // A sessions override signals an isolated environment (tests, fixtures):
-  // only walk the real codex dir when it is explicitly set.
+  // A sessions override signals an isolated environment (tests, fixtures).
   if (process.env.TERSIO_SESSIONS_DIR === undefined || process.env.TERSIO_CODEX_DIR !== undefined) {
     walkJsonl(codexSessionsDir(), files, 2000);
   }
-  // Pi rows already match the assistant-row shape; the importer just never
-  // walked here. Same isolation rule as codex.
+  // Pi rows already match the assistant-row shape; the importer just never walked here. Same isolation rule as codex.
   if (process.env.TERSIO_SESSIONS_DIR === undefined || process.env.TERSIO_PI_DIR !== undefined) {
     walkJsonl(piSessionsDir(), files, 5000);
   }
@@ -491,10 +446,7 @@ function parseAdoptionFile(file: string): { counts: { bashCalls: number; eligibl
   return { counts, sessions: sawBash ? 1 : 0 };
 }
 
-// Pi twin of parseAdoptionFile. Pi writes no tool_execution_start execution
-// rows, so the best available signal is the bash toolCall in the assistant
-// message content — intent rather than a confirmed execution, and noted as
-// such. A tool result normally follows, so the two agree in practice.
+// Pi twin of parseAdoptionFile. Pi writes no tool_execution_start execution rows, so the best available signal is the...
 function parsePiAdoptionFile(file: string): { counts: { bashCalls: number; eligibleCalls: number; rtkCalls: number }; sessions: number } {
   const counts = { bashCalls: 0, eligibleCalls: 0, rtkCalls: 0 };
   let text: string;
@@ -542,8 +494,7 @@ export function readRtkAdoption(): RtkAdoption {
   if (process.env.TERSIO_SESSIONS_DIR === undefined || process.env.TERSIO_PI_DIR !== undefined) {
     walkJsonl(piSessionsDir(), piFiles, 5000);
   }
-  // OpenCode message files carry no tool parts, so adoption has no OpenCode
-  // source: tokens and requests only.
+  // OpenCode message files carry no tool parts, so adoption has no OpenCode source: tokens and requests only.
   const groups: Array<{ files: string[]; parse: (file: string) => { counts: { bashCalls: number; eligibleCalls: number; rtkCalls: number }; sessions: number } }> = [
     { files: ompFiles, parse: parseAdoptionFile },
     { files: codexFiles, parse: parseAdoptionFile },
@@ -582,17 +533,7 @@ export function readRtkAdoption(): RtkAdoption {
   const missedCalls = Math.max(0, eligibleCalls - rtkCalls);
   return { sessions, bashCalls, eligibleCalls, rtkCalls, missedCalls, adoptionPct: eligibleCalls ? (rtkCalls / eligibleCalls) * 100 : 0 };
 }
-/**
- * The label a Codex token row is recorded under.
- *
- * A transcript states its model once per turn in turn_context; the token rows
- * carry usage only. The provider is the fallback for a transcript that names no
- * model, and it stays namespaced so it cannot collide with a real model id.
- *
- * Shared by both readers — the live import and the usage.db sync the dashboard
- * reads. Two copies of this decision is exactly how the sync kept writing
- * `codex/openai` after the import had been fixed.
- */
+// The label a Codex token row is recorded under. A transcript states its model once per turn in turn_context;
 export function codexModelLabel(
   state: { codexProvider: string | null; codexModel: string | null },
   provider?: string,
@@ -617,10 +558,7 @@ export function processSessionText(accum: SessionAccum, state: { codexProvider: 
         continue;
       }
       if (parsed.kind === 'token_row') {
-        // The bare model id, because that is the key prices are stored under:
-        // priceFor matches an exact id or one ending in `/<id>`, so a
-        // `codex/` prefix matched nothing and every Codex row priced at the
-        // default.
+        // The bare model id: the key prices are stored under.
         ingestSessionRow(accum, codexModelLabel(state, parsed.provider), parsed.usage ?? {}, row.timestamp, undefined, { st: 'completed' as RunStatus });
         continue;
       }
@@ -649,8 +587,7 @@ export function readRtkRecallDiagnostics(binary: string | null = resolveRtkBinar
     return { mode: 'unknown', entries: 0, available: false };
   }
 }
-// Lead binary of a shell string: first segment head past `cd` chains and
-// VAR=x assignments (`cd /x && git status` → `git`). Falls back to `bash`.
+// Lead binary of a shell string: first segment head past `cd` chains and VAR=x assignments (`cd /x && git status` →...
 const SKIP_HEADS = ['cd', 'echo', 'export', 'true', 'false'];
 export function leadBinary(command: unknown): string {
   if (typeof command !== 'string' || !command.trim()) return 'bash';
@@ -664,7 +601,6 @@ export function leadBinary(command: unknown): string {
   return 'bash';
 }
 
-// --- Pricing lives in ./pricing.ts (live LiteLLM cache + fallback table) ---
 import { DEFAULT_PRICE, priceFor, refreshPricesIfStale } from './pricing.ts';
 import { co2GramsFor, energyWhFor } from './carbon.ts';
 import type { ModelPrice } from './pricing.ts';
@@ -689,10 +625,7 @@ export function usdCost(t: TokenBreakdown, model?: string): { usd: number; price
   };
 }
 
-// CO2 now model-differentiated via ./carbon.ts (EcoLogits 0.8.2 port).
-// Always render with ~est. and never merge with measured figures.
-// The constant below is the served gCO2eq per 1K output tokens for the
-// default (gpt-4o-class) model, kept so single-figure callers stay honest.
+// CO2 now model-differentiated via ./carbon.ts (EcoLogits 0.8.2 port). Always render with ~est.
 export const CO2_G_PER_1K_OUTPUT = 0.2;
 
 export function co2Grams(outputTokens: number, model?: string): number {
@@ -719,9 +652,7 @@ export function readUsage(): UsageRow[] {
   return rows;
 }
 
-// Delete the ledger file. Returns the rows cleared (0 when already absent).
-// Only tersio-owned data lives here; session transcripts and the RTK
-// database are never touched.
+// Delete the ledger file. Returns the rows cleared (0 when already absent). Only tersio-owned data lives here;
 export function clearUsageLedger(): number {
   const rows = readUsage().length;
   try {

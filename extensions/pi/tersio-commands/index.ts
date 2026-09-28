@@ -1,7 +1,4 @@
 // /tersio root command for Pi: status, check, update, dashboard, usage, help.
-// Mode switches live on their own commands, and the shared-state bridge mirrors
-// them live, so a switch lands on the next turn. This file reports state and
-// delegates; it owns no prompt section.
 
 import os from 'node:os';
 import path from 'node:path';
@@ -89,8 +86,7 @@ export default function tersioCommandsExtension(pi: PiExtensionAPI): void {
         notify(ctx, usageSummary());
         return;
       }
-      // Removed mode switches redirect to their own commands so only one
-      // spelling exists to learn: /caveman, /rtk, /combo, /ponytail.
+      // Removed mode switches redirect to their own commands, so one spelling is all to learn.
       if (sub === 'caveman' || sub === 'rtk' || sub === 'combo' || sub === 'ponytail') {
         notify(ctx, `Use /${sub} instead — /tersio no longer duplicates mode switches.\n${HELP}`, 'warning');
         return;

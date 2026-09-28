@@ -1,8 +1,4 @@
-// cli/profile.ts — session-start defaults profile (combo/caveman/rtk/ponytail)
-// plus the display-currency default for usage/dashboard reports.
-// Stored in ~/.tersio/settings.json, the same file the extensions read, so
-// OMP and Pi start from one choice. Extracted from cli/install.ts so both
-// install and settings share it.
+// cli/profile.ts — session-start defaults profile (combo/caveman/rtk/ponytail) plus the display-currency default for...
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import {
@@ -40,8 +36,7 @@ interface StoredSettings {
   currency?: unknown;
 }
 
-// Stored profile from the live defaults file: update/reinstall runs without
-// flags or prompts must preserve the user's choice, never reset it to off.
+// Stored profile from the live defaults file: update/reinstall runs without flags or prompts must preserve the user's...
 async function storedProfile(): Promise<Profile> {
   const base = defaultProfile();
   const raw = await readTextIfExists(tersioSettingsPath());
@@ -91,7 +86,6 @@ async function writePluginSettings(profile: Profile, options: WriteOptions): Pro
   await fs.writeFile(file, JSON.stringify(config, null, 2) + '\n', 'utf8');
   console.log(`  [write] Session defaults in ${file}`);
 }
-
 
 function formatProfile(profile: Profile): string {
   return `combo=${profile.comboDefault} (caveman=${profile.cavemanDefault} · rtk=${profile.rtkDefault ? 'on' : 'off'} · ponytail=${profile.ponytailDefault}) · currency=${profile.currency}`;

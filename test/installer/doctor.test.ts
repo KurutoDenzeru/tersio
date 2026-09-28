@@ -8,8 +8,7 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const installer = path.join(root, "tersio.js");
 
-// Empty home keeps every probe MISSING. The seeded update-check cache is
-// ignored by doctor (no registry probe); install/update flows still use it.
+// Empty home keeps every probe MISSING. The seeded update-check cache is ignored by doctor (no registry probe);
 function missingHome(): string {
   const home = mkdtempSync(path.join(os.tmpdir(), "tersio-doctor-"));
   const cacheDir = path.join(home, ".omp", "plugins");
@@ -40,10 +39,7 @@ test("doctor reports MISSING components against an empty home", () => {
     for (const line of ["Caveman extension: MISSING", "RTK extension: MISSING", "❌ RTK binary: MISSING"]) {
       expect(result.stdout).toMatch(new RegExp(line.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
     }
-    // Categorized output: merged section headers plus a closing tally. There is
-    // no Environment or Installation section — Environment's only row was a Node
-    // check hardcoded to pass, and Installation restated what the Oh My Pi host
-    // row now reports. The RTK OMP wiring row is gone from Add-ons too.
+    // Categorized output: merged section headers plus a closing tally.
     for (const sectionName of ["Extensions & plugins", "Usage & records", "Add-ons"]) {
       expect(result.stdout).toMatch(new RegExp(`\\n${sectionName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\n`));
     }
@@ -184,19 +180,16 @@ test("doctor reports Oh My Pi in the host list when the tersio plugin is install
 
     const complete = run();
     expect(complete.status, complete.stderr).toBe(0);
-    // The row lives inside Agent hosts, not in a section of its own, and it
-    // counts extension directories because those are OMP's artifacts.
+    // The row lives inside Agent hosts, not in a section of its own, and it counts extension directories because those are...
     expect(complete.stdout).toMatch(/Agent hosts\n[\s\S]*?✅ Oh My Pi \(OMP\): ok .*7 extension\/module director/);
 
-    // A partially installed layer warns and names the repair, rather than
-    // reporting a healthy host.
+    // A partially installed layer warns and names the repair, rather than reporting a healthy host.
     rmSync(path.join(extDir, "lib"), { recursive: true, force: true });
     const partial = run();
     expect(partial.stdout).toMatch(/⚠️ Oh My Pi \(OMP\): warn .*1 of 7 extension\/module director/);
     expect(partial.stdout).toMatch(/run: tersio install --agent omp/);
 
-    // Not installed at all: the row stays silent rather than reporting a host
-    // the machine never had.
+    // Not installed at all: the row stays silent rather than reporting a host the machine never had.
     rmSync(pluginDir, { recursive: true, force: true });
     expect(run().stdout).not.toMatch(/Oh My Pi \(OMP\)/);
   } finally {
@@ -222,8 +215,7 @@ test("doctor reports the rtk binary version when the binary is on PATH", () => {
 
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toMatch(/✅ RTK binary: ok rtk 0\.49\.0/);
-    // The rtk.ts wiring row is no longer printed; the Oh My Pi host row covers
-    // the layer it belonged to.
+    // The rtk.ts wiring row is no longer printed; the Oh My Pi host row covers the layer it belonged to.
     expect(result.stdout).not.toMatch(/RTK OMP wiring/);
   } finally {
     rmSync(home, { recursive: true, force: true });

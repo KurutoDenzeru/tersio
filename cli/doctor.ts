@@ -38,8 +38,7 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   const rtkIndex = path.join(tersioPluginDir, 'extensions', 'omp', 'rtk-session', 'index.ts');
   const updaterIndex = path.join(tersioPluginDir, 'extensions', 'omp', 'ai-addons-updater', 'index.ts');
 
-  // Independent probes start concurrently; sections report in fixed order as
-  // their data settles. Every probe resolves instead of rejecting.
+  // Independent probes start concurrently; sections report in fixed order as their data settles.
   const probes = {
     configText: readTextIfExists(configPath),
     ponytailPkgText: readTextIfExists(ponytailPkg),
@@ -83,8 +82,7 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
     ]),
   ]));
 
-  // Categorized output with a tally; success rows stay quiet (no path echoes)
-  // while failures print the expected path or fix so they stay actionable.
+  // Categorized output with a tally; success rows stay quiet (no path echoes) while failures print the expected path or fix...
   const tally = { ok: 0, missing: 0, warn: 0 };
   function absDate(ms: number): string {
     const d = new Date(ms);
@@ -101,37 +99,20 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
     console.log(`  ⚠️ ${label}: warn ${detail}`);
   }
 
-  // Agent hosts lead the report: they are what the product is for, and the OMP
-  // sections below are supporting detail for one host of several. Always
-  // printed, so a user who has not configured any yet is told how, instead of
-  // the section silently not existing. Each row reports the rewrite path the
-  // host actually got, because "wired" and "wired to a hook the host ignores"
-  // look identical from the outside.
+  // Agent hosts lead the report: they are what the product is for, and the OMP sections below are supporting detail for one...
   const home = os.homedir();
-  // A row follows what the user has, not what the machine could have. A host
-  // whose config dir merely exists is *detected*, not installed, and four
-  // "warn 6 file(s) missing — run: tersio install" rows for agents that were
-  // never used is noise that buries the two rows that matter. Installed or
-  // saved is the bar, and the saved half is what keeps "I installed this and it
-  // went missing" visible. An explicit `--agent` still wins outright, as it
-  // does everywhere else. OMP and the Pi layer below already worked this way.
+  // A row follows what the user has, not what the machine could have.
   const wanted = agentFlag.length > 0
     ? new Set(agentFlag)
     : new Set([...installedHostIds(installedState(home)), ...readSelection(home).hosts]);
-  // Every host in scope reports through the same row, omp and pi included: each
-  // names its extension tree, its version and its path. Neither host ships
-  // static files, so the tree is the only thing a row can honestly count.
+  // Every host in scope reports through the same row, omp and pi included.
   const hostIds = HOSTS.filter((h) => wanted.has(h.id)).map((h) => h.id);
   section('Agent hosts');
   if (hostIds.length === 0) {
-    // Derived from the registry so dropping a host cannot leave a stale id
-    // advertised here.
+    // Derived from the registry so dropping a host cannot leave a stale id advertised here.
     console.log('  ℹ️  none installed — `tersio install --agent <id>` adds one');
   } else {
-    // Every host row names what was found and where, so a row is checkable
-    // rather than just a verdict. The binary is the useful path when there is
-    // one; a host with no CLI on PATH falls back to its extension directory,
-    // which is where the tree it owns actually lives.
+    // Every host row names what was found and where, so a row is checkable rather than just a verdict.
     interface HostProbe { bin: string | null; version: string | null }
     const probes = new Map<string, HostProbe>(await Promise.all(hostIds.map(async (id): Promise<[string, HostProbe]> => {
       const host = byId(id);
@@ -156,13 +137,11 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
       }
     }
   }
-  // The hosts this report says nothing about, in one line. Omitting the rows
-  // must not also omit the discovery: the id is all anyone needs to add one.
+  // The hosts this report says nothing about, in one line, so discovery is never omitted.
   const notInstalled = HOSTS.filter((h) => h.id !== 'omp' && !wanted.has(h.id)).map((h) => h.id);
   if (notInstalled.length > 0) {
     console.log(`  ℹ️  not installed: ${notInstalled.join(', ')} — \`tersio install --agent <id>\``);
   }
-
 
   section('Extensions & plugins');
   const explicitEntries = (configText ?? '').split('\n')

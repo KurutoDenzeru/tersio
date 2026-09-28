@@ -1,11 +1,4 @@
-// /ai-addons manual updater for Ponytail, RTK and Caveman. Built-in Node
-// modules only, one slash command. Ponytail and Caveman update fully; RTK is
-// checksum-verified but unsigned (checksums.txt ships SHA256 only).
-//
-// Port of extensions/omp/ai-addons-updater/index.ts. Pi has no setLabel for an
-// extension, its command handlers resolve to void, and its extensions load from
-// a bare config dir, so the add-on paths are re-derived from this file's own
-// location.
+// /ai-addons manual updater for Ponytail, RTK and Caveman. Built-in Node modules only, one slash command.
 
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -65,8 +58,7 @@ function runCheck(name: string, probe: () => Promise<string>): Promise<AddonStat
   return probe().then((text) => ({ text, level: 'info' as const }), (e) => checkFailed(name, e));
 }
 
-// Pi's config dir may have no node_modules at all, so the package is found by
-// walking up. A miss is "not installed", never a throw.
+// Pi's config dir may have no node_modules at all, so the package is found by walking up.
 function ponytailPackageJson(): string | null {
   let dir = EXT_DIR;
   for (let depth = 0; depth < 8; depth++) {

@@ -1,8 +1,4 @@
-// The installed extension trees must actually load. A module added and imported
-// but never added to the installer's copy list shipped exactly that way, and the
-// test covering that list kept its own hand-written copy, so it could not drift
-// into catching it. This drives the real installer and reads the tree it
-// produced instead.
+// The installed extension trees must actually load.
 import { expect, test } from "vitest";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
@@ -14,7 +10,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
 const installer = path.join(root, "tersio.js");
 const repoExt = path.join(root, "extensions");
 
-/** Every `.ts`/`.js` file under a directory, recursively. */
+// Every `.ts`/`.js` file under a directory, recursively.
 function files(dir: string): string[] {
   const out: string[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -25,7 +21,7 @@ function files(dir: string): string[] {
   return out;
 }
 
-/** Relative import specifiers in a file, without any cache-busting query. */
+// Relative import specifiers in a file, without any cache-busting query.
 function relativeImports(file: string): string[] {
   const src = readFileSync(file, "utf8");
   return [...src.matchAll(/from\s+'(\.[^']+)'|import\('(\.[^']+)'\)/g)]
@@ -64,8 +60,6 @@ test("every module the extensions import exists in the installed tree", () => {
     }
 
     // 1. Every shared module the extensions import is copied into the tree.
-    //    Scanned from the sources, not a hand-written list, so a CLI-only module
-    //    is not demanded of the extension tree.
     const piShims = new Set(
       files(path.join(repoExt, "pi", "shared")).map((f) => path.resolve(f)),
     );
@@ -93,8 +87,7 @@ test("every module the extensions import exists in the installed tree", () => {
       }
     }
 
-    // 2. Every relative import inside the installed tree resolves: a specifier
-    //    like `../../shared/types.ts` is right in the repo and wrong installed.
+    // 2. Every relative import inside the installed tree resolves.
     const broken: string[] = [];
     let checked = 0;
     for (const tree of trees) {

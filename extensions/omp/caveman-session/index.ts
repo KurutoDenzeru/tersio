@@ -24,7 +24,7 @@ Rules:
 
 Default: **full**. Switch: \`/caveman lite|full|ultra|wenyan-lite|wenyan-full|wenyan-ultra|off\`. Stop: "stop caveman" or "normal mode".`;
 
-// ponytail: synchronous read each full-mode injection; ceiling = small file, cold session start. Upgrade path: cache file contents + mtime, invalidate on change.
+// Synchronous read per full-mode injection: a small file, read at a cold session start.
 function readFullRule(): string {
   try { return readFileSync(RULE_PATH, 'utf8'); } catch { return FALLBACK_FULL_RULE; }
 }
@@ -84,9 +84,7 @@ export default function cavemanSessionExtension(pi: ExtensionApi): void {
 
   pi.setLabel?.('Caveman session toggle');
 
-  // Live mirror: a /tersio or /combo switch publishes shared state — adopt
-  // it at once so the next turn injects the new mode with no session reload.
-  // Stable identity, so the bridge set dedupes across re-inits.
+  // Live mirror: a /tersio or /combo switch publishes shared state — adopt it at once so the next turn injects the new mode...
   function syncFromShared(state: { caveman: string }): void {
     const mode = normalizeMode('caveman', state.caveman);
     if (mode) {
@@ -120,13 +118,9 @@ export default function cavemanSessionExtension(pi: ExtensionApi): void {
 
   function restoreMode(ctx?: ExtensionCtx): void {
     const entries = sessionEntries(ctx);
-    // Publish the persisted combo state (incl. combo-level) before painting:
-    // bar suppression reads the in-process bridge, which is empty in a fresh
-    // host until the combo extension reconciles — and its reconcile is
-    // UI-gated. Deriving it here makes suppression independent of load order.
+    // Publish the persisted combo state first: bar suppression reads the bridge. bar suppression reads the bridge.
     reconcileSharedComboEntries(entries);
-    // Persisted session state wins; a fresh session falls back to the
-    // installer/user-configured default (off unless configured).
+    // Persisted session state wins; a fresh session falls back to the installer/user-configured default (off unless...
     const persisted = resolveMode(entries, '');
     currentMode = persisted || normalizeMode('caveman', readCavemanDefault()) || DEFAULT_MODE;
     syncStatus(ctx);

@@ -1,7 +1,4 @@
-// cli/dashboard.ts — serves the built shadcn Dashboard with local usage APIs.
-// Binds 127.0.0.1 only; --export writes a file://-ready file instead.
-// Note: no Promise.withResolvers here — engines still allow Node 20.12,
-// which lacks it; the listening server itself keeps the process alive.
+// cli/dashboard.ts — serves the built shadcn Dashboard with local usage APIs. Binds 127.0.0.1 only;
 import { spawn } from 'node:child_process';
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
@@ -62,8 +59,7 @@ function dataJson(): string {
   return JSON.stringify(summarizeUsage(readUsage()));
 }
 
-// Local-only health + diagnosis for the settings modal. No network: version
-// probes run with short timeouts, file checks are existsSync.
+// Local-only health and diagnosis for the settings modal. No network.
 function ompPath(): string | null {
   const names = process.platform === 'win32' ? ['omp.cmd', 'omp.exe', 'omp.bat', 'omp'] : ['omp'];
   for (const dir of (process.env.PATH || '').split(path.delimiter).filter(Boolean)) {
@@ -108,14 +104,10 @@ function ompDefaultModel(): string | null {
   }
 }
 
-/** Bound on a version probe. One slow agent must not stall the whole pane. */
+// Bound on a version probe. One slow agent must not stall the whole pane.
 const VERSION_TIMEOUT_MS = 4000;
 
-/**
- * `<bin> --version` for any host, with a short timeout. The dashboard reports a
- * version for every agent the user has installed, so this runs in parallel and
- * is bounded; an agent that hangs costs the timeout, not the pane.
- */
+// `<bin> --version` for any host, with a short timeout.
 function hostVersion(bin: string): string | null {
   try {
     if (process.platform === 'win32') {
@@ -130,22 +122,13 @@ function hostVersion(bin: string): string | null {
 
 export { agentsJsonAsync as agentsJson };
 
-/**
- * One row per supported agent for the dashboard's Connection pane. Reads the
- * same registry the installer does, so a host cannot appear here with wiring
- * the installer would not give it.
- *
- * Binary paths come from a PATH walk (no subprocess) and are resolved for every
- * host. Versions cost a spawn each, so they are only probed for hosts that
- * actually have a binary, and all of them run concurrently.
- */
+// One row per supported agent for the dashboard's Connection pane.
 async function agentsJsonAsync(
   home: string = process.env.HOME || process.env.USERPROFILE || '',
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<Array<Record<string, unknown>>> {
   const selected = readSelection(home).hosts;
-  // `env` is threaded through rather than read from process.env inside, so a
-  // caller passing a sandbox home does not get the real machine's PATH back.
+  // `env` is threaded through rather than read from process.env inside, so a caller passing a sandbox home does not get the...
   const found = new Map(HOSTS.map((h) => [h.id, findHostBinary(h, env)]));
   const versions = new Map(await Promise.all(
     HOSTS.map(async (h) => {
@@ -156,15 +139,11 @@ async function agentsJsonAsync(
 
   return agentChoices().map((choice) => {
     const binPath = found.get(choice.value) ?? null;
-    // OMP is installed by its own plugin path, never as a saved entry, so its
-    // row is computed from the OMP install directly. Reporting it "Not
-    // selected" beside a detected omp binary reads as a contradiction.
+    // OMP is installed by its own plugin path, never as a saved entry, so its row is computed from the OMP install directly.
     if (choice.value === 'omp') return ompRow(home, binPath, versions.get('omp') ?? null);
     const isSelected = selected.includes(choice.value);
     const host = byId(choice.value);
-    // Both hosts ship an extension tree rather than files, so the tree is what
-    // says configured. "Nothing missing" would be vacuously true for a host
-    // with nothing on disk, and a half-written tree is not a complete install.
+    // Both hosts ship an extension tree rather than files, so the tree is what says configured.
     const layer = host ? hostLayer(host, home) : null;
     return {
       id: choice.value,
@@ -176,25 +155,15 @@ async function agentsJsonAsync(
       wiring: choice.hint,
       binPath,
       version: versions.get(choice.value) ?? null,
-      // The registry's docs URL, so every row can link to the page its
-      // integration is documented on instead of one hardcoded host.
+      // The registry's docs URL, so every row can link to the page its integration is documented on instead of one hardcoded...
       source: host?.source ?? null,
-      // A host can be fully configured with no CLI on PATH, and then the row had
-      // no binary to verify it with. The config dir is real and is where this
-      // host's extensions live.
+      // A host can be fully configured with no CLI on PATH, and then the row had no binary to verify it with.
       configDir: host ? displayPath(path.join(home, host.configDir), home) : null,
     };
   });
 }
 
-/**
- * What the OMP install actually wrote, which is the only honest source here.
- *
- * Paths are built from the same `home` as the rest of this function. The
- * module-level OMP_AGENT_DIR / OMP_PLUGINS_DIR constants resolve against the
- * real os.homedir(), so using them here would read the developer's own ~/.omp
- * regardless of the home the caller asked about.
- */
+// What the OMP install actually wrote, which is the only honest source here.
 function ompRow(home: string, binPath: string | null, version: string | null): Record<string, unknown> {
   const present = [
     path.join(home, '.omp', 'agent', 'extensions', 'rtk.ts'),
@@ -256,8 +225,7 @@ const DIAG_TTL_MS: Record<DiagSchedule, number> = {
 };
 
 function diagPaths(): { report: string } {
-  // Hermetic env (tests) overrides the DB path: keep the report next to it
-  // so test runs never touch the real ~/.tersio/diag.json.
+  // Hermetic env (tests) overrides the DB path: keep the report next to it so test runs never touch the real...
   const dbOverride = process.env.TERSIO_USAGE_DB;
   if (dbOverride) return { report: path.join(path.dirname(dbOverride), 'diag.json') };
   const home = process.env.HOME || process.env.USERPROFILE || '';
@@ -313,8 +281,7 @@ function relAge(ms: number): string {
 
 function computeDoctorRows(): DoctorRow[] {
   const rows: DoctorRow[] = [];
-  // Agent hosts lead the report. They are what the product is for; the OMP
-  // extension rows below are supporting detail for one host of several.
+  // Agent hosts lead the report. They are what the product is for;
   const home = process.env.HOME || process.env.USERPROFILE || '';
   for (const id of readSelection(home).hosts) {
     const host = byId(id);
@@ -377,10 +344,7 @@ function computeDoctorRows(): DoctorRow[] {
   return rows;
 }
 
-// Retained diagnosis: recompute when forced, missing, or older than the
-// schedule. Otherwise return the saved report so users never re-run.
-// Labels retired from the report. A saved report containing any of them
-// is stale by definition and always recomputes.
+// Retained diagnosis: recompute when forced, missing, or older than the schedule.
 const RETIRED_DIAG_LABELS = new Set([
   'OMP CLI',
   'Tersio CLI',
@@ -397,13 +361,11 @@ function isRetiredReport(report: DoctorReport): boolean {
   return report.rows.some((r) => RETIRED_DIAG_LABELS.has(r.label));
 }
 
-// Retained diagnosis: recompute when forced, missing, retired, or older
-// than the schedule. Otherwise return the saved report.
+// Retained diagnosis: recompute when forced, missing, retired, or older than the schedule.
 function getDoctorReport(force: boolean): DoctorReport {
   const saved = readDiagReport();
   const ttl = saved ? DIAG_TTL_MS[saved.schedule] : 0;
-  // Manual always recomputes on open; dated schedules reuse the saved
-  // report until stale. Otherwise a retained snapshot hides new rows.
+  // Manual always recomputes on open; dated schedules reuse the saved report until stale.
   if (!force && saved && !isRetiredReport(saved) && ttl > 0 && Date.now() - saved.checkedAt < ttl) return saved;
   const report: DoctorReport = { rows: computeDoctorRows(), checkedAt: Date.now(), schedule: saved?.schedule ?? 'manual' };
   writeDiagReport(report);
@@ -421,10 +383,7 @@ function readDiagSchedule(): DiagSchedule {
   return readDiagReport()?.schedule ?? 'manual';
 }
 
-// Persist the dashboard's picker choice so close → reopen keeps it: each
-// `tersio dashboard` run serves a fresh ephemeral port (a new origin), so the
-// browser's localStorage alone cannot survive a restart. The stored default
-// feeds data.json and `tersio usage` on the next run.
+// Persist the dashboard's picker choice so a reopen keeps it.
 async function saveDashboardCurrency(raw: unknown): Promise<CurrencyCode | null> {
   if (typeof raw !== 'string') return null;
   const code = raw.trim().toUpperCase();
@@ -449,30 +408,19 @@ function openBrowser(url: string): void {
   spawn(cmd, [url], { detached: true, stdio: 'ignore' }).unref();
 }
 
-// Replacer functions throughout: session data routinely contains `$'`
-// sequences (shell quoting in tool details), which String.replace would
-// expand as match-suffix patterns and corrupt the file.
-// RTK-metered command lines routinely contain literal `</script>` (Vue
-// SFC probes), which would close the inlined <script> early and dump the
-// rest of the JSON as page text. Escape it; JSON.parse never sees the
-// backslash form inside a string literal, the browser decodes it first.
+// Replacer functions throughout: session data routinely contains `$'` sequences (shell quoting in tool details), which...
 function escapeInline(json: string): string {
   return json.replace(/<\/(script)/gi, '<\\/$1');
 }
 
-/** Any value that survives a JSON round trip. These payloads are re-inlined into the exported page. */
+// Any value that survives a JSON round trip. These payloads are re-inlined into the exported page.
 type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 
-/**
- * The payload inlined into an exported dashboard. Each sub-report is parsed
- * independently and degrades to null, so one bad report costs that panel
- * instead of failing the whole export.
- */
+// The payload inlined into an exported dashboard. Each sub-report is parsed independently and degrades to null, so one...
 async function snapJson(): Promise<string> {
   const parse = (text: string): JsonValue => {
     try {
-      // Boundary cast: the source is tersio's own JSON, and the value is
-      // immediately re-serialized, so there is nothing to narrow further.
+      // Boundary cast: the source is tersio's own JSON, and the value is immediately re-serialized, so there is nothing to...
       return JSON.parse(text) as JsonValue;
     } catch {
       return null;

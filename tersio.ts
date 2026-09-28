@@ -1,7 +1,5 @@
 #!/usr/bin/env node
-// tersio.ts — Install Tersio (caveman/rtk/ponytail) into the coding agents on this machine.
-// Usage: node tersio.js [install|update|doctor|dashboard|uninstall|version|help] [options]
-// Requires: node/npm, and at least one supported agent
+// tersio.ts — Install Tersio (caveman/rtk/ponytail) into the coding agents on this machine. Usage.
 import {
   PACKAGE_BIN, PACKAGE_VERSION, applyUpdate, commandArg, dashboard, dashboardExport, dashboardOpen, dashboardPort, doctor, reset, settings, showHelp, showVersion, uninstall, unknownCommand, update, usage,
 } from './cli/common.ts';
@@ -16,10 +14,7 @@ import { runReset } from './cli/reset.ts';
 import { runSettings } from './cli/settings.ts';
 import { runDashboard } from './cli/dashboard.ts';
 
-/**
- * The `--agent` id list, derived from the registry and wrapped for the help
- * column. Hard-coding it meant dropping a host left a stale id advertised here.
- */
+// The `--agent` id list, derived from the registry and wrapped for the help column.
 function agentIdHelp(): string {
   const ids = HOSTS.map((h) => h.id);
   const out: string[] = [];

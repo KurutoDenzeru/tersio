@@ -28,10 +28,9 @@ async function rows(home: string, env: NodeJS.ProcessEnv = { PATH: "" }): Promis
   return (await agentsJson(home, env)) as unknown as Row[];
 }
 
-/** Writes a complete pi install: the extension tree, which is all pi owns. */
+// Writes a complete pi install: the extension tree, which is all pi owns.
 function installPiFully(home: string): void {
-  // The whole layer, not just the five extensions: a real install writes the
-  // shared modules beside them, and a partial tree is a partial install.
+  // The whole layer, not just the five extensions: a real install writes the shared modules beside them, and a partial tree...
   for (const dir of [...PI_EXTENSION_DIRS, ...PI_MODULE_DIRS]) {
     const target = path.join(home, ".pi/agent/extensions", dir);
     mkdirSync(target, { recursive: true });
@@ -62,9 +61,7 @@ test("with nothing selected, every agent except OMP reads as not selected", asyn
 });
 
 test("the OMP row reflects the OMP install, not agents.json", async () => {
-  // OMP is installed by its own plugin path and never lands in agents.json, so
-  // it used to read "Not selected" right next to a detected omp binary. It is
-  // always part of an install, and configured only once something is on disk.
+  // OMP is installed by its own plugin path and never lands in agents.json, so it used to read "Not selected" right next to...
   const { home, cleanup } = tempHome();
   try {
     const bare = (await rows(home)).find((r) => r.id === "omp")!;
@@ -86,8 +83,7 @@ test("every row carries the binary path, so an installed host is verifiable", as
   const { home, cleanup } = tempHome();
   try {
     for (const r of await rows(home)) {
-      // Nothing is on PATH in the sandbox, so every row must report a path
-      // rather than a stale one or an omitted field.
+      // Nothing is on PATH in the sandbox, so every row must report a path rather than a stale one or an omitted field.
       expect(r, `${r.id} has no binPath field`).toHaveProperty("binPath");
       expect(r.binPath, `${r.id} resolved a binary in an empty PATH`).toBeNull();
       expect(r, `${r.id} has no version field`).toHaveProperty("version");
@@ -119,8 +115,7 @@ test("a fully installed agent reports configured with nothing missing", async ()
 
     const row = (await rows(home)).find((r) => r.id === "pi")!;
     expect(row.selected).toBe(true);
-    // The tree is the only thing pi installs, so the badge is judged on it: a
-    // half-written tree is not a configured host.
+    // The tree is the only thing pi installs, so the badge is judged on it: a half-written tree is not a configured host.
     expect(row.missing).toBe(0);
     expect(row.present).toBe(PI_EXTENSION_DIRS.length + PI_MODULE_DIRS.length);
     expect(row.configured, "a full layer is a configured host").toBe(true);
@@ -133,8 +128,7 @@ test("a partially installed agent counts what is present, so the gap is visible"
   const { home, cleanup } = tempHome();
   try {
     writeSelection(home, ["pi"]);
-    // One extension of the tree and none of the shared modules, so the gap is
-    // visible in the layer rather than in a file list.
+    // One extension of the tree and none of the shared modules, so the gap is visible in the layer rather than in a file list.
     const partial = path.join(home, ".pi/agent/extensions", PI_EXTENSION_DIRS[0]);
     mkdirSync(partial, { recursive: true });
     writeFileSync(path.join(partial, "index.ts"), "export default {};\n", "utf8");

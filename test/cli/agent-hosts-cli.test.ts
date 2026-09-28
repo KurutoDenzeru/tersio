@@ -8,14 +8,11 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const installer = path.join(root, "tersio.js");
 
-// Command-level coverage for the host wiring: argv -> selection -> files on
-// disk -> doctor row. The unit suite in agents.test.ts proves the filesystem
-// behaviour directly; this proves the commands reach it.
+// Command-level coverage for the host wiring: argv -> selection -> files on disk -> doctor row.
 
 function tempHome(): { home: string; cleanup: () => void } {
   const home = mkdtempSync(path.join(os.tmpdir(), "tersio-cli-hosts-"));
-  // An empty bin keeps the real rtk (and any host binary) off the probe path,
-  // so detection cannot pick up the developer's own machine.
+  // An empty bin keeps the real rtk (and any host binary) off the probe path, so detection cannot pick up the developer's...
   mkdirSync(path.join(home, "empty-bin"), { recursive: true });
   return { home, cleanup: () => rmSync(home, { recursive: true, force: true }) };
 }
@@ -39,7 +36,7 @@ function writeSelection(home: string, hosts: string[]): void {
   writeFileSync(path.join(home, ".tersio", "agents.json"), JSON.stringify({ hosts, updatedAt: 1 }), "utf8");
 }
 
-/** Creates every directory Pi's extension tree is made of. */
+// Creates every directory Pi's extension tree is made of.
 function seedPiTree(home: string): void {
   for (const dir of [
     "caveman-session", "rtk-session", "ai-addons-updater", "combo-toggle", "tersio-commands", "shared", "lib",
@@ -70,8 +67,7 @@ test("doctor always shows the agent-hosts category, even with none installed", (
   try {
     const result = run(home, "doctor");
     expect(result.status, result.stderr).toBe(0);
-    // A category that only appears once you have used it is not a category, so
-    // the section is permanent and tells the user how to add one.
+    // A category that only appears once you have used it is not a category, so the section is permanent and tells the user...
     expect(result.stdout).toMatch(/\nAgent hosts\n/);
     expect(result.stdout).toContain("none installed");
     expect(result.stdout).toContain("tersio install --agent <id>");
@@ -89,8 +85,7 @@ test("doctor reports one row per saved host and points at the install command", 
     expect(result.stdout).toMatch(/\nAgent hosts\n/);
     expect(result.stdout).toMatch(/Pi: warn/);
     expect(result.stdout).toMatch(/tersio install --agent pi/);
-    // The row is a warning here because the tree is not on disk, and the count
-    // is directories: neither host ships static files any more.
+    // The tree is not on disk, so the row warns and the count is directories.
     expect(result.stdout).toMatch(/7 of 7 extension\/module/);
   } finally {
     cleanup();
@@ -134,8 +129,7 @@ test("a doctor row goes healthy once the host's extension tree is on disk", () =
     const result = run(home, "doctor");
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toMatch(/Pi: ok/);
-    // The row names the rewrite's real owner instead of a hook file tersio
-    // does not write.
+    // The row names the rewrite's real owner instead of a hook file tersio does not write.
     expect(result.stdout).toMatch(/rewrite via rtk extension/);
   } finally {
     cleanup();
@@ -157,7 +151,7 @@ test("a doctor row stays a warning while the tree is only half written", () => {
   }
 });
 
-/** Reads the check count out of doctor's closing summary line. */
+// Reads the check count out of doctor's closing summary line.
 function checkCount(out: string): number {
   const m = out.match(/Summary: (\d+) checks/);
   return m ? Number(m[1]) : -1;
@@ -169,8 +163,7 @@ test("a host row counts toward the doctor summary tally", () => {
     const before = run(home, "doctor");
     writeSelection(home, ["omp", "pi"]);
     const after = run(home, "doctor");
-    // The empty-category hint is not a check, so only the two real rows join
-    // the tally.
+    // The empty-category hint is not a check, so only the two real rows join the tally.
     expect(checkCount(before.stdout)).toBeGreaterThan(0);
     expect(checkCount(after.stdout), "two host rows should join the tally").toBe(checkCount(before.stdout) + 2);
   } finally {

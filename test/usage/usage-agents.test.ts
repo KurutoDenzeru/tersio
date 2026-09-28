@@ -12,8 +12,7 @@ import {
   syncUsageDb,
 } from "../../extensions/shared/usage-store.ts";
 
-// Fixture rows use 2026-09-01 timestamps — keep any host reset watermark
-// (which would filter them out of the derived view) out of these tests.
+// Fixture rows use 2026-09-01 timestamps — keep any host reset watermark (which would filter them out of the derived...
 process.env.TERSIO_RESET_FILE = path.join(os.tmpdir(), "tersio-tests-agents-no-reset-marker.json");
 if (existsSync(process.env.TERSIO_RESET_FILE)) rmSync(process.env.TERSIO_RESET_FILE);
 
@@ -100,8 +99,7 @@ function withIsolation(seeds: { pi?: boolean; oc?: boolean }, fn: (dirs: { sessi
     pi: process.env.TERSIO_PI_DIR,
     oc: process.env.TERSIO_OPENCODE_DIR,
   };
-  // Pointing the sessions override at an empty dir isolates the run from the
-  // real home: only explicitly set sources are walked.
+  // An empty sessions dir isolates the run from the real home.
   process.env.TERSIO_SESSIONS_DIR = sessions;
   process.env.TERSIO_PI_DIR = pi;
   process.env.TERSIO_OPENCODE_DIR = oc;

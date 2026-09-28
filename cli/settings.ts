@@ -1,8 +1,4 @@
-// cli/settings.ts — view/edit session-start defaults (combo/caveman/rtk/ponytail)
-// plus the display-currency default for usage/dashboard reports.
-// Non-interactive: `tersio settings --combo-default balanced` (plus per-mode
-// override flags and --currency). Interactive: clack selects seeded from the
-// stored profile.
+// cli/settings.ts — view/edit session-start defaults (combo/caveman/rtk/ponytail) plus the display-currency default for...
 import {
   CAVEMAN_DEFAULTS, COMBO_DEFAULTS, COMBO_PRESET_MODES, PACKAGE_NAME,
   PONYTAIL_DEFAULTS, cavemanDefaultFlag, comboDefaultFlag, currency, currencyGiven, diagScheduleFlag, dryRun,
@@ -94,8 +90,7 @@ function settingsUsage(): void {
   console.log('  Usage: tersio settings [combo|caveman|rtk|ponytail|currency|diagnosis] [--combo-default off|medium|balanced|max] [--caveman-default off|lite|full|ultra|wenyan-lite|wenyan-full|wenyan-ultra] [--rtk-default on|off] [--ponytail-default off|lite|full|ultra] [--currency USD|PHP|EUR|GBP|JPY|KRW|SGD|AUD|CAD|INR] [--diag-schedule manual|daily|weekly|monthly] [--dry-run]');
 }
 
-// Single-setting jump: `tersio settings diagnosis` prompts only that value
-// instead of walking the whole chain. Returns false when aborted.
+// Single-setting jump: `tersio settings diagnosis` prompts only that value instead of walking the whole chain.
 async function runSingleSetting(name: string, current: Profile, nextDiag: DiagSchedule): Promise<{ profile: Profile; diag: DiagSchedule } | null> {
   const next: Profile = { ...current };
   let diag = nextDiag;
@@ -164,9 +159,7 @@ async function runSingleSetting(name: string, current: Profile, nextDiag: DiagSc
 
 function printSettingsTable(current: Profile): void {
   console.log('\n=== Tersio Settings ===');
-  // Currency lives here no longer: the dashboard owns displaying and
-  // persisting it (its picker POSTs to /currency); settings can still set
-  // the stored default via --currency or the prompt below.
+  // Currency lives here no longer: the dashboard owns displaying and persisting it (its picker POSTs to /currency);
   const rows = [
     ['combo', current.comboDefault, [...COMBO_DEFAULTS].join(' | ')],
     ['caveman', current.cavemanDefault, [...CAVEMAN_DEFAULTS].join(' | ')],

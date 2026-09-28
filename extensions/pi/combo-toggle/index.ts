@@ -1,9 +1,4 @@
-// /combo for Pi: set caveman, rtk and ponytail at once. The state machine,
-// commands and status-bar ownership match extensions/omp/combo-toggle/index.ts; the
-// divergences are all forced by Pi's ExtensionAPI — no setLabel, no
-// session_branch (session_tree stands in), ctx.ui.select takes plain strings,
-// upstream ponytail is not installed so its intensity text is inlined, and
-// prompt injection is a sealed section write rather than a returned prompt.
+// /combo for Pi: set caveman, rtk and ponytail at once.
 
 import {
   activeModesSummary,
@@ -21,14 +16,13 @@ import {
 } from '../shared/pi-session-state.ts';
 import { isComboSetupComplete, readComboDefault, readPonytailDefault, saveComboSetup } from '../shared/plugin-settings.ts';
 import type { ExtensionCtx, PiBeforeAgentStartEvent, PiExtensionAPI } from '../shared/pi-types.ts';
-// Type-only: erased at load, so the repo-only two-level jump never has to
-// resolve in the installed tree.
+// Type-only: erased at load, so the repo-only two-level jump never has to resolve in the installed tree.
 
 const PONYTAIL_FALLBACK_INTENSITY: Record<string, string> = {
   lite: 'Prefer the simplest correct solution.',
 };
 
-/** Inline intensity text. The upstream ponytail package is not installed on Pi. */
+// Inline intensity text. The upstream ponytail package is not installed on Pi.
 function ponytailInstructions(mode: string): string {
   const intensity = PONYTAIL_FALLBACK_INTENSITY[mode] ?? 'Use the minimum correct solution. Delete or reuse before adding.';
   return `🦥 PONYTAIL MODE ACTIVE — level: ${mode}\n${intensity} Understand the path first and fix root causes, not symptoms. Prefer the standard library and YAGNI. Avoid speculative abstractions and dependencies. Preserve correctness. Verify changed behavior.`;
@@ -46,25 +40,22 @@ export default function comboToggleExtension(pi: PiExtensionAPI): void {
   let announced = '';
   let announcedPreset = false;
 
-  /** The one line that carries the state the status bar used to carry. */
+  // The one line that carries the state the status bar used to carry.
   function comboLine(state: ComboStateSlice): string {
     const modes = `🪨caveman=${state.caveman.toUpperCase()} ⚡rtk=${state.rtk.toUpperCase()} 🦥ponytail=${state.ponytail.toUpperCase()}`;
     const head = state.level === 'off' || state.level === 'custom' ? state.level : `${state.level} on`;
     return `Combo ${head}: 🧩 combo ${state.level.toUpperCase()}: ${modes}`;
   }
 
-  // Announced per change, not painted: the value only moves on /combo or
-  // session_start. A dark session and a custom mix stay silent.
+  // Announced per change, not painted: the value only moves on /combo or session_start.
   function announce(state: ComboStateSlice, ctx?: ExtensionCtx): void {
     const signature = `${state.level}:${state.caveman}:${state.rtk}:${state.ponytail}`;
     if (signature === announced) return;
     const c = paintableCtx(lastCtx, ctx);
-    // The bridge listener carries no ctx, so bailing without recording the
-    // signature keeps the caller's ctx-bearing call from being deduped away.
+    // The bridge listener carries no ctx, so bailing without recording the signature keeps the caller's ctx-bearing call from...
     if (!c?.ui) return;
     const preset = state.level !== 'off' && state.level !== 'custom';
-    // Leaving a preset is said, so the line that turned it on does not read as
-    // current state.
+    // Leaving a preset is said, so the line that turned it on does not read as current state.
     const speak = preset || announcedPreset;
     announced = signature;
     announcedPreset = preset;
@@ -79,8 +70,7 @@ export default function comboToggleExtension(pi: PiExtensionAPI): void {
     if (speak) notify(c, comboLine(state));
   }
 
-  // The siblings restore from these entries, so a preset that did not write
-  // them would evaporate on resume.
+  // The siblings restore from these entries, so a preset that did not write them would evaporate on resume.
   function persistPreset(level: string): void {
     const modes = COMBO_LEVELS[level];
     if (!modes) return;
@@ -162,8 +152,7 @@ export default function comboToggleExtension(pi: PiExtensionAPI): void {
     track(ctx);
     if (!ctx?.hasUI) announce(getSharedComboState(), ctx);
     await runFirstRunSetup(ctx);
-    // The configured default applies only when no mode state was persisted;
-    // unrelated entries must not block it.
+    // The configured default applies only when no mode state was persisted; unrelated entries must not block it.
     const entries = sessionEntries(ctx);
     const hasModeState = entries.some((e) => e?.type === 'custom' && (
       e.customType === 'combo-level' || e.customType === 'caveman-mode' ||
@@ -175,8 +164,7 @@ export default function comboToggleExtension(pi: PiExtensionAPI): void {
         useState(setSharedComboLevel(fallback), ctx);
       }
     }
-    // This file is the only writer of ponytail-mode on Pi, so it applies the
-    // standalone default when nothing persisted one.
+    // This file is the only writer of ponytail-mode on Pi, so it applies the standalone default when nothing persisted one.
     if (!entries.some((e) => e?.type === 'custom' && e.customType === 'ponytail-mode')) {
       const ponytailDefault = readPonytailDefault();
       if (ponytailDefault !== 'off' && ponytailDefault !== getSharedComboState().ponytail) {
@@ -194,8 +182,7 @@ export default function comboToggleExtension(pi: PiExtensionAPI): void {
     });
   }
 
-  // Sealed section: no other extension owns it, and there is no subagent gate —
-  // a delegated agent reads the same shared bridge.
+  // Sealed section: no other extension owns it, and there is no subagent gate — a delegated agent reads the same shared...
   const SECTION = 'tersio-ponytail';
 
   pi.on?.('before_agent_start', (event, ctx) => {

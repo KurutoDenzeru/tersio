@@ -57,16 +57,9 @@ const SHARED_USAGE_LEDGER = path.join(EXT_DIR, 'shared', 'usage-ledger.ts');
 const SHARED_PRICING = path.join(EXT_DIR, 'shared', 'pricing.ts');
 const SHARED_CARBON = path.join(EXT_DIR, 'shared', 'carbon.ts');
 
-// The directory names come from cli/pi-layer.ts, which the uninstall removal
-// also reads, so a plan and a removal cannot name different sets.
+// The directory names come from cli/pi-layer.ts, which the uninstall removal also reads, so a plan and a removal cannot...
 import { PI_EXTENSION_DIRS } from './pi-layer.ts';
-/**
- * Pi's extension tree as `[repo path, path under the Pi ext dir]` pairs. Pi
- * loads each `<agent-dir>/extensions/<dir>/index.ts` at one level with no
- * recursion, so shared modules sit BESIDE the extension dirs, where the OMP
- * layer already keeps them. The repo puts extensions/shared/ two levels higher,
- * which is what extensions/pi/ shims exist for; shipping one would not resolve.
- */
+// Pi's extension tree as `[repo path, path under the Pi ext dir]` pairs.
 function piTreeSources(): Array<[string, string]> {
   const piExt = path.join(EXT_DIR, 'pi');
   const pairs: Array<[string, string]> = [
@@ -89,7 +82,7 @@ function piTreeSources(): Array<[string, string]> {
 
 export { piTreeSources };
 
-/** Menu row that resolves to every detected host. Not a host id. */
+// Menu row that resolves to every detected host. Not a host id.
 const ALL_HOSTS = '__all__';
 
 async function stepPonytail(pluginsDir: string, options: InstallOptions): Promise<void> {
@@ -97,8 +90,7 @@ async function stepPonytail(pluginsDir: string, options: InstallOptions): Promis
   await fs.mkdir(pluginsDir, { recursive: true });
   const pkgPath = path.join(pluginsDir, 'package.json');
   const pkg = await readPluginsPackage(pkgPath);
-  // Migration: ponytail was a separate plugin row. It is now a tersio
-  // dependency, so drop the legacy row. Runs after stepSelfPlugin.
+  // Migration: ponytail was a separate plugin row. It is now a tersio dependency, so drop the legacy row.
   let migrated = false;
   if ('@dietrichgebert/ponytail' in pkg.dependencies) {
     delete pkg.dependencies['@dietrichgebert/ponytail'];
@@ -115,9 +107,7 @@ async function stepPonytail(pluginsDir: string, options: InstallOptions): Promis
 
   const ponytailExtPath = path.join(pluginsDir, 'node_modules', '@dietrichgebert', 'ponytail', 'pi-extension', 'index.js');
   const probeExt = async (): Promise<boolean> => (await readTextIfExists(ponytailExtPath)) !== null;
-  // Fast path: bundled copy already present and no refresh asked — skip
-  // network. Migration always reinstalls: the probe may hit the stale legacy
-  // copy, and only npm install prunes it into the tersio-owned one.
+  // Fast path: bundled copy present and no refresh asked, so skip the network.
   let ponytailExtExists = !options.reinstall && !options.dryRun && !migrated ? await probeExt() : false;
   if (ponytailExtExists) {
     debug('Bundled Ponytail pi-extension already installed; skipping network refresh');
@@ -126,8 +116,7 @@ async function stepPonytail(pluginsDir: string, options: InstallOptions): Promis
     if (verbose && !options.quiet) console.log('  [dry-run] would run: npm install --no-audit --no-fund (in plugins dir)');
     ponytailExtExists = true;
   } else {
-    // Self-plugin npm install already materialized the bundled copy.
-    // Reinstall here only when the probe still misses.
+    // Self-plugin npm install already materialized the bundled copy. Reinstall here only when the probe still misses.
     try {
       await execNetwork('Installing bundled Ponytail', 'npm', ['install', '--no-audit', '--no-fund'], { cwd: pluginsDir, timeout: 180000 });
     } catch {
@@ -152,9 +141,7 @@ async function stepPonytail(pluginsDir: string, options: InstallOptions): Promis
   await ensurePonytailConfigValue('hideStatus', true, options);
 }
 
-// Registers this package in ~/.omp/plugins so OMP lists it on the
-// Settings → Plugins page (OMP enumerates plugins/package.json dependencies).
-// Returns true when the package is verified in plugins/node_modules.
+// Registers this package in ~/.omp/plugins so OMP lists it on the Settings → Plugins page (OMP enumerates...
 async function stepSelfPlugin(pluginsDir: string, options: InstallOptions): Promise<boolean> {
   step(options, 'Tersio — register plugin');
   const pkgPath = path.join(pluginsDir, 'package.json');
@@ -205,7 +192,6 @@ async function stepSelfPlugin(pluginsDir: string, options: InstallOptions): Prom
   debug('tersio listed in OMP plugins');
   return true;
 }
-
 
 function resolveRtkTriple(): string | null {
   const triple = rtkPlatformSpec()?.triple;
@@ -296,8 +282,7 @@ async function extractRtkArchive(archivePath: string, extractDir: string): Promi
   return false;
 }
 
-// Downloads the rtk binary and returns its path, or null. Wiring is the
-// caller's job: doing it here wrote rtk.ts into Oh My Pi on every install.
+// Downloads the rtk binary and returns its path, or null. Wiring is the caller's job.
 async function stepRtk(binDir: string, options: InstallOptions): Promise<string | null> {
   if (!options.quiet) console.log('  RTK — download binary');
   const binDest = path.join(binDir, RTK_BINARY_NAME);
@@ -356,13 +341,11 @@ async function stepRtk(binDir: string, options: InstallOptions): Promise<string 
     console.log('  [hint] Manual: https://github.com/rtk-ai/rtk/releases');
   }
 
-  // A failed download must not skip wiring: a pre-existing binary at binDest is
-  // exactly as good, so report whatever ended up there and let the host decide.
+  // A failed download must not skip wiring: a pre-existing binary at binDest is exactly as good, so report whatever ended...
   return (await fileExists(binDest)) ? binDest : null;
 }
 
-// Copy repo source files into the target extension dir. First entry is
-// required (skip label on missing); rest are optional companions.
+// Copy repo source files into the target extension dir. First entry is required (skip label on missing);
 async function copySources(extDir: string, files: Array<[string, string]>, skipLabel: string, options: WriteOptions): Promise<boolean> {
   const src = await readTextIfExists(files[0][0]);
   if (!src) {
@@ -393,14 +376,12 @@ async function stepSharedSessionState(extDir: string, options: WriteOptions): Pr
   ], 'shared/session-state.js', options);
 }
 
-
 async function stepRtkSession(extDir: string, options: WriteOptions): Promise<void> {
   step(options, 'RTK session — install session mode');
   await copySources(extDir, [[RTK_SESSION_INDEX, path.join('rtk-session', 'index.ts')]], 'rtk-session/index.ts', options);
 }
 
-// One rule fetch serves the install; dry runs stay offline
-// and fall back to the bundled rule to preview its destination.
+// One rule fetch serves the install; dry runs stay offline and fall back to the bundled rule to preview its destination.
 async function fetchCavemanRule(options: WriteOptions): Promise<string | null> {
   const bundled = await readTextIfExists(CAVEMAN_RULE);
   if (options.dryRun) return bundled;
@@ -443,17 +424,13 @@ async function stepUpdater(extDir: string, options: WriteOptions): Promise<void>
   await copySources(extDir, [[UPDATER_INDEX, path.join('ai-addons-updater', 'index.ts')]], 'ai-addons-updater/index.ts', options);
 }
 
-/** * Names the hosts this run writes, in one line. Printed on every run, dry runs
- * included: the plan below it only appears under `--verbose`, and a run that
- * silently picked an agent is the case this exists to prevent.
- */
+// Names the hosts this run writes. Printed on every run, dry runs included.
 function printHostHeader(ids: readonly string[]): void {
   const names = ids.map((id) => byId(id)?.label ?? id).join(', ');
   console.log(`\n  Coding agents — ${names}`);
 }
 
-// The `--verbose` install plan: the extension tree plus the rtk module. The
-// uninstall preview names the same paths, so the two ends agree.
+// The `--verbose` install plan: the extension tree plus the rtk module.
 function printHostPlans(ids: readonly string[], home: string): void {
   for (const id of ids) {
     const host = byId(id);
@@ -471,14 +448,12 @@ function printHostPlans(ids: readonly string[], home: string): void {
   }
 }
 
-// An internal step label, under `--verbose` only: the default is one line per
-// host, and these describe how the installer works rather than what it changed.
+// An internal step label, under `--verbose` only: the default is one line per host, and these describe how the installer...
 function step(options: { quiet?: boolean }, label: string): void {
   if (verbose && !options.quiet) console.log(`  ${label}`);
 }
 
-// How to install each host this run touched, both ways: the tersio form is
-// what already ran, so the host's own command is the alternative.
+// How to install each host this run touched, both ways.
 function printInstallGuide(ids: readonly string[], dryRun: boolean): void {
   if (dryRun) return;
   const rows = HOSTS.flatMap((host) => {
@@ -497,9 +472,7 @@ function printInstallGuide(ids: readonly string[], dryRun: boolean): void {
   }
 }
 
-// Removes what an earlier version wrote and this one no longer does. A dropped
-// capability would otherwise leave files that install will not overwrite and
-// uninstall will not see.
+// Removes what an earlier version wrote and this one no longer does.
 async function clearRetired(ids: readonly string[], home: string, options: InstallOptions): Promise<void> {
   for (const id of ids) {
     const host = byId(id);
@@ -510,12 +483,12 @@ async function clearRetired(ids: readonly string[], home: string, options: Insta
   }
 }
 
-/** What one agent ends up with, in a sentence a non-technical user can read. */
+// What one agent ends up with, in a sentence a non-technical user can read.
 function readyLine(label: string, itemCount: number): void {
   console.log(`  \u2705 ${label} \u2014 ${itemCount} item${itemCount === 1 ? '' : 's'} in place. Caveman, Ponytail and rtk are ready.`);
 }
 
-/** The OMP layer install, from the list the uninstall also reads. */
+// The OMP layer install, from the list the uninstall also reads.
 function printOmpPlan(home: string): void {
   const layer = ompLayer(home, RTK_BINARY_NAME);
   const pending = layer.installed.filter((entry) => !existsSync(entry.path));
@@ -530,23 +503,13 @@ function printOmpPlan(home: string): void {
   console.log(`    ${displayPath(layer.rtkExtension, home)} — rtk OMP wiring`);
 }
 
-/**
- * Which hosts this run acts on, or null when the picker was cancelled.
- *
- * Asked before anything is fetched or written, so Escape at the prompt leaves
- * nothing behind. Skipped for an explicit `--agent`, and for `--yes`,
- * `--apply-update`, pipes and CI, which fall back to the saved set unioned with
- * what is detected.
- */
+// Which hosts this run acts on, or null when the picker was cancelled.
 async function resolveInstallSelection(options: InstallOptions): Promise<{ ids: string[]; interactive: boolean } | null> {
   const home = os.homedir();
   const stored = readSelection(home).hosts;
   const detected = detectHosts(home);
   const interactive = tty() && !options.yes && !applyUpdate && agentFlag.length === 0;
-  // Seeded from the filesystem, not the saved selection: that file is a
-  // preference that goes stale the moment anything is cleaned by hand, and it
-  // never named Oh My Pi, whose layer is written by the layer steps rather than
-  // the host emitters.
+  // Seeded from the filesystem, not the saved selection.
   const state = installedState(home);
   const installed = installedHostIds(state);
 
@@ -555,18 +518,13 @@ async function resolveInstallSelection(options: InstallOptions): Promise<{ ids: 
     flag: agentFlag,
     stored,
     detected,
-    // Single select, one host per run, for the same reason as uninstall: a
-    // tick list made Enter submit whatever was highlighted, and a saved set of
-    // five hosts made the answer a scroll rather than a decision. `All
-    // detected` keeps multi-host installs one keystroke away.
+    // Single select, one host per run: a tick list here deletes.
     ask: interactive
       ? async () => {
         const rows = agentChoices(state);
         if (rows.length === 0) return [];
         const all = normalizeIds([...installed, ...stored, ...detected]);
-        // The bulk row goes last and is never the default: a first-position
-        // "All detected" turns the Enter reflex into "write files for every
-        // agent on this machine".
+        // The bulk row goes last, so Enter takes one host.
         const options = all.length > 1
           ? [...rows, { value: ALL_HOSTS, label: `All detected (${all.length})`, hint: all.join(', ') }]
           : rows;
@@ -579,30 +537,23 @@ async function resolveInstallSelection(options: InstallOptions): Promise<{ ids: 
       }
       : undefined,
   });
-  // Cancel is an abort, and the abort has to reach the run: returning here only
-  // skipped the coding agents, and the OMP layer steps below carried on to
-  // completion — so Escape looked like it did nothing while files kept landing.
+  // Cancel is an abort, and the abort has to reach the run.
   if (cancelled) {
     closeRL();
     return null;
   }
 
-  // "Also found" is for a run nobody watched: a script or a --yes run takes
-  // the union of the saved set and what is detected, and the host it silently
-  // added is worth naming. In the menu the user is looking at every host with
-  // its state, so the line only told them what the screen already said.
+  // "Also found" is for a run nobody watched: a script or a --yes run takes the union of the saved set and what is...
   if (!interactive && selection.addedByDetection.length > 0) {
     if (!options.quiet) {
       console.log(`  [note] also found: ${selection.addedByDetection.join(', ')}`);
     }
   }
 
-
   return { ids: selection.ids, interactive };
 }
 
-// Takes the rtk binary this run fetched rather than probing PATH: both hosts
-// are wired by rtk's own init, which needs this run's binary.
+// Takes the rtk binary this run fetched rather than probing PATH.
 async function applyAgentHosts(
   selection: { ids: string[]; interactive: boolean },
   options: InstallOptions,
@@ -611,10 +562,7 @@ async function applyAgentHosts(
 ): Promise<void> {
   const { ids, interactive } = selection;
   const home = os.homedir();
-  // Oh My Pi rides the same path whenever its layer is in scope — an empty
-  // selection is the pre-multi-host default that puts the layer in. The
-  // extension directories themselves are written by the layer steps; what is
-  // left for the hosts here is the retired-path cleanup and rtk's own wiring.
+  // Oh My Pi rides the same path whenever its layer is in scope — an empty selection is the pre-multi-host default that...
   const wantsOmp = ids.length === 0 || ids.includes('omp');
   const targets = wantsOmp ? [...new Set([...ids, 'omp'])] : ids;
   if (targets.length === 0) {
@@ -648,10 +596,7 @@ async function applyAgentHosts(
     }
   }
 
-  // Pi gets the same live extension layer OMP gets, not one flat module: one
-  // directory per extension under <agent-dir>/extensions, each with an
-  // index.ts Pi loads through jiti. The rule travels with its module so caveman
-  // full mode reads the same text the installer fetched.
+  // Pi gets the same live extension layer OMP gets, not one flat module.
   if (targets.includes('pi')) {
     await installPiTersio(home, { sources: piTreeSources(), rules: [['caveman-session', cavemanRule]] }, {
       dryRun: options.dryRun,
@@ -667,16 +612,11 @@ async function stepCombo(extDir: string, options: InstallOptions): Promise<void>
   await copySources(extDir, [[COMBO_TOGGLE_INDEX, path.join('combo-toggle', 'index.ts')]], 'combo-toggle/index.ts', options);
 }
 
-
 async function resolveProfile(forceReinstall = false, opts: { quiet?: boolean } = {}): Promise<Profile> {
-  // Seed from the lock file so flag-less update/reinstall runs keep the
-  // user's configured defaults instead of resetting them to off.
+  // Seed from the lock file so flag-less update/reinstall runs keep the user's configured defaults instead of resetting...
   const profile = await storedProfile();
 
-  // Single interactive prompt: the Combo preset implies all three modes.
-  // Numbered menu — no typing preset names.
-  // Only for a real user at a terminal, only when no default flags were
-  // given, and never for --apply-update runs.
+  // Single interactive prompt: the Combo preset implies all three modes. Numbered menu — no typing preset names.
   if (tty() && !profileFlagsGiven && !applyUpdate && (install || forceReinstall)) {
     const choice = await askInteractiveChoice('Session-start defaults — Combo preset', [
       { value: 'off', label: 'off' },
@@ -707,9 +647,7 @@ async function resolveProfile(forceReinstall = false, opts: { quiet?: boolean } 
 
 let updatePromptDone = false;
 
-// Bare `tersio` at a terminal is a command picker, not an install run:
-// update offer first (when pending), then a Clack menu over every command.
-// Scripts, pipes, --yes, and --dry-run keep the old straight-to-install path.
+// Bare `tersio` at a terminal is a command picker, not an install run.
 async function runCommandMenu(): Promise<void> {
   printWelcome();
   const newer = await checkForUpdate();
@@ -745,8 +683,7 @@ async function runCommandMenu(): Promise<void> {
       await runInstall();
       break;
     case 'update': {
-      // One bound flow: the version check already ran above, so report it
-      // and offer the refresh in the same breath — no second "update" quiz.
+      // One bound flow: the version check already ran above, so report it and offer the refresh in the same breath — no second...
       if (typeof newer === 'string') console.log(`  tersio ${newer} available (installed ${PACKAGE_VERSION})`);
       else console.log(`  tersio ${PACKAGE_VERSION} is the latest`);
       const go = await askInteractiveConfirm('Update now (CLI + RTK, Caveman rule, Ponytail)?');
@@ -799,33 +736,18 @@ async function runCommandMenu(): Promise<void> {
 }
 
 async function runInstall(overrides: { reinstall?: boolean } = {}): Promise<void> {
-  // No `tersio reinstall` command any more — `tersio doctor` reports a broken
-  // install and `tersio update` refreshes it. update's delegated payload still
-  // takes the clean-then-install path, so the stale-directory sweep the command
-  // used to own is not lost with it.
+  // No `tersio reinstall` command any more — `tersio doctor` reports a broken install and `tersio update` refreshes it.
   const isReinstall = overrides.reinstall ?? applyUpdate;
-  // Menu-driven installs must fall through: bare `tersio` re-enters here
-  // with command === null after the picker, and without this guard the
-  // choice loops straight back into runCommandMenu() forever.
+  // Menu-driven installs must fall through: bare `tersio` re-enters here with command === null after the picker, and...
   if (command === null && tty() && !yes && !updatePromptDone) {
     await runCommandMenu();
     return;
   }
-  // apply-update is the delegated payload of `tersio update`: stay silent —
-  // the parent already printed the plan and owns the closing summary. Banner
-  // repeats here otherwise (the reported double-print), burying real output.
+  // apply-update is the delegated payload of `tersio update`.
   const quiet = applyUpdate;
   if (!quiet) printWelcome();
   if (isReinstall) {
-    // removeRtk stays false: reinstall is about to replace the binary, and
-    // deleting it first would leave nothing to wire if the fresh download
-    // fails (rate limit, offline). rtk.ts is removed here and re-wired below.
-    // The clean step clears the extension directories (replaceOmpExtensions)
-    // but keeps the plugin package, which it is about to re-download. Deleting
-    // that first meant a failed download left the machine with neither the old
-    // copy nor the new one. `--agent omp` is passed too: the layer is now
-    // driven by the selection rather than a prompt, so a flagless reinstall
-    // would otherwise skip the directories it needs to replace.
+    // removeRtk stays false: reinstall is about to replace the binary, and deleting it first would leave nothing to wire if...
     await runUninstall({
       yes: true,
       removePonytail: false,
@@ -841,14 +763,11 @@ async function runInstall(overrides: { reinstall?: boolean } = {}): Promise<void
     console.log(`Installing Tersio v${PACKAGE_VERSION}`);
   }
 
-  // Remind humans a newer release exists; silent for scripts (no TTY) and for
-  // the apply-update payload, which is itself an update run.
+  // Remind humans a newer release exists; silent for scripts (no TTY) and for the apply-update payload, which is itself an...
   if (tty() && !applyUpdate && command !== 'uninstall') {
     const newer = await checkForUpdate();
     if (typeof newer === 'string') {
-      // Bare `tersio` with an update pending: offer it now (Y/n) instead of
-      // burying the banner above the install prompts. Yes runs the full
-      // update and stops here — the fresh binary owns what follows.
+      // Bare `tersio` with an update pending: offer it now (Y/n) instead of burying the banner above the install prompts.
       if (command === null && !dryRun && !yes && !updatePromptDone) {
         const answer = await askInteractiveConfirm(`tersio ${newer} is available (installed ${PACKAGE_VERSION}). Install it now?`);
         if (answer.status === 'confirmed' && answer.value) {
@@ -873,9 +792,7 @@ async function runInstall(overrides: { reinstall?: boolean } = {}): Promise<void
   const userDir = OMP_AGENT_DIR;
   const userExtDir = path.join(userDir, 'extensions');
 
-  // apply-update is `tersio update`'s payload run: treat it like reinstall so
-  // the add-ons refresh too — Ponytail package via npm, self plugin, RTK
-  // binary (always re-downloaded), and the Caveman rule (always re-fetched).
+  // apply-update is `tersio update`'s payload run: treat it like reinstall so the add-ons refresh too — Ponytail package...
   const options: InstallOptions = { dryRun, verbose, yes, reinstall: isReinstall || applyUpdate, quiet };
 
   try {
@@ -896,8 +813,7 @@ async function runInstall(overrides: { reinstall?: boolean } = {}): Promise<void
       console.log(`  [fail] ${label}: ${shortError(e)}`);
     }
   };
-  // The agent prompt is the first question this run asks, and nothing is
-  // fetched or written before it is answered.
+  // The agent prompt is the first question this run asks, and nothing is fetched or written before it is answered.
   const selection = await resolveInstallSelection(options);
   if (selection === null) {
     console.log('\nNothing was installed.');
@@ -905,17 +821,13 @@ async function runInstall(overrides: { reinstall?: boolean } = {}): Promise<void
     return;
   }
 
-  // rtk's binary comes before the hosts: rtk's own init wires them and needs it
-  // on disk, or a first-time install with no rtk on PATH reports "rtk binary
-  // not found" for the host it had just fetched it for.
+  // rtk's binary comes before the hosts: rtk's own init wires them and needs it on disk, or a first-time install with no...
   let rtkBin: string | null = null;
   await capture('rtk', async () => { rtkBin = await stepRtk(BUN_BIN_DIR, options); });
 
   await capture('agent hosts', async () => { await applyAgentHosts(selection, options, cavemanRule, rtkBin); });
 
-  // The Oh My Pi layer runs for OMP, and for a run that named no host at all —
-  // the pre-multi-host default. Naming one host must never get another's
-  // artifacts too.
+  // The Oh My Pi layer runs for OMP, and for a run that named no host at all — the pre-multi-host default.
   const wantsOmpLayer = selection.ids.length === 0 || selection.ids.includes('omp');
   if (wantsOmpLayer) {
     // The layer's file list, under --verbose. The default gets one sentence.
@@ -931,8 +843,7 @@ async function runInstall(overrides: { reinstall?: boolean } = {}): Promise<void
     await capture('combo', () => stepCombo(userExtDir, options));
     await capture('commands', () => stepTersioCommands(userExtDir, options));
     await capture('updater', () => stepUpdater(userExtDir, options));
-    // Binary alone never meters OMP sessions — wire rtk's tool_call extension so
-    // bash commands rewrite to rtk and land in history.db.
+    // Binary alone never meters OMP sessions — wire rtk's tool_call extension so bash commands rewrite to rtk and land in...
     if (rtkBin) await wireRtkOmp(rtkBin, options);
     else console.log('  [skip] no rtk binary to wire — install rtk, then run: rtk init -g --agent omp');
     if (selfPlugin) await capture('settings', () => writePluginSettings(profile, options));

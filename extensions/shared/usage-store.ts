@@ -1,11 +1,4 @@
 // extensions/shared/usage-store.ts — tersio-owned usage.db.
-// Persists the same per-message rows importSessionTokens derives live (model,
-// tokens, cache, cost input, timing, status, tools), so top models, costing,
-// cache, CO2 inputs, and activity survive session-file rotation. Sync is
-// incremental: a files ledger (mtime+size) skips unchanged transcripts, and
-// every read applies the current reset watermark — the store is a cache,
-// never a fork. Missing sqlite3 CLI → sync false / read null, callers fall
-// back to the live path. Never touches RTK's history.db or host transcripts.
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -58,10 +51,7 @@ function nullStr(v: string | undefined): string {
 }
 
 function run(db: string, sql: string): void {
-  // .bail on keeps a chunk atomic: the sqlite CLI otherwise keeps executing
-  // past a failed statement and COMMITs the partial chunk, which deletes rows
-  // without re-inserting them. .timeout waits out the dashboard server's
-  // concurrent reads instead of failing busy at COMMIT.
+  // .bail on keeps a chunk atomic: the sqlite CLI otherwise keeps executing past a failed statement and COMMITs the partial...
   execFileSync('sqlite3', ['-cmd', '.bail on', '-cmd', '.timeout 10000', db, sql], { stdio: ['ignore', 'ignore', 'ignore'], timeout: 30000 });
 }
 
@@ -100,8 +90,7 @@ function readFiles(db: string): Record<string, { mtime: number; size: number }> 
   return known;
 }
 
-// One parsed assistant message, as stored. `t` is epoch ms or null when the
-// source row carries no usable timestamp (live counts it, skips its recent).
+// One parsed assistant message, as stored. `t` is epoch ms or null when the source row carries no usable timestamp (live...
 interface StoredRow {
   t: number | null;
   model: string;
@@ -136,9 +125,7 @@ function parseFile(text: string): StoredRow[] {
         if (parsed.provider) codexProvider = parsed.provider;
         continue;
       }
-      // The sync the dashboard reads had no notion of turn_context, so it kept
-      // labelling every Codex row codex/<provider> after the live import had
-      // been fixed. Both readers now take the label from one helper.
+      // The sync the dashboard reads had no notion of turn_context, so it kept labelling every Codex row codex/<provider> after...
       if (parsed.kind === 'codex_model') {
         if (parsed.model) codexModel = parsed.model;
         continue;
@@ -189,8 +176,7 @@ function parseFile(text: string): StoredRow[] {
   return rows;
 }
 
-// One OpenCode message file into stored rows. Mirrors processOpencodeFile on
-// the live path: same classifier, same completed status, same zero skip.
+// One OpenCode message file into stored rows, mirroring the live path.
 function parseOpencodeFile(text: string): StoredRow[] {
   let obj: unknown;
   try {
@@ -225,20 +211,8 @@ function insertSql(file: string, r: StoredRow): string {
     `${nullNum(r.code)},${nullStr(r.note)},${esc(JSON.stringify(r.tools))});`;
 }
 
-// Incremental sync: unchanged transcripts are skipped via mtime+size,
-// changed ones are deleted and re-inserted. Rows for deleted transcripts
-// are kept, so OMP session rotation never erases history. True on success
-// (including nothing-to-do), false when sqlite3 or disk is unavailable.
-/**
- * Bump when a parser change would produce different rows for a file that has
- * not changed on disk.
- *
- * The sync skips a file whose mtime and size match what it recorded, and those
- * say nothing about which code read it. So a parser fix reached new transcripts
- * only: every session already ingested kept the old label forever, which is how
- * a corrected Codex model name could sit in the code while the dashboard went
- * on reporting the provider. This makes that a one-time re-read.
- */
+// Incremental sync: unchanged transcripts are skipped via mtime+size, changed ones are deleted and re-inserted.
+// Bump when a parser change would produce different rows for a file that has not changed on disk.
 const PARSER_VERSION = '2';
 
 function readParserVersion(db: string): string | null {
@@ -317,8 +291,7 @@ export function syncUsageDb(): boolean {
     for (const file of changed) {
       const entry = current[file];
       const text = fs.readFileSync(file, 'utf8');
-      // OpenCode message bodies are single JSON documents, parsed by their
-      // own classifier; everything else is JSONL through parseFile.
+      // OpenCode message bodies are single JSON documents, parsed by their own classifier;
       const parsed = file.endsWith('.json') ? parseOpencodeFile(text) : parseFile(text);
       for (const r of parsed) {
         if (!push(insertSql(file, r))) return false;

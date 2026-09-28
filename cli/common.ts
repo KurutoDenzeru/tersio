@@ -20,8 +20,6 @@ const PACKAGE_NAME = '@krtclcdy/tersio';
 const PACKAGE_BIN = 'tersio';
 const { version: PACKAGE_VERSION } = createRequire(import.meta.url)('../package.json') as { version: string };
 
-// --- Types ---
-
 interface InstallOptions {
   dryRun: boolean;
   verbose: boolean;
@@ -42,8 +40,7 @@ const PONYTAIL_DEFAULTS = new Set(['off', 'lite', 'full', 'ultra']);
 const RTK_DEFAULTS = new Set(['on', 'off']);
 const DIAG_SCHEDULES = new Set(['manual', 'daily', 'weekly', 'monthly']);
 
-// ponytail: Combo preset implies all three modes. Mirrors COMBO_LEVELS in
-// extensions/shared/session-state.ts (rtk as boolean here). Single source.
+// ponytail: Combo preset implies all three modes. Mirrors COMBO_LEVELS in extensions/shared/session-state.ts (rtk as...
 const COMBO_PRESET_MODES: Record<string, { caveman: string; rtk: boolean; ponytail: string }> = {
   off: { caveman: 'off', rtk: false, ponytail: 'off' },
   medium: { caveman: 'lite', rtk: true, ponytail: 'lite' },
@@ -69,15 +66,11 @@ function flagValue(name: string): string | undefined {
   return args.find((arg) => arg.startsWith(prefix))?.slice(prefix.length);
 }
 
-// --- CLI flags ---
-
 const COMMANDS: Record<string, true> = { install: true, update: true, doctor: true, uninstall: true, usage: true, dashboard: true, reset: true, settings: true, version: true, help: true };
 const args = process.argv.slice(2);
 const commandArg = args.find((arg) => !arg.startsWith('-'));
 const command = commandArg?.toLowerCase() || null;
-// Positional after the command: `tersio settings diagnosis` jumps straight
-// to one prompt instead of walking the whole chain. Index-based so flag
-// values (e.g. `--combo-default balanced`) never count as positionals.
+// Positional after the command: `tersio settings diagnosis` jumps straight to one prompt instead of walking the whole...
 const settingArg = ((): string | null => {
   const at = args.indexOf(commandArg ?? '');
   const next = at >= 0 ? args[at + 1] : undefined;
@@ -91,11 +84,7 @@ const showVersion = command === 'version' || args.includes('--version') || args.
 const showHelp = command === 'help' || args.includes('--help') || args.includes('-h');
 const applyUpdate = args.includes('--apply-update');
 const dryRun = args.includes('--dry-run');
-// `--yes` is the user saying "don't prompt me". Naming a command is not that
-// request: `tersio install` at a terminal must still ask which agents, or the
-// menu is unreachable from the command that exists to offer it. Folding the
-// command name into this flag made every explicit install skip the agent
-// selection, so the only way to reach the menu was bare `tersio`.
+// `--yes` means "do not prompt me"; naming a command is not that request.
 const assumeYes = args.includes('--yes') || args.includes('-y');
 const yes = assumeYes || update || applyUpdate;
 const verbose = args.includes('--verbose');
@@ -108,27 +97,22 @@ const settings = command === 'settings';
 const dashboardPort = Number.parseInt(flagValue('--port') ?? '', 10) || 0;
 const dashboardOpen = args.includes('--open');
 const dashboardExport = flagValue('--export') ?? null;
-// Display currency for usage/dashboard: --currency flag wins, then the stored
-// plugin default (tersio settings), then USD.
+// Display currency for usage/dashboard: --currency flag wins, then the stored plugin default (tersio settings), then USD.
 const currency: CurrencyCode = parseCurrencyFlag(flagValue('--currency')) ?? readStoredCurrency();
 const currencyGiven = flagValue('--currency') !== undefined;
 const uninstall = command === 'uninstall' || args.includes('--uninstall');
 const removePonytail = args.includes('--remove-ponytail');
 const keepPonytail = args.includes('--keep-ponytail');
 const removeRtk = args.includes('--remove-rtk');
-// Keep the Oh My Pi extension layer while still clearing the agent files. The
-// prompt asks for this at a terminal; the flag makes the same choice available
-// to scripts, which have no prompt to ask.
+// Keep the Oh My Pi extension layer while still clearing the agent files. The prompt asks for this at a terminal;
 const keepOmpLayer = args.includes('--keep-omp-layer');
 
-// Project scope was removed: tersio installs user-level (all OMP sessions)
-// only. A bare `--scope user` still parses (old scripts); anything else fails.
+// Project scope was removed: tersio installs user-level (all OMP sessions) only.
 const legacyScope = flagValue('--scope')?.toLowerCase() ?? null;
 if (legacyScope !== null && legacyScope !== 'user') {
   console.error(`[fail] Invalid --scope: ${legacyScope}. Project scope was removed; tersio installs user-level only.`);
   process.exit(1);
 }
-// --- Profile selection (session-start mode defaults) ---
 
 const comboDefaultFlag = parseEnum(flagValue('--combo-default'), COMBO_DEFAULTS, '--combo-default');
 const cavemanDefaultFlag = parseEnum(flagValue('--caveman-default'), CAVEMAN_DEFAULTS, '--caveman-default');
@@ -139,19 +123,14 @@ const diagScheduleFlag = parseEnum(flagValue('--diag-schedule'), DIAG_SCHEDULES,
 const profileFlagsGiven = [comboDefaultFlag, cavemanDefaultFlag, rtkDefaultFlag, ponytailDefaultFlag]
   .some((flag) => flag !== undefined);
 
-/**
- * Every value given for a repeatable flag. Handles `--agent a --agent b`,
- * `--agent a,b`, and `--agent=a,b` together, so callers get one flat list and
- * do not have to care which form the user typed.
- */
+// Every value given for a repeatable flag. Handles `--agent a --agent b`, `--agent a,b`, and `--agent=a,b` together, so...
 function flagValues(name: string): string[] {
   const out: string[] = [];
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg === name) {
       const next = args[i + 1];
-      // A following flag is not a value, so `--agent --dry-run` is empty
-      // rather than swallowing the next option.
+      // A following flag is not a value, so `--agent --dry-run` is empty rather than swallowing the next option.
       if (next !== undefined && !next.startsWith('-')) {
         out.push(next);
         i++;
@@ -166,7 +145,7 @@ function flagValues(name: string): string[] {
     .filter((value) => value !== '');
 }
 
-/** Host ids from `--agent`, for install/doctor/uninstall to act on. */
+// Host ids from `--agent`, for install/doctor/uninstall to act on.
 const agentFlag: string[] = flagValues('--agent');
 
 function debug(...a: unknown[]): void {
@@ -219,8 +198,7 @@ async function writeIfChanged(dest: string, content: string, options: WriteOptio
   return true;
 }
 
-// omp ships 'extensions: null'; appending list items under a null scalar breaks
-// YAML parsing. Normalize null/~/[]/empty to a mapping key first.
+// omp ships 'extensions: null'; appending list items under a null scalar breaks YAML parsing.
 const EXTENSIONS_KEY_RE = /^\s*extensions\s*:/i;
 const EXTENSIONS_NULL_RE = /^\s*extensions\s*:\s*(?:\[\s*\]|null|~)?\s*$/i;
 
@@ -245,9 +223,7 @@ async function ensureExtensionInConfig(configPath: string, extensionPath: string
   const raw = await readTextIfExists(configPath);
   let lines = (raw || '').split('\n');
 
-  // Drop legacy compiled twins (same dir/name, .js): previous installs
-  // registered them, and OMP must never load both copies. Match on the
-  // trailing path so absolute and relative entries are both caught.
+  // Drop legacy compiled twins (same dir/name, .js).
   if (normalizedPath.endsWith('.ts')) {
     const legacyTail = `${normalizedPath.slice(0, -3)}.js`.split('/').slice(-2).join('/');
     lines = lines.filter((l) => !l.trim().replace(/^\.\//, '').endsWith(legacyTail));
@@ -294,7 +270,6 @@ async function ensureExtensionInConfig(configPath: string, extensionPath: string
   await writeConfigLines(configPath, lines, `  [write] Added ${label} to config.yml`, options);
   return true;
 }
-
 
 async function removeExtensionFromConfig(configPath: string, extensionPath: string, label: string, options: WriteOptions = {}): Promise<boolean> {
   const normalizedPath = extensionPath.replace(/\\/g, '/').replace(/^\.\//, '');
@@ -378,15 +353,11 @@ async function ensurePonytailConfigValue<K extends keyof PonytailConfig>(
   }, `would set Ponytail ${key}=${value}`, `Set Ponytail ${key}=${value}`, options);
 }
 
-
-
-// Read plugins/package.json tolerantly; corrupt or missing files start fresh
-// with installer-managed defaults.
+// Read plugins/package.json tolerantly; corrupt or missing files start fresh with installer-managed defaults.
 async function readPluginsPackage(pkgPath: string): Promise<PluginsPackage & { dependencies: Record<string, string> }> {
   const pkg = parseJsonObject<PluginsPackage>(await readTextIfExists(pkgPath)) ?? {};
   return { ...pkg, name: pkg.name || 'omp-plugins', private: true, dependencies: pkg.dependencies || {} };
 }
-
 
 function relTime(ageMs: number): string {
   const mins = Math.floor(ageMs / 60000);

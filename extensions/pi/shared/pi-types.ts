@@ -1,9 +1,6 @@
-// Structural subset of Pi's ExtensionAPI: no build step and no type package to
-// depend on inside a user config dir. Separate from extensions/shared/types.ts
-// because the hosts disagree on prompt injection, tool schemas and naming, and
-// one type covering both would hide where the ports must differ.
+// Structural subset of Pi's ExtensionAPI: no build step and no type package to depend on inside a user config dir.
 
-/** A custom session entry. Pi keeps these out of the model's context. */
+// A custom session entry. Pi keeps these out of the model's context.
 export type SessionEntry = {
   type: string;
   customType?: string;
@@ -15,9 +12,9 @@ export type SessionEntry = {
   };
 };
 
-/** `ctx.ui` as this package uses it. Pi's ExtensionUIContext. */
+// `ctx.ui` as this package uses it. Pi's ExtensionUIContext.
 export interface UiApi {
-  /** Pi takes plain strings, not `{label, description}` objects. */
+  // Pi takes plain strings, not `{label, description}` objects.
   select?: (title: string, options: string[], opts?: Record<string, unknown>) => Promise<string | undefined>;
   setStatus?: (key: string, text: string | undefined) => void;
   notify?: (message: string, type?: 'info' | 'warning' | 'error') => void;
@@ -26,9 +23,9 @@ export interface UiApi {
   };
 }
 
-/** `ExtensionContext` in Pi. There is no `pi.cwd`; the cwd is on the context. */
+// `ExtensionContext` in Pi. There is no `pi.cwd`; the cwd is on the context.
 export interface ExtensionCtx {
-  /** Use "tui" to guard terminal-only UI; `hasUI` is true in TUI and RPC. */
+  // Use "tui" to guard terminal-only UI; `hasUI` is true in TUI and RPC.
   mode?: 'tui' | 'rpc' | 'json' | 'print';
   hasUI?: boolean;
   cwd?: string;
@@ -39,22 +36,22 @@ export interface ExtensionCtx {
   ui?: UiApi;
 }
 
-/** `ExtensionCommandContext` — an ExtensionContext plus command-only controls. */
+// `ExtensionCommandContext` — an ExtensionContext plus command-only controls.
 export interface ExtensionCommandCtx extends ExtensionCtx {
-  /** Reloads extensions, skills, prompts, and context files. */
+  // Reloads extensions, skills, prompts, and context files.
   reload?: () => Promise<void>;
 }
 
-/** `BeforeAgentStartEvent.systemPromptOptions.sections` — the injection point. */
+// `BeforeAgentStartEvent.systemPromptOptions.sections` — the injection point.
 export interface PiPromptSections {
   [section: string]: unknown;
 }
 
 export interface PiBeforeAgentStartEvent {
   type?: string;
-  /** Rendered prompt, read-only. Returning it would replace the whole prompt. */
+  // Rendered prompt, read-only. Returning it would replace the whole prompt.
   systemPrompt?: string;
-  /** Mutable. Sections are wrapped in matching XML tags when non-empty. */
+  // Mutable. Sections are wrapped in matching XML tags when non-empty.
   systemPromptOptions?: {
     sections?: PiPromptSections;
     promptGuidelines?: unknown;
@@ -90,8 +87,7 @@ export interface PiExecOptions {
   cwd?: string;
 }
 
-// Pi wants a typebox TSchema, which only resolves at Pi load time, so the rtk
-// port describes its schema as a literal and casts once.
+// Pi wants a typebox TSchema, which only resolves at Pi load time, so the rtk port describes its schema as a literal and...
 export interface PiToolParameters {
   type: 'object';
   properties: Record<string, unknown>;
@@ -118,12 +114,12 @@ export interface PiCommandOptions {
   handler: (args: string, ctx: ExtensionCommandCtx) => void | Promise<void>;
 }
 
-/** `ExtensionAPI` as this package uses it. Every member is optional. */
+// `ExtensionAPI` as this package uses it. Every member is optional.
 export interface PiExtensionAPI {
   on?: (event: string, handler: (event: unknown, ctx: ExtensionCtx) => unknown) => (() => void) | void;
   registerCommand?: (name: string, options: PiCommandOptions) => void;
   registerTool?: (tool: PiToolDefinition) => void;
-  /** Appends a custom entry, excluded from the model's context. */
+  // Appends a custom entry, excluded from the model's context.
   appendEntry?: (customType: string, data: Record<string, unknown>) => void;
   exec?: (command: string, args: string[], options?: PiExecOptions) => Promise<PiExecResult>;
 }

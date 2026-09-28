@@ -8,8 +8,7 @@ import { getSharedComboState, resetSharedComboState } from "../../extensions/sha
 import { OMP_SUBAGENT_MARKER } from "../../extensions/omp/omp-prompt.ts";
 import type { ExtensionApi, SessionEntry } from "../../extensions/shared/types.ts";
 
-// ponytail: hermetic HOME — session-start fallbacks read the real lock file,
-// so without this the suite depends on the developer's own defaults.
+// ponytail: hermetic HOME — session-start fallbacks read the real lock file, so without this the suite depends on the...
 process.env.HOME = new URL("../definitely-missing-home", import.meta.url).pathname;
 process.env.USERPROFILE = process.env.HOME;
 
@@ -219,8 +218,7 @@ test("individual Caveman change immediately makes Combo CUSTOM and children inhe
   expect(getSharedComboState()).toEqual({
     level: "custom", caveman: "lite", rtk: "on", ponytail: "ultra",
   });
-  // The bar used to be the indicator here. Leaving the preset has to say so, or
-  // the "Combo max on" line above reads as the current state.
+  // The bar used to be the indicator here. Leaving the preset has to say so, or the "Combo max on" line above reads as the...
   expect(comboCtx.notifications.slice(announced)).toHaveLength(1);
   expect(comboCtx.notifications.at(-1)).toMatch(/^Combo custom: .*combo CUSTOM: /);
   expect(instruction(await inject(instantiate(cavemanSessionExtension), MARKED_PROMPT))).toMatch(/Caveman lite active/);
@@ -303,8 +301,7 @@ test("redundant trailing entries do not drop a matching preset (#21)", async () 
   const combo = instantiate(comboToggleExtension, entries);
   const ctx = context(entries, true);
   await command(combo, "combo", "max", ctx);
-  // Entry replay on resume / upstream re-affirming its mode: same values,
-  // appended after combo-level. The preset must survive.
+  // Entry replay on resume / upstream re-affirming its mode: same values, appended after combo-level.
   entries.push({ type: "custom", customType: "ponytail-mode", data: { mode: "ultra" } });
   entries.push({ type: "custom", customType: "caveman-mode", data: { mode: "ultra" } });
   entries.push({ type: "custom", customType: "rtk-mode", data: { enabled: true } });
@@ -345,13 +342,10 @@ test("Combo indicator appears only after a Combo preset", async () => {
 
   entries.push({ type: "custom", customType: "ponytail-mode", data: { mode: "ultra" } });
   await command(combo, "combo", "status", ctx);
-  // Drifting off the preset reports INACTIVE and adds no preset line, and the
-  // footer stays empty: the state is carried by the conversation now.
+  // Drifting off the preset reports INACTIVE and adds no preset line.
   expect(ctx.notifications.at(-1)).toBe("Combo: INACTIVE (caveman=lite rtk=on ponytail=ultra)");
   expect(ctx.statuses.size).toBe(0);
 });
-
-
 
 test("Combo does not duplicate existing Ponytail guidance", async () => {
   resetSharedComboState();

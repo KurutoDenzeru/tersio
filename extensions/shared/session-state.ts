@@ -1,8 +1,6 @@
 import type { ComboLevel, ComboState, SessionEntry, SharedCtx, SharedUi } from './types.ts';
 
-// The OMP system-prompt helpers this module used to own now live in
-// ./omp-prompt.ts: they describe a host-specific injection contract, and a
-// host-free module must not re-export one. The OMP ports import them directly.
+// The OMP prompt helpers moved to extensions/omp/omp-prompt.ts.
 
 const BRIDGE_KEY = Symbol.for('tersio/combo-session-state');
 
@@ -83,7 +81,6 @@ export function normalizeInputCommand(value: unknown): string {
   return String(value || '').trim().toLowerCase().replace(/[.!?\s]+$/, '');
 }
 
-
 export function normalizeComboLevel(value: unknown): ComboLevel | null {
   const level = String(value || '').trim().toLowerCase();
   return isPresetLevel(level) ? level : null;
@@ -95,23 +92,11 @@ export function paintStatusBar(ui: SharedUi | undefined, key: string, emoji: str
 }
 
 // Which context a status bar should remember to paint through.
-//
-// A UI-less event — a headless child session_start, or a top-level
-// session_start that fires before the TUI attaches — must never become the
-// remembered context. Two things went wrong when it did: the old
-// `ctx || lastCtx` fallback only triggered for a *falsy* ctx, so a truthy
-// ctx without `ui` returned early anyway, and remembering it destroyed the one
-// paintable context we had. Every later bare syncStatus() then went mute —
-// and the bare call is the bridge-listener path, which is how a mode change
-// made by a sibling extension reaches this bar. The symptom is a bar frozen on
-// a preset the session no longer has: it shows "combo BALANCED" while caveman
-// and rtk are already off.
 export function paintableCtx<T extends SharedCtx>(remembered: T | undefined, next: T | undefined): T | undefined {
   return next?.ui?.setStatus ? next : remembered;
 }
 
-// Last-wins scan for a custom session entry; skips entries whose value fails
-// to parse so a corrupt write never shadows an older valid one.
+// Last-wins scan for a custom session entry; skips entries whose value fails to parse so a corrupt write never shadows an...
 export function lastCustomValue<T>(entries: SessionEntry[] | null | undefined, customType: string, pick: (data: SessionEntry['data']) => T | null | undefined): T | null {
   if (!Array.isArray(entries)) return null;
   for (let i = entries.length - 1; i >= 0; i -= 1) {
@@ -145,9 +130,7 @@ export function setSharedComboMode(name: ModeName, value: unknown): Readonly<Com
   const mode = normalizeMode(name, value);
   if (!mode) return getSharedComboState();
   const modes = { ...getSharedComboState(), [name]: mode } as Modes;
-  // Derive the level from the final triplet so a redundant same-value write
-  // (entry replay on resume, upstream ponytail re-affirming its mode) cannot
-  // strand a matching preset at 'custom' and drop the combo bar.
+  // Derive the level from the final triplet so a redundant same-value write (entry replay on resume, upstream ponytail...
   return publish(normalizedState(modes));
 }
 
@@ -168,21 +151,17 @@ export function reconcileSharedComboEntries(entries: SessionEntry[] | null | und
       if (mode) modes[name] = mode;
     }
   }
-  // The level always reflects the final mode triplet, never the write order:
-  // a preset entry followed by the same values reconciles back to the preset.
+  // The level reflects the final mode triplet, never the write order.
   return publish(normalizedState(modes));
 }
 
-// One-line session-wide mode summary for change confirmations, e.g.
-// `caveman=ULTRA, rtk=ON, ponytail=ULTRA`.
+// One-line session-wide mode summary for change confirmations, e.g. `caveman=ULTRA, rtk=ON, ponytail=ULTRA`.
 export function activeModesSummary(state: { caveman: string; rtk: string; ponytail: string }): string {
   return `caveman=${state.caveman.toUpperCase()}, rtk=${state.rtk.toUpperCase()}, ponytail=${state.ponytail.toUpperCase()}`;
 }
 
 export function setSharedComboListener(listener: ((state: Readonly<ComboState>) => void) | null): void {
-  // Additive: every sibling extension syncs its local mirror on publish, so
-  // a /tersio or /combo switch takes effect next turn with no session reload.
-  // A null listener clears all (no current callers; reserved for teardown).
+  // Additive: every sibling extension syncs its local mirror on publish, so a /tersio or /combo switch takes effect next...
   if (typeof listener === 'function') bridge().listeners.add(listener);
   else bridge().listeners.clear();
 }

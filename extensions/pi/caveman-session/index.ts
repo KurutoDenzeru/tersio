@@ -1,10 +1,4 @@
-// Caveman mode on Pi. Port of extensions/omp/caveman-session/index.ts: same levels,
-// /caveman command, `caveman` status key, combo suppression and restore
-// precedence. The Pi-only differences: the text goes into a sealed section
-// because returning systemPrompt would replace the whole prompt; session_start
-// and session_tree both restore because there is no session_branch; setLabel
-// labels entries, not extensions, so it is dropped; and Pi has no subagent
-// surface, so every turn is the parent turn.
+// Caveman mode on Pi. Port of extensions/omp/caveman-session/index.ts.
 
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -91,8 +85,7 @@ export default function cavemanSessionExtension(pi: PiExtensionAPI): void {
       c.ui.setStatus('caveman', undefined);
       return;
     }
-    // Theme from the context that can actually paint, which is not always the
-    // incoming one.
+    // Theme from the context that can actually paint, which is not always the incoming one.
     paintStatusBar(c.ui, 'caveman', '🪨', `caveman: ${currentMode.toUpperCase()}`, isActive, c.ui.theme);
   }
 
@@ -111,9 +104,7 @@ export default function cavemanSessionExtension(pi: PiExtensionAPI): void {
     return true;
   }
 
-  // Live mirror of shared state, so a /combo or /tersio switch lands on the
-  // next turn with no reload. The bridge is a process-global symbol: one Pi
-  // process is one realm.
+  // Live mirror of shared state, so a /combo or /tersio switch lands on the next turn with no reload.
   function syncFromShared(state: { caveman: string }): void {
     const mode = normalizeMode('caveman', state.caveman);
     if (mode) {
@@ -148,9 +139,7 @@ export default function cavemanSessionExtension(pi: PiExtensionAPI): void {
 
   function restoreMode(ctx?: ExtensionCtx): void {
     const entries = sessionEntries(ctx);
-    // Publish the persisted combo state before painting: bar suppression reads
-    // the in-process bridge, which is empty until the combo extension
-    // reconciles, and that reconcile is UI-gated.
+    // Publish the persisted combo state first: bar suppression reads the bridge.
     reconcileSharedComboEntries(entries);
     const persisted = resolveMode(entries, '');
     currentMode = persisted || normalizeMode('caveman', readCavemanDefault()) || DEFAULT_MODE;
@@ -179,8 +168,7 @@ export default function cavemanSessionExtension(pi: PiExtensionAPI): void {
   pi.on?.('before_agent_start', (event) => {
     const e = event as PiBeforeAgentStartEvent;
     const def = currentMode === 'off' ? undefined : INSTRUCTIONS[currentMode];
-    // Always write, empty when off: Pi omits falsy content, so the mode
-    // switches off in one write instead of leaving a stale section behind.
+    // Always write, empty when off: Pi omits falsy content, so the mode switches off in one write instead of leaving a stale...
     injectPiSection(e, SECTION, def ? (typeof def === 'function' ? def() : def) : '');
   });
 }

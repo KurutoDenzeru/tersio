@@ -54,9 +54,7 @@ test("uninstall removes extension dirs, self registration, and combo config entr
   const home = mkdtempSync(path.join(os.tmpdir(), "tersio-uninstall-"));
   try {
     seed(home);
-    // A full uninstall names OMP: the extension layer follows the selection,
-    // so a flagless run now keeps it rather than deleting a plugin nobody
-    // named.
+    // A full uninstall names OMP: the extension layer follows the selection, so a flagless run now keeps it rather than...
     const result = run(home, "uninstall", "--yes", "--agent", "omp");
 
     expect(result.status, result.stderr).toBe(0);
@@ -85,8 +83,7 @@ test("uninstall removes the bundled ponytail copy even with no legacy dep entry"
   const home = mkdtempSync(path.join(os.tmpdir(), "tersio-uninstall-"));
   try {
     seed(home);
-    // Post-bundle state: no separate dep or lock entry, only the
-    // tersio-owned directory.
+    // Post-bundle state: no separate dep or lock entry, only the tersio-owned directory.
     const pluginsDir = path.join(home, ".omp", "plugins");
     writeFileSync(
       path.join(pluginsDir, "package.json"),
@@ -154,9 +151,7 @@ test("uninstall --agent pi clears its extension tree, keeps the layer and binary
   try {
     seed(home);
     mkdirSync(path.join(home, ".pi", "agent", "extensions"), { recursive: true });
-    // A user's own global rules, in the path tersio no longer writes. It must
-    // survive untouched: pi injects its rules from the extension tree, so this
-    // file is not ours to edit or remove.
+    // A user's own global rules, in a path tersio no longer writes. It must survive.
     const userRules = path.join(home, ".pi", "agent", "AGENTS.md");
     writeFileSync(userRules, "# my rules\n", "utf8");
     const piRtk = path.join(home, ".pi", "agent", "extensions", "rtk.ts");
@@ -172,8 +167,7 @@ test("uninstall --agent pi clears its extension tree, keeps the layer and binary
     expect(existsSync(userRules), "a user's rules file is left alone").toBeTruthy();
     expect(readFileSync(userRules, "utf8"), "and left byte-for-byte").toBe("# my rules\n");
     expect(result.stdout).toMatch(/extensions\/rtk\.ts/);
-    // The plan names only the selected host: the unselected OMP layer stays out
-    // of both the preview and the run.
+    // The plan names only the selected host: the unselected OMP layer stays out of both the preview and the run.
     expect(result.stdout).not.toMatch(/Oh My Pi — \d+ extension director/);
     // Host-agnostic closing line: a Pi-only run must not say restart OMP.
     expect(result.stdout).toMatch(/Done — restart your agents/);

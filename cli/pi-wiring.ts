@@ -1,17 +1,10 @@
-// Install and remove Tersio's Pi extension tree: Pi loads
-// ~/.pi/agent/extensions/<dir>/index.ts through jiti, no build step.
-// cli/pi-layer.ts names the directories; this only writes them. rtk.ts is rtk's
-// to write.
-//
-// No cli/common.ts import (argv side effects, and the tests load this
-// directly), which is why the write helper is local. `home` is passed in apart
-// from the agent-dir env var Pi itself honors.
+// Install and remove Tersio's Pi extension tree: Pi loads ~/.pi/agent/extensions/<dir>/index.ts through jiti, no build...
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { readTextIfExists } from '../extensions/lib/utils.ts';
 import { piExtensionTargets, piLayer } from './pi-layer.ts';
 
-/** `$HOME`-relative form of a path, for output that must stay readable. */
+// `$HOME`-relative form of a path, for output that must stay readable.
 function rel(target: string, home: string): string {
   if (!home) return target;
   const prefix = home.endsWith(path.sep) ? home : `${home}${path.sep}`;
@@ -23,14 +16,11 @@ export interface PiWiringOptions {
   quiet?: boolean;
 }
 
-/**
- * The tree's sources as `[repo path, path under extDir]`. Listed rather than
- * discovered, so the package `files` allowlist decides what ships.
- */
+// The tree's sources as `[repo path, path under extDir]`.
 export interface PiTree {
-  /** Static sources, copied verbatim on every install. */
+  // Static sources, copied verbatim on every install.
   sources: Array<[string, string]>;
-  /** `extension dir name` to `rule text`, written only when the text is given. */
+  // `extension dir name` to `rule text`, written only when the text is given.
   rules: Array<[string, string | null]>;
 }
 
@@ -38,7 +28,7 @@ export function piExtensionDir(home: string): string {
   return piLayer(home).extDir;
 }
 
-/** Writes only when the content differs, leaving a `.bak` of what it replaced. */
+// Writes only when the content differs, leaving a `.bak` of what it replaced.
 async function writeIfChanged(target: string, content: string, options: PiWiringOptions): Promise<boolean> {
   const current = await readTextIfExists(target);
   if (current === content) return false;
@@ -58,7 +48,7 @@ async function exists(target: string): Promise<boolean> {
   }
 }
 
-/** Returns the paths it changed, so a no-op re-run is not counted as work. */
+// Returns the paths it changed, so a no-op re-run is not counted as work.
 export async function installPiTersio(
   home: string,
   tree: PiTree,
@@ -69,9 +59,7 @@ export async function installPiTersio(
   for (const [from, to] of tree.sources) {
     const content = await readTextIfExists(from);
     if (content === null) {
-      // Named by its path under the extension dir, never by the absolute repo
-      // source: a preview that leaked the build machine's paths failed a suite
-      // that pins previews to `$HOME`-relative form.
+      // Named by its path under the extension dir, never by the repo source.
       if (!options.quiet) {
         console.log(`  [fail] Pi extension source missing: ${to}`);
         console.log('  [hint] Reinstall tersio — extensions/pi ships with the CLI');
@@ -91,8 +79,7 @@ export async function installPiTersio(
   return written;
 }
 
-// Removes the Pi tree: every directory the layer owns, the `.bak` copies, and
-// the flat module a pre-tree install wrote at the extension root. rtk.ts stays.
+// Removes the Pi tree: every directory the layer owns, the `.bak` copies, and the flat module a pre-tree install wrote at...
 
 export async function removePiTersio(home: string, options: PiWiringOptions = {}): Promise<boolean> {
   let removed = false;
@@ -110,7 +97,7 @@ export async function removePiTersio(home: string, options: PiWiringOptions = {}
   return removed;
 }
 
-/** True when any module of the Pi tree is present. */
+// True when any module of the Pi tree is present.
 export async function piTersioInstalled(home: string): Promise<boolean> {
   for (const entry of piLayer(home).installed) {
     if (await exists(path.join(entry.path, 'index.ts'))) return true;

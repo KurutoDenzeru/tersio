@@ -1,45 +1,27 @@
-// The host registry: one entry per agent, carrying only what the CLI needs to
-// find it, install it and undo it. Both hosts are extension-tree hosts, so
-// there are no static artifacts per host; the trees are named in
-// cli/omp-layer.ts and cli/pi-layer.ts. No cli/common.ts import (argv effects).
+// The host registry: one entry per agent, carrying only what the CLI needs to find it, install it and undo it.
 
 export interface AgentHost {
   id: string;
   label: string;
-  /** User-global config dir, `$HOME`-relative. */
+  // User-global config dir, `$HOME`-relative.
   configDir: string;
-  /** Env var that relocates configDir, when the host supports one. */
+  // Env var that relocates configDir, when the host supports one.
   configDirEnv?: string;
-  /** Binaries to probe on PATH, in order. A bare `cmd` never is: it is the Windows shell. */
+  // Binaries to probe on PATH, in order. A bare `cmd` never is: it is the Windows shell.
   binaries: string[];
-  /**
-   * False for a host that is never auto-detected. Oh My Pi is the origin host
-   * and always in scope, so detecting it would put it back into a selection
-   * that had deliberately dropped it.
-   */
+  // False for a host that is never auto-detected. Oh My Pi is the origin host and always in scope, so detecting it would...
   autoDetect?: boolean;
-  /**
-   * `$HOME`-relative paths an earlier version wrote and this one no longer
-   * does; otherwise they survive both install and uninstall. `ours` is removed
-   * outright, `merged` (a file the user also owns) loses only our marked block.
-   */
+  // `$HOME`-relative paths an earlier version wrote and this one no longer does;
   retired?: Array<{ path: string; kind: 'ours' | 'merged' }>;
-  /** Docs URL that justifies the paths above. */
+  // Docs URL that justifies the paths above.
   source: string;
-  /**
-   * How this host installs the package with its own tooling; the alternative to
-   * `tersio install`, which writes the files directly.
-   */
+  // How this host installs the package with its own tooling;
   nativeInstall?: { command?: string; note: string };
-  /** Caveats an installer must respect, shown by `tersio doctor`. */
+  // Caveats an installer must respect, shown by `tersio doctor`.
   caveats?: string;
 }
 
-/**
- * How the shell rewrite reaches the model. Every host routes it through rtk's
- * own module (`rtk init -g --agent <id>`), so there is no per-host variant: a
- * host that cannot do it is not in this registry.
- */
+// How the shell rewrite reaches the model. Every host routes it through rtk's own module (`rtk init -g --agent <id>`), so...
 export const REWRITE_WIRING = 'rtk extension · auto-rewrite';
 
 const HOSTS: AgentHost[] = [
@@ -49,10 +31,7 @@ const HOSTS: AgentHost[] = [
     autoDetect: false,
     configDir: '.omp',
     binaries: ['omp'],
-    // Earlier versions wrote these. The tree injects the modes every turn, so a
-    // skill is a second copy and a rules file is always on — it would outlive
-    // `/combo off`. Retired rather than deleted by hand, so install and
-    // uninstall both clear them.
+    // Earlier versions wrote these. The tree injects the modes every turn, so a skill is a second copy and a rules file is...
     retired: [
       { path: '.omp/agent/AGENTS.md', kind: 'merged' },
       { path: '.omp/agent/skills/tersio-caveman', kind: 'ours' },

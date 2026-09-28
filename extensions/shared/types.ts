@@ -1,5 +1,4 @@
-// Shared OMP extension host types. Structural — the real `pi` object comes
-// from the OMP runtime; these describe the surface this package touches.
+// Shared OMP extension host types. Structural — the real `pi` object comes from the OMP runtime;
 
 export interface ComboState {
   level: string;
@@ -45,18 +44,7 @@ export interface ExtensionCtx {
   reload?: () => Promise<void>;
 }
 
-/**
- * The slice of a host context that the host-free session helpers need.
- *
- * The status bar, the remembered paintable context, and the session-entry scan
- * are the same code on every host, but no host's own context type is
- * assignable to the other: OMP's `notify` takes a free-form level while Pi
- * narrows it, and OMP's `select` takes option objects where Pi takes strings.
- * Typing these three helpers against the union of the two would make every
- * call site a cast. This minimal surface is the part both actually implement,
- * so each host's context satisfies it structurally and each host's own,
- * richer type stays where it belongs.
- */
+// The slice of a host context that the host-free session helpers need.
 export interface SharedUi {
   setStatus?: (key: string, value: string | undefined) => void;
 }

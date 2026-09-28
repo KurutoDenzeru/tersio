@@ -1,7 +1,4 @@
 // cli/currency.ts — display-currency helpers (USD-base, offline snapshot rates).
-// Same 10 currencies, symbols, and snapshot rates as the dashboard's
-// converter (dashboard/app); the dashboard replaces rates with live
-// frankfurter figures when reachable, the CLI always uses the snapshot.
 
 import { readPluginSettings } from '../extensions/shared/plugin-settings.ts';
 
@@ -37,11 +34,7 @@ function parseCurrencyFlag(raw: string | undefined): CurrencyCode | undefined {
   return v;
 }
 
-// Stored default from the tersio store (written by `tersio settings`, and by
-// the dashboard when the currency is changed there). USD when missing,
-// corrupt, or holding an unknown code. Sync so flag parsing in cli/common.ts
-// can fall back to it at startup, which is why this reads the file rather than
-// going through the async settings reader.
+// Stored default from the tersio store (written by `tersio settings`, and by the dashboard when the currency is changed...
 function readStoredCurrency(): CurrencyCode {
   const raw = readPluginSettings().currency;
   return typeof raw === 'string' && isCurrencyCode(raw.trim().toUpperCase())

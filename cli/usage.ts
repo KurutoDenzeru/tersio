@@ -24,9 +24,7 @@ import { PACKAGE_VERSION, currency } from './common.ts';
 import { formatCurrency } from './currency.ts';
 import type { CurrencyCode } from './currency.ts';
 
-// `est` is tersio's modeled cost for the same message. The dashboard shows
-// the measured figure when the host recorded one and falls back to this, so
-// the two are never blended into a single unlabeled number.
+// `est` is tersio's modeled cost for the same message.
 export interface RecentRequestRow extends RecentRequest {
   est: number;
 }
@@ -61,8 +59,7 @@ export interface UsageReport {
   source: 'live' | 'stored' | 'stored-stale';
   paths: { ledger: string; sessions: string; usageDb: string };
 }
-// RTK's history is machine-wide; rows group by command alone. 2000 groups
-// covers a long history while still bounding /data.json.
+// RTK's history is machine-wide; rows group by command alone.
 const RTK_COMMAND_ROWS = 2000;
 
 export function summarizeUsage(rows: UsageRow[]): UsageReport {
@@ -74,8 +71,7 @@ export function summarizeUsage(rows: UsageRow[]): UsageReport {
     detailCounts[r.detail] = (detailCounts[r.detail] ?? 0) + 1;
   }
   const byDetail = Object.entries(detailCounts).sort((a, b) => b[1] - a[1]).slice(0, 10);
-  // usage.db is a cache of the same per-message rows: sync best-effort, read
-  // stored, fall back to the live parse when the store is missing or stale.
+  // usage.db is a cache of the same per-message rows.
   let synced = false;
   try {
     synced = syncUsageDb();
@@ -170,8 +166,7 @@ function pad(s: string, n: number): string {
   return s.length >= n ? s : s + ' '.repeat(n - s.length);
 }
 
-// Box-drawing table, plain text (piped-safe, byte-stable). Numeric columns
-// right-align; long cells truncate with an ellipsis. Shared with cli/settings.ts.
+// Box-drawing table, plain text (piped-safe, byte-stable). Numeric columns right-align;
 function textTable(headers: string[], rows: string[][], right: boolean[] = [], maxW = 32): string[] {
   const cells = [headers, ...rows].map((r) =>
     r.map((c) => (c.length > maxW ? c.slice(0, maxW - 1) + '…' : c)),

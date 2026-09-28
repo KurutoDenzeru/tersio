@@ -15,8 +15,7 @@ import {
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const installer = path.join(root, "tersio.js");
 
-// Each scenario runs under its own HOME so the lock-file fixtures never
-// collide with the real user state.
+// Each scenario runs under its own HOME so the lock-file fixtures never collide with the real user state.
 function withHome<T>(fn: (home: string) => T): T {
   const home = mkdtempSync(path.join(os.tmpdir(), "omp-settings-test-"));
   const previous = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE };
@@ -33,8 +32,7 @@ function withHome<T>(fn: (home: string) => T): T {
   }
 }
 
-// The store is ~/.tersio/settings.json, one tersio-owned file every host
-// reads. The OMP lock file is still a read fallback, so it is exercised too.
+// The store is ~/.tersio/settings.json, one tersio-owned file every host reads.
 function writeStore(home: string, settings: Record<string, unknown>): void {
   const dir = path.join(home, ".tersio");
   mkdirSync(dir, { recursive: true });
@@ -76,8 +74,7 @@ test("readPluginSettings ignores values outside their own vocabulary", () => {
 
 test("readPluginSettings still reads the omp lock file, and ignores other plugins there", () => {
   withHome((home) => {
-    // The fallback exists so an install made before the store existed keeps its
-    // defaults, and it must skip another plugin's entry rather than adopt it.
+    // The fallback exists so an install made before the store existed keeps its defaults, and it must skip another plugin's...
     writeOmpLock(home, { "other-plugin": { comboDefault: "max" } });
     expect(readComboDefault()).toBe("off");
     writeOmpLock(home, {
@@ -109,8 +106,6 @@ test("readPluginSettings tolerates a corrupt store and a corrupt lock file", () 
     expect(readPluginSettings()).toEqual({});
   });
 });
-
-// --- Installer profile flags ---
 
 type RunResult = { status: number | null; stdout: string; stderr: string };
 
@@ -190,8 +185,6 @@ test("installer does not add manifest-owned extensions to config.yml", () => {
   }
 });
 
-// --- Manifest feature/setting shape ---
-
 test("package manifest declares always-on extensions plus updater feature and settings", () => {
   const manifest = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")) as {
     omp?: { extensions?: string[]; features?: Record<string, unknown>; settings?: Record<string, unknown> };
@@ -244,9 +237,7 @@ test("installer rejects review as a Ponytail default", () => {
 });
 
 test("apply-update without flags preserves stored combo defaults", () => {
-  // The clobber regression: `tersio update` delegates to --apply-update with
-  // no flags and no prompt, and resolveProfile rebuilt from all-off —
-  // wiping the user's configured default on every update.
+  // The clobber regression: `tersio update` delegates to --apply-update with no flags and no prompt, and resolveProfile...
   const home = mkdtempSync(path.join(os.tmpdir(), "omp-preserve-test-"));
   try {
     writeStore(home, {

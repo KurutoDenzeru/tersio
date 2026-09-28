@@ -1,8 +1,4 @@
-// OMP extension: /ai-addons manual updater for Ponytail, RTK, Caveman.
-// Built-in Node modules only. Default off; registers a single slash command.
-// ponytail: `skipped: none` — semantics match one-liner: fetch + compare + run install.
-// rtk: `skipped: signature verification` — checksums.txt ships only SHA256 of release assets; add sigchain when upstream publishes a signing key.
-// caveman: `skipped: none` — exactly the ask: write rule.md, report old/new hash.
+// OMP extension: /ai-addons manual updater for Ponytail, RTK, Caveman. Built-in Node modules only. Default off;
 
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -45,8 +41,6 @@ const CAVEMAN_LOCAL = path.join(
 );
 const RELOAD_MSG = 'Reminder: restart OMP (or reload extensions) for updates to take effect.';
 
-// --- Types ---
-
 interface AddonUpdaterCtx {
   cwd?: string;
   ui?: {
@@ -86,6 +80,17 @@ function checkFailed(name: string, e: unknown): AddonStatus {
 }
 
 // Single error-handling source for the three probes; messages unchanged.
+// An unparseable package.json reads as no version, the same answer the update
+// path already gives, so the probe and the repair cannot disagree.
+function parseVersion(raw: string | null): string | null {
+  if (!raw) return null;
+  try {
+    return (JSON.parse(raw) as { version?: string }).version ?? null;
+  } catch {
+    return null;
+  }
+}
+
 function runCheck(name: string, probe: () => Promise<string>): Promise<AddonStatus> {
   return probe().then((text) => ({ text, level: 'info' as const }), (e) => checkFailed(name, e));
 }
@@ -95,7 +100,7 @@ function checkPonytail(): Promise<AddonStatus> {
   return runCheck('Ponytail', async () => {
     const remoteJson = await fetchJson<{ version?: string }>(PONYTAIL_REMOTE);
     const localRaw = await readTextIfExists(PONYTAIL_LOCAL);
-    const localVer = localRaw ? (JSON.parse(localRaw) as { version?: string }).version ?? null : null;
+    const localVer = parseVersion(localRaw);
     const remoteVer = remoteJson.version;
     const status = !localVer ? 'not installed'
       : localVer === remoteVer ? 'up to date'
@@ -175,13 +180,8 @@ async function checkAddons(ctx: AddonUpdaterCtx): Promise<string> {
 }
 
 async function updatePonytail(pi: AddonUpdaterPi, ctx: AddonUpdaterCtx, dryRun = false): Promise<string> {
-  // Bundled with tersio: no separate package to refresh. `tersio update`
-  // pulls the bundled copy with the CLI.
-  let localVer: string | null = null;
-  try {
-    const raw = await readTextIfExists(PONYTAIL_LOCAL);
-    if (raw) localVer = (JSON.parse(raw) as { version?: string }).version ?? null;
-  } catch { localVer = null; }
+  // Bundled with tersio: `tersio update` pulls the copy with the CLI.
+  const localVer = parseVersion(await readTextIfExists(PONYTAIL_LOCAL));
   void pi;
   const m = dryRun
     ? `Ponytail dry-run: bundled with tersio (local=${localVer || '—'}); run \`tersio update\` to refresh it.`

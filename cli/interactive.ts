@@ -25,12 +25,10 @@ type InteractiveConfirm = { status: 'confirmed'; value: boolean } | { status: 'c
 
 let spinnerDepth = 0;
 
-// Run async work under a TTY-only timer spinner. The spinner is cleared before
-// the caller prints its normal result line, preserving locked output shapes.
+// Run async work under a TTY-only timer spinner. The spinner is cleared before the caller prints its normal result line...
 async function withInteractiveSpinner<T>(message: string, work: (update: (message: string) => void) => Promise<T>): Promise<T> {
   if (!tty() || spinnerDepth > 0) return work(() => { });
-  // Clack manages stdin itself. Close the legacy question interface before its
-  // first use; non-interactive callers never reach this branch.
+  // Clack manages stdin itself. Close the legacy question interface before its first use;
   closeRL();
   const active: SpinnerResult = clackSpinner({ indicator: 'timer' });
   active.start(message);
@@ -53,15 +51,7 @@ async function askInteractiveChoice(message: string, options: Array<{ value: str
   }
   return { status: 'selected', value: choice };
 }
-/**
- * Yes/No confirmation.
- *
- * A bare `y` accepts regardless of the default. Enter still takes the default,
- * which is the safe answer on a destructive prompt, but that made Enter a trap
- * on the confirmations that default to No: the muscle-memory answer produced
- * "Aborted." and left the user believing nothing had been removed. The shortcut
- * makes the intent legible without inverting the safe default.
- */
+// Yes/No confirmation. A bare `y` accepts regardless of the default.
 async function askInteractiveConfirm(message: string, initialValue = true): Promise<InteractiveConfirm> {
   if (!tty()) return { status: 'unavailable' };
   closeRL();
@@ -72,8 +62,7 @@ async function askInteractiveConfirm(message: string, initialValue = true): Prom
   }
   return { status: 'confirmed', value: answer };
 }
-// Run collecting work under one TTY-only Clack task. Callers print after the
-// task completes, keeping normal output out of the spinner animation.
+// Run collecting work under one TTY-only Clack task.
 async function runInteractivePhase<T>(title: string, collect: () => Promise<T>): Promise<T> {
   if (!tty()) return collect();
   closeRL();

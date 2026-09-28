@@ -1,8 +1,4 @@
-// Status-bar ownership regression: while a Combo preset is active, the combo bar
-// is the only status line — caveman and rtk must not paint their own bars
-// alongside it. This regressed when the `balanced` preset was added: caveman and
-// rtk's suppression checks hardcoded medium/max, so balanced leaked through and
-// the status bar showed both `🪨 caveman: FULL` and the combo bar.
+// Status-bar ownership regression: while a Combo preset is active, the combo bar is the only status line — caveman and...
 import { expect, test } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
@@ -14,8 +10,7 @@ import rtkSessionExtension from "../../extensions/omp/rtk-session/index.ts";
 import { getSharedComboState, resetSharedComboState } from "../../extensions/shared/session-state.ts";
 import type { ExtensionApi, ExtensionCtx, SessionEntry } from "../../extensions/shared/types.ts";
 
-// ponytail: hermetic HOME — the combo fallback reads the real lock file, so
-// without this the suite depends on the developer's own comboDefault.
+// ponytail: hermetic HOME — the combo fallback reads the real lock file, so without this the suite depends on the...
 process.env.HOME = new URL("../definitely-missing-home", import.meta.url).pathname;
 process.env.USERPROFILE = process.env.HOME;
 
@@ -70,8 +65,7 @@ test("combo balanced announces one line and paints no status row", async () => {
   await pi.combo.commands.get("combo")!("balanced", ctx);
   expect(notifications.at(-1)).toBe("Combo balanced on: 🧩 combo BALANCED: 🪨caveman=FULL ⚡rtk=ON 🦥ponytail=FULL");
 
-  // The race that surfaced the original bug: caveman/rtk reconcile after combo
-  // takes the state. Nothing may reach the footer.
+  // The race that surfaced the original bug: caveman/rtk reconcile after combo takes the state.
   await pi.caveman.handlers.get("agent_start")!({}, ctx);
   await pi.rtk.handlers.get("agent_start")!({}, ctx);
   expect([...statuses.keys()], "balanced paints no status row at all").toEqual([]);
@@ -79,11 +73,7 @@ test("combo balanced announces one line and paints no status row", async () => {
 });
 
 test("fresh host suppresses individual bars from persisted entries before combo reconciles", async () => {
-  // Real OMP regression: caveman/rtk load before combo and restore their modes
-  // from persisted entries, but the combo bar never appeared because the
-  // suppression check reads the in-process bridge, which only combo's
-  // (UI-gated) reconcile populated. Persisted combo entries alone must drive
-  // suppression, with or without combo's session_start having run.
+  // Real OMP regression: caveman/rtk load before combo and restore their modes from persisted entries, but the combo bar...
   resetSharedComboState();
   const { statuses, pi, ctx, entries } = harness();
   entries.push(
@@ -123,8 +113,7 @@ test("every preset suppresses individual bars; off and custom behave correctly",
   await off.pi.combo.handlers.get("session_start")!({}, off.ctx);
   await off.pi.caveman.handlers.get("session_start")!({}, off.ctx);
   await off.pi.rtk.handlers.get("session_start")!({}, off.ctx);
-  // On, then off: an already-dark session has nothing to announce, so the
-  // transition is what makes the off line worth a line in the conversation.
+  // On, then off: an already-dark session has nothing to announce, so the transition is what makes the off line worth a...
   await off.pi.combo.commands.get("combo")!("balanced", off.ctx);
   await off.pi.combo.commands.get("combo")!("off", off.ctx);
   await off.pi.caveman.handlers.get("agent_start")!({}, off.ctx);
@@ -144,15 +133,12 @@ test("every preset suppresses individual bars; off and custom behave correctly",
   await custom.pi.rtk.commands.get("rtk")!("on", custom.ctx);
   await custom.pi.combo.handlers.get("agent_start")!({}, custom.ctx);
   expect(custom.statuses.has("caveman") && custom.statuses.has("rtk"), "individual bars restored for a custom mix").toBeTruthy();
-  // Only the sibling commands speak here: an individual mode in a session that
-  // never had a preset is not a combo transition.
+  // Only the sibling commands speak here: an individual mode in a session that never had a preset is not a combo transition.
   expect(custom.notifications.filter((n) => n.startsWith("Combo ")), "no combo line for a custom mix").toEqual([]);
   resetSharedComboState();
 });
 test("combo default applies past unrelated session entries", async () => {
-  // The statusbar gap: the old gate checked `!sessionEntries(ctx).length`,
-  // so any pre-existing entry blocked the combo default and the bar never
-  // painted. Only persisted *mode* entries may block it.
+  // The statusbar gap: the old gate checked `!sessionEntries(ctx).length`, so any pre-existing entry blocked the combo...
   const home = mkdtempSync(path.join(os.tmpdir(), "combo-fallback-"));
   mkdirSync(path.join(home, ".omp", "plugins"), { recursive: true });
   writeFileSync(
@@ -204,10 +190,7 @@ test("combo default persists preset entries so resume keeps the preset", async (
 });
 
 test("a UI-less event must not deafen the line to later bridge updates", async () => {
-  // The bar used to freeze on "combo BALANCED" after a pre-attach session_start
-  // because the remembered ctx had no `ui`. The announcement has the same
-  // dependency, so the same regression is checked here: the line must still
-  // follow the bridge, and must not repeat itself for an unchanged state.
+  // The bar used to freeze on "combo BALANCED" after a pre-attach session_start because the remembered ctx had no `ui`.
   resetSharedComboState();
   const { notifications, pi, ctx } = harness();
   await pi.combo.handlers.get("session_start")!({}, ctx);
@@ -223,8 +206,7 @@ test("a UI-less event must not deafen the line to later bridge updates", async (
   await pi.combo.handlers.get("session_start")!({}, headless);
   expect(notifications.length, "an unchanged state does not repeat the line").toBe(afterHeadless);
 
-  // A sibling mode change publishes through the bridge; combo's listener runs
-  // with no ctx, so it must still reach the remembered interactive ctx.
+  // A sibling mode change publishes through the bridge;
   await pi.caveman.commands.get("caveman")!("off", ctx);
 
   expect(getSharedComboState().level, "the mix is no longer a preset").toBe("custom");

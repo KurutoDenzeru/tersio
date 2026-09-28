@@ -1,10 +1,4 @@
-// Host selection, persistence, and the filesystem side of asking what a host
-// has on disk. Neither host ships static files, so this is selection, detection,
-// the retired paths an earlier version wrote, and the layer state the extension
-// trees report (cli/omp-layer.ts, cli/pi-layer.ts).
-//
-// No cli/common.ts import (argv side effects), and `home` is always passed in,
-// so a test can load this directly against a throwaway directory.
+// Host selection, persistence, and the filesystem side of asking what a host has on disk.
 import fsSync from 'node:fs';
 import path from 'node:path';
 import { HOSTS, REWRITE_WIRING, type AgentHost } from './agent-hosts.ts';
@@ -13,7 +7,7 @@ import { reportPiLayer } from './pi-layer.ts';
 
 const SELECTION_FILE = 'agents.json';
 
-/** Marker pair for the one file we still merge into: a user's own AGENTS.md. */
+// Marker pair for the one file we still merge into: a user's own AGENTS.md.
 const START = '<!-- tersio:start -->';
 const END = '<!-- tersio:end -->';
 
@@ -26,20 +20,20 @@ function selectionPath(home: string): string {
   return path.join(home, '.tersio', SELECTION_FILE);
 }
 
-/** Host ids only, in registry order, de-duplicated, unknown ids dropped. */
+// Host ids only, in registry order, de-duplicated, unknown ids dropped.
 export function normalizeIds(ids: readonly string[]): string[] {
   const wanted = new Set(ids);
   return HOSTS.filter((h) => wanted.has(h.id)).map((h) => h.id);
 }
 
-/** One row in the agent menu, with a hint naming the wiring the host will get. */
+// One row in the agent menu, with a hint naming the wiring the host will get.
 export interface AgentChoice {
   value: string;
   label: string;
   hint: string;
 }
 
-/** `$HOME`-relative form of a path, for previews that must stay readable. */
+// `$HOME`-relative form of a path, for previews that must stay readable.
 export function displayPath(target: string, home: string): string {
   if (!home) return target;
   const prefix = home.endsWith(path.sep) ? home : `${home}${path.sep}`;
@@ -47,16 +41,14 @@ export function displayPath(target: string, home: string): string {
   return `~/${target.slice(prefix.length).split(path.sep).join('/')}`;
 }
 
-/** What tersio has put on this machine for one host. */
+// What tersio has put on this machine for one host.
 export interface HostInstallState {
-  /** Extension directories a live layer owns. */
+  // Extension directories a live layer owns.
   dirs: number;
   installed: boolean;
 }
 
-// The install marker goes in the *label*, not the hint: clack 1.8 renders a
-// hint only on the cursor row and on ticked rows. Without `state` the rows are
-// bare names, which is all the dashboard needs — it reads no filesystem.
+// The install marker goes in the *label*: clack renders hints on the cursor row only.
 export function agentChoices(state?: ReadonlyMap<string, HostInstallState>): AgentChoice[] {
   return HOSTS.map((host) => {
     const info = state?.get(host.id);
@@ -73,13 +65,12 @@ export function agentChoices(state?: ReadonlyMap<string, HostInstallState>): Age
   });
 }
 
-// An uninstall row for a host with nothing of ours answers a question nobody
-// asked. A host absent from `state` keeps its row.
+// An uninstall row for a host with nothing of ours answers a question nobody asked.
 export function installedRows(state: ReadonlyMap<string, HostInstallState>): AgentChoice[] {
   return agentChoices(state).filter((choice) => state.get(choice.value)?.installed !== false);
 }
 
-/** True when the path is a directory. The layer's artifacts are directories. */
+// True when the path is a directory. The layer's artifacts are directories.
 function isDir(target: string): boolean {
   try {
     return fsSync.statSync(target).isDirectory();
@@ -88,19 +79,19 @@ function isDir(target: string): boolean {
   }
 }
 
-/** What a host's extension tree looks like on disk. */
+// What a host's extension tree looks like on disk.
 export interface HostLayer {
-  /** Directory the host loads its extensions from. */
+  // Directory the host loads its extensions from.
   extDir: string;
-  /** The host's own plugin registration, when it has one (OMP). */
+  // The host's own plugin registration, when it has one (OMP).
   plugin: string | null;
   present: LayerEntry[];
   missing: LayerEntry[];
-  /** True when any part of the host's install is on disk. */
+  // True when any part of the host's install is on disk.
   installed: boolean;
 }
 
-/** Reads one host's layer off the filesystem. */
+// Reads one host's layer off the filesystem.
 export function hostLayer(host: AgentHost, home: string): HostLayer {
   if (host.id === 'omp') {
     const report = reportOmpLayer(home, isDir);
@@ -122,15 +113,12 @@ export function hostLayer(host: AgentHost, home: string): HostLayer {
   };
 }
 
-// Both menus seed from the disk, not from the saved selection: that file is a
-// preference, so it can name a host since cleaned by hand and omit an installed
-// one.
+// Both menus seed from the disk, not from the saved selection.
 export function installedState(home: string): Map<string, HostInstallState> {
   const state = new Map<string, HostInstallState>();
   for (const host of HOSTS) {
     const layer = hostLayer(host, home);
-    // A partial tree is a partial install; omp's row also needs its plugin
-    // registration, which can be pruned while the directories survive.
+    // A partial tree is a partial install; omp's row also needs its plugin registration, which can be pruned while the...
     state.set(host.id, {
       dirs: layer.present.length,
       installed: layer.installed && layer.present.length > 0,
@@ -139,7 +127,7 @@ export function installedState(home: string): Map<string, HostInstallState> {
   return state;
 }
 
-/** Host ids tersio has already installed something for. */
+// Host ids tersio has already installed something for.
 export function installedHostIds(state: ReadonlyMap<string, HostInstallState>): string[] {
   return normalizeIds([...state].filter(([, info]) => info.installed).map(([id]) => id));
 }
@@ -151,14 +139,11 @@ export type SelectionSource = 'flag' | 'prompt' | 'auto' | 'none';
 export interface SelectionResult {
   ids: string[];
   source: SelectionSource;
-  /** Hosts present on the machine that the stored set did not mention. */
+  // Hosts present on the machine that the stored set did not mention.
   addedByDetection: string[];
 }
 
-// An explicit `--agent` wins outright, even for a host not installed: naming
-// one you do not have yet is how you install it. Then a prompt, then the union
-// of saved and detected — a saved choice is a preference, not evidence, so
-// returning it verbatim would skip a host that is present and never ticked.
+// An explicit `--agent` wins outright, even for a host not installed.
 export async function resolveAgentSelection(opts: {
   flag?: readonly string[];
   stored: readonly string[];
@@ -225,7 +210,7 @@ export function detectHosts(home: string, env: NodeJS.ProcessEnv = process.env):
   return found;
 }
 
-/** A host's binary on PATH, or null. Shared with the dashboard. */
+// A host's binary on PATH, or null. Shared with the dashboard.
 export function findHostBinary(host: AgentHost, env: NodeJS.ProcessEnv = process.env): string | null {
   if (process.platform === 'win32') {
     const relocated = host.configDirEnv ? env[host.configDirEnv] : undefined;
@@ -268,10 +253,7 @@ function hasBinary(name: string, env: NodeJS.ProcessEnv): boolean {
   return false;
 }
 
-// Paths an earlier version wrote and this one no longer does. `ours` is
-// removed outright; `merged` is a file the user also owns, so only our marked
-// block comes out and the file survives unless nothing of theirs is left in it.
-// Shared by install and uninstall so the two cannot disagree.
+// Paths an earlier version wrote and this one no longer does. `ours` is removed outright;
 export function clearRetiredPaths(
   host: AgentHost,
   home: string,
@@ -310,7 +292,7 @@ export function clearRetiredPaths(
   return removed;
 }
 
-/** Removes the marked block and the blank line it introduced. Null when nothing is left. */
+// Removes the marked block and the blank line it introduced. Null when nothing is left.
 function removeMarkedBlock(existing: string): string | null {
   const from = existing.indexOf(START);
   const to = existing.indexOf(END);

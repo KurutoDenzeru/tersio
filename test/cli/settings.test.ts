@@ -8,9 +8,7 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const installer = path.join(root, "tersio.js");
 
-// The store is ~/.tersio/settings.json: one tersio-owned file every host
-// reads, so OMP and Pi start from the same choice. The OMP lock file is still
-// read as a fallback, but nothing writes it any more.
+// The store is ~/.tersio/settings.json: one tersio-owned file every host reads, so OMP and Pi start from the same choice.
 function writeLock(home: string, settings: Record<string, unknown>): void {
   const dir = path.join(home, ".tersio");
   mkdirSync(dir, { recursive: true });
@@ -113,8 +111,7 @@ test("settings with flags writes combo preset + overrides", () => {
     expect(saved.cavemanDefault).toBe("ultra");
     expect(saved.rtkDefault).toBe(true);
     expect(saved.ponytailDefault).toBe("lite");
-    // The store is flat and tersio-owned, so the one thing that must survive a
-    // write is anything the file already held that tersio does not own.
+    // The store is flat and tersio-owned, so the one thing that must survive a write is anything the file already held that...
     expect(readLock(home).unrelated, "unrelated keys preserved").toBe("keep me");
   } finally {
     rmSync(home, { recursive: true, force: true });

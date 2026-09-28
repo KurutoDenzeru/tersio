@@ -1,8 +1,4 @@
-// Dashboard data contract. Mirrors cli/usage.ts UsageReport plus the
-// /health and /doctor endpoints served by cli/dashboard.ts. The hook polls
-// data.json every 5s while served and visible, exactly like the original
-// load(); identical payloads skip re-render. Export snapshots ride
-// window.__TERSIO_SNAP so file:// renders without a server.
+// Dashboard data contract. Mirrors cli/usage.ts UsageReport plus the /health and /doctor endpoints served by...
 import { useCallback, useEffect, useRef, useState } from "react";
 import { FX_SNAPSHOT, fxMoney, isCurrencyCode } from "./format";
 import type { TokenBreakdown } from "./format";
@@ -80,25 +76,25 @@ export interface UsageReport {
   paths: { ledger: string; sessions: string; usageDb: string };
 }
 
-/** One supported coding agent, as the installer would wire it. */
+// One supported coding agent, as the installer would wire it.
 export interface AgentHealth {
   id: string;
   label: string;
-  /** In the saved selection, i.e. tersio installs for it. */
+  // In the saved selection, i.e. tersio installs for it.
   selected: boolean;
-  /** Selected and every file it needs is on disk. */
+  // Selected and every file it needs is on disk.
   configured: boolean;
   missing: number;
   present: number;
-  /** Human wiring class, e.g. `hook · auto-rewrite`. */
+  // Human wiring class, e.g. `hook · auto-rewrite`.
   wiring: string;
-  /** Absolute path of the agent's binary on PATH, or null when not installed. */
+  // Absolute path of the agent's binary on PATH, or null when not installed.
   binPath?: string | null;
-  /** `agent --version` output, or null when not installed or it failed. */
+  // `agent --version` output, or null when not installed or it failed.
   version?: string | null;
-  /** The registry's docs URL for this host, or null when it has none. */
+  // The registry's docs URL for this host, or null when it has none.
   source?: string | null;
-  /** `$HOME`-relative config dir, the path to show when there is no binary. */
+  // `$HOME`-relative config dir, the path to show when there is no binary.
   configDir?: string | null;
 }
 
@@ -110,7 +106,7 @@ export interface HealthReport {
   ompPath: string | null;
   provider: string | null;
   rtk: { present: boolean; version: string | null; path: string };
-  /** Absent on an older tersio build, hence optional. */
+  // Absent on an older tersio build, hence optional.
   agents?: AgentHealth[];
   home: string;
 }
@@ -175,8 +171,7 @@ export function useDashboardData(): { data: UsageReport | null; loading: boolean
 
   useEffect(() => {
     if (isFileExport()) return;
-    // Initial load always runs (even in a background tab); the poll below
-    // skips hidden tabs and refreshes instantly on return.
+    // Initial load always runs (even in a background tab); the poll below skips hidden tabs and refreshes instantly on return.
     void load();
     const id = setInterval(() => {
       if (!document.hidden) void load();

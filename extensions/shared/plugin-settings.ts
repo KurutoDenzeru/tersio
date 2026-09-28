@@ -1,11 +1,4 @@
-// Session-start defaults for the Tersio extensions, read from the first file
-// that carries them.
-//
-// ~/.tersio/settings.json is the store: it is tersio-owned, so OMP, Pi, and
-// any future host read the same choice. The OMP lock file is still read as a
-// fallback, so an install made before this file existed keeps its defaults.
-// Tolerant throughout: any parse failure yields {} so every caller falls back
-// to its own default.
+// Session-start defaults for the Tersio extensions, read from the first file that carries them.
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
@@ -33,9 +26,7 @@ function readJsonObject(file: string): Record<string, unknown> {
   } catch { return {}; }
 }
 
-// The tersio-owned store, falling back to OMP's `settings[PLUGIN_NAME]`. The
-// first file that yields any key wins, so a choice made after the store
-// existed is never shadowed by the older lock entry.
+// The tersio-owned store, falling back to OMP's `settings[PLUGIN_NAME]`.
 export function readPluginSettings(): Record<string, unknown> {
   const own = readJsonObject(tersioSettingsFile());
   if (Object.keys(own).length > 0) return own;
@@ -100,7 +91,7 @@ export function saveComboSetup(level: string): boolean {
   return true;
 }
 
-/** Absolute path of the tersio-owned defaults store, for the CLI's plan lines. */
+// Absolute path of the tersio-owned defaults store, for the CLI's plan lines.
 export function tersioSettingsPath(): string {
   return tersioSettingsFile();
 }

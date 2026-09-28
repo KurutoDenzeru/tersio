@@ -1,5 +1,4 @@
-// The Pi extension layer, as the CLI writes it: the layout Pi loads, every
-// module resolving from where it lands, and a removal that takes all of it.
+// The Pi extension layer, as the CLI writes it: the layout Pi loads, every module resolving from where it lands, and a...
 import { expect, test } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
@@ -22,8 +21,7 @@ import {
 const EXT = path.join(path.dirname(new URL(import.meta.url).pathname), "..", "..", "extensions");
 const PI = path.join(EXT, "pi");
 
-// The list cli/install.ts builds, rebuilt from the same layer constants. The
-// install step parses argv on import, so it cannot be imported here.
+// The list cli/install.ts builds, rebuilt from the same layer constants.
 function sources(): Array<[string, string]> {
   const pairs: Array<[string, string]> = [
     [path.join(PI, "shared", "pi-types.ts"), "shared/pi-types.ts"],
@@ -55,9 +53,7 @@ test("the layer puts an entry point in every extension dir and in no module dir"
   delete process.env.PI_CODING_AGENT_DIR;
   try {
     const layer = piLayer(home);
-    // An index.ts in shared/ or lib/ would make Pi load a helper module as an
-    // extension: it registers no command, so the failure reads as "installed
-    // but every command is missing".
+    // An index.ts in shared/ or lib/ would make Pi load a helper module as an extension.
     for (const dir of PI_MODULE_DIRS) {
       expect(layer.installed.some((e) => e.path === path.join(layer.extDir, dir))).toBe(false);
     }
@@ -115,9 +111,7 @@ test("every installed module loads from where it lands, not from the repo", asyn
     await installPiTersio(home, tree(), { quiet: true });
     const extDir = piExtensionDir(home);
     for (const dir of PI_EXTENSION_DIRS) {
-      // Dynamic: the specifier is a runtime path into the installed tree, which
-      // no static import could name. One that resolves in the repo but not here
-      // is the bug this test exists for.
+      // Dynamic: the specifier is a runtime path into the installed tree, which no static import could name.
       const mod = await import(path.join(extDir, dir, "index.ts"));
       expect(typeof mod.default, `${dir} must default-export a factory`).toBe("function");
     }

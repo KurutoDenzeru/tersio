@@ -1,9 +1,4 @@
 // extensions/shared/pricing.ts — dynamic model pricing from LiteLLM.
-// Lookup order: exact id in the live cache → provider-prefix strip → default.
-// The cache is the full LiteLLM feed (3k+ ids), refreshed lazily in background
-// and on `tersio update`; every reader is sync and offline-safe. No static
-// per-model table — list prices rot, the feed does not. Unknown models report
-// the default with known:false so the dashboard labels them honestly.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -20,8 +15,7 @@ export interface ModelPrice {
 export const DEFAULT_PRICE: ModelPrice = { input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2.5 };
 
 const LITELLM_URL = 'https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json';
-// Live cache refreshes lazily: readers use the file even when stale, and only
-// one refresh runs per process. `tersio update` still forces a fresh fetch.
+// Live cache refreshes lazily: readers use the file even when stale, and only one refresh runs per process.
 const CACHE_TTL_MS = 7 * 24 * 3600 * 1000;
 let refreshInflight: Promise<boolean> | null = null;
 
@@ -37,8 +31,7 @@ export function pricesUrl(): string {
 
 export interface LivePrices {
   fetchedAt: number;
-  // Compact tuples [input, output, cacheRead, cacheWrite] per LiteLLM id —
-  // the full feed caches to ~1MB instead of multi-MB objects.
+  // Compact tuples [input, output, cacheRead, cacheWrite] per LiteLLM id — the full feed caches to ~1MB instead of multi-MB...
   exact: Record<string, [number, number, number, number]>;
   deprecated?: string[];
 }
@@ -47,8 +40,7 @@ function toPrice(t: [number, number, number, number]): ModelPrice {
   return { input: t[0], output: t[1], cacheRead: t[2], cacheWrite: t[3] };
 }
 
-// Tolerate both cache shapes: compact tuples (new) and ModelPrice objects
-// (written by older refreshes) — a version bump never orphans the cache.
+// Tolerate both cache shapes: compact tuples (new) and ModelPrice objects (written by older refreshes) — a version bump...
 function asPrice(v: unknown): ModelPrice | null {
   if (Array.isArray(v) && v.length === 4 && v.every((n) => typeof n === 'number' && Number.isFinite(n) && n >= 0)) {
     return toPrice(v as [number, number, number, number]);
@@ -56,8 +48,7 @@ function asPrice(v: unknown): ModelPrice | null {
   if (v && typeof v === 'object') {
     const o = v as Record<string, unknown>;
     if (['input', 'output', 'cacheRead', 'cacheWrite'].every((k) => typeof o[k] === 'number' && Number.isFinite(o[k]) && (o[k] as number) >= 0)) {
-      // SAFETY: the guard above proves all four ModelPrice keys are present and
-      // are finite non-negative numbers, which is the whole shape of ModelPrice.
+      // SAFETY: the guard above proves all four ModelPrice keys are present and are finite non-negative numbers, which is the...
       return o as unknown as ModelPrice;
     }
   }
@@ -92,12 +83,7 @@ function num(v: unknown): number | null {
   return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null;
 }
 
-/**
- * Host-reported model ids mapped to the id the price table keys them under. The
- * alias decides the lookup only; the recorded model keeps its own suffix, so a
- * tier stays its own row and its own cost. Tier spellings come first, because a
- * lightning variant is priced as itself.
- */
+// Host-reported model ids mapped to the id the price table keys them under. The alias decides the lookup only;
 const MODEL_ALIASES: Array<[RegExp, string]> = [
   [/^swe-1[.-]?7[-.]?lightning/i, 'cognition/swe-1.7-lightning'],
   [/^swe-1[.-]?6/i, 'cognition/swe-1.6'],
@@ -109,15 +95,12 @@ export function priceFor(model: string, live?: LivePrices | null): { price: Mode
   if (table) {
     const hit = asPrice(table.exact[model] ?? table.exact[model.toLowerCase()]);
     if (hit) return { price: hit, known: true, live: true };
-    // Provider-prefixed ids ("azure/gpt-4o", "dashscope/qwen-max"): match the
-    // first cached id that ends with the bare model name.
+    // Provider-prefixed ids like azure/gpt-4o.
     const name = model.toLowerCase();
     const key = Object.keys(table.exact).find((k) => k.toLowerCase() === name || k.toLowerCase().endsWith(`/${name}`));
     const prefixed = key ? asPrice(table.exact[key]) : null;
     if (prefixed) return { price: prefixed, known: true, live: true };
-    // Cognition's SWE family: hosts report `swe-1-6-slow` and the table keys
-    // it `cognition/swe-1.6`, so without this every SWE row priced at the
-    // default — 4x the input rate on the family that shipped it.
+    // Cognition's SWE family: hosts report `swe-1-6-slow` and the table keys it `cognition/swe-1.6`, so without this every...
     const alias = MODEL_ALIASES.find(([re]) => re.test(name))?.[1];
     if (alias) {
       const aliased = asPrice(table.exact[alias]);
@@ -126,9 +109,7 @@ export function priceFor(model: string, live?: LivePrices | null): { price: Mode
   }
   return { price: DEFAULT_PRICE, known: false, live: false };
 }
-// Fetch LiteLLM pricing, keep every id with valid input/output rates, write
-// the cache. False on any failure (offline, timeout, shape change) — callers
-// fall back silently.
+// Fetch LiteLLM pricing, keep every id with valid input/output rates, write the cache.
 export async function refreshPrices(): Promise<boolean> {
   if (refreshInflight) return refreshInflight;
   refreshInflight = (async () => {
@@ -182,8 +163,7 @@ export async function refreshPrices(): Promise<boolean> {
   }
 }
 
-// Fire-and-forget refresh when the cache is stale or missing. Readers keep
-// using the stale file (or the built-in table) — pricing never blocks.
+// Fire-and-forget refresh when the cache is stale or missing.
 export function refreshPricesIfStale(): void {
   const live = loadLivePrices();
   if (live && Date.now() - live.fetchedAt <= CACHE_TTL_MS) return;

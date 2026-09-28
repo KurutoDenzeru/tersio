@@ -1,8 +1,4 @@
 // /tersio root command — status, check, update, dashboard, usage, help.
-// Mode switches live on their own commands (/caveman, /rtk, /combo, and the
-// upstream /ponytail): the router keeps no redundant copies. Shared-state
-// publishes sync sibling mirrors live, so switches notify and take effect
-// next turn — no reload.
 import {
   getSharedComboState,
   reconcileSharedComboEntries,
@@ -56,7 +52,6 @@ async function openDashboard(pi: ExtensionApi, ctx?: ExtensionCtx): Promise<void
 export default function tersioCommandsExtension(pi: ExtensionApi): void {
   pi.setLabel?.('Tersio unified root command');
 
-
   pi.registerCommand?.('tersio', {
     description: 'Tersio root: status|check|update|dashboard|usage|help',
     handler: async (args, ctx) => {
@@ -95,8 +90,7 @@ export default function tersioCommandsExtension(pi: ExtensionApi): void {
         ctx?.ui?.notify?.(usageSummary(), 'info');
         return;
       }
-      // Removed mode switches redirect to their own commands so only one
-      // spelling exists to learn: /caveman, /rtk, /combo, /ponytail.
+      // Removed mode switches redirect to their own commands, so one spelling is all to learn.
       if (sub === 'caveman' || sub === 'rtk' || sub === 'combo' || sub === 'ponytail') {
         ctx?.ui?.notify?.(`Use /${sub} instead — /tersio no longer duplicates mode switches.\n${HELP}`, 'warning');
         return;

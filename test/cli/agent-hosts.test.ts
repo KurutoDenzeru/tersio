@@ -1,10 +1,7 @@
 import { expect, test } from "vitest";
 import { HOSTS, byId, REWRITE_WIRING } from "../../cli/agent-hosts.ts";
 
-// The registry is the single source of truth for the two supported hosts, so
-// most of these are invariant checks: they fail when someone adds a host with a
-// half-filled entry, which is cheaper to catch here than in a user's home
-// directory.
+// Invariant checks: a half-filled registry entry fails here, not in a user's home directory.
 
 test("every host id is unique and kebab-case", () => {
   const ids = HOSTS.map((h) => h.id);
@@ -41,8 +38,7 @@ test("the registry holds exactly the two Pi-family hosts", () => {
 });
 
 test("the removed hosts are out of the registry", () => {
-  // Re-adding one is a deliberate decision about a host's own docs, not a
-  // side effect of picking a new one up.
+  // Re-adding one is a deliberate decision about a host's own docs, not a side effect of picking a new one up.
   for (const id of ["claude-code", "codex", "opencode", "gemini-cli", "cursor", "agy"]) {
     expect(byId(id), `${id} is back in the registry`).toBeUndefined();
   }

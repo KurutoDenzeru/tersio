@@ -1,6 +1,4 @@
-// Formatting, currency, vendor, and zone helpers shared by Dashboard views.
-// numbers: magnitude-aware money decimals, static FX snapshot with live
-// frankfurter refresh, folded-key display names, provider registry.
+// Formatting, currency, vendor and zone helpers shared by the dashboard views.
 
 export interface TokenBreakdown {
   input: number;
@@ -69,9 +67,7 @@ export function isCurrencyCode(code: string): boolean {
   return Object.hasOwn(CURS, code);
 }
 
-// Magnitude-aware decimals. Model prices keep falling, so a flat 2dp rounds
-// real spend down to "$0.00"; small amounts keep enough digits to stay
-// readable (0.000187, not 0). Larger amounts use the currency's own scale.
+// Magnitude-aware decimals. Model prices keep falling, so a flat 2dp rounds real spend down to "$0.00";
 export function moneyDecimals(v: number, base: number): number {
   const a = Math.abs(v);
   if (a >= 0.1 || a === 0) return base;
@@ -103,9 +99,7 @@ export function topModels(byModel: Record<string, TokenBreakdown>, n: number): s
     .slice(0, n);
 }
 
-// Display form for folded keys: namespace stays lowercase, model segments
-// title-case with version dots kept (`deepseek-v4.1-flash` →
-// `Deepseek-V4.1-Flash`). Keys arrive folded, so this prettifies only.
+// Display form for folded keys: namespace stays lowercase, model segments title-case with version dots kept...
 export function displayModel(m: string): string {
   const bare = String(m).replace(/(?::free|-free)$/i, "");
   function cap(s: string): string {
@@ -156,14 +150,9 @@ const PROVIDERS: Array<[RegExp, string, string, string]> = [
   [/mistral/i, "Mistral", "mistralai", "#ff7000"],
   [/claude|anthropic/i, "Anthropic", "anthropic", "#d97757"],
   [/gemini|google|gemma/i, "Google", "google", "#4285F4"],
-  // Simple Icons slug: the X mark, which is also xAI's. Inline in brand.tsx
-  // rather than loaded from the CDN, because the img is themed (black in
-  // light, white in dark) and would vanish on a tile in one of them.
+  // Simple Icons slug: the X mark, which is also xAI's.
   [/grok|xai/i, "xAI", "x", "#fff"],
-  // Cognition's SWE models. Hosts report them under provider-local ids
-  // (`swe-1-6-slow`), and the slug is the Devin mark, which devin.ai serves as
-  // a vector. Simple Icons has neither Cognition nor Devin, so brand.tsx inlines
-  // it alongside OpenAI's and X's.
+  // Cognition's SWE models. Hosts report them under provider-local ids (`swe-1-6-slow`), and the slug is the Devin mark...
   [/swe-|cognition/i, "Cognition", "devin", "#fff"],
 ];
 
@@ -219,9 +208,6 @@ export function statusColor(st: string): string {
 }
 
 // Cost precedence. A recorded charge > 0 is authoritative and shown bare.
-// A recording of exactly 0 usually means a free/local provider and would
-// blank the column, so those fall back to the modeled figure carrying the
-// dashboard's usual "~" estimate marker.
 export function costIsMeasured(r: { usd?: number }): boolean {
   return typeof r.usd === "number" && r.usd > 0;
 }
@@ -246,9 +232,7 @@ export function stampLocal(ts: number): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
-// Per-request generation time + output throughput from the message-level
-// `duration` (ms). Missing → '–'. Throughput uses output tokens since that
-// is what streams to the user during the measured window.
+// Per-request generation time + output throughput from the message-level `duration` (ms). Missing → '–'.
 export function fmtDur(ms: number | undefined): string {
   if (ms === undefined) return "–";
   const s = ms / 1000;

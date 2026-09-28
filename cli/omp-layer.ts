@@ -1,7 +1,4 @@
-// The Oh My Pi layer as data: the extension directories, the RTK wiring and the
-// Ponytail package, named in one place because the install preview and the
-// uninstall removal must agree on them. `home` is passed in and cli/common.ts is
-// never imported, so a test can point this at a throwaway directory.
+// The Oh My Pi layer as data: the extension directories, the RTK wiring and the Ponytail package, named in one place...
 import path from 'node:path';
 import { layerEntries, reportLayer, type LayerEntry } from './layer.ts';
 
@@ -11,9 +8,9 @@ export interface OmpLayer {
   extDir: string;
   configFile: string;
   pluginsDir: string;
-  /** The bundled Ponytail package directory. */
+  // The bundled Ponytail package directory.
   ponytailPackage: string;
-  /** The rtk binary plus the OMP extension rtk's own init writes. */
+  // The rtk binary plus the OMP extension rtk's own init writes.
   rtkBinary: string;
   rtkExtension: string;
   installed: LayerEntry[];
@@ -32,13 +29,11 @@ const INSTALLED_EXTENSIONS = [
 ] as const;
 
 const RETIRED_EXTENSIONS = [
-  // Legacy always-on combo helper; imports shared/session-state.js, so it
-  // breaks with a module-not-found warning once the shared dir is removed.
+  // Legacy always-on combo helper; imports shared/session-state.js, so it breaks with a module-not-found warning once the...
   ['aaa-combo-boot', 'retired combo boot helper'],
 ] as const;
 
-
-/** `rtkBinaryName` is passed in because it is platform-dependent and already resolved by the caller. */
+// `rtkBinaryName` is passed in because it is platform-dependent and already resolved by the caller.
 export function ompLayer(home: string, rtkBinaryName: string): OmpLayer {
   const agentDir = path.join(home, '.omp', 'agent');
   const extDir = path.join(agentDir, 'extensions');
@@ -55,20 +50,20 @@ export function ompLayer(home: string, rtkBinaryName: string): OmpLayer {
   };
 }
 
-/** Every extension directory the layer owns, installed and retired together. */
+// Every extension directory the layer owns, installed and retired together.
 export function ompExtensionTargets(layer: OmpLayer): string[] {
   return [...layer.installed, ...layer.retired].map((entry) => entry.path);
 }
 
-/** How much of the layer is on disk, counted from the list above. */
+// How much of the layer is on disk, counted from the list above.
 export interface OmpLayerReport {
-  /** The installed tersio plugin directory, or null when it is not installed. */
+  // The installed tersio plugin directory, or null when it is not installed.
   pluginPath: string | null;
-  /** Extension directories found on disk. */
+  // Extension directories found on disk.
   extensions: LayerEntry[];
-  /** Directories listed by the layer but absent from disk. */
+  // Directories listed by the layer but absent from disk.
   missing: LayerEntry[];
-  /** False when the plugin itself is absent, so the row has nothing to say. */
+  // False when the plugin itself is absent, so the row has nothing to say.
   installed: boolean;
 }
 
