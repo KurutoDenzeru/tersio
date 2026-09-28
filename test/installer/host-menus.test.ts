@@ -36,25 +36,25 @@ function run(home: string, args: string[]): { status: number | null; stdout: str
 }
 
 test("the label shows the installed version, or that nothing is there", () => {
-  const base: HostEntry = { id: "omp", label: "Oh My Pi", bin: "omp", installCmd: "omp plugin install @krtclcdy/tersio", removeCmd: "x", installed: false, version: null, dir: null };
+  const base: HostEntry = { id: "omp", label: "Oh My Pi", bin: "omp", installCmd: "omp plugin install @krtclcdy/tersio", removeCmd: "x", installed: false, via: null, declared: null, version: null, dir: null };
   expect(hostLabel({ ...base, installed: true, version: "2.23.0" })).toBe("Oh My Pi (installed 2.23.0)");
   expect(hostLabel({ ...base, installed: true, version: null })).toBe("Oh My Pi (installed)");
   expect(hostLabel(base)).toBe("Oh My Pi (not installed)");
+  expect(hostLabel({ ...base, declared: "npm:@krtclcdy/tersio" })).toBe("Oh My Pi (package declared, not on disk)");
 });
 
 test("detectHosts reports the pi install under its own agent dir", () => {
   const home = tempHome();
-  const previous = process.env.PI_CODING_AGENT_DIR;
   try {
     seedPiPackage(home, "9.9.9");
-    process.env.PI_CODING_AGENT_DIR = path.join(home, ".pi", "agent");
-    const pi = detectHosts().find((h) => h.id === "pi") as HostEntry;
+    // Pass the agent dir rather than setting PI_CODING_AGENT_DIR: that override
+    // only applies alongside PI_CODING_AGENT, which CI does not set.
+    const agentDir = path.join(home, ".pi", "agent");
+    const pi = detectHosts(agentDir).find((h) => h.id === "pi") as HostEntry;
     expect(pi.installed).toBe(true);
     expect(pi.version).toBe("9.9.9");
     expect(pi.installCmd).toBe("pi install npm:@krtclcdy/tersio");
   } finally {
-    if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR;
-    else process.env.PI_CODING_AGENT_DIR = previous;
     rmSync(home, { recursive: true, force: true });
   }
 });
