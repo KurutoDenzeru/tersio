@@ -25,7 +25,7 @@ import {
   writeSelection,
 } from "../../cli/agents.ts";
 import { HOOK_MARKER, planHost } from "../../cli/host-writers.ts";
-import { START } from "../../cli/rules-pack.ts";
+import { END, START } from "../../cli/rules-pack.ts";
 
 function tempHome(): { home: string; cleanup: () => void } {
   const home = mkdtempSync(path.join(os.tmpdir(), "tersio-agents-"));
@@ -150,12 +150,13 @@ test("installedState reads the disk, not the saved selection", () => {
     writeFileSync(path.join(home, ".tersio", "agents.json"),
       JSON.stringify({ hosts: ["opencode", "claude-code", "codex", "pi"], updatedAt: 0 }), "utf8");
 
-    const piSkill = path.join(home, ".pi", "agent", "skills", "tersio-caveman");
-    mkdirSync(piSkill, { recursive: true });
-    writeFileSync(path.join(piSkill, "SKILL.md"), "x", "utf8");
+    const piExt = path.join(home, ".pi", "agent", "extensions", "caveman-session");
+    mkdirSync(piExt, { recursive: true });
+    writeFileSync(path.join(piExt, "index.ts"), "export default {};\n", "utf8");
 
     const state = installedState(home);
-    expect(state.get("pi")!.files, "a file on disk is installed regardless of the saved list").toBe(1);
+    // pi writes no static file, so its presence is the extension tree.
+    expect(state.get("pi")!.dirs, "a layer on disk is installed regardless of the saved list").toBe(1);
     expect(state.get("pi")!.installed).toBe(true);
     for (const ghost of ["opencode", "claude-code", "codex"]) {
       expect(state.get(ghost)!.files, `${ghost} is named in the saved list but has no files`).toBe(0);
@@ -342,17 +343,18 @@ test("detection ignores a relocation env var pointing somewhere empty", () => {
 
 // --- applying --------------------------------------------------------------
 
-test("applying a static-hook host writes its rules, skills, and hook", async () => {
+test("applying a static-hook host writes its skills and hook, and no rules file", async () => {
   const { home, cleanup } = tempHome();
   try {
     const host = byId("claude-code")!;
     const result = await applyHost(host, home);
     expect(result.written.length).toBeGreaterThan(0);
     for (const p of result.written) expect(existsSync(p), `${p} was not written`).toBe(true);
-    expect(existsSync(path.join(home, ".claude", "CLAUDE.md"))).toBe(true);
     expect(existsSync(path.join(home, ".claude", "skills", "tersio-caveman", "SKILL.md"))).toBe(true);
     expect(existsSync(path.join(home, ".claude", "settings.json"))).toBe(true);
     expect(existsSync(path.join(home, ".claude", "tersio-rtk-rewrite.mjs"))).toBe(true);
+    // No host writes a rules file any more: it is merged into one the user owns.
+    expect(existsSync(path.join(home, ".claude", "CLAUDE.md")), "wrote a rules file").toBe(false);
   } finally {
     cleanup();
   }
@@ -371,7 +373,7 @@ test("applying twice changes nothing the second time", async () => {
   }
 });
 
-test("applying preserves the user's own instructions and hooks", async () => {
+test("applying leaves the user's own instructions and hooks untouched", async () => {
   const { home, cleanup } = tempHome();
   try {
     const host = byId("claude-code")!;
@@ -380,9 +382,9 @@ test("applying preserves the user's own instructions and hooks", async () => {
       hooks: { PreToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command: "echo mine" }] }] },
     }));
     await applyHost(host, home);
-    const md = read(home, ".claude/CLAUDE.md");
-    expect(md).toContain("Never touch main.");
-    expect(md).toContain(START);
+    // Both are the user's. The rules file is no longer ours to edit, and our
+    // own hook sits beside theirs rather than replacing it.
+    expect(read(home, ".claude/CLAUDE.md")).toBe("# My rules\n\nNever touch main.\n");
     const settings = JSON.parse(read(home, ".claude/settings.json")) as Record<string, any>;
     expect(JSON.stringify(settings)).toContain("echo mine");
     expect(settings.hooks.PreToolUse).toHaveLength(2);
@@ -404,17 +406,68 @@ test("a dry run reports the plan and writes nothing", async () => {
   }
 });
 
-test("a live-extension host gets its rules and skills but no hook file", async () => {
+test("a retired AGENTS.md only loses our block, never the user's own rules", async () => {
+  // The file is `merged`: an AGENTS.md at a live host's agent dir is the user's,
+  // and it only happened to carry our block because we wrote one once. Removal
+  // must strip the block and leave the rest, or `uninstall --agent omp` deletes
+  // someone's global instructions.
   const { home, cleanup } = tempHome();
   try {
-    // pi's rewrite is rtk's own extension, so tersio writes no hook for it.
+    const target = path.join(home, ".omp/agent/AGENTS.md");
+    mkdirSync(path.dirname(target), { recursive: true });
+    const mine = "# My rules\n\nSpeak plainly.\n";
+    writeFileSync(target, `${mine}<!-- tersio:start -->\nstale\n<!-- tersio:end -->\n`, "utf8");
+
+    await removeHost(byId("omp")!, home);
+    expect(existsSync(target), "a user's own rules were deleted").toBe(true);
+    expect(readFileSync(target, "utf8")).toContain("Speak plainly.");
+    expect(readFileSync(target, "utf8")).not.toContain("tersio:start");
+  } finally {
+    cleanup();
+  }
+});
+
+test("a live-extension host ships no rules file, no skills and no hook", async () => {
+  const { home, cleanup } = tempHome();
+  try {
+    // pi's modes arrive from the extension tree, which embeds the prose and
+    // injects it every turn. A rules file would duplicate that and outlive
+    // `/combo off`; a skill is a second copy of text already being injected.
+    // Its rewrite is rtk's own extension, so tersio writes no hook either.
     const host = byId("pi")!;
     await applyHost(host, home);
-    expect(existsSync(path.join(home, ".pi", "agent", "AGENTS.md"))).toBe(true);
-    expect(existsSync(path.join(home, ".pi", "agent", "skills", "tersio-rtk", "SKILL.md"))).toBe(true);
-    expect(read(home, ".pi/agent/AGENTS.md")).toContain("filters output before the model reads it");
+    expect(existsSync(path.join(home, ".pi", "agent", "AGENTS.md"))).toBe(false);
+    expect(existsSync(path.join(home, ".pi", "agent", "skills", "tersio-rtk"))).toBe(false);
     expect(existsSync(path.join(home, ".pi", "agent", "hooks.json"))).toBe(false);
     expect(existsSync(path.join(home, ".pi", "agent", "tersio-rtk-rewrite.mjs"))).toBe(false);
+  } finally {
+    cleanup();
+  }
+});
+
+test("install clears the skills and rules file an earlier version wrote", async () => {
+  // The planner can no longer see these, so nothing else would: they are listed
+  // as retired precisely because install and uninstall both have to clear them.
+  const { home, cleanup } = tempHome();
+  try {
+    const host = byId("pi")!;
+    for (const entry of host.retired!) {
+      const target = path.join(home, entry.path);
+      if (entry.kind === "merged") {
+        mkdirSync(path.dirname(target), { recursive: true });
+        writeFileSync(target, "<!-- tersio:start -->\nstale rules\n<!-- tersio:end -->\n", "utf8");
+      } else {
+        mkdirSync(target, { recursive: true });
+        writeFileSync(path.join(target, "SKILL.md"), "stale\n", "utf8");
+      }
+    }
+    const result = await removeHost(host, home);
+    for (const entry of host.retired!) {
+      if (entry.kind === "ours") {
+        expect(existsSync(path.join(home, entry.path)), `${entry.path} survived removal`).toBe(false);
+      }
+    }
+    expect(result.removed.length).toBeGreaterThan(0);
   } finally {
     cleanup();
   }
@@ -449,14 +502,15 @@ test("removal strips our block but keeps the user's own instructions", async () 
   }
 });
 
-test("a file that held nothing but our block is removed entirely", async () => {
+test("a retired rules file holding only our block is removed entirely", async () => {
+  // claude-code no longer writes CLAUDE.md, so an older install's file is
+  // reached through the retired path rather than as a planned artifact. A file
+  // that held nothing but our block goes; one with the user's own text stays.
   const { home, cleanup } = tempHome();
   try {
-    const host = byId("claude-code")!;
-    await applyHost(host, home);
-    expect(existsSync(path.join(home, ".claude", "CLAUDE.md"))).toBe(true);
-    await removeHost(host, home);
-    expect(existsSync(path.join(home, ".claude", "CLAUDE.md")), "left an empty file behind").toBe(false);
+    write(home, ".claude/CLAUDE.md", `${START}\r\n${END}\n`);
+    await removeHost(byId("claude-code")!, home);
+    expect(existsSync(path.join(home, ".claude", "CLAUDE.md")), "a block-only file was kept").toBe(false);
   } finally {
     cleanup();
   }
@@ -606,7 +660,10 @@ test("a fully installed host reports healthy, with no repair pending", () => {
 test("a healthy row is quiet about repair and names the rewrite path", () => {
   const { home, cleanup } = tempHome();
   try {
-    expect(reportHost(byId("pi")!, home)).toMatchObject({ status: "warn", repair: "install" });
+    // pi has no file artifacts of its own — its modes arrive from the extension
+    // tree — so an empty home is not a "missing files" warn. The layer row is
+    // what reports whether its install is actually there.
+    expect(reportHost(byId("pi")!, home)).toMatchObject({ status: "live", repair: null });
   } finally {
     cleanup();
   }
@@ -619,8 +676,11 @@ test("doctor reports one row per selected host", () => {
     expect(rows.map((r) => r.host.id)).toEqual(["claude-code", "pi"]);
     for (const row of rows) {
       expect(row.detail.length).toBeGreaterThan(0);
-      expect(row.missing.length).toBeGreaterThan(0);
     }
+    // Only a host that owns files can be missing any on an empty home; pi and
+    // omp have none to miss.
+    expect(rows.find((r) => r.host.id === "claude-code")!.missing.length).toBeGreaterThan(0);
+    expect(rows.find((r) => r.host.id === "pi")!.missing).toEqual([]);
   } finally {
     cleanup();
   }
@@ -648,7 +708,7 @@ test("the install plan names every file a host needs, and marks it new", async (
   try {
     const plan = await planInstall(["claude-code"], home);
     expect(plan.selected.map((h) => h.id)).toEqual(["claude-code"]);
-    expect(plan.newFiles).toBe(6);
+    expect(plan.newFiles).toBe(5);
     expect(plan.unchanged).toBe(0);
     expect(plan.hosts[0].wiring).toMatch(/hook/);
     // The plan and the apply must name the same files, or the preview lies.
@@ -667,7 +727,7 @@ test("the install plan reports a file already on disk as in place, not new", asy
     await applyHost(byId("claude-code")!, home);
     const plan = await planInstall(["claude-code"], home);
     expect(plan.newFiles).toBe(0);
-    expect(plan.unchanged).toBe(6);
+    expect(plan.unchanged).toBe(5);
     for (const line of plan.hosts[0].lines) expect(line.new).toBe(false);
   } finally {
     cleanup();
@@ -680,9 +740,10 @@ test("the install plan covers only the selected hosts", async () => {
     await applyHosts(["claude-code", "pi"], home);
     const plan = await planInstall(["pi"], home);
     expect(plan.selected.map((h) => h.id)).toEqual(["pi"]);
-    // pi's rewrite is an rtk-owned extension, so it has skills and rules only.
-    expect(plan.hosts[0].lines.length).toBe(4);
-    for (const line of plan.hosts[0].lines) expect(line.path.startsWith(path.join(home, ".pi"))).toBe(true);
+    // pi writes no static file at all: its rules come from the extension tree,
+    // its skills would be a second copy of that prose, and its rewrite is an
+    // rtk-owned extension. The layer steps install the tree separately.
+    expect(plan.hosts[0].lines).toEqual([]);
   } finally {
     cleanup();
   }
@@ -696,7 +757,7 @@ test("the removal plan lists only files on disk and drops an untouched host", as
     // appear in the plan at all.
     const plan = planRemove(["claude-code", "pi"], home);
     expect(plan.hosts.map((h) => h.host.id)).toEqual(["claude-code"]);
-    expect(plan.files).toBe(6);
+    expect(plan.files).toBe(5);
     for (const line of plan.hosts[0].lines) expect(existsSync(line.path)).toBe(true);
   } finally {
     cleanup();
@@ -710,7 +771,7 @@ test("the removal plan shrinks as files are removed, and never overstates", asyn
     const before = planRemove(["claude-code"], home).files;
     await removeHost(byId("claude-code")!, home);
     const after = planRemove(["claude-code"], home);
-    expect(before).toBe(6);
+    expect(before).toBe(5);
     // Removal keeps the user's own settings.json, emptied to `{}`. That file
     // is not a tersio artifact any more, so the host drops out entirely rather
     // than lingering in the menu as a host with one file left to remove.
@@ -756,7 +817,7 @@ test("a rules file still holding our block does read as installed", async () => 
     await applyHost(host, home);
     const state = installedState(home);
     expect(state.get("codex")?.installed).toBe(true);
-    expect(planRemove(["codex"], home).files).toBe(6);
+    expect(planRemove(["codex"], home).files).toBe(5);
     expect(reportHost(host, home).status).toBe("ok");
   } finally {
     cleanup();

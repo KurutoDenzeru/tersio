@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import path from "node:path";
-import { HOSTS, byId, hasStaticHook, isGuidanceOnly, isLiveExtension, isOwnPath, hostPath } from "../../cli/agent-hosts.ts";
+import { HOSTS, byId, hasStaticHook, isGuidanceOnly, isLiveExtension, hostPath } from "../../cli/agent-hosts.ts";
 
 // The registry is the single source of truth for nine hosts, so most of these
 // are invariant checks: they fail when someone adds a host with a half-filled
@@ -27,30 +27,31 @@ test("every host is fully populated", () => {
   }
 });
 
-// Hosts with no global skills location, so the generic emitters write none for
-// them. omp is own-path (its plugin owns its skills); opencode documents skills
-// only at project scope (`.opencode/skills/`), with no global directory.
-const NO_GENERIC_SKILLS = new Set(["omp", "opencode"]);
-
 test("rules and skills flags agree with the paths they claim", () => {
   for (const host of HOSTS) {
-    // An own-path host (omp) legitimately leaves both null: a wiring module
-    // writes its instruction file and skills. Anywhere else, a null path
-    // beside a true flag is a half-filled entry.
-    const own = isOwnPath(host);
-    if (own) {
-      expect(host.rulesFile, `${host.id} is own-path but names a rulesFile`).toBeNull();
-      expect(host.skillsDir, `${host.id} is own-path but names a skillsDir`).toBeNull();
-    }
-    if (host.rules && !own) {
+    // A flag and the path it names have to agree in both directions: a true
+    // flag with no path is a half-filled entry, and a path with no flag is one
+    // nothing will ever write.
+    if (host.rules) {
       expect(host.rulesFile, `${host.id} claims rules but has no rulesFile`).toBeTruthy();
-    } else if (!host.rules) {
+    } else {
       expect(host.rulesFile, `${host.id} has no rules but names a rulesFile`).toBeNull();
     }
-    if (host.skills && !own && !NO_GENERIC_SKILLS.has(host.id)) {
+    if (host.skills) {
       expect(host.skillsDir, `${host.id} claims skills but has no skillsDir`).toBeTruthy();
-    } else if (!host.skills) {
+    } else {
       expect(host.skillsDir, `${host.id} has no skills but names a skillsDir`).toBeNull();
+    }
+    // The two hosts whose extension tree injects the rules on every turn must
+    // not also write a static copy. The copy is always-on, so it would outlive
+    // `/combo off` and leave the mode on with no way to turn it off; it would
+    // duplicate the injection; and it would land inside whatever global
+    // instructions the user keeps in that file. `wiring` is the marker for those
+    // hosts — omp and pi. OpenCode is not one: its plugin only rewrites shell
+    // commands, nothing injects its rules, so a rules file is its delivery.
+    if (host.rewriteOwner === 'wiring') {
+      expect(host.rules, `${host.id} injects its rules and must not also write one`).toBe(false);
+      expect(host.rulesFile, `${host.id} injects its rules and must not name a rulesFile`).toBeNull();
     }
     for (const p of [host.rulesFile, host.skillsDir]) {
       if (p) expect(p, `${host.id} path must be $HOME-relative`).toMatch(/^\.[^/]/);
@@ -88,7 +89,11 @@ test("opencode ships its own plugin, because rtk's is a pre-v2 shape", () => {
   expect(opencode?.rewriteOwner).toBe("plugin");
   expect(isLiveExtension(opencode!)).toBe(true);
   // V2 reads a global AGENTS.md from the config dir.
-  expect(opencode?.rulesFile).toBe(".config/opencode/AGENTS.md");
+  // No rules file: the plugin injects the modes itself, so a static one would
+  // outlive `/combo off`. The skills stay, because the plugin's only per-turn
+  // delivery is `autoinvoke` on them.
+  expect(opencode?.rulesFile).toBeNull();
+  expect(opencode?.skillsDir).toBe(".config/opencode/skills");
   expect(opencode?.caveats).toMatch(/rtk-ai\/rtk#3463/);
 });
 

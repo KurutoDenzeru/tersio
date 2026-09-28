@@ -7,11 +7,19 @@
 //
 // Deliberately free of cli/common.ts imports (argv side effects) so tests can
 // load it directly. `home` is passed in rather than read from the environment.
-import { promises as fs } from 'node:fs';
+import { existsSync, promises as fs } from 'node:fs';
 import path from 'node:path';
 import { readTextIfExists } from '../extensions/lib/utils.ts';
 
-const PLUGIN_FILE = 'tersio-rtk.ts';
+// Named for the package, not for one mode: the plugin carries the RTK shell
+// rewrite and the /caveman, /rtk, /ponytail and /combo commands, so a file
+// called tersio-rtk.ts described a quarter of it. OpenCode identifies a plugin by
+// its `id` and loads every .ts file in this directory, which is why the old name
+// has to be removed rather than left behind — two files would both register the
+// same four commands.
+const PLUGIN_FILE = 'tersio.ts';
+/** Written by earlier releases, when the plugin carried only the rewrite. */
+const PREVIOUS_PLUGIN_FILE = 'tersio-rtk.ts';
 
 export interface OpenCodeWiringOptions {
   dryRun?: boolean;
@@ -75,7 +83,18 @@ export async function installOpenCodeRtk(
     }
     return false;
   }
-  return writeFile(openCodePluginPath(home), content, options);
+  const wrote = await writeFile(openCodePluginPath(home), content, options);
+  // OpenCode discovers every .ts file in the plugins dir, so a leftover from the
+  // old filename would load next to the new one and register the same commands
+  // twice. Clearing it is part of installing, not a migration the user runs.
+  if (!options.dryRun) {
+    const stale = path.join(openCodeConfigDir(home), 'plugins', PREVIOUS_PLUGIN_FILE);
+    if (existsSync(stale) && stale !== openCodePluginPath(home)) {
+      await fs.rm(stale, { force: true });
+      if (!options.quiet) console.log(`  [rm] ${stale} (superseded by ${PLUGIN_FILE})`);
+    }
+  }
+  return wrote;
 }
 
 /**

@@ -6,15 +6,17 @@ import path from 'node:path';
 import { cancel as clackCancel } from '@clack/prompts';
 import {
   PACKAGE_NAME, RTK_BINARY_NAME,
-  agentFlag, dryRun, keepOmpLayer, keepPonytail, removePonytail, removeRtk, yes,
+  agentFlag, dryRun, keepOmpLayer, keepPonytail, removePonytail, removeRtk, verbose, yes,
   debug, writeConfigLines,
 } from './common.ts';
 import { ask, askInteractiveChoice, askInteractiveConfirm, closeRL, tty } from './interactive.ts';
 import { readTextIfExists } from '../extensions/lib/utils.ts';
 import {
-  displayPath, installedHostIds, installedRows, installedState, type RemovalLine,
+  displayPath, groupByLabel, installedHostIds, installedRows, installedState, pluralArtifactLabel,
   planRemove, readSelection, removeHosts, resolveAgentSelection, writeSelection,
+  type RemovalLine,
 } from './agents.ts';
+import { byId } from './agent-hosts.ts';
 import { ompExtensionTargets, ompLayer } from './omp-layer.ts';
 import { piExtensionTargets, piLayer } from './pi-layer.ts';
 import { removeOpenCodeRtk } from './opencode-wiring.ts';
@@ -60,7 +62,7 @@ async function updateJsonFile(
     return;
   }
   await fs.writeFile(filePath, JSON.stringify(data, null, 2) + '\n', 'utf8');
-  console.log(`  [write] ${writeNote}`);
+  step(`[write] ${writeNote}`);
 }
 
 function dropKey(section: unknown, key: string): boolean {
@@ -71,37 +73,32 @@ function dropKey(section: unknown, key: string): boolean {
   return true;
 }
 
-interface RemovalGroup {
-  label: string;
-  lines: RemovalLine[];
+/**
+ * Prints an internal step line, and only under `--verbose`.
+ *
+ * The default answers "what will this change", not "how the remover works":
+ * a path per target describes the filesystem, and a write to `package.json`
+ * describes the mechanism. Both are the first things to want when a removal
+ * misbehaves, so they move rather than disappear.
+ */
+function step(line: string): void {
+  if (verbose) console.log(`  ${line}`);
 }
 
-/**
- * Consecutive runs of one artifact label into one group.
- *
- * `planHost` emits artifacts in kind order, so a host's paths arrive as rules,
- * then skills, then the rewrite hook. Three labels repeated per line read as
- * thirty words of repetition; three grouped lines read as three.
- */
-function groupByLabel(lines: RemovalLine[]): RemovalGroup[] {
-  const groups: RemovalGroup[] = [];
-  for (const line of lines) {
-    const last = groups.at(-1);
-    if (last && last.label === line.label) last.lines.push(line);
-    else groups.push({ label: line.label, lines: [line] });
-  }
-  return groups;
+/** One plain sentence for a host, in place of its file list. */
+function planLine(label: string, count: number): void {
+  console.log(`  ${label} \u2014 ${count} item${count === 1 ? '' : 's'} will be removed.`);
 }
 
 async function removeUninstallTarget(target: string, shouldDryRun: boolean, recursive = true): Promise<void> {
   try {
     if (shouldDryRun) {
-      console.log(`  [dry-run] would remove ${target}`);
+      step(`[dry-run] would remove ${target}`);
       return;
     }
     if (recursive) await fs.rm(target, { recursive: true, force: true });
     else await fs.unlink(target);
-    console.log(`  [rm] ${target}`);
+    step(`[rm] ${target}`);
   } catch {
     debug(`Could not remove ${target}`);
   }
@@ -197,6 +194,12 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
   // the package.
   const removeOmpExtensions = removeOmpLayer || options.replaceOmpExtensions === true;
 
+  // omp's static files — rules and skills — go through the same plan and the
+  // same removal as every other host now. The extension layer, the Ponytail
+  // package and rtk stay in the layer block below, which `--keep-omp-layer`
+  // skips; keeping the layer means keeping its files too.
+  const artifactHosts = selection.ids.filter((id) => id !== 'omp' || removeOmpLayer);
+
   // Printed from the resolved selection, so every line below is something the
   // run really does. Each host is its own section: a flat path list cannot be
   // checked against a selection.
@@ -207,17 +210,19 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
       removeOmpLayer && shouldRemovePonytail ? 'Ponytail' : null,
       removeOmpLayer && shouldRemoveRtk ? 'rtk' : null,
     ].filter(Boolean);
-    console.log(`  Oh My Pi — ${targets.length} extension director${targets.length === 1 ? 'y' : 'ies'}${also.length > 0 ? `, ${also.join(', ')}` : ''}`);
-    for (const target of targets) console.log(`    ${displayPath(target, home)}`);
+    if (verbose) {
+      console.log(`  Oh My Pi — ${targets.length} extension director${targets.length === 1 ? 'y' : 'ies'}${also.length > 0 ? `, ${also.join(', ')}` : ''}`);
+      for (const target of targets) console.log(`    ${displayPath(target, home)}`);
+    }
     // Both of these are printed only when they are on disk. An absent package
     // or binary is not something the run can remove, and naming it made the
     // section read as a bigger removal than the one that follows.
     if (removeOmpLayer && shouldRemovePonytail && existsSync(ponytailPkgDir)) {
-      console.log(`    ${displayPath(ponytailPkgDir, home)} — ponytail plugin package`);
+      if (verbose) console.log(`    ${displayPath(ponytailPkgDir, home)} — ponytail plugin package`);
     }
     if (removeOmpLayer && shouldRemoveRtk) {
-      if (existsSync(rtkBin)) console.log(`    ${displayPath(rtkBin, home)} — rtk binary`);
-      if (existsSync(layer.rtkExtension)) console.log(`    ${displayPath(layer.rtkExtension, home)} — rtk OMP wiring`);
+      if (verbose && existsSync(rtkBin)) console.log(`    ${displayPath(rtkBin, home)} — rtk binary`);
+      if (verbose && existsSync(layer.rtkExtension)) console.log(`    ${displayPath(layer.rtkExtension, home)} — rtk OMP wiring`);
     }
   }
 
@@ -226,13 +231,17 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
   // an empty section. One section per host, layer directories and files
   // together: two sections for one host said its name twice and filed half its
   // artifacts under a "Coding agents" heading that named nothing.
-  const plan = planRemove(extra, home);
+  const plan = planRemove(artifactHosts, home);
   const piRtk = piLayer(home).rtkExtension;
   for (const preview of plan.hosts) {
     const isPi = preview.host.id === 'pi';
     const dirs = isPi ? piTargets : [];
     const wiring = isPi && existsSync(piRtk) ? 1 : 0;
     const total = preview.lines.length + dirs.length + wiring;
+    if (!verbose) {
+      planLine(preview.host.label, total);
+      continue;
+    }
     console.log(`\n  ${preview.host.label} — ${preview.wiring} — ${total} artifact${total === 1 ? '' : 's'} to remove`);
     if (dirs.length > 0) {
       console.log(`    extension tree — ${dirs.length} dirs`);
@@ -242,19 +251,43 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
     // planHost emits artifacts in kind order, so a run of one label is one
     // group: rules, then skills, then the rewrite hook.
     for (const group of groupByLabel(preview.lines)) {
-      const label = group.label.endsWith('s') ? group.label : `${group.label}s`;
+      const label = pluralArtifactLabel(group.label);
       console.log(`    ${label} — ${group.lines.length}`);
       for (const line of group.lines) console.log(`      ${displayPath(line.path, home)}`);
     }
   }
-  if (plan.hosts.length === 0 && extra.length > 0) {
-    console.log(`\n  Nothing of ours found for ${extra.join(', ')}`);
+  if (plan.hosts.length === 0 && artifactHosts.length > 0) {
+    // Name every host that was asked for, not just the non-OMP ones: with
+    // `--agent omp` the old wording printed a blank list and read as a bug.
+    const asked = [...new Set([...artifactHosts, ...(removeOmpLayer ? ['omp'] : [])])];
+    console.log(asked.length > 0
+      ? `\n  Nothing of ours found for ${asked.join(', ')}.`
+      : '\n  Nothing of ours found on this machine.');
   }
 
   // With nothing selected there is nothing to confirm. Asking "remove the
   // listed files?" over an empty plan invited a reflexive Yes to a run that
   // could only ever do nothing. So: say what happened, then stop.
-  if (!removeOmpExtensions && plan.files === 0 && piTargets.length === 0) {
+  // "Nothing to do" has to mean the run would touch nothing. Counting only the
+  // host files was not enough once a live host stopped shipping any: a Pi-only
+  // uninstall whose extension directories were already gone used to stop here
+  // and leave the rtk wiring and any stray extension sitting in the tree.
+  const layerDirsLeft = artifactHosts.some((id) => {
+    const dir = id === 'pi'
+      ? path.join(home, '.pi', 'agent', 'extensions')
+      : id === 'omp'
+        ? path.join(home, '.omp', 'agent', 'extensions')
+        : '';
+    return dir !== '' && existsSync(dir);
+  });
+  // A retired path counts as work too. Without it, an install whose only
+  // remaining trace is an older rules file was told "nothing selected" and
+  // returned before removeHost ran, so our block stayed in the user's file.
+  const retiredLeft = artifactHosts.some((id) => {
+    const host = byId(id);
+    return (host?.retired ?? []).some((entry: { path: string }) => existsSync(path.join(home, entry.path)));
+  });
+  if (!removeOmpExtensions && !layerDirsLeft && !retiredLeft && plan.files === 0 && piTargets.length === 0) {
     console.log('\n  Nothing selected — no files were removed.');
     if (!confirmed) closeRL();
     return false;
@@ -269,14 +302,14 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
     if (tty()) {
       // Defaults to No, so Enter means "keep everything". A bare `y` says yes
       // outright rather than making the user hunt for the arrow keys.
-      const confirmedChoice = await askInteractiveConfirm('Remove the listed Tersio files?', false);
-      if (confirmedChoice.status !== 'confirmed') {
-        if (confirmedChoice.status === 'cancelled') clackCancel('Aborted.');
+      const confirmChoice = await askInteractiveConfirm(`Remove Tersio from ${[...plan.hosts.map((h) => h.host.label), ...(removeOmpLayer ? ['Oh My Pi (OMP)'] : [])].join(', ')}?`, false);
+      if (confirmChoice.status !== 'confirmed') {
+        if (confirmChoice.status === 'cancelled') clackCancel('Aborted.');
         else console.log('Aborted.');
         closeRL();
         return false;
       }
-      if (!confirmedChoice.value) {
+      if (!confirmChoice.value) {
         console.log('Aborted.');
         closeRL();
         return false;
@@ -312,7 +345,7 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
         return true;
       });
       if (lines.length !== before) {
-        if (shouldDryRun) console.log(`  [dry-run] would remove ${before - lines.length} config.yml entries`);
+        if (shouldDryRun) step(`[dry-run] would remove ${before - lines.length} config.yml entries`);
         else await writeConfigLines(configPath, lines, `  [write] Updated config.yml (removed ${before - lines.length} entries)`);
       }
     }
@@ -332,12 +365,12 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
         `would remove @dietrichgebert/ponytail from ${pluginsPkgPath}`,
         'Removed @dietrichgebert/ponytail from plugins/package.json', shouldDryRun);
       try {
-        if (shouldDryRun) console.log(`  [dry-run] would remove ${ponytailPkgDir}`);
+        if (shouldDryRun) step(`[dry-run] would remove ${ponytailPkgDir}`);
         else {
           await fs.rm(ponytailPkgDir, { recursive: true, force: true });
-          console.log(`  [rm] ${ponytailPkgDir}`);
+          step(`[rm] ${ponytailPkgDir}`);
           await fs.rm(path.dirname(ponytailPkgDir));
-          console.log(`  [rm] ${path.dirname(ponytailPkgDir)} (empty scope)`);
+          step(`[rm] ${path.dirname(ponytailPkgDir)} (empty scope)`);
         }
       } catch {
         debug('Could not remove ponytail package dir (scope may hold other packages)');
@@ -373,20 +406,25 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
   // what we wrote: a merged file loses its marked block, a config the user also
   // owns keeps everything but our entry, and a file we named is deleted once it
   // configures no hook.
-  if (extra.length > 0) {
+  if (artifactHosts.length > 0) {
     // The header prints under --dry-run too: a preview that silently omits a
     // section is not a preview of the real run.
-    console.log('\n=== Agent hosts ===\n');
-    const { results, errors } = await removeHosts(extra, home, { dryRun: shouldDryRun, quiet: false });
+    if (verbose) console.log('\n=== Agent hosts ===\n');
+    const { results, errors } = await removeHosts(artifactHosts, home, { dryRun: shouldDryRun, quiet: false });
     for (const r of results) {
       const what = r.removed.length === 0
         ? 'nothing of ours found'
         : shouldDryRun
           ? `would remove ${r.removed.length} path(s)`
           : `removed ${r.removed.length} path(s)`;
-      console.log(`  ${shouldDryRun ? '[dry-run]' : '[ok]'} ${r.host.label}: ${what}`);
+      if (verbose) {
+        console.log(`  ${shouldDryRun ? '[dry-run]' : '[ok]'} ${r.host.label}: ${what}`);
+      } else if (r.removed.length > 0) {
+        console.log(`  \u2705 ${r.host.label} — ${shouldDryRun ? 'would be removed' : 'removed'}.`);
+      }
+      // Not noise: this is the one line saying the user's own content survived.
       if (r.kept.length > 0 && !shouldDryRun) {
-        console.log(`         kept ${r.kept.length} file(s) that also hold your own content`);
+        console.log(`     ${r.host.label}: kept ${r.kept.length} file${r.kept.length === 1 ? '' : 's'} that also hold your own content`);
       }
     }
     for (const e of errors) console.log(`  [fail] ${e.host}: ${e.error}`);

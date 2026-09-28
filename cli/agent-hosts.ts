@@ -60,13 +60,48 @@ export interface AgentHost {
   rules: boolean;
   skills: boolean;
   rewrite: boolean;
+  /**
+   * False for a host that is never auto-detected, whatever is on disk.
+   *
+   * Oh My Pi is the origin host and is always in scope: it is picked through
+   * its own menu row and removed through the layer block, never as a saved
+   * entry. Detecting it would quietly put it back into a selection that had
+   * deliberately dropped it. This used to fall out of omp having no static
+   * paths, which stopped being true when it gained a static tier.
+   */
+  autoDetect?: boolean;
   /** User-global instruction file, `$HOME`-relative. Null when there is none. */
   rulesFile: string | null;
   /** User-global skills dir, `$HOME`-relative. Null when unsupported. */
   skillsDir: string | null;
   rewriteConfig?: HostRewrite;
+  /**
+   * `$HOME`-relative paths an earlier version wrote for this host that the
+   * current one does not.
+   *
+   * Removing a capability strands whatever it wrote: the file stays on disk, and
+   * because the current planner no longer emits it, uninstall cannot see it
+   * either. Both install and uninstall clear these, so upgrading tidies and
+   * uninstalling is honest.
+   *
+   * `ours` is a directory or file we created outright, so it goes with
+   * `rm -rf`. `merged` is a file the user also owns — an AGENTS.md of their
+   * own is exactly the case that bit us once already — so only our marked block
+   * is removed, and the file survives unless nothing of theirs is left in it.
+   */
+  retired?: Array<{ path: string; kind: 'ours' | 'merged' }>;
   /** Docs URL that justifies the paths above. */
   source: string;
+  /**
+   * How this host installs the plugin with its own tooling, when it has any.
+   *
+   * `tersio install` writes the files directly, which is the path we support for
+   * every host. A native command is the alternative for someone who prefers
+   * their agent's own package manager. Hosts with no entry have no native
+   * install: OpenCode has no command because it needs none, and Claude Code and
+   * Codex are deliberately on hold until their plugin ports are adopted.
+   */
+  nativeInstall?: { command?: string; note: string };
   /**
    * Which module owns this host's rewrite when there is no static hook file.
    * Structural rather than prose: `tersio doctor` reports it, and the registry
@@ -82,18 +117,36 @@ const HOSTS: AgentHost[] = [
   {
     id: 'omp',
     label: 'Oh My Pi (OMP)',
+    autoDetect: false,
+    rules: false,
     configDir: '.omp',
     binaries: ['omp'],
-    // Live extension, so the generic emitters skip this host: a static file
-    // would duplicate it. Flags stay truthful for the doctor matrix.
-    rules: true,
-    skills: true,
+        skills: false,
+    // The extension tree injects the mode text on every turn, so a skill is a
+    // second copy of it. Retired rather than deleted by hand, so install and
+    // uninstall both clear what earlier versions wrote.
+    retired: [
+      { path: '.omp/agent/AGENTS.md', kind: 'merged' },
+      { path: '.omp/agent/skills/tersio-caveman', kind: 'ours' },
+      { path: '.omp/agent/skills/tersio-ponytail', kind: 'ours' },
+      { path: '.omp/agent/skills/tersio-rtk', kind: 'ours' },
+    ],
     rewrite: true,
+    // No rules file, and that is the point. The extension layer below injects
+    // the same three sections on every turn, so a static copy would duplicate
+    // them and — being always-on — would outlive `/combo off`, leaving caveman
+    // permanently on with no way to turn it off. It would also be merged into
+    // whatever global instructions the user keeps at ~/.omp/agent/AGENTS.md,
+    // which is theirs, not ours. Skills are kept: they are advertised by
+    // description and loaded on demand, so they neither duplicate the injection
+    // nor fight the off switch.
+    //   omp.sh/docs/skills -> user skills at ~/.omp/agent/skills/<name>/
     rulesFile: null,
     skillsDir: null,
     caveats: 'Reference host. A live extension owns the rewrite, so cli/rtk-wiring.ts registers rtk\'s own module instead of a static hook.',
     rewriteOwner: 'wiring',
     source: 'https://omp.sh/docs/context-files',
+    nativeInstall: { command: 'omp install @krtclcdy/tersio', note: 'or let `tersio install` write the layer for you' },
   },
   {
     id: 'opencode',
@@ -102,28 +155,50 @@ const HOSTS: AgentHost[] = [
     binaries: ['opencode'],
     // Same as omp: OpenCode gets a real plugin from cli/opencode-wiring.ts,
     // because its documented hook surface cannot rewrite a tool input.
-    rules: true,
+    // No rules file: the plugin injects the modes itself, by appending a marked
+    // block to each agent's `system` and switching the mode's skill to
+    // `autoinvoke`. A static AGENTS.md would say the same thing forever, so it
+    // would outlive `/combo off` — the exact problem a live tier has to avoid.
+    rules: false,
     skills: true,
     rewrite: true,
-    // V2 reads a global AGENTS.md from the config dir. No global skills
-    // location is documented -- `.opencode/skills/` is project-scoped -- so the
-    // skills flag stays true while the path stays null.
-    rulesFile: '.config/opencode/AGENTS.md',
-    skillsDir: null,
-    caveats: 'Current OpenCode discovers only AGENTS.md; the CLAUDE.md and ~/.claude/skills fallbacks are gone. rtk init still emits a pre-v2 plugin that current OpenCode refuses to load (rtk-ai/rtk#3463), so tersio ships its own plugin via cli/opencode-wiring.ts. Set TERSIO_RTK=off to disable the rewrite.',
+    // V2 reads a global AGENTS.md from the config dir, and its skills docs
+    // list `~/.config/opencode/skills` as a Global discovery source, alongside
+    // the project-scoped `.opencode/skills/`. It also reads `~/.claude/skills`
+    // and `~/.agents/skills` as global compatibility sources, so OpenCode has
+    // been picking up the shared skills we write for Codex and Pi without us
+    // pointing it anywhere. Writing our own global dir makes that a decision
+    // rather than an accident.
+    rulesFile: null,
+    skillsDir: '.config/opencode/skills',
+    caveats: 'Current OpenCode discovers only AGENTS.md for instructions. rtk init still emits a pre-v2 plugin that current OpenCode refuses to load (rtk-ai/rtk#3463), so tersio ships its own plugin via cli/opencode-wiring.ts. Set TERSIO_RTK=off to disable the rewrite.',
     rewriteOwner: 'plugin',
     source: 'https://opencode.ai/docs/rules',
+    // The skills stay, unlike omp and pi: the plugin has no per-turn prompt hook
+    // (`agent.system` is global, not per turn), so `autoinvoke` on those skills
+    // is how the per-mode prose actually reaches the model. On omp and pi the
+    // extension tree injects it directly, so their skills were a second copy.
+    retired: [
+      { path: '.config/opencode/AGENTS.md', kind: 'merged' },
+    ],
+    nativeInstall: { note: 'no command needed — OpenCode loads ~/.config/opencode/plugins/ at startup' },
   },
   {
     id: 'claude-code',
     label: 'Claude Code',
     configDir: '.claude',
     binaries: ['claude'],
-    rules: true,
+    rules: false,
     skills: true,
     rewrite: true,
-    rulesFile: '.claude/CLAUDE.md',
+    // No rules file: it is merged into a file the user owns, and a global
+    // CLAUDE.md is theirs to keep. The modes reach these hosts through the skills
+    // until their plugin port carries them in a hook instead.
+    rulesFile: null,
     skillsDir: '.claude/skills',
+    retired: [
+      { path: '.claude/CLAUDE.md', kind: 'merged' },
+    ],
     caveats: 'Skill folder named `synced` is reserved and skipped. Never overwrite CLAUDE.md or settings.json — merge instead.',
     rewriteConfig: {
       configFile: '.claude/settings.json',
@@ -142,11 +217,17 @@ const HOSTS: AgentHost[] = [
     configDir: '.codex',
     configDirEnv: 'CODEX_HOME',
     binaries: ['codex'],
-    rules: true,
+    rules: false,
     skills: true,
     rewrite: true,
-    rulesFile: '.codex/AGENTS.md',
+    // No rules file: it is merged into a file the user owns, and a global
+    // AGENTS.md is theirs to keep. The modes reach these hosts through the skills
+    // until their plugin port carries them in a hook instead.
+    rulesFile: null,
     skillsDir: '.agents/skills',
+    retired: [
+      { path: '.codex/AGENTS.md', kind: 'merged' },
+    ],
     caveats: 'A stale AGENTS.override.md silently suppresses AGENTS.md. The combined instruction chain is capped at 32 KiB (project_doc_max_bytes).',
     rewriteConfig: {
       configFile: '.codex/hooks.json',
@@ -165,17 +246,30 @@ const HOSTS: AgentHost[] = [
     configDir: '.pi/agent',
     configDirEnv: 'PI_CODING_AGENT_DIR',
     binaries: ['pi'],
-    rules: true,
-    skills: true,
+    rules: false,
+        skills: false,
+    // The extension tree injects the mode text on every turn, so a skill is a
+    // second copy of it. Retired rather than deleted by hand, so install and
+    // uninstall both clear what earlier versions wrote.
+    retired: [
+      { path: '.pi/agent/AGENTS.md', kind: 'merged' },
+      { path: '.pi/agent/skills/tersio-caveman', kind: 'ours' },
+      { path: '.pi/agent/skills/tersio-ponytail', kind: 'ours' },
+      { path: '.pi/agent/skills/tersio-rtk', kind: 'ours' },
+    ],
     // Pi has no JSON hook file: it loads ~/.pi/agent/extensions/*.ts through
     // jiti, so the rewrite is a TypeScript module. Emitting a JSON config into
     // a .ts path would not parse, which silently disables rewriting.
     rewrite: true,
-    rulesFile: '.pi/agent/AGENTS.md',
-    skillsDir: '.pi/agent/skills',
+    // No rules file for the same reason as omp: the extension tree injects the
+    // three sections every turn, and an always-on static copy would outlive
+    // `/combo off`. The skills below are the on-demand half.
+    rulesFile: null,
+    skillsDir: null,
     caveats: 'AGENTS.override.md replaces rather than merges. Never write SYSTEM.md — it replaces the default system prompt outright. The TS extension is rtk\'s own, written by `rtk init -g --agent pi`; rtk owns that format, so no tersio release is needed when it changes.',
     rewriteOwner: 'wiring',
     source: 'https://pi.dev/docs/latest/extensions',
+    nativeInstall: { command: 'pi install npm:@krtclcdy/tersio', note: 'declares the `pi` manifest in package.json' },
   },
 ];
 
@@ -203,15 +297,6 @@ export function isLiveExtension(host: AgentHost): boolean {
  */
 export function isGuidanceOnly(host: AgentHost): boolean {
   return !host.rewrite;
-}
-
-/**
- * Hosts the generic emitters skip entirely, because a wiring module owns both
- * their instruction file and their skills. A null `rulesFile`/`skillsDir` is
- * only legitimate on one of these — anywhere else it is a half-filled entry.
- */
-export function isOwnPath(host: AgentHost): boolean {
-  return host.rulesFile === null && host.skillsDir === null;
 }
 
 /**

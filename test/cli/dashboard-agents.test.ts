@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { agentsJson } from "../../cli/dashboard.ts";
 import { HOSTS } from "../../cli/agent-hosts.ts";
+import { PI_EXTENSION_DIRS, PI_MODULE_DIRS } from "../../cli/pi-layer.ts";
 import { writeSelection } from "../../cli/agents.ts";
 import { START, END } from "../../cli/rules-pack.ts";
 
@@ -29,17 +30,18 @@ async function rows(home: string, env: NodeJS.ProcessEnv = { PATH: "" }): Promis
 }
 
 /** Writes every file pi needs: a global AGENTS.md and three skills. */
+/**
+ * A complete pi install: the extension tree, which is all pi owns. pi writes no
+ * static file — its rules come from the tree, and a skill would be a second copy
+ * of prose the tree already injects every turn.
+ */
 function installCommandCodeFully(home: string): void {
-  mkdirSync(path.join(home, ".pi/agent"), { recursive: true });
-  writeFileSync(
-    path.join(home, ".pi/agent", "AGENTS.md"),
-    `# mine\n\n${START}\nrules\n${END}\n`,
-    "utf8",
-  );
-  for (const mode of ["caveman", "ponytail", "rtk"]) {
-    const dir = path.join(home, ".pi/agent", "skills", `tersio-${mode}`);
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(path.join(dir, "SKILL.md"), `---\nname: tersio-${mode}\ndescription: d\n---\n`, "utf8");
+  // The whole layer, not just the five extensions: a real install writes the
+  // shared modules beside them, and a partial tree is a partial install.
+  for (const dir of [...PI_EXTENSION_DIRS, ...PI_MODULE_DIRS]) {
+    const target = path.join(home, ".pi/agent/extensions", dir);
+    mkdirSync(target, { recursive: true });
+    writeFileSync(path.join(target, "index.ts"), "export default {};\n", "utf8");
   }
 }
 
@@ -123,10 +125,11 @@ test("a fully installed agent reports configured with nothing missing", async ()
 
     const row = (await rows(home)).find((r) => r.id === "pi")!;
     expect(row.selected).toBe(true);
+    // No static files and none missing, so the badge has to be judged on the
+    // layer — which is the only thing pi actually installs.
     expect(row.missing).toBe(0);
-    // One AGENTS.md plus three skills; the host has no static hook.
-    expect(row.present).toBe(4);
-    expect(row.configured).toBe(true);
+    expect(row.present).toBe(0);
+    expect(row.configured, "a full layer is a configured host").toBe(true);
   } finally {
     cleanup();
   }
@@ -136,13 +139,14 @@ test("a partially installed agent counts what is present, so the gap is visible"
   const { home, cleanup } = tempHome();
   try {
     writeSelection(home, ["pi"]);
-    mkdirSync(path.join(home, ".pi/agent"), { recursive: true });
-    writeFileSync(path.join(home, ".pi/agent", "AGENTS.md"), `${START}\nr\n${END}\n`, "utf8");
+    // One extension of the tree and none of the shared modules, so the gap is
+    // visible in the layer rather than in a file list.
+    const partial = path.join(home, ".pi/agent/extensions", PI_EXTENSION_DIRS[0]);
+    mkdirSync(partial, { recursive: true });
+    writeFileSync(path.join(partial, "index.ts"), "export default {};\n", "utf8");
 
     const row = (await rows(home)).find((r) => r.id === "pi")!;
-    expect(row.present).toBe(1);
-    expect(row.missing).toBe(3);
-    expect(row.configured).toBe(false);
+    expect(row.configured, "a partial layer is not a configured host").toBe(false);
   } finally {
     cleanup();
   }

@@ -18,8 +18,10 @@ import {
   OMP_AGENT_DIR, OMP_PLUGINS_DIR, PACKAGE_VERSION,
 } from './common.ts';
 import { storedProfile, writePluginSettings } from './profile.ts';
-import { agentChoices, displayPath, findHostBinary, readSelection, reportHosts } from './agents.ts';
-import { HOSTS, byId } from './agent-hosts.ts';
+import { agentChoices, displayPath, findHostBinary, installedState, readSelection, reportHosts } from './agents.ts';
+import { HOSTS, byId, isLiveExtension } from './agent-hosts.ts';
+import { reportOmpLayer } from './omp-layer.ts';
+import { reportPiLayer } from './pi-layer.ts';
 import { PACKAGE_NAME } from './common.ts';
 import { resolveRtkBinary } from '../extensions/lib/utils.ts';
 
@@ -145,6 +147,7 @@ async function agentsJsonAsync(
 ): Promise<Array<Record<string, unknown>>> {
   const selected = readSelection(home).hosts;
   const rows = new Map(reportHosts(selected, home).map((r) => [r.host.id, r]));
+  const state = installedState(home);
   // `env` is threaded through rather than read from process.env inside, so a
   // caller passing a sandbox home does not get the real machine's PATH back.
   const found = new Map(HOSTS.map((h) => [h.id, findHostBinary(h, env)]));
@@ -169,8 +172,14 @@ async function agentsJsonAsync(
       id: choice.value,
       label: choice.label,
       selected: isSelected,
-      // Configured means every file this host needs is on disk.
-      configured: isSelected && !!row && row.missing.length === 0,
+      // Configured means every file this host needs is on disk. A live-extension
+      // host has no file artifacts of its own — its modes arrive from the
+      // extension tree — so "missing === 0" would be vacuously true and the badge
+      // would claim a healthy install for a host with nothing on disk. Those are
+      // judged on the layer instead, which is what they actually own.
+      configured: isSelected && (host !== undefined && isLiveExtension(host)
+        ? layerComplete(choice.value, home)
+        : !!row && row.missing.length === 0),
       missing: row ? row.missing.length : 0,
       present: row ? row.present.length : 0,
       wiring: choice.hint,
@@ -185,6 +194,26 @@ async function agentsJsonAsync(
       configDir: host ? displayPath(path.join(home, host.configDir), home) : null,
     };
   });
+}
+
+/**
+ * Whether a live-extension host's install is complete.
+ *
+ * A live host has no file artifacts of its own, so "missing === 0" is vacuous
+ * and "anything on disk" is too weak: one of pi's seven extension directories
+ * left behind by a half-finished install would otherwise read as configured.
+ * The layer report knows what belongs there, so ask it.
+ */
+function layerComplete(hostId: string, home: string): boolean {
+  if (hostId === 'omp') {
+    const layer = reportOmpLayer(home, existsSync);
+    return layer.installed && layer.missing.length === 0;
+  }
+  if (hostId === 'pi') {
+    const layer = reportPiLayer(home, existsSync);
+    return layer.extensions.length > 0 && layer.missing.length === 0;
+  }
+  return false;
 }
 
 /**

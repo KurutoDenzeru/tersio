@@ -86,7 +86,10 @@ test("doctor reports one row per saved host and points at the install command", 
     // Both are uninstalled here, so both must be actionable rather than silent.
     expect(result.stdout).toMatch(/Claude Code: warn/);
     expect(result.stdout).toMatch(/tersio install --agent claude-code/);
-    expect(result.stdout).toMatch(/tersio install --agent pi/);
+    // Pi owns no static file, so it is never a warn row and has nothing to
+    // repair. A host that ships its modes from an extension tree cannot report
+    // missing files, and pretending otherwise is what this assertion used to do.
+    expect(result.stdout).not.toMatch(/Pi: warn/);
   } finally {
     cleanup();
   }
@@ -149,14 +152,18 @@ test("a doctor row goes healthy once the host's files are on disk", () => {
 test("a doctor row stays a warning while any of the host's files is missing", () => {
   const { home, cleanup } = tempHome();
   try {
-    writeSelection(home, ["pi"]);
-    mkdirSync(path.join(home, ".pi/agent"), { recursive: true });
-    writeFileSync(path.join(home, ".pi/agent", "AGENTS.md"), "<!-- tersio:start -->\nr\n<!-- tersio:end -->\n", "utf8");
-    // All three skills deliberately absent, so the row must stay a warning.
+    // A host that owns files, so "some are missing" is expressible. pi cannot
+    // be: it installs no static file, so there is nothing to be missing.
+    writeSelection(home, ["claude-code"]);
+    // The skill artifact is the SKILL.md file, not its directory.
+    mkdirSync(path.join(home, ".claude", "skills", "tersio-caveman"), { recursive: true });
+    writeFileSync(path.join(home, ".claude", "skills", "tersio-caveman", "SKILL.md"), "mine\n", "utf8");
+    writeFileSync(path.join(home, ".claude", "CLAUDE.md"), "<!-- tersio:start -->\nr\n<!-- tersio:end -->\n", "utf8");
+    // Two of its six files present, so the row must stay a warning.
     const result = run(home, "doctor");
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toMatch(/Pi: warn/);
-    expect(result.stdout).toMatch(/3 file\(s\) missing/);
+    expect(result.stdout).toMatch(/Claude Code: warn/);
+    expect(result.stdout).toMatch(/4 file\(s\) missing/);
   } finally {
     cleanup();
   }
@@ -242,7 +249,7 @@ test("uninstall --dry-run reports the agent hosts it would strip without touchin
     mkdirSync(path.dirname(rules), { recursive: true });
     writeFileSync(rules, "# mine\n\n<!-- tersio:start -->\nr\n<!-- tersio:end -->\n", "utf8");
 
-    const result = run(home, "uninstall", "--agent", "claude-code", "--dry-run", "--yes");
+    const result = run(home, "uninstall", "--agent", "claude-code", "--dry-run", "--yes", "--verbose");
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toMatch(/=== Agent hosts ===/);
     expect(result.stdout).toMatch(/\[dry-run\] Claude Code: would remove/);

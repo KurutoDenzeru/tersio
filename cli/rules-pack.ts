@@ -117,6 +117,22 @@ export function guidanceRulesBody(): string {
   return [CAVEMAN, PONYTAIL, RTK_GUIDANCE].join('\n\n');
 }
 
+/**
+ * The three sections separately, keyed by mode.
+ *
+ * A skill is one mode, so it needs that mode's text and not the whole pack.
+ * Emitting the full body per skill made tersio-rtk explain caveman and ponytail
+ * too, and left three byte-identical files in every host's skills directory.
+ */
+export function modeBodies(): Record<string, string> {
+  return { caveman: CAVEMAN, ponytail: PONYTAIL, rtk: RTK };
+}
+
+/** As `modeBodies`, with the manual rtk wording, for hosts that cannot rewrite. */
+export function guidanceModeBodies(): Record<string, string> {
+  return { caveman: CAVEMAN, ponytail: PONYTAIL, rtk: RTK_GUIDANCE };
+}
+
 /** Slash-command bodies, keyed by mode, for hosts that expose modes as commands. */
 export function packCommands(): Record<string, string> {
   return {

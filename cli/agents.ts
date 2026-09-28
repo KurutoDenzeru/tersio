@@ -14,7 +14,7 @@
 import { promises as fs } from 'node:fs';
 import fsSync from 'node:fs';
 import path from 'node:path';
-import { HOSTS, byId, hasStaticHook, isLiveExtension, isOwnPath, type AgentHost } from './agent-hosts.ts';
+import { HOSTS, byId, hasStaticHook, isLiveExtension, type AgentHost } from './agent-hosts.ts';
 import {
   hasMarkedHookEntry,
   planHost,
@@ -144,18 +144,22 @@ export function installedRows(state: ReadonlyMap<string, HostInstallState>): Age
 export function installedState(home: string): Map<string, HostInstallState> {
   const state = new Map<string, HostInstallState>();
   const counts = new Map(planRemove(HOSTS.map((h) => h.id), home).hosts.map((p) => [p.host.id, p.lines.length]));
+  const ompLayer = reportOmpLayer(home, isDir);
+  const layerDirs: Partial<Record<string, number>> = {
+    pi: reportPiLayer(home, isDir).extensions.length,
+    omp: ompLayer.extensions.length,
+  };
   for (const host of HOSTS) {
-    if (host.id === 'omp') continue;
     const files = counts.get(host.id) ?? 0;
-    // Pi also owns an extension tree the generic emitters never see, so its row
-    // is files plus layer directories — reported apart, never summed.
-    const dirs = host.id === 'pi' ? reportPiLayer(home, isDir).extensions.length : 0;
-    state.set(host.id, { files, dirs, installed: files + dirs > 0 });
+    // The two extension hosts also own a tree the generic emitters never see,
+    // so their row is files plus layer directories — reported apart, never
+    // summed. Every host goes through the same arithmetic now that omp has a
+    // static tier too; the layer only decides `installed` for omp, whose plugin
+    // is the thing a partial install is judged on.
+    const dirs = layerDirs[host.id] ?? 0;
+    const installed = host.id === 'omp' ? ompLayer.installed && dirs > 0 : files + dirs > 0;
+    state.set(host.id, { files, dirs, installed });
   }
-  // Oh My Pi owns no host artifacts: its files are the layer's extension dirs.
-  const layer = reportOmpLayer(home, isDir);
-  const dirs = layer.extensions.length;
-  state.set('omp', { files: 0, dirs, installed: layer.installed && dirs > 0 });
   return state;
 }
 
@@ -286,7 +290,7 @@ export function writeSelection(home: string, ids: readonly string[]): void {
 export function detectHosts(home: string, env: NodeJS.ProcessEnv = process.env): string[] {
   const found: string[] = [];
   for (const host of HOSTS) {
-    if (isOwnPath(host)) continue;
+    if (host.autoDetect === false) continue;
     const dir = path.join(home, host.configDir);
     let hasDir = false;
     try {
@@ -524,6 +528,11 @@ export async function removeHost(host: AgentHost, home: string, options: ApplyOp
 
     result.kept.push(artifact.absPath);
   }
+
+  // Paths an earlier version wrote and the current one does not. The planner
+  // cannot see them — that is why they are listed — so without this an upgrade
+  // that drops a capability leaves files that uninstall then cannot remove.
+  result.removed.push(...clearRetiredPaths(host, home, options));
   return result;
 }
 
@@ -564,6 +573,98 @@ export async function removeHosts(
 }
 
 // --- install planning -------------------------------------------------------
+
+/**
+ * Removes the paths a previous version of tersio wrote for this host and the
+ * current one no longer does.
+ *
+ * `ours` is something we created outright, so it goes. `merged` is a file the
+ * user also owns — an AGENTS.md of their own is exactly the case that bit us
+ * before — so only our marked block comes out and the file survives unless
+ * nothing of theirs is left in it. Shared by install and uninstall, because a
+ * capability that is dropped on one path and tidied on the other is how the two
+ * quietly disagree.
+ */
+export function clearRetiredPaths(
+  host: AgentHost,
+  home: string,
+  options: { dryRun?: boolean } = {},
+): string[] {
+  const removed: string[] = [];
+  for (const entry of host.retired ?? []) {
+    const target = path.join(home, entry.path);
+    if (entry.kind === 'merged') {
+      let current: string | null = null;
+      try {
+        current = fsSync.readFileSync(target, 'utf8');
+      } catch {
+        current = null;
+      }
+      if (current === null) continue;
+      const stripped = removeMarkedBlock(current, START, END);
+      if (stripped === current) continue;
+      if (!options.dryRun) {
+        if (stripped === null) fsSync.rmSync(target, { force: true });
+        else fsSync.writeFileSync(target, stripped, 'utf8');
+      }
+      removed.push(target);
+      continue;
+    }
+    if (!existsSyncSafe(target)) continue;
+    if (!options.dryRun) {
+      try {
+        fsSync.rmSync(target, { recursive: true, force: true });
+      } catch {
+        continue;
+      }
+    }
+    removed.push(target);
+  }
+  return removed;
+}
+
+/** Consecutive runs of one artifact label, grouped. */
+export interface LabelGroup<T> {
+  label: string;
+  lines: T[];
+}
+
+/**
+ * Groups consecutive lines that carry the same label.
+ *
+ * `planHost` emits artifacts in kind order, so a host's paths arrive as rules,
+ * then skills, then the rewrite hook. Three labels repeated per line read as
+ * thirty words of repetition; three grouped lines read as three. Shared by the
+ * install and uninstall previews, which print the same shape — two copies of
+ * this is how they drifted once already.
+ */
+export function groupByLabel<T extends { label: string }>(lines: T[]): Array<LabelGroup<T>> {
+  const groups: Array<LabelGroup<T>> = [];
+  for (const line of lines) {
+    const last = groups.at(-1);
+    if (last && last.label === line.label) last.lines.push(line);
+    else groups.push({ label: line.label, lines: [line] });
+  }
+  return groups;
+}
+
+/** Display plural for the artifact kinds `planHost` emits. */
+const ARTIFACT_PLURAL: Record<string, string> = {
+  rules: 'rules',
+  skill: 'skills',
+  'hook config': 'hook configs',
+  'rtk hook': 'rtk hooks',
+};
+
+/**
+ * The group caption for a label, pluralised only where the label is a kind we
+ * own. A blanket "add an s" turned "extension tree" into "extension trees" and
+ * "rtk wiring" into "rtk wirings", and a `endsWith("s")` guess would do the
+ * same the next time a new label appeared.
+ */
+export function pluralArtifactLabel(label: string): string {
+  return ARTIFACT_PLURAL[label] ?? label;
+}
 
 /** One line of the install plan: a label, a path, and whether it is new. */
 export interface PlanLine {
@@ -723,7 +824,11 @@ function healthyStatus(plan: HostPlan): HostRowStatus {
 function healthyDetail(plan: HostPlan): string {
   const count = plan.artifacts.length;
   if (plan.liveExtension) {
-    return `${plan.host.label}: ${count} files, rewrite owned by ${plan.host.rewriteOwner ?? 'a wiring module'}`;
+    // A live-extension host ships an extension tree rather than files, so its
+    // file count is legitimately zero and printing it says nothing. The layer
+    // row is what reports what it actually has.
+    const owned = count > 0 ? `${count} files, ` : '';
+    return `${plan.host.label}: ${owned}rewrite owned by ${plan.host.rewriteOwner ?? 'a wiring module'}`;
   }
   if (plan.guidanceOnly) {
     return `${plan.host.label}: ${count} files, guidance only (no documented rewrite)`;

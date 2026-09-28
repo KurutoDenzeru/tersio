@@ -127,7 +127,7 @@ function run(...args: string[]): RunResult {
 }
 
 test("installer accepts session-default flags and reports them", () => {
-  const result = run("install", "--dry-run", "--yes", "--combo-default", "medium");
+  const result = run("install", "--dry-run", "--yes", "--verbose", "--combo-default", "medium");
   expect(result.status, result.stderr).toBe(0);
   expect(result.stdout).toMatch(/Defaults: combo=medium/);
   expect(result.stdout).toMatch(/RTK session — install session mode/);
@@ -159,7 +159,7 @@ test("installer rejects removed project/both scopes", () => {
 });
 
 test("installer dry-run installs every user-scope extension", () => {
-  const result = run("install", "--dry-run", "--yes");
+  const result = run("install", "--dry-run", "--yes", "--verbose");
   expect(result.status, result.stderr).toBe(0);
   expect(result.stdout).toMatch(/RTK session — install session mode/);
   expect(result.stdout).toMatch(/Caveman — fetch rule and install session mode/);

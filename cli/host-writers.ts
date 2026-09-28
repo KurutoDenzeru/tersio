@@ -24,7 +24,7 @@ import {
   type HostRewrite,
   type RewriteProtocol,
 } from './agent-hosts.ts';
-import { applyMarkedBlock, guidanceRulesBody, rulesBody, START, END } from './rules-pack.ts';
+import { applyMarkedBlock, guidanceModeBodies, modeBodies, guidanceRulesBody, rulesBody, START, END } from './rules-pack.ts';
 
 export type ArtifactKind = 'rules' | 'skill' | 'hook-config' | 'hook-script';
 
@@ -60,9 +60,16 @@ function bodyFor(host: AgentHost): string {
  * manual text is the safe superset, since where a hook really does rewrite the
  * instruction is merely redundant, never wrong.
  */
-function skillBodyFor(host: AgentHost): string {
-  if (host.skillsDir !== null && SHARED_SKILL_DIRS.has(host.skillsDir)) return guidanceRulesBody();
-  return bodyFor(host);
+function skillBodyFor(host: AgentHost, mode: string): string {
+  // One skill, one mode. Handing each skill the whole rules body made all three
+  // files in a host's skills directory byte-identical apart from the
+  // frontmatter, and had tersio-rtk lecturing about caveman and ponytail.
+  //
+  // A shared skills root keeps the manual rtk wording whoever writes it: the
+  // same file is read by hosts whose hooks may not be installed.
+  const shared = host.skillsDir !== null && SHARED_SKILL_DIRS.has(host.skillsDir);
+  const pack = shared || isGuidanceOnly(host) ? guidanceModeBodies() : modeBodies();
+  return pack[mode] ?? guidanceModeBodies()[mode] ?? '';
 }
 
 /** The marked block, including the markers, for a merge into a user file. */
@@ -320,7 +327,7 @@ export function planHost(host: AgentHost, home: string, existing: ExistingHostFi
       artifacts.push({
         kind: 'skill',
         absPath: path.join(skillsRoot, dirName, 'SKILL.md'),
-        content: renderSkill(mode, description, skillBodyFor(host)),
+        content: renderSkill(mode, description, skillBodyFor(host, mode)),
         // Skills are ours outright, and Hermes scans skill files for injection
         // patterns, so these carry no markers.
         merge: 'whole',

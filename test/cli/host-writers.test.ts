@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { HOSTS, hasStaticHook, isOwnPath, SHARED_SKILL_DIRS, type AgentHost } from "../../cli/agent-hosts.ts";
+import { HOSTS, hasStaticHook, SHARED_SKILL_DIRS, type AgentHost } from "../../cli/agent-hosts.ts";
 import {
   HOOK_MARKER,
   HOOK_SCRIPT_NAME,
@@ -12,10 +12,11 @@ import {
   planAll,
   planHost,
   removeFromHookConfig,
+  renderRulesBlock,
   renderSkill,
   skillDirName,
 } from "../../cli/host-writers.ts";
-import { START, END } from "../../cli/rules-pack.ts";
+import { applyMarkedBlock, END, START } from "../../cli/rules-pack.ts";
 
 const HOME = "/home/tester";
 const REWRITTEN = "rtk git status";
@@ -232,28 +233,34 @@ test("the rewriter never blocks the tool, whatever rtk does", () => {
 // --- rules merging ---------------------------------------------------------
 
 test("the rules block is created, then replaced in place without touching the user's text", () => {
-  const host = HOSTS.find((h) => h.id === "claude-code")!;
-  const first = planHost(host, HOME).artifacts.find((a) => a.kind === "rules")!;
-  expect(first.content.startsWith(START)).toBe(true);
-  expect(first.content.trimEnd().endsWith(END)).toBe(true);
+  // No host writes a rules file any more — it is merged into one the user owns —
+  // so the merge is exercised through the helpers rather than a host's plan.
+  const block = renderRulesBlock(HOSTS[0], null);
+  expect(block.startsWith(START)).toBe(true);
+  expect(block.trimEnd().endsWith(END)).toBe(true);
 
-  const withUser = `# My project\n\nKeep this line.\n\n${first.content}`;
-  const second = planHost(host, HOME, { rulesFile: withUser }).artifacts.find((a) => a.kind === "rules")!;
-  expect(second.content).toContain("Keep this line.");
-  expect(second.content).toContain("My project");
+  const withUser = `# My project\n\nKeep this line.\n\n${block}`;
+  const second = applyMarkedBlock(withUser, block, START, END);
+  expect(second).toContain("Keep this line.");
+  expect(second).toContain("My project");
   // Re-running must not stack blocks.
-  expect(second.content.split(START).length - 1).toBe(1);
-  expect(second.content).toBe(
-    planHost(host, HOME, { rulesFile: second.content }).artifacts.find((a) => a.kind === "rules")!.content,
-  );
+  expect(second.split(START).length - 1).toBe(1);
+  expect(applyMarkedBlock(second, block, START, END)).toBe(second);
 });
 
-test("a user's unmarked file is appended to, never overwritten", () => {
-  const host = HOSTS.find((h) => h.id === "codex")!;
+test("no host writes a rules file, so a user's own stays untouched", () => {
+  for (const host of HOSTS) {
+    expect(planHost(host, HOME).artifacts.filter((a) => a.kind === "rules"), `${host.id} still emits a rules artifact`).toEqual([]);
+    expect(host.rulesFile, `${host.id} still names a rulesFile`).toBeNull();
+  }
+});
+
+test("a user's unmarked file would be appended to, never overwritten", () => {
+  const block = renderRulesBlock(HOSTS[0], null);
   const existing = "# House rules\n\nAlways run bun run test.\n";
-  const artifact = planHost(host, HOME, { rulesFile: existing }).artifacts.find((a) => a.kind === "rules")!;
-  expect(artifact.content.startsWith(existing)).toBe(true);
-  expect(artifact.content).toContain("Always run bun run test.");
+  const merged = applyMarkedBlock(existing, block, START, END);
+  expect(merged.startsWith(existing)).toBe(true);
+  expect(merged).toContain("Always run bun run test.");
 });
 
 test("every rules artifact merges between markers rather than owning the file", () => {
@@ -269,20 +276,31 @@ test("every rules artifact merges between markers rather than owning the file", 
 });
 
 test("a host with a real hook gets the automatic-rewrite wording", () => {
+  // The wording moved out of a rules file and into the mode's skill, which is how
+  // every host is delivered now.
   const host = HOSTS.find((h) => h.id === "claude-code")!;
-  const rules = planHost(host, HOME).artifacts.find((a) => a.kind === "rules")!;
-  expect(rules.content).toContain("filters output before the model reads it");
-  expect(rules.content).not.toContain("prefix noisy commands");
+  const rtk = planHost(host, HOME).artifacts.find((a) => a.absPath.includes("tersio-rtk"));
+  expect(rtk, "no rtk skill").toBeDefined();
+  expect(rtk!.content).toContain("filters output before the model reads it");
+  expect(rtk!.content).not.toContain("prefix noisy commands");
 });
 
 // --- skills ----------------------------------------------------------------
 
+/** True when a skill path is the one directory for `mode`. */
+function isMode(absPath: string, mode: string): boolean {
+  return absPath.endsWith(`tersio-${mode}/SKILL.md`);
+}
+
 test("each skills host gets three skills whose name matches the directory", () => {
-  const noGenericSkills = new Set(["omp", "opencode"]);
+  // No host is excluded any more. omp used to be here because its modes arrived
+  // only through its extension layer, and OpenCode because it documented no
+  // global skills location. Both document one now — ~/.omp/agent/skills and
+  // ~/.config/opencode/skills — so every host is checked on the positive path.
+  const noGenericSkills = new Set<string>();
   for (const host of HOSTS) {
     const skills = planHost(host, HOME).artifacts.filter((a) => a.kind === "skill");
-    // omp gets skills from its own plugin; opencode documents none globally.
-    if (!host.skills || isOwnPath(host) || noGenericSkills.has(host.id)) {
+    if (!host.skills || noGenericSkills.has(host.id)) {
       expect(skills, `${host.id} should get no generic skills`).toHaveLength(0);
       continue;
     }
@@ -463,7 +481,10 @@ test("a shared skills root never promises an automatic rewrite", () => {
   // what the other host promises.
   for (const plan of planAll(HOME)) {
     if (plan.host.skillsDir === null || !SHARED_SKILL_DIRS.has(plan.host.skillsDir)) continue;
-    for (const skill of plan.artifacts.filter((a) => a.kind === "skill")) {
+    // Scoped to the rtk skill: a skill carries one mode, so only the rtk one
+    // talks about rtk at all. Asserting it on every skill was only passing
+    // because every skill used to carry the whole pack.
+    for (const skill of plan.artifacts.filter((a) => a.kind === "skill" && isMode(a.absPath, "rtk"))) {
       expect(skill.content, `${plan.host.id} shared skill promises automation`)
         .toContain("prefix noisy commands");
       expect(skill.content, `${plan.host.id} shared skill promises automation`)
@@ -474,8 +495,40 @@ test("a shared skills root never promises an automatic rewrite", () => {
 
 test("a host with a private skills dir keeps its own auto-rewrite wording", () => {
   const host = HOSTS.find((h) => h.id === "claude-code")!;
-  for (const skill of planHost(host, HOME).artifacts.filter((a) => a.kind === "skill")) {
+  const skills = planHost(host, HOME).artifacts.filter((a) => a.kind === "skill");
+  for (const skill of skills.filter((s) => isMode(s.absPath, "rtk"))) {
     expect(skill.content).toContain("filters output before the model reads it");
+  }
+  expect(skills.filter((s) => isMode(s.absPath, "rtk")), "the rtk skill exists").toHaveLength(1);
+});
+
+test("each skill carries only its own mode, and the three are not the same file", () => {
+  // The regression: every skill used to be handed the whole rules body, so
+  // tersio-rtk also explained caveman and ponytail and all three files were
+  // byte-identical apart from their frontmatter. A skill is one mode.
+  const expectations: Record<string, [RegExp, RegExp[]]> = {
+    caveman: [/Caveman \(terse replies\)/, [/Ponytail \(minimal code\)/, /Rust Token Killer/]],
+    ponytail: [/Ponytail \(minimal code\)/, [/Caveman \(terse replies\)/, /Rust Token Killer/]],
+    rtk: [/Rust Token Killer/, [/Caveman \(terse replies\)/, /Ponytail \(minimal code\)/]],
+  };
+  for (const host of HOSTS) {
+    if (host.skillsDir === null) continue;
+    const seen = new Set<string>();
+    for (const [mode, [own, foreign]] of Object.entries(expectations)) {
+      const skill = planHost(host, HOME).artifacts.find(
+        (a) => a.kind === "skill" && isMode(a.absPath, mode),
+      );
+      expect(skill, `${host.id} has no ${mode} skill`).toBeDefined();
+      const content = skill!.content;
+      expect(content, `${host.id}/${mode} lost its own text`).toMatch(own);
+      for (const other of foreign) {
+        expect(content, `${host.id}/${mode} carries another mode's text`).not.toMatch(other);
+      }
+      // Distinct bodies, not one file copied three times.
+      const body = content.replace(/^---\n[\s\S]*?\n---\n\n/, "");
+      expect(seen.has(body), `${host.id}/${mode} duplicates another mode's body`).toBe(false);
+      seen.add(body);
+    }
   }
 });
 

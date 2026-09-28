@@ -1,7 +1,7 @@
 {
   "name": "@krtclcdy/tersio",
   "version": "2.23.0",
-  "description": "✂️ Token-saving OMP add-ons: terse Caveman replies, compact RTK shell output, lean Ponytail code calls — one-command combo presets.",
+  "description": "\u2702\ufe0f Token-saving OMP add-ons: terse Caveman replies, compact RTK shell output, lean Ponytail code calls \u2014 one-command combo presets.",
   "keywords": [
     "omp",
     "token-saving",
@@ -10,7 +10,8 @@
     "caveman-mode",
     "rtk-rust-token-killer",
     "ponytail-omp",
-    "extensions"
+    "extensions",
+    "pi-package"
   ],
   "license": "MIT",
   "author": "KurutoDenzeru",
@@ -19,8 +20,51 @@
     "url": "git+https://github.com/KurutoDenzeru/tersio.git"
   },
   "type": "module",
+  "engines": {
+    "node": ">=20.12.0"
+  },
   "bin": {
     "tersio": "tersio.js"
+  },
+  "files": [
+    "tersio.js",
+    "cli/**/*.js",
+    "dashboard/dist/**/*",
+    "extensions/**/*.js",
+    "extensions/**/*.ts",
+    "extensions/caveman-session/rule.md"
+  ],
+  "scripts": {
+    "clean": "rm -f tersio.js cli/*.js extensions/**/*.js && rm -rf dashboard/dist",
+    "build": "tsc && bun run build:dashboard",
+    "build:dashboard": "bun install --cwd dashboard/app --frozen-lockfile && bun run --cwd dashboard/app build",
+    "prepublishOnly": "bun run build",
+    "check": "tsc --noEmit",
+    "doctor": "node tersio.js --doctor",
+    "dry-run": "node tersio.js --dry-run --scope user --yes",
+    "lint": "oxlint cli extensions test tersio.ts",
+    "lint:dashboard": "bun run --cwd dashboard/app lint",
+    "lint:fix": "oxlint cli extensions test tersio.ts --fix",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@clack/prompts": "^1.8.0",
+    "@dietrichgebert/ponytail": "^4.10.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.1",
+    "oxlint": "^1.85.0",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.1"
+  },
+  "pi": {
+    "extensions": [
+      "./extensions/pi/ai-addons-updater/index.ts",
+      "./extensions/pi/caveman-session/index.ts",
+      "./extensions/pi/combo-toggle/index.ts",
+      "./extensions/pi/rtk-session/index.ts",
+      "./extensions/pi/tersio-commands/index.ts"
+    ]
   },
   "omp": {
     "name": "Tersio",
@@ -108,39 +152,5 @@
         "default": "USD"
       }
     }
-  },
-  "files": [
-    "tersio.js",
-    "cli/**/*.js",
-    "dashboard/dist/**/*",
-    "extensions/**/*.js",
-    "extensions/**/*.ts",
-    "extensions/caveman-session/rule.md"
-  ],
-  "scripts": {
-    "clean": "rm -f tersio.js cli/*.js extensions/**/*.js && rm -rf dashboard/dist",
-    "build": "tsc && bun run build:dashboard",
-    "build:dashboard": "bun install --cwd dashboard/app --frozen-lockfile && bun run --cwd dashboard/app build",
-    "prepublishOnly": "bun run build",
-    "check": "tsc --noEmit",
-    "doctor": "node tersio.js --doctor",
-    "dry-run": "node tersio.js --dry-run --scope user --yes",
-    "lint": "oxlint cli extensions test tersio.ts",
-    "lint:dashboard": "bun run --cwd dashboard/app lint",
-    "lint:fix": "oxlint cli extensions test tersio.ts --fix",
-    "test": "vitest run"
-  },
-  "engines": {
-    "node": ">=20.12.0"
-  },
-  "devDependencies": {
-    "@types/node": "^26.4.1",
-    "oxlint": "^1.85.0",
-    "typescript": "^7.0.2",
-    "vitest": "^5.0.1"
-  },
-  "dependencies": {
-    "@clack/prompts": "^1.8.0",
-    "@dietrichgebert/ponytail": "^4.10.0"
   }
 }

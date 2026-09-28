@@ -120,9 +120,14 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   const wanted = agentFlag.length > 0
     ? new Set(agentFlag)
     : new Set([...installedHostIds(installedState(home)), ...readSelection(home).hosts]);
-  const otherHosts = HOSTS.filter((h) => h.id !== 'omp' && wanted.has(h.id)).map((h) => h.id);
+  // Every host in scope reports through the same row, omp and pi included:
+  // each names the files it needs, its version and its path, and the two
+  // extension hosts add a layer line below. omp used to be excluded here
+  // because it had no static files to report, which is what left it the
+  // only host whose artifacts the report never enumerated.
+  const hostIds = HOSTS.filter((h) => wanted.has(h.id)).map((h) => h.id);
   section('Agent hosts');
-  if (otherHosts.length === 0) {
+  if (hostIds.length === 0) {
     // Derived from the registry so dropping a host cannot leave a stale id
     // advertised here.
     console.log('  ℹ️  none installed — `tersio install --agent <id>` adds one');
@@ -132,14 +137,14 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
     // one; a host set up with no CLI on PATH — Codex on a machine that only has
     // the desktop app — falls back to its config dir, which is still real.
     interface HostProbe { bin: string | null; version: string | null }
-    const probes = new Map<string, HostProbe>(await Promise.all(otherHosts.map(async (id): Promise<[string, HostProbe]> => {
+    const probes = new Map<string, HostProbe>(await Promise.all(hostIds.map(async (id): Promise<[string, HostProbe]> => {
       const host = byId(id);
       const bin = host ? findHostBinary(host) : null;
       if (!bin) return [id, { bin: null, version: null }];
       const out = await execP(bin, ['--version'], { timeout: 5000 }).then((r) => r.stdout.trim() || null, () => null);
       return [id, { bin, version: out }];
     })));
-    for (const row of reportHosts(otherHosts, home)) {
+    for (const row of reportHosts(hostIds, home)) {
       const label = row.host.label;
       const probe = probes.get(row.host.id);
       const where = probe?.bin ?? displayPath(path.join(home, row.host.configDir), home);

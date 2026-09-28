@@ -27,13 +27,35 @@ test("the shipped plugin is self-contained and uses the v2 shape", () => {
   const src = readFileSync(PLUGIN_SOURCE, "utf8");
   // The v2 contract: default-export a definition with id + setup(ctx).
   expect(src).toContain("export default plugin");
-  expect(src).toMatch(/id:\s*'tersio-rtk'/);
+  // One plugin named for the package. It carries the rewrite and the /caveman,
+  // /rtk, /ponytail and /combo commands, and this id is how OpenCode names it.
+  expect(src).toMatch(/id:\s*'tersio'/);
   expect(src).toMatch(/async setup\(ctx\)/);
   expect(src).toContain("ctx.tool.hook('execute.before'");
   // Nothing may be imported but node builtins, or it cannot load there.
   const imports = [...src.matchAll(/^import .* from ['"]([^'"]+)['"]/gm)].map((m) => m[1]);
   for (const spec of imports) {
     expect(spec, `imports ${spec}, which will not resolve in a config dir`).toMatch(/^node:/);
+  }
+});
+
+test("installing clears the superseded plugin file, which would otherwise load twice", async () => {
+  // OpenCode discovers every .ts file in ~/.config/opencode/plugins/, so a
+  // tersio-rtk.ts left from before the rename loads beside tersio.ts and both
+  // register /caveman, /rtk, /ponytail and /combo. Removal is part of
+  // installing, not a migration left to the user.
+  const { home, cleanup } = tempHome();
+  try {
+    const plugins = path.join(home, ".config", "opencode", "plugins");
+    mkdirSync(plugins, { recursive: true });
+    const stale = path.join(plugins, "tersio-rtk.ts");
+    writeFileSync(stale, "export default { id: 'tersio-rtk' };\n", "utf8");
+
+    await installOpenCodeRtk(home, PLUGIN_SOURCE, { quiet: true });
+    expect(existsSync(stale), "the superseded file was left to load a second time").toBe(false);
+    expect(existsSync(openCodePluginPath(home))).toBe(true);
+  } finally {
+    cleanup();
   }
 });
 
@@ -53,7 +75,7 @@ test("installing writes the plugin where OpenCode v2 looks for it", async () => 
     const src = readFileSync(PLUGIN_SOURCE, "utf8");
     const changed = await installOpenCodeRtk(home, PLUGIN_SOURCE, { quiet: true });
     expect(changed).toBe(true);
-    expect(openCodePluginPath(home)).toBe(path.join(home, ".config", "opencode", "plugins", "tersio-rtk.ts"));
+    expect(openCodePluginPath(home)).toBe(path.join(home, ".config", "opencode", "plugins", "tersio.ts"));
     expect(existsSync(openCodePluginPath(home))).toBe(true);
     expect(await openCodePluginInstalled(home)).toBe(true);
     expect(readFileSync(openCodePluginPath(home), "utf8")).toBe(src);

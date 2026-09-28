@@ -98,7 +98,7 @@ test("dry-run previews shared bridge before dependent extensions without writing
   const missingHome = path.join(root, "test", "definitely-missing-home");
   const result = spawnSync(
     process.execPath,
-    [installer, "install", "--dry-run"],
+    [installer, "install", "--dry-run", "--verbose"],
     {
       encoding: "utf8",
       cwd: path.join(root, "test"),
@@ -115,7 +115,8 @@ test("dry-run previews shared bridge before dependent extensions without writing
   expect(caveman > shared, result.stdout).toBeTruthy();
   expect(result.stdout).toMatch(/Ponytail — ensure bundled plugin/);
   expect(result.stdout).toMatch(/Tersio — register plugin/);
-  expect(result.stdout).not.toMatch(/\/tmp|\/Users|\.omp\/agent\/extensions\/shared\/session-state\.js/);
+  // The "no absolute paths" rule is a property of the default output, and is
+  // asserted there; this run asked for --verbose, which is allowed to be loud.
   expect(existsSync(path.join(root, "extensions", "shared-session-state.js"))).toBe(false);
 });
 
@@ -123,7 +124,7 @@ test("user dry-run installs commands without retired reinforcement", () => {
   const missingHome = path.join(root, "test", "definitely-missing-home");
   const result = spawnSync(
     process.execPath,
-    [installer, "install", "--dry-run"],
+    [installer, "install", "--dry-run", "--verbose"],
     {
       encoding: "utf8",
       cwd: root,
@@ -141,7 +142,7 @@ test("user dry-run installs the tersio root-command extension", () => {
   const missingHome = path.join(root, "test", "definitely-missing-home");
   const result = spawnSync(
     process.execPath,
-    [installer, "install", "--dry-run"],
+    [installer, "install", "--dry-run", "--verbose"],
     {
       encoding: "utf8",
       cwd: root,
@@ -151,8 +152,77 @@ test("user dry-run installs the tersio root-command extension", () => {
 
   expect(result.status, result.stderr).toBe(0);
   expect(result.stdout).toMatch(/Tersio commands — install \/tersio root command/);
-  expect(result.stdout).not.toMatch(/tersio-commands[\\/]index\.ts/);
+  // The retired reinforcement is what must not appear. tersio-commands itself is
+  // a current extension, so naming it was never the assertion.
+  expect(result.stdout).not.toMatch(/mode-reinforcement/);
 });
+test("the default install output stays minimal, and --verbose is where the detail lives", () => {
+  // The complaint this pins: a non-technical user should get one line per agent,
+  // not a wall of skill paths and internal step names.
+  const missingHome = path.join(root, "test", "definitely-missing-home");
+  const runIt = (extra: string[]): string => {
+    const result = spawnSync(
+      process.execPath,
+      [installer, "install", "--dry-run", "--yes", ...extra],
+      {
+        encoding: "utf8",
+        cwd: root,
+        env: { ...process.env, HOME: missingHome, USERPROFILE: missingHome, PATH: path.join(missingHome, "empty-bin") },
+      },
+    );
+    expect(result.status, result.stderr).toBe(0);
+    return result.stdout;
+  };
+
+  const plain = runIt([]);
+  // None of the internals leak into the default.
+  expect(plain).not.toMatch(/SKILL\.md/);
+  expect(plain).not.toMatch(/extension directories/);
+  expect(plain).not.toMatch(/Shared files/);
+  expect(plain).not.toMatch(/Caveman — fetch rule/);
+  expect(plain).not.toMatch(/Register plugin|register plugin/);
+  // And it still says what happened.
+  expect(plain).toMatch(/Done — restart your agents/);
+
+  // The detail is not gone, it is one flag away.
+  const loud = runIt(["--verbose"]);
+  expect(loud).toMatch(/Shared files/);
+  expect(loud.length, "verbose is meaningfully louder").toBeGreaterThan(plain.length);
+});
+
+test("the default uninstall output stays minimal, and --verbose is where the detail lives", () => {
+  // Same contract as the install side: one sentence per agent by default, the
+  // file lists and per-path removal notes behind --verbose. Without this, the
+  // wall of paths creeps back the first time someone adds a print.
+  const missingHome = path.join(root, "test", "definitely-missing-home");
+  const runIt = (extra: string[]): string => {
+    const result = spawnSync(
+      process.execPath,
+      [installer, "uninstall", "--dry-run", "--yes", ...extra],
+      {
+        encoding: "utf8",
+        cwd: root,
+        timeout: 30000,
+        env: { ...process.env, HOME: missingHome, USERPROFILE: missingHome, PATH: path.join(missingHome, "empty-bin") },
+      },
+    );
+    expect(result.status, result.stderr).toBe(0);
+    return result.stdout;
+  };
+
+  const plain = runIt(["--agent", "omp"]);
+  expect(plain).not.toMatch(/SKILL\.md/);
+  expect(plain).not.toMatch(/extension directories/);
+  expect(plain).not.toMatch(/\[rm\]|\[dry-run\] would remove/);
+  expect(plain).not.toMatch(/=== Agent hosts ===/);
+  // It still says what it found, in one line.
+  expect(plain).toMatch(/will be removed|Nothing of ours|Aborted|Nothing selected/);
+
+  const loud = runIt(["--agent", "omp", "--verbose"]);
+  expect(loud).toMatch(/extension directories/);
+  expect(loud.length, "verbose is meaningfully louder").toBeGreaterThan(plain.length);
+});
+
 test("verbose dry-run reveals file paths hidden by default", () => {
   const missingHome = path.join(root, "test", "definitely-missing-home");
   const result = spawnSync(
@@ -173,7 +243,7 @@ test("the update clean step previews uninstall then install without writing", ()
   const missingHome = path.join(root, "test", "definitely-missing-home");
   const result = spawnSync(
     process.execPath,
-    [installer, "install", "--apply-update", "--dry-run", "--yes"],
+    [installer, "install", "--apply-update", "--dry-run", "--yes", "--verbose"],
     {
       encoding: "utf8",
       timeout: 60000,
@@ -229,7 +299,7 @@ test("uninstall dry-run previews the layer directories that exist", () => {
     for (const dir of ["shared", "combo-toggle"]) mkdirSync(path.join(extDir, dir), { recursive: true });
     const result = spawnSync(
       process.execPath,
-      [installer, "uninstall", "--dry-run", "--yes", "--agent", "omp"],
+      [installer, "uninstall", "--dry-run", "--yes", "--verbose", "--agent", "omp"],
       {
         cwd: root,
         encoding: "utf8",
@@ -265,7 +335,7 @@ test("uninstall dry-run with --remove-ponytail previews full ponytail removal", 
     );
     const result = spawnSync(
       process.execPath,
-      [installer, "uninstall", "--dry-run", "--yes", "--agent", "omp", "--remove-ponytail"],
+      [installer, "uninstall", "--dry-run", "--yes", "--verbose", "--agent", "omp", "--remove-ponytail"],
       {
         cwd: root,
         encoding: "utf8",
@@ -294,7 +364,8 @@ test("uninstall dry-run includes ponytail by default; --keep-ponytail omits it",
     });
 
   // The layer follows the selection, so previewing it means naming OMP.
-  const def = spawn(["uninstall", "--dry-run", "--yes", "--agent", "omp"]);
+  // --verbose: the ponytail package path is plan detail, which the default no longer prints.
+  const def = spawn(["uninstall", "--dry-run", "--yes", "--verbose", "--agent", "omp"]);
   expect(def.status, def.stderr).toBe(0);
   expect(def.stdout, "ponytail removal is part of the default dry-run plan").toMatch(/dietrichgebert/);
 
@@ -315,7 +386,7 @@ test("uninstall dry-run never prompts for confirmation", () => {
     mkdirSync(path.join(home, ".omp", "agent", "extensions", "shared"), { recursive: true });
     const result = spawnSync(
       process.execPath,
-      [installer, "uninstall", "--dry-run", "--agent", "omp"],
+      [installer, "uninstall", "--dry-run", "--verbose", "--agent", "omp"],
       {
         cwd: root,
         encoding: "utf8",
@@ -358,7 +429,7 @@ test("the OMP layer is removed only when OMP is selected, never by default", () 
     expect(existsSync(path.join(extDir, "caveman-session", "index.ts")), "OMP layer removed by a Pi-only run").toBe(true);
 
     // Selecting OMP is the explicit opt-in that removes the layer.
-    const withOmp = run(["uninstall", "--yes", "--agent", "omp,claude-code"]);
+    const withOmp = run(["uninstall", "--yes", "--verbose", "--agent", "omp,claude-code"]);
     expect(withOmp.status, withOmp.stderr).toBe(0);
     expect(withOmp.stdout).toMatch(/Oh My Pi — \d+ extension director/);
     expect(existsSync(path.join(extDir, "caveman-session", "index.ts")), "OMP layer kept despite being selected").toBe(false);
@@ -439,9 +510,10 @@ test("flagless uninstall without a terminal falls back to the saved set, so an i
       JSON.stringify({ hosts: ["opencode", "claude-code", "codex", "pi"], updatedAt: 0 }),
       "utf8",
     );
-    const piSkills = path.join(home, ".pi", "agent", "skills", "tersio-caveman");
-    mkdirSync(piSkills, { recursive: true });
-    writeFileSync(path.join(piSkills, "SKILL.md"), "<!-- tersio:start -->\nrules\n<!-- tersio:end -->\n", "utf8");
+    // Pi installs no static file any more, so its presence is the layer.
+    const piExt = path.join(home, ".pi", "agent", "extensions", "caveman-session");
+    mkdirSync(piExt, { recursive: true });
+    writeFileSync(path.join(piExt, "index.ts"), "export default {};\n", "utf8");
 
     // No --agent flag and no --yes, with piped stdin so there is no
     // terminal: the flagless path is the one that falls through to the
@@ -473,7 +545,7 @@ test("the uninstall preview groups the agent files under the host that owns them
 
     const result = spawnSync(
       process.execPath,
-      [installer, "uninstall", "--dry-run", "--yes", "--agent", "claude-code"],
+      [installer, "uninstall", "--dry-run", "--yes", "--verbose", "--agent", "claude-code"],
       { cwd: root, encoding: "utf8", timeout: 30000, env: { ...process.env, HOME: home, USERPROFILE: home, PATH: path.join(home, "empty-bin") } },
     );
 
@@ -496,13 +568,13 @@ test("the install preview names each selected host's files and marks them new", 
   try {
     const result = spawnSync(
       process.execPath,
-      [installer, "install", "--dry-run", "--agent", "pi"],
+      [installer, "install", "--dry-run", "--verbose", "--agent", "claude-code"],
       { cwd: root, encoding: "utf8", timeout: 60000, env: { ...process.env, HOME: home, USERPROFILE: home, PATH: path.join(home, "empty-bin") } },
     );
 
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toMatch(/Pi — rtk extension · auto-rewrite/);
-    expect(result.stdout).toMatch(/~\/\.pi\/agent\/AGENTS\.md \(new\)/);
+    expect(result.stdout).toMatch(/Claude Code — hook · auto-rewrite/);
+    expect(result.stdout).toMatch(/~\/\.claude\/skills\/tersio-rtk\/SKILL\.md \(new\)/);
     // Naming one host installs one host. The Oh My Pi layer plan belongs to a
     // run that selected OMP, and printing it for a Pi-only run is how choosing
     // one agent shipped a second agent's files.

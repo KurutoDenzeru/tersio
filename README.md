@@ -38,21 +38,17 @@ The selection is saved to `~/.tersio/agents.json` and reused by every later inst
 
 `--agent` takes any id below. Repeatable and comma-separated.
 
-| Agent | `--agent` | Rules file | Skills | Live modes | RTK auto-rewrite |
+| Agent | `--agent` | Rules | Skills | Live modes | RTK rewrite |
 |---|---|---|---|---|---|
-| Claude Code | `claude-code` | `CLAUDE.md` | ✅ 3 | — static only | ✅ hook |
-| OpenAI Codex | `codex` | `AGENTS.md` | ✅ 3 | — static only | ✅ hook |
-| OpenCode | `opencode` | `AGENTS.md` | ⚠️ project-only | — static only | ✅ plugin |
-| Pi | `pi` | `AGENTS.md` | ✅ 3 | ✅ | ✅ rtk extension |
-| Oh My Pi | `omp` | — none | — none | ✅ | ✅ rtk extension |
+| Claude Code | `claude-code` | `CLAUDE.md` | ✅ 3 | — | ✅ hook |
+| OpenAI Codex | `codex` | `AGENTS.md` | ✅ 3 | — | ✅ hook |
+| OpenCode | `opencode` | `AGENTS.md` | ✅ 3 | — | ✅ plugin |
+| Pi | `pi` | — | ✅ 3 | ✅ | ✅ rtk extension |
+| Oh My Pi | `omp` | — | ✅ 3 | ✅ | ✅ rtk extension |
 
-**Live modes** means the mode switches mid-session: `/caveman`, `/rtk` and `/combo` take effect on the next turn and inject into every turn after. The other three hosts get the same three modes as **static** instructions — the rules text and a skill, read once per session, with no command to switch them. Oh My Pi has no rules file and no skills on purpose: it delivers all three modes through its extension layer, so a session that never loads that layer gets nothing. `/ponytail` on Oh My Pi belongs to the bundled upstream Ponytail plugin, not to Tersio's tree, which is why Pi has the mode but no `/ponytail` command.
+**Live modes** switch mid-session and inject every turn, so those two hosts get no rules file: a static copy would stay on after `/combo off`. The rest are static, and every host gets a rules file and skills that way. Every host auto-rewrites — `tersio doctor` names the mechanism.
 
-Every supported host ships a working auto-rewrite, so there is no guidance-only row to read carefully. `tersio doctor` states which mechanism each host actually got — a generated hook, rtk's extension, or a plugin — so you never have to take the table on faith.
-
-Not supported: Gemini CLI is sunset for free, Pro, and Ultra accounts, and its Antigravity CLI successor, OpenClaw, Hermes, Grok Build, GitHub Copilot CLI, Command Code, and Cursor are all out of scope. `tersio install` will not touch them, and `tersio uninstall` will not remove anything it did not write.
-
-Run `tersio install` again at any point to change the selection. It asks which agents to set up, so there is one install path for all five — nothing is scoped to a single agent's plugin system. Both prompts are followed by a plan: install names every file it will write, per agent, marking each as new or already in place; uninstall names every file it will remove, per agent, listing only what is actually on disk. The two menus differ where it matters — install pre-ticks your saved agents, uninstall ticks nothing, because a tick there deletes. Ticking **Oh My Pi (OMP)** in the uninstall list removes its extensions and Ponytail, in the same menu rather than a separate question.
+Re-run `tersio install` to change the selection — one path for all five. Both menus print a per-agent file plan first: what install will write, what uninstall will remove. Install pre-ticks your saved agents; uninstall ticks nothing, because a tick there deletes. Ticking **Oh My Pi** removes its extensions and Ponytail in the same menu.
 
 ```bash
 tersio install                      # prompt for the agents

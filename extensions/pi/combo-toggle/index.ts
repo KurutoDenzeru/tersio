@@ -39,7 +39,6 @@ import type { ExtensionCtx, PiBeforeAgentStartEvent, PiExtensionAPI } from '../s
 // Erased at load: this specifier is resolved by tsc against the repo layout
 // only, never by Pi at runtime, so the two-level jump here cannot break the
 // installed tree where extensions/shared/types.ts sits one level up.
-import type { ComboState } from '../../shared/types.ts';
 
 const PONYTAIL_FALLBACK_INTENSITY: Record<string, string> = {
   lite: 'Prefer the simplest correct solution.',
@@ -55,6 +54,7 @@ function ponytailInstructions(mode: string): string {
 // `ComboState` would mean importing extensions/shared/types — a specifier that is
 // correct in this repo (../../shared/) and wrong once installed (../shared/).
 // The structural parameter below is the slice this reads and needs no import.
+type ComboStateSlice = Readonly<{ level: string; caveman: string; rtk: string; ponytail: string }>;
 function levelSummary(state: { caveman: string; rtk: string; ponytail: string }): string {
   return `caveman=${state.caveman} rtk=${state.rtk} ponytail=${state.ponytail}`;
 }
@@ -66,7 +66,7 @@ export default function comboToggleExtension(pi: PiExtensionAPI): void {
   let announcedPreset = false;
 
   /** The one line that carries the state the status bar used to carry. */
-  function comboLine(state: Readonly<ComboState>): string {
+  function comboLine(state: ComboStateSlice): string {
     const modes = `🪨caveman=${state.caveman.toUpperCase()} ⚡rtk=${state.rtk.toUpperCase()} 🦥ponytail=${state.ponytail.toUpperCase()}`;
     // A preset is "on"; off and a custom mix are not, and calling a custom mix
     // "on" would claim a preset the session does not have.
@@ -82,7 +82,7 @@ export default function comboToggleExtension(pi: PiExtensionAPI): void {
    * change instead. A session that starts dark, and a lone /caveman in a custom
    * mix, say nothing: those keep the sibling bars they already had.
    */
-  function announce(state: Readonly<ComboState>, ctx?: ExtensionCtx): void {
+  function announce(state: ComboStateSlice, ctx?: ExtensionCtx): void {
     const signature = `${state.level}:${state.caveman}:${state.rtk}:${state.ponytail}`;
     if (signature === announced) return;
     const c = paintableCtx(lastCtx, ctx);
@@ -124,12 +124,12 @@ export default function comboToggleExtension(pi: PiExtensionAPI): void {
     pi.appendEntry?.('combo-level', { level });
   }
 
-  function useState(state: Readonly<ComboState>, ctx?: ExtensionCtx): Readonly<ComboState> {
+  function useState(state: ComboStateSlice, ctx?: ExtensionCtx): ComboStateSlice {
     announce(state, ctx);
     return state;
   }
 
-  function reconcile(ctx?: ExtensionCtx): Readonly<ComboState> {
+  function reconcile(ctx?: ExtensionCtx): ComboStateSlice {
     if (!ctx?.hasUI) return getSharedComboState();
     return useState(reconcileSharedComboEntries(sessionEntries(ctx)), ctx);
   }

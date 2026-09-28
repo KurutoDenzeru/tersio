@@ -149,32 +149,31 @@ test("uninstall with removal flags drops ponytail, its lock entry, and the rtk b
   }
 });
 
-test("uninstall --agent pi removes the pi skills, rules, and rtk extension but keeps the layer and binary", () => {
+test("uninstall --agent pi clears its extension tree, keeps the layer and binary, and leaves a user rules file alone", () => {
   const home = mkdtempSync(path.join(os.tmpdir(), "tersio-uninstall-"));
   try {
     seed(home);
     mkdirSync(path.join(home, ".pi", "agent", "extensions"), { recursive: true });
-    writeFileSync(path.join(home, ".pi", "agent", "AGENTS.md"), "<!-- tersio:start -->\nrules\n<!-- tersio:end -->\n", "utf8");
-    for (const mode of ["caveman", "ponytail", "rtk"]) {
-      const dir = path.join(home, ".pi", "agent", "skills", `tersio-${mode}`);
-      mkdirSync(dir, { recursive: true });
-      writeFileSync(path.join(dir, "SKILL.md"), "mine\n", "utf8");
-    }
+    // A user's own global rules, in the path tersio no longer writes. It must
+    // survive untouched: pi injects its rules from the extension tree, so this
+    // file is not ours to edit or remove.
+    const userRules = path.join(home, ".pi", "agent", "AGENTS.md");
+    writeFileSync(userRules, "# my rules\n", "utf8");
     const piRtk = path.join(home, ".pi", "agent", "extensions", "rtk.ts");
     writeFileSync(piRtk, "// rtk pi wiring", "utf8");
     const piTersio = path.join(home, ".pi", "agent", "extensions", "tersio.ts");
     writeFileSync(piTersio, "// tersio pi extension", "utf8");
-    const result = run(home, "uninstall", "--yes", "--agent", "pi");
+    const result = run(home, "uninstall", "--yes", "--verbose", "--agent", "pi");
 
     expect(result.status, result.stderr).toBe(0);
     expect(!existsSync(piRtk), "pi rtk extension removed").toBeTruthy();
     expect(!existsSync(piTersio), "pi tersio extension removed").toBeTruthy();
     expect(!existsSync(path.join(home, ".pi", "agent", "skills", "tersio-caveman")), "pi skills removed").toBeTruthy();
-    expect(!existsSync(path.join(home, ".pi", "agent", "AGENTS.md")), "block-only AGENTS.md removed").toBeTruthy();
+    expect(existsSync(userRules), "a user's rules file is left alone").toBeTruthy();
+    expect(readFileSync(userRules, "utf8"), "and left byte-for-byte").toBe("# my rules\n");
     expect(result.stdout).toMatch(/extensions\/rtk\.ts/);
     // The plan names only the selected host: unselected agents stay out of
     // both the preview and the run.
-    expect(result.stdout).toMatch(/Pi — rtk extension/);
     expect(result.stdout).not.toMatch(/Claude Code — hook/);
     expect(result.stdout).not.toMatch(/OpenAI Codex — hook/);
     expect(result.stdout).not.toMatch(/OpenCode — plugin/);

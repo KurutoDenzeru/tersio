@@ -17,6 +17,7 @@ import {
 import {
   askInteractiveChoice, askInteractiveConfirm, closeRL, execNetwork, tty, withInteractiveSpinner,
 } from './interactive.ts';
+import { HOSTS, byId } from './agent-hosts.ts';
 import { printWelcome } from './banner.ts';
 import { checkForUpdate, runLatestUpdate } from './update.ts';
 import { runUninstall } from './uninstall.ts';
@@ -25,17 +26,19 @@ import { runReset } from './reset.ts';
 import { runUsage } from './usage.ts';
 import { runDashboard } from './dashboard.ts';
 import { wireRtkOmp, wireRtkAgent, rtkAgentFor } from './rtk-wiring.ts';
-import { installOpenCodeRtk } from './opencode-wiring.ts';
+import { installOpenCodeRtk, openCodePluginPath } from './opencode-wiring.ts';
 import { installPiTersio } from './pi-wiring.ts';
+import { piExtensionTargets, piLayer } from './pi-layer.ts';
 import {
   CAVEMAN_REMOTE_RULE, RTK_RELEASE_API, RtkRelease, RtkReleaseAsset, fetchJson, findFile, httpsGet,
-  httpsDownload, parseChecksum, readTextIfExists, resolveRtkBinary, rtkPlatformSpec, sha256File,
+  httpsDownload, parseChecksum, readTextIfExists, rtkPlatformSpec, sha256File,
 } from '../extensions/lib/utils.ts';
 import { storedProfile, writePluginSettings } from './profile.ts';
 import {
-  applyHosts, agentChoices, detectHosts, displayPath, installedHostIds, installedState,
-  normalizeIds, planInstall, readSelection, resolveAgentSelection, writeSelection,
-  type InstallPlan,
+  applyHosts, agentChoices, clearRetiredPaths, detectHosts, displayPath, groupByLabel,
+  installedHostIds, installedState,
+  normalizeIds, planInstall, pluralArtifactLabel, readSelection, resolveAgentSelection, writeSelection,
+  type InstallPlan, type PlanLine,
 } from './agents.ts';
 import { ompLayer } from './omp-layer.ts';
 import type { Profile } from './profile.ts';
@@ -43,6 +46,7 @@ import type { Profile } from './profile.ts';
 // Paths to extension source files (relative to this script)
 const EXT_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'extensions');
 const SHARED_SESSION_STATE = path.join(EXT_DIR, 'shared', 'session-state.ts');
+const SHARED_OMP_PROMPT = path.join(EXT_DIR, 'shared', 'omp-prompt.ts');
 const CAVEMAN_INDEX = path.join(EXT_DIR, 'caveman-session', 'index.ts');
 const CAVEMAN_RULE = path.join(EXT_DIR, 'caveman-session', 'rule.md');
 const RTK_SESSION_INDEX = path.join(EXT_DIR, 'rtk-session', 'index.ts');
@@ -91,6 +95,7 @@ function piTreeSources(): Array<[string, string]> {
     [SHARED_USAGE_LEDGER, path.join('shared', 'usage-ledger.ts')],
     [SHARED_PRICING, path.join('shared', 'pricing.ts')],
     [SHARED_CARBON, path.join('shared', 'carbon.ts')],
+    [SHARED_OMP_PROMPT, path.join('shared', 'omp-prompt.ts')],
   ];
   for (const dir of PI_EXTENSION_DIRS) {
     pairs.push([path.join(piExt, dir, 'index.ts'), path.join(dir, 'index.ts')]);
@@ -104,7 +109,7 @@ export { piTreeSources };
 const ALL_HOSTS = '__all__';
 
 async function stepPonytail(pluginsDir: string, options: InstallOptions): Promise<void> {
-  if (!options.quiet) console.log('  Ponytail — ensure bundled plugin');
+  step(options, 'Ponytail — ensure bundled plugin');
   await fs.mkdir(pluginsDir, { recursive: true });
   const pkgPath = path.join(pluginsDir, 'package.json');
   const pkg = await readPluginsPackage(pkgPath);
@@ -167,7 +172,7 @@ async function stepPonytail(pluginsDir: string, options: InstallOptions): Promis
 // Settings → Plugins page (OMP enumerates plugins/package.json dependencies).
 // Returns true when the package is verified in plugins/node_modules.
 async function stepSelfPlugin(pluginsDir: string, options: InstallOptions): Promise<boolean> {
-  if (!options.quiet) console.log('  Tersio — register plugin');
+  step(options, 'Tersio — register plugin');
   const pkgPath = path.join(pluginsDir, 'package.json');
   const pkg = await readPluginsPackage(pkgPath);
   pkg.dependencies[PACKAGE_NAME] = `^${PACKAGE_VERSION}`;
@@ -395,7 +400,7 @@ async function copySources(extDir: string, files: Array<[string, string]>, skipL
 }
 
 async function stepSharedSessionState(extDir: string, options: WriteOptions): Promise<void> {
-  if (!options.quiet) console.log('  Shared files — sync session bridge');
+  step(options, 'Shared files — sync session bridge');
   await copySources(extDir, [
     [SHARED_SESSION_STATE, path.join('shared', 'session-state.ts')],
     [SHARED_TYPES, path.join('shared', 'types.ts')],
@@ -404,12 +409,13 @@ async function stepSharedSessionState(extDir: string, options: WriteOptions): Pr
     [SHARED_USAGE_LEDGER, path.join('shared', 'usage-ledger.ts')],
     [SHARED_PRICING, path.join('shared', 'pricing.ts')],
     [SHARED_CARBON, path.join('shared', 'carbon.ts')],
+    [SHARED_OMP_PROMPT, path.join('shared', 'omp-prompt.ts')],
   ], 'shared/session-state.js', options);
 }
 
 
 async function stepRtkSession(extDir: string, options: WriteOptions): Promise<void> {
-  if (!options.quiet) console.log('  RTK session — install session mode');
+  step(options, 'RTK session — install session mode');
   await copySources(extDir, [[RTK_SESSION_INDEX, path.join('rtk-session', 'index.ts')]], 'rtk-session/index.ts', options);
 }
 
@@ -431,7 +437,7 @@ async function fetchCavemanRule(options: WriteOptions): Promise<string | null> {
 }
 
 async function stepCaveman(extDir: string, rule: string | null, options: WriteOptions): Promise<void> {
-  if (!options.quiet) console.log('  Caveman — fetch rule and install session mode');
+  step(options, 'Caveman — fetch rule and install session mode');
   const cavemanDir = path.join(extDir, 'caveman-session');
   if (!options.dryRun) await fs.mkdir(cavemanDir, { recursive: true });
 
@@ -449,7 +455,7 @@ async function stepCaveman(extDir: string, rule: string | null, options: WriteOp
 }
 
 async function stepTersioCommands(extDir: string, options: WriteOptions): Promise<void> {
-  if (!options.quiet) console.log('  Tersio commands — install /tersio root command');
+  step(options, 'Tersio commands — install /tersio root command');
   await copySources(extDir, [[TERSIO_COMMANDS_INDEX, path.join('tersio-commands', 'index.ts')]], 'tersio-commands/index.ts', options);
 }
 
@@ -472,22 +478,120 @@ const LIVE_WIRING_NOTE: Record<string, string> = {
  * line is a file the run really touches. Paths are `$HOME`-relative because a
  * preview has no reason to print the machine layout.
  */
+/**
+ * Artifacts a host gets that `planInstall` does not model: a live extension
+ * tree, or a plugin module.
+ *
+ * The install preview used to stop at the static files, so a Pi run named four
+ * artifacts and wrote twelve — the seven-directory tree and rtk's own wiring
+ * were written by later steps the preview never mentioned. This is the same
+ * list the uninstall preview names, so the two ends of the command agree.
+ */
+function hostLayerLines(hostId: string, home: string): PlanLine[] {
+  if (hostId === 'pi') {
+    const layer = piLayer(home);
+    return [
+      ...piExtensionTargets(layer).map((p): PlanLine => ({ label: 'extension tree', path: p, new: !existsSync(p) })),
+      { label: 'rtk wiring', path: layer.rtkExtension, new: !existsSync(layer.rtkExtension) },
+    ];
+  }
+  if (hostId === 'opencode') {
+    const plugin = openCodePluginPath(home);
+    return [{ label: 'plugin', path: plugin, new: !existsSync(plugin) }];
+  }
+  return [];
+}
+
+/**
+ * Prints an internal step label, and only under `--verbose`.
+ *
+ * The default output is one line per agent, because "sync session bridge" and
+ * "fetch rule and install session mode" describe how the installer works rather
+ * than what the person running it now has. The labels are still the first thing
+ * to reach for when a step misbehaves, so they move rather than disappear.
+ */
+function step(options: { quiet?: boolean }, label: string): void {
+  if (verbose && !options.quiet) console.log(`  ${label}`);
+}
+
+/**
+ * How to install each agent this run touched, both ways.
+ *
+ * `tersio install` wrote the files, so this is the alternative rather than the
+ * next step. Every host in scope gets its `tersio install --agent <id>` line,
+ * because that is the supported path for all of them, and the agent's own command
+ * is added where one exists. Claude Code and Codex have no native command while
+ * their plugin ports are on hold, so they appear with the tersio form alone —
+ * listed, not silently missing.
+ */
+function printInstallGuide(ids: readonly string[], dryRun: boolean): void {
+  if (dryRun) return;
+  // Every host in scope gets its own `tersio install --agent` line, because that
+  // is the supported path for all of them. The agent's own command is added
+  // only where one exists, so Claude Code and Codex appear with the tersio form
+  // and no native one, which is what "held" means in practice rather than
+  // being left out of the list entirely.
+  const rows = HOSTS.flatMap((host) => {
+    if (!ids.includes(host.id)) return [];
+    return [[host.label, host.id, host.nativeInstall?.command] as const];
+  });
+  if (rows.length === 0) return;
+  const labelWidth = Math.max(...rows.map(([label]) => label.length));
+  const tersioWidth = Math.max(...rows.map(([, id]) => `tersio install --agent ${id}`.length));
+  console.log("\n  Or install it yourself:");
+  for (const [label, id, native] of rows) {
+    const tersio = `tersio install --agent ${id}`;
+    // Pad only when a native command follows, or the line ends in spaces.
+    const cell = native ? `${tersio.padEnd(tersioWidth)}   ${native}` : tersio;
+    console.log(`    ${label.padEnd(labelWidth)}   ${cell}`);
+  }
+}
+
+/**
+ * Removes what a previous version wrote and the current one does not.
+ *
+ * A host that dropped a capability would otherwise keep its old files forever:
+ * the planner no longer emits them, so install will not overwrite them and
+ * uninstall will not see them either. This is the only thing that clears them,
+ * so it runs on install as well as on removal.
+ */
+async function clearRetired(ids: readonly string[], home: string, options: InstallOptions): Promise<void> {
+  for (const id of ids) {
+    const host = byId(id);
+    if (!host?.retired) continue;
+    for (const removed of clearRetiredPaths(host, home, options)) {
+      if (verbose && !options.quiet) step(options, `[rm] ${displayPath(removed, home)} (superseded)`);
+    }
+  }
+}
+
+/** What one agent ends up with, in a sentence a non-technical user can read. */
+function readyLine(label: string, artifactCount: number): void {
+  console.log(`  \u2705 ${label} \u2014 ${artifactCount} file${artifactCount === 1 ? '' : 's'} in place. Caveman, Ponytail and rtk are ready.`);
+}
+
 function printInstallPlan(plan: InstallPlan, home: string): void {
   const names = plan.selected.map((host) => host.label).join(', ');
-  const tally = `${plan.newFiles} new file(s)` + (plan.unchanged > 0 ? `, ${plan.unchanged} already in place` : '');
-  console.log(`\n  Coding agents — ${names} (${tally})`);
-  for (const preview of plan.hosts) {
-    const fresh = preview.lines.filter((line) => line.new);
-    if (fresh.length === 0) {
-      const held = preview.lines.length;
-      const note = held > 0
-        ? `already up to date (${held} file${held === 1 ? '' : 's'})`
-        : (LIVE_WIRING_NOTE[preview.host.id] ?? 'no static files');
-      console.log(`    ${preview.host.label} — ${preview.wiring} · ${note}`);
-      continue;
+  // One header over everything the run writes, layer directories included, so
+  // the count a user reads is the count they get on disk.
+  const rows = plan.hosts.map((preview) => ({
+    preview,
+    lines: [...hostLayerLines(preview.host.id, home), ...preview.lines],
+  }));
+  const fresh = rows.reduce((n, r) => n + r.lines.filter((l) => l.new).length, 0);
+  const held = rows.reduce((n, r) => n + r.lines.filter((l) => !l.new).length, 0);
+  console.log(`\n  Coding agents — ${names} (${fresh} new file(s)${held > 0 ? `, ${held} already in place` : ''})`);
+  for (const row of rows) {
+    const isFresh = row.lines.some((line) => line.new);
+    const state = isFresh ? `${row.lines.filter((l) => l.new).length} new` : 'up to date';
+    const note = row.lines.length === 0 ? (LIVE_WIRING_NOTE[row.preview.host.id] ?? 'no static files') : `${row.lines.length} artifact(s) · ${state}`;
+    console.log(`    ${row.preview.host.label} — ${row.preview.wiring} — ${note}`);
+    for (const group of groupByLabel(row.lines)) {
+      const label = pluralArtifactLabel(group.label);
+      const freshInGroup = group.lines.filter((l) => l.new).length;
+      console.log(`      ${label} — ${group.lines.length}${freshInGroup > 0 ? `, ${freshInGroup} new` : ', up to date'}`);
+      for (const line of group.lines) console.log(`        ${displayPath(line.path, home)}${line.new ? ' (new)' : ''}`);
     }
-    console.log(`    ${preview.host.label} — ${preview.wiring} · ${fresh.length} new`);
-    for (const line of fresh) console.log(`      ${displayPath(line.path, home)} (new)`);
   }
 }
 
@@ -519,7 +623,16 @@ function printOmpPlan(home: string): void {
  * skipped for an explicit `--agent`, and for `--yes`, `--apply-update`, pipes,
  * and CI, which fall back to the saved set unioned with what is detected.
  */
-async function stepAgentHosts(options: InstallOptions, cavemanRule: string | null): Promise<string[] | null> {
+/**
+ * Which hosts this run acts on, or null when the picker was cancelled.
+ *
+ * Split from the application below so the prompt is the first thing the run
+ * does. The rtk binary must be on disk before the extension-file hosts are
+ * wired, which is why it is fetched before that — but there is no reason to
+ * fetch it before the user has been asked anything, and doing so meant Escape at
+ * the picker left a downloaded binary on the machine.
+ */
+async function resolveInstallSelection(options: InstallOptions): Promise<{ ids: string[]; interactive: boolean } | null> {
   const home = os.homedir();
   const stored = readSelection(home).hosts;
   const detected = detectHosts(home);
@@ -579,20 +692,49 @@ async function stepAgentHosts(options: InstallOptions, cavemanRule: string | nul
   }
 
 
-  const extra = selection.ids.filter((id) => id !== 'omp');
+  return { ids: selection.ids, interactive };
+}
+
+/**
+ * Writes every artifact the chosen hosts need.
+ *
+ * Takes the rtk binary the run just fetched rather than probing PATH again:
+ * the extension-file hosts are wired by rtk's own init, and that needs the
+ * binary this run installed, not whichever one happened to be on PATH.
+ */
+async function applyAgentHosts(
+  selection: { ids: string[]; interactive: boolean },
+  options: InstallOptions,
+  cavemanRule: string | null,
+  rtkBin: string | null,
+): Promise<void> {
+  const { ids, interactive } = selection;
+  const home = os.homedir();
+  // omp's static files ride the same path as everyone else's whenever its layer
+  // is in scope — an empty selection is the pre-multi-host default that puts
+  // the layer in, so it puts the files in too. The extension directories and
+  // rtk's own wiring stay with the layer block; only the files the generic
+  // emitters own are planned and written here.
+  const wantsOmp = ids.length === 0 || ids.includes('omp');
+  const extra = wantsOmp ? [...new Set([...ids, 'omp'])] : ids.filter((id) => id !== 'omp');
   if (extra.length === 0) {
     if (interactive && !options.quiet) console.log('  no coding agents selected');
-    if (!options.dryRun && selection.ids.length > 0) writeSelection(home, selection.ids);
-    return selection.ids;
+    if (!options.dryRun && ids.length > 0) writeSelection(home, ids);
+    return;
   }
 
-  if (!options.quiet) printInstallPlan(await planInstall(extra, home), home);
+  const planned = await planInstall(extra, home);
+  if (verbose && !options.quiet) printInstallPlan(planned, home);
+  if (!options.quiet && !options.dryRun) {
+    for (const preview of planned.hosts) readyLine(preview.host.label, planned.newFiles + planned.unchanged);
+  }
 
   const { results, errors } = await applyHosts(extra, home, {
     dryRun: options.dryRun,
     quiet: options.quiet,
     onlyChanged: true,
   });
+  await clearRetired(extra, home, options);
 
   // Only the hosts that changed are reported. The plan above already said which
   // were up to date, and repeating it here per host turned a no-op re-run into
@@ -611,7 +753,6 @@ async function stepAgentHosts(options: InstallOptions, cavemanRule: string | nul
   for (const id of extra) {
     const agent = rtkAgentFor(id);
     if (!agent) continue;
-    const rtkBin = resolveRtkBinary();
     if (!rtkBin) {
       if (!options.quiet) console.log(`  [skip] ${id}: rtk binary not found, so no ${agent} extension`);
       continue;
@@ -643,11 +784,10 @@ async function stepAgentHosts(options: InstallOptions, cavemanRule: string | nul
   }
 
   if (!options.dryRun) writeSelection(home, selection.ids);
-  return selection.ids;
 }
 
 async function stepCombo(extDir: string, options: InstallOptions): Promise<void> {
-  if (!options.quiet) console.log('  Combo — install preset switch');
+  step(options, 'Combo — install preset switch');
   await copySources(extDir, [[COMBO_TOGGLE_INDEX, path.join('combo-toggle', 'index.ts')]], 'combo-toggle/index.ts', options);
 }
 
@@ -885,24 +1025,27 @@ async function runInstall(overrides: { reinstall?: boolean } = {}): Promise<void
   // which needs the binary already on disk. It used to be fetched after the
   // hosts were wired, so a first-time install on a machine without rtk on PATH
   // reported "rtk binary not found" for the very host it had just fetched it for.
-  let rtkBin: string | null = null;
-  await capture('rtk', async () => { rtkBin = await stepRtk(BUN_BIN_DIR, options); });
-
-  // Coding agents first, so the multiselect is the first thing a user sees and
-  // the output leads with what the product is actually for. The step reports
-  // which hosts it resolved to, or null when the picker was cancelled, because
-  // the layer below installs only for the hosts that were actually picked.
-  let selected: string[] | null = [];
-  await capture('agent hosts', async () => { selected = await stepAgentHosts(options, cavemanRule); });
-  // Escape at the agent picker means stop, not "carry on without the coding
-  // agents": the steps below would still write files the user did not ask for.
-  // Only an explicit cancel aborts — a step that throws is still reported and
-  // the run continues, as it did before.
-  if (selected === null) {
+  // The agent prompt is the first question this run asks, and nothing is
+  // fetched or written before it is answered. It also puts the file plan
+  // directly under the menu, where the answer is still on screen. The rtk
+  // download used to print above the prompt, and Escape at that prompt left
+  // the binary behind.
+  const selection = await resolveInstallSelection(options);
+  if (selection === null) {
     console.log('\nNothing was installed.');
     closeRL();
     return;
   }
+
+  // rtk's binary is next, because both consumers of it come after: the
+  // extension-file hosts are wired by rtk's own init, and every generated
+  // rewriter shells out to `rtk rewrite`. It used to be fetched *before* the
+  // hosts were wired, so a first-time install with no rtk on PATH reported
+  // "rtk binary not found" for the host it had just fetched it for.
+  let rtkBin: string | null = null;
+  await capture('rtk', async () => { rtkBin = await stepRtk(BUN_BIN_DIR, options); });
+
+  await capture('agent hosts', async () => { await applyAgentHosts(selection, options, cavemanRule, rtkBin); });
 
   // The Oh My Pi layer installs for OMP, and for a run that named no host at
   // all: an empty selection is not a request for some other agent, it is the
@@ -910,11 +1053,11 @@ async function runInstall(overrides: { reinstall?: boolean } = {}): Promise<void
   // happen is naming one host and getting another's artifacts too — choosing
   // Codex used to also write seven extension directories, the Ponytail package
   // and the rtk wiring on top of the four files that were asked for.
-  const wantsOmpLayer = selected.length === 0 || selected.includes('omp');
+  const wantsOmpLayer = selection.ids.length === 0 || selection.ids.includes('omp');
   if (wantsOmpLayer) {
-    // The layer's file list, printed before the steps so the run names what it
-    // writes rather than only what each step is called.
-    if (!quiet) printOmpPlan(os.homedir());
+    // The layer's file list, under --verbose. The default gets one sentence.
+    if (verbose && !quiet) printOmpPlan(os.homedir());
+    if (!quiet && !options.dryRun) readyLine('Oh My Pi (OMP)', ompLayer(os.homedir(), RTK_BINARY_NAME).installed.length);
 
     await capture('shared', () => stepSharedSessionState(userExtDir, options));
     let selfPlugin = false;
@@ -935,6 +1078,7 @@ async function runInstall(overrides: { reinstall?: boolean } = {}): Promise<void
   if (quiet) {
     if (failures.length > 0) console.log(`  add-ons: ${failures.length} failed (${failures.join(', ')}) — see [fail] lines above`);
   } else {
+    printInstallGuide([...new Set([...selection.ids, ...(wantsOmpLayer ? ['omp'] : [])])], options.dryRun);
     // Not OMP-specific: the run may have installed nothing but coding agents.
     console.log(failures.length === 0 ? '\nDone — restart your agents to pick up the changes.' : `\nDone with ${failures.length} failure(s) — see [fail] lines above.`);
   }
