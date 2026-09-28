@@ -41,8 +41,7 @@ async function stepPonytail(pluginsDir: string, options: InstallOptions): Promis
   await fs.mkdir(pluginsDir, { recursive: true });
   const pkgPath = path.join(pluginsDir, 'package.json');
   const pkg = await readPluginsPackage(pkgPath);
-  // Migration: Ponytail is a tersio dependency now, so drop the legacy plugin
-  // row. Runs after stepSelfPlugin.
+  // Drop the legacy Ponytail plugin row; it is a tersio dependency now.
   let migrated = false;
   if ('@dietrichgebert/ponytail' in pkg.dependencies) {
     delete pkg.dependencies['@dietrichgebert/ponytail'];
@@ -59,8 +58,7 @@ async function stepPonytail(pluginsDir: string, options: InstallOptions): Promis
 
   const ponytailExtPath = path.join(pluginsDir, 'node_modules', '@dietrichgebert', 'ponytail', 'pi-extension', 'index.js');
   const probeExt = async (): Promise<boolean> => (await readTextIfExists(ponytailExtPath)) !== null;
-  // Fast path: bundled copy present and no refresh asked, so skip the network.
-  // Migration always reinstalls, because only npm prunes the legacy copy.
+  // Skip the network unless a refresh was asked; migration always reinstalls.
   let ponytailExtExists = !options.reinstall && !options.dryRun && !migrated ? await probeExt() : false;
   if (ponytailExtExists) {
     debug('Bundled Ponytail pi-extension already installed; skipping network refresh');
@@ -94,8 +92,7 @@ async function stepPonytail(pluginsDir: string, options: InstallOptions): Promis
   await ensurePonytailConfigValue('hideStatus', true, options);
 }
 
-// Registers this package in ~/.omp/plugins so OMP lists it under Settings →
-// Plugins. True when the package is verified in plugins/node_modules.
+// Registers the package so OMP lists it under Settings → Plugins.
 async function stepSelfPlugin(pluginsDir: string, options: InstallOptions): Promise<boolean> {
   if (!options.quiet) console.log('  Tersio — register plugin');
   const pkgPath = path.join(pluginsDir, 'package.json');
@@ -405,7 +402,7 @@ async function stepCombo(extDir: string, options: InstallOptions): Promise<void>
 
 
 async function resolveProfile(opts: { quiet?: boolean } = {}): Promise<Profile> {
-  // Seed from the lock file so flag-less runs keep the user's defaults.
+  // Seed from the stored defaults so flag-less runs keep them.
   const profile = await storedProfile();
 
   // One numbered prompt for all three modes, for a real terminal user with no
@@ -440,8 +437,7 @@ async function resolveProfile(opts: { quiet?: boolean } = {}): Promise<Profile> 
 
 let updatePromptDone = false;
 
-// Bare `tersio` at a terminal is a command picker: update offer first, then a
-// menu over every command. Scripts, pipes, --yes, and --dry-run install.
+// Bare `tersio` at a terminal picks a command; scripts and flags install.
 async function runCommandMenu(): Promise<void> {
   printWelcome();
   const newer = await checkForUpdate();
@@ -552,9 +548,8 @@ function hostEntry(id: HostId): HostEntry {
   return detectHosts().find((host) => host.id === id) as HostEntry;
 }
 
-// pi auto-discovers `<agent-dir>/extensions/**/index.ts`, so the pi route writes
-// the same tree the OMP route writes and needs no registration. Ponytail comes
-// from a pi package; its skills are the offline fallback.
+// pi auto-discovers `<agent-dir>/extensions/**/index.ts`, so this route writes
+// the same tree as OMP's and registers nothing.
 async function stepPiLayer(profile: Profile, options: InstallOptions): Promise<void> {
   const agentDir = piAgentDir();
   const extDir = path.join(agentDir, 'extensions');
@@ -573,9 +568,7 @@ async function stepPiLayer(profile: Profile, options: InstallOptions): Promise<v
   await stepPonytailForPi(agentDir, options);
 }
 
-// pi reads Ponytail from a package, so install it the pi way. Offline or failed,
-// the bundled copy's skills are copied instead: plain markdown, and the combo
-// extension injects the Ponytail instructions either way.
+// Ponytail for pi: install the package, or copy the bundled skills offline.
 async function stepPonytailForPi(agentDir: string, options: InstallOptions): Promise<void> {
   if (!options.quiet) console.log('  Ponytail — ensure the pi package');
   if (!options.dryRun) {
@@ -614,9 +607,7 @@ async function runInstall(): Promise<void> {
     return;
   }
 
-  // The host question comes first: it decides which tree is written, which
-  // reinstall cleanup runs, and which defaults file is stored. --host pins it;
-  // scripts, pipes, --yes, and --dry-run keep the OMP default.
+  // Ask the host first: it decides the tree, the cleanup, and the defaults file.
   let pinned: HostId | undefined;
   try {
     pinned = parseHostArg(args);
@@ -630,8 +621,7 @@ async function runInstall(): Promise<void> {
   }
   const host = hostEntry(targetHost);
 
-  // apply-update is `tersio update`'s payload: stay silent, the parent already
-  // printed the plan and owns the summary.
+  // apply-update stays silent: the parent printed the plan.
   const quiet = applyUpdate;
   if (!quiet) printWelcome();
 
@@ -641,8 +631,7 @@ async function runInstall(): Promise<void> {
     console.log(`Installing Tersio v${PACKAGE_VERSION}`);
   }
 
-  // Nudge humans about a newer release; silent without a TTY and for
-  // apply-update, which is itself an update run.
+  // Nudge about a newer release; silent without a TTY.
   if (tty() && !applyUpdate && command !== 'uninstall') {
     const newer = await checkForUpdate();
     if (typeof newer === 'string') {
@@ -672,8 +661,7 @@ async function runInstall(): Promise<void> {
   const userDir = OMP_AGENT_DIR;
   const userExtDir = path.join(userDir, 'extensions');
 
-  // apply-update refreshes the add-ons like a reinstall: Ponytail via npm,
-  // self plugin, RTK binary, and the Caveman rule.
+  // apply-update refreshes every add-on like a reinstall.
   const installOptions: InstallOptions = { dryRun, verbose, yes, reinstall: applyUpdate, quiet };
 
   try {

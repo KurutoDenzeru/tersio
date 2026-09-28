@@ -1,6 +1,5 @@
-// Shared usage ledger: append-only JSON-lines file, read by `tersio usage`,
-// `/tersio usage`, and the Dashboard. Best-effort: a ledger failure never
-// breaks the caller, and corrupt lines are skipped on read.
+// Shared usage ledger: append-only JSON lines, read by the CLI, `/tersio`, and
+// the Dashboard. Best-effort; corrupt lines are skipped on read.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -21,8 +20,7 @@ export function ledgerPath(): string {
   return tersioDataPath('usage.jsonl', 'tersio-usage.jsonl');
 }
 
-// Reset watermark: a tersio-owned timestamp. Transcripts and the RTK database
-// are never deleted; derived views filter rows older than the watermark.
+// Reset watermark: views filter rows older than it, so nothing else is deleted.
 export function resetMarkerPath(): string {
   const override = process.env.TERSIO_RESET_FILE;
   if (override) return override;
@@ -55,8 +53,7 @@ export function appendUsage(kind: UsageKind, detail: string): void {
 }
 
 // --- Session tokens, tokscale-style ------------------------------------------
-// Assistant messages in the host transcripts (**/*.jsonl) carry message.usage,
-// message.model, and a timestamp. Unreadable files are skipped.
+// Assistant messages in the host transcripts carry usage, model, and a timestamp.
 export interface TokenBreakdown {
   input: number;
   output: number;
@@ -64,8 +61,7 @@ export interface TokenBreakdown {
   cacheWrite: number;
 }
 
-// Run outcome for one assistant message. `toolUse` is an ordinary turn that
-// handed off to tools, so it reads as completed, not as a distinct state.
+// `toolUse` is an ordinary turn that handed off to tools, so it reads completed.
 export type RunStatus = 'completed' | 'aborted' | 'error';
 
 export interface RecentRequest {
@@ -76,8 +72,7 @@ export interface RecentRequest {
   d?: number;
   cr?: number;
   cw?: number;
-  // Measured spend from usage.cost.total. Undefined when the host recorded no
-  // cost, never backfilled with an estimate.
+  // Undefined when the host recorded no cost; never backfilled.
   usd?: number;
   st: RunStatus;
   code?: number;
@@ -118,9 +113,8 @@ export function durOf(v: unknown): number | undefined {
   return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : undefined;
 }
 
-// Measured cost for one message. usage.cost is an object with total; a bare
-// number shows up in older fixtures. Anything else means "not recorded", which
-// is deliberately not 0.
+// Measured cost: usage.cost.total, or a bare number in old fixtures. Anything
+// else means unrecorded, which is deliberately not 0.
 export function costOf(usage: Record<string, unknown>): number | undefined {
   const c = usage.cost;
   if (typeof c === 'number') return Number.isFinite(c) ? c : undefined;

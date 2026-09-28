@@ -1,6 +1,5 @@
-// cli/dashboard.ts — serves the built shadcn Dashboard with local usage APIs.
-// Binds 127.0.0.1 only; --export writes a file://-ready file instead.
-// No Promise.withResolvers: engines allow Node 20.12, which lacks it.
+// Serves the built Dashboard with local usage APIs. Binds 127.0.0.1 only;
+// --export writes a file instead. No Promise.withResolvers: Node 20.12 lacks it.
 import { spawn } from 'node:child_process';
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
@@ -59,8 +58,7 @@ function dataJson(): string {
   return JSON.stringify(summarizeUsage(readUsage()));
 }
 
-// Local-only health for the settings modal. Every agent is probed the same
-// way: find the binary on PATH, run `--version`, report both.
+// Local-only health: find each agent on PATH, run `--version`, report both.
 function binOnPath(bin: string): string | null {
   const names = process.platform === 'win32' ? [`${bin}.cmd`, `${bin}.exe`, `${bin}.bat`, bin] : [bin];
   for (const dir of (process.env.PATH || '').split(path.delimiter).filter(Boolean)) {
@@ -158,8 +156,7 @@ const DIAG_TTL_MS: Record<DiagSchedule, number> = {
 };
 
 function diagPaths(): { report: string } {
-  // Hermetic env (tests) overrides the DB path: keep the report next to it
-  // so test runs never touch the real ~/.tersio/diag.json.
+  // Keep the report beside the overridden DB so tests never touch the real one.
   const dbOverride = process.env.TERSIO_USAGE_DB;
   if (dbOverride) return { report: path.join(path.dirname(dbOverride), 'diag.json') };
   const home = process.env.HOME || process.env.USERPROFILE || '';
@@ -261,8 +258,7 @@ function computeDoctorRows(): DoctorRow[] {
   return rows;
 }
 
-// Retained diagnosis: recompute when forced, missing, or older than the
-// schedule, otherwise return the saved report. A saved report holding a
+// Recompute when forced, missing, or past the schedule; a report holding a
 // retired label is stale by definition.
 const RETIRED_DIAG_LABELS = new Set([
   'OMP CLI',
@@ -280,13 +276,11 @@ function isRetiredReport(report: DoctorReport): boolean {
   return report.rows.some((r) => RETIRED_DIAG_LABELS.has(r.label));
 }
 
-// Retained diagnosis: recompute when forced, missing, retired, or older than
-// the schedule; otherwise return the saved report.
+// Recompute when forced, missing, retired, or past the schedule.
 function getDoctorReport(force: boolean): DoctorReport {
   const saved = readDiagReport();
   const ttl = saved ? DIAG_TTL_MS[saved.schedule] : 0;
-  // Manual recomputes on open; a dated schedule reuses the saved report until
-  // stale, or a retained snapshot would hide new rows.
+  // Manual recomputes on open; a dated schedule reuses the saved report.
   if (!force && saved && !isRetiredReport(saved) && ttl > 0 && Date.now() - saved.checkedAt < ttl) return saved;
   const report: DoctorReport = { rows: computeDoctorRows(), checkedAt: Date.now(), schedule: saved?.schedule ?? 'manual' };
   writeDiagReport(report);
@@ -304,8 +298,8 @@ function readDiagSchedule(): DiagSchedule {
   return readDiagReport()?.schedule ?? 'manual';
 }
 
-// Persist the picker choice so close → reopen keeps it: every run serves a
-// fresh port, so localStorage alone cannot survive a restart.
+// Persist the picker choice: every run serves a fresh port, so localStorage
+// alone cannot survive a restart.
 async function saveDashboardCurrency(raw: unknown): Promise<CurrencyCode | null> {
   if (typeof raw !== 'string') return null;
   const code = raw.trim().toUpperCase();
@@ -330,15 +324,13 @@ function openBrowser(url: string): void {
   spawn(cmd, [url], { detached: true, stdio: 'ignore' }).unref();
 }
 
-// Replacer functions throughout: session data contains `$'` (shell quoting),
-// which String.replace would expand as match-suffix patterns, and literal
-// `</script>`, which would close the inlined script early.
+// Replacers throughout: session data holds `$'` (shell quoting) and literal
+// `</script>`, which String.replace would mangle.
 function escapeInline(json: string): string {
   return json.replace(/<\/(script)/gi, '<\\/$1');
 }
 
-// dataJson() and healthJson() are our own JSON.stringify output, so a parse
-// failure means a value stopped being serializable: name the field.
+// Our own JSON.stringify output, so a parse failure means a bad value: name it.
 function parseOwnJson(json: string, field: string): Record<string, unknown> {
   let parsed: unknown;
   try {

@@ -1,6 +1,5 @@
-// /ai-addons manual updater for Ponytail, RTK, and Caveman. Node built-ins
-// only; one slash command. RTK ships SHA256 checksums only, so there is no
-// signature to verify until upstream publishes a signing key.
+// /ai-addons manual updater. Node built-ins only. RTK ships SHA256 checksums
+// with no signature, so checksum-only is the best available.
 
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -84,13 +83,11 @@ function checkFailed(name: string, e: unknown): AddonStatus {
   return { text: `${name} check failed: ${(e as Error).message}`, level: 'warning' };
 }
 
-// Single error-handling source for the three probes; messages unchanged.
 function runCheck(name: string, probe: () => Promise<string>): Promise<AddonStatus> {
   return probe().then((text) => ({ text, level: 'info' as const }), (e) => checkFailed(name, e));
 }
 
-// A missing file is "not installed"; an unreadable one is a real fault, so
-// the parse error stays a message the check can report.
+// A missing file is "not installed"; an unreadable one is a reportable fault.
 function parsePackageVersion(raw: string | null): string | null {
   if (!raw) return null;
   try {
@@ -100,7 +97,6 @@ function parsePackageVersion(raw: string | null): string | null {
   }
 }
 
-// Check: no mutation. Probes run concurrently via checkAddons below.
 function checkPonytail(): Promise<AddonStatus> {
   return runCheck('Ponytail', async () => {
     const remoteJson = await fetchJson<{ version?: string }>(PONYTAIL_REMOTE);
@@ -209,7 +205,6 @@ async function updateRtk(ctx: AddonUpdaterCtx, dryRun = false): Promise<string> 
   const assets = Array.isArray(release.assets) ? release.assets : [];
   if (!RTK_BINARY) return report(ctx, 'RTK: executable not found in PATH', 'warning');
 
-  // Cross-platform asset selection (mirrors installer stepRtk)
   const PLATFORM = process.platform;
   const ARCH = process.arch;
   const spec = rtkPlatformSpec(PLATFORM, ARCH);
@@ -242,7 +237,6 @@ async function updateRtk(ctx: AddonUpdaterCtx, dryRun = false): Promise<string> 
       httpsDownload(asset.browser_download_url, archivePath),
       httpsDownload(checksAsset.browser_download_url, checksPath),
     ]);
-    // Verify SHA256 against checksums.txt
     const checks = await fs.readFile(checksPath, 'utf8');
     const expected = parseChecksum(checks, asset.name);
     if (!expected) {
@@ -257,7 +251,6 @@ async function updateRtk(ctx: AddonUpdaterCtx, dryRun = false): Promise<string> 
     }
     notify(ctx, 'RTK: checksum verified.', 'info');
 
-    // Extract by archive format
     const extractDir = path.join(tmp, 'extracted');
     await fs.mkdir(extractDir, { recursive: true });
 
@@ -289,7 +282,6 @@ async function updateRtk(ctx: AddonUpdaterCtx, dryRun = false): Promise<string> 
 
     await fs.copyFile(rtkExtracted, RTK_BINARY);
 
-    // Set executable bit on Unix
     if (!IS_WINDOWS) {
       await fs.chmod(RTK_BINARY, 0o755);
     }

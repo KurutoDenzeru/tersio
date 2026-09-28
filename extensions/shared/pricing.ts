@@ -1,9 +1,7 @@
 // extensions/shared/pricing.ts — dynamic model pricing from LiteLLM.
-// Lookup order: exact id in the live cache → provider-prefix strip → default.
-// No static per-model table: list prices rot, the feed does not. Unknown models
-// report the default with known:false so the dashboard labels them honestly.
+// Exact id → provider-prefix strip → default, which reports with known:false so
+// the Dashboard labels an unpriced model honestly. No static table: prices rot.
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { tersioDataPath } from '../lib/utils.ts';
 
@@ -54,6 +52,8 @@ function asPrice(v: unknown): ModelPrice | null {
   if (v && typeof v === 'object') {
     const o = v as Record<string, unknown>;
     if (['input', 'output', 'cacheRead', 'cacheWrite'].every((k) => typeof o[k] === 'number' && Number.isFinite(o[k]) && (o[k] as number) >= 0)) {
+      // SAFETY: the line above verified all four keys are finite numbers >= 0,
+      // which is the whole of ModelPrice.
       return o as unknown as ModelPrice;
     }
   }
@@ -88,10 +88,9 @@ function num(v: unknown): number | null {
   return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null;
 }
 
-// One model, two spellings in transcripts. `space-bunny` and
-// `stealth/space-bunny-alpha` are the same free model, and the feed lists only
-// the stealth name, so the plain alias would report the Sonnet-class default and
-// a cost that was never charged. The first spelling is what we show.
+// One model, two spellings: transcripts say `space-bunny`, the feed keys it
+// `openrouter/stealth/space-bunny-alpha` at zero. Aliases fold to the first, so
+// a free stealth model never reports the default price.
 export const MODEL_ALIASES: ReadonlyArray<{ id: string; feed: string }> = [
   { id: 'space-bunny', feed: 'stealth/space-bunny-alpha' },
 ];

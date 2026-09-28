@@ -76,8 +76,7 @@ async function settle<T>(work: Promise<T>, ms: number): Promise<T | null> {
   }
 }
 
-// Run a child with inherited stdio: it renders its own UI (Clack spinners),
-// which a concurrent outer spinner would corrupt into stray bars.
+// Inherited stdio, so a child spinner cannot corrupt this parent's.
 async function execInherit(cmd: string, args: string[]): Promise<void> {
   const code = await new Promise<number>((resolve, reject) => {
     const child = spawn(cmd, args, { stdio: 'inherit' });
@@ -151,13 +150,11 @@ async function runLatestUpdate(): Promise<void> {
 
   const npmCommand = IS_WINDOWS ? process.env.ComSpec || 'cmd.exe' : 'npm';
 
-  // Resolve the target explicitly: `npm view --prefer-online` beats the local
-  // metadata cache, so a stale `@latest` can never pin an older release.
+  // `--prefer-online` beats the local cache, so a stale @latest cannot pin down.
   const cliLatest = await latestPublishedVersion();
   const target = cliLatest && /^\d+\.\d+\.\d+$/.test(cliLatest) ? `@${cliLatest}` : '@latest';
 
-  // Current → latest per add-on. Best-effort; unreachable probes print as
-  // unknown and never block the update.
+  // Best-effort: unreachable probes print as unknown.
   const plan = await probeUpdatePlan(cliLatest);
   const { stale, status } = planLines(plan);
   if (dryRun) {

@@ -21,10 +21,8 @@ interface UninstallOptions {
   host?: HostId;
 }
 
-// The pi tree mirrors the OMP one, so the same directories come off. Ponytail
-// and rtk stay: a pi package and a shared binary are not ours to delete.
-// The session defaults live in ~/.tersio/settings.json for both hosts, so the
-// caller clears them once at the end.
+// The pi tree mirrors the OMP one. Ponytail and rtk stay: a package and a
+// shared binary are not ours to delete.
 const PI_TREE_DIRS = [
   'caveman-session',
   'rtk-session',
@@ -67,8 +65,7 @@ async function removePiLayer(host: HostEntry, shouldDryRun: boolean, shouldRemov
   return true;
 }
 
-// The session defaults live in ~/.tersio/settings.json for every host, and
-// that file holds nothing but Tersio's values, so it comes off as a whole.
+// ~/.tersio/settings.json holds nothing but Tersio's values, so it goes whole.
 async function clearSessionDefaults(shouldDryRun: boolean): Promise<void> {
   await removeUninstallTarget(tersioSettingsFile(), shouldDryRun, false);
 }
@@ -124,8 +121,7 @@ async function removeUninstallTarget(target: string, shouldDryRun: boolean, recu
 async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
   const shouldDryRun = options.dryRun ?? dryRun;
   const confirmed = (options.yes ?? yes) || shouldDryRun;
-  // Ponytail ships with Tersio, so a full uninstall removes it;
-  // --keep-ponytail opts out and reinstall always preserves it.
+  // Ponytail ships with Tersio, so a full uninstall removes it.
   const shouldRemovePonytail = options.removePonytail ?? (removePonytail || !keepPonytail);
   const shouldRemoveRtk = options.removeRtk ?? removeRtk;
 
@@ -183,10 +179,9 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
     'combo-toggle',
     'tersio-commands',
     'shared',
-    // Only consumed by the updater, which runs before this.
+    // Only the updater reads it, and it runs before this.
     'lib',
-    // Legacy helper importing shared/session-state.js: it warns once that
-    // module is gone.
+    // Legacy: imports session-state.js, so it warns once that module is gone.
     'aaa-combo-boot',
   ].map((dir) => path.join(extDir, dir));
 
@@ -225,8 +220,7 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
     }
   }
 
-  // Remove the bundled Ponytail copy (the dep entry exists only on pre-bundle
-  // installs); its config.yml entry was filtered above.
+  // Remove the bundled Ponytail copy; its config.yml entry is already filtered.
   if (shouldRemovePonytail) {
     const pluginsPkgPath = path.join(pluginsDir, 'package.json');
     await updateJsonFile(pluginsPkgPath,
@@ -262,8 +256,7 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
     await removeUninstallTarget(selfPluginDir, shouldDryRun);
   }
 
-  // rtk.ts is rtk-owned but written by our wiring step. With the binary gone it
-  // would pass through harmlessly, so drop it only on a full rtk removal.
+  // rtk.ts is rtk-owned but written by us; drop it only on a full rtk removal.
   if (shouldRemoveRtk) {
     await removeUninstallTarget(rtkBin, shouldDryRun, false);
     await removeUninstallTarget(path.join(extDir, 'rtk.ts'), shouldDryRun);

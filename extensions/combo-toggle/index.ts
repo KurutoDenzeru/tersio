@@ -1,5 +1,4 @@
-// /combo session toggle — set all three (caveman, rtk, ponytail) at once.
-// Modes: off | medium | balanced | max
+// /combo session toggle: off | medium | balanced | max.
 
 import os from 'node:os';
 import path from 'node:path';
@@ -36,8 +35,7 @@ const PONYTAIL_FALLBACK_INTENSITY: Record<string, string> = {
   lite: 'Prefer the simplest correct solution.',
 };
 
-// The text used when the Ponytail package cannot be found next to the
-// extension; exported for its own contract test.
+// Fallback text when Ponytail cannot be found; exported for its own test.
 export function ponytailFallback(mode: string): string {
   const intensity = PONYTAIL_FALLBACK_INTENSITY[mode] ?? 'Use the minimum correct solution. Delete or reuse before adding.';
   return `🦥 PONYTAIL MODE ACTIVE — level: ${mode}\n${intensity} Understand the path first and fix root causes, not symptoms. Prefer the standard library and YAGNI. Avoid speculative abstractions and dependencies. Preserve correctness. Verify changed behavior.`;
@@ -47,9 +45,8 @@ function levelSummary(state: ComboState): string {
   return `caveman=${state.caveman} rtk=${state.rtk} ponytail=${state.ponytail}`;
 }
 
-// Ponytail is a hoisted dependency, so one upward walk covers an OMP plugin, a
-// pi package, and a checkout. The hook is CommonJS, so both namespace shapes
-// are tried.
+// Ponytail is hoisted, so one upward walk covers every install layout. The hook
+// is CommonJS, so both namespace shapes are tried.
 async function loadPonytailInstructions(mode: string): Promise<string> {
   const installed = findHoistedPackage('@dietrichgebert/ponytail', EXTENSION_DIR, 'hooks', 'ponytail-instructions.js');
   if (installed) {
@@ -93,8 +90,7 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
     c.ui.setStatus('ponytail', undefined);
   }
 
-  // Same persistence as /combo: siblings restore from these entries, so the
-  // fallback must write them too or the preset evaporates on resume.
+  // Siblings restore from these entries, so the fallback must write them too.
   function persistPreset(level: string): void {
     const modes = COMBO_LEVELS[level];
     pi.appendEntry?.('caveman-mode', { mode: modes.caveman });
@@ -202,10 +198,8 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
         ctx?.ui?.notify?.(`Combo default applied: ${fallback} — ${activeModesSummary(getSharedComboState())} active for this session.`, 'info');
       }
     }
-    // Standalone ponytail default: no sibling extension restores it (upstream
-    // owns the command), so apply it here when nothing persisted a
-    // ponytail-mode entry. Skipped when it matches the active preset — the
-    // preset entry already covers that, no redundant write.
+    // No sibling restores a standalone ponytail default, so apply it here; skip
+    // it when the active preset already writes the same mode.
     if (!entries.some((e) => e?.type === 'custom' && e.customType === 'ponytail-mode')) {
       const ponytailFallback = readPonytailDefault();
       if (ponytailFallback !== 'off' && ponytailFallback !== getSharedComboState().ponytail) {
