@@ -61,18 +61,11 @@ const SHARED_CARBON = path.join(EXT_DIR, 'shared', 'carbon.ts');
 // also reads, so a plan and a removal cannot name different sets.
 import { PI_EXTENSION_DIRS } from './pi-layer.ts';
 /**
- * Pi's extension tree, as `[repo path, path under the Pi ext dir]` pairs.
- *
- * Pi loads each `<agent-dir>/extensions/<dir>/index.ts` at one level with no
- * recursion (core/extensions/loader.ts, resolvePackageExtensions), so shared
- * modules sit BESIDE the extension dirs — where the OMP layer already keeps
- * them, giving both hosts one layout and one `../shared/x.ts` spelling.
- *
- * The repo puts extensions/shared/ two levels higher than the installed tree
- * does, so extensions/pi/ carries repo-only shims. Those are deliberately
- * absent here: shipping one would fail to resolve on disk, and shipping a
- * canonical file under a shim name would split the mode bridge across two
- * module instances.
+ * Pi's extension tree as `[repo path, path under the Pi ext dir]` pairs. Pi
+ * loads each `<agent-dir>/extensions/<dir>/index.ts` at one level with no
+ * recursion, so shared modules sit BESIDE the extension dirs, where the OMP
+ * layer already keeps them. The repo puts extensions/shared/ two levels higher,
+ * which is what extensions/pi/ shims exist for; shipping one would not resolve.
  */
 function piTreeSources(): Array<[string, string]> {
   const piExt = path.join(EXT_DIR, 'pi');
@@ -303,12 +296,8 @@ async function extractRtkArchive(archivePath: string, extractDir: string): Promi
   return false;
 }
 
-/**
- * Downloads the rtk binary and returns its path, or null when there is nothing
- * at that path. Wiring is the caller's job: which host needs an rtk-owned
- * extension is a per-host decision, and doing it here wrote `rtk.ts` into the
- * Oh My Pi extensions on every install, whichever host was picked.
- */
+// Downloads the rtk binary and returns its path, or null. Wiring is the
+// caller's job: doing it here wrote rtk.ts into Oh My Pi on every install.
 async function stepRtk(binDir: string, options: InstallOptions): Promise<string | null> {
   if (!options.quiet) console.log('  RTK — download binary');
   const binDest = path.join(binDir, RTK_BINARY_NAME);
@@ -454,11 +443,7 @@ async function stepUpdater(extDir: string, options: WriteOptions): Promise<void>
   await copySources(extDir, [[UPDATER_INDEX, path.join('ai-addons-updater', 'index.ts')]], 'ai-addons-updater/index.ts', options);
 }
 
-// How each host gets its rewrite, for the plan line that stands in for a file
-// list. Both are live-extension hosts: rtk writes the rewrite module from its
-// own init (cli/rtk-wiring.ts) and tersio writes the mode extensions.
-/**
- * Names the hosts this run writes, in one line. Printed on every run, dry runs
+/** * Names the hosts this run writes, in one line. Printed on every run, dry runs
  * included: the plan below it only appears under `--verbose`, and a run that
  * silently picked an agent is the case this exists to prevent.
  */
@@ -467,12 +452,8 @@ function printHostHeader(ids: readonly string[]): void {
   console.log(`\n  Coding agents — ${names}`);
 }
 
-/**
- * Prints what an install will do to the selected coding agents, under
- * `--verbose`. Neither host ships static files: both are extension trees, so
- * the plan is the tree plus the rtk module that carries the shell rewrite. The
- * uninstall preview names the same paths, so the two ends of the command agree.
- */
+// The `--verbose` install plan: the extension tree plus the rtk module. The
+// uninstall preview names the same paths, so the two ends agree.
 function printHostPlans(ids: readonly string[], home: string): void {
   for (const id of ids) {
     const host = byId(id);
@@ -490,25 +471,14 @@ function printHostPlans(ids: readonly string[], home: string): void {
   }
 }
 
-/**
- * Prints an internal step label, and only under `--verbose`.
- *
- * The default output is one line per agent, because "sync session bridge" and
- * "fetch rule and install session mode" describe how the installer works rather
- * than what the person running it now has. The labels are still the first thing
- * to reach for when a step misbehaves, so they move rather than disappear.
- */
+// An internal step label, under `--verbose` only: the default is one line per
+// host, and these describe how the installer works rather than what it changed.
 function step(options: { quiet?: boolean }, label: string): void {
   if (verbose && !options.quiet) console.log(`  ${label}`);
 }
 
-/**
- * How to install each agent this run touched, both ways.
- *
- * `tersio install` wrote the files, so this is the alternative rather than the
- * next step. Every host in scope gets its `tersio install --agent <id>` line,
- * and the agent's own command is added where one exists.
- */
+// How to install each host this run touched, both ways: the tersio form is
+// what already ran, so the host's own command is the alternative.
 function printInstallGuide(ids: readonly string[], dryRun: boolean): void {
   if (dryRun) return;
   const rows = HOSTS.flatMap((host) => {
@@ -527,14 +497,9 @@ function printInstallGuide(ids: readonly string[], dryRun: boolean): void {
   }
 }
 
-/**
- * Removes what a previous version wrote and the current one does not.
- *
- * A host that dropped a capability would otherwise keep its old files forever:
- * the planner no longer emits them, so install will not overwrite them and
- * uninstall will not see them either. This is the only thing that clears them,
- * so it runs on install as well as on removal.
- */
+// Removes what an earlier version wrote and this one no longer does. A dropped
+// capability would otherwise leave files that install will not overwrite and
+// uninstall will not see.
 async function clearRetired(ids: readonly string[], home: string, options: InstallOptions): Promise<void> {
   for (const id of ids) {
     const host = byId(id);
@@ -550,14 +515,7 @@ function readyLine(label: string, itemCount: number): void {
   console.log(`  \u2705 ${label} \u2014 ${itemCount} item${itemCount === 1 ? '' : 's'} in place. Caveman, Ponytail and rtk are ready.`);
 }
 
-/**
- * Prints what the Oh My Pi layer install will write.
- *
- * The extension list comes from `omp-layer.ts`, the same source the uninstall
- * preview and the uninstall run read, so "installed" and "removed" can never
- * name different directories.
- */
-/** Prints the OMP layer install, from the list the uninstall also reads. */
+/** The OMP layer install, from the list the uninstall also reads. */
 function printOmpPlan(home: string): void {
   const layer = ompLayer(home, RTK_BINARY_NAME);
   const pending = layer.installed.filter((entry) => !existsSync(entry.path));
@@ -573,19 +531,12 @@ function printOmpPlan(home: string): void {
 }
 
 /**
- * Asks which agents to set up, and writes the answer for later runs. Asked at
- * a terminal even when a choice is saved, so the selection stays changeable;
- * skipped for an explicit `--agent`, and for `--yes`, `--apply-update`, pipes,
- * and CI, which fall back to the saved set unioned with what is detected.
- */
-/**
  * Which hosts this run acts on, or null when the picker was cancelled.
  *
- * Split from the application below so the prompt is the first thing the run
- * does. The rtk binary must be on disk before the extension-file hosts are
- * wired, which is why it is fetched before that — but there is no reason to
- * fetch it before the user has been asked anything, and doing so meant Escape at
- * the picker left a downloaded binary on the machine.
+ * Asked before anything is fetched or written, so Escape at the prompt leaves
+ * nothing behind. Skipped for an explicit `--agent`, and for `--yes`,
+ * `--apply-update`, pipes and CI, which fall back to the saved set unioned with
+ * what is detected.
  */
 async function resolveInstallSelection(options: InstallOptions): Promise<{ ids: string[]; interactive: boolean } | null> {
   const home = os.homedir();
@@ -650,13 +601,8 @@ async function resolveInstallSelection(options: InstallOptions): Promise<{ ids: 
   return { ids: selection.ids, interactive };
 }
 
-/**
- * Writes every artifact the chosen hosts need.
- *
- * Takes the rtk binary the run just fetched rather than probing PATH again:
- * both hosts are wired by rtk's own init, and that needs the binary this run
- * installed, not whichever one happened to be on PATH.
- */
+// Takes the rtk binary this run fetched rather than probing PATH: both hosts
+// are wired by rtk's own init, which needs this run's binary.
 async function applyAgentHosts(
   selection: { ids: string[]; interactive: boolean },
   options: InstallOptions,
@@ -950,16 +896,8 @@ async function runInstall(overrides: { reinstall?: boolean } = {}): Promise<void
       console.log(`  [fail] ${label}: ${shortError(e)}`);
     }
   };
-  // rtk's binary comes before the hosts. Every generated rewriter shells out to
-  // `rtk rewrite`, and the extension-file hosts are wired by rtk's own init,
-  // which needs the binary already on disk. It used to be fetched after the
-  // hosts were wired, so a first-time install on a machine without rtk on PATH
-  // reported "rtk binary not found" for the very host it had just fetched it for.
   // The agent prompt is the first question this run asks, and nothing is
-  // fetched or written before it is answered. It also puts the file plan
-  // directly under the menu, where the answer is still on screen. The rtk
-  // download used to print above the prompt, and Escape at that prompt left
-  // the binary behind.
+  // fetched or written before it is answered.
   const selection = await resolveInstallSelection(options);
   if (selection === null) {
     console.log('\nNothing was installed.');
@@ -967,21 +905,17 @@ async function runInstall(overrides: { reinstall?: boolean } = {}): Promise<void
     return;
   }
 
-  // rtk's binary is next, because both consumers of it come after: the
-  // extension-file hosts are wired by rtk's own init, and every generated
-  // rewriter shells out to `rtk rewrite`. It used to be fetched *before* the
-  // hosts were wired, so a first-time install with no rtk on PATH reported
-  // "rtk binary not found" for the host it had just fetched it for.
+  // rtk's binary comes before the hosts: rtk's own init wires them and needs it
+  // on disk, or a first-time install with no rtk on PATH reports "rtk binary
+  // not found" for the host it had just fetched it for.
   let rtkBin: string | null = null;
   await capture('rtk', async () => { rtkBin = await stepRtk(BUN_BIN_DIR, options); });
 
   await capture('agent hosts', async () => { await applyAgentHosts(selection, options, cavemanRule, rtkBin); });
 
-  // The Oh My Pi layer installs for OMP, and for a run that named no host at
-  // all: an empty selection is not a request for some other agent, it is the
-  // pre-multi-host default of `tersio install` doing its job. What must never
-  // happen is naming one host and getting another's artifacts too — choosing Pi
-  // must not also write the OMP layer, Ponytail and the rtk wiring.
+  // The Oh My Pi layer runs for OMP, and for a run that named no host at all —
+  // the pre-multi-host default. Naming one host must never get another's
+  // artifacts too.
   const wantsOmpLayer = selection.ids.length === 0 || selection.ids.includes('omp');
   if (wantsOmpLayer) {
     // The layer's file list, under --verbose. The default gets one sentence.

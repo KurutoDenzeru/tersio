@@ -1,16 +1,7 @@
-// extensions/pi/tersio-commands/index.ts — /tersio root command for Pi:
-// status, check, update, dashboard, usage, help.
-//
-// Mode switches live on their own commands (/caveman, /rtk, /combo, and the
-// upstream /ponytail): the router keeps no redundant copies. The shared-state
-// bridge publishes sync sibling mirrors live, so a switch notify takes effect
-// next turn — no reload. Same subcommands as
-// extensions/tersio-commands/index.ts; the OMP divergences that mattered here
-// were the dropped setLabel (Pi's setLabel names a session entry) and Pi's
-// documented failure contract, which both this file and the ported addon
-// updater already satisfy.
-//
-// This file owns no prompt section: it only reports state and delegates.
+// /tersio root command for Pi: status, check, update, dashboard, usage, help.
+// Mode switches live on their own commands, and the shared-state bridge mirrors
+// them live, so a switch lands on the next turn. This file reports state and
+// delegates; it owns no prompt section.
 
 import os from 'node:os';
 import path from 'node:path';

@@ -1,18 +1,11 @@
-// Pi extension: /ai-addons manual updater for Ponytail, RTK, Caveman.
-// Built-in Node modules only. Default off; registers a single slash command.
-// ponytail: `skipped: none` — semantics match one-liner: fetch + compare + run install.
-// rtk: `skipped: signature verification` — checksums.txt ships only SHA256 of release assets; add sigchain when upstream publishes a signing key.
-// caveman: `skipped: none` — exactly the ask: write rule.md, report old/new hash.
+// /ai-addons manual updater for Ponytail, RTK and Caveman. Built-in Node
+// modules only, one slash command. Ponytail and Caveman update fully; RTK is
+// checksum-verified but unsigned (checksums.txt ships SHA256 only).
 //
-// Divergences from the OMP original, all forced by Pi:
-//   - No `pi.setLabel` (fact 3): Pi's setLabel(entryId, label) labels a session
-//     entry for bookmarks, not the extension, so there is nothing to call.
-//   - Command handlers resolve to void (pi-coding-agent RegisteredCommand), so
-//     the handler no longer returns the summary string. Every user-visible line
-//     already goes through notify() below, which is why nothing is lost; the
-//     return values survive only for the tersio-commands port, which ignores them.
-//   - Both add-on paths are re-derived from this file's own location (facts 1/11):
-//     Pi loads extensions from a bare config dir with no plugin store.
+// Port of extensions/ai-addons-updater/index.ts. Pi has no setLabel for an
+// extension, its command handlers resolve to void, and its extensions load from
+// a bare config dir, so the add-on paths are re-derived from this file's own
+// location.
 
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -45,12 +38,8 @@ const EXT_DIR = path.dirname(fileURLToPath(import.meta.url));
 
 const PONYTAIL_REMOTE = 'https://raw.githubusercontent.com/DietrichGebert/ponytail/main/package.json';
 const RTK_BINARY = resolveRtkBinary();
-// The caveman rule ships inside this extension tree, so it is found by walking
-// up from this module rather than by hard-coding a host plugin directory.
 const CAVEMAN_LOCAL = path.resolve(EXT_DIR, '..', 'caveman-session', 'rule.md');
 const RELOAD_MSG = 'Reminder: restart Pi (or reload extensions) for updates to take effect.';
-
-// --- Types ---
 
 type NotifyLevel = 'info' | 'warning';
 
@@ -72,23 +61,14 @@ function checkFailed(name: string, e: unknown): AddonStatus {
   return { text: `${name} check failed: ${(e as Error).message}`, level: 'warning' };
 }
 
-// Single error-handling source for the three probes; messages unchanged.
 function runCheck(name: string, probe: () => Promise<string>): Promise<AddonStatus> {
   return probe().then((text) => ({ text, level: 'info' as const }), (e) => checkFailed(name, e));
 }
 
-/**
- * Locates an installed ponytail package.json by walking up from this extension.
- *
- * Pi keeps extensions in a bare config directory that may have no node_modules at
- * all, so there is no fixed package path to name. Absent install is the normal
- * case and must report "not installed", not throw, so every miss yields null and
- * the caller renders the not-installed line.
- */
+// Pi's config dir may have no node_modules at all, so the package is found by
+// walking up. A miss is "not installed", never a throw.
 function ponytailPackageJson(): string | null {
   let dir = EXT_DIR;
-  // Bounded: config dir → its parent → … 8 levels covers any sane node_modules
-  // chain; the stop on the filesystem root keeps it from looping forever.
   for (let depth = 0; depth < 8; depth++) {
     const candidate = path.join(dir, 'node_modules', '@dietrichgebert', 'ponytail', 'package.json');
     if (existsSync(candidate)) return candidate;
@@ -111,7 +91,6 @@ async function readPonytailVersion(): Promise<string | null> {
   }
 }
 
-// Check: no mutation. Probes run concurrently via checkAddons below.
 function checkPonytail(): Promise<AddonStatus> {
   return runCheck('Ponytail', async () => {
     const remoteJson = await fetchJson<{ version?: string }>(PONYTAIL_REMOTE);
@@ -145,7 +124,6 @@ function checkRtk(): Promise<AddonStatus> {
   });
 }
 
-// Caveman (rule.md)
 function checkCaveman(): Promise<AddonStatus> {
   return runCheck('Caveman', async () => {
     const remote = await httpsGet(CAVEMAN_REMOTE);
@@ -195,8 +173,7 @@ async function checkAddons(ctx: ExtensionCtx): Promise<string> {
 }
 
 async function updatePonytail(pi: PiExtensionAPI, ctx: ExtensionCtx, dryRun = false): Promise<string> {
-  // Bundled with tersio: no separate package to refresh. `tersio update`
-  // pulls the bundled copy with the CLI.
+  // Bundled with tersio, so `tersio update` refreshes it with the CLI.
   const localVer = await readPonytailVersion();
   void pi;
   const m = dryRun
@@ -217,7 +194,6 @@ async function updateRtk(ctx: ExtensionCtx, dryRun = false): Promise<string> {
   const assets = Array.isArray(release.assets) ? release.assets : [];
   if (!RTK_BINARY) return report(ctx, 'RTK: executable not found in PATH', 'warning');
 
-  // Cross-platform asset selection (mirrors installer stepRtk)
   const PLATFORM = process.platform;
   const ARCH = process.arch;
   const spec = rtkPlatformSpec(PLATFORM, ARCH);
@@ -250,7 +226,6 @@ async function updateRtk(ctx: ExtensionCtx, dryRun = false): Promise<string> {
       httpsDownload(asset.browser_download_url, archivePath),
       httpsDownload(checksAsset.browser_download_url, checksPath),
     ]);
-    // Verify SHA256 against checksums.txt
     const checks = await fs.readFile(checksPath, 'utf8');
     const expected = parseChecksum(checks, asset.name);
     if (!expected) {
@@ -265,7 +240,6 @@ async function updateRtk(ctx: ExtensionCtx, dryRun = false): Promise<string> {
     }
     notify(ctx, 'RTK: checksum verified.', 'info');
 
-    // Extract by archive format
     const extractDir = path.join(tmp, 'extracted');
     await fs.mkdir(extractDir, { recursive: true });
 
@@ -297,7 +271,6 @@ async function updateRtk(ctx: ExtensionCtx, dryRun = false): Promise<string> {
 
     await fs.copyFile(rtkExtracted, RTK_BINARY);
 
-    // Set executable bit on Unix
     if (!IS_WINDOWS) {
       await fs.chmod(RTK_BINARY, 0o755);
     }

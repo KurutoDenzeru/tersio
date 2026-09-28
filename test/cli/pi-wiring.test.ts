@@ -1,9 +1,5 @@
-// test/cli/pi-wiring.test.ts — the Pi extension layer, as the CLI writes it.
-//
-// The point of these tests is the tree, not the toggle. Pi loads
-// <agent-dir>/extensions/<dir>/index.ts at one level with no recursion, so what
-// matters is that the layer is laid out that way, that every module in it
-// resolves from where it lands, and that a removal takes all of it.
+// The Pi extension layer, as the CLI writes it: the layout Pi loads, every
+// module resolving from where it lands, and a removal that takes all of it.
 import { expect, test } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
@@ -27,7 +23,7 @@ const EXT = path.join(path.dirname(new URL(import.meta.url).pathname), "..", "..
 const PI = path.join(EXT, "pi");
 
 // The list cli/install.ts builds, rebuilt from the same layer constants. The
-// install step itself parses argv on import, so it cannot be imported here.
+// install step parses argv on import, so it cannot be imported here.
 function sources(): Array<[string, string]> {
   const pairs: Array<[string, string]> = [
     [path.join(PI, "shared", "pi-types.ts"), "shared/pi-types.ts"],
@@ -59,10 +55,9 @@ test("the layer puts an entry point in every extension dir and in no module dir"
   delete process.env.PI_CODING_AGENT_DIR;
   try {
     const layer = piLayer(home);
-    // Pi's loader takes extensions/<dir>/index.ts at one level. An index.ts in
-    // shared/ or lib/ would make Pi load a helper module as an extension: it
-    // registers no command, so the failure reads as "tersio installed but every
-    // command is missing".
+    // An index.ts in shared/ or lib/ would make Pi load a helper module as an
+    // extension: it registers no command, so the failure reads as "installed
+    // but every command is missing".
     for (const dir of PI_MODULE_DIRS) {
       expect(layer.installed.some((e) => e.path === path.join(layer.extDir, dir))).toBe(false);
     }
@@ -82,7 +77,6 @@ test("the agent dir follows PI_CODING_AGENT_DIR, the way Pi resolves it", () => 
     expect(piExtensionDir(home)).toBe(path.join(home, ".pi", "agent", "extensions"));
     process.env.PI_CODING_AGENT_DIR = "/tmp/pi-elsewhere";
     expect(piExtensionDir(home)).toBe("/tmp/pi-elsewhere/extensions");
-    // A blank value is not a relocation; Pi ignores one, so the layer must too.
     process.env.PI_CODING_AGENT_DIR = "   ";
     expect(piExtensionDir(home)).toBe(path.join(home, ".pi", "agent", "extensions"));
   } finally {
@@ -102,12 +96,9 @@ test("installing writes the whole tree, beside the rule, and a second run writes
     for (const dir of PI_EXTENSION_DIRS) {
       expect(existsSync(path.join(piExtensionDir(home), dir, "index.ts"))).toBe(true);
     }
-    // The rule must land beside caveman's module, which is where it reads from.
     expect(readFileSync(path.join(piExtensionDir(home), "caveman-session", "rule.md"), "utf8")).toBe("full rule text\n");
     expect(await piTersioInstalled(home)).toBe(true);
 
-    // Idempotent: re-running is the normal path for `tersio update`, and a
-    // rewrite each time would leave a .bak behind on every run.
     expect(await installPiTersio(home, tree(), { quiet: true })).toHaveLength(0);
     expect(existsSync(path.join(piExtensionDir(home), "caveman-session", "index.ts.bak"))).toBe(false);
   } finally {
@@ -124,10 +115,9 @@ test("every installed module loads from where it lands, not from the repo", asyn
     await installPiTersio(home, tree(), { quiet: true });
     const extDir = piExtensionDir(home);
     for (const dir of PI_EXTENSION_DIRS) {
-      // Dynamic by necessity: the specifier is a runtime path into the
-      // installed tree, which no static import could name. A relative
-      // specifier that resolves in the repo but not here is the whole bug
-      // this test exists for.
+      // Dynamic: the specifier is a runtime path into the installed tree, which
+      // no static import could name. One that resolves in the repo but not here
+      // is the bug this test exists for.
       const mod = await import(path.join(extDir, dir, "index.ts"));
       expect(typeof mod.default, `${dir} must default-export a factory`).toBe("function");
     }
@@ -171,8 +161,6 @@ test("a missing source is named by its path in the tree, never by the build mach
       rules: [],
     }, { quiet: false });
     expect(lines.join("\n")).toContain("caveman-session/index.ts");
-    // Previews are pinned to $HOME-relative form; a repo-absolute path leaked
-    // the build machine's layout into a dry run.
     expect(lines.join("\n")).not.toContain(EXT);
   } finally {
     console.log = realLog;
@@ -188,9 +176,7 @@ test("removal takes every layer directory, the legacy flat module, and rtk's own
   try {
     await installPiTersio(home, tree(), { quiet: true });
     const extDir = piExtensionDir(home);
-    // A pre-tree install left one flat module at the extension root.
     writeFileSync(path.join(extDir, "tersio.ts"), "// old\n", "utf8");
-    // rtk's rtk.ts is rtk's to write, so the layer must not take it.
     writeFileSync(path.join(extDir, "rtk.ts"), "// rtk's\n", "utf8");
 
     expect(await removePiTersio(home, { quiet: true })).toBe(true);
@@ -198,7 +184,6 @@ test("removal takes every layer directory, the legacy flat module, and rtk's own
     expect(existsSync(path.join(extDir, "tersio.ts"))).toBe(false);
     expect(existsSync(path.join(extDir, "rtk.ts")), "rtk's wiring is not ours to delete").toBe(true);
     expect(await piTersioInstalled(home)).toBe(false);
-    // Nothing left to remove, and saying so is what makes a re-run honest.
     expect(await removePiTersio(home, { quiet: true })).toBe(false);
   } finally {
     if (previous !== undefined) process.env.PI_CODING_AGENT_DIR = previous;

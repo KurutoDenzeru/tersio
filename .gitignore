@@ -18,6 +18,10 @@ extensions/**/*.js
 
 # Test artifacts
 test/definitely-missing-home/.omp/logs/
+.vitest/
+
+# Local agent config, not part of the package
+.commandcode/
 
 # Project-specific files
 website

@@ -93,18 +93,10 @@ function num(v: unknown): number | null {
 }
 
 /**
- * Host-reported model ids that the price table does not use, mapped to the id it
- * keys them under.
- *
- * The alias decides what to look up and nothing else. The recorded model keeps
- * whatever suffix the host gave it, so a provider-local tier stays its own row
- * and its own cost instead of collapsing into the base model and reporting the
- * base model's price as if it were this one's.
- *
- * Tier spellings come first, because a Lightning or slow variant is priced as
- * itself: Cognition lists `cognition/swe-1.7` and `cognition/swe-1.7-lightning`
- * at very different rates, and a host reporting `swe-1-7-lightning` must not
- * land on the slower or faster one's number by accident.
+ * Host-reported model ids mapped to the id the price table keys them under. The
+ * alias decides the lookup only; the recorded model keeps its own suffix, so a
+ * tier stays its own row and its own cost. Tier spellings come first, because a
+ * lightning variant is priced as itself.
  */
 const MODEL_ALIASES: Array<[RegExp, string]> = [
   [/^swe-1[.-]?7[-.]?lightning/i, 'cognition/swe-1.7-lightning'],

@@ -1,10 +1,4 @@
-// extensions/pi/shared/omp-prompt.ts — repo-only import shim.
-//
-// The canonical OMP prompt helpers are extensions/shared/omp-prompt.ts, which
-// exists so the OMP ports can share them without the Pi ports carrying a copy
-// of an OMP-specific contract. This file exists only so an OMP module under
-// extensions/pi/ could reach them at the installed depth.
-//
-// Not shipped, and no OMP module lives under extensions/pi/ — see
-// test/cli/pi-wiring.test.ts.
+// Repo-only shim: the canonical module sits two levels up here and one level up
+// in the installed tree, so this keeps the `../shared/<name>.ts` specifier
+// identical in both. Not shipped — the installer copies the canonical file.
 export * from '../../shared/omp-prompt.ts';

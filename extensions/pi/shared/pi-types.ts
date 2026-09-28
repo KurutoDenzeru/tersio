@@ -1,15 +1,7 @@
-// extensions/pi/shared/types.ts — structural subset of Pi's ExtensionAPI.
-//
-// Pi has no build step and no published type package we can depend on inside
-// the user's config dir, so the surface is described here the same way
-// extensions/shared/types.ts describes OMP's. Every shape below is a subset of
-// pi-coding-agent's core/extensions/types.ts, which is the authority; the
-// comments cite the members this package actually touches.
-//
-// Deliberately separate from extensions/shared/types.ts: the two hosts disagree
-// on prompt injection, tool schemas, and how an extension names itself, and
-// one structural type covering both would hide exactly the places the ports
-// must differ.
+// Structural subset of Pi's ExtensionAPI: no build step and no type package to
+// depend on inside a user config dir. Separate from extensions/shared/types.ts
+// because the hosts disagree on prompt injection, tool schemas and naming, and
+// one type covering both would hide where the ports must differ.
 
 /** A custom session entry. Pi keeps these out of the model's context. */
 export type SessionEntry = {
@@ -98,14 +90,8 @@ export interface PiExecOptions {
   cwd?: string;
 }
 
-/**
- * `registerTool` parameters, structurally.
- *
- * Pi's ToolDefinition requires `parameters: TSchema` from typebox, which is
- * host-provided and only resolvable at Pi load time. The Pi rtk port therefore
- * builds its schema with a local JSON-Schema-shaped object and casts once here,
- * rather than adding a typebox dependency this package cannot install.
- */
+// Pi wants a typebox TSchema, which only resolves at Pi load time, so the rtk
+// port describes its schema as a literal and casts once.
 export interface PiToolParameters {
   type: 'object';
   properties: Record<string, unknown>;

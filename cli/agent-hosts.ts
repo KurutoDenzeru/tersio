@@ -1,15 +1,7 @@
-// cli/agent-hosts.ts — the host registry. One entry per agent, carrying only
-// what the CLI needs to find it, install it, and undo it.
-//
-// Both supported hosts are extension-tree hosts: the modes arrive from a live
-// extension that injects them every turn, and the shell rewrite is rtk's own
-// module, written by `rtk init`. So there are no static artifacts per host —
-// no rules file, no skills directory, no hook config. The extension trees
-// themselves are named in cli/omp-layer.ts and cli/pi-layer.ts, and the menus,
-// the doctor rows, and the previews all read those.
-//
-// Deliberately free of cli/common.ts imports (argv side effects) so tests can
-// load it directly.
+// The host registry: one entry per agent, carrying only what the CLI needs to
+// find it, install it and undo it. Both hosts are extension-tree hosts, so
+// there are no static artifacts per host; the trees are named in
+// cli/omp-layer.ts and cli/pi-layer.ts. No cli/common.ts import (argv effects).
 
 export interface AgentHost {
   id: string;
@@ -18,40 +10,25 @@ export interface AgentHost {
   configDir: string;
   /** Env var that relocates configDir, when the host supports one. */
   configDirEnv?: string;
-  /**
-   * Binaries to probe on PATH, in order. A bare `cmd` is never probed on
-   * win32, where it resolves to the system shell.
-   */
+  /** Binaries to probe on PATH, in order. A bare `cmd` never is: it is the Windows shell. */
   binaries: string[];
   /**
-   * False for a host that is never auto-detected, whatever is on disk.
-   *
-   * Oh My Pi is the origin host and is always in scope: it is picked through
-   * its own menu row and removed through the layer block, never as a saved
-   * entry. Detecting it would quietly put it back into a selection that had
-   * deliberately dropped it.
+   * False for a host that is never auto-detected. Oh My Pi is the origin host
+   * and always in scope, so detecting it would put it back into a selection
+   * that had deliberately dropped it.
    */
   autoDetect?: boolean;
   /**
-   * `$HOME`-relative paths an earlier version wrote for this host that the
-   * current one does not.
-   *
-   * Removing a capability strands whatever it wrote: the path stays on disk, so
-   * it would otherwise survive both install and uninstall. Both clear these, so
-   * upgrading tidies and uninstalling is honest.
-   *
-   * `ours` is a directory or file we created outright, so it goes with
-   * `rm -rf`. `merged` is a file the user also owns — an AGENTS.md of their
-   * own is exactly the case that bit us once already — so only our marked block
-   * is removed, and the file survives unless nothing of theirs is left in it.
+   * `$HOME`-relative paths an earlier version wrote and this one no longer
+   * does; otherwise they survive both install and uninstall. `ours` is removed
+   * outright, `merged` (a file the user also owns) loses only our marked block.
    */
   retired?: Array<{ path: string; kind: 'ours' | 'merged' }>;
   /** Docs URL that justifies the paths above. */
   source: string;
   /**
-   * How this host installs the package with its own tooling. `tersio install`
-   * writes the files directly, which is the path we support; a native command
-   * is the alternative for someone who prefers their agent's own manager.
+   * How this host installs the package with its own tooling; the alternative to
+   * `tersio install`, which writes the files directly.
    */
   nativeInstall?: { command?: string; note: string };
   /** Caveats an installer must respect, shown by `tersio doctor`. */
@@ -59,10 +36,9 @@ export interface AgentHost {
 }
 
 /**
- * How the shell rewrite reaches the model, in the words the menus and the
- * dashboard use. Every supported host routes it through rtk's own extension
- * module (`rtk init -g --agent <id>`), so there is no per-host variant to
- * branch on — a host that cannot do it is not in this registry.
+ * How the shell rewrite reaches the model. Every host routes it through rtk's
+ * own module (`rtk init -g --agent <id>`), so there is no per-host variant: a
+ * host that cannot do it is not in this registry.
  */
 export const REWRITE_WIRING = 'rtk extension · auto-rewrite';
 
@@ -73,11 +49,10 @@ const HOSTS: AgentHost[] = [
     autoDetect: false,
     configDir: '.omp',
     binaries: ['omp'],
-    // Earlier versions wrote these. The extension tree injects the mode text
-    // on every turn, so a skill is a second copy of it and a static rules file
-    // is always on — it would outlive `/combo off` and leave caveman on with no
-    // way to turn it off. Retired rather than deleted by hand, so install and
-    // uninstall both clear what an earlier version left behind.
+    // Earlier versions wrote these. The tree injects the modes every turn, so a
+    // skill is a second copy and a rules file is always on — it would outlive
+    // `/combo off`. Retired rather than deleted by hand, so install and
+    // uninstall both clear them.
     retired: [
       { path: '.omp/agent/AGENTS.md', kind: 'merged' },
       { path: '.omp/agent/skills/tersio-caveman', kind: 'ours' },

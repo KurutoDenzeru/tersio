@@ -1,10 +1,7 @@
-// cli/omp-layer.ts — the Oh My Pi layer as data.
-//
-// The extension directories, the RTK wiring, and the Ponytail package, named
-// in one place because the install preview and the uninstall removal must
-// agree on them. `home` is passed in rather than read from the environment, and
-// cli/common.ts is never imported, so a test can point this at a throwaway
-// directory.
+// The Oh My Pi layer as data: the extension directories, the RTK wiring and the
+// Ponytail package, named in one place because the install preview and the
+// uninstall removal must agree on them. `home` is passed in and cli/common.ts is
+// never imported, so a test can point this at a throwaway directory.
 import path from 'node:path';
 
 /** One path in the plan, with the words that say what it is. */
@@ -22,14 +19,10 @@ export interface OmpLayer {
   /** The rtk binary plus the OMP extension rtk's own init writes. */
   rtkBinary: string;
   rtkExtension: string;
-  /** Extension directories a current install writes. */
   installed: LayerEntry[];
-  /** Directories an older install left behind, removed but never installed. */
   retired: LayerEntry[];
 }
 
-// Directory names only: the files inside each are the install steps' business,
-// and a preview listing every file would be a changelog, not a plan.
 const INSTALLED_EXTENSIONS = [
   ['caveman-session', 'caveman session mode'],
   ['rtk-session', 'rtk session mode'],
@@ -48,7 +41,6 @@ const RETIRED_EXTENSIONS = [
 ] as const;
 
 
-/** Turns the `[dir, label]` tables above into resolved paths under `extDir`. */
 function extensionEntries(extDir: string, table: ReadonlyArray<readonly [string, string]>): LayerEntry[] {
   return table.map(([dir, label]) => ({ label, path: path.join(extDir, dir) }));
 }
@@ -74,11 +66,7 @@ export function ompExtensionTargets(layer: OmpLayer): string[] {
   return [...layer.installed, ...layer.retired].map((entry) => entry.path);
 }
 
-/**
- * How much of the layer is on disk. OMP is a host in the agent menu like any
- * other, but its artifacts are extension directories, which no registry host
- * produces, so the count is computed here from the list above.
- */
+/** How much of the layer is on disk, counted from the list above. */
 export interface OmpLayerReport {
   /** The installed tersio plugin directory, or null when it is not installed. */
   pluginPath: string | null;
@@ -90,12 +78,10 @@ export interface OmpLayerReport {
   installed: boolean;
 }
 
-/** The tersio plugin package directory inside the OMP plugins tree. */
 export function tersioPluginDir(home: string): string {
   return path.join(home, '.omp', 'plugins', 'node_modules', '@krtclcdy', 'tersio');
 }
 
-/** Reports the layer without needing a platform rtk binary name. */
 export function reportOmpLayer(home: string, exists: (p: string) => boolean): OmpLayerReport {
   const extDir = path.join(home, '.omp', 'agent', 'extensions');
   const pluginPath = tersioPluginDir(home);

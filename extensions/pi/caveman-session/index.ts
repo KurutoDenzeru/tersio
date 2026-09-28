@@ -1,27 +1,10 @@
-// extensions/pi/caveman-session/index.ts — caveman mode on Pi.
-//
-// Port of extensions/caveman-session/index.ts. Same levels, same /caveman
-// command, same `caveman` status key, same combo-preset suppression, same
-// restore precedence. Four Pi API facts changed the shape, and none of them
-// changed the feature:
-//
-//   - Prompt injection. OMP returned `{ systemPrompt: [...base, text] }`; Pi's
-//     BeforeAgentStartEvent.systemPrompt is a read-only rendered string, and
-//     returning it would replace the entire prompt for the turn. Pi's injection
-//     point is the mutable `systemPromptOptions.sections`, so the text goes into
-//     this extension's own sealed section, and an inactive mode writes '' (Pi
-//     omits falsy section content) rather than leaving a blank section behind.
-//   - There is no session_branch in Pi. session_start and session_tree are the
-//     two events that fire when the active conversation changes, so both restore.
-//   - `pi.setLabel('Caveman session toggle')` has no equivalent. Pi's setLabel
-//     is `setLabel(entryId, label)`, which labels a session entry for bookmarks;
-//     naming a toggle is a different thing, so the call is dropped rather than
-//     bent into setSessionName.
-//   - No subagent branch. isOmpSubagentPrompt reads OMP's delegated-agent
-//     marker and the delegated turn follows the parent's combo level there; Pi
-//     has no subagent surface in its event set, so every Pi turn is the parent
-//     turn and the local mode is the whole story. That also keeps the
-//     OMP-only prompt helpers out of a Pi port.
+// Caveman mode on Pi. Port of extensions/caveman-session/index.ts: same levels,
+// /caveman command, `caveman` status key, combo suppression and restore
+// precedence. The Pi-only differences: the text goes into a sealed section
+// because returning systemPrompt would replace the whole prompt; session_start
+// and session_tree both restore because there is no session_branch; setLabel
+// labels entries, not extensions, so it is dropped; and Pi has no subagent
+// surface, so every turn is the parent turn.
 
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -42,21 +25,14 @@ import {
   setSharedComboListener,
   setSharedComboMode,
 } from '../shared/pi-session-state.ts';
-// The installer writes the same ~/.tersio/settings.json for every host, so
-// reading the host-agnostic defaults is what makes a Pi install honor the same
-// configured default as an OMP one. The specifiers below are the ones this file
-// uses once installed, where extensions/shared/ sits beside the extension dirs.
 import { readCavemanDefault } from '../shared/plugin-settings.ts';
 import type { ExtensionCtx, PiBeforeAgentStartEvent, PiExtensionAPI, PiInputEvent, SessionEntry } from '../shared/pi-types.ts';
 
-// Pi requires lowercase alphanumerics, dashes, and underscores in a section
-// name, and wraps every non-empty one in matching XML tags. Sealed: this file
-// writes `tersio-caveman` and nothing else, so no sibling extension can clear it.
+// Sealed section: this file writes `tersio-caveman` and nothing else.
 const SECTION = 'tersio-caveman';
 
 const EXT_DIR = dirname(fileURLToPath(import.meta.url));
-// rule.md is fetched by the installer and written beside this module, so the
-// read is relative to the loaded file rather than to a host-specific root.
+// rule.md is written beside this module by the installer.
 const RULE_PATH = join(EXT_DIR, 'rule.md');
 
 const FALLBACK_FULL_RULE = `Caveman full active for this session.
@@ -74,7 +50,6 @@ Rules:
 
 Default: **full**. Switch: \`/caveman lite|full|ultra|wenyan-lite|wenyan-full|wenyan-ultra|off\`. Stop: "stop caveman" or "normal mode".`;
 
-// ponytail: synchronous read each full-mode injection; ceiling = small file, cold session start. Upgrade path: cache file contents + mtime, invalidate on change.
 function readFullRule(): string {
   try { return readFileSync(RULE_PATH, 'utf8'); } catch { return FALLBACK_FULL_RULE; }
 }
@@ -106,10 +81,7 @@ export default function cavemanSessionExtension(pi: PiExtensionAPI): void {
   let lastCtx: ExtensionCtx | undefined = undefined;
 
   function syncStatus(ctx?: ExtensionCtx): void {
-    // Pi's footer is terminal-only, and its docs prescribe ctx.mode === 'tui'
-    // for that class of UI. An absent mode (a context built by something other
-    // than a real Pi run) still paints, so this is no stricter than OMP's own
-    // setStatus probe.
+    // Pi's footer is terminal-only; an absent mode still paints.
     if (ctx && ctx.mode !== undefined && ctx.mode !== 'tui') return;
     lastCtx = paintableCtx(lastCtx, ctx);
     const c = lastCtx;
@@ -119,9 +91,8 @@ export default function cavemanSessionExtension(pi: PiExtensionAPI): void {
       c.ui.setStatus('caveman', undefined);
       return;
     }
-    // The theme comes from the context actually being painted, not from the
-    // incoming one: paintableCtx keeps the last context that could paint, so
-    // the two differ on a turn that arrives without a UI.
+    // Theme from the context that can actually paint, which is not always the
+    // incoming one.
     paintStatusBar(c.ui, 'caveman', '🪨', `caveman: ${currentMode.toUpperCase()}`, isActive, c.ui.theme);
   }
 
@@ -140,11 +111,9 @@ export default function cavemanSessionExtension(pi: PiExtensionAPI): void {
     return true;
   }
 
-  // Live mirror: a /tersio or /combo switch publishes shared state — adopt
-  // it at once so the next turn injects the new mode with no session reload.
-  // Stable identity, so the bridge set dedupes across re-inits. The bridge is a
-  // process-global symbol rather than pi.events: one Pi process is one realm, so
-  // the mirror stays a synchronous read instead of an async handshake per turn.
+  // Live mirror of shared state, so a /combo or /tersio switch lands on the
+  // next turn with no reload. The bridge is a process-global symbol: one Pi
+  // process is one realm.
   function syncFromShared(state: { caveman: string }): void {
     const mode = normalizeMode('caveman', state.caveman);
     if (mode) {
@@ -179,13 +148,10 @@ export default function cavemanSessionExtension(pi: PiExtensionAPI): void {
 
   function restoreMode(ctx?: ExtensionCtx): void {
     const entries = sessionEntries(ctx);
-    // Publish the persisted combo state (incl. combo-level) before painting:
-    // bar suppression reads the in-process bridge, which is empty in a fresh
-    // host until the combo extension reconciles — and its reconcile is
-    // UI-gated. Deriving it here makes suppression independent of load order.
+    // Publish the persisted combo state before painting: bar suppression reads
+    // the in-process bridge, which is empty until the combo extension
+    // reconciles, and that reconcile is UI-gated.
     reconcileSharedComboEntries(entries);
-    // Persisted session state wins; a fresh session falls back to the
-    // installer/user-configured default (off unless configured).
     const persisted = resolveMode(entries, '');
     currentMode = persisted || normalizeMode('caveman', readCavemanDefault()) || DEFAULT_MODE;
     syncStatus(ctx);
@@ -196,8 +162,6 @@ export default function cavemanSessionExtension(pi: PiExtensionAPI): void {
     notify(ctx, `Caveman loaded: ${currentMode}`);
   });
 
-  // session_branch is an OMP event with no Pi counterpart; session_tree is the
-  // other event that fires when the active conversation changes.
   pi.on?.('session_tree', (_event, ctx) => {
     restoreMode(ctx);
   });
@@ -215,10 +179,8 @@ export default function cavemanSessionExtension(pi: PiExtensionAPI): void {
   pi.on?.('before_agent_start', (event) => {
     const e = event as PiBeforeAgentStartEvent;
     const def = currentMode === 'off' ? undefined : INSTRUCTIONS[currentMode];
-    // Always write the section, empty when off: Pi omits falsy content, so the
-    // mode switches off in one write instead of leaving a stale section that
-    // the next turn would inherit. No return value — returning systemPrompt
-    // would replace the whole prompt on Pi.
+    // Always write, empty when off: Pi omits falsy content, so the mode
+    // switches off in one write instead of leaving a stale section behind.
     injectPiSection(e, SECTION, def ? (typeof def === 'function' ? def() : def) : '');
   });
 }

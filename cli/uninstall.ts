@@ -71,14 +71,8 @@ function dropKey(section: unknown, key: string): boolean {
   return true;
 }
 
-/**
- * Prints an internal step line, and only under `--verbose`.
- *
- * The default answers "what will this change", not "how the remover works":
- * a path per target describes the filesystem, and a write to `package.json`
- * describes the mechanism. Both are the first things to want when a removal
- * misbehaves, so they move rather than disappear.
- */
+// An internal step line, under `--verbose` only: the default answers "what will
+// this change", not "how the remover works".
 function step(line: string): void {
   if (verbose) console.log(`  ${line}`);
 }
@@ -88,11 +82,8 @@ function planLine(label: string, count: number): void {
   console.log(`  ${label} \u2014 ${count} item${count === 1 ? '' : 's'} will be removed.`);
 }
 
-/**
- * The paths an earlier version wrote for this host that are still on disk, read
- * without removing anything: the preview has to name them, and only the run may
- * take them.
- */
+// What an earlier version wrote and this one no longer does, read without
+// removing: the preview names them, only the run takes them.
 function retiredOnDisk(host: AgentHost | undefined, home: string): Array<{ label: string; path: string }> {
   if (!host) return [];
   return (host.retired ?? [])
@@ -132,11 +123,9 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
   // ran the confirm first, so the agent prompt appeared once the OMP files were
   // already gone.
   const home = os.homedir();
-  // Only hosts with something of ours on disk are offered — a row is an offer
-  // to delete, and a row with no files is an offer to delete nothing. The saved
-  // set is not consulted: the disk is the only honest source (see
-  // installedState). Reinstall drives this call directly, so it can pin the
-  // layer without a prompt.
+  // Only hosts with something of ours on disk are offered: a row is an offer to
+  // delete, and a row with nothing is an offer to delete nothing. Seeded from
+  // the disk, not the saved set (see installedState).
   const state = installedState(home);
   const installed = installedHostIds(state);
   // No pre-tick and no "not installed" rows: this menu only ever deletes, so
@@ -193,10 +182,9 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
     ? piExtensionTargets(piLayer(home)).filter((target) => existsSync(target))
     : [];
 
-  // Oh My Pi is one row in the menu above, not a separate question. Asking again
-  // meant picking "Pi" and then being asked about a different agent named "Oh
-  // My Pi", whose answer defaulted to removing — which is how the layer came to
-  // be deleted for a host that was never selected.
+  // Oh My Pi is one row in the menu above, not a separate question: asking
+  // again meant picking "Pi" and then answering for a different agent, which is
+  // how the layer came to be deleted for a host that was never selected.
   const removeOmpLayer = selection.ids.includes('omp') && !wantsOmpLayer;
   // Reinstall clears the extension dirs but keeps the plugin package: those are
   // separate decisions, since a reinstall replaces the dirs and re-downloads
@@ -254,12 +242,9 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
   }
   if (retired.length > 0 && !verbose) planLine('Earlier-release files', retired.length);
 
-  // With nothing selected there is nothing to confirm. Asking "remove the
-  // listed files?" over an empty plan invited a reflexive Yes to a run that
-  // could only ever do nothing. So: say what happened, then stop.
-  // "Nothing to do" has to mean the run would touch nothing, so the layer
-  // directories count too: a Pi-only uninstall whose extension directories were
-  // already gone used to stop here and leave the rtk wiring sitting in the tree.
+  // With nothing to remove there is nothing to confirm, so say so and stop.
+  // "Nothing to do" counts layer directories too: a Pi-only uninstall whose
+  // tree was already gone used to stop here and leave the rtk wiring behind.
   const layerDirsLeft = artifactHosts.some((id) => {
     const dir = id === 'pi'
       ? path.join(home, '.pi', 'agent', 'extensions')

@@ -40,7 +40,6 @@ function seedLayer(home: string, hostId: "omp" | "pi", which?: readonly string[]
   return entries.map((e) => e.path);
 }
 
-// --- menu ------------------------------------------------------------------
 
 test("the agent menu lists every host and says what wiring it will get", () => {
   const choices = agentChoices();
@@ -48,9 +47,6 @@ test("the agent menu lists every host and says what wiring it will get", () => {
   for (const choice of choices) {
     expect(choice.hint, `${choice.value} names no wiring`).toMatch(/rtk extension · auto-rewrite/);
   }
-  // The hint stays the wiring; everything the user needs while scanning lives
-  // in the label, because clack 1.8 renders a hint only on the cursor row and
-  // ticked rows.
   const omp = choices.find((c) => c.value === "omp")!;
   expect(omp.label).toContain("extensions + Ponytail");
 });
@@ -73,35 +69,24 @@ test("the menu says a host with nothing on disk is not installed", () => {
   const labels = new Map(agentChoices(state).map((c) => [c.value, c.label]));
   expect(labels.get("omp")).toBe("Oh My Pi (OMP) — nothing · not installed");
   expect(labels.get("pi")).toBe("Pi — nothing · not installed");
-  // A host missing from the map entirely (the dashboard, which has no
-  // filesystem to read) keeps the bare name rather than a fake count.
   expect(agentChoices().find((c) => c.value === "pi")!.label).toBe("Pi");
 });
 
 test("an uninstall menu offers only what is on disk", () => {
-  // The menu exists to answer "what can be taken away". A row for a host with
-  // nothing of ours on the machine is an offer to delete nothing.
   const state = new Map([
     ["omp", { dirs: 7, installed: true }],
     ["pi", { dirs: 0, installed: false }],
   ]);
   expect(installedRows(state).map((c) => c.value)).toEqual(["omp"]);
-  // Install keeps every row: there the question is "which do you want", so a
-  // host with nothing yet still belongs.
   expect(agentChoices(state).map((c) => c.value)).toEqual(HOSTS.map((h) => h.id));
 });
 
 test("a host the state map does not mention keeps its row", () => {
-  // The dashboard reads no filesystem, so it calls agentChoices with no state
-  // at all. Filtering those out would leave the dashboard with nothing.
   const sparse = new Map([["pi", { dirs: 7, installed: true }]]);
-  // Only a host the map names as not-installed is dropped; an unmapped host is
-  // unknown, not absent, so it keeps its row.
   expect(installedRows(sparse).map((c) => c.value)).toEqual(HOSTS.map((h) => h.id));
   expect(installedRows(new Map()).length).toBe(HOSTS.length);
 });
 
-// --- install state ---------------------------------------------------------
 
 test("hostLayer reports the extension tree, so a partial install reads as partial", () => {
   const { home, cleanup } = tempHome();
@@ -124,8 +109,6 @@ test("hostLayer reports the extension tree, so a partial install reads as partia
 test("omp's layer counts as installed only once the plugin is registered", () => {
   const { home, cleanup } = tempHome();
   try {
-    // Extension directories can outlive the plugin registration, so the plugin
-    // is what decides the row.
     seedLayer(home, "omp");
     expect(hostLayer(byId("omp")!, home).installed).toBe(false);
     mkdirSync(path.join(home, ".omp", "plugins", "node_modules", "@krtclcdy", "tersio"), { recursive: true });
@@ -138,8 +121,6 @@ test("omp's layer counts as installed only once the plugin is registered", () =>
 test("installedState reads the disk, not the saved selection", () => {
   const { home, cleanup } = tempHome();
   try {
-    // A saved selection naming a host that is not on disk must not make it look
-    // installed. That inversion is what left an installed OMP unticked.
     write(home, ".tersio/agents.json", JSON.stringify({ hosts: ["omp"], updatedAt: 0 }));
     seedLayer(home, "pi", ["caveman-session"]);
 
@@ -160,7 +141,6 @@ test("normalizeIds keeps registry order, drops unknowns, and de-duplicates", () 
   expect(normalizeIds([])).toEqual([]);
 });
 
-// --- selection -------------------------------------------------------------
 
 test("an explicit --agent wins over the prompt, the saved set, and detection", async () => {
   let asked = false;
@@ -176,8 +156,6 @@ test("an explicit --agent wins over the prompt, the saved set, and detection", a
 });
 
 test("an explicit --agent naming an uninstalled host is honoured, which is how you install it", async () => {
-  // Detection is irrelevant here: naming a host you do not have yet is the
-  // whole point of --agent.
   const result = await resolveAgentSelection({ flag: ["pi"], stored: [], detected: [] });
   expect(result.ids).toEqual(["pi"]);
 });
@@ -206,9 +184,6 @@ test("an empty answer from the prompt is a valid way to clear the set", async ()
 });
 
 test("the automatic set unions the saved hosts with what is on the machine", async () => {
-  // A saved choice is a preference, not evidence. Returning it verbatim meant a
-  // host that was installed and running, but never ticked in an earlier menu,
-  // was silently skipped and never written.
   const result = await resolveAgentSelection({ stored: ["omp"], detected: ["pi"] });
   expect(result.ids).toEqual(["omp", "pi"]);
   expect(result.source).toBe("auto");
@@ -222,9 +197,6 @@ test("nothing saved and nothing detected is a valid answer", async () => {
 });
 
 test("uninstall resolves from the saved set only, never from detection", async () => {
-  // Removal acts on what tersio wrote. A host that merely happens to be
-  // installed was never a target, so the uninstall caller passes an empty
-  // detection set rather than letting the union below widen it.
   const result = await resolveAgentSelection({ stored: ["pi"], detected: [] });
   expect(result.ids).toEqual(["pi"]);
 });
@@ -234,8 +206,6 @@ test("the selection round-trips through ~/.tersio/agents.json", () => {
   try {
     expect(readSelection(home).hosts).toEqual([]);
     writeSelection(home, ["pi", "omp"]);
-    // Stored in registry order, not the order given, so the file is stable
-    // whatever order --agent listed them in.
     expect(readSelection(home).hosts).toEqual(["omp", "pi"]);
     expect(readSelection(home).updatedAt).toBeGreaterThan(0);
     writeSelection(home, ["pi"]);
@@ -260,7 +230,6 @@ test("a corrupt or absent selection file reads as empty rather than throwing", (
   }
 });
 
-// --- detection -------------------------------------------------------------
 
 test("detection finds a host by its config directory", () => {
   const { home, cleanup } = tempHome();
@@ -275,8 +244,6 @@ test("detection finds a host by its config directory", () => {
 test("detection never includes omp, so the OMP default cannot appear from nothing", () => {
   const { home, cleanup } = tempHome();
   try {
-    // omp is installed by its own layer steps; detection must not silently opt
-    // a user into it.
     mkdirSync(path.join(home, ".omp", "agent"), { recursive: true });
     expect(detectHosts(home, { PATH: "" })).not.toContain("omp");
   } finally {
@@ -299,8 +266,6 @@ test("detection finds a host by a binary on PATH", () => {
 test("detection ignores a relocation env var pointing somewhere empty", () => {
   const { home, cleanup } = tempHome();
   try {
-    // PI_CODING_AGENT_DIR set but empty must not count as "installed", or every
-    // user with the var exported would be reported as configured.
     const found = detectHosts(home, { PATH: "", PI_CODING_AGENT_DIR: path.join(home, "nope") });
     expect(found).not.toContain("pi");
   } finally {
@@ -308,7 +273,6 @@ test("detection ignores a relocation env var pointing somewhere empty", () => {
   }
 });
 
-// --- retired paths ---------------------------------------------------------
 
 test("a retired rules file only loses our block, never the user's own text", () => {
   const { home, cleanup } = tempHome();
@@ -323,7 +287,6 @@ test("a retired rules file only loses our block, never the user's own text", () 
     const left = readFileSync(agentsMd, "utf8");
     expect(left).toContain("keep me");
     expect(left).not.toContain("tersio:start");
-    // Nothing left to clear on a second pass.
     expect(clearRetiredPaths(byId("pi")!, home)).toEqual([]);
   } finally {
     cleanup();

@@ -1,16 +1,10 @@
-// cli/agents.ts — host selection, persistence, and the filesystem side of
-// asking what a host has on disk.
+// Host selection, persistence, and the filesystem side of asking what a host
+// has on disk. Neither host ships static files, so this is selection, detection,
+// the retired paths an earlier version wrote, and the layer state the extension
+// trees report (cli/omp-layer.ts, cli/pi-layer.ts).
 //
-// Split from the OMP install path on purpose: install.ts, uninstall.ts, and
-// doctor.ts are built around ~/.omp, and routing another host through them
-// would mean rewriting the working OMP path to suit it. This module owns the
-// generic half. Neither host ships static files, so everything here is about
-// selection, detection, the retired paths an earlier version wrote, and the
-// layer state the extension trees report (cli/omp-layer.ts, cli/pi-layer.ts).
-//
-// Deliberately free of cli/common.ts imports (argv side effects) so tests can
-// load it directly. `home` is always passed in rather than read from the
-// environment, so a test can point it at a throwaway directory.
+// No cli/common.ts import (argv side effects), and `home` is always passed in,
+// so a test can load this directly against a throwaway directory.
 import fsSync from 'node:fs';
 import path from 'node:path';
 import { HOSTS, REWRITE_WIRING, type AgentHost } from './agent-hosts.ts';
@@ -53,24 +47,16 @@ export function displayPath(target: string, home: string): string {
   return `~/${target.slice(prefix.length).split(path.sep).join('/')}`;
 }
 
-/**
- * What tersio has already put on this machine for one host. `installed` is what
- * the menu cares about: the difference between "this row is empty" and "this
- * row is already done".
- */
+/** What tersio has put on this machine for one host. */
 export interface HostInstallState {
   /** Extension directories a live layer owns. */
   dirs: number;
   installed: boolean;
 }
 
-/**
- * The agent menu, in registry order. The install marker goes in the *label*,
- * not the hint: clack 1.8 renders a hint only on the cursor row and on ticked
- * rows, so anything in the hint was invisible on exactly the rows being
- * compared. Without `state` the rows are bare names, which is all the dashboard
- * needs — it has no filesystem to read.
- */
+// The install marker goes in the *label*, not the hint: clack 1.8 renders a
+// hint only on the cursor row and on ticked rows. Without `state` the rows are
+// bare names, which is all the dashboard needs — it reads no filesystem.
 export function agentChoices(state?: ReadonlyMap<string, HostInstallState>): AgentChoice[] {
   return HOSTS.map((host) => {
     const info = state?.get(host.id);
@@ -87,12 +73,8 @@ export function agentChoices(state?: ReadonlyMap<string, HostInstallState>): Age
   });
 }
 
-/**
- * The rows an uninstall menu should offer, given what is on disk. A host with
- * nothing of ours is not offered at all: a "Pi — nothing · not installed" row
- * answers a question nobody asked. A host absent from `state` is kept, because
- * the dashboard calls agentChoices with no filesystem to read.
- */
+// An uninstall row for a host with nothing of ours answers a question nobody
+// asked. A host absent from `state` keeps its row.
 export function installedRows(state: ReadonlyMap<string, HostInstallState>): AgentChoice[] {
   return agentChoices(state).filter((choice) => state.get(choice.value)?.installed !== false);
 }
@@ -106,10 +88,7 @@ function isDir(target: string): boolean {
   }
 }
 
-/**
- * What a host's extension tree looks like on disk. Both hosts ship a tree
- * rather than files, so this is the only thing a row can honestly report.
- */
+/** What a host's extension tree looks like on disk. */
 export interface HostLayer {
   /** Directory the host loads its extensions from. */
   extDir: string;
@@ -143,19 +122,15 @@ export function hostLayer(host: AgentHost, home: string): HostLayer {
   };
 }
 
-/**
- * What tersio has installed for each host, read from the filesystem. Both menus
- * seed from this, not from the saved selection: that file is a preference, so
- * it can name a host since cleaned by hand and omit one that is very much
- * installed. The disk is the only honest source.
- */
+// Both menus seed from the disk, not from the saved selection: that file is a
+// preference, so it can name a host since cleaned by hand and omit an installed
+// one.
 export function installedState(home: string): Map<string, HostInstallState> {
   const state = new Map<string, HostInstallState>();
   for (const host of HOSTS) {
     const layer = hostLayer(host, home);
-    // A partial tree is a partial install, so the directories that are there
-    // decide the count and the plugin registration decides omp's row: its
-    // extension directories can survive the plugin being pruned.
+    // A partial tree is a partial install; omp's row also needs its plugin
+    // registration, which can be pruned while the directories survive.
     state.set(host.id, {
       dirs: layer.present.length,
       installed: layer.installed && layer.present.length > 0,
@@ -180,16 +155,10 @@ export interface SelectionResult {
   addedByDetection: string[];
 }
 
-/**
- * Resolves which hosts a run acts on: an explicit `--agent` wins outright, even
- * for a host not installed, because naming one you do not have yet is how you
- * install it. Failing that a prompt, then the union of saved and detected.
- *
- * That last step is a union rather than "saved wins" because a saved choice is
- * a preference, not evidence: returning it verbatim silently skipped a host
- * that was present and running but never ticked. The prompt is seeded with the
- * union so those hosts are visible and pre-ticked.
- */
+// An explicit `--agent` wins outright, even for a host not installed: naming
+// one you do not have yet is how you install it. Then a prompt, then the union
+// of saved and detected — a saved choice is a preference, not evidence, so
+// returning it verbatim would skip a host that is present and never ticked.
 export async function resolveAgentSelection(opts: {
   flag?: readonly string[];
   stored: readonly string[];
@@ -237,11 +206,7 @@ export function writeSelection(home: string, ids: readonly string[]): void {
   fsSync.writeFileSync(target, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
 }
 
-/**
- * Hosts that look present on this machine: a config dir, or a binary on PATH.
- * Detection only widens the default set — it never overrides a host the user
- * named explicitly, and it never includes a host whose directory is empty.
- */
+// A config dir, or a binary on PATH. Detection only widens the default set.
 export function detectHosts(home: string, env: NodeJS.ProcessEnv = process.env): string[] {
   const found: string[] = [];
   for (const host of HOSTS) {
@@ -260,11 +225,7 @@ export function detectHosts(home: string, env: NodeJS.ProcessEnv = process.env):
   return found;
 }
 
-/**
- * Absolute path of a host's binary on PATH, or null when it is not installed.
- * Shared with the dashboard so both agree on what "installed" means. The bare
- * `cmd` name is never probed on Windows, where it resolves to the system shell.
- */
+/** A host's binary on PATH, or null. Shared with the dashboard. */
 export function findHostBinary(host: AgentHost, env: NodeJS.ProcessEnv = process.env): string | null {
   if (process.platform === 'win32') {
     const relocated = host.configDirEnv ? env[host.configDirEnv] : undefined;
@@ -290,8 +251,7 @@ export function findHostBinary(host: AgentHost, env: NodeJS.ProcessEnv = process
 }
 
 function hasBinary(name: string, env: NodeJS.ProcessEnv): boolean {
-  // Never probe a bare `cmd` on Windows: it resolves to the system shell, so a
-  // probe would report a host installed on every Windows machine.
+  // A bare `cmd` resolves to the system shell on Windows.
   if (process.platform === 'win32' && name === 'cmd') return false;
   const raw = env.PATH ?? env.Path ?? env.path ?? '';
   if (!raw) return false;
@@ -308,17 +268,10 @@ function hasBinary(name: string, env: NodeJS.ProcessEnv): boolean {
   return false;
 }
 
-/**
- * Removes the paths a previous version of tersio wrote for this host and the
- * current one no longer does.
- *
- * `ours` is something we created outright, so it goes. `merged` is a file the
- * user also owns — an AGENTS.md of their own is exactly the case that bit us
- * before — so only our marked block comes out and the file survives unless
- * nothing of theirs is left in it. Shared by install and uninstall, because a
- * capability that is dropped on one path and tidied on the other is how the two
- * quietly disagree.
- */
+// Paths an earlier version wrote and this one no longer does. `ours` is
+// removed outright; `merged` is a file the user also owns, so only our marked
+// block comes out and the file survives unless nothing of theirs is left in it.
+// Shared by install and uninstall so the two cannot disagree.
 export function clearRetiredPaths(
   host: AgentHost,
   home: string,
