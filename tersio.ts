@@ -23,9 +23,9 @@ import { runDashboard } from './cli/dashboard.ts';
 function agentIdHelp(): string {
   const ids = HOSTS.map((h) => h.id);
   const out: string[] = [];
-  for (let i = 0; i < ids.length; i += 6) {
-    const chunk = ids.slice(i, i + 6).join(', ');
-    const last = i + 6 >= ids.length;
+  for (let i = 0; i < ids.length; i += 4) {
+    const chunk = ids.slice(i, i + 4).join(', ');
+    const last = i + 4 >= ids.length;
     out.push(`                   ${out.length === 0 ? 'Known ids: ' : ''}${chunk}${last ? '.' : ','}`);
   }
   return out.join('\n');
@@ -47,11 +47,11 @@ Commands:
   help         Show this help
 
 Options:
-  --agent <ids>    Target coding agents for the generic rules/skills/hook install.
+  --agent <ids>    Target coding agents for the extension-tree install.
                    Repeatable and comma-separated.
 ${agentIdHelp()}
                    Saved to ~/.tersio/agents.json and reused by later runs.
-  --fix (doctor: repairs all; --fix=<scope> repairs one of extensions, registrations, rtk, ponytail, cli, hosts)
+  --fix (doctor: repairs all; --fix=<scope> repairs one of extensions, registrations, rtk, ponytail, cli)
   --scope user (legacy; accepted and ignored — user scope is the only scope)
   --keep-ponytail (uninstall: keep the bundled Ponytail copy — removed by default)
   --remove-rtk (uninstall: also remove the RTK binary)

@@ -26,7 +26,6 @@ import { runReset } from './reset.ts';
 import { runUsage } from './usage.ts';
 import { runDashboard } from './dashboard.ts';
 import { wireRtkOmp, wireRtkAgent, rtkAgentFor } from './rtk-wiring.ts';
-import { installOpenCodeRtk, openCodePluginPath } from './opencode-wiring.ts';
 import { installPiTersio } from './pi-wiring.ts';
 import { piExtensionTargets, piLayer } from './pi-layer.ts';
 import {
@@ -35,10 +34,8 @@ import {
 } from '../extensions/lib/utils.ts';
 import { storedProfile, writePluginSettings } from './profile.ts';
 import {
-  applyHosts, agentChoices, clearRetiredPaths, detectHosts, displayPath, groupByLabel,
-  installedHostIds, installedState,
-  normalizeIds, planInstall, pluralArtifactLabel, readSelection, resolveAgentSelection, writeSelection,
-  type InstallPlan, type PlanLine,
+  agentChoices, clearRetiredPaths, detectHosts, displayPath, hostLayer,
+  installedHostIds, installedState, normalizeIds, readSelection, resolveAgentSelection, writeSelection,
 } from './agents.ts';
 import { ompLayer } from './omp-layer.ts';
 import type { Profile } from './profile.ts';
@@ -59,12 +56,6 @@ const SHARED_PLUGIN_SETTINGS = path.join(EXT_DIR, 'shared', 'plugin-settings.ts'
 const SHARED_USAGE_LEDGER = path.join(EXT_DIR, 'shared', 'usage-ledger.ts');
 const SHARED_PRICING = path.join(EXT_DIR, 'shared', 'pricing.ts');
 const SHARED_CARBON = path.join(EXT_DIR, 'shared', 'carbon.ts');
-/**
- * OpenCode's plugin, read from the extension source rather than imported: it
- * is a self-contained ESM file with no build step, and it is written verbatim
- * into the user's config dir where there is no node_modules to import from.
- */
-const OPENCODE_PLUGIN_SOURCE = path.join(EXT_DIR, 'opencode', 'rtk-plugin.ts');
 
 // The directory names come from cli/pi-layer.ts, which the uninstall removal
 // also reads, so a plan and a removal cannot name different sets.
@@ -463,43 +454,40 @@ async function stepUpdater(extDir: string, options: WriteOptions): Promise<void>
   await copySources(extDir, [[UPDATER_INDEX, path.join('ai-addons-updater', 'index.ts')]], 'ai-addons-updater/index.ts', options);
 }
 
-// How each live-extension host gets its rewrite, for the plan line that stands
-// in for a file list. omp and pi are wired by rtk's own init via
-// cli/rtk-wiring.ts; opencode gets a plugin from cli/opencode-wiring.ts.
-const LIVE_WIRING_NOTE: Record<string, string> = {
-  omp: 'no static files — rtk writes ~/.omp/agent/extensions/rtk.ts',
-  opencode: 'no static files — tersio writes its own OpenCode plugin',
-  pi: 'tersio writes ~/.pi/agent/extensions/tersio.ts, rtk writes ~/.pi/agent/extensions/rtk.ts',
-};
+// How each host gets its rewrite, for the plan line that stands in for a file
+// list. Both are live-extension hosts: rtk writes the rewrite module from its
+// own init (cli/rtk-wiring.ts) and tersio writes the mode extensions.
+/**
+ * Names the hosts this run writes, in one line. Printed on every run, dry runs
+ * included: the plan below it only appears under `--verbose`, and a run that
+ * silently picked an agent is the case this exists to prevent.
+ */
+function printHostHeader(ids: readonly string[]): void {
+  const names = ids.map((id) => byId(id)?.label ?? id).join(', ');
+  console.log(`\n  Coding agents — ${names}`);
+}
 
 /**
- * Prints what an install will do to the selected coding agents. The input is
- * `planInstall` output — the same planner `applyHosts` writes from — so every
- * line is a file the run really touches. Paths are `$HOME`-relative because a
- * preview has no reason to print the machine layout.
+ * Prints what an install will do to the selected coding agents, under
+ * `--verbose`. Neither host ships static files: both are extension trees, so
+ * the plan is the tree plus the rtk module that carries the shell rewrite. The
+ * uninstall preview names the same paths, so the two ends of the command agree.
  */
-/**
- * Artifacts a host gets that `planInstall` does not model: a live extension
- * tree, or a plugin module.
- *
- * The install preview used to stop at the static files, so a Pi run named four
- * artifacts and wrote twelve — the seven-directory tree and rtk's own wiring
- * were written by later steps the preview never mentioned. This is the same
- * list the uninstall preview names, so the two ends of the command agree.
- */
-function hostLayerLines(hostId: string, home: string): PlanLine[] {
-  if (hostId === 'pi') {
-    const layer = piLayer(home);
-    return [
-      ...piExtensionTargets(layer).map((p): PlanLine => ({ label: 'extension tree', path: p, new: !existsSync(p) })),
-      { label: 'rtk wiring', path: layer.rtkExtension, new: !existsSync(layer.rtkExtension) },
-    ];
+function printHostPlans(ids: readonly string[], home: string): void {
+  for (const id of ids) {
+    const host = byId(id);
+    if (!host) continue;
+    if (id === 'pi') {
+      const layer = piLayer(home);
+      const targets = [...piExtensionTargets(layer), layer.rtkExtension];
+      console.log(`  ${host.label} — ${targets.length} extension/module path(s)`);
+      for (const target of targets) {
+        console.log(`    ${displayPath(target, home)}${existsSync(target) ? '' : ' (new)'}`);
+      }
+      continue;
+    }
+    console.log(`  ${host.label} — ${id === 'omp' ? 'no static files — rtk writes ~/.omp/agent/extensions/rtk.ts' : 'no static files'}`);
   }
-  if (hostId === 'opencode') {
-    const plugin = openCodePluginPath(home);
-    return [{ label: 'plugin', path: plugin, new: !existsSync(plugin) }];
-  }
-  return [];
 }
 
 /**
@@ -519,18 +507,10 @@ function step(options: { quiet?: boolean }, label: string): void {
  *
  * `tersio install` wrote the files, so this is the alternative rather than the
  * next step. Every host in scope gets its `tersio install --agent <id>` line,
- * because that is the supported path for all of them, and the agent's own command
- * is added where one exists. Claude Code and Codex have no native command while
- * their plugin ports are on hold, so they appear with the tersio form alone —
- * listed, not silently missing.
+ * and the agent's own command is added where one exists.
  */
 function printInstallGuide(ids: readonly string[], dryRun: boolean): void {
   if (dryRun) return;
-  // Every host in scope gets its own `tersio install --agent` line, because that
-  // is the supported path for all of them. The agent's own command is added
-  // only where one exists, so Claude Code and Codex appear with the tersio form
-  // and no native one, which is what "held" means in practice rather than
-  // being left out of the list entirely.
   const rows = HOSTS.flatMap((host) => {
     if (!ids.includes(host.id)) return [];
     return [[host.label, host.id, host.nativeInstall?.command] as const];
@@ -566,33 +546,8 @@ async function clearRetired(ids: readonly string[], home: string, options: Insta
 }
 
 /** What one agent ends up with, in a sentence a non-technical user can read. */
-function readyLine(label: string, artifactCount: number): void {
-  console.log(`  \u2705 ${label} \u2014 ${artifactCount} file${artifactCount === 1 ? '' : 's'} in place. Caveman, Ponytail and rtk are ready.`);
-}
-
-function printInstallPlan(plan: InstallPlan, home: string): void {
-  const names = plan.selected.map((host) => host.label).join(', ');
-  // One header over everything the run writes, layer directories included, so
-  // the count a user reads is the count they get on disk.
-  const rows = plan.hosts.map((preview) => ({
-    preview,
-    lines: [...hostLayerLines(preview.host.id, home), ...preview.lines],
-  }));
-  const fresh = rows.reduce((n, r) => n + r.lines.filter((l) => l.new).length, 0);
-  const held = rows.reduce((n, r) => n + r.lines.filter((l) => !l.new).length, 0);
-  console.log(`\n  Coding agents — ${names} (${fresh} new file(s)${held > 0 ? `, ${held} already in place` : ''})`);
-  for (const row of rows) {
-    const isFresh = row.lines.some((line) => line.new);
-    const state = isFresh ? `${row.lines.filter((l) => l.new).length} new` : 'up to date';
-    const note = row.lines.length === 0 ? (LIVE_WIRING_NOTE[row.preview.host.id] ?? 'no static files') : `${row.lines.length} artifact(s) · ${state}`;
-    console.log(`    ${row.preview.host.label} — ${row.preview.wiring} — ${note}`);
-    for (const group of groupByLabel(row.lines)) {
-      const label = pluralArtifactLabel(group.label);
-      const freshInGroup = group.lines.filter((l) => l.new).length;
-      console.log(`      ${label} — ${group.lines.length}${freshInGroup > 0 ? `, ${freshInGroup} new` : ', up to date'}`);
-      for (const line of group.lines) console.log(`        ${displayPath(line.path, home)}${line.new ? ' (new)' : ''}`);
-    }
-  }
+function readyLine(label: string, itemCount: number): void {
+  console.log(`  \u2705 ${label} \u2014 ${itemCount} item${itemCount === 1 ? '' : 's'} in place. Caveman, Ponytail and rtk are ready.`);
 }
 
 /**
@@ -699,8 +654,8 @@ async function resolveInstallSelection(options: InstallOptions): Promise<{ ids: 
  * Writes every artifact the chosen hosts need.
  *
  * Takes the rtk binary the run just fetched rather than probing PATH again:
- * the extension-file hosts are wired by rtk's own init, and that needs the
- * binary this run installed, not whichever one happened to be on PATH.
+ * both hosts are wired by rtk's own init, and that needs the binary this run
+ * installed, not whichever one happened to be on PATH.
  */
 async function applyAgentHosts(
   selection: { ids: string[]; interactive: boolean },
@@ -710,47 +665,31 @@ async function applyAgentHosts(
 ): Promise<void> {
   const { ids, interactive } = selection;
   const home = os.homedir();
-  // omp's static files ride the same path as everyone else's whenever its layer
-  // is in scope — an empty selection is the pre-multi-host default that puts
-  // the layer in, so it puts the files in too. The extension directories and
-  // rtk's own wiring stay with the layer block; only the files the generic
-  // emitters own are planned and written here.
+  // Oh My Pi rides the same path whenever its layer is in scope — an empty
+  // selection is the pre-multi-host default that puts the layer in. The
+  // extension directories themselves are written by the layer steps; what is
+  // left for the hosts here is the retired-path cleanup and rtk's own wiring.
   const wantsOmp = ids.length === 0 || ids.includes('omp');
-  const extra = wantsOmp ? [...new Set([...ids, 'omp'])] : ids.filter((id) => id !== 'omp');
-  if (extra.length === 0) {
+  const targets = wantsOmp ? [...new Set([...ids, 'omp'])] : ids;
+  if (targets.length === 0) {
     if (interactive && !options.quiet) console.log('  no coding agents selected');
     if (!options.dryRun && ids.length > 0) writeSelection(home, ids);
     return;
   }
 
-  const planned = await planInstall(extra, home);
-  if (verbose && !options.quiet) printInstallPlan(planned, home);
+  if (!options.quiet) printHostHeader(targets);
+  if (verbose && !options.quiet) printHostPlans(targets, home);
   if (!options.quiet && !options.dryRun) {
-    for (const preview of planned.hosts) readyLine(preview.host.label, planned.newFiles + planned.unchanged);
-  }
-
-  const { results, errors } = await applyHosts(extra, home, {
-    dryRun: options.dryRun,
-    quiet: options.quiet,
-    onlyChanged: true,
-  });
-  await clearRetired(extra, home, options);
-
-  // Only the hosts that changed are reported. The plan above already said which
-  // were up to date, and repeating it here per host turned a no-op re-run into
-  // twenty-plus lines asserting that nothing had happened.
-  for (const r of results) {
-    if (options.dryRun) {
-      console.log(`  [dry-run] ${r.host.label}: would write ${r.planned.length} file(s)`);
-      continue;
+    for (const id of targets) {
+      const host = byId(id);
+      if (host) readyLine(host.label, hostLayer(host, home).present.length);
     }
-    if (r.written.length === 0) continue;
-    console.log(`  [write] ${r.host.label}: ${r.written.length} file(s)`);
   }
-  for (const e of errors) console.log(`  [fail] ${e.host}: ${e.error}`);
 
-  // Delegate the extension-file hosts to rtk, which owns that format.
-  for (const id of extra) {
+  await clearRetired(targets, home, options);
+
+  // Every host is an extension-file host, so rtk's own init writes the rewrite.
+  for (const id of targets) {
     const agent = rtkAgentFor(id);
     if (!agent) continue;
     if (!rtkBin) {
@@ -763,20 +702,11 @@ async function applyAgentHosts(
     }
   }
 
-  // OpenCode needs a plugin rather than a static hook, and rtk's own plugin is
-  // in a format current OpenCode rejects, so tersio writes its own.
-  if (extra.includes('opencode')) {
-    await installOpenCodeRtk(home, OPENCODE_PLUGIN_SOURCE, {
-      dryRun: options.dryRun,
-      quiet: options.quiet,
-    });
-  }
-
   // Pi gets the same live extension layer OMP gets, not one flat module: one
   // directory per extension under <agent-dir>/extensions, each with an
   // index.ts Pi loads through jiti. The rule travels with its module so caveman
   // full mode reads the same text the installer fetched.
-  if (extra.includes('pi')) {
+  if (targets.includes('pi')) {
     await installPiTersio(home, { sources: piTreeSources(), rules: [['caveman-session', cavemanRule]] }, {
       dryRun: options.dryRun,
       quiet: options.quiet,
@@ -1050,9 +980,8 @@ async function runInstall(overrides: { reinstall?: boolean } = {}): Promise<void
   // The Oh My Pi layer installs for OMP, and for a run that named no host at
   // all: an empty selection is not a request for some other agent, it is the
   // pre-multi-host default of `tersio install` doing its job. What must never
-  // happen is naming one host and getting another's artifacts too — choosing
-  // Codex used to also write seven extension directories, the Ponytail package
-  // and the rtk wiring on top of the four files that were asked for.
+  // happen is naming one host and getting another's artifacts too — choosing Pi
+  // must not also write the OMP layer, Ponytail and the rtk wiring.
   const wantsOmpLayer = selection.ids.length === 0 || selection.ids.includes('omp');
   if (wantsOmpLayer) {
     // The layer's file list, under --verbose. The default gets one sentence.

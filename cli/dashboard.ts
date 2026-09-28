@@ -18,10 +18,8 @@ import {
   OMP_AGENT_DIR, OMP_PLUGINS_DIR, PACKAGE_VERSION,
 } from './common.ts';
 import { storedProfile, writePluginSettings } from './profile.ts';
-import { agentChoices, displayPath, findHostBinary, installedState, readSelection, reportHosts } from './agents.ts';
-import { HOSTS, byId, isLiveExtension } from './agent-hosts.ts';
-import { reportOmpLayer } from './omp-layer.ts';
-import { reportPiLayer } from './pi-layer.ts';
+import { agentChoices, displayPath, findHostBinary, hostLayer, readSelection } from './agents.ts';
+import { HOSTS, byId, REWRITE_WIRING } from './agent-hosts.ts';
 import { PACKAGE_NAME } from './common.ts';
 import { resolveRtkBinary } from '../extensions/lib/utils.ts';
 
@@ -146,8 +144,6 @@ async function agentsJsonAsync(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<Array<Record<string, unknown>>> {
   const selected = readSelection(home).hosts;
-  const rows = new Map(reportHosts(selected, home).map((r) => [r.host.id, r]));
-  const state = installedState(home);
   // `env` is threaded through rather than read from process.env inside, so a
   // caller passing a sandbox home does not get the real machine's PATH back.
   const found = new Map(HOSTS.map((h) => [h.id, findHostBinary(h, env)]));
@@ -160,60 +156,35 @@ async function agentsJsonAsync(
 
   return agentChoices().map((choice) => {
     const binPath = found.get(choice.value) ?? null;
-    // OMP is installed by its own plugin path, never by the generic emitters,
-    // so it never appears in agents.json. Reporting it "Not selected" beside a
-    // detected omp binary reads as a contradiction, so its row is computed from
-    // the OMP install directly.
+    // OMP is installed by its own plugin path, never as a saved entry, so its
+    // row is computed from the OMP install directly. Reporting it "Not
+    // selected" beside a detected omp binary reads as a contradiction.
     if (choice.value === 'omp') return ompRow(home, binPath, versions.get('omp') ?? null);
-    const row = rows.get(choice.value);
     const isSelected = selected.includes(choice.value);
     const host = byId(choice.value);
+    // Both hosts ship an extension tree rather than files, so the tree is what
+    // says configured. "Nothing missing" would be vacuously true for a host
+    // with nothing on disk, and a half-written tree is not a complete install.
+    const layer = host ? hostLayer(host, home) : null;
     return {
       id: choice.value,
       label: choice.label,
       selected: isSelected,
-      // Configured means every file this host needs is on disk. A live-extension
-      // host has no file artifacts of its own — its modes arrive from the
-      // extension tree — so "missing === 0" would be vacuously true and the badge
-      // would claim a healthy install for a host with nothing on disk. Those are
-      // judged on the layer instead, which is what they actually own.
-      configured: isSelected && (host !== undefined && isLiveExtension(host)
-        ? layerComplete(choice.value, home)
-        : !!row && row.missing.length === 0),
-      missing: row ? row.missing.length : 0,
-      present: row ? row.present.length : 0,
+      configured: isSelected && layer !== null && layer.present.length > 0 && layer.missing.length === 0,
+      missing: layer?.missing.length ?? 0,
+      present: layer?.present.length ?? 0,
       wiring: choice.hint,
       binPath,
       version: versions.get(choice.value) ?? null,
       // The registry's docs URL, so every row can link to the page its
       // integration is documented on instead of one hardcoded host.
       source: host?.source ?? null,
-      // A host can be fully configured with no CLI on PATH — Codex on a machine
-      // that only has the desktop app — and then the row had no path to verify
-      // it with. The config dir is real and is where this host's files live.
+      // A host can be fully configured with no CLI on PATH, and then the row had
+      // no binary to verify it with. The config dir is real and is where this
+      // host's extensions live.
       configDir: host ? displayPath(path.join(home, host.configDir), home) : null,
     };
   });
-}
-
-/**
- * Whether a live-extension host's install is complete.
- *
- * A live host has no file artifacts of its own, so "missing === 0" is vacuous
- * and "anything on disk" is too weak: one of pi's seven extension directories
- * left behind by a half-finished install would otherwise read as configured.
- * The layer report knows what belongs there, so ask it.
- */
-function layerComplete(hostId: string, home: string): boolean {
-  if (hostId === 'omp') {
-    const layer = reportOmpLayer(home, existsSync);
-    return layer.installed && layer.missing.length === 0;
-  }
-  if (hostId === 'pi') {
-    const layer = reportPiLayer(home, existsSync);
-    return layer.extensions.length > 0 && layer.missing.length === 0;
-  }
-  return false;
 }
 
 /**
@@ -242,7 +213,7 @@ function ompRow(home: string, binPath: string | null, version: string | null): R
     configured: present.length > 0,
     missing: 2 - present.length,
     present: present.length,
-    wiring: 'plugin · live commands',
+    wiring: REWRITE_WIRING,
     binPath,
     version,
     source: byId('omp')?.source ?? null,
@@ -345,13 +316,18 @@ function computeDoctorRows(): DoctorRow[] {
   // Agent hosts lead the report. They are what the product is for; the OMP
   // extension rows below are supporting detail for one host of several.
   const home = process.env.HOME || process.env.USERPROFILE || '';
-  for (const row of reportHosts(readSelection(home).hosts, home)) {
+  for (const id of readSelection(home).hosts) {
+    const host = byId(id);
+    if (!host) continue;
+    const layer = hostLayer(host, home);
+    const ok = layer.present.length > 0 && layer.missing.length === 0;
+    const dirs = layer.present.length + layer.missing.length;
     rows.push({
-      label: row.host.label,
-      ok: row.status !== 'warn',
-      detail: row.status === 'warn'
-        ? `${row.missing.length} file(s) missing — tersio install --agent ${row.host.id}`
-        : row.detail.replace(`${row.host.label}: `, ''),
+      label: host.label,
+      ok,
+      detail: ok
+        ? `${layer.present.length} of ${dirs} extension/module director${dirs === 1 ? 'y' : 'ies'} in place`
+        : `${layer.missing.length} of ${dirs} extension/module director${dirs === 1 ? 'y' : 'ies'} missing — tersio install --agent ${id}`,
       group: 'Agent hosts',
     });
   }

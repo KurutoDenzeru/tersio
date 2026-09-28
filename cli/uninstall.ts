@@ -12,14 +12,12 @@ import {
 import { ask, askInteractiveChoice, askInteractiveConfirm, closeRL, tty } from './interactive.ts';
 import { readTextIfExists } from '../extensions/lib/utils.ts';
 import {
-  displayPath, groupByLabel, installedHostIds, installedRows, installedState, pluralArtifactLabel,
-  planRemove, readSelection, removeHosts, resolveAgentSelection, writeSelection,
-  type RemovalLine,
+  clearRetiredPaths, displayPath, installedHostIds, installedRows, installedState,
+  readSelection, resolveAgentSelection, writeSelection,
 } from './agents.ts';
-import { byId } from './agent-hosts.ts';
+import { byId, type AgentHost } from './agent-hosts.ts';
 import { ompExtensionTargets, ompLayer } from './omp-layer.ts';
 import { piExtensionTargets, piLayer } from './pi-layer.ts';
-import { removeOpenCodeRtk } from './opencode-wiring.ts';
 import { removePiTersio } from './pi-wiring.ts';
 import { removePiRtk } from './rtk-wiring.ts';
 
@@ -88,6 +86,18 @@ function step(line: string): void {
 /** One plain sentence for a host, in place of its file list. */
 function planLine(label: string, count: number): void {
   console.log(`  ${label} \u2014 ${count} item${count === 1 ? '' : 's'} will be removed.`);
+}
+
+/**
+ * The paths an earlier version wrote for this host that are still on disk, read
+ * without removing anything: the preview has to name them, and only the run may
+ * take them.
+ */
+function retiredOnDisk(host: AgentHost | undefined, home: string): Array<{ label: string; path: string }> {
+  if (!host) return [];
+  return (host.retired ?? [])
+    .map((entry) => ({ label: entry.kind === 'merged' ? 'rules block' : 'superseded path', path: path.join(home, entry.path) }))
+    .filter((entry) => existsSync(entry.path));
 }
 
 async function removeUninstallTarget(target: string, shouldDryRun: boolean, recursive = true): Promise<void> {
@@ -176,10 +186,9 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
   const ponytailPkgDir = layer.ponytailPackage;
   const rtkBin = layer.rtkBinary;
   const targets = ompExtensionTargets(layer).filter((target) => existsSync(target));
-  // Pi's live behavior is a directory tree the generic emitters never see, and
-  // removePiTersio deletes all of it. The menu counts these dirs, so the plan
-  // has to name them: a count the preview never shows is a promise the run
-  // makes and the user cannot check.
+  // Pi's live behavior is a directory tree, and removePiTersio deletes all of
+  // it. The menu counts these dirs, so the plan has to name them: a count the
+  // preview never shows is a promise the run makes and the user cannot check.
   const piTargets = extra.includes('pi')
     ? piExtensionTargets(piLayer(home)).filter((target) => existsSync(target))
     : [];
@@ -194,11 +203,11 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
   // the package.
   const removeOmpExtensions = removeOmpLayer || options.replaceOmpExtensions === true;
 
-  // omp's static files — rules and skills — go through the same plan and the
-  // same removal as every other host now. The extension layer, the Ponytail
-  // package and rtk stay in the layer block below, which `--keep-omp-layer`
-  // skips; keeping the layer means keeping its files too.
-  const artifactHosts = selection.ids.filter((id) => id !== 'omp' || removeOmpLayer);
+  // Oh My Pi's own layer stays behind unless it is the host being removed. Its
+  // retired paths do not: an earlier version's rules block and skills belong to
+  // the host either way, so they follow the host.
+  const artifactHosts = removeOmpLayer ? selection.ids : extra;
+  const retired = artifactHosts.flatMap((id) => retiredOnDisk(byId(id), home));
 
   // Printed from the resolved selection, so every line below is something the
   // run really does. Each host is its own section: a flat path list cannot be
@@ -226,52 +235,31 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
     }
   }
 
-  // Only what is still ours is named, per host: a stale plan would overstate
-  // what happens, and a host with nothing left is dropped rather than printing
-  // an empty section. One section per host, layer directories and files
-  // together: two sections for one host said its name twice and filed half its
-  // artifacts under a "Coding agents" heading that named nothing.
-  const plan = planRemove(artifactHosts, home);
+  // Only what is still ours is named: a stale plan would overstate what
+  // happens, and a host with nothing left is dropped rather than printing an
+  // empty section.
   const piRtk = piLayer(home).rtkExtension;
-  for (const preview of plan.hosts) {
-    const isPi = preview.host.id === 'pi';
-    const dirs = isPi ? piTargets : [];
-    const wiring = isPi && existsSync(piRtk) ? 1 : 0;
-    const total = preview.lines.length + dirs.length + wiring;
-    if (!verbose) {
-      planLine(preview.host.label, total);
-      continue;
-    }
-    console.log(`\n  ${preview.host.label} — ${preview.wiring} — ${total} artifact${total === 1 ? '' : 's'} to remove`);
-    if (dirs.length > 0) {
-      console.log(`    extension tree — ${dirs.length} dirs`);
-      for (const target of dirs) console.log(`      ${displayPath(target, home)}`);
-      if (wiring) console.log(`      ${displayPath(piRtk, home)} — rtk Pi wiring`);
-    }
-    // planHost emits artifacts in kind order, so a run of one label is one
-    // group: rules, then skills, then the rewrite hook.
-    for (const group of groupByLabel(preview.lines)) {
-      const label = pluralArtifactLabel(group.label);
-      console.log(`    ${label} — ${group.lines.length}`);
-      for (const line of group.lines) console.log(`      ${displayPath(line.path, home)}`);
+  const piWiring = extra.includes('pi') && existsSync(piRtk) ? 1 : 0;
+  const piTotal = piTargets.length + piWiring;
+  if (piTotal > 0) {
+    if (!verbose) planLine('Pi', piTotal);
+    else {
+      console.log(`\n  Pi — ${piTotal} artifact${piTotal === 1 ? '' : 's'} to remove`);
+      for (const target of piTargets) console.log(`    ${displayPath(target, home)}`);
+      if (piWiring) console.log(`    ${displayPath(piRtk, home)} — rtk Pi wiring`);
     }
   }
-  if (plan.hosts.length === 0 && artifactHosts.length > 0) {
-    // Name every host that was asked for, not just the non-OMP ones: with
-    // `--agent omp` the old wording printed a blank list and read as a bug.
-    const asked = [...new Set([...artifactHosts, ...(removeOmpLayer ? ['omp'] : [])])];
-    console.log(asked.length > 0
-      ? `\n  Nothing of ours found for ${asked.join(', ')}.`
-      : '\n  Nothing of ours found on this machine.');
+  for (const entry of retired) {
+    if (verbose) console.log(`  ${entry.label} — ${displayPath(entry.path, home)} (earlier release)`);
   }
+  if (retired.length > 0 && !verbose) planLine('Earlier-release files', retired.length);
 
   // With nothing selected there is nothing to confirm. Asking "remove the
   // listed files?" over an empty plan invited a reflexive Yes to a run that
   // could only ever do nothing. So: say what happened, then stop.
-  // "Nothing to do" has to mean the run would touch nothing. Counting only the
-  // host files was not enough once a live host stopped shipping any: a Pi-only
-  // uninstall whose extension directories were already gone used to stop here
-  // and leave the rtk wiring and any stray extension sitting in the tree.
+  // "Nothing to do" has to mean the run would touch nothing, so the layer
+  // directories count too: a Pi-only uninstall whose extension directories were
+  // already gone used to stop here and leave the rtk wiring sitting in the tree.
   const layerDirsLeft = artifactHosts.some((id) => {
     const dir = id === 'pi'
       ? path.join(home, '.pi', 'agent', 'extensions')
@@ -280,17 +268,18 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
         : '';
     return dir !== '' && existsSync(dir);
   });
-  // A retired path counts as work too. Without it, an install whose only
-  // remaining trace is an older rules file was told "nothing selected" and
-  // returned before removeHost ran, so our block stayed in the user's file.
-  const retiredLeft = artifactHosts.some((id) => {
-    const host = byId(id);
-    return (host?.retired ?? []).some((entry: { path: string }) => existsSync(path.join(home, entry.path)));
-  });
-  if (!removeOmpExtensions && !layerDirsLeft && !retiredLeft && plan.files === 0 && piTargets.length === 0) {
+  if (!removeOmpExtensions && !layerDirsLeft && retired.length === 0 && piTotal === 0) {
     console.log('\n  Nothing selected — no files were removed.');
     if (!confirmed) closeRL();
     return false;
+  }
+
+  // A host that was asked for and had nothing of ours on disk is named here, so
+  // a partial run says which host it found empty. It waits for this point
+  // because a run with no work at all already said so and stopped.
+  if (piTotal === 0 && retired.length === 0 && artifactHosts.length > 0) {
+    const asked = [...new Set(artifactHosts)].join(', ');
+    console.log(`\n  Nothing of ours found for ${asked}.`);
   }
 
   // Only worth saying when the layer was kept while other agents were cleared.
@@ -299,10 +288,11 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
   }
 
   if (!confirmed) {
+    const names = [...new Set(artifactHosts.map((id) => byId(id)?.label ?? id))];
     if (tty()) {
       // Defaults to No, so Enter means "keep everything". A bare `y` says yes
       // outright rather than making the user hunt for the arrow keys.
-      const confirmChoice = await askInteractiveConfirm(`Remove Tersio from ${[...plan.hosts.map((h) => h.host.label), ...(removeOmpLayer ? ['Oh My Pi (OMP)'] : [])].join(', ')}?`, false);
+      const confirmChoice = await askInteractiveConfirm(`Remove Tersio from ${names.join(', ')}?`, false);
       if (confirmChoice.status !== 'confirmed') {
         if (confirmChoice.status === 'cancelled') clackCancel('Aborted.');
         else console.log('Aborted.');
@@ -402,54 +392,32 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
     }
   }
 
-  // Strip tersio's content from every other selected host. This removes only
-  // what we wrote: a merged file loses its marked block, a config the user also
-  // owns keeps everything but our entry, and a file we named is deleted once it
-  // configures no hook.
-  if (artifactHosts.length > 0) {
-    // The header prints under --dry-run too: a preview that silently omits a
-    // section is not a preview of the real run.
-    if (verbose) console.log('\n=== Agent hosts ===\n');
-    const { results, errors } = await removeHosts(artifactHosts, home, { dryRun: shouldDryRun, quiet: false });
-    for (const r of results) {
-      const what = r.removed.length === 0
-        ? 'nothing of ours found'
-        : shouldDryRun
-          ? `would remove ${r.removed.length} path(s)`
-          : `removed ${r.removed.length} path(s)`;
-      if (verbose) {
-        console.log(`  ${shouldDryRun ? '[dry-run]' : '[ok]'} ${r.host.label}: ${what}`);
-      } else if (r.removed.length > 0) {
-        console.log(`  \u2705 ${r.host.label} — ${shouldDryRun ? 'would be removed' : 'removed'}.`);
-      }
-      // Not noise: this is the one line saying the user's own content survived.
-      if (r.kept.length > 0 && !shouldDryRun) {
-        console.log(`     ${r.host.label}: kept ${r.kept.length} file${r.kept.length === 1 ? '' : 's'} that also hold your own content`);
-      }
+  // Clear what an earlier version wrote for the selected hosts. A merged file
+  // loses only our marked block, so a user's own AGENTS.md survives; a path we
+  // created outright goes.
+  for (const id of artifactHosts) {
+    const host = byId(id);
+    if (!host) continue;
+    for (const removed of clearRetiredPaths(host, home, { dryRun: shouldDryRun })) {
+      step(`${shouldDryRun ? '[dry-run] would remove' : '[rm]'} ${displayPath(removed, home)} (earlier release)`);
     }
-    for (const e of errors) console.log(`  [fail] ${e.host}: ${e.error}`);
+  }
 
-    // OpenCode's rewrite lives in a plugin the generic emitters cannot remove.
-    if (extra.includes('opencode')) {
-      await removeOpenCodeRtk(home, { dryRun: shouldDryRun, quiet: false });
-    }
+  // Pi's live behavior lives in extension files: rtk's own rtk.ts (written by
+  // `rtk init -g --agent pi`) and tersio's extension tree. Without removing both
+  // the rewrite and the commands survive the uninstall and Pi keeps rewriting
+  // after tersio is gone.
+  if (extra.includes('pi')) {
+    await removePiRtk(home, { dryRun: shouldDryRun, quiet: false });
+    await removePiTersio(home, { dryRun: shouldDryRun, quiet: false });
+  }
 
-    // Pi's live behavior lives in extension files the generic emitters cannot
-    // remove: rtk's own rtk.ts (written by `rtk init -g --agent pi`) and
-    // tersio's extension tree. Without these the rewrite and the commands
-    // survive the uninstall and Pi keeps rewriting after tersio is gone.
-    if (extra.includes('pi')) {
-      await removePiRtk(home, { dryRun: shouldDryRun, quiet: false });
-      await removePiTersio(home, { dryRun: shouldDryRun, quiet: false });
-    }
-
-    // Keep the saved set in step with what is left, so a later install does not
-    // resurrect agents the user just cleared. A pick in the menu means remove,
-    // so the host drops out of the saved set rather than replacing it — writing
-    // the picked set verbatim would uninstall every other saved host next time.
-    if (!shouldDryRun && selection.source === 'prompt') {
-      writeSelection(home, readSelection(home).hosts.filter((id) => !extra.includes(id)));
-    }
+  // Keep the saved set in step with what is left, so a later install does not
+  // resurrect agents the user just cleared. A pick in the menu means remove,
+  // so the host drops out of the saved set rather than replacing it — writing
+  // the picked set verbatim would uninstall every other saved host next time.
+  if (!shouldDryRun && selection.source === 'prompt') {
+    writeSelection(home, readSelection(home).hosts.filter((id) => !extra.includes(id)));
   }
 
   // Not OMP-specific: the run may have cleared nothing but coding agents.

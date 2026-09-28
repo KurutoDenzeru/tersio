@@ -91,9 +91,8 @@ export async function ensureRtkInConfig(options: WiringOptions): Promise<void> {
 
 // rtk's own init owns the extension format for the hosts it supports, so
 // tersio delegates rather than writing its own. `rtk init --agent pi` emits
-// ~/.pi/agent/extensions/rtk.ts, the same shape OMP loads. Verified against
-// rtk 0.50.0, which also accepts claude and cursor -- but for claude it writes
-// instructions only with no hook, so those stay with tersio's own emitters.
+// ~/.pi/agent/extensions/rtk.ts, the same shape OMP loads. Every supported host
+// routes through here, so there is one rewrite path and no per-host variant.
 const RTK_AGENTS = { omp: 'omp', pi: 'pi' } as const;
 
 export type RtkAgent = (typeof RTK_AGENTS)[keyof typeof RTK_AGENTS];
@@ -122,8 +121,8 @@ export async function wireRtkPi(rtkBin: string, options: WiringOptions = {}): Pr
 /**
  * The Pi extension rtk's own init writes. Home-passed (rather than reading
  * `$HOME` like `rtkExtensionPath` above) so uninstall and tests can point it
- * at a throwaway directory. Honors `PI_CODING_AGENT_DIR` the same way the
- * registry's `hostPath` does: only paths inside the config dir move with it.
+ * at a throwaway directory. Honors `PI_CODING_AGENT_DIR` the same way
+ * cli/pi-layer.ts does.
  */
 export function piRtkExtensionPath(home: string): string {
   const relocated = process.env.PI_CODING_AGENT_DIR;
@@ -134,10 +133,9 @@ export function piRtkExtensionPath(home: string): string {
 }
 
 /**
- * Removes Pi's rtk wiring. The generic emitters only know the rules file and
- * the skills, so without this a Pi uninstall leaves the rewrite live and Pi
- * keeps rewriting after tersio is gone. Mirrors `removeOpenCodeRtk`: the
- * shared rtk binary is untouched, only this host's extension file goes.
+ * Removes Pi's rtk wiring, so a Pi uninstall does not leave the rewrite live and
+ * Pi keeps rewriting after tersio is gone. The shared rtk binary is untouched,
+ * only this host's extension file goes.
  */
 export async function removePiRtk(home: string, options: WiringOptions = {}): Promise<boolean> {
   const target = piRtkExtensionPath(home);
