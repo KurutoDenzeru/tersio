@@ -17,6 +17,7 @@ import {
   piLayer,
   reportPiLayer,
 } from "../../cli/pi-layer.ts";
+import { rewritePortImports } from "../../cli/layer.ts";
 
 const EXT = path.join(path.dirname(new URL(import.meta.url).pathname), "..", "..", "extensions");
 const PI = path.join(EXT, "pi");
@@ -218,4 +219,16 @@ test("the report distinguishes what is on disk from what the layer lists", () =>
     if (previous !== undefined) process.env.PI_CODING_AGENT_DIR = previous;
     cleanup();
   }
+});
+
+test("a port import is rewritten for the installed depth, and nothing else is", () => {
+  expect(rewritePortImports(`import { a } from '../../shared/session-state.ts';`))
+    .toBe(`import { a } from '../shared/session-state.ts';`);
+  expect(rewritePortImports(`import { b } from '../../lib/utils.ts';`))
+    .toBe(`import { b } from '../lib/utils.ts';`);
+  // A Pi-owned module in the port's own shared/ is already at installed depth.
+  expect(rewritePortImports(`import type { C } from '../shared/pi-types.ts';`))
+    .toBe(`import type { C } from '../shared/pi-types.ts';`);
+  // A bare specifier and a relative path inside a string are not imports.
+  expect(rewritePortImports(`const x = "../../lib/";`)).toBe(`const x = "../../lib/";`);
 });
