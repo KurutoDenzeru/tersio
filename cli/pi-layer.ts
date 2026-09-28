@@ -1,20 +1,19 @@
-// The Pi extension layer as data: the five extension directories plus shared/
-// and lib/. The install preview and the uninstall removal both read this list,
-// so a preview cannot promise a different set than the run deletes. `home` is
-// passed in and cli/common.ts is never imported, so a test can point this at a
-// throwaway directory.
+// cli/pi-layer.ts — the Pi extension layer as data: the five extension
+// directories plus shared/ and lib/. The install preview and the uninstall
+// removal both read this list, so a preview cannot promise a different set than
+// the run deletes. `home` is passed in and cli/common.ts is never imported, so
+// a test can point this at a throwaway directory.
 import path from 'node:path';
+import { layerDirs, layerEntries, reportLayer, type LayerEntry } from './layer.ts';
 
-/** One path in the plan, with the words that say what it is. */
-export interface LayerEntry {
-  label: string;
-  path: string;
-}
+export type { LayerEntry };
 
 export interface PiLayer {
   extDir: string;
+  /** The rtk module `rtk init -g --agent pi` writes. Not ours to ship. */
   rtkExtension: string;
   installed: LayerEntry[];
+  /** Module directories the extension directories import from. */
   modules: LayerEntry[];
 }
 
@@ -33,15 +32,8 @@ const MODULE_DIRECTORIES = [
   ['lib', 'shared installer and updater helpers'],
 ] as const;
 
-/** Extension directory names, for callers that key off the names alone. */
-export const PI_EXTENSION_DIRS = INSTALLED_EXTENSIONS.map(([dir]) => dir);
-
-/** Module directory names, for callers that key off the names alone. */
-export const PI_MODULE_DIRS = MODULE_DIRECTORIES.map(([dir]) => dir);
-
-function extensionEntries(extDir: string, table: ReadonlyArray<readonly [string, string]>): LayerEntry[] {
-  return table.map(([dir, label]) => ({ label, path: path.join(extDir, dir) }));
-}
+export const PI_EXTENSION_DIRS = layerDirs(INSTALLED_EXTENSIONS);
+export const PI_MODULE_DIRS = layerDirs(MODULE_DIRECTORIES);
 
 export function piLayer(home: string): PiLayer {
   const relocated = process.env.PI_CODING_AGENT_DIR;
@@ -50,19 +42,18 @@ export function piLayer(home: string): PiLayer {
   return {
     extDir,
     rtkExtension: path.join(extDir, 'rtk.ts'),
-    installed: extensionEntries(extDir, INSTALLED_EXTENSIONS),
-    modules: extensionEntries(extDir, MODULE_DIRECTORIES),
+    installed: layerEntries(extDir, INSTALLED_EXTENSIONS),
+    modules: layerEntries(extDir, MODULE_DIRECTORIES),
   };
 }
 
+/** Every directory the layer owns. Removal walks this list and nothing else. */
 export function piExtensionTargets(layer: PiLayer): string[] {
   return [...layer.installed, ...layer.modules].map((entry) => entry.path);
 }
 
 export interface PiLayerReport {
-  /** Extension directories found on disk. */
   extensions: LayerEntry[];
-  /** Directories listed by the layer but absent from disk. */
   missing: LayerEntry[];
   /** False when nothing of the layer is present, so a row has nothing to say. */
   installed: boolean;
@@ -70,11 +61,6 @@ export interface PiLayerReport {
 
 /** Reports the layer without needing a platform rtk binary name. */
 export function reportPiLayer(home: string, exists: (p: string) => boolean): PiLayerReport {
-  const all = [...extensionEntries(piLayer(home).extDir, INSTALLED_EXTENSIONS), ...extensionEntries(piLayer(home).extDir, MODULE_DIRECTORIES)];
-  const extensions = all.filter((entry) => exists(entry.path));
-  return {
-    extensions,
-    missing: all.filter((entry) => !exists(entry.path)),
-    installed: extensions.length > 0,
-  };
+  const { present, missing } = reportLayer(piLayer(home).extDir, [INSTALLED_EXTENSIONS, MODULE_DIRECTORIES], exists);
+  return { extensions: present, missing, installed: present.length > 0 };
 }

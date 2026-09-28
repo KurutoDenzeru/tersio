@@ -3,12 +3,9 @@
 // uninstall removal must agree on them. `home` is passed in and cli/common.ts is
 // never imported, so a test can point this at a throwaway directory.
 import path from 'node:path';
+import { layerEntries, reportLayer, type LayerEntry } from './layer.ts';
 
-/** One path in the plan, with the words that say what it is. */
-export interface LayerEntry {
-  label: string;
-  path: string;
-}
+export type { LayerEntry };
 
 export interface OmpLayer {
   extDir: string;
@@ -41,9 +38,6 @@ const RETIRED_EXTENSIONS = [
 ] as const;
 
 
-function extensionEntries(extDir: string, table: ReadonlyArray<readonly [string, string]>): LayerEntry[] {
-  return table.map(([dir, label]) => ({ label, path: path.join(extDir, dir) }));
-}
 /** `rtkBinaryName` is passed in because it is platform-dependent and already resolved by the caller. */
 export function ompLayer(home: string, rtkBinaryName: string): OmpLayer {
   const agentDir = path.join(home, '.omp', 'agent');
@@ -56,8 +50,8 @@ export function ompLayer(home: string, rtkBinaryName: string): OmpLayer {
     ponytailPackage: path.join(pluginsDir, 'node_modules', '@dietrichgebert', 'ponytail'),
     rtkBinary: path.join(home, '.bun', 'bin', rtkBinaryName),
     rtkExtension: path.join(extDir, 'rtk.ts'),
-    installed: extensionEntries(extDir, INSTALLED_EXTENSIONS),
-    retired: extensionEntries(extDir, RETIRED_EXTENSIONS),
+    installed: layerEntries(extDir, INSTALLED_EXTENSIONS),
+    retired: layerEntries(extDir, RETIRED_EXTENSIONS),
   };
 }
 
@@ -85,10 +79,11 @@ export function tersioPluginDir(home: string): string {
 export function reportOmpLayer(home: string, exists: (p: string) => boolean): OmpLayerReport {
   const extDir = path.join(home, '.omp', 'agent', 'extensions');
   const pluginPath = tersioPluginDir(home);
+  const { present, missing } = reportLayer(extDir, [INSTALLED_EXTENSIONS], exists);
   return {
     pluginPath: exists(pluginPath) ? pluginPath : null,
-    extensions: extensionEntries(extDir, INSTALLED_EXTENSIONS).filter((entry) => exists(entry.path)),
-    missing: extensionEntries(extDir, INSTALLED_EXTENSIONS).filter((entry) => !exists(entry.path)),
+    extensions: present,
+    missing,
     installed: exists(pluginPath),
   };
 }
