@@ -88,14 +88,30 @@ function num(v: unknown): number | null {
   return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null;
 }
 
+// One model, two spellings in transcripts. `space-bunny` and
+// `stealth/space-bunny-alpha` are the same free model, and the feed lists only
+// the stealth name, so the plain alias would report the Sonnet-class default and
+// a cost that was never charged. The first spelling is what we show.
+export const MODEL_ALIASES: ReadonlyArray<{ id: string; feed: string }> = [
+  { id: 'space-bunny', feed: 'stealth/space-bunny-alpha' },
+];
+
+export function canonicalPriceId(model: string): string {
+  const key = model.toLowerCase();
+  return MODEL_ALIASES.find((a) => a.id === key || a.feed === key)?.id ?? key;
+}
+
 export function priceFor(model: string, live?: LivePrices | null): { price: ModelPrice; known: boolean; live: boolean } {
   const table = live === undefined ? loadLivePrices() : live;
+  // An alias goes through the same exact-then-suffix chain as any other id, so
+  // it still resolves when the feed keys it under a provider prefix.
+  const id = MODEL_ALIASES.find((a) => a.id === model.toLowerCase())?.feed ?? model;
   if (table) {
-    const hit = asPrice(table.exact[model] ?? table.exact[model.toLowerCase()]);
+    const hit = asPrice(table.exact[id] ?? table.exact[id.toLowerCase()]);
     if (hit) return { price: hit, known: true, live: true };
     // Provider-prefixed ids ("azure/gpt-4o", "dashscope/qwen-max"): match the
     // first cached id that ends with the bare model name.
-    const name = model.toLowerCase();
+    const name = id.toLowerCase();
     const key = Object.keys(table.exact).find((k) => k.toLowerCase() === name || k.toLowerCase().endsWith(`/${name}`));
     const prefixed = key ? asPrice(table.exact[key]) : null;
     if (prefixed) return { price: prefixed, known: true, live: true };

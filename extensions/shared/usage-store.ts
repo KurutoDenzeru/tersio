@@ -21,6 +21,7 @@ import {
   walkJsonl,
 } from './usage-ledger.ts';
 import { tersioDataPath } from '../lib/utils.ts';
+import { MODEL_ALIASES } from './pricing.ts';
 import type { RunStatus, SessionTokens } from './usage-ledger.ts';
 
 export function usageDbPath(): string {
@@ -68,6 +69,10 @@ function query(db: string, sql: string): string[][] {
 
 function ensureSchema(db: string): void {
   fs.mkdirSync(path.dirname(db), { recursive: true });
+  // Rows imported before an alias existed keep the spelling they were stored
+  // with, and the mtime ledger will not re-read those transcripts. Fold them in
+  // once, so the merge shows up without a reset.
+  const rekeys = MODEL_ALIASES.map((a) => `UPDATE messages SET model='${a.id}' WHERE model='${a.feed}';`).join('');
   run(
     db,
     `CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT NOT NULL);` +
@@ -75,7 +80,7 @@ function ensureSchema(db: string): void {
       `CREATE TABLE IF NOT EXISTS messages (file TEXT NOT NULL, t REAL, model TEXT NOT NULL,` +
       ` i INTEGER NOT NULL, o INTEGER NOT NULL, d REAL, cr INTEGER NOT NULL, cw INTEGER NOT NULL,` +
       ` usd REAL, st TEXT NOT NULL, code REAL, note TEXT, tools TEXT NOT NULL DEFAULT '[]');` +
-      `CREATE INDEX IF NOT EXISTS idx_messages_file ON messages(file);`,
+      `CREATE INDEX IF NOT EXISTS idx_messages_file ON messages(file);` + rekeys,
   );
 }
 

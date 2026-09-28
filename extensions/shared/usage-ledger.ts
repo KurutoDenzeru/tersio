@@ -279,7 +279,7 @@ export function classifySessionLine(row: { timestamp?: string | number; type?: u
 }
 // Fold `:free`/`-free` suffixes and case variants into one chart key.
 export function canonicalModelId(model: string): string {
-  return model.replace(FREE_SUFFIX, '').toLowerCase();
+  return canonicalPriceId(model.replace(FREE_SUFFIX, ''));
 }
 // LiteLLM-style display: lowercase namespace, title-cased model segments with
 // version dots kept.
@@ -451,7 +451,7 @@ export function leadBinary(command: unknown): string {
 }
 
 // --- Pricing lives in ./pricing.ts (live LiteLLM cache + fallback table) ---
-import { DEFAULT_PRICE, priceFor, refreshPricesIfStale } from './pricing.ts';
+import { DEFAULT_PRICE, canonicalPriceId, priceFor, refreshPricesIfStale } from './pricing.ts';
 import { co2GramsFor, energyWhFor } from './carbon.ts';
 import type { ModelPrice } from './pricing.ts';
 

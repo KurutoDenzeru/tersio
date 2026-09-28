@@ -9,6 +9,7 @@ import {
   priceFor,
   refreshPrices,
 } from "../../extensions/shared/pricing.ts";
+import { canonicalModelId } from "../../extensions/shared/usage-ledger.ts";
 
 function setEnv(vars: Record<string, string | undefined>): Record<string, string | undefined> {
   const prev: Record<string, string | undefined> = {};
@@ -158,4 +159,21 @@ test("tersio usage prices from the live cache", () => {
   rmSync(dir, { recursive: true, force: true });
   expect(result.status, result.stderr).toBe(0);
   expect(result.stdout).toMatch(/Claude-Sonnet-5.*1,000,000.*\$2\.00/);
+});
+
+// One model, two spellings: transcripts carry both, and the feed lists only the
+// stealth name. They must group as one row priced at zero, not as a free row
+// beside a phantom-cost one.
+test("the space-bunny aliases resolve to one free model", () => {
+  const spellings = ["space-bunny", "Space-Bunny", "stealth/Space-Bunny-Alpha", "stealth/space-bunny-alpha"];
+  for (const model of spellings) {
+    expect(canonicalModelId(model), model).toBe("space-bunny");
+  }
+  // The feed keys it openrouter/stealth/space-bunny-alpha at zero.
+  const live = { fetchedAt: Date.now(), exact: { "openrouter/stealth/space-bunny-alpha": [0, 0, 0, 0] } };
+  for (const model of spellings) {
+    const hit = priceFor(model, live);
+    expect(hit.known, `${model} should be priced from the feed`).toBe(true);
+    expect(hit.price.output, model).toBe(0);
+  }
 });
