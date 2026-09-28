@@ -1,7 +1,4 @@
-// The React dashboard: same sections and data contract as cli/dashboard.ts.
-// token strip, activity, top models, models, recent, command tools,
-// settings, model detail, share, footer. Styled with Tailwind utilities over
-// the tersio design tokens declared in index.css.
+// The React dashboard: same sections and data contract as cli/dashboard.ts, over the design tokens in index.css.
 import { useEffect, useState } from "react";
 import { useTheme } from "@/components/theme-provider";
 import { useDashboardData, useFx } from "@/lib/data";
@@ -43,9 +40,7 @@ function useDataThemeAttr(): void {
   }, [theme]);
 }
 
-// Scroll reveal. Sections opt in with a `data-reveal` attribute and the
-// matching utilities; this flips the attribute to "in" once the section
-// enters the viewport, which is what the data-[reveal=in]: variants key off.
+// Scroll reveal: a `data-reveal` section flips to "in" on entry, which the data-[reveal=in]: variants key off.
 function useReveal(): void {
   useEffect(() => {
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;

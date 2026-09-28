@@ -211,8 +211,7 @@ function insertSql(file: string, r: StoredRow): string {
     `${nullNum(r.code)},${nullStr(r.note)},${esc(JSON.stringify(r.tools))});`;
 }
 
-// Incremental sync: unchanged transcripts are skipped via mtime+size, changed ones are deleted and re-inserted.
-// Bump when a parser change would produce different rows for a file that has not changed on disk.
+// Incremental sync via mtime+size, deleted and re-inserted when a transcript changes.
 const PARSER_VERSION = '2';
 
 function readParserVersion(db: string): string | null {

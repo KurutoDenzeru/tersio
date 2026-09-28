@@ -79,9 +79,7 @@ function checkFailed(name: string, e: unknown): AddonStatus {
   return { text: `${name} check failed: ${(e as Error).message}`, level: 'warning' };
 }
 
-// Single error-handling source for the three probes; messages unchanged.
-// An unparseable package.json reads as no version, the same answer the update
-// path already gives, so the probe and the repair cannot disagree.
+// Single error-handling source for the three probes, and an unparseable package.json reads as no version.
 function parseVersion(raw: string | null): string | null {
   if (!raw) return null;
   try {
