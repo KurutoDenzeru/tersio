@@ -8,7 +8,7 @@
 [![Build](https://shieldcn.dev/github/ci/KurutoDenzeru/tersio.svg?variant=branded&size=xs&logo=githubactions&label=Build)](https://github.com/KurutoDenzeru/tersio/actions)
 [![MIT](https://shieldcn.dev/badge/license-MIT-2563eb.svg?variant=branded&size=xs&logo=opensourceinitiative)](./LICENSE)
 
-Tersio installs three coding modes into whichever agents you already use — **five supported** — and keeps the savings in one local ledger and dashboard.
+Tersio installs three coding modes into the coding agents you already use — **Oh My Pi and Pi** — and keeps the savings in one local ledger and dashboard.
 
 | Mode | What it changes |
 |---|---|
@@ -16,7 +16,7 @@ Tersio installs three coding modes into whichever agents you already use — **f
 | **Ponytail** | Minimal code: root causes, standard library, YAGNI, no speculative abstractions |
 | **RTK** | Runs noisy shell commands through the [rtk](https://github.com/rtk-ai/rtk) binary, which filters the output before the model reads it |
 
-Tersio is one CLI for every supported agent. The install writes into each agent's own config directory and never a shared one, so you can pick any combination, change it later, or add an agent without reinstalling the others.
+Tersio is one CLI for both hosts. The install writes an extension tree into each agent's own directory, so you can pick either, switch later, or install both without touching the other.
 
 ## ⚡ Getting Started
 
@@ -29,7 +29,7 @@ curl -fsSL https://github.com/KurutoDenzeru/tersio/releases/latest/download/inst
 Then tell it which agents to set up:
 
 ```bash
-tersio install --agent claude-code,codex
+tersio install --agent omp,pi
 ```
 
 The selection is saved to `~/.tersio/agents.json` and reused by every later install and update. Run `tersio install` with no `--agent` to auto-detect the agents you already have, and `tersio doctor` to see what landed. Every file written, per host, is in **[INSTALL.md](./INSTALL.md)**.
@@ -38,21 +38,18 @@ The selection is saved to `~/.tersio/agents.json` and reused by every later inst
 
 `--agent` takes any id below. Repeatable and comma-separated.
 
-| Agent | `--agent` | Rules | Skills | Live modes | RTK rewrite |
-|---|---|---|---|---|---|
-| Claude Code | `claude-code` | `CLAUDE.md` | ✅ 3 | — | ✅ hook |
-| OpenAI Codex | `codex` | `AGENTS.md` | ✅ 3 | — | ✅ hook |
-| OpenCode | `opencode` | `AGENTS.md` | ✅ 3 | — | ✅ plugin |
-| Pi | `pi` | — | ✅ 3 | ✅ | ✅ rtk extension |
-| Oh My Pi | `omp` | — | ✅ 3 | ✅ | ✅ rtk extension |
+| Agent | `--agent` | Delivered by | Live modes | RTK rewrite |
+|---|---|---|---|---|
+| Oh My Pi | `omp` | 7-directory extension tree | ✅ per session | ✅ rtk extension |
+| Pi | `pi` | 7-directory extension tree | ✅ per session | ✅ rtk extension |
 
-**Live modes** switch mid-session and inject every turn, so those two hosts get no rules file: a static copy would stay on after `/combo off`. The rest are static, and every host gets a rules file and skills that way. Every host auto-rewrites — `tersio doctor` names the mechanism.
+Both hosts are extension-tree hosts: the modes are injected on every turn, so no rules file and no skills directory is written — a static copy would stay on after `/combo off`. The shell rewrite is rtk's own module (`rtk init -g --agent <id>`), which is why rtk owns that format and no Tersio release is needed when it changes. `tersio doctor` names the mechanism per host.
 
-Re-run `tersio install` to change the selection — one path for all five. Both menus print a per-agent file plan first: what install will write, what uninstall will remove. Install pre-ticks your saved agents; uninstall ticks nothing, because a tick there deletes. Ticking **Oh My Pi** removes its extensions and Ponytail in the same menu.
+Re-run `tersio install` to change the selection. Both menus print a per-agent plan first: what install will write, what uninstall will remove. Install pre-ticks your saved agents; uninstall ticks nothing, because a tick there deletes. Ticking **Oh My Pi** removes its extensions and Ponytail in the same menu.
 
 ```bash
-tersio install                      # prompt for the agents
-tersio install --agent claude-code  # or name them
+tersio install              # prompt for the agents
+tersio install --agent pi   # or name them
 ```
 Session-start defaults (prompted during `install`, or flags):
 
@@ -71,7 +68,7 @@ npm exec --yes --prefer-online --package=@krtclcdy/tersio@latest -- tersio insta
 ### Requirements
 
 - Node.js 20.12+ with npm
-- Any of the five supported agents — nothing else is required
+- Oh My Pi, Pi, or both — nothing else is required
 
 Windows/WSL have separate home directories — install from the environment where the agent runs. Inside WSL, `command -v npm` must resolve to a Linux path, not `/mnt/c/`.
 
@@ -129,14 +126,14 @@ Upstream Ponytail's fair agentic benchmark reports 54% less code, 22% fewer toke
 | `tersio usage` | Ledger-backed usage + savings report |
 | `tersio dashboard` | Open the Dashboard (`--open`, `--export <file>`, `--port <n>`, `--currency <code>`; serves localhost only) |
 | `tersio reset` | Clear tersio statistics: usage ledger + a watermark that hides pre-reset rows from every derived view (Y/N confirm, `--dry-run`, `--yes`) — session transcripts and RTK history stay intact on disk |
-| `tersio uninstall` | Ask which agents to clear, then print and remove exactly the files each one will lose. Each row shows how many files that agent has (`Pi — 4 files`), and nothing is pre-ticked — press Space on what you want gone. Enter on an untouched menu removes nothing and stops. Ticking **Oh My Pi (OMP)** also removes its extensions and Ponytail (`--keep-ponytail` keeps Ponytail; `--keep-omp-layer` keeps the whole Oh My Pi layer; `--remove-rtk` also removes the RTK binary and its `rtk.ts` OMP wiring). Ticking **Pi** also removes its `rtk.ts` Pi wiring |
+| `tersio uninstall` | Ask which agents to clear, then print and remove exactly what each one will lose. Each row shows how many items that agent has (`Pi — 7 dirs`), and nothing is pre-ticked — press Space on what you want gone. Enter on an untouched menu removes nothing and stops. Ticking **Oh My Pi (OMP)** also removes its extensions and Ponytail (`--keep-ponytail` keeps Ponytail; `--keep-omp-layer` keeps the whole Oh My Pi layer; `--remove-rtk` also removes the RTK binary and its `rtk.ts` OMP wiring). Ticking **Pi** also removes its `rtk.ts` Pi wiring |
 | `tersio version` | Print version |
 
 Flags: `--agent <ids>` (repeatable, comma-separated), `--dry-run`, `--yes`/`-y`, `--verbose`, `--combo-default`/`--caveman-default`/`--rtk-default`/`--ponytail-default`, `--currency <code>` (usage/dashboard display currency; flag wins, then the `tersio settings` default, then USD). Legacy `--doctor` / `--uninstall` forms still work.
 
 ## ⌨️ Commands reference
 
-**Oh My Pi only.** These are live session commands: `/combo` changes the mode for the rest of the session and the state is persisted. Other agents have no equivalent runtime hook, so they receive the same modes as rules and skills instead — the behaviour is equivalent, the switching is not live. See [INSTALL.md](./INSTALL.md) for what each host actually gets.
+**Both hosts.** These are live session commands: `/combo` changes the mode for the rest of the session and the state is persisted. See [INSTALL.md](./INSTALL.md) for what each host actually gets.
 
 Mode switches live on their own commands; bare `/tersio` prints status.
 
