@@ -5,7 +5,8 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-import { convertUsd, formatCurrency } from "../../cli/currency.ts";
+import { FX_SNAPSHOT_RATES, convertUsd, formatCurrency } from "../../cli/currency.ts";
+import { FX_SNAPSHOT } from "../../dashboard/app/src/lib/format.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const installer = path.join(root, "tersio.js");
@@ -171,4 +172,11 @@ test("dashboard --export bakes the requested currency into data.json", () => {
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// The CLI and the Dashboard each keep a copy of the FX snapshot because the
+// Dashboard bundles for a browser and cannot import CLI code. They must not
+// drift: a rate that differs is a price shown in one place and not the other.
+test("the CLI and Dashboard FX snapshots agree", () => {
+  expect(FX_SNAPSHOT).toEqual(FX_SNAPSHOT_RATES as unknown as Record<string, number>);
 });

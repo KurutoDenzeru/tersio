@@ -7,7 +7,7 @@ import {
   args, dryRun, keepPonytail, removePonytail, removeRtk, yes,
   debug, parseJsonObject, writeConfigLines, writeIfChanged,
 } from './common.ts';
-import { ask, askInteractiveChoice, closeRL, tty } from './interactive.ts';
+import { askInteractiveChoice, closeRL, confirmDestructive, tty } from './interactive.ts';
 import { detectHosts, hostHint, hostLabel, parseHostArg } from './hosts.ts';
 import type { HostEntry, HostId } from './hosts.ts';
 import { piAgentDir, readTextIfExists } from '../extensions/lib/utils.ts';
@@ -204,29 +204,7 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
     console.log(`  ${path.join(extDir, 'rtk.ts')} (rtk OMP wiring)`);
   }
 
-  if (!confirmed) {
-    if (tty()) {
-      closeRL();
-      const confirmedChoice = await clackConfirm({ message: 'Remove the listed Tersio files?', initialValue: false });
-      if (typeof confirmedChoice !== 'boolean') {
-        clackCancel('Aborted.');
-        closeRL();
-        return false;
-      }
-      if (!confirmedChoice) {
-        console.log('Aborted.');
-        closeRL();
-        return false;
-      }
-    } else {
-      const answer = await ask('\nProceed? [y/N]: ');
-      if (!answer.toLowerCase().startsWith('y')) {
-        console.log('Aborted.');
-        closeRL();
-        return false;
-      }
-    }
-  }
+  if (!confirmed && !(await confirmDestructive('Remove the listed Tersio files?'))) return false;
 
   // Remove extension directories (independent paths, so concurrently).
   await Promise.all(targets.map((t) => removeUninstallTarget(t, shouldDryRun)));

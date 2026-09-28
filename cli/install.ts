@@ -30,26 +30,11 @@ import {
   httpsDownload, parseChecksum, piAgentDir, readTextIfExists, resolveRtkBinary, rtkPlatformSpec, sha256File,
 } from '../extensions/lib/utils.ts';
 import { storedProfile, writePluginSettings } from './profile.ts';
+import { EXT_DIR, filesUnder, sourcePath } from './manifest.ts';
 import type { Profile } from './profile.ts';
 import { detectHosts, hostHint, hostLabel, parseHostArg, piTersioSource } from './hosts.ts';
 import type { HostEntry, HostId } from './hosts.ts';
 
-// Paths to extension source files (relative to this script)
-const EXT_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'extensions');
-const SHARED_SESSION_STATE = path.join(EXT_DIR, 'shared', 'session-state.ts');
-const SHARED_HOST = path.join(EXT_DIR, 'shared', 'host.ts');
-const CAVEMAN_INDEX = path.join(EXT_DIR, 'caveman-session', 'index.ts');
-const CAVEMAN_RULE = path.join(EXT_DIR, 'caveman-session', 'rule.md');
-const RTK_SESSION_INDEX = path.join(EXT_DIR, 'rtk-session', 'index.ts');
-const UPDATER_INDEX = path.join(EXT_DIR, 'ai-addons-updater', 'index.ts');
-const COMBO_TOGGLE_INDEX = path.join(EXT_DIR, 'combo-toggle', 'index.ts');
-const TERSIO_COMMANDS_INDEX = path.join(EXT_DIR, 'tersio-commands', 'index.ts');
-const SHARED_TYPES = path.join(EXT_DIR, 'shared', 'types.ts');
-const LIB_UTILS = path.join(EXT_DIR, 'lib', 'utils.ts');
-const SHARED_PLUGIN_SETTINGS = path.join(EXT_DIR, 'shared', 'plugin-settings.ts');
-const SHARED_USAGE_LEDGER = path.join(EXT_DIR, 'shared', 'usage-ledger.ts');
-const SHARED_PRICING = path.join(EXT_DIR, 'shared', 'pricing.ts');
-const SHARED_CARBON = path.join(EXT_DIR, 'shared', 'carbon.ts');
 
 async function stepPonytail(pluginsDir: string, options: InstallOptions): Promise<void> {
   if (!options.quiet) console.log('  Ponytail — ensure bundled plugin');
@@ -252,10 +237,8 @@ async function extractRtkArchive(archivePath: string, extractDir: string): Promi
   return false;
 }
 
-// The binary is machine-wide and only OMP needs the tool_call wiring, since
-// the extensions call the binary themselves on either host. So an install that
-// finds one already present only rebinds: no registry probe, no download.
-// `tersio update` still refreshes it, because refreshing is that command's job.
+// The binary is machine-wide and only OMP needs the wiring, so an install that
+// finds one present only rebinds. `tersio update` still refreshes it.
 async function stepRtk(binDir: string, options: InstallOptions, target: 'omp' | 'pi' = 'omp'): Promise<void> {
   const binDest = path.join(binDir, RTK_BINARY_NAME);
   const found = resolveRtkBinary();
@@ -361,28 +344,20 @@ async function copySources(extDir: string, files: Array<[string, string]>, skipL
 
 async function stepSharedSessionState(extDir: string, options: WriteOptions): Promise<void> {
   if (!options.quiet) console.log('  Shared files — sync session bridge');
-  await copySources(extDir, [
-    [SHARED_HOST, path.join('shared', 'host.ts')],
-    [SHARED_SESSION_STATE, path.join('shared', 'session-state.ts')],
-    [SHARED_TYPES, path.join('shared', 'types.ts')],
-    [LIB_UTILS, path.join('lib', 'utils.ts')],
-    [SHARED_PLUGIN_SETTINGS, path.join('shared', 'plugin-settings.ts')],
-    [SHARED_USAGE_LEDGER, path.join('shared', 'usage-ledger.ts')],
-    [SHARED_PRICING, path.join('shared', 'pricing.ts')],
-    [SHARED_CARBON, path.join('shared', 'carbon.ts')],
-  ], 'shared/session-state.js', options);
+  const shared = [...filesUnder('shared'), ...filesUnder('lib')];
+  await copySources(extDir, shared, 'shared/session-state.js', options);
 }
 
 
 async function stepRtkSession(extDir: string, options: WriteOptions): Promise<void> {
   if (!options.quiet) console.log('  RTK session — install session mode');
-  await copySources(extDir, [[RTK_SESSION_INDEX, path.join('rtk-session', 'index.ts')]], 'rtk-session/index.ts', options);
+  await copySources(extDir, filesUnder('rtk-session'), 'rtk-session/index.ts', options);
 }
 
 // One fetch serves the install; dry runs stay offline and preview the bundled
 // rule's destination.
 async function fetchCavemanRule(options: WriteOptions): Promise<string | null> {
-  const bundled = await readTextIfExists(CAVEMAN_RULE);
+  const bundled = await readTextIfExists(sourcePath('caveman-session/rule.md'));
   if (options.dryRun) return bundled;
   try {
     return await withInteractiveSpinner('Fetching Caveman rule', () => httpsGet(CAVEMAN_REMOTE_RULE));
@@ -411,21 +386,21 @@ async function stepCaveman(extDir: string, rule: string | null, options: WriteOp
     await writeIfChanged(ruleDest, rule, options);
   }
 
-  await copySources(extDir, [[CAVEMAN_INDEX, path.join('caveman-session', 'index.ts')]], 'caveman-session/index.ts', options);
+  await copySources(extDir, filesUnder('caveman-session').filter(([, to]) => to.endsWith('index.ts')), 'caveman-session/index.ts', options);
 }
 
 async function stepTersioCommands(extDir: string, options: WriteOptions): Promise<void> {
   if (!options.quiet) console.log('  Tersio commands — install /tersio root command');
-  await copySources(extDir, [[TERSIO_COMMANDS_INDEX, path.join('tersio-commands', 'index.ts')]], 'tersio-commands/index.ts', options);
+  await copySources(extDir, filesUnder('tersio-commands'), 'tersio-commands/index.ts', options);
 }
 
 async function stepUpdater(extDir: string, options: WriteOptions): Promise<void> {
-  await copySources(extDir, [[UPDATER_INDEX, path.join('ai-addons-updater', 'index.ts')]], 'ai-addons-updater/index.ts', options);
+  await copySources(extDir, filesUnder('ai-addons-updater'), 'ai-addons-updater/index.ts', options);
 }
 
 async function stepCombo(extDir: string, options: InstallOptions): Promise<void> {
   if (!options.quiet) console.log('  Combo — install preset switch');
-  await copySources(extDir, [[COMBO_TOGGLE_INDEX, path.join('combo-toggle', 'index.ts')]], 'combo-toggle/index.ts', options);
+  await copySources(extDir, filesUnder('combo-toggle'), 'combo-toggle/index.ts', options);
 }
 
 
@@ -590,7 +565,7 @@ async function stepPiLayer(profile: Profile, options: InstallOptions): Promise<v
   const cavemanRule = await fetchCavemanRule(options);
   await stepSharedSessionState(extDir, options);
   // OMP loads rtk-session from its plugin manifest, so only the pi tree copies it.
-  await copySources(extDir, [[RTK_SESSION_INDEX, path.join('rtk-session', 'index.ts')]], 'rtk-session/index.ts', options);
+  await copySources(extDir, filesUnder('rtk-session'), 'rtk-session/index.ts', options);
   await stepCaveman(extDir, cavemanRule, options);
   await stepCombo(extDir, options);
   await stepTersioCommands(extDir, options);

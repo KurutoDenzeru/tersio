@@ -44,9 +44,8 @@ async function latestPublishedVersion(): Promise<string | null> {
   }
 }
 
-// A newer published version, null when up to date, or 'unknown' when the
-// registry is unreachable. Cached for a TTL unless force, which must never
-// trust a stale cache.
+// A newer published version, null when up to date, 'unknown' when the registry
+// is unreachable. Cached for a TTL unless force, which must not trust a cache.
 async function checkForUpdate(force = false): Promise<string | null | 'unknown'> {
   const cachePath = tersioDataPath('update-check.json', 'tersio-update-check.json');
   const cached = parseJsonObject<{ latest?: string; lastCheck?: number }>(await readTextIfExists(cachePath));
@@ -64,8 +63,7 @@ async function checkForUpdate(force = false): Promise<string | null | 'unknown'>
   return cached?.latest && newerThan(cached.latest, PACKAGE_VERSION) ? cached.latest : 'unknown';
 }
 
-// Race a probe against a timeout; slow or failing probes resolve null so the
-// plan never blocks the update.
+// Race a probe against a timeout; failures resolve null so nothing blocks.
 async function settle<T>(work: Promise<T>, ms: number): Promise<T | null> {
   let timer: NodeJS.Timeout | undefined;
   try {

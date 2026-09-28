@@ -17,27 +17,14 @@ import {
   httpsDownload, parseChecksum, readTextIfExists, rtkPlatformSpec, sha256File,
 } from '../extensions/lib/utils.ts';
 import { runLatestUpdate } from './update.ts';
-import { TREE_FILES, detectHosts, hostExtensionsDir } from './hosts.ts';
+import { TREE_FILES, sourcePath } from './manifest.ts';
+import { detectHosts, hostExtensionsDir } from './hosts.ts';
 
 type FixTarget = 'extensions' | 'registrations' | 'rtk' | 'ponytail' | 'cli';
 type FixRequest = FixTarget | 'all';
 
 const EXT_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'extensions');
-const SOURCES: Array<[string, string]> = [
-  [path.join(EXT_DIR, 'shared', 'session-state.ts'), path.join('shared', 'session-state.ts')],
-  [path.join(EXT_DIR, 'shared', 'types.ts'), path.join('shared', 'types.ts')],
-  [path.join(EXT_DIR, 'lib', 'utils.ts'), path.join('lib', 'utils.ts')],
-  [path.join(EXT_DIR, 'shared', 'plugin-settings.ts'), path.join('shared', 'plugin-settings.ts')],
-  [path.join(EXT_DIR, 'shared', 'usage-ledger.ts'), path.join('shared', 'usage-ledger.ts')],
-  [path.join(EXT_DIR, 'shared', 'pricing.ts'), path.join('shared', 'pricing.ts')],
-  [path.join(EXT_DIR, 'shared', 'carbon.ts'), path.join('shared', 'carbon.ts')],
-  [path.join(EXT_DIR, 'caveman-session', 'index.ts'), path.join('caveman-session', 'index.ts')],
-  [path.join(EXT_DIR, 'caveman-session', 'rule.md'), path.join('caveman-session', 'rule.md')],
-  [path.join(EXT_DIR, 'rtk-session', 'index.ts'), path.join('rtk-session', 'index.ts')],
-  [path.join(EXT_DIR, 'ai-addons-updater', 'index.ts'), path.join('ai-addons-updater', 'index.ts')],
-  [path.join(EXT_DIR, 'combo-toggle', 'index.ts'), path.join('combo-toggle', 'index.ts')],
-  [path.join(EXT_DIR, 'tersio-commands', 'index.ts'), path.join('tersio-commands', 'index.ts')],
-];
+
 
 // A written tree is the install for both hosts now, so --fix restores it for
 // whichever hosts have it, alongside the OMP package when that is present.
@@ -66,7 +53,7 @@ async function fixExtensions(pluginsDir: string): Promise<void> {
   const pluginExtDir = path.join(tersioPluginDir, 'extensions');
   await fs.mkdir(pluginExtDir, { recursive: true });
 
-  for (const [from, to] of SOURCES) {
+  for (const [from, to] of TREE_FILES.map((file) => [sourcePath(file), file] as [string, string])) {
     const text = await readTextIfExists(from);
     if (text === null) console.log(`  [warn] bundled source missing: ${from}`);
     else await writeIfChanged(path.join(pluginExtDir, to), text, { dryRun, verbose });

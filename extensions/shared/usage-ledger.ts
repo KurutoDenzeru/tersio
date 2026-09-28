@@ -22,8 +22,7 @@ export function ledgerPath(): string {
 }
 
 // Reset watermark: a tersio-owned timestamp. Transcripts and the RTK database
-// are host/tool-owned and never deleted — derived views filter rows from
-// before the watermark, so reset empties what tersio shows and nothing else.
+// are never deleted; derived views filter rows older than the watermark.
 export function resetMarkerPath(): string {
   const override = process.env.TERSIO_RESET_FILE;
   if (override) return override;
@@ -56,9 +55,8 @@ export function appendUsage(kind: UsageKind, detail: string): void {
 }
 
 // --- Session tokens, tokscale-style ------------------------------------------
-// Assistant messages in the host transcripts (both **/*.jsonl) carry
-// message.usage, message.model, and a per-line timestamp. Unreadable files
-// are skipped.
+// Assistant messages in the host transcripts (**/*.jsonl) carry message.usage,
+// message.model, and a timestamp. Unreadable files are skipped.
 export interface TokenBreakdown {
   input: number;
   output: number;

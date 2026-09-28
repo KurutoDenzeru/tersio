@@ -4,7 +4,10 @@
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { HOME, OMP_PLUGINS_DIR, PACKAGE_NAME, PACKAGE_VERSION } from './common.ts';
+import { TREE_FILES } from './manifest.ts';
 import { piAgentDir } from '../extensions/lib/utils.ts';
+
+export { TREE_FILES };
 
 export type HostId = 'omp' | 'pi';
 
@@ -24,24 +27,7 @@ export interface HostEntry {
   dir: string | null;
 }
 
-// Every file the installer writes into a host's extension tree. The doctor
-// checks this list, and --fix restores it, so the two cannot drift.
-export const TREE_FILES = [
-  'caveman-session/index.ts',
-  'caveman-session/rule.md',
-  'rtk-session/index.ts',
-  'combo-toggle/index.ts',
-  'tersio-commands/index.ts',
-  'ai-addons-updater/index.ts',
-  'shared/session-state.ts',
-  'shared/types.ts',
-  'shared/host.ts',
-  'shared/plugin-settings.ts',
-  'shared/usage-ledger.ts',
-  'shared/pricing.ts',
-  'shared/carbon.ts',
-  'lib/utils.ts',
-];
+
 
 export function hostExtensionsDir(id: HostId, agentDir = piAgentDir()): string {
   return id === 'omp'
@@ -136,11 +122,6 @@ function detect(agentDir = piAgentDir()): HostEntry[] {
     entry('pi', 'Pi', 'pi', `pi install npm:${PACKAGE_NAME}`, `pi remove npm:${PACKAGE_NAME}`,
       piPkg, piTersioSource(agentDir), agentDir),
   ];
-}
-
-/** A host entry by id, as currently on disk. */
-export function hostState(id: HostId, agentDir = piAgentDir()): HostEntry {
-  return detect(agentDir).find((h) => h.id === id) as HostEntry;
 }
 
 /**

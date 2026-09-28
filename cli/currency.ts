@@ -71,7 +71,8 @@ const CURRENCY_META: Record<CurrencyCode, { symbol: string; decimals: number }> 
   INR: { symbol: '₹', decimals: 2 },
 };
 
-const FX_SNAPSHOT_RATES: Record<CurrencyCode, number> = {
+// Exported so a test can hold it against the Dashboard's copy of the same table.
+export const FX_SNAPSHOT_RATES: Record<CurrencyCode, number> = {
   USD: 1,
   PHP: 58.7,
   EUR: 0.92,

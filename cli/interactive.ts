@@ -63,6 +63,33 @@ async function askInteractiveConfirm(message: string, initialValue = true): Prom
   }
   return { status: 'confirmed', value: answer };
 }
+// Confirm a destructive run: a Clack dialog at a terminal, a plain prompt in a
+// pipe or script. False means the user declined or aborted.
+async function confirmDestructive(message: string): Promise<boolean> {
+  if (tty()) {
+    closeRL();
+    const answer = await clackConfirm({ message, initialValue: false });
+    if (typeof answer !== 'boolean') {
+      clackCancel('Aborted.');
+      closeRL();
+      return false;
+    }
+    if (!answer) {
+      console.log('Aborted.');
+      closeRL();
+      return false;
+    }
+    return true;
+  }
+  const typed = await ask('\nProceed? [y/N]: ');
+  if (!typed.toLowerCase().startsWith('y')) {
+    console.log('Aborted.');
+    closeRL();
+    return false;
+  }
+  return true;
+}
+
 // Run collecting work under one TTY-only Clack task. Callers print after the
 // task completes, keeping normal output out of the spinner animation.
 async function runInteractivePhase<T>(title: string, collect: () => Promise<T>): Promise<T> {
@@ -78,5 +105,5 @@ async function execNetwork(label: string, cmd: string, args: string[], opts: Exe
 
 export {
   ask, closeRL, tty, withInteractiveSpinner, execNetwork,
-  askInteractiveChoice, askInteractiveConfirm, runInteractivePhase, InteractiveChoice, InteractiveConfirm,
+  askInteractiveChoice, askInteractiveConfirm, confirmDestructive, runInteractivePhase, InteractiveChoice, InteractiveConfirm,
 };
