@@ -4,42 +4,8 @@
 // replacement prompt. The bridge is a process-global symbol, not `pi.events`:
 // extensions share one JS realm, and a message bus would turn every turn into an
 // async handshake.
-import {
-  COMBO_LEVELS,
-  activeModesSummary,
-  getSharedComboState,
-  isComboPresetActive,
-  lastCustomValue,
-  normalizeComboLevel,
-  normalizeInputCommand,
-  normalizeMode,
-  paintableCtx,
-  paintStatusBar,
-  reconcileSharedComboEntries,
-  sessionEntries,
-  setSharedComboLevel,
-  setSharedComboListener,
-  setSharedComboMode,
-} from '../shared/session-state.ts';
+export * from '../shared/session-state.ts';
 import type { ExtensionCtx } from './pi-types.ts';
-
-export {
-  COMBO_LEVELS,
-  activeModesSummary,
-  getSharedComboState,
-  isComboPresetActive,
-  lastCustomValue,
-  normalizeComboLevel,
-  normalizeInputCommand,
-  normalizeMode,
-  paintableCtx,
-  paintStatusBar,
-  reconcileSharedComboEntries,
-  sessionEntries,
-  setSharedComboLevel,
-  setSharedComboListener,
-  setSharedComboMode,
-};
 
 // One section per extension, so two never overwrite each other. Fails open, and
 // falsy content is omitted by Pi, so '' switches the mode off.

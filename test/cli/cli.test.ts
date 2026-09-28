@@ -18,6 +18,17 @@ function run(...args: string[]) {
   });
 }
 
+/** Runs the CLI in a throwaway home with an empty PATH, so nothing is detected or downloaded. */
+function runIn(home: string, args: string[], opts: { timeout?: number; input?: string } = {}) {
+  return spawnSync(process.execPath, [installer, ...args], {
+    cwd: root,
+    encoding: "utf8",
+    timeout: opts.timeout ?? 30000,
+    input: opts.input,
+    env: { ...process.env, HOME: home, USERPROFILE: home, PATH: path.join(home, "empty-bin") },
+  });
+}
+
 for (const alias of [["version"], ["--version"], ["-v"]]) {
   test(`${alias[0]} prints only the package version`, () => {
     const result = run(...alias);
@@ -51,25 +62,13 @@ test("an unknown command fails with usage and no installer output", () => {
 });
 
 test("tersio install still reaches the agent prompts, because naming a command is not --yes", () => {
-  // `--yes` means "do not prompt me". Folding the command name into that flag
-  // made every explicit `tersio install` skip the agent menu, so the one command
-  // that exists to offer the choice was the one command that could not. Only
-  // bare `tersio` printed the picker, which is not a discoverable way to set up
-  // a new host.
+  // `--yes` means "do not prompt me". Folding the command name into it made
+  // every explicit `tersio install` skip the agent menu.
   const home = mkdtempSync(path.join(os.tmpdir(), "tersio-yes-"));
   try {
-    const result = spawnSync(process.execPath, [installer, "install", "--dry-run"], {
-      cwd: root,
-      encoding: "utf8",
-      timeout: 20000,
-      // No TTY, so nothing is prompted. This asserts the flag no longer claims
-      // the user declined the prompts, which is what a flagless run would not.
-      env: { ...process.env, HOME: home, USERPROFILE: home, PATH: path.join(home, "empty-bin") },
-    });
+    const result = runIn(home, ["install", "--dry-run"], { timeout: 20000 });
 
     expect(result.status, result.stderr).toBe(0);
-    // The agent step must still run and still report. Under the old flag a
-    // command-named install short-circuited the menu gate entirely.
     expect(result.stdout, result.stdout).toMatch(/Coding agents|Oh My Pi/);
   } finally {
     rmSync(home, { recursive: true, force: true });
@@ -79,12 +78,7 @@ test("tersio install still reaches the agent prompts, because naming a command i
 test("--yes still suppresses the prompts it is meant to suppress", () => {
   const home = mkdtempSync(path.join(os.tmpdir(), "tersio-yes-flag-"));
   try {
-    const result = spawnSync(process.execPath, [installer, "install", "--dry-run", "--yes"], {
-      cwd: root,
-      encoding: "utf8",
-      timeout: 20000,
-      env: { ...process.env, HOME: home, USERPROFILE: home, PATH: path.join(home, "empty-bin") },
-    });
+    const result = runIn(home, ["install", "--dry-run", "--yes"], { timeout: 20000 });
 
     expect(result.status, result.stderr).toBe(0);
     // Same work either way; the flag is about prompting, not about scope.
@@ -115,8 +109,6 @@ test("dry-run previews shared bridge before dependent extensions without writing
   expect(caveman > shared, result.stdout).toBeTruthy();
   expect(result.stdout).toMatch(/Ponytail — ensure bundled plugin/);
   expect(result.stdout).toMatch(/Tersio — register plugin/);
-  // The "no absolute paths" rule is a property of the default output, and is
-  // asserted there; this run asked for --verbose, which is allowed to be loud.
   expect(existsSync(path.join(root, "extensions", "shared-session-state.js"))).toBe(false);
 });
 
@@ -152,13 +144,9 @@ test("user dry-run installs the tersio root-command extension", () => {
 
   expect(result.status, result.stderr).toBe(0);
   expect(result.stdout).toMatch(/Tersio commands — install \/tersio root command/);
-  // The retired reinforcement is what must not appear. tersio-commands itself is
-  // a current extension, so naming it was never the assertion.
   expect(result.stdout).not.toMatch(/mode-reinforcement/);
 });
 test("the default install output stays minimal, and --verbose is where the detail lives", () => {
-  // The complaint this pins: a non-technical user should get one line per agent,
-  // not a wall of skill paths and internal step names.
   const missingHome = path.join(root, "test", "definitely-missing-home");
   const runIt = (extra: string[]): string => {
     const result = spawnSync(
@@ -175,25 +163,19 @@ test("the default install output stays minimal, and --verbose is where the detai
   };
 
   const plain = runIt([]);
-  // None of the internals leak into the default.
   expect(plain).not.toMatch(/SKILL\.md/);
   expect(plain).not.toMatch(/extension directories/);
   expect(plain).not.toMatch(/Shared files/);
   expect(plain).not.toMatch(/Caveman — fetch rule/);
   expect(plain).not.toMatch(/Register plugin|register plugin/);
-  // And it still says what happened.
   expect(plain).toMatch(/Done — restart your agents/);
 
-  // The detail is not gone, it is one flag away.
   const loud = runIt(["--verbose"]);
   expect(loud).toMatch(/Shared files/);
   expect(loud.length, "verbose is meaningfully louder").toBeGreaterThan(plain.length);
 });
 
 test("the default uninstall output stays minimal, and --verbose is where the detail lives", () => {
-  // Same contract as the install side: one sentence per agent by default, the
-  // file lists and per-path removal notes behind --verbose. Without this, the
-  // wall of paths creeps back the first time someone adds a print.
   const missingHome = path.join(root, "test", "definitely-missing-home");
   const runIt = (extra: string[]): string => {
     const result = spawnSync(
@@ -215,7 +197,6 @@ test("the default uninstall output stays minimal, and --verbose is where the det
   expect(plain).not.toMatch(/extension directories/);
   expect(plain).not.toMatch(/\[rm\]|\[dry-run\] would remove/);
   expect(plain).not.toMatch(/=== Agent hosts ===/);
-  // It still says what it found, in one line.
   expect(plain).toMatch(/will be removed|Nothing of ours|Aborted|Nothing selected/);
 
   const loud = runIt(["--agent", "omp", "--verbose"]);
@@ -253,22 +234,10 @@ test("the update clean step previews uninstall then install without writing", ()
   );
 
   expect(result.status, result.stderr).toBe(0);
-  // `tersio update` delegates through --apply-update, which installs quietly
-  // because the parent owns the closing summary, so the install phase leaves no
-  // marker here. The clean step still previews, and still writes nothing.
   expect(result.stdout, result.stdout).toContain("=== Tersio Uninstall ===");
   expect(result.stdout, "a dry run removes nothing").not.toMatch(/^\s*\[rm\]/m);
-  // The clean step clears the extension directories but keeps the plugin
-  // package, which it is about to re-download. The header says so: it names
-  // the directories and no Ponytail, rather than promising a removal the run
-  // does not perform. On a machine with no layer there are none to name, and
-  // saying "0 extension directories" is the point.
   expect(result.stdout).toMatch(/Oh My Pi — \d+ extension directories$/m);
   expect(result.stdout, "the clean step must not advertise the Ponytail removal").not.toMatch(/Ponytail$/m);
-  // The install phase still runs after the clean step. --apply-update is the
-  // delegated payload of `tersio update`, which stays silent because the parent
-  // owns the closing summary, so the step defaults are the line that proves the
-  // run carried on past the uninstall.
   expect(result.stdout, "the fresh install still runs after the clean step").toMatch(/Defaults: combo=/);
 });
 
@@ -289,10 +258,6 @@ test("bare dry-run never prompts for the pending update and exits 0", () => {
 });
 
 test("uninstall dry-run previews the layer directories that exist", () => {
-  // The preview used to name the whole layer list whether or not anything was
-  // there, so it promised "8 extension directories" on a machine holding 6 and
-  // named a retired directory that had never been installed. It must name what
-  // is on disk and stay quiet about the rest.
   const home = mkdtempSync(path.join(os.tmpdir(), "tersio-uninstall-plan-"));
   try {
     const extDir = path.join(home, ".omp", "agent", "extensions");
@@ -356,12 +321,7 @@ test("uninstall dry-run with --remove-ponytail previews full ponytail removal", 
 test("uninstall dry-run includes ponytail by default; --keep-ponytail omits it", () => {
   const missingHome = path.join(root, "test", "definitely-missing-home");
   const spawn = (args: string[]) =>
-    spawnSync(process.execPath, [installer, ...args], {
-      cwd: root,
-      encoding: "utf8",
-      timeout: 10000,
-      env: { ...process.env, HOME: missingHome, USERPROFILE: missingHome, PATH: path.join(missingHome, "empty-bin") },
-    });
+    runIn(missingHome, [...args], { timeout: 10000 });
 
   // The layer follows the selection, so previewing it means naming OMP.
   // --verbose: the ponytail package path is plan detail, which the default no longer prints.
@@ -412,13 +372,7 @@ test("the OMP layer is removed only when OMP is selected, never by default", () 
     const piExt = path.join(home, ".pi", "agent", "extensions", "caveman-session");
     mkdirSync(piExt, { recursive: true });
     writeFileSync(path.join(piExt, "index.ts"), "mine\n", "utf8");
-    const run = (args: string[]) =>
-      spawnSync(process.execPath, [installer, ...args], {
-        cwd: root,
-        encoding: "utf8",
-        timeout: 30000,
-        env: { ...process.env, HOME: home, USERPROFILE: home, PATH: path.join(home, "empty-bin") },
-      });
+    const run = (args: string[]) => runIn(home, args);
 
     // Pi is a different agent from OMP, so selecting it must not touch OMP.
     const piOnly = run(["uninstall", "--yes", "--agent", "pi"]);
@@ -444,12 +398,7 @@ test("no run asks about the OMP layer separately, at any selection", () => {
     // about a different agent and defaulted to removing its files. The layer is
     // now driven by the multiselect, where OMP is a row like any other.
     for (const args of [["uninstall", "--yes"], ["uninstall", "--yes", "--agent", "pi"], ["uninstall", "--yes", "--agent", "omp"]]) {
-      const result = spawnSync(process.execPath, [installer, ...args], {
-        cwd: root,
-        encoding: "utf8",
-        timeout: 30000,
-        env: { ...process.env, HOME: home, USERPROFILE: home, PATH: path.join(home, "empty-bin") },
-      });
+      const result = runIn(home, [...args], { timeout: 30000 });
       expect(result.status, result.stderr).toBe(0);
       expect(result.stdout, `a second layer question appeared for: ${args.join(" ")}`).not.toMatch(
         /Also remove the Oh My Pi extension layer/,
@@ -477,12 +426,7 @@ test("the uninstall menu ticks nothing, so accepting the default removes nothing
     mkdirSync(path.join(home, ".omp", "agent", "extensions", "caveman-session"), { recursive: true });
     writeFileSync(path.join(home, ".omp", "agent", "extensions", "caveman-session", "index.ts"), "keep me\n", "utf8");
 
-    const result = spawnSync(process.execPath, [installer, "uninstall", "--yes", "--agent", "nothing-selected-here"], {
-      cwd: root,
-      encoding: "utf8",
-      timeout: 30000,
-      env: { ...process.env, HOME: home, USERPROFILE: home, PATH: path.join(home, "empty-bin") },
-    });
+    const result = runIn(home, ["uninstall", "--yes", "--agent", "nothing-selected-here"], { timeout: 30000 });
 
     // An unknown host id selects nothing, which is what an untouched menu means.
     expect(result.status, result.stderr).toBe(0);
@@ -514,13 +458,7 @@ test("flagless uninstall without a terminal falls back to the saved set, so an i
     // No --agent flag and no --yes, with piped stdin so there is no
     // terminal: the flagless path is the one that falls through to the
     // saved-set fallback.
-    const result = spawnSync(process.execPath, [installer, "uninstall"], {
-      cwd: root,
-      encoding: "utf8",
-      timeout: 30000,
-      env: { ...process.env, HOME: home, USERPROFILE: home, PATH: path.join(home, "empty-bin") },
-      input: "",
-    });
+    const result = runIn(home, ["uninstall"], { timeout: 30000 });
 
     expect(result.status, result.stderr).toBe(0);
     // Reaching the plan at all is the point: the fallback has to produce
