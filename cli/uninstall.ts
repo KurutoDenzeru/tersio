@@ -204,7 +204,7 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
   // Remove extension directories (independent paths, so concurrently).
   await Promise.all(targets.map((t) => removeUninstallTarget(t, shouldDryRun)));
 
-  // Remove Combo and mode-reinforcement registrations; Ponytail on request.
+  // Remove Combo, mode-reinforcement, and rtk registrations; Ponytail on request.
   const configRaw = await readTextIfExists(configPath);
   if (configRaw) {
     let lines = configRaw.split('\n');
@@ -212,6 +212,10 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
     lines = lines.filter((l) => {
       if (l.includes('combo-toggle') || l.includes('mode-reinforcement')) return false;
       if (shouldRemovePonytail && l.includes('ponytail') && l.includes('pi-extension')) return false;
+      // Our rtk wiring, absolute or relative. Leaving it listed would keep
+      // OMP loading a hook for a package that is no longer installed.
+      const entry = l.trim().replace(/^-\s*/, '').replace(/^['"]|['"]$/g, '');
+      if (entry.endsWith(`extensions${path.sep}rtk.ts`) || entry.endsWith('extensions/rtk.ts')) return false;
       return true;
     });
     if (lines.length !== before) {
@@ -256,11 +260,11 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
     await removeUninstallTarget(selfPluginDir, shouldDryRun);
   }
 
-  // rtk.ts is rtk-owned but written by us; drop it only on a full rtk removal.
-  if (shouldRemoveRtk) {
-    await removeUninstallTarget(rtkBin, shouldDryRun, false);
-    await removeUninstallTarget(path.join(extDir, 'rtk.ts'), shouldDryRun);
-  }
+  // Our rtk wiring goes with the rest: leaving the file would keep OMP
+  // rewriting bash calls to a package this uninstall just removed. The binary
+  // stays unless --remove-rtk, since it is a shared tool on PATH.
+  await removeUninstallTarget(path.join(extDir, 'rtk.ts'), shouldDryRun);
+  if (shouldRemoveRtk) await removeUninstallTarget(rtkBin, shouldDryRun, false);
 
   await clearSessionDefaults(shouldDryRun);
 

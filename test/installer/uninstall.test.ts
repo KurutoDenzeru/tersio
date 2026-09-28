@@ -28,7 +28,7 @@ function seed(home: string) {
   writeFileSync(path.join(extDir, "rtk.ts"), "// rtk omp wiring", "utf8");
   writeFileSync(
     path.join(home, ".omp", "agent", "config.yml"),
-    ["extensions:", "  - ./extensions/caveman-session/index.ts", "  - ./extensions/combo-toggle/index.ts", "  - ./extensions/shared/mode-reinforcement.ts", "  - ./extensions/ponytail-pi-extension/index.js", ""].join("\n"),
+    ["extensions:", "  - ./extensions/caveman-session/index.ts", "  - ./extensions/combo-toggle/index.ts", "  - ./extensions/shared/mode-reinforcement.ts", "  - ./extensions/rtk.ts", "  - /home/u/.omp/agent/extensions/rtk.ts", "  - ./extensions/ponytail-pi-extension/index.js", ""].join("\n"),
     "utf8",
   );
   const pluginsDir = path.join(home, ".omp", "plugins");
@@ -71,7 +71,10 @@ test("uninstall removes extension dirs, self registration, and combo config entr
     // Ponytail ships with the presets, so a full uninstall removes it; the rtk binary stays.
     expect(!existsSync(path.join(home, ".omp", "plugins", "node_modules", PONYTAIL)), "ponytail removed by default").toBeTruthy();
     expect(existsSync(path.join(home, ".bun", "bin", "rtk")), "rtk binary kept").toBeTruthy();
-    expect(existsSync(path.join(extDir, "rtk.ts")), "rtk OMP wiring kept with the binary").toBeTruthy();
+    // The wiring goes with the rest, or OMP keeps loading a hook for a package
+    // that is gone. The binary stays: it is a shared tool on PATH.
+    expect(existsSync(path.join(extDir, "rtk.ts")), "rtk wiring removed").toBeFalsy();
+    expect(config).not.toMatch(/rtk\.ts/);
     expect(config).not.toMatch(/ponytail/);
   } finally {
     rmSync(home, { recursive: true, force: true });

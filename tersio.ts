@@ -35,7 +35,7 @@ Options:
   --scope user (legacy; accepted and ignored — user scope is the only scope)
   --host omp|pi (install|uninstall: target agent; a terminal asks instead)
   --keep-ponytail (uninstall: keep the bundled Ponytail copy — removed by default)
-  --remove-rtk (uninstall: also remove the RTK binary)
+  --remove-rtk (uninstall: also remove the RTK binary; its OMP wiring always goes)
   --combo-default off|medium|balanced|max (implies caveman, rtk, ponytail)
   --caveman-default off|lite|full|ultra|wenyan-lite|wenyan-full|wenyan-ultra (override; default follows combo)
   --ponytail-default off|lite|full|ultra (override; default follows combo)
