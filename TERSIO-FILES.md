@@ -102,9 +102,9 @@ row cannot appear here unless the tool would touch it. `~` is your home director
 
 | Kind | Path | Note | On this machine |
 |---|---|---|---|
-| skill | `~/.config/opencode/skills/tersio-caveman/` |  | no |
-| skill | `~/.config/opencode/skills/tersio-ponytail/` |  | no |
-| skill | `~/.config/opencode/skills/tersio-rtk/` |  | no |
+| skill | `~/.agents/skills/tersio-caveman/` |  | no |
+| skill | `~/.agents/skills/tersio-ponytail/` |  | no |
+| skill | `~/.agents/skills/tersio-rtk/` |  | no |
 | file | `~/.config/opencode/plugins/tersio.ts` | tersio plugin, v2 shape | no |
 
 ---

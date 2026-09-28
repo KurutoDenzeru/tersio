@@ -93,7 +93,9 @@ test("opencode ships its own plugin, because rtk's is a pre-v2 shape", () => {
   // outlive `/combo off`. The skills stay, because the plugin's only per-turn
   // delivery is `autoinvoke` on them.
   expect(opencode?.rulesFile).toBeNull();
-  expect(opencode?.skillsDir).toBe(".config/opencode/skills");
+  // The shared Agent Skills root, which OpenCode reads as a global compatibility
+  // source. Its own copy was the same three files at a second path.
+  expect(opencode?.skillsDir).toBe(".agents/skills");
   expect(opencode?.caveats).toMatch(/rtk-ai\/rtk#3463/);
 });
 

@@ -170,7 +170,11 @@ const HOSTS: AgentHost[] = [
     // pointing it anywhere. Writing our own global dir makes that a decision
     // rather than an accident.
     rulesFile: null,
-    skillsDir: '.config/opencode/skills',
+    // The shared Agent Skills root, which OpenCode reads as a global
+    // compatibility source. Writing its own copy as well meant the same three
+    // files lived at two paths, and an OpenCode-only install would have had a
+    // skills dir that Codex and Pi also duplicated.
+    skillsDir: '.agents/skills',
     caveats: 'Current OpenCode discovers only AGENTS.md for instructions. rtk init still emits a pre-v2 plugin that current OpenCode refuses to load (rtk-ai/rtk#3463), so tersio ships its own plugin via cli/opencode-wiring.ts. Set TERSIO_RTK=off to disable the rewrite.',
     rewriteOwner: 'plugin',
     source: 'https://opencode.ai/docs/rules',
@@ -180,6 +184,9 @@ const HOSTS: AgentHost[] = [
     // extension tree injects it directly, so their skills were a second copy.
     retired: [
       { path: '.config/opencode/AGENTS.md', kind: 'merged' },
+      { path: '.config/opencode/skills/tersio-caveman', kind: 'ours' },
+      { path: '.config/opencode/skills/tersio-ponytail', kind: 'ours' },
+      { path: '.config/opencode/skills/tersio-rtk', kind: 'ours' },
     ],
     nativeInstall: { note: 'no command needed — OpenCode loads ~/.config/opencode/plugins/ at startup' },
   },
