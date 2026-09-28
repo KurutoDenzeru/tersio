@@ -4,6 +4,7 @@
 // frankfurter figures when reachable, the CLI always uses the snapshot.
 
 import { existsSync, readFileSync } from 'node:fs';
+import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -43,15 +44,12 @@ function parseCurrencyFlag(raw: string | undefined): CurrencyCode | undefined {
 // USD when missing, corrupt, or holding an unknown code. Sync so flag
 // parsing in cli/common.ts can fall back to it at startup.
 function readStoredCurrency(): CurrencyCode {
-  const home = process.env.HOME || process.env.USERPROFILE || os.homedir();
-  const lock = path.join(home, '.omp', 'plugins', 'omp-plugins.lock.json');
-  if (!existsSync(lock)) return DEFAULT_CURRENCY;
+  const file = tersioSettingsFile();
+  if (!existsSync(file)) return DEFAULT_CURRENCY;
   try {
-    const parsed: unknown = JSON.parse(readFileSync(lock, 'utf8'));
-    if (!parsed || typeof parsed !== 'object' || !('settings' in parsed)) return DEFAULT_CURRENCY;
-    const entry = (parsed as { settings?: Record<string, unknown> }).settings?.['@krtclcdy/tersio'];
-    if (!entry || typeof entry !== 'object') return DEFAULT_CURRENCY;
-    const raw = (entry as { currency?: unknown }).currency;
+    const parsed: unknown = JSON.parse(readFileSync(file, 'utf8'));
+    if (!parsed || typeof parsed !== 'object') return DEFAULT_CURRENCY;
+    const raw = (parsed as { currency?: unknown }).currency;
     return typeof raw === 'string' && isCurrencyCode(raw.trim().toUpperCase())
       ? (raw.trim().toUpperCase() as CurrencyCode)
       : DEFAULT_CURRENCY;

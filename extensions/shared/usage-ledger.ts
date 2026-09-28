@@ -1,11 +1,10 @@
-// Shared usage ledger: append-only JSON-lines file. One source of truth read
-// by `tersio usage`, `/tersio usage`, and the Dashboard.
-// Best-effort by design: a ledger failure never breaks the caller, and
-// corrupt lines are skipped on read (same pattern as the config normalizer).
+// Shared usage ledger: append-only JSON-lines file, read by `tersio usage`,
+// `/tersio usage`, and the Dashboard. Best-effort: a ledger failure never
+// breaks the caller, and corrupt lines are skipped on read.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { resolveRtkBinary, tersioDataPath } from '../lib/utils.ts';
+import { isPiProcess, piAgentDir, resolveRtkBinary, tersioDataPath } from '../lib/utils.ts';
 import { execFileSync } from 'node:child_process';
 
 export type UsageKind = 'command' | 'toggle' | 'install' | 'update' | 'rtk-audit';
@@ -22,11 +21,9 @@ export function ledgerPath(): string {
   return tersioDataPath('usage.jsonl', 'tersio-usage.jsonl');
 }
 
-// Reset watermark: tersio-owned timestamp marking the last statistics reset.
-// Session transcripts and the RTK database are host/tool-owned and never
-// touched — instead, every derived view (token stats, command tools) filters
-// rows from before the watermark, so "reset" empties what tersio shows
-// without deleting anything it does not own.
+// Reset watermark: a tersio-owned timestamp. Transcripts and the RTK database
+// are host/tool-owned and never deleted — derived views filter rows from
+// before the watermark, so reset empties what tersio shows and nothing else.
 export function resetMarkerPath(): string {
   const override = process.env.TERSIO_RESET_FILE;
   if (override) return override;
@@ -59,10 +56,9 @@ export function appendUsage(kind: UsageKind, detail: string): void {
 }
 
 // --- Session tokens, tokscale-style ------------------------------------------
-// OMP writes per-assistant-message usage into ~/.omp/agent/sessions/**/*.jsonl:
-// message.role === 'assistant', message.usage = { input, output, cacheRead,
-// cacheWrite }, message.model, plus a per-line timestamp. Same source tokscale
-// parses for its oh-my-pi client. Best-effort: unreadable files are skipped.
+// Assistant messages in the host transcripts (both **/*.jsonl) carry
+// message.usage, message.model, and a per-line timestamp. Unreadable files
+// are skipped.
 export interface TokenBreakdown {
   input: number;
   output: number;
@@ -70,10 +66,8 @@ export interface TokenBreakdown {
   cacheWrite: number;
 }
 
-// Run outcome for one assistant message. OMP writes stopReason on every turn
-// (toolUse | stop | aborted | error) and, when the request failed, an HTTP
-// errorStatus plus errorMessage. `toolUse` is an ordinary turn that handed off
-// to tools, so it reads as completed rather than as a distinct state.
+// Run outcome for one assistant message. `toolUse` is an ordinary turn that
+// handed off to tools, so it reads as completed, not as a distinct state.
 export type RunStatus = 'completed' | 'aborted' | 'error';
 
 export interface RecentRequest {
@@ -84,9 +78,8 @@ export interface RecentRequest {
   d?: number;
   cr?: number;
   cw?: number;
-  // Measured spend for this message, from the transcript's usage.cost.total.
-  // Left undefined when the host recorded no cost — never backfilled with an
-  // estimate, so a measured figure is never mistaken for a modeled one.
+  // Measured spend from usage.cost.total. Undefined when the host recorded no
+  // cost, never backfilled with an estimate.
   usd?: number;
   st: RunStatus;
   code?: number;
@@ -127,10 +120,9 @@ export function durOf(v: unknown): number | undefined {
   return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : undefined;
 }
 
-// Measured cost for one message. OMP writes usage.cost as
-// { input, output, cacheRead, cacheWrite, total }; a bare number shows up in
-// older fixtures. Anything else means "not recorded" — deliberately not 0, so
-// the dashboard can tell a genuinely free run from an unrecorded one.
+// Measured cost for one message. usage.cost is an object with total; a bare
+// number shows up in older fixtures. Anything else means "not recorded", which
+// is deliberately not 0.
 export function costOf(usage: Record<string, unknown>): number | undefined {
   const c = usage.cost;
   if (typeof c === 'number') return Number.isFinite(c) ? c : undefined;
@@ -166,7 +158,11 @@ function addInto(into: TokenBreakdown, u: { input?: unknown; output?: unknown; c
 export function sessionsDir(): string {
   const override = process.env.TERSIO_SESSIONS_DIR;
   if (override) return override;
-  return path.join(os.homedir(), '.omp', 'agent', 'sessions');
+  // The running host wins; the other host's directory is the fallback.
+  const dirs = isPiProcess()
+    ? [path.join(piAgentDir(), 'sessions'), path.join(os.homedir(), '.omp', 'agent', 'sessions')]
+    : [path.join(os.homedir(), '.omp', 'agent', 'sessions'), path.join(piAgentDir(), 'sessions')];
+  return dirs.find((dir) => fs.existsSync(dir)) ?? dirs[0];
 }
 
 export function codexSessionsDir(): string {
@@ -198,9 +194,8 @@ export function walkJsonl(dir: string, out: string[], cap: number): void {
     else if (e.isFile() && e.name.endsWith('.jsonl')) out.push(full);
   }
 }
-// Recent requests are their own full-width table in the dashboard, so this is
-// a payload bound rather than a "few highlights" bound. Rows are small
-// (model, tokens, timing, status), so a few hundred cost little to ship.
+// Recent requests get their own full-width table, so this bounds payload
+// rather than highlights; rows are small, so a few hundred cost little.
 export const RECENT_LIMIT = 200;
 const FREE_SUFFIX = /(?::free|-free)$/i;
 const RTK_ELIGIBLE_HEADS = new Set([
@@ -208,8 +203,8 @@ const RTK_ELIGIBLE_HEADS = new Set([
   'npm', 'npx', 'pnpm', 'bun', 'bunx', 'cargo', 'go', 'python', 'pytest',
   'ruff', 'mypy', 'docker', 'kubectl', 'psql', 'aws', 'gh', 'glab', 'wc',
 ]);
-// Session-parse buffer shared by live reads and usage.db syncs: identical
-// inputs produce identical aggregates, so the store is a cache, never a fork.
+// Parse buffer shared by live reads and usage.db syncs, so the store is a
+// cache and never a fork.
 export interface SessionAccum {
   byModel: Record<string, TokenBreakdown>;
   byDay: Record<string, TokenBreakdown>;
@@ -284,13 +279,12 @@ export function classifySessionLine(row: { timestamp?: string | number; type?: u
   }
   return { kind: 'assistant_row', model, usage: msg.usage, durMs: typeof msg.duration === 'number' ? msg.duration : computedDur, run: statusOf(msg), tools };
 }
-// Fold `:free`/`-free` suffixes and case variants into one chart key, so the
-// same model from two providers stops splitting into separate rows.
+// Fold `:free`/`-free` suffixes and case variants into one chart key.
 export function canonicalModelId(model: string): string {
   return model.replace(FREE_SUFFIX, '').toLowerCase();
 }
-// LiteLLM-style display: namespace stays lowercase, model segments title-case
-// with version dots kept (`deepseek-v4.1-flash` → `Deepseek-V4.1-Flash`).
+// LiteLLM-style display: lowercase namespace, title-cased model segments with
+// version dots kept.
 export function displayModelId(model: string): string {
   const bare = model.replace(FREE_SUFFIX, '');
   const cap = (s: string): string => {
@@ -312,8 +306,8 @@ export function importSessionTokens(): SessionTokens {
   const accum = newSessionAccum();
   const files: string[] = [];
   walkJsonl(sessionsDir(), files, 2000);
-  // A sessions override signals an isolated environment (tests, fixtures):
-  // only walk the real codex dir when it is explicitly set.
+  // An override means an isolated environment (tests, fixtures): only walk the
+  // real codex dir when one is explicitly set.
   if (process.env.TERSIO_SESSIONS_DIR === undefined || process.env.TERSIO_CODEX_DIR !== undefined) {
     walkJsonl(codexSessionsDir(), files, 2000);
   }
@@ -443,8 +437,8 @@ export function readRtkRecallDiagnostics(binary: string | null = resolveRtkBinar
     return { mode: 'unknown', entries: 0, available: false };
   }
 }
-// Lead binary of a shell string: first segment head past `cd` chains and
-// VAR=x assignments (`cd /x && git status` → `git`). Falls back to `bash`.
+// Lead binary of a shell string: first segment past `cd` chains and VAR=x
+// assignments. Falls back to `bash`.
 const SKIP_HEADS = ['cd', 'echo', 'export', 'true', 'false'];
 export function leadBinary(command: unknown): string {
   if (typeof command !== 'string' || !command.trim()) return 'bash';
@@ -483,12 +477,6 @@ export function usdCost(t: TokenBreakdown, model?: string): { usd: number; price
   };
 }
 
-// CO2 now model-differentiated via ./carbon.ts (EcoLogits 0.8.2 port).
-// Always render with ~est. and never merge with measured figures.
-// The constant below is the served gCO2eq per 1K output tokens for the
-// default (gpt-4o-class) model, kept so single-figure callers stay honest.
-export const CO2_G_PER_1K_OUTPUT = 0.2;
-
 export function co2Grams(outputTokens: number, model?: string): number {
   return co2GramsFor(model ?? 'gpt-4o', outputTokens);
 }
@@ -513,9 +501,8 @@ export function readUsage(): UsageRow[] {
   return rows;
 }
 
-// Delete the ledger file. Returns the rows cleared (0 when already absent).
-// Only tersio-owned data lives here; session transcripts and the RTK
-// database are never touched.
+// Delete the ledger file and return the rows cleared. Tersio-owned data only:
+// transcripts and the RTK database are never touched.
 export function clearUsageLedger(): number {
   const rows = readUsage().length;
   try {

@@ -2,6 +2,8 @@
 
 # ✂️ Tersio — Token-saving OMP Add-ons
 
+> **Installing?** See [INSTALL.md](./INSTALL.md) for the OMP, pi, and one-line install paths.
+
 [![npm version](https://shieldcn.dev/npm/@krtclcdy%2Ftersio.svg?variant=branded&size=xs&logo=npm)](https://www.npmjs.com/package/@krtclcdy/tersio)
 [![node](https://shieldcn.dev/badge/node-%3E%3D20.12-22c55e.svg?variant=branded&size=xs&logo=nodedotjs)](https://nodejs.org)
 [![npm downloads](https://shieldcn.dev/npm/dm/@krtclcdy%2Ftersio.svg?variant=branded&size=xs&logo=npm)](https://www.npmjs.com/package/@krtclcdy/tersio)
@@ -11,6 +13,8 @@
  Terse replies, compact shell output, and minimal code decisions for [Oh My Pi (OMP)](https://github.com/can1357/oh-my-pi) — one-command combo presets.
 
 ## ⚡ Getting Started
+
+All install paths in one table, with update and remove commands: [INSTALL.md](./INSTALL.md).
 
 **Default** (macOS/Linux/WSL) — one line. Installs the CLI via npm, then runs the main installer (scope + Combo preset menus) in the same pass:
 
@@ -23,6 +27,20 @@ Prefer OMP-managed updates? Install as an OMP plugin instead:
 ```bash
 omp plugin install @krtclcdy/tersio
 ```
+
+Using [pi](https://github.com/earendil-works/pi) instead? The same package installs as a [pi package](https://pi.dev/docs/latest/packages):
+
+```bash
+pi install npm:@krtclcdy/tersio
+```
+
+Or let the CLI write the same tree, which is what the OMP row does:
+
+```bash
+tersio install --host pi
+```
+
+Both hosts load the same five extensions from the same sources, and both read their session-start defaults from `~/.tersio/settings.json`.
 
 All modes load always. Only the updater stays toggleable:
 
@@ -40,14 +58,6 @@ Individual toggles: `/caveman full` · `/rtk on` · `/ponytail full`. Everything
 
 When Tersio is installed through OMP, the first interactive launch asks for a session-start Combo preset once (`off`, `medium`, `balanced`, or `max`) and saves it as `comboDefault`. Running `tersio install` performs the same setup through the CLI.
 
-Session-start defaults (prompted during `install`, or flags):
-
-```bash
-tersio install --combo-default balanced --caveman-default lite --rtk-default on
-```
-
-Defaults apply to fresh sessions only — anything persisted with `/combo`, `/caveman`, or `/rtk` wins. Stored as plugin settings (`omp plugin config get @krtclcdy/tersio comboDefault`).
-
 One-off use without installing:
 
 ```bash
@@ -56,7 +66,7 @@ npm exec --yes --prefer-online --package=@krtclcdy/tersio@latest -- tersio insta
 
 ### Requirements
 
-- [OMP](https://github.com/can1357/oh-my-pi)
+- [OMP](https://github.com/can1357/oh-my-pi) or [pi](https://github.com/earendil-works/pi)
 - Node.js 20.12+ with npm
 
 Windows/WSL have separate OMP homes — install from the environment where OMP runs. Inside WSL, `command -v npm` must resolve to a Linux path, not `/mnt/c/`.
@@ -111,7 +121,6 @@ Upstream Ponytail's fair agentic benchmark reports 54% less code, 22% fewer toke
 |---|---|
 | `tersio install` | Install (user scope: all OMP sessions) |
 | `tersio update` | Refresh the CLI, extensions, and add-ons (RTK binary, Caveman rule, Ponytail) |
-| `tersio reinstall` | Fresh install, preserving the Ponytail package |
 | `tersio doctor` | Check OMP, extension, Ponytail, and RTK health (`--fix` repairs, `--fix=<scope>` one scope, `--dry-run` previews) |
 | `tersio usage` | Ledger-backed usage + savings report |
 | `tersio dashboard` | Open the Dashboard (`--open`, `--export <file>`, `--port <n>`, `--currency <code>`; serves localhost only) |
@@ -141,25 +150,36 @@ Mode switches live on their own commands; bare `/tersio` prints status.
 
 ## 🗂️ Files and backups
 
+Shared, and identical for every host:
+
 | What | Path |
 |---|---|
-| Caveman / RTK / Combo / Tersio commands | `~/.omp/plugins/node_modules/@krtclcdy/tersio/extensions/{caveman-session,rtk-session,combo-toggle,tersio-commands}/` — loaded from Tersio's OMP plugin manifest |
-| RTK OMP wiring (rtk-owned) | `~/.omp/agent/extensions/rtk.ts` — written by the installer via `rtk init -g --agent omp`; auto-loads, no config entry |
-| Ponytail package (bundled Tersio dependency — one Plugins row, updates with `tersio update`) | `~/.omp/plugins/node_modules/@dietrichgebert/ponytail/` — loaded as a nested plugin dependency |
-| RTK binary | Installer writes `~/.bun/bin/rtk` (`rtk.exe` on Windows). Runtime resolves `PATH` first, then this managed path. |
-| Legacy config cleanup | `~/.omp/agent/config.yml` — doctor removes retired or duplicate extension entries |
+| Session-start defaults | `~/.tersio/settings.json` — combo, caveman, rtk, ponytail, and the display currency |
+| RTK binary | `~/.bun/bin/rtk` (`rtk.exe` on Windows). The runtime resolves `PATH` first, then this managed path. |
+| Usage ledger and price cache | `~/.tersio/` — local only, nothing leaves the machine |
 
-The installer writes `<file>.bak` before replacing an extension source; the updater keeps `rtk.bak` / `rule.md.bak` and restores them if the replacement fails validation.
+Per host, written by `tersio install --host <omp|pi>`:
 
-User-level installs also register the package in `~/.omp/plugins` (visible in OMP **Settings → Plugins**), directly through the plugin manifest. Active modes reassert after Ponytail's prompt block on every top-level turn, including after history compaction.
+| Host | Extensions | Ponytail |
+|---|---|---|
+| Oh My Pi | `~/.omp/agent/extensions/{caveman-session,rtk-session,combo-toggle,tersio-commands,ai-addons-updater}/` | nested plugin dependency under `~/.omp/plugins/node_modules/`, one Plugins row |
+| pi | `~/.pi/agent/extensions/{caveman-session,rtk-session,combo-toggle,tersio-commands,ai-addons-updater}/` — pi auto-discovers `<agent-dir>/extensions`, so there is nothing to register | `npm:@dietrichgebert/ponytail`, installed as a pi package |
+
+Both hosts carry the same `shared/` and `lib/` modules beside those directories, and both load the same five extensions from the same sources.
+
+The installer writes `<file>.bak` before replacing an extension source; the updater keeps `rtk.bak` / `rule.md.bak` and restores them if the replacement fails validation. `tersio doctor --fix extensions` restores a damaged tree, and `doctor --fix registrations` drops retired or duplicate `config.yml` entries.
+
+An OMP install also registers the package in `~/.omp/plugins`, so it shows under OMP **Settings → Plugins**. Active modes reassert after Ponytail's prompt block on every top-level turn, including after history compaction.
 
 ## 🛠️ Troubleshooting
 
-**Ponytail or Combo command missing:** confirm `~/.omp/plugins/package.json` lists `@krtclcdy/tersio`, then run `tersio reinstall`, restart OMP, and check `tersio doctor`.
+**Ponytail or Combo command missing on OMP:** confirm `~/.omp/plugins/package.json` lists `@krtclcdy/tersio`, then run `tersio install`, restart OMP, and check `tersio doctor`. A damaged tree is repaired by `tersio doctor --fix extensions`.
 
-**RTK missing or not executable:** run `tersio reinstall`, then `tersio doctor`. On Linux/macOS: `chmod +x ~/.bun/bin/rtk`.
+**Commands missing on pi:** check the `Hosts` section of `tersio doctor` — it reports whether pi is installed and where. Then run `tersio install --host pi` and restart pi.
 
-**RTK commands not metered in the Dashboard:** check `tersio doctor` — the `RTK OMP wiring (rtk.ts)` row must be ok. Missing: run `rtk init -g --agent omp` (needs rtk ≥ 0.49) and restart OMP. Native tool calls (`read`/`edit`/`eval`) stay unmetered — only bash tool calls pass through rtk.
+**RTK missing or not executable:** run `tersio install`, then `tersio doctor`. On Linux/macOS: `chmod +x ~/.bun/bin/rtk`.
+
+**RTK commands not metered in the Dashboard:** only bash calls routed through rtk's OMP wiring (`~/.omp/agent/extensions/rtk.ts`, written by `rtk init -g --agent omp`) are metered. Missing: run that command (needs rtk ≥ 0.49) or `tersio doctor --fix rtk`, then restart OMP. Native tool calls (`read`/`edit`/`eval`) stay unmetered.
 
 **Checksum warning or failure:** the installer aborts on RTK checksum mismatch but warns and continues when checksum metadata is unavailable; `/tersio update rtk` aborts when metadata is missing.
 

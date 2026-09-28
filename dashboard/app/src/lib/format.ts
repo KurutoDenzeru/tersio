@@ -1,6 +1,6 @@
-// Formatting, currency, vendor, and zone helpers shared by Dashboard views.
-// numbers: magnitude-aware money decimals, static FX snapshot with live
-// frankfurter refresh, folded-key display names, provider registry.
+// Formatting, currency, vendor, and zone helpers shared by Dashboard views:
+// magnitude-aware money decimals, FX with a live frankfurter refresh,
+// folded-key display names, provider registry.
 
 export interface TokenBreakdown {
   input: number;
@@ -69,9 +69,8 @@ export function isCurrencyCode(code: string): boolean {
   return Object.hasOwn(CURS, code);
 }
 
-// Magnitude-aware decimals. Model prices keep falling, so a flat 2dp rounds
-// real spend down to "$0.00"; small amounts keep enough digits to stay
-// readable (0.000187, not 0). Larger amounts use the currency's own scale.
+// Magnitude-aware decimals: a flat 2dp rounds real spend down to "$0.00", so
+// small amounts keep enough digits to stay readable.
 export function moneyDecimals(v: number, base: number): number {
   const a = Math.abs(v);
   if (a >= 0.1 || a === 0) return base;
@@ -103,9 +102,8 @@ export function topModels(byModel: Record<string, TokenBreakdown>, n: number): s
     .slice(0, n);
 }
 
-// Display form for folded keys: namespace stays lowercase, model segments
-// title-case with version dots kept (`deepseek-v4.1-flash` →
-// `Deepseek-V4.1-Flash`). Keys arrive folded, so this prettifies only.
+// Prettify a folded key: lowercase namespace, title-cased model segments with
+// version dots kept.
 export function displayModel(m: string): string {
   const bare = String(m).replace(/(?::free|-free)$/i, "");
   function cap(s: string): string {
@@ -129,11 +127,6 @@ export function displayModel(m: string): string {
   const slash = bare.indexOf("/");
   if (slash >= 0) return bare.slice(0, slash).toLowerCase() + "/" + words(bare.slice(slash + 1));
   return words(bare);
-}
-
-export function shortName(m: string): string {
-  const d = displayModel(m);
-  return d.length > 22 ? d.slice(0, 21) + "..." : d;
 }
 
 export interface Vendor {
@@ -208,10 +201,9 @@ export function statusColor(st: string): string {
   return st === "error" ? "#f87171" : st === "aborted" ? "#fbbf24" : "var(--accent)";
 }
 
-// Cost precedence. A recorded charge > 0 is authoritative and shown bare.
-// A recording of exactly 0 usually means a free/local provider and would
-// blank the column, so those fall back to the modeled figure carrying the
-// dashboard's usual "~" estimate marker.
+// Cost precedence: a recorded charge > 0 is authoritative and shown bare; an
+// exact 0 usually means a free provider, so it falls back to the modeled
+// figure with its "~" marker.
 export function costIsMeasured(r: { usd?: number }): boolean {
   return typeof r.usd === "number" && r.usd > 0;
 }
@@ -236,9 +228,8 @@ export function stampLocal(ts: number): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
-// Per-request generation time + output throughput from the message-level
-// `duration` (ms). Missing → '–'. Throughput uses output tokens since that
-// is what streams to the user during the measured window.
+// Generation time + output throughput from the message-level `duration` (ms).
+// Throughput uses output tokens: that is what streams during the window.
 export function fmtDur(ms: number | undefined): string {
   if (ms === undefined) return "–";
   const s = ms / 1000;

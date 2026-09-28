@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // tersio.ts — Install Tersio (caveman/rtk/ponytail) add-ons on any OMP device.
-// Usage: node tersio.js [install|update|reinstall|doctor|dashboard|uninstall|version|help] [options]
+// Usage: node tersio.js [install|update|doctor|dashboard|uninstall|version|help] [options]
 // Requires: node/npm and omp CLI
 import {
   PACKAGE_BIN, PACKAGE_VERSION, applyUpdate, commandArg, dashboard, dashboardExport, dashboardOpen, dashboardPort, doctor, reset, settings, showHelp, showVersion, uninstall, unknownCommand, update, usage,
@@ -19,9 +19,8 @@ function printHelp(): void {
   console.log(`Usage: ${PACKAGE_BIN} [command] [options]
 
 Commands:
-  install      Install the add-ons (user scope: all OMP sessions)
+  install      Install the add-ons for one agent (--host omp|pi, or ask at a terminal)
   update       Refresh the CLI and add-ons (RTK binary, Caveman rule, Ponytail)
-  reinstall    Clean and reinstall the user-scope add-ons
   doctor       Check the current installation (--fix repairs, --dry-run previews)
   usage        Ledger-backed usage + savings report
   dashboard     Open the Dashboard (localhost only)
@@ -34,6 +33,7 @@ Commands:
 Options:
   --fix (doctor: repairs all; --fix=<scope> repairs one of extensions, registrations, rtk, ponytail, cli)
   --scope user (legacy; accepted and ignored — user scope is the only scope)
+  --host omp|pi (install|uninstall: target agent; a terminal asks instead)
   --keep-ponytail (uninstall: keep the bundled Ponytail copy — removed by default)
   --remove-rtk (uninstall: also remove the RTK binary)
   --combo-default off|medium|balanced|max (implies caveman, rtk, ponytail)

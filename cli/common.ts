@@ -42,8 +42,8 @@ const PONYTAIL_DEFAULTS = new Set(['off', 'lite', 'full', 'ultra']);
 const RTK_DEFAULTS = new Set(['on', 'off']);
 const DIAG_SCHEDULES = new Set(['manual', 'daily', 'weekly', 'monthly']);
 
-// ponytail: Combo preset implies all three modes. Mirrors COMBO_LEVELS in
-// extensions/shared/session-state.ts (rtk as boolean here). Single source.
+// Mirrors COMBO_LEVELS in extensions/shared/session-state.ts (rtk as a
+// boolean here), so the combo preset implies all three modes.
 const COMBO_PRESET_MODES: Record<string, { caveman: string; rtk: boolean; ponytail: string }> = {
   off: { caveman: 'off', rtk: false, ponytail: 'off' },
   medium: { caveman: 'lite', rtk: true, ponytail: 'lite' },
@@ -71,13 +71,12 @@ function flagValue(name: string): string | undefined {
 
 // --- CLI flags ---
 
-const COMMANDS: Record<string, true> = { install: true, update: true, reinstall: true, doctor: true, uninstall: true, usage: true, dashboard: true, reset: true, settings: true, version: true, help: true };
+const COMMANDS: Record<string, true> = { install: true, update: true, doctor: true, uninstall: true, usage: true, dashboard: true, reset: true, settings: true, version: true, help: true };
 const args = process.argv.slice(2);
 const commandArg = args.find((arg) => !arg.startsWith('-'));
 const command = commandArg?.toLowerCase() || null;
-// Positional after the command: `tersio settings diagnosis` jumps straight
-// to one prompt instead of walking the whole chain. Index-based so flag
-// values (e.g. `--combo-default balanced`) never count as positionals.
+// `tersio settings diagnosis` jumps to one prompt instead of walking the
+// chain. Index-based, so flag values never count as positionals.
 const settingArg = ((): string | null => {
   const at = args.indexOf(commandArg ?? '');
   const next = at >= 0 ? args[at + 1] : undefined;
@@ -87,12 +86,11 @@ const settingArg = ((): string | null => {
 const unknownCommand = command !== null && !COMMANDS[command];
 const install = command === 'install';
 const update = command === 'update';
-const reinstall = command === 'reinstall';
 const showVersion = command === 'version' || args.includes('--version') || args.includes('-v');
 const showHelp = command === 'help' || args.includes('--help') || args.includes('-h');
 const applyUpdate = args.includes('--apply-update');
 const dryRun = args.includes('--dry-run');
-const yes = args.includes('--yes') || args.includes('-y') || install || update || reinstall || applyUpdate;
+const yes = args.includes('--yes') || args.includes('-y') || install || update || applyUpdate;
 const verbose = args.includes('--verbose');
 const doctor = command === 'doctor' || args.includes('--doctor');
 const fix = args.includes('--fix') || args.some((a) => a.startsWith('--fix='));
@@ -103,8 +101,7 @@ const settings = command === 'settings';
 const dashboardPort = Number.parseInt(flagValue('--port') ?? '', 10) || 0;
 const dashboardOpen = args.includes('--open');
 const dashboardExport = flagValue('--export') ?? null;
-// Display currency for usage/dashboard: --currency flag wins, then the stored
-// plugin default (tersio settings), then USD.
+// Display currency: --currency flag, then the stored default, then USD.
 const currency: CurrencyCode = parseCurrencyFlag(flagValue('--currency')) ?? readStoredCurrency();
 const currencyGiven = flagValue('--currency') !== undefined;
 const uninstall = command === 'uninstall' || args.includes('--uninstall');
@@ -112,8 +109,8 @@ const removePonytail = args.includes('--remove-ponytail');
 const keepPonytail = args.includes('--keep-ponytail');
 const removeRtk = args.includes('--remove-rtk');
 
-// Project scope was removed: tersio installs user-level (all OMP sessions)
-// only. A bare `--scope user` still parses (old scripts); anything else fails.
+// User scope only (all OMP sessions). A bare `--scope user` still parses for
+// old scripts; anything else fails.
 const legacyScope = flagValue('--scope')?.toLowerCase() ?? null;
 if (legacyScope !== null && legacyScope !== 'user') {
   console.error(`[fail] Invalid --scope: ${legacyScope}. Project scope was removed; tersio installs user-level only.`);
@@ -180,8 +177,8 @@ async function writeIfChanged(dest: string, content: string, options: WriteOptio
   return true;
 }
 
-// omp ships 'extensions: null'; appending list items under a null scalar breaks
-// YAML parsing. Normalize null/~/[]/empty to a mapping key first.
+// omp ships 'extensions: null', and list items under a null scalar break YAML:
+// normalize null/~/[]/empty to a mapping key first.
 const EXTENSIONS_KEY_RE = /^\s*extensions\s*:/i;
 const EXTENSIONS_NULL_RE = /^\s*extensions\s*:\s*(?:\[\s*\]|null|~)?\s*$/i;
 
@@ -206,9 +203,8 @@ async function ensureExtensionInConfig(configPath: string, extensionPath: string
   const raw = await readTextIfExists(configPath);
   let lines = (raw || '').split('\n');
 
-  // Drop legacy compiled twins (same dir/name, .js): previous installs
-  // registered them, and OMP must never load both copies. Match on the
-  // trailing path so absolute and relative entries are both caught.
+  // Drop legacy compiled twins (same dir/name, .js): OMP must never load both
+  // copies. Matched on the trailing path so relative entries are caught too.
   if (normalizedPath.endsWith('.ts')) {
     const legacyTail = `${normalizedPath.slice(0, -3)}.js`.split('/').slice(-2).join('/');
     lines = lines.filter((l) => !l.trim().replace(/^\.\//, '').endsWith(legacyTail));
@@ -341,8 +337,8 @@ async function ensurePonytailConfigValue<K extends keyof PonytailConfig>(
 
 
 
-// Read plugins/package.json tolerantly; corrupt or missing files start fresh
-// with installer-managed defaults.
+// Read plugins/package.json tolerantly; a corrupt or missing file starts
+// fresh with installer-managed defaults.
 async function readPluginsPackage(pkgPath: string): Promise<PluginsPackage & { dependencies: Record<string, string> }> {
   const pkg = parseJsonObject<PluginsPackage>(await readTextIfExists(pkgPath)) ?? {};
   return { ...pkg, name: pkg.name || 'omp-plugins', private: true, dependencies: pkg.dependencies || {} };
@@ -365,7 +361,7 @@ export {
   PACKAGE_NAME, PACKAGE_BIN, PACKAGE_VERSION,
   CAVEMAN_DEFAULTS, PONYTAIL_DEFAULTS, RTK_DEFAULTS, DIAG_SCHEDULES, COMBO_PRESET_MODES, COMBO_DEFAULTS,
   parseEnum, flagValue, COMMANDS, commandArg, command, settingArg, unknownCommand,
-  install, update, reinstall, showVersion, showHelp, applyUpdate, args,
+  install, update, showVersion, showHelp, applyUpdate, args,
   dryRun, yes, verbose, doctor, fix, uninstall, usage, dashboard, reset, settings,
   dashboardPort, dashboardOpen, dashboardExport, currency, currencyGiven,
   removePonytail, keepPonytail, removeRtk,

@@ -15,8 +15,8 @@ import {
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const installer = path.join(root, "tersio.js");
 
-// Each scenario runs under its own HOME so the lock-file fixtures never
-// collide with the real user state.
+// Each scenario runs under its own HOME so fixtures never collide with the
+// developer's own state.
 function withHome<T>(fn: (home: string) => T): T {
   const home = mkdtempSync(path.join(os.tmpdir(), "omp-settings-test-"));
   const previous = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE };
@@ -33,11 +33,41 @@ function withHome<T>(fn: (home: string) => T): T {
   }
 }
 
+// Session defaults live in ~/.tersio/settings.json; call sites still pass the
+// package-keyed shape the old lock file used.
 function writeLock(home: string, settings: Record<string, unknown>): void {
-  const dir = path.join(home, ".omp", "plugins");
+  const dir = path.join(home, ".tersio");
   mkdirSync(dir, { recursive: true });
-  writeFileSync(path.join(dir, "omp-plugins.lock.json"), JSON.stringify({ plugins: {}, settings }), "utf8");
+  const values = (settings["@krtclcdy/tersio"] ?? settings) as Record<string, unknown>;
+  writeFileSync(path.join(dir, "settings.json"), JSON.stringify(values, null, 2), "utf8");
 }
+
+test("readPluginSettings seeds from the OMP lock an older install wrote", () => {
+  withHome((home) => {
+    const dir = path.join(home, ".omp", "plugins");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(path.join(dir, "omp-plugins.lock.json"), JSON.stringify({
+      plugins: {},
+      settings: { "@krtclcdy/tersio": { comboDefault: "max", cavemanDefault: "wenyan", rtkDefault: true } },
+    }), "utf8");
+    expect(readComboDefault()).toBe("max");
+    expect(readCavemanDefault()).toBe("wenyan");
+    expect(readRtkDefault()).toBe(true);
+  });
+});
+
+test("readPluginSettings prefers ~/.tersio/settings.json over the lock file", () => {
+  withHome((home) => {
+    writeLock(home, { "@krtclcdy/tersio": { comboDefault: "medium" } });
+    const dir = path.join(home, ".omp", "plugins");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(path.join(dir, "omp-plugins.lock.json"), JSON.stringify({
+      plugins: {},
+      settings: { "@krtclcdy/tersio": { comboDefault: "max" } },
+    }), "utf8");
+    expect(readComboDefault()).toBe("medium");
+  });
+});
 
 test("readPluginSettings returns defaults when no lock file exists", () => {
   withHome(() => {
@@ -48,7 +78,7 @@ test("readPluginSettings returns defaults when no lock file exists", () => {
   });
 });
 
-test("readPluginSettings picks up values from the omp lock file", () => {
+test("readPluginSettings picks up values from ~/.tersio/settings.json", () => {
   withHome((home) => {
     writeLock(home, { "@krtclcdy/tersio": { comboDefault: "max", cavemanDefault: "wenyan", rtkDefault: true } });
     expect(readComboDefault()).toBe("max");
@@ -84,7 +114,7 @@ test("readPluginSettings tolerates a corrupt lock file", () => {
 type RunResult = { status: number | null; stdout: string; stderr: string };
 
 function run(...args: string[]): RunResult {
-  // Missing home: user-scope dests never exist, so dry-run previews every write.
+  // Missing home: user-scope dests never exist, so dry-run previews it all.
   const missingHome = path.join(root, "test", "definitely-missing-home");
   const result = spawnSync(process.execPath, [installer, ...args], {
     cwd: root,
@@ -214,8 +244,7 @@ test("installer rejects review as a Ponytail default", () => {
 
 test("apply-update without flags preserves stored combo defaults", () => {
   // The clobber regression: `tersio update` delegates to --apply-update with
-  // no flags and no prompt, and resolveProfile rebuilt from all-off —
-  // wiping the user's configured default on every update.
+  // no flags, so resolveProfile rebuilt from all-off and wiped the default.
   const home = mkdtempSync(path.join(os.tmpdir(), "omp-preserve-test-"));
   try {
     writeLock(home, {

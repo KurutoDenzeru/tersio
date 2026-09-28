@@ -98,24 +98,23 @@ export function normalizeComboLevel(value: unknown): ComboLevel | null {
   return isPresetLevel(level) ? level : null;
 }
 
-export function paintStatusBar(ui: UiApi | undefined, key: string, emoji: string, label: string, isActive: boolean): void {
+// OMP themes status text through ctx.ui.theme.fg; pi has no ctx.ui.theme, so
+// the same string renders plain there.
+export function themeStatus(ui: UiApi | undefined, indicator: string, label: string, highlight = false): string {
   const theme = ui?.theme;
-  const indicator = isActive && theme?.fg ? theme.fg('accent', emoji) : emoji;
-  ui?.setStatus?.(key, theme?.fg ? `${indicator} ${theme.fg('muted', label)}` : `${indicator} ${label}`);
+  if (!theme?.fg) return `${indicator} ${label}`;
+  return `${highlight ? theme.fg('accent', indicator) : indicator} ${theme.fg('muted', label)}`;
 }
 
-// Which context a status bar should remember to paint through.
-//
-// A UI-less event — a headless child session_start, or a top-level
-// session_start that fires before the TUI attaches — must never become the
-// remembered context. Two things went wrong when it did: the old
-// `ctx || lastCtx` fallback only triggered for a *falsy* ctx, so a truthy
-// ctx without `ui` returned early anyway, and remembering it destroyed the one
-// paintable context we had. Every later bare syncStatus() then went mute —
-// and the bare call is the bridge-listener path, which is how a mode change
-// made by a sibling extension reaches this bar. The symptom is a bar frozen on
-// a preset the session no longer has: it shows "combo BALANCED" while caveman
-// and rtk are already off.
+export function paintStatusBar(ui: UiApi | undefined, key: string, emoji: string, label: string, isActive: boolean): void {
+  ui?.setStatus?.(key, themeStatus(ui, emoji, label, isActive));
+}
+
+// Which context a status bar paints through. A UI-less event (a headless child
+// session_start, or a top-level one that fires before the TUI attaches) must
+// never be remembered: doing so mutes every later bare syncStatus(), which is
+// the bridge-listener path a sibling's mode change arrives on. The symptom is a
+// bar frozen on a preset the session no longer has.
 export function paintableCtx(remembered: ExtensionCtx | undefined, next: ExtensionCtx | undefined): ExtensionCtx | undefined {
   return next?.ui?.setStatus ? next : remembered;
 }
@@ -156,8 +155,7 @@ export function setSharedComboMode(name: ModeName, value: unknown): Readonly<Com
   if (!mode) return getSharedComboState();
   const modes = { ...getSharedComboState(), [name]: mode } as Modes;
   // Derive the level from the final triplet so a redundant same-value write
-  // (entry replay on resume, upstream ponytail re-affirming its mode) cannot
-  // strand a matching preset at 'custom' and drop the combo bar.
+  // cannot strand a matching preset at 'custom' and drop the combo bar.
   return publish(normalizedState(modes));
 }
 
@@ -178,21 +176,19 @@ export function reconcileSharedComboEntries(entries: SessionEntry[] | null | und
       if (mode) modes[name] = mode;
     }
   }
-  // The level always reflects the final mode triplet, never the write order:
-  // a preset entry followed by the same values reconciles back to the preset.
+  // The level reflects the final triplet, never the write order, so a preset
+  // entry followed by the same values reconciles back to the preset.
   return publish(normalizedState(modes));
 }
 
-// One-line session-wide mode summary for change confirmations, e.g.
-// `caveman=ULTRA, rtk=ON, ponytail=ULTRA`.
+// One-line session-wide mode summary for change confirmations.
 export function activeModesSummary(state: { caveman: string; rtk: string; ponytail: string }): string {
   return `caveman=${state.caveman.toUpperCase()}, rtk=${state.rtk.toUpperCase()}, ponytail=${state.ponytail.toUpperCase()}`;
 }
 
 export function setSharedComboListener(listener: ((state: Readonly<ComboState>) => void) | null): void {
-  // Additive: every sibling extension syncs its local mirror on publish, so
-  // a /tersio or /combo switch takes effect next turn with no session reload.
-  // A null listener clears all (no current callers; reserved for teardown).
+  // Additive: every sibling syncs its mirror on publish, so a /tersio or
+  // /combo switch lands next turn with no reload. A null listener clears all.
   if (typeof listener === 'function') bridge().listeners.add(listener);
   else bridge().listeners.clear();
 }

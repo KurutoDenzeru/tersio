@@ -1,8 +1,6 @@
-// Status-bar ownership regression: while a Combo preset is active, the combo bar
-// is the only status line — caveman and rtk must not paint their own bars
-// alongside it. This regressed when the `balanced` preset was added: caveman and
-// rtk's suppression checks hardcoded medium/max, so balanced leaked through and
-// the status bar showed both `🪨 caveman: FULL` and the combo bar.
+// While a Combo preset is active the combo bar is the only status line. This
+// regressed when `balanced` was added: the suppression checks hardcoded
+// medium/max, so both bars showed at once.
 import { expect, test } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
@@ -14,8 +12,7 @@ import rtkSessionExtension from "../../extensions/rtk-session/index.ts";
 import { getSharedComboState, resetSharedComboState } from "../../extensions/shared/session-state.ts";
 import type { ExtensionApi, ExtensionCtx, SessionEntry } from "../../extensions/shared/types.ts";
 
-// ponytail: hermetic HOME — the combo fallback reads the real lock file, so
-// without this the suite depends on the developer's own comboDefault.
+// Hermetic HOME: the combo fallback reads the real lock file.
 process.env.HOME = new URL("../definitely-missing-home", import.meta.url).pathname;
 process.env.USERPROFILE = process.env.HOME;
 
@@ -69,7 +66,7 @@ test("combo balanced suppresses the individual caveman and rtk bars", async () =
   expect(statuses.has("combo"), "combo bar present").toBeTruthy();
   expect(statuses.get("combo") || "").not.toMatch(/caveman: FULL/);
 
-  // The race that surfaced the bug: caveman/rtk reconcile after combo paints.
+  // The race that surfaced the bug: siblings reconcile after combo paints.
   await pi.caveman.handlers.get("agent_start")!({}, ctx);
   await pi.rtk.handlers.get("agent_start")!({}, ctx);
   expect([...statuses.keys()], "combo bar is the only status line under balanced").toEqual(["combo"]);
@@ -78,11 +75,9 @@ test("combo balanced suppresses the individual caveman and rtk bars", async () =
 });
 
 test("fresh host suppresses individual bars from persisted entries before combo reconciles", async () => {
-  // Real OMP regression: caveman/rtk load before combo and restore their modes
-  // from persisted entries, but the combo bar never appeared because the
-  // suppression check reads the in-process bridge, which only combo's
-  // (UI-gated) reconcile populated. Persisted combo entries alone must drive
-  // suppression, with or without combo's session_start having run.
+  // Real regression: siblings restore their modes from persisted entries, but
+  // the combo bar never appeared because suppression reads the in-process
+  // bridge, which only combo's UI-gated reconcile populated.
   resetSharedComboState();
   const { statuses, pi, ctx, entries } = harness();
   entries.push(
@@ -91,7 +86,7 @@ test("fresh host suppresses individual bars from persisted entries before combo 
     { type: "custom", customType: "ponytail-mode", data: { mode: "full" } } as SessionEntry,
     { type: "custom", customType: "combo-level", data: { level: "balanced" } } as SessionEntry,
   );
-  // Post-reload session_start: UI objects exist, but hasUI is not yet truthy.
+  // Post-reload session_start: UI objects exist, hasUI does not yet.
   const noUiCtx = { ...ctx, hasUI: false } as ExtensionCtx;
   await pi.caveman.handlers.get("session_start")!({}, noUiCtx);
   await pi.rtk.handlers.get("session_start")!({}, noUiCtx);

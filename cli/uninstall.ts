@@ -4,21 +4,76 @@ import path from 'node:path';
 import { cancel as clackCancel, confirm as clackConfirm } from '@clack/prompts';
 import {
   BUN_BIN_DIR, OMP_AGENT_DIR, OMP_PLUGINS_DIR, PACKAGE_NAME, RTK_BINARY_NAME,
-  dryRun, keepPonytail, removePonytail, removeRtk, yes,
+  args, dryRun, keepPonytail, removePonytail, removeRtk, yes,
   debug, parseJsonObject, writeConfigLines, writeIfChanged,
 } from './common.ts';
-import { ask, closeRL, tty } from './interactive.ts';
-import { readTextIfExists } from '../extensions/lib/utils.ts';
+import { ask, askInteractiveChoice, closeRL, tty } from './interactive.ts';
+import { detectHosts, hostHint, hostLabel, parseHostArg } from './hosts.ts';
+import type { HostEntry, HostId } from './hosts.ts';
+import { piAgentDir, readTextIfExists } from '../extensions/lib/utils.ts';
+import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
 
 interface UninstallOptions {
   yes?: boolean;
   removePonytail?: boolean;
   removeRtk?: boolean;
   dryRun?: boolean;
+  host?: HostId;
 }
 
-// Read-modify-write a JSON file. mutate returns true when it changed
-// something; no change (or unreadable file) means no output at all.
+// The pi tree mirrors the OMP one, so the same directories come off. Ponytail
+// and rtk stay: a pi package and a shared binary are not ours to delete.
+// The session defaults live in ~/.tersio/settings.json for both hosts, so the
+// caller clears them once at the end.
+const PI_TREE_DIRS = [
+  'caveman-session',
+  'rtk-session',
+  'ai-addons-updater',
+  'combo-toggle',
+  'tersio-commands',
+  'shared',
+  'lib',
+];
+
+async function removePiLayer(host: HostEntry, shouldDryRun: boolean, shouldRemovePonytail: boolean): Promise<boolean> {
+  const extDir = path.join(piAgentDir(), 'extensions');
+  const targets = PI_TREE_DIRS.map((dir) => path.join(extDir, dir));
+  if (shouldRemovePonytail) targets.push(path.join(piAgentDir(), 'skills'));
+
+  if (!host.installed && !host.declared) {
+    console.log(`  [skip] ${host.label} — nothing installed (${host.installCmd})`);
+    return false;
+  }
+  if (host.declared) {
+    if (shouldDryRun) console.log(`  [dry-run] would run: ${host.removeCmd}`);
+    else {
+      try {
+        const { execFile } = await import('node:child_process');
+        await new Promise<void>((resolve, reject) => {
+          execFile(host.bin, ['remove', `npm:${PACKAGE_NAME}`], { timeout: 120000 }, (err, _out, errOut) => {
+            if (err) reject(new Error(String(errOut).trim() || err.message));
+            else resolve();
+          });
+        });
+        console.log(`  [ok] removed the pi package ${host.declared}`);
+      } catch (e) {
+        console.log(`  [fail] pi remove: ${(e as Error).message}`);
+        console.log(`  [hint] Manual: ${host.removeCmd}`);
+      }
+    }
+  }
+  await Promise.all(targets.map((t) => removeUninstallTarget(t, shouldDryRun)));
+  await clearSessionDefaults(shouldDryRun);
+  return true;
+}
+
+// The session defaults live in ~/.tersio/settings.json for every host, and
+// that file holds nothing but Tersio's values, so it comes off as a whole.
+async function clearSessionDefaults(shouldDryRun: boolean): Promise<void> {
+  await removeUninstallTarget(tersioSettingsFile(), shouldDryRun, false);
+}
+
+// Read-modify-write a JSON file; mutate returning false prints nothing.
 async function updateJsonFile(
   filePath: string,
   mutate: (data: Record<string, unknown>) => boolean,
@@ -69,12 +124,51 @@ async function removeUninstallTarget(target: string, shouldDryRun: boolean, recu
 async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
   const shouldDryRun = options.dryRun ?? dryRun;
   const confirmed = (options.yes ?? yes) || shouldDryRun;
-  // Ponytail is bundled with Tersio's presets, so a full uninstall removes
-  // its copy too; --keep-ponytail opts out and reinstall always preserves it.
+  // Ponytail ships with Tersio, so a full uninstall removes it;
+  // --keep-ponytail opts out and reinstall always preserves it.
   const shouldRemovePonytail = options.removePonytail ?? (removePonytail || !keepPonytail);
   const shouldRemoveRtk = options.removeRtk ?? removeRtk;
 
   console.log('\n=== Tersio Uninstall ===\n');
+
+  // A TTY user picks the host; only hosts with tersio on them are offered.
+  const installed = detectHosts().filter((host) => host.installed);
+  let host: HostId = options.host ?? 'omp';
+  try {
+    host = parseHostArg(args) ?? host;
+  } catch (e) {
+    console.error(`[fail] ${(e as Error).message}`);
+    process.exit(1);
+  }
+  if (!options.host && tty() && !confirmed) {
+    if (installed.length === 0) {
+      console.log('Tersio is not installed for any agent on this machine. Nothing to remove.');
+      closeRL();
+      return false;
+    }
+    if (installed.length > 1) {
+      const choice = await askInteractiveChoice('Uninstall Tersio from which agent?', installed.map((h) => ({
+        value: h.id,
+        label: hostLabel(h),
+        hint: hostHint(h),
+      })), host);
+      if (choice.status !== 'selected') {
+        closeRL();
+        return false;
+      }
+      host = choice.value as HostId;
+    } else {
+      host = installed[0].id;
+    }
+  }
+  const selected = detectHosts().find((h) => h.id === host) as HostEntry;
+  if (host === 'pi') {
+    const removed = await removePiLayer(selected, shouldDryRun, shouldRemovePonytail);
+    if (removed) console.log('\nDone. Restart pi for changes to take effect.');
+    closeRL();
+    return removed;
+  }
+  if (!selected.installed) console.log(`  [note] ${selected.label} has no tersio install; removing what is left behind.`);
 
   const extDir = path.join(OMP_AGENT_DIR, 'extensions');
   const configPath = path.join(OMP_AGENT_DIR, 'config.yml');
@@ -89,10 +183,10 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
     'combo-toggle',
     'tersio-commands',
     'shared',
-    // Only consumed by ai-addons-updater (removed above); otherwise orphaned.
+    // Only consumed by the updater, which runs before this.
     'lib',
-    // Legacy always-on combo helper; imports shared/session-state.js, so it
-    // breaks with a module-not-found warning once the shared dir is removed.
+    // Legacy helper importing shared/session-state.js: it warns once that
+    // module is gone.
     'aaa-combo-boot',
   ].map((dir) => path.join(extDir, dir));
 
@@ -137,7 +231,7 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
   // Remove extension directories (independent paths, so concurrently).
   await Promise.all(targets.map((t) => removeUninstallTarget(t, shouldDryRun)));
 
-  // Remove Combo and mode-reinforcement registrations; Ponytail only when requested.
+  // Remove Combo and mode-reinforcement registrations; Ponytail on request.
   const configRaw = await readTextIfExists(configPath);
   if (configRaw) {
     let lines = configRaw.split('\n');
@@ -153,8 +247,8 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
     }
   }
 
-  // Remove the bundled Ponytail copy (dep entry exists only on
-  // pre-bundle installs); the config.yml entry was filtered above.
+  // Remove the bundled Ponytail copy (the dep entry exists only on pre-bundle
+  // installs); its config.yml entry was filtered above.
   if (shouldRemovePonytail) {
     const pluginsPkgPath = path.join(pluginsDir, 'package.json');
     await updateJsonFile(pluginsPkgPath,
@@ -190,13 +284,14 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
     await removeUninstallTarget(selfPluginDir, shouldDryRun);
   }
 
-  // Remove RTK binary if requested. rtk.ts is rtk-owned but installed by our
-  // wiring step; with the binary gone it would pass through harmlessly, so
-  // only drop it on a full rtk removal.
+  // rtk.ts is rtk-owned but written by our wiring step. With the binary gone it
+  // would pass through harmlessly, so drop it only on a full rtk removal.
   if (shouldRemoveRtk) {
     await removeUninstallTarget(rtkBin, shouldDryRun, false);
     await removeUninstallTarget(path.join(extDir, 'rtk.ts'), shouldDryRun);
   }
+
+  await clearSessionDefaults(shouldDryRun);
 
   console.log('\nDone. Restart OMP for changes to take effect.');
   return true;

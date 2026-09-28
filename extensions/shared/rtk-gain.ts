@@ -1,15 +1,7 @@
-// extensions/shared/rtk-gain.ts — measured RTK savings from its own store.
-// RTK records every invocation (input/output/saved tokens, savings %, exec
-// time) in history.db; `rtk gain` renders the same rows. We read them with
-// the sqlite3 CLI (present on macOS; best-effort elsewhere) so the dashboard
-// shows measured figures, never estimates. Missing DB/CLI → empty, no throw.
-//
-// Caveman and Ponytail have no per-command counters (instruction-following
-// isn't metered); their gains are bench-measured in BENCHMARK.md and cited
-// as static figures wherever RTK rows appear.
-//
-// Rows group by command alone, machine-wide: one row per command no matter
-// which repo ran it. Project filtering stays out — wasted column, same logic.
+// extensions/shared/rtk-gain.ts — measured RTK savings read from rtk's own
+// history.db with the sqlite3 CLI, so the dashboard shows measured figures and
+// never estimates. Missing DB or CLI returns empty. Caveman and Ponytail are
+// bench-measured in BENCHMARK.md instead: instruction-following is not metered.
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -34,15 +26,13 @@ export interface RtkGain {
 
 const EMPTY: RtkGain = { commands: 0, saved: 0, input: 0, avgPct: 0, totalMs: 0, byCommand: [] };
 
-// RTK stores the whole command line, and `rtk ls -d` with a long path list
-// runs to tens of KB. The table shows one clipped cell, so bound the string
-// before it crosses the sqlite3 CLI and lands in every /data.json poll.
+// The table shows one clipped cell, so bound the command before it crosses the
+// sqlite3 CLI and lands in every /data.json poll.
 const MAX_CMD_CHARS = 200;
 
-// The query() reader is line- and tab-delimited, and RTK stores heredocs and
-// `node -e` scripts verbatim (~67 rows here), so one logical row can arrive as
-// several lines and derail every row after it. Fold whitespace into spaces
-// first: the stored command keeps its newlines, only the read view flattens.
+// RTK stores heredocs and `node -e` scripts verbatim, so one row can arrive as
+// several lines and derail every row after it. The stored command keeps its
+// newlines; only the read view flattens.
 const CMD_ONE_LINE = `replace(replace(replace(rtk_cmd, char(10), ' '), char(13), ' '), char(9), ' ')`;
 
 export function rtkDbPath(): string {
@@ -70,9 +60,8 @@ function query(db: string, sql: string): string[][] {
 export function readRtkGain(limit = 10, cutoffMs?: number): RtkGain {
   try {
     if (!fs.existsSync(rtkDbPath())) return EMPTY;
-    // View-level cutoff only: rows stay in rtk's own database untouched.
-    // strftime('%s') normalizes ISO-8601 timestamps to epoch seconds; rows
-    // with unparseable timestamps (0) drop out of a filtered view.
+    // View-level cutoff only: rtk's own rows stay untouched. Timestamps that do
+    // not parse land on 0 and drop out of a filtered view.
     const where = cutoffMs && cutoffMs > 0
       ? `WHERE CAST(strftime('%s', timestamp) AS INTEGER) >= ${Math.floor(cutoffMs / 1000)}`
       : '';

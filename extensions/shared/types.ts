@@ -47,7 +47,15 @@ export interface ExtensionCtx {
 
 export interface SystemPromptEvent {
   systemPrompt: string | string[];
+  // pi only: the mutable prompt sections. OMP does not provide it.
+  systemPromptOptions?: { appendSystemPrompt?: string };
 }
+
+/** What a `before_agent_start` handler hands back. OMP takes an array, pi a string. */
+export type PromptInjection = { systemPrompt: string[] } | { systemPrompt: string };
+
+/** A tool `parameters` object. OMP wants zod, pi wants JSON Schema. */
+export type ToolParams = Record<string, unknown>;
 
 export interface InputEvent {
   text?: string;
@@ -68,7 +76,7 @@ export interface ExtensionApi {
     execute: (
       toolCallId: string,
       params: { args: string[] },
-      signal: AbortSignal,
+      signal: AbortSignal | undefined,
       onUpdate: ((data: unknown) => void) | undefined,
       ctx: ExtensionCtx | undefined,
     ) => Promise<{
@@ -86,5 +94,4 @@ export interface ExtensionApi {
   }>;
   cwd?: string;
   zod?: { z: unknown };
-  on<E>(event: string, handler: (event: E, ctx: ExtensionCtx) => unknown): void;
-}
+  on<E>(event: string, handler: (event: E, ctx: ExtensionCtx) => unknown): void;}

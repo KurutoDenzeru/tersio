@@ -8,6 +8,7 @@ import {
   reconcileSharedComboEntries,
   sessionEntries,
 } from '../shared/session-state.ts';
+import { setExtensionLabel } from '../shared/host.ts';
 import os from 'node:os';
 import path from 'node:path';
 import { appendUsage, readUsage } from '../shared/usage-ledger.ts';
@@ -54,7 +55,7 @@ async function openDashboard(pi: ExtensionApi, ctx?: ExtensionCtx): Promise<void
 }
 
 export default function tersioCommandsExtension(pi: ExtensionApi): void {
-  pi.setLabel?.('Tersio unified root command');
+  setExtensionLabel(pi, 'Tersio unified root command');
 
 
   pi.registerCommand?.('tersio', {

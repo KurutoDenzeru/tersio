@@ -3,10 +3,9 @@
 
 import os from 'node:os';
 import path from 'node:path';
-import { createRequire } from 'node:module';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   activeModesSummary,
-  asPromptArray,
   COMBO_LEVELS,
   getSharedComboState,
   isComboPresetActive,
@@ -19,22 +18,27 @@ import {
   setSharedComboListener,
   setSharedComboMode,
   systemPromptIncludes,
+  themeStatus,
 } from '../shared/session-state.ts';
+import { hostSelect, injectPromptText, onHostEvent, setExtensionLabel } from '../shared/host.ts';
 import {
   isComboSetupComplete,
   readComboDefault,
   readPonytailDefault,
   saveComboSetup,
 } from '../shared/plugin-settings.ts';
+import { findHoistedPackage } from '../lib/utils.ts';
 import type { ComboState, ExtensionApi, ExtensionCtx, SystemPromptEvent } from '../shared/types.ts';
 
-const require = createRequire(import.meta.url);
+const EXTENSION_DIR = path.dirname(fileURLToPath(import.meta.url));
 
 const PONYTAIL_FALLBACK_INTENSITY: Record<string, string> = {
   lite: 'Prefer the simplest correct solution.',
 };
 
-function ponytailFallback(mode: string): string {
+// The text used when the Ponytail package cannot be found next to the
+// extension; exported for its own contract test.
+export function ponytailFallback(mode: string): string {
   const intensity = PONYTAIL_FALLBACK_INTENSITY[mode] ?? 'Use the minimum correct solution. Delete or reuse before adding.';
   return `🦥 PONYTAIL MODE ACTIVE — level: ${mode}\n${intensity} Understand the path first and fix root causes, not symptoms. Prefer the standard library and YAGNI. Avoid speculative abstractions and dependencies. Preserve correctness. Verify changed behavior.`;
 }
@@ -43,26 +47,26 @@ function levelSummary(state: ComboState): string {
   return `caveman=${state.caveman} rtk=${state.rtk} ponytail=${state.ponytail}`;
 }
 
-function loadPonytailInstructions(mode: string): string {
-  try {
-    const installed = path.join(
-      os.homedir(),
-      '.omp',
-      'plugins',
-      'node_modules',
-      '@dietrichgebert',
-      'ponytail',
-      'hooks',
-      'ponytail-instructions.js'
-    );
-    const { getPonytailInstructions } = require(installed) as { getPonytailInstructions?: (mode: string) => string };
-    if (typeof getPonytailInstructions === 'function') return getPonytailInstructions(mode);
-  } catch { }
+// Ponytail is a hoisted dependency, so one upward walk covers an OMP plugin, a
+// pi package, and a checkout. The hook is CommonJS, so both namespace shapes
+// are tried.
+async function loadPonytailInstructions(mode: string): Promise<string> {
+  const installed = findHoistedPackage('@dietrichgebert/ponytail', EXTENSION_DIR, 'hooks', 'ponytail-instructions.js');
+  if (installed) {
+    try {
+      const loaded = await import(pathToFileURL(installed).href) as {
+        getPonytailInstructions?: (level: string) => string;
+        default?: { getPonytailInstructions?: (level: string) => string };
+      };
+      const build = loaded.getPonytailInstructions ?? loaded.default?.getPonytailInstructions;
+      if (build) return build(mode);
+    } catch { /* fall through to the built-in text */ }
+  }
   return ponytailFallback(mode);
 }
 
 export default function comboToggleExtension(pi: ExtensionApi): void {
-  pi.setLabel?.('Combo session toggle (all 3 add-ons)');
+  setExtensionLabel(pi, 'Combo session toggle (all 3 add-ons)');
 
   let lastCtx: ExtensionCtx | undefined = undefined;
   let setupPrompted = false;
@@ -71,32 +75,26 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
     lastCtx = paintableCtx(lastCtx, ctx);
     const c = lastCtx;
     if (!c?.ui?.setStatus) return;
-    // Single unified bar replaces the three per-extension bars while a preset is
-    // active. In custom/off, the individual bars come back and combo stays clear.
+    // One unified bar replaces the per-extension bars while a preset is active.
     if (!isComboPresetActive()) {
       c.ui.setStatus('combo', undefined);
       return;
     }
-    // Read the live bridge, not cached extension state: sibling extensions
-    // reconcile it from persisted entries before this one runs.
+    // Read the live bridge, not a cache: siblings reconcile it first.
     const state = getSharedComboState();
-    const theme = c.ui.theme;
     const c0 = state.caveman.toUpperCase();
     const r = state.rtk.toUpperCase();
     const p = state.ponytail.toUpperCase();
     const lvl = state.level.toUpperCase();
-    const label = `combo ${lvl}: 🪨caveman=${c0} ⚡rtk=${r} 🦥ponytail=${p}`;
-    c.ui.setStatus('combo', theme?.fg ? `${theme.fg('accent', '🧩')} ${theme.fg('muted', label)}` : `🧩 ${label}`);
-    // Clobber any sibling bars another extension may have painted in a race
-    // during session_start — our bar is canonical for the duration of the preset.
+    c.ui.setStatus('combo', themeStatus(c.ui, '🧩', `combo ${lvl}: 🪨caveman=${c0} ⚡rtk=${r} 🦥ponytail=${p}`, true));
+    // Our bar is canonical for the preset, so clear any sibling bar.
     c.ui.setStatus('caveman', undefined);
     c.ui.setStatus('rtk', undefined);
     c.ui.setStatus('ponytail', undefined);
   }
 
-  // ponytail: same persistence as /combo — siblings (incl. upstream ponytail)
-  // restore from these entries, so the fallback must write them too or the
-  // preset evaporates on resume and ponytail never activates.
+  // Same persistence as /combo: siblings restore from these entries, so the
+  // fallback must write them too or the preset evaporates on resume.
   function persistPreset(level: string): void {
     const modes = COMBO_LEVELS[level];
     pi.appendEntry?.('caveman-mode', { mode: modes.caveman });
@@ -115,8 +113,7 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
     return useState(reconcileSharedComboEntries(sessionEntries(ctx)), ctx);
   }
   function listen(ctx?: ExtensionCtx): void {
-    // Stable identity: the bridge set dedupes, so repeated track()/command
-    // calls register once instead of stacking duplicate listeners.
+    // Stable identity: the bridge set dedupes, so repeat calls register once.
     if (ctx?.hasUI) setSharedComboListener(useState);
   }
 
@@ -174,7 +171,7 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
   async function runFirstRunSetup(ctx?: ExtensionCtx): Promise<void> {
     if (setupPrompted || !ctx?.hasUI || !ctx.ui?.select || isComboSetupComplete()) return;
     setupPrompted = true;
-    const choice = await ctx.ui.select('Session-start defaults — Combo preset', [
+    const choice = await hostSelect(pi, ctx.ui, 'Session-start defaults — Combo preset', [
       { label: 'off', description: 'Keep every Tersio mode inactive' },
       { label: 'medium', description: 'caveman=lite, rtk=on, ponytail=lite' },
       { label: 'balanced', description: 'caveman=full, rtk=on, ponytail=full' },
@@ -192,9 +189,7 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
     track(ctx);
     if (!ctx?.hasUI) syncStatus(ctx);
     await runFirstRunSetup(ctx);
-    // Installer/user-configured default applies only when no persisted *mode*
-    // state exists — unrelated session entries must not block it, or the
-    // combo bar never paints on sessions that already carry other entries.
+    // The configured default applies only when no persisted mode state exists.
     const entries = sessionEntries(ctx);
     const hasModeState = entries.some((e) => e?.type === 'custom' && (
       e.customType === 'combo-level' || e.customType === 'caveman-mode' ||
@@ -221,7 +216,7 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
   });
 
   for (const event of ['session_branch', 'session_tree', 'agent_start']) {
-    pi.on(event, async (_event, ctx) => {
+    onHostEvent(pi, event, async (_event, ctx) => {
       track(ctx);
       if (event === 'agent_start') await runFirstRunSetup(ctx);
     });
@@ -233,8 +228,8 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
 
     const mode = getSharedComboState().ponytail;
     if (mode === 'off' || systemPromptIncludes(event.systemPrompt, 'PONYTAIL MODE ACTIVE')) return;
-    const base = asPromptArray(event.systemPrompt);
-    return { systemPrompt: [...base, loadPonytailInstructions(mode)] };
+    const instructions = await loadPonytailInstructions(mode);
+    return injectPromptText(pi, event, instructions);
   });
 
   // Slash commands only; natural-language input caused accidental toggles and has no reload context.

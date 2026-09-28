@@ -50,14 +50,11 @@ function usageEnv(dir: string, sessions: string): NodeJS.ProcessEnv {
   };
 }
 
+// Session defaults, including the display currency, live in ~/.tersio/settings.json.
 function writeSettingsLock(home: string, tersio: Record<string, unknown>): void {
-  const dir = path.join(home, ".omp", "plugins");
+  const dir = path.join(home, ".tersio");
   mkdirSync(dir, { recursive: true });
-  writeFileSync(
-    path.join(dir, "omp-plugins.lock.json"),
-    JSON.stringify({ plugins: {}, settings: { "@krtclcdy/tersio": tersio } }),
-    "utf8",
-  );
+  writeFileSync(path.join(dir, "settings.json"), JSON.stringify(tersio), "utf8");
 }
 
 test("usage defaults to USD and converts with --currency", () => {
@@ -129,11 +126,7 @@ test("usage falls back to USD on a corrupt or unknown stored currency", () => {
     expect(bad.status, bad.stderr).toBe(0);
     expect(bad.stdout).toMatch(/\$0\.0041/);
 
-    writeFileSync(
-      path.join(dir, ".omp", "plugins", "omp-plugins.lock.json"),
-      "{ not json",
-      "utf8",
-    );
+    writeFileSync(path.join(dir, ".tersio", "settings.json"), "{ not json", "utf8");
     const corrupt = spawnSync(process.execPath, [installer, "usage"], {
       encoding: "utf8",
       cwd: root,

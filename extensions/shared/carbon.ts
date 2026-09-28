@@ -1,14 +1,11 @@
 // extensions/shared/carbon.ts — CO2/energy footprints, EcoLogits-style.
 //
 // Port of the EcoLogits v0.8.2 LLM impact model (genai-impact/ecologits,
-// MPL-2.0 — see ECO_NOTICE.md), following the same served-estimate approach
-// as honey-for-devs' hooks/eco.js: the faithful single-stream (batch-1)
-// ceiling divided by serving_concurrency for continuous-batching amortization.
-//
-// Model params come from EcoLogits' registry where it covers the model;
-// otherwise a documented class borrow (never a silent guess — every borrow
-// carries its source). Unknown ids fall to the gpt-4o default. Everything
-// rendered from here must carry ~est. and never merge with measured figures.
+// MPL-2.0 — see ECO_NOTICE.md): the single-stream (batch-1) ceiling divided by
+// serving_concurrency for continuous-batching amortization. Model params come
+// from EcoLogits' registry, else a documented class borrow; unknown ids fall
+// to the gpt-4o default. Render everything from here as ~est., never merged
+// with measured figures.
 
 export interface ModelCarbon {
   activeB: number;

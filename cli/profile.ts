@@ -1,17 +1,19 @@
 // cli/profile.ts — session-start defaults profile (combo/caveman/rtk/ponytail)
 // plus the display-currency default for usage/dashboard reports.
-// Single source for reading/writing the omp plugin settings lock entry.
-// Extracted from cli/install.ts so both install and settings share it.
-import { promises as fs } from 'node:fs';
+// Stored in ~/.tersio/settings.json, which every host reads. Extracted from
+// cli/install.ts so both install and settings share it.
+import { existsSync, promises as fs } from 'node:fs';
 import path from 'node:path';
 import {
-  CAVEMAN_DEFAULTS, COMBO_PRESET_MODES, OMP_PLUGINS_DIR, PACKAGE_NAME, PONYTAIL_DEFAULTS,
+  CAVEMAN_DEFAULTS, COMBO_PRESET_MODES, PACKAGE_NAME, PONYTAIL_DEFAULTS,
   verbose,
 } from './common.ts';
 import type { WriteOptions } from './common.ts';
+import os from 'node:os';
 import { DEFAULT_CURRENCY, isCurrencyCode } from './currency.ts';
 import type { CurrencyCode } from './currency.ts';
 import { readTextIfExists } from '../extensions/lib/utils.ts';
+import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
 
 interface Profile {
   comboDefault: string;
@@ -39,22 +41,15 @@ interface StoredSettings {
   currency?: unknown;
 }
 
-// Stored profile from the live lock file: update/reinstall runs without flags
-// or prompts must preserve the user's choice, never reset it to off.
+// Stored profile: ~/.tersio/settings.json. An install that predates that file
+// kept the same values as OMP plugin settings, so seed from there once and
+// never lose a user's choice.
 async function storedProfile(): Promise<Profile> {
   const base = defaultProfile();
-  const raw = await readTextIfExists(path.join(OMP_PLUGINS_DIR, 'omp-plugins.lock.json'));
-  if (!raw) return base;
-  let stored: StoredSettings;
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object' || !('settings' in parsed)) return base;
-    const settings = (parsed as { settings: unknown }).settings;
-    if (!settings || typeof settings !== 'object' || !(PACKAGE_NAME in settings)) return base;
-    const entry = (settings as Record<string, unknown>)[PACKAGE_NAME];
-    if (!entry || typeof entry !== 'object') return base;
-    stored = entry as StoredSettings;
-  } catch { return base; }
+  const stored = (await readTextIfExists(tersioSettingsFile())) !== null
+    ? parseStored(await readTextIfExists(tersioSettingsFile()))
+    : parseStored(await readTextIfExists(legacyOmpLockPath()));
+  if (!stored) return base;
   if (typeof stored.comboDefault === 'string' && stored.comboDefault in COMBO_PRESET_MODES) base.comboDefault = stored.comboDefault;
   if (typeof stored.cavemanDefault === 'string' && CAVEMAN_DEFAULTS.has(stored.cavemanDefault)) base.cavemanDefault = stored.cavemanDefault;
   if (typeof stored.rtkDefault === 'boolean') base.rtkDefault = stored.rtkDefault;
@@ -65,20 +60,33 @@ async function storedProfile(): Promise<Profile> {
   return base;
 }
 
-// Persist the profile as omp plugin settings so `omp plugin config get`
-// reflects the choice and the extensions pick it up on session start.
-async function writePluginSettings(profile: Profile, options: WriteOptions): Promise<void> {
-  const pluginsDir = OMP_PLUGINS_DIR;
-  const lockPath = path.join(pluginsDir, 'omp-plugins.lock.json');
-  let config: { plugins?: Record<string, unknown>; settings?: Record<string, Record<string, unknown>> } = {};
-  const existing = await readTextIfExists(lockPath);
-  if (existing) {
-    try { config = JSON.parse(existing); } catch { config = {}; }
+function legacyOmpLockPath(): string {
+  const configHome = process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config');
+  return [
+    path.join(os.homedir(), '.omp', 'plugins', 'omp-plugins.lock.json'),
+    path.join(configHome, 'omp', 'plugins', 'omp-plugins.lock.json'),
+  ].find((p) => existsSync(p)) ?? path.join(os.homedir(), '.omp', 'plugins', 'omp-plugins.lock.json');
+}
+
+function parseStored(raw: string | null): StoredSettings | null {
+  if (!raw) return null;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return null;
+    const direct = parsed as Record<string, unknown>;
+    const nested = (direct.settings as Record<string, StoredSettings> | undefined)?.[PACKAGE_NAME];
+    return (nested ?? direct) as StoredSettings;
+  } catch {
+    return null;
   }
-  config.plugins = config.plugins || {};
-  config.settings = config.settings || {};
-  config.settings[PACKAGE_NAME] = {
-    ...(config.settings[PACKAGE_NAME] || {}),
+}
+
+// Persist the profile where every host reads it. `omp plugin config get` no
+// longer reports it; `tersio settings` does.
+async function writePluginSettings(profile: Profile, options: WriteOptions): Promise<void> {
+  const file = tersioSettingsFile();
+  const values = {
+    ...(parseStored(await readTextIfExists(file)) ?? {}),
     comboDefault: profile.comboDefault,
     comboSetupComplete: true,
     cavemanDefault: profile.cavemanDefault,
@@ -86,14 +94,13 @@ async function writePluginSettings(profile: Profile, options: WriteOptions): Pro
     ponytailDefault: profile.ponytailDefault,
     currency: profile.currency,
   };
-
   if (options.dryRun) {
-    if (verbose && !options.quiet) console.log(`  [dry-run] would write plugin settings (${PACKAGE_NAME}) to ${lockPath}`);
+    if (verbose && !options.quiet) console.log(`  [dry-run] would write session defaults to ${file}`);
     return;
   }
-  await fs.mkdir(pluginsDir, { recursive: true });
-  await fs.writeFile(lockPath, JSON.stringify(config, null, 2) + '\n', 'utf8');
-  console.log(`  [write] Plugin settings in ${lockPath}`);
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.writeFile(file, `${JSON.stringify(values, null, 2)}\n`, 'utf8');
+  console.log(`  [write] Session defaults in ${file}`);
 }
 
 function formatProfile(profile: Profile): string {

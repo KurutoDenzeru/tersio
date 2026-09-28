@@ -94,10 +94,10 @@ test("dashboard persists display currency across restarts", async () => {
     } finally {
       await stopDashboard(first.child);
     }
-    const lock = JSON.parse(
-      readFileSync(path.join(home, ".omp", "plugins", "omp-plugins.lock.json"), "utf8"),
-    ) as { settings?: Record<string, { currency?: string }> };
-    expect(lock.settings?.["@krtclcdy/tersio"]?.currency).toBe("PHP");
+    const stored = JSON.parse(
+      readFileSync(path.join(home, ".tersio", "settings.json"), "utf8"),
+    ) as { currency?: string };
+    expect(stored.currency).toBe("PHP");
 
     const second = await startDashboard(home);
     try {

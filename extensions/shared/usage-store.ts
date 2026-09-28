@@ -1,11 +1,9 @@
 // extensions/shared/usage-store.ts — tersio-owned usage.db.
-// Persists the same per-message rows importSessionTokens derives live (model,
-// tokens, cache, cost input, timing, status, tools), so top models, costing,
-// cache, CO2 inputs, and activity survive session-file rotation. Sync is
-// incremental: a files ledger (mtime+size) skips unchanged transcripts, and
-// every read applies the current reset watermark — the store is a cache,
-// never a fork. Missing sqlite3 CLI → sync false / read null, callers fall
-// back to the live path. Never touches RTK's history.db or host transcripts.
+// Persists the rows importSessionTokens derives live, so reports survive
+// session-file rotation. Sync is incremental (a files ledger skips unchanged
+// transcripts) and every read applies the reset watermark, so the store is a
+// cache, never a fork. Missing sqlite3 → sync false / read null. Never touches
+// RTK's history.db or host transcripts.
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -91,8 +89,8 @@ function readFiles(db: string): Record<string, { mtime: number; size: number }> 
   return known;
 }
 
-// One parsed assistant message, as stored. `t` is epoch ms or null when the
-// source row carries no usable timestamp (live counts it, skips its recent).
+// One parsed assistant message, as stored. `t` is null when the source row has
+// no usable timestamp: counted, but skipped in the recent list.
 interface StoredRow {
   t: number | null;
   model: string;
@@ -173,10 +171,9 @@ function insertSql(file: string, r: StoredRow): string {
     `${nullNum(r.code)},${nullStr(r.note)},${esc(JSON.stringify(r.tools))});`;
 }
 
-// Incremental sync: unchanged transcripts are skipped via mtime+size,
-// changed ones are deleted and re-inserted. Rows for deleted transcripts
-// are kept, so OMP session rotation never erases history. True on success
-// (including nothing-to-do), false when sqlite3 or disk is unavailable.
+// Incremental sync: unchanged transcripts are skipped via mtime+size, changed
+// ones re-inserted. Rows for deleted transcripts are kept, so rotation never
+// erases history. False when sqlite3 or disk is unavailable.
 export function syncUsageDb(): boolean {
   let db: string;
   try {

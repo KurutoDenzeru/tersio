@@ -1,9 +1,7 @@
 // extensions/shared/pricing.ts — dynamic model pricing from LiteLLM.
 // Lookup order: exact id in the live cache → provider-prefix strip → default.
-// The cache is the full LiteLLM feed (3k+ ids), refreshed lazily in background
-// and on `tersio update`; every reader is sync and offline-safe. No static
-// per-model table — list prices rot, the feed does not. Unknown models report
-// the default with known:false so the dashboard labels them honestly.
+// No static per-model table: list prices rot, the feed does not. Unknown models
+// report the default with known:false so the dashboard labels them honestly.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -20,8 +18,8 @@ export interface ModelPrice {
 export const DEFAULT_PRICE: ModelPrice = { input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2.5 };
 
 const LITELLM_URL = 'https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json';
-// Live cache refreshes lazily: readers use the file even when stale, and only
-// one refresh runs per process. `tersio update` still forces a fresh fetch.
+// Readers use the file even when stale, and only one refresh runs per process;
+// `tersio update` still forces a fresh fetch.
 const CACHE_TTL_MS = 7 * 24 * 3600 * 1000;
 let refreshInflight: Promise<boolean> | null = null;
 
@@ -47,8 +45,8 @@ function toPrice(t: [number, number, number, number]): ModelPrice {
   return { input: t[0], output: t[1], cacheRead: t[2], cacheWrite: t[3] };
 }
 
-// Tolerate both cache shapes: compact tuples (new) and ModelPrice objects
-// (written by older refreshes) — a version bump never orphans the cache.
+// Tolerate both cache shapes (compact tuples and ModelPrice objects) so a
+// version bump never orphans the cache.
 function asPrice(v: unknown): ModelPrice | null {
   if (Array.isArray(v) && v.length === 4 && v.every((n) => typeof n === 'number' && Number.isFinite(n) && n >= 0)) {
     return toPrice(v as [number, number, number, number]);
@@ -104,8 +102,7 @@ export function priceFor(model: string, live?: LivePrices | null): { price: Mode
   }
   return { price: DEFAULT_PRICE, known: false, live: false };
 }
-// Fetch LiteLLM pricing, keep every id with valid input/output rates, write
-// the cache. False on any failure (offline, timeout, shape change) — callers
+// Fetch LiteLLM pricing and write the cache. False on any failure — callers
 // fall back silently.
 export async function refreshPrices(): Promise<boolean> {
   if (refreshInflight) return refreshInflight;
@@ -160,8 +157,8 @@ export async function refreshPrices(): Promise<boolean> {
   }
 }
 
-// Fire-and-forget refresh when the cache is stale or missing. Readers keep
-// using the stale file (or the built-in table) — pricing never blocks.
+// Fire-and-forget refresh when the cache is stale; readers keep the stale
+// file, so pricing never blocks.
 export function refreshPricesIfStale(): void {
   const live = loadLivePrices();
   if (live && Date.now() - live.fetchedAt <= CACHE_TTL_MS) return;

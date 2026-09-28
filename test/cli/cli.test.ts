@@ -34,7 +34,7 @@ for (const alias of [["help"], ["--help"], ["-h"]]) {
 
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toMatch(/^Usage:/);
-    for (const command of ["install", "update", "reinstall", "doctor", "uninstall", "usage", "dashboard", "reset", "settings", "version", "help"]) {
+    for (const command of ["install", "update", "doctor", "uninstall", "usage", "dashboard", "reset", "settings", "version", "help"]) {
       expect(result.stdout).toMatch(new RegExp(`^  ${command}\\s`, "m"));
     }
     expect(result.stderr).toBe("");
@@ -125,26 +125,24 @@ test("verbose dry-run reveals file paths hidden by default", () => {
   expect(result.stdout).toMatch(/\[dry-run\] would write .*shared[\\/]session-state\.ts/);
   expect(result.stdout).toMatch(/\[dry-run\] would write .*tersio-commands[\\/]index\.ts/);
 });
-test("reinstall --dry-run previews uninstall then install without writing", () => {
+test("the retired reinstall command is gone and doctor --fix repairs instead", () => {
   const missingHome = path.join(root, "test", "definitely-missing-home");
-  const result = spawnSync(
-    process.execPath,
-    [installer, "reinstall", "--dry-run", "--yes"],
-    {
-      encoding: "utf8",
-      timeout: 60000,
-      cwd: root,
-      env: { ...process.env, HOME: missingHome, USERPROFILE: missingHome },
-    }
-  );
+  const removed = spawnSync(process.execPath, [installer, "reinstall", "--dry-run", "--yes"], {
+    encoding: "utf8",
+    timeout: 60000,
+    cwd: root,
+    env: { ...process.env, HOME: missingHome, USERPROFILE: missingHome },
+  });
+  expect(removed.stdout, "reinstall is no longer a command").not.toMatch(/Tersio Uninstall/);
 
-  expect(result.status, result.stderr).toBe(0);
-  const uninstall = result.stdout.indexOf("=== Tersio Uninstall ===");
-  const install = result.stdout.indexOf("Ponytail — ensure bundled plugin");
-  expect(uninstall >= 0, result.stdout).toBeTruthy();
-  expect(install > uninstall, "uninstall runs before the fresh install").toBeTruthy();
-  expect(result.stdout).toMatch(/\[dry-run\] would remove /);
-  expect(result.stdout).toMatch(/Done — restart OMP/);
+  const repaired = spawnSync(process.execPath, [installer, "doctor", "--fix", "extensions", "--yes"], {
+    encoding: "utf8",
+    timeout: 60000,
+    cwd: root,
+    env: { ...process.env, HOME: missingHome, USERPROFILE: missingHome },
+  });
+  expect(repaired.status, repaired.stderr).toBe(0);
+  expect(repaired.stdout).toMatch(/extension tree|restoring plugin extension files/);
 });
 
 test("bare dry-run never prompts for the pending update and exits 0", () => {
