@@ -3,12 +3,12 @@ import {
   getSharedComboState,
   reconcileSharedComboEntries,
   sessionEntries,
-} from '../shared/session-state.ts';
+} from '../../shared/session-state.ts';
 import os from 'node:os';
 import path from 'node:path';
-import { appendUsage, readUsage } from '../shared/usage-ledger.ts';
+import { appendUsage, readUsage } from '../../shared/usage-ledger.ts';
 import { checkAddonsSummary, runAddonUpdate } from '../ai-addons-updater/index.ts';
-import type { ExtensionApi, ExtensionCtx } from '../shared/types.ts';
+import type { ExtensionApi, ExtensionCtx } from '../../shared/types.ts';
 
 const HELP = [
   '/tersio status — active modes + combo level',

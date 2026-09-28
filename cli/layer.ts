@@ -20,6 +20,13 @@ export function layerDirs(table: LayerTable): string[] {
   return table.map(([dir]) => dir);
 }
 
+// A port source sits two levels below extensions/; installed, it sits one level
+// below <agent-dir>/extensions/. Rewriting on the way in keeps one spelling in
+// the repo and the same other spelling in every installed tree.
+export function rewritePortImports(content: string): string {
+  return content.replace(/from '\.\.\/\.\.\/(shared|lib)\//g, "from '../$1/");
+}
+
 export interface LayerReport {
   // Entries found on disk.
   present: LayerEntry[];

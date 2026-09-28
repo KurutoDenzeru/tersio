@@ -22,7 +22,7 @@ import {
   readTextIfExists,
   rtkPlatformSpec,
   resolveRtkBinary,
-} from '../lib/utils.ts';
+} from '../../lib/utils.ts';
 import { notify } from '../shared/pi-session-state.ts';
 import type { ExtensionCtx, PiExtensionAPI } from '../shared/pi-types.ts';
 

@@ -16,6 +16,7 @@ import {
   CAVEMAN_REMOTE_RULE, RTK_RELEASE_API, RtkRelease, fetchJson, findFile, httpsGet,
   httpsDownload, parseChecksum, readTextIfExists, rtkPlatformSpec, sha256File,
 } from '../extensions/lib/utils.ts';
+import { rewritePortImports } from './layer.ts';
 import { runLatestUpdate } from './update.ts';
 
 type FixTarget = 'extensions' | 'registrations' | 'rtk' | 'ponytail' | 'cli';

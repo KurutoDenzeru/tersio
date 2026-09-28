@@ -1,5 +1,5 @@
 // Pi's view of the host-free mode state in extensions/shared/.
-export * from '../shared/session-state.ts';
+export * from '../../shared/session-state.ts';
 import type { ExtensionCtx } from './pi-types.ts';
 
 // One section per extension, so two never overwrite each other.

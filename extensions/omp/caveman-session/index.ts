@@ -1,10 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { activeModesSummary, getSharedComboState, isComboPresetActive, lastCustomValue, normalizeInputCommand, normalizeMode, paintStatusBar, paintableCtx, reconcileSharedComboEntries, sessionEntries, setSharedComboListener, setSharedComboMode } from '../shared/session-state.ts';
-import { asPromptArray, isOmpSubagentPrompt } from '../shared/omp-prompt.ts';
+import { activeModesSummary, getSharedComboState, isComboPresetActive, lastCustomValue, normalizeInputCommand, normalizeMode, paintStatusBar, paintableCtx, reconcileSharedComboEntries, sessionEntries, setSharedComboListener, setSharedComboMode } from '../../shared/session-state.ts';
+import { asPromptArray, isOmpSubagentPrompt } from '../../shared/omp-prompt.ts';
 import { dirname, join } from 'node:path';
-import { readCavemanDefault } from '../shared/plugin-settings.ts';
-import type { ExtensionApi, ExtensionCtx, InputEvent, SessionEntry, SystemPromptEvent } from '../shared/types.ts';
+import { readCavemanDefault } from '../../shared/plugin-settings.ts';
+import type { ExtensionApi, ExtensionCtx, InputEvent, SessionEntry, SystemPromptEvent } from '../../shared/types.ts';
 
 const CAVERN_DIR = dirname(fileURLToPath(import.meta.url));
 const RULE_PATH = join(CAVERN_DIR, 'rule.md');

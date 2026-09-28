@@ -2,6 +2,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { readTextIfExists } from '../extensions/lib/utils.ts';
+import { rewritePortImports } from './layer.ts';
 import { piExtensionTargets, piLayer } from './pi-layer.ts';
 
 // `$HOME`-relative form of a path, for output that must stay readable.
@@ -66,7 +67,7 @@ export async function installPiTersio(
       }
       continue;
     }
-    if (await writeIfChanged(path.join(extDir, to), content, options)) written.push(to);
+    if (await writeIfChanged(path.join(extDir, to), rewritePortImports(content), options)) written.push(to);
   }
   for (const [dir, rule] of tree.rules) {
     if (rule === null) continue;

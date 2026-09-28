@@ -19,7 +19,7 @@ import {
   setSharedComboListener,
   setSharedComboMode,
 } from '../shared/pi-session-state.ts';
-import { readCavemanDefault } from '../shared/plugin-settings.ts';
+import { readCavemanDefault } from '../../shared/plugin-settings.ts';
 import type { ExtensionCtx, PiBeforeAgentStartEvent, PiExtensionAPI, PiInputEvent, SessionEntry } from '../shared/pi-types.ts';
 
 // Sealed section: this file writes `tersio-caveman` and nothing else.

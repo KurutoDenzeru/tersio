@@ -3,7 +3,7 @@
 import os from 'node:os';
 import path from 'node:path';
 import { getSharedComboState, notify, reconcileSharedComboEntries, sessionEntries } from '../shared/pi-session-state.ts';
-import { appendUsage, readUsage } from '../shared/usage-ledger.ts';
+import { appendUsage, readUsage } from '../../shared/usage-ledger.ts';
 import { checkAddonsSummary, runAddonUpdate } from '../ai-addons-updater/index.ts';
 import type { ExtensionCtx, PiExtensionAPI } from '../shared/pi-types.ts';
 

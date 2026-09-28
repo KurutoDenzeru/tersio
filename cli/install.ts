@@ -32,6 +32,7 @@ import {
   CAVEMAN_REMOTE_RULE, RTK_RELEASE_API, RtkRelease, RtkReleaseAsset, fetchJson, findFile, httpsGet,
   httpsDownload, parseChecksum, readTextIfExists, rtkPlatformSpec, sha256File,
 } from '../extensions/lib/utils.ts';
+import { rewritePortImports } from './layer.ts';
 import { storedProfile, writePluginSettings } from './profile.ts';
 import {
   agentChoices, clearRetiredPaths, detectHosts, displayPath, hostLayer,
@@ -43,7 +44,7 @@ import type { Profile } from './profile.ts';
 // Paths to extension source files (relative to this script)
 const EXT_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'extensions');
 const SHARED_SESSION_STATE = path.join(EXT_DIR, 'shared', 'session-state.ts');
-const OMP_PROMPT = path.join(EXT_DIR, 'omp', 'omp-prompt.ts');
+const SHARED_OMP_PROMPT = path.join(EXT_DIR, 'shared', 'omp-prompt.ts');
 const CAVEMAN_INDEX = path.join(EXT_DIR, 'omp', 'caveman-session', 'index.ts');
 const CAVEMAN_RULE = path.join(EXT_DIR, 'omp', 'caveman-session', 'rule.md');
 const RTK_SESSION_INDEX = path.join(EXT_DIR, 'omp', 'rtk-session', 'index.ts');
@@ -72,7 +73,7 @@ function piTreeSources(): Array<[string, string]> {
     [SHARED_USAGE_LEDGER, path.join('shared', 'usage-ledger.ts')],
     [SHARED_PRICING, path.join('shared', 'pricing.ts')],
     [SHARED_CARBON, path.join('shared', 'carbon.ts')],
-    [OMP_PROMPT, path.join('shared', 'omp-prompt.ts')],
+    [SHARED_OMP_PROMPT, path.join('shared', 'omp-prompt.ts')],
   ];
   for (const dir of PI_EXTENSION_DIRS) {
     pairs.push([path.join(piExt, dir, 'index.ts'), path.join(dir, 'index.ts')]);
@@ -352,12 +353,12 @@ async function copySources(extDir: string, files: Array<[string, string]>, skipL
     if (!options.quiet && options.dryRun) console.log(`  [skip] ${skipLabel} not found in repo`);
     return false;
   }
-  await writeIfChanged(path.join(extDir, files[0][1]), src, options);
+  await writeIfChanged(path.join(extDir, files[0][1]), rewritePortImports(src), options);
   const rest = files.slice(1);
   const extras = await Promise.all(rest.map(([from]) => readTextIfExists(from)));
   for (let i = 0; i < rest.length; i++) {
     const extra = extras[i];
-    if (extra) await writeIfChanged(path.join(extDir, rest[i][1]), extra, options);
+    if (extra) await writeIfChanged(path.join(extDir, rest[i][1]), rewritePortImports(extra), options);
   }
   return true;
 }
@@ -372,7 +373,7 @@ async function stepSharedSessionState(extDir: string, options: WriteOptions): Pr
     [SHARED_USAGE_LEDGER, path.join('shared', 'usage-ledger.ts')],
     [SHARED_PRICING, path.join('shared', 'pricing.ts')],
     [SHARED_CARBON, path.join('shared', 'carbon.ts')],
-    [OMP_PROMPT, path.join('shared', 'omp-prompt.ts')],
+    [SHARED_OMP_PROMPT, path.join('shared', 'omp-prompt.ts')],
   ], 'shared/session-state.js', options);
 }
 

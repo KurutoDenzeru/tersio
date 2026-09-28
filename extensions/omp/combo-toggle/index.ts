@@ -11,15 +11,15 @@ import {
   setSharedComboLevel,
   setSharedComboListener,
   setSharedComboMode,
-} from '../shared/session-state.ts';
-import { asPromptArray, isOmpSubagentPrompt, systemPromptIncludes } from '../shared/omp-prompt.ts';
+} from '../../shared/session-state.ts';
+import { asPromptArray, isOmpSubagentPrompt, systemPromptIncludes } from '../../shared/omp-prompt.ts';
 import {
   isComboSetupComplete,
   readComboDefault,
   readPonytailDefault,
   saveComboSetup,
-} from '../shared/plugin-settings.ts';
-import type { ComboState, ExtensionApi, ExtensionCtx, SystemPromptEvent } from '../shared/types.ts';
+} from '../../shared/plugin-settings.ts';
+import type { ComboState, ExtensionApi, ExtensionCtx, SystemPromptEvent } from '../../shared/types.ts';
 
 const PONYTAIL_FALLBACK_INTENSITY: Record<string, string> = {
   lite: 'Prefer the simplest correct solution.',

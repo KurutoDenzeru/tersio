@@ -14,7 +14,7 @@ import {
   setSharedComboListener,
   setSharedComboMode,
 } from '../shared/pi-session-state.ts';
-import { isComboSetupComplete, readComboDefault, readPonytailDefault, saveComboSetup } from '../shared/plugin-settings.ts';
+import { isComboSetupComplete, readComboDefault, readPonytailDefault, saveComboSetup } from '../../shared/plugin-settings.ts';
 import type { ExtensionCtx, PiBeforeAgentStartEvent, PiExtensionAPI } from '../shared/pi-types.ts';
 // Type-only: erased at load, so the repo-only two-level jump never has to resolve in the installed tree.
 

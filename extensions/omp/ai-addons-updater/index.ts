@@ -20,7 +20,7 @@ import {
   readTextIfExists,
   rtkPlatformSpec,
   resolveRtkBinary,
-} from '../lib/utils.ts';
+} from '../../lib/utils.ts';
 
 const IS_WINDOWS = process.platform === 'win32';
 const HOME = os.homedir();
