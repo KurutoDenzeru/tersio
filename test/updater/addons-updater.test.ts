@@ -41,7 +41,8 @@ const createFakePi = (execMock: ExecMock): FakePi & { getHandler(): CommandHandl
     setLabel: () => {},
     exec: execMock,
     cwd: PLUGINS_DIR,
-    env: { ...process.env, HOME },
+    // A fake host descriptor, not a child process: nothing to sandbox here.
+    env: { ...process.env },
     ui: { notify: () => {} },
   };
 };
@@ -95,7 +96,7 @@ test("/ai-addons update ponytail reports the bundled copy without touching npm",
 
   updaterExtension(fakePi);
   const handler = fakePi.getHandler();
-  expect(handler, "ai-addons command handler not registered via registerCommand").toBeTruthy();
+  if (!handler) throw new Error("ai-addons command handler not registered via registerCommand");
 
   const result = await handler("update ponytail", fakeCtx);
 
@@ -110,7 +111,7 @@ test("/ai-addons update ponytail without host exec still reports the bundled cop
 
   updaterExtension(fakePi);
   const handler = fakePi.getHandler();
-  expect(handler, "ai-addons command handler not registered via registerCommand").toBeTruthy();
+  if (!handler) throw new Error("ai-addons command handler not registered via registerCommand");
 
   const result = await handler("update ponytail", fakeCtx);
   expect(result).toMatch(/bundled with tersio/i);

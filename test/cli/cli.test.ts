@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
+import { cliEnv } from "../helpers/env.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const installer = path.join(root, "tersio.js");
@@ -58,7 +59,7 @@ test("dry-run previews shared bridge before dependent extensions without writing
     {
       encoding: "utf8",
       cwd: path.join(root, "test"),
-      env: { ...process.env, HOME: missingHome, USERPROFILE: missingHome },
+      env: cliEnv(missingHome),
     }
   );
 
@@ -83,7 +84,7 @@ test("user dry-run installs commands without retired reinforcement", () => {
     {
       encoding: "utf8",
       cwd: root,
-      env: { ...process.env, HOME: missingHome, USERPROFILE: missingHome },
+      env: cliEnv(missingHome),
     }
   );
 
@@ -101,7 +102,7 @@ test("user dry-run installs the tersio root-command extension", () => {
     {
       encoding: "utf8",
       cwd: root,
-      env: { ...process.env, HOME: missingHome, USERPROFILE: missingHome },
+      env: cliEnv(missingHome),
     }
   );
 
@@ -117,7 +118,7 @@ test("verbose dry-run reveals file paths hidden by default", () => {
     {
       encoding: "utf8",
       cwd: root,
-      env: { ...process.env, HOME: missingHome, USERPROFILE: missingHome },
+      env: cliEnv(missingHome),
     }
   );
 
@@ -131,7 +132,7 @@ test("the retired reinstall command is gone and doctor --fix repairs instead", (
     encoding: "utf8",
     timeout: 60000,
     cwd: root,
-    env: { ...process.env, HOME: missingHome, USERPROFILE: missingHome },
+    env: cliEnv(missingHome),
   });
   expect(removed.stdout, "reinstall is no longer a command").not.toMatch(/Tersio Uninstall/);
 
@@ -139,7 +140,7 @@ test("the retired reinstall command is gone and doctor --fix repairs instead", (
     encoding: "utf8",
     timeout: 60000,
     cwd: root,
-    env: { ...process.env, HOME: missingHome, USERPROFILE: missingHome },
+    env: cliEnv(missingHome),
   });
   expect(repaired.status, repaired.stderr).toBe(0);
   expect(repaired.stdout).toMatch(/extension tree|restoring plugin extension files/);
@@ -153,7 +154,7 @@ test("bare dry-run never prompts for the pending update and exits 0", () => {
     {
       encoding: "utf8",
       cwd: root,
-      env: { ...process.env, HOME: missingHome, USERPROFILE: missingHome },
+      env: cliEnv(missingHome),
     }
   );
 
@@ -170,7 +171,7 @@ test("uninstall dry-run previews shared bridge removal", () => {
       cwd: root,
       encoding: "utf8",
       timeout: 10000,
-      env: { ...process.env, HOME: missingHome, USERPROFILE: missingHome },
+      env: cliEnv(missingHome),
     }
   );
 
@@ -201,7 +202,7 @@ test("uninstall dry-run with --remove-ponytail previews full ponytail removal", 
         cwd: root,
         encoding: "utf8",
         timeout: 10000,
-        env: { ...process.env, HOME: home, USERPROFILE: home },
+        env: cliEnv(home),
       }
     );
 
@@ -221,7 +222,7 @@ test("uninstall dry-run includes ponytail by default; --keep-ponytail omits it",
       cwd: root,
       encoding: "utf8",
       timeout: 10000,
-      env: { ...process.env, HOME: missingHome, USERPROFILE: missingHome },
+      env: cliEnv(missingHome),
     });
 
   const def = spawn(["uninstall", "--dry-run", "--yes"]);
@@ -242,7 +243,7 @@ test("uninstall dry-run never prompts for confirmation", () => {
       cwd: root,
       encoding: "utf8",
       timeout: 10000,
-      env: { ...process.env, HOME: missingHome, USERPROFILE: missingHome },
+      env: cliEnv(missingHome),
     }
   );
 

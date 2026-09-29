@@ -11,6 +11,7 @@ import {
   readPluginSettings,
   readRtkDefault,
 } from "../../extensions/shared/plugin-settings.ts";
+import { cliEnv } from "../helpers/env.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const installer = path.join(root, "tersio.js");
@@ -120,7 +121,7 @@ function run(...args: string[]): RunResult {
     cwd: root,
     encoding: "utf8",
     timeout: 15000,
-    env: { ...process.env, HOME: missingHome, USERPROFILE: missingHome },
+    env: cliEnv(missingHome),
   });
   return { status: result.status, stdout: result.stdout || "", stderr: result.stderr || "" };
 }
@@ -176,7 +177,7 @@ test("installer does not add manifest-owned extensions to config.yml", () => {
       cwd: root,
       encoding: "utf8",
       timeout: 15000,
-      env: { ...process.env, HOME: home, USERPROFILE: home },
+      env: cliEnv(home),
     });
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).not.toMatch(/would.*config\.yml.*(?:combo|ponytail)/i);
@@ -259,7 +260,7 @@ test("apply-update without flags preserves stored combo defaults", () => {
       cwd: root,
       encoding: "utf8",
       timeout: 15000,
-      env: { ...process.env, HOME: home, USERPROFILE: home },
+      env: cliEnv(home),
     });
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toMatch(/Defaults: combo=balanced \(caveman=full · rtk=on · ponytail=full\)/);

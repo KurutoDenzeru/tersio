@@ -4,6 +4,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, wr
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { cliEnv } from "../helpers/env.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const installer = path.join(root, "tersio.js");
@@ -33,7 +34,7 @@ test("doctor reports MISSING components against an empty home", () => {
       cwd: root,
       encoding: "utf8",
       timeout: 15000,
-      env: { ...process.env, HOME: home, USERPROFILE: home, PATH: path.join(home, "empty-bin") },
+      env: cliEnv(home, { PATH: path.join(home, "empty-bin") }),
     });
 
     expect(result.status, result.stderr).toBe(0);
@@ -60,7 +61,7 @@ test("doctor names both hosts with the command that installs each", () => {
       cwd: root,
       encoding: "utf8",
       timeout: 15000,
-      env: { ...process.env, HOME: home, USERPROFILE: home, PATH: path.join(home, "empty-bin") },
+      env: cliEnv(home, { PATH: path.join(home, "empty-bin") }),
     });
 
     expect(result.status, result.stderr).toBe(0);
@@ -91,7 +92,7 @@ test("doctor reports each host that has tersio installed", () => {
       cwd: root,
       encoding: "utf8",
       timeout: 15000,
-      env: { ...process.env, HOME: home, USERPROFILE: home, PATH: path.join(home, "empty-bin") },
+      env: cliEnv(home, { PATH: path.join(home, "empty-bin") }),
     });
 
     expect(result.status, result.stderr).toBe(0);
@@ -113,7 +114,7 @@ test("doctor counts a pi declaration without a package directory as missing", ()
       cwd: root,
       encoding: "utf8",
       timeout: 15000,
-      env: { ...process.env, HOME: home, USERPROFILE: home, PATH: path.join(home, "empty-bin") },
+      env: cliEnv(home, { PATH: path.join(home, "empty-bin") }),
     });
 
     expect(result.status, result.stderr).toBe(0);
@@ -130,7 +131,7 @@ test("doctor --fix dry-run previews repairs without writing", () => {
       cwd: root,
       encoding: "utf8",
       timeout: 15000,
-      env: { ...process.env, HOME: home, USERPROFILE: home },
+      env: cliEnv(home),
     });
 
     expect(result.status, result.stderr).toBe(0);
@@ -152,7 +153,7 @@ test("doctor --fix repairs missing extension files in an empty home", () => {
       cwd: root,
       encoding: "utf8",
       timeout: 30000,
-      env: { ...process.env, HOME: home, USERPROFILE: home },
+      env: cliEnv(home),
     });
 
     expect(result.status, result.stderr).toBe(0);
@@ -174,7 +175,7 @@ test("doctor --fix repairs config.yml registrations in an empty home", () => {
       cwd: root,
       encoding: "utf8",
       timeout: 30000,
-      env: { ...process.env, HOME: home, USERPROFILE: home },
+      env: cliEnv(home),
     });
 
     expect(result.status, result.stderr).toBe(0);
@@ -200,7 +201,7 @@ test("doctor --fix removes manifest-loaded combo and Ponytail registrations", ()
       cwd: root,
       encoding: "utf8",
       timeout: 30000,
-      env: { ...process.env, HOME: home, USERPROFILE: home, PATH: path.join(home, "empty-bin") },
+      env: cliEnv(home, { PATH: path.join(home, "empty-bin") }),
     });
     expect(repair.status, repair.stderr).toBe(0);
     expect(readFileSync(path.join(agentDir, "config.yml"), "utf8")).not.toMatch(/combo-toggle|pi-extension/);
@@ -216,7 +217,7 @@ test("doctor --fix rejects an invalid scope", () => {
       cwd: root,
       encoding: "utf8",
       timeout: 15000,
-      env: { ...process.env, HOME: home, USERPROFILE: home },
+      env: cliEnv(home),
     });
 
     expect(result.status).toBe(1);
@@ -241,7 +242,7 @@ test("doctor reports the rtk binary version", () => {
       cwd: root,
       encoding: "utf8",
       timeout: 15000,
-      env: { ...process.env, HOME: home, USERPROFILE: home, PATH: binDir },
+      env: cliEnv(home, { PATH: binDir }),
     });
 
     expect(result.status, result.stderr).toBe(0);
@@ -269,7 +270,7 @@ test("doctor reports retired reinforcement registration and fix removes it", () 
       cwd: root,
       encoding: "utf8",
       timeout: 15000,
-      env: { ...process.env, HOME: home, USERPROFILE: home, PATH: path.join(home, "empty-bin") },
+      env: cliEnv(home, { PATH: path.join(home, "empty-bin") }),
     });
     expect(before.stdout).toMatch(/⚠️ Retired reinforcement registration:/);
 
@@ -277,7 +278,7 @@ test("doctor reports retired reinforcement registration and fix removes it", () 
       cwd: root,
       encoding: "utf8",
       timeout: 30000,
-      env: { ...process.env, HOME: home, USERPROFILE: home, PATH: path.join(home, "empty-bin") },
+      env: cliEnv(home, { PATH: path.join(home, "empty-bin") }),
     });
     expect(repair.status, repair.stderr).toBe(0);
     expect(readFileSync(path.join(agentDir, "config.yml"), "utf8")).not.toContain("mode-reinforcement.ts");

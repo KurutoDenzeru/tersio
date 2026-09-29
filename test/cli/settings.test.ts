@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { cliEnv } from "../helpers/env.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const installer = path.join(root, "tersio.js");
@@ -31,7 +32,7 @@ test("settings --dry-run previews without writing", () => {
       cwd: root,
       encoding: "utf8",
       timeout: 15000,
-      env: { ...process.env, HOME: home, USERPROFILE: home },
+      env: cliEnv(home),
     });
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toMatch(/│ Setting +│ Current +│ Valid values +│/);
@@ -58,7 +59,7 @@ test("settings --currency writes the display default without touching modes", ()
       cwd: root,
       encoding: "utf8",
       timeout: 15000,
-      env: { ...process.env, HOME: home, USERPROFILE: home },
+      env: cliEnv(home),
     });
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toMatch(/currency=PHP/);
@@ -79,7 +80,7 @@ test("settings table hides the currency default (dashboard owns it)", () => {
       cwd: root,
       encoding: "utf8",
       timeout: 15000,
-      env: { ...process.env, HOME: home, USERPROFILE: home },
+      env: cliEnv(home),
     });
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).not.toMatch(/│ currency /);
@@ -100,7 +101,7 @@ test("settings with flags writes combo preset + overrides", () => {
         cwd: root,
         encoding: "utf8",
         timeout: 15000,
-        env: { ...process.env, HOME: home, USERPROFILE: home },
+        env: cliEnv(home),
       },
     );
     expect(result.status, result.stderr).toBe(0);
@@ -120,7 +121,7 @@ test("settings rejects an unknown setting name", () => {
   const result = spawnSync(process.execPath, [installer, "settings", "bogus"], {
     encoding: "utf8",
     cwd: root,
-    env: { ...process.env, HOME: mkdtempSync(path.join(os.tmpdir(), "tersio-settings-")), USERPROFILE: process.env.HOME },
+    env: cliEnv(mkdtempSync(path.join(os.tmpdir(), "tersio-settings-"))),
     timeout: 15000,
   });
   expect(result.status).toBe(1);
@@ -134,7 +135,7 @@ test("settings without flags and no TTY prints usage", () => {
       cwd: root,
       encoding: "utf8",
       timeout: 15000,
-      env: { ...process.env, HOME: home, USERPROFILE: home },
+      env: cliEnv(home),
     });
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toMatch(/│ Setting +│ Current +│ Valid values +│/);

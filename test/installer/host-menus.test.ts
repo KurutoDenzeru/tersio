@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 
 import { detectHosts, hostLabel } from "../../cli/hosts.ts";
 import type { HostEntry } from "../../cli/hosts.ts";
+import { cliEnv } from "../helpers/env.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const cli = path.join(root, "tersio.js");
@@ -30,7 +31,7 @@ function run(home: string, args: string[]): { status: number | null; stdout: str
     cwd: root,
     encoding: "utf8",
     timeout: 30000,
-    env: { ...process.env, HOME: home, USERPROFILE: home, PATH: path.join(home, "empty-bin") },
+    env: cliEnv(home, { PATH: path.join(home, "empty-bin") }),
   });
   return { status: result.status, stdout: result.stdout, stderr: result.stderr };
 }

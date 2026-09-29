@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { cliEnv } from "../helpers/env.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const installer = path.join(root, "tersio.js");
@@ -15,7 +16,7 @@ function run(home: string, ...args: string[]) {
     cwd: root,
     encoding: "utf8",
     timeout: 15000,
-    env: { ...process.env, HOME: home, USERPROFILE: home },
+    env: cliEnv(home),
   });
 }
 

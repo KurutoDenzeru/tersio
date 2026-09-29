@@ -4,6 +4,7 @@ import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:f
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { cliEnv } from "../helpers/env.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const updateJs = path.join(root, "cli", "update.js").replace(/\\/g, "/");
@@ -27,7 +28,7 @@ function setup(fakeNpmBody: string, cache: unknown): { dir: string; env: Env } {
   if (cache !== null) {
     writeFileSync(path.join(home, ".omp", "plugins", "tersio-update-check.json"), JSON.stringify(cache), "utf8");
   }
-  const env: Env = { ...process.env, HOME: home, PATH: bin + path.delimiter + process.env.PATH };
+  const env: Env = cliEnv(home, { PATH: bin + path.delimiter + (process.env.PATH || "") });
   return { dir, env };
 }
 
