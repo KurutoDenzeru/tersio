@@ -1,18 +1,17 @@
 {
   "name": "@krtclcdy/tersio",
   "version": "2.24.0",
-  "description": "\u2702\ufe0f Token-saving OMP add-ons: terse Caveman replies, compact RTK shell output, lean Ponytail code calls \u2014 one-command combo presets.",
+  "description": "\u2702\ufe0f Token saver and usage tracker for coding agents: terse Caveman replies, compact RTK shell output, lean Ponytail code calls, and a gain dashboard \u2014 one-command combo presets over one shared extension tree.",
   "keywords": [
-    "omp",
-    "pi",
-    "pi-package",
     "token-saving",
     "ai-tools",
     "developer-tools",
     "caveman-mode",
     "rtk-rust-token-killer",
-    "ponytail-omp",
-    "extensions"
+    "ponytail",
+    "extensions",
+    "pi",
+    "pi-package"
   ],
   "license": "MIT",
   "author": "KurutoDenzeru",
