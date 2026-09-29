@@ -1,4 +1,4 @@
-import { promises as fs } from 'node:fs';
+import { existsSync, promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,34 +17,43 @@ import {
   httpsDownload, parseChecksum, readTextIfExists, rtkPlatformSpec, sha256File,
 } from '../extensions/lib/utils.ts';
 import { runLatestUpdate } from './update.ts';
+import { TREE_FILES, sourcePath } from './manifest.ts';
+import { detectHosts, hostExtensionsDir } from './hosts.ts';
 
 type FixTarget = 'extensions' | 'registrations' | 'rtk' | 'ponytail' | 'cli';
 type FixRequest = FixTarget | 'all';
 
 const EXT_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'extensions');
-const SOURCES: Array<[string, string]> = [
-  [path.join(EXT_DIR, 'shared', 'session-state.ts'), path.join('shared', 'session-state.ts')],
-  [path.join(EXT_DIR, 'shared', 'types.ts'), path.join('shared', 'types.ts')],
-  [path.join(EXT_DIR, 'lib', 'utils.ts'), path.join('lib', 'utils.ts')],
-  [path.join(EXT_DIR, 'shared', 'plugin-settings.ts'), path.join('shared', 'plugin-settings.ts')],
-  [path.join(EXT_DIR, 'shared', 'usage-ledger.ts'), path.join('shared', 'usage-ledger.ts')],
-  [path.join(EXT_DIR, 'shared', 'pricing.ts'), path.join('shared', 'pricing.ts')],
-  [path.join(EXT_DIR, 'shared', 'carbon.ts'), path.join('shared', 'carbon.ts')],
-  [path.join(EXT_DIR, 'caveman-session', 'index.ts'), path.join('caveman-session', 'index.ts')],
-  [path.join(EXT_DIR, 'caveman-session', 'rule.md'), path.join('caveman-session', 'rule.md')],
-  [path.join(EXT_DIR, 'rtk-session', 'index.ts'), path.join('rtk-session', 'index.ts')],
-  [path.join(EXT_DIR, 'ai-addons-updater', 'index.ts'), path.join('ai-addons-updater', 'index.ts')],
-  [path.join(EXT_DIR, 'combo-toggle', 'index.ts'), path.join('combo-toggle', 'index.ts')],
-  [path.join(EXT_DIR, 'tersio-commands', 'index.ts'), path.join('tersio-commands', 'index.ts')],
-];
+
+
+// A written tree is the install for both hosts now, so --fix restores it for
+// whichever hosts have it, alongside the OMP package when that is present.
+async function fixExtensionTrees(): Promise<void> {
+  for (const host of detectHosts()) {
+    const dest = hostExtensionsDir(host.id);
+    // Repair a host whose tree is partly there: a half-written tree is exactly
+    // the case this runs for, and it reads as "not installed" to the detector.
+    const present = TREE_FILES.filter((file) => existsSync(path.join(dest, file))).length;
+    if (present === 0) continue;
+    await fs.mkdir(dest, { recursive: true });
+    for (const file of TREE_FILES) {
+      const from = path.join(EXT_DIR, ...file.split('/'));
+      const text = await readTextIfExists(from);
+      if (text === null) console.log(`  [warn] bundled source missing: ${from}`);
+      else await writeIfChanged(path.join(dest, file), text, { dryRun, verbose });
+    }
+    if (!dryRun) console.log(`  [ok] ${host.label} extension tree: ${dest}`);
+  }
+}
 
 async function fixExtensions(pluginsDir: string): Promise<void> {
+  await fixExtensionTrees();
   console.log('  Doctor --fix: restoring plugin extension files');
   const tersioPluginDir = path.join(pluginsDir, 'node_modules', '@krtclcdy', 'tersio');
   const pluginExtDir = path.join(tersioPluginDir, 'extensions');
   await fs.mkdir(pluginExtDir, { recursive: true });
 
-  for (const [from, to] of SOURCES) {
+  for (const [from, to] of TREE_FILES.map((file) => [sourcePath(file), file] as [string, string])) {
     const text = await readTextIfExists(from);
     if (text === null) console.log(`  [warn] bundled source missing: ${from}`);
     else await writeIfChanged(path.join(pluginExtDir, to), text, { dryRun, verbose });

@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { activeModesSummary, asPromptArray, getSharedComboState, isComboPresetActive, isOmpSubagentPrompt, lastCustomValue, normalizeInputCommand, normalizeMode, paintStatusBar, paintableCtx, reconcileSharedComboEntries, sessionEntries, setSharedComboListener, setSharedComboMode } from '../shared/session-state.ts';
+import { activeModesSummary, getSharedComboState, isComboPresetActive, isOmpSubagentPrompt, lastCustomValue, normalizeInputCommand, normalizeMode, paintStatusBar, paintableCtx, reconcileSharedComboEntries, sessionEntries, setSharedComboListener, setSharedComboMode } from '../shared/session-state.ts';
 import { dirname, join } from 'node:path';
+import { injectPromptText, onHostEvent, setExtensionLabel } from '../shared/host.ts';
 import { readCavemanDefault } from '../shared/plugin-settings.ts';
 import type { ExtensionApi, ExtensionCtx, InputEvent, SessionEntry, SystemPromptEvent } from '../shared/types.ts';
 
@@ -81,7 +82,7 @@ export default function cavemanSessionExtension(pi: ExtensionApi): void {
     return true;
   }
 
-  pi.setLabel?.('Caveman session toggle');
+  setExtensionLabel(pi, 'Caveman session toggle');
 
   // Live mirror: a /tersio or /combo switch publishes shared state — adopt
   // it at once so the next turn injects the new mode with no session reload.
@@ -112,7 +113,7 @@ export default function cavemanSessionExtension(pi: ExtensionApi): void {
     },
   });
 
-  pi.on<InputEvent>('input', async (event) => {
+  onHostEvent<InputEvent>(pi, 'input', async (event) => {
     if (event?.source === 'extension') return;
     if (currentMode !== 'off' && isOffCommand(event?.text)) setMode('off');
   });
@@ -136,7 +137,7 @@ export default function cavemanSessionExtension(pi: ExtensionApi): void {
     ctx?.ui?.notify?.(`Caveman loaded: ${currentMode}`, 'info');
   });
 
-  pi.on('session_branch', async (_event, ctx) => {
+  onHostEvent(pi, 'session_branch', async (_event, ctx) => {
     restoreMode(ctx);
   });
 
@@ -160,7 +161,6 @@ export default function cavemanSessionExtension(pi: ExtensionApi): void {
     const def = INSTRUCTIONS[mode];
     if (!def) return;
     const instruction = typeof def === 'function' ? def() : def;
-    const base = asPromptArray(event.systemPrompt);
-    return { systemPrompt: [...base, instruction] };
+    return injectPromptText(pi, event, instruction);
   });
 }

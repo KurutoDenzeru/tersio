@@ -3,7 +3,7 @@
 // profile card, and the footer in template.html + settings.js + share.js.
 // Shadcn Dialog + Select carry the structure; the row language, danger
 // zone, and share actions stay identical to the original.
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -46,6 +46,84 @@ function OmpLogo() {
   );
 }
 
+function PiLogo() {
+  // The mark from pi.dev, cropped to its own bounds (165..635) so it fills the
+  // 40px tile the way the OMP tile does; the stock 800 viewBox has margins.
+  return (
+    <svg viewBox="165 165 470 470" aria-hidden="true" className="size-full">
+      <path fill="#F09082" d="M165.29 165.29H517.36V400H400V282.65H165.29Z" />
+      <path fill="#4D9ABF" d="M165.29 282.65H282.65V400H400V517.36H282.65V634.72H165.29Z" />
+      <path fill="#F1BE58" d="M517.36 400H634.72V634.72H517.36Z" />
+    </svg>
+  );
+}
+
+interface AgentRowProps {
+  name: string;
+  version: string | null;
+  binPath: string | null;
+  bin: string;
+  docs: string;
+  available: boolean;
+  unavailable: boolean;
+  logo: ReactNode;
+}
+
+function AgentRow({ name, version, binPath, bin, docs, available, unavailable, logo }: AgentRowProps) {
+  const status = unavailable ? "Unavailable" : available ? "Available" : "Not detected on PATH";
+  return (
+    <a
+      href={docs}
+      target="_blank"
+      rel="noreferrer"
+      className="group flex min-w-0 items-center gap-3 py-3 transition-colors hover:bg-track/40 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent"
+      aria-label={`Open ${name}`}
+    >
+      <span className="grid size-8 shrink-0 place-items-center overflow-hidden rounded-md bg-track p-1 transition-transform duration-500 ease-out group-hover:scale-105">
+        {logo}
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 flex-wrap items-baseline gap-x-2">
+          <span className="truncate text-sm font-semibold">{name}</span>
+          {version && <span className="mono text-xs whitespace-nowrap text-dim">{version}</span>}
+        </div>
+        <div className="mt-0.5 min-w-0 text-xs text-dim">
+          {binPath ? (
+            <HoverTip content={binPath}>
+              <span className="mono block truncate">{binPath}</span>
+            </HoverTip>
+          ) : available ? (
+            <span>Available as {bin} on PATH.</span>
+          ) : unavailable ? (
+            <span>Health information is unavailable.</span>
+          ) : (
+            <span>Not detected on PATH as {bin}.</span>
+          )}
+        </div>
+      </div>
+      <Badge variant={available ? "secondary" : unavailable ? "destructive" : "outline"} className="ml-auto shrink-0 gap-1.5 px-2 py-0.5 text-xs whitespace-nowrap">
+        <span className={`size-1.5 rounded-full ${available ? "bg-accent" : unavailable ? "bg-danger" : "bg-track"}`} />
+        {status}
+      </Badge>
+      <Icon name="chevron-right" className="size-4 shrink-0 text-dim" />
+    </a>
+  );
+}
+
+// Share destinations are fixed origins; only the text is ours. Building the
+// URL from a constant keeps the host a known one whatever the text contains.
+const SHARE_ORIGINS = {
+  x: "https://x.com/intent/post",
+  reddit: "https://www.reddit.com/submit",
+  linkedin: "https://www.linkedin.com/feed/",
+} as const;
+
+function shareUrl(target: keyof typeof SHARE_ORIGINS, params: Record<string, string>): string {
+  const url = new URL(SHARE_ORIGINS[target]);
+  for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
+  return url.toString();
+}
+
 function HealthPane() {
   const [health, setHealth] = useState<HealthReport | null | undefined>(undefined);
   const [refreshing, setRefreshing] = useState(false);
@@ -62,10 +140,13 @@ function HealthPane() {
     load();
   }, [load]);
 
-  const ready = !!health?.omp;
   const unavailable = health === null;
-  const status = unavailable ? "Unavailable" : ready ? "Available" : "Not detected on PATH";
-  const path = health?.ompPath;
+  // One row per host, built the same way: a host that is not on the machine
+  // still shows its binary name and where it would be looked up.
+  const agents: AgentRowProps[] = [
+    { name: "Oh My Pi", version: health?.omp ?? null, binPath: health?.ompPath ?? null, bin: "omp", docs: "https://omp.sh", available: !!health?.omp, unavailable, logo: <OmpLogo /> },
+    { name: "Pi", version: health?.pi ?? null, binPath: health?.piPath ?? null, bin: "pi", docs: "https://pi.dev", available: !!health?.pi, unavailable, logo: <PiLogo /> },
+  ];
 
   return (
     <div>
@@ -90,43 +171,17 @@ function HealthPane() {
           </div>
         </div>
       ) : (
-        <a
-          href="https://omp.sh"
-          target="_blank"
-          rel="noreferrer"
-          className="flex min-w-0 items-center gap-3 border-b border-line py-4 transition-colors hover:bg-track/40 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent"
-          aria-label="Open Oh My Pi"
-        >
-          <span className="grid size-10 shrink-0 place-items-center overflow-hidden rounded-lg bg-track p-1.5">
-            <OmpLogo />
-          </span>
-          <div className="min-w-0 flex-1">
-            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-              <span className="text-sm font-semibold">Oh My Pi</span>
-              {health?.omp && <span className="mono text-xs text-dim">{health.omp}</span>}
-            </div>
-            <div className="mt-1 min-w-0 text-xs text-dim">
-              {path ? (
-                <HoverTip content={path}>
-                  <span className="mono block truncate">{path}</span>
-                </HoverTip>
-              ) : ready ? (
-                <span>Available as omp on PATH.</span>
-              ) : health === null ? (
-                <span>Health information is unavailable.</span>
-              ) : (
-                <span>Not detected on PATH as omp.</span>
-              )}
-            </div>
-          </div>
-          <Badge variant={ready ? "secondary" : unavailable ? "destructive" : "outline"} className="ml-auto shrink-0 gap-1.5">
-            <span className={`size-1.5 rounded-full ${ready ? "bg-accent" : unavailable ? "bg-danger" : "bg-track"}`} />
-            {status}
-          </Badge>
-          <Icon name="chevron-right" className="shrink-0 text-dim" />
-        </a>
+        <div className="divide-y divide-line">
+          {agents.map((agent) => (
+            <AgentRow key={agent.name} {...agent} />
+          ))}
+        </div>
       )}
-      {checkedAt && <p className="mt-3 text-xs text-dim" role="status">Checked just now</p>}
+      {checkedAt && (
+        <p className="mt-2.5 text-xs text-dim" role="status">
+          Checked just now
+        </p>
+      )}
     </div>
   );
 }
@@ -903,7 +958,7 @@ export function ShareDialog({
                 className="inline-flex cursor-pointer items-center gap-1.5 rounded-[10px] border border-line bg-transparent px-[9px] py-[7px] text-xs text-ink hover:border-accent [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]"
                 aria-label="Share on X"
                 onClick={() => shareImage(
-                  () => window.open(`https://x.com/intent/post?text=${encodeURIComponent(`${text} #Tersio`)}`, "_blank", "noopener,noreferrer,width=560,height=460"),
+                  () => window.open(shareUrl("x", { text: `${text} #Tersio` }), "_blank", "noopener,noreferrer,width=560,height=460"),
                   "X",
                 )}
               >
@@ -918,7 +973,7 @@ export function ShareDialog({
               className="inline-flex cursor-pointer items-center gap-1.5 rounded-[10px] border border-line bg-transparent px-[9px] py-[7px] text-xs text-ink hover:border-accent [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]"
               aria-label="Share on Reddit"
               onClick={() => shareImage(
-                () => window.open(`https://www.reddit.com/submit?title=${encodeURIComponent("My Tersio usage profile")}&text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer"),
+                () => window.open(shareUrl("reddit", { title: "My Tersio usage profile", text }), "_blank", "noopener,noreferrer"),
                 "Reddit",
               )}
             >
@@ -933,7 +988,7 @@ export function ShareDialog({
               className="inline-flex cursor-pointer items-center gap-1.5 rounded-[10px] border border-line bg-transparent px-[9px] py-[7px] text-xs text-ink hover:border-accent [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]"
               aria-label="Share on LinkedIn"
               onClick={() => shareImage(
-                () => window.open("https://www.linkedin.com/feed/", "_blank", "noopener,noreferrer"),
+                () => window.open(shareUrl("linkedin", {}), "_blank", "noopener,noreferrer"),
                 "LinkedIn",
               )}
             >

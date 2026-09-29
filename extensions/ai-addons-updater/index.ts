@@ -1,23 +1,24 @@
-// OMP extension: /ai-addons manual updater for Ponytail, RTK, Caveman.
-// Built-in Node modules only. Default off; registers a single slash command.
-// ponytail: `skipped: none` — semantics match one-liner: fetch + compare + run install.
-// rtk: `skipped: signature verification` — checksums.txt ships only SHA256 of release assets; add sigchain when upstream publishes a signing key.
-// caveman: `skipped: none` — exactly the ask: write rule.md, report old/new hash.
+// /ai-addons manual updater. Node built-ins only. RTK ships SHA256 checksums
+// with no signature, so checksum-only is the best available.
 
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
+import { setExtensionLabel } from '../shared/host.ts';
 import {
   CAVEMAN_REMOTE_RULE as CAVEMAN_REMOTE,
   RTK_RELEASE_API,
   RtkRelease,
   fetchJson,
   findFile,
+  findHoistedPackage,
   httpsGet,
   httpsDownload,
+  isPiProcess,
   sha256Hex,
   parseChecksum,
   normalizeRtkVersion,
@@ -27,23 +28,20 @@ import {
 } from '../lib/utils.ts';
 
 const IS_WINDOWS = process.platform === 'win32';
-const HOME = os.homedir();
+const EXTENSION_DIR = path.dirname(fileURLToPath(import.meta.url));
 
 const PONYTAIL_REMOTE = 'https://raw.githubusercontent.com/DietrichGebert/ponytail/main/package.json';
-const PONYTAIL_LOCAL = path.join(HOME, '.omp', 'plugins', 'node_modules', '@dietrichgebert', 'ponytail', 'package.json');
 const RTK_BINARY = resolveRtkBinary();
-const CAVEMAN_LOCAL = path.join(
-  HOME,
-  '.omp',
-  'plugins',
-  'node_modules',
-  '@krtclcdy',
-  'tersio',
-  'extensions',
-  'caveman-session',
-  'rule.md',
-);
-const RELOAD_MSG = 'Reminder: restart OMP (or reload extensions) for updates to take effect.';
+// Beside this file, not a host path: that is the rule.md /caveman reads.
+const CAVEMAN_LOCAL = path.join(EXTENSION_DIR, '..', 'caveman-session', 'rule.md');
+const HOST_NAME = isPiProcess() ? 'Pi' : 'OMP';
+const RELOAD_MSG = `Reminder: restart ${HOST_NAME} (or reload extensions) for updates to take effect.`;
+
+// Ponytail is a hoisted dependency, so the installed copy is found by walking
+// up rather than by naming a host directory.
+function ponytailLocal(): string | null {
+  return findHoistedPackage('@dietrichgebert/ponytail', EXTENSION_DIR, 'package.json');
+}
 
 // --- Types ---
 
@@ -85,17 +83,25 @@ function checkFailed(name: string, e: unknown): AddonStatus {
   return { text: `${name} check failed: ${(e as Error).message}`, level: 'warning' };
 }
 
-// Single error-handling source for the three probes; messages unchanged.
 function runCheck(name: string, probe: () => Promise<string>): Promise<AddonStatus> {
   return probe().then((text) => ({ text, level: 'info' as const }), (e) => checkFailed(name, e));
 }
 
-// Check: no mutation. Probes run concurrently via checkAddons below.
+// A missing file is "not installed"; an unreadable one is a reportable fault.
+function parsePackageVersion(raw: string | null): string | null {
+  if (!raw) return null;
+  try {
+    return (JSON.parse(raw) as { version?: string }).version ?? null;
+  } catch {
+    throw new Error('ponytail package.json is not readable JSON');
+  }
+}
+
 function checkPonytail(): Promise<AddonStatus> {
   return runCheck('Ponytail', async () => {
     const remoteJson = await fetchJson<{ version?: string }>(PONYTAIL_REMOTE);
-    const localRaw = await readTextIfExists(PONYTAIL_LOCAL);
-    const localVer = localRaw ? (JSON.parse(localRaw) as { version?: string }).version ?? null : null;
+    const localRaw = await readTextIfExists(ponytailLocal() ?? '');
+    const localVer = parsePackageVersion(localRaw);
     const remoteVer = remoteJson.version;
     const status = !localVer ? 'not installed'
       : localVer === remoteVer ? 'up to date'
@@ -175,12 +181,10 @@ async function checkAddons(ctx: AddonUpdaterCtx): Promise<string> {
 }
 
 async function updatePonytail(pi: AddonUpdaterPi, ctx: AddonUpdaterCtx, dryRun = false): Promise<string> {
-  // Bundled with tersio: no separate package to refresh. `tersio update`
-  // pulls the bundled copy with the CLI.
+  // Bundled with tersio: `tersio update` pulls the copy with the CLI.
   let localVer: string | null = null;
   try {
-    const raw = await readTextIfExists(PONYTAIL_LOCAL);
-    if (raw) localVer = (JSON.parse(raw) as { version?: string }).version ?? null;
+    localVer = parsePackageVersion(await readTextIfExists(ponytailLocal() ?? ''));
   } catch { localVer = null; }
   void pi;
   const m = dryRun
@@ -201,7 +205,6 @@ async function updateRtk(ctx: AddonUpdaterCtx, dryRun = false): Promise<string> 
   const assets = Array.isArray(release.assets) ? release.assets : [];
   if (!RTK_BINARY) return report(ctx, 'RTK: executable not found in PATH', 'warning');
 
-  // Cross-platform asset selection (mirrors installer stepRtk)
   const PLATFORM = process.platform;
   const ARCH = process.arch;
   const spec = rtkPlatformSpec(PLATFORM, ARCH);
@@ -234,7 +237,6 @@ async function updateRtk(ctx: AddonUpdaterCtx, dryRun = false): Promise<string> 
       httpsDownload(asset.browser_download_url, archivePath),
       httpsDownload(checksAsset.browser_download_url, checksPath),
     ]);
-    // Verify SHA256 against checksums.txt
     const checks = await fs.readFile(checksPath, 'utf8');
     const expected = parseChecksum(checks, asset.name);
     if (!expected) {
@@ -249,7 +251,6 @@ async function updateRtk(ctx: AddonUpdaterCtx, dryRun = false): Promise<string> 
     }
     notify(ctx, 'RTK: checksum verified.', 'info');
 
-    // Extract by archive format
     const extractDir = path.join(tmp, 'extracted');
     await fs.mkdir(extractDir, { recursive: true });
 
@@ -281,7 +282,6 @@ async function updateRtk(ctx: AddonUpdaterCtx, dryRun = false): Promise<string> 
 
     await fs.copyFile(rtkExtracted, RTK_BINARY);
 
-    // Set executable bit on Unix
     if (!IS_WINDOWS) {
       await fs.chmod(RTK_BINARY, 0o755);
     }
@@ -343,7 +343,7 @@ async function updateCaveman(ctx: AddonUpdaterCtx, dryRun = false): Promise<stri
 }
 
 export default function aiAddonsUpdaterExtension(pi: AddonUpdaterPi): void {
-  pi.setLabel?.('AI add-ons updater');
+  setExtensionLabel(pi, 'AI add-ons updater');
 
   pi.registerCommand?.('ai-addons', {
     description: 'Check or update AI add-ons (ponytail/rtk/caveman/all). Usage: /ai-addons <check|status|update ponytail|rtk|caveman|all> [--dry-run]',

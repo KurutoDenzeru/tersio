@@ -44,10 +44,8 @@ async function latestPublishedVersion(): Promise<string | null> {
   }
 }
 
-// Returns a newer published version, null when up to date, or 'unknown' when
-// the registry cannot be reached. Reads the registry at most once per TTL
-// (cached under OMP_PLUGINS_DIR) unless force skips the cache — an explicit
-// "check for updates" must never trust a stale cache.
+// A newer published version, null when up to date, 'unknown' when the registry
+// is unreachable. Cached for a TTL unless force, which must not trust a cache.
 async function checkForUpdate(force = false): Promise<string | null | 'unknown'> {
   const cachePath = tersioDataPath('update-check.json', 'tersio-update-check.json');
   const cached = parseJsonObject<{ latest?: string; lastCheck?: number }>(await readTextIfExists(cachePath));
@@ -60,13 +58,12 @@ async function checkForUpdate(force = false): Promise<string | null | 'unknown'>
     await fs.writeFile(cachePath, JSON.stringify({ latest, lastCheck: Date.now() }) + '\n', 'utf8').catch(() => { });
     return newerThan(latest, PACKAGE_VERSION) ? latest : null;
   }
-  // Registry unreachable: a stale cache naming a newer release is still
-  // actionable; otherwise report unknown so callers never claim "latest".
+  // Unreachable registry: a stale cache naming a newer release is still
+  // actionable, else report unknown so nobody claims "latest".
   return cached?.latest && newerThan(cached.latest, PACKAGE_VERSION) ? cached.latest : 'unknown';
 }
 
-// Race a probe against a timeout; slow or failing probes resolve null so the
-// update plan stays best-effort and never blocks the update itself.
+// Race a probe against a timeout; failures resolve null so nothing blocks.
 async function settle<T>(work: Promise<T>, ms: number): Promise<T | null> {
   let timer: NodeJS.Timeout | undefined;
   try {
@@ -79,9 +76,7 @@ async function settle<T>(work: Promise<T>, ms: number): Promise<T | null> {
   }
 }
 
-// Run a child with inherited stdio for live output. Used when the child
-// renders its own interactive UI (the delegated installer runs Clack
-// spinners), which a concurrent outer spinner would corrupt into stray bars.
+// Inherited stdio, so a child spinner cannot corrupt this parent's.
 async function execInherit(cmd: string, args: string[]): Promise<void> {
   const code = await new Promise<number>((resolve, reject) => {
     const child = spawn(cmd, args, { stdio: 'inherit' });
@@ -100,8 +95,8 @@ interface UpdatePlan {
   ponytail: string | null;
 }
 
-// Current → latest per add-on. Every probe is capped and nullable; the plan
-// prints `unknown` for anything unreachable and the update proceeds anyway.
+// Current → latest per add-on. Every probe is capped and nullable, and the
+// plan prints `unknown` for anything unreachable.
 async function probeUpdatePlan(cliLatest: string | null): Promise<UpdatePlan> {
   const rtkBin = resolveRtkBinary();
   const ponytailPkg = path.join(OMP_PLUGINS_DIR, 'node_modules', '@dietrichgebert', 'ponytail', 'package.json');
@@ -123,8 +118,8 @@ async function probeUpdatePlan(cliLatest: string | null): Promise<UpdatePlan> {
   };
 }
 
-// Every add-on prints its status: version jump when stale, "up to date"
-// otherwise, honest "unknown" when the probe cannot reach its source.
+// Every add-on prints a version jump when stale, "up to date" otherwise, and
+// "unknown" when its source cannot be reached.
 function planLines(plan: UpdatePlan): { stale: string[]; status: string[] } {
   const stale: string[] = [];
   const status: string[] = [];
@@ -155,13 +150,11 @@ async function runLatestUpdate(): Promise<void> {
 
   const npmCommand = IS_WINDOWS ? process.env.ComSpec || 'cmd.exe' : 'npm';
 
-  // Resolve the target explicitly: `npm view --prefer-online` beats the local
-  // metadata cache, so a stale `@latest` can never pin an older release.
+  // `--prefer-online` beats the local cache, so a stale @latest cannot pin down.
   const cliLatest = await latestPublishedVersion();
   const target = cliLatest && /^\d+\.\d+\.\d+$/.test(cliLatest) ? `@${cliLatest}` : '@latest';
 
-  // Current → latest per add-on. Best-effort; unreachable probes print as
-  // unknown and never block the update.
+  // Best-effort: unreachable probes print as unknown.
   const plan = await probeUpdatePlan(cliLatest);
   const { stale, status } = planLines(plan);
   if (dryRun) {

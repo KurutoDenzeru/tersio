@@ -63,3 +63,22 @@ test("tracked sources only import git-tracked files", () => {
   expect(violations, `tracked sources reference files that are not committed — a fresh clone fails at tsc. ` +
       `Commit the targets or fix the imports:\n${violations.join("\n")}`,).toEqual([]);
 });
+
+// A spawn that spreads process.env while overriding HOME still inherits the
+// surrounding session's pi agent dir, so the CLI reads and writes the real
+// ~/.pi/agent. One such test deleted a real pi extension tree. cliEnv() pins
+// both variables; nothing else may build a child env that way.
+function gitTsFiles(): string[] {
+  return [...trackedFiles()].filter((f) => f.endsWith(".ts"));
+}
+
+test("no test spawns the CLI with process.env and an overridden HOME", () => {
+  const offenders: string[] = [];
+  for (const file of gitTsFiles().filter((f) => f.startsWith("test/") && f !== "test/setup.ts")) {
+    for (const [i, line] of readFileSync(path.join(root, file), "utf8").split("\n").entries()) {
+      if (!line.includes("...process.env")) continue;
+      if (line.includes("HOME") && !line.includes("cliEnv")) offenders.push(`${file}:${i + 1}`);
+    }
+  }
+  expect(offenders, `use cliEnv() from test/helpers/env.ts:\n${offenders.join("\n")}`).toEqual([]);
+});

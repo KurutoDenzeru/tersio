@@ -86,6 +86,8 @@ export interface HealthReport {
   platform: string;
   omp: string | null;
   ompPath: string | null;
+  pi: string | null;
+  piPath: string | null;
   provider: string | null;
   rtk: { present: boolean; version: string | null; path: string };
   home: string;

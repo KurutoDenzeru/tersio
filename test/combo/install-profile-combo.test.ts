@@ -2,6 +2,7 @@ import { expect, test } from "vitest";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { cliEnv } from "../helpers/env.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const installer = path.join(root, "tersio.js");
@@ -12,7 +13,7 @@ function run(...args: string[]) {
     cwd: root,
     encoding: "utf8",
     timeout: 15000,
-    env: { ...process.env, HOME: missingHome, USERPROFILE: missingHome },
+    env: cliEnv(missingHome),
   });
   return { status: result.status, stdout: result.stdout || "", stderr: result.stderr || "" };
 }

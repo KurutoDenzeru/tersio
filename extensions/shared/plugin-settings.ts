@@ -1,25 +1,35 @@
-// Plugin settings reader for the Tersio extensions.
-// Reads omp's persisted plugin state (~/.omp/plugins/omp-plugins.lock.json),
-// written by `omp plugin config set @krtclcdy/tersio <key> <value>` and by
-// the installer profile step. Tolerant: any parse failure yields {} so every
-// caller falls back to its own default.
+// Settings reader for the Tersio extensions.
+//
+// One file, under Tersio's own home (~/.tersio/settings.json), serves every
+// host: OMP has no reason to keep its own copy and pi never had a store. The
+// profile CLI writes the same file, so the extensions, `tersio settings`, and
+// both hosts always agree.
+//
+// Tolerant: any parse failure yields {} so every caller falls back to its own
+// default.
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { tersioHome } from '../lib/utils.ts';
+
 export const PLUGIN_NAME = '@krtclcdy/tersio';
 
-function lockPaths(): string[] {
-  const configHome = process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config');
-  return [
-    path.join(os.homedir(), '.omp', 'plugins', 'omp-plugins.lock.json'),
-    path.join(configHome, 'omp', 'plugins', 'omp-plugins.lock.json'),
-  ];
+// Session-start defaults, shared by every host: one file under Tersio's own
+// home, so OMP and pi read the same values. This module owns the path.
+export function tersioSettingsFile(): string {
+  return path.join(tersioHome(), 'settings.json');
 }
 
-// `settings[PLUGIN_NAME]` in the lock file; empty object when missing.
-export function readPluginSettings(): Record<string, unknown> {
-  for (const p of lockPaths()) {
+// Older installs stored the same values as OMP plugin settings, and an install
+// that predates ~/.tersio still has them there. Read once and keep them, so
+// switching the store does not reset a user's defaults.
+function legacyOmpSettings(): Record<string, unknown> | null {
+  const configHome = process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config');
+  for (const p of [
+    path.join(os.homedir(), '.omp', 'plugins', 'omp-plugins.lock.json'),
+    path.join(configHome, 'omp', 'plugins', 'omp-plugins.lock.json'),
+  ]) {
     if (!existsSync(p)) continue;
     try {
       const config = JSON.parse(readFileSync(p, 'utf8')) as { settings?: Record<string, Record<string, unknown>> };
@@ -27,7 +37,23 @@ export function readPluginSettings(): Record<string, unknown> {
       if (values && typeof values === 'object' && !Array.isArray(values)) return values;
     } catch { /* tolerate corrupt file */ }
   }
-  return {};
+  return null;
+}
+
+function readSettingsFile(): Record<string, unknown> | null {
+  const p = tersioSettingsFile();
+  if (!existsSync(p)) return null;
+  try {
+    const parsed = JSON.parse(readFileSync(p, 'utf8')) as Record<string, unknown>;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+// The stored settings; empty when the file is missing, corrupt, or empty.
+export function readPluginSettings(): Record<string, unknown> {
+  return readSettingsFile() ?? legacyOmpSettings() ?? {};
 }
 
 const COMBO_LEVELS = new Set(['off', 'medium', 'balanced', 'max']);
@@ -69,20 +95,13 @@ const COMBO_MODE_DEFAULTS = {
 
 export function saveComboSetup(level: string): boolean {
   if (!(level in COMBO_MODE_DEFAULTS)) return false;
-  const lockPath = lockPaths()[0];
-  let lock: { plugins?: Record<string, unknown>; settings?: Record<string, Record<string, unknown>> } = {};
-  if (existsSync(lockPath)) {
-    try { lock = JSON.parse(readFileSync(lockPath, 'utf8')) as typeof lock; } catch { lock = {}; }
-  }
-  lock.plugins ||= {};
-  lock.settings ||= {};
-  lock.settings[PLUGIN_NAME] = {
-    ...lock.settings[PLUGIN_NAME],
+  const file = tersioSettingsFile();
+  mkdirSync(path.dirname(file), { recursive: true });
+  writeFileSync(file, `${JSON.stringify({
+    ...readPluginSettings(),
     comboDefault: level,
     ...COMBO_MODE_DEFAULTS[level as keyof typeof COMBO_MODE_DEFAULTS],
     comboSetupComplete: true,
-  };
-  mkdirSync(path.dirname(lockPath), { recursive: true });
-  writeFileSync(lockPath, JSON.stringify(lock, null, 2) + '\n', 'utf8');
+  }, null, 2)}\n`, 'utf8');
   return true;
 }

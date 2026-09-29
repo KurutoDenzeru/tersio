@@ -4,6 +4,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, wr
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { cliEnv } from "../helpers/env.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const installer = path.join(root, "tersio.js");
@@ -33,20 +34,91 @@ test("doctor reports MISSING components against an empty home", () => {
       cwd: root,
       encoding: "utf8",
       timeout: 15000,
-      env: { ...process.env, HOME: home, USERPROFILE: home, PATH: path.join(home, "empty-bin") },
+      env: cliEnv(home, { PATH: path.join(home, "empty-bin") }),
     });
 
     expect(result.status, result.stderr).toBe(0);
-    for (const line of ["OMP extensions dir: MISSING", "Shared session bridge: MISSING", "Caveman extension: MISSING", "RTK extension: MISSING", "❌ RTK binary: MISSING", "RTK OMP wiring (rtk.ts): MISSING run: rtk init -g --agent omp"]) {
+    for (const line of ["—  Oh My Pi: not installed", "—  Pi: not installed", "❌ RTK binary: MISSING"]) {
       expect(result.stdout).toMatch(new RegExp(line.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
     }
     // Categorized output: merged section headers plus a closing tally.
-    for (const sectionName of ["Environment", "Installation", "Extensions & plugins", "Usage & records", "Add-ons"]) {
+    for (const sectionName of ["Hosts", "Extensions & plugins", "Usage & records", "Add-ons"]) {
       expect(result.stdout).toMatch(new RegExp(`\\n${sectionName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\n`));
     }
     expect(result.stdout).toMatch(/Summary: \d+ checks — ✅ \d+ ok, ⚠️ \d+ warn, ❌ \d+ missing/);
+    expect(result.stdout, "no host installed, so no per-host extension rows").not.toMatch(/Caveman extension/);
     expect(result.stdout).not.toMatch(/Tersio CLI/);
     expect(result.stdout).not.toMatch(/available — run tersio update/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("doctor names both hosts with the command that installs each", () => {
+  const home = missingHome();
+  try {
+    const result = spawnSync(process.execPath, [installer, "doctor"], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 15000,
+      env: cliEnv(home, { PATH: path.join(home, "empty-bin") }),
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/— {2}Oh My Pi: not installed · omp plugin install @krtclcdy\/tersio/);
+    expect(result.stdout).toMatch(/— {2}Pi: not installed · pi install npm:@krtclcdy\/tersio/);
+    // The retired rows and the Node banner are gone.
+    for (const gone of ["Environment", "Installation", "Shared session bridge", "RTK OMP wiring", "Node:"]) {
+      expect(result.stdout, gone).not.toContain(gone);
+    }
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("doctor reports each host that has tersio installed", () => {
+  const home = missingHome();
+  try {
+    const ompPkg = path.join(home, ".omp", "plugins", "node_modules", "@krtclcdy", "tersio");
+    const piDir = path.join(home, ".pi", "agent");
+    const piPkg = path.join(piDir, "npm", "node_modules", "@krtclcdy", "tersio");
+    mkdirSync(ompPkg, { recursive: true });
+    mkdirSync(piPkg, { recursive: true });
+    writeFileSync(path.join(ompPkg, "package.json"), JSON.stringify({ name: "@krtclcdy/tersio", version: "2.23.0" }), "utf8");
+    writeFileSync(path.join(piPkg, "package.json"), JSON.stringify({ name: "@krtclcdy/tersio", version: "2.23.0" }), "utf8");
+    writeFileSync(path.join(piDir, "settings.json"), JSON.stringify({ packages: ["npm:@krtclcdy/tersio@2.23.0"] }), "utf8");
+
+    const result = spawnSync(process.execPath, [installer, "doctor"], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 15000,
+      env: cliEnv(home, { PATH: path.join(home, "empty-bin") }),
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/✅ Oh My Pi: ok package @krtclcdy\/tersio 2\.23\.0/);
+    expect(result.stdout).toMatch(/✅ Pi: ok package @krtclcdy\/tersio 2\.23\.0/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("doctor counts a pi declaration without a package directory as missing", () => {
+  const home = missingHome();
+  try {
+    const piDir = path.join(home, ".pi", "agent");
+    mkdirSync(piDir, { recursive: true });
+    writeFileSync(path.join(piDir, "settings.json"), JSON.stringify({ packages: [{ source: "npm:@krtclcdy/tersio" }] }), "utf8");
+
+    const result = spawnSync(process.execPath, [installer, "doctor"], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 15000,
+      env: cliEnv(home, { PATH: path.join(home, "empty-bin") }),
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/❌ Pi: MISSING declared \(npm:@krtclcdy\/tersio\) but not installed/);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }
@@ -59,7 +131,7 @@ test("doctor --fix dry-run previews repairs without writing", () => {
       cwd: root,
       encoding: "utf8",
       timeout: 15000,
-      env: { ...process.env, HOME: home, USERPROFILE: home },
+      env: cliEnv(home),
     });
 
     expect(result.status, result.stderr).toBe(0);
@@ -81,7 +153,7 @@ test("doctor --fix repairs missing extension files in an empty home", () => {
       cwd: root,
       encoding: "utf8",
       timeout: 30000,
-      env: { ...process.env, HOME: home, USERPROFILE: home },
+      env: cliEnv(home),
     });
 
     expect(result.status, result.stderr).toBe(0);
@@ -103,7 +175,7 @@ test("doctor --fix repairs config.yml registrations in an empty home", () => {
       cwd: root,
       encoding: "utf8",
       timeout: 30000,
-      env: { ...process.env, HOME: home, USERPROFILE: home },
+      env: cliEnv(home),
     });
 
     expect(result.status, result.stderr).toBe(0);
@@ -129,7 +201,7 @@ test("doctor --fix removes manifest-loaded combo and Ponytail registrations", ()
       cwd: root,
       encoding: "utf8",
       timeout: 30000,
-      env: { ...process.env, HOME: home, USERPROFILE: home, PATH: path.join(home, "empty-bin") },
+      env: cliEnv(home, { PATH: path.join(home, "empty-bin") }),
     });
     expect(repair.status, repair.stderr).toBe(0);
     expect(readFileSync(path.join(agentDir, "config.yml"), "utf8")).not.toMatch(/combo-toggle|pi-extension/);
@@ -145,7 +217,7 @@ test("doctor --fix rejects an invalid scope", () => {
       cwd: root,
       encoding: "utf8",
       timeout: 15000,
-      env: { ...process.env, HOME: home, USERPROFILE: home },
+      env: cliEnv(home),
     });
 
     expect(result.status).toBe(1);
@@ -155,12 +227,11 @@ test("doctor --fix rejects an invalid scope", () => {
   }
 });
 
-test("doctor reports the rtk OMP wiring when the binary and rtk.ts exist", () => {
+test("doctor reports the rtk binary version", () => {
   const home = missingHome();
   try {
     const extDir = path.join(home, ".omp", "agent", "extensions");
     mkdirSync(extDir, { recursive: true });
-    writeFileSync(path.join(extDir, "rtk.ts"), "// rtk omp wiring", "utf8");
     const binDir = path.join(home, "fake-bin");
     mkdirSync(binDir, { recursive: true });
     const rtkBin = path.join(binDir, "rtk");
@@ -171,12 +242,11 @@ test("doctor reports the rtk OMP wiring when the binary and rtk.ts exist", () =>
       cwd: root,
       encoding: "utf8",
       timeout: 15000,
-      env: { ...process.env, HOME: home, USERPROFILE: home, PATH: binDir },
+      env: cliEnv(home, { PATH: binDir }),
     });
 
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toMatch(/✅ RTK binary: ok rtk 0\.49\.0/);
-    expect(result.stdout).toMatch(/✅ RTK OMP wiring \(rtk\.ts\): ok/);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }
@@ -187,6 +257,10 @@ test("doctor reports retired reinforcement registration and fix removes it", () 
   try {
     const agentDir = path.join(home, ".omp", "agent");
     const extDir = path.join(agentDir, "extensions");
+    // The registration rows only run for a host that has tersio installed.
+    const ompPkg = path.join(home, ".omp", "plugins", "node_modules", "@krtclcdy", "tersio");
+    mkdirSync(ompPkg, { recursive: true });
+    writeFileSync(path.join(ompPkg, "package.json"), JSON.stringify({ name: "@krtclcdy/tersio", version: "2.23.0" }), "utf8");
     mkdirSync(path.join(extDir, "shared"), { recursive: true });
     const stale = path.join(extDir, "shared", "mode-reinforcement.ts");
     writeFileSync(stale, "// retired", "utf8");
@@ -196,7 +270,7 @@ test("doctor reports retired reinforcement registration and fix removes it", () 
       cwd: root,
       encoding: "utf8",
       timeout: 15000,
-      env: { ...process.env, HOME: home, USERPROFILE: home, PATH: path.join(home, "empty-bin") },
+      env: cliEnv(home, { PATH: path.join(home, "empty-bin") }),
     });
     expect(before.stdout).toMatch(/⚠️ Retired reinforcement registration:/);
 
@@ -204,7 +278,7 @@ test("doctor reports retired reinforcement registration and fix removes it", () 
       cwd: root,
       encoding: "utf8",
       timeout: 30000,
-      env: { ...process.env, HOME: home, USERPROFILE: home, PATH: path.join(home, "empty-bin") },
+      env: cliEnv(home, { PATH: path.join(home, "empty-bin") }),
     });
     expect(repair.status, repair.stderr).toBe(0);
     expect(readFileSync(path.join(agentDir, "config.yml"), "utf8")).not.toContain("mode-reinforcement.ts");

@@ -28,6 +28,8 @@ function harness(entries: SessionEntry[] = []): { pi: TestPi; ctx: TestCtx } {
   const handlers = new Map<string, EventHandler>();
   const notifications: string[] = [];
   cavemanSessionExtension({
+    // The injected zod is how the extensions recognise an OMP host.
+    zod: { z: {} },
     setLabel() {},
     registerCommand(name: string, config: { handler: CommandHandler }) { commands.set(name, config.handler); },
     registerTool() {},

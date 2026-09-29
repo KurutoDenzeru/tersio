@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 
-import comboToggleExtension from "../../extensions/combo-toggle/index.ts";
+import comboToggleExtension, { ponytailFallback } from "../../extensions/combo-toggle/index.ts";
 import {
   OMP_SUBAGENT_MARKER,
   resetSharedComboState,
@@ -16,6 +16,8 @@ type EventHandler = (event: unknown, ctx: ExtensionCtx | undefined) => Promise<u
 function injectHandler(): EventHandler {
   let handler!: EventHandler;
   comboToggleExtension({
+    // The injected zod is how the extensions recognise an OMP host.
+    zod: { z: {} },
     setLabel() {},
     registerCommand() {},
     registerTool() {},
@@ -34,10 +36,17 @@ async function injectMarked(ponytail: string): Promise<string> {
 }
 
 
-test("lite and full fallbacks carry their intensities", async () => {
-  expect(await injectMarked("lite")).toMatch(/simplest correct solution/);
-  expect(await injectMarked("full")).toMatch(/minimum correct solution/);
-  expect(await injectMarked("ultra")).toMatch(/YAGNI/);
+test("the no-package fallback carries each intensity", () => {
+  expect(ponytailFallback("lite")).toMatch(/simplest correct solution/);
+  expect(ponytailFallback("full")).toMatch(/minimum correct solution/);
+  expect(ponytailFallback("ultra")).toMatch(/YAGNI/);
+});
+
+test("a marked subagent prompt gets the installed ponytail instructions", async () => {
+  // Ponytail is a Tersio dependency, so the package resolves beside the
+  // extension in a checkout and in every install layout.
+  expect(await injectMarked("ultra")).toMatch(/# Ponytail/);
+  expect(await injectMarked("ultra")).toMatch(/PONYTAIL MODE ACTIVE — level: ultra/);
 });
 
 test("existing ponytail guidance is not duplicated", async () => {

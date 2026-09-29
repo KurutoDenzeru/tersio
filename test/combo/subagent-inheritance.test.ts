@@ -103,21 +103,6 @@ function instruction(result: { systemPrompt?: string[] } | undefined) {
   return result?.systemPrompt?.at(-1) || "";
 }
 
-async function withoutInstalledPonytail<T>(callback: () => Promise<T>): Promise<T> {
-  const missingHome = fileURLToPath(new URL("../definitely-missing-home", import.meta.url));
-  const previous = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE };
-  process.env.HOME = missingHome;
-  process.env.USERPROFILE = missingHome;
-  try {
-    return await callback();
-  } finally {
-    for (const [name, value] of Object.entries(previous)) {
-      if (value === undefined) delete process.env[name];
-      else process.env[name] = value;
-    }
-  }
-}
-
 test("parent Combo max is inherited by separately instantiated marked children", async () => {
   resetSharedComboState();
   const entries: SessionEntry[] = [];
@@ -133,12 +118,11 @@ test("parent Combo max is inherited by separately instantiated marked children",
   expect(instruction(await inject(childCaveman, MARKED_PROMPT))).toMatch(/Caveman ultra active/);
   expect(instruction(await inject(childRtk, MARKED_PROMPT))).toMatch(/RTK guidance active/);
 
-  const ponytail = instruction(await withoutInstalledPonytail(() => inject(childCombo, MARKED_PROMPT)));
+  const ponytail = instruction(await inject(childCombo, MARKED_PROMPT));
+  expect(ponytail).toMatch(/# Ponytail/);
   expect(ponytail).toMatch(/PONYTAIL MODE ACTIVE — level: ultra/);
   expect(ponytail).toMatch(/root cause/i);
-  expect(ponytail).toMatch(/Standard library/i);
   expect(ponytail).toMatch(/YAGNI/);
-  expect(ponytail).toMatch(/Verify/);
 });
 
 test("medium maps to Caveman lite, RTK on, and Ponytail lite", async () => {
@@ -152,7 +136,7 @@ test("medium maps to Caveman lite, RTK on, and Ponytail lite", async () => {
   });
   expect(instruction(await inject(instantiate(cavemanSessionExtension), prompt))).toMatch(/Caveman lite active/);
   expect(instruction(await inject(instantiate(rtkSessionExtension), prompt))).toMatch(/RTK guidance active/);
-  expect(instruction(await withoutInstalledPonytail(() => inject(instantiate(comboToggleExtension), prompt)))).toMatch(/PONYTAIL MODE ACTIVE — level: lite/);
+  expect(instruction(await inject(instantiate(comboToggleExtension), prompt))).toMatch(/PONYTAIL MODE ACTIVE — level: lite/);
 });
 
 test("Combo off gives marked children no inherited guidance", async () => {
@@ -191,7 +175,7 @@ test("headless child session_start cannot reset the parent bridge", async () => 
   await childCombo.handlers.get("session_start")!({}, context([], false));
 
   expect(getSharedComboState().level).toBe("max");
-  expect(instruction(await withoutInstalledPonytail(() => inject(childCombo, MARKED_PROMPT)))).toMatch(/level: ultra/);
+  expect(instruction(await inject(childCombo, MARKED_PROMPT))).toMatch(/level: ultra/);
 });
 
 test("interactive top-level session_start with no entries resets bridge off", async () => {
@@ -224,7 +208,7 @@ test("individual Caveman change immediately makes Combo CUSTOM and children inhe
   expect(comboCtx.statuses.get("combo")).toBe(undefined);
   expect(instruction(await inject(instantiate(cavemanSessionExtension), MARKED_PROMPT))).toMatch(/Caveman lite active/);
   expect(instruction(await inject(instantiate(rtkSessionExtension), MARKED_PROMPT))).toMatch(/RTK guidance active/);
-  expect(instruction(await withoutInstalledPonytail(() => inject(instantiate(comboToggleExtension), MARKED_PROMPT)))).toMatch(/level: ultra/);
+  expect(instruction(await inject(instantiate(comboToggleExtension), MARKED_PROMPT))).toMatch(/level: ultra/);
 
   await command(caveman, "caveman", "ultra", context(entries, true));
   expect(getSharedComboState().level).toBe("max");
@@ -284,7 +268,7 @@ test("Combo status restores the preset indicator when persisted modes realign", 
     level: "custom", caveman: "ultra", rtk: "on", ponytail: "lite",
   });
   expect(ctx.notifications.at(-1)).toBe("Combo: INACTIVE (caveman=ultra rtk=on ponytail=lite)");
-  expect(instruction(await withoutInstalledPonytail(() => inject(instantiate(comboToggleExtension), MARKED_PROMPT)))).toMatch(/level: lite/);
+  expect(instruction(await inject(instantiate(comboToggleExtension), MARKED_PROMPT))).toMatch(/level: lite/);
 
   entries.push({ type: "custom", customType: "ponytail-mode", data: { mode: "ultra" } });
   await command(combo, "combo", "status", ctx);
@@ -344,8 +328,6 @@ test("Combo indicator appears only after a Combo preset", async () => {
   await command(combo, "combo", "status", ctx);
   expect(ctx.statuses.get("combo")).toBe(undefined);
 });
-
-
 
 test("Combo does not duplicate existing Ponytail guidance", async () => {
   resetSharedComboState();

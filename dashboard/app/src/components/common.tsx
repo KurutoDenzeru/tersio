@@ -4,7 +4,6 @@ import { createPortal } from "react-dom";
 import { cn } from "cn";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { TooltipSurface } from "@/components/ui/tooltip-surface";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Icon } from "./icon";
 
 export function EmptyState({ icon, title, desc }: { icon: string; title: string; desc: string }) {
@@ -121,41 +120,6 @@ export function PerPage({
         </SelectGroup>
       </SelectContent>
     </Select>
-  );
-}
-
-export function SegTabs<T extends string>({
-  options,
-  value,
-  onPick,
-  label,
-}: {
-  options: T[];
-  value: T;
-  onPick: (v: T) => void;
-  label: string;
-}) {
-  return (
-    <ToggleGroup
-      value={[value]}
-      onValueChange={(v) => {
-        const next = v[v.length - 1] as T | undefined;
-        if (next && next !== value) onPick(next);
-      }}
-      className="mono text-xs ml-auto p-1 rounded-[10px] border border-line bg-panel"
-      aria-label={label}
-    >
-      {options.map((o) => (
-        <ToggleGroupItem
-          key={o}
-          value={o}
-          className="h-auto cursor-pointer rounded-lg text-dim transition-[background,color] duration-200 data-[state=on]:bg-accent-soft data-[state=on]:text-ink hover:text-ink px-3 py-1.5 text-xs"
-          aria-label={o}
-        >
-          {o}
-        </ToggleGroupItem>
-      ))}
-    </ToggleGroup>
   );
 }
 

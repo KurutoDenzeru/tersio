@@ -1,5 +1,5 @@
-// Shared helpers for the installer and the AI add-ons updater.
-// Node built-ins only — this module must stay dependency-free.
+// Shared helpers for the installer and the AI add-ons updater. Node built-ins
+// only — this module must stay dependency-free.
 
 import { createHash } from 'node:crypto';
 import { accessSync, constants, createWriteStream, existsSync, mkdirSync, renameSync, statSync } from 'node:fs';
@@ -14,7 +14,6 @@ export interface HttpOptions {
 }
 
 // Promise.withResolvers is Node 22+; the package supports Node 18+.
-// ponytail: swap for the built-in when engines bumps to >=22.
 export function withResolvers<T>(): PromiseWithResolvers<T> {
   let resolve!: (value: T | PromiseLike<T>) => void;
   let reject!: (reason?: unknown) => void;
@@ -66,12 +65,36 @@ export function rtkPlatformSpec(platform: string = process.platform, arch: strin
   return RTK_PLATFORM_SPECS[`${platform}/${arch}`] || null;
 }
 
-// Single source for the 3xx+location redirect rule shared by httpsGet/httpsDownload.
+// The 3xx+location redirect rule shared by httpsGet/httpsDownload.
 function redirectNext(res: { statusCode?: number; headers: { location?: string } }, url: string): string | null {
   if (res.statusCode !== undefined && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
     return new URL(res.headers.location, url).href;
   }
   return null;
+}
+
+// pi sets PI_CODING_AGENT; OMP does not. OMP does read PI_CODING_AGENT_DIR as
+// its own relocation variable, so the override only counts under that marker.
+export function isPiProcess(): boolean {
+  return process.env.PI_CODING_AGENT === 'true';
+}
+
+export function piAgentDir(): string {
+  const override = process.env.PI_CODING_AGENT_DIR;
+  return isPiProcess() && override ? override : path.join(os.homedir(), '.pi', 'agent');
+}
+
+// Ponytail is a Tersio dependency that npm hoists, so it can sit in Tersio's
+// node_modules, a host's plugin dir, or beside it. Walking up covers all.
+export function findHoistedPackage(pkg: string, fromDir: string, ...relInside: string[]): string | null {
+  let dir = fromDir;
+  for (;;) {
+    const candidate = path.join(dir, 'node_modules', ...pkg.split('/'), ...relInside);
+    if (existsSync(candidate)) return candidate;
+    const parent = path.dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
 }
 
 export function httpsGet(url: string, opts: HttpOptions = {}): Promise<string> {
@@ -87,7 +110,7 @@ export function httpsGet(url: string, opts: HttpOptions = {}): Promise<string> {
     }
     if (res.statusCode !== 200) { res.resume(); reject(new Error(`HTTP ${res.statusCode} for ${url}`)); return; }
     let body = '';
-    // ponytail: streamed accumulation — fine for tens of KB; stream-pipe if assets ever exceed a few MB.
+    // Streamed accumulation: fine for tens of KB.
     res.setEncoding('utf8');
     res.on('data', (chunk) => { body += chunk; });
     res.on('end', () => resolve(body));
@@ -124,7 +147,12 @@ export function httpsDownload(url: string, dest: string, opts: HttpOptions = {})
 }
 
 export async function fetchJson<T>(url: string): Promise<T> {
-  return JSON.parse(await httpsGet(url)) as T;
+  const body = await httpsGet(url);
+  try {
+    return JSON.parse(body) as T;
+  } catch {
+    throw new Error(`${url} did not return JSON`);
+  }
 }
 
 export function sha256Hex(text: string): string {
@@ -172,14 +200,14 @@ export async function readTextIfExists(p: string): Promise<string | null> {
   try { return await fs.readFile(p, 'utf8'); } catch { return null; }
 }
 
-// Tersio-owned data home: ~/.tersio (Windows: %USERPROFILE%\.tersio).
-// First use moves legacy ~/.omp/plugins/tersio-* files over, so existing
-// installs keep their history.
+// Tersio-owned data home: ~/.tersio. First use moves legacy
+// ~/.omp/plugins/tersio-* files over so existing installs keep their history.
 const migratedTersioFiles = new Set<string>();
 
 export function tersioHome(): string {
   return path.join(os.homedir(), '.tersio');
 }
+
 
 export function tersioDataPath(name: string, legacy: string): string {
   const dest = path.join(tersioHome(), name);

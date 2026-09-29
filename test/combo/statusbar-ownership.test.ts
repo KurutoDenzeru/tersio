@@ -1,8 +1,5 @@
-// Status-bar ownership regression: while a Combo preset is active, the combo bar
-// is the only status line — caveman and rtk must not paint their own bars
-// alongside it. This regressed when the `balanced` preset was added: caveman and
-// rtk's suppression checks hardcoded medium/max, so balanced leaked through and
-// the status bar showed both `🪨 caveman: FULL` and the combo bar.
+// While a Combo preset is active the combo bar is the only status line. The
+// suppression checks once hardcoded medium/max, so `balanced` showed both.
 import { expect, test } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
@@ -14,8 +11,7 @@ import rtkSessionExtension from "../../extensions/rtk-session/index.ts";
 import { getSharedComboState, resetSharedComboState } from "../../extensions/shared/session-state.ts";
 import type { ExtensionApi, ExtensionCtx, SessionEntry } from "../../extensions/shared/types.ts";
 
-// ponytail: hermetic HOME — the combo fallback reads the real lock file, so
-// without this the suite depends on the developer's own comboDefault.
+// Hermetic HOME: the combo fallback reads the real lock file.
 process.env.HOME = new URL("../definitely-missing-home", import.meta.url).pathname;
 process.env.USERPROFILE = process.env.HOME;
 
@@ -69,7 +65,7 @@ test("combo balanced suppresses the individual caveman and rtk bars", async () =
   expect(statuses.has("combo"), "combo bar present").toBeTruthy();
   expect(statuses.get("combo") || "").not.toMatch(/caveman: FULL/);
 
-  // The race that surfaced the bug: caveman/rtk reconcile after combo paints.
+  // The race that surfaced the bug: siblings reconcile after combo paints.
   await pi.caveman.handlers.get("agent_start")!({}, ctx);
   await pi.rtk.handlers.get("agent_start")!({}, ctx);
   expect([...statuses.keys()], "combo bar is the only status line under balanced").toEqual(["combo"]);
@@ -78,11 +74,8 @@ test("combo balanced suppresses the individual caveman and rtk bars", async () =
 });
 
 test("fresh host suppresses individual bars from persisted entries before combo reconciles", async () => {
-  // Real OMP regression: caveman/rtk load before combo and restore their modes
-  // from persisted entries, but the combo bar never appeared because the
-  // suppression check reads the in-process bridge, which only combo's
-  // (UI-gated) reconcile populated. Persisted combo entries alone must drive
-  // suppression, with or without combo's session_start having run.
+  // Suppression reads the in-process bridge, which only combo's UI-gated
+  // reconcile populates, so persisted entries alone must drive it.
   resetSharedComboState();
   const { statuses, pi, ctx, entries } = harness();
   entries.push(
@@ -91,7 +84,7 @@ test("fresh host suppresses individual bars from persisted entries before combo 
     { type: "custom", customType: "ponytail-mode", data: { mode: "full" } } as SessionEntry,
     { type: "custom", customType: "combo-level", data: { level: "balanced" } } as SessionEntry,
   );
-  // Post-reload session_start: UI objects exist, but hasUI is not yet truthy.
+  // Post-reload session_start: UI objects exist, hasUI does not yet.
   const noUiCtx = { ...ctx, hasUI: false } as ExtensionCtx;
   await pi.caveman.handlers.get("session_start")!({}, noUiCtx);
   await pi.rtk.handlers.get("session_start")!({}, noUiCtx);
@@ -141,9 +134,7 @@ test("every preset suppresses individual bars; off and custom behave correctly",
   resetSharedComboState();
 });
 test("combo default applies past unrelated session entries", async () => {
-  // The statusbar gap: the old gate checked `!sessionEntries(ctx).length`,
-  // so any pre-existing entry blocked the combo default and the bar never
-  // painted. Only persisted *mode* entries may block it.
+  // Only persisted *mode* entries may block the combo default.
   const home = mkdtempSync(path.join(os.tmpdir(), "combo-fallback-"));
   mkdirSync(path.join(home, ".omp", "plugins"), { recursive: true });
   writeFileSync(
@@ -196,8 +187,7 @@ test("combo default persists preset entries so resume keeps the bar", async () =
 });
 
 test("a UI-less event must not deafen the bar to later bridge updates", async () => {
-  // Reported symptom: the bar kept showing "combo BALANCED" while the session's
-  // modes had actually gone off. Cause: syncStatus remembered a ctx with no `ui`
+  // Symptom: the bar stayed "combo BALANCED" after the modes went off.
   // (a session_start that fires before the TUI attaches), so the bridge-listener
   // path — which calls syncStatus() with no ctx and therefore paints through the
   // remembered one — silently returned early forever, freezing the bar.

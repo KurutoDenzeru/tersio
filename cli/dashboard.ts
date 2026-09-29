@@ -1,7 +1,5 @@
-// cli/dashboard.ts — serves the built shadcn Dashboard with local usage APIs.
-// Binds 127.0.0.1 only; --export writes a file://-ready file instead.
-// Note: no Promise.withResolvers here — engines still allow Node 20.12,
-// which lacks it; the listening server itself keeps the process alive.
+// Serves the built Dashboard with local usage APIs. Binds 127.0.0.1 only;
+// --export writes a file instead. No Promise.withResolvers: Node 20.12 lacks it.
 import { spawn } from 'node:child_process';
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
@@ -60,10 +58,9 @@ function dataJson(): string {
   return JSON.stringify(summarizeUsage(readUsage()));
 }
 
-// Local-only health + diagnosis for the settings modal. No network: version
-// probes run with short timeouts, file checks are existsSync.
-function ompPath(): string | null {
-  const names = process.platform === 'win32' ? ['omp.cmd', 'omp.exe', 'omp.bat', 'omp'] : ['omp'];
+// Local-only health: find each agent on PATH, run `--version`, report both.
+function binOnPath(bin: string): string | null {
+  const names = process.platform === 'win32' ? [`${bin}.cmd`, `${bin}.exe`, `${bin}.bat`, bin] : [bin];
   for (const dir of (process.env.PATH || '').split(path.delimiter).filter(Boolean)) {
     for (const name of names) {
       const candidate = path.join(dir, name);
@@ -75,14 +72,30 @@ function ompPath(): string | null {
   return null;
 }
 
-function ompVersion(bin = ompPath()): string | null {
+function ompPath(): string | null {
+  return binOnPath('omp');
+}
+
+function piPath(): string | null {
+  return binOnPath('pi');
+}
+
+// omp prints `omp/18.4.1`, pi prints a bare `0.87.1`; both read as name/version.
+function versionLabel(bin: string, raw: string): string {
+  const out = raw.trim();
+  return out.includes('/') ? out : `${bin}/${out}`;
+}
+
+function agentVersion(bin: string | null): string | null {
   if (!bin) return null;
   try {
     if (process.platform === 'win32') {
       const exe = process.env.ComSpec || 'cmd.exe';
-      return execFileSync(exe, ['/d', '/s', '/c', bin, '--version'], { encoding: 'utf8', timeout: 5000, windowsHide: true }).trim() || null;
+      const out = execFileSync(exe, ['/d', '/s', '/c', bin, '--version'], { encoding: 'utf8', timeout: 5000, windowsHide: true });
+      return out.trim() ? versionLabel(path.basename(bin), out) : null;
     }
-    return execFileSync(bin, ['--version'], { encoding: 'utf8', timeout: 5000, windowsHide: true }).trim() || null;
+    const out = execFileSync(bin, ['--version'], { encoding: 'utf8', timeout: 5000, windowsHide: true });
+    return out.trim() ? versionLabel(path.basename(bin), out) : null;
   } catch {
     return null;
   }
@@ -110,12 +123,15 @@ function healthJson(): string {
   const rtkBin = resolveRtkBinary();
   const rtkPresent = rtkBin !== null;
   const detectedOmpPath = ompPath();
+  const detectedPiPath = piPath();
   return JSON.stringify({
     tersio: PACKAGE_VERSION,
     node: process.version,
     platform: `${process.platform}/${process.arch}`,
-    omp: ompVersion(detectedOmpPath),
+    omp: agentVersion(detectedOmpPath),
     ompPath: detectedOmpPath,
+    pi: agentVersion(detectedPiPath),
+    piPath: detectedPiPath,
     provider: ompDefaultModel(),
     rtk: { present: rtkPresent, version: rtkPresent ? rtkVersion(rtkBin as string) : null, path: rtkBin || 'not found in PATH' },
     home: tersioHomePath(),
@@ -140,8 +156,7 @@ const DIAG_TTL_MS: Record<DiagSchedule, number> = {
 };
 
 function diagPaths(): { report: string } {
-  // Hermetic env (tests) overrides the DB path: keep the report next to it
-  // so test runs never touch the real ~/.tersio/diag.json.
+  // Keep the report beside the overridden DB so tests never touch the real one.
   const dbOverride = process.env.TERSIO_USAGE_DB;
   if (dbOverride) return { report: path.join(path.dirname(dbOverride), 'diag.json') };
   const home = process.env.HOME || process.env.USERPROFILE || '';
@@ -197,7 +212,6 @@ function relAge(ms: number): string {
 
 function computeDoctorRows(): DoctorRow[] {
   const rows: DoctorRow[] = [];
-  const extDir = path.join(OMP_AGENT_DIR, 'extensions');
   const rtkBin = resolveRtkBinary();
   const ponytailPkg = path.join(OMP_PLUGINS_DIR, 'node_modules', '@dietrichgebert', 'ponytail', 'package.json');
   const tersioPluginDir = path.join(OMP_PLUGINS_DIR, 'node_modules', ...PACKAGE_NAME.split('/'));
@@ -230,8 +244,6 @@ function computeDoctorRows(): DoctorRow[] {
   const rtkAge = rtkBin ? ageStr(rtkBin) : null;
   const rtkAt = rtkBin ? absTime(rtkBin) : null;
   addon('RTK binary', rtkVer !== null, rtkVer && rtkAge && rtkAt ? `${rtkVer} (updated ${rtkAge} · ${rtkAt})` : rtkBin || 'not found in PATH');
-  const wiring = path.join(extDir, 'rtk.ts');
-  addon('RTK OMP wiring (rtk.ts)', ok(wiring), ok(wiring) ? 'loaded' : wiring);
   let ponytailVer: string | null = null;
   try {
     ponytailVer = (JSON.parse(readFileSync(ponytailPkg, 'utf8')) as { version?: string }).version ?? null;
@@ -246,10 +258,8 @@ function computeDoctorRows(): DoctorRow[] {
   return rows;
 }
 
-// Retained diagnosis: recompute when forced, missing, or older than the
-// schedule. Otherwise return the saved report so users never re-run.
-// Labels retired from the report. A saved report containing any of them
-// is stale by definition and always recomputes.
+// Recompute when forced, missing, or past the schedule; a report holding a
+// retired label is stale by definition.
 const RETIRED_DIAG_LABELS = new Set([
   'OMP CLI',
   'Tersio CLI',
@@ -266,13 +276,11 @@ function isRetiredReport(report: DoctorReport): boolean {
   return report.rows.some((r) => RETIRED_DIAG_LABELS.has(r.label));
 }
 
-// Retained diagnosis: recompute when forced, missing, retired, or older
-// than the schedule. Otherwise return the saved report.
+// Recompute when forced, missing, retired, or past the schedule.
 function getDoctorReport(force: boolean): DoctorReport {
   const saved = readDiagReport();
   const ttl = saved ? DIAG_TTL_MS[saved.schedule] : 0;
-  // Manual always recomputes on open; dated schedules reuse the saved
-  // report until stale. Otherwise a retained snapshot hides new rows.
+  // Manual recomputes on open; a dated schedule reuses the saved report.
   if (!force && saved && !isRetiredReport(saved) && ttl > 0 && Date.now() - saved.checkedAt < ttl) return saved;
   const report: DoctorReport = { rows: computeDoctorRows(), checkedAt: Date.now(), schedule: saved?.schedule ?? 'manual' };
   writeDiagReport(report);
@@ -290,10 +298,8 @@ function readDiagSchedule(): DiagSchedule {
   return readDiagReport()?.schedule ?? 'manual';
 }
 
-// Persist the dashboard's picker choice so close → reopen keeps it: each
-// `tersio dashboard` run serves a fresh ephemeral port (a new origin), so the
-// browser's localStorage alone cannot survive a restart. The stored default
-// feeds data.json and `tersio usage` on the next run.
+// Persist the picker choice: every run serves a fresh port, so localStorage
+// alone cannot survive a restart.
 async function saveDashboardCurrency(raw: unknown): Promise<CurrencyCode | null> {
   if (typeof raw !== 'string') return null;
   const code = raw.trim().toUpperCase();
@@ -318,22 +324,31 @@ function openBrowser(url: string): void {
   spawn(cmd, [url], { detached: true, stdio: 'ignore' }).unref();
 }
 
-// Replacer functions throughout: session data routinely contains `$'`
-// sequences (shell quoting in tool details), which String.replace would
-// expand as match-suffix patterns and corrupt the file.
-// RTK-metered command lines routinely contain literal `</script>` (Vue
-// SFC probes), which would close the inlined <script> early and dump the
-// rest of the JSON as page text. Escape it; JSON.parse never sees the
-// backslash form inside a string literal, the browser decodes it first.
+// Replacers throughout: session data holds `$'` (shell quoting) and literal
+// `</script>`, which String.replace would mangle.
 function escapeInline(json: string): string {
   return json.replace(/<\/(script)/gi, '<\\/$1');
+}
+
+// Our own JSON.stringify output, so a parse failure means a bad value: name it.
+function parseOwnJson(json: string, field: string): Record<string, unknown> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json);
+  } catch {
+    throw new Error(`dashboard snapshot ${field} is not valid JSON`);
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error(`dashboard snapshot ${field} is not an object`);
+  }
+  return parsed as Record<string, unknown>;
 }
 
 async function exportDashboard(exportFile: string): Promise<void> {
   requireDashboardBundle();
   const [bundle, icon] = await Promise.all([readSegment(DASHBOARD_INDEX), brandDataUri()]);
   const inline = bundle
-    .replace('window.__TERSIO_SNAP = null;', () => `window.__TERSIO_SNAP = ${escapeInline(JSON.stringify({ data: JSON.parse(dataJson()), health: JSON.parse(healthJson()), doctor: getDoctorReport(false) }))};`)
+    .replace('window.__TERSIO_SNAP = null;', () => `window.__TERSIO_SNAP = ${escapeInline(JSON.stringify({ data: parseOwnJson(dataJson(), 'usage data'), health: parseOwnJson(healthJson(), 'health'), doctor: getDoctorReport(false) }))};`)
     .replace(/href="brand\.webp"/g, () => `href="${icon}"`)
     .replace(/src="brand\.webp"/g, () => `src="${icon}"`)
     .replace('fetch("brand.webp")', () => `Promise.resolve({ ok: true, blob: async () => new Blob([atob("${icon.split(',')[1]}")], { type: "image/webp" }) })`);

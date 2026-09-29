@@ -1,12 +1,9 @@
 // cli/rtk-wiring.ts — wire the installed rtk binary into OMP.
 // `rtk init -g --agent omp` writes rtk's tool_call extension to
-// ~/.omp/agent/extensions/rtk.ts, and we register that path in config.yml
-// (OMP only loads listed extensions — rtk init does not register it).
-// Once loaded, OMP rewrites bash commands to rtk before execution, so every
-// rewritten call lands in rtk's history.db and shows metered savings.
-// Fail-open: a failed wire only downgrades to manual `rtk` prefixing.
-// Deliberately free of cli/common.ts imports (argv side effects) so tests
-// can load it directly.
+// ~/.omp/agent/extensions/rtk.ts but does not register it, and OMP loads only
+// listed extensions, so we add the path to config.yml. Every rewritten bash
+// call then lands in rtk's history.db. Fail-open: a failed wire only downgrades
+// to manual `rtk` prefixing. No cli/common.ts import (argv side effects).
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -41,8 +38,7 @@ function execFileP(cmd: string, args: string[], timeout: number): Promise<{ stdo
   });
 }
 
-// Idempotent: rtk rewrites its extension file on every init run, so
-// reinstalling tersio refreshes the wiring for free.
+// Idempotent: rtk rewrites its file on every init run.
 export async function wireRtkOmp(rtkBin: string, options: WiringOptions = {}): Promise<boolean> {
   if (!options.dryRun) debugWire(options, 'Wiring rtk → OMP (bash tool_call rewrite)…');
   if (options.dryRun) return true;
@@ -52,15 +48,14 @@ export async function wireRtkOmp(rtkBin: string, options: WiringOptions = {}): P
   return true;
 }
 
-// The rtk.ts path rtk init writes (mirrors OMP_AGENT_DIR in cli/common.ts
-// without importing it — see header note on argv side effects).
+// The rtk.ts path rtk init writes (OMP_AGENT_DIR inlined; see header note).
 function rtkExtensionPath(): string {
   const home = process.env.HOME || process.env.USERPROFILE || os.homedir();
   return path.join(home, '.omp', 'agent', 'extensions', 'rtk.ts');
 }
 
-// OMP loads only listed extensions: append rtk.ts after the existing entries
-// (or create the key) so a fresh wire takes effect on next OMP start.
+// Append rtk.ts after the existing entries (or create the key) so the wire
+// takes effect on the next OMP start.
 export async function ensureRtkInConfig(options: WiringOptions): Promise<void> {
   const home = process.env.HOME || process.env.USERPROFILE || os.homedir();
   const configPath = path.join(home, '.omp', 'agent', 'config.yml');
@@ -100,8 +95,8 @@ async function runRtkInit(rtkBin: string, options: WiringOptions): Promise<boole
     debugWire(options, 'rtk OMP extension wired');
     return true;
   } catch (first) {
-    // A freshly written binary can lose its first exec to macOS Gatekeeper
-    // verification; give it one settle-and-retry before reporting failure.
+    // A fresh binary can lose its first exec to macOS Gatekeeper, so settle and
+    // retry once before reporting failure.
     await new Promise((resolve) => setTimeout(resolve, 2000));
     try {
       await execFileP(rtkBin, ['init', '-g', '--agent', 'omp'], 30000);

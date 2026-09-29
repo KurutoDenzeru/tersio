@@ -16,7 +16,12 @@ tersio.js
 cli/**/*.js
 extensions/**/*.js
 
+# Tests point HOME here and expect it to be absent; an install run once
+# wrote 200K into it, where it must never exist.
+test/definitely-missing-home/
+
 # Test artifacts
+.vitest/
 test/definitely-missing-home/.omp/logs/
 
 # Project-specific files

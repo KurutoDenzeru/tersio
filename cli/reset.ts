@@ -3,9 +3,8 @@
 // derived view. Session transcripts (~/.omp/agent/sessions) and the RTK
 // database are host/tool-owned and are never touched; the watermark only
 // changes what tersio shows.
-import { cancel as clackCancel, confirm as clackConfirm } from '@clack/prompts';
 import { dryRun, yes } from './common.ts';
-import { ask, closeRL, tty } from './interactive.ts';
+import { confirmDestructive } from './interactive.ts';
 import { clearUsageLedger, importSessionTokens, ledgerPath, markReset, readUsage, sessionsDir } from '../extensions/shared/usage-ledger.ts';
 import { clearUsageDb, usageDbPath } from '../extensions/shared/usage-store.ts';
 import { readRtkGain, rtkDbPath } from '../extensions/shared/rtk-gain.ts';
@@ -27,29 +26,8 @@ async function runReset(): Promise<boolean> {
     console.log('Nothing to reset — no statistics recorded.');
     return true;
   }
-  if (!yes) {
-    if (tty()) {
-      closeRL();
-      const confirmedChoice = await clackConfirm({ message: 'Clear tersio statistics?', initialValue: false });
-      if (typeof confirmedChoice !== 'boolean') {
-        clackCancel('Aborted.');
-        closeRL();
-        return false;
-      }
-      if (!confirmedChoice) {
-        console.log('Aborted.');
-        closeRL();
-        return false;
-      }
-    } else {
-      const answer = await ask('\nProceed? [y/N]: ');
-      if (!answer.toLowerCase().startsWith('y')) {
-        console.log('Aborted.');
-        closeRL();
-        return false;
-      }
-    }
-  }
+  if (!yes && !(await confirmDestructive('Clear tersio statistics?'))) return false;
+
   const cleared = clearUsageLedger();
   const dbCleared = clearUsageDb();
   const ts = markReset();

@@ -8,9 +8,8 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const script = path.join(root, "install.sh");
 
-// POSIX sh script — skipped on Windows CI runners. Fake npm answers the
-// commands install.sh uses (install -g, prefix -g) and a fake tersio records
-// the follow-up installer invocation, whichever tty branch the script picks.
+// POSIX sh script, skipped on Windows. A fake npm answers the commands
+// install.sh uses and a fake tersio records the follow-up invocation.
 function fakeEnv(): { bin: string; prefix: string; tersioLog: string } {
   const bin = mkdtempSync(path.join(os.tmpdir(), "tersio-curl-bin-"));
   const prefix = mkdtempSync(path.join(os.tmpdir(), "tersio-curl-prefix-"));
@@ -31,8 +30,7 @@ function cleanup(...dirs: string[]): void {
 
 const TARBALL_FALLBACK = 'env TERSIO_TARBALL_URL=file:///nonexistent/tersio-npm.tgz';
 
-// npm-lane tests force --npm: bun outranks npm on default, so they must
-// pin the lane to exercise the tarball/registry fallback.
+// npm-lane tests force --npm, since bun outranks npm by default.
 (process.platform === "win32" ? test.skip : test)("curl bootstrap installs the CLI, then runs tersio install", () => {
   const { bin, prefix, tersioLog } = fakeEnv();
 
@@ -48,8 +46,7 @@ const TARBALL_FALLBACK = 'env TERSIO_TARBALL_URL=file:///nonexistent/tersio-npm.
     expect(result.stdout).toMatch(/Installing @krtclcdy\/tersio via npm\.\.\./);
     expect(result.stdout).toMatch(/fake-npm install -g @krtclcdy\/tersio@latest --no-audit --no-fund/);
     expect(result.stdout).toMatch(/Running the main installer\.\.\./);
-    // The follow-up installer ran (forwarded flag included), whichever
-    // interactivity branch the environment supports.
+    // The follow-up installer ran, whichever interactivity branch ran.
     const tersioArgs = readFileSync(tersioLog, "utf8");
     expect(tersioArgs).toMatch(/--dry-run/);
     expect(tersioArgs).toMatch(/(^| )install( |$)/);
@@ -98,8 +95,7 @@ const TARBALL_FALLBACK = 'env TERSIO_TARBALL_URL=file:///nonexistent/tersio-npm.
       expect(tersioArgs).toMatch(/install --yes/);
       expect(tersioArgs).not.toMatch(/--scope/);
     } else {
-      // Environment exposed a controlling terminal (/dev/tty); the installer
-      // ran interactively — still a full `tersio install` follow-up.
+      // /dev/tty existed, so the installer ran interactively.
       expect(tersioArgs).toMatch(/(^| )install( |$)/);
     }
   } finally {
@@ -157,8 +153,8 @@ const TARBALL_FALLBACK = 'env TERSIO_TARBALL_URL=file:///nonexistent/tersio-npm.
       cwd: root,
       encoding: "utf8",
       timeout: 15000,
-      // Isolated PATH: no system dirs, so the real tersio on the dev
-      // machine cannot shadow the fake prefix binary the bun lane resolves.
+      // Isolated PATH: no system dirs, so a real tersio cannot shadow the
+      // fake prefix binary the bun lane resolves.
       env: { ...process.env, PATH: `${bin}${path.delimiter}${prefix}/bin${path.delimiter}/usr/bin${path.delimiter}/bin` },
     });
 

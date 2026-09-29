@@ -1,4 +1,5 @@
-import { activeModesSummary, asPromptArray, getSharedComboState, isComboPresetActive, isOmpSubagentPrompt, lastCustomValue, normalizeInputCommand, paintStatusBar, paintableCtx, reconcileSharedComboEntries, sessionEntries, setSharedComboListener, setSharedComboMode } from '../shared/session-state.ts';
+import { activeModesSummary, getSharedComboState, isComboPresetActive, isOmpSubagentPrompt, lastCustomValue, normalizeInputCommand, paintStatusBar, paintableCtx, reconcileSharedComboEntries, sessionEntries, setSharedComboListener, setSharedComboMode } from '../shared/session-state.ts';
+import { injectPromptText, onHostEvent, setExtensionLabel, stringArrayToolParams } from '../shared/host.ts';
 import { readRtkDefault } from '../shared/plugin-settings.ts';
 import type { ExtensionApi, ExtensionCtx, InputEvent, SessionEntry, SystemPromptEvent } from '../shared/types.ts';
 
@@ -22,13 +23,7 @@ function setRtkProcessEnabled(enabled: boolean): void {
 
 const RTK_PROMPT = `RTK guidance active. RTK automatically rewrites eligible Bash calls through the installed rtk hook. Prefer rtk for noisy shell output, but use exact raw output for state changes, checksums, patches, and diagnostics that need full bytes.`;
 
-interface ZodChain {
-  min: (n: number) => ZodChain;
-  describe: (text: string) => ZodChain;
-}
-
 export default function rtkSessionExtension(pi: ExtensionApi): void {
-  const { z } = pi.zod as { z: { object: (shape: Record<string, unknown>) => Record<string, unknown>; array: (el: unknown) => ZodChain; string: () => ZodChain } };
   let enabled = DEFAULT_ENABLED;
   let isActive = false;
   let lastCtx: ExtensionCtx | undefined = undefined;
@@ -54,7 +49,7 @@ export default function rtkSessionExtension(pi: ExtensionApi): void {
     ctx?.ui?.notify?.(enabled ? `RTK on — compact shell output for this session. Active: ${active}.` : `RTK off. Active: ${active}.`, 'info');
   }
 
-  pi.setLabel?.('RTK session toggle');
+  setExtensionLabel(pi, 'RTK session toggle');
 
   // Live mirror: a /tersio or /combo switch publishes shared state — adopt
   // it at once so the next turn and the rtk_run gate see it, no reload.
@@ -88,8 +83,9 @@ export default function rtkSessionExtension(pi: ExtensionApi): void {
     name: 'rtk_run',
     label: 'RTK Run',
     description: 'Run the installed `rtk` binary for compact command output when RTK mode is enabled.',
-    parameters: z.object({
-      args: z.array(z.string()).min(1).describe("Arguments passed to rtk, e.g. ['git','status'] or ['read','src/index.ts']"),
+    parameters: stringArrayToolParams(pi, 'args', {
+      minItems: 1,
+      description: "Arguments passed to rtk, e.g. ['git','status'] or ['read','src/index.ts']",
     }),
     async execute(_toolCallId, params, signal, onUpdate, ctx) {
       if (!enabled) {
@@ -110,7 +106,7 @@ export default function rtkSessionExtension(pi: ExtensionApi): void {
     },
   });
 
-  pi.on<InputEvent>('input', async (event) => {
+  onHostEvent<InputEvent>(pi, 'input', async (event) => {
     if (event?.source === 'extension') return;
     const t = normalizeInputCommand(event?.text);
     if (t === 'rtk on' || t === 'use rtk') setEnabled(true);
@@ -136,7 +132,7 @@ export default function rtkSessionExtension(pi: ExtensionApi): void {
     ctx?.ui?.notify?.(`RTK loaded: ${enabled ? 'on' : 'off'}`, 'info');
   });
 
-  pi.on('session_branch', async (_event, ctx) => {
+  onHostEvent(pi, 'session_branch', async (_event, ctx) => {
     restoreEnabled(ctx);
   });
 
@@ -157,7 +153,6 @@ export default function rtkSessionExtension(pi: ExtensionApi): void {
   pi.on<SystemPromptEvent>('before_agent_start', async (event) => {
     const active = isOmpSubagentPrompt(event.systemPrompt) ? getSharedComboState().rtk === 'on' : enabled;
     if (!active) return;
-    const base = asPromptArray(event.systemPrompt);
-    return { systemPrompt: [...base, RTK_PROMPT] };
+    return injectPromptText(pi, event, RTK_PROMPT);
   });
 }
