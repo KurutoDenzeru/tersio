@@ -21,6 +21,7 @@ extensions/**/*.js
 test/definitely-missing-home/
 
 # Test artifacts
+.vitest/
 test/definitely-missing-home/.omp/logs/
 
 # Project-specific files
