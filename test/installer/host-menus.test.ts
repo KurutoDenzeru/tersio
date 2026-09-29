@@ -157,42 +157,33 @@ test("doctor --fix restores a partly written pi tree", () => {
   }
 });
 
-test("an existing rtk binary is bound, not re-downloaded", () => {
+// The binary is machine-wide, so an install that finds one only rebinds:
+// resolveRtkBinary falls back to ~/.bun/bin, so a seeded binary stands in for
+// one an earlier install put there. Dry run for OMP, where the wiring is a plan
+// line rather than an action.
+function seedRtk(home: string): void {
+  const binDir = path.join(home, ".bun", "bin");
+  mkdirSync(binDir, { recursive: true });
+  const rtk = path.join(binDir, "rtk");
+  writeFileSync(rtk, "#!/bin/sh\necho 'rtk 0.50.0'\n", "utf8");
+  chmodSync(rtk, 0o755);
+}
+
+test("an existing rtk binary is bound on both hosts, never downloaded", () => {
   const home = tempHome();
   try {
-    // The binary is machine-wide: resolveRtkBinary falls back to ~/.bun/bin,
-    // so a seeded binary stands in for one an earlier install put there.
-    const binDir = path.join(home, ".bun", "bin");
-    mkdirSync(binDir, { recursive: true });
-    const rtk = path.join(binDir, "rtk");
-    writeFileSync(rtk, "#!/bin/sh\necho 'rtk 0.50.0'\n", "utf8");
-    chmodSync(rtk, 0o755);
+    seedRtk(home);
+    const pi = run(home, ["install", "--host", "pi", "--yes"]);
+    expect(pi.status, pi.stderr).toBe(0);
+    expect(pi.stdout).toMatch(/RTK — already installed.*nothing to bind on pi/);
 
-    const result = run(home, ["install", "--host", "pi", "--yes"]);
-    expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toMatch(/RTK — already installed.*nothing to bind on pi/);
-    expect(result.stdout, "no registry probe, no download").not.toMatch(/Downloading RTK binary|Finding latest RTK release/);
-  } finally {
-    rmSync(home, { recursive: true, force: true });
-  }
-});
-
-test("the OMP route binds the existing binary instead of downloading", () => {
-  const home = tempHome();
-  try {
-    const binDir = path.join(home, ".bun", "bin");
-    mkdirSync(binDir, { recursive: true });
-    const rtk = path.join(binDir, "rtk");
-    writeFileSync(rtk, "#!/bin/sh\necho 'rtk 0.50.0'\n", "utf8");
-    chmodSync(rtk, 0o755);
-
-    // Dry run: the wiring itself is a plan line, so only the decision to skip
-    // the download is asserted here.
-    const result = run(home, ["install", "--host", "omp", "--dry-run", "--verbose"]);
-    expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toMatch(/RTK — already installed.*binding into OMP/);
-    expect(result.stdout).not.toMatch(/would download rtk binary/);
-    expect(result.stdout).not.toMatch(/Finding latest RTK release/);
+    const omp = run(home, ["install", "--host", "omp", "--dry-run", "--verbose"]);
+    expect(omp.status, omp.stderr).toBe(0);
+    expect(omp.stdout).toMatch(/RTK — already installed.*binding into OMP/);
+    expect(omp.stdout).not.toMatch(/would download rtk binary/);
+    for (const out of [pi.stdout, omp.stdout]) {
+      expect(out, "no registry probe, no download").not.toMatch(/Downloading RTK binary|Finding latest RTK release/);
+    }
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

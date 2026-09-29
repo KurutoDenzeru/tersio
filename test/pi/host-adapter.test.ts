@@ -48,19 +48,17 @@ function piHost() {
   return { pi, labels, events };
 }
 
-test("isPiHost reads the zod injection, not a host name", () => {
+test("the host is read from the zod injection, and only OMP gets a label", () => {
   expect(isPiHost(ompHost().pi)).toBe(false);
   expect(isPiHost(piHost().pi)).toBe(true);
-});
 
-test("setExtensionLabel labels the extension on OMP and never on pi", () => {
   const omp = ompHost();
   setExtensionLabel(omp.pi, "RTK session toggle");
   expect(omp.labels).toEqual(["RTK session toggle"]);
 
   const pi = piHost();
   setExtensionLabel(pi.pi, "RTK session toggle");
-  expect(pi.labels, "pi would label a session entry with the extension name").toEqual([]);
+  expect(pi.labels, "pi's setLabel(entryId, label) would mark a session entry").toEqual([]);
 });
 
 test("onHostEvent registers session_branch on OMP and skips it on pi", () => {
@@ -95,7 +93,7 @@ test("hostSelect returns the option label on both hosts", async () => {
   ]);
 });
 
-test("hostSelect passes a cancelled dialog through as undefined", async () => {
+test("a cancelled select comes back as undefined", async () => {
   const ui = { select: async () => undefined };
   expect(await hostSelect(piHost().pi, ui as never, "title", [{ label: "off" }])).toBeUndefined();
   expect(await hostSelect(ompHost().pi, undefined, "title", [{ label: "off" }])).toBeUndefined();
@@ -132,10 +130,4 @@ test("themeStatus colors on OMP and stays plain on pi", () => {
   expect(themeStatus(themed, "⚡", "rtk: ON", true)).toBe("<accent>⚡</> <muted>rtk: ON</>");
   expect(themeStatus({ theme: undefined }, "⚡", "rtk: ON", true), "pi has no ctx.ui.theme").toBe("⚡ rtk: ON");
   expect(themeStatus(undefined, "⚡", "rtk: ON")).toBe("⚡ rtk: ON");
-});
-
-test("the pi event context carries what the adapters read", () => {
-  const ctx = { hasUI: false, cwd: "/tmp", sessionManager: { getBranch: () => [] } } as unknown as ExtensionCtx;
-  expect(ctx.hasUI).toBe(false);
-  expect(themeStatus(ctx.ui, "x", "y")).toBe("x y");
 });

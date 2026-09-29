@@ -671,16 +671,17 @@ async function runInstall(): Promise<void> {
     if (targetHost === 'omp') console.log('  [fail] omp not found — ensure it\'s installed');
   }
 
+  const failures: string[] = [];
+  const capture = async (label: string, work: () => Promise<void>): Promise<void> => {
+    try {
+      await work();
+    } catch (e) {
+      failures.push(label);
+      console.log(`  [fail] ${label}: ${shortError(e)}`);
+    }
+  };
+
   if (targetHost === 'pi') {
-    const failures: string[] = [];
-    const capture = async (label: string, work: () => Promise<void>): Promise<void> => {
-      try {
-        await work();
-      } catch (e) {
-        failures.push(label);
-        console.log(`  [fail] ${label}: ${shortError(e)}`);
-      }
-    };
     await capture('pi tree', () => stepPiLayer(profile, installOptions));
     await capture('rtk', () => stepRtk(BUN_BIN_DIR, installOptions, 'pi'));
     await capture('settings', () => writePluginSettings(profile, installOptions));
@@ -692,15 +693,6 @@ async function runInstall(): Promise<void> {
 
   const cavemanRule = await fetchCavemanRule(installOptions);
 
-  const failures: string[] = [];
-  const capture = async (label: string, work: () => Promise<void>): Promise<void> => {
-    try {
-      await work();
-    } catch (e) {
-      failures.push(label);
-      console.log(`  [fail] ${label}: ${shortError(e)}`);
-    }
-  };
   await capture('shared', () => stepSharedSessionState(userExtDir, installOptions));
   let selfPlugin = false;
   await capture('self-plugin', async () => { selfPlugin = await stepSelfPlugin(OMP_PLUGINS_DIR, installOptions); });

@@ -7,8 +7,6 @@ import { HOME, OMP_PLUGINS_DIR, PACKAGE_NAME, PACKAGE_VERSION } from './common.t
 import { TREE_FILES } from './manifest.ts';
 import { piAgentDir } from '../extensions/lib/utils.ts';
 
-export { TREE_FILES };
-
 export type HostId = 'omp' | 'pi';
 
 export interface HostEntry {
@@ -44,11 +42,11 @@ export function ompPackageDir(): string {
   return path.join(OMP_PLUGINS_DIR, 'node_modules', ...PACKAGE_NAME.split('/'));
 }
 
-export function piPackageDir(agentDir = piAgentDir()): string {
+function piPackageDir(agentDir = piAgentDir()): string {
   return path.join(agentDir, 'npm', 'node_modules', ...PACKAGE_NAME.split('/'));
 }
 
-export function piSettingsFile(agentDir = piAgentDir()): string {
+function piSettingsFile(agentDir = piAgentDir()): string {
   return path.join(agentDir, 'settings.json');
 }
 
@@ -83,45 +81,32 @@ export function piTersioSource(agentDir = piAgentDir()): string | null {
   return null;
 }
 
+// The hosts we install into, and the commands that add and remove each.
+const HOSTS: Array<Omit<HostEntry, 'installed' | 'via' | 'declared' | 'version' | 'dir'>> = [
+  { id: 'omp', label: 'Oh My Pi', bin: 'omp', installCmd: `omp plugin install ${PACKAGE_NAME}`, removeCmd: `omp plugin remove ${PACKAGE_NAME}` },
+  { id: 'pi', label: 'Pi', bin: 'pi', installCmd: `pi install npm:${PACKAGE_NAME}`, removeCmd: `pi remove npm:${PACKAGE_NAME}` },
+];
+
 function detect(agentDir = piAgentDir()): HostEntry[] {
-  const ompPkg = ompPackageDir();
-  const piPkg = piPackageDir(agentDir);
-  const entry = (
-    id: HostId,
-    label: string,
-    bin: string,
-    installCmd: string,
-    removeCmd: string,
-    pkgDir: string,
-    declared: string | null,
-    agentDirFor: string,
-  ): HostEntry => {
-    const asPackage = existsSync(pkgDir);
-    const tree = hostExtensionsDir(id, agentDirFor);
-    const missing = missingTreeFiles(id, agentDirFor);
-    const asTree = missing.length === 0;
-    const installed = asPackage || asTree;
+  return HOSTS.map((host) => {
+    const pkgDir = host.id === 'omp' ? ompPackageDir() : piPackageDir(agentDir);
+    const tree = hostExtensionsDir(host.id, agentDir);
+    // A tree wins: it is what the installer writes, and it carries no
+    // package.json, so its version is ours.
+    const via = missingTreeFiles(host.id, agentDir).length === 0
+      ? 'tree'
+      : existsSync(pkgDir) ? 'package' : null;
     return {
-      id,
-      label,
-      bin,
-      installCmd,
-      removeCmd,
-      installed,
-      via: installed ? (asTree ? 'tree' : 'package') : null,
-      declared,
-      // A written tree carries no package.json: it came from this CLI, so its
-      // version is ours.
-      version: installed ? (asTree ? PACKAGE_VERSION : packageVersion(pkgDir)) : null,
-      dir: installed ? (asTree ? tree : pkgDir) : null,
+      ...host,
+      installed: via !== null,
+      via,
+      declared: host.id === 'omp'
+        ? (existsSync(pkgDir) ? `plugin ${PACKAGE_NAME}` : null)
+        : piTersioSource(agentDir),
+      version: via === 'tree' ? PACKAGE_VERSION : via === 'package' ? packageVersion(pkgDir) : null,
+      dir: via === 'tree' ? tree : via === 'package' ? pkgDir : null,
     };
-  };
-  return [
-    entry('omp', 'Oh My Pi', 'omp', `omp plugin install ${PACKAGE_NAME}`, `omp plugin remove ${PACKAGE_NAME}`,
-      ompPkg, existsSync(ompPkg) ? `plugin ${PACKAGE_NAME}` : null, agentDir),
-    entry('pi', 'Pi', 'pi', `pi install npm:${PACKAGE_NAME}`, `pi remove npm:${PACKAGE_NAME}`,
-      piPkg, piTersioSource(agentDir), agentDir),
-  ];
+  });
 }
 
 /**
