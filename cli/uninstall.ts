@@ -10,7 +10,8 @@ import {
 import { askInteractiveChoice, closeRL, confirmDestructive, tty } from './interactive.ts';
 import { detectHosts, hostHint, hostLabel, parseHostArg } from './hosts.ts';
 import type { HostEntry, HostId } from './hosts.ts';
-import { piAgentDir, readTextIfExists } from '../extensions/lib/utils.ts';
+import { findHoistedPackage, piAgentDir, readTextIfExists } from '../extensions/lib/utils.ts';
+import { fileURLToPath } from 'node:url';
 import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
 
 interface UninstallOptions {
@@ -23,6 +24,8 @@ interface UninstallOptions {
 
 // The pi tree mirrors the OMP one. Ponytail and rtk stay: a package and a
 // shared binary are not ours to delete.
+const PONYTAIL_PKG = '@dietrichgebert/ponytail';
+
 const PI_TREE_DIRS = [
   'caveman-session',
   'rtk-session',
@@ -33,32 +36,50 @@ const PI_TREE_DIRS = [
   'lib',
 ];
 
+// One `pi remove`, for both packages the installer adds there.
+async function piRemove(spec: string, shouldDryRun: boolean): Promise<void> {
+  if (shouldDryRun) {
+    console.log(`  [dry-run] would run: pi remove ${spec}`);
+    return;
+  }
+  try {
+    const { execFile } = await import('node:child_process');
+    await new Promise<void>((resolve, reject) => {
+      execFile('pi', ['remove', spec], { timeout: 120000 }, (err, _out, errOut) => {
+        if (err) reject(new Error(String(errOut).trim() || err.message));
+        else resolve();
+      });
+    });
+    console.log(`  [ok] removed the pi package ${spec}`);
+  } catch (e) {
+    console.log(`  [fail] pi remove: ${(e as Error).message}`);
+    console.log(`  [hint] Manual: pi remove ${spec}`);
+  }
+}
+
+// Only the skill directories the installer copied, never pi's own skills dir.
+async function removeCopiedPonytailSkills(shouldDryRun: boolean): Promise<void> {
+  const source = findHoistedPackage(PONYTAIL_PKG, path.dirname(fileURLToPath(import.meta.url)), 'skills');
+  if (!source) return;
+  for (const entry of await fs.readdir(source, { withFileTypes: true })) {
+    if (entry.isDirectory()) await removeUninstallTarget(path.join(piAgentDir(), 'skills', entry.name), shouldDryRun);
+  }
+}
+
+// pi owns its package dir, so removal is `pi remove`; the tree and the defaults
+// file are ours. Ponytail goes too unless --keep-ponytail, matching the OMP
+// route, so neither host keeps a package we installed on its behalf.
 async function removePiLayer(host: HostEntry, shouldDryRun: boolean, shouldRemovePonytail: boolean): Promise<boolean> {
-  const extDir = path.join(piAgentDir(), 'extensions');
-  const targets = PI_TREE_DIRS.map((dir) => path.join(extDir, dir));
-  if (shouldRemovePonytail) targets.push(path.join(piAgentDir(), 'skills'));
+  const targets = PI_TREE_DIRS.map((dir) => path.join(piAgentDir(), 'extensions', dir));
 
   if (!host.installed && !host.declared) {
     console.log(`  [skip] ${host.label} — nothing installed (${host.installCmd})`);
     return false;
   }
-  if (host.declared) {
-    if (shouldDryRun) console.log(`  [dry-run] would run: ${host.removeCmd}`);
-    else {
-      try {
-        const { execFile } = await import('node:child_process');
-        await new Promise<void>((resolve, reject) => {
-          execFile(host.bin, ['remove', `npm:${PACKAGE_NAME}`], { timeout: 120000 }, (err, _out, errOut) => {
-            if (err) reject(new Error(String(errOut).trim() || err.message));
-            else resolve();
-          });
-        });
-        console.log(`  [ok] removed the pi package ${host.declared}`);
-      } catch (e) {
-        console.log(`  [fail] pi remove: ${(e as Error).message}`);
-        console.log(`  [hint] Manual: ${host.removeCmd}`);
-      }
-    }
+  if (host.declared) await piRemove(`npm:${PACKAGE_NAME}`, shouldDryRun);
+  if (shouldRemovePonytail) {
+    await piRemove(`npm:${PONYTAIL_PKG}`, shouldDryRun);
+    await removeCopiedPonytailSkills(shouldDryRun);
   }
   await Promise.all(targets.map((t) => removeUninstallTarget(t, shouldDryRun)));
   await clearSessionDefaults(shouldDryRun);
