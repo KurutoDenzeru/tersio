@@ -1,8 +1,6 @@
 ![Banner](/assets/Banner.webp)
 
-# ✂️ Tersio — Token-saving OMP Add-ons
-
-> **Installing?** See [INSTALL.md](./INSTALL.md) for the OMP, pi, and one-line install paths.
+# ✂️ Tersio — Token Saver OMP & Usage Tracker
 
 [![npm version](https://shieldcn.dev/npm/@krtclcdy%2Ftersio.svg?variant=branded&size=xs&logo=npm)](https://www.npmjs.com/package/@krtclcdy/tersio)
 [![node](https://shieldcn.dev/badge/node-%3E%3D20.12-22c55e.svg?variant=branded&size=xs&logo=nodedotjs)](https://nodejs.org)
@@ -10,7 +8,9 @@
 [![Build](https://shieldcn.dev/github/ci/KurutoDenzeru/tersio.svg?variant=branded&size=xs&logo=githubactions&label=Build)](https://github.com/KurutoDenzeru/tersio/actions)
 [![MIT](https://shieldcn.dev/badge/license-MIT-2563eb.svg?variant=branded&size=xs&logo=opensourceinitiative)](./LICENSE)
 
- Terse replies, compact shell output, and minimal code decisions for [Oh My Pi (OMP)](https://github.com/can1357/oh-my-pi) — one-command combo presets.
+Token-saving add-ons for Oh My Pi and pi: terse caveman replies, compact
+RTK shell output, lean Ponytail code calls, usage tracking with a gain
+dashboard — one-command combo presets, one shared extension tree.
 
 ## ⚡ Getting Started
 
@@ -22,33 +22,24 @@ All install paths in one table, with update and remove commands: [INSTALL.md](./
 curl -fsSL https://github.com/KurutoDenzeru/tersio/releases/latest/download/install.sh | sh
 ```
 
-Prefer OMP-managed updates? Install as an OMP plugin instead:
+Then run the CLI. Bare `tersio` opens a menu and asks which agent to install into:
+
+```bash
+tersio                      # menu — picks Oh My Pi or pi
+tersio install --host pi    # pi, non-interactive
+tersio install --host omp   # Oh My Pi, non-interactive
+```
+
+Or let the host install the package itself. Same result, host-managed updates:
 
 ```bash
 omp plugin install @krtclcdy/tersio
-```
-
-Using [pi](https://github.com/earendil-works/pi) instead? The same package installs as a [pi package](https://pi.dev/docs/latest/packages):
-
-```bash
 pi install npm:@krtclcdy/tersio
 ```
 
-Or let the CLI write the same tree, which is what the OMP row does:
+Both hosts load the same five extensions from the same sources, and both read their session-start defaults from `~/.tersio/settings.json`. All five load always.
 
-```bash
-tersio install --host pi
-```
-
-Both hosts load the same five extensions from the same sources, and both read their session-start defaults from `~/.tersio/settings.json`.
-
-All modes load always. Only the updater stays toggleable:
-
-```bash
-omp plugin features @krtclcdy/tersio --disable updater
-```
-
-Then restart OMP and enable a preset:
+Then restart the agent and enable a preset:
 
 ```text
 /combo balanced
