@@ -1,3 +1,14 @@
+## v2.24.0
+ - Adds pi as a second install target. `tersio install` now asks which agent to install into, `--host omp|pi` pins it for scripts, and uninstall removes only the host you pick.
+ - Ships one extension tree for both hosts instead of two. The six API differences between OMP and pi live in a single adapter, so a fix reaches both at once.
+ - Moves session-start defaults to `~/.tersio/settings.json`, shared by every host, seeding once from the old OMP plugin lock so no saved choice is lost.
+ - Makes the doctor host-aware: it reports each host and how it is installed, adds a per-host extension-tree row, and `doctor --fix extensions` repairs a partly written tree.
+ - Retires `tersio reinstall`; `tersio doctor --fix` covers the same ground and works for both hosts.
+ - Installs the RTK binary once per machine. An install that finds one rebinds instead of re-downloading; `tersio update` still refreshes it.
+ - Adds a Pi row to the Dashboard Connection pane with its logo, version, and resolved path.
+ - Publishes the package under the `pi-package` keyword so it is discoverable in the pi package gallery, with a documented `pi install` route.
+ - Folds the space-bunny aliases into one free model in the usage ledger, so a stealth model no longer reports a phantom cost.
+
 ## v2.23.0
  - Improves RTK, Caveman, and Ponytail fidelity across OMP plugin loading, session state, fallback paths, and packaged extension ownership.
  - Adds weighted RTK savings reporting, OMP-specific adoption and recall diagnostics, path-aware RTK lookup, and fail-open behavior.
