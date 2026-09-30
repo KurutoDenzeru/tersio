@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { cn } from "cn";
 import { vendorOf } from "@/lib/format";
+import { STEALTH_MARK } from "@/lib/stealth-mark";
 import { Icon } from "./icon";
 
 function OpenAIGlyph({ className }: { className: string }) {
@@ -13,17 +14,9 @@ function OpenAIGlyph({ className }: { className: string }) {
   );
 }
 
-// Stealth's OpenRouter mark: a B-2 Spirit bomber, top view. currentColor so it
-// follows the tile, and no background circle — the tile provides that.
+// Stealth's mark, embedded so the offline dashboard never shows a broken image.
 function StealthGlyph({ className }: { className: string }) {
-  return (
-    <svg className={className} viewBox="0 0 240 240" fill="currentColor" aria-hidden="true">
-      <path
-        stroke="currentColor"
-        d="M 120,70 L 70,130 L 50,150 L 65,160 L 120,130 L 175,160 L 190,150 L 170,130 Z M 100,130 L 120,150 L 140,130 Z"
-      />
-    </svg>
-  );
+  return <img src={STEALTH_MARK} alt="" aria-hidden="true" className={cn(className, "object-contain")} />;
 }
 
 export function BrandSilhouette({ model }: { model: string }) {
@@ -79,8 +72,8 @@ export function Brandmark({ model, small }: { model: string; small?: boolean }) 
   }
   if (v.slug === "stealth") {
     return (
-      <span className={cn(cls, "bg-transparent border")} style={{ borderColor: v.color, color: v.color }}>
-        <StealthGlyph className={`block ${glyph}`} />
+      <span className={cls} style={{ background: "#0b0b0b" }}>
+        <StealthGlyph className={`block ${glyph.replace("size-[18px]", "size-[14px]")}`} />
       </span>
     );
   }

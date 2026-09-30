@@ -136,6 +136,7 @@ export interface Vendor {
 }
 
 const PROVIDERS: Array<[RegExp, string, string, string]> = [
+  [/stealth|space-bunny/i, "Stealth", "stealth", "#1f2937"],
   [/openai|codex|gpt-|o1/i, "OpenAI", "openai", "#fff"],
   [/muse/i, "Meta", "meta", "#0082fb"],
   [/deepseek/i, "DeepSeek", "deepseek", "#4d6bfe"],
@@ -150,10 +151,11 @@ const PROVIDERS: Array<[RegExp, string, string, string]> = [
   [/gemini|google|gemma/i, "Google", "google", "#4285F4"],
   // Stealth runs a Space-Bunny class of models; its OpenRouter mark is a
   // currentColor bomber, inlined in brand.tsx rather than fetched.
-  [/stealth|space-bunny/i, "Stealth", "stealth", "#1f2937"],
+  // `swe-*` is Cognition's Devin line, so it belongs to this vendor rather than
+  // the grey Other bucket. Anchored so it cannot swallow an unrelated name.
+  [/devin|cognition|^swe[-/]/i, "Cognition", "", "#7c5cff"],
   // No Cognition/Devin mark ships on the simple-icons CDN, so this slug stays
   // empty and the dashboard draws its local glyph instead of a broken image.
-  [/devin|cognition/i, "Cognition", "", "#7c5cff"],
 ];
 
 export function vendorOf(model: string): Vendor {
