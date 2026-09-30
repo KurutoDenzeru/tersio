@@ -13,6 +13,7 @@ import {
   statusLabel,
   statusRank,
   vendorOf,
+  whenStamp,
 } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -21,6 +22,7 @@ import { TooltipRow } from "@/components/ui/tooltip-surface";
 import type { RecentRequestRow, UsageReport } from "@/lib/data";
 import { EmptyState, HoverTip, PageButtons, PerPage, usePager } from "./common";
 import { Icon } from "./icon";
+import { AgentLogo } from "./agent-logos";
 
 type Key = "model" | "agent" | "input" | "output" | "time" | "status" | "cost" | "when";
 
@@ -130,12 +132,12 @@ export function Recent({ data, money }: { data: UsageReport | null; money: (v: n
             {rows.length ? `${rows.length} requests` : ""}
           </span>
         </div>
-        <CardDescription className="mono text-xs text-dim">latest assistant messages · sort any column · hover a row for the timestamp · cost is measured when the host recorded it</CardDescription>
+        <CardDescription className="mono text-xs text-dim">latest assistant messages · local time · sort any column · cost is measured when the host recorded it</CardDescription>
       </CardHeader>
       <CardContent>
       {rows.length > 0 ? (
         <Table className="mono table-fixed text-[13px]" id="recentTable">
-            <colgroup><col /><col style={{ width: 92 }} /><col style={{ width: 96 }} /><col style={{ width: 96 }} /><col style={{ width: 120 }} /><col style={{ width: 116 }} /><col style={{ width: 120 }} /></colgroup>
+            <colgroup><col /><col style={{ width: 78 }} /><col style={{ width: 96 }} /><col style={{ width: 96 }} /><col style={{ width: 120 }} /><col style={{ width: 116 }} /><col style={{ width: 120 }} /><col style={{ width: 158 }} /></colgroup>
             <TableHeader className="[&_tr]:text-left [&_tr]:text-[11px] [&_tr]:uppercase [&_tr]:tracking-[0.14em] [&_tr]:text-dim">
               <TableRow>
                 {th("Model", "model")}
@@ -145,6 +147,7 @@ export function Recent({ data, money }: { data: UsageReport | null; money: (v: n
                 {th("Time", "time", true, "Elapsed time with the model / output token speed")}
                 {th("Status", "status")}
                 {th("Cost", "cost", true)}
+                {th("When", "when", true, "Local timestamp: month day, hour:minute:second")}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -160,7 +163,9 @@ export function Recent({ data, money }: { data: UsageReport | null; money: (v: n
                       </TableCell>
                       <TableCell className="whitespace-nowrap py-2.5 pr-3">
                         <span className="inline-flex items-center gap-1.5 text-dim">
-                          <Icon name={hostMeta(r.h).icon} className="size-3.5" style={{ color: hostMeta(r.h).color }} />
+                          <span className="grid size-4 shrink-0 place-items-center">
+                            <AgentLogo host={r.h} />
+                          </span>
                           {hostMeta(r.h).label}
                         </span>
                       </TableCell>
@@ -180,6 +185,9 @@ export function Recent({ data, money }: { data: UsageReport | null; money: (v: n
                         className={`whitespace-nowrap py-2.5 pr-3 text-right ${measured ? "text-ink" : "text-dim"}`}
                       >
                         {(measured ? "" : "~") + money(displayCost(r))}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap py-2.5 text-right text-dim">
+                        {whenStamp(r.t)}
                       </TableCell>
                     </TableRow>
                   </HoverTip>
