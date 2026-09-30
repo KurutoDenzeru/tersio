@@ -1,5 +1,7 @@
 import * as React from "react"
 
+import { ACCENT_STORAGE_KEY, DEFAULT_ACCENT, isAccentId, type AccentId } from "@/lib/accent"
+
 type Theme = "dark" | "light" | "system"
 type ResolvedTheme = "dark" | "light"
 
@@ -13,6 +15,8 @@ type ThemeProviderProps = {
 type ThemeProviderState = {
   theme: Theme
   setTheme: (theme: Theme) => void
+  accent: AccentId
+  setAccent: (accent: AccentId) => void
 }
 
 const COLOR_SCHEME_QUERY = "(prefers-color-scheme: dark)"
@@ -28,6 +32,14 @@ function isTheme(value: string | null): value is Theme {
   }
 
   return THEME_VALUES.includes(value as Theme)
+}
+
+function isAccent(value: string | null): value is AccentId {
+  if (value === null) {
+    return false
+  }
+
+  return isAccentId(value)
 }
 
 function getSystemTheme(): ResolvedTheme {
@@ -92,6 +104,11 @@ export function ThemeProvider({
     return defaultTheme
   })
 
+  const [accent, setAccentState] = React.useState<AccentId>(() => {
+    const storedAccent = localStorage.getItem(ACCENT_STORAGE_KEY)
+    return isAccent(storedAccent) ? storedAccent : DEFAULT_ACCENT
+  })
+
   const setTheme = React.useCallback(
     (nextTheme: Theme) => {
       localStorage.setItem(storageKey, nextTheme)
@@ -99,6 +116,11 @@ export function ThemeProvider({
     },
     [storageKey]
   )
+
+  const setAccent = React.useCallback((nextAccent: AccentId) => {
+    localStorage.setItem(ACCENT_STORAGE_KEY, nextAccent)
+    setAccentState(nextAccent)
+  }, [])
 
   const applyTheme = React.useCallback(
     (nextTheme: Theme) => {
@@ -118,6 +140,11 @@ export function ThemeProvider({
     },
     [disableTransitionOnChange]
   )
+
+  // A pure colour choice, so it gets its own attribute and no transition.
+  React.useEffect(() => {
+    document.documentElement.setAttribute("data-accent", accent)
+  }, [accent])
 
   React.useEffect(() => {
     applyTheme(theme)
@@ -184,16 +211,17 @@ export function ThemeProvider({
         return
       }
 
-      if (event.key !== storageKey) {
+      if (event.key !== storageKey && event.key !== ACCENT_STORAGE_KEY) {
         return
       }
 
       if (isTheme(event.newValue)) {
         setThemeState(event.newValue)
-        return
+      } else if (event.key === ACCENT_STORAGE_KEY) {
+        setAccentState(isAccent(event.newValue) ? event.newValue : DEFAULT_ACCENT)
+      } else {
+        setThemeState(defaultTheme)
       }
-
-      setThemeState(defaultTheme)
     }
 
     window.addEventListener("storage", handleStorageChange)
@@ -207,8 +235,10 @@ export function ThemeProvider({
     () => ({
       theme,
       setTheme,
+      accent,
+      setAccent,
     }),
-    [theme, setTheme]
+    [theme, setTheme, accent, setAccent]
   )
 
   return (
@@ -226,4 +256,29 @@ export const useTheme = () => {
   }
 
   return context
+}
+
+/**
+ * The theme actually showing, following the OS when set to `system`, so accent
+ * swatches repaint on a live flip.
+ */
+export function useResolvedTheme(): ResolvedTheme {
+  const { theme } = useTheme()
+  const [system, setSystem] = React.useState<ResolvedTheme>(getSystemTheme)
+
+  React.useEffect(() => {
+    const mediaQuery = window.matchMedia(COLOR_SCHEME_QUERY)
+    const sync = (): void => {
+      setSystem(mediaQuery.matches ? "dark" : "light")
+    }
+
+    sync()
+    mediaQuery.addEventListener("change", sync)
+
+    return () => {
+      mediaQuery.removeEventListener("change", sync)
+    }
+  }, [])
+
+  return theme === "system" ? system : theme
 }
