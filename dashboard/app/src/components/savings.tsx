@@ -1,25 +1,32 @@
 // Savings bento and token strip with shadcn Card and Select structure.
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { TooltipRow } from "@/components/ui/tooltip-surface";
 import { CURS, FLAGS, co2Zone, dayTotal, fmt, fmtShort, levZone, shareZone } from "@/lib/format";
+import { fmtCo2 } from "@/lib/carbon";
 import type { FxState, UsageReport } from "@/lib/data";
 import { HoverTip } from "./common";
+import { CarbonDialog } from "./carbon-dialog";
 import { useCountUp } from "./hero";
 import { Icon } from "./icon";
 
 // Zone faces: the tersio palette's own colour classes, per the mapping contract.
 const ZFACE_CLS: Record<string, string> = { good: "text-accent", warn: "text-[#fbbf24]", bad: "text-[#f87171]" };
 
+// Module level so AnimatedValue's `dep` stays stable across renders.
+const fmtPct = (value: number): string => `${value.toFixed(0)}%`;
+
 function TipRow({ color, k, v }: { color: string; k: string; v: string }) {
   return <TooltipRow color={color} label={k} value={v} />;
 }
 
 function AnimatedValue({ value, format }: { value: number; format: (value: number) => string }) {
-  const displayedValue = useCountUp(value);
+  // Keep every caller's formatter module-level: an inline arrow is a new
+  // identity each render, which replays the count from zero.
+  const displayedValue = useCountUp(value, format);
   return format(displayedValue);
 }
 
@@ -148,6 +155,7 @@ export function Savings({
   const levZ = levZone(lev);
   const co2 = data?.co2g ?? 0;
   const co2Z = co2Zone(co2);
+  const [carbonOpen, setCarbonOpen] = useState(false);
   const share = total ? Math.round(((t.cacheRead + t.cacheWrite) / total) * 100) : 0;
   const shareZ = shareZone(share);
 
@@ -272,31 +280,30 @@ export function Savings({
               </CardContent>
             </Card>
           </HoverTip>
-          <HoverTip
-            content={
-              <div className="grid gap-1.5">
-                <div className="font-medium text-foreground">CO2</div>
-                <div className="text-muted-foreground">~{co2.toFixed(1)}g est. from output</div>
-                <div className="grid gap-1.5">
-                  <TipRow color="var(--accent)" k="zone" v={co2Z[1]} />
-                  <TipRow color="var(--accent)" k="energy" v={`~${(data?.energyWh ?? 0).toFixed(1)} Wh`} />
-                  <TipRow color="var(--dim)" k="served" v="÷32 concurrency" />
-                </div>
-              </div>
-            }
-          >
+          {/* No HoverTip here: the info dialog below carries every figure the old
+              tip showed (zone, energy, concurrency) and more, and a tip left open
+              behind the modal read as a rendering fault. */}
              <Card className="col-span-1 border-line bg-panel">
                <CardHeader>
                  <CardTitle className="mono text-[11px] uppercase tracking-[0.14em] text-dim">CO2</CardTitle>
+                 <CardAction>
+                   <button
+                     type="button"
+                     aria-label="How this CO2 estimate is calculated"
+                     onClick={() => setCarbonOpen(true)}
+                     className="mono grid size-6 place-items-center rounded-lg border border-line text-dim hover:border-accent hover:text-accent [transition:transform_.12s,background_.2s,color_.2s] hover:bg-accent-soft active:scale-[.96] focus-visible:outline focus-visible:outline-1 focus-visible:outline-accent"
+                   >
+                     <Icon name="info" className="size-3.5" />
+                   </button>
+                 </CardAction>
                </CardHeader>
                <CardContent>
                  <p className="mono font-bold text-3xl">
-                   ~<AnimatedValue value={co2} format={(value) => `${value.toFixed(1)}g`} /> <Icon name={co2Z[0]} className={`inline-block size-3.5 align-[-2px] ${ZFACE_CLS[co2Z[2]] ?? ""}`} />
+                   ~<AnimatedValue value={co2} format={fmtCo2} /> <Icon name={co2Z[0]} className={`inline-block size-3.5 align-[-2px] ${ZFACE_CLS[co2Z[2]] ?? ""}`} />
                  </p>
                 <span className="mono mt-2 inline-flex w-fit rounded-full bg-track px-2.5 py-[3px] text-[11px] text-dim">served ÷32</span>
                </CardContent>
              </Card>
-          </HoverTip>
           <HoverTip
             content={
               <div className="grid gap-1.5">
@@ -317,7 +324,7 @@ export function Savings({
                </CardHeader>
                <CardContent>
                  <p className="mono font-bold text-3xl">
-                   <AnimatedValue value={share} format={(value) => `${value.toFixed(0)}%`} /> <Icon name={shareZ[0]} className={`inline-block size-3.5 align-[-2px] ${ZFACE_CLS[shareZ[2]] ?? ""}`} />
+                   <AnimatedValue value={share} format={fmtPct} /> <Icon name={shareZ[0]} className={`inline-block size-3.5 align-[-2px] ${ZFACE_CLS[shareZ[2]] ?? ""}`} />
                  </p>
                  <CardDescription className="mono mt-2 text-[11px] text-dim">of tokens cached</CardDescription>
                </CardContent>
@@ -345,6 +352,8 @@ export function Savings({
           </Card>
         ))}
       </section>
+
+      <CarbonDialog open={carbonOpen} onClose={() => setCarbonOpen(false)} data={data} />
     </>
   );
 }

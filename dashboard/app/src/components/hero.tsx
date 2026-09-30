@@ -17,7 +17,8 @@ function useClock(): string {
   return now;
 }
 
-export function useCountUp(target: number): number {
+// `dep` re-runs when the text changes but the number does not, e.g. a currency switch.
+export function useCountUp(target: number, dep?: unknown): number {
   const [value, setValue] = useState(0);
 
   useEffect(() => {
@@ -36,7 +37,7 @@ export function useCountUp(target: number): number {
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [target]);
+  }, [target, dep]);
 
   return value;
 }

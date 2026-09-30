@@ -34,6 +34,9 @@ const GRIDS: Record<string, number> = {
 // Serving amortization: single-stream ceiling ÷ concurrency ≈ served impact.
 export const SERVING_CONCURRENCY = 32;
 
+/** EcoLogits release this port tracks, so a UI can name it instead of guessing. */
+export const ECOLOGITS_VERSION = '0.8.2';
+
 interface RegistryEntry {
   match?: string;
   exact?: string;
