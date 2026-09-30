@@ -69,7 +69,7 @@ function query(db: string, sql: string): string[][] {
 // Bump when a parse change adds a field the mirror cannot fill in for rows it
 // already stored. The file ledger is mtime+size, so an unchanged transcript is
 // never re-read and the new field would stay NULL forever without this.
-const PARSER_VERSION = '2';
+const PARSER_VERSION = '3';
 
 function ensureSchema(db: string): void {
   fs.mkdirSync(path.dirname(db), { recursive: true });
