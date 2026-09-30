@@ -13,6 +13,7 @@ import {
   codexSessionsDir,
   costOf,
   durOf,
+  hostOfSessionFile,
   ingestSessionRow,
   newSessionAccum,
   sessionsDirs,
@@ -76,9 +77,19 @@ function ensureSchema(db: string): void {
       `CREATE TABLE IF NOT EXISTS files (path TEXT PRIMARY KEY, mtime REAL NOT NULL, size INTEGER NOT NULL);` +
       `CREATE TABLE IF NOT EXISTS messages (file TEXT NOT NULL, t REAL, model TEXT NOT NULL,` +
       ` i INTEGER NOT NULL, o INTEGER NOT NULL, d REAL, cr INTEGER NOT NULL, cw INTEGER NOT NULL,` +
-      ` usd REAL, st TEXT NOT NULL, code REAL, note TEXT, tools TEXT NOT NULL DEFAULT '[]');` +
+      ` usd REAL, st TEXT NOT NULL, code REAL, note TEXT, tools TEXT NOT NULL DEFAULT '[]', h TEXT);` +
       `CREATE INDEX IF NOT EXISTS idx_messages_file ON messages(file);` + rekeys,
   );
+  // An older db has no h column; CREATE TABLE IF NOT EXISTS will not add one.
+  try {
+    run(db, `ALTER TABLE messages ADD COLUMN h TEXT;`);
+  } catch { /* already present */ }
+  // Host is derivable from the path, so backfill without re-reading transcripts.
+  try {
+    for (const [file] of query(db, `SELECT DISTINCT file FROM messages WHERE h IS NULL;`)) {
+      run(db, `UPDATE messages SET h='${esc(hostOfSessionFile(file))}' WHERE file=${esc(file)};`);
+    }
+  } catch { /* fresh or unreadable db */ }
 }
 
 function readFiles(db: string): Record<string, { mtime: number; size: number }> {
@@ -106,9 +117,10 @@ interface StoredRow {
   code: number | undefined;
   note: string | undefined;
   tools: string[];
+  host?: string;
 }
 
-function parseFile(text: string): StoredRow[] {
+function parseFile(text: string, host?: string): StoredRow[] {
   const rows: StoredRow[] = [];
   let codexProvider: string | null = null;
   for (const line of text.split('\n')) {
@@ -139,6 +151,7 @@ function parseFile(text: string): StoredRow[] {
           code: undefined,
           note: undefined,
           tools: [],
+          host,
         });
         continue;
       }
@@ -160,6 +173,7 @@ function parseFile(text: string): StoredRow[] {
         code: run.code,
         note,
         tools: parsed.tools ?? [],
+        host,
       });
     } catch { /* skip corrupt lines */ }
   }
@@ -167,10 +181,10 @@ function parseFile(text: string): StoredRow[] {
 }
 
 function insertSql(file: string, r: StoredRow): string {
-  return `INSERT INTO messages (file, t, model, i, o, d, cr, cw, usd, st, code, note, tools) VALUES (` +
+  return `INSERT INTO messages (file, t, model, i, o, d, cr, cw, usd, st, code, note, tools, h) VALUES (` +
     `${esc(file)},${r.t === null ? 'NULL' : String(r.t)},${esc(r.model)},${r.i},${r.o},` +
     `${nullNum(r.d)},${r.cr},${r.cw},${nullNum(r.usd)},${esc(r.st)},` +
-    `${nullNum(r.code)},${nullStr(r.note)},${esc(JSON.stringify(r.tools))});`;
+    `${nullNum(r.code)},${nullStr(r.note)},${esc(JSON.stringify(r.tools))},${nullStr(r.host)});`;
 }
 
 // Unchanged transcripts are skipped via mtime+size; rows for deleted ones are
@@ -234,7 +248,7 @@ export function syncUsageDb(): boolean {
     for (const file of changed) {
       const entry = current[file];
       const text = fs.readFileSync(file, 'utf8');
-      for (const r of parseFile(text)) {
+      for (const r of parseFile(text, hostOfSessionFile(file))) {
         if (!push(insertSql(file, r))) return false;
       }
       if (!push(`INSERT OR REPLACE INTO files (path, mtime, size) VALUES (${esc(file)},${entry.mtime},${entry.size});`)) return false;
@@ -255,12 +269,12 @@ export function readUsageDb(): StoredUsage | null {
   }
   let rows: string[][];
   try {
-    rows = query(db, `SELECT t, model, i, o, d, cr, cw, usd, st, code, note, tools FROM messages;`);
+    rows = query(db, `SELECT t, model, i, o, d, cr, cw, usd, st, code, note, tools, h FROM messages;`);
   } catch {
     return null;
   }
   const accum = newSessionAccum();
-  for (const [t, model, i, o, d, cr, cw, usd, st, code, note, tools] of rows) {
+  for (const [t, model, i, o, d, cr, cw, usd, st, code, note, tools, h] of rows) {
     const ts = t === '' ? undefined : Number(t);
     let toolNames: string[] = [];
     try {
@@ -289,6 +303,7 @@ export function readUsageDb(): StoredUsage | null {
         note: note === '' ? undefined : note,
       },
       toolNames,
+      h === '' ? undefined : h,
     );
   }
   accum.recent.sort((a, b) => b.t - a.t);

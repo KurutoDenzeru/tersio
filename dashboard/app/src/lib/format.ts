@@ -157,6 +157,19 @@ export function vendorOf(model: string): Vendor {
   return { name: "Other", slug: "", color: "#71717a" };
 }
 
+// Which agent wrote a session. The dashboard shows a glyph so a row reads as
+// pi or OMP without opening it.
+export interface HostMeta {
+  label: string;
+  icon: string;
+  color: string;
+}
+export function hostMeta(host?: string): HostMeta {
+  if (host === "omp") return { label: "OMP", icon: "square-terminal", color: "#a78bfa" };
+  if (host === "codex") return { label: "Codex", icon: "terminal", color: "#34d399" };
+  return { label: "pi", icon: "circle-dot", color: "#22d3ee" };
+}
+
 export const PALETTE = ["#34d399", "#818cf8", "#22d3ee", "#fbbf24", "#f472b6", "#a78bfa", "#fb923c", "#2dd4bf"];
 
 // Zone indicators: coarse by design; captions say est. where modeled.
