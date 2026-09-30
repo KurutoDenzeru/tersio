@@ -486,56 +486,117 @@ function HighlightMatch({ text, query, fullWhenAlias = false }: { text: string; 
   return parts;
 }
 
-const COMBO_LEVELS_UI: Array<{ id: string; label: string; hint: string }> = [
-  { id: "off", label: "Off", hint: "Nothing active" },
-  { id: "medium", label: "Medium", hint: "caveman=lite, rtk=on, ponytail=lite" },
-  { id: "balanced", label: "Balanced", hint: "caveman=full, rtk=on, ponytail=full" },
-  { id: "max", label: "Max", hint: "caveman=ultra, rtk=on, ponytail=ultra" },
+interface DefaultsPayload {
+  comboDefault: string;
+  cavemanDefault: string;
+  rtkDefault: boolean;
+  ponytailDefault: string;
+}
+
+const DEFAULT_ROWS_UI: Array<{ field: keyof DefaultsPayload; label: string; hint: string; options: Array<{ id: string; label: string }> }> = [
+  {
+    field: "comboDefault",
+    label: "Combo preset",
+    hint: "Sets caveman, RTK and Ponytail together.",
+    options: [
+      { id: "off", label: "Off" },
+      { id: "medium", label: "Medium" },
+      { id: "balanced", label: "Balanced" },
+      { id: "max", label: "Max" },
+    ],
+  },
+  {
+    field: "cavemanDefault",
+    label: "Caveman",
+    hint: "Terse-reply mode for a new or resumed session.",
+    options: [
+      { id: "off", label: "Off" }, { id: "lite", label: "Lite" },
+      { id: "full", label: "Full" }, { id: "ultra", label: "Ultra" },
+      { id: "wenyan-lite", label: "Wenyan lite" }, { id: "wenyan-full", label: "Wenyan full" },
+      { id: "wenyan-ultra", label: "Wenyan ultra" },
+    ],
+  },
+  {
+    field: "rtkDefault",
+    label: "RTK",
+    hint: "Rewrite eligible Bash calls through rtk.",
+    options: [{ id: "on", label: "On" }, { id: "off", label: "Off" }],
+  },
+  {
+    field: "ponytailDefault",
+    label: "Ponytail",
+    hint: "Lazy-code mode for a new or resumed session.",
+    options: [
+      { id: "off", label: "Off" }, { id: "lite", label: "Lite" },
+      { id: "full", label: "Full" }, { id: "ultra", label: "Ultra" },
+    ],
+  },
 ];
 
-function ComboDefaultPicker() {
+// The session-start defaults, mirroring `tersio settings`. One fetch, and each
+// row saves on its own so a combo change never silently rewrites the others.
+function DefaultModes() {
   const toast = useToast();
-  const [level, setLevel] = useState("off");
+  const [current, setCurrent] = useState<DefaultsPayload>({
+    comboDefault: "off", cavemanDefault: "off", rtkDefault: false, ponytailDefault: "off",
+  });
   const [loaded, setLoaded] = useState(false);
+
   useEffect(() => {
     let alive = true;
     fetch("/settings")
       .then((r) => (r.ok ? r.json() : null))
-      .then((d: { comboDefault?: string } | null) => {
-        if (alive && d?.comboDefault) { setLevel(d.comboDefault); setLoaded(true); }
-      })
-      .catch(() => { if (alive) setLoaded(true); });
+      .then((d: Partial<DefaultsPayload> | null) => { if (alive && d) setCurrent((c) => ({ ...c, ...d })); })
+      .catch(() => { /* keep the defaults; the rows still save */ })
+      .finally(() => { if (alive) setLoaded(true); });
     return () => { alive = false; };
   }, []);
-  const save = (next: string | null): void => {
-    const level = next ?? "off";
-    setLevel(level);
+
+  const save = (row: (typeof DEFAULT_ROWS_UI)[number], id: string): void => {
+    const value: string | boolean = row.field === "rtkDefault" ? id === "on" : id;
+    setCurrent((c) => ({ ...c, [row.field]: value }));
     void fetch("/settings", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ comboDefault: level }),
+      body: JSON.stringify({ [row.field]: value }),
     })
       .then((r) => r.json())
-      .then((d: { ok?: boolean }) => {
-        toast(d?.ok ? "Default mode saved" : "Could not save", d?.ok ? `${level} applies to new sessions` : "Unknown combo level", d?.ok ? "check" : "circle-alert");
+      .then((d: { ok?: boolean; error?: string }) => {
+        if (d?.ok) toast(`${row.label} saved`, `${id} applies to new sessions`, "check");
+        else toast("Could not save", d?.error ?? "Unknown level", "circle-alert");
       })
       .catch(() => toast("Could not save", "The dashboard server did not answer.", "circle-alert"));
   };
+
   return (
-    <Select value={level} onValueChange={save} disabled={!loaded}>
-      <SelectTrigger size="sm" className="w-[132px] shrink-0" aria-label="Default combo mode">
-        <SelectValue placeholder="Off" />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectGroup>
-          {COMBO_LEVELS_UI.map((c) => (
-            <SelectItem key={c.id} value={c.id}>
-              {c.label}
-            </SelectItem>
-          ))}
-        </SelectGroup>
-      </SelectContent>
-    </Select>
+    <div className="grid gap-6">
+      {DEFAULT_ROWS_UI.map((row) => {
+        const raw = current[row.field];
+        const value = row.field === "rtkDefault" ? (raw ? "on" : "off") : String(raw ?? "off");
+        return (
+          <div key={row.field} className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="m-0 text-[13px] font-semibold">{row.label}</p>
+              <p className="mt-0.5 mb-0 text-xs text-dim">{row.hint}</p>
+            </div>
+            <Select value={value} onValueChange={(v) => save(row, v ?? "off")} disabled={!loaded}>
+              <SelectTrigger size="sm" className="w-[132px] shrink-0" aria-label={`${row.label} default`}>
+                <SelectValue placeholder="Off" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  {row.options.map((o) => (
+                    <SelectItem key={o.id} value={o.id}>
+                      {o.label}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -646,14 +707,8 @@ export function SettingsDialog({
             <div className={`min-h-0 overscroll-contain px-5 pt-4 ${pane === "diagnosis" ? "flex flex-1 overflow-hidden pb-5" : "overflow-y-auto pb-5 [scrollbar-width:thin] [scrollbar-color:var(--line)_transparent]"}`}>
               {pane === "general" && (
                 <section aria-label="General">
+                  <DefaultModes />
                   <div className="flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="m-0 text-[13px] font-semibold">Default mode</p>
-                      <p className="mt-0.5 mb-0 text-xs text-dim">Combo preset a new or resumed session opens in.</p>
-                    </div>
-                    <ComboDefaultPicker />
-                  </div>
-                  <div className="mt-6 flex items-center justify-between gap-3">
                     <div className="min-w-0">
                       <p className="m-0 text-[13px] font-semibold">Theme</p>
                       <p className="mt-0.5 mb-0 text-xs text-dim">Light, dark, or follow the system.</p>

@@ -18,6 +18,7 @@ import {
 } from './common.ts';
 import { storedProfile, writePluginSettings } from './profile.ts';
 import { normalizeComboLevel } from '../extensions/shared/session-state.ts';
+import { CAVEMAN_DEFAULTS, PONYTAIL_DEFAULTS } from './common.ts';
 import type { ComboLevel } from '../extensions/shared/types.ts';
 import { PACKAGE_NAME } from './common.ts';
 import { resolveRtkBinary } from '../extensions/lib/utils.ts';
@@ -298,13 +299,41 @@ function setDiagSchedule(schedule: DiagSchedule): DoctorReport {
 
 // The session-start combo level, so a new or resumed session opens in the mode
 // the user picked rather than off.
-async function saveComboDefault(raw: unknown): Promise<ComboLevel | null> {
-  const level = normalizeComboLevel(raw);
-  if (!level) return null;
+// One field per call; each validated against the same sets the CLI uses, so the
+// dashboard cannot write a level `tersio settings` would reject.
+async function saveDefaults(body: Record<string, unknown>): Promise<
+  { ok: true; profile: Record<string, unknown> } | { ok: false; error: string }
+> {
   const profile = await storedProfile();
-  profile.comboDefault = level;
+  if (body.comboDefault !== undefined) {
+    const level = normalizeComboLevel(body.comboDefault);
+    if (!level) return { ok: false, error: 'unknown combo level' };
+    profile.comboDefault = level;
+  }
+  if (body.cavemanDefault !== undefined) {
+    const v = String(body.cavemanDefault);
+    if (!CAVEMAN_DEFAULTS.has(v)) return { ok: false, error: 'unknown caveman level' };
+    profile.cavemanDefault = v;
+  }
+  if (body.ponytailDefault !== undefined) {
+    const v = String(body.ponytailDefault);
+    if (!PONYTAIL_DEFAULTS.has(v)) return { ok: false, error: 'unknown ponytail level' };
+    profile.ponytailDefault = v;
+  }
+  if (body.rtkDefault !== undefined) {
+    if (typeof body.rtkDefault !== 'boolean') return { ok: false, error: 'rtk default must be true or false' };
+    profile.rtkDefault = body.rtkDefault;
+  }
   await writePluginSettings(profile, {});
-  return level;
+  return {
+    ok: true,
+    profile: {
+      comboDefault: profile.comboDefault,
+      cavemanDefault: profile.cavemanDefault,
+      rtkDefault: profile.rtkDefault,
+      ponytailDefault: profile.ponytailDefault,
+    },
+  };
 }
 
 function readDiagSchedule(): DiagSchedule {
@@ -438,22 +467,27 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
     if (req.url === '/settings' && req.method === 'GET') {
       storedProfile().then((profile) => {
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ comboDefault: profile.comboDefault }));
+        res.end(JSON.stringify({
+          comboDefault: profile.comboDefault,
+          cavemanDefault: profile.cavemanDefault,
+          rtkDefault: profile.rtkDefault,
+          ponytailDefault: profile.ponytailDefault,
+        }));
       });
       return;
     }
     if (req.url === '/settings' && req.method === 'POST') {
-      let combo: unknown = null;
+      let body: Record<string, unknown> = {};
       try {
-        combo = (JSON.parse(await readBody(req)) as { comboDefault?: unknown }).comboDefault ?? null;
-      } catch { combo = null; }
-      const saved = await saveComboDefault(combo);
-      if (saved === null) {
+        body = (JSON.parse(await readBody(req)) as Record<string, unknown>) ?? {};
+      } catch { body = {}; }
+      const saved = await saveDefaults(body);
+      if (!saved.ok) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: false, error: 'unknown combo level' }));
+        res.end(JSON.stringify({ ok: false, error: saved.error }));
       } else {
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true, comboDefault: saved }));
+        res.end(JSON.stringify({ ok: true, ...saved.profile }));
       }
       return;
     }
