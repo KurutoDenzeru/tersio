@@ -49,6 +49,12 @@ function seed(home: string) {
   );
   mkdirSync(path.join(home, ".bun", "bin"), { recursive: true });
   writeFileSync(path.join(home, ".bun", "bin", "rtk"), "fake", "utf8");
+  // Backups this CLI leaves behind.
+  writeFileSync(path.join(home, ".omp", "agent", "config.yml.bak"), "extensions: []\n", "utf8");
+  const pluginCaveman = path.join(pluginsDir, "node_modules", SELF, "extensions", "caveman-session");
+  mkdirSync(pluginCaveman, { recursive: true });
+  writeFileSync(path.join(pluginCaveman, "rule.md"), "fetched rule", "utf8");
+  writeFileSync(path.join(pluginCaveman, "rule.md.bak"), "previous rule", "utf8");
 }
 
 test("uninstall removes extension dirs, self registration, and combo config entries", () => {
@@ -77,6 +83,37 @@ test("uninstall removes extension dirs, self registration, and combo config entr
     expect(existsSync(path.join(extDir, "rtk.ts")), "rtk wiring removed").toBeFalsy();
     expect(config).not.toMatch(/rtk\.ts/);
     expect(config).not.toMatch(/ponytail/);
+    expect(!existsSync(path.join(home, ".omp", "agent", "config.yml.bak")), "config.yml backup removed").toBeTruthy();
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("uninstall removes the caveman rule backup from the plugin tree", () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-uninstall-"));
+  try {
+    seed(home);
+    const result = run(home, "uninstall", "--yes");
+
+    expect(result.status, result.stderr).toBe(0);
+    const cavemanDir = path.join(home, ".omp", "plugins", "node_modules", SELF, "extensions", "caveman-session");
+    expect(!existsSync(cavemanDir), "plugin tree removed").toBeTruthy();
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("uninstall dry-run leaves backups in place", () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-uninstall-"));
+  try {
+    seed(home);
+    const configBak = path.join(home, ".omp", "agent", "config.yml.bak");
+    const ruleBak = path.join(home, ".omp", "plugins", "node_modules", SELF, "extensions", "caveman-session", "rule.md.bak");
+    const result = run(home, "uninstall", "--yes", "--dry-run");
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(existsSync(configBak), "config.yml backup kept on dry run").toBeTruthy();
+    expect(existsSync(ruleBak), "rule backup kept on dry run").toBeTruthy();
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

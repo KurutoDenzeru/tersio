@@ -66,9 +66,8 @@ async function removeCopiedPonytailSkills(shouldDryRun: boolean): Promise<void> 
   }
 }
 
-// pi owns its package dir, so removal is `pi remove`; the tree and the defaults
-// file are ours. Ponytail goes too unless --keep-ponytail, matching the OMP
-// route, so neither host keeps a package we installed on its behalf.
+// pi owns its package dir, so removal is `pi remove`; the tree and defaults
+// file are ours. Ponytail goes too unless --keep-ponytail, matching OMP.
 async function removePiLayer(host: HostEntry, shouldDryRun: boolean, shouldRemovePonytail: boolean): Promise<boolean> {
   const targets = PI_TREE_DIRS.map((dir) => path.join(piAgentDir(), 'extensions', dir));
 
@@ -245,6 +244,11 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
     }
   }
 
+  // Cleared last: writeConfigLines above would just make a fresh one.
+  for (const backup of [`${configPath}.bak`, path.join(pluginsDir, 'node_modules', PACKAGE_NAME, 'extensions', 'caveman-session', 'rule.md.bak')]) {
+    await removeUninstallTarget(backup, shouldDryRun, false);
+  }
+
   // Remove the bundled Ponytail copy; its config.yml entry is already filtered.
   if (shouldRemovePonytail) {
     const pluginsPkgPath = path.join(pluginsDir, 'package.json');
@@ -281,9 +285,7 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
     await removeUninstallTarget(selfPluginDir, shouldDryRun);
   }
 
-  // Our rtk wiring goes with the rest: leaving the file would keep OMP
-  // rewriting bash calls to a package this uninstall just removed. The binary
-  // stays unless --remove-rtk, since it is a shared tool on PATH.
+  // Our rtk wiring goes too, or OMP keeps rewriting for a removed package.
   await removeUninstallTarget(path.join(extDir, 'rtk.ts'), shouldDryRun);
   if (shouldRemoveRtk) await removeUninstallTarget(rtkBin, shouldDryRun, false);
 
