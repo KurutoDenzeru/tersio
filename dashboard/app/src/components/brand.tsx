@@ -24,6 +24,12 @@ function CognitionGlyph({ className }: { className: string }) {
   return <img src={COGNITION_MARK} alt="" aria-hidden="true" className={cn(className, "object-contain")} />;
 }
 
+// Both rasters ship a near-black field with no alpha, which is invisible on the
+// dark panel and a grey box on the light one. An <img> cannot inherit
+// currentColor and an opaque file cannot be masked, so blend modes drop the
+// field and leave only the glyph.
+const RASTER_FIELD_CLS = "mix-blend-multiply invert dark:mix-blend-screen dark:invert-0";
+
 export function BrandSilhouette({ model }: { model: string }) {
   const v = vendorOf(model);
   const cls = "pointer-events-none absolute -right-6 -bottom-6 size-[88px] select-none opacity-[.06] dark:opacity-[.08]";
@@ -36,15 +42,15 @@ export function BrandSilhouette({ model }: { model: string }) {
   }
   if (v.slug === "stealth") {
     return (
-      <span className={cn(cls, "grid place-items-center text-ink/70 dark:text-ink/60")} aria-hidden="true">
-        <StealthGlyph className="block size-[72px]" />
+      <span className={cn(cls, "grid place-items-center")} aria-hidden="true">
+        <StealthGlyph className={cn("block size-[72px]", RASTER_FIELD_CLS)} />
       </span>
     );
   }
   if (v.slug === "cognition") {
     return (
       <span className={cn(cls, "grid place-items-center")} aria-hidden="true">
-        <CognitionGlyph className="block size-[72px]" />
+        <CognitionGlyph className={cn("block size-[72px]", RASTER_FIELD_CLS)} />
       </span>
     );
   }
@@ -77,22 +83,24 @@ export function Brandmark({ model, small }: { model: string; small?: boolean }) 
   );
   if (model === "openai" || v.slug === "openai") {
     return (
-      <span className={cls} style={{ background: v.color }}>
+      <span className={cn(cls, "border border-line")} style={{ background: v.color }}>
         <OpenAIGlyph className={`block ${glyph}`} />
       </span>
     );
   }
+  // A white tile with the inverted raster, like the OpenAI mark above; the
+  // hairline keeps it from vanishing into a white panel.
   if (v.slug === "stealth") {
     return (
-      <span className={cls} style={{ background: "#0b0b0b" }}>
-        <StealthGlyph className={`block ${glyph.replace("size-[18px]", "size-[14px]")}`} />
+      <span className={cn(cls, "border border-line")} style={{ background: "#fff" }}>
+        <StealthGlyph className={cn("block invert", glyph.replace("size-[18px]", "size-[14px]"))} />
       </span>
     );
   }
   if (v.slug === "cognition" && !failed) {
     return (
-      <span className={cls} style={{ background: "#0b0b0b" }}>
-        <CognitionGlyph className={`block ${glyph.replace("size-[18px]", "size-[14px]")}`} />
+      <span className={cn(cls, "border border-line")} style={{ background: "#fff" }}>
+        <CognitionGlyph className={cn("block invert", glyph.replace("size-[18px]", "size-[14px]"))} />
       </span>
     );
   }
