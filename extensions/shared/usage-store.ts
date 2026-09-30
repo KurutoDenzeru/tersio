@@ -10,11 +10,14 @@ import {
   RECENT_LIMIT,
   canonicalModelId,
   classifySessionLine,
+  OpencodeMessage,
+  classifyOpencodeMessage,
   codexSessionsDir,
   costOf,
   durOf,
   hostOfSessionFile,
   ingestSessionRow,
+  opencodeSessionsDir,
   newSessionAccum,
   sessionsDirs,
   walkJsonl,
@@ -134,6 +137,29 @@ interface StoredRow {
 
 function parseFile(text: string, host?: string): StoredRow[] {
   const rows: StoredRow[] = [];
+  // OpenCode writes one JSON document per file, not JSONL, so the line loop
+  // below would see it as a single unrecognised row. Guarded: a multi-line
+  // transcript is not one document and must fall through, not abort the sync.
+  let oc: ReturnType<typeof classifyOpencodeMessage> = null;
+  try { oc = classifyOpencodeMessage(JSON.parse(text) as OpencodeMessage); } catch { /* JSONL */ }
+  if (oc) {
+    rows.push({
+      t: oc.ms ?? null,
+      model: canonicalModelId(oc.model),
+      i: intOf(oc.usage.input),
+      o: intOf(oc.usage.output),
+      d: durOf(oc.durMs),
+      cr: intOf(oc.usage.cacheRead),
+      cw: intOf(oc.usage.cacheWrite),
+      usd: costOf(oc.usage),
+      st: 'completed',
+      code: undefined,
+      note: undefined,
+      tools: [],
+      host,
+    });
+    return rows;
+  }
   let codexProvider: string | null = null;
   for (const line of text.split('\n')) {
     if (!line.trim()) continue;
@@ -210,14 +236,20 @@ export function syncUsageDb(): boolean {
     return false;
   }
   const files: string[] = [];
+  const ocFiles: string[] = [];
   try {
     for (const dir of sessionsDirs()) walkJsonl(dir, files, 2000);
     if (process.env.TERSIO_SESSIONS_DIR === undefined || process.env.TERSIO_CODEX_DIR !== undefined) {
       walkJsonl(codexSessionsDir(), files, 2000);
     }
+    // OpenCode stores one JSON document per message, not JSONL.
+    if (process.env.TERSIO_SESSIONS_DIR === undefined || process.env.TERSIO_OPENCODE_DIR !== undefined) {
+      walkJsonl(opencodeSessionsDir(), ocFiles, 5000, '.json');
+    }
   } catch {
     return false;
   }
+  files.push(...ocFiles);
   const known = readFiles(db);
   const current: Record<string, { mtime: number; size: number }> = {};
   const changed: string[] = [];

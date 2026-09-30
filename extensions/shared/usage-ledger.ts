@@ -177,6 +177,21 @@ export function codexSessionsDir(): string {
   return path.join(os.homedir(), '.codex', 'sessions');
 }
 
+// OpenCode v2 keeps one JSON file per message under storage/message, not a
+// sqlite table and not JSONL. Probed in order — XDG first, then this machine's
+// actual location, then the macOS default.
+export function opencodeSessionsDir(): string {
+  const override = process.env.TERSIO_OPENCODE_DIR;
+  if (override) return override;
+  const xdg = process.env.XDG_DATA_HOME;
+  if (xdg && xdg.trim() !== '') return path.join(xdg, 'opencode', 'storage', 'message');
+  const local = path.join(os.homedir(), '.local', 'share', 'opencode', 'storage', 'message');
+  try {
+    if (fs.existsSync(local)) return local;
+  } catch { /* fall through to the platform default */ }
+  return path.join(os.homedir(), 'Library', 'Application Support', 'opencode', 'storage', 'message');
+}
+
 export function dayKey(ts: string | number): string | null {
   const ms = typeof ts === 'number' ? ts : Date.parse(ts);
   if (!Number.isFinite(ms)) return null;
@@ -184,7 +199,7 @@ export function dayKey(ts: string | number): string | null {
   const p = (n: number): string => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
-export function walkJsonl(dir: string, out: string[], cap: number): void {
+export function walkJsonl(dir: string, out: string[], cap: number, ext = '.jsonl'): void {
   let entries: fs.Dirent[];
   try {
     entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -194,8 +209,8 @@ export function walkJsonl(dir: string, out: string[], cap: number): void {
   for (const e of entries) {
     if (out.length >= cap) return;
     const full = path.join(dir, e.name);
-    if (e.isDirectory()) walkJsonl(full, out, cap);
-    else if (e.isFile() && e.name.endsWith('.jsonl')) out.push(full);
+    if (e.isDirectory()) walkJsonl(full, out, cap, ext);
+    else if (e.isFile() && e.name.endsWith(ext)) out.push(full);
   }
 }
 // Recent requests get their own full-width table, so this bounds payload
@@ -288,6 +303,64 @@ export function classifySessionLine(row: { timestamp?: string | number; type?: u
   }
   return { kind: 'assistant_row', model, usage: msg.usage, durMs: typeof msg.duration === 'number' ? msg.duration : computedDur, run: statusOf(msg), tools };
 }
+// True when at least one token bucket holds a positive finite count.
+export function hasPositiveUsage(usage: Record<string, unknown>): boolean {
+  for (const k of ['input', 'output', 'cacheRead', 'cacheWrite']) {
+    const v = usage[k];
+    if (typeof v === 'number' && Number.isFinite(v) && v > 0) return true;
+  }
+  return false;
+}
+
+export interface OpencodeMessage {
+  role?: unknown;
+  tokens?: { input?: unknown; output?: unknown; reasoning?: unknown; cache?: { read?: unknown; write?: unknown } } | null;
+  modelID?: unknown;
+  providerID?: unknown;
+  time?: { created?: unknown; completed?: unknown } | null;
+  cost?: unknown;
+  finish?: unknown;
+}
+
+// One OpenCode message file; assistant rows carry the token buckets.
+export function classifyOpencodeMessage(obj: OpencodeMessage | null | undefined): { model: string; usage: Record<string, unknown>; ms: number | undefined; durMs: number | undefined } | null {
+  if (!obj || typeof obj !== 'object' || obj.role !== 'assistant') return null;
+  const t = obj.tokens;
+  if (!t || typeof t !== 'object') return null;
+  const usage: Record<string, unknown> = {
+    input: t.input,
+    output: t.output,
+    cacheRead: t.cache?.read,
+    cacheWrite: t.cache?.write,
+    cost: (obj as Record<string, unknown>).cost,
+  };
+  if (!hasPositiveUsage(usage)) return null;
+  const provider = typeof obj.providerID === 'string' && obj.providerID ? obj.providerID : 'unknown';
+  const model = typeof obj.modelID === 'string' && obj.modelID ? obj.modelID : 'unknown';
+  const num = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : undefined);
+  const created = num(obj.time?.created);
+  const completed = num(obj.time?.completed);
+  return {
+    model: `opencode/${provider}/${model}`,
+    usage,
+    ms: created,
+    durMs: created !== undefined && completed !== undefined && completed > created ? completed - created : undefined,
+  };
+}
+
+// One OpenCode message file into the shared accum.
+export function processOpencodeFile(accum: SessionAccum, text: string): void {
+  let obj: unknown;
+  try {
+    obj = JSON.parse(text);
+  } catch {
+    return;
+  }
+  const parsed = classifyOpencodeMessage(obj as OpencodeMessage);
+  if (!parsed) return;
+  ingestSessionRow(accum, parsed.model, parsed.usage, parsed.ms, parsed.durMs, { st: 'completed' as RunStatus }, undefined, 'opencode');
+}
+
 // Fold `:free`/`-free` suffixes and case variants into one chart key.
 export function canonicalModelId(model: string): string {
   return canonicalPriceId(model.replace(FREE_SUFFIX, ''));
@@ -319,6 +392,20 @@ export function importSessionTokens(): SessionTokens {
   // real codex dir when one is explicitly set.
   if (process.env.TERSIO_SESSIONS_DIR === undefined || process.env.TERSIO_CODEX_DIR !== undefined) {
     walkJsonl(codexSessionsDir(), files, 2000);
+  }
+  // OpenCode message bodies are single JSON documents, not JSONL.
+  const ocFiles: string[] = [];
+  if (process.env.TERSIO_SESSIONS_DIR === undefined || process.env.TERSIO_OPENCODE_DIR !== undefined) {
+    walkJsonl(opencodeSessionsDir(), ocFiles, 5000, '.json');
+  }
+  for (const file of ocFiles) {
+    let text: string;
+    try {
+      text = fs.readFileSync(file, 'utf8');
+    } catch {
+      continue;
+    }
+    processOpencodeFile(accum, text);
   }
   let codexProvider: string | null = null;
   for (const file of files) {
