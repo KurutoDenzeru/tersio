@@ -66,6 +66,11 @@ function query(db: string, sql: string): string[][] {
     .map((line) => line.split('\t'));
 }
 
+// Bump when a parse change adds a field the mirror cannot fill in for rows it
+// already stored. The file ledger is mtime+size, so an unchanged transcript is
+// never re-read and the new field would stay NULL forever without this.
+const PARSER_VERSION = '2';
+
 function ensureSchema(db: string): void {
   fs.mkdirSync(path.dirname(db), { recursive: true });
   // Fold in rows stored under a pre-alias spelling; the mtime ledger will
@@ -90,6 +95,13 @@ function ensureSchema(db: string): void {
       run(db, `UPDATE messages SET h='${esc(hostOfSessionFile(file))}' WHERE file=${esc(file)};`);
     }
   } catch { /* fresh or unreadable db */ }
+  // Drop the cache when the parser has moved on, so every transcript is read
+  // again and the new columns actually fill.
+  try {
+    const stored = query(db, `SELECT v FROM meta WHERE k='parser_version';`);
+    if (stored.length && stored[0][0] === PARSER_VERSION) return;
+    run(db, `DELETE FROM messages;DELETE FROM files;INSERT OR REPLACE INTO meta (k,v) VALUES ('parser_version','${PARSER_VERSION}');`);
+  } catch { /* fresh db, nothing to invalidate */ }
 }
 
 function readFiles(db: string): Record<string, { mtime: number; size: number }> {

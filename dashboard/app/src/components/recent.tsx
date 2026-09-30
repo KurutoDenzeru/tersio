@@ -161,12 +161,14 @@ export function Recent({ data, money }: { data: UsageReport | null; money: (v: n
                         <span className="mr-2 inline-block size-2 rounded-full" style={{ background: v.color }} />
                         {displayModel(r.m)}
                       </TableCell>
-                      <TableCell className="whitespace-nowrap py-2.5 pr-3">
-                        <span className="inline-flex items-center gap-1.5 text-dim">
-                          <span className="grid size-4 shrink-0 place-items-center">
-                            <AgentLogo host={r.h} />
-                          </span>
-                          {hostMeta(r.h).label}
+                      <TableCell className="whitespace-nowrap py-2.5 pr-3 text-center">
+                        <span
+                          className="mx-auto grid size-4 shrink-0 place-items-center"
+                          title={hostMeta(r.h).label}
+                          aria-label={hostMeta(r.h).label}
+                          role="img"
+                        >
+                          <AgentLogo host={r.h} />
                         </span>
                       </TableCell>
                       <TableCell className="whitespace-nowrap py-2.5 pr-3 text-right text-[#fb923c]">
