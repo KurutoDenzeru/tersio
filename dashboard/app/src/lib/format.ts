@@ -148,6 +148,9 @@ const PROVIDERS: Array<[RegExp, string, string, string]> = [
   [/mistral/i, "Mistral", "mistralai", "#ff7000"],
   [/claude|anthropic/i, "Anthropic", "anthropic", "#d97757"],
   [/gemini|google|gemma/i, "Google", "google", "#4285F4"],
+  // Stealth runs a Space-Bunny class of models; its OpenRouter mark is a
+  // currentColor bomber, inlined in brand.tsx rather than fetched.
+  [/stealth|space-bunny/i, "Stealth", "stealth", "#1f2937"],
   // No Cognition/Devin mark ships on the simple-icons CDN, so this slug stays
   // empty and the dashboard draws its local glyph instead of a broken image.
   [/devin|cognition/i, "Cognition", "", "#7c5cff"],

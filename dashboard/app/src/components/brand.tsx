@@ -13,6 +13,19 @@ function OpenAIGlyph({ className }: { className: string }) {
   );
 }
 
+// Stealth's OpenRouter mark: a B-2 Spirit bomber, top view. currentColor so it
+// follows the tile, and no background circle — the tile provides that.
+function StealthGlyph({ className }: { className: string }) {
+  return (
+    <svg className={className} viewBox="0 0 240 240" fill="currentColor" aria-hidden="true">
+      <path
+        stroke="currentColor"
+        d="M 120,70 L 70,130 L 50,150 L 65,160 L 120,130 L 175,160 L 190,150 L 170,130 Z M 100,130 L 120,150 L 140,130 Z"
+      />
+    </svg>
+  );
+}
+
 export function BrandSilhouette({ model }: { model: string }) {
   const v = vendorOf(model);
   const cls = "pointer-events-none absolute -right-6 -bottom-6 size-[88px] select-none opacity-[.06] dark:opacity-[.08]";
@@ -20,6 +33,13 @@ export function BrandSilhouette({ model }: { model: string }) {
     return (
       <span className={cn(cls, "grid place-items-center")} aria-hidden="true">
         <OpenAIGlyph className="block size-[72px]" />
+      </span>
+    );
+  }
+  if (v.slug === "stealth") {
+    return (
+      <span className={cn(cls, "grid place-items-center text-ink/70 dark:text-ink/60")} aria-hidden="true">
+        <StealthGlyph className="block size-[72px]" />
       </span>
     );
   }
@@ -54,6 +74,13 @@ export function Brandmark({ model, small }: { model: string; small?: boolean }) 
     return (
       <span className={cls} style={{ background: v.color }}>
         <OpenAIGlyph className={`block ${glyph}`} />
+      </span>
+    );
+  }
+  if (v.slug === "stealth") {
+    return (
+      <span className={cn(cls, "bg-transparent border")} style={{ borderColor: v.color, color: v.color }}>
+        <StealthGlyph className={`block ${glyph}`} />
       </span>
     );
   }
