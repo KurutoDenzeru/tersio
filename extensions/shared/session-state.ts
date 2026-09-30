@@ -110,13 +110,24 @@ export function paintStatusBar(ui: UiApi | undefined, key: string, emoji: string
   ui?.setStatus?.(key, themeStatus(ui, emoji, label, isActive));
 }
 
-// Which context a status bar paints through. A UI-less event (a headless child
-// session_start, or a top-level one that fires before the TUI attaches) must
-// never be remembered: doing so mutes every later bare syncStatus(), which is
-// the bridge-listener path a sibling's mode change arrives on. The symptom is a
-// bar frozen on a preset the session no longer has.
+// A ctx from before a session replacement is stale and throws on any property
+// access, so touching it must never abort a mode restore. Returns undefined for
+// a stale ctx, and a narrowed ui so callers need no second setStatus check.
+export type StatusUi = UiApi & { setStatus: NonNullable<UiApi['setStatus']> };
+
+export function statusUi(ctx: ExtensionCtx | undefined): StatusUi | undefined {
+  try {
+    const ui = ctx?.ui;
+    return ui?.setStatus ? (ui as StatusUi) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+// Which context a status bar paints through. Never remember a UI-less event:
+// that mutes every later bare syncStatus(), freezing the bar on a stale preset.
 export function paintableCtx(remembered: ExtensionCtx | undefined, next: ExtensionCtx | undefined): ExtensionCtx | undefined {
-  return next?.ui?.setStatus ? next : remembered;
+  return statusUi(next) ? next : remembered;
 }
 
 // Last-wins scan for a custom session entry; skips entries whose value fails

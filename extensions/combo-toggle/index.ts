@@ -14,6 +14,7 @@ import {
   reconcileSharedComboEntries,
   sessionEntries,
   setSharedComboLevel,
+  statusUi,
   setSharedComboListener,
   setSharedComboMode,
   systemPromptIncludes,
@@ -70,11 +71,11 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
 
   function syncStatus(ctx?: ExtensionCtx): void {
     lastCtx = paintableCtx(lastCtx, ctx);
-    const c = lastCtx;
-    if (!c?.ui?.setStatus) return;
+    const ui = statusUi(lastCtx);
+    if (!ui) return;
     // One unified bar replaces the per-extension bars while a preset is active.
     if (!isComboPresetActive()) {
-      c.ui.setStatus('combo', undefined);
+      ui.setStatus('combo', undefined);
       return;
     }
     // Read the live bridge, not a cache: siblings reconcile it first.
@@ -83,11 +84,11 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
     const r = state.rtk.toUpperCase();
     const p = state.ponytail.toUpperCase();
     const lvl = state.level.toUpperCase();
-    c.ui.setStatus('combo', themeStatus(c.ui, '🧩', `combo ${lvl}: 🪨caveman=${c0} ⚡rtk=${r} 🦥ponytail=${p}`, true));
+    ui.setStatus('combo', themeStatus(ui, '🧩', `combo ${lvl}: 🪨caveman=${c0} ⚡rtk=${r} 🦥ponytail=${p}`, true));
     // Our bar is canonical for the preset, so clear any sibling bar.
-    c.ui.setStatus('caveman', undefined);
-    c.ui.setStatus('rtk', undefined);
-    c.ui.setStatus('ponytail', undefined);
+    ui.setStatus('caveman', undefined);
+    ui.setStatus('rtk', undefined);
+    ui.setStatus('ponytail', undefined);
   }
 
   // Siblings restore from these entries, so the fallback must write them too.

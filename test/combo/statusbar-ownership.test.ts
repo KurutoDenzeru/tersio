@@ -187,10 +187,8 @@ test("combo default persists preset entries so resume keeps the bar", async () =
 });
 
 test("a UI-less event must not deafen the bar to later bridge updates", async () => {
-  // Symptom: the bar stayed "combo BALANCED" after the modes went off.
-  // (a session_start that fires before the TUI attaches), so the bridge-listener
-  // path — which calls syncStatus() with no ctx and therefore paints through the
-  // remembered one — silently returned early forever, freezing the bar.
+  // Symptom: the bar stayed "combo BALANCED" after the modes went off, because
+  // a UI-less session_start got remembered and every bare syncStatus() returned.
   resetSharedComboState();
   const { statuses, pi, ctx } = harness();
   await pi.combo.handlers.get("session_start")!({}, ctx);
@@ -209,5 +207,52 @@ test("a UI-less event must not deafen the bar to later bridge updates", async ()
 
   expect(getSharedComboState().level, "the mix is no longer a preset").toBe("custom");
   expect(statuses.get("combo"), "combo bar clears rather than freezing on BALANCED").toBe(undefined);
+  resetSharedComboState();
+});
+
+// pi invalidates a ctx on session replacement and throws on any access to it.
+// Each extension remembers a ctx so a sibling's publish can paint with no ctx
+// of its own, so a replaced session used to paint through the old one, throw,
+// and abort the restore still deciding the modes — leaving everything off.
+test("a replaced session does not paint through the stale ctx", async () => {
+  resetSharedComboState();
+  const { statuses, entries, pi, ctx } = harness();
+
+  await pi.combo.handlers.get("session_start")!({}, ctx);
+  await pi.caveman.handlers.get("session_start")!({}, ctx);
+  await pi.rtk.handlers.get("session_start")!({}, ctx);
+  await pi.combo.commands.get("combo")!("balanced", ctx);
+  expect(statuses.get("combo") || "").toMatch(/BALANCED/);
+
+  // The remembered ctx, revocable the way pi revokes one: live now, stale once
+  // the session is replaced.
+  let live = true;
+  const revocable = {
+    hasUI: true,
+    get ui(): ExtensionCtx["ui"] {
+      if (!live) throw new Error("This extension ctx is stale after session replacement or reload.");
+      return { setStatus: (k: string, v?: string) => { if (v === undefined) statuses.delete(k); else statuses.set(k, v); }, notify: () => { } };
+    },
+    sessionManager: { getBranch: () => entries },
+  } as unknown as ExtensionCtx;
+  await pi.combo.handlers.get("session_start")!({}, revocable);
+  live = false; // the session is replaced from here on
+
+  // A sibling mode change publishes through the bridge; combo's listener runs
+  // with no ctx and must skip the stale one instead of throwing.
+  await expect(pi.caveman.commands.get("caveman")!("full", ctx)).resolves.not.toThrow();
+
+  // The replacement session restores from the persisted entries, so the preset
+  // comes back rather than being lost to the throw.
+  const fresh = {
+    hasUI: true,
+    ui: { setStatus: (k: string, v?: string) => { if (v === undefined) statuses.delete(k); else statuses.set(k, v); }, notify: () => { } },
+    sessionManager: { getBranch: () => entries },
+  } as unknown as ExtensionCtx;
+  await expect(pi.combo.handlers.get("session_start")!({}, fresh)).resolves.not.toThrow();
+  await expect(pi.caveman.handlers.get("session_start")!({}, fresh)).resolves.not.toThrow();
+  await expect(pi.rtk.handlers.get("session_start")!({}, fresh)).resolves.not.toThrow();
+
+  expect(statuses.get("combo") || "", "the preset survives the session replacement").toMatch(/BALANCED/);
   resetSharedComboState();
 });

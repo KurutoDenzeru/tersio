@@ -1,7 +1,8 @@
 import { expect, test } from "vitest";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import cavemanSessionExtension from "../../extensions/caveman-session/index.ts";
 import { resetSharedComboState } from "../../extensions/shared/session-state.ts";
 import type { ExtensionApi, SessionEntry } from "../../extensions/shared/types.ts";
@@ -162,3 +163,27 @@ test("full mode injects the rule file", async () => {
   expect(result.systemPrompt.at(-1)).toMatch(/No tool-call narration/);
   expect(result.systemPrompt.at(-1)).toMatch(/wenyan-lite\|wenyan-full\|wenyan-ultra/);
  });
+
+
+test("full mode injects rule.md verbatim, with no paraphrase alongside it", async () => {
+  const extDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "extensions", "caveman-session");
+  const rule = readFileSync(path.join(extDir, "rule.md"), "utf8");
+  resetSharedComboState();
+  const { pi, ctx } = harness();
+  await pi.commands.get("caveman")!("full", ctx);
+  const result = await pi.handlers.get("before_agent_start")!({ systemPrompt: "Base." }, ctx) as { systemPrompt: string[] };
+
+  // One source of truth: rule.md, byte for byte.
+  expect(result.systemPrompt.at(-1)).toBe(`Caveman full active for this session.\n${rule}`);
+});
+
+test("a missing rule.md names the fix instead of shipping a degraded paraphrase", async () => {
+  // A missing rule is a visible failure, not a lossy paraphrase.
+  const source = readFileSync(
+    path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "extensions", "caveman-session", "index.ts"),
+    "utf8",
+  );
+  expect(source).not.toMatch(/FALLBACK_FULL_RULE/);
+  expect(source).toMatch(/rule\.md is missing/);
+  expect(source).toMatch(/doctor --fix extensions/);
+});

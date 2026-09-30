@@ -1,4 +1,4 @@
-import { activeModesSummary, getSharedComboState, isComboPresetActive, isOmpSubagentPrompt, lastCustomValue, normalizeInputCommand, paintStatusBar, paintableCtx, reconcileSharedComboEntries, sessionEntries, setSharedComboListener, setSharedComboMode } from '../shared/session-state.ts';
+import { activeModesSummary, getSharedComboState, isComboPresetActive, isOmpSubagentPrompt, lastCustomValue, normalizeInputCommand, paintStatusBar, paintableCtx, reconcileSharedComboEntries, sessionEntries, setSharedComboListener, setSharedComboMode, statusUi } from '../shared/session-state.ts';
 import { injectPromptText, onHostEvent, setExtensionLabel, stringArrayToolParams } from '../shared/host.ts';
 import { readRtkDefault } from '../shared/plugin-settings.ts';
 import type { ExtensionApi, ExtensionCtx, InputEvent, SessionEntry, SystemPromptEvent } from '../shared/types.ts';
@@ -30,14 +30,14 @@ export default function rtkSessionExtension(pi: ExtensionApi): void {
 
   function syncStatus(ctx?: ExtensionCtx): void {
     lastCtx = paintableCtx(lastCtx, ctx);
-    const c = lastCtx;
-    if (!c?.ui?.setStatus) return;
+    const ui = statusUi(lastCtx);
+    if (!ui) return;
     // Combo owns the bar when any preset is active; keep ours empty to avoid duplication.
     if (isComboPresetActive() || !enabled) {
-      c.ui.setStatus('rtk', undefined);
+      ui.setStatus('rtk', undefined);
       return;
     }
-    paintStatusBar(c.ui, 'rtk', '⚡', 'rtk: ON', isActive);
+    paintStatusBar(ui, 'rtk', '⚡', 'rtk: ON', isActive);
   }
 
   function setEnabled(next: unknown, ctx?: ExtensionCtx): void {
@@ -114,10 +114,7 @@ export default function rtkSessionExtension(pi: ExtensionApi): void {
   });
   function restoreEnabled(ctx?: ExtensionCtx): void {
     const entries = sessionEntries(ctx);
-    // Publish the persisted combo state (incl. combo-level) before painting:
-    // bar suppression reads the in-process bridge, which is empty in a fresh
-    // host until the combo extension reconciles — and its reconcile is
-    // UI-gated. Deriving it here makes suppression independent of load order.
+    // Derive the bridge here so bar suppression does not depend on load order.
     reconcileSharedComboEntries(entries);
     // Persisted session state wins; a fresh session falls back to the
     // installer/user-configured default (off unless configured).

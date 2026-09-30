@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { activeModesSummary, getSharedComboState, isComboPresetActive, isOmpSubagentPrompt, lastCustomValue, normalizeInputCommand, normalizeMode, paintStatusBar, paintableCtx, reconcileSharedComboEntries, sessionEntries, setSharedComboListener, setSharedComboMode } from '../shared/session-state.ts';
+import { activeModesSummary, getSharedComboState, isComboPresetActive, isOmpSubagentPrompt, lastCustomValue, normalizeInputCommand, normalizeMode, paintStatusBar, paintableCtx, reconcileSharedComboEntries, sessionEntries, setSharedComboListener, setSharedComboMode, statusUi } from '../shared/session-state.ts';
 import { dirname, join } from 'node:path';
 import { injectPromptText, onHostEvent, setExtensionLabel } from '../shared/host.ts';
 import { readCavemanDefault } from '../shared/plugin-settings.ts';
@@ -9,24 +9,11 @@ import type { ExtensionApi, ExtensionCtx, InputEvent, SessionEntry, SystemPrompt
 const CAVERN_DIR = dirname(fileURLToPath(import.meta.url));
 const RULE_PATH = join(CAVERN_DIR, 'rule.md');
 
-const FALLBACK_FULL_RULE = `Caveman full active for this session.
-Respond terse like smart caveman. Keep all technical substance. Drop filler, pleasantries, and hedging.
-
-Rules:
-- Drop articles where meaning stays clear. Keep fragments and short sentences.
-- Keep technical terms, code, commands, paths, API names, numbers, units, and errors exact.
-- Never invent abbreviations or causal arrows. Do not add words to sound caveman.
-- Use ASD-STE100 Simplified Technical English. Keep one idea per sentence, target 20 words, active voice, and consistent terms.
-- Make no tool-call narration. Use no decorative tables or emoji.
-- Preserve the user's reply language. Compress style, not language.
-- Drop caveman for security warnings, irreversible actions, ambiguous multi-step sequences, or requests to clarify.
-- Write code, comments, commits, docs, issues, pull requests, and third-party messages in normal prose.
-
-Default: **full**. Switch: \`/caveman lite|full|ultra|wenyan-lite|wenyan-full|wenyan-ultra|off\`. Stop: "stop caveman" or "normal mode".`;
-
-// ponytail: synchronous read each full-mode injection; ceiling = small file, cold session start. Upgrade path: cache file contents + mtime, invalidate on change.
+// Fail loud: a wrong rule reads to the model as the real one.
 function readFullRule(): string {
-  try { return readFileSync(RULE_PATH, 'utf8'); } catch { return FALLBACK_FULL_RULE; }
+  try { return readFileSync(RULE_PATH, 'utf8'); } catch {
+    return 'Caveman full requested, but rule.md is missing. Run: tersio doctor --fix extensions';
+  }
 }
 
 const DEFAULT_MODE = 'off';
@@ -57,14 +44,14 @@ export default function cavemanSessionExtension(pi: ExtensionApi): void {
 
   function syncStatus(ctx?: ExtensionCtx): void {
     lastCtx = paintableCtx(lastCtx, ctx);
-    const c = lastCtx;
-    if (!c?.ui?.setStatus) return;
+    const ui = statusUi(lastCtx);
+    if (!ui) return;
     // Combo owns the bar when any preset is active; keep ours empty to avoid duplication.
     if (isComboPresetActive() || currentMode === 'off') {
-      c.ui.setStatus('caveman', undefined);
+      ui.setStatus('caveman', undefined);
       return;
     }
-    paintStatusBar(c.ui, 'caveman', '🪨', `caveman: ${currentMode.toUpperCase()}`, isActive);
+    paintStatusBar(ui, 'caveman', '🪨', `caveman: ${currentMode.toUpperCase()}`, isActive);
   }
 
   function setMode(mode: string, ctx?: ExtensionCtx): boolean {
@@ -84,9 +71,7 @@ export default function cavemanSessionExtension(pi: ExtensionApi): void {
 
   setExtensionLabel(pi, 'Caveman session toggle');
 
-  // Live mirror: a /tersio or /combo switch publishes shared state — adopt
-  // it at once so the next turn injects the new mode with no session reload.
-  // Stable identity, so the bridge set dedupes across re-inits.
+  // Adopt a /tersio or /combo switch at once, so the next turn needs no reload.
   function syncFromShared(state: { caveman: string }): void {
     const mode = normalizeMode('caveman', state.caveman);
     if (mode) {
@@ -120,10 +105,7 @@ export default function cavemanSessionExtension(pi: ExtensionApi): void {
 
   function restoreMode(ctx?: ExtensionCtx): void {
     const entries = sessionEntries(ctx);
-    // Publish the persisted combo state (incl. combo-level) before painting:
-    // bar suppression reads the in-process bridge, which is empty in a fresh
-    // host until the combo extension reconciles — and its reconcile is
-    // UI-gated. Deriving it here makes suppression independent of load order.
+    // Derive the bridge here so bar suppression does not depend on load order.
     reconcileSharedComboEntries(entries);
     // Persisted session state wins; a fresh session falls back to the
     // installer/user-configured default (off unless configured).
