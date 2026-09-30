@@ -153,7 +153,7 @@ const PROVIDERS: Array<[RegExp, string, string, string]> = [
   // currentColor bomber, inlined in brand.tsx rather than fetched.
   // `swe-*` is Cognition's Devin line, so it belongs to this vendor rather than
   // the grey Other bucket. Anchored so it cannot swallow an unrelated name.
-  [/devin|cognition|^swe[-/]/i, "Cognition", "", "#7c5cff"],
+  [/devin|cognition|^swe[-/]/i, "Cognition", "cognition", "#0b0b0b"],
   // No Cognition/Devin mark ships on the simple-icons CDN, so this slug stays
   // empty and the dashboard draws its local glyph instead of a broken image.
 ];

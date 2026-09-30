@@ -4,6 +4,7 @@ import { useState } from "react";
 import { cn } from "cn";
 import { vendorOf } from "@/lib/format";
 import { STEALTH_MARK } from "@/lib/stealth-mark";
+import { COGNITION_MARK } from "@/lib/cognition-mark";
 import { Icon } from "./icon";
 
 function OpenAIGlyph({ className }: { className: string }) {
@@ -17,6 +18,10 @@ function OpenAIGlyph({ className }: { className: string }) {
 // Stealth's mark, embedded so the offline dashboard never shows a broken image.
 function StealthGlyph({ className }: { className: string }) {
   return <img src={STEALTH_MARK} alt="" aria-hidden="true" className={cn(className, "object-contain")} />;
+}
+
+function CognitionGlyph({ className }: { className: string }) {
+  return <img src={COGNITION_MARK} alt="" aria-hidden="true" className={cn(className, "object-contain")} />;
 }
 
 export function BrandSilhouette({ model }: { model: string }) {
@@ -33,6 +38,13 @@ export function BrandSilhouette({ model }: { model: string }) {
     return (
       <span className={cn(cls, "grid place-items-center text-ink/70 dark:text-ink/60")} aria-hidden="true">
         <StealthGlyph className="block size-[72px]" />
+      </span>
+    );
+  }
+  if (v.slug === "cognition") {
+    return (
+      <span className={cn(cls, "grid place-items-center")} aria-hidden="true">
+        <CognitionGlyph className="block size-[72px]" />
       </span>
     );
   }
@@ -74,6 +86,13 @@ export function Brandmark({ model, small }: { model: string; small?: boolean }) 
     return (
       <span className={cls} style={{ background: "#0b0b0b" }}>
         <StealthGlyph className={`block ${glyph.replace("size-[18px]", "size-[14px]")}`} />
+      </span>
+    );
+  }
+  if (v.slug === "cognition" && !failed) {
+    return (
+      <span className={cls} style={{ background: "#0b0b0b" }}>
+        <CognitionGlyph className={`block ${glyph.replace("size-[18px]", "size-[14px]")}`} />
       </span>
     );
   }
