@@ -205,3 +205,82 @@ test("uninstall dry-run changes no files", () => {
     rmSync(home, { recursive: true, force: true });
   }
 });
+
+// Neither `--host pi` nor auto-selecting the only installed host reached a
+// prompt, so pi files were removed with no confirmation and nothing to review.
+const PI_TREE = [
+  "shared/host.ts", "shared/session-state.ts", "shared/types.ts", "shared/plugin-settings.ts",
+  "shared/usage-ledger.ts", "shared/pricing.ts", "shared/carbon.ts",
+  "lib/utils.ts", "caveman-session/index.ts", "caveman-session/rule.md",
+  "rtk-session/index.ts", "combo-toggle/index.ts", "tersio-commands/index.ts", "ai-addons-updater/index.ts",
+];
+
+function seedPi(home: string): void {
+  const extDir = path.join(home, ".pi", "agent", "extensions");
+  for (const rel of PI_TREE) {
+    const target = path.join(extDir, rel);
+    mkdirSync(path.dirname(target), { recursive: true });
+    writeFileSync(target, "// seeded", "utf8");
+  }
+  mkdirSync(path.join(home, ".tersio"), { recursive: true });
+  writeFileSync(path.join(home, ".tersio", "settings.json"), "{}", "utf8");
+}
+
+function runPi(home: string, answer: string, ...args: string[]) {
+  const result = spawnSync(process.execPath, [installer, ...args], {
+    cwd: root,
+    encoding: "utf8",
+    timeout: 15000,
+    env: cliEnv(home),
+    input: `${answer}\n`,
+  });
+  const extDir = path.join(home, ".pi", "agent", "extensions");
+  return { result, extDir, intact: existsSync(path.join(extDir, "caveman-session", "index.ts")) };
+}
+
+test("uninstall --host pi lists what it removes and aborts on a declined confirm", () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-uninstall-pi-"));
+  try {
+    seedPi(home);
+    const { result, extDir, intact } = runPi(home, "n", "uninstall", "--host", "pi");
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/Will remove:/);
+    expect(result.stdout).toMatch(/Proceed\? \[y\/N\]/);
+    expect(result.stdout).toMatch(/Aborted/);
+    expect(intact, "caveman-session kept after declining").toBeTruthy();
+    expect(existsSync(path.join(home, ".tersio", "settings.json")), "session defaults kept").toBeTruthy();
+    expect(existsSync(extDir), "the pi tree still exists").toBeTruthy();
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("uninstall --host pi proceeds when the confirm is accepted", () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-uninstall-pi-"));
+  try {
+    seedPi(home);
+    const { result, intact } = runPi(home, "y", "uninstall", "--host", "pi");
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/Proceed\? \[y\/N\]/);
+    expect(intact, "caveman-session removed after confirming").toBeFalsy();
+    expect(existsSync(path.join(home, ".tersio", "settings.json")), "session defaults removed").toBeFalsy();
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("uninstall --host pi --yes removes without prompting", () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-uninstall-pi-"));
+  try {
+    seedPi(home);
+    const { result, intact } = runPi(home, "", "uninstall", "--host", "pi", "--yes");
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout, "no prompt when --yes is given").not.toMatch(/Proceed\?/);
+    expect(intact, "caveman-session removed").toBeFalsy();
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
