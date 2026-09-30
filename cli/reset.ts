@@ -2,7 +2,7 @@
 // watermark that filters session-derived and RTK-metered rows out of every
 // derived view. Transcripts and the RTK database are never touched.
 import { dryRun, yes } from './common.ts';
-import { confirmDestructive } from './interactive.ts';
+import { confirmDestructive, sayTagged } from './interactive.ts';
 import { clearUsageLedger, importSessionTokens, ledgerPath, markReset, readUsage, sessionsDir } from '../extensions/shared/usage-ledger.ts';
 import { clearUsageDb, usageDbPath } from '../extensions/shared/usage-store.ts';
 import { readRtkGain, rtkDbPath } from '../extensions/shared/rtk-gain.ts';
@@ -29,7 +29,7 @@ async function runReset(): Promise<boolean> {
   const cleared = clearUsageLedger();
   const dbCleared = clearUsageDb();
   const ts = markReset();
-  console.log(`[ok] reset — removed ${cleared} usage rows${dbCleared ? ' + usage.db' : ''}; statistics view starts at ${new Date(ts).toISOString()}`);
+  sayTagged(`[ok] reset — removed ${cleared} usage rows${dbCleared ? ' + usage.db' : ''}; statistics view starts at ${new Date(ts).toISOString()}`);
   return true;
 }
 

@@ -1,13 +1,12 @@
 // cli/uninstall.ts — remove managed extensions, plugins, and binaries.
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { cancel as clackCancel, confirm as clackConfirm } from '@clack/prompts';
 import {
   BUN_BIN_DIR, OMP_AGENT_DIR, OMP_PLUGINS_DIR, PACKAGE_NAME, RTK_BINARY_NAME,
   args, dryRun, keepPonytail, removePonytail, removeRtk, yes,
-  debug, parseJsonObject, writeConfigLines, writeIfChanged,
+  debug, writeConfigLines,
 } from './common.ts';
-import { askInteractiveChoice, closeRL, confirmDestructive, tty } from './interactive.ts';
+import { askInteractiveChoice, closeRL, confirmDestructive, tty, sayTagged } from './interactive.ts';
 import { detectHosts, hostHint, hostLabel, parseHostArg } from './hosts.ts';
 import type { HostEntry, HostId } from './hosts.ts';
 import { findHoistedPackage, piAgentDir, readTextIfExists } from '../extensions/lib/utils.ts';
@@ -39,7 +38,7 @@ const PI_TREE_DIRS = [
 // One `pi remove`, for both packages the installer adds there.
 async function piRemove(spec: string, shouldDryRun: boolean): Promise<void> {
   if (shouldDryRun) {
-    console.log(`  [dry-run] would run: pi remove ${spec}`);
+    sayTagged(`  [dry-run] would run: pi remove ${spec}`);
     return;
   }
   try {
@@ -50,10 +49,10 @@ async function piRemove(spec: string, shouldDryRun: boolean): Promise<void> {
         else resolve();
       });
     });
-    console.log(`  [ok] removed the pi package ${spec}`);
+    sayTagged(`  [ok] removed the pi package ${spec}`);
   } catch (e) {
-    console.log(`  [fail] pi remove: ${(e as Error).message}`);
-    console.log(`  [hint] Manual: pi remove ${spec}`);
+    sayTagged(`  [fail] pi remove: ${(e as Error).message}`);
+    sayTagged(`  [hint] Manual: pi remove ${spec}`);
   }
 }
 
@@ -68,13 +67,20 @@ async function removeCopiedPonytailSkills(shouldDryRun: boolean): Promise<void> 
 
 // pi owns its package dir, so removal is `pi remove`; the tree and defaults
 // file are ours. Ponytail goes too unless --keep-ponytail, matching OMP.
-async function removePiLayer(host: HostEntry, shouldDryRun: boolean, shouldRemovePonytail: boolean): Promise<boolean> {
+// Neither --host pi nor auto-selecting the only installed host reached a
+// prompt here, so list and confirm first, exactly as the OMP route does.
+async function removePiLayer(host: HostEntry, shouldDryRun: boolean, shouldRemovePonytail: boolean, confirmed: boolean): Promise<boolean> {
   const targets = PI_TREE_DIRS.map((dir) => path.join(piAgentDir(), 'extensions', dir));
 
   if (!host.installed && !host.declared) {
-    console.log(`  [skip] ${host.label} — nothing installed (${host.installCmd})`);
+    sayTagged(`  [skip] ${host.label} — nothing installed (${host.installCmd})`);
     return false;
   }
+  console.log('Will remove:');
+  for (const t of targets) console.log(`  ${t}`);
+  if (shouldRemovePonytail) console.log(`  npm:${PONYTAIL_PKG} (pi package)`);
+  console.log(`  ${tersioSettingsFile()} (session defaults)`);
+  if (!confirmed && !(await confirmDestructive(`Remove Tersio from ${host.label}?`))) { closeRL(); return false; }
   if (host.declared) await piRemove(`npm:${PACKAGE_NAME}`, shouldDryRun);
   if (shouldRemovePonytail) {
     await piRemove(`npm:${PONYTAIL_PKG}`, shouldDryRun);
@@ -109,11 +115,11 @@ async function updateJsonFile(
   }
   if (!mutate(data)) return;
   if (dryRun) {
-    console.log(`  [dry-run] ${dryRunNote}`);
+    sayTagged(`  [dry-run] ${dryRunNote}`);
     return;
   }
   await fs.writeFile(filePath, JSON.stringify(data, null, 2) + '\n', 'utf8');
-  console.log(`  [write] ${writeNote}`);
+  sayTagged(`  [write] ${writeNote}`);
 }
 
 function dropKey(section: unknown, key: string): boolean {
@@ -127,12 +133,12 @@ function dropKey(section: unknown, key: string): boolean {
 async function removeUninstallTarget(target: string, shouldDryRun: boolean, recursive = true): Promise<void> {
   try {
     if (shouldDryRun) {
-      console.log(`  [dry-run] would remove ${target}`);
+      sayTagged(`  [dry-run] would remove ${target}`);
       return;
     }
     if (recursive) await fs.rm(target, { recursive: true, force: true });
     else await fs.unlink(target);
-    console.log(`  [rm] ${target}`);
+    sayTagged(`  [rm] ${target}`);
   } catch {
     debug(`Could not remove ${target}`);
   }
@@ -179,12 +185,12 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
   }
   const selected = detectHosts().find((h) => h.id === host) as HostEntry;
   if (host === 'pi') {
-    const removed = await removePiLayer(selected, shouldDryRun, shouldRemovePonytail);
-    if (removed) console.log('\nDone. Restart pi for changes to take effect.');
+    const removed = await removePiLayer(selected, shouldDryRun, shouldRemovePonytail, confirmed);
+    if (removed) console.log('\nDone. Restart pi, then /combo medium.');
     closeRL();
     return removed;
   }
-  if (!selected.installed) console.log(`  [note] ${selected.label} has no tersio install; removing what is left behind.`);
+  if (!selected.installed) sayTagged(`  [note] ${selected.label} has no tersio install; removing what is left behind.`);
 
   const extDir = path.join(OMP_AGENT_DIR, 'extensions');
   const configPath = path.join(OMP_AGENT_DIR, 'config.yml');
@@ -239,7 +245,7 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
       return true;
     });
     if (lines.length !== before) {
-      if (shouldDryRun) console.log(`  [dry-run] would remove ${before - lines.length} config.yml entries`);
+      if (shouldDryRun) sayTagged(`  [dry-run] would remove ${before - lines.length} config.yml entries`);
       else await writeConfigLines(configPath, lines, `  [write] Updated config.yml (removed ${before - lines.length} entries)`);
     }
   }
@@ -257,12 +263,12 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
       `would remove @dietrichgebert/ponytail from ${pluginsPkgPath}`,
       'Removed @dietrichgebert/ponytail from plugins/package.json', shouldDryRun);
     try {
-      if (shouldDryRun) console.log(`  [dry-run] would remove ${ponytailPkgDir}`);
+      if (shouldDryRun) sayTagged(`  [dry-run] would remove ${ponytailPkgDir}`);
       else {
         await fs.rm(ponytailPkgDir, { recursive: true, force: true });
-        console.log(`  [rm] ${ponytailPkgDir}`);
+        sayTagged(`  [rm] ${ponytailPkgDir}`);
         await fs.rm(path.dirname(ponytailPkgDir));
-        console.log(`  [rm] ${path.dirname(ponytailPkgDir)} (empty scope)`);
+        sayTagged(`  [rm] ${path.dirname(ponytailPkgDir)} (empty scope)`);
       }
     } catch {
       debug('Could not remove ponytail package dir (scope may hold other packages)');

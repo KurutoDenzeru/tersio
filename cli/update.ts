@@ -7,7 +7,7 @@ import {
   PACKAGE_BIN, PACKAGE_NAME, PACKAGE_VERSION,
   dryRun, execP, parseJsonObject, verbose,
 } from './common.ts';
-import { execNetwork } from './interactive.ts';
+import { execNetwork, sayTagged } from './interactive.ts';
 import { readTextIfExists, resolveRtkBinary, tersioDataPath } from '../extensions/lib/utils.ts';
 import { refreshPrices } from '../extensions/shared/pricing.ts';
 import {
@@ -159,8 +159,8 @@ async function runLatestUpdate(): Promise<void> {
   const { stale, status } = planLines(plan);
   if (dryRun) {
     console.log(`tersio update (dry-run):\n  ${status.join('\n  ')}`);
-    console.log(`  [dry-run] would run: npm install -g ${PACKAGE_NAME}${target} --no-audit --no-fund --prefer-online`);
-    console.log(`  [dry-run] would delegate: npm exec --yes --prefer-online --package=${PACKAGE_NAME}${target} -- tersio --apply-update ${forwardedArgs.join(' ')}`);
+    sayTagged(`  [dry-run] would run: npm install -g ${PACKAGE_NAME}${target} --no-audit --no-fund --prefer-online`);
+    sayTagged(`  [dry-run] would delegate: npm exec --yes --prefer-online --package=${PACKAGE_NAME}${target} -- tersio --apply-update ${forwardedArgs.join(' ')}`);
     return;
   }
   console.log(`Checking for updates:\n  ${status.join('\n  ')}`);
@@ -204,8 +204,8 @@ async function runLatestUpdate(): Promise<void> {
     // npm -g echoes its own added/changed summary; only failures surface here.
     if (globalResult.stderr) process.stderr.write(globalResult.stderr);
   } catch (e) {
-    console.log(`  [warn] Global CLI update skipped: ${(e as Error).message}`);
-    console.log(`  [hint] Manual: npm install -g ${PACKAGE_NAME}${target} --no-audit --no-fund --prefer-online`);
+    sayTagged(`  [warn] Global CLI update skipped: ${(e as Error).message}`);
+    sayTagged(`  [hint] Manual: npm install -g ${PACKAGE_NAME}${target} --no-audit --no-fund --prefer-online`);
   }
 
   const npmArgs = [

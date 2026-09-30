@@ -15,8 +15,7 @@ import {
   InstallOptions, WriteOptions,
 } from './common.ts';
 import {
-  askInteractiveChoice, askInteractiveConfirm, closeRL, execNetwork, tty, withInteractiveSpinner,
-} from './interactive.ts';
+  askInteractiveChoice, askInteractiveConfirm, closeRL, execNetwork, tty, withInteractiveSpinner, sayTagged } from './interactive.ts';
 import { printWelcome } from './banner.ts';
 import { checkForUpdate, runLatestUpdate } from './update.ts';
 import { runUninstall } from './uninstall.ts';
@@ -49,8 +48,8 @@ async function stepPonytail(pluginsDir: string, options: InstallOptions): Promis
   }
 
   if (options.dryRun) {
-    if (verbose && !options.quiet) console.log(`  [dry-run] would write ${pkgPath}`);
-    if (migrated && verbose && !options.quiet) console.log(`  [dry-run] would drop the separate @dietrichgebert/ponytail dependency (bundled with tersio)`);
+    if (verbose && !options.quiet) sayTagged(`  [dry-run] would write ${pkgPath}`);
+    if (migrated && verbose && !options.quiet) sayTagged(`  [dry-run] would drop the separate @dietrichgebert/ponytail dependency (bundled with tersio)`);
   } else if (migrated) {
     await fs.writeFile(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
     if (!options.quiet) console.log('  [migrate] dropped separate @dietrichgebert/ponytail dependency (now bundled with tersio)');
@@ -74,7 +73,7 @@ async function stepPonytail(pluginsDir: string, options: InstallOptions): Promis
       try {
         await execNetwork('Installing bundled Ponytail', 'bun', ['install'], { cwd: pluginsDir, timeout: 180000 });
       } catch (e) {
-        console.log(`  [fail] Could not install bundled ponytail: ${(e as Error).message}`);
+        sayTagged(`  [fail] Could not install bundled ponytail: ${(e as Error).message}`);
         console.log('  [hint] Manual: cd ~/.omp/plugins && npm install --no-audit --no-fund');
       }
     }
@@ -101,13 +100,13 @@ async function stepSelfPlugin(pluginsDir: string, options: InstallOptions): Prom
   for (const legacy of ['oh-my-pi-token-saver', 'tersio-omp']) {
     if (legacy in pkg.dependencies) {
       delete pkg.dependencies[legacy];
-      if (!options.dryRun && !options.quiet) console.log(`  [migrate] dropped legacy ${legacy} dependency`);
+      if (!options.dryRun && !options.quiet) sayTagged(`  [migrate] dropped legacy ${legacy} dependency`);
     }
   }
 
   if (options.dryRun) {
-    if (verbose && !options.quiet) console.log(`  [dry-run] would add ${PACKAGE_NAME}@^${PACKAGE_VERSION} to ${pkgPath}`);
-    if (verbose && !options.quiet) console.log(`  [dry-run] would run: npm install --no-audit --no-fund (in ${pluginsDir})`);
+    if (verbose && !options.quiet) sayTagged(`  [dry-run] would add ${PACKAGE_NAME}@^${PACKAGE_VERSION} to ${pkgPath}`);
+    if (verbose && !options.quiet) sayTagged(`  [dry-run] would run: npm install --no-audit --no-fund (in ${pluginsDir})`);
     return false;
   }
 
@@ -129,15 +128,15 @@ async function stepSelfPlugin(pluginsDir: string, options: InstallOptions): Prom
     try {
       await execNetwork('Installing Tersio plugin dependencies', 'bun', ['install'], { cwd: pluginsDir, timeout: 180000 });
     } catch (e) {
-      console.log(`  [fail] Could not install ${PACKAGE_NAME} into plugins dir: ${(e as Error).message}`);
-      console.log(`  [hint] Manual: cd ~/.omp/plugins && npm install ${PACKAGE_NAME}@^${PACKAGE_VERSION} --save --no-audit --no-fund`);
+      sayTagged(`  [fail] Could not install ${PACKAGE_NAME} into plugins dir: ${(e as Error).message}`);
+      sayTagged(`  [hint] Manual: cd ~/.omp/plugins && npm install ${PACKAGE_NAME}@^${PACKAGE_VERSION} --save --no-audit --no-fund`);
       return false;
     }
   }
 
   const installedPkg = path.join(pluginsDir, 'node_modules', PACKAGE_NAME, 'package.json');
   if ((await readTextIfExists(installedPkg)) === null) {
-    console.log(`  [warn] ${PACKAGE_NAME} not found in plugins/node_modules after install`);
+    sayTagged(`  [warn] ${PACKAGE_NAME} not found in plugins/node_modules after install`);
     return false;
   }
   debug('tersio listed in OMP plugins');
@@ -148,7 +147,7 @@ async function stepSelfPlugin(pluginsDir: string, options: InstallOptions): Prom
 function resolveRtkTriple(): string | null {
   const triple = rtkPlatformSpec()?.triple;
   if (triple) return triple;
-  console.log(`  [fail] Unsupported platform: ${process.platform}/${process.arch}`);
+  sayTagged(`  [fail] Unsupported platform: ${process.platform}/${process.arch}`);
   console.log('  [hint] Manual: https://github.com/rtk-ai/rtk/releases');
   return null;
 }
@@ -157,8 +156,8 @@ function findRtkAsset(release: RtkRelease, triple: string): RtkReleaseAsset | nu
   const assets = release.assets || [];
   const asset = assets.find((a) => a.name === `rtk-${triple}.zip` || a.name === `rtk-${triple}.tar.gz`);
   if (asset) return asset;
-  console.log(`  [fail] No rtk-${triple}.<zip|tar.gz> in release ${release.tag_name}`);
-  console.log(`  [hint] Available: ${assets.map((a) => a.name).filter((n) => n.startsWith('rtk-')).join(', ')}`);
+  sayTagged(`  [fail] No rtk-${triple}.<zip|tar.gz> in release ${release.tag_name}`);
+  sayTagged(`  [hint] Available: ${assets.map((a) => a.name).filter((n) => n.startsWith('rtk-')).join(', ')}`);
   return null;
 }
 
@@ -181,16 +180,16 @@ async function verifyRtkArchive(archivePath: string, assetName: string, checksum
   const expected = parseChecksum(checksumsText, assetName);
   const actual = await sha256File(archivePath);
   if (!expected) {
-    if (!options.quiet) console.log(`  [warn] checksums.txt missing entry for ${assetName} — skipping verification`);
+    if (!options.quiet) sayTagged(`  [warn] checksums.txt missing entry for ${assetName} — skipping verification`);
     return true;
   }
   if (actual === expected) {
     debug(`Checksum verified for ${assetName}`);
     return true;
   }
-  console.log(`  [fail] Checksum mismatch for ${assetName}`);
-  console.log(`  [fail] Expected: ${expected}`);
-  console.log(`  [fail] Got:      ${actual}`);
+  sayTagged(`  [fail] Checksum mismatch for ${assetName}`);
+  sayTagged(`  [fail] Expected: ${expected}`);
+  sayTagged(`  [fail] Got:      ${actual}`);
   // Caller finally removes the temp dir.
   return false;
 }
@@ -224,13 +223,13 @@ async function extractRtkArchive(archivePath: string, extractDir: string): Promi
       debug('tar xzf ok');
     } catch (e) {
       debug(`tar xzf failed: ${shortError(e)}`);
-      console.log(`  [fail] tar could not extract ${path.basename(archivePath)}`);
+      sayTagged(`  [fail] tar could not extract ${path.basename(archivePath)}`);
       console.log('  [hint] Manual: https://github.com/rtk-ai/rtk/releases');
       return false;
     }
     return true;
   }
-  console.log(`  [fail] Unknown archive format: ${archivePath}`);
+  sayTagged(`  [fail] Unknown archive format: ${archivePath}`);
   return false;
 }
 
@@ -263,7 +262,7 @@ async function stepRtk(binDir: string, options: InstallOptions, target: 'omp' | 
   // A failed download must not skip wiring: a pre-existing binary serves the
   // OMP hook just as well. Dry runs stay offline.
   if (options.dryRun) {
-    if (verbose && !options.quiet) console.log(`  [dry-run] would download rtk binary and install to ${binDest}`);
+    if (verbose && !options.quiet) sayTagged(`  [dry-run] would download rtk binary and install to ${binDest}`);
     await bind(found ?? binDest);
     return;
   }
@@ -291,7 +290,7 @@ async function stepRtk(binDir: string, options: InstallOptions, target: 'omp' | 
 
       const found = await findFile(extractDir, RTK_BINARY_NAME);
       if (!found) {
-        console.log(`  [fail] Could not find ${RTK_BINARY_NAME} in extracted archive`);
+        sayTagged(`  [fail] Could not find ${RTK_BINARY_NAME} in extracted archive`);
         return;
       }
 
@@ -307,13 +306,13 @@ async function stepRtk(binDir: string, options: InstallOptions, target: 'omp' | 
       try {
         await execP(binDest, ['--version'], { timeout: 30000, shell: false });
       } catch {
-        console.log(`  [hint] Verify manually: ${binDest} --version`);
+        sayTagged(`  [hint] Verify manually: ${binDest} --version`);
       }
     } finally {
       await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => { });
     }
   } catch (e) {
-    console.log(`  [fail] RTK: ${(e as Error).message}`);
+    sayTagged(`  [fail] RTK: ${(e as Error).message}`);
     console.log('  [hint] Manual: https://github.com/rtk-ai/rtk/releases');
   }
 
@@ -326,7 +325,7 @@ async function stepRtk(binDir: string, options: InstallOptions, target: 'omp' | 
 async function copySources(extDir: string, files: Array<[string, string]>, skipLabel: string, options: WriteOptions): Promise<boolean> {
   const src = await readTextIfExists(files[0][0]);
   if (!src) {
-    if (!options.quiet && options.dryRun) console.log(`  [skip] ${skipLabel} not found in repo`);
+    if (!options.quiet && options.dryRun) sayTagged(`  [skip] ${skipLabel} not found in repo`);
     return false;
   }
   await writeIfChanged(path.join(extDir, files[0][1]), src, options);
@@ -363,7 +362,7 @@ async function fetchCavemanRule(options: WriteOptions): Promise<string | null> {
       debug(`Using bundled Caveman rule: ${(e as Error).message}`);
       return bundled;
     }
-    console.log(`  [warn] Could not fetch caveman rule: ${(e as Error).message}`);
+    sayTagged(`  [warn] Could not fetch caveman rule: ${(e as Error).message}`);
     return null;
   }
 }
@@ -378,7 +377,7 @@ async function stepCaveman(extDir: string, rule: string | null, options: WriteOp
     debug('Keeping existing rule.md');
   } else if (rule === null) {
     console.log('  [skip] Caveman rule.md unavailable');
-    console.log(`  [hint] Manual: ${CAVEMAN_REMOTE_RULE}`);
+    sayTagged(`  [hint] Manual: ${CAVEMAN_REMOTE_RULE}`);
   } else {
     await writeIfChanged(ruleDest, rule, options);
   }
@@ -554,7 +553,7 @@ async function stepPiLayer(profile: Profile, options: InstallOptions): Promise<v
   const agentDir = piAgentDir();
   const extDir = path.join(agentDir, 'extensions');
   const declared = piTersioSource(agentDir);
-  if (declared) console.log(`  [note] pi also has a tersio package (${declared}) — remove one, or both copies load: pi remove npm:${PACKAGE_NAME}`);
+  if (declared) sayTagged(`  [note] pi also has a tersio package (${declared}) — remove one, or both copies load: pi remove npm:${PACKAGE_NAME}`);
 
   if (!options.quiet) console.log(`  Pi — write the extension tree (${extDir})`);
   const cavemanRule = await fetchCavemanRule(options);
@@ -576,7 +575,7 @@ async function stepPonytailForPi(agentDir: string, options: InstallOptions): Pro
       await execNetwork('Installing Ponytail for pi', 'pi', ['install', 'npm:@dietrichgebert/ponytail'], { timeout: 300000 });
       return;
     } catch (e) {
-      console.log(`  [fail] pi install ponytail: ${shortError(e)}`);
+      sayTagged(`  [fail] pi install ponytail: ${shortError(e)}`);
     }
   }
   const skills = findHoistedPackage('@dietrichgebert/ponytail', path.dirname(fileURLToPath(import.meta.url)), 'skills');
@@ -587,7 +586,7 @@ async function stepPonytailForPi(agentDir: string, options: InstallOptions): Pro
   }
   const dest = path.join(agentDir, 'skills');
   if (options.dryRun) {
-    if (verbose && !options.quiet) console.log(`  [dry-run] would copy Ponytail skills to ${dest}`);
+    if (verbose && !options.quiet) sayTagged(`  [dry-run] would copy Ponytail skills to ${dest}`);
     return;
   }
   for (const entry of await fs.readdir(skills, { withFileTypes: true })) {
@@ -595,7 +594,7 @@ async function stepPonytailForPi(agentDir: string, options: InstallOptions): Pro
     const to = path.join(dest, entry.name);
     await fs.rm(to, { recursive: true, force: true });
     await fs.cp(path.join(skills, entry.name), to, { recursive: true });
-    if (!options.quiet) console.log(`  [write] skill ${entry.name} → ${to}`);
+    if (!options.quiet) sayTagged(`  [write] skill ${entry.name} → ${to}`);
   }
 }
 
@@ -677,7 +676,7 @@ async function runInstall(): Promise<void> {
       await work();
     } catch (e) {
       failures.push(label);
-      console.log(`  [fail] ${label}: ${shortError(e)}`);
+      sayTagged(`  [fail] ${label}: ${shortError(e)}`);
     }
   };
 
