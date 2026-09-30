@@ -194,3 +194,47 @@ test("free suffix and case variants fold into one model row", () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// One host's sessions used to vanish from the dashboard: the importer walked
+// only the first session directory that existed, so a pi session was invisible
+// while the dashboard was served from the OMP directory, and vice versa.
+test("importer walks both hosts' session directories", () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-both-hosts-"));
+  const prevHome = process.env.HOME;
+  const prevPiAgent = process.env.PI_CODING_AGENT_DIR;
+  const prevPiFlag = process.env.PI_CODING_AGENT;
+  const prevSessions = process.env.TERSIO_SESSIONS_DIR;
+  const prevCodex = process.env.TERSIO_CODEX_DIR;
+  const prevReset = process.env.TERSIO_RESET_FILE;
+  const row = (id: string, ts: string, model: string, input: number): string =>
+    `{"type":"message","id":"${id}","timestamp":"${ts}","message":{"role":"assistant","model":"${model}","usage":{"input":${input},"output":10,"cacheRead":0,"cacheWrite":0}}}`;
+  try {
+    for (const [host, model, input] of [["omp", "omp-model", 200], ["pi", "pi-model", 400]] as const) {
+      const dir = path.join(home, `.${host}`, "agent", "sessions", "branch");
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        path.join(dir, "s.jsonl"),
+        [row("a", "2026-09-03T10:00:00.000Z", model, input)].join("\n") + "\n",
+        "utf8",
+      );
+    }
+    process.env.HOME = home;
+    delete process.env.TERSIO_SESSIONS_DIR;
+    delete process.env.TERSIO_CODEX_DIR;
+    process.env.PI_CODING_AGENT = "true";
+    process.env.PI_CODING_AGENT_DIR = path.join(home, ".pi", "agent");
+    process.env.TERSIO_RESET_FILE = path.join(home, "no-reset.json");
+    clearRtkAdoptionCache();
+
+    const s = importSessionTokens();
+    expect(Object.keys(s.byModel).sort()).toEqual(["omp-model", "pi-model"]);
+    expect(s.byModel["omp-model"].input).toBe(200);
+    expect(s.byModel["pi-model"].input).toBe(400);
+  } finally {
+    for (const [key, value] of [["HOME", prevHome], ["PI_CODING_AGENT_DIR", prevPiAgent], ["PI_CODING_AGENT", prevPiFlag], ["TERSIO_SESSIONS_DIR", prevSessions], ["TERSIO_CODEX_DIR", prevCodex], ["TERSIO_RESET_FILE", prevReset]] as const) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    rmSync(home, { recursive: true, force: true });
+  }
+});

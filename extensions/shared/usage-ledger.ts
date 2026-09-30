@@ -147,14 +147,20 @@ function addInto(into: TokenBreakdown, u: { input?: unknown; output?: unknown; c
   }
 }
 
-export function sessionsDir(): string {
+export function sessionsDirs(): string[] {
   const override = process.env.TERSIO_SESSIONS_DIR;
-  if (override) return override;
-  // The running host wins; the other host's directory is the fallback.
+  if (override) return [override];
+  // Both hosts, not just the running one: a session on pi is missing from the
+  // dashboard entirely if we stop at the first directory that exists.
   const dirs = isPiProcess()
     ? [path.join(piAgentDir(), 'sessions'), path.join(os.homedir(), '.omp', 'agent', 'sessions')]
     : [path.join(os.homedir(), '.omp', 'agent', 'sessions'), path.join(piAgentDir(), 'sessions')];
-  return dirs.find((dir) => fs.existsSync(dir)) ?? dirs[0];
+  const found = dirs.filter((dir) => fs.existsSync(dir));
+  return found.length > 0 ? found : [dirs[0]];
+}
+
+export function sessionsDir(): string {
+  return sessionsDirs()[0];
 }
 
 export function codexSessionsDir(): string {
@@ -297,7 +303,7 @@ export function displayModelId(model: string): string {
 export function importSessionTokens(): SessionTokens {
   const accum = newSessionAccum();
   const files: string[] = [];
-  walkJsonl(sessionsDir(), files, 2000);
+  for (const dir of sessionsDirs()) walkJsonl(dir, files, 2000);
   // An override means an isolated environment (tests, fixtures): only walk the
   // real codex dir when one is explicitly set.
   if (process.env.TERSIO_SESSIONS_DIR === undefined || process.env.TERSIO_CODEX_DIR !== undefined) {
@@ -355,7 +361,7 @@ export function clearRtkAdoptionCache(): void {
 
 export function readRtkAdoption(): RtkAdoption {
   const files: string[] = [];
-  walkJsonl(sessionsDir(), files, 2000);
+  for (const dir of sessionsDirs()) walkJsonl(dir, files, 2000);
   if (process.env.TERSIO_SESSIONS_DIR === undefined || process.env.TERSIO_CODEX_DIR !== undefined) {
     walkJsonl(codexSessionsDir(), files, 2000);
   }

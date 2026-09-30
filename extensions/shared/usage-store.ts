@@ -1,9 +1,7 @@
-// extensions/shared/usage-store.ts — tersio-owned usage.db.
-// Persists the rows importSessionTokens derives live, so reports survive
-// session-file rotation. Sync is incremental (a files ledger skips unchanged
-// transcripts) and every read applies the reset watermark, so the store is a
-// cache, never a fork. Missing sqlite3 → sync false / read null. Never touches
-// RTK's history.db or host transcripts.
+// extensions/shared/usage-store.ts — tersio-owned usage.db. Persists what
+// importSessionTokens derives live, so reports survive session-file rotation.
+// Incremental sync plus the reset watermark make it a cache, never a fork.
+// Missing sqlite3 → sync false / read null.
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -17,7 +15,7 @@ import {
   durOf,
   ingestSessionRow,
   newSessionAccum,
-  sessionsDir,
+  sessionsDirs,
   walkJsonl,
 } from './usage-ledger.ts';
 import { tersioDataPath } from '../lib/utils.ts';
@@ -69,9 +67,8 @@ function query(db: string, sql: string): string[][] {
 
 function ensureSchema(db: string): void {
   fs.mkdirSync(path.dirname(db), { recursive: true });
-  // Rows imported before an alias existed keep the spelling they were stored
-  // with, and the mtime ledger will not re-read those transcripts. Fold them in
-  // once, so the merge shows up without a reset.
+  // Fold in rows stored under a pre-alias spelling; the mtime ledger will
+  // not re-read those transcripts.
   const rekeys = MODEL_ALIASES.map((a) => `UPDATE messages SET model='${a.id}' WHERE model='${a.feed}';`).join('');
   run(
     db,
@@ -176,9 +173,8 @@ function insertSql(file: string, r: StoredRow): string {
     `${nullNum(r.code)},${nullStr(r.note)},${esc(JSON.stringify(r.tools))});`;
 }
 
-// Incremental sync: unchanged transcripts are skipped via mtime+size, changed
-// ones re-inserted. Rows for deleted transcripts are kept, so rotation never
-// erases history. False when sqlite3 or disk is unavailable.
+// Unchanged transcripts are skipped via mtime+size; rows for deleted ones are
+// kept so rotation never erases history. False when sqlite3 is unavailable.
 export function syncUsageDb(): boolean {
   let db: string;
   try {
@@ -189,7 +185,7 @@ export function syncUsageDb(): boolean {
   }
   const files: string[] = [];
   try {
-    walkJsonl(sessionsDir(), files, 2000);
+    for (const dir of sessionsDirs()) walkJsonl(dir, files, 2000);
     if (process.env.TERSIO_SESSIONS_DIR === undefined || process.env.TERSIO_CODEX_DIR !== undefined) {
       walkJsonl(codexSessionsDir(), files, 2000);
     }
