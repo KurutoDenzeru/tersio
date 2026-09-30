@@ -53,12 +53,15 @@ async function fixExtensions(pluginsDir: string): Promise<void> {
   const pluginExtDir = path.join(tersioPluginDir, 'extensions');
   await fs.mkdir(pluginExtDir, { recursive: true });
 
-  for (const [from, to] of TREE_FILES.map((file) => [sourcePath(file), file] as [string, string])) {
-    const text = await readTextIfExists(from);
-    if (text === null) console.log(`  [warn] bundled source missing: ${from}`);
-    else await writeIfChanged(path.join(pluginExtDir, to), text, { dryRun, verbose });
+  // rule.md is skipped: its live content is the upstream fetch, not the bundle.
+  const bundledTree = TREE_FILES.filter((file) => file !== 'caveman-session/rule.md');
+  for (const file of bundledTree) {
+    const text = await readTextIfExists(sourcePath(file));
+    if (text === null) console.log(`  [warn] bundled source missing: ${sourcePath(file)}`);
+    else await writeIfChanged(path.join(pluginExtDir, file), text, { dryRun, verbose });
   }
 
+  // Restore only a missing rule; a stale one is /ai-addons' to report.
   const ruleDest = path.join(pluginExtDir, 'caveman-session', 'rule.md');
   if ((await readTextIfExists(ruleDest)) === null) {
     const bundled = await readTextIfExists(path.join(EXT_DIR, 'caveman-session', 'rule.md'));
