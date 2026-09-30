@@ -29,6 +29,7 @@ import {
   httpsDownload, parseChecksum, piAgentDir, readTextIfExists, resolveRtkBinary, rtkPlatformSpec, sha256File,
 } from '../extensions/lib/utils.ts';
 import { storedProfile, writePluginSettings } from './profile.ts';
+import { runSettings } from './settings.ts';
 import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
 import { filesUnder, sourcePath } from './manifest.ts';
 import type { Profile } from './profile.ts';
@@ -467,6 +468,7 @@ async function runCommandMenu(): Promise<void> {
     { value: 'install', label: 'Install add-ons', hint: 'user scope + combo defaults' },
     { value: 'update', label: 'Update', hint: 'CLI version check, then refresh add-ons (RTK, Caveman rule, Ponytail)' },
     { value: 'doctor', label: 'Doctor', hint: 'verify the installation' },
+    { value: 'settings', label: 'Settings', hint: 'default combo mode, currency, diagnosis schedule' },
     { value: 'usage', label: 'Usage', hint: 'token usage and savings report' },
     { value: 'dashboard', label: 'Dashboard', hint: 'open the report in your browser' },
     { value: 'reset', label: 'Reset statistics', hint: 'clear statistics; transcripts and RTK history stay' },
@@ -515,6 +517,10 @@ async function runCommandMenu(): Promise<void> {
       closeRL();
       break;
     }
+    case 'settings':
+      await runSettings();
+      closeRL();
+      break;
     case 'usage':
       await runUsage();
       closeRL();
