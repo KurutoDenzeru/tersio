@@ -93,9 +93,15 @@ export function isOmpSubagentPrompt(systemPrompt: string | string[]): boolean {
   return systemPromptIncludes(systemPrompt, OMP_SUBAGENT_MARKER);
 }
 
+// `ultra` is the level caveman and ponytail both expose, so typing it is the
+// obvious thing to try. It maps to the max preset rather than bouncing back
+// with a wall of text; `lite`/`full` map to their nearest preset too.
+const COMBO_ALIASES: Record<string, ComboLevel> = { ultra: 'max', lite: 'medium', full: 'balanced' };
+
 export function normalizeComboLevel(value: unknown): ComboLevel | null {
   const level = String(value || '').trim().toLowerCase();
-  return isPresetLevel(level) ? level : null;
+  if (isPresetLevel(level)) return level;
+  return COMBO_ALIASES[level] ?? null;
 }
 
 // OMP themes status text through ctx.ui.theme.fg; pi has no ctx.ui.theme, so

@@ -7,7 +7,6 @@ import {
   displayModel,
   fmt,
   hostMeta,
-  speedText,
   stampLocal,
   statusColor,
   statusLabel,
@@ -137,14 +136,13 @@ export function Recent({ data, money }: { data: UsageReport | null; money: (v: n
       <CardContent>
       {rows.length > 0 ? (
         <Table className="mono table-fixed text-[13px]" id="recentTable">
-            <colgroup><col /><col style={{ width: 78 }} /><col style={{ width: 96 }} /><col style={{ width: 96 }} /><col style={{ width: 120 }} /><col style={{ width: 116 }} /><col style={{ width: 120 }} /><col style={{ width: 158 }} /></colgroup>
+            <colgroup><col /><col style={{ width: 78 }} /><col style={{ width: 96 }} /><col style={{ width: 96 }} /><col style={{ width: 116 }} /><col style={{ width: 120 }} /><col style={{ width: 158 }} /></colgroup>
             <TableHeader className="[&_tr]:text-left [&_tr]:text-[11px] [&_tr]:uppercase [&_tr]:tracking-[0.14em] [&_tr]:text-dim">
               <TableRow>
                 {th("Model", "model")}
                 {th("Agent", "agent", false, "Which agent ran the session: pi, OMP, or Codex")}
                 {th("Input", "input", true)}
                 {th("Output", "output", true)}
-                {th("Time", "time", true, "Elapsed time with the model / output token speed")}
                 {th("Status", "status")}
                 {th("Cost", "cost", true)}
                 {th("When", "when", true, "Local timestamp: month day, hour:minute:second")}
@@ -176,9 +174,6 @@ export function Recent({ data, money }: { data: UsageReport | null; money: (v: n
                       </TableCell>
                       <TableCell className="whitespace-nowrap py-2.5 pr-3 text-right text-accent">
                         {fmt(r.o)}
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap py-2.5 pr-3 text-right text-dim">
-                        {speedText(r)}
                       </TableCell>
                       <TableCell className="whitespace-nowrap py-2.5 pr-3">
                         <StatusBadge r={r} />

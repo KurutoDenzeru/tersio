@@ -17,6 +17,8 @@ import {
   OMP_AGENT_DIR, OMP_PLUGINS_DIR, PACKAGE_VERSION,
 } from './common.ts';
 import { storedProfile, writePluginSettings } from './profile.ts';
+import { normalizeComboLevel } from '../extensions/shared/session-state.ts';
+import type { ComboLevel } from '../extensions/shared/types.ts';
 import { PACKAGE_NAME } from './common.ts';
 import { resolveRtkBinary } from '../extensions/lib/utils.ts';
 
@@ -294,6 +296,17 @@ function setDiagSchedule(schedule: DiagSchedule): DoctorReport {
   return base;
 }
 
+// The session-start combo level, so a new or resumed session opens in the mode
+// the user picked rather than off.
+async function saveComboDefault(raw: unknown): Promise<ComboLevel | null> {
+  const level = normalizeComboLevel(raw);
+  if (!level) return null;
+  const profile = await storedProfile();
+  profile.comboDefault = level;
+  await writePluginSettings(profile, {});
+  return level;
+}
+
 function readDiagSchedule(): DiagSchedule {
   return readDiagReport()?.schedule ?? 'manual';
 }
@@ -420,6 +433,28 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
       markReset();
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: true, rows }));
+      return;
+    }
+    if (req.url === '/settings' && req.method === 'GET') {
+      storedProfile().then((profile) => {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ comboDefault: profile.comboDefault }));
+      });
+      return;
+    }
+    if (req.url === '/settings' && req.method === 'POST') {
+      let combo: unknown = null;
+      try {
+        combo = (JSON.parse(await readBody(req)) as { comboDefault?: unknown }).comboDefault ?? null;
+      } catch { combo = null; }
+      const saved = await saveComboDefault(combo);
+      if (saved === null) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: 'unknown combo level' }));
+      } else {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, comboDefault: saved }));
+      }
       return;
     }
     if (req.url === '/currency' && req.method === 'POST') {

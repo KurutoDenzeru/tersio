@@ -450,6 +450,7 @@ const TITLES: Record<Pane, string> = {
 };
 
 const SETTINGS_SEARCH: Array<{ pane: Pane; label: string; terms: string }> = [
+  { pane: "general", label: "Default mode", terms: "general default mode combo preset balanced max medium off new session resume start caveman rtk ponytail" },
   { pane: "general", label: "Theme", terms: "general appearance theme light dark system color scheme mode" },
   { pane: "general", label: "Currency", terms: "currency display cost usd euro" },
   { pane: "connection", label: "Coding agents", terms: "connection provider coding agents agent oh my pi omp status path version refresh ready available" },
@@ -483,6 +484,59 @@ function HighlightMatch({ text, query, fullWhenAlias = false }: { text: string; 
   }
   if (cursor < text.length) parts.push(text.slice(cursor));
   return parts;
+}
+
+const COMBO_LEVELS_UI: Array<{ id: string; label: string; hint: string }> = [
+  { id: "off", label: "Off", hint: "Nothing active" },
+  { id: "medium", label: "Medium", hint: "caveman=lite, rtk=on, ponytail=lite" },
+  { id: "balanced", label: "Balanced", hint: "caveman=full, rtk=on, ponytail=full" },
+  { id: "max", label: "Max", hint: "caveman=ultra, rtk=on, ponytail=ultra" },
+];
+
+function ComboDefaultPicker() {
+  const toast = useToast();
+  const [level, setLevel] = useState("off");
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    fetch("/settings")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { comboDefault?: string } | null) => {
+        if (alive && d?.comboDefault) { setLevel(d.comboDefault); setLoaded(true); }
+      })
+      .catch(() => { if (alive) setLoaded(true); });
+    return () => { alive = false; };
+  }, []);
+  const save = (next: string | null): void => {
+    const level = next ?? "off";
+    setLevel(level);
+    void fetch("/settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ comboDefault: level }),
+    })
+      .then((r) => r.json())
+      .then((d: { ok?: boolean }) => {
+        toast(d?.ok ? "Default mode saved" : "Could not save", d?.ok ? `${level} applies to new sessions` : "Unknown combo level", d?.ok ? "check" : "circle-alert");
+      })
+      .catch(() => toast("Could not save", "The dashboard server did not answer.", "circle-alert"));
+  };
+  return (
+    <Select value={level} onValueChange={save} disabled={!loaded}>
+      <SelectTrigger size="sm" className="w-[132px] shrink-0" aria-label="Default combo mode">
+        <SelectValue placeholder="Off" />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectGroup>
+          {COMBO_LEVELS_UI.map((c) => (
+            <SelectItem key={c.id} value={c.id}>
+              {c.label}
+            </SelectItem>
+          ))}
+        </SelectGroup>
+      </SelectContent>
+    </Select>
+  );
 }
 
 export function SettingsDialog({
@@ -593,6 +647,13 @@ export function SettingsDialog({
               {pane === "general" && (
                 <section aria-label="General">
                   <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="m-0 text-[13px] font-semibold">Default mode</p>
+                      <p className="mt-0.5 mb-0 text-xs text-dim">Combo preset a new or resumed session opens in.</p>
+                    </div>
+                    <ComboDefaultPicker />
+                  </div>
+                  <div className="mt-6 flex items-center justify-between gap-3">
                     <div className="min-w-0">
                       <p className="m-0 text-[13px] font-semibold">Theme</p>
                       <p className="mt-0.5 mb-0 text-xs text-dim">Light, dark, or follow the system.</p>
