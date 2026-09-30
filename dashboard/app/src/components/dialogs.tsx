@@ -356,7 +356,11 @@ function BackupRestore() {
       </div>
       <Select value={rows[0].file} onValueChange={(v) => restore(v ?? rows[0].file)} disabled={busy}>
         <SelectTrigger size="sm" className="w-[168px] shrink-0" aria-label="Restore a usage backup">
-          <SelectValue placeholder="Newest" />
+          {/* Same fallback as the mode rows: the trigger needs the label, or it
+              shows the raw backup filename. */}
+          <SelectValue placeholder="Newest">
+            {new Date(rows[0].mtime).toLocaleString()}
+          </SelectValue>
         </SelectTrigger>
         <SelectContent>
           <SelectGroup>
@@ -408,7 +412,7 @@ function DataPane({ data, onReload }: { data: UsageReport | null; onReload: () =
         <div className="flex shrink-0 items-center gap-2">
           <Select value={format} onValueChange={(v) => setFormat(v as ExportFormat)}>
             <SelectTrigger size="sm" className="w-[104px]" aria-label="Export format">
-              <SelectValue />
+              <SelectValue>{chosen.label}</SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectGroup>
@@ -663,7 +667,9 @@ function DefaultModes() {
             </div>
             <Select value={value} onValueChange={(v) => save(row, v ?? "off")} disabled={locked}>
               <SelectTrigger size="sm" className="w-[132px] shrink-0" aria-label={`${row.label} default`}>
-                <SelectValue placeholder="Off" />
+                {/* Without children, base-ui falls back to the raw value and the
+                    trigger shows "balanced" rather than the "Balanced" label. */}
+                <SelectValue placeholder="Off">{row.options.find((o) => o.id === value)?.label ?? "Off"}</SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectGroup>
