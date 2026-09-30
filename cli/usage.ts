@@ -165,6 +165,8 @@ function bar(frac: number, width = 12): string {
   return '█'.repeat(filled) + '░'.repeat(width - filled);
 }
 
+const ROW_CAP = 15;
+
 function pad(s: string, n: number): string {
   return s.length >= n ? s : s + ' '.repeat(n - s.length);
 }
@@ -193,10 +195,14 @@ function printReport(report: UsageReport): void {
     return;
   }
   const t = report.tokens;
-  console.log(`  TOKENS  ${fmt(t.input)} in · ${fmt(t.output)} out · ${fmt(t.cacheRead)} cache read · ${fmt(t.cacheWrite)} cache write`);
-  console.log(`  COST    ${formatCurrency(report.usd, report.currency)}${report.priced ? '' : ' (includes default pricing)'} · ~${formatCurrency(report.savedUsd, report.currency)} cache-saved (est.) · ~${report.co2g.toFixed(1)}g CO2 (est.)`);
-  console.log(`  RTK      ${fmt(report.rtkAdoption.rtkCalls)}/${fmt(report.rtkAdoption.eligibleCalls)} eligible OMP Bash calls use RTK (${report.rtkAdoption.adoptionPct.toFixed(1)}%) · ${fmt(report.rtkAdoption.missedCalls)} missed · recall ${report.rtkRecall.available ? `${report.rtkRecall.mode} (${report.rtkRecall.entries})` : 'unavailable'}`);
-  const models = Object.entries(report.byModel).filter(([, b]) => b.input + b.output + b.cacheRead + b.cacheWrite > 0).sort((a, b) => (b[1].input + b[1].output) - (a[1].input + a[1].output)).slice(0, 8);
+  const a = report.rtkAdoption;
+  for (const l of textTable(['Metric', 'Value'], [
+    ['Tokens', `${fmt(t.input)} in · ${fmt(t.output)} out · ${fmt(t.cacheRead)} cache read · ${fmt(t.cacheWrite)} cache write`],
+    ['Cost', `${formatCurrency(report.usd, report.currency)}${report.priced ? '' : ' (includes default pricing)'} · ~${formatCurrency(report.savedUsd, report.currency)} cache-saved (est.) · ~${report.co2g.toFixed(1)}g CO2 (est.)`],
+    ['RTK adoption', `${fmt(a.rtkCalls)}/${fmt(a.eligibleCalls)} eligible Bash calls use RTK (${a.adoptionPct.toFixed(1)}%) · ${fmt(a.missedCalls)} missed · recall ${report.rtkRecall.available ? `${report.rtkRecall.mode} (${report.rtkRecall.entries})` : 'unavailable'}`],
+  ], [false, false], 118)) console.log(l);
+  const allModels = Object.entries(report.byModel).filter(([, b]) => b.input + b.output + b.cacheRead + b.cacheWrite > 0).sort((a, b) => (b[1].input + b[1].output) - (a[1].input + a[1].output));
+  const models = allModels.slice(0, ROW_CAP);
   if (models.length) {
     console.log('  BY MODEL');
     const top = models.reduce((m, [, b]) => Math.max(m, b.input + b.output + b.cacheRead + b.cacheWrite), 1);
@@ -209,6 +215,7 @@ function printReport(report: UsageReport): void {
     for (const l of textTable(['Model', 'Input', 'Output', 'Cache r/w', report.currency, 'Hit', 'Share'], mrows, [false, true, true, true, true, true, false])) {
       console.log(l);
     }
+    if (allModels.length > ROW_CAP) console.log(`  showing top ${ROW_CAP} of ${fmt(allModels.length)} models — full set in the dashboard`);
   }
   const cmdRows: { name: string; count: number; saved: number | null; avgPct: number | null; avgMs: number | null }[] =
     report.byTool.map(([tool, n]) => ({ name: tool, count: n, saved: null, avgPct: null, avgMs: null }));
@@ -223,7 +230,7 @@ function printReport(report: UsageReport): void {
       : '  COMMAND TOOLS';
     console.log(scope);
     const top = cmdRows.reduce((m, r) => Math.max(m, r.count), 1);
-    const crows = cmdRows.slice(0, 15).map((r, idx) => [
+    const crows = cmdRows.slice(0, ROW_CAP).map((r, idx) => [
       String(idx + 1),
       r.name,
       fmt(r.count),
@@ -235,6 +242,7 @@ function printReport(report: UsageReport): void {
     for (const l of textTable(['#', 'Tool/Command', 'Count', 'Saved', 'Avg%', 'Time', 'Impact'], crows, [true, false, true, true, true, true, false], 30)) {
       console.log(l);
     }
+    if (cmdRows.length > ROW_CAP) console.log(`  showing top ${ROW_CAP} of ${fmt(cmdRows.length)} commands — full set in the dashboard`);
   }
 }
 

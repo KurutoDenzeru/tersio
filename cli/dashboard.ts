@@ -231,8 +231,6 @@ function computeDoctorRows(): DoctorRow[] {
   } catch { /* missing config is reported by extension rows */ }
   const duplicateExtensions = [...new Set(explicitEntries.filter((entry, index) => explicitEntries.indexOf(entry) !== index))];
   addon('Unique config registrations', duplicateExtensions.length === 0, duplicateExtensions.length ? duplicateExtensions.join(', ') : 'ok', 'Extensions');
-  const retiredReinforcement = explicitEntries.filter((entry) => entry.endsWith('/shared/mode-reinforcement.ts')).length;
-  addon('No retired reinforcement', retiredReinforcement === 0, retiredReinforcement ? `${retiredReinforcement} registration(s)` : 'ok', 'Extensions');
   ext('Caveman extension', path.join(tersioPluginDir, 'extensions', 'caveman-session', 'index.ts'));
   ext('RTK extension', path.join(tersioPluginDir, 'extensions', 'rtk-session', 'index.ts'));
   ext('Ponytail extension', path.join(OMP_PLUGINS_DIR, 'node_modules', '@dietrichgebert', 'ponytail', 'pi-extension', 'index.js'));
@@ -270,6 +268,7 @@ const RETIRED_DIAG_LABELS = new Set([
   'Self plugin',
   'Ponytail registered',
   'Usage store',
+  'RTK OMP wiring (rtk.ts)',
 ]);
 
 function isRetiredReport(report: DoctorReport): boolean {
