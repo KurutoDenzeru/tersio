@@ -1,8 +1,6 @@
-// /tersio root command — status, check, update, dashboard, usage, help.
-// Mode switches live on their own commands (/caveman, /rtk, /combo, and the
-// upstream /ponytail): the router keeps no redundant copies. Shared-state
-// publishes sync sibling mirrors live, so switches notify and take effect
-// next turn — no reload.
+// /tersio root command — status, check, update, dashboard, usage, help. Mode
+// switches live on their own commands, and shared-state publishes sync sibling
+// mirrors live, so a switch takes effect next turn with no reload.
 import {
   getSharedComboState,
   reconcileSharedComboEntries,

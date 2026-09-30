@@ -1,14 +1,7 @@
-// extensions/shared/host.ts — one extension source, two agent hosts.
-//
-// OMP is a fork of pi, and six surfaces differ: tool schemas (OMP injects
-// `pi.zod`, pi takes any object it forwards as JSON Schema), `setLabel`
-// (pi's takes an entryId, so an extension name must never reach it),
-// `session_branch` (pi reports that switch as `session_tree`), select options
-// (pi takes plain strings), the status-bar theme (pi has no ctx.ui.theme), and
-// prompt injection (pi appends to its sections rather than replacing them).
-//
-// The host is read from the API shape, never a name or an env marker: OMP is
-// the fork that injects zod, and pi does not, including through the SDK.
+// extensions/shared/host.ts — one extension source, two agent hosts. OMP is a
+// pi fork with six API differences (tool schema, setLabel, session_branch,
+// select options, status theme, prompt injection), detected by API shape and
+// never by name or env marker.
 
 import { asPromptArray } from './session-state.ts';
 import type { ExtensionApi, ExtensionCtx, PromptInjection, SystemPromptEvent, ToolParams, UiApi } from './types.ts';

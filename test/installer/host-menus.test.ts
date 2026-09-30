@@ -157,10 +157,8 @@ test("doctor --fix restores a partly written pi tree", () => {
   }
 });
 
-// The binary is machine-wide, so an install that finds one only rebinds:
-// resolveRtkBinary falls back to ~/.bun/bin, so a seeded binary stands in for
-// one an earlier install put there. Dry run for OMP, where the wiring is a plan
-// line rather than an action.
+// The binary is machine-wide, so a found one only rebinds; a seeded binary
+// stands in for an earlier install's.
 function seedRtk(home: string): void {
   const binDir = path.join(home, ".bun", "bin");
   mkdirSync(binDir, { recursive: true });

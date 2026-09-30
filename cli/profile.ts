@@ -1,7 +1,5 @@
-// cli/profile.ts — session-start defaults profile (combo/caveman/rtk/ponytail)
-// plus the display-currency default for usage/dashboard reports.
-// Stored in ~/.tersio/settings.json, which every host reads. Extracted from
-// cli/install.ts so both install and settings share it.
+// cli/profile.ts — session-start defaults and the display-currency default,
+// stored in ~/.tersio/settings.json. Shared by install and settings.
 import { existsSync, promises as fs } from 'node:fs';
 import path from 'node:path';
 import {
@@ -41,9 +39,7 @@ interface StoredSettings {
   currency?: unknown;
 }
 
-// Stored profile: ~/.tersio/settings.json. An install that predates that file
-// kept the same values as OMP plugin settings, so seed from there once and
-// never lose a user's choice.
+// Seed once from OMP plugin settings so a pre-~/.tersio install keeps its values.
 async function storedProfile(): Promise<Profile> {
   const base = defaultProfile();
   const stored = (await readTextIfExists(tersioSettingsFile())) !== null

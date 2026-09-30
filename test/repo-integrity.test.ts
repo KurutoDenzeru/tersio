@@ -1,9 +1,5 @@
-// test/repo-integrity.test.ts — guards the exact failure behind the red CI
-// run on commit 507a832: tracked sources imported
-// extensions/shared/usage-store.ts, which was never committed, so every
-// fresh checkout (CI, clones) failed at `tsc` with "Cannot find module".
-// Disk existence is not enough — the target must be git-tracked, otherwise
-// it only exists on the author's machine.
+// test/repo-integrity.test.ts — an import target must be git-tracked, not
+// merely on disk, or a fresh checkout fails at `tsc`.
 import { expect, test } from "vitest";
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
@@ -39,9 +35,7 @@ function relativeSpecs(body: string): string[] {
   return specs.filter((spec) => spec.startsWith("."));
 }
 
-// Compiled .js output is gitignored by design; the tracked source of truth
-// is always the .ts file (tests and sources import the same modules as .ts;
-// only the compiled CLI keeps requiring ../extensions/* counterparts).
+// Compiled .js is gitignored; the tracked source of truth is always the .ts.
 function candidates(source: string, spec: string): string[] {
   const stem = path.posix.join(path.posix.dirname(source), spec).replace(/\.(ts|js)$/, "");
   return [`${stem}.ts`, `${stem}/index.ts`];
@@ -64,10 +58,8 @@ test("tracked sources only import git-tracked files", () => {
       `Commit the targets or fix the imports:\n${violations.join("\n")}`,).toEqual([]);
 });
 
-// A spawn that spreads process.env while overriding HOME still inherits the
-// surrounding session's pi agent dir, so the CLI reads and writes the real
-// ~/.pi/agent. One such test deleted a real pi extension tree. cliEnv() pins
-// both variables; nothing else may build a child env that way.
+// A spawn spreading process.env with an overridden HOME still writes the real
+// ~/.pi/agent, which once deleted a real extension tree. cliEnv() pins both.
 function gitTsFiles(): string[] {
   return [...trackedFiles()].filter((f) => f.endsWith(".ts"));
 }

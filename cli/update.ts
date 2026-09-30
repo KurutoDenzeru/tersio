@@ -220,9 +220,8 @@ async function runLatestUpdate(): Promise<void> {
   ];
   const npmCommandArgs = IS_WINDOWS ? ['/d', '/s', '/c', 'npm', ...npmArgs] : npmArgs;
 
-  // Inherited stdio, no outer spinner. The delegated installer runs quiet
-  // (banner and per-file writes suppressed); this parent owns both the plan
-  // line above and the closing summary below — one voice, no repeats.
+  // Inherited stdio, no outer spinner; the delegated installer runs quiet and
+  // this parent owns both the plan line and the closing summary.
   try {
     await execInherit(npmCommand, npmCommandArgs);
     console.log(`Done — tersio ${plan.cli ?? PACKAGE_VERSION}. Restart OMP.`);

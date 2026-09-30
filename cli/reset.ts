@@ -1,8 +1,6 @@
 // cli/reset.ts — clear tersio-owned statistics: the usage ledger plus a reset
 // watermark that filters session-derived and RTK-metered rows out of every
-// derived view. Session transcripts (~/.omp/agent/sessions) and the RTK
-// database are host/tool-owned and are never touched; the watermark only
-// changes what tersio shows.
+// derived view. Transcripts and the RTK database are never touched.
 import { dryRun, yes } from './common.ts';
 import { confirmDestructive } from './interactive.ts';
 import { clearUsageLedger, importSessionTokens, ledgerPath, markReset, readUsage, sessionsDir } from '../extensions/shared/usage-ledger.ts';

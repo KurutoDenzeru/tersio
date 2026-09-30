@@ -1,6 +1,4 @@
-// Every module the extensions import must be in the install manifest. A shared
-// module that is imported but not installed produces a tree the host refuses
-// to load, and the failure only shows up at load time.
+// An imported module missing from the manifest only fails at host load time.
 import { expect, test } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";

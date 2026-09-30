@@ -1,6 +1,5 @@
 // cli/hosts.ts — the agent hosts Tersio installs into, and what is on disk.
-// One detector, shared by the doctor rows, the install menu, and the uninstall
-// menu, so the three can never disagree about what is installed.
+// One detector, shared by the doctor and both menus, so they cannot disagree.
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { HOME, OMP_PLUGINS_DIR, PACKAGE_NAME, PACKAGE_VERSION } from './common.ts';
@@ -59,9 +58,8 @@ function packageVersion(dir: string): string | null {
   }
 }
 
-// The tersio package pi has declared in its own settings.json, or null. pi
-// writes the declaration on install and identifies a source by name, so an npm
-// spec, a git URL, and a local path all count when they name this package.
+// The tersio package pi declared in its own settings.json, or null. pi
+// identifies a source by name, so an npm spec, git URL, or path all count.
 export function piTersioSource(agentDir = piAgentDir()): string | null {
   let settings: { packages?: unknown };
   try {
@@ -109,10 +107,7 @@ function detect(agentDir = piAgentDir()): HostEntry[] {
   });
 }
 
-/**
- * The menu label, with the current state in brackets: the version when the
- * package is already there, so a rerun shows what it would replace.
- */
+/** Menu label with current state in brackets, so a rerun shows what it replaces. */
 export function hostLabel(host: HostEntry): string {
   if (host.installed && host.version) return `${host.label} (installed ${host.version})`;
   if (host.installed) return `${host.label} (installed)`;

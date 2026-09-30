@@ -24,9 +24,8 @@ import { PACKAGE_VERSION, currency } from './common.ts';
 import { formatCurrency } from './currency.ts';
 import type { CurrencyCode } from './currency.ts';
 
-// `est` is tersio's modeled cost for the same message. The dashboard shows
-// the measured figure when the host recorded one and falls back to this, so
-// the two are never blended into a single unlabeled number.
+// `est` is tersio's modeled cost; the dashboard prefers a measured figure, so
+// the two are never blended into one unlabeled number.
 export interface RecentRequestRow extends RecentRequest {
   est: number;
 }

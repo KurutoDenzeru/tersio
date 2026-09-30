@@ -1,7 +1,5 @@
-// cli/currency.ts — display-currency helpers (USD-base, offline snapshot rates).
-// Same 10 currencies, symbols, and snapshot rates as the dashboard's
-// converter (dashboard/app); the dashboard replaces rates with live
-// frankfurter figures when reachable, the CLI always uses the snapshot.
+// cli/currency.ts — USD-base currency helpers on offline snapshot rates. Same
+// 10 currencies as the dashboard, which prefers live frankfurter figures.
 
 import { existsSync, readFileSync } from 'node:fs';
 import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
@@ -40,9 +38,7 @@ function parseCurrencyFlag(raw: string | undefined): CurrencyCode | undefined {
   return v;
 }
 
-// Stored default from the omp plugin lock file (written by tersio settings);
-// USD when missing, corrupt, or holding an unknown code. Sync so flag
-// parsing in cli/common.ts can fall back to it at startup.
+// Stored default; USD when missing, corrupt, or an unknown code.
 function readStoredCurrency(): CurrencyCode {
   const file = tersioSettingsFile();
   if (!existsSync(file)) return DEFAULT_CURRENCY;
