@@ -334,10 +334,19 @@ function DoctorPane() {
   );
 }
 
+type ExportFormat = "json" | "jsonl" | "csv";
+const EXPORT_FORMATS: Array<{ id: ExportFormat; label: string; hint: string }> = [
+  { id: "json", label: "JSON", hint: "Full report, pretty-printed" },
+  { id: "jsonl", label: "JSONL", hint: "One request per line, stream-friendly" },
+  { id: "csv", label: "CSV", hint: "Flat table for a spreadsheet" },
+];
+
 function DataPane({ data, onReload }: { data: UsageReport | null; onReload: () => void }) {
   const toast = useToast();
   const [armed, setArmed] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [format, setFormat] = useState<ExportFormat>("json");
+  const chosen = EXPORT_FORMATS.find((f) => f.id === format) ?? EXPORT_FORMATS[0];
   useEffect(() => {
     if (!armed) return;
     const id = setTimeout(() => setArmed(false), 3000);
@@ -359,6 +368,45 @@ function DataPane({ data, onReload }: { data: UsageReport | null; onReload: () =
           <Icon name="refresh-cw" className="size-3.5" />
           <span>Reload</span>
         </button>
+      </div>
+      <div className="mt-6 flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="m-0 text-[13px] font-semibold">Export</p>
+          <p className="mt-0.5 mb-0 text-xs text-dim">Download the usage data. {chosen.hint}.</p>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <Select value={format} onValueChange={(v) => setFormat(v as ExportFormat)}>
+            <SelectTrigger size="sm" className="w-[104px]" aria-label="Export format">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                {EXPORT_FORMATS.map((f) => (
+                  <SelectItem key={f.id} value={f.id}>
+                    {f.label}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+          <button
+            type="button"
+            className="mono flex shrink-0 items-center gap-2 text-xs pl-2.5 pr-3 py-2 rounded-xl border border-line text-ink [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]"
+            aria-label={`Export usage data as ${chosen.label}`}
+            onClick={() => {
+              const a = document.createElement("a");
+              a.href = `/export?format=${format}`;
+              a.download = "";
+              document.body.appendChild(a);
+              a.click();
+              a.remove();
+              toast(`Exported ${chosen.label}`, `${data?.recent.length ?? 0} requests downloaded`, "download");
+            }}
+          >
+            <Icon name="download" className="size-3.5" />
+            <span>Export</span>
+          </button>
+        </div>
       </div>
       <div className="mt-3 grid gap-2">
         <div className="min-w-0 overflow-hidden rounded-[10px] border border-line px-3 py-2">
@@ -435,6 +483,7 @@ const SETTINGS_SEARCH: Array<{ pane: Pane; label: string; terms: string }> = [
   { pane: "diagnosis", label: "Scan", terms: "diagnosis scan check" },
   { pane: "diagnosis", label: "Fix issues", terms: "diagnosis repair fix issues" },
   { pane: "data", label: "Reload data", terms: "data reload refresh statistics disk database usage db path" },
+  { pane: "data", label: "Export data", terms: "data export download json jsonl csv spreadsheet format save file" },
   { pane: "data", label: "Reset statistics", terms: "data danger zone reset clear statistics" },
 ];
 

@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { clearUsageLedger, markReset, readUsage } from '../extensions/shared/usage-ledger.ts';
 import { pricesCachePath } from '../extensions/shared/pricing.ts';
 import { summarizeUsage } from './usage.ts';
+import type { UsageReport } from './usage.ts';
 import { isCurrencyCode } from './currency.ts';
 import type { CurrencyCode } from './currency.ts';
 import {
@@ -309,6 +310,58 @@ async function saveDashboardCurrency(raw: unknown): Promise<CurrencyCode | null>
   return code;
 }
 
+// The store is a SQLite file, which nothing outside this box can read. Flatten
+// it into a format a spreadsheet, a script, or another tool can take instead.
+type ExportFormat = 'json' | 'jsonl' | 'csv';
+const EXPORT_FORMATS: ExportFormat[] = ['json', 'jsonl', 'csv'];
+
+function exportRows(report: UsageReport): Record<string, string | number | undefined>[] {
+  return report.recent.map((r) => ({
+    timestamp: new Date(r.t).toISOString(),
+    local: new Date(r.t).toLocaleString(),
+    agent: r.h ?? 'pi',
+    model: r.m,
+    input: r.i,
+    output: r.o,
+    cacheRead: r.cr ?? 0,
+    cacheWrite: r.cw ?? 0,
+    costUsd: r.usd,
+    elapsedMs: r.d,
+    status: r.st,
+  }));
+}
+
+function csvCell(v: unknown): string {
+  const s = v === undefined || v === null ? '' : String(v);
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function exportBody(format: ExportFormat, report: UsageReport): { body: string; type: string } {
+  const stamp = new Date().toISOString().slice(0, 10);
+  if (format === 'json') {
+    return { body: JSON.stringify({ exportedAt: new Date().toISOString(), version: report.version, source: report.source, report }, null, 2), type: 'application/json' };
+  }
+  const rows = exportRows(report);
+  if (format === 'jsonl') {
+    return { body: rows.map((r) => JSON.stringify(r)).join('\n') + '\n', type: 'application/x-ndjson' };
+  }
+  const cols = Object.keys(rows[0] ?? { timestamp: '', agent: '' });
+  const head = cols.join(',');
+  const body = [head, ...rows.map((r) => cols.map((c) => csvCell(r[c])).join(','))].join('\n') + '\n';
+  return { body, type: 'text/csv; charset=utf-8' };
+}
+
+function serveExport(req: http.IncomingMessage, res: http.ServerResponse): void {
+  const format = ((req.url || '').split('?')[1] || '').match(/format=([a-z]+)/)?.[1] as ExportFormat | undefined;
+  const fmt: ExportFormat = format && EXPORT_FORMATS.includes(format) ? format : 'json';
+  const { body, type } = exportBody(fmt, summarizeUsage(readUsage()));
+  res.writeHead(200, {
+    'Content-Type': type,
+    'Content-Disposition': `attachment; filename="tersio-usage-${new Date().toISOString().slice(0, 10)}.${fmt === 'jsonl' ? 'ndjson' : fmt}"`,
+  });
+  res.end(body);
+}
+
 function readBody(req: http.IncomingMessage): Promise<string> {
   return new Promise((resolve) => {
     let body = '';
@@ -387,6 +440,10 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
     if (req.url === '/data.json') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(dataJson());
+      return;
+    }
+    if (req.url?.startsWith('/export')) {
+      serveExport(req, res);
       return;
     }
     if (req.url === '/health') {
