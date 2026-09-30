@@ -49,6 +49,12 @@ function seed(home: string) {
   );
   mkdirSync(path.join(home, ".bun", "bin"), { recursive: true });
   writeFileSync(path.join(home, ".bun", "bin", "rtk"), "fake", "utf8");
+  // Backups this CLI leaves behind.
+  writeFileSync(path.join(home, ".omp", "agent", "config.yml.bak"), "extensions: []\n", "utf8");
+  const pluginCaveman = path.join(pluginsDir, "node_modules", SELF, "extensions", "caveman-session");
+  mkdirSync(pluginCaveman, { recursive: true });
+  writeFileSync(path.join(pluginCaveman, "rule.md"), "fetched rule", "utf8");
+  writeFileSync(path.join(pluginCaveman, "rule.md.bak"), "previous rule", "utf8");
 }
 
 test("uninstall removes extension dirs, self registration, and combo config entries", () => {
@@ -77,6 +83,37 @@ test("uninstall removes extension dirs, self registration, and combo config entr
     expect(existsSync(path.join(extDir, "rtk.ts")), "rtk wiring removed").toBeFalsy();
     expect(config).not.toMatch(/rtk\.ts/);
     expect(config).not.toMatch(/ponytail/);
+    expect(!existsSync(path.join(home, ".omp", "agent", "config.yml.bak")), "config.yml backup removed").toBeTruthy();
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("uninstall removes the caveman rule backup from the plugin tree", () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-uninstall-"));
+  try {
+    seed(home);
+    const result = run(home, "uninstall", "--yes");
+
+    expect(result.status, result.stderr).toBe(0);
+    const cavemanDir = path.join(home, ".omp", "plugins", "node_modules", SELF, "extensions", "caveman-session");
+    expect(!existsSync(cavemanDir), "plugin tree removed").toBeTruthy();
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("uninstall dry-run leaves backups in place", () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-uninstall-"));
+  try {
+    seed(home);
+    const configBak = path.join(home, ".omp", "agent", "config.yml.bak");
+    const ruleBak = path.join(home, ".omp", "plugins", "node_modules", SELF, "extensions", "caveman-session", "rule.md.bak");
+    const result = run(home, "uninstall", "--yes", "--dry-run");
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(existsSync(configBak), "config.yml backup kept on dry run").toBeTruthy();
+    expect(existsSync(ruleBak), "rule backup kept on dry run").toBeTruthy();
   } finally {
     rmSync(home, { recursive: true, force: true });
   }
@@ -164,6 +201,85 @@ test("uninstall dry-run changes no files", () => {
     expect(readFileSync(pluginsPkg, "utf8")).toBe(beforePkg);
     expect(readFileSync(configPath, "utf8")).toBe(beforeConfig);
     expect(existsSync(path.join(home, ".omp", "agent", "extensions", "shared"))).toBeTruthy();
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+// Neither `--host pi` nor auto-selecting the only installed host reached a
+// prompt, so pi files were removed with no confirmation and nothing to review.
+const PI_TREE = [
+  "shared/host.ts", "shared/session-state.ts", "shared/types.ts", "shared/plugin-settings.ts",
+  "shared/usage-ledger.ts", "shared/pricing.ts", "shared/carbon.ts",
+  "lib/utils.ts", "caveman-session/index.ts", "caveman-session/rule.md",
+  "rtk-session/index.ts", "combo-toggle/index.ts", "tersio-commands/index.ts", "ai-addons-updater/index.ts",
+];
+
+function seedPi(home: string): void {
+  const extDir = path.join(home, ".pi", "agent", "extensions");
+  for (const rel of PI_TREE) {
+    const target = path.join(extDir, rel);
+    mkdirSync(path.dirname(target), { recursive: true });
+    writeFileSync(target, "// seeded", "utf8");
+  }
+  mkdirSync(path.join(home, ".tersio"), { recursive: true });
+  writeFileSync(path.join(home, ".tersio", "settings.json"), "{}", "utf8");
+}
+
+function runPi(home: string, answer: string, ...args: string[]) {
+  const result = spawnSync(process.execPath, [installer, ...args], {
+    cwd: root,
+    encoding: "utf8",
+    timeout: 15000,
+    env: cliEnv(home),
+    input: `${answer}\n`,
+  });
+  const extDir = path.join(home, ".pi", "agent", "extensions");
+  return { result, extDir, intact: existsSync(path.join(extDir, "caveman-session", "index.ts")) };
+}
+
+test("uninstall --host pi lists what it removes and aborts on a declined confirm", () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-uninstall-pi-"));
+  try {
+    seedPi(home);
+    const { result, extDir, intact } = runPi(home, "n", "uninstall", "--host", "pi");
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/Will remove:/);
+    expect(result.stdout).toMatch(/Proceed\? \[y\/N\]/);
+    expect(result.stdout).toMatch(/Aborted/);
+    expect(intact, "caveman-session kept after declining").toBeTruthy();
+    expect(existsSync(path.join(home, ".tersio", "settings.json")), "session defaults kept").toBeTruthy();
+    expect(existsSync(extDir), "the pi tree still exists").toBeTruthy();
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("uninstall --host pi proceeds when the confirm is accepted", () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-uninstall-pi-"));
+  try {
+    seedPi(home);
+    const { result, intact } = runPi(home, "y", "uninstall", "--host", "pi");
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/Proceed\? \[y\/N\]/);
+    expect(intact, "caveman-session removed after confirming").toBeFalsy();
+    expect(existsSync(path.join(home, ".tersio", "settings.json")), "session defaults removed").toBeFalsy();
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("uninstall --host pi --yes removes without prompting", () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-uninstall-pi-"));
+  try {
+    seedPi(home);
+    const { result, intact } = runPi(home, "", "uninstall", "--host", "pi", "--yes");
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout, "no prompt when --yes is given").not.toMatch(/Proceed\?/);
+    expect(intact, "caveman-session removed").toBeFalsy();
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

@@ -1,9 +1,5 @@
-// The environment for a spawned CLI. A test moves HOME to a temp dir, and pi's
-// agent dir has to move with it: the host honours PI_CODING_AGENT_DIR only when
-// PI_CODING_AGENT is set, and a session running the suite inside pi exports
-// both. Without this, a spawn with a temp HOME still reads and writes the
-// developer's real ~/.pi/agent — which is how one `uninstall --host pi` test
-// deleted a real pi extension tree.
+// Pins the pi agent vars alongside a temp HOME, so a spawned CLI cannot write
+// the developer's real ~/.pi/agent — once deleted a real extension tree.
 import path from 'node:path';
 
 export function cliEnv(home: string, extra: Record<string, string> = {}): NodeJS.ProcessEnv {

@@ -49,8 +49,8 @@ test("importer aggregates assistant usage by model and day, skips the rest", () 
     expect(s.byDayModel["2026-09-02"]).toEqual({ "mystery-model-9": 110 });
     expect(s.byModelMessages).toEqual({ "claude-sonnet-5": 1, "mystery-model-9": 1 });
     expect(s.recent).toEqual([
-      { m: "mystery-model-9", i: 100, o: 10, t: Date.parse("2026-09-02T10:01:00.000Z"), d: undefined, cr: 0, cw: 0, usd: undefined, st: "completed", code: undefined, note: undefined },
-      { m: "claude-sonnet-5", i: 1000, o: 200, t: Date.parse("2026-09-01T10:01:00.000Z"), d: 4200, cr: 500, cw: 125, usd: 0.012, st: "completed", code: undefined, note: undefined },
+      { m: "mystery-model-9", i: 100, o: 10, t: Date.parse("2026-09-02T10:01:00.000Z"), d: undefined, h: "pi", cr: 0, cw: 0, usd: undefined, st: "completed", code: undefined, note: undefined },
+      { m: "claude-sonnet-5", i: 1000, o: 200, t: Date.parse("2026-09-01T10:01:00.000Z"), d: 4200, h: "pi", cr: 500, cw: 125, usd: 0.012, st: "completed", code: undefined, note: undefined },
     ]);
     expect(s.costMeasured).toBe(0.012);
   } finally {
@@ -192,5 +192,49 @@ test("free suffix and case variants fold into one model row", () => {
     if (prev === undefined) delete process.env.TERSIO_SESSIONS_DIR;
     else process.env.TERSIO_SESSIONS_DIR = prev;
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// One host's sessions used to vanish from the dashboard: the importer walked
+// only the first session directory that existed, so a pi session was invisible
+// while the dashboard was served from the OMP directory, and vice versa.
+test("importer walks both hosts' session directories", () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-both-hosts-"));
+  const prevHome = process.env.HOME;
+  const prevPiAgent = process.env.PI_CODING_AGENT_DIR;
+  const prevPiFlag = process.env.PI_CODING_AGENT;
+  const prevSessions = process.env.TERSIO_SESSIONS_DIR;
+  const prevCodex = process.env.TERSIO_CODEX_DIR;
+  const prevReset = process.env.TERSIO_RESET_FILE;
+  const row = (id: string, ts: string, model: string, input: number): string =>
+    `{"type":"message","id":"${id}","timestamp":"${ts}","message":{"role":"assistant","model":"${model}","usage":{"input":${input},"output":10,"cacheRead":0,"cacheWrite":0}}}`;
+  try {
+    for (const [host, model, input] of [["omp", "omp-model", 200], ["pi", "pi-model", 400]] as const) {
+      const dir = path.join(home, `.${host}`, "agent", "sessions", "branch");
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        path.join(dir, "s.jsonl"),
+        [row("a", "2026-09-03T10:00:00.000Z", model, input)].join("\n") + "\n",
+        "utf8",
+      );
+    }
+    process.env.HOME = home;
+    delete process.env.TERSIO_SESSIONS_DIR;
+    delete process.env.TERSIO_CODEX_DIR;
+    process.env.PI_CODING_AGENT = "true";
+    process.env.PI_CODING_AGENT_DIR = path.join(home, ".pi", "agent");
+    process.env.TERSIO_RESET_FILE = path.join(home, "no-reset.json");
+    clearRtkAdoptionCache();
+
+    const s = importSessionTokens();
+    expect(Object.keys(s.byModel).sort()).toEqual(["omp-model", "pi-model"]);
+    expect(s.byModel["omp-model"].input).toBe(200);
+    expect(s.byModel["pi-model"].input).toBe(400);
+  } finally {
+    for (const [key, value] of [["HOME", prevHome], ["PI_CODING_AGENT_DIR", prevPiAgent], ["PI_CODING_AGENT", prevPiFlag], ["TERSIO_SESSIONS_DIR", prevSessions], ["TERSIO_CODEX_DIR", prevCodex], ["TERSIO_RESET_FILE", prevReset]] as const) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    rmSync(home, { recursive: true, force: true });
   }
 });

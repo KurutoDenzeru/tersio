@@ -93,9 +93,15 @@ export function isOmpSubagentPrompt(systemPrompt: string | string[]): boolean {
   return systemPromptIncludes(systemPrompt, OMP_SUBAGENT_MARKER);
 }
 
+// `ultra` is the level caveman and ponytail both expose, so typing it is the
+// obvious thing to try. It maps to the max preset rather than bouncing back
+// with a wall of text; `lite`/`full` map to their nearest preset too.
+const COMBO_ALIASES: Record<string, ComboLevel> = { ultra: 'max', lite: 'medium', full: 'balanced' };
+
 export function normalizeComboLevel(value: unknown): ComboLevel | null {
   const level = String(value || '').trim().toLowerCase();
-  return isPresetLevel(level) ? level : null;
+  if (isPresetLevel(level)) return level;
+  return COMBO_ALIASES[level] ?? null;
 }
 
 // OMP themes status text through ctx.ui.theme.fg; pi has no ctx.ui.theme, so
@@ -110,13 +116,24 @@ export function paintStatusBar(ui: UiApi | undefined, key: string, emoji: string
   ui?.setStatus?.(key, themeStatus(ui, emoji, label, isActive));
 }
 
-// Which context a status bar paints through. A UI-less event (a headless child
-// session_start, or a top-level one that fires before the TUI attaches) must
-// never be remembered: doing so mutes every later bare syncStatus(), which is
-// the bridge-listener path a sibling's mode change arrives on. The symptom is a
-// bar frozen on a preset the session no longer has.
+// A ctx from before a session replacement is stale and throws on any property
+// access, so touching it must never abort a mode restore. Returns undefined for
+// a stale ctx, and a narrowed ui so callers need no second setStatus check.
+export type StatusUi = UiApi & { setStatus: NonNullable<UiApi['setStatus']> };
+
+export function statusUi(ctx: ExtensionCtx | undefined): StatusUi | undefined {
+  try {
+    const ui = ctx?.ui;
+    return ui?.setStatus ? (ui as StatusUi) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+// Which context a status bar paints through. Never remember a UI-less event:
+// that mutes every later bare syncStatus(), freezing the bar on a stale preset.
 export function paintableCtx(remembered: ExtensionCtx | undefined, next: ExtensionCtx | undefined): ExtensionCtx | undefined {
-  return next?.ui?.setStatus ? next : remembered;
+  return statusUi(next) ? next : remembered;
 }
 
 // Last-wins scan for a custom session entry; skips entries whose value fails

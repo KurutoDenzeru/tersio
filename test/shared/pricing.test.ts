@@ -161,9 +161,7 @@ test("tersio usage prices from the live cache", () => {
   expect(result.stdout).toMatch(/Claude-Sonnet-5.*1,000,000.*\$2\.00/);
 });
 
-// One model, two spellings: transcripts carry both, and the feed lists only the
-// stealth name. They must group as one row priced at zero, not as a free row
-// beside a phantom-cost one.
+// Two spellings of one model must group as a single row priced at zero.
 test("the space-bunny aliases resolve to one free model", () => {
   const spellings = ["space-bunny", "Space-Bunny", "stealth/Space-Bunny-Alpha", "stealth/space-bunny-alpha"];
   for (const model of spellings) {

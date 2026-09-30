@@ -6,10 +6,8 @@ import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
-// Every `from '../extensions/<base>'` value import in the compiled CLI needs
-// its compiled counterpart in the packed tarball (Node runtime), plus the
-// .ts source (OMP payload). v2.20.0 shipped .ts only and the installed CLI
-// crashed with ERR_MODULE_NOT_FOUND on first run.
+// Every extensions/<base> value import needs both its compiled .js and its
+// .ts source packed; v2.20.0 shipped .ts only and crashed on first run.
 function cliExtensionBases(): Set<string> {
   const bases = new Set<string>();
   for (const file of readdirSync(path.join(root, "cli"))) {

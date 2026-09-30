@@ -1,7 +1,6 @@
 // extensions/shared/rtk-gain.ts — measured RTK savings read from rtk's own
-// history.db with the sqlite3 CLI, so the dashboard shows measured figures and
-// never estimates. Missing DB or CLI returns empty. Caveman and Ponytail are
-// bench-measured in BENCHMARK.md instead: instruction-following is not metered.
+// history.db, never estimated. Caveman and Ponytail are bench-measured in
+// BENCHMARK.md instead: instruction-following is not metered.
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -30,9 +29,7 @@ const EMPTY: RtkGain = { commands: 0, saved: 0, input: 0, avgPct: 0, totalMs: 0,
 // sqlite3 CLI and lands in every /data.json poll.
 const MAX_CMD_CHARS = 200;
 
-// RTK stores heredocs and `node -e` scripts verbatim, so one row can arrive as
-// several lines and derail every row after it. The stored command keeps its
-// newlines; only the read view flattens.
+// A multi-line stored command would derail every row after it; flatten on read.
 const CMD_ONE_LINE = `replace(replace(replace(rtk_cmd, char(10), ' '), char(13), ' '), char(9), ' ')`;
 
 export function rtkDbPath(): string {

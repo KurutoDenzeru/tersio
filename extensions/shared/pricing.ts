@@ -1,6 +1,5 @@
-// extensions/shared/pricing.ts — dynamic model pricing from LiteLLM.
-// Exact id → provider-prefix strip → default, which reports with known:false so
-// the Dashboard labels an unpriced model honestly. No static table: prices rot.
+// extensions/shared/pricing.ts — dynamic model pricing from LiteLLM. Exact id
+// → provider-prefix strip → default, reported with known:false when unpriced.
 import fs from 'node:fs';
 import path from 'node:path';
 import { tersioDataPath } from '../lib/utils.ts';
@@ -88,9 +87,8 @@ function num(v: unknown): number | null {
   return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null;
 }
 
-// One model, two spellings: transcripts say `space-bunny`, the feed keys it
-// `openrouter/stealth/space-bunny-alpha` at zero. Aliases fold to the first, so
-// a free stealth model never reports the default price.
+// Transcripts and the feed spell one model differently; aliases stop a free
+// model reporting the default price.
 export const MODEL_ALIASES: ReadonlyArray<{ id: string; feed: string }> = [
   { id: 'space-bunny', feed: 'stealth/space-bunny-alpha' },
 ];

@@ -1,7 +1,6 @@
 // cli/manifest.ts — the one list of what an install writes into a host's
-// extension tree. The installer, `doctor --fix extensions`, the doctor's
-// per-host tree row, and the loadability test all read it, so none of them
-// can drift from what actually ships.
+// extension tree. Installer, doctor, and tests all read it so none can drift
+// from what actually ships.
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 

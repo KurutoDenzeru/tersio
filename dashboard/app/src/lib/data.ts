@@ -13,6 +13,8 @@ export interface RecentRequestRow {
   o: number;
   t: number;
   d?: number;
+  /** Which agent ran the session: pi, omp, or codex. */
+  h?: string;
   cr?: number;
   cw?: number;
   usd?: number;

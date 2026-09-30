@@ -1,7 +1,5 @@
-// No-reload sync: /combo and /tersio mode switches must persist entries,
-// publish shared state, notify — and never reload the session. Sibling
-// mirrors sync live via bridge listeners, so the next turn injects the new
-// mode like a normal input message.
+// No-reload sync: /combo and /tersio switches must persist, publish, notify,
+// and never reload. Sibling mirrors sync live via bridge listeners.
 import { expect, test } from "vitest";
 import fs from "node:fs";
 import os from "node:os";

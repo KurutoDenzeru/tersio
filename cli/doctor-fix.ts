@@ -10,7 +10,7 @@ import {
   execP, readPluginsPackage,
   writeIfChanged,
 } from './common.ts';
-import { execNetwork } from './interactive.ts';
+import { execNetwork, sayTagged } from './interactive.ts';
 import { wireRtkOmp, ensureRtkInConfig } from './rtk-wiring.ts';
 import {
   CAVEMAN_REMOTE_RULE, RTK_RELEASE_API, RtkRelease, fetchJson, findFile, httpsGet,
@@ -39,10 +39,10 @@ async function fixExtensionTrees(): Promise<void> {
     for (const file of TREE_FILES) {
       const from = path.join(EXT_DIR, ...file.split('/'));
       const text = await readTextIfExists(from);
-      if (text === null) console.log(`  [warn] bundled source missing: ${from}`);
+      if (text === null) sayTagged(`  [warn] bundled source missing: ${from}`);
       else await writeIfChanged(path.join(dest, file), text, { dryRun, verbose });
     }
-    if (!dryRun) console.log(`  [ok] ${host.label} extension tree: ${dest}`);
+    if (!dryRun) sayTagged(`  [ok] ${host.label} extension tree: ${dest}`);
   }
 }
 
@@ -53,12 +53,15 @@ async function fixExtensions(pluginsDir: string): Promise<void> {
   const pluginExtDir = path.join(tersioPluginDir, 'extensions');
   await fs.mkdir(pluginExtDir, { recursive: true });
 
-  for (const [from, to] of TREE_FILES.map((file) => [sourcePath(file), file] as [string, string])) {
-    const text = await readTextIfExists(from);
-    if (text === null) console.log(`  [warn] bundled source missing: ${from}`);
-    else await writeIfChanged(path.join(pluginExtDir, to), text, { dryRun, verbose });
+  // rule.md is skipped: its live content is the upstream fetch, not the bundle.
+  const bundledTree = TREE_FILES.filter((file) => file !== 'caveman-session/rule.md');
+  for (const file of bundledTree) {
+    const text = await readTextIfExists(sourcePath(file));
+    if (text === null) sayTagged(`  [warn] bundled source missing: ${sourcePath(file)}`);
+    else await writeIfChanged(path.join(pluginExtDir, file), text, { dryRun, verbose });
   }
 
+  // Restore only a missing rule; a stale one is /ai-addons' to report.
   const ruleDest = path.join(pluginExtDir, 'caveman-session', 'rule.md');
   if ((await readTextIfExists(ruleDest)) === null) {
     const bundled = await readTextIfExists(path.join(EXT_DIR, 'caveman-session', 'rule.md'));
@@ -79,7 +82,7 @@ async function fixRegistrations(agentDir: string, pluginsDir: string): Promise<v
   console.log('  Doctor --fix: repairing config.yml registrations');
   const configPath = path.join(agentDir, 'config.yml');
   if ((await readTextIfExists(configPath)) === null) {
-    if (dryRun) console.log(`  [dry-run] would create ${configPath}`);
+    if (dryRun) sayTagged(`  [dry-run] would create ${configPath}`);
     else {
       await fs.mkdir(agentDir, { recursive: true });
       await fs.writeFile(configPath, 'extensions:\n', 'utf8');
@@ -96,7 +99,7 @@ async function fixRegistrations(agentDir: string, pluginsDir: string): Promise<v
   const pkg = await readPluginsPackage(pkgPath);
   if (!(PACKAGE_NAME in pkg.dependencies)) {
     pkg.dependencies[PACKAGE_NAME] = `^${PACKAGE_VERSION}`;
-    if (dryRun) console.log(`  [dry-run] would register ${PACKAGE_NAME} in ${pkgPath}`);
+    if (dryRun) sayTagged(`  [dry-run] would register ${PACKAGE_NAME} in ${pkgPath}`);
     else {
       await fs.mkdir(pluginsDir, { recursive: true });
       await fs.writeFile(pkgPath, JSON.stringify(pkg, null, 2) + '\n', 'utf8');
@@ -108,7 +111,7 @@ async function fixRtk(binDir: string): Promise<void> {
   console.log('  Doctor --fix: repairing RTK binary + wiring');
   const binDest = path.join(binDir, RTK_BINARY_NAME);
   if (dryRun) {
-    console.log(`  [dry-run] would download a checksum-verified rtk to ${binDest} and wire it into OMP`);
+    sayTagged(`  [dry-run] would download a checksum-verified rtk to ${binDest} and wire it into OMP`);
     return;
   }
   const spec = rtkPlatformSpec();
@@ -180,10 +183,10 @@ async function runDoctorRepairs(targets: FixRequest[]): Promise<string[]> {
   const attempt = async (label: string, work: () => Promise<void>): Promise<void> => {
     try {
       await work();
-      if (!dryRun) console.log(`  [ok] ${label}`);
+      if (!dryRun) sayTagged(`  [ok] ${label}`);
     } catch (e) {
       failed.push(label);
-      console.log(`  [fail] ${label}: ${((e as Error).message || '').slice(0, 200)}`);
+      sayTagged(`  [fail] ${label}: ${((e as Error).message || '').slice(0, 200)}`);
     }
   };
   if (want('extensions')) await attempt('extensions', () => fixExtensions(OMP_PLUGINS_DIR));

@@ -1,6 +1,6 @@
 // cli/interactive.ts — TTY layer: readline, Clack spinners, selects, task phases.
 import readline from 'node:readline';
-import { cancel as clackCancel, confirm as clackConfirm, select as clackSelect, spinner as clackSpinner, tasks as clackTasks } from '@clack/prompts';
+import { cancel as clackCancel, confirm as clackConfirm, log as clackLog, select as clackSelect, spinner as clackSpinner, tasks as clackTasks } from '@clack/prompts';
 import type { SpinnerResult } from '@clack/prompts';
 import { execP } from './common.ts';
 import type { ExecOptions } from './common.ts';
@@ -43,7 +43,7 @@ async function withInteractiveSpinner<T>(message: string, work: (update: (messag
   }
 }
 
-async function askInteractiveChoice(message: string, options: Array<{ value: string; label: string; hint?: string }>, initialValue: string): Promise<InteractiveChoice> {
+async function askInteractiveChoice(message: string, options: Array<{ value: string; label: string; hint?: string; disabled?: boolean }>, initialValue: string): Promise<InteractiveChoice> {
   if (!tty()) return { status: 'unavailable' };
   closeRL();
   const choice = await clackSelect({ message, options, initialValue });
@@ -99,11 +99,47 @@ async function runInteractivePhase<T>(title: string, collect: () => Promise<T>):
   await clackTasks([{ title, task: async () => { result = await collect(); } }]);
   return result;
 }
+// A `  [tag] message` line becomes a clack log for a TTY, and stays the exact
+// same plain line otherwise so piped output is byte-identical and greppable —
+// the rule the banner already follows. Untagged lines pass straight through.
+type SayKind = 'info' | 'success' | 'warn' | 'error' | 'step' | 'message';
+const TAG_KIND: Record<string, SayKind> = {
+  fail: 'error', warn: 'warn', hint: 'info', ok: 'success', note: 'message',
+  write: 'step', rm: 'step', migrate: 'step', skip: 'info', 'dry-run': 'info',
+};
+function sayTagged(line: string): void {
+  const m = /^\s*\[([\w-]+)\]\s?([\s\S]*)$/.exec(line);
+  const kind: SayKind = (m && TAG_KIND[m[1]]) || 'info';
+  if (tty() && m) clackLog[kind](m[2]);
+  else console.log(line);
+}
+// One task with a live-updating line, the pattern clack's `tasks` shows: the
+// outer title stays put while `update` streams each sub-step under it, instead
+// of a separate spinner per step.
+async function withInteractiveTask<T>(title: string, work: (update: (message: string) => void) => Promise<T>): Promise<T> {
+  if (!tty()) return work(() => { });
+  closeRL();
+  let result!: T;
+  const spin = clackSpinner();
+  spin.start(title);
+  try {
+    result = await work((message) => spin.message(message));
+    spin.stop('done');
+  } catch (e) {
+    spin.error(shortSpinnerError(e));
+    throw e;
+  }
+  return result;
+}
+function shortSpinnerError(e: unknown): string {
+  const msg = e instanceof Error ? e.message : String(e);
+  return (msg.split('\n')[0] || 'failed').slice(0, 120);
+}
 async function execNetwork(label: string, cmd: string, args: string[], opts: ExecOptions = {}): Promise<{ stdout: string; stderr: string }> {
   return withInteractiveSpinner(label, () => execP(cmd, args, opts));
 }
 
 export {
-  ask, closeRL, tty, withInteractiveSpinner, execNetwork,
+  ask, closeRL, tty, withInteractiveSpinner, withInteractiveTask, execNetwork, sayTagged, SayKind,
   askInteractiveChoice, askInteractiveConfirm, confirmDestructive, runInteractivePhase, InteractiveChoice, InteractiveConfirm,
 };

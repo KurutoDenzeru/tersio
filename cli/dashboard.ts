@@ -10,12 +10,15 @@ import { fileURLToPath } from 'node:url';
 import { clearUsageLedger, markReset, readUsage } from '../extensions/shared/usage-ledger.ts';
 import { pricesCachePath } from '../extensions/shared/pricing.ts';
 import { summarizeUsage } from './usage.ts';
+import type { UsageReport } from './usage.ts';
 import { isCurrencyCode } from './currency.ts';
 import type { CurrencyCode } from './currency.ts';
 import {
   OMP_AGENT_DIR, OMP_PLUGINS_DIR, PACKAGE_VERSION,
 } from './common.ts';
 import { storedProfile, writePluginSettings } from './profile.ts';
+import { normalizeComboLevel } from '../extensions/shared/session-state.ts';
+import type { ComboLevel } from '../extensions/shared/types.ts';
 import { PACKAGE_NAME } from './common.ts';
 import { resolveRtkBinary } from '../extensions/lib/utils.ts';
 
@@ -231,8 +234,6 @@ function computeDoctorRows(): DoctorRow[] {
   } catch { /* missing config is reported by extension rows */ }
   const duplicateExtensions = [...new Set(explicitEntries.filter((entry, index) => explicitEntries.indexOf(entry) !== index))];
   addon('Unique config registrations', duplicateExtensions.length === 0, duplicateExtensions.length ? duplicateExtensions.join(', ') : 'ok', 'Extensions');
-  const retiredReinforcement = explicitEntries.filter((entry) => entry.endsWith('/shared/mode-reinforcement.ts')).length;
-  addon('No retired reinforcement', retiredReinforcement === 0, retiredReinforcement ? `${retiredReinforcement} registration(s)` : 'ok', 'Extensions');
   ext('Caveman extension', path.join(tersioPluginDir, 'extensions', 'caveman-session', 'index.ts'));
   ext('RTK extension', path.join(tersioPluginDir, 'extensions', 'rtk-session', 'index.ts'));
   ext('Ponytail extension', path.join(OMP_PLUGINS_DIR, 'node_modules', '@dietrichgebert', 'ponytail', 'pi-extension', 'index.js'));
@@ -270,6 +271,7 @@ const RETIRED_DIAG_LABELS = new Set([
   'Self plugin',
   'Ponytail registered',
   'Usage store',
+  'RTK OMP wiring (rtk.ts)',
 ]);
 
 function isRetiredReport(report: DoctorReport): boolean {
@@ -294,6 +296,17 @@ function setDiagSchedule(schedule: DiagSchedule): DoctorReport {
   return base;
 }
 
+// The session-start combo level, so a new or resumed session opens in the mode
+// the user picked rather than off.
+async function saveComboDefault(raw: unknown): Promise<ComboLevel | null> {
+  const level = normalizeComboLevel(raw);
+  if (!level) return null;
+  const profile = await storedProfile();
+  profile.comboDefault = level;
+  await writePluginSettings(profile, {});
+  return level;
+}
+
 function readDiagSchedule(): DiagSchedule {
   return readDiagReport()?.schedule ?? 'manual';
 }
@@ -308,6 +321,58 @@ async function saveDashboardCurrency(raw: unknown): Promise<CurrencyCode | null>
   profile.currency = code;
   await writePluginSettings(profile, {});
   return code;
+}
+
+// The store is a SQLite file, which nothing outside this box can read. Flatten
+// it into a format a spreadsheet, a script, or another tool can take instead.
+type ExportFormat = 'json' | 'jsonl' | 'csv';
+const EXPORT_FORMATS: ExportFormat[] = ['json', 'jsonl', 'csv'];
+
+function exportRows(report: UsageReport): Record<string, string | number | undefined>[] {
+  return report.recent.map((r) => ({
+    timestamp: new Date(r.t).toISOString(),
+    local: new Date(r.t).toLocaleString(),
+    agent: r.h ?? 'pi',
+    model: r.m,
+    input: r.i,
+    output: r.o,
+    cacheRead: r.cr ?? 0,
+    cacheWrite: r.cw ?? 0,
+    costUsd: r.usd,
+    elapsedMs: r.d,
+    status: r.st,
+  }));
+}
+
+function csvCell(v: unknown): string {
+  const s = v === undefined || v === null ? '' : String(v);
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function exportBody(format: ExportFormat, report: UsageReport): { body: string; type: string } {
+  const stamp = new Date().toISOString().slice(0, 10);
+  if (format === 'json') {
+    return { body: JSON.stringify({ exportedAt: new Date().toISOString(), version: report.version, source: report.source, report }, null, 2), type: 'application/json' };
+  }
+  const rows = exportRows(report);
+  if (format === 'jsonl') {
+    return { body: rows.map((r) => JSON.stringify(r)).join('\n') + '\n', type: 'application/x-ndjson' };
+  }
+  const cols = Object.keys(rows[0] ?? { timestamp: '', agent: '' });
+  const head = cols.join(',');
+  const body = [head, ...rows.map((r) => cols.map((c) => csvCell(r[c])).join(','))].join('\n') + '\n';
+  return { body, type: 'text/csv; charset=utf-8' };
+}
+
+function serveExport(req: http.IncomingMessage, res: http.ServerResponse): void {
+  const format = ((req.url || '').split('?')[1] || '').match(/format=([a-z]+)/)?.[1] as ExportFormat | undefined;
+  const fmt: ExportFormat = format && EXPORT_FORMATS.includes(format) ? format : 'json';
+  const { body, type } = exportBody(fmt, summarizeUsage(readUsage()));
+  res.writeHead(200, {
+    'Content-Type': type,
+    'Content-Disposition': `attachment; filename="tersio-usage-${new Date().toISOString().slice(0, 10)}.${fmt === 'jsonl' ? 'ndjson' : fmt}"`,
+  });
+  res.end(body);
 }
 
 function readBody(req: http.IncomingMessage): Promise<string> {
@@ -370,6 +435,28 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
       res.end(JSON.stringify({ ok: true, rows }));
       return;
     }
+    if (req.url === '/settings' && req.method === 'GET') {
+      storedProfile().then((profile) => {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ comboDefault: profile.comboDefault }));
+      });
+      return;
+    }
+    if (req.url === '/settings' && req.method === 'POST') {
+      let combo: unknown = null;
+      try {
+        combo = (JSON.parse(await readBody(req)) as { comboDefault?: unknown }).comboDefault ?? null;
+      } catch { combo = null; }
+      const saved = await saveComboDefault(combo);
+      if (saved === null) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: 'unknown combo level' }));
+      } else {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, comboDefault: saved }));
+      }
+      return;
+    }
     if (req.url === '/currency' && req.method === 'POST') {
       let code: unknown = null;
       try {
@@ -388,6 +475,10 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
     if (req.url === '/data.json') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(dataJson());
+      return;
+    }
+    if (req.url?.startsWith('/export')) {
+      serveExport(req, res);
       return;
     }
     if (req.url === '/health') {

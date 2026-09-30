@@ -1,7 +1,5 @@
-// test/gain-currency.test.ts — the dashboard owns the display currency:
-// picking one POSTs to /currency, the server persists it in the plugin lock
-// file, and a later `tersio dashboard` (a new origin each run, so localStorage
-// alone cannot survive) defaults to it.
+// The dashboard owns display currency: a pick POSTs to /currency and the
+// server persists it, since each run is a new origin and localStorage dies.
 import { expect, test } from "vitest";
 import { spawn, type ChildProcess } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";

@@ -70,6 +70,8 @@ export interface RecentRequest {
   o: number;
   t: number;
   d?: number;
+  /** Which agent wrote the session: pi, omp, or codex. */
+  h?: string;
   cr?: number;
   cw?: number;
   // Undefined when the host recorded no cost; never backfilled.
@@ -109,6 +111,10 @@ export interface RtkRecallDiagnostics {
 function zeroBreakdown(): TokenBreakdown {
   return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 }
+function stampMs(ts: string | number | undefined): number {
+  return ts === undefined ? NaN : typeof ts === 'number' ? ts : Date.parse(ts);
+}
+
 export function durOf(v: unknown): number | undefined {
   return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : undefined;
 }
@@ -147,14 +153,20 @@ function addInto(into: TokenBreakdown, u: { input?: unknown; output?: unknown; c
   }
 }
 
-export function sessionsDir(): string {
+export function sessionsDirs(): string[] {
   const override = process.env.TERSIO_SESSIONS_DIR;
-  if (override) return override;
-  // The running host wins; the other host's directory is the fallback.
+  if (override) return [override];
+  // Both hosts, not just the running one: a session on pi is missing from the
+  // dashboard entirely if we stop at the first directory that exists.
   const dirs = isPiProcess()
     ? [path.join(piAgentDir(), 'sessions'), path.join(os.homedir(), '.omp', 'agent', 'sessions')]
     : [path.join(os.homedir(), '.omp', 'agent', 'sessions'), path.join(piAgentDir(), 'sessions')];
-  return dirs.find((dir) => fs.existsSync(dir)) ?? dirs[0];
+  const found = dirs.filter((dir) => fs.existsSync(dir));
+  return found.length > 0 ? found : [dirs[0]];
+}
+
+export function sessionsDir(): string {
+  return sessionsDirs()[0];
 }
 
 export function codexSessionsDir(): string {
@@ -211,7 +223,7 @@ export interface SessionAccum {
 export function newSessionAccum(): SessionAccum {
   return { byModel: {}, byDay: {}, byDayModel: {}, byTool: {}, byModelMessages: {}, totals: zeroBreakdown(), messages: 0, costMeasured: 0, recent: [] };
 }
-export function ingestSessionRow(accum: SessionAccum, model: string, usage: Record<string, unknown>, ts: string | number | undefined, durMs?: unknown, run?: { st: RunStatus; code?: number; note?: string }, toolNames?: string[]): boolean {
+export function ingestSessionRow(accum: SessionAccum, model: string, usage: Record<string, unknown>, ts: string | number | undefined, durMs?: unknown, run?: { st: RunStatus; code?: number; note?: string }, toolNames?: string[], host?: string): boolean {
   const watermark = readResetWatermark();
   const ms = ts === undefined ? NaN : typeof ts === 'number' ? ts : Date.parse(ts);
   if (watermark > 0 && (!Number.isFinite(ms) || ms < watermark)) return false;
@@ -223,7 +235,7 @@ export function ingestSessionRow(accum: SessionAccum, model: string, usage: Reco
   const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.floor(v) : 0);
   if (Number.isFinite(ms)) {
     const outcome = run ?? { st: 'completed' as RunStatus };
-    accum.recent.push({ m: key, i: num(usage.input), o: num(usage.output), t: ms, d: durOf(durMs), cr: num(usage.cacheRead), cw: num(usage.cacheWrite), usd: costOf(usage), st: outcome.st, code: outcome.code, note: outcome.note });
+    accum.recent.push({ m: key, i: num(usage.input), o: num(usage.output), t: ms, d: durOf(durMs), h: host, cr: num(usage.cacheRead), cw: num(usage.cacheWrite), usd: costOf(usage), st: outcome.st, code: outcome.code, note: outcome.note });
   }
   const day = ts !== undefined ? dayKey(ts) : null;
   if (day) {
@@ -258,7 +270,12 @@ export function classifySessionLine(row: { timestamp?: string | number; type?: u
   const msg = row.message;
   if (!msg || msg.role !== 'assistant' || !msg.usage) return { kind: 'skip' };
   const model = typeof msg.model === 'string' && msg.model ? msg.model : 'unknown';
-  const computedDur = (typeof msg.completedAt === 'number' && typeof msg.timestamp === 'number') ? msg.completedAt - msg.timestamp : undefined;
+  // pi writes no `duration` and no `completedAt`: the request start lands on
+  // message.timestamp and the completion on the row's own timestamp. Fall back
+  // to that pair so Elapsed and Speed are measured rather than blank.
+  const startMs = typeof msg.timestamp === 'number' ? msg.timestamp : undefined;
+  const endMs = typeof msg.completedAt === 'number' ? msg.completedAt : stampMs(row.timestamp);
+  const computedDur = startMs !== undefined && Number.isFinite(endMs) && endMs > startMs ? endMs - startMs : undefined;
   const tools: string[] = [];
   for (const part of msg.content ?? []) {
     if (part?.type !== 'toolCall' || typeof part.name !== 'string' || !part.name) continue;
@@ -297,7 +314,7 @@ export function displayModelId(model: string): string {
 export function importSessionTokens(): SessionTokens {
   const accum = newSessionAccum();
   const files: string[] = [];
-  walkJsonl(sessionsDir(), files, 2000);
+  for (const dir of sessionsDirs()) walkJsonl(dir, files, 2000);
   // An override means an isolated environment (tests, fixtures): only walk the
   // real codex dir when one is explicitly set.
   if (process.env.TERSIO_SESSIONS_DIR === undefined || process.env.TERSIO_CODEX_DIR !== undefined) {
@@ -311,10 +328,18 @@ export function importSessionTokens(): SessionTokens {
     } catch {
       continue;
     }
-    processSessionText(accum, { get codexProvider() { return codexProvider; }, set codexProvider(v: string | null) { codexProvider = v; } }, text);
+    processSessionText(accum, { get codexProvider() { return codexProvider; }, set codexProvider(v: string | null) { codexProvider = v; } }, text, hostOfSessionFile(file));
   }
   accum.recent.sort((a, b) => b.t - a.t);
   return { messages: accum.messages, totals: accum.totals, byModel: accum.byModel, byDay: accum.byDay, byDayModel: accum.byDayModel, byTool: accum.byTool, byModelMessages: accum.byModelMessages, costMeasured: accum.costMeasured, recent: accum.recent.slice(0, RECENT_LIMIT) };
+}
+
+// Which agent wrote a session file, from the directory it sits in.
+export function hostOfSessionFile(file: string): string {
+  const norm = file.replace(/\\/g, '/');
+  if (norm.includes('/.omp/')) return 'omp';
+  if (norm.includes('/.codex/')) return 'codex';
+  return 'pi';
 }
 
 const adoptionFileCache = new Map<string, { size: number; mtimeMs: number; counts: { bashCalls: number; eligibleCalls: number; rtkCalls: number } }>();
@@ -355,7 +380,7 @@ export function clearRtkAdoptionCache(): void {
 
 export function readRtkAdoption(): RtkAdoption {
   const files: string[] = [];
-  walkJsonl(sessionsDir(), files, 2000);
+  for (const dir of sessionsDirs()) walkJsonl(dir, files, 2000);
   if (process.env.TERSIO_SESSIONS_DIR === undefined || process.env.TERSIO_CODEX_DIR !== undefined) {
     walkJsonl(codexSessionsDir(), files, 2000);
   }
@@ -390,7 +415,7 @@ export function readRtkAdoption(): RtkAdoption {
   const missedCalls = Math.max(0, eligibleCalls - rtkCalls);
   return { sessions, bashCalls, eligibleCalls, rtkCalls, missedCalls, adoptionPct: eligibleCalls ? (rtkCalls / eligibleCalls) * 100 : 0 };
 }
-export function processSessionText(accum: SessionAccum, state: { codexProvider: string | null }, text: string): void {
+export function processSessionText(accum: SessionAccum, state: { codexProvider: string | null }, text: string, host?: string): void {
   for (const line of text.split('\n')) {
     if (!line.trim()) continue;
     try {
@@ -402,11 +427,11 @@ export function processSessionText(accum: SessionAccum, state: { codexProvider: 
       }
       if (parsed.kind === 'token_row') {
         const model = parsed.provider ? `codex/${parsed.provider}` : (state.codexProvider ? `codex/${state.codexProvider}` : 'codex');
-        ingestSessionRow(accum, model, parsed.usage ?? {}, row.timestamp, undefined, { st: 'completed' as RunStatus });
+        ingestSessionRow(accum, model, parsed.usage ?? {}, row.timestamp, parsed.durMs, { st: 'completed' as RunStatus }, undefined, host ?? 'codex');
         continue;
       }
       if (parsed.kind !== 'assistant_row' || !parsed.model || !parsed.usage) continue;
-      ingestSessionRow(accum, parsed.model, parsed.usage, row.timestamp, parsed.durMs, parsed.run, parsed.tools);
+      ingestSessionRow(accum, parsed.model, parsed.usage, row.timestamp, parsed.durMs, parsed.run, parsed.tools, host);
     } catch { /* skip corrupt lines */ }
   }
 }

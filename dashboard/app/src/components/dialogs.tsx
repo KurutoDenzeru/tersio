@@ -28,35 +28,9 @@ import { useToast } from "./toaster";
 import { CurrencyPicker } from "./savings";
 import { HoverTip } from "./common";
 import { Icon } from "./icon";
+import { OmpLogo, PiLogo } from "./agent-logos";
 
 type Pane = "general" | "connection" | "diagnosis" | "data";
-
-function OmpLogo() {
-  return (
-    <svg viewBox="0 0 120 90" aria-hidden="true" className="size-full">
-      <rect x="10" y="8" width="100" height="12" rx="2" fill="#fafafa" />
-      <rect x="25" y="20" width="12" height="62" rx="2" fill="#fafafa" />
-      <rect x="75" y="20" width="12" height="45" rx="2" fill="#fafafa" />
-      <rect x="71" y="55" width="20" height="16" rx="3" fill="#f97316" />
-      <rect x="76" y="59" width="3" height="8" rx="1" fill="#0d0d0d" />
-      <rect x="82" y="59" width="3" height="8" rx="1" fill="#0d0d0d" />
-      <circle cx="18" cy="14" r="2" fill="#f97316" opacity="0.8" />
-      <circle cx="102" cy="14" r="2" fill="#f97316" opacity="0.8" />
-    </svg>
-  );
-}
-
-function PiLogo() {
-  // The mark from pi.dev, cropped to its own bounds (165..635) so it fills the
-  // 40px tile the way the OMP tile does; the stock 800 viewBox has margins.
-  return (
-    <svg viewBox="165 165 470 470" aria-hidden="true" className="size-full">
-      <path fill="#F09082" d="M165.29 165.29H517.36V400H400V282.65H165.29Z" />
-      <path fill="#4D9ABF" d="M165.29 282.65H282.65V400H400V517.36H282.65V634.72H165.29Z" />
-      <path fill="#F1BE58" d="M517.36 400H634.72V634.72H517.36Z" />
-    </svg>
-  );
-}
 
 interface AgentRowProps {
   name: string;
@@ -334,10 +308,19 @@ function DoctorPane() {
   );
 }
 
+type ExportFormat = "json" | "jsonl" | "csv";
+const EXPORT_FORMATS: Array<{ id: ExportFormat; label: string; hint: string }> = [
+  { id: "json", label: "JSON", hint: "Full report, pretty-printed" },
+  { id: "jsonl", label: "JSONL", hint: "One request per line, stream-friendly" },
+  { id: "csv", label: "CSV", hint: "Flat table for a spreadsheet" },
+];
+
 function DataPane({ data, onReload }: { data: UsageReport | null; onReload: () => void }) {
   const toast = useToast();
   const [armed, setArmed] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [format, setFormat] = useState<ExportFormat>("json");
+  const chosen = EXPORT_FORMATS.find((f) => f.id === format) ?? EXPORT_FORMATS[0];
   useEffect(() => {
     if (!armed) return;
     const id = setTimeout(() => setArmed(false), 3000);
@@ -359,6 +342,45 @@ function DataPane({ data, onReload }: { data: UsageReport | null; onReload: () =
           <Icon name="refresh-cw" className="size-3.5" />
           <span>Reload</span>
         </button>
+      </div>
+      <div className="mt-6 flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="m-0 text-[13px] font-semibold">Export</p>
+          <p className="mt-0.5 mb-0 text-xs text-dim">Download the usage data. {chosen.hint}.</p>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <Select value={format} onValueChange={(v) => setFormat(v as ExportFormat)}>
+            <SelectTrigger size="sm" className="w-[104px]" aria-label="Export format">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                {EXPORT_FORMATS.map((f) => (
+                  <SelectItem key={f.id} value={f.id}>
+                    {f.label}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+          <button
+            type="button"
+            className="mono flex shrink-0 items-center gap-2 text-xs pl-2.5 pr-3 py-2 rounded-xl border border-line text-ink [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]"
+            aria-label={`Export usage data as ${chosen.label}`}
+            onClick={() => {
+              const a = document.createElement("a");
+              a.href = `/export?format=${format}`;
+              a.download = "";
+              document.body.appendChild(a);
+              a.click();
+              a.remove();
+              toast(`Exported ${chosen.label}`, `${data?.recent.length ?? 0} requests downloaded`, "download");
+            }}
+          >
+            <Icon name="download" className="size-3.5" />
+            <span>Export</span>
+          </button>
+        </div>
       </div>
       <div className="mt-3 grid gap-2">
         <div className="min-w-0 overflow-hidden rounded-[10px] border border-line px-3 py-2">
@@ -428,6 +450,7 @@ const TITLES: Record<Pane, string> = {
 };
 
 const SETTINGS_SEARCH: Array<{ pane: Pane; label: string; terms: string }> = [
+  { pane: "general", label: "Default mode", terms: "general default mode combo preset balanced max medium off new session resume start caveman rtk ponytail" },
   { pane: "general", label: "Theme", terms: "general appearance theme light dark system color scheme mode" },
   { pane: "general", label: "Currency", terms: "currency display cost usd euro" },
   { pane: "connection", label: "Coding agents", terms: "connection provider coding agents agent oh my pi omp status path version refresh ready available" },
@@ -435,6 +458,7 @@ const SETTINGS_SEARCH: Array<{ pane: Pane; label: string; terms: string }> = [
   { pane: "diagnosis", label: "Scan", terms: "diagnosis scan check" },
   { pane: "diagnosis", label: "Fix issues", terms: "diagnosis repair fix issues" },
   { pane: "data", label: "Reload data", terms: "data reload refresh statistics disk database usage db path" },
+  { pane: "data", label: "Export data", terms: "data export download json jsonl csv spreadsheet format save file" },
   { pane: "data", label: "Reset statistics", terms: "data danger zone reset clear statistics" },
 ];
 
@@ -460,6 +484,59 @@ function HighlightMatch({ text, query, fullWhenAlias = false }: { text: string; 
   }
   if (cursor < text.length) parts.push(text.slice(cursor));
   return parts;
+}
+
+const COMBO_LEVELS_UI: Array<{ id: string; label: string; hint: string }> = [
+  { id: "off", label: "Off", hint: "Nothing active" },
+  { id: "medium", label: "Medium", hint: "caveman=lite, rtk=on, ponytail=lite" },
+  { id: "balanced", label: "Balanced", hint: "caveman=full, rtk=on, ponytail=full" },
+  { id: "max", label: "Max", hint: "caveman=ultra, rtk=on, ponytail=ultra" },
+];
+
+function ComboDefaultPicker() {
+  const toast = useToast();
+  const [level, setLevel] = useState("off");
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    fetch("/settings")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { comboDefault?: string } | null) => {
+        if (alive && d?.comboDefault) { setLevel(d.comboDefault); setLoaded(true); }
+      })
+      .catch(() => { if (alive) setLoaded(true); });
+    return () => { alive = false; };
+  }, []);
+  const save = (next: string | null): void => {
+    const level = next ?? "off";
+    setLevel(level);
+    void fetch("/settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ comboDefault: level }),
+    })
+      .then((r) => r.json())
+      .then((d: { ok?: boolean }) => {
+        toast(d?.ok ? "Default mode saved" : "Could not save", d?.ok ? `${level} applies to new sessions` : "Unknown combo level", d?.ok ? "check" : "circle-alert");
+      })
+      .catch(() => toast("Could not save", "The dashboard server did not answer.", "circle-alert"));
+  };
+  return (
+    <Select value={level} onValueChange={save} disabled={!loaded}>
+      <SelectTrigger size="sm" className="w-[132px] shrink-0" aria-label="Default combo mode">
+        <SelectValue placeholder="Off" />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectGroup>
+          {COMBO_LEVELS_UI.map((c) => (
+            <SelectItem key={c.id} value={c.id}>
+              {c.label}
+            </SelectItem>
+          ))}
+        </SelectGroup>
+      </SelectContent>
+    </Select>
+  );
 }
 
 export function SettingsDialog({
@@ -570,6 +647,13 @@ export function SettingsDialog({
               {pane === "general" && (
                 <section aria-label="General">
                   <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="m-0 text-[13px] font-semibold">Default mode</p>
+                      <p className="mt-0.5 mb-0 text-xs text-dim">Combo preset a new or resumed session opens in.</p>
+                    </div>
+                    <ComboDefaultPicker />
+                  </div>
+                  <div className="mt-6 flex items-center justify-between gap-3">
                     <div className="min-w-0">
                       <p className="m-0 text-[13px] font-semibold">Theme</p>
                       <p className="mt-0.5 mb-0 text-xs text-dim">Light, dark, or follow the system.</p>

@@ -1,12 +1,7 @@
-// Settings reader for the Tersio extensions.
-//
-// One file, under Tersio's own home (~/.tersio/settings.json), serves every
-// host: OMP has no reason to keep its own copy and pi never had a store. The
-// profile CLI writes the same file, so the extensions, `tersio settings`, and
-// both hosts always agree.
-//
-// Tolerant: any parse failure yields {} so every caller falls back to its own
-// default.
+// Settings reader for the Tersio extensions. One file under Tersio's own home
+// (~/.tersio/settings.json) serves every host, so the extensions, `tersio
+// settings`, and both hosts always agree. Any parse failure yields {} and
+// every caller falls back to its own default.
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
@@ -15,15 +10,13 @@ import { tersioHome } from '../lib/utils.ts';
 
 export const PLUGIN_NAME = '@krtclcdy/tersio';
 
-// Session-start defaults, shared by every host: one file under Tersio's own
-// home, so OMP and pi read the same values. This module owns the path.
+// The one store both hosts read; this module owns its path.
 export function tersioSettingsFile(): string {
   return path.join(tersioHome(), 'settings.json');
 }
 
-// Older installs stored the same values as OMP plugin settings, and an install
-// that predates ~/.tersio still has them there. Read once and keep them, so
-// switching the store does not reset a user's defaults.
+// Older installs kept these as OMP plugin settings; still read so switching
+// the store does not reset a user's defaults.
 function legacyOmpSettings(): Record<string, unknown> | null {
   const configHome = process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config');
   for (const p of [

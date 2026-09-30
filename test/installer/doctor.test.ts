@@ -252,37 +252,26 @@ test("doctor reports the rtk binary version", () => {
   }
 });
 
-test("doctor reports retired reinforcement registration and fix removes it", () => {
+test("doctor --fix leaves an existing fetched rule.md alone and writes no .bak", () => {
   const home = missingHome();
   try {
-    const agentDir = path.join(home, ".omp", "agent");
-    const extDir = path.join(agentDir, "extensions");
-    // The registration rows only run for a host that has tersio installed.
-    const ompPkg = path.join(home, ".omp", "plugins", "node_modules", "@krtclcdy", "tersio");
-    mkdirSync(ompPkg, { recursive: true });
-    writeFileSync(path.join(ompPkg, "package.json"), JSON.stringify({ name: "@krtclcdy/tersio", version: "2.23.0" }), "utf8");
-    mkdirSync(path.join(extDir, "shared"), { recursive: true });
-    const stale = path.join(extDir, "shared", "mode-reinforcement.ts");
-    writeFileSync(stale, "// retired", "utf8");
-    writeFileSync(path.join(agentDir, "config.yml"), `extensions:\n  - ${stale}\n  - ${stale}\n`, "utf8");
+    // A repair must not overwrite the upstream fetch or leave a .bak.
+    const rulePath = path.join(home, ".omp", "plugins", "node_modules", "@krtclcdy", "tersio", "extensions", "caveman-session", "rule.md");
+    mkdirSync(path.dirname(rulePath), { recursive: true });
+    const fetched = "# fetched from upstream\n";
+    writeFileSync(rulePath, fetched, "utf8");
 
-    const before = spawnSync(process.execPath, [installer, "doctor"], {
-      cwd: root,
-      encoding: "utf8",
-      timeout: 15000,
-      env: cliEnv(home, { PATH: path.join(home, "empty-bin") }),
-    });
-    expect(before.stdout).toMatch(/⚠️ Retired reinforcement registration:/);
-
-    const repair = spawnSync(process.execPath, [installer, "doctor", "--fix", "registrations", "--yes"], {
+    const result = spawnSync(process.execPath, [installer, "doctor", "--fix", "extensions", "--yes"], {
       cwd: root,
       encoding: "utf8",
       timeout: 30000,
-      env: cliEnv(home, { PATH: path.join(home, "empty-bin") }),
+      env: cliEnv(home),
     });
-    expect(repair.status, repair.stderr).toBe(0);
-    expect(readFileSync(path.join(agentDir, "config.yml"), "utf8")).not.toContain("mode-reinforcement.ts");
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(readFileSync(rulePath, "utf8")).toBe(fetched);
+    expect(!existsSync(`${rulePath}.bak`), "no rule.md.bak from a repair").toBeTruthy();
   } finally {
     rmSync(home, { recursive: true, force: true });
   }
-});
+}, 30000);

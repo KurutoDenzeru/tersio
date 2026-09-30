@@ -1,8 +1,6 @@
-// cli/settings.ts — view/edit session-start defaults (combo/caveman/rtk/ponytail)
-// plus the display-currency default for usage/dashboard reports.
-// Non-interactive: `tersio settings --combo-default balanced` (plus per-mode
-// override flags and --currency). Interactive: clack selects seeded from the
-// stored profile.
+// cli/settings.ts — view/edit session-start defaults and the display-currency
+// default. Non-interactive via flags, interactive via clack selects seeded
+// from the stored profile.
 import path from 'node:path';
 import {
   CAVEMAN_DEFAULTS, COMBO_DEFAULTS, COMBO_PRESET_MODES, OMP_PLUGINS_DIR, PACKAGE_NAME,
@@ -164,9 +162,7 @@ async function runSingleSetting(name: string, current: Profile, nextDiag: DiagSc
 
 function printSettingsTable(current: Profile): void {
   console.log('\n=== Tersio Settings ===');
-  // Currency lives here no longer: the dashboard owns displaying and
-  // persisting it (its picker POSTs to /currency); settings can still set
-  // the stored default via --currency or the prompt below.
+  // The dashboard owns displaying currency; settings only sets the default.
   const rows = [
     ['combo', current.comboDefault, [...COMBO_DEFAULTS].join(' | ')],
     ['caveman', current.cavemanDefault, [...CAVEMAN_DEFAULTS].join(' | ')],

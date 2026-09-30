@@ -1,9 +1,7 @@
-// extensions/shared/usage-store.ts — tersio-owned usage.db.
-// Persists the rows importSessionTokens derives live, so reports survive
-// session-file rotation. Sync is incremental (a files ledger skips unchanged
-// transcripts) and every read applies the reset watermark, so the store is a
-// cache, never a fork. Missing sqlite3 → sync false / read null. Never touches
-// RTK's history.db or host transcripts.
+// extensions/shared/usage-store.ts — tersio-owned usage.db. Persists what
+// importSessionTokens derives live, so reports survive session-file rotation.
+// Incremental sync plus the reset watermark make it a cache, never a fork.
+// Missing sqlite3 → sync false / read null.
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -15,9 +13,10 @@ import {
   codexSessionsDir,
   costOf,
   durOf,
+  hostOfSessionFile,
   ingestSessionRow,
   newSessionAccum,
-  sessionsDir,
+  sessionsDirs,
   walkJsonl,
 } from './usage-ledger.ts';
 import { tersioDataPath } from '../lib/utils.ts';
@@ -67,11 +66,15 @@ function query(db: string, sql: string): string[][] {
     .map((line) => line.split('\t'));
 }
 
+// Bump when a parse change adds a field the mirror cannot fill in for rows it
+// already stored. The file ledger is mtime+size, so an unchanged transcript is
+// never re-read and the new field would stay NULL forever without this.
+const PARSER_VERSION = '3';
+
 function ensureSchema(db: string): void {
   fs.mkdirSync(path.dirname(db), { recursive: true });
-  // Rows imported before an alias existed keep the spelling they were stored
-  // with, and the mtime ledger will not re-read those transcripts. Fold them in
-  // once, so the merge shows up without a reset.
+  // Fold in rows stored under a pre-alias spelling; the mtime ledger will
+  // not re-read those transcripts.
   const rekeys = MODEL_ALIASES.map((a) => `UPDATE messages SET model='${a.id}' WHERE model='${a.feed}';`).join('');
   run(
     db,
@@ -79,9 +82,26 @@ function ensureSchema(db: string): void {
       `CREATE TABLE IF NOT EXISTS files (path TEXT PRIMARY KEY, mtime REAL NOT NULL, size INTEGER NOT NULL);` +
       `CREATE TABLE IF NOT EXISTS messages (file TEXT NOT NULL, t REAL, model TEXT NOT NULL,` +
       ` i INTEGER NOT NULL, o INTEGER NOT NULL, d REAL, cr INTEGER NOT NULL, cw INTEGER NOT NULL,` +
-      ` usd REAL, st TEXT NOT NULL, code REAL, note TEXT, tools TEXT NOT NULL DEFAULT '[]');` +
+      ` usd REAL, st TEXT NOT NULL, code REAL, note TEXT, tools TEXT NOT NULL DEFAULT '[]', h TEXT);` +
       `CREATE INDEX IF NOT EXISTS idx_messages_file ON messages(file);` + rekeys,
   );
+  // An older db has no h column; CREATE TABLE IF NOT EXISTS will not add one.
+  try {
+    run(db, `ALTER TABLE messages ADD COLUMN h TEXT;`);
+  } catch { /* already present */ }
+  // Host is derivable from the path, so backfill without re-reading transcripts.
+  try {
+    for (const [file] of query(db, `SELECT DISTINCT file FROM messages WHERE h IS NULL;`)) {
+      run(db, `UPDATE messages SET h='${esc(hostOfSessionFile(file))}' WHERE file=${esc(file)};`);
+    }
+  } catch { /* fresh or unreadable db */ }
+  // Drop the cache when the parser has moved on, so every transcript is read
+  // again and the new columns actually fill.
+  try {
+    const stored = query(db, `SELECT v FROM meta WHERE k='parser_version';`);
+    if (stored.length && stored[0][0] === PARSER_VERSION) return;
+    run(db, `DELETE FROM messages;DELETE FROM files;INSERT OR REPLACE INTO meta (k,v) VALUES ('parser_version','${PARSER_VERSION}');`);
+  } catch { /* fresh db, nothing to invalidate */ }
 }
 
 function readFiles(db: string): Record<string, { mtime: number; size: number }> {
@@ -109,9 +129,10 @@ interface StoredRow {
   code: number | undefined;
   note: string | undefined;
   tools: string[];
+  host?: string;
 }
 
-function parseFile(text: string): StoredRow[] {
+function parseFile(text: string, host?: string): StoredRow[] {
   const rows: StoredRow[] = [];
   let codexProvider: string | null = null;
   for (const line of text.split('\n')) {
@@ -142,6 +163,7 @@ function parseFile(text: string): StoredRow[] {
           code: undefined,
           note: undefined,
           tools: [],
+          host,
         });
         continue;
       }
@@ -163,6 +185,7 @@ function parseFile(text: string): StoredRow[] {
         code: run.code,
         note,
         tools: parsed.tools ?? [],
+        host,
       });
     } catch { /* skip corrupt lines */ }
   }
@@ -170,15 +193,14 @@ function parseFile(text: string): StoredRow[] {
 }
 
 function insertSql(file: string, r: StoredRow): string {
-  return `INSERT INTO messages (file, t, model, i, o, d, cr, cw, usd, st, code, note, tools) VALUES (` +
+  return `INSERT INTO messages (file, t, model, i, o, d, cr, cw, usd, st, code, note, tools, h) VALUES (` +
     `${esc(file)},${r.t === null ? 'NULL' : String(r.t)},${esc(r.model)},${r.i},${r.o},` +
     `${nullNum(r.d)},${r.cr},${r.cw},${nullNum(r.usd)},${esc(r.st)},` +
-    `${nullNum(r.code)},${nullStr(r.note)},${esc(JSON.stringify(r.tools))});`;
+    `${nullNum(r.code)},${nullStr(r.note)},${esc(JSON.stringify(r.tools))},${nullStr(r.host)});`;
 }
 
-// Incremental sync: unchanged transcripts are skipped via mtime+size, changed
-// ones re-inserted. Rows for deleted transcripts are kept, so rotation never
-// erases history. False when sqlite3 or disk is unavailable.
+// Unchanged transcripts are skipped via mtime+size; rows for deleted ones are
+// kept so rotation never erases history. False when sqlite3 is unavailable.
 export function syncUsageDb(): boolean {
   let db: string;
   try {
@@ -189,7 +211,7 @@ export function syncUsageDb(): boolean {
   }
   const files: string[] = [];
   try {
-    walkJsonl(sessionsDir(), files, 2000);
+    for (const dir of sessionsDirs()) walkJsonl(dir, files, 2000);
     if (process.env.TERSIO_SESSIONS_DIR === undefined || process.env.TERSIO_CODEX_DIR !== undefined) {
       walkJsonl(codexSessionsDir(), files, 2000);
     }
@@ -238,7 +260,7 @@ export function syncUsageDb(): boolean {
     for (const file of changed) {
       const entry = current[file];
       const text = fs.readFileSync(file, 'utf8');
-      for (const r of parseFile(text)) {
+      for (const r of parseFile(text, hostOfSessionFile(file))) {
         if (!push(insertSql(file, r))) return false;
       }
       if (!push(`INSERT OR REPLACE INTO files (path, mtime, size) VALUES (${esc(file)},${entry.mtime},${entry.size});`)) return false;
@@ -259,12 +281,12 @@ export function readUsageDb(): StoredUsage | null {
   }
   let rows: string[][];
   try {
-    rows = query(db, `SELECT t, model, i, o, d, cr, cw, usd, st, code, note, tools FROM messages;`);
+    rows = query(db, `SELECT t, model, i, o, d, cr, cw, usd, st, code, note, tools, h FROM messages;`);
   } catch {
     return null;
   }
   const accum = newSessionAccum();
-  for (const [t, model, i, o, d, cr, cw, usd, st, code, note, tools] of rows) {
+  for (const [t, model, i, o, d, cr, cw, usd, st, code, note, tools, h] of rows) {
     const ts = t === '' ? undefined : Number(t);
     let toolNames: string[] = [];
     try {
@@ -293,6 +315,7 @@ export function readUsageDb(): StoredUsage | null {
         note: note === '' ? undefined : note,
       },
       toolNames,
+      h === '' ? undefined : h,
     );
   }
   accum.recent.sort((a, b) => b.t - a.t);
