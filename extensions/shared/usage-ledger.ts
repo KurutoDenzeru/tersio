@@ -268,11 +268,15 @@ export function ingestSessionRow(accum: SessionAccum, model: string, usage: Reco
   for (const name of toolNames ?? []) accum.byTool[name] = (accum.byTool[name] ?? 0) + 1;
   return true;
 }
-export type SessionLineKind = 'codex_provider' | 'token_row' | 'assistant_row' | 'skip';
-export function classifySessionLine(row: { timestamp?: string | number; type?: unknown; message?: { role?: unknown; model?: unknown; usage?: Record<string, unknown>; duration?: unknown; completedAt?: unknown; timestamp?: unknown; stopReason?: unknown; errorStatus?: unknown; errorMessage?: unknown; isError?: unknown; content?: Array<{ type?: unknown; name?: unknown; arguments?: unknown }> }; payload?: { type?: unknown; model_provider?: unknown; info?: { last_token_usage?: Record<string, unknown> } } }): { kind: SessionLineKind; provider?: string; model?: string; usage?: Record<string, unknown>; durMs?: number; run?: { st: RunStatus; code?: number; note?: string }; tools?: string[]; ms?: number } {
+export type SessionLineKind = 'codex_provider' | 'codex_model' | 'token_row' | 'assistant_row' | 'skip';
+export function classifySessionLine(row: { timestamp?: string | number; type?: unknown; message?: { role?: unknown; model?: unknown; usage?: Record<string, unknown>; duration?: unknown; completedAt?: unknown; timestamp?: unknown; stopReason?: unknown; errorStatus?: unknown; errorMessage?: unknown; isError?: unknown; content?: Array<{ type?: unknown; name?: unknown; arguments?: unknown }> }; payload?: { type?: unknown; model?: unknown; model_provider?: unknown; info?: { last_token_usage?: Record<string, unknown> } } }): { kind: SessionLineKind; provider?: string; model?: string; usage?: Record<string, unknown>; durMs?: number; run?: { st: RunStatus; code?: number; note?: string }; tools?: string[]; ms?: number } {
   const payload = row.payload;
   if (payload && typeof payload === 'object') {
     if (row.type === 'session_meta' && typeof payload.model_provider === 'string') return { kind: 'codex_provider', provider: payload.model_provider };
+    // A Codex transcript states the model once per turn, in turn_context.
+    if (row.type === 'turn_context' && typeof payload.model === 'string' && payload.model) {
+      return { kind: 'codex_model', model: payload.model };
+    }
     if (payload.type === 'token_count') {
       const last = payload.info?.last_token_usage;
       if (last) {
@@ -408,6 +412,7 @@ export function importSessionTokens(): SessionTokens {
     processOpencodeFile(accum, text);
   }
   let codexProvider: string | null = null;
+  let codexModel: string | null = null;
   for (const file of files) {
     let text: string;
     try {
@@ -415,7 +420,12 @@ export function importSessionTokens(): SessionTokens {
     } catch {
       continue;
     }
-    processSessionText(accum, { get codexProvider() { return codexProvider; }, set codexProvider(v: string | null) { codexProvider = v; } }, text, hostOfSessionFile(file));
+    processSessionText(accum, {
+      get codexProvider() { return codexProvider; },
+      set codexProvider(v: string | null) { codexProvider = v; },
+      get codexModel() { return codexModel; },
+      set codexModel(v: string | null) { codexModel = v; },
+    }, text, hostOfSessionFile(file));
   }
   accum.recent.sort((a, b) => b.t - a.t);
   return { messages: accum.messages, totals: accum.totals, byModel: accum.byModel, byDay: accum.byDay, byDayModel: accum.byDayModel, byTool: accum.byTool, byModelMessages: accum.byModelMessages, costMeasured: accum.costMeasured, recent: accum.recent.slice(0, RECENT_LIMIT) };
@@ -502,7 +512,7 @@ export function readRtkAdoption(): RtkAdoption {
   const missedCalls = Math.max(0, eligibleCalls - rtkCalls);
   return { sessions, bashCalls, eligibleCalls, rtkCalls, missedCalls, adoptionPct: eligibleCalls ? (rtkCalls / eligibleCalls) * 100 : 0 };
 }
-export function processSessionText(accum: SessionAccum, state: { codexProvider: string | null }, text: string, host?: string): void {
+export function processSessionText(accum: SessionAccum, state: { codexProvider: string | null; codexModel?: string | null }, text: string, host?: string): void {
   for (const line of text.split('\n')) {
     if (!line.trim()) continue;
     try {
@@ -512,8 +522,14 @@ export function processSessionText(accum: SessionAccum, state: { codexProvider: 
         if (parsed.provider) state.codexProvider = parsed.provider;
         continue;
       }
+      if (parsed.kind === 'codex_model') {
+        if (parsed.model) state.codexModel = parsed.model;
+        continue;
+      }
       if (parsed.kind === 'token_row') {
-        const model = parsed.provider ? `codex/${parsed.provider}` : (state.codexProvider ? `codex/${state.codexProvider}` : 'codex');
+        const base = parsed.provider ? `codex/${parsed.provider}` : (state.codexProvider ? `codex/${state.codexProvider}` : 'codex');
+        // The provider alone told you nothing about which model ran.
+        const model = state.codexModel ? `${base}/${state.codexModel}` : base;
         ingestSessionRow(accum, model, parsed.usage ?? {}, row.timestamp, parsed.durMs, { st: 'completed' as RunStatus }, undefined, host ?? 'codex');
         continue;
       }

@@ -72,7 +72,7 @@ function query(db: string, sql: string): string[][] {
 // Bump when a parse change adds a field the mirror cannot fill in for rows it
 // already stored. The file ledger is mtime+size, so an unchanged transcript is
 // never re-read and the new field would stay NULL forever without this.
-const PARSER_VERSION = '3';
+const PARSER_VERSION = '6';
 
 function ensureSchema(db: string): void {
   fs.mkdirSync(path.dirname(db), { recursive: true });
@@ -103,8 +103,58 @@ function ensureSchema(db: string): void {
   try {
     const stored = query(db, `SELECT v FROM meta WHERE k='parser_version';`);
     if (stored.length && stored[0][0] === PARSER_VERSION) return;
+    backupUsageDb(db);
     run(db, `DELETE FROM messages;DELETE FROM files;INSERT OR REPLACE INTO meta (k,v) VALUES ('parser_version','${PARSER_VERSION}');`);
   } catch { /* fresh db, nothing to invalidate */ }
+}
+
+// The wipe above is the one destructive thing we do, and rows can come from a
+// source a later release stops walking — which is exactly how OpenCode history
+// was lost once. Keep the last few so a bad bump is recoverable.
+const BACKUP_KEEP = 3;
+
+export function backupUsageDir(): string {
+  return path.join(path.dirname(usageDbPath()), 'backups');
+}
+
+export function listUsageBackups(): Array<{ file: string; mtime: number; size: number }> {
+  try {
+    return fs.readdirSync(backupUsageDir())
+      .filter((n) => /^usage-\d{14}\.db$/.test(n))
+      .map((n) => {
+        const full = path.join(backupUsageDir(), n);
+        const st = fs.statSync(full);
+        return { file: full, mtime: st.mtimeMs, size: st.size };
+      })
+      .sort((a, b) => b.mtime - a.mtime);
+  } catch {
+    return [];
+  }
+}
+
+function backupUsageDb(db: string): void {
+  try {
+    const dir = backupUsageDir();
+    fs.mkdirSync(dir, { recursive: true });
+    const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
+    fs.copyFileSync(db, path.join(dir, `usage-${stamp}.db`));
+    for (const old of listUsageBackups().slice(BACKUP_KEEP)) {
+      fs.rmSync(old.file, { force: true });
+    }
+  } catch { /* a missing backup must not block the sync */ }
+}
+
+/** Put a backup back in place. The next sync then re-parses over it. */
+export function restoreUsageBackup(file: string): boolean {
+  try {
+    const src = path.resolve(file);
+    if (!src.startsWith(path.resolve(backupUsageDir()))) return false;
+    if (!fs.existsSync(src)) return false;
+    fs.copyFileSync(src, usageDbPath());
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function readFiles(db: string): Record<string, { mtime: number; size: number }> {
@@ -161,6 +211,7 @@ function parseFile(text: string, host?: string): StoredRow[] {
     return rows;
   }
   let codexProvider: string | null = null;
+  let codexModel: string | null = null;
   for (const line of text.split('\n')) {
     if (!line.trim()) continue;
     try {
@@ -168,6 +219,10 @@ function parseFile(text: string, host?: string): StoredRow[] {
       const parsed = classifySessionLine(row);
       if (parsed.kind === 'codex_provider') {
         if (parsed.provider) codexProvider = parsed.provider;
+        continue;
+      }
+      if (parsed.kind === 'codex_model') {
+        if (parsed.model) codexModel = parsed.model;
         continue;
       }
       const ts = row.timestamp;
@@ -178,7 +233,7 @@ function parseFile(text: string, host?: string): StoredRow[] {
         const usage = parsed.usage ?? {};
         rows.push({
           t,
-          model: canonicalModelId(provider ? `codex/${provider}` : 'codex'),
+          model: canonicalModelId(provider ? (codexModel ? `codex/${provider}/${codexModel}` : `codex/${provider}`) : 'codex'),
           i: intOf(usage.input),
           o: intOf(usage.output),
           d: undefined,

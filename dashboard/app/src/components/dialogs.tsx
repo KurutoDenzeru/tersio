@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useTheme } from "@/components/theme-provider";
 import { fmt, fmtShort, relAge } from "@/lib/format";
@@ -30,7 +31,7 @@ import { HoverTip } from "./common";
 import { Icon } from "./icon";
 import { OmpLogo, PiLogo } from "./agent-logos";
 
-type Pane = "general" | "connection" | "diagnosis" | "data";
+type Pane = "general" | "appearance" | "connection" | "diagnosis" | "data";
 
 interface AgentRowProps {
   name: string;
@@ -315,6 +316,62 @@ const EXPORT_FORMATS: Array<{ id: ExportFormat; label: string; hint: string }> =
   { id: "csv", label: "CSV", hint: "Flat table for a spreadsheet" },
 ];
 
+// The mirror is rebuilt from session files whenever the parser moves, so a
+// backup is the only way back if a source stops being walked.
+function BackupRestore() {
+  const toast = useToast();
+  const [rows, setRows] = useState<Array<{ file: string; mtime: number; size: number }>>([]);
+  const [busy, setBusy] = useState(false);
+  const load = useCallback(() => {
+    fetch("/backups")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { backups?: Array<{ file: string; mtime: number; size: number }> } | null) => setRows(d?.backups ?? []))
+      .catch(() => setRows([]));
+  }, []);
+  useEffect(() => { load(); }, [load]);
+  const restore = (file: string): void => {
+    setBusy(true);
+    void fetch("/backups/restore", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ file }),
+    })
+      .then((r) => r.json())
+      .then((d: { ok?: boolean; error?: string }) => {
+        toast(d?.ok ? "Backup restored" : "Restore failed", d?.ok ? "Reload to see the restored totals" : d?.error ?? "Unknown backup", d?.ok ? "check" : "circle-alert");
+        if (d?.ok) load();
+      })
+      .catch(() => toast("Restore failed", "The dashboard server did not answer.", "circle-alert"))
+      .finally(() => setBusy(false));
+  };
+  if (rows.length === 0) return null;
+  return (
+    <div className="mt-6 flex items-center justify-between gap-3">
+      <div className="min-w-0">
+        <p className="m-0 text-[13px] font-semibold">Restore</p>
+        <p className="mt-0.5 mb-0 text-xs text-dim">
+          {rows.length} snapshot{rows.length === 1 ? "" : "s"} taken before the mirror was rebuilt. Newest{" "}
+          {new Date(rows[0].mtime).toLocaleString()}.
+        </p>
+      </div>
+      <Select value={rows[0].file} onValueChange={(v) => restore(v ?? rows[0].file)} disabled={busy}>
+        <SelectTrigger size="sm" className="w-[168px] shrink-0" aria-label="Restore a usage backup">
+          <SelectValue placeholder="Newest" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectGroup>
+            {rows.map((b) => (
+              <SelectItem key={b.file} value={b.file}>
+                {new Date(b.mtime).toLocaleString()}
+              </SelectItem>
+            ))}
+          </SelectGroup>
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
 function DataPane({ data, onReload }: { data: UsageReport | null; onReload: () => void }) {
   const toast = useToast();
   const [armed, setArmed] = useState(false);
@@ -382,6 +439,7 @@ function DataPane({ data, onReload }: { data: UsageReport | null; onReload: () =
           </button>
         </div>
       </div>
+      <BackupRestore />
       <div className="mt-3 grid gap-2">
         <div className="min-w-0 overflow-hidden rounded-[10px] border border-line px-3 py-2">
           <p className="m-0 text-[13px] font-semibold">
@@ -437,6 +495,7 @@ function DataPane({ data, onReload }: { data: UsageReport | null; onReload: () =
 
 const PANES: Array<{ id: Pane; label: string; icon: string }> = [
   { id: "general", label: "General", icon: "settings" },
+  { id: "appearance", label: "Appearance", icon: "sun" },
   { id: "connection", label: "Connection", icon: "plug" },
   { id: "diagnosis", label: "Diagnosis", icon: "stethoscope" },
   { id: "data", label: "Data", icon: "database" },
@@ -444,6 +503,7 @@ const PANES: Array<{ id: Pane; label: string; icon: string }> = [
 
 const TITLES: Record<Pane, string> = {
   general: "General",
+  appearance: "Appearance",
   connection: "Connection",
   diagnosis: "Diagnosis",
   data: "Data",
@@ -572,14 +632,36 @@ function DefaultModes() {
     <div className="grid gap-6">
       {DEFAULT_ROWS_UI.map((row) => {
         const raw = current[row.field];
-        const value = row.field === "rtkDefault" ? (raw ? "on" : "off") : String(raw ?? "off");
+        const isRtk = row.field === "rtkDefault";
+        const value = isRtk ? (raw ? "on" : "off") : String(raw ?? "off");
+        // The preset sets all three, so individual modes are inert while it is
+        // Off; leaving them live would suggest they can override the preset.
+        const presetOff = current.comboDefault === "off";
+        const locked = !loaded || (presetOff && !isRtk && row.field !== "comboDefault");
+        if (isRtk) {
+          return (
+            <div key={row.field} className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="m-0 text-[13px] font-semibold">{row.label}</p>
+                <p className="mt-0.5 mb-0 text-xs text-dim">{row.hint}</p>
+              </div>
+              <Switch
+                size="sm"
+                checked={Boolean(raw)}
+                onCheckedChange={(on: boolean) => save(row, on ? "on" : "off")}
+                disabled={locked}
+                aria-label={`${row.label} default`}
+              />
+            </div>
+          );
+        }
         return (
           <div key={row.field} className="flex items-center justify-between gap-3">
             <div className="min-w-0">
               <p className="m-0 text-[13px] font-semibold">{row.label}</p>
               <p className="mt-0.5 mb-0 text-xs text-dim">{row.hint}</p>
             </div>
-            <Select value={value} onValueChange={(v) => save(row, v ?? "off")} disabled={!loaded}>
+            <Select value={value} onValueChange={(v) => save(row, v ?? "off")} disabled={locked}>
               <SelectTrigger size="sm" className="w-[132px] shrink-0" aria-label={`${row.label} default`}>
                 <SelectValue placeholder="Off" />
               </SelectTrigger>
@@ -706,8 +788,19 @@ export function SettingsDialog({
             </div>
             <div className={`min-h-0 overscroll-contain px-5 pt-4 ${pane === "diagnosis" ? "flex flex-1 overflow-hidden pb-5" : "overflow-y-auto pb-5 [scrollbar-width:thin] [scrollbar-color:var(--line)_transparent]"}`}>
               {pane === "general" && (
-                <section aria-label="General">
+                <section aria-label="General" className="grid gap-7">
                   <DefaultModes />
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="m-0 text-[13px] font-semibold">Currency</p>
+                      <p className="mt-0.5 mb-0 text-xs text-dim">Display currency for cost figures. Persists to tersio settings.</p>
+                    </div>
+                    <CurrencyPicker cur={cur} onPick={onCurrency} id="setCur" />
+                  </div>
+                </section>
+              )}
+              {pane === "appearance" && (
+                <section aria-label="Appearance" className="grid gap-7">
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
                       <p className="m-0 text-[13px] font-semibold">Theme</p>
@@ -734,13 +827,6 @@ export function SettingsDialog({
                         ))}
                       </TabsList>
                     </Tabs>
-                  </div>
-                  <div className="mt-3.5 flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="m-0 text-[13px] font-semibold">Currency</p>
-                      <p className="mt-0.5 mb-0 text-xs text-dim">Display currency for cost figures. Persists to tersio settings.</p>
-                    </div>
-                    <CurrencyPicker cur={cur} onPick={onCurrency} id="setCur" />
                   </div>
                 </section>
               )}

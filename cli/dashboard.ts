@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { clearUsageLedger, markReset, readUsage } from '../extensions/shared/usage-ledger.ts';
 import { pricesCachePath } from '../extensions/shared/pricing.ts';
 import { summarizeUsage } from './usage.ts';
+import { listUsageBackups, restoreUsageBackup } from '../extensions/shared/usage-store.ts';
 import type { UsageReport } from './usage.ts';
 import { isCurrencyCode } from './currency.ts';
 import type { CurrencyCode } from './currency.ts';
@@ -462,6 +463,20 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
       markReset();
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: true, rows }));
+      return;
+    }
+    if (req.url === '/backups' && req.method === 'GET') {
+      const rows = listUsageBackups().map((b) => ({ file: path.basename(b.file), mtime: b.mtime, size: b.size }));
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ backups: rows }));
+      return;
+    }
+    if (req.url === '/backups/restore' && req.method === 'POST') {
+      let file = '';
+      try { file = String((JSON.parse(await readBody(req)) as { file?: unknown }).file ?? ''); } catch { file = ''; }
+      const ok = restoreUsageBackup(file);
+      res.writeHead(ok ? 200 : 400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(ok ? { ok: true, file } : { ok: false, error: 'unknown backup' }));
       return;
     }
     if (req.url === '/settings' && req.method === 'GET') {

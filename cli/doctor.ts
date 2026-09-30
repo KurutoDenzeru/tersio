@@ -6,7 +6,7 @@ import {
   args, dryRun, fix, yes,
   execP, parseJsonObject, relTime,
 } from './common.ts';
-import { detectHosts, missingTreeFiles, ompPackageDir, piTersioSource } from './hosts.ts';
+import { detectHosts, ompPackageDir, piTersioSource } from './hosts.ts';
 import { askInteractiveChoice, askInteractiveConfirm, runInteractivePhase } from './interactive.ts';
 import { usageDbPath } from '../extensions/shared/usage-store.ts';
 import { pricesCachePath } from '../extensions/shared/pricing.ts';
@@ -127,20 +127,11 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
       .filter((line) => line.startsWith('/') || line.startsWith('.'));
     const duplicateExtensions = [...new Set(explicitEntries.filter((entry, index) => explicitEntries.indexOf(entry) !== index))];
     check('Unique config registrations', duplicateExtensions.length === 0, duplicateExtensions.length ? duplicateExtensions.join(', ') : '');
-    const retiredReinforcement = explicitEntries.filter((entry) => entry.endsWith('/shared/mode-reinforcement.ts')).length;
-    if (retiredReinforcement === 0) check('No retired reinforcement', true);
-    else warnLine('Retired reinforcement registration', `${retiredReinforcement} found; run doctor --fix registrations`);
     check('Caveman extension', existsSync(path.join(tersioPluginDir, 'extensions', 'caveman-session', 'index.ts')), existsSync(path.join(tersioPluginDir, 'extensions', 'caveman-session', 'index.ts')) ? '' : path.join(tersioPluginDir, 'extensions', 'caveman-session', 'index.ts'));
     check('RTK extension', existsSync(path.join(tersioPluginDir, 'extensions', 'rtk-session', 'index.ts')), existsSync(path.join(tersioPluginDir, 'extensions', 'rtk-session', 'index.ts')) ? '' : path.join(tersioPluginDir, 'extensions', 'rtk-session', 'index.ts'));
     check('Updater extension', existsSync(path.join(tersioPluginDir, 'extensions', 'ai-addons-updater', 'index.ts')), existsSync(path.join(tersioPluginDir, 'extensions', 'ai-addons-updater', 'index.ts')) ? '' : path.join(tersioPluginDir, 'extensions', 'ai-addons-updater', 'index.ts'));
     check('Ponytail extension', existsSync(path.join(OMP_PLUGINS_DIR, 'node_modules', '@dietrichgebert', 'ponytail', 'pi-extension', 'index.js')), existsSync(path.join(OMP_PLUGINS_DIR, 'node_modules', '@dietrichgebert', 'ponytail', 'pi-extension', 'index.js')) ? '' : path.join(OMP_PLUGINS_DIR, 'node_modules', '@dietrichgebert', 'ponytail', 'pi-extension', 'index.js'));
   }
-  for (const host of hosts) {
-    if (!host.installed || host.via !== 'tree') continue;
-    const missing = missingTreeFiles(host.id);
-    check(`${host.label} extension tree`, missing.length === 0, missing.length ? `${missing.length} missing in ${host.dir}` : '');
-  }
-
   section('Usage & records');
   console.log(`  Usage DB (tersio-owned · local hosted): ${usageDbPath()}`);
   const pricesAge = pricesMtime ? `(pulled ${relTime(Date.now() - pricesMtime.mtimeMs)} · ${absDate(pricesMtime.mtimeMs)})` : '';
