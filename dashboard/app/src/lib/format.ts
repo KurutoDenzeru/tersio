@@ -1,6 +1,4 @@
-// Formatting, currency, vendor, and zone helpers shared by Dashboard views:
-// magnitude-aware money decimals, FX with a live frankfurter refresh,
-// folded-key display names, provider registry.
+// Formatting, currency, vendor, and zone helpers shared across views.
 
 export interface TokenBreakdown {
   input: number;
@@ -149,10 +147,7 @@ const PROVIDERS: Array<[RegExp, string, string, string]> = [
   [/mistral/i, "Mistral", "mistralai", "#ff7000"],
   [/claude|anthropic/i, "Anthropic", "anthropic", "#d97757"],
   [/gemini|google|gemma/i, "Google", "google", "#4285F4"],
-  // Stealth runs a Space-Bunny class of models; its OpenRouter mark is a
-  // currentColor bomber, inlined in brand.tsx rather than fetched.
-  // `swe-*` is Cognition's Devin line, so it belongs to this vendor rather than
-  // the grey Other bucket. Anchored so it cannot swallow an unrelated name.
+  // `swe-*` is Cognition's Devin line; anchored so it cannot swallow other names.
   [/devin|cognition|^swe[-/]/i, "Cognition", "cognition", "#0b0b0b"],
   // No Cognition/Devin mark ships on the simple-icons CDN, so this slug stays
   // empty and the dashboard draws its local glyph instead of a broken image.
@@ -222,9 +217,7 @@ export function statusColor(st: string): string {
   return st === "error" ? "#f87171" : st === "aborted" ? "#fbbf24" : "var(--accent)";
 }
 
-// Cost precedence: a recorded charge > 0 is authoritative and shown bare; an
-// exact 0 usually means a free provider, so it falls back to the modeled
-// figure with its "~" marker.
+// A recorded charge > 0 wins; an exact 0 means free, so fall back to modeled.
 export function costIsMeasured(r: { usd?: number }): boolean {
   return typeof r.usd === "number" && r.usd > 0;
 }
@@ -240,6 +233,16 @@ export function whenStamp(ts: number): string {
     d.toLocaleString("en-US", { month: "short", day: "numeric" }) +
     ", " +
     d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", second: "2-digit" })
+  );
+}
+
+// Snapshots span months, so the year has to be visible; whenStamp drops it.
+export function fmtSnapshot(ts: number): string {
+  const d = new Date(ts);
+  return (
+    d.toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric" }) +
+    " · " +
+    d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
   );
 }
 

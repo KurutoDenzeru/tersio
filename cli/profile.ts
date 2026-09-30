@@ -19,7 +19,11 @@ interface Profile {
   rtkDefault: boolean;
   ponytailDefault: string;
   currency: CurrencyCode;
+  backupSchedule: BackupSchedule;
 }
+
+export type BackupSchedule = 'manual' | 'daily' | 'weekly' | 'monthly';
+export const BACKUP_SCHEDULES: ReadonlySet<string> = new Set(['manual', 'daily', 'weekly', 'monthly']);
 
 function defaultProfile(): Profile {
   return {
@@ -28,6 +32,7 @@ function defaultProfile(): Profile {
     rtkDefault: false,
     ponytailDefault: 'off',
     currency: DEFAULT_CURRENCY,
+    backupSchedule: 'monthly',
   };
 }
 
@@ -37,6 +42,7 @@ interface StoredSettings {
   rtkDefault?: unknown;
   ponytailDefault?: unknown;
   currency?: unknown;
+  backupSchedule?: unknown;
 }
 
 // Seed once from OMP plugin settings so a pre-~/.tersio install keeps its values.
@@ -52,6 +58,9 @@ async function storedProfile(): Promise<Profile> {
   if (typeof stored.ponytailDefault === 'string' && PONYTAIL_DEFAULTS.has(stored.ponytailDefault)) base.ponytailDefault = stored.ponytailDefault;
   if (typeof stored.currency === 'string' && isCurrencyCode(stored.currency.trim().toUpperCase())) {
     base.currency = stored.currency.trim().toUpperCase() as CurrencyCode;
+  }
+  if (typeof stored.backupSchedule === 'string' && BACKUP_SCHEDULES.has(stored.backupSchedule)) {
+    base.backupSchedule = stored.backupSchedule as BackupSchedule;
   }
   return base;
 }
@@ -89,6 +98,7 @@ async function writePluginSettings(profile: Profile, options: WriteOptions): Pro
     rtkDefault: profile.rtkDefault,
     ponytailDefault: profile.ponytailDefault,
     currency: profile.currency,
+    backupSchedule: profile.backupSchedule,
   };
   if (options.dryRun) {
     if (verbose && !options.quiet) console.log(`  [dry-run] would write session defaults to ${file}`);

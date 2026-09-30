@@ -205,6 +205,9 @@ export async function readTextIfExists(p: string): Promise<string | null> {
 const migratedTersioFiles = new Set<string>();
 
 export function tersioHome(): string {
+  // Matches the other TERSIO_* overrides so a test never reads the real home.
+  const override = process.env.TERSIO_HOME;
+  if (override && override.trim() !== '') return override;
   return path.join(os.homedir(), '.tersio');
 }
 

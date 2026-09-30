@@ -1,7 +1,5 @@
-// extensions/shared/usage-store.ts — tersio-owned usage.db. Persists what
-// importSessionTokens derives live, so reports survive session-file rotation.
-// Incremental sync plus the reset watermark make it a cache, never a fork.
-// Missing sqlite3 → sync false / read null.
+// extensions/shared/usage-store.ts — tersio-owned usage.db. A cache of the
+// live parse, never a fork; missing sqlite3 → sync false / read null.
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -24,6 +22,7 @@ import {
 } from './usage-ledger.ts';
 import { tersioDataPath } from '../lib/utils.ts';
 import { MODEL_ALIASES } from './pricing.ts';
+import { tersioSettingsFile } from './plugin-settings.ts';
 import type { RunStatus, SessionTokens } from './usage-ledger.ts';
 
 export function usageDbPath(): string {
@@ -69,9 +68,7 @@ function query(db: string, sql: string): string[][] {
     .map((line) => line.split('\t'));
 }
 
-// Bump when a parse change adds a field the mirror cannot fill in for rows it
-// already stored. The file ledger is mtime+size, so an unchanged transcript is
-// never re-read and the new field would stay NULL forever without this.
+// Bump on a parse change: unchanged transcripts are never re-read.
 const PARSER_VERSION = '6';
 
 function ensureSchema(db: string): void {
@@ -108,9 +105,7 @@ function ensureSchema(db: string): void {
   } catch { /* fresh db, nothing to invalidate */ }
 }
 
-// The wipe above is the one destructive thing we do, and rows can come from a
-// source a later release stops walking — which is exactly how OpenCode history
-// was lost once. Keep the last few so a bad bump is recoverable.
+// The one destructive thing we do; keep the last few so a bad bump is recoverable.
 const BACKUP_KEEP = 3;
 
 export function backupUsageDir(): string {
@@ -144,13 +139,58 @@ function backupUsageDb(db: string): void {
   } catch { /* a missing backup must not block the sync */ }
 }
 
+const SCHEDULE_MS: Record<string, number> = { daily: 86_400_000, weekly: 604_800_000, monthly: 2_592_000_000 };
+
+/** Read the schedule straight from settings; this module must not import cli/. */
+export function readBackupSchedule(): string {
+  try {
+    const raw = JSON.parse(fs.readFileSync(tersioSettingsFile(), 'utf8')) as { backupSchedule?: unknown };
+    return typeof raw?.backupSchedule === 'string' ? raw.backupSchedule : 'monthly';
+  } catch {
+    return 'monthly';
+  }
+}
+
+/** Snapshot on the schedule, skipping when the newest one is still fresh. */
+export function maybeScheduledBackup(db: string): boolean {
+  const every = SCHEDULE_MS[readBackupSchedule()];
+  if (!every) return false;
+  try {
+    const newest = listUsageBackups()[0];
+    if (newest && Date.now() - newest.mtime < every) return false;
+    backupUsageDb(db);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// basename only: a crafted `../` must not escape the backup dir.
+function resolveBackupFile(file: string): string | null {
+  const dir = path.resolve(backupUsageDir());
+  const target = path.join(dir, path.basename(String(file || '')));
+  if (!target.startsWith(dir + path.sep)) return null;
+  return fs.existsSync(target) ? target : null;
+}
+
 /** Put a backup back in place. The next sync then re-parses over it. */
 export function restoreUsageBackup(file: string): boolean {
   try {
-    const src = path.resolve(file);
-    if (!src.startsWith(path.resolve(backupUsageDir()))) return false;
-    if (!fs.existsSync(src)) return false;
+    const src = resolveBackupFile(file);
+    if (!src) return false;
     fs.copyFileSync(src, usageDbPath());
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Delete one snapshot. Only ever touches a file inside the backup dir. */
+export function deleteUsageBackup(file: string): boolean {
+  try {
+    const target = resolveBackupFile(file);
+    if (!target) return false;
+    fs.rmSync(target, { force: true });
     return true;
   } catch {
     return false;
@@ -187,9 +227,7 @@ interface StoredRow {
 
 function parseFile(text: string, host?: string): StoredRow[] {
   const rows: StoredRow[] = [];
-  // OpenCode writes one JSON document per file, not JSONL, so the line loop
-  // below would see it as a single unrecognised row. Guarded: a multi-line
-  // transcript is not one document and must fall through, not abort the sync.
+  // Guarded: a JSONL transcript must fall through, not abort the sync.
   let oc: ReturnType<typeof classifyOpencodeMessage> = null;
   try { oc = classifyOpencodeMessage(JSON.parse(text) as OpencodeMessage); } catch { /* JSONL */ }
   if (oc) {
@@ -287,6 +325,7 @@ export function syncUsageDb(): boolean {
   try {
     db = usageDbPath();
     ensureSchema(db);
+    maybeScheduledBackup(db);
   } catch {
     return false;
   }

@@ -10,14 +10,15 @@ import { fileURLToPath } from 'node:url';
 import { clearUsageLedger, markReset, readUsage } from '../extensions/shared/usage-ledger.ts';
 import { pricesCachePath } from '../extensions/shared/pricing.ts';
 import { summarizeUsage } from './usage.ts';
-import { listUsageBackups, restoreUsageBackup } from '../extensions/shared/usage-store.ts';
+import { deleteUsageBackup, listUsageBackups, restoreUsageBackup } from '../extensions/shared/usage-store.ts';
 import type { UsageReport } from './usage.ts';
 import { isCurrencyCode } from './currency.ts';
 import type { CurrencyCode } from './currency.ts';
 import {
   OMP_AGENT_DIR, OMP_PLUGINS_DIR, PACKAGE_VERSION,
 } from './common.ts';
-import { storedProfile, writePluginSettings } from './profile.ts';
+import { BACKUP_SCHEDULES, storedProfile, writePluginSettings } from './profile.ts';
+import type { BackupSchedule } from './profile.ts';
 import { normalizeComboLevel } from '../extensions/shared/session-state.ts';
 import { CAVEMAN_DEFAULTS, PONYTAIL_DEFAULTS } from './common.ts';
 import type { ComboLevel } from '../extensions/shared/types.ts';
@@ -298,10 +299,7 @@ function setDiagSchedule(schedule: DiagSchedule): DoctorReport {
   return base;
 }
 
-// The session-start combo level, so a new or resumed session opens in the mode
-// the user picked rather than off.
-// One field per call; each validated against the same sets the CLI uses, so the
-// dashboard cannot write a level `tersio settings` would reject.
+// One field per call, validated against the same sets the CLI uses.
 async function saveDefaults(body: Record<string, unknown>): Promise<
   { ok: true; profile: Record<string, unknown> } | { ok: false; error: string }
 > {
@@ -321,6 +319,11 @@ async function saveDefaults(body: Record<string, unknown>): Promise<
     if (!PONYTAIL_DEFAULTS.has(v)) return { ok: false, error: 'unknown ponytail level' };
     profile.ponytailDefault = v;
   }
+  if (body.backupSchedule !== undefined) {
+    const v = String(body.backupSchedule);
+    if (!BACKUP_SCHEDULES.has(v)) return { ok: false, error: 'unknown backup schedule' };
+    profile.backupSchedule = v as BackupSchedule;
+  }
   if (body.rtkDefault !== undefined) {
     if (typeof body.rtkDefault !== 'boolean') return { ok: false, error: 'rtk default must be true or false' };
     profile.rtkDefault = body.rtkDefault;
@@ -333,6 +336,7 @@ async function saveDefaults(body: Record<string, unknown>): Promise<
       cavemanDefault: profile.cavemanDefault,
       rtkDefault: profile.rtkDefault,
       ponytailDefault: profile.ponytailDefault,
+      backupSchedule: profile.backupSchedule,
     },
   };
 }
@@ -356,9 +360,9 @@ async function saveDashboardCurrency(raw: unknown): Promise<CurrencyCode | null>
 // The store is a SQLite file, which nothing outside this box can read. Flatten
 // it into a format a spreadsheet, a script, or another tool can take instead.
 type ExportFormat = 'json' | 'jsonl' | 'csv';
-const EXPORT_FORMATS: ExportFormat[] = ['json', 'jsonl', 'csv'];
+export const EXPORT_FORMATS: ExportFormat[] = ['json', 'jsonl', 'csv'];
 
-function exportRows(report: UsageReport): Record<string, string | number | undefined>[] {
+export function exportRows(report: UsageReport): Record<string, string | number | undefined>[] {
   return report.recent.map((r) => ({
     timestamp: new Date(r.t).toISOString(),
     local: new Date(r.t).toLocaleString(),
@@ -374,12 +378,12 @@ function exportRows(report: UsageReport): Record<string, string | number | undef
   }));
 }
 
-function csvCell(v: unknown): string {
+export function csvCell(v: unknown): string {
   const s = v === undefined || v === null ? '' : String(v);
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
-function exportBody(format: ExportFormat, report: UsageReport): { body: string; type: string } {
+export function exportBody(format: ExportFormat, report: UsageReport): { body: string; type: string } {
   const stamp = new Date().toISOString().slice(0, 10);
   if (format === 'json') {
     return { body: JSON.stringify({ exportedAt: new Date().toISOString(), version: report.version, source: report.source, report }, null, 2), type: 'application/json' };
@@ -471,6 +475,14 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
       res.end(JSON.stringify({ backups: rows }));
       return;
     }
+    if (req.url === '/backups/delete' && req.method === 'POST') {
+      let file = '';
+      try { file = String((JSON.parse(await readBody(req)) as { file?: unknown }).file ?? ''); } catch { file = ''; }
+      const ok = deleteUsageBackup(file);
+      res.writeHead(ok ? 200 : 400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(ok ? { ok: true, file } : { ok: false, error: 'unknown backup' }));
+      return;
+    }
     if (req.url === '/backups/restore' && req.method === 'POST') {
       let file = '';
       try { file = String((JSON.parse(await readBody(req)) as { file?: unknown }).file ?? ''); } catch { file = ''; }
@@ -487,6 +499,7 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
           cavemanDefault: profile.cavemanDefault,
           rtkDefault: profile.rtkDefault,
           ponytailDefault: profile.ponytailDefault,
+          backupSchedule: profile.backupSchedule,
         }));
       });
       return;
