@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import {
   BUN_BIN_DIR, COMBO_PRESET_MODES, IS_WINDOWS, OMP_AGENT_DIR, OMP_PLUGINS_DIR, OMP_BIN,
   PACKAGE_NAME, PACKAGE_VERSION, RTK_BINARY_NAME, args,
-  applyUpdate, cavemanDefaultFlag, comboDefaultFlag, command, dryRun, install,
+  applyUpdate, cavemanDefaultFlag, comboDefaultFlag, command, dryRun,
   ponytailDefaultFlag, profileFlagsGiven, rtkDefaultFlag, verbose, yes,
   dashboardExport, dashboardPort,
   debug, ensurePonytailConfigValue,
@@ -15,7 +15,7 @@ import {
   InstallOptions, WriteOptions,
 } from './common.ts';
 import {
-  askInteractiveChoice, askInteractiveConfirm, closeRL, execNetwork, tty, withInteractiveSpinner, sayTagged } from './interactive.ts';
+  askInteractiveChoice, askInteractiveConfirm, closeRL, execNetwork, tty, withInteractiveSpinner, withInteractiveTask, sayTagged } from './interactive.ts';
 import { printWelcome } from './banner.ts';
 import { checkForUpdate, runLatestUpdate } from './update.ts';
 import { runUninstall } from './uninstall.ts';
@@ -29,7 +29,8 @@ import {
   httpsDownload, parseChecksum, piAgentDir, readTextIfExists, resolveRtkBinary, rtkPlatformSpec, sha256File,
 } from '../extensions/lib/utils.ts';
 import { storedProfile, writePluginSettings } from './profile.ts';
-import { EXT_DIR, filesUnder, sourcePath } from './manifest.ts';
+import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
+import { filesUnder, sourcePath } from './manifest.ts';
 import type { Profile } from './profile.ts';
 import { detectHosts, hostHint, hostLabel, parseHostArg, piTersioSource } from './hosts.ts';
 import type { HostEntry, HostId } from './hosts.ts';
@@ -267,50 +268,58 @@ async function stepRtk(binDir: string, options: InstallOptions, target: 'omp' | 
     return;
   }
   try {
-    const release = await withInteractiveSpinner('Finding latest RTK release', () => fetchJson<RtkRelease>(RTK_RELEASE_API));
     const triple = resolveRtkTriple();
     if (!triple) return;
-    const asset = findRtkAsset(release, triple);
-    if (!asset) return;
-    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'omp-rtk-'));
-    try {
-      const archivePath = path.join(tmpDir, asset.name);
-      const checksumsText = await withInteractiveSpinner('Downloading RTK binary', async (update) => {
-        const [downloadedChecksums] = await Promise.all([
+    // One task with streamed sub-steps: release lookup, download, checksum,
+    // extract, install. Non-TTY keeps the plain lines each step already prints.
+    await withInteractiveTask('Installing RTK', async (update) => {
+      const release = await fetchJson<RtkRelease>(RTK_RELEASE_API);
+      const asset = findRtkAsset(release, triple);
+      if (!asset) {
+        sayTagged(`  [fail] No rtk-${triple}.<zip|tar.gz> in release ${release.tag_name}`);
+        return;
+      }
+      const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'omp-rtk-'));
+      try {
+        const archivePath = path.join(tmpDir, asset.name);
+        update(`Downloading ${asset.name}`);
+        const [checksumsText] = await Promise.all([
           downloadRtkChecksums(release),
           httpsDownload(asset.browser_download_url, archivePath),
         ]);
-        update('Verifying RTK checksum');
-        return downloadedChecksums;
-      });
-      if (!await verifyRtkArchive(archivePath, asset.name, checksumsText, options)) return;
-
-      const extractDir = path.join(tmpDir, 'extracted');
-      if (!await extractRtkArchive(archivePath, extractDir)) return;
-
-      const found = await findFile(extractDir, RTK_BINARY_NAME);
-      if (!found) {
-        sayTagged(`  [fail] Could not find ${RTK_BINARY_NAME} in extracted archive`);
-        return;
+        update('Verifying checksum');
+        if (!await verifyRtkArchive(archivePath, asset.name, checksumsText, options)) {
+          sayTagged('  [hint] RTK install skipped for this run');
+          return;
+        }
+        update('Extracting');
+        const extractDir = path.join(tmpDir, 'extracted');
+        if (!await extractRtkArchive(archivePath, extractDir)) {
+          sayTagged(`  [fail] Could not extract ${asset.name}`);
+          return;
+        }
+        update('Installing binary');
+        const found = await findFile(extractDir, RTK_BINARY_NAME);
+        if (!found) {
+          sayTagged(`  [fail] Could not find ${RTK_BINARY_NAME} in extracted archive`);
+          return;
+        }
+        await fs.mkdir(path.dirname(binDest), { recursive: true });
+        await fs.copyFile(binDest, `${binDest}.bak`).catch(() => { });
+        await fs.copyFile(found, binDest);
+        if (!IS_WINDOWS) {
+          await fs.chmod(binDest, 0o755);
+          debug(`chmod 755 ${binDest}`);
+        }
+        try {
+          await execP(binDest, ['--version'], { timeout: 30000, shell: false });
+        } catch {
+          sayTagged(`  [hint] Verify manually: ${binDest} --version`);
+        }
+      } finally {
+        await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => { });
       }
-
-      await fs.mkdir(path.dirname(binDest), { recursive: true });
-      await fs.copyFile(binDest, `${binDest}.bak`).catch(() => { });
-      await fs.copyFile(found, binDest);
-
-      if (!IS_WINDOWS) {
-        await fs.chmod(binDest, 0o755);
-        debug(`chmod 755 ${binDest}`);
-      }
-
-      try {
-        await execP(binDest, ['--version'], { timeout: 30000, shell: false });
-      } catch {
-        sayTagged(`  [hint] Verify manually: ${binDest} --version`);
-      }
-    } finally {
-      await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => { });
-    }
+    });
   } catch (e) {
     sayTagged(`  [fail] RTK: ${(e as Error).message}`);
     console.log('  [hint] Manual: https://github.com/rtk-ai/rtk/releases');
@@ -529,13 +538,24 @@ async function runCommandMenu(): Promise<void> {
 // pipes, --yes, and --dry-run keep the pre-multi-host default of Oh My Pi.
 let targetHost: HostId = 'omp';
 
+// Hosts the menu advertises but cannot install yet. Listed disabled so the
+// roadmap is visible without offering a target that does nothing.
+const SOON_HOSTS = [
+  { value: 'claude', label: 'Claude Code', hint: 'Coming soon' },
+  { value: 'opencode', label: 'OpenCode', hint: 'Coming soon' },
+  { value: 'codex', label: 'Codex', hint: 'Coming soon' },
+];
+
 async function chooseHost(title: string, only?: HostId[]): Promise<HostId> {
   const hosts = detectHosts().filter((host) => !only || only.includes(host.id));
-  const choice = await askInteractiveChoice(title, hosts.map((host) => ({
+  const options: Array<{ value: string; label: string; hint?: string; disabled?: boolean }> = hosts.map((host) => ({
     value: host.id,
     label: hostLabel(host),
     hint: hostHint(host),
-  })), targetHost);
+  }));
+  // A scoped menu (uninstall --host) lists only real hosts.
+  if (!only) options.push(...SOON_HOSTS.map((h) => ({ ...h, disabled: true })));
+  const choice = await askInteractiveChoice(title, options, targetHost);
   if (choice.status !== 'selected') {
     closeRL();
     process.exit(130);
@@ -549,7 +569,7 @@ function hostEntry(id: HostId): HostEntry {
 
 // pi auto-discovers `<agent-dir>/extensions/**/index.ts`, so this route writes
 // the same tree as OMP's and registers nothing.
-async function stepPiLayer(profile: Profile, options: InstallOptions): Promise<void> {
+async function stepPiLayer(options: InstallOptions): Promise<void> {
   const agentDir = piAgentDir();
   const extDir = path.join(agentDir, 'extensions');
   const declared = piTersioSource(agentDir);
@@ -618,7 +638,6 @@ async function runInstall(): Promise<void> {
   else if (tty() && !yes && !dryRun && !applyUpdate && command !== 'uninstall') {
     targetHost = await chooseHost('Install Tersio into which agent?');
   }
-  const host = hostEntry(targetHost);
 
   // apply-update stays silent: the parent printed the plan.
   const quiet = applyUpdate;
@@ -663,6 +682,24 @@ async function runInstall(): Promise<void> {
   // apply-update refreshes every add-on like a reinstall.
   const installOptions: InstallOptions = { dryRun, verbose, yes, reinstall: applyUpdate, quiet };
 
+  // Everything above only read the disk. This is the point of no return: the
+  // tree is written, packages installed, and a config rewritten. --yes,
+  // --dry-run, --apply-update, and pipes stay unattended.
+  if (!yes && !dryRun && !applyUpdate && tty()) {
+    const target = hostEntry(targetHost);
+    const where = targetHost === 'pi' ? path.join(piAgentDir(), 'extensions') : path.join(OMP_AGENT_DIR, 'extensions');
+    console.log(`\nWill install into ${target.label}:`);
+    console.log(`  ${where}`);
+    console.log('  caveman · rtk · ponytail session modes');
+    console.log(`  session defaults → ${tersioSettingsFile()}`);
+    const go = await askInteractiveConfirm(`Install Tersio into ${target.label}?`);
+    if (go.status !== 'confirmed' || !go.value) {
+      closeRL();
+      console.log('\nAborted. Nothing was changed.');
+      return;
+    }
+  }
+
   try {
     const v = (await execP(OMP_BIN, ['--version'])).stdout.trim();
     if (verbose && !quiet) console.log(`  omp ${v}`);
@@ -681,7 +718,7 @@ async function runInstall(): Promise<void> {
   };
 
   if (targetHost === 'pi') {
-    await capture('pi tree', () => stepPiLayer(profile, installOptions));
+    await capture('pi tree', () => stepPiLayer(installOptions));
     await capture('rtk', () => stepRtk(BUN_BIN_DIR, installOptions, 'pi'));
     await capture('settings', () => writePluginSettings(profile, installOptions));
     if (failures.length > 0) console.log(`\nDone with ${failures.length} failure(s) — see [fail] lines above.`);
