@@ -1,3 +1,10 @@
+## Unreleased
+ - Fixes subagent inheritance for Caveman and RTK: the OMP subagent marker now matches the host's real prompt, so a worker no longer runs with both modes silently off. Doctor scans the omp binary and warns when the marker drifts, and `tersio settings markers` overrides it.
+ - Lets `rtk_run` fall back to shared state, so a subagent spawned after a mode switch can still use the tool.
+ - Lets a Ponytail level switch take effect; the dedupe guard matched a level-agnostic phrase, so `/combo` changes were ignored for the rest of the session.
+ - Execs the resolved rtk path in `rtk_run`, so it starts on a host whose PATH lacks `~/.bun/bin`.
+ - Adds a `markers` setting and a repeatable `--subagent-marker` flag, and an `RTK exec` doctor row for hosts that cannot run the tool.
+
 ## v2.24.1
  - Restores OpenCode/Codex usage history lost to the mirror wipe, with scheduled mirror backups plus restore/delete in the Data pane.
  - Adds dashboard accents, a CO2 detail dialog, real vendor brandmarks, session-start defaults, and share/export fixes.

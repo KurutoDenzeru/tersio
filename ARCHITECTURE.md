@@ -63,6 +63,9 @@ sequenceDiagram
 
 - **Bridge, not reload:** `session-state.ts` uses a `Symbol.for` global bridge; a toggle publishes and siblings mirror live. Custom session entries are the persistence layer — `reconcileSharedComboEntries` rebuilds state on resume/branch.
 - **Subagents inherit:** `isOmpSubagentPrompt` makes subagent turns read shared state instead of local flags.
+- **Subagent detection is text-based:** `OMP_SUBAGENT_MARKER` is a verbatim sentence from the host's subagent prompt, so a reworded host drops it silently. `tersio doctor` scans the omp binary for it and warns; `tersio settings markers` overrides it. pi has no built-in subagent prompt, so only omp is detectable by text.
+- **Injection appends only:** a mode switch leaves the previous level's text in an accumulating prompt. Removing it needs host support to rewrite the system prompt, which an extension cannot reach.
+- **Bridge state is process-global:** the `Symbol.for` bridge and `RTK_DISABLED` are unscoped, so one process serving two sessions would share them. Correct for the single-user hosts this targets.
 - **Prompt persistence:** Caveman, RTK, and Ponytail extensions inject active modes each turn. The former separate reinforcement extension is retired because it duplicated the same directives.
 - **Ledger is best-effort:** append-only JSONL; `tersio reset` writes a watermark instead of deleting host-owned files.
 - **Always on:** `omp.extensions` in `package.json` loads every mode extension. Only `updater` stays an optional feature.
