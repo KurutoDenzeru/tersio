@@ -143,9 +143,8 @@ export default function cavemanSessionExtension(pi: ExtensionApi): void {
     const def = INSTRUCTIONS[mode];
     if (!def) return;
     const instruction = typeof def === 'function' ? def() : def;
-    // Skip if the prompt already carries it; a host that re-presents the
-    // mutated system prompt would otherwise stack this every turn. Comparing
-    // the whole instruction keeps the upstream rule.md untouched.
+    // Skip when already present, so a host that re-presents the mutated prompt
+    // cannot stack it; matching the whole instruction keeps upstream rule.md intact.
     if (systemPromptIncludes(event.systemPrompt, instruction)) return;
     return injectPromptText(pi, event, instruction);
   });

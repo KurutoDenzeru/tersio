@@ -150,8 +150,7 @@ export default function rtkSessionExtension(pi: ExtensionApi): void {
   pi.on<SystemPromptEvent>('before_agent_start', async (event) => {
     const active = isOmpSubagentPrompt(event.systemPrompt) ? getSharedComboState().rtk === 'on' : enabled;
     if (!active) return;
-    // Skip if the prompt already carries it; a host that re-presents the
-    // mutated system prompt would otherwise stack this every turn.
+    // Skip when already present, so a host that re-presents the prompt cannot stack it.
     if (systemPromptIncludes(event.systemPrompt, RTK_PROMPT)) return;
     return injectPromptText(pi, event, RTK_PROMPT);
   });

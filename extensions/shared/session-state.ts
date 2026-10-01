@@ -3,12 +3,7 @@ import type { ComboLevel, ComboState, ExtensionCtx, SessionEntry, UiApi } from '
 
 const BRIDGE_KEY = Symbol.for('tersio/combo-session-state');
 
-/**
- * The default subagent marker. This is a verbatim sentence from OMP's own
- * subagent prompt, used only to tell a subagent turn from a main one, so it
- * can drift if OMP rewords it. Nothing here depends on the wording being
- * right, and `subagentMarkers()` lets a fork correct it in settings.json.
- */
+// A verbatim sentence from OMP's subagent prompt, so it can drift; settings.json overrides it.
 export const OMP_SUBAGENT_MARKER = 'You are operating on a piece of work assigned to you by the main agent.';
 
 export const COMBO_LEVELS: Record<string, Readonly<ComboState>> = Object.freeze({
@@ -96,29 +91,12 @@ export function systemPromptIncludes(systemPrompt: string | string[], marker: st
   return asPromptArray(systemPrompt).some((prompt) => typeof prompt === 'string' && prompt.includes(marker));
 }
 
-// Resolved once per process: this is read on every agent start, and hitting
-// the settings file per turn would be wasteful for a value that cannot change
-// mid-session anyway. Clear it with resetSubagentMarkers() in tests.
-let cachedMarkers: string[] | null = null;
-
-/**
- * The strings that identify a subagent turn. Override with a `subagentMarkers`
- * array of strings in settings.json when the default no longer matches.
- */
-export function subagentMarkers(): string[] {
-  if (cachedMarkers) return cachedMarkers;
-  const raw = readPluginSettings().subagentMarkers;
-  const list = Array.isArray(raw) ? raw.filter((m): m is string => typeof m === 'string' && m.trim() !== '') : [];
-  cachedMarkers = list.length ? list : [OMP_SUBAGENT_MARKER];
-  return cachedMarkers;
-}
-
-export function resetSubagentMarkers(): void {
-  cachedMarkers = null;
-}
-
 export function isOmpSubagentPrompt(systemPrompt: string | string[]): boolean {
-  return subagentMarkers().some((marker) => systemPromptIncludes(systemPrompt, marker));
+  const raw = readPluginSettings().subagentMarkers;
+  const configured = Array.isArray(raw) ? raw.filter((m): m is string => typeof m === 'string' && m.trim() !== '') : [];
+  // A malformed setting falls back rather than matching every turn.
+  const markers = configured.length ? configured : [OMP_SUBAGENT_MARKER];
+  return markers.some((marker) => systemPromptIncludes(systemPrompt, marker));
 }
 
 // `ultra` is the level caveman and ponytail both expose, so typing it is the
