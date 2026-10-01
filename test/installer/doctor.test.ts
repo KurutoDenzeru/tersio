@@ -275,3 +275,48 @@ test("doctor --fix leaves an existing fetched rule.md alone and writes no .bak",
     rmSync(home, { recursive: true, force: true });
   }
 }, 30000);
+
+// Without a separate row, an unusable rtk_run reads as a healthy install.
+test("doctor warns that rtk_run needs an exec-capable host", () => {
+  const home = missingHome();
+  try {
+    const binDir = path.join(home, "fake-bin");
+    mkdirSync(binDir, { recursive: true });
+    const rtkBin = path.join(binDir, "rtk");
+    writeFileSync(rtkBin, "#!/bin/sh\necho rtk 0.49.0\n", "utf8");
+    chmodSync(rtkBin, 0o755);
+
+    const result = spawnSync(process.execPath, [installer, "doctor"], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 15000,
+      env: cliEnv(home, { PATH: binDir }),
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    // The binary is present and runnable, yet no host can exec it.
+    expect(result.stdout).toMatch(/✅ RTK binary: ok rtk 0\.49\.0/);
+    expect(result.stdout).toMatch(/⚠️ RTK exec: warn no installed host exposes an exec API/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("doctor does not count the exec row when rtk is absent", () => {
+  const home = missingHome();
+  try {
+    const result = spawnSync(process.execPath, [installer, "doctor"], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 15000,
+      env: cliEnv(home, { PATH: path.join(home, "empty-bin") }),
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    // The exec question is meaningless without a binary.
+    expect(result.stdout).toMatch(/—  RTK exec: not installed/);
+    expect(result.stdout).toMatch(/Summary: 4 checks/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});

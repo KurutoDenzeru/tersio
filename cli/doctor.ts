@@ -28,7 +28,6 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
 
   // Ponytail
   const ponytailPkg = path.join(pluginsDir, 'node_modules', '@dietrichgebert', 'ponytail', 'package.json');
-  const ponytailExt = path.join(pluginsDir, 'node_modules', '@dietrichgebert', 'ponytail', 'pi-extension', 'index.js');
   const tersioPluginDir = path.join(pluginsDir, 'node_modules', '@krtclcdy', 'tersio');
   const cavemanIndex = path.join(tersioPluginDir, 'extensions', 'caveman-session', 'index.ts');
   const cavemanRule = path.join(tersioPluginDir, 'extensions', 'caveman-session', 'rule.md');
@@ -42,7 +41,6 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
     ompPkgText: readTextIfExists(path.join(ompPackageDir(), 'package.json')),
     configText: readTextIfExists(path.join(OMP_AGENT_DIR, 'config.yml')),
     ponytailPkgText: readTextIfExists(ponytailPkg),
-    ponytailExtText: readTextIfExists(ponytailExt),
     rtkBinText: rtkBin ? readTextIfExists(rtkBin) : Promise.resolve(null),
     cavemanIndexText: readTextIfExists(cavemanIndex),
     cavemanRuleText: readTextIfExists(cavemanRule),
@@ -60,7 +58,7 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
       return err.stdout?.trim() || err.stderr?.trim() || null;
     },
   ) : Promise.resolve(null);
-  const [[ompPkgText, configText], [cavemanIndexText, rtkIndexText, updaterIndexText, ponytailPkgText, ponytailExtText], [cavemanRuleText, ruleMtime, rtkBinText, rtkMtime, rtkVersion, ponytailMtime, pricesMtime]] = await runInteractivePhase('Checking installation', () => Promise.all([
+  const [[ompPkgText, configText], [cavemanIndexText, rtkIndexText, updaterIndexText, ponytailPkgText], [cavemanRuleText, ruleMtime, rtkBinText, rtkMtime, rtkVersion, ponytailMtime, pricesMtime]] = await runInteractivePhase('Checking installation', () => Promise.all([
     Promise.all([
       probes.ompPkgText,
       probes.configText,
@@ -70,7 +68,6 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
       probes.rtkIndexText,
       probes.updaterIndexText,
       probes.ponytailPkgText,
-      probes.ponytailExtText,
     ]),
     Promise.all([
       probes.cavemanRuleText,
@@ -142,6 +139,9 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   check('Caveman rule', cavemanRuleText !== null, ruleAge);
   const rtkAge = rtkMtime ? `(updated ${relTime(Date.now() - rtkMtime.mtimeMs)} · ${absDate(rtkMtime.mtimeMs)})` : '';
   check('RTK binary', rtkBin !== null, rtkBinText === null ? 'not found in PATH' : [rtkVersion, rtkAge].filter(Boolean).join(' '));
+  // rtk_run needs a host exec API, which doctor cannot assume.
+  if (rtkBin === null) unused('RTK exec', '· install Tersio to place rtk in ~/.bun/bin');
+  else if (!hosts.some((host) => host.installed && host.id === 'omp')) warnLine('RTK exec', 'no installed host exposes an exec API — rtk_run is unavailable; call rtk from bash instead');
   if (rtkBinText !== null && !rtkVersion) warnLine('RTK version', 'unavailable — binary may not be executable');
   const ponytailAge = ponytailMtime ? `(updated ${relTime(Date.now() - ponytailMtime.mtimeMs)} · ${absDate(ponytailMtime.mtimeMs)})` : '';
   const ponytailVer = parseJsonObject<{ version?: string }>(ponytailPkgText)?.version ?? '';
