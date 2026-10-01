@@ -284,3 +284,56 @@ test("uninstall --host pi --yes removes without prompting", () => {
     rmSync(home, { recursive: true, force: true });
   }
 });
+
+// rtk writes a loose extensions/rtk.ts that is not one of the tree dirs. OMP
+// removed it; pi had no handling at all, so --remove-rtk was a silent no-op and
+// the preview never mentioned the file.
+function seedPiRtk(home: string): string {
+  const wiring = path.join(home, ".pi", "agent", "extensions", "rtk.ts");
+  writeFileSync(wiring, "// rtk wiring", "utf8");
+  return wiring;
+}
+
+test("uninstall --host pi --remove-rtk removes the rtk wiring file", () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-uninstall-pi-"));
+  try {
+    seedPi(home);
+    const wiring = seedPiRtk(home);
+    const { result } = runPi(home, "", "uninstall", "--host", "pi", "--yes", "--remove-rtk");
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout, "preview lists the wiring file").toMatch(/rtk\.ts/);
+    expect(existsSync(wiring), "rtk wiring removed").toBeFalsy();
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("uninstall --host pi keeps rtk wiring without --remove-rtk", () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-uninstall-pi-"));
+  try {
+    seedPi(home);
+    const wiring = seedPiRtk(home);
+    const { result } = runPi(home, "", "uninstall", "--host", "pi", "--yes");
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(existsSync(wiring), "rtk is the user's, so it stays").toBeTruthy();
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("uninstall --host pi --dry-run --remove-rtk leaves the wiring file in place", () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-uninstall-pi-"));
+  try {
+    seedPi(home);
+    const wiring = seedPiRtk(home);
+    const { result } = runPi(home, "", "uninstall", "--host", "pi", "--dry-run", "--remove-rtk");
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/would remove/);
+    expect(existsSync(wiring), "dry run removes nothing").toBeTruthy();
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
