@@ -208,8 +208,8 @@ test("uninstall dry-run changes no files", () => {
 
 // Neither `--host pi` nor auto-selecting the only installed host reached a
 // prompt, so pi files were removed with no confirmation and nothing to review.
-// Taken from the install manifest: a hand-written copy drifted when a module was
-// added, and the drift made a complete install look absent, so uninstall skipped.
+// From the install manifest: a hand-written copy drifted, and the drift made a
+// complete install look absent, so uninstall skipped.
 const { TREE_FILES: PI_TREE } = await import(new URL("file:///" + path.join(root, "cli/manifest.ts").replace(/\\/g, "/")).href);
 
 function seedPi(home: string): void {

@@ -124,6 +124,7 @@
     "build:dashboard": "bun install --cwd dashboard/app --frozen-lockfile && bun run --cwd dashboard/app build",
     "prepublishOnly": "bun run build",
     "check": "tsc --noEmit",
+    "verify": "bun install --frozen-lockfile && bun run build && bun run test",
     "doctor": "node tersio.js --doctor",
     "dry-run": "node tersio.js --dry-run --scope user --yes",
     "lint": "oxlint cli extensions test tersio.ts",

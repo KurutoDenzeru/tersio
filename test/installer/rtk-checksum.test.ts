@@ -7,8 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-// `cli/common.ts` parses process.argv at import time; loading it through a
-// file URL keeps the runner's own args from reaching the flag parser.
+// A file URL keeps the runner's own argv away from cli/common.ts's flag parser.
 const { verifyRtkArchive } = await import(new URL("file:///" + path.join(root, "cli/install.ts").replace(/\\/g, "/")).href);
 
 const ASSET = "rtk-x86_64-apple-darwin.tar.gz";

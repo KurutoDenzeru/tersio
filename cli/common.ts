@@ -92,8 +92,7 @@ const applyUpdate = args.includes('--apply-update');
 const dryRun = args.includes('--dry-run');
 const yes = args.includes('--yes') || args.includes('-y') || install || update || applyUpdate;
 const verbose = args.includes('--verbose');
-// Accepts an unverified binary when the upstream checksum is unreachable; off by
-// default, since that binary runs with the user's privileges.
+// Off by default: an unverified RTK binary runs with the user's privileges.
 const allowUnverified = args.includes('--allow-unverified');
 const doctor = command === 'doctor' || args.includes('--doctor');
 const fix = args.includes('--fix') || args.some((a) => a.startsWith('--fix='));

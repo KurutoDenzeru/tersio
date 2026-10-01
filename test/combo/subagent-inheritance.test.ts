@@ -102,11 +102,7 @@ function instruction(result: { systemPrompt?: string[] } | undefined) {
   return result?.systemPrompt?.at(-1) || "";
 }
 
-/**
- * The most recent status line the shared module announced through
- * `ui.notify`, or "" when none arrived. `ui.notify` also carries command
- * confirmations and warnings, so only the status lines count.
- */
+// The last status line, filtered out from the other notify traffic.
 function status(notifications: string[]): string {
   return notifications.filter((n) => n.startsWith("🧩 combo")).at(-1) || "";
 }
