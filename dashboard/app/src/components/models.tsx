@@ -361,60 +361,59 @@ export function Models({ data, money }: { data: UsageReport | null; money: (v: n
 
   return (
     <>
-      <Card className="mt-8 border-line bg-panel dark:[color-scheme:dark]" aria-label="Top models">
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <Icon name="cpu" className="size-4" />
-            <CardTitle className="font-display text-xl tracking-tight">Top models</CardTitle>
-            <span className="mono ml-auto text-xs text-dim">usage across sessions</span>
+      <section className="mt-8" aria-label="Top models">
+        <div className="mb-3 flex items-center gap-2 px-1">
+          <Icon name="list-ordered" className="size-4" />
+          <h2 className="font-display text-xl tracking-tight">Top models</h2>
+          <span className="mono ml-auto text-xs text-dim">usage across sessions</span>
+        </div>
+        {tops.length === 0 && (
+          <div className="flex flex-col items-center gap-[2px] rounded-xl border border-dashed border-line px-4 py-8 text-center">
+            <EmptyState icon="boxes" title="No models yet" desc="Model token totals will appear here once sessions report tokens." />
           </div>
-        </CardHeader>
-        <CardContent>
+        )}
+        {tops.length > 0 && (
           <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-          {tops.length === 0 && (
-            <div className="flex flex-col items-center gap-[2px] rounded-xl border border-dashed border-line px-4 py-8 text-center md:col-span-3">
-              <EmptyState icon="boxes" title="No models yet" desc="Model token totals will appear here once sessions report tokens." />
-            </div>
-          )}
-          {tops.slice(0, 3).map((m, i) => {
-            const v = vendorOf(m);
-            return (
-              <HoverTip key={m} content={data ? <ModelTip m={m} data={data} money={money} /> : "–"}>
-                <Card
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => setOpen(m)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      setOpen(m);
-                    }
-                  }}
-                  className="relative cursor-pointer gap-0 overflow-hidden rounded-xl border-line bg-panel p-4 transition-[background] duration-[250ms] hover:shadow-tersio"
-                >
-                  <BrandSilhouette model={m} />
-                  <p className="pointer-events-none relative z-10 mb-2 text-xs leading-none text-dim mono">
-                    0{i + 1}
-                  </p>
-                  <div className="relative z-10 flex items-center gap-3">
-                    <Brandmark model={m} />
-                    <div className="min-w-0 flex-1">
-                       <p className="mono text-sm font-bold truncate">
-                        {displayModel(m)}
-                      </p>
-                      <p className="mono text-xs truncate text-dim">
-                        {v.name}
-                      </p>
+            {tops.slice(0, 3).map((m, i) => {
+              const v = vendorOf(m);
+              return (
+                <HoverTip key={m} content={data ? <ModelTip m={m} data={data} money={money} /> : "–"}>
+                  <Card
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setOpen(m)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setOpen(m);
+                      }
+                    }}
+                    size="sm"
+                    className="relative cursor-pointer gap-0 overflow-hidden bg-panel p-4 transition-[background] duration-[250ms] hover:bg-[var(--accent-soft)] dark:[color-scheme:dark]"
+                  >
+                    <BrandSilhouette model={m} />
+                    <p className="pointer-events-none relative z-10 mb-2 text-xs leading-none text-dim mono">
+                      0{i + 1}
+                    </p>
+                    <div className="relative z-10 flex items-center gap-3">
+                      <Brandmark model={m} />
+                      <div className="min-w-0 flex-1">
+                        <p className="mono text-sm font-bold truncate">
+                          {displayModel(m)}
+                        </p>
+                        <p className="mono text-xs truncate text-dim">
+                          {v.name}
+                        </p>
+                      </div>
+                      <p className="mono font-bold text-lg shrink-0">{fmtShort(modelTotal(byModel, m))}</p>
                     </div>
-                    <p className="mono font-bold text-lg shrink-0">{fmtShort(modelTotal(byModel, m))}</p>
-                  </div>
-                </Card>
-              </HoverTip>
-            );
-          })}
+                  </Card>
+                </HoverTip>
+              );
+            })}
           </div>
-          </CardContent>
-      </Card>
+        )}
+      </section>
 
       <Card
         data-reveal
