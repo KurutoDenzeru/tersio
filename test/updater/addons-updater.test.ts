@@ -47,7 +47,10 @@ const createFakePi = (execMock: ExecMock): FakePi & { getHandler(): CommandHandl
   };
 };
 
-const createFakeCtx = (): FakeCtx => ({ cwd: PLUGINS_DIR, ui: { notify: () => {} } });
+const createFakeCtx = (): FakeCtx & { shown: string[] } => {
+  const shown: string[] = [];
+  return { cwd: PLUGINS_DIR, ui: { notify: (msg: string) => { shown.push(String(msg)); } }, shown };
+};
 
 test("parseChecksum returns lowercase 64-char hash for standard line with optional * and nested filename", () => {
   const checksums = `
@@ -100,9 +103,12 @@ test("/ai-addons update ponytail reports the bundled copy without touching npm",
 
   const result = await handler("update ponytail", fakeCtx);
 
+  // A resolved value is a prompt on some hosts, so it must stay undefined.
+  expect(result).toBeUndefined();
   expect(execCalls.length, "bundled ponytail must not shell out to npm").toBe(0);
-  expect(String(result)).toMatch(/bundled with tersio/i);
-  expect(String(result)).toMatch(/tersio update/);
+  const shown = fakeCtx.shown.join("\n");
+  expect(shown).toMatch(/bundled with tersio/i);
+  expect(shown).toMatch(/tersio update/);
 });
 test("/ai-addons update ponytail without host exec still reports the bundled copy", async () => {
   const fakePi = createFakePi(async () => ({ stdout: "", stderr: "", code: 0 }));
@@ -114,5 +120,6 @@ test("/ai-addons update ponytail without host exec still reports the bundled cop
   if (!handler) throw new Error("ai-addons command handler not registered via registerCommand");
 
   const result = await handler("update ponytail", fakeCtx);
-  expect(result).toMatch(/bundled with tersio/i);
+  expect(result).toBeUndefined();
+  expect(fakeCtx.shown.join("\n")).toMatch(/bundled with tersio/i);
 });

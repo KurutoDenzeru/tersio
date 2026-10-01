@@ -1,6 +1,4 @@
-// cli/settings.ts — view/edit session-start defaults and the display-currency
-// default. Non-interactive via flags, interactive via clack selects seeded
-// from the stored profile.
+// cli/settings.ts — view/edit session-start defaults and the display currency.
 import path from 'node:path';
 import {
   CAVEMAN_DEFAULTS, COMBO_DEFAULTS, COMBO_PRESET_MODES, OMP_PLUGINS_DIR, PACKAGE_NAME,
@@ -45,6 +43,7 @@ async function askProfile(current: Profile): Promise<Profile | null> {
     rtkDefault: preset.rtk,
     ponytailDefault: preset.ponytail,
     currency: current.currency,
+    backupSchedule: current.backupSchedule,
   };
 
   const caveman = await askInteractiveChoice('Caveman default', [...CAVEMAN_DEFAULTS].map((v) => ({

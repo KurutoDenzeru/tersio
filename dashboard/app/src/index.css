@@ -40,9 +40,7 @@
     --color-foreground: var(--foreground);
     --color-background: var(--background);
 
-    /* Tersio palette: single source of truth for the dashboard's own surfaces.
-       Mapped here so the whole design system is reachable as Tailwind
-       utilities (bg-panel, text-dim, border-line, bg-accent-soft, ...). */
+    /* Tersio's own surfaces, mapped so they are reachable as Tailwind utilities (bg-panel, text-dim, border-line). */
     --color-bg: var(--bg);
     --color-panel: var(--panel);
     --color-ink: var(--ink);
@@ -166,9 +164,7 @@
     @apply font-sans;
     }
 }
-/* Tersio's numeric monospace: tabular figures keep columns aligned. Used
-   across tables, KPIs and timestamps, so it stays a single semantic utility
-   instead of repeating two classes at ~95 call sites. */
+/* Numeric monospace with tabular figures, so columns align; a utility rather than two classes at ~95 call sites. */
 @utility mono {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
@@ -187,6 +183,17 @@
     --warn-soft: rgba(217, 119, 6, .1); --warn-border: rgba(217, 119, 6, .4);
     --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.07);
   }
+
+/* Accent picker: --accent tints controls, charts and the share card, --grid/--cell-*
+   the heatmap, --bg the wash. Kept ahead of html[data-theme="dark"] to win on specificity. */
+  html[data-accent="emerald"] { --accent:#047857; --accent-soft:rgba(4,120,87,.12); --bg:#f4f4f5; --grid:rgba(4,120,87,.07); --cell-1:rgba(4,120,87,.3); --cell-2:rgba(4,120,87,.55); --cell-3:rgba(4,120,87,.8); --cell-4:#047857; }
+  html[data-accent="violet"] { --accent:#7c3aed; --accent-soft:rgba(124,58,237,.14); --bg:#f7f5ff; --grid:rgba(124,58,237,.08); --cell-1:rgba(124,58,237,.3); --cell-2:rgba(124,58,237,.55); --cell-3:rgba(124,58,237,.8); --cell-4:#7c3aed; }
+  html[data-accent="slate"] { --accent:#5b6779; --accent-soft:rgba(91,103,121,.14); --bg:#f6f7f9; --grid:rgba(91,103,121,.08); --cell-1:rgba(91,103,121,.3); --cell-2:rgba(91,103,121,.55); --cell-3:rgba(91,103,121,.8); --cell-4:#5b6779; }
+  html[data-accent="cyan"] { --accent:#0e7490; --accent-soft:rgba(14,116,144,.14); --bg:#f0f9fb; --grid:rgba(14,116,144,.08); --cell-1:rgba(14,116,144,.3); --cell-2:rgba(14,116,144,.55); --cell-3:rgba(14,116,144,.8); --cell-4:#0e7490; }
+  html[data-accent="rose"] { --accent:#be123c; --accent-soft:rgba(190,18,60,.14); --bg:#fdf5f7; --grid:rgba(190,18,60,.08); --cell-1:rgba(190,18,60,.3); --cell-2:rgba(190,18,60,.55); --cell-3:rgba(190,18,60,.8); --cell-4:#be123c; }
+  html[data-accent="amber"] { --accent:#b45309; --accent-soft:rgba(180,83,9,.14); --bg:#fdf7f0; --grid:rgba(180,83,9,.08); --cell-1:rgba(180,83,9,.3); --cell-2:rgba(180,83,9,.55); --cell-3:rgba(180,83,9,.8); --cell-4:#b45309; }
+  html[data-accent="orange"] { --accent:#c2410c; --accent-soft:rgba(194,65,12,.14); --bg:#fdf6f2; --grid:rgba(194,65,12,.08); --cell-1:rgba(194,65,12,.3); --cell-2:rgba(194,65,12,.55); --cell-3:rgba(194,65,12,.8); --cell-4:#c2410c; }
+
   html[data-theme="light"] { color-scheme: light; }
   html[data-theme="dark"] { color-scheme: dark; }
   @media (prefers-color-scheme: dark) {
@@ -221,4 +228,21 @@
   @keyframes toast-out { to { opacity: 0; transform: translateY(6px) scale(.98); } }
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
+
+
+/* Accent picker, dark half: each accent repeats the two selectors the base tokens use. Emerald is the base, so it needs neither. */
+  html[data-theme="dark"][data-accent="violet"] { --accent:#a78bfa; --accent-soft:rgba(167,139,250,.14); --bg:#0f0a18; --grid:rgba(167,139,250,.06); --cell-1:rgba(167,139,250,.3); --cell-2:rgba(167,139,250,.55); --cell-3:rgba(167,139,250,.8); --cell-4:#a78bfa; }
+  html[data-theme="dark"][data-accent="slate"] { --accent:#94a3b8; --accent-soft:rgba(148,163,184,.14); --bg:#0c0f14; --grid:rgba(148,163,184,.06); --cell-1:rgba(148,163,184,.3); --cell-2:rgba(148,163,184,.55); --cell-3:rgba(148,163,184,.8); --cell-4:#94a3b8; }
+  html[data-theme="dark"][data-accent="cyan"] { --accent:#22d3ee; --accent-soft:rgba(34,211,238,.14); --bg:#08161a; --grid:rgba(34,211,238,.06); --cell-1:rgba(34,211,238,.3); --cell-2:rgba(34,211,238,.55); --cell-3:rgba(34,211,238,.8); --cell-4:#22d3ee; }
+  html[data-theme="dark"][data-accent="rose"] { --accent:#fb7185; --accent-soft:rgba(251,113,133,.14); --bg:#18090f; --grid:rgba(251,113,133,.06); --cell-1:rgba(251,113,133,.3); --cell-2:rgba(251,113,133,.55); --cell-3:rgba(251,113,133,.8); --cell-4:#fb7185; }
+  html[data-theme="dark"][data-accent="amber"] { --accent:#fbbf24; --accent-soft:rgba(251,191,36,.14); --bg:#171004; --grid:rgba(251,191,36,.06); --cell-1:rgba(251,191,36,.3); --cell-2:rgba(251,191,36,.55); --cell-3:rgba(251,191,36,.8); --cell-4:#fbbf24; }
+  html[data-theme="dark"][data-accent="orange"] { --accent:#fb923c; --accent-soft:rgba(251,146,60,.14); --bg:#1a0d06; --grid:rgba(251,146,60,.06); --cell-1:rgba(251,146,60,.3); --cell-2:rgba(251,146,60,.55); --cell-3:rgba(251,146,60,.8); --cell-4:#fb923c; }
+  @media (prefers-color-scheme: dark) {
+    html:not([data-theme])[data-accent="violet"] { --accent:#a78bfa; --accent-soft:rgba(167,139,250,.14); --bg:#0f0a18; --grid:rgba(167,139,250,.06); --cell-1:rgba(167,139,250,.3); --cell-2:rgba(167,139,250,.55); --cell-3:rgba(167,139,250,.8); --cell-4:#a78bfa; }
+    html:not([data-theme])[data-accent="slate"] { --accent:#94a3b8; --accent-soft:rgba(148,163,184,.14); --bg:#0c0f14; --grid:rgba(148,163,184,.06); --cell-1:rgba(148,163,184,.3); --cell-2:rgba(148,163,184,.55); --cell-3:rgba(148,163,184,.8); --cell-4:#94a3b8; }
+    html:not([data-theme])[data-accent="cyan"] { --accent:#22d3ee; --accent-soft:rgba(34,211,238,.14); --bg:#08161a; --grid:rgba(34,211,238,.06); --cell-1:rgba(34,211,238,.3); --cell-2:rgba(34,211,238,.55); --cell-3:rgba(34,211,238,.8); --cell-4:#22d3ee; }
+    html:not([data-theme])[data-accent="rose"] { --accent:#fb7185; --accent-soft:rgba(251,113,133,.14); --bg:#18090f; --grid:rgba(251,113,133,.06); --cell-1:rgba(251,113,133,.3); --cell-2:rgba(251,113,133,.55); --cell-3:rgba(251,113,133,.8); --cell-4:#fb7185; }
+    html:not([data-theme])[data-accent="amber"] { --accent:#fbbf24; --accent-soft:rgba(251,191,36,.14); --bg:#171004; --grid:rgba(251,191,36,.06); --cell-1:rgba(251,191,36,.3); --cell-2:rgba(251,191,36,.55); --cell-3:rgba(251,191,36,.8); --cell-4:#fbbf24; }
+    html:not([data-theme])[data-accent="orange"] { --accent:#fb923c; --accent-soft:rgba(251,146,60,.14); --bg:#1a0d06; --grid:rgba(251,146,60,.06); --cell-1:rgba(251,146,60,.3); --cell-2:rgba(251,146,60,.55); --cell-3:rgba(251,146,60,.8); --cell-4:#fb923c; }
   }

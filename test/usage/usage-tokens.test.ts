@@ -195,9 +195,7 @@ test("free suffix and case variants fold into one model row", () => {
   }
 });
 
-// One host's sessions used to vanish from the dashboard: the importer walked
-// only the first session directory that existed, so a pi session was invisible
-// while the dashboard was served from the OMP directory, and vice versa.
+// Regression: the importer walked only the first session dir, hiding a host.
 test("importer walks both hosts' session directories", () => {
   const home = mkdtempSync(path.join(os.tmpdir(), "tersio-both-hosts-"));
   const prevHome = process.env.HOME;

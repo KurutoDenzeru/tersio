@@ -54,7 +54,7 @@ interface AddonUpdaterCtx {
 
 interface AddonUpdaterPi {
   setLabel?: (label: string) => void;
-  registerCommand?: (name: string, config: { description: string; handler: (args: string, ctx: AddonUpdaterCtx) => Promise<string> }) => void;
+  registerCommand?: (name: string, config: { description: string; handler: (args: string, ctx: AddonUpdaterCtx) => Promise<void> }) => void;
   exec?: (cmd: string, args: string[], opts?: { cwd?: string }) => Promise<{ stdout: string; stderr: string; code: number }>;
   cwd?: string;
 }
@@ -355,15 +355,16 @@ export default function aiAddonsUpdaterExtension(pi: AddonUpdaterPi): void {
       const sub = cleanParts[0];
 
       if (sub === 'check' || sub === 'status') {
-        const summary = await checkAddons(ctx);
+        await checkAddons(ctx);
         notify(ctx, 'ai-addons check complete.', 'info');
-        return summary;
+        return;
       }
       if (sub === 'update' && cleanParts[1]) {
-        return runAddonUpdate(pi, ctx, cleanParts.slice(1).join(' '), dryRun);
+        await runAddonUpdate(pi, ctx, cleanParts.slice(1).join(' '), dryRun);
+        return;
       }
-      const m = 'Usage: /ai-addons <check|status|update ponytail|rtk|caveman|all> [--dry-run]';
-      return report(ctx, m, 'warning');
+      report(ctx, 'Usage: /ai-addons <check|status|update ponytail|rtk|caveman|all> [--dry-run]', 'warning');
+      return;
     },
   });
 }

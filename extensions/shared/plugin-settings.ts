@@ -1,7 +1,4 @@
-// Settings reader for the Tersio extensions. One file under Tersio's own home
-// (~/.tersio/settings.json) serves every host, so the extensions, `tersio
-// settings`, and both hosts always agree. Any parse failure yields {} and
-// every caller falls back to its own default.
+// One settings file for every host; parse failure yields {} with per-caller defaults.
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';

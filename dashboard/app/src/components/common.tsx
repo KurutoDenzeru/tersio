@@ -1,5 +1,5 @@
 // Shared dashboard primitives: empty states, pager, segmented tabs, and hover cards.
-import React, { useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "cn";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -128,6 +128,17 @@ export function HoverTip({ content, children }: { content: React.ReactNode; chil
   const [focused, setFocused] = useState(false);
   const surfaceRef = useRef<HTMLDivElement>(null);
   const anchor = useRef<{ x: number; y: number } | null>(null);
+  // A click means the reader is acting, not reading. Without this a tip outlives
+  // the hover that opened it, since the pointer never leaves a card under a modal.
+  useEffect(() => {
+    const dismiss = (): void => {
+      anchor.current = null;
+      setFocused(false);
+      setPos(null);
+    };
+    document.addEventListener("pointerdown", dismiss);
+    return () => document.removeEventListener("pointerdown", dismiss);
+  }, []);
   const id = `tooltip-${useId().replace(/:/g, "")}`;
   const measure = (x: number, y: number): { x: number; y: number } => {
     const gap = 12;

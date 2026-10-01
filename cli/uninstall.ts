@@ -65,12 +65,10 @@ async function removeCopiedPonytailSkills(shouldDryRun: boolean): Promise<void> 
   }
 }
 
-// pi owns its package dir, so removal is `pi remove`; the tree and defaults
-// file are ours. Ponytail goes too unless --keep-ponytail, matching OMP.
-// Neither --host pi nor auto-selecting the only installed host reached a
-// prompt here, so list and confirm first, exactly as the OMP route does.
-async function removePiLayer(host: HostEntry, shouldDryRun: boolean, shouldRemovePonytail: boolean, confirmed: boolean): Promise<boolean> {
+// pi removal delegates to pi remove; always list and confirm first.
+async function removePiLayer(host: HostEntry, shouldDryRun: boolean, shouldRemovePonytail: boolean, shouldRemoveRtk: boolean, confirmed: boolean): Promise<boolean> {
   const targets = PI_TREE_DIRS.map((dir) => path.join(piAgentDir(), 'extensions', dir));
+  const rtkWiring = path.join(piAgentDir(), 'extensions', 'rtk.ts');
 
   if (!host.installed && !host.declared) {
     sayTagged(`  [skip] ${host.label} — nothing installed (${host.installCmd})`);
@@ -79,6 +77,7 @@ async function removePiLayer(host: HostEntry, shouldDryRun: boolean, shouldRemov
   console.log('Will remove:');
   for (const t of targets) console.log(`  ${t}`);
   if (shouldRemovePonytail) console.log(`  npm:${PONYTAIL_PKG} (pi package)`);
+  if (shouldRemoveRtk) console.log(`  ${rtkWiring} (rtk wiring)`);
   console.log(`  ${tersioSettingsFile()} (session defaults)`);
   if (!confirmed && !(await confirmDestructive(`Remove Tersio from ${host.label}?`))) { closeRL(); return false; }
   if (host.declared) await piRemove(`npm:${PACKAGE_NAME}`, shouldDryRun);
@@ -87,6 +86,12 @@ async function removePiLayer(host: HostEntry, shouldDryRun: boolean, shouldRemov
     await removeCopiedPonytailSkills(shouldDryRun);
   }
   await Promise.all(targets.map((t) => removeUninstallTarget(t, shouldDryRun)));
+  // rtk's wiring is a loose file, not one of the tree dirs, so it survived
+  // --remove-rtk on pi while OMP removed its copy.
+  if (shouldRemoveRtk) {
+    await removeUninstallTarget(rtkWiring, shouldDryRun, false);
+    await removeUninstallTarget(path.join(BUN_BIN_DIR, RTK_BINARY_NAME), shouldDryRun, false);
+  }
   await clearSessionDefaults(shouldDryRun);
   return true;
 }
@@ -185,7 +190,7 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
   }
   const selected = detectHosts().find((h) => h.id === host) as HostEntry;
   if (host === 'pi') {
-    const removed = await removePiLayer(selected, shouldDryRun, shouldRemovePonytail, confirmed);
+    const removed = await removePiLayer(selected, shouldDryRun, shouldRemovePonytail, shouldRemoveRtk, confirmed);
     if (removed) console.log('\nDone. Restart pi, then /combo medium.');
     closeRL();
     return removed;

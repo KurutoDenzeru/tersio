@@ -115,8 +115,9 @@ export function hostLabel(host: HostEntry): string {
   return `${host.label} (not installed)`;
 }
 
+// Hints render inline, so menus name the install and doctor keeps the path.
 export function hostHint(host: HostEntry): string {
-  if (host.installed && host.dir) return host.dir;
+  if (host.installed && host.via) return host.via === 'tree' ? 'extension tree' : 'plugin package';
   return host.installCmd;
 }
 

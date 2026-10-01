@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { activeModesSummary, getSharedComboState, isComboPresetActive, isOmpSubagentPrompt, lastCustomValue, normalizeInputCommand, normalizeMode, paintStatusBar, paintableCtx, reconcileSharedComboEntries, sessionEntries, setSharedComboListener, setSharedComboMode, statusUi } from '../shared/session-state.ts';
+import { activeModesSummary, getSharedComboState, isComboPresetActive, isOmpSubagentPrompt, lastCustomValue, normalizeInputCommand, normalizeMode, paintStatusBar, paintableCtx, reconcileSharedComboEntries, sessionEntries, setSharedComboListener, setSharedComboMode, statusUi, systemPromptIncludes } from '../shared/session-state.ts';
 import { dirname, join } from 'node:path';
 import { injectPromptText, onHostEvent, setExtensionLabel } from '../shared/host.ts';
 import { readCavemanDefault } from '../shared/plugin-settings.ts';
@@ -79,7 +79,7 @@ export default function cavemanSessionExtension(pi: ExtensionApi): void {
       syncStatus();
     }
   }
-  setSharedComboListener(syncFromShared);
+  setSharedComboListener('caveman', syncFromShared);
   pi.registerCommand?.('caveman', {
     description: 'Toggle terse caveman replies for this session',
     handler: async (args, ctx) => {
@@ -143,6 +143,9 @@ export default function cavemanSessionExtension(pi: ExtensionApi): void {
     const def = INSTRUCTIONS[mode];
     if (!def) return;
     const instruction = typeof def === 'function' ? def() : def;
+    // Skip when already present, so a host that re-presents the mutated prompt
+    // cannot stack it; matching the whole instruction keeps upstream rule.md intact.
+    if (systemPromptIncludes(event.systemPrompt, instruction)) return;
     return injectPromptText(pi, event, instruction);
   });
 }

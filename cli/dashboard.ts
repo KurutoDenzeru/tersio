@@ -10,14 +10,17 @@ import { fileURLToPath } from 'node:url';
 import { clearUsageLedger, markReset, readUsage } from '../extensions/shared/usage-ledger.ts';
 import { pricesCachePath } from '../extensions/shared/pricing.ts';
 import { summarizeUsage } from './usage.ts';
+import { deleteUsageBackup, listUsageBackups, restoreUsageBackup } from '../extensions/shared/usage-store.ts';
 import type { UsageReport } from './usage.ts';
 import { isCurrencyCode } from './currency.ts';
 import type { CurrencyCode } from './currency.ts';
 import {
   OMP_AGENT_DIR, OMP_PLUGINS_DIR, PACKAGE_VERSION,
 } from './common.ts';
-import { storedProfile, writePluginSettings } from './profile.ts';
+import { BACKUP_SCHEDULES, storedProfile, writePluginSettings } from './profile.ts';
+import type { BackupSchedule } from './profile.ts';
 import { normalizeComboLevel } from '../extensions/shared/session-state.ts';
+import { CAVEMAN_DEFAULTS, PONYTAIL_DEFAULTS } from './common.ts';
 import type { ComboLevel } from '../extensions/shared/types.ts';
 import { PACKAGE_NAME } from './common.ts';
 import { resolveRtkBinary } from '../extensions/lib/utils.ts';
@@ -234,6 +237,12 @@ function computeDoctorRows(): DoctorRow[] {
   } catch { /* missing config is reported by extension rows */ }
   const duplicateExtensions = [...new Set(explicitEntries.filter((entry, index) => explicitEntries.indexOf(entry) !== index))];
   addon('Unique config registrations', duplicateExtensions.length === 0, duplicateExtensions.length ? duplicateExtensions.join(', ') : 'ok', 'Extensions');
+  // A listed extension whose file is gone makes the host warn on every load, so
+  // surface it rather than leaving the user with only a startup message.
+  const dangling = explicitEntries
+    .filter((entry) => entry.includes(`extensions${path.sep}`) || entry.includes('extensions/'))
+    .filter((entry) => !ok(path.isAbsolute(entry) ? entry : path.resolve(OMP_AGENT_DIR, entry)));
+  addon('Extension files present', dangling.length === 0, dangling.length ? dangling.join(', ') : 'ok', 'Extensions');
   ext('Caveman extension', path.join(tersioPluginDir, 'extensions', 'caveman-session', 'index.ts'));
   ext('RTK extension', path.join(tersioPluginDir, 'extensions', 'rtk-session', 'index.ts'));
   ext('Ponytail extension', path.join(OMP_PLUGINS_DIR, 'node_modules', '@dietrichgebert', 'ponytail', 'pi-extension', 'index.js'));
@@ -296,15 +305,46 @@ function setDiagSchedule(schedule: DiagSchedule): DoctorReport {
   return base;
 }
 
-// The session-start combo level, so a new or resumed session opens in the mode
-// the user picked rather than off.
-async function saveComboDefault(raw: unknown): Promise<ComboLevel | null> {
-  const level = normalizeComboLevel(raw);
-  if (!level) return null;
+// One field per call, validated against the same sets the CLI uses.
+async function saveDefaults(body: Record<string, unknown>): Promise<
+  { ok: true; profile: Record<string, unknown> } | { ok: false; error: string }
+> {
   const profile = await storedProfile();
-  profile.comboDefault = level;
+  if (body.comboDefault !== undefined) {
+    const level = normalizeComboLevel(body.comboDefault);
+    if (!level) return { ok: false, error: 'unknown combo level' };
+    profile.comboDefault = level;
+  }
+  if (body.cavemanDefault !== undefined) {
+    const v = String(body.cavemanDefault);
+    if (!CAVEMAN_DEFAULTS.has(v)) return { ok: false, error: 'unknown caveman level' };
+    profile.cavemanDefault = v;
+  }
+  if (body.ponytailDefault !== undefined) {
+    const v = String(body.ponytailDefault);
+    if (!PONYTAIL_DEFAULTS.has(v)) return { ok: false, error: 'unknown ponytail level' };
+    profile.ponytailDefault = v;
+  }
+  if (body.backupSchedule !== undefined) {
+    const v = String(body.backupSchedule);
+    if (!BACKUP_SCHEDULES.has(v)) return { ok: false, error: 'unknown backup schedule' };
+    profile.backupSchedule = v as BackupSchedule;
+  }
+  if (body.rtkDefault !== undefined) {
+    if (typeof body.rtkDefault !== 'boolean') return { ok: false, error: 'rtk default must be true or false' };
+    profile.rtkDefault = body.rtkDefault;
+  }
   await writePluginSettings(profile, {});
-  return level;
+  return {
+    ok: true,
+    profile: {
+      comboDefault: profile.comboDefault,
+      cavemanDefault: profile.cavemanDefault,
+      rtkDefault: profile.rtkDefault,
+      ponytailDefault: profile.ponytailDefault,
+      backupSchedule: profile.backupSchedule,
+    },
+  };
 }
 
 function readDiagSchedule(): DiagSchedule {
@@ -326,9 +366,9 @@ async function saveDashboardCurrency(raw: unknown): Promise<CurrencyCode | null>
 // The store is a SQLite file, which nothing outside this box can read. Flatten
 // it into a format a spreadsheet, a script, or another tool can take instead.
 type ExportFormat = 'json' | 'jsonl' | 'csv';
-const EXPORT_FORMATS: ExportFormat[] = ['json', 'jsonl', 'csv'];
+export const EXPORT_FORMATS: ExportFormat[] = ['json', 'jsonl', 'csv'];
 
-function exportRows(report: UsageReport): Record<string, string | number | undefined>[] {
+export function exportRows(report: UsageReport): Record<string, string | number | undefined>[] {
   return report.recent.map((r) => ({
     timestamp: new Date(r.t).toISOString(),
     local: new Date(r.t).toLocaleString(),
@@ -344,12 +384,12 @@ function exportRows(report: UsageReport): Record<string, string | number | undef
   }));
 }
 
-function csvCell(v: unknown): string {
+export function csvCell(v: unknown): string {
   const s = v === undefined || v === null ? '' : String(v);
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
-function exportBody(format: ExportFormat, report: UsageReport): { body: string; type: string } {
+export function exportBody(format: ExportFormat, report: UsageReport): { body: string; type: string } {
   const stamp = new Date().toISOString().slice(0, 10);
   if (format === 'json') {
     return { body: JSON.stringify({ exportedAt: new Date().toISOString(), version: report.version, source: report.source, report }, null, 2), type: 'application/json' };
@@ -435,25 +475,53 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
       res.end(JSON.stringify({ ok: true, rows }));
       return;
     }
+    if (req.url === '/backups' && req.method === 'GET') {
+      const rows = listUsageBackups().map((b) => ({ file: path.basename(b.file), mtime: b.mtime, size: b.size }));
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ backups: rows }));
+      return;
+    }
+    if (req.url === '/backups/delete' && req.method === 'POST') {
+      let file = '';
+      try { file = String((JSON.parse(await readBody(req)) as { file?: unknown }).file ?? ''); } catch { file = ''; }
+      const ok = deleteUsageBackup(file);
+      res.writeHead(ok ? 200 : 400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(ok ? { ok: true, file } : { ok: false, error: 'unknown backup' }));
+      return;
+    }
+    if (req.url === '/backups/restore' && req.method === 'POST') {
+      let file = '';
+      try { file = String((JSON.parse(await readBody(req)) as { file?: unknown }).file ?? ''); } catch { file = ''; }
+      const ok = restoreUsageBackup(file);
+      res.writeHead(ok ? 200 : 400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(ok ? { ok: true, file } : { ok: false, error: 'unknown backup' }));
+      return;
+    }
     if (req.url === '/settings' && req.method === 'GET') {
       storedProfile().then((profile) => {
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ comboDefault: profile.comboDefault }));
+        res.end(JSON.stringify({
+          comboDefault: profile.comboDefault,
+          cavemanDefault: profile.cavemanDefault,
+          rtkDefault: profile.rtkDefault,
+          ponytailDefault: profile.ponytailDefault,
+          backupSchedule: profile.backupSchedule,
+        }));
       });
       return;
     }
     if (req.url === '/settings' && req.method === 'POST') {
-      let combo: unknown = null;
+      let body: Record<string, unknown> = {};
       try {
-        combo = (JSON.parse(await readBody(req)) as { comboDefault?: unknown }).comboDefault ?? null;
-      } catch { combo = null; }
-      const saved = await saveComboDefault(combo);
-      if (saved === null) {
+        body = (JSON.parse(await readBody(req)) as Record<string, unknown>) ?? {};
+      } catch { body = {}; }
+      const saved = await saveDefaults(body);
+      if (!saved.ok) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: false, error: 'unknown combo level' }));
+        res.end(JSON.stringify({ ok: false, error: saved.error }));
       } else {
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true, comboDefault: saved }));
+        res.end(JSON.stringify({ ok: true, ...saved.profile }));
       }
       return;
     }

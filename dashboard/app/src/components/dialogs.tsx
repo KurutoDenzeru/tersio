@@ -1,20 +1,24 @@
-// Settings, share, and footer. Ports the settings dialog (General /
-// Connection / Diagnosis / Data panes), the share dialog with usage
-// profile card, and the footer in template.html + settings.js + share.js.
-// Shadcn Dialog + Select carry the structure; the row language, danger
-// zone, and share actions stay identical to the original.
+// Settings, share, and footer dialogs.
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Switch } from "@/components/ui/switch";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { useTheme } from "@/components/theme-provider";
-import { fmt, fmtShort, relAge } from "@/lib/format";
+import { useTheme, useResolvedTheme } from "@/components/theme-provider";
+import { ACCENTS, ACCENT_IDS, accentSwatch, type AccentId } from "@/lib/accent";
+import { fmt, fmtShort, fmtSnapshot, relAge } from "@/lib/format";
+import { shareUrl } from "@/lib/share";
 import {
   fetchDoctor,
   fetchHealth,
@@ -53,7 +57,8 @@ function AgentRow({ name, version, binPath, bin, docs, available, unavailable, l
       className="group flex min-w-0 items-center gap-3 py-3 transition-colors hover:bg-track/40 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent"
       aria-label={`Open ${name}`}
     >
-      <span className="grid size-8 shrink-0 place-items-center overflow-hidden rounded-md bg-track p-1 transition-transform duration-500 ease-out group-hover:scale-105">
+      {/* text-ink keeps masked marks legible in both themes. */}
+      <span className="grid size-8 shrink-0 place-items-center overflow-hidden rounded-md bg-track p-1 text-ink transition-transform duration-500 ease-out group-hover:scale-105">
         {logo}
       </span>
       <div className="min-w-0 flex-1">
@@ -84,19 +89,7 @@ function AgentRow({ name, version, binPath, bin, docs, available, unavailable, l
   );
 }
 
-// Share destinations are fixed origins; only the text is ours. Building the
-// URL from a constant keeps the host a known one whatever the text contains.
-const SHARE_ORIGINS = {
-  x: "https://x.com/intent/post",
-  reddit: "https://www.reddit.com/submit",
-  linkedin: "https://www.linkedin.com/feed/",
-} as const;
-
-function shareUrl(target: keyof typeof SHARE_ORIGINS, params: Record<string, string>): string {
-  const url = new URL(SHARE_ORIGINS[target]);
-  for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
-  return url.toString();
-}
+// Share destinations live in lib/share.ts so the host guarantee is testable.
 
 function HealthPane() {
   const [health, setHealth] = useState<HealthReport | null | undefined>(undefined);
@@ -115,11 +108,10 @@ function HealthPane() {
   }, [load]);
 
   const unavailable = health === null;
-  // One row per host, built the same way: a host that is not on the machine
-  // still shows its binary name and where it would be looked up.
+  // Absent hosts still show their binary name and lookup path.
   const agents: AgentRowProps[] = [
-    { name: "Oh My Pi", version: health?.omp ?? null, binPath: health?.ompPath ?? null, bin: "omp", docs: "https://omp.sh", available: !!health?.omp, unavailable, logo: <OmpLogo /> },
-    { name: "Pi", version: health?.pi ?? null, binPath: health?.piPath ?? null, bin: "pi", docs: "https://pi.dev", available: !!health?.pi, unavailable, logo: <PiLogo /> },
+    { name: "Oh My Pi", version: health?.omp ?? null, binPath: health?.ompPath ?? null, bin: "omp", docs: "https://omp.sh", available: !!health?.omp, unavailable, logo: <OmpLogo className="size-5" /> },
+    { name: "Pi", version: health?.pi ?? null, binPath: health?.piPath ?? null, bin: "pi", docs: "https://pi.dev", available: !!health?.pi, unavailable, logo: <PiLogo className="size-5" /> },
   ];
 
   return (
@@ -199,7 +191,7 @@ function DoctorPane() {
             <SelectGroup>
               {["manual", "daily", "weekly", "monthly"].map((s) => (
                 <SelectItem key={s} value={s}>
-                  {s[0].toUpperCase() + s.slice(1)}
+                  {s[0].toUpperCase() + s.slice(1)}{s === "weekly" ? " (Recommended)" : ""}
                 </SelectItem>
               ))}
             </SelectGroup>
@@ -309,18 +301,232 @@ function DoctorPane() {
 }
 
 type ExportFormat = "json" | "jsonl" | "csv";
+// Hints stay short on purpose: each sits to the right of its label on a single
+// line, and a long one wraps and leaves the menu rows ragged.
 const EXPORT_FORMATS: Array<{ id: ExportFormat; label: string; hint: string }> = [
-  { id: "json", label: "JSON", hint: "Full report, pretty-printed" },
-  { id: "jsonl", label: "JSONL", hint: "One request per line, stream-friendly" },
-  { id: "csv", label: "CSV", hint: "Flat table for a spreadsheet" },
+  { id: "json", label: "JSON", hint: "Full report" },
+  { id: "jsonl", label: "JSONL", hint: "One request per line" },
+  { id: "csv", label: "CSV", hint: "Spreadsheet table" },
 ];
+
+// The mirror is rebuilt from session files whenever the parser moves, so a
+// backup is the only way back if a source stops being walked.
+const BACKUP_SCHEDULES_UI: Array<{ id: string; label: string; hint: string }> = [
+  { id: "monthly", label: "Monthly", hint: "A snapshot a month is kept automatically" },
+  { id: "weekly", label: "Weekly", hint: "A snapshot a week" },
+  { id: "daily", label: "Daily", hint: "A snapshot a day" },
+  { id: "manual", label: "Manual", hint: "Only when the mirror is rebuilt" },
+];
+
+// Restoring needs a button and a confirm: picking a row must not restore it.
+function BackupRestore() {
+  const toast = useToast();
+  const [rows, setRows] = useState<Array<{ file: string; mtime: number; size: number }>>([]);
+  const [schedule, setSchedule] = useState("monthly");
+  const [chosen, setChosen] = useState<string | null>(null);
+  const [asking, setAsking] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(() => {
+    fetch("/backups")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { backups?: Array<{ file: string; mtime: number; size: number }> } | null) => {
+        setRows(d?.backups ?? []);
+        setChosen((cur) => cur ?? d?.backups?.[0]?.file ?? null);
+      })
+      .catch(() => setRows([]));
+    fetch("/settings")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { backupSchedule?: string } | null) => { if (d?.backupSchedule) setSchedule(d.backupSchedule); })
+      .catch(() => { /* keep the default shown */ });
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const saveSchedule = (next: string): void => {
+    setSchedule(next);
+    void fetch("/settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ backupSchedule: next }),
+    })
+      .then((r) => r.json())
+      .then((d: { ok?: boolean; error?: string }) => {
+        if (!d?.ok) toast("Could not save", d?.error ?? "Unknown schedule", "circle-alert");
+      })
+      .catch(() => toast("Could not save", "The dashboard server did not answer.", "circle-alert"));
+  };
+
+  const restore = (file: string): void => {
+    setBusy(true);
+    setAsking(false);
+    void fetch("/backups/restore", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ file }),
+    })
+      .then((r) => r.json())
+      .then((d: { ok?: boolean; error?: string }) => {
+        toast(d?.ok ? "Backup restored" : "Restore failed", d?.ok ? "Reload the dashboard to see the restored totals" : d?.error ?? "Unknown backup", d?.ok ? "check" : "circle-alert");
+        if (d?.ok) load();
+      })
+      .catch(() => toast("Restore failed", "The dashboard server did not answer.", "circle-alert"))
+      .finally(() => setBusy(false));
+  };
+
+  const remove = (file: string): void => {
+    setDeleting(false);
+    void fetch("/backups/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ file }),
+    })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((d: { ok?: boolean; error?: string }) => {
+        if (d?.ok) { toast("Snapshot deleted", "Removed from disk. The live mirror is unchanged.", "check"); load(); }
+        else toast("Delete failed", d?.error ?? "Unknown backup", "circle-alert");
+      })
+      .catch((e: Error) => toast("Delete failed", /HTTP/.test(e.message) ? "This dashboard build has no delete route — restart the server." : "The dashboard server did not answer.", "circle-alert"));
+  };
+
+  const target = rows.find((b) => b.file === chosen) ?? null;
+  const scheduleHint = BACKUP_SCHEDULES_UI.find((o) => o.id === schedule)?.hint ?? "";
+
+  return (
+    <div className="mt-6 grid gap-3.5">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="m-0 text-[13px] font-semibold">Backups</p>
+          <p className="mt-0.5 mb-0 text-xs text-dim">
+            {BACKUP_SCHEDULES_UI.find((o) => o.id === schedule)?.label} — {scheduleHint}. Keeps the last 3.
+          </p>
+        </div>
+        <Select value={schedule} onValueChange={(v) => saveSchedule(v ?? "monthly")}>
+          <SelectTrigger size="sm" className="w-[124px] shrink-0" aria-label="Backup schedule">
+            <SelectValue>{BACKUP_SCHEDULES_UI.find((o) => o.id === schedule)?.label ?? "Monthly"}</SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              {BACKUP_SCHEDULES_UI.map((o) => (
+                <SelectItem key={o.id} value={o.id}>
+                  {o.label}{o.id === "monthly" ? " (Recommended)" : ""}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {rows.length === 0 ? (
+        <p className="m-0 rounded-[10px] border border-line px-3 py-2.5 text-xs text-dim">
+          No snapshots yet. One is taken before the mirror is rebuilt, and on the schedule above.
+        </p>
+      ) : (
+        <div className="grid gap-2 overflow-hidden rounded-[10px] border border-line">
+          <div className="flex items-baseline justify-between gap-3 border-b border-line px-3 py-2">
+            <span className="mono text-[11px] uppercase tracking-[0.14em] text-dim">
+              {rows.length} snapshot{rows.length === 1 ? "" : "s"}
+            </span>
+            <span className="mono text-[11px] text-dim">
+              {fmtSnapshot(rows[rows.length - 1].mtime)} → {fmtSnapshot(rows[0].mtime)}
+            </span>
+          </div>
+
+          {/* Bounded list so a daily schedule cannot push Restore off-screen. */}
+          <ul
+            className="m-0 max-h-[196px] list-none overflow-y-auto p-1 [scrollbar-width:thin] [scrollbar-color:var(--line)_transparent]"
+            role="radiogroup"
+            aria-label="Usage snapshots"
+          >
+            {rows.map((b) => (
+              <li key={b.file}>
+                <label
+                  className={`flex cursor-pointer items-center gap-2.5 rounded-[7px] px-2 py-1.5 text-xs [transition:background_.15s] ${
+                    chosen === b.file ? "bg-accent-soft" : "hover:bg-track"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="usage-backup"
+                    className="accent-[var(--accent)]"
+                    checked={chosen === b.file}
+                    onChange={() => setChosen(b.file)}
+                  />
+                  <span className="mono">{fmtSnapshot(b.mtime)}</span>
+                  {chosen === b.file && <span className="text-dim">· selected</span>}
+                  <span className="mono ml-auto shrink-0 text-dim">{(b.size / 1048576).toFixed(1)} MB</span>
+                </label>
+              </li>
+            ))}
+          </ul>
+
+          <div className="flex items-center justify-between gap-3 border-t border-line px-3 py-2">
+            <span className="min-w-0 truncate text-[11px] text-dim">
+              {target ? `Selected ${fmtSnapshot(target.mtime)}` : "Pick a snapshot to restore"}
+            </span>
+            <span className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                disabled={!target || busy}
+                onClick={() => setDeleting(true)}
+                aria-label="Delete the selected snapshot"
+                className="mono flex items-center gap-2 rounded-xl border border-line px-3 py-1.5 text-xs text-[#f87171] [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96] disabled:opacity-50"
+              >
+                <Icon name="trash" className="size-3.5" />
+                <span>Delete</span>
+              </button>
+              <button
+                type="button"
+                disabled={!target || busy}
+                onClick={() => setAsking(true)}
+                className="mono flex items-center gap-2 rounded-xl border border-line px-3 py-1.5 text-xs text-ink [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96] disabled:opacity-50"
+              >
+                <Icon name="rotate-ccw" className="size-3.5" />
+                <span>Restore</span>
+              </button>
+            </span>
+          </div>
+        </div>
+      )}
+
+      <AlertDialog open={deleting} onOpenChange={(o) => !o && setDeleting(false)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this snapshot?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {target ? `${fmtSnapshot(target.mtime)} will be removed from disk. The current usage mirror is not touched.` : ""}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => target && remove(target.file)}>Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={asking} onOpenChange={(o) => !o && setAsking(false)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Restore this snapshot?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {target ? `The usage mirror will be replaced with the snapshot from ${new Date(target.mtime).toLocaleString()}.` : ""}
+              {" "}The current mirror is copied aside first, so this is reversible.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => target && restore(target.file)}>Restore</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
 
 function DataPane({ data, onReload }: { data: UsageReport | null; onReload: () => void }) {
   const toast = useToast();
   const [armed, setArmed] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [format, setFormat] = useState<ExportFormat>("json");
-  const chosen = EXPORT_FORMATS.find((f) => f.id === format) ?? EXPORT_FORMATS[0];
   useEffect(() => {
     if (!armed) return;
     const id = setTimeout(() => setArmed(false), 3000);
@@ -337,61 +543,63 @@ function DataPane({ data, onReload }: { data: UsageReport | null; onReload: () =
           type="button"
           className="mono flex shrink-0 items-center gap-2 text-xs pl-2.5 pr-3 py-2 rounded-xl border border-line text-ink [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]"
           aria-label="Reload data"
-          onClick={onReload}
+          onClick={() => { onReload(); toast("Reloaded", "Statistics re-read from disk.", "refresh-cw"); }}
         >
           <Icon name="refresh-cw" className="size-3.5" />
           <span>Reload</span>
         </button>
       </div>
-      <div className="mt-6 flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <p className="m-0 text-[13px] font-semibold">Export</p>
-          <p className="mt-0.5 mb-0 text-xs text-dim">Download the usage data. {chosen.hint}.</p>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <Select value={format} onValueChange={(v) => setFormat(v as ExportFormat)}>
-            <SelectTrigger size="sm" className="w-[104px]" aria-label="Export format">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                {EXPORT_FORMATS.map((f) => (
-                  <SelectItem key={f.id} value={f.id}>
-                    {f.label}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-          <button
-            type="button"
-            className="mono flex shrink-0 items-center gap-2 text-xs pl-2.5 pr-3 py-2 rounded-xl border border-line text-ink [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]"
-            aria-label={`Export usage data as ${chosen.label}`}
-            onClick={() => {
-              const a = document.createElement("a");
-              a.href = `/export?format=${format}`;
-              a.download = "";
-              document.body.appendChild(a);
-              a.click();
-              a.remove();
-              toast(`Exported ${chosen.label}`, `${data?.recent.length ?? 0} requests downloaded`, "download");
-            }}
-          >
-            <Icon name="download" className="size-3.5" />
-            <span>Export</span>
-          </button>
-        </div>
-      </div>
-      <div className="mt-3 grid gap-2">
-        <div className="min-w-0 overflow-hidden rounded-[10px] border border-line px-3 py-2">
-          <p className="m-0 text-[13px] font-semibold">
-            Usage DB <span className="text-[11px] font-normal text-dim">tersio-owned · local hosted</span>
-          </p>
-          <HoverTip content={data?.paths.usageDb ?? "–"}>
-            <p className="mono mt-1 mb-0 truncate text-[11px] text-dim">
-              {data?.paths.usageDb ?? "–"}
+      <BackupRestore />
+      {/* Export shares the Usage DB row since it is the same data. */}
+      <div className="mt-3">
+        <div className="flex items-center justify-between gap-3 overflow-hidden rounded-[10px] border border-line px-3 py-2">
+          <div className="min-w-0">
+            <p className="m-0 text-[13px] font-semibold">
+              Usage DB <span className="text-[11px] font-normal text-dim">tersio-owned · local hosted</span>
             </p>
-          </HoverTip>
+            <HoverTip content={data?.paths.usageDb ?? "–"}>
+              <p className="mono mt-1 mb-0 truncate text-[11px] text-dim">
+                {data?.paths.usageDb ?? "–"}
+              </p>
+            </HoverTip>
+          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <button
+                  type="button"
+                  className="mono flex shrink-0 items-center gap-1.5 rounded-[10px] border border-line px-2.5 py-1.5 text-xs text-ink [transition:transform_.12s,background_.2s] hover:border-accent hover:bg-accent-soft active:scale-[.96] focus-visible:outline focus-visible:outline-1 focus-visible:outline-accent"
+                  aria-label="Export usage data"
+                />
+              }
+            >
+              <Icon name="download" className="size-3.5" />
+              <span>Export</span>
+              <Icon name="chevron-down" className="size-3 text-dim" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-[248px] bg-panel text-ink">
+              <DropdownMenuGroup>
+                {EXPORT_FORMATS.map((f) => (
+                  <DropdownMenuItem
+                    key={f.id}
+                    className="justify-between whitespace-nowrap"
+                    onClick={() => {
+                      const a = document.createElement("a");
+                      a.href = `/export?format=${f.id}`;
+                      a.download = "";
+                      document.body.appendChild(a);
+                      a.click();
+                      a.remove();
+                      toast(`Exported ${f.label}`, `${data?.recent.length ?? 0} requests downloaded`, "download");
+                    }}
+                  >
+                    <span className="font-medium">{f.label}</span>
+                    <span className="pl-4 text-[11px] text-dim">{f.hint}</span>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
       <div className="mt-4 rounded-xl border border-danger-border bg-danger-soft p-3">
@@ -450,8 +658,9 @@ const TITLES: Record<Pane, string> = {
 };
 
 const SETTINGS_SEARCH: Array<{ pane: Pane; label: string; terms: string }> = [
-  { pane: "general", label: "Default mode", terms: "general default mode combo preset balanced max medium off new session resume start caveman rtk ponytail" },
+  { pane: "general", label: "Combo preset", terms: "general default mode combo preset balanced max medium off new session resume start caveman rtk ponytail" },
   { pane: "general", label: "Theme", terms: "general appearance theme light dark system color scheme mode" },
+  { pane: "general", label: "Accent color", terms: "general appearance accent color tint buttons links highlights palette emerald violet slate cyan rose amber orange charts background" },
   { pane: "general", label: "Currency", terms: "currency display cost usd euro" },
   { pane: "connection", label: "Coding agents", terms: "connection provider coding agents agent oh my pi omp status path version refresh ready available" },
   { pane: "diagnosis", label: "Auto-check schedule", terms: "diagnosis system health auto-check schedule manual daily weekly monthly" },
@@ -486,56 +695,178 @@ function HighlightMatch({ text, query, fullWhenAlias = false }: { text: string; 
   return parts;
 }
 
-const COMBO_LEVELS_UI: Array<{ id: string; label: string; hint: string }> = [
-  { id: "off", label: "Off", hint: "Nothing active" },
-  { id: "medium", label: "Medium", hint: "caveman=lite, rtk=on, ponytail=lite" },
-  { id: "balanced", label: "Balanced", hint: "caveman=full, rtk=on, ponytail=full" },
-  { id: "max", label: "Max", hint: "caveman=ultra, rtk=on, ponytail=ultra" },
+interface DefaultsPayload {
+  comboDefault: string;
+  cavemanDefault: string;
+  rtkDefault: boolean;
+  ponytailDefault: string;
+}
+
+const DEFAULT_ROWS_UI: Array<{ field: keyof DefaultsPayload; label: string; hint: string; options: Array<{ id: string; label: string }> }> = [
+  {
+    field: "comboDefault",
+    label: "Combo preset",
+    hint: "Sets caveman, RTK and Ponytail together.",
+    options: [
+      { id: "off", label: "Off" },
+      { id: "medium", label: "Medium" },
+      { id: "balanced", label: "Balanced (Recommended)" },
+      { id: "max", label: "Max" },
+    ],
+  },
+  {
+    field: "cavemanDefault",
+    label: "Caveman",
+    hint: "Terse-reply mode for a new or resumed session.",
+    options: [
+      { id: "off", label: "Off" }, { id: "lite", label: "Lite" },
+      { id: "full", label: "Full" }, { id: "ultra", label: "Ultra" },
+      { id: "wenyan-lite", label: "Wenyan lite" }, { id: "wenyan-full", label: "Wenyan full" },
+      { id: "wenyan-ultra", label: "Wenyan ultra" },
+    ],
+  },
+  {
+    field: "rtkDefault",
+    label: "RTK",
+    hint: "Rewrite eligible Bash calls through rtk.",
+    options: [{ id: "on", label: "On" }, { id: "off", label: "Off" }],
+  },
+  {
+    field: "ponytailDefault",
+    label: "Ponytail",
+    hint: "Lazy-code mode for a new or resumed session.",
+    options: [
+      { id: "off", label: "Off" }, { id: "lite", label: "Lite" },
+      { id: "full", label: "Full" }, { id: "ultra", label: "Ultra" },
+    ],
+  },
 ];
 
-function ComboDefaultPicker() {
+// The session-start defaults, mirroring `tersio settings`. One fetch, and each
+// row saves on its own so a combo change never silently rewrites the others.
+function DefaultModes() {
   const toast = useToast();
-  const [level, setLevel] = useState("off");
+  const [current, setCurrent] = useState<DefaultsPayload>({
+    comboDefault: "off", cavemanDefault: "off", rtkDefault: false, ponytailDefault: "off",
+  });
   const [loaded, setLoaded] = useState(false);
+
   useEffect(() => {
     let alive = true;
     fetch("/settings")
       .then((r) => (r.ok ? r.json() : null))
-      .then((d: { comboDefault?: string } | null) => {
-        if (alive && d?.comboDefault) { setLevel(d.comboDefault); setLoaded(true); }
-      })
-      .catch(() => { if (alive) setLoaded(true); });
+      .then((d: Partial<DefaultsPayload> | null) => { if (alive && d) setCurrent((c) => ({ ...c, ...d })); })
+      .catch(() => { /* keep the defaults; the rows still save */ })
+      .finally(() => { if (alive) setLoaded(true); });
     return () => { alive = false; };
   }, []);
-  const save = (next: string | null): void => {
-    const level = next ?? "off";
-    setLevel(level);
+
+  const save = (row: (typeof DEFAULT_ROWS_UI)[number], id: string): void => {
+    const value: string | boolean = row.field === "rtkDefault" ? id === "on" : id;
+    setCurrent((c) => ({ ...c, [row.field]: value }));
     void fetch("/settings", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ comboDefault: level }),
+      body: JSON.stringify({ [row.field]: value }),
     })
       .then((r) => r.json())
-      .then((d: { ok?: boolean }) => {
-        toast(d?.ok ? "Default mode saved" : "Could not save", d?.ok ? `${level} applies to new sessions` : "Unknown combo level", d?.ok ? "check" : "circle-alert");
+      .then((d: { ok?: boolean; error?: string }) => {
+        if (d?.ok) toast(`${row.label} saved`, `${id} applies to new sessions`, "check");
+        else toast("Could not save", d?.error ?? "Unknown level", "circle-alert");
       })
       .catch(() => toast("Could not save", "The dashboard server did not answer.", "circle-alert"));
   };
+
   return (
-    <Select value={level} onValueChange={save} disabled={!loaded}>
-      <SelectTrigger size="sm" className="w-[132px] shrink-0" aria-label="Default combo mode">
-        <SelectValue placeholder="Off" />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectGroup>
-          {COMBO_LEVELS_UI.map((c) => (
-            <SelectItem key={c.id} value={c.id}>
-              {c.label}
-            </SelectItem>
-          ))}
-        </SelectGroup>
-      </SelectContent>
-    </Select>
+    <div className="grid gap-6">
+      {DEFAULT_ROWS_UI.map((row) => {
+        const raw = current[row.field];
+        const isRtk = row.field === "rtkDefault";
+        const value = isRtk ? (raw ? "on" : "off") : String(raw ?? "off");
+        // A live preset writes all three, so they are inert; Off makes them the only input.
+        const presetOn = current.comboDefault !== "off";
+        const locked = !loaded || (presetOn && row.field !== "comboDefault");
+        if (isRtk) {
+          return (
+            <div key={row.field} className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="m-0 text-[13px] font-semibold">{row.label}</p>
+                <p className="mt-0.5 mb-0 text-xs text-dim">{row.hint}</p>
+              </div>
+              <Switch
+                size="sm"
+                checked={Boolean(raw)}
+                onCheckedChange={(on: boolean) => save(row, on ? "on" : "off")}
+                disabled={locked}
+                aria-label={`${row.label} default`}
+              />
+            </div>
+          );
+        }
+        return (
+          <div key={row.field} className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="m-0 text-[13px] font-semibold">{row.label}</p>
+              <p className="mt-0.5 mb-0 text-xs text-dim">{row.hint}</p>
+            </div>
+            <Select value={value} onValueChange={(v) => save(row, v ?? "off")} disabled={locked}>
+              <SelectTrigger size="sm" className="w-[132px] shrink-0" aria-label={`${row.label} default`}>
+                {/* SelectValue needs children or it shows the raw value. */}
+                <SelectValue placeholder="Off">{row.options.find((o) => o.id === value)?.label ?? "Off"}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  {row.options.map((o) => (
+                    <SelectItem key={o.id} value={o.id}>
+                      {o.label}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// Native radio group; each chip previews its resolved hex.
+function AccentPicker({ accent, onPick }: { accent: AccentId; onPick: (id: AccentId) => void }) {
+  const dark = useResolvedTheme() === "dark";
+  return (
+    <fieldset className="m-0 shrink-0 border-0 p-0">
+      <legend className="sr-only">Accent color</legend>
+      <div className="flex items-center gap-1.5">
+        {ACCENT_IDS.map((id) => {
+          const on = id === accent;
+          const hex = accentSwatch(id, dark);
+          return (
+            <label key={id} className="grid size-7 cursor-pointer place-items-center rounded-full">
+              <input
+                type="radio"
+                name="accent-color"
+                value={id}
+                checked={on}
+                onChange={() => onPick(id)}
+                className="peer absolute size-7 appearance-none rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+              />
+              <span
+                aria-hidden="true"
+                className="size-6 rounded-full peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent"
+                style={{
+                  background: hex,
+                  // The selected chip gets a gap then its own ring, the two
+                  // rings an unselected one never has.
+                  ...(on ? { boxShadow: `0 0 0 2px var(--panel), 0 0 0 4px ${hex}` } : {}),
+                }}
+              />
+              <span className="sr-only">{ACCENTS[id].label}</span>
+            </label>
+          );
+        })}
+      </div>
+    </fieldset>
   );
 }
 
@@ -554,7 +885,8 @@ export function SettingsDialog({
   onCurrency: (code: string) => void;
   onReload: () => void;
 }) {
-  const { theme, setTheme } = useTheme();
+  const toast = useToast();
+  const { theme, setTheme, accent, setAccent } = useTheme();
   const [pane, setPane] = useState<Pane>("general");
   const [query, setQuery] = useState("");
   const normalizedQuery = query.trim().toLowerCase();
@@ -633,7 +965,10 @@ export function SettingsDialog({
           </aside>
           <div className="relative flex min-h-0 min-w-0 flex-col">
             <div className="flex items-center justify-between gap-3 px-5 pt-4">
-              <DialogTitle className="m-0 text-base font-bold tracking-[-0.01em]">{TITLES[pane]}</DialogTitle>
+              <DialogTitle className="m-0 flex items-center gap-2 text-base font-bold tracking-[-0.01em]">
+                <Icon name={PANES.find((p) => p.id === pane)?.icon ?? "settings"} className="size-4 shrink-0 text-dim" />
+                {TITLES[pane]}
+              </DialogTitle>
               <button
                 type="button"
                 className="flex shrink-0 items-center p-2 rounded-xl border border-line text-ink [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]"
@@ -645,47 +980,62 @@ export function SettingsDialog({
             </div>
             <div className={`min-h-0 overscroll-contain px-5 pt-4 ${pane === "diagnosis" ? "flex flex-1 overflow-hidden pb-5" : "overflow-y-auto pb-5 [scrollbar-width:thin] [scrollbar-color:var(--line)_transparent]"}`}>
               {pane === "general" && (
-                <section aria-label="General">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="m-0 text-[13px] font-semibold">Default mode</p>
-                      <p className="mt-0.5 mb-0 text-xs text-dim">Combo preset a new or resumed session opens in.</p>
+                <section aria-label="General" className="grid gap-7">
+                  <div className="grid gap-7">
+                    <p className="m-0 text-[11px] uppercase tracking-[0.14em] text-dim">Appearance</p>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="m-0 text-[13px] font-semibold">Theme</p>
+                        <p className="mt-0.5 mb-0 text-xs text-dim">Light, dark, or follow the system.</p>
+                      </div>
+                      <Tabs
+                        value={theme}
+                        onValueChange={(value) => {
+                          if (value !== "light" && value !== "dark" && value !== "system") return;
+                          setTheme(value);
+                          toast(`Theme set to ${value}`, "Applies to this browser.", "sun");
+                        }}
+                        className="w-fit"
+                      >
+                        <TabsList className="rounded-[10px] border border-line bg-panel p-1">
+                          {(
+                            [
+                              ["light", "sun", "Light"],
+                              ["dark", "moon", "Dark"],
+                              ["system", "monitor", "System"],
+                            ] as const
+                          ).map(([value, icon, label]) => (
+                            <TabsTrigger key={value} value={value} aria-label={label} className="size-8 flex-none">
+                              <Icon name={icon} />
+                            </TabsTrigger>
+                          ))}
+                        </TabsList>
+                      </Tabs>
                     </div>
-                    <ComboDefaultPicker />
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="m-0 text-[13px] font-semibold">Accent color</p>
+                        <p className="mt-0.5 mb-0 text-xs text-dim">Tint buttons, links, and charts.</p>
+                      </div>
+                      <AccentPicker
+                        accent={accent}
+                        onPick={(id) => {
+                          setAccent(id);
+                          toast(`Accent set to ${ACCENTS[id].label}`, "Applies to this browser.", "palette");
+                        }}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="m-0 text-[13px] font-semibold">Currency</p>
+                        <p className="mt-0.5 mb-0 text-xs text-dim">Display currency for cost figures. Persists to tersio settings.</p>
+                      </div>
+                      <CurrencyPicker cur={cur} onPick={(code) => { onCurrency(code); toast(`Currency set to ${code}`, "Cost figures update across the dashboard.", "check"); }} id="setCur" />
+                    </div>
                   </div>
-                  <div className="mt-6 flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="m-0 text-[13px] font-semibold">Theme</p>
-                      <p className="mt-0.5 mb-0 text-xs text-dim">Light, dark, or follow the system.</p>
-                    </div>
-                    <Tabs
-                      value={theme}
-                      onValueChange={(value) => {
-                        if (value === "light" || value === "dark" || value === "system") setTheme(value);
-                      }}
-                      className="w-fit"
-                    >
-                      <TabsList className="rounded-[10px] border border-line bg-panel p-1">
-                        {(
-                          [
-                            ["light", "sun", "Light"],
-                            ["dark", "moon", "Dark"],
-                            ["system", "monitor", "System"],
-                          ] as const
-                        ).map(([value, icon, label]) => (
-                          <TabsTrigger key={value} value={value} aria-label={label}>
-                            <Icon name={icon} />
-                          </TabsTrigger>
-                        ))}
-                      </TabsList>
-                    </Tabs>
-                  </div>
-                  <div className="mt-3.5 flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="m-0 text-[13px] font-semibold">Currency</p>
-                      <p className="mt-0.5 mb-0 text-xs text-dim">Display currency for cost figures. Persists to tersio settings.</p>
-                    </div>
-                    <CurrencyPicker cur={cur} onPick={onCurrency} id="setCur" />
+                  <div className="grid gap-7 border-t border-line pt-7">
+                    <p className="m-0 text-[11px] uppercase tracking-[0.14em] text-dim">Modes</p>
+                    <DefaultModes />
                   </div>
                 </section>
               )}
@@ -861,13 +1211,13 @@ export function ShareDialog({
     }
   };
 
-  const shareImage = (openSocial: () => Window | null, network: string): void => {
-    const socialWindow = openSocial();
+  // Native links preserve cmd-click, announcements, and popup safety.
+  const shareImage = (network: string): void => {
     void copyImage().then(
       () => toast("Image copied", `Paste it into the ${network} composer.`, "copy"),
       () => {
-        if (!socialWindow) copyText(text, "Image copy failed; share text copied instead.");
-        else toast("Image copy failed", "Use Download and attach the PNG in the composer.", "circle-alert");
+        copyText(text, "Image copy failed; share text copied instead.");
+        toast("Image copy failed", "Share text copied instead.", "circle-alert");
       },
     );
   };
@@ -883,18 +1233,16 @@ export function ShareDialog({
   // 1200x850 layout and theme rule as the original share.js svgCard().
   const svgCard = (): string => {
     const e = (x: string): string => x.replace(/&/g, "&amp;").replace(/</g, "&lt;");
-    let themeChoice: string | null = null;
-    try {
-      themeChoice = localStorage.getItem("tersio-theme");
-    } catch {
-      themeChoice = null;
-    }
-    const dark = themeChoice
-      ? themeChoice === "dark"
-      : !!window.matchMedia?.("(prefers-color-scheme: dark)").matches;
-    const pal = dark
-      ? { bg: "#09090b", ink: "#f4f4f5", dim: "#a1a1aa", accent: "#34d399" }
-      : { bg: "#ffffff", ink: "#18181b", dim: "#52525b", accent: "#047857" };
+    // Canvas reads live tokens off <html> since it cannot resolve var().
+    const computed = getComputedStyle(document.documentElement);
+    const token = (name: string, fallback: string): string =>
+      computed.getPropertyValue(name).trim() || fallback;
+    const pal = {
+      bg: token("--bg", "#09090b"),
+      ink: token("--ink", "#f4f4f5"),
+      dim: token("--dim", "#a1a1aa"),
+      accent: token("--accent", "#34d399"),
+    };
     const hv = cells;
     const cw = 32;
     const gap = 9;
@@ -1037,49 +1385,46 @@ export function ShareDialog({
         <div className="mono text-xs mt-4 flex flex-wrap items-center gap-2">
           <span className="flex items-center gap-2">
             <HoverTip key="x" content="Share on X">
-              <button
-                type="button"
-                className="inline-flex cursor-pointer items-center gap-1.5 rounded-[10px] border border-line bg-transparent px-[9px] py-[7px] text-xs text-ink hover:border-accent [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]"
+              <a
+                href={shareUrl("x", { text: `${text} #Tersio` })}
+                target="_blank"
+                rel="noopener noreferrer width=560,height=460"
+                className="inline-flex cursor-pointer items-center gap-1.5 rounded-[10px] border border-line bg-transparent px-[9px] py-[7px] text-xs text-ink no-underline hover:border-accent [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]"
                 aria-label="Share on X"
-                onClick={() => shareImage(
-                  () => window.open(shareUrl("x", { text: `${text} #Tersio` }), "_blank", "noopener,noreferrer,width=560,height=460"),
-                  "X",
-                )}
+                onClick={() => shareImage("X")}
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                   <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
                 </svg>
-              </button>
+              </a>
             </HoverTip>
             <HoverTip key="reddit" content="Share on Reddit">
-            <button
-              type="button"
-              className="inline-flex cursor-pointer items-center gap-1.5 rounded-[10px] border border-line bg-transparent px-[9px] py-[7px] text-xs text-ink hover:border-accent [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]"
+            <a
+              href={shareUrl("reddit", { title: "My Tersio usage profile", text })}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex cursor-pointer items-center gap-1.5 rounded-[10px] border border-line bg-transparent px-[9px] py-[7px] text-xs text-ink no-underline hover:border-accent [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]"
               aria-label="Share on Reddit"
-              onClick={() => shareImage(
-                () => window.open(shareUrl("reddit", { title: "My Tersio usage profile", text }), "_blank", "noopener,noreferrer"),
-                "Reddit",
-              )}
+              onClick={() => shareImage("Reddit")}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                 <path d="M12 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0zm5.01 4.744c.688 0 1.25.561 1.25 1.249a1.25 1.25 0 0 1-2.498.056l-2.597-.547-.8 3.747c1.824.07 3.48.632 4.674 1.488.308-.309.73-.491 1.207-.491.968 0 1.754.786 1.754 1.754 0 .716-.435 1.333-1.01 1.614a3.111 3.111 0 0 1 .042.52c0 2.694-3.13 4.87-7.004 4.87-3.874 0-7.004-2.176-7.004-4.87 0-.183.015-.366.043-.534A1.748 1.748 0 0 1 4.028 12c0-.968.786-1.754 1.754-1.754.463 0 .898.196 1.207.49 1.207-.883 2.878-1.43 4.744-1.487l.885-4.182a.342.342 0 0 1 .14-.197.35.35 0 0 1 .238-.042l2.906.617a1.214 1.214 0 0 1 1.108-.701zM9.25 12C8.561 12 8 12.562 8 13.25c0 .687.561 1.248 1.25 1.248.687 0 1.248-.561 1.248-1.249 0-.688-.561-1.249-1.249-1.249zm5.5 0c-.687 0-1.248.561-1.248 1.25 0 .687.561 1.248 1.249 1.248.688 0 1.249-.561 1.249-1.249 0-.688-.562-1.249-1.25-1.249zm-5.466 3.99a.327.327 0 0 0-.231.094.33.33 0 0 0 0 .463c.842.842 2.484.913 2.961.913.477 0 2.105-.056 2.961-.913a.361.361 0 0 0 .029-.463.33.33 0 0 0-.464 0c-.547.533-1.684.73-2.512.73-.828 0-1.979-.196-2.512-.73a.326.326 0 0 0-.232-.095z" />
               </svg>
-            </button>
+            </a>
             </HoverTip>
             <HoverTip key="linkedin" content="Share on LinkedIn">
-            <button
-              type="button"
-              className="inline-flex cursor-pointer items-center gap-1.5 rounded-[10px] border border-line bg-transparent px-[9px] py-[7px] text-xs text-ink hover:border-accent [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]"
+            <a
+              href={shareUrl("linkedin", {})}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex cursor-pointer items-center gap-1.5 rounded-[10px] border border-line bg-transparent px-[9px] py-[7px] text-xs text-ink no-underline hover:border-accent [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]"
               aria-label="Share on LinkedIn"
-              onClick={() => shareImage(
-                () => window.open(shareUrl("linkedin", {}), "_blank", "noopener,noreferrer"),
-                "LinkedIn",
-              )}
+              onClick={() => shareImage("LinkedIn")}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                 <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
               </svg>
-            </button>
+            </a>
             </HoverTip>
           </span>
           <span className="flex items-center gap-2 ml-auto">

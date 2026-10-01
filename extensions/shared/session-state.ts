@@ -1,7 +1,9 @@
+import { readPluginSettings } from './plugin-settings.ts';
 import type { ComboLevel, ComboState, ExtensionCtx, SessionEntry, UiApi } from './types.ts';
 
 const BRIDGE_KEY = Symbol.for('tersio/combo-session-state');
 
+// A verbatim sentence from OMP's subagent prompt, so it can drift; settings.json overrides it.
 export const OMP_SUBAGENT_MARKER = 'You are operating on a piece of work assigned to you by the main agent.';
 
 export const COMBO_LEVELS: Record<string, Readonly<ComboState>> = Object.freeze({
@@ -28,7 +30,7 @@ const MODE_ENTRY_TYPES: Record<string, ModeName> = {
 
 interface Bridge {
   state: Readonly<ComboState>;
-  listeners: Set<(state: Readonly<ComboState>) => void>;
+  listeners: Map<string, (state: Readonly<ComboState>) => void>;
 }
 
 export function normalizeMode(name: ModeName, value: unknown): string | null {
@@ -67,13 +69,13 @@ function bridge(): Bridge {
   const existing = (globalThis as Record<symbol, unknown>)[BRIDGE_KEY] as Bridge | undefined;
   if (existing?.state) return existing;
   const initial = normalizedState((existing || COMBO_LEVELS.off) as Partial<Modes>);
-  return ((globalThis as Record<symbol, unknown>)[BRIDGE_KEY] = { state: initial, listeners: new Set<(state: Readonly<ComboState>) => void>() });
+  return ((globalThis as Record<symbol, unknown>)[BRIDGE_KEY] = { state: initial, listeners: new Map() });
 }
 
 function publish(state: Readonly<ComboState>): Readonly<ComboState> {
   const shared = bridge();
   shared.state = state;
-  for (const listener of shared.listeners) listener(state);
+  for (const listener of shared.listeners.values()) listener(state);
   return state;
 }
 
@@ -90,12 +92,14 @@ export function systemPromptIncludes(systemPrompt: string | string[], marker: st
 }
 
 export function isOmpSubagentPrompt(systemPrompt: string | string[]): boolean {
-  return systemPromptIncludes(systemPrompt, OMP_SUBAGENT_MARKER);
+  const raw = readPluginSettings().subagentMarkers;
+  const configured = Array.isArray(raw) ? raw.filter((m): m is string => typeof m === 'string' && m.trim() !== '') : [];
+  // A malformed setting falls back rather than matching every turn.
+  const markers = configured.length ? configured : [OMP_SUBAGENT_MARKER];
+  return markers.some((marker) => systemPromptIncludes(systemPrompt, marker));
 }
 
-// `ultra` is the level caveman and ponytail both expose, so typing it is the
-// obvious thing to try. It maps to the max preset rather than bouncing back
-// with a wall of text; `lite`/`full` map to their nearest preset too.
+// ultra maps to max, lite/full to nearest, rather than erroring.
 const COMBO_ALIASES: Record<string, ComboLevel> = { ultra: 'max', lite: 'medium', full: 'balanced' };
 
 export function normalizeComboLevel(value: unknown): ComboLevel | null {
@@ -116,9 +120,7 @@ export function paintStatusBar(ui: UiApi | undefined, key: string, emoji: string
   ui?.setStatus?.(key, themeStatus(ui, emoji, label, isActive));
 }
 
-// A ctx from before a session replacement is stale and throws on any property
-// access, so touching it must never abort a mode restore. Returns undefined for
-// a stale ctx, and a narrowed ui so callers need no second setStatus check.
+// Stale ctx access throws, so never let it abort a mode restore.
 export type StatusUi = UiApi & { setStatus: NonNullable<UiApi['setStatus']> };
 
 export function statusUi(ctx: ExtensionCtx | undefined): StatusUi | undefined {
@@ -203,11 +205,9 @@ export function activeModesSummary(state: { caveman: string; rtk: string; ponyta
   return `caveman=${state.caveman.toUpperCase()}, rtk=${state.rtk.toUpperCase()}, ponytail=${state.ponytail.toUpperCase()}`;
 }
 
-export function setSharedComboListener(listener: ((state: Readonly<ComboState>) => void) | null): void {
-  // Additive: every sibling syncs its mirror on publish, so a /tersio or
-  // /combo switch lands next turn with no reload. A null listener clears all.
-  if (typeof listener === 'function') bridge().listeners.add(listener);
-  else bridge().listeners.clear();
+// Keyed registration drops stale closures; hosts offer no teardown hook.
+export function setSharedComboListener(key: string, listener: (state: Readonly<ComboState>) => void): void {
+  bridge().listeners.set(key, listener);
 }
 
 export function resetSharedComboState(): Readonly<ComboState> {

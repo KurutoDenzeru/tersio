@@ -1,0 +1,10 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": false
+  },
+  "include": ["**/*.ts", "../extensions/**/*.ts", "../cli/**/*.ts", "../tersio.ts"],
+  "exclude": ["../node_modules"]
+}

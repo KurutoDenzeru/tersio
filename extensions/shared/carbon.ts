@@ -1,6 +1,4 @@
-// extensions/shared/carbon.ts — CO2/energy footprints, a port of the EcoLogits
-// v0.8.2 model (MPL-2.0, see ECO_NOTICE.md). Always render as ~est., never
-// merged with measured figures.
+// EcoLogits v0.8.2 port; always render as ~est, never merged with measured.
 
 export interface ModelCarbon {
   activeB: number;
@@ -33,6 +31,9 @@ const GRIDS: Record<string, number> = {
 
 // Serving amortization: single-stream ceiling ÷ concurrency ≈ served impact.
 export const SERVING_CONCURRENCY = 32;
+
+/** EcoLogits release this port tracks, so a UI can name it instead of guessing. */
+export const ECOLOGITS_VERSION = '0.8.2';
 
 interface RegistryEntry {
   match?: string;

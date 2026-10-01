@@ -125,7 +125,7 @@ export function Recent({ data, money }: { data: UsageReport | null; money: (v: n
     >
       <CardHeader>
         <div className="flex items-center gap-2">
-          <Icon name="history" className="size-4" />
+          <Icon name="clock" className="size-4" />
           <CardTitle className="font-display text-xl tracking-tight">Recent requests</CardTitle>
           <span className="mono ml-auto shrink-0 truncate text-xs text-dim">
             {rows.length ? `${rows.length} requests` : ""}
@@ -161,7 +161,7 @@ export function Recent({ data, money }: { data: UsageReport | null; money: (v: n
                       </TableCell>
                       <TableCell className="whitespace-nowrap py-2.5 pr-3 text-center">
                         <span
-                          className="mx-auto grid size-4 shrink-0 place-items-center"
+                          className="mx-auto grid size-4 shrink-0 place-items-center text-ink"
                           title={hostMeta(r.h).label}
                           aria-label={hostMeta(r.h).label}
                           role="img"

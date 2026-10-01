@@ -177,6 +177,19 @@ export function codexSessionsDir(): string {
   return path.join(os.homedir(), '.codex', 'sessions');
 }
 
+// One JSON file per message; probe XDG, then local, then macOS default.
+export function opencodeSessionsDir(): string {
+  const override = process.env.TERSIO_OPENCODE_DIR;
+  if (override) return override;
+  const xdg = process.env.XDG_DATA_HOME;
+  if (xdg && xdg.trim() !== '') return path.join(xdg, 'opencode', 'storage', 'message');
+  const local = path.join(os.homedir(), '.local', 'share', 'opencode', 'storage', 'message');
+  try {
+    if (fs.existsSync(local)) return local;
+  } catch { /* fall through to the platform default */ }
+  return path.join(os.homedir(), 'Library', 'Application Support', 'opencode', 'storage', 'message');
+}
+
 export function dayKey(ts: string | number): string | null {
   const ms = typeof ts === 'number' ? ts : Date.parse(ts);
   if (!Number.isFinite(ms)) return null;
@@ -184,7 +197,7 @@ export function dayKey(ts: string | number): string | null {
   const p = (n: number): string => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
-export function walkJsonl(dir: string, out: string[], cap: number): void {
+export function walkJsonl(dir: string, out: string[], cap: number, ext = '.jsonl'): void {
   let entries: fs.Dirent[];
   try {
     entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -194,8 +207,8 @@ export function walkJsonl(dir: string, out: string[], cap: number): void {
   for (const e of entries) {
     if (out.length >= cap) return;
     const full = path.join(dir, e.name);
-    if (e.isDirectory()) walkJsonl(full, out, cap);
-    else if (e.isFile() && e.name.endsWith('.jsonl')) out.push(full);
+    if (e.isDirectory()) walkJsonl(full, out, cap, ext);
+    else if (e.isFile() && e.name.endsWith(ext)) out.push(full);
   }
 }
 // Recent requests get their own full-width table, so this bounds payload
@@ -253,11 +266,15 @@ export function ingestSessionRow(accum: SessionAccum, model: string, usage: Reco
   for (const name of toolNames ?? []) accum.byTool[name] = (accum.byTool[name] ?? 0) + 1;
   return true;
 }
-export type SessionLineKind = 'codex_provider' | 'token_row' | 'assistant_row' | 'skip';
-export function classifySessionLine(row: { timestamp?: string | number; type?: unknown; message?: { role?: unknown; model?: unknown; usage?: Record<string, unknown>; duration?: unknown; completedAt?: unknown; timestamp?: unknown; stopReason?: unknown; errorStatus?: unknown; errorMessage?: unknown; isError?: unknown; content?: Array<{ type?: unknown; name?: unknown; arguments?: unknown }> }; payload?: { type?: unknown; model_provider?: unknown; info?: { last_token_usage?: Record<string, unknown> } } }): { kind: SessionLineKind; provider?: string; model?: string; usage?: Record<string, unknown>; durMs?: number; run?: { st: RunStatus; code?: number; note?: string }; tools?: string[]; ms?: number } {
+export type SessionLineKind = 'codex_provider' | 'codex_model' | 'token_row' | 'assistant_row' | 'skip';
+export function classifySessionLine(row: { timestamp?: string | number; type?: unknown; message?: { role?: unknown; model?: unknown; usage?: Record<string, unknown>; duration?: unknown; completedAt?: unknown; timestamp?: unknown; stopReason?: unknown; errorStatus?: unknown; errorMessage?: unknown; isError?: unknown; content?: Array<{ type?: unknown; name?: unknown; arguments?: unknown }> }; payload?: { type?: unknown; model?: unknown; model_provider?: unknown; info?: { last_token_usage?: Record<string, unknown> } } }): { kind: SessionLineKind; provider?: string; model?: string; usage?: Record<string, unknown>; durMs?: number; run?: { st: RunStatus; code?: number; note?: string }; tools?: string[]; ms?: number } {
   const payload = row.payload;
   if (payload && typeof payload === 'object') {
     if (row.type === 'session_meta' && typeof payload.model_provider === 'string') return { kind: 'codex_provider', provider: payload.model_provider };
+    // A Codex transcript states the model once per turn, in turn_context.
+    if (row.type === 'turn_context' && typeof payload.model === 'string' && payload.model) {
+      return { kind: 'codex_model', model: payload.model };
+    }
     if (payload.type === 'token_count') {
       const last = payload.info?.last_token_usage;
       if (last) {
@@ -270,9 +287,7 @@ export function classifySessionLine(row: { timestamp?: string | number; type?: u
   const msg = row.message;
   if (!msg || msg.role !== 'assistant' || !msg.usage) return { kind: 'skip' };
   const model = typeof msg.model === 'string' && msg.model ? msg.model : 'unknown';
-  // pi writes no `duration` and no `completedAt`: the request start lands on
-  // message.timestamp and the completion on the row's own timestamp. Fall back
-  // to that pair so Elapsed and Speed are measured rather than blank.
+  // pi omits duration, so derive Elapsed/Speed from the timestamp pair.
   const startMs = typeof msg.timestamp === 'number' ? msg.timestamp : undefined;
   const endMs = typeof msg.completedAt === 'number' ? msg.completedAt : stampMs(row.timestamp);
   const computedDur = startMs !== undefined && Number.isFinite(endMs) && endMs > startMs ? endMs - startMs : undefined;
@@ -288,6 +303,64 @@ export function classifySessionLine(row: { timestamp?: string | number; type?: u
   }
   return { kind: 'assistant_row', model, usage: msg.usage, durMs: typeof msg.duration === 'number' ? msg.duration : computedDur, run: statusOf(msg), tools };
 }
+// True when at least one token bucket holds a positive finite count.
+export function hasPositiveUsage(usage: Record<string, unknown>): boolean {
+  for (const k of ['input', 'output', 'cacheRead', 'cacheWrite']) {
+    const v = usage[k];
+    if (typeof v === 'number' && Number.isFinite(v) && v > 0) return true;
+  }
+  return false;
+}
+
+export interface OpencodeMessage {
+  role?: unknown;
+  tokens?: { input?: unknown; output?: unknown; reasoning?: unknown; cache?: { read?: unknown; write?: unknown } } | null;
+  modelID?: unknown;
+  providerID?: unknown;
+  time?: { created?: unknown; completed?: unknown } | null;
+  cost?: unknown;
+  finish?: unknown;
+}
+
+// One OpenCode message file; assistant rows carry the token buckets.
+export function classifyOpencodeMessage(obj: OpencodeMessage | null | undefined): { model: string; usage: Record<string, unknown>; ms: number | undefined; durMs: number | undefined } | null {
+  if (!obj || typeof obj !== 'object' || obj.role !== 'assistant') return null;
+  const t = obj.tokens;
+  if (!t || typeof t !== 'object') return null;
+  const usage: Record<string, unknown> = {
+    input: t.input,
+    output: t.output,
+    cacheRead: t.cache?.read,
+    cacheWrite: t.cache?.write,
+    cost: (obj as Record<string, unknown>).cost,
+  };
+  if (!hasPositiveUsage(usage)) return null;
+  const provider = typeof obj.providerID === 'string' && obj.providerID ? obj.providerID : 'unknown';
+  const model = typeof obj.modelID === 'string' && obj.modelID ? obj.modelID : 'unknown';
+  const num = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : undefined);
+  const created = num(obj.time?.created);
+  const completed = num(obj.time?.completed);
+  return {
+    model: `opencode/${provider}/${model}`,
+    usage,
+    ms: created,
+    durMs: created !== undefined && completed !== undefined && completed > created ? completed - created : undefined,
+  };
+}
+
+// One OpenCode message file into the shared accum.
+export function processOpencodeFile(accum: SessionAccum, text: string): void {
+  let obj: unknown;
+  try {
+    obj = JSON.parse(text);
+  } catch {
+    return;
+  }
+  const parsed = classifyOpencodeMessage(obj as OpencodeMessage);
+  if (!parsed) return;
+  ingestSessionRow(accum, parsed.model, parsed.usage, parsed.ms, parsed.durMs, { st: 'completed' as RunStatus }, undefined, 'opencode');
+}
+
 // Fold `:free`/`-free` suffixes and case variants into one chart key.
 export function canonicalModelId(model: string): string {
   return canonicalPriceId(model.replace(FREE_SUFFIX, ''));
@@ -320,7 +393,22 @@ export function importSessionTokens(): SessionTokens {
   if (process.env.TERSIO_SESSIONS_DIR === undefined || process.env.TERSIO_CODEX_DIR !== undefined) {
     walkJsonl(codexSessionsDir(), files, 2000);
   }
+  // OpenCode message bodies are single JSON documents, not JSONL.
+  const ocFiles: string[] = [];
+  if (process.env.TERSIO_SESSIONS_DIR === undefined || process.env.TERSIO_OPENCODE_DIR !== undefined) {
+    walkJsonl(opencodeSessionsDir(), ocFiles, 5000, '.json');
+  }
+  for (const file of ocFiles) {
+    let text: string;
+    try {
+      text = fs.readFileSync(file, 'utf8');
+    } catch {
+      continue;
+    }
+    processOpencodeFile(accum, text);
+  }
   let codexProvider: string | null = null;
+  let codexModel: string | null = null;
   for (const file of files) {
     let text: string;
     try {
@@ -328,7 +416,12 @@ export function importSessionTokens(): SessionTokens {
     } catch {
       continue;
     }
-    processSessionText(accum, { get codexProvider() { return codexProvider; }, set codexProvider(v: string | null) { codexProvider = v; } }, text, hostOfSessionFile(file));
+    processSessionText(accum, {
+      get codexProvider() { return codexProvider; },
+      set codexProvider(v: string | null) { codexProvider = v; },
+      get codexModel() { return codexModel; },
+      set codexModel(v: string | null) { codexModel = v; },
+    }, text, hostOfSessionFile(file));
   }
   accum.recent.sort((a, b) => b.t - a.t);
   return { messages: accum.messages, totals: accum.totals, byModel: accum.byModel, byDay: accum.byDay, byDayModel: accum.byDayModel, byTool: accum.byTool, byModelMessages: accum.byModelMessages, costMeasured: accum.costMeasured, recent: accum.recent.slice(0, RECENT_LIMIT) };
@@ -415,7 +508,7 @@ export function readRtkAdoption(): RtkAdoption {
   const missedCalls = Math.max(0, eligibleCalls - rtkCalls);
   return { sessions, bashCalls, eligibleCalls, rtkCalls, missedCalls, adoptionPct: eligibleCalls ? (rtkCalls / eligibleCalls) * 100 : 0 };
 }
-export function processSessionText(accum: SessionAccum, state: { codexProvider: string | null }, text: string, host?: string): void {
+export function processSessionText(accum: SessionAccum, state: { codexProvider: string | null; codexModel?: string | null }, text: string, host?: string): void {
   for (const line of text.split('\n')) {
     if (!line.trim()) continue;
     try {
@@ -425,8 +518,14 @@ export function processSessionText(accum: SessionAccum, state: { codexProvider: 
         if (parsed.provider) state.codexProvider = parsed.provider;
         continue;
       }
+      if (parsed.kind === 'codex_model') {
+        if (parsed.model) state.codexModel = parsed.model;
+        continue;
+      }
       if (parsed.kind === 'token_row') {
-        const model = parsed.provider ? `codex/${parsed.provider}` : (state.codexProvider ? `codex/${state.codexProvider}` : 'codex');
+        const base = parsed.provider ? `codex/${parsed.provider}` : (state.codexProvider ? `codex/${state.codexProvider}` : 'codex');
+        // The provider alone told you nothing about which model ran.
+        const model = state.codexModel ? `${base}/${state.codexModel}` : base;
         ingestSessionRow(accum, model, parsed.usage ?? {}, row.timestamp, parsed.durMs, { st: 'completed' as RunStatus }, undefined, host ?? 'codex');
         continue;
       }

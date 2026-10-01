@@ -1,6 +1,5 @@
 // /combo session toggle: off | medium | balanced | max.
 
-import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
@@ -8,7 +7,6 @@ import {
   COMBO_LEVELS,
   getSharedComboState,
   isComboPresetActive,
-  isOmpSubagentPrompt,
   normalizeComboLevel,
   paintableCtx,
   reconcileSharedComboEntries,
@@ -110,8 +108,7 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
     return useState(reconcileSharedComboEntries(sessionEntries(ctx)), ctx);
   }
   function listen(ctx?: ExtensionCtx): void {
-    // Stable identity: the bridge set dedupes, so repeat calls register once.
-    if (ctx?.hasUI) setSharedComboListener(useState);
+    if (ctx?.hasUI) setSharedComboListener('combo', useState);
   }
 
   function track(ctx?: ExtensionCtx): void {
@@ -219,12 +216,9 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
 
   pi.on<SystemPromptEvent>('before_agent_start', async (event, ctx) => {
     if (ctx?.hasUI) reconcile(ctx);
-    if (!isOmpSubagentPrompt(event.systemPrompt)) return;
-
     const mode = getSharedComboState().ponytail;
     if (mode === 'off' || systemPromptIncludes(event.systemPrompt, 'PONYTAIL MODE ACTIVE')) return;
-    const instructions = await loadPonytailInstructions(mode);
-    return injectPromptText(pi, event, instructions);
+    return injectPromptText(pi, event, await loadPonytailInstructions(mode));
   });
 
   // Slash commands only; natural-language input caused accidental toggles and has no reload context.

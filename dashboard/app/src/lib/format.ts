@@ -1,6 +1,4 @@
-// Formatting, currency, vendor, and zone helpers shared by Dashboard views:
-// magnitude-aware money decimals, FX with a live frankfurter refresh,
-// folded-key display names, provider registry.
+// Formatting, currency, vendor, and zone helpers shared across views.
 
 export interface TokenBreakdown {
   input: number;
@@ -136,6 +134,7 @@ export interface Vendor {
 }
 
 const PROVIDERS: Array<[RegExp, string, string, string]> = [
+  [/stealth|space-bunny/i, "Stealth", "stealth", "#1f2937"],
   [/openai|codex|gpt-|o1/i, "OpenAI", "openai", "#fff"],
   [/muse/i, "Meta", "meta", "#0082fb"],
   [/deepseek/i, "DeepSeek", "deepseek", "#4d6bfe"],
@@ -148,6 +147,10 @@ const PROVIDERS: Array<[RegExp, string, string, string]> = [
   [/mistral/i, "Mistral", "mistralai", "#ff7000"],
   [/claude|anthropic/i, "Anthropic", "anthropic", "#d97757"],
   [/gemini|google|gemma/i, "Google", "google", "#4285F4"],
+  // `swe-*` is Cognition's Devin line; anchored so it cannot swallow other names.
+  [/devin|cognition|^swe[-/]/i, "Cognition", "cognition", "#0b0b0b"],
+  // No Cognition/Devin mark ships on the simple-icons CDN, so this slug stays
+  // empty and the dashboard draws its local glyph instead of a broken image.
 ];
 
 export function vendorOf(model: string): Vendor {
@@ -178,23 +181,23 @@ export type Zone = [glyph: string, label: string, cls: string];
 export function co2Zone(g: number): Zone {
   if (!(g > 0)) return ["minus", "no data", ""];
   if (g <= 50) return ["sprout", "light", "good"];
-  if (g <= 500) return ["smile", "moderate", "good"];
-  if (g <= 2000) return ["meh", "heavy", "warn"];
+  if (g <= 500) return ["face-slightly-smiling", "moderate", "good"];
+  if (g <= 2000) return ["face-neutral", "heavy", "warn"];
   return ["flame", "very high", "bad"];
 }
 
 export function levZone(x: number): Zone {
   if (!(x > 0)) return ["minus", "no savings yet", ""];
   if (x >= 3) return ["rocket", "high leverage", "good"];
-  if (x >= 1) return ["smile", "solid", "good"];
-  return ["meh", "light", "warn"];
+  if (x >= 1) return ["face-slightly-smiling", "solid", "good"];
+  return ["face-neutral", "light", "warn"];
 }
 
 export function shareZone(p: number): Zone {
   if (!(p > 0)) return ["minus", "uncached", ""];
   if (p >= 80) return ["rocket", "high", "good"];
-  if (p >= 50) return ["smile", "good", "good"];
-  return ["meh", "low", "warn"];
+  if (p >= 50) return ["face-slightly-smiling", "good", "good"];
+  return ["face-neutral", "low", "warn"];
 }
 
 export type RunStatus = "completed" | "aborted" | "error";
@@ -214,9 +217,7 @@ export function statusColor(st: string): string {
   return st === "error" ? "#f87171" : st === "aborted" ? "#fbbf24" : "var(--accent)";
 }
 
-// Cost precedence: a recorded charge > 0 is authoritative and shown bare; an
-// exact 0 usually means a free provider, so it falls back to the modeled
-// figure with its "~" marker.
+// A recorded charge > 0 wins; an exact 0 means free, so fall back to modeled.
 export function costIsMeasured(r: { usd?: number }): boolean {
   return typeof r.usd === "number" && r.usd > 0;
 }
@@ -232,6 +233,16 @@ export function whenStamp(ts: number): string {
     d.toLocaleString("en-US", { month: "short", day: "numeric" }) +
     ", " +
     d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", second: "2-digit" })
+  );
+}
+
+// Snapshots span months, so the year has to be visible; whenStamp drops it.
+export function fmtSnapshot(ts: number): string {
+  const d = new Date(ts);
+  return (
+    d.toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric" }) +
+    " · " +
+    d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
   );
 }
 

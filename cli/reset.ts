@@ -1,6 +1,4 @@
-// cli/reset.ts — clear tersio-owned statistics: the usage ledger plus a reset
-// watermark that filters session-derived and RTK-metered rows out of every
-// derived view. Transcripts and the RTK database are never touched.
+// Clears tersio-owned stats only; transcripts and RTK data stay.
 import { dryRun, yes } from './common.ts';
 import { confirmDestructive, sayTagged } from './interactive.ts';
 import { clearUsageLedger, importSessionTokens, ledgerPath, markReset, readUsage, sessionsDir } from '../extensions/shared/usage-ledger.ts';

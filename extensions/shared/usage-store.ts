@@ -1,7 +1,5 @@
-// extensions/shared/usage-store.ts — tersio-owned usage.db. Persists what
-// importSessionTokens derives live, so reports survive session-file rotation.
-// Incremental sync plus the reset watermark make it a cache, never a fork.
-// Missing sqlite3 → sync false / read null.
+// extensions/shared/usage-store.ts — tersio-owned usage.db. A cache of the
+// live parse, never a fork; missing sqlite3 → sync false / read null.
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -10,17 +8,21 @@ import {
   RECENT_LIMIT,
   canonicalModelId,
   classifySessionLine,
+  OpencodeMessage,
+  classifyOpencodeMessage,
   codexSessionsDir,
   costOf,
   durOf,
   hostOfSessionFile,
   ingestSessionRow,
+  opencodeSessionsDir,
   newSessionAccum,
   sessionsDirs,
   walkJsonl,
 } from './usage-ledger.ts';
 import { tersioDataPath } from '../lib/utils.ts';
 import { MODEL_ALIASES } from './pricing.ts';
+import { tersioSettingsFile } from './plugin-settings.ts';
 import type { RunStatus, SessionTokens } from './usage-ledger.ts';
 
 export function usageDbPath(): string {
@@ -66,10 +68,8 @@ function query(db: string, sql: string): string[][] {
     .map((line) => line.split('\t'));
 }
 
-// Bump when a parse change adds a field the mirror cannot fill in for rows it
-// already stored. The file ledger is mtime+size, so an unchanged transcript is
-// never re-read and the new field would stay NULL forever without this.
-const PARSER_VERSION = '3';
+// Bump on a parse change: unchanged transcripts are never re-read.
+const PARSER_VERSION = '6';
 
 function ensureSchema(db: string): void {
   fs.mkdirSync(path.dirname(db), { recursive: true });
@@ -100,8 +100,101 @@ function ensureSchema(db: string): void {
   try {
     const stored = query(db, `SELECT v FROM meta WHERE k='parser_version';`);
     if (stored.length && stored[0][0] === PARSER_VERSION) return;
+    backupUsageDb(db);
     run(db, `DELETE FROM messages;DELETE FROM files;INSERT OR REPLACE INTO meta (k,v) VALUES ('parser_version','${PARSER_VERSION}');`);
   } catch { /* fresh db, nothing to invalidate */ }
+}
+
+// The one destructive thing we do; keep the last few so a bad bump is recoverable.
+const BACKUP_KEEP = 3;
+
+export function backupUsageDir(): string {
+  return path.join(path.dirname(usageDbPath()), 'backups');
+}
+
+export function listUsageBackups(): Array<{ file: string; mtime: number; size: number }> {
+  try {
+    return fs.readdirSync(backupUsageDir())
+      .filter((n) => /^usage-\d{14}\.db$/.test(n))
+      .map((n) => {
+        const full = path.join(backupUsageDir(), n);
+        const st = fs.statSync(full);
+        return { file: full, mtime: st.mtimeMs, size: st.size };
+      })
+      .sort((a, b) => b.mtime - a.mtime);
+  } catch {
+    return [];
+  }
+}
+
+function backupUsageDb(db: string): void {
+  try {
+    const dir = backupUsageDir();
+    fs.mkdirSync(dir, { recursive: true });
+    const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
+    fs.copyFileSync(db, path.join(dir, `usage-${stamp}.db`));
+    for (const old of listUsageBackups().slice(BACKUP_KEEP)) {
+      fs.rmSync(old.file, { force: true });
+    }
+  } catch { /* a missing backup must not block the sync */ }
+}
+
+const SCHEDULE_MS: Record<string, number> = { daily: 86_400_000, weekly: 604_800_000, monthly: 2_592_000_000 };
+
+/** Read the schedule straight from settings; this module must not import cli/. */
+export function readBackupSchedule(): string {
+  try {
+    const raw = JSON.parse(fs.readFileSync(tersioSettingsFile(), 'utf8')) as { backupSchedule?: unknown };
+    return typeof raw?.backupSchedule === 'string' ? raw.backupSchedule : 'monthly';
+  } catch {
+    return 'monthly';
+  }
+}
+
+/** Snapshot on the schedule, skipping when the newest one is still fresh. */
+export function maybeScheduledBackup(db: string): boolean {
+  const every = SCHEDULE_MS[readBackupSchedule()];
+  if (!every) return false;
+  try {
+    const newest = listUsageBackups()[0];
+    if (newest && Date.now() - newest.mtime < every) return false;
+    backupUsageDb(db);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// basename only: a crafted `../` must not escape the backup dir.
+function resolveBackupFile(file: string): string | null {
+  const dir = path.resolve(backupUsageDir());
+  const target = path.join(dir, path.basename(String(file || '')));
+  if (!target.startsWith(dir + path.sep)) return null;
+  return fs.existsSync(target) ? target : null;
+}
+
+/** Put a backup back in place. The next sync then re-parses over it. */
+export function restoreUsageBackup(file: string): boolean {
+  try {
+    const src = resolveBackupFile(file);
+    if (!src) return false;
+    fs.copyFileSync(src, usageDbPath());
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Delete one snapshot. Only ever touches a file inside the backup dir. */
+export function deleteUsageBackup(file: string): boolean {
+  try {
+    const target = resolveBackupFile(file);
+    if (!target) return false;
+    fs.rmSync(target, { force: true });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function readFiles(db: string): Record<string, { mtime: number; size: number }> {
@@ -134,7 +227,29 @@ interface StoredRow {
 
 function parseFile(text: string, host?: string): StoredRow[] {
   const rows: StoredRow[] = [];
+  // Guarded: a JSONL transcript must fall through, not abort the sync.
+  let oc: ReturnType<typeof classifyOpencodeMessage> = null;
+  try { oc = classifyOpencodeMessage(JSON.parse(text) as OpencodeMessage); } catch { /* JSONL */ }
+  if (oc) {
+    rows.push({
+      t: oc.ms ?? null,
+      model: canonicalModelId(oc.model),
+      i: intOf(oc.usage.input),
+      o: intOf(oc.usage.output),
+      d: durOf(oc.durMs),
+      cr: intOf(oc.usage.cacheRead),
+      cw: intOf(oc.usage.cacheWrite),
+      usd: costOf(oc.usage),
+      st: 'completed',
+      code: undefined,
+      note: undefined,
+      tools: [],
+      host,
+    });
+    return rows;
+  }
   let codexProvider: string | null = null;
+  let codexModel: string | null = null;
   for (const line of text.split('\n')) {
     if (!line.trim()) continue;
     try {
@@ -142,6 +257,10 @@ function parseFile(text: string, host?: string): StoredRow[] {
       const parsed = classifySessionLine(row);
       if (parsed.kind === 'codex_provider') {
         if (parsed.provider) codexProvider = parsed.provider;
+        continue;
+      }
+      if (parsed.kind === 'codex_model') {
+        if (parsed.model) codexModel = parsed.model;
         continue;
       }
       const ts = row.timestamp;
@@ -152,7 +271,7 @@ function parseFile(text: string, host?: string): StoredRow[] {
         const usage = parsed.usage ?? {};
         rows.push({
           t,
-          model: canonicalModelId(provider ? `codex/${provider}` : 'codex'),
+          model: canonicalModelId(provider ? (codexModel ? `codex/${provider}/${codexModel}` : `codex/${provider}`) : 'codex'),
           i: intOf(usage.input),
           o: intOf(usage.output),
           d: undefined,
@@ -206,18 +325,25 @@ export function syncUsageDb(): boolean {
   try {
     db = usageDbPath();
     ensureSchema(db);
+    maybeScheduledBackup(db);
   } catch {
     return false;
   }
   const files: string[] = [];
+  const ocFiles: string[] = [];
   try {
     for (const dir of sessionsDirs()) walkJsonl(dir, files, 2000);
     if (process.env.TERSIO_SESSIONS_DIR === undefined || process.env.TERSIO_CODEX_DIR !== undefined) {
       walkJsonl(codexSessionsDir(), files, 2000);
     }
+    // OpenCode stores one JSON document per message, not JSONL.
+    if (process.env.TERSIO_SESSIONS_DIR === undefined || process.env.TERSIO_OPENCODE_DIR !== undefined) {
+      walkJsonl(opencodeSessionsDir(), ocFiles, 5000, '.json');
+    }
   } catch {
     return false;
   }
+  files.push(...ocFiles);
   const known = readFiles(db);
   const current: Record<string, { mtime: number; size: number }> = {};
   const changed: string[] = [];
