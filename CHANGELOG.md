@@ -1,3 +1,8 @@
+## v2.24.1
+ - Restores OpenCode/Codex usage history lost to the mirror wipe, with scheduled mirror backups plus restore/delete in the Data pane.
+ - Adds dashboard accents, a CO2 detail dialog, real vendor brandmarks, session-start defaults, and share/export fixes.
+ - Fixes doctor, rtk_run errors, uninstall and RTK wiring gaps, install confirm, and dashboard icon/tab glitches.
+
 ## v2.24.0
  - Saves tokens and reports spend across every supported coding agent. Install now targets whichever agent you run, `--host omp|pi` pins it for scripts, and uninstall removes only the agent you pick.
  - Ships one extension tree for every host instead of one per host. The API differences between them live in a single adapter, so a fix lands everywhere at once.
