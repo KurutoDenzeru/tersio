@@ -1,8 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { activeModesSummary, getSharedComboState, hasModeState, isComboPresetActive, isOmpSubagentPrompt, lastCustomValue, normalizeInputCommand, normalizeMode, paintStatusBar, paintableCtx, reconcileSharedComboEntries, sessionEntries, setSharedComboListener, setSharedComboMode, statusUi, systemPromptIncludes } from '../shared/session-state.ts';
+import { getSharedComboState, hasModeState, isOmpSubagentPrompt, lastCustomValue, normalizeInputCommand, normalizeMode, reconcileSharedComboEntries, sessionEntries, setSharedComboListener, setSharedComboMode, systemPromptIncludes } from '../shared/session-state.ts';
 import { dirname, join } from 'node:path';
 import { injectPromptText, onHostEvent, setExtensionLabel } from '../shared/host.ts';
+import { announceStatus } from '../shared/status.ts';
 import { readCavemanDefault } from '../shared/plugin-settings.ts';
 import type { ExtensionApi, ExtensionCtx, InputEvent, SessionEntry, SystemPromptEvent } from '../shared/types.ts';
 
@@ -39,21 +40,8 @@ function isOffCommand(text: unknown): boolean {
 
 export default function cavemanSessionExtension(pi: ExtensionApi): void {
   let currentMode = DEFAULT_MODE;
-  let isActive = false;
-  let lastCtx: ExtensionCtx | undefined = undefined;
   let lastInjected: string | undefined = undefined;
-
-  function syncStatus(ctx?: ExtensionCtx): void {
-    lastCtx = paintableCtx(lastCtx, ctx);
-    const ui = statusUi(lastCtx);
-    if (!ui) return;
-    // Combo owns the bar when any preset is active; keep ours empty to avoid duplication.
-    if (isComboPresetActive() || currentMode === 'off') {
-      ui.setStatus('caveman', undefined);
-      return;
-    }
-    paintStatusBar(ui, 'caveman', '🪨', `caveman: ${currentMode.toUpperCase()}`, isActive);
-  }
+  const lastStatus = { value: '' };
 
   function setMode(mode: string, ctx?: ExtensionCtx): boolean {
     const normalized = normalizeMode('caveman', mode);
@@ -61,12 +49,7 @@ export default function cavemanSessionExtension(pi: ExtensionApi): void {
     currentMode = normalized;
     pi.appendEntry?.('caveman-mode', { mode: normalized });
     setSharedComboMode('caveman', normalized);
-    syncStatus(ctx);
-    const active = activeModesSummary(getSharedComboState());
-    const msg = normalized === 'off'
-      ? `Caveman off. Active: ${active}.`
-      : `Caveman ${normalized} on — terse replies for this session. Active: ${active}.`;
-    ctx?.ui?.notify?.(msg, 'info');
+    announceStatus(ctx, lastStatus);
     return true;
   }
 
@@ -75,10 +58,7 @@ export default function cavemanSessionExtension(pi: ExtensionApi): void {
   // Adopt a /tersio or /combo switch at once, so the next turn needs no reload.
   function syncFromShared(state: { caveman: string }): void {
     const mode = normalizeMode('caveman', state.caveman);
-    if (mode) {
-      currentMode = mode;
-      syncStatus();
-    }
+    if (mode) currentMode = mode;
   }
   setSharedComboListener('caveman', syncFromShared);
   pi.registerCommand?.('caveman', {
@@ -90,7 +70,7 @@ export default function cavemanSessionExtension(pi: ExtensionApi): void {
         return;
       }
       if (arg === 'status') {
-        ctx?.ui?.notify?.(`Caveman: ${currentMode}`, 'info');
+        announceStatus(ctx, { value: '' });
         return;
       }
       if (!setMode(arg, ctx)) {
@@ -113,12 +93,13 @@ export default function cavemanSessionExtension(pi: ExtensionApi): void {
     const persisted = resolveMode(entries, '');
     const alreadyChosen = currentMode !== DEFAULT_MODE;
     currentMode = persisted || (alreadyChosen ? currentMode : normalizeMode('caveman', readCavemanDefault())) || DEFAULT_MODE;
-    syncStatus(ctx);
+    announceStatus(ctx, lastStatus);
   }
 
+  // Session start, resume, and branch all land here, so the status appears in
+  // every session type without a host-specific event.
   pi.on('session_start', async (_event, ctx) => {
     restoreMode(ctx);
-    ctx?.ui?.notify?.(`Caveman loaded: ${currentMode}`, 'info');
   });
 
   onHostEvent(pi, 'session_branch', async (_event, ctx) => {
@@ -129,14 +110,12 @@ export default function cavemanSessionExtension(pi: ExtensionApi): void {
     restoreMode(ctx);
   });
 
-  pi.on('agent_start', async (_event, ctx) => {
-    isActive = true;
-    syncStatus(ctx);
+  onHostEvent(pi, 'session_switch', async (_event, ctx) => {
+    restoreMode(ctx);
   });
 
-  pi.on('agent_end', async (_event, ctx) => {
-    isActive = false;
-    syncStatus(ctx);
+  onHostEvent(pi, 'session_compact', async (_event, ctx) => {
+    restoreMode(ctx);
   });
 
   pi.on('before_agent_start', async (event: SystemPromptEvent) => {

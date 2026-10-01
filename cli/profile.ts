@@ -123,3 +123,25 @@ function formatProfile(profile: Profile): string {
 }
 
 export { defaultProfile, formatProfile, storedProfile, writePluginSettings, Profile };
+
+/**
+ * The same status line the extensions print, from the stored defaults.
+ *
+ * The CLI has no live session bridge, so this reads the persisted profile. It
+ * is the right source for the menu and the dashboard: both run outside the
+ * agent, where the configured defaults are what a new session will apply.
+ */
+export function formatCliStatus(profile: Profile): string {
+  const { comboDefault, cavemanDefault, rtkDefault, ponytailDefault } = profile;
+  if (comboDefault === 'off' && cavemanDefault === 'off' && !rtkDefault && ponytailDefault === 'off') {
+    return '🧩 combo OFF';
+  }
+  const preset = COMBO_PRESET_MODES[comboDefault];
+  const isPreset = preset !== undefined
+    && preset.caveman === cavemanDefault
+    && preset.rtk === rtkDefault
+    && preset.ponytail === ponytailDefault;
+  const level = isPreset ? comboDefault.toUpperCase() : 'CUSTOM';
+  const rtk = rtkDefault ? 'ON' : 'OFF';
+  return `🧩 combo ${level}: 🪨caveman=${cavemanDefault.toUpperCase()} ⚡rtk=${rtk} 🦥ponytail=${ponytailDefault.toUpperCase()}`;
+}

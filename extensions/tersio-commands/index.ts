@@ -1,9 +1,10 @@
 // Root command plus mode switches; sibling mirrors sync with no reload.
 import {
-  getSharedComboState,
+
   reconcileSharedComboEntries,
   sessionEntries,
 } from '../shared/session-state.ts';
+import { announceStatus } from '../shared/status.ts';
 import { setExtensionLabel } from '../shared/host.ts';
 import os from 'node:os';
 import path from 'node:path';
@@ -21,11 +22,6 @@ const HELP = [
   'mode switches: /caveman /rtk /combo (tersio) + /ponytail (upstream)',
 ].join('\n');
 
-function statusLine(): string {
-  const s = getSharedComboState();
-  const level = s.level === 'custom' ? 'INACTIVE' : s.level.toUpperCase();
-  return `tersio — caveman=${s.caveman.toUpperCase()} · rtk=${s.rtk.toUpperCase()} · ponytail=${s.ponytail.toUpperCase()} (combo ${level})`;
-}
 
 function usageSummary(): string {
   const rows = readUsage();
@@ -63,7 +59,7 @@ export default function tersioCommandsExtension(pi: ExtensionApi): void {
 
       if (!sub || sub === 'status') {
         if (ctx?.hasUI) reconcileSharedComboEntries(sessionEntries(ctx));
-        ctx?.ui?.notify?.(statusLine(), 'info');
+        announceStatus(ctx, { value: '' });
         return;
       }
       if (sub === 'help') {

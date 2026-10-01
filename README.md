@@ -121,7 +121,13 @@ Flags: `--dry-run`, `--yes`/`-y`, `--verbose`, `--combo-default`/`--caveman-defa
 
 ## ⌨️ Commands reference
 
-Mode switches live on their own commands; bare `/tersio` prints status.
+Mode switches live on their own commands; bare `/tersio` prints status. Every mode command, and every session start, prints the status line:
+
+```
+🧩 combo MAX: 🪨caveman=ULTRA ⚡rtk=ON 🦥ponytail=ULTRA
+```
+
+It is display-only — it never enters the model context, so it costs the session nothing.
 
 | Command | Purpose |
 |---|---|
@@ -129,7 +135,7 @@ Mode switches live on their own commands; bare `/tersio` prints status.
 | `/caveman lite\|full\|ultra\|wenyan-lite\|wenyan-full\|wenyan-ultra\|off\|status` | Terse replies with upstream-aligned Caveman levels. Legacy `wenyan` restores as `wenyan-full`. |
 | `/rtk on\|off\|status` | Controls RTK session guidance, `rtk_run`, and the automatic hook through shared `RTK_DISABLED` state. Exact bytes bypass RTK. |
 | `/ponytail off\|lite\|full\|ultra\|status` | Minimal code using upstream Ponytail modes. Review runs separately through `/ponytail-review`. |
-| `/tersio status` | Active modes + combo level; state persists, propagates to subagents, and lights the Combo footer indicator. |
+| `/tersio status` | Active modes + combo level; state persists and propagates to subagents. |
 | `/tersio check` | Add-on version check |
 | `/tersio update <ponytail\|rtk\|caveman\|all> [--dry-run]` | Update add-ons, preview with dry-run |
 | `/tersio dashboard` | Open the Dashboard. |

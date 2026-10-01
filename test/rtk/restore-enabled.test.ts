@@ -36,10 +36,12 @@ function context(entries: SessionEntry[], notifications: string[]): ExtensionCtx
 
 test("restore skips a corrupt latest rtk-mode entry and uses the older valid one", async () => {
   const entries: SessionEntry[] = [
-    { type: "custom", customType: "rtk-mode", data: { enabled: true } },
+    { type: "custom", customType: "rtk-mode", data: { enabled: false } },
     { type: "custom", customType: "rtk-mode", data: { enabled: "maybe" } },
   ];
   const { handlers, notifications } = harness(entries);
   await handlers.get("session_start")!({}, context(entries, notifications));
-  expect(notifications.at(-1)).toBe("RTK loaded: on");
+  // The corrupt trailing entry is skipped, so the branch restores rtk=on. A
+  // shadowed corrupt entry would leave every mode off and print the off line.
+  expect(notifications.at(-1)).toBe("🧩 combo CUSTOM: 🪨caveman=OFF ⚡rtk=ON 🦥ponytail=OFF");
 });

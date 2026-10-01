@@ -4,6 +4,49 @@ import { cancel as clackCancel, confirm as clackConfirm, log as clackLog, select
 import type { SpinnerResult } from '@clack/prompts';
 import { execP } from './common.ts';
 import type { ExecOptions } from './common.ts';
+import { bannerFor, StickyBanner } from './sticky-banner.ts';
+
+// The banner is process-wide: every prompt in a run shares one instance so a
+// mode change in one menu refreshes the line the next prompt draws.
+let banner: StickyBanner | undefined;
+let bannerStatus: (() => string) | undefined;
+
+/** The live status line, or undefined when no caller has supplied one. */
+function setBannerStatus(getStatus: (() => string) | undefined): void {
+  bannerStatus = getStatus;
+  banner?.refresh();
+}
+
+/** Draw the banner now, and again after every Clack frame it emits. */
+function openBanner(): void {
+  if (banner) { banner.refresh(); return; }
+  banner = bannerFor(process.stdout, () => bannerStatus?.() ?? '');
+  if (!banner) return;
+  banner.watchResize();
+  banner.draw();
+}
+
+function closeBanner(): void {
+  banner?.restore();
+  banner?.unwatchResize();
+  banner = undefined;
+}
+
+// Clack redraws its whole frame on every keystroke and never touches the last
+// row, so repainting the banner once each frame lands keeps it pinned. A
+// listener on the write side avoids patching Clack's internal render().
+let bannerHooked = false;
+function hookBannerToOutput(): void {
+  if (bannerHooked || !banner) return;
+  bannerHooked = true;
+  const original = process.stdout.write.bind(process.stdout);
+  process.stdout.write = ((chunk: unknown, ...rest: unknown[]): boolean => {
+    const result = original(chunk as never, ...(rest as []));
+    // Deferred: the frame is still mid-write when this returns.
+    queueMicrotask(() => banner?.refresh());
+    return result;
+  }) as typeof process.stdout.write;
+}
 
 const RL = readline.createInterface({ input: process.stdin, output: process.stdout });
 let rlOpen = true;
@@ -35,9 +78,12 @@ async function withInteractiveSpinner<T>(message: string, work: (update: (messag
   const active: SpinnerResult = clackSpinner({ indicator: 'timer' });
   active.start(message);
   spinnerDepth += 1;
+  openBanner();
+  hookBannerToOutput();
   try {
     return await work((next: string) => { active.message(next); });
   } finally {
+    closeBanner();
     active.clear();
     spinnerDepth -= 1;
   }
@@ -46,22 +92,34 @@ async function withInteractiveSpinner<T>(message: string, work: (update: (messag
 async function askInteractiveChoice(message: string, options: Array<{ value: string; label: string; hint?: string; disabled?: boolean }>, initialValue: string): Promise<InteractiveChoice> {
   if (!tty()) return { status: 'unavailable' };
   closeRL();
-  const choice = await clackSelect({ message, options, initialValue });
-  if (typeof choice !== 'string') {
-    clackCancel('Aborted.');
-    return { status: 'cancelled' };
+  openBanner();
+  hookBannerToOutput();
+  try {
+    const choice = await clackSelect({ message, options, initialValue });
+    if (typeof choice !== 'string') {
+      clackCancel('Aborted.');
+      return { status: 'cancelled' };
+    }
+    return { status: 'selected', value: choice };
+  } finally {
+    closeBanner();
   }
-  return { status: 'selected', value: choice };
 }
 async function askInteractiveConfirm(message: string, initialValue = true): Promise<InteractiveConfirm> {
   if (!tty()) return { status: 'unavailable' };
   closeRL();
-  const answer = await clackConfirm({ message, initialValue });
-  if (typeof answer !== 'boolean') {
-    clackCancel('Aborted.');
-    return { status: 'cancelled' };
+  openBanner();
+  hookBannerToOutput();
+  try {
+    const answer = await clackConfirm({ message, initialValue });
+    if (typeof answer !== 'boolean') {
+      clackCancel('Aborted.');
+      return { status: 'cancelled' };
+    }
+    return { status: 'confirmed', value: answer };
+  } finally {
+    closeBanner();
   }
-  return { status: 'confirmed', value: answer };
 }
 // Confirm a destructive run: a Clack dialog at a terminal, a plain prompt in a
 // pipe or script. False means the user declined or aborted.
@@ -96,7 +154,13 @@ async function runInteractivePhase<T>(title: string, collect: () => Promise<T>):
   if (!tty()) return collect();
   closeRL();
   let result!: T;
-  await clackTasks([{ title, task: async () => { result = await collect(); } }]);
+  openBanner();
+  hookBannerToOutput();
+  try {
+    await clackTasks([{ title, task: async () => { result = await collect(); } }]);
+  } finally {
+    closeBanner();
+  }
   return result;
 }
 // Tagged lines log on TTY but stay byte-identical when piped.
@@ -118,12 +182,16 @@ async function withInteractiveTask<T>(title: string, work: (update: (message: st
   let result!: T;
   const spin = clackSpinner();
   spin.start(title);
+  openBanner();
+  hookBannerToOutput();
   try {
     result = await work((message) => spin.message(message));
     spin.stop('done');
   } catch (e) {
     spin.error(shortSpinnerError(e));
     throw e;
+  } finally {
+    closeBanner();
   }
   return result;
 }
@@ -138,4 +206,5 @@ async function execNetwork(label: string, cmd: string, args: string[], opts: Exe
 export {
   ask, closeRL, tty, withInteractiveSpinner, withInteractiveTask, execNetwork, sayTagged, SayKind,
   askInteractiveChoice, askInteractiveConfirm, confirmDestructive, runInteractivePhase, InteractiveChoice, InteractiveConfirm,
+  setBannerStatus,
 };
