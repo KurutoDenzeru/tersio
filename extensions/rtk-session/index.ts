@@ -1,7 +1,7 @@
-import { activeModesSummary, getSharedComboState, isComboPresetActive, isOmpSubagentPrompt, lastCustomValue, normalizeInputCommand, paintStatusBar, paintableCtx, reconcileSharedComboEntries, sessionEntries, setSharedComboListener, setSharedComboMode, statusUi, systemPromptIncludes } from '../shared/session-state.ts';
+import { activeModesSummary, getSharedComboState, isComboPresetActive, isOmpSubagentPrompt, lastCustomValue, paintStatusBar, paintableCtx, reconcileSharedComboEntries, sessionEntries, setSharedComboListener, setSharedComboMode, statusUi, systemPromptIncludes } from '../shared/session-state.ts';
 import { injectPromptText, onHostEvent, setExtensionLabel, stringArrayToolParams } from '../shared/host.ts';
 import { readRtkDefault } from '../shared/plugin-settings.ts';
-import type { ExtensionApi, ExtensionCtx, InputEvent, SessionEntry, SystemPromptEvent } from '../shared/types.ts';
+import type { ExtensionApi, ExtensionCtx, SessionEntry, SystemPromptEvent } from '../shared/types.ts';
 
 const DEFAULT_ENABLED = false;
 
@@ -27,6 +27,10 @@ export default function rtkSessionExtension(pi: ExtensionApi): void {
   let enabled = DEFAULT_ENABLED;
   let isActive = false;
   let lastCtx: ExtensionCtx | undefined = undefined;
+
+  function fail(text: string) {
+    return { isError: true as const, content: [{ type: 'text' as const, text }], details: { enabled } };
+  }
 
   function syncStatus(ctx?: ExtensionCtx): void {
     lastCtx = paintableCtx(lastCtx, ctx);
@@ -58,7 +62,7 @@ export default function rtkSessionExtension(pi: ExtensionApi): void {
     setRtkProcessEnabled(enabled);
     syncStatus();
   }
-  setSharedComboListener(syncFromShared);
+  setSharedComboListener('rtk', syncFromShared);
   pi.registerCommand?.('rtk', {
     description: 'Toggle RTK compact shell-output guidance for this session',
     handler: async (args, ctx) => {
@@ -88,30 +92,23 @@ export default function rtkSessionExtension(pi: ExtensionApi): void {
       description: "Arguments passed to rtk, e.g. ['git','status'] or ['read','src/index.ts']",
     }),
     async execute(_toolCallId, params, signal, onUpdate, ctx) {
-      if (!enabled) {
-        return {
-          isError: true,
-          content: [{ type: 'text', text: 'RTK mode is off. Run /rtk on for this session, or use bash explicitly.' }],
-          details: { enabled },
-        };
-      }
+      if (!enabled) return fail('RTK mode is off. Run /rtk on for this session, or use bash explicitly.');
+      if (typeof pi.exec !== 'function') return fail('This host cannot run rtk.');
       onUpdate?.({ content: [{ type: 'text', text: `rtk ${params.args.join(' ')}` }], details: { phase: 'start' } });
-      const result = await pi.exec!('rtk', params.args, { signal, cwd: ctx?.cwd || pi.cwd });
-      const text = [result.stdout, result.stderr].filter(Boolean).join('\n');
-      return {
-        isError: result.code !== 0,
-        content: [{ type: 'text', text: text || `rtk exited ${result.code}` }],
-        details: { code: result.code, killed: result.killed, enabled },
-      };
+      try {
+        const result = await pi.exec('rtk', params.args, { signal, cwd: ctx?.cwd || pi.cwd });
+        const text = [result.stdout, result.stderr].filter(Boolean).join('\n');
+        return {
+          isError: result.code !== 0,
+          content: [{ type: 'text', text: text || `rtk exited ${result.code}` }],
+          details: { code: result.code, killed: result.killed, enabled },
+        };
+      } catch (e) {
+        return fail(`rtk could not run: ${e instanceof Error ? e.message : String(e)}`);
+      }
     },
   });
 
-  onHostEvent<InputEvent>(pi, 'input', async (event) => {
-    if (event?.source === 'extension') return;
-    const t = normalizeInputCommand(event?.text);
-    if (t === 'rtk on' || t === 'use rtk') setEnabled(true);
-    if (t === 'rtk off' || t === 'stop rtk') setEnabled(false);
-  });
   function restoreEnabled(ctx?: ExtensionCtx): void {
     const entries = sessionEntries(ctx);
     // Derive the bridge here so bar suppression does not depend on load order.
