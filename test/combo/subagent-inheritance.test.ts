@@ -371,6 +371,42 @@ test("rtk restores enabled state from session_branch instead of using stale in-m
   expect(await inject(pi, UNMARKED_PROMPT)).toBe(undefined);
 });
 
+
+// The literal prompt read out of the installed omp binary. MARKED_PROMPT feeds
+// the constant back into the suite, so it cannot catch the marker drifting.
+const REAL_OMP_SUBAGENT_PROMPT = `Worker agent: delegated tasks.
+
+Tools: FULL access (edit, write, bash, grep, read, etc.); MUST use as needed to complete task.
+MUST hyperfocus assigned task; NEVER deviate.`;
+
+test("the default marker matches the prompt omp actually sends", () => {
+  expect(OMP_SUBAGENT_MARKER).toBe("Worker agent: delegated tasks.");
+  expect(isOmpSubagentPrompt(REAL_OMP_SUBAGENT_PROMPT)).toBe(true);
+});
+
+test("caveman and rtk reach a subagent on the real omp prompt", async () => {
+  resetSharedComboState();
+  const parent = instantiate(comboToggleExtension);
+  await command(parent, "combo", "max", context([], true));
+
+  // A subagent starts with its own flags at off, so this only passes when the
+  // prompt is recognised and shared state is used.
+  expect(instruction(await inject(instantiate(cavemanSessionExtension), REAL_OMP_SUBAGENT_PROMPT)))
+    .toMatch(/Caveman ultra active/);
+  expect(instruction(await inject(instantiate(rtkSessionExtension), REAL_OMP_SUBAGENT_PROMPT)))
+    .toMatch(/RTK guidance active/);
+});
+
+test("a parent session is not mistaken for a subagent", async () => {
+  resetSharedComboState();
+  const parent = instantiate(comboToggleExtension);
+  await command(parent, "combo", "max", context([], true));
+
+  // Unmarked, so each extension falls back to its own off-by-default flag.
+  expect(await inject(instantiate(cavemanSessionExtension), "Regular parent session.")).toBe(undefined);
+  expect(await inject(instantiate(rtkSessionExtension), "Regular parent session.")).toBe(undefined);
+});
+
 // These cover the settings override only; the default wording needs a live OMP.
 const TERSIO_DIR = join(process.env.HOME as string, ".tersio");
 

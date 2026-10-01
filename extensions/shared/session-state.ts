@@ -3,8 +3,9 @@ import type { ComboLevel, ComboState, ExtensionCtx, SessionEntry, UiApi } from '
 
 const BRIDGE_KEY = Symbol.for('tersio/combo-session-state');
 
-// A verbatim sentence from OMP's subagent prompt, so it can drift; settings.json overrides it.
-export const OMP_SUBAGENT_MARKER = 'You are operating on a piece of work assigned to you by the main agent.';
+// A verbatim sentence from omp's subagent prompt, so it can drift; read from
+// the installed omp binary on 2026-10-01. pi has no built-in subagent prompt.
+export const OMP_SUBAGENT_MARKER = 'Worker agent: delegated tasks.';
 
 export const COMBO_LEVELS: Record<string, Readonly<ComboState>> = Object.freeze({
   off: Object.freeze({ level: 'off', caveman: 'off', rtk: 'off', ponytail: 'off' }),
