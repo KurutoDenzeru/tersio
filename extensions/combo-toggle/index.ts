@@ -73,8 +73,7 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
     pi.appendEntry?.('combo-level', { level });
   }
 
-  // Silent: the caller decides when the line is shown, so an intermediate
-  // default can never be announced before the final state.
+  // Silent: the caller decides when to show the line.
   function useState(state: Readonly<ComboState>): Readonly<ComboState> {
     return state;
   }
@@ -170,12 +169,11 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
         useState(setSharedComboMode('ponytail', ponytailFallback));
       }
     }
-    // Announced last: the line must reflect any default applied above.
+    // Announced last, so any default above is reflected.
     announceStatus(ctx, lastStatus);
   });
 
-  // Resume, branch, and compaction restore state and re-announce; the dedupe in
-  // announceStatus keeps an unchanged state silent.
+  // Resume, branch, and compaction re-announce; dedupe keeps repeats silent.
   for (const event of ['session_branch', 'session_tree', 'agent_start', 'session_switch', 'session_compact']) {
     onHostEvent(pi, event, async (_event, ctx) => {
       track(ctx);

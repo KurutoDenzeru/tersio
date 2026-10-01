@@ -1,7 +1,6 @@
 import { afterEach, expect, test } from "vitest";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 
 import cavemanSessionExtension from "../../extensions/caveman-session/index.ts";
 import comboToggleExtension from "../../extensions/combo-toggle/index.ts";
@@ -432,8 +431,7 @@ test("a parent session is not mistaken for a subagent", async () => {
   expect(await inject(instantiate(rtkSessionExtension), "Regular parent session.")).toBe(undefined);
 });
 
-// The settings store is $TERSIO_HOME itself, not $HOME/.tersio:
-// os.homedir() ignores HOME, so the old path never matched what is read.
+// The store is $TERSIO_HOME itself; os.homedir() ignores HOME.
 const TERSIO_DIR = process.env.TERSIO_HOME as string;
 
 // Caveman's block is ours, so a level switch replaces it rather than stacking.

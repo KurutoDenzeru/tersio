@@ -1,6 +1,5 @@
-// The sticky banner must carry the stored combo on every menu, not just the one
-// that owns a live status source. A blank last row is indistinguishable from a
-// broken feature in the terminal.
+// The banner must carry the stored combo on every menu, not just the one that
+// owns a live status source — a blank last row looks like a broken feature.
 import { afterEach, expect, test } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";

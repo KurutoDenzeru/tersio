@@ -57,9 +57,8 @@ interface StoredSettings {
 }
 
 // Seed once from OMP plugin settings so a pre-~/.tersio install keeps its values.
-// Synchronous on purpose: the banner seeds from this at startup, and awaiting it
-// let piped stdin arrive before `ask()` registered its readline listener, so a
-// scripted `y` or `n` was swallowed and the confirm defaulted to abort.
+// Sync: the banner seeds from this at startup, and awaiting let piped stdin
+// arrive before `ask()` attached, so a scripted answer was swallowed.
 function storedProfileSync(): Profile {
   const base = defaultProfile();
   const stored = parseStored(readTextIfExistsSync(tersioSettingsFile()) ?? readTextIfExistsSync(legacyOmpLockPath()));
@@ -86,13 +85,7 @@ function applyStored(base: Profile, stored: StoredSettings): void {
 }
 
 async function storedProfile(): Promise<Profile> {
-  const base = defaultProfile();
-  const stored = (await readTextIfExists(tersioSettingsFile())) !== null
-    ? parseStored(await readTextIfExists(tersioSettingsFile()))
-    : parseStored(await readTextIfExists(legacyOmpLockPath()));
-  if (!stored) return base;
-  applyStored(base, stored);
-  return base;
+  return storedProfileSync();
 }
 
 function legacyOmpLockPath(): string {

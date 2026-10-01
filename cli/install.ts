@@ -175,14 +175,10 @@ async function downloadRtkChecksums(release: RtkRelease): Promise<string | null>
 }
 
 /**
- * Refuse to install an archive whose checksum could not be confirmed.
- *
- * Failing open here meant a dropped or altered `checksums.txt` silently
- * downgraded every install to unverified. An RTK binary runs with the user's
- * privileges, so a silent downgrade is worse than a failed install.
- * `--allow-unverified` restores the old behaviour for an air-gapped machine.
+ * Fails closed: an unverifiable RTK binary runs with the user's privileges, so a
+ * missing checksum is worse than a failed install. `--allow-unverified` opts out.
  */
-async function verifyRtkArchive(archivePath: string, assetName: string, checksumsText: string | null, options: WriteOptions = {}): Promise<boolean> {
+async function verifyRtkArchive(archivePath: string, assetName: string, checksumsText: string | null): Promise<boolean> {
   const unverified = (reason: string): boolean => {
     if (allowUnverified) {
       sayTagged(`  [warn] ${reason} — installing anyway (--allow-unverified)`);

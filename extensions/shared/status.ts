@@ -17,23 +17,14 @@ export function formatStatus(state: StatusState): string {
   return `🧩 combo ${label}: 🪨caveman=${caveman.toUpperCase()} ⚡rtk=${rtk.toUpperCase()} 🦥ponytail=${ponytail.toUpperCase()}`;
 }
 
-/** Read the live shared bridge, not a per-extension copy. */
-export function currentStatus(): string {
-  return formatStatus(getSharedComboState());
-}
-
 /**
- * Announce a status change through the host's own notice channel.
- *
  * `ui.notify` renders in the transcript and never enters the model context, so
- * this costs the session nothing. Do not route it through a message or a tool
- * result: both are billed again on every later turn.
- *
- * Dedupe is by rendered text, so a restore that fires repeatedly for an
- * unchanged state stays silent.
+ * this costs the session nothing — do not route it through a message or a tool
+ * result, both of which are billed again on every later turn.
  */
 export function announceStatus(ctx: { ui?: { notify?: (message: string, level?: string) => void } } | undefined, lastSent: { value: string }): void {
-  const text = currentStatus();
+  // Dedupe by rendered text: a restore can fire repeatedly for one state.
+  const text = formatStatus(getSharedComboState());
   if (lastSent.value === text) return;
   lastSent.value = text;
   ctx?.ui?.notify?.(text, 'info');

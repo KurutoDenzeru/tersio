@@ -1,14 +1,10 @@
-// Bottom status banner: the one status string the CLI and dashboard share
-// (extensions/shared/status.ts), fetched from GET /status via the shared poll
-// in lib/data.ts. Renders nothing until a status arrives, so a server without
-// the endpoint — or a file:// export — leaves the viewport unchanged.
+// The status line from GET /status. Renders nothing until one arrives, so a
+// server without the endpoint — or a file:// export — leaves the viewport alone.
 import { cn } from "cn";
 
-// Flush to the bottom edge, full width: the toaster's `bottom-4 right-4` stack
-// grows upward from 16px above that edge, so a toast lands on top of the banner
-// rather than beside it. z-100 ties the toaster deliberately — ToasterProvider
-// renders its stack after `children`, so an equal z-index puts toasts on top.
-// The sticky hero (z-50) never reaches the bottom of the viewport.
+// Full width and flush to the bottom edge, so the toaster's `bottom-4 right-4`
+// stack grows upward over the banner instead of beside it. z-100 ties the
+// toaster; it renders after children, so toasts win at equal z-index.
 const CLS =
   "pointer-events-none fixed inset-x-0 bottom-0 z-100 flex justify-center px-3 pb-2 " +
   "sm:px-4 sm:pb-3";

@@ -64,8 +64,7 @@ function dataJson(): string {
   return JSON.stringify(summarizeUsage(readUsage()));
 }
 
-// The server runs outside any agent session, so it reports the persisted
-// profile through the CLI formatter — the same defaults the next session applies.
+// Runs outside any agent session, so it reports the persisted defaults.
 async function statusJson(): Promise<string> {
   const profile = await storedProfile();
   return JSON.stringify({

@@ -124,8 +124,7 @@ test("legacy plugin default normalizes to wenyan-full and injects rules", async 
   writeFileSync(path.join(lockDir, "omp-plugins.lock.json"), JSON.stringify({
     settings: { "@krtclcdy/tersio": { cavemanDefault: "wenyan" } },
   }), "utf8");
-  // HOME alone is not enough: the settings store resolves through TERSIO_HOME,
-  // so both are pinned or the developer's real ~/.tersio/settings.json wins.
+  // os.homedir() ignores HOME on macOS, so both must be pinned.
   const previous = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE, TERSIO_HOME: process.env.TERSIO_HOME };
   process.env.HOME = home;
   process.env.USERPROFILE = home;

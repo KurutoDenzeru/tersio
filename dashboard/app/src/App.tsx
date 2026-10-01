@@ -134,8 +134,7 @@ function Shell() {
           )}
         </div>
       </main>
-      {/* Sibling of <main>, not a child: main is overflow-x-clip, which would
-          make it the containing block and pin this fixed banner wrong. */}
+      {/* Outside <main>: its overflow-x-clip would become the containing block. */}
       <StatusBanner status={status} />
       <SettingsDialog
         open={settingsOpen}

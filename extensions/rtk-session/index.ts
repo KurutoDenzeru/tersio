@@ -111,8 +111,7 @@ export default function rtkSessionExtension(pi: ExtensionApi): void {
     announceStatus(ctx, lastStatus);
   }
 
-  // Session start, resume, and branch all land here, so the status appears in
-  // every session type without a host-specific event.
+  // Start, resume, and branch all land here, so every session type shows it.
   pi.on('session_start', async (_event, ctx) => {
     restoreEnabled(ctx);
   });

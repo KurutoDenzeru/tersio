@@ -1,5 +1,4 @@
-// The status line must appear in every session type, and must not repeat
-// itself. Before this, the status was a status bar that vanished on most hosts.
+// The status line must appear in every session type, and must not repeat itself.
 import { expect, test } from "vitest";
 
 import cavemanSessionExtension from "../../extensions/caveman-session/index.ts";
@@ -14,8 +13,7 @@ import {
 import { formatStatus } from "../../extensions/shared/status.ts";
 import type { ExtensionApi, SessionEntry } from "../../extensions/shared/types.ts";
 
-// Both are needed: `os.homedir()` ignores HOME on macOS, so HOME alone still
-// reads the developer's real ~/.tersio settings.
+// os.homedir() ignores HOME on macOS, so both must be pinned.
 process.env.HOME = new URL("../definitely-missing-home", import.meta.url).pathname;
 process.env.TERSIO_HOME = process.env.HOME;
 

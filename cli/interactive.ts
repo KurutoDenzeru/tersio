@@ -6,39 +6,31 @@ import { execP } from './common.ts';
 import type { ExecOptions } from './common.ts';
 import { bannerFor, StickyBanner } from './sticky-banner.ts';
 
-// The banner is process-wide: every prompt in a run shares one instance so a
-// mode change in one menu refreshes the line the next prompt draws.
+// One banner per process, so a mode change in one menu refreshes the next.
 let banner: StickyBanner | undefined;
 let bannerStatus: (() => string) | undefined;
-// `bannerStatus` is a live source (settings supplies the profile it edits).
-// `bannerFallback` is the stored defaults every other command paints. An empty
-// live value must not win: `??` only skips undefined, so settings returning ''
-// before its first answer blanked the line for every menu.
 let bannerFallback = '';
 
+// An empty live value must not win: settings returns '' until its first answer.
 function bannerText(): string {
-  const live = bannerStatus?.();
-  return live ? live : bannerFallback;
+  return bannerStatus?.() || bannerFallback;
 }
 
-/** The live status source. Pass undefined to fall back to the stored defaults. */
 function setBannerStatus(getStatus: (() => string) | undefined): void {
   bannerStatus = getStatus;
   banner?.refresh();
 }
 
-/** What the banner paints when no command supplies a live value. */
 function setBannerFallback(line: string): void {
   bannerFallback = line;
   banner?.refresh();
 }
 
-/** What the banner currently paints. Exported for the fallback tests. */
+// Exported only so the fallback tests can read the resolved line.
 export function bannerLine(): string {
   return bannerText();
 }
 
-/** Draw the banner now, and again after every Clack frame it emits. */
 function openBanner(): void {
   if (banner) { banner.refresh(); return; }
   banner = bannerFor(process.stdout, bannerText);
@@ -53,20 +45,19 @@ function closeBanner(): void {
   banner = undefined;
 }
 
-// Clack redraws its whole frame on every keystroke and never touches the last
-// row, so repainting the banner once each frame lands keeps it pinned. A
-// listener on the write side avoids patching Clack's internal render().
+// Clack redraws its whole frame per keystroke and never touches the last row,
+// so repainting after each write keeps the banner pinned.
 let bannerHooked = false;
 function hookBannerToOutput(): void {
   if (bannerHooked || !banner) return;
   bannerHooked = true;
   const original = process.stdout.write.bind(process.stdout);
-  process.stdout.write = ((chunk: unknown, ...rest: unknown[]): boolean => {
-    const result = original(chunk as never, ...(rest as []));
+  process.stdout.write = function bannerWrite(this: NodeJS.WriteStream, ...args: Parameters<typeof original>): boolean {
+    const result = original(...args);
     // Deferred: the frame is still mid-write when this returns.
     queueMicrotask(() => banner?.refresh());
     return result;
-  }) as typeof process.stdout.write;
+  } as typeof process.stdout.write;
 }
 
 const RL = readline.createInterface({ input: process.stdin, output: process.stdout });

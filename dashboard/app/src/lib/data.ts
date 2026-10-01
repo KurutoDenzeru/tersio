@@ -136,8 +136,7 @@ export function useDashboardData(): { data: UsageReport | null; loading: boolean
   const lastJson = useRef<string>(data ? JSON.stringify(data) : "");
   const lastStatus = useRef<string>("");
 
-  // Rides the dashboard poll below rather than opening a second interval; the
-  // banner would otherwise watch document.hidden on a timer of its own.
+  // Rides the poll below rather than opening a second interval.
   const loadStatus = useCallback(async () => {
     try {
       const s = (await getJSON<{ status: string }>("status")).status;
@@ -145,7 +144,7 @@ export function useDashboardData(): { data: UsageReport | null; loading: boolean
       lastStatus.current = s;
       setStatus(s);
     } catch {
-      // Served mode on a server without /status; the banner simply stays hidden.
+      // A server without /status just leaves the banner hidden.
     }
   }, []);
 

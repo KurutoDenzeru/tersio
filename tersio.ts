@@ -14,10 +14,7 @@ import { runSettings } from './cli/settings.ts';
 import { runDashboard } from './cli/dashboard.ts';
 import { formatCliStatus, storedProfileSync } from './cli/profile.ts';
 
-// Seed the sticky banner from the stored defaults so every menu shows the
-// current combo. Synchronous on purpose: awaiting here let piped stdin arrive
-// before the confirm prompt registered its readline listener, so a scripted
-// answer was swallowed and a destructive confirm defaulted to abort.
+// Every menu shows the stored combo. Must not await: see storedProfileSync.
 function seedBanner(): void {
   try {
     setBannerFallback(formatCliStatus(storedProfileSync()));
@@ -63,7 +60,6 @@ Options:
 }
 
 async function main(): Promise<void> {
-  // Cheap, and only matters when a prompt follows.
   if (!showVersion && !showHelp) seedBanner();
   if (showVersion) {
     console.log(PACKAGE_VERSION);

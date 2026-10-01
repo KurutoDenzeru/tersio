@@ -5,8 +5,7 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, "../..");
 
-// Both are needed: `os.homedir()` ignores HOME on macOS, so HOME alone still
-// reads the developer's real ~/.tersio settings.
+// os.homedir() ignores HOME on macOS, so both must be pinned.
 process.env.HOME = new URL("../definitely-missing-home", import.meta.url).pathname;
 process.env.TERSIO_HOME = process.env.HOME;
 
