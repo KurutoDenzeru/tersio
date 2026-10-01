@@ -10,7 +10,8 @@ import { detectHosts, ompPackageDir, piTersioSource } from './hosts.ts';
 import { askInteractiveChoice, askInteractiveConfirm, runInteractivePhase } from './interactive.ts';
 import { usageDbPath } from '../extensions/shared/usage-store.ts';
 import { pricesCachePath } from '../extensions/shared/pricing.ts';
-import { readTextIfExists, resolveRtkBinary } from '../extensions/lib/utils.ts';
+import { fileContains, readTextIfExists, resolveHostBinary, resolveRtkBinary } from '../extensions/lib/utils.ts';
+import { OMP_SUBAGENT_MARKER } from '../extensions/shared/session-state.ts';
 
 interface DoctorSummary {
   ok: number;
@@ -116,8 +117,17 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
     check(host.label, true, `${where}${host.version ? ` ${host.version}` : ''}`);
   }
 
-  section('Extensions & plugins');
+  // The marker is verbatim omp text, so scanning the binary turns a silent
+  // drop into a visible warning.
   const ompEntry = hosts.find((host) => host.id === 'omp');
+  const ompBin = ompEntry?.installed ? resolveHostBinary('omp') : null;
+  if (ompBin) {
+    if (await fileContains(ompBin, OMP_SUBAGENT_MARKER)) check('omp subagent marker', true, OMP_SUBAGENT_MARKER);
+    else warnLine('omp subagent marker', `not found in the omp binary — subagents may lose caveman and rtk; set one with \`tersio settings markers\``);
+  }
+
+  section('Extensions & plugins');
+
   if (ompEntry?.via === 'package') {
     const explicitEntries = (configText ?? '').split('\n')
       .map((line) => line.trim().replace(/^-\s*/, '').replace(/^['"]|['"]$/g, ''))
