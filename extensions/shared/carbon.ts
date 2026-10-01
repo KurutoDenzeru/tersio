@@ -1,6 +1,4 @@
-// extensions/shared/carbon.ts — CO2/energy footprints, a port of the EcoLogits
-// v0.8.2 model (MPL-2.0, see ECO_NOTICE.md). Always render as ~est., never
-// merged with measured figures.
+// EcoLogits v0.8.2 port; always render as ~est, never merged with measured.
 
 export interface ModelCarbon {
   activeB: number;

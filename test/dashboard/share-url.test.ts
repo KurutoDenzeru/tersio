@@ -1,6 +1,4 @@
-// Share URL construction. The host allowlist is a trust boundary, and the
-// `www.` prefixes are easy to get wrong, so it is asserted for every target
-// rather than trusted.
+// The host allowlist is a trust boundary; www prefixes get asserted.
 import { expect, test } from "vitest";
 
 import { SHARE_ORIGINS, shareUrl, type ShareTarget } from "../../dashboard/app/src/lib/share.ts";

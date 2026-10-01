@@ -688,9 +688,7 @@ async function runInstall(): Promise<void> {
   // apply-update refreshes every add-on like a reinstall.
   const installOptions: InstallOptions = { dryRun, verbose, yes, reinstall: applyUpdate, quiet };
 
-  // Everything above only read the disk. This is the point of no return: the
-  // tree is written, packages installed, and a config rewritten. --yes,
-  // --dry-run, --apply-update, and pipes stay unattended.
+  // Point of no return: disk writes start here; pipes stay unattended.
   if (!yes && !dryRun && !applyUpdate && tty()) {
     const target = hostEntry(targetHost);
     const where = targetHost === 'pi' ? path.join(piAgentDir(), 'extensions') : path.join(OMP_AGENT_DIR, 'extensions');

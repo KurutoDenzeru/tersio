@@ -1,6 +1,4 @@
-// Export, restore, delete and the backup schedule. The dashboard offers all four
-// and they touch the user's usage data, so each gets a test that fails loudly
-// rather than quietly touching disk.
+// Backup ops touch user data, so each test fails loudly.
 import { expect, test } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";

@@ -1,7 +1,4 @@
-// extensions/shared/host.ts — one extension source, two agent hosts. OMP is a
-// pi fork with six API differences (tool schema, setLabel, session_branch,
-// select options, status theme, prompt injection), detected by API shape and
-// never by name or env marker.
+// One source for both hosts; OMP differs in six APIs, detected by shape not name.
 
 import { asPromptArray } from './session-state.ts';
 import type { ExtensionApi, ExtensionCtx, PromptInjection, SystemPromptEvent, ToolParams, UiApi } from './types.ts';

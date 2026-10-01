@@ -1,7 +1,4 @@
-// Hosts instantiate extensions per session and expose no teardown hook, so an
-// additive listener Set grew by one per session for the life of the process and
-// a closed session's closure kept painting a dead status bar. The bridge is
-// keyed now, so re-registering replaces the stale closure instead of stacking.
+// Additive listeners grew per session; the bridge is keyed now.
 import { expect, test } from "vitest";
 
 import cavemanSessionExtension from "../../extensions/caveman-session/index.ts";

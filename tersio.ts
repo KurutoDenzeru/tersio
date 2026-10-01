@@ -1,7 +1,5 @@
 #!/usr/bin/env node
-// tersio.ts — Install Tersio (caveman/rtk/ponytail) add-ons on any OMP device.
-// Usage: node tersio.js [install|update|doctor|dashboard|uninstall|version|help] [options]
-// Requires: node/npm and omp CLI
+// Install Tersio add-ons on any OMP device; see help for commands.
 import {
   PACKAGE_BIN, PACKAGE_VERSION, applyUpdate, commandArg, dashboard, dashboardExport, dashboardOpen, dashboardPort, doctor, reset, settings, showHelp, showVersion, uninstall, unknownCommand, update, usage,
 } from './cli/common.ts';

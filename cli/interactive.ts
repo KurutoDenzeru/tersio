@@ -99,9 +99,7 @@ async function runInteractivePhase<T>(title: string, collect: () => Promise<T>):
   await clackTasks([{ title, task: async () => { result = await collect(); } }]);
   return result;
 }
-// A `  [tag] message` line becomes a clack log for a TTY, and stays the exact
-// same plain line otherwise so piped output is byte-identical and greppable —
-// the rule the banner already follows. Untagged lines pass straight through.
+// Tagged lines log on TTY but stay byte-identical when piped.
 type SayKind = 'info' | 'success' | 'warn' | 'error' | 'step' | 'message';
 const TAG_KIND: Record<string, SayKind> = {
   fail: 'error', warn: 'warn', hint: 'info', ok: 'success', note: 'message',
@@ -113,9 +111,7 @@ function sayTagged(line: string): void {
   if (tty() && m) clackLog[kind](m[2]);
   else console.log(line);
 }
-// One task with a live-updating line, the pattern clack's `tasks` shows: the
-// outer title stays put while `update` streams each sub-step under it, instead
-// of a separate spinner per step.
+// One live-updating task line instead of a spinner per step.
 async function withInteractiveTask<T>(title: string, work: (update: (message: string) => void) => Promise<T>): Promise<T> {
   if (!tty()) return work(() => { });
   closeRL();

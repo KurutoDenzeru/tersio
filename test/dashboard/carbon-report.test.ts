@@ -1,6 +1,4 @@
-// The CO2 dialog's numbers: the per-model split, the tail fold, and the
-// everyday comparisons. Every total is checked back against the shared
-// EcoLogits port so the dialog cannot drift from the card.
+// Totals check back against the shared EcoLogits port.
 import { expect, test } from "vitest";
 
 import { carbonReport, fmtCo2, fmtEnergy } from "../../dashboard/app/src/lib/carbon.ts";

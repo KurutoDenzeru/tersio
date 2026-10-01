@@ -1,7 +1,4 @@
-// cli/rtk-wiring.ts — wire the installed rtk binary into OMP. `rtk init -g
-// --agent omp` writes rtk's tool_call extension but does not register it, and
-// OMP loads only listed extensions, so we add the path to config.yml.
-// Fail-open: a failed wire only downgrades to manual `rtk` prefixing.
+// OMP loads only listed extensions, so register rtk's path; fail-open.
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';

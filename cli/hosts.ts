@@ -115,9 +115,7 @@ export function hostLabel(host: HostEntry): string {
   return `${host.label} (not installed)`;
 }
 
-// A select renders its hint inline, so a raw path wraps and pushes the option
-// onto its own line — long for OMP, which installs as a plugin package. Say how
-// it is installed instead; the full path belongs in doctor, not a menu.
+// Hints render inline, so menus name the install and doctor keeps the path.
 export function hostHint(host: HostEntry): string {
   if (host.installed && host.via) return host.via === 'tree' ? 'extension tree' : 'plugin package';
   return host.installCmd;

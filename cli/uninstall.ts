@@ -65,10 +65,7 @@ async function removeCopiedPonytailSkills(shouldDryRun: boolean): Promise<void> 
   }
 }
 
-// pi owns its package dir, so removal is `pi remove`; the tree and defaults
-// file are ours. Ponytail goes too unless --keep-ponytail, matching OMP.
-// Neither --host pi nor auto-selecting the only installed host reached a
-// prompt here, so list and confirm first, exactly as the OMP route does.
+// pi removal delegates to pi remove; always list and confirm first.
 async function removePiLayer(host: HostEntry, shouldDryRun: boolean, shouldRemovePonytail: boolean, shouldRemoveRtk: boolean, confirmed: boolean): Promise<boolean> {
   const targets = PI_TREE_DIRS.map((dir) => path.join(piAgentDir(), 'extensions', dir));
   const rtkWiring = path.join(piAgentDir(), 'extensions', 'rtk.ts');

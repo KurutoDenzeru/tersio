@@ -1,6 +1,4 @@
-// extensions/shared/rtk-gain.ts — measured RTK savings read from rtk's own
-// history.db, never estimated. Caveman and Ponytail are bench-measured in
-// BENCHMARK.md instead: instruction-following is not metered.
+// Savings read from rtk history, never estimated; modes bench in BENCHMARK.md.
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';

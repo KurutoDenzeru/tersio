@@ -177,9 +177,7 @@ export function codexSessionsDir(): string {
   return path.join(os.homedir(), '.codex', 'sessions');
 }
 
-// OpenCode v2 keeps one JSON file per message under storage/message, not a
-// sqlite table and not JSONL. Probed in order — XDG first, then this machine's
-// actual location, then the macOS default.
+// One JSON file per message; probe XDG, then local, then macOS default.
 export function opencodeSessionsDir(): string {
   const override = process.env.TERSIO_OPENCODE_DIR;
   if (override) return override;
@@ -289,9 +287,7 @@ export function classifySessionLine(row: { timestamp?: string | number; type?: u
   const msg = row.message;
   if (!msg || msg.role !== 'assistant' || !msg.usage) return { kind: 'skip' };
   const model = typeof msg.model === 'string' && msg.model ? msg.model : 'unknown';
-  // pi writes no `duration` and no `completedAt`: the request start lands on
-  // message.timestamp and the completion on the row's own timestamp. Fall back
-  // to that pair so Elapsed and Speed are measured rather than blank.
+  // pi omits duration, so derive Elapsed/Speed from the timestamp pair.
   const startMs = typeof msg.timestamp === 'number' ? msg.timestamp : undefined;
   const endMs = typeof msg.completedAt === 'number' ? msg.completedAt : stampMs(row.timestamp);
   const computedDur = startMs !== undefined && Number.isFinite(endMs) && endMs > startMs ? endMs - startMs : undefined;

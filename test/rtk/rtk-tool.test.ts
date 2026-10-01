@@ -1,6 +1,4 @@
-// rtk_run had no coverage at all, which is how an unguarded pi.exec! and an
-// uncaught spawn rejection shipped: both surface to the user as a crashed tool
-// call instead of a sentence explaining what to do.
+// Zero coverage once shipped a crashing tool call; keep it covered.
 import { expect, test } from "vitest";
 
 import rtkSessionExtension from "../../extensions/rtk-session/index.ts";

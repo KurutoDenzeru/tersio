@@ -285,9 +285,7 @@ test("uninstall --host pi --yes removes without prompting", () => {
   }
 });
 
-// rtk writes a loose extensions/rtk.ts that is not one of the tree dirs. OMP
-// removed it; pi had no handling at all, so --remove-rtk was a silent no-op and
-// the preview never mentioned the file.
+// Loose extensions/rtk.ts was a silent no-op for pi; preview must mention it.
 function seedPiRtk(home: string): string {
   const wiring = path.join(home, ".pi", "agent", "extensions", "rtk.ts");
   writeFileSync(wiring, "// rtk wiring", "utf8");

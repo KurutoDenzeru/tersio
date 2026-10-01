@@ -99,9 +99,7 @@ export function isOmpSubagentPrompt(systemPrompt: string | string[]): boolean {
   return markers.some((marker) => systemPromptIncludes(systemPrompt, marker));
 }
 
-// `ultra` is the level caveman and ponytail both expose, so typing it is the
-// obvious thing to try. It maps to the max preset rather than bouncing back
-// with a wall of text; `lite`/`full` map to their nearest preset too.
+// ultra maps to max, lite/full to nearest, rather than erroring.
 const COMBO_ALIASES: Record<string, ComboLevel> = { ultra: 'max', lite: 'medium', full: 'balanced' };
 
 export function normalizeComboLevel(value: unknown): ComboLevel | null {
@@ -122,9 +120,7 @@ export function paintStatusBar(ui: UiApi | undefined, key: string, emoji: string
   ui?.setStatus?.(key, themeStatus(ui, emoji, label, isActive));
 }
 
-// A ctx from before a session replacement is stale and throws on any property
-// access, so touching it must never abort a mode restore. Returns undefined for
-// a stale ctx, and a narrowed ui so callers need no second setStatus check.
+// Stale ctx access throws, so never let it abort a mode restore.
 export type StatusUi = UiApi & { setStatus: NonNullable<UiApi['setStatus']> };
 
 export function statusUi(ctx: ExtensionCtx | undefined): StatusUi | undefined {
@@ -209,9 +205,7 @@ export function activeModesSummary(state: { caveman: string; rtk: string; ponyta
   return `caveman=${state.caveman.toUpperCase()}, rtk=${state.rtk.toUpperCase()}, ponytail=${state.ponytail.toUpperCase()}`;
 }
 
-// Keyed, not additive: hosts instantiate extensions per session and offer no
-// teardown hook, so a Set grew by one per session for the life of the process.
-// Re-registering under the same key drops the stale closure instead.
+// Keyed registration drops stale closures; hosts offer no teardown hook.
 export function setSharedComboListener(key: string, listener: (state: Readonly<ComboState>) => void): void {
   bridge().listeners.set(key, listener);
 }

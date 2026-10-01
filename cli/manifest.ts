@@ -1,6 +1,4 @@
-// cli/manifest.ts — the one list of what an install writes into a host's
-// extension tree. Installer, doctor, and tests all read it so none can drift
-// from what actually ships.
+// Single list of install writes, shared by installer, doctor, and tests.
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 

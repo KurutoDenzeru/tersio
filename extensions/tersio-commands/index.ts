@@ -1,6 +1,4 @@
-// /tersio root command — status, check, update, dashboard, usage, help. Mode
-// switches live on their own commands, and shared-state publishes sync sibling
-// mirrors live, so a switch takes effect next turn with no reload.
+// Root command plus mode switches; sibling mirrors sync with no reload.
 import {
   getSharedComboState,
   reconcileSharedComboEntries,

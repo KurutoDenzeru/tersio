@@ -210,10 +210,7 @@ test("a UI-less event must not deafen the bar to later bridge updates", async ()
   resetSharedComboState();
 });
 
-// pi invalidates a ctx on session replacement and throws on any access to it.
-// Each extension remembers a ctx so a sibling's publish can paint with no ctx
-// of its own, so a replaced session used to paint through the old one, throw,
-// and abort the restore still deciding the modes — leaving everything off.
+// A replaced session painted through the old ctx, threw, and aborted restore.
 test("a replaced session does not paint through the stale ctx", async () => {
   resetSharedComboState();
   const { statuses, entries, pi, ctx } = harness();
