@@ -63,9 +63,7 @@ function shortDay(day: string): string {
   return new Date(`${day}T12:00:00`).toLocaleString("en-US", { month: "short", day: "numeric" });
 }
 
-// Token volume as a shadcn chart (recharts under ChartContainer): gradient
-// area, dashed horizontals only, end dot, custom hover card. Same language
-// as the original mdAreaChart().
+// Token volume as a gradient area chart with custom hover card.
 function AreaChart({ vals, days }: { vals: number[]; days: string[] }) {
   const chartData = vals.map((v, i) => ({ day: days[i], tokens: v }));
   return (
@@ -231,10 +229,13 @@ function ModelDialog({ m, data, money, onClose }: { m: string | null; data: Usag
   const range = days.length
     ? `${new Date(`${days[0]}T12:00:00`).toLocaleString("en-US", { month: "short", day: "numeric" }).toUpperCase()} → ${new Date(`${days[days.length - 1]}T12:00:00`).toLocaleString("en-US", { month: "short", day: "numeric" }).toUpperCase()}`
     : "–";
-  const kpi = (k: string, val: string, detail: string, up: boolean): React.ReactNode => (
+  const kpi = (k: string, val: string, detail: string, up: boolean, icon: string): React.ReactNode => (
     <Card size="sm" className="gap-0 bg-panel [--card-spacing:--spacing(3.5)]">
       <CardHeader>
-        <CardTitle className="mono text-[10px] tracking-[.14em] text-dim uppercase">{k}</CardTitle>
+        <CardTitle className="mono flex items-center gap-1.5 text-[10px] tracking-[.14em] text-dim uppercase">
+          <Icon name={icon} className="size-3.5 shrink-0" />
+          {k}
+        </CardTitle>
       </CardHeader>
       <CardContent>
         <p className="m-0 text-[22px] font-extrabold tracking-[-0.02em] tabular-nums">{val}</p>
@@ -261,7 +262,10 @@ function ModelDialog({ m, data, money, onClose }: { m: string | null; data: Usag
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-2">
-              <span className="whitespace-nowrap rounded-full border border-line bg-accent-soft px-3 py-1 text-xs font-bold text-accent mono">#{rank ? String(rank).padStart(2, "0") : "–"}</span>
+              <span className="whitespace-nowrap rounded-full border border-line bg-accent-soft px-3 py-1 text-xs font-bold text-accent mono inline-flex items-center gap-1.5">
+                <Icon name="trophy" className="size-3.5" />
+                #{rank ? String(rank).padStart(2, "0") : "–"}
+              </span>
               <button
                 type="button"
                 onClick={onClose}
@@ -275,14 +279,17 @@ function ModelDialog({ m, data, money, onClose }: { m: string | null; data: Usag
         </div>
         <div className="grid min-h-0 flex-1 gap-3 overflow-y-auto overscroll-contain px-5 pt-4 pb-5 [scrollbar-color:var(--line)_transparent] [scrollbar-width:thin]">
           <div className="grid grid-flow-dense grid-cols-2 gap-2 sm:grid-cols-4">
-            {kpi("Tokens", fmtShort(total), range, true)}
-            {kpi("Spend", money(usd), req ? `${money(usd / req)} / req` : "no requests", usd > 0)}
-            {kpi("Cache hit", `${hit.toFixed(0)}%`, `${fmtShort(b.cacheRead)} cached`, hit >= 50)}
-            {kpi("Requests", fmt(req), `${active} active days`, active > 0)}
+            {kpi("Tokens", fmtShort(total), range, true, "layers")}
+            {kpi("Spend", money(usd), req ? `${money(usd / req)} / req` : "no requests", usd > 0, "wallet")}
+            {kpi("Cache hit", `${hit.toFixed(0)}%`, `${fmtShort(b.cacheRead)} cached`, hit >= 50, "hard-drive-download")}
+            {kpi("Requests", fmt(req), `${active} active days`, active > 0, "activity")}
           </div>
           <Card className="gap-0 bg-panel [--card-spacing:--spacing(3.5)]">
             <CardHeader>
-              <CardTitle className="text-[13px] font-bold tracking-[-0.01em]">Token volume</CardTitle>
+              <CardTitle className="flex items-center gap-1.5 text-[13px] font-bold tracking-[-0.01em]">
+                <Icon name="chart-line" className="size-4 shrink-0 text-dim" />
+                Token volume
+              </CardTitle>
               <CardDescription className="mono text-[11px] uppercase tracking-[.12em] text-dim">{range}</CardDescription>
               <CardAction>
                 <div className="flex shrink-0 items-center gap-2">
@@ -316,7 +323,10 @@ function ModelDialog({ m, data, money, onClose }: { m: string | null; data: Usag
           </Card>
           <Card className="gap-0 bg-panel [--card-spacing:--spacing(3.5)]">
             <CardHeader>
-              <CardTitle className="text-[13px] font-bold tracking-[-0.01em]">Token mix</CardTitle>
+              <CardTitle className="flex items-center gap-1.5 text-[13px] font-bold tracking-[-0.01em]">
+                <Icon name="chart-pie" className="size-4 shrink-0 text-dim" />
+                Token mix
+              </CardTitle>
               <CardDescription className="mono text-[11px] uppercase tracking-[.12em] text-dim">Input vs output vs cache</CardDescription>
             </CardHeader>
             <CardContent>

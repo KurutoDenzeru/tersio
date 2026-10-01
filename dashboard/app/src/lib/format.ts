@@ -181,23 +181,23 @@ export type Zone = [glyph: string, label: string, cls: string];
 export function co2Zone(g: number): Zone {
   if (!(g > 0)) return ["minus", "no data", ""];
   if (g <= 50) return ["sprout", "light", "good"];
-  if (g <= 500) return ["smile", "moderate", "good"];
-  if (g <= 2000) return ["meh", "heavy", "warn"];
+  if (g <= 500) return ["face-slightly-smiling", "moderate", "good"];
+  if (g <= 2000) return ["face-neutral", "heavy", "warn"];
   return ["flame", "very high", "bad"];
 }
 
 export function levZone(x: number): Zone {
   if (!(x > 0)) return ["minus", "no savings yet", ""];
   if (x >= 3) return ["rocket", "high leverage", "good"];
-  if (x >= 1) return ["smile", "solid", "good"];
-  return ["meh", "light", "warn"];
+  if (x >= 1) return ["face-slightly-smiling", "solid", "good"];
+  return ["face-neutral", "light", "warn"];
 }
 
 export function shareZone(p: number): Zone {
   if (!(p > 0)) return ["minus", "uncached", ""];
   if (p >= 80) return ["rocket", "high", "good"];
-  if (p >= 50) return ["smile", "good", "good"];
-  return ["meh", "low", "warn"];
+  if (p >= 50) return ["face-slightly-smiling", "good", "good"];
+  return ["face-neutral", "low", "warn"];
 }
 
 export type RunStatus = "completed" | "aborted" | "error";

@@ -57,8 +57,7 @@ function AgentRow({ name, version, binPath, bin, docs, available, unavailable, l
       className="group flex min-w-0 items-center gap-3 py-3 transition-colors hover:bg-track/40 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent"
       aria-label={`Open ${name}`}
     >
-      {/* text-ink gives the masked marks currentColor, so they stay legible in
-          both themes instead of being fixed to one shade. */}
+      {/* text-ink keeps masked marks legible in both themes. */}
       <span className="grid size-8 shrink-0 place-items-center overflow-hidden rounded-md bg-track p-1 text-ink transition-transform duration-500 ease-out group-hover:scale-105">
         {logo}
       </span>
@@ -109,9 +108,7 @@ function HealthPane() {
   }, [load]);
 
   const unavailable = health === null;
-  // One row per host, built the same way: a host that is not on the machine
-  // still shows its binary name and where it would be looked up. The marks sit
-  // at size-5 inside the 32px tile so they read as a glyph, not a fill.
+  // Absent hosts still show their binary name and lookup path.
   const agents: AgentRowProps[] = [
     { name: "Oh My Pi", version: health?.omp ?? null, binPath: health?.ompPath ?? null, bin: "omp", docs: "https://omp.sh", available: !!health?.omp, unavailable, logo: <OmpLogo className="size-5" /> },
     { name: "Pi", version: health?.pi ?? null, binPath: health?.piPath ?? null, bin: "pi", docs: "https://pi.dev", available: !!health?.pi, unavailable, logo: <PiLogo className="size-5" /> },
@@ -435,8 +432,7 @@ function BackupRestore() {
             </span>
           </div>
 
-          {/* Bounded on purpose: a daily schedule is ~365 rows, and an unbounded
-              list would push Restore and the rest of the pane off the screen. */}
+          {/* Bounded list so a daily schedule cannot push Restore off-screen. */}
           <ul
             className="m-0 max-h-[196px] list-none overflow-y-auto p-1 [scrollbar-width:thin] [scrollbar-color:var(--line)_transparent]"
             role="radiogroup"
@@ -554,10 +550,7 @@ function DataPane({ data, onReload }: { data: UsageReport | null; onReload: () =
         </button>
       </div>
       <BackupRestore />
-      {/* Export lives on the Usage DB row rather than in a row of its own: it is
-          the same data, so it costs no extra heading or description. The menu
-          carries each format's hint, so the format is never held in state and
-          is only chosen at the moment it is used. */}
+      {/* Export shares the Usage DB row since it is the same data. */}
       <div className="mt-3">
         <div className="flex items-center justify-between gap-3 overflow-hidden rounded-[10px] border border-line px-3 py-2">
           <div className="min-w-0">
@@ -818,8 +811,7 @@ function DefaultModes() {
             </div>
             <Select value={value} onValueChange={(v) => save(row, v ?? "off")} disabled={locked}>
               <SelectTrigger size="sm" className="w-[132px] shrink-0" aria-label={`${row.label} default`}>
-                {/* Without children, base-ui falls back to the raw value and the
-                    trigger shows "balanced" rather than the "Balanced" label. */}
+                {/* SelectValue needs children or it shows the raw value. */}
                 <SelectValue placeholder="Off">{row.options.find((o) => o.id === value)?.label ?? "Off"}</SelectValue>
               </SelectTrigger>
               <SelectContent>
@@ -839,9 +831,7 @@ function DefaultModes() {
   );
 }
 
-// The accent row. A native radio group so arrow keys, focus order and the
-// checked state come for free; only the chip is restyled. Each chip paints the
-// hex its own tokens resolve to, so the preview is the result, not a hint.
+// Native radio group; each chip previews its resolved hex.
 function AccentPicker({ accent, onPick }: { accent: AccentId; onPick: (id: AccentId) => void }) {
   const dark = useResolvedTheme() === "dark";
   return (
@@ -975,7 +965,10 @@ export function SettingsDialog({
           </aside>
           <div className="relative flex min-h-0 min-w-0 flex-col">
             <div className="flex items-center justify-between gap-3 px-5 pt-4">
-              <DialogTitle className="m-0 text-base font-bold tracking-[-0.01em]">{TITLES[pane]}</DialogTitle>
+              <DialogTitle className="m-0 flex items-center gap-2 text-base font-bold tracking-[-0.01em]">
+                <Icon name={PANES.find((p) => p.id === pane)?.icon ?? "settings"} className="size-4 shrink-0 text-dim" />
+                {TITLES[pane]}
+              </DialogTitle>
               <button
                 type="button"
                 className="flex shrink-0 items-center p-2 rounded-xl border border-line text-ink [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]"
@@ -1012,7 +1005,7 @@ export function SettingsDialog({
                               ["system", "monitor", "System"],
                             ] as const
                           ).map(([value, icon, label]) => (
-                            <TabsTrigger key={value} value={value} aria-label={label}>
+                            <TabsTrigger key={value} value={value} aria-label={label} className="size-8 flex-none">
                               <Icon name={icon} />
                             </TabsTrigger>
                           ))}
@@ -1218,9 +1211,7 @@ export function ShareDialog({
     }
   };
 
-  // Real links, not window.open: cmd-click, middle-click and "copy link" all
-  // work, screen readers announce a link, and the navigation is native so it is
-  // never treated as a popup. The image copy rides along on click.
+  // Native links preserve cmd-click, announcements, and popup safety.
   const shareImage = (network: string): void => {
     void copyImage().then(
       () => toast("Image copied", `Paste it into the ${network} composer.`, "copy"),
@@ -1242,9 +1233,7 @@ export function ShareDialog({
   // 1200x850 layout and theme rule as the original share.js svgCard().
   const svgCard = (): string => {
     const e = (x: string): string => x.replace(/&/g, "&amp;").replace(/</g, "&lt;");
-    // Read the tokens off <html> instead of re-declaring hexes here. The
-    // canvas cannot resolve var(), and this way the exported card carries the
-    // live accent, background wash and theme rather than a frozen palette.
+    // Canvas reads live tokens off <html> since it cannot resolve var().
     const computed = getComputedStyle(document.documentElement);
     const token = (name: string, fallback: string): string =>
       computed.getPropertyValue(name).trim() || fallback;

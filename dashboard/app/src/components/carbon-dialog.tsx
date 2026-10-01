@@ -1,6 +1,4 @@
-// The CO2 card's detail dialog, written to be read like a utility bill: one
-// total, what it is worth, which models caused it, and what it cannot tell you.
-// No parameters or grid intensities; the model lives in shared/carbon.ts.
+// Bill-style layout; figures come from shared/carbon.ts.
 import { useMemo } from "react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -70,9 +68,7 @@ export function CarbonDialog({ open, onClose, data }: {
         showCloseButton={false}
         aria-describedby={undefined}
       >
-        {/* DialogContent is display:block, so the header and the scroller have to
-            be a column for the ScrollArea to get a bounded height. Without this
-            the body sizes to its content and the lower half is unreachable. */}
+        {/* Column layout gives ScrollArea a bounded height. */}
         <div className="flex h-full min-h-0 flex-col">
           <div className="flex shrink-0 items-start justify-between gap-3 px-5 pt-4">
             <div className="flex min-w-0 items-center gap-2.5">
@@ -98,8 +94,6 @@ export function CarbonDialog({ open, onClose, data }: {
             <div className="grid gap-5 overflow-x-hidden px-5 pt-1 pb-5">
               {hasData ? (
                 <>
-                  {/* The whole reading, lead with the number and the unit that
-                      makes it mean something. */}
                   <div className="rounded-xl border border-line bg-bg px-4 py-4">
                     <p className="mono m-0 text-5xl leading-none font-bold tracking-tighter tabular-nums">
                       {fmtCo2(r.totalG)}
@@ -128,7 +122,10 @@ export function CarbonDialog({ open, onClose, data }: {
                   </div>
 
                   <div className="grid gap-3">
-                    <h3 className="m-0 text-[13px] font-semibold">Which models caused it</h3>
+                    <h3 className="m-0 flex items-center gap-1.5 text-[13px] font-semibold">
+                      <Icon name="chart-pie" className="size-3.5 text-dim" />
+                      Which models caused it
+                    </h3>
                     <ModelShare rows={r.rows} otherG={r.otherG} otherCount={r.otherCount} totalG={r.totalG} />
                   </div>
                 </>

@@ -1,6 +1,4 @@
-// CO2 totals for the dialog, derived from one usage report. Pure, so it tests
-// without a DOM. Deliberately shallow: totals, a share per model, and plain
-// comparisons. The EcoLogits model itself is where the depth lives.
+// Pure per-report CO2 totals; depth lives in the shared EcoLogits port.
 
 import { ECOLOGITS_VERSION, footprintFor } from "../../../../extensions/shared/carbon.ts";
 import { displayModel } from "./format";

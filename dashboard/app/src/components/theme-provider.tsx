@@ -258,10 +258,7 @@ export const useTheme = () => {
   return context
 }
 
-/**
- * The theme actually showing, following the OS when set to `system`, so accent
- * swatches repaint on a live flip.
- */
+/** Follows the OS when set to `system`. */
 export function useResolvedTheme(): ResolvedTheme {
   const { theme } = useTheme()
   const [system, setSystem] = React.useState<ResolvedTheme>(getSystemTheme)

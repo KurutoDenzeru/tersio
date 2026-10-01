@@ -1,8 +1,4 @@
-// Dashboard data contract. Mirrors cli/usage.ts UsageReport plus the
-// /health and /doctor endpoints served by cli/dashboard.ts. The hook polls
-// data.json every 5s while served and visible, exactly like the original
-// load(); identical payloads skip re-render. Export snapshots ride
-// window.__TERSIO_SNAP so file:// renders without a server.
+// Data contract mirroring cli/usage.ts; snapshots ride window.__TERSIO_SNAP for file://.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { FX_SNAPSHOT, fxMoney, isCurrencyCode } from "./format";
 import type { TokenBreakdown } from "./format";

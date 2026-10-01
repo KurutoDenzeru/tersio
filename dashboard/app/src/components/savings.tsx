@@ -280,9 +280,7 @@ export function Savings({
               </CardContent>
             </Card>
           </HoverTip>
-          {/* No HoverTip here: the info dialog below carries every figure the old
-              tip showed (zone, energy, concurrency) and more, and a tip left open
-              behind the modal read as a rendering fault. */}
+          {/* No tip here; an open tip would linger behind the modal. */}
              <Card className="col-span-1 border-line bg-panel">
                <CardHeader>
                  <CardTitle className="mono text-[11px] uppercase tracking-[0.14em] text-dim">CO2</CardTitle>

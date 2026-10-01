@@ -1,6 +1,4 @@
-// Activity heatmap with trailing 12-month grid and Daily/Weekly/Cumulative
-// modes, per-cell model breakdown tooltips, month labels. Shadcn Tooltip
-// carries the hover cards.
+// Trailing 12-month activity heatmap with Daily/Weekly/Cumulative modes.
 import { useMemo, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
