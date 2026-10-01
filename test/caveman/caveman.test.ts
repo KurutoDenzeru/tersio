@@ -10,6 +10,7 @@ import { readCavemanDefault } from "../../extensions/shared/plugin-settings.ts";
 
 process.env.HOME = new URL("../definitely-missing-home", import.meta.url).pathname;
 process.env.USERPROFILE = process.env.HOME;
+process.env.TERSIO_HOME = process.env.HOME;
 
 type CommandHandler = (args: string, ctx: TestCtx) => Promise<void>;
 type EventHandler = (event: unknown, ctx: TestCtx | undefined) => Promise<unknown>;
@@ -124,7 +125,6 @@ test("legacy plugin default normalizes to wenyan-full and injects rules", async 
   writeFileSync(path.join(lockDir, "omp-plugins.lock.json"), JSON.stringify({
     settings: { "@krtclcdy/tersio": { cavemanDefault: "wenyan" } },
   }), "utf8");
-  // os.homedir() ignores HOME on macOS, so both must be pinned.
   const previous = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE, TERSIO_HOME: process.env.TERSIO_HOME };
   process.env.HOME = home;
   process.env.USERPROFILE = home;

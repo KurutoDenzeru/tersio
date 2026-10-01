@@ -1,9 +1,8 @@
 // Shared usage ledger: append-only JSON lines, read by the CLI, `/tersio`, and
 // the Dashboard. Best-effort; corrupt lines are skipped on read.
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { isPiProcess, piAgentDir, resolveRtkBinary, tersioDataPath } from '../lib/utils.ts';
+import { homeDir, isPiProcess, piAgentDir, resolveRtkBinary, tersioDataPath } from '../lib/utils.ts';
 import { execFileSync } from 'node:child_process';
 
 export type UsageKind = 'command' | 'toggle' | 'install' | 'update' | 'rtk-audit';
@@ -159,8 +158,8 @@ export function sessionsDirs(): string[] {
   // Both hosts, not just the running one: a session on pi is missing from the
   // dashboard entirely if we stop at the first directory that exists.
   const dirs = isPiProcess()
-    ? [path.join(piAgentDir(), 'sessions'), path.join(os.homedir(), '.omp', 'agent', 'sessions')]
-    : [path.join(os.homedir(), '.omp', 'agent', 'sessions'), path.join(piAgentDir(), 'sessions')];
+    ? [path.join(piAgentDir(), 'sessions'), path.join(homeDir(), '.omp', 'agent', 'sessions')]
+    : [path.join(homeDir(), '.omp', 'agent', 'sessions'), path.join(piAgentDir(), 'sessions')];
   const found = dirs.filter((dir) => fs.existsSync(dir));
   return found.length > 0 ? found : [dirs[0]];
 }
@@ -174,7 +173,7 @@ export function codexSessionsDir(): string {
   if (override) return override;
   const codexHome = process.env.CODEX_HOME;
   if (codexHome) return path.join(codexHome, 'sessions');
-  return path.join(os.homedir(), '.codex', 'sessions');
+  return path.join(homeDir(), '.codex', 'sessions');
 }
 
 // One JSON file per message; probe XDG, then local, then macOS default.
@@ -183,11 +182,11 @@ export function opencodeSessionsDir(): string {
   if (override) return override;
   const xdg = process.env.XDG_DATA_HOME;
   if (xdg && xdg.trim() !== '') return path.join(xdg, 'opencode', 'storage', 'message');
-  const local = path.join(os.homedir(), '.local', 'share', 'opencode', 'storage', 'message');
+  const local = path.join(homeDir(), '.local', 'share', 'opencode', 'storage', 'message');
   try {
     if (fs.existsSync(local)) return local;
   } catch { /* fall through to the platform default */ }
-  return path.join(os.homedir(), 'Library', 'Application Support', 'opencode', 'storage', 'message');
+  return path.join(homeDir(), 'Library', 'Application Support', 'opencode', 'storage', 'message');
 }
 
 export function dayKey(ts: string | number): string | null {
@@ -540,8 +539,8 @@ export function readRtkRecallDiagnostics(binary: string | null = resolveRtkBinar
   try {
     const configPath = process.env.RTK_CONFIG
       || (process.platform === 'darwin'
-        ? path.join(os.homedir(), 'Library', 'Application Support', 'rtk', 'config.toml')
-        : path.join(process.env.XDG_DATA_HOME || path.join(os.homedir(), '.local', 'share'), 'rtk', 'config.toml'));
+        ? path.join(homeDir(), 'Library', 'Application Support', 'rtk', 'config.toml')
+        : path.join(process.env.XDG_DATA_HOME || path.join(homeDir(), '.local', 'share'), 'rtk', 'config.toml'));
     let config = '';
     try { config = fs.readFileSync(configPath, 'utf8'); } catch { /* use RTK CLI fallback */ }
     const modeMatch = /^\s*mode\s*=\s*"(sqlite|tee|disabled)"/m.exec(config);

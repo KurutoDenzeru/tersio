@@ -21,6 +21,12 @@ export function withResolvers<T>(): PromiseWithResolvers<T> {
   return { promise, resolve, reject };
 }
 
+// os.homedir() can ignore a runtime HOME, so a redirected home would read the real one.
+export function homeDir(): string {
+  const home = process.env.HOME || process.env.USERPROFILE;
+  return home && home.trim() !== '' ? home : os.homedir();
+}
+
 export const RTK_RELEASE_API = 'https://api.github.com/repos/rtk-ai/rtk/releases/latest';
 export const CAVEMAN_REMOTE_RULE = 'https://raw.githubusercontent.com/JuliusBrussee/caveman/main/skills/caveman/SKILL.md';
 
@@ -64,12 +70,12 @@ function firstExecutable(name: string, managedDir: string | null): string | null
   return null;
 }
 
-export function resolveRtkBinary(managedDir = path.join(os.homedir(), '.bun', 'bin')): string | null {
+export function resolveRtkBinary(managedDir = path.join(homeDir(), '.bun', 'bin')): string | null {
   return firstExecutable(process.platform === 'win32' ? 'rtk.exe' : 'rtk', managedDir);
 }
 
 // A host binary to scan for its subagent marker.
-export function resolveHostBinary(name: string, managedDir = path.join(os.homedir(), '.bun', 'bin')): string | null {
+export function resolveHostBinary(name: string, managedDir = path.join(homeDir(), '.bun', 'bin')): string | null {
   return firstExecutable(name, managedDir);
 }
 
@@ -93,7 +99,7 @@ export function isPiProcess(): boolean {
 
 export function piAgentDir(): string {
   const override = process.env.PI_CODING_AGENT_DIR;
-  return isPiProcess() && override ? override : path.join(os.homedir(), '.pi', 'agent');
+  return isPiProcess() && override ? override : path.join(homeDir(), '.pi', 'agent');
 }
 
 // Ponytail is a Tersio dependency that npm hoists, so it can sit in Tersio's
@@ -249,7 +255,7 @@ export function tersioHome(): string {
   // Matches the other TERSIO_* overrides so a test never reads the real home.
   const override = process.env.TERSIO_HOME;
   if (override && override.trim() !== '') return override;
-  return path.join(os.homedir(), '.tersio');
+  return path.join(homeDir(), '.tersio');
 }
 
 
@@ -259,7 +265,7 @@ export function tersioDataPath(name: string, legacy: string): string {
     migratedTersioFiles.add(name);
     try {
       if (!existsSync(dest)) {
-        const src = path.join(os.homedir(), '.omp', 'plugins', legacy);
+        const src = path.join(homeDir(), '.omp', 'plugins', legacy);
         if (existsSync(src)) {
           mkdirSync(tersioHome(), { recursive: true });
           renameSync(src, dest);

@@ -1,9 +1,8 @@
 // One settings file for every host; parse failure yields {} with per-caller defaults.
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { tersioHome } from '../lib/utils.ts';
+import { homeDir, tersioHome } from '../lib/utils.ts';
 
 export const PLUGIN_NAME = '@krtclcdy/tersio';
 
@@ -15,9 +14,9 @@ export function tersioSettingsFile(): string {
 // Older installs kept these as OMP plugin settings; still read so switching
 // the store does not reset a user's defaults.
 function legacyOmpSettings(): Record<string, unknown> | null {
-  const configHome = process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config');
+  const configHome = process.env.XDG_CONFIG_HOME || path.join(homeDir(), '.config');
   for (const p of [
-    path.join(os.homedir(), '.omp', 'plugins', 'omp-plugins.lock.json'),
+    path.join(homeDir(), '.omp', 'plugins', 'omp-plugins.lock.json'),
     path.join(configHome, 'omp', 'plugins', 'omp-plugins.lock.json'),
   ]) {
     if (!existsSync(p)) continue;

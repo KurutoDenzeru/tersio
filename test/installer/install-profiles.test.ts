@@ -11,28 +11,12 @@ import {
   readPluginSettings,
   readRtkDefault,
 } from "../../extensions/shared/plugin-settings.ts";
-import { cliEnv } from "../helpers/env.ts";
+import { cliEnv, withHome } from "../helpers/env.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const installer = path.join(root, "tersio.js");
 
-// Each scenario runs under its own HOME so fixtures never collide with the
-// developer's own state.
-function withHome<T>(fn: (home: string) => T): T {
-  const home = mkdtempSync(path.join(os.tmpdir(), "omp-settings-test-"));
-  const previous = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE };
-  process.env.HOME = home;
-  process.env.USERPROFILE = home;
-  try {
-    return fn(home);
-  } finally {
-    for (const [name, value] of Object.entries(previous)) {
-      if (value === undefined) delete process.env[name];
-      else process.env[name] = value;
-    }
-    rmSync(home, { recursive: true, force: true });
-  }
-}
+
 
 // Session defaults live in ~/.tersio/settings.json; call sites still pass the
 // package-keyed shape the old lock file used.

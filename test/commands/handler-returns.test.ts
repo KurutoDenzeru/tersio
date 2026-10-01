@@ -5,7 +5,6 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, "../..");
 
-// os.homedir() ignores HOME on macOS, so both must be pinned.
 process.env.HOME = new URL("../definitely-missing-home", import.meta.url).pathname;
 process.env.TERSIO_HOME = process.env.HOME;
 

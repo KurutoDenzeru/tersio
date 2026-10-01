@@ -16,7 +16,6 @@ import type { ExtensionApi, ExtensionCtx } from "../../extensions/shared/types.t
 // tersio router appends ledger rows without touching the real machine.
 process.env.HOME = new URL("../definitely-missing-home", import.meta.url).pathname;
 process.env.USERPROFILE = process.env.HOME;
-// os.homedir() ignores HOME on macOS, so both must be pinned.
 process.env.TERSIO_HOME = process.env.HOME;
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tersio-noreload-"));
 process.env.TERSIO_USAGE_FILE = path.join(dir, "usage.jsonl");

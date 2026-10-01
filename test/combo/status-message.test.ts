@@ -13,7 +13,6 @@ import {
 import { formatStatus } from "../../extensions/shared/status.ts";
 import type { ExtensionApi, SessionEntry } from "../../extensions/shared/types.ts";
 
-// os.homedir() ignores HOME on macOS, so both must be pinned.
 process.env.HOME = new URL("../definitely-missing-home", import.meta.url).pathname;
 process.env.TERSIO_HOME = process.env.HOME;
 
