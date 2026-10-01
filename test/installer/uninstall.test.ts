@@ -208,12 +208,9 @@ test("uninstall dry-run changes no files", () => {
 
 // Neither `--host pi` nor auto-selecting the only installed host reached a
 // prompt, so pi files were removed with no confirmation and nothing to review.
-const PI_TREE = [
-  "shared/host.ts", "shared/session-state.ts", "shared/types.ts", "shared/plugin-settings.ts",
-  "shared/usage-ledger.ts", "shared/pricing.ts", "shared/carbon.ts",
-  "lib/utils.ts", "caveman-session/index.ts", "caveman-session/rule.md",
-  "rtk-session/index.ts", "combo-toggle/index.ts", "tersio-commands/index.ts", "ai-addons-updater/index.ts",
-];
+// Taken from the install manifest: a hand-written copy drifted when a module was
+// added, and the drift made a complete install look absent, so uninstall skipped.
+const { TREE_FILES: PI_TREE } = await import(new URL("file:///" + path.join(root, "cli/manifest.ts").replace(/\\/g, "/")).href);
 
 function seedPi(home: string): void {
   const extDir = path.join(home, ".pi", "agent", "extensions");
