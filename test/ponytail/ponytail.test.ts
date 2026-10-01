@@ -81,3 +81,40 @@ test("off mode gets no injection, on mode gets it on any turn", async () => {
   expect(await inject("Base.")).toMatch(/PONYTAIL MODE ACTIVE/);
   expect(await inject(`Base.\n${OMP_SUBAGENT_MARKER}`)).toMatch(/PONYTAIL MODE ACTIVE/);
 });
+
+// The header is the only level-specific text; YAGNI appears in every level.
+test("each level injects its own header", async () => {
+  for (const level of ["lite", "full", "ultra"] as const) {
+    const text = await injectMarked(level);
+    expect(text, `level ${level}`).toMatch(new RegExp(`PONYTAIL MODE ACTIVE — level: ${level}`));
+  }
+});
+
+test("the injected text is the real upstream file, not the fallback", async () => {
+  // Both carry YAGNI, so length is what separates a resolved package from the fallback.
+  const upstream = await injectMarked("ultra");
+  expect(upstream).not.toBe(ponytailFallback("ultra"));
+  expect(upstream.length).toBeGreaterThan(ponytailFallback("ultra").length);
+});
+
+test("ponytail reaches a subagent that the marker does not recognise", async () => {
+  // Ponytail reads shared state with no marker check, so it survives drift.
+  resetSharedComboState();
+  setSharedComboMode("ponytail", "ultra");
+  const drifted = "Some entirely different subagent wording after a host update.";
+  expect(await inject(drifted)).toMatch(/PONYTAIL MODE ACTIVE/);
+});
+
+test("a level switch injects the new level instead of being deduped away", async () => {
+  // injectPromptText only appends, so the guard must still let the new level through.
+  resetSharedComboState();
+  setSharedComboMode("ponytail", "ultra");
+  const first = await inject("Base.");
+  expect(first).toMatch(/level: ultra/);
+
+  resetSharedComboState();
+  setSharedComboMode("ponytail", "lite");
+  const second = await inject(`Base.\n${first}`);
+
+  expect(second).toMatch(/level: lite/);
+});

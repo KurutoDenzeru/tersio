@@ -217,7 +217,9 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
   pi.on<SystemPromptEvent>('before_agent_start', async (event, ctx) => {
     if (ctx?.hasUI) reconcile(ctx);
     const mode = getSharedComboState().ponytail;
-    if (mode === 'off' || systemPromptIncludes(event.systemPrompt, 'PONYTAIL MODE ACTIVE')) return;
+    // Match the level's own header: the shared phrase alone makes every level
+    // block every other, so a `/combo` level switch is ignored all session.
+    if (mode === 'off' || systemPromptIncludes(event.systemPrompt, `PONYTAIL MODE ACTIVE — level: ${mode}`)) return;
     return injectPromptText(pi, event, await loadPonytailInstructions(mode));
   });
 
