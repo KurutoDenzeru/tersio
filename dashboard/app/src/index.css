@@ -40,9 +40,7 @@
     --color-foreground: var(--foreground);
     --color-background: var(--background);
 
-    /* Tersio palette: single source of truth for the dashboard's own surfaces.
-       Mapped here so the whole design system is reachable as Tailwind
-       utilities (bg-panel, text-dim, border-line, bg-accent-soft, ...). */
+    /* Tersio's own surfaces, mapped so they are reachable as Tailwind utilities (bg-panel, text-dim, border-line). */
     --color-bg: var(--bg);
     --color-panel: var(--panel);
     --color-ink: var(--ink);
@@ -166,9 +164,7 @@
     @apply font-sans;
     }
 }
-/* Tersio's numeric monospace: tabular figures keep columns aligned. Used
-   across tables, KPIs and timestamps, so it stays a single semantic utility
-   instead of repeating two classes at ~95 call sites. */
+/* Numeric monospace with tabular figures, so columns align; a utility rather than two classes at ~95 call sites. */
 @utility mono {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
@@ -188,10 +184,8 @@
     --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.07);
   }
 
-/* Accent picker, light half. One token set drives every surface: --accent
-   tints buttons, links, charts and the share card, --grid/--cell-* drive the
-   heatmap, --bg carries the wash. Kept ahead of html[data-theme="dark"] so that
-   rule still wins on equal specificity. Values clear 4.5:1 against their --bg. */
+/* Accent picker: --accent tints controls, charts and the share card, --grid/--cell-*
+   the heatmap, --bg the wash. Kept ahead of html[data-theme="dark"] to win on specificity. */
   html[data-accent="emerald"] { --accent:#047857; --accent-soft:rgba(4,120,87,.12); --bg:#f4f4f5; --grid:rgba(4,120,87,.07); --cell-1:rgba(4,120,87,.3); --cell-2:rgba(4,120,87,.55); --cell-3:rgba(4,120,87,.8); --cell-4:#047857; }
   html[data-accent="violet"] { --accent:#7c3aed; --accent-soft:rgba(124,58,237,.14); --bg:#f7f5ff; --grid:rgba(124,58,237,.08); --cell-1:rgba(124,58,237,.3); --cell-2:rgba(124,58,237,.55); --cell-3:rgba(124,58,237,.8); --cell-4:#7c3aed; }
   html[data-accent="slate"] { --accent:#5b6779; --accent-soft:rgba(91,103,121,.14); --bg:#f6f7f9; --grid:rgba(91,103,121,.08); --cell-1:rgba(91,103,121,.3); --cell-2:rgba(91,103,121,.55); --cell-3:rgba(91,103,121,.8); --cell-4:#5b6779; }
@@ -237,17 +231,13 @@
   }
 
 
-/* Accent picker, dark half. Each accent repeats the two selectors the base
-   tokens use: an explicit data-theme="dark", and no data-theme at all under
-   prefers-color-scheme: dark. Emerald is the base, so it needs neither. */  html[data-theme="dark"][data-accent="violet"] { --accent:#a78bfa; --accent-soft:rgba(167,139,250,.14); --bg:#0f0a18; --grid:rgba(167,139,250,.06); --cell-1:rgba(167,139,250,.3); --cell-2:rgba(167,139,250,.55); --cell-3:rgba(167,139,250,.8); --cell-4:#a78bfa; }
+/* Accent picker, dark half: each accent repeats the two selectors the base tokens use. Emerald is the base, so it needs neither. */
+  html[data-theme="dark"][data-accent="violet"] { --accent:#a78bfa; --accent-soft:rgba(167,139,250,.14); --bg:#0f0a18; --grid:rgba(167,139,250,.06); --cell-1:rgba(167,139,250,.3); --cell-2:rgba(167,139,250,.55); --cell-3:rgba(167,139,250,.8); --cell-4:#a78bfa; }
   html[data-theme="dark"][data-accent="slate"] { --accent:#94a3b8; --accent-soft:rgba(148,163,184,.14); --bg:#0c0f14; --grid:rgba(148,163,184,.06); --cell-1:rgba(148,163,184,.3); --cell-2:rgba(148,163,184,.55); --cell-3:rgba(148,163,184,.8); --cell-4:#94a3b8; }
   html[data-theme="dark"][data-accent="cyan"] { --accent:#22d3ee; --accent-soft:rgba(34,211,238,.14); --bg:#08161a; --grid:rgba(34,211,238,.06); --cell-1:rgba(34,211,238,.3); --cell-2:rgba(34,211,238,.55); --cell-3:rgba(34,211,238,.8); --cell-4:#22d3ee; }
   html[data-theme="dark"][data-accent="rose"] { --accent:#fb7185; --accent-soft:rgba(251,113,133,.14); --bg:#18090f; --grid:rgba(251,113,133,.06); --cell-1:rgba(251,113,133,.3); --cell-2:rgba(251,113,133,.55); --cell-3:rgba(251,113,133,.8); --cell-4:#fb7185; }
   html[data-theme="dark"][data-accent="amber"] { --accent:#fbbf24; --accent-soft:rgba(251,191,36,.14); --bg:#171004; --grid:rgba(251,191,36,.06); --cell-1:rgba(251,191,36,.3); --cell-2:rgba(251,191,36,.55); --cell-3:rgba(251,191,36,.8); --cell-4:#fbbf24; }
   html[data-theme="dark"][data-accent="orange"] { --accent:#fb923c; --accent-soft:rgba(251,146,60,.14); --bg:#1a0d06; --grid:rgba(251,146,60,.06); --cell-1:rgba(251,146,60,.3); --cell-2:rgba(251,146,60,.55); --cell-3:rgba(251,146,60,.8); --cell-4:#fb923c; }
-  /* Emerald dark values already match the :root block above, so only the two
-     selectors that opt out of the base rule need restating, and emerald does
-     not opt out: it is the base. Nothing to add. */
   @media (prefers-color-scheme: dark) {
     html:not([data-theme])[data-accent="violet"] { --accent:#a78bfa; --accent-soft:rgba(167,139,250,.14); --bg:#0f0a18; --grid:rgba(167,139,250,.06); --cell-1:rgba(167,139,250,.3); --cell-2:rgba(167,139,250,.55); --cell-3:rgba(167,139,250,.8); --cell-4:#a78bfa; }
     html:not([data-theme])[data-accent="slate"] { --accent:#94a3b8; --accent-soft:rgba(148,163,184,.14); --bg:#0c0f14; --grid:rgba(148,163,184,.06); --cell-1:rgba(148,163,184,.3); --cell-2:rgba(148,163,184,.55); --cell-3:rgba(148,163,184,.8); --cell-4:#94a3b8; }
