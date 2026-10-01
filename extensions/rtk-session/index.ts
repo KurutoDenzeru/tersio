@@ -93,7 +93,8 @@ export default function rtkSessionExtension(pi: ExtensionApi): void {
       description: "Arguments passed to rtk, e.g. ['git','status'] or ['read','src/index.ts']",
     }),
     async execute(_toolCallId, params, signal, onUpdate, ctx) {
-      if (!enabled) return fail('RTK mode is off. Run /rtk on for this session, or use bash explicitly.');
+      // A subagent's own flag sits at its start-up default, so honour shared state too.
+      if (!(enabled || getSharedComboState().rtk === 'on')) return fail('RTK mode is off. Run /rtk on for this session, or use bash explicitly.');
       if (typeof pi.exec !== 'function') return fail('This host cannot run rtk.');
       onUpdate?.({ content: [{ type: 'text', text: `rtk ${params.args.join(' ')}` }], details: { phase: 'start' } });
       try {
