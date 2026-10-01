@@ -1,6 +1,7 @@
 import { activeModesSummary, getSharedComboState, isComboPresetActive, isOmpSubagentPrompt, lastCustomValue, paintStatusBar, paintableCtx, reconcileSharedComboEntries, sessionEntries, setSharedComboListener, setSharedComboMode, statusUi, systemPromptIncludes } from '../shared/session-state.ts';
 import { injectPromptText, onHostEvent, setExtensionLabel, stringArrayToolParams } from '../shared/host.ts';
 import { readRtkDefault } from '../shared/plugin-settings.ts';
+import { resolveRtkBinary } from '../lib/utils.ts';
 import type { ExtensionApi, ExtensionCtx, SessionEntry, SystemPromptEvent } from '../shared/types.ts';
 
 const DEFAULT_ENABLED = false;
@@ -96,7 +97,8 @@ export default function rtkSessionExtension(pi: ExtensionApi): void {
       if (typeof pi.exec !== 'function') return fail('This host cannot run rtk.');
       onUpdate?.({ content: [{ type: 'text', text: `rtk ${params.args.join(' ')}` }], details: { phase: 'start' } });
       try {
-        const result = await pi.exec('rtk', params.args, { signal, cwd: ctx?.cwd || pi.cwd });
+        // A GUI-launched host may lack ~/.bun/bin on PATH, so prefer the resolved path.
+        const result = await pi.exec(resolveRtkBinary() ?? 'rtk', params.args, { signal, cwd: ctx?.cwd || pi.cwd });
         const text = [result.stdout, result.stderr].filter(Boolean).join('\n');
         return {
           isError: result.code !== 0,
