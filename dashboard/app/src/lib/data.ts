@@ -129,12 +129,28 @@ async function getJSON<T>(path: string): Promise<T> {
   return (await res.json()) as T;
 }
 
-export function useDashboardData(): { data: UsageReport | null; loading: boolean } {
+export function useDashboardData(): { data: UsageReport | null; loading: boolean; status: string | null } {
   const [data, setData] = useState<UsageReport | null>(() => snap()?.data ?? null);
+  const [status, setStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState(() => !isFileExport() && !snap()?.data);
   const lastJson = useRef<string>(data ? JSON.stringify(data) : "");
+  const lastStatus = useRef<string>("");
+
+  // Rides the dashboard poll below rather than opening a second interval; the
+  // banner would otherwise watch document.hidden on a timer of its own.
+  const loadStatus = useCallback(async () => {
+    try {
+      const s = (await getJSON<{ status: string }>("status")).status;
+      if (typeof s !== "string" || s === lastStatus.current) return;
+      lastStatus.current = s;
+      setStatus(s);
+    } catch {
+      // Served mode on a server without /status; the banner simply stays hidden.
+    }
+  }, []);
 
   const load = useCallback(async () => {
+    void loadStatus();
     try {
       const d = await getJSON<UsageReport>("data.json");
       const json = JSON.stringify(d);
@@ -147,7 +163,7 @@ export function useDashboardData(): { data: UsageReport | null; loading: boolean
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [loadStatus]);
 
   useEffect(() => {
     if (isFileExport()) return;
@@ -172,7 +188,7 @@ export function useDashboardData(): { data: UsageReport | null; loading: boolean
     };
   }, [load]);
 
-  return { data, loading };
+  return { data, loading, status };
 }
 
 export interface FxState {

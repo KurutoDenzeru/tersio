@@ -12,6 +12,7 @@ import { Recent } from "./components/recent";
 import { Tools } from "./components/tools";
 import { Footer, SettingsDialog, ShareDialog } from "./components/dialogs";
 import { ToasterProvider } from "./components/toaster";
+import { StatusBanner } from "./components/status-banner";
 
 function useDataThemeAttr(): void {
   const { theme } = useTheme();
@@ -106,7 +107,7 @@ function DashboardLoading() {
 function Shell() {
   useDataThemeAttr();
   useReveal();
-  const { data, loading } = useDashboardData();
+  const { data, loading, status } = useDashboardData();
   const { fx, money, applyCurrency } = useFx(data?.currency);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
@@ -133,6 +134,9 @@ function Shell() {
           )}
         </div>
       </main>
+      {/* Sibling of <main>, not a child: main is overflow-x-clip, which would
+          make it the containing block and pin this fixed banner wrong. */}
+      <StatusBanner status={status} />
       <SettingsDialog
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}

@@ -17,7 +17,7 @@ import type { CurrencyCode } from './currency.ts';
 import {
   OMP_AGENT_DIR, OMP_PLUGINS_DIR, PACKAGE_VERSION,
 } from './common.ts';
-import { BACKUP_SCHEDULES, storedProfile, writePluginSettings } from './profile.ts';
+import { BACKUP_SCHEDULES, formatCliStatus, storedProfile, writePluginSettings } from './profile.ts';
 import type { BackupSchedule } from './profile.ts';
 import { normalizeComboLevel } from '../extensions/shared/session-state.ts';
 import { CAVEMAN_DEFAULTS, PONYTAIL_DEFAULTS } from './common.ts';
@@ -62,6 +62,19 @@ async function brandDataUri(): Promise<string> {
 
 function dataJson(): string {
   return JSON.stringify(summarizeUsage(readUsage()));
+}
+
+// The server runs outside any agent session, so it reports the persisted
+// profile through the CLI formatter — the same defaults the next session applies.
+async function statusJson(): Promise<string> {
+  const profile = await storedProfile();
+  return JSON.stringify({
+    status: formatCliStatus(profile),
+    level: profile.comboDefault,
+    caveman: profile.cavemanDefault,
+    rtk: profile.rtkDefault ? 'on' : 'off',
+    ponytail: profile.ponytailDefault,
+  });
 }
 
 // Local-only health: find each agent on PATH, run `--version`, report both.
@@ -552,6 +565,11 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
     if (req.url === '/health') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(healthJson());
+      return;
+    }
+    if (req.url === '/status' && req.method === 'GET') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(await statusJson());
       return;
     }
     if (req.url === '/doctor' && req.method === 'POST') {

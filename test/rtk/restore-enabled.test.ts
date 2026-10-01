@@ -36,7 +36,7 @@ function context(entries: SessionEntry[], notifications: string[]): ExtensionCtx
 
 test("restore skips a corrupt latest rtk-mode entry and uses the older valid one", async () => {
   const entries: SessionEntry[] = [
-    { type: "custom", customType: "rtk-mode", data: { enabled: false } },
+    { type: "custom", customType: "rtk-mode", data: { enabled: true } },
     { type: "custom", customType: "rtk-mode", data: { enabled: "maybe" } },
   ];
   const { handlers, notifications } = harness(entries);
