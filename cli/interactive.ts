@@ -10,17 +10,38 @@ import { bannerFor, StickyBanner } from './sticky-banner.ts';
 // mode change in one menu refreshes the line the next prompt draws.
 let banner: StickyBanner | undefined;
 let bannerStatus: (() => string) | undefined;
+// `bannerStatus` is a live source (settings supplies the profile it edits).
+// `bannerFallback` is the stored defaults every other command paints. An empty
+// live value must not win: `??` only skips undefined, so settings returning ''
+// before its first answer blanked the line for every menu.
+let bannerFallback = '';
 
-/** The live status line, or undefined when no caller has supplied one. */
+function bannerText(): string {
+  const live = bannerStatus?.();
+  return live ? live : bannerFallback;
+}
+
+/** The live status source. Pass undefined to fall back to the stored defaults. */
 function setBannerStatus(getStatus: (() => string) | undefined): void {
   bannerStatus = getStatus;
   banner?.refresh();
 }
 
+/** What the banner paints when no command supplies a live value. */
+function setBannerFallback(line: string): void {
+  bannerFallback = line;
+  banner?.refresh();
+}
+
+/** What the banner currently paints. Exported for the fallback tests. */
+export function bannerLine(): string {
+  return bannerText();
+}
+
 /** Draw the banner now, and again after every Clack frame it emits. */
 function openBanner(): void {
   if (banner) { banner.refresh(); return; }
-  banner = bannerFor(process.stdout, () => bannerStatus?.() ?? '');
+  banner = bannerFor(process.stdout, bannerText);
   if (!banner) return;
   banner.watchResize();
   banner.draw();
@@ -206,5 +227,5 @@ async function execNetwork(label: string, cmd: string, args: string[], opts: Exe
 export {
   ask, closeRL, tty, withInteractiveSpinner, withInteractiveTask, execNetwork, sayTagged, SayKind,
   askInteractiveChoice, askInteractiveConfirm, confirmDestructive, runInteractivePhase, InteractiveChoice, InteractiveConfirm,
-  setBannerStatus,
+  setBannerStatus, setBannerFallback,
 };

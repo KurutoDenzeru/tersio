@@ -14,7 +14,8 @@ import type { Profile } from './profile.ts';
 import { readDiagSchedule, setDiagSchedule } from './dashboard.ts';
 import type { DiagSchedule } from './dashboard.ts';
 
-// The banner reads the profile the menu is editing, so it tracks each answer.
+// Settings owns the line while it edits, so the banner tracks each answer.
+// Other commands leave this unset and read the stored defaults instead.
 let bannerProfile: Profile | null = null;
 setBannerStatus(() => bannerProfile ? formatCliStatus(bannerProfile) : '');
 

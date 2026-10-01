@@ -3,7 +3,7 @@
 import {
   PACKAGE_BIN, PACKAGE_VERSION, applyUpdate, commandArg, dashboard, dashboardExport, dashboardOpen, dashboardPort, doctor, reset, settings, showHelp, showVersion, uninstall, unknownCommand, update, usage,
 } from './cli/common.ts';
-import { closeRL } from './cli/interactive.ts';
+import { closeRL, setBannerFallback } from './cli/interactive.ts';
 import { runInstall } from './cli/install.ts';
 import { runDoctor } from './cli/doctor.ts';
 import { runLatestUpdate } from './cli/update.ts';
@@ -12,6 +12,18 @@ import { runUsage } from './cli/usage.ts';
 import { runReset } from './cli/reset.ts';
 import { runSettings } from './cli/settings.ts';
 import { runDashboard } from './cli/dashboard.ts';
+import { formatCliStatus, storedProfile } from './cli/profile.ts';
+
+// Seed the sticky banner from the stored defaults before any command runs, so
+// every menu — not just `tersio settings` — shows the current combo. Awaited
+// inside main so the first prompt already paints a real line.
+async function seedBanner(): Promise<void> {
+  try {
+    setBannerFallback(formatCliStatus(await storedProfile()));
+  } catch {
+    setBannerFallback('');
+  }
+}
 
 function printHelp(): void {
   console.log(`Usage: ${PACKAGE_BIN} [command] [options]
@@ -50,6 +62,8 @@ Options:
 }
 
 async function main(): Promise<void> {
+  // Cheap, and only matters when a prompt follows.
+  if (!showVersion && !showHelp) await seedBanner();
   if (showVersion) {
     console.log(PACKAGE_VERSION);
     closeRL();
