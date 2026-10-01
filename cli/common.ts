@@ -92,6 +92,9 @@ const applyUpdate = args.includes('--apply-update');
 const dryRun = args.includes('--dry-run');
 const yes = args.includes('--yes') || args.includes('-y') || install || update || applyUpdate;
 const verbose = args.includes('--verbose');
+// Downloads an unverified binary when the upstream checksum is unreachable.
+// Off by default: an unverified binary runs with the user's privileges.
+const allowUnverified = args.includes('--allow-unverified');
 const doctor = command === 'doctor' || args.includes('--doctor');
 const fix = args.includes('--fix') || args.some((a) => a.startsWith('--fix='));
 const usage = command === 'usage' || args.includes('--usage');
@@ -369,6 +372,7 @@ export {
   parseEnum, flagValue, COMMANDS, commandArg, command, settingArg, unknownCommand,
   install, update, showVersion, showHelp, applyUpdate, args,
   dryRun, yes, verbose, doctor, fix, uninstall, usage, dashboard, reset, settings,
+  allowUnverified,
   dashboardPort, dashboardOpen, dashboardExport, currency, currencyGiven,
   removePonytail, keepPonytail, removeRtk,
   comboDefaultFlag, cavemanDefaultFlag, ponytailDefaultFlag, rtkDefaultFlag, diagScheduleFlag, profileFlagsGiven,

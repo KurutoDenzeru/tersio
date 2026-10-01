@@ -59,7 +59,7 @@ interface AddonUpdaterPi {
   cwd?: string;
 }
 
-type NotifyLevel = 'info' | 'warning';
+type NotifyLevel = 'info' | 'warning' | 'error';
 
 function notify(ctx: AddonUpdaterCtx | undefined, msg: string, level: NotifyLevel): void {
   ctx?.ui?.notify?.(String(msg), level);
@@ -240,14 +240,14 @@ async function updateRtk(ctx: AddonUpdaterCtx, dryRun = false): Promise<string> 
     const checks = await fs.readFile(checksPath, 'utf8');
     const expected = parseChecksum(checks, asset.name);
     if (!expected) {
-      const m = `RTK: checksums.txt has no entry for ${asset.name}`;
-      return report(ctx, m, 'warning');
+      const m = `RTK: checksums.txt has no entry for ${asset.name}; not installing`;
+      return report(ctx, m, 'error');
     }
     const archiveBuf = await fs.readFile(archivePath);
     const actual = createHash('sha256').update(archiveBuf).digest('hex').toLowerCase();
     if (actual !== expected) {
-      const m = `RTK: checksum mismatch! expected=${expected.slice(0, 12)}… actual=${actual.slice(0, 12)}…`;
-      return report(ctx, m, 'warning');
+      const m = `RTK: checksum mismatch! expected=${expected.slice(0, 12)}… actual=${actual.slice(0, 12)}…; not installing`;
+      return report(ctx, m, 'error');
     }
     notify(ctx, 'RTK: checksum verified.', 'info');
 

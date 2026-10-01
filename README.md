@@ -55,14 +55,15 @@ npm exec --yes --prefer-online --package=@krtclcdy/tersio@latest -- tersio insta
 
 ### Requirements
 
-- [OMP](https://github.com/can1357/oh-my-pi) or [pi](https://github.com/earendil-works/pi)
+- [OMP](https://github.com/can1357/oh-my-pi) or [pi](https://github.com/earendil-works/pi) — both are supported; pick one with `tersio install --host <omp|pi>`
 - Node.js 20.12+ with npm
+- macOS or Linux, native or WSL
 
-Windows/WSL have separate OMP homes — install from the environment where OMP runs. Inside WSL, `command -v npm` must resolve to a Linux path, not `/mnt/c/`.
+On Windows, use WSL. There is no native Windows path: the installer, the extensions, and the RTK wiring are tested on macOS and Linux only. WSL has its own home directory, so install from inside WSL — `command -v npm` must resolve to a Linux path, not `/mnt/c/`.
 
 ## 📊 Benchmarks
 
-Every mode is measured against a base run with all modes off. Measured surfaces use different boundaries. Do not treat reply-text, code-output, and shell-output reductions as total bill savings. Results and the rerun protocol are in [BENCHMARK.md](./BENCHMARK.md).
+Every mode is measured against a base run with all modes off. Measured surfaces use different boundaries. Do not treat reply-text, code-output, and shell-output reductions as total bill savings. **A mode also spends tokens on the prompt, on every turn — read the caveat under the table before choosing.** Results and the rerun protocol are in [docs/BENCHMARK.md](./docs/BENCHMARK.md).
 
 | Mode | Surface (n) | Base → Tersio | Δ |
 |---|---|---|---|
@@ -78,7 +79,9 @@ Every mode is measured against a base run with all modes off. Measured surfaces 
 | `/rtk on` — `git status` | Command output (3 runs, p50) | 72 → 18 | **−75.0% output** |
 | `/rtk on` — `bun run build` | Command output (3 runs, p50) | 140 → 114 | **−18.6% output** |
 
-Prompt overhead is included in [BENCHMARK.md](./BENCHMARK.md) with a full prompt-base example. Summary: `/rtk on` pays back immediately, `/ponytail ultra` repays in about 7 code tasks, `/combo medium` in about 8, and every Caveman level costs more in prompt than it saves in reply text.
+The two `/caveman` rows above are the exception worth naming: both levels spend more prompt tokens than the reply text they save, so they cost you money on net. Use Caveman for the terser writing style, not as a token saving.
+
+Prompt overhead is included in [docs/BENCHMARK.md](./docs/BENCHMARK.md) with a full prompt-base example. Summary: `/rtk on` pays back immediately, `/ponytail ultra` repays in about 7 code tasks, `/combo medium` in about 8, and every Caveman level costs more in prompt than it saves in reply text.
 
 The Command tools dashboard reports weighted RTK command-output savings and OMP-specific adoption from executed Bash records. It does not estimate provider billing.
 Upstream Ponytail's fair agentic benchmark reports 54% less code, 22% fewer tokens, 20% lower cost, and 100% retained safety. RTK estimates command-output tokens, not bill savings. Caveman and Ponytail compliance varies by model. Measure your own sessions with `tersio usage` and the dashboard.
@@ -182,7 +185,7 @@ An OMP install also registers the package in `~/.omp/plugins`, so it shows under
 
 Contributions are always welcome, whether you're fixing bugs, improving docs, or shipping new features that make the project better for everyone.
 
-Check out [Contributing.md](Contributing.md) to learn how to get started and follow the recommended workflow.
+Check out [CONTRIBUTING.md](CONTRIBUTING.md) to learn how to get started and follow the recommended workflow.
 
 ## ⚖️ License
 

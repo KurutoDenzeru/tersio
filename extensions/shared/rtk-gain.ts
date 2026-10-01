@@ -1,4 +1,4 @@
-// Savings read from rtk history, never estimated; modes bench in BENCHMARK.md.
+// Savings read from rtk history, never estimated; modes bench in docs/BENCHMARK.md.
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';

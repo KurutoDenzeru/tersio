@@ -127,11 +127,13 @@ async function fixRtk(binDir: string): Promise<void> {
       httpsGet(checksAsset.browser_download_url).catch(() => null),
       httpsDownload(asset.browser_download_url, archivePath),
     ]);
-    if (checks) {
-      const expected = parseChecksum(checks, asset.name);
-      if (expected && await sha256File(archivePath) !== expected) throw new Error(`checksum mismatch for ${asset.name}`);
-      debug('RTK checksum verified');
-    }
+    // Same rule as the installer: an unverifiable binary is not installed.
+    const unverified = (why: string): Error => new Error(`${why} for ${asset.name}. Re-run with --allow-unverified to accept it`);
+    if (!checks) throw unverified('checksums.txt could not be downloaded');
+    const expected = parseChecksum(checks, asset.name);
+    if (!expected) throw unverified('checksums.txt has no entry');
+    if (await sha256File(archivePath) !== expected) throw new Error(`checksum mismatch for ${asset.name}`);
+    debug('RTK checksum verified');
     const extractDir = path.join(tmpDir, 'extracted');
     await fs.mkdir(extractDir, { recursive: true });
     if (asset.name.endsWith('.zip')) await execP('powershell', ['Expand-Archive', '-Path', archivePath, '-DestinationPath', extractDir, '-Force'], { timeout: 60000 });

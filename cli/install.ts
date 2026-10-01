@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import {
   BUN_BIN_DIR, COMBO_PRESET_MODES, IS_WINDOWS, OMP_AGENT_DIR, OMP_PLUGINS_DIR, OMP_BIN,
   PACKAGE_NAME, PACKAGE_VERSION, RTK_BINARY_NAME, args,
-  applyUpdate, cavemanDefaultFlag, comboDefaultFlag, command, dryRun,
+  allowUnverified, applyUpdate, cavemanDefaultFlag, comboDefaultFlag, command, dryRun,
   ponytailDefaultFlag, profileFlagsGiven, rtkDefaultFlag, verbose, yes,
   dashboardExport, dashboardPort,
   debug, ensurePonytailConfigValue,
@@ -174,17 +174,28 @@ async function downloadRtkChecksums(release: RtkRelease): Promise<string | null>
   }
 }
 
+/**
+ * Refuse to install an archive whose checksum could not be confirmed.
+ *
+ * Failing open here meant a dropped or altered `checksums.txt` silently
+ * downgraded every install to unverified. An RTK binary runs with the user's
+ * privileges, so a silent downgrade is worse than a failed install.
+ * `--allow-unverified` restores the old behaviour for an air-gapped machine.
+ */
 async function verifyRtkArchive(archivePath: string, assetName: string, checksumsText: string | null, options: WriteOptions = {}): Promise<boolean> {
-  if (!checksumsText) {
-    if (!options.quiet) console.log('  [warn] No checksums.txt available — skipping verification');
-    return true;
-  }
+  const unverified = (reason: string): boolean => {
+    if (allowUnverified) {
+      sayTagged(`  [warn] ${reason} — installing anyway (--allow-unverified)`);
+      return true;
+    }
+    sayTagged(`  [fail] ${reason}`);
+    sayTagged('  [hint] RTK not installed. Retry with --allow-unverified to accept an unverified binary.');
+    return false;
+  };
+  if (!checksumsText) return unverified(`No checksums.txt published for ${assetName}`);
   const expected = parseChecksum(checksumsText, assetName);
+  if (!expected) return unverified(`checksums.txt has no entry for ${assetName}`);
   const actual = await sha256File(archivePath);
-  if (!expected) {
-    if (!options.quiet) sayTagged(`  [warn] checksums.txt missing entry for ${assetName} — skipping verification`);
-    return true;
-  }
   if (actual === expected) {
     debug(`Checksum verified for ${assetName}`);
     return true;
@@ -289,7 +300,7 @@ async function stepRtk(binDir: string, options: InstallOptions, target: 'omp' | 
           httpsDownload(asset.browser_download_url, archivePath),
         ]);
         update('Verifying checksum');
-        if (!await verifyRtkArchive(archivePath, asset.name, checksumsText, options)) {
+        if (!await verifyRtkArchive(archivePath, asset.name, checksumsText)) {
           sayTagged('  [hint] RTK install skipped for this run');
           return;
         }
@@ -753,4 +764,5 @@ async function runInstall(): Promise<void> {
 
   closeRL();
 }
-export { runInstall };
+// verifyRtkArchive is exported so the fail-closed rule is directly testable.
+export { runInstall, verifyRtkArchive };
