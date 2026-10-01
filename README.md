@@ -8,9 +8,7 @@
 [![Build](https://shieldcn.dev/github/ci/KurutoDenzeru/tersio.svg?variant=branded&size=xs&logo=githubactions&label=Build)](https://github.com/KurutoDenzeru/tersio/actions)
 [![MIT](https://shieldcn.dev/badge/license-MIT-2563eb.svg?variant=branded&size=xs&logo=opensourceinitiative)](./LICENSE)
 
-Token-saving add-ons for Oh My Pi and pi: terse caveman replies, compact
-RTK shell output, lean Ponytail code calls, usage tracking with a gain
-dashboard — one-command combo presets, one shared extension tree.
+Token saver & usage tracker for coding agents: terse caveman replies, compact RTK shell output, lean Ponytail code calls, and a gain dashboard — one-command combo presets over one shared extension tree.
 
 ## ⚡ Getting Started
 
