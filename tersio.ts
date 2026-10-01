@@ -12,14 +12,15 @@ import { runUsage } from './cli/usage.ts';
 import { runReset } from './cli/reset.ts';
 import { runSettings } from './cli/settings.ts';
 import { runDashboard } from './cli/dashboard.ts';
-import { formatCliStatus, storedProfile } from './cli/profile.ts';
+import { formatCliStatus, storedProfileSync } from './cli/profile.ts';
 
-// Seed the sticky banner from the stored defaults before any command runs, so
-// every menu — not just `tersio settings` — shows the current combo. Awaited
-// inside main so the first prompt already paints a real line.
-async function seedBanner(): Promise<void> {
+// Seed the sticky banner from the stored defaults so every menu shows the
+// current combo. Synchronous on purpose: awaiting here let piped stdin arrive
+// before the confirm prompt registered its readline listener, so a scripted
+// answer was swallowed and a destructive confirm defaulted to abort.
+function seedBanner(): void {
   try {
-    setBannerFallback(formatCliStatus(await storedProfile()));
+    setBannerFallback(formatCliStatus(storedProfileSync()));
   } catch {
     setBannerFallback('');
   }
@@ -63,7 +64,7 @@ Options:
 
 async function main(): Promise<void> {
   // Cheap, and only matters when a prompt follows.
-  if (!showVersion && !showHelp) await seedBanner();
+  if (!showVersion && !showHelp) seedBanner();
   if (showVersion) {
     console.log(PACKAGE_VERSION);
     closeRL();

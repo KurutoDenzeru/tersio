@@ -1,6 +1,5 @@
 // cli/profile.ts — session-start defaults and the display-currency default,
-// stored in ~/.tersio/settings.json. Shared by install and settings.
-import { existsSync, promises as fs } from 'node:fs';
+import { existsSync, promises as fs, readFileSync } from 'node:fs';
 import path from 'node:path';
 import {
   CAVEMAN_DEFAULTS, COMBO_PRESET_MODES, PACKAGE_NAME, PONYTAIL_DEFAULTS,
@@ -12,6 +11,14 @@ import { DEFAULT_CURRENCY, isCurrencyCode } from './currency.ts';
 import type { CurrencyCode } from './currency.ts';
 import { readTextIfExists } from '../extensions/lib/utils.ts';
 import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
+
+function readTextIfExistsSync(file: string): string | null {
+  try {
+    return existsSync(file) ? readFileSync(file, 'utf8') : null;
+  } catch {
+    return null;
+  }
+}
 
 interface Profile {
   comboDefault: string;
@@ -50,12 +57,18 @@ interface StoredSettings {
 }
 
 // Seed once from OMP plugin settings so a pre-~/.tersio install keeps its values.
-async function storedProfile(): Promise<Profile> {
+// Synchronous on purpose: the banner seeds from this at startup, and awaiting it
+// let piped stdin arrive before `ask()` registered its readline listener, so a
+// scripted `y` or `n` was swallowed and the confirm defaulted to abort.
+function storedProfileSync(): Profile {
   const base = defaultProfile();
-  const stored = (await readTextIfExists(tersioSettingsFile())) !== null
-    ? parseStored(await readTextIfExists(tersioSettingsFile()))
-    : parseStored(await readTextIfExists(legacyOmpLockPath()));
+  const stored = parseStored(readTextIfExistsSync(tersioSettingsFile()) ?? readTextIfExistsSync(legacyOmpLockPath()));
   if (!stored) return base;
+  applyStored(base, stored);
+  return base;
+}
+
+function applyStored(base: Profile, stored: StoredSettings): void {
   if (typeof stored.comboDefault === 'string' && stored.comboDefault in COMBO_PRESET_MODES) base.comboDefault = stored.comboDefault;
   if (typeof stored.cavemanDefault === 'string' && CAVEMAN_DEFAULTS.has(stored.cavemanDefault)) base.cavemanDefault = stored.cavemanDefault;
   if (typeof stored.rtkDefault === 'boolean') base.rtkDefault = stored.rtkDefault;
@@ -70,6 +83,15 @@ async function storedProfile(): Promise<Profile> {
     // An empty marker would match every turn.
     base.subagentMarkers = stored.subagentMarkers.filter((m): m is string => typeof m === 'string' && m.trim() !== '');
   }
+}
+
+async function storedProfile(): Promise<Profile> {
+  const base = defaultProfile();
+  const stored = (await readTextIfExists(tersioSettingsFile())) !== null
+    ? parseStored(await readTextIfExists(tersioSettingsFile()))
+    : parseStored(await readTextIfExists(legacyOmpLockPath()));
+  if (!stored) return base;
+  applyStored(base, stored);
   return base;
 }
 
@@ -122,7 +144,7 @@ function formatProfile(profile: Profile): string {
   return `combo=${profile.comboDefault} (caveman=${profile.cavemanDefault} · rtk=${profile.rtkDefault ? 'on' : 'off'} · ponytail=${profile.ponytailDefault}) · currency=${profile.currency}`;
 }
 
-export { defaultProfile, formatProfile, storedProfile, writePluginSettings, Profile };
+export { defaultProfile, formatProfile, storedProfile, storedProfileSync, writePluginSettings, Profile };
 
 /**
  * The same status line the extensions print, from the stored defaults.
