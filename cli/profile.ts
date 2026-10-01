@@ -20,6 +20,8 @@ interface Profile {
   ponytailDefault: string;
   currency: CurrencyCode;
   backupSchedule: BackupSchedule;
+  // Host subagent-prompt markers. Empty means the built-in default.
+  subagentMarkers: string[];
 }
 
 export type BackupSchedule = 'manual' | 'daily' | 'weekly' | 'monthly';
@@ -33,6 +35,7 @@ function defaultProfile(): Profile {
     ponytailDefault: 'off',
     currency: DEFAULT_CURRENCY,
     backupSchedule: 'monthly',
+    subagentMarkers: [],
   };
 }
 
@@ -43,6 +46,7 @@ interface StoredSettings {
   ponytailDefault?: unknown;
   currency?: unknown;
   backupSchedule?: unknown;
+  subagentMarkers?: unknown;
 }
 
 // Seed once from OMP plugin settings so a pre-~/.tersio install keeps its values.
@@ -61,6 +65,10 @@ async function storedProfile(): Promise<Profile> {
   }
   if (typeof stored.backupSchedule === 'string' && BACKUP_SCHEDULES.has(stored.backupSchedule)) {
     base.backupSchedule = stored.backupSchedule as BackupSchedule;
+  }
+  if (Array.isArray(stored.subagentMarkers)) {
+    // An empty marker would match every turn.
+    base.subagentMarkers = stored.subagentMarkers.filter((m): m is string => typeof m === 'string' && m.trim() !== '');
   }
   return base;
 }
@@ -99,6 +107,7 @@ async function writePluginSettings(profile: Profile, options: WriteOptions): Pro
     ponytailDefault: profile.ponytailDefault,
     currency: profile.currency,
     backupSchedule: profile.backupSchedule,
+    ...(profile.subagentMarkers.length > 0 ? { subagentMarkers: profile.subagentMarkers } : {}),
   };
   if (options.dryRun) {
     if (verbose && !options.quiet) console.log(`  [dry-run] would write session defaults to ${file}`);

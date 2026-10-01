@@ -127,6 +127,12 @@ const diagScheduleFlag = parseEnum(flagValue('--diag-schedule'), DIAG_SCHEDULES,
 const profileFlagsGiven = [comboDefaultFlag, cavemanDefaultFlag, rtkDefaultFlag, ponytailDefaultFlag]
   .some((flag) => flag !== undefined);
 
+// Repeatable `--subagent-marker`; overrides the built-in host prompt marker.
+const subagentMarkerFlags: string[] = args
+  .map((a, i) => (a === '--subagent-marker' ? args[i + 1] : undefined))
+  .filter((v): v is string => typeof v === 'string' && !v.startsWith('-') && v.trim() !== '');
+const subagentMarkersGiven = subagentMarkerFlags.length > 0;
+
 function debug(...a: unknown[]): void {
   if (verbose) console.log('  [debug]', ...a);
 }
@@ -366,6 +372,7 @@ export {
   dashboardPort, dashboardOpen, dashboardExport, currency, currencyGiven,
   removePonytail, keepPonytail, removeRtk,
   comboDefaultFlag, cavemanDefaultFlag, ponytailDefaultFlag, rtkDefaultFlag, diagScheduleFlag, profileFlagsGiven,
+  subagentMarkerFlags, subagentMarkersGiven,
   debug, execFileP, execP, writeIfChanged, normalizeExtensionsKey, EXTENSIONS_KEY_RE,
   writeConfigLines, ensureExtensionInConfig, removeExtensionFromConfig,
   readPonytailConfig, parseJsonObject, parsePonytailConfig, patchPonytailConfig,
