@@ -24,8 +24,12 @@ function missingHome(): string {
   return home;
 }
 
+function extDir(home: string): string {
+  return path.join(home, ".omp", "plugins", "node_modules", "@krtclcdy", "tersio", "extensions");
+}
+
 function resultFileMissing(home: string, rel: string): boolean {
-  return !existsSync(path.join(home, ".omp", "plugins", "node_modules", "@krtclcdy", "tersio", "extensions", rel));
+  return !existsSync(path.join(extDir(home), rel));
 }
 
 test("doctor reports MISSING components against an empty home", () => {
@@ -164,6 +168,55 @@ test("doctor --fix repairs missing extension files in an empty home", () => {
     }
     const installedRule = readFileSync(path.join(home, ".omp", "plugins", "node_modules", "@krtclcdy", "tersio", "extensions", "caveman-session", "rule.md"), "utf8");
     expect(installedRule).toBe(readFileSync(path.join(root, "extensions", "caveman-session", "rule.md"), "utf8"));
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+}, 30000);
+
+// An interrupted --fix leaves entry points present but imports absent.
+test("doctor names a half-written tree that still has its entry points", () => {
+  const home = missingHome();
+  try {
+    const ext = extDir(home);
+    for (const rel of ["caveman-session/index.ts", "rtk-session/index.ts", "ai-addons-updater/index.ts"]) {
+      mkdirSync(path.join(ext, path.dirname(rel)), { recursive: true });
+      writeFileSync(path.join(ext, rel), "export default {}\n", "utf8");
+    }
+    const result = spawnSync(process.execPath, [installer, "doctor"], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 15000,
+      env: cliEnv(home, { PATH: path.join(home, "empty-bin") }),
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/❌ Extension tree: MISSING/);
+    expect(result.stdout).toContain("shared/status.ts");
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("doctor --fix fills the gap and confirms the whole tree", () => {
+  const home = missingHome();
+  try {
+    const ext = extDir(home);
+    mkdirSync(path.join(ext, "caveman-session"), { recursive: true });
+    writeFileSync(path.join(ext, "caveman-session", "index.ts"), "export default {}\n", "utf8");
+
+    const result = spawnSync(process.execPath, [installer, "doctor", "--fix", "extensions", "--yes"], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 30000,
+      env: cliEnv(home),
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/\[ok\] extension tree: \d+ files/);
+    expect(result.stdout).not.toContain("[fail] tree incomplete");
+    for (const rel of ["shared/status.ts", "caveman-session/index.ts", "rtk-session/index.ts"]) {
+      expect(resultFileMissing(home, rel), rel).toBe(false);
+    }
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

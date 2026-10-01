@@ -12,6 +12,7 @@ import { usageDbPath } from '../extensions/shared/usage-store.ts';
 import { pricesCachePath } from '../extensions/shared/pricing.ts';
 import { fileContains, readTextIfExists, resolveHostBinary, resolveRtkBinary } from '../extensions/lib/utils.ts';
 import { OMP_SUBAGENT_MARKER } from '../extensions/shared/session-state.ts';
+import { TREE_FILES } from './manifest.ts';
 
 interface DoctorSummary {
   ok: number;
@@ -134,9 +135,12 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
       .filter((line) => line.startsWith('/') || line.startsWith('.'));
     const duplicateExtensions = [...new Set(explicitEntries.filter((entry, index) => explicitEntries.indexOf(entry) !== index))];
     check('Unique config registrations', duplicateExtensions.length === 0, duplicateExtensions.length ? duplicateExtensions.join(', ') : '');
-    check('Caveman extension', existsSync(path.join(tersioPluginDir, 'extensions', 'caveman-session', 'index.ts')), existsSync(path.join(tersioPluginDir, 'extensions', 'caveman-session', 'index.ts')) ? '' : path.join(tersioPluginDir, 'extensions', 'caveman-session', 'index.ts'));
-    check('RTK extension', existsSync(path.join(tersioPluginDir, 'extensions', 'rtk-session', 'index.ts')), existsSync(path.join(tersioPluginDir, 'extensions', 'rtk-session', 'index.ts')) ? '' : path.join(tersioPluginDir, 'extensions', 'rtk-session', 'index.ts'));
-    check('Updater extension', existsSync(path.join(tersioPluginDir, 'extensions', 'ai-addons-updater', 'index.ts')), existsSync(path.join(tersioPluginDir, 'extensions', 'ai-addons-updater', 'index.ts')) ? '' : path.join(tersioPluginDir, 'extensions', 'ai-addons-updater', 'index.ts'));
+    // A half-written tree imports a module that is absent; OMP then drops the extension.
+    const extDir = path.join(tersioPluginDir, 'extensions');
+    const missing = TREE_FILES.filter((file) => !existsSync(path.join(extDir, ...file.split('/'))));
+    check('Extension tree', missing.length === 0, missing.length === 0
+      ? `${TREE_FILES.length} files ok`
+      : `${missing.length} of ${TREE_FILES.length} missing: ${missing.join(', ')}`);
     check('Ponytail extension', existsSync(path.join(OMP_PLUGINS_DIR, 'node_modules', '@dietrichgebert', 'ponytail', 'pi-extension', 'index.js')), existsSync(path.join(OMP_PLUGINS_DIR, 'node_modules', '@dietrichgebert', 'ponytail', 'pi-extension', 'index.js')) ? '' : path.join(OMP_PLUGINS_DIR, 'node_modules', '@dietrichgebert', 'ponytail', 'pi-extension', 'index.js'));
   }
   section('Usage & records');

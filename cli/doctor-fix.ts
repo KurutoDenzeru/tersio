@@ -49,19 +49,16 @@ async function fixExtensionTrees(): Promise<void> {
 async function fixExtensions(pluginsDir: string): Promise<void> {
   await fixExtensionTrees();
   console.log('  Doctor --fix: restoring plugin extension files');
-  const tersioPluginDir = path.join(pluginsDir, 'node_modules', '@krtclcdy', 'tersio');
-  const pluginExtDir = path.join(tersioPluginDir, 'extensions');
+  const pluginExtDir = path.join(pluginsDir, 'node_modules', '@krtclcdy', 'tersio', 'extensions');
   await fs.mkdir(pluginExtDir, { recursive: true });
 
   // rule.md is skipped: its live content is the upstream fetch, not the bundle.
-  const bundledTree = TREE_FILES.filter((file) => file !== 'caveman-session/rule.md');
-  for (const file of bundledTree) {
+  for (const file of TREE_FILES.filter((f) => f !== 'caveman-session/rule.md')) {
     const text = await readTextIfExists(sourcePath(file));
     if (text === null) sayTagged(`  [warn] bundled source missing: ${sourcePath(file)}`);
-    else await writeIfChanged(path.join(pluginExtDir, file), text, { dryRun, verbose });
+    else await writeIfChanged(path.join(pluginExtDir, ...file.split('/')), text, { dryRun, verbose });
   }
 
-  // Restore only a missing rule; a stale one is /ai-addons' to report.
   const ruleDest = path.join(pluginExtDir, 'caveman-session', 'rule.md');
   if ((await readTextIfExists(ruleDest)) === null) {
     const bundled = await readTextIfExists(path.join(EXT_DIR, 'caveman-session', 'rule.md'));
@@ -76,6 +73,12 @@ async function fixExtensions(pluginsDir: string): Promise<void> {
       else console.log('  [warn] Caveman rule unreachable and no bundled rule exists');
     }
   }
+
+  // Writing is not atomic, so re-read rather than assume the tree is whole.
+  if (dryRun) return;
+  const missing = TREE_FILES.filter((file) => !existsSync(path.join(pluginExtDir, ...file.split('/'))));
+  if (missing.length > 0) sayTagged(`  [fail] tree incomplete: ${missing.join(', ')}`);
+  else sayTagged(`  [ok] extension tree: ${TREE_FILES.length} files`);
 }
 
 async function fixRegistrations(agentDir: string, pluginsDir: string): Promise<void> {
