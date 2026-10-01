@@ -30,7 +30,7 @@ const MODE_ENTRY_TYPES: Record<string, ModeName> = {
 
 interface Bridge {
   state: Readonly<ComboState>;
-  listeners: Set<(state: Readonly<ComboState>) => void>;
+  listeners: Map<string, (state: Readonly<ComboState>) => void>;
 }
 
 export function normalizeMode(name: ModeName, value: unknown): string | null {
@@ -69,13 +69,13 @@ function bridge(): Bridge {
   const existing = (globalThis as Record<symbol, unknown>)[BRIDGE_KEY] as Bridge | undefined;
   if (existing?.state) return existing;
   const initial = normalizedState((existing || COMBO_LEVELS.off) as Partial<Modes>);
-  return ((globalThis as Record<symbol, unknown>)[BRIDGE_KEY] = { state: initial, listeners: new Set<(state: Readonly<ComboState>) => void>() });
+  return ((globalThis as Record<symbol, unknown>)[BRIDGE_KEY] = { state: initial, listeners: new Map() });
 }
 
 function publish(state: Readonly<ComboState>): Readonly<ComboState> {
   const shared = bridge();
   shared.state = state;
-  for (const listener of shared.listeners) listener(state);
+  for (const listener of shared.listeners.values()) listener(state);
   return state;
 }
 
@@ -209,11 +209,11 @@ export function activeModesSummary(state: { caveman: string; rtk: string; ponyta
   return `caveman=${state.caveman.toUpperCase()}, rtk=${state.rtk.toUpperCase()}, ponytail=${state.ponytail.toUpperCase()}`;
 }
 
-export function setSharedComboListener(listener: ((state: Readonly<ComboState>) => void) | null): void {
-  // Additive: every sibling syncs its mirror on publish, so a /tersio or
-  // /combo switch lands next turn with no reload. A null listener clears all.
-  if (typeof listener === 'function') bridge().listeners.add(listener);
-  else bridge().listeners.clear();
+// Keyed, not additive: hosts instantiate extensions per session and offer no
+// teardown hook, so a Set grew by one per session for the life of the process.
+// Re-registering under the same key drops the stale closure instead.
+export function setSharedComboListener(key: string, listener: (state: Readonly<ComboState>) => void): void {
+  bridge().listeners.set(key, listener);
 }
 
 export function resetSharedComboState(): Readonly<ComboState> {

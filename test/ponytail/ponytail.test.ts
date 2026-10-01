@@ -63,12 +63,21 @@ test("review is not a runtime mode", async () => {
   expect(await injectMarked("review")).toBe("");
 });
 
-test("off mode and unmarked prompts get no injection", async () => {
+async function inject(prompt: string): Promise<string | undefined> {
+  const result = await injectHandler()({ systemPrompt: prompt }, undefined);
+  return (result as { systemPrompt?: string[] } | undefined)?.systemPrompt?.at(-1);
+}
+
+test("off mode gets no injection, on mode gets it on any turn", async () => {
   resetSharedComboState();
   setSharedComboMode("ponytail", "off");
-  expect(await injectHandler()({ systemPrompt: `Base.\n${OMP_SUBAGENT_MARKER}` }, undefined)).toBe(undefined);
+  expect(await inject(`Base.\n${OMP_SUBAGENT_MARKER}`)).toBe(undefined);
+  expect(await inject("Base.")).toBe(undefined);
 
+  // Main sessions count now: ponytail used to need a subagent marker, so it
+  // never fired on the user's own turn or on pi, which has no subagents.
   resetSharedComboState();
   setSharedComboMode("ponytail", "ultra");
-  expect(await injectHandler()({ systemPrompt: "Base." }, undefined)).toBe(undefined);
+  expect(await inject("Base.")).toMatch(/PONYTAIL MODE ACTIVE/);
+  expect(await inject(`Base.\n${OMP_SUBAGENT_MARKER}`)).toMatch(/PONYTAIL MODE ACTIVE/);
 });

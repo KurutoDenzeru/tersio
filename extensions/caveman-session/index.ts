@@ -79,7 +79,7 @@ export default function cavemanSessionExtension(pi: ExtensionApi): void {
       syncStatus();
     }
   }
-  setSharedComboListener(syncFromShared);
+  setSharedComboListener('caveman', syncFromShared);
   pi.registerCommand?.('caveman', {
     description: 'Toggle terse caveman replies for this session',
     handler: async (args, ctx) => {
