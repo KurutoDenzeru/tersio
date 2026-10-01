@@ -47,10 +47,13 @@ const RTK_PLATFORM_SPECS: Record<string, RtkPlatformSpec> = {
   'darwin/x64': { triple: 'x86_64-apple-darwin', ext: '.tar.gz', binary: 'rtk' },
   'darwin/arm64': { triple: 'aarch64-apple-darwin', ext: '.tar.gz', binary: 'rtk' },
 };
-export function resolveRtkBinary(managedDir = path.join(os.homedir(), '.bun', 'bin')): string | null {
-  const name = process.platform === 'win32' ? 'rtk.exe' : 'rtk';
-  const candidates = (process.env.PATH || '').split(path.delimiter).filter(Boolean).map((dir) => path.join(dir, name));
-  if (managedDir) candidates.push(path.join(managedDir, name));
+
+// First executable `name` on PATH, else the managed Bun bin dir.
+function firstExecutable(name: string, managedDir: string | null): string | null {
+  const ext = process.platform === 'win32' ? '.cmd' : '';
+  const candidates = (process.env.PATH || '').split(path.delimiter).filter(Boolean)
+    .flatMap((dir) => [path.join(dir, name + ext), path.join(dir, name)]);
+  if (managedDir) candidates.push(path.join(managedDir, name + ext), path.join(managedDir, name));
   for (const candidate of candidates) {
     try {
       if (!statSync(candidate).isFile()) continue;
@@ -59,6 +62,15 @@ export function resolveRtkBinary(managedDir = path.join(os.homedir(), '.bun', 'b
     } catch { /* keep searching */ }
   }
   return null;
+}
+
+export function resolveRtkBinary(managedDir = path.join(os.homedir(), '.bun', 'bin')): string | null {
+  return firstExecutable(process.platform === 'win32' ? 'rtk.exe' : 'rtk', managedDir);
+}
+
+// A host binary to scan for its subagent marker.
+export function resolveHostBinary(name: string, managedDir = path.join(os.homedir(), '.bun', 'bin')): string | null {
+  return firstExecutable(name, managedDir);
 }
 
 export function rtkPlatformSpec(platform: string = process.platform, arch: string = process.arch): RtkPlatformSpec | null {
@@ -198,6 +210,35 @@ export async function findFile(dir: string, name: string): Promise<string | null
 
 export async function readTextIfExists(p: string): Promise<string | null> {
   try { return await fs.readFile(p, 'utf8'); } catch { return null; }
+}
+
+// Chunked so a 200 MiB host binary is never held in memory. `tail` keeps the
+// last needle.length-1 bytes of the previous chunk, because a match can begin
+// near the end of one chunk and finish inside the next.
+export async function fileContains(filePath: string, needleText: string): Promise<boolean> {
+  const needle = Buffer.from(needleText, 'utf8');
+  if (needle.length === 0) return false;
+  const keep = needle.length - 1;
+  let handle;
+  try {
+    handle = await fs.open(filePath, 'r');
+    const { size } = await handle.stat();
+    const chunk = Buffer.allocUnsafe(1 << 20);
+    let tail = Buffer.alloc(0);
+    for (let position = 0; position < size;) {
+      const { bytesRead } = await handle.read(chunk, 0, chunk.length, position);
+      if (bytesRead === 0) break;
+      const window = Buffer.concat([tail, chunk.subarray(0, bytesRead)]);
+      if (window.includes(needle)) return true;
+      tail = window.subarray(Math.max(0, window.length - keep));
+      position += bytesRead;
+    }
+    return false;
+  } catch {
+    return false;
+  } finally {
+    await handle?.close().catch(() => { });
+  }
 }
 
 // Tersio-owned data home: ~/.tersio. First use moves legacy

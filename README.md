@@ -62,7 +62,7 @@ Windows/WSL have separate OMP homes — install from the environment where OMP r
 
 ## 📊 Benchmarks
 
-Every mode is measured against a base run with all modes off. Measured surfaces use different boundaries. Do not treat reply-text, code-output, and shell-output reductions as total bill savings. Full protocol and caveats are in [BENCHMARK.md](./BENCHMARK.md).
+Every mode is measured against a base run with all modes off. Measured surfaces use different boundaries. Do not treat reply-text, code-output, and shell-output reductions as total bill savings. Results and the rerun protocol are in [BENCHMARK.md](./BENCHMARK.md).
 
 | Mode | Surface (n) | Base → Tersio | Δ |
 |---|---|---|---|

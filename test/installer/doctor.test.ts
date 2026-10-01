@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { cliEnv } from "../helpers/env.ts";
+import { fileContains } from "../../extensions/lib/utils.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const installer = path.join(root, "tersio.js");
@@ -275,3 +276,118 @@ test("doctor --fix leaves an existing fetched rule.md alone and writes no .bak",
     rmSync(home, { recursive: true, force: true });
   }
 }, 30000);
+
+// Without a separate row, an unusable rtk_run reads as a healthy install.
+test("doctor warns that rtk_run needs an exec-capable host", () => {
+  const home = missingHome();
+  try {
+    const binDir = path.join(home, "fake-bin");
+    mkdirSync(binDir, { recursive: true });
+    const rtkBin = path.join(binDir, "rtk");
+    writeFileSync(rtkBin, "#!/bin/sh\necho rtk 0.49.0\n", "utf8");
+    chmodSync(rtkBin, 0o755);
+
+    const result = spawnSync(process.execPath, [installer, "doctor"], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 15000,
+      env: cliEnv(home, { PATH: binDir }),
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    // The binary is present and runnable, yet no host can exec it.
+    expect(result.stdout).toMatch(/✅ RTK binary: ok rtk 0\.49\.0/);
+    expect(result.stdout).toMatch(/⚠️ RTK exec: warn no installed host exposes an exec API/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("doctor does not count the exec row when rtk is absent", () => {
+  const home = missingHome();
+  try {
+    const result = spawnSync(process.execPath, [installer, "doctor"], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 15000,
+      env: cliEnv(home, { PATH: path.join(home, "empty-bin") }),
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    // The exec question is meaningless without a binary.
+    expect(result.stdout).toMatch(/—  RTK exec: not installed/);
+    expect(result.stdout).toMatch(/Summary: 4 checks/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+// Without a scan, a reworded host drops the marker with no visible symptom.
+function ompInstalledHome(binBody: string): string {
+  const home = missingHome();
+  const pkg = path.join(home, ".omp", "plugins", "node_modules", "@krtclcdy", "tersio");
+  mkdirSync(path.join(pkg), { recursive: true });
+  writeFileSync(path.join(pkg, "package.json"), JSON.stringify({ version: "9.9.9" }), "utf8");
+  const binDir = path.join(home, "host-bin");
+  mkdirSync(binDir, { recursive: true });
+  const bin = path.join(binDir, "omp");
+  writeFileSync(bin, binBody, "utf8");
+  chmodSync(bin, 0o755);
+  return home;
+}
+
+test("doctor confirms the omp subagent marker when the host still carries it", () => {
+  const home = ompInstalledHome("#!/bin/sh\nWorker agent: delegated tasks.\n");
+  try {
+    const result = spawnSync(process.execPath, [installer, "doctor"], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 15000,
+      env: cliEnv(home, { PATH: path.join(home, "host-bin") }),
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/✅ omp subagent marker: ok Worker agent: delegated tasks\./);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("doctor warns when the installed omp no longer carries the marker", () => {
+  const home = ompInstalledHome("#!/bin/sh\necho an omp build that reworded its prompt\n");
+  try {
+    const result = spawnSync(process.execPath, [installer, "doctor"], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 15000,
+      env: cliEnv(home, { PATH: path.join(home, "host-bin") }),
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/⚠️ omp subagent marker: warn not found in the omp binary/);
+    expect(result.stdout).toMatch(/tersio settings markers/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("doctor finds a marker that straddles a chunk boundary", async () => {
+  const home = missingHome();
+  try {
+    const binDir = path.join(home, "big-bin");
+    mkdirSync(binDir, { recursive: true });
+    const bin = path.join(binDir, "omp");
+    // fileContains reads 1 MiB at a time, so pad the marker across the boundary:
+    // a scan that does not carry the tail over misses it.
+    const marker = "Worker agent: delegated tasks.";
+    const prefix = "#!/bin/sh\n";
+    const start = (1 << 20) - Math.floor(marker.length / 2);
+    writeFileSync(bin, `${prefix}${"x".repeat(start - prefix.length)}${marker}`, "utf8");
+    chmodSync(bin, 0o755);
+
+    expect(await fileContains(bin, marker)).toBe(true);
+    expect(await fileContains(bin, "a marker that is not present")).toBe(false);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});

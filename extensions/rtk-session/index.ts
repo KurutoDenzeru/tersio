@@ -1,6 +1,7 @@
-import { activeModesSummary, getSharedComboState, isComboPresetActive, isOmpSubagentPrompt, lastCustomValue, paintStatusBar, paintableCtx, reconcileSharedComboEntries, sessionEntries, setSharedComboListener, setSharedComboMode, statusUi, systemPromptIncludes } from '../shared/session-state.ts';
+import { activeModesSummary, getSharedComboState, hasModeState, isComboPresetActive, isOmpSubagentPrompt, lastCustomValue, paintStatusBar, paintableCtx, reconcileSharedComboEntries, sessionEntries, setSharedComboListener, setSharedComboMode, statusUi, systemPromptIncludes } from '../shared/session-state.ts';
 import { injectPromptText, onHostEvent, setExtensionLabel, stringArrayToolParams } from '../shared/host.ts';
 import { readRtkDefault } from '../shared/plugin-settings.ts';
+import { resolveRtkBinary } from '../lib/utils.ts';
 import type { ExtensionApi, ExtensionCtx, SessionEntry, SystemPromptEvent } from '../shared/types.ts';
 
 const DEFAULT_ENABLED = false;
@@ -92,11 +93,13 @@ export default function rtkSessionExtension(pi: ExtensionApi): void {
       description: "Arguments passed to rtk, e.g. ['git','status'] or ['read','src/index.ts']",
     }),
     async execute(_toolCallId, params, signal, onUpdate, ctx) {
-      if (!enabled) return fail('RTK mode is off. Run /rtk on for this session, or use bash explicitly.');
+      // A subagent's own flag sits at its start-up default, so honour shared state too.
+      if (!(enabled || getSharedComboState().rtk === 'on')) return fail('RTK mode is off. Run /rtk on for this session, or use bash explicitly.');
       if (typeof pi.exec !== 'function') return fail('This host cannot run rtk.');
       onUpdate?.({ content: [{ type: 'text', text: `rtk ${params.args.join(' ')}` }], details: { phase: 'start' } });
       try {
-        const result = await pi.exec('rtk', params.args, { signal, cwd: ctx?.cwd || pi.cwd });
+        // A GUI-launched host may lack ~/.bun/bin on PATH, so prefer the resolved path.
+        const result = await pi.exec(resolveRtkBinary() ?? 'rtk', params.args, { signal, cwd: ctx?.cwd || pi.cwd });
         const text = [result.stdout, result.stderr].filter(Boolean).join('\n');
         return {
           isError: result.code !== 0,
@@ -111,12 +114,12 @@ export default function rtkSessionExtension(pi: ExtensionApi): void {
 
   function restoreEnabled(ctx?: ExtensionCtx): void {
     const entries = sessionEntries(ctx);
-    // Derive the bridge here so bar suppression does not depend on load order.
-    reconcileSharedComboEntries(entries);
+    // A subagent's branch has no Tersio entries; reconciling it would wipe shared state.
+    if (hasModeState(entries)) reconcileSharedComboEntries(entries);
     // Persisted session state wins; a fresh session falls back to the
     // installer/user-configured default (off unless configured).
     const persisted = resolveEnabled(entries);
-    enabled = typeof persisted === 'boolean' ? persisted : readRtkDefault();
+    enabled = typeof persisted === 'boolean' ? persisted : enabled || readRtkDefault();
     setRtkProcessEnabled(enabled);
     syncStatus(ctx);
   }

@@ -3,12 +3,12 @@ import path from 'node:path';
 import {
   CAVEMAN_DEFAULTS, COMBO_DEFAULTS, COMBO_PRESET_MODES, OMP_PLUGINS_DIR, PACKAGE_NAME,
   PONYTAIL_DEFAULTS, cavemanDefaultFlag, comboDefaultFlag, currency, currencyGiven, diagScheduleFlag, dryRun,
-  ponytailDefaultFlag, profileFlagsGiven, rtkDefaultFlag, settingArg,
+  ponytailDefaultFlag, profileFlagsGiven, rtkDefaultFlag, settingArg, subagentMarkerFlags, subagentMarkersGiven,
 } from './common.ts';
 import { CURRENCY_CODES } from './currency.ts';
 import type { CurrencyCode } from './currency.ts';
 import { textTable } from './usage.ts';
-import { askInteractiveChoice, closeRL, tty } from './interactive.ts';
+import { ask, askInteractiveChoice, closeRL, tty } from './interactive.ts';
 import { formatProfile, storedProfile, writePluginSettings } from './profile.ts';
 import type { Profile } from './profile.ts';
 import { readDiagSchedule, setDiagSchedule } from './dashboard.ts';
@@ -24,6 +24,7 @@ function applyFlags(base: Profile): Profile {
   if (cavemanDefaultFlag !== undefined) next.cavemanDefault = cavemanDefaultFlag;
   if (rtkDefaultFlag !== undefined) next.rtkDefault = rtkDefaultFlag === 'on';
   if (ponytailDefaultFlag !== undefined) next.ponytailDefault = ponytailDefaultFlag;
+  if (subagentMarkersGiven) next.subagentMarkers = subagentMarkerFlags;
   if (currencyGiven) next.currency = currency;
   return next;
 }
@@ -44,6 +45,7 @@ async function askProfile(current: Profile): Promise<Profile | null> {
     ponytailDefault: preset.ponytail,
     currency: current.currency,
     backupSchedule: current.backupSchedule,
+    subagentMarkers: current.subagentMarkers,
   };
 
   const caveman = await askInteractiveChoice('Caveman default', [...CAVEMAN_DEFAULTS].map((v) => ({
@@ -70,8 +72,24 @@ async function askProfile(current: Profile): Promise<Profile | null> {
   })), next.currency);
   if (cur.status !== 'selected') return null;
   next.currency = cur.value as CurrencyCode;
+  const markers = await askSubagentMarkers(next.subagentMarkers);
+  if (markers === null) return null;
+  next.subagentMarkers = markers;
 
   return next;
+}
+
+// One marker per line; an empty line ends the list. Null aborts.
+async function askSubagentMarkers(current: string[]): Promise<string[] | null> {
+  console.log('  Subagent prompt markers (one per line, empty line to finish).');
+  if (current.length > 0) console.log(`  Current: ${current.join(' | ')}`);
+  const entered: string[] = [];
+  for (;;) {
+    const line = (await ask(`  marker ${entered.length + 1}: `)).trim();
+    if (line === '') break;
+    entered.push(line);
+  }
+  return entered;
 }
 
 async function askDiagSchedule(current: DiagSchedule): Promise<DiagSchedule | null> {
@@ -85,10 +103,10 @@ async function askDiagSchedule(current: DiagSchedule): Promise<DiagSchedule | nu
   return picked.value as DiagSchedule;
 }
 
-const SETTING_NAMES = ['combo', 'caveman', 'rtk', 'ponytail', 'currency', 'diagnosis'] as const;
+const SETTING_NAMES = ['combo', 'caveman', 'rtk', 'ponytail', 'currency', 'diagnosis', 'markers'] as const;
 
 function settingsUsage(): void {
-  console.log('  Usage: tersio settings [combo|caveman|rtk|ponytail|currency|diagnosis] [--combo-default off|medium|balanced|max] [--caveman-default off|lite|full|ultra|wenyan-lite|wenyan-full|wenyan-ultra] [--rtk-default on|off] [--ponytail-default off|lite|full|ultra] [--currency USD|PHP|EUR|GBP|JPY|KRW|SGD|AUD|CAD|INR] [--diag-schedule manual|daily|weekly|monthly] [--dry-run]');
+  console.log('  Usage: tersio settings [combo|caveman|rtk|ponytail|currency|diagnosis|markers] [--combo-default off|medium|balanced|max] [--caveman-default off|lite|full|ultra|wenyan-lite|wenyan-full|wenyan-ultra] [--rtk-default on|off] [--ponytail-default off|lite|full|ultra] [--currency USD|PHP|EUR|GBP|JPY|KRW|SGD|AUD|CAD|INR] [--diag-schedule manual|daily|weekly|monthly] [--subagent-marker <text>]... [--dry-run]');
 }
 
 // Single-setting jump: `tersio settings diagnosis` prompts only that value
@@ -151,6 +169,12 @@ async function runSingleSetting(name: string, current: Profile, nextDiag: DiagSc
       diag = picked;
       break;
     }
+    case 'markers': {
+      const markers = await askSubagentMarkers(next.subagentMarkers);
+      if (markers === null) return null;
+      next.subagentMarkers = markers;
+      break;
+    }
     default: {
       console.error(`[fail] Invalid setting: ${name}. Valid: ${SETTING_NAMES.join(', ')}`);
       process.exit(1);
@@ -168,6 +192,7 @@ function printSettingsTable(current: Profile): void {
     ['rtk', current.rtkDefault ? 'on' : 'off', 'on | off'],
     ['ponytail', current.ponytailDefault, [...PONYTAIL_DEFAULTS].join(' | ')],
     ['diagnosis', readDiagSchedule(), 'manual | daily | weekly | monthly'],
+    ['markers', current.subagentMarkers.length === 0 ? 'default' : current.subagentMarkers.join(' | '), 'host subagent prompt text'],
   ];
   for (const l of textTable(['Setting', 'Current', 'Valid values'], rows, [false, false, false], 64)) {
     console.log(l);
@@ -203,7 +228,7 @@ async function runSettings(): Promise<void> {
     }
     next = single.profile;
     nextDiag = single.diag;
-  } else if (profileFlagsGiven || currencyGiven || diagScheduleFlag !== undefined) {
+  } else if (profileFlagsGiven || currencyGiven || diagScheduleFlag !== undefined || subagentMarkersGiven) {
     next = applyFlags(current);
   } else if (tty()) {
     next = await askProfile(current);

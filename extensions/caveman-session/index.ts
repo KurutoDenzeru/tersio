@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { activeModesSummary, getSharedComboState, isComboPresetActive, isOmpSubagentPrompt, lastCustomValue, normalizeInputCommand, normalizeMode, paintStatusBar, paintableCtx, reconcileSharedComboEntries, sessionEntries, setSharedComboListener, setSharedComboMode, statusUi, systemPromptIncludes } from '../shared/session-state.ts';
+import { activeModesSummary, getSharedComboState, hasModeState, isComboPresetActive, isOmpSubagentPrompt, lastCustomValue, normalizeInputCommand, normalizeMode, paintStatusBar, paintableCtx, reconcileSharedComboEntries, sessionEntries, setSharedComboListener, setSharedComboMode, statusUi, systemPromptIncludes } from '../shared/session-state.ts';
 import { dirname, join } from 'node:path';
 import { injectPromptText, onHostEvent, setExtensionLabel } from '../shared/host.ts';
 import { readCavemanDefault } from '../shared/plugin-settings.ts';
@@ -41,6 +41,7 @@ export default function cavemanSessionExtension(pi: ExtensionApi): void {
   let currentMode = DEFAULT_MODE;
   let isActive = false;
   let lastCtx: ExtensionCtx | undefined = undefined;
+  let lastInjected: string | undefined = undefined;
 
   function syncStatus(ctx?: ExtensionCtx): void {
     lastCtx = paintableCtx(lastCtx, ctx);
@@ -105,12 +106,13 @@ export default function cavemanSessionExtension(pi: ExtensionApi): void {
 
   function restoreMode(ctx?: ExtensionCtx): void {
     const entries = sessionEntries(ctx);
-    // Derive the bridge here so bar suppression does not depend on load order.
-    reconcileSharedComboEntries(entries);
-    // Persisted session state wins; a fresh session falls back to the
-    // installer/user-configured default (off unless configured).
+    // A subagent's branch has no Tersio entries; reconciling it would wipe shared state.
+    if (hasModeState(entries)) reconcileSharedComboEntries(entries);
+    // Persisted state wins, then a mode already chosen this session, then the
+    // configured default. `off` is the start value, not "unset".
     const persisted = resolveMode(entries, '');
-    currentMode = persisted || normalizeMode('caveman', readCavemanDefault()) || DEFAULT_MODE;
+    const alreadyChosen = currentMode !== DEFAULT_MODE;
+    currentMode = persisted || (alreadyChosen ? currentMode : normalizeMode('caveman', readCavemanDefault())) || DEFAULT_MODE;
     syncStatus(ctx);
   }
 
@@ -146,6 +148,9 @@ export default function cavemanSessionExtension(pi: ExtensionApi): void {
     // Skip when already present, so a host that re-presents the mutated prompt
     // cannot stack it; matching the whole instruction keeps upstream rule.md intact.
     if (systemPromptIncludes(event.systemPrompt, instruction)) return;
-    return injectPromptText(pi, event, instruction);
+    // The previous level's block is replaced, not stacked on.
+    const stale = lastInjected;
+    lastInjected = instruction;
+    return injectPromptText(pi, event, instruction, stale);
   });
 }

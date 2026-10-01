@@ -81,3 +81,48 @@ test("off mode gets no injection, on mode gets it on any turn", async () => {
   expect(await inject("Base.")).toMatch(/PONYTAIL MODE ACTIVE/);
   expect(await inject(`Base.\n${OMP_SUBAGENT_MARKER}`)).toMatch(/PONYTAIL MODE ACTIVE/);
 });
+
+// The header is the only level-specific text; YAGNI appears in every level.
+test("each level injects its own header", async () => {
+  for (const level of ["lite", "full", "ultra"] as const) {
+    const text = await injectMarked(level);
+    expect(text, `level ${level}`).toMatch(new RegExp(`PONYTAIL MODE ACTIVE — level: ${level}`));
+  }
+});
+
+test("the injected text is the real upstream file, not the fallback", async () => {
+  // Both carry YAGNI, so length is what separates a resolved package from the fallback.
+  const upstream = await injectMarked("ultra");
+  expect(upstream).not.toBe(ponytailFallback("ultra"));
+  expect(upstream.length).toBeGreaterThan(ponytailFallback("ultra").length);
+});
+
+test("ponytail reaches a subagent that the marker does not recognise", async () => {
+  // Ponytail reads shared state with no marker check, so it survives drift.
+  resetSharedComboState();
+  setSharedComboMode("ponytail", "ultra");
+  const drifted = "Some entirely different subagent wording after a host update.";
+  expect(await inject(drifted)).toMatch(/PONYTAIL MODE ACTIVE/);
+});
+
+// The block a previous level added is ours, so a switch replaces it, never stacks.
+function promptOf(result: unknown): string[] {
+  if (result && typeof result === "object" && "systemPrompt" in result) {
+    const value = result.systemPrompt;
+    return Array.isArray(value) ? value.filter((s): s is string => typeof s === "string") : [];
+  }
+  return [];
+}
+
+test("a level switch replaces the previous level's block", async () => {
+  resetSharedComboState();
+  const handler = injectHandler();
+  setSharedComboMode("ponytail", "ultra");
+  const first = promptOf(await handler({ systemPrompt: "Base." }, undefined));
+
+  setSharedComboMode("ponytail", "lite");
+  const joined = promptOf(await handler({ systemPrompt: first }, undefined)).join("\n");
+
+  expect(joined).toMatch(/level: lite/);
+  expect(joined).not.toMatch(/level: ultra/);
+});

@@ -59,18 +59,19 @@ export async function hostSelect(
   return options[shown.indexOf(picked)]?.label ?? picked;
 }
 
-// What a `before_agent_start` handler hands back; undefined once pi was
-// updated in place.
-export function injectPromptText(pi: HostHandle, event: SystemPromptEvent, text: string): PromptInjection | undefined {
-  if (!isPiHost(pi)) return { systemPrompt: [...asPromptArray(event.systemPrompt), text] };
-  // Appending keeps pi's sections and the transcript diff; replacing the
-  // prompt the OMP way would drop every section.
+// `staleMarker` identifies the block an earlier turn added so a mode switch
+// replaces it; equality cannot work (blocks contain blank lines) and a leading
+// emoji may be absent upstream, so match on a stripped substring.
+export function injectPromptText(pi: HostHandle, event: SystemPromptEvent, text: string, staleMarker?: string): PromptInjection | undefined {
+  const marker = staleMarker?.replace(/^[^\w]+/, '').trim();
+  const dropStale = (parts: string[]): string[] => (marker ? parts.filter((part) => !part.includes(marker)) : parts);
+  if (!isPiHost(pi)) return { systemPrompt: [...dropStale(asPromptArray(event.systemPrompt)), text] };
   const options = event.systemPromptOptions;
   if (options && typeof options.appendSystemPrompt === 'string') {
-    options.appendSystemPrompt = [options.appendSystemPrompt, text].filter(Boolean).join('\n\n');
+    options.appendSystemPrompt = dropStale([options.appendSystemPrompt]).concat(text).filter(Boolean).join('\n\n');
     return undefined;
   }
-  return { systemPrompt: `${asPromptArray(event.systemPrompt).join('\n\n')}\n\n${text}` };
+  return { systemPrompt: `${dropStale(asPromptArray(event.systemPrompt)).join('\n\n')}\n\n${text}` };
 }
 
 export interface StringArraySpec {

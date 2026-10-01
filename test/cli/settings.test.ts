@@ -144,3 +144,96 @@ test("settings without flags and no TTY prints usage", () => {
     rmSync(home, { recursive: true, force: true });
   }
 });
+
+test("settings --subagent-marker writes the marker list", () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-settings-"));
+  try {
+    writeLock(home, { comboDefault: "off", cavemanDefault: "off", rtkDefault: false, ponytailDefault: "off" });
+    const result = spawnSync(process.execPath, [installer, "settings", "--subagent-marker", "You are a delegated worker."], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 15000,
+      env: cliEnv(home),
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(readLock(home).subagentMarkers).toEqual(["You are a delegated worker."]);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("settings --subagent-marker accepts repeats and keeps the mode defaults", () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-settings-"));
+  try {
+    writeLock(home, { comboDefault: "balanced", cavemanDefault: "full", rtkDefault: true, ponytailDefault: "full" });
+    const result = spawnSync(process.execPath, [
+      installer, "settings", "--subagent-marker", "first marker", "--subagent-marker", "second marker",
+    ], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 15000,
+      env: cliEnv(home),
+    });
+    expect(result.status, result.stderr).toBe(0);
+    const saved = readLock(home);
+    expect(saved.subagentMarkers).toEqual(["first marker", "second marker"]);
+    expect(saved.comboDefault, "mode defaults preserved").toBe("balanced");
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("settings drops blank markers so one cannot match every turn", () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-settings-"));
+  try {
+    writeLock(home, {
+      comboDefault: "off",
+      subagentMarkers: ["real marker", "", "   "],
+    });
+    const result = spawnSync(process.execPath, [installer, "settings", "--currency", "EUR"], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 15000,
+      env: cliEnv(home),
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(readLock(home).subagentMarkers).toEqual(["real marker"]);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("the settings table reports the default marker when none is set", () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-settings-"));
+  try {
+    writeLock(home, { comboDefault: "off", cavemanDefault: "off", rtkDefault: false, ponytailDefault: "off" });
+    const result = spawnSync(process.execPath, [installer, "settings"], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 15000,
+      env: cliEnv(home),
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/│ markers +│ default +│ host subagent prompt text +│/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("settings markers accepts a jump to the single setting", () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-settings-"));
+  try {
+    writeLock(home, { comboDefault: "off", cavemanDefault: "off", rtkDefault: false, ponytailDefault: "off" });
+    // No TTY: the jump must reject rather than prompt and hang.
+    const result = spawnSync(process.execPath, [installer, "settings", "markers"], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 15000,
+      env: cliEnv(home),
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/Single-setting jump needs a terminal/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});

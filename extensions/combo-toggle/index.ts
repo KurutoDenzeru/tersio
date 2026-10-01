@@ -66,6 +66,7 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
 
   let lastCtx: ExtensionCtx | undefined = undefined;
   let setupPrompted = false;
+  let lastInjected: string | undefined = undefined;
 
   function syncStatus(ctx?: ExtensionCtx): void {
     lastCtx = paintableCtx(lastCtx, ctx);
@@ -217,8 +218,14 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
   pi.on<SystemPromptEvent>('before_agent_start', async (event, ctx) => {
     if (ctx?.hasUI) reconcile(ctx);
     const mode = getSharedComboState().ponytail;
-    if (mode === 'off' || systemPromptIncludes(event.systemPrompt, 'PONYTAIL MODE ACTIVE')) return;
-    return injectPromptText(pi, event, await loadPonytailInstructions(mode));
+    // Match the level's own header: the shared phrase alone makes every level
+    // block every other, so a `/combo` level switch is ignored all session.
+    if (mode === 'off' || systemPromptIncludes(event.systemPrompt, `PONYTAIL MODE ACTIVE — level: ${mode}`)) return;
+    const instruction = await loadPonytailInstructions(mode);
+    // The previous level's block is replaced, not stacked on.
+    const stale = lastInjected;
+    lastInjected = instruction;
+    return injectPromptText(pi, event, instruction, stale);
   });
 
   // Slash commands only; natural-language input caused accidental toggles and has no reload context.
