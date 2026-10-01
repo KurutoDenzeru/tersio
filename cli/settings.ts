@@ -8,20 +8,11 @@ import {
 import { CURRENCY_CODES } from './currency.ts';
 import type { CurrencyCode } from './currency.ts';
 import { textTable } from './usage.ts';
-import { ask, askInteractiveChoice, closeRL, setBannerStatus, tty } from './interactive.ts';
+import { ask, askInteractiveChoice, closeRL, tty } from './interactive.ts';
 import { formatCliStatus, formatProfile, storedProfile, writePluginSettings } from './profile.ts';
 import type { Profile } from './profile.ts';
 import { readDiagSchedule, setDiagSchedule } from './dashboard.ts';
 import type { DiagSchedule } from './dashboard.ts';
-
-// Settings owns the line while it edits, so the banner tracks each answer.
-// Other commands leave this unset and read the stored defaults instead.
-let bannerProfile: Profile | null = null;
-setBannerStatus(() => bannerProfile ? formatCliStatus(bannerProfile) : '');
-
-function trackBanner(profile: Profile): void {
-  bannerProfile = profile;
-}
 
 function applyFlags(base: Profile): Profile {
   const next: Profile = { ...base };
@@ -56,14 +47,12 @@ async function askProfile(current: Profile): Promise<Profile | null> {
     backupSchedule: current.backupSchedule,
     subagentMarkers: current.subagentMarkers,
   };
-  trackBanner(next);
 
   const caveman = await askInteractiveChoice('Caveman default', [...CAVEMAN_DEFAULTS].map((v) => ({
     value: v, label: v,
   })), next.cavemanDefault);
   if (caveman.status !== 'selected') return null;
   next.cavemanDefault = caveman.value;
-  trackBanner(next);
 
   const rtk = await askInteractiveChoice('RTK default', [
     { value: 'on', label: 'on' },
@@ -71,21 +60,18 @@ async function askProfile(current: Profile): Promise<Profile | null> {
   ], next.rtkDefault ? 'on' : 'off');
   if (rtk.status !== 'selected') return null;
   next.rtkDefault = rtk.value === 'on';
-  trackBanner(next);
 
   const ponytail = await askInteractiveChoice('Ponytail default', [...PONYTAIL_DEFAULTS].map((v) => ({
     value: v, label: v,
   })), next.ponytailDefault);
   if (ponytail.status !== 'selected') return null;
   next.ponytailDefault = ponytail.value;
-  trackBanner(next);
 
   const cur = await askInteractiveChoice('Display currency (usage/dashboard reports)', CURRENCY_CODES.map((v) => ({
     value: v, label: v,
   })), next.currency);
   if (cur.status !== 'selected') return null;
   next.currency = cur.value as CurrencyCode;
-  trackBanner(next);
   const markers = await askSubagentMarkers(next.subagentMarkers);
   if (markers === null) return null;
   next.subagentMarkers = markers;
@@ -216,7 +202,6 @@ function printSettingsTable(current: Profile): void {
 
 async function runSettings(): Promise<void> {
   const current = await storedProfile();
-  trackBanner(current);
   printSettingsTable(current);
 
   let next: Profile | null;
@@ -273,7 +258,6 @@ async function runSettings(): Promise<void> {
   }
   await writePluginSettings(next, {});
   setDiagSchedule(nextDiag);
-  trackBanner(next);
   console.log(`  ${formatCliStatus(next)}`);
   console.log(`  Defaults: ${formatProfile(next)} · diagnosis=${nextDiag}`);
   console.log('  Applies to fresh sessions only — anything persisted with /combo, /caveman, or /rtk wins.');

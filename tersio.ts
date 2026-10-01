@@ -3,7 +3,7 @@
 import {
   PACKAGE_BIN, PACKAGE_VERSION, applyUpdate, commandArg, dashboard, dashboardExport, dashboardOpen, dashboardPort, doctor, reset, settings, showHelp, showVersion, uninstall, unknownCommand, update, usage,
 } from './cli/common.ts';
-import { closeRL, setBannerFallback } from './cli/interactive.ts';
+import { closeRL } from './cli/interactive.ts';
 import { runInstall } from './cli/install.ts';
 import { runDoctor } from './cli/doctor.ts';
 import { runLatestUpdate } from './cli/update.ts';
@@ -12,16 +12,6 @@ import { runUsage } from './cli/usage.ts';
 import { runReset } from './cli/reset.ts';
 import { runSettings } from './cli/settings.ts';
 import { runDashboard } from './cli/dashboard.ts';
-import { formatCliStatus, storedProfileSync } from './cli/profile.ts';
-
-// Every menu shows the stored combo. Must not await: see storedProfileSync.
-function seedBanner(): void {
-  try {
-    setBannerFallback(formatCliStatus(storedProfileSync()));
-  } catch {
-    setBannerFallback('');
-  }
-}
 
 function printHelp(): void {
   console.log(`Usage: ${PACKAGE_BIN} [command] [options]
@@ -60,7 +50,6 @@ Options:
 }
 
 async function main(): Promise<void> {
-  if (!showVersion && !showHelp) seedBanner();
   if (showVersion) {
     console.log(PACKAGE_VERSION);
     closeRL();

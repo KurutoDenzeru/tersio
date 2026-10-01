@@ -28,7 +28,7 @@ import {
   CAVEMAN_REMOTE_RULE, RTK_RELEASE_API, RtkRelease, RtkReleaseAsset, fetchJson, findFile, findHoistedPackage, httpsGet,
   httpsDownload, parseChecksum, piAgentDir, readTextIfExists, resolveRtkBinary, rtkPlatformSpec, sha256File,
 } from '../extensions/lib/utils.ts';
-import { storedProfile, writePluginSettings } from './profile.ts';
+import { formatCliStatus, storedProfile, storedProfileSync, writePluginSettings } from './profile.ts';
 import { runSettings } from './settings.ts';
 import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
 import { filesUnder, sourcePath } from './manifest.ts';
@@ -174,10 +174,8 @@ async function downloadRtkChecksums(release: RtkRelease): Promise<string | null>
   }
 }
 
-/**
- * Fails closed: an unverifiable RTK binary runs with the user's privileges, so a
- * missing checksum is worse than a failed install. `--allow-unverified` opts out.
- */
+// Fails closed: a missing checksum is worse than a failed install, since an
+// unverifiable RTK binary runs with the user's privileges. `--allow-unverified` opts out.
 async function verifyRtkArchive(archivePath: string, assetName: string, checksumsText: string | null): Promise<boolean> {
   const unverified = (reason: string): boolean => {
     if (allowUnverified) {
@@ -471,7 +469,7 @@ async function runCommandMenu(): Promise<void> {
     console.log(`\n  [update] staying on ${PACKAGE_VERSION} — run ` + '`tersio update`' + ` anytime`);
   }
   updatePromptDone = true;
-  const choice = await askInteractiveChoice('Tersio — what next?', [
+  const choice = await askInteractiveChoice(`Tersio — what next?\n${formatCliStatus(storedProfileSync())}`, [
     { value: 'install', label: 'Install add-ons', hint: 'user scope + combo defaults' },
     { value: 'update', label: 'Update', hint: 'CLI version check, then refresh add-ons (RTK, Caveman rule, Ponytail)' },
     { value: 'doctor', label: 'Doctor', hint: 'verify the installation' },
@@ -760,5 +758,4 @@ async function runInstall(): Promise<void> {
 
   closeRL();
 }
-// verifyRtkArchive is exported so the fail-closed rule is directly testable.
 export { runInstall, verifyRtkArchive };

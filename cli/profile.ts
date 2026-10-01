@@ -57,8 +57,8 @@ interface StoredSettings {
 }
 
 // Seed once from OMP plugin settings so a pre-~/.tersio install keeps its values.
-// Sync: the banner seeds from this at startup, and awaiting let piped stdin
-// arrive before `ask()` attached, so a scripted answer was swallowed.
+// Sync: awaiting let piped stdin arrive before `ask()` attached, so a scripted
+// answer was swallowed and a destructive confirm defaulted to abort.
 function storedProfileSync(): Profile {
   const base = defaultProfile();
   const stored = parseStored(readTextIfExistsSync(tersioSettingsFile()) ?? readTextIfExistsSync(legacyOmpLockPath()));
@@ -139,13 +139,7 @@ function formatProfile(profile: Profile): string {
 
 export { defaultProfile, formatProfile, storedProfile, storedProfileSync, writePluginSettings, Profile };
 
-/**
- * The same status line the extensions print, from the stored defaults.
- *
- * The CLI has no live session bridge, so this reads the persisted profile. It
- * is the right source for the menu and the dashboard: both run outside the
- * agent, where the configured defaults are what a new session will apply.
- */
+/** The status line the extensions print, read from the persisted profile. */
 export function formatCliStatus(profile: Profile): string {
   const { comboDefault, cavemanDefault, rtkDefault, ponytailDefault } = profile;
   if (comboDefault === 'off' && cavemanDefault === 'off' && !rtkDefault && ponytailDefault === 'off') {

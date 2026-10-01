@@ -1,5 +1,5 @@
-// The one status string every surface renders: session message, clack banner,
-// dashboard banner. Nothing else formats mode state.
+// The one status string every surface renders: session message, CLI menu
+// title, dashboard banner. Nothing else formats mode state.
 import { getSharedComboState } from './session-state.ts';
 
 export interface StatusState {
@@ -17,11 +17,8 @@ export function formatStatus(state: StatusState): string {
   return `🧩 combo ${label}: 🪨caveman=${caveman.toUpperCase()} ⚡rtk=${rtk.toUpperCase()} 🦥ponytail=${ponytail.toUpperCase()}`;
 }
 
-/**
- * `ui.notify` renders in the transcript and never enters the model context, so
- * this costs the session nothing — do not route it through a message or a tool
- * result, both of which are billed again on every later turn.
- */
+// `ui.notify` stays out of the model context; a message or tool result would be
+// billed again on every later turn.
 export function announceStatus(ctx: { ui?: { notify?: (message: string, level?: string) => void } } | undefined, lastSent: { value: string }): void {
   // Dedupe by rendered text: a restore can fire repeatedly for one state.
   const text = formatStatus(getSharedComboState());
