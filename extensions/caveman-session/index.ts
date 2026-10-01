@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { activeModesSummary, getSharedComboState, isComboPresetActive, isOmpSubagentPrompt, lastCustomValue, normalizeInputCommand, normalizeMode, paintStatusBar, paintableCtx, reconcileSharedComboEntries, sessionEntries, setSharedComboListener, setSharedComboMode, statusUi } from '../shared/session-state.ts';
+import { activeModesSummary, getSharedComboState, isComboPresetActive, isOmpSubagentPrompt, lastCustomValue, normalizeInputCommand, normalizeMode, paintStatusBar, paintableCtx, reconcileSharedComboEntries, sessionEntries, setSharedComboListener, setSharedComboMode, statusUi, systemPromptIncludes } from '../shared/session-state.ts';
 import { dirname, join } from 'node:path';
 import { injectPromptText, onHostEvent, setExtensionLabel } from '../shared/host.ts';
 import { readCavemanDefault } from '../shared/plugin-settings.ts';
@@ -143,6 +143,10 @@ export default function cavemanSessionExtension(pi: ExtensionApi): void {
     const def = INSTRUCTIONS[mode];
     if (!def) return;
     const instruction = typeof def === 'function' ? def() : def;
+    // Skip if the prompt already carries it; a host that re-presents the
+    // mutated system prompt would otherwise stack this every turn. Comparing
+    // the whole instruction keeps the upstream rule.md untouched.
+    if (systemPromptIncludes(event.systemPrompt, instruction)) return;
     return injectPromptText(pi, event, instruction);
   });
 }

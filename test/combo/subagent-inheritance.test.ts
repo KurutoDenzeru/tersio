@@ -1,4 +1,6 @@
-import { expect, test } from "vitest";
+import { afterEach, expect, test } from "vitest";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import cavemanSessionExtension from "../../extensions/caveman-session/index.ts";
@@ -8,6 +10,8 @@ import {
   OMP_SUBAGENT_MARKER,
   getSharedComboState,
   resetSharedComboState,
+  resetSubagentMarkers,
+  subagentMarkers,
 } from "../../extensions/shared/session-state.ts";
 import type { ExtensionApi, SessionEntry } from "../../extensions/shared/types.ts";
 
@@ -366,4 +370,67 @@ test("rtk restores enabled state from session_branch instead of using stale in-m
   );
 
   expect(await inject(pi, UNMARKED_PROMPT)).toBe(undefined);
+});
+
+// The default marker is a sentence copied from OMP's prompt, so it can drift.
+// settings.json can correct it, and both settings paths are covered here
+// because they are the only part of this that can be verified locally.
+const TERSIO_DIR = join(process.env.HOME as string, '.tersio');
+
+function writeSettings(value: unknown): void {
+  mkdirSync(TERSIO_DIR, { recursive: true });
+  writeFileSync(join(TERSIO_DIR, 'settings.json'), JSON.stringify(value), 'utf8');
+  resetSubagentMarkers();
+}
+
+function clearSettings(): void {
+  rmSync(TERSIO_DIR, { recursive: true, force: true });
+  resetSubagentMarkers();
+}
+
+afterEach(clearSettings);
+
+test('the subagent marker defaults to the sentence copied from OMP', () => {
+  expect(subagentMarkers()).toEqual([OMP_SUBAGENT_MARKER]);
+});
+
+test('settings.json overrides the marker when OMP rewords its prompt', async () => {
+  writeSettings({ subagentMarkers: ['You are a delegated worker.'] });
+  expect(subagentMarkers()).toEqual(['You are a delegated worker.']);
+
+  resetSharedComboState();
+  const parent = instantiate(comboToggleExtension);
+  await command(parent, 'combo', 'max', context([], true));
+
+  // The stale default no longer matches; the configured marker does.
+  expect(instruction(await inject(instantiate(cavemanSessionExtension), OMP_SUBAGENT_MARKER))).toBe('');
+  expect(instruction(await inject(instantiate(cavemanSessionExtension), 'You are a delegated worker.')))
+    .toMatch(/Caveman ultra active/);
+});
+
+test('a malformed marker setting falls back to the default', () => {
+  writeSettings({ subagentMarkers: 'not an array' });
+  expect(subagentMarkers()).toEqual([OMP_SUBAGENT_MARKER]);
+
+  writeSettings({ subagentMarkers: ['', 42, null] });
+  expect(subagentMarkers()).toEqual([OMP_SUBAGENT_MARKER]);
+});
+
+test('caveman and rtk do not re-inject into a prompt that already carries them', async () => {
+  resetSharedComboState();
+  const parent = instantiate(comboToggleExtension);
+  await command(parent, 'combo', 'medium', context([], true));
+
+  for (const [factory, expected] of [
+    [cavemanSessionExtension, /Caveman lite active/],
+    [rtkSessionExtension, /RTK guidance active/],
+  ] as const) {
+    const pi = instantiate(factory);
+    const first = instruction(await inject(pi, MARKED_PROMPT));
+    expect(first).toMatch(expected);
+
+    // A host that re-presents the mutated prompt must not get a second copy.
+    const carried = ['System instructions.', OMP_SUBAGENT_MARKER, first];
+    expect(await inject(pi, carried)).toBe(undefined);
+  }
 });
