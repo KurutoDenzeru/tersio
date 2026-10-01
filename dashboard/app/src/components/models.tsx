@@ -363,7 +363,7 @@ export function Models({ data, money }: { data: UsageReport | null; money: (v: n
     <>
       <section className="mt-8" aria-label="Top models">
         <div className="mb-3 flex items-center gap-2 px-1">
-          <Icon name="list-ordered" className="size-4" />
+          <Icon name="trending-up" className="size-4" />
           <h2 className="font-display text-xl tracking-tight">Top models</h2>
           <span className="mono ml-auto text-xs text-dim">usage across sessions</span>
         </div>
