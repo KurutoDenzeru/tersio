@@ -11,6 +11,7 @@ import {
   getSharedComboState,
   isOmpSubagentPrompt,
   resetSharedComboState,
+  setSharedComboMode,
 } from "../../extensions/shared/session-state.ts";
 import type { ExtensionApi, SessionEntry } from "../../extensions/shared/types.ts";
 
@@ -157,15 +158,34 @@ test("Combo off gives marked children no inherited guidance", async () => {
   }
 });
 
-test("unmarked headless prompts never inherit active parent modes", async () => {
+test("an unmarked headless prompt does not make caveman or rtk inherit", async () => {
   resetSharedComboState();
   const parent = instantiate(comboToggleExtension);
   await command(parent, "combo", "max", context([], true));
 
-  for (const factory of [cavemanSessionExtension, rtkSessionExtension, comboToggleExtension]) {
+  // Caveman and rtk stay gated on the marker, so an unmarked prompt inherits nothing.
+  for (const factory of [cavemanSessionExtension, rtkSessionExtension]) {
     const child = instantiate(factory);
     await child.handlers.get("session_start")?.({}, context([], false));
     expect(await inject(child, UNMARKED_PROMPT)).toBe(undefined);
+  }
+});
+
+// A worker's session_start carries no Tersio entries; reconciling that wiped shared state.
+test("a worker's empty session_start leaves the parent's modes inherited", async () => {
+  resetSharedComboState();
+  const parent = instantiate(comboToggleExtension);
+  await command(parent, "combo", "max", context([], true));
+
+  for (const [factory, expected] of [
+    [cavemanSessionExtension, /Caveman ultra active/],
+    [rtkSessionExtension, /RTK guidance active/],
+    [comboToggleExtension, /PONYTAIL MODE ACTIVE/],
+  ] as const) {
+    const worker = instantiate(factory);
+    await worker.handlers.get("session_start")?.({}, context([], false));
+    expect(getSharedComboState().level, "shared state survives the worker's session_start").toBe("max");
+    expect(instruction(await inject(worker, MARKED_PROMPT)), "worker inherits").toMatch(expected);
   }
 });
 
@@ -409,6 +429,23 @@ test("a parent session is not mistaken for a subagent", async () => {
 
 // These cover the settings override only; the default wording needs a live OMP.
 const TERSIO_DIR = join(process.env.HOME as string, ".tersio");
+
+// Caveman's block is ours, so a level switch replaces it rather than stacking.
+test("a caveman level switch removes the previous level's block", async () => {
+  resetSharedComboState();
+  const parent = instantiate(comboToggleExtension);
+  await command(parent, "combo", "max", context([], true));
+  const child = instantiate(cavemanSessionExtension);
+
+  setSharedComboMode("caveman", "lite");
+  const first = (await inject(child, "Base."))?.systemPrompt ?? [];
+
+  setSharedComboMode("caveman", "ultra");
+  const joined = ((await inject(child, first))?.systemPrompt ?? []).join("\n");
+
+  expect(joined).toMatch(/Caveman ultra active/);
+  expect(joined).not.toMatch(/Caveman lite active/);
+});
 
 function writeSettings(value: unknown): void {
   mkdirSync(TERSIO_DIR, { recursive: true });

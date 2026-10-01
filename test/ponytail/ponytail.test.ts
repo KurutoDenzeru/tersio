@@ -105,16 +105,24 @@ test("ponytail reaches a subagent that the marker does not recognise", async () 
   expect(await inject(drifted)).toMatch(/PONYTAIL MODE ACTIVE/);
 });
 
-test("a level switch injects the new level instead of being deduped away", async () => {
-  // injectPromptText only appends, so the guard must still let the new level through.
+// The block a previous level added is ours, so a switch replaces it, never stacks.
+function promptOf(result: unknown): string[] {
+  if (result && typeof result === "object" && "systemPrompt" in result) {
+    const value = result.systemPrompt;
+    return Array.isArray(value) ? value.filter((s): s is string => typeof s === "string") : [];
+  }
+  return [];
+}
+
+test("a level switch replaces the previous level's block", async () => {
   resetSharedComboState();
+  const handler = injectHandler();
   setSharedComboMode("ponytail", "ultra");
-  const first = await inject("Base.");
-  expect(first).toMatch(/level: ultra/);
+  const first = promptOf(await handler({ systemPrompt: "Base." }, undefined));
 
-  resetSharedComboState();
   setSharedComboMode("ponytail", "lite");
-  const second = await inject(`Base.\n${first}`);
+  const joined = promptOf(await handler({ systemPrompt: first }, undefined)).join("\n");
 
-  expect(second).toMatch(/level: lite/);
+  expect(joined).toMatch(/level: lite/);
+  expect(joined).not.toMatch(/level: ultra/);
 });

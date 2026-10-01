@@ -1,4 +1,4 @@
-import { activeModesSummary, getSharedComboState, isComboPresetActive, isOmpSubagentPrompt, lastCustomValue, paintStatusBar, paintableCtx, reconcileSharedComboEntries, sessionEntries, setSharedComboListener, setSharedComboMode, statusUi, systemPromptIncludes } from '../shared/session-state.ts';
+import { activeModesSummary, getSharedComboState, hasModeState, isComboPresetActive, isOmpSubagentPrompt, lastCustomValue, paintStatusBar, paintableCtx, reconcileSharedComboEntries, sessionEntries, setSharedComboListener, setSharedComboMode, statusUi, systemPromptIncludes } from '../shared/session-state.ts';
 import { injectPromptText, onHostEvent, setExtensionLabel, stringArrayToolParams } from '../shared/host.ts';
 import { readRtkDefault } from '../shared/plugin-settings.ts';
 import { resolveRtkBinary } from '../lib/utils.ts';
@@ -114,12 +114,12 @@ export default function rtkSessionExtension(pi: ExtensionApi): void {
 
   function restoreEnabled(ctx?: ExtensionCtx): void {
     const entries = sessionEntries(ctx);
-    // Derive the bridge here so bar suppression does not depend on load order.
-    reconcileSharedComboEntries(entries);
+    // A subagent's branch has no Tersio entries; reconciling it would wipe shared state.
+    if (hasModeState(entries)) reconcileSharedComboEntries(entries);
     // Persisted session state wins; a fresh session falls back to the
     // installer/user-configured default (off unless configured).
     const persisted = resolveEnabled(entries);
-    enabled = typeof persisted === 'boolean' ? persisted : readRtkDefault();
+    enabled = typeof persisted === 'boolean' ? persisted : enabled || readRtkDefault();
     setRtkProcessEnabled(enabled);
     syncStatus(ctx);
   }

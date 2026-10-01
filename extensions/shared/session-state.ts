@@ -29,6 +29,12 @@ const MODE_ENTRY_TYPES: Record<string, ModeName> = {
   'ponytail-mode': 'ponytail',
 };
 
+/** True when the branch carries Tersio's own mode state; a subagent starts without it. */
+export function hasModeState(entries: SessionEntry[] | null | undefined): boolean {
+  return Array.isArray(entries) && entries.some((entry) => entry?.type === 'custom'
+    && (entry.customType === 'combo-level' || MODE_ENTRY_TYPES[entry.customType ?? '']));
+}
+
 interface Bridge {
   state: Readonly<ComboState>;
   listeners: Map<string, (state: Readonly<ComboState>) => void>;
