@@ -23,7 +23,7 @@ import {
   readPonytailDefault,
   saveComboSetup,
 } from '../shared/plugin-settings.ts';
-import { findHoistedPackage } from '../lib/utils.ts';
+import { findHoistedPackage, isPiProcess } from '../lib/utils.ts';
 import type { ComboState, ExtensionApi, ExtensionCtx, SystemPromptEvent } from '../shared/types.ts';
 
 const EXTENSION_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -39,8 +39,7 @@ export function ponytailFallback(mode: string): string {
 }
 
 
-// Ponytail is hoisted, so one upward walk covers every install layout. The hook
-// is CommonJS, so both namespace shapes are tried.
+// Ponytail is hoisted, so one upward walk covers every install layout. The hook is CommonJS, so both namespace shapes are tried.
 async function loadPonytailInstructions(mode: string): Promise<string> {
   const installed = findHoistedPackage('@dietrichgebert/ponytail', EXTENSION_DIR, 'hooks', 'ponytail-instructions.js');
   if (installed) {
@@ -73,14 +72,9 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
     pi.appendEntry?.('combo-level', { level });
   }
 
-  // Silent: the caller decides when to show the line.
-  function useState(state: Readonly<ComboState>): Readonly<ComboState> {
-    return state;
-  }
-
   function reconcile(ctx?: ExtensionCtx): Readonly<ComboState> {
     if (!ctx?.hasUI) return getSharedComboState();
-    return useState(reconcileSharedComboEntries(sessionEntries(ctx)));
+    return reconcileSharedComboEntries(sessionEntries(ctx));
   }
   function listen(ctx?: ExtensionCtx): void {
     if (!ctx?.hasUI) return;
@@ -125,7 +119,7 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
       }
 
       persistPreset(level);
-      useState(setSharedComboLevel(level));
+      setSharedComboLevel(level);
       announceStatus(ctx, lastStatus);
     },
   });
@@ -142,7 +136,7 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
     const level = choice || 'off';
     if (saveComboSetup(level) && level !== 'off') {
       persistPreset(level);
-      useState(setSharedComboLevel(level));
+      setSharedComboLevel(level);
       ctx.ui.notify?.(`Combo default saved: ${level} — ${activeModesSummary(getSharedComboState())} will activate on fresh sessions.`, 'info');
     }
   }
@@ -157,16 +151,15 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
       const fallback = readComboDefault();
       if (fallback !== 'off') {
         persistPreset(fallback);
-        useState(setSharedComboLevel(fallback));
+        setSharedComboLevel(fallback);
       }
     }
-    // No sibling restores a standalone ponytail default, so apply it here; skip
-    // it when the active preset already writes the same mode.
+    // No sibling restores a standalone ponytail default, so apply it here; skip it when the active preset already writes the same mode.
     if (!entries.some((e) => e?.type === 'custom' && e.customType === 'ponytail-mode')) {
       const ponytailFallback = readPonytailDefault();
       if (ponytailFallback !== 'off' && ponytailFallback !== getSharedComboState().ponytail) {
         pi.appendEntry?.('ponytail-mode', { mode: ponytailFallback });
-        useState(setSharedComboMode('ponytail', ponytailFallback));
+        setSharedComboMode('ponytail', ponytailFallback);
       }
     }
     // Announced last, so any default above is reflected.
@@ -185,8 +178,9 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
   pi.on<SystemPromptEvent>('before_agent_start', async (event, ctx) => {
     if (ctx?.hasUI) reconcile(ctx);
     const mode = getSharedComboState().ponytail;
-    // Match the level's own header: the shared phrase alone makes every level
-    // block every other, so a `/combo` level switch is ignored all session.
+    // On pi the upstream ponytail pi-extension is the single injector; it reads these 'ponytail-mode' entries at session start, so Tersio only persists.
+    if (isPiProcess()) return;
+    // Match the level's own header: the shared phrase alone makes every level block every other, so a `/combo` level switch is ignored all session.
     if (mode === 'off' || systemPromptIncludes(event.systemPrompt, `PONYTAIL MODE ACTIVE — level: ${mode}`)) return;
     const instruction = await loadPonytailInstructions(mode);
     // The previous level's block is replaced, not stacked on.
