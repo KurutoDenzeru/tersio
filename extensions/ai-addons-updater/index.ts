@@ -1,5 +1,4 @@
-// /ai-addons manual updater. Node built-ins only. RTK ships SHA256 checksums
-// with no signature, so checksum-only is the best available.
+// /ai-addons manual updater. Node built-ins only. RTK ships SHA256 checksums with no signature, so checksum-only is the best available.
 
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -37,8 +36,7 @@ const CAVEMAN_LOCAL = path.join(EXTENSION_DIR, '..', 'caveman-session', 'rule.md
 const HOST_NAME = isPiProcess() ? 'Pi' : 'OMP';
 const RELOAD_MSG = `Reminder: restart ${HOST_NAME} (or reload extensions) for updates to take effect.`;
 
-// Ponytail is a hoisted dependency, so the installed copy is found by walking
-// up rather than by naming a host directory.
+// Ponytail is a hoisted dependency, so the installed copy is found by walking up rather than by naming a host directory.
 function ponytailLocal(): string | null {
   return findHoistedPackage('@dietrichgebert/ponytail', EXTENSION_DIR, 'package.json');
 }
@@ -59,7 +57,7 @@ interface AddonUpdaterPi {
   cwd?: string;
 }
 
-type NotifyLevel = 'info' | 'warning';
+type NotifyLevel = 'info' | 'warning' | 'error';
 
 function notify(ctx: AddonUpdaterCtx | undefined, msg: string, level: NotifyLevel): void {
   ctx?.ui?.notify?.(String(msg), level);
@@ -180,17 +178,62 @@ async function checkAddons(ctx: AddonUpdaterCtx): Promise<string> {
   return lines.join('\n');
 }
 
+// Ponytail is a hoisted dependency; replace its package dir from the npm tarball.
 async function updatePonytail(pi: AddonUpdaterPi, ctx: AddonUpdaterCtx, dryRun = false): Promise<string> {
-  // Bundled with tersio: `tersio update` pulls the copy with the CLI.
-  let localVer: string | null = null;
-  try {
-    localVer = parsePackageVersion(await readTextIfExists(ponytailLocal() ?? ''));
-  } catch { localVer = null; }
   void pi;
-  const m = dryRun
-    ? `Ponytail dry-run: bundled with tersio (local=${localVer || '—'}); run \`tersio update\` to refresh it.`
-    : `Ponytail is bundled with tersio (local=${localVer || '—'}); run \`tersio update\` to refresh it.\n${RELOAD_MSG}`;
-  return report(ctx, m, 'info');
+  const localPkg = ponytailLocal();
+  let localVer: string | null = null;
+  try { localVer = localPkg ? parsePackageVersion(await readTextIfExists(localPkg)) : null; } catch { localVer = null; }
+  if (!localPkg) return report(ctx, 'Ponytail: package.json not found; reinstall with `tersio update`.', 'warning');
+
+  let meta: { version?: string; dist?: { tarball?: string; shasum?: string } };
+  try {
+    meta = await fetchJson('https://registry.npmjs.org/@dietrichgebert/ponytail/latest');
+  } catch (e) {
+    return report(ctx, `Ponytail: cannot fetch npm metadata: ${(e as Error).message}`, 'warning');
+  }
+  const remoteVer = meta.version;
+  if (!remoteVer) return report(ctx, 'Ponytail: npm metadata has no version.', 'warning');
+  if (localVer === remoteVer) return report(ctx, `Ponytail up to date: local=${localVer} latest=${remoteVer}`, 'info');
+  if (!meta.dist?.tarball) return report(ctx, 'Ponytail: npm metadata has no tarball.', 'warning');
+
+  if (dryRun) return report(ctx, `Ponytail dry-run: would install ${remoteVer} over ${localVer || '—'} at ${path.dirname(localPkg)}.`, 'info');
+
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'ponytail-update-'));
+  try {
+    const tarballPath = path.join(tmp, 'pkg.tgz');
+    notify(ctx, `Ponytail: downloading ${remoteVer}…`, 'info');
+    await httpsDownload(meta.dist.tarball, tarballPath);
+    if (meta.dist.shasum) {
+      const actual = createHash('sha1').update(await fs.readFile(tarballPath)).digest('hex');
+      if (actual !== meta.dist.shasum) return report(ctx, `Ponytail: sha1 mismatch; expected ${meta.dist.shasum.slice(0, 12)}…, got ${actual.slice(0, 12)}…; not installing`, 'error');
+    }
+    const extractDir = path.join(tmp, 'out');
+    await fs.mkdir(extractDir, { recursive: true });
+    execFileSync('tar', ['xzf', tarballPath, '-C', extractDir], { encoding: 'utf8', shell: false });
+    const newPkgJson = await findFile(extractDir, 'package.json');
+    if (!newPkgJson) return report(ctx, 'Ponytail: package.json not in tarball.', 'warning');
+    const newDir = path.dirname(newPkgJson);
+    const destDir = path.dirname(localPkg);
+    const backupDir = `${destDir}.bak`;
+    // fs.rename cannot cross filesystems (tmp vs home), so copy then verify.
+    await fs.rename(destDir, backupDir);
+    try {
+      await fs.cp(newDir, destDir, { recursive: true });
+      const written = parsePackageVersion(await readTextIfExists(path.join(destDir, 'package.json')));
+      if (written !== remoteVer) throw new Error(`installed version ${written} !== ${remoteVer}`);
+    } catch (e) {
+      await fs.rm(destDir, { recursive: true, force: true }).catch(() => { });
+      await fs.rename(backupDir, destDir).catch(() => { });
+      throw new Error(`${(e as Error).message}; restored backup`);
+    }
+    await fs.rm(backupDir, { recursive: true, force: true }).catch(() => { });
+    return report(ctx, `Ponytail updated → ${remoteVer} at ${destDir}\n${RELOAD_MSG}`, 'info');
+  } catch (e) {
+    return report(ctx, `Ponytail update failed: ${(e as Error).message}`, 'warning');
+  } finally {
+    fs.rm(tmp, { recursive: true, force: true }).catch(() => { });
+  }
 }
 
 async function updateRtk(ctx: AddonUpdaterCtx, dryRun = false): Promise<string> {
@@ -240,14 +283,14 @@ async function updateRtk(ctx: AddonUpdaterCtx, dryRun = false): Promise<string> 
     const checks = await fs.readFile(checksPath, 'utf8');
     const expected = parseChecksum(checks, asset.name);
     if (!expected) {
-      const m = `RTK: checksums.txt has no entry for ${asset.name}`;
-      return report(ctx, m, 'warning');
+      const m = `RTK: checksums.txt has no entry for ${asset.name}; not installing`;
+      return report(ctx, m, 'error');
     }
     const archiveBuf = await fs.readFile(archivePath);
     const actual = createHash('sha256').update(archiveBuf).digest('hex').toLowerCase();
     if (actual !== expected) {
-      const m = `RTK: checksum mismatch! expected=${expected.slice(0, 12)}… actual=${actual.slice(0, 12)}…`;
-      return report(ctx, m, 'warning');
+      const m = `RTK: checksum mismatch! expected=${expected.slice(0, 12)}… actual=${actual.slice(0, 12)}…; not installing`;
+      return report(ctx, m, 'error');
     }
     notify(ctx, 'RTK: checksum verified.', 'info');
 

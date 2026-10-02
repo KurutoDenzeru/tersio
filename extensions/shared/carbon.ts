@@ -44,8 +44,7 @@ interface RegistryEntry {
   source: 'registry' | 'borrowed';
 }
 
-// Registry values verbatim from EcoLogits' model_repository; borrows cite
-// the public param disclosure they stand in for (MoE active/total).
+// Registry values verbatim from EcoLogits' model_repository; borrows cite the public param disclosure they stand in for (MoE active/total).
 const TABLE: RegistryEntry[] = [
   { match: 'opus', active: 625.0, total: 2000, provider: 'anthropic', source: 'registry' },
   { match: 'sonnet', active: 137.5, total: 440, provider: 'anthropic', source: 'registry' },

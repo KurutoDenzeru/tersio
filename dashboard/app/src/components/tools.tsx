@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { fmt, fmtMs, fmtShort } from "@/lib/format";
 import type { UsageReport } from "@/lib/data";
-import { EmptyState, HoverTip, PageButtons, PerPage, usePager } from "./common";
+import { EmptyState, PageButtons, PerPage, usePager } from "./common";
 import { Icon } from "./icon";
 
 interface CmdRow {
@@ -120,11 +120,9 @@ export function Tools({ data }: { data: UsageReport | null }) {
                 <TableCell className="w-10 py-2.5 pr-3 text-right text-xs text-dim">
                   {String((p - 1) * per + i + 1).padStart(2, "0")}
                 </TableCell>
-                <HoverTip content={r.name}>
-                  <TableCell className="max-w-[280px] truncate py-2.5 pr-3">
-                    {r.name}
-                  </TableCell>
-                </HoverTip>
+                <TableCell className="max-w-[280px] truncate py-2.5 pr-3">
+                  {r.name}
+                </TableCell>
                 <TableCell className="py-2.5 pr-3 text-right font-bold">{fmt(r.count)}</TableCell>
                 <TableCell className="py-2.5 pr-3 text-right font-bold">{r.saved === null ? "–" : fmtShort(r.saved)}</TableCell>
                 <TableCell className="py-2.5 pr-3 text-right text-accent">

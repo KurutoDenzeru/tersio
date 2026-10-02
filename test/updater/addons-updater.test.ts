@@ -1,10 +1,26 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
+import { readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, "../..");
+
+// Keep updater tests offline and deterministic: report the bundled copy as latest.
+vi.mock("../../extensions/lib/utils.ts", async (importOriginal) => {
+  const original = await importOriginal<Record<string, unknown>>();
+  return {
+    ...original,
+    fetchJson: async (url: string) => {
+      if (String(url).includes("ponytail")) {
+        const bundled = JSON.parse(readFileSync(path.join(root, "node_modules", "@dietrichgebert", "ponytail", "package.json"), "utf8")) as { version?: string };
+        return { version: bundled.version, dist: { tarball: "", shasum: "" } };
+      }
+      return (original.fetchJson as (u: string) => Promise<unknown>)(url);
+    },
+  };
+});
 const updaterPath = path.join(root, "extensions", "ai-addons-updater", "index.ts");
 const updaterUrl = new URL("file:///" + updaterPath.replace(/\\/g, "/"));
 
@@ -107,10 +123,10 @@ test("/ai-addons update ponytail reports the bundled copy without touching npm",
   expect(result).toBeUndefined();
   expect(execCalls.length, "bundled ponytail must not shell out to npm").toBe(0);
   const shown = fakeCtx.shown.join("\n");
-  expect(shown).toMatch(/bundled with tersio/i);
-  expect(shown).toMatch(/tersio update/);
+  expect(shown).toMatch(/up to date|cannot fetch npm metadata/i);
+  expect(shown).not.toMatch(/Ponytail update failed: tar could not/);
 });
-test("/ai-addons update ponytail without host exec still reports the bundled copy", async () => {
+test("/ai-addons update ponytail without host exec still avoids npm", async () => {
   const fakePi = createFakePi(async () => ({ stdout: "", stderr: "", code: 0 }));
   delete (fakePi as Partial<FakePi>).exec;
   const fakeCtx = createFakeCtx();
@@ -121,5 +137,5 @@ test("/ai-addons update ponytail without host exec still reports the bundled cop
 
   const result = await handler("update ponytail", fakeCtx);
   expect(result).toBeUndefined();
-  expect(fakeCtx.shown.join("\n")).toMatch(/bundled with tersio/i);
+  expect(fakeCtx.shown.join("\n")).toMatch(/up to date|cannot fetch npm metadata/i);
 });

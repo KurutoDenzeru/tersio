@@ -25,12 +25,10 @@ type InteractiveConfirm = { status: 'confirmed'; value: boolean } | { status: 'c
 
 let spinnerDepth = 0;
 
-// Run async work under a TTY-only timer spinner. The spinner is cleared before
-// the caller prints its normal result line, preserving locked output shapes.
+// Run async work under a TTY-only timer spinner. The spinner is cleared before the caller prints its normal result line, preserving locked output shapes.
 async function withInteractiveSpinner<T>(message: string, work: (update: (message: string) => void) => Promise<T>): Promise<T> {
   if (!tty() || spinnerDepth > 0) return work(() => { });
-  // Clack manages stdin itself. Close the legacy question interface before its
-  // first use; non-interactive callers never reach this branch.
+  // Clack manages stdin itself. Close the legacy question interface before its first use; non-interactive callers never reach this branch.
   closeRL();
   const active: SpinnerResult = clackSpinner({ indicator: 'timer' });
   active.start(message);
@@ -46,25 +44,30 @@ async function withInteractiveSpinner<T>(message: string, work: (update: (messag
 async function askInteractiveChoice(message: string, options: Array<{ value: string; label: string; hint?: string; disabled?: boolean }>, initialValue: string): Promise<InteractiveChoice> {
   if (!tty()) return { status: 'unavailable' };
   closeRL();
-  const choice = await clackSelect({ message, options, initialValue });
-  if (typeof choice !== 'string') {
-    clackCancel('Aborted.');
-    return { status: 'cancelled' };
+  try {
+    const choice = await clackSelect({ message, options, initialValue });
+    if (typeof choice !== 'string') {
+      clackCancel('Aborted.');
+      return { status: 'cancelled' };
+    }
+    return { status: 'selected', value: choice };
+  } finally {
   }
-  return { status: 'selected', value: choice };
 }
 async function askInteractiveConfirm(message: string, initialValue = true): Promise<InteractiveConfirm> {
   if (!tty()) return { status: 'unavailable' };
   closeRL();
-  const answer = await clackConfirm({ message, initialValue });
-  if (typeof answer !== 'boolean') {
-    clackCancel('Aborted.');
-    return { status: 'cancelled' };
+  try {
+    const answer = await clackConfirm({ message, initialValue });
+    if (typeof answer !== 'boolean') {
+      clackCancel('Aborted.');
+      return { status: 'cancelled' };
+    }
+    return { status: 'confirmed', value: answer };
+  } finally {
   }
-  return { status: 'confirmed', value: answer };
 }
-// Confirm a destructive run: a Clack dialog at a terminal, a plain prompt in a
-// pipe or script. False means the user declined or aborted.
+// Confirm a destructive run: a Clack dialog at a terminal, a plain prompt in a pipe or script. False means the user declined or aborted.
 async function confirmDestructive(message: string): Promise<boolean> {
   if (tty()) {
     closeRL();
@@ -90,13 +93,15 @@ async function confirmDestructive(message: string): Promise<boolean> {
   return true;
 }
 
-// Run collecting work under one TTY-only Clack task. Callers print after the
-// task completes, keeping normal output out of the spinner animation.
+// Run collecting work under one TTY-only Clack task. Callers print after the task completes, keeping normal output out of the spinner animation.
 async function runInteractivePhase<T>(title: string, collect: () => Promise<T>): Promise<T> {
   if (!tty()) return collect();
   closeRL();
   let result!: T;
-  await clackTasks([{ title, task: async () => { result = await collect(); } }]);
+  try {
+    await clackTasks([{ title, task: async () => { result = await collect(); } }]);
+  } finally {
+  }
   return result;
 }
 // Tagged lines log on TTY but stay byte-identical when piped.
@@ -124,6 +129,7 @@ async function withInteractiveTask<T>(title: string, work: (update: (message: st
   } catch (e) {
     spin.error(shortSpinnerError(e));
     throw e;
+  } finally {
   }
   return result;
 }

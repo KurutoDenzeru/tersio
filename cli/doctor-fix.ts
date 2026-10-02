@@ -26,13 +26,11 @@ type FixRequest = FixTarget | 'all';
 const EXT_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'extensions');
 
 
-// A written tree is the install for both hosts now, so --fix restores it for
-// whichever hosts have it, alongside the OMP package when that is present.
+// A written tree is the install for both hosts now, so --fix restores it for whichever hosts have it, alongside the OMP package when that is present.
 async function fixExtensionTrees(): Promise<void> {
   for (const host of detectHosts()) {
     const dest = hostExtensionsDir(host.id);
-    // Repair a host whose tree is partly there: a half-written tree is exactly
-    // the case this runs for, and it reads as "not installed" to the detector.
+    // Repair a host whose tree is partly there: a half-written tree is exactly the case this runs for, and it reads as "not installed" to the detector.
     const present = TREE_FILES.filter((file) => existsSync(path.join(dest, file))).length;
     if (present === 0) continue;
     await fs.mkdir(dest, { recursive: true });
@@ -49,19 +47,16 @@ async function fixExtensionTrees(): Promise<void> {
 async function fixExtensions(pluginsDir: string): Promise<void> {
   await fixExtensionTrees();
   console.log('  Doctor --fix: restoring plugin extension files');
-  const tersioPluginDir = path.join(pluginsDir, 'node_modules', '@krtclcdy', 'tersio');
-  const pluginExtDir = path.join(tersioPluginDir, 'extensions');
+  const pluginExtDir = path.join(pluginsDir, 'node_modules', '@krtclcdy', 'tersio', 'extensions');
   await fs.mkdir(pluginExtDir, { recursive: true });
 
   // rule.md is skipped: its live content is the upstream fetch, not the bundle.
-  const bundledTree = TREE_FILES.filter((file) => file !== 'caveman-session/rule.md');
-  for (const file of bundledTree) {
+  for (const file of TREE_FILES.filter((f) => f !== 'caveman-session/rule.md')) {
     const text = await readTextIfExists(sourcePath(file));
     if (text === null) sayTagged(`  [warn] bundled source missing: ${sourcePath(file)}`);
-    else await writeIfChanged(path.join(pluginExtDir, file), text, { dryRun, verbose });
+    else await writeIfChanged(path.join(pluginExtDir, ...file.split('/')), text, { dryRun, verbose });
   }
 
-  // Restore only a missing rule; a stale one is /ai-addons' to report.
   const ruleDest = path.join(pluginExtDir, 'caveman-session', 'rule.md');
   if ((await readTextIfExists(ruleDest)) === null) {
     const bundled = await readTextIfExists(path.join(EXT_DIR, 'caveman-session', 'rule.md'));
@@ -76,6 +71,12 @@ async function fixExtensions(pluginsDir: string): Promise<void> {
       else console.log('  [warn] Caveman rule unreachable and no bundled rule exists');
     }
   }
+
+  // Writing is not atomic, so re-read rather than assume the tree is whole.
+  if (dryRun) return;
+  const missing = TREE_FILES.filter((file) => !existsSync(path.join(pluginExtDir, ...file.split('/'))));
+  if (missing.length > 0) sayTagged(`  [fail] tree incomplete: ${missing.join(', ')}`);
+  else sayTagged(`  [ok] extension tree: ${TREE_FILES.length} files`);
 }
 
 async function fixRegistrations(agentDir: string, pluginsDir: string): Promise<void> {
@@ -127,11 +128,13 @@ async function fixRtk(binDir: string): Promise<void> {
       httpsGet(checksAsset.browser_download_url).catch(() => null),
       httpsDownload(asset.browser_download_url, archivePath),
     ]);
-    if (checks) {
-      const expected = parseChecksum(checks, asset.name);
-      if (expected && await sha256File(archivePath) !== expected) throw new Error(`checksum mismatch for ${asset.name}`);
-      debug('RTK checksum verified');
-    }
+    // Same rule as the installer: an unverifiable binary is not installed.
+    const unverified = (why: string): Error => new Error(`${why} for ${asset.name}. Re-run with --allow-unverified to accept it`);
+    if (!checks) throw unverified('checksums.txt could not be downloaded');
+    const expected = parseChecksum(checks, asset.name);
+    if (!expected) throw unverified('checksums.txt has no entry');
+    if (await sha256File(archivePath) !== expected) throw new Error(`checksum mismatch for ${asset.name}`);
+    debug('RTK checksum verified');
     const extractDir = path.join(tmpDir, 'extracted');
     await fs.mkdir(extractDir, { recursive: true });
     if (asset.name.endsWith('.zip')) await execP('powershell', ['Expand-Archive', '-Path', archivePath, '-DestinationPath', extractDir, '-Force'], { timeout: 60000 });

@@ -49,8 +49,7 @@ function rtkExtensionPath(): string {
   return path.join(home, '.omp', 'agent', 'extensions', 'rtk.ts');
 }
 
-// Append rtk.ts after the existing entries (or create the key) so the wire
-// takes effect on the next OMP start.
+// Append rtk.ts after the existing entries (or create the key) so the wire takes effect on the next OMP start.
 export async function ensureRtkInConfig(options: WiringOptions): Promise<void> {
   const home = process.env.HOME || process.env.USERPROFILE || os.homedir();
   const configPath = path.join(home, '.omp', 'agent', 'config.yml');
@@ -90,8 +89,7 @@ async function runRtkInit(rtkBin: string, options: WiringOptions): Promise<boole
     debugWire(options, 'rtk OMP extension wired');
     return true;
   } catch (first) {
-    // A fresh binary can lose its first exec to macOS Gatekeeper, so settle and
-    // retry once before reporting failure.
+    // A fresh binary can lose its first exec to macOS Gatekeeper, so settle and retry once before reporting failure.
     await new Promise((resolve) => setTimeout(resolve, 2000));
     try {
       await execFileP(rtkBin, ['init', '-g', '--agent', 'omp'], 30000);

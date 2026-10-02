@@ -333,21 +333,19 @@ export function Savings({
 
       <section
         data-reveal
-        className="mt-3 grid translate-y-[26px] grid-cols-1 gap-3 opacity-0 transition-[opacity,transform] duration-700 ease-[cubic-bezier(.16,1,.3,1)] data-[reveal=in]:translate-y-0 data-[reveal=in]:opacity-100 sm:grid-cols-2 lg:grid-cols-4"
         aria-label="Tokens by bucket"
+        className="mt-3 grid translate-y-[26px] grid-cols-2 overflow-hidden rounded-xl border border-line bg-panel opacity-0 transition-[opacity,transform] duration-700 ease-[cubic-bezier(.16,1,.3,1)] data-[reveal=in]:translate-y-0 data-[reveal=in]:opacity-100 sm:grid-cols-4 sm:divide-x sm:divide-line"
       >
         {strip.map(([label, v, icon]) => (
-          <Card key={label} size="sm" className="min-w-0 cursor-pointer overflow-hidden border-line bg-panel transition-[background] duration-[250ms] hover:shadow-tersio">
-            <CardHeader className="min-w-0">
-              <CardTitle className="mono flex min-w-0 items-center gap-2 text-[11px] uppercase tracking-[0.14em] text-dim">
-                <Icon name={icon} className="size-3.5" />
-                <span className="truncate">{label}</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="min-w-0">
-              <p className="mono truncate text-xl font-bold tabular-nums"><AnimatedValue value={v} format={fmt} /></p>
-            </CardContent>
-          </Card>
+          <div key={label} className="min-w-0 px-4 py-3">
+            <p className="mono flex min-w-0 items-center gap-2 text-[11px] uppercase tracking-[0.14em] text-dim">
+              <Icon name={icon} className="size-3.5 shrink-0" />
+              <span className="truncate">{label}</span>
+            </p>
+            <p className="mono mt-1 truncate text-xl font-bold tabular-nums">
+              <AnimatedValue value={v} format={fmt} />
+            </p>
+          </div>
         ))}
       </section>
 

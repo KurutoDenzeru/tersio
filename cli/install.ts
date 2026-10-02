@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import {
   BUN_BIN_DIR, COMBO_PRESET_MODES, IS_WINDOWS, OMP_AGENT_DIR, OMP_PLUGINS_DIR, OMP_BIN,
   PACKAGE_NAME, PACKAGE_VERSION, RTK_BINARY_NAME, args,
-  applyUpdate, cavemanDefaultFlag, comboDefaultFlag, command, dryRun,
+  allowUnverified, applyUpdate, cavemanDefaultFlag, comboDefaultFlag, command, dryRun,
   ponytailDefaultFlag, profileFlagsGiven, rtkDefaultFlag, verbose, yes,
   dashboardExport, dashboardPort,
   debug, ensurePonytailConfigValue,
@@ -28,7 +28,7 @@ import {
   CAVEMAN_REMOTE_RULE, RTK_RELEASE_API, RtkRelease, RtkReleaseAsset, fetchJson, findFile, findHoistedPackage, httpsGet,
   httpsDownload, parseChecksum, piAgentDir, readTextIfExists, resolveRtkBinary, rtkPlatformSpec, sha256File,
 } from '../extensions/lib/utils.ts';
-import { storedProfile, writePluginSettings } from './profile.ts';
+import { formatCliStatus, storedProfile, storedProfileSync, writePluginSettings } from './profile.ts';
 import { runSettings } from './settings.ts';
 import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
 import { filesUnder, sourcePath } from './manifest.ts';
@@ -174,17 +174,21 @@ async function downloadRtkChecksums(release: RtkRelease): Promise<string | null>
   }
 }
 
-async function verifyRtkArchive(archivePath: string, assetName: string, checksumsText: string | null, options: WriteOptions = {}): Promise<boolean> {
-  if (!checksumsText) {
-    if (!options.quiet) console.log('  [warn] No checksums.txt available — skipping verification');
-    return true;
-  }
+// Fails closed: a missing checksum is worse than a failed install, since an unverifiable RTK binary runs with the user's privileges. `--allow-unverified` opts out.
+async function verifyRtkArchive(archivePath: string, assetName: string, checksumsText: string | null): Promise<boolean> {
+  const unverified = (reason: string): boolean => {
+    if (allowUnverified) {
+      sayTagged(`  [warn] ${reason} — installing anyway (--allow-unverified)`);
+      return true;
+    }
+    sayTagged(`  [fail] ${reason}`);
+    sayTagged('  [hint] RTK not installed. Retry with --allow-unverified to accept an unverified binary.');
+    return false;
+  };
+  if (!checksumsText) return unverified(`No checksums.txt published for ${assetName}`);
   const expected = parseChecksum(checksumsText, assetName);
+  if (!expected) return unverified(`checksums.txt has no entry for ${assetName}`);
   const actual = await sha256File(archivePath);
-  if (!expected) {
-    if (!options.quiet) sayTagged(`  [warn] checksums.txt missing entry for ${assetName} — skipping verification`);
-    return true;
-  }
   if (actual === expected) {
     debug(`Checksum verified for ${assetName}`);
     return true;
@@ -235,8 +239,7 @@ async function extractRtkArchive(archivePath: string, extractDir: string): Promi
   return false;
 }
 
-// The binary is machine-wide and only OMP needs the wiring, so an install that
-// finds one present only rebinds. `tersio update` still refreshes it.
+// The binary is machine-wide and only OMP needs the wiring, so an install that finds one present only rebinds. `tersio update` still refreshes it.
 async function stepRtk(binDir: string, options: InstallOptions, target: 'omp' | 'pi' = 'omp'): Promise<void> {
   const binDest = path.join(binDir, RTK_BINARY_NAME);
   const found = resolveRtkBinary();
@@ -250,8 +253,7 @@ async function stepRtk(binDir: string, options: InstallOptions, target: 'omp' | 
   };
 
   if (found && !applyUpdate) {
-    // The path only under --verbose: a plain run, and a dry run, stay free of
-    // real user paths.
+    // The path only under --verbose: a plain run, and a dry run, stay free of real user paths.
     if (!options.quiet) {
       const where = verbose ? ` (${found})` : '';
       console.log(`  RTK — already installed${where}${target === 'omp' ? ', binding into OMP' : ', nothing to bind on pi'}`);
@@ -261,8 +263,7 @@ async function stepRtk(binDir: string, options: InstallOptions, target: 'omp' | 
   }
 
   if (!options.quiet) console.log(`  RTK — download binary and ${target === 'omp' ? 'wire into OMP' : 'put it on PATH'}`);
-  // A failed download must not skip wiring: a pre-existing binary serves the
-  // OMP hook just as well. Dry runs stay offline.
+  // A failed download must not skip wiring: a pre-existing binary serves the OMP hook just as well. Dry runs stay offline.
   if (options.dryRun) {
     if (verbose && !options.quiet) sayTagged(`  [dry-run] would download rtk binary and install to ${binDest}`);
     await bind(found ?? binDest);
@@ -271,8 +272,7 @@ async function stepRtk(binDir: string, options: InstallOptions, target: 'omp' | 
   try {
     const triple = resolveRtkTriple();
     if (!triple) return;
-    // One task with streamed sub-steps: release lookup, download, checksum,
-    // extract, install. Non-TTY keeps the plain lines each step already prints.
+    // One task with streamed sub-steps: release lookup, download, checksum, extract, install. Non-TTY keeps the plain lines each step already prints.
     await withInteractiveTask('Installing RTK', async (update) => {
       const release = await fetchJson<RtkRelease>(RTK_RELEASE_API);
       const asset = findRtkAsset(release, triple);
@@ -289,7 +289,7 @@ async function stepRtk(binDir: string, options: InstallOptions, target: 'omp' | 
           httpsDownload(asset.browser_download_url, archivePath),
         ]);
         update('Verifying checksum');
-        if (!await verifyRtkArchive(archivePath, asset.name, checksumsText, options)) {
+        if (!await verifyRtkArchive(archivePath, asset.name, checksumsText)) {
           sayTagged('  [hint] RTK install skipped for this run');
           return;
         }
@@ -330,8 +330,7 @@ async function stepRtk(binDir: string, options: InstallOptions, target: 'omp' | 
   await bind(binDest);
 }
 
-// Copy sources into the target extension dir. First entry is required; the
-// rest are optional companions.
+// Copy sources into the target extension dir. First entry is required; the rest are optional companions.
 async function copySources(extDir: string, files: Array<[string, string]>, skipLabel: string, options: WriteOptions): Promise<boolean> {
   const src = await readTextIfExists(files[0][0]);
   if (!src) {
@@ -360,8 +359,7 @@ async function stepRtkSession(extDir: string, options: WriteOptions): Promise<vo
   await copySources(extDir, filesUnder('rtk-session'), 'rtk-session/index.ts', options);
 }
 
-// One fetch serves the install; dry runs stay offline and preview the bundled
-// rule's destination.
+// One fetch serves the install; dry runs stay offline and preview the bundled rule's destination.
 async function fetchCavemanRule(options: WriteOptions): Promise<string | null> {
   const bundled = await readTextIfExists(sourcePath('caveman-session/rule.md'));
   if (options.dryRun) return bundled;
@@ -414,8 +412,7 @@ async function resolveProfile(opts: { quiet?: boolean } = {}): Promise<Profile> 
   // Seed from the stored defaults so flag-less runs keep them.
   const profile = await storedProfile();
 
-  // One numbered prompt for all three modes, for a real terminal user with no
-  // default flags. Never for --apply-update, and never for a script.
+  // One numbered prompt for all three modes, for a real terminal user with no default flags. Never for --apply-update, and never for a script.
   if (tty() && !profileFlagsGiven && !applyUpdate) {
     const choice = await askInteractiveChoice('Session-start defaults — Combo preset', [
       { value: 'off', label: 'off' },
@@ -464,7 +461,7 @@ async function runCommandMenu(): Promise<void> {
     console.log(`\n  [update] staying on ${PACKAGE_VERSION} — run ` + '`tersio update`' + ` anytime`);
   }
   updatePromptDone = true;
-  const choice = await askInteractiveChoice('Tersio — what next?', [
+  const choice = await askInteractiveChoice(`Tersio — what next?\n${formatCliStatus(storedProfileSync())}`, [
     { value: 'install', label: 'Install add-ons', hint: 'user scope + combo defaults' },
     { value: 'update', label: 'Update', hint: 'CLI version check, then refresh add-ons (RTK, Caveman rule, Ponytail)' },
     { value: 'doctor', label: 'Doctor', hint: 'verify the installation' },
@@ -483,8 +480,7 @@ async function runCommandMenu(): Promise<void> {
       await runInstall();
       break;
     case 'update': {
-      // One bound flow: the version check already ran above, so report it
-      // and offer the refresh in the same breath — no second "update" quiz.
+      // One bound flow: the version check already ran above, so report it and offer the refresh in the same breath — no second "update" quiz.
       if (typeof newer === 'string') console.log(`  tersio ${newer} available (installed ${PACKAGE_VERSION})`);
       else console.log(`  tersio ${PACKAGE_VERSION} is the latest`);
       const go = await askInteractiveConfirm('Update now (CLI + RTK, Caveman rule, Ponytail)?');
@@ -540,12 +536,10 @@ async function runCommandMenu(): Promise<void> {
   }
 }
 
-// Which host this run targets. --host pins it; a TTY user picks; scripts,
-// pipes, --yes, and --dry-run keep the pre-multi-host default of Oh My Pi.
+// Which host this run targets. --host pins it; a TTY user picks; scripts, pipes, --yes, and --dry-run keep the pre-multi-host default of Oh My Pi.
 let targetHost: HostId = 'omp';
 
-// Hosts the menu advertises but cannot install yet. Listed disabled so the
-// roadmap is visible without offering a target that does nothing.
+// Hosts the menu advertises but cannot install yet. Listed disabled so the roadmap is visible without offering a target that does nothing.
 const SOON_HOSTS = [
   { value: 'claude', label: 'Claude Code', hint: 'Coming soon' },
   { value: 'opencode', label: 'OpenCode', hint: 'Coming soon' },
@@ -573,8 +567,7 @@ function hostEntry(id: HostId): HostEntry {
   return detectHosts().find((host) => host.id === id) as HostEntry;
 }
 
-// pi auto-discovers `<agent-dir>/extensions/**/index.ts`, so this route writes
-// the same tree as OMP's and registers nothing.
+// pi auto-discovers `<agent-dir>/extensions/**/index.ts`, so this route writes the same tree as OMP's and registers nothing.
 async function stepPiLayer(options: InstallOptions): Promise<void> {
   const agentDir = piAgentDir();
   const extDir = path.join(agentDir, 'extensions');
@@ -625,8 +618,7 @@ async function stepPonytailForPi(agentDir: string, options: InstallOptions): Pro
 }
 
 async function runInstall(): Promise<void> {
-  // Without this guard a picked command re-enters here with command === null
-  // and loops straight back into the picker.
+  // Without this guard a picked command re-enters here with command === null and loops straight back into the picker.
   if (command === null && tty() && !yes && !updatePromptDone) {
     await runCommandMenu();
     return;
@@ -659,8 +651,7 @@ async function runInstall(): Promise<void> {
   if (tty() && !applyUpdate && command !== 'uninstall') {
     const newer = await checkForUpdate();
     if (typeof newer === 'string') {
-      // Update pending: offer it here instead of burying it above the install
-      // prompts. Yes runs the full update and stops.
+      // Update pending: offer it here instead of burying it above the install prompts. Yes runs the full update and stops.
       if (command === null && !dryRun && !yes && !updatePromptDone) {
         const answer = await askInteractiveConfirm(`tersio ${newer} is available (installed ${PACKAGE_VERSION}). Install it now?`);
         if (answer.status === 'confirmed' && answer.value) {
@@ -753,4 +744,4 @@ async function runInstall(): Promise<void> {
 
   closeRL();
 }
-export { runInstall };
+export { runInstall, verifyRtkArchive };

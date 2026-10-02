@@ -1,9 +1,14 @@
 ## Unreleased
+ - Restores the combo status on the host footer bar: `🧩 combo MAX: 🪨caveman=ULTRA ⚡rtk=ON 🦥ponytail=ULTRA` now paints via `ui.setStatus` on every mode command and session event, instead of a one-shot notify message.
  - Fixes subagent inheritance for Caveman and RTK: the OMP subagent marker now matches the host's real prompt, so a worker no longer runs with both modes silently off. Doctor scans the omp binary and warns when the marker drifts, and `tersio settings markers` overrides it.
  - Lets `rtk_run` fall back to shared state, so a subagent spawned after a mode switch can still use the tool.
  - Lets a Ponytail level switch take effect; the dedupe guard matched a level-agnostic phrase, so `/combo` changes were ignored for the rest of the session.
  - Execs the resolved rtk path in `rtk_run`, so it starts on a host whose PATH lacks `~/.bun/bin`.
  - Adds a `markers` setting and a repeatable `--subagent-marker` flag, and an `RTK exec` doctor row for hosts that cannot run the tool.
+ - Fixes the Models table on narrow dashboards: columns size to their content, and the table scrolls as one unit below 640px instead of crushing the model name.
+ - Replaces the Models table's Last run / Last 20 runs columns with a shadcn Progress share bar, so the table fits without horizontal scroll on most panels.
+ - Removes the Agents panel from the model detail dialog.
+ - Fixes pricing for provider-prefixed model ids: "codex/openai/gpt-6-luna" and similar now match their cached price by tail segment instead of the default, so OpenAI and Claude rows report the real rate.
 
 ## v2.24.1
  - Restores OpenCode/Codex usage history lost to the mirror wipe, with scheduled mirror backups plus restore/delete in the Data pane.

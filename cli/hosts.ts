@@ -1,5 +1,4 @@
-// cli/hosts.ts — the agent hosts Tersio installs into, and what is on disk.
-// One detector, shared by the doctor and both menus, so they cannot disagree.
+// cli/hosts.ts — the agent hosts Tersio installs into, and what is on disk. One detector, shared by the doctor and both menus, so they cannot disagree.
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { HOME, OMP_PLUGINS_DIR, PACKAGE_NAME, PACKAGE_VERSION } from './common.ts';
@@ -58,8 +57,7 @@ function packageVersion(dir: string): string | null {
   }
 }
 
-// The tersio package pi declared in its own settings.json, or null. pi
-// identifies a source by name, so an npm spec, git URL, or path all count.
+// The tersio package pi declared in its own settings.json, or null. pi identifies a source by name, so an npm spec, git URL, or path all count.
 export function piTersioSource(agentDir = piAgentDir()): string | null {
   let settings: { packages?: unknown };
   try {
@@ -89,8 +87,7 @@ function detect(agentDir = piAgentDir()): HostEntry[] {
   return HOSTS.map((host) => {
     const pkgDir = host.id === 'omp' ? ompPackageDir() : piPackageDir(agentDir);
     const tree = hostExtensionsDir(host.id, agentDir);
-    // A tree wins: it is what the installer writes, and it carries no
-    // package.json, so its version is ours.
+    // A tree wins: it is what the installer writes, and it carries no package.json, so its version is ours.
     const via = missingTreeFiles(host.id, agentDir).length === 0
       ? 'tree'
       : existsSync(pkgDir) ? 'package' : null;
@@ -121,8 +118,7 @@ export function hostHint(host: HostEntry): string {
   return host.installCmd;
 }
 
-// `--host omp|pi` from raw argv; undefined when absent. Throws on an unknown
-// value so the caller can exit(1) with the message.
+// `--host omp|pi` from raw argv; undefined when absent. Throws on an unknown value so the caller can exit(1) with the message.
 export function parseHostArg(argv: string[]): HostId | undefined {
   const i = argv.indexOf('--host');
   const raw = (i === -1 ? undefined : argv[i + 1]) ?? argv.find((a) => a.startsWith('--host='))?.slice('--host='.length);

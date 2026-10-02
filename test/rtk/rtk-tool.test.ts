@@ -16,6 +16,7 @@ function withPath(value: string, work: () => Promise<void>): Promise<void> {
 
 process.env.HOME = new URL("../definitely-missing-home", import.meta.url).pathname;
 process.env.USERPROFILE = process.env.HOME;
+process.env.TERSIO_HOME = process.env.HOME;
 
 type Exec = (cmd: string, args: string[], opts?: { signal?: AbortSignal; cwd?: string }) => Promise<{
   stdout: string;

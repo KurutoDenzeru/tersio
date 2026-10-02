@@ -5,6 +5,9 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, "../..");
 
+process.env.HOME = new URL("../definitely-missing-home", import.meta.url).pathname;
+process.env.TERSIO_HOME = process.env.HOME;
+
 type Handler = (args: string, ctx: unknown) => Promise<unknown>;
 
 const loadExtension = async (name: string) => {
@@ -27,7 +30,7 @@ interface FakePi {
   appendEntry(customType: string, data: Record<string, unknown>): void;
   cwd: string;
   env: NodeJS.ProcessEnv;
-  ui: { notify(): void; setStatus(): void; select(): Promise<undefined> };
+  ui: { notify(): void; select(): Promise<undefined> };
   events: { on(): void; emit(): void };
 }
 
@@ -46,7 +49,7 @@ const createPi = (): FakePi => {
     appendEntry: noop as (customType: string, data: Record<string, unknown>) => void,
     cwd: root,
     env: { ...process.env },
-    ui: { notify: noop, setStatus: noop, select: async () => undefined },
+    ui: { notify: noop, select: async () => undefined },
     events: { on: noop as () => void, emit: noop as () => void },
   };
 };
@@ -69,19 +72,26 @@ test("no tersio command handler resolves a value", async () => {
   expect(seen.length).toBe(EXTENSIONS.length);
 });
 
-// Cancelling the host must not roll the modes back, so every entry is written
-// before the user-visible message goes out.
+// Cancelling the host must not roll the modes back, so every session entry is
+// written before the status line goes out.
 test("a combo change is persisted before the host is told about it", async () => {
   const install = await loadExtension("combo-toggle");
   const pi = createPi();
   const order: string[] = [];
   pi.appendEntry = (customType: string) => { order.push(`entry:${customType}`); };
-  pi.ui.notify = () => { order.push("notify"); };
+  pi.ui = { ...pi.ui, notify: (message: string) => { order.push(`notify:${message}`); }, setStatus: (_n: string, v?: string) => { if (v !== undefined) order.push(`setstatus:${v}`); } } as unknown as typeof pi.ui;
   install(pi);
 
   await pi.commands.get("combo")?.("balanced", { ...ctx, hasUI: true, ui: pi.ui });
 
-  const firstNotify = order.indexOf("notify");
-  expect(firstNotify).toBeGreaterThan(-1);
-  expect(order.slice(0, firstNotify).filter((step) => step.startsWith("entry:")).length).toBe(4);
+  // Every mode entry lands first, in the preset's own order.
+  expect(order.slice(0, 4)).toEqual([
+    "entry:caveman-mode",
+    "entry:rtk-mode",
+    "entry:ponytail-mode",
+    "entry:combo-level",
+  ]);
+  // The host hears about it once, and only with the settled state.
+  const notices = order.slice(4);
+  expect(notices).toEqual(["setstatus:🧩 combo BALANCED: 🪨caveman=FULL ⚡rtk=ON 🦥ponytail=FULL"]);
 });

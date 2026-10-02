@@ -4,7 +4,7 @@ This file is a protocol, not a result. Run it on your own machine. Publish the n
 
 Nothing here depends on the agent host. Replace `<host>` with your host binary.
 
-The dated reference run is at the bottom. Models change, so your numbers will differ.
+Models change, so your numbers will differ.
 
 ## 1. What you measure
 
@@ -125,14 +125,14 @@ Where the host does not record `nonMessageTokens`, use the tokenizer count only.
 Define columns once:
 
 - `Block` = tokens the mode adds to the prompt. The base is 0.
-- `Reply Δ` = median reply tokens − base median (same prompt, same surface). Negative is a saving.
-- `Net Δ` = `Block` + `Reply Δ`. This is the first-turn effect. Negative means the mode already wins.
-- `Break-even` = `Block` ÷ −`Reply Δ`, in turns. Show `never` if `Reply Δ` ≥ 0.
+- `Token Δ` = median reply tokens − base median (same prompt, same surface). Negative is a saving.
+- `Net Δ` = `Block` + `Token Δ`. This is the first-turn effect. Negative means the mode already wins.
+- `Break-even` = `Block` ÷ −`Token Δ`, in turns. Show `never` if `Token Δ` ≥ 0.
 
 Raw token break-even is not the cost break-even. Output tokens cost more than input tokens. Cached prompt blocks cost less than fresh ones. Compute both:
 
 ```
-cost per turn      = Block × price_cache_read + Reply Δ × price_output
+cost per turn      = Block × price_cache_read + Token Δ × price_output
 one-time per session = Block × price_cache_write
 ```
 
@@ -196,7 +196,7 @@ git log --oneline -n 30
 2. The exit code is the same in both.
 3. `stderr` content is kept.
 4. `tsc --noEmit` on a file with one type error. The error must survive.
-5. `tsc --noEmit` on a clean file. Report any added tokens (the reference run saw +7).
+5. `tsc --noEmit` on a clean file. Report any added tokens.
 
 If a fidelity check fails, report a bug. Do not publish the saving.
 
@@ -224,7 +224,7 @@ To prove RTK ran, look for `... (N earlier lines, ctrl+o to expand)` in the outp
 Put the summary table first. A reader who reads one screen must get the ranking.
 
 ```markdown
-| Mode | Surface | Block | Reply Δ | Net Δ | Break-even | Quality | Tokens | Cost | Time | Steps |
+| Mode | Surface | Block | Token Δ | Net Δ | Break-even | Quality | Tokens | Cost | Time | Steps |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | `off` (base) | prose | 0 | 0 | 0 | — | 5/5 | … | 0 (free tier) | 0:52 | — |
 ```
@@ -239,7 +239,7 @@ End with the environment line:
 Rerun on YYYY-MM-DD using Bun X, host Y, model Z (thinking T, temperature K), Tersio A, RTK B, Ponytail C, tokenizer o200k_base, N = 5.
 ```
 
-Add your run above the reference run, newest first. Do not overwrite old numbers. If you change the protocol, say which numbers are no longer comparable.
+Add your run newest first. Do not overwrite old numbers. If you change the protocol, say which numbers are no longer comparable.
 
 ## 10. Done checklist
 
@@ -253,83 +253,3 @@ Add your run above the reference run, newest first. Do not overwrite old numbers
 - [ ] Cost break-even computed with real prices
 - [ ] Environment line complete
 - [ ] Working tree unchanged; `~/.tersio/settings.json` restored; sessions only in `$BENCH_TMP`
-
----
-
-# Reference run: 2026-09-25
-
-Bun 1.4.2, agent host 18.3.1, Tersio 2.23.0, RTK 0.50.0, Ponytail 4.10.0. Model `stealth/space-bunny-alpha`. Tokenizer `o200k_base`. 3 samples per mode, 1 prompt per surface, `--no-tools`. Visible output only.
-
-This run predates sections 1, 4, 5, 6, and the RTK fidelity checks. It has tokens only, no quality score, and no spread.
-
-`Block` = prompt tokens minus the 14-token base prompt (`You are a helpful assistant. Answer directly. Do not use tools.`). The 2026-09-25 file listed the prompt total. `Block` is that total minus 14.
-
-## Caveman (prose). Base median: 124 tokens
-
-| Mode | Block | After | Reply Δ | Δ% | Net Δ | Break-even |
-|---|---:|---:|---:|---:|---:|---:|
-| `lite` | 32 | 158 | +34 | +27.4% | +66 | never |
-| `full` | 1,645 | 107 | **−17** | **−13.7%** | +1,628 | ~97 turns |
-| `ultra` | 64 | 109 | **−15** | **−12.1%** | +49 | ~5 turns |
-| `wenyan-lite` | 42 | 149 | +25 | +20.2% | +67 | never |
-| `wenyan-full` | 56 | 124 | 0 | 0% | +56 | never |
-| `wenyan-ultra` | 47 | 141 | +17 | +13.7% | +64 | never |
-
-Verdict: only `full` and `ultra` cut prose, and both cost more than base on the first turn. Three modes made replies longer. With N = 3 this may be noise.
-
-## Ponytail (code). Base median: 306 tokens
-
-| Mode | Block | After | Reply Δ | Δ% | Break-even |
-|---|---:|---:|---:|---:|---:|
-| `lite` | 1,246 | 177 | **−129** | **−42.2%** | 10 tasks |
-| `full` | 1,250 | 208 | **−98** | **−32.0%** | 13 tasks |
-| `ultra` | 1,261 | 112 | **−194** | **−63.4%** | 7 tasks |
-
-Verdict: `ultra` was the strongest code mode in this sample. Quality was not checked, so a 63% cut may hide dropped edge cases.
-
-## Combo (code). Base median: 306 tokens
-
-| Mode | Block | After | Reply Δ | Δ% | Break-even |
-|---|---:|---:|---:|---:|---:|
-| `medium` | 1,341 | 132 | **−174** | **−56.9%** | 8 tasks |
-| `balanced` | 2,958 | 251 | **−55** | **−18.0%** | 54 tasks |
-| `max` | 1,388 | 260 | **−46** | **−15.0%** | 31 tasks |
-
-Verdict: `medium` beat both heavier presets. Open points: each Combo block is 28 tokens larger than the sum of its parts, and RTK had no effect in these `--no-tools` runs.
-
-## RTK. Median of 3 runs
-
-| Tool call | Base | After | Δ | Δ% | Δ time |
-|---|---:|---:|---:|---:|---:|
-| `rtk test bun run test` | 4,003 | 54 | **−3,949** | **−98.7%** | −35 ms |
-| `rtk find . -name '*.test.ts'` | 10,908 | 248 | **−10,660** | **−97.7%** | −175 ms |
-| `rtk ls -la .` | 983 | 275 | **−708** | **−72.0%** | +9 ms |
-| `rtk git status` | 72 | 18 | **−54** | **−75.0%** | +15 ms |
-| `rtk find extensions -name '*.ts'` | 100 | 76 | −24 | −24.0% | +7 ms |
-| `rtk test bun run build` | 140 | 114 | −26 | −18.6% | +153 ms |
-| `rtk deps` | 99 | 82 | −17 | −17.2% | +4 ms |
-
-Output that RTK did not change:
-
-| Tool call | Base | After |
-|---|---:|---:|
-| `rtk read extensions/shared/rtk-gain.ts` | 1,201 | 1,201 |
-| `rtk grep -rn normalizeMode extensions` | 692 | 692 |
-| `rtk git log --oneline -n 30` | 410 | 410 |
-| `rtk git diff --stat HEAD` | 29 | 29 |
-| `rtk git status --short` | 12 | 12 |
-| `rtk tsc --noEmit` | 0 | 7 (**+7**) |
-
-Verdict: RTK gives its largest saving on test suites and recursive finds. It leaves small and exact output alone. `rtk tsc` is the only case that added tokens. It replaces silent success with `TypeScript: No errors found`. No failing-test case was run, so error fidelity is not shown.
-
-## Choice by workload (from this run only)
-
-| Workload | Mode | Measured |
-|---|---|---|
-| Short conversation | `off` | Lowest prompt cost |
-| Terse discussion | `/caveman ultra` | −12.1% prose, ~5 turns to repay |
-| Sustained coding | `/ponytail ultra` | −63.4% code, ~7 tasks to repay |
-| Coding plus noisy commands | `/combo medium` | −56.9% code, ~8 tasks to repay |
-| Build or test run | `/rtk on` | Up to −98.7% command output |
-
-`tersio doctor` passed 16/16 checks. All six Caveman modes loaded.

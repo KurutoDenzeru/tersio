@@ -8,6 +8,7 @@ export const EXT_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '
 export const TREE_FILES: readonly string[] = [
   'shared/host.ts',
   'shared/session-state.ts',
+  'shared/status.ts',
   'shared/types.ts',
   'shared/plugin-settings.ts',
   'shared/usage-ledger.ts',

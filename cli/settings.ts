@@ -9,7 +9,7 @@ import { CURRENCY_CODES } from './currency.ts';
 import type { CurrencyCode } from './currency.ts';
 import { textTable } from './usage.ts';
 import { ask, askInteractiveChoice, closeRL, tty } from './interactive.ts';
-import { formatProfile, storedProfile, writePluginSettings } from './profile.ts';
+import { formatCliStatus, formatProfile, storedProfile, writePluginSettings } from './profile.ts';
 import type { Profile } from './profile.ts';
 import { readDiagSchedule, setDiagSchedule } from './dashboard.ts';
 import type { DiagSchedule } from './dashboard.ts';
@@ -109,8 +109,7 @@ function settingsUsage(): void {
   console.log('  Usage: tersio settings [combo|caveman|rtk|ponytail|currency|diagnosis|markers] [--combo-default off|medium|balanced|max] [--caveman-default off|lite|full|ultra|wenyan-lite|wenyan-full|wenyan-ultra] [--rtk-default on|off] [--ponytail-default off|lite|full|ultra] [--currency USD|PHP|EUR|GBP|JPY|KRW|SGD|AUD|CAD|INR] [--diag-schedule manual|daily|weekly|monthly] [--subagent-marker <text>]... [--dry-run]');
 }
 
-// Single-setting jump: `tersio settings diagnosis` prompts only that value
-// instead of walking the whole chain. Returns false when aborted.
+// Single-setting jump: `tersio settings diagnosis` prompts only that value instead of walking the whole chain. Returns false when aborted.
 async function runSingleSetting(name: string, current: Profile, nextDiag: DiagSchedule): Promise<{ profile: Profile; diag: DiagSchedule } | null> {
   const next: Profile = { ...current };
   let diag = nextDiag;
@@ -258,6 +257,7 @@ async function runSettings(): Promise<void> {
   }
   await writePluginSettings(next, {});
   setDiagSchedule(nextDiag);
+  console.log(`  ${formatCliStatus(next)}`);
   console.log(`  Defaults: ${formatProfile(next)} · diagnosis=${nextDiag}`);
   console.log('  Applies to fresh sessions only — anything persisted with /combo, /caveman, or /rtk wins.');
   console.log('  Currency applies to usage/dashboard reports; --currency overrides it per run.');

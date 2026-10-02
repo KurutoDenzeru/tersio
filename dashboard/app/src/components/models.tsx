@@ -15,6 +15,8 @@ import {
   topModels,
   vendorOf,
 } from "@/lib/format";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Progress, ProgressIndicator, ProgressTrack } from "@/components/ui/progress";
 import type { UsageReport } from "@/lib/data";
 import { BrandSilhouette, Brandmark } from "./brand";
 import { EmptyState, HoverTip, PageButtons, PerPage, usePager } from "./common";
@@ -115,7 +117,7 @@ function AreaChart({ vals, days }: { vals: number[]; days: string[] }) {
   );
 }
 
-function TokenMixChart({ parts }: { parts: Array<{ label: string; v: number; color: string }> }) {
+function TokenMixChart({ parts }: { parts: Array<{ label: string; v: number; color: string; host?: string }> }) {
   const total = parts.reduce((sum, part) => sum + part.v, 0) || 1;
   const data = parts.map((part) => ({
     ...part,
@@ -355,66 +357,65 @@ export function Models({ data, money }: { data: UsageReport | null; money: (v: n
     () => topModels(byModel, Object.keys(byModel).length).filter((m) => modelTotal(byModel, m) > 0),
     [byModel],
   );
-  const max = Math.max(1, ...tops.map((m) => modelTotal(byModel, m)));
   const { pages, page: p, range } = usePager(tops.length, per, page);
   const rows = tops.slice((p - 1) * per, p * per);
+  const top = rows.length ? Math.max(1, ...rows.map((m) => modelTotal(byModel, m))) : 0;
 
   return (
     <>
-      <Card className="mt-8 border-line bg-panel dark:[color-scheme:dark]" aria-label="Top models">
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <Icon name="cpu" className="size-4" />
-            <CardTitle className="font-display text-xl tracking-tight">Top models</CardTitle>
-            <span className="mono ml-auto text-xs text-dim">usage across sessions</span>
+      <section className="mt-8" aria-label="Top models">
+        <div className="mb-3 flex items-center gap-2 px-1">
+          <Icon name="trending-up" className="size-4" />
+          <h2 className="font-display text-xl tracking-tight">Top models</h2>
+          <span className="mono ml-auto text-xs text-dim">usage across sessions</span>
+        </div>
+        {tops.length === 0 && (
+          <div className="flex flex-col items-center gap-[2px] rounded-xl border border-dashed border-line px-4 py-8 text-center">
+            <EmptyState icon="boxes" title="No models yet" desc="Model token totals will appear here once sessions report tokens." />
           </div>
-        </CardHeader>
-        <CardContent>
+        )}
+        {tops.length > 0 && (
           <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-          {tops.length === 0 && (
-            <div className="flex flex-col items-center gap-[2px] rounded-xl border border-dashed border-line px-4 py-8 text-center md:col-span-3">
-              <EmptyState icon="boxes" title="No models yet" desc="Model token totals will appear here once sessions report tokens." />
-            </div>
-          )}
-          {tops.slice(0, 3).map((m, i) => {
-            const v = vendorOf(m);
-            return (
-              <HoverTip key={m} content={data ? <ModelTip m={m} data={data} money={money} /> : "–"}>
-                <Card
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => setOpen(m)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      setOpen(m);
-                    }
-                  }}
-                  className="relative cursor-pointer gap-0 overflow-hidden rounded-xl border-line bg-panel p-4 transition-[background] duration-[250ms] hover:shadow-tersio"
-                >
-                  <BrandSilhouette model={m} />
-                  <p className="pointer-events-none relative z-10 mb-2 text-xs leading-none text-dim mono">
-                    0{i + 1}
-                  </p>
-                  <div className="relative z-10 flex items-center gap-3">
-                    <Brandmark model={m} />
-                    <div className="min-w-0 flex-1">
-                       <p className="mono text-sm font-bold truncate">
-                        {displayModel(m)}
-                      </p>
-                      <p className="mono text-xs truncate text-dim">
-                        {v.name}
-                      </p>
+            {tops.slice(0, 3).map((m, i) => {
+              const v = vendorOf(m);
+              return (
+                <HoverTip key={m} content={data ? <ModelTip m={m} data={data} money={money} /> : "–"}>
+                  <Card
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setOpen(m)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setOpen(m);
+                      }
+                    }}
+                    size="sm"
+                    className="relative cursor-pointer gap-0 overflow-hidden bg-panel p-4 transition-[background] duration-[250ms] hover:bg-[var(--accent-soft)] dark:[color-scheme:dark]"
+                  >
+                    <BrandSilhouette model={m} />
+                    <p className="pointer-events-none relative z-10 mb-2 text-xs leading-none text-dim mono">
+                      0{i + 1}
+                    </p>
+                    <div className="relative z-10 flex items-center gap-3">
+                      <Brandmark model={m} />
+                      <div className="min-w-0 flex-1">
+                        <p className="mono text-sm font-bold truncate">
+                          {displayModel(m)}
+                        </p>
+                        <p className="mono text-xs truncate text-dim">
+                          {v.name}
+                        </p>
+                      </div>
+                      <p className="mono font-bold text-lg shrink-0">{fmtShort(modelTotal(byModel, m))}</p>
                     </div>
-                    <p className="mono font-bold text-lg shrink-0">{fmtShort(modelTotal(byModel, m))}</p>
-                  </div>
-                </Card>
-              </HoverTip>
-            );
-          })}
+                  </Card>
+                </HoverTip>
+              );
+            })}
           </div>
-          </CardContent>
-      </Card>
+        )}
+      </section>
 
       <Card
         data-reveal
@@ -433,38 +434,50 @@ export function Models({ data, money }: { data: UsageReport | null; money: (v: n
         </CardHeader>
         <CardContent>
         {tops.length > 0 ? (
-          <div className="overflow-y-auto overscroll-contain [scrollbar-color:var(--line)_transparent] [scrollbar-width:thin]">
-            <ol id="models" className="overflow-hidden">
-              {rows.map((m, i) => {
-                const mv = modelTotal(byModel, m);
-                return (
-                  <HoverTip key={m} content={data ? <ModelTip m={m} data={data} money={money} /> : "–"}>
-                    <li
-                      className={`transition-[background] duration-[250ms] hover:bg-track hover:shadow-tersio flex items-center gap-3 px-4 py-3 cursor-pointer${i < rows.length - 1 ? " border-b border-line" : ""}`}
-                      onClick={() => setOpen(m)}
-                    >
-                      <span>
-                        <Brandmark model={m} small />
-                      </span>
-                      <div className="min-w-0 flex-1">
-                         <p className="mono text-sm truncate">
-                          {displayModel(m)}
-                        </p>
-                        <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-track">
-                          <div className="h-full origin-left rounded-full bg-accent transition-[width] duration-1000 ease-[cubic-bezier(.16,1,.3,1)]" style={{ width: `${Math.round((mv / max) * 100)}%` }} />
-                        </div>
-                      </div>
-                      <div className="shrink-0 text-right">
-                        <p className="mono font-bold">{fmt(mv)}</p>
-                        <p className="mono text-xs text-dim">
+          <div className="overflow-x-auto overflow-y-auto overscroll-contain [scrollbar-color:var(--line)_transparent] [scrollbar-width:thin]">
+            <Table className="mono min-w-[640px] table-fixed text-[13px]" id="modelsTable">
+              <colgroup><col /><col style={{ width: 140 }} /><col style={{ width: 82 }} /><col style={{ width: 92 }} /><col style={{ width: 140 }} /></colgroup>
+              <TableHeader className="[&_tr]:text-left [&_tr]:text-[11px] [&_tr]:uppercase [&_tr]:tracking-[0.14em] [&_tr]:text-dim">
+                <TableRow>
+                  <TableHead>Model</TableHead>
+                  <TableHead className="text-right">Tokens</TableHead>
+                  <TableHead className="text-right">Requests</TableHead>
+                  <TableHead className="text-right">Cost</TableHead>
+                  <TableHead>Share</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map((m) => {
+                  const mv = modelTotal(byModel, m);
+                  return (
+                    <HoverTip key={m} content={data ? <ModelTip m={m} data={data} money={money} /> : "–"}>
+                      <TableRow className="cursor-pointer hover:bg-track hover:shadow-tersio" onClick={() => setOpen(m)}>
+                        <TableCell className="min-w-0 truncate py-2.5 pr-3">
+                          <span className="mr-2.5 inline-flex align-middle"><Brandmark model={m} small /></span>
+                          <span className="align-middle">{displayModel(m)}</span>
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap py-2.5 pr-3 text-right" title={fmtShort(mv)}>
+                          {fmt(mv)}
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap py-2.5 pr-3 text-right text-dim">
+                          {fmt(data?.byModelMessages[m] ?? 0)}
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap py-2.5 pr-3 text-right text-dim">
                           {money(data?.byModelUsd[m] ?? 0)}
-                        </p>
-                      </div>
-                    </li>
-                  </HoverTip>
-                );
-              })}
-            </ol>
+                        </TableCell>
+                        <TableCell className="py-2.5">
+                          <Progress value={top ? Math.round((mv / top) * 100) : 0} className="w-full">
+                            <ProgressTrack className="bg-track">
+                              <ProgressIndicator className="bg-accent" />
+                            </ProgressTrack>
+                          </Progress>
+                        </TableCell>
+                      </TableRow>
+                    </HoverTip>
+                  );
+                })}
+              </TableBody>
+            </Table>
           </div>
         ) : (
           <EmptyState icon="boxes" title="No models yet" desc="Model token totals will appear here once sessions report tokens." />

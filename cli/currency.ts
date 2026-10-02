@@ -1,5 +1,4 @@
-// cli/currency.ts — USD-base currency helpers on offline snapshot rates. Same
-// 10 currencies as the dashboard, which prefers live frankfurter figures.
+// cli/currency.ts — USD-base currency helpers on offline snapshot rates. Same 10 currencies as the dashboard, which prefers live frankfurter figures.
 
 import { existsSync, readFileSync } from 'node:fs';
 import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';

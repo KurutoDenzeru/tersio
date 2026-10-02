@@ -16,6 +16,7 @@ import type { ExtensionApi, ExtensionCtx } from "../../extensions/shared/types.t
 // tersio router appends ledger rows without touching the real machine.
 process.env.HOME = new URL("../definitely-missing-home", import.meta.url).pathname;
 process.env.USERPROFILE = process.env.HOME;
+process.env.TERSIO_HOME = process.env.HOME;
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tersio-noreload-"));
 process.env.TERSIO_USAGE_FILE = path.join(dir, "usage.jsonl");
 
@@ -47,12 +48,13 @@ function ctxWithReloadCounter() {
   let reloaded = 0;
   const ctx = {
     hasUI: true,
-    ui: { setStatus: () => { }, notify: (m: string) => { notifications.push(m); } },
+    ui: { notify: (m: string) => { notifications.push(m); }, setStatus: (_n: string, v: string | undefined) => { if (v !== undefined) notifications.push(v); } },
     sessionManager: { getBranch: () => [] },
     reload: async () => { reloaded += 1; },
   } as unknown as ExtensionCtx;
   return { ctx, notifications, reloaded: () => reloaded };
 }
+
 
 const MAIN_PROMPT = { systemPrompt: ["user says hi"] };
 
@@ -69,7 +71,9 @@ test("/combo max syncs sibling mirrors with no reload", async () => {
   await combo.commands.get("combo")!("max", ctx);
 
   expect(reloaded()).toBe(0);
-  expect(notifications.join("\n")).toMatch(/Combo max on/);
+  expect(notifications.filter((n) => n.startsWith("🧩 combo"))).toContain(
+    "🧩 combo MAX: 🪨caveman=ULTRA ⚡rtk=ON 🦥ponytail=ULTRA",
+  );
   const cave = (await caveman.handlers.get("before_agent_start")!(MAIN_PROMPT, ctx)) as { systemPrompt: string[] };
   expect(cave.systemPrompt.join("\n")).toMatch(/Caveman ultra/);
   const rtkOut = (await rtk.handlers.get("before_agent_start")!(MAIN_PROMPT, ctx)) as { systemPrompt: string[] };

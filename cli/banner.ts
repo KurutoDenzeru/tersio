@@ -1,5 +1,4 @@
-// cli/banner.ts — mini pixel-scissor welcome. TTY-only and skipped on
-// --dry-run, so piped output stays byte-identical.
+// cli/banner.ts — mini pixel-scissor welcome. TTY-only and skipped on --dry-run, so piped output stays byte-identical.
 import { intro as clackIntro, note as clackNote } from '@clack/prompts';
 import { PACKAGE_VERSION, dryRun } from './common.ts';
 
@@ -73,8 +72,7 @@ function bannerLines(tier: Tier = bannerTier()): string[] {
 
 let shown = false;
 
-// OMP-style welcome: intro line + note box with art left, commands right.
-// No-op unless interactive (and never on --dry-run).
+// Interactive only, so piped and --dry-run output stays byte-identical.
 function printWelcome(): void {
   if (shown || dryRun || !tty()) return;
   shown = true;
@@ -84,6 +82,11 @@ function printWelcome(): void {
     'tersio update    refresh CLI + add-ons',
     'tersio doctor    verify the install',
   ];
+  // Below 26 rows the note scrolls off the top and slices the art.
+  if (process.stdout.rows < 26) {
+    clackNote(tips.map((t) => `  ${t}`).join('\n'));
+    return;
+  }
   const art = bannerLines();
   const rows = art.map((line, i) => (i >= 1 && i <= 3 ? `${line}  ${tips[i - 1]}` : line));
   clackNote(rows.join('\n'));

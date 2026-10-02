@@ -59,6 +59,7 @@ export interface UsageReport {
   byModelUsd: Record<string, number>;
   byModelBucketUsd: Record<string, TokenBreakdown>;
   byModelMessages: Record<string, number>;
+  byHost: Record<string, Record<string, TokenBreakdown>>;
   byDay: Record<string, TokenBreakdown>;
   byDayModel: Record<string, Record<string, number>>;
   byTool: Array<[string, number]>;
@@ -129,15 +130,38 @@ async function getJSON<T>(path: string): Promise<T> {
   return (await res.json()) as T;
 }
 
-export function useDashboardData(): { data: UsageReport | null; loading: boolean } {
-  const [data, setData] = useState<UsageReport | null>(() => snap()?.data ?? null);
+function normalizeReport(d: UsageReport): UsageReport {
+  return { ...d, byHost: d.byHost ?? {} };
+}
+
+export function useDashboardData(): { data: UsageReport | null; loading: boolean; status: string | null } {
+  const [data, setData] = useState<UsageReport | null>(() => {
+    const s = snap()?.data;
+    return s ? normalizeReport(s) : null;
+  });
+  const [status, setStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState(() => !isFileExport() && !snap()?.data);
   const lastJson = useRef<string>(data ? JSON.stringify(data) : "");
+  const lastStatus = useRef<string>("");
+
+  // Rides the poll below rather than opening a second interval.
+  const loadStatus = useCallback(async () => {
+    try {
+      const s = (await getJSON<{ status: string }>("status")).status;
+      if (typeof s !== "string" || s === lastStatus.current) return;
+      lastStatus.current = s;
+      setStatus(s);
+    } catch {
+      // A server without /status just leaves the banner hidden.
+    }
+  }, []);
 
   const load = useCallback(async () => {
+    void loadStatus();
     try {
-      const d = await getJSON<UsageReport>("data.json");
-      const json = JSON.stringify(d);
+      const raw = await getJSON<UsageReport>("data.json");
+      const d = normalizeReport(raw);
+      const json = JSON.stringify(raw);
       if (json === lastJson.current) return;
       lastJson.current = json;
       setData(d);
@@ -147,7 +171,7 @@ export function useDashboardData(): { data: UsageReport | null; loading: boolean
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [loadStatus]);
 
   useEffect(() => {
     if (isFileExport()) return;
@@ -172,7 +196,7 @@ export function useDashboardData(): { data: UsageReport | null; loading: boolean
     };
   }, [load]);
 
-  return { data, loading };
+  return { data, loading, status };
 }
 
 export interface FxState {

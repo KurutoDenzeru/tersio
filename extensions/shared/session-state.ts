@@ -1,10 +1,9 @@
 import { readPluginSettings } from './plugin-settings.ts';
-import type { ComboLevel, ComboState, ExtensionCtx, SessionEntry, UiApi } from './types.ts';
+import type { ComboLevel, ComboState, ExtensionCtx, SessionEntry } from './types.ts';
 
 const BRIDGE_KEY = Symbol.for('tersio/combo-session-state');
 
-// A verbatim sentence from omp's subagent prompt, so it can drift; read from
-// the installed omp binary on 2026-10-01. pi has no built-in subagent prompt.
+// A verbatim sentence from omp's subagent prompt, so it can drift; read from the installed omp binary on 2026-10-01. pi has no built-in subagent prompt.
 export const OMP_SUBAGENT_MARKER = 'Worker agent: delegated tasks.';
 
 export const COMBO_LEVELS: Record<string, Readonly<ComboState>> = Object.freeze({
@@ -115,38 +114,8 @@ export function normalizeComboLevel(value: unknown): ComboLevel | null {
   return COMBO_ALIASES[level] ?? null;
 }
 
-// OMP themes status text through ctx.ui.theme.fg; pi has no ctx.ui.theme, so
-// the same string renders plain there.
-export function themeStatus(ui: UiApi | undefined, indicator: string, label: string, highlight = false): string {
-  const theme = ui?.theme;
-  if (!theme?.fg) return `${indicator} ${label}`;
-  return `${highlight ? theme.fg('accent', indicator) : indicator} ${theme.fg('muted', label)}`;
-}
 
-export function paintStatusBar(ui: UiApi | undefined, key: string, emoji: string, label: string, isActive: boolean): void {
-  ui?.setStatus?.(key, themeStatus(ui, emoji, label, isActive));
-}
-
-// Stale ctx access throws, so never let it abort a mode restore.
-export type StatusUi = UiApi & { setStatus: NonNullable<UiApi['setStatus']> };
-
-export function statusUi(ctx: ExtensionCtx | undefined): StatusUi | undefined {
-  try {
-    const ui = ctx?.ui;
-    return ui?.setStatus ? (ui as StatusUi) : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-// Which context a status bar paints through. Never remember a UI-less event:
-// that mutes every later bare syncStatus(), freezing the bar on a stale preset.
-export function paintableCtx(remembered: ExtensionCtx | undefined, next: ExtensionCtx | undefined): ExtensionCtx | undefined {
-  return statusUi(next) ? next : remembered;
-}
-
-// Last-wins scan for a custom session entry; skips entries whose value fails
-// to parse so a corrupt write never shadows an older valid one.
+// Last-wins scan for a custom session entry; skips entries whose value fails to parse so a corrupt write never shadows an older valid one.
 export function lastCustomValue<T>(entries: SessionEntry[] | null | undefined, customType: string, pick: (data: SessionEntry['data']) => T | null | undefined): T | null {
   if (!Array.isArray(entries)) return null;
   for (let i = entries.length - 1; i >= 0; i -= 1) {
@@ -180,8 +149,7 @@ export function setSharedComboMode(name: ModeName, value: unknown): Readonly<Com
   const mode = normalizeMode(name, value);
   if (!mode) return getSharedComboState();
   const modes = { ...getSharedComboState(), [name]: mode } as Modes;
-  // Derive the level from the final triplet so a redundant same-value write
-  // cannot strand a matching preset at 'custom' and drop the combo bar.
+  // Derive the level from the final triplet so a redundant same-value write cannot strand a matching preset at 'custom' and drop the combo bar.
   return publish(normalizedState(modes));
 }
 
@@ -202,8 +170,7 @@ export function reconcileSharedComboEntries(entries: SessionEntry[] | null | und
       if (mode) modes[name] = mode;
     }
   }
-  // The level reflects the final triplet, never the write order, so a preset
-  // entry followed by the same values reconciles back to the preset.
+  // The level reflects the final triplet, never the write order, so a preset entry followed by the same values reconciles back to the preset.
   return publish(normalizedState(modes));
 }
 

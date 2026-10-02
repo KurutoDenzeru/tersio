@@ -1,5 +1,4 @@
-// Shared helpers for the installer and the AI add-ons updater. Node built-ins
-// only — this module must stay dependency-free.
+// Shared helpers for the installer and the AI add-ons updater. Node built-ins only — this module must stay dependency-free.
 
 import { createHash } from 'node:crypto';
 import { accessSync, constants, createWriteStream, existsSync, mkdirSync, renameSync, statSync } from 'node:fs';
@@ -19,6 +18,12 @@ export function withResolvers<T>(): PromiseWithResolvers<T> {
   let reject!: (reason?: unknown) => void;
   const promise = new Promise<T>((res, rej) => { resolve = res; reject = rej; });
   return { promise, resolve, reject };
+}
+
+// os.homedir() can ignore a runtime HOME, so a redirected home would read the real one.
+export function homeDir(): string {
+  const home = process.env.HOME || process.env.USERPROFILE;
+  return home && home.trim() !== '' ? home : os.homedir();
 }
 
 export const RTK_RELEASE_API = 'https://api.github.com/repos/rtk-ai/rtk/releases/latest';
@@ -64,12 +69,12 @@ function firstExecutable(name: string, managedDir: string | null): string | null
   return null;
 }
 
-export function resolveRtkBinary(managedDir = path.join(os.homedir(), '.bun', 'bin')): string | null {
+export function resolveRtkBinary(managedDir = path.join(homeDir(), '.bun', 'bin')): string | null {
   return firstExecutable(process.platform === 'win32' ? 'rtk.exe' : 'rtk', managedDir);
 }
 
 // A host binary to scan for its subagent marker.
-export function resolveHostBinary(name: string, managedDir = path.join(os.homedir(), '.bun', 'bin')): string | null {
+export function resolveHostBinary(name: string, managedDir = path.join(homeDir(), '.bun', 'bin')): string | null {
   return firstExecutable(name, managedDir);
 }
 
@@ -85,24 +90,25 @@ function redirectNext(res: { statusCode?: number; headers: { location?: string }
   return null;
 }
 
-// pi sets PI_CODING_AGENT; OMP does not. OMP does read PI_CODING_AGENT_DIR as
-// its own relocation variable, so the override only counts under that marker.
+// pi sets PI_CODING_AGENT; OMP does not. OMP does read PI_CODING_AGENT_DIR as its own relocation variable, so the override only counts under that marker.
 export function isPiProcess(): boolean {
   return process.env.PI_CODING_AGENT === 'true';
 }
 
 export function piAgentDir(): string {
   const override = process.env.PI_CODING_AGENT_DIR;
-  return isPiProcess() && override ? override : path.join(os.homedir(), '.pi', 'agent');
+  return isPiProcess() && override ? override : path.join(homeDir(), '.pi', 'agent');
 }
 
-// Ponytail is a Tersio dependency that npm hoists, so it can sit in Tersio's
-// node_modules, a host's plugin dir, or beside it. Walking up covers all.
+// Ponytail is a Tersio dependency that npm hoists, so it can sit in Tersio's node_modules, a host's plugin dir, or beside it. Walking up covers all.
 export function findHoistedPackage(pkg: string, fromDir: string, ...relInside: string[]): string | null {
   let dir = fromDir;
   for (;;) {
     const candidate = path.join(dir, 'node_modules', ...pkg.split('/'), ...relInside);
     if (existsSync(candidate)) return candidate;
+    // pi installs npm packages under ~/.pi/agent/npm/node_modules.
+    const piCandidate = path.join(dir, 'npm', 'node_modules', ...pkg.split('/'), ...relInside);
+    if (existsSync(piCandidate)) return piCandidate;
     const parent = path.dirname(dir);
     if (parent === dir) return null;
     dir = parent;
@@ -212,9 +218,7 @@ export async function readTextIfExists(p: string): Promise<string | null> {
   try { return await fs.readFile(p, 'utf8'); } catch { return null; }
 }
 
-// Chunked so a 200 MiB host binary is never held in memory. `tail` keeps the
-// last needle.length-1 bytes of the previous chunk, because a match can begin
-// near the end of one chunk and finish inside the next.
+// Chunked so a 200 MiB host binary is never held in memory. `tail` keeps the last needle.length-1 bytes of the previous chunk, because a match can begin near the end of one chunk and finish inside the next.
 export async function fileContains(filePath: string, needleText: string): Promise<boolean> {
   const needle = Buffer.from(needleText, 'utf8');
   if (needle.length === 0) return false;
@@ -241,15 +245,14 @@ export async function fileContains(filePath: string, needleText: string): Promis
   }
 }
 
-// Tersio-owned data home: ~/.tersio. First use moves legacy
-// ~/.omp/plugins/tersio-* files over so existing installs keep their history.
+// Tersio-owned data home: ~/.tersio. First use moves legacy ~/.omp/plugins/tersio-* files over so existing installs keep their history.
 const migratedTersioFiles = new Set<string>();
 
 export function tersioHome(): string {
   // Matches the other TERSIO_* overrides so a test never reads the real home.
   const override = process.env.TERSIO_HOME;
   if (override && override.trim() !== '') return override;
-  return path.join(os.homedir(), '.tersio');
+  return path.join(homeDir(), '.tersio');
 }
 
 
@@ -259,7 +262,7 @@ export function tersioDataPath(name: string, legacy: string): string {
     migratedTersioFiles.add(name);
     try {
       if (!existsSync(dest)) {
-        const src = path.join(os.homedir(), '.omp', 'plugins', legacy);
+        const src = path.join(homeDir(), '.omp', 'plugins', legacy);
         if (existsSync(src)) {
           mkdirSync(tersioHome(), { recursive: true });
           renameSync(src, dest);

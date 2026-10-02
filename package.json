@@ -1,7 +1,7 @@
 {
   "name": "@krtclcdy/tersio",
   "version": "2.24.1",
-  "description": "\u2702\ufe0f Token saver and usage tracker for coding agents: terse Caveman replies, compact RTK shell output, lean Ponytail code calls, and a gain dashboard \u2014 one-command combo presets over one shared extension tree.",
+  "description": "✂️ Token saver and usage tracker for coding agents: terse Caveman replies, compact RTK shell output, lean Ponytail code calls, and a gain dashboard — one-command combo presets over one shared extension tree.",
   "keywords": [
     "token-saving",
     "ai-tools",
@@ -124,6 +124,7 @@
     "build:dashboard": "bun install --cwd dashboard/app --frozen-lockfile && bun run --cwd dashboard/app build",
     "prepublishOnly": "bun run build",
     "check": "tsc --noEmit",
+    "verify": "bun install --frozen-lockfile && bun run build && bun run test",
     "doctor": "node tersio.js --doctor",
     "dry-run": "node tersio.js --dry-run --scope user --yes",
     "lint": "oxlint cli extensions test tersio.ts",
@@ -141,6 +142,7 @@
     "vitest": "^5.0.1"
   },
   "dependencies": {
+    "@clack/core": "^1.5.1",
     "@clack/prompts": "^1.8.0",
     "@dietrichgebert/ponytail": "^4.10.0"
   }

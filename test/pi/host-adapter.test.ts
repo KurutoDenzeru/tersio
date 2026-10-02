@@ -10,7 +10,6 @@ import {
   setExtensionLabel,
   stringArrayToolParams,
 } from "../../extensions/shared/host.ts";
-import { themeStatus } from "../../extensions/shared/session-state.ts";
 import type { ExtensionApi, ExtensionCtx, SystemPromptEvent } from "../../extensions/shared/types.ts";
 
 function zodStub() {
@@ -125,9 +124,3 @@ test("stringArrayToolParams speaks zod on OMP and JSON Schema on pi", () => {
   });
 });
 
-test("themeStatus colors on OMP and stays plain on pi", () => {
-  const themed = { theme: { fg: (role: string, text: string) => `<${role}>${text}</>` } };
-  expect(themeStatus(themed, "⚡", "rtk: ON", true)).toBe("<accent>⚡</> <muted>rtk: ON</>");
-  expect(themeStatus({ theme: undefined }, "⚡", "rtk: ON", true), "pi has no ctx.ui.theme").toBe("⚡ rtk: ON");
-  expect(themeStatus(undefined, "⚡", "rtk: ON")).toBe("⚡ rtk: ON");
-});

@@ -1,9 +1,7 @@
-// Shared usage ledger: append-only JSON lines, read by the CLI, `/tersio`, and
-// the Dashboard. Best-effort; corrupt lines are skipped on read.
+// Shared usage ledger: append-only JSON lines, read by the CLI, `/tersio`, and the Dashboard. Best-effort; corrupt lines are skipped on read.
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { isPiProcess, piAgentDir, resolveRtkBinary, tersioDataPath } from '../lib/utils.ts';
+import { homeDir, isPiProcess, piAgentDir, resolveRtkBinary, tersioDataPath } from '../lib/utils.ts';
 import { execFileSync } from 'node:child_process';
 
 export type UsageKind = 'command' | 'toggle' | 'install' | 'update' | 'rtk-audit';
@@ -52,8 +50,7 @@ export function appendUsage(kind: UsageKind, detail: string): void {
   } catch { /* ledger is best-effort; never break the caller */ }
 }
 
-// --- Session tokens, tokscale-style ------------------------------------------
-// Assistant messages in the host transcripts carry usage, model, and a timestamp.
+// --- Session tokens, tokscale-style ------------------------------------------ Assistant messages in the host transcripts carry usage, model, and a timestamp.
 export interface TokenBreakdown {
   input: number;
   output: number;
@@ -89,6 +86,7 @@ export interface SessionTokens {
   byDayModel: Record<string, Record<string, number>>;
   byTool: Record<string, number>;
   byModelMessages: Record<string, number>;
+  byHost: Record<string, Record<string, TokenBreakdown>>;
   costMeasured: number;
   recent: RecentRequest[];
 }
@@ -119,8 +117,7 @@ export function durOf(v: unknown): number | undefined {
   return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : undefined;
 }
 
-// Measured cost: usage.cost.total, or a bare number in old fixtures. Anything
-// else means unrecorded, which is deliberately not 0.
+// Measured cost: usage.cost.total, or a bare number in old fixtures. Anything else means unrecorded, which is deliberately not 0.
 export function costOf(usage: Record<string, unknown>): number | undefined {
   const c = usage.cost;
   if (typeof c === 'number') return Number.isFinite(c) ? c : undefined;
@@ -131,8 +128,7 @@ export function costOf(usage: Record<string, unknown>): number | undefined {
   return undefined;
 }
 
-// First line only: real messages carry multi-line provider errors, and this
-// ends up in a tooltip.
+// First line only: real messages carry multi-line provider errors, and this ends up in a tooltip.
 export function statusOf(msg: { stopReason?: unknown; errorStatus?: unknown; errorMessage?: unknown; isError?: unknown }): { st: RunStatus; code?: number; note?: string } {
   const stop = typeof msg.stopReason === 'string' ? msg.stopReason : '';
   const note = typeof msg.errorMessage === 'string' && msg.errorMessage.trim()
@@ -156,11 +152,10 @@ function addInto(into: TokenBreakdown, u: { input?: unknown; output?: unknown; c
 export function sessionsDirs(): string[] {
   const override = process.env.TERSIO_SESSIONS_DIR;
   if (override) return [override];
-  // Both hosts, not just the running one: a session on pi is missing from the
-  // dashboard entirely if we stop at the first directory that exists.
+  // Both hosts, not just the running one: a session on pi is missing from the dashboard entirely if we stop at the first directory that exists.
   const dirs = isPiProcess()
-    ? [path.join(piAgentDir(), 'sessions'), path.join(os.homedir(), '.omp', 'agent', 'sessions')]
-    : [path.join(os.homedir(), '.omp', 'agent', 'sessions'), path.join(piAgentDir(), 'sessions')];
+    ? [path.join(piAgentDir(), 'sessions'), path.join(homeDir(), '.omp', 'agent', 'sessions')]
+    : [path.join(homeDir(), '.omp', 'agent', 'sessions'), path.join(piAgentDir(), 'sessions')];
   const found = dirs.filter((dir) => fs.existsSync(dir));
   return found.length > 0 ? found : [dirs[0]];
 }
@@ -174,7 +169,7 @@ export function codexSessionsDir(): string {
   if (override) return override;
   const codexHome = process.env.CODEX_HOME;
   if (codexHome) return path.join(codexHome, 'sessions');
-  return path.join(os.homedir(), '.codex', 'sessions');
+  return path.join(homeDir(), '.codex', 'sessions');
 }
 
 // One JSON file per message; probe XDG, then local, then macOS default.
@@ -183,11 +178,11 @@ export function opencodeSessionsDir(): string {
   if (override) return override;
   const xdg = process.env.XDG_DATA_HOME;
   if (xdg && xdg.trim() !== '') return path.join(xdg, 'opencode', 'storage', 'message');
-  const local = path.join(os.homedir(), '.local', 'share', 'opencode', 'storage', 'message');
+  const local = path.join(homeDir(), '.local', 'share', 'opencode', 'storage', 'message');
   try {
     if (fs.existsSync(local)) return local;
   } catch { /* fall through to the platform default */ }
-  return path.join(os.homedir(), 'Library', 'Application Support', 'opencode', 'storage', 'message');
+  return path.join(homeDir(), 'Library', 'Application Support', 'opencode', 'storage', 'message');
 }
 
 export function dayKey(ts: string | number): string | null {
@@ -211,8 +206,7 @@ export function walkJsonl(dir: string, out: string[], cap: number, ext = '.jsonl
     else if (e.isFile() && e.name.endsWith(ext)) out.push(full);
   }
 }
-// Recent requests get their own full-width table, so this bounds payload
-// rather than highlights; rows are small, so a few hundred cost little.
+// Recent requests get their own full-width table, so this bounds payload rather than highlights; rows are small, so a few hundred cost little.
 export const RECENT_LIMIT = 200;
 const FREE_SUFFIX = /(?::free|-free)$/i;
 const RTK_ELIGIBLE_HEADS = new Set([
@@ -220,21 +214,21 @@ const RTK_ELIGIBLE_HEADS = new Set([
   'npm', 'npx', 'pnpm', 'bun', 'bunx', 'cargo', 'go', 'python', 'pytest',
   'ruff', 'mypy', 'docker', 'kubectl', 'psql', 'aws', 'gh', 'glab', 'wc',
 ]);
-// Parse buffer shared by live reads and usage.db syncs, so the store is a
-// cache and never a fork.
+// Parse buffer shared by live reads and usage.db syncs, so the store is a cache and never a fork.
 export interface SessionAccum {
   byModel: Record<string, TokenBreakdown>;
   byDay: Record<string, TokenBreakdown>;
   byDayModel: Record<string, Record<string, number>>;
   byTool: Record<string, number>;
   byModelMessages: Record<string, number>;
+  byHost: Record<string, Record<string, TokenBreakdown>>;
   totals: TokenBreakdown;
   messages: number;
   costMeasured: number;
   recent: RecentRequest[];
 }
 export function newSessionAccum(): SessionAccum {
-  return { byModel: {}, byDay: {}, byDayModel: {}, byTool: {}, byModelMessages: {}, totals: zeroBreakdown(), messages: 0, costMeasured: 0, recent: [] };
+  return { byModel: {}, byDay: {}, byDayModel: {}, byTool: {}, byModelMessages: {}, byHost: {}, totals: zeroBreakdown(), messages: 0, costMeasured: 0, recent: [] };
 }
 export function ingestSessionRow(accum: SessionAccum, model: string, usage: Record<string, unknown>, ts: string | number | undefined, durMs?: unknown, run?: { st: RunStatus; code?: number; note?: string }, toolNames?: string[], host?: string): boolean {
   const watermark = readResetWatermark();
@@ -245,6 +239,11 @@ export function ingestSessionRow(accum: SessionAccum, model: string, usage: Reco
   accum.byModel[key] ??= zeroBreakdown();
   addInto(accum.byModel[key], usage);
   accum.byModelMessages[key] = (accum.byModelMessages[key] ?? 0) + 1;
+  if (host) {
+    const hs = (accum.byHost[key] ??= {});
+    hs[host] ??= zeroBreakdown();
+    addInto(hs[host], usage);
+  }
   const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.floor(v) : 0);
   if (Number.isFinite(ms)) {
     const outcome = run ?? { st: 'completed' as RunStatus };
@@ -365,8 +364,7 @@ export function processOpencodeFile(accum: SessionAccum, text: string): void {
 export function canonicalModelId(model: string): string {
   return canonicalPriceId(model.replace(FREE_SUFFIX, ''));
 }
-// LiteLLM-style display: lowercase namespace, title-cased model segments with
-// version dots kept.
+// LiteLLM-style display: lowercase namespace, title-cased model segments with version dots kept.
 export function displayModelId(model: string): string {
   const bare = model.replace(FREE_SUFFIX, '');
   const cap = (s: string): string => {
@@ -388,8 +386,7 @@ export function importSessionTokens(): SessionTokens {
   const accum = newSessionAccum();
   const files: string[] = [];
   for (const dir of sessionsDirs()) walkJsonl(dir, files, 2000);
-  // An override means an isolated environment (tests, fixtures): only walk the
-  // real codex dir when one is explicitly set.
+  // An override means an isolated environment (tests, fixtures): only walk the real codex dir when one is explicitly set.
   if (process.env.TERSIO_SESSIONS_DIR === undefined || process.env.TERSIO_CODEX_DIR !== undefined) {
     walkJsonl(codexSessionsDir(), files, 2000);
   }
@@ -424,7 +421,7 @@ export function importSessionTokens(): SessionTokens {
     }, text, hostOfSessionFile(file));
   }
   accum.recent.sort((a, b) => b.t - a.t);
-  return { messages: accum.messages, totals: accum.totals, byModel: accum.byModel, byDay: accum.byDay, byDayModel: accum.byDayModel, byTool: accum.byTool, byModelMessages: accum.byModelMessages, costMeasured: accum.costMeasured, recent: accum.recent.slice(0, RECENT_LIMIT) };
+  return { messages: accum.messages, totals: accum.totals, byModel: accum.byModel, byDay: accum.byDay, byDayModel: accum.byDayModel, byTool: accum.byTool, byModelMessages: accum.byModelMessages, byHost: accum.byHost, costMeasured: accum.costMeasured, recent: accum.recent.slice(0, RECENT_LIMIT) };
 }
 
 // Which agent wrote a session file, from the directory it sits in.
@@ -432,6 +429,7 @@ export function hostOfSessionFile(file: string): string {
   const norm = file.replace(/\\/g, '/');
   if (norm.includes('/.omp/')) return 'omp';
   if (norm.includes('/.codex/')) return 'codex';
+  if (norm.includes('/opencode/')) return 'opencode';
   return 'pi';
 }
 
@@ -540,8 +538,8 @@ export function readRtkRecallDiagnostics(binary: string | null = resolveRtkBinar
   try {
     const configPath = process.env.RTK_CONFIG
       || (process.platform === 'darwin'
-        ? path.join(os.homedir(), 'Library', 'Application Support', 'rtk', 'config.toml')
-        : path.join(process.env.XDG_DATA_HOME || path.join(os.homedir(), '.local', 'share'), 'rtk', 'config.toml'));
+        ? path.join(homeDir(), 'Library', 'Application Support', 'rtk', 'config.toml')
+        : path.join(process.env.XDG_DATA_HOME || path.join(homeDir(), '.local', 'share'), 'rtk', 'config.toml'));
     let config = '';
     try { config = fs.readFileSync(configPath, 'utf8'); } catch { /* use RTK CLI fallback */ }
     const modeMatch = /^\s*mode\s*=\s*"(sqlite|tee|disabled)"/m.exec(config);
@@ -553,8 +551,7 @@ export function readRtkRecallDiagnostics(binary: string | null = resolveRtkBinar
     return { mode: 'unknown', entries: 0, available: false };
   }
 }
-// Lead binary of a shell string: first segment past `cd` chains and VAR=x
-// assignments. Falls back to `bash`.
+// Lead binary of a shell string: first segment past `cd` chains and VAR=x assignments. Falls back to `bash`.
 const SKIP_HEADS = ['cd', 'echo', 'export', 'true', 'false'];
 export function leadBinary(command: unknown): string {
   if (typeof command !== 'string' || !command.trim()) return 'bash';
@@ -617,8 +614,7 @@ export function readUsage(): UsageRow[] {
   return rows;
 }
 
-// Delete the ledger file and return the rows cleared. Tersio-owned data only:
-// transcripts and the RTK database are never touched.
+// Delete the ledger file and return the rows cleared. Tersio-owned data only: transcripts and the RTK database are never touched.
 export function clearUsageLedger(): number {
   const rows = readUsage().length;
   try {

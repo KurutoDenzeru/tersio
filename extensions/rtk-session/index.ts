@@ -1,7 +1,8 @@
-import { activeModesSummary, getSharedComboState, hasModeState, isComboPresetActive, isOmpSubagentPrompt, lastCustomValue, paintStatusBar, paintableCtx, reconcileSharedComboEntries, sessionEntries, setSharedComboListener, setSharedComboMode, statusUi, systemPromptIncludes } from '../shared/session-state.ts';
+import { getSharedComboState, hasModeState, isOmpSubagentPrompt, lastCustomValue, reconcileSharedComboEntries, sessionEntries, setSharedComboListener, setSharedComboMode, systemPromptIncludes } from '../shared/session-state.ts';
 import { injectPromptText, onHostEvent, setExtensionLabel, stringArrayToolParams } from '../shared/host.ts';
 import { readRtkDefault } from '../shared/plugin-settings.ts';
 import { resolveRtkBinary } from '../lib/utils.ts';
+import { announceStatus } from '../shared/status.ts';
 import type { ExtensionApi, ExtensionCtx, SessionEntry, SystemPromptEvent } from '../shared/types.ts';
 
 const DEFAULT_ENABLED = false;
@@ -26,42 +27,26 @@ const RTK_PROMPT = `RTK guidance active. RTK automatically rewrites eligible Bas
 
 export default function rtkSessionExtension(pi: ExtensionApi): void {
   let enabled = DEFAULT_ENABLED;
-  let isActive = false;
-  let lastCtx: ExtensionCtx | undefined = undefined;
 
   function fail(text: string) {
     return { isError: true as const, content: [{ type: 'text' as const, text }], details: { enabled } };
   }
 
-  function syncStatus(ctx?: ExtensionCtx): void {
-    lastCtx = paintableCtx(lastCtx, ctx);
-    const ui = statusUi(lastCtx);
-    if (!ui) return;
-    // Combo owns the bar when any preset is active; keep ours empty to avoid duplication.
-    if (isComboPresetActive() || !enabled) {
-      ui.setStatus('rtk', undefined);
-      return;
-    }
-    paintStatusBar(ui, 'rtk', '⚡', 'rtk: ON', isActive);
-  }
 
   function setEnabled(next: unknown, ctx?: ExtensionCtx): void {
     enabled = Boolean(next);
     pi.appendEntry?.('rtk-mode', { enabled });
     setSharedComboMode('rtk', enabled);
     setRtkProcessEnabled(enabled);
-    const active = activeModesSummary(getSharedComboState());
-    ctx?.ui?.notify?.(enabled ? `RTK on — compact shell output for this session. Active: ${active}.` : `RTK off. Active: ${active}.`, 'info');
+    announceStatus(ctx);
   }
 
   setExtensionLabel(pi, 'RTK session toggle');
 
-  // Live mirror: a /tersio or /combo switch publishes shared state — adopt
-  // it at once so the next turn and the rtk_run gate see it, no reload.
+  // Live mirror: a /tersio or /combo switch publishes shared state — adopt it at once so the next turn and the rtk_run gate see it, no reload.
   function syncFromShared(state: { rtk: string }): void {
     enabled = state.rtk === 'on';
     setRtkProcessEnabled(enabled);
-    syncStatus();
   }
   setSharedComboListener('rtk', syncFromShared);
   pi.registerCommand?.('rtk', {
@@ -116,17 +101,16 @@ export default function rtkSessionExtension(pi: ExtensionApi): void {
     const entries = sessionEntries(ctx);
     // A subagent's branch has no Tersio entries; reconciling it would wipe shared state.
     if (hasModeState(entries)) reconcileSharedComboEntries(entries);
-    // Persisted session state wins; a fresh session falls back to the
-    // installer/user-configured default (off unless configured).
+    // Persisted session state wins; a fresh session falls back to the installer/user-configured default (off unless configured).
     const persisted = resolveEnabled(entries);
     enabled = typeof persisted === 'boolean' ? persisted : enabled || readRtkDefault();
     setRtkProcessEnabled(enabled);
-    syncStatus(ctx);
+    announceStatus(ctx);
   }
 
+  // Start, resume, and branch all land here, so every session type shows it.
   pi.on('session_start', async (_event, ctx) => {
     restoreEnabled(ctx);
-    ctx?.ui?.notify?.(`RTK loaded: ${enabled ? 'on' : 'off'}`, 'info');
   });
 
   onHostEvent(pi, 'session_branch', async (_event, ctx) => {
@@ -137,14 +121,12 @@ export default function rtkSessionExtension(pi: ExtensionApi): void {
     restoreEnabled(ctx);
   });
 
-  pi.on('agent_start', async (_event, ctx) => {
-    isActive = true;
-    syncStatus(ctx);
+  onHostEvent(pi, 'session_switch', async (_event, ctx) => {
+    restoreEnabled(ctx);
   });
 
-  pi.on('agent_end', async (_event, ctx) => {
-    isActive = false;
-    syncStatus(ctx);
+  onHostEvent(pi, 'session_compact', async (_event, ctx) => {
+    restoreEnabled(ctx);
   });
 
   pi.on<SystemPromptEvent>('before_agent_start', async (event) => {

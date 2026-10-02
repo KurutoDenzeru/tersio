@@ -1,5 +1,4 @@
-// Shared OMP extension host types. Structural — the real `pi` object comes
-// from the OMP runtime; these describe the surface this package touches.
+// Shared OMP extension host types. Structural — the real `pi` object comes from the OMP runtime; these describe the surface this package touches.
 
 export interface ComboState {
   level: string;

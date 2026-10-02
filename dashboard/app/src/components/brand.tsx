@@ -7,7 +7,7 @@ import { STEALTH_MARK } from "@/lib/stealth-mark";
 import { COGNITION_MARK } from "@/lib/cognition-mark";
 import { Icon } from "./icon";
 
-function OpenAIGlyph({ className }: { className: string }) {
+export function OpenAIGlyph({ className = "size-full" }: { className?: string }) {
   // currentColor follows theme ink; the tile keeps black-on-white.
   return (
     <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -16,24 +16,32 @@ function OpenAIGlyph({ className }: { className: string }) {
   );
 }
 
-// Stealth's mark, embedded so the offline dashboard never shows a broken image.
-function StealthGlyph({ className }: { className: string }) {
-  return <img src={STEALTH_MARK} alt="" aria-hidden="true" className={cn(className, "object-contain")} />;
+function maskedGlyph(src: string, color: string): React.CSSProperties {
+  return {
+    backgroundColor: color,
+    WebkitMaskImage: `url("${src}")`,
+    maskImage: `url("${src}")`,
+    maskMode: "luminance",
+    WebkitMaskRepeat: "no-repeat",
+    maskRepeat: "no-repeat",
+    WebkitMaskPosition: "center",
+    maskPosition: "center",
+    WebkitMaskSize: "contain",
+    maskSize: "contain",
+  };
 }
 
-function CognitionGlyph({ className }: { className: string }) {
-  return <img src={COGNITION_MARK} alt="" aria-hidden="true" className={cn(className, "object-contain")} />;
+function MaskedGlyph({ className, src, color = "var(--accent)" }: { className: string; src: string; color?: string }) {
+  return <span className={cn("block", className)} style={maskedGlyph(src, color)} />;
 }
-
-// Blend modes drop the rasters' opaque near-black field, leaving the glyph.
-const RASTER_FIELD_CLS = "mix-blend-multiply invert dark:mix-blend-screen dark:invert-0";
 
 export function BrandSilhouette({ model }: { model: string }) {
   const v = vendorOf(model);
-  const cls = "pointer-events-none absolute -right-6 -bottom-6 size-[88px] select-none opacity-[.06] dark:opacity-[.08]";
+  const cls =
+    "pointer-events-none absolute -right-6 -bottom-6 size-[88px] select-none opacity-[.16] dark:opacity-[.2]";
   if (model === "openai" || v.slug === "openai") {
     return (
-      <span className={cn(cls, "grid place-items-center text-ink")} aria-hidden="true">
+      <span className={cn(cls, "grid place-items-center text-accent")} aria-hidden="true">
         <OpenAIGlyph className="block size-[72px]" />
       </span>
     );
@@ -41,32 +49,27 @@ export function BrandSilhouette({ model }: { model: string }) {
   if (v.slug === "stealth") {
     return (
       <span className={cn(cls, "grid place-items-center")} aria-hidden="true">
-        <StealthGlyph className={cn("block size-[72px]", RASTER_FIELD_CLS)} />
+        <MaskedGlyph className="size-[72px]" src={STEALTH_MARK} />
       </span>
     );
   }
   if (v.slug === "cognition") {
     return (
       <span className={cn(cls, "grid place-items-center")} aria-hidden="true">
-        <CognitionGlyph className={cn("block size-[72px]", RASTER_FIELD_CLS)} />
+        <MaskedGlyph className="size-[72px]" src={COGNITION_MARK} />
       </span>
     );
   }
   if (!v.slug) {
     return (
-      <span className={cn(cls, "text-dim")} aria-hidden="true">
+      <span className={cn(cls, "text-accent")} aria-hidden="true">
         <Icon name="bot" className="block size-[72px]" />
       </span>
     );
   }
   return (
     <span className={cn(cls, "grid place-items-center")} aria-hidden="true">
-      <img
-        src={`https://cdn.simpleicons.org/${v.slug}/white`}
-        alt=""
-        loading="lazy"
-        className="size-[72px] object-contain brightness-0 dark:brightness-100"
-      />
+      <MaskedGlyph className="size-[72px]" src={`https://cdn.simpleicons.org/${v.slug}/white`} />
     </span>
   );
 }
@@ -74,10 +77,10 @@ export function BrandSilhouette({ model }: { model: string }) {
 export function Brandmark({ model, small }: { model: string; small?: boolean }) {
   const v = vendorOf(model);
   const [failed, setFailed] = useState(false);
-  const glyph = small ? "size-3.5" : "size-[18px]";
+  const glyph = small ? "size-[17px]" : "size-[22px]";
   const cls = cn(
-    "grid size-[34px] shrink-0 place-items-center rounded-[10px] text-white",
-    small && "size-7 rounded-lg",
+    "grid size-[40px] shrink-0 place-items-center rounded-[12px] text-white",
+    small && "size-8 rounded-[10px]",
   );
   if (model === "openai" || v.slug === "openai") {
     return (
@@ -86,19 +89,17 @@ export function Brandmark({ model, small }: { model: string; small?: boolean }) 
       </span>
     );
   }
-  // A white tile with the inverted raster, like the OpenAI mark above; the
-  // hairline keeps it from vanishing into a white panel.
   if (v.slug === "stealth") {
     return (
-      <span className={cn(cls, "border border-line")} style={{ background: "#fff" }}>
-        <StealthGlyph className={cn("block invert", glyph.replace("size-[18px]", "size-[14px]"))} />
+      <span className={cn(cls, "border border-line bg-panel text-ink")}>
+        <MaskedGlyph className={glyph} src={STEALTH_MARK} color="currentColor" />
       </span>
     );
   }
   if (v.slug === "cognition" && !failed) {
     return (
-      <span className={cn(cls, "border border-line")} style={{ background: "#fff" }}>
-        <CognitionGlyph className={cn("block invert", glyph.replace("size-[18px]", "size-[14px]"))} />
+      <span className={cn(cls, "border border-line bg-panel")}>
+        <MaskedGlyph className={cn("opacity-90", glyph)} src={COGNITION_MARK} />
       </span>
     );
   }
@@ -106,8 +107,8 @@ export function Brandmark({ model, small }: { model: string; small?: boolean }) 
     return (
       <span
         className={cn(
-          "grid size-[34px] shrink-0 place-items-center rounded-[10px] border border-line bg-transparent text-dim",
-          small && "size-7 rounded-lg",
+          "grid size-[40px] shrink-0 place-items-center rounded-[12px] border border-line bg-transparent text-dim",
+          small && "size-8 rounded-[10px]",
         )}
       >
         <Icon name="bot" className={`grid ${glyph}`} />

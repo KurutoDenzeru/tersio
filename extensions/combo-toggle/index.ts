@@ -6,26 +6,24 @@ import {
   activeModesSummary,
   COMBO_LEVELS,
   getSharedComboState,
-  isComboPresetActive,
+  hasModeState,
   normalizeComboLevel,
-  paintableCtx,
   reconcileSharedComboEntries,
   sessionEntries,
   setSharedComboLevel,
-  statusUi,
   setSharedComboListener,
   setSharedComboMode,
   systemPromptIncludes,
-  themeStatus,
 } from '../shared/session-state.ts';
 import { hostSelect, injectPromptText, onHostEvent, setExtensionLabel } from '../shared/host.ts';
+import { announceStatus } from '../shared/status.ts';
 import {
   isComboSetupComplete,
   readComboDefault,
   readPonytailDefault,
   saveComboSetup,
 } from '../shared/plugin-settings.ts';
-import { findHoistedPackage } from '../lib/utils.ts';
+import { findHoistedPackage, isPiProcess } from '../lib/utils.ts';
 import type { ComboState, ExtensionApi, ExtensionCtx, SystemPromptEvent } from '../shared/types.ts';
 
 const EXTENSION_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -40,12 +38,8 @@ export function ponytailFallback(mode: string): string {
   return `🦥 PONYTAIL MODE ACTIVE — level: ${mode}\n${intensity} Understand the path first and fix root causes, not symptoms. Prefer the standard library and YAGNI. Avoid speculative abstractions and dependencies. Preserve correctness. Verify changed behavior.`;
 }
 
-function levelSummary(state: ComboState): string {
-  return `caveman=${state.caveman} rtk=${state.rtk} ponytail=${state.ponytail}`;
-}
 
-// Ponytail is hoisted, so one upward walk covers every install layout. The hook
-// is CommonJS, so both namespace shapes are tried.
+// Ponytail is hoisted, so one upward walk covers every install layout. The hook is CommonJS, so both namespace shapes are tried.
 async function loadPonytailInstructions(mode: string): Promise<string> {
   const installed = findHoistedPackage('@dietrichgebert/ponytail', EXTENSION_DIR, 'hooks', 'ponytail-instructions.js');
   if (installed) {
@@ -64,31 +58,9 @@ async function loadPonytailInstructions(mode: string): Promise<string> {
 export default function comboToggleExtension(pi: ExtensionApi): void {
   setExtensionLabel(pi, 'Combo session toggle (all 3 add-ons)');
 
-  let lastCtx: ExtensionCtx | undefined = undefined;
   let setupPrompted = false;
   let lastInjected: string | undefined = undefined;
 
-  function syncStatus(ctx?: ExtensionCtx): void {
-    lastCtx = paintableCtx(lastCtx, ctx);
-    const ui = statusUi(lastCtx);
-    if (!ui) return;
-    // One unified bar replaces the per-extension bars while a preset is active.
-    if (!isComboPresetActive()) {
-      ui.setStatus('combo', undefined);
-      return;
-    }
-    // Read the live bridge, not a cache: siblings reconcile it first.
-    const state = getSharedComboState();
-    const c0 = state.caveman.toUpperCase();
-    const r = state.rtk.toUpperCase();
-    const p = state.ponytail.toUpperCase();
-    const lvl = state.level.toUpperCase();
-    ui.setStatus('combo', themeStatus(ui, '🧩', `combo ${lvl}: 🪨caveman=${c0} ⚡rtk=${r} 🦥ponytail=${p}`, true));
-    // Our bar is canonical for the preset, so clear any sibling bar.
-    ui.setStatus('caveman', undefined);
-    ui.setStatus('rtk', undefined);
-    ui.setStatus('ponytail', undefined);
-  }
 
   // Siblings restore from these entries, so the fallback must write them too.
   function persistPreset(level: string): void {
@@ -99,17 +71,13 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
     pi.appendEntry?.('combo-level', { level });
   }
 
-  function useState(state: Readonly<ComboState>, ctx?: ExtensionCtx): Readonly<ComboState> {
-    syncStatus(ctx);
-    return state;
-  }
-
   function reconcile(ctx?: ExtensionCtx): Readonly<ComboState> {
     if (!ctx?.hasUI) return getSharedComboState();
-    return useState(reconcileSharedComboEntries(sessionEntries(ctx)), ctx);
+    return reconcileSharedComboEntries(sessionEntries(ctx));
   }
   function listen(ctx?: ExtensionCtx): void {
-    if (ctx?.hasUI) setSharedComboListener('combo', useState);
+    if (!ctx?.hasUI) return;
+    setSharedComboListener('combo', (state) => { announceStatus(ctx); return state; });
   }
 
   function track(ctx?: ExtensionCtx): void {
@@ -124,11 +92,8 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
       const arg = String(args || '').trim().toLowerCase();
 
       if (!arg || arg === 'status') {
-        const state = reconcile(ctx);
-        ctx?.ui?.notify?.(
-          `Combo: ${state.level === 'custom' ? 'INACTIVE' : state.level.toUpperCase()} (${levelSummary(state)})`,
-          'info'
-        );
+        reconcile(ctx);
+        announceStatus(ctx);
         return;
       }
 
@@ -153,13 +118,8 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
       }
 
       persistPreset(level);
-      useState(setSharedComboLevel(level), ctx);
-
-      const active = activeModesSummary(getSharedComboState());
-      ctx?.ui?.notify?.(
-        level === 'off' ? `Combo off — all tersio modes inactive for this session. Active: ${active}.` : `Combo ${level} on — ${active} active for this session.`,
-        'info'
-      );
+      setSharedComboLevel(level);
+      announceStatus(ctx);
     },
   });
 
@@ -175,42 +135,41 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
     const level = choice || 'off';
     if (saveComboSetup(level) && level !== 'off') {
       persistPreset(level);
-      useState(setSharedComboLevel(level), ctx);
+      setSharedComboLevel(level);
       ctx.ui.notify?.(`Combo default saved: ${level} — ${activeModesSummary(getSharedComboState())} will activate on fresh sessions.`, 'info');
     }
   }
 
   pi.on('session_start', async (_event, ctx) => {
     track(ctx);
-    if (!ctx?.hasUI) syncStatus(ctx);
     await runFirstRunSetup(ctx);
     // The configured default applies only when no persisted mode state exists.
     const entries = sessionEntries(ctx);
-    const hasModeState = entries.some((e) => e?.type === 'custom' && (
-      e.customType === 'combo-level' || e.customType === 'caveman-mode' ||
-      e.customType === 'rtk-mode' || e.customType === 'ponytail-mode'));
-    if (getSharedComboState().level === 'off' && !hasModeState) {
+    const persisted = hasModeState(entries);
+    if (getSharedComboState().level === 'off' && !persisted) {
       const fallback = readComboDefault();
       if (fallback !== 'off') {
         persistPreset(fallback);
-        useState(setSharedComboLevel(fallback), ctx);
-        ctx?.ui?.notify?.(`Combo default applied: ${fallback} — ${activeModesSummary(getSharedComboState())} active for this session.`, 'info');
+        setSharedComboLevel(fallback);
       }
     }
-    // No sibling restores a standalone ponytail default, so apply it here; skip
-    // it when the active preset already writes the same mode.
+    // No sibling restores a standalone ponytail default, so apply it here; skip it when the active preset already writes the same mode.
     if (!entries.some((e) => e?.type === 'custom' && e.customType === 'ponytail-mode')) {
       const ponytailFallback = readPonytailDefault();
       if (ponytailFallback !== 'off' && ponytailFallback !== getSharedComboState().ponytail) {
         pi.appendEntry?.('ponytail-mode', { mode: ponytailFallback });
-        useState(setSharedComboMode('ponytail', ponytailFallback), ctx);
+        setSharedComboMode('ponytail', ponytailFallback);
       }
     }
+    // Announced last, so any default above is reflected.
+    announceStatus(ctx);
   });
 
-  for (const event of ['session_branch', 'session_tree', 'agent_start']) {
+  // Resume, branch, and compaction re-announce; dedupe keeps repeats silent.
+  for (const event of ['session_branch', 'session_tree', 'agent_start', 'session_switch', 'session_compact']) {
     onHostEvent(pi, event, async (_event, ctx) => {
       track(ctx);
+      announceStatus(ctx);
       if (event === 'agent_start') await runFirstRunSetup(ctx);
     });
   }
@@ -218,8 +177,9 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
   pi.on<SystemPromptEvent>('before_agent_start', async (event, ctx) => {
     if (ctx?.hasUI) reconcile(ctx);
     const mode = getSharedComboState().ponytail;
-    // Match the level's own header: the shared phrase alone makes every level
-    // block every other, so a `/combo` level switch is ignored all session.
+    // On pi the upstream ponytail pi-extension is the single injector; it reads these 'ponytail-mode' entries at session start, so Tersio only persists.
+    if (isPiProcess()) return;
+    // Match the level's own header: the shared phrase alone makes every level block every other, so a `/combo` level switch is ignored all session.
     if (mode === 'off' || systemPromptIncludes(event.systemPrompt, `PONYTAIL MODE ACTIVE — level: ${mode}`)) return;
     const instruction = await loadPonytailInstructions(mode);
     // The previous level's block is replaced, not stacked on.

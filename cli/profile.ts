@@ -1,6 +1,5 @@
 // cli/profile.ts — session-start defaults and the display-currency default,
-// stored in ~/.tersio/settings.json. Shared by install and settings.
-import { existsSync, promises as fs } from 'node:fs';
+import { existsSync, promises as fs, readFileSync } from 'node:fs';
 import path from 'node:path';
 import {
   CAVEMAN_DEFAULTS, COMBO_PRESET_MODES, PACKAGE_NAME, PONYTAIL_DEFAULTS,
@@ -12,6 +11,14 @@ import { DEFAULT_CURRENCY, isCurrencyCode } from './currency.ts';
 import type { CurrencyCode } from './currency.ts';
 import { readTextIfExists } from '../extensions/lib/utils.ts';
 import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
+
+function readTextIfExistsSync(file: string): string | null {
+  try {
+    return existsSync(file) ? readFileSync(file, 'utf8') : null;
+  } catch {
+    return null;
+  }
+}
 
 interface Profile {
   comboDefault: string;
@@ -49,13 +56,16 @@ interface StoredSettings {
   subagentMarkers?: unknown;
 }
 
-// Seed once from OMP plugin settings so a pre-~/.tersio install keeps its values.
-async function storedProfile(): Promise<Profile> {
+// Seed once from OMP plugin settings so a pre-~/.tersio install keeps its values. Sync: awaiting let piped stdin arrive before `ask()` attached, so a scripted answer was swallowed and a destructive confirm defaulted to abort.
+function storedProfileSync(): Profile {
   const base = defaultProfile();
-  const stored = (await readTextIfExists(tersioSettingsFile())) !== null
-    ? parseStored(await readTextIfExists(tersioSettingsFile()))
-    : parseStored(await readTextIfExists(legacyOmpLockPath()));
+  const stored = parseStored(readTextIfExistsSync(tersioSettingsFile()) ?? readTextIfExistsSync(legacyOmpLockPath()));
   if (!stored) return base;
+  applyStored(base, stored);
+  return base;
+}
+
+function applyStored(base: Profile, stored: StoredSettings): void {
   if (typeof stored.comboDefault === 'string' && stored.comboDefault in COMBO_PRESET_MODES) base.comboDefault = stored.comboDefault;
   if (typeof stored.cavemanDefault === 'string' && CAVEMAN_DEFAULTS.has(stored.cavemanDefault)) base.cavemanDefault = stored.cavemanDefault;
   if (typeof stored.rtkDefault === 'boolean') base.rtkDefault = stored.rtkDefault;
@@ -70,7 +80,10 @@ async function storedProfile(): Promise<Profile> {
     // An empty marker would match every turn.
     base.subagentMarkers = stored.subagentMarkers.filter((m): m is string => typeof m === 'string' && m.trim() !== '');
   }
-  return base;
+}
+
+async function storedProfile(): Promise<Profile> {
+  return storedProfileSync();
 }
 
 function legacyOmpLockPath(): string {
@@ -94,8 +107,7 @@ function parseStored(raw: string | null): StoredSettings | null {
   }
 }
 
-// Persist the profile where every host reads it. `omp plugin config get` no
-// longer reports it; `tersio settings` does.
+// Persist the profile where every host reads it. `omp plugin config get` no longer reports it; `tersio settings` does.
 async function writePluginSettings(profile: Profile, options: WriteOptions): Promise<void> {
   const file = tersioSettingsFile();
   const values = {
@@ -122,4 +134,20 @@ function formatProfile(profile: Profile): string {
   return `combo=${profile.comboDefault} (caveman=${profile.cavemanDefault} · rtk=${profile.rtkDefault ? 'on' : 'off'} · ponytail=${profile.ponytailDefault}) · currency=${profile.currency}`;
 }
 
-export { defaultProfile, formatProfile, storedProfile, writePluginSettings, Profile };
+export { defaultProfile, formatProfile, storedProfile, storedProfileSync, writePluginSettings, Profile };
+
+/** The status line the extensions print, read from the persisted profile. */
+export function formatCliStatus(profile: Profile): string {
+  const { comboDefault, cavemanDefault, rtkDefault, ponytailDefault } = profile;
+  if (comboDefault === 'off' && cavemanDefault === 'off' && !rtkDefault && ponytailDefault === 'off') {
+    return '🧩 combo OFF';
+  }
+  const preset = COMBO_PRESET_MODES[comboDefault];
+  const isPreset = preset !== undefined
+    && preset.caveman === cavemanDefault
+    && preset.rtk === rtkDefault
+    && preset.ponytail === ponytailDefault;
+  const level = isPreset ? comboDefault.toUpperCase() : 'CUSTOM';
+  const rtk = rtkDefault ? 'ON' : 'OFF';
+  return `🧩 combo ${level}: 🪨caveman=${cavemanDefault.toUpperCase()} ⚡rtk=${rtk} 🦥ponytail=${ponytailDefault.toUpperCase()}`;
+}
