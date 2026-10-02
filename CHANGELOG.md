@@ -1,5 +1,5 @@
 ## Unreleased
- - **Breaking:** Removes the host status bar. The bar below pi and omp was inconsistent and usually absent, so the status is now a message instead: `🧩 combo MAX: 🪨caveman=ULTRA ⚡rtk=ON 🦥ponytail=ULTRA`. It prints after every mode command and on every session start, resume, branch, and compaction. It is display-only and never enters the model context.
+ - Restores the combo status on the host footer bar: `🧩 combo MAX: 🪨caveman=ULTRA ⚡rtk=ON 🦥ponytail=ULTRA` now paints via `ui.setStatus` on every mode command and session event, instead of a one-shot notify message.
  - Fixes subagent inheritance for Caveman and RTK: the OMP subagent marker now matches the host's real prompt, so a worker no longer runs with both modes silently off. Doctor scans the omp binary and warns when the marker drifts, and `tersio settings markers` overrides it.
  - Lets `rtk_run` fall back to shared state, so a subagent spawned after a mode switch can still use the tool.
  - Lets a Ponytail level switch take effect; the dedupe guard matched a level-agnostic phrase, so `/combo` changes were ignored for the rest of the session.
