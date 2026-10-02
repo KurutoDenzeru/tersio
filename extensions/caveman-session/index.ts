@@ -18,16 +18,11 @@ function readFullRule(): string {
 }
 
 const DEFAULT_MODE = 'off';
-const INSTRUCTIONS: Record<string, string | (() => string)> = {
-  lite: `Caveman lite active for this session.
-Respond concise. Drop pleasantries, filler, and hedging. Keep complete technical substance. Code, commands, paths, errors, commits, and PR text stay normal/exact.`,
-  full: () => `Caveman full active for this session.\n${readFullRule()}`,
-  ultra: `Caveman ultra active for this session.
-Maximum terse prose. Strip conjunctions only when meaning stays clear. State each fact once. Use no invented abbreviations or causal arrows. Keep code, commands, commits, PR text, paths, API names, numbers, units, and errors exact. Drop caveman for security warnings, irreversible actions, ambiguous multi-step sequences, or user confusion.`,
-  'wenyan-lite': `Caveman wenyan-lite active for this session. Use semi-classical terse prose. Keep grammar structure, user language, technical terms, code, commands, paths, API names, numbers, units, and errors exact. Drop caveman when clarity or safety needs normal prose.`,
-  'wenyan-full': `Caveman wenyan-full active for this session. Use maximum classical terseness where meaning stays clear. Use classical sentence patterns, verbs before objects, and optional omitted subjects. Keep user language, technical terms, code, commands, paths, API names, numbers, units, and errors exact. Drop caveman when clarity or safety needs normal prose.`,
-  'wenyan-ultra': `Caveman wenyan-ultra active for this session. Use extreme classical abbreviation while keeping a classical Chinese feel and meaning clear. Keep user language, technical terms, code, commands, paths, API names, numbers, units, and errors exact. Drop caveman when clarity or safety needs normal prose.`,
-};
+
+// Upstream ships one SKILL.md; the level is a directive inside it, so swap only the header.
+function buildInstruction(mode: string): string {
+  return `Caveman ${mode} active for this session.\n${readFullRule()}`;
+}
 
 function resolveMode(entries: SessionEntry[] | null | undefined, fallback: string = DEFAULT_MODE): string {
   return lastCustomValue(entries, 'caveman-mode', (data) => normalizeMode('caveman', data?.mode)) ?? fallback;
@@ -88,8 +83,7 @@ export default function cavemanSessionExtension(pi: ExtensionApi): void {
     const entries = sessionEntries(ctx);
     // A subagent's branch has no Tersio entries; reconciling it would wipe shared state.
     if (hasModeState(entries)) reconcileSharedComboEntries(entries);
-    // Persisted state wins, then a mode already chosen this session, then the
-    // configured default. `off` is the start value, not "unset".
+    // Persisted state wins, then a mode already chosen this session, then the configured default. `off` is the start value, not "unset".
     const persisted = resolveMode(entries, '');
     const alreadyChosen = currentMode !== DEFAULT_MODE;
     currentMode = persisted || (alreadyChosen ? currentMode : normalizeMode('caveman', readCavemanDefault())) || DEFAULT_MODE;
@@ -120,11 +114,8 @@ export default function cavemanSessionExtension(pi: ExtensionApi): void {
   pi.on('before_agent_start', async (event: SystemPromptEvent) => {
     const mode = isOmpSubagentPrompt(event.systemPrompt) ? getSharedComboState().caveman : currentMode;
     if (!mode || mode === 'off') return;
-    const def = INSTRUCTIONS[mode];
-    if (!def) return;
-    const instruction = typeof def === 'function' ? def() : def;
-    // Skip when already present, so a host that re-presents the mutated prompt
-    // cannot stack it; matching the whole instruction keeps upstream rule.md intact.
+    const instruction = buildInstruction(mode);
+    // Match the whole instruction so a re-presented prompt cannot stack it.
     if (systemPromptIncludes(event.systemPrompt, instruction)) return;
     // The previous level's block is replaced, not stacked on.
     const stale = lastInjected;

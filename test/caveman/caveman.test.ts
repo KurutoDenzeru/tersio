@@ -150,7 +150,7 @@ test("legacy plugin default normalizes to wenyan-full and injects rules", async 
 });
 
 test("before_agent_start injects the per-mode instruction, nothing when off", async () => {
-  for (const [mode, pattern] of [["lite", /Caveman lite active/], ["ultra", /Maximum terse prose/], ["wenyan-full", /maximum classical terseness/i], ["wenyan-lite", /semi-classical/i], ["wenyan-ultra", /extreme classical/i]] as const) {
+  for (const [mode, pattern] of [["lite", /Caveman lite active/], ["ultra", /Caveman ultra active/], ["wenyan-full", /Caveman wenyan-full active/i], ["wenyan-lite", /Caveman wenyan-lite active/i], ["wenyan-ultra", /Caveman wenyan-ultra active/i]] as const) {
     resetSharedComboState();
     const { pi, ctx } = harness();
     await pi.commands.get("caveman")!(mode, ctx);
