@@ -1,10 +1,26 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
+import { readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, "../..");
+
+// Keep updater tests offline and deterministic: report the bundled copy as latest.
+vi.mock("../../extensions/lib/utils.ts", async (importOriginal) => {
+  const original = await importOriginal<Record<string, unknown>>();
+  return {
+    ...original,
+    fetchJson: async (url: string) => {
+      if (String(url).includes("ponytail")) {
+        const bundled = JSON.parse(readFileSync(path.join(root, "node_modules", "@dietrichgebert", "ponytail", "package.json"), "utf8")) as { version?: string };
+        return { version: bundled.version, dist: { tarball: "", shasum: "" } };
+      }
+      return (original.fetchJson as (u: string) => Promise<unknown>)(url);
+    },
+  };
+});
 const updaterPath = path.join(root, "extensions", "ai-addons-updater", "index.ts");
 const updaterUrl = new URL("file:///" + updaterPath.replace(/\\/g, "/"));
 

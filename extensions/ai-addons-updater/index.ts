@@ -193,8 +193,9 @@ async function updatePonytail(pi: AddonUpdaterPi, ctx: AddonUpdaterCtx, dryRun =
     return report(ctx, `Ponytail: cannot fetch npm metadata: ${(e as Error).message}`, 'warning');
   }
   const remoteVer = meta.version;
-  if (!remoteVer || !meta.dist?.tarball) return report(ctx, 'Ponytail: npm metadata has no version/tarball.', 'warning');
+  if (!remoteVer) return report(ctx, 'Ponytail: npm metadata has no version.', 'warning');
   if (localVer === remoteVer) return report(ctx, `Ponytail up to date: local=${localVer} latest=${remoteVer}`, 'info');
+  if (!meta.dist?.tarball) return report(ctx, 'Ponytail: npm metadata has no tarball.', 'warning');
 
   if (dryRun) return report(ctx, `Ponytail dry-run: would install ${remoteVer} over ${localVer || '—'} at ${path.dirname(localPkg)}.`, 'info');
 
