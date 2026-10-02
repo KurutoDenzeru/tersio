@@ -59,7 +59,7 @@ export default function tersioCommandsExtension(pi: ExtensionApi): void {
 
       if (!sub || sub === 'status') {
         if (ctx?.hasUI) reconcileSharedComboEntries(sessionEntries(ctx));
-        announceStatus(ctx, { value: '' });
+        announceStatus(ctx);
         return;
       }
       if (sub === 'help') {

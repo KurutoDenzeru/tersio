@@ -27,7 +27,6 @@ const RTK_PROMPT = `RTK guidance active. RTK automatically rewrites eligible Bas
 
 export default function rtkSessionExtension(pi: ExtensionApi): void {
   let enabled = DEFAULT_ENABLED;
-  const lastStatus = { value: '' };
 
   function fail(text: string) {
     return { isError: true as const, content: [{ type: 'text' as const, text }], details: { enabled } };
@@ -39,7 +38,7 @@ export default function rtkSessionExtension(pi: ExtensionApi): void {
     pi.appendEntry?.('rtk-mode', { enabled });
     setSharedComboMode('rtk', enabled);
     setRtkProcessEnabled(enabled);
-    announceStatus(ctx, lastStatus);
+    announceStatus(ctx);
   }
 
   setExtensionLabel(pi, 'RTK session toggle');
@@ -106,7 +105,7 @@ export default function rtkSessionExtension(pi: ExtensionApi): void {
     const persisted = resolveEnabled(entries);
     enabled = typeof persisted === 'boolean' ? persisted : enabled || readRtkDefault();
     setRtkProcessEnabled(enabled);
-    announceStatus(ctx, lastStatus);
+    announceStatus(ctx);
   }
 
   // Start, resume, and branch all land here, so every session type shows it.

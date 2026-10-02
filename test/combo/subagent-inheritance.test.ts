@@ -79,6 +79,7 @@ function context(entries: SessionEntry[] = [], hasUI = false): TestCtx {
     sessionManager: { getBranch: () => entries },
     ui: {
       notify(message) { notifications.push(message); },
+      setStatus(_n: string, v: string | undefined) { if (v !== undefined) notifications.push(v); },
     },
     async reload() { },
   };

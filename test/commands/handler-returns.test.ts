@@ -79,7 +79,7 @@ test("a combo change is persisted before the host is told about it", async () =>
   const pi = createPi();
   const order: string[] = [];
   pi.appendEntry = (customType: string) => { order.push(`entry:${customType}`); };
-  pi.ui.notify = (message: string) => { order.push(`notify:${message}`); };
+  pi.ui = { ...pi.ui, notify: (message: string) => { order.push(`notify:${message}`); }, setStatus: (_n: string, v?: string) => { if (v !== undefined) order.push(`setstatus:${v}`); } } as unknown as typeof pi.ui;
   install(pi);
 
   await pi.commands.get("combo")?.("balanced", { ...ctx, hasUI: true, ui: pi.ui });
@@ -93,5 +93,5 @@ test("a combo change is persisted before the host is told about it", async () =>
   ]);
   // The host hears about it once, and only with the settled state.
   const notices = order.slice(4);
-  expect(notices).toEqual(["notify:🧩 combo BALANCED: 🪨caveman=FULL ⚡rtk=ON 🦥ponytail=FULL"]);
+  expect(notices).toEqual(["setstatus:🧩 combo BALANCED: 🪨caveman=FULL ⚡rtk=ON 🦥ponytail=FULL"]);
 });

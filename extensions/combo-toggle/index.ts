@@ -60,7 +60,6 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
 
   let setupPrompted = false;
   let lastInjected: string | undefined = undefined;
-  const lastStatus = { value: '' };
 
 
   // Siblings restore from these entries, so the fallback must write them too.
@@ -78,7 +77,7 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
   }
   function listen(ctx?: ExtensionCtx): void {
     if (!ctx?.hasUI) return;
-    setSharedComboListener('combo', (state) => { announceStatus(ctx, lastStatus); return state; });
+    setSharedComboListener('combo', (state) => { announceStatus(ctx); return state; });
   }
 
   function track(ctx?: ExtensionCtx): void {
@@ -94,7 +93,7 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
 
       if (!arg || arg === 'status') {
         reconcile(ctx);
-        announceStatus(ctx, { value: '' });
+        announceStatus(ctx);
         return;
       }
 
@@ -120,7 +119,7 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
 
       persistPreset(level);
       setSharedComboLevel(level);
-      announceStatus(ctx, lastStatus);
+      announceStatus(ctx);
     },
   });
 
@@ -163,14 +162,14 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
       }
     }
     // Announced last, so any default above is reflected.
-    announceStatus(ctx, lastStatus);
+    announceStatus(ctx);
   });
 
   // Resume, branch, and compaction re-announce; dedupe keeps repeats silent.
   for (const event of ['session_branch', 'session_tree', 'agent_start', 'session_switch', 'session_compact']) {
     onHostEvent(pi, event, async (_event, ctx) => {
       track(ctx);
-      announceStatus(ctx, lastStatus);
+      announceStatus(ctx);
       if (event === 'agent_start') await runFirstRunSetup(ctx);
     });
   }

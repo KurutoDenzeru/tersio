@@ -28,7 +28,7 @@ function context(entries: SessionEntry[], notifications: string[]): ExtensionCtx
     hasUI: true,
     sessionManager: { getBranch: () => entries },
     ui: {
-      setStatus() {},
+      setStatus(_n: string, v: string | undefined) { if (v !== undefined) notifications.push(v); },
       notify(message: string) { notifications.push(message); },
     },
   } as ExtensionCtx;

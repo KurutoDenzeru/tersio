@@ -68,7 +68,10 @@ function context(entries: SessionEntry[] = [], hasUI = true): TestCtx {
     hasUI,
     notifications,
     sessionManager: { getBranch: () => entries },
-    ui: { notify(message) { notifications.push(message); } },
+    ui: {
+    notify(message) { notifications.push(message); },
+    setStatus(_name, value) { if (value !== undefined) notifications.push(value); },
+  },
     async reload() { },
   };
 }
@@ -119,7 +122,7 @@ test("every session event announces the status, and an unchanged state stays sil
       "🧩 combo BALANCED: 🪨caveman=FULL ⚡rtk=ON 🦥ponytail=FULL",
     ]);
 
-    // A second restore of the same state must not repeat the line.
+    // A second restore of the same state repaints nothing new on the bar.
     const repeat = context(entries);
     const worker2 = instantiate(comboToggleExtension, entries);
     await fire(worker2, event, repeat);

@@ -36,7 +36,6 @@ function isOffCommand(text: unknown): boolean {
 export default function cavemanSessionExtension(pi: ExtensionApi): void {
   let currentMode = DEFAULT_MODE;
   let lastInjected: string | undefined = undefined;
-  const lastStatus = { value: '' };
 
   function setMode(mode: string, ctx?: ExtensionCtx): boolean {
     const normalized = normalizeMode('caveman', mode);
@@ -44,7 +43,7 @@ export default function cavemanSessionExtension(pi: ExtensionApi): void {
     currentMode = normalized;
     pi.appendEntry?.('caveman-mode', { mode: normalized });
     setSharedComboMode('caveman', normalized);
-    announceStatus(ctx, lastStatus);
+    announceStatus(ctx);
     return true;
   }
 
@@ -65,7 +64,7 @@ export default function cavemanSessionExtension(pi: ExtensionApi): void {
         return;
       }
       if (arg === 'status') {
-        announceStatus(ctx, { value: '' });
+        announceStatus(ctx);
         return;
       }
       if (!setMode(arg, ctx)) {
@@ -87,7 +86,7 @@ export default function cavemanSessionExtension(pi: ExtensionApi): void {
     const persisted = resolveMode(entries, '');
     const alreadyChosen = currentMode !== DEFAULT_MODE;
     currentMode = persisted || (alreadyChosen ? currentMode : normalizeMode('caveman', readCavemanDefault())) || DEFAULT_MODE;
-    announceStatus(ctx, lastStatus);
+    announceStatus(ctx);
   }
 
   // Start, resume, and branch all land here, so every session type shows it.

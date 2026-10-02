@@ -48,7 +48,7 @@ function ctxWithReloadCounter() {
   let reloaded = 0;
   const ctx = {
     hasUI: true,
-    ui: { notify: (m: string) => { notifications.push(m); } },
+    ui: { notify: (m: string) => { notifications.push(m); }, setStatus: (_n: string, v: string | undefined) => { if (v !== undefined) notifications.push(v); } },
     sessionManager: { getBranch: () => [] },
     reload: async () => { reloaded += 1; },
   } as unknown as ExtensionCtx;

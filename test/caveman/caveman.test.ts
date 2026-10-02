@@ -43,7 +43,7 @@ function harness(entries: SessionEntry[] = []): { pi: TestPi; ctx: TestCtx } {
     hasUI: true,
     notifications,
     sessionManager: { getBranch: () => entries },
-    ui: { setStatus() {}, notify(message: string) { notifications.push(message); } },
+    ui: { setStatus(_n: string, v: string | undefined) { if (v !== undefined) notifications.push(v); }, notify(message: string) { notifications.push(message); } },
   };
   return { pi: { commands, handlers }, ctx: ctx as TestCtx };
 }
