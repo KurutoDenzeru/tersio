@@ -59,7 +59,7 @@ function RecentTip({ r, money }: { r: RecentRequestRow; money: (v: number) => st
   );
 }
 
-function StatusBadge({ r }: { r: RecentRequestRow }) {
+export function StatusBadge({ r }: { r: { st: string; code?: number } }) {
   return (
     <Badge variant={r.st === "error" ? "destructive" : r.st === "aborted" ? "outline" : "success"}>
       {statusLabel(r)}

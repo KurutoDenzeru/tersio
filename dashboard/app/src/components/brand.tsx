@@ -7,7 +7,7 @@ import { STEALTH_MARK } from "@/lib/stealth-mark";
 import { COGNITION_MARK } from "@/lib/cognition-mark";
 import { Icon } from "./icon";
 
-function OpenAIGlyph({ className }: { className: string }) {
+export function OpenAIGlyph({ className = "size-full" }: { className?: string }) {
   // currentColor follows theme ink; the tile keeps black-on-white.
   return (
     <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">

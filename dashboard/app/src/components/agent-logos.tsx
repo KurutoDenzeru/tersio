@@ -1,6 +1,6 @@
 // Agent brand marks, shared by the settings agent list and the recent-requests
 // Agent column so both render the same logo for the same host.
-import { cn } from "cn";
+import { OpenAIGlyph } from "./brand";
 
 // Black-on-transparent PNG masked to currentColor; inlined for file:// export.
 const OMP_LOGO =
@@ -39,19 +39,6 @@ export function PiLogo({ className = "size-full" }: { className?: string }) {
   );
 }
 
-// No official Codex mark ships in this app, so rather than draw something that
-// pretends to be one, fall back to a plain monogram tile.
-function MonogramLogo({ label, className }: { label: string; className?: string }) {
-  return (
-    <span
-      aria-hidden="true"
-      className={cn("mono grid size-full place-items-center rounded-[6px] bg-track text-[9px] font-bold tracking-tight text-dim", className)}
-    >
-      {label}
-    </span>
-  );
-}
-
 function OpencodeLogo({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" className={className} fill="currentColor">
@@ -62,7 +49,7 @@ function OpencodeLogo({ className }: { className?: string }) {
 
 export function AgentLogo({ host, className }: { host?: string; className?: string }) {
   if (host === "omp") return <OmpLogo className={className} />;
-  if (host === "codex") return <MonogramLogo label="CX" className={className} />;
+  if (host === "codex") return <OpenAIGlyph className={className} />;
   if (host === "opencode") return <OpencodeLogo className={className} />;
   return <PiLogo className={className} />;
 }

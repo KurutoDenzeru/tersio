@@ -12,11 +12,11 @@ import {
   fmt,
   fmtShort,
   modelTotal,
-  relAgePrecise,
   topModels,
   vendorOf,
 } from "@/lib/format";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Progress, ProgressIndicator, ProgressTrack } from "@/components/ui/progress";
 import type { UsageReport } from "@/lib/data";
 import { AgentLogo } from "./agent-logos";
 import { BrandSilhouette, Brandmark } from "./brand";
@@ -209,33 +209,6 @@ function TokenMixChart({ parts, logos = false }: { parts: Array<{ label: string;
           </div>
         ))}
       </div>
-    </div>
-  );
-}
-
-// Last-N token bars for one model, newest-first input sorted oldest→newest.
-function runsFor(data: UsageReport | null, m: string, n: number): Array<{ t: number; v: number }> {
-  if (!data) return [];
-  return data.recent
-    .filter((r) => r.m === m)
-    .sort((a, b) => a.t - b.t)
-    .slice(-n)
-    .map((r) => ({ t: r.t, v: r.i + r.o + (r.cr ?? 0) + (r.cw ?? 0) }));
-}
-
-function RunsMini({ runs }: { runs: Array<{ t: number; v: number }> }) {
-  if (runs.length === 0) return <span className="text-dim">–</span>;
-  const max = Math.max(1, ...runs.map((r) => r.v));
-  return (
-    <div className="flex h-[26px] items-end gap-[2px]" aria-label={`${runs.length} recent runs`} role="img">
-      {runs.map((r, i) => (
-        <div
-          key={`${r.t}-${i}`}
-          className="w-[5px] rounded-[1.5px] bg-accent/70"
-          style={{ height: `${Math.max(8, Math.round((r.v / max) * 100))}%` }}
-          title={`${new Date(r.t).toLocaleString()} · ${fmtShort(r.v)} tokens`}
-        />
-      ))}
     </div>
   );
 }
@@ -445,6 +418,7 @@ export function Models({ data, money }: { data: UsageReport | null; money: (v: n
   );
   const { pages, page: p, range } = usePager(tops.length, per, page);
   const rows = tops.slice((p - 1) * per, p * per);
+  const top = rows.length ? Math.max(1, ...rows.map((m) => modelTotal(byModel, m))) : 0;
 
   return (
     <>
@@ -519,33 +493,29 @@ export function Models({ data, money }: { data: UsageReport | null; money: (v: n
         </CardHeader>
         <CardContent>
         {tops.length > 0 ? (
-          <div className="overflow-y-auto overscroll-contain [scrollbar-color:var(--line)_transparent] [scrollbar-width:thin]">
-            <Table className="mono table-fixed text-[13px]" id="modelsTable">
-              <colgroup><col /><col style={{ width: 84 }} /><col style={{ width: 96 }} /><col style={{ width: 88 }} /><col style={{ width: 104 }} /><col style={{ width: 150 }} /><col style={{ width: 140 }} /></colgroup>
+          <div className="overflow-x-auto overflow-y-auto overscroll-contain [scrollbar-color:var(--line)_transparent] [scrollbar-width:thin]">
+            <Table className="mono min-w-[640px] table-fixed text-[13px]" id="modelsTable">
+              <colgroup><col /><col style={{ width: 140 }} /><col style={{ width: 82 }} /><col style={{ width: 92 }} /><col style={{ width: 140 }} /></colgroup>
               <TableHeader className="[&_tr]:text-left [&_tr]:text-[11px] [&_tr]:uppercase [&_tr]:tracking-[0.14em] [&_tr]:text-dim">
                 <TableRow>
                   <TableHead>Model</TableHead>
                   <TableHead className="text-right">Tokens</TableHead>
                   <TableHead className="text-right">Requests</TableHead>
                   <TableHead className="text-right">Cost</TableHead>
-                  <TableHead>Last run</TableHead>
-                  <TableHead>Last 20 runs</TableHead>
+                  <TableHead>Share</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {rows.map((m) => {
                   const mv = modelTotal(byModel, m);
-                  const runs = runsFor(data, m, 20);
-                  const last = runs.length ? runs[runs.length - 1].t : undefined;
-                  const lastHost = last !== undefined ? data?.recent.find((r) => r.m === m && r.t === last)?.h : undefined;
                   return (
                     <HoverTip key={m} content={data ? <ModelTip m={m} data={data} money={money} /> : "–"}>
                       <TableRow className="cursor-pointer hover:bg-track hover:shadow-tersio" onClick={() => setOpen(m)}>
                         <TableCell className="min-w-0 truncate py-2.5 pr-3">
-                          <span className="mr-2 inline-flex align-[-3px]"><Brandmark model={m} small /></span>
-                          {displayModel(m)}
+                          <span className="mr-2.5 inline-flex align-middle"><Brandmark model={m} small /></span>
+                          <span className="align-middle">{displayModel(m)}</span>
                         </TableCell>
-                        <TableCell className="whitespace-nowrap py-2.5 pr-3 text-right">
+                        <TableCell className="whitespace-nowrap py-2.5 pr-3 text-right" title={fmtShort(mv)}>
                           {fmt(mv)}
                         </TableCell>
                         <TableCell className="whitespace-nowrap py-2.5 pr-3 text-right text-dim">
@@ -554,16 +524,12 @@ export function Models({ data, money }: { data: UsageReport | null; money: (v: n
                         <TableCell className="whitespace-nowrap py-2.5 pr-3 text-right text-dim">
                           {money(data?.byModelUsd[m] ?? 0)}
                         </TableCell>
-                        <TableCell className="whitespace-nowrap py-2.5 pr-3 text-dim">
-                          {last !== undefined ? (
-                            <span className="inline-flex items-center gap-1.5">
-                              {lastHost ? <span className="grid size-4 place-items-center"><AgentLogo host={lastHost} /></span> : null}
-                              {relAgePrecise(last)}
-                            </span>
-                          ) : "–"}
-                        </TableCell>
                         <TableCell className="py-2.5">
-                          <RunsMini runs={runs} />
+                          <Progress value={top ? Math.round((mv / top) * 100) : 0} className="w-full">
+                            <ProgressTrack className="bg-track">
+                              <ProgressIndicator className="bg-accent" />
+                            </ProgressTrack>
+                          </Progress>
                         </TableCell>
                       </TableRow>
                     </HoverTip>
