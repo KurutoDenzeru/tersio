@@ -59,6 +59,7 @@ export interface UsageReport {
   byModelUsd: Record<string, number>;
   byModelBucketUsd: Record<string, TokenBreakdown>;
   byModelMessages: Record<string, number>;
+  byHost: Record<string, Record<string, TokenBreakdown>>;
   byDay: Record<string, TokenBreakdown>;
   byDayModel: Record<string, Record<string, number>>;
   byTool: Array<[string, number]>;
@@ -129,8 +130,15 @@ async function getJSON<T>(path: string): Promise<T> {
   return (await res.json()) as T;
 }
 
+function normalizeReport(d: UsageReport): UsageReport {
+  return { ...d, byHost: d.byHost ?? {} };
+}
+
 export function useDashboardData(): { data: UsageReport | null; loading: boolean; status: string | null } {
-  const [data, setData] = useState<UsageReport | null>(() => snap()?.data ?? null);
+  const [data, setData] = useState<UsageReport | null>(() => {
+    const s = snap()?.data;
+    return s ? normalizeReport(s) : null;
+  });
   const [status, setStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState(() => !isFileExport() && !snap()?.data);
   const lastJson = useRef<string>(data ? JSON.stringify(data) : "");
@@ -151,8 +159,9 @@ export function useDashboardData(): { data: UsageReport | null; loading: boolean
   const load = useCallback(async () => {
     void loadStatus();
     try {
-      const d = await getJSON<UsageReport>("data.json");
-      const json = JSON.stringify(d);
+      const raw = await getJSON<UsageReport>("data.json");
+      const d = normalizeReport(raw);
+      const json = JSON.stringify(raw);
       if (json === lastJson.current) return;
       lastJson.current = json;
       setData(d);

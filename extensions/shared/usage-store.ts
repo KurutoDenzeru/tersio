@@ -69,7 +69,7 @@ function query(db: string, sql: string): string[][] {
 }
 
 // Bump on a parse change: unchanged transcripts are never re-read.
-const PARSER_VERSION = '6';
+const PARSER_VERSION = '8';
 
 function ensureSchema(db: string): void {
   fs.mkdirSync(path.dirname(db), { recursive: true });
@@ -459,6 +459,7 @@ export function readUsageDb(): StoredUsage | null {
       byDayModel: accum.byDayModel,
       byTool: accum.byTool,
       byModelMessages: accum.byModelMessages,
+      byHost: accum.byHost,
       costMeasured: accum.costMeasured,
       recent: accum.recent.slice(0, RECENT_LIMIT),
     },

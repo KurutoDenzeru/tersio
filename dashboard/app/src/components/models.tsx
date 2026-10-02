@@ -16,9 +16,32 @@ import {
   vendorOf,
 } from "@/lib/format";
 import type { UsageReport } from "@/lib/data";
+import { AgentLogo } from "./agent-logos";
 import { BrandSilhouette, Brandmark } from "./brand";
 import { EmptyState, HoverTip, PageButtons, PerPage, usePager } from "./common";
 import { Icon } from "./icon";
+
+const HOST_COLOR: Record<string, string> = {
+  pi: "#f09082",
+  omp: "#a78bfa",
+  codex: "#34d399",
+  opencode: "#22d3ee",
+};
+
+const HOST_LABEL: Record<string, string> = {
+  pi: "pi",
+  omp: "OMP",
+  codex: "Codex",
+  opencode: "OpenCode",
+};
+
+function hostColor(host: string): string {
+  return HOST_COLOR[host] ?? "var(--dim)";
+}
+
+function hostLabel(host: string): string {
+  return HOST_LABEL[host] ?? host;
+}
 
 function ModelTip({ m, data, money }: { m: string; data: UsageReport; money: (v: number) => string }) {
   const b = data.byModel[m] ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
@@ -115,7 +138,7 @@ function AreaChart({ vals, days }: { vals: number[]; days: string[] }) {
   );
 }
 
-function TokenMixChart({ parts }: { parts: Array<{ label: string; v: number; color: string }> }) {
+function TokenMixChart({ parts, logos = false }: { parts: Array<{ label: string; v: number; color: string; host?: string }>; logos?: boolean }) {
   const total = parts.reduce((sum, part) => sum + part.v, 0) || 1;
   const data = parts.map((part) => ({
     ...part,
@@ -172,7 +195,13 @@ function TokenMixChart({ parts }: { parts: Array<{ label: string; v: number; col
       <div className="grid grid-cols-2 gap-x-5 gap-y-2 text-[11px]">
         {data.map((part) => (
           <div key={part.label} className="flex min-w-0 items-center gap-2">
-            <span className="size-2 shrink-0 rounded-full" style={{ background: part.color }} />
+            {logos && part.host ? (
+              <span className="grid size-3.5 shrink-0 place-items-center" style={{ color: part.color }}>
+                <AgentLogo host={part.host} />
+              </span>
+            ) : (
+              <span className="size-2 shrink-0 rounded-full" style={{ background: part.color }} />
+            )}
             <span className="truncate text-dim">{part.label}</span>
             <span className="ml-auto font-mono tabular-nums text-foreground">{part.share.toFixed(1)}%</span>
           </div>
@@ -213,6 +242,16 @@ function ModelDialog({ m, data, money, onClose }: { m: string | null; data: Usag
   const sliced = span === "all" ? full : full.slice(Math.max(0, full.length - Number(span)));
   const days = sliced.map((p) => p.day);
   const vals = sliced.map((p) => p.v);
+  // Keep zero-token hosts: the agent is known even with no counts.
+  const hostParts = Object.entries(data.byHost?.[m] ?? {})
+    .map(([host, hb]) => ({
+      label: hostLabel(host),
+      host,
+      v: hb.input + hb.output + hb.cacheRead + hb.cacheWrite,
+      color: hostColor(host),
+    }))
+    .sort((a, c) => c.v - a.v);
+  const hostTokenTotal = hostParts.reduce((a, p) => a + p.v, 0);
   const active = vals.filter((x) => x > 0).length;
   const trend = (() => {
     const all = full.map((p) => p.v);
@@ -321,25 +360,45 @@ function ModelDialog({ m, data, money, onClose }: { m: string | null; data: Usag
               </div>
             </CardContent>
           </Card>
-          <Card className="gap-0 bg-panel [--card-spacing:--spacing(3.5)]">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-1.5 text-[13px] font-bold tracking-[-0.01em]">
-                <Icon name="chart-pie" className="size-4 shrink-0 text-dim" />
-                Token mix
-              </CardTitle>
-              <CardDescription className="mono text-[11px] uppercase tracking-[.12em] text-dim">Input vs output vs cache</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <TokenMixChart
-                parts={[
-                  { label: "Input", v: b.input, color: "var(--accent)" },
-                  { label: "Output", v: b.output, color: "#818cf8" },
-                  { label: "Cache read", v: b.cacheRead, color: "#22d3ee" },
-                  { label: "Cache write", v: b.cacheWrite, color: "var(--dim)" },
-                ]}
-              />
-            </CardContent>
-          </Card>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Card className="gap-0 bg-panel [--card-spacing:--spacing(3.5)]">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-1.5 text-[13px] font-bold tracking-[-0.01em]">
+                  <Icon name="chart-pie" className="size-4 shrink-0 text-dim" />
+                  Token mix
+                </CardTitle>
+                <CardDescription className="mono text-[11px] uppercase tracking-[.12em] text-dim">Input vs output vs cache</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <TokenMixChart
+                  parts={[
+                    { label: "Input", v: b.input, color: "var(--accent)" },
+                    { label: "Output", v: b.output, color: "#818cf8" },
+                    { label: "Cache read", v: b.cacheRead, color: "#22d3ee" },
+                    { label: "Cache write", v: b.cacheWrite, color: "var(--dim)" },
+                  ]}
+                />
+              </CardContent>
+            </Card>
+            <Card className="gap-0 bg-panel [--card-spacing:--spacing(3.5)]">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-1.5 text-[13px] font-bold tracking-[-0.01em]">
+                  <Icon name="bot" className="size-4 shrink-0 text-dim" />
+                  Agents
+                </CardTitle>
+                <CardDescription className="mono text-[11px] uppercase tracking-[.12em] text-dim">
+                  {hostTokenTotal > 0 ? "Which agent ran this model" : "Agent recorded, no tokens reported"}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {hostParts.length === 0 ? (
+                  <p className="mono py-6 text-center text-[11px] uppercase tracking-[.12em] text-dim">Agent not recorded</p>
+                ) : (
+                  <TokenMixChart parts={hostParts} logos />
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </DialogContent>
     </Dialog>

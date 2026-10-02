@@ -42,6 +42,7 @@ export interface UsageReport {
   byModelUsd: Record<string, number>;
   byModelBucketUsd: Record<string, { input: number; output: number; cacheRead: number; cacheWrite: number }>;
   byModelMessages: Record<string, number>;
+  byHost: Record<string, Record<string, TokenBreakdown>>;
   byDay: Record<string, TokenBreakdown>;
   byDayModel: Record<string, Record<string, number>>;
   byTool: Array<[string, number]>;
@@ -120,6 +121,7 @@ export function summarizeUsage(rows: UsageRow[]): UsageReport {
     byModelUsd,
     byModelBucketUsd,
     byModelMessages: session.byModelMessages,
+    byHost: session.byHost,
     byDay: session.byDay,
     byDayModel: session.byDayModel,
     byTool,

@@ -52,9 +52,17 @@ function MonogramLogo({ label, className }: { label: string; className?: string 
   );
 }
 
-/** The brand mark for a session host, sized to its container. */
+function OpencodeLogo({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className={className} fill="currentColor">
+      <path d="M12 2 2 7v10l10 5 10-5V7L12 2Zm0 2.3 7.5 3.8L12 11.9 4.5 8.1 12 4.3ZM4 9.6l7 3.5v6.6l-7-3.5V9.6Zm9 10.1v-6.6l7-3.5v6.6l-7 3.5Z" />
+    </svg>
+  );
+}
+
 export function AgentLogo({ host, className }: { host?: string; className?: string }) {
   if (host === "omp") return <OmpLogo className={className} />;
   if (host === "codex") return <MonogramLogo label="CX" className={className} />;
+  if (host === "opencode") return <OpencodeLogo className={className} />;
   return <PiLogo className={className} />;
 }

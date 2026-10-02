@@ -88,6 +88,7 @@ export interface SessionTokens {
   byDayModel: Record<string, Record<string, number>>;
   byTool: Record<string, number>;
   byModelMessages: Record<string, number>;
+  byHost: Record<string, Record<string, TokenBreakdown>>;
   costMeasured: number;
   recent: RecentRequest[];
 }
@@ -227,13 +228,14 @@ export interface SessionAccum {
   byDayModel: Record<string, Record<string, number>>;
   byTool: Record<string, number>;
   byModelMessages: Record<string, number>;
+  byHost: Record<string, Record<string, TokenBreakdown>>;
   totals: TokenBreakdown;
   messages: number;
   costMeasured: number;
   recent: RecentRequest[];
 }
 export function newSessionAccum(): SessionAccum {
-  return { byModel: {}, byDay: {}, byDayModel: {}, byTool: {}, byModelMessages: {}, totals: zeroBreakdown(), messages: 0, costMeasured: 0, recent: [] };
+  return { byModel: {}, byDay: {}, byDayModel: {}, byTool: {}, byModelMessages: {}, byHost: {}, totals: zeroBreakdown(), messages: 0, costMeasured: 0, recent: [] };
 }
 export function ingestSessionRow(accum: SessionAccum, model: string, usage: Record<string, unknown>, ts: string | number | undefined, durMs?: unknown, run?: { st: RunStatus; code?: number; note?: string }, toolNames?: string[], host?: string): boolean {
   const watermark = readResetWatermark();
@@ -244,6 +246,11 @@ export function ingestSessionRow(accum: SessionAccum, model: string, usage: Reco
   accum.byModel[key] ??= zeroBreakdown();
   addInto(accum.byModel[key], usage);
   accum.byModelMessages[key] = (accum.byModelMessages[key] ?? 0) + 1;
+  if (host) {
+    const hs = (accum.byHost[key] ??= {});
+    hs[host] ??= zeroBreakdown();
+    addInto(hs[host], usage);
+  }
   const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.floor(v) : 0);
   if (Number.isFinite(ms)) {
     const outcome = run ?? { st: 'completed' as RunStatus };
@@ -423,7 +430,7 @@ export function importSessionTokens(): SessionTokens {
     }, text, hostOfSessionFile(file));
   }
   accum.recent.sort((a, b) => b.t - a.t);
-  return { messages: accum.messages, totals: accum.totals, byModel: accum.byModel, byDay: accum.byDay, byDayModel: accum.byDayModel, byTool: accum.byTool, byModelMessages: accum.byModelMessages, costMeasured: accum.costMeasured, recent: accum.recent.slice(0, RECENT_LIMIT) };
+  return { messages: accum.messages, totals: accum.totals, byModel: accum.byModel, byDay: accum.byDay, byDayModel: accum.byDayModel, byTool: accum.byTool, byModelMessages: accum.byModelMessages, byHost: accum.byHost, costMeasured: accum.costMeasured, recent: accum.recent.slice(0, RECENT_LIMIT) };
 }
 
 // Which agent wrote a session file, from the directory it sits in.
@@ -431,6 +438,7 @@ export function hostOfSessionFile(file: string): string {
   const norm = file.replace(/\\/g, '/');
   if (norm.includes('/.omp/')) return 'omp';
   if (norm.includes('/.codex/')) return 'codex';
+  if (norm.includes('/opencode/')) return 'opencode';
   return 'pi';
 }
 
