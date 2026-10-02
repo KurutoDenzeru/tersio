@@ -88,8 +88,7 @@ export default function tersioCommandsExtension(pi: ExtensionApi): void {
         ctx?.ui?.notify?.(usageSummary(), 'info');
         return;
       }
-      // Removed mode switches redirect to their own commands so only one
-      // spelling exists to learn: /caveman, /rtk, /combo, /ponytail.
+      // Removed mode switches redirect to their own commands so only one spelling exists to learn: /caveman, /rtk, /combo, /ponytail.
       if (sub === 'caveman' || sub === 'rtk' || sub === 'combo' || sub === 'ponytail') {
         ctx?.ui?.notify?.(`Use /${sub} instead — /tersio no longer duplicates mode switches.\n${HELP}`, 'warning');
         return;

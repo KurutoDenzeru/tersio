@@ -21,8 +21,7 @@ interface UninstallOptions {
   host?: HostId;
 }
 
-// The pi tree mirrors the OMP one. Ponytail and rtk stay: a package and a
-// shared binary are not ours to delete.
+// The pi tree mirrors the OMP one. Ponytail and rtk stay: a package and a shared binary are not ours to delete.
 const PONYTAIL_PKG = '@dietrichgebert/ponytail';
 
 const PI_TREE_DIRS = [
@@ -86,8 +85,7 @@ async function removePiLayer(host: HostEntry, shouldDryRun: boolean, shouldRemov
     await removeCopiedPonytailSkills(shouldDryRun);
   }
   await Promise.all(targets.map((t) => removeUninstallTarget(t, shouldDryRun)));
-  // rtk's wiring is a loose file, not one of the tree dirs, so it survived
-  // --remove-rtk on pi while OMP removed its copy.
+  // rtk's wiring is a loose file, not one of the tree dirs, so it survived --remove-rtk on pi while OMP removed its copy.
   if (shouldRemoveRtk) {
     await removeUninstallTarget(rtkWiring, shouldDryRun, false);
     await removeUninstallTarget(path.join(BUN_BIN_DIR, RTK_BINARY_NAME), shouldDryRun, false);
@@ -243,8 +241,7 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
     lines = lines.filter((l) => {
       if (l.includes('combo-toggle') || l.includes('mode-reinforcement')) return false;
       if (shouldRemovePonytail && l.includes('ponytail') && l.includes('pi-extension')) return false;
-      // Our rtk wiring, absolute or relative. Leaving it listed would keep
-      // OMP loading a hook for a package that is no longer installed.
+      // Our rtk wiring, absolute or relative. Leaving it listed would keep OMP loading a hook for a package that is no longer installed.
       const entry = l.trim().replace(/^-\s*/, '').replace(/^['"]|['"]$/g, '');
       if (entry.endsWith(`extensions${path.sep}rtk.ts`) || entry.endsWith('extensions/rtk.ts')) return false;
       return true;

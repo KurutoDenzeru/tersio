@@ -1,5 +1,4 @@
-// extensions/shared/pricing.ts — dynamic model pricing from LiteLLM. Exact id
-// → provider-prefix strip → default, reported with known:false when unpriced.
+// extensions/shared/pricing.ts — dynamic model pricing from LiteLLM. Exact id → provider-prefix strip → default, reported with known:false when unpriced.
 import fs from 'node:fs';
 import path from 'node:path';
 import { tersioDataPath } from '../lib/utils.ts';
@@ -15,8 +14,7 @@ export interface ModelPrice {
 export const DEFAULT_PRICE: ModelPrice = { input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2.5 };
 
 const LITELLM_URL = 'https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json';
-// Readers use the file even when stale, and only one refresh runs per process;
-// `tersio update` still forces a fresh fetch.
+// Readers use the file even when stale, and only one refresh runs per process; `tersio update` still forces a fresh fetch.
 const CACHE_TTL_MS = 7 * 24 * 3600 * 1000;
 let refreshInflight: Promise<boolean> | null = null;
 
@@ -32,8 +30,7 @@ export function pricesUrl(): string {
 
 export interface LivePrices {
   fetchedAt: number;
-  // Compact tuples [input, output, cacheRead, cacheWrite] per LiteLLM id —
-  // the full feed caches to ~1MB instead of multi-MB objects.
+  // Compact tuples [input, output, cacheRead, cacheWrite] per LiteLLM id — the full feed caches to ~1MB instead of multi-MB objects.
   exact: Record<string, [number, number, number, number]>;
   deprecated?: string[];
 }
@@ -42,8 +39,7 @@ function toPrice(t: [number, number, number, number]): ModelPrice {
   return { input: t[0], output: t[1], cacheRead: t[2], cacheWrite: t[3] };
 }
 
-// Tolerate both cache shapes (compact tuples and ModelPrice objects) so a
-// version bump never orphans the cache.
+// Tolerate both cache shapes (compact tuples and ModelPrice objects) so a version bump never orphans the cache.
 function asPrice(v: unknown): ModelPrice | null {
   if (Array.isArray(v) && v.length === 4 && v.every((n) => typeof n === 'number' && Number.isFinite(n) && n >= 0)) {
     return toPrice(v as [number, number, number, number]);
@@ -51,8 +47,7 @@ function asPrice(v: unknown): ModelPrice | null {
   if (v && typeof v === 'object') {
     const o = v as Record<string, unknown>;
     if (['input', 'output', 'cacheRead', 'cacheWrite'].every((k) => typeof o[k] === 'number' && Number.isFinite(o[k]) && (o[k] as number) >= 0)) {
-      // SAFETY: the line above verified all four keys are finite numbers >= 0,
-      // which is the whole of ModelPrice.
+      // SAFETY: the line above verified all four keys are finite numbers >= 0, which is the whole of ModelPrice.
       return o as unknown as ModelPrice;
     }
   }
@@ -87,8 +82,7 @@ function num(v: unknown): number | null {
   return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null;
 }
 
-// Transcripts and the feed spell one model differently; aliases stop a free
-// model reporting the default price.
+// Transcripts and the feed spell one model differently; aliases stop a free model reporting the default price.
 export const MODEL_ALIASES: ReadonlyArray<{ id: string; feed: string }> = [
   { id: 'space-bunny', feed: 'stealth/space-bunny-alpha' },
 ];
@@ -100,14 +94,12 @@ export function canonicalPriceId(model: string): string {
 
 export function priceFor(model: string, live?: LivePrices | null): { price: ModelPrice; known: boolean; live: boolean } {
   const table = live === undefined ? loadLivePrices() : live;
-  // An alias goes through the same exact-then-suffix chain as any other id, so
-  // it still resolves when the feed keys it under a provider prefix.
+  // An alias goes through the same exact-then-suffix chain as any other id, so it still resolves when the feed keys it under a provider prefix.
   const id = MODEL_ALIASES.find((a) => a.id === model.toLowerCase())?.feed ?? model;
   if (table) {
     const hit = asPrice(table.exact[id] ?? table.exact[id.toLowerCase()]);
     if (hit) return { price: hit, known: true, live: true };
-    // Provider-prefixed ids ("azure/gpt-4o", "dashscope/qwen-max"): match the
-    // first cached id that ends with the bare model name.
+    // Provider-prefixed ids ("azure/gpt-4o", "dashscope/qwen-max"): match the first cached id that ends with the bare model name.
     const name = id.toLowerCase();
     const key = Object.keys(table.exact).find((k) => k.toLowerCase() === name || k.toLowerCase().endsWith(`/${name}`));
     const prefixed = key ? asPrice(table.exact[key]) : null;
@@ -115,8 +107,7 @@ export function priceFor(model: string, live?: LivePrices | null): { price: Mode
   }
   return { price: DEFAULT_PRICE, known: false, live: false };
 }
-// Fetch LiteLLM pricing and write the cache. False on any failure — callers
-// fall back silently.
+// Fetch LiteLLM pricing and write the cache. False on any failure — callers fall back silently.
 export async function refreshPrices(): Promise<boolean> {
   if (refreshInflight) return refreshInflight;
   refreshInflight = (async () => {
@@ -170,8 +161,7 @@ export async function refreshPrices(): Promise<boolean> {
   }
 }
 
-// Fire-and-forget refresh when the cache is stale; readers keep the stale
-// file, so pricing never blocks.
+// Fire-and-forget refresh when the cache is stale; readers keep the stale file, so pricing never blocks.
 export function refreshPricesIfStale(): void {
   const live = loadLivePrices();
   if (live && Date.now() - live.fetchedAt <= CACHE_TTL_MS) return;

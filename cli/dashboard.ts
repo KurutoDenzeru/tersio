@@ -1,5 +1,4 @@
-// Serves the built Dashboard with local usage APIs. Binds 127.0.0.1 only;
-// --export writes a file instead. No Promise.withResolvers: Node 20.12 lacks it.
+// Serves the built Dashboard with local usage APIs. Binds 127.0.0.1 only; --export writes a file instead. No Promise.withResolvers: Node 20.12 lacks it.
 import { spawn } from 'node:child_process';
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
@@ -249,8 +248,7 @@ function computeDoctorRows(): DoctorRow[] {
   } catch { /* missing config is reported by extension rows */ }
   const duplicateExtensions = [...new Set(explicitEntries.filter((entry, index) => explicitEntries.indexOf(entry) !== index))];
   addon('Unique config registrations', duplicateExtensions.length === 0, duplicateExtensions.length ? duplicateExtensions.join(', ') : 'ok', 'Extensions');
-  // A listed extension whose file is gone makes the host warn on every load, so
-  // surface it rather than leaving the user with only a startup message.
+  // A listed extension whose file is gone makes the host warn on every load, so surface it rather than leaving the user with only a startup message.
   const dangling = explicitEntries
     .filter((entry) => entry.includes(`extensions${path.sep}`) || entry.includes('extensions/'))
     .filter((entry) => !ok(path.isAbsolute(entry) ? entry : path.resolve(OMP_AGENT_DIR, entry)));
@@ -280,8 +278,7 @@ function computeDoctorRows(): DoctorRow[] {
   return rows;
 }
 
-// Recompute when forced, missing, or past the schedule; a report holding a
-// retired label is stale by definition.
+// Recompute when forced, missing, or past the schedule; a report holding a retired label is stale by definition.
 const RETIRED_DIAG_LABELS = new Set([
   'OMP CLI',
   'Tersio CLI',
@@ -363,8 +360,7 @@ function readDiagSchedule(): DiagSchedule {
   return readDiagReport()?.schedule ?? 'manual';
 }
 
-// Persist the picker choice: every run serves a fresh port, so localStorage
-// alone cannot survive a restart.
+// Persist the picker choice: every run serves a fresh port, so localStorage alone cannot survive a restart.
 async function saveDashboardCurrency(raw: unknown): Promise<CurrencyCode | null> {
   if (typeof raw !== 'string') return null;
   const code = raw.trim().toUpperCase();
@@ -375,8 +371,7 @@ async function saveDashboardCurrency(raw: unknown): Promise<CurrencyCode | null>
   return code;
 }
 
-// The store is a SQLite file, which nothing outside this box can read. Flatten
-// it into a format a spreadsheet, a script, or another tool can take instead.
+// The store is a SQLite file, which nothing outside this box can read. Flatten it into a format a spreadsheet, a script, or another tool can take instead.
 type ExportFormat = 'json' | 'jsonl' | 'csv';
 export const EXPORT_FORMATS: ExportFormat[] = ['json', 'jsonl', 'csv'];
 
@@ -441,8 +436,7 @@ function openBrowser(url: string): void {
   spawn(cmd, [url], { detached: true, stdio: 'ignore' }).unref();
 }
 
-// Replacers throughout: session data holds `$'` (shell quoting) and literal
-// `</script>`, which String.replace would mangle.
+// Replacers throughout: session data holds `$'` (shell quoting) and literal `</script>`, which String.replace would mangle.
 function escapeInline(json: string): string {
   return json.replace(/<\/(script)/gi, '<\\/$1');
 }

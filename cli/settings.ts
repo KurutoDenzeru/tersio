@@ -109,8 +109,7 @@ function settingsUsage(): void {
   console.log('  Usage: tersio settings [combo|caveman|rtk|ponytail|currency|diagnosis|markers] [--combo-default off|medium|balanced|max] [--caveman-default off|lite|full|ultra|wenyan-lite|wenyan-full|wenyan-ultra] [--rtk-default on|off] [--ponytail-default off|lite|full|ultra] [--currency USD|PHP|EUR|GBP|JPY|KRW|SGD|AUD|CAD|INR] [--diag-schedule manual|daily|weekly|monthly] [--subagent-marker <text>]... [--dry-run]');
 }
 
-// Single-setting jump: `tersio settings diagnosis` prompts only that value
-// instead of walking the whole chain. Returns false when aborted.
+// Single-setting jump: `tersio settings diagnosis` prompts only that value instead of walking the whole chain. Returns false when aborted.
 async function runSingleSetting(name: string, current: Profile, nextDiag: DiagSchedule): Promise<{ profile: Profile; diag: DiagSchedule } | null> {
   const next: Profile = { ...current };
   let diag = nextDiag;

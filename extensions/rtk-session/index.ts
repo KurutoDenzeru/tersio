@@ -44,8 +44,7 @@ export default function rtkSessionExtension(pi: ExtensionApi): void {
 
   setExtensionLabel(pi, 'RTK session toggle');
 
-  // Live mirror: a /tersio or /combo switch publishes shared state — adopt
-  // it at once so the next turn and the rtk_run gate see it, no reload.
+  // Live mirror: a /tersio or /combo switch publishes shared state — adopt it at once so the next turn and the rtk_run gate see it, no reload.
   function syncFromShared(state: { rtk: string }): void {
     enabled = state.rtk === 'on';
     setRtkProcessEnabled(enabled);
@@ -103,8 +102,7 @@ export default function rtkSessionExtension(pi: ExtensionApi): void {
     const entries = sessionEntries(ctx);
     // A subagent's branch has no Tersio entries; reconciling it would wipe shared state.
     if (hasModeState(entries)) reconcileSharedComboEntries(entries);
-    // Persisted session state wins; a fresh session falls back to the
-    // installer/user-configured default (off unless configured).
+    // Persisted session state wins; a fresh session falls back to the installer/user-configured default (off unless configured).
     const persisted = resolveEnabled(entries);
     enabled = typeof persisted === 'boolean' ? persisted : enabled || readRtkDefault();
     setRtkProcessEnabled(enabled);

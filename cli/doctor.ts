@@ -23,8 +23,7 @@ interface DoctorSummary {
 async function runDoctor(recheck = false): Promise<DoctorSummary> {
   console.log('\n=== Tersio Doctor ===');
 
-  // OMP loads the plugin from its plugins dir; pi loads the same package as a
-  // pi package, which its own settings.json declares and its npm dir holds.
+  // OMP loads the plugin from its plugins dir; pi loads the same package as a pi package, which its own settings.json declares and its npm dir holds.
   const pluginsDir = OMP_PLUGINS_DIR;
   const rtkBin = resolveRtkBinary();
 
@@ -36,8 +35,7 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   const rtkIndex = path.join(tersioPluginDir, 'extensions', 'rtk-session', 'index.ts');
   const updaterIndex = path.join(tersioPluginDir, 'extensions', 'ai-addons-updater', 'index.ts');
 
-  // Independent probes start concurrently; sections report in fixed order as
-  // their data settles. Every probe resolves instead of rejecting.
+  // Independent probes start concurrently; sections report in fixed order as their data settles. Every probe resolves instead of rejecting.
   const hosts = detectHosts();
   const probes = {
     ompPkgText: readTextIfExists(path.join(ompPackageDir(), 'package.json')),
@@ -82,8 +80,7 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
     ]),
   ]));
 
-  // Categorized output with a tally; success rows stay quiet (no path echoes)
-  // while failures print the expected path or fix so they stay actionable.
+  // Categorized output with a tally; success rows stay quiet (no path echoes) while failures print the expected path or fix so they stay actionable.
   const tally = { ok: 0, missing: 0, warn: 0 };
   function absDate(ms: number): string {
     const d = new Date(ms);
@@ -99,8 +96,7 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
     tally.warn++;
     console.log(`  ⚠️ ${label}: warn ${detail}`);
   }
-  // A host you do not use is not a fault, so it stays out of the tally and only
-  // carries the one line that installs it.
+  // A host you do not use is not a fault, so it stays out of the tally and only carries the one line that installs it.
   function unused(label: string, detail: string): void {
     console.log(`  —  ${label}: not installed ${detail}`);
   }
@@ -108,8 +104,7 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   section('Hosts');
   for (const host of hosts) {
     if (!host.installed) {
-      // A pi declaration without the tree or the package is a broken install,
-      // so it stays a counted row rather than reading as "not installed".
+      // A pi declaration without the tree or the package is a broken install, so it stays a counted row rather than reading as "not installed".
       if (host.declared) check(host.label, false, `declared (${host.declared}) but not installed`);
       else unused(host.label, `· ${host.installCmd}`);
       continue;
@@ -118,8 +113,7 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
     check(host.label, true, `${where}${host.version ? ` ${host.version}` : ''}`);
   }
 
-  // The marker is verbatim omp text, so scanning the binary turns a silent
-  // drop into a visible warning.
+  // The marker is verbatim omp text, so scanning the binary turns a silent drop into a visible warning.
   const ompEntry = hosts.find((host) => host.id === 'omp');
   const ompBin = ompEntry?.installed ? resolveHostBinary('omp') : null;
   if (ompBin) {

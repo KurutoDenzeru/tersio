@@ -1,5 +1,4 @@
-// extensions/shared/usage-store.ts — tersio-owned usage.db. A cache of the
-// live parse, never a fork; missing sqlite3 → sync false / read null.
+// extensions/shared/usage-store.ts — tersio-owned usage.db. A cache of the live parse, never a fork; missing sqlite3 → sync false / read null.
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -73,8 +72,7 @@ const PARSER_VERSION = '8';
 
 function ensureSchema(db: string): void {
   fs.mkdirSync(path.dirname(db), { recursive: true });
-  // Fold in rows stored under a pre-alias spelling; the mtime ledger will
-  // not re-read those transcripts.
+  // Fold in rows stored under a pre-alias spelling; the mtime ledger will not re-read those transcripts.
   const rekeys = MODEL_ALIASES.map((a) => `UPDATE messages SET model='${a.id}' WHERE model='${a.feed}';`).join('');
   run(
     db,
@@ -95,8 +93,7 @@ function ensureSchema(db: string): void {
       run(db, `UPDATE messages SET h='${esc(hostOfSessionFile(file))}' WHERE file=${esc(file)};`);
     }
   } catch { /* fresh or unreadable db */ }
-  // Drop the cache when the parser has moved on, so every transcript is read
-  // again and the new columns actually fill.
+  // Drop the cache when the parser has moved on, so every transcript is read again and the new columns actually fill.
   try {
     const stored = query(db, `SELECT v FROM meta WHERE k='parser_version';`);
     if (stored.length && stored[0][0] === PARSER_VERSION) return;
@@ -207,8 +204,7 @@ function readFiles(db: string): Record<string, { mtime: number; size: number }> 
   return known;
 }
 
-// One parsed assistant message, as stored. `t` is null when the source row has
-// no usable timestamp: counted, but skipped in the recent list.
+// One parsed assistant message, as stored. `t` is null when the source row has no usable timestamp: counted, but skipped in the recent list.
 interface StoredRow {
   t: number | null;
   model: string;
@@ -318,8 +314,7 @@ function insertSql(file: string, r: StoredRow): string {
     `${nullNum(r.code)},${nullStr(r.note)},${esc(JSON.stringify(r.tools))},${nullStr(r.host)});`;
 }
 
-// Unchanged transcripts are skipped via mtime+size; rows for deleted ones are
-// kept so rotation never erases history. False when sqlite3 is unavailable.
+// Unchanged transcripts are skipped via mtime+size; rows for deleted ones are kept so rotation never erases history. False when sqlite3 is unavailable.
 export function syncUsageDb(): boolean {
   let db: string;
   try {

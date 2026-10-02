@@ -1,5 +1,4 @@
-// cli/banner.ts — mini pixel-scissor welcome. TTY-only and skipped on
-// --dry-run, so piped output stays byte-identical.
+// cli/banner.ts — mini pixel-scissor welcome. TTY-only and skipped on --dry-run, so piped output stays byte-identical.
 import { intro as clackIntro, note as clackNote } from '@clack/prompts';
 import { PACKAGE_VERSION, dryRun } from './common.ts';
 

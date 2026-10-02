@@ -42,8 +42,7 @@ export interface SelectOption {
   description?: string;
 }
 
-// Returns the option's label on both hosts: pi renders plain strings, so the
-// description rides along inside the label and is stripped back out.
+// Returns the option's label on both hosts: pi renders plain strings, so the description rides along inside the label and is stripped back out.
 export async function hostSelect(
   pi: HostHandle,
   ui: UiApi | undefined,
@@ -59,9 +58,7 @@ export async function hostSelect(
   return options[shown.indexOf(picked)]?.label ?? picked;
 }
 
-// `staleMarker` identifies the block an earlier turn added so a mode switch
-// replaces it; equality cannot work (blocks contain blank lines) and a leading
-// emoji may be absent upstream, so match on a stripped substring.
+// `staleMarker` identifies the block an earlier turn added so a mode switch replaces it; equality cannot work (blocks contain blank lines) and a leading emoji may be absent upstream, so match on a stripped substring.
 export function injectPromptText(pi: HostHandle, event: SystemPromptEvent, text: string, staleMarker?: string): PromptInjection | undefined {
   const marker = staleMarker?.replace(/^[^\w]+/, '').trim();
   const dropStale = (parts: string[]): string[] => (marker ? parts.filter((part) => !part.includes(marker)) : parts);
@@ -79,8 +76,7 @@ export interface StringArraySpec {
   description?: string;
 }
 
-// One string-array argument in the active host's dialect. pi only requires an
-// object, so a JSON Schema literal suffices and no `typebox` import is needed.
+// One string-array argument in the active host's dialect. pi only requires an object, so a JSON Schema literal suffices and no `typebox` import is needed.
 export function stringArrayToolParams(pi: ExtensionApi, name: string, spec: StringArraySpec = {}): ToolParams {
   if (!isPiHost(pi)) {
     const { z } = pi.zod as { z: ZodFactory['z'] };

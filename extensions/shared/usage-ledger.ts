@@ -1,5 +1,4 @@
-// Shared usage ledger: append-only JSON lines, read by the CLI, `/tersio`, and
-// the Dashboard. Best-effort; corrupt lines are skipped on read.
+// Shared usage ledger: append-only JSON lines, read by the CLI, `/tersio`, and the Dashboard. Best-effort; corrupt lines are skipped on read.
 import fs from 'node:fs';
 import path from 'node:path';
 import { homeDir, isPiProcess, piAgentDir, resolveRtkBinary, tersioDataPath } from '../lib/utils.ts';
@@ -51,8 +50,7 @@ export function appendUsage(kind: UsageKind, detail: string): void {
   } catch { /* ledger is best-effort; never break the caller */ }
 }
 
-// --- Session tokens, tokscale-style ------------------------------------------
-// Assistant messages in the host transcripts carry usage, model, and a timestamp.
+// --- Session tokens, tokscale-style ------------------------------------------ Assistant messages in the host transcripts carry usage, model, and a timestamp.
 export interface TokenBreakdown {
   input: number;
   output: number;
@@ -119,8 +117,7 @@ export function durOf(v: unknown): number | undefined {
   return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : undefined;
 }
 
-// Measured cost: usage.cost.total, or a bare number in old fixtures. Anything
-// else means unrecorded, which is deliberately not 0.
+// Measured cost: usage.cost.total, or a bare number in old fixtures. Anything else means unrecorded, which is deliberately not 0.
 export function costOf(usage: Record<string, unknown>): number | undefined {
   const c = usage.cost;
   if (typeof c === 'number') return Number.isFinite(c) ? c : undefined;
@@ -131,8 +128,7 @@ export function costOf(usage: Record<string, unknown>): number | undefined {
   return undefined;
 }
 
-// First line only: real messages carry multi-line provider errors, and this
-// ends up in a tooltip.
+// First line only: real messages carry multi-line provider errors, and this ends up in a tooltip.
 export function statusOf(msg: { stopReason?: unknown; errorStatus?: unknown; errorMessage?: unknown; isError?: unknown }): { st: RunStatus; code?: number; note?: string } {
   const stop = typeof msg.stopReason === 'string' ? msg.stopReason : '';
   const note = typeof msg.errorMessage === 'string' && msg.errorMessage.trim()
@@ -156,8 +152,7 @@ function addInto(into: TokenBreakdown, u: { input?: unknown; output?: unknown; c
 export function sessionsDirs(): string[] {
   const override = process.env.TERSIO_SESSIONS_DIR;
   if (override) return [override];
-  // Both hosts, not just the running one: a session on pi is missing from the
-  // dashboard entirely if we stop at the first directory that exists.
+  // Both hosts, not just the running one: a session on pi is missing from the dashboard entirely if we stop at the first directory that exists.
   const dirs = isPiProcess()
     ? [path.join(piAgentDir(), 'sessions'), path.join(homeDir(), '.omp', 'agent', 'sessions')]
     : [path.join(homeDir(), '.omp', 'agent', 'sessions'), path.join(piAgentDir(), 'sessions')];
@@ -211,8 +206,7 @@ export function walkJsonl(dir: string, out: string[], cap: number, ext = '.jsonl
     else if (e.isFile() && e.name.endsWith(ext)) out.push(full);
   }
 }
-// Recent requests get their own full-width table, so this bounds payload
-// rather than highlights; rows are small, so a few hundred cost little.
+// Recent requests get their own full-width table, so this bounds payload rather than highlights; rows are small, so a few hundred cost little.
 export const RECENT_LIMIT = 200;
 const FREE_SUFFIX = /(?::free|-free)$/i;
 const RTK_ELIGIBLE_HEADS = new Set([
@@ -220,8 +214,7 @@ const RTK_ELIGIBLE_HEADS = new Set([
   'npm', 'npx', 'pnpm', 'bun', 'bunx', 'cargo', 'go', 'python', 'pytest',
   'ruff', 'mypy', 'docker', 'kubectl', 'psql', 'aws', 'gh', 'glab', 'wc',
 ]);
-// Parse buffer shared by live reads and usage.db syncs, so the store is a
-// cache and never a fork.
+// Parse buffer shared by live reads and usage.db syncs, so the store is a cache and never a fork.
 export interface SessionAccum {
   byModel: Record<string, TokenBreakdown>;
   byDay: Record<string, TokenBreakdown>;
@@ -371,8 +364,7 @@ export function processOpencodeFile(accum: SessionAccum, text: string): void {
 export function canonicalModelId(model: string): string {
   return canonicalPriceId(model.replace(FREE_SUFFIX, ''));
 }
-// LiteLLM-style display: lowercase namespace, title-cased model segments with
-// version dots kept.
+// LiteLLM-style display: lowercase namespace, title-cased model segments with version dots kept.
 export function displayModelId(model: string): string {
   const bare = model.replace(FREE_SUFFIX, '');
   const cap = (s: string): string => {
@@ -394,8 +386,7 @@ export function importSessionTokens(): SessionTokens {
   const accum = newSessionAccum();
   const files: string[] = [];
   for (const dir of sessionsDirs()) walkJsonl(dir, files, 2000);
-  // An override means an isolated environment (tests, fixtures): only walk the
-  // real codex dir when one is explicitly set.
+  // An override means an isolated environment (tests, fixtures): only walk the real codex dir when one is explicitly set.
   if (process.env.TERSIO_SESSIONS_DIR === undefined || process.env.TERSIO_CODEX_DIR !== undefined) {
     walkJsonl(codexSessionsDir(), files, 2000);
   }
@@ -560,8 +551,7 @@ export function readRtkRecallDiagnostics(binary: string | null = resolveRtkBinar
     return { mode: 'unknown', entries: 0, available: false };
   }
 }
-// Lead binary of a shell string: first segment past `cd` chains and VAR=x
-// assignments. Falls back to `bash`.
+// Lead binary of a shell string: first segment past `cd` chains and VAR=x assignments. Falls back to `bash`.
 const SKIP_HEADS = ['cd', 'echo', 'export', 'true', 'false'];
 export function leadBinary(command: unknown): string {
   if (typeof command !== 'string' || !command.trim()) return 'bash';
@@ -624,8 +614,7 @@ export function readUsage(): UsageRow[] {
   return rows;
 }
 
-// Delete the ledger file and return the rows cleared. Tersio-owned data only:
-// transcripts and the RTK database are never touched.
+// Delete the ledger file and return the rows cleared. Tersio-owned data only: transcripts and the RTK database are never touched.
 export function clearUsageLedger(): number {
   const rows = readUsage().length;
   try {

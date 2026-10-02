@@ -26,13 +26,11 @@ type FixRequest = FixTarget | 'all';
 const EXT_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'extensions');
 
 
-// A written tree is the install for both hosts now, so --fix restores it for
-// whichever hosts have it, alongside the OMP package when that is present.
+// A written tree is the install for both hosts now, so --fix restores it for whichever hosts have it, alongside the OMP package when that is present.
 async function fixExtensionTrees(): Promise<void> {
   for (const host of detectHosts()) {
     const dest = hostExtensionsDir(host.id);
-    // Repair a host whose tree is partly there: a half-written tree is exactly
-    // the case this runs for, and it reads as "not installed" to the detector.
+    // Repair a host whose tree is partly there: a half-written tree is exactly the case this runs for, and it reads as "not installed" to the detector.
     const present = TREE_FILES.filter((file) => existsSync(path.join(dest, file))).length;
     if (present === 0) continue;
     await fs.mkdir(dest, { recursive: true });

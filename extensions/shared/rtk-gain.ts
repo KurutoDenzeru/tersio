@@ -23,8 +23,7 @@ export interface RtkGain {
 
 const EMPTY: RtkGain = { commands: 0, saved: 0, input: 0, avgPct: 0, totalMs: 0, byCommand: [] };
 
-// The table shows one clipped cell, so bound the command before it crosses the
-// sqlite3 CLI and lands in every /data.json poll.
+// The table shows one clipped cell, so bound the command before it crosses the sqlite3 CLI and lands in every /data.json poll.
 const MAX_CMD_CHARS = 200;
 
 // A multi-line stored command would derail every row after it; flatten on read.
@@ -55,8 +54,7 @@ function query(db: string, sql: string): string[][] {
 export function readRtkGain(limit = 10, cutoffMs?: number): RtkGain {
   try {
     if (!fs.existsSync(rtkDbPath())) return EMPTY;
-    // View-level cutoff only: rtk's own rows stay untouched. Timestamps that do
-    // not parse land on 0 and drop out of a filtered view.
+    // View-level cutoff only: rtk's own rows stay untouched. Timestamps that do not parse land on 0 and drop out of a filtered view.
     const where = cutoffMs && cutoffMs > 0
       ? `WHERE CAST(strftime('%s', timestamp) AS INTEGER) >= ${Math.floor(cutoffMs / 1000)}`
       : '';

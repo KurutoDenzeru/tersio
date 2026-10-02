@@ -42,8 +42,7 @@ const PONYTAIL_DEFAULTS = new Set(['off', 'lite', 'full', 'ultra']);
 const RTK_DEFAULTS = new Set(['on', 'off']);
 const DIAG_SCHEDULES = new Set(['manual', 'daily', 'weekly', 'monthly']);
 
-// Mirrors COMBO_LEVELS in extensions/shared/session-state.ts (rtk as a
-// boolean here), so the combo preset implies all three modes.
+// Mirrors COMBO_LEVELS in extensions/shared/session-state.ts (rtk as a boolean here), so the combo preset implies all three modes.
 const COMBO_PRESET_MODES: Record<string, { caveman: string; rtk: boolean; ponytail: string }> = {
   off: { caveman: 'off', rtk: false, ponytail: 'off' },
   medium: { caveman: 'lite', rtk: true, ponytail: 'lite' },
@@ -75,8 +74,7 @@ const COMMANDS: Record<string, true> = { install: true, update: true, doctor: tr
 const args = process.argv.slice(2);
 const commandArg = args.find((arg) => !arg.startsWith('-'));
 const command = commandArg?.toLowerCase() || null;
-// `tersio settings diagnosis` jumps to one prompt instead of walking the
-// chain. Index-based, so flag values never count as positionals.
+// `tersio settings diagnosis` jumps to one prompt instead of walking the chain. Index-based, so flag values never count as positionals.
 const settingArg = ((): string | null => {
   const at = args.indexOf(commandArg ?? '');
   const next = at >= 0 ? args[at + 1] : undefined;
@@ -111,8 +109,7 @@ const removePonytail = args.includes('--remove-ponytail');
 const keepPonytail = args.includes('--keep-ponytail');
 const removeRtk = args.includes('--remove-rtk');
 
-// User scope only (all OMP sessions). A bare `--scope user` still parses for
-// old scripts; anything else fails.
+// User scope only (all OMP sessions). A bare `--scope user` still parses for old scripts; anything else fails.
 const legacyScope = flagValue('--scope')?.toLowerCase() ?? null;
 if (legacyScope !== null && legacyScope !== 'user') {
   console.error(`[fail] Invalid --scope: ${legacyScope}. Project scope was removed; tersio installs user-level only.`);
@@ -185,8 +182,7 @@ async function writeIfChanged(dest: string, content: string, options: WriteOptio
   return true;
 }
 
-// omp ships 'extensions: null', and list items under a null scalar break YAML:
-// normalize null/~/[]/empty to a mapping key first.
+// omp ships 'extensions: null', and list items under a null scalar break YAML: normalize null/~/[]/empty to a mapping key first.
 const EXTENSIONS_KEY_RE = /^\s*extensions\s*:/i;
 const EXTENSIONS_NULL_RE = /^\s*extensions\s*:\s*(?:\[\s*\]|null|~)?\s*$/i;
 
@@ -211,8 +207,7 @@ async function ensureExtensionInConfig(configPath: string, extensionPath: string
   const raw = await readTextIfExists(configPath);
   let lines = (raw || '').split('\n');
 
-  // Drop legacy compiled twins (same dir/name, .js): OMP must never load both
-  // copies. Matched on the trailing path so relative entries are caught too.
+  // Drop legacy compiled twins (same dir/name, .js): OMP must never load both copies. Matched on the trailing path so relative entries are caught too.
   if (normalizedPath.endsWith('.ts')) {
     const legacyTail = `${normalizedPath.slice(0, -3)}.js`.split('/').slice(-2).join('/');
     lines = lines.filter((l) => !l.trim().replace(/^\.\//, '').endsWith(legacyTail));
@@ -345,8 +340,7 @@ async function ensurePonytailConfigValue<K extends keyof PonytailConfig>(
 
 
 
-// Read plugins/package.json tolerantly; a corrupt or missing file starts
-// fresh with installer-managed defaults.
+// Read plugins/package.json tolerantly; a corrupt or missing file starts fresh with installer-managed defaults.
 async function readPluginsPackage(pkgPath: string): Promise<PluginsPackage & { dependencies: Record<string, string> }> {
   const pkg = parseJsonObject<PluginsPackage>(await readTextIfExists(pkgPath)) ?? {};
   return { ...pkg, name: pkg.name || 'omp-plugins', private: true, dependencies: pkg.dependencies || {} };

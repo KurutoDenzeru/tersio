@@ -11,8 +11,7 @@ export function tersioSettingsFile(): string {
   return path.join(tersioHome(), 'settings.json');
 }
 
-// Older installs kept these as OMP plugin settings; still read so switching
-// the store does not reset a user's defaults.
+// Older installs kept these as OMP plugin settings; still read so switching the store does not reset a user's defaults.
 function legacyOmpSettings(): Record<string, unknown> | null {
   const configHome = process.env.XDG_CONFIG_HOME || path.join(homeDir(), '.config');
   for (const p of [

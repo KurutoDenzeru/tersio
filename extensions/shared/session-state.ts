@@ -3,8 +3,7 @@ import type { ComboLevel, ComboState, ExtensionCtx, SessionEntry } from './types
 
 const BRIDGE_KEY = Symbol.for('tersio/combo-session-state');
 
-// A verbatim sentence from omp's subagent prompt, so it can drift; read from
-// the installed omp binary on 2026-10-01. pi has no built-in subagent prompt.
+// A verbatim sentence from omp's subagent prompt, so it can drift; read from the installed omp binary on 2026-10-01. pi has no built-in subagent prompt.
 export const OMP_SUBAGENT_MARKER = 'Worker agent: delegated tasks.';
 
 export const COMBO_LEVELS: Record<string, Readonly<ComboState>> = Object.freeze({
@@ -116,8 +115,7 @@ export function normalizeComboLevel(value: unknown): ComboLevel | null {
 }
 
 
-// Last-wins scan for a custom session entry; skips entries whose value fails
-// to parse so a corrupt write never shadows an older valid one.
+// Last-wins scan for a custom session entry; skips entries whose value fails to parse so a corrupt write never shadows an older valid one.
 export function lastCustomValue<T>(entries: SessionEntry[] | null | undefined, customType: string, pick: (data: SessionEntry['data']) => T | null | undefined): T | null {
   if (!Array.isArray(entries)) return null;
   for (let i = entries.length - 1; i >= 0; i -= 1) {
@@ -151,8 +149,7 @@ export function setSharedComboMode(name: ModeName, value: unknown): Readonly<Com
   const mode = normalizeMode(name, value);
   if (!mode) return getSharedComboState();
   const modes = { ...getSharedComboState(), [name]: mode } as Modes;
-  // Derive the level from the final triplet so a redundant same-value write
-  // cannot strand a matching preset at 'custom' and drop the combo bar.
+  // Derive the level from the final triplet so a redundant same-value write cannot strand a matching preset at 'custom' and drop the combo bar.
   return publish(normalizedState(modes));
 }
 
@@ -173,8 +170,7 @@ export function reconcileSharedComboEntries(entries: SessionEntry[] | null | und
       if (mode) modes[name] = mode;
     }
   }
-  // The level reflects the final triplet, never the write order, so a preset
-  // entry followed by the same values reconciles back to the preset.
+  // The level reflects the final triplet, never the write order, so a preset entry followed by the same values reconciles back to the preset.
   return publish(normalizedState(modes));
 }
 

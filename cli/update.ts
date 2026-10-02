@@ -44,8 +44,7 @@ async function latestPublishedVersion(): Promise<string | null> {
   }
 }
 
-// A newer published version, null when up to date, 'unknown' when the registry
-// is unreachable. Cached for a TTL unless force, which must not trust a cache.
+// A newer published version, null when up to date, 'unknown' when the registry is unreachable. Cached for a TTL unless force, which must not trust a cache.
 async function checkForUpdate(force = false): Promise<string | null | 'unknown'> {
   const cachePath = tersioDataPath('update-check.json', 'tersio-update-check.json');
   const cached = parseJsonObject<{ latest?: string; lastCheck?: number }>(await readTextIfExists(cachePath));
@@ -58,8 +57,7 @@ async function checkForUpdate(force = false): Promise<string | null | 'unknown'>
     await fs.writeFile(cachePath, JSON.stringify({ latest, lastCheck: Date.now() }) + '\n', 'utf8').catch(() => { });
     return newerThan(latest, PACKAGE_VERSION) ? latest : null;
   }
-  // Unreachable registry: a stale cache naming a newer release is still
-  // actionable, else report unknown so nobody claims "latest".
+  // Unreachable registry: a stale cache naming a newer release is still actionable, else report unknown so nobody claims "latest".
   return cached?.latest && newerThan(cached.latest, PACKAGE_VERSION) ? cached.latest : 'unknown';
 }
 
@@ -90,13 +88,11 @@ interface UpdatePlan {
   cli: string | null;
   rtk: [string | null, string | null];
   rule: [string | null, string | null];
-  // Bundled with tersio: only the local copy is probed. Missing marks
-  // stale; present is never stale on its own.
+  // Bundled with tersio: only the local copy is probed. Missing marks stale; present is never stale on its own.
   ponytail: string | null;
 }
 
-// Current → latest per add-on. Every probe is capped and nullable, and the
-// plan prints `unknown` for anything unreachable.
+// Current → latest per add-on. Every probe is capped and nullable, and the plan prints `unknown` for anything unreachable.
 async function probeUpdatePlan(cliLatest: string | null): Promise<UpdatePlan> {
   const rtkBin = resolveRtkBinary();
   const ponytailPkg = path.join(OMP_PLUGINS_DIR, 'node_modules', '@dietrichgebert', 'ponytail', 'package.json');
@@ -118,8 +114,7 @@ async function probeUpdatePlan(cliLatest: string | null): Promise<UpdatePlan> {
   };
 }
 
-// Every add-on prints a version jump when stale, "up to date" otherwise, and
-// "unknown" when its source cannot be reached.
+// Every add-on prints a version jump when stale, "up to date" otherwise, and "unknown" when its source cannot be reached.
 function planLines(plan: UpdatePlan): { stale: string[]; status: string[] } {
   const stale: string[] = [];
   const status: string[] = [];
@@ -189,8 +184,7 @@ async function runLatestUpdate(): Promise<void> {
     return;
   }
 
-  // The npx delegation below only refreshes the OMP-side files; the globally
-  // installed CLI keeps its old version until npm -g runs. Refresh both.
+  // The npx delegation below only refreshes the OMP-side files; the globally installed CLI keeps its old version until npm -g runs. Refresh both.
   const globalArgs = IS_WINDOWS
     ? ['/d', '/s', '/c', 'npm', 'install', '-g', `${PACKAGE_NAME}${target}`, '--no-audit', '--no-fund', '--prefer-online']
     : ['install', '-g', `${PACKAGE_NAME}${target}`, '--no-audit', '--no-fund', '--prefer-online'];
@@ -220,8 +214,7 @@ async function runLatestUpdate(): Promise<void> {
   ];
   const npmCommandArgs = IS_WINDOWS ? ['/d', '/s', '/c', 'npm', ...npmArgs] : npmArgs;
 
-  // Inherited stdio, no outer spinner; the delegated installer runs quiet and
-  // this parent owns both the plan line and the closing summary.
+  // Inherited stdio, no outer spinner; the delegated installer runs quiet and this parent owns both the plan line and the closing summary.
   try {
     await execInherit(npmCommand, npmCommandArgs);
     console.log(`Done — tersio ${plan.cli ?? PACKAGE_VERSION}. Restart OMP.`);
