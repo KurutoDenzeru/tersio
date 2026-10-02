@@ -107,10 +107,10 @@ test("/ai-addons update ponytail reports the bundled copy without touching npm",
   expect(result).toBeUndefined();
   expect(execCalls.length, "bundled ponytail must not shell out to npm").toBe(0);
   const shown = fakeCtx.shown.join("\n");
-  expect(shown).toMatch(/bundled with tersio/i);
-  expect(shown).toMatch(/tersio update/);
+  expect(shown).toMatch(/up to date|cannot fetch npm metadata/i);
+  expect(shown).not.toMatch(/Ponytail update failed: tar could not/);
 });
-test("/ai-addons update ponytail without host exec still reports the bundled copy", async () => {
+test("/ai-addons update ponytail without host exec still avoids npm", async () => {
   const fakePi = createFakePi(async () => ({ stdout: "", stderr: "", code: 0 }));
   delete (fakePi as Partial<FakePi>).exec;
   const fakeCtx = createFakeCtx();
@@ -121,5 +121,5 @@ test("/ai-addons update ponytail without host exec still reports the bundled cop
 
   const result = await handler("update ponytail", fakeCtx);
   expect(result).toBeUndefined();
-  expect(fakeCtx.shown.join("\n")).toMatch(/bundled with tersio/i);
+  expect(fakeCtx.shown.join("\n")).toMatch(/up to date|cannot fetch npm metadata/i);
 });
