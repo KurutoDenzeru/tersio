@@ -99,9 +99,15 @@ export function priceFor(model: string, live?: LivePrices | null): { price: Mode
   if (table) {
     const hit = asPrice(table.exact[id] ?? table.exact[id.toLowerCase()]);
     if (hit) return { price: hit, known: true, live: true };
-    // Provider-prefixed ids ("azure/gpt-4o", "dashscope/qwen-max"): match the first cached id that ends with the bare model name.
+    // Provider-prefixed ids ("azure/gpt-4o", "dashscope/qwen-max"): match the
+    // first cached key that ends with the full id, then with the bare tail
+    // segment, so "codex/openai/gpt-6-luna" still finds "gpt-6-luna".
     const name = id.toLowerCase();
-    const key = Object.keys(table.exact).find((k) => k.toLowerCase() === name || k.toLowerCase().endsWith(`/${name}`));
+    const tail = name.split('/').pop() ?? name;
+    const key = Object.keys(table.exact).find((k) => {
+      const lk = k.toLowerCase();
+      return lk === name || lk.endsWith(`/${name}`) || lk === tail || lk.endsWith(`/${tail}`);
+    });
     const prefixed = key ? asPrice(table.exact[key]) : null;
     if (prefixed) return { price: prefixed, known: true, live: true };
   }
