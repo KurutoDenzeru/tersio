@@ -1,5 +1,4 @@
-// Shared helpers for the installer and the AI add-ons updater. Node built-ins
-// only — this module must stay dependency-free.
+// Shared helpers for the installer and the AI add-ons updater. Node built-ins only — this module must stay dependency-free.
 
 import { createHash } from 'node:crypto';
 import { accessSync, constants, createWriteStream, existsSync, mkdirSync, renameSync, statSync } from 'node:fs';
@@ -91,8 +90,7 @@ function redirectNext(res: { statusCode?: number; headers: { location?: string }
   return null;
 }
 
-// pi sets PI_CODING_AGENT; OMP does not. OMP does read PI_CODING_AGENT_DIR as
-// its own relocation variable, so the override only counts under that marker.
+// pi sets PI_CODING_AGENT; OMP does not. OMP does read PI_CODING_AGENT_DIR as its own relocation variable, so the override only counts under that marker.
 export function isPiProcess(): boolean {
   return process.env.PI_CODING_AGENT === 'true';
 }
@@ -102,13 +100,15 @@ export function piAgentDir(): string {
   return isPiProcess() && override ? override : path.join(homeDir(), '.pi', 'agent');
 }
 
-// Ponytail is a Tersio dependency that npm hoists, so it can sit in Tersio's
-// node_modules, a host's plugin dir, or beside it. Walking up covers all.
+// Ponytail is a Tersio dependency that npm hoists, so it can sit in Tersio's node_modules, a host's plugin dir, or beside it. Walking up covers all.
 export function findHoistedPackage(pkg: string, fromDir: string, ...relInside: string[]): string | null {
   let dir = fromDir;
   for (;;) {
     const candidate = path.join(dir, 'node_modules', ...pkg.split('/'), ...relInside);
     if (existsSync(candidate)) return candidate;
+    // pi installs npm packages under ~/.pi/agent/npm/node_modules.
+    const piCandidate = path.join(dir, 'npm', 'node_modules', ...pkg.split('/'), ...relInside);
+    if (existsSync(piCandidate)) return piCandidate;
     const parent = path.dirname(dir);
     if (parent === dir) return null;
     dir = parent;
@@ -218,9 +218,7 @@ export async function readTextIfExists(p: string): Promise<string | null> {
   try { return await fs.readFile(p, 'utf8'); } catch { return null; }
 }
 
-// Chunked so a 200 MiB host binary is never held in memory. `tail` keeps the
-// last needle.length-1 bytes of the previous chunk, because a match can begin
-// near the end of one chunk and finish inside the next.
+// Chunked so a 200 MiB host binary is never held in memory. `tail` keeps the last needle.length-1 bytes of the previous chunk, because a match can begin near the end of one chunk and finish inside the next.
 export async function fileContains(filePath: string, needleText: string): Promise<boolean> {
   const needle = Buffer.from(needleText, 'utf8');
   if (needle.length === 0) return false;
@@ -247,8 +245,7 @@ export async function fileContains(filePath: string, needleText: string): Promis
   }
 }
 
-// Tersio-owned data home: ~/.tersio. First use moves legacy
-// ~/.omp/plugins/tersio-* files over so existing installs keep their history.
+// Tersio-owned data home: ~/.tersio. First use moves legacy ~/.omp/plugins/tersio-* files over so existing installs keep their history.
 const migratedTersioFiles = new Set<string>();
 
 export function tersioHome(): string {
