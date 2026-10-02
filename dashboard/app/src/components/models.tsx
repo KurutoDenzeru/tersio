@@ -12,9 +12,11 @@ import {
   fmt,
   fmtShort,
   modelTotal,
+  relAgePrecise,
   topModels,
   vendorOf,
 } from "@/lib/format";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { UsageReport } from "@/lib/data";
 import { AgentLogo } from "./agent-logos";
 import { BrandSilhouette, Brandmark } from "./brand";
@@ -207,6 +209,33 @@ function TokenMixChart({ parts, logos = false }: { parts: Array<{ label: string;
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+// Last-N token bars for one model, newest-first input sorted oldest→newest.
+function runsFor(data: UsageReport | null, m: string, n: number): Array<{ t: number; v: number }> {
+  if (!data) return [];
+  return data.recent
+    .filter((r) => r.m === m)
+    .sort((a, b) => a.t - b.t)
+    .slice(-n)
+    .map((r) => ({ t: r.t, v: r.i + r.o + (r.cr ?? 0) + (r.cw ?? 0) }));
+}
+
+function RunsMini({ runs }: { runs: Array<{ t: number; v: number }> }) {
+  if (runs.length === 0) return <span className="text-dim">–</span>;
+  const max = Math.max(1, ...runs.map((r) => r.v));
+  return (
+    <div className="flex h-[26px] items-end gap-[2px]" aria-label={`${runs.length} recent runs`} role="img">
+      {runs.map((r, i) => (
+        <div
+          key={`${r.t}-${i}`}
+          className="w-[5px] rounded-[1.5px] bg-accent/70"
+          style={{ height: `${Math.max(8, Math.round((r.v / max) * 100))}%` }}
+          title={`${new Date(r.t).toLocaleString()} · ${fmtShort(r.v)} tokens`}
+        />
+      ))}
     </div>
   );
 }
@@ -414,7 +443,6 @@ export function Models({ data, money }: { data: UsageReport | null; money: (v: n
     () => topModels(byModel, Object.keys(byModel).length).filter((m) => modelTotal(byModel, m) > 0),
     [byModel],
   );
-  const max = Math.max(1, ...tops.map((m) => modelTotal(byModel, m)));
   const { pages, page: p, range } = usePager(tops.length, per, page);
   const rows = tops.slice((p - 1) * per, p * per);
 
@@ -492,37 +520,57 @@ export function Models({ data, money }: { data: UsageReport | null; money: (v: n
         <CardContent>
         {tops.length > 0 ? (
           <div className="overflow-y-auto overscroll-contain [scrollbar-color:var(--line)_transparent] [scrollbar-width:thin]">
-            <ol id="models" className="overflow-hidden">
-              {rows.map((m, i) => {
-                const mv = modelTotal(byModel, m);
-                return (
-                  <HoverTip key={m} content={data ? <ModelTip m={m} data={data} money={money} /> : "–"}>
-                    <li
-                      className={`transition-[background] duration-[250ms] hover:bg-track hover:shadow-tersio flex items-center gap-3 px-4 py-3 cursor-pointer${i < rows.length - 1 ? " border-b border-line" : ""}`}
-                      onClick={() => setOpen(m)}
-                    >
-                      <span>
-                        <Brandmark model={m} small />
-                      </span>
-                      <div className="min-w-0 flex-1">
-                         <p className="mono text-sm truncate">
+            <Table className="mono table-fixed text-[13px]" id="modelsTable">
+              <colgroup><col /><col style={{ width: 84 }} /><col style={{ width: 96 }} /><col style={{ width: 88 }} /><col style={{ width: 104 }} /><col style={{ width: 150 }} /><col style={{ width: 140 }} /></colgroup>
+              <TableHeader className="[&_tr]:text-left [&_tr]:text-[11px] [&_tr]:uppercase [&_tr]:tracking-[0.14em] [&_tr]:text-dim">
+                <TableRow>
+                  <TableHead>Model</TableHead>
+                  <TableHead className="text-right">Tokens</TableHead>
+                  <TableHead className="text-right">Requests</TableHead>
+                  <TableHead className="text-right">Cost</TableHead>
+                  <TableHead>Last run</TableHead>
+                  <TableHead>Last 20 runs</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map((m) => {
+                  const mv = modelTotal(byModel, m);
+                  const runs = runsFor(data, m, 20);
+                  const last = runs.length ? runs[runs.length - 1].t : undefined;
+                  const lastHost = last !== undefined ? data?.recent.find((r) => r.m === m && r.t === last)?.h : undefined;
+                  return (
+                    <HoverTip key={m} content={data ? <ModelTip m={m} data={data} money={money} /> : "–"}>
+                      <TableRow className="cursor-pointer hover:bg-track hover:shadow-tersio" onClick={() => setOpen(m)}>
+                        <TableCell className="min-w-0 truncate py-2.5 pr-3">
+                          <span className="mr-2 inline-flex align-[-3px]"><Brandmark model={m} small /></span>
                           {displayModel(m)}
-                        </p>
-                        <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-track">
-                          <div className="h-full origin-left rounded-full bg-accent transition-[width] duration-1000 ease-[cubic-bezier(.16,1,.3,1)]" style={{ width: `${Math.round((mv / max) * 100)}%` }} />
-                        </div>
-                      </div>
-                      <div className="shrink-0 text-right">
-                        <p className="mono font-bold">{fmt(mv)}</p>
-                        <p className="mono text-xs text-dim">
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap py-2.5 pr-3 text-right">
+                          {fmt(mv)}
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap py-2.5 pr-3 text-right text-dim">
+                          {fmt(data?.byModelMessages[m] ?? 0)}
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap py-2.5 pr-3 text-right text-dim">
                           {money(data?.byModelUsd[m] ?? 0)}
-                        </p>
-                      </div>
-                    </li>
-                  </HoverTip>
-                );
-              })}
-            </ol>
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap py-2.5 pr-3 text-dim">
+                          {last !== undefined ? (
+                            <span className="inline-flex items-center gap-1.5">
+                              {lastHost ? <span className="grid size-4 place-items-center"><AgentLogo host={lastHost} /></span> : null}
+                              {relAgePrecise(last)}
+                            </span>
+                          ) : "–"}
+                        </TableCell>
+                        <TableCell className="py-2.5">
+                          <RunsMini runs={runs} />
+                        </TableCell>
+                      </TableRow>
+                    </HoverTip>
+                  );
+                })}
+              </TableBody>
+            </Table>
           </div>
         ) : (
           <EmptyState icon="boxes" title="No models yet" desc="Model token totals will appear here once sessions report tokens." />
