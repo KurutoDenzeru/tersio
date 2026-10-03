@@ -29,24 +29,17 @@ tersio install --host omp   # Oh My Pi, non-interactive
 tersio install --host opencode  # OpenCode, non-interactive
 ```
 
-Or let the host install the package itself. Same result, host-managed updates:
+Or let each host install the package itself:
 
 ```bash
 omp plugin install @krtclcdy/tersio
 pi install npm:@krtclcdy/tersio
+opencode plugin add @krtclcdy/tersio
 ```
 
-Both hosts load the same five extensions from the same sources, and both read their session-start defaults from `~/.tersio/settings.json`. All five load always.
+Pick one install method per host, not both. Using both registers every command twice.
 
-Then restart the agent and enable a preset:
-
-```text
-/combo balanced
-```
-
-Individual toggles: `/caveman full` · `/rtk on` · `/ponytail full`. Everything starts off until you enable it.
-
-When Tersio is installed through OMP, the first interactive launch asks for a session-start Combo preset once (`off`, `medium`, `balanced`, or `max`) and saves it as `comboDefault`. Running `tersio install` performs the same setup through the CLI.
+All hosts load the same five extensions from the same sources and read their session-start defaults from `~/.tersio/settings.json`. All five load always.
 
 One-off use without installing:
 
