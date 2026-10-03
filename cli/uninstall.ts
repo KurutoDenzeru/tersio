@@ -32,6 +32,7 @@ const PI_TREE_DIRS = [
   'tersio-commands',
   'shared',
   'lib',
+  'opencode',
 ];
 
 // One `pi remove`, for both packages the installer adds there.
@@ -239,6 +240,8 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
     'lib',
     // Legacy: imports session-state.js, so it warns once that module is gone.
     'aaa-combo-boot',
+    // Foreign to the OMP loader; never shipped here on purpose.
+    'opencode',
   ].map((dir) => path.join(extDir, dir));
 
   console.log('Will remove:');

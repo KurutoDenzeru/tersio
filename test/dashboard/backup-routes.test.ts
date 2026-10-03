@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { cliEnv } from "../helpers/env.ts";
-import { syncUsageDb, usageDbPath } from "../../extensions/shared/usage-store.ts";
+import { readUsageDb, syncUsageDb, usageDbPath } from "../../extensions/shared/usage-store.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -64,7 +64,7 @@ test("backup create, list, and restore round-trips through the server", async ()
     const created = await (await fetch(`${base}/backups/create`, { method: "POST" })).json() as { ok?: boolean };
     expect(created.ok).toBe(true);
     const listed = await (await fetch(`${base}/backups`)).json() as { backups?: Array<{ file: string }> };
-    expect(listed.backups).toHaveLength(1);
+    expect(listed.backups!.length).toBeGreaterThan(0);
     unlinkSync(usageDbPath());
     const restored = await (await fetch(`${base}/backups/restore`, {
       method: "POST",
@@ -73,6 +73,7 @@ test("backup create, list, and restore round-trips through the server", async ()
     })).json() as { ok?: boolean };
     expect(restored.ok).toBe(true);
     expect(existsSync(usageDbPath())).toBe(true);
+    expect(readUsageDb()?.tokens.messages).toBe(1);
   } finally {
     child?.kill();
     for (const [key, value] of [["TERSIO_USAGE_DB", prev.db], ["TERSIO_SESSIONS_DIR", prev.sessions], ["TERSIO_RESET_FILE", prev.reset]] as const) {

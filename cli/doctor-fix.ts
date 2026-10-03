@@ -28,18 +28,31 @@ const EXT_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'e
 
 // A written tree is the install for both hosts now, so --fix restores it for whichever hosts have it, alongside the OMP package when that is present.
 async function fixExtensionTrees(): Promise<void> {
+  // The opencode entrypoint is foreign to pi/omp loaders: never copy it there, and remove strays.
+  const forHost = (id: string): string[] => TREE_FILES.filter((file) => id === 'opencode' || !file.startsWith('opencode/'));
+  const scrubOpencodeDir = async (dest: string): Promise<void> => {
+    const dir = path.join(dest, 'opencode');
+    if (!existsSync(dir)) return;
+    if (dryRun) { sayTagged(`  [dry-run] would remove foreign ${dir}`); return; }
+    await fs.rm(dir, { recursive: true, force: true });
+    sayTagged(`  [rm] foreign ${dir}`);
+  };
   for (const host of detectHosts()) {
     const dest = hostExtensionsDir(host.id);
     // Repair a host whose tree is partly there: a half-written tree is exactly the case this runs for, and it reads as "not installed" to the detector.
-    const present = TREE_FILES.filter((file) => existsSync(path.join(dest, file))).length;
-    if (present === 0) continue;
+    const present = forHost(host.id).filter((file) => existsSync(path.join(dest, file))).length;
+    if (present === 0) {
+      if (host.id !== 'opencode') await scrubOpencodeDir(dest);
+      continue;
+    }
     await fs.mkdir(dest, { recursive: true });
-    for (const file of TREE_FILES) {
+    for (const file of forHost(host.id)) {
       const from = path.join(EXT_DIR, ...file.split('/'));
       const text = await readTextIfExists(from);
       if (text === null) sayTagged(`  [warn] bundled source missing: ${from}`);
       else await writeIfChanged(path.join(dest, file), text, { dryRun, verbose });
     }
+    if (host.id !== 'opencode') await scrubOpencodeDir(dest);
     if (!dryRun) sayTagged(`  [ok] ${host.label} extension tree: ${dest}`);
   }
 }

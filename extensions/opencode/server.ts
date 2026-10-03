@@ -5,6 +5,8 @@ import cavemanSessionExtension from '../caveman-session/index.ts';
 import rtkSessionExtension from '../rtk-session/index.ts';
 import comboToggleExtension from '../combo-toggle/index.ts';
 import tersioCommandsExtension from '../tersio-commands/index.ts';
+import { getSharedComboState } from '../shared/session-state.ts';
+import { formatStatus } from '../shared/status.ts';
 import type { ExtensionApi, ExtensionCtx, InputEvent, SessionEntry, SystemPromptEvent } from '../shared/types.ts';
 
 interface CommandConfig {
@@ -78,7 +80,17 @@ const plugin: Plugin.Plugin = {
           execute: async (input) => {
             const text = typeof input.prompt?.text === 'string' ? input.prompt.text : '';
             const args = text.includes(' ') ? text.slice(text.indexOf(' ') + 1).trim() : '';
-            await config.handler(args, stubCtx());
+            // The shared handlers report through ui.notify, which has no OpenCode
+            // surface. Collect it and send it back so a command never answers blank.
+            const notes: string[] = [];
+            const cmdCtx: ExtensionCtx = {
+              ...stubCtx(),
+              hasUI: true,
+              ui: { notify: (message: string) => { notes.push(message); } },
+            };
+            await config.handler(args, cmdCtx);
+            const reply = notes.length ? notes.join('\n') : formatStatus(getSharedComboState());
+            await ctx.session.prompt({ sessionID: input.sessionID, text: reply });
           },
         });
       }
