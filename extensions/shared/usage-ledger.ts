@@ -198,12 +198,20 @@ export interface OpencodeDbRow {
   row: OpencodeMessage;
 }
 
+// Two on-disk shapes: legacy `message` (role/modelID/providerID live inside `data`),
+// current `session_message` (role in the `type` column, model under data.model).
 // Scalars only: the `data` blob holds newlines and tabs, which the sqlite3 CLI would split.
-const OC_DB_SELECT = 'SELECT id, time_created, json_extract(data,\'$.role\'), json_extract(data,\'$.providerID\'), json_extract(data,\'$.modelID\'),' +
-  ' json_extract(data,\'$.time.created\'), json_extract(data,\'$.time.completed\'), json_extract(data,\'$.tokens.input\'),' +
-  ' json_extract(data,\'$.tokens.output\'), json_extract(data,\'$.tokens.cache.read\'), json_extract(data,\'$.tokens.cache.write\'),' +
-  ' json_extract(data,\'$.cost\') FROM message WHERE json_extract(data,\'$.role\')=\'assistant\' AND time_created > ';
 const OC_DB_ORDER = ' ORDER BY time_created;';
+const OC_DB_COLUMNS =
+  'json_extract(data,\'$.time.created\'), json_extract(data,\'$.time.completed\'),' +
+  ' json_extract(data,\'$.tokens.input\'), json_extract(data,\'$.tokens.output\'),' +
+  ' json_extract(data,\'$.tokens.cache.read\'), json_extract(data,\'$.tokens.cache.write\'), json_extract(data,\'$.cost\')';
+const ocDbLegacy = (since: number): string =>
+  `SELECT id, time_created, json_extract(data,'$.role'), json_extract(data,'$.providerID'), json_extract(data,'$.modelID'), ${OC_DB_COLUMNS}` +
+  ` FROM message WHERE json_extract(data,'$.role')='assistant' AND time_created > ${since}${OC_DB_ORDER}`;
+const ocDbCurrent = (since: number): string =>
+  `SELECT id, time_created, 'assistant', json_extract(data,'$.model.providerID'), json_extract(data,'$.model.id'), ${OC_DB_COLUMNS}` +
+  ` FROM session_message WHERE type='assistant' AND time_created > ${since}${OC_DB_ORDER}`;
 
 // A re-scan window covers tokens that land after the row was created, so a late fill is not lost.
 export const OPENCODE_DB_OVERLAP_MS = 3_600_000;
@@ -213,11 +221,13 @@ export function readOpencodeDbRows(db: string, sinceMs: number): OpencodeDbRow[]
   if (!Number.isFinite(sinceMs)) return [];
   try {
     if (!fs.existsSync(db)) return [];
-    const out = execFileSync('sqlite3', ['-separator', '\t', '-readonly', db, `${OC_DB_SELECT}${Math.max(0, Math.floor(sinceMs))}${OC_DB_ORDER}`], {
-      encoding: 'utf8',
-      timeout: 30000,
-      stdio: ['ignore', 'pipe', 'ignore'],
-    });
+    const since = Math.max(0, Math.floor(sinceMs));
+    // Separate calls: a db holding only one table must not cancel the other.
+const run = (sql: string): string =>
+  execFileSync('sqlite3', ['-separator', '\t', '-readonly', db, sql], { encoding: 'utf8', timeout: 30000, stdio: ['ignore', 'pipe', 'ignore'] });
+let out = '';
+try { out += run(ocDbLegacy(since)); } catch { /* no legacy table or unreadable */ }
+try { out += run(ocDbCurrent(since)); } catch { /* no session_message table or unreadable */ }
     const rows: OpencodeDbRow[] = [];
     for (const line of out.split('\n')) {
       if (!line.trim()) continue;

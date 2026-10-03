@@ -16,7 +16,8 @@ function hasSqlite(): boolean {
   }
 }
 
-const SCHEMA = `CREATE TABLE message (id text PRIMARY KEY, session_id text NOT NULL, time_created integer NOT NULL, time_updated integer NOT NULL, data text NOT NULL);`;
+const SCHEMA = `CREATE TABLE message (id text PRIMARY KEY, session_id text NOT NULL, time_created integer NOT NULL, time_updated integer NOT NULL, data text NOT NULL);
+CREATE TABLE session_message (id text PRIMARY KEY, session_id text NOT NULL, type text NOT NULL, seq integer NOT NULL, time_created integer NOT NULL, time_updated integer NOT NULL, data text NOT NULL);`;
 
 function seed(dir: string, rows: Array<{ id: string; created: number; data: Record<string, unknown> }>): string {
   const db = path.join(dir, "opencode.db");
@@ -28,6 +29,34 @@ function seed(dir: string, rows: Array<{ id: string; created: number; data: Reco
   }
   execFileSync("sqlite3", [db, sql.join("")], { timeout: 30000 });
   return db;
+}
+
+// Same rows, current on-disk shape: role in `type`, model under data.model.
+function seedCurrent(dir: string, rows: Array<{ id: string; created: number; data: Record<string, unknown> }>): string {
+  const db = path.join(dir, "opencode-v2.db");
+  const sql = [SCHEMA.split("\n")[1]];
+  for (const r of rows) {
+    const type = typeof r.data.role === "string" ? r.data.role : "assistant";
+    sql.push(
+      `INSERT INTO session_message VALUES ('${r.id}','ses_a','${type}',1,${r.created},${r.created},'${JSON.stringify(r.data).replace(/'/g, "''")}');`,
+    );
+  }
+  execFileSync("sqlite3", [db, sql.join("")], { timeout: 30000 });
+  return db;
+}
+
+// Current on-disk shape: no `role` key, model under data.model.
+function assistantCurrent(id: string, created: number, tokens: Record<string, number>): { id: string; created: number; data: Record<string, unknown> } {
+  return {
+    id,
+    created,
+    data: {
+      id,
+      model: { id: "muse-spark-1.3-contributor-free", providerID: "opencode" },
+      tokens: { input: tokens.input, output: tokens.output, cache: { read: tokens.cacheRead, write: 0 } },
+      time: { created, completed: created + 5000 },
+    },
+  };
 }
 
 function withEnv(dir: string, fn: () => void): void {
@@ -89,6 +118,28 @@ test.runIf(hasSqlite())("sqlite message rows land in the ledger under the openco
       // A second sync re-reads the overlap window only; the row count must not double.
       expect(syncUsageDb()).toBe(true);
       expect(readUsageDb()?.tokens.messages).toBe(2);
+    });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test.runIf(hasSqlite())("session_message rows (current shape) land under the opencode host", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-oc-db-v2-"));
+  try {
+    mkdirSync(path.join(dir, "sessions"), { recursive: true });
+    const db = seedCurrent(dir, [
+      { id: "msg_u", created: 1789800000000, data: { id: "msg_u", role: "user", time: { created: 1789800000000 } } },
+      assistantCurrent("msg_n1", 1789800001000, { input: 300, output: 30, cacheRead: 700 }),
+    ]);
+    withEnv(dir, () => {
+      process.env.TERSIO_OPENCODE_DB = db;
+      expect(syncUsageDb()).toBe(true);
+      const tokens = readUsageDb()?.tokens;
+      // The user row is skipped; one assistant row, id kept for the request drawer.
+      expect(tokens?.messages).toBe(1);
+      expect(tokens?.byModel[MODEL_KEY].input).toBe(300);
+      expect(tokens?.recent[0]?.id).toBe("msg_n1");
     });
   } finally {
     rmSync(dir, { recursive: true, force: true });
