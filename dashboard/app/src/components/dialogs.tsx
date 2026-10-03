@@ -32,7 +32,7 @@ import { useToast } from "./toaster";
 import { CurrencyPicker } from "./savings";
 import { HoverTip } from "./common";
 import { Icon } from "./icon";
-import { OmpLogo, PiLogo } from "./agent-logos";
+import { OmpLogo, OpencodeLogo, PiLogo } from "./agent-logos";
 
 type Pane = "general" | "connection" | "diagnosis" | "data";
 
@@ -112,6 +112,7 @@ function HealthPane() {
   const agents: AgentRowProps[] = [
     { name: "Oh My Pi", version: health?.omp ?? null, binPath: health?.ompPath ?? null, bin: "omp", docs: "https://omp.sh", available: !!health?.omp, unavailable, logo: <OmpLogo className="size-5" /> },
     { name: "Pi", version: health?.pi ?? null, binPath: health?.piPath ?? null, bin: "pi", docs: "https://pi.dev", available: !!health?.pi, unavailable, logo: <PiLogo className="size-5" /> },
+    { name: "OpenCode", version: health?.opencode ?? null, binPath: health?.opencodePath ?? null, bin: "opencode", docs: "https://opencode.ai", available: !!health?.opencode, unavailable, logo: <OpencodeLogo className="size-5" /> },
   ];
 
   return (
@@ -327,6 +328,7 @@ function BackupRestore() {
   const [asking, setAsking] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [backing, setBacking] = useState(false);
 
   const load = useCallback(() => {
     fetch("/backups")
@@ -461,9 +463,26 @@ function BackupRestore() {
           </ul>
 
           <div className="flex items-center justify-between gap-3 border-t border-line px-3 py-2">
-            <span className="min-w-0 truncate text-[11px] text-dim">
-              {target ? `Selected ${fmtSnapshot(target.mtime)}` : "Pick a snapshot to restore"}
-            </span>
+            <button
+              type="button"
+              disabled={backing}
+              onClick={() => {
+                setBacking(true);
+                void fetch("/backups/create", { method: "POST" })
+                  .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+                  .then((d: { ok?: boolean; error?: string }) => {
+                    if (d?.ok) { toast("Backup taken", "Snapshot saved.", "check"); load(); }
+                    else toast("Backup failed", d?.error ?? "Unknown backup", "circle-alert");
+                  })
+                  .catch(() => toast("Backup failed", "The dashboard server did not answer.", "circle-alert"))
+                  .finally(() => setBacking(false));
+              }}
+              aria-label="Back up usage now"
+              className="mono flex shrink-0 items-center gap-2 rounded-xl border border-line px-3 py-1.5 text-xs text-ink [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96] disabled:opacity-50"
+            >
+              <Icon name="database-backup" className="size-3.5" />
+              <span>{backing ? "Backing up…" : "Backup now"}</span>
+            </button>
             <span className="flex shrink-0 items-center gap-2">
               <button
                 type="button"

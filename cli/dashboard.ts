@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { clearUsageLedger, markReset, readUsage } from '../extensions/shared/usage-ledger.ts';
 import { pricesCachePath } from '../extensions/shared/pricing.ts';
 import { summarizeUsage } from './usage.ts';
-import { deleteUsageBackup, listUsageBackups, restoreUsageBackup } from '../extensions/shared/usage-store.ts';
+import { backupUsageDb, deleteUsageBackup, listUsageBackups, restoreUsageBackup, usageDbPath } from '../extensions/shared/usage-store.ts';
 import type { UsageReport } from './usage.ts';
 import { isCurrencyCode } from './currency.ts';
 import type { CurrencyCode } from './currency.ts';
@@ -97,6 +97,10 @@ function piPath(): string | null {
   return binOnPath('pi');
 }
 
+function opencodePath(): string | null {
+  return binOnPath('opencode');
+}
+
 // omp prints `omp/18.4.1`, pi prints a bare `0.87.1`; both read as name/version.
 function versionLabel(bin: string, raw: string): string {
   const out = raw.trim();
@@ -141,6 +145,7 @@ function healthJson(): string {
   const rtkPresent = rtkBin !== null;
   const detectedOmpPath = ompPath();
   const detectedPiPath = piPath();
+  const detectedOpencodePath = opencodePath();
   return JSON.stringify({
     tersio: PACKAGE_VERSION,
     node: process.version,
@@ -149,6 +154,8 @@ function healthJson(): string {
     ompPath: detectedOmpPath,
     pi: agentVersion(detectedPiPath),
     piPath: detectedPiPath,
+    opencode: agentVersion(detectedOpencodePath),
+    opencodePath: detectedOpencodePath,
     provider: ompDefaultModel(),
     rtk: { present: rtkPresent, version: rtkPresent ? rtkVersion(rtkBin as string) : null, path: rtkBin || 'not found in PATH' },
     home: tersioHomePath(),
@@ -485,6 +492,17 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
       const rows = listUsageBackups().map((b) => ({ file: path.basename(b.file), mtime: b.mtime, size: b.size }));
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ backups: rows }));
+      return;
+    }
+    if (req.url === '/backups/create' && req.method === 'POST') {
+      try {
+        backupUsageDb(usageDbPath());
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true }));
+      } catch {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: 'backup failed' }));
+      }
       return;
     }
     if (req.url === '/backups/delete' && req.method === 'POST') {

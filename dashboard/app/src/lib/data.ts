@@ -9,7 +9,7 @@ export interface RecentRequestRow {
   o: number;
   t: number;
   d?: number;
-  /** Which agent ran the session: pi, omp, or codex. */
+  /** Which agent ran the session: pi, omp, opencode. */
   h?: string;
   cr?: number;
   cw?: number;
@@ -87,6 +87,8 @@ export interface HealthReport {
   ompPath: string | null;
   pi: string | null;
   piPath: string | null;
+  opencode: string | null;
+  opencodePath: string | null;
   provider: string | null;
   rtk: { present: boolean; version: string | null; path: string };
   home: string;
