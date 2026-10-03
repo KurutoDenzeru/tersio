@@ -5,7 +5,7 @@ import { spawn } from 'node:child_process';
 import {
   IS_WINDOWS, OMP_PLUGINS_DIR,
   PACKAGE_BIN, PACKAGE_NAME, PACKAGE_VERSION,
-  dryRun, execP, parseJsonObject, verbose,
+  args, dryRun, execP, parseJsonObject, verbose,
 } from './common.ts';
 import { execNetwork, sayTagged } from './interactive.ts';
 import { readTextIfExists, resolveRtkBinary, tersioDataPath } from '../extensions/lib/utils.ts';
@@ -15,6 +15,7 @@ import {
   httpsGet, normalizeRtkVersion, sha256Hex,
 } from '../extensions/lib/utils.ts';
 import type { RtkRelease } from '../extensions/lib/utils.ts';
+import { parseHostArg } from './hosts.ts';
 
 const UPDATE_CHECK_TTL_MS = 6 * 60 * 60 * 1000;
 
@@ -142,6 +143,16 @@ async function runLatestUpdate(): Promise<void> {
   const forwardedArgs = ['--yes'];
   if (dryRun) forwardedArgs.push('--dry-run');
   if (verbose) forwardedArgs.push('--verbose');
+  // A pinned host refreshes that host's tree; bare update keeps the OMP default.
+  let pinned: string | undefined;
+  try {
+    pinned = parseHostArg(args);
+  } catch (e) {
+    console.error(`[fail] ${(e as Error).message}`);
+    process.exitCode = 1;
+    return;
+  }
+  if (pinned) forwardedArgs.push('--host', pinned);
 
   const npmCommand = IS_WINDOWS ? process.env.ComSpec || 'cmd.exe' : 'npm';
 
@@ -217,7 +228,8 @@ async function runLatestUpdate(): Promise<void> {
   // Inherited stdio, no outer spinner; the delegated installer runs quiet and this parent owns both the plan line and the closing summary.
   try {
     await execInherit(npmCommand, npmCommandArgs);
-    console.log(`Done — tersio ${plan.cli ?? PACKAGE_VERSION}. Restart OMP.`);
+    const hostName = pinned === 'pi' ? 'pi' : pinned === 'opencode' ? 'OpenCode' : 'OMP';
+    console.log(`Done — tersio ${plan.cli ?? PACKAGE_VERSION}. Restart ${hostName}.`);
     if (!dryRun) {
       try {
         await refreshPrices();

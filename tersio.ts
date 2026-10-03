@@ -17,8 +17,8 @@ function printHelp(): void {
   console.log(`Usage: ${PACKAGE_BIN} [command] [options]
 
 Commands:
-  install      Install the add-ons for one agent (--host omp|pi, or ask at a terminal)
-  update       Refresh the CLI and add-ons (RTK binary, Caveman rule, Ponytail)
+  install      Install the add-ons for one agent (--host omp|pi|opencode, or ask at a terminal)
+  update       Refresh the CLI and add-ons (RTK binary, Caveman rule, Ponytail; --host limits to one agent)
   doctor       Check the current installation (--fix repairs, --dry-run previews)
   usage        Ledger-backed usage + savings report
   dashboard     Open the Dashboard (localhost only)
@@ -31,7 +31,7 @@ Commands:
 Options:
   --fix (doctor: repairs all; --fix=<scope> repairs one of extensions, registrations, rtk, ponytail, cli)
   --scope user (legacy; accepted and ignored — user scope is the only scope)
-  --host omp|pi (install|uninstall: target agent; a terminal asks instead)
+  --host omp|pi|opencode (install|uninstall|update: target agent; a terminal asks instead)
   --keep-ponytail (uninstall: keep the bundled Ponytail copy — removed by default)
   --remove-rtk (uninstall: also remove the RTK binary; its OMP wiring always goes)
   --combo-default off|medium|balanced|max (implies caveman, rtk, ponytail)
