@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { execSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -7,6 +7,7 @@ import path from "node:path";
 import {
   clearUsageDb,
   readUsageDb,
+  reparseGuardReport,
   syncUsageDb,
   usageDbPath,
 } from "../../extensions/shared/usage-store.ts";
@@ -103,6 +104,75 @@ test.skipIf(!hasSqlite())("sync keeps rows for deleted transcripts", () => {
       const stored = readUsageDb();
       expect(stored?.tokens.messages).toBe(2);
       expect(Object.keys(stored?.tokens.byModel ?? {})).toEqual(["deepseek-v4.1-flash"]);
+    });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test.skipIf(!hasSqlite())("migration guard restores the backup when transcripts vanish mid-bump", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-usage-guard-"));
+  const prevForce = process.env.TERSIO_FORCE_REPARSE;
+  try {
+    withEnv(dir, () => {
+      const row = (id: string, input: number): string =>
+        `{"timestamp":"2026-09-01T10:00:00.000Z","type":"message","id":"${id}","message":{"role":"assistant","model":"m","usage":{"input":${input},"output":1}}}`;
+      mkdirSync(path.join(dir, "sessions"), { recursive: true });
+      for (const n of ["a", "b", "c"]) {
+        writeFileSync(path.join(dir, "sessions", `${n}.jsonl`), [row(`${n}1`, 10), row(`${n}2`, 20)].join("\n") + "\n", "utf8");
+      }
+      expect(syncUsageDb()).toBe(true);
+      expect(readUsageDb()?.tokens.messages).toBe(6);
+      execFileSync("sqlite3", [process.env.TERSIO_USAGE_DB!, "UPDATE meta SET v='__old__' WHERE k='parser_version';"]);
+      rmSync(path.join(dir, "sessions", "a.jsonl"));
+      rmSync(path.join(dir, "sessions", "b.jsonl"));
+      expect(syncUsageDb()).toBe(false);
+      expect(readUsageDb()?.tokens.messages).toBe(6);
+      expect(reparseGuardReport()).toMatch(/kept 2 of 6 rows/);
+      process.env.TERSIO_FORCE_REPARSE = "1";
+      expect(syncUsageDb()).toBe(true);
+      expect(readUsageDb()?.tokens.messages).toBe(2);
+      expect(execFileSync("sqlite3", [process.env.TERSIO_USAGE_DB!, "PRAGMA freelist_count;"], { encoding: "utf8" }).trim()).toBe("0");
+    });
+  } finally {
+    if (prevForce === undefined) delete process.env.TERSIO_FORCE_REPARSE;
+    else process.env.TERSIO_FORCE_REPARSE = prevForce;
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test.skipIf(!hasSqlite())("v9 databases migrate in place without re-parsing transcripts", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-usage-migrate-"));
+  try {
+    withEnv(dir, () => {
+      const db = process.env.TERSIO_USAGE_DB!;
+      mkdirSync(path.join(dir, "sessions"), { recursive: true });
+      const file = path.join(dir, "sessions", "gone.jsonl");
+      writeFileSync(
+        file,
+        [
+          `{"timestamp":"2026-09-01T10:00:00.000Z","message":{"role":"assistant","model":"m","usage":{"input":10,"output":1}}}`,
+          `{"timestamp":"2026-09-01T11:00:00.000Z","message":{"role":"assistant","model":"m","usage":{"input":20,"output":2}}}`,
+        ].join("\n") + "\n",
+        "utf8",
+      );
+      execFileSync("sqlite3", [db, [
+        `CREATE TABLE meta (k TEXT PRIMARY KEY, v TEXT NOT NULL);`,
+        `CREATE TABLE files (path TEXT PRIMARY KEY, mtime REAL NOT NULL, size INTEGER NOT NULL);`,
+        `CREATE TABLE messages (file TEXT NOT NULL, t REAL, model TEXT NOT NULL,` +
+        ` i INTEGER NOT NULL, o INTEGER NOT NULL, d REAL, cr INTEGER NOT NULL, cw INTEGER NOT NULL,` +
+        ` usd REAL, st TEXT NOT NULL, code REAL, note TEXT, tools TEXT NOT NULL DEFAULT '[]', h TEXT);`,
+        `INSERT INTO files VALUES ('${file}',1,2);`,
+        `INSERT INTO messages VALUES ('${file}',1,'m',10,1,NULL,0,0,NULL,'completed',NULL,NULL,'[]','pi');`,
+        `INSERT INTO messages VALUES ('${file}',2,'m',20,2,NULL,0,0,NULL,'completed',NULL,NULL,'[]','pi');`,
+        `INSERT INTO meta VALUES ('parser_version','9');`,
+      ].join("")]);
+      rmSync(file);
+      expect(syncUsageDb()).toBe(true);
+      expect(readUsageDb()?.tokens.messages).toBe(2);
+      expect(reparseGuardReport()).toBe(null);
+      const schema = execFileSync("sqlite3", [db, "SELECT sql FROM sqlite_master WHERE name='messages';"], { encoding: "utf8" });
+      expect(schema).toMatch(/file_id/);
     });
   } finally {
     rmSync(dir, { recursive: true, force: true });

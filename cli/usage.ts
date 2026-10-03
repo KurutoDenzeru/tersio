@@ -18,7 +18,7 @@ import type { RecentRequest, RtkAdoption, RtkRecallDiagnostics, SessionTokens, T
 import { resolveRtkBinary } from '../extensions/lib/utils.ts';
 import { readRtkGain } from '../extensions/shared/rtk-gain.ts';
 import type { RtkGain } from '../extensions/shared/rtk-gain.ts';
-import { readUsageDb, syncUsageDb, usageDbPath } from '../extensions/shared/usage-store.ts';
+import { readUsageDb, reparseGuardReport, syncUsageDb, usageDbPath } from '../extensions/shared/usage-store.ts';
 import { withInteractiveSpinner } from './interactive.ts';
 import { PACKAGE_VERSION, currency } from './common.ts';
 import { formatCurrency } from './currency.ts';
@@ -79,6 +79,8 @@ export function summarizeUsage(rows: UsageRow[]): UsageReport {
   } catch {
     synced = false;
   }
+  const guard = reparseGuardReport();
+  if (guard) console.warn(`[warn] usage mirror: ${guard}`);
   let stored: SessionTokens | null = null;
   try {
     stored = readUsageDb()?.tokens ?? null;

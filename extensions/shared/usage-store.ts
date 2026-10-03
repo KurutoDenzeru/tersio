@@ -51,7 +51,9 @@ function nullStr(v: string | undefined): string {
 }
 
 function run(db: string, sql: string): void {
-  execFileSync('sqlite3', [db, sql], { stdio: ['ignore', 'ignore', 'ignore'], timeout: 30000 });
+  // -bail makes a multi-statement write atomic: the first error stops the
+  // script before COMMIT, so a failed INSERT can never leave DELETEs behind.
+  execFileSync('sqlite3', ['-bail', db, sql], { stdio: ['ignore', 'ignore', 'ignore'], timeout: 30000 });
 }
 
 function query(db: string, sql: string): string[][] {
@@ -67,37 +69,112 @@ function query(db: string, sql: string): string[][] {
 }
 
 // Bump on a parse change: unchanged transcripts are never re-read.
-const PARSER_VERSION = '9';
+const PARSER_VERSION = '10';
+
+// A re-parse that keeps less than half the rows means transcripts vanished mid-migration; the backup is restored instead of publishing the loss.
+const REPARSE_GUARD_RATIO = 0.5;
+
+let guardReport: string | null = null;
+
+/** Why the last sync refused to publish a re-parse, if it did. */
+export function reparseGuardReport(): string | null {
+  return guardReport;
+}
+
+const SCHEMA_SQL =
+  `CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT NOT NULL);` +
+  `CREATE TABLE IF NOT EXISTS files (id INTEGER PRIMARY KEY AUTOINCREMENT, path TEXT UNIQUE NOT NULL, mtime REAL NOT NULL, size INTEGER NOT NULL);` +
+  `CREATE TABLE IF NOT EXISTS messages (file_id INTEGER NOT NULL REFERENCES files(id), t REAL, model TEXT NOT NULL,` +
+  ` i INTEGER NOT NULL, o INTEGER NOT NULL, d REAL, cr INTEGER NOT NULL, cw INTEGER NOT NULL,` +
+  ` usd REAL, st TEXT NOT NULL, code REAL, note TEXT, tools TEXT NOT NULL DEFAULT '[]', h TEXT);` +
+  `CREATE INDEX IF NOT EXISTS idx_messages_file ON messages(file_id);`;
+
+function storedParserVersion(db: string): string | null {
+  try {
+    const stored = query(db, `SELECT v FROM meta WHERE k='parser_version';`);
+    return stored.length ? stored[0][0] : null;
+  } catch {
+    return null;
+  }
+}
+
+function countMessages(db: string): number {
+  try {
+    const rows = query(db, `SELECT COUNT(*) FROM messages;`);
+    return Number(rows[0]?.[0]) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+// Same pre-migration state as the newest backup: another copy churns the 3-slot rotation for nothing.
+function newestBackupMatches(stored: string | null): boolean {
+  if (stored === null) return false;
+  try {
+    const newest = listUsageBackups()[0];
+    if (!newest) return false;
+    const out = query(newest.file, `SELECT v FROM meta WHERE k='parser_version';`);
+    return out.length > 0 && out[0][0] === stored;
+  } catch {
+    return false;
+  }
+}
+
+// v9 shape (path-keyed rows) migrates in place with zero re-parse, so history survives even when transcripts are gone.
+function canMigrateInPlace(db: string): boolean {
+  try {
+    const names = query(db, `PRAGMA table_info(messages);`).map((r) => r[1]);
+    return names.includes('file') && names.includes('h') && !names.includes('file_id');
+  } catch {
+    return false;
+  }
+}
+
+function migrateInPlace(db: string, preCount: number): boolean {
+  const cols = `t, model, i, o, d, cr, cw, usd, st, code, note, tools, h`;
+  try {
+    run(db,
+      `BEGIN;` +
+      `CREATE TABLE files_new (id INTEGER PRIMARY KEY AUTOINCREMENT, path TEXT UNIQUE NOT NULL, mtime REAL NOT NULL, size INTEGER NOT NULL);` +
+      `INSERT INTO files_new (path, mtime, size) SELECT path, mtime, size FROM files;` +
+      `CREATE TABLE messages_new (file_id INTEGER NOT NULL REFERENCES files_new(id), t REAL, model TEXT NOT NULL,` +
+      ` i INTEGER NOT NULL, o INTEGER NOT NULL, d REAL, cr INTEGER NOT NULL, cw INTEGER NOT NULL,` +
+      ` usd REAL, st TEXT NOT NULL, code REAL, note TEXT, tools TEXT NOT NULL DEFAULT '[]', h TEXT);` +
+      `INSERT INTO messages_new (file_id, ${cols}) SELECT (SELECT id FROM files_new WHERE files_new.path = messages.file), ${cols} FROM messages;` +
+      `DROP TABLE messages;DROP TABLE files;` +
+      `ALTER TABLE files_new RENAME TO files;ALTER TABLE messages_new RENAME TO messages;` +
+      `CREATE INDEX idx_messages_file ON messages(file_id);` +
+      `COMMIT;`);
+  } catch {
+    return false;
+  }
+  try {
+    const names = query(db, `PRAGMA table_info(messages);`).map((r) => r[1]);
+    return names.includes('file_id') && !names.includes('file') && countMessages(db) === preCount;
+  } catch {
+    return false;
+  }
+}
 
 function ensureSchema(db: string): void {
   fs.mkdirSync(path.dirname(db), { recursive: true });
   // Fold in rows stored under a pre-alias spelling; the mtime ledger will not re-read those transcripts.
   const rekeys = MODEL_ALIASES.map((a) => `UPDATE messages SET model='${a.id}' WHERE model='${a.feed}';`).join('');
-  run(
-    db,
-    `CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT NOT NULL);` +
-      `CREATE TABLE IF NOT EXISTS files (path TEXT PRIMARY KEY, mtime REAL NOT NULL, size INTEGER NOT NULL);` +
-      `CREATE TABLE IF NOT EXISTS messages (file TEXT NOT NULL, t REAL, model TEXT NOT NULL,` +
-      ` i INTEGER NOT NULL, o INTEGER NOT NULL, d REAL, cr INTEGER NOT NULL, cw INTEGER NOT NULL,` +
-      ` usd REAL, st TEXT NOT NULL, code REAL, note TEXT, tools TEXT NOT NULL DEFAULT '[]', h TEXT);` +
-      `CREATE INDEX IF NOT EXISTS idx_messages_file ON messages(file);` + rekeys,
-  );
-  // An older db has no h column; CREATE TABLE IF NOT EXISTS will not add one.
+  const stored = storedParserVersion(db);
+  if (stored === PARSER_VERSION) {
+    run(db, SCHEMA_SQL + rekeys);
+    return;
+  }
+  // A version bump rebuilds both tables, so no ALTER patchwork survives a migration.
   try {
-    run(db, `ALTER TABLE messages ADD COLUMN h TEXT;`);
-  } catch { /* already present */ }
-  // Host is derivable from the path, so backfill without re-reading transcripts.
-  try {
-    for (const [file] of query(db, `SELECT DISTINCT file FROM messages WHERE h IS NULL;`)) {
-      run(db, `UPDATE messages SET h='${esc(hostOfSessionFile(file))}' WHERE file=${esc(file)};`);
+    if (countMessages(db) > 0 && !newestBackupMatches(stored)) backupUsageDb(db);
+    if (stored !== null && canMigrateInPlace(db) && migrateInPlace(db, countMessages(db))) {
+      run(db, `INSERT OR REPLACE INTO meta (k,v) VALUES ('parser_version','${PARSER_VERSION}');`);
+      try { run(db, `VACUUM;`); } catch { /* best-effort */ }
+      return;
     }
-  } catch { /* fresh or unreadable db */ }
-  // Drop the cache when the parser has moved on, so every transcript is read again and the new columns actually fill.
-  try {
-    const stored = query(db, `SELECT v FROM meta WHERE k='parser_version';`);
-    if (stored.length && stored[0][0] === PARSER_VERSION) return;
-    backupUsageDb(db);
-    run(db, `DELETE FROM messages;DELETE FROM files;INSERT OR REPLACE INTO meta (k,v) VALUES ('parser_version','${PARSER_VERSION}');`);
+    run(db, `DROP TABLE IF EXISTS messages;DROP TABLE IF EXISTS files;` + SCHEMA_SQL +
+      `INSERT OR REPLACE INTO meta (k,v) VALUES ('parser_version','${PARSER_VERSION}');`);
   } catch { /* fresh db, nothing to invalidate */ }
 }
 
@@ -123,7 +200,7 @@ export function listUsageBackups(): Array<{ file: string; mtime: number; size: n
   }
 }
 
-function backupUsageDb(db: string): void {
+export function backupUsageDb(db: string): void {
   try {
     const dir = backupUsageDir();
     fs.mkdirSync(dir, { recursive: true });
@@ -307,8 +384,8 @@ function parseFile(text: string, host?: string): StoredRow[] {
 }
 
 function insertSql(file: string, r: StoredRow): string {
-  return `INSERT INTO messages (file, t, model, i, o, d, cr, cw, usd, st, code, note, tools, h) VALUES (` +
-    `${esc(file)},${r.t === null ? 'NULL' : String(r.t)},${esc(r.model)},${r.i},${r.o},` +
+  return `INSERT INTO messages (file_id, t, model, i, o, d, cr, cw, usd, st, code, note, tools, h) VALUES (` +
+    `(SELECT id FROM files WHERE path=${esc(file)}),${r.t === null ? 'NULL' : String(r.t)},${esc(r.model)},${r.i},${r.o},` +
     `${nullNum(r.d)},${r.cr},${r.cw},${nullNum(r.usd)},${esc(r.st)},` +
     `${nullNum(r.code)},${nullStr(r.note)},${esc(JSON.stringify(r.tools))},${nullStr(r.host)});`;
 }
@@ -316,8 +393,16 @@ function insertSql(file: string, r: StoredRow): string {
 // Unchanged transcripts are skipped via mtime+size; rows for deleted ones are kept so rotation never erases history. False when sqlite3 is unavailable.
 export function syncUsageDb(): boolean {
   let db: string;
+  guardReport = null;
+  let preWipe = -1;
+  let migrated = false;
   try {
     db = usageDbPath();
+    const stored = storedParserVersion(db);
+    migrated = stored !== null && stored !== PARSER_VERSION;
+    // The operator deleted sessions on purpose and wants the mirror to match: bypass the guard.
+    const forced = process.env.TERSIO_FORCE_REPARSE === '1';
+    if (migrated && !forced) preWipe = countMessages(db);
     ensureSchema(db);
     maybeScheduledBackup(db);
   } catch {
@@ -371,22 +456,40 @@ export function syncUsageDb(): boolean {
     return flush();
   };
   for (const file of changed) {
-    if (!push(`DELETE FROM messages WHERE file=${esc(file)};DELETE FROM files WHERE path=${esc(file)};`)) return false;
+    const entry = current[file];
+    if (!push(
+      `INSERT INTO files (path, mtime, size) VALUES (${esc(file)},${entry.mtime},${entry.size})` +
+      ` ON CONFLICT(path) DO UPDATE SET mtime=excluded.mtime,size=excluded.size;` +
+      `DELETE FROM messages WHERE file_id=(SELECT id FROM files WHERE path=${esc(file)});`,
+    )) return false;
   }
   try {
     for (const file of changed) {
-      const entry = current[file];
       const text = fs.readFileSync(file, 'utf8');
       for (const r of parseFile(text, hostOfSessionFile(file))) {
         if (!push(insertSql(file, r))) return false;
       }
-      if (!push(`INSERT OR REPLACE INTO files (path, mtime, size) VALUES (${esc(file)},${entry.mtime},${entry.size});`)) return false;
     }
   } catch {
     return false;
   }
   if (!push(`INSERT OR REPLACE INTO meta (k, v) VALUES ('last_sync',${esc(String(Date.now()))});`)) return false;
-  return flush();
+  if (!flush()) return false;
+  if (preWipe > 0) {
+    const kept = countMessages(db);
+    if (kept < preWipe * REPARSE_GUARD_RATIO) {
+      const newest = listUsageBackups()[0];
+      if (newest && restoreUsageBackup(path.basename(newest.file))) {
+        guardReport = `re-parse kept ${kept} of ${preWipe} rows; restored ${path.basename(newest.file)} (set TERSIO_FORCE_REPARSE=1 to accept the loss)`;
+        return false;
+      }
+    }
+  }
+  // Reclaim the migration's DELETE storm so the file stays small.
+  if (migrated) {
+    try { run(db, `VACUUM;`); } catch { /* best-effort */ }
+  }
+  return true;
 }
 
 export function readUsageDb(): StoredUsage | null {
