@@ -7,6 +7,7 @@ import {
   co2Grams,
   co2GramsFor,
   displayModelId,
+  foldModelsByLabel,
   importSessionTokens,
   clearRtkAdoptionCache,
   priceFor,
@@ -14,8 +15,7 @@ import {
   usdCost,
 } from "../../extensions/shared/usage-ledger.ts";
 
-// Fixture rows use 2026-09-01 timestamps — keep any host reset watermark
-// (which would filter them out of the derived view) out of these tests.
+// Fixture rows use 2026-09-01 timestamps; keep the host reset watermark out of these tests.
 process.env.TERSIO_RESET_FILE = path.join(os.tmpdir(), "tersio-tests-no-reset-marker.json");
 if (existsSync(process.env.TERSIO_RESET_FILE)) rmSync(process.env.TERSIO_RESET_FILE);
 
@@ -49,8 +49,8 @@ test("importer aggregates assistant usage by model and day, skips the rest", () 
     expect(s.byDayModel["2026-09-02"]).toEqual({ "mystery-model-9": 110 });
     expect(s.byModelMessages).toEqual({ "claude-sonnet-5": 1, "mystery-model-9": 1 });
     expect(s.recent).toEqual([
-      { m: "mystery-model-9", i: 100, o: 10, t: Date.parse("2026-09-02T10:01:00.000Z"), d: undefined, h: "pi", cr: 0, cw: 0, usd: undefined, st: "completed", code: undefined, note: undefined },
-      { m: "claude-sonnet-5", i: 1000, o: 200, t: Date.parse("2026-09-01T10:01:00.000Z"), d: 4200, h: "pi", cr: 500, cw: 125, usd: 0.012, st: "completed", code: undefined, note: undefined },
+      { m: "mystery-model-9", i: 100, o: 10, t: Date.parse("2026-09-02T10:01:00.000Z"), d: undefined, h: "pi", cr: 0, cw: 0, usd: undefined, st: "completed", code: undefined, note: undefined, id: "b" },
+      { m: "claude-sonnet-5", i: 1000, o: 200, t: Date.parse("2026-09-01T10:01:00.000Z"), d: 4200, h: "pi", cr: 500, cw: 125, usd: 0.012, st: "completed", code: undefined, note: undefined, id: "a" },
     ]);
     expect(s.costMeasured).toBe(0.012);
   } finally {
@@ -88,8 +88,7 @@ test("carries measured cost and run status through to recent rows", () => {
   writeFileSync(
     path.join(dir, "s.jsonl"),
     [
-      // Real OMP shape: usage.cost is an object with a total, and a failed run
-      // carries the HTTP errorStatus plus the provider's message.
+      // Real OMP shape: usage.cost is an object with a total; failed runs carry the HTTP errorStatus.
       '{"type":"message","id":"a","timestamp":"2026-09-03T10:00:00.000Z","message":{"role":"assistant","model":"glm-5.3-flash","stopReason":"error","errorStatus":404,"errorMessage":"404 model not found\\nsecond line","usage":{"input":10,"output":2,"cacheRead":0,"cacheWrite":0,"cost":{"input":0.0001,"output":0.0002,"total":0.0003}}}}',
       '{"type":"message","id":"b","timestamp":"2026-09-03T10:01:00.000Z","message":{"role":"assistant","model":"glm-5.3-flash","stopReason":"aborted","errorMessage":"Interrupted by user","usage":{"input":5,"output":1,"cacheRead":0,"cacheWrite":0,"cost":{"total":0.000187}}}}',
       '{"type":"message","id":"c","timestamp":"2026-09-03T10:02:00.000Z","message":{"role":"assistant","model":"glm-5.3-flash","stopReason":"toolUse","usage":{"input":7,"output":3,"cacheRead":0,"cacheWrite":0,"cost":{"total":0}}}}',
@@ -108,8 +107,7 @@ test("carries measured cost and run status through to recent rows", () => {
     expect(b.usd).toBe(0.000187);
     expect(c.st, "toolUse is an ordinary completed turn").toBe("completed");
     expect(c.usd, "a recorded zero is a measurement, not a missing value").toBe(0);
-    // Previously always 0: the old check required usage.cost to be a number,
-    // but the host writes an object, so measured cost never accumulated.
+    // The old check required a numeric usage.cost, so object costs never accumulated.
     expect(Math.abs(s.costMeasured - (0.0003 + 0.000187)) < 1e-12, `costMeasured was ${s.costMeasured}`).toBeTruthy();
   } finally {
     if (prev === undefined) delete process.env.TERSIO_SESSIONS_DIR;
@@ -136,14 +134,62 @@ test("usdCost flags unpriced models with priced=false", () => {
 test("co2Grams defaults to the gpt-4o served figure", () => {
   expect(co2Grams(5000)).toBe(co2GramsFor("gpt-4o", 5000));
 });
+test("opencode rows carry the msg file id and transcript rows carry row ids", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-ids-"));
+  const prevSessions = process.env.TERSIO_SESSIONS_DIR;
+  const prevOc = process.env.TERSIO_OPENCODE_DIR;
+  process.env.TERSIO_SESSIONS_DIR = path.join(dir, "no-sessions");
+  process.env.TERSIO_OPENCODE_DIR = path.join(dir, "oc");
+  try {
+    mkdirSync(path.join(dir, "oc", "ses_abc"), { recursive: true });
+    writeFileSync(
+      path.join(dir, "oc", "ses_abc", "msg_xyz.json"),
+      JSON.stringify({ role: "assistant", modelID: "m", providerID: "p", tokens: { input: 10, output: 1 }, time: { created: 1788000000000 } }),
+      "utf8",
+    );
+    mkdirSync(path.join(dir, "no-sessions"), { recursive: true });
+    const s = importSessionTokens();
+    expect(s.recent).toHaveLength(1);
+    expect(s.recent[0].id).toBe("msg_xyz");
+  } finally {
+    if (prevSessions === undefined) delete process.env.TERSIO_SESSIONS_DIR;
+    else process.env.TERSIO_SESSIONS_DIR = prevSessions;
+    if (prevOc === undefined) delete process.env.TERSIO_OPENCODE_DIR;
+    else process.env.TERSIO_OPENCODE_DIR = prevOc;
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("gateway variants of one model fold into a single labeled row", () => {
+  const folded = foldModelsByLabel(
+    {
+      "opencode/openai/gpt-5.2-codex": { input: 100, output: 10, cacheRead: 1000, cacheWrite: 0 },
+      "opencode/github-copilot/gpt-5.2-codex": { input: 50, output: 5, cacheRead: 500, cacheWrite: 0 },
+      "meta/muse-spark-1.3-contributor": { input: 7, output: 1, cacheRead: 0, cacheWrite: 0 },
+    },
+    {
+      "opencode/openai/gpt-5.2-codex": 4,
+      "opencode/github-copilot/gpt-5.2-codex": 2,
+      "meta/muse-spark-1.3-contributor": 1,
+    },
+  );
+  expect(Object.keys(folded.byModel).sort()).toEqual(["Meta - Muse-Spark-1.3-Contributor", "OpenAI - GPT-5.2-Codex"]);
+  expect(folded.byModel["OpenAI - GPT-5.2-Codex"]).toEqual({ input: 150, output: 15, cacheRead: 1500, cacheWrite: 0 });
+  expect(folded.byModelMessages["OpenAI - GPT-5.2-Codex"]).toBe(6);
+  expect(folded.byModelMessages["Meta - Muse-Spark-1.3-Contributor"]).toBe(1);
+});
+
 test("free suffix and case variants fold into one model row", () => {
   expect(canonicalModelId("DeepSeek-V4.1-Flash")).toBe(canonicalModelId("deepseek-v4.1-flash:free"));
   expect(canonicalModelId("muse-spark-1.3-contributor-free")).toBe("muse-spark-1.3-contributor");
   expect(displayModelId("deepseek-v4.1-flash")).toBe("Deepseek-V4.1-Flash");
   expect(displayModelId("deepseek-v4.1-flash:free")).toBe("Deepseek-V4.1-Flash");
-  expect(displayModelId("meta/muse-spark-1.3-contributor")).toBe("meta/Muse-Spark-1.3-Contributor");
-  expect(displayModelId("codex/openai")).toBe("codex/OpenAI");
-  expect(displayModelId("gemma4:31b")).toBe("Gemma4-31B");
+  expect(displayModelId("meta/muse-spark-1.3-contributor")).toBe("Meta - Muse-Spark-1.3-Contributor");
+  expect(displayModelId("codex/openai")).toBe("OpenAI");
+  expect(displayModelId("gemma4:31b")).toBe("Google - Gemma4-31B");
+  expect(displayModelId("opencode/Github-Copilot/grok-code-fast-1")).toBe("xAI - Grok-Code-Fast-1");
+  expect(displayModelId("Swe-1-6-Slow")).toBe("Cognition - SWE-1-6-Slow");
+  expect(displayModelId("Anthropic - Claude - Haiku-4.5")).toBe("Anthropic - Claude - Haiku-4.5");
   const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-modelfold-"));
   writeFileSync(
     path.join(dir, "s.jsonl"),

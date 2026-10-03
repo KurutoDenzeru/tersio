@@ -67,8 +67,7 @@ export function isCurrencyCode(code: string): boolean {
   return Object.hasOwn(CURS, code);
 }
 
-// Magnitude-aware decimals: a flat 2dp rounds real spend down to "$0.00", so
-// small amounts keep enough digits to stay readable.
+// Small amounts keep extra decimals to stay readable.
 export function moneyDecimals(v: number, base: number): number {
   const a = Math.abs(v);
   if (a >= 0.1 || a === 0) return base;
@@ -104,6 +103,7 @@ function cap(s: string): string {
   const low = s.toLowerCase();
   if (low === "openai") return "OpenAI";
   if (low === "gpt") return "GPT";
+  if (low === "swe") return "SWE";
   if (low === "ai") return "AI";
   if (/^\d+[a-z]+$/.test(low)) return low.toUpperCase();
   if (s.length <= 2) return s.toUpperCase();
@@ -122,10 +122,11 @@ function words(s: string): string {
     .join("-");
 }
 
-// One label everywhere: vendor first, then the model, so provider-prefixed
-// keys (opencode/github-copilot/...) read as "Anthropic - Claude - Haiku-4.5".
+// Vendor-first labels, so provider-prefixed keys read as "Anthropic - Claude - Haiku-4.5".
 export function displayModel(m: string): string {
   const bare = String(m).replace(/(?::free|-free)$/i, "");
+  // The report already folds keys; folding again would lowercase the caps.
+  if (bare.includes(" - ")) return bare;
   const segs = bare.split("/").filter(Boolean);
   const pretty = words(segs[segs.length - 1] ?? bare);
   const vendor = vendorOf(bare);
@@ -143,11 +144,13 @@ export interface Vendor {
 }
 
 const PROVIDERS: Array<[RegExp, string, string, string]> = [
+  [/inclusionai|ling-/i, "InclusionAI", "inclusionai", "#78716c"],
+  [/grok|xai/i, "xAI", "x", "#000"],
   [/stealth|space-bunny/i, "Stealth", "stealth", "#1f2937"],
   [/openai|codex|gpt-|o1/i, "OpenAI", "openai", "#fff"],
   [/muse|llama/i, "Meta", "meta", "#0082fb"],
   [/deepseek/i, "DeepSeek", "deepseek", "#4d6bfe"],
-  [/qwen|qwq/i, "Qwen", "qwen", "#6950EF"],
+  [/qwen|qwq/i, "Alibaba", "qwen", "#6950EF"],
   [/glm|z-ai|zhipu/i, "Z.ai", "zdotai", "#2D2D2D"],
   [/mimo/i, "Xiaomi", "xiaomi", "#ff6900"],
   [/kimi|moonshot/i, "Moonshot", "kimi", "#a855f7"],
@@ -158,8 +161,7 @@ const PROVIDERS: Array<[RegExp, string, string, string]> = [
   [/gemini|google|gemma/i, "Google", "google", "#4285F4"],
   // `swe-*` is Cognition's Devin line; anchored so it cannot swallow other names.
   [/devin|cognition|^swe[-/]/i, "Cognition", "cognition", "#0b0b0b"],
-  // No Cognition/Devin mark ships on the simple-icons CDN, so this slug stays
-  // empty and the dashboard draws its local glyph instead of a broken image.
+  // Empty slug draws the local glyph instead of a broken image.
 ];
 
 export function vendorOf(model: string): Vendor {
@@ -169,8 +171,7 @@ export function vendorOf(model: string): Vendor {
   return { name: "Other", slug: "", color: "#71717a" };
 }
 
-// Which agent wrote a session. The dashboard shows a glyph so a row reads as
-// pi or OMP without opening it.
+// Host glyph identifies the agent without opening the row.
 export interface HostMeta {
   label: string;
   icon: string;
@@ -262,8 +263,7 @@ export function stampLocal(ts: number): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
-// Generation time + output throughput from the message-level `duration` (ms).
-// Throughput uses output tokens: that is what streams during the window.
+// Throughput uses output tokens streamed during the window.
 export function fmtDur(ms: number | undefined): string {
   if (ms === undefined) return "–";
   const s = ms / 1000;

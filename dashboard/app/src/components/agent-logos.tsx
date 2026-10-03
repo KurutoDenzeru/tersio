@@ -1,5 +1,4 @@
-// Agent brand marks, shared by the settings agent list and the recent-requests
-// Agent column so both render the same logo for the same host.
+// Agent brand marks shared by the settings agent list and recent-requests Agent column.
 import { OpenAIGlyph } from "./brand";
 
 // Black-on-transparent PNG masked to currentColor; inlined for file:// export.

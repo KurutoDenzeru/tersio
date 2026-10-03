@@ -146,8 +146,7 @@ test("tersio usage prices from the live cache", () => {
     encoding: "utf8",
     env: {
       ...process.env,
-      // Isolate HOME: usage display currency falls back to the stored plugin
-      // default, so an ambient lock file would otherwise leak into assertions.
+      // Isolate HOME so ambient settings can't leak into currency assertions.
       HOME: dir,
       USERPROFILE: dir,
       TERSIO_SESSIONS_DIR: dir,
@@ -158,7 +157,7 @@ test("tersio usage prices from the live cache", () => {
   });
   rmSync(dir, { recursive: true, force: true });
   expect(result.status, result.stderr).toBe(0);
-  expect(result.stdout).toMatch(/Claude-Sonnet-5.*1,000,000.*\$2\.00/);
+  expect(result.stdout).toMatch(/Anthropic - Claude - Sonnet-5.*1,000,000.*\$2\.00/);
 });
 
 // Two spellings of one model must group as a single row priced at zero.

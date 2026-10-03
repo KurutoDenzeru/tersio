@@ -18,6 +18,8 @@ export interface RecentRequestRow {
   code?: number;
   note?: string;
   est: number;
+  /** Message id when the host provides one. */
+  id?: string;
 }
 
 export interface RtkCommandRow {
@@ -177,8 +179,7 @@ export function useDashboardData(): { data: UsageReport | null; loading: boolean
 
   useEffect(() => {
     if (isFileExport()) return;
-    // Initial load always runs (even in a background tab); the poll below
-    // skips hidden tabs and refreshes instantly on return.
+    // Initial load always runs; the poll below skips hidden tabs.
     void load();
     const id = setInterval(() => {
       if (!document.hidden) void load();

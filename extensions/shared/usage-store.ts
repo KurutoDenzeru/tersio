@@ -13,6 +13,7 @@ import {
   durOf,
   hostOfSessionFile,
   ingestSessionRow,
+  messageRowId,
   opencodeSessionsDir,
   newSessionAccum,
   sessionsDirs,
@@ -51,8 +52,7 @@ function nullStr(v: string | undefined): string {
 }
 
 function run(db: string, sql: string): void {
-  // -bail makes a multi-statement write atomic: the first error stops the
-  // script before COMMIT, so a failed INSERT can never leave DELETEs behind.
+  // -bail stops the script before COMMIT, so a failed INSERT never leaves DELETEs behind.
   execFileSync('sqlite3', ['-bail', db, sql], { stdio: ['ignore', 'ignore', 'ignore'], timeout: 30000 });
 }
 
@@ -69,7 +69,7 @@ function query(db: string, sql: string): string[][] {
 }
 
 // Bump on a parse change: unchanged transcripts are never re-read.
-const PARSER_VERSION = '10';
+const PARSER_VERSION = '11';
 
 // A re-parse that keeps less than half the rows means transcripts vanished mid-migration; the backup is restored instead of publishing the loss.
 const REPARSE_GUARD_RATIO = 0.5;
@@ -86,7 +86,7 @@ const SCHEMA_SQL =
   `CREATE TABLE IF NOT EXISTS files (id INTEGER PRIMARY KEY AUTOINCREMENT, path TEXT UNIQUE NOT NULL, mtime REAL NOT NULL, size INTEGER NOT NULL);` +
   `CREATE TABLE IF NOT EXISTS messages (file_id INTEGER NOT NULL REFERENCES files(id), t REAL, model TEXT NOT NULL,` +
   ` i INTEGER NOT NULL, o INTEGER NOT NULL, d REAL, cr INTEGER NOT NULL, cw INTEGER NOT NULL,` +
-  ` usd REAL, st TEXT NOT NULL, code REAL, note TEXT, tools TEXT NOT NULL DEFAULT '[]', h TEXT);` +
+  ` usd REAL, st TEXT NOT NULL, code REAL, note TEXT, tools TEXT NOT NULL DEFAULT '[]', h TEXT, id TEXT);` +
   `CREATE INDEX IF NOT EXISTS idx_messages_file ON messages(file_id);`;
 
 function storedParserVersion(db: string): string | null {
@@ -139,7 +139,7 @@ function migrateInPlace(db: string, preCount: number): boolean {
       `INSERT INTO files_new (path, mtime, size) SELECT path, mtime, size FROM files;` +
       `CREATE TABLE messages_new (file_id INTEGER NOT NULL REFERENCES files_new(id), t REAL, model TEXT NOT NULL,` +
       ` i INTEGER NOT NULL, o INTEGER NOT NULL, d REAL, cr INTEGER NOT NULL, cw INTEGER NOT NULL,` +
-      ` usd REAL, st TEXT NOT NULL, code REAL, note TEXT, tools TEXT NOT NULL DEFAULT '[]', h TEXT);` +
+      ` usd REAL, st TEXT NOT NULL, code REAL, note TEXT, tools TEXT NOT NULL DEFAULT '[]', h TEXT, id TEXT);` +
       `INSERT INTO messages_new (file_id, ${cols}) SELECT (SELECT id FROM files_new WHERE files_new.path = messages.file), ${cols} FROM messages;` +
       `DROP TABLE messages;DROP TABLE files;` +
       `ALTER TABLE files_new RENAME TO files;ALTER TABLE messages_new RENAME TO messages;` +
@@ -154,6 +154,25 @@ function migrateInPlace(db: string, preCount: number): boolean {
   } catch {
     return false;
   }
+}
+
+// v10 shape gains the message id with a bare ALTER: no rows move, so no re-parse and no guard trip.
+function canAlterInPlace(db: string): boolean {
+  try {
+    const names = query(db, `PRAGMA table_info(messages);`).map((r) => r[1]);
+    return names.includes('file_id') && !names.includes('id');
+  } catch {
+    return false;
+  }
+}
+
+function alterInPlace(db: string): boolean {
+  try {
+    run(db, `ALTER TABLE messages ADD COLUMN id TEXT;`);
+  } catch {
+    return false;
+  }
+  return !canAlterInPlace(db);
 }
 
 function ensureSchema(db: string): void {
@@ -171,6 +190,10 @@ function ensureSchema(db: string): void {
     if (stored !== null && canMigrateInPlace(db) && migrateInPlace(db, countMessages(db))) {
       run(db, `INSERT OR REPLACE INTO meta (k,v) VALUES ('parser_version','${PARSER_VERSION}');`);
       try { run(db, `VACUUM;`); } catch { /* best-effort */ }
+      return;
+    }
+    if (stored !== null && canAlterInPlace(db) && alterInPlace(db)) {
+      run(db, `INSERT OR REPLACE INTO meta (k,v) VALUES ('parser_version','${PARSER_VERSION}');`);
       return;
     }
     run(db, `DROP TABLE IF EXISTS messages;DROP TABLE IF EXISTS files;` + SCHEMA_SQL +
@@ -295,9 +318,10 @@ interface StoredRow {
   note: string | undefined;
   tools: string[];
   host?: string;
+  id?: string;
 }
 
-function parseFile(text: string, host?: string): StoredRow[] {
+function parseFile(text: string, host?: string, file?: string): StoredRow[] {
   const rows: StoredRow[] = [];
   // Guarded: a JSONL transcript must fall through, not abort the sync.
   let oc: ReturnType<typeof classifyOpencodeMessage> = null;
@@ -317,6 +341,7 @@ function parseFile(text: string, host?: string): StoredRow[] {
       note: undefined,
       tools: [],
       host,
+      id: file ? path.basename(file).replace(/\.[^.]+$/, '') : undefined,
     });
     return rows;
   }
@@ -326,6 +351,7 @@ function parseFile(text: string, host?: string): StoredRow[] {
     if (!line.trim()) continue;
     try {
       const row = JSON.parse(line) as Parameters<typeof classifySessionLine>[0];
+      const rid = messageRowId(row);
       const parsed = classifySessionLine(row);
       if (parsed.kind === 'codex_provider') {
         if (parsed.provider) codexProvider = parsed.provider;
@@ -355,6 +381,7 @@ function parseFile(text: string, host?: string): StoredRow[] {
           note: undefined,
           tools: [],
           host,
+          id: rid,
         });
         continue;
       }
@@ -377,6 +404,7 @@ function parseFile(text: string, host?: string): StoredRow[] {
         note,
         tools: parsed.tools ?? [],
         host,
+        id: rid,
       });
     } catch { /* skip corrupt lines */ }
   }
@@ -384,10 +412,10 @@ function parseFile(text: string, host?: string): StoredRow[] {
 }
 
 function insertSql(file: string, r: StoredRow): string {
-  return `INSERT INTO messages (file_id, t, model, i, o, d, cr, cw, usd, st, code, note, tools, h) VALUES (` +
+  return `INSERT INTO messages (file_id, t, model, i, o, d, cr, cw, usd, st, code, note, tools, h, id) VALUES (` +
     `(SELECT id FROM files WHERE path=${esc(file)}),${r.t === null ? 'NULL' : String(r.t)},${esc(r.model)},${r.i},${r.o},` +
     `${nullNum(r.d)},${r.cr},${r.cw},${nullNum(r.usd)},${esc(r.st)},` +
-    `${nullNum(r.code)},${nullStr(r.note)},${esc(JSON.stringify(r.tools))},${nullStr(r.host)});`;
+    `${nullNum(r.code)},${nullStr(r.note)},${esc(JSON.stringify(r.tools))},${nullStr(r.host)},${nullStr(r.id)});`;
 }
 
 // Unchanged transcripts are skipped via mtime+size; rows for deleted ones are kept so rotation never erases history. False when sqlite3 is unavailable.
@@ -466,7 +494,7 @@ export function syncUsageDb(): boolean {
   try {
     for (const file of changed) {
       const text = fs.readFileSync(file, 'utf8');
-      for (const r of parseFile(text, hostOfSessionFile(file))) {
+      for (const r of parseFile(text, hostOfSessionFile(file), file)) {
         if (!push(insertSql(file, r))) return false;
       }
     }
@@ -501,12 +529,12 @@ export function readUsageDb(): StoredUsage | null {
   }
   let rows: string[][];
   try {
-    rows = query(db, `SELECT t, model, i, o, d, cr, cw, usd, st, code, note, tools, h FROM messages;`);
+    rows = query(db, `SELECT t, model, i, o, d, cr, cw, usd, st, code, note, tools, h, id FROM messages;`);
   } catch {
     return null;
   }
   const accum = newSessionAccum();
-  for (const [t, model, i, o, d, cr, cw, usd, st, code, note, tools, h] of rows) {
+  for (const [t, model, i, o, d, cr, cw, usd, st, code, note, tools, h, id] of rows) {
     const ts = t === '' ? undefined : Number(t);
     let toolNames: string[] = [];
     try {
@@ -536,6 +564,7 @@ export function readUsageDb(): StoredUsage | null {
       },
       toolNames,
       h === '' ? undefined : h,
+      id === '' || id === undefined ? undefined : id,
     );
   }
   accum.recent.sort((a, b) => b.t - a.t);

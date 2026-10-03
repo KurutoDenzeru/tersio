@@ -76,6 +76,8 @@ export interface RecentRequest {
   st: RunStatus;
   code?: number;
   note?: string;
+  /** Message id when the host provides one (transcript row id, opencode msg file). */
+  id?: string;
 }
 
 export interface SessionTokens {
@@ -222,7 +224,7 @@ export interface SessionAccum {
 export function newSessionAccum(): SessionAccum {
   return { byModel: {}, byDay: {}, byDayModel: {}, byTool: {}, byModelMessages: {}, byHost: {}, totals: zeroBreakdown(), messages: 0, costMeasured: 0, recent: [] };
 }
-export function ingestSessionRow(accum: SessionAccum, model: string, usage: Record<string, unknown>, ts: string | number | undefined, durMs?: unknown, run?: { st: RunStatus; code?: number; note?: string }, toolNames?: string[], host?: string): boolean {
+export function ingestSessionRow(accum: SessionAccum, model: string, usage: Record<string, unknown>, ts: string | number | undefined, durMs?: unknown, run?: { st: RunStatus; code?: number; note?: string }, toolNames?: string[], host?: string, id?: string): boolean {
   const watermark = readResetWatermark();
   const ms = ts === undefined ? NaN : typeof ts === 'number' ? ts : Date.parse(ts);
   if (watermark > 0 && (!Number.isFinite(ms) || ms < watermark)) return false;
@@ -239,7 +241,7 @@ export function ingestSessionRow(accum: SessionAccum, model: string, usage: Reco
   const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.floor(v) : 0);
   if (Number.isFinite(ms)) {
     const outcome = run ?? { st: 'completed' as RunStatus };
-    accum.recent.push({ m: key, i: num(usage.input), o: num(usage.output), t: ms, d: durOf(durMs), h: host, cr: num(usage.cacheRead), cw: num(usage.cacheWrite), usd: costOf(usage), st: outcome.st, code: outcome.code, note: outcome.note });
+    accum.recent.push({ m: key, i: num(usage.input), o: num(usage.output), t: ms, d: durOf(durMs), h: host, cr: num(usage.cacheRead), cw: num(usage.cacheWrite), usd: costOf(usage), st: outcome.st, code: outcome.code, note: outcome.note, id });
   }
   const day = ts !== undefined ? dayKey(ts) : null;
   if (day) {
@@ -339,8 +341,8 @@ export function classifyOpencodeMessage(obj: OpencodeMessage | null | undefined)
   };
 }
 
-// One OpenCode message file into the shared accum.
-export function processOpencodeFile(accum: SessionAccum, text: string): void {
+// One OpenCode message file into the shared accum. The msg id is the file name.
+export function processOpencodeFile(accum: SessionAccum, text: string, file?: string): void {
   let obj: unknown;
   try {
     obj = JSON.parse(text);
@@ -349,19 +351,76 @@ export function processOpencodeFile(accum: SessionAccum, text: string): void {
   }
   const parsed = classifyOpencodeMessage(obj as OpencodeMessage);
   if (!parsed) return;
-  ingestSessionRow(accum, parsed.model, parsed.usage, parsed.ms, parsed.durMs, { st: 'completed' as RunStatus }, undefined, 'opencode');
+  const id = file ? path.basename(file).replace(/\.[^.]+$/, '') || undefined : undefined;
+  ingestSessionRow(accum, parsed.model, parsed.usage, parsed.ms, parsed.durMs, { st: 'completed' as RunStatus }, undefined, 'opencode', id);
 }
 
 // Fold `:free`/`-free` suffixes and case variants into one chart key.
 export function canonicalModelId(model: string): string {
   return canonicalPriceId(model.replace(FREE_SUFFIX, ''));
 }
-// LiteLLM-style display: lowercase namespace, title-cased model segments with version dots kept.
+// Transcript row id when the host provides one; anything else is not an id.
+export function messageRowId(row: unknown): string | undefined {
+  const id = (row as { id?: unknown }).id;
+  return typeof id === 'string' && id ? id : undefined;
+}
+
+// Vendor names mirror the dashboard map; CLI needs names only.
+const VENDOR_RES: Array<[RegExp, string]> = [
+  [/inclusionai|ling-/i, 'InclusionAI'],
+  [/grok|xai/i, 'xAI'],
+  [/stealth|space-bunny/i, 'Stealth'],
+  [/openai|codex|gpt-|o1/i, 'OpenAI'],
+  [/muse|llama/i, 'Meta'],
+  [/deepseek/i, 'DeepSeek'],
+  [/qwen|qwq/i, 'Alibaba'],
+  [/glm|z-ai|zhipu/i, 'Z.ai'],
+  [/mimo/i, 'Xiaomi'],
+  [/kimi|moonshot/i, 'Moonshot'],
+  [/minimax/i, 'MiniMax'],
+  [/nemotron|nvidia/i, 'NVIDIA'],
+  [/mistral/i, 'Mistral'],
+  [/claude|anthropic/i, 'Anthropic'],
+  [/gemini|google|gemma/i, 'Google'],
+  [/devin|cognition|^swe[-/]/i, 'Cognition'],
+];
+
+function modelVendor(model: string): string {
+  for (const [re, name] of VENDOR_RES) {
+    if (re.test(model)) return name;
+  }
+  return 'Other';
+}
+
+// Gateway variants of one model share a row under the display label.
+export function foldModelsByLabel(
+  byModel: Record<string, TokenBreakdown>,
+  byModelMessages: Record<string, number>,
+): { byModel: Record<string, TokenBreakdown>; byModelMessages: Record<string, number> } {
+  const folded: Record<string, TokenBreakdown> = {};
+  const messages: Record<string, number> = {};
+  for (const [model, t] of Object.entries(byModel)) {
+    const label = displayModelId(model);
+    folded[label] ??= { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+    const into = folded[label];
+    into.input += t.input;
+    into.output += t.output;
+    into.cacheRead += t.cacheRead;
+    into.cacheWrite += t.cacheWrite;
+    messages[label] = (messages[label] ?? 0) + (byModelMessages[model] ?? 0);
+  }
+  return { byModel: folded, byModelMessages: messages };
+}
+// Vendor-first labels, same fold as the dashboard: "Anthropic - Claude - Haiku-4.5".
 export function displayModelId(model: string): string {
   const bare = model.replace(FREE_SUFFIX, '');
+  // The report already folds keys; folding again would lowercase the caps.
+  if (bare.includes(' - ')) return bare;
   const cap = (s: string): string => {
     const low = s.toLowerCase();
     if (low === 'openai') return 'OpenAI';
+    if (low === 'gpt') return 'GPT';
+    if (low === 'swe') return 'SWE';
     if (low === 'ai') return 'AI';
     if (/^\d+[a-z]+$/.test(low)) return low.toUpperCase();
     if (s.length <= 2) return s.toUpperCase();
@@ -369,9 +428,14 @@ export function displayModelId(model: string): string {
   };
   const seg = (s: string): string => s.split('.').map(cap).join('.');
   const words = (s: string): string => s.split(/[-_:]+/).filter(Boolean).map(seg).join('-');
-  const slash = bare.indexOf('/');
-  if (slash >= 0) return `${bare.slice(0, slash).toLowerCase()}/${words(bare.slice(slash + 1))}`;
-  return words(bare);
+  const segs = bare.split('/').filter(Boolean);
+  const pretty = words(segs[segs.length - 1] ?? bare);
+  const vendor = modelVendor(bare);
+  if (vendor === 'Other') return segs.length > 1 ? `${words(segs[segs.length - 2])} - ${pretty}` : pretty;
+  const claude = pretty.match(/^claude[-_](.+)$/i);
+  if (vendor === 'Anthropic' && claude) return `Anthropic - Claude - ${claude[1]}`;
+  if (pretty.toLowerCase().startsWith(vendor.toLowerCase())) return pretty;
+  return `${vendor} - ${pretty}`;
 }
 
 export function importSessionTokens(): SessionTokens {
@@ -390,7 +454,7 @@ export function importSessionTokens(): SessionTokens {
     } catch {
       continue;
     }
-    processOpencodeFile(accum, text);
+    processOpencodeFile(accum, text, file);
   }
   let codexProvider: string | null = null;
   let codexModel: string | null = null;
@@ -497,6 +561,7 @@ export function processSessionText(accum: SessionAccum, state: { codexProvider: 
     try {
       const row = JSON.parse(line) as Parameters<typeof classifySessionLine>[0];
       const parsed = classifySessionLine(row);
+      const rid = messageRowId(row);
       if (parsed.kind === 'codex_provider') {
         if (parsed.provider) state.codexProvider = parsed.provider;
         continue;
@@ -509,11 +574,11 @@ export function processSessionText(accum: SessionAccum, state: { codexProvider: 
         const base = parsed.provider ? `codex/${parsed.provider}` : (state.codexProvider ? `codex/${state.codexProvider}` : 'codex');
         // The provider alone told you nothing about which model ran.
         const model = state.codexModel ? `${base}/${state.codexModel}` : base;
-        ingestSessionRow(accum, model, parsed.usage ?? {}, row.timestamp, parsed.durMs, { st: 'completed' as RunStatus }, undefined, host ?? 'codex');
+        ingestSessionRow(accum, model, parsed.usage ?? {}, row.timestamp, parsed.durMs, { st: 'completed' as RunStatus }, undefined, host ?? 'codex', rid);
         continue;
       }
       if (parsed.kind !== 'assistant_row' || !parsed.model || !parsed.usage) continue;
-      ingestSessionRow(accum, parsed.model, parsed.usage, row.timestamp, parsed.durMs, parsed.run, parsed.tools, host);
+      ingestSessionRow(accum, parsed.model, parsed.usage, row.timestamp, parsed.durMs, parsed.run, parsed.tools, host, rid);
     } catch { /* skip corrupt lines */ }
   }
 }

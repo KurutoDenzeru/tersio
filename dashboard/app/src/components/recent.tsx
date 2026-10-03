@@ -1,5 +1,4 @@
-// Recent requests table: newest-first default, every column sortable,
-// measured vs modeled cost, status badges, per-row hover cards.
+// Recent requests table: newest-first, sortable columns, measured vs modeled cost, detail drawer.
 import { useMemo, useState } from "react";
 import {
   costIsMeasured,
@@ -22,6 +21,7 @@ import type { RecentRequestRow, UsageReport } from "@/lib/data";
 import { EmptyState, HoverTip, PageButtons, PerPage, usePager } from "./common";
 import { Icon } from "./icon";
 import { AgentLogo } from "./agent-logos";
+import { RequestDrawer } from "./request-drawer";
 
 type Key = "model" | "agent" | "input" | "output" | "time" | "status" | "cost" | "when";
 
@@ -69,8 +69,9 @@ export function StatusBadge({ r }: { r: { st: string; code?: number } }) {
 
 export function Recent({ data, money }: { data: UsageReport | null; money: (v: number) => string }) {
   const [page, setPage] = useState(1);
-  const [per, setPer] = useState(15);
+  const [per, setPer] = useState(10);
   const [sort, setSort] = useState<{ key: Key; dir: 1 | -1 }>({ key: "when", dir: -1 });
+  const [selected, setSelected] = useState<RecentRequestRow | null>(null);
 
   const rows = useMemo(() => {
     const all = (data?.recent ?? []).slice();
@@ -117,6 +118,7 @@ export function Recent({ data, money }: { data: UsageReport | null; money: (v: n
   };
 
   return (
+    <>
     <Card
       data-reveal
       className="mt-8 translate-y-[26px] overflow-hidden border-line bg-panel opacity-0 transition-[opacity,transform] duration-700 ease-[cubic-bezier(.16,1,.3,1)] data-[reveal=in]:translate-y-0 data-[reveal=in]:opacity-100"
@@ -131,7 +133,7 @@ export function Recent({ data, money }: { data: UsageReport | null; money: (v: n
             {rows.length ? `${rows.length} requests` : ""}
           </span>
         </div>
-        <CardDescription className="mono text-xs text-dim">latest assistant messages · local time · sort any column · cost is measured when the host recorded it</CardDescription>
+        <CardDescription className="mono text-xs text-dim">latest assistant messages · local time · sort any column · select a row for detail · cost is measured when the host recorded it</CardDescription>
       </CardHeader>
       <CardContent>
       {rows.length > 0 ? (
@@ -154,7 +156,7 @@ export function Recent({ data, money }: { data: UsageReport | null; money: (v: n
                 const measured = costIsMeasured(r);
                 return (
                   <HoverTip key={`${r.t}-${i}`} content={<RecentTip r={r} money={money} />}>
-                    <TableRow className="cursor-pointer hover:bg-track hover:shadow-tersio">
+                    <TableRow className="cursor-pointer hover:bg-track hover:shadow-tersio" onClick={() => setSelected(r)}>
                       <TableCell className="min-w-0 truncate py-2.5 pr-3">
                         <span className="mr-2 inline-block size-2 rounded-full" style={{ background: v.color }} />
                         {displayModel(r.m)}
@@ -204,5 +206,7 @@ export function Recent({ data, money }: { data: UsageReport | null; money: (v: n
           </div>
         </CardFooter>
       </Card>
+      {selected && <RequestDrawer row={selected} money={money} onClose={() => setSelected(null)} />}
+    </>
   );
 }

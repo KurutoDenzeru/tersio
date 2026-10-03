@@ -1,5 +1,4 @@
-// The host menus: `tersio install` / `tersio uninstall` target one agent, and
-// the option label carries the current state in brackets.
+// Host menus target one agent; the option label carries the current state.
 import { expect, test } from "vitest";
 import { spawnSync } from "node:child_process";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -48,8 +47,7 @@ test("detectHosts reports the pi install under its own agent dir", () => {
   const home = tempHome();
   try {
     seedPiPackage(home, "9.9.9");
-    // Pass the agent dir rather than setting PI_CODING_AGENT_DIR: that override
-    // only applies alongside PI_CODING_AGENT, which CI does not set.
+    // Pass the agent dir, not PI_CODING_AGENT_DIR: that override needs PI_CODING_AGENT, which CI does not set.
     const agentDir = path.join(home, ".pi", "agent");
     const pi = detectHosts(agentDir).find((h) => h.id === "pi") as HostEntry;
     expect(pi.installed).toBe(true);
@@ -159,8 +157,7 @@ test("uninstall on a machine with no install says so instead of listing files", 
   try {
     const result = run(home, ["uninstall"]);
     expect(result.status, result.stderr).toBe(0);
-    // Without a TTY the host prompt is skipped, so the OMP path runs and reports
-    // nothing installed rather than claiming a removal.
+    // Without a TTY the host prompt is skipped, so the OMP path reports nothing installed.
     expect(result.stdout).toMatch(/has no tersio install/);
   } finally {
     rmSync(home, { recursive: true, force: true });
@@ -170,8 +167,7 @@ test("uninstall on a machine with no install says so instead of listing files", 
 test("doctor --fix restores a partly written pi tree", () => {
   const home = tempHome();
   try {
-    // A half-written tree is what --fix exists for, and it is what reinstall
-    // used to be the answer to before the command was retired.
+    // A half-written tree is what --fix exists for.
     const ext = path.join(home, ".pi", "agent", "extensions");
     mkdirSync(path.join(ext, "shared"), { recursive: true });
     mkdirSync(path.join(ext, "caveman-session"), { recursive: true });
@@ -188,8 +184,7 @@ test("doctor --fix restores a partly written pi tree", () => {
   }
 });
 
-// The binary is machine-wide, so a found one only rebinds; a seeded binary
-// stands in for an earlier install's.
+// A found binary only rebinds; a seeded binary stands in for an earlier install.
 function seedRtk(home: string): void {
   const binDir = path.join(home, ".bun", "bin");
   mkdirSync(binDir, { recursive: true });

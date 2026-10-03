@@ -179,6 +179,41 @@ test.skipIf(!hasSqlite())("v9 databases migrate in place without re-parsing tran
   }
 });
 
+test.skipIf(!hasSqlite())("v10 databases gain the id column without re-parsing", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-usage-alter-"));
+  try {
+    withEnv(dir, () => {
+      const db = process.env.TERSIO_USAGE_DB!;
+      mkdirSync(path.join(dir, "sessions"), { recursive: true });
+      const file = path.join(dir, "sessions", "s.jsonl");
+      writeFileSync(
+        file,
+        `{"timestamp":"2026-09-01T10:00:00.000Z","type":"message","id":"row-1","message":{"role":"assistant","model":"m","usage":{"input":10,"output":1}}}\n`,
+        "utf8",
+      );
+      execFileSync("sqlite3", [db, [
+        `CREATE TABLE meta (k TEXT PRIMARY KEY, v TEXT NOT NULL);`,
+        `CREATE TABLE files (id INTEGER PRIMARY KEY AUTOINCREMENT, path TEXT UNIQUE NOT NULL, mtime REAL NOT NULL, size INTEGER NOT NULL);`,
+        `CREATE TABLE messages (file_id INTEGER NOT NULL REFERENCES files(id), t REAL, model TEXT NOT NULL,` +
+        ` i INTEGER NOT NULL, o INTEGER NOT NULL, d REAL, cr INTEGER NOT NULL, cw INTEGER NOT NULL,` +
+        ` usd REAL, st TEXT NOT NULL, code REAL, note TEXT, tools TEXT NOT NULL DEFAULT '[]', h TEXT);`,
+        `INSERT INTO files (path, mtime, size) VALUES ('${file}',1,2);`,
+        `INSERT INTO messages (file_id, t, model, i, o, d, cr, cw, usd, st, code, note, tools, h)` +
+        ` VALUES (1,1,'m',10,1,NULL,0,0,NULL,'completed',NULL,NULL,'[]','pi');`,
+        `INSERT INTO meta VALUES ('parser_version','10');`,
+      ].join("")]);
+      rmSync(file);
+      expect(syncUsageDb()).toBe(true);
+      expect(readUsageDb()?.tokens.messages).toBe(1);
+      const cols = execFileSync("sqlite3", [db, "PRAGMA table_info(messages);"], { encoding: "utf8" });
+      expect(cols).toMatch(/[,|]id[,|]/);
+      expect(reparseGuardReport()).toBe(null);
+    });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("usageDbPath migrates the legacy plugins copy into ~/.tersio", () => {
   const home = mkdtempSync(path.join(os.tmpdir(), "tersio-home-"));
   const prevHome = process.env.HOME;
