@@ -123,7 +123,18 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
       } catch { /* missing or invalid config reads as unregistered */ }
       const entry = existsSync(path.join(dir, 'server.ts')) && registered;
       check('OpenCode plugin entry', entry, entry ? 'server.ts registered in opencode.json' : `missing from ${configPath}`);
+      // rtk's own plugin rewrites bash before execution; without it OpenCode never auto-wraps.
+      const rtkPlugin = path.join(HOME, '.config', 'opencode', 'plugins', 'rtk.ts');
+      const rtkWired = existsSync(rtkPlugin);
+      check('OpenCode RTK plugin', rtkWired, rtkWired ? 'bash auto-rewrite via tool.execute.before' : 'missing — run: rtk init -g --opencode');
     }
+  }
+
+  // pi can hold a working tree while reading as not installed.
+  if (existsSync(hostExtensionsDir('pi'))) {
+    const rtkExt = path.join(hostExtensionsDir('pi'), 'rtk.ts');
+    const rtkWired = existsSync(rtkExt);
+    check('pi RTK extension', rtkWired, rtkWired ? 'bash auto-rewrite via tool_call' : 'missing — run: rtk init -g --agent pi');
   }
 
   // The marker is verbatim omp text, so scanning the binary turns a silent drop into a visible warning.

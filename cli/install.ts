@@ -23,7 +23,7 @@ import { runDoctor } from './doctor.ts';
 import { runReset } from './reset.ts';
 import { runUsage } from './usage.ts';
 import { runDashboard } from './dashboard.ts';
-import { wireRtkOmp } from './rtk-wiring.ts';
+import { wireRtkOmp, wireRtkOpencode, wireRtkPi } from './rtk-wiring.ts';
 import {
   CAVEMAN_REMOTE_RULE, RTK_RELEASE_API, RtkRelease, RtkReleaseAsset, fetchJson, findFile, findHoistedPackage, httpsGet,
   httpsDownload, parseChecksum, piAgentDir, readTextIfExists, resolveRtkBinary, rtkPlatformSpec, sha256File,
@@ -239,31 +239,33 @@ async function extractRtkArchive(archivePath: string, extractDir: string): Promi
   return false;
 }
 
-// The binary is machine-wide and only OMP needs the wiring, so an install that finds one present only rebinds. `tersio update` still refreshes it.
-async function stepRtk(binDir: string, options: InstallOptions, target: 'omp' | 'pi' = 'omp'): Promise<void> {
+// The binary is machine-wide; hosts without a hook only rebind. `tersio update` still refreshes it.
+async function stepRtk(binDir: string, options: InstallOptions, target: 'omp' | 'pi' | 'opencode' = 'omp'): Promise<void> {
   const binDest = path.join(binDir, RTK_BINARY_NAME);
   const found = resolveRtkBinary();
+  const hostName = target === 'omp' ? 'OMP' : target === 'opencode' ? 'OpenCode' : 'pi';
   const bind = async (binary: string): Promise<void> => {
-    if (target !== 'omp') return;
     if (!(await fileExists(binary))) {
-      console.log('  [skip] no rtk binary to wire — install rtk, then run: rtk init -g --agent omp');
+      console.log(`  [skip] no rtk binary to wire — install rtk, then run: rtk init -g ${target === 'opencode' ? '--opencode' : `--agent ${target}`}`);
       return;
     }
-    await wireRtkOmp(binary, options);
+    if (target === 'opencode') await wireRtkOpencode(binary, options);
+    else if (target === 'pi') await wireRtkPi(binary, options);
+    else await wireRtkOmp(binary, options);
   };
 
   if (found && !applyUpdate) {
     // The path only under --verbose: a plain run, and a dry run, stay free of real user paths.
     if (!options.quiet) {
       const where = verbose ? ` (${found})` : '';
-      console.log(`  RTK — already installed${where}${target === 'omp' ? ', binding into OMP' : ', nothing to bind on pi'}`);
+      console.log(`  RTK — already installed${where}, binding into ${hostName}`);
     }
     await bind(found);
     return;
   }
 
-  if (!options.quiet) console.log(`  RTK — download binary and ${target === 'omp' ? 'wire into OMP' : 'put it on PATH'}`);
-  // A failed download must not skip wiring: a pre-existing binary serves the OMP hook just as well. Dry runs stay offline.
+  if (!options.quiet) console.log(`  RTK — download binary and wire into ${hostName}`);
+  // A failed download must not skip wiring: a pre-existing binary serves the host hook just as well. Dry runs stay offline.
   if (options.dryRun) {
     if (verbose && !options.quiet) sayTagged(`  [dry-run] would download rtk binary and install to ${binDest}`);
     await bind(found ?? binDest);
@@ -743,7 +745,7 @@ async function runInstall(): Promise<void> {
 
   if (targetHost === 'opencode') {
     await capture('opencode tree', () => stepOpencode(installOptions));
-    await capture('rtk', () => stepRtk(BUN_BIN_DIR, installOptions, 'pi'));
+    await capture('rtk', () => stepRtk(BUN_BIN_DIR, installOptions, 'opencode'));
     await capture('settings', () => writePluginSettings(profile, installOptions));
     if (failures.length > 0) console.log(`\nDone with ${failures.length} failure(s) — see [fail] lines above.`);
     else console.log('\nDone — restart OpenCode, then /combo balanced.');

@@ -11,7 +11,7 @@ import {
   writeIfChanged,
 } from './common.ts';
 import { execNetwork, sayTagged } from './interactive.ts';
-import { wireRtkOmp, ensureRtkInConfig } from './rtk-wiring.ts';
+import { wireRtkOmp, wireRtkOpencode, wireRtkPi, ensureRtkInConfig } from './rtk-wiring.ts';
 import {
   CAVEMAN_REMOTE_RULE, RTK_RELEASE_API, RtkRelease, fetchJson, findFile, httpsGet,
   httpsDownload, parseChecksum, readTextIfExists, rtkPlatformSpec, sha256File,
@@ -188,6 +188,14 @@ async function fixRtk(binDir: string): Promise<void> {
     await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => { });
   }
   if (!(await wireRtkOmp(binDest, { dryRun, verbose }))) throw new Error('rtk wiring failed');
+  // Fail-open: a missing host wire must not fail the repair.
+  const home = process.env.HOME || process.env.USERPROFILE || os.homedir();
+  if (existsSync(path.join(home, '.config', 'opencode', 'plugins', 'tersio'))) {
+    await wireRtkOpencode(binDest, { dryRun, verbose });
+  }
+  if (existsSync(path.join(home, '.pi', 'agent', 'extensions'))) {
+    await wireRtkPi(binDest, { dryRun, verbose });
+  }
 }
 
 async function fixPonytail(pluginsDir: string): Promise<void> {
