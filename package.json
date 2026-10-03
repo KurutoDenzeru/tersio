@@ -23,6 +23,9 @@
   "bin": {
     "tersio": "tersio.js"
   },
+  "exports": {
+    "./server": "./extensions/opencode/server.js"
+  },
   "omp": {
     "name": "Tersio",
     "description": "Toggleable Caveman/RTK/Ponytail session modes with Combo presets",

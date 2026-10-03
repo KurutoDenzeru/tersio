@@ -74,3 +74,13 @@ test("no test spawns the CLI with process.env and an overridden HOME", () => {
   }
   expect(offenders, `use cliEnv() from test/helpers/env.ts:\n${offenders.join("\n")}`).toEqual([]);
 });
+
+// `opencode plugin add` resolves the server entrypoint through exports["./server"].
+test("package exports a loadable opencode server entrypoint", () => {
+  const pkg = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")) as {
+    exports?: Record<string, string>;
+  };
+  const entry = pkg.exports?.["./server"];
+  expect(entry, 'exports["./server"] must exist for `opencode plugin add`').toBeDefined();
+  expect(existsSync(path.join(root, entry as string)), `${entry} must exist in the packed tarball`).toBe(true);
+});
