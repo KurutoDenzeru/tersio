@@ -1,3 +1,6 @@
+## v2.25.1
+ - Removes rtk's OpenCode plugin alongside the tree on `tersio uninstall --host opencode`, so no broken hook file is left behind.
+
 ## v2.25.0
  - Adds OpenCode as a host: `tersio install --host opencode` copies the extension tree to `~/.config/opencode/plugins/tersio` and registers it in `opencode.json`; `/combo`, `/caveman`, `/rtk`, `/tersio`, mode instruction injection, and the `rtk_run` tool ride a thin mapping (`extensions/opencode/server.ts`) from the plugin API onto the shared `ExtensionApi`. Doctor checks the plugin entry and repairs it on `--fix`; uninstall removes the tree and the config entry. The dashboard shows OpenCode rows with its own logo, host label, and a Connection-pane entry.
  - Removes Codex records from the usage ledger: the store and importer no longer scan `~/.codex/sessions`.
@@ -28,11 +31,20 @@
  - Restores modes per OpenCode session instead of once at server start, so a change in one session no longer leaks into the next.
  - Bundles the full Ponytail ruleset beside the OpenCode tree (no node_modules there); `tersio update --host` refreshes one agent, and `opencode plugin add @krtclcdy/tersio` installs host-side via the new `exports["./server"]` entry.
  - Trims doctor to one line per host (`package/extensions @krtclcdy/tersio <version>`), drops the one-off rows, and shows each agent's config dir in the dashboard Connection pane.
+ - Replaces the sticky status banner with a status message: combo state paints in the menu title and serves read-only at GET /status for the dashboard.
+ - Fixes subagent mode inheritance: the correct OMP marker, shared-state `rtk_run`, effective Ponytail switches, kept worker state, a `markers` setting with repeatable `--subagent-marker`, resolved-binary exec, and doctor verification against the host binary.
+ - Turns BENCHMARK.md into a rerunnable protocol and records the subagent fixes with their standing limitations.
+ - Renders Models as a table with last-run age and run bars, and shows which agents ran each model with OpenCode counted as its own host.
+ - Injects the full upstream Caveman rule at every level and lets the upstream pi-extension own Ponytail injection on pi.
+ - Hardens the installer: refuses RTK binaries with unverifiable checksums, resolves home from HOME, and verifies the whole extension tree.
+ - Fetches and installs Ponytail updates from npm in `/ai-addons`.
 
 ## v2.24.1
  - Restores OpenCode/Codex usage history lost to the mirror wipe, with scheduled mirror backups plus restore/delete in the Data pane.
  - Adds dashboard accents, a CO2 detail dialog, real vendor brandmarks, session-start defaults, and share/export fixes.
  - Fixes doctor, rtk_run errors, uninstall and RTK wiring gaps, install confirm, and dashboard icon/tab glitches.
+ - Fixes session resilience: stops the shared listener pile-up, runs Ponytail on main sessions, never re-injects a prompt that already carries the mode, and makes the OMP subagent marker correctable instead of a frozen literal.
+ - Adds Cognition/Devin and Stealth brandmarks, and shows select labels instead of raw values.
 
 ## v2.24.0
  - Saves tokens and reports spend across every supported coding agent. Install now targets whichever agent you run, `--host omp|pi` pins it for scripts, and uninstall removes only the agent you pick.
@@ -44,6 +56,7 @@
  - Adds an agent row to the Dashboard Connection pane with its logo, version, and resolved path.
  - Publishes under the `pi-package` keyword for discoverability in the pi package gallery, alongside the documented install routes.
  - Folds the space-bunny aliases into one free model in the usage ledger, so a stealth model no longer reports a phantom cost.
+ - Refreshes the benchmark doc with all modes, a base column, and RTK tool calls.
 
 ## v2.23.0
  - Improves RTK, Caveman, and Ponytail fidelity across OMP plugin loading, session state, fallback paths, and packaged extension ownership.

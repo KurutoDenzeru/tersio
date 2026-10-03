@@ -1,6 +1,6 @@
 {
   "name": "@krtclcdy/tersio",
-  "version": "2.25.0",
+  "version": "2.25.1",
   "description": "✂️ Token saver and usage tracker for coding agents: terse Caveman replies, compact RTK shell output, lean Ponytail code calls, and a gain dashboard — one-command combo presets over one shared extension tree.",
   "keywords": [
     "token-saving",
