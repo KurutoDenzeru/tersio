@@ -37,8 +37,8 @@ function relativeSpecs(body: string): string[] {
 
 // Compiled .js is gitignored; the tracked source of truth is always the .ts.
 function candidates(source: string, spec: string): string[] {
-  const stem = path.posix.join(path.posix.dirname(source), spec).replace(/\.(ts|js)$/, "");
-  return [`${stem}.ts`, `${stem}/index.ts`];
+  const stem = path.posix.join(path.posix.dirname(source), spec).replace(/\.(ts|tsx|js|jsx)$/, "");
+  return [`${stem}.ts`, `${stem}.tsx`, `${stem}/index.ts`];
 }
 
 test("tracked sources only import git-tracked files", () => {
