@@ -3,6 +3,7 @@ import {
   co2GramsFor,
   displayModelId,
   energyWhFor,
+  foldModelsByLabel,
   importSessionTokens,
   ledgerPath,
   priceFor,
@@ -18,7 +19,7 @@ import type { RecentRequest, RtkAdoption, RtkRecallDiagnostics, SessionTokens, T
 import { resolveRtkBinary } from '../extensions/lib/utils.ts';
 import { readRtkGain } from '../extensions/shared/rtk-gain.ts';
 import type { RtkGain } from '../extensions/shared/rtk-gain.ts';
-import { readUsageDb, syncUsageDb, usageDbPath } from '../extensions/shared/usage-store.ts';
+import { readUsageDb, reparseGuardReport, syncUsageDb, usageDbPath } from '../extensions/shared/usage-store.ts';
 import { withInteractiveSpinner } from './interactive.ts';
 import { PACKAGE_VERSION, currency } from './common.ts';
 import { formatCurrency } from './currency.ts';
@@ -79,6 +80,8 @@ export function summarizeUsage(rows: UsageRow[]): UsageReport {
   } catch {
     synced = false;
   }
+  const guard = reparseGuardReport();
+  if (guard) console.warn(`[warn] usage mirror: ${guard}`);
   let stored: SessionTokens | null = null;
   try {
     stored = readUsageDb()?.tokens ?? null;
@@ -93,17 +96,41 @@ export function summarizeUsage(rows: UsageRow[]): UsageReport {
   let savedUsd = 0;
   const byModelUsd: Record<string, number> = {};
   const byModelBucketUsd: Record<string, { input: number; output: number; cacheRead: number; cacheWrite: number }> = {};
+  const byHost: Record<string, Record<string, TokenBreakdown>> = {};
+  const byDayModel: Record<string, Record<string, number>> = {};
   let co2g = 0;
   let energyWh = 0;
+  const addTok = (into: TokenBreakdown, t: TokenBreakdown): void => {
+    into.input += t.input;
+    into.output += t.output;
+    into.cacheRead += t.cacheRead;
+    into.cacheWrite += t.cacheWrite;
+  };
+  // Price by exact key first (gateways can differ), then fold every map under the display label.
+  const folded = foldModelsByLabel(session.byModel, session.byModelMessages);
   for (const [model, t] of Object.entries(session.byModel)) {
     const c = usdCost(t, model);
     usd += c.usd;
-    byModelUsd[model] = c.usd;
-    byModelBucketUsd[model] = c.buckets;
+    const label = displayModelId(model);
+    byModelUsd[label] = (byModelUsd[label] ?? 0) + c.usd;
+    byModelBucketUsd[label] ??= { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+    addTok(byModelBucketUsd[label], c.buckets);
+    for (const [host, hb] of Object.entries(session.byHost[model] ?? {})) {
+      byHost[label] ??= {};
+      byHost[label][host] ??= { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+      addTok(byHost[label][host], hb);
+    }
     co2g += co2GramsFor(model, t.output);
     energyWh += energyWhFor(model, t.output);
     if (!c.priced) priced = false;
     savedUsd += (t.cacheRead / 1e6) * priceFor(model).price.input;
+  }
+  for (const [day, per] of Object.entries(session.byDayModel)) {
+    for (const [model, n] of Object.entries(per)) {
+      const label = displayModelId(model);
+      byDayModel[day] ??= {};
+      byDayModel[day][label] = (byDayModel[day][label] ?? 0) + n;
+    }
   }
   const byTool = Object.entries(session.byTool).sort((a, b) => b[1] - a[1]).slice(0, 10);
   return {
@@ -114,13 +141,13 @@ export function summarizeUsage(rows: UsageRow[]): UsageReport {
     empty: rows.length === 0 && session.messages === 0,
     messages: session.messages,
     tokens: session.totals,
-    byModel: session.byModel,
+    byModel: folded.byModel,
     byModelUsd,
     byModelBucketUsd,
-    byModelMessages: session.byModelMessages,
-    byHost: session.byHost,
+    byModelMessages: folded.byModelMessages,
+    byHost,
     byDay: session.byDay,
-    byDayModel: session.byDayModel,
+    byDayModel,
     byTool,
     recent: session.recent.map((r) => ({
       ...r,
@@ -208,7 +235,7 @@ function printReport(report: UsageReport): void {
       const mt = b.input + b.output + b.cacheRead + b.cacheWrite;
       const hit = b.input + b.cacheRead ? (b.cacheRead / (b.input + b.cacheRead)) * 100 : 0;
       const usd = report.byModelUsd[model] ?? 0;
-      return [displayModelId(model), fmt(b.input), fmt(b.output), `${fmt(b.cacheRead)}/${fmt(b.cacheWrite)}`, formatCurrency(usd, report.currency), `${hit.toFixed(1)}%`, `${bar(mt / top, 8)} ${fmtShort(mt)}`];
+      return [model, fmt(b.input), fmt(b.output), `${fmt(b.cacheRead)}/${fmt(b.cacheWrite)}`, formatCurrency(usd, report.currency), `${hit.toFixed(1)}%`, `${bar(mt / top, 8)} ${fmtShort(mt)}`];
     });
     for (const l of textTable(['Model', 'Input', 'Output', 'Cache r/w', report.currency, 'Hit', 'Share'], mrows, [false, true, true, true, true, true, false])) {
       console.log(l);

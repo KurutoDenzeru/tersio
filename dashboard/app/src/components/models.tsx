@@ -16,10 +16,9 @@ import {
   vendorOf,
 } from "@/lib/format";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Progress, ProgressIndicator, ProgressTrack } from "@/components/ui/progress";
 import type { UsageReport } from "@/lib/data";
 import { BrandSilhouette, Brandmark } from "./brand";
-import { EmptyState, HoverTip, PageButtons, PerPage, usePager } from "./common";
+import { EmptyState, HoverTip, PageButtons, PerPage, ShareBar, usePager } from "./common";
 import { Icon } from "./icon";
 
 function ModelTip({ m, data, money }: { m: string; data: UsageReport; money: (v: number) => string }) {
@@ -466,11 +465,7 @@ export function Models({ data, money }: { data: UsageReport | null; money: (v: n
                           {money(data?.byModelUsd[m] ?? 0)}
                         </TableCell>
                         <TableCell className="py-2.5">
-                          <Progress value={top ? Math.round((mv / top) * 100) : 0} className="w-full">
-                            <ProgressTrack className="bg-track">
-                              <ProgressIndicator className="bg-accent" />
-                            </ProgressTrack>
-                          </Progress>
+                          <ShareBar value={top ? (mv / top) * 100 : 0} label={m} />
                         </TableCell>
                       </TableRow>
                     </HoverTip>

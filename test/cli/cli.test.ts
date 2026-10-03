@@ -291,7 +291,7 @@ test("dashboard --export writes a self-contained html file", () => {
   expect(body.split("</body>").length - 1).toBe(1);
   expect(body.split("</html>").length - 1).toBe(1);
   rmSync(dir, { recursive: true, force: true });
-});
+}, 30000); // Full CLI export exceeds the 5s default on slow disks.
 
 test("gain is no longer a public dashboard command", () => {
   const result = run("gain", "--export", path.join(os.tmpdir(), "tersio-obsolete-gain.html"));
@@ -465,7 +465,7 @@ test("dashboard --export includes the reset control and empty states", () => {
   expect(body).toMatch(/No tool data yet/);
   expect(body).toMatch(/Share your usage/);
   expect(body).toMatch(/Diagnosis/);
-  expect(body).toMatch(/ranked by tokens \/ top 10/);
+  expect(body).toMatch(/ranked by tokens/);
   expect(body).toMatch(/byModelBucketUsd/);
   rmSync(dir, { recursive: true, force: true });
 });

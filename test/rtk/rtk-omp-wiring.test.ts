@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { wireRtkOmp } from "../../cli/rtk-wiring.ts";
+import { wireRtkOmp, wireRtkOpencode, wireRtkPi } from "../../cli/rtk-wiring.ts";
 
 // Fake rtk binary: records its argv into a log beside it, exits with
 // $RTK_WIRE_EXIT (default 0). Hermetic — never touches a real OMP dir.
@@ -74,5 +74,73 @@ test("success path registers rtk.ts in a fake HOME config.yml", async () => {
   } finally {
     rmSync(dir, { recursive: true, force: true });
     rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("opencode dry-run never executes the binary", async () => {
+  const { dir, log } = tempHome();
+  try {
+    const ok = await wireRtkOpencode(fakeRtk(dir), { dryRun: true });
+    expect(ok).toBe(true);
+    expect(existsSync(log), "fake binary must not run in dry-run").toBe(false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("opencode success path runs init -g --opencode once", async () => {
+  const { dir, log } = tempHome();
+  try {
+    const ok = await wireRtkOpencode(fakeRtk(dir), {});
+    expect(ok).toBe(true);
+    const calls = readFileSync(log, "utf8").trim().split("\n");
+    expect(calls).toEqual(["init -g --opencode"]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("opencode failing binary returns false without throwing", async () => {
+  const { dir, log } = tempHome();
+  try {
+    const ok = await wireRtkOpencode(fakeRtk(dir, 3), {});
+    expect(ok).toBe(false);
+    expect(readFileSync(log, "utf8")).toMatch(/init/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("pi dry-run never executes the binary", async () => {
+  const { dir, log } = tempHome();
+  try {
+    const ok = await wireRtkPi(fakeRtk(dir), { dryRun: true });
+    expect(ok).toBe(true);
+    expect(existsSync(log), "fake binary must not run in dry-run").toBe(false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("pi success path runs init -g --agent pi once", async () => {
+  const { dir, log } = tempHome();
+  try {
+    const ok = await wireRtkPi(fakeRtk(dir), {});
+    expect(ok).toBe(true);
+    const calls = readFileSync(log, "utf8").trim().split("\n");
+    expect(calls).toEqual(["init -g --agent pi"]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("pi failing binary returns false without throwing", async () => {
+  const { dir, log } = tempHome();
+  try {
+    const ok = await wireRtkPi(fakeRtk(dir, 3), {});
+    expect(ok).toBe(false);
+    expect(readFileSync(log, "utf8")).toMatch(/init/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 });

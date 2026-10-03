@@ -3,6 +3,8 @@ import React, { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } f
 import { createPortal } from "react-dom";
 import { cn } from "cn";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ChartContainer } from "@/components/ui/chart";
+import { Bar, BarChart, XAxis, YAxis } from "recharts";
 import { TooltipSurface } from "@/components/ui/tooltip-surface";
 import { Icon } from "./icon";
 
@@ -123,17 +125,37 @@ export function PerPage({
   );
 }
 
+// One horizontal share bar for table cells, drawn with the shadcn chart primitives.
+export function ShareBar({ value, label }: { value: number; label?: string }) {
+  const v = Math.max(0, Math.min(100, value));
+  return (
+    <ChartContainer config={{ share: { label: label ?? "Share", color: "var(--accent)" } }} className="h-[26px] w-full">
+      <BarChart data={[{ share: v }]} layout="vertical" margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
+        <XAxis type="number" domain={[0, 100]} hide />
+        <YAxis type="category" dataKey="share" hide />
+        <Bar
+          dataKey="share"
+          fill="var(--color-share)"
+          radius={[4, 4, 4, 4]}
+          barSize={8}
+          isAnimationActive={false}
+          background={{ fill: "var(--track)", radius: 4 }}
+          aria-label={`${Math.round(v)}%`}
+          role="img"
+        />
+      </BarChart>
+    </ChartContainer>
+  );
+}
+
 export function HoverTip({ content, children }: { content: React.ReactNode; children: React.ReactElement }) {
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
-  const [focused, setFocused] = useState(false);
   const surfaceRef = useRef<HTMLDivElement>(null);
   const anchor = useRef<{ x: number; y: number } | null>(null);
-  // A click means the reader is acting, not reading. Without this a tip outlives
-  // the hover that opened it, since the pointer never leaves a card under a modal.
+  // A click means acting, not reading: without this a tip outlives its hover under a modal.
   useEffect(() => {
     const dismiss = (): void => {
       anchor.current = null;
-      setFocused(false);
       setPos(null);
     };
     document.addEventListener("pointerdown", dismiss);
@@ -160,12 +182,10 @@ export function HoverTip({ content, children }: { content: React.ReactNode; chil
   };
   const focus = (event: React.FocusEvent): void => {
     const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-    setFocused(true);
     move(rect.right, rect.top);
   };
   const blur = (event: React.FocusEvent): void => {
     if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
-    setFocused(false);
     if (!event.currentTarget.matches(":hover")) setPos(null);
   };
   useLayoutEffect(() => {
@@ -203,10 +223,9 @@ export function HoverTip({ content, children }: { content: React.ReactNode; chil
     },
     onMouseLeave: (e: React.MouseEvent) => {
       child.props.onMouseLeave?.(e);
-      if (!focused) {
-        anchor.current = null;
-        setPos(null);
-      }
+      // Always clear: a click focuses the card, which would otherwise freeze its tip after the pointer leaves.
+      anchor.current = null;
+      setPos(null);
     },
   });
   return (

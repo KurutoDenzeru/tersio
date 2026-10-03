@@ -34,13 +34,38 @@ function execFileP(cmd: string, args: string[], timeout: number): Promise<{ stdo
 }
 
 // Idempotent: rtk rewrites its file on every init run.
-export async function wireRtkOmp(rtkBin: string, options: WiringOptions = {}): Promise<boolean> {
-  if (!options.dryRun) debugWire(options, 'Wiring rtk → OMP (bash tool_call rewrite)…');
+interface WireSpec {
+  host: string;
+  mechanism: string;
+  initArgs: string[];
+  hint: string;
+}
+
+async function runWire(rtkBin: string, spec: WireSpec, options: WiringOptions): Promise<boolean> {
+  if (!options.dryRun) debugWire(options, `Wiring rtk → ${spec.host} (${spec.mechanism} rewrite)…`);
   if (options.dryRun) return true;
-  const wired = await runRtkInit(rtkBin, options);
-  if (!wired) return false;
+  try {
+    await tryRtkInit(rtkBin, spec.initArgs);
+  } catch (e) {
+    console.log(`  [warn] could not wire rtk → ${spec.host}: ${shortWiringError(e)}`);
+    console.log(`  [hint] Manual: ${spec.hint}`);
+    return false;
+  }
+  return true;
+}
+
+export async function wireRtkOmp(rtkBin: string, options: WiringOptions = {}): Promise<boolean> {
+  if (!(await runWire(rtkBin, { host: 'OMP', mechanism: 'bash tool_call', initArgs: ['init', '-g', '--agent', 'omp'], hint: 'rtk init -g --agent omp (needs rtk >= 0.49)' }, options))) return false;
   await ensureRtkInConfig(options);
   return true;
+}
+
+export async function wireRtkOpencode(rtkBin: string, options: WiringOptions = {}): Promise<boolean> {
+  return runWire(rtkBin, { host: 'OpenCode', mechanism: 'tool.execute.before', initArgs: ['init', '-g', '--opencode'], hint: 'rtk init -g --opencode' }, options);
+}
+
+export async function wireRtkPi(rtkBin: string, options: WiringOptions = {}): Promise<boolean> {
+  return runWire(rtkBin, { host: 'pi', mechanism: 'bash tool_call', initArgs: ['init', '-g', '--agent', 'pi'], hint: 'rtk init -g --agent pi' }, options);
 }
 
 // The rtk.ts path rtk init writes (OMP_AGENT_DIR inlined; see header note).
@@ -83,23 +108,13 @@ export async function ensureRtkInConfig(options: WiringOptions): Promise<void> {
   }
 }
 
-async function runRtkInit(rtkBin: string, options: WiringOptions): Promise<boolean> {
+async function tryRtkInit(rtkBin: string, initArgs: string[]): Promise<void> {
   try {
-    await execFileP(rtkBin, ['init', '-g', '--agent', 'omp'], 30000);
-    debugWire(options, 'rtk OMP extension wired');
-    return true;
-  } catch (first) {
-    // A fresh binary can lose its first exec to macOS Gatekeeper, so settle and retry once before reporting failure.
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-    try {
-      await execFileP(rtkBin, ['init', '-g', '--agent', 'omp'], 30000);
-      debugWire(options, 'rtk OMP extension wired');
-      return true;
-    } catch (e) {
-      void first;
-      console.log(`  [warn] could not wire rtk → OMP: ${shortWiringError(e)}`);
-      console.log('  [hint] Manual: rtk init -g --agent omp (needs rtk >= 0.49)');
-      return false;
-    }
+    await execFileP(rtkBin, initArgs, 30000);
+    return;
+  } catch {
+    // A fresh binary can lose its first exec to macOS Gatekeeper: settle, then retry once.
   }
+  await new Promise((resolve) => setTimeout(resolve, 2000));
+  await execFileP(rtkBin, initArgs, 30000);
 }

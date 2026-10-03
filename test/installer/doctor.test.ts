@@ -356,6 +356,28 @@ test("doctor warns that rtk_run needs an exec-capable host", () => {
   }
 });
 
+test("doctor --fix removes a foreign opencode tree from pi", () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-doctor-foreign-"));
+  try {
+    const ext = path.join(home, ".pi", "agent", "extensions");
+    mkdirSync(path.join(ext, "shared"), { recursive: true });
+    writeFileSync(path.join(ext, "shared", "host.ts"), "// stale", "utf8");
+    mkdirSync(path.join(ext, "opencode"), { recursive: true });
+    writeFileSync(path.join(ext, "opencode", "server.ts"), "// stale", "utf8");
+    const result = spawnSync(process.execPath, [installer, "doctor", "--fix", "extensions", "--yes"], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 60000,
+      env: cliEnv(home, { PATH: path.join(home, "empty-bin") }),
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(existsSync(path.join(ext, "opencode"))).toBe(false);
+    expect(result.stdout).toMatch(/foreign/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test("doctor does not count the exec row when rtk is absent", () => {
   const home = missingHome();
   try {
@@ -370,55 +392,6 @@ test("doctor does not count the exec row when rtk is absent", () => {
     // The exec question is meaningless without a binary.
     expect(result.stdout).toMatch(/—  RTK exec: not installed/);
     expect(result.stdout).toMatch(/Summary: 4 checks/);
-  } finally {
-    rmSync(home, { recursive: true, force: true });
-  }
-});
-
-// Without a scan, a reworded host drops the marker with no visible symptom.
-function ompInstalledHome(binBody: string): string {
-  const home = missingHome();
-  const pkg = path.join(home, ".omp", "plugins", "node_modules", "@krtclcdy", "tersio");
-  mkdirSync(path.join(pkg), { recursive: true });
-  writeFileSync(path.join(pkg, "package.json"), JSON.stringify({ version: "9.9.9" }), "utf8");
-  const binDir = path.join(home, "host-bin");
-  mkdirSync(binDir, { recursive: true });
-  const bin = path.join(binDir, "omp");
-  writeFileSync(bin, binBody, "utf8");
-  chmodSync(bin, 0o755);
-  return home;
-}
-
-test("doctor confirms the omp subagent marker when the host still carries it", () => {
-  const home = ompInstalledHome("#!/bin/sh\nWorker agent: delegated tasks.\n");
-  try {
-    const result = spawnSync(process.execPath, [installer, "doctor"], {
-      cwd: root,
-      encoding: "utf8",
-      timeout: 15000,
-      env: cliEnv(home, { PATH: path.join(home, "host-bin") }),
-    });
-
-    expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toMatch(/✅ omp subagent marker: ok Worker agent: delegated tasks\./);
-  } finally {
-    rmSync(home, { recursive: true, force: true });
-  }
-});
-
-test("doctor warns when the installed omp no longer carries the marker", () => {
-  const home = ompInstalledHome("#!/bin/sh\necho an omp build that reworded its prompt\n");
-  try {
-    const result = spawnSync(process.execPath, [installer, "doctor"], {
-      cwd: root,
-      encoding: "utf8",
-      timeout: 15000,
-      env: cliEnv(home, { PATH: path.join(home, "host-bin") }),
-    });
-
-    expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toMatch(/⚠️ omp subagent marker: warn not found in the omp binary/);
-    expect(result.stdout).toMatch(/tersio settings markers/);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

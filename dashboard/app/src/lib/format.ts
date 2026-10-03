@@ -67,8 +67,7 @@ export function isCurrencyCode(code: string): boolean {
   return Object.hasOwn(CURS, code);
 }
 
-// Magnitude-aware decimals: a flat 2dp rounds real spend down to "$0.00", so
-// small amounts keep enough digits to stay readable.
+// Small amounts keep extra decimals to stay readable.
 export function moneyDecimals(v: number, base: number): number {
   const a = Math.abs(v);
   if (a >= 0.1 || a === 0) return base;
@@ -100,31 +99,44 @@ export function topModels(byModel: Record<string, TokenBreakdown>, n: number): s
     .slice(0, n);
 }
 
-// Prettify a folded key: lowercase namespace, title-cased model segments with
-// version dots kept.
+function cap(s: string): string {
+  const low = s.toLowerCase();
+  if (low === "openai") return "OpenAI";
+  if (low === "gpt") return "GPT";
+  if (low === "swe") return "SWE";
+  if (low === "ai") return "AI";
+  if (/^\d+[a-z]+$/.test(low)) return low.toUpperCase();
+  if (s.length <= 2) return s.toUpperCase();
+  return s[0].toUpperCase() + s.slice(1).toLowerCase();
+}
+
+function seg(s: string): string {
+  return s.split(".").map(cap).join(".");
+}
+
+function words(s: string): string {
+  return s
+    .split(/[-_:]+/)
+    .filter(Boolean)
+    .map(seg)
+    .join("-");
+}
+
+// Vendor-first labels, so provider-prefixed keys read as "Anthropic - Claude - Haiku-4.5".
 export function displayModel(m: string): string {
   const bare = String(m).replace(/(?::free|-free)$/i, "");
-  function cap(s: string): string {
-    const low = s.toLowerCase();
-    if (low === "openai") return "OpenAI";
-    if (low === "ai") return "AI";
-    if (/^\d+[a-z]+$/.test(low)) return low.toUpperCase();
-    if (s.length <= 2) return s.toUpperCase();
-    return s[0].toUpperCase() + s.slice(1).toLowerCase();
-  }
-  function seg(s: string): string {
-    return s.split(".").map(cap).join(".");
-  }
-  function words(s: string): string {
-    return s
-      .split(/[-_:]+/)
-      .filter(Boolean)
-      .map(seg)
-      .join("-");
-  }
-  const slash = bare.indexOf("/");
-  if (slash >= 0) return bare.slice(0, slash).toLowerCase() + "/" + words(bare.slice(slash + 1));
-  return words(bare);
+  // The report already folds keys; folding again would lowercase the caps.
+  if (bare.includes(" - ")) return bare;
+  const segs = bare.split("/").filter(Boolean);
+  const tail = segs[segs.length - 1] ?? bare;
+  // One free model under two spellings; fold the alpha variant onto it.
+  const pretty = /^space-bunny(-alpha)?$/i.test(tail) ? "Space-Bunny" : words(tail);
+  const vendor = vendorOf(bare);
+  if (vendor.name === "Other") return segs.length > 1 ? `${words(segs[segs.length - 2])} - ${pretty}` : pretty;
+  const claude = pretty.match(/^claude[-_](.+)$/i);
+  if (vendor.name === "Anthropic" && claude) return `Anthropic - Claude - ${claude[1]}`;
+  if (pretty.toLowerCase().startsWith(vendor.name.toLowerCase())) return pretty;
+  return `${vendor.name} - ${pretty}`;
 }
 
 export interface Vendor {
@@ -133,24 +145,26 @@ export interface Vendor {
   color: string;
 }
 
+// Family first: gateway segments shadow it (minimaxai holds xai, gemma rides nvidia).
 const PROVIDERS: Array<[RegExp, string, string, string]> = [
+  [/inclusionai|ling-/i, "InclusionAI", "inclusionai", "#78716c"],
+  [/minimax/i, "MiniMax", "minimax", "#e11d48"],
+  [/grok|xai/i, "xAI", "x", "#000"],
   [/stealth|space-bunny/i, "Stealth", "stealth", "#1f2937"],
   [/openai|codex|gpt-|o1/i, "OpenAI", "openai", "#fff"],
-  [/muse/i, "Meta", "meta", "#0082fb"],
+  [/muse|llama/i, "Meta", "meta", "#0082fb"],
   [/deepseek/i, "DeepSeek", "deepseek", "#4d6bfe"],
-  [/qwen|qwq/i, "Qwen", "qwen", "#6950EF"],
+  [/qwen|qwq/i, "Alibaba", "qwen", "#6950EF"],
   [/glm|z-ai|zhipu/i, "Z.ai", "zdotai", "#2D2D2D"],
   [/mimo/i, "Xiaomi", "xiaomi", "#ff6900"],
   [/kimi|moonshot/i, "Moonshot", "kimi", "#a855f7"],
-  [/minimax/i, "MiniMax", "minimax", "#e11d48"],
-  [/nemotron|nvidia/i, "NVIDIA", "nvidia", "#76b900"],
   [/mistral/i, "Mistral", "mistralai", "#ff7000"],
   [/claude|anthropic/i, "Anthropic", "anthropic", "#d97757"],
   [/gemini|google|gemma/i, "Google", "google", "#4285F4"],
+  [/nemotron|nvidia/i, "NVIDIA", "nvidia", "#76b900"],
   // `swe-*` is Cognition's Devin line; anchored so it cannot swallow other names.
   [/devin|cognition|^swe[-/]/i, "Cognition", "cognition", "#0b0b0b"],
-  // No Cognition/Devin mark ships on the simple-icons CDN, so this slug stays
-  // empty and the dashboard draws its local glyph instead of a broken image.
+  // Empty slug draws the local glyph instead of a broken image.
 ];
 
 export function vendorOf(model: string): Vendor {
@@ -160,8 +174,7 @@ export function vendorOf(model: string): Vendor {
   return { name: "Other", slug: "", color: "#71717a" };
 }
 
-// Which agent wrote a session. The dashboard shows a glyph so a row reads as
-// pi or OMP without opening it.
+// Host glyph identifies the agent without opening the row.
 export interface HostMeta {
   label: string;
   icon: string;
@@ -169,6 +182,7 @@ export interface HostMeta {
 }
 export function hostMeta(host?: string): HostMeta {
   if (host === "omp") return { label: "OMP", icon: "square-terminal", color: "#a78bfa" };
+  if (host === "opencode") return { label: "OpenCode", icon: "box", color: "#fb923c" };
   if (host === "codex") return { label: "Codex", icon: "terminal", color: "#34d399" };
   return { label: "pi", icon: "circle-dot", color: "#22d3ee" };
 }
@@ -252,8 +266,7 @@ export function stampLocal(ts: number): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
-// Generation time + output throughput from the message-level `duration` (ms).
-// Throughput uses output tokens: that is what streams during the window.
+// Throughput uses output tokens streamed during the window.
 export function fmtDur(ms: number | undefined): string {
   if (ms === undefined) return "–";
   const s = ms / 1000;

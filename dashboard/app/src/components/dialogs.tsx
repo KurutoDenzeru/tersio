@@ -32,7 +32,7 @@ import { useToast } from "./toaster";
 import { CurrencyPicker } from "./savings";
 import { HoverTip } from "./common";
 import { Icon } from "./icon";
-import { OmpLogo, PiLogo } from "./agent-logos";
+import { OmpLogo, OpencodeLogo, PiLogo } from "./agent-logos";
 
 type Pane = "general" | "connection" | "diagnosis" | "data";
 
@@ -40,6 +40,7 @@ interface AgentRowProps {
   name: string;
   version: string | null;
   binPath: string | null;
+  dirPath: string | null;
   bin: string;
   docs: string;
   available: boolean;
@@ -47,7 +48,7 @@ interface AgentRowProps {
   logo: ReactNode;
 }
 
-function AgentRow({ name, version, binPath, bin, docs, available, unavailable, logo }: AgentRowProps) {
+function AgentRow({ name, version, binPath, dirPath, bin, docs, available, unavailable, logo }: AgentRowProps) {
   const status = unavailable ? "Unavailable" : available ? "Available" : "Not detected on PATH";
   return (
     <a
@@ -67,7 +68,12 @@ function AgentRow({ name, version, binPath, bin, docs, available, unavailable, l
           {version && <span className="mono text-xs whitespace-nowrap text-dim">{version}</span>}
         </div>
         <div className="mt-0.5 min-w-0 text-xs text-dim">
-          {binPath ? (
+          {/* PATH binary as secondary, config directory first when known. */}
+          {dirPath ? (
+            <HoverTip content={dirPath}>
+              <span className="mono block truncate">{dirPath}</span>
+            </HoverTip>
+          ) : binPath ? (
             <HoverTip content={binPath}>
               <span className="mono block truncate">{binPath}</span>
             </HoverTip>
@@ -110,8 +116,9 @@ function HealthPane() {
   const unavailable = health === null;
   // Absent hosts still show their binary name and lookup path.
   const agents: AgentRowProps[] = [
-    { name: "Oh My Pi", version: health?.omp ?? null, binPath: health?.ompPath ?? null, bin: "omp", docs: "https://omp.sh", available: !!health?.omp, unavailable, logo: <OmpLogo className="size-5" /> },
-    { name: "Pi", version: health?.pi ?? null, binPath: health?.piPath ?? null, bin: "pi", docs: "https://pi.dev", available: !!health?.pi, unavailable, logo: <PiLogo className="size-5" /> },
+    { name: "Oh My Pi", version: health?.omp ?? null, binPath: health?.ompPath ?? null, dirPath: health?.ompDir ?? null, bin: "omp", docs: "https://omp.sh", available: !!health?.omp, unavailable, logo: <OmpLogo className="size-5" /> },
+    { name: "Pi", version: health?.pi ?? null, binPath: health?.piPath ?? null, dirPath: health?.piDir ?? null, bin: "pi", docs: "https://pi.dev", available: !!health?.pi, unavailable, logo: <PiLogo className="size-5" /> },
+    { name: "OpenCode", version: health?.opencode ?? null, binPath: health?.opencodePath ?? null, dirPath: health?.opencodeDir ?? null, bin: "opencode", docs: "https://opencode.ai", available: !!health?.opencode, unavailable, logo: <OpencodeLogo className="size-5" /> },
   ];
 
   return (
@@ -301,16 +308,14 @@ function DoctorPane() {
 }
 
 type ExportFormat = "json" | "jsonl" | "csv";
-// Hints stay short on purpose: each sits to the right of its label on a single
-// line, and a long one wraps and leaves the menu rows ragged.
+// Hints stay short: each sits right of its label on a single line.
 const EXPORT_FORMATS: Array<{ id: ExportFormat; label: string; hint: string }> = [
   { id: "json", label: "JSON", hint: "Full report" },
   { id: "jsonl", label: "JSONL", hint: "One request per line" },
   { id: "csv", label: "CSV", hint: "Spreadsheet table" },
 ];
 
-// The mirror is rebuilt from session files whenever the parser moves, so a
-// backup is the only way back if a source stops being walked.
+// Backups are the only way back when a source stops being walked.
 const BACKUP_SCHEDULES_UI: Array<{ id: string; label: string; hint: string }> = [
   { id: "monthly", label: "Monthly", hint: "A snapshot a month is kept automatically" },
   { id: "weekly", label: "Weekly", hint: "A snapshot a week" },
@@ -327,6 +332,7 @@ function BackupRestore() {
   const [asking, setAsking] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [backing, setBacking] = useState(false);
 
   const load = useCallback(() => {
     fetch("/backups")
@@ -461,9 +467,26 @@ function BackupRestore() {
           </ul>
 
           <div className="flex items-center justify-between gap-3 border-t border-line px-3 py-2">
-            <span className="min-w-0 truncate text-[11px] text-dim">
-              {target ? `Selected ${fmtSnapshot(target.mtime)}` : "Pick a snapshot to restore"}
-            </span>
+            <button
+              type="button"
+              disabled={backing}
+              onClick={() => {
+                setBacking(true);
+                void fetch("/backups/create", { method: "POST" })
+                  .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+                  .then((d: { ok?: boolean; error?: string }) => {
+                    if (d?.ok) { toast("Backup taken", "Snapshot saved.", "check"); load(); }
+                    else toast("Backup failed", d?.error ?? "Unknown backup", "circle-alert");
+                  })
+                  .catch(() => toast("Backup failed", "The dashboard server did not answer.", "circle-alert"))
+                  .finally(() => setBacking(false));
+              }}
+              aria-label="Back up usage now"
+              className="mono flex shrink-0 items-center gap-2 rounded-xl border border-line px-3 py-1.5 text-xs text-ink [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96] disabled:opacity-50"
+            >
+              <Icon name="database-backup" className="size-3.5" />
+              <span>{backing ? "Backing up…" : "Backup now"}</span>
+            </button>
             <span className="flex shrink-0 items-center gap-2">
               <button
                 type="button"
@@ -742,8 +765,7 @@ const DEFAULT_ROWS_UI: Array<{ field: keyof DefaultsPayload; label: string; hint
   },
 ];
 
-// The session-start defaults, mirroring `tersio settings`. One fetch, and each
-// row saves on its own so a combo change never silently rewrites the others.
+// Session-start defaults mirror `tersio settings`; each row saves on its own.
 function DefaultModes() {
   const toast = useToast();
   const [current, setCurrent] = useState<DefaultsPayload>({
@@ -856,8 +878,7 @@ function AccentPicker({ accent, onPick }: { accent: AccentId; onPick: (id: Accen
                 className="size-6 rounded-full peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent"
                 style={{
                   background: hex,
-                  // The selected chip gets a gap then its own ring, the two
-                  // rings an unselected one never has.
+                  // The selected chip rings twice; an unselected one never does.
                   ...(on ? { boxShadow: `0 0 0 2px var(--panel), 0 0 0 4px ${hex}` } : {}),
                 }}
               />
@@ -1229,8 +1250,7 @@ export function ShareDialog({
     );
   };
 
-  // PNG export renders the profile card as SVG, then rasterizes it. Same
-  // 1200x850 layout and theme rule as the original share.js svgCard().
+  // PNG export rasterizes the profile card SVG at 1200x850.
   const svgCard = (): string => {
     const e = (x: string): string => x.replace(/&/g, "&amp;").replace(/</g, "&lt;");
     // Canvas reads live tokens off <html> since it cannot resolve var().

@@ -76,6 +76,8 @@ export interface RecentRequest {
   st: RunStatus;
   code?: number;
   note?: string;
+  /** Message id when the host provides one (transcript row id, opencode msg file). */
+  id?: string;
 }
 
 export interface SessionTokens {
@@ -164,14 +166,6 @@ export function sessionsDir(): string {
   return sessionsDirs()[0];
 }
 
-export function codexSessionsDir(): string {
-  const override = process.env.TERSIO_CODEX_DIR;
-  if (override) return override;
-  const codexHome = process.env.CODEX_HOME;
-  if (codexHome) return path.join(codexHome, 'sessions');
-  return path.join(homeDir(), '.codex', 'sessions');
-}
-
 // One JSON file per message; probe XDG, then local, then macOS default.
 export function opencodeSessionsDir(): string {
   const override = process.env.TERSIO_OPENCODE_DIR;
@@ -183,6 +177,82 @@ export function opencodeSessionsDir(): string {
     if (fs.existsSync(local)) return local;
   } catch { /* fall through to the platform default */ }
   return path.join(homeDir(), 'Library', 'Application Support', 'opencode', 'storage', 'message');
+}
+
+// OpenCode v2 keeps messages in sqlite; the JSON tree above is only the pre-v2 layout.
+export function opencodeDbPath(): string {
+  const override = process.env.TERSIO_OPENCODE_DB;
+  if (override) return override;
+  const xdg = process.env.XDG_DATA_HOME;
+  if (xdg && xdg.trim() !== '') return path.join(xdg, 'opencode', 'opencode.db');
+  const local = path.join(homeDir(), '.local', 'share', 'opencode', 'opencode.db');
+  try {
+    if (fs.existsSync(local)) return local;
+  } catch { /* fall through to the platform default */ }
+  return path.join(homeDir(), 'Library', 'Application Support', 'opencode', 'opencode.db');
+}
+
+export interface OpencodeDbRow {
+  id: string;
+  created: number;
+  row: OpencodeMessage;
+}
+
+// Two on-disk shapes: legacy `message` (role/modelID/providerID live inside `data`),
+// current `session_message` (role in the `type` column, model under data.model).
+// Scalars only: the `data` blob holds newlines and tabs, which the sqlite3 CLI would split.
+const OC_DB_ORDER = ' ORDER BY time_created;';
+const OC_DB_COLUMNS =
+  'json_extract(data,\'$.time.created\'), json_extract(data,\'$.time.completed\'),' +
+  ' json_extract(data,\'$.tokens.input\'), json_extract(data,\'$.tokens.output\'),' +
+  ' json_extract(data,\'$.tokens.cache.read\'), json_extract(data,\'$.tokens.cache.write\'), json_extract(data,\'$.cost\')';
+const ocDbLegacy = (since: number): string =>
+  `SELECT id, time_created, json_extract(data,'$.role'), json_extract(data,'$.providerID'), json_extract(data,'$.modelID'), ${OC_DB_COLUMNS}` +
+  ` FROM message WHERE json_extract(data,'$.role')='assistant' AND time_created > ${since}${OC_DB_ORDER}`;
+const ocDbCurrent = (since: number): string =>
+  `SELECT id, time_created, 'assistant', json_extract(data,'$.model.providerID'), json_extract(data,'$.model.id'), ${OC_DB_COLUMNS}` +
+  ` FROM session_message WHERE type='assistant' AND time_created > ${since}${OC_DB_ORDER}`;
+
+// A re-scan window covers tokens that land after the row was created, so a late fill is not lost.
+export const OPENCODE_DB_OVERLAP_MS = 3_600_000;
+
+// execFileSync caps output at 1MB; a busy table clears it in one SELECT.
+export const SQLITE_READ_BUFFER = 50 * 1024 * 1024;
+
+// Empty when sqlite3 is absent or the db is unreadable; that is a sync skip, not a failure.
+export function readOpencodeDbRows(db: string, sinceMs: number): OpencodeDbRow[] {
+  if (!Number.isFinite(sinceMs)) return [];
+  try {
+    if (!fs.existsSync(db)) return [];
+    const since = Math.max(0, Math.floor(sinceMs));
+    // Separate calls: a db holding only one table must not cancel the other.
+const run = (sql: string): string =>
+  execFileSync('sqlite3', ['-separator', '\t', '-readonly', db, sql], { encoding: 'utf8', timeout: 30000, stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: SQLITE_READ_BUFFER });
+let out = '';
+try { out += run(ocDbLegacy(since)); } catch { /* no legacy table or unreadable */ }
+try { out += run(ocDbCurrent(since)); } catch { /* no session_message table or unreadable */ }
+    const rows: OpencodeDbRow[] = [];
+    for (const line of out.split('\n')) {
+      if (!line.trim()) continue;
+      const [id, created, role, providerID, modelID, tCreated, tCompleted, input, output, cacheRead, cacheWrite, cost] = line.split('\t');
+      const n = (v: string | undefined): unknown => (v !== undefined && v !== '' && Number.isFinite(Number(v)) ? Number(v) : undefined);
+      rows.push({
+        id,
+        created: Number(created),
+        row: {
+          role,
+          modelID,
+          providerID,
+          tokens: { input: n(input), output: n(output), cache: { read: n(cacheRead), write: n(cacheWrite) } },
+          time: { created: n(tCreated), completed: n(tCompleted) },
+          cost: n(cost),
+        },
+      });
+    }
+    return rows;
+  } catch {
+    return [];
+  }
 }
 
 export function dayKey(ts: string | number): string | null {
@@ -206,8 +276,8 @@ export function walkJsonl(dir: string, out: string[], cap: number, ext = '.jsonl
     else if (e.isFile() && e.name.endsWith(ext)) out.push(full);
   }
 }
-// Recent requests get their own full-width table, so this bounds payload rather than highlights; rows are small, so a few hundred cost little.
-export const RECENT_LIMIT = 200;
+// Recent rows are a newest-first window over lifetime history; aggregates keep everything.
+export const RECENT_LIMIT = 2000;
 const FREE_SUFFIX = /(?::free|-free)$/i;
 const RTK_ELIGIBLE_HEADS = new Set([
   'rtk', 'git', 'grep', 'rg', 'find', 'cat', 'ls', 'tree', 'diff', 'log',
@@ -230,7 +300,7 @@ export interface SessionAccum {
 export function newSessionAccum(): SessionAccum {
   return { byModel: {}, byDay: {}, byDayModel: {}, byTool: {}, byModelMessages: {}, byHost: {}, totals: zeroBreakdown(), messages: 0, costMeasured: 0, recent: [] };
 }
-export function ingestSessionRow(accum: SessionAccum, model: string, usage: Record<string, unknown>, ts: string | number | undefined, durMs?: unknown, run?: { st: RunStatus; code?: number; note?: string }, toolNames?: string[], host?: string): boolean {
+export function ingestSessionRow(accum: SessionAccum, model: string, usage: Record<string, unknown>, ts: string | number | undefined, durMs?: unknown, run?: { st: RunStatus; code?: number; note?: string }, toolNames?: string[], host?: string, id?: string): boolean {
   const watermark = readResetWatermark();
   const ms = ts === undefined ? NaN : typeof ts === 'number' ? ts : Date.parse(ts);
   if (watermark > 0 && (!Number.isFinite(ms) || ms < watermark)) return false;
@@ -247,7 +317,7 @@ export function ingestSessionRow(accum: SessionAccum, model: string, usage: Reco
   const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.floor(v) : 0);
   if (Number.isFinite(ms)) {
     const outcome = run ?? { st: 'completed' as RunStatus };
-    accum.recent.push({ m: key, i: num(usage.input), o: num(usage.output), t: ms, d: durOf(durMs), h: host, cr: num(usage.cacheRead), cw: num(usage.cacheWrite), usd: costOf(usage), st: outcome.st, code: outcome.code, note: outcome.note });
+    accum.recent.push({ m: key, i: num(usage.input), o: num(usage.output), t: ms, d: durOf(durMs), h: host, cr: num(usage.cacheRead), cw: num(usage.cacheWrite), usd: costOf(usage), st: outcome.st, code: outcome.code, note: outcome.note, id });
   }
   const day = ts !== undefined ? dayKey(ts) : null;
   if (day) {
@@ -347,8 +417,8 @@ export function classifyOpencodeMessage(obj: OpencodeMessage | null | undefined)
   };
 }
 
-// One OpenCode message file into the shared accum.
-export function processOpencodeFile(accum: SessionAccum, text: string): void {
+// One OpenCode message file into the shared accum. The msg id is the file name.
+export function processOpencodeFile(accum: SessionAccum, text: string, file?: string): void {
   let obj: unknown;
   try {
     obj = JSON.parse(text);
@@ -357,19 +427,84 @@ export function processOpencodeFile(accum: SessionAccum, text: string): void {
   }
   const parsed = classifyOpencodeMessage(obj as OpencodeMessage);
   if (!parsed) return;
-  ingestSessionRow(accum, parsed.model, parsed.usage, parsed.ms, parsed.durMs, { st: 'completed' as RunStatus }, undefined, 'opencode');
+  const id = file ? path.basename(file).replace(/\.[^.]+$/, '') || undefined : undefined;
+  ingestSessionRow(accum, parsed.model, parsed.usage, parsed.ms, parsed.durMs, { st: 'completed' as RunStatus }, undefined, 'opencode', id);
+}
+
+// One v2 message row into the shared accum. The msg id is the row primary key.
+export function ingestOpencodeDbRow(accum: SessionAccum, row: OpencodeDbRow): void {
+  const parsed = classifyOpencodeMessage(row.row);
+  if (!parsed) return;
+  ingestSessionRow(accum, parsed.model, parsed.usage, parsed.ms, parsed.durMs, { st: 'completed' as RunStatus }, undefined, 'opencode', row.id);
 }
 
 // Fold `:free`/`-free` suffixes and case variants into one chart key.
 export function canonicalModelId(model: string): string {
   return canonicalPriceId(model.replace(FREE_SUFFIX, ''));
 }
-// LiteLLM-style display: lowercase namespace, title-cased model segments with version dots kept.
+// Transcript row id when the host provides one; anything else is not an id.
+export function messageRowId(row: unknown): string | undefined {
+  const id = (row as { id?: unknown }).id;
+  return typeof id === 'string' && id ? id : undefined;
+}
+
+// Vendor names mirror the dashboard map; CLI needs names only. Family first:
+// gateway segments shadow it (minimaxai holds xai, gemma rides nvidia).
+const VENDOR_RES: Array<[RegExp, string]> = [
+  [/inclusionai|ling-/i, 'InclusionAI'],
+  [/minimax/i, 'MiniMax'],
+  [/grok|xai/i, 'xAI'],
+  [/stealth|space-bunny/i, 'Stealth'],
+  [/openai|codex|gpt-|o1/i, 'OpenAI'],
+  [/muse|llama/i, 'Meta'],
+  [/deepseek/i, 'DeepSeek'],
+  [/qwen|qwq/i, 'Alibaba'],
+  [/glm|z-ai|zhipu/i, 'Z.ai'],
+  [/mimo/i, 'Xiaomi'],
+  [/kimi|moonshot/i, 'Moonshot'],
+  [/mistral/i, 'Mistral'],
+  [/claude|anthropic/i, 'Anthropic'],
+  [/gemini|google|gemma/i, 'Google'],
+  [/nemotron|nvidia/i, 'NVIDIA'],
+  [/devin|cognition|^swe[-/]/i, 'Cognition'],
+];
+
+function modelVendor(model: string): string {
+  for (const [re, name] of VENDOR_RES) {
+    if (re.test(model)) return name;
+  }
+  return 'Other';
+}
+
+// Gateway variants of one model share a row under the display label.
+export function foldModelsByLabel(
+  byModel: Record<string, TokenBreakdown>,
+  byModelMessages: Record<string, number>,
+): { byModel: Record<string, TokenBreakdown>; byModelMessages: Record<string, number> } {
+  const folded: Record<string, TokenBreakdown> = {};
+  const messages: Record<string, number> = {};
+  for (const [model, t] of Object.entries(byModel)) {
+    const label = displayModelId(model);
+    folded[label] ??= { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+    const into = folded[label];
+    into.input += t.input;
+    into.output += t.output;
+    into.cacheRead += t.cacheRead;
+    into.cacheWrite += t.cacheWrite;
+    messages[label] = (messages[label] ?? 0) + (byModelMessages[model] ?? 0);
+  }
+  return { byModel: folded, byModelMessages: messages };
+}
+// Vendor-first labels, same fold as the dashboard: "Anthropic - Claude - Haiku-4.5".
 export function displayModelId(model: string): string {
   const bare = model.replace(FREE_SUFFIX, '');
+  // The report already folds keys; folding again would lowercase the caps.
+  if (bare.includes(' - ')) return bare;
   const cap = (s: string): string => {
     const low = s.toLowerCase();
     if (low === 'openai') return 'OpenAI';
+    if (low === 'gpt') return 'GPT';
+    if (low === 'swe') return 'SWE';
     if (low === 'ai') return 'AI';
     if (/^\d+[a-z]+$/.test(low)) return low.toUpperCase();
     if (s.length <= 2) return s.toUpperCase();
@@ -377,19 +512,22 @@ export function displayModelId(model: string): string {
   };
   const seg = (s: string): string => s.split('.').map(cap).join('.');
   const words = (s: string): string => s.split(/[-_:]+/).filter(Boolean).map(seg).join('-');
-  const slash = bare.indexOf('/');
-  if (slash >= 0) return `${bare.slice(0, slash).toLowerCase()}/${words(bare.slice(slash + 1))}`;
-  return words(bare);
+  const segs = bare.split('/').filter(Boolean);
+  const tail = segs[segs.length - 1] ?? bare;
+  // One free model under two spellings; fold the alpha variant onto it.
+  const pretty = /^space-bunny(-alpha)?$/i.test(tail) ? 'Space-Bunny' : words(tail);
+  const vendor = modelVendor(bare);
+  if (vendor === 'Other') return segs.length > 1 ? `${words(segs[segs.length - 2])} - ${pretty}` : pretty;
+  const claude = pretty.match(/^claude[-_](.+)$/i);
+  if (vendor === 'Anthropic' && claude) return `Anthropic - Claude - ${claude[1]}`;
+  if (pretty.toLowerCase().startsWith(vendor.toLowerCase())) return pretty;
+  return `${vendor} - ${pretty}`;
 }
 
 export function importSessionTokens(): SessionTokens {
   const accum = newSessionAccum();
   const files: string[] = [];
   for (const dir of sessionsDirs()) walkJsonl(dir, files, 2000);
-  // An override means an isolated environment (tests, fixtures): only walk the real codex dir when one is explicitly set.
-  if (process.env.TERSIO_SESSIONS_DIR === undefined || process.env.TERSIO_CODEX_DIR !== undefined) {
-    walkJsonl(codexSessionsDir(), files, 2000);
-  }
   // OpenCode message bodies are single JSON documents, not JSONL.
   const ocFiles: string[] = [];
   if (process.env.TERSIO_SESSIONS_DIR === undefined || process.env.TERSIO_OPENCODE_DIR !== undefined) {
@@ -402,7 +540,11 @@ export function importSessionTokens(): SessionTokens {
     } catch {
       continue;
     }
-    processOpencodeFile(accum, text);
+    processOpencodeFile(accum, text, file);
+  }
+  // v2 hosts write sqlite, not the JSON tree above.
+  if (process.env.TERSIO_SESSIONS_DIR === undefined || process.env.TERSIO_OPENCODE_DB !== undefined) {
+    for (const row of readOpencodeDbRows(opencodeDbPath(), 0)) ingestOpencodeDbRow(accum, row);
   }
   let codexProvider: string | null = null;
   let codexModel: string | null = null;
@@ -472,9 +614,6 @@ export function clearRtkAdoptionCache(): void {
 export function readRtkAdoption(): RtkAdoption {
   const files: string[] = [];
   for (const dir of sessionsDirs()) walkJsonl(dir, files, 2000);
-  if (process.env.TERSIO_SESSIONS_DIR === undefined || process.env.TERSIO_CODEX_DIR !== undefined) {
-    walkJsonl(codexSessionsDir(), files, 2000);
-  }
   const live = new Set(files);
   for (const file of adoptionFileCache.keys()) {
     if (!live.has(file)) adoptionFileCache.delete(file);
@@ -512,6 +651,7 @@ export function processSessionText(accum: SessionAccum, state: { codexProvider: 
     try {
       const row = JSON.parse(line) as Parameters<typeof classifySessionLine>[0];
       const parsed = classifySessionLine(row);
+      const rid = messageRowId(row);
       if (parsed.kind === 'codex_provider') {
         if (parsed.provider) state.codexProvider = parsed.provider;
         continue;
@@ -524,11 +664,11 @@ export function processSessionText(accum: SessionAccum, state: { codexProvider: 
         const base = parsed.provider ? `codex/${parsed.provider}` : (state.codexProvider ? `codex/${state.codexProvider}` : 'codex');
         // The provider alone told you nothing about which model ran.
         const model = state.codexModel ? `${base}/${state.codexModel}` : base;
-        ingestSessionRow(accum, model, parsed.usage ?? {}, row.timestamp, parsed.durMs, { st: 'completed' as RunStatus }, undefined, host ?? 'codex');
+        ingestSessionRow(accum, model, parsed.usage ?? {}, row.timestamp, parsed.durMs, { st: 'completed' as RunStatus }, undefined, host ?? 'codex', rid);
         continue;
       }
       if (parsed.kind !== 'assistant_row' || !parsed.model || !parsed.usage) continue;
-      ingestSessionRow(accum, parsed.model, parsed.usage, row.timestamp, parsed.durMs, parsed.run, parsed.tools, host);
+      ingestSessionRow(accum, parsed.model, parsed.usage, row.timestamp, parsed.durMs, parsed.run, parsed.tools, host, rid);
     } catch { /* skip corrupt lines */ }
   }
 }

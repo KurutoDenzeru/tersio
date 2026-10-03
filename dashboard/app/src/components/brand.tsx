@@ -1,11 +1,13 @@
-// Vendor brandmark with an inline OpenAI glyph, Simple Icons CDN fallback, and
-// a bot placeholder for unknown providers.
+// Vendor brandmark: inline OpenAI glyph, Simple Icons CDN fallback, bot placeholder for unknowns.
 import { useState } from "react";
 import { cn } from "cn";
 import { vendorOf } from "@/lib/format";
 import { STEALTH_MARK } from "@/lib/stealth-mark";
 import { COGNITION_MARK } from "@/lib/cognition-mark";
 import { Icon } from "./icon";
+
+const INCLUSIONAI_LOGO =
+  "https://cdn-avatars.huggingface.co/v1/production/uploads/662e1f9da266499277937d33/fyKuazRifqiaIO34xrhhm.jpeg";
 
 export function OpenAIGlyph({ className = "size-full" }: { className?: string }) {
   // currentColor follows theme ink; the tile keeps black-on-white.
@@ -60,6 +62,13 @@ export function BrandSilhouette({ model }: { model: string }) {
       </span>
     );
   }
+  if (v.slug === "inclusionai") {
+    return (
+      <span className={cn(cls, "grid place-items-center")} aria-hidden="true">
+        <img src={INCLUSIONAI_LOGO} alt="" loading="lazy" className="block size-[72px] rounded-full object-cover" />
+      </span>
+    );
+  }
   if (!v.slug) {
     return (
       <span className={cn(cls, "text-accent")} aria-hidden="true">
@@ -100,6 +109,13 @@ export function Brandmark({ model, small }: { model: string; small?: boolean }) 
     return (
       <span className={cn(cls, "border border-line bg-panel")}>
         <MaskedGlyph className={cn("opacity-90", glyph)} src={COGNITION_MARK} />
+      </span>
+    );
+  }
+  if (v.slug === "inclusionai" && !failed) {
+    return (
+      <span className={cn(cls, "overflow-hidden border border-line")}>
+        <img src={INCLUSIONAI_LOGO} alt="" loading="lazy" onError={() => setFailed(true)} className={cn(glyph, "object-cover")} />
       </span>
     );
   }

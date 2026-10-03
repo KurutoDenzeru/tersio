@@ -11,13 +11,13 @@ import {
   writeIfChanged,
 } from './common.ts';
 import { execNetwork, sayTagged } from './interactive.ts';
-import { wireRtkOmp, ensureRtkInConfig } from './rtk-wiring.ts';
+import { wireRtkOmp, wireRtkOpencode, wireRtkPi, ensureRtkInConfig } from './rtk-wiring.ts';
 import {
   CAVEMAN_REMOTE_RULE, RTK_RELEASE_API, RtkRelease, fetchJson, findFile, httpsGet,
   httpsDownload, parseChecksum, readTextIfExists, rtkPlatformSpec, sha256File,
 } from '../extensions/lib/utils.ts';
 import { runLatestUpdate } from './update.ts';
-import { TREE_FILES, sourcePath } from './manifest.ts';
+import { OPENCODE_SERVER_SHIM, TREE_FILES, sourcePath } from './manifest.ts';
 import { detectHosts, hostExtensionsDir } from './hosts.ts';
 
 type FixTarget = 'extensions' | 'registrations' | 'rtk' | 'ponytail' | 'cli';
@@ -28,24 +28,62 @@ const EXT_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'e
 
 // A written tree is the install for both hosts now, so --fix restores it for whichever hosts have it, alongside the OMP package when that is present.
 async function fixExtensionTrees(): Promise<void> {
+  // The opencode entrypoint is foreign to pi/omp loaders: never copy it there, and remove strays.
+  const forHost = (id: string): string[] => TREE_FILES.filter((file) => id === 'opencode' || !file.startsWith('opencode/'));
+  const scrubOpencodeDir = async (dest: string): Promise<void> => {
+    const dir = path.join(dest, 'opencode');
+    if (!existsSync(dir)) return;
+    if (dryRun) { sayTagged(`  [dry-run] would remove foreign ${dir}`); return; }
+    await fs.rm(dir, { recursive: true, force: true });
+    sayTagged(`  [rm] foreign ${dir}`);
+  };
   for (const host of detectHosts()) {
     const dest = hostExtensionsDir(host.id);
     // Repair a host whose tree is partly there: a half-written tree is exactly the case this runs for, and it reads as "not installed" to the detector.
-    const present = TREE_FILES.filter((file) => existsSync(path.join(dest, file))).length;
-    if (present === 0) continue;
+    const present = forHost(host.id).filter((file) => existsSync(path.join(dest, file))).length;
+    if (present === 0) {
+      if (host.id !== 'opencode') await scrubOpencodeDir(dest);
+      continue;
+    }
     await fs.mkdir(dest, { recursive: true });
-    for (const file of TREE_FILES) {
+    for (const file of forHost(host.id)) {
       const from = path.join(EXT_DIR, ...file.split('/'));
       const text = await readTextIfExists(from);
       if (text === null) sayTagged(`  [warn] bundled source missing: ${from}`);
       else await writeIfChanged(path.join(dest, file), text, { dryRun, verbose });
     }
+    if (host.id !== 'opencode') await scrubOpencodeDir(dest);
     if (!dryRun) sayTagged(`  [ok] ${host.label} extension tree: ${dest}`);
   }
 }
 
+// The tree alone does nothing on OpenCode without its entrypoint registered in opencode.json.
+async function fixOpencodeEntry(): Promise<void> {
+  const { HOME } = await import('./common.ts');
+  const dir = path.join(HOME, '.config', 'opencode', 'plugins', 'tersio');
+  const configPath = path.join(HOME, '.config', 'opencode', 'opencode.json');
+  const nested = path.join(dir, 'opencode', 'server.ts');
+  const nestedText = await readTextIfExists(nested);
+  if (!nestedText) return;
+  // The loader resolves <pluginDir>/server.ts, so mirror the entry at the tree root.
+  await writeIfChanged(path.join(dir, 'server.ts'), OPENCODE_SERVER_SHIM, { dryRun, verbose });
+  const raw = await readTextIfExists(configPath);
+  let config: Record<string, unknown> = {};
+  try { config = raw ? JSON.parse(raw) as Record<string, unknown> : {}; } catch { return; }
+  const plugins = Array.isArray(config.plugins) ? [...config.plugins] as unknown[] : [];
+  const withoutTersio = plugins.filter((p) => typeof p !== 'string' || !p.includes('/opencode/plugins/tersio'));
+  if (withoutTersio.includes(dir)) return;
+  withoutTersio.push(dir);
+  config.plugins = withoutTersio;
+  if (dryRun) { sayTagged(`  [dry-run] would register tersio in ${configPath}`); return; }
+  await fs.mkdir(path.dirname(configPath), { recursive: true });
+  await fs.writeFile(configPath, JSON.stringify(config, null, 2) + '\n', 'utf8');
+  sayTagged(`  [ok] OpenCode plugin entry: ${configPath}`);
+}
+
 async function fixExtensions(pluginsDir: string): Promise<void> {
   await fixExtensionTrees();
+  await fixOpencodeEntry();
   console.log('  Doctor --fix: restoring plugin extension files');
   const pluginExtDir = path.join(pluginsDir, 'node_modules', '@krtclcdy', 'tersio', 'extensions');
   await fs.mkdir(pluginExtDir, { recursive: true });
@@ -150,6 +188,14 @@ async function fixRtk(binDir: string): Promise<void> {
     await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => { });
   }
   if (!(await wireRtkOmp(binDest, { dryRun, verbose }))) throw new Error('rtk wiring failed');
+  // Fail-open: a missing host wire must not fail the repair.
+  const home = process.env.HOME || process.env.USERPROFILE || os.homedir();
+  if (existsSync(path.join(home, '.config', 'opencode', 'plugins', 'tersio'))) {
+    await wireRtkOpencode(binDest, { dryRun, verbose });
+  }
+  if (existsSync(path.join(home, '.pi', 'agent', 'extensions'))) {
+    await wireRtkPi(binDest, { dryRun, verbose });
+  }
 }
 
 async function fixPonytail(pluginsDir: string): Promise<void> {

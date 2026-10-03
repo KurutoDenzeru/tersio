@@ -227,6 +227,22 @@ test("installer rejects review as a Ponytail default", () => {
   expect(bad.stderr).toMatch(/Invalid --ponytail-default/);
 });
 
+test("update rejects an unknown host before doing anything", () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-update-host-"));
+  try {
+    const result = spawnSync(process.execPath, [installer, "update", "--host", "codex", "--yes"], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 15000,
+      env: cliEnv(home),
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(/Invalid --host: codex/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test("apply-update without flags preserves stored combo defaults", () => {
   // The clobber regression: `tersio update` delegates to --apply-update with
   // no flags, so resolveProfile rebuilt from all-off and wiped the default.

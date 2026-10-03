@@ -37,8 +37,8 @@ function relativeSpecs(body: string): string[] {
 
 // Compiled .js is gitignored; the tracked source of truth is always the .ts.
 function candidates(source: string, spec: string): string[] {
-  const stem = path.posix.join(path.posix.dirname(source), spec).replace(/\.(ts|js)$/, "");
-  return [`${stem}.ts`, `${stem}/index.ts`];
+  const stem = path.posix.join(path.posix.dirname(source), spec).replace(/\.(ts|tsx|js|jsx)$/, "");
+  return [`${stem}.ts`, `${stem}.tsx`, `${stem}/index.ts`];
 }
 
 test("tracked sources only import git-tracked files", () => {
@@ -73,4 +73,14 @@ test("no test spawns the CLI with process.env and an overridden HOME", () => {
     }
   }
   expect(offenders, `use cliEnv() from test/helpers/env.ts:\n${offenders.join("\n")}`).toEqual([]);
+});
+
+// `opencode plugin add` resolves the server entrypoint through exports["./server"].
+test("package exports a loadable opencode server entrypoint", () => {
+  const pkg = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")) as {
+    exports?: Record<string, string>;
+  };
+  const entry = pkg.exports?.["./server"];
+  expect(entry, 'exports["./server"] must exist for `opencode plugin add`').toBeDefined();
+  expect(existsSync(path.join(root, entry as string)), `${entry} must exist in the packed tarball`).toBe(true);
 });

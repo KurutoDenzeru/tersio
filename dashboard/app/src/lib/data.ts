@@ -9,7 +9,7 @@ export interface RecentRequestRow {
   o: number;
   t: number;
   d?: number;
-  /** Which agent ran the session: pi, omp, or codex. */
+  /** Which agent ran the session: pi, omp, opencode. */
   h?: string;
   cr?: number;
   cw?: number;
@@ -18,6 +18,8 @@ export interface RecentRequestRow {
   code?: number;
   note?: string;
   est: number;
+  /** Message id when the host provides one. */
+  id?: string;
 }
 
 export interface RtkCommandRow {
@@ -85,8 +87,16 @@ export interface HealthReport {
   platform: string;
   omp: string | null;
   ompPath: string | null;
+  /** Config root, e.g. ~/.omp */
+  ompDir: string | null;
   pi: string | null;
   piPath: string | null;
+  /** Config root, e.g. ~/.pi */
+  piDir: string | null;
+  opencode: string | null;
+  opencodePath: string | null;
+  /** Config root, e.g. ~/.config/opencode */
+  opencodeDir: string | null;
   provider: string | null;
   rtk: { present: boolean; version: string | null; path: string };
   home: string;
@@ -175,8 +185,7 @@ export function useDashboardData(): { data: UsageReport | null; loading: boolean
 
   useEffect(() => {
     if (isFileExport()) return;
-    // Initial load always runs (even in a background tab); the poll below
-    // skips hidden tabs and refreshes instantly on return.
+    // Initial load always runs; the poll below skips hidden tabs.
     void load();
     const id = setInterval(() => {
       if (!document.hidden) void load();

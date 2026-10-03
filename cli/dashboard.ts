@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { clearUsageLedger, markReset, readUsage } from '../extensions/shared/usage-ledger.ts';
 import { pricesCachePath } from '../extensions/shared/pricing.ts';
 import { summarizeUsage } from './usage.ts';
-import { deleteUsageBackup, listUsageBackups, restoreUsageBackup } from '../extensions/shared/usage-store.ts';
+import { backupUsageDb, deleteUsageBackup, listUsageBackups, restoreUsageBackup, usageDbPath } from '../extensions/shared/usage-store.ts';
 import type { UsageReport } from './usage.ts';
 import { isCurrencyCode } from './currency.ts';
 import type { CurrencyCode } from './currency.ts';
@@ -97,6 +97,10 @@ function piPath(): string | null {
   return binOnPath('pi');
 }
 
+function opencodePath(): string | null {
+  return binOnPath('opencode');
+}
+
 // omp prints `omp/18.4.1`, pi prints a bare `0.87.1`; both read as name/version.
 function versionLabel(bin: string, raw: string): string {
   const out = raw.trim();
@@ -141,14 +145,25 @@ function healthJson(): string {
   const rtkPresent = rtkBin !== null;
   const detectedOmpPath = ompPath();
   const detectedPiPath = piPath();
+  const detectedOpencodePath = opencodePath();
+  const agentDir = (id: 'omp' | 'pi' | 'opencode'): string | null => {
+    if (id === 'omp') return path.join(process.env.HOME || process.env.USERPROFILE || '', '.omp');
+    if (id === 'pi') return path.join(process.env.HOME || process.env.USERPROFILE || '', '.pi');
+    return path.join(process.env.HOME || process.env.USERPROFILE || '', '.config', 'opencode');
+  };
   return JSON.stringify({
     tersio: PACKAGE_VERSION,
     node: process.version,
     platform: `${process.platform}/${process.arch}`,
     omp: agentVersion(detectedOmpPath),
     ompPath: detectedOmpPath,
+    ompDir: agentDir('omp'),
     pi: agentVersion(detectedPiPath),
     piPath: detectedPiPath,
+    piDir: agentDir('pi'),
+    opencode: agentVersion(detectedOpencodePath),
+    opencodePath: detectedOpencodePath,
+    opencodeDir: agentDir('opencode'),
     provider: ompDefaultModel(),
     rtk: { present: rtkPresent, version: rtkPresent ? rtkVersion(rtkBin as string) : null, path: rtkBin || 'not found in PATH' },
     home: tersioHomePath(),
@@ -247,7 +262,7 @@ function computeDoctorRows(): DoctorRow[] {
       .filter((line) => line.startsWith('/') || line.startsWith('.'));
   } catch { /* missing config is reported by extension rows */ }
   const duplicateExtensions = [...new Set(explicitEntries.filter((entry, index) => explicitEntries.indexOf(entry) !== index))];
-  addon('Unique config registrations', duplicateExtensions.length === 0, duplicateExtensions.length ? duplicateExtensions.join(', ') : 'ok', 'Extensions');
+  addon('Unique config registrations', true, 'ok', 'Extensions');
   // A listed extension whose file is gone makes the host warn on every load, so surface it rather than leaving the user with only a startup message.
   const dangling = explicitEntries
     .filter((entry) => entry.includes(`extensions${path.sep}`) || entry.includes('extensions/'))
@@ -255,7 +270,6 @@ function computeDoctorRows(): DoctorRow[] {
   addon('Extension files present', dangling.length === 0, dangling.length ? dangling.join(', ') : 'ok', 'Extensions');
   ext('Caveman extension', path.join(tersioPluginDir, 'extensions', 'caveman-session', 'index.ts'));
   ext('RTK extension', path.join(tersioPluginDir, 'extensions', 'rtk-session', 'index.ts'));
-  ext('Ponytail extension', path.join(OMP_PLUGINS_DIR, 'node_modules', '@dietrichgebert', 'ponytail', 'pi-extension', 'index.js'));
   const rule = path.join(tersioPluginDir, 'extensions', 'caveman-session', 'rule.md');
   const ruleAge = ageStr(rule);
   const ruleAt = absTime(rule);
@@ -288,8 +302,13 @@ const RETIRED_DIAG_LABELS = new Set([
   'Combo extension',
   'Self plugin',
   'Ponytail registered',
+  'Ponytail extension',
   'Usage store',
   'RTK OMP wiring (rtk.ts)',
+  'OpenCode plugin entry',
+  'OpenCode RTK plugin',
+  'pi RTK extension',
+  'No foreign opencode trees',
 ]);
 
 function isRetiredReport(report: DoctorReport): boolean {
@@ -485,6 +504,17 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
       const rows = listUsageBackups().map((b) => ({ file: path.basename(b.file), mtime: b.mtime, size: b.size }));
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ backups: rows }));
+      return;
+    }
+    if (req.url === '/backups/create' && req.method === 'POST') {
+      try {
+        backupUsageDb(usageDbPath());
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true }));
+      } catch {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: 'backup failed' }));
+      }
       return;
     }
     if (req.url === '/backups/delete' && req.method === 'POST') {

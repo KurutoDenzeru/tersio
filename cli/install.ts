@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  BUN_BIN_DIR, COMBO_PRESET_MODES, IS_WINDOWS, OMP_AGENT_DIR, OMP_PLUGINS_DIR, OMP_BIN,
+  BUN_BIN_DIR, COMBO_PRESET_MODES, HOME, IS_WINDOWS, OMP_AGENT_DIR, OMP_PLUGINS_DIR, OMP_BIN,
   PACKAGE_NAME, PACKAGE_VERSION, RTK_BINARY_NAME, args,
   allowUnverified, applyUpdate, cavemanDefaultFlag, comboDefaultFlag, command, dryRun,
   ponytailDefaultFlag, profileFlagsGiven, rtkDefaultFlag, verbose, yes,
@@ -23,7 +23,7 @@ import { runDoctor } from './doctor.ts';
 import { runReset } from './reset.ts';
 import { runUsage } from './usage.ts';
 import { runDashboard } from './dashboard.ts';
-import { wireRtkOmp } from './rtk-wiring.ts';
+import { wireRtkOmp, wireRtkOpencode, wireRtkPi } from './rtk-wiring.ts';
 import {
   CAVEMAN_REMOTE_RULE, RTK_RELEASE_API, RtkRelease, RtkReleaseAsset, fetchJson, findFile, findHoistedPackage, httpsGet,
   httpsDownload, parseChecksum, piAgentDir, readTextIfExists, resolveRtkBinary, rtkPlatformSpec, sha256File,
@@ -31,7 +31,7 @@ import {
 import { formatCliStatus, storedProfile, storedProfileSync, writePluginSettings } from './profile.ts';
 import { runSettings } from './settings.ts';
 import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
-import { filesUnder, sourcePath } from './manifest.ts';
+import { OPENCODE_SERVER_SHIM, filesUnder, sourcePath } from './manifest.ts';
 import type { Profile } from './profile.ts';
 import { detectHosts, hostHint, hostLabel, parseHostArg, piTersioSource } from './hosts.ts';
 import type { HostEntry, HostId } from './hosts.ts';
@@ -239,31 +239,33 @@ async function extractRtkArchive(archivePath: string, extractDir: string): Promi
   return false;
 }
 
-// The binary is machine-wide and only OMP needs the wiring, so an install that finds one present only rebinds. `tersio update` still refreshes it.
-async function stepRtk(binDir: string, options: InstallOptions, target: 'omp' | 'pi' = 'omp'): Promise<void> {
+// The binary is machine-wide; hosts without a hook only rebind. `tersio update` still refreshes it.
+async function stepRtk(binDir: string, options: InstallOptions, target: 'omp' | 'pi' | 'opencode' = 'omp'): Promise<void> {
   const binDest = path.join(binDir, RTK_BINARY_NAME);
   const found = resolveRtkBinary();
+  const hostName = target === 'omp' ? 'OMP' : target === 'opencode' ? 'OpenCode' : 'pi';
   const bind = async (binary: string): Promise<void> => {
-    if (target !== 'omp') return;
     if (!(await fileExists(binary))) {
-      console.log('  [skip] no rtk binary to wire — install rtk, then run: rtk init -g --agent omp');
+      console.log(`  [skip] no rtk binary to wire — install rtk, then run: rtk init -g ${target === 'opencode' ? '--opencode' : `--agent ${target}`}`);
       return;
     }
-    await wireRtkOmp(binary, options);
+    if (target === 'opencode') await wireRtkOpencode(binary, options);
+    else if (target === 'pi') await wireRtkPi(binary, options);
+    else await wireRtkOmp(binary, options);
   };
 
   if (found && !applyUpdate) {
     // The path only under --verbose: a plain run, and a dry run, stay free of real user paths.
     if (!options.quiet) {
       const where = verbose ? ` (${found})` : '';
-      console.log(`  RTK — already installed${where}${target === 'omp' ? ', binding into OMP' : ', nothing to bind on pi'}`);
+      console.log(`  RTK — already installed${where}, binding into ${hostName}`);
     }
     await bind(found);
     return;
   }
 
-  if (!options.quiet) console.log(`  RTK — download binary and ${target === 'omp' ? 'wire into OMP' : 'put it on PATH'}`);
-  // A failed download must not skip wiring: a pre-existing binary serves the OMP hook just as well. Dry runs stay offline.
+  if (!options.quiet) console.log(`  RTK — download binary and wire into ${hostName}`);
+  // A failed download must not skip wiring: a pre-existing binary serves the host hook just as well. Dry runs stay offline.
   if (options.dryRun) {
     if (verbose && !options.quiet) sayTagged(`  [dry-run] would download rtk binary and install to ${binDest}`);
     await bind(found ?? binDest);
@@ -407,6 +409,60 @@ async function stepCombo(extDir: string, options: InstallOptions): Promise<void>
   await copySources(extDir, filesUnder('combo-toggle'), 'combo-toggle/index.ts', options);
 }
 
+// The tree ships no node_modules, so the full ruleset rides along as files.
+const PONYTAIL_BUNDLE_FILES = [
+  'hooks/ponytail-instructions.js',
+  'hooks/ponytail-config.js',
+  'skills/ponytail/SKILL.md',
+] as const;
+
+async function stepPonytailBundle(treeDir: string, options: InstallOptions): Promise<void> {
+  const root = findHoistedPackage('@dietrichgebert/ponytail', path.dirname(fileURLToPath(import.meta.url)));
+  if (!root) {
+    if (!options.quiet) console.log('  [skip] Ponytail package not found next to the CLI — OpenCode keeps the built-in text');
+    return;
+  }
+  if (!options.quiet) console.log('  Ponytail — bundle the full ruleset for OpenCode');
+  for (const rel of PONYTAIL_BUNDLE_FILES) {
+    const src = path.join(root, ...rel.split('/'));
+    let text: string;
+    try {
+      text = await fs.readFile(src, 'utf8');
+    } catch {
+      sayTagged(`  [fail] Ponytail bundle file missing: ${rel}`);
+      return;
+    }
+    await writeIfChanged(path.join(treeDir, 'ponytail-bundle', ...rel.split('/')), text, options);
+  }
+}
+
+// OpenCode loads imported .ts plugins from the config plugins dir, so a plain tree copy + one config entry is enough.
+async function stepOpencode(options: InstallOptions): Promise<void> {
+  const dir = path.join(HOME, '.config', 'opencode', 'plugins', 'tersio');
+  if (!options.quiet) console.log(`  OpenCode — write the plugin tree (${dir})`);
+  await stepSharedSessionState(dir, options);
+  await copySources(dir, filesUnder('rtk-session'), 'rtk-session/index.ts', options);
+  await copySources(dir, filesUnder('caveman-session'), 'caveman-session/index.ts', options);
+  await stepCombo(dir, options);
+  await copySources(dir, filesUnder('tersio-commands'), 'tersio-commands/index.ts', options);
+  await stepUpdater(dir, options);
+  await copySources(dir, filesUnder('opencode'), 'opencode/server.ts', options);
+  await stepPonytailBundle(dir, options);
+  // The loader resolves <pluginDir>/server.ts, so mirror the entry at the tree root.
+  await writeIfChanged(path.join(dir, 'server.ts'), OPENCODE_SERVER_SHIM, options);
+  if (!options.dryRun) await fs.rm(path.join(dir, 'opencode', 'index.ts'), { force: true }).catch(() => {});
+
+  const configPath = path.join(HOME, '.config', 'opencode', 'opencode.json');
+  let config: Record<string, unknown> = {};
+  try { config = JSON.parse((await readTextIfExists(configPath)) ?? '{}') as Record<string, unknown>; } catch { return; }
+  const plugins = Array.isArray(config.plugins) ? [...config.plugins] : [];
+  const withoutTersio = plugins.filter((p) => typeof p !== 'string' || !p.includes('/opencode/plugins/tersio'));
+  if (!withoutTersio.includes(dir)) withoutTersio.push(dir);
+  config.plugins = withoutTersio;
+  if (!options.dryRun) await fs.mkdir(path.dirname(configPath), { recursive: true });
+  await writeIfChanged(configPath, `${JSON.stringify(config, null, 2)}\n`, options);
+}
+
 
 async function resolveProfile(opts: { quiet?: boolean } = {}): Promise<Profile> {
   // Seed from the stored defaults so flag-less runs keep them.
@@ -542,7 +598,6 @@ let targetHost: HostId = 'omp';
 // Hosts the menu advertises but cannot install yet. Listed disabled so the roadmap is visible without offering a target that does nothing.
 const SOON_HOSTS = [
   { value: 'claude', label: 'Claude Code', hint: 'Coming soon' },
-  { value: 'opencode', label: 'OpenCode', hint: 'Coming soon' },
   { value: 'codex', label: 'Codex', hint: 'Coming soon' },
 ];
 
@@ -682,7 +737,11 @@ async function runInstall(): Promise<void> {
   // Point of no return: disk writes start here; pipes stay unattended.
   if (!yes && !dryRun && !applyUpdate && tty()) {
     const target = hostEntry(targetHost);
-    const where = targetHost === 'pi' ? path.join(piAgentDir(), 'extensions') : path.join(OMP_AGENT_DIR, 'extensions');
+    const where = targetHost === 'pi'
+      ? path.join(piAgentDir(), 'extensions')
+      : targetHost === 'opencode'
+        ? path.join(HOME, '.config', 'opencode', 'plugins', 'tersio')
+        : path.join(OMP_AGENT_DIR, 'extensions');
     console.log(`\nWill install into ${target.label}:`);
     console.log(`  ${where}`);
     console.log('  caveman · rtk · ponytail session modes');
@@ -711,6 +770,16 @@ async function runInstall(): Promise<void> {
       sayTagged(`  [fail] ${label}: ${shortError(e)}`);
     }
   };
+
+  if (targetHost === 'opencode') {
+    await capture('opencode tree', () => stepOpencode(installOptions));
+    await capture('rtk', () => stepRtk(BUN_BIN_DIR, installOptions, 'opencode'));
+    await capture('settings', () => writePluginSettings(profile, installOptions));
+    if (failures.length > 0) console.log(`\nDone with ${failures.length} failure(s) — see [fail] lines above.`);
+    else console.log('\nDone — restart OpenCode, then /combo balanced.');
+    closeRL();
+    return;
+  }
 
   if (targetHost === 'pi') {
     await capture('pi tree', () => stepPiLayer(installOptions));

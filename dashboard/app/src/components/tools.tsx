@@ -1,11 +1,10 @@
-// Command tools table: session tool calls + RTK-metered commands grouped
-// by command, sortable, paged, with honest gaps (–) for unmetered rows.
+// Command tools table: session calls and RTK-metered commands grouped by command, sortable, paged; unmetered rows show –.
 import { useMemo, useState } from "react";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { fmt, fmtMs, fmtShort } from "@/lib/format";
 import type { UsageReport } from "@/lib/data";
-import { EmptyState, PageButtons, PerPage, usePager } from "./common";
+import { EmptyState, PageButtons, PerPage, ShareBar, usePager } from "./common";
 import { Icon } from "./icon";
 
 interface CmdRow {
@@ -132,9 +131,7 @@ export function Tools({ data }: { data: UsageReport | null }) {
                   {r.avgMs === null ? "–" : fmtMs(r.avgMs)}
                 </TableCell>
                 <TableCell className="min-w-32 py-2.5">
-                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-track">
-                    <div className="h-full origin-left rounded-full bg-accent transition-[width] duration-1000 ease-[cubic-bezier(.16,1,.3,1)]" style={{ width: r.count ? `${Math.round((r.count / max) * 100)}%` : "0" }} />
-                  </div>
+                  <ShareBar value={r.count ? (r.count / max) * 100 : 0} label={r.name} />
                 </TableCell>
               </TableRow>
             ))}

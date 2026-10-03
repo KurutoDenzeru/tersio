@@ -2,16 +2,15 @@
 import { existsSync, promises as fs } from 'node:fs';
 import path from 'node:path';
 import {
-  OMP_AGENT_DIR, OMP_PLUGINS_DIR, PACKAGE_NAME,
+  HOME, OMP_AGENT_DIR, OMP_PLUGINS_DIR, PACKAGE_NAME, PACKAGE_VERSION,
   args, dryRun, fix, yes,
   execP, parseJsonObject, relTime,
 } from './common.ts';
-import { detectHosts, ompPackageDir, piTersioSource } from './hosts.ts';
+import { detectHosts, hostExtensionsDir, ompPackageDir, piTersioSource } from './hosts.ts';
 import { askInteractiveChoice, askInteractiveConfirm, runInteractivePhase } from './interactive.ts';
 import { usageDbPath } from '../extensions/shared/usage-store.ts';
 import { pricesCachePath } from '../extensions/shared/pricing.ts';
-import { fileContains, readTextIfExists, resolveHostBinary, resolveRtkBinary } from '../extensions/lib/utils.ts';
-import { OMP_SUBAGENT_MARKER } from '../extensions/shared/session-state.ts';
+import { readTextIfExists, resolveRtkBinary } from '../extensions/lib/utils.ts';
 import { TREE_FILES } from './manifest.ts';
 
 interface DoctorSummary {
@@ -103,27 +102,28 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
 
   section('Hosts');
   for (const host of hosts) {
+    // pi can hold a working tree while reading as not installed; use the tree as ground truth.
+    const piTree = (host.id === 'pi' && !host.installed && existsSync(hostExtensionsDir('pi')))
+      ? hostExtensionsDir('pi')
+      : null;
+    if (piTree !== null) {
+      check(host.label, true, `extensions ${PACKAGE_NAME} ${PACKAGE_VERSION}`);
+      continue;
+    }
     if (!host.installed) {
       // A pi declaration without the tree or the package is a broken install, so it stays a counted row rather than reading as "not installed".
       if (host.declared) check(host.label, false, `declared (${host.declared}) but not installed`);
       else unused(host.label, `· ${host.installCmd}`);
       continue;
     }
-    const where = host.via === 'tree' ? `extensions in ${host.dir}` : `package ${PACKAGE_NAME}`;
-    check(host.label, true, `${where}${host.version ? ` ${host.version}` : ''}`);
-  }
-
-  // The marker is verbatim omp text, so scanning the binary turns a silent drop into a visible warning.
-  const ompEntry = hosts.find((host) => host.id === 'omp');
-  const ompBin = ompEntry?.installed ? resolveHostBinary('omp') : null;
-  if (ompBin) {
-    if (await fileContains(ompBin, OMP_SUBAGENT_MARKER)) check('omp subagent marker', true, OMP_SUBAGENT_MARKER);
-    else warnLine('omp subagent marker', `not found in the omp binary — subagents may lose caveman and rtk; set one with \`tersio settings markers\``);
+    // One line per host, omp style: kind and version, no path echo.
+    const kind = host.via === 'tree' ? 'extensions' : 'package';
+    check(host.label, true, `${kind} ${PACKAGE_NAME}${host.version ? ` ${host.version}` : ''}`);
   }
 
   section('Extensions & plugins');
 
-  if (ompEntry?.via === 'package') {
+  if (hosts.find((host) => host.id === 'omp')?.via === 'package') {
     const explicitEntries = (configText ?? '').split('\n')
       .map((line) => line.trim().replace(/^-\s*/, '').replace(/^['"]|['"]$/g, ''))
       .filter((line) => line.startsWith('/') || line.startsWith('.'));
@@ -135,7 +135,6 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
     check('Extension tree', missing.length === 0, missing.length === 0
       ? `${TREE_FILES.length} files ok`
       : `${missing.length} of ${TREE_FILES.length} missing: ${missing.join(', ')}`);
-    check('Ponytail extension', existsSync(path.join(OMP_PLUGINS_DIR, 'node_modules', '@dietrichgebert', 'ponytail', 'pi-extension', 'index.js')), existsSync(path.join(OMP_PLUGINS_DIR, 'node_modules', '@dietrichgebert', 'ponytail', 'pi-extension', 'index.js')) ? '' : path.join(OMP_PLUGINS_DIR, 'node_modules', '@dietrichgebert', 'ponytail', 'pi-extension', 'index.js'));
   }
   section('Usage & records');
   console.log(`  Usage DB (tersio-owned · local hosted): ${usageDbPath()}`);
@@ -149,7 +148,7 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   check('RTK binary', rtkBin !== null, rtkBinText === null ? 'not found in PATH' : [rtkVersion, rtkAge].filter(Boolean).join(' '));
   // rtk_run needs a host exec API, which doctor cannot assume.
   if (rtkBin === null) unused('RTK exec', '· install Tersio to place rtk in ~/.bun/bin');
-  else if (!hosts.some((host) => host.installed && host.id === 'omp')) warnLine('RTK exec', 'no installed host exposes an exec API — rtk_run is unavailable; call rtk from bash instead');
+  else if (!hosts.some((host) => host.installed && (host.id === 'omp' || host.id === 'opencode'))) warnLine('RTK exec', 'no installed host exposes an exec API — rtk_run is unavailable; call rtk from bash instead');
   if (rtkBinText !== null && !rtkVersion) warnLine('RTK version', 'unavailable — binary may not be executable');
   const ponytailAge = ponytailMtime ? `(updated ${relTime(Date.now() - ponytailMtime.mtimeMs)} · ${absDate(ponytailMtime.mtimeMs)})` : '';
   const ponytailVer = parseJsonObject<{ version?: string }>(ponytailPkgText)?.version ?? '';

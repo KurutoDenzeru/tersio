@@ -1,5 +1,4 @@
-// Agent brand marks, shared by the settings agent list and the recent-requests
-// Agent column so both render the same logo for the same host.
+// Agent brand marks shared by the settings agent list and recent-requests Agent column.
 import { OpenAIGlyph } from "./brand";
 
 // Black-on-transparent PNG masked to currentColor; inlined for file:// export.
@@ -39,10 +38,12 @@ export function PiLogo({ className = "size-full" }: { className?: string }) {
   );
 }
 
-function OpencodeLogo({ className }: { className?: string }) {
+// Official pixel "o" cropped from the opencode.ai/brand wordmark; two-tone fills follow the brand's light/dark assets.
+export function OpencodeLogo({ className = "size-full" }: { className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" className={className} fill="currentColor">
-      <path d="M12 2 2 7v10l10 5 10-5V7L12 2Zm0 2.3 7.5 3.8L12 11.9 4.5 8.1 12 4.3ZM4 9.6l7 3.5v6.6l-7-3.5V9.6Zm9 10.1v-6.6l7-3.5v6.6l-7 3.5Z" />
+    <svg viewBox="0 6 24 30" aria-hidden="true" className={className}>
+      <path d="M18 30H6V18H18V30Z" className="fill-[#CFCECD] dark:fill-[#4B4646]" />
+      <path d="M18 12H6V30H18V12ZM24 36H0V6H24V36Z" className="fill-[#656363] dark:fill-[#B7B1B1]" />
     </svg>
   );
 }

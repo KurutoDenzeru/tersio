@@ -1,8 +1,7 @@
-// The host menus: `tersio install` / `tersio uninstall` target one agent, and
-// the option label carries the current state in brackets.
+// Host menus target one agent; the option label carries the current state.
 import { expect, test } from "vitest";
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -48,8 +47,7 @@ test("detectHosts reports the pi install under its own agent dir", () => {
   const home = tempHome();
   try {
     seedPiPackage(home, "9.9.9");
-    // Pass the agent dir rather than setting PI_CODING_AGENT_DIR: that override
-    // only applies alongside PI_CODING_AGENT, which CI does not set.
+    // Pass the agent dir, not PI_CODING_AGENT_DIR: that override needs PI_CODING_AGENT, which CI does not set.
     const agentDir = path.join(home, ".pi", "agent");
     const pi = detectHosts(agentDir).find((h) => h.id === "pi") as HostEntry;
     expect(pi.installed).toBe(true);
@@ -90,6 +88,39 @@ test("install --host omp keeps the OMP tree and never touches pi", () => {
   }
 });
 
+test("install --host opencode writes the plugin tree and registers it", () => {
+  const home = tempHome();
+  try {
+    const result = run(home, ["install", "--host", "opencode", "--dry-run", "--verbose"]);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/\[dry-run\] would write .*\.config\/opencode\/plugins\/tersio\/opencode\/server\.ts/);
+    expect(result.stdout).toMatch(/\[dry-run\] would write .*\.config\/opencode\/plugins\/tersio\/server\.ts/);
+    expect(result.stdout).toMatch(/\[dry-run\] would write .*\.config\/opencode\/plugins\/tersio\/combo-toggle\/index\.ts/);
+    expect(result.stdout, "OMP extension tree must stay untouched").not.toMatch(/\.omp\/agent\/extensions/);
+    expect(result.stdout, "pi tree must stay untouched").not.toMatch(/\.pi\/agent\/extensions/);
+    expect(result.stdout).toMatch(/Done — restart OpenCode/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("install --host opencode bundles the ponytail ruleset beside the tree", () => {
+  const home = tempHome();
+  try {
+    seedRtk(home);
+    const result = run(home, ["install", "--host", "opencode", "--yes"]);
+    expect(result.status, result.stderr).toBe(0);
+    const base = path.join(home, ".config", "opencode", "plugins", "tersio", "ponytail-bundle");
+    for (const file of ["hooks/ponytail-instructions.js", "hooks/ponytail-config.js", "skills/ponytail/SKILL.md"]) {
+      const full = path.join(base, ...file.split("/"));
+      expect(existsSync(full), `${file} bundled`).toBe(true);
+    }
+    expect(readFileSync(path.join(base, "hooks", "ponytail-instructions.js"), "utf8")).toMatch(/getPonytailInstructions/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test("install rejects an unknown host", () => {
   const home = tempHome();
   try {
@@ -123,13 +154,28 @@ test("uninstall --host pi clears the pi tree, the package, and the shared defaul
   }
 });
 
+test("uninstall --host opencode clears the plugin tree", () => {
+  const home = tempHome();
+  try {
+    const dir = path.join(home, ".config", "opencode", "plugins", "tersio", "opencode");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(path.join(dir, "server.ts"), "// stale", "utf8");
+    writeFileSync(path.join(home, ".config", "opencode", "opencode.json"), JSON.stringify({ plugins: [path.join(home, ".config", "opencode", "plugins", "tersio")] }), "utf8");
+    const result = run(home, ["uninstall", "--host", "opencode", "--dry-run"]);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/\[dry-run\] would remove .*\.config\/opencode\/plugins\/tersio/);
+    expect(result.stdout, "OMP targets stay out of an opencode uninstall").not.toMatch(/\.omp\/agent\/extensions/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test("uninstall on a machine with no install says so instead of listing files", () => {
   const home = tempHome();
   try {
     const result = run(home, ["uninstall"]);
     expect(result.status, result.stderr).toBe(0);
-    // Without a TTY the host prompt is skipped, so the OMP path runs and reports
-    // nothing installed rather than claiming a removal.
+    // Without a TTY the host prompt is skipped, so the OMP path reports nothing installed.
     expect(result.stdout).toMatch(/has no tersio install/);
   } finally {
     rmSync(home, { recursive: true, force: true });
@@ -139,8 +185,7 @@ test("uninstall on a machine with no install says so instead of listing files", 
 test("doctor --fix restores a partly written pi tree", () => {
   const home = tempHome();
   try {
-    // A half-written tree is what --fix exists for, and it is what reinstall
-    // used to be the answer to before the command was retired.
+    // A half-written tree is what --fix exists for.
     const ext = path.join(home, ".pi", "agent", "extensions");
     mkdirSync(path.join(ext, "shared"), { recursive: true });
     mkdirSync(path.join(ext, "caveman-session"), { recursive: true });
@@ -157,8 +202,7 @@ test("doctor --fix restores a partly written pi tree", () => {
   }
 });
 
-// The binary is machine-wide, so a found one only rebinds; a seeded binary
-// stands in for an earlier install's.
+// A found binary only rebinds; a seeded binary stands in for an earlier install.
 function seedRtk(home: string): void {
   const binDir = path.join(home, ".bun", "bin");
   mkdirSync(binDir, { recursive: true });
@@ -173,13 +217,16 @@ test("an existing rtk binary is bound on both hosts, never downloaded", () => {
     seedRtk(home);
     const pi = run(home, ["install", "--host", "pi", "--yes"]);
     expect(pi.status, pi.stderr).toBe(0);
-    expect(pi.stdout).toMatch(/RTK — already installed.*nothing to bind on pi/);
+    expect(pi.stdout).toMatch(/RTK — already installed.*binding into pi/);
 
     const omp = run(home, ["install", "--host", "omp", "--dry-run", "--verbose"]);
     expect(omp.status, omp.stderr).toBe(0);
     expect(omp.stdout).toMatch(/RTK — already installed.*binding into OMP/);
     expect(omp.stdout).not.toMatch(/would download rtk binary/);
-    for (const out of [pi.stdout, omp.stdout]) {
+    const oc = run(home, ["install", "--host", "opencode", "--dry-run"]);
+    expect(oc.status, oc.stderr).toBe(0);
+    expect(oc.stdout).toMatch(/RTK — already installed.*binding into OpenCode/);
+    for (const out of [pi.stdout, omp.stdout, oc.stdout]) {
       expect(out, "no registry probe, no download").not.toMatch(/Downloading RTK binary|Finding latest RTK release/);
     }
   } finally {
