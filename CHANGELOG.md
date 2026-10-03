@@ -4,7 +4,14 @@
  - Guards usage.db migrations: a re-parse that keeps less than half the rows restores the pre-migration backup instead of publishing the loss (override with TERSIO_FORCE_REPARSE=1), and every sqlite write runs with -bail so a failed statement can never leave half a transaction behind.
  - Shrinks usage.db: message rows key the transcript by id instead of repeating its path, and migrations VACUUM the file (6.3MB to 1.3MB at 10k rows).
  - Adds a Backup now button to the dashboard snapshots card (POST /backups/create) for one-tap manual backups.
- - Shows 15 models per dashboard page instead of 10, and folds provider-prefixed keys into vendor-first labels ("Anthropic - Claude - Haiku-4.5"); the recent-requests window grows from 200 to 2000 rows while aggregates keep full lifetime history.
+ - Folds provider-prefixed keys into vendor-first labels ("Anthropic - Claude - Haiku-4.5"); the recent-requests window grows from 200 to 2000 rows while aggregates keep full lifetime history.
+ - Merges same-model gateway rows into one ("OpenAI - GPT-5.2-Codex" once, priced per gateway then summed); adds xAI/Grok, Alibaba/Qwen, and InclusionAI vendors with brandmarks.
+ - Capitalizes model labels once (GPT/SWE stay all-caps) and leaves folded labels untouched on second pass.
+ - Fixes stuck model hover cards: leaving a card always dismisses its tip instead of freezing it after a click.
+ - Adds a request detail drawer to Recent requests with copy/download JSON.
+ - Records message ids end to end (transcript row id, opencode msg file) into a new usage.db column, migrated in place; headers and gateway metadata cannot be captured locally.
+ - Moves the agent mark off the request drawer header onto its Agent row, and drops the Speed row and the unrecorded-data footnote.
+ - Replaces the Models share and Tools impact progress bars with one horizontal shadcn chart cell.
  - Restores the combo status on the host footer bar: `🧩 combo MAX: 🪨caveman=ULTRA ⚡rtk=ON 🦥ponytail=ULTRA` now paints via `ui.setStatus` on every mode command and session event, instead of a one-shot notify message.
  - Fixes subagent inheritance for Caveman and RTK: the OMP subagent marker now matches the host's real prompt, so a worker no longer runs with both modes silently off. Doctor scans the omp binary and warns when the marker drifts, and `tersio settings markers` overrides it.
  - Lets `rtk_run` fall back to shared state, so a subagent spawned after a mode switch can still use the tool.

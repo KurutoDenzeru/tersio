@@ -23,9 +23,10 @@ curl -fsSL https://github.com/KurutoDenzeru/tersio/releases/latest/download/inst
 Then run the CLI. Bare `tersio` opens a menu and asks which agent to install into:
 
 ```bash
-tersio                      # menu — picks Oh My Pi or pi
+tersio                      # menu — picks Oh My Pi, pi, or OpenCode
 tersio install --host pi    # pi, non-interactive
 tersio install --host omp   # Oh My Pi, non-interactive
+tersio install --host opencode  # OpenCode, non-interactive
 ```
 
 Or let the host install the package itself. Same result, host-managed updates:
@@ -55,7 +56,7 @@ npm exec --yes --prefer-online --package=@krtclcdy/tersio@latest -- tersio insta
 
 ### Requirements
 
-- [OMP](https://github.com/can1357/oh-my-pi) or [pi](https://github.com/earendil-works/pi) — both are supported; pick one with `tersio install --host <omp|pi>`
+- [OMP](https://github.com/can1357/oh-my-pi), [pi](https://github.com/earendil-works/pi), or [OpenCode](https://opencode.ai) — all three are supported; pick one with `tersio install --host <omp|pi|opencode>`
 - Node.js 20.12+ with npm
 - macOS or Linux, native or WSL
 
@@ -156,14 +157,15 @@ Shared, and identical for every host:
 | RTK binary | `~/.bun/bin/rtk` (`rtk.exe` on Windows). The runtime resolves `PATH` first, then this managed path. |
 | Usage ledger and price cache | `~/.tersio/` — local only, nothing leaves the machine |
 
-Per host, written by `tersio install --host <omp|pi>`:
+Per host, written by `tersio install --host <omp|pi|opencode>`:
 
 | Host | Extensions | Ponytail |
 |---|---|---|
 | Oh My Pi | `~/.omp/agent/extensions/{caveman-session,rtk-session,combo-toggle,tersio-commands,ai-addons-updater}/` | nested plugin dependency under `~/.omp/plugins/node_modules/`, one Plugins row |
 | pi | `~/.pi/agent/extensions/{caveman-session,rtk-session,combo-toggle,tersio-commands,ai-addons-updater}/` — pi auto-discovers `<agent-dir>/extensions`, so there is nothing to register | `npm:@dietrichgebert/ponytail`, installed as a pi package |
+| OpenCode | `~/.config/opencode/plugins/tersio/` — registered in `opencode.json` plugins, so there is nothing else to register | bundled with Tersio; no separate package |
 
-Both hosts carry the same `shared/` and `lib/` modules beside those directories, and both load the same five extensions from the same sources.
+All three hosts carry the same `shared/` and `lib/` modules and the same mode extensions from the same sources.
 
 The installer writes `<file>.bak` before replacing an extension source; the updater keeps `rtk.bak` / `rule.md.bak` and restores them if the replacement fails validation. `tersio doctor --fix extensions` restores a damaged tree, and `doctor --fix registrations` drops retired or duplicate `config.yml` entries.
 
@@ -174,6 +176,8 @@ An OMP install also registers the package in `~/.omp/plugins`, so it shows under
 **Ponytail or Combo command missing on OMP:** confirm `~/.omp/plugins/package.json` lists `@krtclcdy/tersio`, then run `tersio install`, restart OMP, and check `tersio doctor`. A damaged tree is repaired by `tersio doctor --fix extensions`.
 
 **Commands missing on pi:** check the `Hosts` section of `tersio doctor` — it reports whether pi is installed and where. Then run `tersio install --host pi` and restart pi.
+
+**Commands missing on OpenCode:** run `tersio install --host opencode` and restart OpenCode.
 
 **RTK missing or not executable:** run `tersio install`, then `tersio doctor`. On Linux/macOS: `chmod +x ~/.bun/bin/rtk`.
 

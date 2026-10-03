@@ -7,6 +7,7 @@ Tersio installs into an agent host. Pick the row for the host you use.
 | Any (default) | one-liner below | `tersio update` | `tersio uninstall` |
 | [OMP](https://github.com/can1357/oh-my-pi) | `omp plugin install @krtclcdy/tersio` | `omp` (or `tersio update`) | `omp plugin remove @krtclcdy/tersio`, then `tersio uninstall` |
 | [pi](https://github.com/earendil-works/pi) | `tersio install --host pi` | `tersio install --host pi` | `tersio uninstall --host pi` |
+| [OpenCode](https://opencode.ai) | `tersio install --host opencode` | `tersio install --host opencode` | `tersio uninstall --host opencode` |
 
 The default one-liner installs the CLI and runs the setup menus (scope + Combo preset) in the same pass:
 
@@ -14,11 +15,11 @@ The default one-liner installs the CLI and runs the setup menus (scope + Combo p
 curl -fsSL https://github.com/KurutoDenzeru/tersio/releases/latest/download/install.sh | sh
 ```
 
-Both host rows write the same extension tree into that agent's own directory: `~/.omp/agent/extensions` and `~/.pi/agent/extensions`, which pi auto-discovers. The npm package keeps the `pi` and `pi-package` keywords, so Tersio is listed in the [pi package gallery](https://pi.dev/packages); `pi install npm:@krtclcdy/tersio` works too and finds the same `extensions/` by convention. See the [pi package docs](https://pi.dev/docs/latest/packages).
+All three host rows write the same extension tree into that agent's own directory: `~/.omp/agent/extensions`, `~/.pi/agent/extensions` (which pi auto-discovers), and `~/.config/opencode/plugins/tersio` (registered in `opencode.json`). The npm package keeps the `pi` and `pi-package` keywords, so Tersio is listed in the [pi package gallery](https://pi.dev/packages); `pi install npm:@krtclcdy/tersio` works too and finds the same `extensions/` by convention. See the [pi package docs](https://pi.dev/docs/latest/packages).
 
 ## Requirements
 
-- OMP or pi.
+- OMP, pi, or OpenCode.
 - Node.js 20.12+ with npm.
 - macOS, Linux, or WSL. Install from the environment where the host runs.
 
@@ -83,4 +84,4 @@ tersio uninstall --keep-ponytail
 tersio uninstall --remove-rtk # also removes the RTK binary
 ```
 
-Both hosts share one session-defaults file, `~/.tersio/settings.json`, so either uninstall clears it.
+All hosts share one session-defaults file, `~/.tersio/settings.json`, so any uninstall clears it.

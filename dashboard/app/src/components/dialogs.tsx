@@ -302,16 +302,14 @@ function DoctorPane() {
 }
 
 type ExportFormat = "json" | "jsonl" | "csv";
-// Hints stay short on purpose: each sits to the right of its label on a single
-// line, and a long one wraps and leaves the menu rows ragged.
+// Hints stay short: each sits right of its label on a single line.
 const EXPORT_FORMATS: Array<{ id: ExportFormat; label: string; hint: string }> = [
   { id: "json", label: "JSON", hint: "Full report" },
   { id: "jsonl", label: "JSONL", hint: "One request per line" },
   { id: "csv", label: "CSV", hint: "Spreadsheet table" },
 ];
 
-// The mirror is rebuilt from session files whenever the parser moves, so a
-// backup is the only way back if a source stops being walked.
+// Backups are the only way back when a source stops being walked.
 const BACKUP_SCHEDULES_UI: Array<{ id: string; label: string; hint: string }> = [
   { id: "monthly", label: "Monthly", hint: "A snapshot a month is kept automatically" },
   { id: "weekly", label: "Weekly", hint: "A snapshot a week" },
@@ -761,8 +759,7 @@ const DEFAULT_ROWS_UI: Array<{ field: keyof DefaultsPayload; label: string; hint
   },
 ];
 
-// The session-start defaults, mirroring `tersio settings`. One fetch, and each
-// row saves on its own so a combo change never silently rewrites the others.
+// Session-start defaults mirror `tersio settings`; each row saves on its own.
 function DefaultModes() {
   const toast = useToast();
   const [current, setCurrent] = useState<DefaultsPayload>({
@@ -875,8 +872,7 @@ function AccentPicker({ accent, onPick }: { accent: AccentId; onPick: (id: Accen
                 className="size-6 rounded-full peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent"
                 style={{
                   background: hex,
-                  // The selected chip gets a gap then its own ring, the two
-                  // rings an unselected one never has.
+                  // The selected chip rings twice; an unselected one never does.
                   ...(on ? { boxShadow: `0 0 0 2px var(--panel), 0 0 0 4px ${hex}` } : {}),
                 }}
               />
@@ -1248,8 +1244,7 @@ export function ShareDialog({
     );
   };
 
-  // PNG export renders the profile card as SVG, then rasterizes it. Same
-  // 1200x850 layout and theme rule as the original share.js svgCard().
+  // PNG export rasterizes the profile card SVG at 1200x850.
   const svgCard = (): string => {
     const e = (x: string): string => x.replace(/&/g, "&amp;").replace(/</g, "&lt;");
     // Canvas reads live tokens off <html> since it cannot resolve var().
