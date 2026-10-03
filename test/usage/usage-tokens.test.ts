@@ -189,6 +189,9 @@ test("free suffix and case variants fold into one model row", () => {
   expect(displayModelId("gemma4:31b")).toBe("Google - Gemma4-31B");
   expect(displayModelId("opencode/Github-Copilot/grok-code-fast-1")).toBe("xAI - Grok-Code-Fast-1");
   expect(displayModelId("Swe-1-6-Slow")).toBe("Cognition - SWE-1-6-Slow");
+  expect(displayModelId("opencode/nvidia/minimaxai/minimax-m2.7")).toBe("Minimax-M2.7");
+  expect(displayModelId("opencode/nvidia/google/gemma-4-31b-it")).toBe("Google - Gemma-4-31B-IT");
+  expect(displayModelId("opencode/kilo/stealth/space-bunny-alpha")).toBe("Stealth - Space-Bunny");
   expect(displayModelId("Anthropic - Claude - Haiku-4.5")).toBe("Anthropic - Claude - Haiku-4.5");
   const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-modelfold-"));
   writeFileSync(

@@ -10,6 +10,9 @@ test("provider-prefixed keys fold into vendor-first labels", () => {
   expect(displayModel("meta/Muse-Spark-1.3-Contributor")).toBe("Meta - Muse-Spark-1.3-Contributor");
   expect(displayModel("Gpt-6-Luna")).toBe("OpenAI - GPT-6-Luna");
   expect(displayModel("Swe-1-6-Slow")).toBe("Cognition - SWE-1-6-Slow");
+  expect(displayModel("opencode/nvidia/minimaxai/minimax-m2.7")).toBe("Minimax-M2.7");
+  expect(displayModel("opencode/nvidia/google/gemma-4-31b-it")).toBe("Google - Gemma-4-31B-IT");
+  expect(displayModel("opencode/kilo/stealth/space-bunny-alpha")).toBe("Stealth - Space-Bunny");
 });
 
 test("folded labels pass through untouched", () => {

@@ -448,9 +448,11 @@ export function messageRowId(row: unknown): string | undefined {
   return typeof id === 'string' && id ? id : undefined;
 }
 
-// Vendor names mirror the dashboard map; CLI needs names only.
+// Vendor names mirror the dashboard map; CLI needs names only. Family first:
+// gateway segments shadow it (minimaxai holds xai, gemma rides nvidia).
 const VENDOR_RES: Array<[RegExp, string]> = [
   [/inclusionai|ling-/i, 'InclusionAI'],
+  [/minimax/i, 'MiniMax'],
   [/grok|xai/i, 'xAI'],
   [/stealth|space-bunny/i, 'Stealth'],
   [/openai|codex|gpt-|o1/i, 'OpenAI'],
@@ -460,11 +462,10 @@ const VENDOR_RES: Array<[RegExp, string]> = [
   [/glm|z-ai|zhipu/i, 'Z.ai'],
   [/mimo/i, 'Xiaomi'],
   [/kimi|moonshot/i, 'Moonshot'],
-  [/minimax/i, 'MiniMax'],
-  [/nemotron|nvidia/i, 'NVIDIA'],
   [/mistral/i, 'Mistral'],
   [/claude|anthropic/i, 'Anthropic'],
   [/gemini|google|gemma/i, 'Google'],
+  [/nemotron|nvidia/i, 'NVIDIA'],
   [/devin|cognition|^swe[-/]/i, 'Cognition'],
 ];
 
@@ -512,7 +513,9 @@ export function displayModelId(model: string): string {
   const seg = (s: string): string => s.split('.').map(cap).join('.');
   const words = (s: string): string => s.split(/[-_:]+/).filter(Boolean).map(seg).join('-');
   const segs = bare.split('/').filter(Boolean);
-  const pretty = words(segs[segs.length - 1] ?? bare);
+  const tail = segs[segs.length - 1] ?? bare;
+  // One free model under two spellings; fold the alpha variant onto it.
+  const pretty = /^space-bunny(-alpha)?$/i.test(tail) ? 'Space-Bunny' : words(tail);
   const vendor = modelVendor(bare);
   if (vendor === 'Other') return segs.length > 1 ? `${words(segs[segs.length - 2])} - ${pretty}` : pretty;
   const claude = pretty.match(/^claude[-_](.+)$/i);

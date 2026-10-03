@@ -162,13 +162,15 @@ test("tersio usage prices from the live cache", () => {
 
 // Two spellings of one model must group as a single row priced at zero.
 test("the space-bunny aliases resolve to one free model", () => {
-  const spellings = ["space-bunny", "Space-Bunny", "stealth/Space-Bunny-Alpha", "stealth/space-bunny-alpha"];
+  const spellings = ["space-bunny", "Space-Bunny", "stealth/Space-Bunny-Alpha", "stealth/space-bunny-alpha", "opencode/kilo/stealth/space-bunny-alpha", "opencode/opencode/space-bunny"];
   for (const model of spellings) {
     expect(canonicalModelId(model), model).toBe("space-bunny");
   }
   // The feed keys it openrouter/stealth/space-bunny-alpha at zero.
   const live = { fetchedAt: Date.now(), exact: { "openrouter/stealth/space-bunny-alpha": [0, 0, 0, 0] } };
-  for (const model of spellings) {
+  // The feed only keys the alpha tail, so the plain prefixed id stays unpriced.
+  const priced = spellings.filter((m) => m.toLowerCase() !== "opencode/opencode/space-bunny");
+  for (const model of priced) {
     const hit = priceFor(model, live);
     expect(hit.known, `${model} should be priced from the feed`).toBe(true);
     expect(hit.price.output, model).toBe(0);

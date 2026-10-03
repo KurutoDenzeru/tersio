@@ -105,7 +105,8 @@ export const MODEL_ALIASES: ReadonlyArray<{ id: string; feed: string }> = [
 
 export function canonicalPriceId(model: string): string {
   const key = model.toLowerCase();
-  return MODEL_ALIASES.find((a) => a.id === key || a.feed === key)?.id ?? key;
+  // Suffix match: gateways prefix the id (opencode/kilo/stealth/space-bunny-alpha).
+  return MODEL_ALIASES.find((a) => a.id === key || a.feed === key || key.endsWith(`/${a.id}`) || key.endsWith(`/${a.feed}`))?.id ?? key;
 }
 
 export function priceFor(model: string, live?: LivePrices | null): { price: ModelPrice; known: boolean; live: boolean } {

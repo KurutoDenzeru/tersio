@@ -128,7 +128,9 @@ export function displayModel(m: string): string {
   // The report already folds keys; folding again would lowercase the caps.
   if (bare.includes(" - ")) return bare;
   const segs = bare.split("/").filter(Boolean);
-  const pretty = words(segs[segs.length - 1] ?? bare);
+  const tail = segs[segs.length - 1] ?? bare;
+  // One free model under two spellings; fold the alpha variant onto it.
+  const pretty = /^space-bunny(-alpha)?$/i.test(tail) ? "Space-Bunny" : words(tail);
   const vendor = vendorOf(bare);
   if (vendor.name === "Other") return segs.length > 1 ? `${words(segs[segs.length - 2])} - ${pretty}` : pretty;
   const claude = pretty.match(/^claude[-_](.+)$/i);
@@ -143,8 +145,10 @@ export interface Vendor {
   color: string;
 }
 
+// Family first: gateway segments shadow it (minimaxai holds xai, gemma rides nvidia).
 const PROVIDERS: Array<[RegExp, string, string, string]> = [
   [/inclusionai|ling-/i, "InclusionAI", "inclusionai", "#78716c"],
+  [/minimax/i, "MiniMax", "minimax", "#e11d48"],
   [/grok|xai/i, "xAI", "x", "#000"],
   [/stealth|space-bunny/i, "Stealth", "stealth", "#1f2937"],
   [/openai|codex|gpt-|o1/i, "OpenAI", "openai", "#fff"],
@@ -154,11 +158,10 @@ const PROVIDERS: Array<[RegExp, string, string, string]> = [
   [/glm|z-ai|zhipu/i, "Z.ai", "zdotai", "#2D2D2D"],
   [/mimo/i, "Xiaomi", "xiaomi", "#ff6900"],
   [/kimi|moonshot/i, "Moonshot", "kimi", "#a855f7"],
-  [/minimax/i, "MiniMax", "minimax", "#e11d48"],
-  [/nemotron|nvidia/i, "NVIDIA", "nvidia", "#76b900"],
   [/mistral/i, "Mistral", "mistralai", "#ff7000"],
   [/claude|anthropic/i, "Anthropic", "anthropic", "#d97757"],
   [/gemini|google|gemma/i, "Google", "google", "#4285F4"],
+  [/nemotron|nvidia/i, "NVIDIA", "nvidia", "#76b900"],
   // `swe-*` is Cognition's Devin line; anchored so it cannot swallow other names.
   [/devin|cognition|^swe[-/]/i, "Cognition", "cognition", "#0b0b0b"],
   // Empty slug draws the local glyph instead of a broken image.
