@@ -511,7 +511,8 @@ export function syncUsageDb(): boolean {
   const push = (sql: string): boolean => {
     chunks.push(sql);
     chunkBytes += sql.length;
-    if (chunkBytes < 400_000) return true;
+    // One argv string caps at 128KB on Linux (E2BIG); stay well under it.
+    if (chunkBytes < 100_000) return true;
     return flush();
   };
   for (const file of changed) {
