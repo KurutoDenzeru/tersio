@@ -2,7 +2,7 @@
 import { existsSync, promises as fs } from 'node:fs';
 import path from 'node:path';
 import {
-  OMP_AGENT_DIR, OMP_PLUGINS_DIR, PACKAGE_NAME,
+  HOME, OMP_AGENT_DIR, OMP_PLUGINS_DIR, PACKAGE_NAME,
   args, dryRun, fix, yes,
   execP, parseJsonObject, relTime,
 } from './common.ts';
@@ -111,6 +111,13 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
     }
     const where = host.via === 'tree' ? `extensions in ${host.dir}` : `package ${PACKAGE_NAME}`;
     check(host.label, true, `${where}${host.version ? ` ${host.version}` : ''}`);
+    // The OpenCode tree alone does nothing without its entrypoint being registered.
+    if (host.id === 'opencode') {
+      const configPath = path.join(HOME, '.config', 'opencode', 'opencode.json');
+      const raw = await readTextIfExists(configPath);
+      const registered = raw ? /opencode[\\/]+plugins[\\/]+tersio[\\/]+opencode[\\/]+index/.test(raw) : false;
+      check('OpenCode plugin entry', registered, registered ? 'registered in opencode.json' : `missing from ${configPath}`);
+    }
   }
 
   // The marker is verbatim omp text, so scanning the binary turns a silent drop into a visible warning.
@@ -149,7 +156,7 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   check('RTK binary', rtkBin !== null, rtkBinText === null ? 'not found in PATH' : [rtkVersion, rtkAge].filter(Boolean).join(' '));
   // rtk_run needs a host exec API, which doctor cannot assume.
   if (rtkBin === null) unused('RTK exec', '· install Tersio to place rtk in ~/.bun/bin');
-  else if (!hosts.some((host) => host.installed && host.id === 'omp')) warnLine('RTK exec', 'no installed host exposes an exec API — rtk_run is unavailable; call rtk from bash instead');
+  else if (!hosts.some((host) => host.installed && (host.id === 'omp' || host.id === 'opencode'))) warnLine('RTK exec', 'no installed host exposes an exec API — rtk_run is unavailable; call rtk from bash instead');
   if (rtkBinText !== null && !rtkVersion) warnLine('RTK version', 'unavailable — binary may not be executable');
   const ponytailAge = ponytailMtime ? `(updated ${relTime(Date.now() - ponytailMtime.mtimeMs)} · ${absDate(ponytailMtime.mtimeMs)})` : '';
   const ponytailVer = parseJsonObject<{ version?: string }>(ponytailPkgText)?.version ?? '';

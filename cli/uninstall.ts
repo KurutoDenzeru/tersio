@@ -2,7 +2,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import {
-  BUN_BIN_DIR, OMP_AGENT_DIR, OMP_PLUGINS_DIR, PACKAGE_NAME, RTK_BINARY_NAME,
+  BUN_BIN_DIR, HOME, OMP_AGENT_DIR, OMP_PLUGINS_DIR, PACKAGE_NAME, RTK_BINARY_NAME,
   args, dryRun, keepPonytail, removePonytail, removeRtk, yes,
   debug, writeConfigLines,
 } from './common.ts';
@@ -192,6 +192,33 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
     if (removed) console.log('\nDone. Restart pi, then /combo medium.');
     closeRL();
     return removed;
+  }
+  if (host === 'opencode') {
+    const dir = path.join(HOME, '.config', 'opencode', 'plugins', 'tersio');
+    const configPath = path.join(HOME, '.config', 'opencode', 'opencode.json');
+    if (!selected.installed && !selected.declared) {
+      sayTagged(`  [skip] ${selected.label} — nothing installed (${selected.installCmd})`);
+      closeRL();
+      return false;
+    }
+    console.log('Will remove:');
+    console.log(`  ${dir}`);
+    console.log(`  the tersio entry in ${configPath}`);
+    if (!confirmed && !(await confirmDestructive('Remove these Tersio files?'))) { closeRL(); return false; }
+    await removeUninstallTarget(dir, shouldDryRun);
+    if (!shouldDryRun) {
+      try {
+        const raw = await readTextIfExists(configPath);
+        const config = raw ? JSON.parse(raw) as { plugins?: unknown[] } : {};
+        if (Array.isArray(config.plugins)) {
+          config.plugins = config.plugins.filter((p) => typeof p !== 'string' || !p.includes('/opencode/plugins/tersio/'));
+          await fs.writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, 'utf8');
+        }
+      } catch { /* config missing or not JSON; nothing to scrub */ }
+    }
+    console.log('\nDone. Restart OpenCode to drop the plugin.');
+    closeRL();
+    return true;
   }
   if (!selected.installed) sayTagged(`  [note] ${selected.label} has no tersio install; removing what is left behind.`);
 

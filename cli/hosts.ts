@@ -5,7 +5,7 @@ import { HOME, OMP_PLUGINS_DIR, PACKAGE_NAME, PACKAGE_VERSION } from './common.t
 import { TREE_FILES } from './manifest.ts';
 import { piAgentDir } from '../extensions/lib/utils.ts';
 
-export type HostId = 'omp' | 'pi';
+export type HostId = 'omp' | 'pi' | 'opencode';
 
 export interface HostEntry {
   id: HostId;
@@ -26,9 +26,9 @@ export interface HostEntry {
 
 
 export function hostExtensionsDir(id: HostId, agentDir = piAgentDir()): string {
-  return id === 'omp'
-    ? path.join(HOME, '.omp', 'agent', 'extensions')
-    : path.join(agentDir, 'extensions');
+  if (id === 'omp') return path.join(HOME, '.omp', 'agent', 'extensions');
+  if (id === 'opencode') return path.join(HOME, '.config', 'opencode', 'plugins', 'tersio');
+  return path.join(agentDir, 'extensions');
 }
 
 export function missingTreeFiles(id: HostId, agentDir = piAgentDir()): string[] {
@@ -81,24 +81,27 @@ export function piTersioSource(agentDir = piAgentDir()): string | null {
 const HOSTS: Array<Omit<HostEntry, 'installed' | 'via' | 'declared' | 'version' | 'dir'>> = [
   { id: 'omp', label: 'Oh My Pi', bin: 'omp', installCmd: `omp plugin install ${PACKAGE_NAME}`, removeCmd: `omp plugin remove ${PACKAGE_NAME}` },
   { id: 'pi', label: 'Pi', bin: 'pi', installCmd: `pi install npm:${PACKAGE_NAME}`, removeCmd: `pi remove npm:${PACKAGE_NAME}` },
+  { id: 'opencode', label: 'OpenCode', bin: 'opencode', installCmd: `tersio install --host opencode`, removeCmd: `tersio uninstall --host opencode` },
 ];
 
 function detect(agentDir = piAgentDir()): HostEntry[] {
   return HOSTS.map((host) => {
-    const pkgDir = host.id === 'omp' ? ompPackageDir() : piPackageDir(agentDir);
+    const pkgDir = host.id === 'omp' ? ompPackageDir() : host.id === 'pi' ? piPackageDir(agentDir) : null;
     const tree = hostExtensionsDir(host.id, agentDir);
     // A tree wins: it is what the installer writes, and it carries no package.json, so its version is ours.
     const via = missingTreeFiles(host.id, agentDir).length === 0
       ? 'tree'
-      : existsSync(pkgDir) ? 'package' : null;
+      : pkgDir && existsSync(pkgDir) ? 'package' : null;
     return {
       ...host,
       installed: via !== null,
       via,
       declared: host.id === 'omp'
-        ? (existsSync(pkgDir) ? `plugin ${PACKAGE_NAME}` : null)
-        : piTersioSource(agentDir),
-      version: via === 'tree' ? PACKAGE_VERSION : via === 'package' ? packageVersion(pkgDir) : null,
+        ? (pkgDir && existsSync(pkgDir) ? `plugin ${PACKAGE_NAME}` : null)
+        : host.id === 'pi'
+          ? piTersioSource(agentDir)
+          : existsSync(tree) ? 'plugin tree' : null,
+      version: via === 'tree' ? PACKAGE_VERSION : via === 'package' && pkgDir ? packageVersion(pkgDir) : null,
       dir: via === 'tree' ? tree : via === 'package' ? pkgDir : null,
     };
   });
@@ -124,7 +127,7 @@ export function parseHostArg(argv: string[]): HostId | undefined {
   const raw = (i === -1 ? undefined : argv[i + 1]) ?? argv.find((a) => a.startsWith('--host='))?.slice('--host='.length);
   if (raw === undefined) return undefined;
   const value = raw.trim().toLowerCase();
-  if (value !== 'omp' && value !== 'pi') throw new Error(`Invalid --host: ${raw}. Valid: omp, pi`);
+  if (value !== 'omp' && value !== 'pi' && value !== 'opencode') throw new Error(`Invalid --host: ${raw}. Valid: omp, pi, opencode`);
   return value;
 }
 

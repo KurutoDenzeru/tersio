@@ -90,6 +90,21 @@ test("install --host omp keeps the OMP tree and never touches pi", () => {
   }
 });
 
+test("install --host opencode writes the plugin tree and registers it", () => {
+  const home = tempHome();
+  try {
+    const result = run(home, ["install", "--host", "opencode", "--dry-run", "--verbose"]);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/\[dry-run\] would write .*\.config\/opencode\/plugins\/tersio\/opencode\/index\.ts/);
+    expect(result.stdout).toMatch(/\[dry-run\] would write .*\.config\/opencode\/plugins\/tersio\/combo-toggle\/index\.ts/);
+    expect(result.stdout, "OMP extension tree must stay untouched").not.toMatch(/\.omp\/agent\/extensions/);
+    expect(result.stdout, "pi tree must stay untouched").not.toMatch(/\.pi\/agent\/extensions/);
+    expect(result.stdout).toMatch(/Done — restart OpenCode/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test("install rejects an unknown host", () => {
   const home = tempHome();
   try {
@@ -118,6 +133,22 @@ test("uninstall --host pi clears the pi tree, the package, and the shared defaul
     expect(result.stdout).toMatch(/\[dry-run\] would remove .*\/skills\/ponytail/);
     // Only the skill dirs we copied: pi's own skills dir belongs to the user.
     expect(result.stdout, "never pi's whole skills dir").not.toMatch(/would remove \S*\/skills$/m);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("uninstall --host opencode clears the plugin tree", () => {
+  const home = tempHome();
+  try {
+    const dir = path.join(home, ".config", "opencode", "plugins", "tersio", "opencode");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(path.join(dir, "index.ts"), "// stale", "utf8");
+    writeFileSync(path.join(home, ".config", "opencode", "opencode.json"), JSON.stringify({ plugins: [path.join(dir, "index.ts")] }), "utf8");
+    const result = run(home, ["uninstall", "--host", "opencode", "--dry-run"]);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/\[dry-run\] would remove .*\.config\/opencode\/plugins\/tersio/);
+    expect(result.stdout, "OMP targets stay out of an opencode uninstall").not.toMatch(/\.omp\/agent\/extensions/);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

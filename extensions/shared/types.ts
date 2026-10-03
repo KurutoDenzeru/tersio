@@ -93,4 +93,5 @@ export interface ExtensionApi {
   }>;
   cwd?: string;
   zod?: { z: unknown };
+  hostId?: 'pi' | 'omp' | 'opencode';
   on<E>(event: string, handler: (event: E, ctx: ExtensionCtx) => unknown): void;}

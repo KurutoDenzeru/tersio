@@ -21,6 +21,7 @@ export const TREE_FILES: readonly string[] = [
   'combo-toggle/index.ts',
   'tersio-commands/index.ts',
   'ai-addons-updater/index.ts',
+  'opencode/index.ts',
 ];
 
 export function sourcePath(relative: string): string {

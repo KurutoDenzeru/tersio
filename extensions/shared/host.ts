@@ -19,6 +19,7 @@ export interface ZodFactory {
 export interface HostHandle {
   zod?: unknown;
   setLabel?: (...args: string[]) => void;
+  hostId?: 'pi' | 'omp' | 'opencode';
 }
 
 export interface SelectOption {
@@ -90,8 +91,31 @@ const ompAdapter: HostAdapter = {
   },
 };
 
-// OMP ships the zod factory; pi does not. Everything else keys off the row above.
+const opencodeAdapter: HostAdapter = {
+  label() { /* no label surface */ },
+  on(pi, event, handler) { pi.on(event, handler); },
+  async select(ui, title, options, dialogOptions) {
+    if (!ui?.select) return undefined;
+    return ui.select(title, options, dialogOptions);
+  },
+  inject(event, text, staleMarker) {
+    const marker = staleMarker?.replace(/^[^\w]+/, '').trim();
+    const dropStale = (parts: string[]): string[] => (marker ? parts.filter((part) => !part.includes(marker)) : parts);
+    return { systemPrompt: [...dropStale(asPromptArray(event.systemPrompt)), text] };
+  },
+  stringArray(_pi, name, spec) {
+    const array: Record<string, unknown> = { type: 'array', items: { type: 'string' } };
+    if (spec.minItems) array.minItems = spec.minItems;
+    if (spec.description) array.description = spec.description;
+    return { type: 'object', properties: { [name]: array }, required: [name] };
+  },
+};
+
+// Explicit hostId wins; the legacy zod sniff keeps old callers working.
 function adapterFor(pi: HostHandle): HostAdapter {
+  if (pi.hostId === 'opencode') return opencodeAdapter;
+  if (pi.hostId === 'omp') return ompAdapter;
+  if (pi.hostId === 'pi') return piAdapter;
   return pi.zod ? ompAdapter : piAdapter;
 }
 

@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  BUN_BIN_DIR, COMBO_PRESET_MODES, IS_WINDOWS, OMP_AGENT_DIR, OMP_PLUGINS_DIR, OMP_BIN,
+  BUN_BIN_DIR, COMBO_PRESET_MODES, HOME, IS_WINDOWS, OMP_AGENT_DIR, OMP_PLUGINS_DIR, OMP_BIN,
   PACKAGE_NAME, PACKAGE_VERSION, RTK_BINARY_NAME, args,
   allowUnverified, applyUpdate, cavemanDefaultFlag, comboDefaultFlag, command, dryRun,
   ponytailDefaultFlag, profileFlagsGiven, rtkDefaultFlag, verbose, yes,
@@ -407,6 +407,29 @@ async function stepCombo(extDir: string, options: InstallOptions): Promise<void>
   await copySources(extDir, filesUnder('combo-toggle'), 'combo-toggle/index.ts', options);
 }
 
+// OpenCode loads imported .ts plugins from the config plugins dir, so a plain tree copy + one config entry is enough.
+async function stepOpencode(options: InstallOptions): Promise<void> {
+  const dir = path.join(HOME, '.config', 'opencode', 'plugins', 'tersio');
+  if (!options.quiet) console.log(`  OpenCode — write the plugin tree (${dir})`);
+  await stepSharedSessionState(dir, options);
+  await copySources(dir, filesUnder('rtk-session'), 'rtk-session/index.ts', options);
+  await copySources(dir, filesUnder('caveman-session'), 'caveman-session/index.ts', options);
+  await stepCombo(dir, options);
+  await copySources(dir, filesUnder('tersio-commands'), 'tersio-commands/index.ts', options);
+  await stepUpdater(dir, options);
+  await copySources(dir, filesUnder('opencode'), 'opencode/index.ts', options);
+
+  const configPath = path.join(HOME, '.config', 'opencode', 'opencode.json');
+  const pluginPath = path.join(dir, 'opencode', 'index.ts');
+  let config: Record<string, unknown> = {};
+  try { config = JSON.parse((await readTextIfExists(configPath)) ?? '{}') as Record<string, unknown>; } catch { return; }
+  const plugins = Array.isArray(config.plugins) ? [...config.plugins] : [];
+  if (!plugins.includes(pluginPath)) plugins.push(pluginPath);
+  config.plugins = plugins;
+  if (!options.dryRun) await fs.mkdir(path.dirname(configPath), { recursive: true });
+  await writeIfChanged(configPath, `${JSON.stringify(config, null, 2)}\n`, options);
+}
+
 
 async function resolveProfile(opts: { quiet?: boolean } = {}): Promise<Profile> {
   // Seed from the stored defaults so flag-less runs keep them.
@@ -542,7 +565,6 @@ let targetHost: HostId = 'omp';
 // Hosts the menu advertises but cannot install yet. Listed disabled so the roadmap is visible without offering a target that does nothing.
 const SOON_HOSTS = [
   { value: 'claude', label: 'Claude Code', hint: 'Coming soon' },
-  { value: 'opencode', label: 'OpenCode', hint: 'Coming soon' },
   { value: 'codex', label: 'Codex', hint: 'Coming soon' },
 ];
 
@@ -682,7 +704,11 @@ async function runInstall(): Promise<void> {
   // Point of no return: disk writes start here; pipes stay unattended.
   if (!yes && !dryRun && !applyUpdate && tty()) {
     const target = hostEntry(targetHost);
-    const where = targetHost === 'pi' ? path.join(piAgentDir(), 'extensions') : path.join(OMP_AGENT_DIR, 'extensions');
+    const where = targetHost === 'pi'
+      ? path.join(piAgentDir(), 'extensions')
+      : targetHost === 'opencode'
+        ? path.join(HOME, '.config', 'opencode', 'plugins', 'tersio')
+        : path.join(OMP_AGENT_DIR, 'extensions');
     console.log(`\nWill install into ${target.label}:`);
     console.log(`  ${where}`);
     console.log('  caveman · rtk · ponytail session modes');
@@ -711,6 +737,16 @@ async function runInstall(): Promise<void> {
       sayTagged(`  [fail] ${label}: ${shortError(e)}`);
     }
   };
+
+  if (targetHost === 'opencode') {
+    await capture('opencode tree', () => stepOpencode(installOptions));
+    await capture('rtk', () => stepRtk(BUN_BIN_DIR, installOptions, 'pi'));
+    await capture('settings', () => writePluginSettings(profile, installOptions));
+    if (failures.length > 0) console.log(`\nDone with ${failures.length} failure(s) — see [fail] lines above.`);
+    else console.log('\nDone — restart OpenCode, then /combo balanced.');
+    closeRL();
+    return;
+  }
 
   if (targetHost === 'pi') {
     await capture('pi tree', () => stepPiLayer(installOptions));

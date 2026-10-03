@@ -44,8 +44,29 @@ async function fixExtensionTrees(): Promise<void> {
   }
 }
 
+// The tree alone does nothing on OpenCode without its entrypoint registered in opencode.json.
+async function fixOpencodeEntry(): Promise<void> {
+  const { HOME } = await import('./common.ts');
+  const dir = path.join(HOME, '.config', 'opencode', 'plugins', 'tersio');
+  const configPath = path.join(HOME, '.config', 'opencode', 'opencode.json');
+  const pluginPath = path.join(dir, 'opencode', 'index.ts');
+  if (!existsSync(path.join(dir, 'opencode', 'index.ts'))) return;
+  const raw = await readTextIfExists(configPath);
+  let config: Record<string, unknown> = {};
+  try { config = raw ? JSON.parse(raw) as Record<string, unknown> : {}; } catch { return; }
+  const plugins = Array.isArray(config.plugins) ? [...config.plugins] as unknown[] : [];
+  if (plugins.includes(pluginPath)) return;
+  plugins.push(pluginPath);
+  config.plugins = plugins;
+  if (dryRun) { sayTagged(`  [dry-run] would register tersio in ${configPath}`); return; }
+  await fs.mkdir(path.dirname(configPath), { recursive: true });
+  await fs.writeFile(configPath, JSON.stringify(config, null, 2) + '\n', 'utf8');
+  sayTagged(`  [ok] OpenCode plugin entry: ${configPath}`);
+}
+
 async function fixExtensions(pluginsDir: string): Promise<void> {
   await fixExtensionTrees();
+  await fixOpencodeEntry();
   console.log('  Doctor --fix: restoring plugin extension files');
   const pluginExtDir = path.join(pluginsDir, 'node_modules', '@krtclcdy', 'tersio', 'extensions');
   await fs.mkdir(pluginExtDir, { recursive: true });
