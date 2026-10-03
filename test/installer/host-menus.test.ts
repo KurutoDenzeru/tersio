@@ -1,7 +1,7 @@
 // Host menus target one agent; the option label carries the current state.
 import { expect, test } from "vitest";
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -99,6 +99,23 @@ test("install --host opencode writes the plugin tree and registers it", () => {
     expect(result.stdout, "OMP extension tree must stay untouched").not.toMatch(/\.omp\/agent\/extensions/);
     expect(result.stdout, "pi tree must stay untouched").not.toMatch(/\.pi\/agent\/extensions/);
     expect(result.stdout).toMatch(/Done — restart OpenCode/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("install --host opencode bundles the ponytail ruleset beside the tree", () => {
+  const home = tempHome();
+  try {
+    seedRtk(home);
+    const result = run(home, ["install", "--host", "opencode", "--yes"]);
+    expect(result.status, result.stderr).toBe(0);
+    const base = path.join(home, ".config", "opencode", "plugins", "tersio", "ponytail-bundle");
+    for (const file of ["hooks/ponytail-instructions.js", "hooks/ponytail-config.js", "skills/ponytail/SKILL.md"]) {
+      const full = path.join(base, ...file.split("/"));
+      expect(existsSync(full), `${file} bundled`).toBe(true);
+    }
+    expect(readFileSync(path.join(base, "hooks", "ponytail-instructions.js"), "utf8")).toMatch(/getPonytailInstructions/);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

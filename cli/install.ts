@@ -409,6 +409,33 @@ async function stepCombo(extDir: string, options: InstallOptions): Promise<void>
   await copySources(extDir, filesUnder('combo-toggle'), 'combo-toggle/index.ts', options);
 }
 
+// The tree ships no node_modules, so the full ruleset rides along as files.
+const PONYTAIL_BUNDLE_FILES = [
+  'hooks/ponytail-instructions.js',
+  'hooks/ponytail-config.js',
+  'skills/ponytail/SKILL.md',
+] as const;
+
+async function stepPonytailBundle(treeDir: string, options: InstallOptions): Promise<void> {
+  const root = findHoistedPackage('@dietrichgebert/ponytail', path.dirname(fileURLToPath(import.meta.url)));
+  if (!root) {
+    if (!options.quiet) console.log('  [skip] Ponytail package not found next to the CLI — OpenCode keeps the built-in text');
+    return;
+  }
+  if (!options.quiet) console.log('  Ponytail — bundle the full ruleset for OpenCode');
+  for (const rel of PONYTAIL_BUNDLE_FILES) {
+    const src = path.join(root, ...rel.split('/'));
+    let text: string;
+    try {
+      text = await fs.readFile(src, 'utf8');
+    } catch {
+      sayTagged(`  [fail] Ponytail bundle file missing: ${rel}`);
+      return;
+    }
+    await writeIfChanged(path.join(treeDir, 'ponytail-bundle', ...rel.split('/')), text, options);
+  }
+}
+
 // OpenCode loads imported .ts plugins from the config plugins dir, so a plain tree copy + one config entry is enough.
 async function stepOpencode(options: InstallOptions): Promise<void> {
   const dir = path.join(HOME, '.config', 'opencode', 'plugins', 'tersio');
@@ -420,6 +447,7 @@ async function stepOpencode(options: InstallOptions): Promise<void> {
   await copySources(dir, filesUnder('tersio-commands'), 'tersio-commands/index.ts', options);
   await stepUpdater(dir, options);
   await copySources(dir, filesUnder('opencode'), 'opencode/server.ts', options);
+  await stepPonytailBundle(dir, options);
   // The loader resolves <pluginDir>/server.ts, so mirror the entry at the tree root.
   await writeIfChanged(path.join(dir, 'server.ts'), OPENCODE_SERVER_SHIM, options);
   if (!options.dryRun) await fs.rm(path.join(dir, 'opencode', 'index.ts'), { force: true }).catch(() => {});

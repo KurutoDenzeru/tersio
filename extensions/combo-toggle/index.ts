@@ -1,6 +1,7 @@
 // /combo session toggle: off | medium | balanced | max.
 
 import path from 'node:path';
+import { existsSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   activeModesSummary,
@@ -42,9 +43,12 @@ export function ponytailFallback(mode: string): string {
 // Ponytail is hoisted, so one upward walk covers every install layout. The hook is CommonJS, so both namespace shapes are tried.
 async function loadPonytailInstructions(mode: string): Promise<string> {
   const installed = findHoistedPackage('@dietrichgebert/ponytail', EXTENSION_DIR, 'hooks', 'ponytail-instructions.js');
-  if (installed) {
+  // The OpenCode tree ships no node_modules; the installer bundles the ruleset beside the extensions.
+  const bundled = path.join(EXTENSION_DIR, '..', 'ponytail-bundle', 'hooks', 'ponytail-instructions.js');
+  const treeLocal = installed ?? (existsSync(bundled) ? bundled : null);
+  if (treeLocal) {
     try {
-      const loaded = await import(pathToFileURL(installed).href) as {
+      const loaded = await import(pathToFileURL(treeLocal).href) as {
         getPonytailInstructions?: (level: string) => string;
         default?: { getPonytailInstructions?: (level: string) => string };
       };
