@@ -1,4 +1,4 @@
-## Unreleased
+## v2.25.0
  - Adds OpenCode as a host: `tersio install --host opencode` copies the extension tree to `~/.config/opencode/plugins/tersio` and registers it in `opencode.json`; `/combo`, `/caveman`, `/rtk`, `/tersio`, mode instruction injection, and the `rtk_run` tool ride a thin mapping (`extensions/opencode/server.ts`) from the plugin API onto the shared `ExtensionApi`. Doctor checks the plugin entry and repairs it on `--fix`; uninstall removes the tree and the config entry. The dashboard shows OpenCode rows with its own logo, host label, and a Connection-pane entry.
  - Removes Codex records from the usage ledger: the store and importer no longer scan `~/.codex/sessions`.
  - Guards usage.db migrations: a re-parse that keeps less than half the rows restores the pre-migration backup instead of publishing the loss (override with TERSIO_FORCE_REPARSE=1), and every sqlite write runs with -bail so a failed statement can never leave half a transaction behind.
@@ -23,6 +23,11 @@
  - Replaces the Models table's Last run / Last 20 runs columns with a shadcn Progress share bar, so the table fits without horizontal scroll on most panels.
  - Removes the Agents panel from the model detail dialog.
  - Fixes pricing for provider-prefixed model ids: "codex/openai/gpt-6-luna" and similar now match their cached price by tail segment instead of the default, so OpenAI and Claude rows report the real rate.
+ - Fixes OpenCode usage gaps: sqlite reads allow 50MB (a busy `session_message` table cleared the 1MB cap and silently dropped), writes flush under the Linux argv limit, and MiniMax/Gemma labels read family-first with `space-bunny-alpha` folded onto the free row.
+ - Wires RTK into every host at install: `rtk init -g --agent omp`, `--agent pi`, and `--opencode` each run for their target, with doctor rows and fail-open `--fix` repairs.
+ - Restores modes per OpenCode session instead of once at server start, so a change in one session no longer leaks into the next.
+ - Bundles the full Ponytail ruleset beside the OpenCode tree (no node_modules there); `tersio update --host` refreshes one agent, and `opencode plugin add @krtclcdy/tersio` installs host-side via the new `exports["./server"]` entry.
+ - Trims doctor to one line per host (`package/extensions @krtclcdy/tersio <version>`), drops the one-off rows, and shows each agent's config dir in the dashboard Connection pane.
 
 ## v2.24.1
  - Restores OpenCode/Codex usage history lost to the mirror wipe, with scheduled mirror backups plus restore/delete in the Data pane.
