@@ -113,14 +113,16 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
     check(host.label, true, `${where}${host.version ? ` ${host.version}` : ''}`);
     // The OpenCode tree alone does nothing without its entrypoint being registered.
     if (host.id === 'opencode') {
+      const dir = path.join(HOME, '.config', 'opencode', 'plugins', 'tersio');
       const configPath = path.join(HOME, '.config', 'opencode', 'opencode.json');
       const raw = await readTextIfExists(configPath);
       let registered = false;
       try {
         const plugins = (JSON.parse(raw ?? '{}') as { plugins?: unknown }).plugins;
-        registered = Array.isArray(plugins) && plugins.includes(path.join(HOME, '.config', 'opencode', 'plugins', 'tersio'));
+        registered = Array.isArray(plugins) && plugins.includes(dir);
       } catch { /* missing or invalid config reads as unregistered */ }
-      check('OpenCode plugin entry', registered, registered ? 'registered in opencode.json' : `missing from ${configPath}`);
+      const entry = existsSync(path.join(dir, 'server.ts')) && registered;
+      check('OpenCode plugin entry', entry, entry ? 'server.ts registered in opencode.json' : `missing from ${configPath}`);
     }
   }
 

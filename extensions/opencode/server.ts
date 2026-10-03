@@ -1,6 +1,6 @@
 // OpenCode plugin entry: maps its plugin API onto the shared ExtensionApi the mode extensions consume.
 import { execFile } from 'node:child_process';
-import { Plugin } from '@opencode/plugin';
+import type { Plugin } from '@opencode/plugin';
 import cavemanSessionExtension from '../caveman-session/index.ts';
 import rtkSessionExtension from '../rtk-session/index.ts';
 import comboToggleExtension from '../combo-toggle/index.ts';
@@ -25,7 +25,9 @@ interface ToolConfig {
   ) => Promise<{ isError: boolean; content: { type: string; text: string }[]; details: Record<string, unknown> }>;
 }
 
-export default Plugin.define({
+// Plain object, not Plugin.define: define is an identity wrapper, and a value
+// import would force every install to vendor the whole @opencode dependency tree.
+const plugin: Plugin.Plugin = {
   id: 'tersio',
   async setup(ctx) {
     const entries: SessionEntry[] = ((await ctx.storage.get('entries')) as SessionEntry[] | undefined) ?? [];
@@ -117,4 +119,6 @@ export default Plugin.define({
       for (const handler of inputHandlers) void handler({ text: event.prompt.text, source: 'interactive' });
     });
   },
-});
+};
+
+export default plugin;

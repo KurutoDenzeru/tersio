@@ -94,6 +94,7 @@ test("install --host opencode writes the plugin tree and registers it", () => {
     const result = run(home, ["install", "--host", "opencode", "--dry-run", "--verbose"]);
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toMatch(/\[dry-run\] would write .*\.config\/opencode\/plugins\/tersio\/opencode\/server\.ts/);
+    expect(result.stdout).toMatch(/\[dry-run\] would write .*\.config\/opencode\/plugins\/tersio\/server\.ts/);
     expect(result.stdout).toMatch(/\[dry-run\] would write .*\.config\/opencode\/plugins\/tersio\/combo-toggle\/index\.ts/);
     expect(result.stdout, "OMP extension tree must stay untouched").not.toMatch(/\.omp\/agent\/extensions/);
     expect(result.stdout, "pi tree must stay untouched").not.toMatch(/\.pi\/agent\/extensions/);

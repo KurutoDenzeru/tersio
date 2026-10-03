@@ -31,7 +31,7 @@ import {
 import { formatCliStatus, storedProfile, storedProfileSync, writePluginSettings } from './profile.ts';
 import { runSettings } from './settings.ts';
 import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
-import { filesUnder, sourcePath } from './manifest.ts';
+import { OPENCODE_SERVER_SHIM, filesUnder, sourcePath } from './manifest.ts';
 import type { Profile } from './profile.ts';
 import { detectHosts, hostHint, hostLabel, parseHostArg, piTersioSource } from './hosts.ts';
 import type { HostEntry, HostId } from './hosts.ts';
@@ -418,6 +418,8 @@ async function stepOpencode(options: InstallOptions): Promise<void> {
   await copySources(dir, filesUnder('tersio-commands'), 'tersio-commands/index.ts', options);
   await stepUpdater(dir, options);
   await copySources(dir, filesUnder('opencode'), 'opencode/server.ts', options);
+  // The loader resolves <pluginDir>/server.ts, so mirror the entry at the tree root.
+  await writeIfChanged(path.join(dir, 'server.ts'), OPENCODE_SERVER_SHIM, options);
   if (!options.dryRun) await fs.rm(path.join(dir, 'opencode', 'index.ts'), { force: true }).catch(() => {});
 
   const configPath = path.join(HOME, '.config', 'opencode', 'opencode.json');

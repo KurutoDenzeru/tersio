@@ -17,7 +17,7 @@ import {
   httpsDownload, parseChecksum, readTextIfExists, rtkPlatformSpec, sha256File,
 } from '../extensions/lib/utils.ts';
 import { runLatestUpdate } from './update.ts';
-import { TREE_FILES, sourcePath } from './manifest.ts';
+import { OPENCODE_SERVER_SHIM, TREE_FILES, sourcePath } from './manifest.ts';
 import { detectHosts, hostExtensionsDir } from './hosts.ts';
 
 type FixTarget = 'extensions' | 'registrations' | 'rtk' | 'ponytail' | 'cli';
@@ -49,8 +49,11 @@ async function fixOpencodeEntry(): Promise<void> {
   const { HOME } = await import('./common.ts');
   const dir = path.join(HOME, '.config', 'opencode', 'plugins', 'tersio');
   const configPath = path.join(HOME, '.config', 'opencode', 'opencode.json');
-  const pluginPath = path.join(dir, 'opencode', 'server.ts');
-  if (!existsSync(pluginPath)) return;
+  const nested = path.join(dir, 'opencode', 'server.ts');
+  const nestedText = await readTextIfExists(nested);
+  if (!nestedText) return;
+  // The loader resolves <pluginDir>/server.ts, so mirror the entry at the tree root.
+  await writeIfChanged(path.join(dir, 'server.ts'), OPENCODE_SERVER_SHIM, { dryRun, verbose });
   const raw = await readTextIfExists(configPath);
   let config: Record<string, unknown> = {};
   try { config = raw ? JSON.parse(raw) as Record<string, unknown> : {}; } catch { return; }
