@@ -188,11 +188,12 @@ test.runIf(hasSqlite())("a session_message table past 1MB still syncs and reads 
         `INSERT INTO session_message VALUES ('${id}','ses_a','assistant',${i + 1},${created},${created},'${data}');`,
       );
       if (rows.length >= 500) {
-        execFileSync("sqlite3", [db, rows.join("")], { timeout: 30000 });
+        // Via stdin: Linux caps one argv string at 128KB (E2BIG), input has no such cap.
+        execFileSync("sqlite3", [db], { input: rows.join(""), timeout: 30000 });
         rows.length = 0;
       }
     }
-    if (rows.length) execFileSync("sqlite3", [db, rows.join("")], { timeout: 30000 });
+    if (rows.length) execFileSync("sqlite3", [db], { input: rows.join(""), timeout: 30000 });
     withEnv(dir, () => {
       process.env.TERSIO_OPENCODE_DB = db;
       expect(syncUsageDb()).toBe(true);
