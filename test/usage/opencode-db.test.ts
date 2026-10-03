@@ -163,3 +163,42 @@ test.runIf(hasSqlite())("a zero-token message is skipped and a missing db is a n
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// Output past 1MB must still sync and read back (was silently dropped).
+test.runIf(hasSqlite())("a session_message table past 1MB still syncs and reads back", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-oc-db-big-"));
+  try {
+    mkdirSync(path.join(dir, "sessions"), { recursive: true });
+    const db = path.join(dir, "opencode-big.db");
+    execFileSync("sqlite3", [db, SCHEMA.split("\n")[1]], { timeout: 30000 });
+    // Long model ids push each row past ~500 bytes, so 2500 rows clear 1MB.
+    const bigModel = `bench-${"m".repeat(400)}`;
+    const base = 1789800000000;
+    const rows: string[] = [];
+    for (let i = 0; i < 2500; i += 1) {
+      const id = `msg_big${String(i).padStart(5, "0")}`;
+      const created = base + i * 1000;
+      const data = JSON.stringify({
+        id,
+        model: { id: bigModel, providerID: "opencode" },
+        tokens: { input: 100 + i, output: 10, cache: { read: 0, write: 0 } },
+        time: { created, completed: created + 1000 },
+      }).replace(/'/g, "''");
+      rows.push(
+        `INSERT INTO session_message VALUES ('${id}','ses_a','assistant',${i + 1},${created},${created},'${data}');`,
+      );
+      if (rows.length >= 500) {
+        execFileSync("sqlite3", [db, rows.join("")], { timeout: 30000 });
+        rows.length = 0;
+      }
+    }
+    if (rows.length) execFileSync("sqlite3", [db, rows.join("")], { timeout: 30000 });
+    withEnv(dir, () => {
+      process.env.TERSIO_OPENCODE_DB = db;
+      expect(syncUsageDb()).toBe(true);
+      expect(readUsageDb()?.tokens.messages).toBe(2500);
+    });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

@@ -216,6 +216,9 @@ const ocDbCurrent = (since: number): string =>
 // A re-scan window covers tokens that land after the row was created, so a late fill is not lost.
 export const OPENCODE_DB_OVERLAP_MS = 3_600_000;
 
+// execFileSync caps output at 1MB; a busy table clears it in one SELECT.
+export const SQLITE_READ_BUFFER = 50 * 1024 * 1024;
+
 // Empty when sqlite3 is absent or the db is unreadable; that is a sync skip, not a failure.
 export function readOpencodeDbRows(db: string, sinceMs: number): OpencodeDbRow[] {
   if (!Number.isFinite(sinceMs)) return [];
@@ -224,7 +227,7 @@ export function readOpencodeDbRows(db: string, sinceMs: number): OpencodeDbRow[]
     const since = Math.max(0, Math.floor(sinceMs));
     // Separate calls: a db holding only one table must not cancel the other.
 const run = (sql: string): string =>
-  execFileSync('sqlite3', ['-separator', '\t', '-readonly', db, sql], { encoding: 'utf8', timeout: 30000, stdio: ['ignore', 'pipe', 'ignore'] });
+  execFileSync('sqlite3', ['-separator', '\t', '-readonly', db, sql], { encoding: 'utf8', timeout: 30000, stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: SQLITE_READ_BUFFER });
 let out = '';
 try { out += run(ocDbLegacy(since)); } catch { /* no legacy table or unreadable */ }
 try { out += run(ocDbCurrent(since)); } catch { /* no session_message table or unreadable */ }

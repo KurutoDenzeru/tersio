@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {
   RECENT_LIMIT,
+  SQLITE_READ_BUFFER,
   canonicalModelId,
   classifySessionLine,
   OpencodeMessage,
@@ -65,6 +66,7 @@ function query(db: string, sql: string): string[][] {
     encoding: 'utf8',
     timeout: 30000,
     stdio: ['ignore', 'pipe', 'ignore'],
+    maxBuffer: SQLITE_READ_BUFFER,
   });
   return out
     .split('\n')
