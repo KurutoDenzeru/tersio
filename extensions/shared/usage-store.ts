@@ -14,8 +14,12 @@ import {
   hostOfSessionFile,
   ingestSessionRow,
   messageRowId,
+  OpencodeDbRow,
+  OPENCODE_DB_OVERLAP_MS,
+  opencodeDbPath,
   opencodeSessionsDir,
   newSessionAccum,
+  readOpencodeDbRows,
   sessionsDirs,
   walkJsonl,
 } from './usage-ledger.ts';
@@ -104,6 +108,17 @@ function countMessages(db: string): number {
     return Number(rows[0]?.[0]) || 0;
   } catch {
     return 0;
+  }
+}
+
+// Watermark for the sqlite scan: the newest opencode row already stored.
+function newestOpencodeMs(db: string): number | null {
+  try {
+    const rows = query(db, `SELECT MAX(t) FROM messages WHERE h='opencode';`);
+    const v = Number(rows[0]?.[0]);
+    return Number.isFinite(v) && v > 0 ? v : null;
+  } catch {
+    return null;
   }
 }
 
@@ -321,28 +336,33 @@ interface StoredRow {
   id?: string;
 }
 
+// OpenCode rows carry no status, code, note, or tool list; only tokens and the msg id.
+function opencodeStoredRow(oc: NonNullable<ReturnType<typeof classifyOpencodeMessage>>, host: string | undefined, id: string | undefined): StoredRow {
+  return {
+    t: oc.ms ?? null,
+    model: canonicalModelId(oc.model),
+    i: intOf(oc.usage.input),
+    o: intOf(oc.usage.output),
+    d: durOf(oc.durMs),
+    cr: intOf(oc.usage.cacheRead),
+    cw: intOf(oc.usage.cacheWrite),
+    usd: costOf(oc.usage),
+    st: 'completed',
+    code: undefined,
+    note: undefined,
+    tools: [],
+    host,
+    id,
+  };
+}
+
 function parseFile(text: string, host?: string, file?: string): StoredRow[] {
   const rows: StoredRow[] = [];
   // Guarded: a JSONL transcript must fall through, not abort the sync.
   let oc: ReturnType<typeof classifyOpencodeMessage> = null;
   try { oc = classifyOpencodeMessage(JSON.parse(text) as OpencodeMessage); } catch { /* JSONL */ }
   if (oc) {
-    rows.push({
-      t: oc.ms ?? null,
-      model: canonicalModelId(oc.model),
-      i: intOf(oc.usage.input),
-      o: intOf(oc.usage.output),
-      d: durOf(oc.durMs),
-      cr: intOf(oc.usage.cacheRead),
-      cw: intOf(oc.usage.cacheWrite),
-      usd: costOf(oc.usage),
-      st: 'completed',
-      code: undefined,
-      note: undefined,
-      tools: [],
-      host,
-      id: file ? path.basename(file).replace(/\.[^.]+$/, '') : undefined,
-    });
+    rows.push(opencodeStoredRow(oc, host, file ? path.basename(file).replace(/\.[^.]+$/, '') : undefined));
     return rows;
   }
   let codexProvider: string | null = null;
@@ -448,6 +468,15 @@ export function syncUsageDb(): boolean {
     return false;
   }
   files.push(...ocFiles);
+  // v2 hosts keep messages in sqlite; rows past the watermark are new. Overlap re-reads the tail idempotently.
+  const ocDbRows: OpencodeDbRow[] = [];
+  const ocDbPath = opencodeDbPath();
+  if (process.env.TERSIO_SESSIONS_DIR === undefined || process.env.TERSIO_OPENCODE_DB !== undefined) {
+    const newest = newestOpencodeMs(db);
+    if (newest !== null || fs.existsSync(ocDbPath)) {
+      ocDbRows.push(...readOpencodeDbRows(ocDbPath, newest === null ? 0 : newest - OPENCODE_DB_OVERLAP_MS));
+    }
+  }
   const known = readFiles(db);
   const current: Record<string, { mtime: number; size: number }> = {};
   const changed: string[] = [];
@@ -463,7 +492,7 @@ export function syncUsageDb(): boolean {
     const prev = known[file];
     if (!prev || prev.mtime !== entry.mtime || prev.size !== entry.size) changed.push(file);
   }
-  if (!changed.length) return true;
+  if (!changed.length && !ocDbRows.length) return true;
   const chunks: string[] = [];
   let chunkBytes = 0;
   const flush = (): boolean => {
@@ -497,6 +526,18 @@ export function syncUsageDb(): boolean {
       for (const r of parseFile(text, hostOfSessionFile(file), file)) {
         if (!push(insertSql(file, r))) return false;
       }
+    }
+    for (const row of ocDbRows) {
+      const parsed = classifyOpencodeMessage(row.row);
+      if (!parsed) continue;
+      // One synthetic path per row id, so the delete-and-reinsert that follows is idempotent.
+      const key = `${ocDbPath}#${row.id}`;
+      if (!push(
+        `INSERT INTO files (path, mtime, size) VALUES (${esc(key)},${row.created},0)` +
+        ` ON CONFLICT(path) DO UPDATE SET mtime=excluded.mtime;` +
+        `DELETE FROM messages WHERE file_id=(SELECT id FROM files WHERE path=${esc(key)});` +
+        insertSql(key, opencodeStoredRow(parsed, 'opencode', row.id)),
+      )) return false;
     }
   } catch {
     return false;

@@ -179,6 +179,69 @@ export function opencodeSessionsDir(): string {
   return path.join(homeDir(), 'Library', 'Application Support', 'opencode', 'storage', 'message');
 }
 
+// OpenCode v2 keeps messages in sqlite; the JSON tree above is only the pre-v2 layout.
+export function opencodeDbPath(): string {
+  const override = process.env.TERSIO_OPENCODE_DB;
+  if (override) return override;
+  const xdg = process.env.XDG_DATA_HOME;
+  if (xdg && xdg.trim() !== '') return path.join(xdg, 'opencode', 'opencode.db');
+  const local = path.join(homeDir(), '.local', 'share', 'opencode', 'opencode.db');
+  try {
+    if (fs.existsSync(local)) return local;
+  } catch { /* fall through to the platform default */ }
+  return path.join(homeDir(), 'Library', 'Application Support', 'opencode', 'opencode.db');
+}
+
+export interface OpencodeDbRow {
+  id: string;
+  created: number;
+  row: OpencodeMessage;
+}
+
+// Scalars only: the `data` blob holds newlines and tabs, which the sqlite3 CLI would split.
+const OC_DB_SELECT = 'SELECT id, time_created, json_extract(data,\'$.role\'), json_extract(data,\'$.providerID\'), json_extract(data,\'$.modelID\'),' +
+  ' json_extract(data,\'$.time.created\'), json_extract(data,\'$.time.completed\'), json_extract(data,\'$.tokens.input\'),' +
+  ' json_extract(data,\'$.tokens.output\'), json_extract(data,\'$.tokens.cache.read\'), json_extract(data,\'$.tokens.cache.write\'),' +
+  ' json_extract(data,\'$.cost\') FROM message WHERE json_extract(data,\'$.role\')=\'assistant\' AND time_created > ';
+const OC_DB_ORDER = ' ORDER BY time_created;';
+
+// A re-scan window covers tokens that land after the row was created, so a late fill is not lost.
+export const OPENCODE_DB_OVERLAP_MS = 3_600_000;
+
+// Empty when sqlite3 is absent or the db is unreadable; that is a sync skip, not a failure.
+export function readOpencodeDbRows(db: string, sinceMs: number): OpencodeDbRow[] {
+  if (!Number.isFinite(sinceMs)) return [];
+  try {
+    if (!fs.existsSync(db)) return [];
+    const out = execFileSync('sqlite3', ['-separator', '\t', '-readonly', db, `${OC_DB_SELECT}${Math.max(0, Math.floor(sinceMs))}${OC_DB_ORDER}`], {
+      encoding: 'utf8',
+      timeout: 30000,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    const rows: OpencodeDbRow[] = [];
+    for (const line of out.split('\n')) {
+      if (!line.trim()) continue;
+      const [id, created, role, providerID, modelID, tCreated, tCompleted, input, output, cacheRead, cacheWrite, cost] = line.split('\t');
+      const n = (v: string | undefined): unknown => (v !== undefined && v !== '' && Number.isFinite(Number(v)) ? Number(v) : undefined);
+      rows.push({
+        id,
+        created: Number(created),
+        row: {
+          role,
+          modelID,
+          providerID,
+          tokens: { input: n(input), output: n(output), cache: { read: n(cacheRead), write: n(cacheWrite) } },
+          time: { created: n(tCreated), completed: n(tCompleted) },
+          cost: n(cost),
+        },
+      });
+    }
+    return rows;
+  } catch {
+    return [];
+  }
+}
+
 export function dayKey(ts: string | number): string | null {
   const ms = typeof ts === 'number' ? ts : Date.parse(ts);
   if (!Number.isFinite(ms)) return null;
@@ -355,6 +418,13 @@ export function processOpencodeFile(accum: SessionAccum, text: string, file?: st
   ingestSessionRow(accum, parsed.model, parsed.usage, parsed.ms, parsed.durMs, { st: 'completed' as RunStatus }, undefined, 'opencode', id);
 }
 
+// One v2 message row into the shared accum. The msg id is the row primary key.
+export function ingestOpencodeDbRow(accum: SessionAccum, row: OpencodeDbRow): void {
+  const parsed = classifyOpencodeMessage(row.row);
+  if (!parsed) return;
+  ingestSessionRow(accum, parsed.model, parsed.usage, parsed.ms, parsed.durMs, { st: 'completed' as RunStatus }, undefined, 'opencode', row.id);
+}
+
 // Fold `:free`/`-free` suffixes and case variants into one chart key.
 export function canonicalModelId(model: string): string {
   return canonicalPriceId(model.replace(FREE_SUFFIX, ''));
@@ -455,6 +525,10 @@ export function importSessionTokens(): SessionTokens {
       continue;
     }
     processOpencodeFile(accum, text, file);
+  }
+  // v2 hosts write sqlite, not the JSON tree above.
+  if (process.env.TERSIO_SESSIONS_DIR === undefined || process.env.TERSIO_OPENCODE_DB !== undefined) {
+    for (const row of readOpencodeDbRows(opencodeDbPath(), 0)) ingestOpencodeDbRow(accum, row);
   }
   let codexProvider: string | null = null;
   let codexModel: string | null = null;
