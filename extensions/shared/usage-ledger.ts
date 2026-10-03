@@ -198,8 +198,8 @@ export function walkJsonl(dir: string, out: string[], cap: number, ext = '.jsonl
     else if (e.isFile() && e.name.endsWith(ext)) out.push(full);
   }
 }
-// Recent requests get their own full-width table, so this bounds payload rather than highlights; rows are small, so a few hundred cost little.
-export const RECENT_LIMIT = 200;
+// Recent rows are a newest-first window over lifetime history; aggregates keep everything.
+export const RECENT_LIMIT = 2000;
 const FREE_SUFFIX = /(?::free|-free)$/i;
 const RTK_ELIGIBLE_HEADS = new Set([
   'rtk', 'git', 'grep', 'rg', 'find', 'cat', 'ls', 'tree', 'diff', 'log',

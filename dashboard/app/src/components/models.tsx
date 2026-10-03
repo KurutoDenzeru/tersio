@@ -351,7 +351,7 @@ function ModelDialog({ m, data, money, onClose }: { m: string | null; data: Usag
 export function Models({ data, money }: { data: UsageReport | null; money: (v: number) => string }) {
   const [open, setOpen] = useState<string | null>(null);
   const [page, setPage] = useState(1);
-  const [per, setPer] = useState(10);
+  const [per, setPer] = useState(15);
   const byModel = data?.byModel ?? {};
   const tops = useMemo(
     () => topModels(byModel, Object.keys(byModel).length).filter((m) => modelTotal(byModel, m) > 0),
@@ -430,7 +430,7 @@ export function Models({ data, money }: { data: UsageReport | null; money: (v: n
               {tops.length ? `${tops.length} models` : ""}
             </span>
           </div>
-          <CardDescription className="mono text-xs text-dim">ranked by tokens / top 10</CardDescription>
+          <CardDescription className="mono text-xs text-dim">ranked by tokens</CardDescription>
         </CardHeader>
         <CardContent>
         {tops.length > 0 ? (

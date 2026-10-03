@@ -100,31 +100,40 @@ export function topModels(byModel: Record<string, TokenBreakdown>, n: number): s
     .slice(0, n);
 }
 
-// Prettify a folded key: lowercase namespace, title-cased model segments with
-// version dots kept.
+function cap(s: string): string {
+  const low = s.toLowerCase();
+  if (low === "openai") return "OpenAI";
+  if (low === "gpt") return "GPT";
+  if (low === "ai") return "AI";
+  if (/^\d+[a-z]+$/.test(low)) return low.toUpperCase();
+  if (s.length <= 2) return s.toUpperCase();
+  return s[0].toUpperCase() + s.slice(1).toLowerCase();
+}
+
+function seg(s: string): string {
+  return s.split(".").map(cap).join(".");
+}
+
+function words(s: string): string {
+  return s
+    .split(/[-_:]+/)
+    .filter(Boolean)
+    .map(seg)
+    .join("-");
+}
+
+// One label everywhere: vendor first, then the model, so provider-prefixed
+// keys (opencode/github-copilot/...) read as "Anthropic - Claude - Haiku-4.5".
 export function displayModel(m: string): string {
   const bare = String(m).replace(/(?::free|-free)$/i, "");
-  function cap(s: string): string {
-    const low = s.toLowerCase();
-    if (low === "openai") return "OpenAI";
-    if (low === "ai") return "AI";
-    if (/^\d+[a-z]+$/.test(low)) return low.toUpperCase();
-    if (s.length <= 2) return s.toUpperCase();
-    return s[0].toUpperCase() + s.slice(1).toLowerCase();
-  }
-  function seg(s: string): string {
-    return s.split(".").map(cap).join(".");
-  }
-  function words(s: string): string {
-    return s
-      .split(/[-_:]+/)
-      .filter(Boolean)
-      .map(seg)
-      .join("-");
-  }
-  const slash = bare.indexOf("/");
-  if (slash >= 0) return bare.slice(0, slash).toLowerCase() + "/" + words(bare.slice(slash + 1));
-  return words(bare);
+  const segs = bare.split("/").filter(Boolean);
+  const pretty = words(segs[segs.length - 1] ?? bare);
+  const vendor = vendorOf(bare);
+  if (vendor.name === "Other") return segs.length > 1 ? `${words(segs[segs.length - 2])} - ${pretty}` : pretty;
+  const claude = pretty.match(/^claude[-_](.+)$/i);
+  if (vendor.name === "Anthropic" && claude) return `Anthropic - Claude - ${claude[1]}`;
+  if (pretty.toLowerCase().startsWith(vendor.name.toLowerCase())) return pretty;
+  return `${vendor.name} - ${pretty}`;
 }
 
 export interface Vendor {
@@ -136,7 +145,7 @@ export interface Vendor {
 const PROVIDERS: Array<[RegExp, string, string, string]> = [
   [/stealth|space-bunny/i, "Stealth", "stealth", "#1f2937"],
   [/openai|codex|gpt-|o1/i, "OpenAI", "openai", "#fff"],
-  [/muse/i, "Meta", "meta", "#0082fb"],
+  [/muse|llama/i, "Meta", "meta", "#0082fb"],
   [/deepseek/i, "DeepSeek", "deepseek", "#4d6bfe"],
   [/qwen|qwq/i, "Qwen", "qwen", "#6950EF"],
   [/glm|z-ai|zhipu/i, "Z.ai", "zdotai", "#2D2D2D"],
