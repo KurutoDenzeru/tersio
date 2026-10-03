@@ -204,9 +204,11 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
     }
     console.log('Will remove:');
     console.log(`  ${dir}`);
+    console.log(`  ${path.join(HOME, '.config', 'opencode', 'plugins', 'rtk.ts')} (rtk auto-wrap; reinstall with: rtk init -g --opencode)`);
     console.log(`  the tersio entry in ${configPath}`);
     if (!confirmed && !(await confirmDestructive('Remove these Tersio files?'))) { closeRL(); return false; }
     await removeUninstallTarget(dir, shouldDryRun);
+    await removeUninstallTarget(path.join(HOME, '.config', 'opencode', 'plugins', 'rtk.ts'), shouldDryRun, false);
     if (!shouldDryRun) {
       try {
         const raw = await readTextIfExists(configPath);

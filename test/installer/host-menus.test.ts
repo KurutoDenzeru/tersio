@@ -164,6 +164,7 @@ test("uninstall --host opencode clears the plugin tree", () => {
     const result = run(home, ["uninstall", "--host", "opencode", "--dry-run"]);
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toMatch(/\[dry-run\] would remove .*\.config\/opencode\/plugins\/tersio/);
+    expect(result.stdout).toMatch(/\[dry-run\] would remove .*\.config\/opencode\/plugins\/rtk\.ts/);
     expect(result.stdout, "OMP targets stay out of an opencode uninstall").not.toMatch(/\.omp\/agent\/extensions/);
   } finally {
     rmSync(home, { recursive: true, force: true });
