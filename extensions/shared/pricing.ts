@@ -54,7 +54,23 @@ function asPrice(v: unknown): ModelPrice | null {
   return null;
 }
 
+let liveCache: { path: string; mtime: number; prices: LivePrices } | null = null;
+
 export function loadLivePrices(): LivePrices | null {
+  // One stat per call beats one full parse: the recent-rows map prices thousands of rows.
+  try {
+    const file = pricesCachePath();
+    const mtime = fs.statSync(file).mtimeMs;
+    if (liveCache && liveCache.path === file && liveCache.mtime === mtime) return liveCache.prices;
+    const prices = readLivePrices();
+    if (prices) liveCache = { path: file, mtime, prices };
+    return prices;
+  } catch {
+    return null;
+  }
+}
+
+function readLivePrices(): LivePrices | null {
   let raw: string;
   try {
     raw = fs.readFileSync(pricesCachePath(), 'utf8');
@@ -94,22 +110,63 @@ export function canonicalPriceId(model: string): string {
 
 export function priceFor(model: string, live?: LivePrices | null): { price: ModelPrice; known: boolean; live: boolean } {
   const table = live === undefined ? loadLivePrices() : live;
+  if (live === undefined) {
+    const memo = priceMemo(table);
+    const hit = memo.get(model);
+    if (hit) return hit;
+    const resolved = resolvePrice(model, table);
+    memo.set(model, resolved);
+    return resolved;
+  }
+  return resolvePrice(model, table);
+}
+
+// Recent rows repeat a handful of models; the memo turns thousands of lookups into one per model. Cleared whenever the table identity changes.
+let memoTable: LivePrices | null | undefined;
+let memo = new Map<string, { price: ModelPrice; known: boolean; live: boolean }>();
+
+function priceMemo(table: LivePrices | null): Map<string, { price: ModelPrice; known: boolean; live: boolean }> {
+  if (memoTable !== table) {
+    memoTable = table;
+    memo = new Map();
+  }
+  return memo;
+}
+
+// Validated once per table instead of once per lookup.
+let compiledTable: LivePrices | null = null;
+let compiledEntries: Array<[string, ModelPrice]> = [];
+
+function priceEntries(table: LivePrices): Array<[string, ModelPrice]> {
+  if (compiledTable === table) return compiledEntries;
+  const entries: Array<[string, ModelPrice]> = [];
+  for (const [k, v] of Object.entries(table.exact)) {
+    const price = asPrice(v);
+    if (price) entries.push([k, price]);
+  }
+  compiledTable = table;
+  compiledEntries = entries;
+  return entries;
+}
+
+function resolvePrice(model: string, table: LivePrices | null): { price: ModelPrice; known: boolean; live: boolean } {
   // An alias goes through the same exact-then-suffix chain as any other id, so it still resolves when the feed keys it under a provider prefix.
   const id = MODEL_ALIASES.find((a) => a.id === model.toLowerCase())?.feed ?? model;
   if (table) {
-    const hit = asPrice(table.exact[id] ?? table.exact[id.toLowerCase()]);
-    if (hit) return { price: hit, known: true, live: true };
+    const entries = priceEntries(table);
+    const lower = id.toLowerCase();
+    const hit = entries.find(([k]) => k === id) ?? entries.find(([k]) => k === lower);
+    if (hit) return { price: hit[1], known: true, live: true };
     // Provider-prefixed ids ("azure/gpt-4o", "dashscope/qwen-max"): match the
     // first cached key that ends with the full id, then with the bare tail
     // segment, so "codex/openai/gpt-6-luna" still finds "gpt-6-luna".
-    const name = id.toLowerCase();
+    const name = lower;
     const tail = name.split('/').pop() ?? name;
-    const key = Object.keys(table.exact).find((k) => {
+    const key = entries.find(([k]) => {
       const lk = k.toLowerCase();
       return lk === name || lk.endsWith(`/${name}`) || lk === tail || lk.endsWith(`/${tail}`);
     });
-    const prefixed = key ? asPrice(table.exact[key]) : null;
-    if (prefixed) return { price: prefixed, known: true, live: true };
+    if (key) return { price: key[1], known: true, live: true };
   }
   return { price: DEFAULT_PRICE, known: false, live: false };
 }
