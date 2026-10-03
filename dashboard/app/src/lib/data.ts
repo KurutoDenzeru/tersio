@@ -87,10 +87,16 @@ export interface HealthReport {
   platform: string;
   omp: string | null;
   ompPath: string | null;
+  /** Config root, e.g. ~/.omp */
+  ompDir: string | null;
   pi: string | null;
   piPath: string | null;
+  /** Config root, e.g. ~/.pi */
+  piDir: string | null;
   opencode: string | null;
   opencodePath: string | null;
+  /** Config root, e.g. ~/.config/opencode */
+  opencodeDir: string | null;
   provider: string | null;
   rtk: { present: boolean; version: string | null; path: string };
   home: string;

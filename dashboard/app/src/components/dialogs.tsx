@@ -40,6 +40,7 @@ interface AgentRowProps {
   name: string;
   version: string | null;
   binPath: string | null;
+  dirPath: string | null;
   bin: string;
   docs: string;
   available: boolean;
@@ -47,7 +48,7 @@ interface AgentRowProps {
   logo: ReactNode;
 }
 
-function AgentRow({ name, version, binPath, bin, docs, available, unavailable, logo }: AgentRowProps) {
+function AgentRow({ name, version, binPath, dirPath, bin, docs, available, unavailable, logo }: AgentRowProps) {
   const status = unavailable ? "Unavailable" : available ? "Available" : "Not detected on PATH";
   return (
     <a
@@ -67,7 +68,12 @@ function AgentRow({ name, version, binPath, bin, docs, available, unavailable, l
           {version && <span className="mono text-xs whitespace-nowrap text-dim">{version}</span>}
         </div>
         <div className="mt-0.5 min-w-0 text-xs text-dim">
-          {binPath ? (
+          {/* PATH binary as secondary, config directory first when known. */}
+          {dirPath ? (
+            <HoverTip content={dirPath}>
+              <span className="mono block truncate">{dirPath}</span>
+            </HoverTip>
+          ) : binPath ? (
             <HoverTip content={binPath}>
               <span className="mono block truncate">{binPath}</span>
             </HoverTip>
@@ -110,9 +116,9 @@ function HealthPane() {
   const unavailable = health === null;
   // Absent hosts still show their binary name and lookup path.
   const agents: AgentRowProps[] = [
-    { name: "Oh My Pi", version: health?.omp ?? null, binPath: health?.ompPath ?? null, bin: "omp", docs: "https://omp.sh", available: !!health?.omp, unavailable, logo: <OmpLogo className="size-5" /> },
-    { name: "Pi", version: health?.pi ?? null, binPath: health?.piPath ?? null, bin: "pi", docs: "https://pi.dev", available: !!health?.pi, unavailable, logo: <PiLogo className="size-5" /> },
-    { name: "OpenCode", version: health?.opencode ?? null, binPath: health?.opencodePath ?? null, bin: "opencode", docs: "https://opencode.ai", available: !!health?.opencode, unavailable, logo: <OpencodeLogo className="size-5" /> },
+    { name: "Oh My Pi", version: health?.omp ?? null, binPath: health?.ompPath ?? null, dirPath: health?.ompDir ?? null, bin: "omp", docs: "https://omp.sh", available: !!health?.omp, unavailable, logo: <OmpLogo className="size-5" /> },
+    { name: "Pi", version: health?.pi ?? null, binPath: health?.piPath ?? null, dirPath: health?.piDir ?? null, bin: "pi", docs: "https://pi.dev", available: !!health?.pi, unavailable, logo: <PiLogo className="size-5" /> },
+    { name: "OpenCode", version: health?.opencode ?? null, binPath: health?.opencodePath ?? null, dirPath: health?.opencodeDir ?? null, bin: "opencode", docs: "https://opencode.ai", available: !!health?.opencode, unavailable, logo: <OpencodeLogo className="size-5" /> },
   ];
 
   return (
