@@ -9,7 +9,6 @@ import {
   classifySessionLine,
   OpencodeMessage,
   classifyOpencodeMessage,
-  codexSessionsDir,
   costOf,
   durOf,
   hostOfSessionFile,
@@ -68,7 +67,7 @@ function query(db: string, sql: string): string[][] {
 }
 
 // Bump on a parse change: unchanged transcripts are never re-read.
-const PARSER_VERSION = '8';
+const PARSER_VERSION = '9';
 
 function ensureSchema(db: string): void {
   fs.mkdirSync(path.dirname(db), { recursive: true });
@@ -328,9 +327,6 @@ export function syncUsageDb(): boolean {
   const ocFiles: string[] = [];
   try {
     for (const dir of sessionsDirs()) walkJsonl(dir, files, 2000);
-    if (process.env.TERSIO_SESSIONS_DIR === undefined || process.env.TERSIO_CODEX_DIR !== undefined) {
-      walkJsonl(codexSessionsDir(), files, 2000);
-    }
     // OpenCode stores one JSON document per message, not JSONL.
     if (process.env.TERSIO_SESSIONS_DIR === undefined || process.env.TERSIO_OPENCODE_DIR !== undefined) {
       walkJsonl(opencodeSessionsDir(), ocFiles, 5000, '.json');

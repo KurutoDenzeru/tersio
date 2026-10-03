@@ -25,8 +25,6 @@ function withEnv(dir: string, fn: () => void): void {
   const prevDb = process.env.TERSIO_USAGE_DB;
   const prevSessions = process.env.TERSIO_SESSIONS_DIR;
   const prevReset = process.env.TERSIO_RESET_FILE;
-  const prevCodex = process.env.TERSIO_CODEX_DIR;
-  delete process.env.TERSIO_CODEX_DIR;
   process.env.TERSIO_USAGE_DB = path.join(dir, "usage.db");
   process.env.TERSIO_SESSIONS_DIR = path.join(dir, "sessions");
   process.env.TERSIO_RESET_FILE = path.join(dir, "reset.json");
@@ -39,8 +37,6 @@ function withEnv(dir: string, fn: () => void): void {
     else process.env.TERSIO_SESSIONS_DIR = prevSessions;
     if (prevReset === undefined) delete process.env.TERSIO_RESET_FILE;
     else process.env.TERSIO_RESET_FILE = prevReset;
-    if (prevCodex === undefined) delete process.env.TERSIO_CODEX_DIR;
-    else process.env.TERSIO_CODEX_DIR = prevCodex;
   }
 }
 

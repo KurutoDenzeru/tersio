@@ -164,14 +164,6 @@ export function sessionsDir(): string {
   return sessionsDirs()[0];
 }
 
-export function codexSessionsDir(): string {
-  const override = process.env.TERSIO_CODEX_DIR;
-  if (override) return override;
-  const codexHome = process.env.CODEX_HOME;
-  if (codexHome) return path.join(codexHome, 'sessions');
-  return path.join(homeDir(), '.codex', 'sessions');
-}
-
 // One JSON file per message; probe XDG, then local, then macOS default.
 export function opencodeSessionsDir(): string {
   const override = process.env.TERSIO_OPENCODE_DIR;
@@ -386,10 +378,6 @@ export function importSessionTokens(): SessionTokens {
   const accum = newSessionAccum();
   const files: string[] = [];
   for (const dir of sessionsDirs()) walkJsonl(dir, files, 2000);
-  // An override means an isolated environment (tests, fixtures): only walk the real codex dir when one is explicitly set.
-  if (process.env.TERSIO_SESSIONS_DIR === undefined || process.env.TERSIO_CODEX_DIR !== undefined) {
-    walkJsonl(codexSessionsDir(), files, 2000);
-  }
   // OpenCode message bodies are single JSON documents, not JSONL.
   const ocFiles: string[] = [];
   if (process.env.TERSIO_SESSIONS_DIR === undefined || process.env.TERSIO_OPENCODE_DIR !== undefined) {
@@ -472,9 +460,6 @@ export function clearRtkAdoptionCache(): void {
 export function readRtkAdoption(): RtkAdoption {
   const files: string[] = [];
   for (const dir of sessionsDirs()) walkJsonl(dir, files, 2000);
-  if (process.env.TERSIO_SESSIONS_DIR === undefined || process.env.TERSIO_CODEX_DIR !== undefined) {
-    walkJsonl(codexSessionsDir(), files, 2000);
-  }
   const live = new Set(files);
   for (const file of adoptionFileCache.keys()) {
     if (!live.has(file)) adoptionFileCache.delete(file);

@@ -82,35 +82,6 @@ test("adoption reads executed Bash commands, not assistant tool-call intent", ()
     rmSync(dir, { recursive: true, force: true });
   }
 });
-test("importer captures codex cache-write tokens with provider label", () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-codex-"));
-  mkdirSync(path.join(dir, "2026"), { recursive: true });
-  writeFileSync(
-    path.join(dir, "2026", "rollout-test.jsonl"),
-    [
-      '{"timestamp":"2026-09-01T10:00:00.000Z","type":"session_meta","payload":{"model_provider":"openai"}}',
-      '{"timestamp":"2026-09-01T10:01:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":500,"output_tokens":50,"cached_input_tokens":100,"cache_write_input_tokens":250,"total_tokens":900}}}}',
-    ].join("\n") + "\n",
-    "utf8",
-  );
-  const prevSessions = process.env.TERSIO_SESSIONS_DIR;
-  const prevCodex = process.env.TERSIO_CODEX_DIR;
-  process.env.TERSIO_SESSIONS_DIR = path.join("test", "definitely-missing-home", "no-sessions");
-  process.env.TERSIO_CODEX_DIR = dir;
-  try {
-    const s = importSessionTokens();
-    expect(s.messages).toBe(1);
-    expect(s.totals).toEqual({ input: 500, output: 50, cacheRead: 100, cacheWrite: 250 });
-    expect(s.byModel["codex/openai"]).toEqual({ input: 500, output: 50, cacheRead: 100, cacheWrite: 250 });
-    expect(s.byDayModel["2026-09-01"]).toEqual({ "codex/openai": 900 });
-  } finally {
-    if (prevSessions === undefined) delete process.env.TERSIO_SESSIONS_DIR;
-    else process.env.TERSIO_SESSIONS_DIR = prevSessions;
-    if (prevCodex === undefined) delete process.env.TERSIO_CODEX_DIR;
-    else process.env.TERSIO_CODEX_DIR = prevCodex;
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
 
 test("carries measured cost and run status through to recent rows", () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-status-"));
@@ -202,7 +173,6 @@ test("importer walks both hosts' session directories", () => {
   const prevPiAgent = process.env.PI_CODING_AGENT_DIR;
   const prevPiFlag = process.env.PI_CODING_AGENT;
   const prevSessions = process.env.TERSIO_SESSIONS_DIR;
-  const prevCodex = process.env.TERSIO_CODEX_DIR;
   const prevReset = process.env.TERSIO_RESET_FILE;
   const row = (id: string, ts: string, model: string, input: number): string =>
     `{"type":"message","id":"${id}","timestamp":"${ts}","message":{"role":"assistant","model":"${model}","usage":{"input":${input},"output":10,"cacheRead":0,"cacheWrite":0}}}`;
@@ -218,7 +188,6 @@ test("importer walks both hosts' session directories", () => {
     }
     process.env.HOME = home;
     delete process.env.TERSIO_SESSIONS_DIR;
-    delete process.env.TERSIO_CODEX_DIR;
     process.env.PI_CODING_AGENT = "true";
     process.env.PI_CODING_AGENT_DIR = path.join(home, ".pi", "agent");
     process.env.TERSIO_RESET_FILE = path.join(home, "no-reset.json");
@@ -229,7 +198,7 @@ test("importer walks both hosts' session directories", () => {
     expect(s.byModel["omp-model"].input).toBe(200);
     expect(s.byModel["pi-model"].input).toBe(400);
   } finally {
-    for (const [key, value] of [["HOME", prevHome], ["PI_CODING_AGENT_DIR", prevPiAgent], ["PI_CODING_AGENT", prevPiFlag], ["TERSIO_SESSIONS_DIR", prevSessions], ["TERSIO_CODEX_DIR", prevCodex], ["TERSIO_RESET_FILE", prevReset]] as const) {
+    for (const [key, value] of [["HOME", prevHome], ["PI_CODING_AGENT_DIR", prevPiAgent], ["PI_CODING_AGENT", prevPiFlag], ["TERSIO_SESSIONS_DIR", prevSessions], ["TERSIO_RESET_FILE", prevReset]] as const) {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
     }
