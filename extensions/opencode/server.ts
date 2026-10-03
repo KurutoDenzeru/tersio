@@ -32,13 +32,60 @@ interface ToolConfig {
 const plugin: Plugin.Plugin = {
   id: 'tersio',
   async setup(ctx) {
-    const entries: SessionEntry[] = ((await ctx.storage.get('entries')) as SessionEntry[] | undefined) ?? [];
-    const persist = (): void => { void ctx.storage.set('entries', entries as unknown as never).catch(() => {}); };
-    const stubCtx = (): ExtensionCtx => ({
+    // Entries are scoped per session; an unseen ID restores on its first hook.
+    const sessions = new Map<string, SessionEntry[]>();
+    const started = new Map<string, Promise<void>>();
+    let activeSid: string | undefined;
+    const loadEntries = async (sid: string): Promise<SessionEntry[]> => {
+      const own = ((await ctx.storage.get(`entries:${sid}`)) as SessionEntry[] | undefined) ?? [];
+      if (own.length) return own;
+      // Pre-scoped installs kept one global list; adopt it once, then diverge.
+      const legacy = ((await ctx.storage.get('entries')) as SessionEntry[] | undefined) ?? [];
+      return [...legacy];
+    };
+    const sessionEntriesOf = (sid: string): SessionEntry[] => {
+      let list = sessions.get(sid);
+      if (!list) {
+        list = [];
+        sessions.set(sid, list);
+      }
+      return list;
+    };
+    const persist = (sid: string): void => {
+      void ctx.storage.set(`entries:${sid}`, sessionEntriesOf(sid) as unknown as never).catch(() => {});
+    };
+    const stubCtx = (sid?: string): ExtensionCtx => ({
       hasUI: false,
       cwd: ctx.location.directory,
-      sessionManager: { getBranch: () => entries, getEntries: () => entries },
+      sessionManager: sid === undefined
+        ? { getBranch: () => [], getEntries: () => [] }
+        : {
+          getBranch: () => sessionEntriesOf(sid),
+          getEntries: () => sessionEntriesOf(sid),
+        },
     });
+    // Starts are chained so appends land in the calling session.
+    let startQueue = Promise.resolve();
+    const runSessionStart = (sid: string): void => {
+      const prev = started.get(sid);
+      if (prev) return;
+      const run = startQueue.then(async () => {
+        for (const row of await loadEntries(sid)) sessionEntriesOf(sid).push(row);
+        activeSid = sid;
+        try {
+          for (const handler of lifecycle.get('session_start') ?? []) await handler({}, stubCtx(sid));
+        } finally {
+          persist(sid);
+          activeSid = undefined;
+        }
+      }).catch(() => {});
+      started.set(sid, run);
+      startQueue = run;
+    };
+    const ensureSession = (sid: string): Promise<void> => {
+      runSessionStart(sid);
+      return started.get(sid) ?? Promise.resolve();
+    };
     const commands = new Map<string, CommandConfig>();
     const tools = new Map<string, ToolConfig>();
     const beforeStart: Array<(event: SystemPromptEvent, ctx: ExtensionCtx) => unknown> = [];
@@ -50,7 +97,11 @@ const plugin: Plugin.Plugin = {
       setLabel() {},
       registerCommand(name, config) { commands.set(name, config); },
       registerTool(tool) { tools.set(tool.name, tool as ToolConfig); },
-      appendEntry(type, data) { entries.push({ type: 'custom', customType: type, data }); persist(); },
+      appendEntry(type, data) {
+        if (activeSid === undefined) return;
+        sessionEntriesOf(activeSid).push({ type: 'custom', customType: type, data });
+        persist(activeSid);
+      },
       exec: (cmd, args, opts) => new Promise((resolve) => {
         execFile(cmd, args, { signal: opts?.signal, cwd: opts?.cwd }, (error, stdout, stderr) => {
           const code = error && typeof (error as { code?: unknown }).code === 'number' ? (error as { code: number }).code : 0;
@@ -69,8 +120,9 @@ const plugin: Plugin.Plugin = {
 
     for (const extension of [cavemanSessionExtension, rtkSessionExtension, comboToggleExtension, tersioCommandsExtension]) extension(host);
 
-    // OpenCode has no session_start event surfaced to plugins, so restore once at setup.
-    for (const handler of lifecycle.get('session_start') ?? []) await handler({}, stubCtx());
+    // The first hook of an unseen session runs its session_start handlers.
+    const sidOf = (value: unknown): string | undefined =>
+      typeof value === 'string' && value ? value : undefined;
 
     await ctx.command.transform((editor) => {
       for (const [name, config] of commands) {
@@ -78,17 +130,25 @@ const plugin: Plugin.Plugin = {
           name,
           description: config.description,
           execute: async (input) => {
+            const sid = sidOf((input as { sessionID?: unknown }).sessionID);
+            if (sid) await ensureSession(sid);
             const text = typeof input.prompt?.text === 'string' ? input.prompt.text : '';
             const args = text.includes(' ') ? text.slice(text.indexOf(' ') + 1).trim() : '';
             // The shared handlers report through ui.notify, which has no OpenCode
             // surface. Collect it and send it back so a command never answers blank.
             const notes: string[] = [];
             const cmdCtx: ExtensionCtx = {
-              ...stubCtx(),
+              ...stubCtx(sid),
               hasUI: true,
               ui: { notify: (message: string) => { notes.push(message); } },
             };
-            await config.handler(args, cmdCtx);
+            const prev = activeSid;
+            activeSid = sid;
+            try {
+              await config.handler(args, cmdCtx);
+            } finally {
+              activeSid = prev;
+            }
             const reply = notes.length ? notes.join('\n') : formatStatus(getSharedComboState());
             await ctx.session.prompt({ sessionID: input.sessionID, text: reply });
           },
@@ -112,9 +172,11 @@ const plugin: Plugin.Plugin = {
     });
 
     await ctx.session.hook('context', async (event) => {
+      const sid = sidOf((event as { sessionID?: unknown }).sessionID);
+      if (sid) await ensureSession(sid);
       const systemParts = event.system.map((part) => (part.type === 'text' ? part.text : '')).filter(Boolean);
       for (const handler of beforeStart) {
-        const result = await handler({ systemPrompt: [...systemParts] } as SystemPromptEvent, stubCtx());
+        const result = await handler({ systemPrompt: [...systemParts] } as SystemPromptEvent, stubCtx(sid));
         if (!result || typeof result !== 'object' || !('systemPrompt' in result)) continue;
         const parts = typeof (result as { systemPrompt: unknown }).systemPrompt === 'string'
           ? [(result as { systemPrompt: string }).systemPrompt]
@@ -127,7 +189,9 @@ const plugin: Plugin.Plugin = {
       }
     });
 
-    await ctx.session.hook('prompt', (event) => {
+    await ctx.session.hook('prompt', async (event) => {
+      const sid = sidOf((event as { sessionID?: unknown }).sessionID);
+      if (sid) await ensureSession(sid);
       for (const handler of inputHandlers) void handler({ text: event.prompt.text, source: 'interactive' });
     });
   },
