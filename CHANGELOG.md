@@ -11,6 +11,7 @@
  - Adds a request detail drawer to Recent requests with copy/download JSON.
  - Records message ids end to end (transcript row id, opencode msg file) into a new usage.db column, migrated in place; headers and gateway metadata cannot be captured locally.
  - Moves the agent mark off the request drawer header onto its Agent row, and drops the Speed row and the unrecorded-data footnote.
+ - Replies visibly to OpenCode slash commands instead of answering blank, and keeps the opencode tree out of pi/omp extension dirs.
  - Replaces the Models share and Tools impact progress bars with one horizontal shadcn chart cell.
  - Restores the combo status on the host footer bar: `🧩 combo MAX: 🪨caveman=ULTRA ⚡rtk=ON 🦥ponytail=ULTRA` now paints via `ui.setStatus` on every mode command and session event, instead of a one-shot notify message.
  - Fixes subagent inheritance for Caveman and RTK: the OMP subagent marker now matches the host's real prompt, so a worker no longer runs with both modes silently off. Doctor scans the omp binary and warns when the marker drifts, and `tersio settings markers` overrides it.

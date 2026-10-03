@@ -356,6 +356,28 @@ test("doctor warns that rtk_run needs an exec-capable host", () => {
   }
 });
 
+test("doctor --fix removes a foreign opencode tree from pi", () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-doctor-foreign-"));
+  try {
+    const ext = path.join(home, ".pi", "agent", "extensions");
+    mkdirSync(path.join(ext, "shared"), { recursive: true });
+    writeFileSync(path.join(ext, "shared", "host.ts"), "// stale", "utf8");
+    mkdirSync(path.join(ext, "opencode"), { recursive: true });
+    writeFileSync(path.join(ext, "opencode", "server.ts"), "// stale", "utf8");
+    const result = spawnSync(process.execPath, [installer, "doctor", "--fix", "extensions", "--yes"], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 60000,
+      env: cliEnv(home, { PATH: path.join(home, "empty-bin") }),
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(existsSync(path.join(ext, "opencode"))).toBe(false);
+    expect(result.stdout).toMatch(/foreign/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test("doctor does not count the exec row when rtk is absent", () => {
   const home = missingHome();
   try {
@@ -369,7 +391,7 @@ test("doctor does not count the exec row when rtk is absent", () => {
     expect(result.status, result.stderr).toBe(0);
     // The exec question is meaningless without a binary.
     expect(result.stdout).toMatch(/—  RTK exec: not installed/);
-    expect(result.stdout).toMatch(/Summary: 4 checks/);
+    expect(result.stdout).toMatch(/Summary: 5 checks/);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

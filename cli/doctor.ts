@@ -6,7 +6,7 @@ import {
   args, dryRun, fix, yes,
   execP, parseJsonObject, relTime,
 } from './common.ts';
-import { detectHosts, ompPackageDir, piTersioSource } from './hosts.ts';
+import { detectHosts, hostExtensionsDir, ompPackageDir, piTersioSource } from './hosts.ts';
 import { askInteractiveChoice, askInteractiveConfirm, runInteractivePhase } from './interactive.ts';
 import { usageDbPath } from '../extensions/shared/usage-store.ts';
 import { pricesCachePath } from '../extensions/shared/pricing.ts';
@@ -135,6 +135,12 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   }
 
   section('Extensions & plugins');
+
+  // The opencode entrypoint breaks pi/omp loaders outright; flag the stray dir so --fix removes it.
+  const foreignTrees = hosts
+    .filter((host) => host.id !== 'opencode' && existsSync(path.join(hostExtensionsDir(host.id), 'opencode')))
+    .map((host) => host.dir ?? host.label);
+  check('No foreign opencode trees', foreignTrees.length === 0, foreignTrees.length ? foreignTrees.join(', ') : '');
 
   if (ompEntry?.via === 'package') {
     const explicitEntries = (configText ?? '').split('\n')
