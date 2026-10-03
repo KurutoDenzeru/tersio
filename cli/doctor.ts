@@ -115,7 +115,11 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
     if (host.id === 'opencode') {
       const configPath = path.join(HOME, '.config', 'opencode', 'opencode.json');
       const raw = await readTextIfExists(configPath);
-      const registered = raw ? /opencode[\\/]+plugins[\\/]+tersio[\\/]+opencode[\\/]+index/.test(raw) : false;
+      let registered = false;
+      try {
+        const plugins = (JSON.parse(raw ?? '{}') as { plugins?: unknown }).plugins;
+        registered = Array.isArray(plugins) && plugins.includes(path.join(HOME, '.config', 'opencode', 'plugins', 'tersio'));
+      } catch { /* missing or invalid config reads as unregistered */ }
       check('OpenCode plugin entry', registered, registered ? 'registered in opencode.json' : `missing from ${configPath}`);
     }
   }

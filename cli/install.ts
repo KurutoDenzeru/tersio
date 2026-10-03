@@ -417,15 +417,16 @@ async function stepOpencode(options: InstallOptions): Promise<void> {
   await stepCombo(dir, options);
   await copySources(dir, filesUnder('tersio-commands'), 'tersio-commands/index.ts', options);
   await stepUpdater(dir, options);
-  await copySources(dir, filesUnder('opencode'), 'opencode/index.ts', options);
+  await copySources(dir, filesUnder('opencode'), 'opencode/server.ts', options);
+  if (!options.dryRun) await fs.rm(path.join(dir, 'opencode', 'index.ts'), { force: true }).catch(() => {});
 
   const configPath = path.join(HOME, '.config', 'opencode', 'opencode.json');
-  const pluginPath = path.join(dir, 'opencode', 'index.ts');
   let config: Record<string, unknown> = {};
   try { config = JSON.parse((await readTextIfExists(configPath)) ?? '{}') as Record<string, unknown>; } catch { return; }
   const plugins = Array.isArray(config.plugins) ? [...config.plugins] : [];
-  if (!plugins.includes(pluginPath)) plugins.push(pluginPath);
-  config.plugins = plugins;
+  const withoutTersio = plugins.filter((p) => typeof p !== 'string' || !p.includes('/opencode/plugins/tersio'));
+  if (!withoutTersio.includes(dir)) withoutTersio.push(dir);
+  config.plugins = withoutTersio;
   if (!options.dryRun) await fs.mkdir(path.dirname(configPath), { recursive: true });
   await writeIfChanged(configPath, `${JSON.stringify(config, null, 2)}\n`, options);
 }

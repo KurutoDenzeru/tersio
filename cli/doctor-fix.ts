@@ -49,15 +49,16 @@ async function fixOpencodeEntry(): Promise<void> {
   const { HOME } = await import('./common.ts');
   const dir = path.join(HOME, '.config', 'opencode', 'plugins', 'tersio');
   const configPath = path.join(HOME, '.config', 'opencode', 'opencode.json');
-  const pluginPath = path.join(dir, 'opencode', 'index.ts');
-  if (!existsSync(path.join(dir, 'opencode', 'index.ts'))) return;
+  const pluginPath = path.join(dir, 'opencode', 'server.ts');
+  if (!existsSync(pluginPath)) return;
   const raw = await readTextIfExists(configPath);
   let config: Record<string, unknown> = {};
   try { config = raw ? JSON.parse(raw) as Record<string, unknown> : {}; } catch { return; }
   const plugins = Array.isArray(config.plugins) ? [...config.plugins] as unknown[] : [];
-  if (plugins.includes(pluginPath)) return;
-  plugins.push(pluginPath);
-  config.plugins = plugins;
+  const withoutTersio = plugins.filter((p) => typeof p !== 'string' || !p.includes('/opencode/plugins/tersio'));
+  if (withoutTersio.includes(dir)) return;
+  withoutTersio.push(dir);
+  config.plugins = withoutTersio;
   if (dryRun) { sayTagged(`  [dry-run] would register tersio in ${configPath}`); return; }
   await fs.mkdir(path.dirname(configPath), { recursive: true });
   await fs.writeFile(configPath, JSON.stringify(config, null, 2) + '\n', 'utf8');

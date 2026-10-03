@@ -93,7 +93,7 @@ test("install --host opencode writes the plugin tree and registers it", () => {
   try {
     const result = run(home, ["install", "--host", "opencode", "--dry-run", "--verbose"]);
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toMatch(/\[dry-run\] would write .*\.config\/opencode\/plugins\/tersio\/opencode\/index\.ts/);
+    expect(result.stdout).toMatch(/\[dry-run\] would write .*\.config\/opencode\/plugins\/tersio\/opencode\/server\.ts/);
     expect(result.stdout).toMatch(/\[dry-run\] would write .*\.config\/opencode\/plugins\/tersio\/combo-toggle\/index\.ts/);
     expect(result.stdout, "OMP extension tree must stay untouched").not.toMatch(/\.omp\/agent\/extensions/);
     expect(result.stdout, "pi tree must stay untouched").not.toMatch(/\.pi\/agent\/extensions/);
@@ -141,8 +141,8 @@ test("uninstall --host opencode clears the plugin tree", () => {
   try {
     const dir = path.join(home, ".config", "opencode", "plugins", "tersio", "opencode");
     mkdirSync(dir, { recursive: true });
-    writeFileSync(path.join(dir, "index.ts"), "// stale", "utf8");
-    writeFileSync(path.join(home, ".config", "opencode", "opencode.json"), JSON.stringify({ plugins: [path.join(dir, "index.ts")] }), "utf8");
+    writeFileSync(path.join(dir, "server.ts"), "// stale", "utf8");
+    writeFileSync(path.join(home, ".config", "opencode", "opencode.json"), JSON.stringify({ plugins: [path.join(home, ".config", "opencode", "plugins", "tersio")] }), "utf8");
     const result = run(home, ["uninstall", "--host", "opencode", "--dry-run"]);
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toMatch(/\[dry-run\] would remove .*\.config\/opencode\/plugins\/tersio/);
