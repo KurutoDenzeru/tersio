@@ -30,7 +30,12 @@ function fakeCtx(): {
         fn({ add: (cmd: never) => commands.set((cmd as { name: string }).name, cmd as never) });
       },
     },
-    tool: { transform: async (): Promise<void> => {} },
+    tool: {
+      transform: async (): Promise<void> => {},
+      hook: async (name: string, fn: (event: never) => unknown): Promise<void> => {
+        (hooks[name] ??= []).push(fn);
+      },
+    },
     session: {
       hook: async (name: string, fn: (event: never) => unknown): Promise<void> => {
         (hooks[name] ??= []).push(fn);

@@ -77,35 +77,13 @@ test("success path registers rtk.ts in a fake HOME config.yml", async () => {
   }
 });
 
-test("opencode dry-run never executes the binary", async () => {
+test("opencode never installs a separate rtk plugin", async () => {
   const { dir, log } = tempHome();
   try {
-    const ok = await wireRtkOpencode(fakeRtk(dir), { dryRun: true });
-    expect(ok).toBe(true);
-    expect(existsSync(log), "fake binary must not run in dry-run").toBe(false);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test("opencode success path runs init -g --opencode once", async () => {
-  const { dir, log } = tempHome();
-  try {
-    const ok = await wireRtkOpencode(fakeRtk(dir), {});
-    expect(ok).toBe(true);
-    const calls = readFileSync(log, "utf8").trim().split("\n");
-    expect(calls).toEqual(["init -g --opencode"]);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test("opencode failing binary returns false without throwing", async () => {
-  const { dir, log } = tempHome();
-  try {
-    const ok = await wireRtkOpencode(fakeRtk(dir, 3), {});
-    expect(ok).toBe(false);
-    expect(readFileSync(log, "utf8")).toMatch(/init/);
+    expect(await wireRtkOpencode(fakeRtk(dir), {})).toBe(true);
+    expect(existsSync(log), "the tersio plugin owns the rewrite").toBe(false);
+    expect(await wireRtkOpencode(fakeRtk(dir), { dryRun: true })).toBe(true);
+    expect(await wireRtkOpencode(path.join(dir, "absent-rtk"), {}), "no binary, no rewrite").toBe(false);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

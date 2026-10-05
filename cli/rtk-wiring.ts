@@ -1,5 +1,5 @@
 // OMP loads only listed extensions, so register rtk's path; fail-open.
-import { promises as fs } from 'node:fs';
+import { existsSync, promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
@@ -60,8 +60,10 @@ export async function wireRtkOmp(rtkBin: string, options: WiringOptions = {}): P
   return true;
 }
 
+// The Tersio plugin does the same rewrite, so OpenCode needs no rtk plugin of its own.
 export async function wireRtkOpencode(rtkBin: string, options: WiringOptions = {}): Promise<boolean> {
-  return runWire(rtkBin, { host: 'OpenCode', mechanism: 'tool.execute.before', initArgs: ['init', '-g', '--opencode'], hint: 'rtk init -g --opencode' }, options);
+  if (!options.dryRun && !options.quiet) console.log('  RTK rewrite runs inside the Tersio plugin — no separate entry');
+  return existsSync(rtkBin);
 }
 
 export async function wireRtkPi(rtkBin: string, options: WiringOptions = {}): Promise<boolean> {

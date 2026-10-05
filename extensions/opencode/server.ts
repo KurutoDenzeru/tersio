@@ -7,6 +7,7 @@ import comboToggleExtension from '../combo-toggle/index.ts';
 import tersioCommandsExtension from '../tersio-commands/index.ts';
 import { getSharedComboState } from '../shared/session-state.ts';
 import { formatStatus } from '../shared/status.ts';
+import { resolveRtkBinary } from '../lib/utils.ts';
 import type { ExtensionApi, ExtensionCtx, InputEvent, SessionEntry, SystemPromptEvent } from '../shared/types.ts';
 
 interface CommandConfig {
@@ -27,10 +28,9 @@ interface ToolConfig {
   ) => Promise<{ isError: boolean; content: { type: string; text: string }[]; details: Record<string, unknown> }>;
 }
 
-// Plain object, not Plugin.define: define is an identity wrapper, and a value
-// import would force every install to vendor the whole @opencode dependency tree.
+// The npm name, so the plugin list reads the same as the OMP and pi installs.
 const plugin: Plugin.Plugin = {
-  id: 'tersio',
+  id: '@krtclcdy/tersio',
   async setup(ctx) {
     // Entries are scoped per session; an unseen ID restores on its first hook.
     const sessions = new Map<string, SessionEntry[]>();
@@ -40,7 +40,9 @@ const plugin: Plugin.Plugin = {
       const own = ((await ctx.storage.get(`entries:${sid}`)) as SessionEntry[] | undefined) ?? [];
       if (own.length) return own;
       // Pre-scoped installs kept one global list; adopt it once, then diverge.
+      // Clear it after adoption so it can never shadow saved defaults later.
       const legacy = ((await ctx.storage.get('entries')) as SessionEntry[] | undefined) ?? [];
+      if (legacy.length) void ctx.storage.set('entries', []).catch(() => {});
       return [...legacy];
     };
     const sessionEntriesOf = (sid: string): SessionEntry[] => {
@@ -194,7 +196,31 @@ const plugin: Plugin.Plugin = {
       if (sid) await ensureSession(sid);
       for (const handler of inputHandlers) void handler({ text: event.prompt.text, source: 'interactive' });
     });
+
+    // rtk has its own OpenCode plugin; doing this here keeps one entry in the plugin list.
+    await ctx.tool.hook('execute.before', async (event) => {
+      const tool = String(event.tool ?? '').toLowerCase();
+      if (tool !== 'bash' && tool !== 'shell') return;
+      const input = event.input as { command?: unknown } | null | undefined;
+      if (typeof input?.command !== 'string' || !input.command) return;
+      const rewritten = await rewriteCommand(input.command);
+      if (rewritten) input.command = rewritten;
+    });
   },
 };
+
+function rewriteCommand(command: string): Promise<string | null> {
+  const bin = resolveRtkBinary();
+  if (!bin) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    execFile(bin, ['rewrite', command], { timeout: 5000 }, (error, stdout) => {
+      // A kill or timeout means untrustworthy output; pass the command through.
+      const err = error as { killed?: boolean; signal?: unknown } | null;
+      if (err && (err.killed || err.signal)) return resolve(null);
+      const out = String(stdout).trim();
+      resolve(out && out !== command ? out : null);
+    });
+  });
+}
 
 export default plugin;
