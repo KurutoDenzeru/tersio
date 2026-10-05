@@ -456,10 +456,14 @@ async function stepOpencode(options: InstallOptions): Promise<void> {
   let config: Record<string, unknown> = {};
   try { config = JSON.parse((await readTextIfExists(configPath)) ?? '{}') as Record<string, unknown>; } catch { return; }
   const plugins = Array.isArray(config.plugins) ? [...config.plugins] : [];
-  const withoutTersio = plugins.filter((p) => typeof p !== 'string' || !p.includes('/opencode/plugins/tersio'));
-  if (!withoutTersio.includes(dir)) withoutTersio.push(dir);
-  config.plugins = withoutTersio;
-  if (!options.dryRun) await fs.mkdir(path.dirname(configPath), { recursive: true });
+  // The tree ships the rtk rewrite, so its own plugin entry is redundant.
+  const kept = plugins.filter((p) => typeof p !== 'string' || !p.endsWith('/opencode/plugins/rtk.ts'));
+  if (!kept.includes(dir)) kept.push(dir);
+  config.plugins = kept;
+  if (!options.dryRun) {
+    await fs.mkdir(path.dirname(configPath), { recursive: true });
+    await fs.rm(path.join(HOME, '.config', 'opencode', 'plugins', 'rtk.ts'), { force: true }).catch(() => {});
+  }
   await writeIfChanged(configPath, `${JSON.stringify(config, null, 2)}\n`, options);
 }
 

@@ -58,23 +58,25 @@ async function fixExtensionTrees(): Promise<void> {
 }
 
 // The tree alone does nothing on OpenCode without its entrypoint registered in opencode.json.
+// The tersio tree ships the rtk rewrite, so the rtk plugin entry is redundant.
 async function fixOpencodeEntry(): Promise<void> {
   const { HOME } = await import('./common.ts');
   const dir = path.join(HOME, '.config', 'opencode', 'plugins', 'tersio');
   const configPath = path.join(HOME, '.config', 'opencode', 'opencode.json');
   const nested = path.join(dir, 'opencode', 'server.ts');
-  const nestedText = await readTextIfExists(nested);
-  if (!nestedText) return;
+  if (!(await readTextIfExists(nested))) return;
   // The loader resolves <pluginDir>/server.ts, so mirror the entry at the tree root.
   await writeIfChanged(path.join(dir, 'server.ts'), OPENCODE_SERVER_SHIM, { dryRun, verbose });
+  if (dryRun) sayTagged(`  [dry-run] would remove the redundant rtk plugin entry`);
+  else await fs.rm(path.join(HOME, '.config', 'opencode', 'plugins', 'rtk.ts'), { force: true }).catch(() => {});
   const raw = await readTextIfExists(configPath);
   let config: Record<string, unknown> = {};
   try { config = raw ? JSON.parse(raw) as Record<string, unknown> : {}; } catch { return; }
   const plugins = Array.isArray(config.plugins) ? [...config.plugins] as unknown[] : [];
-  const withoutTersio = plugins.filter((p) => typeof p !== 'string' || !p.includes('/opencode/plugins/tersio'));
-  if (withoutTersio.includes(dir)) return;
-  withoutTersio.push(dir);
-  config.plugins = withoutTersio;
+  const kept = plugins.filter((p) => typeof p !== 'string' || !p.endsWith('/opencode/plugins/rtk.ts'));
+  if (kept.length === plugins.length && kept.includes(dir)) return;
+  kept.push(dir);
+  config.plugins = kept;
   if (dryRun) { sayTagged(`  [dry-run] would register tersio in ${configPath}`); return; }
   await fs.mkdir(path.dirname(configPath), { recursive: true });
   await fs.writeFile(configPath, JSON.stringify(config, null, 2) + '\n', 'utf8');
