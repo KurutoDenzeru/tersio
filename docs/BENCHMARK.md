@@ -66,7 +66,7 @@ Keep results out of git. Write them to `$BENCH_TMP`, or to `benchmark/results/` 
 
 | Mode | Command | Levels |
 |---|---|---|
-| Caveman | `/caveman <level>` | `lite`, `full`, `ultra`, `wenyan-lite`, `wenyan-full`, `wenyan-ultra` |
+| Caveman | `/caveman <level>` | `lite`, `full`, `ultra`, `megacave-lite`, `megacave-full`, `megacave-ultra` |
 | Ponytail | `/ponytail <level>` | `lite`, `full`, `ultra` |
 | Combo | `/combo <level>` | `medium` (caveman `lite` + rtk + ponytail `lite`), `balanced` (`full`/`on`/`full`), `max` (`ultra`/`on`/`ultra`) |
 | RTK | `/rtk on` | `on` |
@@ -138,7 +138,7 @@ A saving is valid only if the answer is still right. A mode that drops edge case
 **Prose (P1–P3).**
 1. Exactly three sentences. Caveman fragments count as sentences only if you decide so before the run. Write the rule down.
 2. A fixed keyword list per prompt is present (for P1: reuse, connection, overhead/cost, concurrency/wait).
-3. For `wenyan-*` modes, score by keyword meaning, not by string match.
+3. For `megacave-*` modes, score by keyword meaning, not by string match.
 
 **Agentic (A).** Pass = the suite is green and no test file was edited. Run it for base, `rtk on`, `ponytail ultra`, and `combo medium`, N = 5. Report pass rate with every token and time number. A failed run is reported. It is not dropped.
 

@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { setExtensionLabel } from '../shared/host.ts';
 import {
   CAVEMAN_REMOTE_ULTRA,
-  CAVEMAN_REMOTE_WENYAN,
+  CAVEMAN_REMOTE_MEGACAVE,
   RTK_RELEASE_API,
   RtkRelease,
   fetchJson,
@@ -37,7 +37,7 @@ const cavemanRule = (name: string) => path.join(EXTENSION_DIR, '..', 'caveman-se
 const CAVEMAN_LOCAL = cavemanRule('rule.md');
 const CAVEMAN_TRACKED: ReadonlyArray<{ file: string; remote: string }> = [
   { file: cavemanRule('rule-ultra.md'), remote: CAVEMAN_REMOTE_ULTRA },
-  { file: cavemanRule('rule-wenyan.md'), remote: CAVEMAN_REMOTE_WENYAN },
+  { file: cavemanRule('rule-megacave.md'), remote: CAVEMAN_REMOTE_MEGACAVE },
 ];
 const HOST_NAME = isPiProcess() ? 'Pi' : 'OMP';
 const RELOAD_MSG = `Reminder: restart ${HOST_NAME} (or reload extensions) for updates to take effect.`;

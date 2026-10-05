@@ -25,7 +25,7 @@ import { runUsage } from './usage.ts';
 import { runDashboard } from './dashboard.ts';
 import { wireRtkOmp, wireRtkOpencode, wireRtkPi } from './rtk-wiring.ts';
 import {
-  CAVEMAN_REMOTE_ULTRA, CAVEMAN_REMOTE_WENYAN, RTK_RELEASE_API, RtkRelease, RtkReleaseAsset, fetchJson, findFile, findHoistedPackage, httpsGet,
+  CAVEMAN_REMOTE_ULTRA, CAVEMAN_REMOTE_MEGACAVE, RTK_RELEASE_API, RtkRelease, RtkReleaseAsset, fetchJson, findFile, findHoistedPackage, httpsGet,
   httpsDownload, parseChecksum, piAgentDir, readTextIfExists, resolveRtkBinary, rtkPlatformSpec, sha256File,
 } from '../extensions/lib/utils.ts';
 import { formatCliStatus, storedProfile, storedProfileSync, writePluginSettings } from './profile.ts';
@@ -370,7 +370,7 @@ async function stepRtkSession(extDir: string, options: WriteOptions): Promise<vo
 const CAVEMAN_RULES: ReadonlyArray<[name: string, remote: string | null]> = [
   ['rule.md', null],
   ['rule-ultra.md', CAVEMAN_REMOTE_ULTRA],
-  ['rule-wenyan.md', CAVEMAN_REMOTE_WENYAN],
+  ['rule-megacave.md', CAVEMAN_REMOTE_MEGACAVE],
 ];
 
 async function stepCaveman(extDir: string, options: WriteOptions): Promise<void> {
@@ -398,6 +398,10 @@ async function stepCaveman(extDir: string, options: WriteOptions): Promise<void>
   }
 
   await copySources(extDir, filesUnder('caveman-session').filter(([, to]) => to.endsWith('index.ts')), 'caveman-session/index.ts', options);
+
+  // Upstream renamed the body, so an install from before the rename keeps a stale copy
+  // that nothing reads and nothing removes.
+  if (!options.dryRun) await fs.rm(path.join(cavemanDir, 'rule-wenyan.md'), { force: true });
 }
 
 async function stepTersioCommands(extDir: string, options: WriteOptions): Promise<void> {

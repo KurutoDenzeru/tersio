@@ -14,9 +14,20 @@ export const COMBO_LEVELS: Record<string, Readonly<ComboState>> = Object.freeze(
 });
 
 const MODE_VALUES: Record<string, Set<string>> = {
-  caveman: new Set(['off', 'lite', 'full', 'ultra', 'wenyan', 'wenyan-lite', 'wenyan-full', 'wenyan-ultra']),
+  caveman: new Set(['off', 'lite', 'full', 'ultra', 'megacave', 'megacave-lite', 'megacave-full', 'megacave-ultra', 'wenyan', 'wenyan-lite', 'wenyan-full', 'wenyan-ultra']),
   rtk: new Set(['off', 'on']),
   ponytail: new Set(['off', 'lite', 'full', 'ultra']),
+};
+
+// Upstream renamed the Classical Chinese register from wenyan to megacave and kept
+// wenyan as a legacy alias. Canonical is megacave; the alias folds in at normalize time,
+// so a session entry or a saved setting written under the old name still lands on one mode.
+const CAVEMAN_ALIASES: Record<string, string> = {
+  megacave: 'megacave-full',
+  wenyan: 'megacave-full',
+  'wenyan-lite': 'megacave-lite',
+  'wenyan-full': 'megacave-full',
+  'wenyan-ultra': 'megacave-ultra',
 };
 
 type ModeName = 'caveman' | 'rtk' | 'ponytail';
@@ -43,7 +54,7 @@ export function normalizeMode(name: ModeName, value: unknown): string | null {
   if (name === 'rtk' && typeof value === 'boolean') return value ? 'on' : 'off';
   const mode = String(value ?? '').trim().toLowerCase();
   if (!MODE_VALUES[name]?.has(mode)) return null;
-  return name === 'caveman' && mode === 'wenyan' ? 'wenyan-full' : mode;
+  return name === 'caveman' ? (CAVEMAN_ALIASES[mode] ?? mode) : mode;
 }
 
 export function deriveLevel(modes: Modes | null | undefined): ComboLevel {

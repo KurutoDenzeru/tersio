@@ -121,7 +121,7 @@
     "extensions/**/*.ts",
     "extensions/caveman-session/rule.md",
     "extensions/caveman-session/rule-ultra.md",
-    "extensions/caveman-session/rule-wenyan.md"
+    "extensions/caveman-session/rule-megacave.md"
   ],
   "scripts": {
     "clean": "rm -f tersio.js cli/*.js extensions/**/*.js && rm -rf dashboard/dist",

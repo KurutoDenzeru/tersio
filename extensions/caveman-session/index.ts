@@ -9,7 +9,7 @@ import type { ExtensionApi, ExtensionCtx, InputEvent, SessionEntry, SystemPrompt
 
 const CAVERN_DIR = dirname(fileURLToPath(import.meta.url));
 // Upstream ships one skill per register: default, ultracave, megacave.
-const RULE_FILES = { lite: 'rule.md', full: 'rule.md', ultra: 'rule-ultra.md', 'wenyan-lite': 'rule-wenyan.md', 'wenyan-full': 'rule-wenyan.md', 'wenyan-ultra': 'rule-wenyan.md' };
+const RULE_FILES = { lite: 'rule.md', full: 'rule.md', ultra: 'rule-ultra.md', 'megacave-lite': 'rule-megacave.md', 'megacave-full': 'rule-megacave.md', 'megacave-ultra': 'rule-megacave.md' };
 
 const DEFAULT_MODE = 'off';
 
@@ -67,7 +67,7 @@ export default function cavemanSessionExtension(pi: ExtensionApi): void {
         return;
       }
       if (!setMode(arg, ctx)) {
-        ctx?.ui?.notify?.('Usage: /caveman [lite|full|ultra|wenyan-lite|wenyan-full|wenyan-ultra|off|status]', 'warning');
+        ctx?.ui?.notify?.('Usage: /caveman [lite|full|ultra|megacave-lite|megacave-full|megacave-ultra|off|status]', 'warning');
       }
     },
   });

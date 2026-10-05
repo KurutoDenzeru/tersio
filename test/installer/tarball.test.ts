@@ -55,7 +55,7 @@ test("packed tarball carries both .js (CLI runtime) and .ts (OMP) for every CLI-
 
 test("packed tarball carries every Caveman rule body", () => {
   const packed = packedFiles();
-  for (const name of ["rule.md", "rule-ultra.md", "rule-wenyan.md"]) {
+  for (const name of ["rule.md", "rule-ultra.md", "rule-megacave.md"]) {
     expect(packed, `manifest-loaded Caveman must receive ${name}`).toContain(`extensions/caveman-session/${name}`);
   }
   const source = readFileSync(path.join(root, "extensions", "caveman-session", "rule.md"), "utf8");

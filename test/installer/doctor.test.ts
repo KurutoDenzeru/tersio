@@ -150,7 +150,7 @@ test("doctor --fix dry-run previews repairs without writing", () => {
 test("doctor --fix repairs missing extension files in an empty home", () => {
   const home = missingHome();
   try {
-    const missing = ["caveman-session/index.ts", "caveman-session/rule.md", "caveman-session/rule-ultra.md", "caveman-session/rule-wenyan.md", "rtk-session/index.ts", "combo-toggle/index.ts", "tersio-commands/index.ts", "ai-addons-updater/index.ts"];
+    const missing = ["caveman-session/index.ts", "caveman-session/rule.md", "caveman-session/rule-ultra.md", "caveman-session/rule-megacave.md", "rtk-session/index.ts", "combo-toggle/index.ts", "tersio-commands/index.ts", "ai-addons-updater/index.ts"];
     for (const rel of missing) {
       expect(resultFileMissing(home, rel)).toBe(true);
     }
@@ -166,7 +166,7 @@ test("doctor --fix repairs missing extension files in an empty home", () => {
     for (const rel of missing) {
       expect(resultFileMissing(home, rel), rel).toBe(false);
     }
-    for (const name of ["rule.md", "rule-ultra.md", "rule-wenyan.md"]) {
+    for (const name of ["rule.md", "rule-ultra.md", "rule-megacave.md"]) {
       const installed = readFileSync(path.join(home, ".omp", "plugins", "node_modules", "@krtclcdy", "tersio", "extensions", "caveman-session", name), "utf8");
       expect(installed, name).toBe(readFileSync(path.join(root, "extensions", "caveman-session", name), "utf8"));
     }

@@ -56,7 +56,7 @@ function seed(home: string) {
   writeFileSync(path.join(pluginCaveman, "rule.md"), "fetched rule", "utf8");
   writeFileSync(path.join(pluginCaveman, "rule.md.bak"), "previous rule", "utf8");
   writeFileSync(path.join(pluginCaveman, "rule-ultra.md.bak"), "previous ultra", "utf8");
-  writeFileSync(path.join(pluginCaveman, "rule-wenyan.md.bak"), "previous wenyan", "utf8");
+  writeFileSync(path.join(pluginCaveman, "rule-megacave.md.bak"), "previous wenyan", "utf8");
 }
 
 test("uninstall removes extension dirs, self registration, and combo config entries", () => {
@@ -114,7 +114,7 @@ test("uninstall dry-run leaves backups in place", () => {
 
     expect(result.status, result.stderr).toBe(0);
     expect(existsSync(path.join(home, ".omp", "agent", "config.yml.bak")), "config.yml backup kept on dry run").toBeTruthy();
-    for (const name of ["rule.md.bak", "rule-ultra.md.bak", "rule-wenyan.md.bak"]) {
+    for (const name of ["rule.md.bak", "rule-ultra.md.bak", "rule-megacave.md.bak"]) {
       expect(existsSync(path.join(cavemanDir, name)), `${name} kept on dry run`).toBeTruthy();
     }
   } finally {
