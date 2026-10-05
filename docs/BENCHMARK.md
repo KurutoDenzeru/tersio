@@ -16,19 +16,15 @@ Three surfaces. Never average them together.
 | Prompt overhead | Tokens a mode adds to every turn | The answer |
 | Command output | Tokens in shell output | Everything else |
 
-Four axes per run.
+Two axes per run.
 
 | Axis | Source |
 |---|---|
 | Tokens | `usage.totalTokens`, summed over assistant turns |
-| Cost | `usage.cost.total`, or `tersio usage` if the host records 0 |
 | Time | Wall-clock around the process. Median of N |
-| Steps | Tool calls (`"role":"toolResult"` entries). Needs tools **on** |
 
 Rules:
 - A mode can cut reply text and still lose, because its prompt cost is paid on every turn.
-- Report an axis only if the measurement is real. Free tiers record `cost.total: 0`. Write `0 (free tier)`, never a bare `0`.
-- Steps are always 0 with `--no-tools`. Measure steps only in the agentic run (section 6).
 
 ## 2. Setup
 
@@ -127,16 +123,6 @@ Define columns once:
 - `Block` = tokens the mode adds to the prompt. The base is 0.
 - `Token Δ` = median reply tokens − base median (same prompt, same surface). Negative is a saving.
 - `Net Δ` = `Block` + `Token Δ`. This is the first-turn effect. Negative means the mode already wins.
-- `Break-even` = `Block` ÷ −`Token Δ`, in turns. Show `never` if `Token Δ` ≥ 0.
-
-Raw token break-even is not the cost break-even. Output tokens cost more than input tokens. Cached prompt blocks cost less than fresh ones. Compute both:
-
-```
-cost per turn      = Block × price_cache_read + Token Δ × price_output
-one-time per session = Block × price_cache_write
-```
-
-A mode wins on cost when the per-turn value is negative. Use your provider's real prices. State them.
 
 Use `usage.input`, `usage.output`, `usage.cacheRead`, `usage.cacheWrite`. In the sample record, `totalTokens` = `input + output + cacheRead`. So do not add `reasoning` again. Confirm this on your host.
 
@@ -154,7 +140,7 @@ A saving is valid only if the answer is still right. A mode that drops edge case
 2. A fixed keyword list per prompt is present (for P1: reuse, connection, overhead/cost, concurrency/wait).
 3. For `wenyan-*` modes, score by keyword meaning, not by string match.
 
-**Agentic (A).** Pass = the suite is green and no test file was edited. Run it for base, `rtk on`, `ponytail ultra`, and `combo medium`, N = 5. Report pass rate with every token, cost, time, and step number. A failed run is reported. It is not dropped.
+**Agentic (A).** Pass = the suite is green and no test file was edited. Run it for base, `rtk on`, `ponytail ultra`, and `combo medium`, N = 5. Report pass rate with every token and time number. A failed run is reported. It is not dropped.
 
 Report `Quality` (pass count out of N) beside every saving. Do not publish a saving for a mode that fails more often than base.
 
@@ -192,7 +178,7 @@ git log --oneline -n 30
 ```
 
 **Fidelity (new, required).** Savings on a passing suite prove little. Run these on the failing-test fixture:
-1. `bun run test` plain and through RTK. The failing test name, the assertion message, and the file and line must survive.
+1. `bun run test` plain and through RTK. The failing test name, the assertion message, and the file and line must survive. Use the runner-native filter when one exists (`rtk bun test` for bun; the generic `rtk test <cmd>` wrapper truncates to a tail and fails this check).
 2. The exit code is the same in both.
 3. `stderr` content is kept.
 4. `tsc --noEmit` on a file with one type error. The error must survive.
@@ -224,9 +210,9 @@ To prove RTK ran, look for `... (N earlier lines, ctrl+o to expand)` in the outp
 Put the summary table first. A reader who reads one screen must get the ranking.
 
 ```markdown
-| Mode | Surface | Block | Token Δ | Net Δ | Break-even | Quality | Tokens | Cost | Time | Steps |
-|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| `off` (base) | prose | 0 | 0 | 0 | — | 5/5 | … | 0 (free tier) | 0:52 | — |
+| Mode | Surface | Block | Token Δ | Net Δ | Quality | Tokens | Time |
+|---|---|---:|---:|---:|---:|---:|---:|
+| `off` (base) | prose | 0 | 0 | 0 | 5/5 | … | 0:52 |
 ```
 
 Then one table per mode family, one verdict line under each. Use the same column names as above. For RTK use: `Tool call | Base | After | Δ | Δ% | Δ time | Fidelity`.
@@ -249,7 +235,6 @@ Add your run newest first. Do not overwrite old numbers. If you change the proto
 - [ ] N = 5, median with min and max, three prompts per surface
 - [ ] Quality score beside every saving
 - [ ] RTK: three groups, fidelity checks, end-to-end run
-- [ ] Token, cost (real or `0 (free tier)`), time, and steps reported
-- [ ] Cost break-even computed with real prices
+- [ ] Token and time reported
 - [ ] Environment line complete
 - [ ] Working tree unchanged; `~/.tersio/settings.json` restored; sessions only in `$BENCH_TMP`
