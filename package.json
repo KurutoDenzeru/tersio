@@ -72,9 +72,9 @@
           "lite",
           "full",
           "ultra",
-          "wenyan-lite",
-          "wenyan-full",
-          "wenyan-ultra"
+          "megacave-lite",
+          "megacave-full",
+          "megacave-ultra"
         ],
         "default": "off"
       },
