@@ -1,3 +1,12 @@
+## v2.25.2
+ - Ships one Caveman rule body per register instead of one shared body: ultra reads the upstream ultracave skill and wenyan reads megacave, so levels stop costing the same 1659 tokens and ultra and wenyan get their own rules.
+ - Tracks only the upstream Caveman bodies in the updater and doctor: `rule.md` ships with the package, repair fills in missing bodies without overwriting newer fetches, and uninstall clears all three backups.
+ - Names the OpenCode plugin `@krtclcdy/tersio` and folds the rtk bash rewrite into it, so the plugin list shows one entry; install and doctor repair remove the redundant standalone rtk entry.
+ - Keeps stored per-mode defaults across installs and updates: only an explicitly chosen combo preset rewrites them.
+ - Ships Ponytail to pi as a local package instead of an npm spec, so pi stops nagging about package updates; uninstall removes the directory and its settings entry.
+ - Trims the benchmark protocol to tokens and time, dropping the unused cost, steps, and break-even axes.
+ - Skips the update-check spinner under CI, where its stop newline pushed the welcome tips off a 20-row terminal.
+
 ## v2.25.1
  - Removes rtk's OpenCode plugin alongside the tree on `tersio uninstall --host opencode`, so no broken hook file is left behind.
 
