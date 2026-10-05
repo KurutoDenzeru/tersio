@@ -652,11 +652,22 @@ async function stepPiLayer(options: InstallOptions): Promise<void> {
 }
 
 // A local dir, not an npm spec: pi only version-checks npm entries, so this avoids the update nag.
+// All six skills ship, not just the default one: the sibling skills are what `/ponytail-audit`
+// and friends resolve against, and pi loads skills from the package dir.
+const PI_PONYTAIL_SKILLS = [
+  'ponytail',
+  'ponytail-audit',
+  'ponytail-debt',
+  'ponytail-gain',
+  'ponytail-help',
+  'ponytail-review',
+] as const;
+
 const PI_PONYTAIL_FILES = [
   'pi-extension/index.js',
   'hooks/ponytail-instructions.js',
   'hooks/ponytail-config.js',
-  'skills/ponytail/SKILL.md',
+  ...PI_PONYTAIL_SKILLS.map((name) => `skills/${name}/SKILL.md`),
 ] as const;
 
 const PI_PONYTAIL_PACKAGE = `${JSON.stringify({ name: 'ponytail', version: '0.0.0', private: true, pi: { extensions: ['./pi-extension/index.js'], skills: ['./skills'] } }, null, 2)}\n`;
