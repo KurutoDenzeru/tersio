@@ -144,11 +144,9 @@ test("uninstall --host pi clears the pi tree, the package, and the shared defaul
     expect(result.stdout).toMatch(/\[dry-run\] would remove .*\.pi\/agent\/extensions\/caveman-session/);
     expect(result.stdout).toMatch(/\[dry-run\] would remove .*\.tersio\/settings\.json/);
     expect(result.stdout, "OMP targets stay out of a pi uninstall").not.toMatch(/\.omp\/agent\/extensions/);
-    // Ponytail rides in on the same install, so it leaves on the same command.
+    // Ponytail now lives in a local package dir we wrote, not in pi's skills dir.
     expect(result.stdout).toMatch(/\[dry-run\] would run: pi remove npm:@dietrichgebert\/ponytail/);
-    expect(result.stdout).toMatch(/\[dry-run\] would remove .*\/skills\/ponytail/);
-    // Only the skill dirs we copied: pi's own skills dir belongs to the user.
-    expect(result.stdout, "never pi's whole skills dir").not.toMatch(/would remove \S*\/skills$/m);
+    expect(result.stdout).toMatch(/\.pi\/agent\/ponytail \(local Ponytail package\)/);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

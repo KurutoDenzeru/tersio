@@ -56,19 +56,26 @@ async function piRemove(spec: string, shouldDryRun: boolean): Promise<void> {
   }
 }
 
-// Only the skill directories the installer copied, never pi's own skills dir.
+// The installer writes a local package dir; drop it and its settings entry.
 async function removeCopiedPonytailSkills(shouldDryRun: boolean): Promise<void> {
-  const source = findHoistedPackage(PONYTAIL_PKG, path.dirname(fileURLToPath(import.meta.url)), 'skills');
-  if (!source) return;
-  for (const entry of await fs.readdir(source, { withFileTypes: true })) {
-    if (entry.isDirectory()) await removeUninstallTarget(path.join(piAgentDir(), 'skills', entry.name), shouldDryRun);
-  }
+  const agentDir = piAgentDir();
+  const settingsPath = path.join(agentDir, 'settings.json');
+  try {
+    const settings = JSON.parse(await fs.readFile(settingsPath, 'utf8')) as { packages?: unknown[] };
+    if (!Array.isArray(settings.packages)) return;
+    const kept = settings.packages.filter((p) => p !== path.join(agentDir, 'ponytail'));
+    if (kept.length === settings.packages.length) return;
+    if (shouldDryRun) sayTagged(`  [dry-run] would drop the local ponytail entry from ${settingsPath}`);
+    else await fs.writeFile(settingsPath, `${JSON.stringify({ ...settings, packages: kept }, null, 2)}\n`, 'utf8');
+  } catch { /* no settings file, nothing to clean */ }
+  await removeUninstallTarget(path.join(agentDir, 'ponytail'), shouldDryRun);
 }
 
 // pi removal delegates to pi remove; always list and confirm first.
 async function removePiLayer(host: HostEntry, shouldDryRun: boolean, shouldRemovePonytail: boolean, shouldRemoveRtk: boolean, confirmed: boolean): Promise<boolean> {
   const targets = PI_TREE_DIRS.map((dir) => path.join(piAgentDir(), 'extensions', dir));
   const rtkWiring = path.join(piAgentDir(), 'extensions', 'rtk.ts');
+  const piPonytail = path.join(piAgentDir(), 'ponytail');
 
   if (!host.installed && !host.declared) {
     sayTagged(`  [skip] ${host.label} — nothing installed (${host.installCmd})`);
@@ -76,7 +83,10 @@ async function removePiLayer(host: HostEntry, shouldDryRun: boolean, shouldRemov
   }
   console.log('Will remove:');
   for (const t of targets) console.log(`  ${t}`);
-  if (shouldRemovePonytail) console.log(`  npm:${PONYTAIL_PKG} (pi package)`);
+  if (shouldRemovePonytail) {
+    console.log(`  npm:${PONYTAIL_PKG} (pi package)`);
+    console.log(`  ${piPonytail} (local Ponytail package)`);
+  }
   if (shouldRemoveRtk) console.log(`  ${rtkWiring} (rtk wiring)`);
   console.log(`  ${tersioSettingsFile()} (session defaults)`);
   if (!confirmed && !(await confirmDestructive(`Remove Tersio from ${host.label}?`))) { closeRL(); return false; }

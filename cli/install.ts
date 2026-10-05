@@ -641,46 +641,70 @@ async function stepPiLayer(options: InstallOptions): Promise<void> {
   if (declared) sayTagged(`  [note] pi also has a tersio package (${declared}) — remove one, or both copies load: pi remove npm:${PACKAGE_NAME}`);
 
   if (!options.quiet) console.log(`  Pi — write the extension tree (${extDir})`);
-  const cavemanRule = await fetchCavemanRule(options);
   await stepSharedSessionState(extDir, options);
   // OMP loads rtk-session from its plugin manifest, so only the pi tree copies it.
   await copySources(extDir, filesUnder('rtk-session'), 'rtk-session/index.ts', options);
-  await stepCaveman(extDir, cavemanRule, options);
+  await stepCaveman(extDir, options);
   await stepCombo(extDir, options);
   await stepTersioCommands(extDir, options);
   await stepUpdater(extDir, options);
   await stepPonytailForPi(agentDir, options);
 }
 
-// Ponytail for pi: install the package, or copy the bundled skills offline.
+// A local dir, not an npm spec: pi only version-checks npm entries, so this avoids the update nag.
+const PI_PONYTAIL_FILES = [
+  'pi-extension/index.js',
+  'hooks/ponytail-instructions.js',
+  'hooks/ponytail-config.js',
+  'skills/ponytail/SKILL.md',
+] as const;
+
+const PI_PONYTAIL_PACKAGE = `${JSON.stringify({ name: 'ponytail', version: '0.0.0', private: true, pi: { extensions: ['./pi-extension/index.js'], skills: ['./skills'] } }, null, 2)}\n`;
+
 async function stepPonytailForPi(agentDir: string, options: InstallOptions): Promise<void> {
-  if (!options.quiet) console.log('  Ponytail — ensure the pi package');
-  if (!options.dryRun) {
+  if (!options.quiet) console.log('  Ponytail — write the local pi package');
+  const root = findHoistedPackage('@dietrichgebert/ponytail', path.dirname(fileURLToPath(import.meta.url)));
+  const dest = path.join(agentDir, 'ponytail');
+  if (!root) {
+    console.log('  [skip] Ponytail package not found next to the CLI');
+    console.log('  [hint] The /ponytail command will not work; run: tersio update --host pi');
+    return;
+  }
+  await writeIfChanged(path.join(dest, 'package.json'), PI_PONYTAIL_PACKAGE, options);
+  for (const rel of PI_PONYTAIL_FILES) {
+    let text: string;
     try {
-      await execNetwork('Installing Ponytail for pi', 'pi', ['install', 'npm:@dietrichgebert/ponytail'], { timeout: 300000 });
+      text = await fs.readFile(path.join(root, ...rel.split('/')), 'utf8');
+    } catch {
+      sayTagged(`  [fail] Ponytail file missing: ${rel}`);
       return;
-    } catch (e) {
-      sayTagged(`  [fail] pi install ponytail: ${shortError(e)}`);
     }
+    await writeIfChanged(path.join(dest, ...rel.split('/')), text, options);
   }
-  const skills = findHoistedPackage('@dietrichgebert/ponytail', path.dirname(fileURLToPath(import.meta.url)), 'skills');
-  if (!skills) {
-    console.log('  [skip] Ponytail package not found next to the CLI — skills not copied');
-    console.log('  [hint] The /ponytail command will not work; run: pi install npm:@dietrichgebert/ponytail');
+  if (options.dryRun) return;
+  try {
+    await execNetwork('Removing the pi npm copy of Ponytail', 'pi', ['remove', 'npm:@dietrichgebert/ponytail'], { timeout: 120000 });
+  } catch (e) {
+    sayTagged(`  [warn] pi remove ponytail: ${shortError(e)}`);
+  }
+  await registerPiLocalPonytail(agentDir, dest, options);
+}
+
+// pi lists package sources in settings; swap the npm spec for the local dir.
+async function registerPiLocalPonytail(agentDir: string, dest: string, options: InstallOptions): Promise<void> {
+  const settingsPath = path.join(agentDir, 'settings.json');
+  let settings: Record<string, unknown>;
+  try {
+    settings = JSON.parse(await fs.readFile(settingsPath, 'utf8')) as Record<string, unknown>;
+  } catch {
     return;
   }
-  const dest = path.join(agentDir, 'skills');
-  if (options.dryRun) {
-    if (verbose && !options.quiet) sayTagged(`  [dry-run] would copy Ponytail skills to ${dest}`);
-    return;
-  }
-  for (const entry of await fs.readdir(skills, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue;
-    const to = path.join(dest, entry.name);
-    await fs.rm(to, { recursive: true, force: true });
-    await fs.cp(path.join(skills, entry.name), to, { recursive: true });
-    if (!options.quiet) sayTagged(`  [write] skill ${entry.name} → ${to}`);
-  }
+  const packages = (Array.isArray(settings.packages) ? settings.packages : []) as unknown[];
+  const kept = packages.filter((p) => typeof p !== 'string' || !p.startsWith('npm:@dietrichgebert/ponytail'));
+  if (!kept.includes(dest)) kept.push(dest);
+  settings.packages = kept;
+  await fs.writeFile(settingsPath, `${JSON.stringify(settings, null, 2)}\n`, 'utf8');
+  if (!options.quiet) sayTagged(`  [write] pi package source → ${dest}`);
 }
 
 async function runInstall(): Promise<void> {
