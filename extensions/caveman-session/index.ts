@@ -8,20 +8,19 @@ import { readCavemanDefault } from '../shared/plugin-settings.ts';
 import type { ExtensionApi, ExtensionCtx, InputEvent, SessionEntry, SystemPromptEvent } from '../shared/types.ts';
 
 const CAVERN_DIR = dirname(fileURLToPath(import.meta.url));
-const RULE_PATH = join(CAVERN_DIR, 'rule.md');
-
-// Fail loud: a wrong rule reads to the model as the real one.
-function readFullRule(): string {
-  try { return readFileSync(RULE_PATH, 'utf8'); } catch {
-    return 'Caveman full requested, but rule.md is missing. Run: tersio doctor --fix extensions';
-  }
-}
+// Upstream ships one skill per register: default, ultracave, megacave.
+const RULE_FILES = { lite: 'rule.md', full: 'rule.md', ultra: 'rule-ultra.md', 'wenyan-lite': 'rule-wenyan.md', 'wenyan-full': 'rule-wenyan.md', 'wenyan-ultra': 'rule-wenyan.md' };
 
 const DEFAULT_MODE = 'off';
 
-// Upstream ships one SKILL.md; the level is a directive inside it, so swap only the header.
 function buildInstruction(mode: string): string {
-  return `Caveman ${mode} active for this session.\n${readFullRule()}`;
+  const name = RULE_FILES[mode as keyof typeof RULE_FILES] ?? RULE_FILES.full;
+  // Fail loud: a wrong rule reads to the model as the real one.
+  let body: string;
+  try { body = readFileSync(join(CAVERN_DIR, name), 'utf8'); } catch {
+    body = `Caveman ${mode} requested, but ${name} is missing. Run: tersio doctor --fix extensions`;
+  }
+  return `Caveman ${mode} active for this session.\n${body}`;
 }
 
 function resolveMode(entries: SessionEntry[] | null | undefined, fallback: string = DEFAULT_MODE): string {

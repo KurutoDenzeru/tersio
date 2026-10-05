@@ -23,6 +23,8 @@ export const TREE_FILES: readonly string[] = [
   'lib/utils.ts',
   'caveman-session/index.ts',
   'caveman-session/rule.md',
+  'caveman-session/rule-ultra.md',
+  'caveman-session/rule-wenyan.md',
   'rtk-session/index.ts',
   'combo-toggle/index.ts',
   'tersio-commands/index.ts',

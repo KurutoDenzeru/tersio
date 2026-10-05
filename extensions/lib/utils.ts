@@ -27,7 +27,8 @@ export function homeDir(): string {
 }
 
 export const RTK_RELEASE_API = 'https://api.github.com/repos/rtk-ai/rtk/releases/latest';
-export const CAVEMAN_REMOTE_RULE = 'https://raw.githubusercontent.com/JuliusBrussee/caveman/main/skills/caveman/SKILL.md';
+export const CAVEMAN_REMOTE_ULTRA = 'https://raw.githubusercontent.com/JuliusBrussee/caveman/main/skills/ultracave/SKILL.md';
+export const CAVEMAN_REMOTE_WENYAN = 'https://raw.githubusercontent.com/JuliusBrussee/caveman/main/skills/megacave/SKILL.md';
 
 export interface RtkPlatformSpec {
   triple: string;
