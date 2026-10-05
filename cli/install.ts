@@ -85,11 +85,8 @@ async function stepPonytail(pluginsDir: string, options: InstallOptions): Promis
   if (!ponytailExtExists) {
     console.log('  [skip] Bundled Ponytail pi-extension/index.js still not found — skill-only mode');
     console.log('  [hint] The /ponytail command won\'t work, but ponytail skills will still load');
-  } else {
-    await applyPonytailInjectionPatch(ponytailExtPath, options);
-    if (!options.dryRun && !options.quiet) {
-      debug('Bundled Ponytail pi-extension found; OMP loads it from the plugin manifest');
-    }
+  } else if (!options.dryRun && !options.quiet) {
+    debug('Bundled Ponytail pi-extension found; OMP loads it from the plugin manifest');
   }
   await ensurePonytailConfigValue('defaultMode', 'off', options);
   // hideStatus=true keeps the upstream ponytail bar hidden; combo owns the bar.
@@ -664,68 +661,6 @@ const PI_PONYTAIL_FILES = [
 
 const PI_PONYTAIL_PACKAGE = `${JSON.stringify({ name: 'ponytail', version: '0.0.0', private: true, pi: { extensions: ['./pi-extension/index.js'], skills: ['./skills'] } }, null, 2)}\n`;
 
-// pi records `systemPromptOptions.appendSystemPrompt` into `sections.addendum`, but a
-// handler that *returns* `systemPrompt` sets `forceSystemPrompt`, which replaces the
-// prompt with a plain content string and is never written to the transcript. Upstream
-// Ponytail returns it, so Ponytail is invisible to every session audit on pi. Swap the
-// return for a write on the persisted channel; the anchor is exact, so an upstream
-// rewrite leaves the file untouched instead of half-patched.
-const PONYTAIL_INJECT_ANCHOR = [
-  '    // Guard a null/undefined event or a missing systemPrompt: don\'t crash, and',
-  '    // don\'t prepend the literal string "undefined" to the prompt (#439, #440).',
-  '    const base = event?.systemPrompt ? `${event.systemPrompt}\\n\\n` : "";',
-  '    return { systemPrompt: `${base}${getPonytailInstructions(currentMode)}` };',
-].join('\n');
-
-const PONYTAIL_INJECT_REPLACEMENT = [
-  '    // Write appendSystemPrompt instead of returning systemPrompt: pi persists the',
-  '    // former into sections.addendum and drops the latter (#439, #440).',
-  '    const instruction = getPonytailInstructions(currentMode);',
-  '    const options = event?.systemPromptOptions;',
-  '    if (options && typeof options.appendSystemPrompt === "string") {',
-  '      if (options.appendSystemPrompt.includes(instruction)) return;',
-  '      const joiner = options.appendSystemPrompt ? "\\n\\n" : "";',
-  '      options.appendSystemPrompt = `${options.appendSystemPrompt}${joiner}${instruction}`;',
-  '      return;',
-  '    }',
-  '    // Hosts without the appendSystemPrompt channel still need the dedupe: the',
-  '    // /combo extension injects the same block, and handler order decides who wins.',
-  '    const base = event?.systemPrompt;',
-  '    if (typeof base === "string" && base.includes(instruction)) return;',
-  '    return { systemPrompt: base ? `${base}\\n\\n${instruction}` : instruction };',
-].join('\n');
-
-/** True when the source already writes the persisted channel (patched or upstream-fixed). */
-export function ponytailUsesPersistedChannel(text: string): boolean {
-  return text.includes(PONYTAIL_INJECT_REPLACEMENT);
-}
-
-/**
- * Route Ponytail's pi injection through `appendSystemPrompt`. Returns null when the
- * upstream handler no longer matches the anchor, so the caller can warn instead of
- * writing a file it cannot vouch for.
- */
-export function patchPonytailInjection(text: string): string | null {
-  if (ponytailUsesPersistedChannel(text)) return text;
-  if (!text.includes(PONYTAIL_INJECT_ANCHOR)) return null;
-  return text.replace(PONYTAIL_INJECT_ANCHOR, PONYTAIL_INJECT_REPLACEMENT);
-}
-
-/** Apply the patch to an installed copy, warning instead of writing a file we cannot vouch for. */
-async function applyPonytailInjectionPatch(file: string, options: InstallOptions): Promise<string | null> {
-  const source = await readTextIfExists(file);
-  if (source === null) return null;
-  const patched = patchPonytailInjection(source);
-  if (patched === null) {
-    sayTagged(`  [warn] Ponytail injection handler changed upstream; left ${file} unmodified`);
-    sayTagged(`  [hint] Ponytail still loads, but /combo and upstream may both inject it`);
-    return null;
-  }
-  if (patched === source) return source;
-  if (!options.dryRun) await writeIfChanged(file, patched, options);
-  return patched;
-}
-
 async function stepPonytailForPi(agentDir: string, options: InstallOptions): Promise<void> {
   if (!options.quiet) console.log('  Ponytail — write the local pi package');
   const root = findHoistedPackage('@dietrichgebert/ponytail', path.dirname(fileURLToPath(import.meta.url)));
@@ -746,7 +681,6 @@ async function stepPonytailForPi(agentDir: string, options: InstallOptions): Pro
     }
     await writeIfChanged(path.join(dest, ...rel.split('/')), text, options);
   }
-  await applyPonytailInjectionPatch(path.join(dest, 'pi-extension', 'index.js'), options);
   if (options.dryRun) return;
   try {
     await execNetwork('Removing the pi npm copy of Ponytail', 'pi', ['remove', 'npm:@dietrichgebert/ponytail'], { timeout: 120000 });
