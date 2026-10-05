@@ -22,14 +22,18 @@ interface TestPi {
 
 interface TestCtx {
   notifications: string[];
+  statuses: Map<string, string>;
   sessionManager: { getBranch: () => SessionEntry[] };
-  ui: { setStatus(): void; notify(message: string): void };
+  ui: { setStatus(name: string, value: string | undefined): void; notify(message: string): void };
 }
 
 function harness(entries: SessionEntry[] = []): { pi: TestPi; ctx: TestCtx } {
   const commands = new Map<string, CommandHandler>();
   const handlers = new Map<string, EventHandler>();
   const notifications: string[] = [];
+  // The real setStatus API is keyed; `notifications` mirrors the existing assertions on the
+  // combo line, and `statuses` keeps every key so the caveman slot can be asserted too.
+  const statuses = new Map<string, string>();
   cavemanSessionExtension({
     // The injected zod is how the extensions recognise an OMP host.
     zod: { z: {} },
@@ -42,8 +46,12 @@ function harness(entries: SessionEntry[] = []): { pi: TestPi; ctx: TestCtx } {
   const ctx = {
     hasUI: true,
     notifications,
+    statuses,
     sessionManager: { getBranch: () => entries },
-    ui: { setStatus(_n: string, v: string | undefined) { if (v !== undefined) notifications.push(v); }, notify(message: string) { notifications.push(message); } },
+    ui: {
+      setStatus(name: string, v: string | undefined) { if (v !== undefined) { statuses.set(name, v); if (name === 'tersio') notifications.push(v); } },
+      notify(message: string) { notifications.push(message); },
+    },
   };
   return { pi: { commands, handlers }, ctx: ctx as TestCtx };
 }
@@ -208,4 +216,18 @@ test("a missing rule.md names the fix instead of shipping a degraded paraphrase"
   );
   expect(source).not.toMatch(/FALLBACK_FULL_RULE/);
   expect(source).toMatch(/is missing\. Run: tersio doctor --fix extensions/);
+});
+
+// Upstream Caveman's skill tells the model to relay `Caveman mode: <mode>` for
+// `/caveman status`, so the hook has to publish that exact string somewhere the model
+// can read it back, not only inside the combo line.
+test("the caveman status slot carries the mode for the model's status reply", async () => {
+  resetSharedComboState();
+  const { pi, ctx } = harness([]);
+  await pi.commands.get("caveman")!("ultra", ctx);
+  expect(ctx.statuses.get("caveman")).toBe("Caveman mode: ultra");
+  expect(ctx.statuses.get("tersio")).toMatch(/🧩 combo CUSTOM: 🪨caveman=ULTRA/);
+
+  await pi.commands.get("caveman")!("off", ctx);
+  expect(ctx.statuses.get("caveman")).toBe("Caveman mode: unknown");
 });
