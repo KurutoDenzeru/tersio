@@ -243,6 +243,30 @@ test("update rejects an unknown host before doing anything", () => {
   }
 });
 
+test("apply-update without flags preserves a customized per-mode default", () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-preserve-custom-"));
+  try {
+    writeLock(home, {
+      "@krtclcdy/tersio": {
+        comboDefault: "balanced",
+        cavemanDefault: "full",
+        rtkDefault: true,
+        ponytailDefault: "ultra",
+      },
+    });
+    const result = spawnSync(process.execPath, [installer, "--apply-update", "--dry-run", "--yes"], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 15000,
+      env: cliEnv(home),
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/Defaults: combo=balanced \(caveman=full · rtk=on · ponytail=ultra\)/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test("apply-update without flags preserves stored combo defaults", () => {
   // The clobber regression: `tersio update` delegates to --apply-update with
   // no flags, so resolveProfile rebuilt from all-off and wiped the default.

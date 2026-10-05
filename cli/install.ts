@@ -473,6 +473,7 @@ async function resolveProfile(opts: { quiet?: boolean } = {}): Promise<Profile> 
   const profile = await storedProfile();
 
   // One numbered prompt for all three modes, for a real terminal user with no default flags. Never for --apply-update, and never for a script.
+  let comboChosen = comboDefaultFlag !== undefined;
   if (tty() && !profileFlagsGiven && !applyUpdate) {
     const choice = await askInteractiveChoice('Session-start defaults — Combo preset', [
       { value: 'off', label: 'off' },
@@ -480,8 +481,10 @@ async function resolveProfile(opts: { quiet?: boolean } = {}): Promise<Profile> 
       { value: 'balanced', label: 'balanced', hint: 'caveman=full, rtk=on, ponytail=full' },
       { value: 'max', label: 'max', hint: 'caveman=ultra, rtk=on, ponytail=ultra' },
     ], profile.comboDefault);
-    if (choice.status === 'selected') profile.comboDefault = choice.value;
-    else {
+    if (choice.status === 'selected') {
+      profile.comboDefault = choice.value;
+      comboChosen = true;
+    } else {
       closeRL();
       process.exit(130);
     }
@@ -489,10 +492,13 @@ async function resolveProfile(opts: { quiet?: boolean } = {}): Promise<Profile> 
 
   // Explicit flags always win over the Combo preset.
   if (comboDefaultFlag !== undefined) profile.comboDefault = comboDefaultFlag;
-  const preset = COMBO_PRESET_MODES[profile.comboDefault] ?? COMBO_PRESET_MODES.off;
-  profile.cavemanDefault = preset.caveman;
-  profile.rtkDefault = preset.rtk;
-  profile.ponytailDefault = preset.ponytail;
+  // A stored per-mode choice survives installs and updates; only a chosen preset rewrites it.
+  if (comboChosen) {
+    const preset = COMBO_PRESET_MODES[profile.comboDefault] ?? COMBO_PRESET_MODES.off;
+    profile.cavemanDefault = preset.caveman;
+    profile.rtkDefault = preset.rtk;
+    profile.ponytailDefault = preset.ponytail;
+  }
   if (cavemanDefaultFlag !== undefined) profile.cavemanDefault = cavemanDefaultFlag;
   if (rtkDefaultFlag !== undefined) profile.rtkDefault = rtkDefaultFlag === 'on';
   if (ponytailDefaultFlag !== undefined) profile.ponytailDefault = ponytailDefaultFlag;
@@ -506,7 +512,8 @@ let updatePromptDone = false;
 // Bare `tersio` at a terminal picks a command; scripts and flags install.
 async function runCommandMenu(): Promise<void> {
   printWelcome();
-  const newer = await checkForUpdate();
+  // Interactive launches always check; scripts use the cached verdict.
+  const newer = await checkForUpdate(true);
   if (typeof newer === 'string' && !dryRun) {
     const answer = await askInteractiveConfirm(`tersio ${newer} is available (installed ${PACKAGE_VERSION}). Install it now?`);
     if (answer.status === 'confirmed' && answer.value) {
