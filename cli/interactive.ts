@@ -25,9 +25,9 @@ type InteractiveConfirm = { status: 'confirmed'; value: boolean } | { status: 'c
 
 let spinnerDepth = 0;
 
-// Run async work under a TTY-only timer spinner. The spinner is cleared before the caller prints its normal result line, preserving locked output shapes.
+// Clack's spinner stop writes an extra newline under CI, shifting later output by a row.
 async function withInteractiveSpinner<T>(message: string, work: (update: (message: string) => void) => Promise<T>): Promise<T> {
-  if (!tty() || spinnerDepth > 0) return work(() => { });
+  if (!tty() || spinnerDepth > 0 || process.env.CI === 'true') return work(() => { });
   // Clack manages stdin itself. Close the legacy question interface before its first use; non-interactive callers never reach this branch.
   closeRL();
   const active: SpinnerResult = clackSpinner({ indicator: 'timer' });

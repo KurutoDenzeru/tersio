@@ -3,6 +3,8 @@
 // screen has to be rendered: this needs `pyte`, and skips without it.
 import { describe, expect, test } from "vitest";
 import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -69,6 +71,26 @@ function screenAt(rows: number): string[] {
 
 const LABELS = ["Install add-ons", "Update", "Doctor", "Settings", "Usage", "Dashboard", "Uninstall"];
 
+// Clack's spinner stop writes an extra newline under CI. A slow update check
+// used to leave that residue above the menu and push the tips off a 20-row
+// screen. Slow the registry reply past one spinner frame to prove it is gone.
+function screenAtCi(rows: number): string[] {
+  const bin = mkdtempSync(path.join(os.tmpdir(), "tersio-slow-npm-"));
+  try {
+    writeFileSync(`${bin}/npm`, "#!/bin/sh\nsleep 1\necho 2.25.1\n", { mode: 0o755 });
+    const result = spawnSync("python3", ["-c", PY, String(rows), process.execPath, installer], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 30000,
+      env: { ...process.env, TERM: "xterm-256color", CI: "true", PATH: `${bin}${process.env.PATH ? `:${process.env.PATH}` : ""}` },
+    });
+    expect(result.status, result.stderr).toBe(0);
+    return JSON.parse(result.stdout) as string[];
+  } finally {
+    rmSync(bin, { recursive: true, force: true });
+  }
+}
+
 describe.skipIf(!havePyte)("menu layout", () => {
   for (const rows of [40, 30, 24, 20]) {
     test(`the whole welcome fits without scrolling at ${rows} rows`, () => {
@@ -83,6 +105,13 @@ describe.skipIf(!havePyte)("menu layout", () => {
       expect(lines.some((l) => l.includes("Uninstall")), `last option visible at ${rows} rows`).toBe(true);
     }, 20000);
   }
+
+  test("a slow update check leaves no spinner residue under CI at 20 rows", () => {
+    const lines = screenAtCi(20);
+    expect(lines.some((l) => l.includes("set up add-ons")), "tips visible").toBe(true);
+    expect(lines.some((l) => l.includes("Install add-ons")), "menu visible").toBe(true);
+    expect(lines.some((l) => l.includes("Checking npm registry")), "no spinner residue").toBe(false);
+  }, 20000);
 
   test("the scissor art renders whole on a full-height terminal", () => {
     const lines = screenAt(30);
