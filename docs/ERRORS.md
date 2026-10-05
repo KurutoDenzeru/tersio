@@ -21,6 +21,16 @@ Recurring mistakes log. Committed to git; reviewed periodically to promote entri
 **Root cause:** Verified against moving targets. Assumed frozen Date + animations-off without checking the init script survived page load; assumed exports were deterministic while the ledger appends every session turn.
 **Prevention rule:** Freeze data first (snapshot DB via TERSIO_USAGE_DB, assert identical token totals in both exports), harden init scripts (guard document.head, MutationObserver re-apply), and re-run same-file double capture to prove 0/16 noise floor before comparing conversions. Disable recharts JS entrance animation (isAnimationActive={false}) — CSS kill-switches cannot stop it.
 
+## 2026-10-04 — Benchmark probes raced the sweep over shared settings file
+**What happened:** Manual diagnostic `run-one` probes ran while the background prose/code sweep was in flight. Both set modes through `~/.tersio/settings.json`, so combo samples measured ponytail-only prompt deltas (+1241) instead of the full block (+2968), and settings showed leftover modes (wenyan-ultra/off) from probes.
+**Root cause:** Ran probes against the same mutable settings file the sweep driver sequences through. Two writers, no lock.
+**Prevention rule:** Never run manual mode-setting probes while a sweep driver runs. Serialize everything through one driver; verify with `tail drive.log` before probing.
+
+## 2026-10-04 — Backticks nested inside a template-literal code generator
+**What happened:** `gen-report.mjs` embedded markdown code spans (backticks) inside a JS template literal and failed with `Unterminated string literal`.
+**Root cause:** Assumed escaped backticks scale; they don't stay readable or safe in a 100-line template.
+**Prevention rule:** In generator scripts, use a placeholder char (e.g. `§`) for code spans and replace with `String.fromCharCode(96)` at write time. No literal backticks inside template literals.
+
 ## 2026-09-29 — Unpriced model assumed unknown instead of aliased
 **What happened:** The Dashboard showed `Space-Bunny` at $246.52 beside `stealth/Space-Bunny-Alpha` at $0.00. The first id matched no feed key, so it fell to the Sonnet-class default with `known:false` and reported a cost that was never charged.
 **Root cause:** Read "no feed match" as "unpriced model" without checking for another spelling of the same model. The feed carries it as `openrouter/stealth/space-bunny-alpha`, priced at zero, and the plain alias missed it because the lookup only tried exact keys before the default.
