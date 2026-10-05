@@ -66,7 +66,7 @@ test("dry-run previews shared bridge before dependent extensions without writing
   expect(result.status, result.stderr).toBe(0);
   const shared = result.stdout.indexOf("Shared files — sync session bridge");
   const rtk = result.stdout.indexOf("RTK session — install session mode");
-  const caveman = result.stdout.indexOf("Caveman — fetch rule and install session mode");
+  const caveman = result.stdout.indexOf("Caveman — install session mode and rule bodies");
   expect(shared >= 0, result.stdout).toBeTruthy();
   expect(rtk > shared, result.stdout).toBeTruthy();
   expect(caveman > shared, result.stdout).toBeTruthy();

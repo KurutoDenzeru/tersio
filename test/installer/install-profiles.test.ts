@@ -146,7 +146,7 @@ test("installer dry-run installs every user-scope extension", () => {
   const result = run("install", "--dry-run", "--yes");
   expect(result.status, result.stderr).toBe(0);
   expect(result.stdout).toMatch(/RTK session — install session mode/);
-  expect(result.stdout).toMatch(/Caveman — fetch rule and install session mode/);
+  expect(result.stdout).toMatch(/Caveman — install session mode and rule bodies/);
   expect(result.stdout).toMatch(/Tersio commands — install \/tersio root command/);
   expect(result.stdout).not.toMatch(/mode reinforcement/i);
 });

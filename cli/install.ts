@@ -25,7 +25,7 @@ import { runUsage } from './usage.ts';
 import { runDashboard } from './dashboard.ts';
 import { wireRtkOmp, wireRtkOpencode, wireRtkPi } from './rtk-wiring.ts';
 import {
-  CAVEMAN_REMOTE_RULE, RTK_RELEASE_API, RtkRelease, RtkReleaseAsset, fetchJson, findFile, findHoistedPackage, httpsGet,
+  CAVEMAN_REMOTE_ULTRA, CAVEMAN_REMOTE_WENYAN, RTK_RELEASE_API, RtkRelease, RtkReleaseAsset, fetchJson, findFile, findHoistedPackage, httpsGet,
   httpsDownload, parseChecksum, piAgentDir, readTextIfExists, resolveRtkBinary, rtkPlatformSpec, sha256File,
 } from '../extensions/lib/utils.ts';
 import { formatCliStatus, storedProfile, storedProfileSync, writePluginSettings } from './profile.ts';
@@ -361,35 +361,35 @@ async function stepRtkSession(extDir: string, options: WriteOptions): Promise<vo
   await copySources(extDir, filesUnder('rtk-session'), 'rtk-session/index.ts', options);
 }
 
-// One fetch serves the install; dry runs stay offline and preview the bundled rule's destination.
-async function fetchCavemanRule(options: WriteOptions): Promise<string | null> {
-  const bundled = await readTextIfExists(sourcePath('caveman-session/rule.md'));
-  if (options.dryRun) return bundled;
-  try {
-    return await withInteractiveSpinner('Fetching Caveman rule', () => httpsGet(CAVEMAN_REMOTE_RULE));
-  } catch (e) {
-    if (bundled !== null) {
-      debug(`Using bundled Caveman rule: ${(e as Error).message}`);
-      return bundled;
-    }
-    sayTagged(`  [warn] Could not fetch caveman rule: ${(e as Error).message}`);
-    return null;
-  }
-}
+// rule.md ships with the package; the other bodies track upstream skills.
+const CAVEMAN_RULES: ReadonlyArray<[name: string, remote: string | null]> = [
+  ['rule.md', null],
+  ['rule-ultra.md', CAVEMAN_REMOTE_ULTRA],
+  ['rule-wenyan.md', CAVEMAN_REMOTE_WENYAN],
+];
 
-async function stepCaveman(extDir: string, rule: string | null, options: WriteOptions): Promise<void> {
-  if (!options.quiet) console.log('  Caveman — fetch rule and install session mode');
+async function stepCaveman(extDir: string, options: WriteOptions): Promise<void> {
+  if (!options.quiet) console.log('  Caveman — install session mode and rule bodies');
   const cavemanDir = path.join(extDir, 'caveman-session');
   if (!options.dryRun) await fs.mkdir(cavemanDir, { recursive: true });
 
-  const ruleDest = path.join(cavemanDir, 'rule.md');
-  if (rule === null && (await readTextIfExists(ruleDest)) !== null) {
-    debug('Keeping existing rule.md');
-  } else if (rule === null) {
-    console.log('  [skip] Caveman rule.md unavailable');
-    sayTagged(`  [hint] Manual: ${CAVEMAN_REMOTE_RULE}`);
-  } else {
-    await writeIfChanged(ruleDest, rule, options);
+  for (const [name, remote] of CAVEMAN_RULES) {
+    const bundled = await readTextIfExists(sourcePath(`caveman-session/${name}`));
+    let rule = bundled;
+    if (remote && !options.dryRun) {
+      try {
+        rule = await withInteractiveSpinner(`Fetching Caveman ${name}`, () => httpsGet(remote));
+      } catch (e) {
+        if (bundled === null) sayTagged(`  [warn] Could not fetch caveman ${name}: ${(e as Error).message}`);
+        else debug(`Using bundled Caveman ${name}: ${(e as Error).message}`);
+      }
+    }
+    if (rule === null) {
+      if (remote) sayTagged(`  [hint] Manual: ${remote}`);
+      console.log(`  [skip] Caveman ${name} unavailable`);
+    } else {
+      await writeIfChanged(path.join(cavemanDir, name), rule, options);
+    }
   }
 
   await copySources(extDir, filesUnder('caveman-session').filter(([, to]) => to.endsWith('index.ts')), 'caveman-session/index.ts', options);
@@ -791,15 +791,13 @@ async function runInstall(): Promise<void> {
     return;
   }
 
-  const cavemanRule = await fetchCavemanRule(installOptions);
-
   await capture('shared', () => stepSharedSessionState(userExtDir, installOptions));
   let selfPlugin = false;
   await capture('self-plugin', async () => { selfPlugin = await stepSelfPlugin(OMP_PLUGINS_DIR, installOptions); });
   await capture('ponytail', () => stepPonytail(OMP_PLUGINS_DIR, installOptions));
   await capture('rtk', () => stepRtk(BUN_BIN_DIR, installOptions));
   await capture('rtk session', () => stepRtkSession(userExtDir, installOptions));
-  await capture('caveman', () => stepCaveman(path.join(OMP_PLUGINS_DIR, 'node_modules', '@krtclcdy', 'tersio', 'extensions'), cavemanRule, installOptions));
+  await capture('caveman', () => stepCaveman(path.join(OMP_PLUGINS_DIR, 'node_modules', '@krtclcdy', 'tersio', 'extensions'), installOptions));
   await capture('combo', () => stepCombo(userExtDir, installOptions));
   await capture('commands', () => stepTersioCommands(userExtDir, installOptions));
   await capture('updater', () => stepUpdater(userExtDir, installOptions));

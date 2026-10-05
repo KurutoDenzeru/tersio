@@ -55,6 +55,8 @@ function seed(home: string) {
   mkdirSync(pluginCaveman, { recursive: true });
   writeFileSync(path.join(pluginCaveman, "rule.md"), "fetched rule", "utf8");
   writeFileSync(path.join(pluginCaveman, "rule.md.bak"), "previous rule", "utf8");
+  writeFileSync(path.join(pluginCaveman, "rule-ultra.md.bak"), "previous ultra", "utf8");
+  writeFileSync(path.join(pluginCaveman, "rule-wenyan.md.bak"), "previous wenyan", "utf8");
 }
 
 test("uninstall removes extension dirs, self registration, and combo config entries", () => {
@@ -107,13 +109,14 @@ test("uninstall dry-run leaves backups in place", () => {
   const home = mkdtempSync(path.join(os.tmpdir(), "tersio-uninstall-"));
   try {
     seed(home);
-    const configBak = path.join(home, ".omp", "agent", "config.yml.bak");
-    const ruleBak = path.join(home, ".omp", "plugins", "node_modules", SELF, "extensions", "caveman-session", "rule.md.bak");
+    const cavemanDir = path.join(home, ".omp", "plugins", "node_modules", SELF, "extensions", "caveman-session");
     const result = run(home, "uninstall", "--yes", "--dry-run");
 
     expect(result.status, result.stderr).toBe(0);
-    expect(existsSync(configBak), "config.yml backup kept on dry run").toBeTruthy();
-    expect(existsSync(ruleBak), "rule backup kept on dry run").toBeTruthy();
+    expect(existsSync(path.join(home, ".omp", "agent", "config.yml.bak")), "config.yml backup kept on dry run").toBeTruthy();
+    for (const name of ["rule.md.bak", "rule-ultra.md.bak", "rule-wenyan.md.bak"]) {
+      expect(existsSync(path.join(cavemanDir, name)), `${name} kept on dry run`).toBeTruthy();
+    }
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

@@ -13,7 +13,7 @@ import {
 import { execNetwork, sayTagged } from './interactive.ts';
 import { wireRtkOmp, wireRtkOpencode, wireRtkPi, ensureRtkInConfig } from './rtk-wiring.ts';
 import {
-  CAVEMAN_REMOTE_RULE, RTK_RELEASE_API, RtkRelease, fetchJson, findFile, httpsGet,
+  RTK_RELEASE_API, RtkRelease, fetchJson, findFile, httpsGet,
   httpsDownload, parseChecksum, readTextIfExists, rtkPlatformSpec, sha256File,
 } from '../extensions/lib/utils.ts';
 import { runLatestUpdate } from './update.ts';
@@ -88,26 +88,14 @@ async function fixExtensions(pluginsDir: string): Promise<void> {
   const pluginExtDir = path.join(pluginsDir, 'node_modules', '@krtclcdy', 'tersio', 'extensions');
   await fs.mkdir(pluginExtDir, { recursive: true });
 
-  // rule.md is skipped: its live content is the upstream fetch, not the bundle.
-  for (const file of TREE_FILES.filter((f) => f !== 'caveman-session/rule.md')) {
+  // Rule bodies are never overwritten: they can be newer upstream fetches.
+  const ruleFile = (f: string) => /^caveman-session\/rule.*\.md$/.test(f);
+  for (const file of TREE_FILES) {
+    const dest = path.join(pluginExtDir, ...file.split('/'));
+    if (ruleFile(file) && existsSync(dest)) continue;
     const text = await readTextIfExists(sourcePath(file));
     if (text === null) sayTagged(`  [warn] bundled source missing: ${sourcePath(file)}`);
-    else await writeIfChanged(path.join(pluginExtDir, ...file.split('/')), text, { dryRun, verbose });
-  }
-
-  const ruleDest = path.join(pluginExtDir, 'caveman-session', 'rule.md');
-  if ((await readTextIfExists(ruleDest)) === null) {
-    const bundled = await readTextIfExists(path.join(EXT_DIR, 'caveman-session', 'rule.md'));
-    if (bundled !== null) {
-      await writeIfChanged(ruleDest, bundled, { dryRun, verbose });
-    } else {
-      const rule = await Promise.race([
-        httpsGet(CAVEMAN_REMOTE_RULE).catch(() => null),
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), 8000)),
-      ]);
-      if (rule !== null) await writeIfChanged(ruleDest, rule, { dryRun, verbose });
-      else console.log('  [warn] Caveman rule unreachable and no bundled rule exists');
-    }
+    else await writeIfChanged(dest, text, { dryRun, verbose });
   }
 
   // Writing is not atomic, so re-read rather than assume the tree is whole.
