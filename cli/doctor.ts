@@ -30,7 +30,7 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   const ponytailPkg = path.join(pluginsDir, 'node_modules', '@dietrichgebert', 'ponytail', 'package.json');
   const tersioPluginDir = path.join(pluginsDir, 'node_modules', '@krtclcdy', 'tersio');
   const cavemanIndex = path.join(tersioPluginDir, 'extensions', 'caveman-session', 'index.ts');
-  const cavemanRule = path.join(tersioPluginDir, 'extensions', 'caveman-session', 'rule.md');
+  const cavemanRule = (name: string) => path.join(tersioPluginDir, 'extensions', 'caveman-session', name);
   const rtkIndex = path.join(tersioPluginDir, 'extensions', 'rtk-session', 'index.ts');
   const updaterIndex = path.join(tersioPluginDir, 'extensions', 'ai-addons-updater', 'index.ts');
 
@@ -42,11 +42,13 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
     ponytailPkgText: readTextIfExists(ponytailPkg),
     rtkBinText: rtkBin ? readTextIfExists(rtkBin) : Promise.resolve(null),
     cavemanIndexText: readTextIfExists(cavemanIndex),
-    cavemanRuleText: readTextIfExists(cavemanRule),
+    cavemanRuleText: readTextIfExists(cavemanRule('rule.md')),
+    cavemanUltraText: readTextIfExists(cavemanRule('rule-ultra.md')),
+    cavemanWenyanText: readTextIfExists(cavemanRule('rule-wenyan.md')),
     rtkIndexText: readTextIfExists(rtkIndex),
     updaterIndexText: readTextIfExists(updaterIndex),
     rtkMtime: rtkBin ? fs.stat(rtkBin).catch(() => null) : Promise.resolve(null),
-    ruleMtime: fs.stat(cavemanRule).catch(() => null),
+    ruleMtime: fs.stat(cavemanRule('rule.md')).catch(() => null),
     ponytailMtime: fs.stat(ponytailPkg).catch(() => null),
     pricesMtime: fs.stat(pricesCachePath()).catch(() => null),
   };
@@ -57,7 +59,7 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
       return err.stdout?.trim() || err.stderr?.trim() || null;
     },
   ) : Promise.resolve(null);
-  const [[ompPkgText, configText], [cavemanIndexText, rtkIndexText, updaterIndexText, ponytailPkgText], [cavemanRuleText, ruleMtime, rtkBinText, rtkMtime, rtkVersion, ponytailMtime, pricesMtime]] = await runInteractivePhase('Checking installation', () => Promise.all([
+  const [[ompPkgText, configText], [cavemanIndexText, rtkIndexText, updaterIndexText, ponytailPkgText], [cavemanRuleText, cavemanUltraText, cavemanWenyanText, ruleMtime, rtkBinText, rtkMtime, rtkVersion, ponytailMtime, pricesMtime]] = await runInteractivePhase('Checking installation', () => Promise.all([
     Promise.all([
       probes.ompPkgText,
       probes.configText,
@@ -70,6 +72,8 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
     ]),
     Promise.all([
       probes.cavemanRuleText,
+      probes.cavemanUltraText,
+      probes.cavemanWenyanText,
       probes.ruleMtime,
       probes.rtkBinText,
       probes.rtkMtime,
@@ -143,7 +147,9 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
 
   section('Add-ons');
   const ruleAge = ruleMtime ? `(updated ${relTime(Date.now() - ruleMtime.mtimeMs)} · ${absDate(ruleMtime.mtimeMs)})` : '';
-  check('Caveman rule', cavemanRuleText !== null, ruleAge);
+  const cavemanRules = [['rule.md', cavemanRuleText], ['rule-ultra.md', cavemanUltraText], ['rule-wenyan.md', cavemanWenyanText]];
+  const missingRules = cavemanRules.filter(([, text]) => text === null).map(([name]) => name);
+  check('Caveman rule', missingRules.length === 0, missingRules.length ? `missing: ${missingRules.join(', ')}` : ruleAge);
   const rtkAge = rtkMtime ? `(updated ${relTime(Date.now() - rtkMtime.mtimeMs)} · ${absDate(rtkMtime.mtimeMs)})` : '';
   check('RTK binary', rtkBin !== null, rtkBinText === null ? 'not found in PATH' : [rtkVersion, rtkAge].filter(Boolean).join(' '));
   // rtk_run needs a host exec API, which doctor cannot assume.

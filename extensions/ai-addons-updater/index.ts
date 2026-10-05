@@ -9,7 +9,8 @@ import { fileURLToPath } from 'node:url';
 
 import { setExtensionLabel } from '../shared/host.ts';
 import {
-  CAVEMAN_REMOTE_RULE as CAVEMAN_REMOTE,
+  CAVEMAN_REMOTE_ULTRA,
+  CAVEMAN_REMOTE_WENYAN,
   RTK_RELEASE_API,
   RtkRelease,
   fetchJson,
@@ -31,8 +32,13 @@ const EXTENSION_DIR = path.dirname(fileURLToPath(import.meta.url));
 
 const PONYTAIL_REMOTE = 'https://raw.githubusercontent.com/DietrichGebert/ponytail/main/package.json';
 const RTK_BINARY = resolveRtkBinary();
-// Beside this file, not a host path: that is the rule.md /caveman reads.
-const CAVEMAN_LOCAL = path.join(EXTENSION_DIR, '..', 'caveman-session', 'rule.md');
+// Beside this file, not a host path: these are the rules /caveman reads.
+const cavemanRule = (name: string) => path.join(EXTENSION_DIR, '..', 'caveman-session', name);
+const CAVEMAN_LOCAL = cavemanRule('rule.md');
+const CAVEMAN_TRACKED: ReadonlyArray<{ file: string; remote: string }> = [
+  { file: cavemanRule('rule-ultra.md'), remote: CAVEMAN_REMOTE_ULTRA },
+  { file: cavemanRule('rule-wenyan.md'), remote: CAVEMAN_REMOTE_WENYAN },
+];
 const HOST_NAME = isPiProcess() ? 'Pi' : 'OMP';
 const RELOAD_MSG = `Reminder: restart ${HOST_NAME} (or reload extensions) for updates to take effect.`;
 
@@ -129,17 +135,19 @@ function checkRtk(): Promise<AddonStatus> {
   });
 }
 
-// Caveman (rule.md)
 function checkCaveman(): Promise<AddonStatus> {
   return runCheck('Caveman', async () => {
-    const remote = await httpsGet(CAVEMAN_REMOTE);
-    const remoteHash = shortHash(remote);
-    const local = await readTextIfExists(CAVEMAN_LOCAL);
-    const localHash = local ? shortHash(local) : null;
-    const status = !local ? 'rule.md missing'
-      : localHash === remoteHash ? 'rule.md up to date'
-        : 'rule.md update available';
-    return `Caveman ${status}: local=${localHash || '—'} remote=${remoteHash}`;
+    const parts: string[] = [(await readTextIfExists(CAVEMAN_LOCAL)) ? 'rule.md ok' : 'rule.md missing'];
+    for (const { file, remote } of CAVEMAN_TRACKED) {
+      const name = path.basename(file);
+      try {
+        const [remoteText, localText] = await Promise.all([httpsGet(remote), readTextIfExists(file)]);
+        parts.push(!localText ? `${name} missing` : shortHash(localText) === shortHash(remoteText) ? `${name} up to date` : `${name} update available`);
+      } catch {
+        parts.push(`${name} check skipped`);
+      }
+    }
+    return `Caveman ${parts.join(', ')}`;
   });
 }
 
@@ -352,37 +360,41 @@ async function updateRtk(ctx: AddonUpdaterCtx, dryRun = false): Promise<string> 
 }
 
 async function updateCaveman(ctx: AddonUpdaterCtx, dryRun = false): Promise<string> {
-  let remote: string;
-  try { remote = await httpsGet(CAVEMAN_REMOTE); }
-  catch (e) { return report(ctx, `Caveman update failed: ${(e as Error).message}`, 'warning'); }
+  const results: string[] = [];
+  for (const { file, remote } of CAVEMAN_TRACKED) {
+    const name = path.basename(file);
+    let remoteText: string;
+    try { remoteText = await httpsGet(remote); }
+    catch (e) { results.push(report(ctx, `Caveman ${name} update failed: ${(e as Error).message}`, 'warning')); continue; }
 
-  const remoteHash = shortHash(remote);
-  const oldLocal = await readTextIfExists(CAVEMAN_LOCAL);
-  const oldHash = oldLocal ? shortHash(oldLocal) : null;
+    const remoteHash = shortHash(remoteText);
+    const oldLocal = await readTextIfExists(file);
+    const oldHash = oldLocal ? shortHash(oldLocal) : null;
+    if (oldHash === remoteHash) { results.push(`${name} up to date: ${remoteHash}`); continue; }
 
-  if (dryRun) {
-    const m = `Caveman dry-run: would write ${CAVEMAN_LOCAL}\nold=${oldHash || '—'} new=${remoteHash}.`;
-    return report(ctx, m, 'info');
-  }
-
-  try {
-    await fs.mkdir(path.dirname(CAVEMAN_LOCAL), { recursive: true });
-    const backupPath = `${CAVEMAN_LOCAL}.bak`;
-    if (oldLocal !== null) await fs.writeFile(backupPath, oldLocal, 'utf8');
-    await fs.writeFile(CAVEMAN_LOCAL, remote, 'utf8');
-    const written = await fs.readFile(CAVEMAN_LOCAL, 'utf8');
-    const writtenHash = shortHash(written);
-    if (writtenHash !== remoteHash) {
-      if (oldLocal !== null) await fs.writeFile(CAVEMAN_LOCAL, oldLocal, 'utf8');
-      throw new Error(`written hash ${writtenHash} did not match remote ${remoteHash}${oldLocal !== null ? '; restored backup' : ''}`);
+    if (dryRun) {
+      results.push(`Caveman dry-run: would write ${file}\nold=${oldHash || '—'} new=${remoteHash}.`);
+      continue;
     }
-    const m = `Caveman rule.md updated → ${CAVEMAN_LOCAL}\nold=${oldHash || '—'} new=${remoteHash}\nbackup=${oldLocal !== null ? backupPath : '—'}\n${RELOAD_MSG}`;
-    notify(ctx, 'Caveman rule.md updated. ' + RELOAD_MSG, 'info');
-    return m;
-  } catch (e) {
-    const m = `Caveman update failed: ${(e as Error).message}`;
-    return report(ctx, m, 'warning');
+
+    try {
+      await fs.mkdir(path.dirname(file), { recursive: true });
+      const backupPath = `${file}.bak`;
+      if (oldLocal !== null) await fs.writeFile(backupPath, oldLocal, 'utf8');
+      await fs.writeFile(file, remoteText, 'utf8');
+      const writtenHash = shortHash(await fs.readFile(file, 'utf8'));
+      if (writtenHash !== remoteHash) {
+        if (oldLocal !== null) await fs.writeFile(file, oldLocal, 'utf8');
+        throw new Error(`written hash ${writtenHash} did not match remote ${remoteHash}${oldLocal !== null ? '; restored backup' : ''}`);
+      }
+      results.push(`Caveman ${name} updated → ${file}\nold=${oldHash || '—'} new=${remoteHash}\nbackup=${oldLocal !== null ? backupPath : '—'}\n${RELOAD_MSG}`);
+    } catch (e) {
+      results.push(`Caveman ${name} update failed: ${(e as Error).message}`);
+    }
   }
+  const summary = results.join('\n');
+  notify(ctx, `Caveman update finished. ${RELOAD_MSG}`, 'info');
+  return summary;
 }
 
 export default function aiAddonsUpdaterExtension(pi: AddonUpdaterPi): void {

@@ -53,13 +53,19 @@ test("packed tarball carries both .js (CLI runtime) and .ts (OMP) for every CLI-
   }
 });
 
-test("packed tarball carries the effective Caveman rule and six explicit levels", () => {
+test("packed tarball carries every Caveman rule body", () => {
   const packed = packedFiles();
-  expect(packed, "manifest-loaded Caveman must receive its sibling rule.md").toContain("extensions/caveman-session/rule.md");
+  for (const name of ["rule.md", "rule-ultra.md", "rule-wenyan.md"]) {
+    expect(packed, `manifest-loaded Caveman must receive ${name}`).toContain(`extensions/caveman-session/${name}`);
+  }
   const source = readFileSync(path.join(root, "extensions", "caveman-session", "rule.md"), "utf8");
-  for (const level of ["lite", "full", "ultra", "wenyan-lite", "wenyan-full", "wenyan-ultra"]) {
-    expect(source, `bundled Caveman rule lists ${level}`).toMatch(new RegExp(`\\b${level}\\b`));
+  // Each body documents only the levels it serves.
+  for (const level of ["lite", "full"]) {
+    expect(source, `rule.md documents ${level}`).toMatch(new RegExp(`\\b${level}\\b`));
+  }
+  for (const level of ["ultra", "wenyan"]) {
+    expect(source, `rule.md must not carry ${level}`).not.toMatch(new RegExp(`\\*\\*${level}`));
   }
   expect(source).toMatch(/ASD-STE100 Simplified Technical English/);
   expect(source).toMatch(/No tool-call narration/);
- });
+});

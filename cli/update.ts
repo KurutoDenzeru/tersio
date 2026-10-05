@@ -11,7 +11,9 @@ import { execNetwork, sayTagged } from './interactive.ts';
 import { readTextIfExists, resolveRtkBinary, tersioDataPath } from '../extensions/lib/utils.ts';
 import { refreshPrices } from '../extensions/shared/pricing.ts';
 import {
-  CAVEMAN_REMOTE_RULE, RTK_RELEASE_API,
+  CAVEMAN_REMOTE_ULTRA,
+  CAVEMAN_REMOTE_WENYAN,
+  RTK_RELEASE_API,
   httpsGet, normalizeRtkVersion, sha256Hex,
 } from '../extensions/lib/utils.ts';
 import type { RtkRelease } from '../extensions/lib/utils.ts';
@@ -97,20 +99,23 @@ interface UpdatePlan {
 async function probeUpdatePlan(cliLatest: string | null): Promise<UpdatePlan> {
   const rtkBin = resolveRtkBinary();
   const ponytailPkg = path.join(OMP_PLUGINS_DIR, 'node_modules', '@dietrichgebert', 'ponytail', 'package.json');
-  const tersioRule = path.join(OMP_PLUGINS_DIR, 'node_modules', '@krtclcdy', 'tersio', 'extensions', 'caveman-session', 'rule.md');
+  // rule.md ships with the release; only the tracked bodies can go stale.
+const tersioRule = (name: string) => path.join(OMP_PLUGINS_DIR, 'node_modules', '@krtclcdy', 'tersio', 'extensions', 'caveman-session', name);
   const controller = new AbortController();
-  const [rtkLocal, rtkRelease, ruleLocalText, ruleRemoteText, ponytailLocalText] = await Promise.all([
+  const [rtkLocal, rtkRelease, ruleLocal, ruleRemote, ponytailLocalText] = await Promise.all([
     settle(rtkBin ? execP(rtkBin, ['--version'], { timeout: 5000 }).then((r) => normalizeRtkVersion(r.stdout.trim() || r.stderr.trim()) || null) : Promise.resolve(null), 6000),
     settle(httpsGet(RTK_RELEASE_API, { signal: controller.signal }).then((text) => normalizeRtkVersion((JSON.parse(text) as RtkRelease).tag_name) || null), 1500),
-    readTextIfExists(tersioRule),
-    settle(httpsGet(CAVEMAN_REMOTE_RULE, { signal: controller.signal }).then((text) => sha256Hex(text).slice(0, 8)), 1500),
+    Promise.all([readTextIfExists(tersioRule('rule-ultra.md')), readTextIfExists(tersioRule('rule-wenyan.md'))])
+      .then((texts) => (texts.every(Boolean) ? texts.map((t) => sha256Hex(t as string).slice(0, 8)).join('+') : null)),
+    settle(Promise.all([httpsGet(CAVEMAN_REMOTE_ULTRA, { signal: controller.signal }), httpsGet(CAVEMAN_REMOTE_WENYAN, { signal: controller.signal })])
+      .then((texts) => texts.map((t) => sha256Hex(t).slice(0, 8)).join('+')), 1500),
     readTextIfExists(ponytailPkg),
   ]);
   controller.abort();
   return {
     cli: cliLatest,
     rtk: [rtkLocal, rtkRelease],
-    rule: [ruleLocalText ? sha256Hex(ruleLocalText).slice(0, 8) : null, ruleRemoteText],
+    rule: [ruleLocal, ruleRemote],
     ponytail: ponytailLocalText ? parseJsonObject<{ version?: string }>(ponytailLocalText)?.version ?? null : null,
   };
 }

@@ -139,7 +139,7 @@ test("legacy plugin default normalizes to wenyan-full and injects rules", async 
     expect(readCavemanDefault()).toBe("wenyan");
     const injected = await pi.handlers.get("before_agent_start")!({ systemPrompt: "Base." }, ctx) as { systemPrompt: string[] };
     expect(injected.systemPrompt.at(-1)).toMatch(/Caveman wenyan-full active/);
-    expect(injected.systemPrompt.at(-1)).toMatch(/maximum classical terseness/i);
+    expect(injected.systemPrompt.at(-1)).toMatch(/以文言答/);
   } finally {
     for (const [name, value] of Object.entries(previous)) {
       if (value === undefined) delete process.env[name];
@@ -178,16 +178,26 @@ test("full mode injects the rule file", async () => {
  });
 
 
-test("full mode injects rule.md verbatim, with no paraphrase alongside it", async () => {
+test("each level injects its own rule file verbatim, with no paraphrase alongside it", async () => {
   const extDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "extensions", "caveman-session");
-  const rule = readFileSync(path.join(extDir, "rule.md"), "utf8");
-  resetSharedComboState();
-  const { pi, ctx } = harness();
-  await pi.commands.get("caveman")!("full", ctx);
-  const result = await pi.handlers.get("before_agent_start")!({ systemPrompt: "Base." }, ctx) as { systemPrompt: string[] };
+  const bodies = {
+    lite: "rule.md", full: "rule.md",
+    ultra: "rule-ultra.md",
+    "wenyan-lite": "rule-wenyan.md", "wenyan-full": "rule-wenyan.md", "wenyan-ultra": "rule-wenyan.md",
+  } as const;
+  for (const [mode, file] of Object.entries(bodies)) {
+    resetSharedComboState();
+    const { pi, ctx } = harness();
+    await pi.commands.get("caveman")!(mode, ctx);
+    const result = await pi.handlers.get("before_agent_start")!({ systemPrompt: "Base." }, ctx) as { systemPrompt: string[] };
 
-  // One source of truth: rule.md, byte for byte.
-  expect(result.systemPrompt.at(-1)).toBe(`Caveman full active for this session.\n${rule}`);
+    // One source of truth per level: its rule file, byte for byte.
+    const rule = readFileSync(path.join(extDir, file), "utf8");
+    expect(result.systemPrompt.at(-1)).toBe(`Caveman ${mode} active for this session.\n${rule}`);
+  }
+  // The registers actually differ.
+  expect(readFileSync(path.join(extDir, bodies.ultra), "utf8")).not.toBe(readFileSync(path.join(extDir, bodies.full), "utf8"));
+  expect(readFileSync(path.join(extDir, bodies["wenyan-full"]), "utf8")).not.toBe(readFileSync(path.join(extDir, bodies.full), "utf8"));
 });
 
 test("a missing rule.md names the fix instead of shipping a degraded paraphrase", async () => {
@@ -197,6 +207,5 @@ test("a missing rule.md names the fix instead of shipping a degraded paraphrase"
     "utf8",
   );
   expect(source).not.toMatch(/FALLBACK_FULL_RULE/);
-  expect(source).toMatch(/rule\.md is missing/);
-  expect(source).toMatch(/doctor --fix extensions/);
+  expect(source).toMatch(/is missing\. Run: tersio doctor --fix extensions/);
 });
