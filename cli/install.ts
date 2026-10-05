@@ -362,6 +362,11 @@ async function stepRtkSession(extDir: string, options: WriteOptions): Promise<vo
 }
 
 // rule.md ships with the package; the other bodies track upstream skills.
+//
+// rule.md has no remote on purpose. It is a deliberate fork of upstream
+// skills/caveman/SKILL.md, carrying the mode switch line and the STE100 integration that
+// upstream does not have. The two files share little text, so a blind sync would drop
+// those. Revisit by hand when upstream changes; doctor reports its mtime either way.
 const CAVEMAN_RULES: ReadonlyArray<[name: string, remote: string | null]> = [
   ['rule.md', null],
   ['rule-ultra.md', CAVEMAN_REMOTE_ULTRA],
