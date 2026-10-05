@@ -51,7 +51,7 @@ test("pi install writes every Caveman rule body", () => {
       cwd: root, encoding: "utf8", timeout: 120000, env: offline(dir),
     });
     const caveman = path.join(dir, ".pi", "agent", "extensions", "caveman-session");
-    for (const name of ["rule.md", "rule-ultra.md", "rule-wenyan.md"]) {
+    for (const name of ["rule.md", "rule-ultra.md", "rule-megacave.md"]) {
       expect(readFileSync(path.join(caveman, name), "utf8"), name).toBe(readFileSync(path.join(root, "extensions", "caveman-session", name), "utf8"));
     }
   } finally {

@@ -72,9 +72,9 @@
           "lite",
           "full",
           "ultra",
-          "wenyan-lite",
-          "wenyan-full",
-          "wenyan-ultra"
+          "megacave-lite",
+          "megacave-full",
+          "megacave-ultra"
         ],
         "default": "off"
       },
@@ -121,7 +121,7 @@
     "extensions/**/*.ts",
     "extensions/caveman-session/rule.md",
     "extensions/caveman-session/rule-ultra.md",
-    "extensions/caveman-session/rule-wenyan.md"
+    "extensions/caveman-session/rule-megacave.md"
   ],
   "scripts": {
     "clean": "rm -f tersio.js cli/*.js extensions/**/*.js && rm -rf dashboard/dist",
@@ -150,6 +150,6 @@
   "dependencies": {
     "@clack/core": "^1.5.1",
     "@clack/prompts": "^1.8.0",
-    "@dietrichgebert/ponytail": "^4.10.0"
+    "@dietrichgebert/ponytail": "^4.12.0"
   }
 }

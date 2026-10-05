@@ -91,7 +91,9 @@ test("a combo change is persisted before the host is told about it", async () =>
     "entry:ponytail-mode",
     "entry:combo-level",
   ]);
-  // The host hears about it once, and only with the settled state.
-  const notices = order.slice(4);
-  expect(notices).toEqual(["setstatus:🧩 combo BALANCED: 🪨caveman=FULL ⚡rtk=ON 🦥ponytail=FULL"]);
+    const notices = order.slice(4);
+  expect(notices).toEqual([
+    "setstatus:🧩 combo BALANCED: 🪨caveman=FULL ⚡rtk=ON 🦥ponytail=FULL",
+    "setstatus:Caveman mode: full",
+  ]);
 });

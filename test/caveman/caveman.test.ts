@@ -22,14 +22,18 @@ interface TestPi {
 
 interface TestCtx {
   notifications: string[];
+  statuses: Map<string, string>;
   sessionManager: { getBranch: () => SessionEntry[] };
-  ui: { setStatus(): void; notify(message: string): void };
+  ui: { setStatus(name: string, value: string | undefined): void; notify(message: string): void };
 }
 
 function harness(entries: SessionEntry[] = []): { pi: TestPi; ctx: TestCtx } {
   const commands = new Map<string, CommandHandler>();
   const handlers = new Map<string, EventHandler>();
   const notifications: string[] = [];
+  // The real setStatus API is keyed; `notifications` mirrors the existing assertions on the
+  // combo line, and `statuses` keeps every key so the caveman slot can be asserted too.
+  const statuses = new Map<string, string>();
   cavemanSessionExtension({
     // The injected zod is how the extensions recognise an OMP host.
     zod: { z: {} },
@@ -42,8 +46,12 @@ function harness(entries: SessionEntry[] = []): { pi: TestPi; ctx: TestCtx } {
   const ctx = {
     hasUI: true,
     notifications,
+    statuses,
     sessionManager: { getBranch: () => entries },
-    ui: { setStatus(_n: string, v: string | undefined) { if (v !== undefined) notifications.push(v); }, notify(message: string) { notifications.push(message); } },
+    ui: {
+      setStatus(name: string, v: string | undefined) { if (v !== undefined) { statuses.set(name, v); if (name === 'tersio') notifications.push(v); } },
+      notify(message: string) { notifications.push(message); },
+    },
   };
   return { pi: { commands, handlers }, ctx: ctx as TestCtx };
 }
@@ -63,12 +71,14 @@ test("bare /caveman and /caveman on enable full", async () => {
 });
 
 test("each mode reports itself in the shared status line", async () => {
-  for (const mode of ["lite", "ultra", "wenyan-lite", "wenyan-full", "wenyan-ultra"]) {
+  for (const mode of ["lite", "ultra", "megacave-lite", "megacave-full", "megacave-ultra"]) {
     const notifications = await caveman([], mode);
     expect(notifications.at(-1)).toMatch(new RegExp(`🪨caveman=${mode.toUpperCase()} `));
   }
-  const legacy = await caveman([], "wenyan");
-  expect(legacy.at(-1)).toMatch(/🪨caveman=WENYAN-FULL /);
+  for (const legacy of ["wenyan", "wenyan-full"]) {
+    const notifications = await caveman([], legacy);
+    expect(notifications.at(-1)).toMatch(/🪨caveman=MEGACAVE-FULL /);
+  }
 });
 
 test("turning caveman off collapses the status to the off line", async () => {
@@ -83,7 +93,7 @@ test("status reports the current mode, unknown args show usage", async () => {
   await pi.commands.get("caveman")!("status", ctx);
   expect(ctx.notifications.at(-1)).toMatch(/🪨caveman=ULTRA/);
   await pi.commands.get("caveman")!("bogus", ctx);
-  expect(ctx.notifications.at(-1)).toBe("Usage: /caveman [lite|full|ultra|wenyan-lite|wenyan-full|wenyan-ultra|off|status]");
+  expect(ctx.notifications.at(-1)).toBe("Usage: /caveman [lite|full|ultra|megacave-lite|megacave-full|megacave-ultra|off|status]");
 });
 
 test("natural-language off commands switch the mode off", async () => {
@@ -110,7 +120,8 @@ test("session_start restores the persisted mode, fresh sessions use the default"
   resetSharedComboState();
   const restored = harness([{ type: "custom", customType: "caveman-mode", data: { mode: "wenyan" } }]);
   await restored.pi.handlers.get("session_start")!({}, restored.ctx);
-  expect(restored.ctx.notifications.at(-1)).toMatch(/🪨caveman=WENYAN-FULL/);
+  // A session entry written under the old name restores onto the canonical one.
+  expect(restored.ctx.notifications.at(-1)).toMatch(/🪨caveman=MEGACAVE-FULL/);
 
   resetSharedComboState();
   const fresh = harness();
@@ -118,7 +129,7 @@ test("session_start restores the persisted mode, fresh sessions use the default"
   expect(fresh.ctx.notifications.at(-1)).toBe("🧩 combo OFF");
 });
 
-test("legacy plugin default normalizes to wenyan-full and injects rules", async () => {
+test("legacy plugin default normalizes to megacave-full and injects rules", async () => {
   const home = mkdtempSync(path.join(os.tmpdir(), "tersio-caveman-default-"));
   const lockDir = path.join(home, ".omp", "plugins");
   mkdirSync(lockDir, { recursive: true });
@@ -138,7 +149,7 @@ test("legacy plugin default normalizes to wenyan-full and injects rules", async 
     // lands in the prompt.
     expect(readCavemanDefault()).toBe("wenyan");
     const injected = await pi.handlers.get("before_agent_start")!({ systemPrompt: "Base." }, ctx) as { systemPrompt: string[] };
-    expect(injected.systemPrompt.at(-1)).toMatch(/Caveman wenyan-full active/);
+    expect(injected.systemPrompt.at(-1)).toMatch(/Caveman megacave-full active/);
     expect(injected.systemPrompt.at(-1)).toMatch(/以文言答/);
   } finally {
     for (const [name, value] of Object.entries(previous)) {
@@ -150,7 +161,7 @@ test("legacy plugin default normalizes to wenyan-full and injects rules", async 
 });
 
 test("before_agent_start injects the per-mode instruction, nothing when off", async () => {
-  for (const [mode, pattern] of [["lite", /Caveman lite active/], ["ultra", /Caveman ultra active/], ["wenyan-full", /Caveman wenyan-full active/i], ["wenyan-lite", /Caveman wenyan-lite active/i], ["wenyan-ultra", /Caveman wenyan-ultra active/i]] as const) {
+  for (const [mode, pattern] of [["lite", /Caveman lite active/], ["ultra", /Caveman ultra active/], ["megacave-full", /Caveman megacave-full active/i], ["megacave-lite", /Caveman megacave-lite active/i], ["megacave-ultra", /Caveman megacave-ultra active/i]] as const) {
     resetSharedComboState();
     const { pi, ctx } = harness();
     await pi.commands.get("caveman")!(mode, ctx);
@@ -174,7 +185,7 @@ test("full mode injects the rule file", async () => {
   expect(result.systemPrompt.at(-1)).toMatch(/Only fluff die/);
   expect(result.systemPrompt.at(-1)).toMatch(/ASD-STE100 Simplified Technical English/);
   expect(result.systemPrompt.at(-1)).toMatch(/No tool-call narration/);
-  expect(result.systemPrompt.at(-1)).toMatch(/wenyan-lite\|wenyan-full\|wenyan-ultra/);
+  expect(result.systemPrompt.at(-1)).toMatch(/megacave-lite\|megacave-full\|megacave-ultra/);
  });
 
 
@@ -183,7 +194,7 @@ test("each level injects its own rule file verbatim, with no paraphrase alongsid
   const bodies = {
     lite: "rule.md", full: "rule.md",
     ultra: "rule-ultra.md",
-    "wenyan-lite": "rule-wenyan.md", "wenyan-full": "rule-wenyan.md", "wenyan-ultra": "rule-wenyan.md",
+    "megacave-lite": "rule-megacave.md", "megacave-full": "rule-megacave.md", "megacave-ultra": "rule-megacave.md",
   } as const;
   for (const [mode, file] of Object.entries(bodies)) {
     resetSharedComboState();
@@ -197,7 +208,7 @@ test("each level injects its own rule file verbatim, with no paraphrase alongsid
   }
   // The registers actually differ.
   expect(readFileSync(path.join(extDir, bodies.ultra), "utf8")).not.toBe(readFileSync(path.join(extDir, bodies.full), "utf8"));
-  expect(readFileSync(path.join(extDir, bodies["wenyan-full"]), "utf8")).not.toBe(readFileSync(path.join(extDir, bodies.full), "utf8"));
+  expect(readFileSync(path.join(extDir, bodies["megacave-full"]), "utf8")).not.toBe(readFileSync(path.join(extDir, bodies.full), "utf8"));
 });
 
 test("a missing rule.md names the fix instead of shipping a degraded paraphrase", async () => {
@@ -208,4 +219,15 @@ test("a missing rule.md names the fix instead of shipping a degraded paraphrase"
   );
   expect(source).not.toMatch(/FALLBACK_FULL_RULE/);
   expect(source).toMatch(/is missing\. Run: tersio doctor --fix extensions/);
+});
+
+test("the caveman status slot carries the mode for the model's status reply", async () => {
+  resetSharedComboState();
+  const { pi, ctx } = harness([]);
+  await pi.commands.get("caveman")!("ultra", ctx);
+  expect(ctx.statuses.get("caveman")).toBe("Caveman mode: ultra");
+  expect(ctx.statuses.get("tersio")).toMatch(/🧩 combo CUSTOM: 🪨caveman=ULTRA/);
+
+  await pi.commands.get("caveman")!("off", ctx);
+  expect(ctx.statuses.get("caveman")).toBe("Caveman mode: unknown");
 });

@@ -12,7 +12,7 @@ import { readTextIfExists, resolveRtkBinary, tersioDataPath } from '../extension
 import { refreshPrices } from '../extensions/shared/pricing.ts';
 import {
   CAVEMAN_REMOTE_ULTRA,
-  CAVEMAN_REMOTE_WENYAN,
+  CAVEMAN_REMOTE_MEGACAVE,
   RTK_RELEASE_API,
   httpsGet, normalizeRtkVersion, sha256Hex,
 } from '../extensions/lib/utils.ts';
@@ -105,9 +105,9 @@ const tersioRule = (name: string) => path.join(OMP_PLUGINS_DIR, 'node_modules', 
   const [rtkLocal, rtkRelease, ruleLocal, ruleRemote, ponytailLocalText] = await Promise.all([
     settle(rtkBin ? execP(rtkBin, ['--version'], { timeout: 5000 }).then((r) => normalizeRtkVersion(r.stdout.trim() || r.stderr.trim()) || null) : Promise.resolve(null), 6000),
     settle(httpsGet(RTK_RELEASE_API, { signal: controller.signal }).then((text) => normalizeRtkVersion((JSON.parse(text) as RtkRelease).tag_name) || null), 1500),
-    Promise.all([readTextIfExists(tersioRule('rule-ultra.md')), readTextIfExists(tersioRule('rule-wenyan.md'))])
+    Promise.all([readTextIfExists(tersioRule('rule-ultra.md')), readTextIfExists(tersioRule('rule-megacave.md'))])
       .then((texts) => (texts.every(Boolean) ? texts.map((t) => sha256Hex(t as string).slice(0, 8)).join('+') : null)),
-    settle(Promise.all([httpsGet(CAVEMAN_REMOTE_ULTRA, { signal: controller.signal }), httpsGet(CAVEMAN_REMOTE_WENYAN, { signal: controller.signal })])
+    settle(Promise.all([httpsGet(CAVEMAN_REMOTE_ULTRA, { signal: controller.signal }), httpsGet(CAVEMAN_REMOTE_MEGACAVE, { signal: controller.signal })])
       .then((texts) => texts.map((t) => sha256Hex(t).slice(0, 8)).join('+')), 1500),
     readTextIfExists(ponytailPkg),
   ]);

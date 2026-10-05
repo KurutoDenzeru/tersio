@@ -14,10 +14,13 @@ export const COMBO_LEVELS: Record<string, Readonly<ComboState>> = Object.freeze(
 });
 
 const MODE_VALUES: Record<string, Set<string>> = {
-  caveman: new Set(['off', 'lite', 'full', 'ultra', 'wenyan', 'wenyan-lite', 'wenyan-full', 'wenyan-ultra']),
+  caveman: new Set(['off', 'lite', 'full', 'ultra', 'megacave', 'megacave-lite', 'megacave-full', 'megacave-ultra', 'wenyan', 'wenyan-lite', 'wenyan-full', 'wenyan-ultra']),
   rtk: new Set(['off', 'on']),
   ponytail: new Set(['off', 'lite', 'full', 'ultra']),
 };
+
+// Upstream renamed wenyan to megacave and kept the old spelling as an alias.
+const CAVEMAN_LEGACY_PREFIX = /^wenyan/;
 
 type ModeName = 'caveman' | 'rtk' | 'ponytail';
 type Modes = Record<ModeName, string>;
@@ -43,7 +46,9 @@ export function normalizeMode(name: ModeName, value: unknown): string | null {
   if (name === 'rtk' && typeof value === 'boolean') return value ? 'on' : 'off';
   const mode = String(value ?? '').trim().toLowerCase();
   if (!MODE_VALUES[name]?.has(mode)) return null;
-  return name === 'caveman' && mode === 'wenyan' ? 'wenyan-full' : mode;
+  if (name !== 'caveman') return mode;
+  const canonical = mode.replace(CAVEMAN_LEGACY_PREFIX, 'megacave');
+  return canonical === 'megacave' ? 'megacave-full' : canonical;
 }
 
 export function deriveLevel(modes: Modes | null | undefined): ComboLevel {

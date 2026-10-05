@@ -44,7 +44,7 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
     cavemanIndexText: readTextIfExists(cavemanIndex),
     cavemanRuleText: readTextIfExists(cavemanRule('rule.md')),
     cavemanUltraText: readTextIfExists(cavemanRule('rule-ultra.md')),
-    cavemanWenyanText: readTextIfExists(cavemanRule('rule-wenyan.md')),
+    cavemanMegacaveText: readTextIfExists(cavemanRule('rule-megacave.md')),
     rtkIndexText: readTextIfExists(rtkIndex),
     updaterIndexText: readTextIfExists(updaterIndex),
     rtkMtime: rtkBin ? fs.stat(rtkBin).catch(() => null) : Promise.resolve(null),
@@ -59,7 +59,7 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
       return err.stdout?.trim() || err.stderr?.trim() || null;
     },
   ) : Promise.resolve(null);
-  const [[ompPkgText, configText], [cavemanIndexText, rtkIndexText, updaterIndexText, ponytailPkgText], [cavemanRuleText, cavemanUltraText, cavemanWenyanText, ruleMtime, rtkBinText, rtkMtime, rtkVersion, ponytailMtime, pricesMtime]] = await runInteractivePhase('Checking installation', () => Promise.all([
+  const [[ompPkgText, configText], [cavemanIndexText, rtkIndexText, updaterIndexText, ponytailPkgText], [cavemanRuleText, cavemanUltraText, cavemanMegacaveText, ruleMtime, rtkBinText, rtkMtime, rtkVersion, ponytailMtime, pricesMtime]] = await runInteractivePhase('Checking installation', () => Promise.all([
     Promise.all([
       probes.ompPkgText,
       probes.configText,
@@ -73,7 +73,7 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
     Promise.all([
       probes.cavemanRuleText,
       probes.cavemanUltraText,
-      probes.cavemanWenyanText,
+      probes.cavemanMegacaveText,
       probes.ruleMtime,
       probes.rtkBinText,
       probes.rtkMtime,
@@ -147,7 +147,7 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
 
   section('Add-ons');
   const ruleAge = ruleMtime ? `(updated ${relTime(Date.now() - ruleMtime.mtimeMs)} · ${absDate(ruleMtime.mtimeMs)})` : '';
-  const cavemanRules = [['rule.md', cavemanRuleText], ['rule-ultra.md', cavemanUltraText], ['rule-wenyan.md', cavemanWenyanText]];
+  const cavemanRules = [['rule.md', cavemanRuleText], ['rule-ultra.md', cavemanUltraText], ['rule-megacave.md', cavemanMegacaveText]];
   const missingRules = cavemanRules.filter(([, text]) => text === null).map(([name]) => name);
   check('Caveman rule', missingRules.length === 0, missingRules.length ? `missing: ${missingRules.join(', ')}` : ruleAge);
   const rtkAge = rtkMtime ? `(updated ${relTime(Date.now() - rtkMtime.mtimeMs)} · ${absDate(rtkMtime.mtimeMs)})` : '';

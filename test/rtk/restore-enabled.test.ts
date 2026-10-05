@@ -28,7 +28,7 @@ function context(entries: SessionEntry[], notifications: string[]): ExtensionCtx
     hasUI: true,
     sessionManager: { getBranch: () => entries },
     ui: {
-      setStatus(_n: string, v: string | undefined) { if (v !== undefined) notifications.push(v); },
+            setStatus(name: string, v: string | undefined) { if (v !== undefined && name === 'tersio') notifications.push(v); },
       notify(message: string) { notifications.push(message); },
     },
   } as ExtensionCtx;
@@ -37,7 +37,8 @@ function context(entries: SessionEntry[], notifications: string[]): ExtensionCtx
 test("restore skips a corrupt latest rtk-mode entry and uses the older valid one", async () => {
   const entries: SessionEntry[] = [
     { type: "custom", customType: "rtk-mode", data: { enabled: true } },
-    { type: "custom", customType: "rtk-mode", data: { enabled: "maybe" } },
+    // Corrupt on purpose: the declared type is boolean, the stored value is not.
+    { type: "custom", customType: "rtk-mode", data: { enabled: "maybe" as unknown as boolean } },
   ];
   const { handlers, notifications } = harness(entries);
   await handlers.get("session_start")!({}, context(entries, notifications));

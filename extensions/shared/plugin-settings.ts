@@ -45,7 +45,7 @@ export function readPluginSettings(): Record<string, unknown> {
 }
 
 const COMBO_LEVELS = new Set(['off', 'medium', 'balanced', 'max']);
-const CAVEMAN_MODES = new Set(['off', 'lite', 'full', 'ultra', 'wenyan', 'wenyan-lite', 'wenyan-full', 'wenyan-ultra']);
+const CAVEMAN_MODES = new Set(['off', 'lite', 'full', 'ultra', 'megacave', 'megacave-lite', 'megacave-full', 'megacave-ultra', 'wenyan', 'wenyan-lite', 'wenyan-full', 'wenyan-ultra']);
 const PONYTAIL_MODES = new Set(['off', 'lite', 'full', 'ultra']);
 
 function readStringDefault(key: string, valid: Set<string>): string {

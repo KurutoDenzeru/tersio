@@ -25,7 +25,7 @@ import { runUsage } from './usage.ts';
 import { runDashboard } from './dashboard.ts';
 import { wireRtkOmp, wireRtkOpencode, wireRtkPi } from './rtk-wiring.ts';
 import {
-  CAVEMAN_REMOTE_ULTRA, CAVEMAN_REMOTE_WENYAN, RTK_RELEASE_API, RtkRelease, RtkReleaseAsset, fetchJson, findFile, findHoistedPackage, httpsGet,
+  CAVEMAN_REMOTE_ULTRA, CAVEMAN_REMOTE_MEGACAVE, RTK_RELEASE_API, RtkRelease, RtkReleaseAsset, fetchJson, findFile, findHoistedPackage, httpsGet,
   httpsDownload, parseChecksum, piAgentDir, readTextIfExists, resolveRtkBinary, rtkPlatformSpec, sha256File,
 } from '../extensions/lib/utils.ts';
 import { formatCliStatus, storedProfile, storedProfileSync, writePluginSettings } from './profile.ts';
@@ -362,10 +362,11 @@ async function stepRtkSession(extDir: string, options: WriteOptions): Promise<vo
 }
 
 // rule.md ships with the package; the other bodies track upstream skills.
+// rule.md is a deliberate fork of upstream skills/caveman/SKILL.md; a blind sync would drop the mode switch line and the STE100 rules.
 const CAVEMAN_RULES: ReadonlyArray<[name: string, remote: string | null]> = [
   ['rule.md', null],
   ['rule-ultra.md', CAVEMAN_REMOTE_ULTRA],
-  ['rule-wenyan.md', CAVEMAN_REMOTE_WENYAN],
+  ['rule-megacave.md', CAVEMAN_REMOTE_MEGACAVE],
 ];
 
 async function stepCaveman(extDir: string, options: WriteOptions): Promise<void> {
@@ -393,6 +394,9 @@ async function stepCaveman(extDir: string, options: WriteOptions): Promise<void>
   }
 
   await copySources(extDir, filesUnder('caveman-session').filter(([, to]) => to.endsWith('index.ts')), 'caveman-session/index.ts', options);
+
+  // Renamed body: drop the stale copy an older install left behind.
+  if (!options.dryRun) await fs.rm(path.join(cavemanDir, 'rule-wenyan.md'), { force: true });
 }
 
 async function stepTersioCommands(extDir: string, options: WriteOptions): Promise<void> {
@@ -656,7 +660,8 @@ const PI_PONYTAIL_FILES = [
   'pi-extension/index.js',
   'hooks/ponytail-instructions.js',
   'hooks/ponytail-config.js',
-  'skills/ponytail/SKILL.md',
+  ...['ponytail', 'ponytail-audit', 'ponytail-debt', 'ponytail-gain', 'ponytail-help', 'ponytail-review']
+    .map((skill) => `skills/${skill}/SKILL.md`),
 ] as const;
 
 const PI_PONYTAIL_PACKAGE = `${JSON.stringify({ name: 'ponytail', version: '0.0.0', private: true, pi: { extensions: ['./pi-extension/index.js'], skills: ['./skills'] } }, null, 2)}\n`;

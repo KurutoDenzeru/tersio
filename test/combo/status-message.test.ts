@@ -230,3 +230,7 @@ test("a marked subagent prompt still injects guidance and stays consistent with 
   expect(injected?.systemPrompt?.at(-1)).toMatch(/Caveman ultra active/);
   expect(formatStatus(getSharedComboState())).toBe("🧩 combo MAX: 🪨caveman=ULTRA ⚡rtk=ON 🦥ponytail=ULTRA");
 });
+test("the combo line is unchanged, so every other surface keeps its text", () => {
+  expect(formatStatus({ level: "balanced", caveman: "full", rtk: "on", ponytail: "full" }))
+    .toBe("🧩 combo BALANCED: 🪨caveman=FULL ⚡rtk=ON 🦥ponytail=FULL");
+});
