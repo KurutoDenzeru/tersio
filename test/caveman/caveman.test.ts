@@ -75,7 +75,6 @@ test("each mode reports itself in the shared status line", async () => {
     const notifications = await caveman([], mode);
     expect(notifications.at(-1)).toMatch(new RegExp(`🪨caveman=${mode.toUpperCase()} `));
   }
-  // Upstream renamed wenyan to megacave; the old spelling still resolves, onto megacave-full.
   for (const legacy of ["wenyan", "wenyan-full"]) {
     const notifications = await caveman([], legacy);
     expect(notifications.at(-1)).toMatch(/🪨caveman=MEGACAVE-FULL /);
@@ -222,9 +221,6 @@ test("a missing rule.md names the fix instead of shipping a degraded paraphrase"
   expect(source).toMatch(/is missing\. Run: tersio doctor --fix extensions/);
 });
 
-// Upstream Caveman's skill tells the model to relay `Caveman mode: <mode>` for
-// `/caveman status`, so the hook has to publish that exact string somewhere the model
-// can read it back, not only inside the combo line.
 test("the caveman status slot carries the mode for the model's status reply", async () => {
   resetSharedComboState();
   const { pi, ctx } = harness([]);

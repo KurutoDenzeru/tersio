@@ -10,7 +10,7 @@ import {
   getSharedComboState,
   resetSharedComboState,
 } from "../../extensions/shared/session-state.ts";
-import { formatCavemanStatus, formatStatus } from "../../extensions/shared/status.ts";
+import { formatStatus } from "../../extensions/shared/status.ts";
 import type { ExtensionApi, SessionEntry } from "../../extensions/shared/types.ts";
 
 process.env.HOME = new URL("../definitely-missing-home", import.meta.url).pathname;
@@ -230,15 +230,6 @@ test("a marked subagent prompt still injects guidance and stays consistent with 
   expect(injected?.systemPrompt?.at(-1)).toMatch(/Caveman ultra active/);
   expect(formatStatus(getSharedComboState())).toBe("🧩 combo MAX: 🪨caveman=ULTRA ⚡rtk=ON 🦥ponytail=ULTRA");
 });
-// Upstream Caveman's skill tells the model to relay `Caveman mode: <mode>` for
-// `/caveman status`, and to say `unknown` rather than infer a mode from the default.
-test("the caveman status key reports the live mode, or unknown when off", () => {
-  expect(formatCavemanStatus("full")).toBe("Caveman mode: full");
-  expect(formatCavemanStatus("ultra")).toBe("Caveman mode: ultra");
-  expect(formatCavemanStatus("off")).toBe("Caveman mode: unknown");
-  expect(formatCavemanStatus("")).toBe("Caveman mode: unknown");
-});
-
 test("the combo line is unchanged, so every other surface keeps its text", () => {
   expect(formatStatus({ level: "balanced", caveman: "full", rtk: "on", ponytail: "full" }))
     .toBe("🧩 combo BALANCED: 🪨caveman=FULL ⚡rtk=ON 🦥ponytail=FULL");

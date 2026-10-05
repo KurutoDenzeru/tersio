@@ -17,10 +17,7 @@ export function formatStatus(state: StatusState): string {
   return `🧩 combo ${label}: 🪨caveman=${caveman.toUpperCase()} ⚡rtk=${rtk.toUpperCase()} 🦥ponytail=${ponytail.toUpperCase()}`;
 }
 
-// Upstream Caveman's skill tells the model to answer `/caveman status` by relaying
-// `Caveman mode: <mode>` and to report `unknown` rather than infer a mode from the
-// configured default. A separate status key gives that exact string its own slot,
-// so the combo line stays unchanged for every other surface.
+// The string upstream's skill tells the model to relay for `/caveman status`.
 export function formatCavemanStatus(mode: string): string {
   return `Caveman mode: ${mode && mode !== 'off' ? mode : 'unknown'}`;
 }

@@ -28,9 +28,7 @@ function context(entries: SessionEntry[], notifications: string[]): ExtensionCtx
     hasUI: true,
     sessionManager: { getBranch: () => entries },
     ui: {
-      // setStatus is keyed upstream; these assertions are about the combo line, so
-      // the caveman slot is filtered out instead of interleaved into the list.
-      setStatus(name: string, v: string | undefined) { if (v !== undefined && name === 'tersio') notifications.push(v); },
+            setStatus(name: string, v: string | undefined) { if (v !== undefined && name === 'tersio') notifications.push(v); },
       notify(message: string) { notifications.push(message); },
     },
   } as ExtensionCtx;
