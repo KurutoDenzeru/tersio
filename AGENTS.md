@@ -31,12 +31,13 @@ Follows Airbnb JS + Google TS style guides, TypeScript strict mode. ESLint enfor
 
 ## Verification (before marking a task done)
 
+CI runs `bun run verify` — `bun install --frozen-lockfile`, `bun run build`, and `bun run test`. Run exactly that before marking any task done; it is the only gate before push:
+
 ```bash
-bun run build
-bun run test
+bun run verify
 ```
 
-Both must pass. No new `any` or suppression comments. Follow existing quote style, import order, and formatting. Note UI changes, logic cases reasoned through, and any new dependency in summary.
+It must pass. No new `any` or suppression comments. Follow existing quote style, import order, and formatting. Note UI changes, logic cases reasoned through, and any new dependency in summary.
 
 ---
 
