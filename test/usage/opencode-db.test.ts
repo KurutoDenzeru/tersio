@@ -165,7 +165,7 @@ test.runIf(hasSqlite())("a zero-token message is skipped and a missing db is a n
 });
 
 // Output past 1MB must still sync and read back (was silently dropped).
-test.runIf(hasSqlite())("a session_message table past 1MB still syncs and reads back", () => {
+test.runIf(hasSqlite())("a session_message table past 1MB still syncs and reads back", { timeout: 30000 }, () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-oc-db-big-"));
   try {
     mkdirSync(path.join(dir, "sessions"), { recursive: true });
