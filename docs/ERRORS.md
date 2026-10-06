@@ -55,3 +55,8 @@ Recurring mistakes log. Committed to git; reviewed periodically to promote entri
 **What happened:** A `PUT 642.=643` edit in `cli/dashboard.ts` added an `onError` reject handler, but the replacement body omitted `let stopping = false;`. Two functions kept referencing the missing variable until the build caught it with three TS2304 errors.
 **Root cause:** The replacement body listed only the new lines. A range PUT replaces the entire range, so any surviving line inside it must be re-emitted in the body.
 **Prevention rule:** After an edit that inserts inside a block, read the whole block and confirm every referenced variable is declared. When drafting a replacement body, re-emit each surviving line from the target range.
+
+## 2026-10-06 — Slow-CI timeout on a heavy test that passed locally
+**What happened:** CI failed on `test/usage/opencode-db.test.ts` "a session_message table past 1MB still syncs and reads back" with `Test timed out in 5000ms`. The test seeds 2500 sqlite rows and syncs them; on the `ubuntu-24.04` runner it took ~6s, over vitest's 5s default. It passed locally in ~3s.
+**Root cause:** Judged the test green from a fast local machine. A workload whose runtime crosses a framework default is a flake wherever the machine is slower, not a local flake.
+**Prevention rule:** For any test that does real I/O at scale (large seeds, subprocess loops), set an explicit timeout with headroom instead of relying on the framework default. `bun run verify` now stands in for CI; a local pass there is the bar, and a heavy test that needs more than a few seconds gets an explicit timeout it.
