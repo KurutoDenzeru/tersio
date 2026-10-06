@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { execFileSync, execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -12,15 +12,7 @@ import {
   usageDbPath,
 } from "../../extensions/shared/usage-store.ts";
 import { markReset } from "../../extensions/shared/usage-ledger.ts";
-
-function hasSqlite(): boolean {
-  try {
-    execSync("command -v sqlite3", { stdio: "ignore" });
-    return true;
-  } catch {
-    return false;
-  }
-}
+import { hasSqlite } from "../helpers/env.ts";
 
 function withEnv(dir: string, fn: () => void): void {
   const prevDb = process.env.TERSIO_USAGE_DB;

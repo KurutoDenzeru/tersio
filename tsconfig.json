@@ -7,10 +7,10 @@
     "skipLibCheck": true,
     "types": ["node"],
     "rewriteRelativeImportExtensions": true,
-    "outDir": ".",
+    "outDir": "dist",
     "rootDir": ".",
     "noEmitOnError": true
   },
   "include": ["**/*.ts"],
-  "exclude": ["node_modules", "dist", "test", "dashboard"]
+  "exclude": ["node_modules", "dist", "test", "dashboard", "vitest.config.ts"]
 }

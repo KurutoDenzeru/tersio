@@ -5,16 +5,21 @@ import os from "node:os";
 import path from "node:path";
 
 import {
+  backupUsageDb,
   backupUsageDir,
+  clearUsageDb,
   deleteUsageBackup,
   listUsageBackups,
   maybeScheduledBackup,
   readBackupSchedule,
+  readUsageDb,
   restoreUsageBackup,
+  syncUsageDb,
   usageDbPath,
 } from "../../extensions/shared/usage-store.ts";
 import { csvCell, EXPORT_FORMATS, exportBody, exportRows } from "../../cli/dashboard.ts";
 import type { UsageReport } from "../../cli/usage.ts";
+import { hasSqlite } from "../helpers/env.ts";
 
 // A real report shape; export must not depend on anything else being present.
 const report = {
@@ -29,15 +34,21 @@ function sandbox(): { dir: string; cleanup: () => void } {
   const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-backups-"));
   const prevDb = process.env.TERSIO_USAGE_DB;
   const prevHome = process.env.TERSIO_HOME;
+  const prevSessions = process.env.TERSIO_SESSIONS_DIR;
   process.env.TERSIO_USAGE_DB = path.join(dir, "usage.db");
+  process.env.TERSIO_SESSIONS_DIR = path.join(dir, "sessions");
   writeFileSync(path.join(dir, "usage.db"), "current");
   return {
     dir,
     cleanup: () => {
-      if (prevDb === undefined) delete process.env.TERSIO_USAGE_DB;
-      else process.env.TERSIO_USAGE_DB = prevDb;
-      if (prevHome === undefined) delete process.env.TERSIO_HOME;
-      else process.env.TERSIO_HOME = prevHome;
+      for (const [key, value] of [
+        ["TERSIO_USAGE_DB", prevDb],
+        ["TERSIO_HOME", prevHome],
+        ["TERSIO_SESSIONS_DIR", prevSessions],
+      ] as const) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
       rmSync(dir, { recursive: true, force: true });
     },
   };
@@ -102,12 +113,28 @@ test("csv quoting escapes embedded quotes and leaves plain cells alone", () => {
 
 // --- restore --------------------------------------------------------------
 
-test("restore puts a snapshot back over the live mirror", () => {
-  const { cleanup } = sandbox();
+test.skipIf(!hasSqlite())("restore puts a readable snapshot back over the live mirror", () => {
+  const { dir, cleanup } = sandbox();
   try {
-    seedSnapshot("usage-20260101000000.db", "snapshot-bytes");
-    expect(restoreUsageBackup("usage-20260101000000.db")).toBe(true);
-    expect(readFileSync(usageDbPath(), "utf8")).toBe("snapshot-bytes");
+    // TERSIO_HOME keeps the schedule away from the developer's real settings.
+    process.env.TERSIO_HOME = dir;
+    // sandbox seeds a placeholder db; a real one has to come from the transcripts.
+    rmSync(usageDbPath(), { force: true });
+    mkdirSync(process.env.TERSIO_SESSIONS_DIR!, { recursive: true });
+    writeFileSync(
+      path.join(process.env.TERSIO_SESSIONS_DIR!, "s.jsonl"),
+      `{"timestamp":"2026-09-01T10:00:00.000Z","type":"message","id":"a","message":{"role":"assistant","model":"m","usage":{"input":10,"output":1}}}\n`,
+      "utf8",
+    );
+    expect(syncUsageDb()).toBe(true);
+    expect(readUsageDb()?.tokens.messages).toBe(1);
+    // What the dashboard's "Backup now" does, over a db that already has rows.
+    backupUsageDb(usageDbPath());
+    const [snapshot] = listUsageBackups();
+    expect(clearUsageDb()).toBe(1);
+    expect(readUsageDb()).toBe(null);
+    expect(restoreUsageBackup(path.basename(snapshot.file))).toBe(true);
+    expect(readUsageDb()?.tokens.messages).toBe(1);
   } finally {
     cleanup();
   }

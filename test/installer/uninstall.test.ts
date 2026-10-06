@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { cliEnv } from "../helpers/env.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const installer = path.join(root, "tersio.js");
+const installer = path.join(root, "dist", "tersio.js");
 const SELF = "@krtclcdy/tersio";
 const PONYTAIL = "@dietrichgebert/ponytail";
 

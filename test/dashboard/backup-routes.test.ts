@@ -1,5 +1,6 @@
 import { expect, test } from "vitest";
 import { spawn, type ChildProcess } from "node:child_process";
+import { once } from "node:events";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import os from "node:os";
@@ -50,7 +51,7 @@ test("backup create, list, and restore round-trips through the server", async ()
     );
     expect(syncUsageDb()).toBe(true);
     const port = await freePort();
-    child = spawn(process.execPath, [path.join(root, "tersio.js"), "dashboard", "--port", String(port)], {
+    child = spawn(process.execPath, [path.join(root, "dist", "tersio.js"), "dashboard", "--port", String(port)], {
       cwd: root,
       env: cliEnv(home, {
         TERSIO_USAGE_DB: process.env.TERSIO_USAGE_DB,
@@ -74,6 +75,15 @@ test("backup create, list, and restore round-trips through the server", async ()
     expect(restored.ok).toBe(true);
     expect(existsSync(usageDbPath())).toBe(true);
     expect(readUsageDb()?.tokens.messages).toBe(1);
+    const exited = once(child!, "exit");
+    child.kill("SIGINT");
+    await expect(exited).resolves.toEqual([0, null]);
+    const probe = net.createServer();
+    probe.listen(port, "127.0.0.1");
+    await once(probe, "listening");
+    probe.close();
+    await once(probe, "close");
+    child = null;
   } finally {
     child?.kill();
     for (const [key, value] of [["TERSIO_USAGE_DB", prev.db], ["TERSIO_SESSIONS_DIR", prev.sessions], ["TERSIO_RESET_FILE", prev.reset]] as const) {

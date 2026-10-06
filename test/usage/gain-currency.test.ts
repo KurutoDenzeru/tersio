@@ -8,7 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const installer = path.join(root, "tersio.js");
+const installer = path.join(root, "dist", "tersio.js");
 
 function serverEnv(home: string): NodeJS.ProcessEnv {
   return {

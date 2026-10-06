@@ -9,7 +9,7 @@ import { FX_SNAPSHOT_RATES, convertUsd, formatCurrency } from "../../cli/currenc
 import { FX_SNAPSHOT } from "../../dashboard/app/src/lib/format.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const installer = path.join(root, "tersio.js");
+const installer = path.join(root, "dist", "tersio.js");
 
 test("formatCurrency defaults to USD with magnitude-aware decimals", () => {
   expect(formatCurrency(1.5, "USD")).toBe("$1.50");

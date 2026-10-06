@@ -83,6 +83,17 @@ export function rtkPlatformSpec(platform: string = process.platform, arch: strin
   return RTK_PLATFORM_SPECS[`${platform}/${arch}`] || null;
 }
 
+// Walk up to the nearest package.json; identical for the source and compiled trees.
+export function findPackageRoot(fromDir: string): string {
+  let dir = fromDir;
+  for (;;) {
+    if (existsSync(path.join(dir, 'package.json'))) return dir;
+    const parent = path.dirname(dir);
+    if (parent === dir) throw new Error('package root not found');
+    dir = parent;
+  }
+}
+
 // The 3xx+location redirect rule shared by httpsGet/httpsDownload.
 function redirectNext(res: { statusCode?: number; headers: { location?: string } }, url: string): string | null {
   if (res.statusCode !== undefined && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {

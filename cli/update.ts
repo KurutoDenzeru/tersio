@@ -233,8 +233,7 @@ async function runLatestUpdate(): Promise<void> {
   // Inherited stdio, no outer spinner; the delegated installer runs quiet and this parent owns both the plan line and the closing summary.
   try {
     await execInherit(npmCommand, npmCommandArgs);
-    const hostName = pinned === 'pi' ? 'pi' : pinned === 'opencode' ? 'OpenCode' : 'OMP';
-    console.log(`Done — tersio ${plan.cli ?? PACKAGE_VERSION}. Restart ${hostName}.`);
+    console.log(`Done — tersio ${plan.cli ?? PACKAGE_VERSION} and add-ons updated.`);
     if (!dryRun) {
       try {
         await refreshPrices();

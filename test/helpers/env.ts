@@ -1,8 +1,19 @@
 // Pins the pi agent vars alongside a temp HOME, so a spawned CLI cannot write
 // the developer's real ~/.pi/agent — once deleted a real extension tree.
+import { execSync } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+
+/** The usage store shells out to sqlite3; tests that need it skip when it is absent. */
+export function hasSqlite(): boolean {
+  try {
+    execSync('command -v sqlite3', { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export function cliEnv(home: string, extra: Record<string, string> = {}): NodeJS.ProcessEnv {
   return {

@@ -8,7 +8,7 @@ import { createRequire } from "node:module";
 import { cliEnv } from "../helpers/env.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const installer = path.join(root, "tersio.js");
+const installer = path.join(root, "dist", "tersio.js");
 const { version } = createRequire(import.meta.url)("../../package.json");
 
 function run(...args: string[]) {

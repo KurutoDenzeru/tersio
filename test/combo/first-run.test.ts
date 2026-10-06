@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 
 import comboToggleExtension from "../../extensions/combo-toggle/index.ts";
-import { resetSharedComboState } from "../../extensions/shared/session-state.ts";
+import { getSharedComboState, resetSharedComboState } from "../../extensions/shared/session-state.ts";
 import type { ExtensionApi, ExtensionCtx, SessionEntry } from "../../extensions/shared/types.ts";
 import { withHome as inHome } from "../helpers/env.ts";
 
@@ -97,5 +97,51 @@ test("existing marked install does not prompt", async () => {
     const h = harness("balanced");
     await h.handlers.get("session_start")!({}, h.ctx);
     expect(h.prompts).toHaveLength(0);
+  });
+});
+
+test("a persisted Combo default applies to a new empty session", async () => {
+  await withHome(async (home) => {
+    mkdirSync(path.join(home, ".tersio"), { recursive: true });
+    writeFileSync(path.join(home, ".tersio", "settings.json"), JSON.stringify({
+      comboDefault: "balanced",
+      comboSetupComplete: true,
+      cavemanDefault: "full",
+      rtkDefault: true,
+      ponytailDefault: "full",
+    }), "utf8");
+
+    const h = harness(undefined);
+    await h.handlers.get("session_start")!({}, h.ctx);
+
+    expect(h.prompts).toHaveLength(0);
+    expect(h.entries.find((entry) => entry.customType === "combo-level")?.data?.level).toBe("balanced");
+
+    h.ctx.sessionManager = { getBranch: () => [] };
+    await h.handlers.get("before_agent_start")!({ systemPrompt: [] }, h.ctx);
+    expect(getSharedComboState().level).toBe("balanced");
+  });
+});
+
+test("a new session restores persisted per-mode defaults with the Combo preset", async () => {
+  await withHome(async (home) => {
+    mkdirSync(path.join(home, ".tersio"), { recursive: true });
+    writeFileSync(path.join(home, ".tersio", "settings.json"), JSON.stringify({
+      comboDefault: "balanced",
+      comboSetupComplete: true,
+      cavemanDefault: "off",
+      rtkDefault: false,
+      ponytailDefault: "lite",
+    }), "utf8");
+
+    const h = harness(undefined);
+    await h.handlers.get("session_start")!({}, h.ctx);
+
+    expect(getSharedComboState()).toMatchObject({
+      level: "custom",
+      caveman: "off",
+      rtk: "off",
+      ponytail: "lite",
+    });
   });
 });

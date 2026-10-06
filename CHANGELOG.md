@@ -6,6 +6,11 @@
  - Ships Ponytail to pi as a local package instead of an npm spec, so pi stops nagging about package updates; uninstall removes the directory and its settings entry.
  - Trims the benchmark protocol to tokens and time, dropping the unused cost, steps, and break-even axes.
  - Skips the update-check spinner under CI, where its stop newline pushed the welcome tips off a 20-row terminal.
+ - Closes the dashboard server on Ctrl-C before Tersio exits, so its local port is released.
+ - Interactive installs now ask for Caveman, RTK, and Ponytail defaults after the Combo preset.
+ - Update completion no longer tells users to restart a host after all add-ons refresh.
+ - New sessions now restore the persisted Combo default without an empty branch status reset.
+ - Compiles TypeScript into `dist/` instead of beside each source, so `bun run build` leaves no `.js` twins in `cli/` or `extensions/`; `bun run clean` now just removes `dist/` and `dashboard/dist/`. The published tarball still carries both the compiled `.js` runtime and the `.ts` sources OMP loads.
 
 ## v2.25.1
  - Removes rtk's OpenCode plugin alongside the tree on `tersio uninstall --host opencode`, so no broken hook file is left behind.

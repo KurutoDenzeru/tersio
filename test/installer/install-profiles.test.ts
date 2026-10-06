@@ -14,9 +14,7 @@ import {
 import { cliEnv, withHome } from "../helpers/env.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const installer = path.join(root, "tersio.js");
-
-
+const installer = path.join(root, "dist", "tersio.js");
 
 // Session defaults live in ~/.tersio/settings.json; call sites still pass the
 // package-keyed shape the old lock file used.

@@ -4,7 +4,8 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { createRequire } from 'node:module';
-import { readTextIfExists } from '../extensions/lib/utils.ts';
+import { fileURLToPath } from 'node:url';
+import { findPackageRoot, readTextIfExists } from '../extensions/lib/utils.ts';
 import { parseCurrencyFlag, readStoredCurrency } from './currency.ts';
 import type { CurrencyCode } from './currency.ts';
 
@@ -18,7 +19,7 @@ const OMP_BIN = IS_WINDOWS ? 'omp.cmd' : 'omp';
 
 const PACKAGE_NAME = '@krtclcdy/tersio';
 const PACKAGE_BIN = 'tersio';
-const { version: PACKAGE_VERSION } = createRequire(import.meta.url)('../package.json') as { version: string };
+const { version: PACKAGE_VERSION } = createRequire(import.meta.url)(path.join(findPackageRoot(path.dirname(fileURLToPath(import.meta.url))), 'package.json')) as { version: string };
 
 // --- Types ---
 

@@ -21,10 +21,10 @@
   },
   "type": "module",
   "bin": {
-    "tersio": "tersio.js"
+    "tersio": "dist/tersio.js"
   },
   "exports": {
-    "./server": "./extensions/opencode/server.js"
+    "./server": "./dist/extensions/opencode/server.js"
   },
   "omp": {
     "name": "Tersio",
@@ -114,24 +114,23 @@
     }
   },
   "files": [
-    "tersio.js",
-    "cli/**/*.js",
+    "dist/**/*.js",
+    "dist/extensions/caveman-session/*.md",
     "dashboard/dist/**/*",
-    "extensions/**/*.js",
     "extensions/**/*.ts",
     "extensions/caveman-session/rule.md",
     "extensions/caveman-session/rule-ultra.md",
     "extensions/caveman-session/rule-megacave.md"
   ],
   "scripts": {
-    "clean": "rm -f tersio.js cli/*.js extensions/**/*.js && rm -rf dashboard/dist",
-    "build": "tsc && bun run build:dashboard",
+    "clean": "rm -rf dist dashboard/dist",
+    "build": "tsc && bun run build:dashboard && cp extensions/caveman-session/*.md dist/extensions/caveman-session/",
     "build:dashboard": "bun install --cwd dashboard/app --frozen-lockfile && bun run --cwd dashboard/app build",
     "prepublishOnly": "bun run build",
     "check": "tsc --noEmit",
     "verify": "bun install --frozen-lockfile && bun run build && bun run test",
-    "doctor": "node tersio.js --doctor",
-    "dry-run": "node tersio.js --dry-run --scope user --yes",
+    "doctor": "node dist/tersio.js --doctor",
+    "dry-run": "node dist/tersio.js --dry-run --scope user --yes",
     "lint": "oxlint cli extensions test tersio.ts",
     "lint:dashboard": "bun run --cwd dashboard/app lint",
     "lint:fix": "oxlint cli extensions test tersio.ts --fix",
@@ -143,6 +142,7 @@
   "devDependencies": {
     "@opencode/plugin": "^2.0.22",
     "@types/node": "^26.4.1",
+    "happy-dom": "^20.14.5",
     "oxlint": "^1.85.0",
     "typescript": "^7.0.2",
     "vitest": "^5.0.1"

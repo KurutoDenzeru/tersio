@@ -1,13 +1,15 @@
 import { expect, test } from "vitest";
 import { execFileSync, spawnSync } from "node:child_process";
-import { readdirSync, readFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
-// Every extensions/<base> value import needs both its compiled .js and its
-// .ts source packed; v2.20.0 shipped .ts only and crashed on first run.
+// Every extensions/<base> value import needs its compiled .js (CLI runtime,
+// under dist/) and its .ts source (OMP loads TS) packed; v2.20.0 shipped .ts
+// only and crashed on first run.
 function cliExtensionBases(): Set<string> {
   const bases = new Set<string>();
   for (const file of readdirSync(path.join(root, "cli"))) {
@@ -48,7 +50,7 @@ test("packed tarball carries both .js (CLI runtime) and .ts (OMP) for every CLI-
   expect(packed).not.toContain("dashboard/app/src/App.tsx");
   expect(packed).not.toContain("dashboard/legacy/template.html");
   for (const base of [...bases].sort()) {
-    expect(packed, `missing compiled runtime: extensions/${base}.js`).toContain(`extensions/${base}.js`);
+    expect(packed, `missing compiled runtime: dist/extensions/${base}.js`).toContain(`dist/extensions/${base}.js`);
     expect(packed, `missing OMP source: extensions/${base}.ts`).toContain(`extensions/${base}.ts`);
   }
 });
@@ -68,4 +70,22 @@ test("packed tarball carries every Caveman rule body", () => {
   }
   expect(source).toMatch(/ASD-STE100 Simplified Technical English/);
   expect(source).toMatch(/No tool-call narration/);
+});
+
+// A packed tree can list every file and still not boot, so run the packed CLI itself.
+test.skipIf(process.platform === "win32")("the packed tarball boots and reports its version", () => {
+  const version = (JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")) as { version: string }).version;
+  const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-pack-boot-"));
+  try {
+    execFileSync("bun", ["pm", "pack", "--destination", dir, "--quiet"], { cwd: root, encoding: "utf8" });
+    const tarball = readdirSync(dir).find((name) => name.endsWith(".tgz"));
+    if (!tarball) expect.unreachable("bun pm pack wrote a tarball");
+    execFileSync("tar", ["-xzf", tarball, "-C", dir], { cwd: dir });
+    // The repo's own node_modules stands in for an install, so no registry is needed.
+    symlinkSync(path.join(root, "node_modules"), path.join(dir, "package", "node_modules"), "dir");
+    const out = execFileSync(process.execPath, [path.join(dir, "package", "dist", "tersio.js"), "--version"], { encoding: "utf8" });
+    expect(out.trim()).toBe(version);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

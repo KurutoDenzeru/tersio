@@ -158,6 +158,14 @@ export function setSharedComboMode(name: ModeName, value: unknown): Readonly<Com
   return publish(normalizedState(modes));
 }
 
+export function setSharedComboModes(modes: { caveman?: unknown; rtk?: unknown; ponytail?: unknown }): Readonly<ComboState> {
+  return publish(normalizedState({
+    caveman: normalizeMode('caveman', modes.caveman) || 'off',
+    rtk: normalizeMode('rtk', modes.rtk) || 'off',
+    ponytail: normalizeMode('ponytail', modes.ponytail) || 'off',
+  }));
+}
+
 export function reconcileSharedComboEntries(entries: SessionEntry[] | null | undefined): Readonly<ComboState> {
   let modes: Modes = { ...COMBO_LEVELS.off };
   if (Array.isArray(entries)) {

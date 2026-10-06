@@ -11,11 +11,6 @@ dist
 graphify-out/
 temp/
 
-# Generated JavaScript files
-tersio.js
-cli/**/*.js
-extensions/**/*.js
-
 # Tests point HOME here and expect it to be absent; an install run once
 # wrote 200K into it, where it must never exist.
 test/definitely-missing-home/

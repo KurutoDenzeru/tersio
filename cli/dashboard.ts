@@ -22,7 +22,7 @@ import { normalizeComboLevel } from '../extensions/shared/session-state.ts';
 import { CAVEMAN_DEFAULTS, PONYTAIL_DEFAULTS } from './common.ts';
 import type { ComboLevel } from '../extensions/shared/types.ts';
 import { PACKAGE_NAME } from './common.ts';
-import { resolveRtkBinary } from '../extensions/lib/utils.ts';
+import { findPackageRoot, resolveRtkBinary } from '../extensions/lib/utils.ts';
 
 export interface DashboardOptions {
   port: number;
@@ -30,7 +30,7 @@ export interface DashboardOptions {
   exportFile: string | null;
 }
 
-const DASHBOARD_DIST = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'dashboard', 'dist');
+const DASHBOARD_DIST = path.join(findPackageRoot(path.dirname(fileURLToPath(import.meta.url))), 'dashboard', 'dist');
 const DASHBOARD_INDEX = path.join(DASHBOARD_DIST, 'index.html');
 const DASHBOARD_BRAND = path.join(DASHBOARD_DIST, 'brand.webp');
 
@@ -638,13 +638,29 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     res.end(await readSegment(DASHBOARD_INDEX));
   });
-  server.listen(options.port, '127.0.0.1', () => {
-    try { process.title = 'tersio dashboard'; } catch { /* non-POSIX shells keep node */ }
-    const address = server.address();
-    const port = typeof address === 'object' && address ? address.port : options.port;
-    const url = `http://127.0.0.1:${port}`;
-    console.log(`[ok] Dashboard live → ${url} (Ctrl-C to stop)`);
-    if (options.open) openBrowser(url);
+  await new Promise<void>((resolve, reject) => {
+    let stopping = false;
+    const rejectOnce = (err: Error): void => {
+      if (!stopping) reject(err);
+    };
+    const stop = (): void => {
+      if (stopping) return;
+      stopping = true;
+      server.close(() => resolve());
+      server.closeIdleConnections();
+    };
+
+    process.once('SIGINT', stop);
+    process.once('SIGTERM', stop);
+    server.once('error', rejectOnce);
+    server.listen(options.port, '127.0.0.1', () => {
+      try { process.title = 'tersio dashboard'; } catch { /* non-POSIX shells keep node */ }
+      const address = server.address();
+      const port = typeof address === 'object' && address ? address.port : options.port;
+      const url = `http://127.0.0.1:${port}`;
+      console.log(`[ok] Dashboard live → ${url} (Ctrl-C to stop)`);
+      if (options.open) openBrowser(url);
+    });
   });
 }
 

@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { cliEnv } from "../helpers/env.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const updateJs = path.join(root, "cli", "update.js").replace(/\\/g, "/");
+const updateJs = path.join(root, "dist", "cli", "update.js").replace(/\\/g, "/");
 
 const PROBE = "import('" + updateJs + "').then(async (m) => {"
   + " const out = { cached: await m.checkForUpdate(), forced: await m.checkForUpdate(true) };"

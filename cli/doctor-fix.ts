@@ -1,7 +1,6 @@
 import { existsSync, promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import {
   BUN_BIN_DIR, OMP_AGENT_DIR, OMP_PLUGINS_DIR,
   PACKAGE_NAME, PACKAGE_VERSION, RTK_BINARY_NAME, removeExtensionFromConfig,
@@ -17,14 +16,11 @@ import {
   httpsDownload, parseChecksum, readTextIfExists, rtkPlatformSpec, sha256File,
 } from '../extensions/lib/utils.ts';
 import { runLatestUpdate } from './update.ts';
-import { OPENCODE_SERVER_SHIM, TREE_FILES, sourcePath } from './manifest.ts';
+import { EXT_DIR, OPENCODE_SERVER_SHIM, TREE_FILES, sourcePath } from './manifest.ts';
 import { detectHosts, hostExtensionsDir } from './hosts.ts';
 
 type FixTarget = 'extensions' | 'registrations' | 'rtk' | 'ponytail' | 'cli';
 type FixRequest = FixTarget | 'all';
-
-const EXT_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'extensions');
-
 
 // A written tree is the install for both hosts now, so --fix restores it for whichever hosts have it, alongside the OMP package when that is present.
 async function fixExtensionTrees(): Promise<void> {

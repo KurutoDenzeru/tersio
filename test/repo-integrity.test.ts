@@ -82,5 +82,7 @@ test("package exports a loadable opencode server entrypoint", () => {
   };
   const entry = pkg.exports?.["./server"];
   expect(entry, 'exports["./server"] must exist for `opencode plugin add`').toBeDefined();
-  expect(existsSync(path.join(root, entry as string)), `${entry} must exist in the packed tarball`).toBe(true);
+  // The export points at gitignored dist/ output; its tracked source is the .ts beside it.
+  const tracked = (entry as string).replace(/^\.\//, "").replace(/^dist\//, "").replace(/\.js$/, ".ts");
+  expect(existsSync(path.join(root, tracked)), `${tracked} must exist for a fresh checkout`).toBe(true);
 });

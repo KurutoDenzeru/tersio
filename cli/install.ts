@@ -4,8 +4,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  BUN_BIN_DIR, COMBO_PRESET_MODES, HOME, IS_WINDOWS, OMP_AGENT_DIR, OMP_PLUGINS_DIR, OMP_BIN,
-  PACKAGE_NAME, PACKAGE_VERSION, RTK_BINARY_NAME, args,
+  BUN_BIN_DIR, CAVEMAN_DEFAULTS, COMBO_PRESET_MODES, HOME, IS_WINDOWS, OMP_AGENT_DIR, OMP_PLUGINS_DIR, OMP_BIN,
+  PACKAGE_NAME, PACKAGE_VERSION, PONYTAIL_DEFAULTS, RTK_BINARY_NAME, args,
   allowUnverified, applyUpdate, cavemanDefaultFlag, comboDefaultFlag, command, dryRun,
   ponytailDefaultFlag, profileFlagsGiven, rtkDefaultFlag, verbose, yes,
   dashboardExport, dashboardPort,
@@ -26,7 +26,7 @@ import { runDashboard } from './dashboard.ts';
 import { wireRtkOmp, wireRtkOpencode, wireRtkPi } from './rtk-wiring.ts';
 import {
   CAVEMAN_REMOTE_ULTRA, CAVEMAN_REMOTE_MEGACAVE, RTK_RELEASE_API, RtkRelease, RtkReleaseAsset, fetchJson, findFile, findHoistedPackage, httpsGet,
-  httpsDownload, parseChecksum, piAgentDir, readTextIfExists, resolveRtkBinary, rtkPlatformSpec, sha256File,
+  findPackageRoot, httpsDownload, parseChecksum, piAgentDir, readTextIfExists, resolveRtkBinary, rtkPlatformSpec, sha256File,
 } from '../extensions/lib/utils.ts';
 import { formatCliStatus, storedProfile, storedProfileSync, writePluginSettings } from './profile.ts';
 import { runSettings } from './settings.ts';
@@ -421,7 +421,7 @@ const PONYTAIL_BUNDLE_FILES = [
 ] as const;
 
 async function stepPonytailBundle(treeDir: string, options: InstallOptions): Promise<void> {
-  const root = findHoistedPackage('@dietrichgebert/ponytail', path.dirname(fileURLToPath(import.meta.url)));
+  const root = findHoistedPackage('@dietrichgebert/ponytail', findPackageRoot(path.dirname(fileURLToPath(import.meta.url))));
   if (!root) {
     if (!options.quiet) console.log('  [skip] Ponytail package not found next to the CLI — OpenCode keeps the built-in text');
     return;
@@ -472,11 +472,34 @@ async function stepOpencode(options: InstallOptions): Promise<void> {
 }
 
 
+async function askModeDefaults(profile: Profile): Promise<boolean> {
+  const caveman = await askInteractiveChoice('Caveman default', [...CAVEMAN_DEFAULTS].map((value) => ({
+    value, label: value,
+  })), profile.cavemanDefault);
+  if (caveman.status !== 'selected') return false;
+  profile.cavemanDefault = caveman.value;
+
+  const rtk = await askInteractiveChoice('RTK default', [
+    { value: 'on', label: 'on' },
+    { value: 'off', label: 'off' },
+  ], profile.rtkDefault ? 'on' : 'off');
+  if (rtk.status !== 'selected') return false;
+  profile.rtkDefault = rtk.value === 'on';
+
+  const ponytail = await askInteractiveChoice('Ponytail default', [...PONYTAIL_DEFAULTS].map((value) => ({
+    value, label: value,
+  })), profile.ponytailDefault);
+  if (ponytail.status !== 'selected') return false;
+  profile.ponytailDefault = ponytail.value;
+  return true;
+}
+
 async function resolveProfile(opts: { quiet?: boolean } = {}): Promise<Profile> {
   // Seed from the stored defaults so flag-less runs keep them.
   const profile = await storedProfile();
 
-  // One numbered prompt for all three modes, for a real terminal user with no default flags. Never for --apply-update, and never for a script.
+  // Interactive installs choose the preset first, then allow each mode to differ.
+  let interactiveDefaults = false;
   let comboChosen = comboDefaultFlag !== undefined;
   if (tty() && !profileFlagsGiven && !applyUpdate) {
     const choice = await askInteractiveChoice('Session-start defaults — Combo preset', [
@@ -488,6 +511,7 @@ async function resolveProfile(opts: { quiet?: boolean } = {}): Promise<Profile> 
     if (choice.status === 'selected') {
       profile.comboDefault = choice.value;
       comboChosen = true;
+      interactiveDefaults = true;
     } else {
       closeRL();
       process.exit(130);
@@ -502,6 +526,10 @@ async function resolveProfile(opts: { quiet?: boolean } = {}): Promise<Profile> 
     profile.cavemanDefault = preset.caveman;
     profile.rtkDefault = preset.rtk;
     profile.ponytailDefault = preset.ponytail;
+  }
+  if (interactiveDefaults && !(await askModeDefaults(profile))) {
+    closeRL();
+    process.exit(130);
   }
   if (cavemanDefaultFlag !== undefined) profile.cavemanDefault = cavemanDefaultFlag;
   if (rtkDefaultFlag !== undefined) profile.rtkDefault = rtkDefaultFlag === 'on';
@@ -668,7 +696,7 @@ const PI_PONYTAIL_PACKAGE = `${JSON.stringify({ name: 'ponytail', version: '0.0.
 
 async function stepPonytailForPi(agentDir: string, options: InstallOptions): Promise<void> {
   if (!options.quiet) console.log('  Ponytail — write the local pi package');
-  const root = findHoistedPackage('@dietrichgebert/ponytail', path.dirname(fileURLToPath(import.meta.url)));
+  const root = findHoistedPackage('@dietrichgebert/ponytail', findPackageRoot(path.dirname(fileURLToPath(import.meta.url))));
   const dest = path.join(agentDir, 'ponytail');
   if (!root) {
     console.log('  [skip] Ponytail package not found next to the CLI');

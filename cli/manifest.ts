@@ -1,8 +1,9 @@
 // Single list of install writes, shared by installer, doctor, and tests.
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { findPackageRoot } from '../extensions/lib/utils.ts';
 
-export const EXT_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'extensions');
+export const EXT_DIR = path.join(findPackageRoot(path.dirname(fileURLToPath(import.meta.url))), 'extensions');
 
 /** Root entrypoint OpenCode resolves for the installed tree; re-exports the versioned entry beside it. Built by join so the path never reads as a relative import (repo-integrity scans literals). */
 const SERVER_SPEC = `./${['opencode', 'server.ts'].join('/')}`;

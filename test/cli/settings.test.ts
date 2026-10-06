@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { cliEnv } from "../helpers/env.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const installer = path.join(root, "tersio.js");
+const installer = path.join(root, "dist", "tersio.js");
 
 function writeLock(home: string, settings: Record<string, unknown>): void {
   const dir = path.join(home, ".tersio");

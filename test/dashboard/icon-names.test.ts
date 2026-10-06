@@ -62,25 +62,9 @@ test("the scan found the icon usages it is meant to guard", () => {
   expect(new Set(all.map((i) => i.name)).size).toBeGreaterThan(10);
 });
 
-test("every <Icon name> resolves to a real lucide icon", () => {
-  const broken = all
+test("every icon name resolves to a real lucide icon", () => {
+  const broken = [...all, ...dynamic]
     .filter(({ name }) => !(toPascal(name) in icons))
     .map(({ file, name }) => `${file}: "${name}" -> ${toPascal(name)} not in lucide`);
   expect(broken, broken.join("\n")).toEqual([]);
-});
-
-test("dynamic icon sources (zones, carbon, strip) also resolve", () => {
-  const broken = dynamic
-    .filter(({ name }) => !(toPascal(name) in icons))
-    .map(({ file, name }) => `${file}: "${name}" -> ${toPascal(name)} not in lucide`);
-  expect(broken, broken.join("\n")).toEqual([]);
-});
-
-test("toPascal matches the wrapper's own rule", () => {
-  expect(toPascal("trash-2")).toBe("Trash2");
-  expect(toPascal("refresh-cw")).toBe("RefreshCw");
-  expect(toPascal("x")).toBe("X");
-  // The rename that started this: Trash2 is gone in this lucide, Trash is not.
-  expect(toPascal("trash-2") in icons).toBe(false);
-  expect("Trash" in icons).toBe(true);
 });

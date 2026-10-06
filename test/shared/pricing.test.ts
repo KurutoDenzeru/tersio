@@ -142,7 +142,7 @@ test("tersio usage prices from the live cache", () => {
     "utf8",
   );
   const root = path.resolve("test", "..");
-  const result = spawnSync(process.execPath, [path.join(root, "tersio.js"), "usage"], {
+  const result = spawnSync(process.execPath, [path.join(root, "dist", "tersio.js"), "usage"], {
     encoding: "utf8",
     env: {
       ...process.env,

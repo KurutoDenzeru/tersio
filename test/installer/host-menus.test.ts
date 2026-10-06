@@ -11,7 +11,7 @@ import type { HostEntry } from "../../cli/hosts.ts";
 import { cliEnv } from "../helpers/env.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const cli = path.join(root, "tersio.js");
+const cli = path.join(root, "dist", "tersio.js");
 
 function tempHome(): string {
   return mkdtempSync(path.join(os.tmpdir(), "tersio-hosts-"));

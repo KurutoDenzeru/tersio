@@ -8,7 +8,7 @@ import { cliEnv } from "../helpers/env.ts";
 import { fileContains } from "../../extensions/lib/utils.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const installer = path.join(root, "tersio.js");
+const installer = path.join(root, "dist", "tersio.js");
 
 // Empty home keeps every probe MISSING. The seeded update-check cache is
 // ignored by doctor (no registry probe); install/update flows still use it.

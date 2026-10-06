@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { cliEnv } from "../helpers/env.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const installer = path.join(root, "tersio.js");
+const installer = path.join(root, "dist", "tersio.js");
 
 function run(...args: string[]) {
   const missingHome = path.join(root, "test", "definitely-missing-home");

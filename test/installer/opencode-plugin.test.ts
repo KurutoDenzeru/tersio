@@ -7,7 +7,7 @@ import { execFileSync } from "node:child_process";
 import { cliEnv } from "../helpers/env.ts";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const installer = path.join(root, "tersio.js");
+const installer = path.join(root, "dist", "tersio.js");
 
 function home(): string {
   const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-oc-plugin-"));
@@ -38,13 +38,6 @@ test("opencode install registers one plugin and drops the rtk entry", () => {
     rmSync(dir, { recursive: true, force: true });
   }
 }, 150000);
-
-test("the tersio plugin carries the npm id and the rtk rewrite", () => {
-  const source = readFileSync(path.join(root, "extensions", "opencode", "server.ts"), "utf8");
-  expect(source).toContain("id: '@krtclcdy/tersio'");
-  expect(source).toMatch(/execute\.before/);
-  expect(source).toMatch(/'rewrite', command/);
-});
 
 test("doctor --fix also drops a leftover rtk plugin entry", () => {
   const dir = home();

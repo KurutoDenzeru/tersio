@@ -13,15 +13,18 @@ import {
   sessionEntries,
   setSharedComboLevel,
   setSharedComboListener,
-  setSharedComboMode,
+  setSharedComboModes,
   systemPromptIncludes,
 } from '../shared/session-state.ts';
 import { hostSelect, injectPromptText, onHostEvent, setExtensionLabel } from '../shared/host.ts';
 import { announceStatus } from '../shared/status.ts';
 import {
   isComboSetupComplete,
+  readCavemanDefault,
   readComboDefault,
+  readPluginSettings,
   readPonytailDefault,
+  readRtkDefault,
   saveComboSetup,
 } from '../shared/plugin-settings.ts';
 import { findHoistedPackage, isPiProcess } from '../lib/utils.ts';
@@ -64,7 +67,8 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
 
   let setupPrompted = false;
   let lastInjected: string | undefined = undefined;
-
+  // opencode has no UI event stream, so only its empty branch reconciles.
+  const OPENCODE = pi.hostId === 'opencode';
 
   // Siblings restore from these entries, so the fallback must write them too.
   function persistPreset(level: string): void {
@@ -74,19 +78,38 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
     pi.appendEntry?.('ponytail-mode', { mode: modes.ponytail });
     pi.appendEntry?.('combo-level', { level });
   }
+  function restoreConfiguredDefaults(): void {
+    const settings = readPluginSettings();
+    const hasModeDefaults = ['cavemanDefault', 'rtkDefault', 'ponytailDefault'].some((key) => key in settings);
+    const combo = readComboDefault();
+    const preset = COMBO_LEVELS[combo];
+    const modes = hasModeDefaults
+      ? { caveman: readCavemanDefault(), rtk: readRtkDefault() ? 'on' : 'off', ponytail: readPonytailDefault() }
+      : preset;
+    setSharedComboModes(modes);
+    if (modes.caveman === 'off' && modes.rtk === 'off' && modes.ponytail === 'off') return;
+    pi.appendEntry?.('caveman-mode', { mode: modes.caveman });
+    pi.appendEntry?.('rtk-mode', { enabled: modes.rtk === 'on' });
+    pi.appendEntry?.('ponytail-mode', { mode: modes.ponytail });
+    if (preset && modes.caveman === preset.caveman && modes.rtk === preset.rtk && modes.ponytail === preset.ponytail) {
+      pi.appendEntry?.('combo-level', { level: combo });
+    }
+  }
 
-  function reconcile(ctx?: ExtensionCtx): Readonly<ComboState> {
-    if (!ctx?.hasUI) return getSharedComboState();
-    return reconcileSharedComboEntries(sessionEntries(ctx));
+
+  function reconcile(ctx?: ExtensionCtx, resetEmpty = false): Readonly<ComboState> {
+    if (!ctx?.hasUI && !(resetEmpty && OPENCODE)) return getSharedComboState();
+    const entries = sessionEntries(ctx);
+    if (!resetEmpty && entries.length === 0) return getSharedComboState();
+    return reconcileSharedComboEntries(entries);
   }
   function listen(ctx?: ExtensionCtx): void {
     if (!ctx?.hasUI) return;
     setSharedComboListener('combo', (state) => { announceStatus(ctx); return state; });
   }
-
-  function track(ctx?: ExtensionCtx): void {
+  function track(ctx?: ExtensionCtx, resetEmpty = false): void {
     listen(ctx);
-    if (ctx?.hasUI) reconcile(ctx);
+    if (ctx?.hasUI || (resetEmpty && OPENCODE)) reconcile(ctx, resetEmpty);
   }
 
   pi.registerCommand?.('combo', {
@@ -145,26 +168,11 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
   }
 
   pi.on('session_start', async (_event, ctx) => {
-    track(ctx);
-    await runFirstRunSetup(ctx);
-    // The configured default applies only when no persisted mode state exists.
+    track(ctx, true);
+    if (!isComboSetupComplete() && ctx?.hasUI && ctx.ui?.select) await runFirstRunSetup(ctx);
+    // The configured defaults apply when a fresh session has no persisted mode state.
     const entries = sessionEntries(ctx);
-    const persisted = hasModeState(entries);
-    if (getSharedComboState().level === 'off' && !persisted) {
-      const fallback = readComboDefault();
-      if (fallback !== 'off') {
-        persistPreset(fallback);
-        setSharedComboLevel(fallback);
-      }
-    }
-    // No sibling restores a standalone ponytail default, so apply it here; skip it when the active preset already writes the same mode.
-    if (!entries.some((e) => e?.type === 'custom' && e.customType === 'ponytail-mode')) {
-      const ponytailFallback = readPonytailDefault();
-      if (ponytailFallback !== 'off' && ponytailFallback !== getSharedComboState().ponytail) {
-        pi.appendEntry?.('ponytail-mode', { mode: ponytailFallback });
-        setSharedComboMode('ponytail', ponytailFallback);
-      }
-    }
+    if (!hasModeState(entries) && (ctx?.hasUI || OPENCODE)) restoreConfiguredDefaults();
     // Announced last, so any default above is reflected.
     announceStatus(ctx);
   });

@@ -8,7 +8,7 @@ import { cliEnv } from "../helpers/env.ts";
 import { TREE_FILES } from "../../cli/manifest.ts";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const installer = path.join(root, "tersio.js");
+const installer = path.join(root, "dist", "tersio.js");
 const SELF = "@krtclcdy/tersio";
 
 function home(prefix: string): string {

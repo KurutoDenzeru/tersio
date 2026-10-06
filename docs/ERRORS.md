@@ -35,3 +35,23 @@ Recurring mistakes log. Committed to git; reviewed periodically to promote entri
 **What happened:** The Dashboard showed `Space-Bunny` at $246.52 beside `stealth/Space-Bunny-Alpha` at $0.00. The first id matched no feed key, so it fell to the Sonnet-class default with `known:false` and reported a cost that was never charged.
 **Root cause:** Read "no feed match" as "unpriced model" without checking for another spelling of the same model. The feed carries it as `openrouter/stealth/space-bunny-alpha`, priced at zero, and the plain alias missed it because the lookup only tried exact keys before the default.
 **Prevention rule:** When a model lands on the default price, search the feed for suffixed, prefixed, and provider-spelled ids before concluding it is unpriced. Treat stealth and alias spellings as one model: group them under one key and resolve its price through the same exact-then-suffix chain, so a free model never reports a default. `MODEL_ALIASES` in `extensions/shared/pricing.ts` is where a new one goes.
+
+## 2026-10-06 — Pasted a numbered diff with stale line ranges into `edit`
+**What happened:** An `edit` call was given a `PUT 89.=90` body pasted from a `git diff` fragment instead of the file's real content. It silently dropped `expect(existsSync(usageDbPath())).toBe(true);` from a test. The same pattern later removed the body of a whole test and a `mkdtempSync` line from another file.
+**Root cause:** Drafted patch hunk numbers from diff output and reused them as line coordinates. Diff line numbers are hunk offsets, not file coordinates, and a body copied from one file does not describe the target file.
+**Prevention rule:** Never paste a diff fragment into `edit`. Read the target region first, then write the smallest literal replacement. Treat any edit that removes an assertion or a statement you did not intend to remove as corrupt: re-read the region immediately.
+
+## 2026-10-06 — Chased a React duplicate with four config knobs before measuring
+**What happened:** A dashboard component test threw `Invalid hook call`. Four config changes were tried in sequence: `resolve.alias`, a `react` alias to the other tree, `resolve.dedupe`, and `server.deps.inline: true`. None worked. A probe that rendered a bare hook component passed, which localized the failure to the one import crossing the package boundary.
+**Root cause:** Assumed a resolver setting could fix a structural problem. `dashboard/app` is a separate package with its own `node_modules`, so the duplicate React is real, and aliases are not honored for imports inside `node_modules`.
+**Prevention rule:** Write the smallest probe that splits the failing case, and read it before changing config. Resolve duplicate libraries structurally, by running the code under the package that owns them, not by tuning the resolver. A config change that does not move the probe result is noise.
+
+## 2026-10-06 — Split the test script into two commands and broke `bun run test -- <path>`
+**What happened:** `"test": "vitest run && vitest run --root dashboard/app"` stopped `bun run test -- test/settings.test.ts` from running the requested file. Every path also ran twice.
+**Root cause:** Assumed bun forwards script arguments. Probe output showed bun appends them after the last token, so `"$@"` is empty and the paths sit outside both commands.
+**Prevention rule:** Probe argument forwarding with an `echo` script before relying on it. For two suites, use one `vitest run` with `test.projects`, each with its own `root`, `include`, and `environment`.
+
+## 2026-10-06 — Edit body dropped a line the replacement was meant to keep
+**What happened:** A `PUT 642.=643` edit in `cli/dashboard.ts` added an `onError` reject handler, but the replacement body omitted `let stopping = false;`. Two functions kept referencing the missing variable until the build caught it with three TS2304 errors.
+**Root cause:** The replacement body listed only the new lines. A range PUT replaces the entire range, so any surviving line inside it must be re-emitted in the body.
+**Prevention rule:** After an edit that inserts inside a block, read the whole block and confirm every referenced variable is declared. When drafting a replacement body, re-emit each surviving line from the target range.
