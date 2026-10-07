@@ -60,3 +60,13 @@ Recurring mistakes log. Committed to git; reviewed periodically to promote entri
 **What happened:** CI failed on `test/usage/opencode-db.test.ts` "a session_message table past 1MB still syncs and reads back" with `Test timed out in 5000ms`. The test seeds 2500 sqlite rows and syncs them; on the `ubuntu-24.04` runner it took ~6s, over vitest's 5s default. It passed locally in ~3s.
 **Root cause:** Judged the test green from a fast local machine. A workload whose runtime crosses a framework default is a flake wherever the machine is slower, not a local flake.
 **Prevention rule:** For any test that does real I/O at scale (large seeds, subprocess loops), set an explicit timeout with headroom instead of relying on the framework default. `bun run verify` now stands in for CI; a local pass there is the bar, and a heavy test that needs more than a few seconds gets an explicit timeout it.
+
+## 2026-10-07 — RTK coverage judged from a savings summary instead of the rewrite registry
+**What happened:** Reported `bun` (1120 calls) and `bunx` (481 calls) as uncovered gaps because neither appeared in `rtk gain`'s top-10 list. Direct probing showed both rewrite (exit 3).
+**Root cause:** Treated a savings summary as a coverage report. `rtk gain` ranks by tokens saved, so a rewritten command with small output never appears in it.
+**Prevention rule:** Probe `rtk rewrite "<command>"` for coverage: exit 0/3 with stdout means covered, exit 1 means passthrough. Never infer it from `rtk gain` or `rtk session`, which scans Claude Code history only.
+
+## 2026-10-07 — A host hook wired against an assumed payload shape
+**What happened:** The OpenCode `tool.execute.after` handler read `event.output` and `activeSid`. The real payload is `{ tool, sessionID, status, result: { content } }`, and `activeSid` is reset to `undefined` when a start hook finishes. Both reads were wrong, so the handler returned early on every call and filtered nothing.
+**Root cause:** Wrote the host integration from a sibling host's shape instead of reading the payload the host actually constructs. Every branch was fail-open, so nothing errored.
+**Prevention rule:** Read the host's own source for a hook payload before wiring it, then add one test that fires the hook with the real shape. A fail-open handler that never matches is invisible without one.
