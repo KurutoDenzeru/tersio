@@ -70,3 +70,8 @@ Recurring mistakes log. Committed to git; reviewed periodically to promote entri
 **What happened:** The OpenCode `tool.execute.after` handler read `event.output` and `activeSid`. The real payload is `{ tool, sessionID, status, result: { content } }`, and `activeSid` is reset to `undefined` when a start hook finishes. Both reads were wrong, so the handler returned early on every call and filtered nothing.
 **Root cause:** Wrote the host integration from a sibling host's shape instead of reading the payload the host actually constructs. Every branch was fail-open, so nothing errored.
 **Prevention rule:** Read the host's own source for a hook payload before wiring it, then add one test that fires the hook with the real shape. A fail-open handler that never matches is invisible without one.
+
+## 2026-10-07 — Edit truncated an existing test while trying to insert before it
+**What happened:** Adding two new tests to `test/installer/host-menus.test.ts`, the `oldText` spanned a whole existing test and the `newText` contained only that test's opening line. The replacement deleted the body and the closing brace, leaving a parse error at EOF. It also silently dropped an existing assertion before tsc caught the syntax break.
+**Root cause:** Used a replacing primitive for an insertion. A range replacement rewrites the entire matched span, so anything intended to survive must be re-emitted in full.
+**Prevention rule:** To insert before a block, keep `oldText` to the insertion point alone, or re-emit the whole original block in `newText`. After editing near an existing test, run `git diff -U0 -- <file>` and confirm the change is pure insertion before running the suite.
