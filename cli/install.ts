@@ -26,7 +26,7 @@ import { runDashboard } from './dashboard.ts';
 import { wireRtkOmp, wireRtkOpencode, wireRtkPi } from './rtk-wiring.ts';
 import {
   CAVEMAN_REMOTE_ULTRA, CAVEMAN_REMOTE_MEGACAVE, RTK_RELEASE_API, RtkRelease, RtkReleaseAsset, fetchJson, findFile, findHoistedPackage, httpsGet,
-  findPackageRoot, httpsDownload, parseChecksum, piAgentDir, readTextIfExists, resolveRtkBinary, rtkPlatformSpec, sha256File,
+  findPackageRoot, httpsDownload, parseChecksum, piAgentDir, readTextIfExists, resolveRtkBinary, ruleBodyProblem, rtkPlatformSpec, sha256File,
 } from '../extensions/lib/utils.ts';
 import { formatCliStatus, storedProfile, storedProfileSync, writePluginSettings } from './profile.ts';
 import { runSettings } from './settings.ts';
@@ -379,7 +379,12 @@ async function stepCaveman(extDir: string, options: WriteOptions): Promise<void>
     let rule = bundled;
     if (remote && !options.dryRun) {
       try {
-        rule = await withInteractiveSpinner(`Fetching Caveman ${name}`, () => httpsGet(remote));
+        const fetched = await withInteractiveSpinner(`Fetching Caveman ${name}`, () => httpsGet(remote));
+        const problem = ruleBodyProblem(fetched);
+        if (problem && bundled !== null) {
+          sayTagged(`  [warn] ${name} fetch rejected (${problem}) — keeping the bundled body`);
+          rule = bundled;
+        } else rule = fetched;
       } catch (e) {
         if (bundled === null) sayTagged(`  [warn] Could not fetch caveman ${name}: ${(e as Error).message}`);
         else debug(`Using bundled Caveman ${name}: ${(e as Error).message}`);

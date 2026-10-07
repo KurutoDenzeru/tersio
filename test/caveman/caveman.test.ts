@@ -7,6 +7,7 @@ import cavemanSessionExtension from "../../extensions/caveman-session/index.ts";
 import { resetSharedComboState } from "../../extensions/shared/session-state.ts";
 import type { ExtensionApi, SessionEntry } from "../../extensions/shared/types.ts";
 import { readCavemanDefault } from "../../extensions/shared/plugin-settings.ts";
+import { ruleBodyProblem } from "../../extensions/lib/utils.ts";
 
 process.env.HOME = new URL("../definitely-missing-home", import.meta.url).pathname;
 process.env.USERPROFILE = process.env.HOME;
@@ -219,6 +220,28 @@ test("a missing rule.md names the fix instead of shipping a degraded paraphrase"
   );
   expect(source).not.toMatch(/FALLBACK_FULL_RULE/);
   expect(source).toMatch(/is missing\. Run: tersio doctor --fix extensions/);
+});
+
+// Inline samples, one per pack: the contract each body must keep whatever upstream does.
+test("every rule pack passes the body gate and keeps its contract markers", () => {
+  const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "extensions", "caveman-session");
+  const samples: Record<string, string[]> = {
+    "rule.md": ["Only fluff die", "Never drop not/never/no/only/except", "Code blocks unchanged", "compress the style, not the language"],
+    "rule-ultra.md": ["Payload only", "Never cut: code, commands, paths, API names, error strings (verbatim)", "One word when one word is enough", "no arrows"],
+    "rule-megacave.md": ["以文言答", "Never cut or translate: code, commands, paths, API names, error strings", "negation (不, 非, 勿, 未, 毋)", "文言, not 白話"],
+  };
+  for (const [file, markers] of Object.entries(samples)) {
+    const body = readFileSync(path.join(dir, file), "utf8");
+    expect(ruleBodyProblem(body), `${file} must pass the install-time body gate`).toBeNull();
+    for (const marker of markers) expect(body.toLowerCase(), `${file} lost "${marker}"`).toContain(marker.toLowerCase());
+  }
+});
+
+test("the body gate rejects the fetches that would poison a rule file", () => {
+  expect(ruleBodyProblem("")).toBe("empty body");
+  expect(ruleBodyProblem("<!DOCTYPE html>\n<html><body>oops</body></html>")).toMatch(/HTML page/);
+  expect(ruleBodyProblem("404: Not Found")).toMatch(/404/);
+  expect(ruleBodyProblem("# Heading\n\nshort")).toMatch(/truncated/);
 });
 
 test("the caveman status slot carries the mode for the model's status reply", async () => {

@@ -10,7 +10,7 @@ import { detectHosts, hostExtensionsDir, ompPackageDir, piTersioSource } from '.
 import { askInteractiveChoice, askInteractiveConfirm, runInteractivePhase } from './interactive.ts';
 import { usageDbPath } from '../extensions/shared/usage-store.ts';
 import { pricesCachePath } from '../extensions/shared/pricing.ts';
-import { readTextIfExists, resolveRtkBinary } from '../extensions/lib/utils.ts';
+import { readTextIfExists, resolveRtkBinary, ruleBodyProblem } from '../extensions/lib/utils.ts';
 import { TREE_FILES } from './manifest.ts';
 
 interface DoctorSummary {
@@ -150,6 +150,11 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   const cavemanRules = [['rule.md', cavemanRuleText], ['rule-ultra.md', cavemanUltraText], ['rule-megacave.md', cavemanMegacaveText]];
   const missingRules = cavemanRules.filter(([, text]) => text === null).map(([name]) => name);
   check('Caveman rule', missingRules.length === 0, missingRules.length ? `missing: ${missingRules.join(', ')}` : ruleAge);
+  for (const [name, text] of cavemanRules) {
+    if (text === null) continue;
+    const problem = ruleBodyProblem(text);
+    if (problem) warnLine(`Caveman ${name}`, `unusable body (${problem}) — run: tersio install`);
+  }
   const rtkAge = rtkMtime ? `(updated ${relTime(Date.now() - rtkMtime.mtimeMs)} · ${absDate(rtkMtime.mtimeMs)})` : '';
   check('RTK binary', rtkBin !== null, rtkBinText === null ? 'not found in PATH' : [rtkVersion, rtkAge].filter(Boolean).join(' '));
   // rtk_run needs a host exec API, which doctor cannot assume.

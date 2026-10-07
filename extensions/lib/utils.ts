@@ -30,6 +30,16 @@ export const RTK_RELEASE_API = 'https://api.github.com/repos/rtk-ai/rtk/releases
 export const CAVEMAN_REMOTE_ULTRA = 'https://raw.githubusercontent.com/JuliusBrussee/caveman/main/skills/ultracave/SKILL.md';
 export const CAVEMAN_REMOTE_MEGACAVE = 'https://raw.githubusercontent.com/JuliusBrussee/caveman/main/skills/megacave/SKILL.md';
 
+// A fetch that returns an error page or a truncated body must not reach the extension tree.
+export function ruleBodyProblem(text: string): string | null {
+  const trimmed = text.trim();
+  if (trimmed === '') return 'empty body';
+  if (/^\s*<(!doctype|html)/i.test(trimmed)) return 'HTML page, not markdown';
+  if (/^\s*404\b/im.test(trimmed)) return 'upstream 404 page';
+  if (trimmed.length < 800) return `truncated (${trimmed.length} chars)`;
+  return null;
+}
+
 export interface RtkPlatformSpec {
   triple: string;
   ext: string;
