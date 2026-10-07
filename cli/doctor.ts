@@ -250,7 +250,7 @@ async function runDoctorFix(tally: DoctorSummary): Promise<void> {
   }
   console.log('\n  Doctor --fix: repairs done — rechecking.');
   const again = await runDoctor(true);
-  if (again.missing + again.warn === 0) console.log('  Doctor --fix: all checks pass. Restart OMP.');
+  if (again.missing + again.warn === 0) console.log('  Doctor --fix: all checks pass. Restart your agent.');
   else console.log(`  Doctor --fix: still ${again.missing} missing + ${again.warn} warn — rerun or repair manually.`);
 }
 

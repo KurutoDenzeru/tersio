@@ -136,7 +136,7 @@ async function fixRtk(binDir: string): Promise<void> {
   console.log('  Doctor --fix: repairing RTK binary + wiring');
   const binDest = path.join(binDir, RTK_BINARY_NAME);
   if (dryRun) {
-    sayTagged(`  [dry-run] would download a checksum-verified rtk to ${binDest} and wire it into OMP`);
+    sayTagged(`  [dry-run] would download a checksum-verified rtk to ${binDest} and wire it into the installed hosts`);
     return;
   }
   const spec = rtkPlatformSpec();

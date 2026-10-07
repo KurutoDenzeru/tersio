@@ -113,7 +113,7 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
   }
 
   pi.registerCommand?.('combo', {
-    description: 'Toggle all 3 OMP add-ons at once. Usage: /combo <off|medium|balanced|max|status>',
+    description: 'Toggle all 3 Tersio modes at once. Usage: /combo <off|medium|balanced|max|status>',
     handler: async (args, ctx) => {
       listen(ctx);
       const arg = String(args || '').trim().toLowerCase();

@@ -18,7 +18,6 @@ import {
   findHoistedPackage,
   httpsGet,
   httpsDownload,
-  isPiProcess,
   sha256Hex,
   parseChecksum,
   normalizeRtkVersion,
@@ -39,8 +38,8 @@ const CAVEMAN_TRACKED: ReadonlyArray<{ file: string; remote: string }> = [
   { file: cavemanRule('rule-ultra.md'), remote: CAVEMAN_REMOTE_ULTRA },
   { file: cavemanRule('rule-megacave.md'), remote: CAVEMAN_REMOTE_MEGACAVE },
 ];
-const HOST_NAME = isPiProcess() ? 'Pi' : 'OMP';
-const RELOAD_MSG = `Reminder: restart ${HOST_NAME} (or reload extensions) for updates to take effect.`;
+// Host-neutral: this updater runs inside pi, OMP, and OpenCode alike.
+const RELOAD_MSG = 'Reminder: restart your agent (or reload extensions) for updates to take effect.';
 
 // Ponytail is a hoisted dependency, so the installed copy is found by walking up rather than by naming a host directory.
 function ponytailLocal(): string | null {
