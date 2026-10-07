@@ -1,6 +1,9 @@
-## v2.25.2
+## v2.25.3
+ - Interactive installs and `tersio settings` now ask only for the Combo preset; it sets Caveman, RTK, and Ponytail. Change one mode with `tersio settings caveman|rtk|ponytail` or a `--*-default` flag.
  - Rejects a fetched Caveman rule body that is an error page, a 404 or a stub, and keeps the bundled one; doctor warns on an unusable installed body. Each rule pack carries verify samples, so an upstream edit that drops core markers fails the suite.
  - States in `docs/BENCHMARK.md` that savings are eligible-only: clean output saves near zero, and that is the mode working.
+
+## v2.25.2
  - Ships one Caveman rule body per register instead of one shared body: ultra reads the upstream ultracave skill and wenyan reads megacave, so levels stop costing the same 1659 tokens and ultra and wenyan get their own rules.
  - Tracks only the upstream Caveman bodies in the updater and doctor: `rule.md` ships with the package, repair fills in missing bodies without overwriting newer fetches, and uninstall clears all three backups.
  - Names the OpenCode plugin `@krtclcdy/tersio` and folds the rtk bash rewrite into it, so the plugin list shows one entry; install and doctor repair remove the redundant standalone rtk entry.
@@ -9,7 +12,6 @@
  - Trims the benchmark protocol to tokens and time, dropping the unused cost, steps, and break-even axes.
  - Skips the update-check spinner under CI, where its stop newline pushed the welcome tips off a 20-row terminal.
  - Closes the dashboard server on Ctrl-C before Tersio exits, so its local port is released.
- - Interactive installs and `tersio settings` now ask only for the Combo preset; it sets Caveman, RTK, and Ponytail. Change one mode with `tersio settings caveman|rtk|ponytail` or a `--*-default` flag.
  - Update completion no longer tells users to restart a host after all add-ons refresh.
  - New sessions now restore the persisted Combo default without an empty branch status reset.
  - Compiles TypeScript into `dist/` instead of beside each source, so `bun run build` leaves no `.js` twins in `cli/` or `extensions/`; `bun run clean` now just removes `dist/` and `dashboard/dist/`. The published tarball still carries both the compiled `.js` runtime and the `.ts` sources OMP loads.
