@@ -3,6 +3,7 @@ import { execFile } from 'node:child_process';
 import type { Plugin } from '@opencode/plugin';
 import cavemanSessionExtension from '../caveman-session/index.ts';
 import rtkSessionExtension from '../rtk-session/index.ts';
+import rtkFilterExtension, { FILTER_BY_TOOL, MIN_FILTER_BYTES, filterThroughRtk, filterableText, rtkActive } from '../rtk-filter/index.ts';
 import comboToggleExtension from '../combo-toggle/index.ts';
 import tersioCommandsExtension from '../tersio-commands/index.ts';
 import { getSharedComboState } from '../shared/session-state.ts';
@@ -54,6 +55,7 @@ const plugin: Plugin.Plugin = {
       return list;
     };
     const persist = (sid: string): void => {
+      // SAFETY: the storage API is generic over its payload; the value round-trips unchanged.
       void ctx.storage.set(`entries:${sid}`, sessionEntriesOf(sid) as unknown as never).catch(() => {});
     };
     const stubCtx = (sid?: string): ExtensionCtx => ({
@@ -120,7 +122,7 @@ const plugin: Plugin.Plugin = {
       },
     };
 
-    for (const extension of [cavemanSessionExtension, rtkSessionExtension, comboToggleExtension, tersioCommandsExtension]) extension(host);
+    for (const extension of [cavemanSessionExtension, rtkSessionExtension, rtkFilterExtension, comboToggleExtension, tersioCommandsExtension]) extension(host);
 
     // The first hook of an unseen session runs its session_start handlers.
     const sidOf = (value: unknown): string | undefined =>
@@ -206,8 +208,43 @@ const plugin: Plugin.Plugin = {
       const rewritten = await rewriteCommand(input.command);
       if (rewritten) input.command = rewritten;
     });
+
+    // Built-in grep and glob output never reaches the bash hook; mutate result.content in place.
+    try {
+      await ctx.tool.hook('execute.after', async (event) => {
+        const hook = event as { tool?: unknown; status?: unknown; sessionID?: unknown; result?: { content?: unknown } };
+        if (hook.status !== 'completed') return;
+        const filter = FILTER_BY_TOOL.get(String(hook.tool ?? '').toLowerCase());
+        if (!filter || !hook.result) return;
+        const text = filterableText(hook.result.content);
+        if (text === null || text.length < MIN_FILTER_BYTES) return;
+        // Read the mode from the payload's own session, not the last one to run a start hook.
+        const sid = typeof hook.sessionID === 'string' ? hook.sessionID : activeSid;
+        if (sid !== undefined) await ensureSession(sid);
+        if (!rtkActive(sid === undefined ? undefined : sessionEntriesOf(sid))) return;
+        const bin = resolveRtkBinary();
+        if (!bin) return;
+        const filtered = await filterThroughRtk(execRtk, { bin, filter, text });
+        if (filtered) hook.result.content = [{ type: 'text', text: filtered }];
+      });
+    } catch {
+      // Hosts without the after-hook keep the unfiltered result.
+    }
   },
 };
+
+/** execFile with the promise shape `filterThroughRtk` expects. */
+function execRtk(cmd: string, args: string[], opts?: { signal?: AbortSignal; timeout?: number }): Promise<{ stdout: string; code: number }> {
+  return new Promise((resolve) => {
+    execFile(cmd, args, { signal: opts?.signal, timeout: opts?.timeout }, (error, stdout) => {
+      const out = stdout ?? '';
+      if (!error) return resolve({ stdout: out, code: 0 });
+      // A non-numeric code is a spawn failure (ENOENT, EACCES, killed) and must not read as success.
+      const raw = (error as { code?: unknown }).code;
+      resolve({ stdout: out, code: typeof raw === 'number' ? raw : 1 });
+    });
+  });
+}
 
 function rewriteCommand(command: string): Promise<string | null> {
   const bin = resolveRtkBinary();

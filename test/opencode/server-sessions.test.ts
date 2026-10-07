@@ -148,6 +148,54 @@ test("the bash hook rewrites a command through the resolved rtk binary", async (
   });
 });
 
+// The after-hook is the only surface for built-in grep and glob output, and it must mutate in place.
+test("the after hook condenses a large grep result and leaves the rest untouched", async () => {
+  const big = `src/a.ts:1:${"a line of grep output \n".repeat(120)}`;
+  await withFakeRtk("#!/bin/sh\necho '2 matches in 1F:'\n", async () => {
+    const { ctx, hooks, store } = fakeCtx();
+    await setup(ctx);
+    // rtk is on only for the session whose entries say so.
+    store.set("entries:ses-on", [{ type: "custom", customType: "rtk-mode", data: { enabled: true } }]);
+    store.set("entries:ses-off", [{ type: "custom", customType: "rtk-mode", data: { enabled: false } }]);
+
+    const hit = { tool: "grep", status: "completed", sessionID: "ses-on", result: { content: [{ type: "text", text: big }] } };
+    await fire(hooks, "execute.after", hit);
+    expect(hit.result.content).toEqual([{ type: "text", text: "2 matches in 1F:\n" }]);
+
+    // An error carries no result, so there is nothing to replace.
+    const failed = { tool: "grep", status: "error", sessionID: "ses-on", error: { message: "boom" } };
+    await fire(hooks, "execute.after", failed);
+    expect(failed).not.toHaveProperty("result");
+
+    // A small result stays byte for byte: the spawn would cost more than it saves.
+    const small = { tool: "grep", status: "completed", sessionID: "ses-on", result: { content: [{ type: "text", text: "one hit" }] } };
+    await fire(hooks, "execute.after", small);
+    expect(small.result.content).toEqual([{ type: "text", text: "one hit" }]);
+
+    // Other tools are not touched.
+    const other = { tool: "read", status: "completed", sessionID: "ses-on", result: { content: [{ type: "text", text: big }] } };
+    await fire(hooks, "execute.after", other);
+    expect(other.result.content).toEqual([{ type: "text", text: big }]);
+
+    // A session with rtk off keeps its output, so the mode is per session.
+    const off = { tool: "glob", status: "completed", sessionID: "ses-off", result: { content: [{ type: "text", text: big }] } };
+    await fire(hooks, "execute.after", off);
+    expect(off.result.content).toEqual([{ type: "text", text: big }]);
+  });
+});
+
+test("the after hook keeps the original when rtk is absent", async () => {
+  const big = "x".repeat(2000);
+  await withFakeRtk(null, async () => {
+    const { ctx, hooks, store } = fakeCtx();
+    await setup(ctx);
+    store.set("entries:ses-on", [{ type: "custom", customType: "rtk-mode", data: { enabled: true } }]);
+    const event = { tool: "glob", status: "completed", sessionID: "ses-on", result: { content: [{ type: "text", text: big }] } };
+    await fire(hooks, "execute.after", event);
+    expect(event.result.content).toEqual([{ type: "text", text: big }]);
+  });
+});
+
 test("the bash hook leaves other tools and rtk-less hosts alone", async () => {
   await withFakeRtk("#!/bin/sh\necho \"rtk compact $2\"\n", async () => {
     const { ctx, hooks } = fakeCtx();
