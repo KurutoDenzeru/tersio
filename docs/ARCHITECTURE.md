@@ -17,6 +17,7 @@ flowchart TB
     subgraph EXT["extensions/ (loaded per omp.features)"]
       CAV["caveman-session<br/>/caveman"]
       RTK["rtk-session<br/>/rtk + rtk_run tool"]
+      RFILTER["rtk-filter<br/>built-in grep/glob output"]
       COMBO["combo-toggle<br/>/combo presets"]
       TCMD["tersio-commands<br/>/tersio status|dashboard|usage"]
       UPD["ai-addons-updater<br/>/ai-addons"]

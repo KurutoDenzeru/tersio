@@ -39,7 +39,7 @@ opencode plugin add @krtclcdy/tersio
 
 Pick one install method per host, not both. Using both registers every command twice.
 
-All hosts load the same five extensions from the same sources and read their session-start defaults from `~/.tersio/settings.json`. All five load always.
+All hosts load the same six extensions from the same sources and read their session-start defaults from `~/.tersio/settings.json`. All six load always.
 
 One-off use without installing:
 
@@ -155,7 +155,7 @@ Per host, written by `tersio install --host <omp|pi|opencode>`:
 | Host | Extensions | Ponytail |
 |---|---|---|
 | Oh My Pi | `~/.omp/agent/extensions/{caveman-session,rtk-session,combo-toggle,tersio-commands,ai-addons-updater}/` | nested plugin dependency under `~/.omp/plugins/node_modules/`, one Plugins row |
-| pi | `~/.pi/agent/extensions/{caveman-session,rtk-session,combo-toggle,tersio-commands,ai-addons-updater}/` — pi auto-discovers `<agent-dir>/extensions`, so there is nothing to register | `npm:@dietrichgebert/ponytail`, installed as a pi package |
+| pi | `~/.pi/agent/extensions/{caveman-session,rtk-session,rtk-filter,combo-toggle,tersio-commands,ai-addons-updater}/` — pi auto-discovers `<agent-dir>/extensions`, so there is nothing to register | `npm:@dietrichgebert/ponytail`, installed as a pi package |
 | OpenCode | `~/.config/opencode/plugins/tersio/` — registered in `opencode.json` plugins, so there is nothing else to register | bundled with Tersio; no separate package |
 
 All three hosts carry the same `shared/` and `lib/` modules and the same mode extensions from the same sources.

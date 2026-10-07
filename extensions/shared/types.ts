@@ -36,6 +36,7 @@ export interface UiApi {
 export interface ExtensionCtx {
   hasUI?: boolean;
   cwd?: string;
+  signal?: AbortSignal;
   sessionManager?: {
     getBranch?: () => SessionEntry[];
     getEntries?: () => SessionEntry[];
@@ -52,6 +53,13 @@ export interface SystemPromptEvent {
 
 /** What a `before_agent_start` handler hands back. OMP takes an array, pi a string. */
 export type PromptInjection = { systemPrompt: string[] } | { systemPrompt: string };
+
+/** A finished tool call, before its result reaches the model. pi and OMP provide it. */
+export interface ToolResultEvent {
+  toolName?: string;
+  content?: Array<{ type?: string; text?: string }>;
+  isError?: boolean;
+}
 
 /** A tool `parameters` object. OMP wants zod, pi wants JSON Schema. */
 export type ToolParams = Record<string, unknown>;

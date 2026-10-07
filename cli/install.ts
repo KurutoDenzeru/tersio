@@ -361,6 +361,12 @@ async function stepRtkSession(extDir: string, options: WriteOptions): Promise<vo
   await copySources(extDir, filesUnder('rtk-session'), 'rtk-session/index.ts', options);
 }
 
+// pi's built-in grep and glob never reach the bash hook, so this one filters their output.
+async function stepRtkFilter(extDir: string, options: WriteOptions): Promise<void> {
+  if (!options.quiet) console.log('  RTK filter — install built-in tool output filtering');
+  await copySources(extDir, filesUnder('rtk-filter'), 'rtk-filter/index.ts', options);
+}
+
 // rule.md ships with the package; the other bodies track upstream skills.
 // rule.md is a deliberate fork of upstream skills/caveman/SKILL.md; a blind sync would drop the mode switch line and the STE100 rules.
 const CAVEMAN_RULES: ReadonlyArray<[name: string, remote: string | null]> = [
@@ -451,6 +457,7 @@ async function stepOpencode(options: InstallOptions): Promise<void> {
   if (!options.quiet) console.log(`  OpenCode — write the plugin tree (${dir})`);
   await stepSharedSessionState(dir, options);
   await copySources(dir, filesUnder('rtk-session'), 'rtk-session/index.ts', options);
+  await stepRtkFilter(dir, options);
   await copySources(dir, filesUnder('caveman-session'), 'caveman-session/index.ts', options);
   await stepCombo(dir, options);
   await copySources(dir, filesUnder('tersio-commands'), 'tersio-commands/index.ts', options);
@@ -653,6 +660,7 @@ async function stepPiLayer(options: InstallOptions): Promise<void> {
   await stepSharedSessionState(extDir, options);
   // OMP loads rtk-session from its plugin manifest, so only the pi tree copies it.
   await copySources(extDir, filesUnder('rtk-session'), 'rtk-session/index.ts', options);
+  await stepRtkFilter(extDir, options);
   await stepCaveman(extDir, options);
   await stepCombo(extDir, options);
   await stepTersioCommands(extDir, options);
@@ -842,6 +850,7 @@ async function runInstall(): Promise<void> {
   await capture('ponytail', () => stepPonytail(OMP_PLUGINS_DIR, installOptions));
   await capture('rtk', () => stepRtk(BUN_BIN_DIR, installOptions));
   await capture('rtk session', () => stepRtkSession(userExtDir, installOptions));
+  await capture('rtk filter', () => stepRtkFilter(userExtDir, installOptions));
   await capture('caveman', () => stepCaveman(path.join(OMP_PLUGINS_DIR, 'node_modules', '@krtclcdy', 'tersio', 'extensions'), installOptions));
   await capture('combo', () => stepCombo(userExtDir, installOptions));
   await capture('commands', () => stepTersioCommands(userExtDir, installOptions));

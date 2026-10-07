@@ -27,6 +27,7 @@ export const TREE_FILES: readonly string[] = [
   'caveman-session/rule-ultra.md',
   'caveman-session/rule-megacave.md',
   'rtk-session/index.ts',
+  'rtk-filter/index.ts',
   'combo-toggle/index.ts',
   'tersio-commands/index.ts',
   'ai-addons-updater/index.ts',
