@@ -700,13 +700,31 @@ async function stepPonytailForPi(agentDir: string, options: InstallOptions): Pro
     await writeIfChanged(path.join(dest, ...rel.split('/')), text, options);
   }
   if (options.dryRun) return;
-  try {
-    await execNetwork('Removing the pi npm copy of Ponytail', 'pi', ['remove', 'npm:@dietrichgebert/ponytail'], { timeout: 120000 });
-  } catch (e) {
-    sayTagged(`  [warn] pi remove ponytail: ${shortError(e)}`);
+  // Only when pi still declares the npm spec: with nothing to remove, `pi remove` still
+  // shells out to npm, which warns on stderr and exits non-zero.
+  const declared = await piDeclaredPackages(agentDir);
+  if (declared.some(isNpmPonytailPackage)) {
+    try {
+      await execNetwork('Removing the pi npm copy of Ponytail', 'pi', ['remove', 'npm:@dietrichgebert/ponytail'], { timeout: 120000 });
+    } catch (e) {
+      sayTagged(`  [warn] pi remove ponytail: ${shortError(e)}`);
+    }
   }
   await registerPiLocalPonytail(agentDir, dest, options);
 }
+
+// pi declares its package sources in settings.json; [] when the file is absent or unreadable.
+async function piDeclaredPackages(agentDir: string): Promise<unknown[]> {
+  try {
+    const settings = JSON.parse(await fs.readFile(path.join(agentDir, 'settings.json'), 'utf8')) as Record<string, unknown>;
+    return Array.isArray(settings.packages) ? settings.packages : [];
+  } catch {
+    return [];
+  }
+}
+
+const isNpmPonytailPackage = (value: unknown): boolean =>
+  typeof value === 'string' && value.startsWith('npm:@dietrichgebert/ponytail');
 
 // pi lists package sources in settings; swap the npm spec for the local dir.
 async function registerPiLocalPonytail(agentDir: string, dest: string, options: InstallOptions): Promise<void> {
@@ -718,11 +736,16 @@ async function registerPiLocalPonytail(agentDir: string, dest: string, options: 
     return;
   }
   const packages = (Array.isArray(settings.packages) ? settings.packages : []) as unknown[];
-  const kept = packages.filter((p) => typeof p !== 'string' || !p.startsWith('npm:@dietrichgebert/ponytail'));
+  const kept = packages.filter((p) => !isNpmPonytailPackage(p));
   if (!kept.includes(dest)) kept.push(dest);
   settings.packages = kept;
   await fs.writeFile(settingsPath, `${JSON.stringify(settings, null, 2)}\n`, 'utf8');
   if (!options.quiet) sayTagged(`  [write] pi package source → ${dest}`);
+}
+
+// Name the preset this run actually chose, instead of a hardcoded level.
+function comboHint(host: string, comboDefault: string): string {
+  return comboDefault === 'off' ? `\nDone — restart ${host}.` : `\nDone — restart ${host}, then /combo ${comboDefault}.`;
 }
 
 async function runInstall(): Promise<void> {
@@ -829,7 +852,7 @@ async function runInstall(): Promise<void> {
     await capture('rtk', () => stepRtk(BUN_BIN_DIR, installOptions, 'opencode'));
     await capture('settings', () => writePluginSettings(profile, installOptions));
     if (failures.length > 0) console.log(`\nDone with ${failures.length} failure(s) — see [fail] lines above.`);
-    else console.log('\nDone — restart OpenCode, then /combo balanced.');
+    else console.log(comboHint('OpenCode', profile.comboDefault));
     closeRL();
     return;
   }
@@ -839,7 +862,7 @@ async function runInstall(): Promise<void> {
     await capture('rtk', () => stepRtk(BUN_BIN_DIR, installOptions, 'pi'));
     await capture('settings', () => writePluginSettings(profile, installOptions));
     if (failures.length > 0) console.log(`\nDone with ${failures.length} failure(s) — see [fail] lines above.`);
-    else console.log('\nDone — restart pi, then /combo medium.');
+    else console.log(comboHint('pi', profile.comboDefault));
     closeRL();
     return;
   }
@@ -860,7 +883,7 @@ async function runInstall(): Promise<void> {
   if (quiet) {
     if (failures.length > 0) console.log(`  add-ons: ${failures.length} failed (${failures.join(', ')}) — see [fail] lines above`);
   } else {
-    console.log(failures.length === 0 ? '\nDone — restart OMP, then /combo medium.' : `\nDone with ${failures.length} failure(s) — see [fail] lines above.`);
+    console.log(failures.length === 0 ? comboHint('OMP', profile.comboDefault) : `\nDone with ${failures.length} failure(s) — see [fail] lines above.`);
   }
 
   closeRL();

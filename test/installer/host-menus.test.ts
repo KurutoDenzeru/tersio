@@ -88,6 +88,43 @@ test("install --host omp keeps the OMP tree and never touches pi", () => {
   }
 });
 
+// `pi remove` shells out to npm even when nothing is declared, and npm's stderr then
+// reads as a failed step. The removal is only reachable when the npm spec is declared.
+test("install --host pi skips the npm ponytail removal when pi does not declare it", () => {
+  const home = tempHome();
+  try {
+    seedRtk(home);
+    seedPiPackage(home, "2.25.3");
+    const agentDir = path.join(home, ".pi", "agent");
+    // The state a repeat install sees: the local dir is declared, the npm spec is gone.
+    writeFileSync(path.join(agentDir, "settings.json"), JSON.stringify({ packages: [path.join(agentDir, "ponytail")] }), "utf8");
+
+    const result = run(home, ["install", "--host", "pi", "--yes"]);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout, "nothing to remove, so npm must not run").not.toMatch(/pi remove ponytail/);
+    expect(result.stdout).toMatch(/Done — restart pi/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("install --host pi still removes the npm ponytail copy when pi declares it", () => {
+  const home = tempHome();
+  try {
+    seedRtk(home);
+    seedPiPackage(home, "2.25.3");
+    const agentDir = path.join(home, ".pi", "agent");
+    writeFileSync(path.join(agentDir, "settings.json"), JSON.stringify({ packages: ["npm:@dietrichgebert/ponytail@4.9.0"] }), "utf8");
+
+    const result = run(home, ["install", "--host", "pi", "--yes"]);
+    // `pi` is absent on the stubbed PATH, so an attempted removal shows up as ENOENT.
+    expect(result.stdout, "a declared npm spec still triggers the removal").toMatch(/\[warn\] pi remove ponytail/);
+    expect(readFileSync(path.join(agentDir, "settings.json"), "utf8"), "the spec is dropped either way").not.toMatch(/npm:@dietrichgebert\/ponytail/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test("install --host opencode writes the plugin tree and registers it", () => {
   const home = tempHome();
   try {
