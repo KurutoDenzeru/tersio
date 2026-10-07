@@ -23,6 +23,8 @@ Two axes per run.
 | Tokens | `usage.totalTokens`, summed over assistant turns |
 | Time | Wall-clock around the process. Median of N |
 
+Savings are eligible-only. A percentage applies to redundant output — repeated errors, a build log that repeats one warning, an oversized dump. Clean output saves near zero, and that is the mode working, not a misconfiguration. Report the fixture each number came from, so a clean-read session is not read as a broken install.
+
 Rules:
 - A mode can cut reply text and still lose, because its prompt cost is paid on every turn.
 
