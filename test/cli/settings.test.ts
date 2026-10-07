@@ -37,7 +37,7 @@ test("settings --dry-run previews without writing", () => {
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toMatch(/│ Setting +│ Current +│ Valid values +│/);
     expect(result.stdout).toMatch(/│ combo +│ off +│/);
-    expect(result.stdout).toMatch(/Stored: @krtclcdy\/tersio in .*omp-plugins\.lock\.json/);
+    expect(result.stdout).toMatch(/Stored: .*\.tersio\/settings\.json/);
     expect(result.stdout).toMatch(/\[dry-run\] would set defaults: combo=balanced \(caveman=full · rtk=on · ponytail=full\)/);
     expect(readLock(home).comboDefault, "dry-run must not write").toBe("off");
   } finally {
@@ -217,6 +217,15 @@ test("the settings table reports the default marker when none is set", () => {
     expect(result.stdout).toMatch(/│ markers +│ default +│ host subagent prompt text +│/);
   } finally {
     rmSync(home, { recursive: true, force: true });
+  }
+});
+
+// The walk needs a TTY, so guard the source: a per-mode prompt must not come back.
+test("the full settings walk asks only the Combo preset", () => {
+  const source = readFileSync(path.join(root, "cli", "settings.ts"), "utf8");
+  const walk = source.slice(source.indexOf("async function askProfile"), source.indexOf("async function askSubagentMarkers"));
+  for (const label of ["Caveman default", "RTK default", "Ponytail default"]) {
+    expect(walk, `${label} prompt is back`).not.toContain(label);
   }
 });
 

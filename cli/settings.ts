@@ -1,10 +1,10 @@
 // cli/settings.ts — view/edit session-start defaults and the display currency.
-import path from 'node:path';
 import {
-  CAVEMAN_DEFAULTS, COMBO_DEFAULTS, COMBO_PRESET_MODES, OMP_PLUGINS_DIR, PACKAGE_NAME,
+  CAVEMAN_DEFAULTS, COMBO_DEFAULTS, COMBO_PRESET_MODES,
   PONYTAIL_DEFAULTS, cavemanDefaultFlag, comboDefaultFlag, currency, currencyGiven, diagScheduleFlag, dryRun,
   ponytailDefaultFlag, profileFlagsGiven, rtkDefaultFlag, settingArg, subagentMarkerFlags, subagentMarkersGiven,
 } from './common.ts';
+import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
 import { CURRENCY_CODES } from './currency.ts';
 import type { CurrencyCode } from './currency.ts';
 import { textTable } from './usage.ts';
@@ -47,25 +47,6 @@ async function askProfile(current: Profile): Promise<Profile | null> {
     backupSchedule: current.backupSchedule,
     subagentMarkers: current.subagentMarkers,
   };
-
-  const caveman = await askInteractiveChoice('Caveman default', [...CAVEMAN_DEFAULTS].map((v) => ({
-    value: v, label: v,
-  })), next.cavemanDefault);
-  if (caveman.status !== 'selected') return null;
-  next.cavemanDefault = caveman.value;
-
-  const rtk = await askInteractiveChoice('RTK default', [
-    { value: 'on', label: 'on' },
-    { value: 'off', label: 'off' },
-  ], next.rtkDefault ? 'on' : 'off');
-  if (rtk.status !== 'selected') return null;
-  next.rtkDefault = rtk.value === 'on';
-
-  const ponytail = await askInteractiveChoice('Ponytail default', [...PONYTAIL_DEFAULTS].map((v) => ({
-    value: v, label: v,
-  })), next.ponytailDefault);
-  if (ponytail.status !== 'selected') return null;
-  next.ponytailDefault = ponytail.value;
 
   const cur = await askInteractiveChoice('Display currency (usage/dashboard reports)', CURRENCY_CODES.map((v) => ({
     value: v, label: v,
@@ -196,7 +177,8 @@ function printSettingsTable(current: Profile): void {
   for (const l of textTable(['Setting', 'Current', 'Valid values'], rows, [false, false, false], 64)) {
     console.log(l);
   }
-  console.log(`  Stored: ${PACKAGE_NAME} in ${path.join(OMP_PLUGINS_DIR, 'omp-plugins.lock.json')}`);
+  console.log(`  Stored: ${tersioSettingsFile()}`);
+  console.log(`  Combo ${current.comboDefault} sets caveman/rtk/ponytail. Tune one: tersio settings <name>`);
 }
 
 async function runSettings(): Promise<void> {

@@ -4,8 +4,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  BUN_BIN_DIR, CAVEMAN_DEFAULTS, COMBO_PRESET_MODES, HOME, IS_WINDOWS, OMP_AGENT_DIR, OMP_PLUGINS_DIR, OMP_BIN,
-  PACKAGE_NAME, PACKAGE_VERSION, PONYTAIL_DEFAULTS, RTK_BINARY_NAME, args,
+  BUN_BIN_DIR, COMBO_PRESET_MODES, HOME, IS_WINDOWS, OMP_AGENT_DIR, OMP_PLUGINS_DIR, OMP_BIN,
+  PACKAGE_NAME, PACKAGE_VERSION, RTK_BINARY_NAME, args,
   allowUnverified, applyUpdate, cavemanDefaultFlag, comboDefaultFlag, command, dryRun,
   ponytailDefaultFlag, profileFlagsGiven, rtkDefaultFlag, verbose, yes,
   dashboardExport, dashboardPort,
@@ -472,34 +472,11 @@ async function stepOpencode(options: InstallOptions): Promise<void> {
 }
 
 
-async function askModeDefaults(profile: Profile): Promise<boolean> {
-  const caveman = await askInteractiveChoice('Caveman default', [...CAVEMAN_DEFAULTS].map((value) => ({
-    value, label: value,
-  })), profile.cavemanDefault);
-  if (caveman.status !== 'selected') return false;
-  profile.cavemanDefault = caveman.value;
-
-  const rtk = await askInteractiveChoice('RTK default', [
-    { value: 'on', label: 'on' },
-    { value: 'off', label: 'off' },
-  ], profile.rtkDefault ? 'on' : 'off');
-  if (rtk.status !== 'selected') return false;
-  profile.rtkDefault = rtk.value === 'on';
-
-  const ponytail = await askInteractiveChoice('Ponytail default', [...PONYTAIL_DEFAULTS].map((value) => ({
-    value, label: value,
-  })), profile.ponytailDefault);
-  if (ponytail.status !== 'selected') return false;
-  profile.ponytailDefault = ponytail.value;
-  return true;
-}
-
 async function resolveProfile(opts: { quiet?: boolean } = {}): Promise<Profile> {
   // Seed from the stored defaults so flag-less runs keep them.
   const profile = await storedProfile();
 
-  // Interactive installs choose the preset first, then allow each mode to differ.
-  let interactiveDefaults = false;
+  // The chosen preset owns all three modes.
   let comboChosen = comboDefaultFlag !== undefined;
   if (tty() && !profileFlagsGiven && !applyUpdate) {
     const choice = await askInteractiveChoice('Session-start defaults — Combo preset', [
@@ -511,7 +488,6 @@ async function resolveProfile(opts: { quiet?: boolean } = {}): Promise<Profile> 
     if (choice.status === 'selected') {
       profile.comboDefault = choice.value;
       comboChosen = true;
-      interactiveDefaults = true;
     } else {
       closeRL();
       process.exit(130);
@@ -526,10 +502,6 @@ async function resolveProfile(opts: { quiet?: boolean } = {}): Promise<Profile> 
     profile.cavemanDefault = preset.caveman;
     profile.rtkDefault = preset.rtk;
     profile.ponytailDefault = preset.ponytail;
-  }
-  if (interactiveDefaults && !(await askModeDefaults(profile))) {
-    closeRL();
-    process.exit(130);
   }
   if (cavemanDefaultFlag !== undefined) profile.cavemanDefault = cavemanDefaultFlag;
   if (rtkDefaultFlag !== undefined) profile.rtkDefault = rtkDefaultFlag === 'on';
