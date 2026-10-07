@@ -197,7 +197,7 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
     // The previous level's block is replaced, not stacked on.
     const stale = lastInjected;
     lastInjected = instruction;
-    return injectPromptText(pi, event, instruction, stale);
+    return injectPromptText(pi, event, { text: instruction, staleMarker: stale, sectionTag: 'ponytail' });
   });
 
   // Slash commands only; natural-language input caused accidental toggles and has no reload context.

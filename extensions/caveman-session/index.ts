@@ -13,14 +13,21 @@ const RULE_FILES = { lite: 'rule.md', full: 'rule.md', ultra: 'rule-ultra.md', '
 
 const DEFAULT_MODE = 'off';
 
+// A rule file is immutable for the process, so read each level once; reinstalling needs a restart.
+const instructionCache = new Map<string, string>();
+
 function buildInstruction(mode: string): string {
+  const cached = instructionCache.get(mode);
+  if (cached) return cached;
   const name = RULE_FILES[mode as keyof typeof RULE_FILES] ?? RULE_FILES.full;
   // Fail loud: a wrong rule reads to the model as the real one.
   let body: string;
   try { body = readFileSync(join(CAVERN_DIR, name), 'utf8'); } catch {
-    body = `Caveman ${mode} requested, but ${name} is missing. Run: tersio doctor --fix extensions`;
+    return `Caveman ${mode} requested, but ${name} is missing. Run: tersio doctor --fix extensions`;
   }
-  return `Caveman ${mode} active for this session.\n${body}`;
+  const instruction = `Caveman ${mode} active for this session.\n${body}`;
+  instructionCache.set(mode, instruction);
+  return instruction;
 }
 
 function resolveMode(entries: SessionEntry[] | null | undefined, fallback: string = DEFAULT_MODE): string {
@@ -118,6 +125,6 @@ export default function cavemanSessionExtension(pi: ExtensionApi): void {
     // The previous level's block is replaced, not stacked on.
     const stale = lastInjected;
     lastInjected = instruction;
-    return injectPromptText(pi, event, instruction, stale);
+    return injectPromptText(pi, event, { text: instruction, staleMarker: stale, sectionTag: 'caveman' });
   });
 }

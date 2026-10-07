@@ -46,8 +46,8 @@ export interface ExtensionCtx {
 
 export interface SystemPromptEvent {
   systemPrompt: string | string[];
-  // pi only: the mutable prompt sections. OMP does not provide it.
-  systemPromptOptions?: { appendSystemPrompt?: string };
+  // pi only: the mutable prompt sections and append slot. OMP does not provide them.
+  systemPromptOptions?: { appendSystemPrompt?: string; sections?: Record<string, string> };
 }
 
 /** What a `before_agent_start` handler hands back. OMP takes an array, pi a string. */

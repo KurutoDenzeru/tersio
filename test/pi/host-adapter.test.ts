@@ -100,15 +100,35 @@ test("a cancelled select comes back as undefined", async () => {
 
 test("injectPromptText replaces the prompt on OMP and appends on pi", () => {
   const ompEvent: SystemPromptEvent = { systemPrompt: ["base one", "base two"] };
-  expect(injectPromptText(ompHost().pi, ompEvent, "MODE ON")).toEqual({ systemPrompt: ["base one", "base two", "MODE ON"] });
+  expect(injectPromptText(ompHost().pi, ompEvent, { text: "MODE ON" })).toEqual({ systemPrompt: ["base one", "base two", "MODE ON"] });
 
   const piEvent: SystemPromptEvent = { systemPrompt: "base", systemPromptOptions: { appendSystemPrompt: "existing" } };
-  expect(injectPromptText(piHost().pi, piEvent, "MODE ON")).toBeUndefined();
+  expect(injectPromptText(piHost().pi, piEvent, { text: "MODE ON" })).toBeUndefined();
   expect(piEvent.systemPromptOptions?.appendSystemPrompt).toBe("existing\n\nMODE ON");
 
   const bare = { systemPrompt: "" } as SystemPromptEvent;
-  injectPromptText(piHost().pi, bare, "MODE ON");
+  injectPromptText(piHost().pi, bare, { text: "MODE ON" });
   expect(bare.systemPromptOptions?.appendSystemPrompt).toBeUndefined();
+});
+
+test("a tagged block owns its pi section instead of replacing the whole prompt", () => {
+  const sections: Record<string, string> = { preamble: "base" };
+  const event: SystemPromptEvent = { systemPrompt: "base", systemPromptOptions: { appendSystemPrompt: "", sections } };
+
+  // A section-aware host mutates in place, so nothing is returned and the prompt is untouched.
+  expect(injectPromptText(piHost().pi, event, { text: "RULES ONE", sectionTag: "caveman" })).toBeUndefined();
+  expect(sections).toEqual({ preamble: "base", caveman: "RULES ONE" });
+  expect(event.systemPromptOptions?.appendSystemPrompt, "the append slot is left alone").toBe("");
+
+  // The same tag is replaced in place, so a level switch cannot stack two blocks.
+  injectPromptText(piHost().pi, event, { text: "RULES TWO", sectionTag: "caveman" });
+  expect(sections.caveman).toBe("RULES TWO");
+  expect(Object.keys(sections).filter((name) => name === "caveman")).toHaveLength(1);
+
+  // Without a tag the block still lands, in the append slot.
+  injectPromptText(piHost().pi, event, { text: "UNTAGGED" });
+  expect(sections.caveman).toBe("RULES TWO");
+  expect(event.systemPromptOptions?.appendSystemPrompt).toBe("UNTAGGED");
 });
 
 test("stringArrayToolParams speaks zod on OMP and JSON Schema on pi", () => {

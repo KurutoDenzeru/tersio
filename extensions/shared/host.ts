@@ -36,7 +36,7 @@ interface HostAdapter {
   label(pi: HostHandle, text: string): void;
   on<E>(pi: ExtensionApi, event: string, handler: (event: E, ctx: ExtensionCtx) => unknown): void;
   select(ui: UiApi | undefined, title: string, options: SelectOption[], dialogOptions?: Record<string, unknown>): Promise<string | undefined>;
-  inject(event: SystemPromptEvent, text: string, staleMarker?: string): PromptInjection | undefined;
+  inject(event: SystemPromptEvent, block: PromptBlock): PromptInjection | undefined;
   stringArray(pi: ExtensionApi, name: string, spec: StringArraySpec): ToolParams;
 }
 
@@ -53,15 +53,21 @@ const piAdapter: HostAdapter = {
     if (picked === undefined) return undefined;
     return options[shown.indexOf(picked)]?.label ?? picked;
   },
-  inject(event, text, staleMarker) {
-    const marker = staleMarker?.replace(/^[^\w]+/, '').trim();
+  inject(event, block) {
+    const marker = block.staleMarker?.replace(/^[^\w]+/, '').trim();
     const dropStale = (parts: string[]): string[] => (marker ? parts.filter((part) => !part.includes(marker)) : parts);
     const options = event.systemPromptOptions;
-    if (options && typeof options.appendSystemPrompt === 'string') {
-      options.appendSystemPrompt = dropStale([options.appendSystemPrompt]).concat(text).filter(Boolean).join('\n\n');
+    // A named section is replaced in place; returning systemPrompt replaces the whole prompt.
+    const sections = options?.sections;
+    if (block.sectionTag && sections && typeof sections === 'object') {
+      sections[block.sectionTag] = block.text;
       return undefined;
     }
-    return { systemPrompt: `${dropStale(asPromptArray(event.systemPrompt)).join('\n\n')}\n\n${text}` };
+    if (options && typeof options.appendSystemPrompt === 'string') {
+      options.appendSystemPrompt = dropStale([options.appendSystemPrompt]).concat(block.text).filter(Boolean).join('\n\n');
+      return undefined;
+    }
+    return { systemPrompt: `${dropStale(asPromptArray(event.systemPrompt)).join('\n\n')}\n\n${block.text}` };
   },
   stringArray(_pi, name, spec) {
     const array: Record<string, unknown> = { type: 'array', items: { type: 'string' } };
@@ -78,10 +84,10 @@ const ompAdapter: HostAdapter = {
     if (!ui?.select) return undefined;
     return ui.select(title, options, dialogOptions);
   },
-  inject(event, text, staleMarker) {
-    const marker = staleMarker?.replace(/^[^\w]+/, '').trim();
+  inject(event, block) {
+    const marker = block.staleMarker?.replace(/^[^\w]+/, '').trim();
     const dropStale = (parts: string[]): string[] => (marker ? parts.filter((part) => !part.includes(marker)) : parts);
-    return { systemPrompt: [...dropStale(asPromptArray(event.systemPrompt)), text] };
+    return { systemPrompt: [...dropStale(asPromptArray(event.systemPrompt)), block.text] };
   },
   stringArray(pi, name, spec) {
     const { z } = pi.zod as { z: ZodFactory['z'] };
@@ -98,10 +104,10 @@ const opencodeAdapter: HostAdapter = {
     if (!ui?.select) return undefined;
     return ui.select(title, options, dialogOptions);
   },
-  inject(event, text, staleMarker) {
-    const marker = staleMarker?.replace(/^[^\w]+/, '').trim();
+  inject(event, block) {
+    const marker = block.staleMarker?.replace(/^[^\w]+/, '').trim();
     const dropStale = (parts: string[]): string[] => (marker ? parts.filter((part) => !part.includes(marker)) : parts);
-    return { systemPrompt: [...dropStale(asPromptArray(event.systemPrompt)), text] };
+    return { systemPrompt: [...dropStale(asPromptArray(event.systemPrompt)), block.text] };
   },
   stringArray(_pi, name, spec) {
     const array: Record<string, unknown> = { type: 'array', items: { type: 'string' } };
@@ -141,8 +147,15 @@ export async function hostSelect(
   return adapterFor(pi).select(ui, title, options, dialogOptions);
 }
 
-export function injectPromptText(pi: HostHandle, event: SystemPromptEvent, text: string, staleMarker?: string): PromptInjection | undefined {
-  return adapterFor(pi).inject(event, text, staleMarker);
+/** One prompt block: its text, the section tag that owns it, and prior text to drop. */
+export interface PromptBlock {
+  text: string;
+  sectionTag?: string;
+  staleMarker?: string;
+}
+
+export function injectPromptText(pi: HostHandle, event: SystemPromptEvent, block: PromptBlock): PromptInjection | undefined {
+  return adapterFor(pi).inject(event, block);
 }
 
 export function stringArrayToolParams(pi: ExtensionApi, name: string, spec: StringArraySpec = {}): ToolParams {

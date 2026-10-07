@@ -23,7 +23,8 @@ function setRtkProcessEnabled(enabled: boolean): void {
   else process.env.RTK_DISABLED = '1';
 }
 
-const RTK_PROMPT = `RTK guidance active. RTK automatically rewrites eligible Bash calls through the installed rtk hook. Prefer rtk for noisy shell output, but use exact raw output for state changes, checksums, patches, and diagnostics that need full bytes.`;
+// rtk's awareness contract: state the output contract, never tell the model to type `rtk`.
+const RTK_PROMPT = `RTK guidance active. Bash output, and large grep and glob results, are condensed to save tokens: every signal kept, costly noise dropped. Treat a condensed result as complete. Re-run something unfiltered only when its result is empty, garbled, or contradicts its exit code.`;
 
 export default function rtkSessionExtension(pi: ExtensionApi): void {
   let enabled = DEFAULT_ENABLED;
@@ -134,6 +135,6 @@ export default function rtkSessionExtension(pi: ExtensionApi): void {
     if (!active) return;
     // Skip when already present, so a host that re-presents the prompt cannot stack it.
     if (systemPromptIncludes(event.systemPrompt, RTK_PROMPT)) return;
-    return injectPromptText(pi, event, RTK_PROMPT);
+    return injectPromptText(pi, event, { text: RTK_PROMPT, sectionTag: 'rtk' });
   });
 }
