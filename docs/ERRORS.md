@@ -75,3 +75,18 @@ Recurring mistakes log. Committed to git; reviewed periodically to promote entri
 **What happened:** Adding two new tests to `test/installer/host-menus.test.ts`, the `oldText` spanned a whole existing test and the `newText` contained only that test's opening line. The replacement deleted the body and the closing brace, leaving a parse error at EOF. It also silently dropped an existing assertion before tsc caught the syntax break.
 **Root cause:** Used a replacing primitive for an insertion. A range replacement rewrites the entire matched span, so anything intended to survive must be re-emitted in full.
 **Prevention rule:** To insert before a block, keep `oldText` to the insertion point alone, or re-emit the whole original block in `newText`. After editing near an existing test, run `git diff -U0 -- <file>` and confirm the change is pure insertion before running the suite.
+
+## 2026-10-08 — Refactor edit landed at the wrong location
+**What happened:** A replacement aimed at the fold loop inside `extractSessionTrace` matched a small helper block (`zeroTokens`/`addTokens`) instead and spliced the loop's body between `buildTrack` and `extractSessionTrace` as top-level statements. The function then referenced a deleted helper and a never-populated cache map (`parseFileCacheless`).
+**Root cause:** Chose `old_string` by what looked unique instead of where the change belonged, and did not re-read the enclosing function after a multi-part structural edit.
+**Prevention rule:** Anchor structural edits with the surrounding target region in `old_string`, never a detached helper. After any edit that moves code between scopes, re-read the full function before the next edit.
+
+## 2026-10-08 — Malformed git commit flag meant no commit happened
+**What happened:** `git commit -m "..." --no-verify=false` errored with `option --no-verify takes no value` and committed nothing, while condensed output from the preceding `git add` made it look like a commit had landed.
+**Root cause:** Added a flag by habit — the repo forbids `--no-verify` entirely — and trusted combined truncated output instead of checking the log.
+**Prevention rule:** Give `git commit` only `-m` and path args. Verify with `git log -1` in the same command.
+
+## 2026-10-08 — Filesystem sibling rule written from memory, not from the tree
+**What happened:** `isSubagentFile` looked for the main session file inside the stem directory; the real layout has it beside that directory, so every subagent transcript would have been listed as its own session.
+**Root cause:** Derived the path rule from intermediate notes instead of printing the real directory listing first.
+**Prevention rule:** For any path or sibling heuristic, print the real layout from an actual session directory before coding it, and assert the helper against that exact shape in a test.
