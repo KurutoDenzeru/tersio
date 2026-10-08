@@ -15,6 +15,7 @@ function serverEnv(home: string): NodeJS.ProcessEnv {
     ...process.env,
     HOME: home,
     USERPROFILE: home,
+    TERSIO_HOME: path.join(home, ".tersio"),
     TERSIO_USAGE_FILE: path.join(home, "usage.jsonl"),
     TERSIO_SESSIONS_DIR: path.join(home, "no-sessions"),
     TERSIO_RTK_DB: path.join(home, "no-rtk.db"),

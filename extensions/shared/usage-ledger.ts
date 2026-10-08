@@ -67,6 +67,8 @@ export interface RecentRequest {
   o: number;
   t: number;
   d?: number;
+  /** Time to first token when the host recorded one; omp records it, pi and opencode do not — absent stays absent. */
+  tf?: number;
   /** Which agent wrote the session: pi, omp, or codex. */
   h?: string;
   cr?: number;
@@ -78,20 +80,15 @@ export interface RecentRequest {
   note?: string;
   /** Message id when the host provides one (transcript row id, opencode msg file). */
   id?: string;
+  /**
+   * Tools invoked during this turn, in the order the host recorded them. This is the closest thing to
+   * a per-request trace the transcripts support: what the turn did, without span timings.
+   */
+  tools?: string[];
 }
 
-export interface SessionTokens {
-  messages: number;
-  totals: TokenBreakdown;
-  byModel: Record<string, TokenBreakdown>;
-  byDay: Record<string, TokenBreakdown>;
-  byDayModel: Record<string, Record<string, number>>;
-  byTool: Record<string, number>;
-  byModelMessages: Record<string, number>;
-  byHost: Record<string, Record<string, TokenBreakdown>>;
-  costMeasured: number;
-  recent: RecentRequest[];
-}
+/** The per-message aggregates, as persisted to usage.db and replayed back. It is an alias so a store round-trip cannot silently drop a field that ingestSessionRow fills. */
+export type SessionTokens = SessionAccum;
 
 export interface RtkAdoption {
   sessions: number;
@@ -118,6 +115,12 @@ function stampMs(ts: string | number | undefined): number {
 export function durOf(v: unknown): number | undefined {
   return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : undefined;
 }
+
+// One rule for where a model id keeps its provider; see ./model-id.ts. Imported for local use and
+// re-exported for callers that already reach through this module.
+import { providerOf } from './model-id.ts';
+
+export { providerOf };
 
 // Measured cost: usage.cost.total, or a bare number in old fixtures. Anything else means unrecorded, which is deliberately not 0.
 export function costOf(usage: Record<string, unknown>): number | undefined {
@@ -235,7 +238,7 @@ try { out += run(ocDbCurrent(since)); } catch { /* no session_message table or u
     for (const line of out.split('\n')) {
       if (!line.trim()) continue;
       const [id, created, role, providerID, modelID, tCreated, tCompleted, input, output, cacheRead, cacheWrite, cost] = line.split('\t');
-      const n = (v: string | undefined): unknown => (v !== undefined && v !== '' && Number.isFinite(Number(v)) ? Number(v) : undefined);
+      const n = (v: string | undefined): number | undefined => (v !== undefined && v !== '' && Number.isFinite(Number(v)) ? Number(v) : undefined);
       rows.push({
         id,
         created: Number(created),
@@ -284,8 +287,14 @@ const RTK_ELIGIBLE_HEADS = new Set([
   'npm', 'npx', 'pnpm', 'bun', 'bunx', 'cargo', 'go', 'python', 'pytest',
   'ruff', 'mypy', 'docker', 'kubectl', 'psql', 'aws', 'gh', 'glab', 'wc',
 ]);
-// Parse buffer shared by live reads and usage.db syncs, so the store is a cache and never a fork.
-export interface SessionAccum {
+/** A running mean, kept as a sum so no per-row array is retained. */
+export interface LatencyStat {
+  ms: number;
+  n: number;
+}
+
+/** Everything ingestSessionRow aggregates. SessionAccum adds the recent-rows list on top, so the accumulator, the sqlite mirror, and the report cannot drift apart. */
+export interface RunAggregates {
   byModel: Record<string, TokenBreakdown>;
   byDay: Record<string, TokenBreakdown>;
   byDayModel: Record<string, Record<string, number>>;
@@ -295,12 +304,64 @@ export interface SessionAccum {
   totals: TokenBreakdown;
   messages: number;
   costMeasured: number;
-  recent: RecentRequest[];
+  /** Who served the call, from model_change provider or the leading model-id segment. */
+  byProvider: Record<string, TokenBreakdown>;
+  /** Session working directory; a "project" in the transcripts is a cwd. */
+  byProject: Record<string, TokenBreakdown>;
+  /** Per-day, per-model tokens: the only exact input to a cost-over-time series. */
+  byDayModelTokens: Record<string, Record<string, TokenBreakdown>>;
+  /** Per-day requests per model, so a share chart can be request-based rather than token-based. */
+  byDayModelRuns: Record<string, Record<string, number>>;
+  /** Per-day provider and project tokens, so a range filter can recompute those tables. */
+  byDayProvider: Record<string, Record<string, TokenBreakdown>>;
+  byDayProject: Record<string, Record<string, TokenBreakdown>>;
+  /** Per-day run outcomes, so the error rate follows the selected range. */
+  byDayErrors: Record<string, Record<string, number>>;
+  /** Per-day failures per model, so a model table can show its own failure count. */
+  byDayModelErrors: Record<string, Record<string, number>>;
+  /** Per-day tool call counts. */
+  byDayTool: Record<string, Record<string, number>>;
+  /** Vendor-reported cost per day. Empty when the host reported no cost. */
+  byDayCost: Record<string, number>;
+  /** Mean elapsed wall clock per model. Absent when no row carried a duration. */
+  latency: Record<string, LatencyStat>;
+  /** Mean time to first token per model. OMP reports it; pi does not. */
+  ttft: Record<string, LatencyStat>;
+  /** Runs that did not end completed, by status. */
+  errors: Record<string, number>;
+  /** Reasoning tokens, billed as output by most providers. */
+  reasoning: number;
 }
+
+// Parse buffer shared by live reads and usage.db syncs, so the store is a cache and never a fork.
+export type SessionAccum = RunAggregates & { recent: RecentRequest[] };
+
 export function newSessionAccum(): SessionAccum {
-  return { byModel: {}, byDay: {}, byDayModel: {}, byTool: {}, byModelMessages: {}, byHost: {}, totals: zeroBreakdown(), messages: 0, costMeasured: 0, recent: [] };
+  return {
+    byModel: {}, byDay: {}, byDayModel: {}, byTool: {}, byModelMessages: {}, byHost: {},
+    totals: zeroBreakdown(), messages: 0, costMeasured: 0,
+    byProvider: {}, byProject: {}, byDayModelTokens: {}, byDayModelRuns: {}, byDayProvider: {}, byDayProject: {},
+    byDayErrors: {}, byDayModelErrors: {}, byDayTool: {}, byDayCost: {},
+    latency: {}, ttft: {}, errors: {}, reasoning: 0,
+    recent: [],
+  };
 }
-export function ingestSessionRow(accum: SessionAccum, model: string, usage: Record<string, unknown>, ts: string | number | undefined, durMs?: unknown, run?: { st: RunStatus; code?: number; note?: string }, toolNames?: string[], host?: string, id?: string): boolean {
+/** Mutable per-file parse state: header and model_change rows apply to every row after them. */
+export interface SessionState {
+  codexProvider: string | null;
+  codexModel?: string | null;
+  cwd?: string | null;
+  provider?: string | null;
+}
+
+/** What the running session contributes to each row it produces. */
+export interface RunContext {
+  provider?: string;
+  project?: string;
+  ttft?: number;
+}
+
+export function ingestSessionRow(accum: SessionAccum, model: string, usage: Record<string, unknown>, ts: string | number | undefined, durMs?: unknown, run?: { st: RunStatus; code?: number; note?: string }, toolNames?: string[], host?: string, id?: string, ctx?: RunContext): boolean {
   const watermark = readResetWatermark();
   const ms = ts === undefined ? NaN : typeof ts === 'number' ? ts : Date.parse(ts);
   if (watermark > 0 && (!Number.isFinite(ms) || ms < watermark)) return false;
@@ -314,15 +375,68 @@ export function ingestSessionRow(accum: SessionAccum, model: string, usage: Reco
     hs[host] ??= zeroBreakdown();
     addInto(hs[host], usage);
   }
+  // Prefer the declared provider; fall back to the model-id prefix for hosts that only prefix it.
+  const provider = ctx?.provider ?? providerOf(model);
+  if (provider) {
+    accum.byProvider[provider] ??= zeroBreakdown();
+    addInto(accum.byProvider[provider], usage);
+  }
+  if (ctx?.project) {
+    accum.byProject[ctx.project] ??= zeroBreakdown();
+    addInto(accum.byProject[ctx.project], usage);
+  }
   const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.floor(v) : 0);
+  const reasoning = num(usage.reasoning);
+  if (reasoning > 0) accum.reasoning += reasoning;
+  const outcome = run ?? { st: 'completed' as RunStatus };
+  if (outcome.st !== 'completed') accum.errors[outcome.st] = (accum.errors[outcome.st] ?? 0) + 1;
+  const dur = durOf(durMs);
+  if (dur !== undefined) {
+    const stat = (accum.latency[key] ??= { ms: 0, n: 0 });
+    stat.ms += dur;
+    stat.n += 1;
+  }
+  // OMP reports ttft; pi and opencode do not, so a missing value stays missing instead of reading as 0.
+  const ttft = durOf(ctx?.ttft);
+  if (ttft !== undefined) {
+    const stat = (accum.ttft[key] ??= { ms: 0, n: 0 });
+    stat.ms += ttft;
+    stat.n += 1;
+  }
   if (Number.isFinite(ms)) {
-    const outcome = run ?? { st: 'completed' as RunStatus };
-    accum.recent.push({ m: key, i: num(usage.input), o: num(usage.output), t: ms, d: durOf(durMs), h: host, cr: num(usage.cacheRead), cw: num(usage.cacheWrite), usd: costOf(usage), st: outcome.st, code: outcome.code, note: outcome.note, id });
+    accum.recent.push({ m: key, i: num(usage.input), o: num(usage.output), t: ms, d: dur, tf: ttft, h: host, cr: num(usage.cacheRead), cw: num(usage.cacheWrite), usd: costOf(usage), st: outcome.st, code: outcome.code, note: outcome.note, id, tools: toolNames?.length ? toolNames : undefined });
   }
   const day = ts !== undefined ? dayKey(ts) : null;
   if (day) {
     accum.byDay[day] ??= zeroBreakdown();
     addInto(accum.byDay[day], usage);
+    accum.byDayModelTokens[day] ??= {};
+    accum.byDayModelTokens[day][key] ??= zeroBreakdown();
+    addInto(accum.byDayModelTokens[day][key], usage);
+    const runs = (accum.byDayModelRuns[day] ??= {});
+    runs[key] = (runs[key] ?? 0) + 1;
+    // The same row also feeds every per-day table, so the range filter never needs a second pass.
+    if (provider) {
+      const byDay = (accum.byDayProvider[day] ??= {});
+      byDay[provider] ??= zeroBreakdown();
+      addInto(byDay[provider], usage);
+    }
+    if (ctx?.project) {
+      const byDay = (accum.byDayProject[day] ??= {});
+      byDay[ctx.project] ??= zeroBreakdown();
+      addInto(byDay[ctx.project], usage);
+    }
+    if (outcome.st !== 'completed') {
+      const counts = (accum.byDayErrors[day] ??= {});
+      counts[outcome.st] = (counts[outcome.st] ?? 0) + 1;
+      // The same failure, attributed to the model that ran, so the table needs no second pass.
+      const failed = (accum.byDayModelErrors[day] ??= {});
+      failed[key] = (failed[key] ?? 0) + 1;
+    }
+    for (const name of toolNames ?? []) {
+      const counts = (accum.byDayTool[day] ??= {});
+      counts[name] = (counts[name] ?? 0) + 1;
+    }
     const sum = ['input', 'output', 'cacheRead', 'cacheWrite'].reduce((a, k) => a + (typeof usage[k] === 'number' && Number.isFinite(usage[k]) ? Math.floor(usage[k] as number) : 0), 0);
     if (sum > 0) {
       accum.byDayModel[day] ??= {};
@@ -331,12 +445,23 @@ export function ingestSessionRow(accum: SessionAccum, model: string, usage: Reco
   }
   accum.messages += 1;
   const measured = costOf(usage);
-  if (measured !== undefined) accum.costMeasured += measured;
+  if (measured !== undefined) {
+    accum.costMeasured += measured;
+    if (day) accum.byDayCost[day] = (accum.byDayCost[day] ?? 0) + measured;
+  }
   for (const name of toolNames ?? []) accum.byTool[name] = (accum.byTool[name] ?? 0) + 1;
   return true;
 }
-export type SessionLineKind = 'codex_provider' | 'codex_model' | 'token_row' | 'assistant_row' | 'skip';
-export function classifySessionLine(row: { timestamp?: string | number; type?: unknown; message?: { role?: unknown; model?: unknown; usage?: Record<string, unknown>; duration?: unknown; completedAt?: unknown; timestamp?: unknown; stopReason?: unknown; errorStatus?: unknown; errorMessage?: unknown; isError?: unknown; content?: Array<{ type?: unknown; name?: unknown; arguments?: unknown }> }; payload?: { type?: unknown; model?: unknown; model_provider?: unknown; info?: { last_token_usage?: Record<string, unknown> } } }): { kind: SessionLineKind; provider?: string; model?: string; usage?: Record<string, unknown>; durMs?: number; run?: { st: RunStatus; code?: number; note?: string }; tools?: string[]; ms?: number } {
+export type SessionLineKind = 'codex_provider' | 'codex_model' | 'session_header' | 'model_change' | 'token_row' | 'assistant_row' | 'skip';
+export function classifySessionLine(row: { timestamp?: string | number; type?: unknown; cwd?: unknown; provider?: unknown; modelId?: unknown; message?: { role?: unknown; model?: unknown; usage?: Record<string, unknown>; duration?: unknown; ttft?: unknown; completedAt?: unknown; timestamp?: unknown; stopReason?: unknown; errorStatus?: unknown; errorMessage?: unknown; isError?: unknown; content?: Array<{ type?: unknown; name?: unknown; arguments?: unknown }> }; model?: unknown; payload?: { type?: unknown; model?: unknown; model_provider?: unknown; info?: { last_token_usage?: Record<string, unknown> } } }): { kind: SessionLineKind; cwd?: string; provider?: string; model?: string; usage?: Record<string, unknown>; durMs?: number; ttft?: number; run?: { st: RunStatus; code?: number; note?: string }; tools?: string[]; ms?: number } {
+  // The session header names the working directory, which is the only project identity the transcripts carry.
+  if (row.type === 'session' && typeof row.cwd === 'string' && row.cwd) return { kind: 'session_header', cwd: row.cwd };
+  if (row.type === 'model_change') {
+    const provider = typeof row.provider === 'string' && row.provider ? row.provider : undefined;
+    const named = typeof row.model === 'string' && row.model ? row.model : undefined;
+    const model = named ?? (typeof row.modelId === 'string' && row.modelId ? row.modelId : undefined);
+    if (provider || model) return { kind: 'model_change', provider, model };
+  }
   const payload = row.payload;
   if (payload && typeof payload === 'object') {
     if (row.type === 'session_meta' && typeof payload.model_provider === 'string') return { kind: 'codex_provider', provider: payload.model_provider };
@@ -370,7 +495,7 @@ export function classifySessionLine(row: { timestamp?: string | number; type?: u
     const command = (part.arguments as { command?: unknown } | null)?.command;
     tools.push(`bash:${leadBinary(command)}`);
   }
-  return { kind: 'assistant_row', model, usage: msg.usage, durMs: typeof msg.duration === 'number' ? msg.duration : computedDur, run: statusOf(msg), tools };
+  return { kind: 'assistant_row', model, usage: msg.usage, durMs: typeof msg.duration === 'number' ? msg.duration : computedDur, ttft: durOf(msg.ttft), run: statusOf(msg), tools };
 }
 // True when at least one token bucket holds a positive finite count.
 export function hasPositiveUsage(usage: Record<string, unknown>): boolean {
@@ -548,6 +673,9 @@ export function importSessionTokens(): SessionTokens {
   }
   let codexProvider: string | null = null;
   let codexModel: string | null = null;
+  // Per file, not per import: a header or model_change belongs only to the transcript holding it.
+  let sessionCwd: string | null = null;
+  let sessionProvider: string | null = null;
   for (const file of files) {
     let text: string;
     try {
@@ -560,10 +688,15 @@ export function importSessionTokens(): SessionTokens {
       set codexProvider(v: string | null) { codexProvider = v; },
       get codexModel() { return codexModel; },
       set codexModel(v: string | null) { codexModel = v; },
+      get cwd() { return sessionCwd; },
+      set cwd(v: string | null) { sessionCwd = v; },
+      get provider() { return sessionProvider; },
+      set provider(v: string | null) { sessionProvider = v; },
     }, text, hostOfSessionFile(file));
   }
   accum.recent.sort((a, b) => b.t - a.t);
-  return { messages: accum.messages, totals: accum.totals, byModel: accum.byModel, byDay: accum.byDay, byDayModel: accum.byDayModel, byTool: accum.byTool, byModelMessages: accum.byModelMessages, byHost: accum.byHost, costMeasured: accum.costMeasured, recent: accum.recent.slice(0, RECENT_LIMIT) };
+  // Spread, not a field list: a new aggregate must never be dropped by this return.
+  return { ...accum, recent: accum.recent.slice(0, RECENT_LIMIT) };
 }
 
 // Which agent wrote a session file, from the directory it sits in.
@@ -645,7 +778,7 @@ export function readRtkAdoption(): RtkAdoption {
   const missedCalls = Math.max(0, eligibleCalls - rtkCalls);
   return { sessions, bashCalls, eligibleCalls, rtkCalls, missedCalls, adoptionPct: eligibleCalls ? (rtkCalls / eligibleCalls) * 100 : 0 };
 }
-export function processSessionText(accum: SessionAccum, state: { codexProvider: string | null; codexModel?: string | null }, text: string, host?: string): void {
+export function processSessionText(accum: SessionAccum, state: SessionState, text: string, host?: string): void {
   for (const line of text.split('\n')) {
     if (!line.trim()) continue;
     try {
@@ -660,15 +793,25 @@ export function processSessionText(accum: SessionAccum, state: { codexProvider: 
         if (parsed.model) state.codexModel = parsed.model;
         continue;
       }
+      if (parsed.kind === 'session_header') {
+        state.cwd = parsed.cwd ?? null;
+        continue;
+      }
+      if (parsed.kind === 'model_change') {
+        if (parsed.provider) state.provider = parsed.provider;
+        continue;
+      }
+      // Header state applies to every row that follows it in this transcript.
+      const ctx: RunContext = { provider: parsed.provider ?? state.provider ?? undefined, project: state.cwd ?? undefined, ttft: parsed.ttft };
       if (parsed.kind === 'token_row') {
         const base = parsed.provider ? `codex/${parsed.provider}` : (state.codexProvider ? `codex/${state.codexProvider}` : 'codex');
         // The provider alone told you nothing about which model ran.
         const model = state.codexModel ? `${base}/${state.codexModel}` : base;
-        ingestSessionRow(accum, model, parsed.usage ?? {}, row.timestamp, parsed.durMs, { st: 'completed' as RunStatus }, undefined, host ?? 'codex', rid);
+        ingestSessionRow(accum, model, parsed.usage ?? {}, row.timestamp, parsed.durMs, { st: 'completed' as RunStatus }, undefined, host ?? 'codex', rid, ctx);
         continue;
       }
       if (parsed.kind !== 'assistant_row' || !parsed.model || !parsed.usage) continue;
-      ingestSessionRow(accum, parsed.model, parsed.usage, row.timestamp, parsed.durMs, parsed.run, parsed.tools, host, rid);
+      ingestSessionRow(accum, parsed.model, parsed.usage, row.timestamp, parsed.durMs, parsed.run, parsed.tools, host, rid, ctx);
     } catch { /* skip corrupt lines */ }
   }
 }

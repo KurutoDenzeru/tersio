@@ -49,8 +49,8 @@ test("importer aggregates assistant usage by model and day, skips the rest", () 
     expect(s.byDayModel["2026-09-02"]).toEqual({ "mystery-model-9": 110 });
     expect(s.byModelMessages).toEqual({ "claude-sonnet-5": 1, "mystery-model-9": 1 });
     expect(s.recent).toEqual([
-      { m: "mystery-model-9", i: 100, o: 10, t: Date.parse("2026-09-02T10:01:00.000Z"), d: undefined, h: "pi", cr: 0, cw: 0, usd: undefined, st: "completed", code: undefined, note: undefined, id: "b" },
-      { m: "claude-sonnet-5", i: 1000, o: 200, t: Date.parse("2026-09-01T10:01:00.000Z"), d: 4200, h: "pi", cr: 500, cw: 125, usd: 0.012, st: "completed", code: undefined, note: undefined, id: "a" },
+      { m: "mystery-model-9", i: 100, o: 10, t: Date.parse("2026-09-02T10:01:00.000Z"), d: undefined, h: "pi", cr: 0, cw: 0, usd: undefined, st: "completed", code: undefined, note: undefined, id: "b", tools: undefined },
+      { m: "claude-sonnet-5", i: 1000, o: 200, t: Date.parse("2026-09-01T10:01:00.000Z"), d: 4200, h: "pi", cr: 500, cw: 125, usd: 0.012, st: "completed", code: undefined, note: undefined, id: "a", tools: ["bash:rtk", "bash:git", "read"] },
     ]);
     expect(s.costMeasured).toBe(0.012);
   } finally {
@@ -91,7 +91,7 @@ test("carries measured cost and run status through to recent rows", () => {
       // Real OMP shape: usage.cost is an object with a total; failed runs carry the HTTP errorStatus.
       '{"type":"message","id":"a","timestamp":"2026-09-03T10:00:00.000Z","message":{"role":"assistant","model":"glm-5.3-flash","stopReason":"error","errorStatus":404,"errorMessage":"404 model not found\\nsecond line","usage":{"input":10,"output":2,"cacheRead":0,"cacheWrite":0,"cost":{"input":0.0001,"output":0.0002,"total":0.0003}}}}',
       '{"type":"message","id":"b","timestamp":"2026-09-03T10:01:00.000Z","message":{"role":"assistant","model":"glm-5.3-flash","stopReason":"aborted","errorMessage":"Interrupted by user","usage":{"input":5,"output":1,"cacheRead":0,"cacheWrite":0,"cost":{"total":0.000187}}}}',
-      '{"type":"message","id":"c","timestamp":"2026-09-03T10:02:00.000Z","message":{"role":"assistant","model":"glm-5.3-flash","stopReason":"toolUse","usage":{"input":7,"output":3,"cacheRead":0,"cacheWrite":0,"cost":{"total":0}}}}',
+      '{"type":"message","id":"c","timestamp":"2026-09-03T10:02:00.000Z","message":{"role":"assistant","model":"glm-5.3-flash","stopReason":"toolUse","ttft":250,"usage":{"input":7,"output":3,"cacheRead":0,"cacheWrite":0,"cost":{"total":0}}}}',
     ].join("\n") + "\n",
     "utf8",
   );
@@ -107,6 +107,8 @@ test("carries measured cost and run status through to recent rows", () => {
     expect(b.usd).toBe(0.000187);
     expect(c.st, "toolUse is an ordinary completed turn").toBe("completed");
     expect(c.usd, "a recorded zero is a measurement, not a missing value").toBe(0);
+    expect(c.tf, "a recorded time to first token reaches the row").toBe(250);
+    expect(a.tf, "a host row without ttft stays absent, never zero").toBeUndefined();
     // The old check required a numeric usage.cost, so object costs never accumulated.
     expect(Math.abs(s.costMeasured - (0.0003 + 0.000187)) < 1e-12, `costMeasured was ${s.costMeasured}`).toBeTruthy();
   } finally {
