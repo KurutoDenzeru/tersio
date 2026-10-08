@@ -1,3 +1,6 @@
+## v2.25.4
+ - Fixes an OMP crash on prompt injection: a `systemPrompt` array holding a non-string no longer throws `undefined is not an object (evaluating 'part.includes')` in the Caveman and Combo extensions. Non-string parts are dropped before the marker check.
+
 ## v2.25.3
  - Interactive installs and `tersio settings` now ask only for the Combo preset; it sets Caveman, RTK, and Ponytail. Change one mode with `tersio settings caveman|rtk|ponytail` or a `--*-default` flag.
  - Rejects a fetched Caveman rule body that is an error page, a 404 or a stub, and keeps the bundled one; doctor warns on an unusable installed body. Each rule pack carries verify samples, so an upstream edit that drops core markers fails the suite.

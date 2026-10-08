@@ -95,7 +95,9 @@ export function normalizeInputCommand(value: unknown): string {
 }
 
 export function asPromptArray(systemPrompt: string | string[]): string[] {
-  return Array.isArray(systemPrompt) ? systemPrompt : [systemPrompt];
+  const parts = Array.isArray(systemPrompt) ? systemPrompt : [systemPrompt];
+  // OMP can hand back a hole in the array; a non-string breaks every marker check.
+  return parts.filter((part): part is string => typeof part === 'string');
 }
 
 export function systemPromptIncludes(systemPrompt: string | string[], marker: string): boolean {

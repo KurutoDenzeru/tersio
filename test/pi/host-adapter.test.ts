@@ -111,6 +111,14 @@ test("injectPromptText replaces the prompt on OMP and appends on pi", () => {
   expect(bare.systemPromptOptions?.appendSystemPrompt).toBeUndefined();
 });
 
+test("a hole in an OMP prompt array does not crash the injector", () => {
+  // OMP has shipped an array with a non-string in it; `part.includes` on undefined killed the extension.
+  const holey = { systemPrompt: ["base", undefined, { text: "obj" }] } as unknown as SystemPromptEvent;
+  expect(injectPromptText(ompHost().pi, holey, { text: "MODE ON" })).toEqual({ systemPrompt: ["base", "MODE ON"] });
+  expect(injectPromptText(ompHost().pi, { systemPrompt: undefined } as unknown as SystemPromptEvent, { text: "MODE ON" }))
+    .toEqual({ systemPrompt: ["MODE ON"] });
+});
+
 test("a tagged block owns its pi section instead of replacing the whole prompt", () => {
   const sections: Record<string, string> = { preamble: "base" };
   const event: SystemPromptEvent = { systemPrompt: "base", systemPromptOptions: { appendSystemPrompt: "", sections } };
