@@ -375,5 +375,8 @@ export {
   writeConfigLines, ensureExtensionInConfig, removeExtensionFromConfig,
   readPonytailConfig, parseJsonObject, parsePonytailConfig, patchPonytailConfig,
   ensurePonytailConfigValue, readPluginsPackage, relTime,
-  InstallOptions, PluginsPackage, PonytailConfig, ExecOptions, WriteOptions,
 };
+
+// Type-only, split from the value exports above: Node's type stripping cannot tell a type re-export
+// from a value one, so `node tersio.ts` fails on it. tsc erases this statement either way.
+export type { InstallOptions, PluginsPackage, PonytailConfig, ExecOptions, WriteOptions };

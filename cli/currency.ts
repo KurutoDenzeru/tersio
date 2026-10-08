@@ -101,5 +101,7 @@ function formatCurrency(usd: number, currency: CurrencyCode): string {
 
 export {
   CURRENCY_CODES, DEFAULT_CURRENCY,
-  convertUsd, formatCurrency, isCurrencyCode, parseCurrencyFlag, readStoredCurrency, CurrencyCode,
+  convertUsd, formatCurrency, isCurrencyCode, parseCurrencyFlag, readStoredCurrency,
 };
+
+export type { CurrencyCode };

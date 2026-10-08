@@ -7,6 +7,7 @@ import {
   importSessionTokens,
   ledgerPath,
   priceFor,
+  providerOf,
   readResetWatermark,
   readRtkAdoption,
   readRtkRecallDiagnostics,
@@ -17,6 +18,7 @@ import {
 } from '../extensions/shared/usage-ledger.ts';
 import type { RecentRequest, RtkAdoption, RtkRecallDiagnostics, SessionTokens, TokenBreakdown, UsageRow } from '../extensions/shared/usage-ledger.ts';
 import { resolveRtkBinary } from '../extensions/lib/utils.ts';
+import { loadCatalog, providerLabels } from '../extensions/shared/pricing.ts';
 import { readRtkGain } from '../extensions/shared/rtk-gain.ts';
 import type { RtkGain } from '../extensions/shared/rtk-gain.ts';
 import { readUsageDb, reparseGuardReport, syncUsageDb, usageDbPath } from '../extensions/shared/usage-store.ts';
@@ -28,6 +30,13 @@ import type { CurrencyCode } from './currency.ts';
 // `est` is tersio's modeled cost; the dashboard prefers a measured figure, so the two are never blended into one unlabeled number.
 export interface RecentRequestRow extends RecentRequest {
   est: number;
+}
+
+/** A model the price feed does not cover, so its usage cannot be valued at public API rates. */
+export interface UnpricedModel {
+  model: string;
+  tokens: number;
+  messages: number;
 }
 
 export interface UsageReport {
@@ -45,13 +54,57 @@ export interface UsageReport {
   byHost: Record<string, Record<string, TokenBreakdown>>;
   byDay: Record<string, TokenBreakdown>;
   byDayModel: Record<string, Record<string, number>>;
+  /** Per-day, per-model tokens: the exact input to a model breakdown and a cost-over-time series. */
+  byDayModelTokens: Record<string, Record<string, TokenBreakdown>>;
+  /** Per-day requests per model, so the share chart can be request-based. */
+  byDayModelRuns: Record<string, Record<string, number>>;
+  /** Per-day tables, so a page can recompute its own numbers for the selected range. */
+  byDayProvider: Record<string, Record<string, TokenBreakdown>>;
+  byDayProject: Record<string, Record<string, TokenBreakdown>>;
+  byDayErrors: Record<string, Record<string, number>>;
+  /** Per-day failures per model key, so a model row can show its own error rate for the range. */
+  byDayModelErrors: Record<string, Record<string, number>>;
+  byDayTool: Record<string, Record<string, number>>;
+  /** Vendor-reported cost per day. Empty when the host reported none. */
+  byDayCost: Record<string, number>;
+  /** API-equivalent cost per day, priced models only, so cost follows the selected range. */
+  byDayApiUsd: Record<string, number>;
+  /** Cache savings per day, priced models only. */
+  byDaySavedUsd: Record<string, number>;
+  /** API-equivalent cost per day per model label, so a model table follows the range. */
+  byDayModelUsd: Record<string, Record<string, number>>;
   byTool: Array<[string, number]>;
+  /** Provider totals are token-only: one provider spans models, so no single price applies. */
+  byProvider: Array<[string, TokenBreakdown]>;
+  byProject: Array<[string, TokenBreakdown]>;
+  reasoning: number;
+  /** Runs that did not end completed, by status. */
+  errors: Record<string, number>;
   recent: RecentRequestRow[];
   rtkGain: RtkGain;
   rtkAdoption: RtkAdoption;
   rtkRecall: RtkRecallDiagnostics;
+  /** API-equivalent total: priced models only. Unpriced usage is excluded, never defaulted. */
   usd: number;
+  /** False when at least one model lacked a public price, so `usd` understates what was really spent. */
   priced: boolean;
+  /** How many models had a public price, of how many ran. A sum without its coverage is not a figure. */
+  pricingCoverage: { priced: number; total: number };
+  /** Internal model key to display label, so every page names a model the same way. */
+  modelLabels: Record<string, string>;
+  /**
+   * Catalogued rate per display label plus the provider that serves it, quoted per million tokens.
+   * This is how a page shows where a price came from instead of only that one is missing.
+   */
+  modelRates: Record<string, { provider: string | null; known: boolean; input: number; output: number; cacheRead: number; cacheWrite: number }>;
+  /** The pricing catalog's own size, so a coverage figure has a source behind it. */
+  pricingCatalog: { providers: number; models: number; fetchedAt: number | null };
+  /** Mean elapsed wall clock per model. Absent for a model that carried no duration. */
+  latency: Record<string, { ms: number; n: number }>;
+  /** Mean time to first token per model. OMP reports it; pi and opencode do not. */
+  ttft: Record<string, { ms: number; n: number }>;
+  /** Models with no public price. Excluded from `usd`, and listed so the gap stays visible. */
+  unpriced: UnpricedModel[];
   savedUsd: number;
   costMeasured: number;
   co2g: number;
@@ -93,7 +146,34 @@ export function summarizeUsage(rows: UsageRow[]): UsageReport {
   const watermark = readResetWatermark();
   let usd = 0;
   let priced = true;
+  // Counted by display label, not by internal key: two gateway keys can name one model, and
+  // counting both would report a coverage figure the model table does not show.
+  const labelSeen = new Set<string>();
+  const labelPriced = new Set<string>();
+  const unpricedByLabel = new Map<string, UnpricedModel>();
   let savedUsd = 0;
+  // One name per model across every page, taken from the same helper the CLI prints with.
+  const modelLabels: Record<string, string> = {};
+  for (const model of Object.keys(session.byModel)) modelLabels[model] = displayModelId(model);
+  // Where each price came from: the catalog's rate for the model, and the provider that serves it.
+  const modelRates: UsageReport['modelRates'] = {};
+  for (const [model, label] of Object.entries(modelLabels)) {
+    const resolved = priceFor(model);
+    modelRates[label] = {
+      provider: providerOf(model) ?? null,
+      known: resolved.known,
+      input: resolved.price.input,
+      output: resolved.price.output,
+      cacheRead: resolved.price.cacheRead,
+      cacheWrite: resolved.price.cacheWrite,
+    };
+  }
+  const catalogEntries = providerLabels(loadCatalog());
+  const pricingCatalog = {
+    providers: catalogEntries.length,
+    models: catalogEntries.reduce((n, entry) => n + entry.models, 0),
+    fetchedAt: loadCatalog()?.fetchedAt ?? null,
+  };
   const byModelUsd: Record<string, number> = {};
   const byModelBucketUsd: Record<string, { input: number; output: number; cacheRead: number; cacheWrite: number }> = {};
   const byHost: Record<string, Record<string, TokenBreakdown>> = {};
@@ -110,11 +190,24 @@ export function summarizeUsage(rows: UsageRow[]): UsageReport {
   const folded = foldModelsByLabel(session.byModel, session.byModelMessages);
   for (const [model, t] of Object.entries(session.byModel)) {
     const c = usdCost(t, model);
-    usd += c.usd;
     const label = displayModelId(model);
-    byModelUsd[label] = (byModelUsd[label] ?? 0) + c.usd;
-    byModelBucketUsd[label] ??= { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
-    addTok(byModelBucketUsd[label], c.buckets);
+    if (c.priced) {
+      labelPriced.add(label);
+      usd += c.usd;
+      byModelUsd[label] = (byModelUsd[label] ?? 0) + c.usd;
+      byModelBucketUsd[label] ??= { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+      addTok(byModelBucketUsd[label], c.buckets);
+      // Cache savings need a real input rate; a default rate would invent the figure.
+      savedUsd += (t.cacheRead / 1e6) * priceFor(model).price.input;
+    } else {
+      // A model with no public price is N/A, not a Sonnet-rate estimate. Folded by label so one
+      // model listed under two gateway ids is reported once.
+      const row = unpricedByLabel.get(label) ?? { model: label, tokens: 0, messages: 0 };
+      row.tokens += t.input + t.output + t.cacheRead + t.cacheWrite;
+      row.messages += session.byModelMessages[model] ?? 0;
+      unpricedByLabel.set(label, row);
+    }
+    labelSeen.add(label);
     for (const [host, hb] of Object.entries(session.byHost[model] ?? {})) {
       byHost[label] ??= {};
       byHost[label][host] ??= { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
@@ -122,8 +215,6 @@ export function summarizeUsage(rows: UsageRow[]): UsageReport {
     }
     co2g += co2GramsFor(model, t.output);
     energyWh += energyWhFor(model, t.output);
-    if (!c.priced) priced = false;
-    savedUsd += (t.cacheRead / 1e6) * priceFor(model).price.input;
   }
   for (const [day, per] of Object.entries(session.byDayModel)) {
     for (const [model, n] of Object.entries(per)) {
@@ -132,7 +223,38 @@ export function summarizeUsage(rows: UsageRow[]): UsageReport {
       byDayModel[day][label] = (byDayModel[day][label] ?? 0) + n;
     }
   }
+  // Per-day money, so a range filter can show cost without holding the price table client-side.
+  const byDayApiUsd: Record<string, number> = {};
+  const byDaySavedUsd: Record<string, number> = {};
+  const byDayModelUsd: Record<string, Record<string, number>> = {};
+  for (const [day, per] of Object.entries(session.byDayModelTokens)) {
+    let api = 0;
+    let saved = 0;
+    const perModelUsd: Record<string, number> = {};
+    for (const [model, tb] of Object.entries(per)) {
+      const c = usdCost(tb, model);
+      // An unpriced model contributes to neither figure, for the same reason it is excluded above.
+      if (!c.priced) continue;
+      const label = displayModelId(model);
+      api += c.usd;
+      saved += (tb.cacheRead / 1e6) * priceFor(model).price.input;
+      perModelUsd[label] = (perModelUsd[label] ?? 0) + c.usd;
+    }
+    byDayApiUsd[day] = api;
+    byDaySavedUsd[day] = saved;
+    byDayModelUsd[day] = perModelUsd;
+  }
   const byTool = Object.entries(session.byTool).sort((a, b) => b[1] - a[1]).slice(0, 10);
+  const tot = (b: TokenBreakdown): number => b.input + b.output + b.cacheRead + b.cacheWrite;
+  const byProvider = Object.entries(session.byProvider).sort((a, b) => tot(b[1]) - tot(a[1]));
+  const byProject = Object.entries(session.byProject).sort((a, b) => tot(b[1]) - tot(a[1]));
+  // Coverage is reported per display label, matching the model table and the unpriced list.
+  const totalModels = labelSeen.size;
+  const pricedModels = labelPriced.size;
+  priced = totalModels > 0 && totalModels === pricedModels;
+  const unpriced = [...unpricedByLabel.values()]
+    .filter((row) => !labelPriced.has(row.model))
+    .sort((a, b) => b.tokens - a.tokens);
   return {
     total: rows.length,
     byKind,
@@ -148,7 +270,22 @@ export function summarizeUsage(rows: UsageRow[]): UsageReport {
     byHost,
     byDay: session.byDay,
     byDayModel,
+    byDayModelTokens: session.byDayModelTokens,
+    byDayModelRuns: session.byDayModelRuns,
+    byDayProvider: session.byDayProvider,
+    byDayProject: session.byDayProject,
+    byDayErrors: session.byDayErrors,
+    byDayModelErrors: session.byDayModelErrors,
+    byDayTool: session.byDayTool,
+    byDayCost: session.byDayCost,
+    byDayApiUsd,
+    byDaySavedUsd,
+    byDayModelUsd,
     byTool,
+    byProvider,
+    byProject,
+    reasoning: session.reasoning,
+    errors: session.errors,
     recent: session.recent.map((r) => ({
       ...r,
       est: usdCost({ input: r.i, output: r.o, cacheRead: r.cr ?? 0, cacheWrite: r.cw ?? 0 }, r.m).usd,
@@ -158,6 +295,13 @@ export function summarizeUsage(rows: UsageRow[]): UsageReport {
     rtkRecall: readRtkRecallDiagnostics(resolveRtkBinary()),
     usd,
     priced,
+    pricingCoverage: { priced: pricedModels, total: totalModels },
+    modelLabels,
+    modelRates,
+    pricingCatalog,
+    latency: session.latency,
+    ttft: session.ttft,
+    unpriced,
     savedUsd,
     costMeasured: session.costMeasured,
     co2g,
@@ -184,6 +328,13 @@ function fmtShort(n: number): string {
 function fmtMs(ms: number): string {
   if (ms < 1000) return `${Math.round(ms)}ms`;
   return `${(ms / 1000).toFixed(1)}s`;
+}
+
+// A project's identifying part is the tail of its path, so cut the front: the plain table
+// truncation keeps the shared prefix of every path and hides the one segment that differs.
+function shortProject(p: string): string {
+  const segs = p.split('/').filter(Boolean);
+  return segs.length <= 2 ? p : `…/${segs.slice(-2).join('/')}`;
 }
 
 function bar(frac: number, width = 12): string {
@@ -221,11 +372,22 @@ function printReport(report: UsageReport): void {
   }
   const t = report.tokens;
   const a = report.rtkAdoption;
-  for (const l of textTable(['Metric', 'Value'], [
-    ['Tokens', `${fmt(t.input)} in · ${fmt(t.output)} out · ${fmt(t.cacheRead)} cache read · ${fmt(t.cacheWrite)} cache write`],
-    ['Cost', `${formatCurrency(report.usd, report.currency)}${report.priced ? '' : ' (includes default pricing)'} · ~${formatCurrency(report.savedUsd, report.currency)} cache-saved (est.) · ~${report.co2g.toFixed(1)}g CO2 (est.)`],
+  const errors = report.errors.error ?? 0;
+  const aborted = report.errors.aborted ?? 0;
+  const notCompleted = errors + aborted;
+  const donePct = report.messages ? ((report.messages - notCompleted) / report.messages) * 100 : 0;
+  const rows: string[][] = [
+    ['Tokens', `${fmt(t.input)} in · ${fmt(t.output)} out · ${fmt(t.cacheRead)} cache read · ${fmt(t.cacheWrite)} cache write${report.reasoning > 0 ? ` · ${fmt(report.reasoning)} reasoning` : ''}`],
+    ['Cost', `${formatCurrency(report.usd, report.currency)} API-equivalent · ${formatCurrency(report.costMeasured, report.currency)} measured · ~${formatCurrency(report.savedUsd, report.currency)} cache-saved (est.) · ~${report.co2g.toFixed(1)}g CO2 (est.)`],
+    ['Pricing', `${fmt(report.pricingCoverage.priced)}/${fmt(report.pricingCoverage.total)} models priced — unpriced usage is excluded from the API-equivalent total, never estimated`],
+    ['Runs', `${fmt(report.messages - notCompleted)} completed (${donePct.toFixed(1)}%) · ${fmt(aborted)} aborted · ${fmt(errors)} error`],
     ['RTK adoption', `${fmt(a.rtkCalls)}/${fmt(a.eligibleCalls)} eligible Bash calls use RTK (${a.adoptionPct.toFixed(1)}%) · ${fmt(a.missedCalls)} missed · recall ${report.rtkRecall.available ? `${report.rtkRecall.mode} (${report.rtkRecall.entries})` : 'unavailable'}`],
-  ], [false, false], 118)) console.log(l);
+  ];
+  if (report.unpriced.length) {
+    const names = report.unpriced.slice(0, 4).map((u) => u.model).join(', ');
+    rows.push(['Unpriced', `${fmt(report.unpriced.length)} model(s) with no public price: ${names}${report.unpriced.length > 4 ? `, +${fmt(report.unpriced.length - 4)} more` : ''}`]);
+  }
+  for (const l of textTable(['Metric', 'Value'], rows, [false, false], 118)) console.log(l);
   const allModels = Object.entries(report.byModel).filter(([, b]) => b.input + b.output + b.cacheRead + b.cacheWrite > 0).sort((a, b) => (b[1].input + b[1].output) - (a[1].input + a[1].output));
   const models = allModels.slice(0, ROW_CAP);
   if (models.length) {
@@ -242,6 +404,29 @@ function printReport(report: UsageReport): void {
     }
     if (allModels.length > ROW_CAP) console.log(`  showing top ${ROW_CAP} of ${fmt(allModels.length)} models — full set in the dashboard`);
   }
+  // Provider and project carry the same shape, so one renderer covers both.
+  const tokenTable = (title: string, entries: Array<[string, TokenBreakdown]>, label: string): void => {
+    if (!entries.length) {
+      console.log(`  ${title}  none captured yet`);
+      return;
+    }
+    const totals = entries.map(([, b]) => b.input + b.output + b.cacheRead + b.cacheWrite);
+    const top = Math.max(...totals, 1);
+    console.log(`  ${title}  ${fmt(entries.length)} ${label.toLowerCase()}s · ${fmtShort(totals.reduce((x, y) => x + y, 0))} tokens`);
+    const prows = entries.slice(0, ROW_CAP).map(([name, b], i) => [
+      name,
+      fmt(b.input),
+      fmt(b.output),
+      `${fmt(b.cacheRead)}/${fmt(b.cacheWrite)}`,
+      `${bar(totals[i] / top, 8)} ${fmtShort(totals[i])}`,
+    ]);
+    for (const l of textTable([label, 'Input', 'Output', 'Cache r/w', 'Share'], prows, [false, true, true, true, false], 40)) {
+      console.log(l);
+    }
+    if (entries.length > ROW_CAP) console.log(`  showing top ${ROW_CAP} of ${fmt(entries.length)} ${label.toLowerCase()}s`);
+  };
+  tokenTable('BY PROVIDER', report.byProvider, 'Provider');
+  tokenTable('BY PROJECT', report.byProject.map(([p, b]) => [shortProject(p), b] as [string, TokenBreakdown]), 'Project');
   const cmdRows: { name: string; count: number; saved: number | null; avgPct: number | null; avgMs: number | null }[] =
     report.byTool.map(([tool, n]) => ({ name: tool, count: n, saved: null, avgPct: null, avgMs: null }));
   for (const r of report.rtkGain.byCommand) {

@@ -134,7 +134,9 @@ function formatProfile(profile: Profile): string {
   return `combo=${profile.comboDefault} (caveman=${profile.cavemanDefault} · rtk=${profile.rtkDefault ? 'on' : 'off'} · ponytail=${profile.ponytailDefault}) · currency=${profile.currency}`;
 }
 
-export { defaultProfile, formatProfile, storedProfile, storedProfileSync, writePluginSettings, Profile };
+export { defaultProfile, formatProfile, storedProfile, storedProfileSync, writePluginSettings };
+
+export type { Profile };
 
 /** The status line the extensions print, read from the persisted profile. */
 export function formatCliStatus(profile: Profile): string {

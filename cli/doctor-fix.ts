@@ -12,7 +12,7 @@ import {
 import { execNetwork, sayTagged } from './interactive.ts';
 import { wireRtkOmp, wireRtkOpencode, wireRtkPi, ensureRtkInConfig } from './rtk-wiring.ts';
 import {
-  RTK_RELEASE_API, RtkRelease, fetchJson, findFile, httpsGet,
+  RTK_RELEASE_API, type RtkRelease, fetchJson, findFile, httpsGet,
   httpsDownload, parseChecksum, readTextIfExists, rtkPlatformSpec, sha256File,
 } from '../extensions/lib/utils.ts';
 import { runLatestUpdate } from './update.ts';
@@ -232,4 +232,6 @@ async function runDoctorRepairs(targets: FixRequest[]): Promise<string[]> {
   return failed;
 }
 
-export { runDoctorRepairs, FixTarget };
+export { runDoctorRepairs };
+
+export type { FixTarget };

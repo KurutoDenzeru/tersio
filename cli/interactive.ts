@@ -142,6 +142,8 @@ async function execNetwork(label: string, cmd: string, args: string[], opts: Exe
 }
 
 export {
-  ask, closeRL, tty, withInteractiveSpinner, withInteractiveTask, execNetwork, sayTagged, SayKind,
-  askInteractiveChoice, askInteractiveConfirm, confirmDestructive, runInteractivePhase, InteractiveChoice, InteractiveConfirm,
+  ask, closeRL, tty, withInteractiveSpinner, withInteractiveTask, execNetwork, sayTagged,
+  askInteractiveChoice, askInteractiveConfirm, confirmDestructive, runInteractivePhase,
 };
+
+export type { SayKind, InteractiveChoice, InteractiveConfirm };

@@ -12,7 +12,7 @@ import {
   debug, ensurePonytailConfigValue,
   execP, parseJsonObject, readPluginsPackage,
   writeIfChanged,
-  InstallOptions, WriteOptions,
+  type InstallOptions, type WriteOptions,
 } from './common.ts';
 import {
   askInteractiveChoice, askInteractiveConfirm, closeRL, execNetwork, tty, withInteractiveSpinner, withInteractiveTask, sayTagged } from './interactive.ts';
@@ -25,7 +25,7 @@ import { runUsage } from './usage.ts';
 import { runDashboard } from './dashboard.ts';
 import { wireRtkOmp, wireRtkOpencode, wireRtkPi } from './rtk-wiring.ts';
 import {
-  CAVEMAN_REMOTE_ULTRA, CAVEMAN_REMOTE_MEGACAVE, RTK_RELEASE_API, RtkRelease, RtkReleaseAsset, fetchJson, findFile, findHoistedPackage, httpsGet,
+  CAVEMAN_REMOTE_ULTRA, CAVEMAN_REMOTE_MEGACAVE, RTK_RELEASE_API, type RtkRelease, type RtkReleaseAsset, fetchJson, findFile, findHoistedPackage, httpsGet,
   findPackageRoot, httpsDownload, parseChecksum, piAgentDir, readTextIfExists, resolveRtkBinary, ruleBodyProblem, rtkPlatformSpec, sha256File,
 } from '../extensions/lib/utils.ts';
 import { formatCliStatus, storedProfile, storedProfileSync, writePluginSettings } from './profile.ts';
