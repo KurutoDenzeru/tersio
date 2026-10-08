@@ -9,6 +9,8 @@ export interface RecentRequestRow {
   o: number;
   t: number;
   d?: number;
+  /** Time to first token when the host recorded one; omp records it, pi and opencode do not — absent stays absent. */
+  tf?: number;
   /** Which agent ran the session: pi, omp, opencode. */
   h?: string;
   cr?: number;
@@ -20,6 +22,8 @@ export interface RecentRequestRow {
   est: number;
   /** Message id when the host provides one. */
   id?: string;
+  /** Tools invoked during this turn, in order. The per-request record we can actually support. */
+  tools?: string[];
 }
 
 export interface RtkCommandRow {
@@ -54,6 +58,12 @@ export interface RtkRecallDiagnostics {
   available: boolean;
 }
 
+export interface UnpricedModel {
+  model: string;
+  tokens: number;
+  messages: number;
+}
+
 export interface UsageReport {
   messages: number;
   tokens: TokenBreakdown;
@@ -62,15 +72,61 @@ export interface UsageReport {
   byModelBucketUsd: Record<string, TokenBreakdown>;
   byModelMessages: Record<string, number>;
   byHost: Record<string, Record<string, TokenBreakdown>>;
+  /** Which provider served the call, from the model_change provider or the model-id prefix. */
+  byProvider: Array<[string, TokenBreakdown]>;
+  /** Session working directory. A "project" in the transcripts is a cwd. */
+  byProject: Array<[string, TokenBreakdown]>;
   byDay: Record<string, TokenBreakdown>;
   byDayModel: Record<string, Record<string, number>>;
+  /** Per-day, per-model tokens: the exact input to a model breakdown and a cost-over-time series. */
+  byDayModelTokens: Record<string, Record<string, TokenBreakdown>>;
+  /** Per-day requests per model, so the share chart can be request-based. */
+  byDayModelRuns: Record<string, Record<string, number>>;
+  /** Per-day tables, so a page can recompute its own numbers for the selected range. */
+  byDayProvider: Record<string, Record<string, TokenBreakdown>>;
+  byDayProject: Record<string, Record<string, TokenBreakdown>>;
+  byDayErrors: Record<string, Record<string, number>>;
+  /** Per-day failures per model key, so a model row can show its own error rate for the range. */
+  byDayModelErrors: Record<string, Record<string, number>>;
+  byDayTool: Record<string, Record<string, number>>;
+  /** Vendor-reported cost per day. Empty when the host reported none. */
+  byDayCost: Record<string, number>;
+  /** API-equivalent cost per day, priced models only, so cost follows the selected range. */
+  byDayApiUsd: Record<string, number>;
+  /** Cache savings per day, priced models only. */
+  byDaySavedUsd: Record<string, number>;
+  /** API-equivalent cost per day per model label, so a model table follows the range. */
+  byDayModelUsd: Record<string, Record<string, number>>;
   byTool: Array<[string, number]>;
+  /** Reasoning tokens, billed as output by most providers. */
+  reasoning: number;
+  /** Runs that did not end completed, keyed by status. */
+  errors: Record<string, number>;
   recent: RecentRequestRow[];
   rtkGain: RtkGain;
   rtkAdoption: RtkAdoption;
   rtkRecall: RtkRecallDiagnostics;
+  /** API-equivalent total: priced models only. Unpriced usage is excluded, never defaulted. */
   usd: number;
+  /** False when at least one model lacked a public price, so `usd` understates what was really spent. */
   priced: boolean;
+  /** How many models had a public price, of how many ran. */
+  pricingCoverage: { priced: number; total: number };
+  /** Internal model key to display label, so every page names a model the same way. */
+  modelLabels: Record<string, string>;
+  /**
+   * Catalogued rate per display label plus the provider that serves it, quoted per million tokens.
+   * This is how a page shows where a price came from instead of only that one is missing.
+   */
+  modelRates: Record<string, { provider: string | null; known: boolean; input: number; output: number; cacheRead: number; cacheWrite: number }>;
+  /** The pricing catalog's own size, so a coverage figure has a source behind it. */
+  pricingCatalog: { providers: number; models: number; fetchedAt: number | null };
+  /** Mean elapsed wall clock per model. Absent for a model no row carried a duration for. */
+  latency: Record<string, { ms: number; n: number }>;
+  /** Mean time to first token per model. OMP reports it; pi and opencode do not. */
+  ttft: Record<string, { ms: number; n: number }>;
+  /** Models with no public price. Excluded from `usd`, and listed so the gap stays visible. */
+  unpriced: UnpricedModel[];
   savedUsd: number;
   costMeasured: number;
   co2g: number;
@@ -140,8 +196,53 @@ async function getJSON<T>(path: string): Promise<T> {
   return (await res.json()) as T;
 }
 
+/** Error body the dashboard server returns with a 4xx or 5xx. */
+interface ApiError {
+  error: string;
+}
+
+/**
+ * Like getJSON, but a failed response throws the server's own message instead of parsing its body
+ * into the caller's type. The session endpoints report why a transcript could not be read here.
+ */
+async function getJSONOk<T>(path: string, signal?: AbortSignal): Promise<T> {
+  const res = await fetch(path, signal ? { signal } : undefined);
+  const body = (await res.json()) as T | ApiError;
+  if (!res.ok) {
+    const message = (body as ApiError).error;
+    throw new Error(typeof message === "string" ? message : `HTTP ${res.status}`);
+  }
+  return body as T;
+}
+
+// Older snapshots and the file:// export predate the newer aggregates, so every one is defaulted here.
 function normalizeReport(d: UsageReport): UsageReport {
-  return { ...d, byHost: d.byHost ?? {} };
+  return {
+    ...d,
+    byHost: d.byHost ?? {},
+    byProvider: d.byProvider ?? [],
+    byProject: d.byProject ?? [],
+    errors: d.errors ?? {},
+    unpriced: d.unpriced ?? [],
+    pricingCoverage: d.pricingCoverage ?? { priced: 0, total: 0 },
+    reasoning: d.reasoning ?? 0,
+    byDayProvider: d.byDayProvider ?? {},
+    byDayProject: d.byDayProject ?? {},
+    byDayModelTokens: d.byDayModelTokens ?? {},
+    byDayModelRuns: d.byDayModelRuns ?? {},
+    byDayErrors: d.byDayErrors ?? {},
+    byDayTool: d.byDayTool ?? {},
+    byDayCost: d.byDayCost ?? {},
+    byDayApiUsd: d.byDayApiUsd ?? {},
+    byDaySavedUsd: d.byDaySavedUsd ?? {},
+    byDayModelUsd: d.byDayModelUsd ?? {},
+    modelLabels: d.modelLabels ?? {},
+    modelRates: d.modelRates ?? {},
+    pricingCatalog: d.pricingCatalog ?? { providers: 0, models: 0, fetchedAt: null },
+    byDayModelErrors: d.byDayModelErrors ?? {},
+    latency: d.latency ?? {},
+    ttft: d.ttft ?? {},
+  };
 }
 
 export function useDashboardData(): { data: UsageReport | null; loading: boolean; status: string | null } {
@@ -336,4 +437,124 @@ export async function postReset(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+// Session traces. The dashboard server extracts these from the pi/omp transcripts; the shapes below
+// mirror that response, so this app stays standalone and never imports the server's own types.
+export type SpanKind = "turn" | "model" | "tool" | "subagent" | "background";
+
+export interface SessionListEntry {
+  /** Absolute path of the main transcript. It is the key the trace endpoint takes. */
+  file: string;
+  folder: string | null;
+  title: string | null;
+  startedAt: number;
+  endedAt: number;
+  requests: number;
+  toolCalls: number;
+  subagents: number;
+  totalTokens: number;
+  costTotal: number;
+  unpricedRequests: number;
+  models: string[];
+}
+
+export interface TraceSpan {
+  id: string;
+  kind: SpanKind;
+  start: number;
+  end: number;
+  label: string;
+  entryId?: string;
+  /** Tool arguments or task prompt, capped server-side. */
+  detail?: string;
+  childTrackId?: string;
+  model?: string;
+  ttft?: number;
+  tokens?: number;
+  error?: boolean;
+  stop?: string;
+  /** A tool call with no result yet: the span ends at the last recorded row. */
+  unterminated?: boolean;
+}
+
+export interface TraceMarker {
+  time: number;
+  kind: "model_change" | "mode_change" | "session_exit";
+  label: string;
+}
+
+export interface TraceTrack {
+  id: string;
+  parentId: string | null;
+  label: string;
+  agent: string | null;
+  /** The transcript this track was read from; pair it with a span's entryId. */
+  file: string;
+  model: string | null;
+  spans: TraceSpan[];
+  markers: TraceMarker[];
+}
+
+export interface TraceToolStat {
+  tool: string;
+  calls: number;
+  errors: number;
+  totalMs: number;
+  maxMs: number;
+}
+
+export interface TraceSummary {
+  wallMs: number;
+  modelMs: number;
+  toolMs: number;
+  idleMs: number;
+  turns: number;
+  requests: number;
+  toolCalls: number;
+  subagents: number;
+  totalTokens: number;
+  costTotal: number;
+  unpricedRequests: number;
+  models: string[];
+  toolStats: TraceToolStat[];
+}
+
+export interface SessionTrace {
+  file: string;
+  title: string | null;
+  cwd: string | null;
+  startedAt: number;
+  endedAt: number;
+  tracks: TraceTrack[];
+  summary: TraceSummary;
+}
+
+/** One raw transcript row, as the entry endpoint returns it. Only role and content are read. */
+export interface TranscriptEntry {
+  role?: unknown;
+  timestamp?: unknown;
+  content?: unknown;
+  [key: string]: unknown;
+}
+
+/** Newest first. `q` is matched by the server against title, folder, and model ids. */
+export async function fetchSessions(q: string, signal?: AbortSignal): Promise<SessionListEntry[]> {
+  const params = new URLSearchParams();
+  if (q.trim()) params.set("q", q.trim());
+  const query = params.toString();
+  const body = await getJSONOk<{ sessions: SessionListEntry[] }>(query ? `sessions?${query}` : "sessions", signal);
+  return body.sessions ?? [];
+}
+
+export async function fetchTrace(file: string, signal?: AbortSignal): Promise<SessionTrace> {
+  return getJSONOk<SessionTrace>(`session/trace?file=${encodeURIComponent(file)}`, signal);
+}
+
+export async function fetchEntry(file: string, id: string, signal?: AbortSignal): Promise<TranscriptEntry> {
+  const body = await getJSONOk<{ entry: TranscriptEntry }>(
+    `session/entry?file=${encodeURIComponent(file)}&id=${encodeURIComponent(id)}`,
+    signal,
+  );
+  return body.entry;
 }
