@@ -19,6 +19,7 @@ export const TREE_FILES: readonly string[] = [
   'shared/types.ts',
   'shared/plugin-settings.ts',
   'shared/usage-ledger.ts',
+  'shared/model-id.ts',
   'shared/pricing.ts',
   'shared/carbon.ts',
   'lib/utils.ts',

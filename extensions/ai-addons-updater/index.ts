@@ -12,7 +12,7 @@ import {
   CAVEMAN_REMOTE_ULTRA,
   CAVEMAN_REMOTE_MEGACAVE,
   RTK_RELEASE_API,
-  RtkRelease,
+  type RtkRelease,
   fetchJson,
   findFile,
   findHoistedPackage,

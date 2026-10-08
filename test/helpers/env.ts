@@ -20,6 +20,8 @@ export function cliEnv(home: string, extra: Record<string, string> = {}): NodeJS
     ...process.env,
     HOME: home,
     USERPROFILE: home,
+    // Explicit, so a spawned CLI cannot inherit the suite's sandbox and cannot write the real ~/.tersio.
+    TERSIO_HOME: path.join(home, '.tersio'),
     PI_CODING_AGENT: 'true',
     PI_CODING_AGENT_DIR: path.join(home, '.pi', 'agent'),
     ...extra,
