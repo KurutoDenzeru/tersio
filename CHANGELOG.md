@@ -1,5 +1,7 @@
 ## v2.25.4
  - Fixes an OMP crash on prompt injection: a `systemPrompt` array holding a non-string no longer throws `undefined is not an object (evaluating 'part.includes')` in the Caveman and Combo extensions. Non-string parts are dropped before the marker check.
+ - Stops the pi install test from failing whenever upstream publishes a new Caveman body: `rule.md` still ships byte for byte, the two upstream-tracked bodies are checked for a usable body with its floor rules.
+ - Sandboxes `TERSIO_HOME` in the backup tests so the schedule default no longer depends on the machine's own `~/.tersio/settings.json`.
 
 ## v2.25.3
  - Interactive installs and `tersio settings` now ask only for the Combo preset; it sets Caveman, RTK, and Ponytail. Change one mode with `tersio settings caveman|rtk|ponytail` or a `--*-default` flag.

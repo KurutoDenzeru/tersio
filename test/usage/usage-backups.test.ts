@@ -37,6 +37,8 @@ function sandbox(): { dir: string; cleanup: () => void } {
   const prevSessions = process.env.TERSIO_SESSIONS_DIR;
   process.env.TERSIO_USAGE_DB = path.join(dir, "usage.db");
   process.env.TERSIO_SESSIONS_DIR = path.join(dir, "sessions");
+  // Without this the schedule tests read the real ~/.tersio/settings.json.
+  process.env.TERSIO_HOME = dir;
   writeFileSync(path.join(dir, "usage.db"), "current");
   return {
     dir,
