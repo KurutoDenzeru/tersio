@@ -3,7 +3,7 @@
 // screen has to be rendered: this needs `pyte`, and skips without it.
 import { describe, expect, test } from "vitest";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -59,14 +59,23 @@ const havePyte = spawnSync("python3", ["-c", "import pyte"], { encoding: "utf8" 
 
 /** The visible screen, one string per terminal row. */
 function screenAt(rows: number): string[] {
-  const result = spawnSync("python3", ["-c", PY, String(rows), process.execPath, installer], {
-    cwd: root,
-    encoding: "utf8",
-    timeout: 30000,
-    env: { ...process.env, TERM: "xterm-256color" },
-  });
-  expect(result.status, result.stderr).toBe(0);
-  return JSON.parse(result.stdout) as string[];
+  // The welcome flow asks to install whenever npm publishes a newer version, and that prompt
+  // replaces the menu. Answer with the installed version so the render stays about layout.
+  const bin = mkdtempSync(path.join(os.tmpdir(), "tersio-npm-pin-"));
+  const installed = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")).version as string;
+  try {
+    writeFileSync(`${bin}/npm`, `#!/bin/sh\necho ${installed}\n`, { mode: 0o755 });
+    const result = spawnSync("python3", ["-c", PY, String(rows), process.execPath, installer], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 30000,
+      env: { ...process.env, TERM: "xterm-256color", PATH: `${bin}${process.env.PATH ? `:${process.env.PATH}` : ""}` },
+    });
+    expect(result.status, result.stderr).toBe(0);
+    return JSON.parse(result.stdout) as string[];
+  } finally {
+    rmSync(bin, { recursive: true, force: true });
+  }
 }
 
 const LABELS = ["Install add-ons", "Update", "Doctor", "Settings", "Usage", "Dashboard", "Uninstall"];

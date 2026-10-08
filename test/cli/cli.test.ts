@@ -440,7 +440,7 @@ test("doctor prints record store paths", () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-test("dashboard --export includes the reset control and empty states", () => {
+test("dashboard --export embeds the reset control, every routed page, and the pricing contract", () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-dash-"));
   const out = path.join(dir, "dash.html");
   const result = spawnSync(process.execPath, [installer, "dashboard", "--export", out], {
@@ -460,12 +460,16 @@ test("dashboard --export includes the reset control and empty states", () => {
   expect(body).toMatch(/Reset statistics/);
   expect(body).toMatch(/Danger zone/);
   expect(body).toMatch(/No activity yet/);
-  expect(body).toMatch(/No models yet/);
-  expect(body).toMatch(/No requests yet/);
-  expect(body).toMatch(/No tool data yet/);
+  // Every routed page ships inside the bundle, so the export works from file:// with no server.
+  expect(body).toMatch(/Providers/);
+  expect(body).toMatch(/Frustration/);
+  // The traces page tells a file:// reader that its session list needs the server.
+  expect(body).toMatch(/Session traces are read from the dashboard server/);
+  expect(body).toMatch(/No daily records in this range/);
+  expect(body).toMatch(/No such page/);
   expect(body).toMatch(/Share your usage/);
   expect(body).toMatch(/Diagnosis/);
-  expect(body).toMatch(/ranked by tokens/);
-  expect(body).toMatch(/byModelBucketUsd/);
+  // The pricing contract travels with the export, so costs read the same offline.
+  expect(body).toMatch(/pricingCoverage/);
   rmSync(dir, { recursive: true, force: true });
 });

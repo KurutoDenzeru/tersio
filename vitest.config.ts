@@ -17,6 +17,11 @@ export default defineConfig({
           name: "cli",
           setupFiles: ["./test/setup.ts"],
           exclude: ["**/node_modules/**", "**/dist/**", "**/coverage/**", "dashboard/**"],
+          // These tests spawn the CLI and set their own inner timeouts of up to 30s. The 5s default
+          // shorter than those, so a slow machine reported a bare "timed out" instead of the real
+          // failure, and whether it passed depended on load. Keep this above the largest inner timeout.
+          testTimeout: 60000,
+          hookTimeout: 30000,
         },
       },
       {
@@ -25,7 +30,8 @@ export default defineConfig({
         test: {
           name: "dashboard",
           environment: "happy-dom",
-          include: ["test/**/*.test.tsx"],
+          // Both extensions: a pattern of only .tsx silently skipped a .test.ts file.
+          include: ["test/**/*.test.ts", "test/**/*.test.tsx"],
         },
       },
     ],

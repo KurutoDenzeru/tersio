@@ -48,6 +48,8 @@ interface TestCtx {
   sessionManager: { getBranch: () => SessionEntry[] };
   ui: {
     notify(message: string): void;
+    // Production calls ui.setStatus?.('tersio', text); the type was missing it, so a type-check flagged the fake UI.
+    setStatus?(name: string, value: string | undefined): void;
   };
   reload(): Promise<void>;
 }
@@ -453,7 +455,9 @@ function writeSettings(value: unknown): void {
   writeFileSync(join(TERSIO_DIR, "settings.json"), JSON.stringify(value), "utf8");
 }
 
-afterEach(() => rmSync(TERSIO_DIR, { recursive: true, force: true }));
+// maxRetries: a spawned installer can still be creating files (its own .bun dir) when this runs, and a
+// recursive remove that races a writer fails with ENOTEMPTY.
+afterEach(() => rmSync(TERSIO_DIR, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }));
 
 test("settings.json overrides the marker when OMP rewords its prompt", async () => {
   writeSettings({ subagentMarkers: ["You are a delegated worker."] });

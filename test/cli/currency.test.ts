@@ -35,6 +35,16 @@ function fixtureSessions(): string {
     ].join("\n") + "\n",
     "utf8",
   );
+  // A fixture price, not a default: an unpriced model is now excluded from the dollar total, so
+  // without this the cost would be $0.00 and the currency assertions would test nothing.
+  writeFileSync(
+    path.join(dir, "prices.json"),
+    JSON.stringify({
+      fetchedAt: Date.now(),
+      providers: { anthropic: { label: "Anthropic", models: { "claude-sonnet-5": [2, 10, 0.2, 2.5] } } },
+    }),
+    "utf8",
+  );
   return dir;
 }
 
@@ -43,11 +53,13 @@ function usageEnv(dir: string, sessions: string): NodeJS.ProcessEnv {
     ...process.env,
     HOME: dir,
     USERPROFILE: dir,
+    TERSIO_HOME: path.join(dir, ".tersio"),
     TERSIO_USAGE_FILE: path.join(dir, "usage.jsonl"),
     TERSIO_SESSIONS_DIR: sessions,
     TERSIO_RESET_FILE: path.join(dir, "reset.json"),
     TERSIO_USAGE_DB: path.join(dir, "usage.db"),
     TERSIO_RTK_DB: path.join(dir, "no-rtk.db"),
+    TERSIO_PRICES_FILE: path.join(sessions, "prices.json"),
   };
 }
 
