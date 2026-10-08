@@ -1,12 +1,14 @@
 // Serves the built Dashboard with local usage APIs. Binds 127.0.0.1 only; --export writes a file instead. No Promise.withResolvers: Node 20.12 lacks it.
 import { spawn } from 'node:child_process';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { promises as fs } from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { clearUsageLedger, markReset, readUsage } from '../extensions/shared/usage-ledger.ts';
+import { clearUsageLedger, markReset, readUsage, sessionsDirs, usdCost, walkJsonl } from '../extensions/shared/usage-ledger.ts';
+import { extractSessionTrace, isSubagentFile, readChildTranscripts, sessionListEntry } from '../extensions/shared/session-trace.ts';
+import type { PriceFn, SessionListEntry } from '../extensions/shared/session-trace.ts';
 import { pricesCachePath } from '../extensions/shared/pricing.ts';
 import { summarizeUsage } from './usage.ts';
 import { backupUsageDb, deleteUsageBackup, listUsageBackups, restoreUsageBackup, usageDbPath } from '../extensions/shared/usage-store.ts';
@@ -61,6 +63,90 @@ async function brandDataUri(): Promise<string> {
 
 function dataJson(): string {
   return JSON.stringify(summarizeUsage(readUsage()));
+}
+
+// --- Session list and traces ----------------------------------------------- Server-side pricing so the parser module stays free of the catalog.
+const sessionPrice: PriceFn = (model, tokens) => {
+  const r = usdCost(tokens, model);
+  return { usd: r.usd, priced: r.priced };
+};
+
+// The query must name a transcript that exists inside a real sessions root.
+function sessionFileParam(raw: string | null): string | null {
+  if (!raw) return null;
+  const abs = path.resolve(raw);
+  if (!abs.endsWith('.jsonl')) return null;
+  const roots = sessionsDirs().map((d) => path.resolve(d));
+  if (!roots.some((r) => abs.startsWith(r + path.sep))) return null;
+  return existsSync(abs) ? abs : null;
+}
+
+function listSessionFiles(): string[] {
+  const files: string[] = [];
+  for (const dir of sessionsDirs()) {
+    try { walkJsonl(dir, files, 2000); } catch { /* a missing root lists nothing */ }
+  }
+  return files.filter((f) => !isSubagentFile(f));
+}
+
+// Entries are keyed by mtime: a file that did not change is never re-parsed, and a
+// live session re-parses only its own file on each poll.
+const sessionListCache = new Map<string, { mtimeMs: number; entry: SessionListEntry }>();
+
+function sessionsJson(params: URLSearchParams): string {
+  const limit = Math.min(Math.max(Number(params.get('limit')) || 200, 1), 2000);
+  const q = (params.get('q') ?? '').toLowerCase();
+  const seen = new Set<string>();
+  const entries: SessionListEntry[] = [];
+  for (const file of listSessionFiles()) {
+    seen.add(file);
+    let mtimeMs = 0;
+    try { mtimeMs = statSync(file).mtimeMs; } catch { continue; }
+    const hit = sessionListCache.get(file);
+    if (hit && hit.mtimeMs === mtimeMs) {
+      entries.push(hit.entry);
+      continue;
+    }
+    try {
+      const trace = extractSessionTrace(file, readFileSync(file, 'utf8'), readChildTranscripts(file), sessionPrice);
+      const entry = sessionListEntry(trace);
+      sessionListCache.set(file, { mtimeMs, entry });
+      entries.push(entry);
+    } catch { /* an unreadable transcript stays off the list */ }
+  }
+  for (const key of sessionListCache.keys()) {
+    if (!seen.has(key)) sessionListCache.delete(key);
+  }
+  let out = entries;
+  if (q) {
+    out = out.filter((e) => (e.title ?? '').toLowerCase().includes(q)
+      || (e.folder ?? '').toLowerCase().includes(q)
+      || e.models.some((m) => m.toLowerCase().includes(q)));
+  }
+  out.sort((a, b) => b.startedAt - a.startedAt);
+  return JSON.stringify({ sessions: out.slice(0, limit) });
+}
+
+// Main file plus children, in file order: any change bumps the tag.
+function traceEtag(file: string): string {
+  const parts: string[] = [];
+  try { parts.push(String(statSync(file).mtimeMs)); } catch { return '0'; }
+  const dir = path.join(path.dirname(file), path.basename(file, '.jsonl'));
+  try {
+    const names = readdirSync(dir).filter((n) => n.endsWith('.jsonl')).sort();
+    for (const n of names) {
+      try { parts.push(String(statSync(path.join(dir, n)).mtimeMs)); } catch { /* vanished child */ }
+    }
+  } catch { /* no child directory */ }
+  return parts.join('-');
+}
+
+// Session traces are megabytes of JSON; one live entry per polled session, capped.
+const traceCache = new Map<string, { etag: string; json: string }>();
+
+function cacheTrace(file: string, etag: string, json: string): void {
+  if (traceCache.size > 128) traceCache.clear();
+  traceCache.set(file, { etag, json });
 }
 
 // Runs outside any agent session, so it reports the persisted defaults.
@@ -576,6 +662,72 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
       }
       return;
     }
+    if (req.url?.startsWith('/sessions')) {
+      const params = new URLSearchParams(req.url.split('?')[1] ?? '');
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(sessionsJson(params));
+      return;
+    }
+    if (req.url?.startsWith('/session/trace')) {
+      const params = new URLSearchParams(req.url.split('?')[1] ?? '');
+      const file = sessionFileParam(params.get('file'));
+      if (!file) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'file must name a transcript under a sessions directory' }));
+        return;
+      }
+      const etag = `"${traceEtag(file)}"`;
+      const hit = traceCache.get(file);
+      const fresh = hit && hit.etag === etag;
+      if (fresh && (req.headers['if-none-match'] ?? '').replace(/^W\//, '') === etag) {
+        res.writeHead(304, { ETag: etag });
+        res.end();
+        return;
+      }
+      try {
+        const json = fresh ? hit.json : JSON.stringify(
+          extractSessionTrace(file, readFileSync(file, 'utf8'), readChildTranscripts(file), sessionPrice),
+        );
+        if (!fresh) cacheTrace(file, etag, json);
+        res.writeHead(200, { 'Content-Type': 'application/json', ETag: etag });
+        res.end(json);
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err instanceof Error ? err.message : 'unreadable transcript' }));
+      }
+      return;
+    }
+    if (req.url?.startsWith('/session/entry')) {
+      const params = new URLSearchParams(req.url.split('?')[1] ?? '');
+      const file = sessionFileParam(params.get('file'));
+      const id = params.get('id');
+      if (!file || !id) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'file and id are required' }));
+        return;
+      }
+      let found: unknown = null;
+      try {
+        for (const line of readFileSync(file, 'utf8').split('\n')) {
+          if (!line.startsWith('{')) continue;
+          try {
+            const row: unknown = JSON.parse(line);
+            if (row && typeof row === 'object' && 'id' in row && row.id === id) {
+              found = row;
+              break;
+            }
+          } catch { /* torn line */ }
+        }
+      } catch { /* unreadable file falls through to 404 */ }
+      if (found === null) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'no row with that id' }));
+        return;
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ entry: found }));
+      return;
+    }
     if (req.url === '/data.json') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(dataJson());
@@ -664,4 +816,6 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
   });
 }
 
-export { runDashboard, saveDashboardCurrency, readDiagSchedule, setDiagSchedule, DiagSchedule };
+export { runDashboard, saveDashboardCurrency, readDiagSchedule, setDiagSchedule };
+
+export type { DiagSchedule };
