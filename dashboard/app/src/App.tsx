@@ -1,19 +1,24 @@
-// Dashboard sections share the cli/dashboard.ts data contract and index.css tokens.
-import { useEffect, useState } from "react";
-import { useTheme } from "@/components/theme-provider";
-import { useDashboardData, useFx } from "@/lib/data";
+// Dashboard shell: sidebar navigation, hash routing, and the routed page body.
+import { useEffect, useMemo, useState } from "react";
+import { AppSidebar } from "@/components/app/app-sidebar";
+import { NAV_ITEMS, navItem } from "@/components/app/nav";
+import { RangePicker } from "@/components/app/range-picker";
+import { Footer, SettingsDialog, ShareDialog } from "@/components/dialogs";
+import { EmptyState } from "@/components/dash/composites";
+import { StatusBanner } from "@/components/status-banner";
+import { ToasterProvider } from "@/components/toaster";
+import { useTheme, useResolvedTheme } from "@/components/theme-provider";
+import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { Icon } from "@/components/icon";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
-import { Dock, Hero } from "./components/hero";
-import { Savings } from "./components/savings";
-import { Activity } from "./components/activity";
-import { Models } from "./components/models";
-import { Recent } from "./components/recent";
-import { Tools } from "./components/tools";
-import { Footer, SettingsDialog, ShareDialog } from "./components/dialogs";
-import { ToasterProvider } from "./components/toaster";
-import { StatusBanner } from "./components/status-banner";
+import { cutoffDay, rangeWindow } from "@/lib/aggregate";
+import { useDashboardData, useFx } from "@/lib/data";
+import { rangeForKey, useRoute } from "@/lib/route";
+import type { Route } from "@/lib/route";
+import { PageBody } from "@/pages";
 
+// Tersio's own tokens switch on data-theme; shadcn's switch on the class ThemeProvider sets.
 function useDataThemeAttr(): void {
   const { theme } = useTheme();
   useEffect(() => {
@@ -81,25 +86,72 @@ function useReveal(): void {
   }, []);
 }
 
-function DashboardLoading() {
+// Digits pick a range, `g` then a letter jumps to a page, mirroring OMP.
+function useShortcuts(navigate: (next: Partial<Route>) => void): void {
+  useEffect(() => {
+    let awaitingPage = false;
+    const typing = (target: EventTarget | null): boolean =>
+      target instanceof HTMLElement && (target.isContentEditable || target.closest("input, textarea, select, [contenteditable='true']") !== null);
+
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.metaKey || event.ctrlKey || event.altKey || event.repeat || typing(event.target)) return;
+      const key = event.key.toLowerCase();
+      if (awaitingPage) {
+        awaitingPage = false;
+        const target = NAV_ITEMS.find((item) => item.key === key);
+        if (target) {
+          event.preventDefault();
+          navigate({ page: target.id });
+        }
+        return;
+      }
+      if (key === "g") {
+        awaitingPage = true;
+        return;
+      }
+      const next = rangeForKey(key);
+      if (next) {
+        event.preventDefault();
+        navigate({ range: next });
+      }
+    };
+
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [navigate]);
+}
+
+/** Light/dark toggle. `system` stays reachable in Settings, so the header button just flips. */
+function ThemeToggle() {
+  const { setTheme } = useTheme();
+  const resolved = useResolvedTheme();
+  const next = resolved === "dark" ? "light" : "dark";
   return (
-    <div className="relative mx-auto max-w-7xl px-4 pb-16 sm:px-6" aria-busy="true" aria-label="Loading dashboard">
-      <div className="grid min-h-72 place-items-center py-12">
-        <div className="flex items-center gap-2 text-sm text-dim">
-          <Spinner />
-          Loading usage
-        </div>
+    <button
+      type="button"
+      onClick={() => setTheme(next)}
+      aria-label={`Switch to the ${next} theme`}
+      title={`Theme: ${resolved}`}
+      className="flex shrink-0 items-center rounded-[10px] border border-line p-2 text-ink [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]"
+    >
+      <Icon name={resolved === "dark" ? "moon" : "sun"} className="size-4" />
+    </button>
+  );
+}
+
+function PageLoading() {
+  return (
+    <div className="grid gap-8" aria-busy="true" aria-label="Loading usage">
+      <div className="flex items-center gap-2 text-sm text-dim">
+        <Spinner />
+        Loading usage
       </div>
-      <div className="grid grid-cols-12 gap-3">
-        <Skeleton className="col-span-12 min-h-72 rounded-xl bg-panel lg:col-span-7" />
-        <Skeleton className="col-span-12 min-h-48 rounded-xl bg-panel lg:col-span-5" />
-        <Skeleton className="col-span-6 min-h-40 rounded-xl bg-panel" />
-        <Skeleton className="col-span-6 min-h-40 rounded-xl bg-panel" />
+      <div className="grid grid-cols-2 gap-x-6 gap-y-5 sm:grid-cols-4">
+        {Array.from({ length: 8 }).map((_, i) => (
+          <Skeleton key={i} className="h-16 rounded-lg bg-panel" />
+        ))}
       </div>
-      <div className="mt-8 flex flex-col gap-4 rounded-xl border border-line bg-panel p-5">
-        <Skeleton className="h-5 w-28" />
-        <Skeleton className="h-32 w-full" />
-      </div>
+      <Skeleton className="h-56 w-full rounded-xl bg-panel" />
     </div>
   );
 }
@@ -107,34 +159,70 @@ function DashboardLoading() {
 function Shell() {
   useDataThemeAttr();
   useReveal();
+  const { page, range, session, navigate } = useRoute();
   const { data, loading, status } = useDashboardData();
   const { fx, money, applyCurrency } = useFx(data?.currency);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  useShortcuts(navigate);
+
+  const item = navItem(page);
+  const cutoff = cutoffDay(range);
+  // One window per range, not one per render: a shifting `since` would redraw the short-range charts.
+  const since = useMemo(() => rangeWindow(range).since, [range]);
 
   return (
-    <>
-      <div
-        className="pointer-events-none fixed inset-0 [background-image:linear-gradient(var(--grid)_1px,transparent_1px),linear-gradient(90deg,var(--grid)_1px,transparent_1px)] [background-size:44px_44px] [mask-image:radial-gradient(ellipse_90%_70%_at_50%_0%,black_30%,transparent_75%)]"
-        aria-hidden="true"
+    <SidebarProvider open={sidebarOpen} onOpenChange={setSidebarOpen}>
+      <AppSidebar
+        page={page}
+        range={range}
+        status={status}
+        version={data?.version ?? null}
+        onOpen={(id) => navigate({ page: id })}
+        onShare={() => setShareOpen(true)}
+        onSettings={() => setSettingsOpen(true)}
       />
-      <main className="w-full max-w-full overflow-x-clip">
-        <div className="relative mx-auto max-w-7xl px-4 pb-16 sm:px-6">
-          <Dock onShare={() => setShareOpen(true)} onSettings={() => setSettingsOpen(true)} />
-          {loading ? <DashboardLoading /> : (
-            <>
-              <Hero data={data} />
-              <Savings data={data} fx={fx} money={money} onCurrency={applyCurrency} />
-              <Activity data={data} />
-              <Models data={data} money={money} />
-              <Recent data={data} money={money} />
-              <Tools data={data} />
-              <Footer />
-            </>
+      <SidebarInset>
+        <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-line bg-bg/85 px-4 py-3 backdrop-blur sm:px-6">
+          <SidebarTrigger aria-label="Toggle navigation" />
+          <div className="min-w-0 flex-1">
+            <h1 className="m-0 truncate text-sm font-semibold tracking-[-0.01em]">{item?.label ?? page}</h1>
+            <p className="m-0 truncate text-[11px] text-dim">{item?.hint ?? "Unknown page"}</p>
+          </div>
+          <RangePicker range={range} onPick={(next) => navigate({ range: next })} />
+          <ThemeToggle />
+        </header>
+
+        <div className="px-4 py-6 sm:px-6">
+          {loading ? (
+            <PageLoading />
+          ) : data ? (
+            <PageBody
+              page={page}
+              data={data}
+              cutoff={cutoff}
+              since={since}
+              range={range}
+              session={session}
+              onSession={(file) => navigate({ session: file })}
+              money={money}
+              fx={fx}
+              onCurrency={applyCurrency}
+            />
+          ) : (
+            <EmptyState
+              title="No usage data"
+              body="The dashboard server did not return a report. Open the served dashboard with tersio dashboard, or check the server log."
+            />
           )}
         </div>
-      </main>
-      {/* Outside <main>: its overflow-x-clip would become the containing block. */}
+        <div className="px-4 sm:px-6">
+          <Footer />
+        </div>
+      </SidebarInset>
+
+      {/* Outside SidebarInset: its clipping would become the containing block for these. */}
       <StatusBanner status={status} />
       <SettingsDialog
         open={settingsOpen}
@@ -145,7 +233,7 @@ function Shell() {
         onReload={() => window.dispatchEvent(new Event("tersio:reload"))}
       />
       <ShareDialog open={shareOpen} onClose={() => setShareOpen(false)} data={data} money={money} />
-    </>
+    </SidebarProvider>
   );
 }
 

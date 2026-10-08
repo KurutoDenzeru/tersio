@@ -46,6 +46,7 @@
     --color-ink: var(--ink);
     --color-dim: var(--dim);
     --color-line: var(--line);
+    --color-edge: var(--edge);
     --color-accent-soft: var(--accent-soft);
     --color-track: var(--track);
     --color-grid: var(--grid);
@@ -174,7 +175,7 @@
 /* Tersio dashboard design tokens. */
   :root {
     --bg: #f4f4f5; --panel: #ffffff; --ink: #18181b; --dim: #52525b;
-    --line: rgba(24, 24, 27, .12); --accent: #047857; --accent-soft: rgba(4, 120, 87, .12);
+    --line: rgba(24, 24, 27, .12); --edge: rgba(24, 24, 27, .22); --accent: #047857; --accent-soft: rgba(4, 120, 87, .12);
     --track: rgba(24, 24, 27, .08); --grid: rgba(4, 120, 87, .07);
     --cell-0: rgba(24, 24, 27, .07);
     --cell-1: rgba(4, 120, 87, .3); --cell-2: rgba(4, 120, 87, .55);
@@ -199,7 +200,7 @@
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
       --bg: #09090b; --panel: #101014; --ink: #f4f4f5; --dim: #a1a1aa;
-      --line: rgba(255, 255, 255, .09); --accent: #34d399; --accent-soft: rgba(52, 211, 153, .1);
+      --line: rgba(255, 255, 255, .09); --edge: rgba(255, 255, 255, .19); --accent: #34d399; --accent-soft: rgba(52, 211, 153, .1);
       --track: rgba(255, 255, 255, .07); --grid: rgba(52, 211, 153, .05);
       --cell-0: rgba(255, 255, 255, .07);
       --cell-1: rgba(52, 211, 153, .3); --cell-2: rgba(52, 211, 153, .55);
@@ -211,7 +212,7 @@
   body { background: var(--bg); color: var(--ink); }
   html[data-theme="dark"] {
     --bg: #09090b; --panel: #101014; --ink: #f4f4f5; --dim: #a1a1aa;
-    --line: rgba(255, 255, 255, .09); --accent: #34d399; --accent-soft: rgba(52, 211, 153, .1);
+    --line: rgba(255, 255, 255, .09); --edge: rgba(255, 255, 255, .19); --accent: #34d399; --accent-soft: rgba(52, 211, 153, .1);
     --track: rgba(255, 255, 255, .07); --grid: rgba(52, 211, 153, .05);
     --cell-0: rgba(255, 255, 255, .07);
     --cell-1: rgba(52, 211, 153, .3); --cell-2: rgba(52, 211, 153, .55);
@@ -246,3 +247,23 @@
     html:not([data-theme])[data-accent="amber"] { --accent:#fbbf24; --accent-soft:rgba(251,191,36,.14); --bg:#171004; --grid:rgba(251,191,36,.06); --cell-1:rgba(251,191,36,.3); --cell-2:rgba(251,191,36,.55); --cell-3:rgba(251,191,36,.8); --cell-4:#fbbf24; }
     html:not([data-theme])[data-accent="orange"] { --accent:#fb923c; --accent-soft:rgba(251,146,60,.14); --bg:#1a0d06; --grid:rgba(251,146,60,.06); --cell-1:rgba(251,146,60,.3); --cell-2:rgba(251,146,60,.55); --cell-3:rgba(251,146,60,.8); --cell-4:#fb923c; }
   }
+
+/* The sidebar ships its own token names; map them onto Tersio's so one theme drives one palette.
+   Declared once and resolved per element, so the dark block above still wins. */
+:root {
+  --sidebar: var(--panel);
+  --sidebar-foreground: var(--ink);
+  --sidebar-accent: var(--track);
+  --sidebar-accent-foreground: var(--ink);
+  --sidebar-border: var(--line);
+  --sidebar-ring: var(--accent);
+  --sidebar-primary: var(--accent);
+  --sidebar-primary-foreground: var(--panel);
+}
+
+/* Categorical series colours for multi-model charts. Mid-tone so one set reads on both themes;
+   never used for UI chrome, so the single-accent rule above still holds. */
+:root {
+  --series-1: #0ea5e9; --series-2: #ec4899; --series-3: #8b5cf6; --series-4: #f59e0b;
+  --series-5: #10b981; --series-6: #3b82f6; --series-7: #ef4444; --series-8: #84cc16;
+}

@@ -10,7 +10,7 @@ import { fmtCo2 } from "@/lib/carbon";
 import type { FxState, UsageReport } from "@/lib/data";
 import { HoverTip } from "./common";
 import { CarbonDialog } from "./carbon-dialog";
-import { useCountUp } from "./hero";
+import { useCountUp } from "@/lib/use-count-up";
 import { Icon } from "./icon";
 
 // Zone faces: the tersio palette's own colour classes, per the mapping contract.

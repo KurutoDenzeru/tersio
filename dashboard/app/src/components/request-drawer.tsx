@@ -37,6 +37,8 @@ export function requestDetailJson(r: RecentRequestRow): Record<string, unknown> 
     costMeasured: costIsMeasured(r),
     elapsedMs: r.d ?? null,
     tokensPerSecond: tps,
+    // What the turn did. Order is recorded; per-tool timing is not, so none is claimed.
+    tools: r.tools ?? [],
     time: new Date(r.t).toISOString(),
   };
 }
@@ -150,6 +152,25 @@ export function RequestDrawer({ row: r, money, onClose }: { row: RecentRequestRo
             <Row label="Vendor">{vendorOf(r.m).name}</Row>
             <Row label="Key">{r.m}</Row>
           </section>
+          {r.tools && r.tools.length > 0 && (
+            <section aria-label="Tool calls" className="grid gap-2 border-t border-line pt-4">
+              <p className="mono m-0 text-[10px] tracking-[0.14em] text-dim uppercase">
+                Tool calls · {r.tools.length}
+              </p>
+              <ol className="m-0 grid list-none gap-1 p-0">
+                {r.tools.map((tool, i) => (
+                  <li key={`${tool}-${i}`} className="mono flex items-baseline gap-2 text-xs">
+                    <span className="w-4 shrink-0 text-right text-dim">{i + 1}</span>
+                    <span className="min-w-0 flex-1 [overflow-wrap:break-word]">{tool}</span>
+                  </li>
+                ))}
+              </ol>
+              <p className="m-0 text-[11px] text-dim">
+                In the order the host recorded them. The transcripts carry no start or end time per
+                tool, so this is what the turn did rather than how long each part took.
+              </p>
+            </section>
+          )}
         </div>
         <div className="mt-auto flex gap-2 border-t border-line p-4">
           <button

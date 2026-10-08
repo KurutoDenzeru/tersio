@@ -83,13 +83,14 @@ export function BrandSilhouette({ model }: { model: string }) {
   );
 }
 
-export function Brandmark({ model, small }: { model: string; small?: boolean }) {
+export function Brandmark({ model, small, row }: { model: string; small?: boolean; row?: boolean }) {
   const v = vendorOf(model);
   const [failed, setFailed] = useState(false);
-  const glyph = small ? "size-[17px]" : "size-[22px]";
+  const glyph = row ? "size-3.5" : small ? "size-[17px]" : "size-[22px]";
   const cls = cn(
     "grid size-[40px] shrink-0 place-items-center rounded-[12px] text-white",
     small && "size-8 rounded-[10px]",
+    row && "size-5 rounded-[6px]",
   );
   if (model === "openai" || v.slug === "openai") {
     return (
@@ -125,6 +126,7 @@ export function Brandmark({ model, small }: { model: string; small?: boolean }) 
         className={cn(
           "grid size-[40px] shrink-0 place-items-center rounded-[12px] border border-line bg-transparent text-dim",
           small && "size-8 rounded-[10px]",
+          row && "size-5 rounded-[6px]",
         )}
       >
         <Icon name="bot" className={`grid ${glyph}`} />
