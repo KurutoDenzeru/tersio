@@ -1,0 +1,61 @@
+// One usage report fixture, shared by the page render tests and the range-math tests.
+import type { UsageReport } from "../src/lib/data";
+
+export const TOKENS = { input: 100, output: 20, cacheRead: 50, cacheWrite: 0 };
+
+export function report(overrides: Partial<UsageReport> = {}): UsageReport {
+  return {
+    messages: 2,
+    tokens: { ...TOKENS },
+    byModel: {},
+    byModelUsd: {},
+    byModelBucketUsd: {},
+    byModelMessages: {},
+    byHost: {},
+    byProvider: [["anthropic", { ...TOKENS }]],
+    byProject: [["/tmp/demo", { ...TOKENS }]],
+    byDay: { "2026-09-30": { ...TOKENS } },
+    byDayModel: {},
+    byDayModelTokens: { "2026-09-30": { "claude-haiku-4.5": { ...TOKENS } } },
+    byDayModelRuns: { "2026-09-30": { "claude-haiku-4.5": 2 } },
+    byDayProvider: { "2026-09-30": { anthropic: { ...TOKENS } } },
+    byDayProject: { "2026-09-30": { "/tmp/demo": { ...TOKENS } } },
+    byDayErrors: { "2026-09-30": { error: 1, aborted: 1 } },
+    byDayModelErrors: { "2026-09-30": { "claude-haiku-4.5": 1 } },
+    byDayTool: { "2026-09-30": { bash: 3, read: 1 } },
+    byDayCost: { "2026-09-30": 0.5 },
+    byDayApiUsd: { "2026-09-30": 1.25 },
+    byDaySavedUsd: { "2026-09-30": 0.4 },
+    byDayModelUsd: { "2026-09-30": { "claude-haiku-4.5": 1.25 } },
+    byTool: [["bash", 3]],
+    reasoning: 7,
+    errors: { error: 1, aborted: 1 },
+    recent: [
+      { m: "claude-haiku-4.5", i: 100, o: 20, t: Date.parse("2026-09-30T10:00:00Z"), d: 1200, h: "pi", cr: 50, cw: 0, est: 0.01, st: "completed" },
+      { m: "claude-haiku-4.5", i: 10, o: 2, t: Date.parse("2026-09-30T11:00:00Z"), d: 900, h: "pi", est: 0.002, st: "error", note: "upstream 529" },
+    ],
+    rtkGain: { commands: 3, input: 1000, saved: 400, avgPct: 40, totalMs: 90, byCommand: [{ command: "rtk grep", count: 3, saved: 400, avgPct: 40, avgMs: 30 }] },
+    rtkAdoption: { sessions: 1, bashCalls: 5, eligibleCalls: 4, rtkCalls: 3, missedCalls: 1, adoptionPct: 75 },
+    rtkRecall: { mode: "tee", entries: 12, available: true },
+    usd: 1.25,
+    priced: true,
+    pricingCoverage: { priced: 1, total: 1 },
+    modelLabels: { "claude-haiku-4.5": "Anthropic - Claude Haiku 4.5" },
+    modelRates: {
+      "Anthropic - Claude Haiku 4.5": { provider: "anthropic", known: true, input: 1, output: 5, cacheRead: 0.1, cacheWrite: 1.25 },
+    },
+    pricingCatalog: { providers: 216, models: 5200, fetchedAt: Date.parse("2026-09-30T00:00:00Z") },
+    latency: { "claude-haiku-4.5": { ms: 2100, n: 2 } },
+    ttft: {},
+    unpriced: [],
+    savedUsd: 0.4,
+    costMeasured: 0.5,
+    co2g: 1.2,
+    energyWh: 3.4,
+    version: "9.9.9",
+    currency: "USD",
+    source: "stored",
+    paths: { ledger: "/tmp/ledger", sessions: "/tmp/sessions", usageDb: "/tmp/usage.db" },
+    ...overrides,
+  };
+}
