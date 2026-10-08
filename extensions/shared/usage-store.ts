@@ -1,25 +1,25 @@
 // extensions/shared/usage-store.ts — tersio-owned usage.db. A cache of the live parse, never a fork; missing sqlite3 → sync false / read null.
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import {
   RECENT_LIMIT,
   SQLITE_READ_BUFFER,
   canonicalModelId,
   classifySessionLine,
-  OpencodeMessage,
+  type OpencodeMessage,
   classifyOpencodeMessage,
   costOf,
   durOf,
   hostOfSessionFile,
   ingestSessionRow,
   messageRowId,
-  OpencodeDbRow,
+  type OpencodeDbRow,
   OPENCODE_DB_OVERLAP_MS,
   opencodeDbPath,
   opencodeSessionsDir,
   newSessionAccum,
+  providerOf,
   readOpencodeDbRows,
   sessionsDirs,
   walkJsonl,
@@ -75,7 +75,7 @@ function query(db: string, sql: string): string[][] {
 }
 
 // Bump on a parse change: unchanged transcripts are never re-read.
-const PARSER_VERSION = '11';
+const PARSER_VERSION = '12';
 
 // A re-parse that keeps less than half the rows means transcripts vanished mid-migration; the backup is restored instead of publishing the loss.
 const REPARSE_GUARD_RATIO = 0.5;
@@ -92,7 +92,8 @@ const SCHEMA_SQL =
   `CREATE TABLE IF NOT EXISTS files (id INTEGER PRIMARY KEY AUTOINCREMENT, path TEXT UNIQUE NOT NULL, mtime REAL NOT NULL, size INTEGER NOT NULL);` +
   `CREATE TABLE IF NOT EXISTS messages (file_id INTEGER NOT NULL REFERENCES files(id), t REAL, model TEXT NOT NULL,` +
   ` i INTEGER NOT NULL, o INTEGER NOT NULL, d REAL, cr INTEGER NOT NULL, cw INTEGER NOT NULL,` +
-  ` usd REAL, st TEXT NOT NULL, code REAL, note TEXT, tools TEXT NOT NULL DEFAULT '[]', h TEXT, id TEXT);` +
+  ` usd REAL, st TEXT NOT NULL, code REAL, note TEXT, tools TEXT NOT NULL DEFAULT '[]', h TEXT, id TEXT,` +
+  ` ttft REAL, provider TEXT, project TEXT, reason INTEGER NOT NULL DEFAULT 0);` +
   `CREATE INDEX IF NOT EXISTS idx_messages_file ON messages(file_id);`;
 
 function storedParserVersion(db: string): string | null {
@@ -156,7 +157,8 @@ function migrateInPlace(db: string, preCount: number): boolean {
       `INSERT INTO files_new (path, mtime, size) SELECT path, mtime, size FROM files;` +
       `CREATE TABLE messages_new (file_id INTEGER NOT NULL REFERENCES files_new(id), t REAL, model TEXT NOT NULL,` +
       ` i INTEGER NOT NULL, o INTEGER NOT NULL, d REAL, cr INTEGER NOT NULL, cw INTEGER NOT NULL,` +
-      ` usd REAL, st TEXT NOT NULL, code REAL, note TEXT, tools TEXT NOT NULL DEFAULT '[]', h TEXT, id TEXT);` +
+      ` usd REAL, st TEXT NOT NULL, code REAL, note TEXT, tools TEXT NOT NULL DEFAULT '[]', h TEXT, id TEXT,` +
+      ` ttft REAL, provider TEXT, project TEXT, reason INTEGER NOT NULL DEFAULT 0);` +
       `INSERT INTO messages_new (file_id, ${cols}) SELECT (SELECT id FROM files_new WHERE files_new.path = messages.file), ${cols} FROM messages;` +
       `DROP TABLE messages;DROP TABLE files;` +
       `ALTER TABLE files_new RENAME TO files;ALTER TABLE messages_new RENAME TO messages;` +
@@ -174,22 +176,45 @@ function migrateInPlace(db: string, preCount: number): boolean {
 }
 
 // v10 shape gains the message id with a bare ALTER: no rows move, so no re-parse and no guard trip.
-function canAlterInPlace(db: string): boolean {
+// Columns added after the v7 shape, applied in place so an older store survives without a re-parse.
+// Literal statements, not interpolated identifiers: sqlite cannot bind a column name, and these
+// must never become a string built from a variable. `name` is only compared in JavaScript.
+const ADDITIVE_COLUMNS: ReadonlyArray<{ name: string; add: string }> = [
+  { name: 'id', add: 'ALTER TABLE messages ADD COLUMN id TEXT;' },
+  { name: 'ttft', add: 'ALTER TABLE messages ADD COLUMN ttft REAL;' },
+  { name: 'provider', add: 'ALTER TABLE messages ADD COLUMN provider TEXT;' },
+  { name: 'project', add: 'ALTER TABLE messages ADD COLUMN project TEXT;' },
+  { name: 'reason', add: 'ALTER TABLE messages ADD COLUMN reason INTEGER NOT NULL DEFAULT 0;' },
+];
+
+/** True when the messages table exists but predates a column added since. */
+function needsAdditiveColumns(db: string): boolean {
   try {
-    const names = query(db, `PRAGMA table_info(messages);`).map((r) => r[1]);
-    return names.includes('file_id') && !names.includes('id');
+    const names = new Set(query(db, `PRAGMA table_info(messages);`).map((r) => r[1]));
+    if (!names.has('file_id')) return false;
+    return ADDITIVE_COLUMNS.some((column) => !names.has(column.name));
   } catch {
     return false;
   }
 }
 
-function alterInPlace(db: string): boolean {
+/**
+ * Add the newer columns without dropping rows. This store deliberately keeps rows whose transcripts
+ * have rotated away, and a DROP erases them. Marking every file stale re-reads the transcripts still
+ * on disk so the new columns fill in; rows whose transcript is gone keep NULL and read as unknown.
+ */
+function addColumnsInPlace(db: string): boolean {
+  for (const column of ADDITIVE_COLUMNS) {
+    try {
+      run(db, column.add);
+    } catch { /* already present */ }
+  }
   try {
-    run(db, `ALTER TABLE messages ADD COLUMN id TEXT;`);
+    run(db, `UPDATE files SET mtime = -1;`);
+    return true;
   } catch {
     return false;
   }
-  return !canAlterInPlace(db);
 }
 
 function ensureSchema(db: string): void {
@@ -209,7 +234,7 @@ function ensureSchema(db: string): void {
       try { run(db, `VACUUM;`); } catch { /* best-effort */ }
       return;
     }
-    if (stored !== null && canAlterInPlace(db) && alterInPlace(db)) {
+    if (stored !== null && needsAdditiveColumns(db) && addColumnsInPlace(db)) {
       run(db, `INSERT OR REPLACE INTO meta (k,v) VALUES ('parser_version','${PARSER_VERSION}');`);
       return;
     }
@@ -336,6 +361,11 @@ interface StoredRow {
   tools: string[];
   host?: string;
   id?: string;
+  // Captured for the dashboard rework; absent on hosts and rows that do not carry them.
+  ttft?: number;
+  provider?: string;
+  project?: string;
+  reason: number;
 }
 
 // OpenCode rows carry no status, code, note, or tool list; only tokens and the msg id.
@@ -355,6 +385,10 @@ function opencodeStoredRow(oc: NonNullable<ReturnType<typeof classifyOpencodeMes
     tools: [],
     host,
     id,
+    ttft: undefined,
+    provider: providerOf(oc.model),
+    project: undefined,
+    reason: intOf(oc.usage.reasoning),
   };
 }
 
@@ -369,6 +403,9 @@ function parseFile(text: string, host?: string, file?: string): StoredRow[] {
   }
   let codexProvider: string | null = null;
   let codexModel: string | null = null;
+  // Per file, not per import: a header or model_change belongs only to the transcript holding it.
+  let sessionCwd: string | null = null;
+  let sessionProvider: string | null = null;
   for (const line of text.split('\n')) {
     if (!line.trim()) continue;
     try {
@@ -381,6 +418,14 @@ function parseFile(text: string, host?: string, file?: string): StoredRow[] {
       }
       if (parsed.kind === 'codex_model') {
         if (parsed.model) codexModel = parsed.model;
+        continue;
+      }
+      if (parsed.kind === 'session_header') {
+        sessionCwd = parsed.cwd ?? null;
+        continue;
+      }
+      if (parsed.kind === 'model_change') {
+        if (parsed.provider) sessionProvider = parsed.provider;
         continue;
       }
       const ts = row.timestamp;
@@ -404,6 +449,10 @@ function parseFile(text: string, host?: string, file?: string): StoredRow[] {
           tools: [],
           host,
           id: rid,
+          ttft: undefined,
+          provider: provider ?? sessionProvider ?? undefined,
+          project: sessionCwd ?? undefined,
+          reason: intOf(usage.reasoning),
         });
         continue;
       }
@@ -427,6 +476,10 @@ function parseFile(text: string, host?: string, file?: string): StoredRow[] {
         tools: parsed.tools ?? [],
         host,
         id: rid,
+        ttft: parsed.ttft,
+        provider: sessionProvider ?? providerOf(parsed.model),
+        project: sessionCwd ?? undefined,
+        reason: intOf(usage.reasoning),
       });
     } catch { /* skip corrupt lines */ }
   }
@@ -434,10 +487,11 @@ function parseFile(text: string, host?: string, file?: string): StoredRow[] {
 }
 
 function insertSql(file: string, r: StoredRow): string {
-  return `INSERT INTO messages (file_id, t, model, i, o, d, cr, cw, usd, st, code, note, tools, h, id) VALUES (` +
+  return `INSERT INTO messages (file_id, t, model, i, o, d, cr, cw, usd, st, code, note, tools, h, id, ttft, provider, project, reason) VALUES (` +
     `(SELECT id FROM files WHERE path=${esc(file)}),${r.t === null ? 'NULL' : String(r.t)},${esc(r.model)},${r.i},${r.o},` +
     `${nullNum(r.d)},${r.cr},${r.cw},${nullNum(r.usd)},${esc(r.st)},` +
-    `${nullNum(r.code)},${nullStr(r.note)},${esc(JSON.stringify(r.tools))},${nullStr(r.host)},${nullStr(r.id)});`;
+    `${nullNum(r.code)},${nullStr(r.note)},${esc(JSON.stringify(r.tools))},${nullStr(r.host)},${nullStr(r.id)},` +
+    `${nullNum(r.ttft)},${nullStr(r.provider)},${nullStr(r.project)},${r.reason});`;
 }
 
 // Unchanged transcripts are skipped via mtime+size; rows for deleted ones are kept so rotation never erases history. False when sqlite3 is unavailable.
@@ -573,12 +627,12 @@ export function readUsageDb(): StoredUsage | null {
   }
   let rows: string[][];
   try {
-    rows = query(db, `SELECT t, model, i, o, d, cr, cw, usd, st, code, note, tools, h, id FROM messages;`);
+    rows = query(db, `SELECT t, model, i, o, d, cr, cw, usd, st, code, note, tools, h, id, ttft, provider, project, reason FROM messages;`);
   } catch {
     return null;
   }
   const accum = newSessionAccum();
-  for (const [t, model, i, o, d, cr, cw, usd, st, code, note, tools, h, id] of rows) {
+  for (const [t, model, i, o, d, cr, cw, usd, st, code, note, tools, h, id, ttft, provider, project, reason] of rows) {
     const ts = t === '' ? undefined : Number(t);
     let toolNames: string[] = [];
     try {
@@ -595,6 +649,7 @@ export function readUsageDb(): StoredUsage | null {
       const measured = Number(usd);
       if (Number.isFinite(measured)) usage.cost = measured;
     }
+    if (reason !== '' && Number(reason) > 0) usage.reasoning = Number(reason);
     ingestSessionRow(
       accum,
       model || 'unknown',
@@ -609,6 +664,11 @@ export function readUsageDb(): StoredUsage | null {
       toolNames,
       h === '' ? undefined : h,
       id === '' || id === undefined ? undefined : id,
+      {
+        provider: provider === '' ? undefined : provider,
+        project: project === '' ? undefined : project,
+        ttft: ttft === '' ? undefined : Number(ttft),
+      },
     );
   }
   accum.recent.sort((a, b) => b.t - a.t);
@@ -618,18 +678,8 @@ export function readUsageDb(): StoredUsage | null {
     if (meta.length) syncedAt = Number(meta[0][0]) || 0;
   } catch { /* keep 0 */ }
   return {
-    tokens: {
-      messages: accum.messages,
-      totals: accum.totals,
-      byModel: accum.byModel,
-      byDay: accum.byDay,
-      byDayModel: accum.byDayModel,
-      byTool: accum.byTool,
-      byModelMessages: accum.byModelMessages,
-      byHost: accum.byHost,
-      costMeasured: accum.costMeasured,
-      recent: accum.recent.slice(0, RECENT_LIMIT),
-    },
+    // Spread, not a field list: a new aggregate must never be dropped by this return.
+    tokens: { ...accum, recent: accum.recent.slice(0, RECENT_LIMIT) },
     syncedAt,
   };
 }

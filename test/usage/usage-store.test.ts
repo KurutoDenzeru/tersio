@@ -64,7 +64,7 @@ test.skipIf(!hasSqlite())("sync persists folded model rows and reads them back",
       expect(usageDbPath()).toBe(process.env.TERSIO_USAGE_DB);
       expect(syncUsageDb()).toBe(true);
       const stored = readUsageDb();
-      expect(stored).toBeTruthy();
+      if (!stored) throw new Error("usage db did not read back");
       expect(Object.keys(stored.tokens.byModel)).toEqual(["deepseek-v4.1-flash"]);
       expect(stored.tokens.byModel["deepseek-v4.1-flash"]).toEqual({ input: 300, output: 30, cacheRead: 50, cacheWrite: 0 });
       expect(stored.tokens.messages).toBe(2);
@@ -211,9 +211,11 @@ test("usageDbPath migrates the legacy plugins copy into ~/.tersio", () => {
   const prevHome = process.env.HOME;
   const prevProfile = process.env.USERPROFILE;
   const prevDb = process.env.TERSIO_USAGE_DB;
+  const prevTersioHome = process.env.TERSIO_HOME;
   delete process.env.TERSIO_USAGE_DB;
   process.env.HOME = home;
   process.env.USERPROFILE = home;
+  process.env.TERSIO_HOME = path.join(home, ".tersio");
   try {
     const legacy = path.join(home, ".omp", "plugins", "tersio-usage.db");
     mkdirSync(path.dirname(legacy), { recursive: true });
@@ -228,6 +230,8 @@ test("usageDbPath migrates the legacy plugins copy into ~/.tersio", () => {
     else process.env.USERPROFILE = prevProfile;
     if (prevDb === undefined) delete process.env.TERSIO_USAGE_DB;
     else process.env.TERSIO_USAGE_DB = prevDb;
+    if (prevTersioHome === undefined) delete process.env.TERSIO_HOME;
+    else process.env.TERSIO_HOME = prevTersioHome;
     rmSync(home, { recursive: true, force: true });
   }
 });
@@ -247,4 +251,11 @@ test.skipIf(!hasSqlite())("clearUsageDb removes the store file", () => {
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("the suite cannot write the developer's real usage store", () => {
+  // setup.ts sandboxes TERSIO_HOME. Without that, any syncing test rewrites ~/.tersio/usage.db.
+  const home = process.env.TERSIO_HOME ?? "";
+  expect(home).toContain("tersio-test-home-");
+  expect(usageDbPath().startsWith(home)).toBe(true);
 });

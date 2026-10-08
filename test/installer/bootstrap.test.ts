@@ -30,6 +30,10 @@ function cleanup(...dirs: string[]): void {
 
 const TARBALL_FALLBACK = 'env TERSIO_TARBALL_URL=file:///nonexistent/tersio-npm.tgz';
 
+// `install` as a whole word. install.sh runs a bare `tersio install` when /dev/tty is readable, so the
+// recorded args end with a newline; a literal-space boundary never matches that. Only a TTY-free run passes.
+const INSTALL_SUBCOMMAND = /(^|\s)install(\s|$)/;
+
 // npm-lane tests force --npm, since bun outranks npm by default.
 (process.platform === "win32" ? test.skip : test)("curl bootstrap installs the CLI, then runs tersio install", () => {
   const { bin, prefix, tersioLog } = fakeEnv();
@@ -49,7 +53,7 @@ const TARBALL_FALLBACK = 'env TERSIO_TARBALL_URL=file:///nonexistent/tersio-npm.
     // The follow-up installer ran, whichever interactivity branch ran.
     const tersioArgs = readFileSync(tersioLog, "utf8");
     expect(tersioArgs).toMatch(/--dry-run/);
-    expect(tersioArgs).toMatch(/(^| )install( |$)/);
+    expect(tersioArgs).toMatch(INSTALL_SUBCOMMAND);
   } finally {
     cleanup(bin, prefix);
   }
@@ -72,7 +76,7 @@ const TARBALL_FALLBACK = 'env TERSIO_TARBALL_URL=file:///nonexistent/tersio-npm.
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toMatch(/Installing tersio from the GitHub release tarball\.\.\./);
     expect(result.stdout).toMatch(/fake-npm install -g .*tersio-npm\.tgz --no-audit --no-fund/);
-    expect(readFileSync(tersioLog, "utf8")).toMatch(/(^| )install( |$)/);
+    expect(readFileSync(tersioLog, "utf8")).toMatch(INSTALL_SUBCOMMAND);
   } finally {
     cleanup(bin, prefix, tgz);
   }
@@ -96,7 +100,7 @@ const TARBALL_FALLBACK = 'env TERSIO_TARBALL_URL=file:///nonexistent/tersio-npm.
       expect(tersioArgs).not.toMatch(/--scope/);
     } else {
       // /dev/tty existed, so the installer ran interactively.
-      expect(tersioArgs).toMatch(/(^| )install( |$)/);
+      expect(tersioArgs).toMatch(INSTALL_SUBCOMMAND);
     }
   } finally {
     cleanup(bin, prefix);
@@ -161,7 +165,7 @@ const TARBALL_FALLBACK = 'env TERSIO_TARBALL_URL=file:///nonexistent/tersio-npm.
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toMatch(/Installing @krtclcdy\/tersio via bun\.\.\./);
     expect(result.stdout).toMatch(/fake-bun install -g @krtclcdy\/tersio@latest/);
-    expect(readFileSync(tersioLog, "utf8")).toMatch(/(^| )install( |$)/);
+    expect(readFileSync(tersioLog, "utf8")).toMatch(INSTALL_SUBCOMMAND);
   } finally {
     cleanup(bin, prefix);
   }
