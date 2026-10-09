@@ -77,6 +77,7 @@ export function Tools({ data }: { data: UsageReport | null }) {
   };
 
   return (
+    <>
     <Card
       id="tools"
       data-reveal
@@ -149,5 +150,6 @@ export function Tools({ data }: { data: UsageReport | null }) {
           </div>
         </CardFooter>
       </Card>
+    </>
   );
 }

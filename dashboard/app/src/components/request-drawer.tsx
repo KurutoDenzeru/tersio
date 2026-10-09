@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Icon } from "./icon";
 import { AgentLogo } from "./agent-logos";
-import { Brandmark } from "./brand";
+import { VendorMark } from "./brand";
 import {
   costIsMeasured,
   displayCost,
@@ -99,7 +99,7 @@ export function RequestDrawer({ row: r, money, onClose }: { row: RecentRequestRo
       <SheetContent side="right" className="w-[min(430px,calc(100vw-2rem))] gap-0 overflow-y-auto p-0 sm:max-w-[430px]" aria-describedby={undefined}>
         <SheetHeader className="border-b border-line">
           <div className="flex items-center gap-2.5">
-            <Brandmark model={r.m} small />
+            <VendorMark model={r.m} small />
             <SheetTitle className="font-display pr-8 text-lg tracking-tight">{displayModel(r.m)}</SheetTitle>
           </div>
           <SheetDescription>

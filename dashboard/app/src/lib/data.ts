@@ -81,6 +81,419 @@ export interface UsageReport {
   paths: { ledger: string; sessions: string; usageDb: string };
 }
 
+export type OmpRange = "1h" | "24h" | "7d" | "30d" | "90d" | "all";
+
+export const OMP_RANGES: readonly OmpRange[] = ["1h", "24h", "7d", "30d", "90d", "all"];
+
+export const OMP_RANGE_LABEL: Record<OmpRange, string> = {
+  "1h": "1 hour",
+  "24h": "24 hours",
+  "7d": "7 days",
+  "30d": "30 days",
+  "90d": "90 days",
+  all: "All time",
+};
+
+export function isOmpRange(v: unknown): v is OmpRange {
+  return typeof v === "string" && (OMP_RANGES as readonly string[]).includes(v);
+}
+
+export interface OmpTokenMix {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  total: number;
+}
+
+export interface OmpOverall extends OmpTokenMix {
+  requests: number;
+  failed: number;
+  successful: number;
+  errorRate: number;
+  cacheRate: number;
+  cacheSavings: number;
+  costUsd: number;
+  unpricedRequests: number;
+  premiumRequests: number;
+  avgDurationMs: number;
+  avgTtftMs: number;
+  avgTokensPerSecond: number;
+  firstTs: number | null;
+  lastTs: number | null;
+}
+
+export interface OmpRow extends OmpTokenMix {
+  key: string;
+  /** The provider this row belongs to. Empty when the group is not per provider. */
+  provider: string;
+  requests: number;
+  failed: number;
+  errorRate: number;
+  cacheRate: number;
+  cacheSavings: number;
+  costUsd: number;
+  unpricedRequests: number;
+  avgDurationMs: number;
+  avgTtftMs: number;
+  avgTokensPerSecond: number;
+  firstTs: number | null;
+  lastTs: number | null;
+  models: number;
+}
+
+export interface OmpBucket {
+  ts: number;
+  requests: number;
+  errors: number;
+  tokens: number;
+  costUsd: number;
+}
+
+export interface OmpHour {
+  hour: number;
+  requests: number;
+  errors: number;
+  tokens: number;
+  costUsd: number;
+}
+
+export interface OmpAgentShare extends OmpTokenMix {
+  agentType: string;
+  requests: number;
+  costUsd: number;
+}
+
+export interface OmpRequestRow {
+  ts: number;
+  provider: string;
+  model: string;
+  project: string;
+  api: string;
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  totalTokens: number;
+  costUsd: number;
+  unpriced: boolean;
+  durationMs: number | null;
+  ttftMs: number | null;
+  stopReason: string;
+  errorMessage: string | null;
+  agentType: string;
+  sessionFile: string;
+  entryId: string;
+}
+
+export interface OmpErrorGroup {
+  signature: string;
+  count: number;
+  firstSeen: number;
+  lastSeen: number;
+  latest: OmpRequestRow;
+  models: Array<{ model: string; provider: string; count: number }>;
+}
+
+export interface OmpErrorModelRow {
+  model: string;
+  provider: string;
+  count: number;
+}
+
+export interface OmpTraceRow {
+  sessionFile: string;
+  project: string;
+  requests: number;
+  tokens: number;
+  costUsd: number;
+  unpriced: number;
+  models: number;
+  toolCalls: number;
+  firstTs: number;
+  lastTs: number;
+}
+
+export interface OmpToolRow {
+  tool: string;
+  calls: number;
+  errors: number;
+  argsChars: number;
+  resultChars: number;
+  totalTokensShare: number;
+  outputTokensShare: number;
+  costShare: number;
+  unpricedShare: number;
+  lastUsed: number | null;
+  model: string;
+  provider: string;
+}
+
+export interface OmpWindowPoint {
+  ts: number;
+  usedFraction: number | null;
+}
+
+export interface OmpWindowAccount {
+  accountKey: string;
+  email: string | null;
+  accountId: string | null;
+  usedFraction: number | null;
+  status: string | null;
+  resetsAt: number | null;
+  recordedAt: number;
+  peak: number;
+  points: OmpWindowPoint[];
+}
+
+export interface OmpWindow {
+  provider: string;
+  limitId: string;
+  label: string;
+  windowLabel: string | null;
+  usedFraction: number | null;
+  status: string | null;
+  resetsAt: number | null;
+  recordedAt: number | null;
+  peak: number;
+  points: OmpWindowPoint[];
+  accounts: OmpWindowAccount[];
+}
+
+export interface OmpFrustrationModel {
+  model: string;
+  messages: number;
+  judged: number;
+  annoyed: number;
+  atAssistant: number;
+  angry: number;
+}
+
+export interface OmpFrustration {
+  messages: number;
+  judged: number;
+  annoyed: number;
+  atAssistant: number;
+  angry: number;
+  judge: string | null;
+  byModel: OmpFrustrationModel[];
+}
+
+export interface OmpGainTotals {
+  savedTokens: number;
+  savedBytes: number;
+  hits: number;
+  outputBytes: number;
+  originalBytes: number;
+  reductionPercent: number | null;
+}
+
+export interface OmpGain {
+  overall: OmpGainTotals;
+  bySource: { snapcompact: OmpGainTotals };
+  timeSeries: Array<{ date: string; snapcompact: number; total: number }>;
+  project: string | null;
+  projects: string[];
+}
+
+export interface OmpRequestStats {
+  requests: number;
+  failed: number;
+  aborted: number;
+  tokens: number;
+  costUsd: number;
+  unpriced: number;
+  medianDurationMs: number;
+  p95DurationMs: number;
+  medianTtftMs: number;
+  oldest: number | null;
+  newest: number | null;
+}
+
+export interface OmpProviderHour {
+  provider: string;
+  hour: number;
+  totalTokens: number;
+  outputTokens: number;
+  requests: number;
+}
+
+export interface OmpUsageWindowPoint {
+  ts: number;
+  usedFraction: number | null;
+  exhausted: boolean;
+}
+
+export interface OmpUsageWindowSeries {
+  provider: string;
+  accountKey: string;
+  accountLabel: string;
+  windowKey: string;
+  windowLabel: string;
+  points: OmpUsageWindowPoint[];
+}
+
+export interface OmpWindowInsight {
+  provider: string;
+  windowKey: string;
+  windowLabel: string;
+  accounts: number;
+  cycles: number;
+  fractionConsumed: number;
+  estTokensPerWindow: number | null;
+  peakConcurrentFraction: number;
+  idealAccounts: number;
+  exhaustedEvents: number;
+}
+
+export interface OmpTranscriptEntry {
+  ts: number;
+  kind: "user" | "assistant" | "tool" | "system";
+  label: string;
+  detail: string;
+  model: string;
+  provider: string;
+  tool: string;
+  tokens: number;
+  costUsd: number;
+  durationMs: number | null;
+  isError: boolean;
+}
+
+export interface OmpSessionTrace {
+  sessionFile: string;
+  project: string;
+  entries: OmpTranscriptEntry[];
+  truncated: boolean;
+}
+
+export interface OmpStats {
+  available: boolean;
+  range: OmpRange;
+  bucketMs: number;
+  cutoff: number;
+  generatedAt: number;
+  overall: OmpOverall;
+  byModel: OmpRow[];
+  byProvider: OmpRow[];
+  byProject: OmpRow[];
+  byAgentType: OmpAgentShare[];
+  series: OmpBucket[];
+  seriesByProvider: Array<{ provider: string; points: OmpBucket[] }>;
+  modelSeries: Array<{ model: string; points: OmpBucket[] }>;
+  hourOfDay: OmpHour[];
+  topModels: OmpRow[];
+  recent: OmpRequestRow[];
+  errorGroups: OmpErrorGroup[];
+  errorModels: OmpErrorModelRow[];
+  traces: OmpTraceRow[];
+  tools: OmpToolRow[];
+  toolsByModel: OmpToolRow[];
+  toolSeries: Array<{ ts: number; tool: string; calls: number; errors: number }>;
+  usageSeries: OmpUsageWindowSeries[];
+  windowInsights: OmpWindowInsight[];
+  providerHourly: OmpProviderHour[];
+  requestStats: OmpRequestStats;
+  gain: OmpGain;
+  errors: OmpRequestRow[];
+  frustration: OmpFrustration | null;
+}
+
+export type OmpView =
+  | "all" | "overview" | "models" | "providers" | "costs" | "requests"
+  | "errors" | "traces" | "tools" | "frustration" | "projects" | "gain";
+
+export const OMP_VIEWS: readonly OmpView[] = [
+  "all", "overview", "models", "providers", "costs", "requests",
+  "errors", "traces", "tools", "frustration", "projects", "gain",
+];
+
+/** One snapshot per window and view, so returning to a page is instant. */
+const ompCache = new Map<string, OmpStats>();
+
+/**
+ * The omp aggregate for one page. Each view asks the server for only the parts it renders,
+ * so a page payload stays small; the response is memoized per window and view.
+ */
+export function useOmpData(range: OmpRange, view: OmpView): { omp: OmpStats | null; loading: boolean } {
+  const key = `${range}|${view}`;
+  const [omp, setOmp] = useState<OmpStats | null>(() => snapOmp() ?? ompCache.get(key) ?? null);
+  const [loading, setLoading] = useState(() => !isFileExport() && !ompCache.has(key) && !snapOmp());
+
+  useEffect(() => {
+    if (isFileExport()) return;
+    const held = ompCache.get(key);
+    if (held) {
+      setOmp(held);
+      setLoading(false);
+    }
+    let live = true;
+    const load = async (): Promise<void> => {
+      try {
+        const next = await getJSON<{ omp: OmpStats }>(`api/omp?range=${range}&view=${view}`);
+        if (!live) return;
+        ompCache.set(key, next.omp);
+        setOmp(next.omp);
+        setLoading(false);
+      } catch {
+        // A dashboard without the route keeps whatever it already showed.
+        if (live) setLoading(false);
+      }
+    };
+    void load();
+    const id = setInterval(() => {
+      if (!document.hidden) void load();
+    }, 30_000);
+    const onVis = (): void => {
+      if (!document.hidden) void load();
+    };
+    const onDemand = (): void => {
+      void load();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    window.addEventListener("tersio:reload", onDemand);
+    return () => {
+      live = false;
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("tersio:reload", onDemand);
+    };
+  }, [key, range, view]);
+
+  return { omp, loading };
+}
+
+/** One session transcript, for the Traces page's timeline. */
+export function useSessionTrace(file: string | null): { trace: OmpSessionTrace | null; loading: boolean } {
+  const [trace, setTrace] = useState<OmpSessionTrace | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!file || isFileExport()) {
+      setTrace(null);
+      return;
+    }
+    let live = true;
+    setLoading(true);
+    getJSON<OmpSessionTrace>(`api/omp/session?file=${encodeURIComponent(file)}`)
+      .then((next) => {
+        if (!live) return;
+        setTrace(next);
+      })
+      .catch(() => {
+        if (live) setTrace(null);
+      })
+      .finally(() => {
+        if (live) setLoading(false);
+      });
+    return () => {
+      live = false;
+    };
+  }, [file]);
+
+  return { trace, loading };
+}
+
 export interface HealthReport {
   tersio: string;
   node: string;
@@ -117,6 +530,7 @@ export interface DoctorReport {
 
 interface TersioSnap {
   data?: UsageReport;
+  omp?: OmpStats;
   health?: HealthReport;
   doctor?: DoctorReport;
 }
@@ -129,6 +543,10 @@ declare global {
 
 function snap(): TersioSnap | null {
   return typeof window !== "undefined" && window.__TERSIO_SNAP ? window.__TERSIO_SNAP : null;
+}
+
+function snapOmp(): OmpStats | null {
+  return snap()?.omp ?? null;
 }
 
 export function isFileExport(): boolean {

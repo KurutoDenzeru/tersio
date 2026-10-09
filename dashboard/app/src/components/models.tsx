@@ -17,7 +17,7 @@ import {
 } from "@/lib/format";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { UsageReport } from "@/lib/data";
-import { BrandSilhouette, Brandmark } from "./brand";
+import { BrandSilhouette, VendorMark } from "./brand";
 import { EmptyState, HoverTip, PageButtons, PerPage, ShareBar, usePager } from "./common";
 import { Icon } from "./icon";
 
@@ -250,7 +250,7 @@ function ModelDialog({ m, data, money, onClose }: { m: string | null; data: Usag
         <div className="shrink-0 border-b border-line px-5 pb-4 pt-5">
           <div className="flex items-start justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
-              <Brandmark model={m} />
+              <VendorMark model={m} />
               <div className="min-w-0">
                 <HoverTip content={m}>
                   <DialogTitle className="m-0 truncate text-base font-bold tracking-[-0.01em]">
@@ -397,7 +397,7 @@ export function Models({ data, money }: { data: UsageReport | null; money: (v: n
                       0{i + 1}
                     </p>
                     <div className="relative z-10 flex items-center gap-3">
-                      <Brandmark model={m} />
+                      <VendorMark model={m} />
                       <div className="min-w-0 flex-1">
                         <p className="mono text-sm font-bold truncate">
                           {displayModel(m)}
@@ -452,7 +452,7 @@ export function Models({ data, money }: { data: UsageReport | null; money: (v: n
                     <HoverTip key={m} content={data ? <ModelTip m={m} data={data} money={money} /> : "–"}>
                       <TableRow className="cursor-pointer hover:bg-track hover:shadow-tersio" onClick={() => setOpen(m)}>
                         <TableCell className="min-w-0 truncate py-2.5 pr-3">
-                          <span className="mr-2.5 inline-flex align-middle"><Brandmark model={m} small /></span>
+                          <span className="mr-2.5 inline-flex align-middle"><VendorMark model={m} small /></span>
                           <span className="align-middle">{displayModel(m)}</span>
                         </TableCell>
                         <TableCell className="whitespace-nowrap py-2.5 pr-3 text-right" title={fmtShort(mv)}>

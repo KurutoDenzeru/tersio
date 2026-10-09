@@ -16,6 +16,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem,
 import { Switch } from "@/components/ui/switch";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useTheme, useResolvedTheme } from "@/components/theme-provider";
+import { MarkGlyph } from "@/components/brand";
 import { ACCENTS, ACCENT_IDS, accentSwatch, type AccentId } from "@/lib/accent";
 import { fmt, fmtShort, fmtSnapshot, relAge } from "@/lib/format";
 import { shareUrl } from "@/lib/share";
@@ -392,7 +393,7 @@ function BackupRestore() {
         if (d?.ok) { toast("Snapshot deleted", "Removed from disk. The live mirror is unchanged.", "check"); load(); }
         else toast("Delete failed", d?.error ?? "Unknown backup", "circle-alert");
       })
-      .catch((e: Error) => toast("Delete failed", /HTTP/.test(e.message) ? "This dashboard build has no delete route — restart the server." : "The dashboard server did not answer.", "circle-alert"));
+      .catch((e: Error) => toast("Delete failed", /HTTP/.test(e.message) ? "This dashboard build has no delete route. Restart the server." : "The dashboard server did not answer.", "circle-alert"));
   };
 
   const target = rows.find((b) => b.file === chosen) ?? null;
@@ -404,7 +405,7 @@ function BackupRestore() {
         <div className="min-w-0">
           <p className="m-0 text-[13px] font-semibold">Backups</p>
           <p className="mt-0.5 mb-0 text-xs text-dim">
-            {BACKUP_SCHEDULES_UI.find((o) => o.id === schedule)?.label} — {scheduleHint}. Keeps the last 3.
+            {BACKUP_SCHEDULES_UI.find((o) => o.id === schedule)?.label}: {scheduleHint}. Keeps the last 3.
           </p>
         </div>
         <Select value={schedule} onValueChange={(v) => saveSchedule(v ?? "monthly")}>
@@ -1470,7 +1471,7 @@ export function Footer() {
         <span>© 2026 Tersio. KurutoDenzeru. All rights reserved.</span>
         <span className="ml-auto flex items-center gap-1 text-ink">
           <a href="https://github.com/KurutoDenzeru/tersio" target="_blank" rel="noopener" aria-label="GitHub" className="grid size-8 place-items-center rounded-lg text-ink hover:text-accent [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]">
-            <span className="size-4 bg-current" style={{ WebkitMaskImage: "url('https://cdn.jsdelivr.net/npm/simple-icons@v16/icons/github.svg')", WebkitMaskPosition: "center", WebkitMaskRepeat: "no-repeat", WebkitMaskSize: "contain" }} />
+            <MarkGlyph slug="github" className="size-4" />
           </a>
           <a href="https://linkedin.com/in/kurtcalacday/" target="_blank" rel="noopener" aria-label="LinkedIn" className="grid size-8 place-items-center rounded-lg text-ink hover:text-accent [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96] [&_svg]:block [&_svg]:size-4">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -1478,7 +1479,7 @@ export function Footer() {
             </svg>
           </a>
           <a href="https://instagram.com/krtclcdy/" target="_blank" rel="noopener" aria-label="Instagram" className="grid size-8 place-items-center rounded-lg text-ink hover:text-accent [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]">
-            <span className="size-4 bg-current" style={{ WebkitMaskImage: "url('https://cdn.jsdelivr.net/npm/simple-icons@v16/icons/instagram.svg')", WebkitMaskPosition: "center", WebkitMaskRepeat: "no-repeat", WebkitMaskSize: "contain" }} />
+            <MarkGlyph slug="instagram" className="size-4" />
           </a>
         </span>
       </div>

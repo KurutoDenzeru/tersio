@@ -13,12 +13,14 @@ import {
   vendorOf,
   whenStamp,
 } from "@/lib/format";
+import type { RunStatus } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { TooltipRow } from "@/components/ui/tooltip-surface";
 import type { RecentRequestRow, UsageReport } from "@/lib/data";
 import { EmptyState, HoverTip, PageButtons, PerPage, usePager } from "./common";
+import { SearchInput, Segmented } from "@/components/charts";
 import { Icon } from "./icon";
 import { AgentLogo } from "./agent-logos";
 import { RequestDrawer } from "./request-drawer";
@@ -72,9 +74,20 @@ export function Recent({ data, money }: { data: UsageReport | null; money: (v: n
   const [per, setPer] = useState(10);
   const [sort, setSort] = useState<{ key: Key; dir: 1 | -1 }>({ key: "when", dir: -1 });
   const [selected, setSelected] = useState<RecentRequestRow | null>(null);
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState<"all" | RunStatus>("all");
 
   const rows = useMemo(() => {
-    const all = (data?.recent ?? []).slice();
+    const needle = query.trim().toLowerCase();
+    const all = (data?.recent ?? []).filter((r) => {
+      if (status !== "all" && r.st !== status) return false;
+      if (!needle) return true;
+      return (
+        r.m.toLowerCase().includes(needle)
+        || hostMeta(r.h).label.toLowerCase().includes(needle)
+        || (r.note ?? "").toLowerCase().includes(needle)
+      );
+    });
     const { key: k, dir: d } = sort;
     all.sort((a, b) => {
       const av = val(a, k);
@@ -86,7 +99,7 @@ export function Recent({ data, money }: { data: UsageReport | null; money: (v: n
       return b.t - a.t;
     });
     return all;
-  }, [data, sort]);
+  }, [data, sort, query, status]);
 
   const { pages, page: p, range } = usePager(rows.length, per, page);
   const slice = rows.slice((p - 1) * per, p * per);
@@ -133,9 +146,29 @@ export function Recent({ data, money }: { data: UsageReport | null; money: (v: n
             {rows.length ? `${rows.length} requests` : ""}
           </span>
         </div>
-        <CardDescription className="mono text-xs text-dim">latest assistant messages · local time · sort any column · select a row for detail · cost is measured when the host recorded it</CardDescription>
+        <CardDescription className="mono text-xs text-dim">recorded by the Tersio usage store · filter by text or status · sort any column · select a row for detail · cost is measured when the host recorded it</CardDescription>
       </CardHeader>
       <CardContent>
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <SearchInput
+            value={query}
+            onChange={(next) => { setQuery(next); setPage(1); }}
+            placeholder="Filter by model, agent, note"
+            label="Filter recent requests"
+            className="min-w-[200px] flex-1"
+          />
+          <Segmented
+            label="Status filter"
+            value={status}
+            options={[
+              { value: "all", label: "All" },
+              { value: "completed", label: "Completed" },
+              { value: "aborted", label: "Aborted" },
+              { value: "error", label: "Failed" },
+            ]}
+            onChange={(next) => { setStatus(next); setPage(1); }}
+          />
+        </div>
       {rows.length > 0 ? (
         <Table className="mono table-fixed text-[13px]" id="recentTable">
             <colgroup><col /><col style={{ width: 78 }} /><col style={{ width: 96 }} /><col style={{ width: 96 }} /><col style={{ width: 116 }} /><col style={{ width: 120 }} /><col style={{ width: 158 }} /></colgroup>
@@ -195,7 +228,13 @@ export function Recent({ data, money }: { data: UsageReport | null; money: (v: n
             </TableBody>
           </Table>
       ) : (
-        <EmptyState icon="inbox" title="No requests yet" desc="Recent assistant messages will show here once sessions report tokens." />
+        <EmptyState
+          icon="inbox"
+          title={query || status !== "all" ? "No rows match" : "No requests yet"}
+          desc={query || status !== "all"
+            ? "Clear the filter or widen the window."
+            : "Recent assistant messages will show here once sessions report tokens."}
+        />
       )}
         </CardContent>
         <CardFooter className="mono justify-between gap-4 border-t text-xs text-dim">

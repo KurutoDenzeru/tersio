@@ -1,21 +1,7 @@
-// Dock header + compact live telemetry hero.
+// Compact live telemetry hero, first block of the Usage page.
 import { useEffect, useState } from "react";
 import { fmt } from "@/lib/format";
 import type { UsageReport } from "@/lib/data";
-import { Icon } from "./icon";
-
-function useClock(): string {
-  const [now, setNow] = useState("--:--");
-  useEffect(() => {
-    const tick = (): void => {
-      setNow(new Date().toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }));
-    };
-    tick();
-    const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
-  }, []);
-  return now;
-}
 
 // `dep` re-runs when the text changes but the number does not, e.g. a currency switch.
 export function useCountUp(target: number, dep?: unknown): number {
@@ -40,39 +26,6 @@ export function useCountUp(target: number, dep?: unknown): number {
   }, [target, dep]);
 
   return value;
-}
-
-export function Dock({ onShare, onSettings }: { onShare: () => void; onSettings: () => void }) {
-  const clock = useClock();
-  return (
-    <header className="sticky top-3 z-50 mt-4 flex w-full items-center gap-2 rounded-[20px] border border-transparent px-3 py-2 [background:linear-gradient(var(--panel),var(--panel))_padding-box,linear-gradient(120deg,var(--accent-soft),var(--line)_30%,var(--line)_70%,var(--accent-soft))_border-box] [box-shadow:0_1px_2px_rgba(0,0,0,.08)]">
-      <a href="#" className="flex shrink-0 items-center gap-2.5 pl-1 pr-2" aria-label="Tersio dashboard home">
-        <img src="brand.webp" alt="Tersio" width="32" height="32" className="size-8 rounded-[10px]" />
-        <span className="text-sm font-semibold tracking-tight">Tersio <span className="ml-1 font-normal text-dim">Dashboard</span></span>
-      </a>
-      <span className="mono ml-auto hidden shrink-0 items-center gap-2 px-2 text-xs text-dim sm:flex">
-        <span className="inline-block size-2 rounded-full bg-accent" />
-        <span>{clock}</span>
-      </span>
-      <span className="hidden h-5 w-px shrink-0 bg-line sm:block" aria-hidden="true" />
-      <button
-        type="button"
-        onClick={onShare}
-        className="flex shrink-0 items-center rounded-xl border border-line p-2 text-ink [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]"
-        aria-label="Share your usage"
-      >
-        <Icon name="share-2" className="size-4" />
-      </button>
-      <button
-        type="button"
-        onClick={onSettings}
-        className="flex shrink-0 items-center rounded-xl border border-line p-2 text-ink [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]"
-        aria-label="Open settings"
-      >
-        <Icon name="settings" className="size-4" />
-      </button>
-    </header>
-  );
 }
 
 export function Hero({ data }: { data: UsageReport | null }) {
