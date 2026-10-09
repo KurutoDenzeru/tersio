@@ -2,7 +2,7 @@
 import { useMemo, useState } from "react";
 import {
   Card,
-  DataTable,
+  PagedTable,
   Legend,
   Page,
   PageHeader,
@@ -342,12 +342,12 @@ export function ModelsPage({ omp, money }: { omp: OmpStats; money: (v: number) =
       </Card>
 
       <Card index={2} title="All models" description="Latency, throughput, and cache per model" flush>
-        <DataTable
+        <PagedTable
           columns={columns}
           rows={view.rows}
           rowKey={(row) => `${row.key}\u0000${row.provider}`}
           initialSort={{ key: "requests", dir: "desc" }}
-          limit={25}
+          perPage={25}
           empty={<p className="p-4 text-xs text-dim">No model usage in this range.</p>}
           ariaLabel="Models"
         />

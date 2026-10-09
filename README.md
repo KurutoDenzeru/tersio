@@ -94,12 +94,12 @@ Upstream Ponytail's fair agentic benchmark reports 54% less code, 22% fewer toke
 | `#/errors?range=7d` | Failed requests grouped by error signature |
 | `#/traces` | Sessions, with `&s=<sessionFile>` deep-linking one transcript |
 | `#/tools?range=7d` | Which tools omp called, how often they failed, and what they cost |
-| `#/frustration?range=30d` | How often your messages sound annoyed, per model version |
 | `#/projects?range=30d` | Usage by session folder |
-| `#/gain?range=30d` | Tokens snapcompact kept out of context |
 | `#/usage` | Tersio's own ledger: throughput, savings, activity, and the raw tables |
 
 Windows are `1h`, `24h`, `7d`, `30d`, `90d`, and all time. Press `1`-`6` for a window and `g` then a letter to jump between pages. Every view keeps its window in the URL, so a link reproduces exactly what you see.
+
+Long tables page instead of clipping: the request log, failures, models, projects, tools, and sessions all render one page at a time, with the row count and a rows-per-page picker in the footer.
 
 **The rail and the topbar.** The rail lists every page and its shortcut, with Settings and Share in its footer. The topbar carries the live chip, the window picker, and the theme button at the top right.
 

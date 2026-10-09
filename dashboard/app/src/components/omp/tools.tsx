@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import {
   Card,
   CellBar,
-  DataTable,
+  PagedTable,
   Legend,
   Page,
   PageHeader,
@@ -486,12 +486,12 @@ export function ToolsPage({ omp, money }: { omp: OmpStats; money: (v: number) =>
       </Card>
 
       <Card index={2} title="By tool" description={`${ATTRIBUTION_NOTE}.`} flush>
-        <DataTable
+        <PagedTable
           columns={toolColumns}
           rows={view.rows}
           rowKey={(row) => row.tool}
           initialSort={{ key: "calls", dir: "desc" }}
-          limit={20}
+          perPage={20}
           empty={<p className="p-4 text-xs text-dim">No tool calls in this range.</p>}
           ariaLabel="Tools by call volume"
         />
@@ -512,12 +512,12 @@ export function ToolsPage({ omp, money }: { omp: OmpStats; money: (v: number) =>
           />
         }
       >
-        <DataTable
+        <PagedTable
           columns={modelColumns}
           rows={modelRows}
           rowKey={(row) => `${row.tool}\u0000${row.model}\u0000${row.provider}`}
           initialSort={{ key: "calls", dir: "desc" }}
-          limit={25}
+          perPage={25}
           empty={<p className="p-4 text-xs text-dim">No matching tool calls in this range.</p>}
           ariaLabel="Tools by model"
         />

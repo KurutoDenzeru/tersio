@@ -9,7 +9,7 @@ import {
   Card,
   CellBar,
   Chart,
-  DataTable,
+  PagedTable,
   Legend,
   MeterCell,
   Page,
@@ -383,13 +383,13 @@ function ProviderTotalsTable({
 
   return (
     <>
-      <DataTable
+      <PagedTable
         columns={columns}
         rows={providers}
         rowKey={(p) => p.provider}
         onRowClick={(p) => setOpen((prev) => (prev === p.provider ? null : p.provider))}
         initialSort={{ key: "tokens", dir: "desc" }}
-        limit={12}
+        perPage={12}
         ariaLabel="Provider totals"
         empty={<EmptyState icon="circle-slash" title="No requests in this range" desc="Try a longer range." />}
       />
@@ -516,13 +516,13 @@ function WindowInsightsTable({
   onSelect: (ref: WindowRef) => void;
 }) {
   return (
-    <DataTable
+    <PagedTable
       rows={insights}
       rowKey={(i) => `${i.provider}::${i.windowKey}`}
       columns={INSIGHT_COLUMNS}
       onRowClick={(i) => onSelect({ provider: i.provider, windowKey: i.windowKey })}
       initialSort={{ key: "consumed", dir: "desc" }}
-      limit={12}
+      perPage={12}
       ariaLabel="Subscription windows"
       empty={
         <EmptyState
@@ -842,12 +842,12 @@ function WindowUtilizationCard({
               <Legend items={chart.series} active={new Set(shown.map((s) => s.key))} onToggle={toggle} />
             )}
           </div>
-          <DataTable
+          <PagedTable
             rows={rows}
             rowKey={(r) => `${r.series.windowKey}::${r.series.accountKey}`}
             columns={ACCOUNT_COLUMNS}
             onRowClick={(r) => onSelect({ provider: r.series.provider, windowKey: r.series.windowKey })}
-            limit={16}
+            perPage={16}
             ariaLabel="Accounts"
             empty={<EmptyState icon="circle-slash" title="No accounts recorded" desc={SNAPSHOT_HINT} />}
           />

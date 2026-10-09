@@ -1,6 +1,6 @@
 // Requests: the range in six figures, then the request log with a search and a status filter.
 import { useMemo, useState } from "react";
-import { Card, DataTable, Page, PageHeader, SearchInput, Segmented, Stat, StatGrid } from "@/components/charts";
+import { Card, PagedTable, Page, PageHeader, SearchInput, Segmented, Stat, StatGrid } from "@/components/charts";
 import type { Column } from "@/components/charts";
 import { ProviderMark, VendorMark } from "@/components/brand";
 import { EmptyState } from "@/components/common";
@@ -131,13 +131,13 @@ export function RequestsPage({
         }
         flush
       >
-        <DataTable
+        <PagedTable
           columns={buildRequestColumns(money)}
           rows={filtered}
           rowKey={(row) => `${row.sessionFile}:${row.entryId}`}
           onRowClick={onOpenRequest}
           initialSort={{ key: "time", dir: "desc" }}
-          limit={100}
+          perPage={25}
           ariaLabel="Request log"
           empty={
             <EmptyState

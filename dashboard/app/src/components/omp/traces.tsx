@@ -1,13 +1,10 @@
 // Traces: one row per session transcript. The parent renders the timeline, this page lists and opens it.
 import { useMemo, useState } from "react";
-import { Card, CellBar, DataTable, Page, PageHeader, QueryView, SearchInput } from "@/components/charts";
+import { Card, CellBar, PagedTable, Page, PageHeader, QueryView, SearchInput } from "@/components/charts";
 import type { Column } from "@/components/charts";
 import { EmptyState } from "@/components/common";
 import type { OmpStats, OmpTraceRow } from "@/lib/data";
 import { fmt, fmtMs, fmtShort, projectLabel, relAge, stampLocal } from "@/lib/format";
-
-/** The reference cap on rendered rows; the payload is already the newest slice. */
-const ROW_LIMIT = 50;
 
 export function TracesPage({
   omp,
@@ -135,13 +132,13 @@ export function TracesPage({
           emptyTitle="No sessions found"
           emptyDesc="Run a sync to index recent activity."
         >
-          <DataTable
+          <PagedTable
             columns={columns}
             rows={filtered}
             rowKey={(row) => row.sessionFile}
             onRowClick={(row) => onOpenSession(row.sessionFile)}
             initialSort={{ key: "started", dir: "desc" }}
-            limit={ROW_LIMIT}
+            perPage={25}
             ariaLabel="Sessions"
             empty={<EmptyState icon="circle-slash" title="No matching sessions" desc="Try a different filter." />}
           />

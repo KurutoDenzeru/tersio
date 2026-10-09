@@ -1,6 +1,6 @@
 // Errors: failed requests in the range, grouped by signature, with the rows behind them.
 import { useMemo, useState } from "react";
-import { Card, DataTable, MeterCell, Page, PageHeader, SearchInput, Stat, StatGrid } from "@/components/charts";
+import { Card, PagedTable, MeterCell, Page, PageHeader, SearchInput, Stat, StatGrid } from "@/components/charts";
 import type { Column } from "@/components/charts";
 import { ProviderMark, VendorMark } from "@/components/brand";
 import { EmptyState } from "@/components/common";
@@ -125,12 +125,12 @@ export function ErrorsPage({
           description="Same message with ids and counters normalized. Select one to filter the failures below."
           flush
         >
-          <DataTable
+          <PagedTable
             columns={GROUP_COLUMNS(maxGroup)}
             rows={omp.errorGroups}
             rowKey={(group) => group.signature}
             onRowClick={(group) => setSignatureFilter(signature === group.signature ? null : group.signature)}
-            limit={12}
+            perPage={12}
             ariaLabel="Error signatures"
             empty={
               <EmptyState
@@ -144,12 +144,12 @@ export function ErrorsPage({
         </Card>
 
         <Card index={2} title="By model" description="Failures per model. Select one to filter." flush>
-          <DataTable
+          <PagedTable
             columns={MODEL_COLUMNS(maxModel)}
             rows={omp.errorModels}
             rowKey={(row) => modelKey(row)}
             onRowClick={(row) => setModelFilter(model === modelKey(row) ? null : modelKey(row))}
-            limit={12}
+            perPage={12}
             ariaLabel="Failures by model"
             empty={<EmptyState icon="circle-slash" title="No affected models" desc="No model failed in this window." />}
           />
@@ -190,13 +190,13 @@ export function ErrorsPage({
         }
         flush
       >
-        <DataTable
+        <PagedTable
           columns={buildFailureColumns(money)}
           rows={filtered}
           rowKey={(row) => `${row.sessionFile}:${row.entryId}`}
           onRowClick={onOpenRequest}
           initialSort={{ key: "time", dir: "desc" }}
-          limit={50}
+          perPage={25}
           ariaLabel="Failures"
           empty={
             <EmptyState

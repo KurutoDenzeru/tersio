@@ -7,7 +7,7 @@ import {
   BarList,
   Card,
   CellBar,
-  DataTable,
+  PagedTable,
   Page,
   PageHeader,
   QueryView,
@@ -19,8 +19,6 @@ import type { Column } from "@/components/charts";
 import { EmptyState } from "@/components/common";
 import { PALETTE, fmt, fmtMs, fmtShort, pct, projectLabel, relAge, stampLocal } from "@/lib/format";
 
-/** Rows rendered before the table stops; the reference caps a long list the same way. */
-const ROW_LIMIT = 100;
 /** Bars shown in the two top lists. */
 const TOP_LIMIT = 8;
 
@@ -332,12 +330,12 @@ export function ProjectsPage({ omp, money }: { omp: OmpStats; money: (v: number)
         }
         flush
       >
-        <DataTable
+        <PagedTable
           columns={columns}
           rows={matching}
           rowKey={(r) => r.row.key}
           initialSort={{ key: "cost", dir: "desc" }}
-          limit={ROW_LIMIT}
+          perPage={25}
           ariaLabel="Project folders"
           empty={
             <EmptyState

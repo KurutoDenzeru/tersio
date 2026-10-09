@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import { cn } from "cn";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { HoverTip } from "@/components/common";
+import { HoverTip, PageButtons, PerPage, usePager } from "@/components/common";
 import { Icon } from "@/components/icon";
 
 export interface Column<T> {
@@ -27,11 +27,11 @@ export interface DataTableProps<T> {
   onRowClick?: (row: T) => void;
   /** Sort on mount. */
   initialSort?: { key: string; dir: "asc" | "desc" };
-  /** Render only the first N rows, the way the reference caps a long table. */
+  /** Render rows from this index, one page's worth. */
+  offset?: number;
+  /** Rows rendered before the pager takes over. */
   limit?: number;
   empty?: React.ReactNode;
-  /** Rows already on screen when the table is inside a card that clips. */
-  maxHeight?: number;
   className?: string;
   ariaLabel?: string;
 }
@@ -42,9 +42,9 @@ export function DataTable<T>({
   rowKey,
   onRowClick,
   initialSort,
+  offset = 0,
   limit,
   empty,
-  maxHeight,
   className,
   ariaLabel,
 }: DataTableProps<T>) {
@@ -61,8 +61,9 @@ export function DataTable<T>({
           return sort!.dir === "desc" ? -diff : diff;
         })
       : rows;
-    return limit && limit > 0 ? all.slice(0, limit) : all;
-  }, [rows, columns, sort, limit]);
+    const capped = limit && limit > 0 ? all.slice(offset, offset + limit) : offset > 0 ? all.slice(offset) : all;
+    return capped;
+  }, [rows, columns, sort, offset, limit]);
 
   const toggle = (column: Column<T>): void => {
     if (!column.sort) return;
@@ -72,10 +73,7 @@ export function DataTable<T>({
   if (rows.length === 0 && empty) return <>{empty}</>;
 
   return (
-    <div
-      className={cn("overflow-auto overscroll-contain [scrollbar-color:var(--line)_transparent] [scrollbar-width:thin]", className)}
-      style={maxHeight ? { maxHeight } : undefined}
-    >
+    <div className={cn("overflow-auto overscroll-contain [scrollbar-color:var(--line)_transparent] [scrollbar-width:thin]", className)}>
       <Table className="mono text-[13px]" aria-label={ariaLabel}>
         <TableHeader className="sticky top-0 z-10 bg-panel [&_tr]:border-line [&_tr]:text-left [&_tr]:text-[11px] [&_tr]:uppercase [&_tr]:tracking-[0.14em] [&_tr]:text-dim">
           <TableRow>
@@ -143,6 +141,56 @@ export function TableSkeleton({ rows = 8, className }: { rows?: number; classNam
       {Array.from({ length: rows }, (_, i) => (
         <Skeleton key={i} className="h-6 w-full bg-track/60" />
       ))}
+    </div>
+  );
+}
+
+/**
+ * A long table, one page at a time. The page size lives here, so a caller drops its `limit`
+ * and the footer carries the count instead of the table clipping.
+ */
+export function PagedTable<T>({
+  columns,
+  rows,
+  rowKey,
+  onRowClick,
+  initialSort,
+  perPage = 25,
+  perPageOptions = [10, 25, 50, 100],
+  empty,
+  className,
+  ariaLabel,
+}: Omit<DataTableProps<T>, "limit" | "offset"> & {
+  /** Rows per page before the reader asks for more. */
+  perPage?: number;
+  perPageOptions?: number[];
+}) {
+  const [per, setPer] = useState(perPage);
+  const [page, setPage] = useState(1);
+  const { pages, page: current, range } = usePager(rows.length, per, page);
+  const short = rows.length <= per;
+  const footer = (
+    <div className="mono flex items-center gap-3 border-t border-line px-3.5 py-2 text-[11px] text-dim">
+      <span>{range}</span>
+      <PerPage options={perPageOptions} value={per} onPick={(n) => { setPer(n); setPage(1); }} label="Rows per page" />
+      <PageButtons pages={pages} page={current} onPick={setPage} label={ariaLabel ?? "Table pages"} />
+    </div>
+  );
+  return (
+    <div className="flex flex-col">
+      <DataTable
+        columns={columns}
+        rows={rows}
+        rowKey={rowKey}
+        onRowClick={onRowClick}
+        initialSort={initialSort}
+        offset={(current - 1) * per}
+        limit={per}
+        empty={empty}
+        ariaLabel={ariaLabel}
+        className={className}
+      />
+      {!short && footer}
     </div>
   );
 }

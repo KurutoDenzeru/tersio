@@ -1,6 +1,6 @@
 // Overview: the range in figures, one burn chart, the two mixes, and the newest requests.
 import { useState } from "react";
-import { Card, DataTable, Legend, Page, PageHeader, Segmented, Stat, StatGrid, TimeChart } from "@/components/charts";
+import { Card, Legend, Page, PageHeader, PagedTable, Segmented, Stat, StatGrid, TimeChart } from "@/components/charts";
 import type { Column } from "@/components/charts";
 import { ProviderMark, VendorMark } from "@/components/brand";
 import { Badge } from "@/components/ui/badge";
@@ -227,12 +227,12 @@ export function OverviewPage({
         }
         flush
       >
-        <DataTable
+        <PagedTable
           columns={buildLatestColumns(money)}
           rows={omp.recent}
           rowKey={(row) => `${row.sessionFile}:${row.entryId}`}
           onRowClick={onOpenRequest}
-          limit={12}
+          perPage={12}
           ariaLabel="Latest requests"
         />
       </Card>

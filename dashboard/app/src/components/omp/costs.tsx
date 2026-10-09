@@ -6,7 +6,7 @@ import {
   Card,
   CellBar,
   Chart,
-  DataTable,
+  PagedTable,
   Legend,
   Page,
   PageHeader,
@@ -343,12 +343,12 @@ export function CostsPage({ omp, money }: { omp: OmpStats; money: (v: number) =>
       </Card>
 
       <Card index={3} title="By model" description="Estimate per model with its token and cache split" flush>
-        <DataTable
+        <PagedTable
           columns={columns}
           rows={view.rows}
           rowKey={(row) => `${row.key}\u0000${row.provider}`}
           initialSort={{ key: "cost", dir: "desc" }}
-          limit={20}
+          perPage={20}
           empty={<p className="p-4 text-xs text-dim">No usage in this range.</p>}
           ariaLabel="Costs by model"
         />

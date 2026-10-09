@@ -1,3 +1,10 @@
+## v2.26.1
+ - Removes the Gain page and its reader: `~/.omp/snapcompact-savings.jsonl` was never written on this host, so the page had no records to show. The same applies to the Frustration page, which needed `user_messages` and `frustration_verdicts`, also absent. Both views, their query groups, their fixture helpers, and their tests are gone.
+ - Pages the long tables instead of clipping them: the request log, failures, models, projects, tools, and sessions render one page at a time from `PagedTable`, with the row count, a rows-per-page picker, and shadcn-style page buttons in the footer.
+ - Gives every stat strip the usage page's shape: one solid card with a rule between cells, a glyph per figure, and a share hint under each value, replacing the translucent tiles.
+ - Draws every one-of-many picker with the shadcn tabs the usage page's Activity card uses, instead of the toggle-group segmented control.
+ - Gives the omp pages their own band of count, per-page, and page controls: `PagedTable` in `dashboard/app/src/components/charts/table.tsx` now owns slicing, page reset on page-size change, and a footer, so callers pass `perPage` instead of `limit`.
+
 ## v2.26.0
  - Rebuilds the dashboard as a replica of the upstream `@oh-my-pi/omp-stats` dashboard: one page per view at the same hash routes (`#/models?range=7d`), each with the reference's blocks, tables, and charts. Pages: Overview, Models, Providers, Costs, Requests, Errors, Traces, Tools, Frustration, Projects, and Gain.
  - Adds `extensions/shared/omp-stats.ts`: one read-only aggregate over `~/.omp/stats.db`, `~/.omp/agent/agent.db`, and `~/.omp/snapcompact-savings.jsonl`, matching the reference metric for metric. Each rule is pinned by `test/usage/omp-stats.test.ts`.
