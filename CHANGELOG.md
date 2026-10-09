@@ -1,7 +1,7 @@
 ## v2.26.2
  - Drops the card-block eyebrow numbers, so a page reads as a flat list of titled blocks instead of a numbered sequence.
  - Removes the Premium requests figure from the Overview, and stops reading `premium_requests` from the omp databases: no page rendered it.
- - Puts every stat strip in one solid card with a rule between cells. The Overview now carries three bands: the five headline figures, the four token buckets, and the three latency and throughput figures.
+ - Puts every stat strip in one solid card with a rule between cells. The Overview carries two bands: the five headline figures, then the four token buckets and the three latency and throughput figures in one row.
  - Replaces the last native `<select>` on the Providers page with the shadcn select.
  - Fixes four chart faults. A stacked series now reads zero in a bucket it has no data for, because a null made recharts reset the stack and split every band into disjoint shapes. A stacked chart therefore fills a continuous shape, and only a lone series keeps its nulls. The tooltip title comes from the hovered row's own category instead of the tick text, which read `Invalid Date`, and the tooltip values use the page's formatter, so a share reads `98%` rather than `0.9812`. The Costs view now asks the server for `modelSeries`, so its first chart paints instead of showing an empty frame.
 
