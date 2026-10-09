@@ -23,6 +23,8 @@ import { CAVEMAN_DEFAULTS, PONYTAIL_DEFAULTS } from './common.ts';
 import type { ComboLevel } from '../extensions/shared/types.ts';
 import { PACKAGE_NAME } from './common.ts';
 import { findPackageRoot, resolveRtkBinary } from '../extensions/lib/utils.ts';
+import { agentDbPath, isOmpView, isRangeKey, readOmpStats, readSessionTrace, statsDbPath } from '../extensions/shared/omp-stats.ts';
+import type { OmpStats, OmpView, RangeKey } from '../extensions/shared/omp-stats.ts';
 
 export interface DashboardOptions {
   port: number;
@@ -61,6 +63,54 @@ async function brandDataUri(): Promise<string> {
 
 function dataJson(): string {
   return JSON.stringify(summarizeUsage(readUsage()));
+}
+
+/** The range a page opens on, matching the reference dashboard. */
+const DEFAULT_OMP_RANGE: RangeKey = '24h';
+
+/** The omp aggregate spawns a sqlite3 process per query group, so a repeat poll reuses it. */
+const OMP_REFRESH_MS = 5000;
+
+let ompMemo: { range: RangeKey; view: OmpView; stamp: string; at: number; value: OmpStats } | null = null;
+
+function fileStamp(file: string): string {
+  try {
+    const stat = statSync(file);
+    return `${stat.mtimeMs}:${stat.size}`;
+  } catch {
+    return '-';
+  }
+}
+
+/** Reads the omp databases, unless the same window and view were read recently and nothing moved. */
+function ompStats(range: RangeKey, view: OmpView = 'all'): OmpStats {
+  const stamp = `${fileStamp(statsDbPath())}|${fileStamp(agentDbPath())}`;
+  const held = ompMemo;
+  if (held && held.range === range && held.view === view && held.stamp === stamp && Date.now() - held.at < OMP_REFRESH_MS) {
+    return held.value;
+  }
+  const value = readOmpStats(range, view);
+  ompMemo = { range, view, stamp, at: Date.now(), value };
+  return value;
+}
+
+/** `?range=` on any of the omp routes; an unknown value falls back to the default. */
+function queryParam(url: string, name: string): string | null {
+  return (url.split('?')[1] ?? '').split('&').find((part) => part.startsWith(`${name}=`))?.slice(name.length + 1) ?? null;
+}
+
+function rangeFrom(url: string): RangeKey {
+  const raw = queryParam(url, 'range');
+  return isRangeKey(raw) ? raw : DEFAULT_OMP_RANGE;
+}
+
+function viewFrom(url: string): OmpView {
+  const raw = queryParam(url, 'view');
+  return isOmpView(raw) ? raw : 'all';
+}
+
+function ompJson(range: RangeKey, view: OmpView): string {
+  return JSON.stringify({ range, view, omp: ompStats(range, view) });
 }
 
 // Runs outside any agent session, so it reports the persisted defaults.
@@ -478,7 +528,7 @@ async function exportDashboard(exportFile: string): Promise<void> {
   requireDashboardBundle();
   const [bundle, icon] = await Promise.all([readSegment(DASHBOARD_INDEX), brandDataUri()]);
   const inline = bundle
-    .replace('window.__TERSIO_SNAP = null;', () => `window.__TERSIO_SNAP = ${escapeInline(JSON.stringify({ data: parseOwnJson(dataJson(), 'usage data'), health: parseOwnJson(healthJson(), 'health'), doctor: getDoctorReport(false) }))};`)
+    .replace('window.__TERSIO_SNAP = null;', () => `window.__TERSIO_SNAP = ${escapeInline(JSON.stringify({ data: parseOwnJson(dataJson(), 'usage data'), omp: ompStats(DEFAULT_OMP_RANGE), health: parseOwnJson(healthJson(), 'health'), doctor: getDoctorReport(false) }))};`)
     .replace(/href="brand\.webp"/g, () => `href="${icon}"`)
     .replace(/src="brand\.webp"/g, () => `src="${icon}"`)
     .replace('fetch("brand.webp")', () => `Promise.resolve({ ok: true, blob: async () => new Blob([atob("${icon.split(',')[1]}")], { type: "image/webp" }) })`);
@@ -579,6 +629,18 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
     if (req.url === '/data.json') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(dataJson());
+      return;
+    }
+    if (req.url === '/api/omp' || req.url?.startsWith('/api/omp?')) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(ompJson(rangeFrom(req.url), viewFrom(req.url)));
+      return;
+    }
+    if (req.url?.startsWith('/api/omp/session')) {
+      const file = decodeURIComponent(queryParam(req.url, 'file') ?? '');
+      const body = file ? readSessionTrace(file) : { sessionFile: '', project: '', entries: [], truncated: false };
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(body));
       return;
     }
     if (req.url?.startsWith('/export')) {
