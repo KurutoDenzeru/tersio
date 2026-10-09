@@ -2,7 +2,7 @@
 // Lives here rather than in the ledger because pricing needs it and the ledger imports pricing.
 
 /** Model ids that name the agent, not the provider, when a further segment follows. */
-const AGENT_NAMESPACES = new Set(['opencode', 'codex']);
+export const AGENT_NAMESPACES = new Set(['opencode', 'codex']);
 
 /**
  * `omp` writes "apmixai/deepseek-v4-flash-free" with no provider field, so the leading segment is the

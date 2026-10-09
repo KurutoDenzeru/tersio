@@ -118,7 +118,7 @@ export function durOf(v: unknown): number | undefined {
 
 // One rule for where a model id keeps its provider; see ./model-id.ts. Imported for local use and
 // re-exported for callers that already reach through this module.
-import { providerOf } from './model-id.ts';
+import { providerOf, AGENT_NAMESPACES } from './model-id.ts';
 
 export { providerOf };
 
@@ -601,7 +601,17 @@ function modelVendor(model: string): string {
   return 'Other';
 }
 
-// Gateway variants of one model share a row under the display label.
+// A label must not hide which gateway served the call. Two ids that reach the same model
+// through different gateways ("cline/cline-free/x" and "opencode-zen/x") collapse into one row
+// under the label alone, so the serving segment stays in the fold key and the row stays honest.
+function servingSegmentOf(model: string): string | undefined {
+  const segs = model.split('/').filter(Boolean);
+  return segs.length > 1 ? segs[segs.length - 2] : undefined;
+}
+
+// Gateway variants of one model share a row under the display label. Two gateways serving the
+// same model do not: the fold key is the label plus the serving gateway, so a model reachable
+// through more than one gateway keeps a row per gateway and no cost lands on the wrong one.
 export function foldModelsByLabel(
   byModel: Record<string, TokenBreakdown>,
   byModelMessages: Record<string, number>,
@@ -610,13 +620,18 @@ export function foldModelsByLabel(
   const messages: Record<string, number> = {};
   for (const [model, t] of Object.entries(byModel)) {
     const label = displayModelId(model);
-    folded[label] ??= { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
-    const into = folded[label];
+    // The serving segment always names who answered, so it always stays in the key:
+    // "opencode/openai/x" and "opencode/github-copilot/x" are two different billers for x even
+    // when one of them also looks like x's vendor.
+    const segment = servingSegmentOf(model);
+    const key = segment === undefined ? label : `${label} · ${segment}`;
+    folded[key] ??= { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+    const into = folded[key];
     into.input += t.input;
     into.output += t.output;
     into.cacheRead += t.cacheRead;
     into.cacheWrite += t.cacheWrite;
-    messages[label] = (messages[label] ?? 0) + (byModelMessages[model] ?? 0);
+    messages[key] = (messages[key] ?? 0) + (byModelMessages[model] ?? 0);
   }
   return { byModel: folded, byModelMessages: messages };
 }
@@ -637,16 +652,26 @@ export function displayModelId(model: string): string {
   };
   const seg = (s: string): string => s.split('.').map(cap).join('.');
   const words = (s: string): string => s.split(/[-_:]+/).filter(Boolean).map(seg).join('-');
-  const segs = bare.split('/').filter(Boolean);
-  const tail = segs[segs.length - 1] ?? bare;
+  // Vendor and gateway segments sit outside the model name, so neither may name the model.
+  // "opencode/github-copilot/grok-code-fast-1" is xAI's model on copilot's gateway, and
+  // "opencode/cline/mimo-v2.6-flash" is Xiaomi's: test only the tail for the family.
+  const raw = bare.split('/').filter(Boolean);
+  const tail = raw[raw.length - 1] ?? bare;
   // One free model under two spellings; fold the alpha variant onto it.
   const pretty = /^space-bunny(-alpha)?$/i.test(tail) ? 'Space-Bunny' : words(tail);
-  const vendor = modelVendor(bare);
-  if (vendor === 'Other') return segs.length > 1 ? `${words(segs[segs.length - 2])} - ${pretty}` : pretty;
+  const family = modelVendor(tail);
+  // The segment before the tail. With an agent namespace it is the provider ("opencode/cline/..."
+  // -> cline); without one it is the serving gateway ("opencode-zen/step-5-preview" -> the vendor).
+  const wrap = raw.length > 1 ? raw[raw.length - 2] : undefined;
+  if (family === 'Other') {
+    // No family in the name. The segment before the tail is a gateway, not a vendor, so the
+    // gateway name would become the label: "Opencode-Zen - Step-5-Preview". Name the model.
+    return wrap ? `${words(wrap)} - ${pretty}` : pretty;
+  }
   const claude = pretty.match(/^claude[-_](.+)$/i);
-  if (vendor === 'Anthropic' && claude) return `Anthropic - Claude - ${claude[1]}`;
-  if (pretty.toLowerCase().startsWith(vendor.toLowerCase())) return pretty;
-  return `${vendor} - ${pretty}`;
+  if (family === 'Anthropic' && claude) return `Anthropic - Claude - ${claude[1]}`;
+  if (pretty.toLowerCase().startsWith(family.toLowerCase())) return pretty;
+  return `${family} - ${pretty}`;
 }
 
 export function importSessionTokens(): SessionTokens {

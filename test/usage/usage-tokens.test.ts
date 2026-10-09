@@ -168,17 +168,33 @@ test("gateway variants of one model fold into a single labeled row", () => {
       "opencode/openai/gpt-5.2-codex": { input: 100, output: 10, cacheRead: 1000, cacheWrite: 0 },
       "opencode/github-copilot/gpt-5.2-codex": { input: 50, output: 5, cacheRead: 500, cacheWrite: 0 },
       "meta/muse-spark-1.3-contributor": { input: 7, output: 1, cacheRead: 0, cacheWrite: 0 },
+      "opencode/cline/mimo-v2.6-flash": { input: 3, output: 1, cacheRead: 30, cacheWrite: 0 },
+      "opencode/openai/mimo-v2.6-flash": { input: 9, output: 2, cacheRead: 90, cacheWrite: 0 },
     },
     {
-      "opencode/openai/gpt-5.2-codex": 4,
+      "opencode/openai/gpt-5.2-codex": 9,
       "opencode/github-copilot/gpt-5.2-codex": 2,
       "meta/muse-spark-1.3-contributor": 1,
+      "opencode/cline/mimo-v2.6-flash": 2,
+      "opencode/openai/mimo-v2.6-flash": 3,
     },
   );
-  expect(Object.keys(folded.byModel).sort()).toEqual(["Meta - Muse-Spark-1.3-Contributor", "OpenAI - GPT-5.2-Codex"]);
-  expect(folded.byModel["OpenAI - GPT-5.2-Codex"]).toEqual({ input: 150, output: 15, cacheRead: 1500, cacheWrite: 0 });
-  expect(folded.byModelMessages["OpenAI - GPT-5.2-Codex"]).toBe(6);
-  expect(folded.byModelMessages["Meta - Muse-Spark-1.3-Contributor"]).toBe(1);
+  const keys = Object.keys(folded.byModel).sort();
+  expect(keys).toEqual([
+    "Meta - Muse-Spark-1.3-Contributor · meta",
+    "OpenAI - GPT-5.2-Codex · github-copilot",
+    "OpenAI - GPT-5.2-Codex · openai",
+    "Xiaomi - Mimo-V2.6-Flash · cline",
+    "Xiaomi - Mimo-V2.6-Flash · openai",
+  ]);
+  expect(folded.byModel["OpenAI - GPT-5.2-Codex · openai"]).toEqual({ input: 100, output: 10, cacheRead: 1000, cacheWrite: 0 });
+  expect(folded.byModelMessages["OpenAI - GPT-5.2-Codex · openai"]).toBe(9);
+  expect(folded.byModel["OpenAI - GPT-5.2-Codex · github-copilot"]).toEqual({ input: 50, output: 5, cacheRead: 500, cacheWrite: 0 });
+  expect(folded.byModelMessages["OpenAI - GPT-5.2-Codex · github-copilot"]).toBe(2);
+  expect(folded.byModel["Xiaomi - Mimo-V2.6-Flash · cline"]).toEqual({ input: 3, output: 1, cacheRead: 30, cacheWrite: 0 });
+  expect(folded.byModel["Xiaomi - Mimo-V2.6-Flash · openai"]).toEqual({ input: 9, output: 2, cacheRead: 90, cacheWrite: 0 });
+  expect(folded.byModelMessages["Xiaomi - Mimo-V2.6-Flash · openai"]).toBe(3);
+  expect(folded.byModelMessages["Meta - Muse-Spark-1.3-Contributor · meta"]).toBe(1);
 });
 
 test("free suffix and case variants fold into one model row", () => {
