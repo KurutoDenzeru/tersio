@@ -1,9 +1,11 @@
 // The page kit: header, card chrome, stat tiles, meters. One look for all eleven pages.
 import { cn } from "cn";
+import type { ReactNode } from "react";
 import { Card as CardShell, CardContent } from "@/components/ui/card";
 import { Progress, ProgressIndicator, ProgressTrack } from "@/components/ui/progress";
 import { HoverTip } from "@/components/common";
 import { Sparkline } from "./series";
+import { Icon } from "@/components/icon";
 
 /** The page title block. Every routed page opens with one. */
 export function PageHeader({
@@ -85,6 +87,7 @@ export function Stat({
   tone,
   size = "md",
   className,
+  icon,
 }: {
   label: string;
   title?: string;
@@ -94,10 +97,15 @@ export function Stat({
   tone?: "good" | "warn" | "bad";
   size?: "md" | "sm";
   className?: string;
+  /** Leading glyph, matching the token strip on the usage page. */
+  icon?: string;
 }) {
   const body = (
-    <div className={cn("min-w-0 rounded-xl border border-line bg-track/40 px-3 py-2.5", size === "sm" && "py-2", className)}>
-      <p className="mono truncate text-[11px] uppercase tracking-[0.12em] text-dim">{label}</p>
+    <div className={cn("min-w-0 px-4 py-3", size === "sm" && "py-2.5", className)}>
+      <p className="mono flex min-w-0 items-center gap-2 text-[11px] uppercase tracking-[0.12em] text-dim">
+        {icon && <Icon name={icon} className="size-3.5 shrink-0" />}
+        <span className="truncate">{label}</span>
+      </p>
       <p
         className={cn(
           "mono truncate font-bold tabular-nums",
@@ -136,6 +144,29 @@ export function StatGrid({
     5: "grid-cols-2 sm:grid-cols-3 lg:grid-cols-5",
     6: "grid-cols-2 sm:grid-cols-3 lg:grid-cols-6",
   };
+  // One solid band with a rule between cells, the strip the usage page uses: no translucent tiles.
+  const list = (Array.isArray(children) ? children : [children]).filter((c): c is ReactNode => Boolean(c));
+  const fits = list.length <= cols;
+  if (fits) {
+    return (
+      <div
+        data-reveal
+        className={cn(
+          "translate-y-[18px] grid overflow-hidden rounded-xl border border-line bg-panel opacity-0 transition-[opacity,transform] duration-500 ease-[cubic-bezier(.16,1,.3,1)] data-[reveal=in]:translate-y-0 data-[reveal=in]:opacity-100",
+          sizes[cols],
+          "[&>*+*]:border-line [&>*+*]:border-t",
+          cols > 2 && "sm:[&>*+*]:border-t-0 sm:[&>*+*]:border-l",
+          className,
+        )}
+      >
+        {list.map((cell, i) => (
+          <div key={i} className={cn("min-w-0", i > 0 && "border-line ")}>
+            {cell}
+          </div>
+        ))}
+      </div>
+    );
+  }
   return <div className={cn("grid gap-2.5", sizes[cols], className)}>{children}</div>;
 }
 

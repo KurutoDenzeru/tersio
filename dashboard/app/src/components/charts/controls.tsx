@@ -1,12 +1,12 @@
 // Controls shared by every omp page: the segmented picker, search, and the loading shell.
 import { cn } from "cn";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/common";
 import { Icon } from "@/components/icon";
 
-/** One choice out of a few. The house toggle group, never a second control. */
+/** One choice out of a few, drawn with the shadcn tabs the usage page's Activity card uses. */
 export function Segmented<T extends string>({
   value,
   options,
@@ -21,26 +21,20 @@ export function Segmented<T extends string>({
   className?: string;
 }) {
   return (
-    <ToggleGroup
-      aria-label={label}
-      className={className}
-      value={[value]}
-      onValueChange={(next) => {
-        const picked = next[next.length - 1];
-        if (picked && picked !== value) onChange(picked as T);
-      }}
-    >
-      {options.map((o) => (
-        <ToggleGroupItem
-          key={o.value}
-          value={o.value}
-          title={o.title}
-          className="h-auto cursor-pointer rounded-lg px-2.5 py-1 text-xs text-dim transition-[background,color] duration-200 hover:text-ink data-[state=on]:bg-accent-soft data-[state=on]:text-ink"
-        >
-          {o.label}
-        </ToggleGroupItem>
-      ))}
-    </ToggleGroup>
+    <Tabs value={value} onValueChange={(next) => { if (next !== value) onChange(next as T); }} aria-label={label} className={cn("w-fit", className)}>
+      <TabsList className="h-auto rounded-[10px] border border-line bg-panel p-1">
+        {options.map((option) => (
+          <TabsTrigger
+            key={option.value}
+            value={option.value}
+            title={option.title}
+            className="h-auto cursor-pointer px-3 py-1.5 text-xs tracking-normal text-dim data-[state=active]:font-bold"
+          >
+            {option.label}
+          </TabsTrigger>
+        ))}
+      </TabsList>
+    </Tabs>
   );
 }
 

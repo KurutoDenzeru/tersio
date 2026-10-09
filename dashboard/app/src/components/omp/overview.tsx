@@ -140,14 +140,14 @@ export function OverviewPage({
       </StatGrid>
 
       <StatGrid cols={4}>
-        <Stat size="sm" label="Uncached input" value={fmtShort(o.input)} />
-        <Stat size="sm" label="Cache read" value={fmtShort(o.cacheRead)} />
-        <Stat size="sm" label="Cache write" value={fmtShort(o.cacheWrite)} />
-        <Stat size="sm" label="Output" value={fmtShort(o.output)} />
-        <Stat size="sm" label="Premium requests" value={fmt(Math.round(o.premiumRequests * 100) / 100)} />
-        <Stat size="sm" label="Tokens/s" value={o.avgTokensPerSecond > 0 ? `${o.avgTokensPerSecond.toFixed(1)} tok/s` : "–"} />
-        <Stat size="sm" label="Avg latency" value={fmtMs(o.avgDurationMs)} />
-        <Stat size="sm" label="Avg TTFT" value={fmtMs(o.avgTtftMs)} />
+        <Stat size="sm" icon="arrow-down-to-line" label="Uncached input" value={fmtShort(o.input)} hint={o.total > 0 ? pct(o.input / o.total) : "0%"} />
+        <Stat size="sm" icon="hard-drive-download" label="Cache read" value={fmtShort(o.cacheRead)} hint={o.total > 0 ? pct(o.cacheRead / o.total) : "0%"} />
+        <Stat size="sm" icon="hard-drive-upload" label="Cache write" value={fmtShort(o.cacheWrite)} hint={o.total > 0 ? pct(o.cacheWrite / o.total) : "0%"} />
+        <Stat size="sm" icon="arrow-up-from-line" label="Output" value={fmtShort(o.output)} hint={o.total > 0 ? pct(o.output / o.total) : "0%"} />
+        <Stat size="sm" icon="clock" label="Avg latency" value={fmtMs(o.avgDurationMs)} hint="wall clock per request" />
+        <Stat size="sm" icon="timer" label="Avg TTFT" value={fmtMs(o.avgTtftMs)} hint="time to first token" />
+        <Stat size="sm" icon="zap" label="Tokens/s" value={o.avgTokensPerSecond > 0 ? `${o.avgTokensPerSecond.toFixed(1)} tok/s` : "–"} hint="output tokens per second" />
+        <Stat size="sm" icon="star" label="Premium requests" value={fmt(Math.round(o.premiumRequests * 100) / 100)} />
       </StatGrid>
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
