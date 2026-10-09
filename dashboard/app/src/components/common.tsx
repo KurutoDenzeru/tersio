@@ -125,6 +125,38 @@ export function PerPage({
   );
 }
 
+/** One choice from a list, drawn with the shadcn select. Never a native `<select>`. */
+export function Picker({
+  options,
+  value,
+  onPick,
+  label,
+  className,
+}: {
+  options: ReadonlyArray<{ value: string; label: string }>;
+  value: string;
+  onPick: (value: string) => void;
+  label: string;
+  className?: string;
+}) {
+  return (
+    <Select value={value} onValueChange={(next) => { if (next !== value) onPick(next as string); }}>
+      <SelectTrigger size="sm" aria-label={label} className={cn("text-xs", className)}>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectGroup>
+          {options.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectGroup>
+      </SelectContent>
+    </Select>
+  );
+}
+
 // One horizontal share bar for table cells, drawn with the shadcn chart primitives.
 export function ShareBar({ value, label }: { value: number; label?: string }) {
   const v = Math.max(0, Math.min(100, value));

@@ -115,7 +115,6 @@ export interface OmpOverall extends OmpTokenMix {
   cacheSavings: number;
   costUsd: number;
   unpricedRequests: number;
-  premiumRequests: number;
   avgDurationMs: number;
   avgTtftMs: number;
   avgTokensPerSecond: number;

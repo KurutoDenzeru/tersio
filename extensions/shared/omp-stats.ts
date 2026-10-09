@@ -37,7 +37,8 @@ const VIEW_PARTS: Record<OmpView, readonly string[]> = {
     'seriesByProvider', 'modelSeries'],
   models: ['overall', 'byModel', 'modelSeries', 'series'],
   providers: ['overall', 'byProvider', 'series', 'seriesByProvider', 'providerHourly', 'windows'],
-  costs: ['overall', 'byModel', 'series'],
+  // `modelSeries` feeds the per-model stack, so the page's first paint is not an empty chart.
+  costs: ['overall', 'byModel', 'series', 'modelSeries'],
   requests: ['recent'],
   errors: ['errors', 'overall', 'byModel', 'recent'],
   traces: ['traces'],
@@ -100,7 +101,6 @@ export interface OmpOverall extends OmpTokenMix {
   cacheSavings: number;
   costUsd: number;
   unpricedRequests: number;
-  premiumRequests: number;
   avgDurationMs: number;
   avgTtftMs: number;
   avgTokensPerSecond: number;
@@ -340,7 +340,7 @@ export function emptyOmpStats(range: RangeKey = '24h'): OmpStats {
     generatedAt: Date.now(),
     overall: {
       requests: 0, failed: 0, successful: 0, errorRate: 0, cacheRate: 0, cacheSavings: 0,
-      costUsd: 0, unpricedRequests: 0, premiumRequests: 0,
+      costUsd: 0, unpricedRequests: 0,
       avgDurationMs: 0, avgTtftMs: 0, avgTokensPerSecond: 0,
       input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0,
       firstTs: null, lastTs: null,
@@ -481,7 +481,6 @@ function messageFacts(p = ''): string {
     `SUM(${p}cache_read_tokens)`,
     `SUM(${p}cache_write_tokens)`,
     `SUM(${p}total_tokens)`,
-    `TOTAL(${p}premium_requests)`,
     `TOTAL(${p}cost_total)`,
     `SUM(${unpricedSql(p)})`,
     `TOTAL(${p}duration)`,
@@ -501,7 +500,6 @@ function messageFacts(p = ''): string {
 /** The zero and null literals an older omp schema needs in place of a named column. */
 const SHIMS: ReadonlyArray<readonly [string, string]> = [
   ['stop_reason', "''"],
-  ['premium_requests', '0'],
   ['cost_no_cache_input', '0'],
   ['cost_input', '0'],
   ['cost_cache_read', '0'],
@@ -525,7 +523,7 @@ function withShims(sql: string, cols: Set<string>): string {
 interface Facts {
   requests: number; failed: number;
   input: number; output: number; cacheRead: number; cacheWrite: number; total: number;
-  premium: number; costUsd: number; unpriced: number;
+  costUsd: number; unpriced: number;
   durationSum: number; durationN: number; ttftSum: number; ttftN: number;
   tpsSum: number; tpsN: number; noCacheCost: number; cachedCost: number;
   firstTs: number | null; lastTs: number | null;
@@ -536,10 +534,10 @@ function parseFacts(row: string[] | undefined, at: number): Facts {
   return {
     requests: g(0), failed: g(1),
     input: g(2), output: g(3), cacheRead: g(4), cacheWrite: g(5), total: g(6),
-    premium: g(7), costUsd: g(8), unpriced: g(9),
-    durationSum: g(10), durationN: g(11), ttftSum: g(12), ttftN: g(13),
-    tpsSum: g(14), tpsN: g(15), noCacheCost: g(16), cachedCost: g(17),
-    firstTs: numOrNull(row?.[at + 18]), lastTs: numOrNull(row?.[at + 19]),
+    costUsd: g(7), unpriced: g(8),
+    durationSum: g(9), durationN: g(10), ttftSum: g(11), ttftN: g(12),
+    tpsSum: g(13), tpsN: g(14), noCacheCost: g(15), cachedCost: g(16),
+    firstTs: numOrNull(row?.[at + 17]), lastTs: numOrNull(row?.[at + 18]),
   };
 }
 
@@ -561,7 +559,6 @@ function overallOf(f: Facts): OmpOverall {
     cacheSavings: cacheSavingsOf(f),
     costUsd: f.costUsd,
     unpricedRequests: f.unpriced,
-    premiumRequests: f.premium,
     avgDurationMs: f.durationN > 0 ? f.durationSum / f.durationN : 0,
     avgTtftMs: f.ttftN > 0 ? f.ttftSum / f.ttftN : 0,
     avgTokensPerSecond: f.tpsN > 0 ? f.tpsSum / f.tpsN : 0,
