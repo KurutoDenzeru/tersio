@@ -191,9 +191,29 @@ export function isFileExport(): boolean {
   return typeof window !== "undefined" && window.location.protocol === "file:";
 }
 
-async function getJSON<T>(path: string): Promise<T> {
-  const res = await fetch(path);
+/** Last ETag per endpoint path, replayed as `If-None-Match` on the next request. */
+const etags = new Map<string, string>();
+
+/** Set when a request answered 304, so the caller can skip the re-render without throwing. */
+const UNCHANGED = Symbol("unchanged");
+
+/**
+ * `fetch` that replays the ETag the server last sent, so a poll with no new usage events comes
+ * back 304 and costs no transfer. Without this the 5s poll re-downloads the whole report.
+ */
+async function getJSON<T>(path: string): Promise<T | typeof UNCHANGED> {
+  const tag = etags.get(path);
+  const res = await fetch(path, { headers: tag ? { 'If-None-Match': tag } : undefined });
+  if (res.status === 304) return UNCHANGED;
+  const etag = res.headers.get('ETag');
+  if (etag) etags.set(path, etag);
   return (await res.json()) as T;
+}
+
+/** `getJSON` with the unchanged marker folded away, for callers that have nothing to update. */
+async function getJSONFresh<T>(path: string): Promise<T | null> {
+  const body = await getJSON<T>(path);
+  return body === UNCHANGED ? null : body;
 }
 
 /** Error body the dashboard server returns with a 4xx or 5xx. */
@@ -252,16 +272,18 @@ export function useDashboardData(): { data: UsageReport | null; loading: boolean
   });
   const [status, setStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState(() => !isFileExport() && !snap()?.data);
-  const lastJson = useRef<string>(data ? JSON.stringify(data) : "");
+  // Holds the last payload's change stamp, not the payload itself: see load() below.
+  const lastStamp = useRef<string>(data ? JSON.stringify(data) : "");
   const lastStatus = useRef<string>("");
 
   // Rides the poll below rather than opening a second interval.
   const loadStatus = useCallback(async () => {
     try {
-      const s = (await getJSON<{ status: string }>("status")).status;
-      if (typeof s !== "string" || s === lastStatus.current) return;
-      lastStatus.current = s;
-      setStatus(s);
+      const s = await getJSON<{ status: string }>("status");
+      if (s === UNCHANGED) return;
+      if (typeof s.status !== "string" || s.status === lastStatus.current) return;
+      lastStatus.current = s.status;
+      setStatus(s.status);
     } catch {
       // A server without /status just leaves the banner hidden.
     }
@@ -271,14 +293,15 @@ export function useDashboardData(): { data: UsageReport | null; loading: boolean
     void loadStatus();
     try {
       const raw = await getJSON<UsageReport>("data.json");
-      const d = normalizeReport(raw);
-      const json = JSON.stringify(raw);
-      if (json === lastJson.current) return;
-      lastJson.current = json;
-      setData(d);
+      if (raw === UNCHANGED) return;
+      // A 304 leaves the ETag path empty; nothing changed, so skip the re-render entirely.
+      const stamp = `${raw.messages}|${raw.costMeasured}|${raw.recent?.length ?? 0}`;
+      if (stamp === lastStamp.current) return;
+      lastStamp.current = stamp;
+      setData(normalizeReport(raw));
       setLoading(false);
     } catch {
-      // Served mode only has the endpoint; file:// exports use the snapshot.
+      // The endpoint is served-mode only; file:// exports use the snapshot.
     } finally {
       setLoading(false);
     }
@@ -390,7 +413,7 @@ export async function fetchHealth(): Promise<HealthReport | null> {
   const s = snap()?.health;
   if (isFileExport()) return s ?? null;
   try {
-    return await getJSON<HealthReport>("health");
+    return (await getJSONFresh<HealthReport>("health")) ?? s ?? null;
   } catch {
     return s ?? null;
   }
@@ -400,7 +423,7 @@ export async function fetchDoctor(fresh: boolean): Promise<DoctorReport | null> 
   const s = snap()?.doctor;
   if (isFileExport()) return s ?? null;
   try {
-    return await getJSON<DoctorReport>(fresh ? "doctor?fresh=1" : "doctor");
+    return (await getJSONFresh<DoctorReport>(fresh ? "doctor?fresh=1" : "doctor")) ?? s ?? null;
   } catch {
     return s ?? null;
   }
