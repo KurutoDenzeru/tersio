@@ -4,6 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { promises as fs } from 'node:fs';
 import http from 'node:http';
+import { gzipSync } from 'node:zlib';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { clearUsageLedger, markReset, readUsage, sessionsDirs, usdCost, walkJsonl } from '../extensions/shared/usage-ledger.ts';
@@ -63,6 +64,17 @@ async function brandDataUri(): Promise<string> {
 
 function dataJson(): string {
   return JSON.stringify(summarizeUsage(readUsage()));
+}
+
+/**
+ * Stamp for the 304 path. The client polls every 5s; without this it pays a full transfer on
+ * each poll even when no usage event happened since the last one. Built from the raw rows so it
+ * costs no second serialisation of the report.
+ */
+function dataJsonStamp(): string {
+  const rows = readUsage();
+  const last = rows.length > 0 ? rows[rows.length - 1] : undefined;
+  return `${rows.length}-${last?.ts ?? 0}`;
 }
 
 // --- Session list and traces ----------------------------------------------- Server-side pricing so the parser module stays free of the catalog.
@@ -729,8 +741,22 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
       return;
     }
     if (req.url === '/data.json') {
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(dataJson());
+      const stamp = dataJsonStamp();
+      // The client echoes the stamp it holds, so an unchanged report costs a 304, not 135 KB.
+      if (req.headers['if-none-match'] === `"${stamp}"`) {
+        res.writeHead(304, { ETag: `"${stamp}"` });
+        res.end();
+        return;
+      }
+      const body = dataJson();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json', ETag: `"${stamp}"` };
+      if ((req.headers['accept-encoding'] ?? '').includes('gzip')) {
+        res.writeHead(200, { ...headers, 'Content-Encoding': 'gzip' });
+        res.end(gzipSync(Buffer.from(body, 'utf8'), { level: 6 }));
+      } else {
+        res.writeHead(200, headers);
+        res.end(body);
+      }
       return;
     }
     if (req.url?.startsWith('/export')) {
