@@ -195,7 +195,7 @@ export function PagedTable<T>({
   const { pages, page: current, range } = usePager(rows.length, per, page);
   const short = rows.length <= per;
   const footer = (
-    <div className="mono flex items-center gap-3 border-t border-line px-3.5 py-2 text-[11px] text-dim">
+    <div className="mono flex items-center gap-3 border-t border-line px-3.5 py-1.5 text-[11px] text-dim">
       <span>{range}</span>
       <PerPage options={perPageOptions} value={per} onPick={(n) => { setPer(n); setPage(1); }} label="Rows per page" />
       <PageButtons pages={pages} page={current} onPick={setPage} label={ariaLabel ?? "Table pages"} />

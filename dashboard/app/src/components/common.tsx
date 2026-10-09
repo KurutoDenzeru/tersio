@@ -109,7 +109,7 @@ export function PerPage({
         if (n !== value) onPick(n);
       }}
     >
-      <SelectTrigger size="sm" aria-label={label}>
+      <SelectTrigger size="sm" aria-label={label} className="h-[26px]!">
         <SelectValue />
       </SelectTrigger>
       <SelectContent>

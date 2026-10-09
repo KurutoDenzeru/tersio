@@ -54,13 +54,15 @@ export function Card({
       data-reveal
       className={cn(
         "translate-y-[18px] gap-0 overflow-hidden border-line bg-panel opacity-0 transition-[opacity,transform] duration-500 ease-[cubic-bezier(.16,1,.3,1)] data-[reveal=in]:translate-y-0 data-[reveal=in]:opacity-100 dark:[color-scheme:dark]",
+        // A flush card spans its content edge to edge, so the shell's own padding is dead space.
+        flush && "py-0",
         className,
       )}
     >
-      <div className="flex flex-wrap items-start gap-x-3 gap-y-1 border-b border-line px-3.5 py-2.5">
+      <div className="flex flex-wrap items-start gap-x-3 gap-y-1 border-b border-line px-3.5 pt-3 pb-2">
         <div className="min-w-0 flex-1">
-          <h2 className="font-display truncate text-sm font-bold tracking-tight">{title}</h2>
-          {description && <p className="mono mt-0.5 text-[11px] leading-relaxed text-dim">{description}</p>}
+          <h2 className="font-display truncate text-sm leading-tight font-bold tracking-tight">{title}</h2>
+          {description && <p className="mono mt-px text-[11px] leading-snug text-dim">{description}</p>}
         </div>
         {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
       </div>

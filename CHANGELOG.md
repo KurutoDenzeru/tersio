@@ -1,3 +1,8 @@
+## v2.26.5
+ - Trims the card chrome across every page. A card header is now 12px over 8px instead of a flat 10px, the description sits on a tighter line, and a flush card drops the shell's own bottom padding so a table reaches the card's edge. A pager footer drops to 40px, and its rows-per-page trigger matches the page buttons at 26px.
+ - Reworks the Models table: the brand mark sits beside the model name, the provider moves to its own dim line under it, the requests cell carries a share bar, the error rate reads as a chip, and the per-second and first-token figures follow the header unit.
+ - Adds a table size to the vendor and provider marks, so a mark in a dense row is 18px instead of 32px and stops inflating the row.
+
 ## v2.26.4
  - Expands a model row in the Models table instead of opening a drawer. The panel carries the reference's facts, grouped the same way: Efficiency (error rate with its failed count, cache rate, cache savings), Latency (average duration, average TTFT, tokens per second), the four token buckets, and the first and last seen ages.
  - Adds a performance chart beside those facts: average output tokens per second on the left axis and average time to first token on the right, per active day. A model with no timing sample reads "No performance samples" instead of an empty frame.
