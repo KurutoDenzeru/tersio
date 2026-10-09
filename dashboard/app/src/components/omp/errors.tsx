@@ -120,7 +120,6 @@ export function ErrorsPage({
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
         <Card
-          index={1}
           title="Error signatures"
           description="Same message with ids and counters normalized. Select one to filter the failures below."
           flush
@@ -143,7 +142,7 @@ export function ErrorsPage({
           {selectedGroup && <SignatureDetail group={selectedGroup} onOpenRequest={onOpenRequest} />}
         </Card>
 
-        <Card index={2} title="By model" description="Failures per model. Select one to filter." flush>
+        <Card title="By model" description="Failures per model. Select one to filter." flush>
           <PagedTable
             columns={MODEL_COLUMNS(maxModel)}
             rows={omp.errorModels}
@@ -157,7 +156,6 @@ export function ErrorsPage({
       </div>
 
       <Card
-        index={3}
         title="Failures"
         description={`${fmt(filtered.length)} of ${fmt(rows.length)} failures, newest first`}
         actions={

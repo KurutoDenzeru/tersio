@@ -284,7 +284,6 @@ export function CostsPage({ omp, money }: { omp: OmpStats; money: (v: number) =>
       </StatGrid>
 
       <Card
-        index={1}
         title="Daily estimate"
         description={
           split === "model"
@@ -323,7 +322,6 @@ export function CostsPage({ omp, money }: { omp: OmpStats; money: (v: number) =>
       </Card>
 
       <Card
-        index={2}
         title="Where it went"
         description="Estimate by model. The reference splits this block by billing component, which the payload does not carry, so the model split stands in."
       >
@@ -342,7 +340,7 @@ export function CostsPage({ omp, money }: { omp: OmpStats; money: (v: number) =>
         </div>
       </Card>
 
-      <Card index={3} title="By model" description="Estimate per model with its token and cache split" flush>
+      <Card title="By model" description="Estimate per model with its token and cache split" flush>
         <PagedTable
           columns={columns}
           rows={view.rows}

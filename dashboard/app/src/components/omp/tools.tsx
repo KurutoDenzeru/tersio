@@ -451,7 +451,6 @@ export function ToolsPage({ omp, money }: { omp: OmpStats; money: (v: number) =>
       </div>
 
       <Card
-        index={1}
         title={metric === "calls" ? "Calls over time" : "Errors over time"}
         description={`Per ${word}, top ${TOP_TOOLS} tools stacked`}
         actions={<Segmented label="Call metric" options={METRIC_OPTIONS} value={metric} onChange={setMetric} />}
@@ -485,7 +484,7 @@ export function ToolsPage({ omp, money }: { omp: OmpStats; money: (v: number) =>
         )}
       </Card>
 
-      <Card index={2} title="By tool" description={`${ATTRIBUTION_NOTE}.`} flush>
+      <Card title="By tool" description={`${ATTRIBUTION_NOTE}.`} flush>
         <PagedTable
           columns={toolColumns}
           rows={view.rows}
@@ -498,7 +497,6 @@ export function ToolsPage({ omp, money }: { omp: OmpStats; money: (v: number) =>
       </Card>
 
       <Card
-        index={3}
         title="By tool and model"
         description="Which models call which tools, and how often those calls fail"
         flush

@@ -11,6 +11,12 @@ Recurring mistakes log. Committed to git; reviewed periodically to promote entri
 **Prevention rule:** What to do differently next time.
 ```
 
+## 2026-10-10 — Line-range deletions computed against a list an earlier deletion had shifted
+**What happened:** A python pass deleted two function blocks from `extensions/shared/omp-stats.ts` by line range. The first deletion lowered every later index, and the second range used indices read before that deletion, so it cut the middle of `readSessionTrace` instead of the gain block. The file lost 168 lines of live code while the target functions survived.
+**Root cause:** Computed all the line anchors, then applied the deletions one after another, so only the first range was still valid.
+**Prevention rule:** Delete one span at a time, or match anchors by text, never by a precomputed line number. After any multi-span deletion, `git diff --stat` must show the expected line count per file before the build.
+**Verification note:** `git checkout <file>` restored the file; the second attempt used string anchors.
+
 ## 2026-09-23 — Malformed oldString/newString boundary in edit calls
 **What happened:** `edit` calls produced broken intermediates: a stray `async function` declaration line, a dropped `const SOURCES` opener, duplicated function headers, and deleted neighbors in dashboard/app.js. Each was caught by reading the edited region right after and repaired before building.
 **Root cause:** Drafting replacement text that overlapped neighboring declarations instead of keeping the boundary to the exact lines being changed.
@@ -75,6 +81,11 @@ Recurring mistakes log. Committed to git; reviewed periodically to promote entri
 **What happened:** Adding two new tests to `test/installer/host-menus.test.ts`, the `oldText` spanned a whole existing test and the `newText` contained only that test's opening line. The replacement deleted the body and the closing brace, leaving a parse error at EOF. It also silently dropped an existing assertion before tsc caught the syntax break.
 **Root cause:** Used a replacing primitive for an insertion. A range replacement rewrites the entire matched span, so anything intended to survive must be re-emitted in full.
 **Prevention rule:** To insert before a block, keep `oldText` to the insertion point alone, or re-emit the whole original block in `newText`. After editing near an existing test, run `git diff -U0 -- <file>` and confirm the change is pure insertion before running the suite.
+
+## 2026-10-10 — A type-import split dropped an existing type import
+**What happened:** Splitting type-only names out of a value import in `extensions/shared/usage-store.ts`, the new `import type { OpencodeDbRow, OpencodeMessage }` line replaced the existing `import type { RunStatus, SessionTokens }` line instead of adding to it. `tsc` then reported `Cannot find name 'SessionTokens'` and `Cannot find name 'RunStatus'`.
+**Root cause:** Wrote the replacement line from the names I was moving and forgot the names already on that line. The same edit pass also removed `RtkRelease` from a value import in `cli/install.ts` without adding the type import.
+**Prevention rule:** When a name moves between import lines, read the target line first and re-emit its full existing content plus the moved names. Run `tsc --noEmit` after any import-shape change, not only at the end of the task.
 
 ## 2026-10-10 — `COUNT` with an `ELSE 0` literal counted every row
 **What happened:** The omp aggregate read `COUNT(CASE WHEN duration > 0 THEN 1 ELSE 0 END)` as the throughput denominator. `COUNT(expr)` counts non-null values, so the `ELSE 0` made it count every row: the dashboard read 21.7 tokens/s where the reference read 29.3.

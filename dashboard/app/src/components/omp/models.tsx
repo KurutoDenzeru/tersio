@@ -301,7 +301,6 @@ export function ModelsPage({ omp, money }: { omp: OmpStats; money: (v: number) =
       </StatGrid>
 
       <Card
-        index={1}
         title="Request share"
         description={
           mode === "share"
@@ -341,7 +340,7 @@ export function ModelsPage({ omp, money }: { omp: OmpStats; money: (v: number) =
         )}
       </Card>
 
-      <Card index={2} title="All models" description="Latency, throughput, and cache per model" flush>
+      <Card title="All models" description="Latency, throughput, and cache per model" flush>
         <PagedTable
           columns={columns}
           rows={view.rows}

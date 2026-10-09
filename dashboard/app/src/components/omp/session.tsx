@@ -84,7 +84,6 @@ export function SessionTrace({
           </StatGrid>
 
           <Card
-            index={0}
             title="Timeline"
             description={trace ? `${fmt(rows.length)} of ${fmt(trace.entries.length)} entries` : undefined}
             actions={

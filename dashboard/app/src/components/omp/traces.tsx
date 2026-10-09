@@ -113,7 +113,6 @@ export function TracesPage({
         description="Recent sessions with subagent activity folded in. Open one to inspect its timeline."
       />
       <Card
-        index={0}
         title="Sessions"
         description={filter.trim() ? `${fmt(filtered.length)} of ${fmt(total)} most recent` : `${fmt(total)} most recent`}
         actions={

@@ -144,15 +144,16 @@ export function OverviewPage({
         <Stat size="sm" icon="hard-drive-download" label="Cache read" value={fmtShort(o.cacheRead)} hint={o.total > 0 ? pct(o.cacheRead / o.total) : "0%"} />
         <Stat size="sm" icon="hard-drive-upload" label="Cache write" value={fmtShort(o.cacheWrite)} hint={o.total > 0 ? pct(o.cacheWrite / o.total) : "0%"} />
         <Stat size="sm" icon="arrow-up-from-line" label="Output" value={fmtShort(o.output)} hint={o.total > 0 ? pct(o.output / o.total) : "0%"} />
+      </StatGrid>
+
+      <StatGrid cols={3}>
         <Stat size="sm" icon="clock" label="Avg latency" value={fmtMs(o.avgDurationMs)} hint="wall clock per request" />
         <Stat size="sm" icon="timer" label="Avg TTFT" value={fmtMs(o.avgTtftMs)} hint="time to first token" />
         <Stat size="sm" icon="zap" label="Tokens/s" value={o.avgTokensPerSecond > 0 ? `${o.avgTokensPerSecond.toFixed(1)} tok/s` : "–"} hint="output tokens per second" />
-        <Stat size="sm" icon="star" label="Premium requests" value={fmt(Math.round(o.premiumRequests * 100) / 100)} />
       </StatGrid>
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
         <Card
-          index={1}
           title="Activity"
           description={`Per ${bucket}`}
           actions={<Segmented label="Activity metric" value={metric} options={ACTIVITY_OPTIONS} onChange={setMetric} />}
@@ -170,7 +171,7 @@ export function OverviewPage({
           />
         </Card>
 
-        <Card index={2} title="Token mix" description="Where conversation tokens went">
+        <Card title="Token mix" description="Where conversation tokens went">
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-2.5">
               <ShareBar
@@ -216,7 +217,6 @@ export function OverviewPage({
       </div>
 
       <Card
-        index={3}
         title="Latest requests"
         description="Most recent model calls across every session"
         actions={

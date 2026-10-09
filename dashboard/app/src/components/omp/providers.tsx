@@ -1,7 +1,6 @@
 // Providers: burn, reliability, and subscription headroom per provider, plus what one usage window buys.
 import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
-import { NativeSelect } from "@/components/ui/native-select";
 import { ProviderMark } from "@/components/brand";
 import { OMP_RANGE_LABEL } from "@/lib/data";
 import type { OmpProviderHour, OmpRow, OmpStats, OmpUsageWindowSeries, OmpWindowInsight } from "@/lib/data";
@@ -21,7 +20,7 @@ import {
   TimeChart,
 } from "@/components/charts";
 import type { Column, SeriesSpec } from "@/components/charts";
-import { EmptyState } from "@/components/common";
+import { EmptyState, Picker } from "@/components/common";
 import {
   PALETTE,
   fmt,
@@ -154,7 +153,6 @@ export function ProvidersPage({ omp, money }: { omp: OmpStats; money: (v: number
       </StatGrid>
 
       <Card
-        index={1}
         title="Provider totals"
         description={
           unpriced > 0
@@ -168,7 +166,6 @@ export function ProvidersPage({ omp, money }: { omp: OmpStats; money: (v: number
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <Card
-          index={2}
           title="Burn by provider"
           description={
             metric === "cost" && unpriced > 0
@@ -213,7 +210,6 @@ export function ProvidersPage({ omp, money }: { omp: OmpStats; money: (v: number
       </div>
 
       <Card
-        index={4}
         title="Subscription windows"
         description="What one usage window buys you and how many accounts peak demand needs. Select a row to chart it."
         flush
@@ -462,26 +458,17 @@ function PeakHoursCard({ hourly, providers }: { hourly: OmpProviderHour[]; provi
 
   return (
     <Card
-      index={3}
       title="Peak burn hours"
       description={
         hours.hasData ? `Tokens by local hour of day; peak at ${hourLabel(hours.peak)}` : "Tokens by local hour of day"
       }
       actions={
-        <NativeSelect
-          size="sm"
-          className="text-xs"
-          aria-label="Provider"
+        <Picker
+          label="Provider"
           value={current}
-          onChange={(e) => setProvider(e.target.value)}
-        >
-          <option value={ALL_PROVIDERS}>All providers</option>
-          {providers.map((p) => (
-            <option key={p.provider} value={p.provider}>
-              {p.provider}
-            </option>
-          ))}
-        </NativeSelect>
+          options={[{ value: ALL_PROVIDERS, label: "All providers" }, ...providers.map((p) => ({ value: p.provider, label: p.provider }))]}
+          onPick={setProvider}
+        />
       }
     >
       <Chart
@@ -776,7 +763,6 @@ function WindowUtilizationCard({
 
   return (
     <Card
-      index={5}
       title="Window utilization"
       description={
         chart.rows.length > 0
@@ -786,36 +772,21 @@ function WindowUtilizationCard({
       actions={
         selected && (
           <>
-            <NativeSelect
-              size="sm"
-              className="text-xs"
-              aria-label="Provider"
+            <Picker
+              label="Provider"
               value={selected.provider}
-              onChange={(e) => {
-                const next = e.target.value;
+              options={providers.map((p) => ({ value: p, label: p }))}
+              onPick={(next) => {
                 const first = insights.find((i) => i.provider === next);
                 if (first) onSelect({ provider: next, windowKey: first.windowKey });
               }}
-            >
-              {providers.map((p) => (
-                <option key={p} value={p}>
-                  {p}
-                </option>
-              ))}
-            </NativeSelect>
-            <NativeSelect
-              size="sm"
-              className="text-xs"
-              aria-label="Window"
+            />
+            <Picker
+              label="Window"
               value={selected.windowKey}
-              onChange={(e) => onSelect({ provider: selected.provider, windowKey: e.target.value })}
-            >
-              {windows.map((w) => (
-                <option key={w.key} value={w.key}>
-                  {w.label}
-                </option>
-              ))}
-            </NativeSelect>
+              options={windows.map((w) => ({ value: w.key, label: w.label }))}
+              onPick={(next) => onSelect({ provider: selected.provider, windowKey: next })}
+            />
           </>
         )
       }

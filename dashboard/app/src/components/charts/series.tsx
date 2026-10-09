@@ -1,5 +1,6 @@
 // Chart primitives: one palette, one tooltip, one empty look, so no page draws its own.
 // Geometry is the only new code here: everything else wraps the installed shadcn chart pieces.
+import { useMemo } from "react";
 import { cn } from "cn";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import type { ChartConfig } from "@/components/ui/chart";
@@ -39,8 +40,23 @@ function SeriesChart<T extends object>({
   const config: ChartConfig = Object.fromEntries(
     series.map((s) => [s.key, { label: s.label, color: s.color }]),
   );
+  // A stack with a hole breaks: recharts resets the stack at a null, so each band splits into
+  // disjoint shapes. A stacked series therefore reads zero in a bucket it has no data for, and
+  // only a lone series keeps its nulls, where a gap marks a bucket with nothing to plot.
+  const plotted = useMemo(() => {
+    if (!stacked) return data;
+    const keys = series.map((s) => s.key);
+    return data.map((row) => {
+      const filled = { ...row } as Record<string, unknown>;
+      for (const key of keys) {
+        const held = filled[key];
+        if (held === null || held === undefined || (typeof held === "number" && Number.isNaN(held))) filled[key] = 0;
+      }
+      return filled as T;
+    });
+  }, [data, series, stacked]);
   const common = {
-    data,
+    data: plotted,
     margin: { top: 8, right: 8, bottom: 0, left: 0 },
   };
   const children = (
@@ -49,7 +65,28 @@ function SeriesChart<T extends object>({
       <XAxis dataKey={xKey} {...AXIS} tick={TICK_STYLE} tickFormatter={tick} minTickGap={28} />
       <YAxis {...AXIS} tick={TICK_STYLE} width={46} tickFormatter={valueFmt} />
       <ChartTooltip
-        content={<ChartTooltipContent labelFormatter={(v) => (label ? label(Number(v)) : String(v))} />}
+        content={
+          <ChartTooltipContent
+            // Recharts hands the tooltip the tick's formatted text, or the series name, so the
+            // title comes from the hovered row's own category and the values use the page format.
+            labelFormatter={(value, payload) => {
+              const row = payload?.[0]?.payload as Record<string, unknown> | undefined;
+              const raw = row ? row[xKey] : value;
+              const num = Number(raw);
+              if (label && Number.isFinite(num)) return label(num);
+              return String(raw ?? value);
+            }}
+            formatter={(value, name, item) => (
+              <span className="flex flex-1 items-center justify-between gap-2 leading-none">
+                <span className="flex items-center gap-2 text-dim">
+                  <span className="size-2.5 shrink-0 rounded-[2px]" style={{ background: item?.color }} aria-hidden="true" />
+                  {String(name)}
+                </span>
+                <span className="mono font-medium tabular-nums">{valueFmt(Number(value))}</span>
+              </span>
+            )}
+          />
+        }
       />
       {series.map((s) =>
         mode === "bar" ? (

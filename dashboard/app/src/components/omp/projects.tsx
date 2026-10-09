@@ -273,7 +273,7 @@ export function ProjectsPage({ omp, money }: { omp: OmpStats; money: (v: number)
       </StatGrid>
 
       <div className="grid gap-4 md:grid-cols-2">
-        <Card index={1} title="Top by cost" description="Share of API-equivalent cost">
+        <Card title="Top by cost" description="Share of API-equivalent cost">
           <QueryView
             empty={topCost.length === 0}
             emptyIcon="folder-git-2"
@@ -283,7 +283,7 @@ export function ProjectsPage({ omp, money }: { omp: OmpStats; money: (v: number)
             <BarList rows={topCost} money={money} limit={TOP_LIMIT} />
           </QueryView>
         </Card>
-        <Card index={2} title="Top by requests" description="Share of all requests">
+        <Card title="Top by requests" description="Share of all requests">
           <QueryView
             empty={topRequests.length === 0}
             emptyIcon="folder-git-2"
@@ -296,7 +296,6 @@ export function ProjectsPage({ omp, money }: { omp: OmpStats; money: (v: number)
       </div>
 
       <Card
-        index={3}
         title="Folders"
         description={
           matching.length === view.rows.length

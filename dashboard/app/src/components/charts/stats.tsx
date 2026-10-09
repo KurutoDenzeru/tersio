@@ -1,4 +1,4 @@
-// The page kit: header, card chrome, stat tiles, meters. One look for all eleven pages.
+// The page kit: header, card chrome, the stat band, meters. One look for every page.
 import { cn } from "cn";
 import type { ReactNode } from "react";
 import { Card as CardShell, CardContent } from "@/components/ui/card";
@@ -29,11 +29,9 @@ export function PageHeader({
 }
 
 /**
- * A page block. `index` is the reference's numbered eyebrow, `flush` drops the
- * body padding so a table can span the card.
+ * A page block. `flush` drops the body padding so a table can span the card.
  */
 export function Card({
-  index,
   title,
   description,
   actions,
@@ -42,7 +40,6 @@ export function Card({
   className,
   id,
 }: {
-  index?: number;
   title: string;
   description?: React.ReactNode;
   actions?: React.ReactNode;
@@ -61,11 +58,6 @@ export function Card({
       )}
     >
       <div className="flex flex-wrap items-start gap-x-3 gap-y-1 border-b border-line px-3.5 py-2.5">
-        {index !== undefined && (
-          <span className="mono mt-[3px] shrink-0 text-[10px] tabular-nums text-dim" aria-hidden="true">
-            {String(index).padStart(2, "0")}
-          </span>
-        )}
         <div className="min-w-0 flex-1">
           <h2 className="font-display truncate text-sm font-bold tracking-tight">{title}</h2>
           {description && <p className="mono mt-0.5 text-[11px] leading-relaxed text-dim">{description}</p>}
@@ -144,30 +136,27 @@ export function StatGrid({
     5: "grid-cols-2 sm:grid-cols-3 lg:grid-cols-5",
     6: "grid-cols-2 sm:grid-cols-3 lg:grid-cols-6",
   };
-  // One solid band with a rule between cells, the strip the usage page uses: no translucent tiles.
-  const list = (Array.isArray(children) ? children : [children]).filter((c): c is ReactNode => Boolean(c));
-  const fits = list.length <= cols;
-  if (fits) {
-    return (
-      <div
-        data-reveal
-        className={cn(
-          "translate-y-[18px] grid overflow-hidden rounded-xl border border-line bg-panel opacity-0 transition-[opacity,transform] duration-500 ease-[cubic-bezier(.16,1,.3,1)] data-[reveal=in]:translate-y-0 data-[reveal=in]:opacity-100",
-          sizes[cols],
-          "[&>*+*]:border-line [&>*+*]:border-t",
-          cols > 2 && "sm:[&>*+*]:border-t-0 sm:[&>*+*]:border-l",
-          className,
-        )}
-      >
-        {list.map((cell, i) => (
-          <div key={i} className={cn("min-w-0", i > 0 && "border-line ")}>
-            {cell}
-          </div>
-        ))}
-      </div>
-    );
-  }
-  return <div className={cn("grid gap-2.5", sizes[cols], className)}>{children}</div>;
+  // One solid band with a rule between cells, the strip the usage page uses: no translucent
+  // tiles, and one path, so a strip never falls back to loose tiles.
+  const cells = (Array.isArray(children) ? children : [children]).filter((c): c is ReactNode => Boolean(c));
+  return (
+    <div
+      data-reveal
+      className={cn(
+        "translate-y-[18px] grid overflow-hidden rounded-xl border border-line bg-panel opacity-0 transition-[opacity,transform] duration-500 ease-[cubic-bezier(.16,1,.3,1)] data-[reveal=in]:translate-y-0 data-[reveal=in]:opacity-100",
+        sizes[cols],
+        "[&>*+*]:border-line [&>*+*]:border-t",
+        cols > 2 && "sm:[&>*+*]:border-t-0 sm:[&>*+*]:border-l",
+        className,
+      )}
+    >
+      {cells.map((cell, i) => (
+        <div key={i} className={cn("min-w-0", i > 0 && "border-line")}>
+          {cell}
+        </div>
+      ))}
+    </div>
+  );
 }
 
 /** A share of a limit, with the exact figure beside it. */

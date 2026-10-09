@@ -116,7 +116,6 @@ export function RequestsPage({
       </StatGrid>
 
       <Card
-        index={1}
         title="Request log"
         description={
           complete
