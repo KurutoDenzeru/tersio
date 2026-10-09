@@ -330,6 +330,30 @@ export interface OmpSessionTrace {
   truncated: boolean;
 }
 
+/** The three payloads the request drawer renders: the output message, the journal entry, and the stats row. */
+export interface OmpRequestPayload {
+  /** The model's message, carried by the journal entry. `null` for a row with no payload. */
+  output: unknown;
+  /** The raw journal line for the entry. */
+  entry: unknown;
+  /** `assistant`, `toolResult`, `user`, or empty when the entry carries no message. */
+  messageRole: string;
+  /** The agent state in force when the request ran. */
+  agent: {
+    model: string | null;
+    thinkingLevel: string | null;
+    mode: string | null;
+    fallback: boolean | null;
+  };
+}
+
+const EMPTY_REQUEST_PAYLOAD: OmpRequestPayload = {
+  output: null,
+  entry: null,
+  messageRole: "",
+  agent: { model: null, thinkingLevel: null, mode: null, fallback: null },
+};
+
 export interface OmpStats {
   available: boolean;
   range: OmpRange;
@@ -454,6 +478,36 @@ export function useSessionTrace(file: string | null): { trace: OmpSessionTrace |
   }, [file]);
 
   return { trace, loading };
+}
+
+/** The journal payload behind one request, read when the request drawer opens. */
+export function useOmpRequestEntry(file: string | null, entryId: string | null): { entry: OmpRequestPayload; loading: boolean } {
+  const [entry, setEntry] = useState<OmpRequestPayload>(EMPTY_REQUEST_PAYLOAD);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!file || !entryId || isFileExport()) {
+      setEntry(EMPTY_REQUEST_PAYLOAD);
+      return;
+    }
+    let live = true;
+    setLoading(true);
+    getJSON<OmpRequestPayload>(`api/omp/entry?file=${encodeURIComponent(file)}&entry=${encodeURIComponent(entryId)}`)
+      .then((next) => {
+        if (live) setEntry(next);
+      })
+      .catch(() => {
+        if (live) setEntry(EMPTY_REQUEST_PAYLOAD);
+      })
+      .finally(() => {
+        if (live) setLoading(false);
+      });
+    return () => {
+      live = false;
+    };
+  }, [file, entryId]);
+
+  return { entry, loading };
 }
 
 export interface HealthReport {

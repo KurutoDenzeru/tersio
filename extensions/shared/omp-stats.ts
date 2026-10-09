@@ -1132,6 +1132,67 @@ export function readSessionTrace(sessionFile: string, limit = 400): OmpSessionTr
   return { sessionFile, project, entries, truncated };
 }
 
+/** The agent settings in force when a request ran, read from the journal's change entries. */
+export interface OmpJournalAgent {
+  /** The model id in force, from the closest `model_change` before the entry. */
+  model: string | null;
+  thinkingLevel: string | null;
+  /** The assistant mode, such as `full` or `goal`, from `mode_change`. */
+  mode: string | null;
+  /** Whether the model id was a fallback at the time of the change. */
+  fallback: boolean | null;
+}
+
+/** The payload a request with no readable entry returns, so the route always answers with one shape. */
+export function emptyRequestEntry(): { entry: unknown; output: unknown; messageRole: string; agent: OmpJournalAgent } {
+  return { entry: null, output: null, messageRole: '', agent: { model: null, thinkingLevel: null, mode: null, fallback: null } };
+}
+
+/**
+ * One request's journal payload, read on demand by the request drawer. `entry` is the raw
+ * journal line, `output` is the message that line carries, and `agent` is the agent state in
+ * force when the request ran. All are empty when the entry journals nothing: a `model_usage`
+ * row carries no message, and a deleted session cannot be re-read.
+ */
+export function readOmpRequestEntry(
+  sessionFile: string,
+  entryId: string,
+): { entry: unknown; output: unknown; messageRole: string; agent: OmpJournalAgent } {
+  const empty = emptyRequestEntry();
+  if (!entryId || !sessionFile.endsWith('.jsonl') || !fs.existsSync(sessionFile)) return empty;
+  let text: string;
+  try {
+    text = fs.readFileSync(sessionFile, 'utf8');
+  } catch {
+    return empty;
+  }
+  const agent = { ...empty.agent };
+  for (const line of text.split('\n')) {
+    if (!line.trim()) continue;
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(line) as Record<string, unknown>;
+    } catch {
+      continue;
+    }
+    if (String(parsed.id ?? '') !== entryId) {
+      // A change entry updates the state every later request sees.
+      if (parsed.type === 'model_change') {
+        agent.model = String(parsed.model ?? '') || null;
+        agent.fallback = parsed.resolvedModelIsFallback === true;
+      } else if (parsed.type === 'thinking_level_change') {
+        agent.thinkingLevel = String(parsed.thinkingLevel ?? '') || null;
+      } else if (parsed.type === 'mode_change') {
+        agent.mode = String(parsed.mode ?? '') || null;
+      }
+      continue;
+    }
+    const message = (parsed.message ?? null) as Record<string, unknown> | null;
+    return { entry: parsed, output: message, messageRole: message ? String(message.role ?? '') : '', agent };
+  }
+  return empty;
+}
+
 
 /** Reads both omp databases. `available` is false when stats.db holds no `messages` table. */
 export function readOmpStats(range: RangeKey = '24h', view: OmpView = 'all', now = Date.now()): OmpStats {

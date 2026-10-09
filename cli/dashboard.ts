@@ -23,7 +23,7 @@ import { CAVEMAN_DEFAULTS, PONYTAIL_DEFAULTS } from './common.ts';
 import type { ComboLevel } from '../extensions/shared/types.ts';
 import { PACKAGE_NAME } from './common.ts';
 import { findPackageRoot, resolveRtkBinary } from '../extensions/lib/utils.ts';
-import { agentDbPath, isOmpView, isRangeKey, readOmpStats, readSessionTrace, statsDbPath } from '../extensions/shared/omp-stats.ts';
+import { agentDbPath, emptyRequestEntry, isOmpView, isRangeKey, readOmpRequestEntry, readOmpStats, readSessionTrace, statsDbPath } from '../extensions/shared/omp-stats.ts';
 import type { OmpStats, OmpView, RangeKey } from '../extensions/shared/omp-stats.ts';
 
 export interface DashboardOptions {
@@ -639,6 +639,14 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
     if (req.url?.startsWith('/api/omp/session')) {
       const file = decodeURIComponent(queryParam(req.url, 'file') ?? '');
       const body = file ? readSessionTrace(file) : { sessionFile: '', project: '', entries: [], truncated: false };
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(body));
+      return;
+    }
+    if (req.url?.startsWith('/api/omp/entry')) {
+      const file = decodeURIComponent(queryParam(req.url, 'file') ?? '');
+      const entry = decodeURIComponent(queryParam(req.url, 'entry') ?? '');
+      const body = file && entry ? readOmpRequestEntry(file, entry) : emptyRequestEntry();
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(body));
       return;

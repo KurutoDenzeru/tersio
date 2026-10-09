@@ -185,7 +185,17 @@ function Dashboard() {
         {page()}
         <Footer />
       </Shell>
-      {request && <OmpRequestDrawer row={request} money={money} onClose={closeRequest} />}
+      {request && (
+        <OmpRequestDrawer
+          row={request}
+          money={money}
+          onClose={closeRequest}
+          onOpenSession={(file) => {
+            closeRequest();
+            setSession(file);
+          }}
+        />
+      )}
       <StatusBanner status={status} />
       <SettingsDialog
         open={settingsOpen}

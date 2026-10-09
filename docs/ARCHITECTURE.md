@@ -73,14 +73,15 @@ flowchart LR
   subgraph SRC["read-only sources"]
     SDB["~/.omp/stats.db<br/>messages · tool_calls"]
     ADB["~/.omp/agent/agent.db<br/>usage_history"]
+    JRN["~/.omp/agent/sessions/*.jsonl<br/>journal entries"]
     UDB["~/.tersio/usage.db<br/>ledger rows"]
   end
   AGG["extensions/shared/omp-stats.ts<br/>one sqlite3 batch per query group"]
-  SRV["cli/dashboard.ts<br/>/data.json · /api/omp?range=&view= · /api/omp/session"]
+  SRV["cli/dashboard.ts<br/>/data.json · /api/omp?range=&view= · /api/omp/session · /api/omp/entry"]
   UI["dashboard/app<br/>hash routes, one page per view"]
   SDB --> AGG
   ADB --> AGG
-  GNL --> AGG
+  JRN --> AGG
   AGG --> SRV
   UDB --> SRV
   SRV --> UI

@@ -1,3 +1,9 @@
+## v2.26.3
+ - Rebuilds the request drawer on the reference's section order, and gives it a payload. The drawer reads the journal entry behind the row on demand (`/api/omp/entry`), so it carries the output message, the session entry, and the stats row, each with its size and a copy button.
+ - Adds an Agent section that names the agent in force when the request ran: the agent type, the model, the thinking level, the mode, and whether the model resolved as a fallback. These come from the journal's `model_change`, `thinking_level_change`, and `mode_change` entries, read up to the request's own entry.
+ - Adds timing and cost figures the drawer did not carry: cache hit rate, the share of the row each token bucket holds, and the API-equivalent cost per output token.
+ - The drawer's Trace button now closes the drawer and deep-links the session trace.
+
 ## v2.26.2
  - Drops the card-block eyebrow numbers, so a page reads as a flat list of titled blocks instead of a numbered sequence.
  - Removes the Premium requests figure from the Overview, and stops reading `premium_requests` from the omp databases: no page rendered it.

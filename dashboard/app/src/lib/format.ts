@@ -293,6 +293,16 @@ export function whenStamp(ts: number): string {
   );
 }
 
+/** The clock alone, for the drawer's timing tile where a full date would clip. */
+export function whenClock(ts: number): string {
+  return new Date(ts).toLocaleString("en-US", { hour: "numeric", minute: "2-digit", second: "2-digit" });
+}
+
+/** The minute stamp for a stat tile, where the full stamp would clip. */
+export function whenShort(ts: number): string {
+  return new Date(ts).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
 // Snapshots span months, so the year has to be visible; whenStamp drops it.
 export function fmtSnapshot(ts: number): string {
   const d = new Date(ts);
