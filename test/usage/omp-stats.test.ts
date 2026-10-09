@@ -152,6 +152,25 @@ describe.skipIf(!hasSqlite())('omp aggregate', () => {
     expect(omp.errorGroups[0].signature).toBe('429 Too Many Requests retry-after-ms=N <id>');
   });
 
+  test('averages throughput and first-token latency per model, provider, and bucket', () => {
+    seed();
+    const omp = readOmpStats('all', 'models');
+    const priced = omp.modelPerformance.find((series) => series.model === 'priced-model' && series.provider === 'commandcode');
+    expect(priced).toBeDefined();
+    // One bucket holds every commandcode message, so both averages cover the same two rows.
+    expect(priced?.points.length).toBe(1);
+    const point = priced?.points[0];
+    expect(point?.requests).toBe(2);
+    // e1: 500 out over 2000ms, e2: 1000 out over 4000ms. Both run at 250 tok/s, so the mean does too.
+    expect(point?.avgTokensPerSecond).toBeCloseTo(250, 9);
+    expect(point?.avgTtftMs).toBeCloseTo(750, 9);
+    // A provider with no timed message carries null, not a zero that would draw a flat line.
+    const magpie = omp.modelPerformance.find((series) => series.provider === 'magpie');
+    expect(magpie?.points.every((p) => p.avgTokensPerSecond === null && p.avgTtftMs === null)).toBe(true);
+    // The models view carries the group, and a view that does not need it skips it.
+    expect(readOmpStats('all', 'traces').modelPerformance).toEqual([]);
+  });
+
   test('attributes tool tokens by the calls in the invoking turn', () => {
     seed();
     const omp = readOmpStats('all');

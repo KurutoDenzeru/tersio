@@ -11,6 +11,8 @@ export interface SeriesSpec {
   key: string;
   label: string;
   color: string;
+  /** A second scale on the right edge, for a unit the left axis does not share. */
+  axis?: "left" | "right";
 }
 
 const AXIS = { stroke: "var(--line)", tickLine: false, axisLine: false } as const;
@@ -27,6 +29,8 @@ export interface SeriesChartProps<T extends object> {
   mode?: "area" | "bar";
   stacked?: boolean;
   valueFmt?: (value: number) => string;
+  /** Tick format for the right axis, when a series asks for one. */
+  rightFmt?: (value: number) => string;
   /** Plain-text alternative: what the chart shows, read out to a screen reader. */
   summary: string;
   ariaLabel: string;
@@ -35,7 +39,7 @@ export interface SeriesChartProps<T extends object> {
 
 function SeriesChart<T extends object>({
   data, series, xKey, tick, label, height = 220, mode = "area", stacked = false,
-  valueFmt = fmtShort, summary, ariaLabel, className,
+  valueFmt = fmtShort, summary, ariaLabel, className, rightFmt,
 }: SeriesChartProps<T>) {
   const config: ChartConfig = Object.fromEntries(
     series.map((s) => [s.key, { label: s.label, color: s.color }]),
@@ -55,6 +59,7 @@ function SeriesChart<T extends object>({
       return filled as T;
     });
   }, [data, series, stacked]);
+  const hasRight = series.some((s) => s.axis === "right");
   const common = {
     data: plotted,
     margin: { top: 8, right: 8, bottom: 0, left: 0 },
@@ -63,7 +68,10 @@ function SeriesChart<T extends object>({
     <>
       <CartesianGrid vertical={false} stroke="var(--line)" strokeDasharray="3 3" />
       <XAxis dataKey={xKey} {...AXIS} tick={TICK_STYLE} tickFormatter={tick} minTickGap={28} />
-      <YAxis {...AXIS} tick={TICK_STYLE} width={46} tickFormatter={valueFmt} />
+      <YAxis {...AXIS} yAxisId="left" tick={TICK_STYLE} width={46} tickFormatter={valueFmt} />
+      {hasRight && (
+        <YAxis {...AXIS} yAxisId="right" orientation="right" tick={TICK_STYLE} width={54} tickFormatter={rightFmt ?? valueFmt} />
+      )}
       <ChartTooltip
         content={
           <ChartTooltipContent
@@ -94,6 +102,7 @@ function SeriesChart<T extends object>({
             key={s.key}
             dataKey={s.key}
             name={s.label}
+            yAxisId={s.axis === "right" ? "right" : "left"}
             fill={`var(--color-${s.key})`}
             stackId={stacked ? "all" : undefined}
             radius={stacked ? 0 : [3, 3, 0, 0]}
@@ -105,6 +114,7 @@ function SeriesChart<T extends object>({
             dataKey={s.key}
             name={s.label}
             type="monotone"
+            yAxisId={s.axis === "right" ? "right" : "left"}
             stroke={`var(--color-${s.key})`}
             fill={`var(--color-${s.key})`}
             fillOpacity={stacked ? 0.35 : 0.14}

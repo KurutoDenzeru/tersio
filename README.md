@@ -87,7 +87,7 @@ Upstream Ponytail's fair agentic benchmark reports 54% less code, 22% fewer toke
 | Route | Page |
 |---|---|
 | `#/overview?range=24h` | Everything omp did in the window: cost, tokens, cache, burn chart, newest requests |
-| `#/models?range=7d` | Which models did the work and how fast they answered |
+| `#/models?range=7d` | Which models did the work and how fast they answered. Click a row for its efficiency, latency, and per-day throughput |
 | `#/providers?range=7d` | Burn, reliability, and subscription headroom per provider |
 | `#/costs?range=30d` | What the window would cost at public API rates |
 | `#/requests?range=24h` | Every model call, newest first, with a filter and a detail drawer |

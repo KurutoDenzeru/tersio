@@ -13,9 +13,10 @@ import {
   TimeChart,
 } from "@/components/charts";
 import type { Column, SeriesSpec } from "@/components/charts";
-import type { OmpRow, OmpStats } from "@/lib/data";
+import type { OmpModelPerformancePoint, OmpRow, OmpStats } from "@/lib/data";
 import { OMP_RANGE_LABEL } from "@/lib/data";
-import { PALETTE, fmt, fmtMs, fmtShort, pct, tsFull, tsLabel } from "@/lib/format";
+import { PALETTE, fmt, fmtMs, fmtShort, pct, relAge, tsFull, tsLabel } from "@/lib/format";
+import { Icon } from "@/components/icon";
 
 type ShareMode = "share" | "requests";
 
@@ -28,6 +29,11 @@ const SHARE_OPTIONS: ReadonlyArray<{ value: ShareMode; label: string }> = [
 const SHARE_LIMIT = 6;
 
 const OTHER_COLOR = "var(--dim)";
+
+/** One row identity: a model can appear under several providers, so both name the row. */
+function modelKey(row: { key: string; provider: string }): string {
+  return `${row.key}\u0000${row.provider}`;
+}
 
 /** The bucket reads as a word, so a chart description can name it. */
 function bucketWord(bucketMs: number): string {
@@ -138,11 +144,102 @@ function buildView(omp: OmpStats): ModelsView {
   };
 }
 
+/** The panel under an expanded model row: the row's own figures, then its daily performance. */
+function ModelDetail({
+  row,
+  points,
+  word,
+  bucketMs,
+  money,
+}: {
+  row: OmpRow;
+  points: OmpModelPerformancePoint[];
+  word: string;
+  bucketMs: number;
+  money: (v: number) => string;
+}) {
+  const [hidden, setHidden] = useState<Set<string>>(() => new Set());
+  const color = row.provider ? "var(--accent)" : OTHER_COLOR;
+  const perf: SeriesSpec[] = [
+    { key: "tps", label: "Tokens/s", color },
+    { key: "ttft", label: "TTFT", color: OTHER_COLOR, axis: "right" },
+  ];
+  const shown = perf.filter((spec) => !hidden.has(spec.key));
+  // A bucket with neither timing value would draw an empty frame, so the chart only counts the
+  // buckets that carry a sample.
+  const plotted = points.filter((point) => point.avgTokensPerSecond !== null || point.avgTtftMs !== null);
+  const data = plotted.map((point) => ({ ts: point.ts, tps: point.avgTokensPerSecond, ttft: point.avgTtftMs === null ? null : point.avgTtftMs / 1000 }));
+  const fact = (label: string, value: React.ReactNode, hint?: string): React.ReactNode => (
+    <div className="min-w-0">
+      <p className="mono m-0 truncate text-[10px] tracking-[0.14em] text-dim uppercase">{label}</p>
+      <p className="mono m-0 mt-0.5 truncate text-sm font-bold tabular-nums">{value}</p>
+      {hint && <p className="mono m-0 truncate text-[10px] text-dim">{hint}</p>}
+    </div>
+  );
+
+  return (
+    <div className="grid gap-4 border-t border-line bg-track/20 p-4 lg:grid-cols-[minmax(0,320px)_minmax(0,1fr)]">
+      <div className="grid gap-4">
+        <div className="grid grid-cols-2 gap-3">
+          {fact("Error rate", pct(row.errorRate), `${fmt(row.failed)} failed`)}
+          {fact("Cache rate", pct(row.cacheRate))}
+          {fact("Cache savings", pct(row.cacheSavings))}
+          {fact("Requests", fmt(row.requests))}
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          {fact("Avg duration", fmtMs(row.avgDurationMs))}
+          {fact("Avg TTFT", fmtMs(row.avgTtftMs))}
+          {fact("Tokens/s", row.avgTokensPerSecond > 0 ? `${fmtShort(row.avgTokensPerSecond)}/s` : "n/a")}
+          {fact("Cost", row.unpricedRequests > 0 ? money(row.costUsd) : money(row.costUsd), `${fmt(row.unpricedRequests)} unpriced`)}
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          {fact("Uncached input", fmtShort(row.input))}
+          {fact("Cache read", fmtShort(row.cacheRead))}
+          {fact("Cache write", fmtShort(row.cacheWrite))}
+          {fact("Output", fmtShort(row.output))}
+        </div>
+        <p className="mono m-0 text-[10px] text-dim">
+          {row.firstTs === null ? "first seen not recorded" : `first seen ${relAge(row.firstTs)}`} · {row.lastTs === null ? "last seen not recorded" : `last seen ${relAge(row.lastTs)}`}
+        </p>
+      </div>
+      <div className="grid content-start gap-2">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <p className="mono m-0 flex-1 text-[10px] tracking-[0.14em] text-dim uppercase">Performance per active {word}</p>
+          <Legend items={perf} active={new Set(shown.map((spec) => spec.key))} onToggle={(key) => setHidden((held) => { const next = new Set(held); if (next.has(key)) next.delete(key); else next.add(key); return next; })} />
+        </div>
+        {plotted.length === 0 ? (
+          <p className="mono m-0 py-8 text-center text-xs text-dim">No performance samples. Timing is recorded for streamed responses only.</p>
+        ) : (
+          <TimeChart
+            data={data}
+            series={shown}
+            xKey="ts"
+            height={240}
+            tick={(value) => tsLabel(value, bucketMs)}
+            label={(value) => tsFull(value, bucketMs)}
+            valueFmt={(value) => fmtShort(value)}
+            rightFmt={(value) => `${value.toFixed(1)}s`}
+            ariaLabel={`Tokens per second and time to first token per ${word}`}
+            summary={`Average output tokens per second and time to first token per ${word}, for ${row.key}.`}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function ModelsPage({ omp, money }: { omp: OmpStats; money: (v: number) => string }) {
   const [mode, setMode] = useState<ShareMode>("share");
   const [hidden, setHidden] = useState<Set<string>>(() => new Set());
+  const [expanded, setExpanded] = useState<string | null>(null);
   const view = useMemo(() => buildView(omp), [omp]);
   const word = bucketWord(omp.bucketMs);
+  const perf = useMemo(() => {
+    const map = new Map<string, OmpModelPerformancePoint[]>();
+    for (const series of omp.modelPerformance) map.set(modelKey({ key: series.model, provider: series.provider }), series.points);
+    return map;
+  }, [omp.modelPerformance]);
+  const detail = (row: OmpRow): React.ReactNode => (modelKey(row) === expanded ? <ModelDetail row={row} points={perf.get(modelKey(row)) ?? []} word={word} bucketMs={omp.bucketMs} money={money} /> : null);
 
   const toggle = (key: string): void => {
     setHidden((held) => {
@@ -164,6 +261,17 @@ export function ModelsPage({ omp, money }: { omp: OmpStats; money: (v: number) =
   const columns = useMemo<Array<Column<OmpRow>>>(() => {
     const colorOf = (row: OmpRow): string => view.colors.get(`${row.key}\u0000${row.provider}`) ?? OTHER_COLOR;
     return [
+      {
+        key: "expand",
+        header: "",
+        width: 28,
+        render: (row) => (
+          <Icon
+            name="chevron-right"
+            className={"size-3.5 text-dim transition-transform " + (expanded === modelKey(row) ? "rotate-90 text-accent" : "")}
+          />
+        ),
+      },
       {
         key: "model",
         header: "Model",
@@ -261,7 +369,7 @@ export function ModelsPage({ omp, money }: { omp: OmpStats; money: (v: number) =
         },
       },
     ];
-  }, [view, money, word]);
+  }, [view, money, word, expanded]);
 
   return (
     <Page>
@@ -340,13 +448,16 @@ export function ModelsPage({ omp, money }: { omp: OmpStats; money: (v: number) =
         )}
       </Card>
 
-      <Card title="All models" description="Latency, throughput, and cache per model" flush>
+      <Card title="All models" description="Click a row for latency and throughput over time" flush>
         <PagedTable
           columns={columns}
           rows={view.rows}
-          rowKey={(row) => `${row.key}\u0000${row.provider}`}
+          rowKey={(row) => modelKey(row)}
           initialSort={{ key: "requests", dir: "desc" }}
           perPage={25}
+          onRowClick={(row) => setExpanded((held) => (held === modelKey(row) ? null : modelKey(row)))}
+          detail={detail}
+          detailOpenFor={(row) => modelKey(row) === expanded}
           empty={<p className="p-4 text-xs text-dim">No model usage in this range.</p>}
           ariaLabel="Models"
         />

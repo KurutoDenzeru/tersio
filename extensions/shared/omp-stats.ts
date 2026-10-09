@@ -32,10 +32,10 @@ export function isOmpView(v: unknown): v is OmpView {
 /** Query group names, matching the blocks readStatsDb issues. */
 const VIEW_PARTS: Record<OmpView, readonly string[]> = {
   all: ['overall', 'byModel', 'byProvider', 'byAgentType', 'byProject', 'series', 'hourOfDay', 'recent', 'errors', 'traces',
-    'seriesByProvider', 'modelSeries', 'tools', 'windows', 'providerHourly'],
+    'seriesByProvider', 'modelSeries', 'modelPerformance', 'tools', 'windows', 'providerHourly'],
   overview: ['overall', 'byModel', 'byProvider', 'byAgentType', 'byProject', 'series', 'hourOfDay', 'recent',
     'seriesByProvider', 'modelSeries'],
-  models: ['overall', 'byModel', 'modelSeries', 'series'],
+  models: ['overall', 'byModel', 'modelSeries', 'modelPerformance', 'series'],
   providers: ['overall', 'byProvider', 'series', 'seriesByProvider', 'providerHourly', 'windows'],
   // `modelSeries` feeds the per-model stack, so the page's first paint is not an empty chart.
   costs: ['overall', 'byModel', 'series', 'modelSeries'],
@@ -134,6 +134,14 @@ export interface OmpBucket {
   errors: number;
   tokens: number;
   costUsd: number;
+}
+
+/** Throughput and first-token latency for one model and provider in one bucket. */
+export interface OmpModelPerformancePoint {
+  ts: number;
+  requests: number;
+  avgTokensPerSecond: number | null;
+  avgTtftMs: number | null;
 }
 
 export interface OmpHour {
@@ -314,6 +322,8 @@ export interface OmpStats {
   series: OmpBucket[];
   seriesByProvider: Array<{ provider: string; points: OmpBucket[] }>;
   modelSeries: Array<{ model: string; points: OmpBucket[] }>;
+  /** Per-bucket throughput and TTFT per model and provider: the model detail chart. */
+  modelPerformance: Array<{ model: string; provider: string; points: OmpModelPerformancePoint[] }>;
   hourOfDay: OmpHour[];
   topModels: OmpRow[];
   recent: OmpRequestRow[];
@@ -346,7 +356,7 @@ export function emptyOmpStats(range: RangeKey = '24h'): OmpStats {
       firstTs: null, lastTs: null,
     },
     byModel: [], byProvider: [], byProject: [], byAgentType: [],
-    series: [], seriesByProvider: [], modelSeries: [], hourOfDay: [], topModels: [],
+    series: [], seriesByProvider: [], modelSeries: [], modelPerformance: [], hourOfDay: [], topModels: [],
     recent: [], errorGroups: [], errorModels: [], traces: [],
     tools: [], toolsByModel: [], toolSeries: [],
     usageSeries: [], windowInsights: [], providerHourly: [],
@@ -842,6 +852,39 @@ function readModelSeries(db: string, cutoff: number, bucketMs: number): Array<{ 
   return [...perModel.entries()].map(([model, points]) => ({ model, points }));
 }
 
+/**
+ * Throughput and first-token latency per bucket for the busiest models, the chart behind a
+ * model's expanded row. Both averages are null in a bucket where no request carried the timing,
+ * because a non-null zero would draw a flat line through a real gap.
+ */
+function readModelPerformance(db: string, cutoff: number, bucketMs: number): Array<{ model: string; provider: string; points: OmpModelPerformancePoint[] }> {
+  const scope = rangeWhere(cutoff);
+  const top = `model IN (SELECT model FROM messages ${scope} GROUP BY model ORDER BY COUNT(*) DESC LIMIT ${SERIES_MODELS})`;
+  const clause = scope ? `${scope} AND ${top}` : `WHERE ${top}`;
+  const out = readBlocks(db, [['modelPerformance', `SELECT ${txt('model')}, ${txt('provider')}, (timestamp / ${bucketMs}) * ${bucketMs},
+      COUNT(*),
+      TOTAL(CASE WHEN duration > 0 THEN output_tokens * 1000.0 / duration END),
+      COUNT(CASE WHEN duration > 0 THEN 1 END),
+      TOTAL(ttft),
+      COUNT(ttft)
+      FROM messages ${clause} GROUP BY 1, 2, 3 ORDER BY 1, 2, 3`]]);
+  const groups = new Map<string, { model: string; provider: string; points: OmpModelPerformancePoint[] }>();
+  for (const r of out.get('modelPerformance') ?? []) {
+    const key = `${r[0] ?? ''}\u0000${r[1] ?? ''}`;
+    const group = groups.get(key) ?? { model: r[0] ?? '', provider: r[1] ?? '', points: [] };
+    const durationN = num(r[5]);
+    const ttftN = num(r[7]);
+    group.points.push({
+      ts: num(r[2]),
+      requests: num(r[3]),
+      avgTokensPerSecond: durationN > 0 ? num(r[4]) / durationN : null,
+      avgTtftMs: ttftN > 0 ? num(r[6]) / ttftN : null,
+    });
+    groups.set(key, group);
+  }
+  return [...groups.values()];
+}
+
 // ------------------------------------------------------------ subscription windows
 
 /** Reference constants for the quota half, copied from the omp implementation. */
@@ -1217,6 +1260,7 @@ export function readOmpStats(range: RangeKey = '24h', view: OmpView = 'all', now
   Object.assign(stats, readStatsDb(db, cutoff, stats.bucketMs, cols, parts));
   if (parts.has('seriesByProvider')) stats.seriesByProvider = readProviderSeries(db, cutoff, stats.bucketMs);
   if (parts.has('modelSeries')) stats.modelSeries = readModelSeries(db, cutoff, stats.bucketMs);
+  if (parts.has('modelPerformance')) stats.modelPerformance = readModelPerformance(db, cutoff, stats.bucketMs);
   if (parts.has('tools')) {
     Object.assign(stats, readToolSeries(db, cutoff, stats.bucketMs));
     readTraceToolCounts(db, stats.traces);

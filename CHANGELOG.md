@@ -1,3 +1,9 @@
+## v2.26.4
+ - Expands a model row in the Models table instead of opening a drawer. The panel carries the reference's facts, grouped the same way: Efficiency (error rate with its failed count, cache rate, cache savings), Latency (average duration, average TTFT, tokens per second), the four token buckets, and the first and last seen ages.
+ - Adds a performance chart beside those facts: average output tokens per second on the left axis and average time to first token on the right, per active day. A model with no timing sample reads "No performance samples" instead of an empty frame.
+ - Reads a per-model, per-provider, per-bucket throughput and TTFT aggregate for that chart (`modelPerformance`), and adds a right axis to the shared chart so two units share one plot.
+ - The shared table can now carry a detail row that spans every column, so any page can expand a row the same way.
+
 ## v2.26.3
  - Rebuilds the request drawer on the reference's section order, and gives it a payload. The drawer reads the journal entry behind the row on demand (`/api/omp/entry`), so it carries the output message, the session entry, and the stats row, each with its size and a copy button.
  - Adds an Agent section that names the agent in force when the request ran: the agent type, the model, the thinking level, the mode, and whether the model resolved as a fallback. These come from the journal's `model_change`, `thinking_level_change`, and `mode_change` entries, read up to the request's own entry.

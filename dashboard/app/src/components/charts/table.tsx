@@ -1,5 +1,5 @@
 // The one table for every page: column defs, sorting, row selection, and a scroll body.
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { cn } from "cn";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -31,6 +31,13 @@ export interface DataTableProps<T> {
   offset?: number;
   /** Rows rendered before the pager takes over. */
   limit?: number;
+  /**
+   * Detail for a row, drawn under it and spanning every column. Returning null draws
+   * nothing, so one table can carry a detail for some rows only.
+   */
+  detail?: (row: T) => React.ReactNode | null;
+  /** Which row currently shows its detail. Controls the row's open state for assistive tech. */
+  detailOpenFor?: (row: T) => boolean;
   empty?: React.ReactNode;
   className?: string;
   ariaLabel?: string;
@@ -44,6 +51,8 @@ export function DataTable<T>({
   initialSort,
   offset = 0,
   limit,
+  detail,
+  detailOpenFor,
   empty,
   className,
   ariaLabel,
@@ -113,22 +122,36 @@ export function DataTable<T>({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {ordered.map((row) => (
-            <TableRow
-              key={rowKey(row)}
-              className={cn("border-line", onRowClick && "cursor-pointer hover:bg-track")}
-              onClick={onRowClick ? () => onRowClick(row) : undefined}
-            >
-              {columns.map((column) => (
-                <TableCell
-                  key={column.key}
-                  className={cn("px-3 py-2 align-middle", column.align === "right" && "text-right tabular-nums")}
+          {ordered.map((row) => {
+            const extra = detail ? detail(row) : null;
+            const open = detailOpenFor ? detailOpenFor(row) : false;
+            return (
+              <Fragment key={rowKey(row)}>
+                <TableRow
+                  className={cn("border-line", (onRowClick || extra) && "cursor-pointer hover:bg-track")}
+                  onClick={onRowClick ? () => onRowClick(row) : undefined}
+                  aria-expanded={extra ? open : undefined}
+                  data-detail={extra ? (open ? "open" : "closed") : undefined}
                 >
-                  {column.render(row)}
-                </TableCell>
-              ))}
-            </TableRow>
-          ))}
+                  {columns.map((column) => (
+                    <TableCell
+                      key={column.key}
+                      className={cn("px-3 py-2 align-middle", column.align === "right" && "text-right tabular-nums")}
+                    >
+                      {column.render(row)}
+                    </TableCell>
+                  ))}
+                </TableRow>
+                {extra && open && (
+                  <TableRow className="border-line hover:bg-transparent">
+                    <TableCell colSpan={columns.length} className="px-0 py-0 align-top">
+                      {extra}
+                    </TableCell>
+                  </TableRow>
+                )}
+              </Fragment>
+            );
+          })}
         </TableBody>
       </Table>
     </div>
@@ -157,6 +180,8 @@ export function PagedTable<T>({
   initialSort,
   perPage = 25,
   perPageOptions = [10, 25, 50, 100],
+  detail,
+  detailOpenFor,
   empty,
   className,
   ariaLabel,
@@ -186,6 +211,8 @@ export function PagedTable<T>({
         initialSort={initialSort}
         offset={(current - 1) * per}
         limit={per}
+        detail={detail}
+        detailOpenFor={detailOpenFor}
         empty={empty}
         ariaLabel={ariaLabel}
         className={className}

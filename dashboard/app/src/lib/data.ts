@@ -323,6 +323,14 @@ export interface OmpTranscriptEntry {
   isError: boolean;
 }
 
+/** Throughput and first-token latency for one model and provider in one bucket. */
+export interface OmpModelPerformancePoint {
+  ts: number;
+  requests: number;
+  avgTokensPerSecond: number | null;
+  avgTtftMs: number | null;
+}
+
 export interface OmpSessionTrace {
   sessionFile: string;
   project: string;
@@ -368,6 +376,7 @@ export interface OmpStats {
   series: OmpBucket[];
   seriesByProvider: Array<{ provider: string; points: OmpBucket[] }>;
   modelSeries: Array<{ model: string; points: OmpBucket[] }>;
+  modelPerformance: Array<{ model: string; provider: string; points: OmpModelPerformancePoint[] }>;
   hourOfDay: OmpHour[];
   topModels: OmpRow[];
   recent: OmpRequestRow[];
