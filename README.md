@@ -82,19 +82,32 @@ Upstream Ponytail's fair agentic benchmark reports 54% less code, 22% fewer toke
 
 ## 📈 Dashboard
 
-`tersio dashboard --open` serves a local dashboard (127.0.0.1 only) that charts your own savings from `~/.tersio/usage.db`. Three views:
+`tersio dashboard --open` serves a local dashboard (127.0.0.1 only) with one page per view, at the same hash routes the upstream `@oh-my-pi/omp-stats` dashboard uses. Tersio's own ledger keeps a page of its own.
 
-**Live feed and savings.** Token throughput, cost, savings bento, and recent activity — the top of the dashboard.
+| Route | Page |
+|---|---|
+| `#/overview?range=24h` | Everything omp did in the window: cost, tokens, cache, burn chart, newest requests |
+| `#/models?range=7d` | Which models did the work and how fast they answered |
+| `#/providers?range=7d` | Burn, reliability, and subscription headroom per provider |
+| `#/costs?range=30d` | What the window would cost at public API rates |
+| `#/requests?range=24h` | Every model call, newest first, with a filter and a detail drawer |
+| `#/errors?range=7d` | Failed requests grouped by error signature |
+| `#/traces` | Sessions, with `&s=<sessionFile>` deep-linking one transcript |
+| `#/tools?range=7d` | Which tools omp called, how often they failed, and what they cost |
+| `#/frustration?range=30d` | How often your messages sound annoyed, per model version |
+| `#/projects?range=30d` | Usage by session folder |
+| `#/gain?range=30d` | Tokens snapcompact kept out of context |
+| `#/usage` | Tersio's own ledger: throughput, savings, activity, and the raw tables |
 
-![Dashboard: live token feed, cost, savings, and activity](/assets/GainHero.webp)
+Windows are `1h`, `24h`, `7d`, `30d`, `90d`, and all time. Press `1`-`6` for a window and `g` then a letter to jump between pages. Every view keeps its window in the URL, so a link reproduces exactly what you see.
 
-**Top models and recent requests.** Per-model cost breakdown plus the last requests with elapsed time and token speed.
+**The rail and the topbar.** The rail lists every page and its shortcut, with Settings and Share in its footer. The topbar carries the live chip, the window picker, and the theme button at the top right.
 
-![Dashboard: top models with per-model cost, recent requests with elapsed time and token speed](/assets/GainModels.webp)
+**Tersio's own page.** `#/usage` is the part that reads `~/.tersio/usage.db`: token throughput, the savings bento, the activity heatmap, and the per-model, per-request, and per-command tables for every session Tersio recorded.
 
-**Command tools.** Token savings, average rate, and timing per shell tool.
+**Read-only, always.** The omp pages read `~/.omp/stats.db` and `~/.omp/agent/agent.db` and never write to them. Cost is labelled as a public-rate-card estimate, never a bill.
 
-![Dashboard: command tools with token savings, average rate, and timing](/assets/GainTools.webp)
+**Brand marks are bundled.** Vendor and provider marks ship inside the dashboard, so the exported file renders with the network off. A neutral gateway gets a monogram instead of a borrowed vendor logo. Run `bun run --cwd dashboard/app fetch-marks` to refresh them, and see `dashboard/app/src/lib/marks/SOURCES.md` for the origin of each file.
 
 ### Measurement references
 

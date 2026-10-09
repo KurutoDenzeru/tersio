@@ -1,3 +1,17 @@
+## v2.26.0
+ - Rebuilds the dashboard as a replica of the upstream `@oh-my-pi/omp-stats` dashboard: one page per view at the same hash routes (`#/models?range=7d`), each with the reference's blocks, tables, and charts. Pages: Overview, Models, Providers, Costs, Requests, Errors, Traces, Tools, Frustration, Projects, and Gain.
+ - Adds `extensions/shared/omp-stats.ts`: one read-only aggregate over `~/.omp/stats.db`, `~/.omp/agent/agent.db`, and `~/.omp/snapcompact-savings.jsonl`, matching the reference metric for metric. Each rule is pinned by `test/usage/omp-stats.test.ts`.
+ - Ports the subscription window engine: a window is one `(provider, limitId)` pair, consumption sums only positive fraction deltas, a drop past 0.05 counts a cycle, exhaustion needs a status or 0.999, `tokens one window buys` extrapolates local burn, and the peak is the swept sum across accounts with an ideal account count to stay under 90 percent.
+ - Serves each page only the query groups it renders (`/api/omp?range=&view=`), memoized for five seconds per window and view. Adds `/api/omp/session?file=` for one transcript.
+ - Keeps Tersio's own ledger on a `#/usage` page: throughput, the savings bento, the activity heatmap, and the per-model, per-request, and per-command tables.
+ - Moves Settings and Share into the rail's footer and puts the theme button at the top right of the topbar, where the reference keeps it.
+ - Adds the reference's page chrome: a page header, numbered card blocks with descriptions, column-definition tables with sorting, stat tiles with inline sparklines, and a session timeline reached by `&s=<sessionFile>`.
+ - Adds request percentiles (median and p95), per-provider hourly burn, raw failure rows, and the snapcompact gain totals to the payload.
+ - Fixes a `count(CASE … ELSE 0)` mistake before it shipped: counting rows with a zero literal counts every row, which under-reported throughput.
+ - Handles both WAL traps instead of failing a read: `-readonly` first, then `immutable=1` only with no `-wal` file (which would silently ignore the log), then a copy of the database with its side files. Nothing opens read-write.
+ - Vendors 24 brand marks and drops the Simple Icons CDN and the Hugging Face avatar, so the dashboard and its exported file render with the network off. Vendor and provider marks stay separate: a neutral gateway keeps a monogram rather than borrowing a vendor's logo. A guard test fails if a source file names a logo host.
+ - Closes the model ids that used to fall through to an unknown vendor: Moonshot `k3`, StepFun, Typesafe, Meituan, Poolside, and Tencent.
+
 ## v2.25.4
  - Fixes an OMP crash on prompt injection: a `systemPrompt` array holding a non-string no longer throws `undefined is not an object (evaluating 'part.includes')` in the Caveman and Combo extensions. Non-string parts are dropped before the marker check.
  - Stops the pi install test from failing whenever upstream publishes a new Caveman body: `rule.md` still ships byte for byte, the two upstream-tracked bodies are checked for a usable body with its floor rules.
