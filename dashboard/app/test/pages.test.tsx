@@ -134,6 +134,17 @@ test("overview says N/A when no row carried a time to first token", () => {
   expect(text).toContain("0 recorded");
 });
 
+test("models divides output by total generating time, not by one request's duration", () => {
+  // The fixture is 2 runs, 20 output tokens, 2100ms of recorded latency. Total generating time is
+  // 2100ms, so the rate is 20 / 2.1 = 9.5 tokens per second. Dividing 20 by the mean of a single
+  // run (1050ms) would print 19.0, and dividing by mean seconds without the run count would print
+  // 19000: both inflate the number the column promises.
+  const text = renderPage("models");
+  expect(text).toContain("9.5");
+  expect(text).not.toContain("19000.0");
+  expect(text).not.toContain("19.0");
+});
+
 test("providers reports per-provider totals and keeps the unrecordable windows honest", () => {
   const text = renderPage("providers");
   // The strip reads the range's tables: one provider, two runs, one of them failed.

@@ -1,5 +1,5 @@
 // Models: which models did the work, where each price came from, and how fast they answered.
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 
 import { Note, Section, StatStrip, StripStat, TableFilter, percent, MiniBars } from "@/components/dash/composites";
@@ -102,6 +102,11 @@ export function ModelsPage({ data, cutoff, since, range, money }: PageProps) {
       // Both sides of each ratio are all time, so the figures are too.
       const elapsed = meanOf(Object.entries(data.latency).find(([key]) => modelKey(key) === label)?.[1]);
       const ttft = meanOf(Object.entries(data.ttft).find(([key]) => modelKey(key) === label)?.[1]);
+      // Mean per-request duration times the number of requests: the total time the model spent
+      // generating. Dividing total output by the duration of a single request inflates the
+      // figure by the request count.
+      const runs = requests.get(label) ?? 0;
+      const spentMs = elapsed === null ? 0 : elapsed * runs;
       return {
         label,
         provider: resolved?.provider ?? null,
@@ -111,7 +116,7 @@ export function ModelsPage({ data, cutoff, since, range, money }: PageProps) {
         errors: errors.get(label) ?? 0,
         cacheRatePct: base > 0 ? (tokens.cacheRead / base) * 100 : 0,
         meanElapsedMs: elapsed,
-        tokensPerSecond: elapsed && elapsed > 0 ? tokens.output / (elapsed / 1000) : null,
+        tokensPerSecond: spentMs > 0 ? tokens.output / (spentMs / 1000) : null,
         ttftMs: ttft,
         trendPoints: days,
         firstSeen: days[0]?.day ?? null,
@@ -198,6 +203,13 @@ export function ModelsPage({ data, cutoff, since, range, money }: PageProps) {
   const ttftRuns = useMemo(
     () => Object.values(data.ttft).reduce((n, stat) => n + stat.n, 0),
     [data.ttft],
+  );
+
+  // A fresh closure per render makes TanStack re-derive its expanded-row model on every parent
+  // render, including the ones an expand itself causes. Holding it stable breaks that loop.
+  const renderDetail = useCallback(
+    (row: ModelRow) => <ModelDetail row={row} money={money} catalog={data.pricingCatalog} />,
+    [money, data.pricingCatalog],
   );
 
   const columns = useMemo<ColumnDef<ModelRow, unknown>[]>(
@@ -400,7 +412,7 @@ export function ModelsPage({ data, cutoff, since, range, money }: PageProps) {
           caption="Models by tokens in range"
           emptyTitle={`No models in ${RANGE_LABELS[range]}`}
           emptyBody="Nothing ran in the selected range."
-          renderExpanded={(row) => <ModelDetail row={row} money={money} catalog={data.pricingCatalog} />}
+          renderExpanded={renderDetail}
         />
         {ttftRuns === 0 && (
           <Note tone="warn">
