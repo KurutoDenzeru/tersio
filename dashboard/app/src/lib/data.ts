@@ -260,42 +260,6 @@ export interface OmpWindow {
   accounts: OmpWindowAccount[];
 }
 
-export interface OmpFrustrationModel {
-  model: string;
-  messages: number;
-  judged: number;
-  annoyed: number;
-  atAssistant: number;
-  angry: number;
-}
-
-export interface OmpFrustration {
-  messages: number;
-  judged: number;
-  annoyed: number;
-  atAssistant: number;
-  angry: number;
-  judge: string | null;
-  byModel: OmpFrustrationModel[];
-}
-
-export interface OmpGainTotals {
-  savedTokens: number;
-  savedBytes: number;
-  hits: number;
-  outputBytes: number;
-  originalBytes: number;
-  reductionPercent: number | null;
-}
-
-export interface OmpGain {
-  overall: OmpGainTotals;
-  bySource: { snapcompact: OmpGainTotals };
-  timeSeries: Array<{ date: string; snapcompact: number; total: number }>;
-  project: string | null;
-  projects: string[];
-}
-
 export interface OmpRequestStats {
   requests: number;
   failed: number;
@@ -394,18 +358,17 @@ export interface OmpStats {
   windowInsights: OmpWindowInsight[];
   providerHourly: OmpProviderHour[];
   requestStats: OmpRequestStats;
-  gain: OmpGain;
+  /** Raw failure rows inside the range, newest first: the Errors page's list. */
   errors: OmpRequestRow[];
-  frustration: OmpFrustration | null;
 }
 
 export type OmpView =
   | "all" | "overview" | "models" | "providers" | "costs" | "requests"
-  | "errors" | "traces" | "tools" | "frustration" | "projects" | "gain";
+  | "errors" | "traces" | "tools" | "projects";
 
 export const OMP_VIEWS: readonly OmpView[] = [
   "all", "overview", "models", "providers", "costs", "requests",
-  "errors", "traces", "tools", "frustration", "projects", "gain",
+  "errors", "traces", "tools", "projects",
 ];
 
 /** One snapshot per window and view, so returning to a page is instant. */

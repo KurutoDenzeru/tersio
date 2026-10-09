@@ -28,20 +28,6 @@ CREATE TABLE tool_calls (
   args_chars INTEGER NOT NULL DEFAULT 0, result_chars INTEGER, is_error INTEGER,
   UNIQUE(session_file, tool_call_id)
 );
-CREATE TABLE user_messages (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  session_file TEXT NOT NULL, entry_id TEXT NOT NULL, folder TEXT NOT NULL, timestamp INTEGER NOT NULL,
-  model TEXT, provider TEXT,
-  chars INTEGER NOT NULL, words INTEGER NOT NULL,
-  yelling INTEGER NOT NULL, profanity INTEGER NOT NULL, anguish INTEGER NOT NULL,
-  negation INTEGER NOT NULL DEFAULT 0, repetition INTEGER NOT NULL DEFAULT 0, blame INTEGER NOT NULL DEFAULT 0,
-  prose TEXT NOT NULL DEFAULT '', prose_hash TEXT NOT NULL DEFAULT '',
-  UNIQUE(session_file, entry_id)
-);
-CREATE TABLE frustration_verdicts (
-  prose_hash TEXT PRIMARY KEY, p_annoyed REAL NOT NULL, p_angry REAL NOT NULL,
-  target TEXT NOT NULL, judge TEXT NOT NULL, judged_at INTEGER NOT NULL
-);
 `;
 
 const AGENT_SCHEMA = `
@@ -94,24 +80,6 @@ export interface ToolFixture {
   isError?: number;
 }
 
-export interface UserFixture {
-  session: string;
-  entry: string;
-  ts: number;
-  model: string;
-  provider: string;
-  proseHash: string;
-  signals?: { yelling?: number; profanity?: number; anguish?: number; negation?: number; repetition?: number; blame?: number };
-}
-
-export interface VerdictFixture {
-  proseHash: string;
-  pAnnoyed: number;
-  pAngry: number;
-  target: string;
-  ts?: number;
-}
-
 export interface WindowFixture {
   ts: number;
   provider: string;
@@ -141,8 +109,6 @@ function insert(table: string, columns: string[], rows: Array<Array<string | num
 export function writeOmpStatsDb(file: string, fixture: {
   messages: MessageFixture[];
   tools?: ToolFixture[];
-  users?: UserFixture[];
-  verdicts?: VerdictFixture[];
 }): string {
   mkdirSync(path.dirname(file), { recursive: true });
   const script = [SCHEMA];
@@ -169,22 +135,6 @@ export function writeOmpStatsDb(file: string, fixture: {
       t.callsInTurn ?? 1, t.argsChars ?? 0, t.resultChars ?? null, t.isError ?? 0,
     ]),
   ));
-  script.push(insert(
-    'user_messages',
-    ['session_file', 'entry_id', 'folder', 'timestamp', 'model', 'provider', 'chars', 'words',
-      'yelling', 'profanity', 'anguish', 'negation', 'repetition', 'blame', 'prose', 'prose_hash'],
-    (fixture.users ?? []).map((u) => [
-      u.session, u.entry, '', u.ts, u.model, u.provider, 10, 2,
-      u.signals?.yelling ?? 0, u.signals?.profanity ?? 0, u.signals?.anguish ?? 0,
-      u.signals?.negation ?? 0, u.signals?.repetition ?? 0, u.signals?.blame ?? 0,
-      `prose ${u.proseHash}`, u.proseHash,
-    ]),
-  ));
-  script.push(insert(
-    'frustration_verdicts',
-    ['prose_hash', 'p_annoyed', 'p_angry', 'target', 'judge', 'judged_at'],
-    (fixture.verdicts ?? []).map((v) => [v.proseHash, v.pAnnoyed, v.pAngry, v.target, 'test/judge', v.ts ?? 0]),
-  ));
   execFileSync('sqlite3', [file], { input: script.join('\n'), timeout: 30_000 });
   return file;
 }
@@ -201,13 +151,6 @@ export function writeOmpAgentDb(file: string, windows: WindowFixture[]): string 
     ]),
   )];
   execFileSync('sqlite3', [file], { input: script.join('\n'), timeout: 30_000 });
-  return file;
-}
-
-/** Snapcompact savings, written beside stats.db the way omp writes it. */
-export function writeGainFixture(file: string, records: Array<{ ts: number; session: string; toolCallId: string; savedTokens: number }>): string {
-  mkdirSync(path.dirname(file), { recursive: true });
-  writeFileSync(file, `${records.map((record) => JSON.stringify(record)).join('\n')}\n`, 'utf8');
   return file;
 }
 

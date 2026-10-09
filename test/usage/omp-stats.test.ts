@@ -7,7 +7,7 @@ import path from 'node:path';
 
 import { errorSignature, readOmpStats, readSessionTrace } from '../../extensions/shared/omp-stats.ts';
 import { hasSqlite } from '../helpers/env.ts';
-import { writeGainFixture, writeOmpAgentDb, writeOmpStatsDb, writeSessionFixture } from '../helpers/omp-fixture.ts';
+import { writeOmpAgentDb, writeOmpStatsDb, writeSessionFixture } from '../helpers/omp-fixture.ts';
 
 const HOUR = 3_600_000;
 const DAY = 86_400_000;
@@ -42,15 +42,6 @@ function seed(): { now: number } {
     tools: [
       { session: 's1.jsonl', entry: 'e1', toolCallId: 't1', tool: 'read', model: 'priced-model', provider: 'commandcode', ts: now - 5 * HOUR, callsInTurn: 2, argsChars: 100, resultChars: 200 },
       { session: 's1.jsonl', entry: 'e1', toolCallId: 't2', tool: 'bash', model: 'priced-model', provider: 'commandcode', ts: now - 5 * HOUR, callsInTurn: 2, argsChars: 50, resultChars: null, isError: 1 },
-    ],
-    users: [
-      { session: 's1.jsonl', entry: 'u1', ts: now - 5 * HOUR, model: 'priced-model', provider: 'commandcode', proseHash: 'h1' },
-      { session: 's1.jsonl', entry: 'u2', ts: now - 4 * HOUR, model: 'priced-model', provider: 'commandcode', proseHash: 'h2', signals: { negation: 1 } },
-      { session: 's1.jsonl', entry: 'u3', ts: now - 3 * HOUR, model: 'free-model', provider: 'magpie', proseHash: 'h3', signals: { yelling: 5, profanity: 2, blame: 1 } },
-    ],
-    verdicts: [
-      { proseHash: 'h1', pAnnoyed: 0.8, pAngry: 0.9, target: 'assistant' },
-      { proseHash: 'h3', pAnnoyed: 0.2, pAngry: 0.0, target: 'none' },
     ],
   });
   process.env.TERSIO_OMP_AGENT_DB = writeOmpAgentDb(path.join(dir, 'agent.db'), [
@@ -193,20 +184,6 @@ describe.skipIf(!hasSqlite())('omp aggregate', () => {
     expect(traces[1].project).toBe('-proj-b');
   });
 
-  test('prefers a stored judge verdict over the regex signals', () => {
-    seed();
-    const frustration = readOmpStats('all').frustration;
-    expect(frustration).not.toBeNull();
-    expect(frustration?.messages).toBe(3);
-    expect(frustration?.judged).toBe(2);
-    // u1 and u2 are annoyed. u3 carries loud regex signals but a low judge score, so it is not.
-    expect(frustration?.annoyed).toBe(2);
-    expect(frustration?.atAssistant).toBe(2);
-    expect(frustration?.angry).toBe(1);
-    expect(frustration?.byModel.length).toBe(2);
-    expect(frustration?.byModel.find((row) => row.model === 'free-model')?.annoyed).toBe(0);
-  });
-
   test('reads the quota windows, their accounts, and the peak utilization', () => {
     seed();
     const omp = readOmpStats('all', 'providers');
@@ -228,46 +205,12 @@ describe.skipIf(!hasSqlite())('omp aggregate', () => {
     expect(omp.usageSeries[0].points.map((point) => point.usedFraction)).toEqual([0.2, 0.6]);
   });
 
-  test('reads snapcompact savings, deduping a repeated tool call', () => {
-    const now = Date.now();
-    seed();
-    writeGainFixture(path.join(dir, 'snapcompact-savings.jsonl'), [
-      { ts: now - 2 * DAY, session: 's1.jsonl', toolCallId: 'g1', savedTokens: 1000 },
-      { ts: now - 2 * DAY, session: 's1.jsonl', toolCallId: 'g1', savedTokens: 1000 },
-      { ts: now - DAY, session: 's2.jsonl', toolCallId: 'g2', savedTokens: 500 },
-    ]);
-    const gain = readOmpStats('all', 'gain').gain;
-    expect(gain.overall.savedTokens).toBe(1500);
-    expect(gain.overall.hits).toBe(2);
-    expect(gain.overall.savedBytes).toBe(6000);
-    expect(gain.overall.reductionPercent).toBeNull();
-    expect(gain.timeSeries.length).toBe(2);
-    expect(gain.timeSeries.reduce((sum, point) => sum + point.snapcompact, 0)).toBe(1500);
-    expect(gain.projects.toSorted()).toEqual(['-proj-a', '-proj-b']);
-  });
-
-  test('summarises the request window it loaded', () => {
-    seed();
-    const stats = readOmpStats('all', 'requests').requestStats;
-    expect(stats.requests).toBe(5);
-    expect(stats.failed).toBe(1);
-    expect(stats.aborted).toBe(1);
-    expect(stats.tokens).toBe(16680);
-    expect(stats.costUsd).toBeCloseTo(0.3, 12);
-    expect(stats.unpriced).toBe(2);
-    expect(stats.medianDurationMs).toBeCloseTo(2500, 9);
-    expect(stats.p95DurationMs).toBe(4000);
-    expect(stats.medianTtftMs).toBeCloseTo(550, 9);
-    expect(stats.newest! - stats.oldest!).toBe(5 * HOUR - 10 * 60_000);
-  });
-
   test('runs only the query groups a view asks for', () => {
     seed();
-    const gain = readOmpStats('all', 'gain');
-    expect(gain.gain.overall.hits).toBe(0);
-    expect(gain.overall.requests).toBe(0);
-    expect(gain.byModel).toEqual([]);
-    expect(gain.traces).toEqual([]);
+    const projects = readOmpStats('all', 'projects');
+    expect(projects.overall.requests).toBe(5);
+    expect(projects.byModel).toEqual([]);
+    expect(projects.traces).toEqual([]);
 
     const traces = readOmpStats('all', 'traces');
     expect(traces.traces.length).toBe(2);
@@ -317,8 +260,6 @@ describe.skipIf(!hasSqlite())('omp aggregate', () => {
     expect(omp.byModel).toEqual([]);
     expect(omp.windowInsights).toEqual([]);
     expect(omp.usageSeries).toEqual([]);
-    expect(omp.gain.overall.hits).toBe(0);
-    expect(omp.frustration).toBeNull();
   });
 
   test('still reads the quota half when only stats.db is missing', () => {

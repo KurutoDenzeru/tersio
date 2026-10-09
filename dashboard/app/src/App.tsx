@@ -18,9 +18,7 @@ import { RequestsPage } from "./components/omp/requests";
 import { ErrorsPage } from "./components/omp/errors";
 import { TracesPage } from "./components/omp/traces";
 import { ToolsPage } from "./components/omp/tools";
-import { FrustrationPage } from "./components/omp/frustration";
 import { ProjectsPage } from "./components/omp/projects";
-import { GainPage } from "./components/omp/gain";
 import { UsagePage } from "./components/tersio/usage";
 import { Footer, SettingsDialog, ShareDialog } from "./components/dialogs";
 import { ToasterProvider } from "./components/toaster";
@@ -111,8 +109,8 @@ function Dashboard() {
   const { data, status } = useDashboardData();
   const { fx, money, applyCurrency } = useFx(data?.currency);
   const { section, range, session, setSection, setRange, setSession } = useHashRoute();
-  // The usage page is Tersio's own; it only needs the availability flag, which every view carries.
-  const view: OmpView = section === "usage" ? "gain" : section;
+  // The usage page is Tersio's own; the smallest view still answers "is there an omp database".
+  const view: OmpView = section === "usage" ? "projects" : section;
   const { omp, loading } = useOmpData(range, view);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
@@ -165,12 +163,8 @@ function Dashboard() {
         return <TracesPage omp={omp} money={money} onOpenSession={setSession} />;
       case "tools":
         return <ToolsPage omp={omp} money={money} />;
-      case "frustration":
-        return <FrustrationPage omp={omp} />;
       case "projects":
         return <ProjectsPage omp={omp} money={money} />;
-      case "gain":
-        return <GainPage omp={omp} money={money} />;
       default:
         return null;
     }

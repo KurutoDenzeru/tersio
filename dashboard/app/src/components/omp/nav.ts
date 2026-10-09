@@ -8,9 +8,7 @@ export type SectionId =
   | "errors"
   | "traces"
   | "tools"
-  | "frustration"
   | "projects"
-  | "gain"
   | "usage";
 
 export interface NavItem {
@@ -50,9 +48,7 @@ export const NAV: readonly NavGroup[] = [
     heading: "Insights",
     items: [
       { id: "tools", label: "Tools", icon: "wrench", hotkey: "l", ompOnly: false },
-      { id: "frustration", label: "Frustration", icon: "frown", hotkey: "f", ompOnly: true },
       { id: "projects", label: "Projects", icon: "folder-git-2", hotkey: "j", ompOnly: true },
-      { id: "gain", label: "Gain", icon: "sparkles", hotkey: "g", ompOnly: false },
     ],
   },
   {

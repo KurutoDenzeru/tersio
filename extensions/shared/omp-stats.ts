@@ -18,11 +18,11 @@ export function isRangeKey(v: unknown): v is RangeKey {
 /** A page fetches only the parts it renders, so a route payload stays small. */
 export type OmpView =
   | 'all' | 'overview' | 'models' | 'providers' | 'costs' | 'requests'
-  | 'errors' | 'traces' | 'tools' | 'frustration' | 'projects' | 'gain';
+  | 'errors' | 'traces' | 'tools' | 'projects';
 
 export const OMP_VIEWS: readonly OmpView[] = [
   'all', 'overview', 'models', 'providers', 'costs', 'requests',
-  'errors', 'traces', 'tools', 'frustration', 'projects', 'gain',
+  'errors', 'traces', 'tools', 'projects',
 ];
 
 export function isOmpView(v: unknown): v is OmpView {
@@ -32,7 +32,7 @@ export function isOmpView(v: unknown): v is OmpView {
 /** Query group names, matching the blocks readStatsDb issues. */
 const VIEW_PARTS: Record<OmpView, readonly string[]> = {
   all: ['overall', 'byModel', 'byProvider', 'byAgentType', 'byProject', 'series', 'hourOfDay', 'recent', 'errors', 'traces',
-    'seriesByProvider', 'modelSeries', 'tools', 'windows', 'providerHourly', 'frustration', 'gain'],
+    'seriesByProvider', 'modelSeries', 'tools', 'windows', 'providerHourly'],
   overview: ['overall', 'byModel', 'byProvider', 'byAgentType', 'byProject', 'series', 'hourOfDay', 'recent',
     'seriesByProvider', 'modelSeries'],
   models: ['overall', 'byModel', 'modelSeries', 'series'],
@@ -42,9 +42,7 @@ const VIEW_PARTS: Record<OmpView, readonly string[]> = {
   errors: ['errors', 'overall', 'byModel', 'recent'],
   traces: ['traces'],
   tools: ['overall', 'tools'],
-  frustration: ['frustration'],
   projects: ['overall', 'byProject'],
-  gain: ['gain'],
 };
 
 /** Window length in ms. `all` has no cutoff, so it reads as 0. */
@@ -223,43 +221,6 @@ export interface OmpUsageWindowPoint {
   exhausted: boolean;
 }
 
-export interface OmpFrustrationModel {
-  model: string;
-  messages: number;
-  judged: number;
-  annoyed: number;
-  atAssistant: number;
-  angry: number;
-}
-
-export interface OmpFrustration {
-  messages: number;
-  judged: number;
-  annoyed: number;
-  atAssistant: number;
-  angry: number;
-  judge: string | null;
-  byModel: OmpFrustrationModel[];
-}
-
-export interface OmpGainTotals {
-  savedTokens: number;
-  savedBytes: number;
-  hits: number;
-  outputBytes: number;
-  originalBytes: number;
-  reductionPercent: number | null;
-}
-
-/** Snapcompact savings, read from the JSONL beside stats.db. */
-export interface OmpGain {
-  overall: OmpGainTotals;
-  bySource: { snapcompact: OmpGainTotals };
-  timeSeries: Array<{ date: string; snapcompact: number; total: number }>;
-  project: string | null;
-  projects: string[];
-}
-
 /** The Requests page's summary row, computed over the loaded window. */
 export interface OmpRequestStats {
   requests: number;
@@ -366,10 +327,8 @@ export interface OmpStats {
   windowInsights: OmpWindowInsight[];
   providerHourly: OmpProviderHour[];
   requestStats: OmpRequestStats;
-  gain: OmpGain;
   /** Raw failure rows inside the range, newest first: the Errors page's list. */
   errors: OmpRequestRow[];
-  frustration: OmpFrustration | null;
 }
 
 export function emptyOmpStats(range: RangeKey = '24h'): OmpStats {
@@ -395,13 +354,7 @@ export function emptyOmpStats(range: RangeKey = '24h'): OmpStats {
       requests: 0, failed: 0, aborted: 0, tokens: 0, costUsd: 0, unpriced: 0,
       medianDurationMs: 0, p95DurationMs: 0, medianTtftMs: 0, oldest: null, newest: null,
     },
-    gain: {
-      overall: { savedTokens: 0, savedBytes: 0, hits: 0, outputBytes: 0, originalBytes: 0, reductionPercent: null },
-      bySource: { snapcompact: { savedTokens: 0, savedBytes: 0, hits: 0, outputBytes: 0, originalBytes: 0, reductionPercent: null } },
-      timeSeries: [], project: null, projects: [],
-    },
     errors: [],
-    frustration: null,
   };
 }
 
@@ -875,45 +828,6 @@ function readTraceToolCounts(db: string, traces: OmpTraceRow[]): void {
   } catch { /* no tool rows: keep zero */ }
 }
 
-function readFrustration(db: string, cutoff: number): OmpFrustration | null {
-  if (tableColumns(db, 'user_messages').size === 0) return null;
-  const hasVerdicts = tableColumns(db, 'frustration_verdicts').has('prose_hash');
-  const join = hasVerdicts ? 'LEFT JOIN frustration_verdicts v ON v.prose_hash = u.prose_hash' : '';
-  const judged = hasVerdicts ? 'v.prose_hash IS NOT NULL' : '0';
-  const pAnnoyed = hasVerdicts ? 'v.p_annoyed >= 0.5' : '0';
-  const atAssistant = hasVerdicts ? `${pAnnoyed} AND v.target = 'assistant'` : '0';
-  const regexAtAssistant = 'u.negation + u.repetition + u.blame > 0';
-  const counts = `
-    COUNT(*),
-    COALESCE(SUM(${judged}), 0),
-    COALESCE(SUM(CASE WHEN ${judged} THEN ${pAnnoyed}
-      ELSE u.yelling + u.profanity + u.anguish + u.negation + u.repetition + u.blame > 0 END), 0),
-    COALESCE(SUM(CASE WHEN ${judged} THEN ${atAssistant} ELSE ${regexAtAssistant} END), 0),
-    COALESCE(SUM(CASE WHEN ${judged} THEN ${atAssistant} AND v.p_angry >= 0.5
-      ELSE ${regexAtAssistant} AND (u.profanity > 0 OR u.yelling > 0) END), 0)`;
-  const where = rangeWhere(cutoff, 'u.timestamp');
-  const out = readBlocks(db, [
-    ['frustration', `SELECT ${counts} FROM user_messages u ${join} ${where}`],
-    ['frustrationByModel', `SELECT ${txt('u.model')}, ${counts} FROM user_messages u ${join} ${where} GROUP BY u.model ORDER BY 2 DESC`],
-    ['judge', hasVerdicts ? 'SELECT judge, COUNT(*) FROM frustration_verdicts GROUP BY 1 ORDER BY 2 DESC LIMIT 1' : 'SELECT "", 0'],
-  ]);
-  const overall = out.get('frustration')?.[0];
-  if (!overall) return null;
-  return {
-    messages: num(overall[0]),
-    judged: num(overall[1]),
-    annoyed: num(overall[2]),
-    atAssistant: num(overall[3]),
-    angry: num(overall[4]),
-    judge: out.get('judge')?.[0]?.[0] || null,
-    byModel: (out.get('frustrationByModel') ?? []).map((r) => ({
-      model: r[0] ?? '',
-      messages: num(r[1]), judged: num(r[2]), annoyed: num(r[3]),
-      atAssistant: num(r[4]), angry: num(r[5]),
-    })),
-  };
-}
-
 /** Daily tokens and cost for the busiest models: the Models table sparkline. */
 function readModelSeries(db: string, cutoff: number, bucketMs: number): Array<{ model: string; points: OmpBucket[] }> {
   const scope = rangeWhere(cutoff);
@@ -1162,80 +1076,6 @@ function computeRequestStats(rows: OmpRequestRow[]): OmpRequestStats {
   };
 }
 
-/** Bytes per token, the reference's estimate for snapcompact savings. */
-const BYTES_PER_TOKEN = 4;
-
-function emptyGainTotals(): OmpGainTotals {
-  return { savedTokens: 0, savedBytes: 0, hits: 0, outputBytes: 0, originalBytes: 0, reductionPercent: null };
-}
-
-/**
- * Snapcompact savings, read from the JSONL beside stats.db. Records are deduped by session and
- * tool call, and each session is mapped to its project folder through `messages`.
- */
-function readGain(cutoff: number, project: string | null): OmpGain {
-  const empty: OmpGain = { overall: emptyGainTotals(), bySource: { snapcompact: emptyGainTotals() }, timeSeries: [], project, projects: [] };
-  const file = path.join(path.dirname(statsDbPath()), 'snapcompact-savings.jsonl');
-  if (!fs.existsSync(file)) return empty;
-
-  let text: string;
-  try {
-    text = fs.readFileSync(file, 'utf8');
-  } catch {
-    return empty;
-  }
-
-  const seen = new Set<string>();
-  const records: Array<{ ts: number; session: string; savedTokens: number }> = [];
-  for (const line of text.split('\n')) {
-    if (!line.trim()) continue;
-    try {
-      const parsed = JSON.parse(line) as { ts?: number; session?: string; toolCallId?: string; savedTokens?: number };
-      if (typeof parsed.ts !== 'number' || cutoff > 0 && parsed.ts < cutoff) continue;
-      const key = `${parsed.session ?? ''}:${parsed.toolCallId ?? ''}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      records.push({ ts: parsed.ts, session: parsed.session ?? '', savedTokens: num(String(parsed.savedTokens ?? 0)) });
-    } catch { /* a malformed line is skipped, not fatal */ }
-  }
-  if (records.length === 0) return empty;
-
-  const db = statsDbPath();
-  const folders = new Map<string, string>();
-  if (fs.existsSync(db)) {
-    const sessions = [...new Set(records.map((record) => record.session))].filter(Boolean);
-    for (let i = 0; i < sessions.length; i += 200) {
-      const chunk = sessions.slice(i, i + 200).map(esc).join(',');
-      const out = readBlocks(db, [['gainFolders', `SELECT DISTINCT session_file, folder FROM messages WHERE session_file IN (${chunk})`]]);
-      for (const row of out.get('gainFolders') ?? []) folders.set(row[0] ?? '', row[1] ?? '');
-    }
-  }
-
-  const totals = emptyGainTotals();
-  const days = new Map<string, number>();
-  const projects = new Set<string>();
-  for (const record of records) {
-    const folder = folders.get(record.session) ?? '';
-    if (folder) projects.add(folder);
-    if (project !== null && folder !== project) continue;
-    totals.savedTokens += record.savedTokens;
-    totals.savedBytes += record.savedTokens * BYTES_PER_TOKEN;
-    totals.hits += 1;
-    const date = new Date(record.ts).toISOString().slice(0, 10);
-    days.set(date, (days.get(date) ?? 0) + record.savedTokens);
-  }
-
-  return {
-    overall: totals,
-    bySource: { snapcompact: totals },
-    timeSeries: [...days.entries()]
-      .toSorted(([a], [b]) => a.localeCompare(b))
-      .map(([date, saved]) => ({ date, snapcompact: saved, total: saved })),
-    project,
-    projects: [...projects].toSorted(),
-  };
-}
-
 /** One transcript, flattened into a timeline. Bounded so a huge session cannot stall the server. */
 export function readSessionTrace(sessionFile: string, limit = 400): OmpSessionTrace {
   const project = sessionFile.split('/sessions/')[1]?.split('/')[0] ?? '';
@@ -1303,7 +1143,6 @@ export function readOmpStats(range: RangeKey = '24h', view: OmpView = 'all', now
   const parts = new Set(VIEW_PARTS[view]);
   const stats = emptyOmpStats(range);
   stats.cutoff = cutoff;
-  if (parts.has('gain')) stats.gain = readGain(cutoff, null);
 
   const db = statsDbPath();
   const cols = fs.existsSync(db) ? tableColumns(db, 'messages') : new Set<string>();
@@ -1327,7 +1166,6 @@ export function readOmpStats(range: RangeKey = '24h', view: OmpView = 'all', now
   if (stats.byModel.length > 0) stats.topModels = stats.byModel.slice(0, 12);
   if (parts.has('providerHourly')) stats.providerHourly = readProviderHourly(db, cutoff);
   if (parts.has('recent')) stats.requestStats = computeRequestStats(stats.recent);
-  if (parts.has('frustration')) stats.frustration = readFrustration(db, cutoff);
   if (parts.has('windows')) {
     Object.assign(stats, computeWindows(readWindowSamples(cutoff), readProviderTokens(db, cutoff)));
   }
