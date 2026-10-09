@@ -232,7 +232,7 @@ function GROUP_COLUMNS(maxCount: number): Array<Column<OmpErrorGroup>> {
       sort: (group) => group.models.length,
       render: (group) => (
         <span className="flex min-w-0 items-center gap-2">
-          <VendorMark model={group.models[0]?.model ?? ""} small />
+          <VendorMark model={group.models[0]?.model ?? ""} tiny />
           <span className="min-w-0">
             <span className="mono block truncate">{group.models[0] ? displayModel(group.models[0].model) : "–"}</span>
             <span className="block truncate text-[11px] text-dim">
@@ -276,11 +276,11 @@ function MODEL_COLUMNS(maxCount: number): Array<Column<OmpStats["errorModels"][n
       sort: (row) => row.count,
       render: (row) => (
         <span className="flex min-w-0 items-center gap-2">
-          <VendorMark model={row.model} small />
+          <VendorMark model={row.model} tiny />
           <span className="min-w-0">
             <span className="mono block truncate">{displayModel(row.model)}</span>
             <span className="flex items-center gap-1.5 text-[11px] text-dim">
-              <ProviderMark provider={row.provider} small />
+              <ProviderMark provider={row.provider} tiny />
               <span className="truncate">{row.provider || "–"}</span>
             </span>
           </span>
@@ -357,7 +357,7 @@ function buildFailureColumns(money: (v: number) => string): Array<Column<OmpRequ
     sort: (row) => row.model,
     render: (row) => (
       <span className="flex min-w-0 items-center gap-2">
-        <VendorMark model={row.model} small />
+        <VendorMark model={row.model} tiny />
         <span className="mono truncate">{displayModel(row.model)}</span>
       </span>
     ),

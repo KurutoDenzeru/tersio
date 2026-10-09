@@ -38,14 +38,16 @@ function MaskedGlyph({ className, src, color = "currentColor" }: { className: st
 
 const TILE = "relative grid shrink-0 place-items-center overflow-hidden rounded-[12px] border border-line";
 const TILE_SMALL = "size-8 rounded-[10px]";
+/** One line of a dense table, where a 32px tile would inflate the row. */
+const TILE_TINY = "size-[18px] rounded-[6px]";
 
 /**
  * One tile, one mark. The chain is fixed: an image mark, then a mask, then a monogram, then a
  * generic glyph. A provider with no findable mark keeps its monogram, never another vendor's logo.
  */
-function Mark({ slug, initial, color, small }: { slug: string; initial: string; color: string; small?: boolean }) {
-  const glyph = small ? "size-[17px]" : "size-[22px]";
-  const tile = cn(TILE, "size-[40px]", small && TILE_SMALL);
+function Mark({ slug, initial, color, small, tiny }: { slug: string; initial: string; color: string; small?: boolean; tiny?: boolean }) {
+  const glyph = tiny ? "size-3" : small ? "size-[17px]" : "size-[22px]";
+  const tile = cn(TILE, "size-[40px]", small && TILE_SMALL, tiny && TILE_TINY);
   if (slug === "openai") {
     return (
       <span className={cn(tile, "text-black")} style={{ background: color }} aria-hidden="true">
@@ -101,19 +103,20 @@ function Mark({ slug, initial, color, small }: { slug: string; initial: string; 
 }
 
 /** The mark for a provider id: its own brand when it has one, else a monogram of that id. */
-export function ProviderMark({ provider, small }: { provider: string; small?: boolean }) {
+export function ProviderMark({ provider, small, tiny }: { provider: string; small?: boolean; tiny?: boolean }) {
   return (
     <Mark
       slug={providerMeta(provider).slug}
       initial={(provider.match(/[a-z0-9]/i)?.[0] ?? "").toUpperCase()}
       color={providerColor(provider)}
       small={small}
+      tiny={tiny}
     />
   );
 }
 
 /** The mark for a model's author, resolved from the model id. */
-export function VendorMark({ model, small }: { model: string; small?: boolean }) {
+export function VendorMark({ model, small, tiny }: { model: string; small?: boolean; tiny?: boolean }) {
   const v = vendorOf(model);
   return (
     <Mark
@@ -121,6 +124,7 @@ export function VendorMark({ model, small }: { model: string; small?: boolean })
       initial={v.slug ? "" : (v.name.match(/[a-z0-9]/i)?.[0] ?? "?").toUpperCase()}
       color={v.color}
       small={small}
+      tiny={tiny}
     />
   );
 }

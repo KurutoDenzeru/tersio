@@ -202,7 +202,7 @@ export function OmpRequestDrawer({
             <DetailRow label="Fallback">{entry.agent.fallback === null ? "not recorded" : entry.agent.fallback ? "yes, resolved as a fallback" : "no"}</DetailRow>
             <DetailRow label="Provider">
               <span className="inline-flex items-center gap-2">
-                <ProviderMark provider={row.provider} small />
+                <ProviderMark provider={row.provider} tiny />
                 <span>{row.provider || "unknown provider"}</span>
               </span>
             </DetailRow>

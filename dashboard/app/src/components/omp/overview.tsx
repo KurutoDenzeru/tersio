@@ -245,11 +245,11 @@ function buildLatestColumns(money: (v: number) => string): Array<Column<OmpReque
     header: "Model",
     render: (row) => (
       <span className="flex min-w-0 items-center gap-2">
-        <VendorMark model={row.model} small />
+        <VendorMark model={row.model} tiny />
         <span className="min-w-0">
           <span className="mono block truncate">{displayModel(row.model)}</span>
           <span className="flex items-center gap-1.5 text-[11px] text-dim">
-            <ProviderMark provider={row.provider} small />
+            <ProviderMark provider={row.provider} tiny />
             <span className="truncate">{row.provider || "–"}</span>
           </span>
         </span>

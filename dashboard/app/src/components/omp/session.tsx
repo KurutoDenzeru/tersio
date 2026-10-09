@@ -117,10 +117,10 @@ export function SessionTrace({
                         </span>
                         {entry.model && (
                           <span className="ml-2 inline-flex items-center gap-1.5">
-                            <VendorMark model={entry.model} small />
+                            <VendorMark model={entry.model} tiny />
                           </span>
                         )}
-                        {entry.provider && <ProviderMark provider={entry.provider} small />}
+                        {entry.provider && <ProviderMark provider={entry.provider} tiny />}
                       </TableCell>
                       <TableCell className="max-w-[520px] px-3 py-2">
                         <span className={entry.isError ? "text-danger" : undefined} title={entry.detail}>

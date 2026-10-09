@@ -1,5 +1,6 @@
 // Models page: which models did the work, how fast they answered, and how they trend.
 import { useMemo, useState } from "react";
+import { cn } from "cn";
 import {
   Card,
   PagedTable,
@@ -17,6 +18,8 @@ import type { OmpModelPerformancePoint, OmpRow, OmpStats } from "@/lib/data";
 import { OMP_RANGE_LABEL } from "@/lib/data";
 import { PALETTE, fmt, fmtMs, fmtShort, pct, relAge, tsFull, tsLabel } from "@/lib/format";
 import { Icon } from "@/components/icon";
+import { VendorMark } from "@/components/brand";
+import { Badge } from "@/components/ui/badge";
 
 type ShareMode = "share" | "requests";
 
@@ -278,9 +281,11 @@ export function ModelsPage({ omp, money }: { omp: OmpStats; money: (v: number) =
         sort: (row) => row.key,
         render: (row) => (
           <span className="flex min-w-0 items-center gap-2">
-            <span className="size-2 shrink-0 rounded-[2px]" style={{ background: colorOf(row) }} aria-hidden="true" />
-            <span className="mono truncate" title={`${row.key} (${row.provider})`}>{row.key}</span>
-            <span className="text-dim">{row.provider}</span>
+            <VendorMark model={row.key} tiny />
+            <span className="grid min-w-0 leading-tight">
+              <span className="mono truncate font-bold" title={`${row.key} (${row.provider})`}>{row.key}</span>
+              <span className="mono truncate text-[10px] text-dim">{row.provider || "unknown provider"}</span>
+            </span>
           </span>
         ),
       },
@@ -289,7 +294,17 @@ export function ModelsPage({ omp, money }: { omp: OmpStats; money: (v: number) =
         header: "Requests",
         align: "right",
         sort: (row) => row.requests,
-        render: (row) => <span className="tabular-nums">{fmt(row.requests)}</span>,
+        render: (row) => (
+          <span className="grid justify-items-end gap-1">
+            <span className="tabular-nums">{fmt(row.requests)}</span>
+            <span className="h-[3px] w-[92px] overflow-hidden rounded-full bg-track" aria-hidden="true">
+              <span
+                className="block h-full rounded-full"
+                style={{ width: `${view.maxRequests > 0 ? (row.requests / view.maxRequests) * 100 : 0}%`, background: colorOf(row) }}
+              />
+            </span>
+          </span>
+        ),
       },
       {
         key: "cost",
@@ -324,14 +339,24 @@ export function ModelsPage({ omp, money }: { omp: OmpStats; money: (v: number) =
         header: "Errors",
         align: "right",
         sort: (row) => row.errorRate,
-        render: (row) =>
-          row.failed === 0 ? (
-            <span className="text-dim">0%</span>
-          ) : (
-            <span className="tabular-nums text-danger" title={`${fmt(row.failed)} failed`}>
-              {pct(row.errorRate)}
-            </span>
-          ),
+        render: (row) => {
+          const rate = row.errorRate;
+          // The chip carries the severity and the figure stays in ink, so a tinted number
+          // never drops under AA on either panel.
+          const chip =
+            rate === 0
+              ? "border-line text-dim"
+              : rate >= 0.05
+                ? "border-[var(--danger-border)] bg-[var(--danger-soft)]"
+                : rate >= 0.01
+                  ? "border-[var(--warn-border)] bg-[var(--warn-soft)]"
+                  : "border-transparent bg-accent-soft";
+          return (
+            <Badge variant="outline" className={cn("mono px-1.5 text-[10px] tabular-nums", chip)} title={`${fmt(row.failed)} failed of ${fmt(row.requests)}`}>
+              {pct(rate)}
+            </Badge>
+          );
+        },
       },
       {
         key: "tps",
@@ -341,9 +366,9 @@ export function ModelsPage({ omp, money }: { omp: OmpStats; money: (v: number) =
         sort: (row) => row.avgTokensPerSecond,
         render: (row) =>
           row.avgTokensPerSecond > 0 ? (
-            <span className="tabular-nums">{fmtShort(row.avgTokensPerSecond)}/s</span>
+            <span className="tabular-nums">{fmtShort(row.avgTokensPerSecond)}</span>
           ) : (
-            <span className="text-dim">–</span>
+            <span className="text-dim">-</span>
           ),
       },
       {
@@ -352,7 +377,12 @@ export function ModelsPage({ omp, money }: { omp: OmpStats; money: (v: number) =
         title: "Average time to first token",
         align: "right",
         sort: (row) => row.avgTtftMs,
-        render: (row) => <span className="tabular-nums">{fmtMs(row.avgTtftMs)}</span>,
+        render: (row) =>
+          row.avgTtftMs > 0 ? (
+            <span className="tabular-nums">{fmtMs(row.avgTtftMs)}</span>
+          ) : (
+            <span className="text-dim">-</span>
+          ),
       },
       {
         key: "trend",

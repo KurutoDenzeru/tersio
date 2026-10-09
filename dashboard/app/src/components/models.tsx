@@ -452,7 +452,7 @@ export function Models({ data, money }: { data: UsageReport | null; money: (v: n
                     <HoverTip key={m} content={data ? <ModelTip m={m} data={data} money={money} /> : "–"}>
                       <TableRow className="cursor-pointer hover:bg-track hover:shadow-tersio" onClick={() => setOpen(m)}>
                         <TableCell className="min-w-0 truncate py-2.5 pr-3">
-                          <span className="mr-2.5 inline-flex align-middle"><VendorMark model={m} small /></span>
+                          <span className="mr-2.5 inline-flex align-middle"><VendorMark model={m} tiny /></span>
                           <span className="align-middle">{displayModel(m)}</span>
                         </TableCell>
                         <TableCell className="whitespace-nowrap py-2.5 pr-3 text-right" title={fmtShort(mv)}>

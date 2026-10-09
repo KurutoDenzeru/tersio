@@ -272,7 +272,7 @@ function ProviderTotalsTable({
         sort: (p) => p.provider,
         render: (p) => (
           <span className="mono flex items-center gap-2">
-            <ProviderMark provider={p.provider} small />
+            <ProviderMark provider={p.provider} tiny />
             <span className="truncate">{p.provider}</span>
           </span>
         ),
