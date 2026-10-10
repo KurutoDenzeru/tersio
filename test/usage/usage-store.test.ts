@@ -6,6 +6,7 @@ import path from "node:path";
 
 import {
   clearUsageDb,
+  listUsageBackups,
   readUsageDb,
   reparseGuardReport,
   syncUsageDb,
@@ -125,6 +126,43 @@ test.skipIf(!hasSqlite())("migration guard restores the backup when transcripts 
       expect(syncUsageDb()).toBe(true);
       expect(readUsageDb()?.tokens.messages).toBe(2);
       expect(execFileSync("sqlite3", [process.env.TERSIO_USAGE_DB!, "PRAGMA freelist_count;"], { encoding: "utf8" }).trim()).toBe("0");
+    });
+  } finally {
+    if (prevForce === undefined) delete process.env.TERSIO_FORCE_REPARSE;
+    else process.env.TERSIO_FORCE_REPARSE = prevForce;
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test.skipIf(!hasSqlite())("a store from a newer tersio keeps its rows instead of re-parsing", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-usage-downgrade-"));
+  const prevForce = process.env.TERSIO_FORCE_REPARSE;
+  try {
+    withEnv(dir, () => {
+      const db = process.env.TERSIO_USAGE_DB!;
+      const row = (id: string, input: number): string =>
+        `{"timestamp":"2026-09-01T10:00:00.000Z","type":"message","id":"${id}","message":{"role":"assistant","model":"m","usage":{"input":${input},"output":1}}}`;
+      mkdirSync(path.join(dir, "sessions"), { recursive: true });
+      for (const n of ["a", "b", "c"]) {
+        writeFileSync(path.join(dir, "sessions", `${n}.jsonl`), [row(`${n}1`, 10), row(`${n}2`, 20)].join("\n") + "\n", "utf8");
+      }
+      expect(syncUsageDb()).toBe(true);
+      expect(readUsageDb()?.tokens.messages).toBe(6);
+      const backupsBefore = listUsageBackups().length;
+      // A newer tersio wrote the store; this build cannot migrate it forward.
+      execFileSync("sqlite3", [db, "UPDATE meta SET v='99' WHERE k='parser_version';"]);
+      rmSync(path.join(dir, "sessions", "a.jsonl"));
+      rmSync(path.join(dir, "sessions", "b.jsonl"));
+      expect(syncUsageDb()).toBe(true);
+      expect(readUsageDb()?.tokens.messages).toBe(6);
+      expect(reparseGuardReport()).toMatch(/written by a newer tersio/);
+      // No backup was taken and none was restored: the wipe path never ran.
+      expect(listUsageBackups().length).toBe(backupsBefore);
+      expect(execFileSync("sqlite3", [db, "SELECT v FROM meta WHERE k='parser_version';"], { encoding: "utf8" }).trim()).toBe("99");
+      // The force switch still accepts the loss on demand.
+      process.env.TERSIO_FORCE_REPARSE = "1";
+      expect(syncUsageDb()).toBe(true);
+      expect(readUsageDb()?.tokens.messages).toBe(2);
     });
   } finally {
     if (prevForce === undefined) delete process.env.TERSIO_FORCE_REPARSE;

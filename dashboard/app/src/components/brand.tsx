@@ -1,10 +1,10 @@
-// Brand marks, all vendored: a table cell never fetches a logo, and the exported file stays self-contained.
-// Two marks, two jobs: VendorMark names the model's author, ProviderMark the routing service that served it.
+// Brand marks, served not vendored: a tile resolves to its mark's URL, and the CLI export
+// inlines those same URLs once, so the exported file still works with the network off.
+// Two marks, two jobs: VendorMark names the model's author, ProviderMark the routing service.
 import { cn } from "cn";
+import { MARK_BG, MARK_SCALE, contrastInk } from "../../../../extensions/shared/brand-marks.ts";
 import { providerColor, providerMeta, vendorOf } from "@/lib/format";
 import { imageMark, maskMark } from "@/lib/marks";
-import { STEALTH_MARK } from "@/lib/stealth-mark";
-import { COGNITION_MARK } from "@/lib/cognition-mark";
 import { Icon } from "./icon";
 
 export function OpenAIGlyph({ className = "size-full" }: { className?: string }) {
@@ -36,43 +36,42 @@ function MaskedGlyph({ className, src, color = "currentColor" }: { className: st
   return <span className={cn("block", className)} style={maskedGlyph(src, color)} />;
 }
 
-const TILE = "relative grid shrink-0 place-items-center overflow-hidden rounded-[12px] border border-line";
-const TILE_SMALL = "size-8 rounded-[10px]";
-/** One line of a dense table, where a 32px tile would inflate the row. */
-const TILE_TINY = "size-[18px] rounded-[6px]";
+const TILE = "relative grid shrink-0 place-items-center overflow-hidden rounded-[13px] border border-line";
+const TILE_SMALL = "size-9 rounded-[11px]";
+/** One line of a dense table, where a bigger tile would inflate the row. */
+const TILE_TINY = "size-[21px] rounded-[7px]";
+/** A wide table row, which has room for more than the small tile without growing the row. */
+const TILE_ROW = "size-[30px] rounded-[10px]";
 
 /**
  * One tile, one mark. The chain is fixed: an image mark, then a mask, then a monogram, then a
  * generic glyph. A provider with no findable mark keeps its monogram, never another vendor's logo.
+ * A slug with a known brand color fills its tile with it and draws the glyph in the opposite ink,
+ * so the tile reads as the brand instead of as a small logo on the panel. A slug whose art already
+ * fills its own box is scaled back, and one whose art leaves a margin inside its box is scaled up,
+ * so every tile carries the same visible size of logo.
  */
-function Mark({ slug, initial, color, small, tiny }: { slug: string; initial: string; color: string; small?: boolean; tiny?: boolean }) {
-  const glyph = tiny ? "size-3" : small ? "size-[17px]" : "size-[22px]";
-  const tile = cn(TILE, "size-[40px]", small && TILE_SMALL, tiny && TILE_TINY);
+function Mark({ slug, initial, color, small, tiny, row }: { slug: string; initial: string; color: string; small?: boolean; tiny?: boolean; row?: boolean }) {
+  const box = tiny ? "size-3.5" : row ? "size-[23px]" : small ? "size-5" : "size-[26px]";
+  // A logo that fills its own box by more than another reads as the bigger one, so the box scales.
+  const scale = slug ? (MARK_SCALE[slug] ?? 1) : 1;
+  const glyph = scale === 1 ? box : cn(box, "scale-[var(--mark-scale)]");
+  const tile = cn(TILE, "size-11", small && TILE_SMALL, tiny && TILE_TINY, row && TILE_ROW);
+  const bg = slug ? MARK_BG[slug] : undefined;
+  const fill = { background: bg, "--mark-scale": scale } as React.CSSProperties;
+  const surface = bg ? undefined : "bg-panel";
+  const ink = bg ? contrastInk(bg) : "currentColor";
   if (slug === "openai") {
     return (
-      <span className={cn(tile, "text-black")} style={{ background: color }} aria-hidden="true">
+      <span className={cn(tile, "text-black")} style={fill} aria-hidden="true">
         <OpenAIGlyph className={cn("block", glyph)} />
-      </span>
-    );
-  }
-  if (slug === "stealth") {
-    return (
-      <span className={cn(tile, "bg-panel text-ink")} aria-hidden="true">
-        <MaskedGlyph className={glyph} src={STEALTH_MARK} />
-      </span>
-    );
-  }
-  if (slug === "cognition") {
-    return (
-      <span className={cn(tile, "bg-panel text-ink")} aria-hidden="true">
-        <MaskedGlyph className={cn("opacity-90", glyph)} src={COGNITION_MARK} />
       </span>
     );
   }
   const image = slug ? imageMark(slug) : null;
   if (image) {
     return (
-      <span className={cn(tile, "bg-panel")} aria-hidden="true">
+      <span className={cn(tile, surface)} style={fill} aria-hidden="true">
         <img src={image} alt="" loading="lazy" className={cn(glyph, "object-contain")} />
       </span>
     );
@@ -80,8 +79,8 @@ function Mark({ slug, initial, color, small, tiny }: { slug: string; initial: st
   const mask = slug ? maskMark(slug) : null;
   if (mask) {
     return (
-      <span className={cn(tile, "bg-panel text-ink")} aria-hidden="true">
-        <MaskedGlyph className={glyph} src={mask} />
+      <span className={cn(tile, surface)} style={fill} aria-hidden="true">
+        <MaskedGlyph className={glyph} src={mask} color={ink} />
       </span>
     );
   }
@@ -95,7 +94,7 @@ function Mark({ slug, initial, color, small, tiny }: { slug: string; initial: st
   return (
     <span className={tile} aria-hidden="true">
       <span className="absolute inset-0" style={{ background: color, opacity: 0.16 }} />
-      <span className="mono relative text-[15px] font-bold leading-none" style={{ color }}>
+      <span className="mono relative text-base font-bold leading-none" style={{ color }}>
         {initial}
       </span>
     </span>
@@ -103,7 +102,7 @@ function Mark({ slug, initial, color, small, tiny }: { slug: string; initial: st
 }
 
 /** The mark for a provider id: its own brand when it has one, else a monogram of that id. */
-export function ProviderMark({ provider, small, tiny }: { provider: string; small?: boolean; tiny?: boolean }) {
+export function ProviderMark({ provider, small, tiny, row }: { provider: string; small?: boolean; tiny?: boolean; row?: boolean }) {
   return (
     <Mark
       slug={providerMeta(provider).slug}
@@ -111,12 +110,13 @@ export function ProviderMark({ provider, small, tiny }: { provider: string; smal
       color={providerColor(provider)}
       small={small}
       tiny={tiny}
+      row={row}
     />
   );
 }
 
 /** The mark for a model's author, resolved from the model id. */
-export function VendorMark({ model, small, tiny }: { model: string; small?: boolean; tiny?: boolean }) {
+export function VendorMark({ model, small, tiny, row }: { model: string; small?: boolean; tiny?: boolean; row?: boolean }) {
   const v = vendorOf(model);
   return (
     <Mark
@@ -125,6 +125,7 @@ export function VendorMark({ model, small, tiny }: { model: string; small?: bool
       color={v.color}
       small={small}
       tiny={tiny}
+      row={row}
     />
   );
 }
@@ -144,20 +145,6 @@ export function BrandSilhouette({ model }: { model: string }) {
     return (
       <span className={cn(cls, "grid place-items-center text-accent")} aria-hidden="true">
         <OpenAIGlyph className="block size-[72px]" />
-      </span>
-    );
-  }
-  if (v.slug === "stealth") {
-    return (
-      <span className={cn(cls, "grid place-items-center text-accent")} aria-hidden="true">
-        <MaskedGlyph className="size-[72px]" src={STEALTH_MARK} />
-      </span>
-    );
-  }
-  if (v.slug === "cognition") {
-    return (
-      <span className={cn(cls, "grid place-items-center text-accent")} aria-hidden="true">
-        <MaskedGlyph className="size-[72px]" src={COGNITION_MARK} />
       </span>
     );
   }

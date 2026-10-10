@@ -160,8 +160,8 @@ const PROVIDERS: Array<[RegExp, string, string, string]> = [
   [/mimo/i, "Xiaomi", "xiaomi", "#ff6900"],
   [/kimi|moonshot/i, "Moonshot", "kimi", "#a855f7"],
   [/^\s*k3\s*$/i, "Moonshot", "kimi", "#a855f7"],
-  [/step[-_]?\d/i, "StepFun", "", "#0ea5e9"],
-  [/typesafe\/jev/i, "Typesafe", "", "#22c55e"],
+  [/step[-_]?\d/i, "StepFun", "stepfun", "#0ea5e9"],
+  [/typesafe\/jev/i, "Typesafe", "typesafe", "#22c55e"],
   [/meituan|longcat/i, "Meituan", "", "#facc15"],
   [/poolside|laguna/i, "Poolside", "poolside", "#4137ff"],
   [/tencent|hy3/i, "Tencent", "", "#0052d9"],
@@ -188,7 +188,7 @@ export interface HostMeta {
   color: string;
 }
 export function hostMeta(host?: string): HostMeta {
-  if (host === "omp") return { label: "OMP", icon: "square-terminal", color: "#a78bfa" };
+  if (host === "agent") return { label: "OMP", icon: "square-terminal", color: "#a78bfa" };
   if (host === "opencode") return { label: "OpenCode", icon: "box", color: "#fb923c" };
   if (host === "codex") return { label: "Codex", icon: "terminal", color: "#34d399" };
   return { label: "pi", icon: "circle-dot", color: "#22d3ee" };
@@ -197,9 +197,9 @@ export function hostMeta(host?: string): HostMeta {
 export const PALETTE = ["#34d399", "#818cf8", "#22d3ee", "#fbbf24", "#f472b6", "#a78bfa", "#fb923c", "#2dd4bf"];
 
 /**
- * Provider marks name the routing service, never the model author. A neutral gateway has no
- * mark to reuse, so its tile is a monogram: an empty slug draws one. Vendor-branded routes
- * serve one vendor's models, so their mark is that vendor's.
+ * Provider marks name the routing service, never the model author. A gateway with its own brand
+ * carries that brand: it names the service that served the request. A gateway with no mark of its
+ * own keeps a monogram, because borrowing a vendor's logo would name the wrong company.
  */
 const PROVIDER_MARKS: Record<string, string> = {
   "amd-radeon-cloud-cn": "amd",
@@ -214,6 +214,16 @@ const PROVIDER_MARKS: Record<string, string> = {
   groq: "groq",
   poolside: "poolside",
   cerebras: "cerebras",
+  // A gateway's own brand is still its own: it names the service that served the request.
+  openrouter: "openrouter",
+  opencode: "opencode",
+  "opencode-zen": "opencode",
+  "opencode-go": "opencode",
+  commandcode: "commandcode",
+  kilo: "kilo",
+  magpie: "magpie",
+  "gmi-cloud": "gmicloud",
+  "charm-hyper": "charmhyper",
 };
 
 export interface ProviderMeta {
@@ -223,6 +233,19 @@ export interface ProviderMeta {
 
 export function providerMeta(provider: string): ProviderMeta {
   return { slug: PROVIDER_MARKS[provider] ?? "" };
+}
+
+/**
+ * Which agent recorded a session, read from where the transcript lives. Every row in the agent
+ * databases was written by agent, so a session under another harness's own directory would only
+ * appear if that harness shared this database. The path is the only host marker the row carries.
+ */
+export function hostOfSession(sessionFile: string): { label: string; host: "agent" | "pi" | "opencode" | "unknown" } {
+  const file = String(sessionFile ?? "");
+  if (/\.agent\/agent\/sessions\//.test(file)) return { label: "OMP", host: "agent" };
+  if (/\.pi\/agent\/sessions\//.test(file)) return { label: "Pi", host: "pi" };
+  if (/(config\/opencode|local\/share\/opencode)\/agent\/sessions\//.test(file)) return { label: "OpenCode", host: "opencode" };
+  return { label: "OMP", host: "unknown" };
 }
 
 /** Deterministic tint for a monogram tile: variety in a table, no claim about a brand. */
@@ -365,7 +388,7 @@ export function relAgePrecise(ts: number): string {
   return `${Math.floor(s / 86400)}d ${String(Math.floor((s % 86400) / 3600)).padStart(2, "0")}h ago`;
 }
 
-// ---------------------------------------------------------------- omp-stats helpers
+// ---------------------------------------------------------------- agent-stats helpers
 
 /** A rate as a percentage, one decimal: 0.9383 reads as 93.8%. */
 export function pct(v: number, digits = 1): string {
@@ -419,7 +442,7 @@ export function agentTypeLabel(agentType: string): string {
   return agentType || "Unknown";
 }
 
-/** omp records four stop reasons; only `error` is a failure, and `aborted` still ran. */
+/** agent records four stop reasons; only `error` is a failure, and `aborted` still ran. */
 export function runStatusOf(stopReason: string): RunStatus {
   if (stopReason === "error") return "error";
   if (stopReason === "aborted") return "aborted";

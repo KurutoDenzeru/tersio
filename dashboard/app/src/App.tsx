@@ -1,28 +1,27 @@
-// Every page of the omp-stats dashboard, one hash route each, over Tersio's own usage ledger.
+// Every page of the agent-stats dashboard, one hash route each.
 import { useCallback, useEffect, useState } from "react";
 import { useTheme } from "@/components/theme-provider";
-import { useDashboardData, useFx, useOmpData } from "@/lib/data";
-import type { OmpRequestRow, OmpView } from "@/lib/data";
+import { useFx, useAgentData } from "@/lib/data";
+import type { AgentRequestRow, AgentView } from "@/lib/data";
 import { useHashRoute } from "@/lib/route";
 import { EmptyState } from "@/components/common";
 import { ChartSkeleton, Page, PageHeader } from "@/components/charts";
-import { Shell, useShortcuts } from "./components/omp/shell";
-import { navItem } from "./components/omp/nav";
-import { OmpRequestDrawer } from "./components/omp/drawer";
-import { SessionTrace } from "./components/omp/session";
-import { OverviewPage } from "./components/omp/overview";
-import { ModelsPage } from "./components/omp/models";
-import { ProvidersPage } from "./components/omp/providers";
-import { CostsPage } from "./components/omp/costs";
-import { RequestsPage } from "./components/omp/requests";
-import { ErrorsPage } from "./components/omp/errors";
-import { TracesPage } from "./components/omp/traces";
-import { ToolsPage } from "./components/omp/tools";
-import { ProjectsPage } from "./components/omp/projects";
-import { UsagePage } from "./components/tersio/usage";
-import { Footer, SettingsDialog, ShareDialog } from "./components/dialogs";
-import { ToasterProvider } from "./components/toaster";
-import { StatusBanner } from "./components/status-banner";
+import { Shell, useShortcuts } from "./components/agents/shell";
+import { navItem } from "./components/agents/nav";
+import { AgentRequestDrawer } from "./components/agents/drawer";
+import { SessionTrace } from "./components/agents/session";
+import { OverviewPage } from "./components/agents/overview";
+import { ModelsPage } from "./components/agents/models";
+import { ProvidersPage } from "./components/agents/providers";
+import { CostsPage } from "./components/agents/costs";
+import { CarbonPage } from "./components/agents/carbon";
+import { RequestsPage } from "./components/agents/requests";
+import { ErrorsPage } from "./components/agents/errors";
+import { TracesPage } from "./components/agents/traces";
+import { ToolsPage } from "./components/agents/tools";
+import { ProjectsPage } from "./components/agents/projects";
+import { SettingsDialog } from "./components/dialogs";
+import { ShareDialog } from "./components/agents/share-dialog";
 
 function useDataThemeAttr(): void {
   const { theme } = useTheme();
@@ -96,7 +95,7 @@ function useReveal(): void {
 function PageLoading({ title }: { title: string }) {
   return (
     <Page>
-      <PageHeader title={title} description="Reading the omp databases…" />
+      <PageHeader title={title} description="Reading the agent databases…" />
       <ChartSkeleton height={240} />
       <ChartSkeleton height={160} />
     </Page>
@@ -106,65 +105,77 @@ function PageLoading({ title }: { title: string }) {
 function Dashboard() {
   useDataThemeAttr();
   useReveal();
-  const { data, status } = useDashboardData();
-  const { fx, money, applyCurrency } = useFx(data?.currency);
+  const { fx, money, applyCurrency } = useFx();
   const { section, range, session, setSection, setRange, setSession } = useHashRoute();
-  // The usage page is Tersio's own; the smallest view still answers "is there an omp database".
-  const view: OmpView = section === "usage" ? "projects" : section;
-  const { omp, loading } = useOmpData(range, view);
+  // The smallest view still answers "is there an agent database".
+  const view: AgentView = section;
+  const { agent, loading, stale } = useAgentData(range, view);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
-  const [request, setRequest] = useState<OmpRequestRow | null>(null);
+  const [request, setRequest] = useState<AgentRequestRow | null>(null);
 
   useShortcuts({ onRange: setRange, onSection: setSection });
   useEffect(() => {
     window.scrollTo({ top: 0 });
   }, [section, session]);
 
-  const openRequest = useCallback((row: OmpRequestRow) => setRequest(row), []);
+  const openRequest = useCallback((row: AgentRequestRow) => setRequest(row), []);
   const closeRequest = useCallback(() => setRequest(null), []);
-  const ompAvailable = omp?.available ?? false;
+  const agentAvailable = agent?.available ?? false;
   const title = navItem(section).label;
 
   const page = (): React.ReactNode => {
-    if (section === "usage") {
-      return <UsagePage data={data} fx={fx} money={money} onCurrency={applyCurrency} />;
-    }
     if (section === "traces" && session) {
       return <SessionTrace sessionFile={session} money={money} onClose={() => setSession(null)} />;
     }
-    if (loading && !omp) return <PageLoading title={title} />;
-    if (!omp || !omp.available) {
+    if (loading && !agent) return <PageLoading title={title} />;
+    if (!agent || !agent.available) {
+      // A fetch that never answered JSON means the page is newer than the server process, not
+      // that the databases went away. Name it, so the fix is the obvious one.
+      if (stale) {
+        return (
+          <Page>
+            <PageHeader title={title} description="This page could not read the dashboard server." />
+            <EmptyState
+              icon="refresh-cw"
+              title="Restart the dashboard"
+              desc="The page is newer than the running server, so the data route did not answer. Stop the process and start `tersio dashboard` again; the databases are fine."
+            />
+          </Page>
+        );
+      }
       return (
         <Page>
-          <PageHeader title={title} description="This page reads the omp databases." />
+          <PageHeader title={title} description="This page reads the agent databases." />
           <EmptyState
             icon="database-zap"
-            title="No omp stats database"
-            desc="The pages on this route read ~/.omp/stats.db. Run omp once, or open the Usage page for Tersio's own ledger."
+            title="No agent stats database"
+            desc="These pages read the agent statistics databases, which one coding agent writes as it runs."
           />
         </Page>
       );
     }
     switch (section) {
       case "overview":
-        return <OverviewPage omp={omp} money={money} onOpenRequest={openRequest} />;
+        return <OverviewPage agent={agent} money={money} onOpenRequest={openRequest} />;
       case "models":
-        return <ModelsPage omp={omp} money={money} />;
+        return <ModelsPage agent={agent} money={money} />;
       case "providers":
-        return <ProvidersPage omp={omp} money={money} />;
+        return <ProvidersPage agent={agent} money={money} />;
       case "costs":
-        return <CostsPage omp={omp} money={money} />;
+        return <CostsPage agent={agent} money={money} />;
+      case "carbon":
+        return <CarbonPage agent={agent} />;
       case "requests":
-        return <RequestsPage omp={omp} money={money} onOpenRequest={openRequest} />;
+        return <RequestsPage agent={agent} money={money} onOpenRequest={openRequest} />;
       case "errors":
-        return <ErrorsPage omp={omp} money={money} onOpenRequest={openRequest} />;
+        return <ErrorsPage agent={agent} money={money} onOpenRequest={openRequest} />;
       case "traces":
-        return <TracesPage omp={omp} money={money} onOpenSession={setSession} />;
+        return <TracesPage agent={agent} money={money} onOpenSession={setSession} />;
       case "tools":
-        return <ToolsPage omp={omp} money={money} />;
+        return <ToolsPage agent={agent} money={money} />;
       case "projects":
-        return <ProjectsPage omp={omp} money={money} />;
+        return <ProjectsPage agent={agent} money={money} />;
       default:
         return null;
     }
@@ -178,15 +189,14 @@ function Dashboard() {
         range={range}
         onRange={setRange}
         status={status}
-        ompAvailable={ompAvailable}
+        agentAvailable={agentAvailable}
         onSettings={() => setSettingsOpen(true)}
         onShare={() => setShareOpen(true)}
       >
         {page()}
-        <Footer />
       </Shell>
       {request && (
-        <OmpRequestDrawer
+        <AgentRequestDrawer
           row={request}
           money={money}
           onClose={closeRequest}
@@ -196,26 +206,19 @@ function Dashboard() {
           }}
         />
       )}
-      <StatusBanner status={status} />
       <SettingsDialog
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
-        data={data}
         cur={fx.cur}
         onCurrency={applyCurrency}
-        onReload={() => window.dispatchEvent(new Event("tersio:reload"))}
       />
-      <ShareDialog open={shareOpen} onClose={() => setShareOpen(false)} data={data} money={money} />
+      <ShareDialog open={shareOpen} onClose={() => setShareOpen(false)} range={range} money={money} />
     </>
   );
 }
 
 export function App() {
-  return (
-    <ToasterProvider>
-      <Dashboard />
-    </ToasterProvider>
-  );
+  return <Dashboard />;
 }
 
 export default App;

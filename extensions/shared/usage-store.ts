@@ -8,14 +8,12 @@ import {
   SQLITE_READ_BUFFER,
   canonicalModelId,
   classifySessionLine,
-  OpencodeMessage,
   classifyOpencodeMessage,
   costOf,
   durOf,
   hostOfSessionFile,
   ingestSessionRow,
   messageRowId,
-  OpencodeDbRow,
   OPENCODE_DB_OVERLAP_MS,
   opencodeDbPath,
   opencodeSessionsDir,
@@ -27,7 +25,7 @@ import {
 import { tersioDataPath } from '../lib/utils.ts';
 import { MODEL_ALIASES } from './pricing.ts';
 import { tersioSettingsFile } from './plugin-settings.ts';
-import type { RunStatus, SessionTokens } from './usage-ledger.ts';
+import type { OpencodeDbRow, OpencodeMessage, RunStatus, SessionTokens } from './usage-ledger.ts';
 
 export function usageDbPath(): string {
   const override = process.env.TERSIO_USAGE_DB;
@@ -102,6 +100,14 @@ function storedParserVersion(db: string): string | null {
   } catch {
     return null;
   }
+}
+
+// A store written by a newer tersio: this code has no forward migration, so a re-parse would swap rotated history for whatever transcripts are left.
+function isDowngrade(stored: string | null): boolean {
+  if (stored === null) return false;
+  const storedNum = Number(stored);
+  const currentNum = Number(PARSER_VERSION);
+  return Number.isFinite(storedNum) && Number.isFinite(currentNum) && storedNum > currentNum;
 }
 
 function countMessages(db: string): number {
@@ -192,12 +198,17 @@ function alterInPlace(db: string): boolean {
   return !canAlterInPlace(db);
 }
 
-function ensureSchema(db: string): void {
+function ensureSchema(db: string, forceWipe: boolean): void {
   fs.mkdirSync(path.dirname(db), { recursive: true });
   // Fold in rows stored under a pre-alias spelling; the mtime ledger will not re-read those transcripts.
   const rekeys = MODEL_ALIASES.map((a) => `UPDATE messages SET model='${a.id}' WHERE model='${a.feed}';`).join('');
   const stored = storedParserVersion(db);
   if (stored === PARSER_VERSION) {
+    run(db, SCHEMA_SQL + rekeys);
+    return;
+  }
+  // A newer store keeps its rows: only an explicit force re-parse may wipe it.
+  if (!forceWipe && isDowngrade(stored)) {
     run(db, SCHEMA_SQL + rekeys);
     return;
   }
@@ -449,11 +460,14 @@ export function syncUsageDb(): boolean {
   try {
     db = usageDbPath();
     const stored = storedParserVersion(db);
-    migrated = stored !== null && stored !== PARSER_VERSION;
     // The operator deleted sessions on purpose and wants the mirror to match: bypass the guard.
     const forced = process.env.TERSIO_FORCE_REPARSE === '1';
+    // A downgrade keeps its rows: the wipe below cannot rebuild them from rotated transcripts.
+    const downgrade = !forced && isDowngrade(stored);
+    migrated = stored !== null && stored !== PARSER_VERSION && !downgrade;
+    if (downgrade) guardReport = `store was written by a newer tersio (parser ${stored} > ${PARSER_VERSION}); kept its rows and skipped the re-parse`;
     if (migrated && !forced) preWipe = countMessages(db);
-    ensureSchema(db);
+    ensureSchema(db, forced);
     maybeScheduledBackup(db);
   } catch {
     return false;

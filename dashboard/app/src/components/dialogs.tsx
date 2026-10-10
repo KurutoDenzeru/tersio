@@ -1,41 +1,32 @@
-// Settings, share, and footer dialogs.
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+// Settings dialog: theme, accent, currency, doctor.
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
-  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Switch } from "@/components/ui/switch";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useTheme, useResolvedTheme } from "@/components/theme-provider";
-import { MarkGlyph } from "@/components/brand";
 import { ACCENTS, ACCENT_IDS, accentSwatch, type AccentId } from "@/lib/accent";
-import { fmt, fmtShort, fmtSnapshot, relAge } from "@/lib/format";
-import { shareUrl } from "@/lib/share";
+import { FX_SNAPSHOT, relAge } from "@/lib/format";
 import {
   fetchDoctor,
   fetchHealth,
   isFileExport,
   postDoctorFix,
   postDoctorSchedule,
-  postReset,
 } from "@/lib/data";
-import type { DoctorReport, HealthReport, UsageReport } from "@/lib/data";
+import type { DoctorReport, HealthReport } from "@/lib/data";
 import { useToast } from "./toaster";
-import { CurrencyPicker } from "./savings";
 import { HoverTip } from "./common";
 import { Icon } from "./icon";
 import { OmpLogo, OpencodeLogo, PiLogo } from "./agent-logos";
 
-type Pane = "general" | "connection" | "diagnosis" | "data";
+type Pane = "general" | "connection" | "diagnosis";
 
 interface AgentRowProps {
   name: string;
@@ -308,377 +299,19 @@ function DoctorPane() {
   );
 }
 
-type ExportFormat = "json" | "jsonl" | "csv";
-// Hints stay short: each sits right of its label on a single line.
-const EXPORT_FORMATS: Array<{ id: ExportFormat; label: string; hint: string }> = [
-  { id: "json", label: "JSON", hint: "Full report" },
-  { id: "jsonl", label: "JSONL", hint: "One request per line" },
-  { id: "csv", label: "CSV", hint: "Spreadsheet table" },
-];
 
-// Backups are the only way back when a source stops being walked.
-const BACKUP_SCHEDULES_UI: Array<{ id: string; label: string; hint: string }> = [
-  { id: "monthly", label: "Monthly", hint: "A snapshot a month is kept automatically" },
-  { id: "weekly", label: "Weekly", hint: "A snapshot a week" },
-  { id: "daily", label: "Daily", hint: "A snapshot a day" },
-  { id: "manual", label: "Manual", hint: "Only when the mirror is rebuilt" },
-];
-
-// Restoring needs a button and a confirm: picking a row must not restore it.
-function BackupRestore() {
-  const toast = useToast();
-  const [rows, setRows] = useState<Array<{ file: string; mtime: number; size: number }>>([]);
-  const [schedule, setSchedule] = useState("monthly");
-  const [chosen, setChosen] = useState<string | null>(null);
-  const [asking, setAsking] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [backing, setBacking] = useState(false);
-
-  const load = useCallback(() => {
-    fetch("/backups")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d: { backups?: Array<{ file: string; mtime: number; size: number }> } | null) => {
-        setRows(d?.backups ?? []);
-        setChosen((cur) => cur ?? d?.backups?.[0]?.file ?? null);
-      })
-      .catch(() => setRows([]));
-    fetch("/settings")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d: { backupSchedule?: string } | null) => { if (d?.backupSchedule) setSchedule(d.backupSchedule); })
-      .catch(() => { /* keep the default shown */ });
-  }, []);
-  useEffect(() => { load(); }, [load]);
-
-  const saveSchedule = (next: string): void => {
-    setSchedule(next);
-    void fetch("/settings", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ backupSchedule: next }),
-    })
-      .then((r) => r.json())
-      .then((d: { ok?: boolean; error?: string }) => {
-        if (!d?.ok) toast("Could not save", d?.error ?? "Unknown schedule", "circle-alert");
-      })
-      .catch(() => toast("Could not save", "The dashboard server did not answer.", "circle-alert"));
-  };
-
-  const restore = (file: string): void => {
-    setBusy(true);
-    setAsking(false);
-    void fetch("/backups/restore", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ file }),
-    })
-      .then((r) => r.json())
-      .then((d: { ok?: boolean; error?: string }) => {
-        toast(d?.ok ? "Backup restored" : "Restore failed", d?.ok ? "Reload the dashboard to see the restored totals" : d?.error ?? "Unknown backup", d?.ok ? "check" : "circle-alert");
-        if (d?.ok) load();
-      })
-      .catch(() => toast("Restore failed", "The dashboard server did not answer.", "circle-alert"))
-      .finally(() => setBusy(false));
-  };
-
-  const remove = (file: string): void => {
-    setDeleting(false);
-    void fetch("/backups/delete", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ file }),
-    })
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-      .then((d: { ok?: boolean; error?: string }) => {
-        if (d?.ok) { toast("Snapshot deleted", "Removed from disk. The live mirror is unchanged.", "check"); load(); }
-        else toast("Delete failed", d?.error ?? "Unknown backup", "circle-alert");
-      })
-      .catch((e: Error) => toast("Delete failed", /HTTP/.test(e.message) ? "This dashboard build has no delete route. Restart the server." : "The dashboard server did not answer.", "circle-alert"));
-  };
-
-  const target = rows.find((b) => b.file === chosen) ?? null;
-  const scheduleHint = BACKUP_SCHEDULES_UI.find((o) => o.id === schedule)?.hint ?? "";
-
-  return (
-    <div className="mt-6 grid gap-3.5">
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <p className="m-0 text-[13px] font-semibold">Backups</p>
-          <p className="mt-0.5 mb-0 text-xs text-dim">
-            {BACKUP_SCHEDULES_UI.find((o) => o.id === schedule)?.label}: {scheduleHint}. Keeps the last 3.
-          </p>
-        </div>
-        <Select value={schedule} onValueChange={(v) => saveSchedule(v ?? "monthly")}>
-          <SelectTrigger size="sm" className="w-[124px] shrink-0" aria-label="Backup schedule">
-            <SelectValue>{BACKUP_SCHEDULES_UI.find((o) => o.id === schedule)?.label ?? "Monthly"}</SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup>
-              {BACKUP_SCHEDULES_UI.map((o) => (
-                <SelectItem key={o.id} value={o.id}>
-                  {o.label}{o.id === "monthly" ? " (Recommended)" : ""}
-                </SelectItem>
-              ))}
-            </SelectGroup>
-          </SelectContent>
-        </Select>
-      </div>
-
-      {rows.length === 0 ? (
-        <p className="m-0 rounded-[10px] border border-line px-3 py-2.5 text-xs text-dim">
-          No snapshots yet. One is taken before the mirror is rebuilt, and on the schedule above.
-        </p>
-      ) : (
-        <div className="grid gap-2 overflow-hidden rounded-[10px] border border-line">
-          <div className="flex items-baseline justify-between gap-3 border-b border-line px-3 py-2">
-            <span className="mono text-[11px] uppercase tracking-[0.14em] text-dim">
-              {rows.length} snapshot{rows.length === 1 ? "" : "s"}
-            </span>
-            <span className="mono text-[11px] text-dim">
-              {fmtSnapshot(rows[rows.length - 1].mtime)} → {fmtSnapshot(rows[0].mtime)}
-            </span>
-          </div>
-
-          {/* Bounded list so a daily schedule cannot push Restore off-screen. */}
-          <ul
-            className="m-0 max-h-[196px] list-none overflow-y-auto p-1 [scrollbar-width:thin] [scrollbar-color:var(--line)_transparent]"
-            role="radiogroup"
-            aria-label="Usage snapshots"
-          >
-            {rows.map((b) => (
-              <li key={b.file}>
-                <label
-                  className={`flex cursor-pointer items-center gap-2.5 rounded-[7px] px-2 py-1.5 text-xs [transition:background_.15s] ${
-                    chosen === b.file ? "bg-accent-soft" : "hover:bg-track"
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="usage-backup"
-                    className="accent-[var(--accent)]"
-                    checked={chosen === b.file}
-                    onChange={() => setChosen(b.file)}
-                  />
-                  <span className="mono">{fmtSnapshot(b.mtime)}</span>
-                  {chosen === b.file && <span className="text-dim">· selected</span>}
-                  <span className="mono ml-auto shrink-0 text-dim">{(b.size / 1048576).toFixed(1)} MB</span>
-                </label>
-              </li>
-            ))}
-          </ul>
-
-          <div className="flex items-center justify-between gap-3 border-t border-line px-3 py-2">
-            <button
-              type="button"
-              disabled={backing}
-              onClick={() => {
-                setBacking(true);
-                void fetch("/backups/create", { method: "POST" })
-                  .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-                  .then((d: { ok?: boolean; error?: string }) => {
-                    if (d?.ok) { toast("Backup taken", "Snapshot saved.", "check"); load(); }
-                    else toast("Backup failed", d?.error ?? "Unknown backup", "circle-alert");
-                  })
-                  .catch(() => toast("Backup failed", "The dashboard server did not answer.", "circle-alert"))
-                  .finally(() => setBacking(false));
-              }}
-              aria-label="Back up usage now"
-              className="mono flex shrink-0 items-center gap-2 rounded-xl border border-line px-3 py-1.5 text-xs text-ink [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96] disabled:opacity-50"
-            >
-              <Icon name="database-backup" className="size-3.5" />
-              <span>{backing ? "Backing up…" : "Backup now"}</span>
-            </button>
-            <span className="flex shrink-0 items-center gap-2">
-              <button
-                type="button"
-                disabled={!target || busy}
-                onClick={() => setDeleting(true)}
-                aria-label="Delete the selected snapshot"
-                className="mono flex items-center gap-2 rounded-xl border border-line px-3 py-1.5 text-xs text-[#f87171] [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96] disabled:opacity-50"
-              >
-                <Icon name="trash" className="size-3.5" />
-                <span>Delete</span>
-              </button>
-              <button
-                type="button"
-                disabled={!target || busy}
-                onClick={() => setAsking(true)}
-                className="mono flex items-center gap-2 rounded-xl border border-line px-3 py-1.5 text-xs text-ink [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96] disabled:opacity-50"
-              >
-                <Icon name="rotate-ccw" className="size-3.5" />
-                <span>Restore</span>
-              </button>
-            </span>
-          </div>
-        </div>
-      )}
-
-      <AlertDialog open={deleting} onOpenChange={(o) => !o && setDeleting(false)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete this snapshot?</AlertDialogTitle>
-            <AlertDialogDescription>
-              {target ? `${fmtSnapshot(target.mtime)} will be removed from disk. The current usage mirror is not touched.` : ""}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={() => target && remove(target.file)}>Delete</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <AlertDialog open={asking} onOpenChange={(o) => !o && setAsking(false)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Restore this snapshot?</AlertDialogTitle>
-            <AlertDialogDescription>
-              {target ? `The usage mirror will be replaced with the snapshot from ${new Date(target.mtime).toLocaleString()}.` : ""}
-              {" "}The current mirror is copied aside first, so this is reversible.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={() => target && restore(target.file)}>Restore</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
-  );
-}
-
-function DataPane({ data, onReload }: { data: UsageReport | null; onReload: () => void }) {
-  const toast = useToast();
-  const [armed, setArmed] = useState(false);
-  const [busy, setBusy] = useState(false);
-  useEffect(() => {
-    if (!armed) return;
-    const id = setTimeout(() => setArmed(false), 3000);
-    return () => clearTimeout(id);
-  }, [armed]);
-  return (
-    <div>
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <p className="m-0 text-[13px] font-semibold">Reload</p>
-          <p className="mt-0.5 mb-0 text-xs text-dim">Re-read statistics from disk.</p>
-        </div>
-        <button
-          type="button"
-          className="mono flex shrink-0 items-center gap-2 text-xs pl-2.5 pr-3 py-2 rounded-xl border border-line text-ink [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]"
-          aria-label="Reload data"
-          onClick={() => { onReload(); toast("Reloaded", "Statistics re-read from disk.", "refresh-cw"); }}
-        >
-          <Icon name="refresh-cw" className="size-3.5" />
-          <span>Reload</span>
-        </button>
-      </div>
-      <BackupRestore />
-      {/* Export shares the Usage DB row since it is the same data. */}
-      <div className="mt-3">
-        <div className="flex items-center justify-between gap-3 overflow-hidden rounded-[10px] border border-line px-3 py-2">
-          <div className="min-w-0">
-            <p className="m-0 text-[13px] font-semibold">
-              Usage DB <span className="text-[11px] font-normal text-dim">tersio-owned · local hosted</span>
-            </p>
-            <HoverTip content={data?.paths.usageDb ?? "–"}>
-              <p className="mono mt-1 mb-0 truncate text-[11px] text-dim">
-                {data?.paths.usageDb ?? "–"}
-              </p>
-            </HoverTip>
-          </div>
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <button
-                  type="button"
-                  className="mono flex shrink-0 items-center gap-1.5 rounded-[10px] border border-line px-2.5 py-1.5 text-xs text-ink [transition:transform_.12s,background_.2s] hover:border-accent hover:bg-accent-soft active:scale-[.96] focus-visible:outline focus-visible:outline-1 focus-visible:outline-accent"
-                  aria-label="Export usage data"
-                />
-              }
-            >
-              <Icon name="download" className="size-3.5" />
-              <span>Export</span>
-              <Icon name="chevron-down" className="size-3 text-dim" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="min-w-[248px] bg-panel text-ink">
-              <DropdownMenuGroup>
-                {EXPORT_FORMATS.map((f) => (
-                  <DropdownMenuItem
-                    key={f.id}
-                    className="justify-between whitespace-nowrap"
-                    onClick={() => {
-                      const a = document.createElement("a");
-                      a.href = `/export?format=${f.id}`;
-                      a.download = "";
-                      document.body.appendChild(a);
-                      a.click();
-                      a.remove();
-                      toast(`Exported ${f.label}`, `${data?.recent.length ?? 0} requests downloaded`, "download");
-                    }}
-                  >
-                    <span className="font-medium">{f.label}</span>
-                    <span className="pl-4 text-[11px] text-dim">{f.hint}</span>
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </div>
-      <div className="mt-4 rounded-xl border border-danger-border bg-danger-soft p-3">
-        <p className="m-0 mb-2.5 text-[11px] tracking-[0.14em] text-danger uppercase">Danger zone</p>
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <p className="m-0 text-[13px] font-semibold">Reset statistics</p>
-            <p className="mt-0.5 mb-0 text-xs text-dim">Clears tersio statistics. Host-owned files stay intact. Click twice to confirm.</p>
-          </div>
-          <button
-            type="button"
-            className="mono flex shrink-0 items-center gap-2 text-xs pl-2.5 pr-3 py-2 rounded-xl border border-danger-border text-danger [transition:transform_.12s,background_.2s,box-shadow_.2s] hover:bg-accent-soft hover:shadow-[0_0_14px_var(--danger-border)] active:scale-[.96]"
-            aria-label="Reset tersio statistics"
-            disabled={busy}
-            onClick={() => {
-              if (isFileExport()) return;
-              if (!armed) {
-                setArmed(true);
-                return;
-              }
-              setArmed(false);
-              setBusy(true);
-              void postReset()
-                .then((ok) => {
-                  if (ok) {
-                    onReload();
-                    toast("Statistics reset", "The usage statistics view now starts fresh. Transcripts and RTK history were never touched.", "rotate-ccw");
-                  } else {
-                    toast("Reset failed", "Could not reach the server. Try again.", "circle-alert");
-                  }
-                })
-                .finally(() => setBusy(false));
-            }}
-          >
-            <Icon name="rotate-ccw" className="size-3.5" />
-            <span>{busy ? "Clearing…" : armed ? "Sure?" : "Reset"}</span>
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
+/** The three panes the dialog offers. */
 const PANES: Array<{ id: Pane; label: string; icon: string }> = [
   { id: "general", label: "General", icon: "settings" },
   { id: "connection", label: "Connection", icon: "plug" },
   { id: "diagnosis", label: "Diagnosis", icon: "stethoscope" },
-  { id: "data", label: "Data", icon: "database" },
 ];
 
+/** One title per pane, so the header names the pane in force. */
 const TITLES: Record<Pane, string> = {
-  general: "General",
+  general: "Settings",
   connection: "Connection",
-  diagnosis: "Diagnosis",
-  data: "Data",
+  diagnosis: "Doctor",
 };
 
 const SETTINGS_SEARCH: Array<{ pane: Pane; label: string; terms: string }> = [
@@ -690,9 +323,6 @@ const SETTINGS_SEARCH: Array<{ pane: Pane; label: string; terms: string }> = [
   { pane: "diagnosis", label: "Auto-check schedule", terms: "diagnosis system health auto-check schedule manual daily weekly monthly" },
   { pane: "diagnosis", label: "Scan", terms: "diagnosis scan check" },
   { pane: "diagnosis", label: "Fix issues", terms: "diagnosis repair fix issues" },
-  { pane: "data", label: "Reload data", terms: "data reload refresh statistics disk database usage db path" },
-  { pane: "data", label: "Export data", terms: "data export download json jsonl csv spreadsheet format save file" },
-  { pane: "data", label: "Reset statistics", terms: "data danger zone reset clear statistics" },
 ];
 
 function HighlightMatch({ text, query, fullWhenAlias = false }: { text: string; query: string; fullWhenAlias?: boolean }) {
@@ -892,20 +522,38 @@ function AccentPicker({ accent, onPick }: { accent: AccentId; onPick: (id: Accen
   );
 }
 
+function CurrencyPicker({ cur, onPick, id }: { cur: string; onPick: (code: string) => void; id: string }) {
+  const toast = useToast();
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-xs text-dim">Currency</span>
+      <Select value={cur} onValueChange={(next) => { if (next !== cur) { onPick(next as string); toast(`Currency set to ${next}`, "Cost figures update across the dashboard.", "check"); } }}>
+        <SelectTrigger size="sm" aria-label="Display currency" className="text-xs">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectGroup>
+            {Object.keys(FX_SNAPSHOT).map((code) => (
+              <SelectItem key={code} value={code}>{code}</SelectItem>
+            ))}
+          </SelectGroup>
+        </SelectContent>
+      </Select>
+      <span id={id} className="sr-only">{cur}</span>
+    </div>
+  );
+}
+
 export function SettingsDialog({
   open,
   onClose,
-  data,
   cur,
   onCurrency,
-  onReload,
 }: {
   open: boolean;
   onClose: () => void;
-  data: UsageReport | null;
   cur: string;
   onCurrency: (code: string) => void;
-  onReload: () => void;
 }) {
   const toast = useToast();
   const { theme, setTheme, accent, setAccent } = useTheme();
@@ -983,7 +631,7 @@ export function SettingsDialog({
                 <p className="px-2.5 py-3 text-xs text-dim">No matching settings</p>
               )}
             </nav>
-            <p className="mono mt-auto px-2.5 text-[11px] text-dim">tersio v{data?.version ?? "?"}</p>
+            <p className="mono mt-auto px-2.5 text-[11px] text-dim">Tersio dashboard</p>
           </aside>
           <div className="relative flex min-h-0 min-w-0 flex-col">
             <div className="flex items-center justify-between gap-3 px-5 pt-4">
@@ -1071,11 +719,6 @@ export function SettingsDialog({
                   <DoctorPane />
                 </section>
               )}
-              {pane === "data" && (
-                <section aria-label="Data">
-                  <DataPane data={data} onReload={onReload} />
-                </section>
-              )}
             </div>
           </div>
         </div>
@@ -1084,405 +727,4 @@ export function SettingsDialog({
   );
 }
 
-function streakOf(byDay: UsageReport["byDay"]): number {
-  const key = (d: Date): string => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-  const cur = new Date();
-  cur.setHours(0, 0, 0, 0);
-  let k = key(cur);
-  if (!byDay[k]) {
-    cur.setDate(cur.getDate() - 1);
-    k = key(cur);
-    if (!byDay[k]) return 0;
-  }
-  let n = 0;
-  while (byDay[k]) {
-    n++;
-    cur.setDate(cur.getDate() - 1);
-    k = key(cur);
-  }
-  return n;
-}
 
-export function ShareDialog({
-  open,
-  onClose,
-  data,
-  money,
-}: {
-  open: boolean;
-  onClose: () => void;
-  data: UsageReport | null;
-  money: (v: number) => string;
-}) {
-  const toast = useToast();
-  const brandDataUrlRef = useRef<string | null>(null);
-  const imageBlobRef = useRef<Blob | null>(null);
-  const imageBlobPromiseRef = useRef<Promise<Blob> | null>(null);
-  const t = data?.tokens ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
-  const total = t.input + t.output + t.cacheRead + t.cacheWrite;
-  const runs = data?.messages ?? 0;
-  const byModel = data?.byModel ?? {};
-  const byDay = data?.byDay ?? {};
-  const models = Object.keys(byModel).length;
-  const saved = data?.savedUsd ?? 0;
-  const cost = data?.usd ?? 0;
-  let best = 0;
-  Object.values(byDay).forEach((b) => {
-    const v = b.input + b.output + b.cacheRead + b.cacheWrite;
-    if (v > best) best = v;
-  });
-  const streak = streakOf(byDay);
-  const text = `${fmtShort(total)} tokens / ${fmt(runs)} runs / ${fmtShort(runs ? Math.round(total / runs) : 0)} per run. Saved ${money(saved)} via cache. ${streak}-day streak. My AI spend, tracked with Tersio.`;
-
-  const createPngBlob = (): Promise<Blob> => new Promise((resolve, reject) => {
-    const img = new Image();
-    const svg = new Blob([svgCard()], { type: "image/svg+xml;charset=utf-8" });
-    const url = URL.createObjectURL(svg);
-    img.onload = () => {
-      try {
-        const canvas = document.createElement("canvas");
-        canvas.width = 1200;
-        canvas.height = 850;
-        const context = canvas.getContext("2d");
-        if (!context) {
-          URL.revokeObjectURL(url);
-          reject(new Error("Canvas is unavailable"));
-          return;
-        }
-        context.drawImage(img, 0, 0, 1200, 850);
-        canvas.toBlob((blob) => {
-          URL.revokeObjectURL(url);
-          if (blob) resolve(blob);
-          else reject(new Error("PNG render failed"));
-        }, "image/png");
-      } catch (error) {
-        URL.revokeObjectURL(url);
-        reject(error);
-      }
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      reject(new Error("Preview render failed"));
-    };
-    img.src = url;
-  });
-
-  const copyBlob = (blob: Blob): Promise<void> => {
-    if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") {
-      return Promise.reject(new Error("Image clipboard is unavailable"));
-    }
-    return navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
-  };
-
-  const copyImage = (): Promise<void> => {
-    const blob = imageBlobRef.current;
-    if (blob) return copyBlob(blob);
-    const pending = imageBlobPromiseRef.current;
-    return pending ? pending.then(copyBlob) : Promise.reject(new Error("Preview image is not ready"));
-  };
-
-  useEffect(() => {
-    imageBlobRef.current = null;
-    imageBlobPromiseRef.current = null;
-    if (!open) return undefined;
-    const brandReady = brandDataUrlRef.current
-      ? Promise.resolve(brandDataUrlRef.current)
-      : fetch("brand.webp")
-        .then((response) => response.blob())
-        .then((blob) => new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(String(reader.result));
-          reader.onerror = () => reject(reader.error ?? new Error("Brand read failed"));
-          reader.readAsDataURL(blob);
-        }))
-        .then((dataUrl) => {
-          brandDataUrlRef.current = dataUrl;
-          return dataUrl;
-        });
-    const pending = brandReady.then(() => createPngBlob()).then((blob) => {
-      imageBlobRef.current = blob;
-      return blob;
-    }, (error: unknown) => {
-      imageBlobPromiseRef.current = null;
-      throw error;
-    });
-    imageBlobPromiseRef.current = pending;
-    void pending.catch(() => undefined);
-    return () => {
-      imageBlobRef.current = null;
-      imageBlobPromiseRef.current = null;
-    };
-  }, [open, data]);
-
-  const copyText = (body: string, okMsg: string): void => {
-    const done = (): void => toast("Copied", okMsg, "copy");
-    if (navigator.clipboard?.writeText) navigator.clipboard.writeText(body).then(done, () => fallback());
-    else fallback();
-    function fallback(): void {
-      try {
-        const ta = document.createElement("textarea");
-        ta.value = body;
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand("copy");
-        ta.remove();
-        done();
-      } catch {
-        toast("Copy failed", "Select the text manually.", "circle-alert");
-      }
-    }
-  };
-
-  // Native links preserve cmd-click, announcements, and popup safety.
-  const shareImage = (network: string): void => {
-    void copyImage().then(
-      () => toast("Image copied", `Paste it into the ${network} composer.`, "copy"),
-      () => {
-        copyText(text, "Image copy failed; share text copied instead.");
-        toast("Image copy failed", "Share text copied instead.", "circle-alert");
-      },
-    );
-  };
-
-  const copyPreviewImage = (): void => {
-    void copyImage().then(
-      () => toast("Image copied", "Usage preview copied as PNG.", "copy"),
-      () => toast("Image copy failed", "Use Download instead.", "circle-alert"),
-    );
-  };
-
-  // PNG export rasterizes the profile card SVG at 1200x850.
-  const svgCard = (): string => {
-    const e = (x: string): string => x.replace(/&/g, "&amp;").replace(/</g, "&lt;");
-    // Canvas reads live tokens off <html> since it cannot resolve var().
-    const computed = getComputedStyle(document.documentElement);
-    const token = (name: string, fallback: string): string =>
-      computed.getPropertyValue(name).trim() || fallback;
-    const pal = {
-      bg: token("--bg", "#09090b"),
-      ink: token("--ink", "#f4f4f5"),
-      dim: token("--dim", "#a1a1aa"),
-      accent: token("--accent", "#34d399"),
-    };
-    const hv = cells;
-    const cw = 32;
-    const gap = 9;
-    const step = cw + gap;
-    const gx = 64;
-    const gy = 340;
-    let grid = "";
-    for (let gd = 0; gd < 7; gd++) {
-      for (let gw = 0; gw < 26; gw++) {
-        const gv = hv.vals[gw * 7 + gd] ?? 0;
-        const gs = hv.max ? Math.sqrt(gv / hv.max) : 0;
-        const go = gv ? (0.45 + 0.55 * gs).toFixed(2) : 0.13;
-        grid += `<rect x="${gx + gw * step}" y="${gy + gd * step}" width="${cw}" height="${cw}" rx="8" fill="${pal.accent}" opacity="${go}"/>`;
-      }
-    }
-    const streakTxt = `${streak}${streak === 1 ? " day" : " days"}`;
-    const logo = brandDataUrlRef.current
-      ? `<defs><clipPath id="brandClip"><rect x="1012" y="40" width="124" height="124" rx="62"/></clipPath></defs>` +
-        `<image x="1012" y="40" width="124" height="124" clip-path="url(#brandClip)" href="${brandDataUrlRef.current}"/>`
-      : "";
-    return (
-      '<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="850" viewBox="0 0 1200 850">' +
-      `<rect width="1200" height="850" rx="28" fill="${pal.bg}"/>` +
-      `<path d="M1090 700 L980 800 h70 l-8 60 80 -96 h-70 l8 -64 z" fill="none" stroke="${pal.accent}" stroke-width="14" opacity="0.08" stroke-linejoin="round"/>` +
-      `<text x="64" y="80" font-family="monospace" font-size="26" letter-spacing="6" fill="${pal.accent}">TERSIO · USAGE PROFILE</text>` +
-      `<text x="60" y="250" font-family="monospace" font-size="130" font-weight="bold" fill="${pal.ink}">${e(`${fmtShort(total)} tokens`)}</text>` +
-      `<text x="64" y="300" font-family="monospace" font-size="30" fill="${pal.dim}">across ${e(fmt(runs))} agent runs</text>` +
-      grid +
-      `<text x="64" y="680" font-family="monospace" font-size="24" letter-spacing="3" fill="${pal.dim}">AVG / RUN</text>` +
-      `<text x="64" y="725" font-family="monospace" font-size="40" font-weight="bold" fill="${pal.ink}">${e(`${fmtShort(runs ? Math.round(total / runs) : 0)} / run`)}</text>` +
-      `<text x="430" y="680" font-family="monospace" font-size="24" letter-spacing="3" fill="${pal.dim}">SAVED</text>` +
-      `<text x="430" y="725" font-family="monospace" font-size="40" font-weight="bold" fill="${pal.ink}">${e(money(saved))}</text>` +
-      `<text x="830" y="680" font-family="monospace" font-size="24" letter-spacing="3" fill="${pal.dim}">DAY STREAK</text>` +
-      `<text x="830" y="725" font-family="monospace" font-size="40" font-weight="bold" fill="${pal.ink}">${e(streakTxt)}</text>` +
-      `<text x="64" y="775" font-family="monospace" font-size="24" letter-spacing="3" fill="${pal.dim}">BEST DAY</text>` +
-      `<text x="64" y="820" font-family="monospace" font-size="40" font-weight="bold" fill="${pal.ink}">${e(fmtShort(best))}</text>` +
-      `<text x="430" y="775" font-family="monospace" font-size="24" letter-spacing="3" fill="${pal.dim}">EST. COST</text>` +
-      `<text x="430" y="820" font-family="monospace" font-size="40" font-weight="bold" fill="${pal.ink}">${e(money(cost))}</text>` +
-      `<text x="830" y="775" font-family="monospace" font-size="24" letter-spacing="3" fill="${pal.dim}">MODELS</text>` +
-      `<text x="830" y="820" font-family="monospace" font-size="40" font-weight="bold" fill="${pal.ink}">${e(String(models))}</text>` +
-      logo +
-      "</svg>"
-    );
-  };
-
-  const downloadPng = (): void => {
-    void createPngBlob().then((blob) => {
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.download = "tersio-usage.png";
-      link.href = url;
-      link.click();
-      setTimeout(() => URL.revokeObjectURL(url), 5000);
-      toast("Saved", "Card downloaded as PNG.", "download");
-    }, () => toast("Save failed", "Browser blocked the render.", "circle-alert"));
-  };
-
-  const cells = (() => {
-    const d = new Date();
-    d.setHours(0, 0, 0, 0);
-    d.setDate(d.getDate() - 181);
-    const vals: number[] = [];
-    let max = 0;
-    for (let i = 0; i < 182; i++) {
-      const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-      const b = byDay[k];
-      const v = b ? b.input + b.output + b.cacheRead + b.cacheWrite : 0;
-      vals.push(v);
-      if (v > max) max = v;
-      d.setDate(d.getDate() + 1);
-    }
-    return { vals, max };
-  })();
-  const level = (v: number): string => {
-    const s = cells.max ? Math.sqrt(v / cells.max) : 0;
-    return !v ? "" : s >= 0.7 ? " l4" : s >= 0.45 ? " l3" : s >= 0.2 ? " l2" : " l1";
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="block w-[min(660px,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] sm:max-w-[660px] gap-0 overflow-y-auto rounded-2xl border border-line bg-panel p-5 text-ink shadow-[0_16px_48px_rgba(0,0,0,.35)]" showCloseButton={false} aria-describedby={undefined}>
-        <div className="pointer-events-none absolute top-0 left-1/2 h-[180px] w-[min(480px,90%)] -translate-x-1/2 -translate-y-[40%] bg-[radial-gradient(ellipse_at_center,var(--accent-soft)_0%,transparent_65%)]" aria-hidden="true" />
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <DialogTitle className="m-0 text-base font-bold tracking-[-0.01em]">Share your usage</DialogTitle>
-            <p className="mt-0.5 mb-0 text-xs text-dim">Copy the preview image or share your stats.</p>
-          </div>
-          <button
-            type="button"
-            className="flex shrink-0 items-center p-2 rounded-xl border border-line text-ink [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]"
-            aria-label="Close share"
-            onClick={onClose}
-          >
-            <Icon name="x" className="size-4" />
-          </button>
-        </div>
-        <div className="relative mt-3.5 overflow-hidden rounded-xl border border-line bg-bg p-5">
-          <span className="pointer-events-none absolute right-[-8px] bottom-[-14px] h-[120px] w-[120px] text-dim opacity-[.06] select-none [&_svg]:block [&_svg]:size-[110px]" aria-hidden="true">
-            <Icon name="zap" className="size-4" />
-          </span>
-          <img src="brand.webp" alt="" width="44" height="44" className="absolute top-4 right-4 size-11 rounded-xl" aria-hidden="true" />
-          <p className="mono m-0 text-[11px] tracking-[0.18em] text-accent uppercase">tersio · usage profile</p>
-          <p className="mono m-0 mt-1.5 text-[clamp(2rem,5vw,3rem)] font-extrabold tracking-[-0.03em] tabular-nums">{fmtShort(total)} tokens</p>
-          <p className="mono m-0 mt-1 text-xs text-dim">across {fmt(runs)} agent runs</p>
-          <div className="mt-4 grid grid-cols-[repeat(26,minmax(0,1fr))] gap-[3px]" aria-hidden="true">
-            {Array.from({ length: 7 }).flatMap((_, d) =>
-              Array.from({ length: 26 }).map((__, w) => {
-                const l = level(cells.vals[w * 7 + d] ?? 0);
-                return <span key={`${d}-${w}`} className={`aspect-square w-full min-w-0 cursor-pointer rounded-[3px] ${l === " l4" ? "bg-cell-4" : l === " l3" ? "bg-cell-3" : l === " l2" ? "bg-cell-2" : l === " l1" ? "bg-cell-1" : "bg-cell-0"}`} />;
-              }),
-            )}
-          </div>
-          <div className="mono mt-3.5 grid grid-cols-3 gap-2">
-            <div>
-              <p className="m-0 text-[10px] tracking-[0.14em] text-dim uppercase">avg / run</p>
-              <p className="m-0 mt-0.5 truncate text-[15px] font-bold tabular-nums">{fmtShort(runs ? Math.round(total / runs) : 0)} / run</p>
-            </div>
-            <div>
-              <p className="m-0 text-[10px] tracking-[0.14em] text-dim uppercase">saved</p>
-              <p className="m-0 mt-0.5 truncate text-[15px] font-bold tabular-nums">{money(saved)}</p>
-            </div>
-            <div>
-              <p className="m-0 text-[10px] tracking-[0.14em] text-dim uppercase">day streak</p>
-              <p className="m-0 mt-0.5 truncate text-[15px] font-bold tabular-nums">{streak + (streak === 1 ? " day" : " days")}</p>
-            </div>
-            <div>
-              <p className="m-0 text-[10px] tracking-[0.14em] text-dim uppercase">best day</p>
-              <p className="m-0 mt-0.5 truncate text-[15px] font-bold tabular-nums">{fmtShort(best)}</p>
-            </div>
-            <div>
-              <p className="m-0 text-[10px] tracking-[0.14em] text-dim uppercase">est. cost</p>
-              <p className="m-0 mt-0.5 truncate text-[15px] font-bold tabular-nums">{money(cost)}</p>
-            </div>
-            <div>
-              <p className="m-0 text-[10px] tracking-[0.14em] text-dim uppercase">models</p>
-              <p className="m-0 mt-0.5 truncate text-[15px] font-bold tabular-nums">{String(models)}</p>
-            </div>
-          </div>
-        </div>
-        <div className="mono text-xs mt-4 flex flex-wrap items-center gap-2">
-          <span className="flex items-center gap-2">
-            <HoverTip key="x" content="Share on X">
-              <a
-                href={shareUrl("x", { text: `${text} #Tersio` })}
-                target="_blank"
-                rel="noopener noreferrer width=560,height=460"
-                className="inline-flex cursor-pointer items-center gap-1.5 rounded-[10px] border border-line bg-transparent px-[9px] py-[7px] text-xs text-ink no-underline hover:border-accent [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]"
-                aria-label="Share on X"
-                onClick={() => shareImage("X")}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                  <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-                </svg>
-              </a>
-            </HoverTip>
-            <HoverTip key="reddit" content="Share on Reddit">
-            <a
-              href={shareUrl("reddit", { title: "My Tersio usage profile", text })}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex cursor-pointer items-center gap-1.5 rounded-[10px] border border-line bg-transparent px-[9px] py-[7px] text-xs text-ink no-underline hover:border-accent [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]"
-              aria-label="Share on Reddit"
-              onClick={() => shareImage("Reddit")}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                <path d="M12 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0zm5.01 4.744c.688 0 1.25.561 1.25 1.249a1.25 1.25 0 0 1-2.498.056l-2.597-.547-.8 3.747c1.824.07 3.48.632 4.674 1.488.308-.309.73-.491 1.207-.491.968 0 1.754.786 1.754 1.754 0 .716-.435 1.333-1.01 1.614a3.111 3.111 0 0 1 .042.52c0 2.694-3.13 4.87-7.004 4.87-3.874 0-7.004-2.176-7.004-4.87 0-.183.015-.366.043-.534A1.748 1.748 0 0 1 4.028 12c0-.968.786-1.754 1.754-1.754.463 0 .898.196 1.207.49 1.207-.883 2.878-1.43 4.744-1.487l.885-4.182a.342.342 0 0 1 .14-.197.35.35 0 0 1 .238-.042l2.906.617a1.214 1.214 0 0 1 1.108-.701zM9.25 12C8.561 12 8 12.562 8 13.25c0 .687.561 1.248 1.25 1.248.687 0 1.248-.561 1.248-1.249 0-.688-.561-1.249-1.249-1.249zm5.5 0c-.687 0-1.248.561-1.248 1.25 0 .687.561 1.248 1.249 1.248.688 0 1.249-.561 1.249-1.249 0-.688-.562-1.249-1.25-1.249zm-5.466 3.99a.327.327 0 0 0-.231.094.33.33 0 0 0 0 .463c.842.842 2.484.913 2.961.913.477 0 2.105-.056 2.961-.913a.361.361 0 0 0 .029-.463.33.33 0 0 0-.464 0c-.547.533-1.684.73-2.512.73-.828 0-1.979-.196-2.512-.73a.326.326 0 0 0-.232-.095z" />
-              </svg>
-            </a>
-            </HoverTip>
-            <HoverTip key="linkedin" content="Share on LinkedIn">
-            <a
-              href={shareUrl("linkedin", {})}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex cursor-pointer items-center gap-1.5 rounded-[10px] border border-line bg-transparent px-[9px] py-[7px] text-xs text-ink no-underline hover:border-accent [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]"
-              aria-label="Share on LinkedIn"
-              onClick={() => shareImage("LinkedIn")}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
-              </svg>
-            </a>
-            </HoverTip>
-          </span>
-          <span className="flex items-center gap-2 ml-auto">
-            <button type="button" className="inline-flex cursor-pointer items-center gap-1.5 rounded-[10px] border border-line bg-transparent px-3 py-[7px] text-xs text-ink hover:border-accent [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]" aria-label="Copy usage preview as image" onClick={copyPreviewImage}>
-              <Icon name="copy" className="size-3.5" />
-              <span>Copy image</span>
-            </button>
-            <button type="button" className="inline-flex cursor-pointer items-center gap-1.5 rounded-[10px] border border-line bg-transparent px-3 py-[7px] text-xs text-ink hover:border-accent [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]" aria-label="Download card as PNG" onClick={downloadPng}>
-              <Icon name="download" className="size-3.5" />
-              <span>Download</span>
-            </button>
-          </span>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-export function Footer() {
-  return (
-    <footer className="mono text-xs mt-12 pt-4 text-dim border-t border-line">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
-        <span>© 2026 Tersio. KurutoDenzeru. All rights reserved.</span>
-        <span className="ml-auto flex items-center gap-1 text-ink">
-          <a href="https://github.com/KurutoDenzeru/tersio" target="_blank" rel="noopener" aria-label="GitHub" className="grid size-8 place-items-center rounded-lg text-ink hover:text-accent [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]">
-            <MarkGlyph slug="github" className="size-4" />
-          </a>
-          <a href="https://linkedin.com/in/kurtcalacday/" target="_blank" rel="noopener" aria-label="LinkedIn" className="grid size-8 place-items-center rounded-lg text-ink hover:text-accent [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96] [&_svg]:block [&_svg]:size-4">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-              <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
-            </svg>
-          </a>
-          <a href="https://instagram.com/krtclcdy/" target="_blank" rel="noopener" aria-label="Instagram" className="grid size-8 place-items-center rounded-lg text-ink hover:text-accent [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]">
-            <MarkGlyph slug="instagram" className="size-4" />
-          </a>
-        </span>
-      </div>
-    </footer>
-  );
-}

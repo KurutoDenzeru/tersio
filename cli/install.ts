@@ -8,7 +8,7 @@ import {
   PACKAGE_NAME, PACKAGE_VERSION, RTK_BINARY_NAME, args,
   allowUnverified, applyUpdate, cavemanDefaultFlag, comboDefaultFlag, command, dryRun,
   ponytailDefaultFlag, profileFlagsGiven, rtkDefaultFlag, verbose, yes,
-  dashboardExport, dashboardPort,
+  dashboardExport, dashboardPort, currency,
   debug, ensurePonytailConfigValue,
   execP, parseJsonObject, readPluginsPackage,
   writeIfChanged,
@@ -605,7 +605,7 @@ async function runCommandMenu(): Promise<void> {
       closeRL();
       break;
     case 'dashboard':
-      await runDashboard({ port: dashboardPort, open: true, exportFile: dashboardExport });
+      await runDashboard({ port: dashboardPort, open: true, exportFile: dashboardExport, currency });
       closeRL();
       break;
     case 'reset':

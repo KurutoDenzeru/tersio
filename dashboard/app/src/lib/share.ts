@@ -1,5 +1,5 @@
-// Share destinations. Pure so the host guarantee is testable; the UI never
-// builds a share URL itself.
+// Share destinations. Pure so the host guarantee is testable; the UI never builds a share URL
+// itself. Restored with the share card: the destinations did not depend on the ledger.
 
 // Fixed origins; only the text passed in is ours.
 export const SHARE_ORIGINS = {
@@ -10,8 +10,8 @@ export const SHARE_ORIGINS = {
 
 export type ShareTarget = keyof typeof SHARE_ORIGINS;
 
-// Checked at runtime, not by type alone: `keyof` only rejects a bad *key* at
-// compile time. The `www.` prefixes are part of these hosts and must match.
+// Checked at runtime, not by type alone: `keyof` only rejects a bad *key* at compile time. The
+// `www.` prefixes are part of these hosts and must match.
 const SHARE_HOSTS: Record<ShareTarget, string> = {
   x: "x.com",
   reddit: "www.reddit.com",

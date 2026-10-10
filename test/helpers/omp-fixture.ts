@@ -106,7 +106,7 @@ function insert(table: string, columns: string[], rows: Array<Array<string | num
   return `INSERT INTO ${table} (${columns.join(',')}) VALUES ${values};`;
 }
 
-export function writeOmpStatsDb(file: string, fixture: {
+export function writeAgentStatsDb(file: string, fixture: {
   messages: MessageFixture[];
   tools?: ToolFixture[];
 }): string {

@@ -1,7 +1,6 @@
 // Data contract mirroring cli/usage.ts; snapshots ride window.__TERSIO_SNAP for file://.
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { FX_SNAPSHOT, fxMoney, isCurrencyCode } from "./format";
-import type { TokenBreakdown } from "./format";
 
 export interface RecentRequestRow {
   m: string;
@@ -9,7 +8,7 @@ export interface RecentRequestRow {
   o: number;
   t: number;
   d?: number;
-  /** Which agent ran the session: pi, omp, opencode. */
+  /** Which agent ran the session: pi, agent, opencode. */
   h?: string;
   cr?: number;
   cw?: number;
@@ -54,38 +53,12 @@ export interface RtkRecallDiagnostics {
   available: boolean;
 }
 
-export interface UsageReport {
-  messages: number;
-  tokens: TokenBreakdown;
-  byModel: Record<string, TokenBreakdown>;
-  byModelUsd: Record<string, number>;
-  byModelBucketUsd: Record<string, TokenBreakdown>;
-  byModelMessages: Record<string, number>;
-  byHost: Record<string, Record<string, TokenBreakdown>>;
-  byDay: Record<string, TokenBreakdown>;
-  byDayModel: Record<string, Record<string, number>>;
-  byTool: Array<[string, number]>;
-  recent: RecentRequestRow[];
-  rtkGain: RtkGain;
-  rtkAdoption: RtkAdoption;
-  rtkRecall: RtkRecallDiagnostics;
-  usd: number;
-  priced: boolean;
-  savedUsd: number;
-  costMeasured: number;
-  co2g: number;
-  energyWh: number;
-  version: string;
-  currency: string;
-  source: "live" | "stored" | "stored-stale";
-  paths: { ledger: string; sessions: string; usageDb: string };
-}
 
-export type OmpRange = "1h" | "24h" | "7d" | "30d" | "90d" | "all";
+export type AgentRange = "1h" | "24h" | "7d" | "30d" | "90d" | "all";
 
-export const OMP_RANGES: readonly OmpRange[] = ["1h", "24h", "7d", "30d", "90d", "all"];
+export const AGENT_RANGES: readonly AgentRange[] = ["1h", "24h", "7d", "30d", "90d", "all"];
 
-export const OMP_RANGE_LABEL: Record<OmpRange, string> = {
+export const AGENT_RANGE_LABEL: Record<AgentRange, string> = {
   "1h": "1 hour",
   "24h": "24 hours",
   "7d": "7 days",
@@ -94,11 +67,11 @@ export const OMP_RANGE_LABEL: Record<OmpRange, string> = {
   all: "All time",
 };
 
-export function isOmpRange(v: unknown): v is OmpRange {
-  return typeof v === "string" && (OMP_RANGES as readonly string[]).includes(v);
+export function isAgentRange(v: unknown): v is AgentRange {
+  return typeof v === "string" && (AGENT_RANGES as readonly string[]).includes(v);
 }
 
-export interface OmpTokenMix {
+export interface AgentTokenMix {
   input: number;
   output: number;
   cacheRead: number;
@@ -106,7 +79,17 @@ export interface OmpTokenMix {
   total: number;
 }
 
-export interface OmpOverall extends OmpTokenMix {
+export interface AgentCostMix {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  total: number;
+}
+
+export interface AgentOverall extends AgentTokenMix {
+  /** The estimate split the way a bill splits it: input, output, cache read, cache write. */
+  costMix: AgentCostMix;
   requests: number;
   failed: number;
   successful: number;
@@ -122,10 +105,12 @@ export interface OmpOverall extends OmpTokenMix {
   lastTs: number | null;
 }
 
-export interface OmpRow extends OmpTokenMix {
+export interface AgentRow extends AgentTokenMix {
   key: string;
   /** The provider this row belongs to. Empty when the group is not per provider. */
   provider: string;
+  /** The row's estimate split by billing component. */
+  costMix: AgentCostMix;
   requests: number;
   failed: number;
   errorRate: number;
@@ -141,7 +126,7 @@ export interface OmpRow extends OmpTokenMix {
   models: number;
 }
 
-export interface OmpBucket {
+export interface AgentBucket {
   ts: number;
   requests: number;
   errors: number;
@@ -149,7 +134,7 @@ export interface OmpBucket {
   costUsd: number;
 }
 
-export interface OmpHour {
+export interface AgentHour {
   hour: number;
   requests: number;
   errors: number;
@@ -157,13 +142,13 @@ export interface OmpHour {
   costUsd: number;
 }
 
-export interface OmpAgentShare extends OmpTokenMix {
+export interface AgentTypeShare extends AgentTokenMix {
   agentType: string;
   requests: number;
   costUsd: number;
 }
 
-export interface OmpRequestRow {
+export interface AgentRequestRow {
   ts: number;
   provider: string;
   model: string;
@@ -185,22 +170,22 @@ export interface OmpRequestRow {
   entryId: string;
 }
 
-export interface OmpErrorGroup {
+export interface AgentErrorGroup {
   signature: string;
   count: number;
   firstSeen: number;
   lastSeen: number;
-  latest: OmpRequestRow;
+  latest: AgentRequestRow;
   models: Array<{ model: string; provider: string; count: number }>;
 }
 
-export interface OmpErrorModelRow {
+export interface AgentErrorModelRow {
   model: string;
   provider: string;
   count: number;
 }
 
-export interface OmpTraceRow {
+export interface AgentTraceRow {
   sessionFile: string;
   project: string;
   requests: number;
@@ -213,7 +198,7 @@ export interface OmpTraceRow {
   lastTs: number;
 }
 
-export interface OmpToolRow {
+export interface AgentToolRow {
   tool: string;
   calls: number;
   errors: number;
@@ -228,12 +213,12 @@ export interface OmpToolRow {
   provider: string;
 }
 
-export interface OmpWindowPoint {
+export interface AgentWindowPoint {
   ts: number;
   usedFraction: number | null;
 }
 
-export interface OmpWindowAccount {
+export interface AgentWindowAccount {
   accountKey: string;
   email: string | null;
   accountId: string | null;
@@ -242,10 +227,10 @@ export interface OmpWindowAccount {
   resetsAt: number | null;
   recordedAt: number;
   peak: number;
-  points: OmpWindowPoint[];
+  points: AgentWindowPoint[];
 }
 
-export interface OmpWindow {
+export interface AgentWindow {
   provider: string;
   limitId: string;
   label: string;
@@ -255,11 +240,11 @@ export interface OmpWindow {
   resetsAt: number | null;
   recordedAt: number | null;
   peak: number;
-  points: OmpWindowPoint[];
-  accounts: OmpWindowAccount[];
+  points: AgentWindowPoint[];
+  accounts: AgentWindowAccount[];
 }
 
-export interface OmpRequestStats {
+export interface AgentRequestStats {
   requests: number;
   failed: number;
   aborted: number;
@@ -273,7 +258,7 @@ export interface OmpRequestStats {
   newest: number | null;
 }
 
-export interface OmpProviderHour {
+export interface AgentProviderHour {
   provider: string;
   hour: number;
   totalTokens: number;
@@ -281,22 +266,22 @@ export interface OmpProviderHour {
   requests: number;
 }
 
-export interface OmpUsageWindowPoint {
+export interface AgentWindowPoint {
   ts: number;
   usedFraction: number | null;
   exhausted: boolean;
 }
 
-export interface OmpUsageWindowSeries {
+export interface AgentWindowSeries {
   provider: string;
   accountKey: string;
   accountLabel: string;
   windowKey: string;
   windowLabel: string;
-  points: OmpUsageWindowPoint[];
+  points: AgentWindowPoint[];
 }
 
-export interface OmpWindowInsight {
+export interface AgentWindowInsight {
   provider: string;
   windowKey: string;
   windowLabel: string;
@@ -309,7 +294,7 @@ export interface OmpWindowInsight {
   exhaustedEvents: number;
 }
 
-export interface OmpTranscriptEntry {
+export interface AgentTranscriptEntry {
   ts: number;
   kind: "user" | "assistant" | "tool" | "system";
   label: string;
@@ -324,22 +309,22 @@ export interface OmpTranscriptEntry {
 }
 
 /** Throughput and first-token latency for one model and provider in one bucket. */
-export interface OmpModelPerformancePoint {
+export interface AgentModelPerformancePoint {
   ts: number;
   requests: number;
   avgTokensPerSecond: number | null;
   avgTtftMs: number | null;
 }
 
-export interface OmpSessionTrace {
+export interface AgentSessionTrace {
   sessionFile: string;
   project: string;
-  entries: OmpTranscriptEntry[];
+  entries: AgentTranscriptEntry[];
   truncated: boolean;
 }
 
 /** The three payloads the request drawer renders: the output message, the journal entry, and the stats row. */
-export interface OmpRequestPayload {
+export interface AgentRequestPayload {
   /** The model's message, carried by the journal entry. `null` for a row with no payload. */
   output: unknown;
   /** The raw journal line for the entry. */
@@ -355,84 +340,95 @@ export interface OmpRequestPayload {
   };
 }
 
-const EMPTY_REQUEST_PAYLOAD: OmpRequestPayload = {
+const EMPTY_AGENT_PAYLOAD: AgentRequestPayload = {
   output: null,
   entry: null,
   messageRole: "",
   agent: { model: null, thinkingLevel: null, mode: null, fallback: null },
 };
 
-export interface OmpStats {
+export interface AgentStats {
   available: boolean;
-  range: OmpRange;
+  range: AgentRange;
   bucketMs: number;
   cutoff: number;
   generatedAt: number;
-  overall: OmpOverall;
-  byModel: OmpRow[];
-  byProvider: OmpRow[];
-  byProject: OmpRow[];
-  byAgentType: OmpAgentShare[];
-  series: OmpBucket[];
-  seriesByProvider: Array<{ provider: string; points: OmpBucket[] }>;
-  modelSeries: Array<{ model: string; points: OmpBucket[] }>;
-  modelPerformance: Array<{ model: string; provider: string; points: OmpModelPerformancePoint[] }>;
-  hourOfDay: OmpHour[];
-  topModels: OmpRow[];
-  recent: OmpRequestRow[];
-  errorGroups: OmpErrorGroup[];
-  errorModels: OmpErrorModelRow[];
-  traces: OmpTraceRow[];
-  tools: OmpToolRow[];
-  toolsByModel: OmpToolRow[];
+  overall: AgentOverall;
+  byModel: AgentRow[];
+  byProvider: AgentRow[];
+  byProject: AgentRow[];
+  byAgentType: AgentTypeShare[];
+  series: AgentBucket[];
+  seriesByProvider: Array<{ provider: string; points: AgentBucket[] }>;
+  modelSeries: Array<{ model: string; points: AgentBucket[] }>;
+  modelPerformance: Array<{ model: string; provider: string; points: AgentModelPerformancePoint[] }>;
+  hourOfDay: AgentHour[];
+  topModels: AgentRow[];
+  recent: AgentRequestRow[];
+  errorGroups: AgentErrorGroup[];
+  errorModels: AgentErrorModelRow[];
+  traces: AgentTraceRow[];
+  tools: AgentToolRow[];
+  toolsByModel: AgentToolRow[];
   toolSeries: Array<{ ts: number; tool: string; calls: number; errors: number }>;
-  usageSeries: OmpUsageWindowSeries[];
-  windowInsights: OmpWindowInsight[];
-  providerHourly: OmpProviderHour[];
-  requestStats: OmpRequestStats;
+  usageSeries: AgentWindowSeries[];
+  windowInsights: AgentWindowInsight[];
+  providerHourly: AgentProviderHour[];
+  requestStats: AgentRequestStats;
   /** Raw failure rows inside the range, newest first: the Errors page's list. */
-  errors: OmpRequestRow[];
+  errors: AgentRequestRow[];
 }
 
-export type OmpView =
-  | "all" | "overview" | "models" | "providers" | "costs" | "requests"
+export type AgentView =
+  | "all" | "overview" | "models" | "providers" | "costs" | "carbon" | "requests"
   | "errors" | "traces" | "tools" | "projects";
 
-export const OMP_VIEWS: readonly OmpView[] = [
-  "all", "overview", "models", "providers", "costs", "requests",
+export const AGENT_VIEWS: readonly AgentView[] = [
+  "all", "overview", "models", "providers", "costs", "carbon", "requests",
   "errors", "traces", "tools", "projects",
 ];
 
 /** One snapshot per window and view, so returning to a page is instant. */
-const ompCache = new Map<string, OmpStats>();
+const agentCache = new Map<string, AgentStats>();
 
 /**
- * The omp aggregate for one page. Each view asks the server for only the parts it renders,
+ * The agent aggregate for one page. Each view asks the server for only the parts it renders,
  * so a page payload stays small; the response is memoized per window and view.
  */
-export function useOmpData(range: OmpRange, view: OmpView): { omp: OmpStats | null; loading: boolean } {
+export function useAgentData(range: AgentRange, view: AgentView): {
+  agent: AgentStats | null;
+  loading: boolean;
+  /** True when the server never answered JSON: a stale process, not an empty database. */
+  stale: boolean;
+} {
   const key = `${range}|${view}`;
-  const [omp, setOmp] = useState<OmpStats | null>(() => snapOmp() ?? ompCache.get(key) ?? null);
-  const [loading, setLoading] = useState(() => !isFileExport() && !ompCache.has(key) && !snapOmp());
+  const [agent, setAgent] = useState<AgentStats | null>(() => snapAgent() ?? agentCache.get(key) ?? null);
+  const [loading, setLoading] = useState(() => !isFileExport() && !agentCache.has(key) && !snapAgent());
+  const [stale, setStale] = useState(false);
 
   useEffect(() => {
     if (isFileExport()) return;
-    const held = ompCache.get(key);
+    const held = agentCache.get(key);
     if (held) {
-      setOmp(held);
+      setAgent(held);
       setLoading(false);
     }
     let live = true;
     const load = async (): Promise<void> => {
       try {
-        const next = await getJSON<{ omp: OmpStats }>(`api/omp?range=${range}&view=${view}`);
+        const next = await getJSON<{ agent: AgentStats }>(`api/agent?range=${range}&view=${view}`);
         if (!live) return;
-        ompCache.set(key, next.omp);
-        setOmp(next.omp);
+        agentCache.set(key, next.agent);
+        setAgent(next.agent);
+        setStale(false);
         setLoading(false);
       } catch {
-        // A dashboard without the route keeps whatever it already showed.
-        if (live) setLoading(false);
+        // A newer page against an older server process: the route answers with HTML. Say so,
+        // because "no database" would blame a database that is sitting right there.
+        if (live) {
+          setStale(true);
+          setLoading(false);
+        }
       }
     };
     void load();
@@ -455,12 +451,12 @@ export function useOmpData(range: OmpRange, view: OmpView): { omp: OmpStats | nu
     };
   }, [key, range, view]);
 
-  return { omp, loading };
+  return { agent, loading, stale };
 }
 
 /** One session transcript, for the Traces page's timeline. */
-export function useSessionTrace(file: string | null): { trace: OmpSessionTrace | null; loading: boolean } {
-  const [trace, setTrace] = useState<OmpSessionTrace | null>(null);
+export function useSessionTrace(file: string | null): { trace: AgentSessionTrace | null; loading: boolean } {
+  const [trace, setTrace] = useState<AgentSessionTrace | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -470,7 +466,7 @@ export function useSessionTrace(file: string | null): { trace: OmpSessionTrace |
     }
     let live = true;
     setLoading(true);
-    getJSON<OmpSessionTrace>(`api/omp/session?file=${encodeURIComponent(file)}`)
+    getJSON<AgentSessionTrace>(`api/agent/session?file=${encodeURIComponent(file)}`)
       .then((next) => {
         if (!live) return;
         setTrace(next);
@@ -490,23 +486,23 @@ export function useSessionTrace(file: string | null): { trace: OmpSessionTrace |
 }
 
 /** The journal payload behind one request, read when the request drawer opens. */
-export function useOmpRequestEntry(file: string | null, entryId: string | null): { entry: OmpRequestPayload; loading: boolean } {
-  const [entry, setEntry] = useState<OmpRequestPayload>(EMPTY_REQUEST_PAYLOAD);
+export function useAgentRequestEntry(file: string | null, entryId: string | null): { entry: AgentRequestPayload; loading: boolean } {
+  const [entry, setEntry] = useState<AgentRequestPayload>(EMPTY_AGENT_PAYLOAD);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (!file || !entryId || isFileExport()) {
-      setEntry(EMPTY_REQUEST_PAYLOAD);
+      setEntry(EMPTY_AGENT_PAYLOAD);
       return;
     }
     let live = true;
     setLoading(true);
-    getJSON<OmpRequestPayload>(`api/omp/entry?file=${encodeURIComponent(file)}&entry=${encodeURIComponent(entryId)}`)
+    getJSON<AgentRequestPayload>(`api/agent/entry?file=${encodeURIComponent(file)}&entry=${encodeURIComponent(entryId)}`)
       .then((next) => {
         if (live) setEntry(next);
       })
       .catch(() => {
-        if (live) setEntry(EMPTY_REQUEST_PAYLOAD);
+        if (live) setEntry(EMPTY_AGENT_PAYLOAD);
       })
       .finally(() => {
         if (live) setLoading(false);
@@ -523,6 +519,7 @@ export interface HealthReport {
   tersio: string;
   node: string;
   platform: string;
+  /** The omp binary's version, when it is installed. */
   omp: string | null;
   ompPath: string | null;
   /** Config root, e.g. ~/.omp */
@@ -554,8 +551,9 @@ export interface DoctorReport {
 }
 
 interface TersioSnap {
-  data?: UsageReport;
-  omp?: OmpStats;
+  /** Display currency baked by --currency or the stored default. */
+  currency?: string;
+  agent?: AgentStats;
   health?: HealthReport;
   doctor?: DoctorReport;
 }
@@ -570,8 +568,8 @@ function snap(): TersioSnap | null {
   return typeof window !== "undefined" && window.__TERSIO_SNAP ? window.__TERSIO_SNAP : null;
 }
 
-function snapOmp(): OmpStats | null {
-  return snap()?.omp ?? null;
+function snapAgent(): AgentStats | null {
+  return snap()?.agent ?? null;
 }
 
 export function isFileExport(): boolean {
@@ -583,73 +581,7 @@ async function getJSON<T>(path: string): Promise<T> {
   return (await res.json()) as T;
 }
 
-function normalizeReport(d: UsageReport): UsageReport {
-  return { ...d, byHost: d.byHost ?? {} };
-}
 
-export function useDashboardData(): { data: UsageReport | null; loading: boolean; status: string | null } {
-  const [data, setData] = useState<UsageReport | null>(() => {
-    const s = snap()?.data;
-    return s ? normalizeReport(s) : null;
-  });
-  const [status, setStatus] = useState<string | null>(null);
-  const [loading, setLoading] = useState(() => !isFileExport() && !snap()?.data);
-  const lastJson = useRef<string>(data ? JSON.stringify(data) : "");
-  const lastStatus = useRef<string>("");
-
-  // Rides the poll below rather than opening a second interval.
-  const loadStatus = useCallback(async () => {
-    try {
-      const s = (await getJSON<{ status: string }>("status")).status;
-      if (typeof s !== "string" || s === lastStatus.current) return;
-      lastStatus.current = s;
-      setStatus(s);
-    } catch {
-      // A server without /status just leaves the banner hidden.
-    }
-  }, []);
-
-  const load = useCallback(async () => {
-    void loadStatus();
-    try {
-      const raw = await getJSON<UsageReport>("data.json");
-      const d = normalizeReport(raw);
-      const json = JSON.stringify(raw);
-      if (json === lastJson.current) return;
-      lastJson.current = json;
-      setData(d);
-      setLoading(false);
-    } catch {
-      // Served mode only has the endpoint; file:// exports use the snapshot.
-    } finally {
-      setLoading(false);
-    }
-  }, [loadStatus]);
-
-  useEffect(() => {
-    if (isFileExport()) return;
-    // Initial load always runs; the poll below skips hidden tabs.
-    void load();
-    const id = setInterval(() => {
-      if (!document.hidden) void load();
-    }, 5000);
-    const onVis = (): void => {
-      if (!document.hidden) void load();
-    };
-    const onDemand = (): void => {
-      void load();
-    };
-    document.addEventListener("visibilitychange", onVis);
-    window.addEventListener("tersio:reload", onDemand);
-    return () => {
-      clearInterval(id);
-      document.removeEventListener("visibilitychange", onVis);
-      window.removeEventListener("tersio:reload", onDemand);
-    };
-  }, [load]);
-
-  return { data, loading, status };
-}
 
 export interface FxState {
   cur: string;
@@ -657,13 +589,14 @@ export interface FxState {
   live: boolean;
 }
 
-export function useFx(serverDefault: string | undefined): {
+export function useFx(serverDefault?: string | null): {
   fx: FxState;
   money: (v: number) => string;
   applyCurrency: (code: string) => void;
 } {
   const [fx, setFx] = useState<FxState>(() => {
-    let cur = "USD";
+    // The exporter bakes the display currency, so an exported file opens in the same currency.
+    let cur = snap()?.currency ?? "USD";
     let rates = { ...FX_SNAPSHOT };
     try {
       const saved = localStorage.getItem("tersio-fx-cur");

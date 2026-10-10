@@ -12,7 +12,7 @@ Recurring mistakes log. Committed to git; reviewed periodically to promote entri
 ```
 
 ## 2026-10-10 — Line-range deletions computed against a list an earlier deletion had shifted
-**What happened:** A python pass deleted two function blocks from `extensions/shared/omp-stats.ts` by line range. The first deletion lowered every later index, and the second range used indices read before that deletion, so it cut the middle of `readSessionTrace` instead of the gain block. The file lost 168 lines of live code while the target functions survived.
+**What happened:** A python pass deleted two function blocks from `extensions/shared/agent-stats.ts` by line range. The first deletion lowered every later index, and the second range used indices read before that deletion, so it cut the middle of `readSessionTrace` instead of the gain block. The file lost 168 lines of live code while the target functions survived.
 **Root cause:** Computed all the line anchors, then applied the deletions one after another, so only the first range was still valid.
 **Prevention rule:** Delete one span at a time, or match anchors by text, never by a precomputed line number. After any multi-span deletion, `git diff --stat` must show the expected line count per file before the build.
 **Verification note:** `git checkout <file>` restored the file; the second attempt used string anchors.
@@ -93,7 +93,7 @@ Recurring mistakes log. Committed to git; reviewed periodically to promote entri
 **Prevention rule:** Add `ELSE 0` only inside `SUM`. After any aggregate change, diff the metric against the reference at a matched row count before trusting the page.
 
 ## 2026-10-10 — Two edits rewrote a span they only half re-emitted
-**What happened:** Two replacement edits lost content. One matched `HealthReport` plus its first field and dropped `tersio: string;`. The other removed a block of window interfaces and, matching on a nearby anchor, renamed `OmpFrustrationModel` into `OmpUsageWindowPoint` and deleted that interface's body. `tsc` caught both.
+**What happened:** Two replacement edits lost content. One matched `HealthReport` plus its first field and dropped `tersio: string;`. The other removed a block of window interfaces and, matching on a nearby anchor, renamed `OmpFrustrationModel` into `AgentWindowPoint` and deleted that interface's body. `tsc` caught both.
 **Root cause:** Put a multi-line span in `oldText` while `newText` re-emitted only part of it. A range replacement rewrites the whole span.
 **Prevention rule:** Keep `oldText` to the smallest unique span and re-emit every surviving line in `newText`. Run `tsc --noEmit` after any multi-line structural edit, not only at the end of the task.
 

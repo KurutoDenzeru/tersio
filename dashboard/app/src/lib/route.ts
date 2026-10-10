@@ -1,14 +1,14 @@
-// The dashboard lives in the URL hash, the same shape the omp-stats dashboard uses:
+// The dashboard lives in the URL hash, the same shape the agent-stats dashboard uses:
 // `#/models?range=7d`, plus `&s=<sessionFile>` for a deep-linked trace.
 import { useCallback, useEffect, useState } from "react";
-import { isOmpRange } from "./data";
-import type { OmpRange } from "./data";
-import { SECTIONS } from "@/components/omp/nav";
-import type { SectionId } from "@/components/omp/nav";
+import { isAgentRange } from "./data";
+import type { AgentRange } from "./data";
+import { SECTIONS } from "@/components/agents/nav";
+import type { SectionId } from "@/components/agents/nav";
 
 export interface HashRoute {
   section: SectionId;
-  range: OmpRange;
+  range: AgentRange;
   /** Deep-linked trace session file. */
   session: string | null;
 }
@@ -20,7 +20,7 @@ export function parseHash(hash: string): HashRoute {
   const range = params.get("range");
   return {
     section,
-    range: isOmpRange(range) ? range : "24h",
+    range: isAgentRange(range) ? range : "24h",
     session: params.get("s"),
   };
 }
@@ -35,7 +35,7 @@ export function buildHash({ section, range, session }: HashRoute): string {
  */
 export function useHashRoute(): HashRoute & {
   setSection: (section: SectionId) => void;
-  setRange: (range: OmpRange) => void;
+  setRange: (range: AgentRange) => void;
   setSession: (session: string | null) => void;
 } {
   const [route, setRoute] = useState(() => parseHash(window.location.hash));
@@ -63,7 +63,7 @@ export function useHashRoute(): HashRoute & {
     (section: SectionId) => navigate({ ...route, section, session: section === "traces" ? route.session : null }),
     [route, navigate],
   );
-  const setRange = useCallback((range: OmpRange) => navigate({ ...route, range }), [route, navigate]);
+  const setRange = useCallback((range: AgentRange) => navigate({ ...route, range }), [route, navigate]);
   const setSession = useCallback((session: string | null) => navigate({ ...route, session }), [route, navigate]);
 
   return { ...route, setSection, setRange, setSession };

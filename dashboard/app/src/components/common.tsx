@@ -142,7 +142,9 @@ export function Picker({
   return (
     <Select value={value} onValueChange={(next) => { if (next !== value) onPick(next as string); }}>
       <SelectTrigger size="sm" aria-label={label} className={cn("text-xs", className)}>
-        <SelectValue />
+        {/* The label, not the value: base-ui resolves a value to its item text only once the
+            popup has mounted, so a closed trigger would otherwise print the raw key. */}
+        <span className="truncate">{options.find((option) => option.value === value)?.label ?? value}</span>
       </SelectTrigger>
       <SelectContent>
         <SelectGroup>

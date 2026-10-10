@@ -41,24 +41,20 @@ function zoneGlyphsIn(file: string): Array<string> {
   return [...src.matchAll(/return\s*\[\s*"([^"]+)"/g)].map((m) => m[1]);
 }
 
-function stripIconsIn(file: string): Array<string> {
-  const src = readFileSync(file, "utf8");
-  // Token strip rows are ["label", value, "icon-name"].
-  return [...src.matchAll(/\[\s*"[^"]+",\s*[^,]+,\s*"([^"]+)"\s*\]/g)].map((m) => m[1]);
-}
-
 const files = readdirSync(components)
   .filter((f) => f.endsWith(".tsx") && f !== "Icon.tsx")
   .map((f) => path.join(components, f));
 
 const all = files.flatMap((f) => iconNamesIn(f).map((name) => ({ file: path.basename(f), name })));
 const libNames = libFiles.flatMap((f) => zoneGlyphsIn(f).map((name) => ({ file: path.relative(appDir, f), name })));
-const stripNames = stripIconsIn(path.join(appDir, "src/components/savings.tsx")).map((name) => ({ file: "savings.tsx(strip)", name }));
-const dynamic = [...libNames, ...stripNames];
+// The token strip lived in savings.tsx, which went with the usage page; nothing replaces it.
+const dynamic = libNames;
 
 test("the scan found the icon usages it is meant to guard", () => {
   expect(files.length).toBeGreaterThan(5);
-  expect(all.length).toBeGreaterThan(20);
+  // The usage page's removal took most direct call sites, so the floor is low: it only has to
+  // prove the scan reads files rather than finding nothing.
+  expect(all.length).toBeGreaterThan(5);
   expect(new Set(all.map((i) => i.name)).size).toBeGreaterThan(10);
 });
 

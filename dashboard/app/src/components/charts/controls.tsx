@@ -1,4 +1,4 @@
-// Controls shared by every omp page: the segmented picker, search, and the loading shell.
+// Controls shared by every agent page: the segmented picker, search, and the loading shell.
 import { cn } from "cn";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
@@ -6,7 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/common";
 import { Icon } from "@/components/icon";
 
-/** One choice out of a few, drawn with the shadcn tabs the usage page's Activity card uses. */
+/** One choice out of a few, drawn with the shadcn tabs the Activity card uses. */
 export function Segmented<T extends string>({
   value,
   options,

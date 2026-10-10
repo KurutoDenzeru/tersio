@@ -82,7 +82,10 @@ export function DataTable<T>({
   if (rows.length === 0 && empty) return <>{empty}</>;
 
   return (
-    <div className={cn("overflow-auto overscroll-contain [scrollbar-color:var(--line)_transparent] [scrollbar-width:thin]", className)}>
+    // A page table chains its wheel to the page. It is a page-level table, not a nested scroller in
+    // a modal, so `overscroll-contain` must stay off it: contain swallows the wheel and the page
+    // above a table that cannot scroll stops scrolling.
+    <div className={cn("overflow-auto [scrollbar-color:var(--line)_transparent] [scrollbar-width:thin]", className)}>
       <Table className="mono text-[13px]" aria-label={ariaLabel}>
         <TableHeader className="sticky top-0 z-10 bg-panel [&_tr]:border-line [&_tr]:text-left [&_tr]:text-[11px] [&_tr]:uppercase [&_tr]:tracking-[0.14em] [&_tr]:text-dim">
           <TableRow>

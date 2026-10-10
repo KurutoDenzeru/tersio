@@ -5,9 +5,9 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { errorSignature, readOmpStats, readSessionTrace } from '../../extensions/shared/omp-stats.ts';
+import { errorSignature, readAgentStats, readSessionTrace } from '../../extensions/shared/agent-stats.ts';
 import { hasSqlite } from '../helpers/env.ts';
-import { writeOmpAgentDb, writeOmpStatsDb, writeSessionFixture } from '../helpers/omp-fixture.ts';
+import { writeOmpAgentDb, writeAgentStatsDb, writeSessionFixture } from '../helpers/omp-fixture.ts';
 
 const HOUR = 3_600_000;
 const DAY = 86_400_000;
@@ -17,11 +17,11 @@ let previous: { stats?: string; agent?: string };
 
 beforeEach(() => {
   dir = mkdtempSync(path.join(os.tmpdir(), 'tersio-omp-'));
-  previous = { stats: process.env.TERSIO_OMP_STATS_DB, agent: process.env.TERSIO_OMP_AGENT_DB };
+  previous = { stats: process.env.TERSIO_AGENT_STATS_DB, agent: process.env.TERSIO_AGENT_SESSIONS_DB };
 });
 
 afterEach(() => {
-  for (const [key, value] of Object.entries({ TERSIO_OMP_STATS_DB: previous.stats, TERSIO_OMP_AGENT_DB: previous.agent })) {
+  for (const [key, value] of Object.entries({ TERSIO_AGENT_STATS_DB: previous.stats, TERSIO_AGENT_SESSIONS_DB: previous.agent })) {
     if (value === undefined) delete process.env[key];
     else process.env[key] = value;
   }
@@ -31,7 +31,7 @@ afterEach(() => {
 /** Five requests: two priced and cached, one free with no duration, one error, one aborted. */
 function seed(): { now: number } {
   const now = Date.now();
-  process.env.TERSIO_OMP_STATS_DB = writeOmpStatsDb(path.join(dir, 'stats.db'), {
+  process.env.TERSIO_AGENT_STATS_DB = writeAgentStatsDb(path.join(dir, 'stats.db'), {
     messages: [
       { session: 's1.jsonl', entry: 'e1', folder: '-proj-a', model: 'priced-model', provider: 'commandcode', ts: now - 5 * HOUR, duration: 2000, ttft: 500, input: 1000, output: 500, cacheRead: 4000, total: 5500, cost: 0.10, noCacheCost: 0.50, costInput: 0.01, costOutput: 0.05, costRead: 0.04 },
       { session: 's1.jsonl', entry: 'e2', folder: '-proj-a', model: 'priced-model', provider: 'commandcode', ts: now - 4 * HOUR, duration: 4000, ttft: 1000, input: 2000, output: 1000, cacheRead: 8000, total: 11000, cost: 0.20, noCacheCost: 1.00, costInput: 0.02, costOutput: 0.10, costRead: 0.08 },
@@ -44,7 +44,7 @@ function seed(): { now: number } {
       { session: 's1.jsonl', entry: 'e1', toolCallId: 't2', tool: 'bash', model: 'priced-model', provider: 'commandcode', ts: now - 5 * HOUR, callsInTurn: 2, argsChars: 50, resultChars: null, isError: 1 },
     ],
   });
-  process.env.TERSIO_OMP_AGENT_DB = writeOmpAgentDb(path.join(dir, 'agent.db'), [
+  process.env.TERSIO_AGENT_SESSIONS_DB = writeOmpAgentDb(path.join(dir, 'agent.db'), [
     { ts: now - 3 * HOUR, provider: 'openai-codex', accountKey: 'oauth|a', email: 'a@example.com', limitId: 'openai-codex:primary', label: '30 days', windowLabel: '30 days', usedFraction: 0.2, status: 'ok', resetsAt: now + DAY },
     { ts: now - 2 * HOUR, provider: 'openai-codex', accountKey: 'oauth|a', email: 'a@example.com', limitId: 'openai-codex:primary', label: '30 days', windowLabel: '30 days', usedFraction: 0.6, status: 'ok', resetsAt: now + DAY },
   ]);
@@ -54,7 +54,7 @@ function seed(): { now: number } {
 describe.skipIf(!hasSqlite())('omp aggregate', () => {
   test('matches the metric contract on every figure', () => {
     seed();
-    const omp = readOmpStats('all');
+    const omp = readAgentStats('all');
     expect(omp.available).toBe(true);
 
     expect(omp.overall.requests).toBe(5);
@@ -77,9 +77,24 @@ describe.skipIf(!hasSqlite())('omp aggregate', () => {
     expect(omp.overall.lastTs! - omp.overall.firstTs!).toBe(5 * HOUR - 10 * 60_000);
   });
 
+  test('splits the estimate by billing component, per row and overall', () => {
+    seed();
+    const omp = readAgentStats('all');
+
+    // The two priced rows: input 0.01 + 0.02, cache read 0.04 + 0.08, no cache write, and the
+    // output cost is the remainder of the total.
+    const mix = omp.byModel.find((row) => row.key === 'priced-model')?.costMix;
+    expect(mix?.input).toBeCloseTo(0.03, 12);
+    expect(mix?.cacheRead).toBeCloseTo(0.12, 12);
+    expect(mix?.cacheWrite).toBe(0);
+    expect(mix?.total).toBeCloseTo(0.3, 12);
+    expect(mix!.input + mix!.output + mix!.cacheRead + mix!.cacheWrite).toBeCloseTo(mix!.total, 12);
+    expect(omp.overall.costMix.total).toBeCloseTo(0.3, 12);
+  });
+
   test('groups by model and provider, by provider, by project, and by agent type', () => {
     seed();
-    const omp = readOmpStats('all');
+    const omp = readAgentStats('all');
 
     expect(omp.byModel.map((row) => `${row.key}|${row.provider}`).toSorted()).toEqual([
       'free-model-2|xai-oauth',
@@ -108,21 +123,21 @@ describe.skipIf(!hasSqlite())('omp aggregate', () => {
   test('buckets the series by range and keeps the totals additive', () => {
     seed();
     for (const [range, bucketMs] of [['1h', 300_000], ['24h', HOUR], ['7d', DAY], ['30d', DAY], ['90d', DAY], ['all', DAY]] as const) {
-      const omp = readOmpStats(range);
+      const omp = readAgentStats(range);
       expect(omp.bucketMs).toBe(bucketMs);
       expect(omp.series.reduce((sum, bucket) => sum + bucket.requests, 0)).toBe(omp.overall.requests);
       expect(omp.series.reduce((sum, bucket) => sum + bucket.tokens, 0)).toBe(omp.overall.total);
       for (const bucket of omp.series) expect(bucket.ts % bucketMs).toBe(0);
     }
     // A one hour window holds only the row written ten minutes ago.
-    const hour = readOmpStats('1h');
+    const hour = readAgentStats('1h');
     expect(hour.overall.requests).toBe(1);
     expect(hour.series.length).toBe(1);
   });
 
   test('splits provider and hour series, and fills every hour slot it has data for', () => {
     seed();
-    const omp = readOmpStats('all');
+    const omp = readAgentStats('all');
     const providers = omp.seriesByProvider.map((series) => series.provider);
     // Every provider fits under the series cap here, ordered by cost, so commandcode leads.
     expect(providers.toSorted()).toEqual(['commandcode', 'magpie', 'xai-oauth']);
@@ -138,7 +153,7 @@ describe.skipIf(!hasSqlite())('omp aggregate', () => {
 
   test('reads the recent rows and groups failures by normalized signature', () => {
     seed();
-    const omp = readOmpStats('all');
+    const omp = readAgentStats('all');
     expect(omp.recent.length).toBe(5);
     expect(omp.recent[0].entryId).toBe('e5');
     expect(omp.recent[0].unpriced).toBe(true);
@@ -154,7 +169,7 @@ describe.skipIf(!hasSqlite())('omp aggregate', () => {
 
   test('averages throughput and first-token latency per model, provider, and bucket', () => {
     seed();
-    const omp = readOmpStats('all', 'models');
+    const omp = readAgentStats('all', 'models');
     const priced = omp.modelPerformance.find((series) => series.model === 'priced-model' && series.provider === 'commandcode');
     expect(priced).toBeDefined();
     // One bucket holds every commandcode message, so both averages cover the same two rows.
@@ -168,12 +183,12 @@ describe.skipIf(!hasSqlite())('omp aggregate', () => {
     const magpie = omp.modelPerformance.find((series) => series.provider === 'magpie');
     expect(magpie?.points.every((p) => p.avgTokensPerSecond === null && p.avgTtftMs === null)).toBe(true);
     // The models view carries the group, and a view that does not need it skips it.
-    expect(readOmpStats('all', 'traces').modelPerformance).toEqual([]);
+    expect(readAgentStats('all', 'traces').modelPerformance).toEqual([]);
   });
 
   test('attributes tool tokens by the calls in the invoking turn', () => {
     seed();
-    const omp = readOmpStats('all');
+    const omp = readAgentStats('all');
     const read = omp.tools.find((row) => row.tool === 'read');
     const bash = omp.tools.find((row) => row.tool === 'bash');
     expect(omp.tools.length).toBe(2);
@@ -193,7 +208,7 @@ describe.skipIf(!hasSqlite())('omp aggregate', () => {
 
   test('groups messages into session traces and counts their tool calls', () => {
     seed();
-    const traces = readOmpStats('all').traces;
+    const traces = readAgentStats('all').traces;
     expect(traces.length).toBe(2);
     const first = traces[0];
     expect(first.sessionFile).toBe('s1.jsonl');
@@ -205,7 +220,7 @@ describe.skipIf(!hasSqlite())('omp aggregate', () => {
 
   test('reads the quota windows, their accounts, and the peak utilization', () => {
     seed();
-    const omp = readOmpStats('all', 'providers');
+    const omp = readAgentStats('all', 'providers');
     expect(omp.windowInsights.length).toBe(1);
     const insight = omp.windowInsights[0];
     expect(insight.provider).toBe('openai-codex');
@@ -226,12 +241,12 @@ describe.skipIf(!hasSqlite())('omp aggregate', () => {
 
   test('runs only the query groups a view asks for', () => {
     seed();
-    const projects = readOmpStats('all', 'projects');
+    const projects = readAgentStats('all', 'projects');
     expect(projects.overall.requests).toBe(5);
     expect(projects.byModel).toEqual([]);
     expect(projects.traces).toEqual([]);
 
-    const traces = readOmpStats('all', 'traces');
+    const traces = readAgentStats('all', 'traces');
     expect(traces.traces.length).toBe(2);
     expect(traces.byModel).toEqual([]);
     expect(traces.overall.requests).toBe(0);
@@ -271,9 +286,9 @@ describe.skipIf(!hasSqlite())('omp aggregate', () => {
   });
 
   test('degrades to an empty result instead of throwing when a source is gone', () => {
-    process.env.TERSIO_OMP_STATS_DB = path.join(dir, 'missing.db');
-    process.env.TERSIO_OMP_AGENT_DB = path.join(dir, 'missing-agent.db');
-    const omp = readOmpStats('all');
+    process.env.TERSIO_AGENT_STATS_DB = path.join(dir, 'missing.db');
+    process.env.TERSIO_AGENT_SESSIONS_DB = path.join(dir, 'missing-agent.db');
+    const omp = readAgentStats('all');
     expect(omp.available).toBe(false);
     expect(omp.overall.requests).toBe(0);
     expect(omp.byModel).toEqual([]);
@@ -283,8 +298,8 @@ describe.skipIf(!hasSqlite())('omp aggregate', () => {
 
   test('still reads the quota half when only stats.db is missing', () => {
     seed();
-    process.env.TERSIO_OMP_STATS_DB = path.join(dir, 'missing.db');
-    const omp = readOmpStats('all');
+    process.env.TERSIO_AGENT_STATS_DB = path.join(dir, 'missing.db');
+    const omp = readAgentStats('all');
     expect(omp.available).toBe(false);
     expect(omp.windowInsights.length).toBe(1);
   });

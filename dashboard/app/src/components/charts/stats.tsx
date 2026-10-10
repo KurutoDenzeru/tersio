@@ -33,6 +33,7 @@ export function PageHeader({
  */
 export function Card({
   title,
+  icon,
   description,
   actions,
   flush,
@@ -41,6 +42,8 @@ export function Card({
   id,
 }: {
   title: string;
+  /** Lucide glyph beside the title, from the same set the drawer sections use. */
+  icon?: string;
   description?: React.ReactNode;
   actions?: React.ReactNode;
   flush?: boolean;
@@ -54,19 +57,23 @@ export function Card({
       data-reveal
       className={cn(
         "translate-y-[18px] gap-0 overflow-hidden border-line bg-panel opacity-0 transition-[opacity,transform] duration-500 ease-[cubic-bezier(.16,1,.3,1)] data-[reveal=in]:translate-y-0 data-[reveal=in]:opacity-100 dark:[color-scheme:dark]",
-        // A flush card spans its content edge to edge, so the shell's own padding is dead space.
-        flush && "py-0",
+        // The shell never pads: the header owns its top and the body owns its bottom, so a
+        // flush table reaches the card edge and a normal card keeps one rhythm.
+        "py-0",
         className,
       )}
     >
       <div className="flex flex-wrap items-start gap-x-3 gap-y-1 border-b border-line px-3.5 pt-3 pb-2">
         <div className="min-w-0 flex-1">
-          <h2 className="font-display truncate text-sm leading-tight font-bold tracking-tight">{title}</h2>
+          <h2 className="font-display flex items-center gap-2 truncate text-sm leading-tight font-bold tracking-tight">
+            {icon && <Icon name={icon} className="size-3.5 shrink-0 text-dim" />}
+            <span className="truncate">{title}</span>
+          </h2>
           {description && <p className="mono mt-px text-[11px] leading-snug text-dim">{description}</p>}
         </div>
         {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
       </div>
-      <CardContent className={cn("min-w-0 py-3.5", flush ? "px-0 py-0" : "px-3.5")}>{children}</CardContent>
+      <CardContent className={cn("min-w-0", flush ? "px-0 py-0" : "px-3.5 pt-2.5 pb-2")}>{children}</CardContent>
     </CardShell>
   );
 }
@@ -91,7 +98,7 @@ export function Stat({
   tone?: "good" | "warn" | "bad";
   size?: "md" | "sm";
   className?: string;
-  /** Leading glyph, matching the token strip on the usage page. */
+  /** Leading glyph, matching the token strip on the ledger cards. */
   icon?: string;
 }) {
   const body = (
@@ -139,7 +146,7 @@ export function StatGrid({
     6: "grid-cols-2 sm:grid-cols-3 lg:grid-cols-6",
     7: "grid-cols-2 sm:grid-cols-4 lg:grid-cols-7",
   };
-  // One solid band with a rule between cells, the strip the usage page uses: no translucent
+  // One solid band with a rule between cells, the same strip shape everywhere: no translucent
   // tiles, and one path, so a strip never falls back to loose tiles.
   const cells = (Array.isArray(children) ? children : [children]).filter((c): c is ReactNode => Boolean(c));
   return (

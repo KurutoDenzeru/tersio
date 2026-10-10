@@ -99,7 +99,7 @@ test("dashboard persists display currency across restarts", async () => {
 
     const second = await startDashboard(home);
     try {
-      const res = await fetch(`${second.url}/data.json`);
+      const res = await fetch(`${second.url}/settings`);
       expect(res.status).toBe(200);
       const data = (await res.json()) as { currency?: string };
       expect(data.currency, "reopened dashboard defaults to the saved currency").toBe("PHP");
