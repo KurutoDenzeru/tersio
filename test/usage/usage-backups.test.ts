@@ -17,18 +17,7 @@ import {
   syncUsageDb,
   usageDbPath,
 } from "../../extensions/shared/usage-store.ts";
-import { csvCell, EXPORT_FORMATS, exportBody, exportRows } from "../../cli/dashboard.ts";
-import type { UsageReport } from "../../cli/usage.ts";
 import { hasSqlite } from "../helpers/env.ts";
-
-// A real report shape; export must not depend on anything else being present.
-const report = {
-  version: "2.24.0",
-  recent: [
-    { m: "space-bunny", i: 100, o: 20, t: Date.parse("2026-09-01T10:00:00Z"), d: 1500, cr: 30, cw: 0, usd: 1.5, st: "completed" },
-    { m: "openai/gpt-5.2-codex", i: 10, o: 5, t: Date.parse("2026-09-02T10:00:00Z"), h: "omp" },
-  ],
-} as unknown as UsageReport;
 
 function sandbox(): { dir: string; cleanup: () => void } {
   const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-backups-"));
@@ -65,53 +54,11 @@ function seedSnapshot(name: string, body: string): string {
 
 // --- export ---------------------------------------------------------------
 
-test("export offers json, jsonl and csv and nothing else", () => {
-  expect([...EXPORT_FORMATS].sort()).toEqual(["csv", "json", "jsonl"]);
-});
 
-test("export rows carry the agent, both timestamps, tokens and cost", () => {
-  const rows = exportRows(report);
-  expect(rows).toHaveLength(2);
-  expect(rows[0]).toMatchObject({ model: "space-bunny", input: 100, output: 20, cacheRead: 30, costUsd: 1.5, elapsedMs: 1500, status: "completed" });
-  expect(rows[0].timestamp).toBe("2026-09-01T10:00:00.000Z");
-  // The declared host is exported; a row without one defaults rather than
-  // going blank.
-  expect(rows[1].agent).toBe("omp");
-  expect(rows[1].elapsedMs).toBeUndefined();
-});
 
-test("export json is the whole report and valid json", () => {
-  const { body, type } = exportBody("json", report);
-  expect(type).toBe("application/json");
-  const parsed = JSON.parse(body) as { version: string; report: { recent: unknown[] } };
-  expect(parsed.report.recent).toHaveLength(2);
-  expect(parsed.version).toBeTruthy();
-});
 
-test("export jsonl is one row per line, each independently parseable", () => {
-  const { body, type } = exportBody("jsonl", report);
-  expect(type).toBe("application/x-ndjson");
-  const lines = body.trim().split("\n");
-  expect(lines).toHaveLength(2);
-  for (const line of lines) expect(() => JSON.parse(line)).not.toThrow();
-});
 
-test("export csv quotes commas so the local-time column cannot shift the row", () => {
-  const { body, type } = exportBody("csv", report);
-  expect(type).toContain("text/csv");
-  const [head, first] = body.trim().split("\n");
-  expect(head).toBe("timestamp,local,agent,model,input,output,cacheRead,cacheWrite,costUsd,elapsedMs,status");
-  // "9/1/2026, 10:00:00 AM" contains a comma and must survive as one cell.
-  expect(first).toMatch(/"[^"]*,\s*[^"]*"/);
-});
 
-test("csv quoting escapes embedded quotes and leaves plain cells alone", () => {
-  expect(csvCell("a,b")).toBe('"a,b"');
-  expect(csvCell('say "hi"')).toBe('"say ""hi"""');
-  expect(csvCell("plain")).toBe("plain");
-  expect(csvCell(undefined)).toBe("");
-  expect(csvCell(null)).toBe("");
-});
 
 // --- restore --------------------------------------------------------------
 

@@ -1,18 +1,27 @@
-// Dashboard sections share the cli/dashboard.ts data contract and index.css tokens.
-import { useEffect, useState } from "react";
+// Every page of the agent-stats dashboard, one hash route each.
+import { useCallback, useEffect, useState } from "react";
 import { useTheme } from "@/components/theme-provider";
-import { useDashboardData, useFx } from "@/lib/data";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Spinner } from "@/components/ui/spinner";
-import { Dock, Hero } from "./components/hero";
-import { Savings } from "./components/savings";
-import { Activity } from "./components/activity";
-import { Models } from "./components/models";
-import { Recent } from "./components/recent";
-import { Tools } from "./components/tools";
-import { Footer, SettingsDialog, ShareDialog } from "./components/dialogs";
-import { ToasterProvider } from "./components/toaster";
-import { StatusBanner } from "./components/status-banner";
+import { useFx, useAgentData } from "@/lib/data";
+import type { AgentRequestRow, AgentView } from "@/lib/data";
+import { useHashRoute } from "@/lib/route";
+import { EmptyState } from "@/components/common";
+import { ChartSkeleton, Page, PageHeader } from "@/components/charts";
+import { Shell, useShortcuts } from "./components/agents/shell";
+import { navItem } from "./components/agents/nav";
+import { AgentRequestDrawer } from "./components/agents/drawer";
+import { SessionTrace } from "./components/agents/session";
+import { OverviewPage } from "./components/agents/overview";
+import { ModelsPage } from "./components/agents/models";
+import { ProvidersPage } from "./components/agents/providers";
+import { CostsPage } from "./components/agents/costs";
+import { CarbonPage } from "./components/agents/carbon";
+import { RequestsPage } from "./components/agents/requests";
+import { ErrorsPage } from "./components/agents/errors";
+import { TracesPage } from "./components/agents/traces";
+import { ToolsPage } from "./components/agents/tools";
+import { ProjectsPage } from "./components/agents/projects";
+import { SettingsDialog } from "./components/dialogs";
+import { ShareDialog } from "./components/agents/share-dialog";
 
 function useDataThemeAttr(): void {
   const { theme } = useTheme();
@@ -41,7 +50,7 @@ function useDataThemeAttr(): void {
   }, [theme]);
 }
 
-// data-reveal flips to "in" once a section enters the viewport.
+// data-reveal flips to "in" once a card enters the viewport.
 function useReveal(): void {
   useEffect(() => {
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -64,7 +73,8 @@ function useReveal(): void {
           }
         });
       },
-      { threshold: 0.12 },
+      // Any visible pixel reveals: a card taller than the viewport can never reach a ratio threshold.
+      { threshold: 0 },
     );
     const watch = (): void => {
       document.querySelectorAll(".rise, [data-reveal]").forEach((el) => {
@@ -73,7 +83,7 @@ function useReveal(): void {
     };
     watch();
     const mo = new MutationObserver(watch);
-    mo.observe(document.getElementById("root") ?? document.body, { childList: true, subtree: true });
+    mo.observe(document.body, { childList: true, subtree: true });
     return () => {
       io.disconnect();
       mo.disconnect();
@@ -81,80 +91,134 @@ function useReveal(): void {
   }, []);
 }
 
-function DashboardLoading() {
+/** The page while its snapshot is on the way. */
+function PageLoading({ title }: { title: string }) {
   return (
-    <div className="relative mx-auto max-w-7xl px-4 pb-16 sm:px-6" aria-busy="true" aria-label="Loading dashboard">
-      <div className="grid min-h-72 place-items-center py-12">
-        <div className="flex items-center gap-2 text-sm text-dim">
-          <Spinner />
-          Loading usage
-        </div>
-      </div>
-      <div className="grid grid-cols-12 gap-3">
-        <Skeleton className="col-span-12 min-h-72 rounded-xl bg-panel lg:col-span-7" />
-        <Skeleton className="col-span-12 min-h-48 rounded-xl bg-panel lg:col-span-5" />
-        <Skeleton className="col-span-6 min-h-40 rounded-xl bg-panel" />
-        <Skeleton className="col-span-6 min-h-40 rounded-xl bg-panel" />
-      </div>
-      <div className="mt-8 flex flex-col gap-4 rounded-xl border border-line bg-panel p-5">
-        <Skeleton className="h-5 w-28" />
-        <Skeleton className="h-32 w-full" />
-      </div>
-    </div>
+    <Page>
+      <PageHeader title={title} description="Reading the agent databases…" />
+      <ChartSkeleton height={240} />
+      <ChartSkeleton height={160} />
+    </Page>
   );
 }
 
-function Shell() {
+function Dashboard() {
   useDataThemeAttr();
   useReveal();
-  const { data, loading, status } = useDashboardData();
-  const { fx, money, applyCurrency } = useFx(data?.currency);
+  const { fx, money, applyCurrency } = useFx();
+  const { section, range, session, setSection, setRange, setSession } = useHashRoute();
+  // The smallest view still answers "is there an agent database".
+  const view: AgentView = section;
+  const { agent, loading, stale } = useAgentData(range, view);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const [request, setRequest] = useState<AgentRequestRow | null>(null);
+
+  useShortcuts({ onRange: setRange, onSection: setSection });
+  useEffect(() => {
+    window.scrollTo({ top: 0 });
+  }, [section, session]);
+
+  const openRequest = useCallback((row: AgentRequestRow) => setRequest(row), []);
+  const closeRequest = useCallback(() => setRequest(null), []);
+  const agentAvailable = agent?.available ?? false;
+  const title = navItem(section).label;
+
+  const page = (): React.ReactNode => {
+    if (section === "traces" && session) {
+      return <SessionTrace sessionFile={session} money={money} onClose={() => setSession(null)} />;
+    }
+    if (loading && !agent) return <PageLoading title={title} />;
+    if (!agent || !agent.available) {
+      // A fetch that never answered JSON means the page is newer than the server process, not
+      // that the databases went away. Name it, so the fix is the obvious one.
+      if (stale) {
+        return (
+          <Page>
+            <PageHeader title={title} description="This page could not read the dashboard server." />
+            <EmptyState
+              icon="refresh-cw"
+              title="Restart the dashboard"
+              desc="The page is newer than the running server, so the data route did not answer. Stop the process and start `tersio dashboard` again; the databases are fine."
+            />
+          </Page>
+        );
+      }
+      return (
+        <Page>
+          <PageHeader title={title} description="This page reads the agent databases." />
+          <EmptyState
+            icon="database-zap"
+            title="No agent stats database"
+            desc="These pages read the agent statistics databases, which one coding agent writes as it runs."
+          />
+        </Page>
+      );
+    }
+    switch (section) {
+      case "overview":
+        return <OverviewPage agent={agent} money={money} onOpenRequest={openRequest} />;
+      case "models":
+        return <ModelsPage agent={agent} money={money} />;
+      case "providers":
+        return <ProvidersPage agent={agent} money={money} />;
+      case "costs":
+        return <CostsPage agent={agent} money={money} />;
+      case "carbon":
+        return <CarbonPage agent={agent} />;
+      case "requests":
+        return <RequestsPage agent={agent} money={money} onOpenRequest={openRequest} />;
+      case "errors":
+        return <ErrorsPage agent={agent} money={money} onOpenRequest={openRequest} />;
+      case "traces":
+        return <TracesPage agent={agent} money={money} onOpenSession={setSession} />;
+      case "tools":
+        return <ToolsPage agent={agent} money={money} />;
+      case "projects":
+        return <ProjectsPage agent={agent} money={money} />;
+      default:
+        return null;
+    }
+  };
 
   return (
     <>
-      <div
-        className="pointer-events-none fixed inset-0 [background-image:linear-gradient(var(--grid)_1px,transparent_1px),linear-gradient(90deg,var(--grid)_1px,transparent_1px)] [background-size:44px_44px] [mask-image:radial-gradient(ellipse_90%_70%_at_50%_0%,black_30%,transparent_75%)]"
-        aria-hidden="true"
-      />
-      <main className="w-full max-w-full overflow-x-clip">
-        <div className="relative mx-auto max-w-7xl px-4 pb-16 sm:px-6">
-          <Dock onShare={() => setShareOpen(true)} onSettings={() => setSettingsOpen(true)} />
-          {loading ? <DashboardLoading /> : (
-            <>
-              <Hero data={data} />
-              <Savings data={data} fx={fx} money={money} onCurrency={applyCurrency} />
-              <Activity data={data} />
-              <Models data={data} money={money} />
-              <Recent data={data} money={money} />
-              <Tools data={data} />
-              <Footer />
-            </>
-          )}
-        </div>
-      </main>
-      {/* Outside <main>: its overflow-x-clip would become the containing block. */}
-      <StatusBanner status={status} />
+      <Shell
+        section={section}
+        onSection={setSection}
+        range={range}
+        onRange={setRange}
+        status={status}
+        agentAvailable={agentAvailable}
+        onSettings={() => setSettingsOpen(true)}
+        onShare={() => setShareOpen(true)}
+      >
+        {page()}
+      </Shell>
+      {request && (
+        <AgentRequestDrawer
+          row={request}
+          money={money}
+          onClose={closeRequest}
+          onOpenSession={(file) => {
+            closeRequest();
+            setSession(file);
+          }}
+        />
+      )}
       <SettingsDialog
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
-        data={data}
         cur={fx.cur}
         onCurrency={applyCurrency}
-        onReload={() => window.dispatchEvent(new Event("tersio:reload"))}
       />
-      <ShareDialog open={shareOpen} onClose={() => setShareOpen(false)} data={data} money={money} />
+      <ShareDialog open={shareOpen} onClose={() => setShareOpen(false)} range={range} money={money} />
     </>
   );
 }
 
 export function App() {
-  return (
-    <ToasterProvider>
-      <Shell />
-    </ToasterProvider>
-  );
+  return <Dashboard />;
 }
 
 export default App;

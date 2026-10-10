@@ -36,9 +36,13 @@ function relativeSpecs(body: string): string[] {
 }
 
 // Compiled .js is gitignored; the tracked source of truth is always the .ts.
+// A Vite asset import carries a query (`./mark.svg?raw`), and its target is still that file.
 function candidates(source: string, spec: string): string[] {
-  const stem = path.posix.join(path.posix.dirname(source), spec).replace(/\.(ts|tsx|js|jsx)$/, "");
-  return [`${stem}.ts`, `${stem}.tsx`, `${stem}/index.ts`];
+  const bare = spec.replace(/\?.*$/, "");
+  const stem = path.posix.join(path.posix.dirname(source), bare);
+  if (/\.(svg|png|webp|css|json)$/.test(bare)) return [stem];
+  const noExt = stem.replace(/\.(ts|tsx|js|jsx)$/, "");
+  return [`${noExt}.ts`, `${noExt}.tsx`, `${noExt}/index.ts`];
 }
 
 test("tracked sources only import git-tracked files", () => {

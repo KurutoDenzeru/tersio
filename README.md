@@ -82,19 +82,29 @@ Upstream Ponytail's fair agentic benchmark reports 54% less code, 22% fewer toke
 
 ## 📈 Dashboard
 
-`tersio dashboard --open` serves a local dashboard (127.0.0.1 only) that charts your own savings from `~/.tersio/usage.db`. Three views:
+`tersio dashboard --open` serves a local dashboard (127.0.0.1 only) with one page per view, at the same hash routes the upstream `@oh-my-pi/omp-stats` dashboard uses. Tersio's own ledger keeps a page of its own.
 
-**Live feed and savings.** Token throughput, cost, savings bento, and recent activity — the top of the dashboard.
+| Route | Page |
+|---|---|
+| `#/overview?range=24h` | Everything omp did in the window: cost, tokens, cache, burn chart, newest requests |
+| `#/models?range=7d` | Which models did the work and how fast they answered. Click a row for its efficiency, latency, and per-day throughput |
+| `#/providers?range=7d` | Burn, reliability, and subscription headroom per provider |
+| `#/costs?range=30d` | What the window would cost at public API rates |
+| `#/requests?range=24h` | Every model call, newest first, with a filter and a detail drawer |
+| `#/errors?range=7d` | Failed requests grouped by error signature |
+| `#/traces` | Sessions, with `&s=<sessionFile>` deep-linking one transcript |
+| `#/tools?range=7d` | Which tools omp called, how often they failed, and what they cost |
+| `#/projects?range=30d` | Usage by session folder |
 
-![Dashboard: live token feed, cost, savings, and activity](/assets/GainHero.webp)
+Windows are `1h`, `24h`, `7d`, `30d`, `90d`, and all time. Press `1`-`6` for a window and `g` then a letter to jump between pages. Every view keeps its window in the URL, so a link reproduces exactly what you see.
 
-**Top models and recent requests.** Per-model cost breakdown plus the last requests with elapsed time and token speed.
+Long tables page instead of clipping: the request log, failures, models, projects, tools, and sessions all render one page at a time, with the row count and a rows-per-page picker in the footer.
 
-![Dashboard: top models with per-model cost, recent requests with elapsed time and token speed](/assets/GainModels.webp)
+**The rail and the topbar.** The rail lists every page and its shortcut, with Settings and Share in its footer. The topbar carries the live chip, the window picker, and the theme button at the top right.
 
-**Command tools.** Token savings, average rate, and timing per shell tool.
+**Read-only, always.** The omp pages read `~/.omp/stats.db` and `~/.omp/agent/agent.db` and never write to them. Cost is labelled as a public-rate-card estimate, never a bill.
 
-![Dashboard: command tools with token savings, average rate, and timing](/assets/GainTools.webp)
+**Brand marks come from a catalog.** `extensions/shared/brand-marks.ts` names each mark's URL, so the exported file inlines that same list once and renders with the network off. A gateway with a brand of its own carries it, and a gateway with no hosted mark keeps a monogram instead of a borrowed vendor logo.
 
 ### Measurement references
 

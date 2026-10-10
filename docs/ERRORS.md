@@ -11,6 +11,12 @@ Recurring mistakes log. Committed to git; reviewed periodically to promote entri
 **Prevention rule:** What to do differently next time.
 ```
 
+## 2026-10-10 — Line-range deletions computed against a list an earlier deletion had shifted
+**What happened:** A python pass deleted two function blocks from `extensions/shared/agent-stats.ts` by line range. The first deletion lowered every later index, and the second range used indices read before that deletion, so it cut the middle of `readSessionTrace` instead of the gain block. The file lost 168 lines of live code while the target functions survived.
+**Root cause:** Computed all the line anchors, then applied the deletions one after another, so only the first range was still valid.
+**Prevention rule:** Delete one span at a time, or match anchors by text, never by a precomputed line number. After any multi-span deletion, `git diff --stat` must show the expected line count per file before the build.
+**Verification note:** `git checkout <file>` restored the file; the second attempt used string anchors.
+
 ## 2026-09-23 — Malformed oldString/newString boundary in edit calls
 **What happened:** `edit` calls produced broken intermediates: a stray `async function` declaration line, a dropped `const SOURCES` opener, duplicated function headers, and deleted neighbors in dashboard/app.js. Each was caught by reading the edited region right after and repaired before building.
 **Root cause:** Drafting replacement text that overlapped neighboring declarations instead of keeping the boundary to the exact lines being changed.
@@ -75,3 +81,34 @@ Recurring mistakes log. Committed to git; reviewed periodically to promote entri
 **What happened:** Adding two new tests to `test/installer/host-menus.test.ts`, the `oldText` spanned a whole existing test and the `newText` contained only that test's opening line. The replacement deleted the body and the closing brace, leaving a parse error at EOF. It also silently dropped an existing assertion before tsc caught the syntax break.
 **Root cause:** Used a replacing primitive for an insertion. A range replacement rewrites the entire matched span, so anything intended to survive must be re-emitted in full.
 **Prevention rule:** To insert before a block, keep `oldText` to the insertion point alone, or re-emit the whole original block in `newText`. After editing near an existing test, run `git diff -U0 -- <file>` and confirm the change is pure insertion before running the suite.
+
+## 2026-10-10 — A type-import split dropped an existing type import
+**What happened:** Splitting type-only names out of a value import in `extensions/shared/usage-store.ts`, the new `import type { OpencodeDbRow, OpencodeMessage }` line replaced the existing `import type { RunStatus, SessionTokens }` line instead of adding to it. `tsc` then reported `Cannot find name 'SessionTokens'` and `Cannot find name 'RunStatus'`.
+**Root cause:** Wrote the replacement line from the names I was moving and forgot the names already on that line. The same edit pass also removed `RtkRelease` from a value import in `cli/install.ts` without adding the type import.
+**Prevention rule:** When a name moves between import lines, read the target line first and re-emit its full existing content plus the moved names. Run `tsc --noEmit` after any import-shape change, not only at the end of the task.
+
+## 2026-10-10 — `COUNT` with an `ELSE 0` literal counted every row
+**What happened:** The omp aggregate read `COUNT(CASE WHEN duration > 0 THEN 1 ELSE 0 END)` as the throughput denominator. `COUNT(expr)` counts non-null values, so the `ELSE 0` made it count every row: the dashboard read 21.7 tokens/s where the reference read 29.3.
+**Root cause:** Copied the neighbouring `SUM(CASE … ELSE 0 END)` shape onto a `COUNT`, where the zero is not a no-op but an extra counted row.
+**Prevention rule:** Add `ELSE 0` only inside `SUM`. After any aggregate change, diff the metric against the reference at a matched row count before trusting the page.
+
+## 2026-10-10 — Two edits rewrote a span they only half re-emitted
+**What happened:** Two replacement edits lost content. One matched `HealthReport` plus its first field and dropped `tersio: string;`. The other removed a block of window interfaces and, matching on a nearby anchor, renamed `OmpFrustrationModel` into `AgentWindowPoint` and deleted that interface's body. `tsc` caught both.
+**Root cause:** Put a multi-line span in `oldText` while `newText` re-emitted only part of it. A range replacement rewrites the whole span.
+**Prevention rule:** Keep `oldText` to the smallest unique span and re-emit every surviving line in `newText`. Run `tsc --noEmit` after any multi-line structural edit, not only at the end of the task.
+
+## 2026-10-10 — Rounding stored values before deriving metrics moved the metrics
+**What happened:** Rounded `used_fraction` to four decimals while reading quota snapshots, to shrink the payload. Every derived window figure drifted from the reference: fraction consumed 0.1825 against 0.182526, peak 0.1284 against 0.128413, and tokens per window off by 800,000.
+**Root cause:** Rounded at the read boundary, which also rounded the inputs to sums over thousands of snapshots.
+**Prevention rule:** Round only when serializing, never before arithmetic. Compare derived figures against the reference before shipping them.
+
+## 2026-10-10 — A row field no reader filled left a whole column blank
+**What happened:** Provider rows carried an empty `provider` field, because the row builder set that field only for model groups. The Providers table lost its name column, the "Most tokens:" hint read blank, and the mark tint fell back.
+**Root cause:** Assumed a field was populated for every row shape instead of checking the reader that builds each shape.
+**Prevention rule:** When a page reads `row.field`, confirm the reader sets it for that row shape. A screenshot of the rendered page catches what a type check cannot.
+
+## 2026-10-10 — A page recomputed a figure the payload already carried
+**What happened:** The Providers and Models tables derived throughput as total output tokens divided by average duration, which read 173,158/s where the payload's own `avgTokensPerSecond` read 64.8. A live screenshot caught it, not a test.
+**Root cause:** Reached for the two fields that were in front of me instead of the one field the contract already defines for that metric.
+**Prevention rule:** Before computing anything from raw fields, check whether the payload carries the finished metric. Render the page and read the numbers once before calling it done.
+

@@ -1,13 +1,11 @@
-// Vendor brandmark: inline OpenAI glyph, Simple Icons CDN fallback, bot placeholder for unknowns.
-import { useState } from "react";
+// Brand marks, served not vendored: a tile resolves to its mark's URL, and the CLI export
+// inlines those same URLs once, so the exported file still works with the network off.
+// Two marks, two jobs: VendorMark names the model's author, ProviderMark the routing service.
 import { cn } from "cn";
-import { vendorOf } from "@/lib/format";
-import { STEALTH_MARK } from "@/lib/stealth-mark";
-import { COGNITION_MARK } from "@/lib/cognition-mark";
+import { MARK_BG, MARK_SCALE, contrastInk } from "../../../../extensions/shared/brand-marks.ts";
+import { providerColor, providerMeta, vendorOf } from "@/lib/format";
+import { imageMark, maskMark } from "@/lib/marks";
 import { Icon } from "./icon";
-
-const INCLUSIONAI_LOGO =
-  "https://cdn-avatars.huggingface.co/v1/production/uploads/662e1f9da266499277937d33/fyKuazRifqiaIO34xrhhm.jpeg";
 
 export function OpenAIGlyph({ className = "size-full" }: { className?: string }) {
   // currentColor follows theme ink; the tile keeps black-on-white.
@@ -18,12 +16,13 @@ export function OpenAIGlyph({ className = "size-full" }: { className?: string })
   );
 }
 
+// Alpha masking: a vendored Simple Icons path is opaque black, so luminance would erase it.
 function maskedGlyph(src: string, color: string): React.CSSProperties {
   return {
     backgroundColor: color,
     WebkitMaskImage: `url("${src}")`,
     maskImage: `url("${src}")`,
-    maskMode: "luminance",
+    maskMode: "alpha",
     WebkitMaskRepeat: "no-repeat",
     maskRepeat: "no-repeat",
     WebkitMaskPosition: "center",
@@ -33,114 +32,141 @@ function maskedGlyph(src: string, color: string): React.CSSProperties {
   };
 }
 
-function MaskedGlyph({ className, src, color = "var(--accent)" }: { className: string; src: string; color?: string }) {
+function MaskedGlyph({ className, src, color = "currentColor" }: { className: string; src: string; color?: string }) {
   return <span className={cn("block", className)} style={maskedGlyph(src, color)} />;
+}
+
+const TILE = "relative grid shrink-0 place-items-center overflow-hidden rounded-[13px] border border-line";
+const TILE_SMALL = "size-9 rounded-[11px]";
+/** One line of a dense table, where a bigger tile would inflate the row. */
+const TILE_TINY = "size-[21px] rounded-[7px]";
+/** A wide table row, which has room for more than the small tile without growing the row. */
+const TILE_ROW = "size-[30px] rounded-[10px]";
+
+/**
+ * One tile, one mark. The chain is fixed: an image mark, then a mask, then a monogram, then a
+ * generic glyph. A provider with no findable mark keeps its monogram, never another vendor's logo.
+ * A slug with a known brand color fills its tile with it and draws the glyph in the opposite ink,
+ * so the tile reads as the brand instead of as a small logo on the panel. A slug whose art already
+ * fills its own box is scaled back, and one whose art leaves a margin inside its box is scaled up,
+ * so every tile carries the same visible size of logo.
+ */
+function Mark({ slug, initial, color, small, tiny, row }: { slug: string; initial: string; color: string; small?: boolean; tiny?: boolean; row?: boolean }) {
+  const box = tiny ? "size-3.5" : row ? "size-[23px]" : small ? "size-5" : "size-[26px]";
+  // A logo that fills its own box by more than another reads as the bigger one, so the box scales.
+  const scale = slug ? (MARK_SCALE[slug] ?? 1) : 1;
+  const glyph = scale === 1 ? box : cn(box, "scale-[var(--mark-scale)]");
+  const tile = cn(TILE, "size-11", small && TILE_SMALL, tiny && TILE_TINY, row && TILE_ROW);
+  const bg = slug ? MARK_BG[slug] : undefined;
+  const fill = { background: bg, "--mark-scale": scale } as React.CSSProperties;
+  const surface = bg ? undefined : "bg-panel";
+  const ink = bg ? contrastInk(bg) : "currentColor";
+  if (slug === "openai") {
+    return (
+      <span className={cn(tile, "text-black")} style={fill} aria-hidden="true">
+        <OpenAIGlyph className={cn("block", glyph)} />
+      </span>
+    );
+  }
+  const image = slug ? imageMark(slug) : null;
+  if (image) {
+    return (
+      <span className={cn(tile, surface)} style={fill} aria-hidden="true">
+        <img src={image} alt="" loading="lazy" className={cn(glyph, "object-contain")} />
+      </span>
+    );
+  }
+  const mask = slug ? maskMark(slug) : null;
+  if (mask) {
+    return (
+      <span className={cn(tile, surface)} style={fill} aria-hidden="true">
+        <MaskedGlyph className={glyph} src={mask} color={ink} />
+      </span>
+    );
+  }
+  if (!initial) {
+    return (
+      <span className={cn(tile, "bg-transparent text-dim")} aria-hidden="true">
+        <Icon name="bot" className={`grid ${glyph}`} />
+      </span>
+    );
+  }
+  return (
+    <span className={tile} aria-hidden="true">
+      <span className="absolute inset-0" style={{ background: color, opacity: 0.16 }} />
+      <span className="mono relative text-base font-bold leading-none" style={{ color }}>
+        {initial}
+      </span>
+    </span>
+  );
+}
+
+/** The mark for a provider id: its own brand when it has one, else a monogram of that id. */
+export function ProviderMark({ provider, small, tiny, row }: { provider: string; small?: boolean; tiny?: boolean; row?: boolean }) {
+  return (
+    <Mark
+      slug={providerMeta(provider).slug}
+      initial={(provider.match(/[a-z0-9]/i)?.[0] ?? "").toUpperCase()}
+      color={providerColor(provider)}
+      small={small}
+      tiny={tiny}
+      row={row}
+    />
+  );
+}
+
+/** The mark for a model's author, resolved from the model id. */
+export function VendorMark({ model, small, tiny, row }: { model: string; small?: boolean; tiny?: boolean; row?: boolean }) {
+  const v = vendorOf(model);
+  return (
+    <Mark
+      slug={v.slug}
+      initial={v.slug ? "" : (v.name.match(/[a-z0-9]/i)?.[0] ?? "?").toUpperCase()}
+      color={v.color}
+      small={small}
+      tiny={tiny}
+      row={row}
+    />
+  );
+}
+
+/** A bare masked mark, for a spot that is not a tile: the footer links. */
+export function MarkGlyph({ slug, className }: { slug: string; className: string }) {
+  const src = maskMark(slug);
+  if (!src) return null;
+  return <MaskedGlyph className={className} src={src} />;
 }
 
 export function BrandSilhouette({ model }: { model: string }) {
   const v = vendorOf(model);
   const cls =
     "pointer-events-none absolute -right-6 -bottom-6 size-[88px] select-none opacity-[.16] dark:opacity-[.2]";
-  if (model === "openai" || v.slug === "openai") {
+  if (v.slug === "openai") {
     return (
       <span className={cn(cls, "grid place-items-center text-accent")} aria-hidden="true">
         <OpenAIGlyph className="block size-[72px]" />
       </span>
     );
   }
-  if (v.slug === "stealth") {
+  const image = v.slug ? imageMark(v.slug) : null;
+  if (image) {
     return (
       <span className={cn(cls, "grid place-items-center")} aria-hidden="true">
-        <MaskedGlyph className="size-[72px]" src={STEALTH_MARK} />
+        <img src={image} alt="" loading="lazy" className="block size-[72px] rounded-full object-contain" />
       </span>
     );
   }
-  if (v.slug === "cognition") {
+  const mask = v.slug ? maskMark(v.slug) : null;
+  if (mask) {
     return (
-      <span className={cn(cls, "grid place-items-center")} aria-hidden="true">
-        <MaskedGlyph className="size-[72px]" src={COGNITION_MARK} />
-      </span>
-    );
-  }
-  if (v.slug === "inclusionai") {
-    return (
-      <span className={cn(cls, "grid place-items-center")} aria-hidden="true">
-        <img src={INCLUSIONAI_LOGO} alt="" loading="lazy" className="block size-[72px] rounded-full object-cover" />
-      </span>
-    );
-  }
-  if (!v.slug) {
-    return (
-      <span className={cn(cls, "text-accent")} aria-hidden="true">
-        <Icon name="bot" className="block size-[72px]" />
+      <span className={cn(cls, "grid place-items-center text-accent")} aria-hidden="true">
+        <MaskedGlyph className="size-[72px]" src={mask} />
       </span>
     );
   }
   return (
-    <span className={cn(cls, "grid place-items-center")} aria-hidden="true">
-      <MaskedGlyph className="size-[72px]" src={`https://cdn.simpleicons.org/${v.slug}/white`} />
-    </span>
-  );
-}
-
-export function Brandmark({ model, small }: { model: string; small?: boolean }) {
-  const v = vendorOf(model);
-  const [failed, setFailed] = useState(false);
-  const glyph = small ? "size-[17px]" : "size-[22px]";
-  const cls = cn(
-    "grid size-[40px] shrink-0 place-items-center rounded-[12px] text-white",
-    small && "size-8 rounded-[10px]",
-  );
-  if (model === "openai" || v.slug === "openai") {
-    return (
-      <span className={cn(cls, "border border-line text-black")} style={{ background: v.color }}>
-        <OpenAIGlyph className={`block ${glyph}`} />
-      </span>
-    );
-  }
-  if (v.slug === "stealth") {
-    return (
-      <span className={cn(cls, "border border-line bg-panel text-ink")}>
-        <MaskedGlyph className={glyph} src={STEALTH_MARK} color="currentColor" />
-      </span>
-    );
-  }
-  if (v.slug === "cognition" && !failed) {
-    return (
-      <span className={cn(cls, "border border-line bg-panel")}>
-        <MaskedGlyph className={cn("opacity-90", glyph)} src={COGNITION_MARK} />
-      </span>
-    );
-  }
-  if (v.slug === "inclusionai" && !failed) {
-    return (
-      <span className={cn(cls, "overflow-hidden border border-line")}>
-        <img src={INCLUSIONAI_LOGO} alt="" loading="lazy" onError={() => setFailed(true)} className={cn(glyph, "object-cover")} />
-      </span>
-    );
-  }
-  if (!v.slug || failed) {
-    return (
-      <span
-        className={cn(
-          "grid size-[40px] shrink-0 place-items-center rounded-[12px] border border-line bg-transparent text-dim",
-          small && "size-8 rounded-[10px]",
-        )}
-      >
-        <Icon name="bot" className={`grid ${glyph}`} />
-      </span>
-    );
-  }
-  return (
-    <span className={cls} style={{ background: v.color }}>
-      <img
-        src={`https://cdn.simpleicons.org/${v.slug}/white`}
-        alt=""
-        loading="lazy"
-        onError={() => setFailed(true)}
-        className={glyph}
-      />
-      <Icon name="bot" className={`hidden ${glyph}`} />
+    <span className={cn(cls, "grid place-items-center text-accent")} aria-hidden="true">
+      <Icon name="bot" className="block size-[72px]" />
     </span>
   );
 }

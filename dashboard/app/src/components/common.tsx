@@ -109,7 +109,7 @@ export function PerPage({
         if (n !== value) onPick(n);
       }}
     >
-      <SelectTrigger size="sm" aria-label={label}>
+      <SelectTrigger size="sm" aria-label={label} className="h-[26px]!">
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
@@ -117,6 +117,40 @@ export function PerPage({
           {options.map((n) => (
             <SelectItem key={n} value={String(n)}>
               {n} / page
+            </SelectItem>
+          ))}
+        </SelectGroup>
+      </SelectContent>
+    </Select>
+  );
+}
+
+/** One choice from a list, drawn with the shadcn select. Never a native `<select>`. */
+export function Picker({
+  options,
+  value,
+  onPick,
+  label,
+  className,
+}: {
+  options: ReadonlyArray<{ value: string; label: string }>;
+  value: string;
+  onPick: (value: string) => void;
+  label: string;
+  className?: string;
+}) {
+  return (
+    <Select value={value} onValueChange={(next) => { if (next !== value) onPick(next as string); }}>
+      <SelectTrigger size="sm" aria-label={label} className={cn("text-xs", className)}>
+        {/* The label, not the value: base-ui resolves a value to its item text only once the
+            popup has mounted, so a closed trigger would otherwise print the raw key. */}
+        <span className="truncate">{options.find((option) => option.value === value)?.label ?? value}</span>
+      </SelectTrigger>
+      <SelectContent>
+        <SelectGroup>
+          {options.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
             </SelectItem>
           ))}
         </SelectGroup>

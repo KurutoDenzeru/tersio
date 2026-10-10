@@ -1,8 +1,8 @@
-// Pure per-report CO2 totals; depth lives in the shared EcoLogits port.
-
-import { ECOLOGITS_VERSION, footprintFor } from "../../../../extensions/shared/carbon.ts";
+// Pure per-report CO2 totals; depth lives in the shared EcoLogits port. One source feeds this
+// builder: the agent statistics database behind the Carbon page.
+import { ECOLOGITS_VERSION, SERVING_CONCURRENCY, carbonParamsFor, footprintFor } from "../../../../extensions/shared/carbon.ts";
 import { displayModel } from "./format";
-import type { UsageReport } from "./data";
+import type { AgentStats } from "./data";
 
 // Published per-unit averages, each printed beside its result so a reader can
 // redo the arithmetic. None of them describes the reader's own life.
@@ -14,12 +14,29 @@ const WH_PER_HOUSEHOLD_DAY = 29_600; // EIA: ~10,800 kWh/yr, residential
 /** Above this the tail folds into one row, the way Activity folds its models. */
 const MAX_ROWS = 5;
 
-interface CarbonRow {
+export interface CarbonRow {
+  /** Raw model key, the identity a table sorts on. */
   model: string;
   label: string;
+  /** The routing service, when the source knows it; else the provider the port attributes. */
+  provider: string;
+  /** Output tokens behind this row's emissions. */
+  output: number;
   gco2: number;
+  /** Energy for this row, in Wh. */
+  energyWh: number;
   /** Fraction of the total, 0 to 1. */
   share: number;
+  /** Where the parameter count came from, so a reader can weigh the row. */
+  paramSource: "registry" | "borrowed" | "default";
+}
+
+/** One model's output tokens, from either source. */
+interface CarbonModel {
+  key: string;
+  output: number;
+  /** The routing service, empty when the source groups by model only. */
+  provider?: string;
 }
 
 export interface Comparison {
@@ -33,25 +50,28 @@ export interface CarbonReport {
   totalG: number;
   energyWh: number;
   outputTokens: number;
+  /** Every model with emissions, ranked. A page lists these; a dialog folds the tail. */
+  all: CarbonRow[];
   rows: CarbonRow[];
   otherG: number;
   otherCount: number;
   comparisons: Comparison[];
-  /** Cache reads and writes as a share of all tokens. */
-  cacheShare: number;
   ecologits: string;
+  /** The concurrency every figure is amortized over, so a UI can print it. */
+  servingConcurrency: number;
 }
 
 const EMPTY: CarbonReport = {
   totalG: 0,
   energyWh: 0,
   outputTokens: 0,
+  all: [],
   rows: [],
   otherG: 0,
   otherCount: 0,
   comparisons: [],
-  cacheShare: 0,
   ecologits: ECOLOGITS_VERSION,
+  servingConcurrency: SERVING_CONCURRENCY,
 };
 
 export function fmtCo2(g: number): string {
@@ -115,33 +135,45 @@ function comparisonsFor(totalG: number, energyWh: number): Comparison[] {
   ];
 }
 
-export function carbonReport(data: UsageReport | null): CarbonReport {
-  if (!data) return EMPTY;
-
+function buildReport(models: readonly CarbonModel[]): CarbonReport {
   // Only output tokens are billed, so a model with none contributes nothing.
-  const all = Object.entries(data.byModel ?? {})
-    .map(([model, b]) => ({ model, label: displayModel(model), gco2: footprintFor(model, b.output ?? 0).gco2 }))
+  const ranked = models
+    .map((m) => {
+      const f = footprintFor(m.key, m.output);
+      return {
+        model: m.key,
+        label: displayModel(m.key),
+        provider: m.provider ?? f.provider,
+        output: m.output,
+        gco2: f.gco2,
+        energyWh: f.energyWh,
+        paramSource: carbonParamsFor(m.key).source,
+      };
+    })
     .filter((r) => r.gco2 > 0)
     .sort((a, b) => b.gco2 - a.gco2);
 
-  const totalG = all.reduce((sum, r) => sum + r.gco2, 0);
-  const rows = all.slice(0, MAX_ROWS).map((r) => ({ ...r, share: totalG ? r.gco2 / totalG : 0 }));
+  const totalG = ranked.reduce((sum, r) => sum + r.gco2, 0);
+  const energyWh = ranked.reduce((sum, r) => sum + r.energyWh, 0);
+  const all = ranked.map((r) => ({ ...r, share: totalG ? r.gco2 / totalG : 0 }));
   const rest = all.slice(MAX_ROWS);
-  const energyWh = all.reduce((sum, r) => sum + footprintFor(r.model, data.byModel[r.model]?.output ?? 0).energyWh, 0);
-  const outputTokens = Object.values(data.byModel ?? {}).reduce((sum, b) => sum + (b.output ?? 0), 0);
-
-  const t = data.tokens ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
-  const tokenTotal = t.input + t.output + t.cacheRead + t.cacheWrite;
 
   return {
     totalG,
     energyWh,
-    outputTokens,
-    rows,
+    outputTokens: all.reduce((sum, r) => sum + r.output, 0),
+    all,
+    rows: all.slice(0, MAX_ROWS),
     otherG: rest.reduce((sum, r) => sum + r.gco2, 0),
     otherCount: rest.length,
     comparisons: comparisonsFor(totalG, energyWh),
-    cacheShare: tokenTotal ? ((t.cacheRead + t.cacheWrite) / tokenTotal) * 100 : 0,
     ecologits: ECOLOGITS_VERSION,
+    servingConcurrency: SERVING_CONCURRENCY,
   };
+}
+
+/** The Carbon page: the agent statistics database, where every row names its provider. */
+export function carbonReportForAgents(agent: AgentStats | null): CarbonReport {
+  if (!agent) return EMPTY;
+  return buildReport(agent.byModel.map((row) => ({ key: row.key, output: row.output, provider: row.provider })));
 }

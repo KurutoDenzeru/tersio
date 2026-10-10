@@ -1,3 +1,85 @@
+## v2.26.7
+ - Brings the share action back, in the topbar beside the theme button. It opens a share card built from the agent statistics database for the window in force: tokens, requests, API-equivalent estimate, cache rate, error rate, models, providers, busiest hour, and the top model, with X, Reddit, and LinkedIn links plus copy text and download PNG. The card follows the window picker, so a shared link and a shared image carry the same figures as the page behind it.
+ - Removes the Usage page and everything that existed only to show Tersio's own ledger. The rail loses its Usage entry, the dashboard loses `/data.json`, `/reset`, `/backups`, and the ledger `/export`, and the hero, savings bento, activity chart, ledger model table, recent requests, tool table, share card, and reset pane go with it. Tersio's own ledger stays a product: `tersio usage`, `tersio reset`, and the backups still work, and the CLI still owns `~/.tersio/usage.db`. The dashboard is now the agent-stats surface only.
+ - Keeps the Carbon page through that removal. It reads the agent statistics database, so it never depended on the ledger.
+ - Puts the Costs page's Daily estimate and Where it went cards in the same 2fr / 1fr split the Providers page uses, so the chart card is the long one and the breakdown sits beside it.
+ - Reworks the Carbon page's What that equals card from four boxed tiles into a row list: one hairline per row, glyph and label left, figure right, rate under it. It now shares the bar list's row rhythm instead of nesting a card inside a card.
+ - Renames the dashboard's data layer to be host-neutral. `extensions/shared/omp-stats.ts` becomes `agent-stats.ts`, the `Omp*` types become `Agent*`, `useOmpData` becomes `useAgentData`, the page components move from `components/omp/` to `components/agents/`, the API moves from `/api/omp` to `/api/agent`, and the seams `TERSIO_OMP_STATS_DB` and `TERSIO_OMP_AGENT_DB` become `TERSIO_AGENT_STATS_DB` and `TERSIO_AGENT_SESSIONS_DB`. The reader still opens omp's own databases, and the naming no longer claims otherwise.
+ - Moves the page footer into the rail. The copyright and the three social links sit under Settings and Share, and the page below the topbar no longer ends with a footer band.
+ - Reworks the Costs page's Where it went card into the billing-component breakdown the reference shows: a proportional bar, then Input, Output, Cache read, Cache write with value and share, then Total. The omp records price each component, so the split comes from the same rows as the estimate instead of a model guess.
+ - Carries the per-component prices through the omp aggregate: `cost_input`, `cost_cache_read`, and `cost_cache_write` sum into the by-model rows and the overall, and output cost is the remainder of the total.
+ - Reworks the Carbon page's By model table: the model name sits over its provider under one mark, the way the Models table reads, and the Params column is gone because nothing on the page weighs a row by its parameter provenance any more.
+ - Puts the Carbon page's Where the carbon sits and What that equals cards side by side, so the ranked list and the four comparisons read together instead of stacked.
+ - Puts the StepFun tile back on white, so its own artwork reads instead of matching a teal tile.
+ - Fixes every picker trigger, which printed the raw option value instead of its label. base-ui resolves a value to its item text only after the popup has mounted, so a closed trigger showed a key like `__all__` or a window key. The picker now renders the label itself, so the select reads and opens as a control.
+ - Shares one palette map between the two burn charts, so a provider keeps its color in both: magpie teal, commandcode indigo, openrouter cyan. Peak burn hours now stacks a bar per provider, in the burn chart's order, and carries the same legend.
+ - Drops the two warning badges in the Subscription windows table. Accounts needed and Exhaustions now read as plain numbers, with the shortfall appended as dim text.
+ - Expands a provider row in the Provider totals table instead of printing the token mix under it. The mix bar and the four labels sit inside the row, spanning its columns.
+ - Puts the Costs page's Daily estimate and Where it went cards side by side, the way the reference does it, instead of stacked.
+ - Puts a brand mark in the Where it went bar list, so the model names there read the same as the By model table.
+ - Fills each mark tile with the brand's own color instead of leaving the glyph on the panel. One map, `MARK_BG` in `extensions/shared/brand-marks.ts`, names the color per slug: the vendor's brand color for a Simple Icons mark, and the dominant color of the owner's own asset for a hosted one. The glyph takes the opposite ink by WCAG luminance, and a test fails if any fill leaves its glyph under 2.5:1. A slug with no known fill still draws on the panel.
+ - Keeps white ink on every brand color, the way each brand prints its own mark: Meta blue, DeepSeek blue, Kimi blue, Xiaomi orange, and Mistral orange. Only a light neutral takes black: Kilo yellow, StepFun teal, and StepFun orange.
+ - Switches Typesafe to its own icon from typesafe.ai: a dark tile with pink art, replacing the Lightbend orange mark.
+ - Draws Groq as a masked glyph on a Groq-orange tile, because its own favicon is one flat orange and the same art as an image on the same tile is a blank tile.
+ - Scales the mark so every tile carries the same visible size of logo: Kimi, Z.ai, and OpenRouter shrink to match Meta and NVIDIA, and Magpie grows to fill the space its PNG leaves empty.
+ - Grows the mark in a wide table row one more step: a 30px tile with a 23px glyph, up from 21px and 14px, on the Models, Providers, Costs, and Carbon rows. Row height holds at 47px.
+ - Adds brand marks for two more researched services: GMI Cloud, which hosts its own favicon, and OpenCode Zen, which is OpenCode's own gateway and takes the OpenCode mark.
+ - Stops a page table from swallowing the wheel. A page-level table chains its scroll to the page again, so the page above a table that cannot scroll still scrolls.
+ - Puts a brand mark beside each model on the Carbon page, in the ranked bar list and in the By model table, so a row reads the same as a Models row. The table drops its 8px provider dot for the mark; the bar list drops its per-row share percentage, because the Share column already carries it and the mark needs the slot.
+ - Reads the four equivalence figures as one joined strip: one surface, one border, thin dividers, no four separate boxes.
+ - Drops the cache share from the Carbon page and from the Usage page's carbon dialog, so a carbon figure reads as what the model wrote back only. The dialog keeps the sentence that explains why cached text does not move the number.
+
+## v2.26.6
+ - Adds a Carbon page: what a range would emit, from the same EcoLogits 0.8.2 port the Usage page's dialog uses. It carries the total, the energy, the intensity per 1k output tokens, the top model, where the carbon sits per model, what the total equals in km driven, phone charges, streaming hours, and home-power days, and a table with each model's parameter provenance (registry, borrowed, or default). Figures amortize over 32 concurrent requests and carry the provider's grid mix; only output tokens count.
+ - Splits the carbon report into one builder with two adapters: the Usage page's dialog reads Tersio's own ledger, the Carbon page reads the omp statistics database. Both hand it the same two facts, so they agree by construction.
+ - Resolves brand marks to URLs instead of bytes: one catalog in `extensions/shared/brand-marks.ts` names the Simple Icons CDN, the owner-hosted marks, and the two marks no host carries. `tersio dashboard --export` inlines that same catalog once, so an exported file keeps every logo with the network off, and the monogram stays the fallback for a mark that does not load. OpenRouter now carries its own mark rather than a monogram.
+ - Grows the brand tiles one step: 44px with a 26px glyph in a detail view, 36px in the drawer, 21px in a dense row, and a 16px monogram. Table rows stay at 46px.
+
+## v2.26.5
+ - Trims the card chrome across every page. A card header is now 12px over 8px instead of a flat 10px, the description sits on a tighter line, and a flush card drops the shell's own bottom padding so a table reaches the card's edge. A pager footer drops to 40px, and its rows-per-page trigger matches the page buttons at 26px.
+ - Reworks the Models table: the brand mark sits beside the model name, the provider moves to its own dim line under it, the requests cell carries a share bar, the error rate reads as a chip, and the per-second and first-token figures follow the header unit.
+ - Adds a table size to the vendor and provider marks, so a mark in a dense row is 18px instead of 32px and stops inflating the row.
+
+## v2.26.4
+ - Expands a model row in the Models table instead of opening a drawer. The panel carries the reference's facts, grouped the same way: Efficiency (error rate with its failed count, cache rate, cache savings), Latency (average duration, average TTFT, tokens per second), the four token buckets, and the first and last seen ages.
+ - Adds a performance chart beside those facts: average output tokens per second on the left axis and average time to first token on the right, per active day. A model with no timing sample reads "No performance samples" instead of an empty frame.
+ - Reads a per-model, per-provider, per-bucket throughput and TTFT aggregate for that chart (`modelPerformance`), and adds a right axis to the shared chart so two units share one plot.
+ - The shared table can now carry a detail row that spans every column, so any page can expand a row the same way.
+
+## v2.26.3
+ - Rebuilds the request drawer on the reference's section order, and gives it a payload. The drawer reads the journal entry behind the row on demand (`/api/omp/entry`), so it carries the output message, the session entry, and the stats row, each with its size and a copy button.
+ - Adds an Agent section that names the agent in force when the request ran: the agent type, the model, the thinking level, the mode, and whether the model resolved as a fallback. These come from the journal's `model_change`, `thinking_level_change`, and `mode_change` entries, read up to the request's own entry.
+ - Adds timing and cost figures the drawer did not carry: cache hit rate, the share of the row each token bucket holds, and the API-equivalent cost per output token.
+ - The drawer's Trace button now closes the drawer and deep-links the session trace.
+
+## v2.26.2
+ - Drops the card-block eyebrow numbers, so a page reads as a flat list of titled blocks instead of a numbered sequence.
+ - Removes the Premium requests figure from the Overview, and stops reading `premium_requests` from the omp databases: no page rendered it.
+ - Puts every stat strip in one solid card with a rule between cells. The Overview carries two bands: the five headline figures, then the four token buckets and the three latency and throughput figures in one row.
+ - Replaces the last native `<select>` on the Providers page with the shadcn select.
+ - Fixes four chart faults. A stacked series now reads zero in a bucket it has no data for, because a null made recharts reset the stack and split every band into disjoint shapes. A stacked chart therefore fills a continuous shape, and only a lone series keeps its nulls. The tooltip title comes from the hovered row's own category instead of the tick text, which read `Invalid Date`, and the tooltip values use the page's formatter, so a share reads `98%` rather than `0.9812`. The Costs view now asks the server for `modelSeries`, so its first chart paints instead of showing an empty frame.
+
+## v2.26.1
+ - Removes the Gain page and its reader: `~/.omp/snapcompact-savings.jsonl` was never written on this host, so the page had no records to show. The same applies to the Frustration page, which needed `user_messages` and `frustration_verdicts`, also absent. Both views, their query groups, their fixture helpers, and their tests are gone.
+ - Pages the long tables instead of clipping them: the request log, failures, models, projects, tools, and sessions render one page at a time from `PagedTable`, with the row count, a rows-per-page picker, and shadcn-style page buttons in the footer.
+ - Gives every stat strip the usage page's shape: one solid card with a rule between cells, a glyph per figure, and a share hint under each value, replacing the translucent tiles.
+ - Draws every one-of-many picker with the shadcn tabs the usage page's Activity card uses, instead of the toggle-group segmented control.
+ - Gives the omp pages their own band of count, per-page, and page controls: `PagedTable` in `dashboard/app/src/components/charts/table.tsx` now owns slicing, page reset on page-size change, and a footer, so callers pass `perPage` instead of `limit`.
+
+## v2.26.0
+ - Rebuilds the dashboard as a replica of the upstream `@oh-my-pi/omp-stats` dashboard: one page per view at the same hash routes (`#/models?range=7d`), each with the reference's blocks, tables, and charts. Pages: Overview, Models, Providers, Costs, Requests, Errors, Traces, Tools, Frustration, Projects, and Gain.
+ - Adds `extensions/shared/omp-stats.ts`: one read-only aggregate over `~/.omp/stats.db`, `~/.omp/agent/agent.db`, and `~/.omp/snapcompact-savings.jsonl`, matching the reference metric for metric. Each rule is pinned by `test/usage/omp-stats.test.ts`.
+ - Ports the subscription window engine: a window is one `(provider, limitId)` pair, consumption sums only positive fraction deltas, a drop past 0.05 counts a cycle, exhaustion needs a status or 0.999, `tokens one window buys` extrapolates local burn, and the peak is the swept sum across accounts with an ideal account count to stay under 90 percent.
+ - Serves each page only the query groups it renders (`/api/omp?range=&view=`), memoized for five seconds per window and view. Adds `/api/omp/session?file=` for one transcript.
+ - Keeps Tersio's own ledger on a `#/usage` page: throughput, the savings bento, the activity heatmap, and the per-model, per-request, and per-command tables.
+ - Moves Settings and Share into the rail's footer and puts the theme button at the top right of the topbar, where the reference keeps it.
+ - Adds the reference's page chrome: a page header, numbered card blocks with descriptions, column-definition tables with sorting, stat tiles with inline sparklines, and a session timeline reached by `&s=<sessionFile>`.
+ - Adds request percentiles (median and p95), per-provider hourly burn, raw failure rows, and the snapcompact gain totals to the payload.
+ - Fixes a `count(CASE … ELSE 0)` mistake before it shipped: counting rows with a zero literal counts every row, which under-reported throughput.
+ - Handles both WAL traps instead of failing a read: `-readonly` first, then `immutable=1` only with no `-wal` file (which would silently ignore the log), then a copy of the database with its side files. Nothing opens read-write.
+ - Vendors 24 brand marks and drops the Simple Icons CDN and the Hugging Face avatar, so the dashboard and its exported file render with the network off. Vendor and provider marks stay separate: a neutral gateway keeps a monogram rather than borrowing a vendor's logo. A guard test fails if a source file names a logo host.
+ - Closes the model ids that used to fall through to an unknown vendor: Moonshot `k3`, StepFun, Typesafe, Meituan, Poolside, and Tencent.
+
 ## v2.25.4
  - Fixes an OMP crash on prompt injection: a `systemPrompt` array holding a non-string no longer throws `undefined is not an object (evaluating 'part.includes')` in the Caveman and Combo extensions. Non-string parts are dropped before the marker check.
  - Stops the pi install test from failing whenever upstream publishes a new Caveman body: `rule.md` still ships byte for byte, the two upstream-tracked bodies are checked for a usable body with its floor rules.

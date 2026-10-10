@@ -12,7 +12,6 @@ import {
   CAVEMAN_REMOTE_ULTRA,
   CAVEMAN_REMOTE_MEGACAVE,
   RTK_RELEASE_API,
-  RtkRelease,
   fetchJson,
   findFile,
   findHoistedPackage,
@@ -25,6 +24,7 @@ import {
   rtkPlatformSpec,
   resolveRtkBinary,
 } from '../lib/utils.ts';
+import type { RtkRelease } from '../lib/utils.ts';
 
 const IS_WINDOWS = process.platform === 'win32';
 const EXTENSION_DIR = path.dirname(fileURLToPath(import.meta.url));

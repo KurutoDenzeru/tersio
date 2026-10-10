@@ -2,6 +2,7 @@
 // Install Tersio add-ons on any OMP device; see help for commands.
 import {
   PACKAGE_BIN, PACKAGE_VERSION, applyUpdate, commandArg, dashboard, dashboardExport, dashboardOpen, dashboardPort, doctor, reset, settings, showHelp, showVersion, uninstall, unknownCommand, update, usage,
+  currency,
 } from './cli/common.ts';
 import { closeRL } from './cli/interactive.ts';
 import { runInstall } from './cli/install.ts';
@@ -89,7 +90,7 @@ async function main(): Promise<void> {
   }
 
   if (dashboard) {
-    await runDashboard({ port: dashboardPort, open: dashboardOpen, exportFile: dashboardExport });
+    await runDashboard({ port: dashboardPort, open: dashboardOpen, exportFile: dashboardExport, currency });
     closeRL();
     return;
   }

@@ -246,3 +246,19 @@
     html:not([data-theme])[data-accent="amber"] { --accent:#fbbf24; --accent-soft:rgba(251,191,36,.14); --bg:#171004; --grid:rgba(251,191,36,.06); --cell-1:rgba(251,191,36,.3); --cell-2:rgba(251,191,36,.55); --cell-3:rgba(251,191,36,.8); --cell-4:#fbbf24; }
     html:not([data-theme])[data-accent="orange"] { --accent:#fb923c; --accent-soft:rgba(251,146,60,.14); --bg:#1a0d06; --grid:rgba(251,146,60,.06); --cell-1:rgba(251,146,60,.3); --cell-2:rgba(251,146,60,.55); --cell-3:rgba(251,146,60,.8); --cell-4:#fb923c; }
   }
+
+/* Ledger cards carry the same trimmed edges as the omp page kit: 12px of air above a
+   header, 10px between it and the body, 12px above a footer, and 8px under the last row.
+   Scoped to the ledger route so the omp card keeps its own flush rules. */
+.ledger-cards [data-slot="card"] {
+  padding-top: 12px;
+  padding-bottom: 8px;
+  gap: 10px;
+}
+.ledger-cards [data-slot="card-footer"] {
+  padding-top: 12px;
+  padding-bottom: 0;
+}
+.ledger-cards [data-slot="card-header"][class*="border-b"] {
+  padding-bottom: 8px;
+}

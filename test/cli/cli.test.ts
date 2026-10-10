@@ -270,13 +270,16 @@ test("usage with an empty ledger and no sessions prints the empty state and exit
 test("dashboard --export writes a self-contained html file", () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-dash-"));
   const out = path.join(dir, "dash.html");
-  const ledger = path.join(dir, "usage.jsonl");
-  writeFileSync(ledger, "{\"ts\":1757570000000,\"kind\":\"command\",\"detail\":\"/tersio usage\"}\n", "utf8");
-  appendFileSync(ledger, "{\"ts\":1757570000001,\"kind\":\"command\",\"detail\":\"/tersio $'quoted$' $& $\"}\n", "utf8");
   const result = spawnSync(process.execPath, [installer, "dashboard", "--export", out], {
     encoding: "utf8",
     cwd: root,
-    env: { ...process.env, TERSIO_USAGE_FILE: ledger, TERSIO_RESET_FILE: path.join(dir, "reset.json") },
+    env: {
+      ...process.env,
+      TERSIO_SESSIONS_DIR: path.join(dir, "no-sessions"),
+      TERSIO_RTK_DB: path.join(dir, "no-rtk.db"),
+      TERSIO_USAGE_DB: path.join(dir, "no-usage.db"),
+      TERSIO_RESET_FILE: path.join(dir, "reset.json"),
+    },
   });
   expect(result.status, result.stderr).toBe(0);
   const html = existsSync(out) ? "present" : "missing";
@@ -285,9 +288,8 @@ test("dashboard --export writes a self-contained html file", () => {
   expect(body).toMatch(/Tersio Dashboard/);
   expect(body).toMatch(/Oh My Pi/);
   expect(body).toMatch(/ompPath/);
-  expect(body).toMatch(/\/tersio usage/);
-  // `$'`/`$&` in data must survive String.replace untouched (single document).
-  expect(body).toMatch(/\$'quoted\$'/);
+  expect(body).toMatch(/"agent":/);
+  expect(body).toMatch(/"currency":"USD"/);
   expect(body.split("</body>").length - 1).toBe(1);
   expect(body.split("</html>").length - 1).toBe(1);
   rmSync(dir, { recursive: true, force: true });
@@ -440,7 +442,7 @@ test("doctor prints record store paths", () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-test("dashboard --export includes the reset control and empty states", () => {
+test("dashboard --export bakes the agent empty states", () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-dash-"));
   const out = path.join(dir, "dash.html");
   const result = spawnSync(process.execPath, [installer, "dashboard", "--export", out], {
@@ -457,15 +459,13 @@ test("dashboard --export includes the reset control and empty states", () => {
   });
   expect(result.status, result.stderr).toBe(0);
   const body = readFileSync(out, "utf8");
-  expect(body).toMatch(/Reset statistics/);
-  expect(body).toMatch(/Danger zone/);
-  expect(body).toMatch(/No activity yet/);
-  expect(body).toMatch(/No models yet/);
-  expect(body).toMatch(/No requests yet/);
-  expect(body).toMatch(/No tool data yet/);
-  expect(body).toMatch(/Share your usage/);
+  // The agent pages' empty states, baked with the payload, plus the picker label an exported
+  // file cannot control.
+  expect(body).toMatch(/No usage in this range/);
+  expect(body).toMatch(/No provider activity in this range/);
+  expect(body).toMatch(/No requests in this range/);
+  expect(body).toMatch(/Try a longer range/);
   expect(body).toMatch(/Diagnosis/);
-  expect(body).toMatch(/ranked by tokens/);
-  expect(body).toMatch(/byModelBucketUsd/);
+  expect(body).toMatch(/"agent"/);
   rmSync(dir, { recursive: true, force: true });
 });

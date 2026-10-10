@@ -19,7 +19,8 @@ export function fmtShort(n: number): string {
   return String(Math.round(n));
 }
 
-export function fmtMs(ms: number): string {
+export function fmtMs(ms: number | null | undefined): string {
+  if (ms === null || ms === undefined) return "–";
   if (ms < 1000) return `${Math.round(ms)}ms`;
   return `${(ms / 1000).toFixed(1)}s`;
 }
@@ -158,6 +159,12 @@ const PROVIDERS: Array<[RegExp, string, string, string]> = [
   [/glm|z-ai|zhipu/i, "Z.ai", "zdotai", "#2D2D2D"],
   [/mimo/i, "Xiaomi", "xiaomi", "#ff6900"],
   [/kimi|moonshot/i, "Moonshot", "kimi", "#a855f7"],
+  [/^\s*k3\s*$/i, "Moonshot", "kimi", "#a855f7"],
+  [/step[-_]?\d/i, "StepFun", "stepfun", "#0ea5e9"],
+  [/typesafe\/jev/i, "Typesafe", "typesafe", "#22c55e"],
+  [/meituan|longcat/i, "Meituan", "", "#facc15"],
+  [/poolside|laguna/i, "Poolside", "poolside", "#4137ff"],
+  [/tencent|hy3/i, "Tencent", "", "#0052d9"],
   [/mistral/i, "Mistral", "mistralai", "#ff7000"],
   [/claude|anthropic/i, "Anthropic", "anthropic", "#d97757"],
   [/gemini|google|gemma/i, "Google", "google", "#4285F4"],
@@ -181,13 +188,72 @@ export interface HostMeta {
   color: string;
 }
 export function hostMeta(host?: string): HostMeta {
-  if (host === "omp") return { label: "OMP", icon: "square-terminal", color: "#a78bfa" };
+  if (host === "agent") return { label: "OMP", icon: "square-terminal", color: "#a78bfa" };
   if (host === "opencode") return { label: "OpenCode", icon: "box", color: "#fb923c" };
   if (host === "codex") return { label: "Codex", icon: "terminal", color: "#34d399" };
   return { label: "pi", icon: "circle-dot", color: "#22d3ee" };
 }
 
 export const PALETTE = ["#34d399", "#818cf8", "#22d3ee", "#fbbf24", "#f472b6", "#a78bfa", "#fb923c", "#2dd4bf"];
+
+/**
+ * Provider marks name the routing service, never the model author. A gateway with its own brand
+ * carries that brand: it names the service that served the request. A gateway with no mark of its
+ * own keeps a monogram, because borrowing a vendor's logo would name the wrong company.
+ */
+const PROVIDER_MARKS: Record<string, string> = {
+  "amd-radeon-cloud-cn": "amd",
+  "kimi-code": "kimi",
+  "openai-codex": "openai",
+  nvidia: "nvidia",
+  "google-antigravity": "google",
+  devin: "cognition",
+  "github-copilot": "githubcopilot",
+  "ollama-cloud": "ollama",
+  cline: "cline",
+  groq: "groq",
+  poolside: "poolside",
+  cerebras: "cerebras",
+  // A gateway's own brand is still its own: it names the service that served the request.
+  openrouter: "openrouter",
+  opencode: "opencode",
+  "opencode-zen": "opencode",
+  "opencode-go": "opencode",
+  commandcode: "commandcode",
+  kilo: "kilo",
+  magpie: "magpie",
+  "gmi-cloud": "gmicloud",
+  "charm-hyper": "charmhyper",
+};
+
+export interface ProviderMeta {
+  /** Mark slug; empty when the provider gets a monogram tile. */
+  slug: string;
+}
+
+export function providerMeta(provider: string): ProviderMeta {
+  return { slug: PROVIDER_MARKS[provider] ?? "" };
+}
+
+/**
+ * Which agent recorded a session, read from where the transcript lives. Every row in the agent
+ * databases was written by agent, so a session under another harness's own directory would only
+ * appear if that harness shared this database. The path is the only host marker the row carries.
+ */
+export function hostOfSession(sessionFile: string): { label: string; host: "agent" | "pi" | "opencode" | "unknown" } {
+  const file = String(sessionFile ?? "");
+  if (/\.agent\/agent\/sessions\//.test(file)) return { label: "OMP", host: "agent" };
+  if (/\.pi\/agent\/sessions\//.test(file)) return { label: "Pi", host: "pi" };
+  if (/(config\/opencode|local\/share\/opencode)\/agent\/sessions\//.test(file)) return { label: "OpenCode", host: "opencode" };
+  return { label: "OMP", host: "unknown" };
+}
+
+/** Deterministic tint for a monogram tile: variety in a table, no claim about a brand. */
+export function providerColor(provider: string): string {
+  let h = 0;
+  for (let i = 0; i < provider.length; i++) h = (h * 31 + provider.charCodeAt(i)) % 9973;
+  return PALETTE[h % PALETTE.length];
+}
 
 // Zone indicators: coarse by design; captions say est. where modeled.
 export type Zone = [glyph: string, label: string, cls: string];
@@ -248,6 +314,16 @@ export function whenStamp(ts: number): string {
     ", " +
     d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", second: "2-digit" })
   );
+}
+
+/** The clock alone, for the drawer's timing tile where a full date would clip. */
+export function whenClock(ts: number): string {
+  return new Date(ts).toLocaleString("en-US", { hour: "numeric", minute: "2-digit", second: "2-digit" });
+}
+
+/** The minute stamp for a stat tile, where the full stamp would clip. */
+export function whenShort(ts: number): string {
+  return new Date(ts).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
 // Snapshots span months, so the year has to be visible; whenStamp drops it.
@@ -311,3 +387,70 @@ export function relAgePrecise(ts: number): string {
   if (s < 86400) return `${Math.floor(s / 3600)}h ${String(Math.floor((s % 3600) / 60)).padStart(2, "0")}m ago`;
   return `${Math.floor(s / 86400)}d ${String(Math.floor((s % 86400) / 3600)).padStart(2, "0")}h ago`;
 }
+
+// ---------------------------------------------------------------- agent-stats helpers
+
+/** A rate as a percentage, one decimal: 0.9383 reads as 93.8%. */
+export function pct(v: number, digits = 1): string {
+  return `${(v * 100).toFixed(digits)}%`;
+}
+
+/**
+ * A bucket label. Day buckets read in UTC, matching the reference dashboards, so two machines
+ * never disagree about which day a request landed in.
+ */
+export function tsLabel(ts: number, bucketMs: number): string {
+  const d = new Date(ts);
+  if (bucketMs <= 3_600_000) {
+    return d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "UTC" });
+  }
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+}
+
+/** The long form for a chart tooltip: a 5 minute bucket needs its hour, a day bucket its year. */
+export function tsFull(ts: number, bucketMs: number): string {
+  const d = new Date(ts);
+  if (bucketMs <= 3_600_000) {
+    return `${d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })} ${d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "UTC" })} UTC`;
+  }
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+}
+
+/** The hour axis on the Providers page reads in local time, matching the reference. */
+export function hourLabel(hour: number): string {
+  return `${String(hour).padStart(2, "0")}:00`;
+}
+
+/** Middle value, ignoring nulls. Used where the mean hides the shape: latency. */
+export function median(values: Array<number | null | undefined>): number {
+  const nums = values.filter((v): v is number => typeof v === "number" && Number.isFinite(v)).sort((a, b) => a - b);
+  if (nums.length === 0) return 0;
+  const mid = nums.length >> 1;
+  return nums.length % 2 ? nums[mid] : (nums[mid - 1] + nums[mid]) / 2;
+}
+
+/** Per-second throughput from an output-token count and a duration. */
+export function tokensPerSecond(outputTokens: number, ms: number | null): number {
+  return ms && ms > 0 ? outputTokens / (ms / 1000) : 0;
+}
+
+/** Agent type ids read as words. */
+export function agentTypeLabel(agentType: string): string {
+  if (agentType === "main") return "Main agent";
+  if (agentType === "subagent") return "Subagents";
+  if (agentType === "advisor") return "Advisor";
+  return agentType || "Unknown";
+}
+
+/** agent records four stop reasons; only `error` is a failure, and `aborted` still ran. */
+export function runStatusOf(stopReason: string): RunStatus {
+  if (stopReason === "error") return "error";
+  if (stopReason === "aborted") return "aborted";
+  return "completed";
+}
+
+/** A project folder is the session's working directory, slugged. */
+export function projectLabel(folder: string): string {
+  return folder || "(none)";
+}
+
