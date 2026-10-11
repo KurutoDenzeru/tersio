@@ -4,7 +4,7 @@ Recurring mistakes log. Committed to git; reviewed periodically to promote entri
 
 ## Promoted and cleared
 
-Reviewed 2026-10-10. Each entry below is resolved in the repo, so its log entry is gone and the guard is named here.
+Reviewed 2026-10-11. Each entry below is resolved in the repo, so its log entry is gone and the guard is named here.
 
 | Mistake | Permanent guard |
 |---|---|
@@ -16,6 +16,12 @@ Reviewed 2026-10-10. Each entry below is resolved in the repo, so its log entry 
 | Rounding stored values before deriving metrics | `round4` applies only to the output series; the same test pins the derived figure and the series |
 | A row field no reader filled left a column blank | the same test asserts `row.provider` for every grouped row shape |
 | A unit test imported a component file under the root tsconfig | pure logic lives in `dashboard/app/src/lib/*.ts`; `test/tsconfig.json` includes `.ts` only |
+| Slow-CI timeout on a heavy test that passed locally | `vitest.config.ts` sets `testTimeout: 30000`, so no test relies on the 5s framework default |
+| Benchmark probes raced the sweep over shared settings file | `docs/BENCHMARK.md` exports `TERSIO_HOME` into the throwaway dir, so a run never opens the live settings file for writing |
+| Pixel harness measured live data and live animations | `test/repo-integrity.test.ts` fails if any chart sets `isAnimationActive` to true, so a JS entrance animation cannot return |
+| A type-import split dropped an existing type import | `bun run build` runs `tsc`, and `bun run verify` runs the build, so a dropped name fails the build |
+| Two edits rewrote a span they only half re-emitted | the same `tsc` step; the half-rewritten interface and the dropped field are compile errors |
+| Backticks nested inside a template-literal code generator | the generator is gone; no tracked script writes markdown from a template literal |
 
 ## Format
 
@@ -25,6 +31,10 @@ Reviewed 2026-10-10. Each entry below is resolved in the repo, so its log entry 
 **Root cause:** Why it happened.
 **Prevention rule:** What to do differently next time.
 ```
+
+## The entries that stay
+
+The eight entries below are editing and verification discipline. No test, lint rule, or config can pin them, because each one describes a choice made while writing the change rather than a state the repo ends in. They stay as written.
 
 ## 2026-10-10 — Line-range deletions computed against a list an earlier deletion had shifted
 **What happened:** A python pass deleted two function blocks from `extensions/shared/agent-stats.ts` by line range. The first deletion lowered every later index, and the second range used indices read before that deletion, so it cut the middle of `readSessionTrace` instead of the gain block. The file lost 168 lines of live code while the target functions survived.
@@ -37,21 +47,6 @@ Reviewed 2026-10-10. Each entry below is resolved in the repo, so its log entry 
 **Root cause:** Drafting replacement text that overlapped neighboring declarations instead of keeping the boundary to the exact lines being changed.
 **Prevention rule:** Keep every edit boundary to the smallest requested change; read the edited region immediately after each structural edit and repair before moving on. Prefer python-script replacement for large JS block swaps.
 
-## 2026-09-24 — Pixel harness measured live data and live animations, not the conversion
-**What happened:** 16-region byte comparison showed 11–16/16 differing after a correct conversion. Three harness flaws stacked: exports embedded the live usage ledger (drifted between runs), addInitScript crashed on missing document.head so CSS animations kept running (ticker/donut positions shifted), and the model-row selector still targeted the deleted `.mrow` class.
-**Root cause:** Verified against moving targets. Assumed frozen Date + animations-off without checking the init script survived page load; assumed exports were deterministic while the ledger appends every session turn.
-**Prevention rule:** Freeze data first (snapshot DB via TERSIO_USAGE_DB, assert identical token totals in both exports), harden init scripts (guard document.head, MutationObserver re-apply), and re-run same-file double capture to prove 0/16 noise floor before comparing conversions. Disable recharts JS entrance animation (isAnimationActive={false}) — CSS kill-switches cannot stop it.
-
-## 2026-10-04 — Benchmark probes raced the sweep over shared settings file
-**What happened:** Manual diagnostic `run-one` probes ran while the background prose/code sweep was in flight. Both set modes through `~/.tersio/settings.json`, so combo samples measured ponytail-only prompt deltas (+1241) instead of the full block (+2968), and settings showed leftover modes (wenyan-ultra/off) from probes.
-**Root cause:** Ran probes against the same mutable settings file the sweep driver sequences through. Two writers, no lock.
-**Prevention rule:** Never run manual mode-setting probes while a sweep driver runs. Serialize everything through one driver; verify with `tail drive.log` before probing.
-
-## 2026-10-04 — Backticks nested inside a template-literal code generator
-**What happened:** `gen-report.mjs` embedded markdown code spans (backticks) inside a JS template literal and failed with `Unterminated string literal`.
-**Root cause:** Assumed escaped backticks scale; they don't stay readable or safe in a 100-line template.
-**Prevention rule:** In generator scripts, use a placeholder char (e.g. `§`) for code spans and replace with `String.fromCharCode(96)` at write time. No literal backticks inside template literals.
-
 ## 2026-10-06 — Pasted a numbered diff with stale line ranges into `edit`
 **What happened:** An `edit` call was given a `PUT 89.=90` body pasted from a `git diff` fragment instead of the file's real content. It silently dropped `expect(existsSync(usageDbPath())).toBe(true);` from a test. The same pattern later removed the body of a whole test and a `mkdtempSync` line from another file.
 **Root cause:** Drafted patch hunk numbers from diff output and reused them as line coordinates. Diff line numbers are hunk offsets, not file coordinates, and a body copied from one file does not describe the target file.
@@ -61,11 +56,6 @@ Reviewed 2026-10-10. Each entry below is resolved in the repo, so its log entry 
 **What happened:** A `PUT 642.=643` edit in `cli/dashboard.ts` added an `onError` reject handler, but the replacement body omitted `let stopping = false;`. Two functions kept referencing the missing variable until the build caught it with three TS2304 errors.
 **Root cause:** The replacement body listed only the new lines. A range PUT replaces the entire range, so any surviving line inside it must be re-emitted in the body.
 **Prevention rule:** After an edit that inserts inside a block, read the whole block and confirm every referenced variable is declared. When drafting a replacement body, re-emit each surviving line from the target range.
-
-## 2026-10-06 — Slow-CI timeout on a heavy test that passed locally
-**What happened:** CI failed on `test/usage/opencode-db.test.ts` "a session_message table past 1MB still syncs and reads back" with `Test timed out in 5000ms`. The test seeds 2500 sqlite rows and syncs them; on the `ubuntu-24.04` runner it took ~6s, over vitest's 5s default. It passed locally in ~3s.
-**Root cause:** Judged the test green from a fast local machine. A workload whose runtime crosses a framework default is a flake wherever the machine is slower, not a local flake.
-**Prevention rule:** For any test that does real I/O at scale (large seeds, subprocess loops), set an explicit timeout with headroom instead of relying on the framework default. `bun run verify` now stands in for CI; a local pass there is the bar, and a heavy test that needs more than a few seconds gets an explicit timeout it.
 
 ## 2026-10-07 — RTK coverage judged from a savings summary instead of the rewrite registry
 **What happened:** Reported `bun` (1120 calls) and `bunx` (481 calls) as uncovered gaps because neither appeared in `rtk gain`'s top-10 list. Direct probing showed both rewrite (exit 3).
@@ -77,16 +67,6 @@ Reviewed 2026-10-10. Each entry below is resolved in the repo, so its log entry 
 **Root cause:** Used a replacing primitive for an insertion. A range replacement rewrites the entire matched span, so anything intended to survive must be re-emitted in full.
 **Prevention rule:** To insert before a block, keep `oldText` to the insertion point alone, or re-emit the whole original block in `newText`. After editing near an existing test, run `git diff -U0 -- <file>` and confirm the change is pure insertion before running the suite.
 
-## 2026-10-10 — A type-import split dropped an existing type import
-**What happened:** Splitting type-only names out of a value import in `extensions/shared/usage-store.ts`, the new `import type { OpencodeDbRow, OpencodeMessage }` line replaced the existing `import type { RunStatus, SessionTokens }` line instead of adding to it. `tsc` then reported `Cannot find name 'SessionTokens'` and `Cannot find name 'RunStatus'`.
-**Root cause:** Wrote the replacement line from the names I was moving and forgot the names already on that line. The same edit pass also removed `RtkRelease` from a value import in `cli/install.ts` without adding the type import.
-**Prevention rule:** When a name moves between import lines, read the target line first and re-emit its full existing content plus the moved names. Run `tsc --noEmit` after any import-shape change, not only at the end of the task.
-
-## 2026-10-10 — Two edits rewrote a span they only half re-emitted
-**What happened:** Two replacement edits lost content. One matched `HealthReport` plus its first field and dropped `tersio: string;`. The other removed a block of window interfaces and, matching on a nearby anchor, renamed `OmpFrustrationModel` into `AgentWindowPoint` and deleted that interface's body. `tsc` caught both.
-**Root cause:** Put a multi-line span in `oldText` while `newText` re-emitted only part of it. A range replacement rewrites the whole span.
-**Prevention rule:** Keep `oldText` to the smallest unique span and re-emit every surviving line in `newText`. Run `tsc --noEmit` after any multi-line structural edit, not only at the end of the task.
-
 ## 2026-10-10 — A page recomputed a figure the payload already carried
 **What happened:** The Providers and Models tables derived throughput as total output tokens divided by average duration, which read 173,158/s where the payload's own `avgTokensPerSecond` read 64.8. A live screenshot caught it, not a test.
 **Root cause:** Reached for the two fields that were in front of me instead of the one field the contract already defines for that metric.
@@ -96,4 +76,3 @@ Reviewed 2026-10-10. Each entry below is resolved in the repo, so its log entry 
 **What happened:** Screenshots and DOM probes against the dashboard reported duplicated month labels, a wrong cell count, and a legend that ran off the card. The source was correct in each case, or already fixed.
 **Root cause:** The server ran `dist/tersio.js` from a build made before the last edits, so every probe measured the old bundle.
 **Prevention rule:** Restart the server after `bun run build`, and confirm the served bundle dates from this session before trusting a visual or DOM result.
-

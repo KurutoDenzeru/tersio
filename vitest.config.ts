@@ -10,6 +10,9 @@ export default defineConfig({
     alias: { "@": path.join(root, "dashboard/app/src") },
   },
   test: {
+    // Vitest's default is 5s, which a test that seeds sqlite rows and shells out crosses
+    // on a slower machine. One default with headroom beats a per-test timeout everywhere.
+    testTimeout: 30000,
     // The dashboard app has its own React, so it runs as its own project.
     projects: [
       {

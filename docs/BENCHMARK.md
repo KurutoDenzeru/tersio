@@ -38,22 +38,20 @@ bun --version
 export BENCH_TMP="$(mktemp -d)"   # all sessions, stdout, and results go here
 ```
 
-### Protect the user settings
+### Isolate the user settings
 
-Session-start defaults change what every run measures. Force them off. Restore them on exit.
+Session-start defaults change what every run measures, so a run must never write the live
+`~/.tersio/settings.json`. Two writers on one file is how a manual probe once measured a
+partial mode block. Point the store at the throwaway home instead, and export it for every
+spawned host:
 
-```js
-const backup = `${settingsPath}.bak`;   // ~/.tersio/settings.json
-copyFileSync(settingsPath, backup);
-let restored = false;
-const restore = () => {
-  if (restored) return;
-  restored = true;
-  copyFileSync(backup, settingsPath);
-  rmSync(backup, { force: true });
-};
-process.on("exit", restore);   // try/finally alone fails on interrupt
+```bash
+export TERSIO_HOME="$BENCH_TMP/tersio"   # settings, usage ledger, and caches all land here
 ```
+
+`TERSIO_HOME` is what the settings store resolves through, so the CLI and the extensions inside
+the host read the same path, and the real file is never opened for writing. A concurrent
+benchmark then shares nothing.
 
 ### Fixture
 
@@ -239,4 +237,4 @@ Add your run newest first. Do not overwrite old numbers. If you change the proto
 - [ ] RTK: three groups, fidelity checks, end-to-end run
 - [ ] Token and time reported
 - [ ] Environment line complete
-- [ ] Working tree unchanged; `~/.tersio/settings.json` restored; sessions only in `$BENCH_TMP`
+- [ ] Working tree unchanged; `TERSIO_HOME` pointed at `$BENCH_TMP`; sessions only in `$BENCH_TMP`

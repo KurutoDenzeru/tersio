@@ -90,3 +90,18 @@ test("package exports a loadable opencode server entrypoint", () => {
   const tracked = (entry as string).replace(/^\.\//, "").replace(/^dist\//, "").replace(/\.js$/, ".ts");
   expect(existsSync(path.join(root, tracked)), `${tracked} must exist for a fresh checkout`).toBe(true);
 });
+
+// Recharts animates in JS on mount, which a CSS kill-switch cannot stop. A moving ticker or
+// donut makes a byte comparison of two captures drift, so the entrance animation stays off.
+test("no dashboard chart re-enables a recharts entrance animation", () => {
+  const offenders: string[] = [];
+  for (const file of trackedFiles()) {
+    if (!file.startsWith("dashboard/app/src/") || !/\.tsx?$/.test(file)) continue;
+    const body = readFileSync(path.join(root, file), "utf8");
+    if (/isAnimationActive=\{true\}/.test(body) || /isAnimationActive=\{!false\}/.test(body)) {
+      offenders.push(file);
+    }
+  }
+  expect(offenders, `set isAnimationActive={false}; a JS entrance animation moves the chart ` +
+      `between two captures of the same page:\n${offenders.join("\n")}`).toEqual([]);
+});
