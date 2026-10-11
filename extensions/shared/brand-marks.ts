@@ -33,6 +33,7 @@ export const REMOTE_MARKS: Readonly<Record<string, string>> = {
   openrouter: `${SIMPLE_ICONS}/openrouter.svg`,
   github: `${SIMPLE_ICONS}/github.svg`,
   instagram: `${SIMPLE_ICONS}/instagram.svg`,
+  reddit: `${SIMPLE_ICONS}/reddit.svg`,
   // Owner-hosted, nominative use.
   groq: "https://groq.com/favicon.svg",
   poolside: "https://poolside.ai/favicon/favicon.svg",
@@ -80,6 +81,8 @@ export const MARK_BG: Readonly<Record<string, string>> = {
   cline: "#9f58fa",
   openrouter: "#03080a",
   instagram: "#e4405f",
+  reddit: "#ff4500",
+  linkedin: "#0a66c2",
   // Owner-hosted marks: the tile matches the asset's own square, and a slug whose artwork already
   // carries its own color takes a white tile so the art reads.
   groq: "#f43e01",

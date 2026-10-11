@@ -154,12 +154,27 @@ export function writeOmpAgentDb(file: string, windows: WindowFixture[]): string 
   return file;
 }
 
-/** One session transcript, in the shape omp writes under `agent/sessions`. */
+/**
+ * One session transcript, in the shape omp writes under `agent/sessions`.
+ *
+ * A message's `timestamp` is the ISO stamp of its journal line; `startedAt`, when given, is the
+ * epoch-ms stamp the message itself carries, which is when the work began rather than when it
+ * landed. The line timestamp alone cannot tell the two apart, so the trace reader needs both.
+ */
 export function writeSessionFixture(file: string, messages: Array<Record<string, unknown>>): string {
   mkdirSync(path.dirname(file), { recursive: true });
   const lines = [
     JSON.stringify({ type: 'session', version: 3, id: 'sess', timestamp: '2026-01-01T00:00:00.000Z', cwd: '/tmp/project' }),
-    ...messages.map((message) => JSON.stringify({ type: 'message', id: 'x', timestamp: '2026-01-01T00:00:01.000Z', message })),
+    ...messages.map((message, index) => {
+      const { timestamp, startedAt, ...body } = message;
+      const line: Record<string, unknown> = {
+        type: 'message',
+        id: `m${index}`,
+        timestamp: typeof timestamp === 'string' ? timestamp : '2026-01-01T00:00:01.000Z',
+        message: typeof startedAt === 'number' ? { ...body, timestamp: startedAt } : body,
+      };
+      return JSON.stringify(line);
+    }),
   ];
   writeFileSync(file, `${lines.join('\n')}\n`, 'utf8');
   return file;

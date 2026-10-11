@@ -91,7 +91,26 @@ const SCHEMA_SQL =
   `CREATE TABLE IF NOT EXISTS messages (file_id INTEGER NOT NULL REFERENCES files(id), t REAL, model TEXT NOT NULL,` +
   ` i INTEGER NOT NULL, o INTEGER NOT NULL, d REAL, cr INTEGER NOT NULL, cw INTEGER NOT NULL,` +
   ` usd REAL, st TEXT NOT NULL, code REAL, note TEXT, tools TEXT NOT NULL DEFAULT '[]', h TEXT, id TEXT);` +
-  `CREATE INDEX IF NOT EXISTS idx_messages_file ON messages(file_id);`;
+  // Every read filters or orders by one of these three. Without them each sync and each read
+  // walks the whole table: the watermark scan, the day buckets, and the recent list all scan.
+  `CREATE INDEX IF NOT EXISTS idx_messages_file ON messages(file_id);` +
+  `CREATE INDEX IF NOT EXISTS idx_messages_t ON messages(t);` +
+  `CREATE INDEX IF NOT EXISTS idx_messages_h_t ON messages(h, t);` +
+  `CREATE INDEX IF NOT EXISTS idx_messages_model ON messages(model);`;
+
+/**
+ * WAL plus a checkpoint at the end of a sync: the write path stops paying an fsync per commit,
+ * and the main file still holds every row, so a backup that copies only usage.db loses nothing.
+ */
+function pragmas(db: string): void {
+  run(db,
+    'PRAGMA journal_mode=WAL;' +
+    'PRAGMA synchronous=NORMAL;' +
+    'PRAGMA wal_autocheckpoint=256;' +
+    'PRAGMA cache_size=-8000;' +
+    'PRAGMA temp_store=MEMORY;' +
+    'PRAGMA mmap_size=268435456;');
+}
 
 function storedParserVersion(db: string): string | null {
   try {
@@ -203,6 +222,7 @@ function ensureSchema(db: string, forceWipe: boolean): void {
   // Fold in rows stored under a pre-alias spelling; the mtime ledger will not re-read those transcripts.
   const rekeys = MODEL_ALIASES.map((a) => `UPDATE messages SET model='${a.id}' WHERE model='${a.feed}';`).join('');
   const stored = storedParserVersion(db);
+  pragmas(db);
   if (stored === PARSER_VERSION) {
     run(db, SCHEMA_SQL + rekeys);
     return;
@@ -575,6 +595,8 @@ export function syncUsageDb(): boolean {
   if (migrated) {
     try { run(db, `VACUUM;`); } catch { /* best-effort */ }
   }
+  // Fold the WAL back into the main file: a backup copies one file, and a checkpoint keeps it whole.
+  try { run(db, `PRAGMA wal_checkpoint(TRUNCATE);`); } catch { /* best-effort */ }
   return true;
 }
 
@@ -587,6 +609,8 @@ export function readUsageDb(): StoredUsage | null {
   }
   let rows: string[][];
   try {
+    // The `tools` column is the widest by far and the common case is the literal `[]`, so it is
+    // read as one column and skipped in JS rather than parsed per row.
     rows = query(db, `SELECT t, model, i, o, d, cr, cw, usd, st, code, note, tools, h, id FROM messages;`);
   } catch {
     return null;
@@ -595,10 +619,12 @@ export function readUsageDb(): StoredUsage | null {
   for (const [t, model, i, o, d, cr, cw, usd, st, code, note, tools, h, id] of rows) {
     const ts = t === '' ? undefined : Number(t);
     let toolNames: string[] = [];
-    try {
-      const parsed: unknown = JSON.parse(tools || '[]');
-      if (Array.isArray(parsed)) toolNames = parsed.filter((x): x is string => typeof x === 'string');
-    } catch { /* keep empty */ }
+    if (tools && tools !== '[]' && tools !== '') {
+      try {
+        const parsed: unknown = JSON.parse(tools);
+        if (Array.isArray(parsed)) toolNames = parsed.filter((x): x is string => typeof x === 'string');
+      } catch { /* keep empty */ }
+    }
     const usage: Record<string, unknown> = {
       input: Number(i) || 0,
       output: Number(o) || 0,

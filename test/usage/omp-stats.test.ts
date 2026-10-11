@@ -1,7 +1,7 @@
 // Pins the omp aggregate against a fixture database: every rule in the metric contract has one
 // assertion here, so a change in the reader fails loudly instead of drifting from the reference.
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -252,37 +252,90 @@ describe.skipIf(!hasSqlite())('omp aggregate', () => {
     expect(traces.overall.requests).toBe(0);
   });
 
-  test('flattens a session transcript, marking tool failures', () => {
+  test('cuts a session transcript into spans, tracks, and totals', () => {
+    const at = (s: string): number => Date.parse(`2026-01-01T00:00:${s}Z`);
     const file = writeSessionFixture(path.join(dir, 'agent', 'sessions', '-proj-a', 's.jsonl'), [
       { role: 'user', timestamp: '2026-01-01T00:00:02.000Z', content: [{ type: 'text', text: 'hello there' }] },
       {
         role: 'assistant',
-        timestamp: '2026-01-01T00:00:03.000Z',
+        timestamp: '2026-01-01T00:00:05.000Z',
+        startedAt: at('03.500'),
         model: 'deepseek/deepseek-v4.1-flash',
         provider: 'commandcode',
         duration: 1500,
-        content: [{ type: 'toolCall', name: 'read' }],
+        stopReason: 'toolUse',
+        content: [{ type: 'text', text: 'looking' }, { type: 'toolCall', id: 'call-1', name: 'read' }],
         usage: { totalTokens: 1200, cost: { total: 0.002 } },
       },
       {
         role: 'toolResult',
-        timestamp: '2026-01-01T00:00:04.000Z',
+        timestamp: '2026-01-01T00:00:06.000Z',
         toolName: 'read',
+        toolCallId: 'call-1',
         isError: true,
         content: [{ type: 'text', text: 'ENOENT: no such file' }],
       },
     ]);
     const trace = readSessionTrace(file);
-    expect(trace.entries.length).toBe(3);
-    expect(trace.entries.map((entry) => entry.kind)).toEqual(['user', 'assistant', 'tool']);
-    expect(trace.entries[0].detail).toBe('hello there');
-    expect(trace.entries[1].tokens).toBe(1200);
-    expect(trace.entries[1].costUsd).toBeCloseTo(0.002, 9);
-    expect(trace.entries[1].tool).toBe('read');
-    expect(trace.entries[2].isError).toBe(true);
-    expect(trace.entries[2].label).toBe('read');
+    const spans = trace.tracks[0].spans;
+    expect(spans.map((span) => span.kind)).toEqual(['turn', 'model', 'tool']);
+
+    // The prompt runs to the next call; the model span runs back from its stamp by its duration.
+    expect(spans[0]).toMatchObject({ label: 'Prompt', detail: 'hello there', start: at('02'), end: at('03.500') });
+    expect(spans[1]).toMatchObject({ label: 'deepseek/deepseek-v4.1-flash', start: at('03.500'), end: at('05') });
+    expect(spans[1].tokens).toBe(1200);
+    expect(spans[1].costUsd).toBeCloseTo(0.002, 9);
+
+    // The tool span opens at the message that emitted the call and closes on its result.
+    expect(spans[2]).toMatchObject({ tool: 'read', isError: true, detail: 'ENOENT: no such file', start: at('05'), end: at('06') });
+
+    expect(trace.summary).toMatchObject({
+      wallMs: 4000, modelMs: 1500, toolMs: 1000, idleMs: 1500,
+      turns: 1, requests: 1, toolCalls: 1, totalTokens: 1200,
+    });
+    expect(trace.summary.costUsd).toBeCloseTo(0.002, 9);
+    expect(trace.toolStats[0]).toMatchObject({ tool: 'read', calls: 1, errors: 1, totalMs: 1000, avgMs: 1000, maxMs: 1000 });
+    expect(trace.markers.map((marker) => marker.kind)).toEqual(['session']);
     expect(trace.truncated).toBe(false);
     expect(trace.project).toBe('-proj-a');
+  });
+
+  test('folds a subagent transcript into its root session row', () => {
+    const now = Date.parse('2026-01-01T12:00:00.000Z');
+    const sessionsDir = path.join(dir, 'agent', 'sessions');
+    const root = path.join(sessionsDir, '-proj-a', 'root.jsonl');
+    const child = path.join(sessionsDir, '-proj-a', 'root', 'PageTile.jsonl');
+    // The root file carries the session's own line and title, which the row reads from its head.
+    writeSessionFixture(root, [
+      { role: 'user', timestamp: '2026-01-01T11:00:00.000Z', content: [{ type: 'text', text: 'hello' }] },
+    ]);
+    mkdirSync(path.dirname(child), { recursive: true });
+    writeFileSync(child, '');
+    process.env.TERSIO_AGENT_STATS_DB = writeAgentStatsDb(path.join(dir, 'stats.db'), {
+      messages: [
+        { session: root, entry: 'e1', folder: '-proj-a', model: 'priced-model', provider: 'commandcode', ts: now - 2 * HOUR, duration: 2000, total: 100, cost: 0.10 },
+        { session: child, entry: 'e2', folder: '-proj-a', model: 'sub-model', provider: 'commandcode', ts: now - 1 * HOUR, duration: 3000, total: 200, cost: 0.20, agentType: 'subagent' },
+      ],
+      tools: [
+        { session: root, entry: 'e1', toolCallId: 't1', tool: 'read', model: 'priced-model', provider: 'commandcode', ts: now - 2 * HOUR },
+        { session: child, entry: 'e2', toolCallId: 't2', tool: 'edit', model: 'sub-model', provider: 'commandcode', ts: now - 1 * HOUR },
+      ],
+    });
+
+    const traces = readAgentStats('all', 'traces').traces;
+    expect(traces).toHaveLength(1);
+    const [row] = traces;
+    // One row per root: the child's work, models, and tool calls fold into it.
+    expect(row.sessionFile).toBe(root);
+    expect(row.requests).toBe(2);
+    expect(row.toolCalls).toBe(2);
+    expect(row.subagents).toBe(1);
+    expect(row.models).toEqual(['priced-model', 'sub-model']);
+    expect(row.tokens).toBe(300);
+    expect(row.costUsd).toBeCloseTo(0.3, 9);
+    // The row's clock spans both files and counts the last message's duration.
+    expect(row.firstTs).toBe(now - 2 * HOUR);
+    expect(row.lastTs).toBe(now - 1 * HOUR + 3000);
   });
 
   test('degrades to an empty result instead of throwing when a source is gone', () => {

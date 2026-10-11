@@ -224,15 +224,25 @@ export interface AgentErrorModelRow {
   count: number;
 }
 
+/** One session row on the Traces page: a root session with its child transcripts folded in. */
 export interface AgentTraceRow {
+  /** Absolute root session file path, which is also the trace key. */
   sessionFile: string;
+  /** Mangled session folder from the stats database. */
   project: string;
+  /** Working directory from the root session's own journal line, when it still reads. */
+  cwd: string;
+  /** The session's own title, when it still reads. */
+  title: string | null;
   requests: number;
   tokens: number;
   costUsd: number;
   unpriced: number;
-  models: number;
+  /** Every model the session and its children ran on, sorted. */
+  models: string[];
   toolCalls: number;
+  /** Child transcripts folded into this row. */
+  subagents: number;
   firstTs: number;
   lastTs: number;
 }
@@ -315,25 +325,83 @@ export interface AgentWindowInsight {
   exhaustedEvents: number;
 }
 
-/** One transcript line, flattened for the session timeline. */
-export interface AgentTranscriptEntry {
-  ts: number;
-  kind: 'user' | 'assistant' | 'tool' | 'system';
+/** Kind of one trace span: a user turn, a model call, a tool call, or session metadata. */
+export type AgentTraceSpanKind = 'turn' | 'model' | 'tool' | 'background';
+
+/** One span on the flamegraph: an interval with the identity and cost of the work it holds. */
+export interface AgentTraceSpan {
+  /** Entry id from the journal, or `${entryId}#${index}` for one of a message's tool calls. */
+  id: string;
+  kind: AgentTraceSpanKind;
+  /** Short name: the tool, the model, or `Prompt`. */
   label: string;
+  /** First line of the text the span carries. */
   detail: string;
+  start: number;
+  end: number;
   model: string;
   provider: string;
   tool: string;
   tokens: number;
   costUsd: number;
-  durationMs: number | null;
   isError: boolean;
+  /** How the request stopped, from the assistant message's stop reason. */
+  stopped: 'completed' | 'aborted' | 'failed';
+  /** Journal entry id, so the drawer can read the full payload on demand. */
+  entryId: string;
+}
+
+/** A mode or title change: drawn as a diamond on the timeline. */
+export interface AgentTraceMarker {
+  id: string;
+  ts: number;
+  kind: 'model' | 'think' | 'session';
+  label: string;
+}
+
+/** One flamegraph row: the main session, or a subagent's own row. */
+export interface AgentTraceTrack {
+  id: string;
+  label: string;
+  parentId: string | null;
+  spans: AgentTraceSpan[];
+}
+
+/** Duration totals for one tool across the session: total, mean, and the longest single call. */
+export interface AgentTraceToolStat {
+  tool: string;
+  calls: number;
+  errors: number;
+  totalMs: number;
+  avgMs: number;
+  maxMs: number;
+}
+
+/** The nine headline figures the reference trace view opens with. */
+export interface AgentTraceSummary {
+  wallMs: number;
+  modelMs: number;
+  toolMs: number;
+  idleMs: number;
+  turns: number;
+  requests: number;
+  toolCalls: number;
+  agents: number;
+  totalTokens: number;
+  costUsd: number;
 }
 
 export interface AgentSessionTrace {
   sessionFile: string;
   project: string;
-  entries: AgentTranscriptEntry[];
+  title: string;
+  cwd: string;
+  startedAt: number;
+  endedAt: number;
+  tracks: AgentTraceTrack[];
+  markers: AgentTraceMarker[];
+  summary: AgentTraceSummary;
+  toolStats: AgentTraceToolStat[];
   truncated: boolean;
 }
 
@@ -497,10 +565,6 @@ function numOrNull(v: string | undefined): number | null {
 /** A text column must stay on one line: the parser splits rows on tabs and newlines. */
 function txt(column: string): string {
   return `replace(replace(replace(COALESCE(${column}, ''), char(10), ' '), char(13), ' '), char(9), ' ')`;
-}
-
-function esc(v: string): string {
-  return `'${v.replace(/'/g, "''")}'`;
 }
 
 // ------------------------------------------------------------------- sql builders
@@ -684,10 +748,28 @@ function readStatsDb(db: string, cutoff: number, bucketMs: number, cols: Set<str
     ['recent', `SELECT ${requestColumns} FROM messages ${where} ORDER BY timestamp DESC LIMIT ${RECENT_LIMIT}`],
     ['errors', `SELECT ${requestColumns} FROM messages ${errorWhere} ORDER BY timestamp DESC LIMIT ${ERROR_LIMIT}`],
     ['traces', `SELECT ${txt('session_file')}, MAX(${txt('folder')}),
-        COUNT(*), SUM(total_tokens), TOTAL(cost_total), SUM(${unpricedSql()}), COUNT(DISTINCT model),
-        MIN(timestamp), MAX(timestamp)
-        FROM messages ${where} GROUP BY session_file ORDER BY 9 DESC LIMIT ${TRACE_LIMIT}`],
+        COUNT(*), SUM(total_tokens), TOTAL(cost_total), SUM(${unpricedSql()}),
+        MIN(timestamp), MAX(timestamp + COALESCE(duration, 0))
+        FROM messages ${where} GROUP BY session_file ORDER BY 8 DESC LIMIT ${TRACE_LIMIT}`],
   ].filter(([name]) => parts.has(name)).map(([name, sql]) => [name, withShims(sql, cols)] as [string, string]));
+
+  // The trace rows are read per file, then folded per root. The model list and the tool counts are
+  // read across every transcript and keyed by root, so a child that fell outside the window still
+  // folds into the session it belongs to.
+  const traceModels = readTraceModels(db);
+  const traceTools = readTraceToolCounts(db);
+  const traces = foldTraces((out.get('traces') ?? []).map((r) => {
+    // Both readers are keyed by root, so every file of a session reads the session's totals.
+    const root = rootSessionFile(r[0] ?? '');
+    return {
+      sessionFile: r[0] ?? '', project: r[1] ?? '', cwd: '', title: null,
+      requests: num(r[2]), tokens: num(r[3]), costUsd: num(r[4]), unpriced: num(r[5]),
+      models: traceModels.get(root) ?? [],
+      toolCalls: traceTools.get(root) ?? 0,
+      subagents: 0, firstTs: num(r[6]), lastTs: num(r[7]),
+    };
+  }));
+  applySessionMetadata(traces);
 
   const requestRows = (rows: string[][]): AgentRequestRow[] => rows.map((r) => ({
     ts: num(r[0]),
@@ -738,12 +820,51 @@ function readStatsDb(db: string, cutoff: number, bucketMs: number, cols: Set<str
     errorGroups: groupErrors(errorRows),
     errors: errorRows,
     errorModels: [...errorCounts.values()].toSorted((a, b) => b.count - a.count),
-    traces: (out.get('traces') ?? []).map((r) => ({
-      sessionFile: r[0] ?? '', project: r[1] ?? '', requests: num(r[2]), tokens: num(r[3]),
-      costUsd: num(r[4]), unpriced: num(r[5]), models: num(r[6]),
-      toolCalls: 0, firstTs: num(r[7]), lastTs: num(r[8]),
-    })),
+    traces: traces,
   };
+}
+
+/**
+ * Fold every child transcript into its root session, the way the reference lists them.
+ *
+ * A subagent writes its own file under its root's folder, so a `Traces` row that grouped by file
+ * alone would show one row per subagent instead of one row per session. Each root holds its
+ * children's requests, tokens, cost, models, and time, and counts how many children folded in.
+ * A root that lost its file keeps the row: the work happened even if the transcript is gone.
+ */
+function foldTraces(rows: AgentTraceRow[]): AgentTraceRow[] {
+  const byRoot = new Map<string, AgentTraceRow>();
+  for (const row of rows) {
+    const rootFile = rootSessionFile(row.sessionFile);
+    const held = byRoot.get(rootFile);
+    if (!held) {
+      byRoot.set(rootFile, { ...row, sessionFile: rootFile, models: [...row.models] });
+      continue;
+    }
+    held.requests += row.requests;
+    held.tokens += row.tokens;
+    held.costUsd += row.costUsd;
+    held.unpriced += row.unpriced;
+    held.models = [...new Set([...held.models, ...row.models])].toSorted();
+    held.firstTs = Math.min(held.firstTs, row.firstTs);
+    held.lastTs = Math.max(held.lastTs, row.lastTs);
+    held.subagents += 1;
+  }
+  return [...byRoot.values()]
+    .map((row) => ({ ...row, models: row.models.toSorted() }))
+    .toSorted((a, b) => b.lastTs - a.lastTs);
+}
+
+/** The root session file for a transcript, which is itself when it is already a root. */
+export function rootSessionFile(sessionFile: string): string {
+  const marker = '/sessions/';
+  const at = sessionFile.indexOf(marker);
+  if (at < 0) return sessionFile;
+  const base = sessionFile.slice(0, at + marker.length);
+  const parts = sessionFile.slice(at + marker.length).split('/');
+  // `<project>/<root>.jsonl` is a root; `<project>/<root>/<child>.jsonl` belongs to that root.
+  if (parts.length < 3) return sessionFile;
+  return `${base}${parts[0]}/${parts[1]}.jsonl`;
 }
 
 /** Same normalization as the reference: ids and counters collapse, an HTTP status does not. */
@@ -858,20 +979,71 @@ function readToolSeries(db: string, cutoff: number, bucketMs: number): Partial<A
   };
 }
 
-/** Tool calls per transcript: the trace table owns the count, so it is read apart from the group. */
-function readTraceToolCounts(db: string, traces: AgentTraceRow[]): void {
-  if (traces.length === 0) return;
-  const files = traces.map((t) => esc(t.sessionFile)).join(',');
+/** Tool calls per root session, with every child transcript folded in. */
+function readTraceToolCounts(db: string): Map<string, number> {
+  const counts = new Map<string, number>();
   try {
-    const out = sqliteScript(db, `SELECT session_file, COUNT(*) FROM tool_calls WHERE session_file IN (${files}) GROUP BY 1;\n`);
-    const counts = new Map<string, number>();
+    const out = sqliteScript(db, 'SELECT session_file, COUNT(*) FROM tool_calls GROUP BY 1;\n');
     for (const line of out.split('\n')) {
       if (!line.trim()) continue;
       const [file, count] = line.split('\t');
-      counts.set(file, num(count));
+      if (!file) continue;
+      const root = rootSessionFile(file);
+      counts.set(root, (counts.get(root) ?? 0) + num(count));
     }
-    for (const trace of traces) trace.toolCalls = counts.get(trace.sessionFile) ?? 0;
   } catch { /* no tool rows: keep zero */ }
+  return counts;
+}
+
+/** Distinct models per root session, with every child transcript folded in. */
+function readTraceModels(db: string): Map<string, string[]> {
+  const models = new Map<string, Set<string>>();
+  try {
+    const out = sqliteScript(db, 'SELECT session_file, model FROM messages GROUP BY session_file, model;\n');
+    for (const line of out.split('\n')) {
+      if (!line.trim()) continue;
+      const [file, model] = line.split('\t');
+      if (!file || !model) continue;
+      const set = models.get(rootSessionFile(file)) ?? new Set<string>();
+      set.add(model);
+      models.set(rootSessionFile(file), set);
+    }
+  } catch { /* an unreadable table leaves the list empty */ }
+  return new Map([...models.entries()].map(([file, set]) => [file, [...set].toSorted()]));
+}
+
+/**
+ * Each root session's own title and working directory, read from the head of its transcript.
+ *
+ * The `session` line carries the working directory and the `title` line sits above it, so one small
+ * head read answers both. A rotated or unreadable file leaves the row's folder and file name to
+ * speak for it.
+ */
+function applySessionMetadata(traces: AgentTraceRow[]): void {
+  for (const trace of traces) {
+    if (!trace.sessionFile.endsWith('.jsonl')) continue;
+    let fd: number | null = null;
+    try {
+      fd = fs.openSync(trace.sessionFile, 'r');
+      const buffer = Buffer.alloc(32 * 1024);
+      const read = fs.readSync(fd, buffer, 0, buffer.length, 0);
+      for (const line of buffer.toString('utf8', 0, read).split('\n')) {
+        if (!line.trim()) continue;
+        if (line.includes('"cwd"') && !trace.cwd) {
+          const match = line.match(/"cwd"\s*:\s*"([^"]+)"/);
+          if (match) trace.cwd = match[1];
+        }
+        if (line.includes('"title"') && !trace.title) {
+          const match = line.match(/"title"\s*:\s*"([^"]*)"/);
+          if (match) trace.title = match[1] || null;
+        }
+        if (trace.cwd && trace.title) break;
+      }
+    } catch { /* a file that no longer reads keeps its empty metadata */ }
+    finally {
+      if (fd !== null) fs.closeSync(fd);
+    }
+  }
 }
 
 /** Daily tokens and cost for the busiest models: the Models table sparkline. */
@@ -1155,63 +1327,247 @@ function computeRequestStats(rows: AgentRequestRow[]): AgentRequestStats {
   };
 }
 
-/** One transcript, flattened into a timeline. Bounded so a huge session cannot stall the server. */
-export function readSessionTrace(sessionFile: string, limit = 400): AgentSessionTrace {
+/** How many spans one trace ships. A long session holds thousands; the transcript virtualises. */
+const TRACE_SPAN_LIMIT = 6000;
+/** How much of a message body a span carries: enough for one transcript line. */
+const TRACE_DETAIL_MAX = 120;
+
+/** First non-empty line of a message body, for the span's detail line. */
+function firstLine(parts: Array<Record<string, unknown>>): string {
+  const text = parts
+    .map((part) => String(part.text ?? part.thinking ?? ''))
+    .map((value) => value.replace(/\s+/g, ' ').trim())
+    .find(Boolean);
+  return text ? text.slice(0, TRACE_DETAIL_MAX) : '';
+}
+
+/** How a request stopped, read from the assistant message's stop reason. */
+function stopState(stopReason: string): AgentTraceSpan['stopped'] {
+  if (stopReason === 'error') return 'failed';
+  if (stopReason === 'aborted') return 'aborted';
+  return 'completed';
+}
+
+/** Tool names that hand the work to another agent, for the Agents figure. */
+const AGENT_TOOLS = new Set(['task', 'subagent']);
+
+/**
+ * One session transcript as spans, tracks, markers, and totals.
+ *
+ * A journal message carries its own clock: an assistant message stamps its completion, and its
+ * `duration` says when the call began, so a model span runs `start = ts - duration` to `ts`. A tool
+ * call is emitted by the assistant message that requests it and closed by the `toolResult` with the
+ * same call id, so the two bound a tool span between them. A user message opens a turn that the
+ * next user message closes. Everything that is not a message (mode changes, a title) rides along as
+ * a marker, since it happened at a point in time rather than across one.
+ */
+export function readSessionTrace(sessionFile: string, limit = TRACE_SPAN_LIMIT): AgentSessionTrace {
   const project = sessionFile.split('/sessions/')[1]?.split('/')[0] ?? '';
-  const empty: AgentSessionTrace = { sessionFile, project, entries: [], truncated: false };
+  const empty: AgentSessionTrace = {
+    sessionFile, project, title: '', cwd: project, startedAt: 0, endedAt: 0,
+    tracks: [], markers: [], summary: emptyTraceSummary(), toolStats: [], truncated: false,
+  };
   if (!sessionFile.endsWith('.jsonl') || !fs.existsSync(sessionFile)) return empty;
 
-  const entries: AgentTranscriptEntry[] = [];
-  let truncated = false;
   let text: string;
   try {
     text = fs.readFileSync(sessionFile, 'utf8');
   } catch {
     return empty;
   }
+
+  // Pass one: pull each line into the shape the spans are cut from.
+  type Raw = {
+    entryId: string; ts: number; role: string; tool: string; detail: string;
+    model: string; provider: string; tokens: number; costUsd: number;
+    durationMs: number | null; startAt: number | null; isError: boolean;
+    stopped: AgentTraceSpan['stopped']; callId: string; calls: Array<{ id: string; name: string }>;
+  };
+  const raw: Raw[] = [];
+  const markers: AgentTraceMarker[] = [];
+  let title = '';
+  let truncated = false;
   for (const line of text.split('\n')) {
     if (!line.trim()) continue;
-    if (entries.length >= limit) {
-      truncated = true;
-      break;
-    }
     let parsed: Record<string, unknown>;
     try {
       parsed = JSON.parse(line) as Record<string, unknown>;
     } catch {
       continue;
     }
-    if (parsed.type !== 'message') continue;
+    const entryId = String(parsed.id ?? '');
+    // The line's stamp is when the entry landed; the message's own stamp, a number, is when it began.
+    const ts = Date.parse(String(parsed.timestamp ?? '')) || 0;
+    const own = (parsed.message as { timestamp?: unknown } | undefined)?.timestamp;
+    const startAt = typeof own === 'number' && Number.isFinite(own) ? own : null;
+    if (parsed.type !== 'message') {
+      const marker = markerFor(entryId, ts, parsed);
+      if (marker) markers.push(marker);
+      if (parsed.type === 'title' && typeof parsed.title === 'string') title = parsed.title;
+      continue;
+    }
     const message = (parsed.message ?? {}) as Record<string, unknown>;
-    const role = String(message.role ?? '');
     const content = Array.isArray(message.content) ? message.content as Array<Record<string, unknown>> : [];
     const usage = (message.usage ?? {}) as Record<string, unknown>;
     const cost = (usage.cost ?? {}) as Record<string, unknown>;
-    const ts = Date.parse(String(message.timestamp ?? parsed.timestamp ?? '')) || 0;
-    const tool = String(message.toolName ?? '');
-    const kind: AgentTranscriptEntry['kind'] =
-      role === 'user' ? 'user' : role === 'toolResult' ? 'tool' : role === 'assistant' ? 'assistant' : 'system';
-    const call = content.find((part) => part.type === 'toolCall');
-    const body = content
-      .filter((part) => part.type === 'text')
-      .map((part) => String(part.text ?? '').replace(/\s+/g, ' ').trim())
-      .filter(Boolean)
-      .join(' ');
-    entries.push({
+    raw.push({
+      entryId,
       ts,
-      kind,
-      label: kind === 'tool' ? (tool || 'tool') : kind === 'assistant' ? 'assistant' : kind,
-      detail: body.slice(0, 400),
+      role: String(message.role ?? ''),
+      tool: String(message.toolName ?? ''),
+      detail: firstLine(content),
       model: String(message.model ?? ''),
       provider: String(message.provider ?? ''),
-      tool: call ? String((call as { name?: unknown }).name ?? '') : '',
       tokens: num(String(usage.totalTokens ?? 0)),
       costUsd: num(String(cost.total ?? 0)),
       durationMs: typeof message.duration === 'number' ? message.duration : null,
+      startAt,
       isError: message.isError === true,
+      stopped: stopState(String(message.stopReason ?? '')),
+      callId: String(message.toolCallId ?? ''),
+      calls: content
+        .filter((part) => part.type === 'toolCall')
+        .map((part) => ({ id: String(part.id ?? ''), name: String(part.name ?? 'tool') })),
     });
   }
-  return { sessionFile, project, entries, truncated };
+
+  // A tool result closes the call it names, so the call's span runs to it.
+  const resultAt = new Map<string, Raw>();
+  const callIds = new Set<string>();
+  for (const row of raw) {
+    for (const call of row.calls) if (call.id) callIds.add(call.id);
+    if (row.role === 'toolResult' && row.callId && !resultAt.has(row.callId)) resultAt.set(row.callId, row);
+  }
+
+  const built: AgentTraceSpan[] = [];
+  let turnOpen: AgentTraceSpan | null = null;
+  for (const row of raw) {
+    const base = {
+      model: row.model, provider: row.provider, tokens: row.tokens, costUsd: row.costUsd,
+      isError: row.isError, entryId: row.entryId,
+    };
+    if (row.role === 'assistant') {
+      // A model call runs from its own start stamp to the line's stamp; the duration is the cross-check.
+      const start = row.startAt !== null && row.startAt < row.ts ? row.startAt : row.durationMs && row.durationMs > 0 ? row.ts - row.durationMs : row.ts;
+      if (turnOpen) turnOpen.end = start;
+      turnOpen = null;
+      built.push({ ...base, id: row.entryId || `model-${built.length}`, kind: 'model', label: row.model || 'assistant',
+        detail: row.detail, start, end: row.ts, tool: '', stopped: row.stopped });
+      row.calls.forEach((call, index) => {
+        const result = call.id ? resultAt.get(call.id) : undefined;
+        const end = result ? Math.max(result.ts, row.ts) : row.ts;
+        built.push({ ...base, id: `${row.entryId}#${index}`, kind: 'tool', label: call.name, detail: result?.detail ?? '',
+          start: row.ts, end, tool: call.name, isError: result ? result.isError : base.isError, stopped: 'completed' });
+      });
+      continue;
+    }
+    if (row.role === 'toolResult') {
+      // A result whose call was compacted away still ran: draw it as a point.
+      if (row.callId && callIds.has(row.callId)) continue;
+      built.push({ ...base, id: row.entryId || `tool-${built.length}`, kind: 'tool', label: row.tool || 'tool',
+        detail: row.detail, start: row.ts, end: row.ts, tool: row.tool, stopped: 'completed' });
+      continue;
+    }
+    if (row.role === 'user') {
+      if (turnOpen) turnOpen.end = row.ts;
+      turnOpen = { ...base, id: `turn-${built.length}`, kind: 'turn', label: 'Prompt', detail: row.detail,
+        start: row.ts, end: row.ts, tool: '', stopped: 'completed' };
+      built.push(turnOpen);
+      continue;
+    }
+    built.push({ ...base, id: row.entryId || `bg-${built.length}`, kind: 'background', label: row.role || 'system',
+      detail: row.detail, start: row.ts, end: row.ts, tool: '', stopped: 'completed' });
+  }
+
+  const lastEnd = built.reduce((max, span) => Math.max(max, span.end), 0);
+  if (turnOpen) turnOpen.end = Math.max(turnOpen.end, lastEnd);
+  // A session longer than the cap keeps its newest spans: the opening minutes are the least useful.
+  const spans = built.length > limit ? built.slice(-limit) : built;
+  if (built.length > limit) truncated = true;
+  spans.sort((a, b) => a.start - b.start);
+  const startedAt = spans.length ? Math.min(...spans.map((span) => span.start)) : 0;
+  const endedAt = spans.length ? Math.max(...spans.map((span) => span.end)) : 0;
+
+  return {
+    sessionFile, project, title, cwd: project, startedAt, endedAt,
+    tracks: [{ id: 'main', label: 'Session', parentId: null, spans }],
+    markers: markers.toSorted((a, b) => a.ts - b.ts),
+    summary: summarizeTrace(spans, startedAt, endedAt),
+    toolStats: buildToolStats(spans),
+    truncated,
+  };
+}
+
+/** A non-message journal entry, when it marks a change worth a diamond on the timeline. */
+function markerFor(entryId: string, ts: number, parsed: Record<string, unknown>): AgentTraceMarker | null {
+  const kind = String(parsed.type ?? '');
+  if (kind === 'model_change') return { id: entryId || `model-${ts}`, ts, kind: 'model', label: String(parsed.model ?? 'model') };
+  if (kind === 'thinking_level_change') {
+    return { id: entryId || `think-${ts}`, ts, kind: 'think', label: String(parsed.level ?? 'thinking') };
+  }
+  if (kind === 'session') return { id: entryId || `session-${ts}`, ts, kind: 'session', label: 'session started' };
+  // Only the changes ride along: a session fires hundreds of events that would bury the diamonds.
+  return null;
+}
+
+/** The empty summary, for a file that no longer reads. */
+function emptyTraceSummary(): AgentTraceSummary {
+  return { wallMs: 0, modelMs: 0, toolMs: 0, idleMs: 0, turns: 0, requests: 0, toolCalls: 0, agents: 0, totalTokens: 0, costUsd: 0 };
+}
+
+/** The nine figures: wall time split into model, tool, and idle, then the work counts. */
+function summarizeTrace(spans: AgentTraceSpan[], startedAt: number, endedAt: number): AgentTraceSummary {
+  const wallMs = endedAt > startedAt ? endedAt - startedAt : 0;
+  let modelMs = 0;
+  let toolMs = 0;
+  let totalTokens = 0;
+  let costUsd = 0;
+  for (const span of spans) {
+    const held = Math.max(0, span.end - span.start);
+    if (span.kind === 'model') modelMs += held;
+    if (span.kind === 'tool') toolMs += held;
+    if (span.kind === 'model') totalTokens += span.tokens;
+    if (span.kind === 'model') costUsd += span.costUsd;
+  }
+  return {
+    wallMs,
+    modelMs,
+    toolMs,
+    // Idle is what no span covered: wall time minus the time a model or a tool held.
+    idleMs: Math.max(0, wallMs - modelMs - toolMs),
+    turns: spans.filter((span) => span.kind === 'turn').length,
+    requests: spans.filter((span) => span.kind === 'model').length,
+    toolCalls: spans.filter((span) => span.kind === 'tool').length,
+    agents: spans.filter((span) => span.kind === 'tool' && AGENT_TOOLS.has(span.tool)).length,
+    totalTokens,
+    costUsd,
+  };
+}
+
+/** Per-tool duration totals, longest first. */
+function buildToolStats(spans: AgentTraceSpan[]): AgentTraceToolStat[] {
+  const byTool = new Map<string, number[]>();
+  for (const span of spans) {
+    if (span.kind !== 'tool') continue;
+    const held = Math.max(0, span.end - span.start);
+    const list = byTool.get(span.tool || 'tool') ?? [];
+    list.push(held);
+    byTool.set(span.tool || 'tool', list);
+  }
+  return [...byTool.entries()]
+    .map(([tool, held]) => {
+      const sorted = held.toSorted((a, b) => a - b);
+      const totalMs = sorted.reduce((sum, value) => sum + value, 0);
+      return {
+        tool,
+        calls: held.length,
+        errors: spans.filter((span) => span.kind === 'tool' && (span.tool || 'tool') === tool && span.isError).length,
+        totalMs,
+        avgMs: totalMs / Math.max(1, sorted.length),
+        maxMs: sorted[held.length - 1] ?? 0,
+      };
+    })
+    .toSorted((a, b) => b.totalMs - a.totalMs);
 }
 
 /** The agent settings in force when a request ran, read from the journal's change entries. */
@@ -1300,10 +1656,7 @@ export function readAgentStats(range: RangeKey = '24h', view: AgentView = 'all',
   if (parts.has('seriesByProvider')) stats.seriesByProvider = readProviderSeries(db, cutoff, stats.bucketMs);
   if (parts.has('modelSeries')) stats.modelSeries = readModelSeries(db, cutoff, stats.bucketMs);
   if (parts.has('modelPerformance')) stats.modelPerformance = readModelPerformance(db, cutoff, stats.bucketMs);
-  if (parts.has('tools')) {
-    Object.assign(stats, readToolSeries(db, cutoff, stats.bucketMs));
-    readTraceToolCounts(db, stats.traces);
-  }
+  if (parts.has('tools')) Object.assign(stats, readToolSeries(db, cutoff, stats.bucketMs));
   if (stats.byModel.length > 0) stats.topModels = stats.byModel.slice(0, 12);
   if (parts.has('providerHourly')) stats.providerHourly = readProviderHourly(db, cutoff);
   if (parts.has('recent')) stats.requestStats = computeRequestStats(stats.recent);

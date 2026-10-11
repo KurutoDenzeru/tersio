@@ -296,9 +296,11 @@ export interface SessionAccum {
   messages: number;
   costMeasured: number;
   recent: RecentRequest[];
+  /** Oldest timestamp held in `recent`, so the list stays bounded instead of growing with the store. */
+  recentFloor: number;
 }
 export function newSessionAccum(): SessionAccum {
-  return { byModel: {}, byDay: {}, byDayModel: {}, byTool: {}, byModelMessages: {}, byHost: {}, totals: zeroBreakdown(), messages: 0, costMeasured: 0, recent: [] };
+  return { byModel: {}, byDay: {}, byDayModel: {}, byTool: {}, byModelMessages: {}, byHost: {}, totals: zeroBreakdown(), messages: 0, costMeasured: 0, recent: [], recentFloor: Number.POSITIVE_INFINITY };
 }
 export function ingestSessionRow(accum: SessionAccum, model: string, usage: Record<string, unknown>, ts: string | number | undefined, durMs?: unknown, run?: { st: RunStatus; code?: number; note?: string }, toolNames?: string[], host?: string, id?: string): boolean {
   const watermark = readResetWatermark();
@@ -317,7 +319,20 @@ export function ingestSessionRow(accum: SessionAccum, model: string, usage: Reco
   const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.floor(v) : 0);
   if (Number.isFinite(ms)) {
     const outcome = run ?? { st: 'completed' as RunStatus };
-    accum.recent.push({ m: key, i: num(usage.input), o: num(usage.output), t: ms, d: durOf(durMs), h: host, cr: num(usage.cacheRead), cw: num(usage.cacheWrite), usd: costOf(usage), st: outcome.st, code: outcome.code, note: outcome.note, id });
+    // The store holds every message ever recorded, but only the newest few are ever read. Skip
+    // anything older than the floor, and re-read the floor when the list is full, so a 50k-row
+    // store costs 2000 rows of memory instead of 50k.
+    if (accum.recent.length < RECENT_LIMIT || ms >= accum.recentFloor) {
+      accum.recent.push({ m: key, i: num(usage.input), o: num(usage.output), t: ms, d: durOf(durMs), h: host, cr: num(usage.cacheRead), cw: num(usage.cacheWrite), usd: costOf(usage), st: outcome.st, code: outcome.code, note: outcome.note, id });
+      if (accum.recent.length > RECENT_LIMIT) {
+        let drop = 0;
+        for (let k = 1; k < accum.recent.length; k += 1) if (accum.recent[k].t < accum.recent[drop].t) drop = k;
+        accum.recent.splice(drop, 1);
+        accum.recentFloor = accum.recent.reduce((lo, r) => Math.min(lo, r.t), Number.POSITIVE_INFINITY);
+      } else if (ms < accum.recentFloor) {
+        accum.recentFloor = ms;
+      }
+    }
   }
   const day = ts !== undefined ? dayKey(ts) : null;
   if (day) {
