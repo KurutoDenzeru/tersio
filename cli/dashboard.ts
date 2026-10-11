@@ -19,6 +19,8 @@ import { CAVEMAN_DEFAULTS, PONYTAIL_DEFAULTS } from './common.ts';
 import type { ComboLevel } from '../extensions/shared/types.ts';
 import { PACKAGE_NAME } from './common.ts';
 import { findPackageRoot, resolveRtkBinary } from '../extensions/lib/utils.ts';
+import { BACKUP_KEEP, backupDir, backupDiskBytes, createDataBackup, dataSources, deleteDataBackup, listDataBackups, restoreDataBackup } from './backups.ts';
+import { readBackupSchedule } from '../extensions/shared/usage-store.ts';
 import { agentDbPath, emptyRequestEntry, isAgentView, isRangeKey, readAgentRequestEntry, readAgentStats, readSessionTrace, statsDbPath } from '../extensions/shared/agent-stats.ts';
 import type { AgentStats, AgentView, RangeKey } from '../extensions/shared/agent-stats.ts';
 
@@ -487,6 +489,54 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
   }
   requireDashboardBundle();
   const server = http.createServer(async (req, res) => {
+    if (req.url === '/api/data' && req.method === 'GET') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        dir: backupDir(),
+        keep: BACKUP_KEEP,
+        sources: dataSources(),
+        backups: listDataBackups(),
+        schedule: readBackupSchedule(),
+        bytes: backupDiskBytes(),
+      }));
+      return;
+    }
+    if (req.url === '/api/data' && req.method === 'POST') {
+      let body: Record<string, unknown> = {};
+      try {
+        body = (JSON.parse(await readBody(req)) as Record<string, unknown>) ?? {};
+      } catch { body = {}; }
+      const action = String(body.action ?? '');
+      const name = String(body.name ?? '');
+      // A missing sqlite3, or a locked file, is a 500 with a message rather than a silent no-op.
+      try {
+        if (action === 'create') {
+          const made = await createDataBackup();
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: true, name: made.name, files: made.files.length }));
+          return;
+        }
+        if (action === 'restore') {
+          const ok = await restoreDataBackup(name);
+          res.writeHead(ok ? 200 : 400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(ok ? { ok: true, name } : { ok: false, error: 'unknown snapshot' }));
+          return;
+        }
+        if (action === 'delete') {
+          const ok = await deleteDataBackup(name);
+          res.writeHead(ok ? 200 : 400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(ok ? { ok: true, name } : { ok: false, error: 'unknown snapshot' }));
+          return;
+        }
+      } catch (error) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: (error as Error).message || 'backup failed' }));
+        return;
+      }
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: 'unknown action' }));
+      return;
+    }
     if (req.url === '/settings' && req.method === 'GET') {
       storedProfile().then((profile) => {
         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -538,7 +588,14 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
     }
     if (req.url?.startsWith('/api/agent/session')) {
       const file = decodeURIComponent(queryParam(req.url, 'file') ?? '');
-      const body = file ? readSessionTrace(file) : { sessionFile: '', project: '', entries: [], truncated: false };
+      const body = file ? readSessionTrace(file) : {
+        sessionFile: '', project: '', title: '', cwd: '', startedAt: 0, endedAt: 0,
+        tracks: [], markers: [], summary: {
+          wallMs: 0, modelMs: 0, toolMs: 0, idleMs: 0, turns: 0, requests: 0, toolCalls: 0, agents: 0,
+          totalTokens: 0, costUsd: 0,
+        },
+        toolStats: [], truncated: false,
+      };
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(body));
       return;
