@@ -184,16 +184,15 @@ function dataSize(bytes: number): string {
 }
 
 /**
- * The snapshot label: a date this machine's clock reads, then the time of day. The directory
- * name on disk carries a machine stamp, so the row names the moment instead, and the hover
- * tip keeps the raw name for a restore or a delete by hand.
+ * The snapshot label: the month, the day, and the year in words, then the time of day. The
+ * directory name on disk carries a machine stamp, so the row names the moment instead, and the
+ * hover tip keeps the raw name for a restore or a delete by hand.
  */
 function dataStamp(mtime: number): string {
   const d = new Date(mtime);
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  const clock = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" });
-  return `${mm}-${dd}-${d.getFullYear()}, ${clock}`;
+  const date = d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+  const clock = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", second: "2-digit" });
+  return `${date} - ${clock}`;
 }
 
 /**
