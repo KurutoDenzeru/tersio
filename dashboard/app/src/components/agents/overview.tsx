@@ -150,7 +150,7 @@ export function OverviewPage({
       </StatGrid>
 
 
-      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
         <Card
           title="Activity" icon="activity"
           description={`Per ${bucket}`}

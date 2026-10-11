@@ -1,12 +1,13 @@
 // Every page of the agent-stats dashboard, one hash route each.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTheme } from "@/components/theme-provider";
-import { useFx, useAgentData } from "@/lib/data";
+import { isFileExport, useFx, useAgentData } from "@/lib/data";
 import type { AgentRequestRow, AgentView } from "@/lib/data";
 import { useHashRoute } from "@/lib/route";
 import { EmptyState } from "@/components/common";
 import { ChartSkeleton, Page, PageHeader } from "@/components/charts";
 import { Shell, useShortcuts } from "./components/agents/shell";
+import type { ModeState } from "./components/agents/shell";
 import { navItem } from "./components/agents/nav";
 import { AgentRequestDrawer } from "./components/agents/drawer";
 import { SessionTrace } from "./components/agents/session";
@@ -102,6 +103,40 @@ function PageLoading({ title }: { title: string }) {
   );
 }
 
+/**
+ * The session-start modes the navbar's banner names, read from GET /settings. A file export has no
+ * server to ask, so it holds null and the banner stays hidden. `reload` runs after Settings closes,
+ * so the banner shows a change the user just made.
+ */
+function useModeState(): readonly [ModeState | null, () => void] {
+  const [modes, setModes] = useState<ModeState | null>(null);
+  const alive = useRef(true);
+  useEffect(() => () => {
+    alive.current = false;
+  }, []);
+
+  const load = useCallback(() => {
+    if (isFileExport() || typeof fetch !== "function") return;
+    fetch("/settings")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((d: Partial<ModeState> | null) => {
+        if (!alive.current || !d || typeof d.comboDefault !== "string") return;
+        setModes({
+          comboDefault: d.comboDefault,
+          cavemanDefault: typeof d.cavemanDefault === "string" ? d.cavemanDefault : "off",
+          rtkDefault: d.rtkDefault === true,
+          ponytailDefault: typeof d.ponytailDefault === "string" ? d.ponytailDefault : "off",
+        });
+      })
+      .catch(() => { /* no server: the banner stays hidden */ });
+  }, []);
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  return [modes, load] as const;
+}
+
 function Dashboard() {
   useDataThemeAttr();
   useReveal();
@@ -113,6 +148,8 @@ function Dashboard() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [request, setRequest] = useState<AgentRequestRow | null>(null);
+  // The session-start modes the navbar's banner names, reloaded when Settings closes.
+  const [modes, reloadModes] = useModeState();
 
   useShortcuts({ onRange: setRange, onSection: setSection });
   useEffect(() => {
@@ -126,7 +163,7 @@ function Dashboard() {
 
   const page = (): React.ReactNode => {
     if (section === "traces" && session) {
-      return <SessionTrace sessionFile={session} money={money} onClose={() => setSession(null)} />;
+      return <SessionTrace key={session} sessionFile={session} money={money} onClose={() => setSession(null)} />;
     }
     if (loading && !agent) return <PageLoading title={title} />;
     if (!agent || !agent.available) {
@@ -188,7 +225,7 @@ function Dashboard() {
         onSection={setSection}
         range={range}
         onRange={setRange}
-        status={status}
+        modes={modes}
         agentAvailable={agentAvailable}
         onSettings={() => setSettingsOpen(true)}
         onShare={() => setShareOpen(true)}
@@ -208,7 +245,10 @@ function Dashboard() {
       )}
       <SettingsDialog
         open={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
+        onClose={() => {
+          setSettingsOpen(false);
+          reloadModes();
+        }}
         cur={fx.cur}
         onCurrency={applyCurrency}
       />

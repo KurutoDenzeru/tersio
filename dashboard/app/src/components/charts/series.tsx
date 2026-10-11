@@ -211,17 +211,52 @@ export function Legend({
   );
 }
 
+/** One row of a bar list: the label, its figure, and a bar of its share. */
+function BarRow({ row, max, money }: { row: BarListItem; max: number; money: (v: number) => string }) {
+  return (
+    <>
+      <div className="flex min-w-0 items-center gap-2">
+        {row.mark}
+        {typeof row.label === "string" ? (
+          <span className="mono truncate text-xs" title={row.title ?? row.label}>
+            {row.label}
+          </span>
+        ) : (
+          <span className="min-w-0" title={row.title}>
+            {row.label}
+          </span>
+        )}
+      </div>
+      <span className="mono shrink-0 text-xs tabular-nums text-dim">{money(row.value)}</span>
+      <div className="col-span-2 h-1.5 w-full overflow-hidden rounded-full bg-track" aria-hidden="true">
+        <div className="h-full rounded-full" style={{ width: `${(row.value / max) * 100}%`, background: row.color ?? "var(--accent)" }} />
+      </div>
+    </>
+  );
+}
+
+interface BarListItem {
+  key: string;
+  label: string | React.ReactNode;
+  title?: string;
+  value: number;
+  color?: string;
+  mark?: React.ReactNode;
+}
+
 /** A single horizontal bar for a list row: volume against the largest value. */
 export function BarList({
   rows,
   money,
   className,
   limit = 0,
+  onSelect,
 }: {
-  rows: Array<{ key: string; label: string; value: number; color?: string; mark?: React.ReactNode }>;
+  rows: BarListItem[];
   money: (v: number) => string;
   className?: string;
   limit?: number;
+  onSelect?: (key: string) => void;
 }) {
   const shown = limit > 0 ? rows.slice(0, limit) : rows;
   const max = Math.max(1, ...shown.map((r) => r.value));
@@ -230,14 +265,17 @@ export function BarList({
     <ul className={cn("flex flex-col gap-2", className)}>
       {shown.map((r) => (
         <li key={r.key} className="grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-1">
-          <div className="flex min-w-0 items-center gap-2">
-            {r.mark}
-            <span className="mono truncate text-xs" title={r.label}>{r.label}</span>
-          </div>
-          <span className="mono shrink-0 text-xs tabular-nums text-dim">{money(r.value)}</span>
-          <div className="col-span-2 h-1.5 w-full overflow-hidden rounded-full bg-track" aria-hidden="true">
-            <div className="h-full rounded-full" style={{ width: `${(r.value / max) * 100}%`, background: r.color ?? "var(--accent)" }} />
-          </div>
+          {onSelect ? (
+            <button
+              type="button"
+              className="col-span-2 grid w-full grid-cols-[inherit] items-center gap-x-3 gap-y-1 text-left hover:bg-track"
+              onClick={() => onSelect(r.key)}
+            >
+              <BarRow row={r} max={max} money={money} />
+            </button>
+          ) : (
+            <BarRow row={r} max={max} money={money} />
+          )}
         </li>
       ))}
     </ul>

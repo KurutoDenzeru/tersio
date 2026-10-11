@@ -1,16 +1,15 @@
 // Requests: the range in six figures, then the request log with a search and a status filter.
 import { useMemo, useState } from "react";
-import { Card, PagedTable, Page, PageHeader, SearchInput, Segmented, Stat, StatGrid } from "@/components/charts";
+import { Card, ModelCell, PagedTable, Page, PageHeader, SearchInput, Segmented, Stat, StatGrid } from "@/components/charts";
 import type { Column } from "@/components/charts";
-import { ProviderMark, VendorMark } from "@/components/brand";
 import { EmptyState } from "@/components/common";
-import { displayModel, fmt, fmtMs, fmtShort, pct, projectLabel, relAge, runStatusOf, whenStamp } from "@/lib/format";
+import { fmt, fmtMs, fmtShort, pct, projectLabel, relAge, runStatusOf, whenStamp } from "@/lib/format";
 import type { AgentRequestRow, AgentStats } from "@/lib/data";
 
 type RowStatus = "completed" | "aborted" | "failed";
 type StatusFilter = "all" | RowStatus;
 
-const STATUS_LABEL: Record<RowStatus, string> = { completed: "Completed", aborted: "Aborted", failed: "Failed" };
+const STATUS_LABEL: Record<RowStatus, string> = { completed: "OK", aborted: "Aborted", failed: "Failed" };
 const STATUS_TONE: Record<RowStatus, string> = {
   completed: "var(--accent)",
   aborted: "var(--warn-border)",
@@ -163,18 +162,7 @@ function buildRequestColumns(money: (v: number) => string): Array<Column<AgentRe
     key: "model",
     header: "Model",
     sort: (row) => row.model,
-    render: (row) => (
-      <span className="flex min-w-0 items-center gap-2">
-        <VendorMark model={row.model} tiny />
-        <span className="min-w-0">
-          <span className="mono block truncate">{displayModel(row.model)}</span>
-          <span className="flex items-center gap-1.5 text-[11px] text-dim">
-            <ProviderMark provider={row.provider} tiny />
-            <span className="truncate">{row.provider || "–"}</span>
-          </span>
-        </span>
-      </span>
-    ),
+    render: (row) => <ModelCell model={row.model} provider={row.provider} />,
   },
   {
     key: "time",
@@ -242,12 +230,16 @@ function buildRequestColumns(money: (v: number) => string): Array<Column<AgentRe
     sort: (row) => rowStatus(row),
     render: (row) => {
       const status = rowStatus(row);
+      // A failed or an aborted row names its stop reason; every other stop reason is how a normal
+      // run ends, so the cell keeps one line.
+      const detail = status === "completed" ? "" : row.stopReason || "";
       return (
         <span className="flex min-w-0 items-center gap-2" title={row.errorMessage ?? undefined}>
           <span className="size-2 shrink-0 rounded-full" style={{ background: STATUS_TONE[status] }} />
           <span className="min-w-0">
             <span className="block">{STATUS_LABEL[status]}</span>
-            <span className="mono block truncate text-[11px] text-dim">{row.stopReason || "–"}</span>
+            {/* `toolUse` is how a normal run stops, so it says nothing a second time. */}
+            {detail && <span className="mono block truncate text-[11px] text-dim">{detail}</span>}
           </span>
         </span>
       );

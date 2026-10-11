@@ -5,6 +5,7 @@ import {
   Card,
   CellBar,
   Chart,
+  ModelCell,
   PagedTable,
   Legend,
   Page,
@@ -14,7 +15,6 @@ import {
   StatGrid,
 } from "@/components/charts";
 import type { Column, SeriesSpec } from "@/components/charts";
-import { VendorMark } from "@/components/brand";
 import type { AgentCostMix, AgentRow, AgentStats } from "@/lib/data";
 import { AGENT_RANGE_LABEL } from "@/lib/data";
 import { PALETTE, fmt, fmtShort, pct, tsFull, tsLabel } from "@/lib/format";
@@ -200,13 +200,7 @@ export function CostsPage({ agent, money }: { agent: AgentStats; money: (v: numb
         key: "model",
         header: "Model",
         sort: (row) => row.key,
-        render: (row) => (
-          <span className="flex min-w-0 items-center gap-2.5">
-            <VendorMark model={row.key} row />
-            <span className="mono truncate" title={`${row.key} (${row.provider})`}>{row.key}</span>
-            <span className="text-dim">{row.provider}</span>
-          </span>
-        ),
+        render: (row) => <ModelCell model={row.key} provider={row.provider} />,
       },
       {
         key: "requests",
@@ -269,19 +263,6 @@ export function CostsPage({ agent, money }: { agent: AgentStats; money: (v: numb
             <span className="text-dim">–</span>
           ),
       },
-      {
-        key: "unpriced",
-        header: "Unpriced",
-        title: "Requests with no public-equivalent price",
-        align: "right",
-        sort: (row) => row.unpricedRequests,
-        render: (row) =>
-          row.unpricedRequests > 0 ? (
-            <span className="tabular-nums text-[var(--warn-border)]">{fmt(row.unpricedRequests)}</span>
-          ) : (
-            <span className="text-dim">0</span>
-          ),
-      },
     ];
   }, [view, money]);
 
@@ -292,7 +273,7 @@ export function CostsPage({ agent, money }: { agent: AgentStats; money: (v: numb
         description={`What ${AGENT_RANGE_LABEL[agent.range]} of usage would cost at public API rates. Subscription usage without a public price is counted as unpriced, not free.`}
       />
 
-      <StatGrid cols={5}>
+      <StatGrid cols={4}>
         <Stat
           label="API-equivalent estimate"
           title="What this usage would cost at public API rates"
@@ -318,17 +299,11 @@ export function CostsPage({ agent, money }: { agent: AgentStats; money: (v: numb
           value={view.pricedRequests > 0 ? money(view.totalCost / view.pricedRequests) : "–"}
           hint={`${fmt(view.pricedRequests)} priced`}
         />
-        <Stat
-          label="Unpriced requests"
-          title="Subscription usage with no public-equivalent price; excluded from the estimate"
-          value={fmt(view.unpricedRequests)}
-          hint={view.unpricedRequests > 0 ? "excluded from the estimate" : "all usage priced"}
-        />
       </StatGrid>
 
-      {/* `items-start` keeps each card at its own height, so the chart card is the taller one. The
-          2fr / 1fr split matches the Providers page, where the burn chart carries the pair. */}
-      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+      {/* The 2fr / 1fr split matches the Providers page, where the burn chart carries the pair.
+          The row stretches both cards to one height, so the pair reads as one block. */}
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
       <Card
         title="Daily estimate" icon="calendar-days"
         description={
@@ -373,12 +348,6 @@ export function CostsPage({ agent, money }: { agent: AgentStats; money: (v: numb
       >
         <div className="flex flex-col gap-3">
           <CostBreakdown mix={agent.overall.costMix} money={money} />
-          {view.unpricedRequests > 0 && (
-            <p className="text-[11px] text-dim">
-              {fmt(view.unpricedRequests)} unpriced subscription request{view.unpricedRequests === 1 ? " is" : "s are"} not
-              included.
-            </p>
-          )}
           <p className="mono mt-auto border-t border-line pt-2 text-[11px] text-dim">
             Each part is priced from the same records as the estimate, so the four add up to it.
           </p>

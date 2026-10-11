@@ -1,4 +1,4 @@
-// The shell: a glass topbar (brand, live chip, range, theme) over a rail that jumps between pages,
+// The shell: a glass topbar (brand, mode banner, range, theme) over a rail that jumps between pages,
 // with the app's own Settings action in the rail's footer.
 import { useEffect, useState } from "react";
 import { cn } from "cn";
@@ -13,7 +13,8 @@ import { MarkGlyph } from "@/components/brand";
 import { useTheme } from "@/components/theme-provider";
 import { AGENT_RANGES, isFileExport } from "@/lib/data";
 import type { AgentRange } from "@/lib/data";
-import { NAV, NAV_ITEMS, navItem } from "./nav";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { NAV, NAV_ITEMS } from "./nav";
 import type { SectionId } from "./nav";
 
 export const DEFAULT_RANGE: AgentRange = "24h";
@@ -54,8 +55,62 @@ export function ThemeToggle() {
   );
 }
 
+/** The four session-start mode fields the banner reads. */
+export interface ModeState {
+  comboDefault: string;
+  cavemanDefault: string;
+  rtkDefault: boolean;
+  ponytailDefault: string;
+}
+
+/** One glyph and one short name per mode, in the order the three locks appear in the combo. */
+const MODE_GLYPHS = [
+  { key: "caveman", glyph: "🪨", label: "caveman", level: (m: ModeState) => (m.cavemanDefault ?? "off").toUpperCase() },
+  { key: "rtk", glyph: "⚡", label: "rtk", level: (m: ModeState) => (m.rtkDefault ? "ON" : "OFF") },
+  { key: "ponytail", glyph: "🦥", label: "ponytail", level: (m: ModeState) => (m.ponytailDefault ?? "off").toUpperCase() },
+] as const;
+
+/**
+ * The mode banner: the combo preset this machine starts sessions with, and the three modes under
+ * it, each with its own glyph. It replaces the page name in the navbar, because the page is already
+ * in the rail, while the modes are the one thing the dashboard cannot show anywhere else. A click
+ * opens Settings, where each mode is changed.
+ */
+export function ModeBanner({ modes, onOpen }: { modes: ModeState | null; onOpen: () => void }) {
+  const level = modes?.comboDefault ?? "off";
+  const on = level !== "off";
+  const label = on ? `combo ${level.toUpperCase()}` : "combo off";
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      title={`${label}: ${MODE_GLYPHS.map((m) => `${m.label}=${modes ? m.level(modes) : "OFF"}`).join(", ")}. Open Settings to change it.`}
+      className="mono flex h-8 min-w-0 max-w-[460px] cursor-pointer items-center gap-1.5 rounded-lg border border-line px-2.5 text-[11px] transition-[background,border-color] duration-200 hover:bg-accent-soft"
+    >
+      <span className="shrink-0 text-[13px]">🧩</span>
+      <span className={cn("min-w-0 truncate", on ? "font-semibold text-ink" : "text-dim")}>{label}:</span>
+      {/* A block, not a flex: only a block truncates, so the modes cut with an ellipsis in a
+          narrow topbar instead of clipping mid-word against the range picker. Below `lg` they drop
+          out entirely, because a 256 pixel rail leaves no room for even the first one. */}
+      <span className="mono hidden min-w-0 truncate lg:block">
+        {MODE_GLYPHS.map((m) => (
+          <span key={m.key} className="mr-1.5 inline-flex items-center gap-0.5 align-middle">
+            <span className="text-[12px]">{m.glyph}</span>
+            <span className="text-dim">{m.label}=</span>
+            <span className={on ? "text-ink" : "text-dim"}>{modes ? m.level(modes) : "OFF"}</span>
+          </span>
+        ))}
+      </span>
+    </button>
+  );
+}
+
 /** The window every page reads. An exported file carries one, so it is a label there. */
 export function RangePicker({ range, onPick }: { range: AgentRange; onPick: (next: AgentRange) => void }) {
+  // A phone has no width for six ranges beside the mode banner and the three buttons, so the two
+  // longest drop out. The `1`-`6` keys still pick every window.
+  const compact = useIsMobile();
+  const options = AGENT_RANGES.filter((value) => !compact || value === "1h" || value === "24h" || value === "7d" || value === "all");
   if (isFileExport()) {
     return (
       <Badge variant="outline" className="mono h-7 rounded-lg border-line px-2 text-[11px] text-dim">
@@ -68,17 +123,8 @@ export function RangePicker({ range, onPick }: { range: AgentRange; onPick: (nex
       label="Time range"
       value={range}
       onChange={onPick}
-      options={AGENT_RANGES.map((value) => ({ value, label: RANGE_TEXT[value], title: RANGE_TITLE[value] }))}
+      options={options.map((value) => ({ value, label: RANGE_TEXT[value], title: RANGE_TITLE[value] }))}
     />
-  );
-}
-
-export function LiveChip({ status }: { status: string | null }) {
-  return (
-    <Badge variant="outline" className="mono hidden h-7 max-w-[220px] gap-1.5 rounded-lg border-line px-2 text-[11px] text-dim md:inline-flex">
-      <span className="inline-block size-1.5 shrink-0 animate-ping-soft rounded-full bg-accent" aria-hidden="true" />
-      <span className="truncate">{status ?? "local only"}</span>
-    </Badge>
   );
 }
 
@@ -128,10 +174,11 @@ function SidebarAction({ icon, label, onClick }: { icon: string; label: string; 
     <button
       type="button"
       onClick={onClick}
-      className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] text-dim transition-[background,color] duration-200 hover:bg-accent-soft hover:text-ink"
+      title={label}
+      className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] text-dim transition-[background,color] duration-200 hover:bg-accent-soft hover:text-ink group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
     >
-      <Icon name={icon} className="size-4" />
-      <span>{label}</span>
+      <Icon name={icon} className="size-4 shrink-0" />
+      <span className="group-data-[collapsible=icon]:hidden">{label}</span>
     </button>
   );
 }
@@ -147,14 +194,25 @@ export function AppSidebar({
   agentAvailable: boolean;
   onSettings: () => void;
 }) {
+  // z-50 keeps the rail's own header above the inset's sticky one, so the trigger stays clickable
+  // in the icon width, where the two headers overlap by a few pixels.
   return (
-    <Sidebar collapsible="offcanvas" className="border-r border-line bg-panel text-ink">
-      <SidebarHeader className="border-b border-line p-2">
-        <div className="flex items-center gap-2.5 px-1.5 py-1">
-          <img src="brand.webp" alt="" width="24" height="24" className="size-6 rounded-[8px]" />
-          <span className="text-sm font-semibold tracking-tight">
+    <Sidebar collapsible="icon" className="z-50 border-r border-line bg-panel text-ink">
+      <SidebarHeader className="h-12 shrink-0 justify-center border-b border-line p-0 px-2">
+        <div className="flex h-8 w-full items-center gap-2.5 px-1.5">
+          {/* The mark hides with the rail: a 24 pixel mark beside the trigger overflows the 48
+              pixel strip and leaves the trigger hanging outside the rail. */}
+          <img
+            src="brand.webp"
+            alt=""
+            width="24"
+            height="24"
+            className="size-6 shrink-0 rounded-[8px] group-data-[collapsible=icon]:hidden"
+          />
+          <span className="min-w-0 truncate text-sm font-semibold tracking-tight group-data-[collapsible=icon]:hidden">
             Tersio <span className="font-normal text-dim">stats</span>
           </span>
+          <SidebarTrigger className="ml-auto shrink-0 text-dim hover:text-ink" aria-label="Toggle navigation" />
         </div>
       </SidebarHeader>
       <SidebarContent>
@@ -192,7 +250,9 @@ export function AppSidebar({
       </SidebarContent>
       <SidebarFooter className="gap-2 border-t border-line p-2">
         <SidebarAction icon="settings" label="Settings" onClick={onSettings} />
-        <div className="mono flex items-center gap-1 px-1 text-[10px] text-dim">
+        {/* The collapsed rail is an icon strip, so the credits, the marks, and the shortcut hint
+            hide there. Each of them would run past the 48 pixel rail and clip mid-word. */}
+        <div className="mono flex items-center gap-1 px-1 text-[10px] text-dim group-data-[collapsible=icon]:hidden">
           <span className="truncate">© 2026 Tersio</span>
           <span className="ml-auto flex items-center gap-0.5 text-ink">
             <a href="https://github.com/KurutoDenzeru/tersio" target="_blank" rel="noopener" aria-label="GitHub" className="grid size-6 place-items-center rounded-md hover:text-accent [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]">
@@ -208,7 +268,7 @@ export function AppSidebar({
             </a>
           </span>
         </div>
-        <p className="mono px-1 text-[10px] leading-relaxed text-dim">
+        <p className="mono hidden px-1 text-[10px] leading-relaxed text-dim group-data-[collapsible=offcanvas]:block">
           <kbd>1</kbd>-<kbd>6</kbd> window · <kbd>G</kbd> then a letter to jump
         </p>
       </SidebarFooter>
@@ -218,17 +278,17 @@ export function AppSidebar({
 }
 
 export function Topbar({
-  section,
   range,
   onRange,
-  status,
+  modes,
   onShare,
+  onOpenSettings,
 }: {
-  section: SectionId;
   range: AgentRange;
   onRange: (range: AgentRange) => void;
-  status: string | null;
+  modes: ModeState | null;
   onShare: () => void;
+  onOpenSettings: () => void;
 }) {
   const [scrolled, setScrolled] = useState(false);
   useEffect(() => {
@@ -241,14 +301,25 @@ export function Topbar({
   return (
     <header
       className={cn(
-        "sticky top-0 z-40 flex items-center gap-2 border-b px-3 py-2 backdrop-blur-md transition-[background,border-color] duration-200",
-        scrolled ? "border-line bg-panel/85" : "border-transparent bg-transparent",
+        // The rule below always shows, so it lines up with the rail header's own rule at rest.
+        // Below `sm` the row wraps: a phone has no width for the mode banner, six ranges, and the
+        // three buttons on one line, so the buttons take a second row instead of squeezing the
+        // modes into a clip. At `sm` and up it stays one 48 pixel row.
+        "sticky top-0 z-40 flex min-h-12 flex-wrap items-center gap-x-2 gap-y-1.5 border-b border-line px-3 py-1.5 backdrop-blur-md transition-[background] duration-200 sm:h-12 sm:flex-nowrap sm:gap-2 sm:py-0",
+        scrolled ? "bg-panel/85" : "bg-transparent",
       )}
     >
-      <SidebarTrigger className="shrink-0 text-ink lg:hidden" aria-label="Toggle navigation" />
-      <span className="mono hidden text-[13px] text-dim sm:inline">{navItem(section).label}</span>
-      <div className="ml-auto flex min-w-0 items-center gap-2">
-        <LiveChip status={status} />
+      {/* On a phone the rail is a sheet, and its own header lives inside the sheet, so the topbar
+          carries the trigger that opens it. From `sm` up the rail header keeps its own. */}
+      <SidebarTrigger
+        aria-label="Toggle navigation"
+        className="grid size-8 shrink-0 place-items-center rounded-lg border border-line text-ink transition-[background] duration-200 hover:bg-accent-soft sm:hidden"
+      />
+      {/* The rail's own header carries the expand/collapse control; the banner names the modes. */}
+      <ModeBanner modes={modes} onOpen={onOpenSettings} />
+      {/* The right group never shrinks: it holds the three buttons a narrow viewport still needs,
+          and the banner truncates instead. */}
+      <div className="ml-auto flex shrink-0 items-center gap-2">
         <RangePicker range={range} onPick={onRange} />
         <button
           type="button"
@@ -271,7 +342,7 @@ export function Shell({
   onSection,
   range,
   onRange,
-  status,
+  modes,
   agentAvailable,
   onSettings,
   onShare,
@@ -281,7 +352,7 @@ export function Shell({
   onSection: (section: SectionId) => void;
   range: AgentRange;
   onRange: (range: AgentRange) => void;
-  status: string | null;
+  modes: ModeState | null;
   agentAvailable: boolean;
   onSettings: () => void;
   onShare: () => void;
@@ -300,7 +371,7 @@ export function Shell({
           className="pointer-events-none fixed inset-0 [background-image:linear-gradient(var(--grid)_1px,transparent_1px),linear-gradient(90deg,var(--grid)_1px,transparent_1px)] [background-size:44px_44px] [mask-image:radial-gradient(ellipse_90%_70%_at_50%_0%,black_30%,transparent_75%)]"
           aria-hidden="true"
         />
-        <Topbar section={section} range={range} onRange={onRange} status={status} onShare={onShare} />
+        <Topbar range={range} onRange={onRange} modes={modes} onShare={onShare} onOpenSettings={onSettings} />
         <main className="relative w-full max-w-full overflow-x-clip">{children}</main>
       </SidebarInset>
     </SidebarProvider>

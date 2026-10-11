@@ -6,7 +6,63 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectVa
 import { ChartContainer } from "@/components/ui/chart";
 import { Bar, BarChart, XAxis, YAxis } from "recharts";
 import { TooltipSurface } from "@/components/ui/tooltip-surface";
+import { Badge } from "@/components/ui/badge";
+import { ProviderMark, VendorMark } from "@/components/brand";
 import { Icon } from "./icon";
+import { displayModel, errorRateTone, pct } from "@/lib/format";
+
+/**
+ * One chip for an error rate. The severity sits in the chip and the figure stays in ink, so a
+ * tinted number never drops under AA on either panel. A quiet rate keeps a neutral chip, since a
+ * green 0.0% reads as a problem solved rather than as nothing to see.
+ */
+const ERROR_CHIP = {
+  none: "border-line text-dim",
+  ok: "border-transparent bg-accent-soft",
+  warn: "border-[var(--warn-border)] bg-[var(--warn-soft)]",
+  bad: "border-[var(--danger-border)] bg-[var(--danger-soft)]",
+} as const;
+
+export function ErrorRateBadge({ rate, title }: { rate: number; title?: string }) {
+  const chip = rate > 0 ? ERROR_CHIP[errorRateTone(rate)] : ERROR_CHIP.none;
+  return (
+    <Badge variant="outline" className={cn("mono px-1.5 text-[10px] tabular-nums", chip)} title={title}>
+      {pct(rate)}
+    </Badge>
+  );
+}
+/**
+ * One table cell for a provider. The row already names the provider, so the cell carries its mark
+ * and its name alone: a model beneath it would invent a second row's subject.
+ */
+export function ProviderCell({ provider }: { provider: string }) {
+  return (
+    <span className="flex min-w-0 items-center gap-2">
+      <ProviderMark provider={provider} tiny />
+      <span className="mono min-w-0 truncate" title={provider}>{provider || "unknown provider"}</span>
+    </span>
+  );
+}
+/**
+ * One table cell for a model, with the provider beneath it. The request log is the reference, so
+ * every table that names a model reads the same: the author's mark beside the model, and the
+ * routing service's mark and name under it.
+ */
+export function ModelCell({ model, provider }: { model: string; provider: string }) {
+  const name = displayModel(model);
+  return (
+    <span className="flex min-w-0 items-center gap-2">
+      <VendorMark model={model} tiny />
+      <span className="min-w-0">
+        <span className="mono block truncate" title={`${name}${provider ? ` (${provider})` : ""}`}>{name}</span>
+        <span className="flex items-center gap-1.5 text-[11px] text-dim">
+          <ProviderMark provider={provider} tiny />
+          <span className="truncate">{provider || "unknown provider"}</span>
+        </span>
+      </span>
+    </span>
+  );
+}
 
 export function EmptyState({ icon, title, desc }: { icon: string; title: string; desc: string }) {
   return (

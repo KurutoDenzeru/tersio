@@ -1,13 +1,14 @@
 // Providers: burn, reliability, and subscription headroom per provider, plus what one usage window buys.
 import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
-import { ProviderMark } from "@/components/brand";
 import { AGENT_RANGE_LABEL } from "@/lib/data";
 import type { AgentProviderHour, AgentRow, AgentStats, AgentWindowSeries, AgentWindowInsight } from "@/lib/data";
 import {
   Card,
   CellBar,
   Chart,
+  ErrorRateBadge,
+  ProviderCell,
   PagedTable,
   Legend,
   MeterCell,
@@ -179,7 +180,7 @@ export function ProvidersPage({ agent, money }: { agent: AgentStats; money: (v: 
         <ProviderTotalsTable providers={agent.byProvider} money={money} />
       </Card>
 
-      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <Card
           title="Burn by provider" icon="flame"
           description={
@@ -285,12 +286,7 @@ function ProviderTotalsTable({
         key: "provider",
         header: "Provider",
         sort: (p) => p.provider,
-        render: (p) => (
-          <span className="mono flex items-center gap-2.5">
-            <ProviderMark provider={p.provider} row />
-            <span className="truncate">{p.provider}</span>
-          </span>
-        ),
+        render: (p) => <ProviderCell provider={p.provider} />,
       },
       {
         key: "requests",
@@ -313,16 +309,7 @@ function ProviderTotalsTable({
         render: (p) => (
           <span className="flex items-center justify-end gap-2">
             <span className="mono tabular-nums text-dim">{fmt(p.failed)}</span>
-            <Badge
-              variant={p.failed > 0 && p.errorRate >= 0.1 ? "destructive" : "outline"}
-              className={
-                p.failed > 0 && p.errorRate >= 0.1
-                  ? "mono"
-                  : `mono border-line ${p.failed > 0 ? "text-[var(--warn-border)]" : "text-dim"}`
-              }
-            >
-              {pct(p.errorRate)}
-            </Badge>
+            <ErrorRateBadge rate={p.errorRate} title={`${fmt(p.failed)} failed of ${fmt(p.requests)}`} />
           </span>
         ),
       },

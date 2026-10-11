@@ -22,11 +22,13 @@ import {
 } from "@/lib/data";
 import type { DoctorReport, HealthReport } from "@/lib/data";
 import { useToast } from "./toaster";
+import { cn } from "cn";
 import { HoverTip } from "./common";
 import { Icon } from "./icon";
 import { OmpLogo, OpencodeLogo, PiLogo } from "./agent-logos";
+import { Card } from "./charts/stats";
 
-type Pane = "general" | "connection" | "diagnosis";
+type Pane = "general" | "connection" | "data" | "diagnosis";
 
 interface AgentRowProps {
   name: string;
@@ -148,6 +150,313 @@ function HealthPane() {
         </p>
       )}
     </div>
+  );
+}
+
+/** One file a snapshot holds. */
+interface DataFile {
+  label: string;
+  source: string;
+  bytes: number;
+}
+
+/** One snapshot: a directory this build wrote, or the lone ledger file older builds wrote. */
+interface DataBackupRow {
+  name: string;
+  mtime: number;
+  bytes: number;
+  files: DataFile[];
+}
+
+const SCHEDULE_OPTIONS: ReadonlyArray<{ id: string; label: string; hint: string }> = [
+  { id: "monthly", label: "Monthly", hint: "one a month" },
+  { id: "weekly", label: "Weekly", hint: "one a week" },
+  { id: "daily", label: "Daily", hint: "one a day" },
+  { id: "manual", label: "Manual", hint: "only on demand" },
+];
+
+/** The whole store in one line: `4.1M` for a copy the pane can name. */
+function dataSize(bytes: number): string {
+  if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(1)}G`;
+  if (bytes >= 1e6) return `${(bytes / 1e6).toFixed(1)}M`;
+  if (bytes >= 1e3) return `${(bytes / 1e3).toFixed(0)}K`;
+  return `${bytes}B`;
+}
+
+/** The stamp in a snapshot's name reads as a date; the manifest holds the mtime. */
+function dataStamp(mtime: number): string {
+  return new Date(mtime).toLocaleString();
+}
+
+/**
+ * Data: the snapshots that can put this machine's data back, and the schedule that takes them.
+ *
+ * The moves read as one flow: the schedule decides when a snapshot happens by itself, the schedule
+ * card carries the button that takes one now, and one picked row of the list opens restore behind a
+ * confirm that names the files. The list never restores on its own, so a stray click cannot copy a
+ * snapshot over live data.
+ */
+function DataPane() {
+  const toast = useToast();
+  const [backups, setBackups] = useState<DataBackupRow[] | null>(null);
+  const [schedule, setSchedule] = useState("monthly");
+  const [keep, setKeep] = useState(3);
+  const [dir, setDir] = useState("");
+  /** The snapshot the footer works on. A name the list no longer holds reads as no pick. */
+  const [picked, setPicked] = useState<string | null>(null);
+  const [asking, setAsking] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(() => {
+    fetch("/api/data")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { backups?: DataBackupRow[]; schedule?: string; keep?: number; dir?: string } | null) => {
+        setBackups(d?.backups ?? []);
+        if (d?.schedule) setSchedule(d.schedule);
+        if (typeof d?.keep === "number") setKeep(d.keep);
+        if (d?.dir) setDir(d.dir);
+      })
+      .catch(() => {
+        setBackups([]);
+      });
+    fetch("/settings")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { backupSchedule?: string } | null) => {
+        if (d?.backupSchedule) setSchedule(d.backupSchedule);
+      })
+      .catch(() => { /* keep the default shown */ });
+  }, []);
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const saveSchedule = (next: string): void => {
+    setSchedule(next);
+    void fetch("/settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ backupSchedule: next }),
+    })
+      .then((r) => r.json())
+      .then((d: { ok?: boolean; error?: string }) => {
+        if (!d?.ok) toast("Could not save", d?.error ?? "Unknown schedule", "circle-alert");
+      })
+      .catch(() => toast("Could not save", "The dashboard server did not answer.", "circle-alert"));
+  };
+
+  const create = (): void => {
+    if (isFileExport()) {
+      toast("Snapshot export", "Live snapshots need tersio dashboard.", "scan-line");
+      return;
+    }
+    setBusy(true);
+    void fetch("/api/data", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "create" }),
+    })
+      .then((r) => r.json())
+      .then((d: { ok?: boolean; name?: string; files?: number; error?: string }) => {
+        if (d?.ok) {
+          toast("Snapshot taken", `${d.files ?? 0} file${d.files === 1 ? "" : "s"} in ${d.name}.`, "check");
+          if (d.name) setPicked(d.name);
+          load();
+        } else toast("Backup failed", d?.error ?? "The server did not answer.", "circle-alert");
+      })
+      .catch(() => toast("Backup failed", "The dashboard server did not answer.", "circle-alert"))
+      .finally(() => setBusy(false));
+  };
+
+  const restore = (name: string): void => {
+    setBusy(true);
+    setAsking(null);
+    void fetch("/api/data", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "restore", name }),
+    })
+      .then((r) => r.json())
+      .then((d: { ok?: boolean; error?: string }) => {
+        if (d?.ok) {
+          toast("Snapshot restored", "Reload the dashboard to see the restored data.", "check");
+          load();
+        } else toast("Restore failed", d?.error ?? "Unknown snapshot", "circle-alert");
+      })
+      .catch(() => toast("Restore failed", "The dashboard server did not answer.", "circle-alert"))
+      .finally(() => setBusy(false));
+  };
+
+  const remove = (name: string): void => {
+    setAsking(null);
+    void fetch("/api/data", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "delete", name }),
+    })
+      .then((r) => r.json())
+      .then((d: { ok?: boolean; error?: string }) => {
+        if (d?.ok) {
+          toast("Snapshot deleted", "Removed from disk. The live data is unchanged.", "check");
+          load();
+        } else toast("Delete failed", d?.error ?? "Unknown snapshot", "circle-alert");
+      })
+      .catch(() => toast("Delete failed", "The dashboard server did not answer.", "circle-alert"));
+  };
+
+  const target = (backups ?? []).find((b) => b.name === asking) ?? null;
+  /** The footer works on the picked row, unless a restore confirm owns the screen. */
+  const chosen = (backups ?? []).find((b) => b.name === picked) ?? null;
+  const scheduleLabel = SCHEDULE_OPTIONS.find((o) => o.id === schedule)?.label ?? "Monthly";
+  const scheduleHint = SCHEDULE_OPTIONS.find((o) => o.id === schedule)?.hint ?? "";
+
+  return (
+    <section aria-label="Data" className="grid gap-4">
+      <Card
+        title="Backup schedule"
+        icon="clock"
+        description={`Every file Tersio keeps. The newest ${keep} are kept.`}
+        actions={
+          <Select value={schedule} onValueChange={(v) => saveSchedule(v ?? "monthly")}>
+            <SelectTrigger size="sm" className="w-[132px]" aria-label="Snapshot schedule">
+              <SelectValue placeholder={scheduleLabel}>{scheduleLabel}</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                {SCHEDULE_OPTIONS.map((o) => (
+                  <SelectItem key={o.id} value={o.id}>
+                    {o.label}{o.id === "monthly" ? " (Recommended)" : ""}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        }
+      >
+        {/* The label takes the slack, so the action sits on the header's own column. */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <div className="min-w-0 flex-1">
+            <p className="m-0 text-[13px] font-semibold">
+              {scheduleLabel} <span className="text-xs font-normal text-dim">{scheduleHint}</span>
+            </p>
+            {dir && (
+              <HoverTip content={dir}>
+                <span className="mono mt-0.5 block truncate text-[11px] text-dim">{dir}</span>
+              </HoverTip>
+            )}
+          </div>
+          <Button
+            size="sm"
+            className="mono h-8 gap-1.5 rounded-xl"
+            disabled={busy}
+            onClick={create}
+            aria-label="Take a snapshot now"
+          >
+            {busy ? <Spinner className="size-3.5" /> : <Icon name="database-backup" className="size-3.5" />}
+            <span>Back up now</span>
+          </Button>
+        </div>
+      </Card>
+
+      <Card
+        title="Snapshots"
+        icon="layers"
+        description="Newest first. A restore copies its files over the live data."
+        footer={
+          asking ? null : (
+            <>
+              <span className="mono min-w-0 flex-1 truncate text-[11px] text-dim">
+                {chosen ? chosen.name : "Pick a snapshot to restore or delete it."}
+              </span>
+              <Button
+                size="sm"
+                className="mono h-8 gap-1.5 rounded-xl"
+                disabled={!chosen || busy}
+                onClick={() => chosen && setAsking(chosen.name)}
+              >
+                <Icon name="rotate-ccw" className="size-3.5" />
+                Restore
+              </Button>
+              <Button
+                size="sm"
+                variant="destructive"
+                className="mono h-8 gap-1.5 rounded-xl"
+                disabled={!chosen}
+                onClick={() => chosen && remove(chosen.name)}
+              >
+                <Icon name="trash" className="size-3.5" />
+                Delete
+              </Button>
+            </>
+          )
+        }
+      >
+        {backups === null ? (
+          <Skeleton className="h-24 w-full" />
+        ) : backups.length === 0 ? (
+          <p className="m-0 py-2.5 text-xs text-dim">
+            No snapshots yet. Take one above, or let the schedule take it.
+          </p>
+        ) : (
+          <div className="divide-y divide-line">
+            {backups.map((b) => {
+              const on = b.name === picked;
+              return (
+                <button
+                  key={b.name}
+                  type="button"
+                  aria-pressed={on}
+                  className={cn(
+                    "group flex w-full items-center gap-3 py-2 text-left transition-colors hover:bg-track/40 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent",
+                    on && "bg-accent-soft",
+                  )}
+                  onClick={() => setPicked(on ? null : b.name)}
+                >
+                  <div className="min-w-0 flex-1">
+                    <HoverTip content={b.files.map((f) => f.label).join(", ")}>
+                      <p className="mono m-0 truncate text-xs text-ink">{b.name}</p>
+                    </HoverTip>
+                    <p className="mono mt-0.5 mb-0 text-[11px] text-dim">
+                      {dataStamp(b.mtime)} · {dataSize(b.bytes)} · {b.files.length} file
+                      {b.files.length === 1 ? "" : "s"}
+                    </p>
+                  </div>
+                  {on && <Icon name="check" className="mr-1.5 size-3.5 shrink-0 text-accent" />}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </Card>
+
+      {asking && target && (
+        <div className="rounded-[10px] border border-warn-border bg-warn-soft px-3.5 py-2.5" role="alertdialog" aria-label="Confirm restore">
+          <p className="m-0 text-[13px] font-semibold">Restore {target.name}?</p>
+          <p className="mt-1 mb-0 text-xs text-dim">
+            Every file in it is copied over the live data: {target.files.map((f) => f.label).join(", ")}. A file the
+            snapshot lacks is left alone. The dashboard needs a reload afterwards.
+          </p>
+          <div className="mt-2.5 flex items-center gap-2">
+            <Button
+              size="sm"
+              className="mono h-8 gap-1.5 rounded-xl"
+              disabled={busy}
+              onClick={() => restore(target.name)}
+              aria-label={`Restore ${target.files.length} file${target.files.length === 1 ? "" : "s"}`}
+            >
+              <Icon name="database" className="size-3.5" />
+              Restore {target.files.length} file{target.files.length === 1 ? "" : "s"}
+            </Button>
+            <button
+              type="button"
+              className="mono rounded-xl px-2.5 py-1.5 text-xs text-dim hover:bg-track"
+              onClick={() => setAsking(null)}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -304,6 +613,7 @@ function DoctorPane() {
 const PANES: Array<{ id: Pane; label: string; icon: string }> = [
   { id: "general", label: "General", icon: "settings" },
   { id: "connection", label: "Connection", icon: "plug" },
+  { id: "data", label: "Data", icon: "database" },
   { id: "diagnosis", label: "Diagnosis", icon: "stethoscope" },
 ];
 
@@ -311,6 +621,7 @@ const PANES: Array<{ id: Pane; label: string; icon: string }> = [
 const TITLES: Record<Pane, string> = {
   general: "Settings",
   connection: "Connection",
+  data: "Data",
   diagnosis: "Doctor",
 };
 
@@ -319,6 +630,7 @@ const SETTINGS_SEARCH: Array<{ pane: Pane; label: string; terms: string }> = [
   { pane: "general", label: "Theme", terms: "general appearance theme light dark system color scheme mode" },
   { pane: "general", label: "Accent color", terms: "general appearance accent color tint buttons links highlights palette emerald violet slate cyan rose amber orange charts background" },
   { pane: "general", label: "Currency", terms: "currency display cost usd euro" },
+  { pane: "data", label: "Snapshots", terms: "data snapshot backup restore copy mirror ledger settings price cache schedule keep size" },
   { pane: "connection", label: "Coding agents", terms: "connection provider coding agents agent oh my pi omp status path version refresh ready available" },
   { pane: "diagnosis", label: "Auto-check schedule", terms: "diagnosis system health auto-check schedule manual daily weekly monthly" },
   { pane: "diagnosis", label: "Scan", terms: "diagnosis scan check" },
@@ -712,6 +1024,11 @@ export function SettingsDialog({
               {pane === "connection" && (
                 <section aria-label="Connection">
                   <HealthPane />
+                </section>
+              )}
+              {pane === "data" && (
+                <section aria-label="Data">
+                  <DataPane />
                 </section>
               )}
               {pane === "diagnosis" && (

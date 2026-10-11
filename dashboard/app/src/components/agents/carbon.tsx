@@ -2,10 +2,10 @@
 // port the same dashboard used to run in its usage dialog. Only output tokens carry
 // a footprint; a cached range reads small, and no figure here is metered.
 import { useMemo } from "react";
-import { BarList, Card, CellBar, Page, PageHeader, PagedTable, Stat, StatGrid } from "@/components/charts";
+import { BarList, Card, CellBar, ModelCell, Page, PageHeader, PagedTable, Stat, StatGrid } from "@/components/charts";
 import type { Column } from "@/components/charts";
-import { VendorMark } from "@/components/brand";
 import { Icon } from "@/components/icon";
+import { VendorMark } from "@/components/brand";
 import { carbonReportForAgents, fmtCo2, fmtEnergy, type CarbonRow } from "@/lib/carbon";
 import { AGENT_RANGE_LABEL, type AgentStats } from "@/lib/data";
 import { co2Zone, fmt, fmtShort, pct, providerColor } from "@/lib/format";
@@ -45,6 +45,8 @@ export function CarbonPage({ agent }: { agent: AgentStats }) {
         label: row.label,
         value: row.gco2,
         color: providerColor(row.provider),
+        // The bar row names the model itself, and the provider beneath it, so the mark stays the
+        // vendor tile alone.
         mark: <VendorMark model={row.model} row />,
       })),
     [shown],
@@ -56,15 +58,7 @@ export function CarbonPage({ agent }: { agent: AgentStats }) {
         key: "model",
         header: "Model",
         sort: (row) => row.label,
-        render: (row) => (
-          <span className="flex min-w-0 items-center gap-2.5">
-            <VendorMark model={row.model} row />
-            <span className="grid min-w-0 leading-tight">
-              <span className="mono truncate font-bold" title={`${row.model} (${row.provider})`}>{row.label}</span>
-              <span className="mono truncate text-[10px] text-dim">{row.provider || "unknown provider"}</span>
-            </span>
-          </span>
-        ),
+        render: (row) => <ModelCell model={row.model} provider={row.provider} />,
       },
       {
         key: "output",
@@ -157,7 +151,7 @@ export function CarbonPage({ agent }: { agent: AgentStats }) {
         />
       </StatGrid>
 
-      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
       <Card
         title="Where the carbon sits" icon="leaf"
         description={`Per model, top ${LIST_LIMIT} of ${fmt(r.all.length)}. Intensity folds the model's parameters, the provider grid mix, and serving concurrency into one figure.`}

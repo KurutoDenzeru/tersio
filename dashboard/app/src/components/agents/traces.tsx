@@ -1,10 +1,33 @@
-// Traces: one row per session transcript. The parent renders the timeline, this page lists and opens it.
+// Traces: one row per root session, its subagent transcripts folded in. Opening one opens its flamegraph.
 import { useMemo, useState } from "react";
-import { Card, CellBar, PagedTable, Page, PageHeader, QueryView, SearchInput } from "@/components/charts";
+import { Card, CellBar, PagedTable, Page, PageHeader, SearchInput } from "@/components/charts";
 import type { Column } from "@/components/charts";
 import { EmptyState } from "@/components/common";
+import { VendorMark } from "@/components/brand";
 import type { AgentStats, AgentTraceRow } from "@/lib/data";
-import { fmt, fmtMs, fmtShort, projectLabel, relAge, stampLocal } from "@/lib/format";
+import { displayModel, fmt, fmtElapsed, fmtShort, projectLabel, relAge, stampLocal } from "@/lib/format";
+
+/** The last two segments of a path, the way the reference names a session's folder. */
+function shortFolder(path: string): string {
+  const parts = path.split("/").filter(Boolean);
+  return parts.slice(-2).join("/");
+}
+
+/** The first model a session ran, with a count of the rest, and every name in a hover tip. */
+function ModelList({ models }: { models: string[] }) {
+  if (models.length === 0) return <span className="text-dim">-</span>;
+  return (
+    <span className="flex min-w-0 items-center gap-1.5" title={models.join("\n")}>
+      <VendorMark model={models[0]} tiny />
+      <span className="mono min-w-0 truncate text-xs">{displayModel(models[0])}</span>
+      {models.length > 1 && (
+        <span className="mono shrink-0 rounded-full border border-line px-1.5 text-[10px] text-dim">
+          +{models.length - 1}
+        </span>
+      )}
+    </span>
+  );
+}
 
 export function TracesPage({
   agent,
@@ -21,7 +44,11 @@ export function TracesPage({
     const needle = filter.trim().toLowerCase();
     if (!needle) return agent.traces;
     return agent.traces.filter(
-      (row) => projectLabel(row.project).toLowerCase().includes(needle) || row.sessionFile.toLowerCase().includes(needle),
+      (row) =>
+        (row.title ?? "").toLowerCase().includes(needle) ||
+        (row.cwd || row.project).toLowerCase().includes(needle) ||
+        row.sessionFile.toLowerCase().includes(needle) ||
+        row.models.some((model) => model.toLowerCase().includes(needle)),
     );
   }, [agent.traces, filter]);
 
@@ -34,17 +61,21 @@ export function TracesPage({
         header: "Session",
         render: (row) => (
           <span className="block min-w-0">
-            <span className="block truncate">{row.sessionFile.split("/").pop() ?? row.sessionFile}</span>
-            <span className="mono block truncate text-[11px] text-dim">{projectLabel(row.project)}</span>
+            <span className="block truncate" title={row.sessionFile}>
+              {row.title ?? row.sessionFile.split("/").pop() ?? row.sessionFile}
+            </span>
+            <span className="mono block truncate text-[11px] text-dim" title={row.cwd || projectLabel(row.project)}>
+              {shortFolder(row.cwd || row.project)}
+            </span>
           </span>
         ),
-        sort: (row) => row.sessionFile.toLowerCase(),
+        sort: (row) => (row.title ?? row.sessionFile).toLowerCase(),
       },
       {
         key: "models",
         header: "Models",
-        render: (row) => <span className="mono text-xs tabular-nums">{fmt(row.models)}</span>,
-        sort: (row) => row.models,
+        render: (row) => <ModelList models={row.models} />,
+        sort: (row) => row.models.length,
       },
       {
         key: "started",
@@ -61,7 +92,7 @@ export function TracesPage({
         key: "duration",
         header: "Duration",
         align: "right",
-        render: (row) => <span className="mono text-xs tabular-nums">{fmtMs(row.lastTs - row.firstTs)}</span>,
+        render: (row) => <span className="mono text-xs tabular-nums">{fmtElapsed(row.lastTs - row.firstTs)}</span>,
         sort: (row) => row.lastTs - row.firstTs,
       },
       {
@@ -79,6 +110,18 @@ export function TracesPage({
         sort: (row) => row.toolCalls,
       },
       {
+        key: "agents",
+        header: "Agents",
+        title: "Subagent transcripts folded into this session",
+        align: "right",
+        render: (row) => (
+          <span className="mono text-xs tabular-nums">
+            {row.subagents > 0 ? fmt(row.subagents) : <span className="text-dim">0</span>}
+          </span>
+        ),
+        sort: (row) => row.subagents,
+      },
+      {
         key: "tokens",
         header: "Tokens",
         align: "right",
@@ -91,7 +134,7 @@ export function TracesPage({
         align: "right",
         width: 150,
         render: (row) => (
-          <span className="flex flex-col items-end gap-1">
+          <span className="flex flex-col items-end gap-1" title={row.unpriced > 0 ? `${fmt(row.unpriced)} unpriced requests` : undefined}>
             <span className="mono text-xs tabular-nums">
               {row.costUsd === 0 && row.unpriced > 0 ? "N/A" : money(row.costUsd)}
             </span>
@@ -126,22 +169,22 @@ export function TracesPage({
         }
         flush
       >
-        <QueryView
-          empty={total === 0}
-          emptyTitle="No sessions found"
-          emptyDesc="Run a sync to index recent activity."
-        >
-          <PagedTable
-            columns={columns}
-            rows={filtered}
-            rowKey={(row) => row.sessionFile}
-            onRowClick={(row) => onOpenSession(row.sessionFile)}
-            initialSort={{ key: "started", dir: "desc" }}
-            perPage={25}
-            ariaLabel="Sessions"
-            empty={<EmptyState icon="circle-slash" title="No matching sessions" desc="Try a different filter." />}
-          />
-        </QueryView>
+        <PagedTable
+          columns={columns}
+          rows={filtered}
+          rowKey={(row) => row.sessionFile}
+          onRowClick={(row) => onOpenSession(row.sessionFile)}
+          initialSort={{ key: "started", dir: "desc" }}
+          perPage={25}
+          ariaLabel="Sessions"
+          empty={
+            <EmptyState
+              icon="folder-search"
+              title={filter.trim() ? "No matching sessions" : "No sessions in this range"}
+              desc={filter.trim() ? "Try a different filter." : "Start a session in your terminal."}
+            />
+          }
+        />
       </Card>
     </Page>
   );

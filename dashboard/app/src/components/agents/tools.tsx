@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import {
   Card,
   CellBar,
+  ErrorRateBadge,
   PagedTable,
   Legend,
   Page,
@@ -228,7 +229,7 @@ export function ToolsPage({ agent, money }: { agent: AgentStats; money: (v: numb
         render: (row) => (
           <span className="flex items-center justify-end gap-2">
             <span className="tabular-nums text-dim">{fmt(row.errors)}</span>
-            <span className="tabular-nums">{row.errors > 0 ? pct(row.errors / row.calls) : "0%"}</span>
+            <ErrorRateBadge rate={row.calls > 0 ? row.errors / row.calls : 0} title={`${fmt(row.errors)} failed of ${fmt(row.calls)} calls`} />
           </span>
         ),
       },
@@ -341,7 +342,7 @@ export function ToolsPage({ agent, money }: { agent: AgentStats; money: (v: numb
         render: (row) => (
           <span className="flex items-center justify-end gap-2">
             <span className="tabular-nums text-dim">{fmt(row.errors)}</span>
-            <span className="tabular-nums">{row.errors > 0 ? pct(row.errors / row.calls) : "0%"}</span>
+            <ErrorRateBadge rate={row.calls > 0 ? row.errors / row.calls : 0} title={`${fmt(row.errors)} failed of ${fmt(row.calls)} calls`} />
           </span>
         ),
       },

@@ -185,15 +185,25 @@ export interface AgentErrorModelRow {
   count: number;
 }
 
+/** One session row on the Traces page: a root session with its child transcripts folded in. */
 export interface AgentTraceRow {
+  /** Absolute root session file path, which is also the trace key. */
   sessionFile: string;
+  /** Mangled session folder from the stats database. */
   project: string;
+  /** Working directory from the root session's own journal line, when it still reads. */
+  cwd: string;
+  /** The session's own title, when it still reads. */
+  title: string | null;
   requests: number;
   tokens: number;
   costUsd: number;
   unpriced: number;
-  models: number;
+  /** Every model the session and its children ran on, sorted. */
+  models: string[];
   toolCalls: number;
+  /** Child transcripts folded into this row. */
+  subagents: number;
   firstTs: number;
   lastTs: number;
 }
@@ -294,18 +304,86 @@ export interface AgentWindowInsight {
   exhaustedEvents: number;
 }
 
-export interface AgentTranscriptEntry {
-  ts: number;
-  kind: "user" | "assistant" | "tool" | "system";
+/** Kind of one trace span: a user turn, a model call, a tool call, or session metadata. */
+export type AgentTraceSpanKind = "turn" | "model" | "tool" | "background";
+
+/** One span on the flamegraph: an interval with the identity and cost of the work it holds. */
+export interface AgentTraceSpan {
+  /** Entry id from the journal, or `${entryId}#${index}` for one of a message's tool calls. */
+  id: string;
+  kind: AgentTraceSpanKind;
+  /** Short name: the tool, the model, or `Prompt`. */
   label: string;
+  /** First line of the text the span carries. */
   detail: string;
+  start: number;
+  end: number;
   model: string;
   provider: string;
   tool: string;
   tokens: number;
   costUsd: number;
-  durationMs: number | null;
   isError: boolean;
+  /** How the request stopped, from the assistant message's stop reason. */
+  stopped: "completed" | "aborted" | "failed";
+  /** Journal entry id, so the drawer can read the full payload on demand. */
+  entryId: string;
+}
+
+/** A mode or title change: drawn as a diamond on the timeline. */
+export interface AgentTraceMarker {
+  id: string;
+  ts: number;
+  kind: "model" | "think" | "session";
+  label: string;
+}
+
+/** One flamegraph row: the main session, or a subagent's own row. */
+export interface AgentTraceTrack {
+  id: string;
+  label: string;
+  parentId: string | null;
+  spans: AgentTraceSpan[];
+}
+
+/** Duration totals for one tool across the session: total, mean, and the longest single call. */
+export interface AgentTraceToolStat {
+  tool: string;
+  calls: number;
+  errors: number;
+  totalMs: number;
+  avgMs: number;
+  maxMs: number;
+}
+
+/** The headline figures the trace view opens with. */
+export interface AgentTraceSummary {
+  wallMs: number;
+  modelMs: number;
+  toolMs: number;
+  idleMs: number;
+  turns: number;
+  requests: number;
+  toolCalls: number;
+  agents: number;
+  totalTokens: number;
+  costUsd: number;
+}
+
+/** One session transcript as a flamegraph: tracks of spans, markers, totals, and tool stats. */
+export interface AgentSessionTrace {
+  sessionFile: string;
+  project: string;
+  title: string;
+  cwd: string;
+  startedAt: number;
+  endedAt: number;
+  tracks: AgentTraceTrack[];
+  markers: AgentTraceMarker[];
+  summary: AgentTraceSummary;
+  toolStats: AgentTraceToolStat[];
+  /** True when the session ran past the span cap, so the newest spans are all that ride along. */
+  truncated: boolean;
 }
 
 /** Throughput and first-token latency for one model and provider in one bucket. */
@@ -314,13 +392,6 @@ export interface AgentModelPerformancePoint {
   requests: number;
   avgTokensPerSecond: number | null;
   avgTtftMs: number | null;
-}
-
-export interface AgentSessionTrace {
-  sessionFile: string;
-  project: string;
-  entries: AgentTranscriptEntry[];
-  truncated: boolean;
 }
 
 /** The three payloads the request drawer renders: the output message, the journal entry, and the stats row. */

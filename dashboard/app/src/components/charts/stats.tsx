@@ -30,12 +30,14 @@ export function PageHeader({
 
 /**
  * A page block. `flush` drops the body padding so a table can span the card.
+ * `footer` sits under the body as one strip, so a row stretched by a sibling pins it down.
  */
 export function Card({
   title,
   icon,
   description,
   actions,
+  footer,
   flush,
   children,
   className,
@@ -46,6 +48,7 @@ export function Card({
   icon?: string;
   description?: React.ReactNode;
   actions?: React.ReactNode;
+  footer?: React.ReactNode;
   flush?: boolean;
   children: React.ReactNode;
   className?: string;
@@ -74,6 +77,14 @@ export function Card({
         {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
       </div>
       <CardContent className={cn("min-w-0", flush ? "px-0 py-0" : "px-3.5 pt-2.5 pb-2")}>{children}</CardContent>
+      {footer && (
+        <div
+          data-slot="card-footer"
+          className="mt-auto flex items-center gap-2 border-t border-line px-3.5 pt-2 pb-2 text-xs"
+        >
+          {footer}
+        </div>
+      )}
     </CardShell>
   );
 }

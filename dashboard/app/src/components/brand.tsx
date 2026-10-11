@@ -36,29 +36,35 @@ function MaskedGlyph({ className, src, color = "currentColor" }: { className: st
   return <span className={cn("block", className)} style={maskedGlyph(src, color)} />;
 }
 
-const TILE = "relative grid shrink-0 place-items-center overflow-hidden rounded-[13px] border border-line";
-const TILE_SMALL = "size-9 rounded-[11px]";
+// One proportional radius for every tile size. An absolute radius reads as a circle once the tile
+// shrinks, so the corner tracks the tile instead: 22% of the side is a rounded square at any size.
+const TILE = "relative grid shrink-0 place-items-center overflow-hidden rounded-[22%] border border-line";
+const TILE_SMALL = "size-9";
 /** One line of a dense table, where a bigger tile would inflate the row. */
-const TILE_TINY = "size-[21px] rounded-[7px]";
-/** A wide table row, which has room for more than the small tile without growing the row. */
-const TILE_ROW = "size-[30px] rounded-[10px]";
+const TILE_TINY = "size-[21px]";
+/** A wide table row, where a bigger tile would inflate the row. It scales with the row's own
+ *  type, so a dense table keeps its mark small and a larger row grows it. */
+const TILE_ROW = "h-[1.85em] w-[1.85em]";
+/** The art's share of a row tile: the square grows while the mark keeps its size. */
+const ROW_INK = 0.88;
 
 /**
  * One tile, one mark. The chain is fixed: an image mark, then a mask, then a monogram, then a
  * generic glyph. A provider with no findable mark keeps its monogram, never another vendor's logo.
  * A slug with a known brand color fills its tile with it and draws the glyph in the opposite ink,
- * so the tile reads as the brand instead of as a small logo on the panel. A slug whose art already
- * fills its own box is scaled back, and one whose art leaves a margin inside its box is scaled up,
- * so every tile carries the same visible size of logo.
+ * so the tile reads as the brand instead of as a small logo on the panel. A mark runs to the tile
+ * edge, so the tile reads as the brand's own square, and only a mark whose artwork overruns its
+ * own box scales back. The one exception is a table row: its square grows with the row, so its
+ * mark holds a fixed share and never grows with it.
  */
 function Mark({ slug, initial, color, small, tiny, row }: { slug: string; initial: string; color: string; small?: boolean; tiny?: boolean; row?: boolean }) {
-  const box = tiny ? "size-3.5" : row ? "size-[23px]" : small ? "size-5" : "size-[26px]";
-  // A logo that fills its own box by more than another reads as the bigger one, so the box scales.
+  // Only a mark whose art overruns its own box scales back, so no tile crops the ink.
   const scale = slug ? (MARK_SCALE[slug] ?? 1) : 1;
-  const glyph = scale === 1 ? box : cn(box, "scale-[var(--mark-scale)]");
+  // One size class: the art's share of its tile, which is full bleed outside a table row.
+  const glyph = cn("size-[var(--mark-ink)]", scale !== 1 && "scale-[var(--mark-scale)]");
   const tile = cn(TILE, "size-11", small && TILE_SMALL, tiny && TILE_TINY, row && TILE_ROW);
   const bg = slug ? MARK_BG[slug] : undefined;
-  const fill = { background: bg, "--mark-scale": scale } as React.CSSProperties;
+  const fill = { background: bg, "--mark-scale": scale, "--mark-ink": row ? `${ROW_INK * 100}%` : "100%" } as React.CSSProperties;
   const surface = bg ? undefined : "bg-panel";
   const ink = bg ? contrastInk(bg) : "currentColor";
   if (slug === "openai") {
@@ -92,9 +98,8 @@ function Mark({ slug, initial, color, small, tiny, row }: { slug: string; initia
     );
   }
   return (
-    <span className={tile} aria-hidden="true">
-      <span className="absolute inset-0" style={{ background: color, opacity: 0.16 }} />
-      <span className="mono relative text-base font-bold leading-none" style={{ color }}>
+    <span className={tile} style={{ background: color }} aria-hidden="true">
+      <span className="mono relative text-base font-bold leading-none" style={{ color: contrastInk(color) }}>
         {initial}
       </span>
     </span>

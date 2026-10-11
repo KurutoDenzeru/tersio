@@ -1,11 +1,12 @@
 // Projects: usage one session folder at a time, the working directory a session ran in.
-import { useDeferredValue, useMemo, useState } from "react";
+import { useCallback, useDeferredValue, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { AGENT_RANGE_LABEL } from "@/lib/data";
 import type { AgentRow, AgentStats } from "@/lib/data";
 import {
   BarList,
   Card,
+  ErrorRateBadge,
   CellBar,
   PagedTable,
   Page,
@@ -166,16 +167,7 @@ export function ProjectsPage({ agent, money }: { agent: AgentStats; money: (v: n
         align: "right",
         render: ({ row }) => (
           <span title={`${fmt(row.failed)} failed`}>
-            <Badge
-              variant={row.failed > 0 && row.errorRate >= 0.1 ? "destructive" : "outline"}
-              className={
-                row.failed > 0 && row.errorRate >= 0.1
-                  ? "mono"
-                  : `mono border-line ${row.failed > 0 ? "text-[var(--warn-border)]" : "text-dim"}`
-              }
-            >
-              {pct(row.errorRate)}
-            </Badge>
+            <ErrorRateBadge rate={row.errorRate} title={`${fmt(row.failed)} failed`} />
           </span>
         ),
         sort: ({ row }) => row.errorRate,
@@ -212,7 +204,12 @@ export function ProjectsPage({ agent, money }: { agent: AgentStats; money: (v: n
   // Filtering tens of thousands of folders should not block the keystroke that started it.
   const query = useDeferredValue(search.trim().toLowerCase());
   const matching = useMemo(
-    () => (query ? scoped.filter((r) => projectLabel(r.row.key).toLowerCase().includes(query)) : scoped),
+    () =>
+      query
+        ? scoped.filter(
+            (r) => projectLabel(r.row.key).toLowerCase().includes(query) || r.row.key.toLowerCase().includes(query),
+          )
+        : scoped,
     [scoped, query],
   );
 
@@ -235,6 +232,13 @@ export function ProjectsPage({ agent, money }: { agent: AgentStats; money: (v: n
 
   const emptyTitle =
     view.rows.length === 0 ? "No project folders in this range" : "Only temporary folders in this range";
+
+  // A bar picks a folder for the filter below, the way the reference's two top lists do: the click
+  // fills the same search the Folders card reads, so the table narrows to that folder.
+  const selectFolder = useCallback(
+    (key: string) => setSearch((held) => (held === key ? "" : key)),
+    [],
+  );
 
   return (
     <Page>
@@ -273,24 +277,24 @@ export function ProjectsPage({ agent, money }: { agent: AgentStats; money: (v: n
       </StatGrid>
 
       <div className="grid items-start gap-4 md:grid-cols-2">
-        <Card title="Top by cost" icon="coins" description="Share of API-equivalent cost">
+        <Card title="Top by cost" icon="coins" description="Share of API-equivalent cost. Select one to filter the folders below.">
           <QueryView
             empty={topCost.length === 0}
             emptyIcon="folder-git-2"
             emptyTitle={emptyTitle}
             emptyDesc="Try a longer range."
           >
-            <BarList rows={topCost} money={money} limit={TOP_LIMIT} />
+            <BarList rows={topCost} money={money} limit={TOP_LIMIT} onSelect={selectFolder} />
           </QueryView>
         </Card>
-        <Card title="Top by requests" icon="chart-no-axes-combined" description="Share of all requests">
+        <Card title="Top by requests" icon="chart-no-axes-combined" description="Share of all requests. Select one to filter the folders below.">
           <QueryView
             empty={topRequests.length === 0}
             emptyIcon="folder-git-2"
             emptyTitle={emptyTitle}
             emptyDesc="Try a longer range."
           >
-            <BarList rows={topRequests} money={fmt} limit={TOP_LIMIT} />
+            <BarList rows={topRequests} money={fmt} limit={TOP_LIMIT} onSelect={selectFolder} />
           </QueryView>
         </Card>
       </div>
@@ -299,9 +303,9 @@ export function ProjectsPage({ agent, money }: { agent: AgentStats; money: (v: n
         icon="folder-git-2"
         title="Folders"
         description={
-          matching.length === view.rows.length
-            ? `${fmt(view.rows.length)} folders`
-            : `${fmt(matching.length)} of ${fmt(view.rows.length)} folders`
+          query
+            ? `${fmt(matching.length)} of ${fmt(view.rows.length)} folders`
+            : `${fmt(matching.length)} folders${hideTemporary && view.temporaryCount > 0 ? `, ${fmt(view.temporaryCount)} temporary hidden` : ""}`
         }
         actions={
           <>

@@ -25,6 +25,19 @@ export function fmtMs(ms: number | null | undefined): string {
   return `${(ms / 1000).toFixed(1)}s`;
 }
 
+/** An elapsed span in the units it needs: `23h 6m`, `5m 12s`, `840ms`. */
+export function fmtElapsed(ms: number | null | undefined): string {
+  if (ms === null || ms === undefined || !Number.isFinite(ms) || ms < 0) return "–";
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
+  const totalMinutes = Math.floor(ms / 60_000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  const seconds = Math.round((ms % 60_000) / 1000);
+  if (hours > 0) return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+  return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`;
+}
+
 export const CURS: Record<string, { s: string; d: number }> = {
   USD: { s: "$", d: 2 },
   PHP: { s: "₱", d: 2 },
@@ -393,6 +406,25 @@ export function relAgePrecise(ts: number): string {
 /** A rate as a percentage, one decimal: 0.9383 reads as 93.8%. */
 export function pct(v: number, digits = 1): string {
   return `${(v * 100).toFixed(digits)}%`;
+}
+
+/**
+ * A bucket read as a word, so a description can name it. The same three sizes drive every page.
+ */
+export function bucketWord(bucketMs: number): string {
+  if (bucketMs < 3_600_000) return "5 minutes";
+  if (bucketMs < 86_400_000) return "hour";
+  return "day";
+}
+
+/**
+ * A severity tone for an error rate, with the omp stats thresholds: one percent is where a rate
+ * stops being noise, and five percent is where it stops being acceptable.
+ */
+export function errorRateTone(rate: number): "ok" | "warn" | "bad" {
+  if (rate >= 0.05) return "bad";
+  if (rate >= 0.01) return "warn";
+  return "ok";
 }
 
 /**

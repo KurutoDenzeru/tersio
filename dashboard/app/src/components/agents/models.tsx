@@ -1,6 +1,5 @@
 // Models page: which models did the work, how fast they answered, and how they trend.
 import { useMemo, useState } from "react";
-import { cn } from "cn";
 import {
   Card,
   PagedTable,
@@ -12,14 +11,14 @@ import {
   Stat,
   StatGrid,
   TimeChart,
+  ErrorRateBadge,
+  ModelCell,
 } from "@/components/charts";
 import type { Column, SeriesSpec } from "@/components/charts";
 import type { AgentModelPerformancePoint, AgentRow, AgentStats } from "@/lib/data";
 import { AGENT_RANGE_LABEL } from "@/lib/data";
 import { PALETTE, fmt, fmtMs, fmtShort, pct, relAge, tsFull, tsLabel } from "@/lib/format";
 import { Icon } from "@/components/icon";
-import { VendorMark } from "@/components/brand";
-import { Badge } from "@/components/ui/badge";
 
 type ShareMode = "share" | "requests";
 
@@ -282,15 +281,7 @@ export function ModelsPage({ agent, money }: { agent: AgentStats; money: (v: num
         key: "model",
         header: "Model",
         sort: (row) => row.key,
-        render: (row) => (
-          <span className="flex min-w-0 items-center gap-2.5">
-            <VendorMark model={row.key} row />
-            <span className="grid min-w-0 leading-tight">
-              <span className="mono truncate font-bold" title={`${row.key} (${row.provider})`}>{row.key}</span>
-              <span className="mono truncate text-[10px] text-dim">{row.provider || "unknown provider"}</span>
-            </span>
-          </span>
-        ),
+        render: (row) => <ModelCell model={row.key} provider={row.provider} />,
       },
       {
         key: "requests",
@@ -342,24 +333,9 @@ export function ModelsPage({ agent, money }: { agent: AgentStats; money: (v: num
         header: "Errors",
         align: "right",
         sort: (row) => row.errorRate,
-        render: (row) => {
-          const rate = row.errorRate;
-          // The chip carries the severity and the figure stays in ink, so a tinted number
-          // never drops under AA on either panel.
-          const chip =
-            rate === 0
-              ? "border-line text-dim"
-              : rate >= 0.05
-                ? "border-[var(--danger-border)] bg-[var(--danger-soft)]"
-                : rate >= 0.01
-                  ? "border-[var(--warn-border)] bg-[var(--warn-soft)]"
-                  : "border-transparent bg-accent-soft";
-          return (
-            <Badge variant="outline" className={cn("mono px-1.5 text-[10px] tabular-nums", chip)} title={`${fmt(row.failed)} failed of ${fmt(row.requests)}`}>
-              {pct(rate)}
-            </Badge>
-          );
-        },
+        render: (row) => (
+          <ErrorRateBadge rate={row.errorRate} title={`${fmt(row.failed)} failed of ${fmt(row.requests)}`} />
+        ),
       },
       {
         key: "tps",

@@ -1,8 +1,8 @@
 // Errors: failed requests in the range, grouped by signature, with the rows behind them.
 import { useMemo, useState } from "react";
-import { Card, PagedTable, MeterCell, Page, PageHeader, SearchInput, Stat, StatGrid } from "@/components/charts";
+import { BarList, Card, MeterCell, PagedTable, Page, PageHeader, SearchInput, Stat, StatGrid } from "@/components/charts";
 import type { Column } from "@/components/charts";
-import { ProviderMark, VendorMark } from "@/components/brand";
+import { VendorMark } from "@/components/brand";
 import { EmptyState } from "@/components/common";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/icon";
@@ -25,6 +25,8 @@ const HEX_RE = /\b[0-9a-f]{12,}\b/gi;
 const NUMBER_RE = /(?<![\w.-])\d+(?:\.\d+)?/g;
 const HTTP_STATUS_RE = /^[1-5]\d\d$/;
 const SIGNATURE_MAX = 180;
+// The side card lists the models, not a page of them.
+const LIST_LIMIT = 12;
 
 /**
  * Mirrors the grouping in extensions/shared/agent-stats.ts. The server ships groups, but a
@@ -67,7 +69,6 @@ export function ErrorsPage({
   // The failure list is capped, so it covers the range only when it matches the range total.
   const complete = rows.length >= agent.overall.failed;
   const maxGroup = agent.errorGroups[0]?.count ?? 0;
-  const maxModel = agent.errorModels[0]?.count ?? 0;
 
   // Selections that no longer exist in this range's data are ignored.
   const signature = agent.errorGroups.some((g) => g.signature === signatureFilter) ? signatureFilter : null;
@@ -118,7 +119,7 @@ export function ErrorsPage({
         />
       </StatGrid>
 
-      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
         <Card
           title="Error signatures" icon="circle-alert"
           description="Same message with ids and counters normalized. Select one to filter the failures below."
@@ -142,16 +143,27 @@ export function ErrorsPage({
           {selectedGroup && <SignatureDetail group={selectedGroup} onOpenRequest={onOpenRequest} />}
         </Card>
 
-        <Card title="By model" icon="table" description="Failures per model. Select one to filter." flush>
-          <PagedTable
-            columns={MODEL_COLUMNS(maxModel)}
-            rows={agent.errorModels}
-            rowKey={(row) => modelKey(row)}
-            onRowClick={(row) => setModelFilter(model === modelKey(row) ? null : modelKey(row))}
-            perPage={12}
-            ariaLabel="Failures by model"
-            empty={<EmptyState icon="circle-slash" title="No affected models" desc="No model failed in this window." />}
-          />
+        <Card title="By model" icon="table" description="Failures per model. Select one to filter.">
+          {agent.errorModels.length === 0 ? (
+            <EmptyState icon="circle-slash" title="No affected models" desc="No model failed in this window." />
+          ) : (
+            <BarList
+              rows={agent.errorModels.slice(0, LIST_LIMIT).map((row) => ({
+                key: modelKey(row),
+                label: (
+                  <span className="flex min-w-0 items-baseline gap-1.5">
+                    <span className="mono truncate text-xs">{displayModel(row.model)}</span>
+                    <span className="truncate text-[11px] text-dim">{row.provider || "–"}</span>
+                  </span>
+                ),
+                title: `${displayModel(row.model)} · ${row.provider || "–"}`,
+                value: row.count,
+                color: model === modelKey(row) ? "var(--danger)" : "color-mix(in srgb, var(--danger) 45%, transparent)",
+              }))}
+              money={fmt}
+              onSelect={(key) => setModelFilter(model === key ? null : key)}
+            />
+          )}
         </Card>
       </div>
 
@@ -222,7 +234,7 @@ function GROUP_COLUMNS(maxCount: number): Array<Column<AgentErrorGroup>> {
       header: "Signature",
       sort: (group) => group.signature,
       render: (group) => (
-        <span className="mono block max-w-[520px] truncate" title={group.latest.errorMessage ?? undefined}>
+        <span className="mono w-[400px] text-xs leading-relaxed whitespace-normal wrap-anywhere line-clamp-2" title={group.latest.errorMessage ?? undefined}>
           {group.signature}
         </span>
       ),
@@ -232,12 +244,14 @@ function GROUP_COLUMNS(maxCount: number): Array<Column<AgentErrorGroup>> {
       header: "Models",
       sort: (group) => group.models.length,
       render: (group) => (
-        <span className="flex min-w-0 items-center gap-2">
-          <VendorMark model={group.models[0]?.model ?? ""} tiny />
-          <span className="min-w-0">
-            <span className="mono block truncate">{group.models[0] ? displayModel(group.models[0].model) : "–"}</span>
-            <span className="block truncate text-[11px] text-dim">
-              {group.models.length > 1 ? `+${group.models.length - 1} more` : group.models[0]?.provider}
+        <span className="block w-[210px] min-w-0">
+          <span className="flex min-w-0 items-center gap-2">
+            <VendorMark model={group.models[0]?.model ?? ""} tiny />
+            <span className="min-w-0">
+              <span className="mono block truncate">{group.models[0] ? displayModel(group.models[0].model) : "–"}</span>
+              <span className="block truncate text-[11px] text-dim">
+                {group.models.length > 1 ? `+${group.models.length - 1} more` : group.models[0]?.provider}
+              </span>
             </span>
           </span>
         </span>
@@ -268,41 +282,6 @@ function GROUP_COLUMNS(maxCount: number): Array<Column<AgentErrorGroup>> {
     },
   ];
 }
-
-function MODEL_COLUMNS(maxCount: number): Array<Column<AgentStats["errorModels"][number]>> {
-  return [
-    {
-      key: "model",
-      header: "Model",
-      sort: (row) => row.count,
-      render: (row) => (
-        <span className="flex min-w-0 items-center gap-2">
-          <VendorMark model={row.model} tiny />
-          <span className="min-w-0">
-            <span className="mono block truncate">{displayModel(row.model)}</span>
-            <span className="flex items-center gap-1.5 text-[11px] text-dim">
-              <ProviderMark provider={row.provider} tiny />
-              <span className="truncate">{row.provider || "–"}</span>
-            </span>
-          </span>
-        </span>
-      ),
-    },
-    {
-      key: "count",
-      header: "Failures",
-      align: "right",
-      sort: (row) => row.count,
-      render: (row) => (
-        <span className="flex items-center justify-end gap-2">
-          <span className="mono text-xs tabular-nums">{fmt(row.count)}</span>
-          <MeterCell value={row.count} max={maxCount} color="var(--danger)" label={`${fmt(row.count)} failures`} />
-        </span>
-      ),
-    },
-  ];
-}
-
 function SignatureDetail({
   group,
   onOpenRequest,
@@ -366,9 +345,10 @@ function buildFailureColumns(money: (v: number) => string): Array<Column<AgentRe
   {
     key: "error",
     header: "Error",
+    width: 520,
     sort: (row) => row.errorMessage ?? "",
     render: (row) => (
-      <span className="mono block max-w-[420px] truncate" title={row.errorMessage ?? undefined}>
+      <span className="mono block w-[520px] truncate text-xs" title={row.errorMessage ?? undefined}>
         {row.errorMessage ?? "Unknown error"}
       </span>
     ),
