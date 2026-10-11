@@ -11,6 +11,7 @@ import {
   classifyOpencodeMessage,
   costOf,
   durOf,
+  agentOfSessionText,
   hostOfSessionFile,
   ingestSessionRow,
   messageRowId,
@@ -73,7 +74,7 @@ function query(db: string, sql: string): string[][] {
 }
 
 // Bump on a parse change: unchanged transcripts are never re-read.
-const PARSER_VERSION = '11';
+const PARSER_VERSION = '12';
 
 // A re-parse that keeps less than half the rows means transcripts vanished mid-migration; the backup is restored instead of publishing the loss.
 const REPARSE_GUARD_RATIO = 0.5;
@@ -90,7 +91,7 @@ const SCHEMA_SQL =
   `CREATE TABLE IF NOT EXISTS files (id INTEGER PRIMARY KEY AUTOINCREMENT, path TEXT UNIQUE NOT NULL, mtime REAL NOT NULL, size INTEGER NOT NULL);` +
   `CREATE TABLE IF NOT EXISTS messages (file_id INTEGER NOT NULL REFERENCES files(id), t REAL, model TEXT NOT NULL,` +
   ` i INTEGER NOT NULL, o INTEGER NOT NULL, d REAL, cr INTEGER NOT NULL, cw INTEGER NOT NULL,` +
-  ` usd REAL, st TEXT NOT NULL, code REAL, note TEXT, tools TEXT NOT NULL DEFAULT '[]', h TEXT, id TEXT);` +
+  ` usd REAL, st TEXT NOT NULL, code REAL, note TEXT, tools TEXT NOT NULL DEFAULT '[]', h TEXT, a TEXT, id TEXT);` +
   // Every read filters or orders by one of these three. Without them each sync and each read
   // walks the whole table: the watermark scan, the day buckets, and the recent list all scan.
   `CREATE INDEX IF NOT EXISTS idx_messages_file ON messages(file_id);` +
@@ -181,7 +182,7 @@ function migrateInPlace(db: string, preCount: number): boolean {
       `INSERT INTO files_new (path, mtime, size) SELECT path, mtime, size FROM files;` +
       `CREATE TABLE messages_new (file_id INTEGER NOT NULL REFERENCES files_new(id), t REAL, model TEXT NOT NULL,` +
       ` i INTEGER NOT NULL, o INTEGER NOT NULL, d REAL, cr INTEGER NOT NULL, cw INTEGER NOT NULL,` +
-      ` usd REAL, st TEXT NOT NULL, code REAL, note TEXT, tools TEXT NOT NULL DEFAULT '[]', h TEXT, id TEXT);` +
+      ` usd REAL, st TEXT NOT NULL, code REAL, note TEXT, tools TEXT NOT NULL DEFAULT '[]', h TEXT, a TEXT, id TEXT);` +
       `INSERT INTO messages_new (file_id, ${cols}) SELECT (SELECT id FROM files_new WHERE files_new.path = messages.file), ${cols} FROM messages;` +
       `DROP TABLE messages;DROP TABLE files;` +
       `ALTER TABLE files_new RENAME TO files;ALTER TABLE messages_new RENAME TO messages;` +
@@ -196,6 +197,29 @@ function migrateInPlace(db: string, preCount: number): boolean {
   } catch {
     return false;
   }
+}
+
+// v12 shape gains the agent kind (`main`, `subagent`) with a bare ALTER for the two names the
+// store already holds. No rows move and no re-parse is forced, so the existing rows read
+// `NULL` for it: a report then shows them under the main agent only, and new rows carry it.
+function canAddAgent(db: string): boolean {
+  try {
+    const names = query(db, `PRAGMA table_info(messages);`).map((r) => r[1]);
+    return names.includes('file_id') && !names.includes('a');
+  } catch {
+    return false;
+  }
+}
+
+// v12 shape gains the agent kind (`main`, `subagent`) with a bare ALTER: no rows move, so no
+// re-parse is forced. Existing rows read NULL, which a report folds under the main agent.
+function addAgentColumn(db: string): boolean {
+  try {
+    run(db, `ALTER TABLE messages ADD COLUMN a TEXT;`);
+  } catch {
+    return false;
+  }
+  return true;
 }
 
 // v10 shape gains the message id with a bare ALTER: no rows move, so no re-parse and no guard trip.
@@ -241,6 +265,12 @@ function ensureSchema(db: string, forceWipe: boolean): void {
       return;
     }
     if (stored !== null && canAlterInPlace(db) && alterInPlace(db)) {
+      run(db, `INSERT OR REPLACE INTO meta (k,v) VALUES ('parser_version','${PARSER_VERSION}');`);
+      return;
+    }
+    // The agent column is additive on the current shape: adding it keeps every row, and the
+    // unchanged transcripts that already hold their rows simply read NULL until a re-parse.
+    if (stored !== null && canAddAgent(db) && addAgentColumn(db)) {
       run(db, `INSERT OR REPLACE INTO meta (k,v) VALUES ('parser_version','${PARSER_VERSION}');`);
       return;
     }
@@ -366,10 +396,13 @@ interface StoredRow {
   note: string | undefined;
   tools: string[];
   host?: string;
+  /** `main` or `subagent`; null on a row written before the store carried it. */
+  agent?: string | null;
   id?: string;
 }
 
-// OpenCode rows carry no status, code, note, or tool list; only tokens and the msg id.
+// OpenCode rows carry no status, code, note, tool list, or subagent marker: only tokens and the
+// msg id. They record as the main agent, so a store never holds a NULL kind.
 function opencodeStoredRow(oc: NonNullable<ReturnType<typeof classifyOpencodeMessage>>, host: string | undefined, id: string | undefined): StoredRow {
   return {
     t: oc.ms ?? null,
@@ -385,11 +418,12 @@ function opencodeStoredRow(oc: NonNullable<ReturnType<typeof classifyOpencodeMes
     note: undefined,
     tools: [],
     host,
+    agent: 'main',
     id,
   };
 }
 
-function parseFile(text: string, host?: string, file?: string): StoredRow[] {
+function parseFile(text: string, host?: string, file?: string, agent?: string): StoredRow[] {
   const rows: StoredRow[] = [];
   // Guarded: a JSONL transcript must fall through, not abort the sync.
   let oc: ReturnType<typeof classifyOpencodeMessage> = null;
@@ -434,6 +468,7 @@ function parseFile(text: string, host?: string, file?: string): StoredRow[] {
           note: undefined,
           tools: [],
           host,
+          agent,
           id: rid,
         });
         continue;
@@ -457,6 +492,7 @@ function parseFile(text: string, host?: string, file?: string): StoredRow[] {
         note,
         tools: parsed.tools ?? [],
         host,
+        agent,
         id: rid,
       });
     } catch { /* skip corrupt lines */ }
@@ -465,10 +501,10 @@ function parseFile(text: string, host?: string, file?: string): StoredRow[] {
 }
 
 function insertSql(file: string, r: StoredRow): string {
-  return `INSERT INTO messages (file_id, t, model, i, o, d, cr, cw, usd, st, code, note, tools, h, id) VALUES (` +
+  return `INSERT INTO messages (file_id, t, model, i, o, d, cr, cw, usd, st, code, note, tools, h, a, id) VALUES (` +
     `(SELECT id FROM files WHERE path=${esc(file)}),${r.t === null ? 'NULL' : String(r.t)},${esc(r.model)},${r.i},${r.o},` +
     `${nullNum(r.d)},${r.cr},${r.cw},${nullNum(r.usd)},${esc(r.st)},` +
-    `${nullNum(r.code)},${nullStr(r.note)},${esc(JSON.stringify(r.tools))},${nullStr(r.host)},${nullStr(r.id)});`;
+    `${nullNum(r.code)},${nullStr(r.note)},${esc(JSON.stringify(r.tools))},${nullStr(r.host)},${nullStr(r.agent ?? undefined)},${nullStr(r.id)});`;
 }
 
 // Unchanged transcripts are skipped via mtime+size; rows for deleted ones are kept so rotation never erases history. False when sqlite3 is unavailable.
@@ -560,7 +596,7 @@ export function syncUsageDb(): boolean {
   try {
     for (const file of changed) {
       const text = fs.readFileSync(file, 'utf8');
-      for (const r of parseFile(text, hostOfSessionFile(file), file)) {
+      for (const r of parseFile(text, hostOfSessionFile(file), file, agentOfSessionText(text))) {
         if (!push(insertSql(file, r))) return false;
       }
     }
@@ -610,13 +646,16 @@ export function readUsageDb(): StoredUsage | null {
   let rows: string[][];
   try {
     // The `tools` column is the widest by far and the common case is the literal `[]`, so it is
-    // read as one column and skipped in JS rather than parsed per row.
-    rows = query(db, `SELECT t, model, i, o, d, cr, cw, usd, st, code, note, tools, h, id FROM messages;`);
+    // read as one column and skipped in JS rather than parsed per row. A store written before
+    // the agent column does not hold it, so the row is read without that column.
+    const names = query(db, `PRAGMA table_info(messages);`).map((r) => r[1]);
+    const agentCol = names.includes('a') ? 'a' : "''";
+    rows = query(db, `SELECT t, model, i, o, d, cr, cw, usd, st, code, note, tools, h, ${agentCol}, id FROM messages;`);
   } catch {
     return null;
   }
   const accum = newSessionAccum();
-  for (const [t, model, i, o, d, cr, cw, usd, st, code, note, tools, h, id] of rows) {
+  for (const [t, model, i, o, d, cr, cw, usd, st, code, note, tools, h, a, id] of rows) {
     const ts = t === '' ? undefined : Number(t);
     let toolNames: string[] = [];
     if (tools && tools !== '[]' && tools !== '') {
@@ -649,6 +688,7 @@ export function readUsageDb(): StoredUsage | null {
       toolNames,
       h === '' ? undefined : h,
       id === '' || id === undefined ? undefined : id,
+      a === '' ? undefined : a,
     );
   }
   accum.recent.sort((a, b) => b.t - a.t);
@@ -667,6 +707,8 @@ export function readUsageDb(): StoredUsage | null {
       byTool: accum.byTool,
       byModelMessages: accum.byModelMessages,
       byHost: accum.byHost,
+      byAgent: accum.byAgent,
+      byAgentMessages: accum.byAgentMessages,
       costMeasured: accum.costMeasured,
       recent: accum.recent.slice(0, RECENT_LIMIT),
     },

@@ -32,6 +32,46 @@ export function ErrorRateBadge({ rate, title }: { rate: number; title?: string }
   );
 }
 /**
+ * The glyph a tool name carries. A tool is not a model, so it never borrows a vendor mark: the
+ * shell tools read as a terminal, the file tools read as their own verb, and an unknown name
+ * falls back to a wrench rather than to a provider logo.
+ */
+const TOOL_ICONS: ReadonlyArray<readonly [string, string]> = [
+  ["bash", "terminal"],
+  ["ash", "terminal"],
+  ["gash", "terminal"],
+  [".edit", "terminal"],
+  ["edit", "square-pen"],
+  ["read", "book-open"],
+  ["write", "file-plus"],
+  ["create", "file-plus"],
+  ["patch", "file-pen"],
+  ["grep", "search"],
+  ["glob", "file-search"],
+  ["find", "folder-search"],
+  ["task", "network"],
+  ["subagent", "network"],
+  ["todo", "list-todo"],
+  ["wait", "timer"],
+  ["goal", "target"],
+  ["ask", "message-circle"],
+  ["eval", "play"],
+  ["evalse", "play"],
+  ["value", "play"],
+  ["browser", "globe"],
+  ["web_search", "globe"],
+  ["hub", "network"],
+  ["yield", "corner-down-right"],
+  ["brep", "copy"],
+];
+
+/** The lucide glyph for a tool name, from the map above or the wrench fallback. */
+export function toolIcon(tool: string | undefined): string {
+  const name = (tool ?? "").trim().toLowerCase();
+  return TOOL_ICONS.find(([key]) => key === name)?.[1] ?? "wrench";
+}
+
+/**
  * One table cell for a provider. The row already names the provider, so the cell carries its mark
  * and its name alone: a model beneath it would invent a second row's subject.
  */

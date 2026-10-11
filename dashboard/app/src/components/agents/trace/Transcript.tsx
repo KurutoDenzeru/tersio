@@ -6,7 +6,9 @@
 // the offset from the start of the session, the shape the reference transcript uses.
 
 import { memo, useEffect, useRef, useState } from "react";
-import { ProviderMark, VendorMark } from "@/components/brand";
+import { VendorMark } from "@/components/brand";
+import { Icon } from "@/components/icon";
+import { toolIcon } from "@/components/common";
 import type { AgentTraceSpan, AgentTraceSpanKind, AgentTraceTrack } from "@/lib/data";
 import { fmtMs, stampLocal } from "@/lib/format";
 import { formatOffset } from "./scale";
@@ -107,9 +109,9 @@ export const TranscriptList = memo(function TranscriptList({
                 </span>
                 {span.kind === "model" && span.model ? (
                   <VendorMark model={span.model} tiny />
-                ) : span.kind === "tool" && span.provider ? (
-                  <ProviderMark provider={span.provider} tiny />
-                ) : null}
+                ) : (
+                  <Icon name={toolIcon(span.tool ?? span.label)} className="size-3 shrink-0 text-dim" />
+                )}
                 <span className="w-[168px] shrink-0 truncate" title={span.label}>
                   {span.kind === "turn" ? "Prompt" : span.label}
                 </span>

@@ -252,10 +252,11 @@ export function providerMeta(provider: string): ProviderMeta {
  * Which agent recorded a session, read from where the transcript lives. Every row in the agent
  * databases was written by agent, so a session under another harness's own directory would only
  * appear if that harness shared this database. The path is the only host marker the row carries.
+ * The id matches the brand-art switch in `AgentLogo`, so a host never has to be guessed twice.
  */
-export function hostOfSession(sessionFile: string): { label: string; host: "agent" | "pi" | "opencode" | "unknown" } {
+export function hostOfSession(sessionFile: string): { label: string; host: "omp" | "pi" | "opencode" | "unknown" } {
   const file = String(sessionFile ?? "");
-  if (/\.agent\/agent\/sessions\//.test(file)) return { label: "OMP", host: "agent" };
+  if (/\.agent\/agent\/sessions\//.test(file)) return { label: "OMP", host: "omp" };
   if (/\.pi\/agent\/sessions\//.test(file)) return { label: "Pi", host: "pi" };
   if (/(config\/opencode|local\/share\/opencode)\/agent\/sessions\//.test(file)) return { label: "OpenCode", host: "opencode" };
   return { label: "OMP", host: "unknown" };

@@ -160,14 +160,24 @@ export function StatGrid({
   // One solid band with a rule between cells, the same strip shape everywhere: no translucent
   // tiles, and one path, so a strip never falls back to loose tiles.
   const cells = (Array.isArray(children) ? children : [children]).filter((c): c is ReactNode => Boolean(c));
+  // A rule belongs to the tier that draws the row, not to the neighbour count, so each tier
+  // owns its own cells and no tier resets another: below `sm` the strip is two per row, from
+  // `sm` it is three, and from `lg` it is `cols`. A `max-` variant keeps the two tiers from
+  // ever fighting over one cell's border.
+  const rules = cols > 2
+    ? [
+        "max-sm:[&>*:nth-child(even)]:border-l max-sm:[&>*:nth-child(n+3)]:border-t",
+        "sm:[&>*:not(:nth-child(3n+1))]:border-l sm:[&>*:nth-child(n+4)]:border-t",
+        `lg:[&>*:not(:nth-child(${cols}n+1))]:border-l lg:[&>*:nth-child(n+${cols + 1})]:border-t`,
+      ]
+    : ["[&>*:nth-child(even)]:border-l [&>*:nth-child(n+3)]:border-t"];
   return (
     <div
       data-reveal
       className={cn(
         "translate-y-[18px] grid overflow-hidden rounded-xl border border-line bg-panel opacity-0 transition-[opacity,transform] duration-500 ease-[cubic-bezier(.16,1,.3,1)] data-[reveal=in]:translate-y-0 data-[reveal=in]:opacity-100",
         sizes[cols],
-        "[&>*+*]:border-line [&>*+*]:border-t",
-        cols > 2 && "sm:[&>*+*]:border-t-0 sm:[&>*+*]:border-l",
+        rules.join(" "),
         className,
       )}
     >

@@ -183,9 +183,17 @@ function dataSize(bytes: number): string {
   return `${bytes}B`;
 }
 
-/** The stamp in a snapshot's name reads as a date; the manifest holds the mtime. */
+/**
+ * The snapshot label: a date this machine's clock reads, then the time of day. The directory
+ * name on disk carries a machine stamp, so the row names the moment instead, and the hover
+ * tip keeps the raw name for a restore or a delete by hand.
+ */
 function dataStamp(mtime: number): string {
-  return new Date(mtime).toLocaleString();
+  const d = new Date(mtime);
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  const clock = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" });
+  return `${mm}-${dd}-${d.getFullYear()}, ${clock}`;
 }
 
 /**
@@ -365,7 +373,7 @@ function DataPane() {
           asking ? null : (
             <>
               <span className="mono min-w-0 flex-1 truncate text-[11px] text-dim">
-                {chosen ? chosen.name : "Pick a snapshot to restore or delete it."}
+                {chosen ? dataStamp(chosen.mtime) : "Pick a snapshot to restore or delete it."}
               </span>
               <Button
                 size="sm"
@@ -397,40 +405,44 @@ function DataPane() {
             No snapshots yet. Take one above, or let the schedule take it.
           </p>
         ) : (
-          <div className="divide-y divide-line">
-            {backups.map((b) => {
-              const on = b.name === picked;
-              return (
-                <button
-                  key={b.name}
-                  type="button"
-                  aria-pressed={on}
-                  className={cn(
-                    "group flex w-full items-center gap-3 py-2 text-left transition-colors hover:bg-track/40 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent",
-                    on && "bg-accent-soft",
-                  )}
-                  onClick={() => setPicked(on ? null : b.name)}
-                >
-                  <div className="min-w-0 flex-1">
-                    <HoverTip content={b.files.map((f) => f.label).join(", ")}>
-                      <p className="mono m-0 truncate text-xs text-ink">{b.name}</p>
-                    </HoverTip>
-                    <p className="mono mt-0.5 mb-0 text-[11px] text-dim">
-                      {dataStamp(b.mtime)} · {dataSize(b.bytes)} · {b.files.length} file
-                      {b.files.length === 1 ? "" : "s"}
-                    </p>
-                  </div>
-                  {on && <Icon name="check" className="mr-1.5 size-3.5 shrink-0 text-accent" />}
-                </button>
-              );
-            })}
+          // Six rows at a time: a longer history scrolls inside the card, so the footer with
+          // the picked row's actions stays in one place under it. The cap is a max-height, so a
+          // short list keeps the card compact instead of holding an empty band.
+          <div className="max-h-[19rem] overflow-y-auto">
+            <div className="divide-y divide-line">
+              {backups.map((b) => {
+                const on = b.name === picked;
+                return (
+                  <button
+                    key={b.name}
+                    type="button"
+                    aria-pressed={on}
+                    className={cn(
+                      "group flex w-full items-center gap-3 py-2 text-left transition-colors hover:bg-track/40 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent",
+                      on && "bg-accent-soft",
+                    )}
+                    onClick={() => setPicked(on ? null : b.name)}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <HoverTip content={`${b.name} — ${b.files.map((f) => f.label).join(", ")}`}>
+                        <p className="mono m-0 truncate text-xs text-ink">{dataStamp(b.mtime)}</p>
+                      </HoverTip>
+                      <p className="mono mt-0.5 mb-0 text-[11px] text-dim">
+                        {dataSize(b.bytes)} · {b.files.length} file{b.files.length === 1 ? "" : "s"}
+                      </p>
+                    </div>
+                    {on && <Icon name="check" className="mr-1.5 size-3.5 shrink-0 text-accent" />}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         )}
       </Card>
 
       {asking && target && (
         <div className="rounded-[10px] border border-warn-border bg-warn-soft px-3.5 py-2.5" role="alertdialog" aria-label="Confirm restore">
-          <p className="m-0 text-[13px] font-semibold">Restore {target.name}?</p>
+          <p className="m-0 text-[13px] font-semibold">Restore {dataStamp(target.mtime)}?</p>
           <p className="mt-1 mb-0 text-xs text-dim">
             Every file in it is copied over the live data: {target.files.map((f) => f.label).join(", ")}. A file the
             snapshot lacks is left alone. The dashboard needs a reload afterwards.

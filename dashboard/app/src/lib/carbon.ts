@@ -7,9 +7,15 @@ import type { AgentStats } from "./data";
 // Published per-unit averages, each printed beside its result so a reader can
 // redo the arithmetic. None of them describes the reader's own life.
 const KG_PER_KM_DRIVEN = 0.24; // EPA: 4.6 t/yr over 12,000 mi
+const G_PER_FLIGHT_KM = 0.09; // ICAO: ~90 g per passenger-km, short haul
 const WH_PER_PHONE_CHARGE = 15; // ~12 Wh cell plus charging losses
 const G_PER_STREAM_HOUR = 10; // Netflix, per hour of playback
 const WH_PER_HOUSEHOLD_DAY = 29_600; // EIA: ~10,800 kWh/yr, residential
+const G_PER_SEARCH = 0.3; // widely cited per-query estimate
+const G_PER_EMAIL = 4; // a plain text email, no attachment
+const G_PER_TREE_DAY = 60; // a mature tree absorbs ~21 kg a year
+const WH_PER_LAPTOP_HOUR = 50; // a 50 W laptop under a mixed load
+const WH_PER_LED_HOUR = 9; // a 9 W LED bulb
 
 /** Above this the tail folds into one row, the way Activity folds its models. */
 const MAX_ROWS = 5;
@@ -131,6 +137,43 @@ function comparisonsFor(totalG: number, energyWh: number): Comparison[] {
       icon: "plug",
       value: `${(energyWh / WH_PER_HOUSEHOLD_DAY).toFixed(1)} days`,
       factor: `at ${(WH_PER_HOUSEHOLD_DAY / 1000).toFixed(1)} kWh per day`,
+    },
+    {
+      label: "Flying",
+      icon: "plane",
+      value: fmtKm(totalG / G_PER_FLIGHT_KM),
+      factor: `at ${(G_PER_FLIGHT_KM * 1000).toFixed(0)} g per passenger-km`,
+    },
+    {
+      label: "Web searches",
+      icon: "search",
+      value: fmtCount(totalG / G_PER_SEARCH),
+      factor: `at ${G_PER_SEARCH} g each`,
+    },
+    {
+      label: "Emails",
+      icon: "mail",
+      value: fmtCount(totalG / G_PER_EMAIL),
+      factor: `at ${G_PER_EMAIL} g each, no attachment`,
+    },
+    {
+      label: "LED bulb",
+      icon: "lightbulb",
+      value: `${fmtCount(energyWh / WH_PER_LED_HOUR)} h`,
+      factor: `at ${WH_PER_LED_HOUR} W for an hour`,
+    },
+    {
+      label: "Laptop",
+      icon: "laptop",
+      value: `${fmtCount(energyWh / WH_PER_LAPTOP_HOUR)} h`,
+      factor: `at ${WH_PER_LAPTOP_HOUR} W under a mixed load`,
+    },
+    {
+      // Absorption, not emission: one tree for one day offsets this much.
+      label: "Tree-days",
+      icon: "tree-pine",
+      value: fmtCount(totalG / G_PER_TREE_DAY),
+      factor: `a mature tree absorbs ~${G_PER_TREE_DAY} g a day`,
     },
   ];
 }

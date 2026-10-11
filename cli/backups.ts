@@ -17,8 +17,9 @@ import { usageDbPath } from '../extensions/shared/usage-store.ts';
 import { resetMarkerPath } from '../extensions/shared/usage-ledger.ts';
 import { tersioHome } from '../extensions/lib/utils.ts';
 
-/** Snapshots kept on disk; the oldest is pruned first. */
-export const BACKUP_KEEP = 3;
+/** Snapshots kept on disk; the oldest is pruned first. Six keeps the list past one screen, so
+ *  the pane scrolls instead of showing the whole history at once. */
+export const BACKUP_KEEP = 6;
 
 /** One file a snapshot can hold, with where it came from. */
 export interface BackupFile {

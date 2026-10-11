@@ -89,6 +89,10 @@ export interface SessionTokens {
   byTool: Record<string, number>;
   byModelMessages: Record<string, number>;
   byHost: Record<string, Record<string, TokenBreakdown>>;
+  /** Model -> agent kind (`main`, `subagent`), so a subagent's work reads apart from its root's. */
+  byAgent: Record<string, Record<string, TokenBreakdown>>;
+  /** Model -> agent kind -> message count, so a share can read requests beside the tokens. */
+  byAgentMessages: Record<string, Record<string, number>>;
   costMeasured: number;
   recent: RecentRequest[];
 }
@@ -292,6 +296,10 @@ export interface SessionAccum {
   byTool: Record<string, number>;
   byModelMessages: Record<string, number>;
   byHost: Record<string, Record<string, TokenBreakdown>>;
+  /** Model -> agent kind (`main`, `subagent`), so a subagent's work reads apart from its root's. */
+  byAgent: Record<string, Record<string, TokenBreakdown>>;
+  /** Model -> agent kind -> message count. */
+  byAgentMessages: Record<string, Record<string, number>>;
   totals: TokenBreakdown;
   messages: number;
   costMeasured: number;
@@ -300,9 +308,9 @@ export interface SessionAccum {
   recentFloor: number;
 }
 export function newSessionAccum(): SessionAccum {
-  return { byModel: {}, byDay: {}, byDayModel: {}, byTool: {}, byModelMessages: {}, byHost: {}, totals: zeroBreakdown(), messages: 0, costMeasured: 0, recent: [], recentFloor: Number.POSITIVE_INFINITY };
+  return { byModel: {}, byDay: {}, byDayModel: {}, byTool: {}, byModelMessages: {}, byHost: {}, byAgent: {}, byAgentMessages: {}, totals: zeroBreakdown(), messages: 0, costMeasured: 0, recent: [], recentFloor: Number.POSITIVE_INFINITY };
 }
-export function ingestSessionRow(accum: SessionAccum, model: string, usage: Record<string, unknown>, ts: string | number | undefined, durMs?: unknown, run?: { st: RunStatus; code?: number; note?: string }, toolNames?: string[], host?: string, id?: string): boolean {
+export function ingestSessionRow(accum: SessionAccum, model: string, usage: Record<string, unknown>, ts: string | number | undefined, durMs?: unknown, run?: { st: RunStatus; code?: number; note?: string }, toolNames?: string[], host?: string, id?: string, agent?: string): boolean {
   const watermark = readResetWatermark();
   const ms = ts === undefined ? NaN : typeof ts === 'number' ? ts : Date.parse(ts);
   if (watermark > 0 && (!Number.isFinite(ms) || ms < watermark)) return false;
@@ -315,6 +323,13 @@ export function ingestSessionRow(accum: SessionAccum, model: string, usage: Reco
     const hs = (accum.byHost[key] ??= {});
     hs[host] ??= zeroBreakdown();
     addInto(hs[host], usage);
+  }
+  if (agent) {
+    const as = (accum.byAgent[key] ??= {});
+    as[agent] ??= zeroBreakdown();
+    addInto(as[agent], usage);
+    const am = (accum.byAgentMessages[key] ??= {});
+    am[agent] = (am[agent] ?? 0) + 1;
   }
   const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.floor(v) : 0);
   if (Number.isFinite(ms)) {
@@ -443,14 +458,14 @@ export function processOpencodeFile(accum: SessionAccum, text: string, file?: st
   const parsed = classifyOpencodeMessage(obj as OpencodeMessage);
   if (!parsed) return;
   const id = file ? path.basename(file).replace(/\.[^.]+$/, '') || undefined : undefined;
-  ingestSessionRow(accum, parsed.model, parsed.usage, parsed.ms, parsed.durMs, { st: 'completed' as RunStatus }, undefined, 'opencode', id);
+  ingestSessionRow(accum, parsed.model, parsed.usage, parsed.ms, parsed.durMs, { st: 'completed' as RunStatus }, undefined, 'opencode', id, 'main');
 }
 
 // One v2 message row into the shared accum. The msg id is the row primary key.
 export function ingestOpencodeDbRow(accum: SessionAccum, row: OpencodeDbRow): void {
   const parsed = classifyOpencodeMessage(row.row);
   if (!parsed) return;
-  ingestSessionRow(accum, parsed.model, parsed.usage, parsed.ms, parsed.durMs, { st: 'completed' as RunStatus }, undefined, 'opencode', row.id);
+  ingestSessionRow(accum, parsed.model, parsed.usage, parsed.ms, parsed.durMs, { st: 'completed' as RunStatus }, undefined, 'opencode', row.id, 'main');
 }
 
 // Fold `:free`/`-free` suffixes and case variants into one chart key.
@@ -575,10 +590,10 @@ export function importSessionTokens(): SessionTokens {
       set codexProvider(v: string | null) { codexProvider = v; },
       get codexModel() { return codexModel; },
       set codexModel(v: string | null) { codexModel = v; },
-    }, text, hostOfSessionFile(file));
+    }, text, hostOfSessionFile(file), agentOfSessionText(text));
   }
   accum.recent.sort((a, b) => b.t - a.t);
-  return { messages: accum.messages, totals: accum.totals, byModel: accum.byModel, byDay: accum.byDay, byDayModel: accum.byDayModel, byTool: accum.byTool, byModelMessages: accum.byModelMessages, byHost: accum.byHost, costMeasured: accum.costMeasured, recent: accum.recent.slice(0, RECENT_LIMIT) };
+  return { messages: accum.messages, totals: accum.totals, byModel: accum.byModel, byDay: accum.byDay, byDayModel: accum.byDayModel, byTool: accum.byTool, byModelMessages: accum.byModelMessages, byHost: accum.byHost, byAgent: accum.byAgent, byAgentMessages: accum.byAgentMessages, costMeasured: accum.costMeasured, recent: accum.recent.slice(0, RECENT_LIMIT) };
 }
 
 // Which agent wrote a session file, from the directory it sits in.
@@ -588,6 +603,21 @@ export function hostOfSessionFile(file: string): string {
   if (norm.includes('/.codex/')) return 'codex';
   if (norm.includes('/opencode/')) return 'opencode';
   return 'pi';
+}
+
+// Which agent ran a session file, from its own `session` row: a transcript with a parent
+// session is a subagent's, and everything else is the main agent. The row is the host's own
+// record, so a mirrored transcript carries the same answer as the stats database.
+export function agentOfSessionText(text: string): string {
+  if (!text.includes('parentSession')) return 'main';
+  for (const line of text.split('\n')) {
+    if (!line.includes('parentSession')) continue;
+    try {
+      const row = JSON.parse(line) as { type?: unknown; parentSession?: unknown };
+      if (row.type === 'session' && typeof row.parentSession === 'string' && row.parentSession !== '') return 'subagent';
+    } catch { /* skip a corrupt line */ }
+  }
+  return 'main';
 }
 
 const adoptionFileCache = new Map<string, { size: number; mtimeMs: number; counts: { bashCalls: number; eligibleCalls: number; rtkCalls: number } }>();
@@ -660,7 +690,7 @@ export function readRtkAdoption(): RtkAdoption {
   const missedCalls = Math.max(0, eligibleCalls - rtkCalls);
   return { sessions, bashCalls, eligibleCalls, rtkCalls, missedCalls, adoptionPct: eligibleCalls ? (rtkCalls / eligibleCalls) * 100 : 0 };
 }
-export function processSessionText(accum: SessionAccum, state: { codexProvider: string | null; codexModel?: string | null }, text: string, host?: string): void {
+export function processSessionText(accum: SessionAccum, state: { codexProvider: string | null; codexModel?: string | null }, text: string, host?: string, agent?: string): void {
   for (const line of text.split('\n')) {
     if (!line.trim()) continue;
     try {
@@ -679,11 +709,11 @@ export function processSessionText(accum: SessionAccum, state: { codexProvider: 
         const base = parsed.provider ? `codex/${parsed.provider}` : (state.codexProvider ? `codex/${state.codexProvider}` : 'codex');
         // The provider alone told you nothing about which model ran.
         const model = state.codexModel ? `${base}/${state.codexModel}` : base;
-        ingestSessionRow(accum, model, parsed.usage ?? {}, row.timestamp, parsed.durMs, { st: 'completed' as RunStatus }, undefined, host ?? 'codex', rid);
+        ingestSessionRow(accum, model, parsed.usage ?? {}, row.timestamp, parsed.durMs, { st: 'completed' as RunStatus }, undefined, host ?? 'codex', rid, agent);
         continue;
       }
       if (parsed.kind !== 'assistant_row' || !parsed.model || !parsed.usage) continue;
-      ingestSessionRow(accum, parsed.model, parsed.usage, row.timestamp, parsed.durMs, parsed.run, parsed.tools, host, rid);
+      ingestSessionRow(accum, parsed.model, parsed.usage, row.timestamp, parsed.durMs, parsed.run, parsed.tools, host, rid, agent);
     } catch { /* skip corrupt lines */ }
   }
 }

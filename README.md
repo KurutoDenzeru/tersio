@@ -80,41 +80,6 @@ Prompt overhead is included in [docs/BENCHMARK.md](./docs/BENCHMARK.md) with a f
 The Command tools dashboard reports weighted RTK command-output savings and OMP-specific adoption from executed Bash records. It does not estimate provider billing.
 Upstream Ponytail's fair agentic benchmark reports 54% less code, 22% fewer tokens, 20% lower cost, and 100% retained safety. RTK estimates command-output tokens, not bill savings. Caveman and Ponytail compliance varies by model. Measure your own sessions with `tersio usage` and the dashboard.
 
-## 📈 Dashboard
-
-`tersio dashboard --open` serves a local dashboard (127.0.0.1 only) with one page per view, at the same hash routes the upstream `@oh-my-pi/omp-stats` dashboard uses. Tersio's own ledger keeps a page of its own.
-
-| Route | Page |
-|---|---|
-| `#/overview?range=24h` | Everything omp did in the window: cost, tokens, cache, burn chart, newest requests |
-| `#/models?range=7d` | Which models did the work and how fast they answered. Click a row for its efficiency, latency, and per-day throughput |
-| `#/providers?range=7d` | Burn, reliability, and subscription headroom per provider |
-| `#/costs?range=30d` | What the window would cost at public API rates |
-| `#/requests?range=24h` | Every model call, newest first, with a filter and a detail drawer |
-| `#/errors?range=7d` | Failed requests grouped by error signature |
-| `#/traces` | Sessions, with `&s=<sessionFile>` deep-linking one transcript |
-| `#/tools?range=7d` | Which tools omp called, how often they failed, and what they cost |
-| `#/projects?range=30d` | Usage by session folder |
-
-A session page is a flamegraph of that transcript: nine headline figures (wall, model, tool, idle, turns, requests, agents, tokens, cost), a timeline with an axis choice, an idle bridge, a search with match cycling, an overview strip, and the flamegraph itself, then the transcript in words and the per-tool totals. Click a span for its journal payload.
-
-The session list holds one row per root session: a subagent's own transcript folds into its parent, so requests, tokens, cost, models, and time add up under the root, and the Agents column counts the children folded in. Each row's title and working directory come from the root transcript itself.
-
-Windows are `1h`, `24h`, `7d`, `30d`, `90d`, and all time. Press `1`-`6` for a window and `g` then a letter to jump between pages. Every view keeps its window in the URL, so a link reproduces exactly what you see.
-
-Long tables page instead of clipping: the request log, failures, models, projects, tools, and sessions all render one page at a time, with the row count and a rows-per-page picker in the footer.
-
-**The rail and the topbar.** The rail lists every page and its shortcut, with Settings and Share in its footer. Its header row and the topbar are the same height, so their rules read as one line. The rail collapses to its icons with the control in its header, and in that strip the header holds the control alone and the footer becomes icons: the brand mark, the credits, the social marks, and the shortcut hint hide there, because each of them ran past the narrow rail. The topbar names the session-start modes where the page name used to sit, reading the combo preset and the three modes under it, and a click on it opens Settings. A phone opens the rail from a trigger in the topbar, because a phone's rail is a sheet whose own header sits inside it. Below a large desktop the topbar wraps the buttons to a second row instead of squeezing the mode banner, and the three modes drop below the large breakpoint, where the rail leaves no room for them. The window picker, the share button, and the theme button stay at the top right.
-
-**Read-only, always.** The omp pages read `~/.omp/stats.db` and `~/.omp/agent/agent.db` and never write to them. Cost is labelled as a public-rate-card estimate, never a bill.
-
-**Brand marks come from a catalog.** `extensions/shared/brand-marks.ts` names each mark's URL, so the exported file inlines that same list once and renders with the network off. A gateway with a brand of its own carries it, and a gateway with no hosted mark keeps a monogram instead of a borrowed vendor logo.
-
-### Measurement references
-
-- **[EcoLogits](https://github.com/mlco2/ecologits)** informs Tersio's local CO₂ and energy estimates. Tersio ports the model to TypeScript; EcoLogits is not a runtime dependency.
-- **[Tokscale](https://github.com/junhoyeo/tokscale)** informs Tersio's Input, Output, Cache Read, and Cache Write accounting from local OMP sessions. Tokscale is a reference, not a runtime dependency.
-
 ## 🖥️ CLI
 
 | Command | Purpose |
@@ -163,8 +128,8 @@ Shared, and identical for every host:
 | Session-start defaults | `~/.tersio/settings.json` — combo, caveman, rtk, ponytail, and the display currency |
 | RTK binary | `~/.bun/bin/rtk` (`rtk.exe` on Windows). The runtime resolves `PATH` first, then this managed path. |
 | Usage ledger and price cache | `~/.tersio/` — local only, nothing leaves the machine |
-| `usage.db` host scope | `~/.tersio/usage.db` mirrors every agent Tersio reads: omp and pi transcripts, the OpenCode JSON tree, and the OpenCode v2 sqlite rows. Each row records its host, so a report splits by agent. |
-| Data snapshots | `~/.tersio/backups/` — one directory per snapshot, with a `manifest.json` naming the files it holds |
+| `usage.db` host scope | `~/.tersio/usage.db` mirrors every agent Tersio reads: omp and pi transcripts, the OpenCode JSON tree, and the OpenCode v2 sqlite rows. Each row records its host and its agent kind, so a report splits by agent and by main agent or subagent. |
+| Data snapshots | `~/.tersio/backups/` — one directory per snapshot with a `manifest.json`; six are kept |
 
 Per host, written by `tersio install --host <omp|pi|opencode>`:
 
@@ -180,7 +145,7 @@ omp merges the plugin manifest with the extension dir it discovers by default, s
 
 The installer writes `<file>.bak` before replacing an extension source; the updater keeps `rtk.bak` / `rule.md.bak` and restores them if the replacement fails validation. `tersio doctor --fix extensions` restores a damaged tree, and `doctor --fix registrations` drops retired or duplicate `config.yml` entries.
 
-Settings -> **Data** covers the snapshots that can put this machine's data back. The schedule card sets how often a snapshot happens by itself, and **Back up now** sits at the body's right end, under the frequency picker, with the backup directory tight under the schedule line. Pick a snapshot row to restore or delete it. The card footer then names your pick and carries both actions. A restore asks first and names the files it copies back. Files a snapshot does not hold are left alone, and a restore never deletes anything. Snapshots older than the newest three are pruned.
+Settings -> **Data** covers the snapshots that can put this machine's data back. The schedule card sets how often a snapshot happens by itself, and **Back up now** sits at the body's right end, under the frequency picker, with the backup directory tight under the schedule line. Pick a snapshot row to restore or delete it. The list holds six rows before it scrolls, each row naming the date and time it was taken. The card footer names your pick and carries both actions. A restore asks first and names the files it copies back. Files a snapshot does not hold are left alone, and a restore never deletes anything. Snapshots older than the newest six are pruned.
 
 An OMP install also registers the package in `~/.omp/plugins`, so it shows under OMP **Settings → Plugins**. Active modes reassert after Ponytail's prompt block on every top-level turn, including after history compaction.
 

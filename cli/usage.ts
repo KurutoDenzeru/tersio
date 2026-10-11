@@ -43,6 +43,8 @@ export interface UsageReport {
   byModelBucketUsd: Record<string, { input: number; output: number; cacheRead: number; cacheWrite: number }>;
   byModelMessages: Record<string, number>;
   byHost: Record<string, Record<string, TokenBreakdown>>;
+  /** Agent kind -> tokens and message count, so a subagent's work reads apart from its root's. */
+  byAgent: Record<string, { tokens: TokenBreakdown; msgs: number }>;
   byDay: Record<string, TokenBreakdown>;
   byDayModel: Record<string, Record<string, number>>;
   byTool: Array<[string, number]>;
@@ -97,6 +99,7 @@ export function summarizeUsage(rows: UsageRow[]): UsageReport {
   const byModelUsd: Record<string, number> = {};
   const byModelBucketUsd: Record<string, { input: number; output: number; cacheRead: number; cacheWrite: number }> = {};
   const byHost: Record<string, Record<string, TokenBreakdown>> = {};
+  const byAgent: Record<string, { tokens: TokenBreakdown; msgs: number }> = {};
   const byDayModel: Record<string, Record<string, number>> = {};
   let co2g = 0;
   let energyWh = 0;
@@ -119,6 +122,11 @@ export function summarizeUsage(rows: UsageRow[]): UsageReport {
       byHost[label] ??= {};
       byHost[label][host] ??= { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
       addTok(byHost[label][host], hb);
+    }
+    for (const [agent, ab] of Object.entries(session.byAgent[model] ?? {})) {
+      byAgent[agent] ??= { tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, msgs: 0 };
+      addTok(byAgent[agent].tokens, ab);
+      byAgent[agent].msgs += session.byAgentMessages[model]?.[agent] ?? 0;
     }
     co2g += co2GramsFor(model, t.output);
     energyWh += energyWhFor(model, t.output);
@@ -146,6 +154,7 @@ export function summarizeUsage(rows: UsageRow[]): UsageReport {
     byModelBucketUsd,
     byModelMessages: folded.byModelMessages,
     byHost,
+    byAgent,
     byDay: session.byDay,
     byDayModel,
     byTool,
@@ -241,6 +250,18 @@ function printReport(report: UsageReport): void {
       console.log(l);
     }
     if (allModels.length > ROW_CAP) console.log(`  showing top ${ROW_CAP} of ${fmt(allModels.length)} models — full set in the dashboard`);
+  }
+  const agentKinds = Object.entries(report.byAgent).filter(([, per]) => per.msgs > 0).toSorted((x, y) => y[1].msgs - x[1].msgs);
+  if (agentKinds.length > 1) {
+    console.log('  BY AGENT');
+    const top = agentKinds.reduce((m, [, per]) => Math.max(m, per.tokens.input + per.tokens.output + per.tokens.cacheRead + per.tokens.cacheWrite), 1);
+    const arows = agentKinds.map(([kind, per]) => {
+      const total = per.tokens.input + per.tokens.output + per.tokens.cacheRead + per.tokens.cacheWrite;
+      return [kind === 'subagent' ? 'Subagents' : 'Main agent', fmt(per.msgs), fmt(per.tokens.input), fmt(per.tokens.output), fmt(per.tokens.cacheRead), `${bar(total / top, 8)} ${fmtShort(total)}`];
+    });
+    for (const line of textTable(['Agent', 'Msgs', 'Input', 'Output', 'Cache read', 'Share'], arows, [false, true, true, true, true, false])) {
+      console.log(line);
+    }
   }
   const cmdRows: { name: string; count: number; saved: number | null; avgPct: number | null; avgMs: number | null }[] =
     report.byTool.map(([tool, n]) => ({ name: tool, count: n, saved: null, avgPct: null, avgMs: null }));

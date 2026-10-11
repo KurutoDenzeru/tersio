@@ -5,6 +5,7 @@ import { displayModel, fmt, fmtMs, hostOfSession, statusColor, statusLabel, toke
 import type { AgentRequestRow } from "@/lib/data";
 import { useAgentRequestEntry } from "@/lib/data";
 import { ProviderMark, VendorMark } from "@/components/brand";
+import { AgentLogo } from "@/components/agent-logos";
 import { Icon } from "@/components/icon";
 
 function SectionLabel({ icon, children }: { icon?: string; children: React.ReactNode }) {
@@ -138,7 +139,7 @@ export function AgentRequestDrawer({
               {statusLabel({ st: state })}
             </Chip>
             <Chip title={`Session written by ${host.label}`}>
-              <Icon name="terminal" className="size-3 text-dim" />
+              <AgentLogo host={host.host} className="size-3" />
               {host.label}
             </Chip>
             <button
@@ -199,7 +200,7 @@ export function AgentRequestDrawer({
             <SectionLabel icon="bot">Agent</SectionLabel>
             <DetailRow label="Session host">
               <span className="inline-flex items-center gap-2">
-                <Icon name="terminal" className="size-3.5 text-dim" />
+                <AgentLogo host={host.host} className="size-3.5" />
                 {host.label}
               </span>
             </DetailRow>
