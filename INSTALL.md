@@ -19,7 +19,7 @@ The default one-liner installs the CLI and runs the setup menus (scope + Combo p
 curl -fsSL https://github.com/KurutoDenzeru/tersio/releases/latest/download/install.sh | sh
 ```
 
-All three hosts load the same tree from their own directory: `~/.omp/agent/extensions`, `~/.pi/agent/extensions`, `~/.config/opencode/plugins/tersio`. `tersio update` without `--host` refreshes OMP.
+Each host loads its extensions from one place, so the same file never loads twice: `~/.omp/plugins/node_modules/@krtclcdy/tersio/extensions/` for OMP, `~/.pi/agent/extensions`, `~/.config/opencode/plugins/tersio`. The OMP agent tree keeps rtk's own `extensions/rtk.ts` wiring, which `config.yml` registers. `tersio update` without `--host` refreshes OMP.
 
 ## Requirements
 

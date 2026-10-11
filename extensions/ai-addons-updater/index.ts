@@ -2,6 +2,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import fsSync from 'node:fs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -31,8 +32,18 @@ const EXTENSION_DIR = path.dirname(fileURLToPath(import.meta.url));
 
 const PONYTAIL_REMOTE = 'https://raw.githubusercontent.com/DietrichGebert/ponytail/main/package.json';
 const RTK_BINARY = resolveRtkBinary();
-// Beside this file, not a host path: these are the rules /caveman reads.
-const cavemanRule = (name: string) => path.join(EXTENSION_DIR, '..', 'caveman-session', name);
+// Beside this file, not a host path: these are the rules /caveman reads. A retired
+// agent-tree copy has no `caveman-session` sibling, so the OMP plugin install is the
+// fallback: it is the one the plugin manifest loads from.
+const CAVEMAN_SIBLING = (name: string): string => path.join(EXTENSION_DIR, '..', 'caveman-session', name);
+
+function cavemanRule(name: string): string {
+  const beside = CAVEMAN_SIBLING(name);
+  if (fsSync.existsSync(beside)) return beside;
+  const plugin = path.join(os.homedir(), '.omp', 'plugins', 'node_modules', '@krtclcdy', 'tersio', 'extensions', 'caveman-session', name);
+  return fsSync.existsSync(plugin) ? plugin : beside;
+}
+
 const CAVEMAN_LOCAL = cavemanRule('rule.md');
 const CAVEMAN_TRACKED: ReadonlyArray<{ file: string; remote: string }> = [
   { file: cavemanRule('rule-ultra.md'), remote: CAVEMAN_REMOTE_ULTRA },

@@ -1,78 +1,55 @@
 # Handoff — Tersio add-on install state on OMP
 
-Status: **no live fault**. Every add-on works. One install-tree drift and one open risk remain.
+Status: **resolved**. Every add-on works. The install-tree drift and the open risk are closed.
 
-Date: 2026-10-10. Host: darwin 25.6.0 arm64. OMP 18.8.7. Tersio 2.25.4 (installed).
+Date: 2026-10-11. Host: darwin 25.6.0 arm64. OMP 18.9.2. Tersio 2.25.4 (installed).
 
 ## What works, with the check that proves it
 
 | Add-on | State | Proof |
 |---|---|---|
-| Tersio CLI | working | `bun run build` 428ms, 412 tests over 57 files, `tersio dashboard` served port 3915 |
-| RTK | working | `rtk 0.51.0` at `~/.bun/bin/rtk`. `[retriever] mode = "tee"`, `tee_max_files = 20`. `xd://rtk_run` with `{"args":["ls","<dir>"]}` returned a condensed list plus `... (124 more)` and a tee-log pointer. A tee log lands per proxied call. |
-| Ponytail | working | Prompt carries `🦥 PONYTAIL MODE ACTIVE — level: ultra`, the exact string `extensions/combo-toggle/index.ts:42` builds. Package at `~/.omp/plugins/node_modules/@dietrichgebert/ponytail`. |
-| Caveman | working | Prompt carries `extensions/caveman-session/rule-ultra.md` verbatim (`Payload only`, `Never cut: code, commands, paths, API names, error strings`). `caveman-session/index.ts:12` maps `ultra` to that file. |
+| Tersio CLI | working | `bun run build` 386ms, 411 tests over 58 files, `tersio install --host omp --dry-run --yes` reports its writes |
+| RTK | working | `rtk 0.51.0` at `~/.bun/bin/rtk`. The wiring `~/.omp/agent/extensions/rtk.ts` stays in the agent tree, where `config.yml` registers it. |
+| Ponytail | working | Prompt carries `🦥 PONYTAIL MODE ACTIVE — level: ultra`. Package at `~/.omp/plugins/node_modules/@dietrichgebert/ponytail`. |
+| Caveman | working | Prompt carries the `rule-ultra.md` body verbatim. The rules live only in the plugin tree, which is the copy the manifest loads. |
 
 RTK compaction covers proxied command forms only: `ls`, `find`, `tree`, `git`, `grep`, `gh`. A plain pipeline such as `printf | awk` returns full output. This is by design, not a fault. `cfg://rtk` returns `Unknown setting` because RTK is not an omp cfg namespace.
 
-## The install drift
+## How the install loads now
 
-`~/.omp/agent/extensions/` holds 7 directories: `ai-addons-updater`, `combo-toggle`, `lib`, `rtk-filter`, `rtk-session`, `shared`, `tersio-commands`. It has no `caveman-session`.
+omp merges the plugin manifest with the extension dir it discovers by default (`disableExtensionDiscovery` defaults to `merge`; `--no-extensions` turns discovery off). So one extension file in one place per host:
 
-`README.md:170` documents the OMP install path as
-`~/.omp/agent/extensions/{caveman-session,rtk-session,combo-toggle,tersio-commands,ai-addons-updater}/`.
-The documented tree and the actual tree disagree.
+- OMP mode extensions load from `~/.omp/plugins/node_modules/@krtclcdy/tersio/extensions/`, which `omp.extensions` declares.
+- The OMP agent tree keeps only rtk's own `extensions/rtk.ts`, registered by path in `~/.omp/agent/config.yml`.
+- pi and OpenCode keep their own trees, unchanged.
 
-The live code does not run from the agent tree. The OMP plugin manifest at
-`~/.omp/plugins/node_modules/@krtclcdy/tersio/package.json` declares `omp.extensions` as
-`caveman-session`, `rtk-session`, `rtk-filter`, `combo-toggle`, `tersio-commands`.
-Those five load from the plugin tree. The caveman rules sit beside them:
+`cli/install.ts` now writes every OMP mode extension into the plugin tree and drops the agent-tree copies an older build wrote. The fallback stays: a plugin registration that fails still writes the agent tree, so an offline install loads its add-ons, and that path leaves the retired copies alone.
 
-```
-~/.omp/plugins/node_modules/@krtclcdy/tersio/extensions/caveman-session/
-  index.ts 5.5K   rule.md 5.9K   rule-ultra.md 2.5K   rule-megacave.md 2.8K
-  rule-ultra.md.bak 2.2K   rule-megacave.md.bak 2.6K
-```
+## The drift, closed
 
-`docs/ARCHITECTURE.md:110` already calls the agent copy retired:
-"Doctor and updater inspect that installed plugin path, not the retired agent copy."
-So the drift is a doc and install-script drift, not a runtime fault.
+`~/.omp/agent/extensions/` held 7 Tersio directories with no `caveman-session`. Both trees loaded, so five extensions ran twice and the agent-tree `ai-addons-updater` copy could not resolve its rule bodies.
 
-The published manifest drops `ai-addons-updater` from `omp.extensions`, though the repo
-`package.json:47` lists it. The updater still runs because `tersio-commands/index.ts:12`
-imports `checkAddonsSummary` and `runAddonUpdate` from `../ai-addons-updater/index.ts`
-directly. The updater therefore executes from the plugin tree, and its
-`EXTENSION_DIR` resolves to the plugin dir, so `cavemanRule()` at
-`ai-addons-updater/index.ts:35` lands on the existing plugin-tree rules. Correct today,
-but it rides on an unpublished manifest entry plus a relative import.
+The drop list is `RETIRED_OMP_AGENT_DIRS` in `cli/install.ts`: `caveman-session`, `rtk-session`, `rtk-filter`, `combo-toggle`, `tersio-commands`, `ai-addons-updater`, `shared`, `lib`. `rtk.ts` and every foreign directory stay. Verified on a throwaway home:
 
-## Open risk
+- Dry run: reports the removal and writes nothing.
+- Real run with the plugin present: the 7 stale directories are gone, `rtk.ts` and a foreign `herdr/` directory survive, `config.yml` is untouched.
+- A registration that fails keeps the agent tree as the working fallback.
 
-If omp auto-discovers `<agent-dir>/extensions` in addition to the plugin manifest, the
-byte-identical agent-tree copy of `ai-addons-updater/index.ts` also registers `/ai-addons`.
-That copy resolves `cavemanRule()` to `~/.omp/agent/extensions/caveman-session/`, which does
-not exist, so `/ai-addons update caveman` from that copy would write to a missing tree or fail.
+Docs now name the same layout: `README.md` (host table plus a note on the merge), `INSTALL.md`, and `docs/ARCHITECTURE.md` (the installer node, plus the single-owner invariant). Earlier docs claimed the agent tree; that was the drift.
 
-Settle it with:
+## The open risk, closed
 
-```
-grep -n "caveman\|registerCommand" ~/.omp/agent/extensions/tersio-commands/index.ts
-tersio doctor --extensions    # or the equivalent doctor probe that lists loaded extension paths
-```
+The retired agent-tree copy resolved `cavemanRule()` to `~/.omp/agent/extensions/caveman-session/`, which never existed. Two changes remove the failure path:
 
-If the agent tree is not loaded, close this item by fixing `README.md:170` and the installer
-so the documented OMP path names the plugin tree. If it is loaded, either copy
-`caveman-session` into the agent tree during install, or make `ai-addons-updater` resolve the
-plugin tree rather than its own directory.
+1. `cli/install.ts` deletes that copy, so it stops loading.
+2. `extensions/ai-addons-updater/index.ts` resolves each rule from its sibling first and falls back to the OMP plugin install, so a copy without a sibling writes to the tree the manifest actually reads.
 
-## Verification performed, with no changes made
+`test/opencode/server-sessions.test.ts` fires the hook with the real payload shape, which is what the same mistake taught, and it is unchanged by this fix.
 
-- `bun run build` and `bun run test` at repo root.
-- `shasum` on both `ai-addons-updater/index.ts` copies: identical,
-  `edb42b1d40b8b5e71706e2c7f35b5a1c2ff72fa1`.
-- `ls -la` on both extension trees, the plugin caveman-session directory, and the ponytail package.
-- Read of `~/.omp/plugins/node_modules/@krtclcdy/tersio/package.json:31-41` for the manifest list.
-- `xd://rtk_run` with a valid `args` payload to confirm compaction and tee logging.
+## Verification performed
 
-No files were edited. Nothing was committed. `/ai-addons` was not executed, so no add-on was
-re-downloaded or rewritten.
+- `bun run build`, `bun run lint`, `bun run test` at repo root: 58 files, 411 tests, all green.
+- `bunx tsc --noEmit` at repo root and in `dashboard/app`: no errors.
+- `tersio install --host omp --dry-run --yes --verbose` against a throwaway home: every mode extension writes to the plugin tree, and the retired-copy step reports.
+- A throwaway-home smoke run of the real install in three states: fresh, offline, and plugin-registered.
+- `omp plugin list` is the runtime command that lists what the host resolved, if a live double load ever needs confirming again.

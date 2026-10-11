@@ -1,5 +1,5 @@
 // cli/install.ts — install flow and all setup steps.
-import { promises as fs } from 'node:fs';
+import { existsSync, promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -237,6 +237,37 @@ async function extractRtkArchive(archivePath: string, extractDir: string): Promi
   }
   sayTagged(`  [fail] Unknown archive format: ${archivePath}`);
   return false;
+}
+
+// The agent tree keeps only rtk's own wiring file. Every Tersio extension loads from the
+// OMP plugin manifest, which omp merges with the extension dir it discovers by default, so a
+// copy left in the agent tree loads a second time. `caveman-session` was never written here
+// after the plugin registration shipped, so an old install holds a set that cannot resolve
+// its own rule bodies.
+const RETIRED_OMP_AGENT_DIRS = [
+  'caveman-session',
+  'rtk-session',
+  'rtk-filter',
+  'combo-toggle',
+  'tersio-commands',
+  'ai-addons-updater',
+  'shared',
+  'lib',
+];
+
+/** Drop the copies an older OMP install left in the agent tree, keeping rtk's `rtk.ts`. */
+async function stepRetireAgentCopies(extDir: string, options: InstallOptions): Promise<void> {
+  const stale = RETIRED_OMP_AGENT_DIRS.filter((dir) => existsSync(path.join(extDir, dir)));
+  if (stale.length === 0) {
+    if (!options.quiet) console.log('  Retired agent copies — none');
+    return;
+  }
+  if (!options.quiet) console.log(`  Retired agent copies — remove ${stale.join(', ')}`);
+  if (options.dryRun) {
+    if (verbose) sayTagged(`  [dry-run] would remove ${stale.map((d) => path.join(extDir, d)).join(', ')}`);
+    return;
+  }
+  await Promise.all(stale.map((dir) => fs.rm(path.join(extDir, dir), { recursive: true, force: true })));
 }
 
 // The binary is machine-wide; hosts without a hook only rebind. `tersio update` still refreshes it.
@@ -867,17 +898,28 @@ async function runInstall(): Promise<void> {
     return;
   }
 
-  await capture('shared', () => stepSharedSessionState(userExtDir, installOptions));
   let selfPlugin = false;
   await capture('self-plugin', async () => { selfPlugin = await stepSelfPlugin(OMP_PLUGINS_DIR, installOptions); });
   await capture('ponytail', () => stepPonytail(OMP_PLUGINS_DIR, installOptions));
   await capture('rtk', () => stepRtk(BUN_BIN_DIR, installOptions));
-  await capture('rtk session', () => stepRtkSession(userExtDir, installOptions));
-  await capture('rtk filter', () => stepRtkFilter(userExtDir, installOptions));
-  await capture('caveman', () => stepCaveman(path.join(OMP_PLUGINS_DIR, 'node_modules', '@krtclcdy', 'tersio', 'extensions'), installOptions));
-  await capture('combo', () => stepCombo(userExtDir, installOptions));
-  await capture('commands', () => stepTersioCommands(userExtDir, installOptions));
-  await capture('updater', () => stepUpdater(userExtDir, installOptions));
+
+  // A real install registers the plugin before it writes, so the OMP plugin manifest owns
+  // every mode extension. A dry run previews that same destination. A registration that
+  // failed is the one fallback: the agent tree then carries the tree so an offline install
+  // still loads its add-ons, and the retired copies stay untouched.
+  const pluginExtDir = path.join(OMP_PLUGINS_DIR, 'node_modules', '@krtclcdy', 'tersio', 'extensions');
+  const ownsTree = selfPlugin || dryRun;
+  const extDir = ownsTree ? pluginExtDir : userExtDir;
+  if (!quiet) console.log(`  Add-ons load from: ${ownsTree ? 'the OMP plugin manifest' : 'the agent tree (plugin registration failed)'}`);
+
+  await capture('shared', () => stepSharedSessionState(extDir, installOptions));
+  await capture('rtk session', () => stepRtkSession(extDir, installOptions));
+  await capture('rtk filter', () => stepRtkFilter(extDir, installOptions));
+  await capture('caveman', () => stepCaveman(extDir, installOptions));
+  await capture('combo', () => stepCombo(extDir, installOptions));
+  await capture('commands', () => stepTersioCommands(extDir, installOptions));
+  await capture('updater', () => stepUpdater(extDir, installOptions));
+  if (ownsTree) await capture('retired agent copies', () => stepRetireAgentCopies(userExtDir, installOptions));
   if (selfPlugin) await capture('settings', () => writePluginSettings(profile, installOptions));
 
   if (quiet) {

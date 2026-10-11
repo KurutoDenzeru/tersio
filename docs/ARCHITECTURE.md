@@ -7,7 +7,7 @@ Tersio is one npm package with two faces: a **CLI** (`tersio install|update|doct
 ```mermaid
 flowchart TB
   subgraph CLI["CLI (node tersio.ts)"]
-    INST["cli/install.ts<br/>copies extensions to<br/>~/.omp/agent/extensions + rtk.ts wiring"]
+    INST["cli/install.ts<br/>registers the plugin under<br/>~/.omp/plugins/node_modules + rtk.ts wiring"]
     DASH["cli/dashboard.ts<br/>Dashboard dist runtime (127.0.0.1)"]
     APP["dashboard/app/<br/>Vite + React + shadcn source"]
     DOC["cli/doctor.ts · update.ts · uninstall.ts"]
@@ -106,5 +106,5 @@ flowchart LR
 - **Ledger is best-effort:** append-only JSONL; `tersio reset` writes a watermark instead of deleting host-owned files.
 - **The mirror never discards a store from a newer tersio:** a `parser_version` above this build keeps its rows and skips the re-parse, because rotated transcripts cannot rebuild them. `TERSIO_FORCE_REPARSE=1` accepts the loss.
 - **Always on:** `omp.extensions` in `package.json` loads every mode extension. Only `updater` stays an optional feature.
-- **Single owner:** OMP plugin manifests load Tersio extensions and nested Ponytail. `config.yml` holds only rtk-owned wiring; doctor removes retired, duplicate, or legacy manifest-owned entries.
+- **Single owner:** OMP plugin manifests load Tersio extensions and nested Ponytail. `config.yml` holds only rtk-owned wiring; doctor removes retired, duplicate, or legacy manifest-owned entries. omp merges the manifest with the extension dir it discovers by default, so an install removes the agent-tree copies an older build wrote: a second load of the same file is the bug, and the retired copy cannot resolve its own rule bodies.
 - **Caveman rule ownership:** `extensions/caveman-session/rule.md` ships beside the manifest-loaded extension. Doctor and updater inspect that installed plugin path, not the retired agent copy.

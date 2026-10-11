@@ -170,11 +170,13 @@ Per host, written by `tersio install --host <omp|pi|opencode>`:
 
 | Host | Extensions | Ponytail |
 |---|---|---|
-| Oh My Pi | `~/.omp/agent/extensions/{caveman-session,rtk-session,combo-toggle,tersio-commands,ai-addons-updater}/` | nested plugin dependency under `~/.omp/plugins/node_modules/`, one Plugins row |
+| Oh My Pi | `~/.omp/plugins/node_modules/@krtclcdy/tersio/extensions/` — the plugin manifest (`omp.extensions`) owns every mode extension, so the agent tree keeps only rtk's `extensions/rtk.ts` wiring, which `config.yml` registers by path | nested plugin dependency under `~/.omp/plugins/node_modules/`, one Plugins row |
 | pi | `~/.pi/agent/extensions/{caveman-session,rtk-session,rtk-filter,combo-toggle,tersio-commands,ai-addons-updater}/` — pi auto-discovers `<agent-dir>/extensions`, so there is nothing to register | `npm:@dietrichgebert/ponytail`, installed as a pi package |
 | OpenCode | `~/.config/opencode/plugins/tersio/` — registered in `opencode.json` plugins, so there is nothing else to register | bundled with Tersio; no separate package |
 
 All three hosts carry the same `shared/` and `lib/` modules and the same mode extensions from the same sources.
+
+omp merges the plugin manifest with the extension dir it discovers by default, so Tersio installs its extensions in one place per host. An install removes the copies an older build left in `~/.omp/agent/extensions/`, because a second copy of the same file would load twice and one of them cannot resolve its own rule bodies.
 
 The installer writes `<file>.bak` before replacing an extension source; the updater keeps `rtk.bak` / `rule.md.bak` and restores them if the replacement fails validation. `tersio doctor --fix extensions` restores a damaged tree, and `doctor --fix registrations` drops retired or duplicate `config.yml` entries.
 
