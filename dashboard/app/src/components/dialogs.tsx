@@ -213,6 +213,8 @@ function DataPane() {
   /** The snapshot the footer works on. A name the list no longer holds reads as no pick. */
   const [picked, setPicked] = useState<string | null>(null);
   const [asking, setAsking] = useState<string | null>(null);
+  /** The snapshot a confirmed delete is about to remove. */
+  const [confirming, setConfirming] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(() => {
@@ -295,7 +297,8 @@ function DataPane() {
   };
 
   const remove = (name: string): void => {
-    setAsking(null);
+    setConfirming(null);
+    setPicked(null);
     void fetch("/api/data", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -312,6 +315,8 @@ function DataPane() {
   };
 
   const target = (backups ?? []).find((b) => b.name === asking) ?? null;
+  /** The snapshot a confirmed delete would remove. */
+  const doomed = (backups ?? []).find((b) => b.name === confirming) ?? null;
   /** The footer works on the picked row, unless a restore confirm owns the screen. */
   const chosen = (backups ?? []).find((b) => b.name === picked) ?? null;
   const scheduleLabel = SCHEDULE_OPTIONS.find((o) => o.id === schedule)?.label ?? "Monthly";
@@ -389,7 +394,7 @@ function DataPane() {
                 variant="destructive"
                 className="mono h-8 gap-1.5 rounded-xl"
                 disabled={!chosen}
-                onClick={() => chosen && remove(chosen.name)}
+                onClick={() => chosen && setConfirming(chosen.name)}
               >
                 <Icon name="trash" className="size-3.5" />
                 Delete
@@ -464,6 +469,40 @@ function DataPane() {
               onClick={() => setAsking(null)}
             >
               Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {confirming && doomed && (
+        <div
+          className="rounded-[10px] border border-danger-border bg-danger-soft px-3.5 py-2.5"
+          role="alertdialog"
+          aria-label="Confirm delete"
+        >
+          <p className="m-0 text-[13px] font-semibold">Delete {dataStamp(doomed.mtime)}?</p>
+          <p className="mt-1 mb-0 text-xs text-dim">
+            {doomed.files.length} file{doomed.files.length === 1 ? "" : "s"} go with it —{" "}
+            {doomed.files.map((f) => f.label).join(", ")}. The live data stays as it is. A snapshot the
+            backup schedule never keeps again has to be taken by hand.
+          </p>
+          <div className="mt-2.5 flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="destructive"
+              className="mono h-8 gap-1.5 rounded-xl"
+              onClick={() => remove(doomed.name)}
+              aria-label={`Delete ${doomed.files.length} file${doomed.files.length === 1 ? "" : "s"}`}
+            >
+              <Icon name="trash" className="size-3.5" />
+              Delete {doomed.files.length} file{doomed.files.length === 1 ? "" : "s"}
+            </Button>
+            <button
+              type="button"
+              className="mono rounded-xl px-2.5 py-1.5 text-xs text-dim hover:bg-track"
+              onClick={() => setConfirming(null)}
+            >
+              Keep it
             </button>
           </div>
         </div>
