@@ -74,7 +74,7 @@ flowchart LR
     SDB["~/.omp/stats.db<br/>messages · tool_calls"]
     ADB["~/.omp/agent/agent.db<br/>usage_history"]
     JRN["~/.omp/agent/sessions/*.jsonl<br/>journal entries"]
-    UDB["~/.tersio/usage.db<br/>ledger rows"]
+    UDB["~/.tersio/usage.db<br/>ledger rows: omp · pi · opencode"]
   end
   AGG["extensions/shared/agent-stats.ts<br/>one sqlite3 batch per query group"]
   SRV["cli/dashboard.ts<br/>/data.json · /api/agent?range=&view= · /api/agent/session · /api/agent/entry"]

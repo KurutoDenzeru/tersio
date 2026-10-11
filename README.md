@@ -96,11 +96,15 @@ Upstream Ponytail's fair agentic benchmark reports 54% less code, 22% fewer toke
 | `#/tools?range=7d` | Which tools omp called, how often they failed, and what they cost |
 | `#/projects?range=30d` | Usage by session folder |
 
+A session page is a flamegraph of that transcript: nine headline figures (wall, model, tool, idle, turns, requests, agents, tokens, cost), a timeline with an axis choice, an idle bridge, a search with match cycling, an overview strip, and the flamegraph itself, then the transcript in words and the per-tool totals. Click a span for its journal payload.
+
+The session list holds one row per root session: a subagent's own transcript folds into its parent, so requests, tokens, cost, models, and time add up under the root, and the Agents column counts the children folded in. Each row's title and working directory come from the root transcript itself.
+
 Windows are `1h`, `24h`, `7d`, `30d`, `90d`, and all time. Press `1`-`6` for a window and `g` then a letter to jump between pages. Every view keeps its window in the URL, so a link reproduces exactly what you see.
 
 Long tables page instead of clipping: the request log, failures, models, projects, tools, and sessions all render one page at a time, with the row count and a rows-per-page picker in the footer.
 
-**The rail and the topbar.** The rail lists every page and its shortcut, with Settings and Share in its footer. The topbar carries the live chip, the window picker, and the theme button at the top right.
+**The rail and the topbar.** The rail lists every page and its shortcut, with Settings and Share in its footer. Its header row and the topbar are the same height, so their rules read as one line. The rail collapses to its icons with the control in its header, and in that strip the header holds the control alone and the footer becomes icons: the brand mark, the credits, the social marks, and the shortcut hint hide there, because each of them ran past the narrow rail. The topbar names the session-start modes where the page name used to sit, reading the combo preset and the three modes under it, and a click on it opens Settings. A phone opens the rail from a trigger in the topbar, because a phone's rail is a sheet whose own header sits inside it. Below a large desktop the topbar wraps the buttons to a second row instead of squeezing the mode banner, and the three modes drop below the large breakpoint, where the rail leaves no room for them. The window picker, the share button, and the theme button stay at the top right.
 
 **Read-only, always.** The omp pages read `~/.omp/stats.db` and `~/.omp/agent/agent.db` and never write to them. Cost is labelled as a public-rate-card estimate, never a bill.
 
@@ -159,6 +163,8 @@ Shared, and identical for every host:
 | Session-start defaults | `~/.tersio/settings.json` — combo, caveman, rtk, ponytail, and the display currency |
 | RTK binary | `~/.bun/bin/rtk` (`rtk.exe` on Windows). The runtime resolves `PATH` first, then this managed path. |
 | Usage ledger and price cache | `~/.tersio/` — local only, nothing leaves the machine |
+| `usage.db` host scope | `~/.tersio/usage.db` mirrors every agent Tersio reads: omp and pi transcripts, the OpenCode JSON tree, and the OpenCode v2 sqlite rows. Each row records its host, so a report splits by agent. |
+| Data snapshots | `~/.tersio/backups/` — one directory per snapshot, with a `manifest.json` naming the files it holds |
 
 Per host, written by `tersio install --host <omp|pi|opencode>`:
 
@@ -171,6 +177,8 @@ Per host, written by `tersio install --host <omp|pi|opencode>`:
 All three hosts carry the same `shared/` and `lib/` modules and the same mode extensions from the same sources.
 
 The installer writes `<file>.bak` before replacing an extension source; the updater keeps `rtk.bak` / `rule.md.bak` and restores them if the replacement fails validation. `tersio doctor --fix extensions` restores a damaged tree, and `doctor --fix registrations` drops retired or duplicate `config.yml` entries.
+
+Settings -> **Data** covers the snapshots that can put this machine's data back. The schedule card sets how often a snapshot happens by itself, and **Back up now** sits at the body's right end, under the frequency picker, with the backup directory tight under the schedule line. Pick a snapshot row to restore or delete it. The card footer then names your pick and carries both actions. A restore asks first and names the files it copies back. Files a snapshot does not hold are left alone, and a restore never deletes anything. Snapshots older than the newest three are pruned.
 
 An OMP install also registers the package in `~/.omp/plugins`, so it shows under OMP **Settings → Plugins**. Active modes reassert after Ponytail's prompt block on every top-level turn, including after history compaction.
 

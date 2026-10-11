@@ -112,3 +112,13 @@ Recurring mistakes log. Committed to git; reviewed periodically to promote entri
 **Root cause:** Reached for the two fields that were in front of me instead of the one field the contract already defines for that metric.
 **Prevention rule:** Before computing anything from raw fields, check whether the payload carries the finished metric. Render the page and read the numbers once before calling it done.
 
+## 2026-10-10 — A UI check read a stale build
+**What happened:** Screenshots and DOM probes against the dashboard reported duplicated month labels, a wrong cell count, and a legend that ran off the card. The source was correct in each case, or already fixed.
+**Root cause:** The server ran `dist/tersio.js` from a build made before the last edits, so every probe measured the old bundle.
+**Prevention rule:** Restart the server after `bun run build`, and confirm the served bundle dates from this session before trusting a visual or DOM result.
+
+## 2026-10-10 — A unit test imported a component file under the root tsconfig
+**What happened:** A test for the share card's contribution grid imported the `.tsx` component, which the root tsconfig rejects because `--jsx` is unset. Every type in the test then fell back to `any`.
+**Root cause:** Put a pure helper inside the component that renders it instead of in `lib/`, which is where the dashboard's tested modules live.
+**Prevention rule:** Extract pure logic that the dashboard renders into `dashboard/app/src/lib/*.ts`, and import test targets from there only.
+
