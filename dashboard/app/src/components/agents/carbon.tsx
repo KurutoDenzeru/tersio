@@ -186,21 +186,26 @@ export function CarbonPage({ agent }: { agent: AgentStats }) {
         ) : (
           /* One row per comparison, on the same 1.5rem row rhythm as the bar list beside it: the
              glyph and label sit left, the figure right, and the rate under the figure. A card
-             inside a card would break that rhythm, so the tile is just hairlines. */
-          <ul className="m-0 flex list-none flex-col p-0">
-            {r.comparisons.map((c) => (
-              <li key={c.label} className="flex items-baseline gap-3 border-b border-line py-2.5 last:border-b-0">
-                <span className="flex min-w-0 flex-1 items-center gap-2">
-                  <Icon name={c.icon} className="size-3.5 shrink-0 text-dim" />
-                  <span className="truncate text-xs">{c.label}</span>
-                </span>
-                <span className="text-right">
-                  <span className="mono block text-lg font-bold leading-none tracking-tight tabular-nums">{c.value}</span>
-                  <span className="mono block text-[11px] leading-tight text-dim">{c.factor}</span>
-                </span>
-              </li>
-            ))}
-          </ul>
+             inside a card would break that rhythm, so the tile is just hairlines.
+             Seven rows hold the card's height; the rest scroll. The cap sits on a plain div
+             rather than the ScrollArea primitive: its viewport takes `h-full`, which only
+             resolves against a definite height, so a `max-h` on that root never clips. */
+          <div className="max-h-[23.1875rem] overflow-y-auto">
+            <ul className="m-0 flex list-none flex-col p-0">
+              {r.comparisons.map((c) => (
+                <li key={c.label} className="flex items-baseline gap-3 border-b border-line py-2.5 last:border-b-0">
+                  <span className="flex min-w-0 flex-1 items-center gap-2">
+                    <Icon name={c.icon} className="size-3.5 shrink-0 text-dim" />
+                    <span className="truncate text-xs">{c.label}</span>
+                  </span>
+                  <span className="text-right">
+                    <span className="mono block text-lg font-bold leading-none tracking-tight tabular-nums">{c.value}</span>
+                    <span className="mono block text-[11px] leading-tight text-dim">{c.factor}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
       </Card>
       </div>
