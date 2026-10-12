@@ -89,15 +89,52 @@ function JsonBlock({ title, data, copy }: { title: string; data: unknown; copy?:
   );
 }
 
-/** The longer payloads stay folded, so the drawer opens on the numbers. */
-function Fold({ title, children }: { title: string; children: React.ReactNode }) {
+/**
+ * One raw JSON payload behind a fold. The summary names the payload and carries its byte count
+ * and copy, so expanding it shows only the text: an earlier shape nested a bordered `JsonBlock`
+ * inside a bordered fold, which read as three boxes deep for one payload and repeated its label
+ * in two rows.
+ */
+function JsonFold({ title, data, copy }: { title: string; data: unknown; copy?: string }) {
+  const [copied, setCopied] = useState(false);
+  const body = data === null || data === undefined ? "" : JSON.stringify(data, null, 2);
+  const text = copy ?? body;
   return (
-    <details className="group rounded-xl border border-line px-3.5 pt-3 pb-2">
-      <summary className="mono flex cursor-pointer list-none items-center gap-2 text-[10px] tracking-[0.14em] text-dim uppercase hover:text-ink">
-        <Icon name="chevron-right" className="size-3 transition-transform group-open:rotate-90" />
-        {title}
+    <details className="group rounded-xl border border-line">
+      <summary className="mono flex cursor-pointer list-none items-center gap-2 px-3.5 py-2.5 text-[10px] tracking-[0.14em] text-dim uppercase hover:text-ink">
+        <Icon name="chevron-right" className="size-3 shrink-0 transition-transform group-open:rotate-90" />
+        <span className="min-w-0 flex-1 truncate">{title}</span>
+        {body && (
+          <span className="mono shrink-0 text-[10px] text-dim">
+            {(new TextEncoder().encode(body).length / 1024).toFixed(1)} KB
+          </span>
+        )}
+        {text && (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.preventDefault();
+              void navigator.clipboard.writeText(text).then(
+                () => {
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 1500);
+                },
+                () => undefined,
+              );
+            }}
+            aria-label={`Copy ${title}`}
+            className="mono inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-line px-2 py-1 text-[11px] text-dim hover:border-accent hover:text-accent"
+          >
+            <Icon name={copied ? "check" : "copy"} className="size-3" />
+            {copied ? "Copied" : "Copy"}
+          </button>
+        )}
       </summary>
-      <div className="mt-2.5 grid gap-2.5">{children}</div>
+      {body ? (
+        <pre className="mono m-0 max-h-[420px] overflow-auto border-t border-line bg-track/40 p-3 text-xs leading-relaxed [overflow-wrap:anywhere]">{body}</pre>
+      ) : (
+        <p className="mono m-0 px-3.5 pb-2.5 text-[11px] text-dim">No payload recorded for this entry.</p>
+      )}
     </details>
   );
 }
@@ -247,37 +284,33 @@ export function AgentRequestDrawer({
           <section className="grid gap-2.5">
             <SectionLabel icon="braces">Payload</SectionLabel>
             <JsonBlock title="Output message" data={entry.output} />
-            <Fold title="Session entry">
-              <JsonBlock title="Journal entry" data={entry.entry} />
-            </Fold>
-            <Fold title="Stats row">
-              <JsonBlock
-                title="Recorded row"
-                data={{
-                  ts: row.ts,
-                  provider: row.provider,
-                  model: row.model,
-                  project: row.project,
-                  agentType: row.agentType,
-                  api: row.api,
-                  entryId: row.entryId,
-                  sessionFile: row.sessionFile,
-                  input: row.input,
-                  output: row.output,
-                  cacheRead: row.cacheRead,
-                  cacheWrite: row.cacheWrite,
-                  totalTokens: row.totalTokens,
-                  costUsd: row.costUsd,
-                  unpriced: row.unpriced,
-                  durationMs: row.durationMs,
-                  ttftMs: row.ttftMs,
-                  stopReason: row.stopReason,
-                  errorMessage: row.errorMessage,
-                  tokensPerSecond: tps > 0 ? Number(tps.toFixed(2)) : null,
-                  time: new Date(row.ts).toISOString(),
-                }}
-              />
-            </Fold>
+            <JsonFold title="Session entry" data={entry.entry} />
+            <JsonFold
+              title="Stats row"
+              data={{
+                ts: row.ts,
+                provider: row.provider,
+                model: row.model,
+                project: row.project,
+                agentType: row.agentType,
+                api: row.api,
+                entryId: row.entryId,
+                sessionFile: row.sessionFile,
+                input: row.input,
+                output: row.output,
+                cacheRead: row.cacheRead,
+                cacheWrite: row.cacheWrite,
+                totalTokens: row.totalTokens,
+                costUsd: row.costUsd,
+                unpriced: row.unpriced,
+                durationMs: row.durationMs,
+                ttftMs: row.ttftMs,
+                stopReason: row.stopReason,
+                errorMessage: row.errorMessage,
+                tokensPerSecond: tps > 0 ? Number(tps.toFixed(2)) : null,
+                time: new Date(row.ts).toISOString(),
+              }}
+            />
           </section>
         </div>
       </SheetContent>
