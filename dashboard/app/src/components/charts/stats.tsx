@@ -190,18 +190,36 @@ export function StatGrid({
       + " sm:max-lg:[&>*:not(:nth-child(4n+1))]:border-l sm:max-lg:[&>*:nth-child(n+5)]:border-t"
       + " lg:[&>*:not(:nth-child(7n+1))]:border-l lg:[&>*:nth-child(n+8)]:border-t",
   };
+  // The columns each tier draws, which is what a short final row counts its leftover slots from.
+  const perRow = [2, cols === 7 ? 4 : 3, cols];
+  // A row that fills leaves nothing to merge, so an even split spans one slot like any cell.
+  const mergeSpan = (slots: number): number => (cells.length % slots === 0 ? 1 : slots - (cells.length % slots) + 1);
   return (
     <div
       data-reveal
+      data-stat-band={cols}
       className={cn(
         "translate-y-[18px] grid overflow-hidden rounded-xl border border-line bg-panel opacity-0 transition-[opacity,transform] duration-500 ease-[cubic-bezier(.16,1,.3,1)] data-[reveal=in]:translate-y-0 data-[reveal=in]:opacity-100",
         sizes[cols],
         RULES[cols] ?? RULES[2],
         className,
       )}
+      // The merge spans arrive as custom properties, one per tier, because a class name built
+      // from a count is invisible to Tailwind's scanner while a property value is not.
+      style={{
+        "--stat-band-span-sm": mergeSpan(perRow[0]),
+        "--stat-band-span-md": mergeSpan(perRow[1]),
+        "--stat-band-span-lg": mergeSpan(perRow[2]),
+      } as React.CSSProperties}
     >
       {cells.map((cell, i) => (
-        <div key={i} className={cn("min-w-0", i > 0 && "border-line")}>
+        <div
+          key={i}
+          className={cn(
+            "min-w-0",
+            i > 0 && "border-line",
+          )}
+        >
           {cell}
         </div>
       ))}

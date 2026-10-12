@@ -261,3 +261,21 @@
 .ledger-cards [data-slot="card-header"][class*="border-b"] {
   padding-bottom: 8px;
 }
+
+/* A stat band's last cell merges the slots its row left empty, the way a merged cell spans the
+   columns a table row left over. The merge is a span count, not an end line: `grid-column-end:
+   -1` lets auto-placement drop the cell into the last column and leave a hole in the middle of
+   the row, while `span N` widens it from the slot it already holds. The count follows the
+   columns the breakpoint draws, so each tier reads its own variable. */
+[data-stat-band] > :last-child {
+  grid-column: span var(--stat-band-span, 1);
+}
+@media (max-width: 639px) {
+  [data-stat-band] > :last-child { grid-column: span var(--stat-band-span-sm, 1); }
+}
+@media (min-width: 640px) and (max-width: 1023px) {
+  [data-stat-band] > :last-child { grid-column: span var(--stat-band-span-md, 1); }
+}
+@media (min-width: 1024px) {
+  [data-stat-band] > :last-child { grid-column: span var(--stat-band-span-lg, 1); }
+}

@@ -467,7 +467,7 @@ export function emptyAgentStats(range: RangeKey = '24h'): AgentStats {
  * `-readonly` needs the `-shm` side file, `immutable=1` silently ignores a WAL, and a copy of
  * db + wal + shm replays the log to the same row count the running server reports.
  */
-function sqliteScript(db: string, script: string): string {
+export function sqliteScript(db: string, script: string): string {
   if (!fs.existsSync(db)) throw new Error(`missing database: ${db}`);
   const opts = {
     encoding: 'utf8' as const,

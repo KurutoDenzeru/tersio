@@ -1,5 +1,5 @@
 // cli/doctor.ts — installation health checks.
-import { existsSync, promises as fs } from 'node:fs';
+import { existsSync, statSync, promises as fs } from 'node:fs';
 import path from 'node:path';
 import {
   HOME, OMP_AGENT_DIR, OMP_PLUGINS_DIR, PACKAGE_NAME, PACKAGE_VERSION,
@@ -11,7 +11,16 @@ import { askInteractiveChoice, askInteractiveConfirm, runInteractivePhase } from
 import { usageDbPath } from '../extensions/shared/usage-store.ts';
 import { pricesCachePath } from '../extensions/shared/pricing.ts';
 import { readTextIfExists, resolveRtkBinary, ruleBodyProblem } from '../extensions/lib/utils.ts';
+import { sqliteScript, statsDbPath } from '../extensions/shared/agent-stats.ts';
 import { TREE_FILES } from './manifest.ts';
+
+/** Bytes at the scale a transcript gap reads in: `5.6M`, not `5571992`. */
+function shortBytes(bytes: number): string {
+  if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(1)}G`;
+  if (bytes >= 1e6) return `${(bytes / 1e6).toFixed(1)}M`;
+  if (bytes >= 1e3) return `${Math.round(bytes / 1e3)}K`;
+  return `${bytes}B`;
+}
 
 interface DoctorSummary {
   ok: number;
@@ -145,6 +154,10 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   console.log(`  Usage DB (tersio-owned · local hosted): ${usageDbPath()}`);
   const pricesAge = pricesMtime ? `(pulled ${relTime(Date.now() - pricesMtime.mtimeMs)} · ${absDate(pricesMtime.mtimeMs)})` : '';
   check('Prices feed', pricesMtime !== null, pricesAge || pricesCachePath());
+  // The pages read omp's own index, which only advances while an omp process owns it. A stalled
+  // index reads as an empty dashboard, so name the gap instead of leaving a user to guess.
+  const indexLag = statsIndexLag();
+  if (indexLag) warnLine('omp stats index', indexLag);
 
   section('Add-ons');
   const ruleAge = ruleMtime ? `(updated ${relTime(Date.now() - ruleMtime.mtimeMs)} · ${absDate(ruleMtime.mtimeMs)})` : '';
@@ -253,6 +266,52 @@ async function runDoctorFix(tally: DoctorSummary): Promise<void> {
   const again = await runDoctor(true);
   if (again.missing + again.warn === 0) console.log('  Doctor --fix: all checks pass. Restart your agent.');
   else console.log(`  Doctor --fix: still ${again.missing} missing + ${again.warn} warn — rerun or repair manually.`);
+}
+
+/**
+ * How far omp's own transcript index falls behind the transcripts on disk, as one line, or null
+ * when nothing is behind or the index cannot be read.
+ *
+ * The agent pages read omp's `stats.db` and never write to it. omp advances the file offsets only
+ * while one of its processes owns the index, so a closed dashboard leaves the newest session turns
+ * unread and the pages read as empty. Comparing each recorded offset against the file it names is
+ * the only read-only way to see the gap, and it is worth surfacing: the symptom is a dashboard
+ * that shows nothing rather than a number that looks wrong.
+ */
+function statsIndexLag(): string | null {
+  const statsDb = statsDbPath();
+  if (!existsSync(statsDb)) return null;
+  try {
+    // The same WAL-safe reader the aggregate uses, so this probe never creates side files beside a
+    // database omp has open, and never trips over them either.
+    const rows = sqliteScript(statsDb, 'SELECT session_file, offset FROM file_offsets;\n')
+      .split('\n')
+      .filter((line: string) => line.includes('\t'))
+      .map((line: string) => line.split('\t'));
+    if (rows.length === 0) return null;
+    // The gap behind the freshest transcript is what a page shows as "no requests", so the newest
+    // file sets the number rather than the sum of every file's gap.
+    let worstBytes = 0;
+    let freshest = '';
+    for (const [file, offsetText] of rows) {
+      let size: number;
+      try {
+        size = statSync(file).size;
+      } catch {
+        continue; // a rotated or deleted transcript is not a lag
+      }
+      const behind = size - Number(offsetText);
+      if (behind > worstBytes) {
+        worstBytes = behind;
+        freshest = file;
+      }
+    }
+    if (worstBytes < 4096) return null;
+    const when = relTime(Date.now() - statSync(statsDb).mtimeMs);
+    return `${shortBytes(worstBytes)} of ${path.basename(freshest)} unread, last written ${when === 'just now' ? 'moments ago' : when} — run: omp stats`;
+  } catch {
+    return null; // no sqlite3, or an unreadable index: nothing to report
+  }
 }
 
 function section(name: string): void {
