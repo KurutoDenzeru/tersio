@@ -8,6 +8,17 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const installer = path.join(root, "dist", "tersio.js");
 
+// A finished `tersio update` refreshes the price cache, which fetches LiteLLM's whole price feed —
+// a fetch the child is allowed to stall on for fifteen seconds. That is longer than this file's
+// spawn timeouts, so under a loaded machine the child is killed mid-fetch and the first test fails
+// on `status === 0` for a reason that has nothing to do with update. Point the fetch at a port with
+// nothing on it and the cache at a throwaway file: the refresh then returns in milliseconds and
+// writes nothing the developer owns.
+const deadPricesEnv = (): Record<string, string> => ({
+  TERSIO_PRICES_URL: "http://127.0.0.1:1/prices.json",
+  TERSIO_PRICES_FILE: path.join(mkdtempSync(path.join(os.tmpdir(), "tersio-update-prices-")), "prices.json"),
+});
+
 test("update refreshes the globally installed CLI before delegating", () => {
   const fakeBin = mkdtempSync(path.join(os.tmpdir(), "omp-update-global-"));
   const npm = path.join(fakeBin, process.platform === "win32" ? "npm.cmd" : "npm");
@@ -28,6 +39,7 @@ test("update refreshes the globally installed CLI before delegating", () => {
         encoding: "utf8",
         env: {
           ...process.env,
+          ...deadPricesEnv(),
           PATH: `${fakeBin}${path.delimiter}${process.env.PATH || ""}`,
         },
         timeout: 10000,
@@ -139,6 +151,7 @@ test("update aborts before the global install when the payload fails its smoke c
         encoding: "utf8",
         env: {
           ...process.env,
+          ...deadPricesEnv(),
           PATH: `${fakeBin}${path.delimiter}${process.env.PATH || ""}`,
           HOME: home,
         },
