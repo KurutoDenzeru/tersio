@@ -1,6 +1,6 @@
 # Architecture
 
-Tersio is one npm package with two faces: a **CLI** (`tersio install|update|doctor|dashboard…`) and an **OMP plugin** whose feature-gated extensions load inside a host.
+Tersio is one npm package with two faces: a **CLI** (`tersio install|update|doctor|dashboard…`) and a **host plugin** whose feature-gated extensions load inside any supported agent — omp, pi, or OpenCode. The CLI picks one with `--host`, every extension speaks one `ExtensionApi`, and all three read the same session defaults from one file. The reporting side is not yet that even, which the next section spells out.
 
 ## Components
 
@@ -14,7 +14,7 @@ flowchart TB
   subgraph APP["dashboard/app (Vite + React)"]
     UI["hash routes, one page per view"]
   end
-  subgraph MODES["extensions/ — loaded per omp.features"]
+  subgraph MODES["extensions/ — loaded per host"]
     CAV["caveman"]
     RTK["rtk/session.ts"]
     RFIL["rtk/filter.ts"]
@@ -61,27 +61,28 @@ Two read paths. **They do not meet**, which is the single fact to hold onto.
 
 ```mermaid
 flowchart LR
-  subgraph OMP["omp — the host's own files"]
+  subgraph READ["what the ten pages read — omp only"]
     SDB["~/.omp/stats.db<br/>messages · tool_calls"]
     ADB["~/.omp/agent/agent.db<br/>usage_history"]
     JRN["~/.omp/agent/sessions/*.jsonl<br/>journal"]
+    ASTS["agent-stats.ts<br/>one sqlite3 batch per query group"]
+    API["/api/agent?range=&view="]
+    SESS["/api/agent/session · /entry"]
   end
-  subgraph OTH["pi and opencode — mirrored by tersio"]
+  subgraph MIRROR["what pi and opencode feed — tersio's own mirror"]
     PIJ["~/.pi/agent/sessions/*.jsonl"]
     OCJ["opencode/storage/message/*.json<br/>one file per message"]
     OCD["opencode.db<br/>message + session_message"]
+    UDB["~/.tersio/usage.db<br/>files · messages · meta"]
   end
-  ASTS["agent-stats.ts<br/>one sqlite3 batch per query group"]
-  API["/api/agent?range=&view="]
-  SESS["/api/agent/session · /entry"]
-  UDB["~/.tersio/usage.db<br/>files · messages · meta"]
-  CLI["tersio usage"]
   DASH["the ten dashboard pages"]
+  CLI["tersio usage"]
 
   SDB & ADB & JRN --> ASTS
   ASTS --> API --> DASH
   JRN --> SESS --> DASH
   PIJ & OCJ & OCD --> UDB --> CLI
+  UDB -.->|"no route opens it"| API
 ```
 
 - **The dashboard reads omp only.** `agent-stats.ts` opens `~/.omp/stats.db` and `~/.omp/agent/agent.db`, which only omp writes. Every one of the ten pages — Overview, Models, Providers, Costs, Carbon, Requests, Errors, Traces, Tools, Projects — and both transcript routes come out of those two files plus the omp journal.
@@ -93,7 +94,7 @@ flowchart LR
 
 - **The aggregate mirrors the reference, metric for metric.** `readAgentStats(range, view)` reimplements the omp-stats SQL facts: `failed` counts only `stop_reason = 'error'`, `cacheRate` is `cacheRead / (input + cacheRead)`, `cacheSavings` is `(noCacheCost - cachedCost) / noCacheCost` over rows that carry a `cost_no_cache_input`, and `avgTokensPerSecond` divides by `COUNT(duration > 0)`. The subscription-window engine ports the same rules: a window is one `(provider, limitId)` pair, consumption sums only positive fraction deltas, a drop past 0.05 counts a cycle, and the peak is the swept sum across accounts. Each rule is pinned by `test/cli/omp-stats.test.ts`.
 - **A view asks for only what it renders.** `view=<page>` selects the query groups the server runs and the fields it returns, so a payload stays in the tens of kilobytes rather than one snapshot. Reads are memoized for five seconds per range and view.
-- **Never a write.** Every read opens with `sqlite3 -readonly`. The WAL traps are handled in order: `-readonly` first, then `immutable=1` only when no `-wal` file exists, then a copy of `db` + `-wal` + `-shm` into a temp directory. Nothing opens read-write, which would create side files in omp's directory.
+- **Never a write.** Every read opens with `sqlite3 -readonly`. The WAL traps are handled in order: `-readonly` first, then `immutable=1` only when no `-wal` file exists, then a copy of `db` + `-wal` + `-shm` into a temp directory. Nothing opens read-write, which would create side files in the host's own directory.
 - **Range is URL state.** Keys `1`-`6` pick a window and `g` then a letter opens a page. An exported file carries a single window, so its picker is a label, not a control.
 - **Degrade by source.** A missing `stats.db` hides the six `agentOnly` pages — Providers, Costs, Carbon, Errors, Traces, Projects — and leaves Overview, Models, Requests, and Tools standing.
 - **Two marks, two jobs.** `VendorMark` names the model author, resolved from the model id. `ProviderMark` names the routing service. Marks resolve to URLs from one catalog in `extensions/shared/brand-marks.ts`, never to bytes in the source; `--export` inlines that catalog once so an exported file keeps its logos with the network off.
