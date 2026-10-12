@@ -1,13 +1,10 @@
-// Brand mark catalog: names, not bytes. One list serves both consumers — the dashboard draws
-// from it at runtime, and the CLI export inlines the same URLs so a single-file dashboard keeps
-// its logos with the network off.
-//
-// Sources. Simple Icons files are CC0-1.0; the marks stay their owners' property and the
-// dashboard uses them nominatively, to name the service that served a request. A vendor with no
-// Simple Icons entry keeps its owner-hosted mark, and a vendor with no hosted mark anywhere is
-// drawn inline in the dashboard (`dashboard/app/src/lib/marks/inline.ts`).
-//
-// Pinned release. Bump `SIMPLE_ICONS` once and every Simple Icons entry moves with it.
+// Brand mark catalog: names, not bytes. One list serves both consumers — the dashboard draws from
+// it at runtime, and the CLI export inlines the same URLs so a single-file dashboard keeps its
+// logos with the network off. Simple Icons files are CC0-1.0; the marks stay their owners'
+// property and the dashboard uses them nominatively, to name the service that served a request.
+// A vendor with no Simple Icons entry keeps its owner-hosted mark, one with no hosted mark is
+// drawn inline (`dashboard/app/src/lib/marks/inline.ts`), and bumping `SIMPLE_ICONS` once moves
+// every Simple Icons entry with it.
 const SIMPLE_ICONS = "https://cdn.jsdelivr.net/npm/simple-icons@16/icons";
 
 /** Slug to mark URL. Only slugs named here resolve to a mark; the rest get a monogram. */
@@ -101,10 +98,9 @@ export const MARK_BG: Readonly<Record<string, string>> = {
 };
 
 /**
- * Glyph scale per slug, applied to the glyph box the tile clips. Simple Icons art fills its 24
- * box by very different amounts, so the measured ink box decides the scale: a mark whose logo
- * runs to the edge of its box shrinks, and a mark with an invisible margin inside its own asset
- * grows. One is the default, so a slug absent here draws at full box.
+ * Glyph scale per slug, applied to the glyph box the tile clips. Simple Icons art fills its 24 box
+ * by very different amounts, so the measured ink box decides the scale: a logo that runs to its
+ * box edge shrinks and one with an invisible margin grows. One is the default.
  */
 export const MARK_SCALE: Readonly<Record<string, number>> = {
   kimi: 0.72,

@@ -821,10 +821,9 @@ function readStatsDb(db: string, cutoff: number, bucketMs: number, cols: Set<str
 /**
  * Fold every child transcript into its root session, the way the reference lists them.
  *
- * A subagent writes its own file under its root's folder, so a `Traces` row that grouped by file
- * alone would show one row per subagent instead of one row per session. Each root holds its
- * children's requests, tokens, cost, models, and time, and counts how many children folded in.
- * A root that lost its file keeps the row: the work happened even if the transcript is gone.
+ * A subagent writes its own file under its root's folder, so a row grouped by file alone would
+ * show one row per subagent. Each root holds its children's requests, tokens, cost, models, and
+ * time, counts the children folded in, and keeps the row even when its own file is gone.
  */
 function foldTraces(rows: AgentTraceRow[]): AgentTraceRow[] {
   const byRoot = new Map<string, AgentTraceRow>();
@@ -1009,9 +1008,8 @@ function readTraceModels(db: string): Map<string, string[]> {
 /**
  * Each root session's own title and working directory, read from the head of its transcript.
  *
- * The `session` line carries the working directory and the `title` line sits above it, so one small
- * head read answers both. A rotated or unreadable file leaves the row's folder and file name to
- * speak for it.
+ * The `session` line carries the working directory and the `title` line sits above it, so one head
+ * read answers both. A rotated or unreadable file leaves the row's folder and file name to speak.
  */
 function applySessionMetadata(traces: AgentTraceRow[]): void {
   for (const trace of traces) {
@@ -1348,12 +1346,11 @@ const AGENT_TOOLS = new Set(['task', 'subagent']);
 /**
  * One session transcript as spans, tracks, markers, and totals.
  *
- * A journal message carries its own clock: an assistant message stamps its completion, and its
- * `duration` says when the call began, so a model span runs `start = ts - duration` to `ts`. A tool
- * call is emitted by the assistant message that requests it and closed by the `toolResult` with the
- * same call id, so the two bound a tool span between them. A user message opens a turn that the
- * next user message closes. Everything that is not a message (mode changes, a title) rides along as
- * a marker, since it happened at a point in time rather than across one.
+ * An assistant message stamps its completion and its `duration` says when the call began, so a
+ * model span runs `ts - duration` to `ts`. A tool call is emitted by the message requesting it and
+ * closed by the `toolResult` with the same call id, so the two bound a tool span. A user message
+ * opens a turn the next user message closes, and everything that is not a message rides along as a
+ * marker, since it happened at a point in time rather than across one.
  */
 export function readSessionTrace(sessionFile: string, limit = TRACE_SPAN_LIMIT): AgentSessionTrace {
   const project = sessionFile.split('/sessions/')[1]?.split('/')[0] ?? '';

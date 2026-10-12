@@ -16,7 +16,7 @@ import {
   httpsDownload, parseChecksum, readTextIfExists, rtkPlatformSpec, sha256File,
 } from '../extensions/lib/utils.ts';
 import { runLatestUpdate } from './update.ts';
-import { EXT_DIR, OPENCODE_SERVER_SHIM, TREE_FILES, sourcePath } from './manifest.ts';
+import { OPENCODE_SERVER_SHIM, TREE_FILES, syncTreeFiles } from './manifest.ts';
 import { detectHosts, hostExtensionsDir } from './hosts.ts';
 
 type FixTarget = 'extensions' | 'registrations' | 'rtk' | 'ponytail' | 'cli';
@@ -42,12 +42,8 @@ async function fixExtensionTrees(): Promise<void> {
       continue;
     }
     await fs.mkdir(dest, { recursive: true });
-    for (const file of forHost(host.id)) {
-      const from = path.join(EXT_DIR, ...file.split('/'));
-      const text = await readTextIfExists(from);
-      if (text === null) sayTagged(`  [warn] bundled source missing: ${from}`);
-      else await writeIfChanged(path.join(dest, file), text, { dryRun, verbose });
-    }
+    const missing = await syncTreeFiles(dest, forHost(host.id), { dryRun, verbose });
+    for (const from of missing) sayTagged(`  [warn] bundled source missing: ${from}`);
     if (host.id !== 'opencode') await scrubOpencodeDir(dest);
     if (!dryRun) sayTagged(`  [ok] ${host.label} extension tree: ${dest}`);
   }
@@ -87,19 +83,14 @@ async function fixExtensions(pluginsDir: string): Promise<void> {
   await fs.mkdir(pluginExtDir, { recursive: true });
 
   // Rule bodies are never overwritten: they can be newer upstream fetches.
-  const ruleFile = (f: string) => /^caveman-session\/rule.*\.md$/.test(f);
-  for (const file of TREE_FILES) {
-    const dest = path.join(pluginExtDir, ...file.split('/'));
-    if (ruleFile(file) && existsSync(dest)) continue;
-    const text = await readTextIfExists(sourcePath(file));
-    if (text === null) sayTagged(`  [warn] bundled source missing: ${sourcePath(file)}`);
-    else await writeIfChanged(dest, text, { dryRun, verbose });
-  }
+  const ruleFile = (f: string): boolean => /^caveman-session\/rule.*\.md$/.test(f);
+  const missing = await syncTreeFiles(pluginExtDir, TREE_FILES, { dryRun, verbose }, (file: string) => ruleFile(file) && existsSync(path.join(pluginExtDir, ...file.split('/'))));
+  for (const from of missing) sayTagged(`  [warn] bundled source missing: ${from}`);
 
   // Writing is not atomic, so re-read rather than assume the tree is whole.
   if (dryRun) return;
-  const missing = TREE_FILES.filter((file) => !existsSync(path.join(pluginExtDir, ...file.split('/'))));
-  if (missing.length > 0) sayTagged(`  [fail] tree incomplete: ${missing.join(', ')}`);
+  const stillMissing = TREE_FILES.filter((file) => !existsSync(path.join(pluginExtDir, ...file.split('/'))));
+  if (stillMissing.length > 0) sayTagged(`  [fail] tree incomplete: ${stillMissing.join(', ')}`);
   else sayTagged(`  [ok] extension tree: ${TREE_FILES.length} files`);
 }
 

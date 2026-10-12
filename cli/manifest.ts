@@ -1,7 +1,8 @@
 // Single list of install writes, shared by installer, doctor, and tests.
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { findPackageRoot } from '../extensions/lib/utils.ts';
+import { findPackageRoot, readTextIfExists } from '../extensions/lib/utils.ts';
+import { writeIfChanged } from './common.ts';
 
 export const EXT_DIR = path.join(findPackageRoot(path.dirname(fileURLToPath(import.meta.url))), 'extensions');
 
@@ -45,4 +46,34 @@ export function filesUnder(dir: string): Array<[string, string]> {
     if (file.startsWith(`${dir}/`)) found.push([sourcePath(file), file]);
   }
   return found;
+}
+
+/**
+ * Copy every bundled file into `dest`, creating the directories it needs. A file the bundle does
+ * not carry is reported and skipped rather than aborting: a half-written tree is the case the
+ * doctor repairs, so one missing source must not stop the rest of the write.
+ *
+ * `skip` answers "leave this file alone", which is how the rule bodies survive a repair: an
+ * upstream fetch can be newer than the bundled copy, and a re-fetch never overwrites it.
+ *
+ * Returns the files the bundle did not carry, so a caller can verify the tree it just wrote.
+ */
+export async function syncTreeFiles(
+  dest: string,
+  files: readonly string[],
+  options: { dryRun?: boolean; verbose?: boolean },
+  skip?: (file: string) => boolean,
+): Promise<string[]> {
+  const missing: string[] = [];
+  for (const file of files) {
+    if (skip?.(file)) continue;
+    const from = sourcePath(file);
+    const text = await readTextIfExists(from);
+    if (text === null) {
+      missing.push(from);
+      continue;
+    }
+    await writeIfChanged(path.join(dest, ...file.split('/')), text, options);
+  }
+  return missing;
 }
