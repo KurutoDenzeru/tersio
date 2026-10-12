@@ -442,18 +442,14 @@ export function ShareDialog({
     <Dialog open={open} onOpenChange={(next) => { if (!next) onClose(); }}>
       <DialogContent className="gap-0 overflow-hidden rounded-2xl border border-line bg-panel p-5 text-ink shadow-[0_16px_48px_rgba(0,0,0,.35)] sm:max-w-[660px]" showCloseButton={false} aria-describedby={undefined}>
         <div className="flex items-start justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-2.5">
-            {/* The brand mark. A rounded square, like the card carries, not a circle. */}
-            <img src="brand.webp" alt="" width="32" height="32" className="size-8 shrink-0 rounded-[8px] border border-line object-cover" />
-            <div className="min-w-0">
-              <DialogTitle className="m-0 flex items-center gap-2 text-base font-bold tracking-[-0.01em]">
-                <Icon name="share-2" className="size-4 shrink-0 text-dim" />
-                Share usage
-              </DialogTitle>
-              <p className="mono mt-1 text-xs text-dim">
-                {card ? `${card.range} across ${fmt(card.requests)} requests` : "Reading the agent databases…"}
-              </p>
-            </div>
+          <div className="min-w-0">
+            <DialogTitle className="m-0 flex items-center gap-2 text-base font-bold tracking-[-0.01em]">
+              <Icon name="share-2" className="size-4 shrink-0 text-dim" />
+              Share usage
+            </DialogTitle>
+            <p className="mono mt-1 text-xs text-dim">
+              {card ? `${card.range} across ${fmt(card.requests)} requests` : "Reading the agent databases…"}
+            </p>
           </div>
           <button
             type="button"

@@ -1,4 +1,4 @@
-![Banner](/assets/Banner.webp)
+![Banner](./docs/Banner.webp)
 
 # ✂️ Tersio — Token Saver OMP & Usage Tracker
 
@@ -139,7 +139,7 @@ Per host, written by `tersio install --host <omp|pi|opencode>`:
 | pi | `~/.pi/agent/extensions/{caveman,rtk,combo,commands,updater}/` — pi auto-discovers `<agent-dir>/extensions`, so there is nothing to register | `npm:@dietrichgebert/ponytail`, installed as a pi package |
 | OpenCode | `~/.config/opencode/plugins/tersio/` — registered in `opencode.json` plugins, so there is nothing else to register | bundled with Tersio; no separate package |
 
-All three hosts carry the same `shared/` and `lib/` modules and the same mode extensions from the same sources.
+All three hosts carry the same `shared/` modules and the same mode extensions from the same sources.
 
 omp merges the plugin manifest with the extension dir it discovers by default, so Tersio installs its extensions in one place per host. An install removes the copies an older build left in `~/.omp/agent/extensions/`, because a second copy of the same file would load twice and one of them cannot resolve its own rule bodies.
 
