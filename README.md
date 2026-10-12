@@ -153,10 +153,6 @@ An OMP install also registers the package in `~/.omp/plugins`, so it shows under
 
 **Ponytail or Combo command missing on OMP:** confirm `~/.omp/plugins/package.json` lists `@krtclcdy/tersio`, then run `tersio install`, restart OMP, and check `tersio doctor`. A damaged tree is repaired by `tersio doctor --fix extensions`.
 
-**Commands missing on pi:** check the `Hosts` section of `tersio doctor` — it reports whether pi is installed and where. Then run `tersio install --host pi` and restart pi.
-
-**Commands missing on OpenCode:** run `tersio install --host opencode` and restart OpenCode.
-
 **RTK missing or not executable:** run `tersio install`, then `tersio doctor`. On Linux/macOS: `chmod +x ~/.bun/bin/rtk`.
 
 **RTK commands not metered in the Dashboard:** only bash calls routed through rtk's OMP wiring (`~/.omp/agent/extensions/rtk.ts`, written by `rtk init -g --agent omp`) are metered. Missing: run that command (needs rtk ≥ 0.49) or `tersio doctor --fix rtk`, then restart OMP. Native tool calls (`read`/`edit`/`eval`) stay unmetered.
