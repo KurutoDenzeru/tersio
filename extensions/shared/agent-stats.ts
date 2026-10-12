@@ -292,12 +292,6 @@ export interface AgentProviderHour {
   requests: number;
 }
 
-export interface AgentWindowPoint {
-  ts: number;
-  usedFraction: number | null;
-  exhausted: boolean;
-}
-
 /** One account's utilization series inside one window. */
 export interface AgentWindowSeries {
   provider: string;

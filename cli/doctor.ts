@@ -28,7 +28,8 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
 
   // Ponytail
   const ponytailPkg = path.join(pluginsDir, 'node_modules', '@dietrichgebert', 'ponytail', 'package.json');
-  const tersioPluginDir = path.join(pluginsDir, 'node_modules', '@krtclcdy', 'tersio');
+  // One source for the installed plugin path, so the doctor follows a package rename.
+  const tersioPluginDir = ompPackageDir();
   const cavemanIndex = path.join(tersioPluginDir, 'extensions', 'caveman-session', 'index.ts');
   const cavemanRule = (name: string) => path.join(tersioPluginDir, 'extensions', 'caveman-session', name);
   const rtkIndex = path.join(tersioPluginDir, 'extensions', 'rtk-session', 'index.ts');

@@ -1,9 +1,7 @@
-// Data snapshots: what tertio keeps, where the copies live, and how one is put back.
+// Data snapshots: what tersio keeps, where the copies live, and how one is put back.
 //
-// A snapshot is a directory, not a single file. The dashboard's ledger, the reset watermark, the
-// settings defaults, the price cache, and the read stores the pages aggregate are each a file, so
-// one copy per snapshot holds the whole set and a manifest names what came back. Older installs
-// wrote a lone `usage-<stamp>.db`; those still list and still restore, over the ledger alone.
+// A snapshot is a directory with a manifest, not a single file, so one copy holds the whole set.
+// Older installs wrote a lone `usage-<stamp>.db`; those still list and restore, over the ledger alone.
 
 import { promises as fs } from 'node:fs';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
@@ -78,10 +76,7 @@ function legacyLabel(name: string): string {
   return name.startsWith('usage-') ? 'Usage ledger' : 'Snapshot';
 }
 
-/**
- * Snapshots newest first: directories this build wrote, then the lone `usage-*.db` files older
- * builds wrote, which restore over the ledger alone.
- */
+/** Newest first: the directories this build wrote, then the lone `usage-*.db` files. */
 export function listDataBackups(): DataBackup[] {
   let names: string[] = [];
   try {

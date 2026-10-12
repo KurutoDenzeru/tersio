@@ -31,7 +31,7 @@ export function hostExtensionsDir(id: HostId, agentDir = piAgentDir()): string {
   return path.join(agentDir, 'extensions');
 }
 
-export function missingTreeFiles(id: HostId, agentDir = piAgentDir()): string[] {
+function missingTreeFiles(id: HostId, agentDir = piAgentDir()): string[] {
   const dir = hostExtensionsDir(id, agentDir);
   return TREE_FILES.filter((file) => !existsSync(path.join(dir, file)));
 }
