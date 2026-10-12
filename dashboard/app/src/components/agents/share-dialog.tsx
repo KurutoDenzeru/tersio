@@ -89,7 +89,6 @@ function cardSvg(card: Card, money: (v: number) => string, brand: string | null)
   const ink = token("--ink", "#f4f4f5");
   const dim = token("--dim", "#a1a1aa");
   const accent = token("--accent", "#34d399");
-  const line = token("--line", "#27272a");
   const left = 64;
   const boxRight = 1136;
   const gridLeft = left + 44;
@@ -268,14 +267,15 @@ function cardSvg(card: Card, money: (v: number) => string, brand: string | null)
     note = `${card.weeks} ${card.weeks === 1 ? "week" : "weeks"} of activity`;
   }
 
-  // The brand mark, so the card carries the same face the app and the CLI do. A browser that
-  // refuses the data URL still gets the rest of the card.
+  // The brand mark, so the card carries the same face the app and the CLI do. The corners are
+  // rounded with a clip path, because `rx` is not an attribute of `<image>`. It ends on
+  // `boxRight`, the same gutter the rest of the card keeps. A browser that refuses the data URL
+  // still gets the rest of the card.
   const avatar =
     brand === null
       ? ""
-      : `<defs><clipPath id="tersio-brand"><circle cx="1088" cy="80" r="48"/></clipPath></defs>` +
-        `<image href="${brand}" x="1040" y="32" width="96" height="96" clip-path="url(#tersio-brand)" preserveAspectRatio="xMidYMid slice"/>` +
-        `<circle cx="1088" cy="80" r="48" fill="none" stroke="${line}" stroke-width="2"/>`;
+      : `<defs><clipPath id="tersio-brand"><rect x="1040" y="40" width="96" height="96" rx="22"/></clipPath></defs>` +
+        `<image href="${brand}" x="1040" y="40" width="96" height="96" preserveAspectRatio="xMidYMid slice" clip-path="url(#tersio-brand)"/>`;
 
   return (
     '<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="850" viewBox="0 0 1200 850">' +
