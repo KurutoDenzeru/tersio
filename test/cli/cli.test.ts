@@ -111,6 +111,9 @@ test("verbose dry-run reveals file paths hidden by default", () => {
   expect(result.stdout).toMatch(/\[dry-run\] would write .*tersio-commands[\\/]index\.ts/);
 });
 test("the retired reinstall command is gone and doctor --fix repairs instead", () => {
+  // A temp home, not the shared fixture: --fix writes a real plugin tree, and a
+  // dozen sibling files use that fixture as HOME while the suite runs in parallel.
+  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-reinstall-"));
   const missingHome = path.join(root, "test", "definitely-missing-home");
   const removed = spawnSync(process.execPath, [installer, "reinstall", "--dry-run", "--yes"], {
     encoding: "utf8",
@@ -120,14 +123,18 @@ test("the retired reinstall command is gone and doctor --fix repairs instead", (
   });
   expect(removed.stdout, "reinstall is no longer a command").not.toMatch(/Tersio Uninstall/);
 
-  const repaired = spawnSync(process.execPath, [installer, "doctor", "--fix", "extensions", "--yes"], {
-    encoding: "utf8",
-    timeout: 60000,
-    cwd: root,
-    env: cliEnv(missingHome),
-  });
-  expect(repaired.status, repaired.stderr).toBe(0);
-  expect(repaired.stdout).toMatch(/extension tree|restoring plugin extension files/);
+  try {
+    const repaired = spawnSync(process.execPath, [installer, "doctor", "--fix", "extensions", "--yes"], {
+      encoding: "utf8",
+      timeout: 60000,
+      cwd: root,
+      env: cliEnv(home),
+    });
+    expect(repaired.status, repaired.stderr).toBe(0);
+    expect(repaired.stdout).toMatch(/extension tree|restoring plugin extension files/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
 });
 
 test("bare dry-run never prompts for the pending update and exits 0", () => {
