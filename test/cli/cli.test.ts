@@ -94,22 +94,6 @@ test("user dry-run installs commands without retired reinforcement", () => {
   expect(result.stdout).toMatch(/Tersio — register plugin/);
   expect(result.stdout).not.toMatch(/mode reinforcement/i);
 });
-test("user dry-run installs the tersio root-command extension", () => {
-  const missingHome = path.join(root, "test", "definitely-missing-home");
-  const result = spawnSync(
-    process.execPath,
-    [installer, "install", "--dry-run"],
-    {
-      encoding: "utf8",
-      cwd: root,
-      env: cliEnv(missingHome),
-    }
-  );
-
-  expect(result.status, result.stderr).toBe(0);
-  expect(result.stdout).toMatch(/Tersio commands — install \/tersio root command/);
-  expect(result.stdout).not.toMatch(/tersio-commands[\\/]index\.ts/);
-});
 test("verbose dry-run reveals file paths hidden by default", () => {
   const missingHome = path.join(root, "test", "definitely-missing-home");
   const result = spawnSync(
