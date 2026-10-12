@@ -188,13 +188,12 @@ function ModelDetail({
         <div className="grid grid-cols-2 gap-3">
           {fact("Error rate", pct(row.errorRate), `${fmt(row.failed)} failed`, "circle-alert")}
           {fact("Cache rate", pct(row.cacheRate), undefined, "database")}
-          {fact("Requests", fmt(row.requests), undefined, "activity")}
         </div>
         <div className="grid grid-cols-2 gap-3">
           {fact("Avg duration", fmtMs(row.avgDurationMs), undefined, "timer")}
           {fact("Avg TTFT", fmtMs(row.avgTtftMs), undefined, "hourglass")}
           {fact("Tokens/s", row.avgTokensPerSecond > 0 ? `${fmtShort(row.avgTokensPerSecond)}/s` : "n/a", undefined, "zap")}
-          {fact("Cost", row.unpricedRequests > 0 ? money(row.costUsd) : money(row.costUsd), `${fmt(row.unpricedRequests)} unpriced`)}
+          {fact("Cost", money(row.costUsd), `${fmt(row.unpricedRequests)} unpriced`)}
         </div>
         <div className="grid grid-cols-2 gap-3">
           {fact("Uncached input", fmtShort(row.input), undefined, "arrow-down-to-line")}
