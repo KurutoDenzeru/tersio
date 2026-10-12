@@ -44,7 +44,7 @@ The retired agent-tree copy resolved `cavemanRule()` to `~/.omp/agent/extensions
 1. `cli/install.ts` deletes that copy, so it stops loading.
 2. `extensions/ai-addons-updater/index.ts` resolves each rule from its sibling first and falls back to the OMP plugin install, so a copy without a sibling writes to the tree the manifest actually reads.
 
-`test/opencode/server-sessions.test.ts` fires the hook with the real payload shape, which is what the same mistake taught, and it is unchanged by this fix.
+`test/extensions/server-sessions.test.ts` fires the hook with the real payload shape, which is what the same mistake taught, and it is unchanged by this fix.
 
 ## Verification performed
 

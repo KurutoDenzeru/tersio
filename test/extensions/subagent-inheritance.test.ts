@@ -18,7 +18,9 @@ import type { ExtensionApi, SessionEntry } from "../../extensions/shared/types.t
 // so without this the suite depends on the developer's own defaults.
 process.env.HOME = new URL("../definitely-missing-home", import.meta.url).pathname;
 process.env.USERPROFILE = process.env.HOME;
-process.env.TERSIO_HOME = process.env.HOME;
+// The bare fixture is HOME to a dozen sibling files, so the data home must sit
+// under it: afterEach below deletes what TERSIO_HOME names.
+process.env.TERSIO_HOME = join(process.env.HOME, ".tersio");
 
 const MARKED_PROMPT = `System instructions.\n${OMP_SUBAGENT_MARKER}`;
 const UNMARKED_PROMPT = "System instructions for an unrelated headless session.";

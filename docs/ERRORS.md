@@ -11,8 +11,8 @@ Reviewed 2026-10-11. Each entry below is resolved in the repo, so its log entry 
 | Unpriced model read as unknown instead of aliased | `MODEL_ALIASES` in `extensions/shared/pricing.ts`, pinned by `test/shared/pricing.test.ts` |
 | React duplicate chased with four config knobs | `vitest.config.ts` runs `dashboard/app` as its own project, so it uses its own React |
 | Test script split broke `bun run test -- <path>` | one `vitest run` with `test.projects`; forwarding verified at 1 file |
-| Host hook wired against an assumed payload shape | `test/opencode/server-sessions.test.ts` fires the hook with the real shape |
-| `COUNT` with an `ELSE 0` literal counted every row | `extensions/shared/agent-stats.ts` writes `COUNT(CASE WHEN … THEN 1 END)`; `test/usage/omp-stats.test.ts` pins the throughput |
+| Host hook wired against an assumed payload shape | `test/extensions/server-sessions.test.ts` fires the hook with the real shape |
+| `COUNT` with an `ELSE 0` literal counted every row | `extensions/shared/agent-stats.ts` writes `COUNT(CASE WHEN … THEN 1 END)`; `test/cli/omp-stats.test.ts` pins the throughput |
 | Rounding stored values before deriving metrics | `round4` applies only to the output series; the same test pins the derived figure and the series |
 | A row field no reader filled left a column blank | the same test asserts `row.provider` for every grouped row shape |
 | A unit test imported a component file under the root tsconfig | pure logic lives in `dashboard/app/src/lib/*.ts`; `test/tsconfig.json` includes `.ts` only |
@@ -63,7 +63,7 @@ The eight entries below are editing and verification discipline. No test, lint r
 **Prevention rule:** Probe `rtk rewrite "<command>"` for coverage: exit 0/3 with stdout means covered, exit 1 means passthrough. Never infer it from `rtk gain` or `rtk session`, which scans Claude Code history only.
 
 ## 2026-10-07 — Edit truncated an existing test while trying to insert before it
-**What happened:** Adding two new tests to `test/installer/host-menus.test.ts`, the `oldText` spanned a whole existing test and the `newText` contained only that test's opening line. The replacement deleted the body and the closing brace, leaving a parse error at EOF. It also silently dropped an existing assertion before tsc caught the syntax break.
+**What happened:** Adding two new tests to `test/cli/host-menus.test.ts`, the `oldText` spanned a whole existing test and the `newText` contained only that test's opening line. The replacement deleted the body and the closing brace, leaving a parse error at EOF. It also silently dropped an existing assertion before tsc caught the syntax break.
 **Root cause:** Used a replacing primitive for an insertion. A range replacement rewrites the entire matched span, so anything intended to survive must be re-emitted in full.
 **Prevention rule:** To insert before a block, keep `oldText` to the insertion point alone, or re-emit the whole original block in `newText`. After editing near an existing test, run `git diff -U0 -- <file>` and confirm the change is pure insertion before running the suite.
 
