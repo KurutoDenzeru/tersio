@@ -125,7 +125,6 @@ export interface AgentOverall extends AgentTokenMix {
   successful: number;
   errorRate: number;
   cacheRate: number;
-  cacheSavings: number;
   costUsd: number;
   unpricedRequests: number;
   avgDurationMs: number;
@@ -147,7 +146,6 @@ export interface AgentRow extends AgentTokenMix {
   failed: number;
   errorRate: number;
   cacheRate: number;
-  cacheSavings: number;
   costUsd: number;
   unpricedRequests: number;
   avgDurationMs: number;
@@ -442,7 +440,7 @@ export function emptyAgentStats(range: RangeKey = '24h'): AgentStats {
     cutoff: 0,
     generatedAt: Date.now(),
     overall: {
-      requests: 0, failed: 0, successful: 0, errorRate: 0, cacheRate: 0, cacheSavings: 0,
+      requests: 0, failed: 0, successful: 0, errorRate: 0, cacheRate: 0,
       costUsd: 0, unpricedRequests: 0,
       avgDurationMs: 0, avgTtftMs: 0, avgTokensPerSecond: 0, maxDurationMs: null,
       input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0,
@@ -592,9 +590,6 @@ function messageFacts(p = ''): string {
     `COUNT(${p}ttft)`,
     `TOTAL(CASE WHEN ${p}duration > 0 THEN ${p}output_tokens * 1000.0 / ${p}duration END)`,
     `COUNT(CASE WHEN ${p}duration > 0 THEN 1 END)`,
-    `TOTAL(${p}cost_no_cache_input)`,
-    `TOTAL(CASE WHEN ${p}cost_no_cache_input > 0
-      THEN ${p}cost_input + ${p}cost_cache_read + ${p}cost_cache_write ELSE 0 END)`,
     `MIN(${p}timestamp)`,
     `MAX(${p}timestamp)`,
     `MAX(${p}duration)`,
@@ -631,7 +626,7 @@ interface Facts {
   costInput: number; costCacheRead: number; costCacheWrite: number;
   unpriced: number;
   durationSum: number; durationN: number; ttftSum: number; ttftN: number;
-  tpsSum: number; tpsN: number; noCacheCost: number; cachedCost: number;
+  tpsSum: number; tpsN: number;
   maxDurationMs: number | null;
   firstTs: number | null; lastTs: number | null;
 }
@@ -645,9 +640,9 @@ function parseFacts(row: string[] | undefined, at: number): Facts {
     costInput: g(8), costCacheRead: g(9), costCacheWrite: g(10),
     unpriced: g(11),
     durationSum: g(12), durationN: g(13), ttftSum: g(14), ttftN: g(15),
-    tpsSum: g(16), tpsN: g(17), noCacheCost: g(18), cachedCost: g(19),
-    firstTs: numOrNull(row?.[at + 20]), lastTs: numOrNull(row?.[at + 21]),
-    maxDurationMs: numOrNull(row?.[at + 22]),
+    tpsSum: g(16), tpsN: g(17),
+    firstTs: numOrNull(row?.[at + 18]), lastTs: numOrNull(row?.[at + 19]),
+    maxDurationMs: numOrNull(row?.[at + 20]),
   };
 }
 
@@ -656,7 +651,6 @@ function mix(f: Facts): AgentTokenMix {
 }
 
 const cacheRateOf = (f: Facts): number => (f.input + f.cacheRead > 0 ? f.cacheRead / (f.input + f.cacheRead) : 0);
-const cacheSavingsOf = (f: Facts): number => (f.noCacheCost > 0 ? (f.noCacheCost - f.cachedCost) / f.noCacheCost : 0);
 
 function overallOf(f: Facts): AgentOverall {
   return {
@@ -667,7 +661,6 @@ function overallOf(f: Facts): AgentOverall {
     successful: f.requests - f.failed,
     errorRate: f.requests > 0 ? f.failed / f.requests : 0,
     cacheRate: cacheRateOf(f),
-    cacheSavings: cacheSavingsOf(f),
     costUsd: f.costUsd,
     unpricedRequests: f.unpriced,
     avgDurationMs: f.durationN > 0 ? f.durationSum / f.durationN : 0,
@@ -689,7 +682,6 @@ function rowOf(key: string, f: Facts, models: number, provider = ''): AgentRow {
     failed: f.failed,
     errorRate: f.requests > 0 ? f.failed / f.requests : 0,
     cacheRate: cacheRateOf(f),
-    cacheSavings: cacheSavingsOf(f),
     costUsd: f.costUsd,
     unpricedRequests: f.unpriced,
     avgDurationMs: f.durationN > 0 ? f.durationSum / f.durationN : 0,

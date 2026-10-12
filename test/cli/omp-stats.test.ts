@@ -67,7 +67,6 @@ describe.skipIf(!hasSqlite())('omp aggregate', () => {
     expect(omp.overall.cacheWrite).toBe(0);
     expect(omp.overall.total).toBe(16680);
     expect(omp.overall.cacheRate).toBeCloseTo(12000 / 15130, 12);
-    expect(omp.overall.cacheSavings).toBeCloseTo((1.5 - 0.15) / 1.5, 12);
     expect(omp.overall.costUsd).toBeCloseTo(0.3, 12);
     expect(omp.overall.unpricedRequests).toBe(2);
     expect(omp.overall.avgDurationMs).toBeCloseTo(2500, 9);

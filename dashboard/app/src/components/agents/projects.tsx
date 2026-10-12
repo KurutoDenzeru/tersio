@@ -150,18 +150,6 @@ export function ProjectsPage({ agent, money }: { agent: AgentStats; money: (v: n
         sort: ({ row }) => row.cacheRate,
       },
       {
-        key: "cacheSavings",
-        header: "Cache savings",
-        title: "Prompt-input cost saved versus billing the same tokens uncached",
-        align: "right",
-        render: ({ row }) => (
-          <span className={row.cacheSavings < 0 ? "mono tabular-nums text-danger" : "mono tabular-nums text-dim"}>
-            {pct(row.cacheSavings)}
-          </span>
-        ),
-        sort: ({ row }) => row.cacheSavings,
-      },
-      {
         key: "errors",
         header: "Errors",
         align: "right",

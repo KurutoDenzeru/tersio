@@ -129,7 +129,6 @@ export function OverviewPage({
           label="Cache rate"
           title="Cache reads ÷ (uncached input + cache reads)"
           value={pct(o.cacheRate)}
-          hint={`${pct(o.cacheSavings)} saved`}
         />
         <Stat
           label="Error rate"

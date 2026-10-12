@@ -188,7 +188,6 @@ function ModelDetail({
         <div className="grid grid-cols-2 gap-3">
           {fact("Error rate", pct(row.errorRate), `${fmt(row.failed)} failed`, "circle-alert")}
           {fact("Cache rate", pct(row.cacheRate), undefined, "database")}
-          {fact("Cache savings", pct(row.cacheSavings), undefined, "piggy-bank")}
           {fact("Requests", fmt(row.requests), undefined, "activity")}
         </div>
         <div className="grid grid-cols-2 gap-3">
