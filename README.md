@@ -143,9 +143,9 @@ All three hosts carry the same `shared/` modules and the same mode extensions fr
 
 omp merges the plugin manifest with the extension dir it discovers by default, so Tersio installs its extensions in one place per host. An install removes the copies an older build left in `~/.omp/agent/extensions/`, because a second copy of the same file would load twice and one of them cannot resolve its own rule bodies.
 
-The installer writes `<file>.bak` before replacing an extension source; the updater keeps `rtk.bak` / `rule.md.bak` and restores them if the replacement fails validation. `tersio doctor --fix extensions` restores a damaged tree, and `doctor --fix registrations` drops retired or duplicate `config.yml` entries.
+The installer writes `<file>.bak` before replacing an extension source. `tersio doctor --fix extensions` restores a damaged tree, and `doctor --fix registrations` drops retired or duplicate `config.yml` entries.
 
-Settings -> **Data** covers the snapshots that can put this machine's data back. The schedule card sets how often a snapshot happens by itself, and **Back up now** sits at the body's right end, under the frequency picker, with the backup directory tight under the schedule line. Pick a snapshot row to restore or delete it. The list holds six rows before it scrolls, each row naming the date and time it was taken. The card footer names your pick and carries both actions, and each asks first: a restore names the files it copies back, and a delete names the files that go with it. Files a snapshot does not hold are left alone, a restore never deletes anything, and a delete never touches the live data. Snapshots older than the newest six are pruned.
+Settings -> **Data** covers the snapshots that can put this machine's data back. A restore never deletes and a delete never touches the live data; each asks first and names the files it moves. Files a snapshot does not hold are left alone.
 
 An OMP install also registers the package in `~/.omp/plugins`, so it shows under OMP **Settings → Plugins**. Active modes reassert after Ponytail's prompt block on every top-level turn, including after history compaction.
 
