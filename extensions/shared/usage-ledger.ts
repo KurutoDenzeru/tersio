@@ -93,14 +93,9 @@ export interface SessionTokens {
   byAgent: Record<string, Record<string, TokenBreakdown>>;
   /** Model -> agent kind -> message count, so a share can read requests beside the tokens. */
   byAgentMessages: Record<string, Record<string, number>>;
-  /** Model -> cost the host itself reported, summed over the messages that carried one. */
+  /** Model -> cost the host reported, over the messages that carried one. */
   byModelMeasured: Record<string, number>;
-  /**
-   * Model -> how many of its messages carried a reported cost. A model whose measured sum does not
-   * cover every message is only partly priced by the host, and the missing part must not read as
-   * zero: `costOf` returns undefined for an absent cost precisely so it is never confused with a
-   * recorded zero. Compare this count to `byModelMessages` before trusting `byModelMeasured`.
-   */
+  /** Model -> messages that carried a cost. Compare to `byModelMessages` before trusting the sum. */
   byModelCostMessages: Record<string, number>;
   costMeasured: number;
   recent: RecentRequest[];
@@ -311,12 +306,7 @@ export interface SessionAccum {
   byAgentMessages: Record<string, Record<string, number>>;
   /** Model -> cost the host itself reported, summed over the messages that carried one. */
   byModelMeasured: Record<string, number>;
-  /**
-   * Model -> how many of its messages carried a reported cost. A model whose measured sum does not
-   * cover every message is only partly priced by the host, and the missing part must not read as
-   * zero: `costOf` returns undefined for an absent cost precisely so it is never confused with a
-   * recorded zero. Compare this count to `byModelMessages` before trusting `byModelMeasured`.
-   */
+  /** Model -> messages that carried a cost. Compare to `byModelMessages` before trusting the sum. */
   byModelCostMessages: Record<string, number>;
   totals: TokenBreakdown;
   messages: number;
@@ -782,17 +772,14 @@ export { co2GramsFor, energyWhFor };
 export type { PriceHit, PriceTier, ModelPrice };
 
 /**
- * Price one model's tokens. `measured` is the cost the host itself reported for those tokens; it
- * outranks every rate card, because it is the only figure that comes from the party that billed.
- * A zero is a real zero here, not a missing value: `costOf` returns undefined for an absent cost, so
- * a caller that has no number must pass undefined rather than 0.
+ * Price one model's tokens. `measured` is the cost the host reported for those tokens; it outranks
+ * every rate card, because it is the only figure from the party that billed. Pass undefined rather
+ * than 0 for a cost nobody reported: `costOf` keeps the two apart.
  */
 export function usdCost(t: TokenBreakdown, model?: string, measured?: number): { usd: number; priced: boolean; tier: PriceTier; buckets: { input: number; output: number; cacheRead: number; cacheWrite: number } } {
   const m = 1 / 1_000_000;
   if (measured !== undefined) {
-    // The host priced these tokens, so the buckets are its own split when it gave one and the price
-    // is its total. Only a bare total arrives, so attribute it to input: it is the largest bucket
-    // for every model here and the split is not spendable on its own.
+    // Only a bare total arrives, so it attributes to input, the largest bucket for every model here.
     return {
       usd: measured,
       priced: true,

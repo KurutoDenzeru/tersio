@@ -61,14 +61,11 @@ export interface UsageReport {
   /** How many models resolved at each tier, so a reader can judge the estimate. */
   priceTiers: Record<string, number>;
   /**
-   * The model keys priced at a tier that is not firm, heaviest first, capped at five. Named rather
-   * than merely counted, because a count is not actionable: a reader has to know which models to
-   * put in `prices.local.json`. These are ledger keys, not display labels, since the key is what
-   * the override file must spell. One list covers every host, because a price belongs to the model
-   * and not to the agent that ran it.
+   * Ledger keys still priced by a guess, heaviest first, five at most. Keys rather than labels,
+   * because the key is what `prices.local.json` spells. One list covers every host.
    */
   weakModels: string[];
-  /** How many models were priced by the host itself rather than by a rate card. */
+  /** Models the host priced itself, so the reader knows whose figure that is. */
   measuredModels: string[];
   savedUsd: number;
   costMeasured: number;

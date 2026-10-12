@@ -104,11 +104,7 @@ function PageLoading({ title }: { title: string }) {
   );
 }
 
-/**
- * The session-start modes the navbar's banner names, read from GET /settings. A file export has no
- * server to ask, so it holds null and the banner stays hidden. `reload` runs after Settings closes,
- * so the banner shows a change the user just made.
- */
+/** The session-start modes the navbar's banner names, read from GET /settings. A file export has no server, so it holds null and the banner stays hidden. */
 function useModeState(): readonly [ModeState | null, () => void] {
   const [modes, setModes] = useState<ModeState | null>(null);
   const alive = useRef(true);

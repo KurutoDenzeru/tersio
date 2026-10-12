@@ -14,24 +14,13 @@ export interface ModelPrice {
 export const DEFAULT_PRICE: ModelPrice = { input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2.5 };
 
 /**
- * How a price was found, strongest first. A caller must treat anything below `alias` as an
- * estimate, because the feed matched a model by its bare name and the provider that billed it may
- * charge something else entirely.
+ * How a price was found, strongest first. `tail` and `default` are estimates.
  *
- * - `measured`: the host reported this cost itself. The strongest answer there is, and the only one
- *   that can be zero without being a guess: a free gateway writes a zero cost, and omp flags a
- *   request it could not price in a separate field, so a recorded zero is a real zero.
- * - `override`: the operator's own `prices.local.json`. Exact for the gateway it names.
- * - `exact`: the feed holds this id verbatim, or case-folded.
- * - `alias`: `MODEL_ALIASES` mapped it, and the feed holds the alias verbatim.
- * - `tail`: the feed holds the bare model name under some provider. A guess: LiteLLM keys a model
- *   under whichever provider it learned it from, which need not be the one that billed the row.
+ * - `measured`: the host reported it. The only tier that can be zero without being a guess.
+ * - `override`: the operator's `prices.local.json`, exact for the gateway it names.
+ * - `exact`: the feed holds the id verbatim, or case-folded. `alias`: via `MODEL_ALIASES`.
+ * - `tail`: the feed holds the bare name under some provider, which need not be the one billed.
  * - `default`: no match. `DEFAULT_PRICE`, an estimate by definition.
- *
- * There is deliberately no `provider` tier. A step that prefers a key under the id's own provider
- * segment is a subset of the case-folded check above it: a key that starts with the id's provider
- * segment and ends with its tail is the id itself. Such a step cannot fire, so the honest fix for
- * a wrong-provider price is the override file, not a branch that never runs.
  */
 export type PriceTier = 'measured' | 'override' | 'exact' | 'alias' | 'tail' | 'default';
 
@@ -57,11 +46,9 @@ export function pricesCachePath(): string {
 }
 
 /**
- * The operator's own prices, merged over the feed. The feed carries LiteLLM's ids, so a model a
- * gateway serves under its own id — `kilo/stepfun/...`, `opencode-zen/...` — is either missing or
- * matched against a different provider's row. This file is where such a model gets a real price:
- * one entry per id, keyed exactly as the transcript spells it, or with a `*` prefix to match any
- * gateway suffix.
+ * The operator's own prices, merged over the feed and keyed exactly as the transcript spells a
+ * model. A `*` prefix matches any gateway suffix. This is where a model the feed keys under a
+ * different provider gets a real price.
  */
 export function pricesOverridePath(): string {
   const override = process.env.TERSIO_PRICES_OVERRIDE_FILE;
@@ -92,8 +79,7 @@ function loadOverrides(stamp = overrideStamp()): { exact: Map<string, ModelPrice
     for (const [id, row] of Object.entries(parsed ?? {})) {
       const price = asPrice(row);
       if (!price) continue;
-      // A `*` prefix matches any gateway prefix, so one entry covers `opencode-zen/step-5-preview`
-      // and `kilo/stepfun/step-5-preview` alike.
+      // A `*` prefix matches any gateway prefix, so one entry covers every spelling of a model.
       if (id.startsWith('*')) tails.push([id.slice(1).toLowerCase(), price]);
       else exact.set(id, price);
     }
@@ -190,8 +176,7 @@ export function canonicalPriceId(model: string): string {
 export function priceFor(model: string, live?: LivePrices | null): PriceHit {
   const table = live === undefined ? loadLivePrices() : live;
   if (live === undefined) {
-    // The model memo must also key on the override file: an operator who edits it expects the new
-    // price at once, not after the feed's next refresh.
+    // An operator who edits the override file expects the new price at once, not after a refresh.
     const stamp = overrideStamp();
     if (memoTable !== table || memoStamp !== stamp) {
       memoTable = table;
@@ -254,10 +239,9 @@ function resolvePrice(model: string, table: LivePrices | null, stamp = overrideS
 
     const lower = id.toLowerCase();
     const tail = lower.split('/').pop() ?? lower;
-    // The bare model name under any provider. A guess, and reported as one: the tier says so,
-    // so a caller can keep it out of a firm total. Provider-blind by design here — the feed
-    // keys a model under whichever provider LiteLLM learned it from, which is not necessarily the
-    // one that billed the row. `prices.local.json` is how an operator fixes a specific case.
+    // The bare model name under any provider, which need not be the provider that billed the row.
+    // Reported as tier `tail`, so a caller keeps it out of a firm total; `prices.local.json` fixes
+    // a specific case.
     const bare = entries.find(([k]) => {
       const lk = k.toLowerCase();
       return lk === tail || lk.endsWith(`/${tail}`);

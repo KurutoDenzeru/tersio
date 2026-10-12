@@ -269,14 +269,9 @@ async function runDoctorFix(tally: DoctorSummary): Promise<void> {
 }
 
 /**
- * How far omp's own transcript index falls behind the transcripts on disk, as one line, or null
- * when nothing is behind or the index cannot be read.
- *
- * The agent pages read omp's `stats.db` and never write to it. omp advances the file offsets only
- * while one of its processes owns the index, so a closed dashboard leaves the newest session turns
- * unread and the pages read as empty. Comparing each recorded offset against the file it names is
- * the only read-only way to see the gap, and it is worth surfacing: the symptom is a dashboard
- * that shows nothing rather than a number that looks wrong.
+ * How far omp's own transcript index falls behind the transcripts on disk, or null when nothing is
+ * behind or the index cannot be read. omp advances the offsets only while one of its processes owns
+ * the index, so a closed dashboard leaves the newest turns unread and the pages read as empty.
  */
 function statsIndexLag(): string | null {
   const statsDb = statsDbPath();

@@ -140,10 +140,7 @@ function totalOf(dir: string): number {
   return sizeOf(manifestPath(dir)) + readdirSync(dir).reduce((sum, name: string) => sum + sizeOf(path.join(dir, name)), 0);
 }
 
-/**
- * Put the sqlite ledger's write-ahead log back in the main file, so a copy is one whole database.
- * A missing or locked database is fine: the snapshot then holds what is there.
- */
+/** Put the sqlite ledger's write-ahead log back in the main file, so a copy is one whole database. */
 function checkpointLedger(): void {
   try {
     execFileSync('sqlite3', [usageDbPath(), 'PRAGMA wal_checkpoint(TRUNCATE);'], { stdio: 'ignore', timeout: 10_000 });
@@ -152,11 +149,7 @@ function checkpointLedger(): void {
   }
 }
 
-/**
- * Take a snapshot now: one copy of every file that exists, under a stamp directory, then keep
- * only the newest {@link BACKUP_KEEP}. The whole set is copied file by file, so a database that
- * changes mid-snapshot copies consistently enough for a restore.
- */
+/** Take a snapshot now: one copy of every file that exists, under a stamp directory, then keep only the newest {@link BACKUP_KEEP}. */
 export async function createDataBackup(): Promise<DataBackup> {
   // The stamp keeps milliseconds: two snapshots in the same second must not land in one directory.
   const stamp = new Date().toISOString().replace(/[-:TZ.]/g, '');
@@ -190,11 +183,7 @@ function resolveBackup(name: string): DataBackup | null {
   return found ?? null;
 }
 
-/**
- * Put a snapshot back: every file it holds is copied over its live source. A file the snapshot
- * lacks is left alone, so a restore never deletes what it does not carry. An older single-file
- * snapshot is the ledger itself, so it is copied straight over the ledger's path.
- */
+/** Put a snapshot back: every file it holds is copied over its live source. A file it lacks is left alone, so a restore never deletes what it does not carry. */
 export async function restoreDataBackup(name: string): Promise<boolean> {
   const found = resolveBackup(name);
   if (!found) return false;

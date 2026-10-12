@@ -47,11 +47,7 @@ export function rootFiles(): Array<[string, string]> {
   return TREE_FILES.filter((file) => !file.includes('/')).map((file) => [sourcePath(file), file]);
 }
 
-/**
- * The OpenCode plugin entry. It imports `@opencode/plugin`, which the omp and pi loaders do not
- * carry, so it ships in the OpenCode tree alone. It moved to the extensions root when
- * `extensions/opencode/` folded away, and every per-host filter keys off this one constant.
- */
+/** The OpenCode plugin entry. It imports `@opencode/plugin`, which the omp and pi loaders lack, so it ships in the OpenCode tree alone. */
 export const OPENCODE_ENTRY = 'server.ts';
 
 /** The files one host's extension tree holds. The package tree holds all of them. */
@@ -60,14 +56,11 @@ export function treeFilesFor(id: 'omp' | 'pi' | 'opencode'): readonly string[] {
 }
 
 /**
- * Copy every bundled file into `dest`, creating the directories it needs. A file the bundle does
- * not carry is reported and skipped rather than aborting: a half-written tree is the case the
- * doctor repairs, so one missing source must not stop the rest of the write.
+ * Copy every bundled file into `dest`, creating the directories it needs. A file the bundle does not
+ * carry is reported and skipped rather than aborting, so one missing source cannot stop the rest.
  *
- * `skip` answers "leave this file alone", which is how the rule bodies survive a repair: an
- * upstream fetch can be newer than the bundled copy, and a re-fetch never overwrites it.
- *
- * Returns the files the bundle did not carry, so a caller can verify the tree it just wrote.
+ * `skip` answers "leave this file alone", which is how the rule bodies survive a repair: an upstream
+ * fetch can be newer than the bundled copy, and a re-fetch never overwrites it.
  */
 export async function syncTreeFiles(
   dest: string,
