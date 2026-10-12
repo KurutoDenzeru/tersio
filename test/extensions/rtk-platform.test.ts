@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { resolveRtkBinary, rtkPlatformSpec } from "../../extensions/lib/utils.ts";
+import { resolveRtkBinary, rtkPlatformSpec } from "../../extensions/shared/utils.ts";
 
 test("resolveRtkBinary returns null when PATH has no executable", () => {
   const previous = process.env.PATH;

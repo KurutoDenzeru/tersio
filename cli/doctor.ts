@@ -10,7 +10,7 @@ import { detectHosts, hostExtensionsDir, ompPackageDir, piTersioSource } from '.
 import { askInteractiveChoice, askInteractiveConfirm, runInteractivePhase } from './interactive.ts';
 import { usageDbPath } from '../extensions/shared/usage-store.ts';
 import { pricesCachePath } from '../extensions/shared/pricing.ts';
-import { readTextIfExists, resolveRtkBinary, ruleBodyProblem } from '../extensions/lib/utils.ts';
+import { readTextIfExists, resolveRtkBinary, ruleBodyProblem } from '../extensions/shared/utils.ts';
 import { sqliteScript, statsDbPath } from '../extensions/shared/agent-stats.ts';
 import { TREE_FILES } from './manifest.ts';
 
@@ -39,10 +39,10 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   const ponytailPkg = path.join(pluginsDir, 'node_modules', '@dietrichgebert', 'ponytail', 'package.json');
   // One source for the installed plugin path, so the doctor follows a package rename.
   const tersioPluginDir = ompPackageDir();
-  const cavemanIndex = path.join(tersioPluginDir, 'extensions', 'caveman-session', 'index.ts');
-  const cavemanRule = (name: string) => path.join(tersioPluginDir, 'extensions', 'caveman-session', name);
-  const rtkIndex = path.join(tersioPluginDir, 'extensions', 'rtk-session', 'index.ts');
-  const updaterIndex = path.join(tersioPluginDir, 'extensions', 'ai-addons-updater', 'index.ts');
+  const cavemanIndex = path.join(tersioPluginDir, 'extensions', 'caveman', 'index.ts');
+  const cavemanRule = (name: string) => path.join(tersioPluginDir, 'extensions', 'caveman', name);
+  const rtkIndex = path.join(tersioPluginDir, 'extensions', 'rtk', 'session.ts');
+  const updaterIndex = path.join(tersioPluginDir, 'extensions', 'updater', 'index.ts');
 
   // Independent probes start concurrently; sections report in fixed order as their data settles. Every probe resolves instead of rejecting.
   const hosts = detectHosts();

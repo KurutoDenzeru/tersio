@@ -7,16 +7,15 @@ import {
   dryRun, verbose,
   debug,
   execP, readPluginsPackage,
-  writeIfChanged,
 } from './common.ts';
 import { execNetwork, sayTagged } from './interactive.ts';
 import { wireRtkOmp, wireRtkOpencode, wireRtkPi, ensureRtkInConfig } from './rtk-wiring.ts';
 import {
   RTK_RELEASE_API, RtkRelease, fetchJson, findFile, httpsGet,
   httpsDownload, parseChecksum, readTextIfExists, rtkPlatformSpec, sha256File,
-} from '../extensions/lib/utils.ts';
+} from '../extensions/shared/utils.ts';
 import { runLatestUpdate } from './update.ts';
-import { OPENCODE_SERVER_SHIM, TREE_FILES, syncTreeFiles } from './manifest.ts';
+import { TREE_FILES, syncTreeFiles } from './manifest.ts';
 import { detectHosts, hostExtensionsDir } from './hosts.ts';
 
 type FixTarget = 'extensions' | 'registrations' | 'rtk' | 'ponytail' | 'cli';
@@ -55,10 +54,13 @@ async function fixOpencodeEntry(): Promise<void> {
   const { HOME } = await import('./common.ts');
   const dir = path.join(HOME, '.config', 'opencode', 'plugins', 'tersio');
   const configPath = path.join(HOME, '.config', 'opencode', 'opencode.json');
-  const nested = path.join(dir, 'opencode', 'server.ts');
-  if (!(await readTextIfExists(nested))) return;
-  // The loader resolves <pluginDir>/server.ts, so mirror the entry at the tree root.
-  await writeIfChanged(path.join(dir, 'server.ts'), OPENCODE_SERVER_SHIM, { dryRun, verbose });
+  // The loader resolves <pluginDir>/server.ts, and the entry is that file. A tree from before the
+  // entry moved to the extensions root held a root shim that re-exported a nested copy, so the
+  // real entry is written in place and the stale nested tree is dropped.
+  const nested = path.join(dir, 'opencode');
+  const staleNested = (await readTextIfExists(path.join(nested, 'server.ts'))) !== null;
+  await syncTreeFiles(dir, TREE_FILES.filter((file) => !file.includes('/')), { dryRun, verbose });
+  if (staleNested && !dryRun) await fs.rm(nested, { recursive: true, force: true }).catch(() => {});
   if (dryRun) sayTagged(`  [dry-run] would remove the redundant rtk plugin entry`);
   else await fs.rm(path.join(HOME, '.config', 'opencode', 'plugins', 'rtk.ts'), { force: true }).catch(() => {});
   const raw = await readTextIfExists(configPath);
@@ -83,7 +85,7 @@ async function fixExtensions(pluginsDir: string): Promise<void> {
   await fs.mkdir(pluginExtDir, { recursive: true });
 
   // Rule bodies are never overwritten: they can be newer upstream fetches.
-  const ruleFile = (f: string): boolean => /^caveman-session\/rule.*\.md$/.test(f);
+  const ruleFile = (f: string): boolean => /^caveman\/rule.*\.md$/.test(f);
   const missing = await syncTreeFiles(pluginExtDir, TREE_FILES, { dryRun, verbose }, (file: string) => ruleFile(file) && existsSync(path.join(pluginExtDir, ...file.split('/'))));
   for (const from of missing) sayTagged(`  [warn] bundled source missing: ${from}`);
 
@@ -108,7 +110,9 @@ async function fixRegistrations(agentDir: string, pluginsDir: string): Promise<v
   const rtkTs = path.join(extDir, 'rtk.ts');
   if ((await readTextIfExists(rtkTs)) !== null) await ensureRtkInConfig({ dryRun, verbose });
   const ponytailExtPath = path.join(pluginsDir, 'node_modules', '@dietrichgebert', 'ponytail', 'pi-extension', 'index.js');
-  await removeExtensionFromConfig(configPath, path.join(extDir, 'combo-toggle', 'index.ts'), 'manifest-loaded combo', { dryRun, verbose });
+  // A tree from before the fold still names `combo-toggle`; both lines name the same module.
+  await removeExtensionFromConfig(configPath, path.join(extDir, 'combo', 'index.ts'), 'manifest-loaded combo', { dryRun, verbose });
+  await removeExtensionFromConfig(configPath, path.join(extDir, 'combo-toggle', 'index.ts'), 'retired manifest-loaded combo', { dryRun, verbose });
   await removeExtensionFromConfig(configPath, ponytailExtPath, 'manifest-loaded ponytail', { dryRun, verbose });
   await removeExtensionFromConfig(configPath, path.join(extDir, 'shared', 'mode-reinforcement.ts'), 'retired mode reinforcement', { dryRun, verbose });
   const pkgPath = path.join(pluginsDir, 'package.json');

@@ -1,7 +1,7 @@
 // extensions/shared/pricing.ts — dynamic model pricing from LiteLLM. Exact id → provider-prefix strip → default, reported with known:false when unpriced.
 import fs from 'node:fs';
 import path from 'node:path';
-import { tersioDataPath } from '../lib/utils.ts';
+import { tersioDataPath } from './utils.ts';
 
 export interface ModelPrice {
   input: number;

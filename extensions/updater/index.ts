@@ -24,8 +24,8 @@ import {
   readTextIfExists,
   rtkPlatformSpec,
   resolveRtkBinary,
-} from '../lib/utils.ts';
-import type { RtkRelease } from '../lib/utils.ts';
+} from '../shared/utils.ts';
+import type { RtkRelease } from '../shared/utils.ts';
 
 const IS_WINDOWS = process.platform === 'win32';
 const EXTENSION_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -33,14 +33,14 @@ const EXTENSION_DIR = path.dirname(fileURLToPath(import.meta.url));
 const PONYTAIL_REMOTE = 'https://raw.githubusercontent.com/DietrichGebert/ponytail/main/package.json';
 const RTK_BINARY = resolveRtkBinary();
 // Beside this file, not a host path: these are the rules /caveman reads. A retired
-// agent-tree copy has no `caveman-session` sibling, so the OMP plugin install is the
+// agent-tree copy has no `caveman` sibling, so the OMP plugin install is the
 // fallback: it is the one the plugin manifest loads from.
-const CAVEMAN_SIBLING = (name: string): string => path.join(EXTENSION_DIR, '..', 'caveman-session', name);
+const CAVEMAN_SIBLING = (name: string): string => path.join(EXTENSION_DIR, '..', 'caveman', name);
 
 function cavemanRule(name: string): string {
   const beside = CAVEMAN_SIBLING(name);
   if (fsSync.existsSync(beside)) return beside;
-  const plugin = path.join(os.homedir(), '.omp', 'plugins', 'node_modules', '@krtclcdy', 'tersio', 'extensions', 'caveman-session', name);
+  const plugin = path.join(os.homedir(), '.omp', 'plugins', 'node_modules', '@krtclcdy', 'tersio', 'extensions', 'caveman', name);
   return fsSync.existsSync(plugin) ? plugin : beside;
 }
 

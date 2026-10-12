@@ -51,7 +51,7 @@ function seed(home: string) {
   writeFileSync(path.join(home, ".bun", "bin", "rtk"), "fake", "utf8");
   // Backups this CLI leaves behind.
   writeFileSync(path.join(home, ".omp", "agent", "config.yml.bak"), "extensions: []\n", "utf8");
-  const pluginCaveman = path.join(pluginsDir, "node_modules", SELF, "extensions", "caveman-session");
+  const pluginCaveman = path.join(pluginsDir, "node_modules", SELF, "extensions", "caveman");
   mkdirSync(pluginCaveman, { recursive: true });
   writeFileSync(path.join(pluginCaveman, "rule.md"), "fetched rule", "utf8");
   writeFileSync(path.join(pluginCaveman, "rule.md.bak"), "previous rule", "utf8");
@@ -98,7 +98,7 @@ test("uninstall removes the caveman rule backup from the plugin tree", () => {
     const result = run(home, "uninstall", "--yes");
 
     expect(result.status, result.stderr).toBe(0);
-    const cavemanDir = path.join(home, ".omp", "plugins", "node_modules", SELF, "extensions", "caveman-session");
+    const cavemanDir = path.join(home, ".omp", "plugins", "node_modules", SELF, "extensions", "caveman");
     expect(!existsSync(cavemanDir), "plugin tree removed").toBeTruthy();
   } finally {
     rmSync(home, { recursive: true, force: true });
@@ -109,7 +109,7 @@ test("uninstall dry-run leaves backups in place", () => {
   const home = mkdtempSync(path.join(os.tmpdir(), "tersio-uninstall-"));
   try {
     seed(home);
-    const cavemanDir = path.join(home, ".omp", "plugins", "node_modules", SELF, "extensions", "caveman-session");
+    const cavemanDir = path.join(home, ".omp", "plugins", "node_modules", SELF, "extensions", "caveman");
     const result = run(home, "uninstall", "--yes", "--dry-run");
 
     expect(result.status, result.stderr).toBe(0);
@@ -235,7 +235,7 @@ function runPi(home: string, answer: string, ...args: string[]) {
     input: `${answer}\n`,
   });
   const extDir = path.join(home, ".pi", "agent", "extensions");
-  return { result, extDir, intact: existsSync(path.join(extDir, "caveman-session", "index.ts")) };
+  return { result, extDir, intact: existsSync(path.join(extDir, "caveman", "index.ts")) };
 }
 
 test("uninstall --host pi lists what it removes and aborts on a declined confirm", () => {

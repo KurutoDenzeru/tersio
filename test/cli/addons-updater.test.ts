@@ -8,7 +8,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, "../..");
 
 // Keep updater tests offline and deterministic: report the bundled copy as latest.
-vi.mock("../../extensions/lib/utils.ts", async (importOriginal) => {
+vi.mock("../../extensions/shared/utils.ts", async (importOriginal) => {
   const original = await importOriginal<Record<string, unknown>>();
   return {
     ...original,
@@ -21,7 +21,7 @@ vi.mock("../../extensions/lib/utils.ts", async (importOriginal) => {
     },
   };
 });
-const updaterPath = path.join(root, "extensions", "ai-addons-updater", "index.ts");
+const updaterPath = path.join(root, "extensions", "updater", "index.ts");
 const updaterUrl = new URL("file:///" + updaterPath.replace(/\\/g, "/"));
 
 const { parseChecksum, default: updaterExtension } = await import(updaterUrl.href);

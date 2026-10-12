@@ -8,15 +8,15 @@ import {
   args, dryRun, execP, parseJsonObject, verbose,
 } from './common.ts';
 import { execNetwork, sayTagged } from './interactive.ts';
-import { readTextIfExists, resolveRtkBinary, tersioDataPath } from '../extensions/lib/utils.ts';
+import { readTextIfExists, resolveRtkBinary, tersioDataPath } from '../extensions/shared/utils.ts';
 import { refreshPrices } from '../extensions/shared/pricing.ts';
 import {
   CAVEMAN_REMOTE_ULTRA,
   CAVEMAN_REMOTE_MEGACAVE,
   RTK_RELEASE_API,
   httpsGet, normalizeRtkVersion, sha256Hex,
-} from '../extensions/lib/utils.ts';
-import type { RtkRelease } from '../extensions/lib/utils.ts';
+} from '../extensions/shared/utils.ts';
+import type { RtkRelease } from '../extensions/shared/utils.ts';
 import { parseHostArg } from './hosts.ts';
 
 const UPDATE_CHECK_TTL_MS = 6 * 60 * 60 * 1000;
@@ -100,7 +100,7 @@ async function probeUpdatePlan(cliLatest: string | null): Promise<UpdatePlan> {
   const rtkBin = resolveRtkBinary();
   const ponytailPkg = path.join(OMP_PLUGINS_DIR, 'node_modules', '@dietrichgebert', 'ponytail', 'package.json');
   // rule.md ships with the release; only the tracked bodies can go stale.
-const tersioRule = (name: string) => path.join(OMP_PLUGINS_DIR, 'node_modules', '@krtclcdy', 'tersio', 'extensions', 'caveman-session', name);
+const tersioRule = (name: string) => path.join(OMP_PLUGINS_DIR, 'node_modules', '@krtclcdy', 'tersio', 'extensions', 'caveman', name);
   const controller = new AbortController();
   const [rtkLocal, rtkRelease, ruleLocal, ruleRemote, ponytailLocalText] = await Promise.all([
     settle(rtkBin ? execP(rtkBin, ['--version'], { timeout: 5000 }).then((r) => normalizeRtkVersion(r.stdout.trim() || r.stderr.trim()) || null) : Promise.resolve(null), 6000),

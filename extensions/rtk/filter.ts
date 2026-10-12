@@ -2,7 +2,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { resolveRtkBinary } from '../lib/utils.ts';
+import { resolveRtkBinary } from '../shared/utils.ts';
 import { readRtkDefault } from '../shared/plugin-settings.ts';
 import { getSharedComboState, lastCustomValue, sessionEntries } from '../shared/session-state.ts';
 import type { ExtensionApi, ExtensionCtx, SessionEntry, ToolResultEvent } from '../shared/types.ts';

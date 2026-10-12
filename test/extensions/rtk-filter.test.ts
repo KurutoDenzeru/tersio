@@ -10,8 +10,8 @@ import rtkFilterExtension, {
   filterThroughRtk,
   filterableText,
   rtkActive,
-} from "../../extensions/rtk-filter/index.ts";
-import type { FilterExec } from "../../extensions/rtk-filter/index.ts";
+} from "../../extensions/rtk/filter.ts";
+import type { FilterExec } from "../../extensions/rtk/filter.ts";
 import { resetSharedComboState, setSharedComboMode } from "../../extensions/shared/session-state.ts";
 import type { ExtensionApi, ExtensionCtx, SessionEntry, ToolResultEvent } from "../../extensions/shared/types.ts";
 

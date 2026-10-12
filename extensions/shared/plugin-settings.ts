@@ -2,7 +2,7 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { homeDir, tersioHome } from '../lib/utils.ts';
+import { homeDir, tersioHome } from './utils.ts';
 
 export const PLUGIN_NAME = '@krtclcdy/tersio';
 

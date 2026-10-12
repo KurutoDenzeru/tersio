@@ -23,7 +23,7 @@ import {
   sessionsDirs,
   walkJsonl,
 } from './usage-ledger.ts';
-import { tersioDataPath } from '../lib/utils.ts';
+import { tersioDataPath } from './utils.ts';
 import { MODEL_ALIASES } from './pricing.ts';
 import { tersioSettingsFile } from './plugin-settings.ts';
 import type { OpencodeDbRow, OpencodeMessage, RunStatus, SessionTokens } from './usage-ledger.ts';

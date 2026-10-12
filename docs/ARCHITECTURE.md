@@ -15,17 +15,18 @@ flowchart TB
 
   subgraph HOST["OMP host"]
     subgraph EXT["extensions/ (loaded per omp.features)"]
-      CAV["caveman-session<br/>/caveman"]
-      RTK["rtk-session<br/>/rtk + rtk_run tool"]
-      RFILTER["rtk-filter<br/>built-in grep/glob output"]
-      COMBO["combo-toggle<br/>/combo presets"]
-      TCMD["tersio-commands<br/>/tersio status|dashboard|usage"]
-      UPD["ai-addons-updater<br/>/ai-addons"]
+      CAV["caveman<br/>/caveman"]
+      RTK["rtk/session.ts<br/>/rtk + rtk_run tool"]
+      RFILTER["rtk/filter.ts<br/>built-in grep/glob output"]
+      COMBO["combo<br/>/combo presets"]
+      TCMD["commands<br/>/tersio status|dashboard|usage"]
+      UPD["updater<br/>/ai-addons"]
     end
     subgraph SHARED["extensions/shared/"]
       SS["session-state.ts<br/>in-process bridge (Symbol.for)<br/>+ last-wins session entries"]
       LEDGER["usage-ledger.ts<br/>~/.tersio/usage.db"]
       PS["plugin-settings.ts<br/>session-start defaults"]
+      UTILS["utils.ts<br/>home, paths, rtk binary"]
       OSP["agent-stats.ts<br/>omp stats.db + agent.db, read-only"]
     end
     OMPDB["~/.omp/stats.db · agent.db<br/>written by omp, never by tersio"]
@@ -33,13 +34,19 @@ flowchart TB
     PONY["@dietrichgebert/ponytail<br/>bundled tersio dep (/ponytail)"]
   end
 
+  subgraph OC["OpenCode host"]
+    OCS["extensions/server.ts<br/>plugin API onto ExtensionApi"]
+  end
+
   INST -->|registers| EXT
+  INST -->|registers| OC
   EXT -->|reads/writes| SS
   COMBO & TCMD -->|publish state| SS
   SS -->|listener mirror, no reload| CAV & RTK
   RTK -->|exec| BIN
   COMBO -->|loads instructions| PONY
   TCMD & CLI --> LEDGER
+  OCS -->|wraps| EXT
   APP -->|build| DASH
   DASH -->|summarize| LEDGER
   DASH -->|/api/agent| OSP
@@ -107,4 +114,4 @@ flowchart LR
 - **The mirror never discards a store from a newer tersio:** a `parser_version` above this build keeps its rows and skips the re-parse, because rotated transcripts cannot rebuild them. `TERSIO_FORCE_REPARSE=1` accepts the loss.
 - **Always on:** `omp.extensions` in `package.json` loads every mode extension. Only `updater` stays an optional feature.
 - **Single owner:** OMP plugin manifests load Tersio extensions and nested Ponytail. `config.yml` holds only rtk-owned wiring; doctor removes retired, duplicate, or legacy manifest-owned entries. omp merges the manifest with the extension dir it discovers by default, so an install removes the agent-tree copies an older build wrote: a second load of the same file is the bug, and the retired copy cannot resolve its own rule bodies.
-- **Caveman rule ownership:** `extensions/caveman-session/rule.md` ships beside the manifest-loaded extension. Doctor and updater inspect that installed plugin path, not the retired agent copy.
+- **Caveman rule ownership:** `extensions/caveman/rule.md` ships beside the manifest-loaded extension. Doctor and updater inspect that installed plugin path, not the retired agent copy.

@@ -1,10 +1,10 @@
 // The status line must appear in every session type, and must not repeat itself.
 import { expect, test } from "vitest";
 
-import cavemanSessionExtension from "../../extensions/caveman-session/index.ts";
-import comboToggleExtension from "../../extensions/combo-toggle/index.ts";
-import rtkSessionExtension from "../../extensions/rtk-session/index.ts";
-import tersioCommandsExtension from "../../extensions/tersio-commands/index.ts";
+import cavemanSessionExtension from "../../extensions/caveman/index.ts";
+import comboToggleExtension from "../../extensions/combo/index.ts";
+import rtkSessionExtension from "../../extensions/rtk/session.ts";
+import tersioCommandsExtension from "../../extensions/commands/index.ts";
 import {
   OMP_SUBAGENT_MARKER,
   getSharedComboState,

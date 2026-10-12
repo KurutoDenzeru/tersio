@@ -24,17 +24,17 @@
     "tersio": "dist/tersio.js"
   },
   "exports": {
-    "./server": "./dist/extensions/opencode/server.js"
+    "./server": "./dist/extensions/server.js"
   },
   "omp": {
     "name": "Tersio",
     "description": "Toggleable Caveman/RTK/Ponytail session modes with Combo presets",
     "extensions": [
-      "./extensions/caveman-session/index.ts",
-      "./extensions/rtk-session/index.ts",
-      "./extensions/rtk-filter/index.ts",
-      "./extensions/combo-toggle/index.ts",
-      "./extensions/tersio-commands/index.ts"
+      "./extensions/caveman/index.ts",
+      "./extensions/rtk/session.ts",
+      "./extensions/rtk/filter.ts",
+      "./extensions/combo/index.ts",
+      "./extensions/commands/index.ts"
     ],
     "skills": [
       "./node_modules/@dietrichgebert/ponytail/skills"
@@ -44,7 +44,7 @@
         "description": "In-session updater for Ponytail, RTK, and Caveman (/ai-addons)",
         "default": true,
         "extensions": [
-          "./extensions/ai-addons-updater/index.ts"
+          "./extensions/updater/index.ts"
         ]
       }
     },
@@ -116,16 +116,16 @@
   },
   "files": [
     "dist/**/*.js",
-    "dist/extensions/caveman-session/*.md",
+    "dist/extensions/caveman/*.md",
     "dashboard/dist/**/*",
     "extensions/**/*.ts",
-    "extensions/caveman-session/rule.md",
-    "extensions/caveman-session/rule-ultra.md",
-    "extensions/caveman-session/rule-megacave.md"
+    "extensions/caveman/rule.md",
+    "extensions/caveman/rule-ultra.md",
+    "extensions/caveman/rule-megacave.md"
   ],
   "scripts": {
     "clean": "rm -rf dist dashboard/dist",
-    "build": "tsc && bun run build:dashboard && cp extensions/caveman-session/*.md dist/extensions/caveman-session/",
+    "build": "tsc && bun run build:dashboard && cp extensions/caveman/*.md dist/extensions/caveman/",
     "build:dashboard": "bun install --cwd dashboard/app --frozen-lockfile && bun run --cwd dashboard/app build",
     "prepublishOnly": "bun run build",
     "check": "tsc --noEmit",

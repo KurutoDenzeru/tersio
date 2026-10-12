@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 
-import rtkSessionExtension from "../../extensions/rtk-session/index.ts";
+import rtkSessionExtension from "../../extensions/rtk/session.ts";
 import type { ExtensionApi, ExtensionCtx, SessionEntry } from "../../extensions/shared/types.ts";
 
 process.env.HOME = new URL("../definitely-missing-home", import.meta.url).pathname;

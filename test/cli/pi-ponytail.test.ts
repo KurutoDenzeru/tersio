@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
 import { cliEnv } from "../helpers/env.ts";
 import { TREE_FILES } from "../../cli/manifest.ts";
-import { ruleBodyProblem } from "../../extensions/lib/utils.ts";
+import { ruleBodyProblem } from "../../extensions/shared/utils.ts";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const installer = path.join(root, "dist", "tersio.js");
@@ -51,11 +51,11 @@ test("pi install writes every Caveman rule body", () => {
     execFileSync(process.execPath, [installer, "install", "--host", "pi", "--yes"], {
       cwd: root, encoding: "utf8", timeout: 120000, env: offline(dir),
     });
-    const caveman = path.join(dir, ".pi", "agent", "extensions", "caveman-session");
+    const caveman = path.join(dir, ".pi", "agent", "extensions", "caveman");
     // rule.md is our own fork and ships verbatim. The other two track upstream, so a newer
     // upstream body is the expected install result and byte equality would flake on every
     // upstream edit.
-    expect(readFileSync(path.join(caveman, "rule.md"), "utf8")).toBe(readFileSync(path.join(root, "extensions", "caveman-session", "rule.md"), "utf8"));
+    expect(readFileSync(path.join(caveman, "rule.md"), "utf8")).toBe(readFileSync(path.join(root, "extensions", "caveman", "rule.md"), "utf8"));
     for (const name of ["rule-ultra.md", "rule-megacave.md"]) {
       const body = readFileSync(path.join(caveman, name), "utf8");
       expect(ruleBodyProblem(body), `${name} must be a usable body`).toBeNull();

@@ -64,8 +64,8 @@ test("install --host pi writes the pi tree and no OMP files", () => {
     const result = run(home, ["install", "--host", "pi", "--dry-run", "--verbose"]);
     expect(result.status, result.stderr).toBe(0);
     // pi auto-discovers <agent-dir>/extensions, so the tree is the install.
-    expect(result.stdout).toMatch(/\[dry-run\] would write .*\.pi\/agent\/extensions\/caveman-session\/index\.ts/);
-    expect(result.stdout).toMatch(/\[dry-run\] would write .*\.pi\/agent\/extensions\/rtk-session\/index\.ts/);
+    expect(result.stdout).toMatch(/\[dry-run\] would write .*\.pi\/agent\/extensions\/caveman\/index\.ts/);
+    expect(result.stdout).toMatch(/\[dry-run\] would write .*\.pi\/agent\/extensions\/rtk\/session\.ts/);
     expect(result.stdout).toMatch(/\[dry-run\] would write .*\.pi\/agent\/extensions\/shared\/session-state\.ts/);
     expect(result.stdout).toMatch(/\[dry-run\] would write session defaults to .*\.tersio\/settings\.json/);
     expect(result.stdout, "OMP extension tree must stay untouched").not.toMatch(/\.omp\/agent\/extensions/);
@@ -80,7 +80,7 @@ test("install --host omp keeps the OMP tree and never touches pi", () => {
   try {
     const result = run(home, ["install", "--host", "omp", "--dry-run", "--verbose"]);
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toMatch(/extensions\/combo-toggle\/index\.ts/);
+    expect(result.stdout).toMatch(/extensions\/combo\/index\.ts/);
     expect(result.stdout).not.toMatch(/pi install npm:/);
     expect(result.stdout).toMatch(/Done — restart OMP/);
   } finally {
@@ -130,9 +130,9 @@ test("install --host opencode writes the plugin tree and registers it", () => {
   try {
     const result = run(home, ["install", "--host", "opencode", "--dry-run", "--verbose"]);
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toMatch(/\[dry-run\] would write .*\.config\/opencode\/plugins\/tersio\/opencode\/server\.ts/);
     expect(result.stdout).toMatch(/\[dry-run\] would write .*\.config\/opencode\/plugins\/tersio\/server\.ts/);
-    expect(result.stdout).toMatch(/\[dry-run\] would write .*\.config\/opencode\/plugins\/tersio\/combo-toggle\/index\.ts/);
+    expect(result.stdout).toMatch(/\[dry-run\] would write .*\.config\/opencode\/plugins\/tersio\/rtk\/session\.ts/);
+    expect(result.stdout).toMatch(/\[dry-run\] would write .*\.config\/opencode\/plugins\/tersio\/combo\/index\.ts/);
     expect(result.stdout, "OMP extension tree must stay untouched").not.toMatch(/\.omp\/agent\/extensions/);
     expect(result.stdout, "pi tree must stay untouched").not.toMatch(/\.pi\/agent\/extensions/);
     expect(result.stdout).toMatch(/Done — restart OpenCode/);
@@ -178,7 +178,7 @@ test("uninstall --host pi clears the pi tree, the package, and the shared defaul
     const result = run(home, ["uninstall", "--host", "pi", "--dry-run"]);
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toMatch(/\[dry-run\] would run: pi remove npm:@krtclcdy\/tersio/);
-    expect(result.stdout).toMatch(/\[dry-run\] would remove .*\.pi\/agent\/extensions\/caveman-session/);
+    expect(result.stdout).toMatch(/\[dry-run\] would remove .*\.pi\/agent\/extensions\/caveman\b/);
     expect(result.stdout).toMatch(/\[dry-run\] would remove .*\.tersio\/settings\.json/);
     expect(result.stdout, "OMP targets stay out of a pi uninstall").not.toMatch(/\.omp\/agent\/extensions/);
     // Ponytail now lives in a local package dir we wrote, not in pi's skills dir.
@@ -224,14 +224,14 @@ test("doctor --fix restores a partly written pi tree", () => {
     // A half-written tree is what --fix exists for.
     const ext = path.join(home, ".pi", "agent", "extensions");
     mkdirSync(path.join(ext, "shared"), { recursive: true });
-    mkdirSync(path.join(ext, "caveman-session"), { recursive: true });
+    mkdirSync(path.join(ext, "caveman"), { recursive: true });
     writeFileSync(path.join(ext, "shared", "host.ts"), "// stale", "utf8");
-    writeFileSync(path.join(ext, "caveman-session", "index.ts"), "// stale", "utf8");
+    writeFileSync(path.join(ext, "caveman", "index.ts"), "// stale", "utf8");
 
     const result = run(home, ["doctor", "--fix", "extensions", "--yes"]);
     expect(result.status, result.stderr).toBe(0);
     expect(readFileSync(path.join(ext, "shared", "host.ts"), "utf8")).not.toBe("// stale");
-    expect(readFileSync(path.join(ext, "caveman-session", "index.ts"), "utf8")).toMatch(/export default function/);
+    expect(readFileSync(path.join(ext, "caveman", "index.ts"), "utf8")).toMatch(/export default function/);
     expect(result.stdout, "OMP's tree is not the target here").not.toMatch(/\.omp\/agent\/extensions/);
   } finally {
     rmSync(home, { recursive: true, force: true });

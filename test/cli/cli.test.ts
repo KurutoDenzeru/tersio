@@ -108,7 +108,7 @@ test("verbose dry-run reveals file paths hidden by default", () => {
 
   expect(result.status, result.stderr).toBe(0);
   expect(result.stdout).toMatch(/\[dry-run\] would write .*shared[\\/]session-state\.ts/);
-  expect(result.stdout).toMatch(/\[dry-run\] would write .*tersio-commands[\\/]index\.ts/);
+  expect(result.stdout).toMatch(/\[dry-run\] would write .*commands[\\/]index\.ts/);
 });
 test("the retired reinstall command is gone and doctor --fix repairs instead", () => {
   // A temp home, not the shared fixture: --fix writes a real plugin tree, and a

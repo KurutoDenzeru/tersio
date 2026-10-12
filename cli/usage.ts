@@ -16,7 +16,7 @@ import {
   usdCost,
 } from '../extensions/shared/usage-ledger.ts';
 import type { RecentRequest, RtkAdoption, RtkRecallDiagnostics, SessionTokens, TokenBreakdown, UsageRow } from '../extensions/shared/usage-ledger.ts';
-import { resolveRtkBinary } from '../extensions/lib/utils.ts';
+import { resolveRtkBinary } from '../extensions/shared/utils.ts';
 import { readRtkGain } from '../extensions/shared/rtk-gain.ts';
 import type { RtkGain } from '../extensions/shared/rtk-gain.ts';
 import { readUsageDb, reparseGuardReport, syncUsageDb, usageDbPath } from '../extensions/shared/usage-store.ts';

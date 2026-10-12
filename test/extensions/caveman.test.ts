@@ -3,11 +3,11 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "nod
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import cavemanSessionExtension from "../../extensions/caveman-session/index.ts";
+import cavemanSessionExtension from "../../extensions/caveman/index.ts";
 import { resetSharedComboState } from "../../extensions/shared/session-state.ts";
 import type { ExtensionApi, SessionEntry } from "../../extensions/shared/types.ts";
 import { readCavemanDefault } from "../../extensions/shared/plugin-settings.ts";
-import { ruleBodyProblem } from "../../extensions/lib/utils.ts";
+import { ruleBodyProblem } from "../../extensions/shared/utils.ts";
 
 process.env.HOME = new URL("../definitely-missing-home", import.meta.url).pathname;
 process.env.USERPROFILE = process.env.HOME;
@@ -191,7 +191,7 @@ test("full mode injects the rule file", async () => {
 
 
 test("each level injects its own rule file verbatim, with no paraphrase alongside it", async () => {
-  const extDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "extensions", "caveman-session");
+  const extDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "extensions", "caveman");
   const bodies = {
     lite: "rule.md", full: "rule.md",
     ultra: "rule-ultra.md",
@@ -215,7 +215,7 @@ test("each level injects its own rule file verbatim, with no paraphrase alongsid
 test("a missing rule.md names the fix instead of shipping a degraded paraphrase", async () => {
   // A missing rule is a visible failure, not a lossy paraphrase.
   const source = readFileSync(
-    path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "extensions", "caveman-session", "index.ts"),
+    path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "extensions", "caveman", "index.ts"),
     "utf8",
   );
   expect(source).not.toMatch(/FALLBACK_FULL_RULE/);
@@ -224,7 +224,7 @@ test("a missing rule.md names the fix instead of shipping a degraded paraphrase"
 
 // Inline samples, one per pack: the contract each body must keep whatever upstream does.
 test("every rule pack passes the body gate and keeps its contract markers", () => {
-  const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "extensions", "caveman-session");
+  const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "extensions", "caveman");
   const samples: Record<string, string[]> = {
     "rule.md": ["Only fluff die", "Never drop not/never/no/only/except", "Code blocks unchanged", "compress the style, not the language"],
     "rule-ultra.md": ["Payload only", "Never cut: code, commands, paths, API names, error strings (verbatim)", "One word when one word is enough", "no arrows"],

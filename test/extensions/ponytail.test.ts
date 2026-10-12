@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 
-import comboToggleExtension, { ponytailFallback } from "../../extensions/combo-toggle/index.ts";
+import comboToggleExtension, { ponytailFallback } from "../../extensions/combo/index.ts";
 import {
   OMP_SUBAGENT_MARKER,
   resetSharedComboState,

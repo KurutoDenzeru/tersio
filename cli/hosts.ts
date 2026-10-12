@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { HOME, OMP_PLUGINS_DIR, PACKAGE_NAME, PACKAGE_VERSION } from './common.ts';
 import { TREE_FILES } from './manifest.ts';
-import { piAgentDir } from '../extensions/lib/utils.ts';
+import { piAgentDir } from '../extensions/shared/utils.ts';
 
 export type HostId = 'omp' | 'pi' | 'opencode';
 

@@ -1,9 +1,9 @@
 // Additive listeners grew per session; the bridge is keyed now.
 import { expect, test } from "vitest";
 
-import cavemanSessionExtension from "../../extensions/caveman-session/index.ts";
-import rtkSessionExtension from "../../extensions/rtk-session/index.ts";
-import comboToggleExtension from "../../extensions/combo-toggle/index.ts";
+import cavemanSessionExtension from "../../extensions/caveman/index.ts";
+import rtkSessionExtension from "../../extensions/rtk/session.ts";
+import comboToggleExtension from "../../extensions/combo/index.ts";
 import { setSharedComboListener, setSharedComboMode } from "../../extensions/shared/session-state.ts";
 import type { ExtensionApi } from "../../extensions/shared/types.ts";
 

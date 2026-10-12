@@ -82,8 +82,8 @@ test("a registered plugin writes the plugin tree and drops the agent copies", ()
     const result = run(home, {}, "--yes");
     expect(result.status, result.stderr).toBe(0);
     // The mode extensions land in the tree the manifest declares.
-    expect(existsSync(path.join(pluginExt(home), "combo-toggle", "index.ts")), "combo lands in the plugin tree").toBe(true);
-    expect(existsSync(path.join(pluginExt(home), "caveman-session", "index.ts")), "caveman lands in the plugin tree").toBe(true);
+    expect(existsSync(path.join(pluginExt(home), "combo", "index.ts")), "combo lands in the plugin tree").toBe(true);
+    expect(existsSync(path.join(pluginExt(home), "caveman", "index.ts")), "caveman lands in the plugin tree").toBe(true);
     for (const dir of RETIRED) {
       expect(existsSync(path.join(extDir(home), dir)), `${dir} removed`).toBe(false);
     }

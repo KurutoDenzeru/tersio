@@ -1,7 +1,7 @@
 // Zero coverage once shipped a crashing tool call; keep it covered.
 import { expect, test } from "vitest";
 
-import rtkSessionExtension from "../../extensions/rtk-session/index.ts";
+import rtkSessionExtension from "../../extensions/rtk/session.ts";
 import type { ExtensionApi, ExtensionCtx } from "../../extensions/shared/types.ts";
 import { resetSharedComboState, setSharedComboMode } from "../../extensions/shared/session-state.ts";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";

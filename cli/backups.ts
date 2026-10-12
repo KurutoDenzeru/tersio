@@ -13,7 +13,7 @@ import { rtkDbPath } from '../extensions/shared/rtk-gain.ts';
 import { pricesCachePath } from '../extensions/shared/pricing.ts';
 import { usageDbPath } from '../extensions/shared/usage-store.ts';
 import { resetMarkerPath } from '../extensions/shared/usage-ledger.ts';
-import { tersioHome } from '../extensions/lib/utils.ts';
+import { tersioHome } from '../extensions/shared/utils.ts';
 
 /** Snapshots kept on disk; the oldest is pruned first. Six keeps the list past one screen, so
  *  the pane scrolls instead of showing the whole history at once. */

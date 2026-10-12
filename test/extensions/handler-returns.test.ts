@@ -10,13 +10,13 @@ process.env.TERSIO_HOME = process.env.HOME;
 
 type Handler = (args: string, ctx: unknown) => Promise<unknown>;
 
-const loadExtension = async (name: string) => {
-  const url = new URL(`file:///${path.join(root, "extensions", name, "index.ts").replace(/\\/g, "/")}`);
+const loadExtension = async (segments: readonly string[]) => {
+  const url = new URL(`file:///${path.join(root, "extensions", ...segments).replace(/\\/g, "/")}`);
   return (await import(url.href)).default as (pi: FakePi) => void;
 };
 
 // Every extension entry point, each registering exactly one command.
-const EXTENSIONS = ["caveman-session", "combo-toggle", "rtk-session", "tersio-commands", "ai-addons-updater"] as const;
+const EXTENSIONS = [["caveman", "index.ts"], ["combo", "index.ts"], ["rtk", "session.ts"], ["commands", "index.ts"], ["updater", "index.ts"]] as const;
 
 interface FakePi {
   commands: Map<string, Handler>;
@@ -75,7 +75,7 @@ test("no tersio command handler resolves a value", async () => {
 // Cancelling the host must not roll the modes back, so every session entry is
 // written before the status line goes out.
 test("a combo change is persisted before the host is told about it", async () => {
-  const install = await loadExtension("combo-toggle");
+  const install = await loadExtension(["combo", "index.ts"]);
   const pi = createPi();
   const order: string[] = [];
   pi.appendEntry = (customType: string) => { order.push(`entry:${customType}`); };

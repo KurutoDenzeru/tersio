@@ -9,7 +9,7 @@ import type { WriteOptions } from './common.ts';
 import os from 'node:os';
 import { DEFAULT_CURRENCY, isCurrencyCode } from './currency.ts';
 import type { CurrencyCode } from './currency.ts';
-import { readTextIfExists } from '../extensions/lib/utils.ts';
+import { readTextIfExists } from '../extensions/shared/utils.ts';
 import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
 
 function readTextIfExistsSync(file: string): string | null {

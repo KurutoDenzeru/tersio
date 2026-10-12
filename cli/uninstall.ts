@@ -9,7 +9,7 @@ import {
 import { askInteractiveChoice, closeRL, confirmDestructive, tty, sayTagged } from './interactive.ts';
 import { detectHosts, hostHint, hostLabel, parseHostArg } from './hosts.ts';
 import type { HostEntry, HostId } from './hosts.ts';
-import { findHoistedPackage, piAgentDir, readTextIfExists } from '../extensions/lib/utils.ts';
+import { findHoistedPackage, piAgentDir, readTextIfExists } from '../extensions/shared/utils.ts';
 import { fileURLToPath } from 'node:url';
 import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
 
@@ -25,14 +25,24 @@ interface UninstallOptions {
 const PONYTAIL_PKG = '@dietrichgebert/ponytail';
 
 const PI_TREE_DIRS = [
+  // What an install writes now.
+  'caveman',
+  'rtk',
+  'updater',
+  'combo',
+  'commands',
+  'shared',
+  'server.ts',
+  // Legacy: a tree an older build wrote, or a foreign name that was never shipped here.
   'caveman-session',
   'rtk-session',
+  'rtk-filter',
   'ai-addons-updater',
   'combo-toggle',
   'tersio-commands',
-  'shared',
   'lib',
   'opencode',
+  'aaa-combo-boot',
 ];
 
 // One `pi remove`, for both packages the installer adds there.
@@ -242,15 +252,21 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
   const ponytailPkgDir = path.join(pluginsDir, 'node_modules', '@dietrichgebert', 'ponytail');
 
   const targets = [
+    // What an install writes now.
+    'caveman',
+    'rtk',
+    'updater',
+    'combo',
+    'commands',
+    'shared',
+    // Legacy: a tree an older build wrote into the agent tree, or a foreign name never shipped here.
     'caveman-session',
     'rtk-session',
+    'rtk-filter',
     'ai-addons-updater',
     'combo-toggle',
     'tersio-commands',
-    'shared',
-    // Only the updater reads it, and it runs before this.
     'lib',
-    // Legacy: imports session-state.js, so it warns once that module is gone.
     'aaa-combo-boot',
     // Foreign to the OMP loader; never shipped here on purpose.
     'opencode',

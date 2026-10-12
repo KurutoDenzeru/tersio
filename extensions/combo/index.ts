@@ -27,7 +27,7 @@ import {
   readRtkDefault,
   saveComboSetup,
 } from '../shared/plugin-settings.ts';
-import { findHoistedPackage, isPiProcess } from '../lib/utils.ts';
+import { findHoistedPackage, isPiProcess } from '../shared/utils.ts';
 import type { ComboState, ExtensionApi, ExtensionCtx, SystemPromptEvent } from '../shared/types.ts';
 
 const EXTENSION_DIR = path.dirname(fileURLToPath(import.meta.url));

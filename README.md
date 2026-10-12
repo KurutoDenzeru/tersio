@@ -136,7 +136,7 @@ Per host, written by `tersio install --host <omp|pi|opencode>`:
 | Host | Extensions | Ponytail |
 |---|---|---|
 | Oh My Pi | `~/.omp/plugins/node_modules/@krtclcdy/tersio/extensions/` — the plugin manifest (`omp.extensions`) owns every mode extension, so the agent tree keeps only rtk's `extensions/rtk.ts` wiring, which `config.yml` registers by path | nested plugin dependency under `~/.omp/plugins/node_modules/`, one Plugins row |
-| pi | `~/.pi/agent/extensions/{caveman-session,rtk-session,rtk-filter,combo-toggle,tersio-commands,ai-addons-updater}/` — pi auto-discovers `<agent-dir>/extensions`, so there is nothing to register | `npm:@dietrichgebert/ponytail`, installed as a pi package |
+| pi | `~/.pi/agent/extensions/{caveman,rtk,combo,commands,updater}/` — pi auto-discovers `<agent-dir>/extensions`, so there is nothing to register | `npm:@dietrichgebert/ponytail`, installed as a pi package |
 | OpenCode | `~/.config/opencode/plugins/tersio/` — registered in `opencode.json` plugins, so there is nothing else to register | bundled with Tersio; no separate package |
 
 All three hosts carry the same `shared/` and `lib/` modules and the same mode extensions from the same sources.

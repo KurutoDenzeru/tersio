@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { cliEnv } from "../helpers/env.ts";
-import { fileContains } from "../../extensions/lib/utils.ts";
+import { fileContains } from "../../extensions/shared/utils.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const installer = path.join(root, "dist", "tersio.js");
@@ -150,7 +150,7 @@ test("doctor --fix dry-run previews repairs without writing", () => {
 test("doctor --fix repairs missing extension files in an empty home", () => {
   const home = missingHome();
   try {
-    const missing = ["caveman-session/index.ts", "caveman-session/rule.md", "caveman-session/rule-ultra.md", "caveman-session/rule-megacave.md", "rtk-session/index.ts", "combo-toggle/index.ts", "tersio-commands/index.ts", "ai-addons-updater/index.ts"];
+    const missing = ["caveman/index.ts", "caveman/rule.md", "caveman/rule-ultra.md", "caveman/rule-megacave.md", "rtk/session.ts", "combo/index.ts", "commands/index.ts", "updater/index.ts"];
     for (const rel of missing) {
       expect(resultFileMissing(home, rel)).toBe(true);
     }
@@ -167,8 +167,8 @@ test("doctor --fix repairs missing extension files in an empty home", () => {
       expect(resultFileMissing(home, rel), rel).toBe(false);
     }
     for (const name of ["rule.md", "rule-ultra.md", "rule-megacave.md"]) {
-      const installed = readFileSync(path.join(home, ".omp", "plugins", "node_modules", "@krtclcdy", "tersio", "extensions", "caveman-session", name), "utf8");
-      expect(installed, name).toBe(readFileSync(path.join(root, "extensions", "caveman-session", name), "utf8"));
+      const installed = readFileSync(path.join(home, ".omp", "plugins", "node_modules", "@krtclcdy", "tersio", "extensions", "caveman", name), "utf8");
+      expect(installed, name).toBe(readFileSync(path.join(root, "extensions", "caveman", name), "utf8"));
     }
   } finally {
     rmSync(home, { recursive: true, force: true });
@@ -180,7 +180,7 @@ test("doctor names a half-written tree that still has its entry points", () => {
   const home = missingHome();
   try {
     const ext = extDir(home);
-    for (const rel of ["caveman-session/index.ts", "rtk-session/index.ts", "ai-addons-updater/index.ts"]) {
+    for (const rel of ["caveman/index.ts", "rtk/session.ts", "updater/index.ts"]) {
       mkdirSync(path.join(ext, path.dirname(rel)), { recursive: true });
       writeFileSync(path.join(ext, rel), "export default {}\n", "utf8");
     }
@@ -203,8 +203,8 @@ test("doctor --fix fills the gap and confirms the whole tree", () => {
   const home = missingHome();
   try {
     const ext = extDir(home);
-    mkdirSync(path.join(ext, "caveman-session"), { recursive: true });
-    writeFileSync(path.join(ext, "caveman-session", "index.ts"), "export default {}\n", "utf8");
+    mkdirSync(path.join(ext, "caveman"), { recursive: true });
+    writeFileSync(path.join(ext, "caveman", "index.ts"), "export default {}\n", "utf8");
 
     const result = spawnSync(process.execPath, [installer, "doctor", "--fix", "extensions", "--yes"], {
       cwd: root,
@@ -216,7 +216,7 @@ test("doctor --fix fills the gap and confirms the whole tree", () => {
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toMatch(/\[ok\] extension tree: \d+ files/);
     expect(result.stdout).not.toContain("[fail] tree incomplete");
-    for (const rel of ["shared/status.ts", "caveman-session/index.ts", "rtk-session/index.ts"]) {
+    for (const rel of ["shared/status.ts", "caveman/index.ts", "rtk/session.ts"]) {
       expect(resultFileMissing(home, rel), rel).toBe(false);
     }
   } finally {
@@ -237,7 +237,7 @@ test("doctor --fix repairs config.yml registrations in an empty home", () => {
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toMatch(/\[ok\] registrations/);
     const config = readFileSync(path.join(home, ".omp", "agent", "config.yml"), "utf8");
-    expect(config).not.toContain("combo-toggle");
+    expect(config).not.toContain("combo/index.ts");
     expect(config).not.toContain("pi-extension/index.js");
   } finally {
     rmSync(home, { recursive: true, force: true });
@@ -251,7 +251,7 @@ test("doctor --fix removes manifest-loaded combo and Ponytail registrations", ()
     const extDir = path.join(agentDir, "extensions");
     const ponytailExt = path.join(home, ".omp", "plugins", "node_modules", "@dietrichgebert", "ponytail", "pi-extension", "index.js");
     mkdirSync(extDir, { recursive: true });
-    writeFileSync(path.join(agentDir, "config.yml"), `extensions:\n  - ./extensions/combo-toggle/index.ts\n  - ${ponytailExt}\n`, "utf8");
+    writeFileSync(path.join(agentDir, "config.yml"), `extensions:\n  - ./extensions/combo/index.ts\n  - ${ponytailExt}\n`, "utf8");
 
     const repair = spawnSync(process.execPath, [installer, "doctor", "--fix", "registrations", "--yes"], {
       cwd: root,
@@ -260,7 +260,7 @@ test("doctor --fix removes manifest-loaded combo and Ponytail registrations", ()
       env: cliEnv(home, { PATH: path.join(home, "empty-bin") }),
     });
     expect(repair.status, repair.stderr).toBe(0);
-    expect(readFileSync(path.join(agentDir, "config.yml"), "utf8")).not.toMatch(/combo-toggle|pi-extension/);
+    expect(readFileSync(path.join(agentDir, "config.yml"), "utf8")).not.toMatch(/combo\/index\.ts|pi-extension/);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }
@@ -312,7 +312,7 @@ test("doctor --fix leaves an existing fetched rule.md alone and writes no .bak",
   const home = missingHome();
   try {
     // A repair must not overwrite the upstream fetch or leave a .bak.
-    const rulePath = path.join(home, ".omp", "plugins", "node_modules", "@krtclcdy", "tersio", "extensions", "caveman-session", "rule.md");
+    const rulePath = path.join(home, ".omp", "plugins", "node_modules", "@krtclcdy", "tersio", "extensions", "caveman", "rule.md");
     mkdirSync(path.dirname(rulePath), { recursive: true });
     const fetched = "# fetched from upstream\n";
     writeFileSync(rulePath, fetched, "utf8");

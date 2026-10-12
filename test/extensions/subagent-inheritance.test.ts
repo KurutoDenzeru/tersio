@@ -2,9 +2,9 @@ import { afterEach, expect, test } from "vitest";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import cavemanSessionExtension from "../../extensions/caveman-session/index.ts";
-import comboToggleExtension from "../../extensions/combo-toggle/index.ts";
-import rtkSessionExtension from "../../extensions/rtk-session/index.ts";
+import cavemanSessionExtension from "../../extensions/caveman/index.ts";
+import comboToggleExtension from "../../extensions/combo/index.ts";
+import rtkSessionExtension from "../../extensions/rtk/session.ts";
 import {
   OMP_SUBAGENT_MARKER,
   getSharedComboState,

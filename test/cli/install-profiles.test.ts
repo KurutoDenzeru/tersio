@@ -183,11 +183,11 @@ test("package manifest declares always-on extensions plus updater feature and se
     expect(existsSync(compiled), `always-on entry exists: ${ext}`).toBeTruthy();
   }
   expect(manifest.omp?.extensions).toEqual([
-    "./extensions/caveman-session/index.ts",
-    "./extensions/rtk-session/index.ts",
-    "./extensions/rtk-filter/index.ts",
-    "./extensions/combo-toggle/index.ts",
-    "./extensions/tersio-commands/index.ts",
+    "./extensions/caveman/index.ts",
+    "./extensions/rtk/session.ts",
+    "./extensions/rtk/filter.ts",
+    "./extensions/combo/index.ts",
+    "./extensions/commands/index.ts",
   ]);
   const features = manifest.omp?.features ?? {};
   expect(Object.keys(features)).toEqual(["updater"]);

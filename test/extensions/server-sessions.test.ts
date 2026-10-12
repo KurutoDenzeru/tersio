@@ -3,7 +3,7 @@ import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:f
 import os from "node:os";
 import path from "node:path";
 
-import plugin from "../../extensions/opencode/server.ts";
+import plugin from "../../extensions/server.ts";
 
 // The bash rewrite shells out to the rtk on PATH, so each test owns PATH and HOME.
 async function withFakeRtk(script: string | null, work: () => Promise<void>): Promise<void> {

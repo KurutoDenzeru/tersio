@@ -1,15 +1,15 @@
 // OpenCode plugin entry: maps its plugin API onto the shared ExtensionApi the mode extensions consume.
 import { execFile } from 'node:child_process';
 import type { Plugin } from '@opencode/plugin';
-import cavemanSessionExtension from '../caveman-session/index.ts';
-import rtkSessionExtension from '../rtk-session/index.ts';
-import rtkFilterExtension, { FILTER_BY_TOOL, MIN_FILTER_BYTES, filterThroughRtk, filterableText, rtkActive } from '../rtk-filter/index.ts';
-import comboToggleExtension from '../combo-toggle/index.ts';
-import tersioCommandsExtension from '../tersio-commands/index.ts';
-import { getSharedComboState } from '../shared/session-state.ts';
-import { formatStatus } from '../shared/status.ts';
-import { resolveRtkBinary } from '../lib/utils.ts';
-import type { ExtensionApi, ExtensionCtx, InputEvent, SessionEntry, SystemPromptEvent } from '../shared/types.ts';
+import cavemanSessionExtension from './caveman/index.ts';
+import rtkSessionExtension from './rtk/session.ts';
+import rtkFilterExtension, { FILTER_BY_TOOL, MIN_FILTER_BYTES, filterThroughRtk, filterableText, rtkActive } from './rtk/filter.ts';
+import comboToggleExtension from './combo/index.ts';
+import tersioCommandsExtension from './commands/index.ts';
+import { getSharedComboState } from './shared/session-state.ts';
+import { formatStatus } from './shared/status.ts';
+import { resolveRtkBinary } from './shared/utils.ts';
+import type { ExtensionApi, ExtensionCtx, InputEvent, SessionEntry, SystemPromptEvent } from './shared/types.ts';
 
 interface CommandConfig {
   description: string;

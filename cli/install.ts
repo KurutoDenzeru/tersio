@@ -27,11 +27,11 @@ import { wireRtkOmp, wireRtkOpencode, wireRtkPi } from './rtk-wiring.ts';
 import {
   CAVEMAN_REMOTE_ULTRA, CAVEMAN_REMOTE_MEGACAVE, RTK_RELEASE_API, RtkRelease, RtkReleaseAsset, fetchJson, findFile, findHoistedPackage, httpsGet,
   findPackageRoot, httpsDownload, parseChecksum, piAgentDir, readTextIfExists, resolveRtkBinary, ruleBodyProblem, rtkPlatformSpec, sha256File,
-} from '../extensions/lib/utils.ts';
+} from '../extensions/shared/utils.ts';
 import { formatCliStatus, storedProfile, storedProfileSync, writePluginSettings } from './profile.ts';
 import { runSettings } from './settings.ts';
 import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
-import { OPENCODE_SERVER_SHIM, filesUnder, sourcePath } from './manifest.ts';
+import { filesUnder, rootFiles, sourcePath } from './manifest.ts';
 import type { Profile } from './profile.ts';
 import { detectHosts, hostHint, hostLabel, parseHostArg, piTersioSource } from './hosts.ts';
 import type { HostEntry, HostId } from './hosts.ts';
@@ -382,20 +382,19 @@ async function copySources(extDir: string, files: Array<[string, string]>, skipL
 
 async function stepSharedSessionState(extDir: string, options: WriteOptions): Promise<void> {
   if (!options.quiet) console.log('  Shared files — sync session bridge');
-  const shared = [...filesUnder('shared'), ...filesUnder('lib')];
-  await copySources(extDir, shared, 'shared/session-state.js', options);
+  await copySources(extDir, filesUnder('shared'), 'shared/session-state.js', options);
 }
 
 
 async function stepRtkSession(extDir: string, options: WriteOptions): Promise<void> {
   if (!options.quiet) console.log('  RTK session — install session mode');
-  await copySources(extDir, filesUnder('rtk-session'), 'rtk-session/index.ts', options);
+  await copySources(extDir, filesUnder('rtk'), 'rtk/session.ts', options);
 }
 
 // pi's built-in grep and glob never reach the bash hook, so this one filters their output.
 async function stepRtkFilter(extDir: string, options: WriteOptions): Promise<void> {
   if (!options.quiet) console.log('  RTK filter — install built-in tool output filtering');
-  await copySources(extDir, filesUnder('rtk-filter'), 'rtk-filter/index.ts', options);
+  await copySources(extDir, filesUnder('rtk'), 'rtk/filter.ts', options);
 }
 
 // rule.md ships with the package; the other bodies track upstream skills.
@@ -408,11 +407,11 @@ const CAVEMAN_RULES: ReadonlyArray<[name: string, remote: string | null]> = [
 
 async function stepCaveman(extDir: string, options: WriteOptions): Promise<void> {
   if (!options.quiet) console.log('  Caveman — install session mode and rule bodies');
-  const cavemanDir = path.join(extDir, 'caveman-session');
+  const cavemanDir = path.join(extDir, 'caveman');
   if (!options.dryRun) await fs.mkdir(cavemanDir, { recursive: true });
 
   for (const [name, remote] of CAVEMAN_RULES) {
-    const bundled = await readTextIfExists(sourcePath(`caveman-session/${name}`));
+    const bundled = await readTextIfExists(sourcePath(`caveman/${name}`));
     let rule = bundled;
     if (remote && !options.dryRun) {
       try {
@@ -435,7 +434,7 @@ async function stepCaveman(extDir: string, options: WriteOptions): Promise<void>
     }
   }
 
-  await copySources(extDir, filesUnder('caveman-session').filter(([, to]) => to.endsWith('index.ts')), 'caveman-session/index.ts', options);
+  await copySources(extDir, filesUnder('caveman').filter(([, to]) => to.endsWith('index.ts')), 'caveman/index.ts', options);
 
   // Renamed body: drop the stale copy an older install left behind.
   if (!options.dryRun) await fs.rm(path.join(cavemanDir, 'rule-wenyan.md'), { force: true });
@@ -443,16 +442,16 @@ async function stepCaveman(extDir: string, options: WriteOptions): Promise<void>
 
 async function stepTersioCommands(extDir: string, options: WriteOptions): Promise<void> {
   if (!options.quiet) console.log('  Tersio commands — install /tersio root command');
-  await copySources(extDir, filesUnder('tersio-commands'), 'tersio-commands/index.ts', options);
+  await copySources(extDir, filesUnder('commands'), 'commands/index.ts', options);
 }
 
 async function stepUpdater(extDir: string, options: WriteOptions): Promise<void> {
-  await copySources(extDir, filesUnder('ai-addons-updater'), 'ai-addons-updater/index.ts', options);
+  await copySources(extDir, filesUnder('updater'), 'updater/index.ts', options);
 }
 
 async function stepCombo(extDir: string, options: InstallOptions): Promise<void> {
   if (!options.quiet) console.log('  Combo — install preset switch');
-  await copySources(extDir, filesUnder('combo-toggle'), 'combo-toggle/index.ts', options);
+  await copySources(extDir, filesUnder('combo'), 'combo/index.ts', options);
 }
 
 // The tree ships no node_modules, so the full ruleset rides along as files.
@@ -487,17 +486,15 @@ async function stepOpencode(options: InstallOptions): Promise<void> {
   const dir = path.join(HOME, '.config', 'opencode', 'plugins', 'tersio');
   if (!options.quiet) console.log(`  OpenCode — write the plugin tree (${dir})`);
   await stepSharedSessionState(dir, options);
-  await copySources(dir, filesUnder('rtk-session'), 'rtk-session/index.ts', options);
+  await copySources(dir, filesUnder('rtk'), 'rtk/session.ts', options);
   await stepRtkFilter(dir, options);
-  await copySources(dir, filesUnder('caveman-session'), 'caveman-session/index.ts', options);
+  await copySources(dir, filesUnder('caveman'), 'caveman/index.ts', options);
   await stepCombo(dir, options);
-  await copySources(dir, filesUnder('tersio-commands'), 'tersio-commands/index.ts', options);
+  await copySources(dir, filesUnder('commands'), 'commands/index.ts', options);
   await stepUpdater(dir, options);
-  await copySources(dir, filesUnder('opencode'), 'opencode/server.ts', options);
   await stepPonytailBundle(dir, options);
-  // The loader resolves <pluginDir>/server.ts, so mirror the entry at the tree root.
-  await writeIfChanged(path.join(dir, 'server.ts'), OPENCODE_SERVER_SHIM, options);
-  if (!options.dryRun) await fs.rm(path.join(dir, 'opencode', 'index.ts'), { force: true }).catch(() => {});
+  // The loader resolves <pluginDir>/server.ts, and the entry is that file: copy it in place.
+  await copySources(dir, rootFiles(), 'server.ts', options);
 
   const configPath = path.join(HOME, '.config', 'opencode', 'opencode.json');
   let config: Record<string, unknown> = {};
@@ -689,8 +686,8 @@ async function stepPiLayer(options: InstallOptions): Promise<void> {
 
   if (!options.quiet) console.log(`  Pi — write the extension tree (${extDir})`);
   await stepSharedSessionState(extDir, options);
-  // OMP loads rtk-session from its plugin manifest, so only the pi tree copies it.
-  await copySources(extDir, filesUnder('rtk-session'), 'rtk-session/index.ts', options);
+  // OMP loads rtk/session.ts from its plugin manifest, so only the pi tree copies it.
+  await copySources(extDir, filesUnder('rtk'), 'rtk/session.ts', options);
   await stepRtkFilter(extDir, options);
   await stepCaveman(extDir, options);
   await stepCombo(extDir, options);
