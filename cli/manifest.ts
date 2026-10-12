@@ -48,6 +48,18 @@ export function rootFiles(): Array<[string, string]> {
 }
 
 /**
+ * The OpenCode plugin entry. It imports `@opencode/plugin`, which the omp and pi loaders do not
+ * carry, so it ships in the OpenCode tree alone. It moved to the extensions root when
+ * `extensions/opencode/` folded away, and every per-host filter keys off this one constant.
+ */
+export const OPENCODE_ENTRY = 'server.ts';
+
+/** The files one host's extension tree holds. The package tree holds all of them. */
+export function treeFilesFor(id: 'omp' | 'pi' | 'opencode'): readonly string[] {
+  return id === 'opencode' ? TREE_FILES : TREE_FILES.filter((file) => file !== OPENCODE_ENTRY);
+}
+
+/**
  * Copy every bundled file into `dest`, creating the directories it needs. A file the bundle does
  * not carry is reported and skipped rather than aborting: a half-written tree is the case the
  * doctor repairs, so one missing source must not stop the rest of the write.

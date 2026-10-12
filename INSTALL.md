@@ -57,11 +57,14 @@ The `Hosts` section reports each host and the command that adds it:
 
 ```text
 Hosts
-  ✅ OMP: ok plugin @krtclcdy/tersio 2.23.0
-  ✅ Pi: ok npm:@krtclcdy/tersio 2.23.0
+  ✅ Oh My Pi: ok package @krtclcdy/tersio 2.25.4
+  ✅ Pi: ok extensions @krtclcdy/tersio 2.25.4
+  ✅ OpenCode: ok extensions @krtclcdy/tersio 2.25.4
 ```
 
-A host you do not use prints `not installed` with its install command and is not counted as a problem.
+`extensions` means the tree install wrote the files into the host's own directory; `package` means the host registered the npm package. A host you do not use prints `not installed` with its install command and is not counted as a problem.
+
+OpenCode reports the same way as the other two. `tersio doctor --fix extensions` repairs a tree any host left half-written, and it also writes the OpenCode plugin tree and registers it in `opencode.json` when OpenCode is present.
 
 ## Also installed
 

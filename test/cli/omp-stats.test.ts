@@ -172,13 +172,14 @@ describe.skipIf(!hasSqlite())('omp aggregate', () => {
     const omp = readAgentStats('all', 'models');
     const priced = omp.modelPerformance.find((series) => series.model === 'priced-model' && series.provider === 'commandcode');
     expect(priced).toBeDefined();
-    // One bucket holds every commandcode message, so both averages cover the same two rows.
-    expect(priced?.points.length).toBe(1);
-    const point = priced?.points[0];
-    expect(point?.requests).toBe(2);
-    // e1: 500 out over 2000ms, e2: 1000 out over 4000ms. Both run at 250 tok/s, so the mean does too.
-    expect(point?.avgTokensPerSecond).toBeCloseTo(250, 9);
-    expect(point?.avgTtftMs).toBeCloseTo(750, 9);
+    // The two rows sit an hour apart, so they share a day bucket for nineteen hours of the day
+    // and straddle UTC midnight for the other five. Assert what holds either way rather than
+    // pinning the bucket count: both rows together, and each running at 250 tokens per second.
+    expect(priced?.points.reduce((sum, point) => sum + point.requests, 0)).toBe(2);
+    expect(priced?.points.every((point) => point.avgTokensPerSecond === 250)).toBe(true);
+    // e1: 500 out over 2000ms, e2: 1000 out over 4000ms. Both run at 250 tok/s.
+    // The ttft is the mean of the rows a bucket holds: one alone, or both together.
+    expect(priced?.points.every((point) => [500, 750, 1000].includes(Math.round(point.avgTtftMs!)))).toBe(true);
     // A provider with no timed message carries null, not a zero that would draw a flat line.
     const magpie = omp.modelPerformance.find((series) => series.provider === 'magpie');
     expect(magpie?.points.every((p) => p.avgTokensPerSecond === null && p.avgTtftMs === null)).toBe(true);

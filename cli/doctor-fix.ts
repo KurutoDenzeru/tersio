@@ -15,7 +15,7 @@ import {
   httpsDownload, parseChecksum, readTextIfExists, rtkPlatformSpec, sha256File,
 } from '../extensions/shared/utils.ts';
 import { runLatestUpdate } from './update.ts';
-import { TREE_FILES, syncTreeFiles } from './manifest.ts';
+import { OPENCODE_ENTRY, TREE_FILES, syncTreeFiles, treeFilesFor } from './manifest.ts';
 import { detectHosts, hostExtensionsDir } from './hosts.ts';
 
 type FixTarget = 'extensions' | 'registrations' | 'rtk' | 'ponytail' | 'cli';
@@ -23,27 +23,31 @@ type FixRequest = FixTarget | 'all';
 
 // A written tree is the install for both hosts now, so --fix restores it for whichever hosts have it, alongside the OMP package when that is present.
 async function fixExtensionTrees(): Promise<void> {
-  // The opencode entrypoint is foreign to pi/omp loaders: never copy it there, and remove strays.
-  const forHost = (id: string): string[] => TREE_FILES.filter((file) => id === 'opencode' || !file.startsWith('opencode/'));
-  const scrubOpencodeDir = async (dest: string): Promise<void> => {
-    const dir = path.join(dest, 'opencode');
-    if (!existsSync(dir)) return;
-    if (dryRun) { sayTagged(`  [dry-run] would remove foreign ${dir}`); return; }
-    await fs.rm(dir, { recursive: true, force: true });
-    sayTagged(`  [rm] foreign ${dir}`);
+  // The OpenCode entry is foreign to the pi and omp loaders: it imports @opencode/plugin, which
+  // those hosts do not carry. One shared filter, so a repair cannot drop it into the wrong tree.
+  const forHost = (id: string): readonly string[] => treeFilesFor(id as 'omp' | 'pi' | 'opencode');
+  // A tree from before the entry moved to the extensions root held a nested copy, and a repair
+  // written against the old filter may have left the entry at the root. Remove both strays.
+  const scrubOpencodeEntry = async (dest: string): Promise<void> => {
+    for (const target of [path.join(dest, OPENCODE_ENTRY), path.join(dest, 'opencode')]) {
+      if (!existsSync(target)) continue;
+      if (dryRun) { sayTagged(`  [dry-run] would remove foreign ${target}`); continue; }
+      await fs.rm(target, { recursive: true, force: true });
+      sayTagged(`  [rm] foreign ${target}`);
+    }
   };
   for (const host of detectHosts()) {
     const dest = hostExtensionsDir(host.id);
     // Repair a host whose tree is partly there: a half-written tree is exactly the case this runs for, and it reads as "not installed" to the detector.
     const present = forHost(host.id).filter((file) => existsSync(path.join(dest, file))).length;
     if (present === 0) {
-      if (host.id !== 'opencode') await scrubOpencodeDir(dest);
+      if (host.id !== 'opencode') await scrubOpencodeEntry(dest);
       continue;
     }
     await fs.mkdir(dest, { recursive: true });
     const missing = await syncTreeFiles(dest, forHost(host.id), { dryRun, verbose });
     for (const from of missing) sayTagged(`  [warn] bundled source missing: ${from}`);
-    if (host.id !== 'opencode') await scrubOpencodeDir(dest);
+    if (host.id !== 'opencode') await scrubOpencodeEntry(dest);
     if (!dryRun) sayTagged(`  [ok] ${host.label} extension tree: ${dest}`);
   }
 }
