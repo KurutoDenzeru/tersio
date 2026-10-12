@@ -60,6 +60,14 @@ export interface UsageReport {
   estimatedUsd: number;
   /** How many models resolved at each tier, so a reader can judge the estimate. */
   priceTiers: Record<string, number>;
+  /**
+   * The model keys priced at a tier that is not firm, heaviest first, capped at five. Named rather
+   * than merely counted, because a count is not actionable: a reader has to know which models to
+   * put in `prices.local.json`. These are ledger keys, not display labels, since the key is what
+   * the override file must spell. One list covers every host, because a price belongs to the model
+   * and not to the agent that ran it.
+   */
+  weakModels: string[];
   savedUsd: number;
   costMeasured: number;
   co2g: number;
@@ -119,13 +127,18 @@ export function summarizeUsage(rows: UsageRow[]): UsageReport {
   // Price by exact key first (gateways can differ), then fold every map under the display label.
   const folded = foldModelsByLabel(session.byModel, session.byModelMessages);
   const priceTiers: Record<string, number> = {};
+  // Named in the loop so the list is built in one pass, then sorted by token volume below.
+  const weakModels: string[] = [];
   for (const [model, t] of Object.entries(session.byModel)) {
     const c = usdCost(t, model);
     usd += c.usd;
     priceTiers[c.tier] = (priceTiers[c.tier] ?? 0) + 1;
     // A tier that is not firm is an estimate, so it is kept out of the firm total rather than
     // summed beside a measured cost that would make the whole figure read as a bill.
-    if (!PRICE_TIERS_FIRM.includes(c.tier)) estimatedUsd += c.usd;
+    if (!PRICE_TIERS_FIRM.includes(c.tier)) {
+      estimatedUsd += c.usd;
+      weakModels.push(model);
+    }
     const label = displayModelId(model);
     byModelUsd[label] = (byModelUsd[label] ?? 0) + c.usd;
     byModelBucketUsd[label] ??= { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
@@ -153,6 +166,10 @@ export function summarizeUsage(rows: UsageRow[]): UsageReport {
     }
   }
   const byTool = Object.entries(session.byTool).sort((a, b) => b[1] - a[1]).slice(0, 10);
+  // Heaviest first, then capped to five: the line is guidance, not a dump of the model table.
+  const weakKeys = weakModels
+    .toSorted((a, b) => tokenTotal(session.byModel[b]) - tokenTotal(session.byModel[a]))
+    .slice(0, 5);
   return {
     total: rows.length,
     byKind,
@@ -181,6 +198,7 @@ export function summarizeUsage(rows: UsageRow[]): UsageReport {
     priced,
     estimatedUsd,
     priceTiers,
+    weakModels: weakKeys,
     savedUsd,
     costMeasured: session.costMeasured,
     co2g,
@@ -194,6 +212,11 @@ export function summarizeUsage(rows: UsageRow[]): UsageReport {
 
 function fmt(n: number): string {
   return n.toLocaleString('en-US');
+}
+
+/** Every billed bucket, so a model sorts by how much of the estimate it carries. */
+function tokenTotal(t: TokenBreakdown): number {
+  return t.input + t.output + t.cacheRead + t.cacheWrite;
 }
 
 function fmtShort(n: number): string {
@@ -247,6 +270,9 @@ function printReport(report: UsageReport): void {
   // A tier that is not firm is named, so a figure that is partly a guess never reads as a bill.
   const weak = ['tail', 'default'].reduce((sum, tier) => sum + (report.priceTiers[tier] ?? 0), 0);
   const overridden = report.priceTiers.override ?? 0;
+  // The count stays in the cell; the names go on their own line below, because the cell is a
+  // fixed 118 columns and a list of model ids would be truncated to nothing.
+  const listed = report.weakModels.map((m) => displayModelId(m));
   const costNote = weak > 0
     ? ` · ${weak} model${weak === 1 ? '' : 's'} priced from another provider or the default table — add them to ${pricesOverridePath()}`
     : overridden > 0
@@ -257,6 +283,10 @@ function printReport(report: UsageReport): void {
     ['Cost', `${formatCurrency(report.usd, report.currency)}${report.priced ? '' : ' (includes default pricing)'} · ~${formatCurrency(report.savedUsd, report.currency)} cache-saved (est.) · ~${report.co2g.toFixed(1)}g CO2 (est.)${costNote}`],
     ['RTK adoption', `${fmt(a.rtkCalls)}/${fmt(a.eligibleCalls)} eligible Bash calls use RTK (${a.adoptionPct.toFixed(1)}%) · ${fmt(a.missedCalls)} missed · recall ${report.rtkRecall.available ? `${report.rtkRecall.mode} (${report.rtkRecall.entries})` : 'unavailable'}`],
   ], [false, false], 118)) console.log(l);
+  if (weak > 0) {
+    // Heaviest first, one per host spelling, so the operator sees exactly what to write.
+    console.log(`  Unpriced (heaviest first): ${listed.join(', ')}`);
+  }
   const allModels = Object.entries(report.byModel).filter(([, b]) => b.input + b.output + b.cacheRead + b.cacheWrite > 0).sort((a, b) => (b[1].input + b[1].output) - (a[1].input + a[1].output));
   const models = allModels.slice(0, ROW_CAP);
   if (models.length) {

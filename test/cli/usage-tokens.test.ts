@@ -10,6 +10,8 @@ import {
   foldModelsByLabel,
   importSessionTokens,
   clearRtkAdoptionCache,
+  ingestSessionRow,
+  newSessionAccum,
   priceFor,
   readRtkAdoption,
   usdCost,
@@ -129,6 +131,39 @@ test("usdCost flags unpriced models with priced=false", () => {
     if (prev === undefined) delete process.env.TERSIO_PRICES_FILE;
     else process.env.TERSIO_PRICES_FILE = prev;
   }
+});
+
+// One model key answers for every host: a price belongs to the model, not the agent that ran it.
+// Two hosts spelling the same model therefore share one key and one price resolution.
+test("two hosts spelling one model share a single priced key", () => {
+  const accum = newSessionAccum();
+  const stamp = 1_800_000_000_000; // past both windows; the watermark is out of these tests.
+  for (const [host, model, input] of [
+    ["omp", "deepseek/deepseek-v4.1-flash", 1000],
+    ["pi", "deepseek/deepseek-v4.1-flash", 2000],
+  ] as Array<[string, string, number]>) {
+    ingestSessionRow(accum, model, { input, output: 0, cacheRead: 0, cacheWrite: 0 }, stamp, undefined, undefined, undefined, host);
+  }
+  ingestSessionRow(
+    accum,
+    "opencode/opencode/longcat-2.5-preview",
+    { input: 10, output: 1, cacheRead: 0, cacheWrite: 0 },
+    stamp,
+    undefined,
+    undefined,
+    undefined,
+    "opencode",
+  );
+
+  const keys = Object.keys(accum.byModel).toSorted();
+  // Three rows across three hosts fold to two models, not three: the model is the key.
+  expect(keys).toEqual(["deepseek/deepseek-v4.1-flash", "opencode/opencode/longcat-2.5-preview"]);
+  expect(accum.byModel["deepseek/deepseek-v4.1-flash"].input).toBe(3000);
+  // The per-host split survives the fold, so a report can still attribute tokens to an agent.
+  expect(Object.keys(accum.byHost["deepseek/deepseek-v4.1-flash"] ?? {}).sort()).toEqual(["omp", "pi"]);
+  // And one key is one price resolution, so the same model is never counted twice as a guess.
+  const tiers = keys.map((k) => priceFor(k).tier);
+  expect(tiers).toEqual(["tail", "default"]);
 });
 
 test("co2Grams defaults to the gpt-4o served figure", () => {
