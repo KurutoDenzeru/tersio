@@ -473,11 +473,22 @@ function parseOwnJson(json: string, field: string): Record<string, unknown> {
 async function exportDashboard(exportFile: string, currency: CurrencyCode): Promise<void> {
   requireDashboardBundle();
   const [bundle, icon] = await Promise.all([readSegment(DASHBOARD_INDEX), brandDataUri()]);
+  // The bundle is minified, so the brand fetch reaches the file as `fetch(\`brand.webp\`)` or
+  // `fetch("brand.webp")` depending on the bundler's quote choice. Match either, or the exported
+  // card silently loses its mark. `atob` returns one char per byte, and a Blob encodes a string
+  // as UTF-8, so the bytes go through a Uint8Array first: a webp is binary and every byte at or
+  // above 0x80 would otherwise double and corrupt the image.
+  const b64 = icon.split(',')[1] ?? '';
+  // atob yields one char per byte; a Blob encodes a string as UTF-8, so the bytes pass through a
+  // Uint8Array or every byte at or above 0x80 doubles and the webp comes out corrupt.
+  const brandBytes = `(() => { const c = atob(${JSON.stringify(b64)}); const v = new Uint8Array(c.length); for (let i = 0; i < c.length; i++) v[i] = c.charCodeAt(i); return v; })()`;
   const inline = bundle
     .replace('window.__TERSIO_SNAP = null;', () => `window.__TERSIO_SNAP = ${escapeInline(JSON.stringify({ currency, agent: agentStats(DEFAULT_AGENT_RANGE), health: parseOwnJson(healthJson(), 'health'), doctor: getDoctorReport(false) }))};`)
-    .replace(/href="brand\.webp"/g, () => `href="${icon}"`)
-    .replace(/src="brand\.webp"/g, () => `src="${icon}"`)
-    .replace('fetch("brand.webp")', () => `Promise.resolve({ ok: true, blob: async () => new Blob([atob("${icon.split(',')[1]}")], { type: "image/webp" }) })`);
+    // A mark reaches the bundle three ways: an HTML attribute in `index.html`, and a JSX prop
+    // esbuild compiled with a backtick. Match any of `"`, `'`, and `` ` ``, or an exported file
+    // keeps a bare reference that file:// cannot resolve.
+    .replace(/((?:src|href)[=:][ \t]*)([`"'])brand\.webp\2/g, (_all, head: string, quote: string) => `${head}${quote}${icon}${quote}`)
+    .replace(/fetch\(([`"])brand\.webp\1\)/g, () => `Promise.resolve({ ok: true, blob: async () => new Blob([${brandBytes}], { type: "image/webp" }) })`);
   await fs.writeFile(exportFile, inline, 'utf8');
   console.log(`[ok] Dashboard exported → ${exportFile}`);
 }

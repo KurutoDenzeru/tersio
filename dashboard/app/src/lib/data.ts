@@ -101,6 +101,8 @@ export interface AgentOverall extends AgentTokenMix {
   avgDurationMs: number;
   avgTtftMs: number;
   avgTokensPerSecond: number;
+  /** The longest single request in the range; null when none carries a duration. */
+  maxDurationMs: number | null;
   firstTs: number | null;
   lastTs: number | null;
 }

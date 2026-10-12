@@ -21,8 +21,9 @@ import { ErrorsPage } from "./components/agents/errors";
 import { TracesPage } from "./components/agents/traces";
 import { ToolsPage } from "./components/agents/tools";
 import { ProjectsPage } from "./components/agents/projects";
-import { SettingsDialog } from "./components/dialogs";
-import { ShareDialog } from "./components/agents/share-dialog";
+import { SettingsDialog } from "@/components/dialogs";
+import { ShareDialog } from "@/components/agents/share-dialog";
+import { ToasterProvider } from "@/components/toaster";
 
 function useDataThemeAttr(): void {
   const { theme } = useTheme();
@@ -258,7 +259,13 @@ function Dashboard() {
 }
 
 export function App() {
-  return <Dashboard />;
+  // The provider is what makes useToast do anything: the context's default is a no-op, so a
+  // dialog mounted without it silently drops every toast.
+  return (
+    <ToasterProvider>
+      <Dashboard />
+    </ToasterProvider>
+  );
 }
 
 export default App;

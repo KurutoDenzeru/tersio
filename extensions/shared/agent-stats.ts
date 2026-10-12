@@ -131,6 +131,8 @@ export interface AgentOverall extends AgentTokenMix {
   avgDurationMs: number;
   avgTtftMs: number;
   avgTokensPerSecond: number;
+  /** The longest single request in the range; null when none carries a duration. */
+  maxDurationMs: number | null;
   firstTs: number | null;
   lastTs: number | null;
 }
@@ -442,7 +444,7 @@ export function emptyAgentStats(range: RangeKey = '24h'): AgentStats {
     overall: {
       requests: 0, failed: 0, successful: 0, errorRate: 0, cacheRate: 0, cacheSavings: 0,
       costUsd: 0, unpricedRequests: 0,
-      avgDurationMs: 0, avgTtftMs: 0, avgTokensPerSecond: 0,
+      avgDurationMs: 0, avgTtftMs: 0, avgTokensPerSecond: 0, maxDurationMs: null,
       input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0,
       costMix: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
       firstTs: null, lastTs: null,
@@ -595,6 +597,7 @@ function messageFacts(p = ''): string {
       THEN ${p}cost_input + ${p}cost_cache_read + ${p}cost_cache_write ELSE 0 END)`,
     `MIN(${p}timestamp)`,
     `MAX(${p}timestamp)`,
+    `MAX(${p}duration)`,
   ].join(', ');
 }
 
@@ -629,6 +632,7 @@ interface Facts {
   unpriced: number;
   durationSum: number; durationN: number; ttftSum: number; ttftN: number;
   tpsSum: number; tpsN: number; noCacheCost: number; cachedCost: number;
+  maxDurationMs: number | null;
   firstTs: number | null; lastTs: number | null;
 }
 
@@ -643,6 +647,7 @@ function parseFacts(row: string[] | undefined, at: number): Facts {
     durationSum: g(12), durationN: g(13), ttftSum: g(14), ttftN: g(15),
     tpsSum: g(16), tpsN: g(17), noCacheCost: g(18), cachedCost: g(19),
     firstTs: numOrNull(row?.[at + 20]), lastTs: numOrNull(row?.[at + 21]),
+    maxDurationMs: numOrNull(row?.[at + 22]),
   };
 }
 
@@ -668,6 +673,7 @@ function overallOf(f: Facts): AgentOverall {
     avgDurationMs: f.durationN > 0 ? f.durationSum / f.durationN : 0,
     avgTtftMs: f.ttftN > 0 ? f.ttftSum / f.ttftN : 0,
     avgTokensPerSecond: f.tpsN > 0 ? f.tpsSum / f.tpsN : 0,
+    maxDurationMs: f.maxDurationMs,
     firstTs: f.firstTs,
     lastTs: f.lastTs,
   };
