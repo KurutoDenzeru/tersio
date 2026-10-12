@@ -160,24 +160,43 @@ export function StatGrid({
   // One solid band with a rule between cells, the same strip shape everywhere: no translucent
   // tiles, and one path, so a strip never falls back to loose tiles.
   const cells = (Array.isArray(children) ? children : [children]).filter((c): c is ReactNode => Boolean(c));
-  // A rule belongs to the tier that draws the row, not to the neighbour count, so each tier
-  // owns its own cells and no tier resets another: below `sm` the strip is two per row, from
-  // `sm` it is three, and from `lg` it is `cols`. A `max-` variant keeps the two tiers from
-  // ever fighting over one cell's border.
-  const rules = cols > 2
-    ? [
-        "max-sm:[&>*:nth-child(even)]:border-l max-sm:[&>*:nth-child(n+3)]:border-t",
-        "sm:[&>*:not(:nth-child(3n+1))]:border-l sm:[&>*:nth-child(n+4)]:border-t",
-        `lg:[&>*:not(:nth-child(${cols}n+1))]:border-l lg:[&>*:nth-child(n+${cols + 1})]:border-t`,
-      ]
-    : ["[&>*:nth-child(even)]:border-l [&>*:nth-child(n+3)]:border-t"];
+  // A cell takes a rule on its left unless it opens a row, and a rule above it unless it sits in
+  // the first row, so the rule count follows the columns the tier draws: two below `sm`, three
+  // (four for the seven-wide strip) from `sm`, and `cols` from `lg`. Each tier carries a `max-`
+  // partner so exactly one tier claims a cell at any width; two tiers sharing a width disagree on
+  // which cells open a row, and the later rule wins.
+  //
+  // The classes are written out per column count rather than built from `cols`, because Tailwind
+  // reads class names out of the source at build time. A name assembled at runtime never reaches
+  // its scanner, so the whole tier emits no CSS and the band draws no rules at that width — which
+  // is how the seven-wide strip lost its dividers at a desktop width.
+  const RULES: Record<number, string> = {
+    // A strip that stays two per row at every width needs no breakpoint.
+    2: "[&>*:not(:nth-child(2n+1))]:border-l [&>*:nth-child(n+3)]:border-t",
+    3: "max-sm:[&>*:not(:nth-child(2n+1))]:border-l max-sm:[&>*:nth-child(n+3)]:border-t"
+      + " sm:max-lg:[&>*:not(:nth-child(3n+1))]:border-l sm:max-lg:[&>*:nth-child(n+4)]:border-t"
+      + " lg:[&>*:not(:nth-child(3n+1))]:border-l lg:[&>*:nth-child(n+4)]:border-t",
+    4: "max-sm:[&>*:not(:nth-child(2n+1))]:border-l max-sm:[&>*:nth-child(n+3)]:border-t"
+      + " sm:max-lg:[&>*:not(:nth-child(3n+1))]:border-l sm:max-lg:[&>*:nth-child(n+4)]:border-t"
+      + " lg:[&>*:not(:nth-child(4n+1))]:border-l lg:[&>*:nth-child(n+5)]:border-t",
+    5: "max-sm:[&>*:not(:nth-child(2n+1))]:border-l max-sm:[&>*:nth-child(n+3)]:border-t"
+      + " sm:max-lg:[&>*:not(:nth-child(3n+1))]:border-l sm:max-lg:[&>*:nth-child(n+4)]:border-t"
+      + " lg:[&>*:not(:nth-child(5n+1))]:border-l lg:[&>*:nth-child(n+6)]:border-t",
+    6: "max-sm:[&>*:not(:nth-child(2n+1))]:border-l max-sm:[&>*:nth-child(n+3)]:border-t"
+      + " sm:max-lg:[&>*:not(:nth-child(3n+1))]:border-l sm:max-lg:[&>*:nth-child(n+4)]:border-t"
+      + " lg:[&>*:not(:nth-child(6n+1))]:border-l lg:[&>*:nth-child(n+7)]:border-t",
+    // The seven-wide strip holds four per row from `sm`, not three.
+    7: "max-sm:[&>*:not(:nth-child(2n+1))]:border-l max-sm:[&>*:nth-child(n+3)]:border-t"
+      + " sm:max-lg:[&>*:not(:nth-child(4n+1))]:border-l sm:max-lg:[&>*:nth-child(n+5)]:border-t"
+      + " lg:[&>*:not(:nth-child(7n+1))]:border-l lg:[&>*:nth-child(n+8)]:border-t",
+  };
   return (
     <div
       data-reveal
       className={cn(
         "translate-y-[18px] grid overflow-hidden rounded-xl border border-line bg-panel opacity-0 transition-[opacity,transform] duration-500 ease-[cubic-bezier(.16,1,.3,1)] data-[reveal=in]:translate-y-0 data-[reveal=in]:opacity-100",
         sizes[cols],
-        rules.join(" "),
+        RULES[cols] ?? RULES[2],
         className,
       )}
     >
