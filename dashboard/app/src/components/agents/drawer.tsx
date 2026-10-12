@@ -81,7 +81,7 @@ function JsonBlock({ title, data, copy }: { title: string; data: unknown; copy?:
         )}
       </div>
       {body ? (
-        <pre className="mono m-0 max-h-[420px] overflow-auto rounded-lg border border-line bg-track/40 p-3 text-xs leading-relaxed [overflow-wrap:anywhere]">{body}</pre>
+        <pre className="mono m-0 max-h-[420px] max-w-full overflow-auto rounded-lg border border-line bg-track/40 p-3 text-xs leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere]">{body}</pre>
       ) : (
         <p className="mono m-0 text-[11px] text-dim">No payload recorded for this entry.</p>
       )}
@@ -131,7 +131,7 @@ function JsonFold({ title, data, copy }: { title: string; data: unknown; copy?: 
         )}
       </summary>
       {body ? (
-        <pre className="mono m-0 max-h-[420px] overflow-auto border-t border-line bg-track/40 p-3 text-xs leading-relaxed [overflow-wrap:anywhere]">{body}</pre>
+        <pre className="mono m-0 max-h-[420px] max-w-full overflow-auto border-t border-line bg-track/40 p-3 text-xs leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere]">{body}</pre>
       ) : (
         <p className="mono m-0 px-3.5 pb-2.5 text-[11px] text-dim">No payload recorded for this entry.</p>
       )}
