@@ -74,3 +74,4 @@ Knowledge graph at `graphify-out/`. When user types `/graphify`, use the skill f
 - Codebase questions: `graphify query "<question>"` (if `graphify-out/graph.json` exists). Use `graphify path` for relationships, `graphify explain` for concepts.
 - `graphify-out/wiki/index.md` for navigation. Read `GRAPH_REPORT.md` only for broad architecture review.
 - After modifying code: `graphify update .` (AST-only, no API cost).
+- The wiki is a separate step, not a flag on `update`: `graphify export wiki`. Run it after a rebuild.
