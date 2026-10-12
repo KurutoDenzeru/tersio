@@ -751,17 +751,18 @@ export function leadBinary(command: unknown): string {
 }
 
 // --- Pricing lives in ./pricing.ts (live LiteLLM cache + fallback table) ---
-import { DEFAULT_PRICE, canonicalPriceId, priceFor, refreshPricesIfStale } from './pricing.ts';
+import { DEFAULT_PRICE, PRICE_TIERS_FIRM, canonicalPriceId, priceFor, pricesOverridePath, refreshPricesIfStale, type PriceHit, type PriceTier } from './pricing.ts';
 import { co2GramsFor, energyWhFor } from './carbon.ts';
 import type { ModelPrice } from './pricing.ts';
 
-export { DEFAULT_PRICE, priceFor, refreshPricesIfStale };
+export { DEFAULT_PRICE, PRICE_TIERS_FIRM, priceFor, pricesOverridePath, refreshPricesIfStale };
 export { co2GramsFor, energyWhFor };
-export type { ModelPrice };
+export type { PriceHit, PriceTier, ModelPrice };
 
-export function usdCost(t: TokenBreakdown, model?: string): { usd: number; priced: boolean; buckets: { input: number; output: number; cacheRead: number; cacheWrite: number } } {
-  const { price, known } = model ? priceFor(model) : { price: DEFAULT_PRICE, known: false };
+export function usdCost(t: TokenBreakdown, model?: string): { usd: number; priced: boolean; tier: PriceTier; buckets: { input: number; output: number; cacheRead: number; cacheWrite: number } } {
   const m = 1 / 1_000_000;
+  const hit: PriceHit = model ? priceFor(model) : { price: DEFAULT_PRICE, known: false, live: false, tier: 'default' };
+  const price = hit.price;
   const buckets = {
     input: t.input * price.input * m,
     output: t.output * price.output * m,
@@ -770,7 +771,10 @@ export function usdCost(t: TokenBreakdown, model?: string): { usd: number; price
   };
   return {
     usd: buckets.input + buckets.output + buckets.cacheRead + buckets.cacheWrite,
-    priced: model ? known : false,
+    // A tier the caller cannot stand behind is not a price. `tail` and `default` are estimates,
+    // and a report that sums them beside measured cost reads as a bill it is not.
+    priced: PRICE_TIERS_FIRM.includes(hit.tier),
+    tier: hit.tier,
     buckets,
   };
 }

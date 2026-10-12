@@ -1,5 +1,6 @@
 // cli/usage.ts — ledger + session-token usage report, tokscale-style.
 import {
+  PRICE_TIERS_FIRM,
   co2GramsFor,
   displayModelId,
   energyWhFor,
@@ -7,6 +8,7 @@ import {
   importSessionTokens,
   ledgerPath,
   priceFor,
+  pricesOverridePath,
   readResetWatermark,
   readRtkAdoption,
   readRtkRecallDiagnostics,
@@ -54,6 +56,10 @@ export interface UsageReport {
   rtkRecall: RtkRecallDiagnostics;
   usd: number;
   priced: boolean;
+  /** Tokens priced by a tier that is not firm: another provider's rate, or the default table. */
+  estimatedUsd: number;
+  /** How many models resolved at each tier, so a reader can judge the estimate. */
+  priceTiers: Record<string, number>;
   savedUsd: number;
   costMeasured: number;
   co2g: number;
@@ -94,6 +100,7 @@ export function summarizeUsage(rows: UsageRow[]): UsageReport {
   const source: UsageReport['source'] = stored ? (synced ? 'stored' : 'stored-stale') : 'live';
   const watermark = readResetWatermark();
   let usd = 0;
+  let estimatedUsd = 0;
   let priced = true;
   let savedUsd = 0;
   const byModelUsd: Record<string, number> = {};
@@ -111,9 +118,14 @@ export function summarizeUsage(rows: UsageRow[]): UsageReport {
   };
   // Price by exact key first (gateways can differ), then fold every map under the display label.
   const folded = foldModelsByLabel(session.byModel, session.byModelMessages);
+  const priceTiers: Record<string, number> = {};
   for (const [model, t] of Object.entries(session.byModel)) {
     const c = usdCost(t, model);
     usd += c.usd;
+    priceTiers[c.tier] = (priceTiers[c.tier] ?? 0) + 1;
+    // A tier that is not firm is an estimate, so it is kept out of the firm total rather than
+    // summed beside a measured cost that would make the whole figure read as a bill.
+    if (!PRICE_TIERS_FIRM.includes(c.tier)) estimatedUsd += c.usd;
     const label = displayModelId(model);
     byModelUsd[label] = (byModelUsd[label] ?? 0) + c.usd;
     byModelBucketUsd[label] ??= { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
@@ -167,6 +179,8 @@ export function summarizeUsage(rows: UsageRow[]): UsageReport {
     rtkRecall: readRtkRecallDiagnostics(resolveRtkBinary()),
     usd,
     priced,
+    estimatedUsd,
+    priceTiers,
     savedUsd,
     costMeasured: session.costMeasured,
     co2g,
@@ -230,9 +244,17 @@ function printReport(report: UsageReport): void {
   }
   const t = report.tokens;
   const a = report.rtkAdoption;
+  // A tier that is not firm is named, so a figure that is partly a guess never reads as a bill.
+  const weak = ['tail', 'default'].reduce((sum, tier) => sum + (report.priceTiers[tier] ?? 0), 0);
+  const overridden = report.priceTiers.override ?? 0;
+  const costNote = weak > 0
+    ? ` · ${weak} model${weak === 1 ? '' : 's'} priced from another provider or the default table — add them to ${pricesOverridePath()}`
+    : overridden > 0
+      ? ` · ${overridden} model${overridden === 1 ? '' : 's'} priced from your override file`
+      : '';
   for (const l of textTable(['Metric', 'Value'], [
     ['Tokens', `${fmt(t.input)} in · ${fmt(t.output)} out · ${fmt(t.cacheRead)} cache read · ${fmt(t.cacheWrite)} cache write`],
-    ['Cost', `${formatCurrency(report.usd, report.currency)}${report.priced ? '' : ' (includes default pricing)'} · ~${formatCurrency(report.savedUsd, report.currency)} cache-saved (est.) · ~${report.co2g.toFixed(1)}g CO2 (est.)`],
+    ['Cost', `${formatCurrency(report.usd, report.currency)}${report.priced ? '' : ' (includes default pricing)'} · ~${formatCurrency(report.savedUsd, report.currency)} cache-saved (est.) · ~${report.co2g.toFixed(1)}g CO2 (est.)${costNote}`],
     ['RTK adoption', `${fmt(a.rtkCalls)}/${fmt(a.eligibleCalls)} eligible Bash calls use RTK (${a.adoptionPct.toFixed(1)}%) · ${fmt(a.missedCalls)} missed · recall ${report.rtkRecall.available ? `${report.rtkRecall.mode} (${report.rtkRecall.entries})` : 'unavailable'}`],
   ], [false, false], 118)) console.log(l);
   const allModels = Object.entries(report.byModel).filter(([, b]) => b.input + b.output + b.cacheRead + b.cacheWrite > 0).sort((a, b) => (b[1].input + b[1].output) - (a[1].input + a[1].output));

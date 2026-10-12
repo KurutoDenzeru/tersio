@@ -13,6 +13,35 @@ export interface ModelPrice {
 // Sonnet-class default for unpriced models; always paired with known:false.
 export const DEFAULT_PRICE: ModelPrice = { input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2.5 };
 
+/**
+ * How a price was found, strongest first. A caller must treat anything below `alias` as an
+ * estimate, because the feed matched a model by its bare name and the provider that billed it may
+ * charge something else entirely.
+ *
+ * - `override`: the operator's own `prices.local.json`. Exact for the gateway it names.
+ * - `exact`: the feed holds this id verbatim, or case-folded.
+ * - `alias`: `MODEL_ALIASES` mapped it, and the feed holds the alias verbatim.
+ * - `tail`: the feed holds the bare model name under some provider. A guess: LiteLLM keys a model
+ *   under whichever provider it learned it from, which need not be the one that billed the row.
+ * - `default`: no match. `DEFAULT_PRICE`, an estimate by definition.
+ *
+ * There is deliberately no `provider` tier. A step that prefers a key under the id's own provider
+ * segment is a subset of the case-folded check above it: a key that starts with the id's provider
+ * segment and ends with its tail is the id itself. Such a step cannot fire, so the honest fix for
+ * a wrong-provider price is the override file, not a branch that never runs.
+ */
+export type PriceTier = 'override' | 'exact' | 'alias' | 'tail' | 'default';
+
+/** Tiers firm enough to call a price. `tail` and `default` are estimates, so they are not. */
+export const PRICE_TIERS_FIRM: readonly PriceTier[] = ['override', 'exact', 'alias'];
+
+export interface PriceHit {
+  price: ModelPrice;
+  known: boolean;
+  live: boolean;
+  tier: PriceTier;
+}
+
 const LITELLM_URL = 'https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json';
 // Readers use the file even when stale, and only one refresh runs per process; `tersio update` still forces a fresh fetch.
 const CACHE_TTL_MS = 7 * 24 * 3600 * 1000;
@@ -22,6 +51,52 @@ export function pricesCachePath(): string {
   const override = process.env.TERSIO_PRICES_FILE;
   if (override) return override;
   return tersioDataPath('prices.json', 'tersio-prices.json');
+}
+
+/**
+ * The operator's own prices, merged over the feed. The feed carries LiteLLM's ids, so a model a
+ * gateway serves under its own id — `kilo/stepfun/...`, `opencode-zen/...` — is either missing or
+ * matched against a different provider's row. This file is where such a model gets a real price:
+ * one entry per id, keyed exactly as the transcript spells it, or with a `*` prefix to match any
+ * gateway suffix.
+ */
+export function pricesOverridePath(): string {
+  const override = process.env.TERSIO_PRICES_OVERRIDE_FILE;
+  if (override) return override;
+  return tersioDataPath('prices.local.json', 'tersio-prices.local.json');
+}
+
+/** The override file's mtime, or 0 when absent. Callers key their memo on it. */
+function overrideStamp(): number {
+  try {
+    return fs.statSync(pricesOverridePath()).mtimeMs;
+  } catch {
+    return 0;
+  }
+}
+
+let overrideCache: { stamp: number; exact: Map<string, ModelPrice>; tails: Array<[string, ModelPrice]> } | null = null;
+
+/** Reads the override file, keeping a `*`-prefixed entry as a suffix matcher. */
+function loadOverrides(stamp = overrideStamp()): { exact: Map<string, ModelPrice>; tails: Array<[string, ModelPrice]> } | null {
+  if (stamp === 0) return null;
+  const file = pricesOverridePath();
+  if (overrideCache && overrideCache.stamp === stamp) return overrideCache;
+  const exact = new Map<string, ModelPrice>();
+  const tails: Array<[string, ModelPrice]> = [];
+  try {
+    const parsed = JSON.parse(fs.readFileSync(file, 'utf8')) as Record<string, unknown>;
+    for (const [id, row] of Object.entries(parsed ?? {})) {
+      const price = asPrice(row);
+      if (!price) continue;
+      // A `*` prefix matches any gateway prefix, so one entry covers `opencode-zen/step-5-preview`
+      // and `kilo/stepfun/step-5-preview` alike.
+      if (id.startsWith('*')) tails.push([id.slice(1).toLowerCase(), price]);
+      else exact.set(id, price);
+    }
+  } catch { /* an unreadable override is empty, not fatal */ }
+  overrideCache = { stamp, exact, tails };
+  return overrideCache;
 }
 
 export function pricesUrl(): string {
@@ -109,30 +184,30 @@ export function canonicalPriceId(model: string): string {
   return MODEL_ALIASES.find((a) => a.id === key || a.feed === key || key.endsWith(`/${a.id}`) || key.endsWith(`/${a.feed}`))?.id ?? key;
 }
 
-export function priceFor(model: string, live?: LivePrices | null): { price: ModelPrice; known: boolean; live: boolean } {
+export function priceFor(model: string, live?: LivePrices | null): PriceHit {
   const table = live === undefined ? loadLivePrices() : live;
   if (live === undefined) {
-    const memo = priceMemo(table);
+    // The model memo must also key on the override file: an operator who edits it expects the new
+    // price at once, not after the feed's next refresh.
+    const stamp = overrideStamp();
+    if (memoTable !== table || memoStamp !== stamp) {
+      memoTable = table;
+      memoStamp = stamp;
+      memo = new Map();
+    }
     const hit = memo.get(model);
     if (hit) return hit;
-    const resolved = resolvePrice(model, table);
+    const resolved = resolvePrice(model, table, stamp);
     memo.set(model, resolved);
     return resolved;
   }
-  return resolvePrice(model, table);
+  return resolvePrice(model, table, overrideStamp());
 }
 
 // Recent rows repeat a handful of models; the memo turns thousands of lookups into one per model. Cleared whenever the table identity changes.
 let memoTable: LivePrices | null | undefined;
-let memo = new Map<string, { price: ModelPrice; known: boolean; live: boolean }>();
-
-function priceMemo(table: LivePrices | null): Map<string, { price: ModelPrice; known: boolean; live: boolean }> {
-  if (memoTable !== table) {
-    memoTable = table;
-    memo = new Map();
-  }
-  return memo;
-}
+let memoStamp = 0;
+let memo = new Map<string, PriceHit>();
 
 // Validated once per table instead of once per lookup.
 let compiledTable: LivePrices | null = null;
@@ -150,26 +225,43 @@ function priceEntries(table: LivePrices): Array<[string, ModelPrice]> {
   return entries;
 }
 
-function resolvePrice(model: string, table: LivePrices | null): { price: ModelPrice; known: boolean; live: boolean } {
-  // An alias goes through the same exact-then-suffix chain as any other id, so it still resolves when the feed keys it under a provider prefix.
-  const id = MODEL_ALIASES.find((a) => a.id === model.toLowerCase())?.feed ?? model;
+function resolvePrice(model: string, table: LivePrices | null, stamp = overrideStamp()): PriceHit {
+  // The operator's file wins outright: it is the only source that can name what a gateway charges.
+  const overrides = loadOverrides(stamp);
+  if (overrides) {
+    const own = overrides.exact.get(model) ?? overrides.exact.get(model.toLowerCase());
+    if (own) return { price: own, known: true, live: false, tier: 'override' };
+    const low = model.toLowerCase();
+    for (const [suffix, price] of overrides.tails) {
+      if (low === suffix || low.endsWith(`/${suffix}`)) {
+        return { price, known: true, live: false, tier: 'override' };
+      }
+    }
+  }
+
+  // An alias goes through the same chain as any other id, so it still resolves when the feed keys
+  // it under a provider prefix.
+  const alias = MODEL_ALIASES.find((a) => a.id === model.toLowerCase());
+  const id = alias?.feed ?? model;
   if (table) {
     const entries = priceEntries(table);
+    // 1. The id verbatim, then case-folded. Nothing is being guessed here.
+    const hit = entries.find(([k]) => k === id) ?? entries.find(([k]) => k === id.toLowerCase());
+    if (hit) return { price: hit[1], known: true, live: true, tier: alias ? 'alias' : 'exact' };
+
     const lower = id.toLowerCase();
-    const hit = entries.find(([k]) => k === id) ?? entries.find(([k]) => k === lower);
-    if (hit) return { price: hit[1], known: true, live: true };
-    // Provider-prefixed ids ("azure/gpt-4o", "dashscope/qwen-max"): match the
-    // first cached key that ends with the full id, then with the bare tail
-    // segment, so "codex/openai/gpt-6-luna" still finds "gpt-6-luna".
-    const name = lower;
-    const tail = name.split('/').pop() ?? name;
-    const key = entries.find(([k]) => {
+    const tail = lower.split('/').pop() ?? lower;
+    // The bare model name under any provider. A guess, and reported as one: the tier says so,
+    // so a caller can keep it out of a firm total. Provider-blind by design here — the feed
+    // keys a model under whichever provider LiteLLM learned it from, which is not necessarily the
+    // one that billed the row. `prices.local.json` is how an operator fixes a specific case.
+    const bare = entries.find(([k]) => {
       const lk = k.toLowerCase();
-      return lk === name || lk.endsWith(`/${name}`) || lk === tail || lk.endsWith(`/${tail}`);
+      return lk === tail || lk.endsWith(`/${tail}`);
     });
-    if (key) return { price: key[1], known: true, live: true };
+    if (bare) return { price: bare[1], known: true, live: true, tier: 'tail' };
   }
-  return { price: DEFAULT_PRICE, known: false, live: false };
+  return { price: DEFAULT_PRICE, known: false, live: false, tier: 'default' };
 }
 // Fetch LiteLLM pricing and write the cache. False on any failure — callers fall back silently.
 export async function refreshPrices(): Promise<boolean> {

@@ -129,6 +129,7 @@ Shared, and identical for every host:
 | RTK binary | `~/.bun/bin/rtk` (`rtk.exe` on Windows). The runtime resolves `PATH` first, then this managed path. |
 | Usage ledger and price cache | `~/.tersio/` — local only, nothing leaves the machine |
 | `usage.db` host scope | `~/.tersio/usage.db` mirrors every agent Tersio reads: omp and pi transcripts, the OpenCode JSON tree, and the OpenCode v2 sqlite rows. Each row records its host and its agent kind, so a report splits by agent and by main agent or subagent. |
+| Model prices | `~/.tersio/prices.json` is a cache of LiteLLM's feed, refreshed in the background. `~/.tersio/prices.local.json` is yours: one entry per model id, keyed as the transcript spells it or with a `*` prefix to cover every gateway prefix. It wins over the feed, and it is how a gateway model the feed keys under another provider gets its real rate. `tersio usage` names any model still running on a guess. |
 | Data snapshots | `~/.tersio/backups/` — one directory per snapshot with a `manifest.json`; six are kept |
 
 Per host, written by `tersio install --host <omp|pi|opencode>`:

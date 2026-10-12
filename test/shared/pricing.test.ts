@@ -9,7 +9,7 @@ import {
   priceFor,
   refreshPrices,
 } from "../../extensions/shared/pricing.ts";
-import { canonicalModelId } from "../../extensions/shared/usage-ledger.ts";
+import { canonicalModelId, usdCost } from "../../extensions/shared/usage-ledger.ts";
 
 function setEnv(vars: Record<string, string | undefined>): Record<string, string | undefined> {
   const prev: Record<string, string | undefined> = {};
@@ -175,4 +175,142 @@ test("the space-bunny aliases resolve to one free model", () => {
     expect(hit.known, `${model} should be priced from the feed`).toBe(true);
     expect(hit.price.output, model).toBe(0);
   }
+});
+
+// --- tiers, provider alignment, and the operator's override -----------------
+
+/** A feed shaped like LiteLLM's: one model keyed under two providers at different rates. */
+function twoProviderFeed(): { fetchedAt: number; exact: Record<string, [number, number, number, number]> } {
+  return {
+    fetchedAt: Date.now(),
+    exact: {
+      "meta/muse-spark-1.3-contributor": [1, 4, 0.2, 1],
+      "opencode-zen/muse-spark-1.3-contributor": [2, 8, 0.4, 2],
+    },
+  };
+}
+
+function withFeed<T>(run: () => T): T {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-feed-"));
+  const prev = setEnv({ TERSIO_PRICES_FILE: path.join(dir, "prices.json") });
+  try {
+    writeFileSync(process.env.TERSIO_PRICES_FILE!, JSON.stringify(twoProviderFeed()), "utf8");
+    return run();
+  } finally {
+    restoreEnv(prev);
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+test("an id the feed holds verbatim reads tier exact", () => {
+  withFeed(() => {
+    expect(priceFor("opencode-zen/muse-spark-1.3-contributor").tier).toBe("exact");
+  });
+});
+
+test("a bare tail under another provider reads tier tail, not exact", () => {
+  withFeed(() => {
+    const hit = priceFor("some-gateway/muse-spark-1.3-contributor");
+    expect(hit.tier).toBe("tail");
+    expect(hit.price.input).toBe(1);
+  });
+});
+
+test("a differently cased id still reads exact, because the check folds case", () => {
+  withFeed(() => {
+    // The verbatim lookup tries the id and its lowercase form, so a case difference is not a
+    // guess. This is also why a separate provider-segment tier would be unreachable: a key under
+    // the id's own provider with the id's own tail is the id itself.
+    const hit = priceFor("opencode-zen/Muse-Spark-1.3-Contributor");
+    expect(hit.tier).toBe("exact");
+    expect(hit.price.input).toBe(2);
+  });
+});
+
+test("a third gateway with no row of its own falls to the tail, not the first provider", () => {
+  withFeed(() => {
+    // Two feed keys end in the same tail. The id names neither, so the tail is the honest answer.
+    const hit = priceFor("third-party/muse-spark-1.3-contributor");
+    expect(hit.tier).toBe("tail");
+    expect(hit.price.input).toBe(1);
+  });
+});
+
+test("the override file wins over the feed, exactly and by wildcard", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-override-"));
+  const prev = setEnv({
+    TERSIO_PRICES_FILE: path.join(dir, "prices.json"),
+    TERSIO_PRICES_OVERRIDE_FILE: path.join(dir, "prices.local.json"),
+  });
+  try {
+    writeFileSync(process.env.TERSIO_PRICES_FILE!, JSON.stringify(twoProviderFeed()), "utf8");
+    writeFileSync(
+      process.env.TERSIO_PRICES_OVERRIDE_FILE!,
+      JSON.stringify({
+        "opencode-zen/muse-spark-1.3-contributor": { input: 9, output: 9, cacheRead: 9, cacheWrite: 9 },
+        "*free-tail": { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      }),
+      "utf8",
+    );
+    const exact = priceFor("opencode-zen/muse-spark-1.3-contributor");
+    expect(exact.tier).toBe("override");
+    expect(exact.price.input).toBe(9);
+    // A wildcard covers every gateway prefix, so three spellings share one entry.
+    for (const model of ["free-tail", "kilo/stepfun/free-tail", "opencode-zen/free-tail"]) {
+      const hit = priceFor(model);
+      expect(hit.tier, model).toBe("override");
+      expect(hit.price.input, model).toBe(0);
+    }
+  } finally {
+    restoreEnv(prev);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("editing the override takes effect without a feed refresh", () => {
+  // The model memo keys on the feed table alone, so an edit used to be invisible until the next
+  // refresh. Both directions are pinned here.
+  const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-override-"));
+  const prev = setEnv({
+    TERSIO_PRICES_FILE: path.join(dir, "prices.json"),
+    TERSIO_PRICES_OVERRIDE_FILE: path.join(dir, "prices.local.json"),
+  });
+  try {
+    writeFileSync(process.env.TERSIO_PRICES_FILE!, JSON.stringify(twoProviderFeed()), "utf8");
+    const model = "opencode-zen/muse-spark-1.3-contributor";
+    expect(priceFor(model).price.input).toBe(2);
+
+    writeFileSync(
+      process.env.TERSIO_PRICES_OVERRIDE_FILE!,
+      JSON.stringify({ [model]: { input: 7, output: 7, cacheRead: 7, cacheWrite: 7 } }),
+      "utf8",
+    );
+    expect(priceFor(model).tier).toBe("override");
+    expect(priceFor(model).price.input).toBe(7);
+
+    rmSync(process.env.TERSIO_PRICES_OVERRIDE_FILE!, { force: true });
+    expect(priceFor(model).tier).toBe("exact");
+    expect(priceFor(model).price.input).toBe(2);
+  } finally {
+    restoreEnv(prev);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("usdCost calls only a firm tier priced", () => {
+  withFeed(() => {
+    const t = { input: 1_000_000, output: 0, cacheRead: 0, cacheWrite: 0 };
+    const firm = usdCost(t, "opencode-zen/muse-spark-1.3-contributor");
+    expect(firm.tier).toBe("exact");
+    expect(firm.priced).toBe(true);
+    expect(firm.usd).toBe(2);
+    // A tail match is another provider's rate, so it is an estimate and must not read as a price.
+    const guess = usdCost(t, "third-party/muse-spark-1.3-contributor");
+    expect(guess.tier).toBe("tail");
+    expect(guess.priced).toBe(false);
+    // The default table is an estimate for the same reason.
+    const missing = usdCost(t, "nope-9");
+    expect(missing.tier).toBe("default");
+    expect(missing.priced).toBe(false);
+  });
 });
