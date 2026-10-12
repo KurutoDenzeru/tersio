@@ -18,6 +18,9 @@ export const DEFAULT_PRICE: ModelPrice = { input: 2, output: 10, cacheRead: 0.2,
  * estimate, because the feed matched a model by its bare name and the provider that billed it may
  * charge something else entirely.
  *
+ * - `measured`: the host reported this cost itself. The strongest answer there is, and the only one
+ *   that can be zero without being a guess: a free gateway writes a zero cost, and omp flags a
+ *   request it could not price in a separate field, so a recorded zero is a real zero.
  * - `override`: the operator's own `prices.local.json`. Exact for the gateway it names.
  * - `exact`: the feed holds this id verbatim, or case-folded.
  * - `alias`: `MODEL_ALIASES` mapped it, and the feed holds the alias verbatim.
@@ -30,10 +33,10 @@ export const DEFAULT_PRICE: ModelPrice = { input: 2, output: 10, cacheRead: 0.2,
  * segment and ends with its tail is the id itself. Such a step cannot fire, so the honest fix for
  * a wrong-provider price is the override file, not a branch that never runs.
  */
-export type PriceTier = 'override' | 'exact' | 'alias' | 'tail' | 'default';
+export type PriceTier = 'measured' | 'override' | 'exact' | 'alias' | 'tail' | 'default';
 
 /** Tiers firm enough to call a price. `tail` and `default` are estimates, so they are not. */
-export const PRICE_TIERS_FIRM: readonly PriceTier[] = ['override', 'exact', 'alias'];
+export const PRICE_TIERS_FIRM: readonly PriceTier[] = ['measured', 'override', 'exact', 'alias'];
 
 export interface PriceHit {
   price: ModelPrice;

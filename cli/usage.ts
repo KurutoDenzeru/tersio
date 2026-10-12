@@ -68,6 +68,8 @@ export interface UsageReport {
    * and not to the agent that ran it.
    */
   weakModels: string[];
+  /** How many models were priced by the host itself rather than by a rate card. */
+  measuredModels: string[];
   savedUsd: number;
   costMeasured: number;
   co2g: number;
@@ -129,10 +131,16 @@ export function summarizeUsage(rows: UsageRow[]): UsageReport {
   const priceTiers: Record<string, number> = {};
   // Named in the loop so the list is built in one pass, then sorted by token volume below.
   const weakModels: string[] = [];
+  const measuredModels: string[] = [];
   for (const [model, t] of Object.entries(session.byModel)) {
-    const c = usdCost(t, model);
+    // A model is measured only when the host priced every one of its messages; a partly measured
+    // model would read its unpriced messages as zero, which is the one error worse than a guess.
+    const covered = (session.byModelCostMessages[model] ?? 0) >= (session.byModelMessages[model] ?? 0);
+    const measured = covered ? session.byModelMeasured[model] : undefined;
+    const c = usdCost(t, model, measured);
     usd += c.usd;
     priceTiers[c.tier] = (priceTiers[c.tier] ?? 0) + 1;
+    if (c.tier === 'measured') measuredModels.push(model);
     // A tier that is not firm is an estimate, so it is kept out of the firm total rather than
     // summed beside a measured cost that would make the whole figure read as a bill.
     if (!PRICE_TIERS_FIRM.includes(c.tier)) {
@@ -199,6 +207,7 @@ export function summarizeUsage(rows: UsageRow[]): UsageReport {
     estimatedUsd,
     priceTiers,
     weakModels: weakKeys,
+    measuredModels,
     savedUsd,
     costMeasured: session.costMeasured,
     co2g,
@@ -273,16 +282,23 @@ function printReport(report: UsageReport): void {
   // The count stays in the cell; the names go on their own line below, because the cell is a
   // fixed 118 columns and a list of model ids would be truncated to nothing.
   const listed = report.weakModels.map((m) => displayModelId(m));
+  const measuredCount = report.measuredModels.length;
   const costNote = weak > 0
     ? ` · ${weak} model${weak === 1 ? '' : 's'} priced from another provider or the default table — add them to ${pricesOverridePath()}`
     : overridden > 0
       ? ` · ${overridden} model${overridden === 1 ? '' : 's'} priced from your override file`
-      : '';
+      : measuredCount > 0
+        ? ` · ${measuredCount} model${measuredCount === 1 ? '' : 's'} priced by the host`
+        : '';
   for (const l of textTable(['Metric', 'Value'], [
     ['Tokens', `${fmt(t.input)} in · ${fmt(t.output)} out · ${fmt(t.cacheRead)} cache read · ${fmt(t.cacheWrite)} cache write`],
     ['Cost', `${formatCurrency(report.usd, report.currency)}${report.priced ? '' : ' (includes default pricing)'} · ~${formatCurrency(report.savedUsd, report.currency)} cache-saved (est.) · ~${report.co2g.toFixed(1)}g CO2 (est.)${costNote}`],
     ['RTK adoption', `${fmt(a.rtkCalls)}/${fmt(a.eligibleCalls)} eligible Bash calls use RTK (${a.adoptionPct.toFixed(1)}%) · ${fmt(a.missedCalls)} missed · recall ${report.rtkRecall.available ? `${report.rtkRecall.mode} (${report.rtkRecall.entries})` : 'unavailable'}`],
   ], [false, false], 118)) console.log(l);
+  if (measuredCount > 0) {
+    // Named, because a measured figure is only worth trusting when a reader sees whose it is.
+    console.log(`  Priced by the host: ${measuredCount} model${measuredCount === 1 ? '' : 's'}`);
+  }
   if (weak > 0) {
     // Heaviest first, one per host spelling, so the operator sees exactly what to write.
     console.log(`  Unpriced (heaviest first): ${listed.join(', ')}`);

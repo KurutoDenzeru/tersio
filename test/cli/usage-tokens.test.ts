@@ -166,6 +166,51 @@ test("two hosts spelling one model share a single priced key", () => {
   expect(tiers).toEqual(["tail", "default"]);
 });
 
+// The host's own cost outranks every rate card, and a recorded zero is a real zero.
+test("a host-reported cost outranks the rate card, including when it is zero", () => {
+  const accum = newSessionAccum();
+  const stamp = 1_800_000_000_000;
+  const usage = { input: 1000, output: 100, cacheRead: 0, cacheWrite: 0 };
+  // A free gateway reports the whole zero object, which is an explicit price, not an absent one.
+  ingestSessionRow(accum, "space-bunny", { ...usage, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stamp, undefined, undefined, undefined, "omp");
+  // A priced model reports its own figure, which beats the $2 Sonnet default by five times.
+  ingestSessionRow(accum, "kilo/stepfun/step-5-preview", { ...usage, cost: { total: 69.08 } }, stamp, undefined, undefined, undefined, "omp");
+  // A model with no reported cost stays an estimate.
+  ingestSessionRow(accum, "nope-9", usage, stamp, undefined, undefined, undefined, "omp");
+
+  expect(accum.byModelMeasured["space-bunny"]).toBe(0);
+  expect(accum.byModelMeasured["kilo/stepfun/step-5-preview"]).toBe(69.08);
+  expect(accum.byModelMeasured["nope-9"]).toBeUndefined();
+
+  const free = usdCost(accum.byModel["space-bunny"], "space-bunny", accum.byModelMeasured["space-bunny"]);
+  expect(free.usd).toBe(0);
+  expect(free.tier).toBe("measured");
+  expect(free.priced).toBe(true);
+
+  const priced = usdCost(accum.byModel["kilo/stepfun/step-5-preview"], "kilo/stepfun/step-5-preview", accum.byModelMeasured["kilo/stepfun/step-5-preview"]);
+  expect(priced.usd).toBe(69.08);
+  expect(priced.tier).toBe("measured");
+
+  const guess = usdCost(accum.byModel["nope-9"], "nope-9", accum.byModelMeasured["nope-9"]);
+  expect(guess.tier).toBe("default");
+  expect(guess.priced).toBe(false);
+});
+
+// A partly measured model must not read its unpriced messages as zero.
+test("a partly measured model falls back to the rate card rather than zero", () => {
+  const accum = newSessionAccum();
+  const stamp = 1_800_000_000_000;
+  ingestSessionRow(accum, "half-priced", { input: 1000, output: 0, cacheRead: 0, cacheWrite: 0, cost: 1 }, stamp, undefined, undefined, undefined, "omp");
+  ingestSessionRow(accum, "half-priced", { input: 1000, output: 0, cacheRead: 0, cacheWrite: 0 }, stamp, undefined, undefined, undefined, "omp");
+
+  expect(accum.byModelMessages["half-priced"]).toBe(2);
+  expect(accum.byModelCostMessages["half-priced"]).toBe(1);
+  // Not covered, so the caller must pass undefined and price the whole model from the card.
+  const covered = (accum.byModelCostMessages["half-priced"] ?? 0) >= accum.byModelMessages["half-priced"]!;
+  expect(covered).toBe(false);
+  expect(usdCost(accum.byModel["half-priced"], "half-priced", covered ? accum.byModelMeasured["half-priced"] : undefined).tier).toBe("default");
+});
+
 test("co2Grams defaults to the gpt-4o served figure", () => {
   expect(co2Grams(5000)).toBe(co2GramsFor("gpt-4o", 5000));
 });

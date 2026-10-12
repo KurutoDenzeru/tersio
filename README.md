@@ -130,6 +130,7 @@ Shared, and identical for every host:
 | Usage ledger and price cache | `~/.tersio/` — local only, nothing leaves the machine |
 | `usage.db` host scope | `~/.tersio/usage.db` mirrors every agent Tersio reads: omp and pi transcripts, the OpenCode JSON tree, and the OpenCode v2 sqlite rows. Each row records its host and its agent kind, so a report splits by agent and by main agent or subagent. |
 | Model prices | `~/.tersio/prices.json` is a cache of LiteLLM's feed, refreshed in the background. `~/.tersio/prices.local.json` is yours: one entry per model id, keyed as the transcript spells it or with a `*` prefix to cover every gateway prefix. It wins over the feed, and it is how a gateway model the feed keys under another provider gets its real rate. `tersio usage` prints an `Unpriced (heaviest first)` line naming the model keys to add. |
+| Price sources | The cost the host itself reported wins over every rate card: it is the only figure from the party that billed. A recorded zero is a real zero, not a missing value — omp flags a request it could not price in a separate field, so a zero is a free model. A model counts as host-priced only when every one of its messages carried a cost. Then `prices.local.json`, then the LiteLLM cache, then a default table the report labels as a guess. |
 | Data snapshots | `~/.tersio/backups/` — one directory per snapshot with a `manifest.json`; six are kept |
 
 Per host, written by `tersio install --host <omp|pi|opencode>`:

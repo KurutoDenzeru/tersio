@@ -93,6 +93,15 @@ export interface SessionTokens {
   byAgent: Record<string, Record<string, TokenBreakdown>>;
   /** Model -> agent kind -> message count, so a share can read requests beside the tokens. */
   byAgentMessages: Record<string, Record<string, number>>;
+  /** Model -> cost the host itself reported, summed over the messages that carried one. */
+  byModelMeasured: Record<string, number>;
+  /**
+   * Model -> how many of its messages carried a reported cost. A model whose measured sum does not
+   * cover every message is only partly priced by the host, and the missing part must not read as
+   * zero: `costOf` returns undefined for an absent cost precisely so it is never confused with a
+   * recorded zero. Compare this count to `byModelMessages` before trusting `byModelMeasured`.
+   */
+  byModelCostMessages: Record<string, number>;
   costMeasured: number;
   recent: RecentRequest[];
 }
@@ -300,6 +309,15 @@ export interface SessionAccum {
   byAgent: Record<string, Record<string, TokenBreakdown>>;
   /** Model -> agent kind -> message count. */
   byAgentMessages: Record<string, Record<string, number>>;
+  /** Model -> cost the host itself reported, summed over the messages that carried one. */
+  byModelMeasured: Record<string, number>;
+  /**
+   * Model -> how many of its messages carried a reported cost. A model whose measured sum does not
+   * cover every message is only partly priced by the host, and the missing part must not read as
+   * zero: `costOf` returns undefined for an absent cost precisely so it is never confused with a
+   * recorded zero. Compare this count to `byModelMessages` before trusting `byModelMeasured`.
+   */
+  byModelCostMessages: Record<string, number>;
   totals: TokenBreakdown;
   messages: number;
   costMeasured: number;
@@ -308,7 +326,7 @@ export interface SessionAccum {
   recentFloor: number;
 }
 export function newSessionAccum(): SessionAccum {
-  return { byModel: {}, byDay: {}, byDayModel: {}, byTool: {}, byModelMessages: {}, byHost: {}, byAgent: {}, byAgentMessages: {}, totals: zeroBreakdown(), messages: 0, costMeasured: 0, recent: [], recentFloor: Number.POSITIVE_INFINITY };
+  return { byModel: {}, byDay: {}, byDayModel: {}, byTool: {}, byModelMessages: {}, byHost: {}, byAgent: {}, byAgentMessages: {}, byModelMeasured: {}, byModelCostMessages: {}, totals: zeroBreakdown(), messages: 0, costMeasured: 0, recent: [], recentFloor: Number.POSITIVE_INFINITY };
 }
 export function ingestSessionRow(accum: SessionAccum, model: string, usage: Record<string, unknown>, ts: string | number | undefined, durMs?: unknown, run?: { st: RunStatus; code?: number; note?: string }, toolNames?: string[], host?: string, id?: string, agent?: string): boolean {
   const watermark = readResetWatermark();
@@ -361,7 +379,11 @@ export function ingestSessionRow(accum: SessionAccum, model: string, usage: Reco
   }
   accum.messages += 1;
   const measured = costOf(usage);
-  if (measured !== undefined) accum.costMeasured += measured;
+  if (measured !== undefined) {
+    accum.costMeasured += measured;
+    accum.byModelMeasured[key] = (accum.byModelMeasured[key] ?? 0) + measured;
+    accum.byModelCostMessages[key] = (accum.byModelCostMessages[key] ?? 0) + 1;
+  }
   for (const name of toolNames ?? []) accum.byTool[name] = (accum.byTool[name] ?? 0) + 1;
   return true;
 }
@@ -593,7 +615,7 @@ export function importSessionTokens(): SessionTokens {
     }, text, hostOfSessionFile(file), agentOfSessionText(text));
   }
   accum.recent.sort((a, b) => b.t - a.t);
-  return { messages: accum.messages, totals: accum.totals, byModel: accum.byModel, byDay: accum.byDay, byDayModel: accum.byDayModel, byTool: accum.byTool, byModelMessages: accum.byModelMessages, byHost: accum.byHost, byAgent: accum.byAgent, byAgentMessages: accum.byAgentMessages, costMeasured: accum.costMeasured, recent: accum.recent.slice(0, RECENT_LIMIT) };
+  return { messages: accum.messages, totals: accum.totals, byModel: accum.byModel, byDay: accum.byDay, byDayModel: accum.byDayModel, byTool: accum.byTool, byModelMessages: accum.byModelMessages, byHost: accum.byHost, byAgent: accum.byAgent, byAgentMessages: accum.byAgentMessages, byModelMeasured: accum.byModelMeasured, byModelCostMessages: accum.byModelCostMessages, costMeasured: accum.costMeasured, recent: accum.recent.slice(0, RECENT_LIMIT) };
 }
 
 // Which agent wrote a session file, from the directory it sits in.
@@ -759,8 +781,25 @@ export { DEFAULT_PRICE, PRICE_TIERS_FIRM, priceFor, pricesOverridePath, refreshP
 export { co2GramsFor, energyWhFor };
 export type { PriceHit, PriceTier, ModelPrice };
 
-export function usdCost(t: TokenBreakdown, model?: string): { usd: number; priced: boolean; tier: PriceTier; buckets: { input: number; output: number; cacheRead: number; cacheWrite: number } } {
+/**
+ * Price one model's tokens. `measured` is the cost the host itself reported for those tokens; it
+ * outranks every rate card, because it is the only figure that comes from the party that billed.
+ * A zero is a real zero here, not a missing value: `costOf` returns undefined for an absent cost, so
+ * a caller that has no number must pass undefined rather than 0.
+ */
+export function usdCost(t: TokenBreakdown, model?: string, measured?: number): { usd: number; priced: boolean; tier: PriceTier; buckets: { input: number; output: number; cacheRead: number; cacheWrite: number } } {
   const m = 1 / 1_000_000;
+  if (measured !== undefined) {
+    // The host priced these tokens, so the buckets are its own split when it gave one and the price
+    // is its total. Only a bare total arrives, so attribute it to input: it is the largest bucket
+    // for every model here and the split is not spendable on its own.
+    return {
+      usd: measured,
+      priced: true,
+      tier: 'measured',
+      buckets: { input: measured, output: 0, cacheRead: 0, cacheWrite: 0 },
+    };
+  }
   const hit: PriceHit = model ? priceFor(model) : { price: DEFAULT_PRICE, known: false, live: false, tier: 'default' };
   const price = hit.price;
   const buckets = {

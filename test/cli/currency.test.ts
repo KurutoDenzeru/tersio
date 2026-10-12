@@ -68,7 +68,7 @@ test("usage defaults to USD and converts with --currency", () => {
       env: usageEnv(dir, sessions),
     });
     expect(usd.status, usd.stderr).toBe(0);
-    expect(usd.stdout).toMatch(/\$0\.0041/);
+    expect(usd.stdout).toMatch(/\$0\.0120/);
     expect(usd.stdout).toMatch(/USD │/);
     expect(usd.stdout).toMatch(/500 cache read · 0 cache write/);
 
@@ -78,9 +78,9 @@ test("usage defaults to USD and converts with --currency", () => {
       env: usageEnv(dir, sessions),
     });
     expect(php.status, php.stderr).toBe(0);
-    expect(php.stdout).toMatch(/₱0\.24/);
+    expect(php.stdout).toMatch(/₱0\.70/);
     expect(php.stdout).toMatch(/PHP │/);
-    expect(php.stdout).not.toMatch(/\$0\.0041/);
+    expect(php.stdout).not.toMatch(/\$0\.0120/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
     rmSync(sessions, { recursive: true, force: true });
@@ -98,7 +98,7 @@ test("usage prefers the stored currency default, flag overrides it", () => {
       env: usageEnv(dir, sessions),
     });
     expect(stored.status, stored.stderr).toBe(0);
-    expect(stored.stdout, "stored PHP default applies without a flag").toMatch(/₱0\.24/);
+    expect(stored.stdout, "stored PHP default applies without a flag").toMatch(/₱0\.70/);
 
     const flag = spawnSync(process.execPath, [installer, "usage", "--currency", "EUR"], {
       encoding: "utf8",
@@ -106,8 +106,8 @@ test("usage prefers the stored currency default, flag overrides it", () => {
       env: usageEnv(dir, sessions),
     });
     expect(flag.status, flag.stderr).toBe(0);
-    expect(flag.stdout, "explicit flag beats the stored default").toMatch(/€0\.0038/);
-    expect(flag.stdout).not.toMatch(/₱0\.24/);
+    expect(flag.stdout, "explicit flag beats the stored default").toMatch(/€0\.0110/);
+    expect(flag.stdout).not.toMatch(/₱0\.70/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
     rmSync(sessions, { recursive: true, force: true });
@@ -125,7 +125,7 @@ test("usage falls back to USD on a corrupt or unknown stored currency", () => {
       env: usageEnv(dir, sessions),
     });
     expect(bad.status, bad.stderr).toBe(0);
-    expect(bad.stdout).toMatch(/\$0\.0041/);
+    expect(bad.stdout).toMatch(/\$0\.0120/);
 
     writeFileSync(path.join(dir, ".tersio", "settings.json"), "{ not json", "utf8");
     const corrupt = spawnSync(process.execPath, [installer, "usage"], {
@@ -134,7 +134,7 @@ test("usage falls back to USD on a corrupt or unknown stored currency", () => {
       env: usageEnv(dir, sessions),
     });
     expect(corrupt.status, corrupt.stderr).toBe(0);
-    expect(corrupt.stdout).toMatch(/\$0\.0041/);
+    expect(corrupt.stdout).toMatch(/\$0\.0120/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
     rmSync(sessions, { recursive: true, force: true });

@@ -709,6 +709,8 @@ export function readUsageDb(): StoredUsage | null {
       byHost: accum.byHost,
       byAgent: accum.byAgent,
       byAgentMessages: accum.byAgentMessages,
+      byModelMeasured: accum.byModelMeasured,
+      byModelCostMessages: accum.byModelCostMessages,
       costMeasured: accum.costMeasured,
       recent: accum.recent.slice(0, RECENT_LIMIT),
     },
