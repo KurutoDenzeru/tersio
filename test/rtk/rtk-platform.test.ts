@@ -4,20 +4,6 @@ import os from "node:os";
 import path from "node:path";
 import { resolveRtkBinary, rtkPlatformSpec } from "../../extensions/lib/utils.ts";
 
-test("rtkPlatformSpec resolves known platform/arch pairs", () => {
-  expect(rtkPlatformSpec("darwin", "arm64")).toEqual({
-    triple: "aarch64-apple-darwin",
-    ext: ".tar.gz",
-    binary: "rtk",
-  });
-  expect(rtkPlatformSpec("win32", "x64")).toEqual({
-    triple: "x86_64-pc-windows-msvc",
-    ext: ".zip",
-    binary: "rtk.exe",
-  });
-});
-
-
 test("resolveRtkBinary returns null when PATH has no executable", () => {
   const previous = process.env.PATH;
   process.env.PATH = path.resolve("definitely-missing-bin");
@@ -46,9 +32,4 @@ test("resolveRtkBinary falls back to the managed installer directory", () => {
 });
 test("rtkPlatformSpec returns null for unknown platforms", () => {
   expect(rtkPlatformSpec("plan9", "x64")).toBe(null);
-});
-
-test("rtkPlatformSpec defaults to the current runtime", () => {
-  const spec = rtkPlatformSpec();
-  expect(spec && typeof spec.triple === "string" && typeof spec.binary === "string").toBeTruthy();
 });

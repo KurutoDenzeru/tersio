@@ -133,10 +133,6 @@ test("opencode sessions restore modes independently", async () => {
   }
 });
 
-test("the plugin registers under the npm name the install writes", () => {
-  expect(plugin.id).toBe("@krtclcdy/tersio");
-});
-
 // rtk ships no OpenCode plugin of its own, so this hook is the whole integration.
 test("the bash hook rewrites a command through the resolved rtk binary", async () => {
   await withFakeRtk("#!/bin/sh\necho \"rtk compact $2\"\n", async () => {

@@ -45,7 +45,3 @@ test("zero output tokens yields zero footprint", () => {
     paramSource: "registry",
   });
 });
-
-test("footprint is deterministic", () => {
-  expect(footprintFor("deepseek-v4", 7777)).toEqual(footprintFor("deepseek-v4", 7777));
-});

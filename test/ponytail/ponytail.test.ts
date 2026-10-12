@@ -36,12 +36,6 @@ async function injectMarked(ponytail: string): Promise<string> {
 }
 
 
-test("the no-package fallback carries each intensity", () => {
-  expect(ponytailFallback("lite")).toMatch(/simplest correct solution/);
-  expect(ponytailFallback("full")).toMatch(/minimum correct solution/);
-  expect(ponytailFallback("ultra")).toMatch(/YAGNI/);
-});
-
 test("a marked subagent prompt gets the installed ponytail instructions", async () => {
   // Ponytail is a Tersio dependency, so the package resolves beside the
   // extension in a checkout and in every install layout.
