@@ -4,8 +4,10 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, promises as fs, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { PACKAGE_VERSION, args, flagValue, parseJsonObject } from './common.ts';
+import { newerThan } from './update.ts';
+import { readState } from '../extensions/shared/state.ts';
 import { detectHosts, hostExtensionsDir } from './hosts.ts';
-import { EXT_DIR, PI_PONYTAIL_FILES, PONYTAIL_BUNDLE_FILES, PONYTAIL_DIR, PONYTAIL_VERSION, shippedOmpManifest, sourcePath, treeFileText, treeFilesFor } from './manifest.ts';
+import { EXT_DIR, PI_PONYTAIL_FILES, PONYTAIL_BUNDLE_FILES, PONYTAIL_DIR, PONYTAIL_PKG, PONYTAIL_VERSION, shippedOmpManifest, sourcePath, treeFileText, treeFilesFor } from './manifest.ts';
 import { textTable } from './common.ts';
 import { adaptCavemanFull } from '../extensions/updater/index.ts';
 import {
@@ -22,6 +24,8 @@ import {
 } from '../extensions/shared/utils.ts';
 
 const GH = 'https://api.github.com';
+/** The package server, which serves a published version's files one by one. */
+const UNPKG = 'https://unpkg.com';
 const RAW = 'https://raw.githubusercontent.com';
 const PONYTAIL_NPM = 'https://registry.npmjs.org/@dietrichgebert/ponytail/latest';
 
@@ -31,7 +35,7 @@ const PSTACK_REPO = 'cursor/plugins';
 const PSTACK_PATH = 'pstack/skills/poteto-mode/';
 
 /** Pins are deliberate: bump one only after reviewing the upstream diff it names. */
-const CAVEMAN_PIN = 'd262ab3882952a59312ff3537cd86d894523c5ab';
+export const CAVEMAN_PIN = 'v4.0.1';
 // a968159 is the newest commit that touched a body we track; its one change renames the skill in frontmatter, which the fork drops.
 const PSTACK_PIN = 'a968159326d1fc6b7d483491ec5c457986a20af2';
 
@@ -155,6 +159,10 @@ export interface SourceRow {
   appeared: string[];
   /** Upstream paths the pin had and HEAD does not. */
   gone: string[];
+  /** Skill directories upstream publishes that this port does not carry. */
+  uncarried: number;
+  /** How many of those moved since the pin. */
+  uncarriedMoved: number;
   note: string;
 }
 
@@ -169,6 +177,8 @@ export interface HostRow {
   missingFiles: string[];
   /** Entries the shipped manifest loads that this host's manifest does not, so the module never runs there. */
   unloaded: string[];
+  /** What to run to repair the stale files, named from the version gap. */
+  fix: string;
 }
 
 export interface Scorecard {
@@ -298,17 +308,71 @@ async function pruneTrees(cacheDir: string): Promise<void> {
   }
 }
 
+/** The newest release a repository publishes, or null when the feed cannot be read. */
+async function latestRelease(repo: string): Promise<string | null> {
+  try {
+    const token = githubToken();
+    const json = await fetchJson<{ tag_name?: string }>(`${GH}/repos/${repo}/releases/latest`, token ? { headers: { Authorization: `Bearer ${token}` } } : {});
+    const tag = json.tag_name ?? '';
+    return tag ? tag.replace(/^v/, '') : null;
+  } catch {
+    return null;
+  }
+}
+
 interface Drift { changed: string[]; added: string[]; gone: string[] }
+
+/** The directory a source's skills live in: the common parent of every tracked directory. */
+export function skillRoot(upstreamPaths: string[]): string {
+  const dirs = [...new Set(upstreamPaths.map((up) => path.posix.dirname(up)))];
+  if (dirs.length === 0) return '';
+  let parts = dirs[0].split('/');
+  for (const dir of dirs.slice(1)) {
+    const other = dir.split('/');
+    let i = 0;
+    while (i < parts.length && i < other.length && parts[i] === other[i]) i++;
+    parts = parts.slice(0, i);
+  }
+  return parts.join('/');
+}
+
+/** The skill directories upstream publishes that this port does not carry, and how many of them moved since the pin. */
+export function uncarriedOf(pinned: TreeResult, head: TreeResult, upstreamPaths: string[], root: string): { count: number; moved: number } {
+  const headTree = head.entries;
+  const pinTree = pinned.entries;
+  if (!headTree || !root) return { count: 0, moved: 0 };
+  const carried = new Set(upstreamPaths.map((up) => path.posix.dirname(up)));
+  const dirs = new Map<string, string[]>();
+  for (const [p] of headTree) {
+    if (!p.startsWith(`${root}/`)) continue;
+    const dir = `${root}/${p.slice(root.length + 1).split('/')[0]}`;
+    if (carried.has(dir)) continue;
+    dirs.set(dir, [...(dirs.get(dir) ?? []), p]);
+  }
+  let moved = 0;
+  for (const files of dirs.values()) {
+    if (!pinTree) continue;
+    const existed = files.some((f) => pinTree.has(f));
+    const changed = files.some((f) => pinTree.has(f) && pinTree.get(f) !== headTree.get(f));
+    if (existed && changed) moved++;
+  }
+  return { count: dirs.size, moved };
+}
 
 /**
  * Changed, added, and removed upstream paths. Added means a file inside a directory this build already
  * tracks, which is the signal a new playbook, reference, or principle leaf exists upstream.
  */
-function driftOf(pinned: TreeResult, head: TreeResult, upstreamPaths: string[]): Drift {
+export function driftOf(pinned: TreeResult, head: TreeResult, upstreamPaths: string[]): Drift {
   const none: Drift = { changed: [], added: [], gone: [] };
   if (!pinned.entries || !head.entries) return none;
   const tracked = new Set(upstreamPaths);
   const dirs = new Set([...tracked].map((up) => `${path.posix.dirname(up)}/`));
+  // A new skill directory sits beside the tracked ones, so the parent of a tracked directory is watched too.
+  for (const dir of [...dirs]) {
+    const parent = path.posix.dirname(dir);
+    if (parent && parent !== '.' && parent !== '/') dirs.add(`${parent}/`);
+  }
   const changed: string[] = [];
   const gone: string[] = [];
   for (const up of tracked) {
@@ -369,10 +433,13 @@ async function checkCaveman(): Promise<SourceRow> {
   }
   const failure = bodies.find((b) => b.failure)?.failure ?? pinned.failure ?? head.failure;
   const drift = driftOf(pinned, head, CAVEMAN.files.map((f) => f.upstream));
+  const uncarried = uncarriedOf(pinned, head, CAVEMAN.files.map((f) => f.upstream), skillRoot(CAVEMAN.files.map((f) => f.upstream)));
+  const release = await latestRelease(CAVEMAN_REPO);
+  const pinnedVersion = CAVEMAN_PIN.replace(/^v/, '');
   return {
     source: CAVEMAN.label,
-    pin: CAVEMAN.pin.slice(0, 7),
-    upstream: 'HEAD',
+    pin: pinnedVersion,
+    upstream: release ?? 'unknown',
     tracked: CAVEMAN.files.length + CAVEMAN.localOnly.length,
     matched,
     drift: drift.changed.length + drift.gone.length,
@@ -387,7 +454,9 @@ async function checkCaveman(): Promise<SourceRow> {
     moved: drift.changed,
     appeared: drift.added,
     gone: drift.gone,
-    note: noteOf(failure, gaps, drift.changed),
+    uncarried: uncarried.count,
+    uncarriedMoved: uncarried.moved,
+    note: release && release !== pinnedVersion ? `release ${release} is out` : noteOf(failure, gaps, drift.changed),
   };
 }
 
@@ -405,6 +474,7 @@ async function checkPstack(): Promise<SourceRow> {
   }
   const failure = pinned.failure ?? head.failure;
   const drift = driftOf(pinned, head, PSTACK.files.map((f) => f.upstream));
+  const uncarried = uncarriedOf(pinned, head, PSTACK.files.map((f) => f.upstream), skillRoot(PSTACK.files.map((f) => f.upstream)));
   return {
     source: PSTACK.label,
     pin: PSTACK.pin.slice(0, 7),
@@ -423,8 +493,55 @@ async function checkPstack(): Promise<SourceRow> {
     moved: drift.changed,
     appeared: drift.added,
     gone: drift.gone,
+    uncarried: uncarried.count,
+    uncarriedMoved: uncarried.moved,
     note: noteOf(failure, gaps, drift.changed) || 'fork: Cursor surface removed',
   };
+}
+
+/** Every file in the vendored copy, as paths under its root. */
+function vendoredFiles(root: string): string[] {
+  const out: string[] = [];
+  const walk = (dir: string, rel: string): void => {
+    let entries;
+    try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const entry of entries) {
+      const child = rel ? `${rel}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) walk(path.join(dir, entry.name), child);
+      else out.push(child);
+    }
+  };
+  walk(root, '');
+  return out.toSorted();
+}
+
+/** One vendored file against the package's own hash: a match, or the gap it is. */
+export function vendoredVerdict(rel: string, bytes: Buffer | null, integrity: string | undefined, version: string): string | null {
+  if (bytes === null) return `${rel} is missing from the vendored copy`;
+  if (!integrity) return `${rel} is not in the package at ${version}`;
+  const ours = createHash('sha256').update(bytes).digest('base64');
+  return ours === integrity.replace(/^sha256-/, '') ? null : `${rel} differs from the package at ${version}`;
+}
+
+/** The vendored copy against the package it declares: a hand edit there is invisible to the host copies. */
+async function checkVendored(root: string, version: string): Promise<{ matched: number; total: number; gaps: string[]; failure: FetchFailure | null }> {
+  const files = vendoredFiles(root);
+  let manifest: Map<string, string>;
+  try {
+    const json = await fetchJson<{ files?: Array<{ path?: string; integrity?: string }> }>(`${UNPKG}/${PONYTAIL_PKG}@${version}/?meta`);
+    manifest = new Map((json.files ?? []).map((f) => [String(f.path ?? '').replace(/^\//, ''), String(f.integrity ?? '')]));
+  } catch (e) {
+    return { matched: 0, total: files.length, gaps: [], failure: classifyFetch(e, `the package at ${version}`) };
+  }
+  const gaps: string[] = [];
+  let matched = 0;
+  for (const rel of files) {
+    const bytes = await fs.readFile(path.join(root, ...rel.split('/'))).catch(() => null);
+    const gap = vendoredVerdict(rel, bytes, manifest.get(rel), version);
+    if (gap) gaps.push(gap);
+    else matched++;
+  }
+  return { matched, total: files.length, gaps, failure: null };
 }
 
 /** Ponytail: the vendored copy is the source of truth, and each host's copy must match it. */
@@ -440,6 +557,10 @@ async function checkPonytail(hosts: HostRow[]): Promise<SourceRow> {
   let tracked = 0;
   let matched = 0;
   const gaps: string[] = [];
+  const vendored = root ? await checkVendored(root, bundled ?? 'latest') : { matched: 0, total: 0, gaps: [] as string[], failure: null };
+  tracked += vendored.total;
+  matched += vendored.matched;
+  gaps.push(...vendored.gaps);
   for (const copy of copies) {
     for (const rel of copy.files) {
       tracked++;
@@ -452,10 +573,10 @@ async function checkPonytail(hosts: HostRow[]): Promise<SourceRow> {
     }
   }
   let latest: string | null = null;
-  let failure: FetchFailure | null = null;
+  let failure: FetchFailure | null = vendored.failure;
   try {
     latest = (await fetchJson<{ version?: string }>(PONYTAIL_NPM)).version ?? null;
-  } catch (e) { failure = classifyFetch(e, 'the npm registry'); }
+  } catch (e) { failure = failure ?? classifyFetch(e, 'the npm registry'); }
   const drift = bundled && latest && bundled !== latest;
   return {
     source: 'Ponytail',
@@ -475,6 +596,8 @@ async function checkPonytail(hosts: HostRow[]): Promise<SourceRow> {
     moved: [],
     appeared: [],
     gone: [],
+    uncarried: 0,
+    uncarriedMoved: 0,
     note: failure ? failure.reason : drift ? `bundled ${bundled} is behind ${latest}` : noteOf(null, gaps, []),
   };
 }
@@ -516,6 +639,8 @@ async function checkRtk(): Promise<SourceRow> {
     moved: [],
     appeared: [],
     gone: [],
+    uncarried: 0,
+    uncarriedMoved: 0,
     note: failure ? failure.reason : behind ? `installed ${local} is behind ${latest}` : local === null ? 'binary not on PATH' : '',
   };
 }
@@ -530,6 +655,15 @@ async function loadedEntries(extensionsDir: string): Promise<string[] | null> {
   return Array.isArray(list) ? list.map((entry) => String(entry)) : null;
 }
 
+/** What repairs a host's stale files: an install behind this build needs the install, the other way needs the update. */
+function hostFix(id: string, version: string | null): string {
+  const tag = readState().cavemanUpstream?.tag;
+  if (tag && newerThan(tag, CAVEMAN_PIN)) return `the installed body is from ${tag}, this build ships ${CAVEMAN_PIN.replace(/^v/, '')} — review the diff and bump the pin`;
+  if (version && newerThan(PACKAGE_VERSION, version)) return `run: tersio install --host ${id}`;
+  if (version && newerThan(version, PACKAGE_VERSION)) return 'run: tersio update';
+  return `run: tersio install --host ${id}`;
+}
+
 /** Per host: does the tree each agent loads carry this build's bytes, and does its manifest load every entry? */
 async function checkHosts(): Promise<HostRow[]> {
   const rows: HostRow[] = [];
@@ -537,7 +671,7 @@ async function checkHosts(): Promise<HostRow[]> {
     const treeId = host.id === 'omp' ? 'opencode' : host.id;
     const base = host.id === 'omp' ? (host.dir ? path.join(host.dir, 'extensions') : null) : hostExtensionsDir(host.id);
     if (!host.installed || !base) {
-      rows.push({ host: host.id, installed: false, files: treeFilesFor(treeId).length, matched: 0, stale: 0, missing: 0, staleFiles: [], missingFiles: [], unloaded: [] });
+      rows.push({ host: host.id, installed: false, files: treeFilesFor(treeId).length, matched: 0, stale: 0, missing: 0, staleFiles: [], missingFiles: [], unloaded: [], fix: '' });
       continue;
     }
     const shipped = shippedOmpManifest()?.extensions;
@@ -566,6 +700,7 @@ async function checkHosts(): Promise<HostRow[]> {
       staleFiles: staleFiles.toSorted(),
       missingFiles: missingFiles.toSorted(),
       unloaded,
+      fix: hostFix(host.id, host.version),
     });
   }
   return rows;
@@ -621,7 +756,8 @@ async function rowOrFailure(label: string, probe: () => Promise<SourceRow>): Pro
     return {
       source: label, pin: '—', upstream: 'unreachable', tracked: 0, matched: 0, drift: 0, added: 0, removed: 0,
       ceiling: 0, measured: false, status: classifyFetch(e, label).status, kind: 'bytes', link: '',
-      gaps: [classifyFetch(e, label).reason], moved: [], appeared: [], gone: [], note: classifyFetch(e, label).reason,
+      gaps: [classifyFetch(e, label).reason], moved: [], appeared: [], gone: [], uncarried: 0, uncarriedMoved: 0,
+      note: classifyFetch(e, label).reason,
     };
   }
 }
@@ -710,11 +846,12 @@ export function scorecardMarkdown(card: Scorecard): string {
     '',
     '## Sources of truth',
     '',
-    '| Source | Pinned | Upstream | Match | Drift | New | Gone | How | Note |',
-    '|---|---|---|---|---|---|---|---|---|',
+    '| Source | Pinned | Upstream | Match | Drift | New | Gone | Uncarried | How | Note |',
+    '|---|---|---|---|---|---|---|---|---|---|',
   ];
   for (const r of card.sources) {
-    lines.push(`| ${r.source} | ${r.pin} | ${r.upstream} | ${r.matched}/${r.tracked} | ${r.drift}/${r.ceiling} | ${r.added} | ${r.removed} | ${r.kind} | ${r.note || '—'} |`);
+    const uncarried = r.uncarried ? `${r.uncarried}${r.uncarriedMoved ? ` (${r.uncarriedMoved} moved)` : ''}` : '—';
+    lines.push(`| ${r.source} | ${r.pin} | ${r.upstream} | ${r.matched}/${r.tracked} | ${r.drift}/${r.ceiling} | ${r.added} | ${r.removed} | ${uncarried} | ${r.kind} | ${r.note || '—'} |`);
   }
   lines.push('', 'Match per source:', '', '```text');
   for (const r of card.sources) {
@@ -750,6 +887,8 @@ export function scorecardMarkdown(card: Scorecard): string {
         for (const gap of items) lines.push(`- **${owner}** ${gap.text}`);
         const row = card.sources.find((r) => r.source === owner);
         if (kind === 'drift' && row?.link) lines.push(`  Review the diff: ${row.link}`);
+        const host = card.hosts.find((h) => h.host === owner);
+        if (kind === 'ours' && host?.fix) lines.push(`  Fix: ${host.fix}`);
       }
       lines.push('');
     }
@@ -769,9 +908,10 @@ function printScorecard(card: Scorecard, cached: boolean, strict: boolean): void
   console.log(`\nTersio upstream scorecard · v${card.version} · ${cached ? 'cached' : 'live'} · ${stamp(card.checkedAt)} UTC`);
   console.log('\nSources of truth');
   const sourceRows = card.sources.map((r) => [
-    r.source, r.pin, r.upstream, `${r.matched}/${r.tracked}`, `${r.drift}/${r.ceiling}`, r.added ? `+${r.added}` : '0', String(r.removed), r.kind, r.note || '—',
+    r.source, r.pin, r.upstream, `${r.matched}/${r.tracked}`, `${r.drift}/${r.ceiling}`, r.added ? `+${r.added}` : '0', String(r.removed),
+    r.uncarried ? `${r.uncarried}${r.uncarriedMoved ? ` (${r.uncarriedMoved})` : ''}` : '—', r.kind, r.note || '—',
   ]);
-  for (const line of textTable(['Source', 'Pinned', 'Upstream', 'Match', 'Drift', 'New', 'Gone', 'How', 'Note'], sourceRows, [false, false, false, true, true, true, true, false, false], 34)) {
+  for (const line of textTable(['Source', 'Pinned', 'Upstream', 'Match', 'Drift', 'New', 'Gone', 'Uncarried', 'How', 'Note'], sourceRows, [false, false, false, true, true, true, true, false, false, false], 30)) {
     console.log(line);
   }
   console.log('\nInstalled hosts');
@@ -791,6 +931,8 @@ function printScorecard(card: Scorecard, cached: boolean, strict: boolean): void
       for (const text of folded(items.map((g) => g.text))) console.log(`    ${owner.padEnd(9)} ${text}`);
       const row = card.sources.find((r) => r.source === owner);
       if (kind === 'drift' && row?.link) console.log(`    ${''.padEnd(9)} review: ${row.link}`);
+      const host = card.hosts.find((h) => h.host === owner);
+      if (kind === 'ours' && host?.fix) console.log(`    ${''.padEnd(9)} fix: ${host.fix}`);
     }
   }
   const ceiling = card.sources.reduce((sum, r) => sum + r.ceiling, 0);

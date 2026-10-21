@@ -5,8 +5,8 @@ import { spawnSync } from "node:child_process";
 import { readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { accuracyOf, gapsOf, gateFails, gateReasons, gitBlobSha, hostBroken, pstackUpstreamPath, scorecardMarkdown } from "../../cli/upstream.ts";
-import type { HostRow, Scorecard, SourceRow } from "../../cli/upstream.ts";
+import { accuracyOf, driftOf, gapsOf, gateFails, gateReasons, gitBlobSha, hostBroken, pstackUpstreamPath, scorecardMarkdown, skillRoot, uncarriedOf, vendoredVerdict } from "../../cli/upstream.ts";
+import type { HostRow, Scorecard, SourceRow, TreeResult } from "../../cli/upstream.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const PSTACK = path.join(root, "extensions", "pstack");
@@ -43,14 +43,45 @@ function row(overrides: Partial<SourceRow> = {}): SourceRow {
   return {
     source: "x", pin: "", upstream: "", tracked: 2, matched: 2, drift: 0, added: 0, removed: 0, ceiling: 0,
     measured: true, status: "ok", kind: "bytes", link: "", gaps: [], moved: [], appeared: [], gone: [], note: "",
+    uncarried: 0, uncarriedMoved: 0,
     ...overrides,
   };
 }
 
 /** One host row, with no file names unless the test asks for them. */
 function hostRow(overrides: Partial<HostRow> = {}): HostRow {
-  return { host: "omp", installed: true, files: 2, matched: 2, stale: 0, missing: 0, staleFiles: [], missingFiles: [], unloaded: [], ...overrides };
+  return { host: "omp", installed: true, files: 2, matched: 2, stale: 0, missing: 0, staleFiles: [], missingFiles: [], unloaded: [], fix: "", ...overrides };
 }
+
+/** One tree, as the scorecard reads it. */
+function tree(entries: Array<[string, string]>): TreeResult {
+  return { entries: new Map(entries), failure: null };
+}
+
+test("a new upstream skill directory is reported, not only a new file in a tracked one", () => {
+  const tracked = ["pstack/skills/poteto-mode/SKILL.md"];
+  const pinned = tree([["pstack/skills/poteto-mode/SKILL.md", "a"]]);
+  const head = tree([["pstack/skills/poteto-mode/SKILL.md", "a"], ["pstack/skills/new-skill/SKILL.md", "b"]]);
+  const drift = driftOf(pinned, head, tracked);
+  expect(drift.added).toEqual(["pstack/skills/new-skill/SKILL.md"]);
+});
+
+test("the skills upstream publishes that this port does not carry are counted, and the moved ones named", () => {
+  const tracked = ["pstack/skills/why/SKILL.md", "pstack/skills/architect/SKILL.md"];
+  const pinned = tree([["pstack/skills/why/SKILL.md", "a"], ["pstack/skills/architect/SKILL.md", "a"], ["pstack/skills/other/SKILL.md", "c"]]);
+  const head = tree([["pstack/skills/why/SKILL.md", "a"], ["pstack/skills/architect/SKILL.md", "a"], ["pstack/skills/other/SKILL.md", "b"]]);
+  const out = uncarriedOf(pinned, head, tracked, skillRoot(tracked));
+  expect(out.count).toBe(1);
+  expect(out.moved).toBe(1);
+});
+
+test("a vendored body that differs from the package it declares is a gap", () => {
+  const integrity = "sha256-LPJNul+wow4m6DsqxbninhsWHlwfp0JecwQzYpOLmCQ=";
+  expect(vendoredVerdict("skills/ponytail/SKILL.md", Buffer.from("hello"), integrity, "5.3.2")).toBe(null);
+  expect(vendoredVerdict("skills/ponytail/SKILL.md", Buffer.from("hello!"), integrity, "5.3.2")).toBe("skills/ponytail/SKILL.md differs from the package at 5.3.2");
+  expect(vendoredVerdict("skills/ponytail/SKILL.md", null, integrity, "5.3.2")).toBe("skills/ponytail/SKILL.md is missing from the vendored copy");
+  expect(vendoredVerdict("skills/ponytail/SKILL.md", Buffer.from("hello"), undefined, "5.3.2")).toBe("skills/ponytail/SKILL.md is not in the package at 5.3.2");
+});
 
 test("accuracy counts sources and only installed hosts", () => {
   const sources = [row({ tracked: 4, matched: 3 })];
