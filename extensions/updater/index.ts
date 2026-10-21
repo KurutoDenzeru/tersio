@@ -195,7 +195,10 @@ export async function runAddonUpdate(pi: { exec?: AddonUpdaterPi['exec'] }, ctx:
     const m = 'Usage: /ai-addons update <ponytail|rtk|caveman|all> [--dry-run]';
     return report(ctx, m, 'warning');
   }
-  return results.join('\n\n');
+  const out = results.join('\n\n');
+  // The per-file report names the release a body came from, so it reaches the user and not only the caller.
+  if (out.trim()) notify(ctx, out, 'info');
+  return out;
 }
 
 async function checkAddons(ctx: AddonUpdaterCtx): Promise<string> {
@@ -398,7 +401,7 @@ async function updateCaveman(ctx: AddonUpdaterCtx, dryRun = false): Promise<stri
     const remoteHash = shortHash(nextText);
     const oldLocal = await readTextIfExists(file);
     const oldHash = oldLocal ? shortHash(oldLocal) : null;
-    if (oldHash === remoteHash) { results.push(`${name} up to date: ${remoteHash}`); continue; }
+    if (oldHash === remoteHash) { results.push(`${name} up to date: ${remoteHash} (release ${tag})`); continue; }
 
     if (dryRun) {
       results.push(`Caveman dry-run: would write ${file}\nold=${oldHash || '—'} new=${remoteHash}.`);

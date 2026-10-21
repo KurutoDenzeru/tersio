@@ -2,10 +2,11 @@
 // the upstream path it came from, and accuracy must count a fork that is present as a match.
 import { expect, test } from "vitest";
 import { spawnSync } from "node:child_process";
-import { readdirSync } from "node:fs";
+import { readdirSync, mkdtempSync, rmSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { accuracyOf, driftOf, gapsOf, gateFails, gateReasons, gitBlobSha, hostBroken, pstackUpstreamPath, scorecardMarkdown, skillRoot, uncarriedOf, vendoredVerdict } from "../../cli/upstream.ts";
+import { accuracyOf, driftOf, gapsOf, gateFails, gateReasons, gitBlobSha, hostBroken, hostFix, pstackUpstreamPath, scorecardMarkdown, skillRoot, uncarriedOf, vendoredVerdict } from "../../cli/upstream.ts";
 import type { HostRow, Scorecard, SourceRow, TreeResult } from "../../cli/upstream.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -121,6 +122,22 @@ test("a stale host fails a plain run, drift only fails under --strict", () => {
   const short = makeCard([{ ...clean, matched: 1 }], [host]);
   expect(gateFails(short, false)).toBe(true);
   expect(gateFails(makeCard([clean], [host]), true)).toBe(false);
+});
+
+test("a stale host row names the command that repairs it", () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-upstream-fix-"));
+  const prev = process.env.TERSIO_HOME;
+  process.env.TERSIO_HOME = home;
+  try {
+    // The installed package is behind this build: reinstall that host.
+    expect(hostFix("omp", "0.0.1")).toBe("run: tersio install --host omp");
+    // The installed package is ahead of this build: the build is behind, so update it.
+    expect(hostFix("omp", "99.0.0")).toBe("run: tersio update");
+  } finally {
+    if (prev === undefined) delete process.env.TERSIO_HOME;
+    else process.env.TERSIO_HOME = prev;
+    rmSync(home, { recursive: true, force: true });
+  }
 });
 
 test("a pin that is gone upstream fails a plain run, not just --strict", () => {

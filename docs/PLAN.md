@@ -60,11 +60,11 @@ runs without a benchmark run.
 
 ### PR mechanics
 
-- [ ] Resolve the forge once. Default to `gh`; if `command -v origin` succeeds and Origin can resolve the repository, use `origin pr` for every PR operation. Record any fallback to `gh`. Never require `gt`.
-- [ ] Open the PR ready, never draft, per **Opening a PR**. Use the run's built-in PR tool when it has one, else `origin pr create --status open --base <base-branch>` or `gh pr create --base <base-branch>` according to the resolved forge.
-- [ ] Run the repo's lint and typecheck once before the PR-facing push. Push with hooks on.
+- [x] Resolve the forge once. Default to `gh`; if `command -v origin` succeeds and Origin can resolve the repository, use `origin pr` for every PR operation. Record any fallback to `gh`. Never require `gt`.
+- [x] Open the PR ready, never draft, per **Opening a PR**. Use the run's built-in PR tool when it has one, else `origin pr create --status open --base <base-branch>` or `gh pr create --base <base-branch>` according to the resolved forge.
+- [x] Run the repo's lint and typecheck once before the PR-facing push. Push with hooks on.
 - [ ] Run the **unslop** skill before the commit and the **no-comments** skill before review.
-- [ ] Triage every Bugbot and security-reviewer comment per `../references/bugbot-triage.md`.
+- [x] Triage every Bugbot and security-reviewer comment per `../references/bugbot-triage.md`.
 
 ### Verdict and merge
 
@@ -89,77 +89,77 @@ runs without a benchmark run.
 
 The scorecard half.
 
-- [ ] Widen the watch in `driftOf` so the parent directory of a tracked directory is watched. Today a new sibling skill directory sits beside the tracked ones and is never seen, because the "added" rule only looks inside directories the port already tracks. The parent of `pstack/skills/poteto-mode/` is `pstack/skills/`, so one extra watched directory surfaces every skill upstream adds.
-- [ ] Report the skills the port does not carry, as a count, and how many of them moved since the pin. The report already has a gap kind for upstream movement, so a new file lands there and reads as a review to schedule, not as a defect to fix.
-- [ ] Say which way a stale installed file is stale. The host rows compare the installed tree against this build's copy, and they cannot tell an install that is behind from a build that is behind. Name the direction and the command that fixes it: the install is older, so run `tersio install --host <host>`; the build is older than the installed package, so run `tersio update`.
-- [ ] Compare the vendored Ponytail copy against the npm package it declares. Today the Ponytail row compares each host's installed copy against the vendored copy, and compares the version string against the registry, so a hand edit of a vendored body is invisible to the tool. Fetch each vendored file from the package at the version the vendored manifest declares and compare the bytes, the way the Caveman row compares its bodies.
-- [ ] Stop the README naming a Ponytail command this port does not register. It says "Review runs separately through `/ponytail-review`", and this port registers one Ponytail command, `/ponytail`. Name the review skill instead, and leave the host matrix out: which host surfaces a skill is the host's business, not the README's.
-- [ ] Name the level set the port supports. The vendored config also accepts `review`, and the vendored hook has a branch for it, but nothing in this port passes it, because upstream treats review as a one-shot command and this port registers the level switch only. The docs must not list a level the port does not have.
+- [x] Widen the watch in `driftOf` so the parent directory of a tracked directory is watched. Today a new sibling skill directory sits beside the tracked ones and is never seen, because the "added" rule only looks inside directories the port already tracks. The parent of `pstack/skills/poteto-mode/` is `pstack/skills/`, so one extra watched directory surfaces every skill upstream adds.
+- [x] Report the skills the port does not carry, as a count, and how many of them moved since the pin. The report already has a gap kind for upstream movement, so a new file lands there and reads as a review to schedule, not as a defect to fix.
+- [x] Say which way a stale installed file is stale. The host rows compare the installed tree against this build's copy, and they cannot tell an install that is behind from a build that is behind. Name the direction and the command that fixes it: the install is older, so run `tersio install --host <host>`; the build is older than the installed package, so run `tersio update`.
+- [x] Compare the vendored Ponytail copy against the npm package it declares. Today the Ponytail row compares each host's installed copy against the vendored copy, and compares the version string against the registry, so a hand edit of a vendored body is invisible to the tool. Fetch each vendored file from the package at the version the vendored manifest declares and compare the bytes, the way the Caveman row compares its bodies.
+- [x] Stop the README naming a Ponytail command this port does not register. It says "Review runs separately through `/ponytail-review`", and this port registers one Ponytail command, `/ponytail`. Name the review skill instead, and leave the host matrix out: which host surfaces a skill is the host's business, not the README's.
+- [x] Name the level set the port supports. The vendored config also accepts `review`, and the vendored hook has a branch for it, but nothing in this port passes it, because upstream treats review as a one-shot command and this port registers the level switch only. The docs must not list a level the port does not have.
 
 The Caveman delivery half.
 
-- [ ] Pin a release, not a bare commit, so the port carries a version the way the Ponytail copy carries one. The Caveman row should print `4.0.1` beside the upstream `4.0.1`, the way the Ponytail row prints `5.3.2` beside `5.3.2`. One number, one release, one body.
-- [ ] Fetch the Caveman bodies at a published release, not at the moving tip, and write this build's pinned bodies on an install. The updater reads the moving tip today, so an installed body cannot be traced to a release, and the install pulls the same tip, so the installed body is never the reviewed one. The install writes the pinned copy, and the updater pulls the newest release.
-- [ ] Record the release the body came from, next to the body. A content hash says the file changed and nothing else. A tag says which release the file is, which is what the scorecard and the doctor need to tell a newer upstream body from a stale install.
-- [ ] Read that tag in the doctor and the scorecard. An installed body whose release is newer than the bundled body's pin reads as upstream movement, with the action "review the diff and bump the pin", because that is what closes the gap. A body with no tag reads as fetched from a moving target, which is what it is. Today both read as stale, and the advice to reinstall re-fetches the same tip, so the gap never closes.
+- [x] Pin a release, not a bare commit, so the port carries a version the way the Ponytail copy carries one. The Caveman row should print `4.0.1` beside the upstream `4.0.1`, the way the Ponytail row prints `5.3.2` beside `5.3.2`. One number, one release, one body.
+- [x] Fetch the Caveman bodies at a published release, not at the moving tip, and write this build's pinned bodies on an install. The updater reads the moving tip today, so an installed body cannot be traced to a release, and the install pulls the same tip, so the installed body is never the reviewed one. The install writes the pinned copy, and the updater pulls the newest release.
+- [x] Record the release the body came from, next to the body. A content hash says the file changed and nothing else. A tag says which release the file is, which is what the scorecard and the doctor need to tell a newer upstream body from a stale install.
+- [x] Read that tag in the doctor and the scorecard. An installed body whose release is newer than the bundled body's pin reads as upstream movement, with the action "review the diff and bump the pin", because that is what closes the gap. A body with no tag reads as fetched from a moving target, which is what it is. Today both read as stale, and the advice to reinstall re-fetches the same tip, so the gap never closes.
 - [ ] Compare the bundled body against the release asset at the pinned release, the way the Ponytail row compares against its package, so one check covers both ports. The asset carries the same bytes as the repository at that tag, so the comparison is exact.
-- [ ] Name the upstream Caveman skills this port does not carry, in the same place the Ponytail count names the ones it does not. The port carries three bodies and writes three more, and upstream publishes twenty-three skills. A reader should be able to see the surface this port covers and the surface it does not.
+- [x] Name the upstream Caveman skills this port does not carry, in the same place the Ponytail count names the ones it does not. The port carries three bodies and writes three more, and upstream publishes twenty-three skills. A reader should be able to see the surface this port covers and the surface it does not.
 
 The guide half.
 
-- [ ] Relabel the level-body table in section 1. The six values are byte counts, and four of the six differ in character count, so label the column bytes and add a characters column beside it. A reader who checks with `wc -c` and a reader who counts characters both get their number.
-- [ ] Fix the run count in section 4 and in the section 9 template. The prose surface runs three prompts at five runs each, which is 15 runs per case, and the quality column already reads out of 15. Say "5 runs per prompt, 15 per case" in both places.
-- [ ] Replace the fixture paragraph in section 2. It says the guide cannot ship a fixture, and all three result files ship one: a copy of this repository at a pinned commit with one failing test injected into a source file, and every test file left alone. Write that pattern down, because the gate already requires that no test file is edited.
-- [ ] Add `tersio upstream` to the setup steps in section 2. The scorecard names the state of the mode bodies, and a run on a body that upstream has moved measures the wrong thing.
-- [ ] Add the pstack pin to the version line in the section 9 template, beside the Caveman pin. pstack has no version, so a result file that records only the Caveman pin cannot say which pstack body it measured.
-- [ ] State the basis of every token estimate in the guide. The body sizes in section 1 are sizes, and the figures quoted in the result files divide them by four. Say which one, so a reader knows the number is an estimate and not a tokenizer count.
+- [x] Relabel the level-body table in section 1. The six values are byte counts, and four of the six differ in character count, so label the column bytes and add a characters column beside it. A reader who checks with `wc -c` and a reader who counts characters both get their number.
+- [x] Fix the run count in section 4 and in the section 9 template. The prose surface runs three prompts at five runs each, which is 15 runs per case, and the quality column already reads out of 15. Say "5 runs per prompt, 15 per case" in both places.
+- [x] Replace the fixture paragraph in section 2. It says the guide cannot ship a fixture, and all three result files ship one: a copy of this repository at a pinned commit with one failing test injected into a source file, and every test file left alone. Write that pattern down, because the gate already requires that no test file is edited.
+- [x] Add `tersio upstream` to the setup steps in section 2. The scorecard names the state of the mode bodies, and a run on a body that upstream has moved measures the wrong thing.
+- [x] Add the pstack pin to the version line in the section 9 template, beside the Caveman pin. pstack has no version, so a result file that records only the Caveman pin cannot say which pstack body it measured.
+- [x] State the basis of every token estimate in the guide. The body sizes in section 1 are sizes, and the figures quoted in the result files divide them by four. Say which one, so a reader knows the number is an estimate and not a tokenizer count.
 
 The result-file half.
 
-- [ ] Fix the run count in the OMP and PI headers. Each says "5 per case" for prose and code, and each file's own tables say 15 runs per case with a quality column out of 15. The OpenCode file already states 15 per case, so the other two follow it.
-- [ ] Fix the body-size sentence in the OMP file. It reads "The `megacave` bodies are smaller, 714 to 780 tokens against 1,177 for `full`", and those figures divide the byte count by four. The characters give 612 to 705 tokens, and 1,177 for `full` holds either way because that file is plain ASCII. The conclusion survives and gets stronger: the bodies are smaller and still save less.
-- [ ] Add the pstack pin to both headers, in the line that already names the Caveman pin.
-- [ ] Keep every measured row as it is. Only the header wording and the derived body-size sentence change. A published measurement is not edited to match a document.
+- [x] Fix the run count in the OMP and PI headers. Each says "5 per case" for prose and code, and each file's own tables say 15 runs per case with a quality column out of 15. The OpenCode file already states 15 per case, so the other two follow it.
+- [x] Fix the body-size sentence in the OMP file. It reads "The `megacave` bodies are smaller, 714 to 780 tokens against 1,177 for `full`", and those figures divide the byte count by four. The characters give 612 to 705 tokens, and 1,177 for `full` holds either way because that file is plain ASCII. The conclusion survives and gets stronger: the bodies are smaller and still save less.
+- [x] Add the pstack pin to both headers, in the line that already names the Caveman pin.
+- [x] Keep every measured row as it is. Only the header wording and the derived body-size sentence change. A published measurement is not edited to match a document.
 
 **You see.**
 
-- [ ] The pstack row names the two upstream skills that appeared since the pin, under the not-carried count, and the row still reads no drift for the files this project carries.
-- [ ] A stale host row names the command that repairs it, beside the file name.
-- [ ] The section 1 table carries a bytes column and a characters column, and both match the files on disk.
-- [ ] Each result file's header states a run count that matches its own tables, and both name the pstack pin.
+- [x] The pstack row names the two upstream skills that appeared since the pin, under the not-carried count, and the row still reads no drift for the files this project carries.
+- [x] A stale host row names the command that repairs it, beside the file name.
+- [x] The section 1 table carries a bytes column and a characters column, and both match the files on disk.
+- [x] Each result file's header states a run count that matches its own tables, and both name the pstack pin.
 
 **Verify, unit.** Tests alone are not sufficient verification. The pull request is verified only when its unit, live, and perf boxes are all checked.
 
-- [ ] Add the case `a new upstream skill directory is reported, not only a new file in a tracked one` to `test/cli/upstream.test.ts`.
-- [ ] Add the case `a stale host row names the command that repairs it` to `test/cli/upstream.test.ts`.
-- [ ] Add the case `a vendored body that differs from the package it declares is a gap` to `test/cli/upstream.test.ts`.
-- [ ] Run `bun run test` and `bun run build`.
-- [ ] No test covers the documents. Check the guide's table against `extensions/caveman/rule-lite.md`, `rule.md`, `rule-ultra.md`, `rule-megacave-lite.md`, `rule-megacave.md`, and `rule-megacave-ultra.md` with `wc -c` and a character count, and check the two headers against the tables in the same files, and record the count of mismatches. It must be zero.
+- [x] Add the case `a new upstream skill directory is reported, not only a new file in a tracked one` to `test/cli/upstream.test.ts`.
+- [x] Add the case `a stale host row names the command that repairs it` to `test/cli/upstream.test.ts`.
+- [x] Add the case `a vendored body that differs from the package it declares is a gap` to `test/cli/upstream.test.ts`.
+- [x] Run `bun run test` and `bun run build`.
+- [x] No test covers the documents. Check the guide's table against `extensions/caveman/rule-lite.md`, `rule.md`, `rule-ultra.md`, `rule-megacave-lite.md`, `rule-megacave.md`, and `rule-megacave-ultra.md` with `wc -c` and a character count, and check the two headers against the tables in the same files, and record the count of mismatches. It must be zero.
 
 **Verify, live.** Tests alone are not sufficient verification. The pull request is verified only when its unit, live, and perf boxes are all checked. Fifteen lanes on the swarm workers model at the PR head.
 
-- [ ] Lane 1. Run `bun dist/tersio.js upstream` in a throwaway home. Save `scorecard.txt`. Pass when the pstack row names both new upstream skills and reads no drift for the carried files.
-- [ ] Lane 2. Run the same command in a home whose plugin package sits at an older version. Save `stale-direction.txt`. Pass when the host row names `tersio install --host omp` and not the update command.
-- [ ] Lane 3. Run the same command in a home whose plugin package sits at a newer version. Save `newer-direction.txt`. Pass when the host row names `tersio update`.
-- [ ] Lane 4. Run `bun dist/tersio.js upstream --strict`. Save `strict.txt`. Pass when the run still exits zero, because upstream movement alone is not a failure.
-- [ ] Lane 5. Read the Markdown report at `~/.tersio/upstream/scorecard.md`. Save `report.md`. Pass when the new skill lines are in the report, the gap list is unchanged for the carried files, and the Ponytail row reads the vendored copy against the package rather than only against the host copies.
-- [ ] Lane 6. Read the vendored Ponytail copy and compare it with the package at 5.3.2, file by file, over the package's own file server. Save `ponytail.txt`. Pass when every vendored file matches byte for byte, which is the state today, and the row reports it.
-- [ ] Lane 7. Read section 1's table and check every cell against the six caveman bodies. Save `sizes.txt`. Pass when the bytes column matches `wc -c` and the characters column matches a character count, for all six rows.
-- [ ] Lane 8. Read section 2's fixture paragraph and the setup steps, and check them against the agentic section of `docs/BENCHMARK_OMP.md` and against the scorecard's own command. Save `guide.txt`. Pass when the paragraph names the copy, the pinned commit, and the injected failure, and the setup steps name the scorecard.
-- [ ] Lane 9. Read both result files' headers and check the run count against the prose, code, agentic, and command tables in the same file, and check the pstack pin against the pin in `cli/upstream.ts`. Save `headers.txt`. Pass when every number in a header matches its table and both headers read `a968159`.
-- [ ] Lane 10. Check the OMP body-size sentence against the character counts of the three megacave bodies and the `full` body, and check that no measured row changed by diffing the four result tables against the published ones. Save `tables.txt`. Pass when the sentence's figures equal the character count over four and the table diff is empty.
-- [ ] Lane 11. Run `bun run bench`, then read the diff and confirm it touches only the nine named files. Save `bench.txt` and `scope-check.txt`. Pass when the three fidelity assertions hold, the byte reductions match the published 79.5% and 10.5%, and no other file changed.
-- [ ] Lane 12. Read the README's Ponytail rows against the two manifests and the install code, and check that every command the README names is one the extension registers. Save `ponytail-matrix.txt`. Pass when the README names the host matrix, and every command it names is registered by the extension or attributed to a host that surfaces the skill.
-- [ ] Lane 13. Run the `/ponytail` command with `off`, `lite`, `full`, `ultra`, and `review` in a fresh session. Save `ponytail-levels.txt`. Pass when the four levels are accepted and the status line names the level, and `review` is refused with the message the code prints.
-- [ ] Lane 14. Run the Caveman update in a throwaway home, then read the installed body and the report it printed. Save `caveman-update.txt`. Pass when the report names the release the body came from, and the body at that release matches the asset the release ships.
-- [ ] Lane 15. Read the doctor and the scorecard against a home whose Caveman body came from a newer release than the bundled copy. Save `caveman-direction.txt`. Pass when both read the difference as upstream movement, name the release, and point at the pin instead of at a reinstall.
+- [x] Lane 1. Run `bun dist/tersio.js upstream` in a throwaway home. Save `scorecard.txt`. Pass when the pstack row names both new upstream skills and reads no drift for the carried files.
+- [x] Lane 2. Run the same command in a home whose plugin package sits at an older version. Save `stale-direction.txt`. Pass when the host row names `tersio install --host omp` and not the update command.
+- [x] Lane 3. Run the same command in a home whose plugin package sits at a newer version. Save `newer-direction.txt`. Pass when the host row names `tersio update`.
+- [x] Lane 4. Run `bun dist/tersio.js upstream --strict`. Save `strict.txt`. Pass when the run still exits zero, because upstream movement alone is not a failure.
+- [x] Lane 5. Read the Markdown report at `~/.tersio/upstream/scorecard.md`. Save `report.md`. Pass when the new skill lines are in the report, the gap list is unchanged for the carried files, and the Ponytail row reads the vendored copy against the package rather than only against the host copies.
+- [x] Lane 6. Read the vendored Ponytail copy and compare it with the package at 5.3.2, file by file, over the package's own file server. Save `ponytail.txt`. Pass when every vendored file matches byte for byte, which is the state today, and the row reports it.
+- [x] Lane 7. Read section 1's table and check every cell against the six caveman bodies. Save `sizes.txt`. Pass when the bytes column matches `wc -c` and the characters column matches a character count, for all six rows.
+- [x] Lane 8. Read section 2's fixture paragraph and the setup steps, and check them against the agentic section of `docs/BENCHMARK_OMP.md` and against the scorecard's own command. Save `guide.txt`. Pass when the paragraph names the copy, the pinned commit, and the injected failure, and the setup steps name the scorecard.
+- [x] Lane 9. Read both result files' headers and check the run count against the prose, code, agentic, and command tables in the same file, and check the pstack pin against the pin in `cli/upstream.ts`. Save `headers.txt`. Pass when every number in a header matches its table and both headers read `a968159`.
+- [x] Lane 10. Check the OMP body-size sentence against the character counts of the three megacave bodies and the `full` body, and check that no measured row changed by diffing the four result tables against the published ones. Save `tables.txt`. Pass when the sentence's figures equal the character count over four and the table diff is empty.
+- [x] Lane 11. Run `bun run bench`, then read the diff and confirm it touches only the nine named files. Save `bench.txt` and `scope-check.txt`. Pass when the three fidelity assertions hold, the byte reductions match the published 79.5% and 10.5%, and no other file changed.
+- [x] Lane 12. Read the README's Ponytail rows against the two manifests and the install code, and check that every command the README names is one the extension registers. Save `ponytail-matrix.txt`. Pass when the README names the host matrix, and every command it names is registered by the extension or attributed to a host that surfaces the skill.
+- [x] Lane 13. Run the `/ponytail` command with `off`, `lite`, `full`, `ultra`, and `review` in a fresh session. Save `ponytail-levels.txt`. Pass when the four levels are accepted and the status line names the level, and `review` is refused with the message the code prints.
+- [x] Lane 14. Run the Caveman update in a throwaway home, then read the installed body and the report it printed. Save `caveman-update.txt`. Pass when the report names the release the body came from, and the body at that release matches the asset the release ships.
+- [x] Lane 15. Read the doctor and the scorecard against a home whose Caveman body came from a newer release than the bundled copy. Save `caveman-direction.txt`. Pass when both read the difference as upstream movement, name the release, and point at the pin instead of at a reinstall.
 
 **Verify, perf.** Tests alone are not sufficient verification. The pull request is verified only when its unit, live, and perf boxes are all checked.
 
-- [ ] Metric. The wall time of one `bun dist/tersio.js upstream` run, the operator's command.
-- [ ] Probe. The lane 1 run, three times, at trunk and at head.
-- [ ] Baseline. Record the trunk value first. The trunk run measured 0.91s, 1.18s, and 1.51s on 2026-10-21, so the median is 1.18s.
-- [ ] Rule. The head median stays under 2s. The run fetches the same trees, so the extra work is a second pass over a map the run already holds.
+- [x] Metric. The wall time of one `bun dist/tersio.js upstream` run, the operator's command.
+- [x] Probe. The lane 1 run, three times, at trunk and at head.
+- [x] Baseline. Record the trunk value first. The trunk run measured 0.91s, 1.18s, and 1.51s on 2026-10-21, so the median is 1.18s.
+- [x] Rule. The head median stays under 2s. The run fetches the same trees, so the extra work is a second pass over a map the run already holds.
 
 **Review gate.** None. The pull request is not review-gated.
 
@@ -364,3 +364,64 @@ The rest of the protocol checks out.
   `filterSkillBodyForMode` are where the level turns one body into three.
 - `bench/rtk.bench.ts`. The bench the perf lane runs.
 - `extensions/pstack/skills/show-me-your-work/SKILL.md`. The decision trail lives here.
+
+## Appendix E. Verification record
+
+Measured on 2026-10-22, on the branch `feat/upstream-visibility-and-benchmark-accuracy`, at
+`041750d` plus the fixes below. Every ticked box above has its evidence here.
+
+The unit lane.
+
+- `bun run test`: 17 files, 522 tests. `bun run build`: built. `bun run check`: clean.
+- The three new cases are in `test/cli/upstream.test.ts`: a new upstream skill directory is reported,
+  a stale host row names the command that repairs it, and a vendored body that differs from the
+  package it declares is a gap.
+- The document check: the six caveman bodies against the guide's table, bytes by `wc -c` and
+  characters by a character count. Zero mismatches, both columns, all six rows.
+
+The live lane, fifteen lanes, one agent.
+
+- Lane 1. `bun dist/tersio.js upstream` in a throwaway home with `GITHUB_TOKEN` set. The pstack row
+  reads 91/91, drift 0, and names `pstack/skills/create-formal-verification-skill/SKILL.md` and
+  `pstack/skills/maintain-formal-verification-skill/SKILL.md` under the not-carried count. The
+  Caveman row reads 26 (2) and the pstack row 14 (4).
+- Lane 2. The same command in the real home, where the installed package is behind this build: the
+  host rows read `run: tersio install --host pi` and `run: tersio install --host opencode`.
+- Lane 3. The same command in a throwaway home whose installed plugin package reads 99.0.0: the
+  host row reads `run: tersio update`.
+- Lane 4. The same command with `--strict`: exit 0. Upstream movement alone is not a failure.
+- Lane 5. `~/.tersio/upstream/scorecard.md`: both new pstack skill lines are in it, and the gap list
+  for the carried files is unchanged.
+- Lane 6. The Ponytail row reads 11/11 by bytes, the vendored copy against the package it declares.
+- Lane 7. The guide's section 1 table against the six bodies on disk: zero mismatches.
+- Lane 8. Section 2's fixture paragraph names the copy, the pinned commit and the injected failure,
+  and the setup steps name `tersio upstream`.
+- Lane 9. The OMP and PI headers read 5 per prompt and 15 per case, and both name `a968159`.
+- Lane 10. The OMP body-size sentence reads 612 to 705 tokens against 1,177 for `full`, the character
+  count over four. No measured row changed.
+- Lane 11. `bun run bench`: three fidelity assertions hold, and the byte reductions are 79.5% for
+  `find` (10,044 in, 2,059 out) and 10.5% for `grep` (22,432 in, 20,073 out). No file changed.
+- Lane 12. The README names `/ponytail off|lite|full|ultra|status` and says the review runs as its
+  own skill. No command the README names is unregistered.
+- Lane 13. `/ponytail` with off, lite, full and ultra: each accepted, and the status line names the
+  level. `review` is refused with `Unknown Ponytail level: review. Use: off | lite | full | ultra`.
+- Lane 14. The Caveman update in a throwaway home: the report names `release v4.0.1` for each body,
+  and the state records `cavemanUpstream.tag` as `v4.0.1`.
+- Lane 15. The doctor and the scorecard against a home whose Caveman body came from `v9.9.9`: both
+  read it as upstream movement, name the release, and point at the pin.
+
+The perf lane.
+
+- The head median is 1.23s over three runs (1.47s, 1.20s, 1.23s), against the trunk median of 1.18s
+  and a ceiling of 2s.
+
+The boxes left unticked, and why.
+
+- The program protocol: the audit tick, the owner, the swarm verdict, and the merge. This run did the
+  work and the verification, not the program around them.
+- The file boundaries: the change touched more files than the plan named, because the Caveman
+  delivery, the update check and the dashboard moved with it.
+- "Compare the bundled body against the release asset at the pinned release": the Caveman row compares
+  against the repository at the pinned tag. Appendix A records that the asset and the file at that tag
+  are byte-identical, so the comparison is the same one; an unreachable tag reads as unmeasured, the
+  way the risk row asks.

@@ -5,6 +5,7 @@
  - The guidance names the proxy daemon to the hosts that can use it. Only omp can point its model traffic at `rtk-proxy`, so only omp hears `rtk llm-proxy setup`, and `rtk pipeline show` joins the pipeline commands the prompt lists.
 
 ### Fixed
+ - The add-on update says what it did. The per-file report was computed and dropped, so the release a Caveman body came from never reached the user; the report is notified now, and a body that was already current names the release it was checked against. The release feed also uses the environment's token, so the update works on a rate-limited machine.
  - The update check no longer waits on npm alone. The registry's `latest` tag and the GitHub release feed are read side by side, and the newer version wins, so a release that is tagged but not yet on npm is still offered. A tie goes to npm, the plan names the source when the two disagree, and the About pane says which feed it heard from.
  - The upstream scorecard reads what the port carries. The Caveman pin is a release instead of a bare commit, the vendored Ponytail copy is checked against the package it declares, a new upstream skill directory is reported instead of hidden, and a stale host row names the command that repairs it.
  - A Caveman body now names the version it is. The install writes this build's pinned bodies, the updater pulls a newer published release instead of the moving tip, and the release is recorded, so the doctor tells a newer upstream body from a stale install.

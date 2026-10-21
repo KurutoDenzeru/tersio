@@ -65,7 +65,9 @@ export const CAVEMAN_RELEASES = 'https://api.github.com/repos/JuliusBrussee/cave
 /** The newest published Caveman release, so a body comes from an immutable tag. */
 export async function cavemanRelease(): Promise<string | null> {
   try {
-    const json = await fetchJson<{ tag_name?: string }>(CAVEMAN_RELEASES);
+    // The release feed is rate-limited without a token, so the environment's token is used when there is one.
+    const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
+    const json = await fetchJson<{ tag_name?: string }>(CAVEMAN_RELEASES, token ? { headers: { Authorization: `Bearer ${token}` } } : {});
     return json.tag_name ?? null;
   } catch {
     return null;

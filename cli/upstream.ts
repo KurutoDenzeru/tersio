@@ -745,7 +745,7 @@ async function loadedEntries(extensionsDir: string): Promise<string[] | null> {
 }
 
 /** What repairs a host's stale files: an install behind this build needs the install, the other way needs the update. */
-function hostFix(id: string, version: string | null): string {
+export function hostFix(id: string, version: string | null): string {
   const tag = readState().cavemanUpstream?.tag;
   if (tag && newerThan(tag, CAVEMAN_PIN)) return `the installed body is from ${tag}, this build ships ${CAVEMAN_PIN.replace(/^v/, '')} — review the diff and bump the pin`;
   if (version && newerThan(PACKAGE_VERSION, version)) return `run: tersio install --host ${id}`;
