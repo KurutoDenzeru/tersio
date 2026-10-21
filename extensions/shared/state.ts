@@ -15,7 +15,7 @@ export interface TersioState {
   updateSkip?: string;
   /** Epoch ms until which the prompt stays hidden. */
   updateSnoozeUntil?: number;
-  rtkEligible?: { version?: string; heads?: string[] };
+  rtkEligible?: { version?: string; heads?: string[]; sig?: string };
   diag?: unknown;
 }
 

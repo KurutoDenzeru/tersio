@@ -1,7 +1,7 @@
 ## v2.25.11
 
 ### Changed
- - The eligible list matches the verbs the rewrite covers. `head`, `tail` and `eslint` join it, because the rewrite turns them into `rtk read` and `rtk lint`, and the guidance names the same set.
+ - The eligible list matches the verbs the rewrite covers. `head`, `tail` and `eslint` join it, because the rewrite turns them into `rtk read` and `rtk lint`, and the guidance names the same set. The cached list now carries the probe set it came from, so a build that changes the probes re-derives instead of serving the old list.
  - The guidance names the proxy daemon to the hosts that can use it. Only omp can point its model traffic at `rtk-proxy`, so only omp hears `rtk llm-proxy setup`, and `rtk pipeline show` joins the pipeline commands the prompt lists.
 
 ### Fixed
