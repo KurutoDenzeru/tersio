@@ -12,8 +12,10 @@ import type { ExtensionApi, ExtensionCtx, SessionEntry, ToolResultEvent } from '
 /** Tool name to `rtk pipe --filter` name. Exported so the OpenCode host reuses one map. */
 export const FILTER_BY_TOOL = new Map([
   ['grep', 'grep'],
+  ['rg', 'rg'],
   ['glob', 'find'],
   ['find', 'find'],
+  ['fd', 'fd'],
 ]);
 
 /** Below this the rtk spawn costs more than the filter saves. */

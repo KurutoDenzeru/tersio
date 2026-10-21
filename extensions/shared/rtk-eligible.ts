@@ -10,6 +10,9 @@ export const FALLBACK_ELIGIBLE_HEADS: readonly string[] = [
   'wget', 'prettier', 'playwright', 'prisma', 'jest', 'vitest', 'ctest', 'lint',
   'wc', 'tsc', 'curl', 'cargo', 'npm', 'pnpm', 'bun', 'go', 'ruff', 'next',
   'dotnet', 'oc', 'jq', 'make',
+  'sqlfluff', 'php', 'phpunit', 'phpstan', 'pest', 'paratest', 'ecs', 'pint',
+  'rake', 'rubocop', 'rspec', 'pip', 'uv', 'deno', 'sbt', 'gt', 'golangci-lint',
+  'gradlew', 'mvn', 'mvnd',
 ];
 
 const PROBES: Record<string, string> = {
@@ -25,6 +28,13 @@ const PROBES: Record<string, string> = {
   cargo: 'cargo test', npm: 'npm run build', pnpm: 'pnpm run build', bun: 'bun run test',
   go: 'go test ./...', ruff: 'ruff check .', next: 'next build', dotnet: 'dotnet build',
   oc: 'oc get pods', jq: 'jq . x', make: 'make',
+  sqlfluff: 'sqlfluff lint .', php: 'php artisan', phpunit: 'phpunit --version',
+  phpstan: 'phpstan analyse', pest: 'pest --version', paratest: 'paratest --version',
+  ecs: 'ecs check', pint: 'pint --version', rake: 'rake test',
+  rubocop: 'rubocop --version', rspec: 'rspec --version', pip: 'pip install x',
+  uv: 'uv run x', deno: 'deno run x', sbt: 'sbt test', gt: 'gt pr list',
+  'golangci-lint': 'golangci-lint run', gradlew: 'gradlew build', mvn: 'mvn test',
+  mvnd: 'mvnd test',
 };
 
 function probe(bin: string, command: string): boolean {
