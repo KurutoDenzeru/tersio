@@ -1,5 +1,9 @@
 ## v2.25.11
 
+### Changed
+ - The eligible list matches what the rewrite covers. `head` joins it, so the dashboard counts the file reads rtk condenses, and the guidance dropped `tail`, which the rewrite leaves alone.
+ - The guidance names the proxy daemon to the hosts that can use it. Only omp can point its model traffic at `rtk-proxy`, so only omp hears `rtk llm-proxy setup`, and `rtk pipeline show` joins the pipeline commands the prompt lists.
+
 ### Fixed
  - The update check no longer waits on npm alone. The registry's `latest` tag and the GitHub release feed are read side by side, and the newer version wins, so a release that is tagged but not yet on npm is still offered. A tie goes to npm, the plan names the source when the two disagree, and the About pane says which feed it heard from.
  - The upstream scorecard reads what the port carries. The Caveman pin is a release instead of a bare commit, the vendored Ponytail copy is checked against the package it declares, a new upstream skill directory is reported instead of hidden, and a stale host row names the command that repairs it.

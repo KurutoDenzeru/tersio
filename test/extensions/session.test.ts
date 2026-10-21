@@ -790,6 +790,22 @@ test("caveman and rtk reach a subagent on the real omp prompt", async () => {
     .toMatch(/RTK guidance active/);
 });
 
+test("only the omp host is told about the rtk proxy daemon", async () => {
+  resetSharedComboState();
+  const parent = instantiate(comboToggleExtension);
+  await command(parent, "combo", "max", context([], true));
+
+  // The proxy daemon can only carry omp's model traffic, so only omp hears about it.
+  expect(instruction(await inject(instantiate(rtkSessionExtension), MARKED_PROMPT))).toMatch(/rtk llm-proxy setup/);
+
+  const piHost = instantiate(rtkSessionExtension) as TestPi & { hostId?: string };
+  piHost.hostId = "pi";
+  const piResult = (await piHost.handlers.get("before_agent_start")!({ systemPrompt: MARKED_PROMPT }, undefined)) as { systemPrompt?: unknown };
+  const piText = typeof piResult?.systemPrompt === "string" ? piResult.systemPrompt : "";
+  expect(piText).toMatch(/RTK guidance active/);
+  expect(piText).not.toMatch(/llm-proxy/);
+});
+
 test("a parent session is not mistaken for a subagent", async () => {
   resetSharedComboState();
   const parent = instantiate(comboToggleExtension);
