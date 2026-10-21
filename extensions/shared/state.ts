@@ -6,6 +6,8 @@ import { tersioHome } from './utils.ts';
 export interface TersioState {
   reset?: number;
   updateCheck?: { latest?: string; lastCheck?: number };
+  /** The upstream release the installed Caveman body came from, so a newer body is traceable. */
+  cavemanUpstream?: { tag: string; at: number };
   /** Cadence of the dashboard's background check. Off leaves it to an explicit click. */
   updateSchedule?: 'off' | 'daily' | 'weekly' | 'monthly';
   /** A release the operator skipped, so the prompt stops naming it. */

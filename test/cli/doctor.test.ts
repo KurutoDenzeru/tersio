@@ -667,7 +667,7 @@ test("doctor reports an omp package older than the running CLI", () => {
   }
 });
 
-// A package from another release: the tree beside it can hold two.
+// A package from another release.
 test("doctor warns when the omp plugin package is not this build", () => {
   const home = missingHome();
   try {

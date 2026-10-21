@@ -53,9 +53,24 @@ export function rtkDirs(): { data: string; config: string } {
 /** The RTK project, named once: the release feed and the release page both read it. */
 export const RTK_REPO = 'rtk-ai/rtk';
 export const RTK_RELEASE_API = `https://api.github.com/repos/${RTK_REPO}/releases/latest`;
-export const CAVEMAN_REMOTE_ULTRA = 'https://raw.githubusercontent.com/JuliusBrussee/caveman/main/skills/ultracave/SKILL.md';
-export const CAVEMAN_REMOTE_MEGACAVE = 'https://raw.githubusercontent.com/JuliusBrussee/caveman/main/skills/megacave/SKILL.md';
-export const CAVEMAN_REMOTE_FULL = 'https://raw.githubusercontent.com/JuliusBrussee/caveman/main/skills/caveman/SKILL.md';
+/** Caveman's bodies, as paths in the repository. A body is fetched at a release tag, never at the tip. */
+export const CAVEMAN_BODY_PATHS = {
+  full: 'skills/caveman/SKILL.md',
+  ultra: 'skills/ultracave/SKILL.md',
+  megacave: 'skills/megacave/SKILL.md',
+} as const;
+export const CAVEMAN_RAW = 'https://raw.githubusercontent.com/JuliusBrussee/caveman';
+export const CAVEMAN_RELEASES = 'https://api.github.com/repos/JuliusBrussee/caveman/releases/latest';
+
+/** The newest published Caveman release, so a body comes from an immutable tag. */
+export async function cavemanRelease(): Promise<string | null> {
+  try {
+    const json = await fetchJson<{ tag_name?: string }>(CAVEMAN_RELEASES);
+    return json.tag_name ?? null;
+  } catch {
+    return null;
+  }
+}
 
 // A fetch that returns an error page or a truncated body must not reach the extension tree.
 export function ruleBodyProblem(text: string): string | null {

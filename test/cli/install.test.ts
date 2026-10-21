@@ -414,7 +414,7 @@ test("a registered plugin writes the plugin tree and drops the agent copies", ()
   }
 });
 
-// The plugin package and this CLI are one build, or the tree holds two releases and fails to load.
+// One build, or the tree holds two releases and fails to load.
 test("the plugin package is pinned to this build, and a skewed tree is rewritten", () => {
   const home = tempHome();
   try {

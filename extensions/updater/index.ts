@@ -9,11 +9,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { setExtensionLabel } from '../shared/host.ts';
+import { patchState } from '../shared/state.ts';
 import {
-  CAVEMAN_REMOTE_ULTRA,
-  CAVEMAN_REMOTE_MEGACAVE,
-  CAVEMAN_REMOTE_FULL,
+  CAVEMAN_BODY_PATHS,
+  CAVEMAN_RAW,
   RTK_RELEASE_API,
+  cavemanRelease,
   fetchJson,
   findFile,
   homeDir,
@@ -47,11 +48,16 @@ const CAVEMAN_LOCAL = cavemanRule('rule.md');
 // `rule.md` is upstream's body with one adapted line, so a refresh re-applies the adaptation.
 const adaptCavemanFull = (text: string): string =>
   text.replace('`/caveman-compress` exempt.', '`/caveman-compress`, where the host offers it, is exempt.');
-const CAVEMAN_TRACKED: ReadonlyArray<{ file: string; remote: string; adapt?: (text: string) => string }> = [
-  { file: CAVEMAN_LOCAL, remote: CAVEMAN_REMOTE_FULL, adapt: adaptCavemanFull },
-  { file: cavemanRule('rule-ultra.md'), remote: CAVEMAN_REMOTE_ULTRA },
-  { file: cavemanRule('rule-megacave.md'), remote: CAVEMAN_REMOTE_MEGACAVE },
+const CAVEMAN_TRACKED: ReadonlyArray<{ file: string; body: string; adapt?: (text: string) => string }> = [
+  { file: CAVEMAN_LOCAL, body: CAVEMAN_BODY_PATHS.full, adapt: adaptCavemanFull },
+  { file: cavemanRule('rule-ultra.md'), body: CAVEMAN_BODY_PATHS.ultra },
+  { file: cavemanRule('rule-megacave.md'), body: CAVEMAN_BODY_PATHS.megacave },
 ];
+
+/** One body at a published release, so a fetch names the version it wrote. */
+function cavemanBodyUrl(tag: string, body: string): string {
+  return `${CAVEMAN_RAW}/${tag}/${body}`;
+}
 export { adaptCavemanFull };
 // Host-neutral: this updater runs inside pi, OMP, and OpenCode alike.
 const RELOAD_MSG = 'Reminder: restart your agent (or reload extensions) for updates to take effect.';
@@ -151,10 +157,11 @@ function checkRtk(): Promise<AddonStatus> {
 function checkCaveman(): Promise<AddonStatus> {
   return runCheck('Caveman', async () => {
     const parts: string[] = [(await readTextIfExists(CAVEMAN_LOCAL)) ? 'rule.md ok' : 'rule.md missing'];
-    for (const { file, remote, adapt } of CAVEMAN_TRACKED) {
+    const tag = await cavemanRelease();
+    for (const { file, body, adapt } of CAVEMAN_TRACKED) {
       const name = path.basename(file);
       try {
-        const [remoteText, localText] = await Promise.all([httpsGet(remote), readTextIfExists(file)]);
+        const [remoteText, localText] = await Promise.all([tag ? httpsGet(cavemanBodyUrl(tag, body)) : Promise.resolve(''), readTextIfExists(file)]);
         // Compare the text a refresh would write, so the adapted line never reads as drift.
         const nextHash = shortHash(adapt ? adapt(remoteText) : remoteText);
         parts.push(!localText ? `${name} missing` : shortHash(localText) === nextHash ? `${name} up to date` : `${name} update available`);
@@ -162,7 +169,7 @@ function checkCaveman(): Promise<AddonStatus> {
         parts.push(`${name} check skipped`);
       }
     }
-    return `Caveman ${parts.join(', ')}`;
+    return `Caveman ${parts.join(', ')}${tag ? ` (release ${tag})` : ''}`;
   });
 }
 
@@ -375,10 +382,15 @@ async function updateRtk(ctx: AddonUpdaterCtx, dryRun = false): Promise<string> 
 
 async function updateCaveman(ctx: AddonUpdaterCtx, dryRun = false): Promise<string> {
   const results: string[] = [];
-  for (const { file, remote, adapt } of CAVEMAN_TRACKED) {
+  const tag = await cavemanRelease();
+  if (!tag) {
+    results.push(report(ctx, 'Caveman update failed: no published release could be read', 'warning'));
+    return results.join('\n');
+  }
+  for (const { file, body, adapt } of CAVEMAN_TRACKED) {
     const name = path.basename(file);
     let remoteText: string;
-    try { remoteText = await httpsGet(remote); }
+    try { remoteText = await httpsGet(cavemanBodyUrl(tag, body)); }
     catch (e) { results.push(report(ctx, `Caveman ${name} update failed: ${(e as Error).message}`, 'warning')); continue; }
 
     // A tracked fork compares against the text it would write, so an adapted body still reads up to date.
@@ -403,11 +415,12 @@ async function updateCaveman(ctx: AddonUpdaterCtx, dryRun = false): Promise<stri
         if (oldLocal !== null) await fs.writeFile(file, oldLocal, 'utf8');
         throw new Error(`written hash ${writtenHash} did not match remote ${remoteHash}${oldLocal !== null ? '; restored backup' : ''}`);
       }
-      results.push(`Caveman ${name} updated → ${file}\nold=${oldHash || '—'} new=${remoteHash}\nbackup=${oldLocal !== null ? backupPath : '—'}\n${RELOAD_MSG}`);
+      results.push(`Caveman ${name} updated → ${file}\nold=${oldHash || '—'} new=${remoteHash} release=${tag}\nbackup=${oldLocal !== null ? backupPath : '—'}\n${RELOAD_MSG}`);
     } catch (e) {
       results.push(`Caveman ${name} update failed: ${(e as Error).message}`);
     }
   }
+  if (!dryRun && tag) patchState({ cavemanUpstream: { tag, at: Date.now() } });
   const summary = results.join('\n');
   notify(ctx, `Caveman update finished. ${RELOAD_MSG}`, 'info');
   return summary;

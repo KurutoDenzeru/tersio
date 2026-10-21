@@ -12,9 +12,10 @@ import { readTextIfExists, resolveRtkBinary, tersioDataPath } from '../extension
 import { patchState, readState, takeLegacy } from '../extensions/shared/state.ts';
 import { refreshPrices } from '../extensions/shared/pricing.ts';
 import {
-  CAVEMAN_REMOTE_ULTRA,
-  CAVEMAN_REMOTE_MEGACAVE,
+  CAVEMAN_BODY_PATHS,
+  CAVEMAN_RAW,
   RTK_RELEASE_API,
+  cavemanRelease,
   httpsGet, normalizeRtkVersion, sha256Hex,
 } from '../extensions/shared/utils.ts';
 import type { RtkRelease } from '../extensions/shared/utils.ts';
@@ -101,6 +102,17 @@ interface UpdatePlan {
   ponytail: string | null;
 }
 
+/** The two upstream bodies at the newest release, so the plan compares against a published version. */
+async function cavemanRemoteHashes(signal: AbortSignal): Promise<string | null> {
+  const tag = await cavemanRelease();
+  if (!tag) return null;
+  const texts = await Promise.all([
+    httpsGet(`${CAVEMAN_RAW}/${tag}/${CAVEMAN_BODY_PATHS.ultra}`, { signal }),
+    httpsGet(`${CAVEMAN_RAW}/${tag}/${CAVEMAN_BODY_PATHS.megacave}`, { signal }),
+  ]);
+  return texts.map((t) => sha256Hex(t).slice(0, 8)).join('+');
+}
+
 // Current → latest per add-on. Probes are capped and nullable; the plan prints `unknown` for anything unreachable.
 async function probeUpdatePlan(cliLatest: string | null): Promise<UpdatePlan> {
   const rtkBin = resolveRtkBinary();
@@ -113,8 +125,7 @@ const tersioRule = (name: string) => path.join(OMP_PLUGINS_DIR, 'node_modules', 
     settle(httpsGet(RTK_RELEASE_API, { signal: controller.signal }).then((text) => normalizeRtkVersion((JSON.parse(text) as RtkRelease).tag_name) || null), 1500),
     Promise.all([readTextIfExists(tersioRule('rule-ultra.md')), readTextIfExists(tersioRule('rule-megacave.md'))])
       .then((texts) => (texts.every(Boolean) ? texts.map((t) => sha256Hex(t as string).slice(0, 8)).join('+') : null)),
-    settle(Promise.all([httpsGet(CAVEMAN_REMOTE_ULTRA, { signal: controller.signal }), httpsGet(CAVEMAN_REMOTE_MEGACAVE, { signal: controller.signal })])
-      .then((texts) => texts.map((t) => sha256Hex(t).slice(0, 8)).join('+')), 1500),
+    settle(cavemanRemoteHashes(controller.signal), 1500),
     readTextIfExists(ponytailPkg),
   ]);
   controller.abort();
