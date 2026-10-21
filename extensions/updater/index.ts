@@ -254,7 +254,7 @@ async function updatePonytail(pi: AddonUpdaterPi, ctx: AddonUpdaterCtx, dryRun =
     } catch (e) {
       await fs.rm(destDir, { recursive: true, force: true }).catch(() => { });
       await fs.rename(backupDir, destDir).catch(() => { });
-      throw new Error(`${(e as Error).message}; restored backup`);
+      throw new Error(`${(e as Error).message}; restored backup`, { cause: e });
     }
     await fs.rm(backupDir, { recursive: true, force: true }).catch(() => { });
     return report(ctx, `Ponytail updated → ${remoteVer} at ${destDir}\n${RELOAD_MSG}`, 'info');
@@ -338,7 +338,7 @@ async function updateRtk(ctx: AddonUpdaterCtx, dryRun = false): Promise<string> 
       try {
         execFileSync('tar', ['xzf', archivePath, '-C', extractDir], { encoding: 'utf8', shell: false });
       } catch (e) {
-        throw new Error(`tar could not extract ${asset.name}: ${(e as Error).message}`);
+        throw new Error(`tar could not extract ${asset.name}: ${(e as Error).message}`, { cause: e });
       }
     } else {
       throw new Error(`Unknown archive format: ${asset.name}`);
@@ -363,7 +363,7 @@ async function updateRtk(ctx: AddonUpdaterCtx, dryRun = false): Promise<string> 
       versionOut = execFileSync(RTK_BINARY, ['--version'], { encoding: 'utf8', windowsHide: true, shell: false, timeout: 10000 }).trim();
     } catch (e) {
       if (backedUp) await fs.copyFile(backupPath, RTK_BINARY);
-      throw new Error(`new ${binaryName} failed --version${backedUp ? '; restored backup' : ''}: ${(e as Error).message}`);
+      throw new Error(`new ${binaryName} failed --version${backedUp ? '; restored backup' : ''}: ${(e as Error).message}`, { cause: e });
     }
     if (normalizeRtkVersion(versionOut) !== normalizeRtkVersion(tag)) {
       if (backedUp) await fs.copyFile(backupPath, RTK_BINARY);
