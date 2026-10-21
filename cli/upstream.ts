@@ -163,7 +163,20 @@ export interface SourceRow {
   uncarried: number;
   /** How many of those moved since the pin. */
   uncarriedMoved: number;
+  /** When the pin was taken, so a reader sees how long it has been held. */
+  pinnedAt: number | null;
+  /** The upstream state a new pin would name, so the operator can copy it. */
+  candidate: string | null;
+  /** The head of each file that moved upstream, so a review reads the change. */
+  preview: Preview[];
   note: string;
+}
+
+/** One moved file, with the head of its new content. */
+export interface Preview {
+  path: string;
+  lines: number;
+  head: string;
 }
 
 export interface HostRow {
@@ -194,6 +207,35 @@ export interface Scorecard {
 /** The last scorecard, or null when none has been written yet. */
 export async function cachedScorecard(): Promise<Scorecard | null> {
   return parseJsonObject<Scorecard>(await readTextIfExists(path.join(upstreamDir(), 'scorecard.json')));
+}
+
+/** One run, as the page reads it back. */
+export interface HistoryPoint {
+  at: number;
+  accuracy: number;
+  drift: number;
+  sources: Array<{ source: string; pct: number }>;
+}
+
+/** The last runs, oldest first, so the page can plot the accuracy. */
+export async function upstreamHistory(limit = 60): Promise<HistoryPoint[]> {
+  const text = await readTextIfExists(path.join(upstreamDir(), 'history.jsonl'));
+  if (!text) return [];
+  const rows = text.split('\n').filter(Boolean).flatMap((line) => {
+    try { return [JSON.parse(line) as HistoryPoint]; } catch { return []; }
+  });
+  return rows.slice(-limit);
+}
+
+/** One line per run, appended, so the accuracy has a history. */
+async function writeHistory(card: Scorecard): Promise<void> {
+  const point: HistoryPoint = {
+    at: card.checkedAt,
+    accuracy: card.accuracy,
+    drift: card.drift,
+    sources: card.sources.map((row) => ({ source: row.source, pct: row.tracked === 0 ? 100 : Math.round((row.matched / row.tracked) * 1000) / 10 })),
+  };
+  await fs.appendFile(path.join(upstreamDir(), 'history.jsonl'), `${JSON.stringify(point)}\n`, 'utf8').catch(() => { });
 }
 
 /** Run the live check, cache both artifacts, and hand the card back. */
@@ -308,6 +350,39 @@ async function pruneTrees(cacheDir: string): Promise<void> {
   }
 }
 
+/** When a revision was committed, so a pin's age is visible. */
+async function dateOf(repo: string, ref: string): Promise<number | null> {
+  try {
+    const token = githubToken();
+    const json = await fetchJson<{ commit?: { committer?: { date?: string } } }>(`${GH}/repos/${repo}/commits/${ref}`, token ? { headers: { Authorization: `Bearer ${token}` } } : {});
+    const at = json.commit?.committer?.date;
+    return at ? Date.parse(at) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The newest commit under a path: the candidate for a commit pin. */
+async function newestCommitUnder(repo: string, under: string): Promise<string | null> {
+  try {
+    const token = githubToken();
+    const json = await fetchJson<Array<{ sha?: string }>>(`${GH}/repos/${repo}/commits?path=${encodeURIComponent(under)}&per_page=1`, token ? { headers: { Authorization: `Bearer ${token}` } } : {});
+    return json[0]?.sha ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** The head of an upstream file, so a review reads what moved. */
+async function previewOf(repo: string, ref: string, file: string): Promise<Preview | null> {
+  try {
+    const lines = (await httpsGet(`${RAW}/${repo}/${ref}/${file}`)).split('\n');
+    return { path: file, lines: lines.length, head: lines.slice(0, 12).join('\n') };
+  } catch {
+    return null;
+  }
+}
+
 /** The newest release a repository publishes, or null when the feed cannot be read. */
 async function latestRelease(repo: string): Promise<string | null> {
   try {
@@ -319,7 +394,6 @@ async function latestRelease(repo: string): Promise<string | null> {
     return null;
   }
 }
-
 interface Drift { changed: string[]; added: string[]; gone: string[] }
 
 /** The directory a source's skills live in: the common parent of every tracked directory. */
@@ -436,6 +510,7 @@ async function checkCaveman(): Promise<SourceRow> {
   const uncarried = uncarriedOf(pinned, head, CAVEMAN.files.map((f) => f.upstream), skillRoot(CAVEMAN.files.map((f) => f.upstream)));
   const release = await latestRelease(CAVEMAN_REPO);
   const pinnedVersion = CAVEMAN_PIN.replace(/^v/, '');
+  const previews = (await Promise.all(drift.changed.map((file) => previewOf(CAVEMAN_REPO, 'HEAD', file)))).filter((x): x is Preview => x !== null);
   return {
     source: CAVEMAN.label,
     pin: pinnedVersion,
@@ -456,6 +531,9 @@ async function checkCaveman(): Promise<SourceRow> {
     gone: drift.gone,
     uncarried: uncarried.count,
     uncarriedMoved: uncarried.moved,
+    pinnedAt: await dateOf(CAVEMAN_REPO, CAVEMAN_PIN),
+    candidate: release && release !== pinnedVersion ? `v${release}` : null,
+    preview: previews,
     note: release && release !== pinnedVersion ? `release ${release} is out` : noteOf(failure, gaps, drift.changed),
   };
 }
@@ -475,10 +553,12 @@ async function checkPstack(): Promise<SourceRow> {
   const failure = pinned.failure ?? head.failure;
   const drift = driftOf(pinned, head, PSTACK.files.map((f) => f.upstream));
   const uncarried = uncarriedOf(pinned, head, PSTACK.files.map((f) => f.upstream), skillRoot(PSTACK.files.map((f) => f.upstream)));
+  const candidate = await newestCommitUnder(PSTACK_REPO, 'pstack');
+  const previews = (await Promise.all([...drift.changed, ...drift.added].slice(0, 6).map((file) => previewOf(PSTACK_REPO, 'HEAD', file)))).filter((x): x is Preview => x !== null);
   return {
     source: PSTACK.label,
     pin: PSTACK.pin.slice(0, 7),
-    upstream: 'HEAD',
+    upstream: candidate ?? 'HEAD',
     tracked: PSTACK.files.length,
     matched,
     drift: drift.changed.length + drift.gone.length,
@@ -495,6 +575,9 @@ async function checkPstack(): Promise<SourceRow> {
     gone: drift.gone,
     uncarried: uncarried.count,
     uncarriedMoved: uncarried.moved,
+    pinnedAt: await dateOf(PSTACK_REPO, PSTACK_PIN),
+    candidate: candidate && candidate !== PSTACK_PIN ? candidate : null,
+    preview: previews,
     note: noteOf(failure, gaps, drift.changed) || 'fork: Cursor surface removed',
   };
 }
@@ -598,6 +681,9 @@ async function checkPonytail(hosts: HostRow[]): Promise<SourceRow> {
     gone: [],
     uncarried: 0,
     uncarriedMoved: 0,
+    pinnedAt: null,
+    candidate: drift ? latest : null,
+    preview: [],
     note: failure ? failure.reason : drift ? `bundled ${bundled} is behind ${latest}` : noteOf(null, gaps, []),
   };
 }
@@ -641,6 +727,9 @@ async function checkRtk(): Promise<SourceRow> {
     gone: [],
     uncarried: 0,
     uncarriedMoved: 0,
+    pinnedAt: null,
+    candidate: behind ? latest : null,
+    preview: [],
     note: failure ? failure.reason : behind ? `installed ${local} is behind ${latest}` : local === null ? 'binary not on PATH' : '',
   };
 }
@@ -757,6 +846,7 @@ async function rowOrFailure(label: string, probe: () => Promise<SourceRow>): Pro
       source: label, pin: '—', upstream: 'unreachable', tracked: 0, matched: 0, drift: 0, added: 0, removed: 0,
       ceiling: 0, measured: false, status: classifyFetch(e, label).status, kind: 'bytes', link: '',
       gaps: [classifyFetch(e, label).reason], moved: [], appeared: [], gone: [], uncarried: 0, uncarriedMoved: 0,
+      pinnedAt: null, candidate: null, preview: [],
       note: classifyFetch(e, label).reason,
     };
   }
@@ -771,7 +861,7 @@ async function collect(): Promise<Scorecard> {
     rowOrFailure('RTK', checkRtk),
   ]);
   const sources = [caveman, pstack, rtk, ponytail];
-  return {
+  const card: Scorecard = {
     version: PACKAGE_VERSION,
     checkedAt: Date.now(),
     sources,
@@ -779,6 +869,8 @@ async function collect(): Promise<Scorecard> {
     accuracy: accuracyOf(sources, hosts),
     drift: sources.reduce((sum, r) => sum + r.drift, 0),
   };
+  await writeHistory(card);
+  return card;
 }
 
 /** The UTC stamp both reports print, so a cron log and the Markdown agree to the second. */

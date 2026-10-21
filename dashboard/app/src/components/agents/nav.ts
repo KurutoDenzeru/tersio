@@ -10,7 +10,7 @@ export type SectionId =
   | "traces"
   | "tools"
   | "projects"
-  | "sources";
+  | "upstream";
 
 export interface NavItem {
   id: SectionId;
@@ -60,7 +60,7 @@ export const NAV: readonly NavGroup[] = [
     // with the last item, so an operator who never flips the About switch never sees it.
     heading: "Developer",
     items: [
-      { id: "sources", label: "Sources", icon: "git-branch", hotkey: "s", agentOnly: false, devOnly: true },
+      { id: "upstream", label: "Upstream", icon: "git-branch", hotkey: "s", agentOnly: false, devOnly: true },
     ],
   },
 ];

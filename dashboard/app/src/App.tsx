@@ -23,7 +23,7 @@ import { ErrorsPage } from "./components/agents/errors";
 import { TracesPage } from "./components/agents/traces";
 import { ToolsPage } from "./components/agents/tools";
 import { ProjectsPage } from "./components/agents/projects";
-import { SourcesPage } from "./components/agents/sources";
+import { UpstreamPage } from "./components/agents/upstream";
 import { SettingsDialog } from "@/components/dialogs";
 import { ShareDialog } from "@/components/agents/share-dialog";
 import { ToasterProvider } from "@/components/toaster";
@@ -133,12 +133,12 @@ function Dashboard() {
   useReveal();
   const { fx, money, applyCurrency } = useFx();
   const { section: route, range, session, setSection, setRange, setSession } = useHashRoute();
-  // Sources is a developer surface: the About switch hides it, and a bookmarked route lands on Overview.
+  // Upstream is a developer surface: the About switch hides it, and a bookmarked route lands on Overview.
   const dev = useDevMode();
-  const section = route === "sources" && !dev ? "overview" : route;
+  const section = route === "upstream" && !dev ? "overview" : route;
   // The smallest view still answers "is there an agent database".
-  // Sources is not an agent view: the scorecard has its own store, and the hook keeps the shell uniform.
-  const view: AgentView = section === "sources" ? "all" : section;
+  // Upstream is not an agent view: the scorecard has its own store, and the hook keeps the shell uniform.
+  const view: AgentView = section === "upstream" ? "all" : section;
   // Only the request log pages through the range; every other view wants the newest rows.
   const [requestOffset, setRequestOffset] = useState(0);
   const { agent, loading, stale } = useAgentData(range, view, section === "requests" ? requestOffset : 0);
@@ -223,8 +223,8 @@ function Dashboard() {
         return <ToolsPage agent={agent} money={money} />;
       case "projects":
         return <ProjectsPage agent={agent} money={money} />;
-      case "sources":
-        return <SourcesPage />;
+      case "upstream":
+        return <UpstreamPage />;
       default:
         return null;
     }

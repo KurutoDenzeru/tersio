@@ -1168,7 +1168,7 @@ function AboutPane({ update }: { update: UpdateFeed }) {
           <div className="min-w-0">
             <p className="m-0 text-[13px] font-semibold">Developer tools</p>
             <p className="mt-0.5 mb-0 text-xs text-dim">
-              Show the Sources page: every port beside the upstream project it tracks.
+              Show the Upstream page: every port beside the upstream project it tracks.
             </p>
           </div>
           <Switch size="sm" checked={dev} onCheckedChange={setDevMode} aria-label="Show developer tools" />

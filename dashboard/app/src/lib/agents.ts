@@ -1,4 +1,4 @@
-// Agents Tersio does not install into yet. The connection list and the Sources table both name
+// Agents Tersio does not install into yet. The connection list and the Upstream table both name
 // them, so the pair lives here rather than in each surface.
 export interface UpcomingAgent {
   /** The id `AgentLogo` resolves a mark from. */

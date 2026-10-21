@@ -296,7 +296,9 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   const ruleAge = ruleMtime ? `(updated ${relTime(Date.now() - ruleMtime.mtimeMs)} · ${absDate(ruleMtime.mtimeMs)})` : '';
   const cavemanRules = [['rule.md', cavemanRuleText], ['rule-lite.md', cavemanLiteText], ['rule-megacave-lite.md', cavemanMegacaveLiteText], ['rule-megacave-ultra.md', cavemanMegacaveUltraText], ['rule-ultra.md', cavemanUltraText], ['rule-megacave.md', cavemanMegacaveText]];
   const missingRules = cavemanRules.filter(([, text]) => text === null).map(([name]) => name);
-  check('Caveman rule', missingRules.length === 0, missingRules.length ? `missing: ${missingRules.join(', ')}` : ruleAge);
+  // The body carries no version, so the release it came from is the number: the pinned one, or the one a pull recorded.
+  const cavemanRelease = (readState().cavemanUpstream?.tag ?? CAVEMAN_PIN).replace(/^v/, '');
+  check('Caveman rule', missingRules.length === 0, missingRules.length ? `missing: ${missingRules.join(', ')}` : [cavemanRelease, ruleAge].filter(Boolean).join(' '));
   for (const [name, text] of cavemanRules) {
     if (text === null) continue;
     const problem = ruleBodyProblem(text);
