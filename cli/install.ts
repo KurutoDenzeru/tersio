@@ -23,12 +23,12 @@ import { runDoctor } from './doctor.ts';
 import { runDashboard } from './dashboard.ts';
 import { wireRtkOmp, wireRtkOpencode, wireRtkPi } from './rtk-wiring.ts';
 import {
-  CAVEMAN_BODY_PATHS, CAVEMAN_RAW, RTK_RELEASE_API, cavemanRelease, fetchJson, findFile, httpsGet,
+  RTK_RELEASE_API, fetchJson, findFile, httpsGet,
   findPackageRoot, httpsDownload, parseChecksum, piAgentDir, readTextIfExists, resolveRtkBinary, ruleBodyProblem, rtkPlatformSpec, sha256File,
 } from '../extensions/shared/utils.ts';
 import type { RtkRelease, RtkReleaseAsset } from '../extensions/shared/utils.ts';
 import { patchState } from '../extensions/shared/state.ts';
-import { adaptCavemanFull } from '../extensions/updater/index.ts';
+import { CAVEMAN_PIN } from './upstream.ts';
 import { formatCliStatus, storedProfile, storedProfileSync, writePluginSettings } from './profile.ts';
 import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
 import { PI_RTK_MANIFEST, PI_PONYTAIL_FILES, PONYTAIL_BUNDLE_FILES, PONYTAIL_DIR, PONYTAIL_PKG, filesUnder, rootFiles, sourcePath, syncPluginManifest, syncTreeFiles } from './manifest.ts';
@@ -378,48 +378,31 @@ async function stepRtkFilter(extDir: string, options: WriteOptions): Promise<voi
   await copySources(extDir, filesUnder('rtk'), 'rtk/filter.ts', options);
 }
 
-// rule.md is upstream's body with one adapted line, the lite bodies are ours, and the rest track upstream.
-const CAVEMAN_RULES: ReadonlyArray<[name: string, body: string | null, adapt?: (text: string) => string]> = [
-  ['rule.md', CAVEMAN_BODY_PATHS.full, adaptCavemanFull],
-  ['rule-lite.md', null],
-  ['rule-megacave-lite.md', null],
-  ['rule-megacave-ultra.md', null],
-  ['rule-ultra.md', CAVEMAN_BODY_PATHS.ultra],
-  ['rule-megacave.md', CAVEMAN_BODY_PATHS.megacave],
+// The install writes this build's bodies, which are the pinned ones. The updater pulls a newer
+// published release, and the stamp says which release the installed body is.
+const CAVEMAN_RULES: readonly string[] = [
+  'rule.md',
+  'rule-lite.md',
+  'rule-megacave-lite.md',
+  'rule-megacave-ultra.md',
+  'rule-ultra.md',
+  'rule-megacave.md',
 ];
 
 async function stepCaveman(extDir: string, options: WriteOptions): Promise<void> {
   if (!options.quiet) console.log('  Caveman — install session mode and rule bodies');
   const cavemanDir = path.join(extDir, 'caveman');
   if (!options.dryRun) await fs.mkdir(cavemanDir, { recursive: true });
-  // The bodies come from a published release, so an installed body names the version it is.
-  const tag = CAVEMAN_RULES.some(([, body]) => body) ? await cavemanRelease() : null;
 
-  for (const [name, body, adapt] of CAVEMAN_RULES) {
-    const bundled = await readTextIfExists(sourcePath(`caveman/${name}`));
-    let rule = bundled;
-    if (body && tag && !options.dryRun) {
-      const remote = `${CAVEMAN_RAW}/${tag}/${body}`;
-      try {
-        const fetched = await withInteractiveSpinner(`Fetching Caveman ${name}`, () => httpsGet(remote));
-        const problem = ruleBodyProblem(fetched);
-        if (problem && bundled !== null) {
-          sayTagged(`  [warn] ${name} fetch rejected (${problem}) — keeping the bundled body`);
-          rule = bundled;
-        } else rule = adapt ? adapt(fetched) : fetched;
-      } catch (e) {
-        if (bundled === null) sayTagged(`  [warn] Could not fetch caveman ${name}: ${(e as Error).message}`);
-        else debug(`Using bundled Caveman ${name}: ${(e as Error).message}`);
-      }
-    }
+  for (const name of CAVEMAN_RULES) {
+    const rule = await readTextIfExists(sourcePath(`caveman/${name}`));
     if (rule === null) {
-      if (body && tag) sayTagged(`  [hint] Manual: ${CAVEMAN_RAW}/${tag}/${body}`);
       console.log(`  [skip] Caveman ${name} unavailable`);
-    } else {
-      await writeIfChanged(path.join(cavemanDir, name), rule, options);
+      continue;
     }
+    await writeIfChanged(path.join(cavemanDir, name), rule, options);
   }
-  if (!options.dryRun && tag) patchState({ cavemanUpstream: { tag, at: Date.now() } });
+  if (!options.dryRun) patchState({ cavemanUpstream: { tag: CAVEMAN_PIN, at: Date.now() } });
 
   await copySources(extDir, filesUnder('caveman').filter(([, to]) => to.endsWith('index.ts')), 'caveman/index.ts', options);
 
