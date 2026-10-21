@@ -1,3 +1,10 @@
+## v2.25.11
+
+### Fixed
+ - The upstream scorecard reads what the port carries. The Caveman pin is a release instead of a bare commit, the vendored Ponytail copy is checked against the package it declares, a new upstream skill directory is reported instead of hidden, and a stale host row names the command that repairs it.
+ - A Caveman body is fetched at a published release and that release is recorded, so an installed body names the version it is, and the doctor tells a newer upstream body from a stale install.
+ - The benchmark files state their units. The level-body table carries bytes and characters, the run counts match the tables, the guide names the fixture the result files used, and the result files record the Caveman release and the pstack pin.
+
 ## v2.25.10
 
 ### Fixed

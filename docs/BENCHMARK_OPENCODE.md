@@ -2,7 +2,7 @@
 
 - Agent: OpenCode 2.1.1
 - Model: `magpie/auto/deepseek-v4.1-flash`, thinking level default, temperature not reported by the harness
-- Tersio 2.25.9, RTK 1.0.1, Ponytail 5.3.2, Caveman upstream `d262ab3`
+- Tersio 2.25.9, RTK 1.0.1, Ponytail 5.3.2
 - Repository and commit: `tersio` at `72b6716`. Prose, code, and command sessions ran in an empty directory. The agentic surface ran in a copy with 328 tracked files and one injected failing test.
 - Runs (N), date, surface: 15 per case on prose, 15 per case on code, 3 per case on agentic, 5 per case on the command surface, 2026-10-21
 - Path: saved defaults for the token protocol, slash commands for the command surface. The two are reported separately.
@@ -57,8 +57,8 @@ No prose case publishes a saving. Every mode's Δ Net is positive, so the block 
 reply it shortens on a one-turn question.
 
 The level order is not monotonic. `full` cuts replies 54.3% and `ultra` cuts 53.6%, while the three
-`megacave` levels cut between 2.1% and 10.2%. The `megacave` bodies are smaller than `full`, 714 to
-780 tokens against 1,177, yet they save less reply and pass 0/15.
+`megacave` levels cut between 2.1% and 10.2%. The `megacave` bodies are smaller than `full`, 612 to
+705 tokens against 1,177, yet they save less reply and pass 0/15.
 
 The `megacave` levels answer in classical Chinese, and that is why they fail every gate: the keyword
 check is English, so 15/15, 14/15, and 15/15 runs miss a required term, and the Chinese full stop

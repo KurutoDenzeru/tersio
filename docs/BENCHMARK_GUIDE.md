@@ -45,17 +45,21 @@ one comparison. Pick one, state it in the result file, and keep it for every run
 
 ### The level bodies
 
-Each level injects its own body, so each level is its own measurement. Static sizes, in characters,
-so a reader can sanity-check the growth against them:
+Each level injects its own body, so each level is its own measurement. Static sizes, so a reader can
+sanity-check the growth against them:
 
-| Caveman level | File | Chars |
-|---|---|---:|
-| `lite` | `extensions/caveman/rule-lite.md` | 4,210 |
-| `full` | `extensions/caveman/rule.md` | 4,708 |
-| `ultra` | `extensions/caveman/rule-ultra.md` | 2,513 |
-| `megacave-lite` | `extensions/caveman/rule-megacave-lite.md` | 3,122 |
-| `megacave-full` | `extensions/caveman/rule-megacave.md` | 2,858 |
-| `megacave-ultra` | `extensions/caveman/rule-megacave-ultra.md` | 2,931 |
+| Caveman level | File | Bytes | Characters |
+|---|---|---:|---:|
+| `lite` | `extensions/caveman/rule-lite.md` | 4,210 | 4,206 |
+| `full` | `extensions/caveman/rule.md` | 4,708 | 4,708 |
+| `ultra` | `extensions/caveman/rule-ultra.md` | 2,513 | 2,513 |
+| `megacave-lite` | `extensions/caveman/rule-megacave-lite.md` | 3,122 | 2,822 |
+| `megacave-full` | `extensions/caveman/rule-megacave.md` | 2,858 | 2,448 |
+| `megacave-ultra` | `extensions/caveman/rule-megacave-ultra.md` | 2,931 | 2,761 |
+
+The two columns differ where a body carries multi-byte characters, so check with the one you have:
+`wc -c` gives the bytes, a character count gives the other. The token figures quoted in the result
+files divide the characters by four, which is an estimate and not a tokenizer count.
 
 Ponytail ships one body for all three levels and states the level in its header, so the three levels
 differ by that line rather than by size.
@@ -93,15 +97,18 @@ report it separately from the single-mode commands, because it is a preset and n
 ## 2. Setup
 
 1. Install Tersio for your agent, then run the health check and confirm it passes.
-2. Record the agent version, the model, the thinking level, and the temperature. Keep them fixed.
-3. Write benchmark output to a separate folder, and leave your live settings alone.
-4. Use a fixed repository with a passing test suite and at least 200 files, pinned to one commit.
-5. Copy it and inject exactly one failing test. Use that copy for the agentic runs.
+2. Run `tersio upstream` and read the source rows. It names the upstream release each vendored body
+   comes from, so a run on a body that upstream has moved measures the wrong thing.
+3. Record the agent version, the model, the thinking level, and the temperature. Keep them fixed.
+4. Write benchmark output to a separate folder, and leave your live settings alone.
+5. Use a fixed repository with a passing test suite and at least 200 files, pinned to one commit.
+6. Copy it and inject exactly one failing test. Use that copy for the agentic runs.
 
 ### The fixture repo
 
-Step 5 is yours to build, and it takes five minutes. The guide cannot ship one, because the agent
-has to fail on something it did not write.
+Step 6 takes five minutes, and the copy is the fixture. The three result files in this folder all
+used the same shape: a copy of the repository under test at a pinned commit, with one failing test
+injected into a source file and every test file left alone.
 
 Put the bug in the source, not in the test. The test states the correct expectation, the source
 disagrees, and the agent fixes the source. A bug inside the test file forces the agent to edit a
@@ -184,7 +191,8 @@ the suite output changes how the agent fixes the bug.
 ## 4. Procedure
 
 1. Set every mode to `off` and run the base case.
-2. Start a new session for each run, and run each case **5 times**.
+2. Start a new session for each run, and run each case **5 times**. The prose and code surfaces run
+   three prompts each, so a case there is 15 runs, and its quality column reads out of 15.
 3. Keep every result. Do not drop slow or failed runs.
 4. Interleave the cases: base, A, B, base, A, B.
 5. Run the control prompt on the prose surface.
@@ -367,8 +375,9 @@ The file has these sections, in this order, and no others:
 - Agent: <name and version>
 - Model: <provider/model>, thinking effort <level>, temperature <not reported by the harness>
 - Tersio, RTK, Ponytail, Caveman: <versions>
+- Caveman release <version> and pstack pin <commit>: the upstream bodies this run measured
 - Repository and commit: <repo> at <commit>. <where each surface ran>
-- Runs (N), date, surface: <N per case>, <date>
+- Runs (N), date, surface: <N per prompt on the prose and code surfaces, 5 per case on the others>, <date>
 - Path: saved defaults for the token protocol, slash commands for the command surface.
 
 <one paragraph: how it was measured, and the harness it ran under>
@@ -413,6 +422,7 @@ Include with every result:
 - The agent name and version.
 - The model, the thinking level, and the temperature.
 - The Tersio, RTK, Ponytail, and Caveman versions.
+- The Caveman release and the pstack pin, so a reader knows which upstream bodies were measured.
 - The test repository and commit.
 - The number of runs (N), the date, and the surface.
 
