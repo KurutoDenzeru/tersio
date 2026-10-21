@@ -1,7 +1,7 @@
 ## v2.25.11
 
 ### Changed
- - The eligible list matches what the rewrite covers. `head` joins it, so the dashboard counts the file reads rtk condenses, and the guidance dropped `tail`, which the rewrite leaves alone.
+ - The eligible list matches the verbs the rewrite covers. `head`, `tail` and `eslint` join it, because the rewrite turns them into `rtk read` and `rtk lint`, and the guidance names the same set.
  - The guidance names the proxy daemon to the hosts that can use it. Only omp can point its model traffic at `rtk-proxy`, so only omp hears `rtk llm-proxy setup`, and `rtk pipeline show` joins the pipeline commands the prompt lists.
 
 ### Fixed
