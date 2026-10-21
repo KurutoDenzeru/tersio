@@ -38,8 +38,10 @@ export interface UpdateView {
   current: string;
   /** The version this process runs: older than `current` until the page reloads. */
   running: string;
-  /** Newest release the registry named, cached across runs. */
+  /** Newest release the registry or the release feed named, its source, and the registry's tag. */
   latest: string | null;
+  source: 'npm' | 'github' | null;
+  npmLatest: string | null;
   /** A newer release exists that this build has not skipped. */
   available: boolean;
   /** The page should prompt now: available, nothing snoozing it, no work running. */
@@ -118,6 +120,8 @@ function storedSchedule(): UpdateSchedule {
 export function updateView(): UpdateView {
   const state = readState();
   const latest = state.updateCheck?.latest ?? null;
+  const source = state.updateCheck?.source ?? null;
+  const npmLatest = state.updateCheck?.npm ?? null;
   const skipped = state.updateSkip ?? null;
   const lastCheck = state.updateCheck?.lastCheck ?? null;
   const schedule = storedSchedule();
@@ -128,6 +132,8 @@ export function updateView(): UpdateView {
     current,
     running: PACKAGE_VERSION,
     latest,
+    source,
+    npmLatest,
     available: newerAvailable(current, latest, skipped),
     schedule,
     lastCheck,
@@ -184,9 +190,9 @@ async function runCheck(force: boolean): Promise<void> {
   status = 'checking';
   try {
     const found = await checkForUpdate(force);
-    // An unreachable registry leaves the cache untouched, so stamp the attempt and hold the cadence.
-    patchState({ updateCheck: { latest: readState().updateCheck?.latest, lastCheck: Date.now() } });
-    error = found === 'unknown' ? 'The npm registry did not answer.' : null;
+    // No source answered: the cache stays, so stamp the attempt and hold the cadence.
+    patchState({ updateCheck: { ...readState().updateCheck, lastCheck: Date.now() } });
+    error = found === 'unknown' ? 'Neither npm nor the release feed answered.' : null;
   } catch (e) {
     error = (e as Error).message;
   } finally {

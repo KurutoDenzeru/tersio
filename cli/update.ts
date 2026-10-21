@@ -15,6 +15,7 @@ import {
   CAVEMAN_BODY_PATHS,
   CAVEMAN_RAW,
   RTK_RELEASE_API,
+  TERSIO_RELEASE_API,
   cavemanRelease,
   httpsGet, normalizeRtkVersion, sha256Hex,
 } from '../extensions/shared/utils.ts';
@@ -22,8 +23,8 @@ import type { RtkRelease } from '../extensions/shared/utils.ts';
 import { parseHostArg } from './hosts.ts';
 
 const UPDATE_CHECK_TTL_MS = 6 * 60 * 60 * 1000;
-/** How long the registry gets before the check gives up and reports unknown. */
-const NPM_LATEST_TIMEOUT_MS = 3000;
+/** How long one source gets before the check gives up on it. */
+const LATEST_TIMEOUT_MS = 3000;
 
 function newerThan(a: string, b: string): boolean {
   const pa = a.replace(/^v/, '').split('.').map((n) => parseInt(n, 10) || 0);
@@ -39,16 +40,21 @@ function updateUrl(): string {
   return process.env.TERSIO_UPDATE_URL || `https://registry.npmjs.org/${PACKAGE_NAME}/latest`;
 }
 
-// One HTTP read of the registry's own latest tag: the answer is a string, and `npm view` cost a
-// process spawn plus a resolver walk to produce it.
-async function latestPublishedVersion(): Promise<string | null> {
+/** The release feed, beside the registry: a tag lands there before npm serves it. */
+function releasesUrl(): string {
+  return process.env.TERSIO_RELEASES_URL || TERSIO_RELEASE_API;
+}
+
+/** One source's newest version, null when it did not answer. */
+async function fetchLatestVersion(url: string, key: string): Promise<string | null> {
   const ctl = new AbortController();
-  const timer = setTimeout(() => ctl.abort(), NPM_LATEST_TIMEOUT_MS);
+  const timer = setTimeout(() => ctl.abort(), LATEST_TIMEOUT_MS);
   try {
-    const res = await fetch(updateUrl(), { signal: ctl.signal });
+    const res = await fetch(url, { signal: ctl.signal, headers: { accept: 'application/json' } });
     if (!res.ok) return null;
-    const version = ((await res.json()) as { version?: unknown }).version;
-    return typeof version === 'string' && version ? version : null;
+    const body = parseJsonObject<Record<string, unknown>>(await res.text());
+    const value = body?.[key];
+    return typeof value === 'string' && value ? value.replace(/^v/, '') : null;
   } catch {
     return null;
   } finally {
@@ -56,18 +62,41 @@ async function latestPublishedVersion(): Promise<string | null> {
   }
 }
 
-// A newer version, null when up to date, 'unknown' when the registry is unreachable. Cached for a TTL unless force.
+/** The newest release either source named, and the registry's own tag behind it. */
+export interface LatestRelease {
+  version: string;
+  source: 'npm' | 'github';
+  npm: string | null;
+}
+
+/** The newest release across the registry and the release feed; null when neither answers. */
+export async function latestRelease(): Promise<LatestRelease | null> {
+  const [npm, github] = await Promise.all([
+    fetchLatestVersion(updateUrl(), 'version'),
+    fetchLatestVersion(releasesUrl(), 'tag_name'),
+  ]);
+  if (!npm && !github) return null;
+  // A tie goes to npm: that version is the one an install can reach.
+  const fromGithub = !!github && (!npm || newerThan(github, npm));
+  return {
+    version: fromGithub ? (github as string) : (npm as string),
+    source: fromGithub ? 'github' : 'npm',
+    npm,
+  };
+}
+
+// A newer version, null when up to date, 'unknown' when no source answered. Cached for a TTL unless force.
 async function checkForUpdate(force = false): Promise<string | null | 'unknown'> {
   const cached = readState().updateCheck ?? takeLegacy(tersioDataPath('update-check.json', 'tersio-update-check.json'), (raw) => parseJsonObject<{ latest?: string; lastCheck?: number }>(raw));
   const cacheFresh = typeof cached?.lastCheck === 'number' && Date.now() - cached.lastCheck < UPDATE_CHECK_TTL_MS;
   if (!force && cacheFresh && cached?.latest) return newerThan(cached.latest, PACKAGE_VERSION) ? cached.latest : null;
 
-  const latest = await latestPublishedVersion();
-  if (latest) {
-    patchState({ updateCheck: { latest, lastCheck: Date.now() } });
-    return newerThan(latest, PACKAGE_VERSION) ? latest : null;
+  const found = await latestRelease();
+  if (found) {
+    patchState({ updateCheck: { latest: found.version, source: found.source, npm: found.npm, lastCheck: Date.now() } });
+    return newerThan(found.version, PACKAGE_VERSION) ? found.version : null;
   }
-  // Unreachable registry: a stale cache naming a newer release is actionable, else unknown, so none claim "latest".
+  // No source answered: a stale cache naming a newer release is actionable, else unknown, so none claim "latest".
   return cached?.latest && newerThan(cached.latest, PACKAGE_VERSION) ? cached.latest : 'unknown';
 }
 
@@ -96,6 +125,8 @@ async function execInherit(cmd: string, args: string[]): Promise<void> {
 
 interface UpdatePlan {
   cli: string | null;
+  cliSource: 'npm' | 'github' | null;
+  npm: string | null;
   rtk: [string | null, string | null];
   rule: [string | null, string | null];
   // Bundled with tersio: only the local copy is probed. Missing marks stale; present is never stale on its own.
@@ -114,7 +145,7 @@ async function cavemanRemoteHashes(signal: AbortSignal): Promise<string | null> 
 }
 
 // Current → latest per add-on. Probes are capped and nullable; the plan prints `unknown` for anything unreachable.
-async function probeUpdatePlan(cliLatest: string | null): Promise<UpdatePlan> {
+async function probeUpdatePlan(release: LatestRelease | null): Promise<UpdatePlan> {
   const rtkBin = resolveRtkBinary();
   const ponytailPkg = path.join(OMP_PLUGINS_DIR, 'node_modules', '@dietrichgebert', 'ponytail', 'package.json');
   // rule.md ships with the release; only the tracked bodies can go stale.
@@ -130,7 +161,9 @@ const tersioRule = (name: string) => path.join(OMP_PLUGINS_DIR, 'node_modules', 
   ]);
   controller.abort();
   return {
-    cli: cliLatest,
+    cli: release?.version ?? null,
+    cliSource: release?.source ?? null,
+    npm: release?.npm ?? null,
     rtk: [rtkLocal, rtkRelease],
     rule: [ruleLocal, ruleRemote],
     ponytail: ponytailLocalText ? parseJsonObject<{ version?: string }>(ponytailLocalText)?.version ?? null : null,
@@ -151,6 +184,10 @@ function planLines(plan: UpdatePlan): { stale: string[]; status: string[] } {
     }
   };
   push('Tersio', PACKAGE_VERSION, plan.cli);
+  // The feed can name a version npm has not served yet; the plan says which source won.
+  if (plan.cliSource === 'github' && plan.npm && plan.cli && newerThan(plan.cli, plan.npm)) {
+    status.push(`npm serves ${plan.npm}; the release feed has ${plan.cli}`);
+  }
   push('RTK', plan.rtk[0], plan.rtk[1]);
   push('Caveman rule', plan.rule[0], plan.rule[1]);
   if (plan.ponytail) status.push(`Ponytail: ${plan.ponytail} (bundled with tersio)`);
@@ -179,10 +216,11 @@ async function runLatestUpdate(): Promise<void> {
   const npmCommand = IS_WINDOWS ? process.env.ComSpec || 'cmd.exe' : 'npm';
 
   // `--prefer-online` beats the local cache, so a stale @latest cannot pin down.
-  const cliLatest = await latestPublishedVersion();
+  const release = await latestRelease();
+  const cliLatest = release?.version ?? null;
   const target = cliLatest && /^\d+\.\d+\.\d+$/.test(cliLatest) ? `@${cliLatest}` : '@latest';
 
-  const plan = await probeUpdatePlan(cliLatest);
+  const plan = await probeUpdatePlan(release);
   const { stale, status } = planLines(plan);
   if (dryRun) {
     console.log(`tersio update (dry-run):\n  ${status.join('\n  ')}`);
@@ -211,6 +249,7 @@ async function runLatestUpdate(): Promise<void> {
   } catch (e) {
     console.error(`[fail] Update payload ${PACKAGE_NAME}${target} failed its smoke check — staying on ${PACKAGE_VERSION}.`);
     console.error(`[fail] ${(e as Error).message.split('\n')[0]}`);
+    if (release?.source === 'github') console.error(`[hint] The release feed has ${release.version}; npm may not serve it yet.`);
     console.error(`[hint] Retry once released fixed; manual: npm install -g ${PACKAGE_NAME}@latest --no-audit --no-fund --prefer-online`);
     process.exitCode = 1;
     return;

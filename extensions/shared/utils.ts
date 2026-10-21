@@ -72,6 +72,10 @@ export async function cavemanRelease(): Promise<string | null> {
   }
 }
 
+/** This project, named once: the update check reads its releases beside the registry's tag. */
+export const TERSIO_REPO = 'KurutoDenzeru/tersio';
+export const TERSIO_RELEASE_API = `https://api.github.com/repos/${TERSIO_REPO}/releases/latest`;
+
 // A fetch that returns an error page or a truncated body must not reach the extension tree.
 export function ruleBodyProblem(text: string): string | null {
   const trimmed = text.trim();

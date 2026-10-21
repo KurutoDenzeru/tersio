@@ -822,6 +822,8 @@ export interface UpdateView {
   /** The version the running build carries, behind `current` until the page reloads. */
   running: string;
   latest: string | null;
+  source: "npm" | "github" | null;
+  npmLatest: string | null;
   available: boolean;
   prompt: boolean;
   schedule: UpdateSchedule;

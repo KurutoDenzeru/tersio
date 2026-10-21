@@ -3,3 +3,8 @@
 export function registryUrl(version: string): string {
   return `data:application/json,${encodeURIComponent(JSON.stringify({ version }))}`;
 }
+
+// A release feed answer, the same way: the feed names a tag, the way GitHub does.
+export function releasesUrl(version: string): string {
+  return `data:application/json,${encodeURIComponent(JSON.stringify({ tag_name: `v${version}` }))}`;
+}

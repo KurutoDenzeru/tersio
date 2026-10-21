@@ -15,6 +15,8 @@ function viewOf(overrides: Partial<Omit<UpdateView, "prompt">> = {}): Omit<Updat
     current: "1.0.0",
     running: "1.0.0",
     latest: "1.0.1",
+    source: "npm",
+    npmLatest: "1.0.1",
     available: true,
     schedule: "daily",
     auto: false,
@@ -89,6 +91,16 @@ test("a skipped release stops asking, and the next one asks again", () => {
 
     patchState({ updateCheck: { latest: "99.0.1", lastCheck: Date.now() } });
     expect(updateView().prompt).toBe(true);
+  });
+});
+
+test("the view names the source of the release and the registry's own tag", () => {
+  withHome(() => {
+    patchState({ updateCheck: { latest: "99.0.0", source: "github", npm: "2.25.9", lastCheck: Date.now() } });
+    const view = updateView();
+    expect(view.latest).toBe("99.0.0");
+    expect(view.source).toBe("github");
+    expect(view.npmLatest).toBe("2.25.9");
   });
 });
 

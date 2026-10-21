@@ -1072,10 +1072,13 @@ function AboutPane({ update }: { update: UpdateFeed }) {
   ) : installing ? (
     <span className="text-dim">Installing the release. The log below is the installer's own output.</span>
   ) : checking ? (
-    <span className="text-dim">Asking the npm registry.</span>
+    <span className="text-dim">Asking npm and the release feed.</span>
   ) : view.available && view.latest ? (
     <span>
-      Version <span className="mono font-semibold">{view.latest}</span> is available. You run <span className="mono">{view.current}</span>.
+      Version <span className="mono font-semibold">{view.latest}</span> is available{view.source === "github" ? " on the release feed" : ""}. You run <span className="mono">{view.current}</span>.
+      {view.source === "github" && view.npmLatest && view.npmLatest !== view.latest ? (
+        <span className="text-dim"> npm serves {view.npmLatest}.</span>
+      ) : null}
     </span>
   ) : (
     <span className="text-dim">
