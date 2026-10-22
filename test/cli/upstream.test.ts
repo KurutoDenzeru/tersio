@@ -2,11 +2,12 @@
 // the upstream path it came from, and accuracy must count a fork that is present as a match.
 import { expect, test } from "vitest";
 import { spawnSync } from "node:child_process";
-import { readdirSync, mkdtempSync, rmSync } from "node:fs";
+import { readFileSync, readdirSync, mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { accuracyOf, driftOf, gapsOf, gateFails, gateReasons, gitBlobSha, hostBroken, hostFix, pstackUpstreamPath, scorecardMarkdown, skillRoot, uncarriedOf, vendoredVerdict } from "../../cli/upstream.ts";
+import { deflateRawSync } from "node:zlib";
+import { accuracyOf, cavemanAssetGap, driftOf, gapsOf, gateFails, gateReasons, gitBlobSha, hostBroken, hostFix, pstackUpstreamPath, scorecardMarkdown, skillRoot, uncarriedOf, vendoredVerdict, zipEntries } from "../../cli/upstream.ts";
 import type { HostRow, Scorecard, SourceRow, TreeResult } from "../../cli/upstream.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -101,6 +102,60 @@ function makeCard(sources: SourceRow[], hosts: HostRow[]): Scorecard {
 
 const clean: SourceRow = row();
 const host: HostRow = hostRow();
+
+/** A zip archive with deflated entries, built the way a release asset is built. */
+function zipFixture(files: Record<string, string>): Buffer {
+  const locals: Buffer[] = [];
+  const central: Buffer[] = [];
+  let offset = 0;
+  for (const [name, text] of Object.entries(files)) {
+    const nameBuf = Buffer.from(name, "utf8");
+    const data = Buffer.from(text, "utf8");
+    const compressed = deflateRawSync(data);
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(20, 4);
+    local.writeUInt16LE(8, 8);
+    local.writeUInt32LE(compressed.length, 18);
+    local.writeUInt32LE(data.length, 22);
+    local.writeUInt16LE(nameBuf.length, 26);
+    locals.push(local, nameBuf, compressed);
+    const dir = Buffer.alloc(46);
+    dir.writeUInt32LE(0x02014b50, 0);
+    dir.writeUInt16LE(20, 4);
+    dir.writeUInt16LE(20, 6);
+    dir.writeUInt16LE(8, 10);
+    dir.writeUInt32LE(compressed.length, 20);
+    dir.writeUInt32LE(data.length, 24);
+    dir.writeUInt16LE(nameBuf.length, 28);
+    dir.writeUInt32LE(offset, 42);
+    central.push(dir, nameBuf);
+    offset += local.length + nameBuf.length + compressed.length;
+  }
+  const directory = Buffer.concat(central);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(Object.keys(files).length, 8);
+  end.writeUInt16LE(Object.keys(files).length, 10);
+  end.writeUInt32LE(directory.length, 12);
+  end.writeUInt32LE(offset, 16);
+  return Buffer.concat([...locals, directory, end]);
+}
+
+test("a release asset that differs from the bundled body is a gap", () => {
+  const body = readFileSync(path.join(root, "extensions", "caveman", "rule.md"), "utf8");
+  expect(cavemanAssetGap(body, body), "the asset carries the body this port ships").toBe(null);
+  expect(cavemanAssetGap(body, null)).toBe("caveman/rule.md is missing locally");
+  expect(cavemanAssetGap(`${body}\nmutated\n`, body)).toBe("caveman/rule.md differs from the release asset");
+});
+
+test("the zip reader returns every file the release asset carries", () => {
+  const archive = zipFixture({ "caveman/SKILL.md": "# body\n", "caveman/README.md": "# readme\n" });
+  const entries = zipEntries(archive);
+  expect(entries.get("caveman/SKILL.md")?.toString("utf8")).toBe("# body\n");
+  expect(entries.get("caveman/README.md")?.toString("utf8")).toBe("# readme\n");
+  expect(entries.size, "every entry in the archive").toBe(2);
+});
 
 test("a stale host fails a plain run, drift only fails under --strict", () => {
   const drifted = makeCard([{ ...clean, drift: 3, ceiling: 3 }], [host]);

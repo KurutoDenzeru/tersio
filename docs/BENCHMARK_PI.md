@@ -6,6 +6,7 @@
 - Caveman release 4.0.1 and pstack pin `a968159`: the upstream bodies this run measured
 - Repository and commit: `tersio` at `72b6716`. Prose, code, and command sessions ran in an empty directory. The agentic surface ran in a copy with 328 tracked files and one injected failing test.
 - Runs (N), date, surface: 5 per prompt on prose and code, 5 per case on the command surface, 4 on agentic, 2026-10-20
+- Sessions: one per run, a fresh session for each turn. This run predates the guide's one-session-per-case rule.
 - Path: saved defaults for the token protocol, slash commands for the command surface. The two are reported separately.
 
 Measured with `pi -p --no-session --mode json`, which reports `usage` per turn. Each run is a fresh

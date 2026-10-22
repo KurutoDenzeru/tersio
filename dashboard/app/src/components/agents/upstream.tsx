@@ -203,11 +203,25 @@ const SOURCE_COLUMNS: Array<Column<SourceRow>> = [
     ),
   },
   {
+    key: "upstream",
+    header: "Upstream",
+    sort: (r) => r.upstream,
+    render: (r) => (
+      <span className="mono text-[11px] text-dim" title={`The upstream head this source reads at: ${r.upstream}`}>
+        {r.upstream.length > 12 ? r.upstream.slice(0, 7) : r.upstream}
+      </span>
+    ),
+  },
+  {
     key: "matched",
     header: "Matched",
     align: "right",
     sort: (r) => r.matched / Math.max(1, r.tracked),
-    render: (r) => <MatchCell value={r.matched} max={r.tracked} />,
+    render: (r) => (
+      <span title={`How this row proves a match: ${r.kind}`}>
+        <MatchCell value={r.matched} max={r.tracked} />
+      </span>
+    ),
   },
   {
     key: "uncarried",

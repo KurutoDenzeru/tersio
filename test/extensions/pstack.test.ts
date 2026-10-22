@@ -27,7 +27,7 @@ test("the tree ships a leaf per principle, a file per playbook, and every routed
   const skills = tree.filter((f) => /^skills\/[^/]+\/SKILL\.md$/.test(rel(f)));
   expect(principles.length, "one leaf per upstream principle entry").toBe(24);
   expect(playbooks.length, "one file per upstream playbook").toBe(23);
-  expect(skills.length, "the skills the index and playbooks route to").toBe(17);
+  expect(skills.length, "the skills the index and playbooks route to").toBe(18);
   expect(read(path.join(PSTACK, "references", "bugbot-triage.md")).length).toBeGreaterThan(1000);
 });
 

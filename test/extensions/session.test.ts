@@ -239,6 +239,20 @@ test("the bash hook leaves a command alone when rtk's OpenCode hook refuses the 
   });
 });
 
+// An rtk that predates the OpenCode hook answers nothing to it, and the plain rewrite still stands.
+test("the bash hook falls back to the plain rewrite on an rtk without the OpenCode hook", async () => {
+  const posix = "if [ \"$1\" = \"rewrite\" ]; then echo \"rtk plain $2\"; exit 0; fi\necho 'unknown subcommand: hook'\nexit 101";
+  const windows = "if \"%~1\"==\"rewrite\" (echo rtk plain %~2 & exit /b 0)\necho unknown subcommand: hook\nexit /b 101";
+  await withFakeRtk(`#!/bin/sh\n${posix}\n`, windows, async () => {
+    const { ctx, hooks, store } = fakeCtx();
+    await setup(ctx);
+    store.set("entries:ses-on", [{ type: "custom", customType: "rtk-mode", data: { enabled: true } }]);
+    const event = { tool: "bash", sessionID: "ses-on", input: { command: "git status" } };
+    await fire(hooks, "execute.before", event);
+    expect(event.input.command).toBe("rtk plain git status");
+  });
+});
+
 // The after-hook is the only surface for built-in grep and glob output, and it must mutate in place.
 test("the after hook condenses a large grep result and leaves the rest untouched", async () => {
   const big = `src/a.ts:1:${"a line of grep output \n".repeat(120)}`;

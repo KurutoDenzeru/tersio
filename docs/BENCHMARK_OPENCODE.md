@@ -3,8 +3,10 @@
 - Agent: OpenCode 2.1.1
 - Model: `magpie/auto/deepseek-v4.1-flash`, thinking level default, temperature not reported by the harness
 - Tersio 2.25.9, RTK 1.0.1, Ponytail 5.3.2
+- Caveman release 4.0.1 and pstack pin `a968159`: the upstream bodies this run measured
 - Repository and commit: `tersio` at `72b6716`. Prose, code, and command sessions ran in an empty directory. The agentic surface ran in a copy with 328 tracked files and one injected failing test.
 - Runs (N), date, surface: 15 per case on prose, 15 per case on code, 3 per case on agentic, 5 per case on the command surface, 2026-10-21
+- Sessions: one per run, a fresh session for each turn. This run predates the guide's one-session-per-case rule.
 - Path: saved defaults for the token protocol, slash commands for the command surface. The two are reported separately.
 
 Measured with `opencode run`, which reports `usage` per turn. Every run was a fresh session with its own

@@ -327,9 +327,27 @@ function rewriteCommand(command: string, cwd?: string): Promise<string | null> {
       const parsed = JSON.parse(String(stdout)) as { command?: unknown };
       const rewritten = parsed.command;
       resolve(typeof rewritten === 'string' && rewritten !== command ? rewritten : null);
+      return;
     } catch {
-      resolve(null);
+      // An rtk without the OpenCode hook answers nothing; the plain rewrite still stands.
     }
+    plainRewrite(bin, command, cwd).then(resolve, () => resolve(null));
+  });
+  return promise;
+}
+
+/** The plain rewrite, for an rtk that predates the OpenCode hook. The exit code is the contract. */
+function plainRewrite(bin: string, command: string, cwd?: string): Promise<string | null> {
+  const { promise, resolve } = Promise.withResolvers<string | null>();
+  const shim = shimCommand(bin, ['rewrite', command]);
+  execFile(shim.cmd, shim.args, { timeout: 5000, cwd }, (error, stdout) => {
+    const err = error as { killed?: boolean; signal?: unknown; code?: unknown } | null;
+    if (err && (err.killed || err.signal)) { resolve(null); return; }
+    const code = typeof err?.code === 'number' ? err.code : 0;
+    // Exit 1 is the only "no equivalent" answer, so anything else with output rewrites.
+    if (code === 1) { resolve(null); return; }
+    const out = String(stdout).trim();
+    resolve(out && out !== command && (code === 0 || code === 3) ? out : null);
   });
   return promise;
 }

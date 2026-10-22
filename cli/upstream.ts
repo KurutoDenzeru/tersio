@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { existsSync, promises as fs, readdirSync } from 'node:fs';
 import path from 'node:path';
+import { inflateRawSync } from 'node:zlib';
 import { PACKAGE_VERSION, args, flagValue, parseJsonObject } from './common.ts';
 import { newerThan } from './update.ts';
 import { readState } from '../extensions/shared/state.ts';
@@ -15,6 +16,7 @@ import {
   RTK_REPO,
   fetchJson,
   httpsGet,
+  httpsGetBuffer,
   normalizeRtkVersion,
   piAgentDir,
   readTextIfExists,
@@ -483,9 +485,69 @@ function noteOf(failure: FetchFailure | null, gaps: string[], moved: string[]): 
   return '';
 }
 
+/** The end-of-central-directory record, read from the tail of the archive. */
+const ZIP_EOCD = 0x06054b50;
+const ZIP_CENTRAL = 0x02014b50;
+
+/** Every file in a zip archive, by its path inside it. Deflate and stored entries are read. */
+export function zipEntries(archive: Buffer): Map<string, Buffer> {
+  const out = new Map<string, Buffer>();
+  let eocd = -1;
+  for (let i = archive.length - 22; i >= 0 && i > archive.length - 22 - 0xffff; i--) {
+    if (archive.readUInt32LE(i) === ZIP_EOCD) { eocd = i; break; }
+  }
+  if (eocd < 0) return out;
+  const count = archive.readUInt16LE(eocd + 10);
+  let at = archive.readUInt32LE(eocd + 16);
+  for (let i = 0; i < count; i++) {
+    if (at + 46 > archive.length || archive.readUInt32LE(at) !== ZIP_CENTRAL) break;
+    const method = archive.readUInt16LE(at + 10);
+    const compressedSize = archive.readUInt32LE(at + 20);
+    const nameLength = archive.readUInt16LE(at + 28);
+    const extraLength = archive.readUInt16LE(at + 30);
+    const commentLength = archive.readUInt16LE(at + 32);
+    const local = archive.readUInt32LE(at + 42);
+    const name = archive.toString('utf8', at + 46, at + 46 + nameLength);
+    at += 46 + nameLength + extraLength + commentLength;
+    if (name.endsWith('/')) continue;
+    const localNameLength = archive.readUInt16LE(local + 26);
+    const localExtraLength = archive.readUInt16LE(local + 28);
+    const start = local + 30 + localNameLength + localExtraLength;
+    const data = archive.subarray(start, start + compressedSize);
+    out.set(name, method === 0 ? Buffer.from(data) : inflateRawSync(data));
+  }
+  return out;
+}
+
+/** The Caveman body as the pinned release ships it, read from the release asset and not the repository. */
+async function cavemanAssetBody(): Promise<{ text: string | null; failure: FetchFailure | null }> {
+  try {
+    const token = githubToken();
+    const release = await fetchJson<{ assets?: Array<{ name?: string; browser_download_url?: string }> }>(
+      `${GH}/repos/${CAVEMAN_REPO}/releases/tags/${CAVEMAN_PIN}`,
+      token ? { headers: { Authorization: `Bearer ${token}` } } : {},
+    );
+    const asset = release.assets?.find((a) => a.name === 'caveman.skill');
+    if (!asset?.browser_download_url) return { text: null, failure: { status: 'error', reason: `the ${CAVEMAN_PIN} release ships no caveman.skill` } };
+    const entries = zipEntries(await httpsGetBuffer(asset.browser_download_url));
+    const body = entries.get('caveman/SKILL.md');
+    if (!body) return { text: null, failure: { status: 'error', reason: 'the caveman.skill asset carries no caveman/SKILL.md' } };
+    return { text: body.toString('utf8'), failure: null };
+  } catch (e) {
+    return { text: null, failure: classifyFetch(e, 'the Caveman release asset') };
+  }
+}
+
+/** What the release asset says about the bundled body: a gap, or null when the body is the one the release ships. */
+export function cavemanAssetGap(assetText: string, local: string | null): string | null {
+  if (local === null) return 'caveman/rule.md is missing locally';
+  if (gitBlobSha(local) !== gitBlobSha(adaptCavemanFull(assetText))) return 'caveman/rule.md differs from the release asset';
+  return null;
+}
+
 /** Caveman: three bodies track upstream, three are Tersio's own. Drift is a changed upstream body. */
 async function checkCaveman(): Promise<SourceRow> {
-  const [pinned, head] = await Promise.all([treeOf(CAVEMAN_REPO, CAVEMAN_PIN), treeOf(CAVEMAN_REPO, 'HEAD')]);
+  const [pinned, head, asset] = await Promise.all([treeOf(CAVEMAN_REPO, CAVEMAN_PIN), treeOf(CAVEMAN_REPO, 'HEAD'), cavemanAssetBody()]);
   const gaps: string[] = [];
   const bodies = await Promise.all(CAVEMAN.files.map(async (file) => {
     const at = await rawAt(`${RAW}/${CAVEMAN_REPO}/${CAVEMAN_PIN}/${file.upstream}`, CAVEMAN_PIN);
@@ -494,6 +556,11 @@ async function checkCaveman(): Promise<SourceRow> {
     if (local === null) return { failure: null, why: `${file.local} is missing locally` };
     const expected = file.adapt ? file.adapt(at.text) : at.text;
     if (gitBlobSha(local) !== gitBlobSha(expected)) return { failure: null, why: `${file.local} differs from the pin` };
+    // The full body also has to be the one the release ships, so a mutated archive cannot read clean.
+    if (file.local === 'caveman/rule.md' && asset.text !== null) {
+      const gap = cavemanAssetGap(asset.text, local);
+      if (gap) return { failure: null, why: gap };
+    }
     return { failure: null, why: null };
   }));
   let matched = 0;
@@ -501,11 +568,12 @@ async function checkCaveman(): Promise<SourceRow> {
     if (body.why === null) matched++;
     else gaps.push(body.why);
   }
+  if (asset.text === null) gaps.push(asset.failure?.reason ?? 'the caveman.skill asset could not be read');
   for (const local of CAVEMAN.localOnly) {
     if ((await readTextIfExists(sourcePath(local))) !== null) matched++;
     else gaps.push(`${local} is missing locally`);
   }
-  const failure = bodies.find((b) => b.failure)?.failure ?? pinned.failure ?? head.failure;
+  const failure = bodies.find((b) => b.failure)?.failure ?? pinned.failure ?? head.failure ?? asset.failure;
   const drift = driftOf(pinned, head, CAVEMAN.files.map((f) => f.upstream));
   const uncarried = uncarriedOf(pinned, head, CAVEMAN.files.map((f) => f.upstream), skillRoot(CAVEMAN.files.map((f) => f.upstream)));
   const release = await latestRelease(CAVEMAN_REPO);

@@ -199,6 +199,27 @@ export function httpsGet(url: string, opts: HttpOptions = {}): Promise<string> {
   return promise;
 }
 
+export function httpsGetBuffer(url: string, opts: HttpOptions = {}): Promise<Buffer> {
+  const { promise, resolve, reject } = withResolvers<Buffer>();
+  const maxRedirects = opts.maxRedirects ?? 5;
+  const req = https.get(url, { headers: { 'User-Agent': 'tersio', Accept: '*/*', ...opts.headers }, signal: opts.signal }, (res) => {
+    const next = redirectNext(res, url);
+    if (next) {
+      if (maxRedirects <= 0) { res.resume(); reject(new Error(`Too many redirects downloading ${url}`)); return; }
+      res.resume();
+      resolve(httpsGetBuffer(next, { ...opts, maxRedirects: maxRedirects - 1 }));
+      return;
+    }
+    if (res.statusCode !== 200) { res.resume(); reject(new Error(`HTTP ${res.statusCode} for ${url}`)); return; }
+    const chunks: Buffer[] = [];
+    res.on('data', (chunk: Buffer) => { chunks.push(chunk); });
+    res.on('end', () => resolve(Buffer.concat(chunks)));
+  });
+  req.on('error', reject);
+  req.setTimeout(30000, () => req.destroy(new Error(`Timeout fetching ${url}`)));
+  return promise;
+}
+
 export function httpsDownload(url: string, dest: string, opts: HttpOptions = {}): Promise<void> {
   const { promise, resolve, reject } = withResolvers<void>();
   const maxRedirects = opts.maxRedirects ?? 5;
