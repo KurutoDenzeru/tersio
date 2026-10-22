@@ -26,6 +26,18 @@
   "exports": {
     "./server": "./dist/extensions/server.js"
   },
+  "pi": {
+    "extensions": [
+      "./extensions/caveman/index.ts",
+      "./extensions/pstack/index.ts",
+      "./extensions/rtk/session.ts",
+      "./extensions/rtk/filter.ts",
+      "./extensions/timing/index.ts",
+      "./extensions/combo/index.ts",
+      "./extensions/commands/index.ts",
+      "./extensions/updater/index.ts"
+    ]
+  },
   "omp": {
     "name": "Tersio",
     "description": "Toggleable Caveman/RTK/Ponytail session modes with Combo presets, plus the opt-in pstack rigor mode",

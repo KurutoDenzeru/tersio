@@ -88,6 +88,18 @@ test("package exports a loadable opencode server entrypoint", () => {
   expect(existsSync(path.join(root, tracked)), `${tracked} must exist for a fresh checkout`).toBe(true);
 });
 
+// `pi` manifest (prevents fallback to `extensions/*.ts` -> error "does not export a valid factory function")
+test("package declares a pi manifest that omits the OpenCode entry", () => {
+  const pkg = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")) as {
+    pi?: { extensions?: string[] };
+  };
+  const entries = pkg.pi?.extensions;
+  expect(entries, "pi.extensions must exist so pi does not conventionally discover extensions/").toBeDefined();
+  expect(entries, "the OpenCode entry must not be a pi extension").not.toContain("./extensions/server.ts");
+  const missing = (entries as string[]).filter((e) => !existsSync(path.join(root, e.slice(2))));
+  expect(missing, `declared pi extensions must exist:\n${missing.join("\n")}`).toEqual([]);
+});
+
 // Recharts animates in JS on mount, so a byte comparison of two captures drifts; the entrance stays off.
 test("no dashboard chart re-enables a recharts entrance animation", () => {
   const offenders: string[] = [];
