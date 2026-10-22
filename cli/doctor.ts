@@ -416,7 +416,8 @@ const CAVEMAN_BODIES = ['rule.md', 'rule-lite.md', 'rule-megacave-lite.md', 'rul
 async function ponytailLatestGap(local: string): Promise<string | null> {
   if (!local) return null;
   try {
-    const meta = await fetchJson<{ version?: string }>('https://registry.npmjs.org/@dietrichgebert/ponytail/latest');
+    // A short budget on purpose: this row is advisory, and the doctor has a spawn budget above it.
+    const meta = await fetchJson<{ version?: string }>('https://registry.npmjs.org/@dietrichgebert/ponytail/latest', { timeout: 2500 });
     const remote = meta?.version;
     if (!remote || remote === local) return null;
     return `${local} installed, ${remote} is the latest`;

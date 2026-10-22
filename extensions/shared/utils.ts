@@ -12,6 +12,8 @@ export interface HttpOptions {
   signal?: AbortSignal;
   // Extra request headers; a GitHub token lifts the unauthenticated rate limit.
   headers?: Record<string, string>;
+  // Whole-request budget. A caller with a deadline of its own, such as the doctor's spawn budget, sets this.
+  timeout?: number;
 }
 
 // Promise.withResolvers is Node 22+; the package supports Node 18+.
@@ -195,7 +197,7 @@ export function httpsGet(url: string, opts: HttpOptions = {}): Promise<string> {
     res.on('end', () => resolve(body));
   });
   req.on('error', reject);
-  req.setTimeout(30000, () => req.destroy(new Error(`Timeout fetching ${url}`)));
+  req.setTimeout(opts.timeout ?? 30000, () => req.destroy(new Error(`Timeout fetching ${url}`)));
   return promise;
 }
 
@@ -216,7 +218,7 @@ export function httpsGetBuffer(url: string, opts: HttpOptions = {}): Promise<Buf
     res.on('end', () => resolve(Buffer.concat(chunks)));
   });
   req.on('error', reject);
-  req.setTimeout(30000, () => req.destroy(new Error(`Timeout fetching ${url}`)));
+  req.setTimeout(opts.timeout ?? 30000, () => req.destroy(new Error(`Timeout fetching ${url}`)));
   return promise;
 }
 
