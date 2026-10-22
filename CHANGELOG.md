@@ -1,3 +1,22 @@
+## v2.25.11
+
+### Changed
+ - A benchmark runs in one session. The guide asked for a fresh session per run, and a full run made hundreds of entries in the agent's session list. The whole benchmark now opens one session and clears the context between turns, so each turn starts from the same empty context and the list holds one entry. One session means one mode setting, so every case sets its mode with a slash command and the saved-default path takes a session of its own. The base case has to be measured the same way, and the result files say how their own runs were run.
+ - The pstack tree carries the TypeScript skill. `typescript-best-practices` is the one upstream skill that needs no slash command and no Cursor tool, so it ships with its patterns. The mode body names it, because upstream attaches it to a file path and this port has no path trigger.
+ - The eligible list matches the verbs the rewrite covers. `head`, `tail` and `eslint` join it, because the rewrite turns them into `rtk read` and `rtk lint`, and the guidance names the same set. The cached list now carries the probe set it came from, so a build that changes the probes re-derives instead of serving the old list.
+ - The guidance names the proxy daemon to the hosts that can use it. Only omp can point its model traffic at `rtk-proxy`, so only omp hears `rtk llm-proxy setup`, and `rtk pipeline show` joins the pipeline commands the prompt lists.
+
+### Fixed
+ - The doctor answers within a test's budget. Its Ponytail version row asked the npm registry with a 30s timeout, so a hanging registry made the whole check outlive the 15s a test allows and return no status at all. The row now gives that one request 2.5s, and the shared fetch takes a per-call timeout.
+ - The Caveman row reads the release asset. The scorecard compared the bundled body against the repository at the pinned tag, so a release whose archive disagreed with its tag would read clean. It reads the `caveman.skill` asset now, unzips it, and compares the body in it. A body that differs from the asset fails the gate, and an unreachable asset reads as unmeasured, never as clean.
+ - The OpenCode rewrite respects OpenCode's own permission rules. rtk ships an OpenCode plugin, and its hook answers `{}` when a rewrite would change what those rules decide; Tersio's OpenCode path called the plain rewrite, so a denied command could become an allowed one. It calls `rtk hook opencode` now, in the session's directory, and honours that answer.
+ - The add-on update says what it did. The per-file report was computed and dropped, so the release a Caveman body came from never reached the user; the report is notified now, and a body that was already current names the release it was checked against. The release feed also uses the environment's token, so the update works on a rate-limited machine.
+ - The update check no longer waits on npm alone. The registry's `latest` tag and the GitHub release feed are read side by side, and the newer version wins, so a release that is tagged but not yet on npm is still offered. A tie goes to npm, the plan names the source when the release feed is the one that won, and the About pane says which feed it heard from.
+ - The upstream scorecard reads what the port carries. The Caveman pin is a release instead of a bare commit, the vendored Ponytail copy is checked against the package it declares, a new upstream skill directory is reported instead of hidden, and a stale host row names the command that repairs it.
+ - A Caveman body now names the version it is. The install writes this build's pinned bodies, the updater pulls a newer published release instead of the moving tip, and the release is recorded, so the doctor tells a newer upstream body from a stale install.
+ - The benchmark files state their units. The level-body table carries bytes and characters, the run counts match the tables, the guide names the fixture the result files used, and the result files record the Caveman release and the pstack pin.
+ - The Windows test budget for the 1 MB session table covers a loaded runner. The same test measured 60s on one Windows run and 300s on another, and the 180s budget failed the second.
+
 ## v2.25.10
 
 ### Fixed

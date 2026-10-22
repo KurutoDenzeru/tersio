@@ -301,7 +301,6 @@ async function fixPonytail(pluginsDir: string): Promise<void> {
   await fs.mkdir(pluginsDir, { recursive: true });
   const pkgPath = path.join(pluginsDir, 'package.json');
   const pkg = await readPluginsPackage(pkgPath);
-  // The exact version, always.
   pkg.dependencies[PACKAGE_NAME] = PACKAGE_VERSION;
   const hadEntry = PONYTAIL_PKG in pkg.dependencies;
   delete pkg.dependencies[PONYTAIL_PKG];

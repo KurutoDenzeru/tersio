@@ -414,7 +414,7 @@ test("a registered plugin writes the plugin tree and drops the agent copies", ()
   }
 });
 
-// The plugin package and this CLI are one build, or the tree holds two releases and fails to load.
+// One build, or the tree holds two releases and fails to load.
 test("the plugin package is pinned to this build, and a skewed tree is rewritten", () => {
   const home = tempHome();
   try {
@@ -840,9 +840,8 @@ test.runIf(hasSqlite())("a zero-token message is skipped and a missing db is a n
 
 // Output past 1MB was silently dropped.
 test.runIf(hasSqlite())("a session_message table past 1MB still syncs and reads back", {
-  // A >1MB row through the store takes ~56s on the Windows runner against ~15s on Linux; the loose
-  // budget is the platform, and the assertion still checks bytes, not timing.
-  timeout: isWindows() ? 180000 : 30000,
+  // The store takes ~60s on a Windows runner and ~300s under load, so the budget is loose.
+  timeout: isWindows() ? 420000 : 30000,
 }, () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-oc-db-big-"));
   try {

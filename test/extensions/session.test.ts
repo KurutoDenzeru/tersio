@@ -213,9 +213,9 @@ test("opencode sessions restore modes independently", async () => {
   }
 });
 
-// rtk ships no OpenCode plugin of its own, so this hook is the whole integration.
+// rtk ships an OpenCode plugin of its own. Tersio does the rewrite here instead, so the host loads one plugin.
 test("the bash hook rewrites a command through the resolved rtk binary", async () => {
-  await withFakeRtk("#!/bin/sh\necho \"rtk compact $2\"\n", "echo rtk compact %~2", async () => {
+  await withFakeRtk("#!/bin/sh\nprintf '{\"command\":\"rtk compact %s\"}\\n' \"$3\"\n", "echo {\"command\":\"rtk compact %~3\"}", async () => {
     const { ctx, hooks, store } = fakeCtx();
     await setup(ctx);
     // The gate reads this entry, so state it rather than inherit a sibling test's default.
@@ -223,6 +223,33 @@ test("the bash hook rewrites a command through the resolved rtk binary", async (
     const event = { tool: "bash", sessionID: "ses-on", input: { command: "git status" } };
     await fire(hooks, "execute.before", event);
     expect(event.input.command).toBe("rtk compact git status");
+  });
+});
+
+// rtk's OpenCode hook answers {} when the rewrite would change what OpenCode's own permission rules
+// decide, so a denied command stays denied. The hook must honour that answer.
+test("the bash hook leaves a command alone when rtk's OpenCode hook refuses the rewrite", async () => {
+  await withFakeRtk("#!/bin/sh\nprintf '{}\\n'\n", "echo {}", async () => {
+    const { ctx, hooks, store } = fakeCtx();
+    await setup(ctx);
+    store.set("entries:ses-on", [{ type: "custom", customType: "rtk-mode", data: { enabled: true } }]);
+    const event = { tool: "bash", sessionID: "ses-on", input: { command: "git push --force" } };
+    await fire(hooks, "execute.before", event);
+    expect(event.input.command).toBe("git push --force");
+  });
+});
+
+// An rtk that predates the OpenCode hook answers nothing to it, and the plain rewrite still stands.
+test("the bash hook falls back to the plain rewrite on an rtk without the OpenCode hook", async () => {
+  const posix = "if [ \"$1\" = \"rewrite\" ]; then echo \"rtk plain $2\"; exit 0; fi\necho 'unknown subcommand: hook'\nexit 101";
+  const windows = "if \"%~1\"==\"rewrite\" (echo rtk plain %~2 & exit /b 0)\necho unknown subcommand: hook\nexit /b 101";
+  await withFakeRtk(`#!/bin/sh\n${posix}\n`, windows, async () => {
+    const { ctx, hooks, store } = fakeCtx();
+    await setup(ctx);
+    store.set("entries:ses-on", [{ type: "custom", customType: "rtk-mode", data: { enabled: true } }]);
+    const event = { tool: "bash", sessionID: "ses-on", input: { command: "git status" } };
+    await fire(hooks, "execute.before", event);
+    expect(event.input.command).toBe("rtk plain git status");
   });
 });
 
@@ -788,6 +815,22 @@ test("caveman and rtk reach a subagent on the real omp prompt", async () => {
     .toMatch(/Caveman ultra active/);
   expect(instruction(await inject(instantiate(rtkSessionExtension), REAL_OMP_SUBAGENT_PROMPT)))
     .toMatch(/RTK guidance active/);
+});
+
+test("only the omp host is told about the rtk proxy daemon", async () => {
+  resetSharedComboState();
+  const parent = instantiate(comboToggleExtension);
+  await command(parent, "combo", "max", context([], true));
+
+  // The proxy daemon can only carry omp's model traffic, so only omp hears about it.
+  expect(instruction(await inject(instantiate(rtkSessionExtension), MARKED_PROMPT))).toMatch(/rtk llm-proxy setup/);
+
+  const piHost = instantiate(rtkSessionExtension) as TestPi & { hostId?: string };
+  piHost.hostId = "pi";
+  const piResult = (await piHost.handlers.get("before_agent_start")!({ systemPrompt: MARKED_PROMPT }, undefined)) as { systemPrompt?: unknown };
+  const piText = typeof piResult?.systemPrompt === "string" ? piResult.systemPrompt : "";
+  expect(piText).toMatch(/RTK guidance active/);
+  expect(piText).not.toMatch(/llm-proxy/);
 });
 
 test("a parent session is not mistaken for a subagent", async () => {

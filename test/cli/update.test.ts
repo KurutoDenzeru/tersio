@@ -5,7 +5,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { cliEnv } from "../helpers/env.ts";
-import { registryUrl } from "../helpers/registry.ts";
+import { registryUrl, releasesUrl } from "../helpers/registry.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -107,6 +107,8 @@ test("parseChecksum returns null for malformed content and different asset", () 
 
 /** A registry that cannot answer, so the target falls back to `@latest` with nothing on the wire. */
 const deadRegistry = { TERSIO_UPDATE_URL: "http://127.0.0.1:1/latest" };
+/** A release feed that cannot answer, so the registry alone decides the version. */
+const deadReleases = { TERSIO_RELEASES_URL: "http://127.0.0.1:1/releases/latest" };
 
 test("/ai-addons update ponytail reports the bundled copy without touching npm", async () => {
   const execCalls: { cmd: string; args: string[]; opts: { cwd: string } }[] = [];
@@ -149,20 +151,23 @@ test("/ai-addons update ponytail without host exec still avoids npm", async () =
 const updateJs = pathToFileURL(path.join(root, "dist", "cli", "update.js")).href;
 
 const PROBE = "import('" + updateJs + "').then(async (m) => {"
+  + " const fs = await import('node:fs');"
   + " const out = { cached: await m.checkForUpdate(), forced: await m.checkForUpdate(true) };"
+  + " const statePath = process.env.HOME + '/.tersio/state.json';"
+  + " out.state = fs.existsSync(statePath) ? JSON.parse(fs.readFileSync(statePath, 'utf8')) : null;"
   + " console.log('TERSIO-PROBE:' + JSON.stringify(out));"
   + "}).catch((e) => { console.error('PROBE-FAIL:' + e.message); process.exit(1); });";
 
 type Env = Record<string, string | undefined>;
 
-function setup(registryUrl: string, cache: unknown): { dir: string; env: Env } {
+function setup(registryUrl: string, cache: unknown, releases = deadReleases.TERSIO_RELEASES_URL): { dir: string; env: Env } {
   const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-update-check-"));
   const home = path.join(dir, "home");
   mkdirSync(path.join(home, ".omp", "plugins"), { recursive: true });
   if (cache !== null) {
     writeFileSync(path.join(home, ".omp", "plugins", "tersio-update-check.json"), JSON.stringify(cache), "utf8");
   }
-  const env: Env = cliEnv(home, { TERSIO_UPDATE_URL: registryUrl });
+  const env: Env = cliEnv(home, { TERSIO_UPDATE_URL: registryUrl, TERSIO_RELEASES_URL: releases });
   return { dir, env };
 }
 
@@ -191,6 +196,49 @@ test("unreachable registry reports unknown, never latest", () => {
     const out = probe(env);
     expect(out.cached).toBe("unknown");
     expect(out.forced).toBe("unknown");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/** The source and the registry tag the probe's state recorded, read through a guard. */
+function probeSources(out: Record<string, unknown>): { source: string | null; npm: string | null } {
+  const state = out.state;
+  const check = state && typeof state === "object" && "updateCheck" in state ? state.updateCheck : null;
+  if (!check || typeof check !== "object") return { source: null, npm: null };
+  const source = "source" in check && typeof check.source === "string" ? check.source : null;
+  const npm = "npm" in check && typeof check.npm === "string" ? check.npm : null;
+  return { source, npm };
+}
+
+test("the release feed wins when it names a newer version than the registry", () => {
+  const { dir, env } = setup(registryUrl("2.8.0"), null, releasesUrl("9.9.9"));
+  try {
+    const out = probe(env);
+    expect(out.forced).toBe("9.9.9");
+    expect(probeSources(out)).toEqual({ source: "github", npm: "2.8.0" });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("the registry wins when it names the newer version", () => {
+  const { dir, env } = setup(registryUrl("9.9.9"), null, releasesUrl("2.8.0"));
+  try {
+    const out = probe(env);
+    expect(out.forced).toBe("9.9.9");
+    expect(probeSources(out)).toEqual({ source: "npm", npm: "9.9.9" });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("the release feed answers when the registry does not", () => {
+  const { dir, env } = setup(deadRegistry.TERSIO_UPDATE_URL, null, releasesUrl("9.9.9"));
+  try {
+    const out = probe(env);
+    expect(out.forced).toBe("9.9.9");
+    expect(probeSources(out)).toEqual({ source: "github", npm: null });
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -227,6 +275,7 @@ test("update refreshes the globally installed CLI before delegating", () => {
           ...deadPricesEnv(),
           // A newer release is what makes the plan stale, which is what this test is about.
           TERSIO_UPDATE_URL: registryUrl("99.0.0"),
+          ...deadReleases,
           PATH: `${fakeBin}${path.delimiter}${process.env.PATH || ""}`,
         },
         timeout: 10000,
@@ -264,6 +313,7 @@ test("update dry-run previews the global CLI refresh without running npm -g", ()
         env: {
           ...process.env,
           ...deadRegistry,
+          ...deadReleases,
           PATH: `${fakeBin}${path.delimiter}${process.env.PATH || ""}`,
         },
         timeout: 10000,
@@ -301,6 +351,7 @@ test("update delegates to the latest package non-interactively", () => {
         env: {
           ...process.env,
           ...deadRegistry,
+          ...deadReleases,
           PATH: `${fakeBin}${path.delimiter}${process.env.PATH || ""}`,
         },
         timeout: 10000,
@@ -342,6 +393,7 @@ test("update aborts before the global install when the payload fails its smoke c
           ...process.env,
           ...deadPricesEnv(),
           ...deadRegistry,
+          ...deadReleases,
           PATH: `${fakeBin}${path.delimiter}${process.env.PATH || ""}`,
           HOME: home,
         },
@@ -381,6 +433,7 @@ test("update pins the resolved version instead of trusting @latest", () => {
         env: {
           ...process.env,
           TERSIO_UPDATE_URL: registryUrl("9.9.9"),
+          ...deadReleases,
           PATH: `${fakeBin}${path.delimiter}${process.env.PATH || ""}`,
           HOME: home,
         },

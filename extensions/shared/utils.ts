@@ -12,6 +12,8 @@ export interface HttpOptions {
   signal?: AbortSignal;
   // Extra request headers; a GitHub token lifts the unauthenticated rate limit.
   headers?: Record<string, string>;
+  // Whole-request budget. A caller with a deadline of its own, such as the doctor's spawn budget, sets this.
+  timeout?: number;
 }
 
 // Promise.withResolvers is Node 22+; the package supports Node 18+.
@@ -53,9 +55,30 @@ export function rtkDirs(): { data: string; config: string } {
 /** The RTK project, named once: the release feed and the release page both read it. */
 export const RTK_REPO = 'rtk-ai/rtk';
 export const RTK_RELEASE_API = `https://api.github.com/repos/${RTK_REPO}/releases/latest`;
-export const CAVEMAN_REMOTE_ULTRA = 'https://raw.githubusercontent.com/JuliusBrussee/caveman/main/skills/ultracave/SKILL.md';
-export const CAVEMAN_REMOTE_MEGACAVE = 'https://raw.githubusercontent.com/JuliusBrussee/caveman/main/skills/megacave/SKILL.md';
-export const CAVEMAN_REMOTE_FULL = 'https://raw.githubusercontent.com/JuliusBrussee/caveman/main/skills/caveman/SKILL.md';
+/** Caveman's bodies, as paths in the repository. A body is fetched at a release tag, never at the tip. */
+export const CAVEMAN_BODY_PATHS = {
+  full: 'skills/caveman/SKILL.md',
+  ultra: 'skills/ultracave/SKILL.md',
+  megacave: 'skills/megacave/SKILL.md',
+} as const;
+export const CAVEMAN_RAW = 'https://raw.githubusercontent.com/JuliusBrussee/caveman';
+export const CAVEMAN_RELEASES = 'https://api.github.com/repos/JuliusBrussee/caveman/releases/latest';
+
+/** The newest published Caveman release, so a body comes from an immutable tag. */
+export async function cavemanRelease(): Promise<string | null> {
+  try {
+    // The release feed is rate-limited without a token, so the environment's token is used when there is one.
+    const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
+    const json = await fetchJson<{ tag_name?: string }>(CAVEMAN_RELEASES, token ? { headers: { Authorization: `Bearer ${token}` } } : {});
+    return json.tag_name ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** This project, named once: the update check reads its releases beside the registry's tag. */
+export const TERSIO_REPO = 'KurutoDenzeru/tersio';
+export const TERSIO_RELEASE_API = `https://api.github.com/repos/${TERSIO_REPO}/releases/latest`;
 
 // A fetch that returns an error page or a truncated body must not reach the extension tree.
 export function ruleBodyProblem(text: string): string | null {
@@ -174,7 +197,28 @@ export function httpsGet(url: string, opts: HttpOptions = {}): Promise<string> {
     res.on('end', () => resolve(body));
   });
   req.on('error', reject);
-  req.setTimeout(30000, () => req.destroy(new Error(`Timeout fetching ${url}`)));
+  req.setTimeout(opts.timeout ?? 30000, () => req.destroy(new Error(`Timeout fetching ${url}`)));
+  return promise;
+}
+
+export function httpsGetBuffer(url: string, opts: HttpOptions = {}): Promise<Buffer> {
+  const { promise, resolve, reject } = withResolvers<Buffer>();
+  const maxRedirects = opts.maxRedirects ?? 5;
+  const req = https.get(url, { headers: { 'User-Agent': 'tersio', Accept: '*/*', ...opts.headers }, signal: opts.signal }, (res) => {
+    const next = redirectNext(res, url);
+    if (next) {
+      if (maxRedirects <= 0) { res.resume(); reject(new Error(`Too many redirects downloading ${url}`)); return; }
+      res.resume();
+      resolve(httpsGetBuffer(next, { ...opts, maxRedirects: maxRedirects - 1 }));
+      return;
+    }
+    if (res.statusCode !== 200) { res.resume(); reject(new Error(`HTTP ${res.statusCode} for ${url}`)); return; }
+    const chunks: Buffer[] = [];
+    res.on('data', (chunk: Buffer) => { chunks.push(chunk); });
+    res.on('end', () => resolve(Buffer.concat(chunks)));
+  });
+  req.on('error', reject);
+  req.setTimeout(opts.timeout ?? 30000, () => req.destroy(new Error(`Timeout fetching ${url}`)));
   return promise;
 }
 

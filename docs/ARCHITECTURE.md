@@ -87,7 +87,7 @@ The status line names the same four modes with the same glyphs. Its order is the
 - **The order is registration order, not priority.** `package.json` loads caveman, pstack, rtk, then combo, and combo injects the Ponytail block. A host that loads the same files in another order appends in that order, and no mode reads another's block.
 - **caveman owns the voice.** It changes how a sentence reads, never what the work is.
 - **pstack owns the approach.** It picks the playbook and the verification, and it yields the voice to caveman and the change size to ponytail.
-- **rtk owns the tooling.** It rewrites a shell command and filters its output before the model sees it. It never edits a reply.
+- **rtk owns the tooling.** It rewrites a shell command and filters its output before the model sees it. It never edits a reply. On OpenCode the rewrite goes through `rtk hook opencode`, the same subcommand rtk's own OpenCode plugin calls, so a rewrite that would change what OpenCode's own permission rules decide is refused rather than applied.
 - **ponytail owns the size.** It caps the diff, and it never overrides pstack's verification. Last is not weakest: ponytail is the YAGNI gate, and it holds the final say on how much gets built.
 - **A conflict resolves inside the block text.** pstack's own precedence lines say so: the style mode wins on reply shape, and ponytail wins on how much changes.
 - **Every block is append-only.** A mode switch replaces its own block through `staleMarker`, so a `/combo max` mid-session never stacks two levels of the same rule.
@@ -190,20 +190,20 @@ flowchart LR
   VIEW --> NOTICE["persistent notice<br/>Update now · Remind me later · Skip"]
   VIEW --> PANE["About pane<br/>cadence, status, log"]
   TICK["timer, while a server runs"] --> DUE{"cadence due?"}
-  DUE -->|yes| CHECK["checkForUpdate(true)<br/>registry /latest"]
+  DUE -->|yes| CHECK["checkForUpdate(true)<br/>registry /latest + release feed"]
   CHECK --> STATE
   NOTICE --> APPLY["spawn: tersio update --yes"]
   APPLY --> LOG["child's stdout and stderr<br/>become the pane's log"]
 ```
 
-- **The check reads the registry's `latest` tag over HTTPS.** `npm view` cost a process spawn and a resolver walk for one string, so the check now costs one request, and a manual `Check now` lands in well under a second.
+- **The check reads two sources, not one.** The registry's `latest` tag and the GitHub release feed are fetched side by side, and the newer version wins. A tag can be pushed before npm serves it, so a check that read only npm missed releases that already existed. A tie goes to npm, because that version is the one an install can reach. The plan names the source when they disagree.
 - **The server owns the clock.** The page sends no timestamps: `dueIn` and `snoozeIn` arrive as durations, so a laptop waking from sleep cannot show a stale window, and the render calls no clock.
-- **The timer only exists while a dashboard runs.** Both timers are `unref`d, so they never hold the process open, and the cadence resumes on the next launch. A check stamps `lastCheck` even when the registry is unreachable, so an offline machine retries on its cadence rather than on every tick.
+- **The timer only exists while a dashboard runs.** Both timers are `unref`d, so they never hold the process open, and the cadence resumes on the next launch. A check stamps `lastCheck` even when no source answers, so an offline machine retries on its cadence rather than on every tick.
 - **Applying spawns this CLI's own update path**, `tersio update --yes`, as a child with both streams captured. The smoke check before an install, the global CLI refresh, and the add-on pass therefore stay in one place, and the child's output is what the pane prints. Nothing about the release is taken from the request body.
 - **`current` is read from the installed manifest, `running` from this process.** An install moves `current` while the old build keeps serving, so the pane can say a reload is what finishes the job, and the notice stops offering a release already on disk.
 - **The notice is one toast per concern**, keyed by id: a poll that finds the same release 60 times replaces the same toast instead of stacking 60.
 - **Skip is per release, snooze is per window.** Skipping retires the version named and nothing later; a snooze hides the notice for six hours and lapses on its own.
-- **Nothing installs without a click.** The cadence only asks the registry; the apply path is the notice's `Update now` or the pane's `Update to X`.
+- **Nothing installs without a click.** The cadence only asks the sources; the apply path is the notice's `Update now` or the pane's `Update to X`.
 
 ## Key invariants
 

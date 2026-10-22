@@ -1,6 +1,6 @@
 // OpenCode plugin entry: maps its plugin API onto the shared ExtensionApi the mode extensions consume.
 import { execFile } from 'node:child_process';
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Plugin } from '@opencode/plugin';
@@ -221,7 +221,9 @@ const plugin: Plugin.Plugin = {
       const sid = typeof (event as { sessionID?: unknown }).sessionID === 'string' ? (event as { sessionID: string }).sessionID : activeSid;
       if (sid !== undefined) await ensureSession(sid);
       if (!rtkActive(sid === undefined ? undefined : sessionEntriesOf(sid))) return;
-      const rewritten = await rewriteCommand(input.command);
+      // The session's directory is where OpenCode's own rules live, so the hook judges the rewrite there.
+      const cwd = existsSync(ctx.location.directory) ? ctx.location.directory : undefined;
+      const rewritten = await rewriteCommand(input.command, cwd);
       if (!rewritten || rewritten === input.command) return;
       const original = input.command;
       input.command = rewritten;
@@ -268,10 +270,6 @@ function execRtk(cmd: string, args: string[], opts?: { signal?: AbortSignal; tim
   return promise;
 }
 
-/** `rtk rewrite` exit codes: 0 rewrite found, 1 no equivalent, 3 advisory; the code is the contract. */
-const RTK_REWRITE_FOUND = 0;
-const RTK_REWRITE_ADVISORY = 3;
-
 /** The bundled ruleset's skill dirs, beside the plugin entry: OpenCode reads no node_modules from a plugin. */
 const PONYTAIL_BUNDLE_SKILLS = join(dirname(fileURLToPath(import.meta.url)), 'ponytail-bundle', 'skills');
 
@@ -313,22 +311,43 @@ function bundledSkills(): ReturnType<typeof parseSkillFile>[] {
   return out;
 }
 
-function rewriteCommand(command: string): Promise<string | null> {
+function rewriteCommand(command: string, cwd?: string): Promise<string | null> {
   const bin = resolveRtkBinary();
   if (!bin) return Promise.resolve(null);
   const { promise, resolve } = Promise.withResolvers<string | null>();
   // A `.cmd` shim cannot be spawned directly on Windows, so it runs through the shell.
-  const shim = shimCommand(bin, ['rewrite', command]);
-  execFile(shim.cmd, shim.args, { timeout: 5000 }, (error, stdout) => {
+  // rtk's OpenCode hook judges the rewrite against OpenCode's own permission rules and answers {} when
+  // the rewrite would change what those rules decide, so a deny never turns into an allow.
+  const shim = shimCommand(bin, ['hook', 'opencode', command]);
+  execFile(shim.cmd, shim.args, { timeout: 5000, cwd }, (error, stdout) => {
     // A kill or timeout means untrustworthy output; pass the command through.
+    const err = error as { killed?: boolean; signal?: unknown } | null;
+    if (err && (err.killed || err.signal)) { resolve(null); return; }
+    try {
+      const parsed = JSON.parse(String(stdout)) as { command?: unknown };
+      const rewritten = parsed.command;
+      resolve(typeof rewritten === 'string' && rewritten !== command ? rewritten : null);
+      return;
+    } catch {
+      // An rtk without the OpenCode hook answers nothing; the plain rewrite still stands.
+    }
+    plainRewrite(bin, command, cwd).then(resolve, () => resolve(null));
+  });
+  return promise;
+}
+
+/** The plain rewrite, for an rtk that predates the OpenCode hook. The exit code is the contract. */
+function plainRewrite(bin: string, command: string, cwd?: string): Promise<string | null> {
+  const { promise, resolve } = Promise.withResolvers<string | null>();
+  const shim = shimCommand(bin, ['rewrite', command]);
+  execFile(shim.cmd, shim.args, { timeout: 5000, cwd }, (error, stdout) => {
     const err = error as { killed?: boolean; signal?: unknown; code?: unknown } | null;
     if (err && (err.killed || err.signal)) { resolve(null); return; }
-    const code = typeof err?.code === 'number' ? err.code : RTK_REWRITE_FOUND;
+    const code = typeof err?.code === 'number' ? err.code : 0;
     // Exit 1 is the only "no equivalent" answer, so anything else with output rewrites.
     if (code === 1) { resolve(null); return; }
     const out = String(stdout).trim();
-    if (!out || out === command || (code !== RTK_REWRITE_FOUND && code !== RTK_REWRITE_ADVISORY)) { resolve(null); return; }
-    resolve(out);
+    resolve(out && out !== command && (code === 0 || code === 3) ? out : null);
   });
   return promise;
 }

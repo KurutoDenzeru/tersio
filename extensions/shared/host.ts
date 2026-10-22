@@ -129,6 +129,13 @@ export function isPiHost(pi: HostHandle): boolean {
   return !pi.zod;
 }
 
+/** The omp runtime carries a zod factory; pi and opencode do not. */
+export function isOmpHost(pi: HostHandle): boolean {
+  if (pi.hostId === 'omp') return true;
+  if (pi.hostId === 'pi' || pi.hostId === 'opencode') return false;
+  return Boolean(pi.zod);
+}
+
 export function setExtensionLabel(pi: HostHandle, text: string): void {
   adapterFor(pi).label(pi, text);
 }

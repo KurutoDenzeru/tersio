@@ -2,6 +2,7 @@
 import { execFileSync } from 'node:child_process';
 import { normalizeRtkVersion, shimCommand, tersioDataPath } from './utils.ts';
 import { patchState, readState, takeLegacy } from './state.ts';
+import type { TersioState } from './state.ts';
 
 /** Verified against rtk 1.0.1; the drift test fails when rtk's set moves. */
 export const FALLBACK_ELIGIBLE_HEADS: readonly string[] = [
@@ -9,7 +10,10 @@ export const FALLBACK_ELIGIBLE_HEADS: readonly string[] = [
   'pytest', 'mypy', 'cat', 'grep', 'rg', 'find', 'tree', 'diff', 'ls', 'ast-grep',
   'wget', 'prettier', 'playwright', 'prisma', 'jest', 'vitest', 'ctest', 'lint',
   'wc', 'tsc', 'curl', 'cargo', 'npm', 'pnpm', 'bun', 'go', 'ruff', 'next',
-  'dotnet', 'oc', 'jq', 'make',
+  'dotnet', 'oc', 'jq', 'make', 'head', 'tail', 'eslint',
+  'sqlfluff', 'php', 'phpunit', 'phpstan', 'pest', 'paratest', 'ecs', 'pint',
+  'rake', 'rubocop', 'rspec', 'pip', 'uv', 'deno', 'sbt', 'gt', 'golangci-lint',
+  'gradlew', 'mvn', 'mvnd',
 ];
 
 const PROBES: Record<string, string> = {
@@ -24,7 +28,15 @@ const PROBES: Record<string, string> = {
   lint: 'lint .', wc: 'wc -l x', tsc: 'tsc --version', curl: 'curl --version',
   cargo: 'cargo test', npm: 'npm run build', pnpm: 'pnpm run build', bun: 'bun run test',
   go: 'go test ./...', ruff: 'ruff check .', next: 'next build', dotnet: 'dotnet build',
-  oc: 'oc get pods', jq: 'jq . x', make: 'make',
+  oc: 'oc get pods', jq: 'jq . x', make: 'make', head: 'head README.md',
+  tail: 'tail -n 5 README.md', eslint: 'eslint .',
+  sqlfluff: 'sqlfluff lint .', php: 'php artisan', phpunit: 'phpunit --version',
+  phpstan: 'phpstan analyse', pest: 'pest --version', paratest: 'paratest --version',
+  ecs: 'ecs check', pint: 'pint --version', rake: 'rake test',
+  rubocop: 'rubocop --version', rspec: 'rspec --version', pip: 'pip install x',
+  uv: 'uv run x', deno: 'deno run x', sbt: 'sbt test', gt: 'gt pr list',
+  'golangci-lint': 'golangci-lint run', gradlew: 'gradlew build', mvn: 'mvn test',
+  mvnd: 'mvnd test',
 };
 
 function probe(bin: string, command: string): boolean {
@@ -49,6 +61,9 @@ export function deriveEligibleHeads(bin: string): Set<string> {
   return heads;
 }
 
+/** The probe set decides the derived list, so its signature belongs in the cache key. */
+const PROBE_SIGNATURE = Object.keys(PROBES).join(',');
+
 function rtkVersion(bin: string): string {
   try {
     const shim = shimCommand(bin, ['--version']);
@@ -63,14 +78,16 @@ export function eligibleHeads(bin: string | null): ReadonlySet<string> {
   if (!bin) return new Set(FALLBACK_ELIGIBLE_HEADS);
   const version = rtkVersion(bin);
   const cached = readState().rtkEligible
-    ?? takeLegacy(tersioDataPath('rtk-eligible.json', 'rtk-eligible.json'), (raw) => {
+    ?? takeLegacy(tersioDataPath('rtk-eligible.json', 'rtk-eligible.json'), (raw): TersioState['rtkEligible'] | null => {
       const parsed = JSON.parse(raw) as { version?: unknown; heads?: unknown };
-      return typeof parsed.version === 'string' && Array.isArray(parsed.heads) ? { version: parsed.version, heads: parsed.heads as string[] } : null;
+      return typeof parsed.version === 'string' && Array.isArray(parsed.heads)
+        ? { version: parsed.version, heads: parsed.heads as string[] }
+        : null;
     });
-  if (cached?.version === version && Array.isArray(cached.heads) && cached.heads.every((h) => typeof h === 'string')) {
+  if (cached?.version === version && cached?.sig === PROBE_SIGNATURE && Array.isArray(cached.heads) && cached.heads.every((h) => typeof h === 'string')) {
     return new Set(cached.heads);
   }
   const heads = deriveEligibleHeads(bin);
-  patchState({ rtkEligible: { version, heads: [...heads] } });
+  patchState({ rtkEligible: { version, sig: PROBE_SIGNATURE, heads: [...heads] } });
   return heads;
 }

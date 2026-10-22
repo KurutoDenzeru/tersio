@@ -3,9 +3,12 @@ import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { existsSync, promises as fs, readdirSync } from 'node:fs';
 import path from 'node:path';
+import { inflateRawSync } from 'node:zlib';
 import { PACKAGE_VERSION, args, flagValue, parseJsonObject } from './common.ts';
+import { newerThan } from './update.ts';
+import { readState } from '../extensions/shared/state.ts';
 import { detectHosts, hostExtensionsDir } from './hosts.ts';
-import { EXT_DIR, PI_PONYTAIL_FILES, PONYTAIL_BUNDLE_FILES, PONYTAIL_DIR, PONYTAIL_VERSION, shippedOmpManifest, sourcePath, treeFileText, treeFilesFor } from './manifest.ts';
+import { EXT_DIR, PI_PONYTAIL_FILES, PONYTAIL_BUNDLE_FILES, PONYTAIL_DIR, PONYTAIL_PKG, PONYTAIL_VERSION, shippedOmpManifest, sourcePath, treeFileText, treeFilesFor } from './manifest.ts';
 import { textTable } from './common.ts';
 import { adaptCavemanFull } from '../extensions/updater/index.ts';
 import {
@@ -13,6 +16,7 @@ import {
   RTK_REPO,
   fetchJson,
   httpsGet,
+  httpsGetBuffer,
   normalizeRtkVersion,
   piAgentDir,
   readTextIfExists,
@@ -22,6 +26,8 @@ import {
 } from '../extensions/shared/utils.ts';
 
 const GH = 'https://api.github.com';
+/** The package server, which serves a published version's files one by one. */
+const UNPKG = 'https://unpkg.com';
 const RAW = 'https://raw.githubusercontent.com';
 const PONYTAIL_NPM = 'https://registry.npmjs.org/@dietrichgebert/ponytail/latest';
 
@@ -31,7 +37,7 @@ const PSTACK_REPO = 'cursor/plugins';
 const PSTACK_PATH = 'pstack/skills/poteto-mode/';
 
 /** Pins are deliberate: bump one only after reviewing the upstream diff it names. */
-const CAVEMAN_PIN = 'd262ab3882952a59312ff3537cd86d894523c5ab';
+export const CAVEMAN_PIN = 'v4.0.1';
 // a968159 is the newest commit that touched a body we track; its one change renames the skill in frontmatter, which the fork drops.
 const PSTACK_PIN = 'a968159326d1fc6b7d483491ec5c457986a20af2';
 
@@ -155,7 +161,24 @@ export interface SourceRow {
   appeared: string[];
   /** Upstream paths the pin had and HEAD does not. */
   gone: string[];
+  /** Skill directories upstream publishes that this port does not carry. */
+  uncarried: number;
+  /** How many of those moved since the pin. */
+  uncarriedMoved: number;
+  /** When the pin was taken, so a reader sees how long it has been held. */
+  pinnedAt: number | null;
+  /** The upstream state a new pin would name, so the operator can copy it. */
+  candidate: string | null;
+  /** The head of each file that moved upstream, so a review reads the change. */
+  preview: Preview[];
   note: string;
+}
+
+/** One moved file, with the head of its new content. */
+export interface Preview {
+  path: string;
+  lines: number;
+  head: string;
 }
 
 export interface HostRow {
@@ -169,6 +192,8 @@ export interface HostRow {
   missingFiles: string[];
   /** Entries the shipped manifest loads that this host's manifest does not, so the module never runs there. */
   unloaded: string[];
+  /** What to run to repair the stale files, named from the version gap. */
+  fix: string;
 }
 
 export interface Scorecard {
@@ -184,6 +209,35 @@ export interface Scorecard {
 /** The last scorecard, or null when none has been written yet. */
 export async function cachedScorecard(): Promise<Scorecard | null> {
   return parseJsonObject<Scorecard>(await readTextIfExists(path.join(upstreamDir(), 'scorecard.json')));
+}
+
+/** One run, as the page reads it back. */
+export interface HistoryPoint {
+  at: number;
+  accuracy: number;
+  drift: number;
+  sources: Array<{ source: string; pct: number }>;
+}
+
+/** The last runs, oldest first, so the page can plot the accuracy. */
+export async function upstreamHistory(limit = 60): Promise<HistoryPoint[]> {
+  const text = await readTextIfExists(path.join(upstreamDir(), 'history.jsonl'));
+  if (!text) return [];
+  const rows = text.split('\n').filter(Boolean).flatMap((line) => {
+    try { return [JSON.parse(line) as HistoryPoint]; } catch { return []; }
+  });
+  return rows.slice(-limit);
+}
+
+/** One line per run, appended, so the accuracy has a history. */
+async function writeHistory(card: Scorecard): Promise<void> {
+  const point: HistoryPoint = {
+    at: card.checkedAt,
+    accuracy: card.accuracy,
+    drift: card.drift,
+    sources: card.sources.map((row) => ({ source: row.source, pct: row.tracked === 0 ? 100 : Math.round((row.matched / row.tracked) * 1000) / 10 })),
+  };
+  await fs.appendFile(path.join(upstreamDir(), 'history.jsonl'), `${JSON.stringify(point)}\n`, 'utf8').catch(() => { });
 }
 
 /** Run the live check, cache both artifacts, and hand the card back. */
@@ -298,17 +352,103 @@ async function pruneTrees(cacheDir: string): Promise<void> {
   }
 }
 
+/** When a revision was committed, so a pin's age is visible. */
+async function dateOf(repo: string, ref: string): Promise<number | null> {
+  try {
+    const token = githubToken();
+    const json = await fetchJson<{ commit?: { committer?: { date?: string } } }>(`${GH}/repos/${repo}/commits/${ref}`, token ? { headers: { Authorization: `Bearer ${token}` } } : {});
+    const at = json.commit?.committer?.date;
+    return at ? Date.parse(at) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The newest commit under a path: the candidate for a commit pin. */
+async function newestCommitUnder(repo: string, under: string): Promise<string | null> {
+  try {
+    const token = githubToken();
+    const json = await fetchJson<Array<{ sha?: string }>>(`${GH}/repos/${repo}/commits?path=${encodeURIComponent(under)}&per_page=1`, token ? { headers: { Authorization: `Bearer ${token}` } } : {});
+    return json[0]?.sha ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** The head of an upstream file, so a review reads what moved. */
+async function previewOf(repo: string, ref: string, file: string): Promise<Preview | null> {
+  try {
+    const lines = (await httpsGet(`${RAW}/${repo}/${ref}/${file}`)).split('\n');
+    return { path: file, lines: lines.length, head: lines.slice(0, 12).join('\n') };
+  } catch {
+    return null;
+  }
+}
+
+/** The newest release a repository publishes, or null when the feed cannot be read. */
+async function latestRelease(repo: string): Promise<string | null> {
+  try {
+    const token = githubToken();
+    const json = await fetchJson<{ tag_name?: string }>(`${GH}/repos/${repo}/releases/latest`, token ? { headers: { Authorization: `Bearer ${token}` } } : {});
+    const tag = json.tag_name ?? '';
+    return tag ? tag.replace(/^v/, '') : null;
+  } catch {
+    return null;
+  }
+}
 interface Drift { changed: string[]; added: string[]; gone: string[] }
+
+/** The directory a source's skills live in: the common parent of every tracked directory. */
+export function skillRoot(upstreamPaths: string[]): string {
+  const dirs = [...new Set(upstreamPaths.map((up) => path.posix.dirname(up)))];
+  if (dirs.length === 0) return '';
+  let parts = dirs[0].split('/');
+  for (const dir of dirs.slice(1)) {
+    const other = dir.split('/');
+    let i = 0;
+    while (i < parts.length && i < other.length && parts[i] === other[i]) i++;
+    parts = parts.slice(0, i);
+  }
+  return parts.join('/');
+}
+
+/** The skill directories upstream publishes that this port does not carry, and how many of them moved since the pin. */
+export function uncarriedOf(pinned: TreeResult, head: TreeResult, upstreamPaths: string[], root: string): { count: number; moved: number } {
+  const headTree = head.entries;
+  const pinTree = pinned.entries;
+  if (!headTree || !root) return { count: 0, moved: 0 };
+  const carried = new Set(upstreamPaths.map((up) => path.posix.dirname(up)));
+  const dirs = new Map<string, string[]>();
+  for (const [p] of headTree) {
+    if (!p.startsWith(`${root}/`)) continue;
+    const dir = `${root}/${p.slice(root.length + 1).split('/')[0]}`;
+    if (carried.has(dir)) continue;
+    dirs.set(dir, [...(dirs.get(dir) ?? []), p]);
+  }
+  let moved = 0;
+  for (const files of dirs.values()) {
+    if (!pinTree) continue;
+    const existed = files.some((f) => pinTree.has(f));
+    const changed = files.some((f) => pinTree.has(f) && pinTree.get(f) !== headTree.get(f));
+    if (existed && changed) moved++;
+  }
+  return { count: dirs.size, moved };
+}
 
 /**
  * Changed, added, and removed upstream paths. Added means a file inside a directory this build already
  * tracks, which is the signal a new playbook, reference, or principle leaf exists upstream.
  */
-function driftOf(pinned: TreeResult, head: TreeResult, upstreamPaths: string[]): Drift {
+export function driftOf(pinned: TreeResult, head: TreeResult, upstreamPaths: string[]): Drift {
   const none: Drift = { changed: [], added: [], gone: [] };
   if (!pinned.entries || !head.entries) return none;
   const tracked = new Set(upstreamPaths);
   const dirs = new Set([...tracked].map((up) => `${path.posix.dirname(up)}/`));
+  // A new skill directory sits beside the tracked ones, so the parent of a tracked directory is watched too.
+  for (const dir of [...dirs]) {
+    const parent = path.posix.dirname(dir);
+    if (parent && parent !== '.' && parent !== '/') dirs.add(`${parent}/`);
+  }
   const changed: string[] = [];
   const gone: string[] = [];
   for (const up of tracked) {
@@ -345,9 +485,69 @@ function noteOf(failure: FetchFailure | null, gaps: string[], moved: string[]): 
   return '';
 }
 
+/** The end-of-central-directory record, read from the tail of the archive. */
+const ZIP_EOCD = 0x06054b50;
+const ZIP_CENTRAL = 0x02014b50;
+
+/** Every file in a zip archive, by its path inside it. Deflate and stored entries are read. */
+export function zipEntries(archive: Buffer): Map<string, Buffer> {
+  const out = new Map<string, Buffer>();
+  let eocd = -1;
+  for (let i = archive.length - 22; i >= 0 && i > archive.length - 22 - 0xffff; i--) {
+    if (archive.readUInt32LE(i) === ZIP_EOCD) { eocd = i; break; }
+  }
+  if (eocd < 0) return out;
+  const count = archive.readUInt16LE(eocd + 10);
+  let at = archive.readUInt32LE(eocd + 16);
+  for (let i = 0; i < count; i++) {
+    if (at + 46 > archive.length || archive.readUInt32LE(at) !== ZIP_CENTRAL) break;
+    const method = archive.readUInt16LE(at + 10);
+    const compressedSize = archive.readUInt32LE(at + 20);
+    const nameLength = archive.readUInt16LE(at + 28);
+    const extraLength = archive.readUInt16LE(at + 30);
+    const commentLength = archive.readUInt16LE(at + 32);
+    const local = archive.readUInt32LE(at + 42);
+    const name = archive.toString('utf8', at + 46, at + 46 + nameLength);
+    at += 46 + nameLength + extraLength + commentLength;
+    if (name.endsWith('/')) continue;
+    const localNameLength = archive.readUInt16LE(local + 26);
+    const localExtraLength = archive.readUInt16LE(local + 28);
+    const start = local + 30 + localNameLength + localExtraLength;
+    const data = archive.subarray(start, start + compressedSize);
+    out.set(name, method === 0 ? Buffer.from(data) : inflateRawSync(data));
+  }
+  return out;
+}
+
+/** The Caveman body as the pinned release ships it, read from the release asset and not the repository. */
+async function cavemanAssetBody(): Promise<{ text: string | null; failure: FetchFailure | null }> {
+  try {
+    const token = githubToken();
+    const release = await fetchJson<{ assets?: Array<{ name?: string; browser_download_url?: string }> }>(
+      `${GH}/repos/${CAVEMAN_REPO}/releases/tags/${CAVEMAN_PIN}`,
+      token ? { headers: { Authorization: `Bearer ${token}` } } : {},
+    );
+    const asset = release.assets?.find((a) => a.name === 'caveman.skill');
+    if (!asset?.browser_download_url) return { text: null, failure: { status: 'error', reason: `the ${CAVEMAN_PIN} release ships no caveman.skill` } };
+    const entries = zipEntries(await httpsGetBuffer(asset.browser_download_url));
+    const body = entries.get('caveman/SKILL.md');
+    if (!body) return { text: null, failure: { status: 'error', reason: 'the caveman.skill asset carries no caveman/SKILL.md' } };
+    return { text: body.toString('utf8'), failure: null };
+  } catch (e) {
+    return { text: null, failure: classifyFetch(e, 'the Caveman release asset') };
+  }
+}
+
+/** What the release asset says about the bundled body: a gap, or null when the body is the one the release ships. */
+export function cavemanAssetGap(assetText: string, local: string | null): string | null {
+  if (local === null) return 'caveman/rule.md is missing locally';
+  if (gitBlobSha(local) !== gitBlobSha(adaptCavemanFull(assetText))) return 'caveman/rule.md differs from the release asset';
+  return null;
+}
+
 /** Caveman: three bodies track upstream, three are Tersio's own. Drift is a changed upstream body. */
 async function checkCaveman(): Promise<SourceRow> {
-  const [pinned, head] = await Promise.all([treeOf(CAVEMAN_REPO, CAVEMAN_PIN), treeOf(CAVEMAN_REPO, 'HEAD')]);
+  const [pinned, head, asset] = await Promise.all([treeOf(CAVEMAN_REPO, CAVEMAN_PIN), treeOf(CAVEMAN_REPO, 'HEAD'), cavemanAssetBody()]);
   const gaps: string[] = [];
   const bodies = await Promise.all(CAVEMAN.files.map(async (file) => {
     const at = await rawAt(`${RAW}/${CAVEMAN_REPO}/${CAVEMAN_PIN}/${file.upstream}`, CAVEMAN_PIN);
@@ -356,6 +556,11 @@ async function checkCaveman(): Promise<SourceRow> {
     if (local === null) return { failure: null, why: `${file.local} is missing locally` };
     const expected = file.adapt ? file.adapt(at.text) : at.text;
     if (gitBlobSha(local) !== gitBlobSha(expected)) return { failure: null, why: `${file.local} differs from the pin` };
+    // The full body also has to be the one the release ships, so a mutated archive cannot read clean.
+    if (file.local === 'caveman/rule.md' && asset.text !== null) {
+      const gap = cavemanAssetGap(asset.text, local);
+      if (gap) return { failure: null, why: gap };
+    }
     return { failure: null, why: null };
   }));
   let matched = 0;
@@ -363,16 +568,21 @@ async function checkCaveman(): Promise<SourceRow> {
     if (body.why === null) matched++;
     else gaps.push(body.why);
   }
+  if (asset.text === null) gaps.push(asset.failure?.reason ?? 'the caveman.skill asset could not be read');
   for (const local of CAVEMAN.localOnly) {
     if ((await readTextIfExists(sourcePath(local))) !== null) matched++;
     else gaps.push(`${local} is missing locally`);
   }
-  const failure = bodies.find((b) => b.failure)?.failure ?? pinned.failure ?? head.failure;
+  const failure = bodies.find((b) => b.failure)?.failure ?? pinned.failure ?? head.failure ?? asset.failure;
   const drift = driftOf(pinned, head, CAVEMAN.files.map((f) => f.upstream));
+  const uncarried = uncarriedOf(pinned, head, CAVEMAN.files.map((f) => f.upstream), skillRoot(CAVEMAN.files.map((f) => f.upstream)));
+  const release = await latestRelease(CAVEMAN_REPO);
+  const pinnedVersion = CAVEMAN_PIN.replace(/^v/, '');
+  const previews = (await Promise.all(drift.changed.map((file) => previewOf(CAVEMAN_REPO, 'HEAD', file)))).filter((x): x is Preview => x !== null);
   return {
     source: CAVEMAN.label,
-    pin: CAVEMAN.pin.slice(0, 7),
-    upstream: 'HEAD',
+    pin: pinnedVersion,
+    upstream: release ?? 'unknown',
     tracked: CAVEMAN.files.length + CAVEMAN.localOnly.length,
     matched,
     drift: drift.changed.length + drift.gone.length,
@@ -387,7 +597,12 @@ async function checkCaveman(): Promise<SourceRow> {
     moved: drift.changed,
     appeared: drift.added,
     gone: drift.gone,
-    note: noteOf(failure, gaps, drift.changed),
+    uncarried: uncarried.count,
+    uncarriedMoved: uncarried.moved,
+    pinnedAt: await dateOf(CAVEMAN_REPO, CAVEMAN_PIN),
+    candidate: release && release !== pinnedVersion ? `v${release}` : null,
+    preview: previews,
+    note: release && release !== pinnedVersion ? `release ${release} is out` : noteOf(failure, gaps, drift.changed),
   };
 }
 
@@ -405,10 +620,13 @@ async function checkPstack(): Promise<SourceRow> {
   }
   const failure = pinned.failure ?? head.failure;
   const drift = driftOf(pinned, head, PSTACK.files.map((f) => f.upstream));
+  const uncarried = uncarriedOf(pinned, head, PSTACK.files.map((f) => f.upstream), skillRoot(PSTACK.files.map((f) => f.upstream)));
+  const candidate = await newestCommitUnder(PSTACK_REPO, 'pstack');
+  const previews = (await Promise.all([...drift.changed, ...drift.added].slice(0, 6).map((file) => previewOf(PSTACK_REPO, 'HEAD', file)))).filter((x): x is Preview => x !== null);
   return {
     source: PSTACK.label,
     pin: PSTACK.pin.slice(0, 7),
-    upstream: 'HEAD',
+    upstream: candidate ?? 'HEAD',
     tracked: PSTACK.files.length,
     matched,
     drift: drift.changed.length + drift.gone.length,
@@ -423,8 +641,58 @@ async function checkPstack(): Promise<SourceRow> {
     moved: drift.changed,
     appeared: drift.added,
     gone: drift.gone,
+    uncarried: uncarried.count,
+    uncarriedMoved: uncarried.moved,
+    pinnedAt: await dateOf(PSTACK_REPO, PSTACK_PIN),
+    candidate: candidate && candidate !== PSTACK_PIN ? candidate : null,
+    preview: previews,
     note: noteOf(failure, gaps, drift.changed) || 'fork: Cursor surface removed',
   };
+}
+
+/** Every file in the vendored copy, as paths under its root. */
+function vendoredFiles(root: string): string[] {
+  const out: string[] = [];
+  const walk = (dir: string, rel: string): void => {
+    let entries;
+    try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const entry of entries) {
+      const child = rel ? `${rel}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) walk(path.join(dir, entry.name), child);
+      else out.push(child);
+    }
+  };
+  walk(root, '');
+  return out.toSorted();
+}
+
+/** One vendored file against the package's own hash: a match, or the gap it is. */
+export function vendoredVerdict(rel: string, bytes: Buffer | null, integrity: string | undefined, version: string): string | null {
+  if (bytes === null) return `${rel} is missing from the vendored copy`;
+  if (!integrity) return `${rel} is not in the package at ${version}`;
+  const ours = createHash('sha256').update(bytes).digest('base64');
+  return ours === integrity.replace(/^sha256-/, '') ? null : `${rel} differs from the package at ${version}`;
+}
+
+/** The vendored copy against the package it declares: a hand edit there is invisible to the host copies. */
+async function checkVendored(root: string, version: string): Promise<{ matched: number; total: number; gaps: string[]; failure: FetchFailure | null }> {
+  const files = vendoredFiles(root);
+  let manifest: Map<string, string>;
+  try {
+    const json = await fetchJson<{ files?: Array<{ path?: string; integrity?: string }> }>(`${UNPKG}/${PONYTAIL_PKG}@${version}/?meta`);
+    manifest = new Map((json.files ?? []).map((f) => [String(f.path ?? '').replace(/^\//, ''), String(f.integrity ?? '')]));
+  } catch (e) {
+    return { matched: 0, total: files.length, gaps: [], failure: classifyFetch(e, `the package at ${version}`) };
+  }
+  const gaps: string[] = [];
+  let matched = 0;
+  for (const rel of files) {
+    const bytes = await fs.readFile(path.join(root, ...rel.split('/'))).catch(() => null);
+    const gap = vendoredVerdict(rel, bytes, manifest.get(rel), version);
+    if (gap) gaps.push(gap);
+    else matched++;
+  }
+  return { matched, total: files.length, gaps, failure: null };
 }
 
 /** Ponytail: the vendored copy is the source of truth, and each host's copy must match it. */
@@ -440,6 +708,10 @@ async function checkPonytail(hosts: HostRow[]): Promise<SourceRow> {
   let tracked = 0;
   let matched = 0;
   const gaps: string[] = [];
+  const vendored = root ? await checkVendored(root, bundled ?? 'latest') : { matched: 0, total: 0, gaps: [] as string[], failure: null };
+  tracked += vendored.total;
+  matched += vendored.matched;
+  gaps.push(...vendored.gaps);
   for (const copy of copies) {
     for (const rel of copy.files) {
       tracked++;
@@ -452,10 +724,10 @@ async function checkPonytail(hosts: HostRow[]): Promise<SourceRow> {
     }
   }
   let latest: string | null = null;
-  let failure: FetchFailure | null = null;
+  let failure: FetchFailure | null = vendored.failure;
   try {
     latest = (await fetchJson<{ version?: string }>(PONYTAIL_NPM)).version ?? null;
-  } catch (e) { failure = classifyFetch(e, 'the npm registry'); }
+  } catch (e) { failure = failure ?? classifyFetch(e, 'the npm registry'); }
   const drift = bundled && latest && bundled !== latest;
   return {
     source: 'Ponytail',
@@ -475,6 +747,11 @@ async function checkPonytail(hosts: HostRow[]): Promise<SourceRow> {
     moved: [],
     appeared: [],
     gone: [],
+    uncarried: 0,
+    uncarriedMoved: 0,
+    pinnedAt: null,
+    candidate: drift ? latest : null,
+    preview: [],
     note: failure ? failure.reason : drift ? `bundled ${bundled} is behind ${latest}` : noteOf(null, gaps, []),
   };
 }
@@ -516,6 +793,11 @@ async function checkRtk(): Promise<SourceRow> {
     moved: [],
     appeared: [],
     gone: [],
+    uncarried: 0,
+    uncarriedMoved: 0,
+    pinnedAt: null,
+    candidate: behind ? latest : null,
+    preview: [],
     note: failure ? failure.reason : behind ? `installed ${local} is behind ${latest}` : local === null ? 'binary not on PATH' : '',
   };
 }
@@ -530,6 +812,15 @@ async function loadedEntries(extensionsDir: string): Promise<string[] | null> {
   return Array.isArray(list) ? list.map((entry) => String(entry)) : null;
 }
 
+/** What repairs a host's stale files: an install behind this build needs the install, the other way needs the update. */
+export function hostFix(id: string, version: string | null): string {
+  const tag = readState().cavemanUpstream?.tag;
+  if (tag && newerThan(tag, CAVEMAN_PIN)) return `the installed body is from ${tag}, this build ships ${CAVEMAN_PIN.replace(/^v/, '')} — review the diff and bump the pin`;
+  if (version && newerThan(PACKAGE_VERSION, version)) return `run: tersio install --host ${id}`;
+  if (version && newerThan(version, PACKAGE_VERSION)) return 'run: tersio update';
+  return `run: tersio install --host ${id}`;
+}
+
 /** Per host: does the tree each agent loads carry this build's bytes, and does its manifest load every entry? */
 async function checkHosts(): Promise<HostRow[]> {
   const rows: HostRow[] = [];
@@ -537,7 +828,7 @@ async function checkHosts(): Promise<HostRow[]> {
     const treeId = host.id === 'omp' ? 'opencode' : host.id;
     const base = host.id === 'omp' ? (host.dir ? path.join(host.dir, 'extensions') : null) : hostExtensionsDir(host.id);
     if (!host.installed || !base) {
-      rows.push({ host: host.id, installed: false, files: treeFilesFor(treeId).length, matched: 0, stale: 0, missing: 0, staleFiles: [], missingFiles: [], unloaded: [] });
+      rows.push({ host: host.id, installed: false, files: treeFilesFor(treeId).length, matched: 0, stale: 0, missing: 0, staleFiles: [], missingFiles: [], unloaded: [], fix: '' });
       continue;
     }
     const shipped = shippedOmpManifest()?.extensions;
@@ -566,6 +857,7 @@ async function checkHosts(): Promise<HostRow[]> {
       staleFiles: staleFiles.toSorted(),
       missingFiles: missingFiles.toSorted(),
       unloaded,
+      fix: hostFix(host.id, host.version),
     });
   }
   return rows;
@@ -621,7 +913,9 @@ async function rowOrFailure(label: string, probe: () => Promise<SourceRow>): Pro
     return {
       source: label, pin: '—', upstream: 'unreachable', tracked: 0, matched: 0, drift: 0, added: 0, removed: 0,
       ceiling: 0, measured: false, status: classifyFetch(e, label).status, kind: 'bytes', link: '',
-      gaps: [classifyFetch(e, label).reason], moved: [], appeared: [], gone: [], note: classifyFetch(e, label).reason,
+      gaps: [classifyFetch(e, label).reason], moved: [], appeared: [], gone: [], uncarried: 0, uncarriedMoved: 0,
+      pinnedAt: null, candidate: null, preview: [],
+      note: classifyFetch(e, label).reason,
     };
   }
 }
@@ -635,7 +929,7 @@ async function collect(): Promise<Scorecard> {
     rowOrFailure('RTK', checkRtk),
   ]);
   const sources = [caveman, pstack, rtk, ponytail];
-  return {
+  const card: Scorecard = {
     version: PACKAGE_VERSION,
     checkedAt: Date.now(),
     sources,
@@ -643,6 +937,8 @@ async function collect(): Promise<Scorecard> {
     accuracy: accuracyOf(sources, hosts),
     drift: sources.reduce((sum, r) => sum + r.drift, 0),
   };
+  await writeHistory(card);
+  return card;
 }
 
 /** The UTC stamp both reports print, so a cron log and the Markdown agree to the second. */
@@ -710,11 +1006,12 @@ export function scorecardMarkdown(card: Scorecard): string {
     '',
     '## Sources of truth',
     '',
-    '| Source | Pinned | Upstream | Match | Drift | New | Gone | How | Note |',
-    '|---|---|---|---|---|---|---|---|---|',
+    '| Source | Pinned | Upstream | Match | Drift | New | Gone | Uncarried | How | Note |',
+    '|---|---|---|---|---|---|---|---|---|---|',
   ];
   for (const r of card.sources) {
-    lines.push(`| ${r.source} | ${r.pin} | ${r.upstream} | ${r.matched}/${r.tracked} | ${r.drift}/${r.ceiling} | ${r.added} | ${r.removed} | ${r.kind} | ${r.note || '—'} |`);
+    const uncarried = r.uncarried ? `${r.uncarried}${r.uncarriedMoved ? ` (${r.uncarriedMoved} moved)` : ''}` : '—';
+    lines.push(`| ${r.source} | ${r.pin} | ${r.upstream} | ${r.matched}/${r.tracked} | ${r.drift}/${r.ceiling} | ${r.added} | ${r.removed} | ${uncarried} | ${r.kind} | ${r.note || '—'} |`);
   }
   lines.push('', 'Match per source:', '', '```text');
   for (const r of card.sources) {
@@ -750,6 +1047,8 @@ export function scorecardMarkdown(card: Scorecard): string {
         for (const gap of items) lines.push(`- **${owner}** ${gap.text}`);
         const row = card.sources.find((r) => r.source === owner);
         if (kind === 'drift' && row?.link) lines.push(`  Review the diff: ${row.link}`);
+        const host = card.hosts.find((h) => h.host === owner);
+        if (kind === 'ours' && host?.fix) lines.push(`  Fix: ${host.fix}`);
       }
       lines.push('');
     }
@@ -769,9 +1068,10 @@ function printScorecard(card: Scorecard, cached: boolean, strict: boolean): void
   console.log(`\nTersio upstream scorecard · v${card.version} · ${cached ? 'cached' : 'live'} · ${stamp(card.checkedAt)} UTC`);
   console.log('\nSources of truth');
   const sourceRows = card.sources.map((r) => [
-    r.source, r.pin, r.upstream, `${r.matched}/${r.tracked}`, `${r.drift}/${r.ceiling}`, r.added ? `+${r.added}` : '0', String(r.removed), r.kind, r.note || '—',
+    r.source, r.pin, r.upstream, `${r.matched}/${r.tracked}`, `${r.drift}/${r.ceiling}`, r.added ? `+${r.added}` : '0', String(r.removed),
+    r.uncarried ? `${r.uncarried}${r.uncarriedMoved ? ` (${r.uncarriedMoved})` : ''}` : '—', r.kind, r.note || '—',
   ]);
-  for (const line of textTable(['Source', 'Pinned', 'Upstream', 'Match', 'Drift', 'New', 'Gone', 'How', 'Note'], sourceRows, [false, false, false, true, true, true, true, false, false], 34)) {
+  for (const line of textTable(['Source', 'Pinned', 'Upstream', 'Match', 'Drift', 'New', 'Gone', 'Uncarried', 'How', 'Note'], sourceRows, [false, false, false, true, true, true, true, false, false, false], 30)) {
     console.log(line);
   }
   console.log('\nInstalled hosts');
@@ -791,6 +1091,8 @@ function printScorecard(card: Scorecard, cached: boolean, strict: boolean): void
       for (const text of folded(items.map((g) => g.text))) console.log(`    ${owner.padEnd(9)} ${text}`);
       const row = card.sources.find((r) => r.source === owner);
       if (kind === 'drift' && row?.link) console.log(`    ${''.padEnd(9)} review: ${row.link}`);
+      const host = card.hosts.find((h) => h.host === owner);
+      if (kind === 'ours' && host?.fix) console.log(`    ${''.padEnd(9)} fix: ${host.fix}`);
     }
   }
   const ceiling = card.sources.reduce((sum, r) => sum + r.ceiling, 0);

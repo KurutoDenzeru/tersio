@@ -557,12 +557,19 @@ function hostExtensionsDirForTest(id: "omp" | "pi" | "opencode", home: string): 
 function seededHostTree(home: string, id: "omp" | "pi" | "opencode"): string {
   const dir = hostExtensionsDirForTest(id, home);
   // A host only counts as installed when every tree file is present, so seed the whole set for that host.
+  // Everything but the Caveman bodies ships current, so the stale set is exactly the bodies this test is about.
   for (const rel of treeFilesFor(id)) {
-    mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
-    writeFileSync(path.join(dir, rel), "// stub\n", "utf8");
+    const at = path.join(dir, rel);
+    mkdirSync(path.dirname(at), { recursive: true });
+    // A file this build declares but does not ship is debris; seed it as the stub it always was.
+    let body = "// stub\n";
+    if (rel.startsWith("caveman/")) body = "STALE BODY\n";
+    else {
+      const source = sourcePath(rel);
+      if (existsSync(source)) body = readFileSync(source, "utf8");
+    }
+    writeFileSync(at, body, "utf8");
   }
-  mkdirSync(path.join(dir, "caveman"), { recursive: true });
-  writeFileSync(path.join(dir, "caveman", "rule.md"), "STALE BODY\n", "utf8");
   // The reference the tree is compared against, so the seeded stale body actually reads as stale.
   seedPluginPackage(home);
   return dir;
@@ -667,7 +674,7 @@ test("doctor reports an omp package older than the running CLI", () => {
   }
 });
 
-// A package from another release: the tree beside it can hold two.
+// A package from another release.
 test("doctor warns when the omp plugin package is not this build", () => {
   const home = missingHome();
   try {

@@ -63,7 +63,7 @@ const LAYOUT: Record<SectionId, readonly Block[]> = {
     { cards: [{ body: "table", rows: 8 }] },
     { cards: [{ body: "table", rows: 8 }] },
   ],
-  sources: [
+  upstream: [
     { strip: 4 },
     { cards: [{ body: "table", rows: 5 }] },
     { cards: [{ body: "table", rows: 3 }] },

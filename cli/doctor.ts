@@ -19,6 +19,9 @@ import { sqliteScript, statsDbPath } from '../extensions/shared/agent-stats.ts';
 import { OMP_SUBAGENT_MARKER } from '../extensions/shared/session-state.ts';
 import { PI_PONYTAIL_FILES, PONYTAIL_BUNDLE_FILES, PONYTAIL_VERSION, TREE_FILES, TREE_PSTACK_FILES, isObsoleteTreeFile, treeFileText, treeFilesFor } from './manifest.ts';
 import { serviceRunning, serviceState } from './doctor-fix.ts';
+import { readState } from '../extensions/shared/state.ts';
+import { CAVEMAN_PIN } from './upstream.ts';
+import { newerThan } from './update.ts';
 
 /** Bytes at the scale a transcript gap reads in: `5.6M`, not `5571992`. */
 function shortBytes(bytes: number): string {
@@ -26,6 +29,15 @@ function shortBytes(bytes: number): string {
   if (bytes >= 1e6) return `${(bytes / 1e6).toFixed(1)}M`;
   if (bytes >= 1e3) return `${Math.round(bytes / 1e3)}K`;
   return `${bytes}B`;
+}
+
+/** What a stale file needs: a newer upstream body is a review, an older install is an install. */
+export function cavemanBodyHint(): string {
+  const tag = readState().cavemanUpstream?.tag;
+  if (tag && newerThan(tag, CAVEMAN_PIN)) {
+    return `the installed body is from ${tag}, this build ships ${CAVEMAN_PIN.replace(/^v/, '')} — review the diff and bump the pin in cli/upstream.ts`;
+  }
+  return 'run: tersio install --host <host>';
 }
 
 interface DoctorSummary {
@@ -241,7 +253,7 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
     check(host.label, true, `${kind} ${PACKAGE_NAME}${host.version ? ` ${host.version}` : ''}`);
   }
 
-  // A version apart means omp can load a tree of two releases, and an extension then fails to load.
+  // A version apart means omp can load a tree of two releases.
   const ompHost = hosts.find((host) => host.id === 'omp');
   if (ompHost?.version && ompHost.version !== PACKAGE_VERSION) {
     warnLine('OMP plugin package', `v${ompHost.version} while this CLI is v${PACKAGE_VERSION} — run: tersio install --host omp`);
@@ -284,7 +296,9 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   const ruleAge = ruleMtime ? `(updated ${relTime(Date.now() - ruleMtime.mtimeMs)} · ${absDate(ruleMtime.mtimeMs)})` : '';
   const cavemanRules = [['rule.md', cavemanRuleText], ['rule-lite.md', cavemanLiteText], ['rule-megacave-lite.md', cavemanMegacaveLiteText], ['rule-megacave-ultra.md', cavemanMegacaveUltraText], ['rule-ultra.md', cavemanUltraText], ['rule-megacave.md', cavemanMegacaveText]];
   const missingRules = cavemanRules.filter(([, text]) => text === null).map(([name]) => name);
-  check('Caveman rule', missingRules.length === 0, missingRules.length ? `missing: ${missingRules.join(', ')}` : ruleAge);
+  // The body carries no version, so the release it came from is the number: the pinned one, or the one a pull recorded.
+  const cavemanRelease = (readState().cavemanUpstream?.tag ?? CAVEMAN_PIN).replace(/^v/, '');
+  check('Caveman rule', missingRules.length === 0, missingRules.length ? `missing: ${missingRules.join(', ')}` : [cavemanRelease, ruleAge].filter(Boolean).join(' '));
   for (const [name, text] of cavemanRules) {
     if (text === null) continue;
     const problem = ruleBodyProblem(text);
@@ -312,7 +326,7 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   if (treeStale.length > 0) {
     warnLine('Per-host add-on files',
       `stale in ${treeStale.length} file${treeStale.length === 1 ? '' : 's'}: ${treeStale.slice(0, 6).join(', ')}` +
-      `${treeStale.length > 6 ? ` +${treeStale.length - 6} more` : ''} — run: tersio install --host <host>`);
+      `${treeStale.length > 6 ? ` +${treeStale.length - 6} more` : ''} — ${cavemanBodyHint()}`);
   }
   if (treeMissing.length > 0) {
     warnLine('Per-host add-on files',
@@ -402,7 +416,8 @@ const CAVEMAN_BODIES = ['rule.md', 'rule-lite.md', 'rule-megacave-lite.md', 'rul
 async function ponytailLatestGap(local: string): Promise<string | null> {
   if (!local) return null;
   try {
-    const meta = await fetchJson<{ version?: string }>('https://registry.npmjs.org/@dietrichgebert/ponytail/latest');
+    // A short budget on purpose: this row is advisory, and the doctor has a spawn budget above it.
+    const meta = await fetchJson<{ version?: string }>('https://registry.npmjs.org/@dietrichgebert/ponytail/latest', { timeout: 2500 });
     const remote = meta?.version;
     if (!remote || remote === local) return null;
     return `${local} installed, ${remote} is the latest`;

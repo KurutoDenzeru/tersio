@@ -10,7 +10,7 @@ import { bannerLines, bannerTier } from "../../cli/banner.ts";
 import { detectHosts, hostLabel } from "../../cli/hosts.ts";
 import type { HostEntry } from "../../cli/hosts.ts";
 import { cliEnv, fakeRtkBin } from "../helpers/env.ts";
-import { registryUrl } from "../helpers/registry.ts";
+import { registryUrl, releasesUrl } from "../helpers/registry.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const installer = path.join(root, "dist", "tersio.js");
@@ -576,7 +576,7 @@ function screenAtUpdate(rows: number): string[] {
     cwd: root,
     encoding: "utf8",
     timeout: 30000,
-    env: { ...process.env, TERM: "xterm-256color", TERSIO_HOME: mkdtempSync(path.join(os.tmpdir(), "tersio-screen-")), TERSIO_UPDATE_URL: registryUrl("99.0.0") },
+    env: { ...process.env, TERM: "xterm-256color", TERSIO_HOME: mkdtempSync(path.join(os.tmpdir(), "tersio-screen-")), TERSIO_UPDATE_URL: registryUrl("99.0.0"), TERSIO_RELEASES_URL: releasesUrl("99.0.0") },
   });
   expect(result.status, result.stderr).toBe(0);
   return JSON.parse(result.stdout) as string[];

@@ -41,21 +41,29 @@ There are two ways to turn a mode on, and they are measured separately:
 - **Slash command.** The command is issued mid-session. The block is appended when it runs, after context has already grown.
 
 Both paths inject the same text. They differ in *when* it is paid for. Do not mix the two paths in
-one comparison. Pick one, state it in the result file, and keep it for every run of that case.
+one comparison. Pick one, state it in the result file, and keep it for every run of that case. One
+session for the whole benchmark can hold only one saved default, so a benchmark that runs in one
+session uses the slash command path throughout.
 
 ### The level bodies
 
-Each level injects its own body, so each level is its own measurement. Static sizes, in characters,
-so a reader can sanity-check the growth against them:
+Each level injects its own body, so each level is its own measurement. Static sizes, so a reader can
+sanity-check the growth against them:
 
-| Caveman level | File | Chars |
-|---|---|---:|
-| `lite` | `extensions/caveman/rule-lite.md` | 4,210 |
-| `full` | `extensions/caveman/rule.md` | 4,708 |
-| `ultra` | `extensions/caveman/rule-ultra.md` | 2,513 |
-| `megacave-lite` | `extensions/caveman/rule-megacave-lite.md` | 3,122 |
-| `megacave-full` | `extensions/caveman/rule-megacave.md` | 2,858 |
-| `megacave-ultra` | `extensions/caveman/rule-megacave-ultra.md` | 2,931 |
+| Caveman level | File | Bytes | Characters |
+|---|---|---:|---:|
+| `lite` | `extensions/caveman/rule-lite.md` | 4,210 | 4,206 |
+| `full` | `extensions/caveman/rule.md` | 4,708 | 4,708 |
+| `ultra` | `extensions/caveman/rule-ultra.md` | 2,513 | 2,513 |
+| `megacave-lite` | `extensions/caveman/rule-megacave-lite.md` | 3,122 | 2,822 |
+| `megacave-full` | `extensions/caveman/rule-megacave.md` | 2,858 | 2,448 |
+| `megacave-ultra` | `extensions/caveman/rule-megacave-ultra.md` | 2,931 | 2,761 |
+
+The two columns differ where a body carries multi-byte characters, so check with the one you have:
+`wc -c` gives the bytes, a character count gives the other. The token figures quoted in the result
+files are estimates that divide a body size by four, not a tokenizer count. The megacave bodies
+give 705, 612 and 690 from their characters and 780, 714 and 733 from their bytes, so a figure taken
+from a byte count reads a little higher than the same body counted in characters.
 
 Ponytail ships one body for all three levels and states the level in its header, so the three levels
 differ by that line rather than by size.
@@ -74,12 +82,13 @@ One row per command **and level**, so `/caveman` alone is six rows.
 
 Procedure for one command case:
 
-1. Start a fresh session with every mode `off`.
-2. In the same session, issue the command, then ask prompt P1.
-3. Record P1's reply and the whole session's totals.
-4. The difference against a base session that asked P1 with no command is the command's cost.
+1. Use the benchmark's one session, with every mode `off`.
+2. In that session, issue the command, then ask prompt P1.
+3. Record P1's reply and the turn's totals.
+4. Clear the context and repeat for the case's runs.
+5. The difference against a base turn that asked P1 with no command is the command's cost.
 
-A command and its prompt go in one session, so the command's block lands on the turn that answers
+A command and its prompt go in one turn, so the command's block lands on the turn that answers
 the prompt. Most harnesses accept a command and a prompt together in one non-interactive call, so
 this surface needs no interactive session. If your harness does not, use its interactive mode and
 read the totals from the session record.
@@ -93,15 +102,19 @@ report it separately from the single-mode commands, because it is a preset and n
 ## 2. Setup
 
 1. Install Tersio for your agent, then run the health check and confirm it passes.
-2. Record the agent version, the model, the thinking level, and the temperature. Keep them fixed.
-3. Write benchmark output to a separate folder, and leave your live settings alone.
-4. Use a fixed repository with a passing test suite and at least 200 files, pinned to one commit.
-5. Copy it and inject exactly one failing test. Use that copy for the agentic runs.
+2. Run `tersio upstream` and read the source rows. It names the upstream release each vendored body
+   comes from, so a run on a body that upstream has moved measures the wrong thing.
+3. Record the agent version, the model, the thinking level, and the temperature. Keep them fixed.
+4. Write benchmark output to a separate folder, and leave your live settings alone.
+5. Use a fixed repository with a passing test suite and at least 200 files, pinned to one commit.
+6. Copy it and inject exactly one failing test. Use that copy for the agentic runs.
 
 ### The fixture repo
 
-Step 5 is yours to build, and it takes five minutes. The guide cannot ship one, because the agent
-has to fail on something it did not write.
+Step 6 takes five minutes, and the copy is the fixture. The three result files in this folder all
+used the same shape: a copy of the repository under test at a pinned commit, with one failing test
+injected into a source file and every test file left alone. The three runs used this repository at
+`72b6716`, and each result file names the commit it measured.
 
 Put the bug in the source, not in the test. The test states the correct expectation, the source
 disagrees, and the agent fixes the source. A bug inside the test file forces the agent to edit a
@@ -159,6 +172,35 @@ condition is set without touching the dashboard:
 For `Combo balanced`, use `"comboDefault": "balanced"` with caveman `full`, rtk `true`, ponytail
 `full`, and pstack `on`. For a single mode, set `comboDefault` to `custom` and set only that mode.
 
+### One session for the whole benchmark
+
+A fresh session per run fills the agent's session list, and a full benchmark makes hundreds of
+entries there. Use one session for the whole benchmark instead, and clear the context between the
+runs:
+
+1. Open the session once, before the first case.
+2. Run the case's first turn.
+3. Clear the session's context, reset the fixture with `git checkout -- .`, and run the next turn.
+4. Repeat until every case has its runs.
+
+Each turn then starts from the same empty context, so the numbers read like a fresh session's, and
+the session list holds one entry instead of one per run. A harness with no clear command starts a
+new session for each turn instead, and its session list grows with the run count.
+
+One session for everything means one mode setting for everything, so every case sets its mode with
+a slash command. The saved-default path needs a session of its own, because that path fixes the
+mode before the first turn. Pick one path for the whole benchmark, as section 1 sets out.
+
+Measure the base case the same way. A base case measured with one session per run beside a mode case
+measured in the shared session is two different experiments, and the deltas between them mean
+nothing.
+
+Read the per-turn usage. Every turn reports its own reply and total tokens, so the medians in
+section 8 come from the turns, not from the session's last line.
+
+The agentic surface needs the reset as much as the others: the agent has to meet the injected bug
+again, so the context and the working tree both go back to their starting state before each turn.
+
 ## 3. Surfaces
 
 Run every mode and level on every surface that applies to it, and never mix results across
@@ -184,7 +226,9 @@ the suite output changes how the agent fixes the bug.
 ## 4. Procedure
 
 1. Set every mode to `off` and run the base case.
-2. Start a new session for each run, and run each case **5 times**.
+2. Open one session for the whole benchmark, and run every case's runs as turns in it, clearing the
+   context between turns as section 2 sets out. Run each case **5 times**. The prose and code
+   surfaces run three prompts each, so a case there is 15 runs, and its quality column reads out of 15.
 3. Keep every result. Do not drop slow or failed runs.
 4. Interleave the cases: base, A, B, base, A, B.
 5. Run the control prompt on the prose surface.
@@ -367,9 +411,11 @@ The file has these sections, in this order, and no others:
 - Agent: <name and version>
 - Model: <provider/model>, thinking effort <level>, temperature <not reported by the harness>
 - Tersio, RTK, Ponytail, Caveman: <versions>
+- Caveman release <version> and pstack pin <commit>: the upstream bodies this run measured
 - Repository and commit: <repo> at <commit>. <where each surface ran>
-- Runs (N), date, surface: <N per case>, <date>
-- Path: saved defaults for the token protocol, slash commands for the command surface.
+- Runs (N), date, surface: <N per prompt on the prose and code surfaces, 5 per case on the others>, <date>
+- Sessions: one for the whole benchmark, the context cleared between runs
+- Path: <the path every case used: saved default or slash command>
 
 <one paragraph: how it was measured, and the harness it ran under>
 
@@ -413,8 +459,10 @@ Include with every result:
 - The agent name and version.
 - The model, the thinking level, and the temperature.
 - The Tersio, RTK, Ponytail, and Caveman versions.
+- The Caveman release and the pstack pin, so a reader knows which upstream bodies were measured.
 - The test repository and commit.
 - The number of runs (N), the date, and the surface.
+- How the sessions were run: one for the whole benchmark with the context cleared between runs, or one per run.
 
 A run that breaks a rule of this guide says so in the file, in the paragraph under the header. A
 short run, a skipped level, a reworded prompt, and a harness limitation each get one sentence.

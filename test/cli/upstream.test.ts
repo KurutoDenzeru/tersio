@@ -2,11 +2,13 @@
 // the upstream path it came from, and accuracy must count a fork that is present as a match.
 import { expect, test } from "vitest";
 import { spawnSync } from "node:child_process";
-import { readdirSync } from "node:fs";
+import { readFileSync, readdirSync, mkdtempSync, rmSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { accuracyOf, gapsOf, gateFails, gateReasons, gitBlobSha, hostBroken, pstackUpstreamPath, scorecardMarkdown } from "../../cli/upstream.ts";
-import type { HostRow, Scorecard, SourceRow } from "../../cli/upstream.ts";
+import { deflateRawSync } from "node:zlib";
+import { accuracyOf, cavemanAssetGap, driftOf, gapsOf, gateFails, gateReasons, gitBlobSha, hostBroken, hostFix, pstackUpstreamPath, scorecardMarkdown, skillRoot, uncarriedOf, vendoredVerdict, zipEntries } from "../../cli/upstream.ts";
+import type { HostRow, Scorecard, SourceRow, TreeResult } from "../../cli/upstream.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const PSTACK = path.join(root, "extensions", "pstack");
@@ -43,14 +45,45 @@ function row(overrides: Partial<SourceRow> = {}): SourceRow {
   return {
     source: "x", pin: "", upstream: "", tracked: 2, matched: 2, drift: 0, added: 0, removed: 0, ceiling: 0,
     measured: true, status: "ok", kind: "bytes", link: "", gaps: [], moved: [], appeared: [], gone: [], note: "",
+    uncarried: 0, uncarriedMoved: 0,
     ...overrides,
   };
 }
 
 /** One host row, with no file names unless the test asks for them. */
 function hostRow(overrides: Partial<HostRow> = {}): HostRow {
-  return { host: "omp", installed: true, files: 2, matched: 2, stale: 0, missing: 0, staleFiles: [], missingFiles: [], unloaded: [], ...overrides };
+  return { host: "omp", installed: true, files: 2, matched: 2, stale: 0, missing: 0, staleFiles: [], missingFiles: [], unloaded: [], fix: "", ...overrides };
 }
+
+/** One tree, as the scorecard reads it. */
+function tree(entries: Array<[string, string]>): TreeResult {
+  return { entries: new Map(entries), failure: null };
+}
+
+test("a new upstream skill directory is reported, not only a new file in a tracked one", () => {
+  const tracked = ["pstack/skills/poteto-mode/SKILL.md"];
+  const pinned = tree([["pstack/skills/poteto-mode/SKILL.md", "a"]]);
+  const head = tree([["pstack/skills/poteto-mode/SKILL.md", "a"], ["pstack/skills/new-skill/SKILL.md", "b"]]);
+  const drift = driftOf(pinned, head, tracked);
+  expect(drift.added).toEqual(["pstack/skills/new-skill/SKILL.md"]);
+});
+
+test("the skills upstream publishes that this port does not carry are counted, and the moved ones named", () => {
+  const tracked = ["pstack/skills/why/SKILL.md", "pstack/skills/architect/SKILL.md"];
+  const pinned = tree([["pstack/skills/why/SKILL.md", "a"], ["pstack/skills/architect/SKILL.md", "a"], ["pstack/skills/other/SKILL.md", "c"]]);
+  const head = tree([["pstack/skills/why/SKILL.md", "a"], ["pstack/skills/architect/SKILL.md", "a"], ["pstack/skills/other/SKILL.md", "b"]]);
+  const out = uncarriedOf(pinned, head, tracked, skillRoot(tracked));
+  expect(out.count).toBe(1);
+  expect(out.moved).toBe(1);
+});
+
+test("a vendored body that differs from the package it declares is a gap", () => {
+  const integrity = "sha256-LPJNul+wow4m6DsqxbninhsWHlwfp0JecwQzYpOLmCQ=";
+  expect(vendoredVerdict("skills/ponytail/SKILL.md", Buffer.from("hello"), integrity, "5.3.2")).toBe(null);
+  expect(vendoredVerdict("skills/ponytail/SKILL.md", Buffer.from("hello!"), integrity, "5.3.2")).toBe("skills/ponytail/SKILL.md differs from the package at 5.3.2");
+  expect(vendoredVerdict("skills/ponytail/SKILL.md", null, integrity, "5.3.2")).toBe("skills/ponytail/SKILL.md is missing from the vendored copy");
+  expect(vendoredVerdict("skills/ponytail/SKILL.md", Buffer.from("hello"), undefined, "5.3.2")).toBe("skills/ponytail/SKILL.md is not in the package at 5.3.2");
+});
 
 test("accuracy counts sources and only installed hosts", () => {
   const sources = [row({ tracked: 4, matched: 3 })];
@@ -69,6 +102,60 @@ function makeCard(sources: SourceRow[], hosts: HostRow[]): Scorecard {
 
 const clean: SourceRow = row();
 const host: HostRow = hostRow();
+
+/** A zip archive with deflated entries, built the way a release asset is built. */
+function zipFixture(files: Record<string, string>): Buffer {
+  const locals: Buffer[] = [];
+  const central: Buffer[] = [];
+  let offset = 0;
+  for (const [name, text] of Object.entries(files)) {
+    const nameBuf = Buffer.from(name, "utf8");
+    const data = Buffer.from(text, "utf8");
+    const compressed = deflateRawSync(data);
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(20, 4);
+    local.writeUInt16LE(8, 8);
+    local.writeUInt32LE(compressed.length, 18);
+    local.writeUInt32LE(data.length, 22);
+    local.writeUInt16LE(nameBuf.length, 26);
+    locals.push(local, nameBuf, compressed);
+    const dir = Buffer.alloc(46);
+    dir.writeUInt32LE(0x02014b50, 0);
+    dir.writeUInt16LE(20, 4);
+    dir.writeUInt16LE(20, 6);
+    dir.writeUInt16LE(8, 10);
+    dir.writeUInt32LE(compressed.length, 20);
+    dir.writeUInt32LE(data.length, 24);
+    dir.writeUInt16LE(nameBuf.length, 28);
+    dir.writeUInt32LE(offset, 42);
+    central.push(dir, nameBuf);
+    offset += local.length + nameBuf.length + compressed.length;
+  }
+  const directory = Buffer.concat(central);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(Object.keys(files).length, 8);
+  end.writeUInt16LE(Object.keys(files).length, 10);
+  end.writeUInt32LE(directory.length, 12);
+  end.writeUInt32LE(offset, 16);
+  return Buffer.concat([...locals, directory, end]);
+}
+
+test("a release asset that differs from the bundled body is a gap", () => {
+  const body = readFileSync(path.join(root, "extensions", "caveman", "rule.md"), "utf8");
+  expect(cavemanAssetGap(body, body), "the asset carries the body this port ships").toBe(null);
+  expect(cavemanAssetGap(body, null)).toBe("caveman/rule.md is missing locally");
+  expect(cavemanAssetGap(`${body}\nmutated\n`, body)).toBe("caveman/rule.md differs from the release asset");
+});
+
+test("the zip reader returns every file the release asset carries", () => {
+  const archive = zipFixture({ "caveman/SKILL.md": "# body\n", "caveman/README.md": "# readme\n" });
+  const entries = zipEntries(archive);
+  expect(entries.get("caveman/SKILL.md")?.toString("utf8")).toBe("# body\n");
+  expect(entries.get("caveman/README.md")?.toString("utf8")).toBe("# readme\n");
+  expect(entries.size, "every entry in the archive").toBe(2);
+});
 
 test("a stale host fails a plain run, drift only fails under --strict", () => {
   const drifted = makeCard([{ ...clean, drift: 3, ceiling: 3 }], [host]);
@@ -90,6 +177,22 @@ test("a stale host fails a plain run, drift only fails under --strict", () => {
   const short = makeCard([{ ...clean, matched: 1 }], [host]);
   expect(gateFails(short, false)).toBe(true);
   expect(gateFails(makeCard([clean], [host]), true)).toBe(false);
+});
+
+test("a stale host row names the command that repairs it", () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-upstream-fix-"));
+  const prev = process.env.TERSIO_HOME;
+  process.env.TERSIO_HOME = home;
+  try {
+    // The installed package is behind this build: reinstall that host.
+    expect(hostFix("omp", "0.0.1")).toBe("run: tersio install --host omp");
+    // The installed package is ahead of this build: the build is behind, so update it.
+    expect(hostFix("omp", "99.0.0")).toBe("run: tersio update");
+  } finally {
+    if (prev === undefined) delete process.env.TERSIO_HOME;
+    else process.env.TERSIO_HOME = prev;
+    rmSync(home, { recursive: true, force: true });
+  }
 });
 
 test("a pin that is gone upstream fails a plain run, not just --strict", () => {

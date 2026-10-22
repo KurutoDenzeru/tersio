@@ -5,14 +5,17 @@ import { tersioHome } from './utils.ts';
 
 export interface TersioState {
   reset?: number;
-  updateCheck?: { latest?: string; lastCheck?: number };
+  /** The newest release any source named, its source, and the registry's own tag. */
+  updateCheck?: { latest?: string; source?: 'npm' | 'github'; npm?: string | null; lastCheck?: number };
+  /** The upstream release the installed Caveman body came from, so a newer body is traceable. */
+  cavemanUpstream?: { tag: string; at: number };
   /** Cadence of the dashboard's background check. Off leaves it to an explicit click. */
   updateSchedule?: 'off' | 'daily' | 'weekly' | 'monthly';
   /** A release the operator skipped, so the prompt stops naming it. */
   updateSkip?: string;
   /** Epoch ms until which the prompt stays hidden. */
   updateSnoozeUntil?: number;
-  rtkEligible?: { version?: string; heads?: string[] };
+  rtkEligible?: { version?: string; heads?: string[]; sig?: string };
   diag?: unknown;
 }
 

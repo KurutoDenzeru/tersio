@@ -1072,10 +1072,13 @@ function AboutPane({ update }: { update: UpdateFeed }) {
   ) : installing ? (
     <span className="text-dim">Installing the release. The log below is the installer's own output.</span>
   ) : checking ? (
-    <span className="text-dim">Asking the npm registry.</span>
+    <span className="text-dim">Asking npm and the release feed.</span>
   ) : view.available && view.latest ? (
     <span>
-      Version <span className="mono font-semibold">{view.latest}</span> is available. You run <span className="mono">{view.current}</span>.
+      Version <span className="mono font-semibold">{view.latest}</span> is available{view.source === "github" ? " on the release feed" : ""}. You run <span className="mono">{view.current}</span>.
+      {view.source === "github" && view.npmLatest && view.npmLatest !== view.latest ? (
+        <span className="text-dim"> npm serves {view.npmLatest}.</span>
+      ) : null}
     </span>
   ) : (
     <span className="text-dim">
@@ -1165,7 +1168,7 @@ function AboutPane({ update }: { update: UpdateFeed }) {
           <div className="min-w-0">
             <p className="m-0 text-[13px] font-semibold">Developer tools</p>
             <p className="mt-0.5 mb-0 text-xs text-dim">
-              Show the Sources page: every port beside the upstream project it tracks.
+              Show the Upstream page: every port beside the upstream project it tracks.
             </p>
           </div>
           <Switch size="sm" checked={dev} onCheckedChange={setDevMode} aria-label="Show developer tools" />

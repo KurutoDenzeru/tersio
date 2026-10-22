@@ -24,7 +24,7 @@ import { PACKAGE_NAME } from './common.ts';
 import { findPackageRoot, resolveRtkBinary, ruleBodyProblem } from '../extensions/shared/utils.ts';
 import { BACKUP_KEEP, backupDir, backupDiskBytes, createDataBackup, dataSources, deleteDataBackup, listDataBackups, restoreDataBackup } from '../extensions/shared/snapshots.ts';
 import { resetCounts, resetStatistics } from './reset.ts';
-import { cachedScorecard, refreshScorecard } from './upstream.ts';
+import { CAVEMAN_PIN, cachedScorecard, refreshScorecard, upstreamHistory } from './upstream.ts';
 import { readBackupSchedule, syncUsageDb } from '../extensions/shared/usage-store.ts';
 import { agentDbPath, emptyRequestEntry, isAgentView, isRangeKey, readAgentRequestEntry, readAgentStats, readSessionTrace, statsDbPath } from '../extensions/shared/agent-stats.ts';
 import type { AgentStats, AgentView, RangeKey } from '../extensions/shared/agent-stats.ts';
@@ -329,7 +329,6 @@ function relAge(ms: number): string {
 function computeDoctorRows(): DoctorRow[] {
   const rows: DoctorRow[] = [];
   const rtkBin = resolveRtkBinary();
-  const ponytailPkg = path.join(OMP_PLUGINS_DIR, 'node_modules', '@dietrichgebert', 'ponytail', 'package.json');
   const tersioPluginDir = path.join(OMP_PLUGINS_DIR, 'node_modules', ...PACKAGE_NAME.split('/'));
   const ok = (p: string): boolean => existsSync(p);
   const configPath = path.join(OMP_AGENT_DIR, 'config.yml');
@@ -358,7 +357,9 @@ function computeDoctorRows(): DoctorRow[] {
   const rule = path.join(tersioPluginDir, 'extensions', 'caveman', 'rule.md');
   const ruleAge = ageStr(rule);
   const ruleAt = absTime(rule);
-  addon('Caveman rule', ruleAge !== null, ruleAge && ruleAt ? `(updated ${ruleAge} · ${ruleAt})` : rule);
+  // The body carries no version, so the release it came from is the number: the pinned one, or the one a pull recorded.
+  const cavemanRelease = (readState().cavemanUpstream?.tag ?? CAVEMAN_PIN).replace(/^v/, '');
+  addon('Caveman rule', ruleAge !== null, ruleAge && ruleAt ? `${cavemanRelease} (updated ${ruleAge} · ${ruleAt})` : rule);
   // The pstack body is a Tersio fork with no remote, so this row proves it is usable, not current.
   const pstackRule = path.join(tersioPluginDir, 'extensions', 'pstack', 'rule.md');
   let pstackProblem: string | null = 'missing — run: tersio install';
@@ -370,6 +371,8 @@ function computeDoctorRows(): DoctorRow[] {
   const rtkAge = rtkBin ? ageStr(rtkBin) : null;
   const rtkAt = rtkBin ? absTime(rtkBin) : null;
   addon('RTK binary', rtkVer !== null, rtkVer && rtkAge && rtkAt ? `${rtkVer} (updated ${rtkAge} · ${rtkAt})` : rtkBin || 'not found in PATH');
+  // Ponytail rides inside the plugin now, so the version comes from the vendored copy, not a sibling package.
+  const ponytailPkg = path.join(tersioPluginDir, 'extensions', 'ponytail', 'package.json');
   let ponytailVer: string | null = null;
   try {
     ponytailVer = (JSON.parse(readFileSync(ponytailPkg, 'utf8')) as { version?: string }).version ?? null;
@@ -557,14 +560,14 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
   const server = http.createServer(async (req, res) => {
     if (req.url === '/api/upstream' && req.method === 'GET') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ card: await cachedScorecard() }));
+      res.end(JSON.stringify({ card: await cachedScorecard(), history: await upstreamHistory() }));
       return;
     }
     if (req.url === '/api/upstream/check' && req.method === 'POST') {
       try {
         const card = await refreshScorecard();
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true, card }));
+        res.end(JSON.stringify({ ok: true, card, history: await upstreamHistory() }));
       } catch (error) {
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: false, error: (error as Error).message || 'check failed' }));

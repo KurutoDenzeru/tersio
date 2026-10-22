@@ -116,7 +116,7 @@ It is display-only — it never enters the model context, so it costs the sessio
 | `/combo off\|lite\|balanced\|max\|status` | One preset for all four modes (start here): lite = caveman lite · rtk on · ponytail lite · pstack on, balanced = full/full/on/on, max = ultra/ultra/on/on, and off disables every mode; per-mode tweaks drop to `custom`. |
 | `/caveman lite\|full\|ultra\|megacave-lite\|megacave-full\|megacave-ultra\|off\|status` | Terse replies at six levels. `full`, `ultra`, and `megacave-full` ship upstream's bodies byte for byte; `lite`, `megacave-lite`, and `megacave-ultra` are Tersio's own, for registers upstream defines but no longer ships, and each names its upstream row. Legacy `wenyan` spellings still resolve: `wenyan`/`wenyan-full` → `megacave-full`, `wenyan-lite` → `megacave-lite`, `wenyan-ultra` → `megacave-ultra`. |
 | `/rtk on\|off\|status` | Controls RTK session guidance, `rtk_run`, and the automatic hook through shared `RTK_DISABLED` state. Exact bytes bypass RTK. |
-| `/ponytail off\|lite\|full\|ultra\|status` | Minimal code using upstream Ponytail modes. Review runs separately through `/ponytail-review`. |
+| `/ponytail off\|lite\|full\|ultra\|status` | Minimal code using upstream Ponytail modes, one body at four levels. Review runs as its own skill. |
 | `/pstack on\|off\|status` | Rigor mode, forked from [pstack](https://github.com/cursor/plugins/tree/main/pstack) (MIT). The lite, balanced, and max presets turn it on; `normal mode` clears it. |
 | `/tersio status` | Active modes + combo level; state persists and propagates to subagents. |
 | `/tersio check` | Add-on version check |
