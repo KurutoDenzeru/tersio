@@ -215,7 +215,7 @@ test("opencode sessions restore modes independently", async () => {
 
 // rtk ships an OpenCode plugin of its own. Tersio does the rewrite here instead, so the host loads one plugin.
 test("the bash hook rewrites a command through the resolved rtk binary", async () => {
-  await withFakeRtk("#!/bin/sh\nprintf '{\"command\":\"rtk compact %s\"}\\n' \"$3\"\n", "echo rtk compact %~3", async () => {
+  await withFakeRtk("#!/bin/sh\nprintf '{\"command\":\"rtk compact %s\"}\\n' \"$3\"\n", "echo {\"command\":\"rtk compact %~3\"}", async () => {
     const { ctx, hooks, store } = fakeCtx();
     await setup(ctx);
     // The gate reads this entry, so state it rather than inherit a sibling test's default.
