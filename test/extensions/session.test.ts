@@ -213,9 +213,9 @@ test("opencode sessions restore modes independently", async () => {
   }
 });
 
-// rtk ships no OpenCode plugin of its own, so this hook is the whole integration.
+// rtk ships an OpenCode plugin of its own. Tersio does the rewrite here instead, so the host loads one plugin.
 test("the bash hook rewrites a command through the resolved rtk binary", async () => {
-  await withFakeRtk("#!/bin/sh\necho \"rtk compact $2\"\n", "echo rtk compact %~2", async () => {
+  await withFakeRtk("#!/bin/sh\nprintf '{\"command\":\"rtk compact %s\"}\\n' \"$3\"\n", "echo rtk compact %~3", async () => {
     const { ctx, hooks, store } = fakeCtx();
     await setup(ctx);
     // The gate reads this entry, so state it rather than inherit a sibling test's default.
@@ -223,6 +223,19 @@ test("the bash hook rewrites a command through the resolved rtk binary", async (
     const event = { tool: "bash", sessionID: "ses-on", input: { command: "git status" } };
     await fire(hooks, "execute.before", event);
     expect(event.input.command).toBe("rtk compact git status");
+  });
+});
+
+// rtk's OpenCode hook answers {} when the rewrite would change what OpenCode's own permission rules
+// decide, so a denied command stays denied. The hook must honour that answer.
+test("the bash hook leaves a command alone when rtk's OpenCode hook refuses the rewrite", async () => {
+  await withFakeRtk("#!/bin/sh\nprintf '{}\\n'\n", "echo {}", async () => {
+    const { ctx, hooks, store } = fakeCtx();
+    await setup(ctx);
+    store.set("entries:ses-on", [{ type: "custom", customType: "rtk-mode", data: { enabled: true } }]);
+    const event = { tool: "bash", sessionID: "ses-on", input: { command: "git push --force" } };
+    await fire(hooks, "execute.before", event);
+    expect(event.input.command).toBe("git push --force");
   });
 });
 

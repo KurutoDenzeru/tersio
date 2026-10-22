@@ -87,7 +87,7 @@ The status line names the same four modes with the same glyphs. Its order is the
 - **The order is registration order, not priority.** `package.json` loads caveman, pstack, rtk, then combo, and combo injects the Ponytail block. A host that loads the same files in another order appends in that order, and no mode reads another's block.
 - **caveman owns the voice.** It changes how a sentence reads, never what the work is.
 - **pstack owns the approach.** It picks the playbook and the verification, and it yields the voice to caveman and the change size to ponytail.
-- **rtk owns the tooling.** It rewrites a shell command and filters its output before the model sees it. It never edits a reply.
+- **rtk owns the tooling.** It rewrites a shell command and filters its output before the model sees it. It never edits a reply. On OpenCode the rewrite goes through `rtk hook opencode`, the same subcommand rtk's own OpenCode plugin calls, so a rewrite that would change what OpenCode's own permission rules decide is refused rather than applied.
 - **ponytail owns the size.** It caps the diff, and it never overrides pstack's verification. Last is not weakest: ponytail is the YAGNI gate, and it holds the final say on how much gets built.
 - **A conflict resolves inside the block text.** pstack's own precedence lines say so: the style mode wins on reply shape, and ponytail wins on how much changes.
 - **Every block is append-only.** A mode switch replaces its own block through `staleMarker`, so a `/combo max` mid-session never stacks two levels of the same rule.

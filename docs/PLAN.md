@@ -78,12 +78,12 @@ runs without a benchmark run.
 
 **Files.**
 
-- [ ] Edit `cli/upstream.ts`.
-- [ ] Edit `test/cli/upstream.test.ts`.
-- [ ] Edit `extensions/updater/index.ts`, `cli/install.ts`, `cli/update.ts`, and `extensions/shared/utils.ts`, so a Caveman body is fetched at a release.
-- [ ] Edit `extensions/shared/state.ts` and `cli/doctor.ts`, so the release is recorded and read back.
-- [ ] Edit `docs/BENCHMARK_GUIDE.md`, `README.md`, `docs/BENCHMARK_OMP.md`, `docs/BENCHMARK_PI.md`, and `docs/BENCHMARK_OPENCODE.md`.
-- [ ] Edit `cli/doctor-fix.ts`, `test/cli/install.test.ts`, and `test/cli/doctor.test.ts`, which carry the comment blocks this change trims.
+- [x] Edit `cli/upstream.ts`.
+- [x] Edit `test/cli/upstream.test.ts`.
+- [x] Edit `extensions/updater/index.ts`, `cli/install.ts`, `cli/update.ts`, and `extensions/shared/utils.ts`, so a Caveman body is fetched at a release.
+- [x] Edit `extensions/shared/state.ts` and `cli/doctor.ts`, so the release is recorded and read back.
+- [x] Edit `docs/BENCHMARK_GUIDE.md`, `README.md`, `docs/BENCHMARK_OMP.md`, `docs/BENCHMARK_PI.md`, and `docs/BENCHMARK_OPENCODE.md`.
+- [x] Edit `cli/doctor-fix.ts`, `test/cli/install.test.ts`, and `test/cli/doctor.test.ts`, which carry the comment blocks this change trims.
 
 **Build.**
 
@@ -166,7 +166,7 @@ The result-file half.
 **Merge.**
 
 - [ ] Root's clean verdict at the exact head SHA.
-- [ ] Bugbot triage done.
+- [x] Bugbot triage done.
 - [ ] Rebased onto current trunk after the verdict, patch-id unchanged.
 - [ ] The owner reports STACK-READY.
 
