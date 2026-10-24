@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "tersio": {
+      "command": "tersio",
+      "args": [
+        "mcp"
+      ],
+      "env": {
+        "TERSIO_MCP_RUNTIME": "node"
+      }
+    }
+  }
+}

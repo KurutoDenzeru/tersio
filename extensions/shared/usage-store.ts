@@ -9,6 +9,7 @@ import {
   classifySessionLine,
   classifyOpencodeMessage,
   collectToolResults,
+  parseSessionLines,
   costOf,
   durOf,
   agentOfSessionText,
@@ -70,7 +71,7 @@ function query(db: string, sql: string): string[][] {
 }
 
 // Bump on a parse change: unchanged transcripts are never re-read.
-const PARSER_VERSION = '13';
+const PARSER_VERSION = '14';
 
 /** OpenCode rows gained tool names; re-read by id, since a PARSER_VERSION bump drops rotated history. */
 const OPENCODE_TOOLS_VERSION = '1';
@@ -497,74 +498,106 @@ function parseFile(text: string, host?: string, file?: string, agent?: string): 
   } catch { /* JSONL */ }
   // A call's result arrives on a later line, so the whole file is scanned for results first.
   const results = collectToolResults(text);
+  const lines = parseSessionLines(text);
   let codexProvider: string | null = null;
   let codexModel: string | null = null;
-  for (const line of text.split('\n')) {
-    if (!line.trim()) continue;
-    try {
-      const row = JSON.parse(line) as SessionLineRow;
-      const rid = messageRowId(row);
-      const parsed = classifySessionLine(row, results);
-      if (parsed.kind === 'codex_provider') {
-        if (parsed.provider) codexProvider = parsed.provider;
+  const pendingTurns = new Map<string, { durMs?: number; ttftMs?: number }>();
+  let lastTurnTiming: { durMs?: number; ttftMs?: number } | undefined;
+  for (const { row } of lines.parsed) {
+    const parsed = classifySessionLine(row, results);
+    if (parsed.kind === 'token_row' && parsed.turnId && !parsed.usage) pendingTurns.set(parsed.turnId, { durMs: parsed.durMs, ttftMs: parsed.ttftMs });
+    if (parsed.kind === 'token_row' && parsed.turnId && !parsed.usage) lastTurnTiming = { durMs: parsed.durMs, ttftMs: parsed.ttftMs };
+    if (parsed.kind === 'codex_provider' && parsed.provider) codexProvider = parsed.provider;
+    if (parsed.kind === 'codex_model' && parsed.model) codexModel = parsed.model;
+  }
+  // Codex facts ride outside the token rows: one shell fact per CommandExecution, one call fact per custom call.
+  const shellOrder: string[] = [];
+  const shellFacts = new Map<string, ToolFact>();
+  const callOrder: string[] = [];
+  const callFacts = new Map<string, ToolFact>();
+  for (const { row } of lines.parsed) {
+    const parsed = classifySessionLine(row, results);
+    if (parsed.kind === 'assistant_row' && parsed.model === 'codex-tool-call' && parsed.callId) {
+      if (!callFacts.has(parsed.callId)) callOrder.push(parsed.callId);
+      const out = results.get(parsed.callId);
+      callFacts.set(parsed.callId, { n: parsed.callName === 'exec' ? 'bash' : parsed.callName ?? 'tool', a: parsed.callChars ?? 0, r: out?.chars ?? 0, e: out?.error ? 1 : 0 });
+    } else if (parsed.kind === 'assistant_row' && parsed.model === 'codex-shell-fact' && parsed.toolFacts?.length) {
+      const turn = parsed.turnId ?? '';
+      if (!shellFacts.has(turn)) shellOrder.push(turn);
+      shellFacts.set(turn, parsed.toolFacts[0]);
+    }
+  }
+  const codexFacts: ToolFact[] = [];
+  for (const turn of shellOrder) {
+    const fact = shellFacts.get(turn)!;
+    if (!codexFacts.some((f) => f.n === fact.n && f.a === fact.a)) codexFacts.push(fact);
+  }
+  for (const callId of callOrder) {
+    const fact = callFacts.get(callId)!;
+    if (!codexFacts.some((f) => f.n === fact.n && f.a === fact.a && f.r === fact.r && f.e === fact.e)) codexFacts.push(fact);
+  }
+  for (const { row } of lines.parsed) {
+    const parsed = classifySessionLine(row, results);
+    const rid = messageRowId(row);
+    if (parsed.kind === 'codex_provider') continue;
+    if (parsed.kind === 'codex_model') continue;
+    const ts = row.timestamp;
+    const ms = ts === undefined ? NaN : typeof ts === 'number' ? ts : Date.parse(ts);
+    const t = Number.isFinite(ms) ? ms : null;
+    if (parsed.kind === 'token_row') {
+      // A timing-only row (`task_complete`) is not usage; skip it here, the pass above kept its turn.
+      if (!parsed.usage && !parsed.ms) {
         continue;
       }
-      if (parsed.kind === 'codex_model') {
-        if (parsed.model) codexModel = parsed.model;
-        continue;
-      }
-      const ts = row.timestamp;
-      const ms = ts === undefined ? NaN : typeof ts === 'number' ? ts : Date.parse(ts);
-      const t = Number.isFinite(ms) ? ms : null;
-      if (parsed.kind === 'token_row') {
-        const provider = parsed.provider ?? codexProvider;
-        const usage = parsed.usage ?? {};
-        rows.push({
-          t,
-          model: canonicalModelId(provider ? (codexModel ? `codex/${provider}/${codexModel}` : `codex/${provider}`) : 'codex'),
-          i: intOf(usage.input),
-          o: intOf(usage.output),
-          d: undefined,
-          tf: undefined,
-          cr: intOf(usage.cacheRead),
-          cw: intOf(usage.cacheWrite),
-          usd: costOf(usage),
-          st: 'completed',
-          code: undefined,
-          note: undefined,
-          tools: [],
-          host,
-          agent,
-          id: rid,
-        });
-        continue;
-      }
-      if (parsed.kind !== 'assistant_row' || !parsed.model || !parsed.usage) continue;
-      const usage = parsed.usage;
-      const dur = durOf(parsed.durMs);
-      const run = parsed.run ?? { st: 'completed' as RunStatus };
-      const note = run.note?.replace(/[\t\n\r]/g, ' ').slice(0, 180);
+      const turn = parsed.turnId ? pendingTurns.get(parsed.turnId) : lastTurnTiming;
+      const provider = parsed.provider ?? codexProvider;
+      const usage = parsed.usage ?? {};
       rows.push({
         t,
-        model: canonicalModelId(parsed.model),
+        model: canonicalModelId(provider ? (codexModel ? `codex/${provider}/${codexModel}` : `codex/${provider}`) : 'codex'),
         i: intOf(usage.input),
         o: intOf(usage.output),
-        d: dur,
-        tf: durOf(parsed.ttftMs),
+        d: durOf(parsed.durMs ?? turn?.durMs),
+        tf: durOf(parsed.ttftMs ?? turn?.ttftMs),
         cr: intOf(usage.cacheRead),
         cw: intOf(usage.cacheWrite),
         usd: costOf(usage),
-        st: run.st,
-        code: run.code,
-        note,
-        tools: parsed.tools ?? [],
-        toolFacts: parsed.toolFacts,
+        st: 'completed',
+        code: undefined,
+        note: undefined,
+        tools: codexFacts.map((f) => f.n),
+        toolFacts: codexFacts.length > 0 ? codexFacts : undefined,
         host,
         agent,
         id: rid,
-        gateway: parsed.provider,
       });
-    } catch { /* skip corrupt lines */ }
+      continue;
+    }
+    if (parsed.kind !== 'assistant_row' || !parsed.model || !parsed.usage) continue;
+    const usage = parsed.usage;
+    const dur = durOf(parsed.durMs);
+    const run = parsed.run ?? { st: 'completed' as RunStatus };
+    const note = run.note?.replace(/[\t\n\r]/g, ' ').slice(0, 180);
+    rows.push({
+      t,
+      model: canonicalModelId(parsed.model),
+      i: intOf(usage.input),
+      o: intOf(usage.output),
+      d: dur,
+      tf: durOf(parsed.ttftMs),
+      cr: intOf(usage.cacheRead),
+      cw: intOf(usage.cacheWrite),
+      usd: costOf(usage),
+      st: run.st,
+      code: run.code,
+      note,
+      tools: parsed.tools ?? [],
+      toolFacts: parsed.toolFacts,
+      host,
+      agent,
+      id: rid,
+      gateway: parsed.provider,
+    });
   }
   return rows;
 }

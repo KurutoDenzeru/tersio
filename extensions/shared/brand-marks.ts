@@ -96,6 +96,8 @@ export const MARK_BG: Readonly<Record<string, string>> = {
   amazonaws: "#ffffff",
   // The mark's own artwork is white, so the tile is white and the glyph is black.
   openai: "#ffffff",
+  // Codex's mark is drawn by a component, so only the tile fill lives here.
+  codex: "#ffffff",
   commandcode: "#ffffff",
   gmicloud: "#ffffff",
   magpie: "#0b0b0c",

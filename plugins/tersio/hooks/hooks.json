@@ -1,0 +1,29 @@
+{
+  "description": "Tersio lifecycle hooks for Codex.",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "tersio codex-hook user-prompt-submit",
+            "statusMessage": "Refreshing Tersio modes"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "^Bash$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "tersio codex-hook pre-tool-use",
+            "timeout": 5,
+            "statusMessage": "Checking RTK rewrite"
+          }
+        ]
+      }
+    ]
+  }
+}

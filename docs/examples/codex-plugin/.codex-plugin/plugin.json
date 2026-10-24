@@ -1,0 +1,25 @@
+{
+  "name": "tersio",
+  "version": "2.25.14",
+  "description": "Tersio modes and session usage for Codex.",
+  "author": {
+    "name": "KurutoDenzeru"
+  },
+  "homepage": "https://github.com/KurutoDenzeru/tersio",
+  "repository": "https://github.com/KurutoDenzeru/tersio",
+  "license": "MIT",
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "hooks": "./hooks/hooks.json",
+  "interface": {
+    "displayName": "Tersio",
+    "shortDescription": "Terse agent modes and usage",
+    "longDescription": "Keep Tersio modes active in Codex, and read local agent usage through the Tersio MCP server.",
+    "developerName": "KurutoDenzeru",
+    "category": "Developer Tools",
+    "capabilities": ["Read", "Write", "Lifecycle hooks"],
+    "websiteURL": "https://github.com/KurutoDenzeru/tersio",
+    "defaultPrompt": ["Show my Tersio mode status", "Show my local agent usage"],
+    "brandColor": "#D97706"
+  }
+}

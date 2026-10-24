@@ -1,0 +1,7 @@
+{
+  "name": "@krtclcdy/tersio-codex-plugin",
+  "version": "2.25.14",
+  "private": true,
+  "description": "Tersio plugin metadata for Codex.",
+  "license": "MIT"
+}

@@ -4,15 +4,22 @@ import path from 'node:path';
 import {
   BUN_BIN_DIR, HOME, OMP_AGENT_DIR, OMP_PLUGINS_DIR, PACKAGE_NAME, RTK_BINARY_NAME,
   args, dryRun, keepPonytail, removePonytail, removeRtk, yes,
-  debug, writeConfigLines,
+  debug, execP, writeConfigLines,
 } from './common.ts';
 import { PONYTAIL_PKG } from './manifest.ts';
 import { askInteractiveChoice, closeRL, confirmDestructive, tty, sayTagged } from './interactive.ts';
 import { detectHosts, hostOptions, parseHostArg } from './hosts.ts';
 import type { HostEntry, HostId } from './hosts.ts';
 import { piAgentDir, readTextIfExists } from '../extensions/shared/utils.ts';
-import { fileURLToPath } from 'node:url';
 import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
+import {
+  CODEX_PLUGIN_ID, codexInstalledPlugin, codexLegacyPluginDir, codexPersonalMarketplaceFile, codexPersonalPluginId,
+  codexPluginDir, codexPluginIdForDir, removeCodexPersonalMarketplace,
+} from '../extensions/shared/codex-plugin.ts';
+
+function shortError(e: unknown): string {
+  return (((e as Error & { stderr?: string }).stderr) || (e as Error).message || '').trim().slice(0, 200);
+}
 
 interface UninstallOptions {
   yes?: boolean;
@@ -237,6 +244,53 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
       } catch { /* config missing or not JSON; nothing to scrub */ }
     }
     console.log('\nDone. Restart OpenCode to drop the plugin.');
+    closeRL();
+    return true;
+  }
+  if (host === 'codex') {
+    const dir = codexPluginDir();
+    const personalMarketplaceFile = codexPersonalMarketplaceFile();
+    if (!selected.installed && !selected.hostPresent) {
+      sayTagged(`  [skip] ${selected.label} — Tersio is not installed (${selected.installCmd})`);
+      closeRL();
+      return false;
+    }
+    const personalMarketplace = await readTextIfExists(personalMarketplaceFile);
+    const installed = codexInstalledPlugin();
+    const installedId = installed === null ? null : codexPluginIdForDir(installed.dir);
+    const ids = [...new Set([
+      installedId,
+      CODEX_PLUGIN_ID,
+      codexPersonalPluginId(personalMarketplace),
+    ].filter((id): id is string => id !== null))];
+    console.log('Will remove:');
+    for (const id of ids) console.log(`  ${id} (installed plugin and cache)`);
+    console.log(`  ${dir} (personal plugin)`);
+    console.log(`  the tersio entry in ${personalMarketplaceFile}`);
+    console.log(`  ${codexLegacyPluginDir()} (unregistered legacy plugin)`);
+    console.log(`  ${tersioSettingsFile()} (session defaults)`);
+    if (!confirmed && !(await confirmDestructive('Remove Tersio from Codex?'))) { closeRL(); return false; }
+    if (shouldDryRun) {
+      for (const id of ids) sayTagged(`  [dry-run] would run: codex plugin remove ${id}`);
+    } else {
+      for (const id of ids) {
+        await execP('codex', ['plugin', 'remove', id, '--json'], { timeout: 60000 }).catch((e) => {
+          debug(`Codex plugin remove skipped: ${shortError(e)}`);
+        });
+      }
+    }
+    await removeUninstallTarget(dir, shouldDryRun);
+    await removeUninstallTarget(codexLegacyPluginDir(), shouldDryRun);
+    if (!shouldDryRun) {
+      const marketplace = await readTextIfExists(personalMarketplaceFile);
+      if (marketplace !== null) {
+        const next = removeCodexPersonalMarketplace(marketplace);
+        if (next === null) await fs.rm(personalMarketplaceFile, { force: true });
+        else await fs.writeFile(personalMarketplaceFile, next, 'utf8');
+      }
+    }
+    await clearSessionDefaults(shouldDryRun);
+    console.log('\nDone. Restart Codex to drop the Tersio plugin. Plugin data is kept.');
     closeRL();
     return true;
   }

@@ -76,7 +76,10 @@ function flagValue(name: string): string | undefined {
   return args.find((arg) => arg.startsWith(prefix))?.slice(prefix.length);
 }
 
-const COMMANDS: Record<string, true> = { install: true, update: true, doctor: true, uninstall: true, dashboard: true, upstream: true, mcp: true, version: true, help: true };
+const COMMANDS: Record<string, true> = {
+  install: true, update: true, doctor: true, uninstall: true, dashboard: true, upstream: true,
+  mcp: true, 'codex-hook': true, version: true, help: true,
+};
 /** Flags whose next token is a value, so `--host omp` never reads `omp` as the command. */
 const VALUE_FLAGS = new Set([
   '--host', '--port', '--export', '--currency', '--scope', '--write',

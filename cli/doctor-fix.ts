@@ -22,7 +22,7 @@ import { runLatestUpdate } from './update.ts';
 import { OPENCODE_ENTRY, PONYTAIL_PKG, TREE_FILES, isObsoleteTreeFile, syncPluginManifest, syncTreeFiles, treeFilesFor } from './manifest.ts';
 import { detectHosts, hostExtensionsDir } from './hosts.ts';
 
-type FixTarget = 'extensions' | 'registrations' | 'rtk' | 'ponytail' | 'cli' | 'service';
+type FixTarget = 'extensions' | 'registrations' | 'rtk' | 'ponytail' | 'cli' | 'service' | 'codex';
 type FixRequest = FixTarget | 'all';
 
 /** Pids of `opencode serve --service` processes whose service manager no longer tracks them. The orphan holds the managed port, so the next start exits 1. */
@@ -118,6 +118,7 @@ async function fixExtensionTrees(): Promise<void> {
     }
   };
   for (const host of detectHosts()) {
+    if (host.id === 'codex') continue;
     const dest = hostExtensionsDir(host.id);
     // Repair a partly-present tree: a half-written one is this run's case, and it reads as "not installed".
     const present = forHost(host.id).filter((file) => existsSync(path.join(dest, file))).length;
@@ -334,6 +335,13 @@ async function fixCli(): Promise<void> {
   await runLatestUpdate();
 }
 
+/** A Codex plugin has no extension tree to sync, so its repair reruns its own install path. */
+async function fixCodex(): Promise<void> {
+  console.log('  Doctor --fix: reinstalling the Codex plugin');
+  const { runInstall } = await import('./install.ts');
+  await runInstall('codex');
+}
+
 /** OpenCode's manager can lose its daemonized serve process, so `stop` and `restart` cannot reach it: kill the orphan by pid, then start the service again. */
 async function fixOpencodeService(): Promise<void> {
   const orphans = serviceOrphanPids();
@@ -380,6 +388,7 @@ async function runDoctorRepairs(targets: FixRequest[]): Promise<string[]> {
   if (want('ponytail')) await attempt('ponytail', () => fixPonytail(OMP_PLUGINS_DIR));
   if (want('cli')) await attempt('cli', fixCli);
   if (want('service')) await attempt('opencode service', fixOpencodeService);
+  if (want('codex')) await attempt('codex plugin', fixCodex);
   return failed;
 }
 

@@ -263,14 +263,14 @@ test("installer rejects a pstack level it does not have", () => {
 test("update rejects an unknown host before doing anything", () => {
   const home = mkdtempSync(path.join(os.tmpdir(), "tersio-update-host-"));
   try {
-    const result = spawnSync(process.execPath, [installer, "update", "--host", "codex", "--yes"], {
+    const result = spawnSync(process.execPath, [installer, "update", "--host", "claude", "--yes"], {
       cwd: root,
       encoding: "utf8",
       timeout: 15000,
       env: cliEnv(home),
     });
     expect(result.status).toBe(1);
-    expect(result.stderr).toMatch(/Invalid --host: codex/);
+    expect(result.stderr).toMatch(/Invalid --host: claude/);
   } finally {
     rmTree(home);
   }

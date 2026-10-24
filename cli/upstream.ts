@@ -12,6 +12,13 @@ import { EXT_DIR, PI_PONYTAIL_FILES, PONYTAIL_BUNDLE_FILES, PONYTAIL_DIR, PONYTA
 import { textTable } from './common.ts';
 import { adaptCavemanFull } from '../extensions/updater/index.ts';
 import {
+  codexExistingPluginDirs,
+  codexInstalledPlugin,
+  codexPluginFiles,
+  codexPluginFilesForLayout,
+  codexPluginState,
+} from '../extensions/shared/codex-plugin.ts';
+import {
   RTK_RELEASE_API,
   RTK_REPO,
   fetchJson,
@@ -821,10 +828,58 @@ export function hostFix(id: string, version: string | null): string {
   return `run: tersio install --host ${id}`;
 }
 
+/**
+ * Codex: the installed plugin against the file set this build writes. The bundled layout embeds
+ * this machine's Node and launcher paths in its MCP entry and hooks, so those two files are checked
+ * for presence; every other body is compared byte for byte.
+ */
+async function checkCodexHost(): Promise<HostRow> {
+  // A partial download is still a plugin on disk, so its missing bytes stay visible instead of reading as absent.
+  const dir = codexInstalledPlugin()?.dir ?? codexExistingPluginDirs()[0] ?? null;
+  if (dir === null) {
+    const files = codexPluginFilesForLayout('bundled').length;
+    return { host: 'codex', installed: false, files, matched: 0, stale: 0, missing: 0, staleFiles: [], missingFiles: [], unloaded: [], fix: '' };
+  }
+  const state = codexPluginState(dir);
+  const layout = state.layout;
+  const expected = codexPluginFiles(layout === 'bundled');
+  const pathDependent = layout === 'bundled' ? new Set(['.mcp.json', 'hooks/hooks.json']) : new Set<string>();
+  let matched = 0;
+  const staleFiles: string[] = [];
+  const missingFiles: string[] = [];
+  for (const rel of codexPluginFilesForLayout(layout)) {
+    const theirs = await readTextIfExists(path.join(dir, ...rel.split('/')));
+    if (theirs === null) {
+      missingFiles.push(rel);
+      continue;
+    }
+    // A copied body compares to the extension tree; a build-only file, such as `dist/`, has none.
+    const ours = expected[rel] ?? (rel.startsWith('extensions/') ? treeFileText(rel.slice('extensions/'.length)) : null);
+    if (pathDependent.has(rel) || ours === null || ours === theirs) matched++;
+    else staleFiles.push(rel);
+  }
+  return {
+    host: 'codex',
+    installed: true,
+    files: matched + staleFiles.length + missingFiles.length,
+    matched,
+    stale: staleFiles.length,
+    missing: missingFiles.length,
+    staleFiles: staleFiles.toSorted(),
+    missingFiles: missingFiles.toSorted(),
+    unloaded: [],
+    fix: hostFix('codex', state.version),
+  };
+}
+
 /** Per host: does the tree each agent loads carry this build's bytes, and does its manifest load every entry? */
-async function checkHosts(): Promise<HostRow[]> {
+export async function checkHosts(): Promise<HostRow[]> {
   const rows: HostRow[] = [];
   for (const host of detectHosts()) {
+    if (host.id === 'codex') {
+      rows.push(await checkCodexHost());
+      continue;
+    }
     const treeId = host.id === 'omp' ? 'opencode' : host.id;
     const base = host.id === 'omp' ? (host.dir ? path.join(host.dir, 'extensions') : null) : hostExtensionsDir(host.id);
     if (!host.installed || !base) {

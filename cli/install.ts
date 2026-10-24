@@ -15,7 +15,7 @@ import {
 } from './common.ts';
 import type { InstallOptions, WriteOptions } from './common.ts';
 import {
-  askInteractiveChoice, askInteractiveConfirm, closeRL, execNetwork, tty, withInteractiveSpinner, withInteractiveTask, sayTagged } from './interactive.ts';
+  askInteractiveChoice, askInteractiveConfirm, closeRL, execNetwork, tty, withInteractiveTask, sayTagged } from './interactive.ts';
 import { printWelcome } from './banner.ts';
 import { checkForUpdate, runLatestUpdate } from './update.ts';
 import { runUninstall } from './uninstall.ts';
@@ -24,7 +24,7 @@ import { runDashboard } from './dashboard.ts';
 import { wireRtkOmp, wireRtkOpencode, wireRtkPi } from './rtk-wiring.ts';
 import {
   RTK_RELEASE_API, fetchJson, findFile, httpsGet,
-  findPackageRoot, httpsDownload, parseChecksum, piAgentDir, readTextIfExists, resolveRtkBinary, ruleBodyProblem, rtkPlatformSpec, sha256File,
+  findPackageRoot, httpsDownload, parseChecksum, piAgentDir, readTextIfExists, resolveRtkBinary, rtkPlatformSpec, sha256File,
 } from '../extensions/shared/utils.ts';
 import type { RtkRelease, RtkReleaseAsset } from '../extensions/shared/utils.ts';
 import { patchState } from '../extensions/shared/state.ts';
@@ -35,7 +35,13 @@ import { PI_RTK_MANIFEST, PI_PONYTAIL_FILES, PONYTAIL_BUNDLE_FILES, PONYTAIL_DIR
 import type { Profile } from './profile.ts';
 import { detectHosts, hostOptions, parseHostArg, piTersioSource } from './hosts.ts';
 import type { HostEntry, HostId } from './hosts.ts';
-
+import {
+  CODEX_BUNDLED_PLUGIN_FILES, CODEX_MARKETPLACE_NAME, CODEX_MARKETPLACE_SOURCE, CODEX_MARKETPLACE_SPARSE, CODEX_PLUGIN_ID, CODEX_PLUGIN_NAME,
+  CODEX_RUNTIME_PACKAGES,
+  addCodexPersonalMarketplace, codexInstalledPlugin, codexLegacyPluginDir, codexPersonalPluginId,
+  codexPluginDir, codexPluginFiles, codexPluginIdForDir, codexPluginState, codexRegisteredPluginState,
+  codexPersonalMarketplaceFile,
+} from '../extensions/shared/codex-plugin.ts';
 
 async function stepPonytail(pluginsDir: string, options: InstallOptions): Promise<void> {
   // Ponytail rides inside this package now. An older install carried it as its own dependency,
@@ -344,6 +350,29 @@ async function stepRtk(binDir: string, options: InstallOptions, target: 'omp' | 
   await bind(binDest);
 }
 
+/**
+ * Codex reads the same RTK binary, but its rewrite runs through the plugin's `PreToolUse` hook,
+ * not `rtk init`: rtk ships no codex agent. The step only guarantees the binary exists.
+ */
+async function stepRtkCodex(binDir: string, options: InstallOptions): Promise<void> {
+  const binDest = path.join(binDir, RTK_BINARY_NAME);
+  const found = resolveRtkBinary();
+  if (found && !applyUpdate) {
+    if (!options.quiet) {
+      const where = verbose ? ` (${found})` : '';
+      console.log(`  RTK — already installed${where}, the Codex hook rewrites eligible shell calls`);
+    }
+    return;
+  }
+  if (options.dryRun) {
+    if (verbose && !options.quiet) sayTagged(`  [dry-run] would download the rtk binary to ${binDest}`);
+    return;
+  }
+  if (!options.quiet) console.log('  RTK — download binary for the Codex hook');
+  await stepRtk(binDir, options, 'opencode');
+  if (!options.quiet) console.log('  RTK rewrite runs inside the Tersio Codex plugin — no rtk init needed');
+}
+
 // First entry is required; the rest are optional companions.
 async function copySources(extDir: string, files: Array<[string, string]>, skipLabel: string, options: WriteOptions): Promise<boolean> {
   const src = await readTextIfExists(files[0][0]);
@@ -496,6 +525,191 @@ async function stepOpencode(options: InstallOptions): Promise<void> {
   await writeIfChanged(configPath, `${JSON.stringify(config, null, 2)}\n`, { ...options, backup: true });
 }
 
+/** Add the public marketplace once. Codex rejects a second add, which is the desired state. */
+async function addCodexMarketplace(): Promise<void> {
+  try {
+    const added = await execNetwork('Adding the Tersio Codex marketplace', 'codex', [
+      'plugin', 'marketplace', 'add', CODEX_MARKETPLACE_SOURCE,
+      ...CODEX_MARKETPLACE_SPARSE.flatMap((sparse) => ['--sparse', sparse]), '--json',
+    ], { timeout: 180000 });
+    debug(added.stdout.trim());
+  } catch (e) {
+    const listed = await execP('codex', ['plugin', 'marketplace', 'list', '--json'], { timeout: 30000 })
+      .then((result) => result.stdout)
+      .catch(() => '');
+    if (!listed.includes(`"name": "${CODEX_MARKETPLACE_NAME}"`)) throw e;
+    debug(`Codex marketplace already registered: ${shortError(e)}`);
+  }
+}
+
+/** Install or re-enable one plugin from a marketplace Codex already knows. */
+async function addCodexPlugin(pluginId: string): Promise<void> {
+  const installed = await execNetwork('Installing the Tersio Codex plugin', 'codex', [
+    'plugin', 'add', pluginId, '--json',
+  ], { timeout: 180000 });
+  debug(installed.stdout.trim());
+}
+
+/** Install from the public marketplace, and return false when the source is unavailable. */
+async function stepCodexMarketplace(options: InstallOptions): Promise<boolean> {
+  if (options.dryRun) {
+    if (verbose && !options.quiet) {
+      sayTagged(`  [dry-run] would run: codex plugin marketplace add ${CODEX_MARKETPLACE_SOURCE}`);
+      sayTagged(`  [dry-run] would run: codex plugin add ${CODEX_PLUGIN_ID}`);
+    }
+    return true;
+  }
+  try {
+    await addCodexMarketplace();
+    await addCodexPlugin(CODEX_PLUGIN_ID);
+    if (!options.quiet) {
+      sayTagged('  [ok] Codex marketplace plugin');
+      sayTagged('  [note] Review and trust the Tersio hooks in Codex /hooks.');
+    }
+    return true;
+  } catch (e) {
+    // A source checkout is not a Git marketplace. The personal marketplace keeps local development usable.
+    debug(`Codex marketplace install failed: ${shortError(e)}`);
+    if (!options.quiet) sayTagged('  [note] Codex marketplace unavailable — installing the local plugin.');
+    return false;
+  }
+}
+
+/** Write the self-contained plugin and register it through the personal marketplace. */
+async function stepCodexBundled(options: InstallOptions): Promise<void> {
+  const dir = codexPluginDir();
+  if (!options.quiet) console.log(`  Codex — write the local plugin (${dir})`);
+  const root = findPackageRoot(path.dirname(fileURLToPath(import.meta.url)));
+  const dist = path.join(root, 'dist');
+  if (!existsSync(dist)) {
+    throw new Error('built CLI not found — run: bun run build');
+  }
+  if (options.dryRun) {
+    for (const file of CODEX_BUNDLED_PLUGIN_FILES) {
+      if (verbose) sayTagged(`  [dry-run] would write ${path.join(dir, ...file.split('/'))}`);
+    }
+    if (verbose) sayTagged(`  [dry-run] would copy ${dist} into ${path.join(dir, 'dist')}`);
+    if (verbose) sayTagged(`  [dry-run] would run: codex plugin add ${codexPersonalPluginId(await readTextIfExists(codexPersonalMarketplaceFile()))}`);
+    return;
+  }
+  // Stage the full tree: a reinstall must not delete the `dist` it copies from.
+  const stage = `${dir}.new`;
+  const personalId = codexPersonalPluginId(await readTextIfExists(codexPersonalMarketplaceFile()));
+  const personalMarketplaceName = personalId.slice(personalId.indexOf('@') + 1);
+  // Codex expands PLUGIN_ROOT for hooks, but not inside MCP arguments.
+  const installedLauncher = path.join(HOME, '.codex', 'plugins', 'cache', personalMarketplaceName, 'tersio', PACKAGE_VERSION, 'tersio');
+  await fs.rm(stage, { recursive: true, force: true });
+  await fs.mkdir(stage, { recursive: true });
+  for (const [file, text] of Object.entries(codexPluginFiles(true, process.execPath, installedLauncher))) {
+    await fs.mkdir(path.dirname(path.join(stage, ...file.split('/'))), { recursive: true });
+    await fs.writeFile(path.join(stage, ...file.split('/')), text, 'utf8');
+  }
+  await fs.cp(dist, path.join(stage, 'dist'), { recursive: true });
+  // Copy each dependency tree whole: nested packages resolve beside their parent.
+  for (const name of CODEX_RUNTIME_PACKAGES) {
+    const source = path.join(root, 'node_modules', ...name.split('/'));
+    if (!existsSync(source)) {
+      await fs.rm(stage, { recursive: true, force: true });
+      throw new Error(`runtime package missing: ${name} — run: bun install`);
+    }
+    await fs.cp(source, path.join(stage, 'node_modules', ...name.split('/')), {
+      recursive: true,
+      dereference: true,
+    });
+  }
+  await fs.cp(path.join(root, 'extensions'), path.join(stage, 'extensions'), { recursive: true });
+  const dashboard = path.join(root, 'dashboard', 'dist');
+  if (existsSync(dashboard)) {
+    await fs.cp(dashboard, path.join(stage, 'dashboard', 'dist'), { recursive: true });
+  }
+  await fs.chmod(path.join(stage, 'tersio'), 0o755);
+  await fs.rm(dir, { recursive: true, force: true });
+  await fs.rename(stage, dir);
+
+  const marketplaceFile = codexPersonalMarketplaceFile();
+  const marketplace = addCodexPersonalMarketplace(await readTextIfExists(marketplaceFile));
+  await writeIfChanged(marketplaceFile, marketplace, options);
+  if (!options.dryRun && process.env.TERSIO_CODEX_SKIP_REGISTER !== '1') {
+    const currentId = codexPersonalPluginId(marketplace);
+    await addCodexPlugin(currentId);
+  }
+  // A failed older fallback left an unregistered plugin directory. Remove it only after registration succeeds.
+  if (!options.dryRun && process.env.TERSIO_CODEX_SKIP_REGISTER !== '1') {
+    await fs.rm(codexLegacyPluginDir(), { recursive: true, force: true });
+  }
+  if (!options.quiet) {
+    sayTagged(`  [ok] Codex plugin: ${CODEX_BUNDLED_PLUGIN_FILES.length} files`);
+    sayTagged('  [note] Review and trust the Tersio hooks in Codex /hooks.');
+  }
+}
+
+/**
+ * Keep the layout already on disk. A bundled plugin has its own runtime, so replacing it with the
+ * marketplace would leave two MCP servers until the old cache is removed.
+ */
+async function stepCodex(options: InstallOptions): Promise<void> {
+  const existing = codexInstalledPlugin();
+  const registered = codexRegisteredPluginState();
+  const bundled = codexPluginState(codexPluginDir());
+  if (existing?.layout === 'bundled') {
+    await stepCodexBundled(options);
+    return;
+  }
+  if (existing?.layout === 'marketplace') {
+    const id = codexPluginIdForDir(existing.dir);
+    if (id === null) return;
+    if (options.dryRun) {
+      if (verbose && !options.quiet) sayTagged(`  [dry-run] would run: codex plugin add ${id}`);
+      return;
+    }
+    await addCodexPlugin(id);
+    if (!options.quiet) {
+      sayTagged(`  [ok] Codex marketplace plugin v${existing.version ?? PACKAGE_VERSION}`);
+      sayTagged('  [note] Review and trust the Tersio hooks in Codex /hooks.');
+    }
+    return;
+  }
+  if (registered?.layout === 'marketplace' && registered.pluginId !== null) {
+    if (options.dryRun) {
+      if (verbose && !options.quiet) sayTagged(`  [dry-run] would run: codex plugin add ${registered.pluginId}`);
+      return;
+    }
+    await addCodexPlugin(registered.pluginId);
+    return;
+  }
+  if (bundled.complete || existsSync(codexPluginDir())) {
+    await stepCodexBundled(options);
+    return;
+  }
+  if (process.env.TERSIO_CODEX_FALLBACK === '1') {
+    await stepCodexBundled(options);
+    return;
+  }
+  const partialMarketplace = codexPluginState(path.join(HOME, '.codex', 'plugins', 'cache', CODEX_MARKETPLACE_NAME, CODEX_PLUGIN_NAME));
+  if (
+    existsSync(partialMarketplace.dir)
+    && !partialMarketplace.complete
+    && !partialMarketplace.enabled
+    && partialMarketplace.pluginId
+    && !options.dryRun
+  ) {
+    try {
+      await addCodexMarketplace();
+      await addCodexPlugin(partialMarketplace.pluginId);
+      if (!options.quiet) {
+        sayTagged('  [ok] Codex marketplace plugin');
+        sayTagged('  [note] Review and trust the Tersio hooks in Codex /hooks.');
+      }
+      return;
+    } catch (e) {
+      debug(`Codex marketplace repair failed: ${shortError(e)}`);
+    }
+  }
+  const installed = await stepCodexMarketplace(options);
+  if (installed) return;
+  await stepCodexBundled(options);
+}
+
 
 async function resolveProfile(opts: { quiet?: boolean } = {}): Promise<Profile> {
   // Seed from the stored defaults so flag-less runs keep them.
@@ -624,7 +838,6 @@ let targetHost: HostId = 'omp';
 // Hosts the menu advertises but cannot install yet; listed disabled so the roadmap stays visible.
 const SOON_HOSTS = [
   { value: 'claude', label: 'Claude Code', hint: 'Coming soon' },
-  { value: 'codex', label: 'Codex', hint: 'Coming soon' },
 ];
 
 async function chooseHost(title: string, only?: HostId[]): Promise<HostId> {
@@ -653,6 +866,7 @@ async function stepPiRtkManifest(extDir: string, options: WriteOptions): Promise
 function resolvedHostPath(host: HostId): string {
   if (host === 'pi') return path.join(piAgentDir(), 'extensions');
   if (host === 'opencode') return path.join(HOME, '.config', 'opencode', 'plugins', 'tersio');
+  if (host === 'codex') return codexPluginDir();
   return path.join(OMP_PLUGINS_DIR, 'node_modules', ...PACKAGE_NAME.split('/'), 'extensions');
 }
 
@@ -814,11 +1028,7 @@ async function runInstall(forcedHost?: HostId): Promise<void> {
   // Point of no return: disk writes start here; pipes stay unattended.
   if (!yes && !dryRun && !applyUpdate && tty()) {
     const target = hostEntry(targetHost);
-    const where = targetHost === 'pi'
-      ? path.join(piAgentDir(), 'extensions')
-      : targetHost === 'opencode'
-        ? path.join(HOME, '.config', 'opencode', 'plugins', 'tersio')
-        : path.join(OMP_AGENT_DIR, 'extensions');
+    const where = resolvedHostPath(targetHost);
     console.log(`\nWill install into ${target.label}:`);
     console.log(`  ${where}`);
     console.log('  caveman · rtk · ponytail session modes');
@@ -854,6 +1064,18 @@ async function runInstall(forcedHost?: HostId): Promise<void> {
     await capture('settings', () => writePluginSettings(profile, installOptions));
     if (failures.length > 0) console.log(`\nDone with ${failures.length} failure(s) — see [fail] lines above.`);
     else console.log(comboHint('OpenCode', profile.comboDefault));
+    closeRL();
+    return;
+  }
+
+  if (targetHost === 'codex') {
+    await capture('codex plugin', () => stepCodex(installOptions));
+    await capture('rtk', () => stepRtkCodex(BUN_BIN_DIR, installOptions));
+    await capture('settings', () => writePluginSettings(profile, installOptions));
+    if (failures.length > 0) console.log(`\nDone with ${failures.length} failure(s) — see [fail] lines above.`);
+    else console.log(profile.comboDefault === 'off'
+      ? '\nDone — restart Codex.'
+      : `\nDone — restart Codex. The ${profile.comboDefault} modes load from ~/.tersio/settings.json.`);
     closeRL();
     return;
   }
@@ -903,3 +1125,4 @@ async function runInstall(forcedHost?: HostId): Promise<void> {
   closeRL();
 }
 export { runInstall, verifyRtkArchive };
+export { stepCodexBundled };

@@ -12,7 +12,7 @@ import { useToast } from "../toaster";
 import { cn } from "cn";
 
 type Point = readonly [number, number];
-type EdgeKey = "hosts" | "omp" | "pi" | "opencode" | "combo" | "caveman" | "pstack" | "rtk" | "ponytail";
+type EdgeKey = "hosts" | "omp" | "pi" | "opencode" | "codex" | "combo" | "caveman" | "pstack" | "rtk" | "ponytail";
 
 type HostAction = "install" | "uninstall" | "update";
 
@@ -39,6 +39,7 @@ type NodeId =
   | "host-omp"
   | "host-pi"
   | "host-opencode"
+  | "host-codex"
   | "combo"
   | "caveman"
   | "pstack"
@@ -199,15 +200,16 @@ function ortho(points: ReadonlyArray<Point>, radius = 8): string {
 function versionOf(raw: string | null | undefined): string | null {
   if (!raw) return null;
   const tail = raw.split("/").pop() ?? raw;
-  const version = tail.replace(/^(omp|pi|opencode)\s+/i, "").trim();
+  const version = tail.replace(/^(omp|pi|opencode|codex)\s+/i, "").trim();
   return version || null;
 }
 
-/** The three hosts, in the order the installer writes them. */
+/** The four hosts, in the order the installer lists them. */
 const HOSTS = [
   { id: "omp", label: "Oh My Pi" },
   { id: "pi", label: "pi" },
   { id: "opencode", label: "OpenCode" },
+  { id: "codex", label: "Codex" },
 ] as const;
 
 const MODES = [
@@ -251,10 +253,11 @@ const PICKER: Partial<Record<NodeId, { field: string; options: ReadonlyArray<{ i
 
 /** What the detail panel says about a node. */
 const ABOUT: Record<NodeId, string> = {
-  hosts: "Every agent loads the same extension tree. Only the way each host loads it differs, so a mode behaves the same in all three.",
+  hosts: "Every agent reads the same modes. OMP, pi, and OpenCode load one extension tree; Codex loads a plugin with one prompt hook.",
   "host-omp": "Oh My Pi loads the extensions from its plugin package.",
   "host-pi": "pi auto-discovers the same tree from its extensions directory.",
   "host-opencode": "OpenCode loads the tree as one plugin, registered in opencode.json.",
+  "host-codex": "Codex loads Tersio as a plugin; its prompt hook keeps the modes active.",
   combo: "One preset for caveman, RTK, and Ponytail. pstack keeps its own switch.",
   caveman: "Voice. Terse replies; code, commands, paths, and errors stay exact.",
   pstack: "Approach. Picks the playbook, the checks, and the design.",
@@ -267,23 +270,56 @@ const ABOUT: Record<NodeId, string> = {
 const STEPS = [
   {
     title: "Install into an agent",
-    body: "One package writes the extension tree for the agent you pick. Every extension speaks the same API, so the tree is the only difference.",
-    command: "tersio install --host omp|pi|opencode",
+    body: "One package installs into the agent you pick. The extension hosts share one tree; Codex gets a plugin with the same modes.",
+    command: "tersio install --host omp|pi|opencode|codex",
   },
   {
     title: "Pick a preset",
     body: "Combo sets caveman, RTK, and Ponytail together. It leaves pstack where you had it, because pstack is opt-in.",
-    command: "/combo balanced",
+    command: "/combo balanced · Codex: $tersio-combo",
   },
   {
     title: "Turn a mode on its own",
     body: "Each mode answers to its own command, and a switch reaches every sibling through the shared bridge without a reload.",
-    command: "/pstack on",
+    command: "/pstack on · Codex: $tersio-pstack",
   },
   {
     title: "Check what ran",
     body: "This dashboard reads the one store every host feeds. Doctor checks the install, and upstream compares the ported bodies to their pins.",
     command: "tersio doctor",
+  },
+  {
+    title: "Codex: trust the hooks",
+    body: "Codex does not run an untrusted hook. Open /hooks in Codex, review the two Tersio entries, and trust them, or the mode block and the RTK rewrite stay off.",
+    command: "codex → /hooks → trust Tersio",
+  },
+] as const;
+
+/** Each host's own install path, so the guide never sends a Codex user to the extension tree. */
+const INSTALL_METHODS = [
+  {
+    host: "omp",
+    label: "Oh My Pi",
+    commands: ["omp plugin install @krtclcdy/tersio"],
+    note: "Loads the shared extension tree from the plugin package.",
+  },
+  {
+    host: "pi",
+    label: "pi",
+    commands: ["pi install npm:@krtclcdy/tersio"],
+    note: "Auto-discovers the same tree from its extensions directory.",
+  },
+  {
+    host: "opencode",
+    label: "OpenCode",
+    commands: ["opencode plugin add @krtclcdy/tersio"],
+    note: "Registers the tree in opencode.json.",
+  },
+  {
+    host: "codex",
+    label: "Codex",
+    commands: ["codex plugin marketplace add KurutoDenzeru/tersio", "codex plugin add tersio@tersio"],
+    note: "Then trust the Tersio entries in /hooks. tersio install --host codex runs both steps and falls back to a local plugin.",
   },
 ] as const;
 
@@ -938,7 +974,12 @@ export function HowToPage({ modes, onModesChanged }: { modes: ModeState | null; 
       if (!report) return;
       setHostState((s) => ({
         ...s,
-        versions: { omp: versionOf(report.omp), pi: versionOf(report.pi), opencode: versionOf(report.opencode) },
+        versions: {
+          omp: versionOf(report.omp),
+          pi: versionOf(report.pi),
+          opencode: versionOf(report.opencode),
+          codex: versionOf(report.codex),
+        },
       }));
     });
   }, []);
@@ -996,7 +1037,7 @@ export function HowToPage({ modes, onModesChanged }: { modes: ModeState | null; 
               });
               void fetchHealth().then((report) => {
                 if (!report) return;
-                const version = versionOf(report[host as "omp" | "pi" | "opencode"]);
+                const version = versionOf(report[host as "omp" | "pi" | "opencode" | "codex"]);
                 if (version) setHostState((s) => ({ ...s, versions: { ...s.versions, [host]: version } }));
               });
               if (job?.code === 0) {
@@ -1020,7 +1061,7 @@ export function HowToPage({ modes, onModesChanged }: { modes: ModeState | null; 
     <Page>
       <PageHeader
         title="Quick start"
-        description="One package, three agents, four modes. This is the path a turn takes from your prompt to the reply, drawn from what this machine has on."
+        description="One package, four agents, four modes. This is the path a turn takes from your prompt to the reply, drawn from what this machine has on."
       />
 
       <Card
@@ -1033,7 +1074,7 @@ export function HowToPage({ modes, onModesChanged }: { modes: ModeState | null; 
         )}
       </Card>
 
-      <Card title="Start here" icon="list-ordered" description="Four steps from a fresh machine to a session that reports itself.">
+      <Card title="Start here" icon="list-ordered" description="Five steps from a fresh machine to a session that reports itself.">
         <ol className="m-0 grid list-none gap-2 p-0 md:grid-cols-2">
           {STEPS.map((step, i) => (
             <li key={step.title} className="grid gap-1 rounded-xl border border-line px-3 py-2.5">
@@ -1050,6 +1091,29 @@ export function HowToPage({ modes, onModesChanged }: { modes: ModeState | null; 
             </li>
           ))}
         </ol>
+      </Card>
+
+      <Card
+        title="Install into an agent"
+        icon="download"
+        description="Each host's own command. Use the Tersio command or the native one, never both for the same host."
+      >
+        <div className="grid gap-2 md:grid-cols-2">
+          {INSTALL_METHODS.map((method) => (
+            <div key={method.host} className="grid gap-1 rounded-xl border border-line px-3 py-2.5">
+              <span className="flex items-center gap-2">
+                <AgentLogo host={method.host} className="size-4 shrink-0" />
+                <span className="text-[13px] font-semibold">{method.label}</span>
+              </span>
+              {method.commands.map((command) => (
+                <code key={command} className="mono block truncate rounded bg-track/40 px-2 py-1 text-[10px] text-ink">
+                  {command}
+                </code>
+              ))}
+              <span className="text-[11px] leading-relaxed text-dim">{method.note}</span>
+            </div>
+          ))}
+        </div>
       </Card>
     </Page>
   );

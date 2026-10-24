@@ -382,3 +382,43 @@ The entries below are editing and verification discipline. No test, lint rule, o
 **What happened:** `test/cli/update.test.ts` symlinked a bin to `~/.bun/install/global/node_modules/@krtclcdy/tersio/dist/tersio.js` and expected the manager to read as bun. The target was never created, so on CI the symlink dangled, `realpathSync` threw, and the fallback resolved to the link path, which is not under `~/.bun`. Every CI platform failed. On a developer machine the real install made the same test pass. Windows failed earlier still: `process.env.HOME` is unset there, so the test built a relative path.
 **Root cause:** The test measured the developer's machine. It read the ambient HOME and assumed a path existed. The production function also compared a resolved path against an unresolved prefix, so a `HOME` that is itself a symlink (macOS `/tmp`, many CI homes) would have failed the same way.
 **Prevention rule:** A test that resolves a path must create every path it names, inside `mkdtemp`, and take the root as a parameter instead of reading the ambient HOME. Compare resolved paths on both sides of a prefix test. `HOME=$(mktemp -d) bun run test` reproduces the CI condition in one command; the 9 pyte layout tests skip unless pyte is installed system-wide.
+
+## 2026-10-24 — The bundled Codex runtime left transitive dependencies behind
+**What happened:** The first bundled Codex plugin copied `@clack/prompts` alone. The CLI then failed to load `@clack/core` and its string-width packages from the plugin directory.
+**Root cause:** A runtime copy followed the direct dependency names and ignored the package closure that the build imports.
+**Prevention rule:** Copy each runtime package tree whole, and start the copied CLI once from its final directory. A package.json entry is not a runtime closure.
+
+## 2026-10-24 — A Codex token test used a row shape the parser does not read
+**What happened:** A Codex usage test expected `token_usage_record.usage` to add tokens. The parser reads `event_msg.token_count.info.last_token_usage`, so the test passed no rows and the assertion failed.
+**Root cause:** The fixture used a row name from the research notes, not the row the parser reads.
+**Prevention rule:** Build a parser fixture from a captured rollout row. Assert the parser's own totals, not only the row shape.
+
+## 2026-10-24 — A direct plugin directory did not register a Codex plugin
+**What happened:** Writing `~/.codex/plugins/tersio/` made a valid plugin tree, but Codex did not list or load it. A marketplace entry and `codex plugin add` were both required.
+**Root cause:** Codex reads installed plugins from its cache and enables them through `config.toml`. A directory in the plugins folder is not a registration.
+**Prevention rule:** Test installs through `codex plugin list --json` and a real turn. Do not treat a written directory as an installed plugin.
+
+## 2026-10-24 — Personal marketplace paths were fixed at module load
+**What happened:** Tests that changed `HOME` still wrote to the developer's real personal marketplace. The marketplace and plugin paths were constants computed when the module loaded.
+**Root cause:** The path helpers resolved `$HOME` once, before the test fixture set its temporary home.
+**Prevention rule:** Resolve every home-relative path inside the function that uses it. Keep the temporary home active for the whole spawn.
+
+## 2026-10-24 — Duplicate MCP registration stopped Codex startup
+**What happened:** A test plugin registered the Tersio MCP server twice. Codex reported a duplicate server and did not start the plugin session.
+**Root cause:** The manifest and the user config both carried the same server, and the test did not remove the user copy.
+**Prevention rule:** Register each MCP server in one place. Test with a clean temporary `CODEX_HOME`.
+
+## 2026-10-24 — Codex did not expand `PLUGIN_ROOT` in MCP arguments
+**What happened:** The bundled MCP server started with a literal `${PLUGIN_ROOT}/tersio` argument and failed to find the launcher.
+**Root cause:** Codex expands `PLUGIN_ROOT` for hook commands, not for MCP argument values.
+**Prevention rule:** Use an absolute launcher path in `.mcp.json`. Test the MCP handshake from the installed cache.
+
+## 2026-10-24 — A minimal Codex child `PATH` omitted Node
+**What happened:** The bundled hook used a bare `node` command. A Codex child process with a small `PATH` could not find Node, so the hook added no context.
+**Root cause:** The hook assumed the user's shell path. Codex can start a child with a narrower path.
+**Prevention rule:** Write the absolute `process.execPath` in bundled hook commands. Quote the path, because it can contain spaces.
+
+## 2026-10-24 — An absent cache directory read as a partial Codex plugin
+**What happened:** A first marketplace install skipped its success message. `codexPluginState()` returned a plugin ID for a cache directory that did not exist, so the installer entered the repair branch.
+**Root cause:** A state object reported the ID that the path would have, not the state that the path had.
+**Prevention rule:** A partial-state branch must first prove the directory exists. Test the normal success path, not only the repair path.

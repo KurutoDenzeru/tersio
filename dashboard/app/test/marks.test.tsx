@@ -13,8 +13,8 @@ const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "sr
 
 /** Marks that stay inline because no host serves them. */
 const INLINE_SLUGS = new Set(Object.keys(INLINE_MARKS));
-/** The one mark drawn by a component: Simple Icons carries no OpenAI icon. */
-const COMPONENT_SLUGS = new Set(["openai"]);
+/** Marks drawn by a component: Simple Icons carries neither the OpenAI knot nor Codex's own mark. */
+const COMPONENT_SLUGS = new Set(["openai", "codex"]);
 
 /** Hosts the catalog is allowed to name. Anything else in source is a stray reference. */
 const KNOWN_HOSTS = [
@@ -130,6 +130,10 @@ describe("remote marks", () => {
       ["meituan/LongCat-2.0:free", "meituan"],
       // Big Pickle ships with no disclosed author, so it reads as the stealth line.
       ["opencode/opencode/big-pickle", "stealth"],
+      // A Codex row names the host and its provider first; the model id still names Z.ai.
+      ["codex/openai/zcode/glm-5.3-flash", "zdotai"],
+      ["codex/openai/gpt-6-luna", "openai"],
+      ["codex/openai", "openai"],
     ];
     for (const [model, slug] of models) {
       expect(`${model} -> ${vendorOf(model).slug}`).toBe(`${model} -> ${slug}`);
@@ -184,6 +188,8 @@ describe("remote marks", () => {
       ["workbuddy-ai", "workbuddy"],
       ["deepseek", "deepseek"],
       ["deepseek-web", "deepseek"],
+      // Codex's own routing key, which the Requests page shows under a Z.ai model.
+      ["codex", "codex"],
     ];
     for (const [provider, slug] of branded) {
       expect(`${provider} -> ${providerMeta(provider).slug}`).toBe(`${provider} -> ${slug}`);
@@ -195,5 +201,12 @@ describe("remote marks", () => {
       // A monogram still needs a stable tint per provider.
       expect(providerColor(gateway)).toMatch(/^#[0-9a-f]{6}$/i);
     }
+  });
+
+  test("a Codex id reads the model's own name, not the host or gateway", () => {
+    expect(displayModel("codex/openai/zcode/glm-5.3-flash")).toBe("Z.ai - GLM-5.3-Flash");
+    expect(displayModel("codex/openai/gpt-6-luna")).toBe("OpenAI - GPT-6-Luna");
+    // A bare provider id has no model to name, so it keeps the provider.
+    expect(displayModel("codex/openai")).toBe("OpenAI");
   });
 });

@@ -86,7 +86,7 @@ interface HistoryPoint {
 /** The glyph each port carries everywhere else in the project. */
 const GLYPH: Record<string, string> = { Caveman: "🪨", RTK: "🗜️", Ponytail: "🧠", pstack: "🥔" };
 
-const AGENT_NAME: Record<string, string> = { omp: "Oh My Pi", pi: "pi", opencode: "OpenCode" };
+const AGENT_NAME: Record<string, string> = { omp: "Oh My Pi", pi: "pi", opencode: "OpenCode", codex: "Codex" };
 
 /** The name a row shows: the installed agents first, then the ones still to come. */
 function agentLabel(host: string): string {
@@ -541,7 +541,7 @@ export function UpstreamPage() {
               <PagedTable columns={SOURCE_COLUMNS} rows={card.sources} rowKey={(row) => row.source} ariaLabel="Ports" perPage={10} />
             </Card>
 
-            <Card title="Agents" icon="layers" description="What each agent carries against this build's own tree, and the two still to come." flush>
+            <Card title="Agents" icon="layers" description="What each agent carries against this build's own tree, and the one still to come." flush>
               <PagedTable columns={AGENT_COLUMNS} rows={agentTableRows} rowKey={(row) => row.host} ariaLabel="Agents" perPage={10} />
             </Card>
           </div>

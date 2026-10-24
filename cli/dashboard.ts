@@ -223,6 +223,10 @@ function opencodePath(): string | null {
   return binOnPath('opencode');
 }
 
+function codexPath(): string | null {
+  return binOnPath('codex');
+}
+
 // omp prints `omp/18.4.1`, pi prints a bare `0.87.1`; both read as name/version.
 function versionLabel(bin: string, raw: string): string {
   const out = raw.trim();
@@ -268,9 +272,11 @@ function healthJson(): string {
   const detectedOmpPath = ompPath();
   const detectedPiPath = piPath();
   const detectedOpencodePath = opencodePath();
-  const agentDir = (id: 'omp' | 'pi' | 'opencode'): string | null => {
+  const detectedCodexPath = codexPath();
+  const agentDir = (id: 'omp' | 'pi' | 'opencode' | 'codex'): string | null => {
     if (id === 'omp') return path.join(process.env.HOME || process.env.USERPROFILE || '', '.omp');
     if (id === 'pi') return path.join(process.env.HOME || process.env.USERPROFILE || '', '.pi');
+    if (id === 'codex') return path.join(process.env.HOME || process.env.USERPROFILE || '', '.codex');
     return path.join(process.env.HOME || process.env.USERPROFILE || '', '.config', 'opencode');
   };
   return JSON.stringify({
@@ -286,6 +292,9 @@ function healthJson(): string {
     opencode: agentVersion(detectedOpencodePath),
     opencodePath: detectedOpencodePath,
     opencodeDir: agentDir('opencode'),
+    codex: agentVersion(detectedCodexPath),
+    codexPath: detectedCodexPath,
+    codexDir: agentDir('codex'),
     provider: ompDefaultModel(),
     rtk: { present: rtkPresent, version: rtkPresent ? rtkVersion(rtkBin as string) : null, path: rtkBin || 'not found in PATH' },
     home: tersioHomePath(),

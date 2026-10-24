@@ -212,6 +212,8 @@ test("pi and OpenCode keep their own hosts", () => {
     .toEqual({ label: "Pi", host: "pi" });
   expect(hostOfSession(path.join(homedir(), ".config", "opencode", "agent", "sessions", "-proj", "s.jsonl")))
     .toEqual({ label: "OpenCode", host: "opencode" });
+  expect(hostOfSession(path.join(homedir(), ".codex", "sessions", "2026", "10", "24", "rollout.jsonl")))
+    .toEqual({ label: "Codex", host: "codex" });
 });
 
 test("an unrelated path falls back to OMP rather than guessing a host", () => {

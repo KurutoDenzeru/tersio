@@ -20,7 +20,7 @@ Coding agents bill you per token. Three of the costs you never asked for:
 - **Shell output is noise.** A failing test prints hundreds of lines to reach the four that matter.
 - **The rules repeat every turn.** Your agent re-reads its instructions on every single turn.
 
-Tersio installs into Oh My Pi, pi, or OpenCode, and cuts those costs:
+Tersio installs into Oh My Pi, pi, OpenCode, or Codex, and cuts those costs:
 
 | Mode | What it does for you |
 |---|---|
@@ -54,10 +54,11 @@ irm https://github.com/KurutoDenzeru/tersio/releases/latest/download/install.ps1
 Then run the CLI. Bare `tersio` opens a menu and asks which agent to install into:
 
 ```bash
-tersio                      # menu — picks Oh My Pi, pi, or OpenCode
+tersio                      # menu — picks Oh My Pi, pi, OpenCode, or Codex
 tersio install --host pi    # pi, non-interactive
 tersio install --host omp   # Oh My Pi, non-interactive
 tersio install --host opencode  # OpenCode, non-interactive
+tersio install --host codex # Codex plugin, non-interactive
 ```
 
 Or let each host install the package itself:
@@ -70,7 +71,7 @@ opencode plugin add @krtclcdy/tersio
 
 Pick one install method per host, not both. Using both registers every command twice.
 
-All hosts load the same six extensions from the same sources and read their session-start defaults from `~/.tersio/settings.json`. All six load always.
+The OMP, pi, and OpenCode hosts load the same six extensions. Codex loads a plugin with one prompt hook. All four hosts read their session-start defaults from `~/.tersio/settings.json`.
 
 One-off use without installing:
 
@@ -82,7 +83,7 @@ npm exec --yes --prefer-online --package=@krtclcdy/tersio@latest -- tersio insta
 
 | Need | Detail |
 |---|---|
-| Host | [OMP](https://github.com/can1357/oh-my-pi), [pi](https://github.com/earendil-works/pi), or [OpenCode](https://opencode.ai) — `tersio install --host <omp\|pi\|opencode>` |
+| Host | [OMP](https://github.com/can1357/oh-my-pi), [pi](https://github.com/earendil-works/pi), [OpenCode](https://opencode.ai), or [Codex](https://github.com/openai/codex) — `tersio install --host <omp\|pi\|opencode\|codex>` |
 | Node.js | 20.12+ with npm. The CLI runs under Node |
 | Bun | Optional. Preferred when on PATH, npm otherwise; also supplies SQLite in process |
 | SQLite | Bun, Node 22.5+ `node:sqlite`, or the `sqlite3` binary on PATH |
@@ -115,7 +116,7 @@ Three tools become available: `tersio_stats` (requests, errors, tokens, cache ra
 |---|---|
 | `tersio install` | Install (user scope: all OMP sessions) |
 | `tersio update` | Refresh the CLI, extensions, and add-ons (RTK binary, Caveman rule, Ponytail). A terminal asks which agent; `--host` pins it and `--yes` keeps Oh My Pi |
-| `tersio doctor` | Check OMP, extension, Ponytail, RTK, and OpenCode service health (`--fix` repairs, `--fix=<scope>` one scope, `--dry-run` previews) |
+| `tersio doctor` | Check every host, extension, Ponytail, RTK, Codex plugin, and OpenCode service health (`--fix` repairs, `--fix=<scope>` one scope, `--dry-run` previews) |
 | `tersio dashboard` | Open the Dashboard (`--open`, `--export <file>`, `--port <n>`, `--currency <code>`; serves localhost only) |
 | `tersio mcp` | Start the Tersio MCP server on stdio (see [MCP](#-mcp)) |
 | `tersio uninstall` | Remove extensions, registrations, the Ponytail plugin, and the `rtk.ts` OMP wiring (`--keep-ponytail` keeps Ponytail; `--remove-rtk` also removes the RTK binary) |
@@ -143,6 +144,8 @@ It is display-only — it never enters the model context, so it costs the sessio
 | `/tersio status` | Active modes + combo level; state persists and propagates to subagents. |
 | `/tersio update <ponytail\|rtk\|caveman\|all> [--dry-run]` | Update add-ons, preview with dry-run |
 | `/tersio dashboard` | Open the Dashboard. |
+
+In Codex the slash commands do not exist. The Tersio plugin ships the modes as skills instead: call `$tersio-combo`, `$tersio-caveman`, `$tersio-rtk`, `$tersio-ponytail`, or `$tersio-pstack` in the prompt, or pick them in `/skills`. The `tersio_modes` MCP tool switches a mode from a plain sentence.
 | `/tersio help` | This table |
 
 ## 🗂️ Files and backups
@@ -156,25 +159,27 @@ Shared, and identical for every host:
 | Usage ledger and price cache | `~/.tersio/` — local only, nothing leaves the machine |
 | Session state | `~/.tersio/state.json` — reset watermark, update check and cadence, rtk heads, and the doctor report |
 | Upstream scorecard | `~/.tersio/upstream/` — `scorecard.json`, `scorecard.md`, and the cached trees |
-| `usage.db` host scope | `~/.tersio/usage.db` mirrors every agent Tersio reads: omp and pi transcripts, the OpenCode JSON tree, and the OpenCode v2 sqlite rows. Each row records its host and its agent kind, so a report splits by agent and by main agent or subagent. |
+| `usage.db` host scope | `~/.tersio/usage.db` mirrors every agent Tersio reads: omp and pi transcripts, Codex rollout JSONL, the OpenCode JSON tree, and the OpenCode v2 sqlite rows. Each row records its host and its agent kind, so a report splits by agent and by main agent or subagent. |
 | Model prices | `~/.tersio/prices.json` caches LiteLLM's feed; `~/.tersio/prices.local.json` is yours, keyed by model id or a `*` gateway prefix, and it wins over the feed. A model the list does not know reads as an estimate, and the Models page counts those requests as unpriced. |
 | Price sources | The host's own reported cost first, then `prices.local.json`, then the LiteLLM cache, then a default table the report labels a guess. A recorded zero is a real zero. A model counts as host-priced only when every message carried a cost. |
 | Data snapshots | `~/.tersio/backups/` — one `.snap` file per snapshot, checked against its own hash, six kept |
 
-Per host, written by `tersio install --host <omp|pi|opencode>`:
+Per host, written by `tersio install --host <omp|pi|opencode|codex>`:
 
 | Host | Extensions | Ponytail |
 |---|---|---|
 | Oh My Pi | `~/.omp/plugins/node_modules/@krtclcdy/tersio/extensions/` — loaded from the plugin manifest, so the agent tree keeps only rtk's `extensions/rtk.ts` wiring | vendored at `extensions/ponytail/`, so **Settings → Plugins** lists one row |
 | pi | `~/.pi/agent/extensions/{caveman,pstack,rtk,combo,commands,updater}/` — pi auto-discovers `<agent-dir>/extensions`, so there is nothing to register | `~/.pi/agent/ponytail/`, a local package written from Tersio's vendored copy |
 | OpenCode | `~/.config/opencode/plugins/tersio/` — registered in `opencode.json` plugins, so there is nothing else to register | bundled with Tersio; no separate package |
+| Codex | `~/.codex/plugins/cache/tersio/tersio/<version>/` from the repo marketplace, or `~/.tersio/codex-plugin/` for the local fallback | bundled in the fallback; the marketplace plugin calls the installed Tersio CLI |
 
-Tersio is agent-neutral: every host loads the same six extensions and the same `shared/` modules from the same sources. Only the paths and the registration differ, and the installer owns those. OMP is one host of three, not the target.
+Tersio is agent-neutral: the OMP, pi, and OpenCode hosts load the same six extensions and the same `shared/` modules. Codex loads the mode context from one prompt hook. Only the paths and the registration differ, and the installer owns those. OMP is one host of four, not the target.
 
 Per host, in more words:
 
 - **OMP.** The plugin manifest and the extension dir OMP discovers by default merge, so Tersio keeps one copy of each file and clears what an older build left in `~/.omp/agent/extensions/`. A second copy would load twice, and one of the two cannot resolve its own rule bodies. The install also registers the package in `~/.omp/plugins`, so it shows under **Settings → Plugins**.
 - **pi and OpenCode.** Nothing to register beyond what their own install command does, so the table above is the whole story.
+- **Codex.** The installer adds the repo marketplace and installs `tersio@tersio`. If that source is unavailable, it writes a self-contained plugin and a personal marketplace. Review the Tersio hook in Codex `/hooks` before use.
 
 The installer writes `<file>.bak` before it replaces a source. `tersio doctor --fix extensions` restores a damaged tree, and `doctor --fix registrations` drops retired or duplicate `config.yml` entries.
 
@@ -191,6 +196,8 @@ Active modes reassert after Ponytail's prompt block on every top-level turn, inc
 **RTK savings and adoption:** the Gain numbers read rtk's own `history.db` (`%LOCALAPPDATA%\rtk` on Windows), so pi and OpenCode runs are already in them. The adoption row counts executed Bash calls from the omp and pi transcripts and OpenCode's v2 sqlite or pre-v2 JSON tree. The eligible list comes from `rtk rewrite`, cached per binary version. Native tool calls (`read`/`edit`/`eval`) and exact bytes bypass RTK.
 
 **Checksum warning or failure:** the installer aborts on RTK checksum mismatch but warns and continues when checksum metadata is unavailable; `/tersio update rtk` aborts when metadata is missing.
+
+**Codex mode block missing:** run `tersio doctor`, then `tersio doctor --fix codex`. Restart Codex and trust the Tersio hook in `/hooks`. Codex does not run an untrusted plugin hook.
 
 ## 🤝🏻 Contributing
 
