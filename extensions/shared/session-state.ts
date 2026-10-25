@@ -23,10 +23,26 @@ const MODE_VALUES: Record<string, Set<string>> = {
   pstack: new Set(['off', 'on']),
 };
 
+const ON_OFF_ALIASES: Readonly<Record<string, 'on' | 'off'>> = {
+  on: 'on',
+  enable: 'on',
+  enabled: 'on',
+  true: 'on',
+  off: 'off',
+  disable: 'off',
+  disabled: 'off',
+  false: 'off',
+};
+
 // Upstream renamed wenyan to megacave and kept the old spelling as an alias.
 const CAVEMAN_LEGACY_PREFIX = /^wenyan/;
 
-type ModeName = 'caveman' | 'rtk' | 'ponytail' | 'pstack';
+/** `wenyan` was the old name for megacave; both spellings reach the same level. */
+export function canonicalCavemanMode(value: unknown): string | null {
+  return normalizeMode('caveman', value);
+}
+
+export type ModeName = 'caveman' | 'rtk' | 'ponytail' | 'pstack';
 type Modes = Record<ModeName, string>;
 
 const MODE_ENTRY_TYPES: Record<string, ModeName> = {
@@ -50,6 +66,8 @@ interface Bridge {
 export function normalizeMode(name: ModeName, value: unknown): string | null {
   if (name === 'rtk' && typeof value === 'boolean') return value ? 'on' : 'off';
   const mode = String(value ?? '').trim().toLowerCase();
+  // The README and the old hosts accept the boolean spellings for the two switches.
+  if ((name === 'rtk' || name === 'pstack') && ON_OFF_ALIASES[mode]) return ON_OFF_ALIASES[mode];
   if (!MODE_VALUES[name]?.has(mode)) return null;
   if (name !== 'caveman') return mode;
   const canonical = mode.replace(CAVEMAN_LEGACY_PREFIX, 'megacave');

@@ -1,0 +1,20 @@
+{
+  "name": "tersio",
+  "interface": {
+    "displayName": "Tersio"
+  },
+  "plugins": [
+    {
+      "name": "tersio",
+      "source": {
+        "source": "local",
+        "path": "./plugins/tersio"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

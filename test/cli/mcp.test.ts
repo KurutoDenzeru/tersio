@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { mkdtemp, readFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -32,7 +32,7 @@ describe('the MCP server protocol', () => {
     const { sent, send } = collector();
     await handleMessage(call(2, 'tools/list'), send);
     const answer = sent[0] as { result: { tools: Array<{ name: string }> } };
-    expect(answer.result.tools.map((t) => t.name)).toEqual(['tersio_stats', 'tersio_activity', 'tersio_modes']);
+    expect(answer.result.tools.map((t) => t.name)).toEqual(['tersio_stats', 'tersio_activity', 'tersio_modes', 'rtk_run']);
   });
 
   test('a bad range and an unknown tool answer with invalid-params', async () => {
@@ -96,9 +96,70 @@ describe('the MCP modes tool', () => {
       expect(read.text).toContain('rtk=on');
       const stored = JSON.parse(await readFile(path.join(home, 'settings.json'), 'utf8')) as { cavemanDefault: string };
       expect(stored.cavemanDefault).toBe('ultra');
+      // The README spellings resolve through the same extension normalizer as the hosts.
+      const aliased = await modes({ caveman: 'wenyan', rtk: 'enable' });
+      expect(aliased.text).toContain('caveman=megacave-full');
+      expect(aliased.text).toContain('rtk=on');
     } finally {
       process.env.TERSIO_HOME = previousTersio;
       process.env.XDG_CONFIG_HOME = previousXdg;
     }
+  });
+});
+
+describe('the MCP rtk_run tool', () => {
+  const run = async (args: unknown): Promise<{ text: string; isError?: boolean; error?: { code: number; message: string } }> => {
+    const { sent, send } = collector();
+    await handleMessage(call(21, 'tools/call', { name: 'rtk_run', arguments: { args } }), send);
+    const answer = sent[0] as {
+      result?: { content: Array<{ text: string }>; isError?: boolean };
+      error?: { code: number; message: string };
+    };
+    if (answer.error) return { text: '', error: answer.error };
+    return { text: answer.result?.content[0]?.text ?? '', isError: answer.result?.isError };
+  };
+
+  test('runs the command plainly when RTK mode is off', async () => {
+    const home = await mkdtemp(path.join(tmpdir(), 'tersio-rtk-off-'));
+    const previous = process.env.TERSIO_HOME;
+    process.env.TERSIO_HOME = home;
+    try {
+      const result = await run([process.execPath, '-e', 'process.stdout.write("plain")']);
+      expect(result.text).toBe('plain');
+      expect(result.isError).toBe(false);
+    } finally {
+      if (previous === undefined) delete process.env.TERSIO_HOME;
+      else process.env.TERSIO_HOME = previous;
+    }
+  });
+
+  // The off path above covers Windows. The fake rtk shim is a POSIX script because cmd.exe
+  // does not pass the arguments the same way to a batch fixture.
+  test.skipIf(process.platform === 'win32')('runs through rtk when RTK mode is on', async () => {
+    const home = await mkdtemp(path.join(tmpdir(), 'tersio-rtk-on-'));
+    const bin = path.join(home, 'bin');
+    await mkdir(bin, { recursive: true });
+    const rtk = path.join(bin, 'rtk');
+    await writeFile(rtk, '#!/bin/sh\nprintf "rtk:%s" "$*"\n', 'utf8');
+    await chmod(rtk, 0o755);
+    await writeFile(path.join(home, 'settings.json'), JSON.stringify({ rtkDefault: true }), 'utf8');
+    const previous = { home: process.env.TERSIO_HOME, path: process.env.PATH };
+    process.env.TERSIO_HOME = home;
+    process.env.PATH = `${bin}${path.delimiter}${previous.path ?? ''}`;
+    try {
+      const result = await run(['git', 'status']);
+      expect(result.text.trim()).toBe('rtk:git status');
+      expect(result.isError).toBe(false);
+    } finally {
+      if (previous.home === undefined) delete process.env.TERSIO_HOME;
+      else process.env.TERSIO_HOME = previous.home;
+      process.env.PATH = previous.path;
+    }
+  });
+
+  test('rejects an empty argument list with invalid-params', async () => {
+    const { error } = await run([]);
+    expect(error?.code).toBe(-32602);
+    expect(error?.message).toContain('args must be a non-empty array of strings');
   });
 });

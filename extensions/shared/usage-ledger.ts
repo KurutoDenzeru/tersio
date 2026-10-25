@@ -100,6 +100,8 @@ export interface RecentRequest {
   st: RunStatus;
   code?: number;
   note?: string;
+  /** Name, argument bytes, result bytes, and error flag per call; facts for the Tools page. */
+  toolFacts?: ToolFact[];
   /** Message id when the host provides one (transcript row id, opencode msg file). */
   id?: string;
 }
@@ -196,10 +198,10 @@ function addInto(into: TokenBreakdown, u: { input?: unknown; output?: unknown; c
 export function sessionsDirs(): string[] {
   const override = process.env.TERSIO_SESSIONS_DIR;
   if (override) return [override];
-  // Both hosts, not just the running one: a pi session is missing if we stop at the first existing directory.
+  // Every host, not just the running one: a session is missing if we stop at the first existing directory.
   const dirs = isPiProcess()
-    ? [path.join(piAgentDir(), 'sessions'), path.join(homeDir(), '.omp', 'agent', 'sessions')]
-    : [path.join(homeDir(), '.omp', 'agent', 'sessions'), path.join(piAgentDir(), 'sessions')];
+    ? [path.join(piAgentDir(), 'sessions'), path.join(homeDir(), '.omp', 'agent', 'sessions'), path.join(homeDir(), '.codex', 'sessions')]
+    : [path.join(homeDir(), '.omp', 'agent', 'sessions'), path.join(piAgentDir(), 'sessions'), path.join(homeDir(), '.codex', 'sessions')];
   const found = dirs.filter((dir) => fs.existsSync(dir));
   return found.length > 0 ? found : [dirs[0]];
 }
@@ -390,13 +392,15 @@ export interface SessionAccum {
   messages: number;
   costMeasured: number;
   recent: RecentRequest[];
+  /** Distinct tool facts across the window, so a caller can read the set without re-parsing. */
+  toolFacts: ToolFact[];
   /** Oldest timestamp held in `recent`, so the list stays bounded instead of growing with the store. */
   recentFloor: number;
 }
 export function newSessionAccum(): SessionAccum {
-  return { byModel: {}, byDay: {}, byDayModel: {}, byTool: {}, byModelMessages: {}, byHost: {}, byAgent: {}, byAgentMessages: {}, byModelMeasured: {}, byModelCostMessages: {}, totals: zeroBreakdown(), messages: 0, costMeasured: 0, recent: [], recentFloor: Number.POSITIVE_INFINITY };
+  return { byModel: {}, byDay: {}, byDayModel: {}, byTool: {}, byModelMessages: {}, byHost: {}, byAgent: {}, byAgentMessages: {}, byModelMeasured: {}, byModelCostMessages: {}, totals: zeroBreakdown(), messages: 0, costMeasured: 0, recent: [], recentFloor: Number.POSITIVE_INFINITY, toolFacts: [] };
 }
-export function ingestSessionRow(accum: SessionAccum, model: string, usage: Record<string, unknown>, ts: string | number | undefined, durMs?: unknown, run?: { st: RunStatus; code?: number; note?: string }, toolNames?: string[], host?: string, id?: string, agent?: string, ttftMs?: unknown): boolean {
+export function ingestSessionRow(accum: SessionAccum, model: string, usage: Record<string, unknown>, ts: string | number | undefined, durMs?: unknown, run?: { st: RunStatus; code?: number; note?: string }, toolNames?: string[], host?: string, id?: string, agent?: string, ttftMs?: unknown, toolFacts?: ToolFact[]): boolean {
   const watermark = readResetWatermark();
   const ms = ts === undefined ? NaN : typeof ts === 'number' ? ts : Date.parse(ts);
   if (watermark > 0 && (!Number.isFinite(ms) || ms < watermark)) return false;
@@ -451,9 +455,31 @@ export function ingestSessionRow(accum: SessionAccum, model: string, usage: Reco
     accum.byModelCostMessages[key] = (accum.byModelCostMessages[key] ?? 0) + 1;
   }
   for (const name of toolNames ?? []) accum.byTool[name] = (accum.byTool[name] ?? 0) + 1;
+  for (const fact of toolFacts ?? []) if (!accum.toolFacts.some((f) => f.n === fact.n && f.a === fact.a && f.r === fact.r && f.e === fact.e)) accum.toolFacts.push(fact);
   return true;
 }
 export type SessionLineKind = 'codex_provider' | 'codex_model' | 'token_row' | 'assistant_row' | 'skip';
+
+/** New-line-split transcript, so every pass reads the same rows. */
+export interface SessionTextLines {
+  /** A line that parsed, or the error that kept it out. */
+  parsed: Array<{ row: SessionLineRow }>;
+  errors: number;
+}
+
+export function parseSessionLines(text: string): SessionTextLines {
+  const parsed: Array<{ row: SessionLineRow }> = [];
+  let errors = 0;
+  for (const line of text.split('\n')) {
+    if (!line.trim()) continue;
+    try {
+      parsed.push({ row: JSON.parse(line) as SessionLineRow });
+    } catch {
+      errors += 1;
+    }
+  }
+  return { parsed, errors };
+}
 
 /** One tool call with the facts the Tools page reads: name, argument bytes, result bytes, error flag. */
 export interface ToolFact {
@@ -512,7 +538,20 @@ export interface SessionLineRow {
     isError?: unknown;
     content?: Array<{ type?: unknown; name?: unknown; id?: unknown; arguments?: unknown }>;
   };
-  payload?: { type?: unknown; model?: unknown; model_provider?: unknown; info?: { last_token_usage?: Record<string, unknown> } };
+  payload?: {
+    type?: unknown;
+    model?: unknown;
+    model_provider?: unknown;
+    info?: { last_token_usage?: Record<string, unknown> };
+    call_id?: unknown;
+    name?: unknown;
+    input?: unknown;
+    output?: Array<{ text?: unknown }>;
+    item?: { type?: unknown; command?: unknown; exit_code?: unknown; duration_secs?: unknown };
+    turn_id?: unknown;
+    duration_ms?: unknown;
+    time_to_first_token_ms?: unknown;
+  };
 }
 
 /** What one transcript line classifies to. `assistant_row` carries the usage and the tool facts. */
@@ -521,6 +560,10 @@ export interface SessionLine {
   provider?: string;
   model?: string;
   usage?: Record<string, unknown>;
+  callId?: string;
+  callName?: string;
+  callChars?: number;
+  turnId?: string;
   durMs?: number;
   ttftMs?: number;
   run?: { st: RunStatus; code?: number; note?: string };
@@ -544,6 +587,28 @@ export function classifySessionLine(row: SessionLineRow, results?: ToolResults):
         const ts = row.timestamp === undefined ? NaN : typeof row.timestamp === 'number' ? row.timestamp : Date.parse(row.timestamp);
         return { kind: 'token_row', provider, model: 'codex', usage: { input: last['input_tokens'], output: last['output_tokens'], cacheRead: last['cached_input_tokens'], cacheWrite: last['cache_write_input_tokens'] }, ms: Number.isFinite(ts) ? ts : undefined };
       }
+    }
+    // A Codex tool call: `custom_tool_call` carries the name and input; the call id ties the output to it.
+    if (payload.type === 'custom_tool_call' && typeof payload.call_id === 'string' && typeof payload.name === 'string' && payload.name) {
+      return { kind: 'assistant_row', model: 'codex-tool-call', callId: payload.call_id, callName: payload.name, callChars: typeof payload.input === 'string' ? payload.input.length : jsonChars(payload.input) };
+    }
+    if (payload.type === 'custom_tool_call_output' && typeof payload.call_id === 'string') {
+      const parts = Array.isArray(payload.output) ? payload.output : [];
+      const chars = parts.reduce((sum, part) => sum + (typeof part?.text === 'string' ? part.text.length : 0), 0);
+      results?.set(payload.call_id, { chars, error: false });
+      return { kind: 'skip' };
+    }
+    // A Codex shell fact: the host's own record of one command, its exit code, and its wall time.
+    if (payload.type === 'item_completed' && payload.item?.type === 'CommandExecution') {
+      const cmds = Array.isArray(payload.item.command) ? payload.item.command : [];
+      // The array holds the shell and its flags; the script tail is what the model asked to run.
+      const script = cmds.filter((c): c is string => typeof c === 'string').at(-1) ?? '';
+      const fact: ToolFact = { n: `bash:${leadBinary(script)}`, a: script.length, r: 0, e: payload.item.exit_code === 0 ? 0 : 1 };
+      return { kind: 'assistant_row', model: 'codex-shell-fact', turnId: typeof payload.turn_id === 'string' ? payload.turn_id : undefined, toolFacts: [fact], durMs: durOf(payload.item.duration_secs), callName: 'bash', callChars: script.length };
+    }
+    // A Codex turn summary: the timing the token rows lack, keyed by turn.
+    if (payload.type === 'task_complete') {
+      return { kind: 'token_row', provider: typeof payload.model_provider === 'string' ? payload.model_provider : undefined, turnId: typeof payload.turn_id === 'string' ? payload.turn_id : undefined, durMs: durOf(payload.duration_ms), ttftMs: durOf(payload.time_to_first_token_ms) };
     }
   }
   const msg = row.message;
@@ -693,9 +758,15 @@ const VENDOR_RES: Array<[RegExp, string]> = [
   [/devin|cognition|^swe[-/]/i, 'Cognition'],
 ];
 
+/**
+ * The model's author. A Codex id reads `codex/<provider>/<model>`, so the host and the provider
+ * id are dropped first; a Z.ai run under Codex must not read as an OpenAI model.
+ */
 function modelVendor(model: string): string {
+  const segs = model.split('/').filter(Boolean);
+  const id = segs[0] === 'codex' && segs.length > 2 ? segs.slice(2).join('/') : model;
   for (const [re, name] of VENDOR_RES) {
-    if (re.test(model)) return name;
+    if (re.test(id)) return name;
   }
   return 'Other';
 }
@@ -729,6 +800,7 @@ export function displayModelId(model: string): string {
     if (low === 'openai') return 'OpenAI';
     if (low === 'gpt') return 'GPT';
     if (low === 'swe') return 'SWE';
+    if (low === 'glm') return 'GLM';
     if (low === 'ai') return 'AI';
     if (/^\d+[a-z]+$/.test(low)) return low.toUpperCase();
     if (s.length <= 2) return s.toUpperCase();
@@ -737,11 +809,13 @@ export function displayModelId(model: string): string {
   const seg = (s: string): string => s.split('.').map(cap).join('.');
   const words = (s: string): string => s.split(/[-_:]+/).filter(Boolean).map(seg).join('-');
   const segs = bare.split('/').filter(Boolean);
-  const tail = segs[segs.length - 1] ?? bare;
+  // A Codex id names the host and its provider first; the label reads the model's own id.
+  const rest = segs[0] === 'codex' && segs.length > 2 ? segs.slice(2) : segs;
+  const tail = rest[rest.length - 1] ?? bare;
   // One free model under two spellings; fold the alpha variant onto it.
   const pretty = /^space-bunny(-alpha)?$/i.test(tail) ? 'Space-Bunny' : words(tail);
   const vendor = modelVendor(bare);
-  if (vendor === 'Other') return segs.length > 1 ? `${words(segs[segs.length - 2])} - ${pretty}` : pretty;
+  if (vendor === 'Other') return rest.length > 1 ? `${words(rest[rest.length - 2])} - ${pretty}` : pretty;
   const claude = pretty.match(/^claude[-_](.+)$/i);
   if (vendor === 'Anthropic' && claude) return `Anthropic - Claude - ${claude[1]}`;
   if (pretty.toLowerCase().startsWith(vendor.toLowerCase())) return pretty;
@@ -996,32 +1070,77 @@ export function readRtkAdoption(): RtkAdoption {
   };
 }
 export function processSessionText(accum: SessionAccum, state: { codexProvider: string | null; codexModel?: string | null }, text: string, host?: string, agent?: string): void {
-  // A call's result arrives on a later line, so the whole file is scanned for results first.
-  const results = collectToolResults(text);
-  for (const line of text.split('\n')) {
-    if (!line.trim()) continue;
-    try {
-      const row = JSON.parse(line) as SessionLineRow;
-      const parsed = classifySessionLine(row, results);
-      const rid = messageRowId(row);
-      if (parsed.kind === 'codex_provider') {
-        if (parsed.provider) state.codexProvider = parsed.provider;
-        continue;
-      }
-      if (parsed.kind === 'codex_model') {
-        if (parsed.model) state.codexModel = parsed.model;
-        continue;
-      }
-      if (parsed.kind === 'token_row') {
-        const base = parsed.provider ? `codex/${parsed.provider}` : (state.codexProvider ? `codex/${state.codexProvider}` : 'codex');
-        // The provider alone told you nothing about which model ran.
-        const model = state.codexModel ? `${base}/${state.codexModel}` : base;
-        ingestSessionRow(accum, model, parsed.usage ?? {}, row.timestamp, parsed.durMs, { st: 'completed' as RunStatus }, undefined, host ?? 'codex', rid, agent);
-        continue;
-      }
-      if (parsed.kind !== 'assistant_row' || !parsed.model || !parsed.usage) continue;
-      ingestSessionRow(accum, parsed.model, parsed.usage, row.timestamp, parsed.durMs, parsed.run, parsed.tools, host, rid, agent, parsed.ttftMs);
-    } catch { /* skip corrupt lines */ }
+  processSessionRows(accum, state, parseSessionLines(text), collectToolResults(text), host, agent);
+}
+
+/** One pass over parsed lines: Codex calls, shell facts, and turn timing fold into the token rows. */
+export function processSessionRows(
+  accum: SessionAccum,
+  state: { codexProvider: string | null; codexModel?: string | null },
+  lines: SessionTextLines,
+  results: ToolResults,
+  host?: string,
+  agent?: string,
+): void {
+  const { parsed } = lines;
+  interface CodexCall { name: string; args: number }
+  const codexCalls = new Map<string, CodexCall>();
+  const callOrder: string[] = [];
+  interface ShellFact { turn: string | undefined; fact: ToolFact; durMs: number | undefined }
+  const shellFacts = new Map<string, ShellFact>();
+  const shellOrder: string[] = [];
+  const turnTimes = new Map<string, { durMs?: number; ttftMs?: number }>();
+  // The last `task_complete` timing wins: a token row without a turn id takes it in row order.
+  let lastTurnTiming: { durMs?: number; ttftMs?: number } | undefined;
+  for (const { row } of parsed) {
+    const parsed2 = classifySessionLine(row, results);
+    if (parsed2.kind === 'assistant_row' && parsed2.model === 'codex-tool-call' && parsed2.callId && parsed2.callName) {
+      codexCalls.set(parsed2.callId, { name: parsed2.callName, args: parsed2.callChars ?? 0 });
+      callOrder.push(parsed2.callId);
+    } else if (parsed2.kind === 'assistant_row' && parsed2.model === 'codex-shell-fact') {
+      const turn = parsed2.turnId ?? '';
+      if (!shellFacts.has(turn)) shellOrder.push(turn);
+      shellFacts.set(turn, { turn: parsed2.turnId, fact: parsed2.toolFacts![0], durMs: parsed2.durMs });
+    } else if (parsed2.kind === 'token_row' && parsed2.turnId && !parsed2.usage) {
+      turnTimes.set(parsed2.turnId, { durMs: parsed2.durMs, ttftMs: parsed2.ttftMs });
+      lastTurnTiming = { durMs: parsed2.durMs, ttftMs: parsed2.ttftMs };
+    }
+  }
+  for (const { row } of parsed) {
+    const parsed2 = classifySessionLine(row, results);
+    const rid = messageRowId(row);
+    if (parsed2.kind === 'codex_provider') {
+      if (parsed2.provider) state.codexProvider = parsed2.provider;
+      continue;
+    }
+    if (parsed2.kind === 'codex_model') {
+      if (parsed2.model) state.codexModel = parsed2.model;
+      continue;
+    }
+    if (parsed2.kind === 'token_row') {
+      if (parsed2.turnId && !parsed2.usage) continue;
+      const base = parsed2.provider ? `codex/${parsed2.provider}` : (state.codexProvider ? `codex/${state.codexProvider}` : 'codex');
+      const model = state.codexModel ? `${base}/${state.codexModel}` : base;
+      const turn = parsed2.turnId ? turnTimes.get(parsed2.turnId) : lastTurnTiming;
+      ingestSessionRow(accum, model, parsed2.usage ?? {}, row.timestamp, parsed2.durMs ?? turn?.durMs, { st: 'completed' as RunStatus }, undefined, host ?? 'codex', rid, agent, parsed2.ttftMs ?? turn?.ttftMs);
+      continue;
+    }
+    if (parsed2.kind !== 'assistant_row' || !parsed2.model || !parsed2.usage) continue;
+    ingestSessionRow(accum, parsed2.model, parsed2.usage, row.timestamp, parsed2.durMs, parsed2.run, parsed2.tools, host, rid, agent, parsed2.ttftMs, parsed2.toolFacts);
+  }
+  // Codex facts ride outside the token rows: one entry per shell fact, then one per tool call.
+  for (const turn of shellOrder) {
+    const shell = shellFacts.get(turn)!;
+    if (accum.toolFacts.some((f) => f.n === shell.fact.n && f.a === shell.fact.a)) continue;
+    accum.toolFacts.push(shell.fact);
+  }
+  for (const callId of callOrder) {
+    const call = codexCalls.get(callId);
+    if (!call) continue;
+    const res = results.get(callId);
+    const fact: ToolFact = { n: call.name === 'exec' ? 'bash' : call.name, a: call.args, r: res?.chars ?? 0, e: res?.error ? 1 : 0 };
+    if (accum.toolFacts.some((f) => f.n === fact.n && f.a === fact.a && f.r === fact.r && f.e === fact.e)) continue;
+    accum.toolFacts.push(fact);
   }
 }
 

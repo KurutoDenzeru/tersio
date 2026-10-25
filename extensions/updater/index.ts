@@ -353,3 +353,8 @@ async function updateCaveman(ctx: AddonUpdaterCtx, dryRun = false): Promise<stri
 }
 
 export { parseChecksum };
+
+// The manifest keeps this file an extension entry under the `updater` feature, but /tersio update runs from commands/index.ts, so the factory only satisfies the loader's factory contract.
+export default function updaterExtension(): void {
+  // No registrations: the updater exports library functions for the commands extension.
+}

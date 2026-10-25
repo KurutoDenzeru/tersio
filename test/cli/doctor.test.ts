@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { cliEnv, fakeExecutable, isWindows } from "../helpers/env.ts";
 import { fileContains } from "../../extensions/shared/utils.ts";
 import { PI_PONYTAIL_FILES, TREE_FILES, sourcePath, treeFileText, treeFilesFor } from "../../cli/manifest.ts";
+import { CODEX_MARKETPLACE_PLUGIN_FILES, CODEX_PROMPTS } from "../../extensions/shared/codex-plugin.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const installer = path.join(root, "dist", "tersio.js");
@@ -76,6 +77,49 @@ test("doctor names both hosts with the command that installs each", () => {
     for (const gone of ["Environment", "Installation", "Shared session bridge", "RTK OMP wiring", "Node:"]) {
       expect(result.stdout, gone).not.toContain(gone);
     }
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("doctor reports missing Codex slash commands and mode approval", () => {
+  const home = missingHome();
+  try {
+    const codexDir = path.join(home, ".codex");
+    const pluginDir = path.join(codexDir, "plugins", "cache", "tersio", "tersio", "9.8.7");
+    for (const file of CODEX_MARKETPLACE_PLUGIN_FILES) {
+      const target = path.join(pluginDir, ...file.split("/"));
+      mkdirSync(path.dirname(target), { recursive: true });
+      writeFileSync(target, file === ".codex-plugin/plugin.json"
+        ? JSON.stringify({ name: "tersio", version: "9.8.7" })
+        : "fixture", "utf8");
+    }
+    const configFile = path.join(codexDir, "config.toml");
+    writeFileSync(configFile, '[plugins."tersio@tersio"]\nenabled = true\n', "utf8");
+
+    const missing = spawnSync(process.execPath, [installer, "doctor"], {
+      cwd: root, encoding: "utf8", timeout: 15000, env: cliEnv(home, { PATH: path.join(home, "empty-bin") }),
+    });
+    expect(missing.status, missing.stderr).toBe(0);
+    expect(missing.stdout).toMatch(new RegExp(`Codex slash commands: MISSING missing ${CODEX_PROMPTS.length}`));
+    expect(missing.stdout).toMatch(/Codex mode approval: MISSING not set/);
+
+    mkdirSync(path.join(codexDir, "prompts"), { recursive: true });
+    for (const name of CODEX_PROMPTS) writeFileSync(path.join(codexDir, "prompts", `${name}.md`), "fixture", "utf8");
+    writeFileSync(configFile, [
+      '[plugins."tersio@tersio"]',
+      "enabled = true",
+      "",
+      '[plugins."tersio@tersio".mcp_servers.tersio]',
+      'default_tools_approval_mode = "approve"',
+      "",
+    ].join("\n"), "utf8");
+    const complete = spawnSync(process.execPath, [installer, "doctor"], {
+      cwd: root, encoding: "utf8", timeout: 15000, env: cliEnv(home, { PATH: path.join(home, "empty-bin") }),
+    });
+    expect(complete.status, complete.stderr).toBe(0);
+    expect(complete.stdout).toMatch(new RegExp(`Codex slash commands: ok all ${CODEX_PROMPTS.length} commands`));
+    expect(complete.stdout).toMatch(/Codex mode approval: ok tersio MCP server pre-approved/);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }
@@ -441,9 +485,10 @@ test("doctor does not count the exec row when rtk is absent", () => {
     });
 
     expect(result.status, result.stderr).toBe(0);
-    // The exec question is meaningless without a binary, and a missing pstack tree is one warning, not five.
+    // The exec question is meaningless without a binary, a missing pstack tree is one warning, not five,
+    // and a missing price cache is a warning, not a missing count: the fallback table still prices rows.
     expect(result.stdout).toMatch(/—  RTK exec: not installed/);
-    expect(result.stdout).toMatch(/Summary: 9 checks — ✅ 3 ok, ⚠️ 1 warn, ❌ 5 missing/);
+    expect(result.stdout).toMatch(/Summary: 9 checks — ✅ 3 ok, ⚠️ 2 warn, ❌ 4 missing/);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

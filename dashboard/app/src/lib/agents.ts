@@ -11,5 +11,4 @@ export interface UpcomingAgent {
 
 export const UPCOMING_AGENTS: readonly UpcomingAgent[] = [
   { id: "claude-code", name: "Claude Code", bin: "claude", docs: "https://claude.com/claude-code" },
-  { id: "codex", name: "Codex", bin: "codex", docs: "https://github.com/openai/codex" },
 ];

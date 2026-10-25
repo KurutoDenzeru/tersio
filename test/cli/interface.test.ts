@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { spawnSync } from "node:child_process";
-import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,7 +9,8 @@ import { createRequire } from "node:module";
 import { bannerLines, bannerTier } from "../../cli/banner.ts";
 import { detectHosts, hostLabel } from "../../cli/hosts.ts";
 import type { HostEntry } from "../../cli/hosts.ts";
-import { cliEnv, fakeRtkBin } from "../helpers/env.ts";
+import { CODEX_MARKETPLACE_PLUGIN_FILES } from "../../extensions/shared/codex-plugin.ts";
+import { cliEnv, fakeExecutable, fakeRtkBin } from "../helpers/env.ts";
 import { registryUrl, releasesUrl } from "../helpers/registry.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -230,12 +231,23 @@ function seedPiPackage(home: string, version = "2.23.0"): void {
   writeFileSync(path.join(agent, "settings.json"), JSON.stringify({ packages: [`npm:@krtclcdy/tersio@${version}`] }), "utf8");
 }
 
-function run(home: string, args: string[]): { status: number | null; stdout: string; stderr: string } {
+function fakeCodex(home: string): string {
+  const bin = path.join(home, "codex-bin");
+  const fake = fakeExecutable(bin, "codex", "printf '{}\\n'", "echo {}\r\n");
+  return path.dirname(fake);
+}
+
+function fallbackEnv(): NodeJS.ProcessEnv {
+  return { TERSIO_CODEX_FALLBACK: "1", TERSIO_CODEX_SKIP_REGISTER: "1" };
+}
+
+function run(home: string, args: string[], extraPath = ""): { status: number | null; stdout: string; stderr: string } {
+  const empty = path.join(home, "empty-bin");
   const result = spawnSync(process.execPath, [cli, ...args], {
     cwd: root,
     encoding: "utf8",
     timeout: 30000,
-    env: cliEnv(home, { PATH: path.join(home, "empty-bin") }),
+    env: cliEnv(home, { PATH: [extraPath, empty].filter(Boolean).join(path.delimiter), ...fallbackEnv() }),
   });
   return { status: result.status, stdout: result.stdout, stderr: result.stderr };
 }
@@ -376,9 +388,442 @@ test("install --host opencode bundles the ponytail ruleset beside the tree", () 
 test("install rejects an unknown host", () => {
   const home = tempHome();
   try {
-    const result = run(home, ["install", "--host", "codex"]);
+    const result = run(home, ["install", "--host", "claude"]);
     expect(result.status).toBe(1);
-    expect(result.stderr).toMatch(/Invalid --host: codex/);
+    expect(result.stderr).toMatch(/Invalid --host: claude/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("install --host codex registers a personal plugin with hooks and a bundled CLI", () => {
+  const home = tempHome();
+  try {
+    const bin = fakeCodex(home);
+    const result = run(home, ["install", "--host", "codex", "--yes"], bin);
+    expect(result.status, result.stderr).toBe(0);
+    const dir = path.join(home, ".tersio", "codex-plugin");
+    for (const file of [".codex-plugin/plugin.json", ".mcp.json", "hooks/hooks.json", "assets/icon.png", "tersio", "package.json"]) {
+      expect(existsSync(path.join(dir, ...file.split("/"))), `${file} written`).toBe(true);
+    }
+    expect(existsSync(path.join(dir, "dist", "tersio.js"))).toBe(true);
+    expect(existsSync(path.join(dir, "dashboard", "dist", "index.html"))).toBe(true);
+    expect(existsSync(path.join(dir, "node_modules", "@clack", "prompts", "package.json"))).toBe(true);
+    expect(existsSync(path.join(dir, "node_modules", "fast-wrap-ansi", "package.json"))).toBe(true);
+    expect(existsSync(path.join(dir, "node_modules", "typescript"))).toBe(false);
+    const hooks = readFileSync(path.join(dir, "hooks", "hooks.json"), "utf8");
+    expect(hooks).toMatch(/codex-hook user-prompt-submit/);
+    expect(hooks).not.toMatch(/SessionStart/);
+    expect(existsSync(path.join(home, ".agents", "plugins", "marketplace.json"))).toBe(true);
+    expect(existsSync(path.join(home, ".codex", "plugins", "tersio"))).toBe(false);
+    expect(result.stdout).toMatch(/Codex plugin: \d+ files/);
+    expect(result.stdout).toMatch(/Done — restart Codex/);
+    expect(result.stdout).toMatch(/Review and trust the Tersio hooks/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("install --host codex keeps a bundled install on a second run", () => {
+  const home = tempHome();
+  try {
+    const bin = fakeCodex(home);
+    const first = run(home, ["install", "--host", "codex", "--yes"], bin);
+    expect(first.status, first.stderr).toBe(0);
+    const result = run(home, ["install", "--host", "codex", "--yes"], bin);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/Codex plugin: \d+ files/);
+    expect(existsSync(path.join(home, ".tersio", "codex-plugin", "hooks", "hooks.json"))).toBe(true);
+    const marketplace = JSON.parse(readFileSync(path.join(home, ".agents", "plugins", "marketplace.json"), "utf8")) as {
+      plugins?: Array<{ name?: string }>;
+    };
+    expect(marketplace.plugins?.filter((plugin) => plugin.name === "tersio")).toHaveLength(1);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("install --host codex uses the marketplace path when Codex registers it", () => {
+  const home = tempHome();
+  try {
+    const bin = path.join(home, "fake-codex-bin");
+    mkdirSync(bin, { recursive: true });
+    const log = path.join(home, "codex-install.log");
+    const fake = path.join(bin, process.platform === "win32" ? "codex.cmd" : "codex");
+    writeFileSync(fake, process.platform === "win32"
+      ? `@echo off\r\necho %*>>"${log}"\r\necho {}\r\n`
+      : `#!/bin/sh\nprintf '%s\\n' "$*" >> "${log}"\nprintf '{}\\n'\n`, "utf8");
+    chmodSync(fake, 0o755);
+    const result = spawnSync(process.execPath, [cli, "install", "--host", "codex", "--yes"], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 30000,
+      env: cliEnv(home, { PATH: `${bin}${path.delimiter}${process.env.PATH || ""}` }),
+    });
+    expect(result.status, result.stderr).toBe(0);
+    const calls = readFileSync(log, "utf8");
+    expect(calls).toMatch(/plugin marketplace add KurutoDenzeru\/tersio --sparse \.agents\/plugins --sparse plugins\/tersio --json/);
+    expect(calls).toMatch(/plugin add tersio@tersio --json/);
+    expect(existsSync(path.join(home, ".tersio", "codex-plugin"))).toBe(false);
+    expect(result.stdout).toMatch(/Codex marketplace plugin/);
+    expect(result.stdout).toMatch(/Review and trust the Tersio hooks/);
+    expect(result.stdout).toMatch(/Done — restart Codex/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("install --host codex repairs a partial marketplace cache", () => {
+  const home = tempHome();
+  try {
+    const bin = path.join(home, "fake-codex-bin");
+    mkdirSync(bin, { recursive: true });
+    const log = path.join(home, "codex-calls.log");
+    const cache = path.join(home, ".codex", "plugins", "cache", "tersio", "tersio", "2.25.14");
+    const fake = path.join(bin, process.platform === "win32" ? "codex.cmd" : "codex");
+    const writeCache = `mkdir -p "${cache}/.codex-plugin"\nprintf '%s\\n' '{"name":"tersio","version":"2.25.14"}' > "${cache}/.codex-plugin/plugin.json"\n`;
+    writeFileSync(fake, process.platform === "win32"
+      ? `@echo off\r\necho %*>>"${log}"\r\necho {}\r\n`
+      : `#!/bin/sh\nprintf '%s\\n' "$*" >> "${log}"\nif [ "$1 $2 $3" = "plugin marketplace add" ]; then ${writeCache}fi\nprintf '{}\\n'\n`, "utf8");
+    chmodSync(fake, 0o755);
+    mkdirSync(path.join(cache, "hooks"), { recursive: true });
+    writeFileSync(path.join(cache, "hooks", "hooks.json"), "{}", "utf8");
+    const result = spawnSync(process.execPath, [cli, "install", "--host", "codex", "--yes"], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 30000,
+      env: cliEnv(home, { PATH: `${bin}${path.delimiter}${process.env.PATH || ""}` }),
+    });
+    expect(result.status, result.stderr).toBe(0);
+    const calls = readFileSync(log, "utf8");
+    expect(calls).toMatch(/plugin marketplace add KurutoDenzeru\/tersio/);
+    expect(calls).toMatch(/plugin add tersio@tersio --json/);
+    expect(result.stdout).toMatch(/Codex marketplace plugin/);
+    expect(existsSync(path.join(home, ".tersio", "codex-plugin"))).toBe(false);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("uninstall --host codex removes only the Tersio plugin and settings", () => {
+  const home = tempHome();
+  try {
+    const bin = fakeCodex(home);
+    const installed = run(home, ["install", "--host", "codex", "--yes"], bin);
+    expect(installed.status, installed.stderr).toBe(0);
+    const data = path.join(home, ".codex", "plugins", "data", "tersio-tersio");
+    mkdirSync(data, { recursive: true });
+    writeFileSync(path.join(data, "keep.txt"), "keep", "utf8");
+    const result = run(home, ["uninstall", "--host", "codex", "--yes"], bin);
+    expect(result.status, result.stderr).toBe(0);
+    expect(existsSync(path.join(home, ".tersio", "codex-plugin"))).toBe(false);
+    expect(existsSync(path.join(home, ".agents", "plugins", "marketplace.json"))).toBe(false);
+    expect(existsSync(path.join(home, ".tersio", "settings.json"))).toBe(false);
+    expect(readFileSync(path.join(data, "keep.txt"), "utf8")).toBe("keep");
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("uninstall --host codex dry-run leaves the plugin and marketplace", () => {
+  const home = tempHome();
+  try {
+    const bin = fakeCodex(home);
+    const installed = run(home, ["install", "--host", "codex", "--yes"], bin);
+    expect(installed.status, installed.stderr).toBe(0);
+    const result = run(home, ["uninstall", "--host", "codex", "--dry-run"], bin);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/would run: codex plugin remove tersio@tersio-personal/);
+    expect(existsSync(path.join(home, ".tersio", "codex-plugin"))).toBe(true);
+    expect(existsSync(path.join(home, ".agents", "plugins", "marketplace.json"))).toBe(true);
+    expect(existsSync(path.join(home, ".tersio", "settings.json"))).toBe(true);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("uninstall --host codex keeps an unrelated personal marketplace entry", () => {
+  const home = tempHome();
+  try {
+    const bin = fakeCodex(home);
+    const installed = run(home, ["install", "--host", "codex", "--yes"], bin);
+    expect(installed.status, installed.stderr).toBe(0);
+    const marketplace = path.join(home, ".agents", "plugins", "marketplace.json");
+    const parsed = JSON.parse(readFileSync(marketplace, "utf8")) as { plugins: Array<Record<string, unknown>> };
+    parsed.plugins.unshift({ name: "other", source: { source: "local", path: "./other" } });
+    writeFileSync(marketplace, JSON.stringify(parsed), "utf8");
+    const result = run(home, ["uninstall", "--host", "codex", "--yes"], bin);
+    expect(result.status, result.stderr).toBe(0);
+    const kept = JSON.parse(readFileSync(marketplace, "utf8")) as { plugins?: Array<{ name?: string }> };
+    expect(kept.plugins?.map((plugin) => plugin.name)).toEqual(["other"]);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("uninstall --host codex removes the marketplace plugin and keeps the repo marketplace", () => {
+  const home = tempHome();
+  try {
+    const bin = path.join(home, "fake-codex-bin");
+    mkdirSync(bin, { recursive: true });
+    const log = path.join(home, "codex-calls.log");
+    const fake = path.join(bin, process.platform === "win32" ? "codex.cmd" : "codex");
+    writeFileSync(fake, process.platform === "win32"
+      ? `@echo off\r\necho %*>>"${log}"\r\necho {}\r\n`
+      : `#!/bin/sh\nprintf '%s\\n' "$*" >> "${log}"\nprintf '{}\\n'\n`, "utf8");
+    chmodSync(fake, 0o755);
+    const env = cliEnv(home, { PATH: `${bin}${path.delimiter}${process.env.PATH || ""}` });
+    const installed = spawnSync(process.execPath, [cli, "install", "--host", "codex", "--yes"], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 30000,
+      env,
+    });
+    expect(installed.status, installed.stderr).toBe(0);
+    const cache = path.join(home, ".codex", "plugins", "cache", "tersio", "tersio", "2.25.14");
+    for (const file of CODEX_MARKETPLACE_PLUGIN_FILES) {
+      const target = path.join(cache, ...file.split("/"));
+      mkdirSync(path.dirname(target), { recursive: true });
+      writeFileSync(target, file === ".codex-plugin/plugin.json"
+        ? JSON.stringify({ name: "tersio", version: "2.25.14" })
+        : "fixture", "utf8");
+    }
+    const result = spawnSync(process.execPath, [cli, "uninstall", "--host", "codex", "--yes"], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 30000,
+      env,
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(readFileSync(log, "utf8")).toMatch(/plugin remove tersio@tersio --json/);
+    expect(result.stdout).toMatch(/Plugin data is kept/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("doctor reports a Codex plugin from the marketplace cache", () => {
+  const home = tempHome();
+  try {
+    const bin = fakeCodex(home);
+    const installed = run(home, ["install", "--host", "codex", "--yes"], bin);
+    expect(installed.status, installed.stderr).toBe(0);
+    const direct = path.join(home, ".tersio", "codex-plugin");
+    const cache = path.join(home, ".codex", "plugins", "cache", "tersio", "tersio", "9.8.7");
+    mkdirSync(path.dirname(cache), { recursive: true });
+    cpSync(direct, cache, { recursive: true });
+    rmSync(direct, { recursive: true, force: true });
+    mkdirSync(path.join(home, ".codex"), { recursive: true });
+    writeFileSync(path.join(home, ".codex", "config.toml"), '[plugins."tersio@tersio"]\nenabled = true\n', "utf8");
+    const manifestPath = path.join(cache, ".codex-plugin", "plugin.json");
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as Record<string, unknown>;
+    writeFileSync(manifestPath, JSON.stringify({ ...manifest, version: "9.8.7" }), "utf8");
+    const result = run(home, ["doctor"], bin);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/✅ Codex plugin: ok v9\.8\.7/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("doctor reports an unregistered Codex plugin directory", () => {
+  const home = tempHome();
+  try {
+    const bin = fakeCodex(home);
+    const installed = run(home, ["install", "--host", "codex", "--yes"], bin);
+    expect(installed.status, installed.stderr).toBe(0);
+    rmSync(path.join(home, ".codex", "config.toml"), { force: true });
+    const result = run(home, ["doctor"], bin);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/❌ Codex plugin: MISSING not enabled/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("doctor reports a partial Codex cache with no manifest", () => {
+  const home = tempHome();
+  try {
+    const bin = fakeCodex(home);
+    const cache = path.join(home, ".codex", "plugins", "cache", "tersio", "tersio", "9.8.7");
+    mkdirSync(path.join(cache, "hooks"), { recursive: true });
+    writeFileSync(path.join(cache, "hooks", "hooks.json"), "{}", "utf8");
+    const result = run(home, ["doctor"], bin);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/Codex plugin: MISSING missing: \.codex-plugin\/plugin\.json/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("doctor leaves OMP-only add-on rows out of a Codex install", () => {
+  const home = tempHome();
+  try {
+    const bin = fakeCodex(home);
+    const installed = run(home, ["install", "--host", "codex", "--yes"], bin);
+    expect(installed.status, installed.stderr).toBe(0);
+    mkdirSync(path.join(home, ".codex"), { recursive: true });
+    writeFileSync(path.join(home, ".codex", "config.toml"), '[plugins."tersio@tersio"]\nenabled = true\n', "utf8");
+    const result = run(home, ["doctor"], bin);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/✅ Codex plugin: ok/);
+    expect(result.stdout).not.toMatch(/Caveman rule:/);
+    expect(result.stdout).not.toMatch(/pstack rule:/);
+    expect(result.stdout).not.toMatch(/Ponytail:/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("doctor --fix codex reinstalls the plugin", () => {
+  const home = tempHome();
+  try {
+    const bin = fakeCodex(home);
+    const installed = run(home, ["install", "--host", "codex", "--yes"], bin);
+    expect(installed.status, installed.stderr).toBe(0);
+    const plugin = path.join(home, ".tersio", "codex-plugin");
+    rmSync(path.join(plugin, "hooks", "hooks.json"), { force: true });
+    const result = run(home, ["doctor", "--fix", "codex", "--yes"], bin);
+    expect(result.status, result.stderr).toBe(0);
+    expect(existsSync(path.join(plugin, "hooks", "hooks.json"))).toBe(true);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("doctor --fix codex enables a complete disabled plugin", () => {
+  const home = tempHome();
+  try {
+    const bin = path.join(home, "fake-codex-bin");
+    mkdirSync(bin, { recursive: true });
+    const log = path.join(home, "codex-calls.log");
+    const fake = path.join(bin, process.platform === "win32" ? "codex.cmd" : "codex");
+    writeFileSync(fake, process.platform === "win32"
+      ? `@echo off\r\necho %*>>"${log}"\r\necho {}\r\n`
+      : `#!/bin/sh\nprintf '%s\\n' "$*" >> "${log}"\nprintf '{}\\n'\n`, "utf8");
+    chmodSync(fake, 0o755);
+    const installed = spawnSync(process.execPath, [cli, "install", "--host", "codex", "--yes"], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 30000,
+      env: cliEnv(home, { PATH: `${bin}${path.delimiter}${process.env.PATH || ""}` }),
+    });
+    expect(installed.status, installed.stderr).toBe(0);
+    mkdirSync(path.join(home, ".codex"), { recursive: true });
+    writeFileSync(path.join(home, ".codex", "config.toml"), '[plugins."tersio@tersio"]\nenabled = false\n', "utf8");
+    const result = spawnSync(process.execPath, [cli, "doctor", "--fix", "codex", "--yes"], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 30000,
+      env: cliEnv(home, { PATH: `${bin}${path.delimiter}${process.env.PATH || ""}` }),
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(readFileSync(log, "utf8")).toMatch(/plugin add tersio@tersio --json/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("update --host codex refreshes the marketplace and installs the plugin", () => {
+  const home = tempHome();
+  try {
+    const bin = path.join(home, "fake-codex");
+    mkdirSync(bin, { recursive: true });
+    const log = path.join(home, "codex-calls.log");
+    const fake = path.join(bin, process.platform === "win32" ? "codex.cmd" : "codex");
+    writeFileSync(fake, process.platform === "win32"
+      ? `@echo off\r\necho %*>>"${log}"\r\necho {}\r\n`
+      : `#!/bin/sh\nprintf '%s\\n' "$*" >> "${log}"\nprintf '{}\\n'\n`, "utf8");
+    chmodSync(fake, 0o755);
+    const result = spawnSync(process.execPath, [cli, "update", "--host", "codex", "--yes", "--dry-run"], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 30000,
+      env: cliEnv(home, { PATH: `${bin}${path.delimiter}${process.env.PATH || ""}` }),
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/would run: codex plugin marketplace upgrade tersio/);
+    expect(result.stdout).toMatch(/would run: codex plugin add tersio@tersio/);
+    expect(existsSync(log)).toBe(false);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("update --host codex dry-run previews the plugin commands", () => {
+  const home = tempHome();
+  try {
+    const result = run(home, ["update", "--host", "codex", "--yes", "--dry-run"]);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/would run: codex plugin marketplace upgrade tersio/);
+    expect(result.stdout).toMatch(/would run: codex plugin add tersio@tersio/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("update --host codex refreshes a bundled plugin without the marketplace", () => {
+  const home = tempHome();
+  try {
+    const bin = fakeCodex(home);
+    const installed = run(home, ["install", "--host", "codex", "--yes"], bin);
+    expect(installed.status, installed.stderr).toBe(0);
+    const result = run(home, ["update", "--host", "codex", "--yes", "--dry-run"], bin);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/would refresh the bundled Codex plugin/);
+    expect(result.stdout).not.toMatch(/marketplace upgrade/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("update --host codex rebuilds a bundled plugin", () => {
+  const home = tempHome();
+  try {
+    const bin = fakeCodex(home);
+    const installed = run(home, ["install", "--host", "codex", "--yes"], bin);
+    expect(installed.status, installed.stderr).toBe(0);
+    const plugin = path.join(home, ".tersio", "codex-plugin");
+    const hooks = path.join(plugin, "hooks", "hooks.json");
+    writeFileSync(hooks, "stale", "utf8");
+    const prompt = path.join(home, ".codex", "prompts", "rtk.md");
+    rmSync(prompt, { force: true });
+    writeFileSync(path.join(home, ".codex", "config.toml"), 'model = "gpt-6-luna"\n', "utf8");
+    const result = run(home, ["update", "--host", "codex", "--yes"], bin);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/bundled Codex plugin/);
+    expect(readFileSync(hooks, "utf8")).toMatch(/codex-hook user-prompt-submit/);
+    // Prompts and the MCP policy live outside the plugin tree; an update restores both.
+    expect(readFileSync(prompt, "utf8")).toMatch(/modes rtk/);
+    const config = readFileSync(path.join(home, ".codex", "config.toml"), "utf8");
+    expect(config).toMatch(/model = "gpt-6-luna"/);
+    expect(config).toMatch(/default_tools_approval_mode = "approve"/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("uninstall --host codex removes a bundled plugin and keeps plugin data", () => {
+  const home = tempHome();
+  try {
+    const bin = fakeCodex(home);
+    const installed = run(home, ["install", "--host", "codex", "--yes"], bin);
+    expect(installed.status, installed.stderr).toBe(0);
+    const data = path.join(home, ".codex", "plugins", "data", "tersio-tersio-personal");
+    mkdirSync(data, { recursive: true });
+    writeFileSync(path.join(data, "keep.txt"), "keep", "utf8");
+    const configFile = path.join(home, ".codex", "config.toml");
+    writeFileSync(configFile, `model = "gpt-6-luna"\n\n${readFileSync(configFile, "utf8")}`, "utf8");
+    const result = run(home, ["uninstall", "--host", "codex", "--yes"], bin);
+    expect(result.status, result.stderr).toBe(0);
+    expect(existsSync(path.join(home, ".tersio", "codex-plugin"))).toBe(false);
+    expect(existsSync(path.join(home, ".agents", "plugins", "marketplace.json"))).toBe(false);
+    expect(existsSync(path.join(home, ".tersio", "settings.json"))).toBe(false);
+    expect(readFileSync(path.join(data, "keep.txt"), "utf8")).toBe("keep");
+    // The Tersio approval table goes; the user's own Codex lines stay.
+    const config = readFileSync(configFile, "utf8");
+    expect(config).toContain('model = "gpt-6-luna"');
+    expect(config).not.toContain("default_tools_approval_mode");
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

@@ -150,7 +150,8 @@
     "extensions/caveman/rule-ultra.md",
     "extensions/caveman/rule-megacave.md",
     "extensions/pstack/**/*.md",
-    "extensions/ponytail/**/*"
+    "extensions/ponytail/**/*",
+    "plugins/tersio/assets/*"
   ],
   "scripts": {
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",

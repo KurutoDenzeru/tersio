@@ -1,6 +1,6 @@
 # Architecture
 
-Tersio is one npm package with two faces: a **CLI** (`tersio install|update|doctor|dashboard…`) and a **host plugin** whose feature-gated extensions load inside any supported agent — omp, pi, or OpenCode. The CLI picks one with `--host`, every extension speaks one `ExtensionApi`, and all three read the same session defaults from one file. The reporting side is not yet that even, which the next section spells out.
+Tersio is one npm package with two faces: a **CLI** (`tersio install|update|doctor|dashboard…`) and a **host plugin** whose feature-gated extensions load inside any supported agent — omp, pi, or OpenCode. Codex loads a separate compatibility plugin with one prompt hook. The CLI picks a host with `--host`, every extension speaks one `ExtensionApi`, and all four hosts read the same session defaults from one file. The reporting side is not yet that even, which the next section spells out.
 
 ## Components
 

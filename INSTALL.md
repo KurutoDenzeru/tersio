@@ -8,6 +8,7 @@ Tersio installs into an agent host. Pick the row for the host you use.
 | [OMP](https://github.com/can1357/oh-my-pi) | `tersio install --host omp` | `tersio update --host omp` | `tersio uninstall --host omp` |
 | [pi](https://github.com/earendil-works/pi) | `tersio install --host pi` | `tersio update --host pi` | `tersio uninstall --host pi` |
 | [OpenCode](https://opencode.ai) | `tersio install --host opencode` | `tersio update --host opencode` | `tersio uninstall --host opencode` |
+| [Codex](https://github.com/openai/codex) | `tersio install --host codex` | `tersio update --host codex` | `tersio uninstall --host codex` |
 
 Host-native equivalents, same code: `omp plugin install @krtclcdy/tersio`, `pi install npm:@krtclcdy/tersio`, `opencode plugin add @krtclcdy/tersio`. Never run both forms for one host, or every command registers twice.
 
@@ -31,11 +32,11 @@ Passing flags needs the download wrapped in a scriptblock, because `iex` cannot 
 & ([scriptblock]::Create((irm https://github.com/KurutoDenzeru/tersio/releases/latest/download/install.ps1))) --npm
 ```
 
-Each host loads its extensions from one place, so the same file never loads twice: `~/.omp/plugins/node_modules/@krtclcdy/tersio/extensions/` for OMP, `~/.pi/agent/extensions`, `~/.config/opencode/plugins/tersio`. The OMP agent tree keeps rtk's own `extensions/rtk.ts` wiring, which `config.yml` registers. `tersio update` without `--host` refreshes OMP.
+Each host loads its files from one place, so the same file never loads twice: `~/.omp/plugins/node_modules/@krtclcdy/tersio/extensions/` for OMP, `~/.pi/agent/extensions`, `~/.config/opencode/plugins/tersio`, and the Codex plugin cache. The OMP agent tree keeps rtk's own `extensions/rtk.ts` wiring, which `config.yml` registers. `tersio update` without `--host` refreshes OMP.
 
 ## Requirements
 
-- OMP, pi, or OpenCode.
+- OMP, pi, OpenCode, or Codex.
 - Node.js 20.12+ with npm, or Bun. The installer prefers Bun when it is present.
 - SQLite runs in process where the runtime provides it (Bun, or Node 22.5+); an older Node uses the `sqlite3` binary instead.
 - macOS, Linux, or Windows. Install from the environment where the host runs.
@@ -43,6 +44,8 @@ Each host loads its extensions from one place, so the same file never loads twic
 ## After installing
 
 Restart the host. Backend defaults come from `~/.tersio/settings.json`; override per session anytime.
+
+For Codex, review and trust the Tersio plugin hook in `/hooks`. Codex does not run an untrusted hook.
 
 The first interactive launch asks for a session-start Combo preset once (`off`, `lite`, `balanced`, `max`) and remembers it. Defaults apply to fresh sessions only; `/combo`, `/caveman`, or `/rtk` wins within that session. Set it ahead of time instead:
 
@@ -73,18 +76,56 @@ Hosts
   ✅ Oh My Pi: ok package @krtclcdy/tersio 2.25.4
   ✅ Pi: ok extensions @krtclcdy/tersio 2.25.4
   ✅ OpenCode: ok extensions @krtclcdy/tersio 2.25.4
+  ✅ Codex: ok extensions @krtclcdy/tersio 2.25.4
 ```
 
 `extensions` means the tree install wrote the files into the host's own directory; `package` means the host registered the npm package. A host you do not use prints `not installed` with its install command and is not counted as a problem.
 
-OpenCode reports the same way as the other two. `tersio doctor --fix extensions` repairs a tree any host left half-written, and it also writes the OpenCode plugin tree and registers it in `opencode.json` when OpenCode is present.
+OpenCode reports the same way as the other hosts. `tersio doctor --fix extensions` repairs a tree any host left half-written, and it also writes the OpenCode plugin tree and registers it in `opencode.json` when OpenCode is present. `tersio doctor --fix codex` reinstalls or enables the Codex plugin.
+
+## Codex plugin
+
+The installer tries the repository marketplace first:
+
+```bash
+codex plugin marketplace add KurutoDenzeru/tersio --sparse .agents/plugins --sparse plugins/tersio
+codex plugin add tersio@tersio
+```
+
+If that source is unavailable, the installer writes `~/.tersio/codex-plugin/` and adds it to `~/.agents/plugins/marketplace.json`. This local plugin carries its own runtime.
+
+The plugin carries six mode skills (`$tersio-combo`, `$tersio-caveman`, `$tersio-rtk`, `$tersio-ponytail`, `$tersio-pstack`, and the status skill), the five Ponytail workflows (`ponytail-audit`, `ponytail-debt`, `ponytail-gain`, `ponytail-help`, and `ponytail-review`), and two hooks. The `UserPromptSubmit` hook adds the current mode block before each prompt and clears caveman or Ponytail on `stop caveman`, `stop ponytail`, or `normal mode`. The `PreToolUse` hook rewrites eligible shell calls through `rtk` when the RTK default is on; it reads `~/.tersio/settings.json`, so the same defaults work in every host.
+
+RTK 1.0.1 supports `rtk init -g --codex`, but that global hook does not read Tersio's mode state. Tersio uses its own plugin hook instead, so `/rtk off` can stop a rewrite. If you ran `rtk init -g --codex` earlier, `tersio doctor` names the duplicate. Remove the standalone hook with `rtk init -g --codex --uninstall` when you want Tersio to own RTK.
+
+The installer also writes the same slash commands the other hosts use to `~/.codex/prompts/`:
+
+```text
+/combo balanced
+/caveman ultra
+/rtk on
+/ponytail full
+/pstack on
+/tersio status
+/combo help
+/rtk enable
+/caveman wenyan
+/tersio upstream --offline
+/tersio update all --dry-run
+```
+
+Codex names each command after its file, so `~/.codex/prompts/rtk.md` is `/rtk`. Codex reads that folder at session start, so restart Codex after an install. Each mode command runs `tersio modes`, which writes the same settings file the MCP tool writes and needs no tool approval. The README spellings still work: `/rtk enable`, `/rtk disable`, `/caveman wenyan`, `/combo help`, and `/tersio update <target> --dry-run`. The installer adds `[plugins."tersio@…".mcp_servers.tersio] default_tools_approval_mode = "approve"` to `~/.codex/config.toml`, so the `tersio_modes` tool also works in a session that cannot prompt. The `rtk_run` tool runs an explicit command through rtk when the RTK default is on, and plainly when it is off. A skill is still available with `$skill-name` or `/skills`.
+
+`tersio update --host codex` keeps the layout already on disk. A bundled install stays bundled. A marketplace install refreshes its marketplace, then runs `codex plugin add` again. Both layouts rewrite the slash commands and the approval policy, so an update repairs a deleted prompt.
+
+`tersio uninstall --host codex` removes the Tersio plugin and its settings. It keeps `~/.codex/plugins/data/tersio-tersio`, because that directory holds plugin data.
 
 ## Also installed
 
 The OMP plugin install and the one-line installer bring two more pieces:
 
 - **RTK binary** — compact shell output, written to `~/.bun/bin/rtk`.
-- **Ponytail** — vendored inside Tersio at `extensions/ponytail/`, loaded as a skill by both hosts.
+- **Ponytail** — vendored inside Tersio at `extensions/ponytail/`, loaded as a skill by OMP, pi, and OpenCode.
 
 Both routes carry Ponytail inside Tersio: OMP loads the skills from the plugin's own `extensions/ponytail/` tree, and pi gets a local package written from that same copy. RTK is a separate binary: get it with `tersio install` or the one-liner.
 

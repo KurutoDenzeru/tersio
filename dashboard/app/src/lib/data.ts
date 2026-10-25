@@ -631,6 +631,10 @@ export interface HealthReport {
   opencodePath: string | null;
   /** Config root, e.g. ~/.config/opencode */
   opencodeDir: string | null;
+  codex: string | null;
+  codexPath: string | null;
+  /** Config root, e.g. ~/.codex */
+  codexDir: string | null;
   provider: string | null;
   rtk: { present: boolean; version: string | null; path: string };
   home: string;

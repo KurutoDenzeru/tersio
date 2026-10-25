@@ -1,0 +1,7 @@
+{
+  "name": "@krtclcdy/tersio-codex-plugin",
+  "version": "2.25.14",
+  "private": true,
+  "description": "✂️ Token saver and usage tracker for coding agents.",
+  "license": "MIT"
+}

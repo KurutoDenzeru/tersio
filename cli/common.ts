@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { findPackageRoot, readTextIfExists } from '../extensions/shared/utils.ts';
 import { parseCurrencyFlag, readStoredCurrency } from './currency.ts';
 import { recordActivity, shortPath } from './activity.ts';
+import { canonicalCavemanMode } from '../extensions/shared/session-state.ts';
 import type { CurrencyCode } from './currency.ts';
 
 const IS_WINDOWS = process.platform === 'win32';
@@ -76,7 +77,10 @@ function flagValue(name: string): string | undefined {
   return args.find((arg) => arg.startsWith(prefix))?.slice(prefix.length);
 }
 
-const COMMANDS: Record<string, true> = { install: true, update: true, doctor: true, uninstall: true, dashboard: true, upstream: true, mcp: true, version: true, help: true };
+const COMMANDS: Record<string, true> = {
+  install: true, update: true, doctor: true, uninstall: true, dashboard: true, upstream: true,
+  mcp: true, modes: true, 'codex-hook': true, version: true, help: true,
+};
 /** Flags whose next token is a value, so `--host omp` never reads `omp` as the command. */
 const VALUE_FLAGS = new Set([
   '--host', '--port', '--export', '--currency', '--scope', '--write',
@@ -126,7 +130,11 @@ if (legacyScope !== null && legacyScope !== 'user') {
 // It is accepted by the parser and mapped after, because parseEnum exits on an unknown value.
 const rawComboFlag = parseEnum(flagValue('--combo-default'), new Set([...COMBO_DEFAULTS, ...COMBO_RETIRED]), '--combo-default');
 const comboDefaultFlag = rawComboFlag && COMBO_RETIRED.has(rawComboFlag) ? 'lite' : rawComboFlag;
-const cavemanDefaultFlag = parseEnum(flagValue('--caveman-default'), CAVEMAN_DEFAULTS, '--caveman-default');
+// `wenyan*` is the old spelling; the extension tree accepts it, so the flag does too.
+const rawCavemanFlag = flagValue('--caveman-default');
+const cavemanDefaultFlag = rawCavemanFlag === undefined
+  ? undefined
+  : canonicalCavemanMode(rawCavemanFlag) ?? parseEnum(rawCavemanFlag, CAVEMAN_DEFAULTS, '--caveman-default');
 const ponytailDefaultFlag = parseEnum(flagValue('--ponytail-default'), PONYTAIL_DEFAULTS, '--ponytail-default');
 const pstackDefaultFlag = parseEnum(flagValue('--pstack-default'), PSTACK_DEFAULTS, '--pstack-default');
 const rtkDefaultFlag = parseEnum(flagValue('--rtk-default'), RTK_DEFAULTS, '--rtk-default');

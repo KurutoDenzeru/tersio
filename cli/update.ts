@@ -1,5 +1,5 @@
 // cli/update.ts — update check, per-add-on plan, latest-installer run.
-import { promises as fs, realpathSync } from 'node:fs';
+import { existsSync, promises as fs, realpathSync } from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import {
@@ -22,6 +22,7 @@ import {
 import type { RtkRelease } from '../extensions/shared/utils.ts';
 import { detectHosts, hostOptions, parseHostArg } from './hosts.ts';
 import { CAVEMAN_PIN } from './upstream.ts';
+import { CODEX_MARKETPLACE_NAME, CODEX_PLUGIN_ID, codexInstalledPlugin, codexPluginDir, codexPluginIdForDir } from '../extensions/shared/codex-plugin.ts';
 
 const UPDATE_CHECK_TTL_MS = 6 * 60 * 60 * 1000;
 /** How long one source gets before the check gives up on it. */
@@ -182,14 +183,18 @@ async function probeUpdatePlan(release: LatestRelease | null): Promise<UpdatePla
   const ponytailPkg = path.join(OMP_PLUGINS_DIR, 'node_modules', '@krtclcdy', 'tersio', 'extensions', 'ponytail', 'package.json');
   // rule.md ships with the release; only the tracked bodies can go stale.
   const tersioRule = (name: string) => path.join(OMP_PLUGINS_DIR, 'node_modules', '@krtclcdy', 'tersio', 'extensions', 'caveman', name);
+  // A Codex-only install carries the same bodies under the Codex plugin tree.
+  const codexTree = (rel: string) => path.join(codexPluginDir(), rel);
   const controller = new AbortController();
   const [rtkLocal, rtkRelease, ruleLocal, ruleRemote, ponytailLocalText] = await Promise.all([
     settle(rtkBin ? execP(rtkBin, ['--version'], { timeout: 5000 }).then((r) => normalizeRtkVersion(r.stdout.trim() || r.stderr.trim()) || null) : Promise.resolve(null), 6000),
     settle(httpsGet(RTK_RELEASE_API, { signal: controller.signal }).then((text) => normalizeRtkVersion((JSON.parse(text) as RtkRelease).tag_name) || null), 1500),
     Promise.all([readTextIfExists(tersioRule('rule-ultra.md')), readTextIfExists(tersioRule('rule-megacave.md'))])
-      .then((texts) => (texts.every(Boolean) ? texts.map((t) => sha256Hex(t as string).slice(0, 8)).join('+') : null)),
+      .then((texts) => (texts.every(Boolean) ? texts.map((t) => sha256Hex(t as string).slice(0, 8)).join('+') : null))
+      .then(async (hashes) => hashes ?? Promise.all([readTextIfExists(codexTree('extensions/caveman/rule-ultra.md')), readTextIfExists(codexTree('extensions/caveman/rule-megacave.md'))])
+        .then((texts) => (texts.every(Boolean) ? texts.map((t) => sha256Hex(t as string).slice(0, 8)).join('+') : null))),
     settle(cavemanRemoteRule(controller.signal), 1500),
-    readTextIfExists(ponytailPkg),
+    readTextIfExists(ponytailPkg).then(async (text) => text ?? readTextIfExists(codexTree('extensions/ponytail/package.json'))),
   ]);
   controller.abort();
   return {
@@ -264,6 +269,7 @@ async function runLatestUpdate(): Promise<void> {
     pinned = choice.value;
   }
   if (pinned) forwardedArgs.push('--host', pinned);
+  const codexTarget = pinned === 'codex';
 
   const npmCommand = IS_WINDOWS ? process.env.ComSpec || 'cmd.exe' : 'npm';
   // Refresh the copy that is actually running, or the old CLI stays on PATH and offers this again.
@@ -276,6 +282,58 @@ async function runLatestUpdate(): Promise<void> {
 
   const plan = await probeUpdatePlan(release);
   const { stale, status } = planLines(plan);
+  if (codexTarget) {
+    // Codex loads the cache or the local fallback, not the global CLI package.
+    const installed = codexInstalledPlugin();
+    const bundled = installed?.layout === 'bundled' || existsSync(path.join(HOME, '.tersio', 'codex-plugin'));
+    if (dryRun) {
+      console.log(`tersio update --host codex (dry-run):\n  ${status.join('\n  ')}`);
+      if (bundled) {
+        sayTagged('  [dry-run] would refresh the bundled Codex plugin');
+      } else {
+        sayTagged(`  [dry-run] would run: codex plugin marketplace upgrade ${CODEX_MARKETPLACE_NAME}`);
+        const id = installed === null ? CODEX_PLUGIN_ID : codexPluginIdForDir(installed.dir) ?? CODEX_PLUGIN_ID;
+        sayTagged(`  [dry-run] would run: codex plugin add ${id}`);
+      }
+      return;
+    }
+    console.log(`Checking for updates:\n  ${status.join('\n  ')}`);
+    if (bundled) {
+      const { stepCodexBundled, stepCodexMcpPolicy, stepCodexPrompts } = await import('./install.ts');
+      try {
+        await stepCodexBundled({ dryRun: false, verbose, yes: true, reinstall: true });
+        // The prompts and the MCP policy live outside the plugin tree, so the update writes them too.
+        await stepCodexPrompts({ dryRun: false, verbose, yes: true, reinstall: true });
+        await stepCodexMcpPolicy({ dryRun: false, verbose, yes: true, reinstall: true });
+      } catch (e) {
+        console.error(`[fail] Codex plugin update: ${(e as Error).message.split('\n')[0]}`);
+        process.exitCode = 1;
+        return;
+      }
+      console.log('Done — the bundled Codex plugin and session defaults updated.');
+      await refreshPrices().catch(() => { /* pricing is best-effort; update already succeeded */ });
+      return;
+    }
+    try {
+      await execNetwork('Refreshing the Tersio Codex marketplace', 'codex', [
+        'plugin', 'marketplace', 'upgrade', CODEX_MARKETPLACE_NAME, '--json',
+      ], { timeout: 180000 });
+      await execNetwork('Installing the Tersio Codex plugin', 'codex', [
+        'plugin', 'add', installed === null ? CODEX_PLUGIN_ID : codexPluginIdForDir(installed.dir) ?? CODEX_PLUGIN_ID, '--json',
+      ], { timeout: 180000 });
+    } catch (e) {
+      console.error(`[fail] Codex plugin update: ${(e as Error).message.split('\n')[0]}`);
+      process.exitCode = 1;
+      return;
+    }
+    // The marketplace plugin has no prompts or policy of its own, so refresh both beside it.
+    const { stepCodexMcpPolicy, stepCodexPrompts } = await import('./install.ts');
+    await stepCodexPrompts({ dryRun: false, verbose, yes: true, reinstall: true });
+    await stepCodexMcpPolicy({ dryRun: false, verbose, yes: true, reinstall: true });
+    console.log(`Done — tersio ${PACKAGE_VERSION} and the Codex plugin updated.`);
+    await refreshPrices().catch(() => { /* pricing is best-effort; update already succeeded */ });
+    return;
+  }
   if (dryRun) {
     console.log(`tersio update (dry-run):\n  ${status.join('\n  ')}`);
     sayTagged(`  [dry-run] would run: ${manager.label} install -g ${PACKAGE_NAME}${target}`);
@@ -288,6 +346,7 @@ async function runLatestUpdate(): Promise<void> {
     return;
   }
   console.log(`Updating ${stale.join(', ')}`);
+
 
   // A checkout runs its own entry: the published CLI cannot carry unshipped changes, and the global
   // install would replace the tree this copy lives in.

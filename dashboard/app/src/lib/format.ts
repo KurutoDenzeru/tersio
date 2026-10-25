@@ -125,6 +125,7 @@ function cap(s: string): string {
   if (low === "openai") return "OpenAI";
   if (low === "gpt") return "GPT";
   if (low === "swe") return "SWE";
+  if (low === "glm") return "GLM";
   if (low === "ai") return "AI";
   if (/^\d+[a-z]+$/.test(low)) return low.toUpperCase();
   if (s.length <= 2) return s.toUpperCase();
@@ -143,17 +144,26 @@ function words(s: string): string {
     .join("-");
 }
 
+/** A Codex id reads `codex/<provider>/<model>`; the host and the provider name the CLI, not the model. */
+function codexScope(model: string): string | null {
+  const segs = model.split("/").filter(Boolean);
+  return segs[0] === "codex" && segs.length > 2 ? segs.slice(2).join("/") : null;
+}
+
 // Vendor-first labels, so provider-prefixed keys read as "Anthropic - Claude - Haiku-4.5".
 export function displayModel(m: string): string {
   const bare = String(m).replace(/(?::free|-free)$/i, "");
   // The report already folds keys; folding again would lowercase the caps.
   if (bare.includes(" - ")) return bare;
   const segs = bare.split("/").filter(Boolean);
-  const tail = segs[segs.length - 1] ?? bare;
+  // The model's own id decides the label: a Z.ai run under `codex/openai` is not an OpenAI model.
+  const scope = codexScope(bare);
+  const rest = scope === null ? segs : scope.split("/").filter(Boolean);
+  const tail = rest[rest.length - 1] ?? bare;
   // One free model under two spellings; fold the alpha variant onto it.
   const pretty = /^space-bunny(-alpha)?$/i.test(tail) ? "Space-Bunny" : words(tail);
   const vendor = vendorOf(bare);
-  if (vendor.name === "Other") return segs.length > 1 ? `${words(segs[segs.length - 2])} - ${pretty}` : pretty;
+  if (vendor.name === "Other") return rest.length > 1 ? `${words(rest[rest.length - 2])} - ${pretty}` : pretty;
   const claude = pretty.match(/^claude[-_](.+)$/i);
   if (vendor.name === "Anthropic" && claude) return `Anthropic - Claude - ${claude[1]}`;
   // DeepSeek spells itself with a capital S, so the label says it and drops the repeated head.
@@ -198,8 +208,11 @@ const PROVIDERS: Array<[RegExp, string, string, string]> = [
 ];
 
 export function vendorOf(model: string): Vendor {
+  // Host prefixes lie: `codex/openai/zcode/glm-…` rides under Codex and OpenAI's provider id,
+  // but the model's own id names Z.ai. Every other id keeps the family-first full-string match.
+  const id = codexScope(String(model)) ?? String(model);
   for (const [re, name, slug, color] of PROVIDERS) {
-    if (re.test(model)) return { name, slug, color };
+    if (re.test(id)) return { name, slug, color };
   }
   return { name: "Other", slug: "", color: "#71717a" };
 }
@@ -223,6 +236,8 @@ export const PALETTE = ["#34d399", "#818cf8", "#22d3ee", "#fbbf24", "#f472b6", "
 const PROVIDER_MARKS: Record<string, string> = {
   "amd-radeon-cloud-cn": "amd",
   "kimi-code": "kimi",
+  // Codex's own routing key, so the provider row reads the CLI's mark, not OpenAI's knot.
+  codex: "codex",
   "openai-codex": "openai",
   nvidia: "nvidia",
   "google-antigravity": "google",
@@ -269,12 +284,13 @@ export function providerMeta(provider: string): ProviderMeta {
 
 /** The agent that recorded a session, from the transcript path, the row's only host marker; matches `AgentLogo`.
  * Each pattern allows either separator: a Windows run writes `C:\...\.omp\agent\sessions\`. */
-export function hostOfSession(sessionFile: string): { label: string; host: "omp" | "pi" | "opencode" | "unknown" } {
+export function hostOfSession(sessionFile: string): { label: string; host: "omp" | "pi" | "opencode" | "codex" | "unknown" } {
   const file = String(sessionFile ?? "");
   // omp writes `~/.omp/agent/sessions/`; the older `.agent/agent/sessions/` spelling still counts.
   if (/[/\\]\.(?:omp|agent)[/\\]agent[/\\]sessions[/\\]/.test(file)) return { label: "OMP", host: "omp" };
   if (/[/\\]\.pi[/\\]agent[/\\]sessions[/\\]/.test(file)) return { label: "Pi", host: "pi" };
   if (/(?:config|local[/\\]share)[/\\]opencode[/\\]agent[/\\]sessions[/\\]/.test(file)) return { label: "OpenCode", host: "opencode" };
+  if (/[/\\]\.codex[/\\]sessions[/\\]/.test(file)) return { label: "Codex", host: "codex" };
   return { label: "OMP", host: "unknown" };
 }
 

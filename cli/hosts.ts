@@ -3,9 +3,12 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { HOME, OMP_PLUGINS_DIR, PACKAGE_NAME, PACKAGE_VERSION } from './common.ts';
 import { treeFilesFor } from './manifest.ts';
-import { piAgentDir } from '../extensions/shared/utils.ts';
+import { piAgentDir, resolveHostBinary } from '../extensions/shared/utils.ts';
+import {
+  codexInstalledPlugin, codexPluginDir, codexPluginEnabled, codexPluginFilesForLayout, codexPluginIdForDir,
+} from '../extensions/shared/codex-plugin.ts';
 
-export type HostId = 'omp' | 'pi' | 'opencode';
+export type HostId = 'omp' | 'pi' | 'opencode' | 'codex';
 
 export interface HostEntry {
   id: HostId;
@@ -21,6 +24,8 @@ export interface HostEntry {
   version: string | null;
   /** The extension tree, or the package dir, depending on `via`. */
   dir: string | null;
+  /** Codex can be present without Tersio. Detection uses this fact. */
+  hostPresent?: boolean;
 }
 
 /** One detected host, as `detectHosts` returns it. */
@@ -31,12 +36,14 @@ export type DetectedHost = HostEntry;
 export function hostExtensionsDir(id: HostId, agentDir = piAgentDir()): string {
   if (id === 'omp') return path.join(HOME, '.omp', 'agent', 'extensions');
   if (id === 'opencode') return path.join(HOME, '.config', 'opencode', 'plugins', 'tersio');
+  if (id === 'codex') return codexPluginDir();
   return path.join(agentDir, 'extensions');
 }
 
 function missingTreeFiles(id: HostId, agentDir = piAgentDir()): string[] {
   const dir = hostExtensionsDir(id, agentDir);
-  return treeFilesFor(id).filter((file) => !existsSync(path.join(dir, file)));
+  const files = id === 'codex' ? codexPluginFilesForLayout('bundled') : treeFilesFor(id);
+  return files.filter((file) => !existsSync(path.join(dir, file)));
 }
 
 export function ompPackageDir(): string {
@@ -102,10 +109,29 @@ const HOSTS: Array<Omit<HostEntry, 'installed' | 'via' | 'declared' | 'version' 
   { id: 'omp', label: 'Oh My Pi', bin: 'omp', installCmd: `omp plugin install ${PACKAGE_NAME}`, removeCmd: `omp plugin remove ${PACKAGE_NAME}` },
   { id: 'pi', label: 'Pi', bin: 'pi', installCmd: `pi install npm:${PACKAGE_NAME}`, removeCmd: `pi remove npm:${PACKAGE_NAME}` },
   { id: 'opencode', label: 'OpenCode', bin: 'opencode', installCmd: `tersio install --host opencode`, removeCmd: `tersio uninstall --host opencode` },
+  { id: 'codex', label: 'Codex', bin: 'codex', installCmd: 'tersio install --host codex', removeCmd: 'tersio uninstall --host codex' },
 ];
 
 function detect(agentDir = piAgentDir()): HostEntry[] {
   return HOSTS.map((host) => {
+    if (host.id === 'codex') {
+      const tree = codexPluginDir();
+      const installed = codexInstalledPlugin();
+      const hostPresent = resolveHostBinary('codex') !== null || existsSync(path.join(HOME, '.codex'));
+      const enabled = installed !== null && (() => {
+        const id = codexPluginIdForDir(installed.dir);
+        return id !== null && codexPluginEnabled(id);
+      })();
+      return {
+        ...host,
+        installed: installed !== null && enabled,
+        via: installed !== null ? 'tree' : null,
+        declared: null,
+        version: installed?.version ?? null,
+        dir: installed?.dir ?? (hostPresent ? tree : null),
+        hostPresent,
+      };
+    }
     const pkgDir = host.id === 'omp' ? ompPackageDir() : host.id === 'pi' ? piPackageDir(agentDir) : null;
     const tree = hostExtensionsDir(host.id, agentDir);
     // A tree wins: the installer writes it and it carries no package.json, so its version is ours. OpenCode keeps no package to fall back to, so a present tree is the install and drift gets the per-host warning.
@@ -137,6 +163,7 @@ export function hostLabel(host: HostEntry): string {
 
 // Hints render inline, so menus name the install and doctor keeps the path.
 export function hostHint(host: HostEntry): string {
+  if (host.id === 'codex' && host.installed) return 'Codex plugin';
   if (host.installed && host.via) return host.via === 'tree' ? 'extension tree' : 'plugin package';
   return host.installCmd;
 }
@@ -152,7 +179,7 @@ export function parseHostArg(argv: string[]): HostId | undefined {
   const raw = (i === -1 ? undefined : argv[i + 1]) ?? argv.find((a) => a.startsWith('--host='))?.slice('--host='.length);
   if (raw === undefined) return undefined;
   const value = raw.trim().toLowerCase();
-  if (value !== 'omp' && value !== 'pi' && value !== 'opencode') throw new Error(`Invalid --host: ${raw}. Valid: omp, pi, opencode`);
+  if (value !== 'omp' && value !== 'pi' && value !== 'opencode' && value !== 'codex') throw new Error(`Invalid --host: ${raw}. Valid: omp, pi, opencode, codex`);
   return value;
 }
 

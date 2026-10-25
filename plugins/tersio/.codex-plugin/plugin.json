@@ -1,0 +1,34 @@
+{
+  "name": "tersio",
+  "version": "2.25.14",
+  "description": "✂️ Token saver and usage tracker for coding agents.",
+  "author": {
+    "name": "KurutoDenzeru"
+  },
+  "homepage": "https://github.com/KurutoDenzeru/tersio",
+  "repository": "https://github.com/KurutoDenzeru/tersio",
+  "license": "MIT",
+  "mcpServers": "./.mcp.json",
+  "hooks": "./hooks/hooks.json",
+  "interface": {
+    "displayName": "Tersio",
+    "shortDescription": "✂️ Token saver and usage tracker for coding agents",
+    "longDescription": "Terse Caveman replies, compact RTK shell output, lean Ponytail code, pstack rigor, and a gain dashboard — one command at a time.",
+    "developerName": "KurutoDenzeru",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Read",
+      "Write",
+      "Lifecycle hooks"
+    ],
+    "websiteURL": "https://github.com/KurutoDenzeru/tersio",
+    "defaultPrompt": [
+      "Show my Tersio mode status",
+      "Show my local agent usage",
+      "Set combo lite"
+    ],
+    "composerIcon": "./assets/icon.png",
+    "logo": "./assets/icon.png",
+    "brandColor": "#D97706"
+  }
+}

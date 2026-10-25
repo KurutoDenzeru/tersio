@@ -1252,6 +1252,9 @@ test("free suffix and case variants fold into one model row", () => {
   expect(displayModelId("deepseek-v4.1-flash:free")).toBe("Deepseek-V4.1-Flash");
   expect(displayModelId("meta/muse-spark-1.3-contributor")).toBe("Meta - Muse-Spark-1.3-Contributor");
   expect(displayModelId("codex/openai")).toBe("OpenAI");
+  // The Codex host and its provider id are not the model's author.
+  expect(displayModelId("codex/openai/zcode/glm-5.3-flash")).toBe("Z.ai - GLM-5.3-Flash");
+  expect(displayModelId("codex/openai/gpt-6-luna")).toBe("OpenAI - GPT-6-Luna");
   expect(displayModelId("gemma4:31b")).toBe("Google - Gemma4-31B");
   expect(displayModelId("opencode/Github-Copilot/grok-code-fast-1")).toBe("xAI - Grok-Code-Fast-1");
   expect(displayModelId("Swe-1-6-Slow")).toBe("Cognition - SWE-1-6-Slow");

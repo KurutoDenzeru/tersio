@@ -7,21 +7,23 @@ import {
 import { closeRL } from './cli/interactive.ts';
 import { runInstall } from './cli/install.ts';
 import { runDoctor } from './cli/doctor.ts';
-import { preferBun, runMcpServer } from './cli/mcp.ts';
+import { preferBun, runMcpServer, runModes } from './cli/mcp.ts';
 import { runLatestUpdate } from './cli/update.ts';
 import { runUninstall } from './cli/uninstall.ts';
 import { runUpstream } from './cli/upstream.ts';
 import { runDashboard } from './cli/dashboard.ts';
+import { runCodexHook } from './cli/codex-hook.ts';
 
 function printHelp(): void {
   console.log(`Usage: ${PACKAGE_BIN} [command] [options]
 
 Commands:
-  install      Install the add-ons for one agent (--host omp|pi|opencode, or ask at a terminal)
+  install      Install the add-ons for one agent (--host omp|pi|opencode|codex, or ask at a terminal)
   update       Refresh the CLI and add-ons (RTK binary, Caveman rule, Ponytail; --host limits to one agent)
   doctor       Check the current installation (--fix repairs, --dry-run previews)
   dashboard     Open the Dashboard (localhost only)
   mcp           Start the Tersio MCP server on stdio, for any MCP client
+  modes         Read or set a session mode (modes caveman full, modes combo lite)
   uninstall    Remove the managed extensions
   version      Print the package version
   help         Show this help
@@ -29,7 +31,7 @@ Commands:
 Options:
   --fix (doctor: repairs all; --fix=<scope> repairs one of extensions, registrations, rtk, ponytail, cli, service)
   --scope user (legacy; accepted and ignored — user scope is the only scope)
-  --host omp|pi|opencode (install|uninstall|update: target agent; a terminal asks instead)
+  --host omp|pi|opencode|codex (install|uninstall|update: target agent; a terminal asks instead)
   --keep-ponytail (uninstall: keep the bundled Ponytail copy — removed by default)
   --remove-rtk (uninstall: also remove the RTK binary; its OMP wiring always goes)
   --combo-default off|lite|balanced|max (implies caveman, rtk, ponytail)
@@ -78,6 +80,18 @@ async function main(): Promise<void> {
     // Bun runs the server when it is on PATH; the client spawned node, so the hand-off happens here.
     await preferBun();
     await runMcpServer();
+    closeRL();
+    return;
+  }
+
+  if (commandArg === 'modes') {
+    await runModes(args.slice(args.indexOf('modes') + 1).filter((arg) => !arg.startsWith('--')));
+    closeRL();
+    return;
+  }
+
+  if (commandArg === 'codex-hook') {
+    runCodexHook(process.argv[3] ?? '');
     closeRL();
     return;
   }

@@ -1,9 +1,37 @@
 ## Unreleased
 
 ### Added
+- **Codex slash commands.** `tersio install --host codex` now writes `/combo`, `/caveman`, `/rtk`, `/ponytail`, `/pstack`, and `/tersio` to `~/.codex/prompts/`. Each one sets its mode from the level you type after it, and `/caveman status` reports one value. The installer also adds a plugin-scoped MCP approval policy, so `tersio_modes` works in a session that cannot prompt for approval. A new `tersio modes <mode> <level>` command reads or writes the same defaults.
+- **Full Codex command parity.** `/combo help`, `/rtk enable|disable|true|false`, every legacy `wenyan` caveman spelling, `/tersio help`, `/tersio upstream [--offline]`, and `/tersio update <target> [--dry-run]` now work in Codex. The dashboard Quick start lists all six commands, the restart step, and the `/hooks` trust step.
+- **`rtk_run` MCP tool.** Codex can run an explicit command through rtk when RTK mode is on, and run it plainly when RTK mode is off.
+- **Codex stop phrases.** `stop caveman`, `stop ponytail`, and `normal mode` now clear the stored defaults, so the next prompt block does not keep a stopped mode active.
+- **Codex install checks.** `tersio doctor` reports missing slash commands and a missing MCP approval policy. `tersio update --host codex` rewrites both, and uninstall removes only Tersio's approval table.
  - A **`tersio mcp`** command. It starts a small server that any MCP-capable app can talk to, so an agent can answer "what did my sessions cost", read what Tersio changed, and switch modes, without opening the dashboard: a Combo preset in one call, or any single mode (caveman, rtk, ponytail, pstack) overriding its piece of the preset. Connect it by adding the `tersio` entry under `mcpServers` in the client's MCP settings; there is no port, token, or process to keep alive.
+ - **Codex is a fourth host.** `tersio install --host codex` adds the Tersio repo marketplace and installs `tersio@tersio`. If that source is unavailable, it writes a self-contained plugin at `~/.tersio/codex-plugin/` and registers it through `~/.agents/plugins/marketplace.json`. The plugin has the Tersio MCP server, one `UserPromptSubmit` hook that keeps the stored modes active, and slash commands under `~/.codex/prompts/`.
+ - Codex joins install, update, doctor, and uninstall. `tersio update --host codex` follows the installed layout, `tersio doctor --fix codex` repairs or enables the plugin, and the dashboard counts Codex sessions and labels them as Codex.
+ - **Codex RTK hook.** A `PreToolUse` hook rewrites eligible shell calls through `rtk` before they run. It skips calls that already carry the `rtk` prefix, honours `RTK_DISABLED`, and only rewrites commands whose exit stays inside rtk's allow rules, so an uncovered command passes through untouched.
+- **Codex on the Upstream page.** The Agents table now has a Codex row. It compares the installed plugin's bodies with this build's file set, so a missing file or a stale rule shows beside the other agents instead of leaving Codex out of the scorecard.
+- **Install methods on Quick start.** A new card names each agent's own install command, including Codex's `codex plugin marketplace add` and `codex plugin add`, and the `/hooks` trust step.
+ - The repository marketplace is at `.agents/plugins/marketplace.json`. The shipped plugin is at `plugins/tersio/`.
 
 ### Fixed
+- Invoking a Codex slash command no longer pastes a wall of text. Each prompt body is now one command line plus a short read of `status` and `help`; the CLI owns the alias mapping, so the body passes `$1` through unchanged.
+- The Codex plugin ships one icon and no skills. The picker shows only the six slash prompts, so the skill rows that duplicated them are gone; the manifest points `composerIcon` and `logo` at the single scissors `assets/icon.png`. The plugin presents the GitHub project description and three starter prompts.
+- The README and the dashboard Quick start offer each host's own install method for Codex: `codex plugin marketplace add KurutoDenzeru/tersio` then `codex plugin add tersio@tersio`, with Ponytail's plugin named for the workflow skills.
+- The Codex personal marketplace registers as `tersio` instead of `tersio-personal`. An existing registration under the old name migrates on the next install or update, which removes the stale `tersio@tersio-personal` plugin entry.
+- `normal mode` now turns pstack off in Codex, matching the pstack rule text and the omp host. Only caveman and ponytail reacted before.
+- `tersio doctor` warns when a marketplace-layout Codex plugin has no `tersio` CLI on PATH. That layout's hooks and MCP server exec the CLI, so a missing binary silently disabled both.
+- The doctor and upstream checks now verify every pstack leaf (`principles/`, `playbooks/`, `skills/`, `references/`) the bundled Codex plugin copies, instead of only `rule.md`.
+- The OMP warning `Extension does not export a valid factory function` for `extensions/updater/index.ts` is gone. Removing the dead `/ai-addons` command left the updater without a default factory while the manifest still declared the file as an extension entry, and that entry also failed a fresh `omp plugin install`'s factory validation.
+- `tersio modes <mode>` now reads the current state instead of failing with "needs a level". The Codex slash commands use that form for `/combo status`, `/caveman status`, and the other status values.
+- `tersio doctor` now names rtk's standalone `rtk init -g --codex` hook. That hook bypasses `/rtk off`, so Tersio reports the duplicate and keeps its own mode-aware plugin hook.
+- A Codex mode switch no longer fails with "MCP tool call requires approval" when approvals are off. The slash commands run the CLI, and the installer pre-approves only Tersio's own MCP server.
+- A Codex row reads its model's own author. `codex/openai/zcode/glm-5.3-flash` shows "Z.ai - GLM-5.3-Flash" with the Z.ai mark; it used to borrow OpenAI's name and mark from the host prefix.
+- The dashboard draws Codex's own mark in its provider tiles and on the Upstream page. The tile showed a "C" monogram, which read as a different product from the Codex logo on Quick start.
+ - A plugin hook block appears once per Codex turn. One `UserPromptSubmit` hook owns the mode context, so startup and resume do not add a second block.
+ - The dashboard now fills Codex rows with tool calls, elapsed time, and first-token latency. It read the Codex transcript's token rows only, so tool pages showed no calls and request rows read `d: null`.
+ - The update check probes the Codex plugin tree when no OMP package exists, so a Codex-only install no longer reports "Caveman rule: unknown" or "Ponytail: missing → bundled reinstall".
+ - `tersio doctor` reads a missing price cache as a warning with the fallback table in place, not a missing feed. It no longer shows the stale "no installed host exposes an exec API" warning on a Codex-only install, because Codex calls `rtk` from bash through the hook.
  - The update check now names the Caveman rule's release version on both sides of a jump, the one installed and the one offered, instead of a code fingerprint. It reads the same record the doctor and the dashboard use.
  - The update check no longer reports the bundled Ponytail as missing. It looked for the separate package an older install carried, so every update claimed to reinstall it and listed it as a change even when nothing changed.
 
