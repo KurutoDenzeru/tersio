@@ -59,6 +59,15 @@ export const REMOTE_MARKS: Readonly<Record<string, string>> = {
   kiro: "https://kiro.dev/icon.svg",
   // Meituan's own icon: its yellow tile with the logotype.
   meituan: "https://s3plus.meituan.net/v1/mss_e2821d7f0cfe4ac1bf9202ecf9590e67/cdn-prod/file:1040877d/favicon-mt.ico",
+  // Headroom wrap targets: each mark comes from the harness's own site or a Simple Icons file. Aider's site logo is a wide wordmark; the square favicon carries the brain mark alone.
+  aider: "https://aider.chat/assets/icons/favicon-32x32.png",
+  cursor: `${SIMPLE_ICONS}/cursor.svg`,
+  goose: "https://goose-docs.ai/img/goose.svg",
+  // OpenHands' site logo is a wide wordmark; the app's own square favicon carries the mark alone.
+  openhands: "https://raw.githubusercontent.com/All-Hands-AI/OpenHands/main/public/favicon.svg",
+  openclaw: "https://openclaw.ai/favicon.svg",
+  grok: "https://x.ai/favicon.ico",
+  vscode: "https://code.visualstudio.com/favicon.ico",
 };
 
 /** Tile fill per slug from the brand's own page, never a guess; an absent slug keeps the plain panel. */
@@ -112,6 +121,8 @@ export const MARK_BG: Readonly<Record<string, string>> = {
   trae: "#000000",
   kiro: "#9046ff",
   meituan: "#ffd100",
+  // Headroom wrap targets with a verified flat mark: the fill is the art's own ink.
+  cursor: "#000000",
 };
 
 /** Glyph scale per slug over the tile clip; the measured ink box decides, and one is the default. */
@@ -162,6 +173,12 @@ export const COLORED_MARKS: ReadonlySet<string> = new Set([
   "amazonaws",
   // A raster ICO with its own olive ink, so a mask would erase the color.
   "beam",
+  // Headroom wrap targets whose marks carry their own colors or are raster ICO/PNG assets.
+  "aider",
+  "openhands",
+  "openclaw",
+  "grok",
+  "vscode",
 ]);
 
 /** The URL a mark comes from, or null when the name has no hosted mark. */

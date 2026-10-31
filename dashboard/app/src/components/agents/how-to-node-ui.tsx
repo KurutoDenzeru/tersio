@@ -1,5 +1,4 @@
-// Node option surfaces: shadcn dialogs for the mode levels, side drawers for hosts and the wrap center.
-// Every control that used to live in the fold panel or the Modes tab lands here.
+// Node option surfaces: shadcn dialogs for the mode levels, side drawers for hosts and the wrap center. Every control that used to live in the fold panel or the Modes tab lands here.
 import { useCallback, useEffect, useState } from "react";
 import { AgentLogo } from "@/components/agent-logos";
 import { Icon } from "@/components/icon";
@@ -399,27 +398,27 @@ export function HostDrawer({ node, open, onOpenChange, hostState, busy, onHostAc
   );
 }
 
-/** One icon per wrap target, so the list reads as tools rather than strings. */
-/** The lucide glyph a wrap target falls back to when the house marks carry no slug for it. */
-const WRAP_ICONS: Record<string, string> = {
-  codex: "terminal", vscode: "code", "vscode-claude": "code", aider: "book-open", openclaude: "rocket",
-  vibe: "zap", grok: "at-sign", cursor: "mouse-pointer-2", "grok-build": "hammer", "continue": "circle-arrow-right",
-  goose: "feather", openhands: "hand", openclaw: "anchor",
-};
+/** Agent ids AgentLogo renders natively, so wrap rows reuse the same marks the Upstream page shows. */
+const AGENT_LOGO_IDS: ReadonlySet<string> = new Set(["claude-code", "codex"]);
 
 /** The wrap targets the house mark system has a slug (and brand accent) for. */
 const WRAP_SLUGS: Record<string, string> = {
   claude: "claudecode", copilot: "githubcopilot", cline: "cline",
+  codex: "openai",
   commandcode: "commandcode", dsh: "deepseek",
+  vscode: "vscode", aider: "aider", vibe: "mistralai",
+  grok: "grok", cursor: "cursor",
+  goose: "goose", openhands: "openhands", openclaw: "openclaw",
+  kimi: "kimi", zcode: "zdotai",
 };
 
 function BrandMark({ name, className }: { name: string; className: string }) {
   const slug = WRAP_SLUGS[name];
-  if (slug === undefined) return <Icon name={WRAP_ICONS[name] ?? "terminal"} className={className} />;
+  if (slug === undefined) return <Icon name="terminal" className={className} />;
   const image = imageMark(slug);
   if (image) return <img src={image} alt="" className={cn("shrink-0 object-contain", className)} />;
   const mask = maskMark(slug);
-  if (!mask) return <Icon name={WRAP_ICONS[name] ?? "terminal"} className={className} />;
+  if (!mask) return <Icon name="terminal" className={className} />;
   // A brand color near black or white disappears on the theme, so those marks fall back to the row's ink.
   const color = MARK_BG[slug];
   const lum = color === undefined ? 0 : luminance(color);
@@ -600,13 +599,30 @@ function VersionPill({ version }: { version: string | null }) {
   return <span className="mono ml-auto shrink-0 rounded border border-success/40 px-1.5 py-0.5 text-[9px] text-success">{version}</span>;
 }
 
+/** The plain-language announcement a switch flip makes: what changed for the agent, not how headroom did it. The env-var details live in the copy card below. */
+export function wrapNotice(target: { label?: string; kind?: string; durable?: boolean } | undefined, name: string, on: boolean): { title: string; desc: string } {
+  const label = target?.label ?? name;
+  // Only pi and pig have their provider config rewritten for them; every other proxy host needs the pasted address.
+  const configRewritten = name === "pi" || name === "pig";
+  if (!on) {
+    if (target?.kind === "proxy") return { title: `${label} no longer routes through the shared proxy.`, desc: configRewritten ? "Its provider settings are back the way they were." : "Remove the proxy address from its settings if you set one." };
+    if (target?.durable) return { title: `${label} no longer has headroom built in.`, desc: "Its integration is undone." };
+    return { title: `${label} no longer starts through headroom.`, desc: "It launches the way it did before." };
+  }
+  if (target?.kind === "proxy") return { title: `${label} routes through the shared proxy now.`, desc: configRewritten ? "Its provider settings now point at the proxy." : "Copy an address below into its settings." };
+  if (target?.durable) return { title: `${label} has headroom built in now.`, desc: "It stays on across restarts." };
+  return { title: `${label} starts through headroom now.`, desc: "The shared proxy rides along." };
+}
+
 /** The headroom node opens the wrap drawer: one switch per installed tool, run by Tersio itself. */
 export function HeadroomDrawer({ open, onOpenChange, modes, busy, onSet, onSaved }: Omit<NodeSurfaceProps, "node" | "hostState" | "onHostAction">) {
-  const [detail, setDetail] = useState<string | null>(null);
+  const toast = useToast();
   const [wrapTargets, setWrapTargets] = useState<Array<HeadroomWrapTarget> | null>(null);
   const [proxy, setProxy] = useState<{ running: boolean; port: number } | null>(null);
   const [proxyBusy, setProxyBusy] = useState<"start" | "stop" | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+  // The two accordions are exclusive: opening one closes the other.
+  const [expanded, setExpanded] = useState<"installed" | "absent" | null>("installed");
 
   /** One tool row, shared by the durable list and the proxy list. */
   const renderRow = (target: HeadroomWrapTarget) => {
@@ -622,10 +638,16 @@ export function HeadroomDrawer({ open, onOpenChange, modes, busy, onSet, onSaved
       >
         {HOSTS.some((h) => h.id === target.name)
           ? <AgentLogo host={target.name as "omp"} className="size-3.5 shrink-0" />
-          : <BrandMark name={target.name} className={cn("size-3.5", on ? "" : "text-dim")} />}
-        <span className={cn("mono min-w-0 flex-1 truncate text-[11px]", on ? "text-ink" : "text-dim")}>{target.label ?? target.name}</span>
+          : AGENT_LOGO_IDS.has(target.name)
+            ? <AgentLogo host={target.name as "codex"} className="size-3.5 shrink-0" />
+            : <BrandMark name={target.name} className={cn("size-3.5", on ? "" : "text-dim")} />}
+        <span className={cn("mono min-w-0 flex-1 truncate text-[11px]", on ? "text-ink" : "text-dim", !target.available && "line-through opacity-60")}>{target.label ?? target.name}</span>
         <span className={cn("mono shrink-0 rounded border px-1 py-0.5 text-[9px]", on ? "border-success/40 text-success" : "border-line text-dim")}>
-          {on ? (target.kind === "proxy" ? "routed" : "wrapped") : target.kind === "proxy" ? "via proxy" : "ready"}
+          {!target.available
+            ? "not installed"
+            : on
+              ? target.kind === "proxy" ? "routed" : target.durable ? "durable" : "wrapped"
+              : target.kind === "proxy" ? "via proxy" : "ready"}
         </span>
         <span className="relative inline-flex">
           <Switch
@@ -635,11 +657,7 @@ export function HeadroomDrawer({ open, onOpenChange, modes, busy, onSet, onSaved
             onCheckedChange={(next: boolean) => toggleWrap(target.name, next)}
             aria-label={(target.kind === "proxy" ? "Route " : "Wrap ") + target.name + " through headroom"}
           />
-          {wrapBusy === target.name ? (
-            <span className="absolute inset-0 grid place-items-center">
-              <Spinner className="size-3 text-accent" />
-            </span>
-          ) : null}
+
         </span>
       </div>
     );
@@ -671,7 +689,8 @@ export function HeadroomDrawer({ open, onOpenChange, modes, busy, onSet, onSaved
   /** One switch flip: headroom's own command, then the shared record and every other browser. */
   const toggleWrap = (name: string, on: boolean): void => {
     setWrapBusy(name);
-    setDetail(null);
+    const target = wrapTargets?.find((entry) => entry.name === name);
+    const notice = wrapNotice(target, name, on);
     void postHeadroomWrap(name, on ? "wrap" : "unwrap")
       .then((result) => {
         if (result?.ok) {
@@ -680,9 +699,13 @@ export function HeadroomDrawer({ open, onOpenChange, modes, busy, onSet, onSaved
           setWrapped(next);
           storeWraps(next);
           void postHeadroomWraps(next);
+          toast(notice.title, notice.desc, "check");
+        } else {
+          // The server's own error text is the payload here; the fallback covers a silent server.
+          toast("The switch did not change.", result?.error ?? "The dashboard server did not answer.", "circle-alert");
         }
-        setDetail(result?.ok ? result.detail : result?.error ?? "the dashboard server did not answer");
       })
+      .catch(() => toast("The switch did not change.", "The dashboard server did not answer.", "circle-alert"))
       .finally(() => setWrapBusy(null));
   };
 
@@ -711,78 +734,84 @@ export function HeadroomDrawer({ open, onOpenChange, modes, busy, onSet, onSaved
             </p>
             {wrapTargets === null ? (
               <Skeleton className="h-8 w-full rounded-md" />
-            ) : (
-              <div className="grid gap-1">
-                {wrapTargets.filter((target) => target.available && target.kind !== "proxy").map((target) => renderRow(target))}
-                {wrapTargets.filter((target) => target.available && target.kind === "proxy").length > 0 ? (
-                  <div className="my-1 flex items-center gap-2" aria-hidden="true">
-                    <span className="mono shrink-0 text-[9px] tracking-[0.14em] text-dim uppercase">via shared proxy</span>
-                    <span className="h-px flex-1 border-t border-dashed border-line" />
+            ) : (() => {
+              const installed = wrapTargets.filter((target) => target.available);
+              const absent = wrapTargets.filter((target) => !target.available);
+              return (
+                <div className="grid gap-2">
+                  <details className="group rounded-xl border border-line" open={expanded === "installed"} onToggle={(e) => { if ((e.target as HTMLDetailsElement).open) setExpanded("installed"); }}>
+                    <summary className="mono flex cursor-pointer list-none items-center gap-2 pl-2.5 pr-5 py-2 text-[11px] font-semibold text-ink transition-colors hover:text-accent">
+                      <Icon name="chevron-right" className="size-3 shrink-0 transition-transform group-open:rotate-90" />
+                      Installed on this machine
+                      <span className="mono ml-auto shrink-0 rounded border border-success/40 px-1.5 py-0.5 text-[9px] text-success">{installed.length}</span>
+                    </summary>
+                    <div className="grid gap-1 px-2.5 pb-2">
+                      {installed.map((target) => renderRow(target))}
+                    </div>
+                  </details>
+                  <details className="group rounded-xl border border-dashed border-line" open={expanded === "absent"} onToggle={(e) => { if ((e.target as HTMLDetailsElement).open) setExpanded("absent"); }}>
+                    <summary className="mono flex cursor-pointer list-none items-center gap-2 pl-2.5 pr-5 py-2 text-[11px] font-semibold text-dim transition-colors hover:text-ink">
+                      <Icon name="chevron-right" className="size-3 shrink-0 transition-transform group-open:rotate-90" />
+                      Not installed
+                      <span className="mono ml-auto shrink-0 rounded border border-line px-1.5 py-0.5 text-[9px] text-dim">{absent.length}</span>
+                    </summary>
+                    <div className="grid gap-1 px-2.5 pb-2">
+                      {absent.map((target) => renderRow(target))}
+                    </div>
+                  </details>
+                  <div className="rounded-xl border border-line bg-track/20 p-2.5">
+                    <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5">
+                      <p className="mono m-0 flex items-center gap-1.5 text-[10px] text-dim">
+                        <span aria-hidden="true" className={cn("size-1.5 rounded-full", proxy?.running ? "bg-success" : "bg-line")} />
+                        shared proxy: {proxy?.running ? `running on port ${proxy.port}` : "not running"}
+                      </p>
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        disabled={proxyBusy !== null || !headroomInstalled}
+                        onClick={() => {
+                          const action = proxy?.running ? "stop" : "start";
+                          setProxyBusy(action);
+                          void postHeadroomProxy(action)
+                            .then(async (res) => {
+                              if (res?.ok) toast(res.detail ?? (action === "start" ? "the shared proxy is live" : "the shared proxy is stopped"), "shared proxy", "check");
+                              else toast(res?.error ?? "the dashboard server did not answer", "shared proxy", "circle-alert");
+                              const state = await fetchWrapTargets();
+                              setWrapTargets(state?.targets ?? null);
+                              setProxy(state?.proxy ?? null);
+                            })
+                            .finally(() => setProxyBusy(null));
+                        }}
+                      >
+                        {proxyBusy ? (proxyBusy === "start" ? "starting\u2026" : "stopping\u2026") : proxy?.running ? "Stop proxy" : "Start proxy"}
+                      </Button>
+                    </div>
+                    <div className="mt-2 grid gap-1.5">
+                      {COPY_URLS.map((entry) => (
+                        <button
+                          key={entry.label}
+                          type="button"
+                          onClick={() => {
+                            void navigator.clipboard.writeText(entry.value).then(() => {
+                              setCopied(entry.label);
+                              setTimeout(() => setCopied((held) => (held === entry.label ? null : held)), 1500);
+                            });
+                          }}
+                          className="mono flex min-w-0 items-center gap-1.5 rounded-md border border-line bg-panel px-2 py-1 text-left text-[10px] text-dim transition-colors hover:border-accent/40 hover:text-ink"
+                          title={"Copy " + entry.value}
+                          aria-label={"Copy " + entry.label}
+                        >
+                          <Icon name={copied === entry.label ? "check" : "copy"} className={cn("size-3 shrink-0", copied === entry.label ? "text-success" : "")} />
+                          <span className="truncate">{entry.value}</span>
+                          <span className="ml-auto shrink-0 text-[9px] text-dim">{copied === entry.label ? "copied" : entry.label}</span>
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                ) : null}
-            <div className="rounded-xl border border-line bg-track/20 p-2.5">
-              <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5">
-                <p className="mono m-0 flex items-center gap-1.5 text-[10px] text-dim">
-                  <span aria-hidden="true" className={cn("size-1.5 rounded-full", proxy?.running ? "bg-success" : "bg-line")} />
-                  shared proxy: {proxy?.running ? `running on port ${proxy.port}` : "not running"}
-                </p>
-                <Button
-                  size="xs"
-                  variant="outline"
-                  disabled={proxyBusy !== null || !headroomInstalled}
-                  onClick={() => {
-                    const action = proxy?.running ? "stop" : "start";
-                    setProxyBusy(action);
-                    void postHeadroomProxy(action)
-                      .then(async (res) => {
-                        setDetail(res?.ok ? res.detail ?? (action === "start" ? "the shared proxy is live" : "the shared proxy is stopped") : res?.error ?? "the dashboard server did not answer");
-                        const state = await fetchWrapTargets();
-                        setWrapTargets(state?.targets ?? null);
-                        setProxy(state?.proxy ?? null);
-                      })
-                      .finally(() => setProxyBusy(null));
-                  }}
-                >
-                  {proxyBusy ? (proxyBusy === "start" ? "starting\u2026" : "stopping\u2026") : proxy?.running ? "Stop proxy" : "Start proxy"}
-                </Button>
-              </div>
-              <div className="mt-2 grid gap-1.5">
-                {COPY_URLS.map((entry) => (
-                  <button
-                    key={entry.label}
-                    type="button"
-                    onClick={() => {
-                      void navigator.clipboard.writeText(entry.value).then(() => {
-                        setCopied(entry.label);
-                        setTimeout(() => setCopied((held) => (held === entry.label ? null : held)), 1500);
-                      });
-                    }}
-                    className="mono flex min-w-0 items-center gap-1.5 rounded-md border border-line bg-panel px-2 py-1 text-left text-[10px] text-dim transition-colors hover:border-accent/40 hover:text-ink"
-                    title={"Copy " + entry.value}
-                    aria-label={"Copy " + entry.label}
-                  >
-                    <Icon name={copied === entry.label ? "check" : "copy"} className={cn("size-3 shrink-0", copied === entry.label ? "text-success" : "")} />
-                    <span className="truncate">{entry.value}</span>
-                    <span className="ml-auto shrink-0 text-[9px] text-dim">{copied === entry.label ? "copied" : entry.label}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-                {wrapTargets.filter((target) => target.available && target.kind === "proxy").map((target) => renderRow(target))}
-                {wrapTargets.filter((target) => target.available).length === 0 ? (
-                  <p className="mono m-0 rounded-md border border-dashed border-line px-2.5 py-2 text-[10px] leading-relaxed text-dim">
-                    headroom is not installed on this machine — install it from the footer below, then its tools join this list
-                  </p>
-                ) : null}
-              </div>
-            )}
-            {wrapBusy !== null ? (
-              <p className="mono m-0 flex items-center gap-1.5 text-[10px] text-accent">
-                <Spinner className="size-3" /> wrapping {wrapBusy}…
-              </p>
-            ) : detail ? <p className="mono m-0 text-[10px] text-accent">{detail}</p> : null}
-          </div>
-          <div className="grid gap-1.5">
+                </div>
+              );
+            })()}
+
             <p className="m-0 text-[13px] font-semibold">Session default</p>
             {health === null ? (
               <Skeleton className="h-8 w-full rounded-md" />
