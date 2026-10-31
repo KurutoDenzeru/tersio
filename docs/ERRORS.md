@@ -415,3 +415,9 @@ The entries below are editing and verification discipline. No test, lint rule, o
 **What happened:** After a pi uninstall, `pi` exited with `Failed to load extension ".../extensions/headroom/index.ts": Cannot find module '../shared/session-state.ts'`. The removal deleted `shared/` but left `headroom/` and `timing/`; the OMP list was missing `pstack`, `headroom`, and `timing` too.
 **Root cause:** The install steps and the removal lists were separate literals. Adding an extension updated the writer and not the remover, so a removal could delete a dependency while keeping its importers.
 **Prevention rule:** Both hosts' removal lists derive from one `SHIPPED_TREE_DIRS` constant, and `test/cli/uninstall-parity.test.ts` scans the shipped `extensions/` directory and fails when any tree lacks a removal entry.
+
+## 2026-10-31 — Shell grep and cat ran where the session tools are required
+
+**What happened:** two bash calls used `grep` over a downloaded file and `cat` over a temp file. The host blocked both, one for not respecting `.gitignore` and one outright, so the calls returned errors instead of results.
+**Root cause:** habit reached for the shell for text search and text read, where this session requires the dedicated tools.
+**Prevention rule:** search text with the `grep` tool and read files with the `read` tool; bash grep, rg, awk, and cat are blocked by the host and cost a round trip each time.
