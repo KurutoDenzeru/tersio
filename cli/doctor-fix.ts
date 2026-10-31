@@ -175,7 +175,11 @@ async function fixOpencodeEntry(): Promise<void> {
 
 async function fixExtensions(pluginsDir: string): Promise<void> {
   await fixExtensionTrees();
-  await fixOpencodeEntry();
+
+  // Register OpenCode only when the host is actually installed.
+  if (detectHosts().some((host) => host.id === 'opencode' && host.installed)) {
+    await fixOpencodeEntry();
+  }
   console.log('  Doctor --fix: restoring plugin extension files');
   const pluginExtDir = path.join(pluginsDir, 'node_modules', '@krtclcdy', 'tersio', 'extensions');
   await fs.mkdir(pluginExtDir, { recursive: true });

@@ -180,6 +180,23 @@ test("doctor --fix dry-run previews debris removal", () => {
   }
 });
 
+test("doctor --fix extensions does not create OpenCode config when OpenCode is absent", () => {
+  const home = missingHome();
+  try {
+    const result = spawnSync(process.execPath, [installer, "doctor", "--fix", "extensions", "--yes"], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 30000,
+      env: doctorEnv(home, { PATH: path.join(home, "empty-bin") }),
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(existsSync(path.join(home, ".config", "opencode")), "OpenCode config must not be created for an absent host").toBe(false);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+}, 30000);
+
 test("doctor --fix repairs missing extension files in an empty home", () => {
   const home = missingHome();
   try {
