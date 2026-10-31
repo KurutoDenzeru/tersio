@@ -27,6 +27,7 @@ import {
 } from '../extensions/shared/utils.ts';
 import { ensureProxy, proxyEnvLines, restoreRoutedProviders, routeLocalProvidersThroughProxy } from '../extensions/shared/headroom-proxy.ts';
 import { setStoredWrap } from '../extensions/shared/headroom-wraps.ts';
+import { homeDir } from '../extensions/shared/utils.ts';
 import type { RtkRelease, RtkReleaseAsset } from '../extensions/shared/utils.ts';
 import { patchState } from '../extensions/shared/state.ts';
 import { CAVEMAN_PIN } from './upstream.ts';
@@ -38,10 +39,8 @@ import type { Profile } from './profile.ts';
 import { detectHosts, hostOptions, parseHostArg, piTersioSource, pigTersioSource } from './hosts.ts';
 import type { HostEntry, HostId } from './hosts.ts';
 
-
 async function stepPonytail(pluginsDir: string, options: InstallOptions): Promise<void> {
-  // Ponytail rides inside this package now. An older install carried it as its own dependency,
-  // which a host then listed as a second plugin, so drop that entry and its sibling copy.
+  // Ponytail rides inside this package now. An older install carried it as its own dependency, which a host then listed as a second plugin, so drop that entry and its sibling copy.
   if (!options.quiet) console.log('  Ponytail — bundled in this plugin');
   const pkgPath = path.join(pluginsDir, 'package.json');
   const pkg = await readPluginsPackage(pkgPath);
@@ -131,7 +130,6 @@ async function stepSelfPlugin(pluginsDir: string, options: InstallOptions): Prom
   debug('tersio listed in OMP plugins');
   return true;
 }
-
 
 function resolveRtkTriple(): string | null {
   const triple = rtkPlatformSpec()?.triple;
@@ -371,7 +369,6 @@ async function stepSharedSessionState(extDir: string, options: WriteOptions): Pr
   await copySources(extDir, filesUnder('shared'), 'shared/session-state.js', options);
 }
 
-
 async function stepRtkSession(extDir: string, options: WriteOptions): Promise<void> {
   if (!options.quiet) console.log('  RTK session — install session mode');
   await copySources(extDir, filesUnder('rtk'), 'rtk/session.ts', options);
@@ -383,8 +380,7 @@ async function stepRtkFilter(extDir: string, options: WriteOptions): Promise<voi
   await copySources(extDir, filesUnder('rtk'), 'rtk/filter.ts', options);
 }
 
-// The install writes this build's bodies, which are the pinned ones. The updater pulls a newer
-// published release, and the stamp says which release the installed body is.
+// The install writes this build's bodies, which are the pinned ones. The updater pulls a newer published release, and the stamp says which release the installed body is.
 const CAVEMAN_RULES: readonly string[] = [
   'rule.md',
   'rule-lite.md',
@@ -503,7 +499,6 @@ async function stepOpencode(options: InstallOptions): Promise<void> {
   await writeIfChanged(configPath, `${JSON.stringify(config, null, 2)}\n`, { ...options, backup: true });
 }
 
-
 async function resolveProfile(opts: { quiet?: boolean; host?: HostId | null } = {}): Promise<{ profile: Profile; choseDefaults: boolean; chosenFields: HostDefaultField[] }> {
   // Seed from the stored defaults so flag-less runs keep them; a named host reads its own section first.
   const profile = await storedProfile(opts.host);
@@ -526,8 +521,7 @@ async function resolveProfile(opts: { quiet?: boolean; host?: HostId | null } = 
     }
   }
 
-  // Explicit flags always win over the Combo preset; `inherit` hands those fields back to the shared store.
-  // SAFETY: a flag may set the literal 'inherit', which the stored type omits but the shared store accepts.
+  // Explicit flags always win over the Combo preset; `inherit` hands those fields back to the shared store. SAFETY: a flag may set the literal 'inherit', which the stored type omits but the shared store accepts.
   const mutable = profile as unknown as Record<string, unknown>;
   if (comboDefaultFlag !== undefined) mutable.comboDefault = comboDefaultFlag;
   // A stored per-mode choice survives installs and updates; only a chosen preset rewrites it. pstack stays opt-in, so a preset never touches it.
@@ -579,8 +573,7 @@ async function maybeInstallHeadroom(profile: Profile, quiet: boolean, host: Host
       ], 'proxy');
       if (answer.status === 'selected' && answer.value === 'proxy') {
         try {
-          // Route the agent's own loopback providers through the proxy: the connection exists before
-          // the first session, not after the user pastes env lines.
+          // Route the agent's own loopback providers through the proxy: the connection exists before the first session, not after the user pastes env lines.
           const configFile = path.join(host === 'pig' ? pigAgentDir() : piAgentDir(), 'models.json');
           const probe = routeLocalProvidersThroughProxy(host, configFile, 8787);
           const state = await ensureProxy(bin, probe?.upstream);
@@ -618,8 +611,7 @@ async function maybeInstallHeadroom(profile: Profile, quiet: boolean, host: Host
     console.log('  Headroom — enabled');
     return true;
   }
-  // The prompt names the tool that will actually run, so the optional step has no surprises. The hint
-  // is built from the same argv the executor uses — `python3 -m pip` on POSIX, `pip` on Windows.
+  // The prompt names the tool that will actually run, so the optional step has no surprises. The hint is built from the same argv the executor uses — `python3 -m pip` on POSIX, `pip` on Windows.
   const uv = resolveHostBinary('uv');
   const via = uv ? 'uv' : 'pip';
   const cmd = uv ? 'uv' : IS_WINDOWS ? 'pip' : 'python3';
@@ -676,7 +668,7 @@ async function lifecycleHeadroom(host: HostId, enabled: boolean, profile: Profil
   if (!bin) return;
   if (applyUpdate && !dryRun) {
     try {
-      await execP(bin, ['update'], { timeout: 300_000 });
+      await execP(bin, ['update'], { timeout: 300_000, cwd: homeDir() });
       sayTagged('  Headroom — updated to the latest release');
     } catch {
       sayTagged('  [warn] Headroom update failed — run: headroom update');
@@ -685,7 +677,8 @@ async function lifecycleHeadroom(host: HostId, enabled: boolean, profile: Profil
   if (dryRun || !HEADROOM_HOSTS.includes(host) || (!enabled && profile.headroomDefault !== 'on')) return;
   try {
     const shim = shimCommand(bin, ['init', '-g', host]);
-    await execP(shim.cmd, shim.args, { timeout: 120_000 });
+    // The home cwd keeps headroom's project-local artifacts (the .claude wrap lock) out of the project `tersio install` runs in.
+    await execP(shim.cmd, shim.args, { timeout: 120_000, cwd: homeDir() });
     if (!quiet) sayTagged(`  Headroom — durable integration installed for ${host}`);
   } catch {
     if (!quiet) sayTagged(`  Headroom — no durable install for ${host}; wrap it per session: headroom wrap ${host}`);
@@ -713,8 +706,7 @@ async function runCommandMenu(): Promise<void> {
     console.log(`\n  [update] staying on ${PACKAGE_VERSION} — run \`tersio update\` anytime`);
   }
   updatePromptDone = true;
-  // The menu reads the check it just ran: a pending release names its version beside the update row,
-  // and the install row says up front that the optional Headroom step comes with it.
+  // The menu reads the check it just ran: a pending release names its version beside the update row, and the install row says up front that the optional Headroom step comes with it.
   const updateLabel = typeof newer === 'string' ? `Update (${newer} available)` : 'Update';
   const updateHint = typeof newer === 'string'
     ? `CLI ${PACKAGE_VERSION} → ${newer}; add-ons refresh per agent with --host`
@@ -989,8 +981,7 @@ async function runInstall(forcedHost?: HostId): Promise<void> {
 
   // Resolve session defaults: flags > interactive prompt > defaults; a named host reads its own section first.
   const { profile, choseDefaults, chosenFields } = await resolveProfile({ quiet, host: hostExplicit ? targetHost : null });
-  // The optional Headroom prompt comes right after the combo preset. With a chosen host the enable rides
-  // that agent's own section; a bare install has no section to ride, so the shared default carries it.
+  // The optional Headroom prompt comes right after the combo preset. With a chosen host the enable rides that agent's own section; a bare install has no section to ride, so the shared default carries it.
   const headroomEnabled = await maybeInstallHeadroom(profile, quiet, targetHost);
   if (headroomEnabled) {
     if (hostExplicit && !chosenFields.includes('headroomDefault')) chosenFields.push('headroomDefault');

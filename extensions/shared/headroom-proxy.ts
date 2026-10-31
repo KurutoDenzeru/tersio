@@ -1,11 +1,9 @@
-// Headroom's proxy as the fallback route: the tools `headroom wrap` cannot reach (pi, PiG today)
-// still route through the same local proxy by pointing their base URL at it. One proxy serves
-// every agent, so this module starts at most one and records what it owns.
+// Headroom's proxy as the fallback route: the tools `headroom wrap` cannot reach (pi, PiG today) still route through the same local proxy by pointing their base URL at it.
 import { execFile, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import { homeDir, tersioHome } from './utils.ts';
+import { homeDir, resolveHostBinary, tersioHome } from './utils.ts';
 
 const execFileP = promisify(execFile);
 
@@ -27,15 +25,32 @@ const PROXY_HOST_DIRS: Record<string, string> = {
 export const PROXY_HOST_LABELS: Record<string, string> = {
   pi: 'pi',
   pig: 'PiG',
-  commandcode: 'CommandCode',
+  commandcode: 'Command Code',
   dsh: 'DeepSeek Harness',
 };
+
+/** Command Code's bin names off the one npm package; `cmd` alone is too generic to scan PATH for, and npm links all four into one dir anyway. */
+const COMMANDCODE_BINS: readonly string[] = ['commandcode', 'command-code', 'cmdc'];
+
+/** The desktop app's install locations: an app install leaves no PATH binary behind. */
+function commandCodeAppInstalled(): boolean {
+  if (process.platform === 'darwin') {
+    return ['Command Code.app', 'CommandCode.app'].some((app) => fs.existsSync(path.join('/Applications', app)));
+  }
+  if (process.platform === 'win32') {
+    const local = process.env.LOCALAPPDATA || path.join(homeDir(), 'AppData', 'Local');
+    return ['Command Code', 'CommandCode'].some((dir) => fs.existsSync(path.join(local, 'Programs', dir)));
+  }
+  return false;
+}
 
 /** Whether a proxy-routed agent is installed: its home marker exists on this OS. */
 export function proxyHostPresent(name: string): boolean {
   const rel = PROXY_HOST_DIRS[name];
   if (!rel) return false;
   try {
+    // Command Code leaves `~/.commandcode` behind after an uninstall, so the dir alone proves nothing: a bin name or the desktop app must exist too.
+    if (name === 'commandcode' && !COMMANDCODE_BINS.some((bin) => resolveHostBinary(bin) !== null) && !commandCodeAppInstalled()) return false;
     return fs.existsSync(path.join(homeDir(), rel));
   } catch {
     return false;
@@ -85,10 +100,7 @@ export async function proxyAnswers(port: number = HEADROOM_PROXY_PORT, budgetMs 
   }
 }
 
-/**
- * One proxy for every agent: reuse a live one, else start a detached one and record it.
- * Returns the port an agent should point at, and whether Tersio owns the process.
- */
+/** One proxy for every agent: reuse a live one, else start a detached one and record it. Returns the port an agent should point at, and whether Tersio owns the process. */
 export async function ensureProxy(bin: string, openaiTarget?: string): Promise<{ port: number; owned: boolean; started: boolean }> {
   const existing = readProxyState();
   if (existing && (await proxyAnswers(existing.port))) return { port: existing.port, owned: true, started: false };
@@ -99,6 +111,7 @@ export async function ensureProxy(bin: string, openaiTarget?: string): Promise<{
     detached: true,
     stdio: 'ignore',
     windowsHide: true,
+    cwd: homeDir(),
     env: target ? { ...process.env, OPENAI_TARGET_API_URL: target } : process.env,
   });
   child.unref();
@@ -149,10 +162,20 @@ async function headroomText(bin: string, args: string[], timeoutMs: number): Pro
   }
 }
 
-/**
- * The wrap targets headroom offers, read from its own help so a new upstream tool appears
- * without a Tersio release. Null when the help cannot be read; the caller keeps its static list.
- */
+/** The wrap targets headroom offers, read from its own help so a new upstream tool appears without a Tersio release. Null when the help cannot be read; the caller keeps its static list. */
+/** The agents headroom integrates durably, read from its own init help so upstream additions appear unprompted. */
+export async function discoverInitTargets(bin: string, timeoutMs = 15_000): Promise<string[] | null> {
+  const text = await headroomText(bin, ['init', '--help'], timeoutMs);
+  // Scope from the Commands block on: option rows start with "-", so they cannot match.
+  const section = text.slice(text.indexOf('Commands:'));
+  const targets: string[] = [];
+  for (const line of section.split('\n')) {
+    const match = line.match(/^\s{2,}([a-z-]+)\s+Install\b/);
+    if (match) targets.push(match[1]);
+  }
+  return targets.length > 0 ? targets : null;
+}
+
 export async function discoverWrapTargets(bin: string, timeoutMs = 15_000): Promise<Array<{ name: string; label: string }> | null> {
   const text = await headroomText(bin, ['wrap', '--help'], timeoutMs);
   const targets: Array<{ name: string; label: string }> = [];
@@ -187,12 +210,7 @@ function readProviderRoutes(): ProviderRoute[] {
   }
 }
 
-/**
- * Point the agent's loopback providers at the proxy and keep their originals for the unwrap.
- * Only fires when every loopback provider shares one origin, since one proxy forwards to one upstream;
- * with mixed origins the caller falls back to printing the addresses instead.
- * Returns the origin the proxy must forward to, or null when the config was left alone.
- */
+/** Point the agent's loopback providers at the proxy and keep their originals for the unwrap. */
 export function routeLocalProvidersThroughProxy(agent: string, file: string, proxyPort: number): { upstream: string; providers: string[] } | null {
   let doc: { providers?: Record<string, { baseUrl?: string }> } = {};
   try {
@@ -203,7 +221,13 @@ export function routeLocalProvidersThroughProxy(agent: string, file: string, pro
   const providers = doc.providers ?? {};
   const loopback = Object.entries(providers).filter(([, p]) => (p.baseUrl ?? '').startsWith('http://127.0.0.1') || (p.baseUrl ?? '').startsWith('http://localhost'));
   if (loopback.length === 0) return null;
-  const origins = new Set(loopback.map(([, p]) => new URL(p.baseUrl ?? '').origin));
+  let origin = '';
+  try {
+    origin = new URL(loopback[0][1].baseUrl ?? '').origin;
+  } catch {
+    return null;
+  }
+  const origins = new Set(loopback.map(([, p]) => { try { return new URL(p.baseUrl ?? '').origin; } catch { return ''; } }));
   if (origins.size !== 1) return null;
   const upstream = loopback[0][1].baseUrl ?? '';
   const record: ProviderRoute = { agent, file, original: {} };
