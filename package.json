@@ -24,7 +24,13 @@
     "tersio": "dist/tersio.js"
   },
   "exports": {
-    "./server": "./dist/extensions/server.js"
+    "./server": "./dist/extensions/server.js",
+    "./dsh-plugin": "./extensions/dsh/index.ts"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./extensions/dsh/cordis.patch.yml"
+    }
   },
   "pi": {
     "extensions": [
@@ -167,6 +173,7 @@
     "extensions/caveman/rule-ultra.md",
     "extensions/caveman/rule-megacave.md",
     "extensions/pstack/**/*.md",
+    "extensions/dsh/**/*",
     "extensions/ponytail/**/*"
   ],
   "scripts": {
