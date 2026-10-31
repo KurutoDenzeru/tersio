@@ -706,9 +706,7 @@ const VENDOR_RES: Array<[RegExp, string]> = [
 ];
 
 function modelVendor(model: string): string {
-  // Tail first: gateway prefixes ("codex/openai/...") must not shadow the model author, so a
-  // DeepSeek or GLM run through Codex still reads as DeepSeek or Z.ai. The head still wins when
-  // only it names a known vendor ("codex/openai").
+  // Tail first: gateway prefixes ("codex/openai/...") must not shadow the model author, so a DeepSeek or GLM run through Codex still reads as DeepSeek or Z.ai.
   const segs = String(model).split('/').filter(Boolean);
   for (let i = segs.length - 1; i >= 0; i--) {
     for (const [re, name] of VENDOR_RES) {
@@ -873,8 +871,7 @@ function parseAdoptionFile(file: string, eligible: ReadonlySet<string>): { count
   } catch {
     return { counts, sessions: 0 };
   }
-  // omp emits a custom row per tool start; pi records the same call inside the assistant message.
-  // A host that writes both shapes would double every call, so the custom ids gate the message pass.
+  // omp emits a custom row per tool start; pi records the same call inside the assistant message. A host that writes both shapes would double every call, so the custom ids gate the message pass.
   const commands: string[] = [];
   const customIds = new Set<string>();
   const messageCalls: Array<{ id: string | undefined; command: string }> = [];

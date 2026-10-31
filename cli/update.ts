@@ -179,8 +179,7 @@ async function cavemanRemoteRule(signal: AbortSignal): Promise<{ tag: string; ha
   return { tag, hashes: texts.map((t) => sha256Hex(t).slice(0, 8)).join('+') };
 }
 
-// Current → latest per add-on. Probes are capped and nullable; the plan prints `unknown` for anything unreachable.
-// rule.md ships with the release; only the tracked bodies can go stale.
+// Current → latest per add-on. Probes are capped and nullable; the plan prints `unknown` for anything unreachable. rule.md ships with the release; only the tracked bodies can go stale.
 const tersioRule = (name: string) => path.join(OMP_PLUGINS_DIR, 'node_modules', '@krtclcdy', 'tersio', 'extensions', 'caveman', name);
 
 async function probeUpdatePlan(release: LatestRelease | null): Promise<UpdatePlan> {
@@ -297,8 +296,7 @@ async function runLatestUpdate(hostOverride?: string | null): Promise<void> {
   }
   if (!pinned) console.log(`Updating Tersio`);
 
-  // A checkout runs its own entry: the published CLI cannot carry unshipped changes, and the global
-  // install would replace the tree this copy lives in.
+  // A checkout runs its own entry: the published CLI cannot carry unshipped changes, and the global install would replace the tree this copy lives in.
   const sourceEntry = process.argv[1]?.endsWith('.ts') ? process.argv[1] : null;
   if (sourceEntry) {
     try {

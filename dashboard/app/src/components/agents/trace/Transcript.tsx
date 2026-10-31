@@ -94,7 +94,7 @@ export const TranscriptList = memo(function TranscriptList({
               >
                 <span
                   className="mono w-[46px] shrink-0 rounded-full border px-1 py-0.5 text-center text-[9px] leading-none uppercase"
-                  style={{ borderColor: color, color }}
+                  style={{ borderColor: color, backgroundColor: theme.badge[span.kind as AgentTraceSpanKind], color: theme.panel }}
                   title={span.kind}
                 >
                   {span.kind === "background" ? "bg" : span.kind}

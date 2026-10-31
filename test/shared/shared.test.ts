@@ -62,8 +62,7 @@ test("larger models cost more per output token", () => {
 test("served figure uses the batch model; the ceiling stays single-stream", () => {
   const f = footprintFor("claude-sonnet-5", 10000);
   expect(f.concurrency).toBe(SERVING_CONCURRENCY);
-  // EcoLogits 0.11 folds batching into the regression itself, so the served
-  // figure is smaller than the single-stream ceiling but is not a division of it.
+  // EcoLogits 0.11 folds batching into the regression itself, so the served figure is smaller than the single-stream ceiling but is not a division of it.
   expect(f.gco2 > 0 && f.gco2Ceiling > f.gco2).toBeTruthy();
   expect(f.energyWh > 0).toBeTruthy();
 });

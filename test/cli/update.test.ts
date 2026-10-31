@@ -288,11 +288,9 @@ test("update dry-run previews the global CLI refresh without running npm -g", ()
   }
 });
 
-// A bun global install lives at ~/.bun/install/global; refreshing only the npm copy leaves the old CLI
-// on PATH, and the next run offers the same update again.
+// A bun global install lives at ~/.bun/install/global; refreshing only the npm copy leaves the old CLI on PATH, and the next run offers the same update again.
 test("update refreshes the manager that installed this copy", () => {
-  // A temp home, with the installed copy really on disk: CI has no ~/.bun, and a dangling symlink
-  // made realpath fail there while a developer machine's real install made the same test pass.
+  // A temp home, with the installed copy really on disk: CI has no ~/.bun, and a dangling symlink made realpath fail there while a developer machine's real install made the same test pass.
   const home = mkdtempSync(path.join(os.tmpdir(), "tersio-manager-"));
   try {
     const bunSelf = path.join(home, ".bun", "install", "global", "node_modules", "@krtclcdy", "tersio", "dist", "tersio.js");
@@ -447,8 +445,7 @@ test("update pins the resolved version instead of trusting @latest", () => {
   }
 });
 
-// `tersio update` used to default to OMP and never ask, while the help said a terminal asks.
-// Piped stdin is a script: no prompt, and no --host, so the child keeps its own default.
+// `tersio update` used to default to OMP and never ask, while the help said a terminal asks. Piped stdin is a script: no prompt, and no --host, so the child keeps its own default.
 test("a piped update asks nothing and forwards no host", () => {
   const fakeBin = mkdtempSync(path.join(os.tmpdir(), "tersio-update-nohost-"));
   const npm = path.join(fakeBin, process.platform === "win32" ? "npm.cmd" : "npm");

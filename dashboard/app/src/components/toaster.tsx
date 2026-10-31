@@ -1,5 +1,4 @@
-// Toast notifications: bottom-right stack, moving bottom-left only while a right-side drawer is open. Accent icon, title + description. A plain toast
-// dismisses itself; one carrying actions stays until the operator picks or closes it.
+// Toast notifications: bottom-right stack, moving bottom-left only while a right-side drawer is open. Accent icon, title + description.
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Icon } from "./icon";

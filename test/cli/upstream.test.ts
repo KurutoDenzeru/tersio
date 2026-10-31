@@ -1,5 +1,4 @@
-// The scorecard's pure parts: a git blob id must match git's, every shipped pstack body must map to
-// the upstream path it came from, and accuracy must count a fork that is present as a match.
+// The scorecard's pure parts: a git blob id must match git's, every shipped pstack body must map to the upstream path it came from, and accuracy must count a fork that is present as a match.
 import { expect, test } from "vitest";
 import { spawnSync } from "node:child_process";
 import { readFileSync, readdirSync, mkdtempSync, rmSync } from "node:fs";
@@ -196,8 +195,7 @@ test("a stale host row names the command that repairs it", () => {
 });
 
 test("a pin that is gone upstream fails a plain run, not just --strict", () => {
-  // The pin is the whole comparison, so a 404 on it means the scorecard proved nothing: accuracy would
-  // stay 100 on a zero-tracked row, and a silent pass is exactly what the scheduled job must not do.
+  // The pin is the whole comparison, so a 404 on it means the scorecard proved nothing: accuracy would stay 100 on a zero-tracked row, and a silent pass is exactly what the scheduled job must not do.
   const dead = makeCard([row({ status: "pin-missing", measured: false, tracked: 0, matched: 0 })], [host]);
   expect(accuracyOf(dead.sources, dead.hosts)).toBe(100);
   expect(gateFails(dead, false)).toBe(true);

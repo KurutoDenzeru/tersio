@@ -670,6 +670,8 @@ export interface HeadroomWrapTarget {
   name: string;
   label?: string;
   kind?: "wrap" | "proxy";
+  /** True when headroom's own init supports this tool, so the integration survives restarts. */
+  durable?: boolean;
   available: boolean;
 }
 
@@ -805,6 +807,8 @@ export interface HealthReport {
   provider: string | null;
   rtk: { present: boolean; version: string | null; path: string };
   headroom: { present: boolean; version: string | null; path: string };
+  /** The versions this build's own tree pins for the Tersio-forked modes; pstack has no upstream version. */
+  modes: { caveman: string | null; ponytail: string | null; pstack: string | null };
   home: string;
 }
 

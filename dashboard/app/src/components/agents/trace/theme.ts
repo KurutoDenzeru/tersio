@@ -6,6 +6,8 @@ import { useEffect, useState } from "react";
 export interface TraceTheme {
   /** Span fill per span kind. */
   category: Record<"turn" | "model" | "tool" | "background", string>;
+  /** Solid badge fill per span kind: opaque, so a pill reads as a filled chip. */
+  badge: Record<"turn" | "model" | "tool" | "background", string>;
   /** Left edge of a span that failed. */
   error: string;
   /** Marker diamond fill. */
@@ -40,6 +42,13 @@ function readTheme(): TraceTheme {
       model: token("--accent", "#047857"),
       tool: token("--warn-border", "rgba(217,119,6,.4)"),
       background: token("--line", "rgba(24,24,27,.12)"),
+    },
+    // Solid fills: the tool lane swaps its translucent border token for the solid amber, and the background lane for the surface, so a badge never reads as a ghost.
+    badge: {
+      turn: token("--dim", "#52525b"),
+      model: token("--accent", "#047857"),
+      tool: token("--warn-text", "#b45309"),
+      background: token("--ink", "#18181b"),
     },
     error: token("--danger", "#dc2626"),
     marker: token("--ink", "#18181b"),

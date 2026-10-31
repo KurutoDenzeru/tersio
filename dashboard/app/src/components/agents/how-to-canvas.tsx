@@ -175,8 +175,7 @@ export function PipelineCanvas({
     window.addEventListener("tersio:wrap-changed", sync);
     return () => window.removeEventListener("tersio:wrap-changed", sync);
   }, [selected]);
-  // The server copy wins over localStorage: the layout belongs to the machine, not to one origin,
-  // so a dashboard restart on a new port keeps every node where the user placed it.
+  // The server copy wins over localStorage: the layout belongs to the machine, not to one origin, so a dashboard restart on a new port keeps every node where the user placed it.
   useEffect(() => {
     let cancelled = false;
     void fetchPipelinePositions().then((server) => {
@@ -199,8 +198,7 @@ export function PipelineCanvas({
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const pinch = useRef<{ dist: number; zoom: number; worldX: number; worldY: number } | null>(null);
 
-  // An exported file reads no host list, so every host counts as present there. Only a host Tersio is
-  // installed into belongs to the pipeline; a bare harness has no rows to draw.
+  // An exported file reads no host list, so every host counts as present there. Only a host Tersio is installed into belongs to the pipeline; a bare harness has no rows to draw.
   const installedKey = HOSTS.filter((h) => hostState.installed[h.id] !== false).map((h) => h.id).join(",");
   const installed = useMemo(() => installedKey ? installedKey.split(",") : [], [installedKey]);
   const { nodes: nodeIds, edges } = useMemo(() => pipelineGraph(installed), [installed]);
@@ -224,8 +222,7 @@ export function PipelineCanvas({
     [modeIds, hostIds, boxes],
   );
 
-  // The add-agent node rides the canvas center when no agent exists yet, so the empty state reads
-  // as an invitation instead of an empty grid.
+  // The add-agent node rides the canvas center when no agent exists yet, so the empty state reads as an invitation instead of an empty grid.
   const addBox = useMemo<Box>(() => {
     const xs = nodeIds.map((id) => boxes[id]);
     const minX = Math.min(...xs.map((b) => b.x));
@@ -253,8 +250,7 @@ export function PipelineCanvas({
     const narrow = containerW < 640;
     const topInset = narrow ? 48 : 104;
     const fit = Math.min(1, (containerW - 24) / worldW, (containerH - topInset - 24) / worldH);
-    // A phone cannot read a whole-graph fit, so it opens at a readable scale anchored to the top-left
-    // corner; pan and pinch cover the rest.
+    // A phone cannot read a whole-graph fit, so it opens at a readable scale anchored to the top-left corner; pan and pinch cover the rest.
     const scaleToUse = narrow ? Math.max(fit, 0.9) : fit;
     setZoom(scaleToUse);
     setPan(narrow
@@ -300,8 +296,7 @@ export function PipelineCanvas({
     setStored((current) => ({ ...current, [id]: box }));
   };
 
-  // One writer for both stores: localStorage is the instant cache, the server copy is what survives
-  // a dashboard restart on a new port.
+  // One writer for both stores: localStorage is the instant cache, the server copy is what survives a dashboard restart on a new port.
   const persist = (positions: Record<string, Box>): void => {
     savePositions(positions);
     void postPipelinePositions(positions);

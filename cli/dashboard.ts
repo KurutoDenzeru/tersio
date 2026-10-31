@@ -1,8 +1,8 @@
 // Dashboard server + usage APIs. Binds 127.0.0.1; --export writes a file. No Promise.withResolvers (Node 20.12).
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
 import { readActivity, recordActivity } from './activity.ts';
 import { execFileSync } from 'node:child_process';
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, rmSync, statSync, unlinkSync, watch, writeFileSync } from 'node:fs';
 import { promises as fs } from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
@@ -10,7 +10,7 @@ import type { Socket } from 'node:net';
 import { gzipSync } from 'node:zlib';
 import { piAgentDir, pigAgentDir } from '../extensions/shared/utils.ts';
 import { routeLocalProvidersThroughProxy } from '../extensions/shared/headroom-proxy.ts';
-import { discoverWrapTargets, ensureProxy, HEADROOM_PROXY_PORT, PROXY_HOSTS, PROXY_HOST_LABELS, proxyAnswers, proxyEnvLines, proxyHostPresent, readProxyState, restoreRoutedProviders, stopOwnedProxy } from '../extensions/shared/headroom-proxy.ts';
+import { discoverInitTargets, discoverWrapTargets, ensureProxy, HEADROOM_PROXY_PORT, PROXY_HOSTS, PROXY_HOST_LABELS, proxyAnswers, proxyEnvLines, proxyHostPresent, readProxyState, restoreRoutedProviders, stopOwnedProxy } from '../extensions/shared/headroom-proxy.ts';
 import { setStoredWrap } from '../extensions/shared/headroom-wraps.ts';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -43,18 +43,23 @@ import { readBackupSchedule, syncUsageDb } from '../extensions/shared/usage-stor
 import { agentDbPath, emptyRequestEntry, isAgentView, isRangeKey, readAgentRequestEntry, readAgentStats, readSessionTrace, statsDbPath } from '../extensions/shared/agent-stats.ts';
 import type { AgentStats, AgentView, RangeKey } from '../extensions/shared/agent-stats.ts';
 
-/** The tools headroom can wrap (`headroom wrap --help`), and the binary each one runs under. */
-/** The tools headroom can wrap, plus the agents that route through its shared proxy instead. */
+/** The agents headroom's own compatibility table lists, minus Continue (service discontinued), plus the ones routed through the shared proxy. */
 const WRAP_TARGETS = [
-  'omp', 'claude', 'codex', 'copilot', 'vscode', 'vscode-claude', 'aider', 'openclaude', 'vibe',
-  'grok', 'cursor', 'grok-build', 'cline', 'continue', 'goose', 'openhands', 'openclaw', 'opencode',
-  'antigravity', 'zcode',
+  'omp', 'claude', 'codex', 'copilot', 'vscode', 'aider', 'vibe', 'grok', 'cursor', 'cline',
+  'goose', 'openhands', 'openclaw', 'opencode', 'kimi', 'zcode',
   ...PROXY_HOSTS,
 ] as const;
 
+/** The wrap target names headroom's README compatibility table prints, so the drawer reads the same. */
+const WRAP_LABELS: Record<string, string> = {
+  omp: 'Oh My Pi', claude: 'Claude Code', codex: 'Codex', copilot: 'Copilot CLI',
+  vscode: 'VS Code Copilot', aider: 'Aider', vibe: 'Mistral Vibe', grok: 'Grok CLI',
+  cursor: 'Cursor', cline: 'Cline', goose: 'Goose', openhands: 'OpenHands',
+  openclaw: 'OpenClaw', opencode: 'OpenCode', kimi: 'Kimi CLI', zcode: 'ZCode',
+};
 
 const WRAP_BINARY: Record<string, string> = {
-  vscode: 'code', 'vscode-claude': 'code', cline: 'code', continue: 'code', 'grok-build': 'grok', copilot: 'gh',
+  vscode: 'code', cline: 'code', copilot: 'gh',
 };
 
 /** Whether a wrap target's binary resolves: PATH first, then the directory the installer owns for it. */
@@ -65,6 +70,42 @@ const WRAP_MANAGED_DIR: Record<string, string> = {
 
 async function binaryExists(name: string): Promise<boolean> {
   return resolveHostBinary(WRAP_BINARY[name] ?? name, WRAP_MANAGED_DIR[name] ?? path.join(homeDir(), '.local', 'bin')) !== null;
+}
+
+/** Home-relative config markers per OS: an agent whose binary lives off PATH still shows when its config home exists. */
+const WRAP_CONFIG_MARKERS: Record<string, string> = {
+  claude: '.claude',
+  codex: '.codex',
+  cursor: '.cursor',
+  grok: '.grok',
+  aider: '.aider',
+  openclaw: '.openclaw',
+  openhands: '.openhands',
+  opencode: '.opencode',
+  omp: '.omp',
+  // ZCode is a desktop Electron app with no CLI; headroom reads ~/.zcode/v2/config.json itself.
+  zcode: '.zcode',
+};
+
+/** A wrap target is present when its binary resolves or its config home exists on this OS. */
+async function wrapTargetPresent(name: string): Promise<boolean> {
+  // Copilot CLI is a gh extension, not a binary: the gh CLI alone must not count as installed.
+  if (name === 'copilot') {
+    try {
+      const gh = await execFileP('gh', ['extension', 'list'], { timeout: 4000 });
+      return String(gh.stdout ?? '').toLowerCase().includes('copilot');
+    } catch {
+      return false;
+    }
+  }
+  if (await binaryExists(name)) return true;
+  const marker = WRAP_CONFIG_MARKERS[name];
+  if (!marker) return false;
+  try {
+    return existsSync(path.join(homeDir(), marker));
+  } catch {
+    return false;
+  }
 }
 
 /** The listen address: every interface by default, so a phone can open it. `local` keeps it loopback. */
@@ -103,6 +144,8 @@ export interface DashboardOptions {
   port: number;
   /** Listen address: absent means every interface, `local` means loopback. */
   bind?: string | null;
+  /** Supervise the server in a child that restarts on source change. */
+  watch?: boolean;
   open: boolean;
   exportFile: string | null;
   /** The resolved display currency: --currency, then the stored default, then USD. */
@@ -267,10 +310,7 @@ export async function statusJson(): Promise<string> {
   });
 }
 
-/**
- * Run a host command in its own process: the installer the terminal runs, with the server free to
- * answer. The page polls /api/hosts until the host settles, because the child outlives the request.
- */
+/** Run a host command in its own process: the installer the terminal runs, with the server free to answer. The page polls /api/hosts until the host settles, because the child outlives the request. */
 interface HostJob {
   action: 'install' | 'uninstall' | 'update';
   startedAt: number;
@@ -386,8 +426,7 @@ function spawnCli(command: 'install' | 'uninstall' | 'update', host: string): bo
   return true;
 }
 
-// Local-only health: find each agent, run `--version`, report both. The probes read the managed
-// install dirs the doctor uses, so a dashboard started with a minimal PATH still finds the agents.
+// Local-only health: find each agent, run `--version`, report both. The probes read the managed install dirs the doctor uses, so a dashboard started with a minimal PATH still finds the agents.
 function ompPath(): string | null {
   return resolveHostBinary('omp');
 }
@@ -687,8 +726,7 @@ function setDiagSchedule(schedule: DiagSchedule): DoctorReport {
 
 // One field per call, validated against the same sets the CLI uses. A body with a `host` writes that
 // agent's own section, so one agent's preset never becomes every agent's.
-// Writes serialize: every call re-reads the profile inside the queue, so two overlapping requests
-// (a sidebar drag racing a toggle) can never write whole profiles from stale snapshots.
+// Writes serialize: every call re-reads the profile inside the queue, so two overlapping requests (a sidebar drag racing a toggle) can never write whole profiles from stale snapshots.
 let profileWriteQueue: Promise<unknown> = Promise.resolve();
 
 function saveDefaults(body: Record<string, unknown>): Promise<
@@ -826,7 +864,6 @@ async function saveDashboardCurrency(raw: unknown): Promise<CurrencyCode | null>
   return code;
 }
 
-
 function readBody(req: http.IncomingMessage): Promise<string> {
   return new Promise((resolve) => {
     let body = '';
@@ -927,7 +964,8 @@ const tail = (text: string): string[] => text.trim().split('\n').filter(Boolean)
 /** Runs a headroom command and returns its last lines; a failure carries the same tail. */
 async function headroomRun(bin: string, args: string[], timeout: number): Promise<{ ok: boolean; lines: string[] }> {
   try {
-    const run = await execFileP(bin, args, { timeout });
+    // The home cwd keeps headroom's project-local artifacts (wrap locks in .claude) out of whatever directory the dashboard was launched from.
+    const run = await execFileP(bin, args, { timeout, cwd: homeDir() });
     return { ok: true, lines: tail(`${run.stdout}\n${run.stderr}`) };
   } catch (e) {
     const err = e as { stdout?: string; stderr?: string };
@@ -975,7 +1013,58 @@ async function exportDashboard(exportFile: string, currency: CurrencyCode): Prom
   console.log(`[ok] Dashboard exported → ${exportFile}`);
 }
 
+/** Watch mode: this process supervises; the real server runs in a child that bounces on source change.
+ *  UI edits need no bounce at all: vite --watch rebuilds the bundle and the server serves dist fresh. */
+async function runDashboardWatch(options: DashboardOptions): Promise<void> {
+  const root = findPackageRoot(path.dirname(fileURLToPath(import.meta.url)));
+  const entry = existsSync(path.join(root, 'tersio.ts')) ? path.join(root, 'tersio.ts') : path.join(root, 'dist', 'tersio.js');
+  let child: ChildProcess | null = null;
+  let vite: ChildProcess | null = null;
+  let stopping = false;
+  let pendingRestart = false;
+  const flags: string[] = ['dashboard', '--port', String(options.port), '--bind', options.bind ?? ''];
+  if (options.open) flags.push('--open');
+  if (options.currency) flags.push('--currency', options.currency);
+  const spawnChild = (): void => {
+    child = spawn(process.execPath, [entry, ...flags], {
+      env: { ...process.env, TERSIO_DASHBOARD_CHILD: '1' },
+      stdio: 'inherit',
+    });
+    child.on('exit', (code: number | null) => {
+      if (stopping) return;
+      if (pendingRestart) { pendingRestart = false; setTimeout(spawnChild, 300); return; }
+      console.log('[watch] server exited (' + code + ') \u2014 restarting in 500ms');
+      setTimeout(() => { if (!stopping) spawnChild(); }, 500);
+    });
+  };
+  const restart = (): void => {
+    if (!child || pendingRestart) return;
+    console.log('[watch] server source changed \u2014 restarting');
+    pendingRestart = true;
+    child.kill('SIGTERM');
+  };
+  spawnChild();
+  // UI rebuilds ride vite's own watcher: the server serves dist fresh per request, so a reload picks them up.
+  vite = spawn(process.execPath, ['run', '--cwd', 'dashboard/app', 'build:watch'], { stdio: 'inherit', cwd: root });
+  try {
+    watch(root, { recursive: true }, (_event: string, file: string | null) => {
+      if (stopping || !file) return;
+      const rel = String(file).replace(/\\/g, '/');
+      if (rel.startsWith('dashboard/') || rel.startsWith('dist/') || rel.startsWith('skills/')) return;
+      if (!/\.(ts|js|md)$/.test(rel)) return;
+      restart();
+    });
+  } catch { /* a platform without recursive watch simply skips auto-restart */ }
+  process.once('SIGINT', () => { stopping = true; try { child?.kill('SIGTERM'); } catch { } try { vite?.kill('SIGTERM'); } catch { } process.exit(130); });
+  process.once('SIGTERM', () => { stopping = true; try { child?.kill('SIGTERM'); } catch { } try { vite?.kill('SIGTERM'); } catch { } process.exit(0); });
+  await new Promise(() => undefined);
+}
+
 async function runDashboard(options: DashboardOptions): Promise<void> {
+  if (options.watch && process.env.TERSIO_DASHBOARD_CHILD !== '1') {
+    await runDashboardWatch(options);
+    return;
+  }
   const listenHost = resolveBind(options.bind);
   if (options.exportFile) {
     await exportDashboard(options.exportFile, options.currency);
@@ -1140,18 +1229,19 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
     // Which headroom wrap targets exist on this machine, so the drawer only offers what can run.
     if (req.url === '/api/headroom/wrap' && req.method === 'GET') {
       const bin = resolveHeadroomBinary();
-      // Labels come from headroom's own help, so a tool it gains appears here without a Tersio release.
+      // The wrap list is headroom's README compatibility table, so a name outside it never shows,
+      // even when this build's own `wrap --help` registers it.
       const discovered = bin !== null ? await discoverWrapTargets(bin) : null;
+      // The durable set comes from init's own help, so a tool that gains a durable integration flags itself.
+      const durableTargets = bin !== null ? await discoverInitTargets(bin) : null;
       const staticNames = WRAP_TARGETS.filter((name) => !PROXY_HOSTS.includes(name));
-      const names = [...new Set([...(discovered?.map((entry) => entry.name) ?? []), ...staticNames, ...PROXY_HOSTS])];
-      // Harness labels read clean: no parenthetical vendors, no CLI suffixes, first letter capped.
-      const cleanLabel = (label: string): string =>
-        label.replace(/\s*\([^)]*\)/g, "").replace(/\s+CLI$/i, "").replace(/^./, (c) => c.toUpperCase()).trim();
+      const names = [...new Set([...(discovered?.map((entry) => entry.name).filter((name) => (WRAP_TARGETS as readonly string[]).includes(name)) ?? []), ...staticNames, ...PROXY_HOSTS])];
       const targets = await Promise.all(names.map(async (name) => ({
         name,
-        label: cleanLabel(discovered?.find((entry) => entry.name === name)?.label ?? PROXY_HOST_LABELS[name] ?? name),
         kind: PROXY_HOSTS.includes(name) ? 'proxy' : 'wrap',
-        available: bin !== null && (PROXY_HOSTS.includes(name) ? proxyHostPresent(name) : await binaryExists(WRAP_BINARY[name] ?? name)),
+        durable: durableTargets?.includes(name) ?? false,
+        label: WRAP_LABELS[name] ?? PROXY_HOST_LABELS[name] ?? name,
+        available: bin !== null && (PROXY_HOSTS.includes(name) ? proxyHostPresent(name) : await wrapTargetPresent(name)),
       })));
       const state = readProxyState();
       json(res, 200, { ok: bin !== null, targets, proxy: { running: state !== null || await proxyAnswers(), port: state?.port ?? HEADROOM_PROXY_PORT } });
@@ -1236,7 +1326,7 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
         json(res, 200, { ok: false, error: init.lines.slice(-2).join(' · ') || `the ${name} integration failed` });
         return;
       }
-      const child = spawn(bin, ['wrap', name], { detached: true, stdio: 'ignore' });
+      const child = spawn(bin, ['wrap', name], { detached: true, stdio: 'ignore', cwd: homeDir() });
       child.unref();
       json(res, 200, { ok: true, detail: `${name} has no init subcommand — headroom wrap set it up instead; the off switch undoes it` });
       return;
@@ -1255,7 +1345,7 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
       if (!answered && dashboardProxy !== null && !proxyChildAlive(dashboardProxy.child)) dashboardProxy = null;
       // Nothing listening: start one Tersio owns, so closing the tab can end it again.
       if (!answered && bin && !proxyChildAlive(dashboardProxy?.child)) {
-        dashboardProxy = { child: spawn(bin, ['proxy'], { stdio: 'ignore', windowsHide: true }), port: fallbackPort };
+        dashboardProxy = { child: spawn(bin, ['proxy'], { stdio: 'ignore', windowsHide: true, cwd: homeDir() }), port: fallbackPort };
         recordActivity('agent', 'Headroom proxy started for the dashboard');
       }
       // A cold start loads headroom's model set, so the wait runs past the first few seconds.
@@ -1354,7 +1444,7 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
           json(res, 200, { ok: true, detail: 'headroom installs in the background' });
           return;
         }
-        const child = spawn(bin, ['update'], { detached: true, stdio: 'ignore' });
+        const child = spawn(bin, ['update'], { detached: true, stdio: 'ignore', cwd: homeDir() });
         child.unref();
         recordActivity('agent', 'Headroom update started');
         json(res, 200, { ok: true, detail: 'headroom updates in the background' });

@@ -126,8 +126,7 @@ export function parseHeadroomDoctor(raw: string): HeadroomDoctor {
   };
 }
 
-// The probe costs a subprocess plus localhost round-trips; the dashboard polls, so each probe holds
-// its own answer briefly (the ledger moves slowly, the routing check less so).
+// The probe costs a subprocess plus localhost round-trips; the dashboard polls, so each probe holds its own answer briefly (the ledger moves slowly, the routing check less so).
 const MEMOS = new Map<string, { at: number; value: unknown }>();
 
 /** Tests only: drops the savings memo so a refetch re-runs the CLI. */

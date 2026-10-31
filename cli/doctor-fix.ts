@@ -301,8 +301,7 @@ async function fixRtk(binDir: string): Promise<void> {
 }
 
 async function fixPonytail(pluginsDir: string): Promise<void> {
-  // Ponytail rides inside tersio now. The old dependency made a host list it as a second plugin,
-  // so the repair drops the entry, the override, and the sibling copy the host still discovers.
+  // Ponytail rides inside tersio now. The old dependency made a host list it as a second plugin, so the repair drops the entry, the override, and the sibling copy the host still discovers.
   console.log('  Doctor --fix: drop the separate Ponytail package');
   await fs.mkdir(pluginsDir, { recursive: true });
   const pkgPath = path.join(pluginsDir, 'package.json');

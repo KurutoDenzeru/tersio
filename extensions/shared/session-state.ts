@@ -122,8 +122,7 @@ export function isOmpSubagentPrompt(systemPrompt: string | string[]): boolean {
   return markers.some((marker) => systemPromptIncludes(systemPrompt, marker));
 }
 
-// ultra maps to max and full to balanced, rather than erroring. `medium` is the retired name for
-// `lite`, kept here so a settings file written before the rename still resolves.
+// ultra maps to max and full to balanced, rather than erroring. `medium` is the retired name for `lite`, kept here so a settings file written before the rename still resolves.
 const COMBO_ALIASES: Record<string, ComboLevel> = { ultra: 'max', full: 'balanced', medium: 'lite' };
 
 export function normalizeComboLevel(value: unknown): ComboLevel | null {
@@ -131,7 +130,6 @@ export function normalizeComboLevel(value: unknown): ComboLevel | null {
   if (isPresetLevel(level)) return level;
   return COMBO_ALIASES[level] ?? null;
 }
-
 
 // Last-wins scan for a custom session entry; skips unparseable values so a corrupt write never shadows a valid one.
 export function lastCustomValue<T>(entries: SessionEntry[] | null | undefined, customType: string, pick: (data: SessionEntry['data']) => T | null | undefined): T | null {

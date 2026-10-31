@@ -1,8 +1,10 @@
 // The trace timeline: minimap, ruler, flamegraph on a canvas; a DOM gutter names the lanes, so it draws no words.
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { VendorMark } from "@/components/brand";
+import { MarkGlyph } from "@/components/brand";
 import { Icon } from "@/components/icon";
+import { vendorOf } from "@/lib/format";
+import { maskMark } from "@/lib/marks";
 import type { AgentTraceMarker, AgentTraceSpan, AgentTraceSpanKind, AgentTraceTrack } from "@/lib/data";
 import { buildTicks, formatOffset, lanesOf, type AxisMode, type TraceScale } from "./scale";
 import { useTraceTheme } from "./theme";
@@ -40,13 +42,15 @@ const LANE_ICON: Record<string, string> = {
   background: "settings",
 };
 
-/** One lane row in the gutter, with a glyph for the kind it holds. */
+/** One lane row in the gutter, with a glyph for the kind it holds. The model lane draws the bare brand glyph, not its tiled mark, so the gutter carries no bg color. */
 function LaneRow({ track, lane }: { track: AgentTraceTrack; lane: { kind: string; label: string } }) {
   const first = track.spans.find((span) => span.kind === lane.kind);
+  const slug = lane.kind === "model" && first?.model ? vendorOf(first.model).slug : null;
+  const mask = slug ? maskMark(slug) : null;
   return (
     <div className="flex min-w-0 items-center gap-1.5 px-2 text-[11px] text-dim" style={{ height: LANE_H }}>
-      {lane.kind === "model" && first?.model ? (
-        <VendorMark model={first.model} tiny />
+      {slug && mask ? (
+        <MarkGlyph slug={slug} className="size-3 shrink-0" />
       ) : (
         <Icon name={LANE_ICON[lane.kind] ?? "dot"} className="size-3 shrink-0" />
       )}
@@ -289,8 +293,17 @@ export function Timeline({
         const right = at(scale.toU(span.end));
         if (right < -20 || left > size.width + 20) continue;
         const w = Math.max(1, right - left);
-        ctx.fillStyle = theme.category[span.kind];
-        ctx.fillRect(left, row.top + 1, w, LANE_H - 2);
+        // Outlined, not filled: the lane shows the shape without painting a bg, and the stroke reads the theme token, so light and dark modes both stay legible.
+        ctx.strokeStyle = theme.category[span.kind];
+        ctx.lineWidth = 1.5;
+        if (w >= 3) {
+          ctx.strokeRect(left + 0.75, row.top + 1.75, w - 1.5, LANE_H - 3.5);
+        } else {
+          ctx.beginPath();
+          ctx.moveTo(left + 0.5, row.top + 1);
+          ctx.lineTo(left + 0.5, row.top + LANE_H - 1);
+          ctx.stroke();
+        }
         if (span.isError) {
           ctx.fillStyle = theme.error;
           ctx.fillRect(left, row.top + 1, 2, LANE_H - 2);

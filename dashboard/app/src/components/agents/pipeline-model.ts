@@ -1,5 +1,4 @@
-// Quick start data model: the pipeline graph, its tables, and every derivation the canvas and the
-// dialogs read. No JSX here, so the host surfaces stay in the component modules.
+// Quick start data model: the pipeline graph, its tables, and every derivation the canvas and the dialogs read. No JSX here, so the host surfaces stay in the component modules.
 import type { ModeState } from "./shell";
 
 export type Point = readonly [number, number];
@@ -73,8 +72,7 @@ export function portPoint(box: Box, side: PortSide): Point {
   return [box.x + box.w / 2, box.y + box.h];
 }
 
-/** The two ports an edge uses. The axis with the smaller clear gap wins, so a diagonal target never
- *  produces a hairpin: side-by-side cards keep a run of at least 24px, else the line turns vertical. */
+/** The two ports an edge uses. The axis with the smaller clear gap wins, so a diagonal target never produces a hairpin: side-by-side cards keep a run of at least 24px, else the line turns vertical. */
 export function edgePorts(s: Box, t: Box): { from: PortSide; to: PortSide } {
   const hGap = t.x >= s.x ? t.x - (s.x + s.w) : s.x - (t.x + t.w);
   const vGap = t.y >= s.y ? t.y - (s.y + s.h) : s.y - (t.y + t.h);
@@ -183,8 +181,7 @@ export function edgePath(s: Box, t: Box, others: ReadonlyArray<Box>, groups: Rea
     c1: [sp[0] + outFrom[0] * reach + nx * lift, sp[1] + outFrom[1] * reach + ny * lift],
     c2: [tp[0] + outTo[0] * reach + nx * lift, tp[1] + outTo[1] * reach + ny * lift],
   });
-  // A line must miss every card, and should miss every folder band it does not belong to. The first
-  // lift that clears both wins; failing that, the first that clears the cards; failing that, the widest.
+  // A line must miss every card, and should miss every folder band it does not belong to. The first lift that clears both wins; failing that, the first that clears the cards; failing that, the widest.
   const foreign = groups.filter((g) => !hits(s, [g], 0) && !hits(t, [g], 0));
   const lifts = [0, 36, -36, 72, -72, 108, -108, 144, -144, 180, -180, 216, -216];
   let cardSafe: { c1: Point; c2: Point } | null = null;

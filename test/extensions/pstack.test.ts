@@ -1,5 +1,4 @@
-// pstack ships its whole tree: the index routes to files, so every named file must exist, and no
-// Cursor-only surface may survive the copy.
+// pstack ships its whole tree: the index routes to files, so every named file must exist, and no Cursor-only surface may survive the copy.
 import { expect, test } from "vitest";
 import fs from "node:fs";
 import path from "node:path";

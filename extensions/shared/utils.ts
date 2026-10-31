@@ -138,9 +138,7 @@ export function resolveRtkBinary(managedDir = path.join(homeDir(), '.bun', 'bin'
   return firstExecutable(process.platform === 'win32' ? 'rtk.exe' : 'rtk', managedDir);
 }
 
-// `pip install --user` drops console scripts in a directory that is usually not on PATH (macOS:
-// ~/Library/Python/3.x/bin), so the probe reads python's own user base. Keyed by HOME, since a
-// pinned test home must not inherit a user base computed from the real one.
+// `pip install --user` drops console scripts in a directory that is usually not on PATH (macOS: ~/Library/Python/3.x/bin), so the probe reads python's own user base.
 let headroomUserDir: { home: string; dir: string | null } | null = null;
 function headroomUserScriptDir(): string | null {
   const home = homeDir();
@@ -154,8 +152,7 @@ function headroomUserScriptDir(): string | null {
   return dir;
 }
 
-// Headroom ships as a pip/uv package whose console script often lands off PATH, so the probe walks
-// python's user-script dir and ~/.local/bin (uv's tool bin) after PATH; no managed dir by default.
+// Headroom ships as a pip/uv package whose console script often lands off PATH, so the probe walks python's user-script dir and ~/.local/bin (uv's tool bin) after PATH; no managed dir by default.
 export function resolveHeadroomBinary(managedDir: string | null = null): string | null {
   const user = headroomUserScriptDir();
   const extraDirs = [user, path.join(homeDir(), '.local', 'bin')].filter((dir): dir is string => dir !== null);
@@ -394,7 +391,6 @@ export function tersioHome(): string {
   if (override && override.trim() !== '') return override;
   return path.join(homeDir(), '.tersio');
 }
-
 
 export function tersioDataPath(name: string, legacy: string): string {
   const dest = path.join(tersioHome(), name);

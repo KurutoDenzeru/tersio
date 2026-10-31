@@ -116,11 +116,7 @@ const PROVIDER_ALIASES: Readonly<Record<string, string>> = {
   devin: 'cognition',
 };
 
-/**
- * SQL: the gateway that served the row. The transcript names it, and that name wins, because a model id
- * cannot show it: `deepseek/deepseek-v4.1-flash` was served by `commandcode`. Rows written before the
- * name was kept fall back to the model id's first segment, which is the best those rows can say.
- */
+/** SQL: the gateway that served the row. The transcript names it, and that name wins, because a model id cannot show it: `deepseek/deepseek-v4.1-flash` was served by `commandcode`. */
 function providerExpr(model: string, named?: string): string {
   const seg = `substr(${model}, 1, instr(${model} || '/', '/') - 1)`;
   const alias = `ltrim(${seg}, '~')`;
@@ -616,8 +612,7 @@ const EMPTY_HEADROOM: AgentHeadroom = {
 /** Headroom's savings for the ledger's own windows; it aggregates, so no cutoff of ours applies. */
 function readHeadroom(): AgentHeadroom {
   const gain = readHeadroomSavings();
-  // Headroom's doctor is the only source that says whether traffic actually flows; a proxy-down
-  // install otherwise reads as "installed and idle" with no way to tell the difference.
+  // Headroom's doctor is the only source that says whether traffic actually flows; a proxy-down install otherwise reads as "installed and idle" with no way to tell the difference.
   const doctor = readHeadroomDoctor();
   const failing = doctor.checks
     .filter((check) => check.status === 'fail' || check.status === 'warn')
@@ -961,8 +956,7 @@ function foldTraces(rows: AgentTraceRow[]): AgentTraceRow[] {
     .toSorted((a, b) => b.lastTs - a.lastTs);
 }
 
-/** The root session file for a transcript, which is itself when it is already a root.
- * Splits on whichever separator the stored path uses: a Windows run writes `\`. */
+/** The root session file for a transcript, which is itself when it is already a root. Splits on whichever separator the stored path uses: a Windows run writes `\`. */
 export function rootSessionFile(sessionFile: string): string {
   const marker = sessionFile.includes('/sessions/') ? '/sessions/' : '\\sessions\\';
   const at = sessionFile.indexOf(marker);
@@ -1743,7 +1737,6 @@ export function readAgentRequestEntry(
   }
   return empty;
 }
-
 
 /** Reads the usage store; the caller runs `syncUsageDb`, so a poll never pays for a sync it did not start. */
 export function readAgentStats(range: RangeKey = '24h', view: AgentView = 'all', now = Date.now(), offset = 0): AgentStats {

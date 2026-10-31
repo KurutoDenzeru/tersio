@@ -1,34 +1,35 @@
 ## Unreleased
 
 ### Added
- - **The dashboard opens from a phone.** It listens on every interface by default and prints each LAN address it answers on; `--local` keeps it on loopback, and `--bind <addr>` pins one address.
- - **The top-three cards lead with tokens.** Each shows the volume in one letter (2.4B, 591.0M) with the request count and share on the line under it, on Models and Providers alike.
- - **A "top three" card on the Models and Providers pages.** It shows the three you use most, each with its brand picture and how much of the work it did.
+- **The dashboard opens on your phone.** It shows up on your home network and prints the address to type.
+- **The busiest models and providers lead with tokens.** The volume is the big number, and the request count and its share sit under it.
 
 ### Changed
- - **The dashboard loads fast.** Agent payloads are gzipped (803KB to 85KB), a built payload is cached on disk per range so a restart serves it in milliseconds, and the server warms the three ranges a page opens on. Cold ranges that were never built keep their existing cost.
- - **Upstream drift folds by kind.** Changed, added, and removed paths each collapse on their own, so a 400-path block no longer fills the page.
- - **The mode drawers drop the flow block.** Caveman, pstack, ponytail, and rtk keep their controls and lose the diagram under them.
- - **Tokscale is no longer credited.** Tersio's token buckets were informed by it once; nothing reads it now, so the credit is gone.
- - **A new dashboard look.** The sidebar and top bar are one seamless surface, and the rest of the page sits inside one big card. Cards get a thin light line at their top edge, and the sidebar becomes a slim icon strip on smaller windows.
- - **Fresher parts under the hood.** Everything the dashboard and CLI build on is up to date.
+- **Ponytail speaks with one voice.** Its rules come from one file now. If that file goes missing, the mode tells you how to repair it instead of quoting a stale copy.
+- **Ponytail's plugin files are TypeScript now.** Leftover copies from older installs are ignored.
+- **Tidier source files.** Long comment blocks are one line each now.
+- **The Headroom drawer matches Headroom's official tool list.** Invented entries are gone, every tool carries its real name and real logo, Kimi and ZCode joined, and Continue left because that service is discontinued.
+- **Switches speak plainly.** Turning a tool on or off shows one plain sentence about what changed, and when a flip fails, the real reason shows up in the same notice.
+- **The dashboard opens much faster.** A range is built once, remembered, and reused after a restart. The network also sends about a tenth of the bytes.
+- **The Upstream page is easier to read.** Changed, added, and removed files each fold away, so a long list stays short.
+- **Fewer words in the drawers.** Caveman, pstack, ponytail, and rtk keep their controls and lose the diagram under them.
+- **A cleaner dashboard.** The sidebar and top bar read as one surface, and the sidebar becomes icons on small windows.
+- `tersio update` updates the Tersio CLI only. Add-ons refresh per agent with `tersio update --host <agent>`.
+- A scripted install prints one line about the optional Headroom mode, because it cannot ask.
+- Tokscale is no longer credited, because nothing uses it.
 
 ### Fixed
- - **A message counts once.** A branched or resumed transcript repeats the assistant calls it inherited, and every copy was counted: on this machine 19,237 rows became 14,076, 592.6M tokens became 539.8M, and $114.30 became $65.77. The store keeps one row per message id behind a unique index, and writes ignore a row another transcript already carries.
- - **A parser bump no longer drops history.** The rebuild adds the columns a store is missing and re-reads the transcripts that remain; rows whose transcript already rotated away stay counted.
- - **A reset hides rows instead of deleting them.** It writes a marker, the views read past it, and `TERSIO_RESET_PURGE=1` keeps the old erasing behaviour.
- - **Ctrl-C frees the port.** The server tracks every socket, closes idle ones, and destroys the rest after a 300ms grace; a second Ctrl-C leaves at once. The Headroom proxy Tersio started is stopped with it.
- - **A range wider than the store says where its records start**, so a two-week store no longer reads as data loss.
- - The snapshot rotation keeps 14 snapshots instead of 6.
- - **A host install no longer moves its overrides into the shared store.** `tersio install --host pi --combo-default max` writes pi's section and leaves the shared default alone, so every other agent keeps what it had.
- - **The right brand picture for every model.** Models running through Codex now show their own maker's logo — DeepSeek, GLM, and Beam included — instead of Codex's, and Codex itself gets its own logo too.
- - The drawer's **Headroom dashboard** button opens Headroom's own savings view in a new tab. The link is a plain navigation to a Tersio route that probes the proxy and redirects, so a popup blocker cannot swallow it; when nothing answers it starts a proxy Tersio owns, and closing that tab stops that proxy only while it has served no traffic. A proxy you started yourself, one that has served requests, or one that cannot report is never touched.
- - The install flow offers Headroom only for the agents it can route (OMP and OpenCode). pi and PiG get a note instead of a prompt, and their own section starts with the mode off.
-
-### Changed
- - `tersio update` updates the Tersio CLI and stops there. Extensions and add-ons refresh per agent with `tersio update --host <agent>`, and the closing line says so.
- - The install confirmation reads "Are you sure you want to install Tersio into <agent>?" for every host.
- - A scripted install prints one line about the optional Headroom mode, because it cannot prompt.
+- **No more stray files in your projects.** Turning a Headroom switch used to leave an empty lock file in the folder you started the dashboard from. Nothing writes into your projects anymore.
+- **The Headroom drawer lines up.** The switch rows and their counters sit on one line now.
+- **Every request counts once.** A resumed session repeated the calls it inherited, and every repeat was counted. Your totals now read true.
+- **Your history is no longer lost.** Updating Tersio or resetting your stats keeps the old records instead of erasing them, and backups are kept for two weeks.
+- **Ctrl-C closes the dashboard for good.** The port is free at once, and Headroom's helper stops with it.
+- **A short history says so.** When a range reaches past the first record, the page says where the records start.
+- **Install keeps each agent's own settings.** Installing Tersio for one agent no longer changes what the others use, and the question names the agent before it runs.
+- **The right logo for every model.** Models that run through Codex show their own maker's logo.
+- **ZCode shows up when it should.** The Headroom drawer recognizes the ZCode desktop app instead of calling it "not installed".
+- **Uninstalled tools read as uninstalled.** Command Code's leftover settings folder no longer makes the Headroom drawer list it as ready.
+- **Headroom's dashboard opens from its drawer.** It starts Headroom's view when needed and closes only the one it started. Headroom is offered only for the agents it can route, so pi and PiG get a note instead of a prompt.
 
 ## v2.25.16
 

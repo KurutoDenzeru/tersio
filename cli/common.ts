@@ -17,8 +17,7 @@ const OMP_AGENT_DIR = path.join(HOME, '.omp', 'agent');
 const OMP_PLUGINS_DIR = path.join(HOME, '.omp', 'plugins');
 const BUN_BIN_DIR = path.join(HOME, '.bun', 'bin');
 const OMP_BIN = IS_WINDOWS ? 'omp.cmd' : 'omp';
-// npm and bun are `.cmd` shims on Windows, and CreateProcess spawns neither a bare name nor a shim,
-// so the spawn name itself carries the extension the way `omp.cmd` does.
+// npm and bun are `.cmd` shims on Windows, and CreateProcess spawns neither a bare name nor a shim, so the spawn name itself carries the extension the way `omp.cmd` does.
 const NPM_BIN = IS_WINDOWS ? 'npm.cmd' : 'npm';
 const BUN_BIN = IS_WINDOWS ? 'bun.cmd' : 'bun';
 
@@ -105,8 +104,7 @@ const dashboard = command === 'dashboard';
 const mcp = command === 'mcp';
 const upstream = command === 'upstream' || args.includes('--upstream');
 const dashboardPort = Number.parseInt(flagValue('--port') ?? '', 10) || 0;
-// The dashboard listens on loopback unless asked otherwise: `--lan`, `--bind <addr>`, or `--host lan`.
-// `--host` names an agent for install, so only a value that is not an agent id reads as an address.
+// The dashboard listens on loopback unless asked otherwise: `--lan`, `--bind <addr>`, or `--host lan`. `--host` names an agent for install, so only a value that is not an agent id reads as an address.
 const hostArg = flagValue('--host');
 const dashboardBind = args.includes('--local')
   ? '127.0.0.1'
@@ -114,6 +112,8 @@ const dashboardBind = args.includes('--local')
     ? 'lan'
     : flagValue('--bind') ?? (hostArg && !['omp', 'pi', 'pig', 'opencode'].includes(hostArg) ? hostArg : null);
 const dashboardOpen = args.includes('--open');
+// Watch mode: the server supervises a child that restarts on source change, and vite rebuilds the UI.
+const dashboardWatch = args.includes('--watch');
 const dashboardExport = flagValue('--export') ?? null;
 // Display currency: --currency flag, then the stored default, then USD.
 const currency: CurrencyCode = parseCurrencyFlag(flagValue('--currency')) ?? readStoredCurrency();
@@ -131,8 +131,7 @@ if (legacyScope !== null && legacyScope !== 'user') {
 }
 // --- Profile selection (session-start mode defaults) ---
 
-// `medium` is the retired name for `lite`, so a scripted flag written before the rename still lands.
-// It is accepted by the parser and mapped after, because parseEnum exits on an unknown value.
+// `medium` is the retired name for `lite`, so a scripted flag written before the rename still lands. It is accepted by the parser and mapped after, because parseEnum exits on an unknown value.
 /** `inherit` clears this agent's override, so it parses before the value sets do. */
 function parseModeFlag(flag: string, valid: Set<string>): string | undefined {
   return flagValue(flag)?.trim().toLowerCase() === 'inherit' ? 'inherit' : parseEnum(flagValue(flag), valid, flag);
@@ -292,7 +291,6 @@ async function ensureExtensionInConfig(configPath: string, extensionPath: string
   return true;
 }
 
-
 async function removeExtensionFromConfig(configPath: string, extensionPath: string, label: string, options: WriteOptions = {}): Promise<boolean> {
   const normalizedPath = extensionPath.replace(/\\/g, '/').replace(/^\.\//, '');
   const extensionSuffix = normalizedPath.includes('/extensions/')
@@ -375,13 +373,11 @@ async function ensurePonytailConfigValue<K extends keyof PonytailConfig>(
   }, `would set Ponytail ${key}=${value}`, `Set Ponytail ${key}=${value}`, options);
 }
 
-
 // Read plugins/package.json tolerantly; a corrupt or missing file starts fresh with installer-managed defaults.
 async function readPluginsPackage(pkgPath: string): Promise<PluginsPackage & { dependencies: Record<string, string> }> {
   const pkg = parseJsonObject<PluginsPackage>(await readTextIfExists(pkgPath)) ?? {};
   return { ...pkg, name: pkg.name || 'omp-plugins', private: true, dependencies: pkg.dependencies || {} };
 }
-
 
 function relTime(ageMs: number): string {
   const mins = Math.floor(ageMs / 60000);
@@ -423,7 +419,7 @@ export {
   install, update, showVersion, showHelp, applyUpdate, args,
   dryRun, yes, assumeYes, verbose, doctor, fix, uninstall, dashboard, upstream,
   allowUnverified,
-  dashboardPort, dashboardBind, dashboardOpen, dashboardExport, currency, currencyGiven,
+  dashboardPort, dashboardBind, dashboardOpen, dashboardWatch, dashboardExport, currency, currencyGiven,
   removePonytail, keepPonytail, removeRtk,
   comboDefaultFlag, cavemanDefaultFlag, ponytailDefaultFlag, pstackDefaultFlag, headroomDefaultFlag, rtkDefaultFlag, profileFlagsGiven,
   debug, execFileP, execP, writeIfChanged, normalizeExtensionsKey,

@@ -310,8 +310,7 @@ test("a host save writes only the chosen fields, and one equal to the shared fal
     expect(stored.hosts.pi).toEqual({ comboDefault: "max", cavemanDefault: "ultra", ponytailDefault: "ultra" });
     expect(stored.hosts.pi.pstackDefault).toBeUndefined();
     expect(stored.hosts.pi.headroomDefault).toBeUndefined();
-    // A later save whose field equals the shared value is inheritance, not an override: the key drops,
-    // while the agent's own earlier overrides stand until a request chooses them otherwise.
+    // A later save whose field equals the shared value is inheritance, not an override: the key drops, while the agent's own earlier overrides stand until a request chooses them otherwise.
     await saveHostDefaults("pi", ["rtkDefault"], { ...profile, rtkDefault: true }, {});
     const after = JSON.parse(readFileSync(path.join(home, ".tersio", "settings.json"), "utf8")) as Record<string, any>;
     expect(after.hosts.pi.rtkDefault).toBeUndefined();
@@ -437,8 +436,7 @@ function tempHome(): string {
   return home;
 }
 
-/** Windows keeps a handle on a just-touched tree for a moment, so the removal retries instead of
- * throwing EBUSY out of a test's `finally` block. */
+/** Windows keeps a handle on a just-touched tree for a moment, so the removal retries instead of throwing EBUSY out of a test's `finally` block. */
 function rmTree(dir: string): void {
   rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
 }
@@ -451,8 +449,7 @@ function pluginPresent(home: string): void {
   fakeRtkBin(path.join(home, ".bun", "bin"));
 }
 
-/** Both package managers fail, so no plugin is registered and the agent tree is the fallback. A seeded rtk
- * goes with it, because an absent one downloads 18MB from GitHub and the assertions here are about the tree. */
+/** Both package managers fail, so no plugin is registered and the agent tree is the fallback. */
 function noPackageManagers(home: string): Record<string, string> {
   fakeRtkBin(path.join(home, ".bun", "bin"));
   const stub = mkdtempSync(path.join(os.tmpdir(), "tersio-omp-nopm-"));
@@ -568,7 +565,6 @@ test("ensure drops the legacy compiled twin instead of duplicating it", async ()
   }
 });
 
-
 test("ensure leaves .js entries alone when the new path is also .js", async () => {
   const { dir, file } = withConfig("extensions:\n  - /x/ponytail/pi-extension/index.js\n");
   try {
@@ -609,8 +605,8 @@ test("pi install writes a local Ponytail package and drops the npm spec", () => 
 
     const agent = path.join(dir, ".pi", "agent");
     const pkg = JSON.parse(readFileSync(path.join(agent, "ponytail", "package.json"), "utf8")) as { pi?: { extensions: string[] } };
-    expect(pkg.pi?.extensions).toEqual(["./pi-extension/index.js"]);
-    expect(readFileSync(path.join(agent, "ponytail", "pi-extension", "index.js"), "utf8")).toMatch(/getPonytailInstructions/);
+    expect(pkg.pi?.extensions).toEqual(["./pi-extension/index.ts"]);
+    expect(readFileSync(path.join(agent, "ponytail", "pi-extension", "index.ts"), "utf8")).toMatch(/getPonytailInstructions/);
     expect(readFileSync(path.join(agent, "ponytail", "skills", "ponytail", "SKILL.md"), "utf8")).toMatch(/lazy senior developer/i);
 
     // A local path is what stops pi version-checking the package.
@@ -688,8 +684,7 @@ function opencodePluginHome(): string {
   writeFileSync(path.join(cfg, "opencode.json"), JSON.stringify({
     plugins: ["/Users/me/.config/opencode/plugins/rtk.ts", "/Users/me/.config/opencode/plugins/herdr.js"],
   }, null, 2));
-  // A seeded rtk is what the wire step binds. Without one every install fetches 18MB from GitHub, and a
-  // rate-limited runner answers 403, which takes the run off the path these assertions cover.
+  // A seeded rtk is what the wire step binds. Without one every install fetches 18MB from GitHub, and a rate-limited runner answers 403, which takes the run off the path these assertions cover.
   fakeRtkBin(path.join(dir, ".bun", "bin"));
   return dir;
 }
@@ -1566,8 +1561,7 @@ test("an empty checksums.txt refuses to install", async () => {
   }
 });
 
-// The install prompts are Clack's, so only a real terminal proves the chain: agent menu → preset menu →
-// the optional Headroom question. Each step is an Enter on the highlighted row.
+// The install prompts are Clack's, so only a real terminal proves the chain: agent menu → preset menu → the optional Headroom question. Each step is an Enter on the highlighted row.
 const INSTALL_PTY_PY = [
   "import os, pty, select, fcntl, termios, struct, time, sys",
   "argv = sys.argv[1:]",
@@ -1589,8 +1583,7 @@ const INSTALL_PTY_PY = [
   "        buf += d",
   "    return True",
   "pump(6)",
-  // Three prompts (agent, preset, Headroom) plus slack: send Enter on a cadence, since startup time
-  // varies with the registry check. The child can finish early, so a closed pty ends the loop.
+  // Three prompts (agent, preset, Headroom) plus slack: send Enter on a cadence, since startup time varies with the registry check. The child can finish early, so a closed pty ends the loop.
   "for _ in range(6):",
   "    try:",
   "        os.write(fd, b'\\r')",
@@ -1613,8 +1606,6 @@ test.skipIf(process.platform === "win32")("a terminal install asks about Headroo
   const home = mkdtempSync(path.join(os.tmpdir(), "tersio-install-headroom-"));
   try {
     // A real (non-dry) install into a temp home: the plugin step is fast, and the prompts run first.
-    // A fake headroom on PATH makes the prompt the enable-only variant, which writes no binary, and a
-    // seeded plugin copy keeps the self-register step off the registry.
     const binDir = path.join(home, "bin");
     fakeExecutable(binDir, "headroom", "exit 0", "exit /b 0");
     const installed = path.join(home, ".omp", "plugins", "node_modules", "@krtclcdy", "tersio");

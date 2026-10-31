@@ -1,12 +1,11 @@
 #!/usr/bin/env node
 // Install Tersio add-ons on any OMP device; see help for commands.
 import {
-  PACKAGE_BIN, PACKAGE_VERSION, applyUpdate, commandArg, dashboard, dashboardBind, dashboardExport, dashboardOpen, dashboardPort, doctor, mcp, showHelp, showVersion, uninstall, unknownCommand, update, upstream,
+  PACKAGE_BIN, PACKAGE_VERSION, applyUpdate, commandArg, dashboard, dashboardBind, dashboardExport, dashboardOpen, dashboardPort, dashboardWatch, doctor, mcp, showHelp, showVersion, uninstall, unknownCommand, update, upstream,
   currency,
 } from './cli/common.ts';
 import { closeRL } from './cli/interactive.ts';
-// Each command loads its own module: the installer never pays for the dashboard tree, and a version
-// check never pays for the installer. The imports stay static here so a missing file fails loudly.
+// Each command loads its own module: the installer never pays for the dashboard tree, and a version check never pays for the installer. The imports stay static here so a missing file fails loudly.
 
 function printHelp(): void {
   console.log(`Usage: ${PACKAGE_BIN} [command] [options]
@@ -37,6 +36,7 @@ Options:
   --port <n> (dashboard: pin port, default ephemeral)
   --open (dashboard: open browser)
   --local (dashboard: listen on loopback only)
+  --watch (dashboard: restart on source change and rebuild the UI on save)
   --bind <addr> (dashboard: listen address; default every interface, so a phone can open it)
   --export <file> (dashboard: write HTML file instead of serving)
   --currency <code> (dashboard: display currency; flag wins, then tersio settings default, then USD)
@@ -97,11 +97,10 @@ async function main(): Promise<void> {
 
   if (dashboard) {
     const { runDashboard } = await import('./cli/dashboard.ts');
-    await runDashboard({ port: dashboardPort, bind: dashboardBind, open: dashboardOpen, exportFile: dashboardExport, currency });
+    await runDashboard({ port: dashboardPort, bind: dashboardBind, watch: dashboardWatch, open: dashboardOpen, exportFile: dashboardExport, currency });
     closeRL();
     return;
   }
-
 
   if (uninstall) {
     const { runUninstall } = await import('./cli/uninstall.ts');

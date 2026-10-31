@@ -255,8 +255,7 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
       process.exit(1);
     }
   }
-  // Binaries picked without an agent get their own confirmation and their own removal; with a host
-  // the host's dialog already lists them.
+  // Binaries picked without an agent get their own confirmation and their own removal; with a host the host's dialog already lists them.
   if (shouldRemoveHeadroomBinary || (shouldRemoveRtk && hosts.length === 0)) {
     const plan = [
       ...(shouldRemoveRtk && hosts.length === 0 ? ['the RTK binary'] : []),

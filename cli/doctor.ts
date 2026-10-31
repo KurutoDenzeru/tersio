@@ -82,7 +82,11 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   const tersioPluginDir = ompPackageDir();
 
   // Ponytail rides inside this tree now: one vendored copy, and no sibling package to discover.
-  const ponytailIndex = path.join(tersioPluginDir, 'extensions', 'ponytail', 'pi-extension', 'index.js');
+  // The fork ships index.ts; a not-yet-updated package still holds index.js, so either counts.
+  const ponytailIndex = ['index.ts', 'index.js']
+    .map((base) => path.join(tersioPluginDir, 'extensions', 'ponytail', 'pi-extension', base))
+    .find((at) => existsSync(at))
+    ?? path.join(tersioPluginDir, 'extensions', 'ponytail', 'pi-extension', 'index.ts');
   const cavemanIndex = path.join(tersioPluginDir, 'extensions', 'caveman', 'index.ts');
   const cavemanRule = (name: string) => path.join(tersioPluginDir, 'extensions', 'caveman', name);
   // The pstack body is a Tersio fork with no remote, so the check proves it is usable, not current.
@@ -242,8 +246,7 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
     console.log(`  ⚠️ ${label}: warn ${detail}`);
   }
 
-  // A Windows failure names its cause here: several rows below silently degrade when the
-  // platform has no rtk build, and a wrong home would move every one of them.
+  // A Windows failure names its cause here: several rows below silently degrade when the platform has no rtk build, and a wrong home would move every one of them.
   section('Platform');
   const rtkSpec = rtkPlatformSpec();
   check('Platform', rtkSpec !== null, `${process.platform}/${process.arch}${rtkSpec ? ` · node ${process.version} · rtk ${rtkSpec.triple}` : ''}`);

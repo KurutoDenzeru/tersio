@@ -95,10 +95,7 @@ interface SourcePin {
   label: string;
   repo: string;
   pin: string;
-  /**
-   * Files already known to have moved upstream since the pin, at the time the pin was reviewed.
-   * `--strict` fails when the count grows, which is the signal to review the diff and re-port.
-   */
+  /** Files already known to have moved upstream since the pin, at the time the pin was reviewed. `--strict` fails when the count grows, which is the signal to review the diff and re-port. */
   driftCeiling: number;
   /** Upstream paths whose bytes Tersio carries. */
   files: ReadonlyArray<{ upstream: string; local: string; adapt?: (text: string) => string }>;
@@ -316,10 +313,7 @@ function classifyFetch(e: unknown, ref: string): FetchFailure {
 
 interface TreeResult { entries: Map<string, string> | null; failure: FetchFailure | null }
 
-/**
- * One commit's tree as path → blob sha. A cached tree is used whenever the live read fails, but the failure is
- * still reported, so a rate-limited run never passes for a clean one.
- */
+/** One commit's tree as path → blob sha. A cached tree is used whenever the live read fails, but the failure is still reported, so a rate-limited run never passes for a clean one. */
 async function treeOf(repo: string, ref: string): Promise<TreeResult> {
   const cacheDir = path.join(upstreamDir(), 'trees');
   const immutable = /^[0-9a-f]{7,40}$/i.test(ref);
@@ -439,17 +433,13 @@ export function uncarriedOf(pinned: TreeResult, head: TreeResult, upstreamPaths:
   return { count: dirs.size, moved };
 }
 
-/**
- * Changed, added, and removed upstream paths. Added means a file inside a directory this build already
- * tracks, which is the signal a new playbook, reference, or principle leaf exists upstream.
- */
+/** Changed, added, and removed upstream paths. Added means a file inside a directory this build already tracks, which is the signal a new playbook, reference, or principle leaf exists upstream. */
 export function driftOf(pinned: TreeResult, head: TreeResult, upstreamPaths: string[]): Drift {
   const none: Drift = { changed: [], added: [], gone: [] };
   if (!pinned.entries || !head.entries) return none;
   const tracked = new Set(upstreamPaths);
   const dirs = new Set([...tracked].map((up) => `${path.posix.dirname(up)}/`));
-  // A new skill directory sits beside the tracked ones, so the parent of a tracked directory is watched too.
-  // A snapshot: parents added below must not extend this pass.
+  // A new skill directory sits beside the tracked ones, so the parent of a tracked directory is watched too. A snapshot: parents added below must not extend this pass.
   for (const dir of Array.from(dirs)) {
     const parent = path.posix.dirname(dir);
     if (parent && parent !== '.' && parent !== '/') dirs.add(`${parent}/`);
@@ -859,10 +849,7 @@ async function checkHeadroom(): Promise<SourceRow> {
   };
 }
 
-/**
- * The extension entries an installed package manifest loads, or null when the host keeps none.
- * A host can carry every file and still never load one, because the manifest is what names them.
- */
+/** The extension entries an installed package manifest loads, or null when the host keeps none. A host can carry every file and still never load one, because the manifest is what names them. */
 async function loadedEntries(extensionsDir: string): Promise<string[] | null> {
   const pkg = parseJsonObject<{ omp?: { extensions?: unknown } }>(await readTextIfExists(path.join(extensionsDir, '..', 'package.json')));
   const list = pkg?.omp?.extensions;
@@ -1014,10 +1001,7 @@ function bar(part: number, whole: number): string {
 /** One named gap: what it is, where it is, and whose move it was. */
 interface Gap { group: string; kind: 'ours' | 'drift' | 'unmeasured'; text: string }
 
-/**
- * Every gap in the run, ours first: a body of ours that drifted from the pin is actionable today, an upstream
- * file that moved is a review to schedule, and an unmeasured source is a run to repeat with a token.
- */
+/** Every gap in the run, ours first: a body of ours that drifted from the pin is actionable today, an upstream file that moved is a review to schedule, and an unmeasured source is a run to repeat with a */
 export function gapsOf(card: Scorecard): Gap[] {
   const out: Gap[] = [];
   for (const r of card.sources) {

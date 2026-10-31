@@ -109,10 +109,14 @@ export function treeFilesFor(id: 'omp' | 'pi' | 'opencode' | 'pig'): readonly st
 /** Obsolete install debris; explicit, not a sweep, because these trees are shared with tersio's other steps. */
 const OBSOLETE_DIRS = ['updater', 'caveman-session', 'rtk-filter', 'rtk-session', 'combo-toggle', 'tersio-commands', 'ai-addons-updater', 'lib', 'opencode'] as const;
 
+/** Retired Ponytail `.js` modules; the fork ships `.ts` and every loader reads those. */
+const OBSOLETE_FILES = ['ponytail-bundle/hooks/ponytail-config.js', 'ponytail-bundle/hooks/ponytail-instructions.js'] as const;
+
 /** Debris test for a tree-relative path; one definition shared by detection and repair. */
 export function isObsoleteTreeFile(rel: string, id: 'omp' | 'pi' | 'opencode' | 'pig'): boolean {
   if (rel.endsWith('.bak') || rel === '.DS_Store') return true;
   if (OBSOLETE_DIRS.includes(rel.split('/')[0] as (typeof OBSOLETE_DIRS)[number])) return true;
+  if ((OBSOLETE_FILES as readonly string[]).includes(rel)) return true;
   return rel === 'server.ts' && id !== 'opencode';
 }
 
@@ -158,13 +162,13 @@ export const PONYTAIL_SKILL_NAMES = ['ponytail', 'ponytail-audit', 'ponytail-deb
 
 /** The OpenCode bundle: no node_modules there, so the ruleset rides along as files. */
 export const PONYTAIL_BUNDLE_FILES = [
-  'hooks/ponytail-instructions.js',
-  'hooks/ponytail-config.js',
+  'hooks/ponytail-instructions.ts',
+  'hooks/ponytail-config.ts',
   ...PONYTAIL_SKILL_NAMES.map((skill) => `skills/${skill}/SKILL.md`),
 ] as const;
 
 /** pi's local package: the same ruleset, plus the extension that injects it. */
-export const PI_PONYTAIL_FILES = ['pi-extension/index.js', ...PONYTAIL_BUNDLE_FILES] as const;
+export const PI_PONYTAIL_FILES = ['pi-extension/index.ts', ...PONYTAIL_BUNDLE_FILES] as const;
 
 /** The shipped package manifest, one level above the extension tree. */
 const MANIFEST_PATH = path.join(path.dirname(EXT_DIR), 'package.json');

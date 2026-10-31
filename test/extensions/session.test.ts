@@ -33,8 +33,7 @@ import { formatStatus } from "../../extensions/shared/status.ts";
 import type { ExtensionApi, ExtensionCtx, SessionEntry, SystemPromptEvent } from "../../extensions/shared/types.ts";
 import { fakeRtkBin, withHome as inHome } from "../helpers/env.ts";
 
-// ponytail: hermetic HOME — session-start fallbacks read the real lock file, so the suite must not use it.
-// fileURLToPath, not `.pathname`: a URL pathname on Windows is `/D:/...`, which path.join turns into `D:\D:\...`.
+// ponytail: hermetic HOME — session-start fallbacks read the real lock file, so the suite must not use it. fileURLToPath, not `.pathname`: a URL pathname on Windows is `/D:/...`, which path.join turns into `D:\D:\...`.
 process.env.HOME = fileURLToPath(new URL("../definitely-missing-home/session", import.meta.url));
 process.env.USERPROFILE = process.env.HOME;
 // The bare fixture is HOME to a dozen siblings, so TERSIO_HOME must sit under it: afterEach deletes it.
@@ -46,8 +45,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", ".
 // Windows opens a browser through cmd.exe, not a `start` executable.
 const IS_WINDOWS = process.platform === "win32";
 
-// The bash rewrite shells out to the rtk on PATH, so each test owns PATH and HOME.
-// The Windows form is a `.cmd` shim, because CreateProcess runs no bare script.
+// The bash rewrite shells out to the rtk on PATH, so each test owns PATH and HOME. The Windows form is a `.cmd` shim, because CreateProcess runs no bare script.
 async function withFakeRtk(script: string | null, cmdScript: string, work: () => Promise<void>): Promise<void> {
   const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-oc-rtk-"));
   const previous = { PATH: process.env.PATH, HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE };
@@ -230,8 +228,7 @@ test("the bash hook rewrites a command through the resolved rtk binary", async (
   });
 });
 
-// rtk's OpenCode hook answers {} when the rewrite would change what OpenCode's own permission rules
-// decide, so a denied command stays denied. The hook must honour that answer.
+// rtk's OpenCode hook answers {} when the rewrite would change what OpenCode's own permission rules decide, so a denied command stays denied. The hook must honour that answer.
 test("the bash hook leaves a command alone when rtk's OpenCode hook refuses the rewrite", async () => {
   await withFakeRtk("#!/bin/sh\nprintf '{}\\n'\n", "echo {}", async () => {
     const { ctx, hooks, store } = fakeCtx();
@@ -497,7 +494,7 @@ function instruction(result: { systemPrompt?: string[] } | undefined) {
 async function upstreamPonytail(level: string): Promise<string> {
   // The vendored copy sits beside the extensions, so the subpath is a plain path.
   const extensionDir = fileURLToPath(new URL("../../extensions/combo/index.ts", import.meta.url));
-  const file = join(dirname(extensionDir), '..', 'ponytail', 'hooks', 'ponytail-instructions.js');
+  const file = join(dirname(extensionDir), '..', 'ponytail', 'hooks', 'ponytail-instructions.ts');
   expect(file, "the vendored ponytail copy carries its instruction builder").toBeTypeOf("string");
   const mod = (await import(pathToFileURL(file!).href)) as {
     getPonytailInstructions?: (l: string) => string;
@@ -799,7 +796,6 @@ test("rtk restores enabled state from session_branch instead of using stale in-m
   expect(await inject(pi, UNMARKED_PROMPT)).toBe(undefined);
 });
 
-
 // The literal prompt read out of the installed omp binary; MARKED_PROMPT would not catch the marker drifting.
 const REAL_OMP_SUBAGENT_PROMPT = `Worker agent: delegated tasks.
 
@@ -917,7 +913,6 @@ test("caveman and rtk do not re-inject into a prompt that already carries them",
 
 // No-reload sync: /combo and /tersio switch modes without reloading; sibling mirrors stay in step.
 
-
 // Hermetic HOME + usage file: combo falls back to lock-file defaults and the router writes the temp ledger.
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tersio-noreload-"));
 process.env.TERSIO_USAGE_FILE = path.join(dir, "usage.jsonl");
@@ -956,7 +951,6 @@ function ctxWithReloadCounter() {
   } as unknown as ExtensionCtx;
   return { ctx, notifications, reloaded: () => reloaded };
 }
-
 
 const MAIN_PROMPT = { systemPrompt: ["user says hi"] };
 
@@ -998,8 +992,6 @@ test("/tersio no longer duplicates mode switches", async () => {
 });
 
 // Additive listeners grew per session; the bridge is keyed now.
-
-
 
 function instance(): ExtensionApi {
   const chain = { min: () => chain, describe: () => chain };
@@ -1142,7 +1134,6 @@ test("a combo change is persisted before the host is told about it", async () =>
 });
 
 // The six host differences, one test each; OMP is the pi fork that injects `pi.zod`, which is the detection.
-
 
 function zodStub() {
   // zod chains keep the whole API after min()/describe(); the stub does too, so the adapter meets a faithful shape.
@@ -1598,8 +1589,6 @@ test("a new session restores persisted per-mode defaults with the Combo preset",
 
 // The status line must appear in every session type, and must not repeat itself.
 
-
-
 interface statusTestPi {
   commands: Map<string, CommandHandler>;
   handlers: Map<string, EventHandler>;
@@ -1611,12 +1600,10 @@ interface statusTestPi {
   appendEntry(customType: string, data: Record<string, unknown>): void;
 }
 
-
 interface statusTestChain {
   min: () => statusTestChain;
   describe: () => statusTestChain;
 }
-
 
 interface statusTestCtx {
   hasUI: boolean;

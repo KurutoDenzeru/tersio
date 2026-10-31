@@ -9,7 +9,8 @@
     "lint": "oxlint .",
     "lint:fix": "oxlint . --fix",
     "typecheck": "tsc --noEmit",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "build:watch": "vite build --watch"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",

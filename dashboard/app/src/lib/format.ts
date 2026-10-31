@@ -19,10 +19,7 @@ export function fmtShort(n: number): string {
   return String(Math.round(n));
 }
 
-/**
- * A range wider than the store cannot show what it never held: name where the records actually start.
- * Within a day of the cutoff the range covers the store, so there is no gap to report.
- */
+/** A range wider than the store cannot show what it never held: name where the records actually start. Within a day of the cutoff the range covers the store, so there is no gap to report. */
 export function coverageNote(rows: ReadonlyArray<{ firstTs: number | null }>, cutoff: number): string | null {
   let first: number | null = null;
   for (const row of rows) {
@@ -218,9 +215,7 @@ const PROVIDERS: Array<[RegExp, string, string, string]> = [
 ];
 
 export function vendorOf(model: string): Vendor {
-  // Tail first: gateway prefixes ("codex/openai/...") must not shadow the model author, so a
-  // DeepSeek or GLM run through Codex still reads as DeepSeek or Z.ai. The head still wins when
-  // only it names a known vendor ("codex/openai").
+  // Tail first: gateway prefixes ("codex/openai/...") must not shadow the model author, so a DeepSeek or GLM run through Codex still reads as DeepSeek or Z.ai.
   const segs = String(model).split("/").filter(Boolean);
   for (let i = segs.length - 1; i >= 0; i--) {
     for (const [re, name, slug, color] of PROVIDERS) {
@@ -299,8 +294,7 @@ export function providerMeta(provider: string): ProviderMeta {
   return { slug: PROVIDER_MARKS[provider] ?? "" };
 }
 
-/** The agent that recorded a session, from the transcript path, the row's only host marker; matches `AgentLogo`.
- * Each pattern allows either separator: a Windows run writes `C:\...\.omp\agent\sessions\`. */
+/** The agent that recorded a session, from the transcript path, the row's only host marker; matches `AgentLogo`. Each pattern allows either separator: a Windows run writes `C:\...\.omp\agent\sessions\`. */
 export function hostOfSession(sessionFile: string): { label: string; host: "omp" | "pi" | "opencode" | "unknown" } {
   const file = String(sessionFile ?? "");
   // omp writes `~/.omp/agent/sessions/`; the older `.agent/agent/sessions/` spelling still counts.
@@ -525,4 +519,3 @@ export function runStatusOf(stopReason: string): RunStatus {
 export function projectLabel(folder: string): string {
   return folder || "(none)";
 }
-
