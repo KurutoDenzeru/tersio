@@ -323,9 +323,7 @@ test("install --host pig writes the pig tree and no OMP files", () => {
   }
 });
 
-
 // OMP's plugin manifest has no skills field, so install registers the bundled skills root and uninstall removes it.
-// A host install seeds its profile from pi's section; writing that merged view back would move pi's preset to everyone.
 test("a host install keeps its override out of the shared store", () => {
   const home = tempHome();
   try {
@@ -443,8 +441,8 @@ test("install --host opencode bundles the ponytail ruleset beside the tree", () 
     const base = path.join(home, ".config", "opencode", "plugins", "tersio", "ponytail-bundle");
     // The tree ships no node_modules, so every skill the /ponytail-* commands read must ride along.
     const bundled = [
-      "hooks/ponytail-instructions.js",
-      "hooks/ponytail-config.js",
+      "hooks/ponytail-instructions.ts",
+      "hooks/ponytail-config.ts",
       ...["ponytail", "ponytail-audit", "ponytail-debt", "ponytail-gain", "ponytail-help", "ponytail-review"]
         .map((skill) => `skills/${skill}/SKILL.md`),
     ];
@@ -452,7 +450,7 @@ test("install --host opencode bundles the ponytail ruleset beside the tree", () 
       const full = path.join(base, ...file.split("/"));
       expect(existsSync(full), `${file} bundled`).toBe(true);
     }
-    expect(readFileSync(path.join(base, "hooks", "ponytail-instructions.js"), "utf8")).toMatch(/getPonytailInstructions/);
+    expect(readFileSync(path.join(base, "hooks", "ponytail-instructions.ts"), "utf8")).toMatch(/getPonytailInstructions/);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

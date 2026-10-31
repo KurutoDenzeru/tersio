@@ -40,8 +40,8 @@ const EXTENSION_DIR = path.dirname(fileURLToPath(import.meta.url));
 /** Whether pi or pig declares an upstream Ponytail; read per call so a mid-session settings.json change lands. */
 function piHasUpstreamPonytail(): boolean {
   for (const agentDir of [piAgentDir(), pigAgentDir()]) {
-    const localEntry = path.join(agentDir, 'ponytail', 'pi-extension', 'index.js');
-    if (existsSync(localEntry)) return true;
+    // The fork ships index.ts; an older install's package still holds index.js, so both count as present.
+    if (['index.ts', 'index.js'].some((base) => existsSync(path.join(agentDir, 'ponytail', 'pi-extension', base)))) return true;
     try {
       const raw = readFileSync(path.join(agentDir, 'settings.json'), 'utf8');
       const settings = JSON.parse(raw) as { packages?: unknown };
@@ -67,11 +67,11 @@ export function ponytailFallback(mode: string): string {
 }
 
 
-// Ponytail is hoisted, so one upward walk covers every layout. The hook is CommonJS, so both namespaces are tried.
+// Ponytail is hoisted, so one upward walk covers every layout. jiti and Bun both load TypeScript, so the module's named exports arrive directly.
 async function loadPonytailInstructions(mode: string): Promise<string> {
   // Ponytail rides inside this tree; the OpenCode layout bundles the ruleset beside the extensions.
-  const vendored = path.join(EXTENSION_DIR, '..', 'ponytail', 'hooks', 'ponytail-instructions.js');
-  const bundled = path.join(EXTENSION_DIR, '..', 'ponytail-bundle', 'hooks', 'ponytail-instructions.js');
+  const vendored = path.join(EXTENSION_DIR, '..', 'ponytail', 'hooks', 'ponytail-instructions.ts');
+  const bundled = path.join(EXTENSION_DIR, '..', 'ponytail-bundle', 'hooks', 'ponytail-instructions.ts');
   const treeLocal = existsSync(vendored) ? vendored : (existsSync(bundled) ? bundled : null);
   if (treeLocal) {
     try {

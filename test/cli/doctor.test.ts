@@ -577,8 +577,7 @@ function hostExtensionsDirForTest(id: "omp" | "pi" | "opencode", home: string): 
 
 function seededHostTree(home: string, id: "omp" | "pi" | "opencode"): string {
   const dir = hostExtensionsDirForTest(id, home);
-  // A host only counts as installed when every tree file is present, so seed the whole set for that host.
-  // Everything but the Caveman bodies ships current, so the stale set is exactly the bodies this test is about.
+  // A host only counts as installed when every tree file is present, so seed the whole set for that host. Everything but the Caveman bodies ships current, so the stale set is exactly the bodies this test is about.
   for (const rel of treeFilesFor(id)) {
     const at = path.join(dir, rel);
     mkdirSync(path.dirname(at), { recursive: true });
@@ -656,7 +655,6 @@ test("doctor stays silent when every host tree matches the plugin copy", () => {
     rmSync(home, { recursive: true, force: true });
   }
 });
-
 
 // omp's tree and the installed package are the same directory, so the reference is this CLI's source instead.
 test("doctor does not report a stale omp package tree", () => {
@@ -830,8 +828,7 @@ test("doctor checks the pstack rule body", () => {
   }
 });
 
-// A manager that answers running with nothing behind it is its own failure, not the orphan one.
-// Same Windows limit as the orphan probe above: `pgrep` decides "alive".
+// A manager that answers running with nothing behind it is its own failure, not the orphan one. Same Windows limit as the orphan probe above: `pgrep` decides "alive".
 test.skipIf(isWindows())("doctor warns when the service reports running with no serve process", () => {
   const home = missingHome();
   const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-oc-dead-"));
@@ -929,12 +926,12 @@ test("doctor measures ponytail bodies against this tree's vendored copy", () => 
     seededHostTree(home, "pi");
     const agentDir = path.join(home, ".pi", "agent");
     const local = path.join(agentDir, "ponytail");
-    seedPonytailBodies(local, (rel) => (rel === "hooks/ponytail-instructions.js" ? `STRAY ${rel}\n` : `VENDORED ${rel}\n`));
+    seedPonytailBodies(local, (rel) => (rel === "hooks/ponytail-instructions.ts" ? `STRAY ${rel}\n` : `VENDORED ${rel}\n`));
     writeFileSync(path.join(agentDir, "settings.json"), JSON.stringify({ packages: [local] }, null, 2), "utf8");
 
     const result = runDoctor(home, path.join(home, "empty-bin"));
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toMatch(/Ponytail per-host bodies:.*stale in 1 file: pi\/hooks\/ponytail-instructions\.js/);
+    expect(result.stdout).toMatch(/Ponytail per-host bodies:.*stale in 1 file: pi\/hooks\/ponytail-instructions\.ts/);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }
@@ -949,7 +946,7 @@ test("doctor checks pi ponytail at the path its settings declare", () => {
     const local = path.join(agentDir, "ponytail");
     // A host only counts as installed when every tree file is present, so seed pi's tree first.
     seededHostTree(home, "pi");
-    seedPonytailBodies(local, (rel) => (rel === "hooks/ponytail-instructions.js" ? "PI BODY\n" : `SHARED ${rel}\n`));
+    seedPonytailBodies(local, (rel) => (rel === "hooks/ponytail-instructions.ts" ? "PI BODY\n" : `SHARED ${rel}\n`));
     writeFileSync(path.join(agentDir, "settings.json"), JSON.stringify({ packages: ["npm:pi-subagents", local] }, null, 2), "utf8");
     // The copy the omp extensions load is the reference: the vendored tree inside the package.
     const ref = path.join(pkg, "extensions", "ponytail");
@@ -957,7 +954,7 @@ test("doctor checks pi ponytail at the path its settings declare", () => {
 
     const result = runDoctor(home, path.join(home, "empty-bin"));
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toMatch(/Ponytail per-host bodies:.*stale in 1 file: pi\/hooks\/ponytail-instructions\.js/);
+    expect(result.stdout).toMatch(/Ponytail per-host bodies:.*stale in 1 file: pi\/hooks\/ponytail-instructions\.ts/);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

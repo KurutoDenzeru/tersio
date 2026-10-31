@@ -860,7 +860,7 @@ async function stepPigLayer(options: InstallOptions): Promise<void> {
 }
 
 // A local dir, not an npm spec: pi only version-checks npm entries, so this avoids the update nag.
-const PI_PONYTAIL_PACKAGE = `${JSON.stringify({ name: 'ponytail', version: '0.0.0', private: true, pi: { extensions: ['./pi-extension/index.js'], skills: ['./skills'] } }, null, 2)}\n`;
+const PI_PONYTAIL_PACKAGE = `${JSON.stringify({ name: 'ponytail', version: '0.0.0', private: true, pi: { extensions: ['./pi-extension/index.ts'], skills: ['./skills'] } }, null, 2)}\n`;
 
 async function stepPonytailForPi(agentDir: string, options: InstallOptions, host: 'pi' | 'pig' = 'pi'): Promise<void> {
   if (!options.quiet) console.log(`  Ponytail — write the local ${host} package`);
