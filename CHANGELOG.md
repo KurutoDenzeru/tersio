@@ -19,6 +19,7 @@
 - Tokscale is no longer credited, because nothing uses it.
 
 ### Fixed
+- **Doctor repairs stop touching agents you don't have.** The health repair used to create an OpenCode folder on machines without OpenCode installed. Thanks to @FrancoStino (#79).
 - **No more stray files in your projects.** Turning a Headroom switch used to leave an empty lock file in the folder you started the dashboard from. Nothing writes into your projects anymore.
 - **The Headroom drawer lines up.** The switch rows and their counters sit on one line now.
 - **Every request counts once.** A resumed session repeated the calls it inherited, and every repeat was counted. Your totals now read true.
