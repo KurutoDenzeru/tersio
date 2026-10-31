@@ -65,8 +65,7 @@ const dayTotalsOf = (agent: AgentStats): DayTotals => {
     perDay.set(day, (perDay.get(day) ?? 0) + (Number.isFinite(bucket.tokens) ? bucket.tokens : 0));
   }
   const end = Math.max(utcDay(agent.generatedAt || Date.now()), 0);
-  // An all-time window reads as GitHub's own contribution log: the full year of columns, quiet days included.
-  // A bounded window starts where it opened, so a quiet range draws nothing rather than a year of empty cells.
+  // An all-time window reads as GitHub's own contribution log: the full year of columns, quiet days included. A bounded window starts where it opened, so a quiet range draws nothing rather than a year of empty cells.
   const wantStart = agent.cutoff > 0 ? utcDay(agent.cutoff) : end - (GRAPH_WEEKS - 1) * 7 * DAY_MS;
   // A window wider than the grid cap starts at the cap, so the shape stays GitHub's 53 weeks.
   const windowStart = Math.max(wantStart, utcDay(end - (GRAPH_WEEKS - 1) * 7 * DAY_MS));

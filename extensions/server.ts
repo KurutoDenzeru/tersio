@@ -318,8 +318,6 @@ function rewriteCommand(command: string, cwd?: string): Promise<string | null> {
   if (!bin) return Promise.resolve(null);
   const { promise, resolve } = Promise.withResolvers<string | null>();
   // A `.cmd` shim cannot be spawned directly on Windows, so it runs through the shell.
-  // rtk's OpenCode hook judges the rewrite against OpenCode's own permission rules and answers {} when
-  // the rewrite would change what those rules decide, so a deny never turns into an allow.
   const shim = shimCommand(bin, ['hook', 'opencode', command]);
   execFile(shim.cmd, shim.args, { timeout: 5000, cwd }, (error, stdout) => {
     // A kill or timeout means untrustworthy output; pass the command through.

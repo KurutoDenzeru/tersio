@@ -145,9 +145,7 @@ function Dashboard() {
   // Upstream and Logs are developer surfaces: the About switch hides them, and a bookmarked route lands on Overview.
   const dev = useDevMode();
   const section = (route === "upstream" || route === "logs") && !dev ? "overview" : route;
-  // The smallest view still answers "is there an agent database".
-  // Upstream is not an agent view: the scorecard has its own store, and the hook keeps the shell uniform.
-  // Neither the scorecard nor the guide is an agent view; the hook keeps the shell uniform.
+  // The smallest view still answers "is there an agent database". Upstream is not an agent view: the scorecard has its own store, and the hook keeps the shell uniform.
   const view: AgentView = section === "upstream" || section === "how-to" || section === "logs" ? "all" : section;
   // Only the request log pages through the range; every other view wants the newest rows.
   const [requestOffset, setRequestOffset] = useState(0);
@@ -160,8 +158,6 @@ function Dashboard() {
   // The session-start modes the navbar's banner names, reloaded when Settings closes.
   const [modes, reloadModes, modesLoaded] = useModeState();
   // The rail draws its own skeleton until the first data answer, so its items do not pop in.
-  // A read that hangs (a huge aggregate still crunching server-side) caps after 6s: real items
-  // beat an endless skeleton, and the data lands into the pages when it arrives.
   const readStuck = useStuckPending(loading && !agent, 6000);
   const agentPending = loading && !agent && !readStuck;
 
@@ -188,8 +184,7 @@ function Dashboard() {
     if (section === "upstream") return <UpstreamPage />;
     if (section === "logs") return <LogsPage onClose={() => setSection("overview")} />;
     if (loading && !agent) {
-      // A read that hangs stops holding the page skeleton after the cap: say it is still working and
-      // offer a retry, rather than the empty state pretending the database is missing.
+      // A read that hangs stops holding the page skeleton after the cap: say it is still working and offer a retry, rather than the empty state pretending the database is missing.
       if (!readStuck) return <PageSkeleton section={section} />;
       return (
         <Page>

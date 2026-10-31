@@ -54,8 +54,7 @@ export function useUpdate(): UpdateFeed {
     });
   }, [adopt, push]);
 
-  // One read per period, re-armed on every view. An action that flips the status therefore pulls
-  // the next read forward, instead of the page waiting out a rest cadence armed before the action.
+  // One read per period, re-armed on every view. An action that flips the status therefore pulls the next read forward, instead of the page waiting out a rest cadence armed before the action.
   useEffect(() => {
     let alive = true;
     const period = view === null || view.status !== "idle" ? QUICK_MS : POLL_MS;

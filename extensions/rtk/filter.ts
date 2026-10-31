@@ -109,9 +109,7 @@ export default function rtkFilterExtension(pi: ExtensionApi): void {
   const exec = pi.exec;
   // A host that drives its own tool hooks never fires these events, so a handler here would be dead weight.
   if (!bin || !exec || !hasToolLifecycle(pi)) return;
-  // omp records the post-hook command in its transcript, so only pi leaves an audit row here:
-  // an omp row would double-count, and OpenCode never reaches this hook at all. PiG reads the
-  // same storage through the same adapter, so its row files under pi too.
+  // omp records the post-hook command in its transcript, so only pi leaves an audit row here: an omp row would double-count, and OpenCode never reaches this hook at all.
   const auditHost = isPiHost(pi) || isPigHost(pi) ? 'pi' : null;
   // Registered synchronously, unlike the rtk-init hook, whose async version probe can miss the first call of a fast session.
   pi.on('tool_call', async (event, ctx: ExtensionCtx) => {

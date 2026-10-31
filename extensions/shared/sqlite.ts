@@ -138,11 +138,7 @@ function cliRead(db: string, sql: string): string {
   }
 }
 
-/**
- * Read through the in-process engine, retrying on a private copy when the file will not open.
- * A WAL database whose `-shm` is gone cannot be opened read-only, because read-only cannot create it;
- * the copy can, which is the same rung `cliRead` falls back to.
- */
+/** Read through the in-process engine, retrying on a private copy when the file will not open. */
 function engineRead(e: Engine, db: string, sql: string): unknown[][] {
   try {
     return e.read(db, sql);

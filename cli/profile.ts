@@ -31,8 +31,7 @@ interface Profile {
   headroomDefault: string;
   currency: CurrencyCode;
   backupSchedule: BackupSchedule;
-  // The dashboard's Developer tools switch and accent. Both live here, not in browser storage, so
-  // they survive a new port and a new browser: the dashboard binds a fresh origin each run.
+  // The dashboard's Developer tools switch and accent. Both live here, not in browser storage, so they survive a new port and a new browser: the dashboard binds a fresh origin each run.
   devTools: boolean;
   accent: string;
   /** The rail's expanded width in px, from the dashboard's drag handle. */
@@ -147,8 +146,7 @@ function parseStored(raw: string | null): StoredSettings | null {
   }
 }
 
-// Upstream Ponytail's pi extension reads its own config for the session default, so the saved default
-// is mirrored there. Without it a headless pi session starts at upstream's default and never injects.
+// Upstream Ponytail's pi extension reads its own config for the session default, so the saved default is mirrored there. Without it a headless pi session starts at upstream's default and never injects.
 function ponytailConfigFile(): string {
   const base = (process.env.XDG_CONFIG_HOME || '').trim() || path.join(os.homedir(), '.config');
   return path.join(base, 'ponytail', 'config.json');

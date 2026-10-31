@@ -65,8 +65,7 @@ export const NAV: readonly NavGroup[] = [
     ],
   },
   {
-    // The developer surfaces sit last and read as their own category; the rail drops the heading
-    // with the last item, so an operator who never flips the About switch never sees it.
+    // The developer surfaces sit last and read as their own category; the rail drops the heading with the last item, so an operator who never flips the About switch never sees it.
     heading: "Developer",
     items: [
       { id: "upstream", label: "Upstream", icon: "git-branch", hotkey: "s", agentOnly: false, devOnly: true },

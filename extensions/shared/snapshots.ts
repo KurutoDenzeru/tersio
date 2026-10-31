@@ -1,5 +1,4 @@
-// snapshots.ts — one `.snap` per data snapshot: a 4-byte length, a JSON header, then one gzip body.
-// The header alone lists a snapshot, and every member carries a hash so a restore can refuse a short file.
+// snapshots.ts — one `.snap` per data snapshot: a 4-byte length, a JSON header, then one gzip body. The header alone lists a snapshot, and every member carries a hash so a restore can refuse a short file.
 
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';

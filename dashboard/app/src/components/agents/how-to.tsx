@@ -1,5 +1,4 @@
-// Quick start: the pipeline as one canvas, drawn the way a workflow tool lays it out.
-// Everything here mirrors docs/ARCHITECTURE.md: the hosts, the block order, and the turn it produces.
+// Quick start: the pipeline as one canvas, drawn the way a workflow tool lays it out. Everything here mirrors docs/ARCHITECTURE.md: the hosts, the block order, and the turn it produces.
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/icon";
@@ -18,8 +17,7 @@ export function HowToPage({ modes, onModesChanged }: { modes: ModeState | null; 
   const [hostState, setHostState] = useState<HostState>({ installed: {}, present: {}, versions: {} });
   const [busy, setBusy] = useState<NodeId | null>(null);
   const [hostsLoaded, setHostsLoaded] = useState(false);
-  // An exported file has no server: /settings never answers, so the documented every-node-lit reading holds
-  // there instead of a permanent skeleton.
+  // An exported file has no server: /settings never answers, so the documented every-node-lit reading holds there instead of a permanent skeleton.
   const pipelinePending = usePending(!hostsLoaded || (!isFileExport() && modes === null));
   // One picker serves both entries: the canvas's centered empty-state node, and the header button.
   const [addOpen, setAddOpen] = useState(false);
@@ -59,8 +57,7 @@ export function HowToPage({ modes, onModesChanged }: { modes: ModeState | null; 
       .finally(() => setBusy(null));
   };
 
-  // The CLI runs install, uninstall, and update in its own process, so the page asks the server
-  // whether that child is still running instead of guessing from the tree on disk.
+  // The CLI runs install, uninstall, and update in its own process, so the page asks the server whether that child is still running instead of guessing from the tree on disk.
   const hostAction = (node: NodeId, action: HostAction): void => {
     const host = node.slice("host-".length);
     setBusy(node);

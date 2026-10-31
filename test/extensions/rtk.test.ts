@@ -202,8 +202,7 @@ test("a host without exec registers nothing", () => {
 
 // OpenCode's adapter drives its own before/after tool hooks, so these events never reach an extension there.
 test("a host without a tool lifecycle registers no shell hook", async () => {
-  // The gate runs after the binary lookup, so the test has to supply one; without it a CI runner
-  // stops even earlier and the assertion would pass for the wrong reason.
+  // The gate runs after the binary lookup, so the test has to supply one; without it a CI runner stops even earlier and the assertion would pass for the wrong reason.
   await withFakeRtk(async () => {
     resetSharedComboState();
     const handlers = new Map<string, Handler>();
@@ -804,7 +803,6 @@ test("rtk mode on with no installed binary reports it instead of guessing", asyn
     expect(cmds).toEqual([]);
   }));
 });
-
 
 // A late subagent registers its listener late, so it keeps the session default and needs shared state.
 test("rtk_run uses shared state when a late subagent's own flag is off", async () => {

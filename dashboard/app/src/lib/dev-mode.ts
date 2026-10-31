@@ -1,7 +1,4 @@
-// The developer toggle behind Settings > About. It gates the surfaces an operator never needs.
-// The server owns the value, in ~/.tersio/settings.json: the dashboard binds a new port each run, so
-// a browser store would forget the switch on the next launch. A file export has no server, so it
-// keeps the value in localStorage instead.
+// The developer toggle behind Settings > About. It gates the surfaces an operator never needs. The server owns the value, in ~/.tersio/settings.
 import { useSyncExternalStore } from "react";
 import { isFileExport } from "./data";
 
@@ -35,8 +32,7 @@ function snapshot(): boolean {
 /** Read the saved value once: the server when there is one, else the browser store. */
 function hydrate(): void {
   hydrated = true;
-  // A flip that lands while this read is in flight is newer than the answer: the ticket only lets the
-  // response apply when nothing was set locally since the read started, or the toggle would snap back.
+  // A flip that lands while this read is in flight is newer than the answer: the ticket only lets the response apply when nothing was set locally since the read started, or the toggle would snap back.
   const ticket = localWrites;
   if (isFileExport() || typeof fetch !== "function") {
     current = localStorage.getItem(STORAGE_KEY) === "1";

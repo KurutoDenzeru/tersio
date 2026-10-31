@@ -8,10 +8,7 @@ const scope = globalThis as { __TERSIO_MARKS?: Record<string, string> | null };
 return scope.__TERSIO_MARKS ?? {};
 }
 
-/**
- * A remote mark is served by the dashboard, which keeps a copy in ~/.tersio/marks after the first
- * fetch. An exported file has no server, so it keeps the CDN URL it was built with.
- */
+/** A remote mark is served by the dashboard, which keeps a copy in ~/.tersio/marks after the first fetch. An exported file has no server, so it keeps the CDN URL it was built with. */
 function served(slug: string): string | null {
   const remote = markUrl(slug);
   if (!remote) return null;

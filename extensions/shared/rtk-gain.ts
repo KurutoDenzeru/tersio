@@ -33,10 +33,7 @@ export interface RtkGain {
   avgPct: number;
   totalMs: number;
   byCommand: RtkCommandRow[];
-  /**
-   * False when rtk's own database could not be read: absent, locked, or corrupt.
-   * A zero with this false means "not measured"; a zero with it true means rtk really saved nothing.
-   */
+  /** False when rtk's own database could not be read: absent, locked, or corrupt. A zero with this false means "not measured"; a zero with it true means rtk really saved nothing. */
   measured: boolean;
 }
 
@@ -111,10 +108,7 @@ export function readRtkGain(limit = 10, cutoffMs?: number): RtkGain {
   }
 }
 
-/**
- * The same rows folded by their leading verb, so 7,000 full commands read as a couple dozen.
- * `limit` bounds the folded rows, and `variants` names how many full commands each one hides.
- */
+/** The same rows folded by their leading verb, so 7,000 full commands read as a couple dozen. `limit` bounds the folded rows, and `variants` names how many full commands each one hides. */
 export function readRtkGainByVerb(limit = 12, cutoffMs?: number): RtkGain {
   lastFailure = null;
   try {

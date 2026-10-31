@@ -61,10 +61,7 @@ interface ModeWants {
   headroom: 'on' | 'off' | null;
 }
 
-/**
- * The only stdout a client ever sees is the protocol, so a tool that prints (the settings save
- * line) is captured and its text becomes the tool's answer.
- */
+/** The only stdout a client ever sees is the protocol, so a tool that prints (the settings save line) is captured and its text becomes the tool's answer. */
 async function captureLog<T>(fn: () => Promise<T>): Promise<{ value: T; text: string }> {
   const lines: string[] = [];
   const original = console.log;
@@ -230,10 +227,7 @@ async function callTool(params: unknown): Promise<{ content: Array<{ type: 'text
 
 type WireMessage = { jsonrpc?: string; id?: unknown; method?: unknown; params?: unknown };
 
-/** Handles one wire message; exposed so a test can drive the protocol without a process.
- *
- * Async because tools/call awaits the tool.
- */
+/** Handles one wire message; exposed so a test can drive the protocol without a process. Async because tools/call awaits the tool. */
 export async function handleMessage(message: WireMessage, send: (msg: unknown) => void): Promise<void> {
   const { id, method, params } = message;
   // A notification carries no id and wants no answer.
@@ -259,10 +253,7 @@ export async function handleMessage(message: WireMessage, send: (msg: unknown) =
   }
 }
 
-/**
- * Re-runs this server under bun when bun is on PATH and node is the runtime now.
- * The client spawns `tersio mcp`, so the switch happens once, here, before the stream is read.
- */
+/** Re-runs this server under bun when bun is on PATH and node is the runtime now. The client spawns `tersio mcp`, so the switch happens once, here, before the stream is read. */
 export async function preferBun(): Promise<void> {
   // The installed CLI runs under node, so a bun shebang alone would never take effect.
   if (process.versions.bun) return;
@@ -300,8 +291,7 @@ export async function runMcpServer(): Promise<void> {
     try {
       message = JSON.parse(text) as WireMessage;
     } catch { /* a malformed line is dropped; the client's own timeout surfaces it */ }
-    // A client may call tools in parallel, and the printing tools patch the console, so one
-    // handler at a time; an overlapping patch could leak a print onto the wire.
+    // A client may call tools in parallel, and the printing tools patch the console, so one handler at a time; an overlapping patch could leak a print onto the wire.
     if (message) queue = queue.then(() => handleMessage(message, mcpSend));
   });
   // The server never outlives its client: a closed stream ends the process.

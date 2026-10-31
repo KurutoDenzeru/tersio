@@ -281,8 +281,7 @@ export function AppSidebar({
           className="chrome-texture pointer-events-none absolute inset-0"
         />
         {NAV.map((group, groupIndex) => {
-          // Every item stays visible: an item whose agent data is still missing renders dimmed and
-          // unclickable instead of vanishing, so the rail never degrades to bare labels and lines.
+          // Every item stays visible: an item whose agent data is still missing renders dimmed and unclickable instead of vanishing, so the rail never degrades to bare labels and lines.
           const items = group.items.filter((item) => dev || !item.devOnly);
           // A pending read draws the full count this rail would have, so no item arrives late.
           const pending = group.items.filter((item) => dev || !item.devOnly);
@@ -402,8 +401,7 @@ export function Topbar({
   return (
     <header
       className={cn(
-        // Fixed across the whole window like the OMP stats reference: the brand section sits over the
-        // rail, so bar and sidebar share one surface and one color.
+        // Fixed across the whole window like the OMP stats reference: the brand section sits over the rail, so bar and sidebar share one surface and one color.
         "fixed top-0 right-0 left-0 z-40 flex h-12 items-center gap-2 overflow-hidden px-3 max-md:h-14",
         "bar-veil",
         "grain",

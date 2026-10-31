@@ -1,6 +1,4 @@
-// An install writes every extension dir the package ships; a removal that misses one leaves that
-// extension importing a shared file the same removal deleted, and the agent refuses to start.
-// This parity check fails the moment a new extension lands without a removal entry.
+// An install writes every extension dir the package ships; a removal that misses one leaves that extension importing a shared file the same removal deleted, and the agent refuses to start.
 import { expect, test } from "vitest";
 import { readdirSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -22,7 +20,6 @@ test("every shipped extension dir has a removal entry, on both hosts", () => {
 });
 
 test("the pi removal covers the tree root file an install writes", () => {
-  // pi discovers <ext>/server.ts beside the extension dirs; removing the dirs but not the file
-  // leaves a module whose imports are gone.
+  // pi discovers <ext>/server.ts beside the extension dirs; removing the dirs but not the file leaves a module whose imports are gone.
   expect(PI_TREE_DIRS).toContain("server.ts");
 });

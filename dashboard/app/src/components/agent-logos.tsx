@@ -48,8 +48,7 @@ export function OpencodeLogo({ className = "size-full" }: { className?: string }
   );
 }
 
-// Codex's own mark, from @lobehub/icons (the OpenAI blossom with a terminal prompt). OpenAI's knot
-// is the parent brand, so the CLI's own mark is the one that reads as Codex.
+// Codex's own mark, from @lobehub/icons (the OpenAI blossom with a terminal prompt). OpenAI's knot is the parent brand, so the CLI's own mark is the one that reads as Codex.
 export function CodexLogo({ className = "size-full" }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" className={className}>
@@ -58,8 +57,7 @@ export function CodexLogo({ className = "size-full" }: { className?: string }) {
   );
 }
 
-// PiG's own mark: the green pixel pig from pi-in-go.dev, redrawn as pixel rects so it carries no
-// background and keeps the site's palette (ink outline, three greens, white eyes).
+// PiG's own mark: the green pixel pig from pi-in-go.dev, redrawn as pixel rects so it carries no background and keeps the site's palette (ink outline, three greens, white eyes).
 export function PigLogo({ className = "size-full" }: { className?: string }) {
   return (
     <svg viewBox="0 0 16 13" aria-hidden="true" className={className}>

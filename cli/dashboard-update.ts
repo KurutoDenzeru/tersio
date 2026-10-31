@@ -1,5 +1,4 @@
-// The dashboard's update surface: one view the page polls, the child process that applies a release,
-// and the background check the operator's cadence drives. Node built-ins only.
+// The dashboard's update surface: one view the page polls, the child process that applies a release, and the background check the operator's cadence drives. Node built-ins only.
 import { spawn } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';

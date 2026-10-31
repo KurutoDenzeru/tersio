@@ -46,8 +46,7 @@ interface RegistryEntry {
   source: 'registry' | 'borrowed';
 }
 
-// From EcoLogits' model data (min/max active ranges fold to their midpoint); borrowed entries
-// cite the param disclosure they replace (MoE active/total), since EcoLogits does not list them.
+// From EcoLogits' model data (min/max active ranges fold to their midpoint); borrowed entries cite the param disclosure they replace (MoE active/total), since EcoLogits does not list them.
 const TABLE: RegistryEntry[] = [
   { match: 'opus', active: 133.5, total: 670, provider: 'anthropic', source: 'registry' },
   { match: 'sonnet-5', active: 58.5, total: 293, provider: 'anthropic', source: 'registry' },

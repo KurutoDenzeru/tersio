@@ -1,5 +1,4 @@
-// The three paths Tersio actually routes through rtk, measured on committed fixtures.
-// Run with `bun run bench`; `bun run test` ignores this file.
+// The three paths Tersio actually routes through rtk, measured on committed fixtures. Run with `bun run bench`; `bun run test` ignores this file.
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -25,9 +24,7 @@ test.skipIf(bin === null)("find output loses most of its bytes and keeps every p
   const output = condense("find", input);
   expect(output, "rtk pipe -f find produced nothing").not.toBeNull();
   const condensed = output as string;
-  // The filter prints a header with the true totals, then names directories and folds the rest into
-  // `+N` and `+N more dirs`. So fidelity is the header count: every input file and directory is
-  // accounted for, even when its name is folded away.
+  // The filter prints a header with the true totals, then names directories and folds the rest into `+N` and `+N more dirs`.
   const lines = input.split("\n").filter(Boolean);
   const files = lines.length;
   const dirs = new Set(lines.map((line) => path.dirname(line))).size;

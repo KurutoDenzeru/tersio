@@ -1,5 +1,4 @@
-// The update surface's decision rules: when a cadence is due, when a release is offered, and what
-// the operator's choices do to the next offer.
+// The update surface's decision rules: when a cadence is due, when a release is offered, and what the operator's choices do to the next offer.
 import { expect, test } from "vitest";
 import { dueIn, isDue, newerAvailable, setUpdatePrefs, shouldPrompt, updateView } from "../../cli/dashboard-update.ts";
 import type { UpdateView } from "../../cli/dashboard-update.ts";
