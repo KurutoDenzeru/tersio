@@ -159,7 +159,7 @@ interface DshCtx {
 interface DshAgent {
   id: string;
   /** The receiving session, for passive log appends that render without starting a turn. */
-  session?: { append?: (type: string, data: unknown) => unknown };
+  session?: { append?: (type: string, data: unknown, intent?: { surfaceOp: 'append' }) => unknown };
 }
 
 interface DshCommands {
@@ -176,12 +176,13 @@ export const name = 'tersio-dsh';
 export const inject = ['tools', 'systemPrompt', 'commands'];
 
 function modeLine(store: Store, section: Store): string {
-  // The same glyphs the Combo status line uses on the other hosts.
+  // The same glyphs the Combo status line uses on the other hosts. The store keeps pstack as 'on'/'off' strings.
+  const pstack = setting(store, section, 'pstackDefault');
   return [
     `🪨 caveman=${String(setting(store, section, 'cavemanDefault') ?? 'off')}`,
     `🗜️ rtk=${setting(store, section, 'rtkDefault') === true ? 'on' : 'off'}`,
     `🧠 ponytail=${String(setting(store, section, 'ponytailDefault') ?? 'off')}`,
-    `🥔 pstack=${String(setting(store, section, 'pstackDefault') ?? 'off')}`,
+    `🥔 pstack=${pstack === true || pstack === 'on' ? 'on' : 'off'}`,
     `🍃 headroom=${setting(store, section, 'headroomDefault') === 'on' ? 'on' : 'off'}`,
   ].join(' · ');
 }
@@ -189,10 +190,17 @@ function modeLine(store: Store, section: Store): string {
 /** Appends the change as a passive chat message: the UI renders it like any user message, without starting a turn. */
 async function notice(agent: DshAgent, text: string): Promise<void> {
   const session = agent.session;
+  if (process.env.TERSIO_DSH_DEBUG) {
+    console.log(`[tersio-dsh] notice: session=${typeof session} append=${typeof session?.append}`);
+  }
   if (!session?.append) return;
   try {
-    await session.append('user/message', { content: [{ type: 'text', text }], source: { kind: 'tersio-modes', form: 'notice', summary: text } });
-  } catch { /* the command result still names the change */ }
+    // A user message is a surface event: the engine requires the surfaceOp intent, or the append is rejected.
+    await session.append('user/message', { content: [{ type: 'text', text }], source: { kind: 'tersio-modes', form: 'notice', summary: text } }, { surfaceOp: 'append' });
+    if (process.env.TERSIO_DSH_DEBUG) console.log('[tersio-dsh] notice appended');
+  } catch (error) {
+    if (process.env.TERSIO_DSH_DEBUG) console.log(`[tersio-dsh] notice append failed: ${(error as Error)?.message ?? error}`);
+  }
 }
 
 function registerCommands(ctx: DshCtx): void {
@@ -267,7 +275,7 @@ function registerCommands(ctx: DshCtx): void {
         const raw = String(rawInput || 'off').trim().toLowerCase();
         const on = raw === 'on' ? true : raw === 'off' ? false : null;
         if (on === null) return { kind: 'success', text: 'Usage: /pstack on | /pstack off' };
-        const modes = await apply(agent, (section) => { section.pstackDefault = on; }, `Tersio pstack turned ${on ? 'on' : 'off'}`);
+        const modes = await apply(agent, (section) => { section.pstackDefault = on ? 'on' : 'off'; }, `Tersio pstack turned ${on ? 'on' : 'off'}`);
         return { kind: 'success', text: `pstack ${on ? 'on' : 'off'}: ${modes}` };
       },
     },
