@@ -20,7 +20,7 @@ Coding agents bill you per token. Three of the costs you never asked for:
 - **Shell output is noise.** A failing test prints hundreds of lines to reach the four that matter.
 - **The rules repeat every turn.** Your agent re-reads its instructions on every single turn.
 
-Tersio installs into Oh My Pi, pi, or OpenCode, and cuts those costs:
+Tersio installs into Oh My Pi, pi, Pi-in-go, OpenCode, and DeepSeek Harness, and cuts those costs:
 
 | Mode | What it does for you |
 |---|---|
@@ -55,11 +55,12 @@ irm https://github.com/KurutoDenzeru/tersio/releases/latest/download/install.ps1
 Then run the CLI. Bare `tersio` opens a menu and asks which agent to install into:
 
 ```bash
-tersio                      # menu — picks Oh My Pi, pi, OpenCode, or Pi-in-go
+tersio                      # menu — picks Oh My Pi, pi, OpenCode, Pi-in-go, or DeepSeek Harness
 tersio install --host pi    # pi, non-interactive
 tersio install --host omp   # Oh My Pi, non-interactive
 tersio install --host opencode  # OpenCode, non-interactive
 tersio install --host pig   # Pi-in-go (PiG), non-interactive
+tersio install --host dsh   # DeepSeek Harness — mounts the bundle into every dsh profile
 ```
 
 Or let each host install the package itself:
@@ -69,7 +70,10 @@ omp plugin install @krtclcdy/tersio
 pi install npm:@krtclcdy/tersio
 opencode plugin add @krtclcdy/tersio
 pig install npm:@krtclcdy/tersio
+dsh plugin --profile web add npm:@krtclcdy/tersio
 ```
+
+The DeepSeek Harness desktop app installs through its Plugins pane instead: **Add plugin** → paste `@krtclcdy/tersio`, or a local checkout path while the bundle field is unreleased → restart the app. `dsh plugin` refuses the `desktop` profile by design, and `tersio install --host dsh` never writes it.
 
 Pick one install method per host, not both. Using both registers every command twice.
 
@@ -85,7 +89,7 @@ npm exec --yes --prefer-online --package=@krtclcdy/tersio@latest -- tersio insta
 
 | Need | Detail |
 |---|---|
-| Host | [OMP](https://github.com/can1357/oh-my-pi), [pi](https://github.com/earendil-works/pi), [OpenCode](https://opencode.ai), or [PiG](https://pi-in-go.dev) — `tersio install --host <omp\|pi\|opencode\|pig>` |
+| Host | [OMP](https://github.com/can1357/oh-my-pi), [pi](https://github.com/earendil-works/pi), [OpenCode](https://opencode.ai), [PiG](https://pi-in-go.dev), or [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) — `tersio install --host <omp\|pi\|opencode\|pig\|dsh>` |
 | Node.js | 20.12+ with npm. The CLI runs under Node |
 | Bun | Optional. Preferred when on PATH, npm otherwise; also supplies SQLite in process |
 | SQLite | Bun, Node 22.5+ `node:sqlite`, or the `sqlite3` binary on PATH |
@@ -166,7 +170,7 @@ Shared, and identical for every host:
 | Price sources | The host's own reported cost first, then `prices.local.json`, then the LiteLLM cache, then a default table the report labels a guess. A recorded zero is a real zero. A model counts as host-priced only when every message carried a cost. |
 | Data snapshots | `~/.tersio/backups/` — one `.snap` file per snapshot, checked against its own hash, six kept |
 
-Per host, written by `tersio install --host <omp|pi|opencode|pig>`:
+Per host, written by `tersio install --host <omp|pi|opencode|pig|dsh>`:
 
 | Host | Extensions | Ponytail |
 |---|---|---|
@@ -174,6 +178,7 @@ Per host, written by `tersio install --host <omp|pi|opencode|pig>`:
 | pi | `~/.pi/agent/extensions/{caveman,combo,commands,headroom,pstack,rtk,timing,shared}/`, auto-discovered | `~/.pi/agent/ponytail/` |
 | OpenCode | `~/.config/opencode/plugins/tersio/`, registered in `opencode.json` | bundled with Tersio |
 | PiG (Pi-in-go) | `~/.pig/agent/extensions/{caveman,combo,commands,headroom,pstack,rtk,timing,shared}/`, auto-discovered; `PIG_HOME` or `XDG_CONFIG_HOME` moves the root | `~/.pig/agent/ponytail/` |
+| DeepSeek Harness | `~/.dsh/profiles/<profile>/node_modules/@krtclcdy/tersio`, mounted as a dsh bundle in **every** profile (`web`, `desktop`) | inside the bundle |
 
 Tersio is agent-neutral: every host loads the same extensions and the same `shared/` modules from the same sources. Only the paths and the registration differ, and the installer owns those. No host is the target.
 
@@ -181,6 +186,7 @@ Per host, in more words:
 
 - **Oh My Pi.** The plugin manifest and the directory OMP discovers by default merge, so Tersio keeps one copy of each file and clears what an older build left in `~/.omp/agent/extensions/`. A second copy would load twice, and one of the two cannot find its own rule bodies. The install also registers the package in `~/.omp/plugins`, so it shows under **Settings → Plugins**.
 - **pi, PiG, and OpenCode.** Their own install command registers what they need, so the table above is the whole story.
+- **DeepSeek Harness.** Tersio mounts itself as a dsh bundle through the `dsh` field in its own `package.json`, so one `dsh plugin add` per profile brings the modes, the six slash commands, the `rtk_run` tool, and Tersio's MCP server. The desktop app boots the `desktop` profile while `dsh web` boots `web`, so the installer covers both; a restart of the app loads it. Mode switches there are chat messages, because DeepSeek Harness has no status line.
 
 The installer writes `<file>.bak` before it replaces a source. `tersio doctor --fix extensions` restores a damaged tree, and `doctor --fix registrations` drops retired or duplicate `config.yml` entries.
 

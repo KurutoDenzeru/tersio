@@ -85,5 +85,7 @@ export function AgentLogo({ host, className }: { host?: string; className?: stri
   if (host === "codex") return <CodexLogo className={className} />;
   if (host === "opencode") return <OpencodeLogo className={className} />;
   if (host === "pig") return <PigLogo className={className} />;
+  // The DeepSeek Harness mark in its own DeepSeek blue, not the theme ink.
+  if (host === "dsh") return <MarkGlyph slug="dsh" className={className ?? "size-full"} color="#4d6bfe" />;
   return <PiLogo className={className} />;
 }

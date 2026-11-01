@@ -8,7 +8,7 @@ import {
 } from './common.ts';
 import { PONYTAIL_PKG } from './manifest.ts';
 import { askInteractiveChoice, closeRL, confirmDestructive, tty, sayTagged } from './interactive.ts';
-import { detectHosts, parseHostArg } from './hosts.ts';
+import { detectHosts, dshCliProfiles, dshDesktopProfilePresent, dshPackageDir, dshRunner, parseHostArg } from './hosts.ts';
 import type { HostEntry, HostId } from './hosts.ts';
 import { piAgentDir, pigAgentDir, readTextIfExists, resolveHeadroomBinary } from '../extensions/shared/utils.ts';
 import { stopOwnedProxy } from '../extensions/shared/headroom-proxy.ts';
@@ -223,7 +223,7 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
   } else if (tty() && !confirmed) {
     // One plain select: Enter picks the single thing to remove, no Space and no Done row.
     const pick = await askInteractiveChoice('What should Tersio remove?', [
-      { value: 'agents', label: 'AI agents', hint: 'Oh My Pi, pi, PiG, OpenCode — pick one next' },
+      { value: 'agents', label: 'AI agents', hint: 'Oh My Pi, pi, PiG, OpenCode, DeepSeek Harness — pick one next' },
       ...(shouldRemoveRtk ? [] : [{ value: 'rtk', label: 'RTK binary', hint: 'the rtk CLI the hooks call' }]),
       { value: 'headroom', label: 'Headroom binary', hint: 'uninstalls headroom-ai through uv or pip' },
     ], 'agents');
@@ -313,6 +313,32 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
       } catch { /* config missing or not JSON; nothing to scrub */ }
     }
     console.log('\nDone. Restart OpenCode to drop the plugin.');
+    results.push(true);
+    continue;
+  }
+  if (host === 'dsh') {
+    const runner = dshRunner();
+    const profiles = dshCliProfiles();
+    if (!selected.installed && !selected.declared) {
+      sayTagged(`  [skip] ${selected.label} — nothing installed (${selected.installCmd})`);
+      results.push(false);
+      continue;
+    }
+    console.log('Will remove:');
+    console.log(`  the tersio bundle from every dsh CLI profile (${dshPackageDir()} is the web profile's copy)`);
+    if (dshDesktopProfilePresent()) console.log('  the desktop app keeps its own profile — remove the plugin there: Plugins → the Tersio row → Remove');
+    if (!confirmed && !(await confirmDestructive('Remove the tersio bundle from DeepSeek Harness?'))) { results.push(false); continue; }
+    if (dryRun) {
+      sayTagged(`  [dry-run] would run: ${runner.join(' ')} plugin --profile <${profiles.join(',') || 'none'}> remove @krtclcdy/tersio`);
+      results.push(true);
+      continue;
+    }
+    for (const profile of profiles) {
+      const remove = [...runner, 'plugin', '--profile', profile, 'remove', '@krtclcdy/tersio'];
+      await execP(remove[0], remove.slice(1), { timeout: 300_000 });
+      sayTagged(`  [rm] the tersio bundle from the ${profile} profile`);
+    }
+    console.log('\nDone. Restart dsh web (or the desktop app) to drop the bundle.');
     results.push(true);
     continue;
   }

@@ -149,7 +149,7 @@ export function PipelineCanvas({
 }: {
   modes: ModeState | null;
   hostState: HostState;
-  onSet: (node: NodeId, field: string, value: string | boolean, host?: "omp" | "pi" | "pig" | "opencode") => void;
+  onSet: (node: NodeId, field: string, value: string | boolean, host?: "omp" | "pi" | "pig" | "opencode" | "dsh") => void;
   onHostAction: (node: NodeId, action: HostAction) => void;
   busy: NodeId | null;
   onSaved: () => void;
@@ -433,7 +433,7 @@ export function PipelineCanvas({
         <>
           <span className={cn(header, "gap-2")}>
             <AgentLogo host={host.id} className="size-4 shrink-0" />
-            <span className="truncate text-[13px] font-semibold">{host.label}</span>
+            <span className="min-w-0 flex-1 text-[12px] font-semibold leading-tight">{host.label}</span>
             {off
               ? <NodeBadge on={false} label="not installed" />
               : wrapped[host.id]
@@ -472,8 +472,7 @@ export function PipelineCanvas({
     return null;
   };
 
-  // The SVG world spans the laid-out graph; every connector reads its two nodes' current boxes, so a
-  // drag replumbs the flow live.
+  // The SVG world spans the laid-out graph; connectors read live boxes, so a drag replumbs the flow.
   const worldBoxes = Object.values(boxes);
   const worldW = Math.max(...worldBoxes.map((b) => b.x + b.w), addBox.x + addBox.w) + 48;
   const worldH = Math.max(...worldBoxes.map((b) => b.y + b.h), addBox.y + addBox.h) + 48;

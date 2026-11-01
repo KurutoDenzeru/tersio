@@ -1,7 +1,7 @@
 {
   "name": "@krtclcdy/tersio",
   "version": "2.25.16",
-  "description": "✂️ Token saver and usage tracker for coding agents: terse Caveman replies, compact RTK shell output, lean Ponytail code, pstack rigor, Headroom compression, and a gain dashboard — one-command combos over one shared extension tree.",
+  "description": "\u2702\ufe0f Token saver and usage tracker for coding agents: terse Caveman replies, compact RTK shell output, lean Ponytail code, pstack rigor, Headroom compression, and a gain dashboard \u2014 one-command combos over one shared extension tree.",
   "keywords": [
     "token-saving",
     "ai-tools",
@@ -24,7 +24,13 @@
     "tersio": "dist/tersio.js"
   },
   "exports": {
-    "./server": "./dist/extensions/server.js"
+    "./server": "./dist/extensions/server.js",
+    "./dsh-plugin": "./extensions/dsh/index.ts"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./extensions/dsh/cordis.patch.yml"
+    }
   },
   "pi": {
     "extensions": [
@@ -101,7 +107,11 @@
       "rtkDefault": {
         "type": "enum",
         "description": "RTK on by default. inherit reads ~/.tersio/settings.json",
-        "values": ["inherit", "on", "off"],
+        "values": [
+          "inherit",
+          "on",
+          "off"
+        ],
         "default": "inherit"
       },
       "ponytailDefault": {
@@ -167,6 +177,7 @@
     "extensions/caveman/rule-ultra.md",
     "extensions/caveman/rule-megacave.md",
     "extensions/pstack/**/*.md",
+    "extensions/dsh/**/*",
     "extensions/ponytail/**/*"
   ],
   "scripts": {

@@ -1,6 +1,7 @@
 ## Unreleased
 
 ### Added
+- **Tersio runs on DeepSeek Harness.** The research landed and the plugin is real: Tersio mounts as a dsh bundle with the modes injected into every session, `tersio install --host dsh` sets it up, update and uninstall work, and the dashboard knows the host.
 - **The dashboard opens on your phone.** It shows up on your home network and prints the address to type.
 - **The busiest models and providers lead with tokens.** The volume is the big number, and the request count and its share sit under it.
 
@@ -19,6 +20,7 @@
 - Tokscale is no longer credited, because nothing uses it.
 
 ### Fixed
+- **DeepSeek Harness installs stop at the profile the CLI owns.** The desktop app's `desktop` profile refuses CLI writes, so `tersio install --host dsh` now mounts the CLI profiles and points you to the app's Plugins pane for the desktop one.
 - **Doctor repairs stop touching agents you don't have.** The health repair used to create an OpenCode folder on machines without OpenCode installed. Thanks to @FrancoStino (#79).
 - **No more stray files in your projects.** Turning a Headroom switch used to leave an empty lock file in the folder you started the dashboard from. Nothing writes into your projects anymore.
 - **The Headroom drawer lines up.** The switch rows and their counters sit on one line now.

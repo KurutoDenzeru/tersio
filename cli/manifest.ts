@@ -42,6 +42,7 @@ export const TREE_FILES: readonly string[] = [
   'shared/rtk-eligible.ts',
   'shared/updater.ts',
   'shared/headroom-proxy.ts',
+  'shared/mode-notice.ts',
   'caveman/index.ts',
   'caveman/caveman.ts',
   'caveman/rule.md',
@@ -99,8 +100,12 @@ export const GENERATED_TREE_FILES: Readonly<Record<string, string>> = {
   [PI_RTK_MANIFEST]: PI_RTK_MANIFEST_BODY,
 };
 
-/** The files one host's extension tree holds. The package tree holds all of them. */
-export function treeFilesFor(id: 'omp' | 'pi' | 'opencode' | 'pig'): readonly string[] {
+/** The files the DeepSeek Harness bundle mounts, relative to the package's extensions dir: the plugin module and the patch layer it carries. */
+export const DSH_BUNDLE_FILES: readonly string[] = ['dsh/index.ts', 'dsh/cordis.patch.yml'];
+
+/** The files one host's extension tree holds. The package tree holds all of them. DeepSeek Harness mounts the tersio package as a bundle, so its tree is the plugin's own two files. */
+export function treeFilesFor(id: 'omp' | 'pi' | 'opencode' | 'pig' | 'dsh'): readonly string[] {
+  if (id === 'dsh') return DSH_BUNDLE_FILES;
   if (id === 'opencode') return TREE_FILES;
   const files = TREE_FILES.filter((file) => file !== OPENCODE_ENTRY);
   return id === 'pi' || id === 'pig' ? [...files, PI_RTK_MANIFEST] : files;
@@ -113,7 +118,7 @@ const OBSOLETE_DIRS = ['updater', 'caveman-session', 'rtk-filter', 'rtk-session'
 const OBSOLETE_FILES = ['ponytail-bundle/hooks/ponytail-config.js', 'ponytail-bundle/hooks/ponytail-instructions.js'] as const;
 
 /** Debris test for a tree-relative path; one definition shared by detection and repair. */
-export function isObsoleteTreeFile(rel: string, id: 'omp' | 'pi' | 'opencode' | 'pig'): boolean {
+export function isObsoleteTreeFile(rel: string, id: 'omp' | 'pi' | 'opencode' | 'pig' | 'dsh'): boolean {
   if (rel.endsWith('.bak') || rel === '.DS_Store') return true;
   if (OBSOLETE_DIRS.includes(rel.split('/')[0] as (typeof OBSOLETE_DIRS)[number])) return true;
   if ((OBSOLETE_FILES as readonly string[]).includes(rel)) return true;
