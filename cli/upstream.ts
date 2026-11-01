@@ -35,6 +35,21 @@ const UNPKG = 'https://unpkg.com';
 const RAW = 'https://raw.githubusercontent.com';
 const PONYTAIL_NPM = 'https://registry.npmjs.org/@dietrichgebert/ponytail/latest';
 
+/** The Ponytail files Tersio wrote itself: the TypeScript hooks and the fork manifest have no upstream byte to match. */
+const PONYTAIL_LOCAL_ONLY: readonly string[] = [
+  'package.json',
+  'hooks/ponytail-config.ts',
+  'hooks/ponytail-instructions.ts',
+  'pi-extension/index.ts',
+];
+
+/** Upstream file -> the local fork that replaces it, so a ported body never reads as skipped. */
+const PONYTAIL_FORKS: ReadonlyArray<readonly [string, string]> = [
+  ['hooks/ponytail-config.js', 'hooks/ponytail-config.ts'],
+  ['hooks/ponytail-instructions.js', 'hooks/ponytail-instructions.ts'],
+  ['pi-extension/index.js', 'pi-extension/index.ts'],
+];
+
 const CAVEMAN_REPO = 'JuliusBrussee/caveman';
 const PONYTAIL_REPO = 'DietrichGebert/ponytail';
 const PSTACK_REPO = 'cursor/plugins';
@@ -42,8 +57,8 @@ const PSTACK_PATH = 'pstack/skills/poteto-mode/';
 
 /** Pins are deliberate: bump one only after reviewing the upstream diff it names. */
 export const CAVEMAN_PIN = 'v4.0.1';
-// a968159 is the newest commit that touched a body we track; its one change renames the skill in frontmatter, which the fork drops.
-const PSTACK_PIN = 'a968159326d1fc6b7d483491ec5c457986a20af2';
+// c742dd6 is the newest commit that touched a body we track; every tracked pstack body was re-ported to it.
+const PSTACK_PIN = 'c742dd61706fbacc1b95f1a20b7b988cf096ce6c';
 
 /** Every upstream artifact in one folder, so the data home stays readable. */
 export function upstreamDir(): string {
@@ -669,15 +684,18 @@ export function vendoredVerdict(rel: string, bytes: Buffer | null, integrity: st
   return ours === integrity.replace(/^sha256-/, '') ? null : `${rel} differs from the package at ${version}`;
 }
 
-/** The vendored copy against the package it declares: a hand edit there is invisible to the host copies. */
-async function checkVendored(root: string, version: string): Promise<{ matched: number; total: number; gaps: string[]; failure: FetchFailure | null }> {
-  const files = vendoredFiles(root);
+/**
+ * The vendored copy against the package it declares: a hand edit there is invisible to the host copies.
+ * `uncarried` counts the package's files Tersio does not ship, so the row says how much of upstream it is a subset of.
+ */
+async function checkVendored(root: string, version: string, localOnly: readonly string[] = []): Promise<{ matched: number; total: number; gaps: string[]; failure: FetchFailure | null; uncarried: number }> {
+  const files = vendoredFiles(root).filter((rel) => !localOnly.includes(rel));
   let manifest: Map<string, string>;
   try {
     const json = await fetchJson<{ files?: Array<{ path?: string; integrity?: string }> }>(`${UNPKG}/${PONYTAIL_PKG}@${version}/?meta`);
     manifest = new Map((json.files ?? []).map((f) => [String(f.path ?? '').replace(/^\//, ''), String(f.integrity ?? '')]));
   } catch (e) {
-    return { matched: 0, total: files.length, gaps: [], failure: classifyFetch(e, `the package at ${version}`) };
+    return { matched: 0, total: files.length, gaps: [], failure: classifyFetch(e, `the package at ${version}`), uncarried: 0 };
   }
   const gaps: string[] = [];
   let matched = 0;
@@ -687,7 +705,16 @@ async function checkVendored(root: string, version: string): Promise<{ matched: 
     if (gap) gaps.push(gap);
     else matched++;
   }
-  return { matched, total: files.length, gaps, failure: null };
+  // A body Tersio wrote itself counts as carried when it is present, the way Caveman's own rules do.
+  for (const rel of localOnly) {
+    if (await readTextIfExists(path.join(root, ...rel.split('/'))) !== null) matched++;
+    else gaps.push(`${rel} is missing locally`);
+  }
+  // Upstream's JS hooks and extension have TypeScript counterparts here, so they are carried, not skipped.
+  const carried = new Set<string>([...files, ...localOnly]);
+  for (const [upstream, ours] of PONYTAIL_FORKS) if (manifest.has(upstream)) carried.add(ours);
+  const uncarried = [...manifest.keys()].filter((rel) => !carried.has(rel)).length;
+  return { matched, total: files.length + localOnly.length, gaps, failure: null, uncarried };
 }
 
 /** Ponytail: the vendored copy is the source of truth, and each host's copy must match it. */
@@ -704,7 +731,7 @@ async function checkPonytail(hosts: HostRow[]): Promise<SourceRow> {
   let tracked = 0;
   let matched = 0;
   const gaps: string[] = [];
-  const vendored = root ? await checkVendored(root, bundled ?? 'latest') : { matched: 0, total: 0, gaps: [] as string[], failure: null };
+  const vendored = root ? await checkVendored(root, bundled ?? 'latest', PONYTAIL_LOCAL_ONLY) : { matched: 0, total: 0, gaps: [] as string[], failure: null, uncarried: 0 };
   tracked += vendored.total;
   matched += vendored.matched;
   gaps.push(...vendored.gaps);
@@ -743,7 +770,7 @@ async function checkPonytail(hosts: HostRow[]): Promise<SourceRow> {
     moved: [],
     appeared: [],
     gone: [],
-    uncarried: 0,
+    uncarried: vendored.uncarried,
     uncarriedMoved: 0,
     pinnedAt: null,
     candidate: drift ? latest : null,

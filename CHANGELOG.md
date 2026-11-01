@@ -20,6 +20,8 @@
 - Tokscale is no longer credited, because nothing uses it.
 
 ### Fixed
+- **pstack tracks upstream again.** Every tracked pstack body was re-ported to `c742dd6`: the drifted playbooks, skills, principles, and the rule body carry upstream's current wording with its Cursor surface removed, four references upstream deleted are gone, and the pin moved with them. Eleven skills the port was missing now ship too — `in-your-own-words`, `teach`, `sharpen`, `statechart`, `ketchup`, `ketchup-video`, `recall`, and the four verification-skill factories — with the `poteto` naming and its slash commands removed.
+- **Ponytail's upstream row reads true.** Tersio's own TypeScript hooks and fork manifest no longer count as missing upstream files, the bundled copy moves to 5.3.3, and the row now reports the 38 upstream files the port does not carry, so accuracy reads 11 of 11 with no gaps and no version warning.
 - **DeepSeek Harness installs stop at the profile the CLI owns.** The desktop app's `desktop` profile refuses CLI writes, so `tersio install --host dsh` now mounts the CLI profiles and points you to the app's Plugins pane for the desktop one.
 - **Doctor repairs stop touching agents you don't have.** The health repair used to create an OpenCode folder on machines without OpenCode installed. Thanks to @FrancoStino (#79).
 - **No more stray files in your projects.** Turning a Headroom switch used to leave an empty lock file in the folder you started the dashboard from. Nothing writes into your projects anymore.

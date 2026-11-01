@@ -17,7 +17,7 @@ vi.mock("../../extensions/shared/utils.ts", async (importOriginal) => {
     ...original,
     fetchJson: async (url: string) => {
       if (String(url).includes("ponytail")) {
-        const bundled = JSON.parse(readFileSync(path.join(root, "node_modules", "@dietrichgebert", "ponytail", "package.json"), "utf8")) as { version?: string };
+        const bundled = JSON.parse(readFileSync(path.join(root, "extensions", "ponytail", "package.json"), "utf8")) as { version?: string };
         return { version: bundled.version, dist: { tarball: "", shasum: "" } };
       }
       return (original.fetchJson as (u: string) => Promise<unknown>)(url);
