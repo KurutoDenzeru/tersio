@@ -68,17 +68,23 @@ export function dshPackageDir(): string {
   return path.join(dshHome(), 'profiles', 'web', 'node_modules', ...PACKAGE_NAME.split('/'));
 }
 
+/** The desktop app's bundled CLI, present on macOS installs. Windows stays on the npx fallback until its layout is verified. */
+const DSH_APP_CLI = '/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh';
+
 /**
- * The command that runs the dsh CLI: the binary when it is on PATH, else the zero-install
- * npx form. DSH ships no binary on machines that use the desktop app or npx, so both count.
+ * The command that runs the dsh CLI: PATH first, then the desktop app's bundled CLI, else the
+ * zero-install npx form. DSH ships no binary on machines that use the desktop app, so both count.
  */
 export function dshRunner(): string[] {
-  return resolveHostBinary('dsh') !== null ? ['dsh'] : ['npx', '-y', '@deepseek-ai/dsh'];
+  if (resolveHostBinary('dsh') !== null) return ['dsh'];
+  if (process.platform === 'darwin' && existsSync(DSH_APP_CLI)) return [DSH_APP_CLI];
+  return ['npx', '-y', '@deepseek-ai/dsh'];
 }
 
 /** Whether DeepSeek Harness exists on this machine in any of its install forms. */
 export function dshPresent(): boolean {
   if (resolveHostBinary('dsh') !== null) return true;
+  if (process.platform === 'darwin' && existsSync(DSH_APP_CLI)) return true;
   if (existsSync(dshHome())) return true;
   if (process.platform === 'darwin') {
     return existsSync(path.join(HOME, 'Library', 'Application Support', '@deepseek-ai', 'dsh-desktop'));
