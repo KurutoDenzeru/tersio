@@ -158,9 +158,8 @@ interface DshCtx {
 
 interface DshAgent {
   id: string;
-  /** Next-step steering, the same call `/plan` uses to make a notice model-visible. */
-  steer?: (message: { content: Array<{ type: 'text'; text: string }>; source: { kind: string; form: string; summary: string } }) => void;
-  followup?: (message: { content: Array<{ type: 'text'; text: string }>; source: { kind: string; form: string; summary: string } }) => void;
+  /** The receiving session, for passive log appends that render without starting a turn. */
+  session?: { append?: (type: string, data: unknown) => unknown };
 }
 
 interface DshCommands {
@@ -177,26 +176,34 @@ export const name = 'tersio-dsh';
 export const inject = ['tools', 'systemPrompt', 'commands'];
 
 function modeLine(store: Store, section: Store): string {
+  // The same glyphs the Combo status line uses on the other hosts.
   return [
-    `caveman=${String(setting(store, section, 'cavemanDefault') ?? 'off')}`,
-    `rtk=${setting(store, section, 'rtkDefault') === true ? 'on' : 'off'}`,
-    `ponytail=${String(setting(store, section, 'ponytailDefault') ?? 'off')}`,
-    `pstack=${String(setting(store, section, 'pstackDefault') ?? 'off')}`,
-    `headroom=${setting(store, section, 'headroomDefault') === 'on' ? 'on' : 'off'}`,
-  ].join(' ');
+    `🪨 caveman=${String(setting(store, section, 'cavemanDefault') ?? 'off')}`,
+    `🗜️ rtk=${setting(store, section, 'rtkDefault') === true ? 'on' : 'off'}`,
+    `🧠 ponytail=${String(setting(store, section, 'ponytailDefault') ?? 'off')}`,
+    `🥔 pstack=${String(setting(store, section, 'pstackDefault') ?? 'off')}`,
+    `🍃 headroom=${setting(store, section, 'headroomDefault') === 'on' ? 'on' : 'off'}`,
+  ].join(' · ');
+}
+
+/** Appends the change as a passive chat message: the UI renders it like any user message, without starting a turn. */
+async function notice(agent: DshAgent, text: string): Promise<void> {
+  const session = agent.session;
+  if (!session?.append) return;
+  try {
+    await session.append('user/message', { content: [{ type: 'text', text }], source: { kind: 'tersio-modes', form: 'notice', summary: text } });
+  } catch { /* the command result still names the change */ }
 }
 
 function registerCommands(ctx: DshCtx): void {
   /**
-   * Writes the dsh section, then steers the change into the conversation as a notice the way `/plan` does:
-   * a command result never enters model history, so without this the model learns of a switch only from the
-   * next system-prompt assembly.
+   * Writes the dsh section, then appends the change to the session as a passive chat message: the UI
+   * renders it like any user message, the model sees it in history, and no turn starts.
    */
-  const apply = (agent: DshAgent, mutate: (section: Record<string, unknown>) => void, label: string): string => {
+  const apply = async (agent: DshAgent, mutate: (section: Record<string, unknown>) => void, label: string): Promise<string> => {
     writeHostSection(mutate);
     const modes = modeLine(readStore(), hostSection(readStore()));
-    const text = `${label}: ${modes}. These modes apply from the next step.`;
-    agent.steer?.({ content: [{ type: 'text', text }], source: { kind: 'tersio-modes', form: 'notice', summary: text } });
+    await notice(agent, `${label}: ${modes}. These modes apply from the next step.`);
     return modes;
   };
   const commands: Array<Parameters<DshCommands['register']>[0]> = [
@@ -208,7 +215,7 @@ function registerCommands(ctx: DshCtx): void {
         const level = String(rawInput || 'off').trim().toLowerCase();
         const preset = COMBO_PRESETS[level];
         if (!preset) return { kind: 'success', text: `Unknown combo level: ${level || '(none)'}. Levels: off, lite, balanced, max.` };
-        const modes = apply(agent, (section) => {
+        const modes = await apply(agent, (section) => {
           section.comboDefault = level;
           section.cavemanDefault = preset.caveman;
           section.rtkDefault = preset.rtk;
@@ -225,7 +232,7 @@ function registerCommands(ctx: DshCtx): void {
         const level = String(rawInput || 'off').trim().toLowerCase();
         const mapped = RETIRED_CAVEMAN[level] ?? level;
         if (mapped !== 'off' && !CAVEMAN_RULE_FILES[mapped]) return { kind: 'success', text: `Unknown caveman level: ${level}. Levels: off, lite, full, ultra, megacave-lite, megacave-full, megacave-ultra.` };
-        const modes = apply(agent, (section) => { section.cavemanDefault = mapped; }, `Tersio caveman set to ${mapped}`);
+        const modes = await apply(agent, (section) => { section.cavemanDefault = mapped; }, `Tersio caveman set to ${mapped}`);
         return { kind: 'success', text: mapped === 'off' ? `Caveman off. ${modes}` : `Caveman set to ${mapped}: ${modes}` };
       },
     },
@@ -237,7 +244,7 @@ function registerCommands(ctx: DshCtx): void {
         const raw = String(rawInput || '').trim().toLowerCase();
         const on = raw === '' ? null : ['on', 'enable', 'true'].includes(raw) ? true : ['off', 'disable', 'false'].includes(raw) ? false : null;
         if (on === null) return { kind: 'success', text: 'Usage: /rtk on | /rtk off' };
-        const modes = apply(agent, (section) => { section.rtkDefault = on; }, `Tersio RTK turned ${on ? 'on' : 'off'}`);
+        const modes = await apply(agent, (section) => { section.rtkDefault = on; }, `Tersio RTK turned ${on ? 'on' : 'off'}`);
         return { kind: 'success', text: `RTK ${on ? 'on' : 'off'}: ${modes}` };
       },
     },
@@ -248,7 +255,7 @@ function registerCommands(ctx: DshCtx): void {
       handler: async ({ agent, rawInput }) => {
         const level = String(rawInput || 'off').trim().toLowerCase();
         if (level !== 'off' && level !== 'lite' && level !== 'full' && level !== 'ultra') return { kind: 'success', text: `Unknown ponytail level: ${level}. Levels: off, lite, full, ultra.` };
-        const modes = apply(agent, (section) => { section.ponytailDefault = level; }, `Tersio ponytail set to ${level}`);
+        const modes = await apply(agent, (section) => { section.ponytailDefault = level; }, `Tersio ponytail set to ${level}`);
         return { kind: 'success', text: `Ponytail set to ${level}: ${modes}` };
       },
     },
@@ -260,7 +267,7 @@ function registerCommands(ctx: DshCtx): void {
         const raw = String(rawInput || 'off').trim().toLowerCase();
         const on = raw === 'on' ? true : raw === 'off' ? false : null;
         if (on === null) return { kind: 'success', text: 'Usage: /pstack on | /pstack off' };
-        const modes = apply(agent, (section) => { section.pstackDefault = on; }, `Tersio pstack turned ${on ? 'on' : 'off'}`);
+        const modes = await apply(agent, (section) => { section.pstackDefault = on; }, `Tersio pstack turned ${on ? 'on' : 'off'}`);
         return { kind: 'success', text: `pstack ${on ? 'on' : 'off'}: ${modes}` };
       },
     },
@@ -281,14 +288,7 @@ function registerCommands(ctx: DshCtx): void {
 export function apply(ctx: DshCtx): void {
   const store = readStore();
   const section = hostSection(store);
-  const state = [
-    ['caveman', String(setting(store, section, 'cavemanDefault') ?? 'off')],
-    ['rtk', `${setting(store, section, 'rtkDefault') === true && resolveRtkBinary() !== null ? 'on' : 'off'}`],
-    ['ponytail', String(setting(store, section, 'ponytailDefault') ?? 'off')],
-    ['pstack', String(setting(store, section, 'pstackDefault') ?? 'off')],
-    ['headroom', setting(store, section, 'headroomDefault') === 'on' ? 'on' : 'off'],
-  ] as const;
-  console.log(`[tersio-dsh] armed: ${state.map(([k, v]) => `${k}=${v}`).join(' ')}`);
+  console.log(`[tersio-dsh] armed: ${modeLine(store, section)}`);
 
   registerCommands(ctx);
 
