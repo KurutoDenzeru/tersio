@@ -8,6 +8,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { homeDir, resolveRtkBinary, tersioHome } from '../shared/utils.ts';
+import { buildModeNotice, formatModeLine, type ModeSnapshot } from '../shared/mode-notice.ts';
 
 const execFileP = promisify(execFile);
 const execShellP = promisify(exec);
@@ -178,16 +179,18 @@ interface DshCommands {
 export const name = 'tersio-dsh';
 export const inject = ['tools', 'systemPrompt', 'commands'];
 
+function readModes(store: Store, section: Store): ModeSnapshot {
+  return {
+    caveman: String(setting(store, section, 'cavemanDefault') ?? 'off'),
+    rtk: setting(store, section, 'rtkDefault') === true,
+    ponytail: String(setting(store, section, 'ponytailDefault') ?? 'off'),
+    pstack: setting(store, section, 'pstackDefault') as string | boolean ?? 'off',
+    headroom: setting(store, section, 'headroomDefault') === 'on' ? 'on' : 'off',
+  };
+}
+
 function modeLine(store: Store, section: Store): string {
-  // The same glyphs the Combo status line uses on the other hosts. The store keeps pstack as 'on'/'off' strings.
-  const pstack = setting(store, section, 'pstackDefault');
-  return [
-    `🪨 caveman=${String(setting(store, section, 'cavemanDefault') ?? 'off')}`,
-    `🗜️ rtk=${setting(store, section, 'rtkDefault') === true ? 'on' : 'off'}`,
-    `🧠 ponytail=${String(setting(store, section, 'ponytailDefault') ?? 'off')}`,
-    `🥔 pstack=${pstack === true || pstack === 'on' ? 'on' : 'off'}`,
-    `🍃 headroom=${setting(store, section, 'headroomDefault') === 'on' ? 'on' : 'off'}`,
-  ].join(' · ');
+  return formatModeLine(readModes(store, section));
 }
 
 /** Sends the change as a real chat message: the UI shows the user bubble and the assistant answers it like any turn. */
@@ -216,10 +219,10 @@ function registerCommands(ctx: DshCtx): void {
    */
   const apply = async (agent: DshAgent, mutate: (section: Record<string, unknown>) => void, label: string): Promise<string> => {
     writeHostSection(mutate);
-    const modes = modeLine(readStore(), hostSection(readStore()));
-    // A short conversational line, so the assistant's reply stays brief instead of turning it into a task.
-    await notice(agent, `${label} — ${modes}. Confirm in one short line.`);
-    return modes;
+    const store = readStore();
+    const section = hostSection(store);
+    await notice(agent, buildModeNotice(label, readModes(store, section)));
+    return modeLine(store, section);
   };
   const commands: Array<Parameters<DshCommands['register']>[0]> = [
     {
