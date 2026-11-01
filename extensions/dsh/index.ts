@@ -148,7 +148,11 @@ export function apply(ctx: DshCtx): void {
   ctx.systemPrompt.section({
     name: 'tersio-modes',
     order: 50_000,
-    text: () => buildBlocks(),
+    text: () => {
+      const blocks = buildBlocks();
+      if (process.env.TERSIO_DSH_DEBUG) console.log(`[tersio-dsh] assembly: ${blocks.length} chars of mode blocks`);
+      return blocks;
+    },
   });
 
   ctx.tools.register({
