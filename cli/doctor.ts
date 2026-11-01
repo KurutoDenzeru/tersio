@@ -9,7 +9,7 @@ import {
   execP, relTime, shimCommand,
 } from './common.ts';
 import { configEntries } from './profile.ts';
-import { detectHosts, hostExtensionsDir, ompPackageDir, piPonytailPackageDir, pigPonytailPackageDir } from './hosts.ts';
+import { detectHosts, dshPackageDir, hostExtensionsDir, ompPackageDir, piPonytailPackageDir, pigPonytailPackageDir } from './hosts.ts';
 import type { DetectedHost } from './hosts.ts';
 import { GENERATED_TREE_FILES } from './manifest.ts';
 import { askInteractiveChoice, askInteractiveConfirm, runInteractivePhase } from './interactive.ts';
@@ -102,6 +102,8 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
     pi: { dir: piPonytailPackageDir(piAgentDir()), files: PI_PONYTAIL_FILES },
     pig: { dir: pigPonytailPackageDir(pigAgentDir()), files: PI_PONYTAIL_FILES },
     opencode: { dir: path.join(hostExtensionsDir('opencode'), 'ponytail-bundle'), files: PONYTAIL_BUNDLE_FILES },
+    // The dsh bundle mounts the whole tersio package, so its Ponytail copy rides inside it.
+    dsh: { dir: path.join(dshPackageDir(), 'extensions', 'ponytail'), files: PI_PONYTAIL_FILES },
   };
   // One hook cannot stand for the set: 5.1 and 5.2 ship the same instructions file and differ inside a skill.
   const ponytailStale: string[] = [];
@@ -129,7 +131,9 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   for (const host of hosts.filter((h) => h.installed || treeHoldsOwnFiles(h))) {
     const treeId = host.id === 'omp' ? 'opencode' : host.id;
     const base = treeBaseFor(host);
-    const onDisk = new Set(hostTreeFiles(base).filter((rel) => path.extname(rel) !== '.js'));
+    let onDisk = new Set(hostTreeFiles(base).filter((rel) => path.extname(rel) !== '.js'));
+    // The dsh bundle is the whole tersio package: only its own subpath is Tersio's to judge, so the package's other files (the OpenCode entry, the mode trees) never read as debris.
+    if (treeId === 'dsh') onDisk = new Set([...onDisk].filter((rel) => rel.startsWith('dsh/')));
     const expected = new Set(treeFilesFor(treeId));
     const every = new Set([...onDisk, ...expected]);
     for (const rel of every) {

@@ -31,8 +31,8 @@ export type DetectedHost = HostEntry;
 export function hostExtensionsDir(id: HostId, agentDir = id === 'pig' ? pigAgentDir() : piAgentDir()): string {
   if (id === 'omp') return path.join(HOME, '.omp', 'agent', 'extensions');
   if (id === 'opencode') return path.join(HOME, '.config', 'opencode', 'plugins', 'tersio');
-  // DSH mounts the whole tersio package as a bundle, so its tree base is the package root.
-  if (id === 'dsh') return dshPackageDir();
+  // DSH mounts the whole tersio package as a bundle, so its tree base is the mounted package's extensions dir.
+  if (id === 'dsh') return path.join(dshPackageDir(), 'extensions');
   return path.join(agentDir, 'extensions');
 }
 

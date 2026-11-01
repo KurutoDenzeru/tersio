@@ -119,6 +119,9 @@ async function obsoleteDirs(dest: string, id: 'omp' | 'pi' | 'opencode' | 'pig')
 async function fixExtensionTrees(): Promise<void> {
   // The entry imports @opencode/plugin, which pi, pig and omp lack, so one shared filter keeps repairs out of their trees.
   for (const host of detectHosts()) {
+    // The dsh bundle is the tersio package itself: its files are this repo's own, and a repair walking the
+    // mounted package would read the whole tree as debris. A refresh is `tersio install --host dsh`.
+    if (host.id === 'dsh') continue;
     const dest = hostExtensionsDir(host.id);
     // Repair a partly-present tree: a half-written one is this run's case, and it reads as "not installed".
     const present = forHost(host.id).filter((file) => existsSync(path.join(dest, file))).length;
