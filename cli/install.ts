@@ -36,7 +36,7 @@ import { formatCliStatus, saveHostDefaults, storedProfile, storedProfileSync, wr
 import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
 import { EXT_DIR, PI_RTK_MANIFEST, PI_PONYTAIL_FILES, PONYTAIL_BUNDLE_FILES, PONYTAIL_DIR, PONYTAIL_PKG, filesUnder, reapObsoleteTreeDirs, rootFiles, sourcePath, syncPluginManifest, syncTreeFiles } from './manifest.ts';
 import type { Profile } from './profile.ts';
-import { detectHosts, dshHome, dshPresent, dshProfileBundles, dshRunner, hostOptions, parseHostArg, piTersioSource, pigTersioSource } from './hosts.ts';
+import { detectHosts, dshHome, dshPresent, dshProfileBundles, dshProfiles, dshRunner, hostOptions, parseHostArg, piTersioSource, pigTersioSource } from './hosts.ts';
 import type { HostEntry, HostId } from './hosts.ts';
 
 async function stepPonytail(pluginsDir: string, options: InstallOptions): Promise<void> {
@@ -922,23 +922,25 @@ function comboHint(host: string, comboDefault: string): string {
   return comboDefault === 'off' ? `\nDone — restart ${host}.` : `\nDone — restart ${host}, then /combo ${comboDefault}.`;
 }
 
-/** DSH mounts the tersio package itself as a bundle: one add, and reconcile keeps the layer mounted. */
+/** DSH mounts the tersio package itself as a bundle: one add per profile, and reconcile keeps each layer mounted. */
 async function stepDsh(installOptions: InstallOptions): Promise<void> {
   const root = findPackageRoot(EXT_DIR);
   // A checkout mounts link:<root>, which always carries the dsh bundle field. The registry copy
   // gains it only from the release that ships DSH support, so a pinned npm spec names that version.
   const fromCheckout = existsSync(path.join(root, 'tersio.ts'));
   const spec = fromCheckout ? `link:${root}` : `npm:${PACKAGE_NAME}@${PACKAGE_VERSION}`;
-  const add = [...dshRunner(), 'plugin', '--profile', 'web', 'add', spec];
   if (installOptions.dryRun) {
-    console.log(`  [dry-run] would run: ${add.join(' ')}`);
+    console.log(`  [dry-run] would run: dsh plugin --profile <web,desktop,…> add ${spec} for every dsh profile`);
     return;
   }
-  await execP(add[0], add.slice(1), { timeout: 300_000, cwd: homeDir() });
-  if (!dshProfileBundles().includes(PACKAGE_NAME)) {
-    throw new Error('the dsh profile did not mount the tersio bundle — the installed release must ship the dsh bundle field');
+  for (const profile of dshProfiles()) {
+    const mount = [...dshRunner(), 'plugin', '--profile', profile, 'add', spec];
+    await execP(mount[0], mount.slice(1), { timeout: 300_000, cwd: homeDir() });
+    if (!dshProfileBundles(profile).includes(PACKAGE_NAME)) {
+      throw new Error(`the dsh ${profile} profile did not mount the tersio bundle — the installed release must ship the dsh bundle field`);
+    }
+    if (!installOptions.quiet) console.log(`  DSH — tersio bundle mounted in the ${profile} profile`);
   }
-  if (!installOptions.quiet) console.log('  DSH — tersio bundle mounted in the web profile');
 }
 
 async function runInstall(forcedHost?: HostId): Promise<void> {

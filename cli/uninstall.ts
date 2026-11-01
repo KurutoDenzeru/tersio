@@ -8,7 +8,7 @@ import {
 } from './common.ts';
 import { PONYTAIL_PKG } from './manifest.ts';
 import { askInteractiveChoice, closeRL, confirmDestructive, tty, sayTagged } from './interactive.ts';
-import { detectHosts, dshPackageDir, dshRunner, parseHostArg } from './hosts.ts';
+import { detectHosts, dshPackageDir, dshProfiles, dshRunner, parseHostArg } from './hosts.ts';
 import type { HostEntry, HostId } from './hosts.ts';
 import { piAgentDir, pigAgentDir, readTextIfExists, resolveHeadroomBinary } from '../extensions/shared/utils.ts';
 import { stopOwnedProxy } from '../extensions/shared/headroom-proxy.ts';
@@ -318,22 +318,26 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
   }
   if (host === 'dsh') {
     const runner = dshRunner();
-    const remove = [...runner, 'plugin', '--profile', 'web', 'remove', '@krtclcdy/tersio'];
+    const profiles = dshProfiles();
     if (!selected.installed && !selected.declared) {
       sayTagged(`  [skip] ${selected.label} — nothing installed (${selected.installCmd})`);
       results.push(false);
       continue;
     }
     console.log('Will remove:');
-    console.log(`  the tersio bundle from the dsh web profile (${dshPackageDir()})`);
+    console.log(`  the tersio bundle from every dsh profile (${dshPackageDir()} is the web profile's copy)`);
     if (!confirmed && !(await confirmDestructive('Remove the tersio bundle from DSH?'))) { results.push(false); continue; }
     if (dryRun) {
-      sayTagged(`  [dry-run] would run: ${remove.join(' ')}`);
+      sayTagged(`  [dry-run] would run: ${runner.join(' ')} plugin --profile <web,desktop,…> remove @krtclcdy/tersio`);
       results.push(true);
       continue;
     }
-    await execP(remove[0], remove.slice(1), { timeout: 300_000 });
-    console.log('\nDone. Restart dsh web to drop the bundle.');
+    for (const profile of profiles) {
+      const remove = [...runner, 'plugin', '--profile', profile, 'remove', '@krtclcdy/tersio'];
+      await execP(remove[0], remove.slice(1), { timeout: 300_000 });
+      sayTagged(`  [rm] the tersio bundle from the ${profile} profile`);
+    }
+    console.log('\nDone. Restart dsh web (or the desktop app) to drop the bundle.');
     results.push(true);
     continue;
   }

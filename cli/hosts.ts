@@ -1,5 +1,5 @@
 // cli/hosts.ts — agent hosts Tersio installs into, and what is on disk. One detector shared by doctor and menus.
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { HOME, OMP_PLUGINS_DIR, PACKAGE_NAME, PACKAGE_VERSION } from './common.ts';
 import { treeFilesFor } from './manifest.ts';
@@ -97,10 +97,20 @@ export function dshPresent(): boolean {
 }
 
 /** The web profile's mounted bundle list, from its own package manifest. */
-export function dshProfileBundles(): string[] {
+export function dshProfileBundles(profile: string): string[] {
   try {
-    const parsed = JSON.parse(readFileSync(path.join(dshHome(), 'profiles', 'web', 'package.json'), 'utf8')) as { dsh?: { profile?: { bundles?: string[] } } };
+    const parsed = JSON.parse(readFileSync(path.join(dshHome(), 'profiles', profile, 'package.json'), 'utf8')) as { dsh?: { profile?: { bundles?: string[] } } };
     return parsed.dsh?.profile?.bundles ?? [];
+  } catch {
+    return [];
+  }
+}
+
+/** Every profile under the dsh home: the web and desktop profiles, plus any the user added. */
+export function dshProfiles(): string[] {
+  const dir = path.join(dshHome(), 'profiles');
+  try {
+    return readdirSync(dir).filter((name) => existsSync(path.join(dir, name, 'package.json')));
   } catch {
     return [];
   }
