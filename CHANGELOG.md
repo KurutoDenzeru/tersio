@@ -1,6 +1,7 @@
 ## Unreleased
 
 ### Added
+- **Tersio runs on DeepSeek Harness (DSH).** The research landed and the plugin is real: Tersio mounts as a dsh bundle with the modes injected into every session, `tersio install --host dsh` sets it up, update and uninstall work, and the dashboard knows the host. See `docs/DSH_HOST.md` for the findings.
 - **The dashboard opens on your phone.** It shows up on your home network and prints the address to type.
 - **The busiest models and providers lead with tokens.** The volume is the big number, and the request count and its share sit under it.
 

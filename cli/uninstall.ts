@@ -8,7 +8,7 @@ import {
 } from './common.ts';
 import { PONYTAIL_PKG } from './manifest.ts';
 import { askInteractiveChoice, closeRL, confirmDestructive, tty, sayTagged } from './interactive.ts';
-import { detectHosts, parseHostArg } from './hosts.ts';
+import { detectHosts, dshPackageDir, dshRunner, parseHostArg } from './hosts.ts';
 import type { HostEntry, HostId } from './hosts.ts';
 import { piAgentDir, pigAgentDir, readTextIfExists, resolveHeadroomBinary } from '../extensions/shared/utils.ts';
 import { stopOwnedProxy } from '../extensions/shared/headroom-proxy.ts';
@@ -313,6 +313,27 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
       } catch { /* config missing or not JSON; nothing to scrub */ }
     }
     console.log('\nDone. Restart OpenCode to drop the plugin.');
+    results.push(true);
+    continue;
+  }
+  if (host === 'dsh') {
+    const runner = dshRunner();
+    const remove = [...runner, 'plugin', '--profile', 'web', 'remove', '@krtclcdy/tersio'];
+    if (!selected.installed && !selected.declared) {
+      sayTagged(`  [skip] ${selected.label} — nothing installed (${selected.installCmd})`);
+      results.push(false);
+      continue;
+    }
+    console.log('Will remove:');
+    console.log(`  the tersio bundle from the dsh web profile (${dshPackageDir()})`);
+    if (!confirmed && !(await confirmDestructive('Remove the tersio bundle from DSH?'))) { results.push(false); continue; }
+    if (dryRun) {
+      sayTagged(`  [dry-run] would run: ${remove.join(' ')}`);
+      results.push(true);
+      continue;
+    }
+    await execP(remove[0], remove.slice(1), { timeout: 300_000 });
+    console.log('\nDone. Restart dsh web to drop the bundle.');
     results.push(true);
     continue;
   }

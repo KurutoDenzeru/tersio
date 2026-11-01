@@ -3,7 +3,7 @@ import type { ModeState } from "./shell";
 
 export type Point = readonly [number, number];
 
-export type EdgeKey = "hosts" | "omp" | "pi" | "pig" | "opencode" | "combo" | "headroom" | "caveman" | "pstack" | "rtk" | "ponytail";
+export type EdgeKey = "hosts" | "omp" | "pi" | "pig" | "opencode" | "dsh" | "combo" | "headroom" | "caveman" | "pstack" | "rtk" | "ponytail";
 
 export type HostAction = "install" | "uninstall" | "update";
 
@@ -252,7 +252,7 @@ export function savePositions(positions: Record<string, Box>): void {
 export function versionOf(raw: string | null | undefined): string | null {
   if (!raw) return null;
   const tail = raw.split("/").pop() ?? raw;
-  const version = tail.replace(/^(omp|pi|pig|opencode)\s+/i, "").trim();
+  const version = tail.replace(/^(omp|pi|pig|opencode|dsh)\s+/i, "").trim();
   return version || null;
 }
 
@@ -262,6 +262,7 @@ export const HOSTS = [
   { id: "pi", label: "pi" },
   { id: "pig", label: "PiG" },
   { id: "opencode", label: "OpenCode" },
+  { id: "dsh", label: "DSH" },
 ] as const;
 
 const HOST_FIELDS: Record<string, "cavemanDefault" | "rtkDefault" | "ponytailDefault" | "pstackDefault" | "headroomDefault"> = {
@@ -394,6 +395,7 @@ export const ABOUT: Partial<Record<NodeId, string>> = {
   "host-pi": "pi auto-discovers the same tree from its extensions directory.",
   "host-pig": "PiG loads the same tree from its own agent directory, the way pi does.",
   "host-opencode": "OpenCode loads the tree as one plugin, registered in opencode.json.",
+  "host-dsh": "DSH loads Tersio as a bundle plugin mounted into its web profile.",
   caveman: "Voice. Terse replies; code, commands, paths, and errors stay exact.",
   pstack: "Approach. Picks the playbook, the checks, and the design.",
   headroom: "Compresses tool outputs and history below the shell; Tersio tracks the savings.",
@@ -421,6 +423,10 @@ export function edgeLit(key: EdgeKey, modes: ModeState | null, hostState: HostSt
   }
   if (key === "pig") {
     const installed = hostState.installed.pig;
+    return installed === undefined ? null : installed;
+  }
+  if (key === "dsh") {
+    const installed = hostState.installed.dsh;
     return installed === undefined ? null : installed;
   }
   if (!modes) return null;
@@ -466,7 +472,7 @@ export function nodeOff(id: NodeId, modes: ModeState | null, hostState: HostStat
 }
 
 /** What the node's control reads right now, in the scope the dialog writes to. */
-export function nodeValue(id: NodeId, scope: "all" | "omp" | "pi" | "pig" | "opencode", modes: ModeState | null): string | null {
+export function nodeValue(id: NodeId, scope: "all" | "omp" | "pi" | "pig" | "opencode" | "dsh", modes: ModeState | null): string | null {
   if (!modes) return null;
   if (id === "caveman") {
     if (scope !== "all") {

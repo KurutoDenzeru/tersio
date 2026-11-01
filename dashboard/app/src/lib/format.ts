@@ -239,6 +239,7 @@ export function hostMeta(host?: string): HostMeta {
   if (host === "agent") return { label: "OMP", icon: "square-terminal", color: "#a78bfa" };
   if (host === "opencode") return { label: "OpenCode", icon: "box", color: "#fb923c" };
   if (host === "codex") return { label: "Codex", icon: "terminal", color: "#34d399" };
+  if (host === "dsh") return { label: "DSH", icon: "terminal", color: "#4d6bfe" };
   return { label: "pi", icon: "circle-dot", color: "#22d3ee" };
 }
 

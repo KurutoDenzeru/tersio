@@ -3,9 +3,9 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { HOME, OMP_PLUGINS_DIR, PACKAGE_NAME, PACKAGE_VERSION } from './common.ts';
 import { treeFilesFor } from './manifest.ts';
-import { piAgentDir, pigAgentDir } from '../extensions/shared/utils.ts';
+import { piAgentDir, pigAgentDir, resolveHostBinary } from '../extensions/shared/utils.ts';
 
-export type HostId = 'omp' | 'pi' | 'opencode' | 'pig';
+export type HostId = 'omp' | 'pi' | 'opencode' | 'pig' | 'dsh';
 
 export interface HostEntry {
   id: HostId;
@@ -31,6 +31,8 @@ export type DetectedHost = HostEntry;
 export function hostExtensionsDir(id: HostId, agentDir = id === 'pig' ? pigAgentDir() : piAgentDir()): string {
   if (id === 'omp') return path.join(HOME, '.omp', 'agent', 'extensions');
   if (id === 'opencode') return path.join(HOME, '.config', 'opencode', 'plugins', 'tersio');
+  // DSH mounts the whole tersio package as a bundle, so its tree base is the package root.
+  if (id === 'dsh') return dshPackageDir();
   return path.join(agentDir, 'extensions');
 }
 
@@ -53,6 +55,49 @@ export function pigPackageDir(agentDir = pigAgentDir()): string {
 
 function piSettingsFile(agentDir = piAgentDir()): string {
   return path.join(agentDir, 'settings.json');
+}
+
+/** DSH's home: `$DSH_HOME`, else `~/.dsh` — the marker DeepSeek's own tooling writes. */
+export function dshHome(): string {
+  const override = process.env.DSH_HOME;
+  return override && override.trim() !== '' ? override : path.join(HOME, '.dsh');
+}
+
+/** The web profile's tersio package dir, when the dsh bundle is mounted. */
+export function dshPackageDir(): string {
+  return path.join(dshHome(), 'profiles', 'web', 'node_modules', ...PACKAGE_NAME.split('/'));
+}
+
+/**
+ * The command that runs the dsh CLI: the binary when it is on PATH, else the zero-install
+ * npx form. DSH ships no binary on machines that use the desktop app or npx, so both count.
+ */
+export function dshRunner(): string[] {
+  return resolveHostBinary('dsh') !== null ? ['dsh'] : ['npx', '-y', '@deepseek-ai/dsh'];
+}
+
+/** Whether DeepSeek Harness exists on this machine in any of its install forms. */
+export function dshPresent(): boolean {
+  if (resolveHostBinary('dsh') !== null) return true;
+  if (existsSync(dshHome())) return true;
+  if (process.platform === 'darwin') {
+    return existsSync(path.join(HOME, 'Library', 'Application Support', '@deepseek-ai', 'dsh-desktop'));
+  }
+  if (process.platform === 'win32') {
+    const local = process.env.LOCALAPPDATA || path.join(HOME, 'AppData', 'Local');
+    return existsSync(path.join(local, 'Programs', 'dsh-desktop'));
+  }
+  return false;
+}
+
+/** The web profile's mounted bundle list, from its own package manifest. */
+export function dshProfileBundles(): string[] {
+  try {
+    const parsed = JSON.parse(readFileSync(path.join(dshHome(), 'profiles', 'web', 'package.json'), 'utf8')) as { dsh?: { profile?: { bundles?: string[] } } };
+    return parsed.dsh?.profile?.bundles ?? [];
+  } catch {
+    return [];
+  }
 }
 
 export function pigSettingsFile(agentDir = pigAgentDir()): string {
@@ -135,6 +180,7 @@ const HOSTS: Array<Omit<HostEntry, 'installed' | 'via' | 'declared' | 'version' 
   { id: 'pi', label: 'Pi', bin: 'pi', installCmd: `pi install npm:${PACKAGE_NAME}`, removeCmd: `pi remove npm:${PACKAGE_NAME}` },
   { id: 'opencode', label: 'OpenCode', bin: 'opencode', installCmd: `tersio install --host opencode`, removeCmd: `tersio uninstall --host opencode` },
   { id: 'pig', label: 'Pi-in-go', bin: 'pig', installCmd: `pig install npm:${PACKAGE_NAME}`, removeCmd: `pig remove npm:${PACKAGE_NAME}` },
+  { id: 'dsh', label: 'DSH', bin: 'dsh', installCmd: `dsh plugin --profile web add npm:${PACKAGE_NAME}`, removeCmd: `dsh plugin --profile web remove @krtclcdy/tersio` },
 ];
 
 function detect(agentDir = piAgentDir(), pigDir = pigAgentDir()): HostEntry[] {
@@ -145,13 +191,17 @@ function detect(agentDir = piAgentDir(), pigDir = pigAgentDir()): HostEntry[] {
         ? piPackageDir(agentDir)
         : host.id === 'pig'
           ? pigPackageDir(pigDir)
-          : null;
+          : host.id === 'dsh'
+            ? dshPackageDir()
+            : null;
     const currentAgentDir = host.id === 'pig' ? pigDir : agentDir;
     const tree = hostExtensionsDir(host.id, currentAgentDir);
-    // A tree wins: the installer writes it and it carries no package.json, so its version is ours. OpenCode keeps no package to fall back to, so a present tree is the install and drift gets the per-host warning.
-    const via = missingTreeFiles(host.id, currentAgentDir).length === 0 || (host.id === 'opencode' && existsSync(tree))
-      ? 'tree'
-      : pkgDir && existsSync(pkgDir) ? 'package' : null;
+    // A tree wins: the installer writes it and it carries no package.json, so its version is ours. OpenCode keeps no package to fall back to, so a present tree is the install and drift gets the per-host warning. DSH has no tree: the tersio package is mounted as a dsh bundle, and the mounted package dir is the install.
+    const via = host.id === 'dsh'
+      ? pkgDir && existsSync(pkgDir) ? 'package' : null
+      : missingTreeFiles(host.id, currentAgentDir).length === 0 || (host.id === 'opencode' && existsSync(tree))
+        ? 'tree'
+        : pkgDir && existsSync(pkgDir) ? 'package' : null;
     return {
       ...host,
       installed: via !== null,
@@ -162,7 +212,9 @@ function detect(agentDir = piAgentDir(), pigDir = pigAgentDir()): HostEntry[] {
           ? piTersioSource(agentDir)
           : host.id === 'pig'
             ? pigTersioSource(pigDir)
-            : existsSync(tree) ? 'plugin tree' : null,
+            : host.id === 'dsh'
+              ? (pkgDir && existsSync(pkgDir) ? 'dsh bundle' : null)
+              : existsSync(tree) ? 'plugin tree' : null,
       version: via === 'tree' ? PACKAGE_VERSION : via === 'package' && pkgDir ? packageVersion(pkgDir) : null,
       dir: via === 'tree' ? tree : via === 'package' ? pkgDir : null,
     };
@@ -188,13 +240,13 @@ export function hostOptions(hosts: HostEntry[]): Array<{ value: string; label: s
   return hosts.map((host) => ({ value: host.id, label: hostLabel(host), hint: hostHint(host) }));
 }
 
-// `--host omp|pi|opencode|pig` from raw argv, undefined when absent; throws on an unknown value so the caller exits(1).
+// `--host omp|pi|opencode|pig|dsh` from raw argv, undefined when absent; throws on an unknown value so the caller exits(1).
 export function parseHostArg(argv: string[]): HostId | undefined {
   const i = argv.indexOf('--host');
   const raw = (i === -1 ? undefined : argv[i + 1]) ?? argv.find((a) => a.startsWith('--host='))?.slice('--host='.length);
   if (raw === undefined) return undefined;
   const value = raw.trim().toLowerCase();
-  if (value !== 'omp' && value !== 'pi' && value !== 'opencode' && value !== 'pig') throw new Error(`Invalid --host: ${raw}. Valid: omp, pi, opencode, pig`);
+  if (value !== 'omp' && value !== 'pi' && value !== 'opencode' && value !== 'pig' && value !== 'dsh') throw new Error(`Invalid --host: ${raw}. Valid: omp, pi, opencode, pig, dsh`);
   return value;
 }
 

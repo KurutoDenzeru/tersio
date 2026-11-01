@@ -163,9 +163,10 @@ export function apply(ctx: DshCtx): void {
     },
     output: { schema: { type: 'string' }, render: (_args, value) => [{ type: 'text', text: String(value) }] },
     async execute({ command }) {
-      const store = readStore();
-      const section = hostSection(store);
-      if (setting(store, section, 'rtkDefault') === true && resolveRtkBinary() !== null) return runThroughRtk(command);
+      // Re-read at call time, so a mode switch applies without remounting the plugin.
+      const live = readStore();
+      const liveSection = hostSection(live);
+      if (setting(live, liveSection, 'rtkDefault') === true && resolveRtkBinary() !== null) return runThroughRtk(command);
       // Same contract as the other hosts: with RTK off the command runs plainly.
       const r = await execShellP(command, { cwd: homeDir(), timeout: 600_000, maxBuffer: 16 * 1024 * 1024 });
       return { content: `${r.stdout}\n${r.stderr}`.trim() || '(no output)' };

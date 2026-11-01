@@ -27,16 +27,16 @@ import {
 } from '../extensions/shared/utils.ts';
 import { ensureProxy, proxyEnvLines, restoreRoutedProviders, routeLocalProvidersThroughProxy } from '../extensions/shared/headroom-proxy.ts';
 import { setStoredWrap } from '../extensions/shared/headroom-wraps.ts';
-import { homeDir } from '../extensions/shared/utils.ts';
+import { findPackageRoot, homeDir } from '../extensions/shared/utils.ts';
 import type { RtkRelease, RtkReleaseAsset } from '../extensions/shared/utils.ts';
 import { patchState } from '../extensions/shared/state.ts';
 import { CAVEMAN_PIN } from './upstream.ts';
 import type { HostDefaultField } from './profile.ts';
 import { formatCliStatus, saveHostDefaults, storedProfile, storedProfileSync, writePluginSettings } from './profile.ts';
 import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
-import { PI_RTK_MANIFEST, PI_PONYTAIL_FILES, PONYTAIL_BUNDLE_FILES, PONYTAIL_DIR, PONYTAIL_PKG, filesUnder, reapObsoleteTreeDirs, rootFiles, sourcePath, syncPluginManifest, syncTreeFiles } from './manifest.ts';
+import { EXT_DIR, PI_RTK_MANIFEST, PI_PONYTAIL_FILES, PONYTAIL_BUNDLE_FILES, PONYTAIL_DIR, PONYTAIL_PKG, filesUnder, reapObsoleteTreeDirs, rootFiles, sourcePath, syncPluginManifest, syncTreeFiles } from './manifest.ts';
 import type { Profile } from './profile.ts';
-import { detectHosts, hostOptions, parseHostArg, piTersioSource, pigTersioSource } from './hosts.ts';
+import { detectHosts, dshHome, dshPresent, dshProfileBundles, dshRunner, hostOptions, parseHostArg, piTersioSource, pigTersioSource } from './hosts.ts';
 import type { HostEntry, HostId } from './hosts.ts';
 
 async function stepPonytail(pluginsDir: string, options: InstallOptions): Promise<void> {
@@ -922,6 +922,25 @@ function comboHint(host: string, comboDefault: string): string {
   return comboDefault === 'off' ? `\nDone — restart ${host}.` : `\nDone — restart ${host}, then /combo ${comboDefault}.`;
 }
 
+/** DSH mounts the tersio package itself as a bundle: one add, and reconcile keeps the layer mounted. */
+async function stepDsh(installOptions: InstallOptions): Promise<void> {
+  const root = findPackageRoot(EXT_DIR);
+  // A checkout mounts link:<root>, which always carries the dsh bundle field. The registry copy
+  // gains it only from the release that ships DSH support, so a pinned npm spec names that version.
+  const fromCheckout = existsSync(path.join(root, 'tersio.ts'));
+  const spec = fromCheckout ? `link:${root}` : `npm:${PACKAGE_NAME}@${PACKAGE_VERSION}`;
+  const add = [...dshRunner(), 'plugin', '--profile', 'web', 'add', spec];
+  if (installOptions.dryRun) {
+    console.log(`  [dry-run] would run: ${add.join(' ')}`);
+    return;
+  }
+  await execP(add[0], add.slice(1), { timeout: 300_000, cwd: homeDir() });
+  if (!dshProfileBundles().includes(PACKAGE_NAME)) {
+    throw new Error('the dsh profile did not mount the tersio bundle — the installed release must ship the dsh bundle field');
+  }
+  if (!installOptions.quiet) console.log('  DSH — tersio bundle mounted in the web profile');
+}
+
 async function runInstall(forcedHost?: HostId): Promise<void> {
   let hostChosen = false;
   if (command === null && tty() && !yes && !updatePromptDone) {
@@ -1008,7 +1027,9 @@ async function runInstall(forcedHost?: HostId): Promise<void> {
         ? path.join(pigAgentDir(), 'extensions')
         : targetHost === 'opencode'
           ? path.join(HOME, '.config', 'opencode', 'plugins', 'tersio')
-          : path.join(OMP_AGENT_DIR, 'extensions');
+          : targetHost === 'dsh'
+            ? path.join(dshHome(), 'profiles', 'web')
+            : path.join(OMP_AGENT_DIR, 'extensions');
     console.log(`\nWill install into ${target.label}:`);
     console.log(`  ${where}`);
     console.log('  caveman · rtk · ponytail session modes');
@@ -1035,6 +1056,15 @@ async function runInstall(forcedHost?: HostId): Promise<void> {
       console.log('  [fail] pig not found — ensure it\'s installed');
     }
   }
+  if (targetHost === 'dsh') {
+    const [bin, ...rest] = dshRunner();
+    try {
+      const v = (await execP(bin, [...rest, '--version'], { cwd: homeDir() })).stdout.trim();
+      if (verbose && !quiet) console.log(`  dsh ${v}`);
+    } catch {
+      console.log('  [warn] dsh --version did not answer — the bundle add still tries');
+    }
+  }
 
   const failures: string[] = [];
   const capture = async (label: string, work: () => Promise<void>): Promise<void> => {
@@ -1056,6 +1086,23 @@ async function runInstall(forcedHost?: HostId): Promise<void> {
     });
     if (failures.length > 0) console.log(`\nDone with ${failures.length} failure(s) — see [fail] lines above.`);
     else console.log(comboHint('OpenCode', profile.comboDefault));
+    closeRL();
+    return;
+  }
+
+  if (targetHost === 'dsh') {
+    if (!dshPresent()) {
+      console.log('  [fail] DSH not found — install DeepSeek Harness first (the dsh CLI, the desktop app, or npx @deepseek-ai/dsh)');
+      closeRL();
+      return;
+    }
+    await capture('dsh bundle', () => stepDsh(installOptions));
+    await capture('settings', async () => {
+      await writePluginSettings(profile, installOptions, { keepSharedModes: hostExplicit });
+      if (hostExplicit && (choseDefaults || headroomEnabled)) await saveHostDefaults(targetHost, chosenFields, profile, installOptions);
+    });
+    if (failures.length > 0) console.log(`\nDone with ${failures.length} failure(s) — see [fail] lines above.`);
+    else console.log('\nDone. Restart dsh web to load the tersio bundle.');
     closeRL();
     return;
   }

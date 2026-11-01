@@ -149,7 +149,7 @@ export function PipelineCanvas({
 }: {
   modes: ModeState | null;
   hostState: HostState;
-  onSet: (node: NodeId, field: string, value: string | boolean, host?: "omp" | "pi" | "pig" | "opencode") => void;
+  onSet: (node: NodeId, field: string, value: string | boolean, host?: "omp" | "pi" | "pig" | "opencode" | "dsh") => void;
   onHostAction: (node: NodeId, action: HostAction) => void;
   busy: NodeId | null;
   onSaved: () => void;

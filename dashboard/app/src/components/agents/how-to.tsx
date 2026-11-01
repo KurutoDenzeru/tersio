@@ -37,7 +37,7 @@ export function HowToPage({ modes, onModesChanged }: { modes: ModeState | null; 
     });
   }, []);
 
-  const save = (node: NodeId, field: string, value: string | boolean, host?: "omp" | "pi" | "pig" | "opencode"): void => {
+  const save = (node: NodeId, field: string, value: string | boolean, host?: "omp" | "pi" | "pig" | "opencode" | "dsh"): void => {
     setBusy(node);
     void fetch("/settings", {
       method: "POST",

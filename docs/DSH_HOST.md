@@ -25,7 +25,7 @@ A DSH market is a `format: 1` JSON index (`title`, `plugins[]` with npm/Git pinn
 ### 5. Install, detect, uninstall
 
 - Detect: the `dsh` binary, `~/.dsh`, `$DSH_HOME`, or the **desktop app** (`~/Library/Application Support/@deepseek-ai/dsh-desktop`). On this machine the binary is **absent** — DSH runs via the desktop app and `npx @deepseek-ai/dsh` — while `~/.dsh` exists and was written to today. Detection must therefore be a disjunction that works without a binary: binary, home dir, `$DSH_HOME`, or the desktop app's data directory, any one of which counts. A binary-first check would report DSH as not installed on the very machine the phase-2 adapter will be tested on.
-- Install: `dsh plugin --profile web add npm:@krtclcdy/tersio-dsh` (or `github:…`, or `link:/path` for development); takes effect after a `dsh web` restart.
+- Install: `dsh plugin --profile web add npm:@krtclcdy/tersio` (or `github:…`, or `link:/path` for development); takes effect after a `dsh web` restart. The npm path needs a release whose tarball carries the `dsh` bundle field — until that release ships, only `link:` to a checkout works, and the installer pins the version that does.
 - Uninstall: `dsh plugin --profile web remove @krtclcdy/tersio-dsh` — reconcile is state-based, so the bundle's patch layer disappears with the package. The hand-edit write-back gap in the issue only bites manually mounted patch lines, which Tersio never creates.
 
 ### 6. RTK and tool filtering — feasible in v1

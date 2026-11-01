@@ -1,5 +1,6 @@
 // Agent brand marks shared by the settings agent list and recent-requests Agent column.
 import { MarkGlyph } from "./brand";
+import { imageMark } from "@/lib/marks";
 
 // Black-on-transparent PNG masked to currentColor; inlined for file:// export.
 const OMP_LOGO =
@@ -85,5 +86,10 @@ export function AgentLogo({ host, className }: { host?: string; className?: stri
   if (host === "codex") return <CodexLogo className={className} />;
   if (host === "opencode") return <OpencodeLogo className={className} />;
   if (host === "pig") return <PigLogo className={className} />;
+  // DSH's mark is a full-bleed ink tile with white harness geometry, so it draws as an image.
+  if (host === "dsh") {
+    const src = imageMark("dsh");
+    if (src) return <img src={src} alt="" className={className ?? "size-full object-contain"} />;
+  }
   return <PiLogo className={className} />;
 }
