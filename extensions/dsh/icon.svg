@@ -1,6 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
   <rect width="64" height="64" rx="14" fill="#101012"/>
-  <text x="32" y="32" font-family="system-ui, -apple-system, 'Segoe UI Emoji', sans-serif" font-size="28" text-anchor="middle" dominant-baseline="central">✂️</text>
-  <rect x="14" y="44" width="36" height="3" rx="1.5" fill="#f3f3f0"/>
-  <text x="32" y="56" font-family="system-ui, sans-serif" font-size="9" font-weight="700" text-anchor="middle" fill="#f3f3f0">tersio</text>
+  <!-- Tersio scissors, redrawn as pure strokes so any rasterizer renders it identically -->
+  <g transform="translate(8 6) scale(2)" fill="none" stroke="#f3f3f0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="6" cy="6" r="3"/>
+    <circle cx="6" cy="18" r="3"/>
+    <path d="M20 4 8.12 15.88"/>
+    <path d="M14.8 14.8 20 20"/>
+    <path d="M8.12 8.12 12 12"/>
+  </g>
+  <rect x="14" y="56" width="36" height="3" rx="1.5" fill="#4d6bfe"/>
 </svg>
