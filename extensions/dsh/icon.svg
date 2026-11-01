@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="14" fill="#101012"/>
+  <text x="32" y="32" font-family="system-ui, -apple-system, 'Segoe UI Emoji', sans-serif" font-size="28" text-anchor="middle" dominant-baseline="central">✂️</text>
+  <rect x="14" y="44" width="36" height="3" rx="1.5" fill="#f3f3f0"/>
+  <text x="32" y="56" font-family="system-ui, sans-serif" font-size="9" font-weight="700" text-anchor="middle" fill="#f3f3f0">tersio</text>
+</svg>

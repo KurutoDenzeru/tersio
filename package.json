@@ -32,6 +32,7 @@
       "patch": "./extensions/dsh/cordis.patch.yml"
     }
   },
+  "icon": "./extensions/dsh/icon.svg",
   "pi": {
     "extensions": [
       "./extensions/caveman/caveman.ts",

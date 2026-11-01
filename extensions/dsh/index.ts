@@ -1,7 +1,7 @@
 // Tersio on DeepSeek Harness: mounts the modes as always-on system-prompt sections.
 // Runs on Node ^22.19 (type stripping), so imports stay erasable and relative to this package tree,
 // which is where the rule bodies live — no copies.
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { exec, execFile } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -19,11 +19,37 @@ const CAVEMAN_RULE_FILES: Record<string, string> = {
   'megacave-lite': 'rule-megacave-lite.md', 'megacave-full': 'rule-megacave.md', 'megacave-ultra': 'rule-megacave-ultra.md',
 };
 
+// The combo presets, copied from cli/common.ts so `/combo` matches the installer bug-for-bug.
+const COMBO_PRESETS: Record<string, { caveman: string; rtk: boolean; ponytail: string }> = {
+  off: { caveman: 'off', rtk: false, ponytail: 'off' },
+  lite: { caveman: 'lite', rtk: true, ponytail: 'lite' },
+  balanced: { caveman: 'full', rtk: true, ponytail: 'full' },
+  max: { caveman: 'ultra', rtk: true, ponytail: 'ultra' },
+};
+
+const RETIRED_CAVEMAN: Record<string, string> = {
+  wenyan: 'megacave-full', 'wenyan-lite': 'megacave-lite', 'wenyan-full': 'megacave-full', 'wenyan-ultra': 'megacave-ultra', megacave: 'megacave-full',
+};
+
 interface Store { [key: string]: unknown }
 
 function readStore(): Store {
   try { return JSON.parse(readFileSync(join(tersioHome(), 'settings.json'), 'utf8')) as Store; } catch { return {}; }
 }
+
+/** Writes the dsh host's own section, so a mode switch here never rewrites another agent's defaults. */
+function writeHostSection(mutate: (section: Record<string, unknown>) => void): void {
+  const file = join(tersioHome(), 'settings.json');
+  let store: Store = {};
+  try { store = JSON.parse(readFileSync(file, 'utf8')) as Store; } catch { /* a missing or broken store starts fresh */ }
+  const hosts = (store.hosts && typeof store.hosts === 'object' ? store.hosts : {}) as Record<string, Record<string, unknown>>;
+  const section = (hosts.dsh && typeof hosts.dsh === 'object' ? hosts.dsh : {}) as Record<string, unknown>;
+  mutate(section);
+  hosts.dsh = section;
+  store.hosts = hosts;
+  writeFileSync(file, `${JSON.stringify(store, null, 2)}\n`, 'utf8');
+}
+
 
 function hostSection(store: Store): Store {
   const hosts = store.hosts as Record<string, Store> | undefined;
@@ -127,10 +153,115 @@ interface DshCtx {
     section(section: { name: string; order: number; text: string | ((context: unknown) => string); interpolate?: boolean }): () => void;
   };
   tools: DshTools;
+  commands: DshCommands;
+}
+
+interface DshCommands {
+  register(command: {
+    name: string;
+    description: string;
+    input?: { hint: string };
+    recordInput?: boolean;
+    handler: (context: { agent: { id: string }; rawInput: string; signal: { throwIfAborted(): void } }) => Promise<{ kind: string; text: string }>;
+  }): () => void;
 }
 
 export const name = 'tersio-dsh';
-export const inject = ['tools', 'systemPrompt'];
+export const inject = ['tools', 'systemPrompt', 'commands'];
+
+function modeLine(store: Store, section: Store): string {
+  return [
+    `caveman=${String(setting(store, section, 'cavemanDefault') ?? 'off')}`,
+    `rtk=${setting(store, section, 'rtkDefault') === true ? 'on' : 'off'}`,
+    `ponytail=${String(setting(store, section, 'ponytailDefault') ?? 'off')}`,
+    `pstack=${String(setting(store, section, 'pstackDefault') ?? 'off')}`,
+    `headroom=${setting(store, section, 'headroomDefault') === 'on' ? 'on' : 'off'}`,
+  ].join(' ');
+}
+
+function registerCommands(ctx: DshCtx): void {
+  const write = (mutate: (section: Record<string, unknown>) => void): string => {
+    writeHostSection(mutate);
+    return modeLine(readStore(), hostSection(readStore()));
+  };
+  const commands: Array<Parameters<DshCommands['register']>[0]> = [
+    {
+      name: 'combo',
+      description: 'Set the Tersio Combo preset: off, lite, balanced, or max',
+      input: { hint: 'off | lite | balanced | max' },
+      handler: async ({ rawInput }) => {
+        const level = String(rawInput || 'off').trim().toLowerCase();
+        const preset = COMBO_PRESETS[level];
+        if (!preset) return { kind: 'success', text: `Unknown combo level: ${level || '(none)'}. Levels: off, lite, balanced, max.` };
+        const modes = write((section) => {
+          section.comboDefault = level;
+          section.cavemanDefault = preset.caveman;
+          section.rtkDefault = preset.rtk;
+          section.ponytailDefault = preset.ponytail;
+        });
+        return { kind: 'success', text: `Combo set to ${level}: ${modes}` };
+      },
+    },
+    {
+      name: 'caveman',
+      description: 'Set the Caveman voice level',
+      input: { hint: 'off | lite | full | ultra | megacave-*' },
+      handler: async ({ rawInput }) => {
+        const level = String(rawInput || 'off').trim().toLowerCase();
+        const mapped = RETIRED_CAVEMAN[level] ?? level;
+        if (mapped !== 'off' && !CAVEMAN_RULE_FILES[mapped]) return { kind: 'success', text: `Unknown caveman level: ${level}. Levels: off, lite, full, ultra, megacave-lite, megacave-full, megacave-ultra.` };
+        const modes = write((section) => { section.cavemanDefault = mapped; });
+        return { kind: 'success', text: mapped === 'off' ? `Caveman off. ${modes}` : `Caveman set to ${mapped}: ${modes}` };
+      },
+    },
+    {
+      name: 'rtk',
+      description: 'Turn the RTK shell condensation on or off',
+      input: { hint: 'on | off' },
+      handler: async ({ rawInput }) => {
+        const raw = String(rawInput || '').trim().toLowerCase();
+        const on = raw === '' ? null : ['on', 'enable', 'true'].includes(raw) ? true : ['off', 'disable', 'false'].includes(raw) ? false : null;
+        if (on === null) return { kind: 'success', text: 'Usage: /rtk on | /rtk off' };
+        const modes = write((section) => { section.rtkDefault = on; });
+        return { kind: 'success', text: `RTK ${on ? 'on' : 'off'}: ${modes}` };
+      },
+    },
+    {
+      name: 'ponytail',
+      description: 'Set the Ponytail level',
+      input: { hint: 'off | lite | full | ultra' },
+      handler: async ({ rawInput }) => {
+        const level = String(rawInput || 'off').trim().toLowerCase();
+        if (level !== 'off' && level !== 'lite' && level !== 'full' && level !== 'ultra') return { kind: 'success', text: `Unknown ponytail level: ${level}. Levels: off, lite, full, ultra.` };
+        const modes = write((section) => { section.ponytailDefault = level; });
+        return { kind: 'success', text: `Ponytail set to ${level}: ${modes}` };
+      },
+    },
+    {
+      name: 'pstack',
+      description: 'Turn the pstack rigor mode on or off',
+      input: { hint: 'on | off' },
+      handler: async ({ rawInput }) => {
+        const raw = String(rawInput || 'off').trim().toLowerCase();
+        const on = raw === 'on' ? true : raw === 'off' ? false : null;
+        if (on === null) return { kind: 'success', text: 'Usage: /pstack on | /pstack off' };
+        const modes = write((section) => { section.pstackDefault = on; });
+        return { kind: 'success', text: `pstack ${on ? 'on' : 'off'}: ${modes}` };
+      },
+    },
+    {
+      name: 'tersio',
+      description: 'Show the current Tersio modes in this DSH session',
+      handler: async () => {
+        const store = readStore();
+        const modes = modeLine(store, hostSection(store));
+        return { kind: 'success', text: `Tersio modes: ${modes}. Change them with /combo, /caveman, /rtk, /ponytail, or /pstack.` };
+      },
+    },
+  ];
+  for (const command of commands) ctx.commands.register(command);
+  if (process.env.TERSIO_DSH_DEBUG) console.log(`[tersio-dsh] commands registered: ${commands.map((c) => `/${c.name}`).join(' ')}`);
+}
 
 export function apply(ctx: DshCtx): void {
   const store = readStore();
@@ -143,6 +274,8 @@ export function apply(ctx: DshCtx): void {
     ['headroom', setting(store, section, 'headroomDefault') === 'on' ? 'on' : 'off'],
   ] as const;
   console.log(`[tersio-dsh] armed: ${state.map(([k, v]) => `${k}=${v}`).join(' ')}`);
+
+  registerCommands(ctx);
 
   // A provider, not a static string: the store is re-read at every assembly, so a mode switch applies without a restart.
   ctx.systemPrompt.section({
