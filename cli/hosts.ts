@@ -31,7 +31,7 @@ export type DetectedHost = HostEntry;
 export function hostExtensionsDir(id: HostId, agentDir = id === 'pig' ? pigAgentDir() : piAgentDir()): string {
   if (id === 'omp') return path.join(HOME, '.omp', 'agent', 'extensions');
   if (id === 'opencode') return path.join(HOME, '.config', 'opencode', 'plugins', 'tersio');
-  // DSH mounts the whole tersio package as a bundle, so its tree base is the mounted package's extensions dir.
+  // DeepSeek Harness mounts the whole tersio package as a bundle, so its tree base is the mounted package's extensions dir.
   if (id === 'dsh') return path.join(dshPackageDir(), 'extensions');
   return path.join(agentDir, 'extensions');
 }
@@ -57,7 +57,7 @@ function piSettingsFile(agentDir = piAgentDir()): string {
   return path.join(agentDir, 'settings.json');
 }
 
-/** DSH's home: `$DSH_HOME`, else `~/.dsh` — the marker DeepSeek's own tooling writes. */
+/** DeepSeek Harness home: `$DSH_HOME`, else `~/.dsh` — the marker DeepSeek's own tooling writes. */
 export function dshHome(): string {
   const override = process.env.DSH_HOME;
   return override && override.trim() !== '' ? override : path.join(HOME, '.dsh');
@@ -71,9 +71,12 @@ export function dshPackageDir(): string {
 /** The desktop app's bundled CLI, present on macOS installs. Windows stays on the npx fallback until its layout is verified. */
 const DSH_APP_CLI = '/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh';
 
+/** The profile the Electron desktop app owns; `dsh plugin` refuses to write it, so installs go through its Plugins pane. */
+const DSH_APP_PROFILE = 'desktop';
+
 /**
  * The command that runs the dsh CLI: PATH first, then the desktop app's bundled CLI, else the
- * zero-install npx form. DSH ships no binary on machines that use the desktop app, so both count.
+ * zero-install npx form. DeepSeek Harness ships no binary on machines that use the desktop app, so both count.
  */
 export function dshRunner(): string[] {
   if (resolveHostBinary('dsh') !== null) return ['dsh'];
@@ -114,6 +117,16 @@ export function dshProfiles(): string[] {
   } catch {
     return [];
   }
+}
+
+/** The profiles the CLI may mount into. The `desktop` profile belongs to the Electron app and refuses CLI writes. */
+export function dshCliProfiles(): string[] {
+  return dshProfiles().filter((profile) => profile !== DSH_APP_PROFILE);
+}
+
+/** The `desktop` profile exists only on machines with the desktop app, where installs go through its Plugins pane. */
+export function dshDesktopProfilePresent(): boolean {
+  return dshProfiles().includes(DSH_APP_PROFILE);
 }
 
 export function pigSettingsFile(agentDir = pigAgentDir()): string {
@@ -196,7 +209,7 @@ const HOSTS: Array<Omit<HostEntry, 'installed' | 'via' | 'declared' | 'version' 
   { id: 'pi', label: 'Pi', bin: 'pi', installCmd: `pi install npm:${PACKAGE_NAME}`, removeCmd: `pi remove npm:${PACKAGE_NAME}` },
   { id: 'opencode', label: 'OpenCode', bin: 'opencode', installCmd: `tersio install --host opencode`, removeCmd: `tersio uninstall --host opencode` },
   { id: 'pig', label: 'Pi-in-go', bin: 'pig', installCmd: `pig install npm:${PACKAGE_NAME}`, removeCmd: `pig remove npm:${PACKAGE_NAME}` },
-  { id: 'dsh', label: 'DSH', bin: 'dsh', installCmd: `dsh plugin --profile web add npm:${PACKAGE_NAME}`, removeCmd: `dsh plugin --profile web remove @krtclcdy/tersio` },
+  { id: 'dsh', label: 'DeepSeek Harness', bin: 'dsh', installCmd: `dsh plugin --profile web add npm:${PACKAGE_NAME}`, removeCmd: `dsh plugin --profile web remove @krtclcdy/tersio` },
 ];
 
 function detect(agentDir = piAgentDir(), pigDir = pigAgentDir()): HostEntry[] {
@@ -212,7 +225,7 @@ function detect(agentDir = piAgentDir(), pigDir = pigAgentDir()): HostEntry[] {
             : null;
     const currentAgentDir = host.id === 'pig' ? pigDir : agentDir;
     const tree = hostExtensionsDir(host.id, currentAgentDir);
-    // A tree wins: the installer writes it and it carries no package.json, so its version is ours. OpenCode keeps no package to fall back to, so a present tree is the install and drift gets the per-host warning. DSH has no tree: the tersio package is mounted as a dsh bundle, and the mounted package dir is the install.
+    // A tree wins: the installer writes it and it carries no package.json, so its version is ours. OpenCode keeps no package to fall back to, so a present tree is the install and drift gets the per-host warning. DeepSeek Harness has no tree: the tersio package is mounted as a dsh bundle, and the mounted package dir is the install.
     const via = host.id === 'dsh'
       ? pkgDir && existsSync(pkgDir) ? 'package' : null
       : missingTreeFiles(host.id, currentAgentDir).length === 0 || (host.id === 'opencode' && existsSync(tree))

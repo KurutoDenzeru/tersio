@@ -433,7 +433,7 @@ export function PipelineCanvas({
         <>
           <span className={cn(header, "gap-2")}>
             <AgentLogo host={host.id} className="size-4 shrink-0" />
-            <span className="truncate text-[13px] font-semibold">{host.label}</span>
+            <span className="min-w-0 flex-1 text-[12px] font-semibold leading-tight">{host.label}</span>
             {off
               ? <NodeBadge on={false} label="not installed" />
               : wrapped[host.id]

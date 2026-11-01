@@ -1,5 +1,5 @@
 // Desktop hosts have no status bar, so a mode change is announced as a chat message the agent answers.
-// The DSH plugin is the reference implementation; CLI hosts keep their status line and never need this.
+// The DeepSeek Harness plugin is the reference implementation; CLI hosts keep their status line and never need this.
 
 /** The same glyphs every Tersio status line uses, in the order the modes are read. */
 export const MODE_GLYPHS = {

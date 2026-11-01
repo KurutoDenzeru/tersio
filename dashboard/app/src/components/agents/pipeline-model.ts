@@ -262,7 +262,7 @@ export const HOSTS = [
   { id: "pi", label: "pi" },
   { id: "pig", label: "PiG" },
   { id: "opencode", label: "OpenCode" },
-  { id: "dsh", label: "DSH" },
+  { id: "dsh", label: "DeepSeek Harness" },
 ] as const;
 
 const HOST_FIELDS: Record<string, "cavemanDefault" | "rtkDefault" | "ponytailDefault" | "pstackDefault" | "headroomDefault"> = {
@@ -395,7 +395,7 @@ export const ABOUT: Partial<Record<NodeId, string>> = {
   "host-pi": "pi auto-discovers the same tree from its extensions directory.",
   "host-pig": "PiG loads the same tree from its own agent directory, the way pi does.",
   "host-opencode": "OpenCode loads the tree as one plugin, registered in opencode.json.",
-  "host-dsh": "DSH loads Tersio as a bundle plugin mounted into its web profile.",
+  "host-dsh": "DeepSeek Harness loads Tersio as a bundle plugin mounted into its web profile.",
   caveman: "Voice. Terse replies; code, commands, paths, and errors stay exact.",
   pstack: "Approach. Picks the playbook, the checks, and the design.",
   headroom: "Compresses tool outputs and history below the shell; Tersio tracks the savings.",

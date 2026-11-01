@@ -100,10 +100,10 @@ export const GENERATED_TREE_FILES: Readonly<Record<string, string>> = {
   [PI_RTK_MANIFEST]: PI_RTK_MANIFEST_BODY,
 };
 
-/** The files the DSH bundle mounts, relative to the package's extensions dir: the plugin module and the patch layer it carries. */
+/** The files the DeepSeek Harness bundle mounts, relative to the package's extensions dir: the plugin module and the patch layer it carries. */
 export const DSH_BUNDLE_FILES: readonly string[] = ['dsh/index.ts', 'dsh/cordis.patch.yml'];
 
-/** The files one host's extension tree holds. The package tree holds all of them. DSH mounts the tersio package as a bundle, so its tree is the plugin's own two files. */
+/** The files one host's extension tree holds. The package tree holds all of them. DeepSeek Harness mounts the tersio package as a bundle, so its tree is the plugin's own two files. */
 export function treeFilesFor(id: 'omp' | 'pi' | 'opencode' | 'pig' | 'dsh'): readonly string[] {
   if (id === 'dsh') return DSH_BUNDLE_FILES;
   if (id === 'opencode') return TREE_FILES;
