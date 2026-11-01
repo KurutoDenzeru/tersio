@@ -2,6 +2,7 @@
 // Runs on Node ^22.19 (type stripping), so imports stay erasable and relative to this package tree,
 // which is where the rule bodies live — no copies.
 import { readFileSync, writeFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import { exec, execFile } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -158,7 +159,9 @@ interface DshCtx {
 
 interface DshAgent {
   id: string;
-  /** The receiving session, for passive log appends that render without starting a turn. */
+  /** Sends a user message as a real chat turn: the UI shows the bubble and the assistant replies to it. */
+  followup?: (message: { id: string; role: 'user'; content: Array<{ type: 'text'; text: string }>; source: { kind: string } }) => void;
+  /** Fallback: append the message to the log when no turn can start. */
   session?: { append?: (type: string, data: unknown, intent?: { surfaceOp: 'append' }) => unknown };
 }
 
@@ -187,16 +190,19 @@ function modeLine(store: Store, section: Store): string {
   ].join(' · ');
 }
 
-/** Appends the change as a passive chat message: the UI renders it like any user message, without starting a turn. */
+/** Sends the change as a real chat message: the UI shows the user bubble and the assistant answers it like any turn. */
 async function notice(agent: DshAgent, text: string): Promise<void> {
-  const session = agent.session;
-  if (process.env.TERSIO_DSH_DEBUG) {
-    console.log(`[tersio-dsh] notice: session=${typeof session} append=${typeof session?.append}`);
+  const message = { id: randomUUID(), role: 'user' as const, content: [{ type: 'text' as const, text }], source: { kind: 'user' } };
+  if (agent.followup) {
+    agent.followup(message);
+    if (process.env.TERSIO_DSH_DEBUG) console.log('[tersio-dsh] notice sent as a chat message');
+    return;
   }
+  // No turn scheduler here: fall back to a surface append, which still renders as a message node.
+  const session = agent.session;
   if (!session?.append) return;
   try {
-    // A user message is a surface event: the engine requires the surfaceOp intent, or the append is rejected.
-    await session.append('user/message', { content: [{ type: 'text', text }], source: { kind: 'tersio-modes', form: 'notice', summary: text } }, { surfaceOp: 'append' });
+    await session.append('user/message', { content: message.content, source: { kind: 'tersio-modes', form: 'notice', summary: text } }, { surfaceOp: 'append' });
     if (process.env.TERSIO_DSH_DEBUG) console.log('[tersio-dsh] notice appended');
   } catch (error) {
     if (process.env.TERSIO_DSH_DEBUG) console.log(`[tersio-dsh] notice append failed: ${(error as Error)?.message ?? error}`);
@@ -211,7 +217,8 @@ function registerCommands(ctx: DshCtx): void {
   const apply = async (agent: DshAgent, mutate: (section: Record<string, unknown>) => void, label: string): Promise<string> => {
     writeHostSection(mutate);
     const modes = modeLine(readStore(), hostSection(readStore()));
-    await notice(agent, `${label}: ${modes}. These modes apply from the next step.`);
+    // A short conversational line, so the assistant's reply stays brief instead of turning it into a task.
+    await notice(agent, `${label} — ${modes}. Confirm in one short line.`);
     return modes;
   };
   const commands: Array<Parameters<DshCommands['register']>[0]> = [
