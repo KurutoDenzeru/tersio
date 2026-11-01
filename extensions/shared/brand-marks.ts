@@ -59,8 +59,8 @@ export const REMOTE_MARKS: Readonly<Record<string, string>> = {
   kiro: "https://kiro.dev/icon.svg",
   // Meituan's own icon: its yellow tile with the logotype.
   meituan: "https://s3plus.meituan.net/v1/mss_e2821d7f0cfe4ac1bf9202ecf9590e67/cdn-prod/file:1040877d/favicon-mt.ico",
-  // The DSH docs mark: an ink tile with the harness geometry, served by DeepSeek's docs host.
-  dsh: "https://deepseekdocs.com/en/img/logo.svg",
+  // The DSH harness mark: DeepSeek blue on transparent, from the project's own docs host.
+  dsh: "https://deepseek-harness.github.io/deepseek-harness/favicon.svg",
   // Headroom wrap targets: each mark comes from the harness's own site or a Simple Icons file. Aider's site logo is a wide wordmark; the square favicon carries the brain mark alone.
   aider: "https://aider.chat/assets/icons/favicon-32x32.png",
   cursor: `${SIMPLE_ICONS}/cursor.svg`,
@@ -123,6 +123,8 @@ export const MARK_BG: Readonly<Record<string, string>> = {
   trae: "#000000",
   kiro: "#9046ff",
   meituan: "#ffd100",
+  // The DSH harness mark is DeepSeek blue, taken from the mark's own fill.
+  dsh: "#4d6bfe",
   // Headroom wrap targets with a verified flat mark: the fill is the art's own ink.
   cursor: "#000000",
 };
@@ -181,8 +183,6 @@ export const COLORED_MARKS: ReadonlySet<string> = new Set([
   "openclaw",
   "grok",
   "vscode",
-  // DSH's mark is a full-bleed ink tile with white harness geometry; a mask would flatten both.
-  "dsh",
 ]);
 
 /** The URL a mark comes from, or null when the name has no hosted mark. */
