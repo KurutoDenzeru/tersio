@@ -10,7 +10,7 @@ node_modules
 # via .npmignore (which npm reads instead of this file) plus the files allowlist.
 /dist/
 dashboard/dist/
-skills/
+/skills/
 graphify-out/
 temp/
 

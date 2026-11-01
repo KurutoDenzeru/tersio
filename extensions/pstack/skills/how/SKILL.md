@@ -7,7 +7,7 @@ description: "Use for \"how does X work\", code walkthroughs before changing som
 
 Explore the codebase to answer "how does X work?" questions. Produce architectural explanations at the level of a senior engineer onboarding onto a subsystem, enough to build a working mental model, not so much that it reads like annotated source code.
 
-Every spawn is a Task subagent with `readonly: true`. Explorers use your configured `how explorer` line (default a fast model), and every explainer uses the `how explainer` line (default the strongest model). Set `model` to that line's value, or to the default if the line is missing. Leave `model` unset when the value is `auto` or `inherit-parent`. If the Task tool rejects a slug, use the default and say so. If it rejects the default, use the closest valid slug of the same family from its error message.
+Every spawn is a Task subagent with a subagent and `readonly: true`. Explorers use the `how explorer` line in your configuration, and every explainer uses the `how explainer` line (default the strongest model). Set `model` to that line's value, or to the default if the rule or the line is missing. Leave `model` unset when the value is `auto` or `inherit-parent`. If the Task tool rejects a slug, use the default and say so. If it rejects the default, use the closest valid slug of the same family from its error message.
 
 ## 1. Assess complexity
 

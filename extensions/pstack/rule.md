@@ -2,8 +2,8 @@
 name: pstack
 description: >
   Rigor mode: apply the named principle at the moment it fits, verify against the
-  real artifact, and read the playbook for the task. Use for /pstack, "pstack",
-  "poteto mode". Stays on until "pstack off" or "normal mode".
+  real artifact, and read the playbook for the task. Use for /pstack and "pstack".
+  Stays on until "pstack off" or "normal mode".
 ---
 
 # pstack
@@ -139,4 +139,4 @@ Open a todolist whose first items are the matched playbook's steps, copied in ve
 - **Worktree and simulator cleanup.** Reclaiming local disk by pruning merged or abandoned git worktrees and stale simulators.
 - **Opening a PR.** Invoked at the end of every other playbook.
 
-Forked from pstack's poteto-mode skill by Lauren Tan, MIT Licence. Source: cursor/plugins at commit 09d06eb, path pstack/skills/poteto-mode/SKILL.md. Every rule and entry above is that skill's own text, with its Cursor surface removed: no subagent_type, no MCP, no per-role model names, and no slash commands. The leaf skills, playbooks, and references under this directory are its files, carried over with the same removal from the pinned commit `a968159`. The precedence lines above are Tersio's own, and they resolve the one real conflict: a style mode still owns the shape of the reply, and ponytail still owns how large a change is. The line that names the TypeScript skill is Tersio's own too. Upstream attaches that skill to a file path, and this port has no path trigger, so the rule points at it instead.
+Forked from pstack's poteto-mode skill by Lauren Tan, MIT Licence. Source: cursor/plugins at commit 09d06eb, path pstack/skills/poteto-mode/SKILL.md. Every rule and entry above is that skill's own text, with its Cursor surface removed: no subagent_type, no MCP, no per-role model names, and no slash commands. The leaf skills, playbooks, and references under this directory are its files, carried over with the same removal from the pinned commit `c742dd6`. The precedence lines above are Tersio's own, and they resolve the one real conflict: a style mode still owns the shape of the reply, and ponytail still owns how large a change is. The line that names the TypeScript skill is Tersio's own too. Upstream attaches that skill to a file path, and this port has no path trigger, so the rule points at it instead.
