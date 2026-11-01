@@ -1,3 +1,14 @@
 - insert:
     - id: tersio-dsh
       name: '@krtclcdy/tersio/dsh-plugin'
+    # Tersio's own stdio MCP server, so its tools (usage, modes, headroom savings) ride into DSH
+    # as mcp__tersio__* alongside the plugin's native tools. A missing binary only logs a failed
+    # sync instead of blocking the boot.
+    - id: mcp-tersio
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: tersio
+        transport: stdio
+        command: tersio
+        args: ['mcp']
+        failOnStartupError: false
