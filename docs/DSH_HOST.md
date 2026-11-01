@@ -71,6 +71,6 @@ Commands and results:
 
 ## Phase 2 plan (follow-up issue)
 
-The bundle plugin itself now exists on this branch: `extensions/dsh/` carries the cordis patch and the plugin module, and the root package declares the `dsh.bundle.patch`, so `dsh plugin --profile web add npm:@krtclcdy/tersio` (or `link:` to a checkout) mounts it. Proven live: the boot log reads `[tersio-dsh] armed: caveman=lite rtk=on ponytail=lite pstack=off headroom=on` against the real store.
+The bundle plugin itself now exists on this branch: `extensions/dsh/` carries the cordis patch and the plugin module, and the root package declares the `dsh.bundle.patch`, so `dsh plugin --profile web add npm:@krtclcdy/tersio` (or `link:` to a checkout) mounts it. Proven live, with injection: a headless turn's assembly produced **23,659 chars of mode blocks** (`TERSIO_DSH_DEBUG=1` logs the assembly), and flipping the store's modes between runs changed the assembled blocks to **6,271 chars without a restart** — the provider re-reads the store at every assembly.
 
 `HostId` gains `'dsh'`; detection is a disjunction — `dsh` binary, `~/.dsh`, `$DSH_HOME`, or the desktop app's data directory — because the binary is absent on this machine while the home dir and desktop app exist; install runs the bundle add; stats read the zstd session logs; uninstall runs the remove. One open item before stats land: field-level audit of the session-log envelope.
