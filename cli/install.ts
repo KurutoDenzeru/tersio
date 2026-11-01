@@ -925,8 +925,7 @@ function comboHint(host: string, comboDefault: string): string {
 /** DeepSeek Harness mounts the tersio package itself as a bundle: one add per profile, and reconcile keeps each layer mounted. */
 async function stepDsh(installOptions: InstallOptions): Promise<void> {
   const root = findPackageRoot(EXT_DIR);
-  // A checkout mounts link:<root>, which always carries the dsh bundle field. The registry copy
-  // gains it only from the release that ships DeepSeek Harness support, so a pinned npm spec names that version.
+  // A checkout mounts link:<root>; the registry copy carries the dsh field only from the release that ships it.
   const fromCheckout = existsSync(path.join(root, 'tersio.ts'));
   const spec = fromCheckout ? `link:${root}` : `npm:${PACKAGE_NAME}@${PACKAGE_VERSION}`;
   const profiles = dshCliProfiles();

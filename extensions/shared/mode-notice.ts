@@ -1,5 +1,4 @@
-// Desktop hosts have no status bar, so a mode change is announced as a chat message the agent answers.
-// The DeepSeek Harness plugin is the reference implementation; CLI hosts keep their status line and never need this.
+// Desktop hosts have no status bar, so a mode change is a chat message the agent answers; DeepSeek Harness is the reference.
 
 /** The same glyphs every Tersio status line uses, in the order the modes are read. */
 export const MODE_GLYPHS = {
@@ -30,10 +29,7 @@ export function formatModeLine(modes: ModeSnapshot): string {
   ].join(' · ');
 }
 
-/**
- * The message a desktop host sends after a mode change. It reads as a user statement, and the
- * one-line ask keeps the assistant's reply short instead of turning the switch into a task.
- */
+// The message a desktop host sends after a mode change; the one-line ask keeps the assistant's reply short.
 export function buildModeNotice(label: string, modes: ModeSnapshot): string {
   return `${label} — ${formatModeLine(modes)}. Confirm in one short line.`;
 }

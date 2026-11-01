@@ -81,8 +81,7 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   // One source for the installed plugin path, so the doctor follows a package rename.
   const tersioPluginDir = ompPackageDir();
 
-  // Ponytail rides inside this tree now: one vendored copy, and no sibling package to discover.
-  // The fork ships index.ts; a not-yet-updated package still holds index.js, so either counts.
+  // Ponytail rides inside this tree: one vendored copy, and the fork ships index.ts while an older package holds index.js.
   const ponytailIndex = ['index.ts', 'index.js']
     .map((base) => path.join(tersioPluginDir, 'extensions', 'ponytail', 'pi-extension', base))
     .find((at) => existsSync(at))

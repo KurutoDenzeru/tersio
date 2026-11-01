@@ -10,8 +10,7 @@ const extensionsDir = fileURLToPath(new URL("../../extensions", import.meta.url)
 
 test("every shipped extension dir has a removal entry, on both hosts", () => {
   const shipped = readdirSync(extensionsDir).filter((name) => statSync(path.join(extensionsDir, name)).isDirectory());
-  // ponytail rides along as its own package, never as an extensions/<dir> tree; it has its own removal.
-  // dsh is a dsh-bundle payload for the DeepSeek Harness host, not a per-host tree: uninstall --host dsh removes the bundle from DeepSeek Harness itself.
+  // ponytail and dsh are not per-host trees: ponytail is its own package, dsh a bundle payload for DeepSeek Harness.
   const trees = shipped.filter((name) => name !== "ponytail" && name !== "dsh");
   expect(trees.length).toBeGreaterThan(5);
   for (const tree of trees) {

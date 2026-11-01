@@ -74,10 +74,7 @@ const DSH_APP_CLI = '/Applications/DeepSeek Harness.app/Contents/Resources/runti
 /** The profile the Electron desktop app owns; `dsh plugin` refuses to write it, so installs go through its Plugins pane. */
 const DSH_APP_PROFILE = 'desktop';
 
-/**
- * The command that runs the dsh CLI: PATH first, then the desktop app's bundled CLI, else the
- * zero-install npx form. DeepSeek Harness ships no binary on machines that use the desktop app, so both count.
- */
+/** The runner for the dsh CLI: PATH, then the desktop app's bundled CLI, else the zero-install npx form. */
 export function dshRunner(): string[] {
   if (resolveHostBinary('dsh') !== null) return ['dsh'];
   if (process.platform === 'darwin' && existsSync(DSH_APP_CLI)) return [DSH_APP_CLI];

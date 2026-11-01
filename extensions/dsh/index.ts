@@ -1,6 +1,4 @@
-// Tersio on DeepSeek Harness: mounts the modes as always-on system-prompt sections.
-// Runs on Node ^22.19 (type stripping), so imports stay erasable and relative to this package tree,
-// which is where the rule bodies live — no copies.
+// Tersio on DeepSeek Harness: modes as always-on system-prompt sections; imports stay relative for Node type stripping.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { exec, execFile } from 'node:child_process';
@@ -14,8 +12,7 @@ const execFileP = promisify(execFile);
 const execShellP = promisify(exec);
 const HERE = dirname(fileURLToPath(import.meta.url));
 
-// The same level-to-file mapping caveman/index.ts uses; `megacave` and the retired
-// wenyan names fall back to `full`, matching the other hosts bug-for-bug.
+// The level-to-file map caveman/index.ts uses; `megacave` and retired wenyan names fall back to `full`.
 const CAVEMAN_RULE_FILES: Record<string, string> = {
   lite: 'rule-lite.md', full: 'rule.md', ultra: 'rule-ultra.md',
   'megacave-lite': 'rule-megacave-lite.md', 'megacave-full': 'rule-megacave.md', 'megacave-ultra': 'rule-megacave-ultra.md',
@@ -212,10 +209,7 @@ async function notice(agent: DshAgent, text: string): Promise<void> {
   }
 }
 
-/**
- * Writes the dsh section, then sends the change as a chat message the assistant answers, and
- * returns the status line. Module scope so the command handlers all share one implementation.
- */
+// Writes the dsh section, sends the change as a chat message, and returns the status line.
 async function applyModeChange(agent: DshAgent, mutate: (section: Record<string, unknown>) => void, label: string): Promise<string> {
   writeHostSection(mutate);
   const store = readStore();

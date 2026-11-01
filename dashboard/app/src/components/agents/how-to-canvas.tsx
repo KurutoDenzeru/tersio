@@ -472,8 +472,7 @@ export function PipelineCanvas({
     return null;
   };
 
-  // The SVG world spans the laid-out graph; every connector reads its two nodes' current boxes, so a
-  // drag replumbs the flow live.
+  // The SVG world spans the laid-out graph; connectors read live boxes, so a drag replumbs the flow.
   const worldBoxes = Object.values(boxes);
   const worldW = Math.max(...worldBoxes.map((b) => b.x + b.w), addBox.x + addBox.w) + 48;
   const worldH = Math.max(...worldBoxes.map((b) => b.y + b.h), addBox.y + addBox.h) + 48;
