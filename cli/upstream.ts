@@ -6,6 +6,7 @@ import path from 'node:path';
 import { inflateRawSync } from 'node:zlib';
 import { PACKAGE_VERSION, args, flagValue, parseJsonObject } from './common.ts';
 import { newerThan } from './update.ts';
+import { checkBinarySource } from './upstream-binaries.ts';
 import { readState } from '../extensions/shared/state.ts';
 import { detectHosts, hostExtensionsDir } from './hosts.ts';
 import { cacheDelete, cacheGet, cacheKeys, cachePut, cacheStamp } from '../extensions/shared/cache-store.ts';
@@ -27,7 +28,6 @@ import {
   readTextIfExists,
   resolveHeadroomBinary,
   resolveRtkBinary,
-  shimCommand,
   tersioHome,
 } from '../extensions/shared/utils.ts';
 
@@ -813,101 +813,32 @@ async function checkPonytail(hosts: HostRow[]): Promise<SourceRow> {
   };
 }
 
-/** RTK: the binary's own version is the fact; the release feed is the drift. */
-async function checkRtk(): Promise<SourceRow> {
-  const bin = resolveRtkBinary();
-  let local: string | null = null;
-  if (bin) {
-    try {
-      const shim = shimCommand(bin, ['--version']);
-      local = normalizeRtkVersion(execFileSync(shim.cmd, shim.args, { encoding: 'utf8', timeout: 5000, windowsHide: true })) || null;
-    } catch { local = null; }
-  }
-  let latest: string | null = null;
-  let failure: FetchFailure | null = null;
-  try {
-    const token = githubToken();
-    const release = await fetchJson<{ tag_name?: string }>(RTK_RELEASE_API, token ? { headers: { Authorization: `Bearer ${token}` } } : {});
-    latest = normalizeRtkVersion(release.tag_name) || null;
-  } catch (e) { failure = classifyFetch(e, 'the RTK release feed'); }
-  const behind = local && latest && local !== latest;
-  return {
-    source: 'RTK',
-    pin: local ?? 'not installed',
-    upstream: latest ?? 'unknown',
-    // An absent binary has no bytes to compare, so it is not a miss; the pin column already says "not installed".
-    tracked: local === null ? 0 : 1,
-    matched: local === null ? 0 : 1,
-    drift: behind ? 1 : 0,
-    added: 0,
-    removed: 0,
-    ceiling: 0,
-    measured: failure === null,
-    status: failure ? failure.status : 'ok',
-    kind: 'version',
-    link: local ? releaseUrl(RTK_REPO, local) : '',
-    gaps: local === null ? ['the rtk binary is not on PATH'] : [],
-    moved: [],
-    appeared: [],
-    gone: [],
-    uncarried: 0,
-    uncarriedMoved: 0,
-    pinnedAt: null,
-    candidate: behind ? latest : null,
-    preview: [],
-    note: failure ? failure.reason : behind ? `installed ${local} is behind ${latest}` : local === null ? 'binary not on PATH' : '',
-  };
-}
-
 /** Headroom prints `headroom, version 0.40.0`; its releases tag `v<version>`, so both sides read `0.40.0`. */
 function normalizeHeadroomVersion(value: string | undefined): string {
   return String(value || '').replace(/^headroom,\s*version\s*/i, '').replace(/^v/i, '').trim();
 }
 
-/** Headroom: the binary's own version is the fact; the release feed is the drift. Same contract as RTK. */
+/** The raw release tag; the binary adapter applies the source's own normalizer. */
+async function releaseTag(api: string): Promise<string | null> {
+  const token = githubToken();
+  const release = await fetchJson<{ tag_name?: string }>(api, token ? { headers: { Authorization: `Bearer ${token}` } } : {});
+  return release.tag_name ?? null;
+}
+
+const BINARY_CTX = { fetchTag: releaseTag, classifyFetch, releaseUrl };
+
+async function checkRtk(): Promise<SourceRow> {
+  return checkBinarySource({
+    source: 'RTK', api: RTK_RELEASE_API, repo: RTK_REPO,
+    bin: resolveRtkBinary, normalize: normalizeRtkVersion, gapWhenMissing: true,
+  }, BINARY_CTX);
+}
+
 async function checkHeadroom(): Promise<SourceRow> {
-  const bin = resolveHeadroomBinary();
-  let local: string | null = null;
-  if (bin) {
-    try {
-      const shim = shimCommand(bin, ['--version']);
-      local = normalizeHeadroomVersion(execFileSync(shim.cmd, shim.args, { encoding: 'utf8', timeout: 5000, windowsHide: true })) || null;
-    } catch { local = null; }
-  }
-  let latest: string | null = null;
-  let failure: FetchFailure | null = null;
-  try {
-    const token = githubToken();
-    const release = await fetchJson<{ tag_name?: string }>(HEADROOM_RELEASE_API, token ? { headers: { Authorization: `Bearer ${token}` } } : {});
-    latest = normalizeHeadroomVersion(release.tag_name) || null;
-  } catch (e) { failure = classifyFetch(e, 'the Headroom release feed'); }
-  const behind = local && latest && local !== latest;
-  return {
-    source: 'Headroom',
-    pin: local ?? 'not installed',
-    upstream: latest ?? 'unknown',
-    tracked: local === null ? 0 : 1,
-    matched: local === null ? 0 : 1,
-    drift: behind ? 1 : 0,
-    added: 0,
-    removed: 0,
-    ceiling: 0,
-    measured: failure === null,
-    status: failure ? failure.status : 'ok',
-    kind: 'version',
-    link: local ? releaseUrl(HEADROOM_REPO, local) : '',
-    // Headroom is the user's opt-in install, so an absent binary is not a gap of ours; the pin and note say so.
-    gaps: [],
-    moved: [],
-    appeared: [],
-    gone: [],
-    uncarried: 0,
-    uncarriedMoved: 0,
-    pinnedAt: null,
-    candidate: behind ? latest : null,
-    preview: [],
-    note: failure ? failure.reason : behind ? `installed ${local} is behind ${latest}` : local === null ? 'binary not on PATH' : '',
-  };
+  return checkBinarySource({
+    source: 'Headroom', api: HEADROOM_RELEASE_API, repo: HEADROOM_REPO,
+    bin: resolveHeadroomBinary, normalize: normalizeHeadroomVersion, gapWhenMissing: false,
+  }, BINARY_CTX);
 }
 
 /** The extension entries an installed package manifest loads, or null when the host keeps none. A host can carry every file and still never load one, because the manifest is what names them. */

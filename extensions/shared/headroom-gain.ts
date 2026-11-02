@@ -1,7 +1,9 @@
 // Headroom's savings read through its own CLI: measured=false plus a failure, never a zero that reads as data, and a memo so a poll does not shell out each render.
 
 import { execFileSync } from 'node:child_process';
+import { headroomProxyUrl } from './headroom-proxy.ts';
 import { resolveHeadroomBinary, shimCommand } from './utils.ts';
+import type { HeadroomClientRow, HeadroomProxyStats } from './agent-types.ts';
 
 export interface HeadroomWindow {
   tokensSaved: number;
@@ -9,12 +11,6 @@ export interface HeadroomWindow {
   costUsd: number;
   calls: number;
   savingsPercent: number;
-}
-
-export interface HeadroomClientRow {
-  client: string;
-  calls: number;
-  tokensSaved: number;
 }
 
 export interface HeadroomModelRow {
@@ -35,6 +31,8 @@ export interface HeadroomGainOptions {
   /** Test seam: a fake binary path, else the PATH probe. `null` skips the call entirely. */
   binary?: string | null;
   budgetMs?: number;
+  /** Proxy port for `headroom doctor`; the ledger itself has no port. */
+  port?: number;
 }
 
 function num(value: unknown): number {
@@ -126,16 +124,35 @@ export function parseHeadroomDoctor(raw: string): HeadroomDoctor {
   };
 }
 
+/** The live counters `/stats` reports; they reset with the proxy, unlike the durable savings ledger. */
+export function parseHeadroomStats(raw: string): HeadroomProxyStats {
+  const parsed = JSON.parse(raw) as Record<string, unknown>;
+  const summary = (parsed.summary ?? {}) as Record<string, unknown>;
+  const compression = (summary.compression ?? {}) as Record<string, unknown>;
+  return {
+    measured: true,
+    failure: '',
+    requests: num(summary.api_requests),
+    compressed: num(compression.requests_compressed),
+    tokensSaved: num(compression.total_tokens_saved_all_layers ?? compression.total_tokens_removed),
+    avgCompressionPct: num(compression.avg_compression_pct),
+  };
+}
+
+export function emptyHeadroomStats(failure: string): HeadroomProxyStats {
+  return { measured: false, failure, requests: 0, compressed: 0, tokensSaved: 0, avgCompressionPct: 0 };
+}
+
 // The probe costs a subprocess plus localhost round-trips; the dashboard polls, so each probe holds its own answer briefly (the ledger moves slowly, the routing check less so).
 const MEMOS = new Map<string, { at: number; value: unknown }>();
 
-/** Tests only: drops the savings memo so a refetch re-runs the CLI. */
+/** Tests only: drops the memo so a refetch re-runs the CLI or the proxy probe. */
 export function resetHeadroomGainMemo(): void {
-  MEMOS.delete('savings');
+  MEMOS.clear();
 }
 
 function runProbe<T>(probe: 'savings' | 'doctor', binary: string, budgetMs: number, memoMs: number,
-  parse: (raw: string) => T, blank: (failure: string) => T): T {
+  parse: (raw: string) => T, blank: (failure: string) => T, port?: number): T {
   const label = `headroom ${probe}`;
   const hit = MEMOS.get(probe);
   if (hit && Date.now() - hit.at < memoMs) return hit.value as T;
@@ -147,6 +164,7 @@ function runProbe<T>(probe: 'savings' | 'doctor', binary: string, budgetMs: numb
       maxBuffer: 4 * 1024 * 1024,
       windowsHide: true,
       encoding: 'utf8',
+      env: port ? { ...process.env, HEADROOM_PORT: String(port) } : process.env,
     });
     const value = parse(stdout);
     MEMOS.set(probe, { at: Date.now(), value });
@@ -169,11 +187,36 @@ export function readHeadroomDoctor(options: HeadroomGainOptions = {}): HeadroomD
   const binary = options.binary !== undefined ? options.binary : resolveHeadroomBinary();
   if (!binary) return { measured: false, failure: 'headroom binary not found in PATH', exitCode: null, version: null, checks: [] };
   return runProbe('doctor', binary, options.budgetMs ?? 8000, 15000, parseHeadroomDoctor,
-    (failure) => ({ measured: false, failure, exitCode: null, version: null, checks: [] }));
+    (failure) => ({ measured: false, failure, exitCode: null, version: null, checks: [] }), options.port);
 }
 
 export function readHeadroomSavings(options: HeadroomGainOptions = {}): HeadroomGain {
   const binary = options.binary !== undefined ? options.binary : resolveHeadroomBinary();
   if (!binary) return emptyHeadroomGain('headroom binary not found in PATH');
   return runProbe('savings', binary, options.budgetMs ?? 5000, 5000, parseHeadroomSavings, emptyHeadroomGain);
+}
+
+/** The proxy's live counters. The CLI has no stats command, so this reads the same HTTP endpoint the dashboard uses. */
+export function readHeadroomStats(options: { url?: string; budgetMs?: number } = {}): HeadroomProxyStats {
+  const url = options.url ?? new URL('/stats', headroomProxyUrl()).toString();
+  const budget = options.budgetMs ?? 800;
+  const hit = MEMOS.get('stats');
+  if (hit && Date.now() - hit.at < 5000) return hit.value as HeadroomProxyStats;
+  try {
+    // A synchronous caller cannot await fetch, so a short-lived same-runtime child performs the read.
+    const script = `fetch(process.argv[1],{signal:AbortSignal.timeout(${budget})}).then((r)=>{if(!r.ok)throw new Error('HTTP '+r.status);return r.text()}).then((t)=>process.stdout.write(t)).catch((e)=>{console.error(e.message);process.exit(1)})`;
+    const stdout = execFileSync(process.execPath, ['-e', script, url], {
+      timeout: budget + 500,
+      maxBuffer: 2 * 1024 * 1024,
+      windowsHide: true,
+      encoding: 'utf8',
+    });
+    const value = parseHeadroomStats(stdout);
+    MEMOS.set('stats', { at: Date.now(), value });
+    return value;
+  } catch (e) {
+    const err = e as { stderr?: string; message?: string; killed?: boolean };
+    MEMOS.delete('stats');
+    return emptyHeadroomStats(err.killed ? 'headroom stats timed out' : (err.stderr?.trim() || err.message || 'headroom stats failed'));
+  }
 }

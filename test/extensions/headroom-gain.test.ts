@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import { mkdtempSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { emptyHeadroomGain, parseHeadroomSavings, readHeadroomSavings, resetHeadroomGainMemo } from "../../extensions/shared/headroom-gain.ts";
+import { emptyHeadroomGain, parseHeadroomSavings, parseHeadroomStats, readHeadroomSavings, readHeadroomStats, resetHeadroomGainMemo } from "../../extensions/shared/headroom-gain.ts";
 import { fakeExecutable } from "../helpers/env.ts";
 
 process.env.HOME = path.join(os.tmpdir(), "definitely-missing-headroom-gain-home");
@@ -63,6 +63,24 @@ test("a failing or missing binary reads unmeasured, never zero-as-data", () => {
   expect(gain.failure).not.toBe("");
   expect(gain.lifetime.tokensSaved).toBe(0);
   expect(readHeadroomSavings({ binary: null })).toEqual(emptyHeadroomGain("headroom binary not found in PATH"));
+});
+
+test("proxy stats parse the live counter block", () => {
+  const stats = parseHeadroomStats(JSON.stringify({
+    summary: { api_requests: 7, compression: { requests_compressed: 3, total_tokens_saved_all_layers: 1234, avg_compression_pct: 22.5 } },
+  }));
+  expect(stats.measured).toBe(true);
+  expect(stats.requests).toBe(7);
+  expect(stats.compressed).toBe(3);
+  expect(stats.tokensSaved).toBe(1234);
+  expect(stats.avgCompressionPct).toBe(22.5);
+});
+
+test("an unreachable /stats reads unmeasured", () => {
+  resetHeadroomGainMemo();
+  const stats = readHeadroomStats({ url: "http://127.0.0.1:1/stats", budgetMs: 300 });
+  expect(stats.measured).toBe(false);
+  expect(stats.failure).not.toBe("");
 });
 
 test("the memo serves the same gain until a test resets it", () => {

@@ -4,8 +4,8 @@ import path from 'node:path';
 import { HOME, OMP_PLUGINS_DIR, PACKAGE_NAME, PACKAGE_VERSION } from './common.ts';
 import { treeFilesFor } from './manifest.ts';
 import { piAgentDir, pigAgentDir, resolveHostBinary } from '../extensions/shared/utils.ts';
-
-export type HostId = 'omp' | 'pi' | 'opencode' | 'pig' | 'dsh';
+import { HOST_CAPS } from '../extensions/shared/host-caps.ts';
+import type { HostId } from '../extensions/shared/host-caps.ts';
 
 export interface HostEntry {
   id: HostId;
@@ -201,13 +201,13 @@ export function pigTersioSource(agentDir = pigAgentDir()): string | null {
   return null;
 }
 
-const HOSTS: Array<Omit<HostEntry, 'installed' | 'via' | 'declared' | 'version' | 'dir'>> = [
-  { id: 'omp', label: 'Oh My Pi', bin: 'omp', installCmd: `omp plugin install ${PACKAGE_NAME}`, removeCmd: `omp plugin remove ${PACKAGE_NAME}` },
-  { id: 'pi', label: 'Pi', bin: 'pi', installCmd: `pi install npm:${PACKAGE_NAME}`, removeCmd: `pi remove npm:${PACKAGE_NAME}` },
-  { id: 'opencode', label: 'OpenCode', bin: 'opencode', installCmd: `tersio install --host opencode`, removeCmd: `tersio uninstall --host opencode` },
-  { id: 'pig', label: 'Pi-in-go', bin: 'pig', installCmd: `pig install npm:${PACKAGE_NAME}`, removeCmd: `pig remove npm:${PACKAGE_NAME}` },
-  { id: 'dsh', label: 'DeepSeek Harness', bin: 'dsh', installCmd: `dsh plugin --profile web add npm:${PACKAGE_NAME}`, removeCmd: `dsh plugin --profile web remove @krtclcdy/tersio` },
-];
+const HOSTS: Array<Omit<HostEntry, 'installed' | 'via' | 'declared' | 'version' | 'dir'>> = Object.values(HOST_CAPS).map((cap) => ({
+  id: cap.id,
+  label: cap.label,
+  bin: cap.bin,
+  installCmd: cap.installCmd,
+  removeCmd: cap.removeCmd,
+}));
 
 function detect(agentDir = piAgentDir(), pigDir = pigAgentDir()): HostEntry[] {
   return HOSTS.map((host) => {

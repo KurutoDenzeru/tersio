@@ -8,8 +8,11 @@ import { formatCurrency, readStoredCurrency } from './currency.ts';
 import { agentStats } from './dashboard.ts';
 import { applyComboPreset, formatProfile, storedProfile, writePluginSettings } from './profile.ts';
 import { isRangeKey, RANGES } from '../extensions/shared/agent-stats.ts';
-import type { RangeKey } from '../extensions/shared/agent-stats.ts';
-import { readHeadroomSavings } from '../extensions/shared/headroom-gain.ts';
+import type { RangeKey } from '../extensions/shared/agent-types.ts';
+import { readHeadroomSavings, readHeadroomStats } from '../extensions/shared/headroom-gain.ts';
+import { headroomProxyUrl } from '../extensions/shared/headroom-proxy.ts';
+import { describeHeadroomRoute, readHeadroomRoute } from '../extensions/shared/headroom-routing.ts';
+import { tersioMcpConfigured } from '../extensions/shared/mcp-config.ts';
 
 /** The spec version this server speaks; a client naming another is answered with this one. */
 const PROTOCOL_VERSION = '2025-06-18';
@@ -40,6 +43,7 @@ interface ActivityToolArgs {
 interface HeadroomToolArgs {
   action?: string;
   suite?: string;
+  hash?: unknown;
 }
 
 interface ModesToolArgs {
@@ -116,6 +120,44 @@ async function modesText(want: ModeWants): Promise<string> {
   return [text, `Session defaults saved: ${formatProfile(next)}`].filter(Boolean).join('\n');
 }
 
+/** One combined read: live proxy counters, compression routing, durable savings, and MCP wiring. */
+function headroomStatusText(): string {
+  const stats = readHeadroomStats();
+  const gain = readHeadroomSavings();
+  const routing = ['omp', 'opencode'].map((host) => `${host}: ${describeHeadroomRoute(readHeadroomRoute(host))}`);
+  const mcp = ['omp', 'pi', 'pig', 'opencode'].map((host) => `${host}: ${tersioMcpConfigured(host) ? 'wired' : 'not wired'}`);
+  return [
+    stats.measured
+      ? `Proxy ${headroomProxyUrl()}: up — ${shortCount(stats.requests)} requests, ${shortCount(stats.compressed)} compressed, ${shortCount(stats.tokensSaved)} tokens saved since it started`
+      : `Proxy ${headroomProxyUrl()}: unavailable — ${stats.failure}`,
+    `Routing — ${routing.join(' · ')}`,
+    gain.measured
+      ? `Savings ledger: ${shortCount(gain.lifetime.tokensSaved)} of ${shortCount(gain.lifetime.tokensBefore)} tokens (${gain.lifetime.savingsPercent.toFixed(1)}%) across ${shortCount(gain.lifetime.calls)} calls`
+      : `Savings ledger: not measured — ${gain.failure}`,
+    `Tersio MCP — ${mcp.join(' · ')}`,
+  ].join('\n');
+}
+
+/** The original behind a compression marker, fetched from the proxy's CCR store. */
+async function retrieveText(hash: string): Promise<{ text: string; isError: boolean }> {
+  const url = new URL('/v1/retrieve', headroomProxyUrl()).toString();
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ hash }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    const body = await response.text();
+    if (!response.ok) return { text: `Headroom retrieve failed (HTTP ${response.status}): ${body.trim() || hash}`, isError: true };
+    const parsed = JSON.parse(body) as Record<string, unknown>;
+    const original = parsed.original_content ?? parsed.content;
+    return { text: typeof original === 'string' ? original : JSON.stringify(parsed, null, 2), isError: false };
+  } catch (e) {
+    return { text: `Headroom retrieve failed for ${hash}: ${(e as Error).message}`, isError: true };
+  }
+}
+
 /** JSON Schema per tool, the shape every MCP client knows how to render. */
 const TOOLS = [
   {
@@ -151,12 +193,13 @@ const TOOLS = [
   },
   {
     name: 'tersio_headroom',
-    description: 'Headroom, the token saver: compression savings by default, or its memory store, an eval suite, and the savings dashboard. Unmeasured when Headroom is not installed.',
+    description: 'Headroom, the token saver: savings by default, live proxy counters and routing with status, original content by hash with retrieve, or its memory store, an eval suite, and the savings dashboard. Unmeasured when Headroom is not installed.',
     inputSchema: {
       type: 'object',
       properties: {
-        action: { type: 'string', enum: ['savings', 'memory', 'evals', 'dashboard'], description: 'What to ask headroom for. savings is the default.' },
+        action: { type: 'string', enum: ['savings', 'status', 'retrieve', 'memory', 'evals', 'dashboard'], description: 'What to ask headroom for. savings is the default. retrieve needs hash.' },
         suite: { type: 'string', description: 'With evals: the suite name, as `headroom evals --help` lists them.' },
+        hash: { type: 'string', description: 'With retrieve: the hash from a <<ccr:HASH>> compression marker.' },
       },
     },
   },
@@ -199,7 +242,14 @@ async function callTool(params: unknown): Promise<{ content: Array<{ type: 'text
   if (name === 'tersio_headroom') {
     // Upstream owns these surfaces; Tersio passes the command through and returns its tail.
     const action = args.action ?? 'savings';
-    if (!['savings', 'memory', 'evals', 'dashboard'].includes(action)) throw new RpcError(-32602, 'action must be savings, memory, evals, or dashboard');
+    if (!['savings', 'status', 'retrieve', 'memory', 'evals', 'dashboard'].includes(action)) throw new RpcError(-32602, 'action must be savings, status, retrieve, memory, evals, or dashboard');
+    if (action === 'status') return { content: [{ type: 'text', text: headroomStatusText() }] };
+    if (action === 'retrieve') {
+      const hash = typeof args.hash === 'string' ? args.hash.trim() : '';
+      if (!hash) throw new RpcError(-32602, 'hash is required for retrieve');
+      const result = await retrieveText(hash);
+      return { content: [{ type: 'text', text: result.text }], ...(result.isError ? { isError: true } : {}) };
+    }
     if (action !== 'savings') {
       const bin = resolveHeadroomBinary();
       if (!bin) return { content: [{ type: 'text', text: 'Headroom: not installed — install it from the dashboard Tools page, or run pip install "headroom-ai[all]".' }] };

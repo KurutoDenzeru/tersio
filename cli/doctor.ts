@@ -14,6 +14,7 @@ import { GENERATED_TREE_FILES } from './manifest.ts';
 import { askInteractiveChoice, askInteractiveConfirm, runInteractivePhase } from './interactive.ts';
 import { usageDbPath } from '../extensions/shared/usage-store.ts';
 import { readHeadroomDoctor } from '../extensions/shared/headroom-gain.ts';
+import { headroomProxyPort } from '../extensions/shared/headroom-proxy.ts';
 import { piAgentDir, pigAgentDir, readTextIfExists, resolveHeadroomBinary, resolveHostBinary, resolveRtkBinary, rtkPlatformSpec, ruleBodyProblem } from '../extensions/shared/utils.ts';
 import { sqliteScript, statsDbPath } from '../extensions/shared/agent-stats.ts';
 import { OMP_SUBAGENT_MARKER } from '../extensions/shared/session-state.ts';
@@ -350,7 +351,7 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   const headroomVersion = headroomVersionRaw?.match(/version\s+(\S+)/)?.[1] ?? headroomVersionRaw ?? '';
   if (headroomBin !== null) {
     // Its own doctor is the only source that says whether traffic actually flows.
-    const routing = readHeadroomDoctor({ binary: headroomBin });
+    const routing = readHeadroomDoctor({ binary: headroomBin, port: headroomProxyPort() });
     const failing = routing.checks.filter((c) => c.status === 'fail');
     const warned = routing.checks.filter((c) => c.status === 'warn');
     const detail = routing.measured

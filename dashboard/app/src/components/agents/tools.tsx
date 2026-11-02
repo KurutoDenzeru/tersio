@@ -794,9 +794,25 @@ export function ToolsPage({ agent, money }: { agent: AgentStats; money: (v: numb
             {headroom.routing.measured ? (
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                 <span className="mono text-[10px] uppercase tracking-[0.12em] text-dim">routing</span>
+                {(headroom.routes ?? []).map((route) => (
+                  <span
+                    key={route.host}
+                    className={cn("mono rounded border px-1.5 py-0.5 text-[10px]", route.routed ? "border-success/40 text-success" : "border-warning/40 text-warning")}
+                    title={route.text}
+                  >
+                    {route.host} {route.measured ? (route.routed ? "routed" : "not routed") : "route unknown"}
+                  </span>
+                ))}
                 <span className={cn("mono rounded border px-1.5 py-0.5 text-[10px]", headroom.routing.proxyUp ? "border-success/40 text-success" : "border-danger/40 text-danger")}>
                   proxy {headroom.routing.proxyUp ? "up" : "down"}
                 </span>
+                {headroom.proxy ? (
+                  <span className="mono text-[10px] text-dim" title="Live counters since this proxy process started">
+                    {fmt(headroom.proxy.requests)} requests · {fmt(headroom.proxy.compressed)} compressed · {fmtShort(headroom.proxy.tokensSaved)} saved
+                  </span>
+                ) : (
+                  <span className="mono text-[10px] text-dim">counters not measured</span>
+                )}
                 {headroom.routing.failing.length > 0 ? (
                   headroom.routing.failing.slice(0, 4).map((check) => (
                     <span key={check.name} className="mono text-[10px] text-dim" title={check.hint ?? undefined}>

@@ -1,7 +1,7 @@
 import http from 'node:http';
 import { afterEach, describe, expect, test } from 'vitest';
 import { headroomHostSupported } from '../../extensions/shared/headroom-proxy.ts';
-import { headroomRuntimeUp } from '../../cli/headroom-runtime.ts';
+import { headroomProxyPort, headroomProxyUrl, headroomRuntimeUp, proxyArgsForDeployment } from '../../cli/headroom-runtime.ts';
 
 describe('headroom runtime', () => {
   const before = process.env.TERSIO_HEADROOM_PROXY_URL;
@@ -16,6 +16,20 @@ describe('headroom runtime', () => {
     expect(headroomHostSupported('pi')).toBe(false);
     expect(headroomHostSupported('pig')).toBe(false);
     expect(headroomHostSupported('dsh')).toBe(false);
+  });
+
+  test('the proxy URL override moves both the reader and the durable port', () => {
+    process.env.TERSIO_HEADROOM_PROXY_URL = 'http://127.0.0.1:9911/';
+    expect(headroomProxyUrl()).toBe('http://127.0.0.1:9911/');
+    expect(headroomProxyPort()).toBe(9911);
+  });
+
+  test('a fallback start reuses the deployment mode and backend', () => {
+    expect(proxyArgsForDeployment(['--host', '127.0.0.1', '--port', '8787', '--mode', 'token', '--backend', 'anthropic'], 9911))
+      .toEqual(['--host', '127.0.0.1', '--port', '9911', '--mode', 'token', '--backend', 'anthropic']);
+    expect(proxyArgsForDeployment([], 9911)).toEqual(['--host', '127.0.0.1', '--port', '9911']);
+    expect(proxyArgsForDeployment(['--mode', 'token'], 9911, 'http://127.0.0.1:3425/v1'))
+      .toEqual(['--mode', 'token', '--port', '9911', '--host', '127.0.0.1', '--openai-api-url', 'http://127.0.0.1:3425/v1']);
   });
 
   test('a live /readyz reads as up, and a closed port reads as down', async () => {

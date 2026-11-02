@@ -570,11 +570,11 @@ test("an existing rtk binary is bound on both hosts, never downloaded", () => {
     seedRtk(home);
     const pi = run(home, ["install", "--host", "pi", "--yes"]);
     expect(pi.status, pi.stderr).toBe(0);
-    expect(pi.stdout).toMatch(/RTK — already installed.*binding into pi/);
+    expect(pi.stdout).toMatch(/RTK — already installed.*binding into pi/i);
 
     const omp = run(home, ["install", "--host", "omp", "--dry-run", "--verbose"]);
     expect(omp.status, omp.stderr).toBe(0);
-    expect(omp.stdout).toMatch(/RTK — already installed.*binding into OMP/);
+    expect(omp.stdout).toMatch(/RTK — already installed.*binding into (OMP|Oh My Pi)/i);
     expect(omp.stdout).not.toMatch(/would download rtk binary/);
     const oc = run(home, ["install", "--host", "opencode", "--dry-run"]);
     expect(oc.status, oc.stderr).toBe(0);

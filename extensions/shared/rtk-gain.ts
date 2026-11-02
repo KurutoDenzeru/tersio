@@ -3,17 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { rtkDirs } from './utils.ts';
 import { sqliteRead } from './sqlite.ts';
-
-export interface RtkCommandRow {
-  /** The command, or for a grouped read, the leading verb such as `rtk read`. */
-  command: string;
-  count: number;
-  saved: number;
-  avgPct: number;
-  avgMs: number;
-  /** How many distinct full commands this row folds. 1 for an ungrouped row. */
-  variants?: number;
-}
+import type { RtkRow } from './agent-types.ts';
 
 /** The leading verb of a stored rtk command: `rtk read`, `rtk grep`, `rtk git`. */
 function verbOf(command: string): string {
@@ -32,7 +22,7 @@ export interface RtkGain {
   saved: number;
   avgPct: number;
   totalMs: number;
-  byCommand: RtkCommandRow[];
+  byCommand: RtkRow[];
   /** False when rtk's own database could not be read: absent, locked, or corrupt. A zero with this false means "not measured"; a zero with it true means rtk really saved nothing. */
   measured: boolean;
 }

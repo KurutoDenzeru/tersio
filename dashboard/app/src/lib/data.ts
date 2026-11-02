@@ -1,6 +1,19 @@
 // Data contract mirroring cli/usage.ts; snapshots ride window.__TERSIO_SNAP for file://.
 import { useCallback, useEffect, useState } from "react";
 import { FX_SNAPSHOT, fxMoney, isCurrencyCode } from "./format";
+import type { AgentSessionTrace, AgentStats, AgentView, RangeKey, RtkRow } from "../../../../extensions/shared/agent-types.ts";
+
+// The API contract is defined once in the backend; the dashboard re-exports it as its public type surface.
+export type {
+  AgentBucket, AgentCostMix, AgentErrorGroup, AgentErrorModelRow, AgentHeadroom, AgentHour,
+  AgentModelPerformancePoint, AgentOverall, AgentProviderHour, AgentRequestRow, AgentRequestStats,
+  AgentRow, AgentRtk, AgentSessionTrace, AgentStats, AgentTokenMix, AgentToolRow, AgentTraceMarker,
+  AgentTraceRow, AgentTraceSpan, AgentTraceSpanKind, AgentTraceSummary, AgentTraceToolStat,
+  AgentTraceTrack, AgentTypeShare, AgentView, AgentWindowInsight, AgentWindowPoint, AgentWindowSeries,
+} from "../../../../extensions/shared/agent-types.ts";
+
+export type AgentRange = RangeKey;
+export type RtkVerbRow = RtkRow;
 
 export interface RecentRequestRow {
   m: string;
@@ -21,21 +34,13 @@ export interface RecentRequestRow {
   id?: string;
 }
 
-export interface RtkCommandRow {
-  command: string;
-  count: number;
-  saved: number;
-  avgPct: number;
-  avgMs: number;
-}
-
 export interface RtkGain {
   commands: number;
   input: number;
   saved: number;
   avgPct: number;
   totalMs: number;
-  byCommand: RtkCommandRow[];
+  byCommand: RtkVerbRow[];
 }
 
 export interface RtkAdoption {
@@ -54,8 +59,6 @@ export interface RtkRecallDiagnostics {
 }
 
 
-export type AgentRange = "1h" | "24h" | "7d" | "30d" | "90d" | "all";
-
 export const AGENT_RANGES: readonly AgentRange[] = ["1h", "24h", "7d", "30d", "90d", "all"];
 
 export const AGENT_RANGE_LABEL: Record<AgentRange, string> = {
@@ -71,328 +74,46 @@ export function isAgentRange(v: unknown): v is AgentRange {
   return typeof v === "string" && (AGENT_RANGES as readonly string[]).includes(v);
 }
 
-export interface AgentTokenMix {
-  input: number;
-  output: number;
-  cacheRead: number;
-  cacheWrite: number;
-  total: number;
-}
 
-export interface AgentCostMix {
-  input: number;
-  output: number;
-  cacheRead: number;
-  cacheWrite: number;
-  total: number;
-}
 
-export interface AgentOverall extends AgentTokenMix {
-  /** The estimate split the way a bill splits it: input, output, cache read, cache write. */
-  costMix: AgentCostMix;
-  requests: number;
-  failed: number;
-  successful: number;
-  errorRate: number;
-  cacheRate: number;
-  costUsd: number;
-  unpricedRequests: number;
-  avgDurationMs: number;
-  avgTtftMs: number;
-  avgTokensPerSecond: number;
-  /** The longest single request in the range; null when none carries a duration. */
-  maxDurationMs: number | null;
-  firstTs: number | null;
-  lastTs: number | null;
-}
 
-export interface AgentRow extends AgentTokenMix {
-  key: string;
-  /** The provider this row belongs to. Empty when the group is not per provider. */
-  provider: string;
-  costMix: AgentCostMix;
-  requests: number;
-  failed: number;
-  errorRate: number;
-  cacheRate: number;
-  costUsd: number;
-  unpricedRequests: number;
-  avgDurationMs: number;
-  avgTtftMs: number;
-  avgTokensPerSecond: number;
-  firstTs: number | null;
-  lastTs: number | null;
-  models: number;
-}
 
-export interface AgentBucket {
-  ts: number;
-  requests: number;
-  errors: number;
-  tokens: number;
-  costUsd: number;
-}
 
-export interface AgentHour {
-  hour: number;
-  requests: number;
-  errors: number;
-  tokens: number;
-  costUsd: number;
-}
 
-export interface AgentTypeShare extends AgentTokenMix {
-  agentType: string;
-  requests: number;
-  costUsd: number;
-}
 
-export interface AgentRequestRow {
-  ts: number;
-  provider: string;
-  model: string;
-  project: string;
-  api: string;
-  input: number;
-  output: number;
-  cacheRead: number;
-  cacheWrite: number;
-  totalTokens: number;
-  costUsd: number;
-  unpriced: boolean;
-  durationMs: number | null;
-  ttftMs: number | null;
-  stopReason: string;
-  errorMessage: string | null;
-  agentType: string;
-  sessionFile: string;
-  entryId: string;
-}
 
-export interface AgentErrorGroup {
-  signature: string;
-  count: number;
-  firstSeen: number;
-  lastSeen: number;
-  latest: AgentRequestRow;
-  models: Array<{ model: string; provider: string; count: number }>;
-}
 
-export interface AgentErrorModelRow {
-  model: string;
-  provider: string;
-  count: number;
-}
+
+
+
+
+
+
+
+
+
+
 
 /** One session row on the Traces page: a root session with its child transcripts folded in. */
-export interface AgentTraceRow {
-  /** Absolute root session file path, which is also the trace key. */
-  sessionFile: string;
-  /** Mangled session folder from the stats database. */
-  project: string;
-  /** Working directory from the root session's own journal line, when it still reads. */
-  cwd: string;
-  /** The session's own title, when it still reads. */
-  title: string | null;
-  requests: number;
-  tokens: number;
-  costUsd: number;
-  unpriced: number;
-  /** Every model the session and its children ran on, sorted. */
-  models: string[];
-  toolCalls: number;
-  /** Child transcripts folded into this row. */
-  subagents: number;
-  firstTs: number;
-  lastTs: number;
-}
 
-export interface AgentToolRow {
-  tool: string;
-  calls: number;
-  errors: number;
-  argsChars: number;
-  resultChars: number;
-  totalTokensShare: number;
-  outputTokensShare: number;
-  costShare: number;
-  unpricedShare: number;
-  lastUsed: number | null;
-  model: string;
-  provider: string;
-}
 
-export interface AgentWindowPoint {
-  ts: number;
-  usedFraction: number | null;
-}
 
-export interface AgentWindowAccount {
-  accountKey: string;
-  email: string | null;
-  accountId: string | null;
-  usedFraction: number | null;
-  status: string | null;
-  resetsAt: number | null;
-  recordedAt: number;
-  peak: number;
-  points: AgentWindowPoint[];
-}
 
-export interface AgentWindow {
-  provider: string;
-  limitId: string;
-  label: string;
-  windowLabel: string | null;
-  usedFraction: number | null;
-  status: string | null;
-  resetsAt: number | null;
-  recordedAt: number | null;
-  peak: number;
-  points: AgentWindowPoint[];
-  accounts: AgentWindowAccount[];
-}
 
-export interface AgentRequestStats {
-  requests: number;
-  failed: number;
-  aborted: number;
-  tokens: number;
-  costUsd: number;
-  unpriced: number;
-  /** Rows that rode along with this payload, at most the server's row cap. */
-  shipped: number;
-  medianDurationMs: number;
-  p95DurationMs: number;
-  medianTtftMs: number;
-  oldest: number | null;
-  newest: number | null;
-}
 
-export interface AgentProviderHour {
-  provider: string;
-  hour: number;
-  totalTokens: number;
-  outputTokens: number;
-  requests: number;
-}
 
-export interface AgentWindowPoint {
-  ts: number;
-  usedFraction: number | null;
-  exhausted: boolean;
-}
 
-export interface AgentWindowSeries {
-  provider: string;
-  accountKey: string;
-  accountLabel: string;
-  windowKey: string;
-  windowLabel: string;
-  points: AgentWindowPoint[];
-}
 
-export interface AgentWindowInsight {
-  provider: string;
-  windowKey: string;
-  windowLabel: string;
-  accounts: number;
-  cycles: number;
-  fractionConsumed: number;
-  estTokensPerWindow: number | null;
-  peakConcurrentFraction: number;
-  idealAccounts: number;
-  exhaustedEvents: number;
-}
 
-/** Kind of one trace span: a user turn, a model call, a tool call, or session metadata. */
-export type AgentTraceSpanKind = "turn" | "model" | "tool" | "background";
 
-/** One span on the flamegraph: an interval with the identity and cost of the work it holds. */
-export interface AgentTraceSpan {
-  /** Entry id from the journal, or `${entryId}#${index}` for one of a message's tool calls. */
-  id: string;
-  kind: AgentTraceSpanKind;
-  /** Short name: the tool, the model, or `Prompt`. */
-  label: string;
-  /** First line of the text the span carries. */
-  detail: string;
-  start: number;
-  end: number;
-  model: string;
-  provider: string;
-  tool: string;
-  tokens: number;
-  costUsd: number;
-  isError: boolean;
-  /** How the request stopped, from the assistant message's stop reason. */
-  stopped: "completed" | "aborted" | "failed";
-  /** Journal entry id, so the drawer can read the full payload on demand. */
-  entryId: string;
-}
 
-/** A mode or title change: drawn as a diamond on the timeline. */
-export interface AgentTraceMarker {
-  id: string;
-  ts: number;
-  kind: "model" | "think" | "session";
-  label: string;
-}
 
-/** One flamegraph row: the main session, or a subagent's own row. */
-export interface AgentTraceTrack {
-  id: string;
-  label: string;
-  parentId: string | null;
-  spans: AgentTraceSpan[];
-}
 
-/** Duration totals for one tool across the session: total, mean, and the longest single call. */
-export interface AgentTraceToolStat {
-  tool: string;
-  calls: number;
-  errors: number;
-  totalMs: number;
-  avgMs: number;
-  maxMs: number;
-}
 
-export interface AgentTraceSummary {
-  wallMs: number;
-  modelMs: number;
-  toolMs: number;
-  idleMs: number;
-  turns: number;
-  requests: number;
-  toolCalls: number;
-  agents: number;
-  totalTokens: number;
-  costUsd: number;
-}
 
-/** One session transcript as a flamegraph. */
-export interface AgentSessionTrace {
-  sessionFile: string;
-  project: string;
-  title: string;
-  cwd: string;
-  startedAt: number;
-  endedAt: number;
-  tracks: AgentTraceTrack[];
-  markers: AgentTraceMarker[];
-  summary: AgentTraceSummary;
-  toolStats: AgentTraceToolStat[];
-  /** True when the session ran past the span cap, so the newest spans are all that ride along. */
-  truncated: boolean;
-}
 
-/** Throughput and first-token latency for one model and provider in one bucket. */
-export interface AgentModelPerformancePoint {
-  ts: number;
-  requests: number;
-  avgTokensPerSecond: number | null;
-  avgTtftMs: number | null;
-}
+
+
 
 /** The three payloads the request drawer renders: the output message, the journal entry, and the stats row. */
 export interface AgentRequestPayload {
@@ -417,98 +138,19 @@ const EMPTY_AGENT_PAYLOAD: AgentRequestPayload = {
   agent: { model: null, thinkingLevel: null, mode: null, fallback: null },
 };
 
-export interface AgentStats {
-  available: boolean;
-  range: AgentRange;
-  bucketMs: number;
-  cutoff: number;
-  generatedAt: number;
-  overall: AgentOverall;
-  byModel: AgentRow[];
-  byProvider: AgentRow[];
-  byProject: AgentRow[];
-  byAgentType: AgentTypeShare[];
-  series: AgentBucket[];
-  seriesByProvider: Array<{ provider: string; points: AgentBucket[] }>;
-  modelSeries: Array<{ model: string; points: AgentBucket[] }>;
-  modelPerformance: Array<{ model: string; provider: string; points: AgentModelPerformancePoint[] }>;
-  hourOfDay: AgentHour[];
-  topModels: AgentRow[];
-  recent: AgentRequestRow[];
-  errorGroups: AgentErrorGroup[];
-  errorModels: AgentErrorModelRow[];
-  traces: AgentTraceRow[];
-  tools: AgentToolRow[];
-  toolsByModel: AgentToolRow[];
-  toolSeries: Array<{ ts: number; tool: string; calls: number; errors: number }>;
-  /** What rtk kept out of context in this range, and how much of the bash work it took. */
-  rtk: AgentRtk;
-  headroom: AgentHeadroom;
-  usageSeries: AgentWindowSeries[];
-  windowInsights: AgentWindowInsight[];
-  providerHourly: AgentProviderHour[];
-  requestStats: AgentRequestStats;
-  /** Raw failure rows inside the range, newest first: the Errors page's list. */
-  errors: AgentRequestRow[];
-}
+
 
 /** One folded rtk verb: `rtk read`, `rtk grep`, with the bytes it kept and how many full commands it hides. */
-export interface RtkVerbRow {
-  command: string;
-  count: number;
-  saved: number;
-  avgPct: number;
-  avgMs: number;
-  variants?: number;
-}
+
 
 /** rtk's own savings and adoption. `measured: false` means "not measured", never "saved nothing". */
-export interface AgentRtk {
-  measured: boolean;
-  failure: string;
-  commands: number;
-  input: number;
-  saved: number;
-  avgPct: number;
-  byVerb: RtkVerbRow[];
-  bashCalls: number;
-  eligibleCalls: number;
-  rtkCalls: number;
-  missedCalls: number;
-  adoptionPct: number;
-}
 
-export interface HeadroomClientRow {
-  client: string;
-  calls: number;
-  tokensSaved: number;
-}
 
-export interface AgentHeadroom {
-  measured: boolean;
-  failure: string;
-  tokensSaved: number;
-  tokensBefore: number;
-  costUsd: number;
-  calls: number;
-  savingsPercent: number;
-  todayTokens: number;
-  last7Tokens: number;
-  last30Tokens: number;
-  byClient: HeadroomClientRow[];
-  /** Headroom's own routing check: is the proxy up, are agents routed. */
-  routing: {
-    measured: boolean;
-    failure: string;
-    proxyUp: boolean;
-    routedAgents: number;
-    failing: Array<{ name: string; status: string; summary: string; hint: string | null }>;
-  };
-}
 
-export type AgentView =
-  | "all" | "overview" | "models" | "providers" | "costs" | "carbon" | "requests"
-  | "errors" | "traces" | "tools" | "projects";
+
+
+
+
 
 export const AGENT_VIEWS: readonly AgentView[] = [
   "all", "overview", "models", "providers", "costs", "carbon", "requests",

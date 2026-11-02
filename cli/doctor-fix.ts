@@ -11,7 +11,7 @@ import {
   shimCommand,
 } from './common.ts';
 import { execNetwork, sayTagged } from './interactive.ts';
-import { wireRtkOmp, wireRtkOpencode, wireRtkPi, wireRtkPig, ensureRtkInConfig } from './rtk-wiring.ts';
+import { wireRtk } from './rtk-wiring.ts';
 import {
   RTK_RELEASE_API, fetchJson, findFile, httpsGet,
   httpsDownload, parseChecksum, readTextIfExists, resolveHostBinary, rtkPlatformSpec, sha256File,
@@ -226,8 +226,6 @@ async function fixRegistrations(agentDir: string, pluginsDir: string): Promise<v
     }
   }
   const extDir = path.join(agentDir, 'extensions');
-  const rtkTs = path.join(extDir, 'rtk.ts');
-  if ((await readTextIfExists(rtkTs)) !== null) await ensureRtkInConfig({ dryRun, verbose });
   const ponytailExtPath = path.join(pluginsDir, 'node_modules', '@dietrichgebert', 'ponytail', 'pi-extension', 'index.js');
   // A tree from before the fold still names `combo-toggle`; both lines name the same module.
   await removeExtensionFromConfig(configPath, path.join(extDir, 'combo', 'index.ts'), 'manifest-loaded combo', { dryRun, verbose });
@@ -288,18 +286,13 @@ async function fixRtk(binDir: string): Promise<void> {
   } finally {
     await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => { });
   }
-  if (!(await wireRtkOmp(binDest, { dryRun, verbose }))) throw new Error('rtk wiring failed');
-  // Fail-open: a missing host wire must not fail the repair.
   const home = process.env.HOME || process.env.USERPROFILE || os.homedir();
-  if (existsSync(path.join(home, '.config', 'opencode', 'plugins', 'tersio'))) {
-    await wireRtkOpencode(binDest, { dryRun, verbose });
-  }
-  if (existsSync(path.join(home, '.pi', 'agent', 'extensions'))) {
-    await wireRtkPi(binDest, { dryRun, verbose });
-  }
-  if (existsSync(path.join(home, '.pig', 'agent', 'extensions'))) {
-    await wireRtkPig(binDest, { dryRun, verbose });
-  }
+  const targets: Array<'omp' | 'pi' | 'pig' | 'opencode'> = ['omp'];
+  if (existsSync(path.join(home, '.config', 'opencode', 'plugins', 'tersio'))) targets.push('opencode');
+  if (existsSync(path.join(home, '.pi', 'agent', 'extensions'))) targets.push('pi');
+  if (existsSync(path.join(home, '.pig', 'agent', 'extensions'))) targets.push('pig');
+  // Fail-open: a missing host wire must not fail the repair.
+  for (const host of targets) await wireRtk(binDest, host, { dryRun, verbose });
 }
 
 async function fixPonytail(pluginsDir: string): Promise<void> {

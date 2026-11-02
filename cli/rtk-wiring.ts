@@ -1,145 +1,79 @@
-// OMP loads only listed extensions, so register rtk's path; fail-open.
+// RTK owns its own host wiring: one `rtk init -g --agent <name>` writes the hook and registers it.
 import { existsSync, promises as fs } from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { piAgentDir, pigAgentDir, shimCommand } from '../extensions/shared/utils.ts';
+import { hostCap } from '../extensions/shared/host-caps.ts';
+import type { HostId } from '../extensions/shared/host-caps.ts';
+
 export interface WiringOptions {
   dryRun?: boolean;
   quiet?: boolean;
   verbose?: boolean;
 }
 
-function debugWire(options: WiringOptions, msg: string): void {
-  if (!options.quiet) console.log(`  ${msg}`);
-}
-
-function shortWiringError(e: unknown): string {
+function shortError(e: unknown): string {
   const err = e as Error & { stderr?: string; code?: string | number; signal?: string };
-  const why = [err.code !== undefined ? `code ${err.code}` : '', err.signal ?? '', err.stderr?.trim(), err.message]
-    .filter(Boolean).join(' · ');
-  return why.slice(0, 200);
+  return [err.code !== undefined ? `code ${err.code}` : '', err.signal ?? '', err.stderr?.trim(), err.message]
+    .filter(Boolean).join(' · ').slice(0, 200);
 }
 
-function execFileP(cmd: string, args: string[], timeout: number): Promise<{ stdout: string; stderr: string }> {
-  const { promise, resolve, reject } = Promise.withResolvers<{ stdout: string; stderr: string }>();
-  // A `.cmd` shim cannot be spawned directly on Windows, so it runs through the shell.
+function run(cmd: string, args: string[], timeout: number): Promise<void> {
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
   const shim = shimCommand(cmd, args);
-  execFile(shim.cmd, shim.args, { timeout, encoding: 'utf8' }, (err, stdout, stderr) => {
+  execFile(shim.cmd, shim.args, { timeout, encoding: 'utf8' }, (err, _stdout, stderr) => {
     if (err) {
       (err as Error & { stderr?: string }).stderr = String(stderr || '');
       reject(err);
-    } else {
-      resolve({ stdout: String(stdout), stderr: String(stderr) });
-    }
+    } else resolve();
   });
   return promise;
 }
 
-// Idempotent: rtk rewrites its file on every init run.
-interface WireSpec {
-  host: string;
-  mechanism: string;
-  initArgs: string[];
-  hint: string;
-}
-
-async function runWire(rtkBin: string, spec: WireSpec, options: WiringOptions): Promise<boolean> {
-  if (!options.dryRun) debugWire(options, `Wiring rtk → ${spec.host} (${spec.mechanism} rewrite)…`);
-  if (options.dryRun) return true;
+async function init(rtkBin: string, agent: string): Promise<void> {
   try {
-    await tryRtkInit(rtkBin, spec.initArgs);
-  } catch (e) {
-    console.log(`  [warn] could not wire rtk → ${spec.host}: ${shortWiringError(e)}`);
-    console.log(`  [hint] Manual: ${spec.hint}`);
-    return false;
-  }
-  return true;
-}
-
-export async function wireRtkOmp(rtkBin: string, options: WiringOptions = {}): Promise<boolean> {
-  if (!(await runWire(rtkBin, { host: 'OMP', mechanism: 'bash tool_call', initArgs: ['init', '-g', '--agent', 'omp'], hint: 'rtk init -g --agent omp (needs rtk >= 0.49)' }, options))) return false;
-  await ensureRtkInConfig(options);
-  return true;
-}
-
-// The Tersio plugin does the same rewrite, so OpenCode needs no rtk plugin of its own.
-export async function wireRtkOpencode(rtkBin: string, options: WiringOptions = {}): Promise<boolean> {
-  if (!options.dryRun && !options.quiet) console.log('  RTK rewrite runs inside the Tersio plugin — no separate entry');
-  return existsSync(rtkBin);
-}
-
-export async function wireRtkPi(rtkBin: string, options: WiringOptions = {}): Promise<boolean> {
-  return runWire(rtkBin, { host: 'pi', mechanism: 'bash tool_call', initArgs: ['init', '-g', '--agent', 'pi'], hint: 'rtk init -g --agent pi' }, options);
-}
-
-export async function wireRtkPig(rtkBin: string, options: WiringOptions = {}): Promise<boolean> {
-  const ok = await runWire(rtkBin, { host: 'pi', mechanism: 'bash tool_call', initArgs: ['init', '-g', '--agent', 'pi'], hint: 'rtk init -g --agent pi' }, options);
-  if (!ok) return false;
-  if (!options.dryRun) {
-    const piHook = path.join(piAgentDir(), 'extensions', 'rtk.ts');
-    const pigExtDir = path.join(pigAgentDir(), 'extensions');
-    const pigHook = path.join(pigExtDir, 'rtk.ts');
-    try {
-      if (existsSync(piHook)) {
-        await fs.mkdir(pigExtDir, { recursive: true });
-        await fs.copyFile(piHook, pigHook);
-      }
-    } catch (e) {
-      console.log(`  [warn] could not copy rtk hook to pig: ${(e as Error).message}`);
-    }
-  }
-  return true;
-}
-
-// The rtk.ts path rtk init writes (OMP_AGENT_DIR inlined; see header note).
-function rtkExtensionPath(): string {
-  const home = process.env.HOME || process.env.USERPROFILE || os.homedir();
-  return path.join(home, '.omp', 'agent', 'extensions', 'rtk.ts');
-}
-
-// Append rtk.ts so the wire takes effect on the next OMP start.
-export async function ensureRtkInConfig(options: WiringOptions): Promise<void> {
-  const home = process.env.HOME || process.env.USERPROFILE || os.homedir();
-  const configPath = path.join(home, '.omp', 'agent', 'config.yml');
-  const extPath = rtkExtensionPath().replace(/\\/g, '/');
-  let raw: string | null = null;
-  try {
-    raw = await fs.readFile(configPath, 'utf8');
-  } catch {
-    return;
-  }
-  if (raw.includes(extPath)) {
-    debugWire(options, 'rtk already in config.yml');
-    return;
-  }
-  const lines = raw.split('\n');
-  const keyIdx = lines.findIndex((l) => /^\s*extensions\s*:/i.test(l));
-  const line = `  - ${extPath}`;
-  if (keyIdx === -1) {
-    lines.push('extensions:', line, '');
-  } else {
-    if (/^\s*extensions\s*:\s*(?:\[\s*\]|null|~)?\s*$/i.test(lines[keyIdx])) lines[keyIdx] = 'extensions:';
-    lines.splice(keyIdx + 1, 0, line);
-  }
-  try {
-    await fs.mkdir(path.dirname(configPath), { recursive: true });
-    await fs.copyFile(configPath, `${configPath}.bak`).catch(() => { });
-    await fs.writeFile(configPath, lines.join('\n'), 'utf8');
-    debugWire(options, 'rtk registered in config.yml');
-  } catch (e) {
-    console.log(`  [warn] could not register rtk in config.yml: ${(e as Error).message}`);
-  }
-}
-
-async function tryRtkInit(rtkBin: string, initArgs: string[]): Promise<void> {
-  try {
-    await execFileP(rtkBin, initArgs, 30000);
-    return;
+    await run(rtkBin, ['init', '-g', '--agent', agent], 30_000);
   } catch {
     // A fresh binary can lose its first exec to macOS Gatekeeper: settle, then retry once.
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    await run(rtkBin, ['init', '-g', '--agent', agent], 30_000);
   }
-  await new Promise((resolve) => setTimeout(resolve, 2000));
-  await execFileP(rtkBin, initArgs, 30000);
 }
 
+async function copyPiHook(source: HostId, options: WiringOptions): Promise<boolean> {
+  const from = path.join(source === 'pig' ? pigAgentDir() : piAgentDir(), 'extensions', 'rtk.ts');
+  const to = path.join(pigAgentDir(), 'extensions', 'rtk.ts');
+  if (!existsSync(from)) return true;
+  try {
+    await fs.mkdir(path.dirname(to), { recursive: true });
+    await fs.copyFile(from, to);
+    return true;
+  } catch (e) {
+    if (!options.quiet) console.log(`  [warn] could not copy the rtk hook to PiG: ${shortError(e)}`);
+    return false;
+  }
+}
+
+/** One host's RTK binding. OpenCode's rewrite rides inside the Tersio plugin. */
+export async function wireRtk(rtkBin: string, host: HostId, options: WiringOptions = {}): Promise<boolean> {
+  const cap = hostCap(host);
+  if (cap?.rtkPlugin) {
+    if (!options.dryRun && !options.quiet) console.log('  RTK — no separate entry; the Tersio plugin owns the rewrite');
+    return existsSync(rtkBin);
+  }
+  const agent = cap?.rtkAgent;
+  if (!agent) return false;
+  if (options.dryRun) {
+    if (!options.quiet) console.log(`  RTK — would run: rtk init -g --agent ${agent}`);
+    return true;
+  }
+  if (!options.quiet) console.log(`  RTK — bind ${host} with rtk init -g --agent ${agent}`);
+  try {
+    await init(rtkBin, agent);
+  } catch (e) {
+    console.log(`  [warn] could not wire rtk → ${host}: ${shortError(e)}`);
+    console.log(`  [hint] Manual: rtk init -g --agent ${agent}`);
+    return false;
+  }
+  return cap?.rtkCopyFrom ? copyPiHook(cap.rtkCopyFrom, options) : true;
+}

@@ -10,7 +10,7 @@ import os from 'node:os';
 import { DEFAULT_CURRENCY, isCurrencyCode } from './currency.ts';
 import { recordActivity } from './activity.ts';
 import type { CurrencyCode } from './currency.ts';
-import type { HostId } from './hosts.ts';
+import type { HostId } from '../extensions/shared/host-caps.ts';
 import { readTextIfExists } from '../extensions/shared/utils.ts';
 import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
 
@@ -294,7 +294,7 @@ export function configEntries(host: HostId | null): Array<{ key: ConfigKey; valu
 }
 
 export { clampSidebarWidth, defaultProfile, formatProfile, storedProfile, storedProfileSync, writePluginSettings };
-export type { Profile, HostId };
+export type { Profile };
 
 /** A combo level writes the three modes it owns, so the level names the preset that produced them. */
 export function applyComboPreset(profile: Profile, level: string): Profile {

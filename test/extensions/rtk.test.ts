@@ -22,7 +22,7 @@ import timingExtension from "../../extensions/timing/index.ts";
 import { resetSharedComboState, setSharedComboMode } from "../../extensions/shared/session-state.ts";
 import type { ExtensionApi, ExtensionCtx, SessionEntry, ToolResultEvent } from "../../extensions/shared/types.ts";
 import { readRtkGain, readRtkGainByVerb, rtkDbPath, rtkGainFailure } from "../../extensions/shared/rtk-gain.ts";
-import { wireRtkOmp, wireRtkOpencode, wireRtkPi, wireRtkPig, type WiringOptions } from "../../cli/rtk-wiring.ts";
+import { wireRtk } from "../../cli/rtk-wiring.ts";
 import { findFile, resolveRtkBinary, rtkPlatformSpec, shimCommand } from "../../extensions/shared/utils.ts";
 import { sqliteExec } from "../../extensions/shared/sqlite.ts";
 import { fakeRtkBin, hasSqlite, withHome as inHome } from "../helpers/env.ts";
@@ -463,7 +463,7 @@ function tempHome(): { dir: string; log: string } {
 test("dry-run prints the would-run line and never executes the binary", async () => {
   const { dir, log } = tempHome();
   try {
-    const ok = await wireRtkOmp(fakeRtk(dir), { dryRun: true });
+    const ok = await wireRtk(fakeRtk(dir), 'omp', { dryRun: true });
     expect(ok).toBe(true);
     expect(existsSync(log), "fake binary must not run in dry-run").toBe(false);
   } finally {
@@ -474,7 +474,7 @@ test("dry-run prints the would-run line and never executes the binary", async ()
 test("success path runs init -g --agent omp once", async () => {
   const { dir, log } = tempHome();
   try {
-    const ok = await wireRtkOmp(fakeRtk(dir), {});
+    const ok = await wireRtk(fakeRtk(dir), 'omp', {});
     expect(ok).toBe(true);
     const calls = readFileSync(log, "utf8").trim().split("\n");
     expect(calls).toEqual(["init -g --agent omp"]);
@@ -486,7 +486,7 @@ test("success path runs init -g --agent omp once", async () => {
 test("failing binary returns false without throwing", async () => {
   const { dir, log } = tempHome();
   try {
-    const ok = await wireRtkOmp(fakeRtk(dir, 3), {});
+    const ok = await wireRtk(fakeRtk(dir, 3), 'omp', {});
     expect(ok).toBe(false);
     expect(readFileSync(log, "utf8")).toMatch(/init/);
   } finally {
@@ -494,34 +494,13 @@ test("failing binary returns false without throwing", async () => {
   }
 });
 
-test("success path registers rtk.ts in a fake HOME config.yml", async () => {
-  const { dir } = tempHome();
-  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-rtk-home-"));
-  const prevHome = process.env.HOME;
-  try {
-    process.env.HOME = home;
-    const cfgDir = path.join(home, ".omp", "agent");
-    mkdirSync(cfgDir, { recursive: true });
-    writeFileSync(path.join(cfgDir, "config.yml"), "extensions:\n  - /x/combo-toggle/index.js\n", "utf8");
-    const ok = await wireRtkOmp(fakeRtk(dir), { quiet: true });
-    expect(ok).toBe(true);
-    const cfg = readFileSync(path.join(cfgDir, "config.yml"), "utf8");
-    expect(cfg).toMatch(/extensions\/rtk\.ts/);
-    expect(cfg).toMatch(/combo-toggle/);
-    if (prevHome === undefined) delete process.env.HOME; else process.env.HOME = prevHome;
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-    rmSync(home, { recursive: true, force: true });
-  }
-});
-
 test("opencode never installs a separate rtk plugin", async () => {
   const { dir, log } = tempHome();
   try {
-    expect(await wireRtkOpencode(fakeRtk(dir), {})).toBe(true);
+    expect(await wireRtk(fakeRtk(dir), 'opencode', {})).toBe(true);
     expect(existsSync(log), "the tersio plugin owns the rewrite").toBe(false);
-    expect(await wireRtkOpencode(fakeRtk(dir), { dryRun: true })).toBe(true);
-    expect(await wireRtkOpencode(path.join(dir, "absent-rtk"), {}), "no binary, no rewrite").toBe(false);
+    expect(await wireRtk(fakeRtk(dir), 'opencode', { dryRun: true })).toBe(true);
+    expect(await wireRtk(path.join(dir, "absent-rtk"), 'opencode', {}), "no binary, no rewrite").toBe(false);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -532,7 +511,7 @@ const realRtk = resolveRtkBinary();
 
 /** Wires one host against real rtk and returns its `tool_call` hook's command; omp and pi share hooks. */
 async function rewiredCommand(
-  wire: (bin: string, options: WiringOptions) => Promise<boolean>,
+  host: 'omp' | 'pi' | 'pig',
   hookPath: string[],
 ): Promise<{ command: string | null; registered: boolean }> {
   const home = mkdtempSync(path.join(os.tmpdir(), "tersio-rtk-real-"));
@@ -543,7 +522,7 @@ async function rewiredCommand(
   try {
     process.env.HOME = home;
     for (const name of pigVars) delete process.env[name];
-    if (!(await wire(realRtk!, { quiet: true }))) return { command: null, registered: false };
+    if (!(await wireRtk(realRtk!, host, { quiet: true }))) return { command: null, registered: false };
 
     const hook = path.join(home, ...hookPath);
     if (!existsSync(hook)) return { command: null, registered: false };
@@ -593,7 +572,7 @@ const PI_HOOK_TAIL = [".pi", "agent", "extensions", "rtk.ts"] as const;
 const PIG_HOOK_TAIL = [".pig", "agent", "extensions", "rtk.ts"] as const;
 
 test.skipIf(!realRtk || process.platform === "win32")("the wired omp hook rewrites a bash command", async () => {
-  const wired = await rewiredCommand(wireRtkOmp, [...HOOK_TAIL]);
+  const wired = await rewiredCommand('omp', [...HOOK_TAIL]);
   expect(wired.registered, "rtk init must have written a hook that registers tool_call").toBe(true);
   expect(wired.command, "the generated hook must rewrite a bash command through rtk")
     .toBe("rtk grep -rn foo .");
@@ -601,14 +580,14 @@ test.skipIf(!realRtk || process.platform === "win32")("the wired omp hook rewrit
 
 // Same invocation, same hook, different agent directory: pi gets the same proof, not a second integration.
 test.skipIf(!realRtk || process.platform === "win32")("the wired pi hook rewrites a bash command", async () => {
-  const wired = await rewiredCommand(wireRtkPi, [...PI_HOOK_TAIL]);
+  const wired = await rewiredCommand('pi', [...PI_HOOK_TAIL]);
   expect(wired.registered, "rtk init must have written a hook that registers tool_call").toBe(true);
   expect(wired.command, "the generated hook must rewrite a bash command through rtk")
     .toBe("rtk grep -rn foo .");
 });
 
 test.skipIf(!realRtk || process.platform === "win32")("the wired pig hook rewrites a bash command", async () => {
-  const wired = await rewiredCommand(wireRtkPig, [...PIG_HOOK_TAIL]);
+  const wired = await rewiredCommand('pig', [...PIG_HOOK_TAIL]);
   expect(wired.registered, "rtk init must have written a hook that registers tool_call").toBe(true);
   expect(wired.command, "the generated hook must rewrite a bash command through rtk")
     .toBe("rtk grep -rn foo .");

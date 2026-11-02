@@ -20,7 +20,7 @@ import { checkForUpdate, runLatestUpdate } from './update.ts';
 import { runUninstall } from './uninstall.ts';
 import { runDoctor } from './doctor.ts';
 import { runDashboard } from './dashboard.ts';
-import { wireRtkOmp, wireRtkOpencode, wireRtkPi, wireRtkPig } from './rtk-wiring.ts';
+import { wireRtk } from './rtk-wiring.ts';
 import {
   RTK_RELEASE_API, fetchJson, findFile, httpsGet,
   httpsDownload, parseChecksum, piAgentDir, pigAgentDir, readTextIfExists, resolveHeadroomBinary, resolveHostBinary, resolveRtkBinary, rtkPlatformSpec, sha256File, shimCommand,
@@ -29,7 +29,8 @@ import { findPackageRoot, homeDir } from '../extensions/shared/utils.ts';
 import type { RtkRelease, RtkReleaseAsset } from '../extensions/shared/utils.ts';
 import { patchState } from '../extensions/shared/state.ts';
 import { CAVEMAN_PIN } from './upstream.ts';
-import { DURABLE_CONFIG, HEADROOM_PORT, headroomHostSupported, installDurableConfig } from '../extensions/shared/headroom-proxy.ts';
+import { DURABLE_CONFIG, headroomHostSupported, headroomProxyPort, installDurableConfig, readOmpGateway, routeOmpGateway } from '../extensions/shared/headroom-proxy.ts';
+import { ensureTersioMcp, tersioMcpSupported } from '../extensions/shared/mcp-config.ts';
 import { ensureHeadroomRuntime } from './headroom-runtime.ts';
 import type { HostDefaultField } from './profile.ts';
 import { formatCliStatus, saveHostDefaults, storedProfile, storedProfileSync, writePluginSettings } from './profile.ts';
@@ -37,7 +38,9 @@ import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
 import { EXT_DIR, PI_RTK_MANIFEST, PI_PONYTAIL_FILES, PONYTAIL_BUNDLE_FILES, PONYTAIL_DIR, PONYTAIL_PKG, filesUnder, reapObsoleteTreeDirs, rootFiles, sourcePath, syncPluginManifest, syncTreeFiles } from './manifest.ts';
 import type { Profile } from './profile.ts';
 import { detectHosts, dshCliProfiles, dshDesktopProfilePresent, dshHome, dshPresent, dshProfileBundles, dshRunner, hostOptions, parseHostArg, piTersioSource, pigTersioSource } from './hosts.ts';
-import type { HostEntry, HostId } from './hosts.ts';
+import type { HostEntry } from './hosts.ts';
+import { hostCap } from '../extensions/shared/host-caps.ts';
+import type { HostId } from '../extensions/shared/host-caps.ts';
 
 async function stepPonytail(pluginsDir: string, options: InstallOptions): Promise<void> {
   // Ponytail rides inside this package now. An older install carried it as its own dependency, which a host then listed as a second plugin, so drop that entry and its sibling copy.
@@ -257,16 +260,14 @@ async function stepRetireAgentCopies(extDir: string, options: InstallOptions): P
 async function stepRtk(binDir: string, options: InstallOptions, target: HostId = 'omp'): Promise<void> {
   const binDest = path.join(binDir, RTK_BINARY_NAME);
   const found = resolveRtkBinary();
-  const hostName = target === 'omp' ? 'OMP' : target === 'opencode' ? 'OpenCode' : target === 'pig' ? 'PiG' : 'pi';
+  const hostName = hostCap(target)?.label ?? target;
   const bind = async (binary: string): Promise<void> => {
     if (!(await fileExists(binary))) {
-      console.log(`  [skip] no rtk binary to wire — install rtk, then run: rtk init -g ${target === 'opencode' ? '--opencode' : `--agent ${target === 'pig' ? 'pi' : target}`}`);
+      const hint = target === 'opencode' ? 'rtk init -g --opencode' : `rtk init -g --agent ${target === 'pig' ? 'pi' : target}`;
+      console.log(`  [skip] no rtk binary to wire — install rtk, then run: ${hint}`);
       return;
     }
-    if (target === 'opencode') await wireRtkOpencode(binary, options);
-    else if (target === 'pig') await wireRtkPig(binary, options);
-    else if (target === 'pi') await wireRtkPi(binary, options);
-    else await wireRtkOmp(binary, options);
+    await wireRtk(binary, target, options);
   };
 
   if (found && !applyUpdate) {
@@ -634,11 +635,14 @@ async function lifecycleHeadroom(host: HostId, enabled: boolean, profile: Profil
   }
   if (dryRun || !headroomHostSupported(host) || (!enabled && profile.headroomDefault !== 'on')) return;
   try {
+    const port = headroomProxyPort();
+    const gateway = host === 'omp' ? readOmpGateway(port) : null;
     // The config points the agent at the proxy, so the runtime starts first.
-    const runtime = await ensureHeadroomRuntime(bin);
+    const runtime = await ensureHeadroomRuntime(bin, gateway?.baseUrl);
     if (!runtime.ok) throw new Error(runtime.detail);
     if ((DURABLE_CONFIG as readonly string[]).includes(host)) {
-      if (!(await installDurableConfig(bin, host, HEADROOM_PORT))) throw new Error('headroom could not write the config');
+      if (!(await installDurableConfig(bin, host, port))) throw new Error('headroom could not write the config');
+      if (host === 'omp' && gateway) routeOmpGateway(gateway, port);
     } else {
       const shim = shimCommand(bin, ['init', '-g', host]);
       // The home cwd keeps headroom's project-local artifacts (the .claude wrap lock) out of the project `tersio install` runs in.
@@ -1027,6 +1031,10 @@ async function runInstall(forcedHost?: HostId): Promise<void> {
       console.log('  [fail] pig not found — ensure it\'s installed');
     }
   }
+  // One MCP server for every host: retrieval, modes, and stats share `tersio mcp`.
+  if (!dryRun && tersioMcpSupported(targetHost) && !ensureTersioMcp(targetHost) && !quiet) {
+    sayTagged(`  [warn] could not add the Tersio MCP entry for ${hostEntry(targetHost).label}`);
+  }
   if (targetHost === 'dsh') {
     const [bin, ...rest] = dshRunner();
     try {
@@ -1046,18 +1054,24 @@ async function runInstall(forcedHost?: HostId): Promise<void> {
       sayTagged(`  [fail] ${label}: ${shortError(e)}`);
     }
   };
+  const writeHostSettings = async (headroomOn: boolean, saveDefaults = true): Promise<void> => {
+    await writePluginSettings(profile, installOptions, { keepSharedModes: hostExplicit });
+    if (saveDefaults && hostExplicit && (choseDefaults || headroomEnabled)) {
+      await saveHostDefaults(targetHost, chosenFields, headroomOn ? { ...profile, headroomDefault: 'on' } : profile, installOptions);
+    }
+  };
+  const finishHost = (hint: string): void => {
+    if (failures.length > 0) console.log(`\nDone with ${failures.length} failure(s) — see [fail] lines above.`);
+    else console.log(hint);
+    closeRL();
+  };
 
   if (targetHost === 'opencode') {
     await capture('opencode tree', () => stepOpencode(installOptions));
     await capture('rtk', () => stepRtk(BUN_BIN_DIR, installOptions, 'opencode'));
     await capture('headroom', () => lifecycleHeadroom(targetHost, headroomEnabled, profile, quiet));
-    await capture('settings', async () => {
-      await writePluginSettings(profile, installOptions, { keepSharedModes: hostExplicit });
-      if (hostExplicit && (choseDefaults || headroomEnabled)) await saveHostDefaults(targetHost, chosenFields, headroomEnabled ? { ...profile, headroomDefault: 'on' } : profile, installOptions);
-    });
-    if (failures.length > 0) console.log(`\nDone with ${failures.length} failure(s) — see [fail] lines above.`);
-    else console.log(comboHint('OpenCode', profile.comboDefault));
-    closeRL();
+    await capture('settings', () => writeHostSettings(headroomEnabled));
+    finishHost(comboHint('OpenCode', profile.comboDefault));
     return;
   }
 
@@ -1068,36 +1082,24 @@ async function runInstall(forcedHost?: HostId): Promise<void> {
       return;
     }
     await capture('dsh bundle', () => stepDsh(installOptions));
-    await capture('settings', async () => {
-      await writePluginSettings(profile, installOptions, { keepSharedModes: hostExplicit });
-      if (hostExplicit && (choseDefaults || headroomEnabled)) await saveHostDefaults(targetHost, chosenFields, profile, installOptions);
-    });
-    if (failures.length > 0) console.log(`\nDone with ${failures.length} failure(s) — see [fail] lines above.`);
-    else console.log('\nDone. Restart dsh web to load the tersio bundle.');
-    closeRL();
+    await capture('settings', () => writeHostSettings(false));
+    finishHost('\nDone. Restart dsh web to load the tersio bundle.');
     return;
   }
 
   if (targetHost === 'pi') {
     await capture('pi tree', () => stepPiLayer(installOptions));
     await capture('rtk', () => stepRtk(BUN_BIN_DIR, installOptions, 'pi'));
-    await capture('settings', async () => {
-      await writePluginSettings(profile, installOptions, { keepSharedModes: hostExplicit });
-      if (hostExplicit && (choseDefaults || headroomEnabled)) await saveHostDefaults(targetHost, chosenFields, headroomEnabled ? { ...profile, headroomDefault: 'on' } : profile, installOptions);
-    });
-    if (failures.length > 0) console.log(`\nDone with ${failures.length} failure(s) — see [fail] lines above.`);
-    else console.log(comboHint('pi', profile.comboDefault));
-    closeRL();
+    await capture('settings', () => writeHostSettings(headroomEnabled));
+    finishHost(comboHint('pi', profile.comboDefault));
     return;
   }
 
   if (targetHost === 'pig') {
     await capture('pig tree', () => stepPigLayer(installOptions));
     await capture('rtk', () => stepRtk(BUN_BIN_DIR, installOptions, 'pig'));
-    await capture('settings', () => writePluginSettings(profile, installOptions, { keepSharedModes: hostExplicit }));
-    if (failures.length > 0) console.log(`\nDone with ${failures.length} failure(s) — see [fail] lines above.`);
-    else console.log(comboHint('PiG', profile.comboDefault));
-    closeRL();
+    await capture('settings', () => writeHostSettings(headroomEnabled, false));
+    finishHost(comboHint('PiG', profile.comboDefault));
     return;
   }
 
@@ -1126,10 +1128,7 @@ async function runInstall(forcedHost?: HostId): Promise<void> {
   if (ownsTree) await capture('plugin entry', () => stepPluginEntry(extDir, installOptions));
   if (ownsTree) await capture('plugin manifest', () => syncPluginManifest(path.dirname(pluginExtDir), installOptions));
   if (ownsTree) await capture('retired agent copies', () => stepRetireAgentCopies(userExtDir, installOptions));
-  if (selfPlugin) await capture('settings', async () => {
-    await writePluginSettings(profile, installOptions, { keepSharedModes: hostExplicit });
-    if (hostExplicit && (choseDefaults || headroomEnabled)) await saveHostDefaults(targetHost, chosenFields, headroomEnabled ? { ...profile, headroomDefault: 'on' } : profile, installOptions);
-  });
+  if (selfPlugin) await capture('settings', () => writeHostSettings(headroomEnabled));
 
   if (quiet) {
     if (failures.length > 0) console.log(`  add-ons: ${failures.length} failed (${failures.join(', ')}) — see [fail] lines above`);

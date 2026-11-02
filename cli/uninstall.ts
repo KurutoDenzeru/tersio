@@ -9,9 +9,11 @@ import {
 import { PONYTAIL_PKG } from './manifest.ts';
 import { askInteractiveChoice, closeRL, confirmDestructive, tty, sayTagged } from './interactive.ts';
 import { detectHosts, dshCliProfiles, dshDesktopProfilePresent, dshPackageDir, dshRunner, parseHostArg } from './hosts.ts';
-import type { HostEntry, HostId } from './hosts.ts';
+import type { HostEntry } from './hosts.ts';
+import type { HostId } from '../extensions/shared/host-caps.ts';
 import { piAgentDir, pigAgentDir, readTextIfExists, resolveHeadroomBinary } from '../extensions/shared/utils.ts';
 import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
+import { removeTersioMcp } from '../extensions/shared/mcp-config.ts';
 
 interface UninstallOptions {
   yes?: boolean;
@@ -117,6 +119,7 @@ async function removePiLayer(host: HostEntry, shouldDryRun: boolean, shouldRemov
     await removeUninstallTarget(rtkWiring, shouldDryRun, false);
     await removeUninstallTarget(path.join(BUN_BIN_DIR, RTK_BINARY_NAME), shouldDryRun, false);
   }
+  if (!shouldDryRun) removeTersioMcp(targetHost);
   await clearSessionDefaults(shouldDryRun);
   return true;
 }
@@ -310,6 +313,7 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
           await fs.writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, 'utf8');
         }
       } catch { /* config missing or not JSON; nothing to scrub */ }
+      removeTersioMcp('opencode');
     }
     console.log('\nDone. Restart OpenCode to drop the plugin.');
     results.push(true);
@@ -375,6 +379,7 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
 
   // Remove extension directories (independent paths, so concurrently).
   await Promise.all(targets.map((t) => removeUninstallTarget(t, shouldDryRun)));
+  if (!shouldDryRun && removeTersioMcp('omp')) sayTagged('  [rm] Removed the Tersio MCP entry from OMP');
 
   const configRaw = await readTextIfExists(configPath);
   if (configRaw) {

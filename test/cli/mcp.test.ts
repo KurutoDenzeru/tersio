@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest';
+import http from 'node:http';
 import { mkdtemp, readFile } from 'node:fs/promises';
 
 import { tmpdir } from 'node:os';
@@ -14,6 +15,7 @@ function collector(): { sent: unknown[]; send: (msg: unknown) => void } {
 const call = (id: number, method: string, params?: unknown): { jsonrpc: string; id: number; method: string; params?: unknown } => ({
   jsonrpc: '2.0', id, method, ...(params === undefined ? {} : { params }),
 });
+
 describe('the MCP server protocol', () => {
   test('initialize answers with the server identity and the version the server speaks', async () => {
     const { sent, send } = collector();
@@ -53,6 +55,33 @@ describe('the MCP server protocol', () => {
     const answer = sent[0] as { error: { code: number; message: string } };
     expect(answer.error.code).toBe(-32602);
     expect(answer.error.message).toContain('action must be');
+  });
+
+  test('tersio_headroom retrieve fetches the original by hash', async () => {
+    const server = http.createServer((req, res) => {
+      if (req.url === '/v1/retrieve' && req.method === 'POST') {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ hash: 'abc123', original_content: 'the original text' }));
+        return;
+      }
+      res.writeHead(404);
+      res.end('not found');
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    const port = typeof address === 'object' && address ? address.port : 0;
+    const previous = process.env.TERSIO_HEADROOM_PROXY_URL;
+    process.env.TERSIO_HEADROOM_PROXY_URL = `http://127.0.0.1:${port}/`;
+    try {
+      const { sent, send } = collector();
+      await handleMessage(call(10, 'tools/call', { name: 'tersio_headroom', arguments: { action: 'retrieve', hash: 'abc123' } }), send);
+      const answer = sent[0] as { result: { content: Array<{ text: string }> } };
+      expect(answer.result.content[0].text).toBe('the original text');
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      if (previous === undefined) delete process.env.TERSIO_HEADROOM_PROXY_URL;
+      else process.env.TERSIO_HEADROOM_PROXY_URL = previous;
+    }
   });
 
   test('an unknown method answers with method-not-found, and ping answers empty', async () => {

@@ -3,29 +3,30 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { readActivity, recordActivity } from './activity.ts';
 import { cacheDelete, cacheGet, cacheKeys, cachePut, cacheStamp } from '../extensions/shared/cache-store.ts';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, unlinkSync, watch, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, watch, writeFileSync } from 'node:fs';
 import { promises as fs } from 'node:fs';
 import http from 'node:http';
 import net from 'node:net';
 import os from 'node:os';
 import type { Socket } from 'node:net';
 import { gzipSync } from 'node:zlib';
-import { DURABLE_CONFIG, HEADROOM_PORT, discoverInitTargets, discoverWrapTargets, durableConfigInstalled, installDurableConfig } from '../extensions/shared/headroom-proxy.ts';
-import { readHeadroomWraps, setStoredWrap, writeHeadroomWraps } from '../extensions/shared/headroom-wraps.ts';
+import { DURABLE_CONFIG, durableConfigInstalled } from '../extensions/shared/headroom-proxy.ts';
+import { readHeadroomWraps } from '../extensions/shared/headroom-wraps.ts';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isCurrencyCode } from './currency.ts';
 import type { CurrencyCode } from './currency.ts';
 import { qrTerminal } from './qr.ts';
 import { ensureHeadroomRuntime } from './headroom-runtime.ts';
+import { handleHeadroomRoutes } from './dashboard-headroom.ts';
+import { handleVendorRoutes } from './dashboard-vendor.ts';
+import { handleHostRoutes } from './dashboard-hosts.ts';
 import {
   OMP_AGENT_DIR, OMP_PLUGINS_DIR, PACKAGE_VERSION, execFileP,
 } from './common.ts';
 import { BACKUP_SCHEDULES, applyComboPreset, clampSidebarWidth, comboLevelOf, formatCliStatus, RETENTION_DAYS, saveHostDefaults, storedProfile, writePluginSettings } from './profile.ts';
 import { patchState, readState, takeLegacy } from '../extensions/shared/state.ts';
 import { REMOTE_MARKS } from '../extensions/shared/brand-marks.ts';
-import { mergeHeadroomWraps } from '../extensions/shared/headroom-wraps.ts';
-import { readHeadroomDoctor } from '../extensions/shared/headroom-gain.ts';
 import { setUpdatePrefs, startApply, startCheck, startUpdateWatch, updateView } from './dashboard-update.ts';
 import type { UpdatePrefs } from './dashboard-update.ts';
 import type { BackupSchedule, HostDefaultField } from './profile.ts';
@@ -41,7 +42,7 @@ import { resetCounts, resetStatistics } from './reset.ts';
 
 import { readBackupSchedule, syncUsageDb } from '../extensions/shared/usage-store.ts';
 import { agentDbPath, emptyRequestEntry, isAgentView, isRangeKey, readAgentRequestEntry, readAgentStats, readSessionTrace, statsDbPath } from '../extensions/shared/agent-stats.ts';
-import type { AgentStats, AgentView, RangeKey } from '../extensions/shared/agent-stats.ts';
+import type { AgentStats, AgentView, RangeKey } from '../extensions/shared/agent-types.ts';
 
 /** The agents headroom's own compatibility table lists, minus Continue (service discontinued). */
 const WRAP_TARGETS = [
@@ -208,9 +209,12 @@ function storeStamp(): string {
   return `${fileStamp(statsDbPath())}|${fileStamp(agentDbPath())}`;
 }
 
+/** Bumped when the payload shape changes, so a cached row from an older build is never read as the new shape. */
+const AGENT_CACHE_VERSION = 2;
+
 /** One cache row per range and view, so a restarted server serves what the last one built. */
 function agentCacheKey(range: RangeKey, view: AgentView, offset: number): string {
-  return `dashboard.agent.${range}-${view}-${offset}`;
+  return `dashboard.agent.v${AGENT_CACHE_VERSION}.${range}-${view}-${offset}`;
 }
 
 /** The loose JSON cache an older build wrote moves into the ledger once, then leaves the data home. */
@@ -1095,6 +1099,12 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
       json(res, 200, { id });
       return;
     }
+    if (await handleHeadroomRoutes(req, res, {
+      json, bodyOf, wrapTargetPresent, spawnHeadroomInstall, headroomInstallState, headroomRun,
+      wrapTargets: WRAP_TARGETS, wrapLabels: WRAP_LABELS,
+    })) return;
+    if (await handleVendorRoutes(req, res, { json, bodyOf, spawnHeadroomInstall, isVendorTool })) return;
+    if (await handleHostRoutes(req, res, { json, bodyOf, detectHosts, hostJobs, spawnCli })) return;
     if (req.url === '/api/upstream' && req.method === 'GET') {
       json(res, 200, { card: await cachedScorecard(), history: await upstreamHistory() });
       return;
@@ -1183,232 +1193,6 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
       json(res, 200, readActivity(limit));
       return;
     }
-    if (req.url === '/api/hosts' && req.method === 'GET') {
-      // What the guide draws as connected: the host directories an install writes, read from disk.
-      json(res, 200, detectHosts().map((host) => ({
-        id: host.id,
-        label: host.label,
-        installed: host.installed,
-        version: host.version,
-      })));
-      return;
-    }
-    if (req.url === '/api/hosts/action' && req.method === 'GET') {
-      json(res, 200, [...hostJobs].map(([host, job]) => ({ host, ...job })));
-      return;
-    }
-    if (req.url === '/api/hosts/action' && req.method === 'POST') {
-      // Add an agent or turn one off from the guide. The CLI does the work, so the tree on disk and
-      // the guide cannot drift apart.
-      const body = await bodyOf(req);
-      const host = String(body.host ?? '');
-      const action = String(body.action ?? '');
-      const known = detectHosts().some((entry) => entry.id === host);
-      if (!known || (action !== 'install' && action !== 'uninstall' && action !== 'update')) {
-        json(res, 400, { ok: false, error: 'unknown host or action' });
-        return;
-      }
-      if (!spawnCli(action, host)) {
-        json(res, 500, { ok: false, error: 'cannot find the tersio entry point' });
-        return;
-      }
-      json(res, 202, { ok: true, pending: true, host, action });
-      return;
-    }
-    if (req.url === '/api/headroom/install' && req.method === 'GET') {
-      json(res, 200, { ok: true, present: resolveHeadroomBinary() !== null, ...headroomInstallState() });
-      return;
-    }
-    // The Tools page and the drawer can start headroom's own runtime; a switch alone cannot.
-    if (req.url === '/api/headroom/runtime' && req.method === 'POST') {
-      const bin = resolveHeadroomBinary();
-      if (!bin) {
-        json(res, 400, { ok: false, error: 'headroom is not installed' });
-        return;
-      }
-      json(res, 200, await ensureHeadroomRuntime(bin));
-      return;
-    }
-    // Which headroom wrap targets exist on this machine. Only detected tools are listed: absent ones are unsupported.
-    if (req.url === '/api/headroom/wrap' && req.method === 'GET') {
-      const bin = resolveHeadroomBinary();
-      const durableTargets = bin !== null ? await discoverInitTargets(bin) : null;
-      const discovered = bin !== null ? await discoverWrapTargets(bin) : null;
-      const discoveredLabels = new Map((discovered ?? []).map((entry) => [entry.name, entry.label.replace(/\.$/, '')]));
-      const durableNames = new Set<string>([...(durableTargets ?? []), ...DURABLE_CONFIG]);
-      // Headroom's own install apply reaches these three too, at user scope; Tersio does not manage that path.
-      const headroomInstall = new Set(['aider', 'cursor', 'grok-build']);
-      // Continue is discontinued, and ZCode is desktop-only: headroom prints settings and writes no config.
-      const names = [...new Set([...(discovered ?? []).map((entry) => entry.name), ...(durableTargets ?? []), ...DURABLE_CONFIG, ...WRAP_TARGETS])]
-        .filter((name) => name !== 'continue' && name !== 'zcode');
-      const present = (await Promise.all(names.map(async (name) => [name, bin !== null && await wrapTargetPresent(name)] as const)))
-        .filter(([, available]) => available)
-        .map(([name]) => name);
-      const targets = present.map((name) => ({
-        name,
-        durable: durableNames.has(name),
-        manual: !durableNames.has(name),
-        headroomInstall: !durableNames.has(name) && headroomInstall.has(name),
-        installed: durableConfigInstalled(name),
-        label: WRAP_LABELS[name] ?? discoveredLabels.get(name) ?? name,
-      }));
-      json(res, 200, { ok: bin !== null, targets });
-      return;
-    }
-    // The automated durable install: one documented headroom command per tool, never a per-session wrap.
-    if (req.url === '/api/headroom/wrap' && req.method === 'POST') {
-      const body = await bodyOf(req);
-      const name = String(body.name ?? '');
-      const bin = resolveHeadroomBinary();
-      if (!bin || !isHeadroomWrapTarget(name)) {
-        json(res, 400, { ok: false, error: 'unknown wrap target or no headroom binary' });
-        return;
-      }
-      const canConfig = (DURABLE_CONFIG as readonly string[]).includes(name);
-      if (!canConfig && !(await discoverInitTargets(bin))?.includes(name)) {
-        json(res, 200, { ok: false, error: `${name} has no durable headroom integration; run headroom wrap ${name} yourself per session` });
-        return;
-      }
-      // A switch points the agent at the proxy, so the proxy must answer before the config is written.
-      if (body.action !== 'unwrap') {
-        const runtime = await ensureHeadroomRuntime(bin);
-        if (!runtime.ok) {
-          json(res, 200, { ok: false, error: `headroom runtime did not start: ${runtime.detail}` });
-          return;
-        }
-      }
-      if (body.action === 'unwrap') {
-        // headroom's own undo: it restores whatever the wrap/init edited for that tool.
-        // One switch-off must not strand the other durable agents: headroom's unwrap stops the proxy by default.
-        const run = await headroomRun(bin, ['unwrap', name, '--no-stop-proxy'], 120_000);
-        setStoredWrap(name, false);
-        const out = run.lines.slice(-2).join(' · ');
-        json(res, 200, run.ok
-          ? { ok: true, detail: out || `${name}: headroom integration removed` }
-          : { ok: false, error: out || `the ${name} unwrap failed` });
-        return;
-      }
-      if (canConfig) {
-        // Headroom's own writer, so the marker, backup, and unwrap contract are headroom's.
-        const wrote = await installDurableConfig(bin, name, HEADROOM_PORT);
-        if (wrote) setStoredWrap(name, true);
-        json(res, 200, wrote
-          ? { ok: true, detail: `${name}: headroom config written for port ${HEADROOM_PORT}; it survives restarts` }
-          : { ok: false, error: `headroom could not write ${name}'s config` });
-        return;
-      }
-      // Durable init: headroom writes its own hooks and owns their removal.
-      const init = await headroomRun(bin, ['init', '-g', name], 120_000);
-      if (init.ok) {
-        setStoredWrap(name, true);
-        json(res, 200, { ok: true, detail: init.lines.slice(-2).join(' · ') || `${name}: durable headroom integration installed` });
-        return;
-      }
-      json(res, 200, { ok: false, error: init.lines.slice(-2).join(' · ') || `the ${name} integration failed` });
-      return;
-    }
-    // The wrap record lives tersio-side too, so a second browser sees the same switches. Headroom's
-    // own checks correct it: a wrap undone outside Tersio clears instead of lying.
-    if (req.url === '/api/headroom/wraps' && req.method === 'GET') {
-      const stored = readHeadroomWraps();
-      const bin = resolveHeadroomBinary();
-      let wraps = mergeHeadroomWraps(stored, [], WRAP_TARGETS);
-      const doctor = bin ? readHeadroomDoctor({ binary: bin }) : null;
-      if (doctor?.measured) {
-        wraps = mergeHeadroomWraps(stored, doctor.checks, WRAP_TARGETS);
-        try { writeHeadroomWraps(wraps); } catch { /* best effort */ }
-      }
-      // A config headroom wrote is on even when Tersio never flipped its switch.
-      for (const name of DURABLE_CONFIG) if (durableConfigInstalled(name)) wraps[name] = true;
-      json(res, 200, { ok: true, wraps });
-      return;
-    }
-    if (req.url === '/api/headroom/wraps' && req.method === 'POST') {
-      const body = await bodyOf(req);
-      if (!body.wraps || typeof body.wraps !== 'object') {
-        json(res, 400, { ok: false, error: 'wraps must be an object' });
-        return;
-      }
-      writeHeadroomWraps(body.wraps as Record<string, unknown>);
-      json(res, 200, { ok: true });
-      return;
-    }
-    // The vendor footers: update or remove a third-party binary (headroom, rtk) from its drawer.
-    if (req.url === '/api/vendor/update' && req.method === 'POST') {
-      const body = await bodyOf(req);
-      const tool = String(body.tool ?? '');
-      if (!isVendorTool(tool)) {
-        json(res, 400, { ok: false, error: 'unknown tool' });
-        return;
-      }
-      if (tool === 'headroom') {
-        const bin = resolveHeadroomBinary();
-        if (!bin) {
-          // Not installed yet: the update button doubles as the installer.
-          if (!spawnHeadroomInstall()) {
-            json(res, 500, { ok: false, error: 'cannot find the tersio entry point' });
-            return;
-          }
-          json(res, 200, { ok: true, detail: 'headroom installs in the background' });
-          return;
-        }
-        const child = spawn(bin, ['update'], { detached: true, stdio: 'ignore', cwd: homeDir() });
-        child.unref();
-        recordActivity('agent', 'Headroom update started');
-        json(res, 200, { ok: true, detail: 'headroom updates in the background' });
-        return;
-      }
-      if (tool === 'rtk') {
-        const entry = process.argv[1];
-        const host = detectHosts().find((candidate) => candidate.installed)?.id;
-        if (!entry || !host) {
-          json(res, 400, { ok: false, error: 'no installed agent to refresh rtk through' });
-          return;
-        }
-        const runtime = entry.endsWith('.ts') ? 'bun' : process.execPath;
-        const child = spawn(runtime, [entry, 'install', '--host', host, '--apply-update', '--yes'], { detached: true, stdio: 'ignore' });
-        child.unref();
-        recordActivity('agent', 'RTK update started');
-        json(res, 200, { ok: true, detail: `rtk updates through the ${host} refresh — running in the background` });
-        return;
-      }
-    }
-    if (req.url === '/api/vendor/uninstall' && req.method === 'POST') {
-      const body = await bodyOf(req);
-      const tool = String(body.tool ?? '');
-      if (!isVendorTool(tool)) {
-        json(res, 400, { ok: false, error: 'unknown tool' });
-        return;
-      }
-      const dirs = (process.env.PATH ?? '').split(path.delimiter).filter(Boolean);
-      dirs.push(path.join(homeDir(), '.local', 'bin'));
-      if (tool === 'headroom') {
-        const viaUv = dirs.some((dir) => existsSync(path.join(dir, 'uv')));
-        const cmd = viaUv ? 'uv' : 'pip3';
-        const args = viaUv ? ['tool', 'uninstall', 'headroom-ai'] : ['uninstall', '-y', 'headroom-ai'];
-        const child = spawn(cmd, args, { detached: true, stdio: 'ignore' });
-        child.unref();
-        recordActivity('agent', 'Headroom uninstall started');
-        json(res, 200, { ok: true, detail: `uninstalling headroom-ai with ${cmd} in the background` });
-        return;
-      }
-      if (tool === 'rtk') {
-        const found = dirs.map((dir) => path.join(dir, 'rtk')).find((p) => existsSync(p));
-        if (!found) {
-          json(res, 400, { ok: false, error: 'rtk is not installed' });
-          return;
-        }
-        try {
-          if (existsSync(`${found}.bak`)) unlinkSync(`${found}.bak`);
-          unlinkSync(found);
-          recordActivity('agent', 'RTK uninstalled');
-          json(res, 200, { ok: true, detail: 'the rtk binary is removed — its hooks skip a missing rtk' });
-        } catch (e) {
-          json(res, 500, { ok: false, error: (e as Error).message || 'could not remove the rtk binary' });
-        }
-        return;
-      }
-    }
     // The canvas node layout lives tersio-side, not in the browser: localStorage is scoped to the
     // origin, so a dashboard restart on a new port would forget every node the user placed.
     if (req.url === '/api/pipeline/positions' && req.method === 'GET') {
@@ -1435,18 +1219,6 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
       }
       cachePut('dashboard.pipeline', JSON.stringify(stored));
       json(res, 200, { ok: true });
-      return;
-    }
-    if (req.url === '/api/headroom/install' && req.method === 'POST') {
-      if (resolveHeadroomBinary()) {
-        json(res, 200, { ok: true, present: true });
-        return;
-      }
-      if (!spawnHeadroomInstall()) {
-        json(res, 500, { ok: false, error: 'cannot start the install here — run: pip install "headroom-ai[all]"' });
-        return;
-      }
-      json(res, 202, { ok: true, pending: true });
       return;
     }
     if (req.url === '/settings' && req.method === 'GET') {

@@ -2,16 +2,25 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { sqliteRead } from './sqlite.ts';
+import { COL, SOURCE } from './agent-sql.ts';
+import type {
+  AgentBucket, AgentCostMix, AgentErrorGroup, AgentErrorModelRow, AgentHeadroom,
+  AgentModelPerformancePoint, AgentOverall, AgentProviderHour, AgentRequestRow, AgentRequestStats,
+  AgentRow, AgentRtk, AgentSessionTrace, AgentStats, AgentTokenMix, AgentToolRow, AgentTraceMarker,
+  AgentTraceRow, AgentTraceSpan, AgentTraceSummary, AgentTraceToolStat,
+  AgentView, AgentWindowInsight, AgentWindowPoint, AgentWindowSeries,
+  JournalAgent, RangeKey,
+} from './agent-types.ts';
 import { homeDir } from './utils.ts';
 import { usageDbPath } from './usage-store.ts';
 import { readRtkGainByVerb, rtkGainFailure } from './rtk-gain.ts';
-import type { RtkCommandRow } from './rtk-gain.ts';
-import { readHeadroomDoctor, readHeadroomSavings } from './headroom-gain.ts';
-import type { HeadroomClientRow } from './headroom-gain.ts';
+import { readHeadroomDoctor, readHeadroomSavings, readHeadroomStats } from './headroom-gain.ts';
+import { headroomProxyPort } from './headroom-proxy.ts';
+import { describeHeadroomRoute, readHeadroomRoute } from './headroom-routing.ts';
 import { readRtkAdoption } from './usage-ledger.ts';
 import type { RtkAdoption } from './usage-ledger.ts';
 
-export type RangeKey = '1h' | '24h' | '7d' | '30d' | '90d' | 'all';
+
 
 export const RANGES: readonly RangeKey[] = ['1h', '24h', '7d', '30d', '90d', 'all'];
 
@@ -20,9 +29,7 @@ export function isRangeKey(v: unknown): v is RangeKey {
 }
 
 /** A page fetches only the parts it renders, so a route payload stays small. */
-export type AgentView =
-  | 'all' | 'overview' | 'models' | 'providers' | 'costs' | 'carbon' | 'requests'
-  | 'errors' | 'traces' | 'tools' | 'projects';
+
 
 export const AGENT_VIEWS: readonly AgentView[] = [
   'all', 'overview', 'models', 'providers', 'costs', 'carbon', 'requests',
@@ -94,104 +101,9 @@ export function agentDbPath(): string {
   return process.env.TERSIO_AGENT_SESSIONS_DB ?? path.join(homeDir(), '.omp', 'agent', 'agent.db');
 }
 
-/** The row shape every query groups by: a message joined to its file, since path and facts live apart. */
-const SOURCE = 'messages m JOIN files f ON f.id = m.file_id';
 
-/** The transcript path with any host-side row suffix removed, so one file groups as one session. */
-const FILE_KEY = `substr(f.path, 1, instr(f.path || '#', '#') - 1)`;
 
-/** Model-id spellings whose dashboard mark lives under another name; the first segment names the gateway. */
-const PROVIDER_ALIASES: Readonly<Record<string, string>> = {
-  'opencode-zen': 'opencode',
-  'opencode-go': 'opencode',
-  'gmi-cloud': 'gmicloud',
-  'charm-hyper': 'charmhyper',
-  'kimi-code': 'kimi',
-  // Codex's own mark, not the parent OpenAI blossom it ships under.
-  'openai-codex': 'codex',
-  'github-copilot': 'githubcopilot',
-  'ollama-cloud': 'ollama',
-  'amd-radeon-cloud-cn': 'amd',
-  'google-antigravity': 'google',
-  devin: 'cognition',
-};
 
-/** SQL: the gateway that served the row. The transcript names it, and that name wins, because a model id cannot show it: `deepseek/deepseek-v4.1-flash` was served by `commandcode`. */
-function providerExpr(model: string, named?: string): string {
-  const seg = `substr(${model}, 1, instr(${model} || '/', '/') - 1)`;
-  const alias = `ltrim(${seg}, '~')`;
-  const cases = Object.entries(PROVIDER_ALIASES)
-    .map(([from, to]) => `WHEN '${from}' THEN '${to}'`)
-    .join(' ');
-  const fromModel = `CASE WHEN instr(${model}, '/') = 0 THEN '' ELSE CASE ${alias} ${cases} ELSE ${alias} END END`;
-  if (!named) return fromModel;
-  return `CASE WHEN ${named} IS NULL OR ${named} = '' THEN ${fromModel} ELSE ${named} END`;
-}
-
-/** SQL: the project from a transcript's session folder; the separator follows the stored path, since a Windows run stores `\`. */
-function projectExpr(file: string): string {
-  // Position of the session marker under either separator; 0 when the path has none.
-  const posAt = `instr(${file}, '/sessions/')`;
-  const posWin = `instr(${file}, '\\sessions\\')`;
-  const at = `CASE WHEN ${posAt} > 0 THEN ${posAt} ELSE ${posWin} END`;
-  // Which separator to slice on: the one the matched marker used, else the one the path uses.
-  const sep = `CASE WHEN ${posAt} > 0 THEN '/' WHEN ${posWin} > 0 THEN '\\' WHEN instr(${file}, '\\') > 0 THEN '\\' ELSE '/' END`;
-  const seg = `substr(${file}, ${at} + 10, instr(substr(${file}, ${at} + 10) || ${sep}, ${sep}) - 1)`;
-  const base = `replace(${file}, rtrim(${file}, replace(${file}, ${sep}, '')), '')`;
-  const dir = `substr(${file}, 1, length(${file}) - length(${base}) - 1)`;
-  const dirBase = `replace(${dir}, rtrim(${dir}, replace(${dir}, ${sep}, '')), '')`;
-  return `CASE WHEN ${at} > 0 THEN ${seg} ELSE ${dirBase} END`;
-}
-
-/** Every column a query reads, mapped to the store's schema in one place. */
-const COL = {
-  session: FILE_KEY,
-  entry: `COALESCE(m.id, '')`,
-  folder: projectExpr(FILE_KEY),
-  model: 'm.model',
-  provider: providerExpr('m.model', 'm.p'),
-  /** No route name is stored, and the Requests page reads one. */
-  api: "''",
-  timestamp: 'm.t',
-  // Bucketing form of the timestamp. REAL division does not floor, so the cast is needed.
-  bucket: 'CAST(COALESCE(m.t, 0) AS INTEGER)',
-  duration: 'm.d',
-  /** First-token latency. A host that records none leaves it NULL, which reads null, never zero. */
-  ttft: 'm.tf',
-  stopReason: `CASE m.st WHEN 'error' THEN 'error' WHEN 'aborted' THEN 'aborted' ELSE 'stop' END`,
-  errorMessage: 'm.note',
-  input: 'm.i',
-  output: 'm.o',
-  cacheRead: 'm.cr',
-  cacheWrite: 'm.cw',
-  total: '(m.i + m.o + m.cr + m.cw)',
-  /** The cost the host reported. A model the host priced nothing for reads $0.00 by design. */
-  costTotal: 'COALESCE(m.usd, 0)',
-  agentType: `COALESCE(m.a, 'main')`,
-  host: `COALESCE(m.h, '')`,
-  /** The store holds no per-component split, so the remainder rule below finds nothing to move. */
-  costInput: '0',
-  costCacheRead: '0',
-  costCacheWrite: '0',
-  /** No route is a subscription route here, so nothing is ever flagged unpriced. */
-  unpriced: '0',
-} as const;
-
-export interface AgentTokenMix {
-  input: number;
-  output: number;
-  cacheRead: number;
-  cacheWrite: number;
-  total: number;
-}
-
-export interface AgentCostMix {
-  input: number;
-  output: number;
-  cacheRead: number;
-  cacheWrite: number;
-  total: number;
-}
 
 /** Output cost is the remainder: omp prices the whole request and the three cache-side parts. */
 function costMixOf(f: Facts): AgentCostMix {
@@ -207,344 +119,68 @@ function costMixOf(f: Facts): AgentCostMix {
   };
 }
 
-export interface AgentOverall extends AgentTokenMix {
-  /** The estimate split the way a bill splits it: input, output, cache read, cache write. */
-  costMix: AgentCostMix;
-  requests: number;
-  failed: number;
-  successful: number;
-  errorRate: number;
-  cacheRate: number;
-  costUsd: number;
-  unpricedRequests: number;
-  avgDurationMs: number;
-  avgTtftMs: number;
-  avgTokensPerSecond: number;
-  /** The longest single request in the range; null when none carries a duration. */
-  maxDurationMs: number | null;
-  firstTs: number | null;
-  lastTs: number | null;
-}
 
-export interface AgentRow extends AgentTokenMix {
-  key: string;
-  /** The provider this row belongs to, empty when the group is not per provider. */
-  provider: string;
-  costMix: AgentCostMix;
-  requests: number;
-  failed: number;
-  errorRate: number;
-  cacheRate: number;
-  costUsd: number;
-  unpricedRequests: number;
-  avgDurationMs: number;
-  avgTtftMs: number;
-  avgTokensPerSecond: number;
-  firstTs: number | null;
-  lastTs: number | null;
-  /** Providers only: how many models the provider served. */
-  models: number;
-}
 
-export interface AgentBucket {
-  ts: number;
-  requests: number;
-  errors: number;
-  tokens: number;
-  costUsd: number;
-}
+
+
+
 
 /** Throughput and first-token latency for one model and provider in one bucket. */
-export interface AgentModelPerformancePoint {
-  ts: number;
-  requests: number;
-  avgTokensPerSecond: number | null;
-  avgTtftMs: number | null;
-}
 
-export interface AgentHour {
-  hour: number;
-  requests: number;
-  errors: number;
-  tokens: number;
-  costUsd: number;
-}
 
-export interface AgentTypeShare extends AgentTokenMix {
-  agentType: string;
-  requests: number;
-  costUsd: number;
-}
 
-export interface AgentRequestRow {
-  ts: number;
-  provider: string;
-  model: string;
-  project: string;
-  api: string;
-  input: number;
-  output: number;
-  cacheRead: number;
-  cacheWrite: number;
-  totalTokens: number;
-  costUsd: number;
-  unpriced: boolean;
-  durationMs: number | null;
-  ttftMs: number | null;
-  stopReason: string;
-  errorMessage: string | null;
-  agentType: string;
-  sessionFile: string;
-  entryId: string;
-}
 
-export interface AgentErrorGroup {
-  signature: string;
-  count: number;
-  firstSeen: number;
-  lastSeen: number;
-  latest: AgentRequestRow;
-  models: Array<{ model: string; provider: string; count: number }>;
-}
 
-export interface AgentErrorModelRow {
-  model: string;
-  provider: string;
-  count: number;
-}
+
+
+
+
+
+
 
 /** One session row on the Traces page: a root session with its child transcripts folded in. */
-export interface AgentTraceRow {
-  /** Absolute root session file path, which is also the trace key. */
-  sessionFile: string;
-  /** Mangled session folder from the stats database. */
-  project: string;
-  /** Working directory from the root session's own journal line, when it still reads. */
-  cwd: string;
-  /** The session's own title, when it still reads. */
-  title: string | null;
-  requests: number;
-  tokens: number;
-  costUsd: number;
-  unpriced: number;
-  /** Every model the session and its children ran on, sorted. */
-  models: string[];
-  toolCalls: number;
-  /** Child transcripts folded into this row. */
-  subagents: number;
-  firstTs: number;
-  lastTs: number;
-}
 
-export interface AgentToolRow {
-  tool: string;
-  calls: number;
-  errors: number;
-  argsChars: number;
-  resultChars: number;
-  totalTokensShare: number;
-  outputTokensShare: number;
-  costShare: number;
-  unpricedShare: number;
-  lastUsed: number | null;
-  model: string;
-  provider: string;
-}
 
-export interface AgentWindowPoint {
-  ts: number;
-  usedFraction: number | null;
-  exhausted: boolean;
-}
+
+
+
 
 /** The Requests page summary row: whole-range counts and totals; `shipped` counts rows that rode along. */
-export interface AgentRequestStats {
-  requests: number;
-  failed: number;
-  aborted: number;
-  tokens: number;
-  costUsd: number;
-  unpriced: number;
-  /** Rows that rode along with this payload, at most `RECENT_LIMIT`. */
-  shipped: number;
-  medianDurationMs: number;
-  p95DurationMs: number;
-  medianTtftMs: number;
-  oldest: number | null;
-  newest: number | null;
-}
+
 
 /** Peak burn hours: one row per provider per local hour. */
-export interface AgentProviderHour {
-  provider: string;
-  hour: number;
-  totalTokens: number;
-  outputTokens: number;
-  requests: number;
-}
+
 
 /** One account's utilization series inside one window. */
-export interface AgentWindowSeries {
-  provider: string;
-  accountKey: string;
-  accountLabel: string;
-  windowKey: string;
-  windowLabel: string;
-  points: AgentWindowPoint[];
-}
+
 
 /** What one subscription window costs in quota terms. */
-export interface AgentWindowInsight {
-  provider: string;
-  windowKey: string;
-  windowLabel: string;
-  accounts: number;
-  cycles: number;
-  fractionConsumed: number;
-  /** Tokens one full window buys, extrapolated from local burn. */
-  estTokensPerWindow: number | null;
-  /** Peak of the sum across accounts: 1.7 means demand held 1.7 windows at once. */
-  peakConcurrentFraction: number;
-  /** Accounts needed to keep the peak under the target utilization. */
-  idealAccounts: number;
-  exhaustedEvents: number;
-}
+
 
 /** Kind of one trace span: a user turn, a model call, a tool call, or session metadata. */
-export type AgentTraceSpanKind = 'turn' | 'model' | 'tool' | 'background';
+
 
 /** One span on the flamegraph: an interval with the identity and cost of the work it holds. */
-export interface AgentTraceSpan {
-  /** Entry id from the journal, or `${entryId}#${index}` for one of a message's tool calls. */
-  id: string;
-  kind: AgentTraceSpanKind;
-  /** Short name: the tool, the model, or `Prompt`. */
-  label: string;
-  /** First line of the text the span carries. */
-  detail: string;
-  start: number;
-  end: number;
-  model: string;
-  provider: string;
-  tool: string;
-  tokens: number;
-  costUsd: number;
-  isError: boolean;
-  /** How the request stopped, from the assistant message's stop reason. */
-  stopped: 'completed' | 'aborted' | 'failed';
-  /** Journal entry id, so the drawer can read the full payload on demand. */
-  entryId: string;
-}
+
 
 /** A mode or title change: drawn as a diamond on the timeline. */
-export interface AgentTraceMarker {
-  id: string;
-  ts: number;
-  kind: 'model' | 'think' | 'session';
-  label: string;
-}
+
 
 /** One flamegraph row: the main session, or a subagent's own row. */
-export interface AgentTraceTrack {
-  id: string;
-  label: string;
-  parentId: string | null;
-  spans: AgentTraceSpan[];
-}
+
 
 /** Duration totals for one tool across the session: total, mean, and the longest single call. */
-export interface AgentTraceToolStat {
-  tool: string;
-  calls: number;
-  errors: number;
-  totalMs: number;
-  avgMs: number;
-  maxMs: number;
-}
+
 
 /** The nine headline figures the reference trace view opens with. */
-export interface AgentTraceSummary {
-  wallMs: number;
-  modelMs: number;
-  toolMs: number;
-  idleMs: number;
-  turns: number;
-  requests: number;
-  toolCalls: number;
-  agents: number;
-  totalTokens: number;
-  costUsd: number;
-}
 
-export interface AgentSessionTrace {
-  sessionFile: string;
-  project: string;
-  title: string;
-  cwd: string;
-  startedAt: number;
-  endedAt: number;
-  tracks: AgentTraceTrack[];
-  markers: AgentTraceMarker[];
-  summary: AgentTraceSummary;
-  toolStats: AgentTraceToolStat[];
-  truncated: boolean;
-}
 
-export interface AgentStats {
-  available: boolean;
-  range: RangeKey;
-  bucketMs: number;
-  cutoff: number;
-  generatedAt: number;
-  overall: AgentOverall;
-  byModel: AgentRow[];
-  byProvider: AgentRow[];
-  byProject: AgentRow[];
-  byAgentType: AgentTypeShare[];
-  series: AgentBucket[];
-  seriesByProvider: Array<{ provider: string; points: AgentBucket[] }>;
-  modelSeries: Array<{ model: string; points: AgentBucket[] }>;
-  /** Per-bucket throughput and TTFT per model and provider: the model detail chart. */
-  modelPerformance: Array<{ model: string; provider: string; points: AgentModelPerformancePoint[] }>;
-  hourOfDay: AgentHour[];
-  topModels: AgentRow[];
-  recent: AgentRequestRow[];
-  errorGroups: AgentErrorGroup[];
-  errorModels: AgentErrorModelRow[];
-  traces: AgentTraceRow[];
-  tools: AgentToolRow[];
-  toolsByModel: AgentToolRow[];
-  toolSeries: Array<{ ts: number; tool: string; calls: number; errors: number }>;
-  /** What rtk kept out of context in this range, and how much of the work it took. */
-  rtk: AgentRtk;
-  /** What Headroom's compression saved, read through its own savings CLI. */
-  headroom: AgentHeadroom;
-  usageSeries: AgentWindowSeries[];
-  windowInsights: AgentWindowInsight[];
-  providerHourly: AgentProviderHour[];
-  requestStats: AgentRequestStats;
-  /** Raw failure rows inside the range, newest first: the Errors page's list. */
-  errors: AgentRequestRow[];
-}
+
+
+
 
 /** rtk's own savings, read from its history, plus how much of the bash work it took. */
-export interface AgentRtk {
-  /** False when rtk's database could not be read: a zero here means "not measured", never "saved nothing". */
-  measured: boolean;
-  /** Why the read failed, when it did. Empty on a successful read. */
-  failure: string;
-  commands: number;
-  input: number;
-  saved: number;
-  avgPct: number;
-  /** Commands folded by their leading verb, biggest saving first. */
-  byVerb: RtkCommandRow[];
-  bashCalls: number;
-  eligibleCalls: number;
-  rtkCalls: number;
-  missedCalls: number;
-  adoptionPct: number;
-}
+
 
 /** A read that never ran, so a page draws "not measured" rather than a row of zeros. */
 const EMPTY_RTK: AgentRtk = {
@@ -578,42 +214,27 @@ function readRtk(cutoff: number): AgentRtk {
 }
 
 /** Headroom's durable compression savings, read through its own `savings --json`. */
-export interface AgentHeadroom {
-  /** False when the binary was absent or the read failed: a zero here means "not measured", never "saved nothing". */
-  measured: boolean;
-  /** Why the read failed, when it did. Empty on a successful read. */
-  failure: string;
-  tokensSaved: number;
-  tokensBefore: number;
-  costUsd: number;
-  calls: number;
-  savingsPercent: number;
-  todayTokens: number;
-  last7Tokens: number;
-  last30Tokens: number;
-  byClient: HeadroomClientRow[];
-  /** Headroom's own routing check: proxy reachable, agents routed. */
-  routing: {
-    measured: boolean;
-    failure: string;
-    proxyUp: boolean;
-    routedAgents: number;
-    failing: Array<{ name: string; status: string; summary: string; hint: string | null }>;
-  };
-}
+
 
 /** A read that never ran, so a page draws "not measured" rather than a row of zeros. */
 const EMPTY_HEADROOM: AgentHeadroom = {
   measured: false, failure: '', tokensSaved: 0, tokensBefore: 0, costUsd: 0, calls: 0, savingsPercent: 0,
   todayTokens: 0, last7Tokens: 0, last30Tokens: 0, byClient: [],
+  proxy: { measured: false, failure: '', requests: 0, compressed: 0, tokensSaved: 0, avgCompressionPct: 0 },
+  routes: [],
   routing: { measured: false, failure: '', proxyUp: false, routedAgents: 0, failing: [] },
 };
 
 /** Headroom's savings for the ledger's own windows; it aggregates, so no cutoff of ours applies. */
 function readHeadroom(): AgentHeadroom {
   const gain = readHeadroomSavings();
+  const proxyStats = readHeadroomStats();
+  const routes = ['omp', 'opencode'].map((host) => {
+    const route = readHeadroomRoute(host);
+    return { host, measured: route.measured, routed: route.routed, text: describeHeadroomRoute(route) };
+  });
   // Headroom's doctor is the only source that says whether traffic actually flows; a proxy-down install otherwise reads as "installed and idle" with no way to tell the difference.
-  const doctor = readHeadroomDoctor();
+  const doctor = readHeadroomDoctor({ port: headroomProxyPort() });
   const failing = doctor.checks
     .filter((check) => check.status === 'fail' || check.status === 'warn')
     .map((check) => ({ name: check.name, status: check.status, summary: check.summary, hint: check.hint }));
@@ -630,6 +251,8 @@ function readHeadroom(): AgentHeadroom {
     last7Tokens: gain.windows.last7Days.tokensSaved,
     last30Tokens: gain.windows.last30Days.tokensSaved,
     byClient: gain.byClient,
+    proxy: proxyStats,
+    routes,
     routing: {
       measured: doctor.measured,
       failure: doctor.failure,
@@ -1683,15 +1306,7 @@ function buildToolStats(spans: AgentTraceSpan[]): AgentTraceToolStat[] {
 }
 
 /** The agent settings in force when a request ran, read from the journal's change entries. */
-export interface JournalAgent {
-  /** The model id in force, from the closest `model_change` before the entry. */
-  model: string | null;
-  thinkingLevel: string | null;
-  /** The assistant mode, such as `full` or `goal`, from `mode_change`. */
-  mode: string | null;
-  /** Whether the model id was a fallback at the time of the change. */
-  fallback: boolean | null;
-}
+
 
 /** The payload a request with no readable entry returns, so the route always answers with one shape. */
 export function emptyRequestEntry(): { entry: unknown; output: unknown; messageRole: string; agent: JournalAgent } {

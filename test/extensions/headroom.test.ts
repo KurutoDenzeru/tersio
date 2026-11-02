@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import headroomSessionExtension, { HEADROOM_INSTALL_HINT, headroomInstruction } from "../../extensions/headroom/index.ts";
+import { readHeadroomRoute } from "../../extensions/shared/headroom-routing.ts";
 import comboToggleExtension from "../../extensions/combo/index.ts";
 import { getSharedComboState, resetSharedComboState } from "../../extensions/shared/session-state.ts";
 import { durableConfigInstalled } from "../../extensions/shared/headroom-proxy.ts";
@@ -194,7 +195,12 @@ test("an active mode injects one replaceable block only when the binary and its 
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const port = (server.address() as { port: number }).port;
   const previousUrl = process.env.TERSIO_HEADROOM_PROXY_URL;
+  const routeDir = mkdtempSync(path.join(os.tmpdir(), "tersio-headroom-route-"));
+  const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
   process.env.TERSIO_HEADROOM_PROXY_URL = `http://127.0.0.1:${port}/`;
+  process.env.PI_CODING_AGENT_DIR = routeDir;
+  writeFileSync(path.join(routeDir, "config.yml"), "modelRoles:\n  default: demo-model:high\n", "utf8");
+  writeFileSync(path.join(routeDir, "models.yml"), `providers:\n  local:\n    baseUrl: http://127.0.0.1:${port}\n    models:\n    - id: demo-model\n`, "utf8");
   try {
     await withPath(dir, async () => {
       resetSharedComboState();
@@ -207,13 +213,15 @@ test("an active mode injects one replaceable block only when the binary and its 
       const injected = typeof first?.systemPrompt === "string" ? first.systemPrompt : first?.systemPrompt?.at(-1);
       expect(injected).toContain("🍃 HEADROOM MODE ACTIVE");
       // The same body is matched whole, so a re-presented prompt cannot stack it.
-      const second = await handlers.get("before_agent_start")!({ systemPrompt: [...(prompt.systemPrompt ?? []), headroomInstruction()] }, undefined);
+      const second = await handlers.get("before_agent_start")!({ systemPrompt: [...(prompt.systemPrompt ?? []), headroomInstruction(readHeadroomRoute("omp"))] }, undefined);
       expect(second).toBeUndefined();
     });
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
     if (previousUrl === undefined) delete process.env.TERSIO_HEADROOM_PROXY_URL;
     else process.env.TERSIO_HEADROOM_PROXY_URL = previousUrl;
+    if (previousAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = previousAgentDir;
   }
   // Without the binary the block would lie to the model, so the extension stays silent while the mode stays on.
   await withPath(null, async () => {
@@ -238,6 +246,39 @@ test("an active mode injects one replaceable block only when the binary and its 
   } finally {
     if (previousUrl === undefined) delete process.env.TERSIO_HEADROOM_PROXY_URL;
     else process.env.TERSIO_HEADROOM_PROXY_URL = previousUrl;
+  }
+});
+
+test("a live proxy does not inject when the agent's model bypasses it", async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-headroom-bin-"));
+  fakeExecutable(dir, process.platform === "win32" ? "headroom.exe" : "headroom", "#!/bin/sh\nexit 0\n", "exit /b 0");
+  const server = createServer((_req, res) => { res.writeHead(200); res.end("ok"); });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const port = (server.address() as { port: number }).port;
+  const routeDir = mkdtempSync(path.join(os.tmpdir(), "tersio-headroom-route-"));
+  const previousUrl = process.env.TERSIO_HEADROOM_PROXY_URL;
+  const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+  process.env.TERSIO_HEADROOM_PROXY_URL = `http://127.0.0.1:${port}/`;
+  process.env.PI_CODING_AGENT_DIR = routeDir;
+  writeFileSync(path.join(routeDir, "config.yml"), "modelRoles:\n  default: demo-model\n", "utf8");
+  // The provider points at another local service, which is exactly the current omp setup.
+  writeFileSync(path.join(routeDir, "models.yml"), "providers:\n  magpie:\n    baseUrl: http://127.0.0.1:3425\n    models:\n    - id: demo-model\n", "utf8");
+  try {
+    await withPath(dir, async () => {
+      resetSharedComboState();
+      const entries: SessionEntry[] = [{ type: "custom", customType: "headroom-mode", data: { mode: "on" } }];
+      const { handlers, ctx } = harness(entries);
+      await handlers.get("session_start")!({}, ctx);
+      const prompt = await handlers.get("before_agent_start")!({ systemPrompt: ["base"] }, ctx) as { systemPrompt?: string[] } | undefined;
+      expect(prompt).toBeUndefined();
+      expect(ctx.notifications.at(-1)).toContain("does not route through it");
+    });
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    if (previousUrl === undefined) delete process.env.TERSIO_HEADROOM_PROXY_URL;
+    else process.env.TERSIO_HEADROOM_PROXY_URL = previousUrl;
+    if (previousAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = previousAgentDir;
   }
 });
 

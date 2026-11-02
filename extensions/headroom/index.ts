@@ -5,16 +5,14 @@ import { hostIdOf, injectPromptText, onHostEvent, sessionChangeEvents, setExtens
 import { announceStatus } from '../shared/status.ts';
 import { readHeadroomDefault } from '../shared/plugin-settings.ts';
 import { resolveHeadroomBinary } from '../shared/utils.ts';
-import { headroomHostSupported } from '../shared/headroom-proxy.ts';
+import { headroomHostSupported, headroomProxyUrl } from '../shared/headroom-proxy.ts';
+import { describeHeadroomRoute, readHeadroomRoute } from '../shared/headroom-routing.ts';
+import { ensureTersioMcp } from '../shared/mcp-config.ts';
+import type { HeadroomRoute } from '../shared/headroom-routing.ts';
 import type { ExtensionApi, ExtensionCtx, InputEvent, SessionEntry, SystemPromptEvent } from '../shared/types.ts';
 
 const DEFAULT_MODE = 'off';
 export const HEADROOM_INSTALL_HINT = 'pip install "headroom-ai[all]"';
-
-/** Where headroom's own runtime listens; the override keeps tests away from a real proxy. */
-function headroomProxyUrl(): string {
-  return (process.env.TERSIO_HEADROOM_PROXY_URL ?? 'http://127.0.0.1:8787/').trim();
-}
 
 // A successful probe holds for longer than a miss, so a turn never pays the timeout twice in a row.
 const probeCache: { url: string; at: number; up: boolean } = { url: '', at: 0, up: false };
@@ -36,8 +34,9 @@ export async function headroomProxyUp(url: string = headroomProxyUrl(), budgetMs
 }
 
 // The proxy compresses traffic below the shell layer, so the block only tells the model what changes and how to recover detail.
-export function headroomInstruction(): string {
-  return '🍃 HEADROOM MODE ACTIVE — level: on\nHeadroom compression is enabled for this session: tool outputs, file reads, and history may be compressed before reaching you. A compressed result can elide details; treat its elision markers as real. Recover the original before acting on missing detail: run `headroom inspect`, or call the headroom_retrieve MCP tool where wired.';
+export function headroomInstruction(route?: HeadroomRoute): string {
+  const scope = route?.routed ? `Compression applies to ${route.model} via ${route.provider ?? 'its provider'}.` : 'Headroom compression is enabled for this session.';
+  return `🍃 HEADROOM MODE ACTIVE — level: on\n${scope} Tool outputs, file reads, and history may be compressed before reaching you. A compressed result can elide details; treat its elision markers as real. Recover the original by hash with the tersio_headroom MCP tool ({action:"retrieve", hash:"<HASH>"}). If that tool is not available, re-run the source command or re-read the file.`;
 }
 
 function resolveMode(entries: SessionEntry[] | null | undefined, fallback: string = DEFAULT_MODE): string {
@@ -55,14 +54,18 @@ export default function headroomSessionExtension(pi: ExtensionApi): void {
   const supported = headroomHostSupported(host);
   let currentMode = DEFAULT_MODE;
   let lastInjected: string | undefined = undefined;
+  let unroutedNotified = false;
 
   function setMode(mode: string, ctx?: ExtensionCtx): boolean {
     if (!supported) return false;
     const normalized = normalizeMode('headroom', mode);
     if (!normalized) return false;
     currentMode = normalized;
+    unroutedNotified = false;
     pi.appendEntry?.('headroom-mode', { mode: normalized });
     setSharedComboMode('headroom', normalized);
+    // Turning the mode on is the moment the agent needs the retrieve tool; wiring is idempotent.
+    if (normalized === 'on') ensureTersioMcp(host);
     announceStatus(ctx);
     return true;
   }
@@ -108,6 +111,7 @@ export default function headroomSessionExtension(pi: ExtensionApi): void {
   });
 
   function restoreMode(ctx?: ExtensionCtx): void {
+    unroutedNotified = false;
     const entries = sessionEntries(ctx);
     // A subagent's branch has no Tersio entries; reconciling it would wipe shared state.
     if (hasModeState(entries)) reconcileSharedComboEntries(entries);
@@ -135,14 +139,23 @@ export default function headroomSessionExtension(pi: ExtensionApi): void {
     });
   }
 
-  pi.on<SystemPromptEvent>('before_agent_start', async (event: SystemPromptEvent) => {
+  pi.on<SystemPromptEvent>('before_agent_start', async (event: SystemPromptEvent, ctx?: ExtensionCtx) => {
     const mode = isOmpSubagentPrompt(event.systemPrompt) ? getSharedComboState().headroom : currentMode;
     if (!mode || mode === 'off') return;
     // Nothing is compressed when the tool is absent, so the block would lie to the model.
     if (!resolveHeadroomBinary()) return;
     // The same rule applies to a binary with no runtime behind it: headroom's proxy is what compresses.
     if (!(await headroomProxyUp())) return;
-    const instruction = headroomInstruction();
+    // A live proxy is not enough: the configured model must actually point at it.
+    const route = readHeadroomRoute(host);
+    if (!route.measured || !route.routed) {
+      if (!unroutedNotified) {
+        unroutedNotified = true;
+        ctx?.ui?.notify?.(`Headroom is on, but this agent does not route through it. ${describeHeadroomRoute(route)}.`, 'warning');
+      }
+      return;
+    }
+    const instruction = headroomInstruction(route);
     // Match the whole instruction, so a re-presented prompt cannot stack it.
     if (systemPromptIncludes(event.systemPrompt, instruction)) return;
     // The previous block is replaced, not stacked on.
