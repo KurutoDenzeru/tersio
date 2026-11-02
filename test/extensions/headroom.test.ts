@@ -6,9 +6,11 @@ import { fileURLToPath } from "node:url";
 import headroomSessionExtension, { HEADROOM_INSTALL_HINT, headroomInstruction } from "../../extensions/headroom/index.ts";
 import comboToggleExtension from "../../extensions/combo/index.ts";
 import { getSharedComboState, resetSharedComboState } from "../../extensions/shared/session-state.ts";
+import { durableConfigInstalled } from "../../extensions/shared/headroom-proxy.ts";
 import { resolveHeadroomBinary } from "../../extensions/shared/utils.ts";
 import type { ExtensionApi, SessionEntry } from "../../extensions/shared/types.ts";
 import { fakeExecutable, withHome } from "../helpers/env.ts";
+import { createServer } from "node:http";
 
 // fileURLToPath, not `.pathname`: a URL pathname on Windows is `/D:/...`, which path.join doubles into `D:\D:\...`.
 process.env.HOME = fileURLToPath(new URL("../definitely-missing-home/headroom", import.meta.url));
@@ -26,12 +28,13 @@ interface TestCtx {
   ui: { setStatus(name: string, value: string | undefined): void; notify(message: string): void };
 }
 
-function harness(entries: SessionEntry[] = []): { handlers: Map<string, EventHandler>; commands: Map<string, CommandHandler>; ctx: TestCtx } {
+function harness(entries: SessionEntry[] = [], hostId: "omp" | "pi" | "pig" | "opencode" = "omp"): { handlers: Map<string, EventHandler>; commands: Map<string, CommandHandler>; ctx: TestCtx } {
   const commands = new Map<string, CommandHandler>();
   const handlers = new Map<string, EventHandler>();
   const notifications: string[] = [];
   const statuses = new Map<string, string>();
   headroomSessionExtension({
+    hostId,
     setLabel() {},
     registerCommand(name: string, config: { handler: CommandHandler }) { commands.set(name, config.handler); },
     registerTool() {},
@@ -184,23 +187,34 @@ test("a pip --user script dir that is off PATH still resolves, through the pinne
   });
 });
 
-test("an active mode injects one replaceable block only when the binary exists", async () => {
+test("an active mode injects one replaceable block only when the binary and its runtime are up", async () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-headroom-bin-"));
   fakeExecutable(dir, process.platform === "win32" ? "headroom.exe" : "headroom", "#!/bin/sh\nexit 0\n", "exit /b 0");
-  await withPath(dir, async () => {
-    resetSharedComboState();
-    const entries: SessionEntry[] = [];
-    const { handlers, commands, ctx } = harness(entries);
-    await commands.get("headroom")!("on", ctx);
-    const prompt = { systemPrompt: ["base"] };
-    const first = await handlers.get("before_agent_start")!(prompt, undefined) as { systemPrompt?: string | string[] } | undefined;
-    // A pi host gets one string; OMP gets an array whose last block is ours.
-    const injected = typeof first?.systemPrompt === "string" ? first.systemPrompt : first?.systemPrompt?.at(-1);
-    expect(injected).toContain("🍃 HEADROOM MODE ACTIVE");
-    // The same body is matched whole, so a re-presented prompt cannot stack it.
-    const second = await handlers.get("before_agent_start")!({ systemPrompt: [...(prompt.systemPrompt ?? []), headroomInstruction()] }, undefined);
-    expect(second).toBeUndefined();
-  });
+  const server = createServer((_req, res) => { res.writeHead(200); res.end("ok"); });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const port = (server.address() as { port: number }).port;
+  const previousUrl = process.env.TERSIO_HEADROOM_PROXY_URL;
+  process.env.TERSIO_HEADROOM_PROXY_URL = `http://127.0.0.1:${port}/`;
+  try {
+    await withPath(dir, async () => {
+      resetSharedComboState();
+      const entries: SessionEntry[] = [];
+      const { handlers, commands, ctx } = harness(entries);
+      await commands.get("headroom")!("on", ctx);
+      const prompt = { systemPrompt: ["base"] };
+      const first = await handlers.get("before_agent_start")!(prompt, undefined) as { systemPrompt?: string | string[] } | undefined;
+      // A pi host gets one string; OMP gets an array whose last block is ours.
+      const injected = typeof first?.systemPrompt === "string" ? first.systemPrompt : first?.systemPrompt?.at(-1);
+      expect(injected).toContain("🍃 HEADROOM MODE ACTIVE");
+      // The same body is matched whole, so a re-presented prompt cannot stack it.
+      const second = await handlers.get("before_agent_start")!({ systemPrompt: [...(prompt.systemPrompt ?? []), headroomInstruction()] }, undefined);
+      expect(second).toBeUndefined();
+    });
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    if (previousUrl === undefined) delete process.env.TERSIO_HEADROOM_PROXY_URL;
+    else process.env.TERSIO_HEADROOM_PROXY_URL = previousUrl;
+  }
   // Without the binary the block would lie to the model, so the extension stays silent while the mode stays on.
   await withPath(null, async () => {
     resetSharedComboState();
@@ -210,4 +224,50 @@ test("an active mode injects one replaceable block only when the binary exists",
     const none = await handlers.get("before_agent_start")!({ systemPrompt: ["base"] }, undefined);
     expect(none).toBeUndefined();
   });
+  // A binary with no runtime behind it compresses nothing, so the block stays out.
+  process.env.TERSIO_HEADROOM_PROXY_URL = "http://127.0.0.1:1/";
+  try {
+    await withPath(dir, async () => {
+      resetSharedComboState();
+      const entries: SessionEntry[] = [{ type: "custom", customType: "headroom-mode", data: { mode: "on" } }];
+      const { handlers, ctx } = harness(entries);
+      await handlers.get("session_start")!({}, ctx);
+      const none = await handlers.get("before_agent_start")!({ systemPrompt: ["base"] }, undefined);
+      expect(none).toBeUndefined();
+    });
+  } finally {
+    if (previousUrl === undefined) delete process.env.TERSIO_HEADROOM_PROXY_URL;
+    else process.env.TERSIO_HEADROOM_PROXY_URL = previousUrl;
+  }
+});
+
+test("a durable config block reads as installed for omp and opencode", () => {
+  withHome((home) => {
+    const omp = path.join(home, ".omp", "agent", "models.yml");
+    mkdirSync(path.dirname(omp), { recursive: true });
+    writeFileSync(omp, "providers:\n  anthropic:\n    baseUrl: http://127.0.0.1:8787\n", "utf8");
+    expect(durableConfigInstalled("omp"), "no marker yet").toBe(false);
+    writeFileSync(omp, "# managed by `headroom wrap omp`\nproviders:\n  anthropic:\n    baseUrl: http://127.0.0.1:8787\n", "utf8");
+    expect(durableConfigInstalled("omp")).toBe(true);
+    const opencode = path.join(home, ".config", "opencode", "opencode.json");
+    mkdirSync(path.dirname(opencode), { recursive: true });
+    writeFileSync(opencode, "{\n  \"provider\": {}\n}\n", "utf8");
+    expect(durableConfigInstalled("opencode"), "no provider block yet").toBe(false);
+    writeFileSync(opencode, "{\n  \"provider\": {\n    \"headroom\": {}\n  }\n}\n", "utf8");
+    expect(durableConfigInstalled("opencode")).toBe(true);
+  });
+});
+
+test("pi and PiG refuse the mode instead of promising compression they cannot route", async () => {
+  resetSharedComboState();
+  const entries: SessionEntry[] = [];
+  const { commands, handlers, ctx } = harness(entries, "pi");
+  await commands.get("headroom")!("on", ctx);
+  expect(entries).toEqual([]);
+  expect(ctx.notifications.at(-1)).toContain("Headroom does not support this agent");
+  const prompt = await handlers.get("before_agent_start")?.(
+    { systemPrompt: ["base"] },
+    ctx,
+  ) as { systemPrompt?: string[] } | undefined;
+  expect(prompt).toBeUndefined();
 });

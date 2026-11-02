@@ -665,25 +665,27 @@ export async function postPipelinePositions(positions: Record<string, unknown>):
   return (await apiJson<{ ok?: boolean }>("/api/pipeline/positions", { positions }))?.ok === true;
 }
 
-/** Which headroom wrap targets have their binary on this machine; `proxy` rows route through the shared proxy instead. */
+/** Which headroom wrap targets are present on this machine, and which install durably. */
 export interface HeadroomWrapTarget {
   name: string;
   label?: string;
-  kind?: "wrap" | "proxy";
-  /** True when headroom's own init supports this tool, so the integration survives restarts. */
+  /** True when headroom's own init installs this tool, so the integration survives restarts. */
   durable?: boolean;
-  available: boolean;
+  /** True when the only setup is a per-session wrap; the row names it instead of offering a switch. */
+  manual?: boolean;
+  /** True when headroom's own install apply has a durable path Tersio does not manage. */
+  headroomInstall?: boolean;
+  /** True when the durable block is already present in the tool's own config. */
+  installed?: boolean;
 }
 
 export interface HeadroomWrapState {
   targets: Array<HeadroomWrapTarget>;
-  proxy: { running: boolean; port: number };
 }
 
 export async function fetchWrapTargets(): Promise<HeadroomWrapState | null> {
-  const body = await apiJson<{ targets?: Array<HeadroomWrapTarget>; proxy?: { running: boolean; port: number } }>("/api/headroom/wrap");
-  if (!body?.targets) return null;
-  return { targets: body.targets, proxy: body.proxy ?? { running: false, port: 8787 } };
+  const body = await apiJson<{ targets?: Array<HeadroomWrapTarget> }>("/api/headroom/wrap");
+  return body?.targets ? { targets: body.targets } : null;
 }
 
 /** The canvas mirrors the wrap record in browser storage; the server copy stays the source of truth. */
@@ -713,29 +715,14 @@ export async function postHeadroomWraps(wraps: Record<string, unknown>): Promise
   return (await apiJson<{ ok?: boolean }>("/api/headroom/wraps", { wraps }))?.ok === true;
 }
 
-/** Starts or stops the shared headroom proxy; the wrap switches rely on it for proxy-routed agents. */
-export async function postHeadroomProxy(action: "start" | "stop"): Promise<{ ok: boolean; running?: boolean; port?: number; detail?: string; error?: string } | null> {
-  return apiJson("/api/headroom/proxy", { action });
+/** Starts headroom's own runtime; a durable switch is useless while the proxy is down. */
+export async function postHeadroomRuntime(): Promise<{ ok: boolean; detail?: string; error?: string } | null> {
+  return apiJson("/api/headroom/runtime", {});
 }
 
 /** Runs headroom's documented wrap command for one tool, detached. */
 export async function postHeadroomWrap(name: string, action: "wrap" | "unwrap" = "wrap"): Promise<{ ok: boolean; detail: string; error?: string } | null> {
   return apiJson("/api/headroom/wrap", { name, action });
-}
-
-/** Whether Headroom's proxy answers right now, and whether Tersio owns it (so it may be stopped here). */
-export interface HeadroomProxyState {
-  running: boolean;
-  owned: boolean;
-}
-
-export async function fetchHeadroomProxy(): Promise<HeadroomProxyState | null> {
-  return apiJson<HeadroomProxyState>("/api/headroom/proxy");
-}
-
-/** Stops the proxy the dashboard link started; a proxy that served traffic stays up. */
-export async function stopHeadroomProxy(): Promise<{ ok?: boolean; stopped?: boolean; kept?: string } | null> {
-  return apiJson("/headroom/dashboard/stop", {});
 }
 
 /** One vendor row from the scorecard: the installed version against the latest release. */

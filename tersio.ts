@@ -36,7 +36,7 @@ Options:
   --port <n> (dashboard: pin port, default ephemeral)
   --open (dashboard: open browser)
   --local (dashboard: listen on loopback only)
-  --watch (dashboard: restart on source change and rebuild the UI on save)
+  --watch (dashboard: restart on source change and rebuild the UI on save; automatic in a source checkout)
   --bind <addr> (dashboard: listen address; default every interface, so a phone can open it)
   --export <file> (dashboard: write HTML file instead of serving)
   --currency <code> (dashboard: display currency; flag wins, then tersio settings default, then USD)

@@ -1,27 +1,27 @@
 // Dashboard server + usage APIs. Binds 127.0.0.1; --export writes a file. No Promise.withResolvers (Node 20.12).
 import { spawn, type ChildProcess } from 'node:child_process';
 import { readActivity, recordActivity } from './activity.ts';
+import { cacheDelete, cacheGet, cacheKeys, cachePut, cacheStamp } from '../extensions/shared/cache-store.ts';
 import { execFileSync } from 'node:child_process';
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, rmSync, statSync, unlinkSync, watch, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, unlinkSync, watch, writeFileSync } from 'node:fs';
 import { promises as fs } from 'node:fs';
 import http from 'node:http';
+import net from 'node:net';
 import os from 'node:os';
 import type { Socket } from 'node:net';
 import { gzipSync } from 'node:zlib';
-import { piAgentDir, pigAgentDir } from '../extensions/shared/utils.ts';
-import { routeLocalProvidersThroughProxy } from '../extensions/shared/headroom-proxy.ts';
-import { discoverInitTargets, discoverWrapTargets, ensureProxy, HEADROOM_PROXY_PORT, PROXY_HOSTS, PROXY_HOST_LABELS, proxyAnswers, proxyEnvLines, proxyHostPresent, readProxyState, restoreRoutedProviders, stopOwnedProxy } from '../extensions/shared/headroom-proxy.ts';
-import { setStoredWrap } from '../extensions/shared/headroom-wraps.ts';
+import { DURABLE_CONFIG, HEADROOM_PORT, discoverInitTargets, discoverWrapTargets, durableConfigInstalled, installDurableConfig } from '../extensions/shared/headroom-proxy.ts';
+import { readHeadroomWraps, setStoredWrap, writeHeadroomWraps } from '../extensions/shared/headroom-wraps.ts';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { pricesCachePath } from '../extensions/shared/pricing.ts';
-import { PONYTAIL_VERSION } from './manifest.ts';
 import { isCurrencyCode } from './currency.ts';
 import type { CurrencyCode } from './currency.ts';
+import { qrTerminal } from './qr.ts';
+import { ensureHeadroomRuntime } from './headroom-runtime.ts';
 import {
   OMP_AGENT_DIR, OMP_PLUGINS_DIR, PACKAGE_VERSION, execFileP,
 } from './common.ts';
-import { BACKUP_SCHEDULES, applyComboPreset, clampSidebarWidth, comboLevelOf, formatCliStatus, saveHostDefaults, storedProfile, writePluginSettings } from './profile.ts';
+import { BACKUP_SCHEDULES, applyComboPreset, clampSidebarWidth, comboLevelOf, formatCliStatus, RETENTION_DAYS, saveHostDefaults, storedProfile, writePluginSettings } from './profile.ts';
 import { patchState, readState, takeLegacy } from '../extensions/shared/state.ts';
 import { REMOTE_MARKS } from '../extensions/shared/brand-marks.ts';
 import { mergeHeadroomWraps } from '../extensions/shared/headroom-wraps.ts';
@@ -43,11 +43,11 @@ import { readBackupSchedule, syncUsageDb } from '../extensions/shared/usage-stor
 import { agentDbPath, emptyRequestEntry, isAgentView, isRangeKey, readAgentRequestEntry, readAgentStats, readSessionTrace, statsDbPath } from '../extensions/shared/agent-stats.ts';
 import type { AgentStats, AgentView, RangeKey } from '../extensions/shared/agent-stats.ts';
 
-/** The agents headroom's own compatibility table lists, minus Continue (service discontinued), plus the ones routed through the shared proxy. */
+/** The agents headroom's own compatibility table lists, minus Continue (service discontinued). */
 const WRAP_TARGETS = [
   'omp', 'claude', 'codex', 'copilot', 'vscode', 'aider', 'vibe', 'grok', 'cursor', 'cline',
-  'goose', 'openhands', 'openclaw', 'opencode', 'kimi', 'zcode',
-  ...PROXY_HOSTS,
+  'goose', 'openhands', 'openclaw', 'opencode', 'kimi',
+  'bob', 'antigravity', 'grok-build', 'openclaude', 'vscode-claude',
 ] as const;
 
 /** The wrap target names headroom's README compatibility table prints, so the drawer reads the same. */
@@ -55,11 +55,13 @@ const WRAP_LABELS: Record<string, string> = {
   omp: 'Oh My Pi', claude: 'Claude Code', codex: 'Codex', copilot: 'Copilot CLI',
   vscode: 'VS Code Copilot', aider: 'Aider', vibe: 'Mistral Vibe', grok: 'Grok CLI',
   cursor: 'Cursor', cline: 'Cline', goose: 'Goose', openhands: 'OpenHands',
-  openclaw: 'OpenClaw', opencode: 'OpenCode', kimi: 'Kimi CLI', zcode: 'ZCode',
+  openclaw: 'OpenClaw', opencode: 'OpenCode', kimi: 'Kimi CLI',
+  bob: 'IBM Bob', antigravity: 'Antigravity', 'grok-build': 'Grok Build',
+  openclaude: 'OpenClaude', 'vscode-claude': 'VS Code Claude',
 };
 
 const WRAP_BINARY: Record<string, string> = {
-  vscode: 'code', cline: 'code', copilot: 'gh',
+  vscode: 'code', 'vscode-claude': 'code', cline: 'code', copilot: 'gh', 'grok-build': 'grok',
 };
 
 /** Whether a wrap target's binary resolves: PATH first, then the directory the installer owns for it. */
@@ -83,8 +85,6 @@ const WRAP_CONFIG_MARKERS: Record<string, string> = {
   openhands: '.openhands',
   opencode: '.opencode',
   omp: '.omp',
-  // ZCode is a desktop Electron app with no CLI; headroom reads ~/.zcode/v2/config.json itself.
-  zcode: '.zcode',
 };
 
 /** A wrap target is present when its binary resolves or its config home exists on this OS. */
@@ -208,15 +208,32 @@ function storeStamp(): string {
   return `${fileStamp(statsDbPath())}|${fileStamp(agentDbPath())}`;
 }
 
-/** One cache file per range and view, so a restarted server serves what the last one built. */
-function agentCacheFile(range: RangeKey, view: AgentView, offset: number): string {
-  return path.join(tersioHome(), 'cache', 'agent', `${range}-${view}-${offset}.json`);
+/** One cache row per range and view, so a restarted server serves what the last one built. */
+function agentCacheKey(range: RangeKey, view: AgentView, offset: number): string {
+  return `dashboard.agent.${range}-${view}-${offset}`;
+}
+
+/** The loose JSON cache an older build wrote moves into the ledger once, then leaves the data home. */
+let agentCacheMigrated = false;
+function migrateAgentCache(): void {
+  if (agentCacheMigrated) return;
+  agentCacheMigrated = true;
+  const dir = path.join(tersioHome(), 'cache', 'agent');
+  try {
+    for (const name of readdirSync(dir)) {
+      if (!name.endsWith('.json')) continue;
+      try { cachePut(`dashboard.agent.${name.slice(0, -5)}`, readFileSync(path.join(dir, name), 'utf8')); } catch { /* one unreadable file costs one rebuild */ }
+    }
+    rmSync(path.join(tersioHome(), 'cache'), { recursive: true, force: true });
+  } catch { /* no legacy cache */ }
 }
 
 /** A cached payload is reused only while the store it was built from is unchanged. */
-function readAgentCache(file: string, stamp: string): AgentStats | null {
+function readAgentCache(key: string, stamp: string): AgentStats | null {
+  const text = cacheGet(key);
+  if (text === null) return null;
   try {
-    const raw = JSON.parse(readFileSync(file, 'utf8')) as { stamp?: string; value?: AgentStats };
+    const raw = JSON.parse(text) as { stamp?: string; value?: AgentStats };
     if (raw.stamp !== stamp || !raw.value) return null;
     return raw.value;
   } catch {
@@ -224,22 +241,16 @@ function readAgentCache(file: string, stamp: string): AgentStats | null {
   }
 }
 
-function writeAgentCache(file: string, stamp: string, value: AgentStats): void {
-  try {
-    mkdirSync(path.dirname(file), { recursive: true });
-    writeFileSync(file, JSON.stringify({ stamp, value }));
-  } catch { /* a cache that cannot write only costs the next rebuild */ }
+function writeAgentCache(key: string, stamp: string, value: AgentStats): void {
+  cachePut(key, JSON.stringify({ stamp, value }));
 }
 
-/** Keep the cache small: the newest entries are the ones a page opens on. */
+/** Keep the cache small: the newest rows are the ones a page opens on. */
 function pruneAgentCache(): void {
-  const dir = path.join(tersioHome(), 'cache', 'agent');
-  try {
-    const names = readdirSync(dir)
-      .map((name) => ({ name, at: statSync(path.join(dir, name)).mtimeMs }))
-      .toSorted((a, b) => b.at - a.at);
-    for (const entry of names.slice(24)) rmSync(path.join(dir, entry.name), { force: true });
-  } catch { /* no cache yet */ }
+  const rows = cacheKeys('dashboard.agent.')
+    .map((key) => ({ key, at: cacheStamp(key) }))
+    .toSorted((a, b) => b.at - a.at);
+  for (const row of rows.slice(24)) cacheDelete(row.key);
 }
 
 /** Syncs before reading past the throttle; without it a page misses pi and OpenCode rows. */
@@ -250,8 +261,9 @@ function agentStats(range: RangeKey, view: AgentView = 'all', offset = 0): Agent
     return held.value;
   }
   // A payload built from this exact store is reused across restarts, so a page never waits for the scan again.
-  const file = agentCacheFile(range, view, offset);
-  const cached = readAgentCache(file, stamp);
+  migrateAgentCache();
+  const key = agentCacheKey(range, view, offset);
+  const cached = readAgentCache(key, stamp);
   if (cached) {
     agentMemo = { range, view, offset, stamp, at: Date.now(), value: cached };
     return cached;
@@ -265,7 +277,7 @@ function agentStats(range: RangeKey, view: AgentView = 'all', offset = 0): Agent
   const value = readAgentStats(range, view, Date.now(), offset);
   const builtStamp = storeStamp();
   agentMemo = { range, view, offset, stamp: builtStamp, at: Date.now(), value };
-  writeAgentCache(file, builtStamp, value);
+  writeAgentCache(key, builtStamp, value);
   pruneAgentCache();
   return value;
 }
@@ -331,33 +343,21 @@ export function isVendorTool(tool: string): tool is 'headroom' | 'rtk' {
   return tool === 'headroom' || tool === 'rtk';
 }
 
-/** The proxy this dashboard started for its own link; a user-started one is never touched. */
-let dashboardProxy: { child: import('node:child_process').ChildProcess; port: string } | null = null;
-process.once('exit', () => { try { dashboardProxy?.child.kill('SIGTERM'); } catch { /* gone */ } });
-
-/** A child that exited, or took a signal, is gone. `exitCode` stays null for a signalled child, so both fields must be read. */
-export function proxyChildAlive(child: { exitCode: number | null; signalCode: NodeJS.Signals | null } | null | undefined): boolean {
-  return child !== null && child !== undefined && child.exitCode === null && child.signalCode === null;
-}
-
 /** The one Headroom install job, so the Tools page can poll until the binary appears or the pip run fails. */
 const headroomJob: { startedAt: number; code: number | null; error: string | null } = { startedAt: 0, code: null, error: null };
-/** pip's stderr lands here, so a failed install names its own cause instead of polling forever. */
-function headroomInstallLog(): string {
-  return path.join(tersioHome(), 'headroom-install.log');
-}
+/** pip's stderr stays in memory for this run, then its tail lands in the activity log a failure reads. */
+const HEADROOM_LOG_CAP = 16 * 1024;
+let headroomStderr = '';
 
-function tailOf(file: string, lines = 6): string | null {
-  try {
-    const parts = readFileSync(file, 'utf8').trim().split(/\r?\n/);
-    return parts.slice(-lines).join('\n') || null;
-  } catch { return null; }
+function tailOf(text: string, lines = 6): string | null {
+  const parts = text.trim().split(/\r?\n/);
+  return parts.slice(-lines).join('\n') || null;
 }
 
 /** The state the Tools page polls; `error` is the pip output tail once a run has failed. */
 function headroomInstallState(): { startedAt: number; code: number | null; error: string | null } {
   if (headroomJob.code !== null && headroomJob.code !== 0 && !headroomJob.error) {
-    headroomJob.error = tailOf(headroomInstallLog()) ?? 'the pip run failed without output';
+    headroomJob.error = tailOf(headroomStderr) ?? 'the pip run failed without output';
   }
   return { ...headroomJob };
 }
@@ -371,19 +371,23 @@ function spawnHeadroomInstall(): boolean {
     : process.platform === 'win32'
       ? ['install', '--user', 'headroom-ai[all]']
       : ['-m', 'pip', 'install', '--user', 'headroom-ai[all]'];
-  try { mkdirSync(tersioHome(), { recursive: true }); } catch { /* the log is best effort */ }
-  let stderrFd: number | undefined;
-  try { stderrFd = openSync(headroomInstallLog(), 'w'); } catch { stderrFd = undefined; }
-  const child = spawn(cmd, args, { detached: true, stdio: ['ignore', 'ignore', stderrFd ?? 'ignore'] });
+  headroomStderr = '';
+  const child = spawn(cmd, args, { detached: true, stdio: ['ignore', 'ignore', 'pipe'] });
   headroomJob.startedAt = Date.now();
   headroomJob.code = null;
   headroomJob.error = null;
   recordActivity('agent', 'Headroom install started');
+  child.stderr?.on('data', (chunk: Buffer) => {
+    headroomStderr = (headroomStderr + chunk.toString()).slice(-HEADROOM_LOG_CAP);
+  });
   child.on('exit', (code) => {
     headroomJob.code = code ?? 0;
-    if (stderrFd !== undefined) closeSync(stderrFd);
     const ok = headroomJob.code === 0;
-    if (!ok) headroomJob.error = tailOf(headroomInstallLog()) ?? 'the pip run failed without output';
+    if (!ok) {
+      headroomJob.error = tailOf(headroomStderr) ?? 'the pip run failed without output';
+      // The failing output is the one thing worth keeping, so it goes where the Logs page already reads.
+      recordActivity('agent', 'Headroom install output', headroomJob.error.slice(-1500), false);
+    }
     recordActivity('agent', `Headroom install ${ok ? 'finished' : 'failed'}`, ok ? undefined : headroomJob.error?.split('\n')[0], ok);
   });
   child.on('error', (error) => {
@@ -394,16 +398,6 @@ function spawnHeadroomInstall(): boolean {
   child.unref();
   return true;
 }
-
-/** The favicon types the mark catalog uses, served as the type the bytes actually are. */
-const MARK_TYPES: Readonly<Record<string, string>> = {
-  svg: 'image/svg+xml', png: 'image/png', ico: 'image/x-icon', webp: 'image/webp', jpg: 'image/jpeg', gif: 'image/gif', avif: 'image/avif',
-};
-const MARK_EXTS = Object.keys(MARK_TYPES);
-const MARK_EXT_OF_TYPE: Readonly<Record<string, string>> = {
-  ...Object.fromEntries(Object.entries(MARK_TYPES).map(([ext, type]) => [type, ext])),
-  'image/vnd.microsoft.icon': 'ico',
-};
 
 function spawnCli(command: 'install' | 'uninstall' | 'update', host: string): boolean {
   const entry = process.argv[1];
@@ -677,10 +671,6 @@ function computeDoctorRows(): DoctorRow[] {
   const ponytailAge = ageStr(ponytailPkg);
   const ponytailAt = absTime(ponytailPkg);
   addon('Ponytail', ponytailVer !== null, ponytailVer && ponytailAge && ponytailAt ? `${ponytailVer} (updated ${ponytailAge} · ${ponytailAt})` : ponytailPkg);
-  const prices = pricesCachePath();
-  const pricesAge = ageStr(prices);
-  const pricesAt = absTime(prices);
-  addon('Prices feed', pricesAge !== null, pricesAge && pricesAt ? `(pulled ${pricesAge} · ${pricesAt})` : prices, 'Usage');
   return rows;
 }
 
@@ -794,6 +784,11 @@ function saveDefaults(body: Record<string, unknown>): Promise<
     if (!BACKUP_SCHEDULES.has(v)) return { ok: false, error: 'unknown backup schedule' };
     profile.backupSchedule = v as BackupSchedule;
   }
+  if (body.retentionDays !== undefined) {
+    const v = Number(body.retentionDays);
+    if (!RETENTION_DAYS.has(v)) return { ok: false, error: 'unknown retention window' };
+    profile.retentionDays = v;
+  }
   if (body.rtkDefault !== undefined) {
     if (body.rtkDefault !== 'inherit' && typeof body.rtkDefault !== 'boolean') return { ok: false, error: 'rtk default must be true, false, or inherit' };
     // SAFETY: rtkDefault is validated above as a boolean or the literal 'inherit', which the store accepts.
@@ -837,6 +832,7 @@ function saveDefaults(body: Record<string, unknown>): Promise<
       pstackDefault: profile.pstackDefault,
       headroomDefault: profile.headroomDefault,
       backupSchedule: profile.backupSchedule,
+      retentionDays: profile.retentionDays,
       devTools: profile.devTools,
       accent: profile.accent,
       sidebarWidth: profile.sidebarWidth,
@@ -914,50 +910,6 @@ async function bodyOf(req: http.IncomingMessage): Promise<Record<string, unknown
   }
 }
 
-/** Requests the proxy has served; null when it cannot say, which is reason enough to leave it running. */
-export async function headroomProxyRequests(url: string, budgetMs = 1500): Promise<number | null> {
-  try {
-    const res = await fetch(new URL('/stats', url), { signal: AbortSignal.timeout(budgetMs) });
-    if (!res.ok) return null;
-    const stats = (await res.json()) as { summary?: { api_requests?: unknown; compression?: { requests_compressed?: unknown } } };
-    const api = Number(stats.summary?.api_requests);
-    const compressed = Number(stats.summary?.compression?.requests_compressed);
-    const served = Math.max(Number.isFinite(api) ? api : 0, Number.isFinite(compressed) ? compressed : 0);
-    return served;
-  } catch {
-    return null;
-  }
-}
-
-/** What the dashboard link does once the proxy has been asked: a redirect, or the page that says how to start it. */
-export function headroomDashboardPlan(url: string | null, proxyAnswers: boolean): { kind: 'redirect'; url: string } | { kind: 'explain'; port: string } {
-  const port = (() => {
-    try { return url ? new URL(url).port || '8787' : '8787'; } catch { return '8787'; }
-  })();
-  return url && proxyAnswers ? { kind: 'redirect', url } : { kind: 'explain', port };
-}
-
-/** Whether Headroom's proxy answers at the URL its dashboard command printed; a refused port is the usual case. */
-export async function headroomProxyAnswers(url: string, budgetMs = 1500): Promise<boolean> {
-  try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(budgetMs) });
-    await res.body?.cancel();
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/** Waits for a proxy Tersio just started: probes until it answers or the tick budget runs out. */
-export async function awaitHeadroomProxy(probe: () => Promise<boolean>, ticks = 120, waitMs = 250): Promise<boolean> {
-  let answered = await probe();
-  for (let tick = 0; tick < ticks && !answered; tick += 1) {
-    await new Promise((resolve) => setTimeout(resolve, waitMs));
-    answered = await probe();
-  }
-  return answered;
-}
-
 /** The last lines of a command's output, trimmed to non-empty ones. */
 const tail = (text: string): string[] => text.trim().split('\n').filter(Boolean);
 
@@ -1013,20 +965,50 @@ async function exportDashboard(exportFile: string, currency: CurrencyCode): Prom
   console.log(`[ok] Dashboard exported → ${exportFile}`);
 }
 
+/** A port the child keeps across restarts: a new one on every bounce would move the browser tab. */
+async function stableWatchPort(preferred: number, host: string): Promise<number> {
+  if (preferred > 0) return preferred;
+  return new Promise((resolve) => {
+    const probe = net.createServer();
+    probe.once('error', () => resolve(preferred || 0));
+    probe.listen(0, host, () => {
+      const address = probe.address();
+      const port = typeof address === 'object' && address ? address.port : 0;
+      probe.close(() => resolve(port));
+    });
+  });
+}
+
 /** Watch mode: this process supervises; the real server runs in a child that bounces on source change.
- *  UI edits need no bounce at all: vite --watch rebuilds the bundle and the server serves dist fresh. */
+ *  UI edits need no bounce at all: vite build --watch rewrites the bundle and the server serves dist fresh. */
 async function runDashboardWatch(options: DashboardOptions): Promise<void> {
   const root = findPackageRoot(path.dirname(fileURLToPath(import.meta.url)));
-  const entry = existsSync(path.join(root, 'tersio.ts')) ? path.join(root, 'tersio.ts') : path.join(root, 'dist', 'tersio.js');
+  // The watcher runs the source when bun is present, so a CLI edit reaches the child without a manual build.
+  const bun = resolveHostBinary('bun');
+  const source = existsSync(path.join(root, 'tersio.ts'));
+  const runner = bun ?? process.execPath;
+  const entry = bun && source ? path.join(root, 'tersio.ts') : path.join(root, 'dist', 'tersio.js');
+  const bind = options.bind ?? '';
+  const port = await stableWatchPort(options.port, resolveBind(options.bind));
+  const appDir = path.join(root, 'dashboard', 'app');
+  const viteBin = path.join(appDir, 'node_modules', 'vite', 'bin', 'vite.js');
   let child: ChildProcess | null = null;
   let vite: ChildProcess | null = null;
   let stopping = false;
   let pendingRestart = false;
-  const flags: string[] = ['dashboard', '--port', String(options.port), '--bind', options.bind ?? ''];
+  let firstSpawn = true;
+  const flags: string[] = ['dashboard', '--port', String(port), '--bind', bind];
   if (options.open) flags.push('--open');
   if (options.currency) flags.push('--currency', options.currency);
   const spawnChild = (): void => {
-    child = spawn(process.execPath, [entry, ...flags], {
+    const argv = [...flags];
+    // The tab is opened once; every bounce would otherwise steal focus with another tab.
+    if (!firstSpawn) {
+      const openAt = argv.indexOf('--open');
+      if (openAt >= 0) argv.splice(openAt, 1);
+    }
+    firstSpawn = false;
+    child = spawn(runner, [entry, ...argv], {
       env: { ...process.env, TERSIO_DASHBOARD_CHILD: '1' },
       stdio: 'inherit',
     });
@@ -1045,23 +1027,53 @@ async function runDashboardWatch(options: DashboardOptions): Promise<void> {
   };
   spawnChild();
   // UI rebuilds ride vite's own watcher: the server serves dist fresh per request, so a reload picks them up.
-  vite = spawn(process.execPath, ['run', '--cwd', 'dashboard/app', 'build:watch'], { stdio: 'inherit', cwd: root });
+  // Bun is the repo's package runner; without it, run vite's own entry under this interpreter.
+  // Only warnings and errors reach the terminal; the routine transform and bundle lines stay quiet.
+  vite = spawn(bun ?? process.execPath, [viteBin, 'build', '--watch', '--logLevel', 'warn'], {
+    stdio: ['ignore', 'ignore', 'pipe'],
+    cwd: appDir,
+  });
+  vite.stderr?.on('data', (chunk: Buffer) => process.stderr.write(chunk));
+  vite.on('exit', (code: number | null) => {
+    if (!stopping) console.log('[watch] UI watcher exited (' + code + ') \u2014 UI edits need `bun run build:dashboard`');
+  });
+  // Watch only the trees the server reads; recursing the repo root would carry node_modules and .git.
+  const watched = ['cli', 'extensions']
+    .map((dir) => path.join(root, dir))
+    .filter((dir) => existsSync(dir));
   try {
-    watch(root, { recursive: true }, (_event: string, file: string | null) => {
+    const onChange = (_event: string, file: string | null): void => {
       if (stopping || !file) return;
       const rel = String(file).replace(/\\/g, '/');
+      if (rel.includes('/node_modules/') || rel.includes('/.git/')) return;
       if (rel.startsWith('dashboard/') || rel.startsWith('dist/') || rel.startsWith('skills/')) return;
       if (!/\.(ts|js|md)$/.test(rel)) return;
       restart();
-    });
+    };
+    for (const dir of watched) watch(dir, { recursive: true }, onChange);
+    const entryFile = path.join(root, 'tersio.ts');
+    if (existsSync(entryFile)) watch(entryFile, onChange);
   } catch { /* a platform without recursive watch simply skips auto-restart */ }
-  process.once('SIGINT', () => { stopping = true; try { child?.kill('SIGTERM'); } catch { } try { vite?.kill('SIGTERM'); } catch { } process.exit(130); });
-  process.once('SIGTERM', () => { stopping = true; try { child?.kill('SIGTERM'); } catch { } try { vite?.kill('SIGTERM'); } catch { } process.exit(0); });
+  const stop = (code: number): void => {
+    stopping = true;
+    try { child?.kill('SIGTERM'); } catch { /* gone */ }
+    try { vite?.kill('SIGTERM'); } catch { /* gone */ }
+    process.exit(code);
+  };
+  process.once('SIGINT', () => stop(130));
+  process.once('SIGTERM', () => stop(0));
   await new Promise(() => undefined);
 }
 
+/** A source checkout with a terminal gets hot reload without a flag; CI, exports, and children never do. */
+export function shouldAutoWatch(hasSource: boolean, tty: boolean, env: NodeJS.ProcessEnv = process.env): boolean {
+  return hasSource && tty && env.TERSIO_NO_WATCH !== '1' && env.TERSIO_DASHBOARD_CHILD !== '1';
+}
+
 async function runDashboard(options: DashboardOptions): Promise<void> {
-  if (options.watch && process.env.TERSIO_DASHBOARD_CHILD !== '1') {
+  const hasSource = existsSync(path.join(findPackageRoot(path.dirname(fileURLToPath(import.meta.url))), 'tersio.ts'));
+  const tty = Boolean(process.stdin.isTTY && process.stdout.isTTY);
+  if ((options.watch || (shouldAutoWatch(hasSource, tty) && !options.exportFile)) && process.env.TERSIO_DASHBOARD_CHILD !== '1') {
     await runDashboardWatch(options);
     return;
   }
@@ -1072,6 +1084,17 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
   }
   requireDashboardBundle();
   const server = http.createServer(async (req, res) => {
+    // The bundle's own build id: an open tab reloads itself after vite rewrites dist, with no manual refresh.
+    if (req.url === '/api/build' && req.method === 'GET') {
+      let id = '0';
+      try {
+        const stat = statSync(DASHBOARD_INDEX);
+        id = `${Math.floor(stat.mtimeMs)}-${stat.size}`;
+      } catch { /* no bundle yet */ }
+      res.setHeader('Cache-Control', 'no-store');
+      json(res, 200, { id });
+      return;
+    }
     if (req.url === '/api/upstream' && req.method === 'GET') {
       json(res, 200, { card: await cachedScorecard(), history: await upstreamHistory() });
       return;
@@ -1131,8 +1154,7 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
       return;
     }
     if (req.url?.startsWith('/api/mark?') && req.method === 'GET') {
-      // Marks are CDN files. Fetch each once into ~/.tersio/marks, then serve the copy, so a reload
-      // never asks the network again and a CDN hiccup cannot blank a tile.
+      // Marks are CDN files, fetched through on demand: the browser caches them, and Tersio keeps no copies on disk.
       const slug = new URL(req.url, 'http://127.0.0.1').searchParams.get('slug') ?? '';
       const remote = REMOTE_MARKS[slug];
       if (!remote) {
@@ -1140,29 +1162,14 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
         res.end('unknown mark');
         return;
       }
-      // The catalog mixes favicon types, and a host may answer a `.png` URL with WebP; label every file by its bytes.
-      const cacheDir = path.join(tersioHome(), 'marks');
-      const cacheControl = 'public, max-age=604800, stale-while-revalidate=86400';
-      for (const tryExt of MARK_EXTS) {
-        try {
-          // Read before writing: a miss must reach the fetch below with headers unsent.
-          const bytes = await fs.readFile(path.join(cacheDir, `${slug}.${tryExt}`));
-          res.writeHead(200, { 'Content-Type': MARK_TYPES[tryExt], 'Cache-Control': cacheControl });
-          res.end(bytes);
-          return;
-        } catch { /* not cached under this type */ }
-      }
       try {
         const answer = await fetch(remote, { signal: AbortSignal.timeout(5000) });
         if (!answer.ok) throw new Error(`HTTP ${answer.status}`);
+        // A redirect to a login or error page must never render as a mark.
         const type = answer.headers.get('content-type')?.split(';')[0]?.trim() ?? '';
-        const saveExt = MARK_EXT_OF_TYPE[type];
-        // A redirect to a login or error page must not cache HTML as a mark.
-        if (!saveExt) throw new Error(`unexpected type ${type}`);
+        if (!type.startsWith('image/')) throw new Error(`unexpected type ${type}`);
         const bytes = Buffer.from(await answer.arrayBuffer());
-        await fs.mkdir(cacheDir, { recursive: true });
-        await fs.writeFile(path.join(cacheDir, `${slug}.${saveExt}`), bytes);
-        res.writeHead(200, { 'Content-Type': type, 'Cache-Control': cacheControl });
+        res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'public, max-age=604800, stale-while-revalidate=86400' });
         res.end(bytes);
       } catch {
         res.writeHead(502, { 'Content-Type': 'text/plain', 'Cache-Control': 'no-store' });
@@ -1212,65 +1219,43 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
       json(res, 200, { ok: true, present: resolveHeadroomBinary() !== null, ...headroomInstallState() });
       return;
     }
-    // Whether Headroom's dashboard proxy answers, so its footer can show a live dot and a stop control.
-    if (req.url === '/api/headroom/proxy' && req.method === 'GET') {
-      // A live child this server owns answers at once; anything else needs a probe.
-      let running = proxyChildAlive(dashboardProxy?.child);
-      if (!running) {
-        const ports = new Set<string>(['8787']);
-        if (dashboardProxy) ports.add(dashboardProxy.port);
-        for (const port of ports) {
-          if (await headroomProxyAnswers(`http://127.0.0.1:${port}/`, 400)) { running = true; break; }
-        }
-      }
-      json(res, 200, { running, owned: dashboardProxy !== null });
-      return;
-    }
-    // Which headroom wrap targets exist on this machine, so the drawer only offers what can run.
-    if (req.url === '/api/headroom/wrap' && req.method === 'GET') {
-      const bin = resolveHeadroomBinary();
-      // The wrap list is headroom's README compatibility table, so a name outside it never shows,
-      // even when this build's own `wrap --help` registers it.
-      const discovered = bin !== null ? await discoverWrapTargets(bin) : null;
-      // The durable set comes from init's own help, so a tool that gains a durable integration flags itself.
-      const durableTargets = bin !== null ? await discoverInitTargets(bin) : null;
-      const staticNames = WRAP_TARGETS.filter((name) => !PROXY_HOSTS.includes(name));
-      const names = [...new Set([...(discovered?.map((entry) => entry.name).filter((name) => (WRAP_TARGETS as readonly string[]).includes(name)) ?? []), ...staticNames, ...PROXY_HOSTS])];
-      const targets = await Promise.all(names.map(async (name) => ({
-        name,
-        kind: PROXY_HOSTS.includes(name) ? 'proxy' : 'wrap',
-        durable: durableTargets?.includes(name) ?? false,
-        label: WRAP_LABELS[name] ?? PROXY_HOST_LABELS[name] ?? name,
-        available: bin !== null && (PROXY_HOSTS.includes(name) ? proxyHostPresent(name) : await wrapTargetPresent(name)),
-      })));
-      const state = readProxyState();
-      json(res, 200, { ok: bin !== null, targets, proxy: { running: state !== null || await proxyAnswers(), port: state?.port ?? HEADROOM_PROXY_PORT } });
-      return;
-    }
-    // Start or stop the shared proxy on demand; the wrap switches depend on it for the agents headroom cannot wrap.
-    if (req.url === '/api/headroom/proxy' && req.method === 'POST') {
-      const body = await bodyOf(req);
+    // The Tools page and the drawer can start headroom's own runtime; a switch alone cannot.
+    if (req.url === '/api/headroom/runtime' && req.method === 'POST') {
       const bin = resolveHeadroomBinary();
       if (!bin) {
         json(res, 400, { ok: false, error: 'headroom is not installed' });
         return;
       }
-      if (body.action === 'stop') {
-        const stopped = stopOwnedProxy();
-        recordActivity('agent', stopped ? 'Headroom proxy stopped from the dashboard' : 'Headroom proxy stop skipped: nothing Tersio owns is running');
-        json(res, 200, { ok: true, running: false, detail: stopped ? 'the shared proxy is stopped' : 'nothing Tersio owns is running' });
-        return;
-      }
-      try {
-        const state = await ensureProxy(bin);
-        recordActivity('agent', 'Headroom proxy started from the dashboard', 'port ' + state.port);
-        json(res, 200, { ok: true, running: true, port: state.port, detail: 'the shared proxy is live on port ' + state.port });
-      } catch (e) {
-        json(res, 200, { ok: false, error: (e as Error).message });
-      }
+      json(res, 200, await ensureHeadroomRuntime(bin));
       return;
     }
-    // The automated wrap: one documented command per tool, run detached, so nobody copies it by hand.
+    // Which headroom wrap targets exist on this machine. Only detected tools are listed: absent ones are unsupported.
+    if (req.url === '/api/headroom/wrap' && req.method === 'GET') {
+      const bin = resolveHeadroomBinary();
+      const durableTargets = bin !== null ? await discoverInitTargets(bin) : null;
+      const discovered = bin !== null ? await discoverWrapTargets(bin) : null;
+      const discoveredLabels = new Map((discovered ?? []).map((entry) => [entry.name, entry.label.replace(/\.$/, '')]));
+      const durableNames = new Set<string>([...(durableTargets ?? []), ...DURABLE_CONFIG]);
+      // Headroom's own install apply reaches these three too, at user scope; Tersio does not manage that path.
+      const headroomInstall = new Set(['aider', 'cursor', 'grok-build']);
+      // Continue is discontinued, and ZCode is desktop-only: headroom prints settings and writes no config.
+      const names = [...new Set([...(discovered ?? []).map((entry) => entry.name), ...(durableTargets ?? []), ...DURABLE_CONFIG, ...WRAP_TARGETS])]
+        .filter((name) => name !== 'continue' && name !== 'zcode');
+      const present = (await Promise.all(names.map(async (name) => [name, bin !== null && await wrapTargetPresent(name)] as const)))
+        .filter(([, available]) => available)
+        .map(([name]) => name);
+      const targets = present.map((name) => ({
+        name,
+        durable: durableNames.has(name),
+        manual: !durableNames.has(name),
+        headroomInstall: !durableNames.has(name) && headroomInstall.has(name),
+        installed: durableConfigInstalled(name),
+        label: WRAP_LABELS[name] ?? discoveredLabels.get(name) ?? name,
+      }));
+      json(res, 200, { ok: bin !== null, targets });
+      return;
+    }
+    // The automated durable install: one documented headroom command per tool, never a per-session wrap.
     if (req.url === '/api/headroom/wrap' && req.method === 'POST') {
       const body = await bodyOf(req);
       const name = String(body.name ?? '');
@@ -1279,137 +1264,62 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
         json(res, 400, { ok: false, error: 'unknown wrap target or no headroom binary' });
         return;
       }
-      // The agents headroom cannot wrap route through its shared proxy: one process, every agent.
-      if (PROXY_HOSTS.includes(name)) {
-        if (body.action === 'unwrap') {
-          const stopped = stopOwnedProxy();
-          // The routed agent's config goes back too: OFF means fully off, not a dead endpoint.
-          const restored = restoreRoutedProviders(name);
-          setStoredWrap(name, false);
-          json(res, 200, { ok: true, detail: (stopped ? 'the headroom proxy Tersio started is stopped' : 'nothing Tersio owns is running; headroom' + String.fromCharCode(39) + 's own proxy is left alone') + (restored > 0 ? '; ' + name + ' provider config restored' : '') });
+      const canConfig = (DURABLE_CONFIG as readonly string[]).includes(name);
+      if (!canConfig && !(await discoverInitTargets(bin))?.includes(name)) {
+        json(res, 200, { ok: false, error: `${name} has no durable headroom integration; run headroom wrap ${name} yourself per session` });
+        return;
+      }
+      // A switch points the agent at the proxy, so the proxy must answer before the config is written.
+      if (body.action !== 'unwrap') {
+        const runtime = await ensureHeadroomRuntime(bin);
+        if (!runtime.ok) {
+          json(res, 200, { ok: false, error: `headroom runtime did not start: ${runtime.detail}` });
           return;
         }
-        try {
-          // Same contract as the installer: route the agent's own loopback providers, keep originals for the unwrap.
-          const configFile = ['pi', 'pig'].includes(name) ? path.join(name === 'pig' ? pigAgentDir() : piAgentDir(), 'models.json') : null;
-          const probe = configFile ? routeLocalProvidersThroughProxy(name, configFile, HEADROOM_PROXY_PORT) : null;
-          const state = await ensureProxy(bin, probe?.upstream);
-          if (probe && configFile && state.port !== HEADROOM_PROXY_PORT) routeLocalProvidersThroughProxy(name, configFile, state.port);
-          setStoredWrap(name, true);
-          const envs = proxyEnvLines(state.port);
-          json(res, 200, { ok: true, detail: probe
-            ? name + ' now routes through the headroom proxy on port ' + state.port + ' (' + probe.providers.join(', ') + '); the switch undoes it'
-            : name + ' routes through the headroom proxy on port ' + state.port + ' - set ' + envs[0] + ' (or ' + envs[1] + ') in the agent' + String.fromCharCode(39) + 's environment; one proxy serves every agent' });
-        } catch (e) {
-          restoreRoutedProviders(name);
-          json(res, 200, { ok: false, error: (e as Error).message });
-        }
-        return;
       }
       if (body.action === 'unwrap') {
         // headroom's own undo: it restores whatever the wrap/init edited for that tool.
-        const run = await headroomRun(bin, ['unwrap', name], 120_000);
+        // One switch-off must not strand the other durable agents: headroom's unwrap stops the proxy by default.
+        const run = await headroomRun(bin, ['unwrap', name, '--no-stop-proxy'], 120_000);
+        setStoredWrap(name, false);
         const out = run.lines.slice(-2).join(' · ');
         json(res, 200, run.ok
           ? { ok: true, detail: out || `${name}: headroom integration removed` }
           : { ok: false, error: out || `the ${name} unwrap failed` });
         return;
       }
-      // Durable first: headroom's init outlives restarts; a tool without it gets a one-session wrap.
+      if (canConfig) {
+        // Headroom's own writer, so the marker, backup, and unwrap contract are headroom's.
+        const wrote = await installDurableConfig(bin, name, HEADROOM_PORT);
+        if (wrote) setStoredWrap(name, true);
+        json(res, 200, wrote
+          ? { ok: true, detail: `${name}: headroom config written for port ${HEADROOM_PORT}; it survives restarts` }
+          : { ok: false, error: `headroom could not write ${name}'s config` });
+        return;
+      }
+      // Durable init: headroom writes its own hooks and owns their removal.
       const init = await headroomRun(bin, ['init', '-g', name], 120_000);
       if (init.ok) {
+        setStoredWrap(name, true);
         json(res, 200, { ok: true, detail: init.lines.slice(-2).join(' · ') || `${name}: durable headroom integration installed` });
         return;
       }
-      // Only "no such command" means the tool has no durable install; any other failure is real.
-      if (!/no such command|invalid choice|Usage: headroom init/i.test(init.lines.join('\n'))) {
-        json(res, 200, { ok: false, error: init.lines.slice(-2).join(' · ') || `the ${name} integration failed` });
-        return;
-      }
-      const child = spawn(bin, ['wrap', name], { detached: true, stdio: 'ignore', cwd: homeDir() });
-      child.unref();
-      json(res, 200, { ok: true, detail: `${name} has no init subcommand — headroom wrap set it up instead; the off switch undoes it` });
-      return;
-    }
-    // The dashboard link is a navigation, not a scripted popup: probe, start what Tersio owns, then redirect.
-    if (req.url === '/headroom/dashboard' && req.method === 'GET') {
-      const bin = resolveHeadroomBinary();
-      const run = bin ? await headroomRun(bin, ['dashboard', '--no-open'], 30_000) : null;
-      const url = run?.lines.join(' ').match(/https?:\/\/\S+/)?.[0] ?? null;
-      const miss = headroomDashboardPlan(url, false);
-      const fallbackPort = miss.kind === 'explain' ? miss.port : '8787';
-      // The URL the command printed is the target; with none, the default port still proves a proxy is up.
-      const probe = (budgetMs = 1500): Promise<boolean> => headroomProxyAnswers(url ?? `http://127.0.0.1:${fallbackPort}/`, budgetMs);
-      let answered = await probe();
-      // A child that already exited is no proxy: without this, every later click fell through to the explain page.
-      if (!answered && dashboardProxy !== null && !proxyChildAlive(dashboardProxy.child)) dashboardProxy = null;
-      // Nothing listening: start one Tersio owns, so closing the tab can end it again.
-      if (!answered && bin && !proxyChildAlive(dashboardProxy?.child)) {
-        dashboardProxy = { child: spawn(bin, ['proxy'], { stdio: 'ignore', windowsHide: true, cwd: homeDir() }), port: fallbackPort };
-        recordActivity('agent', 'Headroom proxy started for the dashboard');
-      }
-      // A cold start loads headroom's model set, so the wait runs past the first few seconds.
-      if (!answered && dashboardProxy) answered = await awaitHeadroomProxy(probe);
-      const starting = proxyChildAlive(dashboardProxy?.child);
-      // Nothing answered and nothing is coming: forget the child, so the next click starts a fresh one.
-      if (!answered && !starting) dashboardProxy = null;
-      const plan = headroomDashboardPlan(url, answered);
-      if (plan.kind === 'redirect') {
-        res.writeHead(302, { Location: plan.url, 'Cache-Control': 'no-store' });
-        res.end();
-        return;
-      }
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
-      const wait = starting ? '<meta http-equiv="refresh" content="4">' : '';
-      const heading = starting ? 'Headroom&rsquo;s proxy is starting' : 'Headroom&rsquo;s proxy is not running';
-      const lead = starting ? 'This page reloads itself when the proxy answers.' : 'Start it, then reload this page.';
-      res.end(`<!doctype html><meta charset="utf-8">${wait}<title>Headroom dashboard</title>
-<body style="font:14px/1.5 system-ui,sans-serif;padding:2rem;background:#141414;color:#e8e8e8">
-<h1 style="font-size:1rem;margin:0 0 .5rem">${heading}</h1>
-<p style="margin:0 0 .75rem">${lead}</p>
-<pre style="background:#222;padding:.75rem;border-radius:6px;margin:0 0 .75rem">headroom proxy</pre>
-<p style="color:#8a8a8a;margin:0">It prints <code>http://127.0.0.1:${plan.port}</code> when it is ready.</p>`);
-      return;
-    }
-    // The opener calls this when the Headroom tab closes; only a proxy this server started is killed.
-    if (req.url === '/headroom/dashboard/stop' && req.method === 'POST') {
-      const owned = dashboardProxy;
-      if (!owned) {
-        json(res, 200, { ok: true, stopped: false });
-        return;
-      }
-      // A wrapped session may have found this proxy meanwhile; only a proxy that served nothing dies here.
-      const served = await headroomProxyRequests(`http://127.0.0.1:${owned.port}`);
-      if (served === null || served > 0) {
-        json(res, 200, {
-          ok: true,
-          stopped: false,
-          kept: served === null ? 'the proxy did not answer its stats endpoint' : `it served ${served} request(s)`,
-        });
-        return;
-      }
-      dashboardProxy = null;
-      try { owned.child.kill('SIGTERM'); } catch { /* already gone */ }
-      recordActivity('agent', 'Headroom proxy stopped with the dashboard tab', `port ${owned.port}`, true);
-      json(res, 200, { ok: true, stopped: true });
+      json(res, 200, { ok: false, error: init.lines.slice(-2).join(' · ') || `the ${name} integration failed` });
       return;
     }
     // The wrap record lives tersio-side too, so a second browser sees the same switches. Headroom's
     // own checks correct it: a wrap undone outside Tersio clears instead of lying.
     if (req.url === '/api/headroom/wraps' && req.method === 'GET') {
-      const file = path.join(tersioHome(), 'headroom-wraps.json');
-      let stored: Record<string, unknown> = {};
-      try {
-        const raw: unknown = JSON.parse(readFileSync(file, 'utf8'));
-        if (raw && typeof raw === 'object') stored = raw as Record<string, unknown>;
-      } catch { /* none yet */ }
+      const stored = readHeadroomWraps();
       const bin = resolveHeadroomBinary();
       let wraps = mergeHeadroomWraps(stored, [], WRAP_TARGETS);
       const doctor = bin ? readHeadroomDoctor({ binary: bin }) : null;
       if (doctor?.measured) {
         wraps = mergeHeadroomWraps(stored, doctor.checks, WRAP_TARGETS);
-        try { writeFileSync(file, `${JSON.stringify(wraps, null, 2)}\n`, 'utf8'); } catch { /* best effort */ }
+        try { writeHeadroomWraps(wraps); } catch { /* best effort */ }
       }
+      // A config headroom wrote is on even when Tersio never flipped its switch.
+      for (const name of DURABLE_CONFIG) if (durableConfigInstalled(name)) wraps[name] = true;
       json(res, 200, { ok: true, wraps });
       return;
     }
@@ -1419,9 +1329,7 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
         json(res, 400, { ok: false, error: 'wraps must be an object' });
         return;
       }
-      const file = path.join(tersioHome(), 'headroom-wraps.json');
-      mkdirSync(path.dirname(file), { recursive: true });
-      writeFileSync(file, `${JSON.stringify(body.wraps, null, 2)}\n`, 'utf8');
+      writeHeadroomWraps(body.wraps as Record<string, unknown>);
       json(res, 200, { ok: true });
       return;
     }
@@ -1504,9 +1412,17 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
     // The canvas node layout lives tersio-side, not in the browser: localStorage is scoped to the
     // origin, so a dashboard restart on a new port would forget every node the user placed.
     if (req.url === '/api/pipeline/positions' && req.method === 'GET') {
-      const file = path.join(tersioHome(), 'pipeline-positions.json');
+      let raw = cacheGet('dashboard.pipeline');
+      if (raw === null) {
+        // One-time import of the loose file an older build wrote.
+        try {
+          raw = readFileSync(path.join(tersioHome(), 'pipeline-positions.json'), 'utf8');
+          cachePut('dashboard.pipeline', raw);
+          rmSync(path.join(tersioHome(), 'pipeline-positions.json'), { force: true });
+        } catch { raw = null; }
+      }
       let positions: unknown = {};
-      try { positions = JSON.parse(readFileSync(file, 'utf8')) as unknown; } catch { /* none yet */ }
+      try { if (raw !== null) positions = JSON.parse(raw) as unknown; } catch { /* a damaged record reads empty */ }
       json(res, 200, { ok: true, positions: positions && typeof positions === 'object' ? positions : {} });
       return;
     }
@@ -1517,9 +1433,7 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
         json(res, 400, { ok: false, error: 'positions must be an object' });
         return;
       }
-      const file = path.join(tersioHome(), 'pipeline-positions.json');
-      mkdirSync(path.dirname(file), { recursive: true });
-      writeFileSync(file, `${JSON.stringify(stored, null, 2)}\n`, 'utf8');
+      cachePut('dashboard.pipeline', JSON.stringify(stored));
       json(res, 200, { ok: true });
       return;
     }
@@ -1552,6 +1466,7 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
           hosts,
           comboLevel: comboLevelOf(profile),
           backupSchedule: profile.backupSchedule,
+          retentionDays: profile.retentionDays,
           devTools: profile.devTools,
           accent: profile.accent,
           sidebarWidth: profile.sidebarWidth,
@@ -1700,12 +1615,10 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
       if (signals > 1) {
         try { server.closeAllConnections(); } catch { /* a runtime without the call */ }
         for (const socket of sockets) { try { socket.destroy(); } catch { /* gone */ } }
-        try { dashboardProxy?.child.kill('SIGKILL'); } catch { /* already gone */ }
         process.exit(130);
       }
       if (stopping) return;
       stopping = true;
-      try { dashboardProxy?.child.kill('SIGTERM'); } catch { /* already gone */ }
       server.close(settle);
       try { server.closeIdleConnections(); } catch { /* a runtime without the call */ }
       // A request still in flight gets a moment; after that every socket is cut and the port is free.
@@ -1730,7 +1643,17 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
       const port = typeof address === 'object' && address ? address.port : options.port;
       const url = `http://127.0.0.1:${port}`;
       console.log(`[ok] Dashboard live → ${url} (Ctrl-C to stop)`);
-      for (const lan of lanUrls(port, listenHost)) console.log(`  [lan] ${lan}`);
+      for (const lan of lanUrls(port, listenHost)) {
+        console.log(`[lan] ${lan}`);
+        // A phone scans this; skip it when the output is piped or color is disabled.
+        const qr = process.stdout.isTTY && !process.env.NO_COLOR ? qrTerminal(lan) : null;
+        if (qr) console.log(qr);
+      }
+      // An enabled integration outlives a reboot, but its proxy does not. Restore the runtime the config expects.
+      const runtimeBin = resolveHeadroomBinary();
+      if (runtimeBin && (Object.values(readHeadroomWraps()).some(Boolean) || DURABLE_CONFIG.some((name) => durableConfigInstalled(name)))) {
+        void ensureHeadroomRuntime(runtimeBin);
+      }
 
       // The cadence only matters while a server is up, so the watch starts with it.
       startUpdateWatch();

@@ -5,11 +5,35 @@ import { hostIdOf, injectPromptText, onHostEvent, sessionChangeEvents, setExtens
 import { announceStatus } from '../shared/status.ts';
 import { readHeadroomDefault } from '../shared/plugin-settings.ts';
 import { resolveHeadroomBinary } from '../shared/utils.ts';
-import { ensureProxy, readProxyState, proxyAnswers } from '../shared/headroom-proxy.ts';
+import { headroomHostSupported } from '../shared/headroom-proxy.ts';
 import type { ExtensionApi, ExtensionCtx, InputEvent, SessionEntry, SystemPromptEvent } from '../shared/types.ts';
 
 const DEFAULT_MODE = 'off';
 export const HEADROOM_INSTALL_HINT = 'pip install "headroom-ai[all]"';
+
+/** Where headroom's own runtime listens; the override keeps tests away from a real proxy. */
+function headroomProxyUrl(): string {
+  return (process.env.TERSIO_HEADROOM_PROXY_URL ?? 'http://127.0.0.1:8787/').trim();
+}
+
+// A successful probe holds for longer than a miss, so a turn never pays the timeout twice in a row.
+const probeCache: { url: string; at: number; up: boolean } = { url: '', at: 0, up: false };
+
+/** True when headroom's proxy answers: with none, no traffic compresses and the block would lie. */
+export async function headroomProxyUp(url: string = headroomProxyUrl(), budgetMs = 400): Promise<boolean> {
+  const now = Date.now();
+  if (probeCache.url === url && now - probeCache.at < (probeCache.up ? 30_000 : 10_000)) return probeCache.up;
+  let up = false;
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(budgetMs) });
+    await res.body?.cancel();
+    up = true;
+  } catch { /* refused or too slow: the runtime is down */ }
+  probeCache.url = url;
+  probeCache.at = now;
+  probeCache.up = up;
+  return up;
+}
 
 // The proxy compresses traffic below the shell layer, so the block only tells the model what changes and how to recover detail.
 export function headroomInstruction(): string {
@@ -27,10 +51,13 @@ function isOffCommand(text: unknown): boolean {
 
 export default function headroomSessionExtension(pi: ExtensionApi): void {
   const host = hostIdOf(pi);
+  // pi and PiG have no headroom route, so their block would promise compression their traffic never gets.
+  const supported = headroomHostSupported(host);
   let currentMode = DEFAULT_MODE;
   let lastInjected: string | undefined = undefined;
 
   function setMode(mode: string, ctx?: ExtensionCtx): boolean {
+    if (!supported) return false;
     const normalized = normalizeMode('headroom', mode);
     if (!normalized) return false;
     currentMode = normalized;
@@ -53,6 +80,10 @@ export default function headroomSessionExtension(pi: ExtensionApi): void {
     description: 'Toggle the Headroom token-saver mode for this session',
     handler: async (args, ctx) => {
       const arg = String(args || '').trim().toLowerCase();
+      if (!supported && arg !== 'status') {
+        ctx?.ui?.notify?.('Headroom does not support this agent. Its durable integration covers Oh My Pi and OpenCode.', 'warning');
+        return;
+      }
       if (!arg || arg === 'on') {
         setMode('on', ctx);
         // The mode can be on while the tool is absent; never silent about it, never installing on our own.
@@ -81,6 +112,11 @@ export default function headroomSessionExtension(pi: ExtensionApi): void {
     // A subagent's branch has no Tersio entries; reconciling it would wipe shared state.
     if (hasModeState(entries)) reconcileSharedComboEntries(entries);
     // Persisted state wins, then a mode already chosen, then the configured default. `off` is the start value, not unset.
+    if (!supported) {
+      currentMode = DEFAULT_MODE;
+      announceStatus(ctx);
+      return;
+    }
     const persisted = resolveMode(entries, '');
     const alreadyChosen = currentMode !== DEFAULT_MODE;
     currentMode = persisted || (alreadyChosen ? currentMode : normalizeMode('headroom', readHeadroomDefault(host))) || DEFAULT_MODE;
@@ -90,11 +126,6 @@ export default function headroomSessionExtension(pi: ExtensionApi): void {
   // Start, resume, and branch all land here, so every session type shows it.
   pi.on('session_start', async (_event, ctx) => {
     restoreMode(ctx);
-    // Self-heal the shared proxy: a reboot or crash leaves pi-bolt pointing at a dead port, and the first session to start is the cheapest place to bring it back. Fire-and-forget; never blocks.
-    if (currentMode !== 'off' && readProxyState() !== null && !await proxyAnswers(readProxyState()!.port, 300)) {
-      const bin = resolveHeadroomBinary();
-      if (bin) void ensureProxy(bin).catch(() => undefined);
-    }
   });
 
   // The host adapter names the switch events it emits, so this stays free of any one host's naming.
@@ -109,6 +140,8 @@ export default function headroomSessionExtension(pi: ExtensionApi): void {
     if (!mode || mode === 'off') return;
     // Nothing is compressed when the tool is absent, so the block would lie to the model.
     if (!resolveHeadroomBinary()) return;
+    // The same rule applies to a binary with no runtime behind it: headroom's proxy is what compresses.
+    if (!(await headroomProxyUp())) return;
     const instruction = headroomInstruction();
     // Match the whole instruction, so a re-presented prompt cannot stack it.
     if (systemPromptIncludes(event.systemPrompt, instruction)) return;

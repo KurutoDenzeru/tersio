@@ -11,7 +11,6 @@ import { askInteractiveChoice, closeRL, confirmDestructive, tty, sayTagged } fro
 import { detectHosts, dshCliProfiles, dshDesktopProfilePresent, dshPackageDir, dshRunner, parseHostArg } from './hosts.ts';
 import type { HostEntry, HostId } from './hosts.ts';
 import { piAgentDir, pigAgentDir, readTextIfExists, resolveHeadroomBinary } from '../extensions/shared/utils.ts';
-import { stopOwnedProxy } from '../extensions/shared/headroom-proxy.ts';
 import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
 
 interface UninstallOptions {
@@ -92,7 +91,9 @@ async function removePiLayer(host: HostEntry, shouldDryRun: boolean, shouldRemov
   const rtkWiring = path.join(agentDir, 'extensions', 'rtk.ts');
   const piPonytail = path.join(agentDir, 'ponytail');
 
-  if (!host.installed && !host.declared) {
+  // A partial tree is removable even when the host has no complete install: clearing leftovers is the point.
+  const anyLeft = targets.some((target) => existsSync(target)) || existsSync(rtkWiring);
+  if (!host.installed && !host.declared && !anyLeft) {
     sayTagged(`  [skip] ${host.label} — nothing installed (${host.installCmd})`);
     return false;
   }
@@ -178,8 +179,6 @@ async function removeHeadroomBinary(shouldDryRun: boolean): Promise<void> {
   // Undo the agent-side wraps first: a removed binary behind a headroom-managed config strands the agent.
   const headroomBin = resolveHeadroomBinary();
   if (headroomBin && !shouldDryRun) {
-    // The shared proxy Tersio started dies with the binary: route nothing at a dead endpoint.
-    if (stopOwnedProxy()) sayTagged(`  [rm] Headroom proxy stopped`);
     for (const target of ['omp', 'opencode']) {
       try {
         await execP(headroomBin, ['unwrap', target], { timeout: 90_000 });

@@ -1,5 +1,5 @@
 // Tools page: which tools the agent called, how often they failed, and what they cost.
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Card,
   CellBar,
@@ -19,7 +19,7 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectVa
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/icon";
 import type { AgentStats, AgentToolRow, HealthReport, RtkVerbRow } from "@/lib/data";
-import { AGENT_RANGE_LABEL, fetchHealth, installHeadroom } from "@/lib/data";
+import { AGENT_RANGE_LABEL, fetchHealth, installHeadroom, postHeadroomRuntime } from "@/lib/data";
 import { PALETTE, fmt, fmtShort, pct, relAge, tsFull, tsLabel } from "@/lib/format";
 import { cn } from "cn";
 import { Spinner } from "@/components/ui/spinner";
@@ -419,7 +419,13 @@ export function ToolsPage({ agent, money }: { agent: AgentStats; money: (v: numb
   const [health, setHealth] = useState<HealthReport | null>(null);
   const [installing, setInstalling] = useState(false);
   const [installError, setInstallError] = useState<string | null>(null);
+  const [startingRuntime, setStartingRuntime] = useState(false);
+  const [runtimeError, setRuntimeError] = useState<string | null>(null);
   const headroomPresent = health?.headroom?.present ?? false;
+  // Routing has its own health gate; without this read the proxy row never appears on an installed machine.
+  useEffect(() => {
+    void fetchHealth().then(setHealth).catch(() => {});
+  }, []);
   function startInstall(): void {
     setInstalling(true);
     setInstallError(null);
@@ -427,6 +433,19 @@ export function ToolsPage({ agent, money }: { agent: AgentStats; money: (v: numb
       setInstalling(false);
       setInstallError(result.error);
       if (result.present) void fetchHealth().then(setHealth).catch(() => {});
+    });
+  }
+  function startRuntime(): void {
+    setStartingRuntime(true);
+    setRuntimeError(null);
+    void postHeadroomRuntime().then((result) => {
+      if (result?.ok) {
+        // Routing and savings come from the server's next read; reload is the honest refresh.
+        window.location.reload();
+        return;
+      }
+      setStartingRuntime(false);
+      setRuntimeError(result?.error ?? "headroom did not start");
     });
   }
   const rtkRows = useMemo(() => {
@@ -787,6 +806,19 @@ export function ToolsPage({ agent, money }: { agent: AgentStats; money: (v: numb
                 ) : (
                   <span className="mono text-[10px] text-dim">every check passing</span>
                 )}
+                {!headroom.routing.proxyUp ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="mono ml-auto h-6 gap-1 px-2 text-[10px]"
+                    disabled={startingRuntime}
+                    onClick={startRuntime}
+                  >
+                    {startingRuntime ? <Spinner className="size-3" /> : <Icon name="play" className="size-3" />}
+                    {startingRuntime ? "Starting" : "Start Headroom"}
+                  </Button>
+                ) : null}
+                {runtimeError ? <span className="mono text-[10px] text-danger">{runtimeError}</span> : null}
               </div>
             ) : (
               <span className="mono text-[10px] text-dim">routing not measured — {headroom.routing.failure || "headroom doctor did not answer"}</span>

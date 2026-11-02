@@ -57,6 +57,17 @@ const SCHEDULE_OPTIONS: ReadonlyArray<{ id: string; label: string; hint: string 
   { id: "manual", label: "Manual", hint: "only on demand" },
 ];
 
+/** How long usage rows survive. `0` keeps everything, which is the upgrade-safe default. */
+const RETENTION_OPTIONS: ReadonlyArray<{ id: number; label: string; hint: string }> = [
+  { id: 7, label: "7 days", hint: "one week of history" },
+  { id: 14, label: "14 days", hint: "two weeks of history" },
+  { id: 30, label: "30 days", hint: "one month of history" },
+  { id: 90, label: "90 days", hint: "one quarter of history" },
+  { id: 180, label: "180 days", hint: "half a year of history" },
+  { id: 365, label: "365 days", hint: "one year of history" },
+  { id: 0, label: "Forever", hint: "keep every row" },
+];
+
 /** The whole store in one line: `4.1M` for a copy the pane can name. */
 function dataSize(bytes: number): string {
   if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(1)}G`;
@@ -88,6 +99,8 @@ function DataPane() {
   /** The reset confirm. The counts come from the data payload, so the dialog names them. */
   const [resetting, setResetting] = useState(false);
   const [counts, setCounts] = useState<{ rows: number; rtk: number } | null>(null);
+  const [retention, setRetention] = useState(0);
+  const [advanced, setAdvanced] = useState(false);
 
   const load = useCallback(() => {
     fetch("/api/data")
@@ -104,8 +117,9 @@ function DataPane() {
       });
     fetch("/settings")
       .then((r) => (r.ok ? r.json() : null))
-      .then((d: { backupSchedule?: string } | null) => {
+      .then((d: { backupSchedule?: string; retentionDays?: number } | null) => {
         if (d?.backupSchedule) setSchedule(d.backupSchedule);
+        if (typeof d?.retentionDays === "number") setRetention(d.retentionDays);
       })
       .catch(() => { /* keep the default shown */ });
   }, []);
@@ -123,6 +137,20 @@ function DataPane() {
       .then((r) => r.json())
       .then((d: { ok?: boolean; error?: string }) => {
         if (!d?.ok) toast("Could not save", d?.error ?? "Unknown schedule", "circle-alert");
+      })
+      .catch(() => toast("Could not save", "The dashboard server did not answer.", "circle-alert"));
+  };
+
+  const saveRetention = (next: number): void => {
+    setRetention(next);
+    void fetch("/settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ retentionDays: next }),
+    })
+      .then((r) => r.json())
+      .then((d: { ok?: boolean; error?: string }) => {
+        if (!d?.ok) toast("Could not save", d?.error ?? "Unknown window", "circle-alert");
       })
       .catch(() => toast("Could not save", "The dashboard server did not answer.", "circle-alert"));
   };
@@ -213,6 +241,8 @@ function DataPane() {
   const doomed = (backups ?? []).find((b) => b.name === confirming) ?? null;
   /** The footer works on the picked row, unless a restore confirm owns the screen. */
   const chosen = (backups ?? []).find((b) => b.name === picked) ?? null;
+  const retentionLabel = RETENTION_OPTIONS.find((o) => o.id === retention)?.label ?? "Forever";
+  const retentionHint = RETENTION_OPTIONS.find((o) => o.id === retention)?.hint ?? "";
   const scheduleLabel = SCHEDULE_OPTIONS.find((o) => o.id === schedule)?.label ?? "Monthly";
   const scheduleHint = SCHEDULE_OPTIONS.find((o) => o.id === schedule)?.hint ?? "";
 
@@ -262,6 +292,32 @@ function DataPane() {
             <span>Back up now</span>
           </Button>
         </div>
+      </Card>
+
+      <Card
+        title="Data retention"
+        icon="clock"
+        description="How long usage history is kept. Older entries drop on the next sync."
+        actions={
+          <Select value={String(retention)} onValueChange={(v) => saveRetention(Number(v ?? 0))}>
+            <SelectTrigger size="sm" className="w-[132px]" aria-label="Data retention">
+              <SelectValue placeholder={retentionLabel}>{retentionLabel}</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                {RETENTION_OPTIONS.map((o) => (
+                  <SelectItem key={o.id} value={String(o.id)}>
+                    {o.label}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        }
+      >
+        <p className="m-0 text-xs text-dim">
+          {retentionHint}. Session transcripts, rtk history, and snapshots keep their own copies.
+        </p>
       </Card>
 
       <Card
@@ -337,6 +393,18 @@ function DataPane() {
         )}
       </Card>
 
+      <Button
+        variant="ghost"
+        size="sm"
+        className="mono h-8 w-fit gap-1.5 rounded-xl"
+        aria-expanded={advanced}
+        onClick={() => setAdvanced((open) => !open)}
+      >
+        <Icon name="chevron-right" className={`size-3.5 transition-transform ${advanced ? "rotate-90" : ""}`} />
+        Advanced
+      </Button>
+
+      {advanced && (
       <Card
         title="Reset statistics"
         icon="rotate-ccw"
@@ -366,6 +434,7 @@ function DataPane() {
           emptied and its rows stop counting, so every page that derives from them starts empty.
         </p>
       </Card>
+      )}
 
       <AlertDialog open={asking !== null} onOpenChange={(open) => { if (!open) setAsking(null); }}>
         <AlertDialogContent>
@@ -919,9 +988,9 @@ export function SettingsDialog({
   };
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="block h-[min(88vh,800px)] max-h-[calc(100dvh-2rem)] w-[min(920px,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] sm:max-w-[920px] max-sm:h-dvh max-sm:max-h-dvh max-sm:w-screen max-sm:max-w-none max-sm:rounded-none max-sm:border-0 gap-0 overflow-hidden rounded-2xl border border-line bg-panel p-0 text-ink shadow-[0_16px_48px_rgba(0,0,0,.35)]" showCloseButton={false} aria-describedby={undefined}>
-        <div className="grid h-full min-h-0 max-h-full grid-cols-[276px_minmax(0,1fr)] max-sm:grid-cols-1 max-sm:grid-rows-[auto_minmax(0,1fr)]">
-          <aside className="flex min-h-0 flex-col gap-2.5 border-r border-line bg-panel px-3 py-4 max-sm:border-r-0 max-sm:border-b" aria-label="Settings sections">
+      <DialogContent className="block h-[min(90vh,940px)] max-h-[calc(100dvh-2rem)] w-[min(1120px,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] sm:max-w-[1120px] max-sm:h-dvh max-sm:max-h-dvh max-sm:w-screen max-sm:max-w-none max-sm:rounded-none max-sm:border-0 gap-0 overflow-hidden rounded-2xl border border-line bg-panel p-0 text-ink shadow-[0_16px_48px_rgba(0,0,0,.35)]" showCloseButton={false} aria-describedby={undefined}>
+        <div className="grid h-full min-h-0 max-h-full grid-cols-[300px_minmax(0,1fr)] max-sm:grid-cols-1 max-sm:grid-rows-[auto_minmax(0,1fr)]">
+          <aside className="settings-rail flex min-h-0 flex-col gap-2.5 border-r border-line px-3 py-4 max-sm:border-r-0 max-sm:border-b" aria-label="Settings sections">
             <div className="flex items-center gap-2 rounded-[10px] border border-line px-2.5 py-2 text-dim">
               <Icon name="search" className="size-4" />
               <input
@@ -988,7 +1057,7 @@ export function SettingsDialog({
               <SocialLinks className="flex shrink-0 items-center gap-0.5" />
             </div>
           </aside>
-          <div className="relative flex min-h-0 min-w-0 flex-col">
+          <div className="settings-surface relative flex min-h-0 min-w-0 flex-col">
             <div className="flex items-center justify-between gap-3 px-5 pt-4">
               <DialogTitle className="m-0 flex items-center gap-2 text-base font-bold tracking-[-0.01em]">
                 <Icon name={PANES.find((p) => p.id === pane)?.icon ?? "settings"} className="size-4 shrink-0 text-dim" />

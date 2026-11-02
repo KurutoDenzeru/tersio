@@ -45,7 +45,21 @@ function clock(at: number): string {
 }
 
 function stamp(at: number): string {
-  return new Date(at).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "medium" });
+  const d = new Date(at);
+  const date = d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+  const time = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", second: "2-digit" });
+  return `${date} · ${time}`;
+}
+
+/** How long ago, so a wall of timestamps also reads as recent or old at a glance. */
+function ago(at: number): string {
+  const seconds = Math.max(0, Math.round((Date.now() - at) / 1000));
+  if (seconds < 60) return `${seconds}s ago`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.round(hours / 24)}d ago`;
 }
 
 export function LogsPage({ onClose }: { onClose: () => void }) {
@@ -88,11 +102,11 @@ export function LogsPage({ onClose }: { onClose: () => void }) {
   const columns: Array<Column<Entry>> = [
     {
       key: "at",
-      header: "time",
-      width: 92,
+      header: "date",
+      width: 232,
       sort: (row) => row.at,
       render: (row) => (
-        <span className="text-dim" title={stamp(row.at)}>{clock(row.at)}</span>
+        <span className="whitespace-nowrap text-dim" title={ago(row.at)}>{stamp(row.at)}</span>
       ),
     },
     {
@@ -103,6 +117,17 @@ export function LogsPage({ onClose }: { onClose: () => void }) {
       className: "hidden sm:table-cell",
       render: (row) => (
         <span className="text-dim">{KIND_LABEL[row.kind] ?? row.kind}</span>
+      ),
+    },
+    {
+      key: "status",
+      header: "status",
+      width: 74,
+      className: "hidden sm:table-cell",
+      render: (row) => (
+        <span className={cn(row.ok === false ? "text-destructive" : row.ok === true ? "text-success" : "text-dim")}>
+          {row.ok === false ? "failed" : row.ok === true ? "ok" : "—"}
+        </span>
       ),
     },
     {
@@ -127,7 +152,7 @@ export function LogsPage({ onClose }: { onClose: () => void }) {
     <Page>
       <PageHeader
         title="Logs"
-        description="Every change Tersio makes on this machine, newest first: modes, agents, files, and checks."
+        description="Every change Tersio makes on this machine, newest first, with the full date, the status, and what happened."
       />
 
       <section className="terminal-window" aria-label="Tersio activity log">

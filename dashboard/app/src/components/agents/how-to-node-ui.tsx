@@ -21,7 +21,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "../toaster";
 import { cn } from "cn";
 import { UPCOMING_AGENTS } from "@/lib/agents";
-import { checkVendor, fetchHeadroomProxy, fetchHeadroomWraps, fetchHealth, fetchWrapTargets, postHeadroomProxy, type HeadroomWrapTarget, postHeadroomWrap, postHeadroomWraps, postVendorAction, readStoredWraps, stopHeadroomProxy, storeWraps, type HeadroomProxyState, type HealthReport, type VendorRow } from "@/lib/data";
+import { checkVendor, fetchHeadroomWraps, fetchHealth, fetchWrapTargets, type HeadroomWrapTarget, postHeadroomWrap, postHeadroomWraps, postVendorAction, readStoredWraps, storeWraps, type HealthReport, type VendorRow } from "@/lib/data";
 import {
   ABOUT, DEFAULT_ROWS_UI, HOSTS, MODES, OFF_DEFAULTS, PICKER, nodeGlyph, nodeTitle, nodeValue, versionOf,
 } from "./pipeline-model";
@@ -41,12 +41,6 @@ export interface NodeSurfaceProps {
   onHostAction: (node: NodeId, action: HostAction) => void;
   onSaved: () => void;
 }
-
-/** The two addresses any agent needs to route through the shared proxy; the drawer copies them. */
-const COPY_URLS: ReadonlyArray<{ label: string; value: string }> = [
-  { label: "Anthropic", value: "ANTHROPIC_BASE_URL=http://127.0.0.1:8787" },
-  { label: "OpenAI", value: "OPENAI_BASE_URL=http://127.0.0.1:8787/v1" },
-];
 
 /** One selectable level card: label, optional hint, and a check that pops in on select. */
 function LevelCard({
@@ -410,6 +404,8 @@ const WRAP_SLUGS: Record<string, string> = {
   grok: "grok", cursor: "cursor",
   goose: "goose", openhands: "openhands", openclaw: "openclaw",
   kimi: "kimi", zcode: "zdotai",
+  bob: "ibm", antigravity: "google", "grok-build": "grok",
+  openclaude: "claudecode", "vscode-claude": "vscode",
 };
 
 function BrandMark({ name, className }: { name: string; className: string }) {
@@ -439,20 +435,9 @@ export function VendorFooter({
   const [phase, setPhase] = useState<"idle" | "checking" | "update" | "confirm-uninstall" | "busy">("idle");
   const [busyLabel, setBusyLabel] = useState("");
   const [row, setRow] = useState<VendorRow | null>(null);
-  const [proxy, setProxy] = useState<HeadroomProxyState | null>(null);
-  const [proxyBusy, setProxyBusy] = useState<"start" | "stop" | null>(null);
   useEffect(() => {
-    if (!open) { setPhase("idle"); setRow(null); setProxy(null); }
+    if (!open) { setPhase("idle"); setRow(null); }
   }, [open]);
-  // The footer dot follows the proxy while the drawer is open, so a link opened elsewhere shows up here.
-  useEffect(() => {
-    if (!open || tool !== "headroom") return;
-    let cancelled = false;
-    const tick = (): void => { void fetchHeadroomProxy().then((state) => { if (!cancelled) setProxy(state); }); };
-    tick();
-    const timer = window.setInterval(tick, 4000);
-    return () => { cancelled = true; window.clearInterval(timer); };
-  }, [open, tool]);
   const busy = phase === "busy";
   const updateReady = phase === "update";
   const confirming = phase === "confirm-uninstall";
@@ -492,39 +477,6 @@ export function VendorFooter({
     onAfter();
   };
   const updateLabel = row?.upstream ? `Update to ${row.upstream}` : "Update";
-  const stopProxy = async (): Promise<void> => {
-    const result = await stopHeadroomProxy();
-    if (result?.stopped) toast("Headroom proxy stopped", "The dashboard link starts it again.", "check");
-    else if (result?.ok) toast("Proxy kept running", result.kept ?? "it was not started by Tersio", "circle-alert");
-    setProxy(await fetchHeadroomProxy());
-  };
-  const toggleProxy = async (): Promise<void> => {
-    const action = proxy?.running ? "stop" : "start";
-    setProxyBusy(action);
-    try {
-      if (action === "stop") {
-        await stopProxy();
-        return;
-      }
-      const res = await postHeadroomProxy("start");
-      if (res?.ok) toast("Headroom proxy started", res.detail ?? "", "check");
-      else toast("Could not start the proxy", res?.error ?? "the dashboard server did not answer", "circle-alert");
-      setProxy(await fetchHeadroomProxy());
-    } finally {
-      setProxyBusy(null);
-    }
-  };
-  const openDashboard = (): void => {
-    // A plain navigation tab: the route probes (and may start) Headroom's proxy, so nothing is popup-blocked.
-    const tab = window.open("/headroom/dashboard", "_blank");
-    if (!tab) return;
-    // Cross-origin tabs still report `closed`; the server only kills a proxy it started for this link.
-    const timer = window.setInterval(() => {
-      if (!tab.closed) return;
-      window.clearInterval(timer);
-      void fetch("/headroom/dashboard/stop", { method: "POST" });
-    }, 2000);
-  };
   return (
     <DrawerFooter className="border-t border-line px-6 pb-4 pt-3.5">
       {phase === "busy" ? <Progress value={null} className="w-full" /> : null}
@@ -565,31 +517,6 @@ export function VendorFooter({
           </Button>
         )}
       </div>
-      {tool === "headroom" && installed ? (
-        <div className="flex w-full items-center gap-0.5 rounded-lg border border-line bg-panel p-0.5">
-          <Button size="sm" variant="ghost" disabled={busy} onClick={openDashboard} className="min-w-0 flex-1 gap-1.5">
-            <Icon name="gauge" className="size-3.5" />
-            <span className="truncate">Headroom dashboard</span>
-          </Button>
-          <span
-            aria-hidden="true"
-            className={cn("mr-0.5 size-1 shrink-0 rounded-full", proxy?.running ? "bg-success" : "bg-line")}
-          />
-          <span className="sr-only">{proxy?.running ? "headroom proxy running" : "headroom proxy not running"}</span>
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={busy || proxyBusy !== null}
-            onClick={() => void toggleProxy()}
-            aria-label={proxy?.running ? "Stop the headroom proxy" : "Start the headroom proxy"}
-            title={proxy?.running ? "Stop the headroom proxy" : "Start the headroom proxy"}
-            className="shrink-0 gap-1.5"
-          >
-            {proxyBusy === "start" ? "starting\u2026" : proxyBusy === "stop" ? "stopping\u2026" : proxy?.running ? "Stop proxy" : "Start proxy"}
-          </Button>
-        </div>
-      ) : null}
-
     </DrawerFooter>
   );
 }
@@ -599,30 +526,21 @@ function VersionPill({ version }: { version: string | null }) {
   return <span className="mono ml-auto shrink-0 rounded border border-success/40 px-1.5 py-0.5 text-[9px] text-success">{version}</span>;
 }
 
-/** The plain-language announcement a switch flip makes: what changed for the agent, not how headroom did it. The env-var details live in the copy card below. */
-export function wrapNotice(target: { label?: string; kind?: string; durable?: boolean } | undefined, name: string, on: boolean): { title: string; desc: string } {
+/** The plain-language announcement a switch flip makes: the integration changed, not how headroom did it. */
+export function wrapNotice(target: { label?: string; durable?: boolean } | undefined, name: string, on: boolean): { title: string; desc: string } {
   const label = target?.label ?? name;
-  // Only pi and pig have their provider config rewritten for them; every other proxy host needs the pasted address.
-  const configRewritten = name === "pi" || name === "pig";
   if (!on) {
-    if (target?.kind === "proxy") return { title: `${label} no longer routes through the shared proxy.`, desc: configRewritten ? "Its provider settings are back the way they were." : "Remove the proxy address from its settings if you set one." };
     if (target?.durable) return { title: `${label} no longer has headroom built in.`, desc: "Its integration is undone." };
     return { title: `${label} no longer starts through headroom.`, desc: "It launches the way it did before." };
   }
-  if (target?.kind === "proxy") return { title: `${label} routes through the shared proxy now.`, desc: configRewritten ? "Its provider settings now point at the proxy." : "Copy an address below into its settings." };
   if (target?.durable) return { title: `${label} has headroom built in now.`, desc: "It stays on across restarts." };
-  return { title: `${label} starts through headroom now.`, desc: "The shared proxy rides along." };
+  return { title: `${label} starts through headroom now.`, desc: "Its next session picks it up." };
 }
 
 /** The headroom node opens the wrap drawer: one switch per installed tool, run by Tersio itself. */
 export function HeadroomDrawer({ open, onOpenChange, modes, busy, onSet, onSaved }: Omit<NodeSurfaceProps, "node" | "hostState" | "onHostAction">) {
   const toast = useToast();
   const [wrapTargets, setWrapTargets] = useState<Array<HeadroomWrapTarget> | null>(null);
-  const [proxy, setProxy] = useState<{ running: boolean; port: number } | null>(null);
-  const [proxyBusy, setProxyBusy] = useState<"start" | "stop" | null>(null);
-  const [copied, setCopied] = useState<string | null>(null);
-  // The two accordions are exclusive: opening one closes the other.
-  const [expanded, setExpanded] = useState<"installed" | "absent" | null>("installed");
 
   /** One tool row, shared by the durable list and the proxy list. */
   const renderRow = (target: HeadroomWrapTarget) => {
@@ -632,7 +550,6 @@ export function HeadroomDrawer({ open, onOpenChange, modes, busy, onSet, onSaved
         key={target.name}
         className={cn(
           "flex items-center gap-2.5 rounded-md border px-2.5 py-1.5 transition-colors",
-          target.kind === "proxy" && "border-dashed",
           on ? "border-success/30 bg-success/5" : "border-line",
         )}
       >
@@ -641,24 +558,32 @@ export function HeadroomDrawer({ open, onOpenChange, modes, busy, onSet, onSaved
           : AGENT_LOGO_IDS.has(target.name)
             ? <AgentLogo host={target.name as "codex"} className="size-3.5 shrink-0" />
             : <BrandMark name={target.name} className={cn("size-3.5", on ? "" : "text-dim")} />}
-        <span className={cn("mono min-w-0 flex-1 truncate text-[11px]", on ? "text-ink" : "text-dim", !target.available && "line-through opacity-60")}>{target.label ?? target.name}</span>
-        <span className={cn("mono shrink-0 rounded border px-1 py-0.5 text-[9px]", on ? "border-success/40 text-success" : "border-line text-dim")}>
-          {!target.available
-            ? "not installed"
-            : on
-              ? target.kind === "proxy" ? "routed" : target.durable ? "durable" : "wrapped"
-              : target.kind === "proxy" ? "via proxy" : "ready"}
-        </span>
-        <span className="relative inline-flex">
-          <Switch
-            size="sm"
-            checked={on}
-            disabled={!target.available || wrapBusy !== null || !headroomInstalled}
-            onCheckedChange={(next: boolean) => toggleWrap(target.name, next)}
-            aria-label={(target.kind === "proxy" ? "Route " : "Wrap ") + target.name + " through headroom"}
-          />
-
-        </span>
+        <span className={cn("mono min-w-0 flex-1 truncate text-[11px]", on ? "text-ink" : "text-dim")}>{target.label ?? target.name}</span>
+        {target.manual ? (
+          <span
+            className="mono shrink-0 rounded border border-line px-1.5 py-0.5 text-[9px] text-dim"
+            title={target.headroomInstall
+              ? "Durable through headroom's own install apply; Tersio does not manage it here"
+              : "No durable install exists; headroom runs this tool per session only"}
+          >
+            {target.headroomInstall ? "headroom install" : "session only"}
+          </span>
+        ) : (
+          <span className={cn("mono shrink-0 rounded border px-1 py-0.5 text-[9px]", on ? "border-success/40 text-success" : "border-line text-dim")}>
+            {on ? "durable" : "ready"}
+          </span>
+        )}
+        {target.manual ? null : (
+          <span className="relative inline-flex">
+            <Switch
+              size="sm"
+              checked={on}
+              disabled={wrapBusy !== null || !headroomInstalled}
+              onCheckedChange={(next: boolean) => toggleWrap(target.name, next)}
+              aria-label={"Install " + target.name + " for headroom"}
+            />
+          </span>
+        )}
       </div>
     );
   };
@@ -668,7 +593,7 @@ export function HeadroomDrawer({ open, onOpenChange, modes, busy, onSet, onSaved
   const [wrapBusy, setWrapBusy] = useState<string | null>(null);
   useEffect(() => {
     if (!open) return;
-    void fetchWrapTargets().then((state) => { setWrapTargets(state?.targets ?? null); setProxy(state?.proxy ?? null); });
+    void fetchWrapTargets().then((state) => setWrapTargets(state?.targets ?? null));
     void fetchHealth().then(setHealth);
     void fetchHeadroomWraps().then((server) => {
       if (!server || typeof server !== 'object') return;
@@ -706,7 +631,10 @@ export function HeadroomDrawer({ open, onOpenChange, modes, busy, onSet, onSaved
         }
       })
       .catch(() => toast("The switch did not change.", "The dashboard server did not answer.", "circle-alert"))
-      .finally(() => setWrapBusy(null));
+      .finally(() => {
+        setWrapBusy(null);
+        void fetchWrapTargets().then((state) => setWrapTargets(state?.targets ?? null));
+      });
   };
 
   return (
@@ -725,92 +653,23 @@ export function HeadroomDrawer({ open, onOpenChange, modes, busy, onSet, onSaved
         <div className="grid min-h-0 flex-1 content-start gap-5 overflow-y-auto px-6 py-4 pb-5">
           <div className="grid gap-1.5">
             <p className="flex items-center gap-1.5 text-[13px] font-semibold">
-              <Icon name="package" className="size-3.5 text-dim" /> Wrap an installed tool
+              <Icon name="package" className="size-3.5 text-dim" /> Supported agents
               <span className="mono ml-auto shrink-0 rounded border border-accent/40 px-1.5 py-0.5 text-[9px] text-accent">recommended</span>
             </p>
             <p className="m-0 text-[10px] leading-relaxed text-dim">
-              Two ways to route a tool: headroom's own durable integration where it exists, and one shared proxy for
-              everything else. Every switch below runs the real command — nothing to copy by hand except the proxy addresses.
+              A switch installs headroom's durable integration. A row marked "headroom install" has a durable
+              path through headroom's own install, which Tersio does not manage. "session only" has no durable
+              install at all.
             </p>
             {wrapTargets === null ? (
               <Skeleton className="h-8 w-full rounded-md" />
-            ) : (() => {
-              const installed = wrapTargets.filter((target) => target.available);
-              const absent = wrapTargets.filter((target) => !target.available);
-              return (
-                <div className="grid gap-2">
-                  <details className="group rounded-xl border border-line" open={expanded === "installed"} onToggle={(e) => { if ((e.target as HTMLDetailsElement).open) setExpanded("installed"); }}>
-                    <summary className="mono flex cursor-pointer list-none items-center gap-2 pl-2.5 pr-5 py-2 text-[11px] font-semibold text-ink transition-colors hover:text-accent">
-                      <Icon name="chevron-right" className="size-3 shrink-0 transition-transform group-open:rotate-90" />
-                      Installed on this machine
-                      <span className="mono ml-auto shrink-0 rounded border border-success/40 px-1.5 py-0.5 text-[9px] text-success">{installed.length}</span>
-                    </summary>
-                    <div className="grid gap-1 px-2.5 pb-2">
-                      {installed.map((target) => renderRow(target))}
-                    </div>
-                  </details>
-                  <details className="group rounded-xl border border-dashed border-line" open={expanded === "absent"} onToggle={(e) => { if ((e.target as HTMLDetailsElement).open) setExpanded("absent"); }}>
-                    <summary className="mono flex cursor-pointer list-none items-center gap-2 pl-2.5 pr-5 py-2 text-[11px] font-semibold text-dim transition-colors hover:text-ink">
-                      <Icon name="chevron-right" className="size-3 shrink-0 transition-transform group-open:rotate-90" />
-                      Not installed
-                      <span className="mono ml-auto shrink-0 rounded border border-line px-1.5 py-0.5 text-[9px] text-dim">{absent.length}</span>
-                    </summary>
-                    <div className="grid gap-1 px-2.5 pb-2">
-                      {absent.map((target) => renderRow(target))}
-                    </div>
-                  </details>
-                  <div className="rounded-xl border border-line bg-track/20 p-2.5">
-                    <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5">
-                      <p className="mono m-0 flex items-center gap-1.5 text-[10px] text-dim">
-                        <span aria-hidden="true" className={cn("size-1.5 rounded-full", proxy?.running ? "bg-success" : "bg-line")} />
-                        shared proxy: {proxy?.running ? `running on port ${proxy.port}` : "not running"}
-                      </p>
-                      <Button
-                        size="xs"
-                        variant="outline"
-                        disabled={proxyBusy !== null || !headroomInstalled}
-                        onClick={() => {
-                          const action = proxy?.running ? "stop" : "start";
-                          setProxyBusy(action);
-                          void postHeadroomProxy(action)
-                            .then(async (res) => {
-                              if (res?.ok) toast(res.detail ?? (action === "start" ? "the shared proxy is live" : "the shared proxy is stopped"), "shared proxy", "check");
-                              else toast(res?.error ?? "the dashboard server did not answer", "shared proxy", "circle-alert");
-                              const state = await fetchWrapTargets();
-                              setWrapTargets(state?.targets ?? null);
-                              setProxy(state?.proxy ?? null);
-                            })
-                            .finally(() => setProxyBusy(null));
-                        }}
-                      >
-                        {proxyBusy ? (proxyBusy === "start" ? "starting\u2026" : "stopping\u2026") : proxy?.running ? "Stop proxy" : "Start proxy"}
-                      </Button>
-                    </div>
-                    <div className="mt-2 grid gap-1.5">
-                      {COPY_URLS.map((entry) => (
-                        <button
-                          key={entry.label}
-                          type="button"
-                          onClick={() => {
-                            void navigator.clipboard.writeText(entry.value).then(() => {
-                              setCopied(entry.label);
-                              setTimeout(() => setCopied((held) => (held === entry.label ? null : held)), 1500);
-                            });
-                          }}
-                          className="mono flex min-w-0 items-center gap-1.5 rounded-md border border-line bg-panel px-2 py-1 text-left text-[10px] text-dim transition-colors hover:border-accent/40 hover:text-ink"
-                          title={"Copy " + entry.value}
-                          aria-label={"Copy " + entry.label}
-                        >
-                          <Icon name={copied === entry.label ? "check" : "copy"} className={cn("size-3 shrink-0", copied === entry.label ? "text-success" : "")} />
-                          <span className="truncate">{entry.value}</span>
-                          <span className="ml-auto shrink-0 text-[9px] text-dim">{copied === entry.label ? "copied" : entry.label}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
+            ) : wrapTargets.length > 0 ? (
+              <div className="grid gap-1">{wrapTargets.map((target) => renderRow(target))}</div>
+            ) : (
+              <p className="mono m-0 rounded-lg border border-dashed border-line px-2.5 py-2 text-[10px] text-dim">
+                No supported agent was detected on this machine.
+              </p>
+            )}
 
             <p className="m-0 text-[13px] font-semibold">Session default</p>
             {health === null ? (
@@ -887,7 +746,7 @@ export function RtkDrawer({ open, onOpenChange, modes, busy, onSet, onSaved }: O
   );
 }
 
-/** The add-agent picker: only the harnesses found on this machine, plus the coming-soon teasers. */
+/** The add-agent picker: installed harnesses first, then installable ones, then everything unavailable. */
 export function AddAgentDialog({
   open, onOpenChange, hostState, busy, onInstall,
 }: {
@@ -897,6 +756,61 @@ export function AddAgentDialog({
   busy: NodeId | null;
   onInstall: (host: HostId) => void;
 }) {
+  const [expanded, setExpanded] = useState<"installed" | "detected" | "unavailable" | null>("installed");
+  // A harness counts as installed only when Tersio's tree is there too; detected-but-absent gets its own fold.
+  const linked = HOSTS.filter((host) => hostState.present[host.id] !== false && hostState.installed[host.id] === true);
+  const detected = HOSTS.filter((host) => hostState.present[host.id] !== false && hostState.installed[host.id] !== true);
+  const absent = HOSTS.filter((host) => hostState.present[host.id] === false);
+  const unavailable = absent.length + UPCOMING_AGENTS.length;
+  // Opening the dialog always lands on what is actually added, then what this machine has.
+  useEffect(() => {
+    if (!open) return;
+    setExpanded(linked.length > 0 ? "installed" : detected.length > 0 ? "detected" : "unavailable");
+  }, [open, linked.length, detected.length]);
+  const row = (host: typeof HOSTS[number]) => {
+    const isPresent = hostState.present[host.id] !== false;
+    // Tersio's tree is what makes a host usable here, so a detected harness without it offers Install.
+    const linked = hostState.installed[host.id] === true;
+    const installing = busy === `host-${host.id}`;
+    return (
+      <div
+        key={host.id}
+        aria-disabled={!isPresent}
+        className={cn(
+          "flex items-center gap-2 rounded-lg border px-2.5 py-2",
+          isPresent ? "border-line" : "border-dashed border-line opacity-55",
+        )}
+      >
+        <AgentLogo host={host.id as "omp"} className={cn("size-4 shrink-0", !isPresent && "grayscale")} />
+        <span className="min-w-0 flex-1 truncate text-[12px]">{host.label}</span>
+        {isPresent && !linked ? (
+          <span className="mono shrink-0 text-[9px] text-dim">{versionOf(hostState.versions[host.id]) ?? ""}</span>
+        ) : null}
+        {linked ? (
+          <span className="mono flex shrink-0 items-center gap-1 rounded border border-success/40 px-1.5 py-0.5 text-[9px] text-success">
+            <span aria-hidden="true" className="size-1.5 rounded-full bg-success" />
+            {versionOf(hostState.versions[host.id]) ?? "installed"}
+          </span>
+        ) : isPresent ? (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={busy !== null}
+            onClick={() => onInstall(host.id)}
+            className="h-6 shrink-0 gap-1 px-1.5 text-[10px]"
+          >
+            {installing ? <Spinner className="size-3" /> : <Icon name="plus" className="size-3" />}
+            Add Agent
+          </Button>
+        ) : (
+          <span className="mono flex shrink-0 items-center gap-1 rounded border border-line px-1.5 py-0.5 text-[9px] text-dim">
+            <span aria-hidden="true" className="size-1.5 rounded-full bg-dim" />
+            not installed
+          </span>
+        )}
+      </div>
+    );
+  };
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-sm">
@@ -906,65 +820,51 @@ export function AddAgentDialog({
             Add an agent
           </DialogTitle>
           <DialogDescription className="text-[11px] leading-relaxed">
-            The agent harnesses on this machine. Claude Code and Codex are coming soon.
+            The agents installed on this machine open first; installable ones follow, and unavailable agents stay folded.
           </DialogDescription>
         </DialogHeader>
-        <div className="grid gap-1.5">
-          {HOSTS.map((host) => {
-            const present = hostState.present[host.id] !== false;
-            // Tersio's tree is what makes a host usable here, so a detected harness without it offers Install.
-            const linked = hostState.installed[host.id] === true;
-            const installing = busy === `host-${host.id}`;
-            return (
-              <div
-                key={host.id}
-                aria-disabled={!present}
-                className={cn(
-                  "flex items-center gap-2 rounded-lg border px-2.5 py-2",
-                  present ? "border-line" : "border-dashed border-line opacity-55",
-                )}
-              >
-                <AgentLogo host={host.id as "omp"} className={cn("size-4 shrink-0", !present && "grayscale")} />
-                <span className="min-w-0 flex-1 truncate text-[12px]">{host.label}</span>
-                {present && !linked ? (
-                  <span className="mono shrink-0 text-[9px] text-dim">{versionOf(hostState.versions[host.id]) ?? ""}</span>
-                ) : null}
-                {linked ? (
-                  <span className="mono flex shrink-0 items-center gap-1 rounded border border-success/40 px-1.5 py-0.5 text-[9px] text-success">
-                    <span aria-hidden="true" className="size-1.5 rounded-full bg-success" />
-                    {versionOf(hostState.versions[host.id]) ?? "installed"}
-                  </span>
-                ) : present ? (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={busy !== null}
-                    onClick={() => onInstall(host.id)}
-                    className="h-6 shrink-0 gap-1 px-1.5 text-[10px]"
-                  >
-                    {installing ? <Spinner className="size-3" /> : <Icon name="plus" className="size-3" />}
-                    Add Agent
-                  </Button>
-                ) : (
-                  <span className="mono flex shrink-0 items-center gap-1 rounded border border-line px-1.5 py-0.5 text-[9px] text-dim">
-                    <span aria-hidden="true" className="size-1.5 rounded-full bg-dim" />
-                    not installed
-                  </span>
-                )}
-              </div>
-            );
-          })}
-          {UPCOMING_AGENTS.map((agent) => (
-            <div
-              key={agent.id}
-              aria-disabled="true"
-              className="flex items-center gap-2 rounded-lg border border-dashed border-line px-2.5 py-2 opacity-55"
-            >
-              <AgentLogo host={agent.id} className="size-4 shrink-0 grayscale" />
-              <span className="min-w-0 flex-1 truncate text-[12px]">{agent.name}</span>
-              <span className="mono shrink-0 rounded border border-line px-1.5 py-0.5 text-[9px] text-dim">coming soon</span>
+        <div className="grid gap-2">
+          <details className="group rounded-xl border border-line" open={expanded === "installed"} onToggle={(e) => { if ((e.target as HTMLDetailsElement).open) setExpanded("installed"); }}>
+            <summary className="mono flex cursor-pointer list-none items-center gap-2 pl-2.5 pr-5 py-2 text-[11px] font-semibold text-ink transition-colors hover:text-accent">
+              <Icon name="chevron-right" className="size-3 shrink-0 transition-transform group-open:rotate-90" />
+              Installed on this machine
+              <span className="mono ml-auto shrink-0 rounded border border-success/40 px-1.5 py-0.5 text-[9px] text-success">{linked.length}</span>
+            </summary>
+            <div className="grid gap-1 px-2.5 pb-2">
+              {linked.length > 0 ? linked.map(row) : <p className="mono m-0 px-1 py-2 text-[10px] text-dim">No agent is added here yet.</p>}
             </div>
-          ))}
+          </details>
+          <details className="group rounded-xl border border-dashed border-line" open={expanded === "detected"} onToggle={(e) => { if ((e.target as HTMLDetailsElement).open) setExpanded("detected"); }}>
+            <summary className="mono flex cursor-pointer list-none items-center gap-2 pl-2.5 pr-5 py-2 text-[11px] font-semibold text-dim transition-colors hover:text-ink">
+              <Icon name="chevron-right" className="size-3 shrink-0 transition-transform group-open:rotate-90" />
+              Detected, not added
+              <span className="mono ml-auto shrink-0 rounded border border-line px-1.5 py-0.5 text-[9px] text-dim">{detected.length}</span>
+            </summary>
+            <div className="grid gap-1 px-2.5 pb-2">
+              {detected.length > 0 ? detected.map(row) : <p className="mono m-0 px-1 py-2 text-[10px] text-dim">Every detected agent is already added.</p>}
+            </div>
+          </details>
+          <details className="group rounded-xl border border-dashed border-line" open={expanded === "unavailable"} onToggle={(e) => { if ((e.target as HTMLDetailsElement).open) setExpanded("unavailable"); }}>
+            <summary className="mono flex cursor-pointer list-none items-center gap-2 pl-2.5 pr-5 py-2 text-[11px] font-semibold text-dim transition-colors hover:text-ink">
+              <Icon name="chevron-right" className="size-3 shrink-0 transition-transform group-open:rotate-90" />
+              Unavailable
+              <span className="mono ml-auto shrink-0 rounded border border-line px-1.5 py-0.5 text-[9px] text-dim">{unavailable}</span>
+            </summary>
+            <div className="grid gap-1 px-2.5 pb-2">
+              {absent.map(row)}
+              {UPCOMING_AGENTS.map((agent) => (
+                <div
+                  key={agent.id}
+                  aria-disabled="true"
+                  className="flex items-center gap-2 rounded-lg border border-dashed border-line px-2.5 py-2 opacity-55"
+                >
+                  <AgentLogo host={agent.id} className="size-4 shrink-0 grayscale" />
+                  <span className="min-w-0 flex-1 truncate text-[12px]">{agent.name}</span>
+                  <span className="mono shrink-0 rounded border border-line px-1.5 py-0.5 text-[9px] text-dim">coming soon</span>
+                </div>
+              ))}
+            </div>
+          </details>
         </div>
       </DialogContent>
     </Dialog>

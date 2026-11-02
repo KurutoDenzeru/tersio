@@ -194,7 +194,8 @@
     "lint:dashboard": "bun run --cwd dashboard/app lint",
     "lint:fix": "oxlint cli extensions test tersio.ts --fix",
     "test": "vitest run",
-    "bench": "vitest bench"
+    "bench": "vitest bench",
+    "dev": "bun tersio.ts dashboard --watch"
   },
   "engines": {
     "node": ">=20.12.0"

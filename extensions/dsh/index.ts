@@ -120,10 +120,6 @@ function buildBlocks(): string {
 
   if (setting(store, section, 'pstackDefault') === 'on') parts.push(pstackBlock());
 
-  if (setting(store, section, 'headroomDefault') === 'on') {
-    parts.push('🍃 HEADROOM MODE ACTIVE — level: on\nHeadroom compression is enabled for this session: tool outputs, file reads, and history may be compressed before reaching you. A compressed result can elide details; treat its elision markers as real. Recover the original before acting on missing detail: run `headroom inspect`, or call the headroom_retrieve MCP tool where wired.');
-  }
-
   return parts.join('\n\n');
 }
 
@@ -182,7 +178,8 @@ function readModes(store: Store, section: Store): ModeSnapshot {
     rtk: setting(store, section, 'rtkDefault') === true,
     ponytail: String(setting(store, section, 'ponytailDefault') ?? 'off'),
     pstack: setting(store, section, 'pstackDefault') as string | boolean ?? 'off',
-    headroom: setting(store, section, 'headroomDefault') === 'on' ? 'on' : 'off',
+    // Headroom has no DeepSeek Harness route; the mode stays off instead of promising compression.
+    headroom: 'off',
   };
 }
 

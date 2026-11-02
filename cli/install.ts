@@ -25,12 +25,12 @@ import {
   RTK_RELEASE_API, fetchJson, findFile, httpsGet,
   httpsDownload, parseChecksum, piAgentDir, pigAgentDir, readTextIfExists, resolveHeadroomBinary, resolveHostBinary, resolveRtkBinary, rtkPlatformSpec, sha256File, shimCommand,
 } from '../extensions/shared/utils.ts';
-import { ensureProxy, proxyEnvLines, restoreRoutedProviders, routeLocalProvidersThroughProxy } from '../extensions/shared/headroom-proxy.ts';
-import { setStoredWrap } from '../extensions/shared/headroom-wraps.ts';
 import { findPackageRoot, homeDir } from '../extensions/shared/utils.ts';
 import type { RtkRelease, RtkReleaseAsset } from '../extensions/shared/utils.ts';
 import { patchState } from '../extensions/shared/state.ts';
 import { CAVEMAN_PIN } from './upstream.ts';
+import { DURABLE_CONFIG, HEADROOM_PORT, headroomHostSupported, installDurableConfig } from '../extensions/shared/headroom-proxy.ts';
+import { ensureHeadroomRuntime } from './headroom-runtime.ts';
 import type { HostDefaultField } from './profile.ts';
 import { formatCliStatus, saveHostDefaults, storedProfile, storedProfileSync, writePluginSettings } from './profile.ts';
 import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
@@ -553,52 +553,10 @@ async function resolveProfile(opts: { quiet?: boolean; host?: HostId | null } = 
 }
 
 /** The optional Headroom prompt, asked once per interactive install after the combo preset; its enable rides the host section this install writes. */
-/** The hosts Headroom can integrate with today; asking about the others would promise nothing. */
-const HEADROOM_HOSTS: readonly HostId[] = ['omp', 'opencode'];
-
 async function maybeInstallHeadroom(profile: Profile, quiet: boolean, host: HostId): Promise<boolean> {
-  if (!HEADROOM_HOSTS.includes(host)) {
-    const bin = resolveHeadroomBinary();
-    if (bin === null) {
-      if (!quiet && !dryRun && !applyUpdate) {
-        sayTagged(`  [note] Headroom has no ${hostEntry(host).label} integration yet — install headroom first, then Tersio can route ${hostEntry(host).label} through its shared proxy`);
-      }
-      return false;
-    }
-    // Every agent headroom cannot wrap still rides the one shared proxy: start it, print the paste.
-    if (!quiet && !dryRun && !applyUpdate) {
-      const answer = await askInteractiveChoice(` 🍃 Headroom has no ${hostEntry(host).label} integration — route it through the shared proxy?`, [
-        { value: 'proxy', label: 'Start the shared proxy', hint: 'one proxy serves every agent; headroom wraps the others directly' },
-        { value: 'skip', label: 'Skip (optional)', hint: 'enable later from the dashboard' },
-      ], 'proxy');
-      if (answer.status === 'selected' && answer.value === 'proxy') {
-        try {
-          // Route the agent's own loopback providers through the proxy: the connection exists before the first session, not after the user pastes env lines.
-          const configFile = path.join(host === 'pig' ? pigAgentDir() : piAgentDir(), 'models.json');
-          const probe = routeLocalProvidersThroughProxy(host, configFile, 8787);
-          const state = await ensureProxy(bin, probe?.upstream);
-          setStoredWrap(host, true);
-          if (probe && state.port !== 8787) {
-            // A non-default port means the provider config must point there too.
-            routeLocalProvidersThroughProxy(host, configFile, state.port);
-          }
-          if (probe) {
-            console.log(`  Headroom — proxy live on port ${state.port}; ${probe.providers.join(', ')} now route through it (originals saved for the unwrap)`);
-          } else {
-            const envs = proxyEnvLines(state.port);
-            console.log(`  Headroom — proxy live on port ${state.port} (shared by every agent)`);
-            for (const env of envs) console.log(`    ${env}`);
-          }
-          return true;
-        } catch (e) {
-          restoreRoutedProviders(host);
-          sayTagged(`  [warn] ${(e as Error).message}`);
-          return false;
-        }
-      }
-    }
-    return false;
-  }  if (!tty() || dryRun || applyUpdate || assumeYes) {
+  // pi, PiG, and dsh have no Headroom integration, so an install never asks about one.
+  if (!headroomHostSupported(host)) return false;
+  if (!tty() || dryRun || applyUpdate || assumeYes) {
     // No prompt to answer, but a fresh install still gets one line about the optional mode.
     if (!quiet && !dryRun && !applyUpdate && profile.headroomDefault !== 'on') {
       sayTagged('  [note] Headroom is optional: enable it later with /headroom on, or from the dashboard');
@@ -674,14 +632,21 @@ async function lifecycleHeadroom(host: HostId, enabled: boolean, profile: Profil
       sayTagged('  [warn] Headroom update failed — run: headroom update');
     }
   }
-  if (dryRun || !HEADROOM_HOSTS.includes(host) || (!enabled && profile.headroomDefault !== 'on')) return;
+  if (dryRun || !headroomHostSupported(host) || (!enabled && profile.headroomDefault !== 'on')) return;
   try {
-    const shim = shimCommand(bin, ['init', '-g', host]);
-    // The home cwd keeps headroom's project-local artifacts (the .claude wrap lock) out of the project `tersio install` runs in.
-    await execP(shim.cmd, shim.args, { timeout: 120_000, cwd: homeDir() });
-    if (!quiet) sayTagged(`  Headroom — durable integration installed for ${host}`);
-  } catch {
-    if (!quiet) sayTagged(`  Headroom — no durable install for ${host}; wrap it per session: headroom wrap ${host}`);
+    // The config points the agent at the proxy, so the runtime starts first.
+    const runtime = await ensureHeadroomRuntime(bin);
+    if (!runtime.ok) throw new Error(runtime.detail);
+    if ((DURABLE_CONFIG as readonly string[]).includes(host)) {
+      if (!(await installDurableConfig(bin, host, HEADROOM_PORT))) throw new Error('headroom could not write the config');
+    } else {
+      const shim = shimCommand(bin, ['init', '-g', host]);
+      // The home cwd keeps headroom's project-local artifacts (the .claude wrap lock) out of the project `tersio install` runs in.
+      await execP(shim.cmd, shim.args, { timeout: 120_000, cwd: homeDir() });
+    }
+    if (!quiet) sayTagged(`  Headroom — durable integration installed for ${hostEntry(host).label}`);
+  } catch (e) {
+    if (!quiet) sayTagged(`  Headroom — ${hostEntry(host).label} integration failed: ${(e as Error).message}`);
   }
 }
 
@@ -1011,7 +976,7 @@ async function runInstall(forcedHost?: HostId): Promise<void> {
   if (headroomEnabled) {
     if (hostExplicit && !chosenFields.includes('headroomDefault')) chosenFields.push('headroomDefault');
     if (!hostExplicit) profile.headroomDefault = 'on';
-  } else if (hostExplicit && !HEADROOM_HOSTS.includes(targetHost)) {
+  } else if (hostExplicit && !headroomHostSupported(targetHost)) {
     // The mode injects a promise the host cannot route, so its own section starts off.
     profile.headroomDefault = 'off';
     if (!chosenFields.includes('headroomDefault')) chosenFields.push('headroomDefault');

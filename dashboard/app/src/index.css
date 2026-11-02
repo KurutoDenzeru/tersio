@@ -254,6 +254,13 @@
     --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.55);
     }
   }
+  /* The Settings dialog follows the theme: the rail is the page's recessed tone, the pane the panel itself.
+     Mixing the ink into the panel keeps the rail a shade off the content in both light and dark. */
+  .settings-rail {
+    background: color-mix(in srgb, var(--ink) 7%, var(--panel));
+    background: var(--track);
+  }
+  .settings-surface { background: var(--panel); color: var(--ink); }
   body { background: var(--bg); color: var(--ink); }
   html[data-theme="dark"] {
     --bg: #000; --panel: #09090a; --shine-line: rgba(244, 244, 245, .2); --shine-sheen: rgba(244, 244, 245, .04); --bar-veil: rgba(0, 0, 0, .72); --ink: #f4f4f5; --dim: #a1a1aa;
