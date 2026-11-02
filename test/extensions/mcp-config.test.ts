@@ -27,14 +27,31 @@ test('omp gets one Tersio MCP entry, and another server survives', () => {
 
 test('pi and pig share the same mcpServers shape', () => {
   withHome((home) => {
-    expect(tersioMcpSupported('pi')).toBe(true);
-    expect(tersioMcpSupported('pig')).toBe(true);
-    expect(ensureTersioMcp('pi')).toBe(true);
-    expect(ensureTersioMcp('pig')).toBe(true);
-    const pi = JSON.parse(readFileSync(path.join(home, '.pi', 'agent', 'mcp.json'), 'utf8')) as { mcpServers: Record<string, unknown> };
-    const pig = JSON.parse(readFileSync(path.join(home, '.pig', 'agent', 'mcp.json'), 'utf8')) as { mcpServers: Record<string, unknown> };
-    expect(pi.mcpServers.tersio).toEqual({ command: 'tersio', args: ['mcp'], enabled: true });
-    expect(pig.mcpServers.tersio).toEqual({ command: 'tersio', args: ['mcp'], enabled: true });
+    const saved = {
+      PIG_HOME: process.env.PIG_HOME,
+      PIG_CODING_AGENT_DIR: process.env.PIG_CODING_AGENT_DIR,
+      PIG_USE_PI_DIRS: process.env.PIG_USE_PI_DIRS,
+      XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME,
+    };
+    process.env.PIG_HOME = path.join(home, 'pig');
+    delete process.env.PIG_CODING_AGENT_DIR;
+    delete process.env.PIG_USE_PI_DIRS;
+    delete process.env.XDG_CONFIG_HOME;
+    try {
+      expect(tersioMcpSupported('pi')).toBe(true);
+      expect(tersioMcpSupported('pig')).toBe(true);
+      expect(ensureTersioMcp('pi')).toBe(true);
+      expect(ensureTersioMcp('pig')).toBe(true);
+      const pi = JSON.parse(readFileSync(tersioMcpFile('pi') as string, 'utf8')) as { mcpServers: Record<string, unknown> };
+      const pig = JSON.parse(readFileSync(tersioMcpFile('pig') as string, 'utf8')) as { mcpServers: Record<string, unknown> };
+      expect(pi.mcpServers.tersio).toEqual({ command: 'tersio', args: ['mcp'], enabled: true });
+      expect(pig.mcpServers.tersio).toEqual({ command: 'tersio', args: ['mcp'], enabled: true });
+    } finally {
+      for (const [name, value] of Object.entries(saved)) {
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
+    }
   });
 });
 
