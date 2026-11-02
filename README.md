@@ -112,9 +112,9 @@ Add this entry under `mcpServers` in the client's MCP settings:
 }
 ```
 
-That is the whole setup. No extra command, no port, no token, and no process to keep alive.
+That is the whole setup. No extra command, no port, no token, and no process to keep alive. `tersio install` writes this same Tersio server entry into OMP, Pi, PiG, Deepseek Harness, and OpenCode, so there is no second MCP process. `tersio_headroom` carries savings, status, and retrieve for compressed content.
 
-Three tools become available: `tersio_stats` (requests, errors, tokens, cache rate, and cost for a range, in your display currency), `tersio_activity` (what Tersio changed, newest first), `tersio_modes` (read the session-start defaults, or set them: a Combo preset, or any single mode — caveman, rtk, ponytail, pstack, headroom — overriding its piece of the preset), and `tersio_headroom` (the savings Headroom's own ledger records, or `action: memory`, `evals`, and `dashboard` for the upstream commands Tersio does not reimplement).
+Three tools become available: `tersio_stats` (requests, errors, tokens, cache rate, and cost for a range, in your display currency), `tersio_activity` (what Tersio changed, newest first), `tersio_modes` (read the session-start defaults, or set them: a Combo preset, or any single mode — caveman, rtk, ponytail, pstack, headroom — overriding its piece of the preset), and `tersio_headroom` (savings by default; `action: status` for live proxy counters and routing; `action: retrieve` with a marker hash; or `action: memory`, `evals`, and `dashboard` for the upstream commands Tersio does not reimplement).
 
 ## 🖥️ CLI
 

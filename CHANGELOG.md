@@ -1,59 +1,35 @@
 ## Unreleased
 
 ### Added
-- **A data-retention window in Settings → Data.** Seven days through a year, or Forever, which is the default so an upgrade never drops history. Older usage rows are dropped on the next sync; transcripts, rtk history, and snapshots are untouched.
-- **Tersio runs on DeepSeek Harness.** The research landed and the plugin is real: Tersio mounts as a dsh bundle with the modes injected into every session, `tersio install --host dsh` sets it up, update and uninstall work, and the dashboard knows the host.
-- **The dashboard opens on your phone.** It shows up on your home network, prints the address, and draws a small QR code under it so the phone can scan instead of typing.
-- **The busiest models and providers lead with tokens.** The volume is the big number, and the request count and its share sit under it.
+- A history window in Settings → Data. Keep usage for 7 days to a year, or forever.
+- Tersio now works with DeepSeek Harness: install, update, remove, and dashboard support.
+- The dashboard can open on your phone, with a QR code for the address.
+- Models and providers now lead with token volume, with request share beside it.
 
 ### Changed
-- **ZCode left the Headroom drawer.** Headroom only prints desktop settings for ZCode and writes no config, so no row could offer a durable switch or an unwrap. The target is filtered out of the drawer and its static list.
-- **The Add agent picker folds into three sections.** `Installed on this machine` opens first, `Detected, not added` follows, and everything absent or still coming folds under `Unavailable`. Each section carries its count.
-- **The dashboard hot-reloads in a source checkout.** `tersio dashboard` now watches `cli/` and `extensions/` (never `node_modules/` or `.git/`) and rebuilds the UI on save without a flag, keeps the same port across restarts, opens the browser once, and an open tab reloads itself when the bundle changes. It prints only the two dashboard links; Vite's build chatter stays hidden. `bun run dev` is the same command; `TERSIO_NO_WATCH=1` opts out.
-- **Reset statistics sits behind an Advanced toggle.** The destructive card no longer opens with the pane.
-- **The cache in `usage.db` is compressed and cheaper to read.** Values are gzipped before they are stored (7.9 MB of cache became 1.2 MB), the schema is no longer re-asserted on every read, and writes wait for the lock instead of failing. A one-time VACUUM returned the freed pages.
-- **Settings opens larger, on a light surface.** The dialog is 1120px wide and 940px tall, and both halves follow the theme: the rail sits one tint off the panel, and the content pane is the panel itself, so dark mode reads grey-beside-black and light mode grey-beside-white.
-- **Headroom and session state live in the ledger too.** The Headroom wrap record and the session state moved into `usage.db`, so `headroom-wraps.json` and `state.json` no longer appear. The Headroom install output now lands in the Logs page instead of `headroom-install.log`.
-- **Brand marks are fetched, never stored.** The dashboard proxies each CDN mark on demand and the browser caches it, so `~/.tersio/marks/` is gone.
-- **The dashboard cache lives in the ledger too.** The per-range agent payloads moved from `~/.tersio/cache/agent/*.json` into `usage.db`, so the `cache/` tree is gone after the first read.
-- **The data home keeps fewer loose files.** The LiteLLM price cache, the upstream scorecard, and its cached trees moved into `usage.db`, and your price overrides moved into `settings.json` under `prices`. An existing `prices.json`, `prices.local.json`, `scorecard.json`, or `trees/` directory is imported once on first read and then removed.
-- **Ponytail speaks with one voice.** Its rules come from one file now. If that file goes missing, the mode tells you how to repair it instead of quoting a stale copy.
-- **Ponytail's plugin files are TypeScript now.** Leftover copies from older installs are ignored.
-- **Tidier source files.** Long comment blocks are one line each now.
-- **The Headroom drawer matches Headroom's official tool list.** Invented entries are gone, every tool carries its real name and real logo, Kimi joined, and Continue left because that service is discontinued.
-- **Switches speak plainly.** Turning a tool on or off shows one plain sentence about what changed, and when a flip fails, the real reason shows up in the same notice.
-- **The dashboard opens much faster.** A range is built once, remembered, and reused after a restart. The network also sends about a tenth of the bytes.
-- **The Upstream page is easier to read.** Changed, added, and removed files each fold away, so a long list stays short.
-- **Fewer words in the drawers.** Caveman, pstack, ponytail, and rtk keep their controls and lose the diagram under them.
-- **A cleaner dashboard.** The sidebar and top bar read as one surface, and the sidebar becomes icons on small windows.
-- `tersio update` updates the Tersio CLI only. Add-ons refresh per agent with `tersio update --host <agent>`.
-- A scripted install prints one line about the optional Headroom mode, because it cannot ask.
-- Tokscale is no longer credited, because nothing uses it.
+- The dashboard is faster and calmer: remembered ranges, smaller downloads, a cleaner layout, larger Settings, simpler drawers, and a clearer Add agent picker.
+- The dashboard keeps fewer loose files. Saved records, caches, prices, upstream data, brand marks, Headroom state, and session state now live in fewer places.
+- Brand logos load when needed and stay cached.
+- The Headroom drawer lists only tools it can really set up. ZCode and Continue are gone.
+- Switches explain what changed, and failed actions show the real reason.
+- RTK setup is one request to RTK. Tersio no longer edits agent config itself.
+- Ponytail uses one rule file and modern files. Old copies are ignored.
+- `tersio update` updates Tersio only. Add-ons refresh per agent with `tersio update --host <agent>`.
+- A scripted install prints one line about optional Headroom.
+- Tokscale is no longer credited.
+- Behind the scenes, agent support, dashboard data, and usage code now share one source, so future changes are smaller.
 
 ### Fixed
-- **A Headroom switch now starts the runtime it points at.** Tersio starts headroom's saved deployment, or headroom's proxy when no deployment exists, and waits for health before writing the integration. Dashboard start restores an enabled runtime, and the Tools page gained a Start Headroom action when the proxy is down.
-- **pi, PiG, and DeepSeek Harness no longer see a Headroom promise.** Install does not ask for Headroom on those agents, and their sessions refuse the mode instead of injecting a block their traffic cannot use.
-- **The Headroom drawer drops unsupported tools.** `/api/headroom/wrap` returns only targets detected on this machine, so the `Not installed` fold, its line-through rows, and the `available` field are gone. Absent agents no longer appear or get a disabled switch.
-- **More agents get a durable Headroom switch.** Oh My Pi and OpenCode now install through headroom's own config writers, which write the same backup and marker `headroom unwrap` restores, so the switch is one-time and launches nothing.
-- **The doctor reads a partial tree as not installed.** A host with leftover files but no complete tree now shows a `not installed` row that names `tersio uninstall --host <id>`, and `tersio uninstall` clears a partial tree even when no complete install exists. The extensions section, the price-feed row, and the home row are gone, and the usage DB now sits in Platform.
-- **A partial host tree no longer reads as an install.** The doctor now names leftover Tersio files once, with the command that clears them, instead of reporting the host installed and listing every stale file; `tersio uninstall --host <id>` removes a partial tree even when no complete install exists. The doctor's Hosts section also drops the defaults and override lines.
-- **pstack tracks upstream again.** Every tracked pstack body was re-ported to `c742dd6`: the drifted playbooks, skills, principles, and the rule body carry upstream's current wording with its Cursor surface removed, four references upstream deleted are gone, and the pin moved with them. Eleven skills the port was missing now ship too — `in-your-own-words`, `teach`, `sharpen`, `statechart`, `ketchup`, `ketchup-video`, `recall`, and the four verification-skill factories — with the `poteto` naming and its slash commands removed.
-- **Ponytail's upstream row reads true.** Tersio's own TypeScript hooks and fork manifest no longer count as missing upstream files, the bundled copy moves to 5.3.3, and the row now reports the 38 upstream files the port does not carry, so accuracy reads 11 of 11 with no gaps and no version warning.
-- **DeepSeek Harness installs stop at the profile the CLI owns.** The desktop app's `desktop` profile refuses CLI writes, so `tersio install --host dsh` now mounts the CLI profiles and points you to the app's Plugins pane for the desktop one.
-- **Doctor repairs stop touching agents you don't have.** The health repair used to create an OpenCode folder on machines without OpenCode installed. Thanks to @FrancoStino (#79).
-- **No more stray files in your projects.** Turning a Headroom switch used to leave an empty lock file in the folder you started the dashboard from. Nothing writes into your projects anymore.
-- **Headroom's prompt block waits for its runtime.** The extension injected "compression is enabled" whenever the binary was on PATH. It now also requires headroom's proxy to answer on 8787, so a mode left on with no runtime no longer tells the model it may compress anything.
-- **The Headroom drawer lists every supported tool again.** Durable targets (headroom's init list plus omp and OpenCode) carry switches; tools without a Tersio switch stay visible: Aider, Cursor, and Grok Build show `headroom install`, because headroom's own `install apply --target` reaches them at user scope, and the rest show `session only`. No row claims a durable install it does not have. The row set follows `headroom wrap --help`, so vscode-claude, openclaude, antigravity, grok-build, and IBM Bob now appear too; Continue stays excluded.
-- **Headroom proxy support is gone.** Tersio now installs durable agent integrations only. The shared-proxy switches, the copyable base URLs, the Stop/Start cards, the runtime record, the proxy-routed agents, and the omp OpenAI rewrite are removed; each remaining switch runs headroom's own `init` or config writer.
-- **The Headroom drawer lines up.** The switch rows and their counters sit on one line now.
-- **Every request counts once.** A resumed session repeated the calls it inherited, and every repeat was counted. Your totals now read true.
-- **Your history is no longer lost.** Updating Tersio or resetting your stats keeps the old records instead of erasing them, and backups are kept for two weeks.
-- **Ctrl-C closes the dashboard for good.** The port is free at once, and Headroom's helper stops with it.
-- **A short history says so.** When a range reaches past the first record, the page says where the records start.
-- **Install keeps each agent's own settings.** Installing Tersio for one agent no longer changes what the others use, and the question names the agent before it runs.
-- **The right logo for every model.** Models that run through Codex show their own maker's logo.
-- **Uninstalled tools read as uninstalled.** Command Code's leftover settings folder no longer makes the Headroom drawer list it as ready.
-- **Headroom's dashboard opens from its drawer.** It starts Headroom's view when needed and closes only the one it started. Headroom is offered only for the agents it can route, so pi and PiG get a note instead of a prompt.
+- Headroom now tells the truth: it starts its runtime before enabling, waits for the runtime, refuses to claim compression when traffic does not use it, and shows live counters and routing.
+- Compressed content can be retrieved through Tersio's own MCP server. One shared entry covers OMP, Pi, PiG, and OpenCode.
+- Headroom can use a local model gateway as its upstream and records the original address for undo. Some gateways rewrite their own settings, so reapply the Headroom setup after changing models.
+- Headroom fallback keeps the saved mode and connection style, and every Headroom writer uses the same proxy address.
+- RTK setup is one command per agent. PiG gets the Pi hook.
+- Doctor treats leftover files as not installed, stops touching agents you do not have, and leaves the DeepSeek Harness desktop profile alone.
+- pstack and Ponytail track their upstreams again. Ponytail moves to 5.3.3, and missing pstack skills now ship.
+- Closing the dashboard releases the port. Requests are no longer counted twice. History survives updates and resets.
+- Install keeps each agent's own settings, model logos are correct, and uninstalled tools read as uninstalled.
+- No stray files are left in your projects.
 
 ## v2.25.16
 

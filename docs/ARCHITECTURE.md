@@ -96,10 +96,14 @@ flowchart LR
 - **Only Oh My Pi and OpenCode are routed Tersio hosts.** pi, PiG, and DeepSeek Harness never receive a Headroom prompt, because their traffic has no Headroom route.
 - **A row states its own path.** A switch means a durable setup Tersio manages. `headroom install` means headroom's installer owns it. `session only` means no durable setup exists.
 - **Undo is always headroom's.** Tersio removes its own record only after `headroom unwrap` answers.
-- **The pill states configuration, not traffic.** Headroom's own dashboard answers whether traffic actually reaches the proxy.
+- **The block requires a routed model.** Tersio reads omp's default `modelRoles` entry and OpenCode's active model, resolves the provider base URL, and keeps the block out when the model does not reach the proxy.
+- **A local gateway is routed, not guessed.** When omp's OpenAI provider points at a loopback gateway, Tersio records the original URL in a marker, points the provider at the proxy, and starts Headroom with `--openai-api-url` set to that gateway. `headroom unwrap omp` restores the backup.
+- **Retrieval is Tersio's.** A compression marker carries a hash. Tersio installs one MCP entry (`tersio mcp`) for every host it supports; `tersio_headroom` with `action: retrieve` reads the original from the proxy's store.
+- **The pill states configuration, the counters state traffic.** `/stats` supplies requests, compressed requests, and live tokens saved; the durable ledger supplies lifetime savings.
 
 ## Setup, update, and health
 
+- **One host table names every capability.** `extensions/shared/host-caps.ts` owns labels, commands, MCP shape, RTK binding, and Headroom support. Install, uninstall, MCP, and RTK read it instead of repeating host conditionals.
 - **Install writes one tree per agent and one manifest.** A second copy of the same file is treated as the bug.
 - **Doctor repairs or names the cleanup.** A partial tree reads as not installed. Legacy entries are removed.
 - **Update checks two sources.** The npm registry and the GitHub release feed are read together, and the newer version wins.
