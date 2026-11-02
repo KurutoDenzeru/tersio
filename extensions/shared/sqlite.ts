@@ -169,12 +169,16 @@ export function sqliteRead(db: string, sql: string): string {
   return cliRead(db, sql);
 }
 
+/** A write waits for the WAL lock instead of failing, and pays one fsync per checkpoint rather than one per commit. */
+const WRITE_SETUP = 'PRAGMA busy_timeout=5000; PRAGMA synchronous=NORMAL; ';
+
 /** Run a script, creating the file if needed. Stops at the first error, so a failed INSERT leaves no DELETEs. */
 export function sqliteExec(db: string, sql: string): void {
+  const script = `${WRITE_SETUP}${sql}`;
   const e = engine();
   if (e !== null) {
-    e.exec(db, sql);
+    e.exec(db, script);
     return;
   }
-  execFileSync('sqlite3', ['-bail', db, sql], { stdio: ['ignore', 'ignore', 'ignore'], timeout: TIMEOUT });
+  execFileSync('sqlite3', ['-bail', db, script], { stdio: ['ignore', 'ignore', 'ignore'], timeout: TIMEOUT });
 }

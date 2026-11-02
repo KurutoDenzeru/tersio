@@ -1,8 +1,10 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+// The wrap record Tersio keeps, in the usage ledger beside the rest of the machine state, and headroom's own view of routing.
+import { readFileSync, rmSync } from 'node:fs';
 import path from 'node:path';
+import { cacheGet, cachePut } from './cache-store.ts';
 import { tersioHome } from './utils.ts';
 
-// The wrap record Tersio keeps (`~/.tersio/headroom-wraps.json`) and headroom's own view of routing.
+const WRAPS_KEY = 'headroom.wraps';
 
 /** One check row from `headroom doctor --json`. */
 export type HeadroomDoctorCheck = { name: string; status: string; summary: string };
@@ -23,22 +25,45 @@ export function mergeHeadroomWraps(
   return merged;
 }
 
-/** Where the wrap record lives; the dashboard and the CLI installer both write it. */
-export function headroomWrapsFile(): string {
-  return path.join(tersioHome(), 'headroom-wraps.json');
+/** The record as stored, with the loose file an older build wrote imported once. */
+function readStored(): Record<string, unknown> {
+  const text = cacheGet(WRAPS_KEY);
+  if (text !== null) {
+    try {
+      const parsed: unknown = JSON.parse(text);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed as Record<string, unknown>;
+    } catch { /* a damaged record reads empty */ }
+    return {};
+  }
+  const legacy = path.join(tersioHome(), 'headroom-wraps.json');
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(legacy, 'utf8'));
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      cachePut(WRAPS_KEY, JSON.stringify(parsed));
+      rmSync(legacy, { force: true });
+      return parsed as Record<string, unknown>;
+    }
+  } catch { /* none yet */ }
+  return {};
+}
+
+/** The wrapped targets the page draws. */
+export function readHeadroomWraps(): Record<string, true> {
+  const stored = readStored();
+  const wraps: Record<string, true> = {};
+  for (const [name, value] of Object.entries(stored)) if (value === true) wraps[name] = true;
+  return wraps;
+}
+
+/** Replaces the whole record, so a doctor pass can correct it in one write. */
+export function writeHeadroomWraps(wraps: Record<string, unknown>): void {
+  cachePut(WRAPS_KEY, JSON.stringify(wraps));
 }
 
 /** One name on or off in the stored record; a failed write only costs the next read. */
 export function setStoredWrap(name: string, on: boolean): void {
-  let stored: Record<string, unknown> = {};
-  try {
-    stored = JSON.parse(readFileSync(headroomWrapsFile(), 'utf8')) as Record<string, unknown>;
-    if (!stored || typeof stored !== 'object' || Array.isArray(stored)) stored = {};
-  } catch { /* none yet */ }
+  const stored = readStored();
   if (on) stored[name] = true;
   else delete stored[name];
-  try {
-    mkdirSync(path.dirname(headroomWrapsFile()), { recursive: true });
-    writeFileSync(headroomWrapsFile(), JSON.stringify(stored, null, 2) + '\n', 'utf8');
-  } catch { /* best effort */ }
+  cachePut(WRAPS_KEY, JSON.stringify(stored));
 }

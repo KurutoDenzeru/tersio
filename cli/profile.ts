@@ -31,6 +31,8 @@ interface Profile {
   headroomDefault: string;
   currency: CurrencyCode;
   backupSchedule: BackupSchedule;
+  /** How long usage rows are kept, in days. `0` keeps everything. */
+  retentionDays: number;
   // The dashboard's Developer tools switch and accent. Both live here, not in browser storage, so they survive a new port and a new browser: the dashboard binds a fresh origin each run.
   devTools: boolean;
   accent: string;
@@ -44,6 +46,9 @@ interface Profile {
 export type BackupSchedule = 'manual' | 'daily' | 'weekly' | 'monthly';
 export const BACKUP_SCHEDULES: ReadonlySet<string> = new Set(['manual', 'daily', 'weekly', 'monthly']);
 
+/** The retention windows a reader picks from; `0` is forever. */
+export const RETENTION_DAYS: ReadonlySet<number> = new Set([0, 7, 14, 30, 90, 180, 365]);
+
 function defaultProfile(): Profile {
   return {
     comboDefault: 'off',
@@ -54,6 +59,7 @@ function defaultProfile(): Profile {
     headroomDefault: 'off',
     currency: DEFAULT_CURRENCY,
     backupSchedule: 'monthly',
+    retentionDays: 0,
     devTools: false,
     accent: 'emerald',
     sidebarWidth: 216,
@@ -77,6 +83,7 @@ interface StoredSettings {
   hosts?: unknown;
   currency?: unknown;
   backupSchedule?: unknown;
+  retentionDays?: unknown;
   devTools?: unknown;
   accent?: unknown;
   sidebarWidth?: unknown;
@@ -109,6 +116,9 @@ function applyStored(base: Profile, stored: StoredSettings): void {
   }
   if (typeof stored.backupSchedule === 'string' && BACKUP_SCHEDULES.has(stored.backupSchedule)) {
     base.backupSchedule = stored.backupSchedule as BackupSchedule;
+  }
+  if (typeof stored.retentionDays === 'number' && RETENTION_DAYS.has(stored.retentionDays)) {
+    base.retentionDays = stored.retentionDays;
   }
   if (typeof stored.devTools === 'boolean') base.devTools = stored.devTools;
   if (typeof stored.accent === 'string' && ACCENT_DEFAULTS.has(stored.accent)) base.accent = stored.accent;
@@ -195,6 +205,7 @@ async function writePluginSettings(profile: Profile, options: WriteOptions, opts
     comboSetupComplete: true,
     currency: profile.currency,
     backupSchedule: profile.backupSchedule,
+    retentionDays: profile.retentionDays,
     devTools: profile.devTools,
     accent: profile.accent,
     sidebarWidth: profile.sidebarWidth,

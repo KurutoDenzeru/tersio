@@ -108,11 +108,12 @@ test("a ponytail update without host exec still avoids npm", async () => {
 // A file:// URL, not a path: `import()` of `D:/...` reports protocol 'd:' on Windows.
 const updateJs = pathToFileURL(path.join(root, "dist", "cli", "update.js")).href;
 
+// State lives in the ledger now, so the probe asks the module instead of a file.
+const stateJs = pathToFileURL(path.join(root, "dist", "extensions", "shared", "state.js")).href;
 const PROBE = "import('" + updateJs + "').then(async (m) => {"
-  + " const fs = await import('node:fs');"
   + " const out = { cached: await m.checkForUpdate(), forced: await m.checkForUpdate(true) };"
-  + " const statePath = process.env.HOME + '/.tersio/state.json';"
-  + " out.state = fs.existsSync(statePath) ? JSON.parse(fs.readFileSync(statePath, 'utf8')) : null;"
+  + " const state = await import('" + stateJs + "');"
+  + " out.state = state.readState();"
   + " console.log('TERSIO-PROBE:' + JSON.stringify(out));"
   + "}).catch((e) => { console.error('PROBE-FAIL:' + e.message); process.exit(1); });";
 

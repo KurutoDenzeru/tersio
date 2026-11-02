@@ -1,4 +1,5 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { patchState, readState } from "../../extensions/shared/state.ts";
+import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { expect, test } from "vitest";
@@ -22,12 +23,8 @@ test.skipIf(bin === null)("a cached list from another probe set is re-derived", 
   process.env.TERSIO_HOME = home;
   try {
     const first = eligibleHeads(bin);
-    // Same binary, but the cached list came from a different probe set.
-    const state = JSON.parse(readFileSync(path.join(home, "state.json"), "utf8")) as { rtkEligible?: { version?: string } };
-    writeFileSync(
-      path.join(home, "state.json"),
-      JSON.stringify({ rtkEligible: { version: state.rtkEligible?.version, sig: "older-probe-set", heads: ["git"] } }),
-    );
+    // Same binary, but the stored list came from a different probe set.
+    patchState({ rtkEligible: { version: readState().rtkEligible?.version, sig: "older-probe-set", heads: ["git"] } });
     const second = eligibleHeads(bin);
     expect([...second].toSorted()).toEqual([...first].toSorted());
     expect(second.size).toBeGreaterThan(20);

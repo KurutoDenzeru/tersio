@@ -52,11 +52,15 @@ test("doctor reports MISSING components against an empty home", () => {
       expect(result.stdout).toMatch(new RegExp(line.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
     }
     // Categorized output: merged section headers plus a closing tally.
-    for (const sectionName of ["Hosts", "Extensions & plugins", "Usage & records", "Add-ons"]) {
+    for (const sectionName of ["Platform", "Hosts", "Add-ons"]) {
       expect(result.stdout).toMatch(new RegExp(`\\n${sectionName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\n`));
     }
     expect(result.stdout).toMatch(/Summary: \d+ checks — ✅ \d+ ok, ⚠️ \d+ warn, ❌ \d+ missing/);
     expect(result.stdout, "no host installed, so no per-host extension rows").not.toMatch(/Caveman extension/);
+    // The removed surfaces stay gone: no home row, no extension tree section, no prices feed.
+    for (const gone of ["Home: ok", "Extensions & plugins", "Extension tree", "Usage & records", "Prices feed"]) {
+      expect(result.stdout).not.toContain(gone);
+    }
     expect(result.stdout).not.toMatch(/Tersio CLI/);
     expect(result.stdout).not.toMatch(/available — run tersio update/);
   } finally {
@@ -226,7 +230,7 @@ test("doctor --fix repairs missing extension files in an empty home", () => {
 }, 30000);
 
 // An interrupted --fix leaves entry points present but imports absent.
-test("doctor names a half-written tree that still has its entry points", () => {
+test("doctor leaves the extension-tree section out, even with a half-written tree", () => {
   const home = missingHome();
   try {
     const ext = extDir(home);
@@ -242,8 +246,9 @@ test("doctor names a half-written tree that still has its entry points", () => {
     });
 
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toMatch(/❌ Extension tree: MISSING/);
-    expect(result.stdout).toContain("shared/status.ts");
+    // The section is gone by design; the host row still names the install it found.
+    expect(result.stdout).not.toContain("Extension tree");
+    expect(result.stdout).toMatch(/Oh My Pi: ok package/);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }
@@ -465,7 +470,9 @@ test("doctor does not count the exec row when rtk is absent", () => {
     expect(result.status, result.stderr).toBe(0);
     // The exec question is meaningless without a binary, and a missing pstack tree is one warning, not five.
     expect(result.stdout).toMatch(/—  RTK exec: not installed/);
-    expect(result.stdout).toMatch(/Summary: 9 checks — ✅ 3 ok, ⚠️ 1 warn, ❌ 5 missing/);
+    // Only the absent binary is named; the exec capability never gets a row of its own.
+    expect(result.stdout).not.toMatch(/RTK exec:\s*(ok|MISSING)/);
+    expect(result.stdout).toMatch(/Summary: \d+ checks — /);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

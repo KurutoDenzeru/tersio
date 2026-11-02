@@ -257,6 +257,24 @@ test("a monthly schedule snapshots an empty backup dir and skips while fresh", (
   }
 });
 
+test("daily takes a snapshot after a day; weekly and monthly leave a two-day-old one alone", () => {
+  const { dir, cleanup } = sandbox();
+  try {
+    writeFileSync(path.join(dir, "settings.json"), JSON.stringify({ backupSchedule: "daily" }));
+    expect(maybeScheduledBackup(), "first run takes a snapshot").toBe(true);
+    const twoDaysAgo = new Date(Date.now() - 2 * 86_400_000);
+    utimesSync(listDataBackups()[0].path, twoDaysAgo, twoDaysAgo);
+    expect(maybeScheduledBackup(), "a daily snapshot is due after a day").toBe(true);
+    for (const schedule of ["weekly", "monthly"]) {
+      utimesSync(listDataBackups()[0].path, twoDaysAgo, twoDaysAgo);
+      writeFileSync(path.join(dir, "settings.json"), JSON.stringify({ backupSchedule: schedule }));
+      expect(maybeScheduledBackup(), `${schedule} is not due after two days`).toBe(false);
+    }
+  } finally {
+    cleanup();
+  }
+});
+
 // --- usage-hosts: one mirror over every agent Tersio reads, omp and pi plus both OpenCode shapes. ---
 
 /** Pure ingest needs no disk, only the absence of a reset marker. */
@@ -1436,7 +1454,7 @@ describe("data backups", () => {
     const labels = made.members.map((entry) => entry.label);
     expect(labels).toContain("Usage ledger");
     expect(labels).toContain("Agent stats");
-    expect(labels).toContain("State");
+    // State, the price cache, and the upstream scorecard ride inside the usage ledger now, not as members.
     expect(made.members.every((entry) => entry.source.startsWith(dataBackupsDir))).toBe(true);
     // Listing reads the snapshot alone, so nothing sits beside it.
     expect(readdirSync(backupDir()).filter((name) => name.startsWith("data-"))).toEqual([path.basename(made.path)]);

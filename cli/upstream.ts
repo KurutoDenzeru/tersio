@@ -8,6 +8,8 @@ import { PACKAGE_VERSION, args, flagValue, parseJsonObject } from './common.ts';
 import { newerThan } from './update.ts';
 import { readState } from '../extensions/shared/state.ts';
 import { detectHosts, hostExtensionsDir } from './hosts.ts';
+import { cacheDelete, cacheGet, cacheKeys, cachePut, cacheStamp } from '../extensions/shared/cache-store.ts';
+import { readRetentionDays } from '../extensions/shared/plugin-settings.ts';
 import { EXT_DIR, PI_PONYTAIL_FILES, PONYTAIL_BUNDLE_FILES, PONYTAIL_DIR, PONYTAIL_PKG, PONYTAIL_VERSION, shippedOmpManifest, sourcePath, treeFileText, treeFilesFor } from './manifest.ts';
 import { textTable } from './common.ts';
 import { adaptCavemanFull } from '../extensions/shared/updater.ts';
@@ -60,23 +62,40 @@ export const CAVEMAN_PIN = 'v4.0.1';
 // c742dd6 is the newest commit that touched a body we track; every tracked pstack body was re-ported to it.
 const PSTACK_PIN = 'c742dd61706fbacc1b95f1a20b7b988cf096ce6c';
 
-/** Every upstream artifact in one folder, so the data home stays readable. */
-export function upstreamDir(): string {
-  return path.join(tersioHome(), 'upstream');
-}
+const HISTORY_KEY = 'upstream.history';
+const SCORECARD_KEY = 'upstream.scorecard';
+const treeKey = (repo: string, ref: string): string => `upstream.tree.${repo.replace('/', '-')}@${ref}`;
 
-/** The old loose files move under upstream/ once, so a rerun reads one layout. */
+/** One-time import of the folder older builds wrote, then the data home keeps no upstream tree at all. */
 async function migrateLayout(): Promise<void> {
-  const dir = upstreamDir();
-  await fs.mkdir(dir, { recursive: true }).catch(() => {});
-  const moves: Array<[string, string]> = [
-    [path.join(tersioHome(), 'scorecard.json'), path.join(dir, 'scorecard.json')],
-    [path.join(tersioHome(), 'upstream-scorecard.md'), path.join(dir, 'scorecard.md')],
-    [path.join(tersioHome(), 'upstream-trees'), path.join(dir, 'trees')],
-  ];
-  for (const [from, to] of moves) {
-    if (!existsSync(to) && existsSync(from)) await fs.rename(from, to).catch(() => {});
+  const dir = path.join(tersioHome(), 'upstream');
+  const legacy = path.join(tersioHome(), 'upstream-scorecard.md');
+  if (!existsSync(dir) && !existsSync(legacy) && !existsSync(path.join(tersioHome(), 'scorecard.json'))) return;
+  for (const file of [path.join(tersioHome(), 'scorecard.json'), path.join(dir, 'scorecard.json')]) {
+    const text = await readTextIfExists(file).catch(() => null);
+    if (text === null) continue;
+    cachePut(SCORECARD_KEY, text);
+    await fs.rm(file, { force: true }).catch(() => {});
   }
+  for (const trees of [path.join(tersioHome(), 'upstream-trees'), path.join(dir, 'trees')]) {
+    const names = await fs.readdir(trees).catch(() => null);
+    if (!names) continue;
+    for (const name of names) {
+      if (!name.endsWith('.json')) continue;
+      const text = await readTextIfExists(path.join(trees, name)).catch(() => null);
+      if (text !== null) cachePut(`upstream.tree.${name.replace(/\.json$/, '')}`, text);
+    }
+  }
+  const historyText = await readTextIfExists(path.join(dir, 'history.jsonl')).catch(() => null);
+  if (historyText !== null && cacheGet(HISTORY_KEY) === null) {
+    const points = historyText.split('\n').filter(Boolean).flatMap((line) => {
+      try { return [JSON.parse(line) as HistoryPoint]; } catch { return []; }
+    });
+    if (points.length > 0) cachePut(HISTORY_KEY, JSON.stringify(points));
+  }
+  // The Markdown report was never data: the CLI prints it, and --md writes it where asked.
+  await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
+  await fs.rm(legacy, { force: true }).catch(() => {});
 }
 
 /** Upstream path for one local pstack file: the port renamed leaves into the skill tree it came from. */
@@ -224,7 +243,10 @@ export interface Scorecard {
 
 /** The last scorecard, or null when none has been written yet. */
 export async function cachedScorecard(): Promise<Scorecard | null> {
-  return parseJsonObject<Scorecard>(await readTextIfExists(path.join(upstreamDir(), 'scorecard.json')));
+  await migrateLayout();
+  const stored = cacheGet(SCORECARD_KEY);
+  if (stored !== null) return parseJsonObject<Scorecard>(stored);
+  return null;
 }
 
 /** One run, as the page reads it back. */
@@ -237,12 +259,20 @@ export interface HistoryPoint {
 
 /** The last runs, oldest first, so the page can plot the accuracy. */
 export async function upstreamHistory(limit = 60): Promise<HistoryPoint[]> {
-  const text = await readTextIfExists(path.join(upstreamDir(), 'history.jsonl'));
-  if (!text) return [];
-  const rows = text.split('\n').filter(Boolean).flatMap((line) => {
-    try { return [JSON.parse(line) as HistoryPoint]; } catch { return []; }
-  });
-  return rows.slice(-limit);
+  await migrateLayout();
+  const text = cacheGet(HISTORY_KEY);
+  if (text === null) return [];
+  try {
+    const parsed = JSON.parse(text) as HistoryPoint[];
+    if (!Array.isArray(parsed)) return [];
+    // The chart follows the same window as the usage pages: an old run is not a page of its own.
+    const days = readRetentionDays();
+    const cutoff = days > 0 ? Date.now() - days * 86_400_000 : 0;
+    const rows = cutoff > 0 ? parsed.filter((point) => (point.at ?? 0) >= cutoff) : parsed;
+    return rows.slice(-limit);
+  } catch {
+    return [];
+  }
 }
 
 /** One line per run, appended, so the accuracy has a history. */
@@ -253,7 +283,15 @@ async function writeHistory(card: Scorecard): Promise<void> {
     drift: card.drift,
     sources: card.sources.map((row) => ({ source: row.source, pct: row.tracked === 0 ? 100 : Math.round((row.matched / row.tracked) * 1000) / 10 })),
   };
-  await fs.appendFile(path.join(upstreamDir(), 'history.jsonl'), `${JSON.stringify(point)}\n`, 'utf8').catch(() => { });
+  const text = cacheGet(HISTORY_KEY);
+  let rows: HistoryPoint[] = [];
+  try { rows = text === null ? [] : (JSON.parse(text) as HistoryPoint[]); } catch { rows = []; }
+  if (!Array.isArray(rows)) rows = [];
+  const days = readRetentionDays();
+  const cutoff = days > 0 ? Date.now() - days * 86_400_000 : 0;
+  const kept = cutoff > 0 ? rows.filter((row) => (row.at ?? 0) >= cutoff) : rows;
+  // A row per run, capped so the row stays small however long the machine runs.
+  cachePut(HISTORY_KEY, JSON.stringify([...kept, point].slice(-200)));
 }
 
 /** Run the live check, cache both artifacts, and hand the card back. */
@@ -267,9 +305,7 @@ export async function refreshScorecard(withinMs = 90_000): Promise<Scorecard> {
         timer = setTimeout(() => reject(new Error(`the check timed out after ${Math.round(withinMs / 1000)}s`)), withinMs);
       }),
     ]);
-    await fs.mkdir(upstreamDir(), { recursive: true }).catch(() => {});
-    await fs.writeFile(path.join(upstreamDir(), 'scorecard.json'), `${JSON.stringify(card, null, 2)}\n`, 'utf8').catch(() => {});
-    await fs.writeFile(path.join(upstreamDir(), 'scorecard.md'), scorecardMarkdown(card), 'utf8').catch(() => {});
+    cachePut(SCORECARD_KEY, JSON.stringify(card));
     return card;
   } finally {
     if (timer) clearTimeout(timer);
@@ -330,13 +366,13 @@ interface TreeResult { entries: Map<string, string> | null; failure: FetchFailur
 
 /** One commit's tree as path → blob sha. A cached tree is used whenever the live read fails, but the failure is still reported, so a rate-limited run never passes for a clean one. */
 async function treeOf(repo: string, ref: string): Promise<TreeResult> {
-  const cacheDir = path.join(upstreamDir(), 'trees');
+  const key = treeKey(repo, ref);
   const immutable = /^[0-9a-f]{7,40}$/i.test(ref);
-  const cacheFile = path.join(cacheDir, `${repo.replace('/', '-')}@${ref}.json`);
-  const cached = parseJsonObject<{ entries?: Array<[string, string]>; fetchedAt?: number }>(await readTextIfExists(cacheFile));
+  const cachedText = cacheGet(key);
+  const cached = cachedText === null ? null : parseJsonObject<{ entries?: Array<[string, string]>; fetchedAt?: number }>(cachedText);
   if (cached?.entries && (immutable || (cached.fetchedAt ?? 0) > Date.now() - HEAD_TTL_MS)) {
-    // A hit keeps the file alive so an abandoned pin ages out instead of sitting forever.
-    if (immutable) await fs.utimes(cacheFile, new Date(), new Date()).catch(() => { });
+    // A hit keeps the row alive so an abandoned pin ages out instead of sitting forever.
+    if (immutable) cachePut(key, cachedText as string);
     return { entries: new Map(cached.entries), failure: null };
   }
   const token = githubToken();
@@ -346,9 +382,8 @@ async function treeOf(repo: string, ref: string): Promise<TreeResult> {
       token ? { headers: { Authorization: `Bearer ${token}` } } : {},
     );
     const entries = (json.tree ?? []).filter((e) => e.type === 'blob').map((e) => [e.path, e.sha] as [string, string]);
-    await fs.mkdir(cacheDir, { recursive: true }).catch(() => {});
-    await fs.writeFile(cacheFile, `${JSON.stringify({ entries, fetchedAt: Date.now() })}\n`, 'utf8').catch(() => {});
-    await pruneTrees(cacheDir).catch(() => { });
+    cachePut(key, JSON.stringify({ entries, fetchedAt: Date.now() }));
+    pruneTrees();
     return { entries: new Map(entries), failure: null };
   } catch (e) {
     // Drift is best-effort: an unreachable API must not erase a figure that was already measured.
@@ -356,12 +391,11 @@ async function treeOf(repo: string, ref: string): Promise<TreeResult> {
   }
 }
 
-/** Drop the tree cache of pins nobody reads. An immutable pin's tree is kept while its pin file stays. */
-async function pruneTrees(cacheDir: string): Promise<void> {
-  for (const name of await fs.readdir(cacheDir)) {
-    if (!name.endsWith('.json') || name.includes('@HEAD')) continue;
-    const stat = await fs.stat(path.join(cacheDir, name)).catch(() => null);
-    if (stat && Date.now() - stat.mtimeMs > TREE_TTL_MS) await fs.rm(path.join(cacheDir, name), { force: true });
+/** Drop the tree rows of pins nobody reads. An immutable pin's row is kept while its pin stays. */
+function pruneTrees(): void {
+  for (const key of cacheKeys('upstream.tree.')) {
+    if (key.includes('@HEAD')) continue;
+    if (Date.now() - cacheStamp(key) > TREE_TTL_MS) cacheDelete(key);
   }
 }
 
@@ -1185,17 +1219,15 @@ export async function runUpstream(): Promise<void> {
   const strict = args.includes('--strict');
   // Strict is check plus drift, so it arms the gate on its own; a report alone never fails.
   const check = args.includes('--check') || strict;
-  const cacheFile = path.join(upstreamDir(), 'scorecard.json');
   let card: Scorecard | null = null;
-  if (offline) card = parseJsonObject<Scorecard>(await readTextIfExists(cacheFile));
+  if (offline) card = await cachedScorecard();
   else {
     try {
       card = await collect();
-      await fs.mkdir(tersioHome(), { recursive: true }).catch(() => {});
-      await fs.writeFile(cacheFile, `${JSON.stringify(card, null, 2)}\n`, 'utf8').catch(() => {});
+      cachePut(SCORECARD_KEY, JSON.stringify(card));
     } catch (e) {
       console.error(`[warn] live check failed (${(e as Error).message}); reading the last scorecard`);
-      card = parseJsonObject<Scorecard>(await readTextIfExists(cacheFile));
+      card = await cachedScorecard();
     }
   }
   if (!card) {
@@ -1206,11 +1238,13 @@ export async function runUpstream(): Promise<void> {
   if (json) console.log(JSON.stringify(card, null, 2));
   else printScorecard(card, offline, strict);
   if (!json) {
-    // `--md <file>` writes where asked; the default lands beside the JSON cache so a rerun overwrites one file.
-    const mdFile = flagValue('--md') ?? path.join(upstreamDir(), 'scorecard.md');
-    await fs.mkdir(path.dirname(mdFile), { recursive: true }).catch(() => {});
-    await fs.writeFile(mdFile, scorecardMarkdown(card), 'utf8').catch(() => {});
-    console.log(`  Report: ${mdFile}`);
+    // The report prints above. `--md <file>` is the only way it touches the disk, and only where asked.
+    const mdFile = flagValue('--md');
+    if (mdFile) {
+      await fs.mkdir(path.dirname(mdFile), { recursive: true }).catch(() => {});
+      await fs.writeFile(mdFile, scorecardMarkdown(card), 'utf8').catch(() => {});
+      console.log(`  Report: ${mdFile}`);
+    }
   }
   // A plain run only reports; --check, or --strict, turns a gap of ours, or drift past the ceiling, into a failure.
   if (check && gateFails(card, strict)) process.exitCode = 1;

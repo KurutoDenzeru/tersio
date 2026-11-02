@@ -7,7 +7,6 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 
 import { agentDbPath, statsDbPath } from './agent-stats.ts';
-import { pricesCachePath } from './pricing.ts';
 import { rtkDbPath } from './rtk-gain.ts';
 import { sqliteExec } from './sqlite.ts';
 import { usageDbPath } from './usage-store.ts';
@@ -79,9 +78,7 @@ function sizeOf(file: string): number {
 export function dataSources(): BackupFile[] {
   const declared: Array<[string, string]> = [
     ['Usage ledger', usageDbPath()],
-    ['State', path.join(tersioHome(), 'state.json')],
     ['Settings', path.join(tersioHome(), 'settings.json')],
-    ['Price cache', pricesCachePath()],
     ['Agent stats', statsDbPath()],
     ['Agent quota windows', agentDbPath()],
     ['Command history', rtkDbPath()],

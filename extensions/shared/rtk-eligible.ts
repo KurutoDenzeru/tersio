@@ -61,8 +61,17 @@ export function deriveEligibleHeads(bin: string): Set<string> {
   return heads;
 }
 
-/** The probe set decides the derived list, so its signature belongs in the cache key. */
+/** The probe set decides the derived list, so a short hash of it belongs in the cache key, not the whole list. */
 const PROBE_SIGNATURE = Object.keys(PROBES).join(',');
+function signatureHash(text: string): string {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(16).padStart(8, '0');
+}
+const PROBE_SIG = signatureHash(PROBE_SIGNATURE);
 
 function rtkVersion(bin: string): string {
   try {
@@ -84,10 +93,10 @@ export function eligibleHeads(bin: string | null): ReadonlySet<string> {
         ? { version: parsed.version, heads: parsed.heads as string[] }
         : null;
     });
-  if (cached?.version === version && cached?.sig === PROBE_SIGNATURE && Array.isArray(cached.heads) && cached.heads.every((h) => typeof h === 'string')) {
+  if (cached?.version === version && cached?.sig === PROBE_SIG && Array.isArray(cached.heads) && cached.heads.every((h) => typeof h === 'string')) {
     return new Set(cached.heads);
   }
   const heads = deriveEligibleHeads(bin);
-  patchState({ rtkEligible: { version, sig: PROBE_SIGNATURE, heads: [...heads] } });
+  patchState({ rtkEligible: { version, sig: PROBE_SIG, heads: [...heads] } });
   return heads;
 }

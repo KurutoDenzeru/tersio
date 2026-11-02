@@ -8,18 +8,16 @@ import {
   BUN_BIN_DIR, OMP_BIN,
   execP, relTime, shimCommand,
 } from './common.ts';
-import { configEntries } from './profile.ts';
 import { detectHosts, dshPackageDir, hostExtensionsDir, ompPackageDir, piPonytailPackageDir, pigPonytailPackageDir } from './hosts.ts';
 import type { DetectedHost } from './hosts.ts';
 import { GENERATED_TREE_FILES } from './manifest.ts';
 import { askInteractiveChoice, askInteractiveConfirm, runInteractivePhase } from './interactive.ts';
 import { usageDbPath } from '../extensions/shared/usage-store.ts';
-import { pricesCachePath } from '../extensions/shared/pricing.ts';
 import { readHeadroomDoctor } from '../extensions/shared/headroom-gain.ts';
-import { piAgentDir, pigAgentDir, readTextIfExists, resolveHeadroomBinary, resolveHostBinary, resolveRtkBinary, rtkPlatformSpec, ruleBodyProblem, tersioHome } from '../extensions/shared/utils.ts';
+import { piAgentDir, pigAgentDir, readTextIfExists, resolveHeadroomBinary, resolveHostBinary, resolveRtkBinary, rtkPlatformSpec, ruleBodyProblem } from '../extensions/shared/utils.ts';
 import { sqliteScript, statsDbPath } from '../extensions/shared/agent-stats.ts';
 import { OMP_SUBAGENT_MARKER } from '../extensions/shared/session-state.ts';
-import { PI_PONYTAIL_FILES, PONYTAIL_BUNDLE_FILES, PONYTAIL_VERSION, TREE_FILES, TREE_PSTACK_FILES, isObsoleteTreeFile, treeFileText, treeFilesFor } from './manifest.ts';
+import { PI_PONYTAIL_FILES, PONYTAIL_BUNDLE_FILES, PONYTAIL_VERSION, TREE_PSTACK_FILES, isObsoleteTreeFile, treeFileText, treeFilesFor } from './manifest.ts';
 import { serviceRunning, serviceState } from './doctor-fix.ts';
 import { readState } from '../extensions/shared/state.ts';
 import { CAVEMAN_PIN } from './upstream.ts';
@@ -65,9 +63,6 @@ function reportUnused(label: string, detail: string): void {
 }
 
 // Session defaults come from tersio's store; naming the source keeps a harness from reading as a second default.
-function shortKey(key: string): string {
-  return key.replace('Default', '');
-}
 
 async function runDoctor(recheck = false): Promise<DoctorSummary> {
   console.log('\n=== Tersio Doctor ===');
@@ -124,10 +119,8 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   // The tree a host loads: omp reads the plugin package, every other host its own directory.
   const treeBaseFor = (host: DetectedHost): string =>
     host.id === 'omp' ? path.join(tersioPluginDir, 'extensions') : hostExtensionsDir(host.id);
-  // A tree holding any file of this build is compared even when the host reads as not installed: pi auto-discovers every index.ts it finds, so a half-written tree needs reporting.
-  const treeHoldsOwnFiles = (host: DetectedHost): boolean =>
-    treeFilesFor(host.id === 'omp' ? 'opencode' : host.id).some((rel) => existsSync(path.join(treeBaseFor(host), ...rel.split('/'))));
-  for (const host of hosts.filter((h) => h.installed || treeHoldsOwnFiles(h))) {
+  // Only an install this build recognises is compared; a partial tree is debris, and the host row already names the command that clears it.
+  for (const host of hosts.filter((h) => h.installed)) {
     const treeId = host.id === 'omp' ? 'opencode' : host.id;
     const base = treeBaseFor(host);
     let onDisk = new Set(hostTreeFiles(base).filter((rel) => path.extname(rel) !== '.js'));
@@ -187,7 +180,6 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
     rtkMtime: rtkBin ? fs.stat(rtkBin).catch(() => null) : Promise.resolve(null),
     ruleMtime: fs.stat(cavemanRule('rule.md')).catch(() => null),
     ponytailMtime: fs.stat(ponytailIndex).catch(() => null),
-    pricesMtime: fs.stat(pricesCachePath()).catch(() => null),
   };
   const rtkVersionProbe: Promise<string | null> = rtkBin ? execP(rtkBin, ['--version'], { timeout: 5000 }).then(
     (r) => r.stdout.trim() || r.stderr.trim() || null,
@@ -207,7 +199,7 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   const opencodeServiceProbe: Promise<{ status: string; live: boolean } | null> = opencodeBin
     ? Promise.resolve(serviceState())
     : Promise.resolve(null);
-  const [[_ompPkgText, configText], [_cavemanIndexText, _rtkIndexText, _updaterIndexText, ponytailPkgText], [cavemanRuleText, cavemanLiteText, cavemanMegacaveLiteText, cavemanMegacaveUltraText, cavemanUltraText, cavemanMegacaveText, pstackRuleText, pstackTreeFiles, ruleMtime, rtkBinText, rtkMtime, rtkVersion, ponytailMtime, pricesMtime, headroomVersionRaw], opencodeService] = await runInteractivePhase('Checking installation', () => Promise.all([
+  const [[_ompPkgText, _configText], [_cavemanIndexText, _rtkIndexText, _updaterIndexText, ponytailPkgText], [cavemanRuleText, cavemanLiteText, cavemanMegacaveLiteText, cavemanMegacaveUltraText, cavemanUltraText, cavemanMegacaveText, pstackRuleText, pstackTreeFiles, ruleMtime, rtkBinText, rtkMtime, rtkVersion, ponytailMtime, headroomVersionRaw], opencodeService] = await runInteractivePhase('Checking installation', () => Promise.all([
     Promise.all([
       probes.ompPkgText,
       probes.configText,
@@ -232,7 +224,6 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
       probes.rtkMtime,
       rtkVersionProbe,
       probes.ponytailMtime,
-      probes.pricesMtime,
       headroomVersionProbe,
     ]),
     opencodeServiceProbe,
@@ -257,22 +248,17 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
     // Windows on ARM today: rtk publishes no build, so the RTK rows read as not installed.
     console.log(`      rtk publishes no build for ${process.platform}/${process.arch}; every RTK row below reads as missing`);
   }
-  // Windows resolves data through the profile, so name the resolved home and data dir.
-  check('Home', HOME !== '', HOME);
-  check('Data', true, path.join(tersioHome(), 'usage.db'));
+  console.log(`  Usage DB: ${usageDbPath()} (local only)`);
 
   section('Hosts');
   for (const host of hosts) {
-    // pi can hold a working tree while reading as not installed; use the tree as ground truth.
-    const piTree = (host.id === 'pi' && !host.installed && existsSync(hostExtensionsDir('pi')))
-      ? hostExtensionsDir('pi')
-      : null;
-    if (piTree !== null) {
-      check(host.label, true, `extensions ${PACKAGE_NAME} ${PACKAGE_VERSION}`);
-      continue;
-    }
     if (!host.installed) {
-      // A pi declaration without tree or package is a broken install: a counted row, not "not installed".
+      // A partial tree is debris, not an install: the host reads as missing, and the same row names the cleanup.
+      const leftover = host.id !== 'dsh' && existsSync(hostExtensionsDir(host.id));
+      if (leftover) {
+        reportUnused(host.label, `· leftover files — tersio uninstall --host ${host.id}`);
+        continue;
+      }
       if (host.declared) check(host.label, false, `declared (${host.declared}) but not installed`);
       else reportUnused(host.label, `· ${host.installCmd}`);
       continue;
@@ -280,13 +266,6 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
     // One line per host, omp style: kind and version, no path echo.
     const kind = host.via === 'tree' ? 'extensions' : 'package';
     check(host.label, true, `${kind} ${PACKAGE_NAME}${host.version ? ` ${host.version}` : ''}`);
-  }
-
-  // Session defaults come from tersio's store; naming the source keeps a harness from reading as a second default.
-  console.log(`  Defaults: ${configEntries(null).map((row) => `${shortKey(row.key)}=${row.value}`).join(' · ')}`);
-  for (const host of hosts.filter((entry) => entry.installed)) {
-    const overrides = configEntries(host.id).filter((row) => row.source === 'override' || row.source === 'invalid');
-    if (overrides.length > 0) console.log(`  ${host.label} overrides: ${overrides.map((row) => `${shortKey(row.key)}=${row.value}${row.source === 'invalid' ? ' (invalid)' : ''}`).join(' · ')}`);
   }
 
   // A version apart means omp can load a tree of two releases.
@@ -305,25 +284,6 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
     }
   }
 
-  section('Extensions & plugins');
-
-  if (hosts.find((host) => host.id === 'omp')?.via === 'package') {
-    const explicitEntries = (configText ?? '').split('\n')
-      .map((line) => line.trim().replace(/^-\s*/, '').replace(/^['"]|['"]$/g, ''))
-      .filter((line) => line.startsWith('/') || line.startsWith('.'));
-    const duplicateExtensions = [...new Set(explicitEntries.filter((entry, index) => explicitEntries.indexOf(entry) !== index))];
-    check('Unique config registrations', duplicateExtensions.length === 0, duplicateExtensions.length ? duplicateExtensions.join(', ') : '');
-    // A half-written tree imports a module that is absent; OMP then drops the extension.
-    const extDir = path.join(tersioPluginDir, 'extensions');
-    const missing = TREE_FILES.filter((file) => !existsSync(path.join(extDir, ...file.split('/'))));
-    check('Extension tree', missing.length === 0, missing.length === 0
-      ? `${TREE_FILES.length} files ok`
-      : `${missing.length} of ${TREE_FILES.length} missing: ${missing.join(', ')}`);
-  }
-  section('Usage & records');
-  console.log(`  Usage DB (tersio-owned · local hosted): ${usageDbPath()}`);
-  const pricesAge = pricesMtime ? `(pulled ${relTime(Date.now() - pricesMtime.mtimeMs)} · ${absDate(pricesMtime.mtimeMs)})` : '';
-  check('Prices feed', pricesMtime !== null, pricesAge || pricesCachePath());
   // Pages read omp's own index, which advances only while an omp process owns it, so a stall reads as empty.
   const indexLag = statsIndexLag();
   if (indexLag) warnLine('omp stats index', indexLag);

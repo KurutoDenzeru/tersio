@@ -44,6 +44,20 @@ export function readPluginSettings(): Record<string, unknown> {
   return readSettingsFile() ?? legacyOmpSettings() ?? {};
 }
 
+/** Retention windows the settings store accepts; `0` keeps everything. */
+export const RETENTION_DAYS: ReadonlySet<number> = new Set([0, 7, 14, 30, 90, 180, 365]);
+
+/** The retention window from settings. `0`, the default, means no pruning anywhere. */
+export function readRetentionDays(): number {
+  try {
+    const raw = JSON.parse(readFileSync(tersioSettingsFile(), 'utf8')) as { retentionDays?: unknown };
+    const days = Number(raw?.retentionDays);
+    return RETENTION_DAYS.has(days) ? days : 0;
+  } catch {
+    return 0;
+  }
+}
+
 /** Which agent a session runs on; the settings readers scope the per-host layer with it. */
 export type HostScope = 'omp' | 'pi' | 'pig' | 'opencode';
 

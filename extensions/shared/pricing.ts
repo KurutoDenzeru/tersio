@@ -1,7 +1,9 @@
 // pricing.ts — model pricing from LiteLLM. Exact id → prefix strip → default, known:false if unpriced.
 import fs from 'node:fs';
 import path from 'node:path';
-import { tersioDataPath } from './utils.ts';
+import { cacheGet, cachePut, cacheStamp } from './cache-store.ts';
+import { readPluginSettings, tersioSettingsFile } from './plugin-settings.ts';
+import { tersioDataPath, tersioHome } from './utils.ts';
 
 export interface ModelPrice {
   input: number;
@@ -31,9 +33,11 @@ const LITELLM_URL = 'https://raw.githubusercontent.com/BerriAI/litellm/main/mode
 const CACHE_TTL_MS = 7 * 24 * 3600 * 1000;
 let refreshInflight: Promise<boolean> | null = null;
 
+/** The cache key the price table lives under, beside the usage ledger. */
+const PRICES_KEY = 'prices';
+
+/** The legacy file, read once so an existing cache survives the move. */
 export function pricesCachePath(): string {
-  const override = process.env.TERSIO_PRICES_FILE;
-  if (override) return override;
   return tersioDataPath('prices.json', 'tersio-prices.json');
 }
 
@@ -41,29 +45,109 @@ export function pricesCachePath(): string {
 export function pricesOverridePath(): string {
   const override = process.env.TERSIO_PRICES_OVERRIDE_FILE;
   if (override) return override;
-  return tersioDataPath('prices.local.json', 'tersio-prices.local.json');
+  return path.join(tersioHome(), 'prices.local.json');
 }
 
-/** The override file's mtime, or 0 when absent. Callers key their memo on it. */
-function overrideStamp(): number {
-  try {
-    return fs.statSync(pricesOverridePath()).mtimeMs;
-  } catch {
-    return 0;
+/** The cached feed text: the env file when a caller pins one, else the ledger. */
+function readCacheText(): string | null {
+  const file = process.env.TERSIO_PRICES_FILE;
+  if (file) {
+    try { return fs.readFileSync(file, 'utf8'); } catch { return null; }
   }
+  const stored = cacheGet(PRICES_KEY);
+  if (stored !== null) return stored;
+  // One-time import: a cache written by an older build keeps working, then leaves the data home.
+  try {
+    const text = fs.readFileSync(pricesCachePath(), 'utf8');
+    cachePut(PRICES_KEY, text);
+    fs.rmSync(pricesCachePath(), { force: true });
+    return text;
+  } catch {
+    return null;
+  }
+}
+
+/** Changes whenever the cache changes, so the in-process memo can tell. */
+function cacheToken(): string | number {
+  const file = process.env.TERSIO_PRICES_FILE;
+  if (file) {
+    try { const s = fs.statSync(file); return `${s.mtimeMs}:${s.size}`; } catch { return 'missing'; }
+  }
+  return cacheStamp(PRICES_KEY);
+}
+
+function writeCacheText(text: string): boolean {
+  const file = process.env.TERSIO_PRICES_FILE;
+  if (file) {
+    try {
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, text, 'utf8');
+      return true;
+    } catch { return false; }
+  }
+  return cachePut(PRICES_KEY, text);
+}
+
+/** The override map: the env file, else the settings store, else the legacy file imported once. */
+function overrideSource(): { text: string | null; stamp: number } {
+  const envFile = process.env.TERSIO_PRICES_OVERRIDE_FILE;
+  if (envFile) {
+    try { const s = fs.statSync(envFile); return { text: fs.readFileSync(envFile, 'utf8'), stamp: s.mtimeMs }; } catch { return { text: null, stamp: 0 }; }
+  }
+  const block = readPluginSettings().prices;
+  if (block && typeof block === 'object' && !Array.isArray(block)) {
+    let stamp = 0;
+    try { stamp = fs.statSync(tersioSettingsFile()).mtimeMs; } catch { stamp = 0; }
+    return { text: JSON.stringify(block), stamp };
+  }
+  const legacy = pricesOverridePath();
+  try {
+    const text = fs.readFileSync(legacy, 'utf8');
+    const parsed = JSON.parse(text) as Record<string, unknown>;
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      savePricesOverride(parsed);
+      fs.rmSync(legacy, { force: true });
+      let stamp = 0;
+      try { stamp = fs.statSync(tersioSettingsFile()).mtimeMs; } catch { stamp = 0; }
+      return { text, stamp };
+    }
+  } catch { /* no legacy overrides */ }
+  return { text: null, stamp: 0 };
+}
+
+/** Writes the `prices` block the settings file owns, so an operator edits one store, not a second file. */
+export function savePricesOverride(prices: Record<string, unknown>): boolean {
+  try {
+    const file = tersioSettingsFile();
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const stored = readPluginSettings();
+    fs.writeFileSync(file, `${JSON.stringify({ ...stored, prices }, null, 2)}\n`, 'utf8');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** The override's mtime, or 0 when absent. A stat only, because this sits on the price lookup path. */
+function overrideStamp(): number {
+  const envFile = process.env.TERSIO_PRICES_OVERRIDE_FILE;
+  if (envFile) {
+    try { return fs.statSync(envFile).mtimeMs; } catch { return 0; }
+  }
+  try { return fs.statSync(tersioSettingsFile()).mtimeMs; } catch { return 0; }
 }
 
 let overrideCache: { stamp: number; exact: Map<string, ModelPrice>; tails: Array<[string, ModelPrice]> } | null = null;
 
 /** Reads the override file, keeping a `*`-prefixed entry as a suffix matcher. */
 function loadOverrides(stamp = overrideStamp()): { exact: Map<string, ModelPrice>; tails: Array<[string, ModelPrice]> } | null {
-  if (stamp === 0) return null;
-  const file = pricesOverridePath();
   if (overrideCache && overrideCache.stamp === stamp) return overrideCache;
   const exact = new Map<string, ModelPrice>();
   const tails: Array<[string, ModelPrice]> = [];
   try {
-    const parsed = JSON.parse(fs.readFileSync(file, 'utf8')) as Record<string, unknown>;
+    const source = overrideSource().text;
+    if (source === null) return null;
+    const parsed = JSON.parse(source) as Record<string, unknown>;
     for (const [id, row] of Object.entries(parsed ?? {})) {
       const price = asPrice(row);
       if (!price) continue;
@@ -105,31 +189,20 @@ function asPrice(v: unknown): ModelPrice | null {
   return null;
 }
 
-let liveCache: { path: string; mtime: number; size: number; prices: LivePrices } | null = null;
+let liveCache: { token: string | number; prices: LivePrices } | null = null;
 
 export function loadLivePrices(): LivePrices | null {
-  // One stat per call beats a full parse; the key carries size and mtime, because Windows rounds a rapid rewrite's mtime to one value.
-  try {
-    const file = pricesCachePath();
-    const stat = fs.statSync(file);
-    if (liveCache && liveCache.path === file && liveCache.mtime === stat.mtimeMs && liveCache.size === stat.size) {
-      return liveCache.prices;
-    }
-    const prices = readLivePrices();
-    if (prices) liveCache = { path: file, mtime: stat.mtimeMs, size: stat.size, prices };
-    return prices;
-  } catch {
-    return null;
-  }
+  // One stamp per call beats a full parse; the token changes on a write, so a refresh is seen at once.
+  const token = cacheToken();
+  if (liveCache && liveCache.token === token) return liveCache.prices;
+  const prices = readLivePrices();
+  if (prices) liveCache = { token, prices };
+  return prices;
 }
 
 function readLivePrices(): LivePrices | null {
-  let raw: string;
-  try {
-    raw = fs.readFileSync(pricesCachePath(), 'utf8');
-  } catch {
-    return null;
-  }
+  const raw = readCacheText();
+  if (raw === null) return null;
   try {
     const parsed = JSON.parse(raw) as { fetchedAt?: unknown; exact?: unknown; deprecated?: unknown };
     if (typeof parsed.fetchedAt !== 'number' || !parsed.exact || typeof parsed.exact !== 'object') return null;
@@ -276,9 +349,7 @@ export async function refreshPrices(): Promise<boolean> {
     }
     if (!Object.keys(exact).length) return false;
     try {
-      fs.mkdirSync(path.dirname(pricesCachePath()), { recursive: true });
-      fs.writeFileSync(pricesCachePath(), JSON.stringify({ fetchedAt: Date.now(), exact, deprecated }), 'utf8');
-      return true;
+      return writeCacheText(JSON.stringify({ fetchedAt: Date.now(), exact, deprecated }));
     } catch {
       return false;
     }

@@ -27,7 +27,7 @@ import {
 import { tersioDataPath } from './utils.ts';
 import { createDataBackup, newestDataBackup, readSnapshotMember, restoreSnapshotMember } from './snapshots.ts';
 import { MODEL_ALIASES } from './pricing.ts';
-import { tersioSettingsFile } from './plugin-settings.ts';
+import { readRetentionDays, tersioSettingsFile } from './plugin-settings.ts';
 import type { OpencodeClassification, OpencodeDbRow, OpencodeMessage, RunStatus, SessionLineRow, SessionTokens, ToolFact } from './usage-ledger.ts';
 
 export function usageDbPath(): string {
@@ -107,7 +107,9 @@ function pragmas(db: string): void {
     'PRAGMA wal_autocheckpoint=256;' +
     'PRAGMA cache_size=-8000;' +
     'PRAGMA temp_store=MEMORY;' +
-    'PRAGMA mmap_size=268435456;');
+    'PRAGMA mmap_size=268435456;' +
+    // Cheap unless the planner's statistics are stale, and it keeps range queries on the right index.
+    'PRAGMA optimize;');
 }
 
 function storedParserVersion(db: string): string | null {
@@ -458,6 +460,16 @@ export function readBackupSchedule(): string {
   }
 }
 
+/** Drop transcript rows past the window. The file rows stay, so a later sync appends the new turns instead of re-reading the old ones. */
+function pruneRetention(db: string): void {
+  const days = readRetentionDays();
+  if (days <= 0) return;
+  const cutoff = Date.now() - days * 86_400_000;
+  try {
+    run(db, `DELETE FROM messages WHERE t IS NOT NULL AND t < ${cutoff};`);
+  } catch { /* a store without the table */ }
+}
+
 /** Snapshot on the schedule, skipping when the newest one is still fresh. */
 export function maybeScheduledBackup(): boolean {
   const every = SCHEDULE_MS[readBackupSchedule()];
@@ -649,6 +661,8 @@ export function syncUsageDb(): boolean {
     // One rewrite so the additive columns' NULL rows gain latency and tool facts; runs while a marker is absent.
     if (!downgrade && (!ttftBackfilled(db) || !toolFactsBackfilled(db))) markTranscriptsDirty(db);
     maybeScheduledBackup();
+    // Retention applies even on a sync with nothing new, so a quiet machine still lets old rows age out.
+    pruneRetention(db);
   } catch {
     return false;
   }

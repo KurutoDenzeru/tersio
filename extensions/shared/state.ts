@@ -1,6 +1,7 @@
-// One state file: reset watermark, update check, rtk heads, and the doctor report. Each key migrates from its old file.
-import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+// One state row in the usage ledger: reset watermark, update check, rtk heads, and the doctor report. Each key migrates from its old file.
+import { readFileSync, rmSync } from 'node:fs';
 import path from 'node:path';
+import { cacheGet, cachePut } from './cache-store.ts';
 import { tersioHome } from './utils.ts';
 
 export interface TersioState {
@@ -19,13 +20,38 @@ export interface TersioState {
   diag?: unknown;
 }
 
+const STATE_KEY = 'state';
+
+/** The loose file an older build wrote; kept for the one-time import below. */
 export function tersioStateFile(): string {
   return path.join(tersioHome(), 'state.json');
 }
 
+/** The state row, importing the old file and then removing it, so the data home keeps no copy. */
+function current(): TersioState {
+  const text = cacheGet(STATE_KEY);
+  if (text !== null) {
+    try {
+      const parsed: unknown = JSON.parse(text);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed as TersioState;
+    } catch { /* a damaged row reads empty */ }
+    return {};
+  }
+  try {
+    const raw = readFileSync(tersioStateFile(), 'utf8');
+    const parsed: unknown = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      cachePut(STATE_KEY, raw);
+      rmSync(tersioStateFile(), { force: true });
+      return parsed as TersioState;
+    }
+  } catch { /* none yet */ }
+  return {};
+}
+
 let migrated = false;
 
-/** Fold the old loose files into state.json once, and delete the two with no reader left. */
+/** Fold the old loose files into the state row once, and delete the two with no reader left. */
 function migrateLegacy(): void {
   if (migrated) return;
   migrated = true;
@@ -33,11 +59,18 @@ function migrateLegacy(): void {
   const pick = <T>(name: string, parse: (raw: string) => T | null): T | null =>
     takeLegacy(path.join(home, name), parse);
   const reset = pick('reset.json', (raw) => {
-    const ts = (JSON.parse(raw) as { ts?: unknown }).ts;
+    const parsed = JSON.parse(raw) as { ts?: unknown };
+    const ts = parsed.ts;
     return typeof ts === 'number' && Number.isFinite(ts) && ts > 0 ? ts : null;
   });
-  const updateCheck = pick('update-check.json', (raw) => JSON.parse(raw) as TersioState['updateCheck'] ?? null);
-  const rtkEligible = pick('rtk-eligible.json', (raw) => JSON.parse(raw) as TersioState['rtkEligible'] ?? null);
+  const updateCheck = pick('update-check.json', (raw) => {
+    const parsed = JSON.parse(raw) as TersioState['updateCheck'] | null;
+    return parsed ?? null;
+  });
+  const rtkEligible = pick('rtk-eligible.json', (raw) => {
+    const parsed = JSON.parse(raw) as TersioState['rtkEligible'] | null;
+    return parsed ?? null;
+  });
   const diag = pick('diag.json', (raw) => JSON.parse(raw) as unknown);
   const patch: Partial<TersioState> = {};
   if (reset !== null) patch.reset = reset;
@@ -51,22 +84,14 @@ function migrateLegacy(): void {
 
 export function readState(): TersioState {
   migrateLegacy();
-  try {
-    const raw = JSON.parse(readFileSync(tersioStateFile(), 'utf8')) as unknown;
-    return raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as TersioState) : {};
-  } catch {
-    return {};
-  }
+  return current();
 }
 
-/** Read, merge, write. A rename keeps the file whole when a write dies midway. */
+/** Read, merge, write. One row write is atomic, so a crash never leaves half a state. */
 export function patchState(patch: Partial<TersioState>): void {
   try {
-    const next = { ...readState(), ...patch };
-    const file = tersioStateFile();
-    mkdirSync(path.dirname(file), { recursive: true });
-    writeFileSync(`${file}.tmp`, `${JSON.stringify(next, null, 2)}\n`, 'utf8');
-    renameSync(`${file}.tmp`, file);
+    const next = { ...current(), ...patch };
+    cachePut(STATE_KEY, JSON.stringify(next));
   } catch { /* state is best-effort; never break the caller */ }
 }
 

@@ -1078,8 +1078,9 @@ test("doctor prints record store paths", () => {
     },
   });
   expect(result.status, result.stderr).toBe(0);
-  expect(result.stdout).toMatch(/^Usage & records$/m);
-  expect(result.stdout).toMatch(/Usage DB \(tersio-owned/);
+  expect(result.stdout).toMatch(/^Platform$/m);
+  expect(result.stdout).toMatch(/Usage DB: .*usage\.db/);
+  expect(result.stdout).not.toMatch(/Usage & records/);
   expect(result.stdout).not.toMatch(/Usage ledger/);
   expect(result.stdout).not.toMatch(/Session transcripts/);
   expect(result.stdout).not.toMatch(/RTK history/);

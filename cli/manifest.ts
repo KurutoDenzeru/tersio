@@ -43,6 +43,7 @@ export const TREE_FILES: readonly string[] = [
   'shared/updater.ts',
   'shared/headroom-proxy.ts',
   'shared/mode-notice.ts',
+  'shared/cache-store.ts',
   'caveman/index.ts',
   'caveman/caveman.ts',
   'caveman/rule.md',

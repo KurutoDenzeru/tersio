@@ -1,6 +1,7 @@
 // cli/activity.ts — the Tersio activity log: one JSON line per change the CLI or the dashboard makes.
 import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { readRetentionDays } from '../extensions/shared/plugin-settings.ts';
 import { tersioDataPath } from '../extensions/shared/utils.ts';
 
 export type ActivityKind = 'mode' | 'agent' | 'file' | 'doctor';
@@ -52,20 +53,33 @@ export function recordActivity(kind: ActivityKind, title: string, detail?: strin
   } catch { /* a log line never fails the command */ }
 }
 
-/** Newest first, capped at `limit`. A damaged line is skipped, not fatal. */
+/** The retention cutoff in epoch ms, or 0 when the window is Forever. */
+function retentionCutoff(): number {
+  const days = readRetentionDays();
+  return days > 0 ? Date.now() - days * 86_400_000 : 0;
+}
+
+/** Newest first, capped at `limit`. A damaged line is skipped, not fatal, and the window drops old entries from the file too. */
 export function readActivity(limit = 500): ActivityEntry[] {
   try {
     const file = logFile();
     if (!existsSync(file)) return [];
-    const entries: ActivityEntry[] = [];
-    for (const line of readFileSync(file, 'utf8').split('\n').slice(-limit)) {
-      if (!line.trim()) continue;
+    const cutoff = retentionCutoff();
+    const lines = readFileSync(file, 'utf8').split('\n').filter((line) => line.trim() !== '');
+    const kept: string[] = [];
+    for (const line of lines) {
       try {
         const parsed = JSON.parse(line) as ActivityEntry;
-        if (typeof parsed.at === 'number' && typeof parsed.title === 'string') entries.push(parsed);
+        if (typeof parsed.at !== 'number' || typeof parsed.title !== 'string') continue;
+        if (cutoff > 0 && parsed.at < cutoff) continue;
+        kept.push(line);
       } catch { /* skip the damaged line */ }
     }
-    return entries.toReversed();
+    // The page follows the window, so the file behind it does too; one rewrite when old lines are found.
+    if (cutoff > 0 && kept.length !== lines.length) {
+      try { writeFileSync(file, kept.length > 0 ? `${kept.join('\n')}\n` : '', 'utf8'); } catch { /* the next read retries */ }
+    }
+    return kept.slice(-limit).map((line) => JSON.parse(line) as ActivityEntry).toReversed();
   } catch {
     return [];
   }
