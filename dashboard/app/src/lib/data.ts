@@ -446,12 +446,15 @@ export interface DoctorRow {
   ok: boolean;
   detail: string;
   group: string;
+  /** Informational row: visible, but never counted as an issue or shown as a fix. */
+  neutral?: boolean;
+  /** Agent brand mark, for the host rows. */
+  host?: string;
 }
 
 export interface DoctorReport {
   rows: DoctorRow[];
   checkedAt: number;
-  schedule: "manual" | "daily" | "weekly" | "monthly";
 }
 
 interface TersioSnap {
@@ -575,28 +578,13 @@ export async function fetchHealth(): Promise<HealthReport | null> {
   }
 }
 
-export async function fetchDoctor(fresh: boolean): Promise<DoctorReport | null> {
+export async function fetchDoctor(): Promise<DoctorReport | null> {
   const s = snap()?.doctor;
   if (isFileExport()) return s ?? null;
   try {
-    return await getJSON<DoctorReport>(fresh ? "doctor?fresh=1" : "doctor");
+    return await getJSON<DoctorReport>("doctor");
   } catch {
     return s ?? null;
-  }
-}
-
-export async function postDoctorSchedule(
-  schedule: DoctorReport["schedule"],
-): Promise<DoctorReport | null> {
-  try {
-    const res = await fetch("doctor", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ schedule }),
-    });
-    return (await res.json()) as DoctorReport;
-  } catch {
-    return null;
   }
 }
 

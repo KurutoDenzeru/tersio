@@ -13,13 +13,13 @@ import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, Tabl
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useTheme, useResolvedTheme } from "@/components/theme-provider";
+import { AgentLogo } from "@/components/agent-logos";
 import { ACCENTS, ACCENT_IDS, accentSwatch, type AccentId } from "@/lib/accent";
 import { FLAGS, FX_SNAPSHOT, relAge } from "@/lib/format";
 import {
   fetchDoctor,
   isFileExport,
   postDoctorFix,
-  postDoctorSchedule,
   requestReload,
   snapshotVersion,
 } from "@/lib/data";
@@ -500,8 +500,10 @@ function DoctorPane() {
   const toast = useToast();
   const [report, setReport] = useState<DoctorReport | null>(null);
   const [fixing, setFixing] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [askFix, setAskFix] = useState(false);
   useEffect(() => {
-    void fetchDoctor(false).then((d) => d && setReport(d));
+    void fetchDoctor().then((d) => d && setReport(d));
   }, []);
   const groups = (() => {
     const seen: string[] = [];
@@ -510,56 +512,51 @@ function DoctorPane() {
     });
     return seen;
   })();
-  const schedule = report?.schedule ?? "manual";
-  const scheduleLabel = `${schedule[0].toUpperCase()}${schedule.slice(1)}`;
+  const fixIssues = (): void => {
+    setAskFix(false);
+    if (isFileExport()) {
+      toast("Serve with tersio dashboard", "Fix runs on the live server only.", "wrench");
+      return;
+    }
+    setFixing(true);
+    void postDoctorFix()
+      .then((d) => {
+        if (!d) toast("Fix failed", "Could not reach the server.", "circle-alert");
+        else if (d.failed.length) toast("Fix incomplete", d.failed.join(", "), "circle-alert");
+        else toast("Fix done", "Repairs applied. Restart OMP.", "wrench");
+        return fetchDoctor();
+      })
+      .then((d) => d && setReport(d))
+      .finally(() => setFixing(false));
+  };
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col">
       <ScrollArea className="min-h-0 flex-1">
         <div className="min-w-0 pr-2.5 pb-5">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <p className="m-0 text-[13px] font-semibold">Auto-check</p>
-          <p className="mt-0.5 mb-0 text-xs text-dim">{report?.checkedAt ? `Checked ${relAge(report.checkedAt)}.` : "Never checked."}</p>
-        </div>
-        <Select
-          value={schedule}
-          onValueChange={(v) => {
-            if (isFileExport()) return;
-            void postDoctorSchedule(v as DoctorReport["schedule"]).then((d) => d && setReport(d));
-          }}
-        >
-          <SelectTrigger size="sm" aria-label="Diagnosis schedule">
-            <SelectValue>{scheduleLabel}</SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup>
-              {["manual", "daily", "weekly", "monthly"].map((s) => (
-                <SelectItem key={s} value={s}>
-                  {s[0].toUpperCase() + s.slice(1)}{s === "weekly" ? " (Recommended)" : ""}
-                </SelectItem>
-              ))}
-            </SelectGroup>
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="mt-3.5 flex items-center justify-between gap-3">
-        <div className="min-w-0">
           <p className="m-0 text-[13px] font-semibold">Scan</p>
-          <p className="mt-0.5 mb-0 text-xs text-dim">Runs every check fresh and refreshes the list below.</p>
+          <p className="mt-0.5 mb-0 text-xs text-dim">Runs every check fresh and refreshes the list below. {report?.checkedAt ? `(Last checked ${relAge(report.checkedAt)}.)` : "(Never checked.)"}</p>
         </div>
         <button
           type="button"
           className="mono flex shrink-0 items-center gap-2 text-xs pl-2.5 pr-3 py-2 rounded-xl border border-line text-ink [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96]"
           aria-label="Scan now"
+          disabled={scanning}
           onClick={() => {
-            void fetchDoctor(true).then((d) => {
-              if (d) setReport(d);
-              else if (isFileExport()) toast("Snapshot export", "Live scan needs tersio dashboard.", "scan-line");
-            });
+            setScanning(true);
+            void fetchDoctor()
+              .then((d) => {
+                if (d) {
+                  setReport(d);
+                  if (d.rows.some((row) => !row.ok && !row.neutral)) setAskFix(true);
+                } else if (isFileExport()) toast("Snapshot export", "Live scan needs tersio dashboard.", "scan-line");
+              })
+              .finally(() => setScanning(false));
           }}
         >
-          <Icon name="scan-line" className="size-3.5" />
-          <span>Scan</span>
+          <Icon name={scanning ? "loader-circle" : "scan-line"} className={`size-3.5 ${scanning ? "animate-spin" : ""}`} />
+          <span>{scanning ? "Scanning" : "Scan"}</span>
         </button>
       </div>
       <Table className="mt-4 w-full table-fixed border-y border-line">
@@ -590,16 +587,21 @@ function DoctorPane() {
             </TableRow>,
             ...(report?.rows ?? [])
               .filter((r) => (r.group || "Other") === g)
-              .map((r) => (
-                <TableRow key={r.label}>
+              .map((r, index) => (
+                <TableRow key={`${r.label}-${index}`}>
                   <TableCell className="py-3 pl-3">
-                    <p className="m-0 font-semibold text-ink">{r.label}</p>
-                    {r.detail && <p className="mono mt-0.5 mb-0 max-w-full truncate text-xs text-dim">{r.detail}</p>}
+                    <div className="flex min-w-0 items-center gap-2">
+                      {r.host && <AgentLogo host={r.host} className="size-4 shrink-0" />}
+                      <div className="min-w-0">
+                        <p className="m-0 font-semibold text-ink">{r.label}</p>
+                        {r.detail && <p className="mono mt-0.5 mb-0 max-w-full truncate text-xs text-dim">{r.detail}</p>}
+                      </div>
+                    </div>
                   </TableCell>
                   <TableCell className="py-3 pr-3 text-right">
-                    <Badge variant={r.ok ? "success" : "destructive"}>
-                      <span className={`size-1.5 rounded-full ${r.ok ? "bg-accent" : "bg-danger"}`} />
-                      {r.ok ? "Pass" : "Fix"}
+                    <Badge variant={r.neutral ? "outline" : r.ok ? "success" : "destructive"}>
+                      {!r.neutral && <span className={`size-1.5 rounded-full ${r.ok ? "bg-accent" : "bg-danger"}`} />}
+                      {r.host ? (r.ok ? "Installed" : "Not installed") : r.neutral ? "—" : r.ok ? "Pass" : "Fix"}
                     </Badge>
                   </TableCell>
                 </TableRow>
@@ -612,34 +614,33 @@ function DoctorPane() {
       <div className="flex shrink-0 items-center justify-between gap-3 rounded-xl border border-warn-border bg-warn-soft px-3.5 py-3 max-sm:flex-col max-sm:items-stretch max-sm:gap-2">
         <div className="min-w-0">
           <p className="m-0 text-[13px] font-semibold">Fix issues</p>
-          <p className="mt-0.5 mb-0 text-xs text-dim">Repairs extension files, config registrations, and the bundled ponytail copy. RTK binary and CLI update stay manual.</p>
+          <p className="mt-0.5 mb-0 text-xs text-dim">Repairs the checked items. RTK binary and CLI update stay manual.</p>
         </div>
         <button
           type="button"
           className="mono flex shrink-0 items-center gap-2 text-xs pl-2.5 pr-3 py-2 rounded-xl border border-line text-ink [transition:transform_.12s,background_.2s] hover:bg-accent-soft active:scale-[.96] max-sm:w-full max-sm:justify-center"
           aria-label="Fix diagnosed issues"
           disabled={fixing}
-          onClick={() => {
-            if (isFileExport()) {
-              toast("Serve with tersio dashboard", "Fix runs on the live server only.", "wrench");
-              return;
-            }
-            setFixing(true);
-            void postDoctorFix()
-              .then((d) => {
-                if (!d) toast("Fix failed", "Could not reach the server.", "circle-alert");
-                else if (d.failed.length) toast("Fix incomplete", d.failed.join(", "), "circle-alert");
-                else toast("Fix done", "Repairs applied. Restart OMP.", "wrench");
-                return fetchDoctor(true);
-              })
-              .then((d) => d && setReport(d))
-              .finally(() => setFixing(false));
-          }}
+          onClick={fixIssues}
         >
           <Icon name="wrench" className="size-3.5" />
           <span>{fixing ? "Fixing…" : "Fix issues"}</span>
         </button>
       </div>
+      <AlertDialog open={askFix} onOpenChange={setAskFix}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Fix these issues?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tersio found {report?.rows.filter((row) => !row.ok && !row.neutral).length ?? 0} issue(s). Repair them now? RTK binary and CLI updates stay manual.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Not now</AlertDialogCancel>
+            <AlertDialogAction onClick={fixIssues}>Fix issues</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -663,7 +664,6 @@ const SETTINGS_SEARCH: Array<{ pane: Pane; label: string; terms: string }> = [
   { pane: "general", label: "Accent color", terms: "general appearance accent color tint buttons links highlights palette emerald violet slate cyan rose amber orange charts background" },
   { pane: "general", label: "Currency", terms: "currency display cost usd euro" },
   { pane: "data", label: "Snapshots", terms: "data snapshot backup restore copy mirror ledger settings price cache schedule keep size" },
-  { pane: "diagnosis", label: "Auto-check schedule", terms: "diagnosis system health auto-check schedule manual daily weekly monthly" },
   { pane: "diagnosis", label: "Scan", terms: "diagnosis scan check" },
   { pane: "diagnosis", label: "Fix issues", terms: "diagnosis repair fix issues" },
   { pane: "about", label: "Version", terms: "about version build release which installed node platform rtk binary" },

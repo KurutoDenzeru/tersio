@@ -60,7 +60,7 @@ const PSTACK_PATH = 'pstack/skills/poteto-mode/';
 /** Pins are deliberate: bump one only after reviewing the upstream diff it names. */
 export const CAVEMAN_PIN = 'v4.0.1';
 // c742dd6 is the newest commit that touched a body we track; every tracked pstack body was re-ported to it.
-const PSTACK_PIN = 'c742dd61706fbacc1b95f1a20b7b988cf096ce6c';
+export const PSTACK_PIN = 'c742dd61706fbacc1b95f1a20b7b988cf096ce6c';
 
 const HISTORY_KEY = 'upstream.history';
 const SCORECARD_KEY = 'upstream.scorecard';
@@ -244,9 +244,13 @@ export interface Scorecard {
 /** The last scorecard, or null when none has been written yet. */
 export async function cachedScorecard(): Promise<Scorecard | null> {
   await migrateLayout();
+  return cachedScorecardSync();
+}
+
+/** The cached scorecard for callers that cannot await the one-time migration. */
+export function cachedScorecardSync(): Scorecard | null {
   const stored = cacheGet(SCORECARD_KEY);
-  if (stored !== null) return parseJsonObject<Scorecard>(stored);
-  return null;
+  return stored !== null ? parseJsonObject<Scorecard>(stored) : null;
 }
 
 /** One run, as the page reads it back. */

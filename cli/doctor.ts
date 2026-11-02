@@ -13,8 +13,7 @@ import type { DetectedHost } from './hosts.ts';
 import { GENERATED_TREE_FILES } from './manifest.ts';
 import { askInteractiveChoice, askInteractiveConfirm, runInteractivePhase } from './interactive.ts';
 import { usageDbPath } from '../extensions/shared/usage-store.ts';
-import { readHeadroomDoctor } from '../extensions/shared/headroom-gain.ts';
-import { headroomProxyPort } from '../extensions/shared/headroom-proxy.ts';
+
 import { piAgentDir, pigAgentDir, readTextIfExists, resolveHeadroomBinary, resolveHostBinary, resolveRtkBinary, rtkPlatformSpec, ruleBodyProblem } from '../extensions/shared/utils.ts';
 import { sqliteScript, statsDbPath } from '../extensions/shared/agent-stats.ts';
 import { OMP_SUBAGENT_MARKER } from '../extensions/shared/session-state.ts';
@@ -319,52 +318,16 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   // A verbatim sentence read out of omp's own prompt, so a re-worded release stops Caveman reaching subagents.
   const subagentGap = subagentMarkerStatus(ompBinary());
   if (subagentGap) warnLine('Caveman subagent marker', subagentGap);
-  // A tree on an older body serves until its install step runs; debris needs the sweeper instead.
-  if (treeStale.length > 0) {
-    warnLine('Per-host add-on files',
-      `stale in ${treeStale.length} file${treeStale.length === 1 ? '' : 's'}: ${treeStale.slice(0, 6).join(', ')}` +
-      `${treeStale.length > 6 ? ` +${treeStale.length - 6} more` : ''} — ${cavemanBodyHint()}`);
-  }
-  if (treeMissing.length > 0) {
-    warnLine('Per-host add-on files',
-      `never installed in ${treeMissing.length} file${treeMissing.length === 1 ? '' : 's'}: ${treeMissing.join(', ')}` +
-      ` — run: tersio install --host <host>`);
-  }
-  if (treeOrphan.length > 0) {
-    warnLine('Per-host add-on files',
-      `orphaned in ${treeOrphan.length} file${treeOrphan.length === 1 ? '' : 's'}: ${treeOrphan.join(', ')}` +
-      ` — run: tersio doctor --fix extensions`);
-  }
-  // A count of pairs compared cannot show a file that is absent from disk and absent from the declaration, so assert every declared file landed.
-  const unwritten = await unwrittenTreeFiles();
-  if (unwritten.length > 0) {
-    check('Add-on tree content', false,
-      `${unwritten.length} declared file${unwritten.length === 1 ? '' : 's'} not written for a host reading as installed: ${unwritten.slice(0, 6).join(', ')}${unwritten.length > 6 ? ` +${unwritten.length - 6} more` : ''} — run: tersio doctor --fix extensions`);
-  }
   const rtkAge = rtkMtime ? `(updated ${relTime(Date.now() - rtkMtime.mtimeMs)} · ${absDate(rtkMtime.mtimeMs)})` : '';
   check('RTK binary', rtkBin !== null, rtkBinText === null ? 'not found in PATH' : [rtkVersion, rtkAge].filter(Boolean).join(' '));
   // rtk_run needs a host exec API, which doctor cannot assume.
   if (rtkBin === null) reportUnused('RTK exec', '· install Tersio to place rtk in ~/.bun/bin');
   else if (!hosts.some((host) => host.installed && (host.id === 'omp' || host.id === 'opencode'))) warnLine('RTK exec', 'no installed host exposes an exec API — rtk_run is unavailable; call rtk from bash instead');
   if (rtkBinText !== null && !rtkVersion) warnLine('RTK version', 'unavailable — binary may not be executable');
-  // Headroom is the user's own opt-in install, so the line stays informational: out of the tally either way.
+  // Headroom is the user's own opt-in install, so only its binary is reported here.
   const headroomVersion = headroomVersionRaw?.match(/version\s+(\S+)/)?.[1] ?? headroomVersionRaw ?? '';
-  if (headroomBin !== null) {
-    // Its own doctor is the only source that says whether traffic actually flows.
-    const routing = readHeadroomDoctor({ binary: headroomBin, port: headroomProxyPort() });
-    const failing = routing.checks.filter((c) => c.status === 'fail');
-    const warned = routing.checks.filter((c) => c.status === 'warn');
-    const detail = routing.measured
-      ? failing.length > 0
-        ? ` · routing: ${failing[0].name} failing (${failing[0].summary})${failing[0].hint ? ` — ${failing[0].hint}` : ''}`
-        : warned.length > 0
-          ? ` · routing: ${warned.length} warning${warned.length === 1 ? '' : 's'} (${warned[0].summary})`
-          : ' · routing: ok'
-      : ` · routing: ${routing.failure || 'unmeasured'}`;
-    console.log(`  —  Headroom: ${headroomVersion || 'version unavailable'}${detail}`);
-  } else {
-    console.log('  —  Headroom: not installed · optional: pip install "headroom-ai[all]", then /headroom on');
-  }
+  if (headroomBin !== null) check('Headroom binary', true, headroomVersion);
+  else console.log('  —  Headroom: not installed · optional: pip install "headroom-ai[all]", then /headroom on');
   const ponytailAge = ponytailMtime ? `(updated ${relTime(Date.now() - ponytailMtime.mtimeMs)} · ${absDate(ponytailMtime.mtimeMs)})` : '';
   check('Ponytail', ponytailPkgText !== null, [PONYTAIL_VERSION, ponytailAge].filter(Boolean).join(' '));
   if (ponytailStale.length > 0) {
@@ -375,6 +338,33 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   // Offline-safe: the registry call is best-effort, and silence means no row rather than a stale one.
   const ponytailVersionGap = await ponytailLatestGap(PONYTAIL_VERSION);
   if (ponytailVersionGap) warnLine('Ponytail version', `${ponytailVersionGap} — run: tersio update --apply-update --yes`);
+
+  // A count of pairs compared cannot show a file that is absent from disk and absent from the declaration, so assert every declared file landed.
+  const unwritten = await unwrittenTreeFiles();
+  // The section is a live issue list, so a clean run has no section at all.
+  if (treeStale.length > 0 || treeMissing.length > 0 || treeOrphan.length > 0 || unwritten.length > 0) {
+    section('Issues');
+    // A tree on an older body serves until its install step runs; debris needs the sweeper instead.
+    if (treeStale.length > 0) {
+      warnLine('Per-host add-on files',
+        `stale in ${treeStale.length} file${treeStale.length === 1 ? '' : 's'}: ${treeStale.slice(0, 6).join(', ')}` +
+        `${treeStale.length > 6 ? ` +${treeStale.length - 6} more` : ''} — ${cavemanBodyHint()}`);
+    }
+    if (treeMissing.length > 0) {
+      warnLine('Per-host add-on files',
+        `never installed in ${treeMissing.length} file${treeMissing.length === 1 ? '' : 's'}: ${treeMissing.join(', ')}` +
+        ` — run: tersio install --host <host>`);
+    }
+    if (treeOrphan.length > 0) {
+      warnLine('Per-host add-on files',
+        `orphaned in ${treeOrphan.length} file${treeOrphan.length === 1 ? '' : 's'}: ${treeOrphan.join(', ')}` +
+        ` — run: tersio doctor --fix extensions`);
+    }
+    if (unwritten.length > 0) {
+      check('Add-on tree content', false,
+        `${unwritten.length} declared file${unwritten.length === 1 ? '' : 's'} not written for a host reading as installed: ${unwritten.slice(0, 6).join(', ')}${unwritten.length > 6 ? ` +${unwritten.length - 6} more` : ''} — run: tersio doctor --fix extensions`);
+    }
+  }
 
   const total = tally.ok + tally.missing + tally.warn;
   console.log(`\n  Summary: ${total} checks — ✅ ${tally.ok} ok, ⚠️ ${tally.warn} warn, ❌ ${tally.missing} missing`);

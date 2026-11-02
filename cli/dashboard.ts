@@ -3,7 +3,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { readActivity, recordActivity } from './activity.ts';
 import { cacheDelete, cacheGet, cacheKeys, cachePut, cacheStamp } from '../extensions/shared/cache-store.ts';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, watch, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, rmSync, statSync, watch } from 'node:fs';
 import { promises as fs } from 'node:fs';
 import http from 'node:http';
 import net from 'node:net';
@@ -25,7 +25,7 @@ import {
   OMP_AGENT_DIR, OMP_PLUGINS_DIR, PACKAGE_VERSION, execFileP,
 } from './common.ts';
 import { BACKUP_SCHEDULES, applyComboPreset, clampSidebarWidth, comboLevelOf, formatCliStatus, RETENTION_DAYS, saveHostDefaults, storedProfile, writePluginSettings } from './profile.ts';
-import { patchState, readState, takeLegacy } from '../extensions/shared/state.ts';
+import { readState } from '../extensions/shared/state.ts';
 import { REMOTE_MARKS } from '../extensions/shared/brand-marks.ts';
 import { setUpdatePrefs, startApply, startCheck, startUpdateWatch, updateView } from './dashboard-update.ts';
 import type { UpdatePrefs } from './dashboard-update.ts';
@@ -33,11 +33,12 @@ import type { BackupSchedule, HostDefaultField } from './profile.ts';
 import { normalizeComboLevel } from '../extensions/shared/session-state.ts';
 import { ACCENT_DEFAULTS, CAVEMAN_DEFAULTS, COMBO_PRESET_MODES, HEADROOM_DEFAULTS, PONYTAIL_DEFAULTS, PSTACK_DEFAULTS } from './common.ts';
 import { PACKAGE_NAME } from './common.ts';
-import { detectHosts } from './hosts.ts';
+import { detectHosts, hostExtensionsDir } from './hosts.ts';
+import { checkHostTrees } from './host-tree.ts';
 import { findPackageRoot, homeDir, openCommand, resolveHeadroomBinary, resolveHostBinary, resolveRtkBinary, ruleBodyProblem, tersioHome } from '../extensions/shared/utils.ts';
 import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
 import { BACKUP_KEEP, backupDir, backupDiskBytes, createDataBackup, dataSources, deleteDataBackup, listDataBackups, restoreDataBackup } from '../extensions/shared/snapshots.ts';
-import { CAVEMAN_PIN, cachedScorecard, refreshScorecard, upstreamHistory } from './upstream.ts';
+import { CAVEMAN_PIN, PSTACK_PIN, cachedScorecard, cachedScorecardSync, refreshScorecard, upstreamHistory } from './upstream.ts';
 import { resetCounts, resetStatistics } from './reset.ts';
 
 import { readBackupSchedule, syncUsageDb } from '../extensions/shared/usage-store.ts';
@@ -533,56 +534,9 @@ function tersioHomePath(): string {
   return path.join(homeDir(), '.tersio');
 }
 
-interface DoctorRow { label: string; ok: boolean; detail: string; group: string }
+interface DoctorRow { label: string; ok: boolean; detail: string; group: string; neutral?: boolean; host?: string }
 
-interface DoctorReport { rows: DoctorRow[]; checkedAt: number; schedule: DiagSchedule }
-
-type DiagSchedule = 'manual' | 'daily' | 'weekly' | 'monthly';
-
-const DIAG_TTL_MS: Record<DiagSchedule, number> = {
-  manual: 0,
-  daily: 24 * 3600 * 1000,
-  weekly: 7 * 24 * 3600 * 1000,
-  monthly: 30 * 24 * 3600 * 1000,
-};
-
-// The report lives in state.json; an overridden DB keeps it beside that DB so tests never touch the real home.
-function diagReport(): DoctorReport | null {
-  const raw = (process.env.TERSIO_USAGE_DB ? legacyDiag() : readState().diag ?? migratedDiag()) as Partial<DoctorReport> | undefined;
-  if (!raw || !Array.isArray(raw.rows) || typeof raw.checkedAt !== 'number') return null;
-  const schedule: DiagSchedule = raw.schedule === 'daily' || raw.schedule === 'weekly' || raw.schedule === 'monthly' ? raw.schedule : 'manual';
-  return { rows: raw.rows as DoctorRow[], checkedAt: raw.checkedAt, schedule };
-}
-
-// The old report sat loose in the data home; read it once, then keep it in state.json.
-function migratedDiag(): Partial<DoctorReport> | null {
-  const home = homeDir();
-  const old = takeLegacy(path.join(home, '.tersio', 'diag.json'), (raw) => {
-    try { return JSON.parse(raw) as Partial<DoctorReport>; } catch { return null; }
-  });
-  if (old) patchState({ diag: old });
-  return old;
-}
-
-function legacyDiag(): Partial<DoctorReport> | null {
-  try {
-    return JSON.parse(readFileSync(path.join(path.dirname(process.env.TERSIO_USAGE_DB as string), 'diag.json'), 'utf8')) as Partial<DoctorReport>;
-  } catch {
-    return null;
-  }
-}
-
-function writeDiagReport(report: DoctorReport): void {
-  if (process.env.TERSIO_USAGE_DB) {
-    try {
-      const file = path.join(path.dirname(process.env.TERSIO_USAGE_DB), 'diag.json');
-      mkdirSync(path.dirname(file), { recursive: true });
-      writeFileSync(file, JSON.stringify(report) + '\n', 'utf8');
-    } catch { /* best-effort */ }
-    return;
-  }
-  patchState({ diag: report });
-}
+interface DoctorReport { rows: DoctorRow[]; checkedAt: number }
 
 function ageStr(p: string): string | null {
   try {
@@ -615,57 +569,68 @@ function relAge(ms: number): string {
   return `${days} day${days === 1 ? '' : 's'} ago`;
 }
 
-/** Whether an extension file the doctor names exists. */
-const pathExists = (p: string): boolean => existsSync(p);
+/** A pin's own age, short like the Upstream page: `5d ago`, not a local file's mtime. */
+function pinnedAge(at: number | null | undefined): string {
+  if (!at) return '';
+  const days = Math.floor((Date.now() - at) / 86_400_000);
+  if (days >= 1) return `${days}d ago`;
+  const hours = Math.floor((Date.now() - at) / 3_600_000);
+  return hours >= 1 ? `${hours}h ago` : 'today';
+}
+
+function listed(items: string[]): string {
+  return `${items.slice(0, 6).join(', ')}${items.length > 6 ? ` +${items.length - 6} more` : ''}`;
+}
 
 function computeDoctorRows(): DoctorRow[] {
   const rows: DoctorRow[] = [];
   const rtkBin = resolveRtkBinary();
   const tersioPluginDir = path.join(OMP_PLUGINS_DIR, 'node_modules', ...PACKAGE_NAME.split('/'));
-  const configPath = path.join(OMP_AGENT_DIR, 'config.yml');
-  const ext = (label: string, p: string): void => {
-    rows.push({ label, ok: pathExists(p), detail: pathExists(p) ? 'installed' : p, group: 'Extensions' });
+  const addon = (label: string, present: boolean, detail: string, group = 'Add-ons', neutral = false): void => {
+    rows.push({ label, ok: present, detail, group, ...(neutral ? { neutral: true } : {}) });
   };
-  const addon = (label: string, present: boolean, detail: string, group = 'Add-ons'): void => {
-    rows.push({ label, ok: present, detail, group });
+  // A missing host is not a fault: it stays visible with no install command and no fix prompt.
+  for (const host of detectHosts()) {
+    const row = (ok: boolean, detail: string, neutral = false): void => {
+      rows.push({ label: host.label, ok, detail, group: 'Hosts', host: host.id, ...(neutral ? { neutral: true } : {}) });
+    };
+    if (!host.installed) {
+      const leftover = host.id !== 'dsh' && existsSync(hostExtensionsDir(host.id));
+      if (leftover) row(false, `leftover files — tersio uninstall --host ${host.id}`, true);
+      else if (host.declared) row(false, `declared (${host.declared}) but not installed`);
+      else row(false, 'not installed', true);
+      continue;
+    }
+    const kind = host.via === 'tree' ? 'extensions' : 'package';
+    row(true, `${kind} ${PACKAGE_NAME}${host.version ? ` ${host.version}` : ''}`);
+  }
+  const scorecard = cachedScorecardSync();
+  const upstreamPin = (source: string, fallback: string): string => {
+    const row = scorecard?.sources.find((entry) => entry.source.toLowerCase() === source.toLowerCase());
+    const age = pinnedAge(row?.pinnedAt);
+    return `${row?.pin ?? fallback}${age ? ` · ${age}` : ''}`;
   };
-  let explicitEntries: string[] = [];
-  try {
-    explicitEntries = readFileSync(configPath, 'utf8').split('\n')
-      .map((line) => line.trim().replace(/^-\s*/, '').replace(/^['"]|['"]$/g, ''))
-      .filter((line) => line.startsWith('/') || line.startsWith('.'));
-  } catch { /* missing config is reported by extension rows */ }
-  const duplicateExtensions = [...new Set(explicitEntries.filter((entry, index) => explicitEntries.indexOf(entry) !== index))];
-  addon('Unique config registrations', duplicateExtensions.length === 0, duplicateExtensions.length ? duplicateExtensions.join(', ') : 'ok', 'Extensions');
-  // A listed extension whose file is gone makes the host warn on every load, so surface it here.
-  const dangling = explicitEntries
-    .filter((entry) => entry.includes(`extensions${path.sep}`) || entry.includes('extensions/'))
-    .filter((entry) => !pathExists(path.isAbsolute(entry) ? entry : path.resolve(OMP_AGENT_DIR, entry)));
-  addon('Extension files present', dangling.length === 0, dangling.length ? dangling.join(', ') : 'ok', 'Extensions');
-  ext('Caveman extension', path.join(tersioPluginDir, 'extensions', 'caveman', 'index.ts'));
-  ext('pstack extension', path.join(tersioPluginDir, 'extensions', 'pstack', 'index.ts'));
-  ext('Headroom extension', path.join(tersioPluginDir, 'extensions', 'headroom', 'index.ts'));
-  ext('RTK extension', path.join(tersioPluginDir, 'extensions', 'rtk', 'session.ts'));
   const rule = path.join(tersioPluginDir, 'extensions', 'caveman', 'rule.md');
   const ruleAge = ageStr(rule);
   const ruleAt = absTime(rule);
   // The body carries no version, so the release it came from is the number: the pinned one, or the one a pull recorded.
   const cavemanRelease = (readState().cavemanUpstream?.tag ?? CAVEMAN_PIN).replace(/^v/, '');
-  addon('Caveman rule', ruleAge !== null, ruleAge && ruleAt ? `${cavemanRelease} (updated ${ruleAge} · ${ruleAt})` : rule);
+  const cavemanPin = upstreamPin('Caveman', cavemanRelease);
+  addon('🪨 Caveman rule', ruleAge !== null, ruleAge && ruleAt ? `${cavemanPin} (updated ${ruleAge} · ${ruleAt})` : rule);
   // The pstack body is a Tersio fork with no remote, so this row proves it is usable, not current.
   const pstackRule = path.join(tersioPluginDir, 'extensions', 'pstack', 'rule.md');
   let pstackProblem: string | null = 'missing — run: tersio install';
   try { pstackProblem = ruleBodyProblem(readFileSync(pstackRule, 'utf8')); } catch { /* missing stays */ }
   const pstackAge = ageStr(pstackRule);
   const pstackAt = absTime(pstackRule);
-  addon('pstack rule', pstackProblem === null, pstackProblem ?? `(updated ${pstackAge} · ${pstackAt})`);
+  addon('🥔 pstack', pstackProblem === null, pstackProblem ?? `${upstreamPin('pstack', PSTACK_PIN.slice(0, 7))} (updated ${pstackAge} · ${pstackAt})`);
   const rtkVer = rtkBin ? rtkVersion(rtkBin) : null;
   const rtkAge = rtkBin ? ageStr(rtkBin) : null;
   const rtkAt = rtkBin ? absTime(rtkBin) : null;
-  addon('RTK binary', rtkVer !== null, rtkVer && rtkAge && rtkAt ? `${rtkVer} (updated ${rtkAge} · ${rtkAt})` : rtkBin || 'not found in PATH');
+  addon('🗜️ RTK binary', rtkVer !== null, rtkVer && rtkAge && rtkAt ? `${rtkVer} (updated ${rtkAge} · ${rtkAt})` : rtkBin || 'not found in PATH');
   // Opt-in and user-owned: the row reports the binary when it exists and stays quiet when it does not.
   const headroomBin = resolveHeadroomBinary();
-  if (headroomBin) addon('Headroom binary', true, headroomVersion(headroomBin) ?? headroomBin);
+  if (headroomBin) addon('🍃 Headroom binary', true, headroomVersion(headroomBin) ?? headroomBin);
   // Ponytail rides inside the plugin now, so the version comes from the vendored copy, not a sibling package.
   const ponytailPkg = path.join(tersioPluginDir, 'extensions', 'ponytail', 'package.json');
   let ponytailVer: string | null = null;
@@ -674,48 +639,18 @@ function computeDoctorRows(): DoctorRow[] {
   } catch { ponytailVer = null; }
   const ponytailAge = ageStr(ponytailPkg);
   const ponytailAt = absTime(ponytailPkg);
-  addon('Ponytail', ponytailVer !== null, ponytailVer && ponytailAge && ponytailAt ? `${ponytailVer} (updated ${ponytailAge} · ${ponytailAt})` : ponytailPkg);
+  addon('🧠 Ponytail', ponytailVer !== null, ponytailVer && ponytailAge && ponytailAt ? `${ponytailVer} (updated ${ponytailAge} · ${ponytailAt})` : ponytailPkg);
+  const tree = checkHostTrees(detectHosts().filter((host) => host.installed), path.join(tersioPluginDir, 'extensions'));
+  if (tree.stale.length > 0) addon('Per-host add-on files', false, `stale in ${tree.stale.length} file${tree.stale.length === 1 ? '' : 's'}: ${listed(tree.stale)} — run: tersio install --host <host>`, 'Issues');
+  if (tree.missing.length > 0) addon('Per-host add-on files', false, `never installed in ${tree.missing.length} file${tree.missing.length === 1 ? '' : 's'}: ${listed(tree.missing)} — run: tersio install --host <host>`, 'Issues');
+  if (tree.orphan.length > 0) addon('Per-host add-on files', false, `orphaned in ${tree.orphan.length} file${tree.orphan.length === 1 ? '' : 's'}: ${listed(tree.orphan)} — run: tersio doctor --fix extensions`, 'Issues');
+  if (tree.unwritten.length > 0) addon('Add-on tree content', false, `${tree.unwritten.length} declared file${tree.unwritten.length === 1 ? '' : 's'} not written for a host reading as installed: ${listed(tree.unwritten)} — run: tersio doctor --fix extensions`, 'Issues');
   return rows;
 }
 
-// A report holding any of these labels is stale by definition.
-const RETIRED_DIAG_LABELS = new Set([
-  'OMP CLI',
-  'Tersio CLI',
-  'Tersio commands',
-  'Mode reinforcement',
-  'Combo registered',
-  'Combo extension',
-  'Self plugin',
-  'Ponytail registered',
-  'Ponytail extension',
-  'Usage store',
-  'RTK OMP wiring (rtk.ts)',
-  'OpenCode plugin entry',
-  'OpenCode RTK plugin',
-  'pi RTK extension',
-  'No foreign opencode trees',
-]);
-
-function isRetiredReport(report: DoctorReport): boolean {
-  return report.rows.some((r) => RETIRED_DIAG_LABELS.has(r.label));
-}
-
-// Recompute when forced, missing, retired, or past schedule; manual schedules recompute on open, dated ones reuse.
-function getDoctorReport(force: boolean): DoctorReport {
-  const saved = diagReport();
-  const ttl = saved ? DIAG_TTL_MS[saved.schedule] : 0;
-  if (!force && saved && !isRetiredReport(saved) && ttl > 0 && Date.now() - saved.checkedAt < ttl) return saved;
-  const report: DoctorReport = { rows: computeDoctorRows(), checkedAt: Date.now(), schedule: saved?.schedule ?? 'manual' };
-  writeDiagReport(report);
-  return report;
-}
-
-function setDiagSchedule(schedule: DiagSchedule): DoctorReport {
-  const base = diagReport() ?? { rows: computeDoctorRows(), checkedAt: Date.now(), schedule };
-  base.schedule = schedule;
-  writeDiagReport(base);
-  return base;
+// The diagnosis runs every time it is read; there is no schedule or cached report.
+function getDoctorReport(): DoctorReport {
+  return { rows: computeDoctorRows(), checkedAt: Date.now() };
 }
 
 // One field per call, validated against the same sets the CLI uses. A body with a `host` writes that
@@ -849,10 +784,6 @@ function saveDefaults(body: Record<string, unknown>): Promise<
   profileWriteQueue = result.catch(() => null);
   return result;
 }
-function readDiagSchedule(): DiagSchedule {
-  return diagReport()?.schedule ?? 'manual';
-}
-
 // Persist the picker choice: every run serves a fresh port, so localStorage alone cannot survive a restart.
 async function saveDashboardCurrency(raw: unknown): Promise<CurrencyCode | null> {
   if (typeof raw !== 'string') return null;
@@ -961,7 +892,7 @@ async function exportDashboard(exportFile: string, currency: CurrencyCode): Prom
   // atob yields one byte per char, so a Uint8Array is needed or bytes >= 0x80 double and corrupt the webp.
   const brandBytes = `(() => { const c = atob(${JSON.stringify(b64)}); const v = new Uint8Array(c.length); for (let i = 0; i < c.length; i++) v[i] = c.charCodeAt(i); return v; })()`;
   const inline = bundle
-    .replace('window.__TERSIO_SNAP = null;', () => `window.__TERSIO_SNAP = ${escapeInline(JSON.stringify({ currency, agent: agentStats(DEFAULT_AGENT_RANGE), health: parseOwnJson(healthJson(), 'health'), doctor: getDoctorReport(false) }))};`)
+    .replace('window.__TERSIO_SNAP = null;', () => `window.__TERSIO_SNAP = ${escapeInline(JSON.stringify({ currency, agent: agentStats(DEFAULT_AGENT_RANGE), health: parseOwnJson(healthJson(), 'health'), doctor: getDoctorReport() }))};`)
     // A mark is an HTML attribute or JSX prop; match every quote or the file keeps an unresolvable reference.
     .replace(/((?:src|href)[=:][ \t]*)([`"'])brand\.webp\2/g, (_all, head: string, quote: string) => `${head}${quote}${icon}${quote}`)
     .replace(/fetch\(([`"])brand\.webp\1\)/g, () => `Promise.resolve({ ok: true, blob: async () => new Blob([${brandBytes}], { type: "image/webp" }) })`);
@@ -1327,23 +1258,12 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
       jsonText(res, 200, await statusJson());
       return;
     }
-    if (req.url === '/doctor' && req.method === 'POST') {
-      let schedule: DiagSchedule = 'manual';
-      try {
-        const raw = (JSON.parse(await readBody(req)) as { schedule?: unknown }).schedule;
-        if (raw === 'daily' || raw === 'weekly' || raw === 'monthly' || raw === 'manual') schedule = raw;
-      } catch { /* keep manual */ }
-      const report = schedule === 'manual' ? getDoctorReport(true) : setDiagSchedule(schedule);
-      recordActivity('doctor', schedule === 'manual' ? 'Doctor check' : `Check schedule to ${schedule}`, 'From the dashboard.');
-      json(res, 200, report);
-      return;
-    }
     if (req.url === '/doctor/fix' && req.method === 'POST') {
       try {
         const { runDoctorRepairs } = await import('./doctor-fix.ts');
         const failed = await runDoctorRepairs(['extensions', 'registrations', 'ponytail']);
         recordActivity('doctor', 'Doctor repair', failed.length === 0 ? 'Extensions, registrations, and Ponytail checked.' : `${failed.length} step(s) failed.`, failed.length === 0);
-        getDoctorReport(true);
+        getDoctorReport();
         json(res, 200, { ok: failed.length === 0, failed });
       } catch (e) {
         json(res, 200, { ok: false, failed: ['fix'], error: (e as Error).message });
@@ -1351,8 +1271,7 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
       return;
     }
     if (req.url === '/doctor' || req.url?.startsWith('/doctor?')) {
-      const fresh = (req.url.split('?')[1] ?? '').includes('fresh=1');
-      json(res, 200, getDoctorReport(fresh));
+      json(res, 200, getDoctorReport());
       return;
     }
     const name = (req.url ?? '/').split('?')[0];
@@ -1444,5 +1363,4 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
   });
 }
 
-export { agentStats, runDashboard, saveDashboardCurrency, readDiagSchedule, setDiagSchedule, offsetFrom };
-export type { DiagSchedule };
+export { agentStats, runDashboard, saveDashboardCurrency, offsetFrom };
