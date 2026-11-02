@@ -67,14 +67,21 @@ describe('native headroom routes', () => {
 
   test('routes PiG from its own agent directory', () => withHome((home) => {
     const dir = path.join(home, '.pig', 'agent');
-    piLikeHome(dir);
-    const routed = installNativeRoute('pig', PROXY);
-    expect(routed.ok).toBe(true);
-    const modelsFile = path.join(dir, 'models.json');
-    expect(JSON.parse(readFileSync(modelsFile, 'utf8')).providers.magpie.baseUrl).toBe('http://127.0.0.1:8787/v1');
-    expect(readHeadroomRoute('pig', PROXY).routed).toBe(true);
-    expect(removeNativeRoute('pig').ok).toBe(true);
-    expect(JSON.parse(readFileSync(modelsFile, 'utf8')).providers.magpie.baseUrl).toBe('http://127.0.0.1:3425/v1');
+    const previousDir = process.env.PIG_CODING_AGENT_DIR;
+    process.env.PIG_CODING_AGENT_DIR = dir;
+    try {
+      piLikeHome(dir);
+      const routed = installNativeRoute('pig', PROXY);
+      expect(routed.ok).toBe(true);
+      const modelsFile = path.join(dir, 'models.json');
+      expect(JSON.parse(readFileSync(modelsFile, 'utf8')).providers.magpie.baseUrl).toBe('http://127.0.0.1:8787/v1');
+      expect(readHeadroomRoute('pig', PROXY).routed).toBe(true);
+      expect(removeNativeRoute('pig').ok).toBe(true);
+      expect(JSON.parse(readFileSync(modelsFile, 'utf8')).providers.magpie.baseUrl).toBe('http://127.0.0.1:3425/v1');
+    } finally {
+      if (previousDir === undefined) delete process.env.PIG_CODING_AGENT_DIR;
+      else process.env.PIG_CODING_AGENT_DIR = previousDir;
+    }
   }));
 
   test('routes every dsh file that owns the active provider', () => withHome((home) => {
