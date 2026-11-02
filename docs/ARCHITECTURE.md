@@ -91,7 +91,7 @@ flowchart LR
   UNDO --> CFG
 ```
 
-- **Only detected tools appear.** Continue is discontinued, and ZCode keeps its settings in a desktop window, so both stay out.
+- **Only Tersio's five agents appear.** Extra Headroom tools never enter the drawer. An agent that is not installed stays visible with no switch, so its absence is explicit.
 - **The runtime comes before the switch.** Tersio starts headroom's saved deployment, or headroom's proxy when none exists, and waits for health. Dashboard start restores an enabled runtime. The Tools page also carries a Start Headroom action.
 - **Oh My Pi and OpenCode use Headroom's writers.** Pi, PiG, and DeepSeek Harness use Tersio's route writer. It changes only the active provider endpoint, saves that URL in the state row, and puts it back on off.
 - **A row states its own path.** A switch means a durable setup Tersio manages. `headroom install` means headroom's installer owns it. `routed by hand` means an endpoint Tersio found but cannot undo. `session only` means no durable setup exists.

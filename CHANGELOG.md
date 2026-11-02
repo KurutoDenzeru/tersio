@@ -19,6 +19,7 @@
 - Tokscale is no longer credited.
 - Behind the scenes, agent support, dashboard data, and usage code now share one source, so future changes are smaller.
 - Headroom now routes Pi, PiG, and DeepSeek Harness through their active provider endpoint. The install and the Quick start switch save the old endpoint and restore it on off.
+- The Headroom drawer lists Tersio's five agents only. Claude Code and Codex rows are gone, and an agent that is not installed reads as not installed.
 
 ### Fixed
 - Headroom now tells the truth: it starts its runtime before enabling, waits for the runtime, refuses to claim compression when traffic does not use it, and shows live counters and routing.
