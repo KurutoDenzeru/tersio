@@ -34,8 +34,6 @@ Tersio installs into Oh My Pi, Pi, Pi-in-go, OpenCode, and DeepSeek Harness, and
 
 Every mode is a text block you can read in the repo. Measured savings and prompt overhead are published per mode in [docs/BENCHMARK_GUIDE.md](./docs/BENCHMARK_GUIDE.md). No total-bill claim: the tests measure reply tokens, prompt overhead, and command output only.
 
-Use an agent daily and pay per token? This is for you. Use one a few times a week? It is not worth installing.
-
 ## ⚡ Getting Started
 
 All install paths in one table, with update and remove commands: [INSTALL.md](./INSTALL.md).
@@ -94,6 +92,18 @@ npm exec --yes --prefer-online --package=@krtclcdy/tersio@latest -- tersio insta
 | Bun | Optional. Preferred when on PATH, npm otherwise; also supplies SQLite in process |
 | SQLite | Bun, Node 22.5+ `node:sqlite`, or the `sqlite3` binary on PATH |
 | OS | macOS, Linux, or Windows, native (`install.ps1`). WSL works too, installed from inside it |
+
+## 📊 Dashboard
+
+`tersio dashboard` opens a local page for usage, cost, tools, traces, and savings. Other pages cover Models, Providers, Costs, Carbon, Requests, Errors, Tools, and Projects.
+
+**Quick start (Recommended)** is the place to see the whole setup workflow: the modes, the agents, and how one turn moves from prompt to output.
+
+![Tersio Quick start dashboard](./docs/Quick%20Start.webp)
+
+**Overview** shows spend, requests, tokens, cache rate, and the latest calls.
+
+![Tersio Overview dashboard](./docs/Overview.webp)
 
 ## 🔌 MCP
 
@@ -167,27 +177,9 @@ Shared, and identical for every host:
 | Host scope | The same `usage.db` mirrors omp, pi, and OpenCode sessions, split by host and agent kind |
 | Snapshots | `~/.tersio/backups/` — one hashed `.snap` each, fourteen kept, carrying `usage.db` whole |
 
-Per host, written by `tersio install --host <omp|pi|opencode|pig|dsh>`:
-
-| Host | Extensions | Ponytail |
-|---|---|---|
-| Oh My Pi | `~/.omp/plugins/node_modules/@krtclcdy/tersio/extensions/`, loaded from the plugin manifest | vendored at `extensions/ponytail/`, so **Settings → Plugins** lists one row |
-| pi | `~/.pi/agent/extensions/{caveman,combo,commands,headroom,pstack,rtk,timing,shared}/`, auto-discovered | `~/.pi/agent/ponytail/` |
-| OpenCode | `~/.config/opencode/plugins/tersio/`, registered in `opencode.json` | bundled with Tersio |
-| PiG (Pi-in-go) | `~/.pig/agent/extensions/{caveman,combo,commands,headroom,pstack,rtk,timing,shared}/`, auto-discovered; `PIG_HOME` or `XDG_CONFIG_HOME` moves the root | `~/.pig/agent/ponytail/` |
-| DeepSeek Harness | `~/.dsh/profiles/<profile>/node_modules/@krtclcdy/tersio`, mounted as a dsh bundle in **every** profile (`web`, `desktop`) | inside the bundle |
-
-Tersio is agent-neutral: every host loads the same extensions and the same `shared/` modules from the same sources. Only the paths and the registration differ, and the installer owns those. No host is the target.
-
-Per host, in more words:
-
-- **Oh My Pi.** The plugin manifest and the directory OMP discovers by default merge, so Tersio keeps one copy of each file and clears what an older build left in `~/.omp/agent/extensions/`. A second copy would load twice, and one of the two cannot find its own rule bodies. The install also registers the package in `~/.omp/plugins`, so it shows under **Settings → Plugins**.
-- **pi, PiG, and OpenCode.** Their own install command registers what they need, so the table above is the whole story.
-- **DeepSeek Harness.** Tersio mounts itself as a dsh bundle through the `dsh` field in its own `package.json`, so one `dsh plugin add` per profile brings the modes, the six slash commands, the `rtk_run` tool, and Tersio's MCP server. The desktop app boots the `desktop` profile while `dsh web` boots `web`, so the installer covers both; a restart of the app loads it. Mode switches there are chat messages, because DeepSeek Harness has no status line.
-
 The installer writes `<file>.bak` before it replaces a source. `tersio doctor --fix extensions` restores a damaged tree, and `doctor --fix registrations` drops retired or duplicate `config.yml` entries.
 
-Settings -> **Data** holds the snapshots, the backup schedule, a retention window (7 days to Forever; older usage rows drop on the next sync, and transcripts are untouched), and the reset behind an Advanced toggle. A restore snapshots the current state first, then copies the chosen one over the live files; it never deletes, and a delete never touches the live data. Both ask first and name what they move, and a file a snapshot does not hold is left alone. The same pane clears the statistics behind a confirmation that names the ledger and RTK rows it would take, then empties the ledger and hides what it summarised. Session transcripts, rtk history, and prices stay on disk.
+Settings → **Data** holds snapshots, the backup schedule, retention (7 days to Forever; older usage rows drop on the next sync; transcripts stay), and Reset behind Advanced. Restore saves the current state first, then copies the snapshot over the live files; delete never touches live data. Both ask first, name what they change, and leave files outside the snapshot untouched. Reset confirms, clears the ledger and its RTK rows, hides the summary, and keeps transcripts, rtk history, and prices.
 
 Active modes reassert after Ponytail's prompt block on every top-level turn, including after history compaction.
 
