@@ -317,17 +317,22 @@ export interface HeadroomWrapTarget {
   manual?: boolean;
   /** True when headroom's own install apply has a durable path Tersio does not manage. */
   headroomInstall?: boolean;
-  /** True when the durable block is already present in the tool's own config. */
+  /** True when the durable block is already present in the tool's own config, or the manual route points at the proxy. */
   installed?: boolean;
+  /** True when the host has no writer and routes through its own provider endpoint. */
+  route?: boolean;
+  /** The route's measured state, shown on the row. */
+  detail?: string;
 }
 
 export interface HeadroomWrapState {
   targets: Array<HeadroomWrapTarget>;
+  endpoint?: string;
 }
 
 export async function fetchWrapTargets(): Promise<HeadroomWrapState | null> {
-  const body = await apiJson<{ targets?: Array<HeadroomWrapTarget> }>("/api/headroom/wrap");
-  return body?.targets ? { targets: body.targets } : null;
+  const body = await apiJson<{ targets?: Array<HeadroomWrapTarget>; endpoint?: string }>("/api/headroom/wrap");
+  return body?.targets ? { targets: body.targets, endpoint: body.endpoint } : null;
 }
 
 /** The canvas mirrors the wrap record in browser storage; the server copy stays the source of truth. */

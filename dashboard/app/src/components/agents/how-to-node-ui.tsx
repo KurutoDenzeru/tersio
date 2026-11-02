@@ -541,10 +541,11 @@ export function wrapNotice(target: { label?: string; durable?: boolean } | undef
 export function HeadroomDrawer({ open, onOpenChange, modes, busy, onSet, onSaved }: Omit<NodeSurfaceProps, "node" | "hostState" | "onHostAction">) {
   const toast = useToast();
   const [wrapTargets, setWrapTargets] = useState<Array<HeadroomWrapTarget> | null>(null);
+  const [endpoint, setEndpoint] = useState<string | null>(null);
 
   /** One tool row, shared by the durable list and the proxy list. */
   const renderRow = (target: HeadroomWrapTarget) => {
-    const on = wrapped[target.name] === true;
+    const on = target.route ? target.installed === true : wrapped[target.name] === true;
     return (
       <div
         key={target.name}
@@ -559,7 +560,14 @@ export function HeadroomDrawer({ open, onOpenChange, modes, busy, onSet, onSaved
             ? <AgentLogo host={target.name as "codex"} className="size-3.5 shrink-0" />
             : <BrandMark name={target.name} className={cn("size-3.5", on ? "" : "text-dim")} />}
         <span className={cn("mono min-w-0 flex-1 truncate text-[11px]", on ? "text-ink" : "text-dim")}>{target.label ?? target.name}</span>
-        {target.manual ? (
+        {target.route ? (
+          <span
+            className={cn("mono shrink-0 rounded border px-1.5 py-0.5 text-[9px]", on ? "border-success/40 text-success" : "border-line text-dim")}
+            title={target.detail}
+          >
+            {on ? "routed" : "manual route"}
+          </span>
+        ) : target.manual ? (
           <span
             className="mono shrink-0 rounded border border-line px-1.5 py-0.5 text-[9px] text-dim"
             title={target.headroomInstall
@@ -593,7 +601,10 @@ export function HeadroomDrawer({ open, onOpenChange, modes, busy, onSet, onSaved
   const [wrapBusy, setWrapBusy] = useState<string | null>(null);
   useEffect(() => {
     if (!open) return;
-    void fetchWrapTargets().then((state) => setWrapTargets(state?.targets ?? null));
+    void fetchWrapTargets().then((state) => {
+      setWrapTargets(state?.targets ?? null);
+      setEndpoint(state?.endpoint ?? null);
+    });
     void fetchHealth().then(setHealth);
     void fetchHeadroomWraps().then((server) => {
       if (!server || typeof server !== 'object') return;
@@ -659,7 +670,7 @@ export function HeadroomDrawer({ open, onOpenChange, modes, busy, onSet, onSaved
             <p className="m-0 text-[10px] leading-relaxed text-dim">
               A switch installs headroom's durable integration. A row marked "headroom install" has a durable
               path through headroom's own install, which Tersio does not manage. "session only" has no durable
-              install at all.
+              install at all. "manual route" means Tersio reads the host endpoint but does not write it.
             </p>
             {wrapTargets === null ? (
               <Skeleton className="h-8 w-full rounded-md" />
@@ -670,6 +681,12 @@ export function HeadroomDrawer({ open, onOpenChange, modes, busy, onSet, onSaved
                 No supported agent was detected on this machine.
               </p>
             )}
+            {wrapTargets?.some((target) => target.route) && endpoint ? (
+              <p className="m-0 rounded-lg border border-line bg-track/40 px-2.5 py-2 text-[10px] leading-relaxed text-dim">
+                Pi, PiG, and DeepSeek Harness route when their provider base URL is{" "}
+                <span className="mono text-ink">{endpoint}v1</span>. Tersio reads that endpoint and never edits it.
+              </p>
+            ) : null}
 
             <p className="m-0 text-[13px] font-semibold">Session default</p>
             {health === null ? (

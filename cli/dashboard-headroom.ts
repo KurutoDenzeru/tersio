@@ -5,8 +5,10 @@ import type http from 'node:http';
 import { readHeadroomDoctor } from '../extensions/shared/headroom-gain.ts';
 import {
   DURABLE_CONFIG, discoverInitTargets, discoverWrapTargets, durableConfigInstalled,
-  headroomProxyPort, installDurableConfig, readOmpGateway, routeOmpGateway,
+  headroomHostDurable, headroomHostSupported, headroomProxyPort, headroomProxyUrl, installDurableConfig, readOmpGateway, routeOmpGateway,
 } from '../extensions/shared/headroom-proxy.ts';
+import { describeHeadroomRoute, readHeadroomRoute } from '../extensions/shared/headroom-routing.ts';
+import { detectHosts } from './hosts.ts';
 import { mergeHeadroomWraps, readHeadroomWraps, setStoredWrap, writeHeadroomWraps } from '../extensions/shared/headroom-wraps.ts';
 import { ensureHeadroomRuntime } from './headroom-runtime.ts';
 import { resolveHeadroomBinary } from '../extensions/shared/utils.ts';
@@ -75,7 +77,21 @@ export async function handleHeadroomRoutes(
       installed: durableConfigInstalled(name),
       label: ctx.wrapLabels[name] ?? discoveredLabels.get(name) ?? name,
     }));
-    ctx.json(res, 200, { ok: bin !== null, targets });
+    // Hosts without a writer still route when their provider endpoint points at the proxy. Show that state, and never offer a switch that cannot write their config.
+    const manualTargets = detectHosts()
+      .filter((host) => host.installed && headroomHostSupported(host.id) && !headroomHostDurable(host.id))
+      .map((host) => {
+        const route = readHeadroomRoute(host.id);
+        return {
+          name: host.id,
+          label: host.label,
+          manual: true,
+          route: true,
+          installed: route.routed,
+          detail: describeHeadroomRoute(route),
+        };
+      });
+    ctx.json(res, 200, { ok: bin !== null, endpoint: headroomProxyUrl(), targets: [...targets, ...manualTargets] });
     return true;
   }
   // The automated durable install: one documented headroom command per tool, never a per-session wrap.
