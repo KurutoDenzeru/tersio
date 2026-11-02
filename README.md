@@ -34,7 +34,7 @@ Tersio installs into Oh My Pi, Pi, Pi-in-go, OpenCode, and DeepSeek Harness, and
 
 Every mode is a text block you can read in the repo. Measured savings and prompt overhead are published per mode in [docs/BENCHMARK_GUIDE.md](./docs/BENCHMARK_GUIDE.md). No total-bill claim: the tests measure reply tokens, prompt overhead, and command output only.
 
-Oh My Pi and OpenCode get a Headroom switch. Pi, PiG, and DeepSeek Harness show a manual route when their provider base URL points at the proxy.
+Oh My Pi and OpenCode use Headroom's own writer. Pi, PiG, and DeepSeek Harness get a Tersio switch that saves the provider endpoint and puts it back when you turn Headroom off.
 
 ## ⚡ Getting Started
 

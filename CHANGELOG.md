@@ -18,7 +18,7 @@
 - A scripted install prints one line about optional Headroom.
 - Tokscale is no longer credited.
 - Behind the scenes, agent support, dashboard data, and usage code now share one source, so future changes are smaller.
-- Headroom now reads Pi, PiG, and DeepSeek Harness model endpoints. A manual route shows as routed, and Tersio never writes those configs.
+- Headroom now routes Pi, PiG, and DeepSeek Harness through their active provider endpoint. The install and the Quick start switch save the old endpoint and restore it on off.
 
 ### Fixed
 - Headroom now tells the truth: it starts its runtime before enabling, waits for the runtime, refuses to claim compression when traffic does not use it, and shows live counters and routing.
