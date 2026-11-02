@@ -198,8 +198,10 @@ export function edgePath(s: Box, t: Box, others: ReadonlyArray<Box>, groups: Rea
   return `M${sp[0]} ${sp[1]} C${pick.c1[0]} ${pick.c1[1]}, ${pick.c2[0]} ${pick.c2[1]}, ${tp[0]} ${tp[1]}`;
 }
 
-/** The default view: a 2x2 mode block (pstack/rtk over caveman/ponytail), headroom above, output right, hosts in a row below. */
+/** The default view: a 2x2 mode block (pstack/rtk over caveman/ponytail), headroom above, output right, hosts in three columns below. */
 export function defaultPositions(installedHosts: ReadonlyArray<string>): Record<string, Box> {
+  const HOST_COLUMNS = 3;
+  const HOST_ROW_STEP = NODE_H + 80;
   const positions: Record<string, Box> = {
     prompt: { x: 40, y: 320, w: NODE_W, h: NODE_H },
     caveman: { x: 320, y: 320, w: NODE_W, h: NODE_H },
@@ -209,9 +211,14 @@ export function defaultPositions(installedHosts: ReadonlyArray<string>): Record<
     headroom: { x: 464, y: 56, w: NODE_W, h: NODE_H },
     output: { x: 904, y: 320, w: NODE_W, h: NODE_H },
   };
-  // The agent band: the host card is taller because it lists its live modes.
+  // The agent band: the host card is taller because it lists its live modes, and a fourth host starts a new row under the first column.
   installedHosts.forEach((host, i) => {
-    positions[`host-${host}`] = { x: 320 + i * 272, y: 504, w: NODE_W, h: NODE_H + 48 };
+    positions[`host-${host}`] = {
+      x: 184 + (i % HOST_COLUMNS) * 272,
+      y: 496 + Math.floor(i / HOST_COLUMNS) * HOST_ROW_STEP,
+      w: NODE_W,
+      h: NODE_H + 48,
+    };
   });
   return positions;
 }
@@ -460,7 +467,7 @@ export function nodeState(id: NodeId, modes: ModeState | null, hostState: HostSt
     const on = edgeLit(id, modes, hostState);
     return { label: isOff(on) ? "off" : "on", on };
   }
-  return { label: "on", on: true };
+  return { label: "", on: null };
 }
 
 export function nodeOff(id: NodeId, modes: ModeState | null, hostState: HostState): boolean {

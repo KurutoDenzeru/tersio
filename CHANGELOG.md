@@ -30,6 +30,8 @@
 - Closing the dashboard releases the port. Requests are no longer counted twice. History survives updates and resets.
 - Install keeps each agent's own settings, model logos are correct, and uninstalled tools read as uninstalled.
 - No stray files are left in your projects.
+- A saved agent card can no longer sit on another card and hide it. The Quick start page draws the agent group in three columns again.
+- The default agent group uses your saved position. A fourth agent starts a new row under the first column.
 
 ## v2.25.16
 

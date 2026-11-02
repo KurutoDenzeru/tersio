@@ -27,6 +27,11 @@ function clusterBox(ids: NodeId[], boxes: Record<string, Box>): Box | null {
   return { x: left, y: top, w: right - left, h: bottom - top };
 }
 
+/** Two cards that share any area; a host added to an older layout can land on one already stored. */
+function boxesOverlap(a: Box, b: Box): boolean {
+  return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+}
+
 /** A framed band of nodes; its label is the grip that moves the whole band. */
 function ClusterFrame({
   label, ids, boxes, onPointerDown, onPointerMove, onPointerUp,
@@ -214,8 +219,11 @@ export function PipelineCanvas({
       // The user owns where a node sits; the size is ours, so a stored box never pins a stale height.
       merged[id] = stored[id] ? { ...defaults[id], x: stored[id].x, y: stored[id].y } : defaults[id] ?? { x: 40, y: 296, w: NODE_W, h: NODE_H };
     }
+    // A host added after the store was written can sit on a saved card. Reset the band to the current columns, so no host hides another.
+    const hostClash = hostIds.some((id, i) => hostIds.slice(i + 1).some((other) => boxesOverlap(merged[id], merged[other])));
+    if (hostClash) for (const id of hostIds) merged[id] = defaults[id] ?? merged[id];
     return merged;
-  }, [nodeIds, stored, installed]);
+  }, [nodeIds, stored, installed, hostIds]);
 
   const groupBoxes = useMemo(
     () => [clusterBox(modeIds, boxes), clusterBox(hostIds, boxes)].filter((b): b is Box => b !== null),
@@ -419,7 +427,6 @@ export function PipelineCanvas({
           <span className={header}>
             <Icon name="arrow-right" className="size-3.5 shrink-0 text-dim" />
             <span className="text-[12px] font-semibold">Output</span>
-            <NodeBadge on={true} label="on" />
           </span>
           <span className="mono flex flex-1 items-center px-3 py-1.5 text-[10px] text-dim">the turn's result</span>
         </>
