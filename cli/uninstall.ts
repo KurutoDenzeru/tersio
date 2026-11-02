@@ -224,11 +224,12 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
     hosts = [options.host];
   } else if (tty() && !confirmed) {
     // One plain select: Enter picks the single thing to remove, no Space and no Done row.
-    const pick = await askInteractiveChoice('What should Tersio remove?', [
-      { value: 'agents', label: 'AI agents', hint: 'Oh My Pi, pi, PiG, OpenCode, DeepSeek Harness — pick one next' },
+    const targets = [
+      ...(installed.length > 0 ? [{ value: 'agents', label: 'AI agents', hint: `${installed.map((entry) => entry.label).join(', ')} — pick one next` }] : []),
       ...(shouldRemoveRtk ? [] : [{ value: 'rtk', label: 'RTK binary', hint: 'the rtk CLI the hooks call' }]),
       { value: 'headroom', label: 'Headroom binary', hint: 'uninstalls headroom-ai through uv or pip' },
-    ], 'agents');
+    ];
+    const pick = await askInteractiveChoice('What should Tersio remove?', targets, targets[0].value);
     if (pick.status !== 'selected') {
       closeRL();
       return false;
@@ -236,12 +237,12 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
     hosts = [];
     if (pick.value === 'rtk') shouldRemoveRtk = true;
     if (pick.value === 'headroom') shouldRemoveHeadroomBinary = true;
-    if (pick.value === 'agents') {
-      const agentPick = await askInteractiveChoice('Which agent?', allHosts.map((entry) => ({
+    if (pick.value === 'agents' && installed.length > 0) {
+      const agentPick = await askInteractiveChoice('Which agent?', installed.map((entry) => ({
         value: entry.id,
         label: entry.label,
-        hint: entry.installed ? 'tersio installed' : 'not installed',
-      })), installed[0]?.id ?? allHosts[0].id);
+        hint: entry.version ? `tersio ${entry.version}` : 'tersio installed',
+      })), installed[0].id);
       if (agentPick.status === 'selected') hosts = [agentPick.value as HostId];
     }
     if (hosts.length === 0 && !shouldRemoveRtk && !shouldRemoveHeadroomBinary) {
