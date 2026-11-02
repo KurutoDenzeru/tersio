@@ -62,11 +62,18 @@ export async function discoverWrapTargets(bin: string, timeoutMs = 15_000): Prom
 }
 
 /** Headroom can write these two configs durably itself, though its `init` does not list them. */
-export const DURABLE_CONFIG = Object.values(HOST_CAPS).filter((cap) => cap.headroom).map((cap) => cap.id) as ReadonlyArray<'omp' | 'opencode'>;
+export const DURABLE_CONFIG = Object.values(HOST_CAPS)
+  .filter((cap) => cap.headroomDurable === true)
+  .map((cap) => cap.id) as ReadonlyArray<'omp' | 'opencode'>;
 
-/** The Tersio hosts headroom can route. Every other host has no durable integration to offer. */
+/** The Tersio hosts headroom can route, with a writer or a hand-set provider endpoint. */
 export function headroomHostSupported(host: string): boolean {
   return hostCap(host)?.headroom === true;
+}
+
+/** True when the host has a writer Tersio can run; the rest need a manual endpoint. */
+export function headroomHostDurable(host: string): boolean {
+  return hostCap(host)?.headroomDurable === true;
 }
 
 /** omp's agent state directory, honoring the relocation variable headroom's own helper reads. */

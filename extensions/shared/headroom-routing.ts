@@ -4,6 +4,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { headroomProxyUrl, ompConfigFile, ompModelsFile, opencodeConfigFiles } from './headroom-proxy.ts';
+import { homeDir, piAgentDir, pigAgentDir } from './utils.ts';
 
 export interface HeadroomRoute {
   /** True when a config was read far enough to answer. */
@@ -232,10 +233,144 @@ function readOpencodeRoute(proxyUrl: string): HeadroomRoute {
   return emptyRoute('opencode', proxyUrl, 'no opencode config found');
 }
 
+/** Pi and PiG keep the active provider beside the model list; both use the same shape. */
+export function piRouteFrom(settingsText: string, modelsText: string, host: string, proxyUrl: string): HeadroomRoute {
+  let settings: Record<string, unknown>;
+  let models: Record<string, unknown>;
+  try {
+    settings = JSON.parse(settingsText) as Record<string, unknown>;
+    models = JSON.parse(modelsText) as Record<string, unknown>;
+  } catch (e) {
+    return emptyRoute(host, proxyUrl, `settings are not valid JSON: ${(e as Error).message}`);
+  }
+  const model = typeof settings.defaultModel === 'string' ? settings.defaultModel : '';
+  const named = typeof settings.defaultProvider === 'string' ? settings.defaultProvider : '';
+  const provider = named || (model.includes('/') ? model.slice(0, model.indexOf('/')) : '');
+  if (!provider) return emptyRoute(host, proxyUrl, 'settings name no default provider');
+  const providers = models.providers && typeof models.providers === 'object' ? models.providers as Record<string, unknown> : {};
+  const entry = providers[provider];
+  const record = entry && typeof entry === 'object' ? entry as Record<string, unknown> : {};
+  const baseUrl = typeof record.baseUrl === 'string' ? record.baseUrl : null;
+  return {
+    measured: true,
+    failure: '',
+    host,
+    proxyUrl,
+    model,
+    provider,
+    baseUrl,
+    routed: baseUrl ? sameProxyEndpoint(baseUrl, proxyUrl) : false,
+  };
+}
+
+/** A small YAML read for dsh's provider block: provider name to baseURL. */
+export function dshProviderBaseUrls(text: string): Map<string, string> {
+  const out = new Map<string, string>();
+  let inLlm = false;
+  let inProviders = false;
+  let provider = '';
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const indent = indentOf(line);
+    if (indent === 0) {
+      inLlm = trimmed === 'llm-pi-ai:';
+      inProviders = false;
+      provider = '';
+      continue;
+    }
+    if (!inLlm) continue;
+    if (indent === 2) {
+      inProviders = trimmed === 'providers:';
+      provider = '';
+      continue;
+    }
+    if (!inProviders) continue;
+    if (indent === 4 && /^[^:\s][^:]*:\s*$/.test(trimmed)) {
+      provider = unquote(trimmed.slice(0, -1));
+      continue;
+    }
+    if (provider && indent === 6 && trimmed.startsWith('baseURL:')) {
+      const value = valueOf(trimmed);
+      if (value) out.set(provider, value);
+    }
+  }
+  return out;
+}
+
+/** The provider and model the desktop or web profile starts with. */
+export function dshDefaultRoute(profileText: string): { provider: string; model: string } {
+  let active = false;
+  let provider = '';
+  let model = '';
+  for (const line of profileText.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('- id:')) {
+      active = trimmed.slice('- id:'.length).replace(/\s+#.*$/, '').trim() === 'agent-default-model';
+      continue;
+    }
+    if (!active) continue;
+    if (trimmed.startsWith('provider:')) provider = unquote(trimmed.slice('provider:'.length).replace(/\s+#.*$/, '').trim());
+    else if (trimmed.startsWith('model:')) model = unquote(trimmed.slice('model:'.length).replace(/\s+#.*$/, '').trim());
+  }
+  return { provider, model };
+}
+
+/** DeepSeek Harness reads one provider block and one profile default, both plain YAML. */
+export function dshRouteFrom(settingsText: string, profileText: string, proxyUrl: string): HeadroomRoute {
+  const providers = dshProviderBaseUrls(settingsText);
+  if (providers.size === 0) return emptyRoute('dsh', proxyUrl, 'settings name no llm-pi-ai providers');
+  const { provider, model } = dshDefaultRoute(profileText);
+  if (!provider) return emptyRoute('dsh', proxyUrl, 'the active dsh profile names no default provider');
+  const baseUrl = providers.get(provider) ?? null;
+  return {
+    measured: true,
+    failure: '',
+    host: 'dsh',
+    proxyUrl,
+    model,
+    provider,
+    baseUrl,
+    routed: baseUrl ? sameProxyEndpoint(baseUrl, proxyUrl) : false,
+  };
+}
+
+function readPiRoute(host: 'pi' | 'pig', proxyUrl: string): HeadroomRoute {
+  const dir = host === 'pig' ? pigAgentDir() : piAgentDir();
+  try {
+    return piRouteFrom(
+      fs.readFileSync(path.join(dir, 'settings.json'), 'utf8'),
+      fs.readFileSync(path.join(dir, 'models.json'), 'utf8'),
+      host,
+      proxyUrl,
+    );
+  } catch (e) {
+    return emptyRoute(host, proxyUrl, (e as Error).message);
+  }
+}
+
+function readDshRoute(proxyUrl: string): HeadroomRoute {
+  let settings: string;
+  try {
+    settings = fs.readFileSync(path.join(homeDir(), '.dsh', 'settings.yaml'), 'utf8');
+  } catch (e) {
+    return emptyRoute('dsh', proxyUrl, (e as Error).message);
+  }
+  for (const profile of ['desktop', 'web']) {
+    const file = path.join(homeDir(), '.dsh', 'profiles', profile, 'cordis.patch.yml');
+    try {
+      return dshRouteFrom(settings, fs.readFileSync(file, 'utf8'), proxyUrl);
+    } catch { /* try the next profile */ }
+  }
+  return emptyRoute('dsh', proxyUrl, 'no dsh profile found');
+}
+
 /** Whether the host's active model reaches the proxy. Unmeasured beats a guessed yes. */
 export function readHeadroomRoute(host: string, proxyUrl: string = headroomProxyUrl()): HeadroomRoute {
   if (host === 'omp') return readOmpRoute(proxyUrl);
   if (host === 'opencode') return readOpencodeRoute(proxyUrl);
+  if (host === 'pi' || host === 'pig') return readPiRoute(host, proxyUrl);
+  if (host === 'dsh') return readDshRoute(proxyUrl);
   return emptyRoute(host, proxyUrl, `${host} has no headroom route`);
 }
 

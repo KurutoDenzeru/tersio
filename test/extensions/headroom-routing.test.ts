@@ -5,7 +5,10 @@ import { afterEach, describe, expect, test } from 'vitest';
 import {
   defaultOmpModel,
   describeHeadroomRoute,
+  dshProviderBaseUrls,
+  dshRouteFrom,
   ompModelRoute,
+  piRouteFrom,
   readHeadroomRoute,
   sameProxyEndpoint,
 } from '../../extensions/shared/headroom-routing.ts';
@@ -67,6 +70,57 @@ describe('omp route parsing', () => {
   test('two loopback spellings on the same port are the same endpoint', () => {
     expect(sameProxyEndpoint('http://localhost:8787/v1', 'http://127.0.0.1:8787/')).toBe(true);
     expect(sameProxyEndpoint('http://127.0.0.1:3425', 'http://127.0.0.1:8787/')).toBe(false);
+  });
+});
+
+describe('manual route parsing', () => {
+  const piSettings = JSON.stringify({ defaultProvider: 'magpie', defaultModel: 'commandcode/deepseek/deepseek-v4.1-flash' });
+  const piModels = JSON.stringify({ providers: { magpie: { baseUrl: 'http://127.0.0.1:3425/v1' } } });
+
+  test('reads the Pi provider from its settings and model list', () => {
+    const route = piRouteFrom(piSettings, piModels, 'pi', PROXY);
+    expect(route.measured).toBe(true);
+    expect(route.routed).toBe(false);
+    expect(route.provider).toBe('magpie');
+    expect(describeHeadroomRoute(route)).toContain('not routed');
+  });
+
+  test('falls back to the model prefix when no provider is named', () => {
+    const route = piRouteFrom(JSON.stringify({ defaultModel: 'magpie/auto/beam-free' }), piModels, 'pi', PROXY);
+    expect(route.provider).toBe('magpie');
+    expect(route.measured).toBe(true);
+  });
+
+  test('reads dsh provider endpoints and the active profile provider', () => {
+    const settings = `llm-pi-ai:
+  providers:
+    magpie:
+      api: openai-completions
+      baseURL: http://127.0.0.1:3425/v1
+    headroom:
+      api: openai-completions
+      baseURL: http://127.0.0.1:8787/v1
+`;
+    const profile = `- id: agent-default-model # magpie
+  config:
+    provider: headroom
+    model: auto/beam-free
+`;
+    expect([...dshProviderBaseUrls(settings)]).toEqual([
+      ['magpie', 'http://127.0.0.1:3425/v1'],
+      ['headroom', 'http://127.0.0.1:8787/v1'],
+    ]);
+    const route = dshRouteFrom(settings, profile, PROXY);
+    expect(route.measured).toBe(true);
+    expect(route.routed).toBe(true);
+    expect(route.provider).toBe('headroom');
+    expect(route.model).toBe('auto/beam-free');
+  });
+
+  test('reports an unmeasured dsh route when the profile names no provider', () => {
+    const route = dshRouteFrom('llm-pi-ai:\n  providers:\n    magpie:\n      baseURL: http://127.0.0.1:3425/v1\n', '', PROXY);
+    expect(route.measured).toBe(false);
+    expect(describeHeadroomRoute(route)).toContain('route unknown');
   });
 });
 

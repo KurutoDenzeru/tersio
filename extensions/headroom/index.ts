@@ -50,7 +50,7 @@ function isOffCommand(text: unknown): boolean {
 
 export default function headroomSessionExtension(pi: ExtensionApi): void {
   const host = hostIdOf(pi);
-  // pi and PiG have no headroom route, so their block would promise compression their traffic never gets.
+  // A host without a known model route would get a promise its traffic never fulfils.
   const supported = headroomHostSupported(host);
   let currentMode = DEFAULT_MODE;
   let lastInjected: string | undefined = undefined;
@@ -84,7 +84,7 @@ export default function headroomSessionExtension(pi: ExtensionApi): void {
     handler: async (args, ctx) => {
       const arg = String(args || '').trim().toLowerCase();
       if (!supported && arg !== 'status') {
-        ctx?.ui?.notify?.('Headroom does not support this agent. Its durable integration covers Oh My Pi and OpenCode.', 'warning');
+        ctx?.ui?.notify?.('Headroom has no route for this agent.', 'warning');
         return;
       }
       if (!arg || arg === 'on') {

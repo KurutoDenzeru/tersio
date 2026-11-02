@@ -1,6 +1,6 @@
 import http from 'node:http';
 import { afterEach, describe, expect, test } from 'vitest';
-import { headroomHostSupported } from '../../extensions/shared/headroom-proxy.ts';
+import { headroomHostDurable, headroomHostSupported } from '../../extensions/shared/headroom-proxy.ts';
 import { headroomProxyPort, headroomProxyUrl, headroomRuntimeUp, proxyArgsForDeployment } from '../../cli/headroom-runtime.ts';
 
 describe('headroom runtime', () => {
@@ -10,12 +10,13 @@ describe('headroom runtime', () => {
     else process.env.TERSIO_HEADROOM_PROXY_URL = before;
   });
 
-  test('only Oh My Pi and OpenCode are routed hosts', () => {
-    expect(headroomHostSupported('omp')).toBe(true);
-    expect(headroomHostSupported('opencode')).toBe(true);
-    expect(headroomHostSupported('pi')).toBe(false);
-    expect(headroomHostSupported('pig')).toBe(false);
-    expect(headroomHostSupported('dsh')).toBe(false);
+  test('every host can route, while only Oh My Pi and OpenCode have writers', () => {
+    for (const host of ['omp', 'pi', 'opencode', 'pig', 'dsh']) expect(headroomHostSupported(host)).toBe(true);
+    expect(headroomHostDurable('omp')).toBe(true);
+    expect(headroomHostDurable('opencode')).toBe(true);
+    expect(headroomHostDurable('pi')).toBe(false);
+    expect(headroomHostDurable('pig')).toBe(false);
+    expect(headroomHostDurable('dsh')).toBe(false);
   });
 
   test('the proxy URL override moves both the reader and the durable port', () => {

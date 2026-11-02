@@ -299,13 +299,13 @@ test("a durable config block reads as installed for omp and opencode", () => {
   });
 });
 
-test("pi and PiG refuse the mode instead of promising compression they cannot route", async () => {
+test("pi and PiG accept the mode but add no prompt without a route", async () => {
   resetSharedComboState();
   const entries: SessionEntry[] = [];
   const { commands, handlers, ctx } = harness(entries, "pi");
   await commands.get("headroom")!("on", ctx);
-  expect(entries).toEqual([]);
-  expect(ctx.notifications.at(-1)).toContain("Headroom does not support this agent");
+  expect(entries).toHaveLength(1);
+  expect(entries[0]).toMatchObject({ customType: "headroom-mode", data: { mode: "on" } });
   const prompt = await handlers.get("before_agent_start")?.(
     { systemPrompt: ["base"] },
     ctx,
