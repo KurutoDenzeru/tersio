@@ -546,8 +546,8 @@ export function HeadroomDrawer({ open, onOpenChange, modes, busy, onSet, onSaved
   /** One tool row, shared by the durable list and the proxy list. */
   const renderRow = (target: HeadroomWrapTarget) => {
     const on = target.route ? target.installed === true : wrapped[target.name] === true;
-    // A route found by hand has no saved endpoint, so its switch would have nothing to put back.
-    const editable = !target.manual && (!target.route || target.managed !== false);
+    // A route found by hand has no saved endpoint, so an on switch would have nothing to put back.
+    const editable = !target.manual && (!target.route || !on || target.managed === true);
     return (
       <div
         key={target.name}
