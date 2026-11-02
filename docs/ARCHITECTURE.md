@@ -93,10 +93,10 @@ flowchart LR
 
 - **Only detected tools appear.** Continue is discontinued, and ZCode keeps its settings in a desktop window, so both stay out.
 - **The runtime comes before the switch.** Tersio starts headroom's saved deployment, or headroom's proxy when none exists, and waits for health. Dashboard start restores an enabled runtime. The Tools page also carries a Start Headroom action.
-- **Only Oh My Pi and OpenCode are routed Tersio hosts.** pi, PiG, and DeepSeek Harness never receive a Headroom prompt, because their traffic has no Headroom route.
-- **A row states its own path.** A switch means a durable setup Tersio manages. `headroom install` means headroom's installer owns it. `session only` means no durable setup exists.
+- **Oh My Pi and OpenCode have writers; the rest can route by hand.** Tersio writes those two configs. Pi, PiG, and DeepSeek Harness show a manual route when their provider base URL points at the proxy. Tersio reads that endpoint and never edits it.
+- **A row states its own path.** A switch means a durable setup Tersio manages. `headroom install` means headroom's installer owns it. `manual route` means a hand-set endpoint. `session only` means no durable setup exists.
 - **Undo is always headroom's.** Tersio removes its own record only after `headroom unwrap` answers.
-- **The block requires a routed model.** Tersio reads omp's default `modelRoles` entry and OpenCode's active model, resolves the provider base URL, and keeps the block out when the model does not reach the proxy.
+- **The block requires a routed model.** Tersio reads omp's default `modelRoles` entry, OpenCode's active model, Pi's default provider, and DeepSeek Harness's profile provider. It resolves the provider base URL and keeps the block out when the model does not reach the proxy.
 - **A local gateway is routed, not guessed.** When omp's OpenAI provider points at a loopback gateway, Tersio records the original URL in a marker, points the provider at the proxy, and starts Headroom with `--openai-api-url` set to that gateway. `headroom unwrap omp` restores the backup.
 - **Retrieval is Tersio's.** A compression marker carries a hash. Tersio installs one MCP entry (`tersio mcp`) for every host it supports; `tersio_headroom` with `action: retrieve` reads the original from the proxy's store.
 - **The pill states configuration, the counters state traffic.** `/stats` supplies requests, compressed requests, and live tokens saved; the durable ledger supplies lifetime savings.
