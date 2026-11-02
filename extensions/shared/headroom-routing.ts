@@ -268,30 +268,39 @@ export function dshProviderBaseUrls(text: string): Map<string, string> {
   const out = new Map<string, string>();
   let inLlm = false;
   let inProviders = false;
+  let providerIndent = -1;
   let provider = '';
   for (const line of text.split(/\r?\n/)) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith('#')) continue;
     const indent = indentOf(line);
-    if (indent === 0) {
-      inLlm = trimmed === 'llm-pi-ai:';
-      inProviders = false;
-      provider = '';
+    if (trimmed.startsWith('- id:')) {
+      // The next loader entry ends this plugin's block.
+      if (inLlm && inProviders) break;
+      if (/^-\s*id:\s*llm-pi-ai\b/.test(trimmed)) inLlm = true;
       continue;
     }
-    if (!inLlm) continue;
-    if (indent === 2) {
-      inProviders = trimmed === 'providers:';
+    if (!inLlm) {
+      if (trimmed === 'llm-pi-ai:') inLlm = true;
+      continue;
+    }
+    if (trimmed === 'providers:') {
+      inProviders = true;
+      providerIndent = indent + 2;
       provider = '';
       continue;
     }
     if (!inProviders) continue;
-    if (indent === 4 && /^[^:\s][^:]*:\s*$/.test(trimmed)) {
+    if (indent < providerIndent) {
+      inProviders = false;
+      continue;
+    }
+    if (indent === providerIndent && /^[^:\s][^:]*:\s*$/.test(trimmed)) {
       provider = unquote(trimmed.slice(0, -1));
       continue;
     }
-    if (provider && indent === 6 && trimmed.startsWith('baseURL:')) {
-      const value = valueOf(trimmed);
+    if (provider && indent === providerIndent + 2 && trimmed.startsWith('baseURL:')) {
+      const value = valueOf(trimmed)?.replace(/\s+#.*$/, '');
       if (value) out.set(provider, value);
     }
   }
@@ -319,6 +328,8 @@ export function dshDefaultRoute(profileText: string): { provider: string; model:
 /** DeepSeek Harness reads one provider block and one profile default, both plain YAML. */
 export function dshRouteFrom(settingsText: string, profileText: string, proxyUrl: string): HeadroomRoute {
   const providers = dshProviderBaseUrls(settingsText);
+  // A profile patch overrides the shared settings, so its provider blocks win.
+  for (const [name, baseUrl] of dshProviderBaseUrls(profileText)) providers.set(name, baseUrl);
   if (providers.size === 0) return emptyRoute('dsh', proxyUrl, 'settings name no llm-pi-ai providers');
   const { provider, model } = dshDefaultRoute(profileText);
   if (!provider) return emptyRoute('dsh', proxyUrl, 'the active dsh profile names no default provider');

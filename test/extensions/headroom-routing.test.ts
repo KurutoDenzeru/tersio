@@ -105,11 +105,17 @@ describe('manual route parsing', () => {
   config:
     provider: headroom
     model: auto/beam-free
+- id: llm-pi-ai # magpie
+  config:
+    providers:
+      headroom:
+        baseURL: http://127.0.0.1:8787/v1 # the proxy
 `;
     expect([...dshProviderBaseUrls(settings)]).toEqual([
       ['magpie', 'http://127.0.0.1:3425/v1'],
       ['headroom', 'http://127.0.0.1:8787/v1'],
     ]);
+    expect([...dshProviderBaseUrls(profile)]).toEqual([['headroom', 'http://127.0.0.1:8787/v1']]);
     const route = dshRouteFrom(settings, profile, PROXY);
     expect(route.measured).toBe(true);
     expect(route.routed).toBe(true);
