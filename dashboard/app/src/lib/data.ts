@@ -325,6 +325,8 @@ export interface HeadroomWrapTarget {
   detail?: string;
   /** True when Tersio wrote this route and can put the old endpoint back. */
   managed?: boolean;
+  /** False when the agent itself is not installed, so its config is not there to change. */
+  agentInstalled?: boolean;
 }
 
 export interface HeadroomWrapState {

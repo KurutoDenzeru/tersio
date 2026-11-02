@@ -4,8 +4,8 @@
 import type http from 'node:http';
 import { readHeadroomDoctor } from '../extensions/shared/headroom-gain.ts';
 import {
-  DURABLE_CONFIG, discoverInitTargets, discoverWrapTargets, durableConfigInstalled,
-  headroomHostDurable, headroomHostSupported, headroomProxyPort, headroomProxyUrl, installDurableConfig, readOmpGateway, routeOmpGateway,
+  DURABLE_CONFIG, discoverInitTargets, durableConfigInstalled,
+  headroomHostDurable, headroomProxyPort, headroomProxyUrl, installDurableConfig, readOmpGateway, routeOmpGateway,
 } from '../extensions/shared/headroom-proxy.ts';
 import { describeHeadroomRoute, readHeadroomRoute } from '../extensions/shared/headroom-routing.ts';
 import { hasNativeRoute, installNativeRoute, isNativeRouteHost, removeNativeRoute } from '../extensions/shared/headroom-routes.ts';
@@ -57,45 +57,35 @@ export async function handleHeadroomRoutes(
     ctx.json(res, 200, await ensureHeadroomRuntime(bin));
     return true;
   }
-  // Which headroom wrap targets exist on this machine. Only detected tools are listed.
+  // Tersio's five agents only. Headroom's own extra tools stay out of this drawer.
   if (req.url === '/api/headroom/wrap' && req.method === 'GET') {
     const bin = resolveHeadroomBinary();
-    const durableTargets = bin !== null ? await discoverInitTargets(bin) : null;
-    const discovered = bin !== null ? await discoverWrapTargets(bin) : null;
-    const discoveredLabels = new Map((discovered ?? []).map((entry) => [entry.name, entry.label.replace(/\.$/, '')]));
-    const durableNames = new Set<string>([...(durableTargets ?? []), ...DURABLE_CONFIG]);
-    const headroomInstall: Record<string, true> = { aider: true, cursor: true, 'grok-build': true };
-    const names = [...new Set([...(discovered ?? []).map((entry) => entry.name), ...(durableTargets ?? []), ...DURABLE_CONFIG, ...ctx.wrapTargets])]
-      .filter((name) => name !== 'continue' && name !== 'zcode');
-    const present = (await Promise.all(names.map(async (name) => [name, bin !== null && await ctx.wrapTargetPresent(name)] as const)))
-      .filter(([, available]) => available)
-      .map(([name]) => name);
-    const targets = present.map((name) => ({
-      name,
-      durable: durableNames.has(name),
-      manual: !durableNames.has(name),
-      headroomInstall: !durableNames.has(name) && headroomInstall[name] === true,
-      installed: durableConfigInstalled(name),
-      label: ctx.wrapLabels[name] ?? discoveredLabels.get(name) ?? name,
-    }));
-    // Hosts without a writer still route when their provider endpoint points at the proxy. Show that state, and never offer a switch that cannot write their config.
-    const manualTargets = detectHosts()
-      .filter((host) => host.installed && headroomHostSupported(host.id) && !headroomHostDurable(host.id))
-      .map((host) => {
-        const route = readHeadroomRoute(host.id);
-        const native = isNativeRouteHost(host.id);
+    const targets = detectHosts().map((host) => {
+      if (headroomHostDurable(host.id)) {
         return {
           name: host.id,
           label: host.label,
-          manual: !native,
-          durable: native,
-          route: true,
-          installed: route.routed,
-          managed: isNativeRouteHost(host.id) ? hasNativeRoute(host.id) : undefined,
-          detail: describeHeadroomRoute(route),
+          durable: true,
+          manual: false,
+          installed: durableConfigInstalled(host.id),
+          agentInstalled: host.installed,
         };
-      });
-    ctx.json(res, 200, { ok: bin !== null, endpoint: headroomProxyUrl(), targets: [...targets, ...manualTargets] });
+      }
+      const route = readHeadroomRoute(host.id);
+      const native = isNativeRouteHost(host.id);
+      return {
+        name: host.id,
+        label: host.label,
+        manual: !native,
+        durable: native,
+        route: true,
+        installed: route.routed,
+        managed: isNativeRouteHost(host.id) ? hasNativeRoute(host.id) : undefined,
+        agentInstalled: host.installed,
+        detail: describeHeadroomRoute(route),
+      };
+    });
+    ctx.json(res, 200, { ok: bin !== null, endpoint: headroomProxyUrl(), targets });
     return true;
   }
   // The automated durable install: one documented headroom command per tool, never a per-session wrap.

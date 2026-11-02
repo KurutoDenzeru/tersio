@@ -546,8 +546,9 @@ export function HeadroomDrawer({ open, onOpenChange, modes, busy, onSet, onSaved
   /** One tool row, shared by the durable list and the proxy list. */
   const renderRow = (target: HeadroomWrapTarget) => {
     const on = target.route ? target.installed === true : wrapped[target.name] === true;
+    const available = target.agentInstalled !== false;
     // A route found by hand has no saved endpoint, so an on switch would have nothing to put back.
-    const editable = !target.manual && (!target.route || !on || target.managed === true);
+    const editable = available && !target.manual && (!target.route || !on || target.managed === true);
     return (
       <div
         key={target.name}
@@ -562,7 +563,11 @@ export function HeadroomDrawer({ open, onOpenChange, modes, busy, onSet, onSaved
             ? <AgentLogo host={target.name as "codex"} className="size-3.5 shrink-0" />
             : <BrandMark name={target.name} className={cn("size-3.5", on ? "" : "text-dim")} />}
         <span className={cn("mono min-w-0 flex-1 truncate text-[11px]", on ? "text-ink" : "text-dim")}>{target.label ?? target.name}</span>
-        {target.route ? (
+        {!available ? (
+          <span className="mono shrink-0 rounded border border-line px-1.5 py-0.5 text-[9px] text-dim">
+            not installed
+          </span>
+        ) : target.route ? (
           <span
             className={cn("mono shrink-0 rounded border px-1.5 py-0.5 text-[9px]", on ? "border-success/40 text-success" : "border-line text-dim")}
             title={target.detail}
@@ -670,9 +675,9 @@ export function HeadroomDrawer({ open, onOpenChange, modes, busy, onSet, onSaved
               <span className="mono ml-auto shrink-0 rounded border border-accent/40 px-1.5 py-0.5 text-[9px] text-accent">recommended</span>
             </p>
             <p className="m-0 text-[10px] leading-relaxed text-dim">
-              A switch installs headroom's durable integration. A row marked "headroom install" has a durable
-              path through headroom's own install, which Tersio does not manage. "session only" has no durable
-              install at all. A route switch changes only the active provider endpoint and puts the old URL back.
+              Only Tersio agents appear here. A switch installs headroom's durable integration. A route switch
+              changes only the active provider endpoint and puts the old URL back. An agent that is not installed
+              stays listed with no switch.
             </p>
             {wrapTargets === null ? (
               <Skeleton className="h-8 w-full rounded-md" />
