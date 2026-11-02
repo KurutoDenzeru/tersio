@@ -20,7 +20,7 @@ Coding agents bill you per token. Three of the costs you never asked for:
 - **Shell output is noise.** A failing test prints hundreds of lines to reach the four that matter.
 - **The rules repeat every turn.** Your agent re-reads its instructions on every single turn.
 
-Tersio installs into Oh My Pi, pi, Pi-in-go, OpenCode, and DeepSeek Harness, and cuts those costs:
+Tersio installs into Oh My Pi, Pi, Pi-in-go, OpenCode, and DeepSeek Harness, and cuts those costs:
 
 | Mode | What it does for you |
 |---|---|
@@ -28,7 +28,7 @@ Tersio installs into Oh My Pi, pi, Pi-in-go, OpenCode, and DeepSeek Harness, and
 | 🗜️ **RTK** | Condensed shell output, every signal kept. A failing test still names the test, the assertion, and the line. |
 | 🧠 **Ponytail** | Leaner code. YAGNI: no feature, option, or abstraction nobody asked for, and the shortest diff that still works. |
 | 🥔 **pstack** | Rigor mode. It applies a design principle when the moment fits, and owns the approach, the check, and the design. Opt-in, on its own switch. |
-| 🍃 **Headroom** | [Headroom](https://github.com/headroomlabs-ai/headroom) shrinks tool output, file reads, and history. Opt-in; Tersio reads its savings and never turns it on for you. |
+| 🍃 **Headroom** | Headroom shrinks tool output, file reads, and history. Opt-in; Tersio reads its savings and never turns it on for you. |
 | 🧩 **Combo** | One command sets Caveman, RTK, and Ponytail, at three strengths. |
 | 📊 **Dashboard** | What you spent, per model and per day. |
 
@@ -160,15 +160,12 @@ Shared, and identical for every host:
 
 | What | Path |
 |---|---|
-| Session-start defaults | `~/.tersio/settings.json` — combo, caveman, rtk, ponytail, pstack, headroom, and the display currency. A `hosts.<agent>` section holds only overrides; `inherit` returns a field to the shared value |
-| RTK binary | `~/.bun/bin/rtk` (`rtk.exe` on Windows). The runtime resolves `PATH` first, then this managed path. |
-| Usage ledger and price cache | `~/.tersio/` — local only, nothing leaves the machine |
-| Session state | `~/.tersio/state.json` — reset watermark, update check and cadence, rtk heads, and the doctor report |
-| Upstream scorecard | `~/.tersio/upstream/` — `scorecard.json`, `scorecard.md`, and the cached trees |
-| `usage.db` host scope | `~/.tersio/usage.db` mirrors every agent Tersio reads: omp and pi transcripts, the OpenCode JSON tree, and the OpenCode v2 sqlite rows. Each row records its host and its agent kind, so a report splits by agent and by main agent or subagent. |
-| Model prices | `~/.tersio/prices.json` caches LiteLLM's feed; `~/.tersio/prices.local.json` is yours, keyed by model id or a `*` gateway prefix, and it wins over the feed. A model the list does not know reads as an estimate, and the Models page counts those requests as unpriced. |
-| Price sources | The host's own reported cost first, then `prices.local.json`, then the LiteLLM cache, then a default table the report labels a guess. A recorded zero is a real zero. A model counts as host-priced only when every message carried a cost. |
-| Data snapshots | `~/.tersio/backups/` — one `.snap` file per snapshot, checked against its own hash, six kept |
+| Session defaults | `~/.tersio/settings.json` — combo, caveman, rtk, ponytail, pstack, headroom, and currency. `hosts.<agent>` overrides one agent; `inherit` restores the shared value |
+| RTK binary | `~/.bun/bin/rtk` (`rtk.exe` on Windows); `PATH` wins when present |
+| Ledger and caches | `~/.tersio/usage.db` — usage rows, prices, scorecard, state, Headroom records, and layout. Local only |
+| Activity log | `~/.tersio/activity.jsonl` — one line per change, as the Logs page reads it |
+| Host scope | The same `usage.db` mirrors omp, pi, and OpenCode sessions, split by host and agent kind |
+| Snapshots | `~/.tersio/backups/` — one hashed `.snap` each, fourteen kept, carrying `usage.db` whole |
 
 Per host, written by `tersio install --host <omp|pi|opencode|pig|dsh>`:
 
@@ -190,7 +187,7 @@ Per host, in more words:
 
 The installer writes `<file>.bak` before it replaces a source. `tersio doctor --fix extensions` restores a damaged tree, and `doctor --fix registrations` drops retired or duplicate `config.yml` entries.
 
-Settings -> **Data** holds the snapshots and the reset. A restore snapshots the current state first, then copies the chosen one over the live files; it never deletes, and a delete never touches the live data. Both ask first and name what they move, and a file a snapshot does not hold is left alone. The same pane clears the statistics behind a confirmation that names the ledger and RTK rows it would take, then empties the ledger and hides what it summarised. Session transcripts, rtk history, and prices stay on disk.
+Settings -> **Data** holds the snapshots, the backup schedule, a retention window (7 days to Forever; older usage rows drop on the next sync, and transcripts are untouched), and the reset behind an Advanced toggle. A restore snapshots the current state first, then copies the chosen one over the live files; it never deletes, and a delete never touches the live data. Both ask first and name what they move, and a file a snapshot does not hold is left alone. The same pane clears the statistics behind a confirmation that names the ledger and RTK rows it would take, then empties the ledger and hides what it summarised. Session transcripts, rtk history, and prices stay on disk.
 
 Active modes reassert after Ponytail's prompt block on every top-level turn, including after history compaction.
 

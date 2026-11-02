@@ -1,281 +1,125 @@
 # Architecture
 
-Tersio is one npm package with two faces: a **CLI** (`tersio install|update|doctor|dashboard…`) and a **host plugin** whose feature-gated extensions load inside any supported agent — omp, pi, or OpenCode. The CLI picks one with `--host`, every extension speaks one `ExtensionApi`, and all three read the same session defaults from one file. The reporting side is not yet that even, which the next section spells out.
+Tersio has two parts. The CLI installs and repairs. The plugin runs inside an agent. A local dashboard shows what the agents did.
 
-## Components
+## The parts
 
 ```mermaid
-flowchart TB
-  subgraph CLI["CLI (node tersio.ts)"]
-    INST["cli/install.ts<br/>writes the extension tree + rtk.ts wiring"]
-    DOC["cli/doctor.ts · update.ts · uninstall.ts"]
-    UP["cli/upstream.ts<br/>scorecard vs pinned upstreams"]
-    UPDT["cli/dashboard-update.ts<br/>update view, apply, cadence"]
-    SRV["cli/dashboard.ts<br/>127.0.0.1, or --export one file"]
-    MCP["cli/mcp.ts<br/>stdio MCP server, three tools"]
-  end
-  subgraph APP["dashboard/app (Vite + React)"]
-    UI["hash routes, one page per view"]
-  end
-  subgraph MODES["extensions/ — loaded per host"]
-    CAV["🪨 caveman"]
-    RTK["🗜️ rtk/session.ts"]
-    RFIL["🗜️ rtk/filter.ts"]
-    COMBO["🧩 combo"]
-    TCMD["commands"]
-    UPD["updater"]
-  end
-  subgraph SHARED["extensions/shared/"]
-    SS["session-state.ts<br/>Symbol.for bridge"]
-    ASTS["agent-stats.ts<br/>omp's own databases, read-only"]
-    LED["usage-ledger.ts · usage-store.ts<br/>omp · pi · opencode mirror"]
-  end
-
-  MCP -->|reads| ASTS
-  INST -->|writes| MODES
-  INST -->|ships| SRV
-  SRV -->|serves| UI
-  SRV --> UPDT
-  UI -->|"/api/update"| UPDT
-  UPDT -->|"spawns tersio update"| INST
-  UI -->|"/api/agent"| ASTS
-  CLI -->|"tersio upstream"| UP
-  TCMD -->|publishes| SS
-  SS -.->|"mirror, no reload"| CAV & RTK
-  RTK -->|exec| BIN["rtk binary"]
+flowchart LR
+  CLI["tersio CLI<br/>install · update · doctor"] --> SETUP["writes Tersio into each agent"]
+  SETUP --> AGENT["agent loads Tersio"]
+  AGENT --> MODES["adds mode instructions to each turn"]
+  AGENT --> FILES["writes session files"]
+  FILES --> DB["~/.tersio/usage.db"]
+  DB --> DASH["local dashboard"]
+  DASH -->|saves| SET["~/.tersio/settings.json"]
+  SET --> AGENT
 ```
 
-## One turn
+- **One release covers both parts.** The installed plugin and the CLI share a version.
+- **The plugin starts no background service.** It runs only while the agent runs.
+- **The dashboard mostly reads.** It writes saved mode defaults, its own layout and update preferences, and Headroom's setup through Headroom's own commands.
+
+## How the plugin works
+
+An agent loads the plugin at startup. A mode is one switch that changes one part of the work. Before each turn, the plugin adds one short instruction block for each active mode. The agent sends those instructions with your prompt. When the reply ends, the plugin waits for the next turn.
+
+Inside the agent, a switch updates the running session and every loaded copy at once. The session record keeps the choice. The dashboard instead writes a saved default, which an agent reads when a session starts. Nothing restarts.
+
+Say you pick `/combo balanced` and ask a question. Tersio saves the choice. At the next turn it adds the active blocks. A voice mode sets the reply style, an approach mode picks the checks, a tool mode shortens shell output, and a size mode caps the change. The model reads them with your request. The reply follows the same modes.
 
 ```mermaid
 sequenceDiagram
-  participant U as User
-  participant X as Extension
-  participant B as session-state bridge
-  participant A as Host agent
-  U->>X: /combo balanced
-  X->>B: setSharedComboLevel()
-  B-->>X: publish → siblings sync, no reload
-  X->>B: persist as session entries (resume-safe)
-  A->>X: before_agent_start
-  X-->>A: system prompt + mode blocks
-  A->>A: turn runs (rtk_run → rtk binary when on)
+  participant U as You
+  participant T as Tersio
+  participant A as Agent
+  participant M as Model
+  U->>T: pick a mode
+  T->>T: notify loaded copies and save
+  A->>T: a turn starts
+  T-->>A: one block per active mode
+  A->>M: prompt with mode instructions
+  M-->>A: tool call
+  A->>T: rtk shortens the call and its result
+  M-->>U: reply
 ```
 
-## Mode order: what comes first
+| Load order | Mode | What it controls | Plain effect |
+|---|---|---|---|
+| 1 | 🪨 caveman | Voice | Terse replies; code, paths, and errors stay exact |
+| 2 | 🥔 pstack | Approach | Picks the playbook, the checks, and the design |
+| 3 | 🍃 headroom | Transport | Tells the model how to recover compressed detail |
+| 4 | 🗜️ rtk | Tool output | Rewrites shell commands and shortens what comes back |
+| 5 | 🧠 ponytail | Size | Keeps the change as small as the task allows |
 
-Four modes stack on one turn. They never compete for the same job, so the order is fixed by what each one owns, and the prompt blocks are appended in the extension registration order.
+- **Load order is not priority.** No mode reads another mode's text. An inactive mode adds no block.
+- **The blocks describe roles.** Caveman owns how a reply reads. Ponytail owns how much changes. Pstack owns the checks.
+- **A switch replaces its own block.** Two levels of the same mode never stack.
+- **Headroom adds nothing unless its runtime answers.** An undelivered promise would read as an active mode.
 
-```mermaid
-flowchart TB
-  P["Prompt box<br/>/combo balanced + your request"] --> S["session_start<br/>restore defaults, publish shared bridge"]
-  S --> B["before_agent_start<br/>extensions append one block each"]
-  B --> C1["1 · 🪨 caveman<br/>voice: terse replies"]
-  C1 --> C2["2 · 🥔 pstack<br/>approach: playbook, verification, design"]
-  C2 --> C3["3 · 🗜️ rtk<br/>tooling: condense shell output"]
-  C3 --> C4["4 · 🧠 ponytail<br/>size: smallest complete change"]
-  C4 --> M["model turn"]
-  M --> T["tool call<br/>rtk_run or the rtk hook rewrites it"]
-  T --> F["filtered output returns to the model"]
-  F --> R["reply<br/>caveman voice, ponytail-sized, pstack-verified"]
-```
-
-The status line names the same five modes with the same glyphs. Its order is the display order, not the injection order:
-
-```
-🧩 COMBO MAX: 🪨 caveman=ULTRA | 🗜️ rtk=ON | 🍃 headroom=OFF | 🧠 ponytail=ULTRA | 🥔 pstack=ON
-```
-
-- **The order is registration order, not priority.** `package.json` loads caveman, pstack, headroom, rtk, then combo, and combo injects the Ponytail block. A host that loads the same files in another order appends in that order, and no mode reads another's block.
-- **caveman owns the voice.** It changes how a sentence reads, never what the work is.
-- **pstack owns the approach.** It picks the playbook and the verification, and it yields the voice to caveman and the change size to ponytail.
-- **headroom owns the transport.** It is opt-in like pstack, and it tracks the user's own [Headroom](https://github.com/headroomlabs-ai/headroom) install, which compresses tool outputs, file reads, and history through a local proxy. Its block only tells the model how to recover compressed detail, and it injects nothing when the binary is absent, because an undelivered promise would read as an active mode.
-- **rtk owns the tooling.** It rewrites a shell command and filters its output before the model sees it. It never edits a reply. On OpenCode the rewrite goes through `rtk hook opencode`, the same subcommand rtk's own OpenCode plugin calls, so a rewrite that would change what OpenCode's own permission rules decide is refused rather than applied.
-- **ponytail owns the size.** It caps the diff, and it never overrides pstack's verification. Last is not weakest: ponytail is the YAGNI gate, and it holds the final say on how much gets built.
-- **A conflict resolves inside the block text.** pstack's own precedence lines say so: the style mode wins on reply shape, and ponytail wins on how much changes.
-- **Every block is append-only.** A mode switch replaces its own block through `staleMarker`, so a `/combo max` mid-session never stacks two levels of the same rule.
-
-
-## Data sources, and the one store both readers share
-
-One read path. **The aggregate and the report read the same store.**
+## The dashboard
 
 ```mermaid
 flowchart LR
-  subgraph FEED["what every host feeds"]
-    OMPJ["~/.omp/agent/sessions/*.jsonl"]
-    PIJ["~/.pi/agent/sessions/*.jsonl"]
-    OCJ["opencode/storage/message/*.json<br/>one file per message"]
-    OCD["opencode.db<br/>message + session_message"]
-  end
-  subgraph STORE["tersio's own store"]
-    UDB["~/.tersio/usage.db<br/>files · messages · meta"]
-  end
-  subgraph READ["what the ten pages read"]
-    ASTS["agent-stats.ts<br/>one read per query"]
-    API["/api/agent?range=&view="]
-    SESS["/api/agent/session · /entry"]
-    JRN["session journal, read per trace"]
-  end
-  ADB["~/.omp/agent/agent.db<br/>usage_history — omp's quota only"]
-  DASH["the ten dashboard pages"]
-
-  OMPJ & PIJ & OCJ & OCD --> UDB
-  UDB --> ASTS --> API --> DASH
-  JRN --> SESS --> DASH
-  ADB --> ASTS
+  OMP["omp · pi · PiG<br/>session files"] --> SYNC["sync"]
+  OC["OpenCode<br/>messages and database"] --> SYNC
+  SYNC --> DB["~/.tersio/usage.db"]
+  DB --> API["local dashboard server"]
+  ACT["activity.jsonl"] --> API
+  SET["settings.json"] --> API
+  API --> PAGES["data pages"]
 ```
 
-- **One store feeds both readers.** `agent-stats.ts` opens `~/.tersio/usage.db`, the same file the ten pages aggregate. Every one of the ten pages — Overview, Models, Providers, Costs, Carbon, Requests, Errors, Traces, Tools, Projects — reads every host: omp, pi, and OpenCode. A dashboard figure and a report figure are the same figure by construction, not by coincidence.
-- **The dashboard syncs before it reads.** `cli/dashboard.ts` runs `syncUsageDb()` behind a 15s throttle, so a page reads what the transcripts hold rather than what the last sync wrote. The 5s memo still collapses a burst of polls, keyed on the store's own mtime and size.
-- **omp's quota snapshots stay omp's.** Only omp records `usage_history`, so the Providers page still reads `~/.omp/agent/agent.db` for it. Nothing in the store replicates them, and the page's window figures degrade to empty when that database is absent.
-- **A trace is still a journal read.** `readSessionTrace` and `readAgentRequestEntry` open the session transcript itself, because the store keeps facts, not message bodies. OpenCode writes no `.jsonl`, so its traces keep drawing the empty state, while pi transcripts trace in full from the same reader.
-- **What the store does not carry reads as a literal, never as an estimate.** omp's schema held a per-component cost split, a route name, a per-request premium count, and a service tier. The store holds none of these, so `COL` in `agent-stats.ts` maps each to `NULL`, or `''`, in one place: cost reads whole with no split, a route reads empty. The provider column is not stored either, so it derives from the model id's first segment, spelled the way the dashboard marks it. First-token latency *is* stored, in `tf`, and it is omp-only: pi and OpenCode record none, so their rows read null and their latency averages read null rather than zero, because a zero would draw a flat line and claim no wait at all.
-- **Every host's tool names are read, from three shapes.** omp and pi transcripts name tools beside the message. OpenCode's v1 JSON tree names them in the message's `content` parts. OpenCode's v2 sqlite puts those parts inside a `data` blob that holds newlines and tabs, so the blob cannot be read through the CLI; the names are extracted inside SQL with `json_each` and `group_concat` instead, and land in the same `tools` list. A store written before that reader holds every OpenCode row at `[]`, so a version marker (`opencode_tools` in `meta`) widens the watermark scan to the whole table exactly once. That marker matters: bumping `PARSER_VERSION` instead rebuilds the store from whatever transcripts still exist, which silently drops the history of every rotated transcript — that is a far larger loss than the one the backfill repairs.
-- **A tool call carries its own sizes and its own error flag.** The `tc` column holds one fact per call: the name, the argument bytes, the result bytes, and the error flag. Both sizes and the flag live on the `toolResult` line that follows the call, keyed by the call id, so `collectToolResults` reads the whole file before `classifySessionLine` pairs each call with its result. A row written before `tc` holds names only, and its sizes and errors read zero rather than a guess.
-- **rtk's savings come from rtk's own history, and a failed read says so.** `readRtkGainByVerb` folds the `commands` table by leading verb, because the raw table is 7,095 distinct commands on this machine and the top 20 hold 98% of the bytes. A verb's rate is its own saved bytes over its own input, not a mean of per-command rates, and a negative saving stays negative. Every read carries `measured`: false means rtk's database was absent or unreadable, so a page prints "not measured" and never a zero that claims nothing was saved. A WAL database whose `-shm` file is gone cannot be opened read-only, so `sqliteRead` retries on a private copy.
-- **An added column backfills itself, and a version bump does not.** Four store columns arrived after the first release: `id`, then `a`, then `tf`, then `tc`. Each one took a bare `ALTER TABLE ... ADD COLUMN`, which moves no row and forces no re-parse, so the existing history survives what a rebuild could not reconstruct from rotated transcripts. The new column then reads NULL on history, which a marker closes: `opencode_tools` widens the OpenCode watermark scan once so old rows gain their tool names, and `ttft_backfill` clears the `files` mtimes once so the ordinary incremental path rewrites each transcript and fills its latency. `tool_facts` rides that same rewrite, because `tc` is written by the same parse. Every marker is written only after the rows commit, so a sync that dies midway leaves the window open and retries instead of publishing half a backfill. The rule: an additive change never justifies a `PARSER_VERSION` rebuild.
-- **The request log ships one capped page, and the page's totals come from the aggregate, not from that page.** A log slice cannot answer "how many requests ran in this window": the cap is 200 rows, and a busy hour produces thousands. So `requestStats` takes its count, failure count, tokens and cost from the `overall` block, which is one exact aggregate row over the whole range, and leaves only the percentiles and the aborted count to the shipped rows. `shipped` records how many those were, and the page labels them, because a p95 over 200 of 2,400 rows describes those 200 only. `?offset=` walks the range back in row-sized steps — the alternative, computing the header from the shipped rows, is what made a full range read as exactly 200 requests with nothing older than an hour reachable.
-- **Bucketing needs a cast.** The store keeps timestamps REAL, and a REAL division does not floor, so the bucket expression casts to INTEGER first. Without the cast every row lands in its own bucket and a series reads as noise.
+- **One store feeds every page.** Overview, Models, Providers, Costs, Carbon, Requests, Errors, Traces, Tools, and Projects read the same store.
+- **The server syncs before it reads.** A 15-second throttle keeps a page current without rereading every transcript on each poll.
+- **History survives schema changes.** A new column backfills in place. An additive change never forces a rebuild from rotated transcripts.
+- **Agent files stay agent-owned.** Tersio reads them and never writes to them. Reset statistics writes a watermark, not a delete.
+- **Some facts stay with their source.** The omp quota view reads omp's own database. A trace reads the session file, because the store keeps facts, not message bodies.
+- **One activity log, two writers.** The CLI and the dashboard append to `~/.tersio/activity.jsonl`, so a terminal install appears on the Logs page.
 
-## The aggregate
+## Headroom
 
-- **The aggregate mirrors the reference, metric for metric.** `readAgentStats(range, view)` reimplements the omp-stats SQL facts: `failed` counts only `stop_reason = 'error'`, `cacheRate` is `cacheRead / (input + cacheRead)`, and `avgTokensPerSecond` divides by `COUNT(duration > 0)`. The subscription-window engine ports the same rules: a window is one `(provider, limitId)` pair, consumption sums only positive fraction deltas, a drop past 0.05 counts a cycle, and the peak is the swept sum across accounts. Each rule is pinned by `test/cli/omp-stats.test.ts`.
-- **A view asks for only what it renders.** `view=<page>` selects the query groups the server runs and the fields it returns, so a payload stays in the tens of kilobytes rather than one snapshot. Reads are memoized for five seconds per range and view.
-- **Never a write.** Reads run in process (bun:sqlite, else node:sqlite) and fall back to the `sqlite3` binary, whose WAL traps `extensions/shared/sqlite.ts` handles in order: `-readonly` first, then `immutable=1` only when no `-wal` file exists, then a copy of `db` + `-wal` + `-shm` into a temp directory. Nothing opens read-write, which would create side files in the host's own directory.
-- **The guide reads no store.** The Quick start page is a canvas drawn from this document: the hosts, the bridge, the block order, and the RTK loop. It reads `/settings`, `/api/hosts`, and `/health` only, so a mode that is off or an agent that is not installed draws dimmed, and it never waits on the usage snapshot. Each agent node carries that CLI's version, read from `/health`; the Settings dialog no longer carries a Connection pane.
-- **One log, two writers.** `cli/activity.ts` appends one JSON line per change to `~/.tersio/activity.jsonl`: a mode or preset write, an install, update, or removal with its exit state, every file `writeIfChanged` rewrites, and each doctor check or repair. The CLI and the dashboard share it, so a terminal install lands on the Logs page too. The file trims to the last 4000 entries past 512 KB, and `/api/logs` serves the newest first.
-- **Range is URL state.** Keys `1`-`6` pick a window and `g` then a letter opens a page. An exported file carries a single window, so its picker is a label, not a control.
-- **Degrade by source.** A missing `stats.db` hides the six `agentOnly` pages — Providers, Costs, Carbon, Errors, Traces, Projects — and leaves Overview, Models, Requests, and Tools standing.
-- **Two marks, two jobs.** `VendorMark` names the model author, resolved from the model id. `ProviderMark` names the routing service. Marks resolve to URLs from one catalog in `extensions/shared/brand-marks.ts`, never to bytes in the source; `--export` inlines that catalog once so an exported file keeps its logos with the network off.
-
-## The upstream scorecard
-
-Every mode Tersio ships is a port. `cli/upstream.ts` holds one pin per source and answers two questions: do our bodies still match the pin, and has upstream moved past it.
-
-| Source | Pin | What is compared |
-|---|---|---|
-| Caveman | `JuliusBrussee/caveman` commit `d262ab3` | Three bodies byte for byte, after the one adapted line; three local forks by presence |
-| pstack | `cursor/plugins` commit `a968159` | Every shipped body by presence; every body is a fork with Cursor's surface removed |
-| Ponytail | the vendored copy at `extensions/ponytail/`, its version read from that tree's own manifest | Each host's copy against that tree; npm's `latest` tag for upstream drift |
-| RTK | `rtk-ai/rtk` release feed | The binary's `--version` against the latest release tag |
+Headroom is a separate tool that compresses tool output, file reads, and history before a turn reaches the model. Tersio writes the same configuration headroom writes, through headroom's own commands. A switch starts headroom's runtime first, so an agent never points at a dead port. Headroom still owns the proxy and its settings.
 
 ```mermaid
 flowchart LR
-  PIN["pin in cli/upstream.ts"] --> CMP{"local bytes match?"}
-  LOCAL["extensions/ tree"] --> CMP
-  UP["GitHub tree at the pin<br/>cached forever"] --> CMP
-  HEAD["GitHub tree at HEAD"] --> DRIFT{"moved since the pin?"}
-  PIN --> DRIFT
-  CMP --> ACC["accuracy: matched / tracked"]
-  DRIFT --> GATE["drift vs reviewed ceiling"]
-  ACC --> CARD["tersio upstream<br/>~/.tersio/upstream/"]
-  GATE --> CARD
+  ROW["drawer row"] -->|switch on| CMD["headroom's own setup"]
+  CMD --> CFG["agent config"]
+  CFG --> PX["headroom proxy<br/>headroom owns it"]
+  PX --> UP["the agent's provider"]
+  ROW -->|switch off| UNDO["headroom's own undo"]
+  UNDO --> CFG
 ```
 
-- **A pin is reviewed, not guessed.** `driftCeiling` records how much drift was already reviewed when the pin was taken, so `--strict` fails on new drift rather than on the known backlog.
-- **A commit's tree is cached until it is not read for 30 days; HEAD for six hours.** `~/.tersio/upstream/trees/` holds the immutable trees, so a rerun costs one API call per repo. A token from `GITHUB_TOKEN`, `GH_TOKEN`, or `gh auth token` lifts the 60-call hourly limit. A cached tree still serves the comparison when the live read fails, but the failure is reported, so a rate-limited run never reads as a clean one.
-- **A failed read says which failure it was.** A 404 on the pin is `pin-missing`, a 403 or 429 is `offline`, anything else is `error`. A pin that is gone fails even a plain `--check`, because a zero-tracked row would otherwise keep accuracy at 100 and pass on nothing.
-- **Every gap is named, and grouped by whose move it was.** The report lists `ours to fix` (a body of ours absent, empty, or differing, and each stale or missing host file), `upstream moved` (paths changed, added, or gone since the pin, with a compare URL for the pin), and `unmeasured` (a source whose feed could not be read). The terminal folds a group at 12 names; the Markdown report keeps all of them.
-- **A declared fork matches by presence.** pstack's 91 bodies all had Cursor's surface stripped, so no byte comparison exists; the scorecard proves each is shipped and non-empty, and reports upstream drift separately.
-- **Accuracy covers the installed hosts too.** A host's tree is compared to this build's own definition, so a stale or missing file lowers the score even when every source matches.
-- **A host's manifest is checked as well as its files.** The `Unloaded` column counts entries this build loads that the host's own manifest never names, because a file can sit in the tree and still never run. The manifest is read only where the host keeps one.
-- **Drift is not a failure.** A plain run only reports. `--check` fails on any gap of ours, and `--strict` implies it, then adds drift past the ceiling plus an unmeasured drift, so a rate-limited run never passes silently.
-- **The command is hidden, and it writes a report.** `tersio upstream` is not listed in `tersio help`, because it is an engineering check, not a user command. It writes `~/.tersio/upstream/scorecard.json` for machines and `~/.tersio/upstream/scorecard.md` for a reader: tables, a text bar per source and host, and an `xychart-beta` Mermaid graph. `--md <file>` writes the report elsewhere.
-- **No scheduled job.** The scorecard runs when someone runs it. A weekly CI job was tried and removed: it needs a token, it goes red on reviewed drift, and the same answer is one local command away.
+- **Only detected tools appear.** Continue is discontinued, and ZCode keeps its settings in a desktop window, so both stay out.
+- **The runtime comes before the switch.** Tersio starts headroom's saved deployment, or headroom's proxy when none exists, and waits for health. Dashboard start restores an enabled runtime. The Tools page also carries a Start Headroom action.
+- **Only Oh My Pi and OpenCode are routed Tersio hosts.** pi, PiG, and DeepSeek Harness never receive a Headroom prompt, because their traffic has no Headroom route.
+- **A row states its own path.** A switch means a durable setup Tersio manages. `headroom install` means headroom's installer owns it. `session only` means no durable setup exists.
+- **Undo is always headroom's.** Tersio removes its own record only after `headroom unwrap` answers.
+- **The pill states configuration, not traffic.** Headroom's own dashboard answers whether traffic actually reaches the proxy.
 
-## The dashboard update surface
+## Setup, update, and health
 
-`cli/dashboard-update.ts` owns the update state, and `cli/dashboard.ts` only routes to it. The page polls one view, so the notice and the About pane cannot disagree.
+- **Install writes one tree per agent and one manifest.** A second copy of the same file is treated as the bug.
+- **Doctor repairs or names the cleanup.** A partial tree reads as not installed. Legacy entries are removed.
+- **Update checks two sources.** The npm registry and the GitHub release feed are read together, and the newer version wins.
+- **The server owns the clock.** The page sends durations, not timestamps, so a waking laptop cannot show a stale window.
+- **Nothing installs without a click.** Update now spawns `tersio update --yes` and prints the child's output.
 
-```mermaid
-flowchart LR
-  POLL["the page's poll<br/>every 20s, 1.5s while busy"] --> VIEW["updateView()"]
-  STATE["state.json<br/>cadence, last check, snooze, skip"] --> VIEW
-  VIEW --> NOTICE["persistent notice<br/>Update now · Remind me later · Skip"]
-  VIEW --> PANE["About pane<br/>cadence, status, log"]
-  TICK["timer, while a server runs"] --> DUE{"cadence due?"}
-  DUE -->|yes| CHECK["checkForUpdate(true)<br/>registry /latest + release feed"]
-  CHECK --> STATE
-  NOTICE --> APPLY["spawn: tersio update --yes"]
-  APPLY --> LOG["child's stdout and stderr<br/>become the pane's log"]
-```
+Caveman, pstack, ponytail, and rtk are ports. `cli/upstream.ts` records a pin for each source and compares the local files with that pin. `tersio upstream` is a hidden engineering check: it reports gaps, separates reviewed drift from new drift, and writes Markdown only when `--md` names a file. No scheduled job runs it.
 
-- **The check reads two sources, not one.** The registry's `latest` tag and the GitHub release feed are fetched side by side, and the newer version wins. A tag can be pushed before npm serves it, so a check that read only npm missed releases that already existed. A tie goes to npm, because that version is the one an install can reach. The plan names the source when they disagree.
-- **The server owns the clock.** The page sends no timestamps: `dueIn` and `snoozeIn` arrive as durations, so a laptop waking from sleep cannot show a stale window, and the render calls no clock.
-- **The timer only exists while a dashboard runs.** Both timers are `unref`d, so they never hold the process open, and the cadence resumes on the next launch. A check stamps `lastCheck` even when no source answers, so an offline machine retries on its cadence rather than on every tick.
-- **Applying spawns this CLI's own update path**, `tersio update --yes`, as a child with both streams captured. The smoke check before an install, the global CLI refresh, and the add-on pass therefore stay in one place, and the child's output is what the pane prints. Nothing about the release is taken from the request body.
-- **`current` is read from the installed manifest, `running` from this process.** An install moves `current` while the old build keeps serving, so the pane can say a reload is what finishes the job, and the notice stops offering a release already on disk.
-- **The notice is one toast per concern**, keyed by id: a poll that finds the same release 60 times replaces the same toast instead of stacking 60.
-- **Skip is per release, snooze is per window.** Skipping retires the version named and nothing later; a snooze hides the notice for six hours and lapses on its own.
-- **Nothing installs without a click.** The cadence only asks the sources; the apply path is the notice's `Update now` or the pane's `Update to X`.
+## MCP
 
-## The MCP server
+`tersio mcp` serves the Model Context Protocol over stdio. Any compatible client can read Tersio's numbers and set its mode defaults.
 
-`tersio mcp` serves the Model Context Protocol over stdio, so any MCP-capable client can read Tersio's data and set its modes without a per-host integration. It is a reader on top of the same store the dashboard reads; it records nothing.
+- **The client starts it.** There is no daemon, port, or token.
+- **It reads the same store as the dashboard.** A dashboard figure and an MCP figure are the same figure.
+- **Its write path matches Settings.** A mode change lands in `settings.json` and in the activity log.
+- **stdout carries only the protocol.** Settings output is captured and returned as the tool's answer.
 
-```mermaid
-flowchart LR
-  subgraph CLIENT["any MCP client"]
-    CHAT["a chat or agent session"]
-  end
-  subgraph ENTRY["the entry the user pastes"]
-    CFG["mcpServers.tersio<br/>command: tersio · args: mcp"]
-  end
-  subgraph PROC["tersio mcp (one process per client)"]
-    BUN{"bun on PATH?"}
-    SRV["cli/mcp.ts<br/>JSON-RPC over stdio"]
-    TOOLS["three tools"]
-  end
-  subgraph DATA["what the tools read"]
-    ASTS["agentStats()<br/>usage.db"]
-    ACT["readActivity()<br/>activity.jsonl"]
-    PROF["storedProfile() / writePluginSettings()<br/>settings.json"]
-  end
+## Limits
 
-  CHAT -->|"spawns on demand"| CFG --> PROC
-  PROC --> BUN
-  BUN -->|yes| BUNRUN["re-exec under bun<br/>stdin pumped through"]
-  BUN -->|no| SRV
-  BUNRUN --> SRV
-  SRV --> TOOLS
-  TOOLS --> ASTS & ACT & PROF
-  SRV -->|"answer"| CHAT
-```
-
-One tool call, end to end:
-
-```mermaid
-sequenceDiagram
-  participant U as User
-  participant A as Agent in the client
-  participant S as tersio mcp
-  participant D as Tersio's store
-  U->>A: "what did this week cost?"
-  A->>A: picks tersio_stats
-  A->>S: tools/call {name: tersio_stats, range: 7d}
-  S->>D: agentStats("7d")
-  D-->>S: totals, top models, providers
-  S-->>A: text answer
-  A-->>U: "17,668 requests, ₱2,016 this week"
-```
-
-- **The client owns the lifecycle.** There is no daemon, port, or token: the client spawns `tersio mcp` when it needs it and the process exits on stdin close. A client that cannot spawn a process is not supported, deliberately.
-- **Reads reuse the dashboard's functions, not a copy.** `tersio_stats` calls `agentStats()` and `tersio_activity` calls `readActivity()`. A dashboard figure and an MCP figure are the same figure by construction. Measured once on this machine: `/api/agent` and `tersio_stats` both answered 18,145 requests for 7d.
-- **Writes go through the same path as Settings.** `tersio_modes` writes `~/.tersio/settings.json` through `writePluginSettings`, so the change lands in the activity log and mirrors to Ponytail exactly like a dashboard save. It sets session-start defaults, not a running session, and not the MCP client's own behavior.
-- **stdout carries only the protocol.** The settings save line prints to stdout, so it runs behind a `captureLog` wrapper that turns its output into the tool's answer. Tool calls are serialized because that wrapper patches `console.log`.
-- **Bun when present, node otherwise.** The installed CLI runs under node; the server probes `bun --version` and re-execs under bun when it answers, pumping stdin so exactly one process reads the client's pipe. `TERSIO_MCP_RUNTIME` marks the child so a failed hand-off cannot loop. The doctor row proves which runtime answered (`node v26.3.0` under bun, `v26.12.1` under node).
-- **Protocol surface, pinned by test.** `initialize` answers with the version the server speaks (`2025-06-18`), not an echo of the client's; unknown methods answer `-32601`, bad arguments `-32602`, and a notification draws no reply.
-
-## Key invariants
-
-- **Bridge, not reload:** `session-state.ts` uses a `Symbol.for` global bridge; a toggle publishes and siblings mirror live. Custom session entries are the persistence layer — `reconcileSharedComboEntries` rebuilds state on resume or branch.
-- **Subagents inherit:** `isOmpSubagentPrompt` makes subagent turns read shared state instead of local flags. Detection is text-based on `OMP_SUBAGENT_MARKER`, a verbatim sentence from the host prompt, so a reworded host drops it silently. pi has no built-in subagent prompt, so only omp is detectable by text.
-- **Injection appends only:** a mode switch leaves the previous level's text in an accumulating prompt. Removing it needs host support to rewrite the system prompt, which an extension cannot reach.
-- **Bridge state is process-global:** the `Symbol.for` bridge and `RTK_DISABLED` are unscoped, so one process serving two sessions would share them. Correct for the single-user hosts this targets.
-- **Ledger is best-effort:** append-only JSONL; the dashboard's Reset statistics writes a watermark instead of deleting host-owned files.
-- **The mirror never discards a store from a newer tersio:** a `parser_version` above this build keeps its rows and skips the re-parse, because rotated transcripts cannot rebuild them. `TERSIO_FORCE_REPARSE=1` accepts the loss.
-- **Always on:** `omp.extensions` in `package.json` loads every mode extension. Only `updater` stays an optional feature.
-- **Single owner:** OMP plugin manifests load Tersio extensions and nested Ponytail. `config.yml` holds only rtk-owned wiring; doctor removes retired, duplicate, or legacy manifest-owned entries. An install removes the agent-tree copies an older build wrote, because a second load of the same file is the bug.
-- **The plugin package and the CLI are one release.** `~/.omp/plugins/package.json` pins `@krtclcdy/tersio` to the exact version, because a range lets npm hand omp a release the tree writer never wrote, and a tree of two releases fails to load.
-- **Caveman rule ownership:** `extensions/caveman/rule.md` ships beside the manifest-loaded extension. Doctor and updater inspect that installed plugin path, not the retired agent copy.
+- **The shared state is process-wide.** One process serving two sessions would share it. The supported hosts run one user and one session per process.
+- **Prompt blocks append.** A mode change replaces its own old block, but no extension can rewrite another mode's prompt text.
+- **Agent detection is mostly by name.** An agent that rewrites its subagent prompt loses that detection silently.
+- **A store from a newer Tersio is kept.** The older build skips the re-parse, because rotated transcripts cannot rebuild it.
