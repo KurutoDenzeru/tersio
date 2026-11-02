@@ -546,6 +546,8 @@ export function HeadroomDrawer({ open, onOpenChange, modes, busy, onSet, onSaved
   /** One tool row, shared by the durable list and the proxy list. */
   const renderRow = (target: HeadroomWrapTarget) => {
     const on = target.route ? target.installed === true : wrapped[target.name] === true;
+    // A route found by hand has no saved endpoint, so its switch would have nothing to put back.
+    const editable = !target.manual && (!target.route || target.managed !== false);
     return (
       <div
         key={target.name}
@@ -565,7 +567,7 @@ export function HeadroomDrawer({ open, onOpenChange, modes, busy, onSet, onSaved
             className={cn("mono shrink-0 rounded border px-1.5 py-0.5 text-[9px]", on ? "border-success/40 text-success" : "border-line text-dim")}
             title={target.detail}
           >
-            {on ? "routed" : "manual route"}
+            {on ? (editable ? "routed" : "routed by hand") : "off"}
           </span>
         ) : target.manual ? (
           <span
@@ -581,7 +583,7 @@ export function HeadroomDrawer({ open, onOpenChange, modes, busy, onSet, onSaved
             {on ? "durable" : "ready"}
           </span>
         )}
-        {target.manual ? null : (
+        {target.manual || !editable ? null : (
           <span className="relative inline-flex">
             <Switch
               size="sm"
@@ -670,7 +672,7 @@ export function HeadroomDrawer({ open, onOpenChange, modes, busy, onSet, onSaved
             <p className="m-0 text-[10px] leading-relaxed text-dim">
               A switch installs headroom's durable integration. A row marked "headroom install" has a durable
               path through headroom's own install, which Tersio does not manage. "session only" has no durable
-              install at all. "manual route" means Tersio reads the host endpoint but does not write it.
+              install at all. A route switch changes only the active provider endpoint and puts the old URL back.
             </p>
             {wrapTargets === null ? (
               <Skeleton className="h-8 w-full rounded-md" />
@@ -683,8 +685,8 @@ export function HeadroomDrawer({ open, onOpenChange, modes, busy, onSet, onSaved
             )}
             {wrapTargets?.some((target) => target.route) && endpoint ? (
               <p className="m-0 rounded-lg border border-line bg-track/40 px-2.5 py-2 text-[10px] leading-relaxed text-dim">
-                Pi, PiG, and DeepSeek Harness route when their provider base URL is{" "}
-                <span className="mono text-ink">{endpoint}v1</span>. Tersio reads that endpoint and never edits it.
+                Pi, PiG, and DeepSeek Harness route through{" "}
+                <span className="mono text-ink">{endpoint}v1</span>. The switch saves the old endpoint and restores it.
               </p>
             ) : null}
 

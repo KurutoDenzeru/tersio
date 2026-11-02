@@ -8,6 +8,7 @@ import {
   headroomHostDurable, headroomHostSupported, headroomProxyPort, headroomProxyUrl, installDurableConfig, readOmpGateway, routeOmpGateway,
 } from '../extensions/shared/headroom-proxy.ts';
 import { describeHeadroomRoute, readHeadroomRoute } from '../extensions/shared/headroom-routing.ts';
+import { hasNativeRoute, installNativeRoute, isNativeRouteHost, removeNativeRoute } from '../extensions/shared/headroom-routes.ts';
 import { detectHosts } from './hosts.ts';
 import { mergeHeadroomWraps, readHeadroomWraps, setStoredWrap, writeHeadroomWraps } from '../extensions/shared/headroom-wraps.ts';
 import { ensureHeadroomRuntime } from './headroom-runtime.ts';
@@ -82,12 +83,15 @@ export async function handleHeadroomRoutes(
       .filter((host) => host.installed && headroomHostSupported(host.id) && !headroomHostDurable(host.id))
       .map((host) => {
         const route = readHeadroomRoute(host.id);
+        const native = isNativeRouteHost(host.id);
         return {
           name: host.id,
           label: host.label,
-          manual: true,
+          manual: !native,
+          durable: native,
           route: true,
           installed: route.routed,
+          managed: isNativeRouteHost(host.id) ? hasNativeRoute(host.id) : undefined,
           detail: describeHeadroomRoute(route),
         };
       });
@@ -99,12 +103,14 @@ export async function handleHeadroomRoutes(
     const body = await ctx.bodyOf(req);
     const name = String(body.name ?? '');
     const bin = resolveHeadroomBinary();
-    if (!bin || !ctx.wrapTargets.includes(name)) {
+    const native = isNativeRouteHost(name);
+    const canConfig = (DURABLE_CONFIG as readonly string[]).includes(name);
+    const knownInit = bin ? (await discoverInitTargets(bin)) ?? [] : [];
+    if (!bin || (!ctx.wrapTargets.includes(name) && !canConfig && !native && !knownInit.includes(name))) {
       ctx.json(res, 400, { ok: false, error: 'unknown wrap target or no headroom binary' });
       return true;
     }
-    const canConfig = (DURABLE_CONFIG as readonly string[]).includes(name);
-    if (!canConfig && !(await discoverInitTargets(bin))?.includes(name)) {
+    if (!canConfig && !native && !knownInit.includes(name)) {
       ctx.json(res, 200, { ok: false, error: `${name} has no durable headroom integration; run headroom wrap ${name} yourself per session` });
       return true;
     }
@@ -119,6 +125,12 @@ export async function handleHeadroomRoutes(
       }
     }
     if (body.action === 'unwrap') {
+      if (isNativeRouteHost(name)) {
+        const removed = removeNativeRoute(name);
+        if (removed.ok) setStoredWrap(name, false);
+        ctx.json(res, 200, removed.ok ? { ok: true, detail: removed.detail } : { ok: false, error: removed.detail });
+        return true;
+      }
       // One switch-off must not strand the other durable agents: headroom's unwrap stops the proxy by default.
       const run = await ctx.headroomRun(bin, ['unwrap', name, '--no-stop-proxy'], 120_000);
       setStoredWrap(name, false);
@@ -126,6 +138,12 @@ export async function handleHeadroomRoutes(
       ctx.json(res, 200, run.ok
         ? { ok: true, detail: out || `${name}: headroom integration removed` }
         : { ok: false, error: out || `the ${name} unwrap failed` });
+      return true;
+    }
+    if (isNativeRouteHost(name)) {
+      const routed = installNativeRoute(name, headroomProxyUrl());
+      if (routed.ok) setStoredWrap(name, true);
+      ctx.json(res, 200, routed.ok ? { ok: true, detail: routed.detail } : { ok: false, error: routed.detail });
       return true;
     }
     if (canConfig) {

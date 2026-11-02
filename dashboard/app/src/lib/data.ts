@@ -323,6 +323,8 @@ export interface HeadroomWrapTarget {
   route?: boolean;
   /** The route's measured state, shown on the row. */
   detail?: string;
+  /** True when Tersio wrote this route and can put the old endpoint back. */
+  managed?: boolean;
 }
 
 export interface HeadroomWrapState {
