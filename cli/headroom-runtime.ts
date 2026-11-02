@@ -10,7 +10,7 @@ import { homeDir } from '../extensions/shared/utils.ts';
 export { headroomProxyPort, headroomProxyUrl };
 
 const execFileP = promisify(execFile);
-const PROXY_WAIT_MS = 20_000;
+const PROXY_WAIT_MS = Number(process.env.TERSIO_HEADROOM_WAIT_MS ?? 20_000);
 
 export interface HeadroomRuntimeResult {
   ok: boolean;

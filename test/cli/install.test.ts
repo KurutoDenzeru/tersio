@@ -1618,6 +1618,7 @@ test.skipIf(process.platform === "win32")("a terminal install asks about Headroo
       env: {
         ...cliEnv(home),
         ...DEAD_ENDPOINTS,
+        TERSIO_HEADROOM_WAIT_MS: "500",
         PATH: `${binDir}${path.delimiter}${process.env.PATH ?? ""}`,
       },
     });
