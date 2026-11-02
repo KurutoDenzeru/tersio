@@ -14,6 +14,7 @@ import type { HostId } from '../extensions/shared/host-caps.ts';
 import { piAgentDir, pigAgentDir, readTextIfExists, resolveHeadroomBinary } from '../extensions/shared/utils.ts';
 import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
 import { removeTersioMcp } from '../extensions/shared/mcp-config.ts';
+import { NATIVE_ROUTE_HOSTS, isNativeRouteHost, removeNativeRoute } from '../extensions/shared/headroom-routes.ts';
 
 interface UninstallOptions {
   yes?: boolean;
@@ -188,6 +189,11 @@ async function removeHeadroomBinary(shouldDryRun: boolean): Promise<void> {
         sayTagged(`  [rm] Headroom unwrap: ${target}`);
       } catch { /* not wrapped, or nothing to undo */ }
     }
+    // Tersio's own routes have no headroom unwrap; put their endpoints back before the proxy leaves.
+    for (const target of NATIVE_ROUTE_HOSTS) {
+      const restored = removeNativeRoute(target);
+      if (restored.ok) sayTagged(`  [rm] Headroom endpoint: ${restored.detail}`);
+    }
   }
   const dirs = (process.env.PATH ?? '').split(path.delimiter).filter(Boolean);
   dirs.push(path.join(HOME, '.local', 'bin'));
@@ -278,6 +284,11 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
   const results: boolean[] = [];
   for (const host of hosts) {
     const selected = allHosts.find((h) => h.id === host) as HostEntry;
+  if (isNativeRouteHost(host) && !shouldDryRun) {
+    const restored = removeNativeRoute(host);
+    // The route belongs to the agent config, so take it back before the agent leaves.
+    if (restored.ok) sayTagged(`  [rm] Headroom endpoint: ${restored.detail}`);
+  }
   if (host === 'pi') {
     const removed = await removePiLayer(selected, shouldDryRun, shouldRemovePonytail, shouldRemoveRtk, confirmed, 'pi');
     if (removed) console.log('\nDone. Restart pi, then /combo lite.');

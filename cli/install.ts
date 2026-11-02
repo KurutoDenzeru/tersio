@@ -29,7 +29,8 @@ import { findPackageRoot, homeDir } from '../extensions/shared/utils.ts';
 import type { RtkRelease, RtkReleaseAsset } from '../extensions/shared/utils.ts';
 import { patchState } from '../extensions/shared/state.ts';
 import { CAVEMAN_PIN } from './upstream.ts';
-import { headroomHostDurable, headroomProxyPort, installDurableConfig, readOmpGateway, routeOmpGateway } from '../extensions/shared/headroom-proxy.ts';
+import { headroomHostSupported, headroomProxyPort, headroomProxyUrl, installDurableConfig, readOmpGateway, routeOmpGateway } from '../extensions/shared/headroom-proxy.ts';
+import { installNativeRoute, isNativeRouteHost } from '../extensions/shared/headroom-routes.ts';
 import { ensureTersioMcp, tersioMcpSupported } from '../extensions/shared/mcp-config.ts';
 import { ensureHeadroomRuntime } from './headroom-runtime.ts';
 import type { HostDefaultField } from './profile.ts';
@@ -555,8 +556,8 @@ async function resolveProfile(opts: { quiet?: boolean; host?: HostId | null } = 
 
 /** The optional Headroom prompt, asked once per interactive install after the combo preset; its enable rides the host section this install writes. */
 async function maybeInstallHeadroom(profile: Profile, quiet: boolean, host: HostId): Promise<boolean> {
-  // pi, PiG, and dsh have no Headroom writer, so an install never offers to write their config.
-  if (!headroomHostDurable(host)) return false;
+  // Every Tersio host has a model route Headroom can take, with or without its own writer.
+  if (!headroomHostSupported(host)) return false;
   if (!tty() || dryRun || applyUpdate || assumeYes) {
     // No prompt to answer, but a fresh install still gets one line about the optional mode.
     if (!quiet && !dryRun && !applyUpdate && profile.headroomDefault !== 'on') {
@@ -633,16 +634,21 @@ async function lifecycleHeadroom(host: HostId, enabled: boolean, profile: Profil
       sayTagged('  [warn] Headroom update failed — run: headroom update');
     }
   }
-  if (dryRun || !headroomHostDurable(host) || (!enabled && profile.headroomDefault !== 'on')) return;
+  if (dryRun || !headroomHostSupported(host) || (!enabled && profile.headroomDefault !== 'on')) return;
   try {
     const port = headroomProxyPort();
     const gateway = host === 'omp' ? readOmpGateway(port) : null;
     // The config points the agent at the proxy, so the runtime starts first.
     const runtime = await ensureHeadroomRuntime(bin, gateway?.baseUrl);
     if (!runtime.ok) throw new Error(runtime.detail);
-    if (!(await installDurableConfig(bin, host, port))) throw new Error('headroom could not write the config');
-    if (host === 'omp' && gateway) routeOmpGateway(gateway, port);
-    if (!quiet) sayTagged(`  Headroom — durable integration installed for ${hostEntry(host).label}`);
+    if (isNativeRouteHost(host)) {
+      const routed = installNativeRoute(host, headroomProxyUrl());
+      if (!routed.ok) throw new Error(routed.detail);
+    } else {
+      if (!(await installDurableConfig(bin, host, port))) throw new Error('headroom could not write the config');
+      if (host === 'omp' && gateway) routeOmpGateway(gateway, port);
+    }
+    if (!quiet) sayTagged(`  Headroom — ${isNativeRouteHost(host) ? 'endpoint routed' : 'durable integration installed'} for ${hostEntry(host).label}`);
   } catch (e) {
     if (!quiet) sayTagged(`  Headroom — ${hostEntry(host).label} integration failed: ${(e as Error).message}`);
   }
@@ -974,8 +980,8 @@ async function runInstall(forcedHost?: HostId): Promise<void> {
   if (headroomEnabled) {
     if (hostExplicit && !chosenFields.includes('headroomDefault')) chosenFields.push('headroomDefault');
     if (!hostExplicit) profile.headroomDefault = 'on';
-  } else if (hostExplicit && !headroomHostDurable(targetHost)) {
-    // No writer means no endpoint change, so the host's own section starts off until the user routes it.
+  } else if (hostExplicit && !headroomHostSupported(targetHost)) {
+    // No route means no endpoint change, so the host's own section starts off.
     profile.headroomDefault = 'off';
     if (!chosenFields.includes('headroomDefault')) chosenFields.push('headroomDefault');
   }

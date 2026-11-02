@@ -263,14 +263,30 @@ export function piRouteFrom(settingsText: string, modelsText: string, host: stri
   };
 }
 
-/** A small YAML read for dsh's provider block: provider name to baseURL. */
-export function dshProviderBaseUrls(text: string): Map<string, string> {
-  const out = new Map<string, string>();
+export interface DshProvider {
+  name: string;
+  api: string;
+  baseUrl: string;
+  /** The zero-based line that holds `baseURL`, or -1 when the block has none. */
+  baseLine: number;
+}
+
+/** A small YAML read for dsh's provider blocks, in file order. */
+export function dshProviders(text: string): DshProvider[] {
+  const out: DshProvider[] = [];
+  const lines = text.split(/\r?\n/);
   let inLlm = false;
   let inProviders = false;
   let providerIndent = -1;
-  let provider = '';
-  for (const line of text.split(/\r?\n/)) {
+  let current: DshProvider | null = null;
+  let api = '';
+  const finish = (): void => {
+    if (current) out.push(current);
+    current = null;
+    api = '';
+  };
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i]!;
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith('#')) continue;
     const indent = indentOf(line);
@@ -287,22 +303,38 @@ export function dshProviderBaseUrls(text: string): Map<string, string> {
     if (trimmed === 'providers:') {
       inProviders = true;
       providerIndent = indent + 2;
-      provider = '';
+      finish();
       continue;
     }
     if (!inProviders) continue;
     if (indent < providerIndent) {
+      finish();
       inProviders = false;
       continue;
     }
     if (indent === providerIndent && /^[^:\s][^:]*:\s*$/.test(trimmed)) {
-      provider = unquote(trimmed.slice(0, -1));
+      finish();
+      current = { name: unquote(trimmed.slice(0, -1)), api: '', baseUrl: '', baseLine: -1 };
       continue;
     }
-    if (provider && indent === providerIndent + 2 && trimmed.startsWith('baseURL:')) {
-      const value = valueOf(trimmed)?.replace(/\s+#.*$/, '');
-      if (value) out.set(provider, value);
+    if (!current) continue;
+    if (indent === providerIndent + 2 && trimmed.startsWith('api:')) {
+      api = unquote(trimmed.slice('api:'.length).replace(/\s+#.*$/, '').trim());
+      current.api = api;
+    } else if (indent === providerIndent + 2 && trimmed.startsWith('baseURL:')) {
+      current.baseUrl = valueOf(trimmed)?.replace(/\s+#.*$/, '') ?? '';
+      current.baseLine = i;
     }
+  }
+  finish();
+  return out;
+}
+
+/** A small YAML read for dsh's provider block: provider name to baseURL. */
+export function dshProviderBaseUrls(text: string): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const provider of dshProviders(text)) {
+    if (provider.baseUrl) out.set(provider.name, provider.baseUrl);
   }
   return out;
 }
