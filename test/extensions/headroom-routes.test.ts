@@ -12,8 +12,7 @@ import {
 
 const PROXY = 'http://127.0.0.1:8787/';
 
-function piHome(home: string): void {
-  const dir = path.join(home, '.pi', 'agent');
+function piLikeHome(dir: string): void {
   mkdirSync(dir, { recursive: true });
   writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({
     defaultProvider: 'magpie',
@@ -22,6 +21,10 @@ function piHome(home: string): void {
   writeFileSync(path.join(dir, 'models.json'), JSON.stringify({
     providers: { magpie: { api: 'openai-completions', baseUrl: 'http://127.0.0.1:3425/v1' } },
   }, null, 2), 'utf8');
+}
+
+function piHome(home: string): void {
+  piLikeHome(path.join(home, '.pi', 'agent'));
 }
 
 function dshHome(home: string): void {
@@ -60,6 +63,18 @@ describe('native headroom routes', () => {
     expect(removed.ok).toBe(true);
     expect(JSON.parse(readFileSync(modelsFile, 'utf8')).providers.magpie.baseUrl).toBe('http://127.0.0.1:3425/v1');
     expect(hasNativeRoute('pi')).toBe(false);
+  }));
+
+  test('routes PiG from its own agent directory', () => withHome((home) => {
+    const dir = path.join(home, '.pig', 'agent');
+    piLikeHome(dir);
+    const routed = installNativeRoute('pig', PROXY);
+    expect(routed.ok).toBe(true);
+    const modelsFile = path.join(dir, 'models.json');
+    expect(JSON.parse(readFileSync(modelsFile, 'utf8')).providers.magpie.baseUrl).toBe('http://127.0.0.1:8787/v1');
+    expect(readHeadroomRoute('pig', PROXY).routed).toBe(true);
+    expect(removeNativeRoute('pig').ok).toBe(true);
+    expect(JSON.parse(readFileSync(modelsFile, 'utf8')).providers.magpie.baseUrl).toBe('http://127.0.0.1:3425/v1');
   }));
 
   test('routes every dsh file that owns the active provider', () => withHome((home) => {
