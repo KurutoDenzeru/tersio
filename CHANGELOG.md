@@ -30,6 +30,7 @@
 - An OpenCode plugin entry that outlives its tree now reads as declared, so the install menu and doctor name the missing tree instead of the whole agent.
 
 ### Fixed
+- A Headroom switch writes the provider block an agent keeps in its own catalog. Pi and PiG take the endpoint and models from `models-store.json`, so a provider with no `models.json` block is routed without a hand edit, and the same path serves omp.
 - Oh My Pi routes a model whose id names a provider it keeps built-in, such as `commandcode/...`. Tersio writes the block that provider needs and reads its real endpoint from omp's model cache, so the route chip no longer says `routed via magpie` while traffic leaves for the provider's own API.
 - A model that names its own endpoint is routed with its provider. Pi, PiG, and Oh My Pi read and write both.
 - Oh My Pi routes the provider of the active role, not the first local gateway in the file.
