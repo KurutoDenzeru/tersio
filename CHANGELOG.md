@@ -8,7 +8,12 @@
 
 ### Changed
 - The dashboard is faster and calmer: remembered ranges, smaller downloads, a cleaner layout, larger Settings, simpler drawers, and a clearer Add agent picker.
+- The Upstream page now explains the scorecard in plain English: the pin, the copy, drift, gaps, what is lacking, and the full ledger. The radar chart stays, and the agent table lists Tersio hosts only.
+- The Upstream gaps block now groups uncarried upstream, local paths, and agent drift with repair commands. The Agents table keeps one State cell instead of separate Stale, Missing, and Unloaded columns. The duplicate Gaps card is gone, and the check card fills its row with the last run.
 - The dashboard keeps fewer loose files. Saved records, caches, prices, upstream data, brand marks, Headroom state, and session state now live in fewer places.
+- The dashboard watch prints only the live, LAN, and QR lines. Restarts and UI errors stay quiet, and a missing build returns a retry page.
+- Quick start agent cards read `unrouted` for Headroom when the session default is on but that agent has no route. They no longer claim compression a host does not get.
+- Oh My Pi and OpenCode now read the active model route too. A leftover Headroom config block no longer makes the drawer or the host card claim compression.
 - Brand logos load when needed and stay cached.
 - The Headroom drawer lists only tools it can really set up. ZCode and Continue are gone.
 - Switches explain what changed, and failed actions show the real reason.
@@ -19,7 +24,9 @@
 - Tokscale is no longer credited.
 - Behind the scenes, agent support, dashboard data, and usage code now share one source, so future changes are smaller.
 - Headroom now routes Pi, PiG, and DeepSeek Harness through their active provider endpoint. The install and the Quick start switch save the old endpoint and restore it on off.
-- The Headroom drawer lists Tersio's five agents only. Claude Code and Codex rows are gone, and an agent that is not installed reads as not installed.
+- The Headroom drawer lists Tersio's five agents only. Claude Code and Codex rows are gone. A present agent without its Tersio tree reads as Tersio missing and offers Install.
+- The Add agent picker hides an empty group. Claude Code and Codex leave that picker too, so only PiG remains under Unavailable.
+- An OpenCode plugin entry that outlives its tree now reads as declared, so the install menu and doctor name the missing tree instead of the whole agent.
 
 ### Fixed
 - Headroom now tells the truth: it starts its runtime before enabling, waits for the runtime, refuses to claim compression when traffic does not use it, and shows live counters and routing.
@@ -31,6 +38,9 @@
 - pstack and Ponytail track their upstreams again. Ponytail moves to 5.3.3, and missing pstack skills now ship.
 - Closing the dashboard releases the port. Requests are no longer counted twice. History survives updates and resets.
 - Install keeps each agent's own settings, model logos are correct, and uninstalled tools read as uninstalled.
+- Uninstalling OpenCode removes the plugin paths it wrote, so a stale Tersio entry no longer survives.
+- Uninstalling an agent now removes its Headroom route first: Headroom's unwrap for Oh My Pi and OpenCode, and the saved endpoint for Pi, PiG, and DeepSeek Harness.
+- A Headroom route is refused when the proxy names no upstream for that protocol, or forwards to another provider. An agent cannot silently send traffic to the wrong upstream.
 - No stray files are left in your projects.
 - A saved agent card can no longer sit on another card and hide it. The Quick start page draws the agent group in three columns again.
 - The default agent group uses your saved position. A fourth agent starts a new row under the first column.
