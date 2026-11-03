@@ -525,6 +525,47 @@ test("uninstall --host opencode clears the plugin tree", () => {
   }
 });
 
+test("uninstall --host opencode removes the plugin entries it wrote", () => {
+  const home = tempHome();
+  try {
+    const dir = path.join(home, ".config", "opencode", "plugins", "tersio");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(path.join(dir, "server.ts"), "// stale", "utf8");
+    const configPath = path.join(home, ".config", "opencode", "opencode.json");
+    const keep = path.join(home, ".config", "opencode", "plugins", "herdr.js");
+    writeFileSync(configPath, JSON.stringify({
+      plugins: [dir, `${dir}${path.sep}`, path.join(home, ".config", "opencode", "plugins", "rtk.ts"), keep],
+    }), "utf8");
+    const result = run(home, ["uninstall", "--host", "opencode", "--yes"]);
+    expect(result.status, result.stderr).toBe(0);
+    const config = JSON.parse(readFileSync(configPath, "utf8")) as { plugins: string[] };
+    expect(config.plugins).toEqual([keep]);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("uninstall --host opencode unwraps its headroom route first", () => {
+  const home = tempHome();
+  try {
+    const dir = path.join(home, ".config", "opencode", "plugins", "tersio");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(path.join(dir, "server.ts"), "// stale", "utf8");
+    writeFileSync(path.join(home, ".config", "opencode", "opencode.json"), JSON.stringify({ plugins: [dir] }), "utf8");
+    const log = path.join(home, "headroom.log");
+    const binDir = path.join(home, "empty-bin");
+    mkdirSync(binDir, { recursive: true });
+    const bin = path.join(binDir, "headroom");
+    writeFileSync(bin, `#!/bin/sh\necho "$@" >> "${log}"\n`, "utf8");
+    chmodSync(bin, 0o755);
+    const result = run(home, ["uninstall", "--host", "opencode", "--yes"]);
+    expect(result.status, result.stderr).toBe(0);
+    expect(readFileSync(log, "utf8")).toContain("unwrap opencode --no-stop-proxy");
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test("uninstall on a machine with no install says so instead of listing files", () => {
   const home = tempHome();
   try {

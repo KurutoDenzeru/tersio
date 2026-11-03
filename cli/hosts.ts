@@ -209,6 +209,16 @@ const HOSTS: Array<Omit<HostEntry, 'installed' | 'via' | 'declared' | 'version' 
   removeCmd: cap.removeCmd,
 }));
 
+/** A plugin entry can outlive its tree, so the host is declared even when the directory is gone. */
+function opencodePluginDeclared(): boolean {
+  for (const file of [path.join(HOME, '.config', 'opencode', 'opencode.json'), path.join(HOME, '.config', 'opencode', 'opencode.jsonc')]) {
+    try {
+      if (readFileSync(file, 'utf8').includes('/opencode/plugins/tersio')) return true;
+    } catch { /* try the next file */ }
+  }
+  return false;
+}
+
 function detect(agentDir = piAgentDir(), pigDir = pigAgentDir()): HostEntry[] {
   return HOSTS.map((host) => {
     const pkgDir = host.id === 'omp'
@@ -240,7 +250,7 @@ function detect(agentDir = piAgentDir(), pigDir = pigAgentDir()): HostEntry[] {
             ? pigTersioSource(pigDir)
             : host.id === 'dsh'
               ? (pkgDir && existsSync(pkgDir) ? 'dsh bundle' : null)
-              : existsSync(tree) ? 'plugin tree' : null,
+              : existsSync(tree) ? 'plugin tree' : opencodePluginDeclared() ? 'plugin entry' : null,
       version: via === 'tree' ? PACKAGE_VERSION : via === 'package' && pkgDir ? packageVersion(pkgDir) : null,
       dir: via === 'tree' ? tree : via === 'package' ? pkgDir : null,
     };

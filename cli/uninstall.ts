@@ -178,6 +178,27 @@ async function removeUninstallTarget(target: string, shouldDryRun: boolean, recu
   }
 }
 
+/** Undo one agent's route before its tree leaves: Headroom's writer for two hosts, Tersio's for the rest. */
+async function restoreHeadroomRoute(host: HostId, shouldDryRun: boolean): Promise<void> {
+  if (isNativeRouteHost(host)) {
+    if (shouldDryRun) return;
+    const restored = removeNativeRoute(host);
+    if (restored.ok) sayTagged(`  [rm] Headroom endpoint: ${restored.detail}`);
+    return;
+  }
+  if (host !== 'omp' && host !== 'opencode') return;
+  if (shouldDryRun) {
+    sayTagged(`  [dry-run] would unwrap headroom for ${host}`);
+    return;
+  }
+  const bin = resolveHeadroomBinary();
+  if (!bin) return;
+  try {
+    await execP(bin, ['unwrap', host, '--no-stop-proxy'], { timeout: 90_000 });
+    sayTagged(`  [rm] Headroom unwrap: ${host}`);
+  } catch { /* not wrapped, or nothing to undo */ }
+}
+
 /** Removes the user's own Headroom install with whichever package manager installed it. */
 async function removeHeadroomBinary(shouldDryRun: boolean): Promise<void> {
   // Undo the agent-side wraps first: a removed binary behind a headroom-managed config strands the agent.
@@ -284,11 +305,7 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
   const results: boolean[] = [];
   for (const host of hosts) {
     const selected = allHosts.find((h) => h.id === host) as HostEntry;
-  if (isNativeRouteHost(host) && !shouldDryRun) {
-    const restored = removeNativeRoute(host);
-    // The route belongs to the agent config, so take it back before the agent leaves.
-    if (restored.ok) sayTagged(`  [rm] Headroom endpoint: ${restored.detail}`);
-  }
+  await restoreHeadroomRoute(host, shouldDryRun);
   if (host === 'pi') {
     const removed = await removePiLayer(selected, shouldDryRun, shouldRemovePonytail, shouldRemoveRtk, confirmed, 'pi');
     if (removed) console.log('\nDone. Restart pi, then /combo lite.');
@@ -321,7 +338,9 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
         const raw = await readTextIfExists(configPath);
         const config = raw ? JSON.parse(raw) as { plugins?: unknown[] } : {};
         if (Array.isArray(config.plugins)) {
-          config.plugins = config.plugins.filter((p) => typeof p !== 'string' || !p.includes('/opencode/plugins/tersio/'));
+          // The installer writes the directory without a trailing slash, so compare the resolved paths.
+          const ours = new Set([path.resolve(dir), path.resolve(path.join(HOME, '.config', 'opencode', 'plugins', 'rtk.ts'))]);
+          config.plugins = config.plugins.filter((p) => typeof p !== 'string' || !ours.has(path.resolve(p)));
           await fs.writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, 'utf8');
         }
       } catch { /* config missing or not JSON; nothing to scrub */ }

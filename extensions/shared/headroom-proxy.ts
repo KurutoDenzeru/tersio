@@ -17,6 +17,39 @@ export function headroomProxyUrl(): string {
   return (process.env.TERSIO_HEADROOM_PROXY_URL ?? `http://127.0.0.1:${HEADROOM_PORT}/`).trim();
 }
 
+/** The upstream Headroom's saved deployment forwards to, or null when no manifest names one. */
+export function headroomProxyUpstream(api: string, home: string = homeDir()): string | null {
+  const dir = path.join(home, '.headroom', 'deploy');
+  let profiles: string[];
+  try {
+    profiles = fs.readdirSync(dir);
+  } catch {
+    return null;
+  }
+  let newest: { updated: string; manifest: Record<string, unknown> } | null = null;
+  for (const profile of profiles) {
+    try {
+      const manifest = JSON.parse(fs.readFileSync(path.join(dir, profile, 'manifest.json'), 'utf8')) as Record<string, unknown>;
+      const updated = typeof manifest.updated_at === 'string' ? manifest.updated_at : typeof manifest.created_at === 'string' ? manifest.created_at : '';
+      if (!newest || updated > newest.updated) newest = { updated, manifest };
+    } catch { /* a broken profile cannot name an upstream */ }
+  }
+  if (!newest) return null;
+  const env = newest.manifest.base_env && typeof newest.manifest.base_env === 'object'
+    ? newest.manifest.base_env as Record<string, unknown>
+    : {};
+  const args = Array.isArray(newest.manifest.proxy_args)
+    ? newest.manifest.proxy_args.filter((arg): arg is string => typeof arg === 'string')
+    : [];
+  const anthropic = /anthropic/i.test(api);
+  const flag = anthropic ? '--anthropic-api-url' : '--openai-api-url';
+  const envKey = anthropic ? 'ANTHROPIC_TARGET_API_URL' : 'OPENAI_TARGET_API_URL';
+  const at = args.indexOf(flag);
+  const fromArgs = at >= 0 ? args[at + 1] : null;
+  const fromEnv = typeof env[envKey] === 'string' ? env[envKey] as string : null;
+  return fromArgs || fromEnv || null;
+}
+
 /** The port the rest of the system must write into a durable config. */
 export function headroomProxyPort(): number {
   try {

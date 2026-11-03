@@ -60,15 +60,22 @@ export async function handleHeadroomRoutes(
   // Tersio's five agents only. Headroom's own extra tools stay out of this drawer.
   if (req.url === '/api/headroom/wrap' && req.method === 'GET') {
     const bin = resolveHeadroomBinary();
-    const targets = detectHosts().map((host) => {
+    const hosts = detectHosts();
+    const present = await Promise.all(hosts.map((host) => ctx.wrapTargetPresent(host.id)));
+    const targets = hosts.map((host, i) => {
+      const agentPresent = present[i] === true;
       if (headroomHostDurable(host.id)) {
+        const route = readHeadroomRoute(host.id);
         return {
           name: host.id,
           label: host.label,
           durable: true,
           manual: false,
-          installed: durableConfigInstalled(host.id),
+          // The config block can exist while the active model bypasses it, so the row reads the route.
+          installed: route.routed,
+          configured: durableConfigInstalled(host.id),
           agentInstalled: host.installed,
+          agentPresent,
         };
       }
       const route = readHeadroomRoute(host.id);
@@ -82,6 +89,7 @@ export async function handleHeadroomRoutes(
         installed: route.routed,
         managed: isNativeRouteHost(host.id) ? hasNativeRoute(host.id) : undefined,
         agentInstalled: host.installed,
+        agentPresent,
         detail: describeHeadroomRoute(route),
       };
     });
@@ -166,7 +174,7 @@ export async function handleHeadroomRoutes(
       wraps = mergeHeadroomWraps(stored, doctor.checks, ctx.wrapTargets);
       try { writeHeadroomWraps(wraps); } catch { /* best effort */ }
     }
-    for (const name of DURABLE_CONFIG) if (durableConfigInstalled(name)) wraps[name] = true;
+    for (const name of DURABLE_CONFIG) if (readHeadroomRoute(name).routed) wraps[name] = true;
     ctx.json(res, 200, { ok: true, wraps });
     return true;
   }

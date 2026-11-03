@@ -23,8 +23,17 @@ function piLikeHome(dir: string): void {
   }, null, 2), 'utf8');
 }
 
+function headroomManifest(home: string, env: Record<string, string>): string {
+  const deploy = path.join(home, '.headroom', 'deploy', 'init');
+  mkdirSync(deploy, { recursive: true });
+  const file = path.join(deploy, 'manifest.json');
+  writeFileSync(file, JSON.stringify({ updated_at: '2026-01-01T00:00:00Z', base_env: env }), 'utf8');
+  return file;
+}
+
 function piHome(home: string): void {
   piLikeHome(path.join(home, '.pi', 'agent'));
+  headroomManifest(home, { OPENAI_TARGET_API_URL: 'http://127.0.0.1:3425/v1' });
 }
 
 function dshHome(home: string): void {
@@ -71,6 +80,7 @@ describe('native headroom routes', () => {
     process.env.PIG_CODING_AGENT_DIR = dir;
     try {
       piLikeHome(dir);
+      headroomManifest(home, { OPENAI_TARGET_API_URL: 'http://127.0.0.1:3425/v1' });
       const routed = installNativeRoute('pig', PROXY);
       expect(routed.ok).toBe(true);
       const modelsFile = path.join(dir, 'models.json');
@@ -86,6 +96,7 @@ describe('native headroom routes', () => {
 
   test('routes every dsh file that owns the active provider', () => withHome((home) => {
     dshHome(home);
+    headroomManifest(home, { OPENAI_TARGET_API_URL: 'http://127.0.0.1:3425/v1' });
     const routed = installNativeRoute('dsh', PROXY);
     expect(routed.ok).toBe(true);
     const settings = readFileSync(path.join(home, '.dsh', 'settings.yaml'), 'utf8');
@@ -98,6 +109,35 @@ describe('native headroom routes', () => {
     expect(removed.ok).toBe(true);
     expect(readFileSync(path.join(home, '.dsh', 'settings.yaml'), 'utf8')).toContain('baseURL: http://127.0.0.1:3425/v1');
     expect(readFileSync(path.join(home, '.dsh', 'profiles', 'desktop', 'cordis.patch.yml'), 'utf8')).toContain('baseURL: http://127.0.0.1:3425/v1');
+  }));
+
+  test('refuses a route when Headroom forwards to another provider', () => withHome((home) => {
+    piHome(home);
+    expect(installNativeRoute('pi', PROXY).ok).toBe(true);
+    expect(removeNativeRoute('pi').ok).toBe(true);
+
+    headroomManifest(home, { OPENAI_TARGET_API_URL: 'http://127.0.0.1:9999/v1' });
+    const refused = installNativeRoute('pi', PROXY);
+    expect(refused.ok).toBe(false);
+    expect(refused.detail).toContain('not Headroom');
+    const models = JSON.parse(readFileSync(path.join(home, '.pi', 'agent', 'models.json'), 'utf8'));
+    expect(models.providers.magpie.baseUrl).toBe('http://127.0.0.1:3425/v1');
+  }));
+
+  test('refuses an Anthropic route when Headroom names no Anthropic upstream', () => withHome((home) => {
+    piHome(home);
+    const modelsFile = path.join(home, '.pi', 'agent', 'models.json');
+    const data = JSON.parse(readFileSync(modelsFile, 'utf8'));
+    data.providers.magpie = { api: 'anthropic-messages', baseUrl: 'http://127.0.0.1:3425' };
+    writeFileSync(modelsFile, JSON.stringify(data, null, 2), 'utf8');
+    // The manifest only names the OpenAI upstream, so Anthropic traffic would leave for the default API.
+    const refused = installNativeRoute('pi', PROXY);
+    expect(refused.ok).toBe(false);
+    expect(refused.detail).toContain('--anthropic-api-url');
+    expect(JSON.parse(readFileSync(modelsFile, 'utf8')).providers.magpie.baseUrl).toBe('http://127.0.0.1:3425');
+
+    headroomManifest(home, { ANTHROPIC_TARGET_API_URL: 'http://127.0.0.1:3425' });
+    expect(installNativeRoute('pi', PROXY).ok).toBe(true);
   }));
 
   test('Anthropic providers use the proxy root', () => {

@@ -3,7 +3,7 @@
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { headroomProxyUrl } from './headroom-proxy.ts';
+import { headroomProxyUpstream, headroomProxyUrl } from './headroom-proxy.ts';
 import { dshDefaultRoute, dshProviders, sameProxyEndpoint } from './headroom-routing.ts';
 import { patchState, readState } from './state.ts';
 import { homeDir, piAgentDir, pigAgentDir } from './utils.ts';
@@ -25,6 +25,17 @@ export function isNativeRouteHost(host: string): host is NativeRouteHost {
 export function nativeProxyUrl(api: string, proxyUrl: string = headroomProxyUrl()): string {
   const root = proxyUrl.replace(/\/+$/, '');
   return /anthropic/i.test(api) ? root : `${root}/v1`;
+}
+
+/** The same upstream, path included: a proxy pointed at another provider must not take this route. */
+function sameUpstream(a: string, b: string): boolean {
+  try {
+    const left = new URL(a);
+    const right = new URL(b);
+    return left.origin === right.origin && left.pathname.replace(/\/+$/, '') === right.pathname.replace(/\/+$/, '');
+  } catch {
+    return a.replace(/\/+$/, '') === b.replace(/\/+$/, '');
+  }
 }
 
 export function nativeRouteRecords(host: NativeRouteHost): HeadroomRouteRecord[] {
@@ -148,6 +159,23 @@ export function installNativeRoute(host: NativeRouteHost, proxyUrl: string = hea
   let targets: Target[];
   try { targets = targetsFor(host); } catch (e) { return { ok: false, detail: (e as Error).message }; }
   if (targets.length === 0) return { ok: false, detail: `no active provider endpoint found for ${host}` };
+  // A route only makes sense when the proxy names the provider it replaces for this protocol.
+  for (const target of targets) {
+    const upstream = headroomProxyUpstream(target.api);
+    if (!upstream) {
+      const flag = /anthropic/i.test(target.api) ? '--anthropic-api-url' : '--openai-api-url';
+      return {
+        ok: false,
+        detail: `${host}: Headroom names no upstream for ${target.api || 'OpenAI'} traffic. Start it with ${flag} ${target.original} first.`,
+      };
+    }
+    if (!sameUpstream(upstream, target.original)) {
+      return {
+        ok: false,
+        detail: `${host}: ${target.original} is not Headroom's upstream (${upstream}). Start Headroom with the provider URL first.`,
+      };
+    }
+  }
   const records: HeadroomRouteRecord[] = [];
   const applied: Target[] = [];
   try {
