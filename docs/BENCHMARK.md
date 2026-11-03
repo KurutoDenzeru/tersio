@@ -7,6 +7,7 @@ The method follows how the upstream projects test their own tools:
 - **Caveman**: compare replies on fixed prompts, with a control prompt `Answer concisely.` so the gain is not just a short-answer instruction. Count prompt overhead separately, and report losses.
 - **Ponytail**: run the same tasks with and without the mode, five times each, and check quality with tests and injected bugs.
 - **RTK**: measure command output only. Check that failure details survive. Report percentages, not bill savings.
+- **Headroom**: measure the proxy JSONL before and after compression. Require a token drop and a surviving sentinel. A green switch is not evidence.
 
 ## Quick run
 
@@ -35,7 +36,7 @@ result file that skips a row is incomplete, so two people running this guide pro
 | pstack | `on` | Design and verification rules. Scored on quality only. |
 | RTK | `on` | Shorter shell command output. Measured by the bench, not by a session. |
 | Headroom | `on` | Compression proxy for tool output, logs, files, JSON, and history. Measured from proxy JSONL, not reply prompts. |
-| Combo | `lite`, `balanced`, `max` | Presets. `lite` is lite/lite, `balanced` is full/full, `max` is ultra/ultra, and all three turn RTK and pstack on. |
+| Combo | `lite`, `balanced`, `max` | Presets. `lite` is lite/lite, `balanced` is full/full, and `max` is ultra/ultra. RTK is on. pstack and Headroom stay where you set them. |
 
 There are two ways to turn a mode on, and they are measured separately:
 
@@ -211,7 +212,7 @@ surfaces. The matrix below is the full scope.
 |---|---|---|---|
 | Prose | Caveman (6 levels), Control, Combo (3) | 3 prompts, each asking for a three-sentence explanation. | Reply tokens |
 | Code | Ponytail (3 levels) | 3 prompts, each asking for TypeScript functions. | Reply tokens |
-| Agentic | Combo (3), pstack, RTK | Run the suite. Fix the failing test. Stop when it passes. | Total tokens, time, pass rate |
+| Agentic | Combo (3), Combo stacks, pstack, RTK | Run the suite. Fix the failing test. Stop when it passes. | Total tokens, time, pass rate |
 | Command output | RTK | Run `bun run bench` over the committed fixtures. | Output bytes, time, fidelity |
 | Command surface | Every command and level | Issue one slash command, then ask P1. | Reply tokens, total tokens, quality |
 | Compression | Headroom | Send one fixed log and one fixed JSON payload through the proxy. | Tokens before, tokens after, transforms, sentinel survival |
@@ -292,8 +293,8 @@ Read a miss before you record it, and compare each mode against base on the same
 
 ## 8. Results
 
-The result file has one table per surface, in the order below, and every table has exactly the
-columns given. Leave a cell blank until it is measured. Keep every row, including the levels that
+A result file contains only the surfaces its mode or stack needs, using the tables below and exactly
+the columns given. Leave a cell blank until it is measured. Keep every row, including the levels that
 measured nothing useful, because a skipped row is a hole in the file.
 
 Reply median and Total median are the two numbers a reader compares across agents. Δ Tokens and
@@ -506,62 +507,54 @@ they optimize different things. Use `--mode token` for this compression check.
 
 ## 10. Reporting
 
-Write each run to its own file, named for the agent: `BENCHMARK_<AGENT>.md`, with the uppercase agent
-name and no spaces. Keep it outside this guide’s folder unless the run is meant to ship. A reader can
-compare agents without mixing their numbers.
+Write one file per mode or stack. Do not create a single `BENCHMARK_<AGENT>.md`.
 
-Start each file with this header, then paste the results tables from section 8 with the blanks
-filled in. Keep every row, including the levels that measured nothing useful, and keep the path
-column: a saved default and a slash command are different measurements.
+| File | Mode or stack |
+|---|---|
+| [BENCH_CAVEMAN.md](./BENCH_CAVEMAN.md) | Caveman, all six levels |
+| [BENCH_PONYTAIL.md](./BENCH_PONYTAIL.md) | Ponytail, all three levels |
+| [BENCH_RTK.md](./BENCH_RTK.md) | RTK command output and the agentic row |
+| [BENCH_HEADROOM.md](./BENCH_HEADROOM.md) | Headroom compression |
+| [BENCH_PSTACK.md](./BENCH_PSTACK.md) | pstack quality and review rounds |
+| [BENCH_COMBO.md](./BENCH_COMBO.md) | Combo `lite`, `balanced`, `max` |
+| [BENCH_COMBO_HEADROOM.md](./BENCH_COMBO_HEADROOM.md) | Combo plus Headroom |
+| [BENCH_COMBO_PSTACK.md](./BENCH_COMBO_PSTACK.md) | Combo plus pstack |
+| [BENCH_COMBO_ALL.md](./BENCH_COMBO_ALL.md) | Combo plus Headroom plus pstack |
 
-The file has these sections, in this order, and no others:
+`Combo` means the preset only: Caveman, RTK, and Ponytail. pstack is not part of it. Headroom is not
+part of it. The last three files add those layers explicitly. `BENCH_COMBO_ALL.md` is the final
+stack, with both Headroom and pstack.
+
+Each file starts with the agent and model header. If one file holds more than one agent, repeat the
+header under its own second-level agent heading. Use one mode or stack per file.
 
 ```md
-# Tersio benchmark: <agent>
+# Tersio benchmark: <mode or stack>
 
 - Agent: <name and version>
 - Model: <provider/model>, thinking effort <level>, temperature <not reported by the harness>
+- Mode or stack: <the exact levels and whether Headroom or pstack is on>
 - Tersio, RTK, Ponytail, Caveman: <versions>
 - Caveman release <version> and pstack pin <commit>: the upstream bodies this run measured
 - Repository and commit: <repo> at <commit>. <where each surface ran>
-- Runs (N), date, surface: <N per prompt on the prose and code surfaces, 5 per case on the others>, <date>
+- Runs (N), date, surface: <N per prompt on prose and code, 5 per case on the others>, <date>
 - Sessions: one for the whole benchmark, the context cleared between runs
-- Path: <the path every case used: saved default or slash command>
-
-<one paragraph: how it was measured, and the harness it ran under>
-
-<one paragraph: what Δ Tokens and Δ Net count, and any limit on this run>
-
-## Bench (`bun run bench`)
-
-| Case | Bytes in | Bytes out | Δ% | Mean |
-
-## Token protocol
-
-### Prose
-
-| Case | Reply median | Δ Tokens | Δ% | Total median | Δ Net | Quality |
-
-### Code
-
-| Case | Reply median | Δ Tokens | Δ% | Total median | Δ Net | Quality |
-
-### Agentic
-
-| Case | Reply median | Total median | Δ Net | Δ% | Wall median | Pass |
-
-## Command surface
-
-| Command | Level | Path | Reply median | Δ Tokens | Δ% | Total median | Δ Net | Quality |
-
-## What the numbers say
-
-- <findings>
-
-## Gates
-
-- <gates>
+- Path: <saved default or slash command>
+- Headroom: <proxy mode, JSONL path, upstream URL>
 ```
+
+Then include only the sections this mode or stack needs:
+
+- Caveman: Prose and Command surface.
+- Ponytail: Code and Command surface.
+- RTK: Command output and Agentic.
+- Headroom: Compression.
+- pstack: Agentic quality.
+- Combo, Combo + Headroom, Combo + pstack, Combo + everything: Prose, Agentic, and the matching
+  Headroom or pstack section. Add Command surface when the run measured the `/combo` command.
+
+Keep every row, including levels that measured nothing useful, and keep the path column: a saved
+default and a slash command are different measurements.
 
 The guide is the reference for this shape. A stored result is optional, and the deleted per-agent files no longer ship.
 
