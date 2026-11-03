@@ -27,6 +27,8 @@ export interface HostCap {
   headroom: boolean;
   /** Headroom ships a config writer Tersio can run for this host. */
   headroomDurable?: boolean;
+  /** Headroom reaches this host through a local gateway, so its provider line moves too. */
+  headroomGateway?: boolean;
 }
 
 function ompAgentDir(): string {
@@ -47,7 +49,7 @@ export const HOST_CAPS: Record<HostId, HostCap> = {
     id: 'omp', label: 'Oh My Pi', bin: 'omp',
     installCmd: 'omp plugin install @krtclcdy/tersio', removeCmd: 'omp plugin remove @krtclcdy/tersio',
     mcp: 'mcpServers', mcpFile: () => path.join(ompAgentDir(), 'mcp.json'),
-    rtkAgent: 'omp', headroom: true, headroomDurable: true,
+    rtkAgent: 'omp', headroom: true, headroomDurable: true, headroomGateway: true,
   },
   pi: {
     id: 'pi', label: 'Pi', bin: 'pi',

@@ -1,10 +1,10 @@
-// The routes Tersio writes for hosts Headroom has no writer for. Only the active provider's
+// The endpoints Tersio writes itself, for every agent it can route. Only the active provider's
 // endpoint changes, so a later model edit stays intact and the off switch puts the old URL back.
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { headroomProxyUpstream, headroomProxyUrl } from './headroom-proxy.ts';
-import { dshDefaultRoute, dshProviders, sameProxyEndpoint } from './headroom-routing.ts';
+import { describeHeadroomRoute, dshDefaultRoute, dshProviders, jsonBaseUrl, jsonModelEntry, readHeadroomRoute, sameProxyEndpoint } from './headroom-routing.ts';
 import { patchState, readState } from './state.ts';
 import { homeDir, piAgentDir, pigAgentDir } from './utils.ts';
 import type { HeadroomRouteRecord } from './state.ts';
@@ -56,6 +56,8 @@ function saveRecords(host: NativeRouteHost, records: HeadroomRouteRecord[]): voi
 interface Target {
   file: string;
   provider: string;
+  /** Set when the record owns one model's endpoint instead of the provider's. */
+  model?: string;
   api: string;
   original: string;
   write: (url: string) => void;
@@ -68,6 +70,33 @@ function readJson(file: string): Record<string, unknown> | null {
   } catch {
     return null;
   }
+}
+
+/** The endpoint key a block actually uses, so a write keeps the host's own spelling. */
+function endpointKey(record: Record<string, unknown>): string {
+  return ['baseUrl', 'baseURL', 'base_url'].find((key) => typeof record[key] === 'string') ?? '';
+}
+
+/** The protocol, host, and port two endpoints share; a path may differ and still reach one service. */
+function sameOrigin(a: string, b: string): boolean {
+  try {
+    return new URL(a).origin === new URL(b).origin;
+  } catch {
+    return false;
+  }
+}
+
+/** Write one endpoint into the provider block, or into the model entry that overrides it. */
+function writeJsonEndpoint(file: string, provider: string, model: string | null, key: string, url: string): void {
+  const fresh = readJson(file);
+  if (!fresh) throw new Error(`${file} is not valid JSON`);
+  const list = fresh.providers && typeof fresh.providers === 'object' ? fresh.providers as Record<string, unknown> : {};
+  const block = list[provider];
+  if (!block || typeof block !== 'object') throw new Error(`${provider} is not in ${file}`);
+  const target = model ? jsonModelEntry(block as Record<string, unknown>, model, provider) : block as Record<string, unknown>;
+  if (!target) throw new Error(`${model} is not in ${file}`);
+  target[key] = url;
+  writeFileSync(file, `${JSON.stringify(fresh, null, 2)}\n`, 'utf8');
 }
 
 function piTargets(host: 'pi' | 'pig'): Target[] {
@@ -84,26 +113,33 @@ function piTargets(host: 'pi' | 'pig'): Target[] {
   const entry = providers[provider];
   const record = entry && typeof entry === 'object' ? entry as Record<string, unknown> : null;
   if (!record) return [];
-  const key = typeof record.baseUrl === 'string' ? 'baseUrl' : typeof record.baseURL === 'string' ? 'baseURL' : '';
-  const rawOriginal = key ? record[key] : null;
-  const original = typeof rawOriginal === 'string' ? rawOriginal : '';
-  if (!key || !original) return [];
   const api = typeof record.api === 'string' ? record.api : '';
-  return [{
-    file: modelsFile,
-    provider,
-    api,
-    original,
-    write: (url: string) => {
-      const fresh = readJson(modelsFile);
-      if (!fresh) throw new Error(`${modelsFile} is not valid JSON`);
-      const list = fresh.providers && typeof fresh.providers === 'object' ? fresh.providers as Record<string, unknown> : {};
-      const block = list[provider];
-      if (!block || typeof block !== 'object') throw new Error(`${provider} is not in ${modelsFile}`);
-      (block as Record<string, unknown>)[key] = url;
-      writeFileSync(modelsFile, `${JSON.stringify(fresh, null, 2)}\n`, 'utf8');
-    },
-  }];
+  const targets: Target[] = [];
+  const providerKey = endpointKey(record);
+  if (providerKey) {
+    targets.push({
+      file: modelsFile,
+      provider,
+      api,
+      original: record[providerKey] as string,
+      write: (url: string) => writeJsonEndpoint(modelsFile, provider, null, providerKey, url),
+    });
+  }
+  // A model that names its own endpoint beats the provider's, so it is routed beside it.
+  const modelEntry = model ? jsonModelEntry(record, model, provider) : null;
+  const modelKey = modelEntry ? endpointKey(modelEntry) : '';
+  const modelId = modelEntry && typeof modelEntry.id === 'string' ? modelEntry.id : '';
+  if (modelId && modelKey) {
+    targets.push({
+      file: modelsFile,
+      provider,
+      model: modelId,
+      api,
+      original: modelEntry![modelKey] as string,
+      write: (url: string) => writeJsonEndpoint(modelsFile, provider, modelId, modelKey, url),
+    });
+  }
+  return targets;
 }
 
 /** The dsh files that hold the active provider, with the settings file first. */
@@ -145,8 +181,14 @@ function dshTargets(): Target[] {
   return targets;
 }
 
+const TARGET_PLANNERS: Record<NativeRouteHost, () => Target[]> = {
+  pi: () => piTargets('pi'),
+  pig: () => piTargets('pig'),
+  dsh: dshTargets,
+};
+
 function targetsFor(host: NativeRouteHost): Target[] {
-  return host === 'dsh' ? dshTargets() : piTargets(host);
+  return TARGET_PLANNERS[host]();
 }
 
 /** Point the active provider at Headroom and keep the URL it replaced. */
@@ -161,6 +203,7 @@ export function installNativeRoute(host: NativeRouteHost, proxyUrl: string = hea
   if (targets.length === 0) return { ok: false, detail: `no active provider endpoint found for ${host}` };
   // A route only makes sense when the proxy names the provider it replaces for this protocol.
   for (const target of targets) {
+    if (target.model) continue;
     const upstream = headroomProxyUpstream(target.api);
     if (!upstream) {
       const flag = /anthropic/i.test(target.api) ? '--anthropic-api-url' : '--openai-api-url';
@@ -176,6 +219,15 @@ export function installNativeRoute(host: NativeRouteHost, proxyUrl: string = hea
       };
     }
   }
+  // A model's own endpoint may spell its path differently, so only the service has to match.
+  for (const target of targets) {
+    if (!target.model) continue;
+    const provider = targets.find((entry) => !entry.model && entry.file === target.file && entry.provider === target.provider);
+    const expected = provider ? provider.original : target.original;
+    if (!sameOrigin(target.original, expected)) {
+      return { ok: false, detail: `${host}: ${target.original} is a different service from ${expected}. Route ${target.model} by hand.` };
+    }
+  }
   const records: HeadroomRouteRecord[] = [];
   const applied: Target[] = [];
   try {
@@ -184,7 +236,7 @@ export function installNativeRoute(host: NativeRouteHost, proxyUrl: string = hea
       if (sameProxyEndpoint(target.original, url)) continue;
       target.write(url);
       applied.push(target);
-      records.push({ file: target.file, provider: target.provider, original: target.original, written: url });
+      records.push({ file: target.file, provider: target.provider, model: target.model, original: target.original, written: url });
     }
   } catch (e) {
     for (const target of applied) {
@@ -194,7 +246,15 @@ export function installNativeRoute(host: NativeRouteHost, proxyUrl: string = hea
   }
   if (records.length === 0) return { ok: true, detail: `${host} already reaches Headroom` };
   saveRecords(host, records);
-  return { ok: true, detail: `${host}: ${records.length} endpoint${records.length === 1 ? '' : 's'} routed through Headroom` };
+  const check = readHeadroomRoute(host, proxyUrl);
+  if (check.routed) {
+    return { ok: true, detail: `${host}: ${records.length} endpoint${records.length === 1 ? '' : 's'} routed through Headroom` };
+  }
+  const restored = removeNativeRoute(host);
+  return {
+    ok: false,
+    detail: `${host} still bypasses Headroom after the write (${describeHeadroomRoute(check)})${restored.ok ? ', endpoints restored' : ''}`,
+  };
 }
 
 /** Put back the endpoint Tersio replaced, leaving any newer edit alone. */
@@ -222,10 +282,12 @@ export function removeNativeRoute(host: NativeRouteHost): NativeRouteResult {
         const block = providers[record.provider];
         if (!block || typeof block !== 'object') continue;
         const recordBlock = block as Record<string, unknown>;
-        const key = typeof recordBlock.baseUrl === 'string' ? 'baseUrl' : 'baseURL';
-        const current = recordBlock[key];
+        const target = record.model ? jsonModelEntry(recordBlock, record.model, record.provider) : recordBlock;
+        if (!target) continue;
+        const key = endpointKey(target);
+        const current = key ? jsonBaseUrl(target) : null;
         if (typeof current !== 'string' || !sameProxyEndpoint(current, record.written)) continue;
-        recordBlock[key] = record.original;
+        target[key] = record.original;
         writeFileSync(record.file, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
       }
     } catch {

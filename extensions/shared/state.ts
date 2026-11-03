@@ -26,6 +26,8 @@ export interface TersioState {
 export interface HeadroomRouteRecord {
   file: string;
   provider: string;
+  /** The model entry whose own endpoint was rewritten, when it was not the provider's. */
+  model?: string;
   original: string;
   written: string;
 }

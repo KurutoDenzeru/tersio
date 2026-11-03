@@ -151,7 +151,10 @@ export default function headroomSessionExtension(pi: ExtensionApi): void {
     if (!route.measured || !route.routed) {
       if (!unroutedNotified) {
         unroutedNotified = true;
-        ctx?.ui?.notify?.(`Headroom is on, but this agent does not route through it. ${describeHeadroomRoute(route)}.`, 'warning');
+        ctx?.ui?.notify?.(
+          `Headroom is on, but this agent does not route through it. ${describeHeadroomRoute(route)}. Route it with: tersio install --host ${host} --headroom-default on.`,
+          'warning',
+        );
       }
       return;
     }

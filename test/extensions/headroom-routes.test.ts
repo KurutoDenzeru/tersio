@@ -74,6 +74,57 @@ describe('native headroom routes', () => {
     expect(hasNativeRoute('pi')).toBe(false);
   }));
 
+  test('routes a Pi model that names its own endpoint', () => withHome((home) => {
+    piHome(home);
+    const modelsFile = path.join(home, '.pi', 'agent', 'models.json');
+    const data = JSON.parse(readFileSync(modelsFile, 'utf8'));
+    // The model's own endpoint wins over the provider's, so it has to move too.
+    data.providers.magpie.models = [{ id: 'commandcode/deepseek/deepseek-v4.1-flash', baseUrl: 'http://127.0.0.1:3425/v1' }];
+    writeFileSync(modelsFile, JSON.stringify(data, null, 2), 'utf8');
+
+    expect(readHeadroomRoute('pi', PROXY).routed).toBe(false);
+    expect(installNativeRoute('pi', PROXY).ok).toBe(true);
+    const routed = JSON.parse(readFileSync(modelsFile, 'utf8')).providers.magpie;
+    expect(routed.baseUrl).toBe('http://127.0.0.1:8787/v1');
+    expect(routed.models[0].baseUrl).toBe('http://127.0.0.1:8787/v1');
+    expect(readHeadroomRoute('pi', PROXY).routed).toBe(true);
+
+    expect(removeNativeRoute('pi').ok).toBe(true);
+    const restored = JSON.parse(readFileSync(modelsFile, 'utf8')).providers.magpie;
+    expect(restored.baseUrl).toBe('http://127.0.0.1:3425/v1');
+    expect(restored.models[0].baseUrl).toBe('http://127.0.0.1:3425/v1');
+  }));
+
+  test('refuses a model endpoint that is a different service', () => withHome((home) => {
+    piHome(home);
+    const modelsFile = path.join(home, '.pi', 'agent', 'models.json');
+    const data = JSON.parse(readFileSync(modelsFile, 'utf8'));
+    data.providers.magpie.models = [{ id: 'commandcode/deepseek/deepseek-v4.1-flash', baseUrl: 'http://10.0.0.9:9999/v1' }];
+    writeFileSync(modelsFile, JSON.stringify(data, null, 2), 'utf8');
+    const refused = installNativeRoute('pi', PROXY);
+    expect(refused.ok).toBe(false);
+    expect(refused.detail).toContain('different service');
+    expect(JSON.parse(readFileSync(modelsFile, 'utf8')).providers.magpie.baseUrl).toBe('http://127.0.0.1:3425/v1');
+  }));
+
+  test('a rewrite by another writer clears the record instead of fighting it', () => withHome((home) => {
+    piHome(home);
+    expect(installNativeRoute('pi', PROXY).ok).toBe(true);
+    const modelsFile = path.join(home, '.pi', 'agent', 'models.json');
+    const data = JSON.parse(readFileSync(modelsFile, 'utf8'));
+    // A gateway reconnected and put its own endpoint back.
+    data.providers.magpie.baseUrl = 'http://127.0.0.1:3425/v1';
+    writeFileSync(modelsFile, JSON.stringify(data, null, 2), 'utf8');
+
+    expect(removeNativeRoute('pi').ok).toBe(true);
+    expect(hasNativeRoute('pi')).toBe(false);
+    expect(JSON.parse(readFileSync(modelsFile, 'utf8')).providers.magpie.baseUrl).toBe('http://127.0.0.1:3425/v1');
+
+    // The next install routes it again, so drift is one command away from repair.
+    expect(installNativeRoute('pi', PROXY).ok).toBe(true);
+    expect(readHeadroomRoute('pi', PROXY).routed).toBe(true);
+  }));
+
   test('routes PiG from its own agent directory', () => withHome((home) => {
     const dir = path.join(home, '.pig', 'agent');
     const previousDir = process.env.PIG_CODING_AGENT_DIR;
