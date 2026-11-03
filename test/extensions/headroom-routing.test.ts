@@ -13,6 +13,7 @@ import {
   sameProxyEndpoint,
 } from '../../extensions/shared/headroom-routing.ts';
 import { routeOmpDefaultModel } from '../../extensions/shared/headroom-proxy.ts';
+import { ensureAgentProviderRoute } from '../../extensions/shared/headroom-agent.ts';
 import { sqliteAvailable, sqliteExec } from '../../extensions/shared/sqlite.ts';
 
 const PROXY = 'http://127.0.0.1:8787/';
@@ -179,6 +180,59 @@ describe('readHeadroomRoute', () => {
       if (previousProfile === undefined) delete process.env.USERPROFILE;
       else process.env.USERPROFILE = previousProfile;
     }
+  });
+});
+
+describe('pi providers from the agent catalog', () => {
+  const CATALOG = JSON.stringify({
+    opencode: {
+      models: [
+        { id: 'beam-free', name: 'Beam Free', api: 'openai-completions', baseUrl: 'https://opencode.ai/inference/v1' },
+      ],
+    },
+  });
+
+  function tempPiHome(providers: Record<string, unknown>): string {
+    const home = mkdtempSync(path.join(os.tmpdir(), 'tersio-pi-catalog-'));
+    mkdirSync(path.join(home, '.pi', 'agent'), { recursive: true });
+    writeFileSync(path.join(home, '.pi', 'agent', 'settings.json'), JSON.stringify({ defaultProvider: 'opencode', defaultModel: 'beam-free' }), 'utf8');
+    writeFileSync(path.join(home, '.pi', 'agent', 'models.json'), JSON.stringify({ providers }), 'utf8');
+    writeFileSync(path.join(home, '.pi', 'agent', 'models-store.json'), CATALOG, 'utf8');
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+    return home;
+  }
+
+  const previousHome = process.env.HOME;
+  const previousProfile = process.env.USERPROFILE;
+
+  afterEach(() => {
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = previousProfile;
+  });
+
+  test('reads the catalog endpoint when models.json has no block for the provider', () => {
+    tempPiHome({});
+    const route = readHeadroomRoute('pi', PROXY);
+    expect(route.measured).toBe(true);
+    expect(route.provider).toBe('opencode');
+    expect(route.baseUrl).toBe('https://opencode.ai/inference/v1');
+    expect(route.routed).toBe(false);
+    expect(describeHeadroomRoute(route)).toContain('not routed');
+  });
+
+  test('writes the provider block from the catalog so the switch can route it', () => {
+    const home = tempPiHome({});
+    expect(ensureAgentProviderRoute('pi', 8787)).toEqual({ ok: true, detail: 'pi: opencode written from its catalog' });
+    const models = JSON.parse(readFileSync(path.join(home, '.pi', 'agent', 'models.json'), 'utf8')) as {
+      providers: Record<string, { api: string; baseUrl: string; models: Array<{ id: string }> }>;
+    };
+    expect(models.providers.opencode?.api).toBe('openai-completions');
+    expect(models.providers.opencode?.baseUrl).toBe('https://opencode.ai/inference/v1');
+    expect(models.providers.opencode?.models.map((entry) => entry.id)).toEqual(['beam-free']);
+    expect(ensureAgentProviderRoute('pi', 8787)).toEqual({ ok: true, detail: '' });
   });
 });
 

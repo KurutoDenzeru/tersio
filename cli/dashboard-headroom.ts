@@ -6,8 +6,9 @@ import { readHeadroomDoctor } from '../extensions/shared/headroom-gain.ts';
 import { hostCap } from '../extensions/shared/host-caps.ts';
 import {
   DURABLE_CONFIG, discoverInitTargets, durableConfigInstalled,
-  headroomHostDurable, headroomProxyPort, headroomProxyUrl, installDurableConfig, readOmpGateway, routeOmpDefaultModel, routeOmpGateway,
+  headroomHostDurable, headroomProxyPort, headroomProxyUrl, installDurableConfig, readOmpGateway, routeOmpGateway,
 } from '../extensions/shared/headroom-proxy.ts';
+import { ensureAgentProviderRoute } from '../extensions/shared/headroom-agent.ts';
 import { describeHeadroomRoute, readHeadroomRoute } from '../extensions/shared/headroom-routing.ts';
 import { hasNativeRoute, installNativeRoute, isNativeRouteHost, removeNativeRoute } from '../extensions/shared/headroom-routes.ts';
 import { detectHosts } from './hosts.ts';
@@ -140,6 +141,12 @@ export async function handleHeadroomRoutes(
       return true;
     }
     if (isNativeRouteHost(name)) {
+      // A provider the host keeps in its own catalog needs a block before the endpoint can move.
+      const ensured = ensureAgentProviderRoute(name, port);
+      if (!ensured.ok) {
+        ctx.json(res, 200, { ok: false, error: ensured.detail });
+        return true;
+      }
       const routed = installNativeRoute(name, headroomProxyUrl());
       if (routed.ok) setStoredWrap(name, true);
       ctx.json(res, 200, routed.ok ? { ok: true, detail: routed.detail } : { ok: false, error: routed.detail });
@@ -152,9 +159,10 @@ export async function handleHeadroomRoutes(
         ctx.json(res, 200, { ok: false, error: `headroom could not point ${gateway.provider} at the proxy` });
         return true;
       }
-      // omp resolves a provider-prefixed id to that provider, so a built-in one needs its own block.
-      if (wrote && name === 'omp' && !routeOmpDefaultModel(port)) {
-        ctx.json(res, 200, { ok: false, error: "headroom could not point omp's default provider at the proxy" });
+      // A provider the agent keeps built in needs its own block; its catalog supplies the endpoint.
+      const ensured = wrote ? ensureAgentProviderRoute(name, port) : { ok: true, detail: '' };
+      if (!ensured.ok) {
+        ctx.json(res, 200, { ok: false, error: ensured.detail });
         return true;
       }
       // The reader decides: a block the active model bypasses is not a route.

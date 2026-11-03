@@ -29,7 +29,8 @@ import { findPackageRoot, homeDir } from '../extensions/shared/utils.ts';
 import type { RtkRelease, RtkReleaseAsset } from '../extensions/shared/utils.ts';
 import { patchState } from '../extensions/shared/state.ts';
 import { CAVEMAN_PIN } from './upstream.ts';
-import { headroomHostSupported, headroomProxyPort, headroomProxyUrl, installDurableConfig, readOmpGateway, routeOmpDefaultModel, routeOmpGateway } from '../extensions/shared/headroom-proxy.ts';
+import { headroomHostSupported, headroomProxyPort, headroomProxyUrl, installDurableConfig, readOmpGateway, routeOmpGateway } from '../extensions/shared/headroom-proxy.ts';
+import { ensureAgentProviderRoute } from '../extensions/shared/headroom-agent.ts';
 import { describeHeadroomRoute, readHeadroomRoute } from '../extensions/shared/headroom-routing.ts';
 import { installNativeRoute, isNativeRouteHost } from '../extensions/shared/headroom-routes.ts';
 import { ensureTersioMcp, tersioMcpSupported } from '../extensions/shared/mcp-config.ts';
@@ -643,14 +644,18 @@ async function lifecycleHeadroom(host: HostId, enabled: boolean, profile: Profil
     const runtime = await ensureHeadroomRuntime(bin, gateway?.baseUrl);
     if (!runtime.ok) throw new Error(runtime.detail);
     if (isNativeRouteHost(host)) {
+      // A provider the host keeps in its own catalog needs a block before the endpoint can move.
+      const ensured = ensureAgentProviderRoute(host, port);
+      if (!ensured.ok) throw new Error(ensured.detail);
       const routed = installNativeRoute(host, headroomProxyUrl());
       if (!routed.ok) throw new Error(routed.detail);
     } else {
       if (!(await installDurableConfig(bin, host, port))) throw new Error('headroom could not write the config');
       // headroom's own writer never touches a gateway's provider line, so Tersio moves it too.
       if (gateway && !routeOmpGateway(gateway, port)) throw new Error(`headroom could not point ${gateway.provider} at the proxy`);
-      // omp resolves a provider-prefixed id to that provider, so a built-in one needs its own block.
-      if (host === 'omp' && !routeOmpDefaultModel(port)) throw new Error('headroom could not point omp\'s default provider at the proxy');
+      // A provider the agent keeps built in needs its own block; its catalog supplies the endpoint.
+      const ensured = ensureAgentProviderRoute(host, port);
+      if (!ensured.ok) throw new Error(ensured.detail);
     }
     // The reader decides: a config that still bypasses the proxy is a failure, not a routed host.
     const route = readHeadroomRoute(host);

@@ -42,6 +42,7 @@ export const TREE_FILES: readonly string[] = [
   'shared/rtk-eligible.ts',
   'shared/updater.ts',
   'shared/headroom-proxy.ts',
+  'shared/headroom-agent.ts',
   'shared/headroom-routing.ts',
   'shared/host-caps.ts',
   'shared/mcp-config.ts',

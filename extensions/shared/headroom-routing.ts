@@ -4,6 +4,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { defaultOmpModel, headroomProxyUrl, ompCachedEndpoint, ompConfigFile, ompModelsFile, ompProviderNames, opencodeConfigFiles } from './headroom-proxy.ts';
+import { piCatalogEndpoint } from './headroom-agent.ts';
 
 export { defaultOmpModel };
 import { homeDir, piAgentDir, pigAgentDir } from './utils.ts';
@@ -438,12 +439,17 @@ export function dshRouteFrom(settingsText: string, profileText: string, proxyUrl
 function readPiRoute(host: 'pi' | 'pig', proxyUrl: string): HeadroomRoute {
   const dir = host === 'pig' ? pigAgentDir() : piAgentDir();
   try {
-    return piRouteFrom(
+    const route = piRouteFrom(
       fs.readFileSync(path.join(dir, 'settings.json'), 'utf8'),
       fs.readFileSync(path.join(dir, 'models.json'), 'utf8'),
       host,
       proxyUrl,
     );
+    // A provider the host keeps in its own catalog still has a real endpoint, so the reader shows it.
+    if (!route.measured || route.baseUrl || !route.provider) return route;
+    const catalog = piCatalogEndpoint(dir, route.provider, route.model);
+    if (!catalog) return route;
+    return { ...route, baseUrl: catalog.baseUrl, routed: sameProxyEndpoint(catalog.baseUrl, proxyUrl) };
   } catch (e) {
     return emptyRoute(host, proxyUrl, (e as Error).message);
   }
