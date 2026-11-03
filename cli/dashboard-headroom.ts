@@ -3,9 +3,10 @@
 
 import type http from 'node:http';
 import { readHeadroomDoctor } from '../extensions/shared/headroom-gain.ts';
+import { hostCap } from '../extensions/shared/host-caps.ts';
 import {
   DURABLE_CONFIG, discoverInitTargets, durableConfigInstalled,
-  headroomHostDurable, headroomProxyPort, headroomProxyUrl, installDurableConfig, readOmpGateway, routeOmpGateway,
+  headroomHostDurable, headroomProxyPort, headroomProxyUrl, installDurableConfig, readOmpGateway, routeOmpDefaultModel, routeOmpGateway,
 } from '../extensions/shared/headroom-proxy.ts';
 import { describeHeadroomRoute, readHeadroomRoute } from '../extensions/shared/headroom-routing.ts';
 import { hasNativeRoute, installNativeRoute, isNativeRouteHost, removeNativeRoute } from '../extensions/shared/headroom-routes.ts';
@@ -114,7 +115,7 @@ export async function handleHeadroomRoutes(
     }
     // A switch points the agent at the proxy, so the proxy must answer before the config is written.
     const port = headroomProxyPort();
-    const gateway = name === 'omp' ? readOmpGateway(port) : null;
+    const gateway = hostCap(name)?.headroomGateway ? readOmpGateway(port) : null;
     if (body.action !== 'unwrap') {
       const runtime = await ensureHeadroomRuntime(bin, gateway?.baseUrl);
       if (!runtime.ok) {
@@ -147,7 +148,21 @@ export async function handleHeadroomRoutes(
     if (canConfig) {
       // Headroom's own writer, so the marker, backup, and unwrap contract are headroom's.
       const wrote = await installDurableConfig(bin, name, port);
-      if (wrote && name === 'omp' && gateway) routeOmpGateway(gateway, port);
+      if (wrote && gateway && !routeOmpGateway(gateway, port)) {
+        ctx.json(res, 200, { ok: false, error: `headroom could not point ${gateway.provider} at the proxy` });
+        return true;
+      }
+      // omp resolves a provider-prefixed id to that provider, so a built-in one needs its own block.
+      if (wrote && name === 'omp' && !routeOmpDefaultModel(port)) {
+        ctx.json(res, 200, { ok: false, error: "headroom could not point omp's default provider at the proxy" });
+        return true;
+      }
+      // The reader decides: a block the active model bypasses is not a route.
+      const route = readHeadroomRoute(name);
+      if (wrote && !route.routed) {
+        ctx.json(res, 200, { ok: false, error: `${name}: ${describeHeadroomRoute(route)}` });
+        return true;
+      }
       if (wrote) setStoredWrap(name, true);
       ctx.json(res, 200, wrote
         ? { ok: true, detail: `${name}: headroom config written for port ${port}; it survives restarts` }

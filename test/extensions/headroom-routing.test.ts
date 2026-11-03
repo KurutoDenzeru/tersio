@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
@@ -12,6 +12,8 @@ import {
   readHeadroomRoute,
   sameProxyEndpoint,
 } from '../../extensions/shared/headroom-routing.ts';
+import { routeOmpDefaultModel } from '../../extensions/shared/headroom-proxy.ts';
+import { sqliteAvailable, sqliteExec } from '../../extensions/shared/sqlite.ts';
 
 const PROXY = 'http://127.0.0.1:8787/';
 const MODELS = `providers:
@@ -177,5 +179,38 @@ describe('readHeadroomRoute', () => {
       if (previousProfile === undefined) delete process.env.USERPROFILE;
       else process.env.USERPROFILE = previousProfile;
     }
+  });
+});
+
+describe('omp built-in providers', () => {
+  const CACHE_SCHEMA = `create table model_cache (
+  provider_id text primary key, version integer not null, updated_at integer not null,
+  authoritative integer not null default 0, static_fingerprint text not null default '',
+  models text not null, header_omitted_model_ids text not null default '[]',
+  unrestorable_header_model_ids text not null default '[]', header_restore_version integer not null default 0,
+  materialization_policy text not null default '', models_hash text not null default '');
+insert into model_cache (provider_id, version, updated_at, models) values ('commandcode', 1, 0,
+  '[{"id":"deepseek/deepseek-v4.1-flash","provider":"commandcode","api":"openai-completions","baseUrl":"https://api.commandcode.ai/provider/v1"}]');`;
+
+  test('reads the provider from the omp catalog when models.yml has no block for it', () => {
+    if (!sqliteAvailable()) return;
+    const dir = tempAgentDir(MODELS, CONFIG);
+    sqliteExec(path.join(dir, 'models.db'), CACHE_SCHEMA);
+    const route = readHeadroomRoute('omp', PROXY);
+    expect(route.measured).toBe(true);
+    expect(route.provider).toBe('commandcode');
+    expect(route.baseUrl).toBe('https://api.commandcode.ai/provider/v1');
+    expect(route.routed).toBe(false);
+  });
+
+  test('writes the override block omp needs for a provider it keeps built-in', () => {
+    if (!sqliteAvailable()) return;
+    const dir = tempAgentDir(MODELS, CONFIG);
+    sqliteExec(path.join(dir, 'models.db'), CACHE_SCHEMA);
+    expect(routeOmpDefaultModel(8787)).toBe(true);
+    const written = readFileSync(path.join(dir, 'models.yml'), 'utf8');
+    expect(written).toContain('  commandcode:\n    api: openai-completions\n');
+    expect(written).toContain('# tersio-headroom-upstream: https://api.commandcode.ai/provider/v1');
+    expect(readHeadroomRoute('omp', PROXY).routed).toBe(true);
   });
 });
