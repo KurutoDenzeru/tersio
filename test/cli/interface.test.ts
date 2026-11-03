@@ -545,7 +545,7 @@ test("uninstall --host opencode removes the plugin entries it wrote", () => {
   }
 });
 
-test("uninstall --host opencode unwraps its headroom route first", () => {
+test.skipIf(process.platform === "win32")("uninstall --host opencode unwraps its headroom route first", () => {
   const home = tempHome();
   try {
     const dir = path.join(home, ".config", "opencode", "plugins", "tersio");
