@@ -421,3 +421,18 @@ The entries below are editing and verification discipline. No test, lint rule, o
 **What happened:** two bash calls used `grep` over a downloaded file and `cat` over a temp file. The host blocked both, one for not respecting `.gitignore` and one outright, so the calls returned errors instead of results.
 **Root cause:** habit reached for the shell for text search and text read, where this session requires the dedicated tools.
 **Prevention rule:** search text with the `grep` tool and read files with the `read` tool; bash grep, rg, awk, and cat are blocked by the host and cost a round trip each time.
+
+## 2026-11-03 — A scripted edit anchored on guessed import order and wrote nothing
+**What happened:** a patch script replaced text by exact anchor. The import anchor listed two names from memory in the wrong order, so the match count was 0 and the script threw. The same script had already written an earlier file, so the change landed in two steps instead of one.
+**Root cause:** the anchor was written from the earlier read of a different file, not from the file being edited. A whole-file edit hid this, because the compiler caught nothing until the next build.
+**Prevention rule:** read the exact lines an anchor targets with a single `sed -n` in the same step, and make every script assert one match per anchor before it writes. Patch one file per run when the anchors come from different files.
+
+## 2026-11-03 — A model-level endpoint was read by the route and never written by it
+**What happened:** the Headroom route read the provider endpoint, and Pi's docs say a model entry's `baseUrl` overrides the provider's. A default model with its own endpoint was reported `routed` while its traffic bypassed the proxy.
+**Root cause:** the reader and the writer were written on different days. The reader learned the override rule first; the writer kept the provider-only assumption and no test compared the two.
+**Prevention rule:** when a config reader and its writer live apart, pin both with one fixture that sets every override level, and assert the route reads `routed` only after the write.
+
+## 2026-11-03 — An omp route was read from a block that does not own the model
+**What happened:** Tersio reported `routed: commandcode/deepseek/deepseek-v4.1-flash:high via magpie` while no chat completion reached the proxy. omp resolves that id to its built-in `commandcode` provider, so traffic left for `api.commandcode.ai` and the dashboard and doctor both read as routed.
+**Root cause:** the reader picked the first `models.yml` block that lists the model id. omp picks the provider from the selector's first segment, and the magpie block merely listed the same id. The config read and the agent's own catalog were never compared.
+**Prevention rule:** resolve a provider the way the agent resolves it, and prefer the agent's own catalog (omp's `models.db` model cache) over a block that only lists the id. Prove a route with a request in the proxy log, never with a config read alone.

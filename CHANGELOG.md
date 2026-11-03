@@ -9,7 +9,7 @@
 ### Changed
 - The dashboard is faster and calmer: remembered ranges, smaller downloads, a cleaner layout, larger Settings, simpler drawers, and a clearer Add agent picker.
 - The Upstream page now explains the scorecard in plain English: the pin, the copy, drift, gaps, what is lacking, and the full ledger. The radar chart stays, and the agent table lists Tersio hosts only.
-- The benchmark guide is now `docs/BENCHMARK.md`, and the old per-agent result files are gone. It adds a Headroom compression check that reads proxy JSONL and verifies a token drop plus the surviving sentinel.
+- The benchmark guide is now `docs/BENCHMARK.md`, and the old per-agent result files are gone. Results use one file per mode or stack: `BENCH_CAVEMAN`, `BENCH_PONYTAIL`, `BENCH_RTK`, `BENCH_HEADROOM`, `BENCH_PSTACK`, `BENCH_COMBO`, `BENCH_COMBO_HEADROOM`, `BENCH_COMBO_PSTACK`, and `BENCH_COMBO_ALL`. The guide adds a Headroom compression check that reads proxy JSONL and verifies a token drop plus the surviving sentinel.
 - The Upstream gaps block now groups uncarried upstream, local paths, and agent drift with repair commands. The Agents table keeps one State cell instead of separate Stale, Missing, and Unloaded columns. The duplicate Gaps card is gone, and the check card fills its row with the last run.
 - The dashboard keeps fewer loose files. Saved records, caches, prices, upstream data, brand marks, Headroom state, and session state now live in fewer places.
 - The dashboard watch prints only the live, LAN, and QR lines. Restarts and UI errors stay quiet, and a missing build returns a retry page.
@@ -30,6 +30,11 @@
 - An OpenCode plugin entry that outlives its tree now reads as declared, so the install menu and doctor name the missing tree instead of the whole agent.
 
 ### Fixed
+- Oh My Pi routes a model whose id names a provider it keeps built-in, such as `commandcode/...`. Tersio writes the block that provider needs and reads its real endpoint from omp's model cache, so the route chip no longer says `routed via magpie` while traffic leaves for the provider's own API.
+- A model that names its own endpoint is routed with its provider. Pi, PiG, and Oh My Pi read and write both.
+- Oh My Pi routes the provider of the active role, not the first local gateway in the file.
+- A Headroom route now reports what its reader sees. A write that leaves traffic bypassing the proxy is rolled back.
+- The Headroom warning names the command that routes the agent.
 - Headroom now tells the truth: it starts its runtime before enabling, waits for the runtime, refuses to claim compression when traffic does not use it, and shows live counters and routing.
 - Compressed content can be retrieved through Tersio's own MCP server. One shared entry covers OMP, Pi, PiG, and OpenCode.
 - Headroom can use a local model gateway as its upstream and records the original address for undo. Some gateways rewrite their own settings, so reapply the Headroom setup after changing models.
