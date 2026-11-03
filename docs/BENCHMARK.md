@@ -478,9 +478,11 @@ The fields used by this guide:
 Check the sentinel in the compressed snapshot:
 
 ```bash
-jq -e 'select(.tokens_saved > 0) |
-  (.compressed_messages // [] | tostring | contains("FATAL checkout failed"))' \
-  /tmp/headroom-bench.jsonl
+jq -s -e '
+  map(select(.tokens_saved > 0)) as $m
+  | ($m | length) > 0
+    and all($m[]; (.compressed_messages // [] | tostring | contains("FATAL checkout failed")))
+' /tmp/headroom-bench.jsonl
 ```
 
 For a quick look at the latest request without parsing the file:
