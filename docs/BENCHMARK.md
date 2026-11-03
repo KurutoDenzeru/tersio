@@ -17,6 +17,7 @@ A first pass on your own repo, in about ten minutes. It answers "does this save 
 3. Open a fresh session and ask one question you ask often. Save the reply.
 4. Turn every mode `off` in the same pane. Open another fresh session and ask the same question.
 5. Compare the reply tokens and read Δ Net, not Δ Tokens alone.
+6. For Headroom, run the proxy check in section 9. A switch that reads `on` is not evidence.
 
 The full protocol below turns that first pass into a number two people can reproduce.
 
@@ -33,6 +34,7 @@ result file that skips a row is incomplete, so two people running this guide pro
 | Ponytail | `lite`, `full`, `ultra` | Smaller code changes. Three levels. |
 | pstack | `on` | Design and verification rules. Scored on quality only. |
 | RTK | `on` | Shorter shell command output. Measured by the bench, not by a session. |
+| Headroom | `on` | Compression proxy for tool output, logs, files, JSON, and history. Measured from proxy JSONL, not reply prompts. |
 | Combo | `lite`, `balanced`, `max` | Presets. `lite` is lite/lite, `balanced` is full/full, `max` is ultra/ultra, and all three turn RTK and pstack on. |
 
 There are two ways to turn a mode on, and they are measured separately:
@@ -111,10 +113,9 @@ report it separately from the single-mode commands, because it is a preset and n
 
 ### The fixture repo
 
-Step 6 takes five minutes, and the copy is the fixture. The three result files in this folder all
-used the same shape: a copy of the repository under test at a pinned commit, with one failing test
-injected into a source file and every test file left alone. The three runs used this repository at
-`72b6716`, and each result file names the commit it measured.
+Step 6 takes five minutes, and the copy is the fixture. Use the same shape every time: a copy of
+the repository under test at a pinned commit, with one failing test injected into a source file and
+every test file left alone. Name the commit in the result, so another person can recreate it.
 
 Put the bug in the source, not in the test. The test states the correct expectation, the source
 disagrees, and the agent fixes the source. A bug inside the test file forces the agent to edit a
@@ -213,6 +214,7 @@ surfaces. The matrix below is the full scope.
 | Agentic | Combo (3), pstack, RTK | Run the suite. Fix the failing test. Stop when it passes. | Total tokens, time, pass rate |
 | Command output | RTK | Run `bun run bench` over the committed fixtures. | Output bytes, time, fidelity |
 | Command surface | Every command and level | Issue one slash command, then ask P1. | Reply tokens, total tokens, quality |
+| Compression | Headroom | Send one fixed log and one fixed JSON payload through the proxy. | Tokens before, tokens after, transforms, sentinel survival |
 
 The prompt overhead of a mode is inside the Total median column, because a mode's block lands in the
 system prompt of every turn. Read it as the difference between the two columns, and read the static
@@ -261,6 +263,7 @@ A saving counts only when the output stays correct.
 - **Agentic**: the suite passes, and no test file was edited.
 - **Command output**: the failing test name, its assertion, its file, and its line remain, and the exit code matches.
 - **Command surface**: the reply after the command passes the same gate as the same prompt without it, and the session records which path was used.
+- **Headroom**: the proxy record shows `tokens_saved > 0`, a non-empty `transforms_applied`, and every required sentinel line or JSON key in the compressed messages. A configured switch with no proxy record is a failure.
 - **pstack**: score the agentic pass rate, the review rounds, and the wrong turns. A green suite with a wrong turn is a failure.
 
 Do not publish a saving for any mode whose pass rate is below base.
@@ -393,11 +396,117 @@ The reduction is a byte ratio, so it reproduces across machines. The timings do 
 
 Two numbers explain the design. The `find` filter folds a directory after a few children, so it saves most of its bytes. The `grep` filter keeps every match line, so a dense result saves little. The rewrite lookup runs before every Bash call, which is why `MIN_FILTER_BYTES` is 1200: below that, the spawn costs more than the filter saves.
 
-The bench does not measure Caveman, Ponytail, or pstack. Those change prompt text, and only a live session produces the reply tokens to compare. The protocol above is the only way to measure them.
+The bench does not measure Caveman, Ponytail, or pstack. Those change prompt text, and only a live session produces the reply tokens to compare. The protocol above is the only way to measure them. Headroom is measured at the proxy layer, in section 9.
 
-## 9. Reporting
+## 9. Headroom compression
 
-Write each run to its own file, named for the agent: `BENCHMARK_OMP.md`, `BENCHMARK_PI.md`, `BENCHMARK_OPENCODE.md`, `BENCHMARK_CLAUDECODE.md`, `BENCHMARK_CODEX.md`, and so on. Use the uppercase agent name with no spaces. Keep the file beside the guide, so a reader can compare agents without mixing their numbers.
+Headroom is a transport layer, not a reply-shaping block. A session can read `headroom=on` while
+its active model bypasses the proxy, so measure the proxy record, not the switch.
+
+### Fast check with `/v1/compress`
+
+Start a disposable proxy. `--mode token` makes per-request compression visible; the default
+`cache` mode protects provider prefix caching. `--log-file` writes JSONL, and `--log-messages`
+adds the before-and-after message snapshots that `headroom inspect` reads.
+
+```bash
+headroom proxy --port 8788 --mode token \
+  --openai-api-url <the same upstream the agent uses> \
+  --log-file /tmp/headroom-bench.jsonl --log-messages
+curl -fsS http://127.0.0.1:8788/readyz
+```
+
+Build one fixed payload. Keep a sentinel line and a JSON key that must survive compression:
+
+```bash
+python3 - <<'PY' > /tmp/headroom-payload.json
+import json
+lines = [
+    f"2026-11-03T10:{i:02d}:00Z INFO request_id=req-{i:04d} "
+    f"user=u{i % 7} status=200 latency_ms={i % 120} path=/api/v1/items"
+    for i in range(200)
+]
+lines[67] = "2026-11-03T10:01:07Z FATAL checkout failed order=8841"
+print(json.dumps({
+    "model": "gpt-4o",
+    "messages": [{"role": "user", "content": "Keep the FATAL line.\n" + "\n".join(lines)}],
+    "config": {},
+}))
+PY
+```
+
+Send it through the proxy:
+
+```bash
+curl -sS http://127.0.0.1:8788/v1/compress \
+  -H 'content-type: application/json' \
+  --data-binary @/tmp/headroom-payload.json \
+  | jq '{tokens_before,tokens_after,tokens_saved,compression_ratio,transforms_applied}'
+```
+
+`compression_ratio` in this response is `tokens_after / tokens_before`, so it is the share that
+remains. Compute the saved share as `tokens_saved / tokens_before`. A passing check has
+`tokens_saved > 0`, a non-empty `transforms_applied`, and the FATAL sentinel still present in the
+returned messages. This call also appends a `RequestLog` line to the JSONL file, so the same fields
+can be checked there.
+
+### Evidence from a real agent turn
+
+Route the agent through the proxy, then run one fixed prompt that reads a large log or JSON tool
+output. The same JSONL file records each model request. Without `--log-messages` the light fields
+remain and the message snapshots are absent.
+
+```bash
+jq -c 'select(.tokens_saved > 0) | {
+  request_id, model, input_tokens_original, input_tokens_optimized,
+  tokens_saved, savings_percent, transforms_applied
+}' /tmp/headroom-bench.jsonl
+```
+
+The fields used by this guide:
+
+| Field | Meaning |
+|---|---|
+| `input_tokens_original` | Tokens in the request before compression. |
+| `input_tokens_optimized` | Tokens actually sent upstream. |
+| `tokens_saved` | `input_tokens_original - input_tokens_optimized`. |
+| `savings_percent` | Saved share of the original request. |
+| `transforms_applied` | The compressor path that ran, for example `router:log`. |
+| `request_messages` / `compressed_messages` | Before and after snapshots, only with `--log-messages`. |
+| `request_id` | The handle for `headroom inspect` and the report. |
+
+Check the sentinel in the compressed snapshot:
+
+```bash
+jq -e 'select(.tokens_saved > 0) |
+  (.compressed_messages // [] | tostring | contains("FATAL checkout failed"))' \
+  /tmp/headroom-bench.jsonl
+```
+
+For a quick look at the latest request without parsing the file:
+
+```bash
+headroom inspect --last 1 --format json
+```
+
+### What the number means
+
+| Measure | What to report |
+|---|---|
+| Text or log payload | `tokens_before`, `tokens_after`, `tokens_saved`, saved percent, and the sentinel result |
+| JSON payload | The same token fields, plus the required key still present after compression |
+| Routing | The agent’s active model endpoint and the proxy upstream, so the reader can confirm traffic passes through Headroom |
+
+A Headroom result is published only when the JSONL record shows a token reduction and the sentinel
+survives. A configured switch, a green dashboard badge, or a running proxy is not enough. Report the
+JSONL path and the `request_id` with the result. Do not compare `cache` mode against `token` mode:
+they optimize different things. Use `--mode token` for this compression check.
+
+## 10. Reporting
+
+Write each run to its own file, named for the agent: `BENCHMARK_<AGENT>.md`, with the uppercase agent
+name and no spaces. Keep it outside this guide’s folder unless the run is meant to ship. A reader can
+compare agents without mixing their numbers.
 
 Start each file with this header, then paste the results tables from section 8 with the blanks
 filled in. Keep every row, including the levels that measured nothing useful, and keep the path
@@ -452,7 +561,7 @@ The file has these sections, in this order, and no others:
 - <gates>
 ```
 
-`BENCHMARK_OMP.md` is the reference file for this shape.
+The guide is the reference for this shape. A stored result is optional, and the deleted per-agent files no longer ship.
 
 Include with every result:
 
@@ -463,6 +572,7 @@ Include with every result:
 - The test repository and commit.
 - The number of runs (N), the date, and the surface.
 - How the sessions were run: one for the whole benchmark with the context cleared between runs, or one per run.
+- The Headroom JSONL path, proxy mode, and `request_id` for each compression check.
 
 A run that breaks a rule of this guide says so in the file, in the paragraph under the header. A
 short run, a skipped level, a reworded prompt, and a harness limitation each get one sentence.
@@ -471,4 +581,4 @@ Show the median for each value, and state the min and the max in the text when t
 because a median alone hides a bimodal sample. Write verdicts with their limits: "Lower reply
 tokens in this sample. Quality unchanged on 5 of 5 runs."
 
-Do not claim total bill savings. These tests measure reply tokens, prompt overhead, or command output. Rerun after any change to the agent, the model, or the Tersio version, and do not compare results across different setups.
+Do not claim total bill savings. These tests measure reply tokens, prompt overhead, command output, or Headroom input tokens. Rerun after any change to the agent, the model, or the Tersio version, and do not compare results across different setups.

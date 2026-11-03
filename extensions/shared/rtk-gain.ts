@@ -1,4 +1,4 @@
-// Savings read from rtk history, never estimated; modes bench in docs/BENCHMARK_GUIDE.md.
+// Savings read from rtk history, never estimated; modes bench in docs/BENCHMARK.md.
 import fs from 'node:fs';
 import path from 'node:path';
 import { rtkDirs } from './utils.ts';

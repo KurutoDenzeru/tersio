@@ -10,7 +10,7 @@
 
 Token saver & usage tracker for coding agents: terse caveman replies, compact RTK shell output, lean Ponytail code, Headroom compression, pstack rigor, and a gain dashboard — one-command combos over one shared extension tree.
 
-Measured savings per mode, the prompt overhead each one adds, and the rerun protocol: [docs/BENCHMARK_GUIDE.md](./docs/BENCHMARK_GUIDE.md).
+Measured savings per mode, the prompt overhead each one adds, and the rerun protocol: [docs/BENCHMARK.md](./docs/BENCHMARK.md).
 
 ## 🎯 What this is, and why you would use it
 
@@ -32,7 +32,7 @@ Tersio installs into Oh My Pi, Pi, Pi-in-go, OpenCode, and DeepSeek Harness, and
 | 🧩 **Combo** | One command sets Caveman, RTK, and Ponytail, at three strengths. |
 | 📊 **Dashboard** | What you spent, per model and per day. |
 
-Every mode is a text block you can read in the repo. Measured savings and prompt overhead are published per mode in [docs/BENCHMARK_GUIDE.md](./docs/BENCHMARK_GUIDE.md). No total-bill claim: the tests measure reply tokens, prompt overhead, and command output only.
+Every mode is a text block you can read in the repo. Measured savings and prompt overhead are published per mode in [docs/BENCHMARK.md](./docs/BENCHMARK.md). No total-bill claim: the tests measure reply tokens, prompt overhead, and command output only.
 
 Oh My Pi and OpenCode use Headroom's own writer. Pi, PiG, and DeepSeek Harness get a Tersio switch that saves the provider endpoint and puts it back when you turn Headroom off.
 

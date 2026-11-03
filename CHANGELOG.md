@@ -9,6 +9,7 @@
 ### Changed
 - The dashboard is faster and calmer: remembered ranges, smaller downloads, a cleaner layout, larger Settings, simpler drawers, and a clearer Add agent picker.
 - The Upstream page now explains the scorecard in plain English: the pin, the copy, drift, gaps, what is lacking, and the full ledger. The radar chart stays, and the agent table lists Tersio hosts only.
+- The benchmark guide is now `docs/BENCHMARK.md`, and the old per-agent result files are gone. It adds a Headroom compression check that reads proxy JSONL and verifies a token drop plus the surviving sentinel.
 - The Upstream gaps block now groups uncarried upstream, local paths, and agent drift with repair commands. The Agents table keeps one State cell instead of separate Stale, Missing, and Unloaded columns. The duplicate Gaps card is gone, and the check card fills its row with the last run.
 - The dashboard keeps fewer loose files. Saved records, caches, prices, upstream data, brand marks, Headroom state, and session state now live in fewer places.
 - The dashboard watch prints only the live, LAN, and QR lines. Restarts and UI errors stay quiet, and a missing build returns a retry page.
