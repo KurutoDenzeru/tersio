@@ -1,4 +1,4 @@
-// Upstream page: the upstream scorecard, which until now only the CLI printed.
+// Upstream page: the upstream scorecard, explained in plain English beside the same data pages.
 import { useCallback, useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { usePending } from "@/hooks/use-pending";
 import { AgentLogo } from "@/components/agent-logos";
 import { Bar, BarChart, CartesianGrid, PolarAngleAxis, PolarGrid, PolarRadiusAxis, Radar, RadarChart, XAxis, YAxis } from "recharts";
-import { UPCOMING_AGENTS } from "@/lib/agents";
 import { fmt } from "@/lib/format";
 import { useToast } from "../toaster";
 
@@ -63,8 +62,6 @@ interface HostRow {
   unloaded: string[];
   /** What repairs the stale files, named from the version gap. */
   fix: string;
-  /** True for an agent Tersio does not install into yet, so the row carries no numbers. */
-  soon?: boolean;
 }
 
 interface Scorecard {
@@ -86,11 +83,11 @@ interface HistoryPoint {
 /** The glyph each port carries everywhere else in the project. */
 const GLYPH: Record<string, string> = { Caveman: "🪨", RTK: "🗜️", Ponytail: "🧠", pstack: "🥔", Headroom: "🍃" };
 
-const AGENT_NAME: Record<string, string> = { omp: "Oh My Pi", pi: "pi", pig: "PiG", opencode: "OpenCode" };
+const AGENT_NAME: Record<string, string> = { omp: "Oh My Pi", pi: "pi", pig: "PiG", opencode: "OpenCode", dsh: "DeepSeek Harness" };
 
-/** The name a row shows: the installed agents first, then the ones still to come. */
+/** The name a row shows for a Tersio host. */
 function agentLabel(host: string): string {
-  return AGENT_NAME[host] ?? UPCOMING_AGENTS.find((agent) => agent.id === host)?.name ?? host;
+  return AGENT_NAME[host] ?? host;
 }
 
 /** The house status pill: one shape per tone, the way the Providers page draws its own. */
@@ -360,35 +357,35 @@ const AGENT_COLUMNS: Array<Column<HostRow>> = [
       <span className="flex min-w-0 items-center gap-2">
         <AgentLogo host={r.host} className="size-5 shrink-0" />
         <span className="truncate text-[13px] font-semibold">{agentLabel(r.host)}</span>
-        {r.soon ? (
-          <span className="text-[11px] font-normal text-dim">coming soon</span>
-        ) : (
-          !r.installed && <span className="text-[11px] font-normal text-dim">not installed</span>
-        )}
-        {r.fix && !r.soon ? <span className="mono truncate text-[10px] font-normal text-dim">{r.fix}</span> : null}
+        {!r.installed ? <span className="text-[11px] font-normal text-dim">not installed</span> : null}
       </span>
     ),
   },
-  { key: "files", header: "Files", align: "right", sort: (r) => r.files, render: (r) => <span className="mono tabular-nums">{r.soon ? "—" : fmt(r.files)}</span> },
+  { key: "files", header: "Files", align: "right", sort: (r) => r.files, render: (r) => <span className="mono tabular-nums">{fmt(r.files)}</span> },
   {
     key: "matched",
     header: "Matched",
     align: "right",
     sort: (r) => r.matched / Math.max(1, r.files),
-    render: (r) => (r.soon ? <span className="mono text-dim">—</span> : <MatchCell value={r.matched} max={r.files} />),
+    render: (r) => <MatchCell value={r.matched} max={r.files} />,
   },
-  { key: "stale", header: "Stale", align: "right", sort: (r) => r.stale, render: (r) => <span className="mono tabular-nums">{r.soon ? "—" : fmt(r.stale)}</span> },
-  { key: "missing", header: "Missing", align: "right", sort: (r) => r.missing, render: (r) => <span className="mono tabular-nums">{r.soon ? "—" : fmt(r.missing)}</span> },
   {
-    key: "unloaded",
-    header: "Unloaded",
-    align: "right",
-    sort: (r) => r.unloaded.length,
-    render: (r) => (
-      <span className="mono tabular-nums text-dim" title="Extension entries this host's manifest never names, so they never load">
-        {r.soon ? "—" : r.unloaded.length === 0 ? "0" : fmt(r.unloaded.length)}
-      </span>
-    ),
+    key: "state",
+    header: "State",
+    sort: (r) => r.stale + r.missing + r.unloaded.length,
+    render: (r) => {
+      const issues = [
+        r.stale > 0 ? `${fmt(r.stale)} stale` : "",
+        r.missing > 0 ? `${fmt(r.missing)} missing` : "",
+        r.unloaded.length > 0 ? `${fmt(r.unloaded.length)} unloaded` : "",
+      ].filter(Boolean);
+      if (issues.length === 0) return <Badge variant="success" className="mono">clean</Badge>;
+      return (
+        <Badge variant={r.missing > 0 ? "destructive" : "outline"} className="mono" title={r.fix || issues.join(" · ")}>
+          {issues.join(" · ")}
+        </Badge>
+      );
+    },
   },
 ];
 
@@ -401,10 +398,15 @@ function UpstreamSkeleton() {
         {[0, 1, 2, 3].map((cell) => <Skeleton key={cell} className="h-20 rounded-xl" />)}
       </div>
       <div className="grid gap-3 lg:grid-cols-3">
-        <Skeleton className="h-[260px] rounded-xl" />
-        <Skeleton className="h-[260px] rounded-xl lg:col-span-2" />
+        <Skeleton className="h-[230px] rounded-xl" />
+        <Skeleton className="h-[230px] rounded-xl lg:col-span-2" />
       </div>
-      <Skeleton className="h-[220px] rounded-xl" />
+      <Skeleton className="h-[130px] rounded-xl" />
+      <div className="grid gap-3 lg:grid-cols-3">
+        <Skeleton className="h-[190px] rounded-xl lg:col-span-2" />
+        <Skeleton className="h-[190px] rounded-xl" />
+      </div>
+      <Skeleton className="h-[240px] rounded-xl" />
     </div>
   );
 }
@@ -455,11 +457,7 @@ export function UpstreamPage() {
     source: row.source,
     pct: row.tracked > 0 ? Math.round((row.matched / row.tracked) * 1000) / 10 : 0,
   }));
-  // The table names every agent Tersio knows of, so the two still to come sit with the rest.
-  const agentTableRows: HostRow[] = [
-    ...(card?.hosts ?? []),
-    ...UPCOMING_AGENTS.map((agent) => ({ host: agent.id, installed: false, files: 0, matched: 0, stale: 0, missing: 0, staleFiles: [], unloaded: [], fix: "", soon: true })),
-  ];
+  const agentTableRows: HostRow[] = card?.hosts ?? [];
   const agentRows = (card?.hosts ?? []).map((row) => ({
     host: row.host,
     label: AGENT_NAME[row.host] ?? row.host,
@@ -468,6 +466,15 @@ export function UpstreamPage() {
     missing: row.missing,
     rest: Math.max(0, row.files - row.matched - row.stale - row.missing),
   }));
+  const uncarriedSources = (card?.sources ?? []).filter((row) => row.uncarried > 0);
+  const driftHosts = (card?.hosts ?? []).filter((row) => row.stale > 0 || row.missing > 0 || row.unloaded.length > 0);
+  const totalUncarried = uncarriedSources.reduce((sum, row) => sum + row.uncarried, 0);
+  const checkSteps = [
+    { title: "Pin", code: "source.pin", body: "The commit or release recorded for the port." },
+    { title: "Match", code: "matched / tracked", body: "Byte match, or a declared fork accepted by the check." },
+    { title: "Drift", code: "moved + appeared + gone", body: "Paths that changed upstream since the pin." },
+    { title: "Repair", code: "tersio install --host <agent>", body: "Writes this build's tree into an installed agent." },
+  ];
 
   return (
     <Page>
@@ -498,9 +505,9 @@ export function UpstreamPage() {
           </StatGrid>
 
           <div className="grid gap-3 lg:grid-cols-3">
-            <Card title="Port accuracy" icon="check" description="Each port's tracked bodies, matched against its pin.">
+            <Card title="Port accuracy" icon="check" description="Each spoke is a borrowed mode. A full edge means our copy still matches the pin.">
               <figure className="m-0">
-                <ChartContainer config={SCORE_CONFIG} className="mx-auto h-[190px] w-full max-w-[260px]" role="img" aria-label="Accuracy per port">
+                <ChartContainer config={SCORE_CONFIG} className="mx-auto h-[230px] w-full max-w-[310px]" role="img" aria-label="Accuracy per port">
                   <RadarChart data={perSource} outerRadius="72%">
                     <PolarGrid stroke="var(--line)" />
                     <PolarAngleAxis dataKey="source" tick={{ fill: "var(--dim)", fontSize: 11 }} />
@@ -509,12 +516,112 @@ export function UpstreamPage() {
                     <ChartTooltip content={<ChartTooltipContent />} />
                   </RadarChart>
                 </ChartContainer>
-                <figcaption className="mono mt-1 text-[11px] text-dim">
-                  {perSource.map((row) => `${row.source} ${row.pct}%`).join(" · ")}
+                <figcaption className="mono mt-1 flex flex-wrap gap-x-2 gap-y-1 text-[10px] text-dim">
+                  {perSource.map((row) => (
+                    <span key={row.source}>
+                      {GLYPH[row.source] ?? "•"} {row.source} <span className="text-ink">{row.pct}%</span>
+                    </span>
+                  ))}
                 </figcaption>
               </figure>
             </Card>
 
+            <Card title="How the check works" icon="git-branch" description="The fields the CLI reads, in order." className="lg:col-span-2">
+              <div className="flex h-full min-h-[300px] flex-col">
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {checkSteps.map((step) => (
+                    <div key={step.title} className="rounded-lg border border-line bg-track/20 px-2.5 py-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-display text-[12px] font-bold tracking-tight">{step.title}</span>
+                        <code className="mono truncate text-[9px] text-accent" title={step.code}>{step.code}</code>
+                      </div>
+                      <p className="mono mt-1 mb-0 text-[10px] leading-snug text-dim">{step.body}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-3 rounded-lg border border-line bg-track/30 px-3 py-2.5">
+                  <p className="mono m-0 text-[9px] tracking-[0.12em] text-dim uppercase">Last run</p>
+                  <pre className="mono m-0 mt-1.5 text-[10px] leading-relaxed whitespace-pre-wrap text-ink">{`tersio upstream
+${fmt(card.sources.length)} ports · ${card.accuracy}% match · ${fmt(card.drift)} drift
+${fmt(gaps.length)} local gaps · ${fmt(totalUncarried)} uncarried`}</pre>
+                </div>
+                <p className="mono m-0 mt-auto pt-3 text-[10px] leading-relaxed text-dim">
+                  Read-only. A pin changes only after a person reviews the diff.
+                </p>
+              </div>
+            </Card>
+          </div>
+
+          <Card
+            id="upstream-gaps"
+            title="What we are lacking"
+            icon="circle-alert"
+            description="Uncarried upstream, local gaps, and agent drift, grouped by what fixes them."
+            className="scroll-mt-24"
+            flush
+          >
+            <div className="grid divide-y divide-line lg:grid-cols-3 lg:divide-x lg:divide-y-0">
+              <section className="p-3.5">
+                <p className="mono m-0 flex items-center justify-between gap-2 text-[10px] tracking-[0.12em] text-dim uppercase">
+                  Uncarried upstream
+                  <span className="text-ink">{fmt(totalUncarried)}</span>
+                </p>
+                <div className="mt-2 grid gap-0">
+                  {uncarriedSources.length > 0 ? uncarriedSources.map((row) => (
+                    <div key={row.source} className="flex items-center gap-2 border-t border-line py-1.5 first:border-t-0 first:pt-0">
+                      <span aria-hidden="true">{GLYPH[row.source] ?? "•"}</span>
+                      <span className="min-w-0 flex-1 truncate text-[11px] font-semibold">{row.source}</span>
+                      <span className="mono text-[10px] tabular-nums text-dim">{fmt(row.uncarried)} files</span>
+                      {row.uncarriedMoved > 0 ? <span className="mono text-[9px] text-warn-text">{fmt(row.uncarriedMoved)} moved</span> : null}
+                    </div>
+                  )) : <p className="mono m-0 py-1 text-[10px] text-dim">Everything upstream is carried.</p>}
+                </div>
+              </section>
+
+              <section className="p-3.5">
+                <p className="mono m-0 flex items-center justify-between gap-2 text-[10px] tracking-[0.12em] text-dim uppercase">
+                  Local gaps
+                  <span className="text-ink">{fmt(gaps.length)}</span>
+                </p>
+                <div className="mt-2 max-h-[180px] overflow-auto pr-1">
+                  {gaps.length > 0 ? gaps.map(({ source, gap }) => (
+                    <div key={`${source}-${gap}`} className="flex min-w-0 items-center gap-2 border-t border-line py-1.5 first:border-t-0 first:pt-0">
+                      <span className="mono shrink-0 text-[9px] text-accent">{source}</span>
+                      <span className="mono min-w-0 truncate text-[10px] text-dim" title={gap}>{gap}</span>
+                    </div>
+                  )) : <p className="mono m-0 py-1 text-[10px] text-dim">No missing or changed paths.</p>}
+                </div>
+              </section>
+
+              <section className="p-3.5">
+                <p className="mono m-0 flex items-center justify-between gap-2 text-[10px] tracking-[0.12em] text-dim uppercase">
+                  Agent drift
+                  <span className="text-ink">{fmt(driftHosts.length)}</span>
+                </p>
+                <div className="mt-2 grid gap-0">
+                  {driftHosts.length > 0 ? driftHosts.map((row) => {
+                    const counts = [
+                      row.stale > 0 ? `${fmt(row.stale)} stale` : "",
+                      row.missing > 0 ? `${fmt(row.missing)} missing` : "",
+                      row.unloaded.length > 0 ? `${fmt(row.unloaded.length)} unloaded` : "",
+                    ].filter(Boolean).join(" · ");
+                    return (
+                      <div key={row.host} className="border-t border-line py-1.5 first:border-t-0 first:pt-0">
+                        <div className="flex items-center gap-2">
+                          <AgentLogo host={row.host} className="size-3.5 shrink-0" />
+                          <span className="min-w-0 flex-1 truncate text-[11px] font-semibold">{agentLabel(row.host)}</span>
+                          <span className="mono shrink-0 text-[9px] text-warn-text">{counts}</span>
+                        </div>
+                        {row.fix ? <p className="mono m-0 mt-0.5 truncate pl-5 text-[9px] text-dim" title={row.fix}>{row.fix}</p> : null}
+                      </div>
+                    );
+                  }) : <p className="mono m-0 py-1 text-[10px] text-dim">Every agent copy matches this build.</p>}
+                </div>
+              </section>
+            </div>
+          </Card>
+
+          <div className="grid gap-3 lg:grid-cols-3">
             <Card
               title="Agent copies"
               icon="layers"
@@ -539,6 +646,25 @@ export function UpstreamPage() {
                 </figcaption>
               </figure>
             </Card>
+
+            {history.length > 1 ? (
+              <Card title="Accuracy over time" icon="git-branch" description="Every run, so a slow drift shows before it is a surprise.">
+                <TimeChart
+                  data={history.map((point) => ({ at: point.at, accuracy: point.accuracy }))}
+                  series={[{ key: "accuracy", label: "Accuracy", color: "var(--accent)" }]}
+                  xKey="at"
+                  height={190}
+                  tick={(value) => new Date(value).toLocaleDateString()}
+                  valueFmt={(value) => `${value}%`}
+                  summary={`Accuracy over ${history.length} runs, from ${history[0].accuracy}% to ${history[history.length - 1].accuracy}%.`}
+                  ariaLabel="Accuracy over the last runs"
+                />
+              </Card>
+            ) : (
+              <div className="flex min-h-[190px] items-end rounded-xl border border-dashed border-line bg-track/10 p-4">
+                <p className="mono m-0 text-[11px] leading-relaxed text-dim">Run another check to start the accuracy history.</p>
+              </div>
+            )}
           </div>
 
           <div className="grid gap-3">
@@ -551,25 +677,10 @@ export function UpstreamPage() {
               <PagedTable columns={SOURCE_COLUMNS} rows={card.sources} rowKey={(row) => row.source} ariaLabel="Ports" perPage={10} />
             </Card>
 
-            <Card title="Agents" icon="layers" description="What each agent carries against this build's own tree, and the two still to come." flush>
+            <Card title="Agents" icon="layers" description="What each Tersio agent carries against this build's own tree." flush>
               <PagedTable columns={AGENT_COLUMNS} rows={agentTableRows} rowKey={(row) => row.host} ariaLabel="Agents" perPage={10} />
             </Card>
           </div>
-
-          {history.length > 1 && (
-            <Card title="Accuracy over time" icon="git-branch" description="Every run, so a slow drift shows before it is a surprise.">
-              <TimeChart
-                data={history.map((point) => ({ at: point.at, accuracy: point.accuracy }))}
-                series={[{ key: "accuracy", label: "Accuracy", color: "var(--accent)" }]}
-                xKey="at"
-                height={160}
-                tick={(value) => new Date(value).toLocaleDateString()}
-                valueFmt={(value) => `${value}%`}
-                summary={`Accuracy over ${history.length} runs, from ${history[0].accuracy}% to ${history[history.length - 1].accuracy}%.`}
-                ariaLabel="Accuracy over the last runs"
-              />
-            </Card>
-          )}
 
           {moved.length > 0 && (
             <Card
@@ -579,25 +690,11 @@ export function UpstreamPage() {
               footer={<span className="mono text-[11px] text-dim">{moved.length} {moved.length === 1 ? "port has" : "ports have"} a newer upstream state</span>}
             >
               <ul className="m-0 grid list-none gap-2 p-0">
-                {moved.map((row) => (
-                  <MovedPort key={row.source} row={row} />
-                ))}
+                {moved.map((row) => <MovedPort key={row.source} row={row} />)}
               </ul>
             </Card>
           )}
 
-          {gaps.length > 0 && (
-            <Card title="Gaps" icon="circle-alert" description="Bodies that are absent or differ, by local path.">
-              <ul className="m-0 grid list-none gap-1 p-0">
-                {gaps.map(({ source, gap }) => (
-                  <li key={`${source}-${gap}`} className="mono flex min-w-0 gap-2 text-[11px] text-dim">
-                    <span className="shrink-0 font-semibold text-ink">{source}</span>
-                    <span className="min-w-0 [overflow-wrap:anywhere]">{gap}</span>
-                  </li>
-                ))}
-              </ul>
-            </Card>
-          )}
         </>
       )}
     </Page>
