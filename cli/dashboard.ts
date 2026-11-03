@@ -87,6 +87,9 @@ const WRAP_CONFIG_MARKERS: Record<string, string> = {
   openhands: '.openhands',
   opencode: '.opencode',
   omp: '.omp',
+  pi: '.pi',
+  pig: '.pig',
+  dsh: '.dsh',
 };
 
 /** A wrap target is present when its binary resolves or its config home exists on this OS. */
@@ -945,32 +948,27 @@ async function runDashboardWatch(options: DashboardOptions): Promise<void> {
     firstSpawn = false;
     child = spawn(runner, [entry, ...argv], {
       env: { ...process.env, TERSIO_DASHBOARD_CHILD: '1' },
-      stdio: 'inherit',
+      // The child owns the live, LAN, and QR lines; its crashes stay in the watcher.
+      stdio: ['inherit', 'inherit', 'ignore'],
     });
-    child.on('exit', (code: number | null) => {
+    child.on('exit', () => {
       if (stopping) return;
       if (pendingRestart) { pendingRestart = false; setTimeout(spawnChild, 300); return; }
-      console.log('[watch] server exited (' + code + ') \u2014 restarting in 500ms');
       setTimeout(() => { if (!stopping) spawnChild(); }, 500);
     });
   };
   const restart = (): void => {
     if (!child || pendingRestart) return;
-    console.log('[watch] server source changed \u2014 restarting');
     pendingRestart = true;
     child.kill('SIGTERM');
   };
   spawnChild();
   // UI rebuilds ride vite's own watcher: the server serves dist fresh per request, so a reload picks them up.
   // Bun is the repo's package runner; without it, run vite's own entry under this interpreter.
-  // Only warnings and errors reach the terminal; the routine transform and bundle lines stay quiet.
+  // The watcher stays quiet, so the live block is the only output a user sees.
   vite = spawn(bun ?? process.execPath, [viteBin, 'build', '--watch', '--logLevel', 'warn'], {
-    stdio: ['ignore', 'ignore', 'pipe'],
+    stdio: ['ignore', 'ignore', 'ignore'],
     cwd: appDir,
-  });
-  vite.stderr?.on('data', (chunk: Buffer) => process.stderr.write(chunk));
-  vite.on('exit', (code: number | null) => {
-    if (!stopping) console.log('[watch] UI watcher exited (' + code + ') \u2014 UI edits need `bun run build:dashboard`');
   });
   // Watch only the trees the server reads; recursing the repo root would carry node_modules and .git.
   const watched = ['cli', 'extensions']
@@ -1285,8 +1283,17 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
         return;
       } catch { /* fall through to index */ }
     }
+    // A watch restart can land before Vite writes its first bundle; retry on the next reload instead of throwing.
+    let index: string;
+    try {
+      index = await readSegment(DASHBOARD_INDEX);
+    } catch {
+      res.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', 'Retry-After': '1' });
+      res.end('Dashboard is building. Reload in a moment.');
+      return;
+    }
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
-    res.end(await readSegment(DASHBOARD_INDEX));
+    res.end(index);
   });
   await new Promise<void>((resolve, reject) => {
     let stopping = false;
