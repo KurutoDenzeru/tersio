@@ -323,10 +323,14 @@ export interface HeadroomWrapTarget {
   route?: boolean;
   /** The route's measured state, shown on the row. */
   detail?: string;
+  /** True when Headroom's own config block exists, whether or not the active model uses it. */
+  configured?: boolean;
   /** True when Tersio wrote this route and can put the old endpoint back. */
   managed?: boolean;
-  /** False when the agent itself is not installed, so its config is not there to change. */
+  /** True when Tersio's tree is installed for this agent. */
   agentInstalled?: boolean;
+  /** True when the agent itself is on this machine, whatever state Tersio's tree is in. */
+  agentPresent?: boolean;
 }
 
 export interface HeadroomWrapState {

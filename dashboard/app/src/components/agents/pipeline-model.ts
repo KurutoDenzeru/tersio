@@ -277,15 +277,19 @@ const HOST_FIELDS: Record<string, "cavemanDefault" | "rtkDefault" | "ponytailDef
 };
 
 /** What each mode reads to for one agent: its own section first, the shared store underneath. */
-export function agentModeRows(host: string, modes: ModeState | null): Array<{ key: string; glyph: string; label: string; on: boolean | null }> {
+export function agentModeRows(host: string, modes: ModeState | null, headroomRoute?: boolean): Array<{ key: string; glyph: string; label: string; on: boolean | null }> {
   if (!modes) return [];
   const section = (modes.hosts?.[host] ?? {}) as Partial<Record<string, string | boolean>>;
   const shared = modes as unknown as Partial<Record<string, string | boolean>>;
   const read = (key: string): string | boolean | undefined => section[HOST_FIELDS[key]] ?? shared[HOST_FIELDS[key]];
+  const headroom = String(read("headroom") ?? "off");
+  // The session default can say on while this host has no route to the proxy. Say that instead of claiming compression.
+  const headroomLabel = headroom !== "off" && headroomRoute === false ? "unrouted" : headroom;
+  const headroomOn = headroom !== "off" && headroomRoute !== false;
   return [
     { key: "caveman", glyph: "🪨", label: String(read("caveman") ?? "off"), on: String(read("caveman") ?? "off") !== "off" },
     { key: "rtk", glyph: "🗜️", label: read("rtk") === true ? "on" : "off", on: read("rtk") === true },
-    { key: "headroom", glyph: "🍃", label: String(read("headroom") ?? "off"), on: String(read("headroom") ?? "off") !== "off" },
+    { key: "headroom", glyph: "🍃", label: headroomLabel, on: headroomOn },
     { key: "ponytail", glyph: "🧠", label: String(read("ponytail") ?? "off"), on: String(read("ponytail") ?? "off") !== "off" },
     { key: "pstack", glyph: "🥔", label: String(read("pstack") ?? "off"), on: String(read("pstack") ?? "off") !== "off" },
   ];

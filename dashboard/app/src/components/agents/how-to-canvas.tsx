@@ -146,6 +146,7 @@ function NodeBadge({ on, label }: { on: boolean | null; label: string }) {
 export function PipelineCanvas({
   modes,
   hostState,
+  headroomRoutes,
   onSet,
   onHostAction,
   busy,
@@ -154,6 +155,7 @@ export function PipelineCanvas({
 }: {
   modes: ModeState | null;
   hostState: HostState;
+  headroomRoutes: Record<string, boolean>;
   onSet: (node: NodeId, field: string, value: string | boolean, host?: "omp" | "pi" | "pig" | "opencode" | "dsh") => void;
   onHostAction: (node: NodeId, action: HostAction) => void;
   busy: NodeId | null;
@@ -443,13 +445,13 @@ export function PipelineCanvas({
             <span className="min-w-0 flex-1 text-[12px] font-semibold leading-tight">{host.label}</span>
             {off
               ? <NodeBadge on={false} label="not installed" />
-              : wrapped[host.id]
+              : headroomRoutes[host.id] === true || (headroomRoutes[host.id] === undefined && wrapped[host.id])
                 ? <NodeBadge on={true} label="🍃 wrapped" />
                 : <NodeBadge on={true} label={versionOf(hostState.versions[host.id]) ?? "installed"} />}
           </span>
           {!off ? (
             <span className="grid flex-1 grid-cols-2 content-center gap-x-3 gap-y-1 px-3.5 py-2.5">
-              {agentModeRows(host.id, modes).map((row) => (
+              {agentModeRows(host.id, modes, headroomRoutes[host.id]).map((row) => (
                 <span key={row.key} className={cn("mono flex items-center gap-1.5 text-[10px]", row.on ? "text-ink" : "text-dim")}>
                   <span aria-hidden="true" className={cn("size-1.5 shrink-0 rounded-full", row.on ? "bg-accent" : "bg-line")} />
                   {row.glyph} {row.label}
@@ -725,8 +727,10 @@ export function PipelineCanvas({
           open
           onOpenChange={(open) => { if (!open) setSelected(null); }}
           modes={modes}
+          hostState={hostState}
           busy={busy}
           onSet={onSet}
+          onHostAction={onHostAction}
           onSaved={onSaved}
         />
       ) : null}
