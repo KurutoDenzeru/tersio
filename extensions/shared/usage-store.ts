@@ -22,6 +22,8 @@ import {
   opencodeToolNames,
   readOpencodeDbRows,
   sessionsDirs,
+  dshSessionFiles,
+  readSessionText,
   walkJsonl,
 } from './usage-ledger.ts';
 import { tersioDataPath } from './utils.ts';
@@ -563,6 +565,7 @@ function parseFile(text: string, host?: string, file?: string, agent?: string): 
   const results = collectToolResults(text);
   let codexProvider: string | null = null;
   let codexModel: string | null = null;
+  let dshModel: string | null = null;
   for (const line of text.split('\n')) {
     if (!line.trim()) continue;
     try {
@@ -577,7 +580,11 @@ function parseFile(text: string, host?: string, file?: string, agent?: string): 
         if (parsed.model) codexModel = parsed.model;
         continue;
       }
-      const ts = row.timestamp;
+      if (parsed.kind === 'dsh_model') {
+        if (parsed.model) dshModel = parsed.model;
+        continue;
+      }
+      const ts = row.timestamp ?? row.time;
       const ms = ts === undefined ? NaN : typeof ts === 'number' ? ts : Date.parse(ts);
       const t = Number.isFinite(ms) ? ms : null;
       if (parsed.kind === 'token_row') {
@@ -603,14 +610,16 @@ function parseFile(text: string, host?: string, file?: string, agent?: string): 
         });
         continue;
       }
-      if (parsed.kind !== 'assistant_row' || !parsed.model || !parsed.usage) continue;
+      // A DeepSeek Harness row names no model itself; the session's last model/selection does.
+      const model = parsed.model ?? (row.type === 'assistant/message' ? dshModel ?? undefined : undefined);
+      if (parsed.kind !== 'assistant_row' || !model || !parsed.usage) continue;
       const usage = parsed.usage;
       const dur = durOf(parsed.durMs);
       const runInfo = parsed.run ?? { st: 'completed' as RunStatus };
       const note = runInfo.note?.replace(/[\t\n\r]/g, ' ').slice(0, 180);
       rows.push({
         t,
-        model: canonicalModelId(parsed.model),
+        model: canonicalModelId(model),
         i: intOf(usage.input),
         o: intOf(usage.output),
         d: dur,
@@ -670,6 +679,8 @@ export function syncUsageDb(): boolean {
   const ocFiles: string[] = [];
   try {
     for (const dir of sessionsDirs()) walkJsonl(dir, files, 2000);
+    // DeepSeek Harness keeps zstd transcripts under its own tree, not the pi/omp JSONL dirs.
+    if (process.env.TERSIO_SESSIONS_DIR === undefined) files.push(...dshSessionFiles());
     // OpenCode stores one JSON document per message, not JSONL.
     if (process.env.TERSIO_SESSIONS_DIR === undefined || process.env.TERSIO_OPENCODE_DIR !== undefined) {
       walkJsonl(opencodeSessionsDir(), ocFiles, 5000, '.json');
@@ -736,7 +747,9 @@ export function syncUsageDb(): boolean {
   }
   try {
     for (const file of changed) {
-      const text = fs.readFileSync(file, 'utf8');
+      // zstd transcripts are decompressed here; a plain JSONL reads as its own bytes.
+      const text = readSessionText(file);
+      if (text === null) continue;
       for (const r of parseFile(text, hostOfSessionFile(file), file, agentOfSessionText(text))) {
         if (!push(insertSql(file, r))) return false;
       }

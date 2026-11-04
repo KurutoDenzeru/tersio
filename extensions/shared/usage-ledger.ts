@@ -1,6 +1,7 @@
 // Usage ledger: append-only JSON lines, read by the CLI, `/tersio`, and the Dashboard. Corrupt lines are skipped.
 import fs from 'node:fs';
 import path from 'node:path';
+import * as zlib from 'node:zlib';
 import { homeDir, isPiProcess, isPigProcess, pigAgentDir, piAgentDir, resolveRtkBinary, tersioDataPath } from './utils.ts';
 import { tersioStateFile } from './state.ts';
 import { eligibleHeads } from './rtk-eligible.ts';
@@ -201,6 +202,27 @@ export function sessionsDirs(): string[] {
       : [path.join(homeDir(), '.omp', 'agent', 'sessions'), path.join(piAgentDir(), 'sessions'), path.join(pigAgentDir(), 'sessions')];
   const found = dirs.filter((dir) => fs.existsSync(dir));
   return found.length > 0 ? found : [dirs[0]];
+}
+
+/** DeepSeek Harness keeps one zstd-compressed JSONL per session, under a workspace/session tree. */
+export function dshSessionFiles(cap = 2000): string[] {
+  const out: string[] = [];
+  walkJsonl(path.join(homeDir(), '.dsh', 'sessions'), out, cap, '.zstd');
+  return out;
+}
+
+/** A transcript's text, decompressing the zstd files DeepSeek Harness writes; null when unreadable. */
+export function readSessionText(file: string): string | null {
+  try {
+    const raw = fs.readFileSync(file);
+    if (!file.endsWith('.zstd')) return raw.toString('utf8');
+    // zstd arrived in Node 22.15/23.8; an older Node skips these sessions instead of failing the sync.
+    const decompress = (zlib as { zstdDecompressSync?: (body: Buffer) => Buffer }).zstdDecompressSync;
+    if (typeof decompress !== 'function') return null;
+    return decompress(raw).toString('utf8');
+  } catch {
+    return null;
+  }
 }
 
 // One JSON file per message; probe XDG, then local, then macOS default.
@@ -460,7 +482,7 @@ export function ingestSessionRow(accum: SessionAccum, model: string, usage: Reco
   for (const name of toolNames ?? []) accum.byTool[name] = (accum.byTool[name] ?? 0) + 1;
   return true;
 }
-export type SessionLineKind = 'codex_provider' | 'codex_model' | 'token_row' | 'assistant_row' | 'skip';
+export type SessionLineKind = 'codex_provider' | 'codex_model' | 'dsh_model' | 'token_row' | 'assistant_row' | 'skip';
 
 /** One tool call with the facts the Tools page reads: name, argument bytes, result bytes, error flag. */
 export interface ToolFact {
@@ -520,6 +542,14 @@ export interface SessionLineRow {
     content?: Array<{ type?: unknown; name?: unknown; id?: unknown; arguments?: unknown }>;
   };
   payload?: { type?: unknown; model?: unknown; model_provider?: unknown; info?: { last_token_usage?: Record<string, unknown> } };
+  /** DeepSeek Harness writes `{ type, seq, time, data }` rows; the model arrives on its own event. */
+  time?: number;
+  data?: {
+    model?: unknown;
+    provider?: unknown;
+    usage?: Record<string, unknown>;
+    message?: { role?: unknown; content?: Array<{ type?: unknown; name?: unknown }> };
+  };
 }
 
 /** What one transcript line classifies to. `assistant_row` carries the usage and the tool facts. */
@@ -537,6 +567,26 @@ export interface SessionLine {
 }
 
 export function classifySessionLine(row: SessionLineRow, results?: ToolResults): SessionLine {
+  // DeepSeek Harness states the model once on `model/selection`; the usage sits on `assistant/message`.
+  if (row.type === 'model/selection' && row.data && typeof row.data.model === 'string' && row.data.model) {
+    return { kind: 'dsh_model', model: row.data.model, provider: typeof row.data.provider === 'string' ? row.data.provider : undefined };
+  }
+  if (row.type === 'assistant/message' && row.data?.usage) {
+    const usage = row.data.usage;
+    const tools: string[] = [];
+    for (const part of row.data.message?.content ?? []) {
+      if (part?.type === 'tool-call' && typeof part.name === 'string' && part.name) tools.push(part.name);
+    }
+    const mapped = {
+      input: usage['inputTokens'],
+      output: usage['outputTokens'],
+      cacheRead: usage['cacheReadTokens'],
+      cacheWrite: usage['cacheWriteTokens'],
+    };
+    if (hasPositiveUsage(mapped)) {
+      return { kind: 'assistant_row', usage: mapped, tools, ms: row.time, run: { st: 'completed' } };
+    }
+  }
   const payload = row.payload;
   if (payload && typeof payload === 'object') {
     if (row.type === 'session_meta' && typeof payload.model_provider === 'string') return { kind: 'codex_provider', provider: payload.model_provider };
@@ -801,21 +851,12 @@ export function importSessionTokens(): SessionTokens {
   if (process.env.TERSIO_SESSIONS_DIR === undefined || process.env.TERSIO_OPENCODE_DB !== undefined) {
     for (const row of readOpencodeDbRows(opencodeDbPath(), 0)) ingestOpencodeDbRow(accum, row);
   }
-  let codexProvider: string | null = null;
-  let codexModel: string | null = null;
-  for (const file of files) {
-    let text: string;
-    try {
-      text = fs.readFileSync(file, 'utf8');
-    } catch {
-      continue;
-    }
-    processSessionText(accum, {
-      get codexProvider() { return codexProvider; },
-      set codexProvider(v: string | null) { codexProvider = v; },
-      get codexModel() { return codexModel; },
-      set codexModel(v: string | null) { codexModel = v; },
-    }, text, hostOfSessionFile(file), agentOfSessionText(text));
+  const dshFiles = process.env.TERSIO_SESSIONS_DIR === undefined ? dshSessionFiles() : [];
+  const codexState = { codexProvider: null as string | null, codexModel: null as string | null, dshModel: null as string | null };
+  for (const file of [...files, ...dshFiles]) {
+    const text = readSessionText(file);
+    if (text === null) continue;
+    processSessionText(accum, codexState, text, hostOfSessionFile(file), agentOfSessionText(text));
   }
   accum.recent.sort((a, b) => b.t - a.t);
   return { messages: accum.messages, totals: accum.totals, byModel: accum.byModel, byDay: accum.byDay, byDayModel: accum.byDayModel, byTool: accum.byTool, byModelMessages: accum.byModelMessages, byHost: accum.byHost, byAgent: accum.byAgent, byAgentMessages: accum.byAgentMessages, byModelMeasured: accum.byModelMeasured, byModelCostMessages: accum.byModelCostMessages, costMeasured: accum.costMeasured, recent: accum.recent.slice(0, RECENT_LIMIT) };
@@ -824,6 +865,7 @@ export function importSessionTokens(): SessionTokens {
 // Which agent wrote a session file, from the directory it sits in.
 export function hostOfSessionFile(file: string): string {
   const norm = file.replace(/\\/g, '/');
+  if (norm.includes('/.dsh/')) return 'dsh';
   if (norm.includes('/.omp/')) return 'omp';
   if (norm.includes('/.codex/')) return 'codex';
   if (norm.includes('/opencode/')) return 'opencode';
@@ -832,6 +874,8 @@ export function hostOfSessionFile(file: string): string {
 
 // A transcript with a parent session ran as a subagent; the host's own row, so a mirror answers the same.
 export function agentOfSessionText(text: string): string {
+  // DeepSeek Harness marks a child by its delegation depth on the opening session event.
+  if (/"delegationDepth"\s*:\s*[1-9]/.test(text.slice(0, 4000))) return 'subagent';
   if (!text.includes('parentSession')) return 'main';
   for (const line of text.split('\n')) {
     if (!line.includes('parentSession')) continue;
@@ -1025,7 +1069,7 @@ export function readRtkAdoption(): RtkAdoption {
     byHost: Object.fromEntries(Object.entries(byHost).map(([name, counts]) => [name, host(counts)])),
   };
 }
-export function processSessionText(accum: SessionAccum, state: { codexProvider: string | null; codexModel?: string | null }, text: string, host?: string, agent?: string): void {
+export function processSessionText(accum: SessionAccum, state: { codexProvider: string | null; codexModel?: string | null; dshModel?: string | null }, text: string, host?: string, agent?: string): void {
   // A call's result arrives on a later line, so the whole file is scanned for results first.
   const results = collectToolResults(text);
   for (const line of text.split('\n')) {
@@ -1042,6 +1086,10 @@ export function processSessionText(accum: SessionAccum, state: { codexProvider: 
         if (parsed.model) state.codexModel = parsed.model;
         continue;
       }
+      if (parsed.kind === 'dsh_model') {
+        if (parsed.model) state.dshModel = parsed.model;
+        continue;
+      }
       if (parsed.kind === 'token_row') {
         const base = parsed.provider ? `codex/${parsed.provider}` : (state.codexProvider ? `codex/${state.codexProvider}` : 'codex');
         // The provider alone told you nothing about which model ran.
@@ -1049,8 +1097,10 @@ export function processSessionText(accum: SessionAccum, state: { codexProvider: 
         ingestSessionRow(accum, model, parsed.usage ?? {}, row.timestamp, parsed.durMs, { st: 'completed' as RunStatus }, undefined, host ?? 'codex', rid, agent);
         continue;
       }
-      if (parsed.kind !== 'assistant_row' || !parsed.model || !parsed.usage) continue;
-      ingestSessionRow(accum, parsed.model, parsed.usage, row.timestamp, parsed.durMs, parsed.run, parsed.tools, host, rid, agent, parsed.ttftMs);
+      // A DeepSeek Harness row names no model itself; the session's last model/selection does.
+      const model = parsed.model ?? (row.type === 'assistant/message' ? state.dshModel ?? undefined : undefined);
+      if (parsed.kind !== 'assistant_row' || !model || !parsed.usage) continue;
+      ingestSessionRow(accum, model, parsed.usage, row.timestamp ?? row.time, parsed.durMs, parsed.run, parsed.tools, host, rid, agent, parsed.ttftMs);
     } catch { /* skip corrupt lines */ }
   }
 }
