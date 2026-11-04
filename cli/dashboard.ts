@@ -1084,6 +1084,12 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
           json(res, 200, { ok: true, ...done });
           return;
         }
+        if (action === 'delete' && Array.isArray(body.names)) {
+          const names = body.names.filter((entry): entry is string => typeof entry === 'string');
+          const deleted = names.filter((entry) => deleteDataBackup(entry));
+          json(res, 200, { ok: true, deleted });
+          return;
+        }
         if (action === 'delete') {
           const ok = deleteDataBackup(name);
           json(res, ok ? 200 : 400, ok ? { ok: true, name } : { ok: false, error: 'unknown snapshot' });

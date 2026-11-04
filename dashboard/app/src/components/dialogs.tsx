@@ -397,6 +397,8 @@ function DataPane() {
   const [dir, setDir] = useState("");
   /** The snapshot the footer works on. A name the list no longer holds reads as no pick. */
   const [picked, setPicked] = useState<string | null>(null);
+  /** Multi-select prunes several snapshots at once; restore still works on one. */
+  const [selected, setSelected] = useState<string[]>([]);
   const [asking, setAsking] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -522,6 +524,31 @@ function DataPane() {
       .catch(() => toast("Delete failed", "The dashboard server did not answer.", "circle-alert"));
   };
 
+  const toggleSelected = (name: string): void => {
+    setSelected((current) => (current.includes(name) ? current.filter((entry) => entry !== name) : [...current, name]));
+  };
+
+  const deleteSelected = (): void => {
+    if (selected.length === 0) return;
+    setBusy(true);
+    void fetch("/api/data", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "delete", names: selected }),
+    })
+      .then((r) => r.json())
+      .then((d: { ok?: boolean; deleted?: string[]; error?: string }) => {
+        if (d?.ok) {
+          toast("Snapshots deleted", `${d.deleted?.length ?? selected.length} removed.`, "check");
+          setSelected([]);
+          setPicked(null);
+          load();
+        } else toast("Delete failed", d?.error ?? "The server did not answer.", "circle-alert");
+      })
+      .catch(() => toast("Delete failed", "The dashboard server did not answer.", "circle-alert"))
+      .finally(() => setBusy(false));
+  };
+
   const doReset = (): void => {
     // The action closes its own dialog, the way the snapshot confirms do.
     setResetting(false);
@@ -633,7 +660,9 @@ function DataPane() {
           (
             <>
               <span className="mono min-w-0 flex-1 truncate text-[11px] text-dim">
-                {chosen ? dataStamp(chosen.mtime) : "Pick a snapshot to restore or delete it."}
+                {selected.length > 1
+                  ? `${selected.length} selected`
+                  : chosen ? `${dataStamp(chosen.mtime)} · ${dataSize(chosen.bytes)}` : "Pick a snapshot to restore or delete it."}
               </span>
               <Button
                 size="sm"
@@ -644,16 +673,29 @@ function DataPane() {
                 <Icon name="rotate-ccw" className="size-3.5" />
                 Restore
               </Button>
-              <Button
-                size="sm"
-                variant="destructive"
-                className="mono h-8 gap-1.5 rounded-xl"
-                disabled={!chosen}
-                onClick={() => chosen && setConfirming(chosen.name)}
-              >
-                <Icon name="trash" className="size-3.5" />
-                Delete
-              </Button>
+              {selected.length > 1 ? (
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  className="mono h-8 gap-1.5 rounded-xl"
+                  disabled={busy}
+                  onClick={deleteSelected}
+                >
+                  <Icon name="trash" className="size-3.5" />
+                  Delete {selected.length}
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  className="mono h-8 gap-1.5 rounded-xl"
+                  disabled={!chosen}
+                  onClick={() => chosen && setConfirming(chosen.name)}
+                >
+                  <Icon name="trash" className="size-3.5" />
+                  Delete
+                </Button>
+              )}
             </>
           )
         }
@@ -670,9 +712,17 @@ function DataPane() {
             <div className="divide-y divide-line">
               {backups.map((b) => {
                 const on = b.name === picked;
+                const checked = selected.includes(b.name);
                 return (
+                  <div key={b.name} className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    className="size-3.5 shrink-0 accent-accent"
+                    aria-label={`Select ${dataStamp(b.mtime)}`}
+                    checked={checked}
+                    onChange={() => toggleSelected(b.name)}
+                  />
                   <button
-                    key={b.name}
                     type="button"
                     aria-pressed={on}
                     className={cn(
@@ -691,6 +741,7 @@ function DataPane() {
                     </div>
                     {on && <Icon name="check" className="mr-1.5 size-3.5 shrink-0 text-accent" />}
                   </button>
+                  </div>
                 );
               })}
             </div>
