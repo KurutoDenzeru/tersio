@@ -129,6 +129,7 @@ const SYNC_FIELDS: Record<SyncMode, Array<{ key: string; label: string; placehol
     { key: "region", label: "Region", placeholder: "us-east-1, or auto for R2" },
     { key: "accessKey", label: "Access key", placeholder: "AKIA…" },
     { key: "secret", label: "Secret", placeholder: "secret access key", secret: true },
+    { key: "sessionToken", label: "Session token", placeholder: "only for temporary credentials", secret: true },
   ],
   github: [
     { key: "repository", label: "Repository", placeholder: "owner/repo" },
@@ -287,7 +288,7 @@ function SyncPanel() {
                   <Input
                     type={revealed[row.key] ? "text" : "password"}
                     value={fields[row.key] ?? ""}
-                    placeholder={view?.passphraseSet ? "saved" : row.placeholder}
+                    placeholder={view?.configured ? "saved" : row.placeholder}
                     className="pr-9"
                     onChange={(event) => setFields({ ...fields, [row.key]: event.target.value })}
                   />

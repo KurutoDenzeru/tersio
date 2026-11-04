@@ -24,13 +24,15 @@ export interface SyncView {
 }
 
 const FILE = 'sync.json';
+/** The write probe's name: not `.tsb`, so no version list ever shows it. */
+const FOLDER_PROBE = 'tersio-write-probe.tmp';
 
 /** A blank configuration the panel edits field by field; every protocol keeps its own rows. */
 export function emptyConfig(): SyncConfig {
   return {
     mode: 'webdav',
     webdav: { address: '', user: '', password: '' },
-    s3: { endpoint: '', bucket: '', prefix: '', region: 'us-east-1', accessKey: '', secret: '', pathStyle: false },
+    s3: { endpoint: '', bucket: '', prefix: '', region: 'us-east-1', accessKey: '', secret: '', sessionToken: '', pathStyle: false },
     github: { repository: '', branch: '', folder: '', token: '' },
   };
 }
@@ -41,7 +43,7 @@ export function applyTarget(mode: SyncMode, input: Record<string, unknown>, base
   const next: SyncConfig = { ...base, mode };
   // A blank secret means "keep the saved one": the panel never receives it, so it cannot echo it back.
   if (mode === 'webdav') next.webdav = { address: text('address'), user: text('user'), password: text('password') || base.webdav.password };
-  if (mode === 's3') next.s3 = { endpoint: text('endpoint'), bucket: text('bucket'), prefix: text('prefix'), region: text('region') || 'us-east-1', accessKey: text('accessKey'), secret: text('secret') || base.s3.secret, pathStyle: input.pathStyle === true };
+  if (mode === 's3') next.s3 = { endpoint: text('endpoint'), bucket: text('bucket'), prefix: text('prefix'), region: text('region') || 'us-east-1', accessKey: text('accessKey'), secret: text('secret') || base.s3.secret, sessionToken: text('sessionToken') || base.s3.sessionToken, pathStyle: input.pathStyle === true };
   if (mode === 'github') next.github = { repository: text('repository'), branch: text('branch'), folder: text('folder'), token: text('token') || base.github.token };
   return next;
 }
@@ -66,8 +68,12 @@ export function readSync(): StoredSync {
 
 export function saveSync(next: StoredSync): void {
   fs.mkdirSync(tersioHome(), { recursive: true });
-  fs.writeFileSync(syncFile(), `${JSON.stringify(next, null, 2)}\n`, { mode: 0o600 });
-  try { fs.chmodSync(syncFile(), 0o600); } catch { /* a filesystem without modes still wrote the file */ }
+  // Temp file then rename, so a crash cannot leave a half-written config or lose the passphrase.
+  const target = syncFile();
+  const tmp = `${target}.tmp`;
+  fs.writeFileSync(tmp, `${JSON.stringify(next, null, 2)}\n`, { mode: 0o600 });
+  fs.renameSync(tmp, target);
+  try { fs.chmodSync(target, 0o600); } catch { /* a filesystem without modes still wrote the file */ }
 }
 
 /** Everything the panel may prefill. Passwords and tokens stay out: the panel only learns they are saved. */
@@ -102,10 +108,17 @@ export async function runSync(): Promise<{ name: string; bytes: number }> {
   return { name, bytes: sealed.length };
 }
 
-/** Prove the saved credentials reach the remote and can read the folder, before anyone trusts a backup to it. */
+/** Prove the saved credentials reach the remote, can write, and can read the folder back. */
 export async function testTarget(config: SyncConfig): Promise<{ ok: true; count: number } | { ok: false; error: string }> {
   try {
-    const versions = await remoteFor(config).list();
+    const remote = remoteFor(config);
+    await remote.put(FOLDER_PROBE, Buffer.from('tersio write probe'));
+    try {
+      await remote.remove(FOLDER_PROBE);
+    } catch (caught) {
+      return { ok: false, error: `the backup uploaded, but deleting it failed: ${(caught as Error).message}` };
+    }
+    const versions = await remote.list();
     return { ok: true, count: versions.length };
   } catch (caught) {
     return { ok: false, error: (caught as Error).message || 'the remote did not answer' };

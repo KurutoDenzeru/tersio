@@ -4,7 +4,7 @@ import { createHash, createHmac } from 'node:crypto';
 export type SyncMode = 'webdav' | 's3' | 'github';
 
 export interface WebDavConfig { address: string; user: string; password: string }
-export interface S3Config { endpoint: string; bucket: string; prefix: string; region: string; accessKey: string; secret: string; pathStyle: boolean }
+export interface S3Config { endpoint: string; bucket: string; prefix: string; region: string; accessKey: string; secret: string; sessionToken: string; pathStyle: boolean }
 export interface GithubConfig { repository: string; branch: string; folder: string; token: string }
 
 export interface SyncConfig {
@@ -21,6 +21,34 @@ export interface Remote {
   list(): Promise<RemoteEntry[]>;
   put(name: string, body: Buffer): Promise<void>;
   get(name: string): Promise<Buffer>;
+  /** Delete one file; used by the write probe and by pruning. A missing file is not an error. */
+  remove(name: string): Promise<void>;
+}
+
+/** Transient answers worth one more try; a 403 or a 404 is not. */
+const RETRY_STATUS = new Set([429, 500, 502, 503, 504]);
+const ATTEMPTS = 3;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** fetch with two retries on a transient status or a network error, honouring Retry-After when sent. */
+async function request(url: URL | string, init: RequestInit, timeoutMs = 30_000): Promise<Response> {
+  let last: unknown;
+  for (let attempt = 0; attempt < ATTEMPTS; attempt += 1) {
+    try {
+      const answer = await fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
+      if (!RETRY_STATUS.has(answer.status) || attempt === ATTEMPTS - 1) return answer;
+      const after = Number(answer.headers.get('retry-after'));
+      await sleep(Number.isFinite(after) && after > 0 ? Math.min(after * 1000, 5000) : 300 * 2 ** attempt);
+    } catch (error) {
+      last = error;
+      if (attempt === ATTEMPTS - 1) throw error;
+      await sleep(300 * 2 ** attempt);
+    }
+  }
+  throw last instanceof Error ? last : new Error('the request failed');
 }
 
 /** Every remote keeps Tersio's own folder, so a shared bucket or repository is never touched outside it. */
@@ -41,12 +69,23 @@ function webdav(config: WebDavConfig): Remote {
   if (!/^https?:\/\//.test(base)) throw new Error('WebDAV needs an http(s) address');
   const dir = `${base}/${FOLDER}/`;
   const auth = `Basic ${Buffer.from(`${config.user}:${config.password}`).toString('base64')}`;
-  const call = (method: string, url: string, body?: BodyInit, headers: Record<string, string> = {}) => fetch(url, {
+  const call = (method: string, url: string, body?: BodyInit, headers: Record<string, string> = {}, timeoutMs = 30_000) => request(url, {
     method,
     body,
     headers: { authorization: auth, ...headers },
-    signal: AbortSignal.timeout(30_000),
-  });
+  }, timeoutMs);
+
+  /** Some boxes accept a PUT into an existing folder but not the folder itself, so every parent is tried. */
+  const ensureParents = async (): Promise<void> => {
+    const parsed = new URL(base);
+    const origin = `${parsed.protocol}//${parsed.host}`;
+    let walked = '';
+    for (const segment of parsed.pathname.split('/').filter(Boolean)) {
+      walked += `/${encodeURIComponent(segment)}`;
+      await call('MKCOL', `${origin}${walked}`).catch(() => undefined);
+    }
+    await call('MKCOL', dir).catch(() => undefined);
+  };
 
   return {
     async list() {
@@ -72,14 +111,18 @@ function webdav(config: WebDavConfig): Remote {
     },
     async put(name, body) {
       // A folder that already exists answers 405; anything else is reported by the PUT below.
-      await call('MKCOL', dir).catch(() => undefined);
-      const answer = await call('PUT', `${dir}${name}`, body as unknown as BodyInit, { 'content-type': 'application/octet-stream' });
+      await ensureParents();
+      const answer = await call('PUT', `${dir}${name}`, body as unknown as BodyInit, { 'content-type': 'application/octet-stream' }, 120_000);
       if (!answer.ok) throw fail('WebDAV upload', answer.status, await answer.text());
     },
     async get(name) {
-      const answer = await call('GET', `${dir}${name}`);
+      const answer = await call('GET', `${dir}${name}`, undefined, {}, 120_000);
       if (!answer.ok) throw fail('WebDAV download', answer.status, await answer.text());
       return Buffer.from(await answer.arrayBuffer());
+    },
+    async remove(name) {
+      const answer = await call('DELETE', `${dir}${name}`);
+      if (!answer.ok && answer.status !== 404) throw fail('WebDAV delete', answer.status, await answer.text());
     },
   };
 }
@@ -101,12 +144,13 @@ function canonicalPath(pathname: string): string {
  * SigV4 for one S3 request: the same algorithm every S3-compatible host accepts.
  * Exported so the AWS documentation example can pin it.
  */
-export function sigV4(method: string, url: URL, body: Buffer, config: Pick<S3Config, 'region' | 'accessKey' | 'secret'>, extraHeaders: Record<string, string> = {}, at: Date = new Date()): Record<string, string> {
+export function sigV4(method: string, url: URL, body: Buffer, config: Pick<S3Config, 'region' | 'accessKey' | 'secret'> & { sessionToken?: string }, extraHeaders: Record<string, string> = {}, at: Date = new Date()): Record<string, string> {
   const now = at;
   const amzDate = `${now.toISOString().replace(/[:-]|\.\d{3}/g, '')}`;
   const day = amzDate.slice(0, 8);
   const payloadHash = sha256Hex(body);
   const headers: Record<string, string> = { ...extraHeaders, host: url.host, 'x-amz-content-sha256': payloadHash, 'x-amz-date': amzDate };
+  if (config.sessionToken) headers['x-amz-security-token'] = config.sessionToken;
   const signed = Object.keys(headers).sort();
   const canonicalHeaders = signed.map((name) => `${name}:${headers[name]}\n`).join('');
   const canonicalQuery = [...url.searchParams.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
@@ -130,49 +174,61 @@ function s3(config: S3Config): Remote {
   if (!config.accessKey.trim() || !config.secret.trim()) throw new Error('S3 needs an access key and a secret');
   const endpoint = new URL(config.endpoint.trim() || 'https://s3.amazonaws.com');
   const prefix = `${config.prefix.trim().replace(/^\/+|\/+$/g, '') ? `${config.prefix.trim().replace(/^\/+|\/+$/g, '')}/` : ''}${FOLDER}/`;
+  // An endpoint may carry its own base path (a gateway, MinIO behind a proxy); keep it instead of replacing the path.
+  const basePath = endpoint.pathname.replace(/\/+$/, '');
   const target = (key: string, query = ''): URL => {
     const url = new URL(endpoint.href);
-    const path = `${config.pathStyle ? `/${config.bucket}` : ''}/${prefix}${key}`;
-    url.pathname = path.replace(/\/{2,}/g, '/');
+    url.host = config.pathStyle ? endpoint.host : `${config.bucket}.${endpoint.host}`;
+    url.pathname = `${basePath}${config.pathStyle ? `/${config.bucket}` : ''}/${prefix}${key}`.replace(/\/{2,}/g, '/');
     url.search = query;
-    if (!config.pathStyle) url.host = `${config.bucket}.${endpoint.host}`;
     return url;
   };
 
   return {
     async list() {
-      const url = target('', `list-type=2&prefix=${encodeURIComponent(prefix)}`);
-      const answer = await fetch(url, { headers: authorize('GET', url, Buffer.alloc(0), config, {}) , signal: AbortSignal.timeout(30_000) });
-      if (!answer.ok) throw fail('S3 listing', answer.status, await answer.text());
-      const xml = await answer.text();
       const entries: RemoteEntry[] = [];
-      for (const block of xml.matchAll(/<Contents>([\s\S]*?)<\/Contents>/g)) {
-        const key = block[1].match(/<Key>([^<]+)<\/Key>/)?.[1] ?? '';
-        const name = key.split('/').filter(Boolean).at(-1) ?? '';
-        if (!name.endsWith(REMOTE_EXT)) continue;
-        entries.push({
-          name,
-          bytes: Number(block[1].match(/<Size>(\d+)<\/Size>/)?.[1] ?? 0),
-          mtime: Date.parse(block[1].match(/<LastModified>([^<]+)<\/LastModified>/)?.[1] ?? '') || 0,
-        });
+      let token: string | undefined;
+      // ListObjectsV2 answers one page of 1000 keys; a long-lived bucket needs the continuation loop.
+      for (let page = 0; page < 10; page += 1) {
+        const query = `list-type=2&prefix=${encodeURIComponent(prefix)}${token ? `&continuation-token=${encodeURIComponent(token)}` : ''}`;
+        const url = target('', query);
+        const answer = await request(url, { headers: authorize('GET', url, Buffer.alloc(0), config, {}) });
+        if (!answer.ok) throw fail('S3 listing', answer.status, await answer.text());
+        const xml = await answer.text();
+        for (const block of xml.matchAll(/<Contents>([\s\S]*?)<\/Contents>/g)) {
+          const key = block[1].match(/<Key>([^<]+)<\/Key>/)?.[1] ?? '';
+          const name = key.split('/').filter(Boolean).at(-1) ?? '';
+          if (!name.endsWith(REMOTE_EXT)) continue;
+          entries.push({
+            name,
+            bytes: Number(block[1].match(/<Size>(\d+)<\/Size>/)?.[1] ?? 0),
+            mtime: Date.parse(block[1].match(/<LastModified>([^<]+)<\/LastModified>/)?.[1] ?? '') || 0,
+          });
+        }
+        token = xml.match(/<NextContinuationToken>([^<]+)<\/NextContinuationToken>/)?.[1];
+        if (!token) break;
       }
       return entries.sort(newestFirst);
     },
     async put(name, body) {
       const url = target(name);
-      const answer = await fetch(url, {
+      const answer = await request(url, {
         method: 'PUT',
         body: body as unknown as BodyInit,
         headers: authorize('PUT', url, body, config, { 'content-type': 'application/octet-stream' }),
-        signal: AbortSignal.timeout(120_000),
-      });
+      }, 120_000);
       if (!answer.ok) throw fail('S3 upload', answer.status, await answer.text());
     },
     async get(name) {
       const url = target(name);
-      const answer = await fetch(url, { headers: authorize('GET', url, Buffer.alloc(0), config, {}), signal: AbortSignal.timeout(120_000) });
+      const answer = await request(url, { headers: authorize('GET', url, Buffer.alloc(0), config, {}) }, 120_000);
       if (!answer.ok) throw fail('S3 download', answer.status, await answer.text());
       return Buffer.from(await answer.arrayBuffer());
+    },
+    async remove(name) {
+      const url = target(name);
+      const answer = await request(url, { method: 'DELETE', headers: authorize('DELETE', url, Buffer.alloc(0), config, {}) });
+      if (!answer.ok && answer.status !== 404) throw fail('S3 delete', answer.status, await answer.text());
     },
   };
 }
@@ -198,11 +254,15 @@ function github(config: GithubConfig): Remote {
       if (answer.status === 404) return [];
       if (!answer.ok) throw fail('GitHub listing', answer.status, await answer.text());
       const rows = (await answer.json()) as Array<{ name?: string; size?: number; type?: string }>;
+      // The contents API carries no per-file date; the timestamped name is the only order there is.
       return rows
         .filter((row) => row.type === 'file' && (row.name ?? '').endsWith(REMOTE_EXT))
-        .map((row) => ({ name: row.name ?? '', bytes: row.size ?? 0, mtime: 0 }));
+        .map((row) => ({ name: row.name ?? '', bytes: row.size ?? 0, mtime: 0 }))
+        .sort((a, b) => b.name.localeCompare(a.name));
     },
     async put(name, body) {
+      // The contents API refuses a file above ~100 MB; say so instead of failing at the request.
+      if (body.length > 90 * 1024 * 1024) throw new Error('this backup is larger than GitHub accepts in one file');
       const url = `${api}/${folder}/${encodeURIComponent(name)}`;
       // An existing file needs its blob sha, or GitHub refuses the write.
       const existing = await fetch(`${url}${ref}`, { headers, signal: AbortSignal.timeout(30_000) });
@@ -227,6 +287,20 @@ function github(config: GithubConfig): Remote {
       });
       if (!answer.ok) throw fail('GitHub download', answer.status, await answer.text());
       return Buffer.from(await answer.arrayBuffer());
+    },
+    async remove(name) {
+      const url = `${api}/${folder}/${encodeURIComponent(name)}`;
+      const existing = await request(`${url}${ref}`, { headers });
+      if (existing.status === 404) return;
+      if (!existing.ok) throw fail('GitHub lookup', existing.status, await existing.text());
+      const sha = ((await existing.json()) as { sha?: string }).sha;
+      if (!sha) throw new Error(`GitHub did not return a sha for ${name}`);
+      const answer = await request(url, {
+        method: 'DELETE',
+        headers: { ...headers, 'content-type': 'application/json' },
+        body: JSON.stringify({ message: `tersio: remove ${name}`, sha, ...(config.branch.trim() ? { branch: config.branch.trim() } : {}) }),
+      });
+      if (!answer.ok && answer.status !== 404) throw fail('GitHub delete', answer.status, await answer.text());
     },
   };
 }
