@@ -308,8 +308,8 @@ export const PICKER: Record<"combo" | "caveman" | "rtk" | "ponytail" | "pstack" 
   combo: {
     field: "comboDefault",
     options: [
-      { id: "off", label: "Off" }, { id: "lite", label: "Lite" },
-      { id: "balanced", label: "Balanced" }, { id: "max", label: "Max" },
+      { id: "off", label: "Off" }, { id: "lite", label: "Lite (recommended)" },
+      { id: "balanced", label: "Balanced (not recommended)" }, { id: "max", label: "Max" },
     ],
   },
   caveman: {
@@ -351,8 +351,8 @@ export const DEFAULT_ROWS_UI: Array<{ field: keyof DefaultsPayload; label: strin
     hint: "Sets caveman, RTK and Ponytail together. pstack is separate.",
     options: [
       { id: "off", label: "Off" },
-      { id: "lite", label: "Lite" },
-      { id: "balanced", label: "Balanced (Recommended)" },
+      { id: "lite", label: "Lite (recommended)" },
+      { id: "balanced", label: "Balanced (not recommended)" },
       { id: "max", label: "Max" },
       { id: "custom", label: "Custom" },
     ],
