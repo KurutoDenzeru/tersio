@@ -395,9 +395,7 @@ function DataPane() {
   const [schedule, setSchedule] = useState("monthly");
   const [keep, setKeep] = useState(3);
   const [dir, setDir] = useState("");
-  /** The snapshot the footer works on. A name the list no longer holds reads as no pick. */
-  const [picked, setPicked] = useState<string | null>(null);
-  /** Multi-select prunes several snapshots at once; restore still works on one. */
+  /** The one list of picks: selecting one enables Restore, selecting several enables Delete. */
   const [selected, setSelected] = useState<string[]>([]);
   const [asking, setAsking] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<string | null>(null);
@@ -476,7 +474,6 @@ function DataPane() {
       .then((d: { ok?: boolean; name?: string; error?: string }) => {
         if (d?.ok) {
           toast("Snapshot taken", `One file: ${d.name}.`, "check");
-          if (d.name) setPicked(d.name);
           load();
           requestReload();
         } else toast("Backup failed", d?.error ?? "The server did not answer.", "circle-alert");
@@ -507,7 +504,7 @@ function DataPane() {
 
   const remove = (name: string): void => {
     setConfirming(null);
-    setPicked(null);
+    setSelected([]);
     void fetch("/api/data", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -541,7 +538,6 @@ function DataPane() {
         if (d?.ok) {
           toast("Snapshots deleted", `${d.deleted?.length ?? selected.length} removed.`, "check");
           setSelected([]);
-          setPicked(null);
           load();
         } else toast("Delete failed", d?.error ?? "The server did not answer.", "circle-alert");
       })
@@ -570,8 +566,8 @@ function DataPane() {
 
   const target = (backups ?? []).find((b) => b.name === asking) ?? null;
   const doomed = (backups ?? []).find((b) => b.name === confirming) ?? null;
-  /** The footer works on the picked row, unless a restore confirm owns the screen. */
-  const chosen = (backups ?? []).find((b) => b.name === picked) ?? null;
+  /** One pick restores; several picks delete. Nothing else is selected implicitly. */
+  const chosen = selected.length === 1 ? (backups ?? []).find((b) => b.name === selected[0]) ?? null : null;
   const retentionLabel = RETENTION_OPTIONS.find((o) => o.id === retention)?.label ?? "Forever";
   const retentionHint = RETENTION_OPTIONS.find((o) => o.id === retention)?.hint ?? "";
   const scheduleLabel = SCHEDULE_OPTIONS.find((o) => o.id === schedule)?.label ?? "Monthly";
@@ -662,7 +658,7 @@ function DataPane() {
               <span className="mono min-w-0 flex-1 truncate text-[11px] text-dim">
                 {selected.length > 1
                   ? `${selected.length} selected`
-                  : chosen ? `${dataStamp(chosen.mtime)} · ${dataSize(chosen.bytes)}` : "Pick a snapshot to restore or delete it."}
+                  : chosen ? `${dataStamp(chosen.mtime)} · ${dataSize(chosen.bytes)}` : "Select one to restore, or several to delete."}
               </span>
               <Button
                 size="sm"
@@ -711,7 +707,6 @@ function DataPane() {
           <div className="max-h-[19rem] overflow-y-auto">
             <div className="divide-y divide-line">
               {backups.map((b) => {
-                const on = b.name === picked;
                 const checked = selected.includes(b.name);
                 return (
                   <div key={b.name} className="flex items-center gap-2">
@@ -724,12 +719,12 @@ function DataPane() {
                   />
                   <button
                     type="button"
-                    aria-pressed={on}
+                    aria-pressed={checked}
                     className={cn(
-                      "group flex w-full items-center gap-3 py-2 text-left transition-colors hover:bg-track/40 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent",
-                      on && "bg-accent-soft",
+                      "group flex min-w-0 flex-1 items-center gap-3 py-2 text-left transition-colors hover:bg-track/40 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent",
+                      checked && "bg-accent-soft",
                     )}
-                    onClick={() => setPicked(on ? null : b.name)}
+                    onClick={() => toggleSelected(b.name)}
                   >
                     <div className="min-w-0 flex-1">
                       <HoverTip content={`${b.name} — ${b.members.map((f) => f.label).join(", ")}`}>
@@ -739,7 +734,6 @@ function DataPane() {
                         {dataSize(b.bytes)} · 1 file
                       </p>
                     </div>
-                    {on && <Icon name="check" className="mr-1.5 size-3.5 shrink-0 text-accent" />}
                   </button>
                   </div>
                 );
