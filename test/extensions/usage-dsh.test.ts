@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { zstdCompressSync } from "node:zlib";
 import { agentOfSessionText, classifySessionLine, hostOfSessionFile, newSessionAccum, processSessionText, readSessionText } from "../../extensions/shared/usage-ledger.ts";
+import { foldTraces } from "../../extensions/shared/agent-stats.ts";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -64,5 +65,31 @@ describe("DeepSeek Harness transcripts", () => {
     expect(readSessionText(file)).toBe('{"type":"session"}\n');
     writeFileSync(file, Buffer.from("not zstd"));
     expect(readSessionText(file)).toBeNull();
+  });
+});
+
+describe("trace folding", () => {
+  const row = (sessionFile: string) => ({
+    sessionFile,
+    project: "proj",
+    cwd: "",
+    title: null,
+    requests: 1,
+    tokens: 10,
+    costUsd: 0,
+    unpriced: 0,
+    models: ["m"],
+    toolCalls: 0,
+    subagents: 0,
+    firstTs: 1,
+    lastTs: 2,
+  });
+
+  test("DeepSeek Harness sessions stay out of Tersio's trace list", () => {
+    const folded = foldTraces([
+      row("/Users/me/.pi/agent/sessions/proj/s1.jsonl"),
+      row("/Users/me/.dsh/sessions/ws/session-1/session.v4.jsonl.zstd"),
+    ]);
+    expect(folded.map((entry) => entry.sessionFile)).toEqual(["/Users/me/.pi/agent/sessions/proj/s1.jsonl"]);
   });
 });

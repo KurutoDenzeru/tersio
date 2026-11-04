@@ -17,7 +17,7 @@ import { readRtkGainByVerb, rtkGainFailure } from './rtk-gain.ts';
 import { readHeadroomDoctor, readHeadroomSavings, readHeadroomStats } from './headroom-gain.ts';
 import { headroomProxyPort } from './headroom-proxy.ts';
 import { describeHeadroomRoute, readHeadroomRoute } from './headroom-routing.ts';
-import { readRtkAdoption, readSessionText } from './usage-ledger.ts';
+import { hostOfSessionFile, readRtkAdoption, readSessionText } from './usage-ledger.ts';
 import type { RtkAdoption } from './usage-ledger.ts';
 
 
@@ -556,9 +556,11 @@ function readStatsDb(db: string, cutoff: number, bucketMs: number, parts: Set<st
 }
 
 /** Fold every child transcript into its root session, or a row per file would show one row per subagent. */
-function foldTraces(rows: AgentTraceRow[]): AgentTraceRow[] {
+export function foldTraces(rows: AgentTraceRow[]): AgentTraceRow[] {
   const byRoot = new Map<string, AgentTraceRow>();
   for (const row of rows) {
+    // DeepSeek Harness ships its own Trajectory view; Tersio's flamegraph would only duplicate it.
+    if (hostOfSessionFile(row.sessionFile) === 'dsh') continue;
     const rootFile = rootSessionFile(row.sessionFile);
     const held = byRoot.get(rootFile);
     if (!held) {
