@@ -88,7 +88,7 @@ const MODE_GLYPHS = [
 export function ModeBanner({ modes, onOpen, loading, full }: { modes: ModeState | null; onOpen: () => void; loading?: boolean; full?: boolean }) {
   const level = modes?.comboLevel ?? modes?.comboDefault ?? "off";
   const on = level !== "off";
-  const label = on ? `COMBO ${level.toUpperCase()}` : "COMBO OFF";
+  const label = on ? level.toUpperCase() : "OFF";
   const boxRef = useRef<HTMLSpanElement>(null);
   const trackRef = useRef<HTMLSpanElement>(null);
   const [scroll, setScroll] = useState(false);
@@ -121,12 +121,12 @@ export function ModeBanner({ modes, onOpen, loading, full }: { modes: ModeState 
   }
   const row = (key: string): ReactNode => (
     <span key={key} className="flex shrink-0 items-center">
-      {MODE_GLYPHS.map((m, i) => (
+      {MODE_GLYPHS.map((m) => (
         <span key={m.key} className="inline-flex items-center">
-          {i > 0 && <span className="mr-1.5 text-dim">|</span>}
+          <span className="mr-1.5 text-dim">|</span>
           <span className="mr-1.5 inline-flex items-center gap-0.5">
             <span className="text-[12px]">{m.glyph}</span>
-            <span className="text-dim">{m.label}=</span>
+            <span className="text-dim">{m.label}:</span>
             <span className={on ? "font-semibold text-ink" : "text-dim"}>{modes ? m.level(modes) : "OFF"}</span>
           </span>
         </span>
@@ -137,7 +137,7 @@ export function ModeBanner({ modes, onOpen, loading, full }: { modes: ModeState 
     <button
       type="button"
       onClick={onOpen}
-      title={`${label}: ${MODE_GLYPHS.map((m) => `${m.label}=${modes ? m.level(modes) : "OFF"}`).join(", ")}. Open the Quick start to change it.`}
+      title={`${label} | ${MODE_GLYPHS.map((m) => `${m.label}:${modes ? m.level(modes) : "OFF"}`).join(" | ")}. Open the Quick start to change it.`}
       className={cn(
         "mono flex h-8 min-w-0 max-w-[540px] cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 text-[11px] transition-[background,border-color] duration-200 hover:bg-track",
         full && "w-full max-w-none",
