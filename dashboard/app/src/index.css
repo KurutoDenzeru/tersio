@@ -388,3 +388,11 @@
 @media (min-width: 1024px) {
   [data-stat-band] > :last-child { grid-column: span var(--stat-band-span-lg, 1); }
 }
+
+/* The primary control follows the accent picker. Before this, every theme pinned emerald, so a rose
+   dashboard still drew its main action green. A light accent needs dark ink and a dark accent needs light. */
+html[data-accent] { --primary: var(--accent); --primary-foreground: #fff; }
+html[data-theme="dark"][data-accent] { --primary: var(--accent); --primary-foreground: #0b0b0d; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"])[data-accent] { --primary: var(--accent); --primary-foreground: #0b0b0d; }
+}
