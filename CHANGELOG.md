@@ -1,12 +1,16 @@
 ## Unreleased
 
 ### Added
+- A Benchmark page for developers: every measured result in one place, with charts, the raw tables, and the notes each run wrote.
 - A history window in Settings → Data. Keep usage for 7 days to a year, or forever.
 - Tersio now works with DeepSeek Harness: install, update, remove, and dashboard support.
 - The dashboard can open on your phone, with a QR code for the address.
 - Models and providers now lead with token volume, with request share beside it.
 
 ### Changed
+- Lite is the recommended Combo preset. Balanced is marked as not recommended.
+- The readme lists the benchmark numbers in a single table, and the tagline no longer repeats the guide.
+- The benchmark guide and its result files describe only what a run records. The command-surface rows and the unfilled review-round column are gone.
 - The dashboard is faster and calmer: remembered ranges, smaller downloads, a cleaner layout, larger Settings, simpler drawers, and a clearer Add agent picker.
 - The Upstream page now explains the scorecard in plain English: the pin, the copy, drift, gaps, what is lacking, and the full ledger. The radar chart stays, and the agent table lists Tersio hosts only.
 - The benchmark guide is now `docs/BENCHMARK.md`, and the old per-agent result files are gone. Results use one file per mode or stack: `BENCH_CAVEMAN`, `BENCH_PONYTAIL`, `BENCH_RTK`, `BENCH_HEADROOM`, `BENCH_PSTACK`, `BENCH_COMBO`, `BENCH_COMBO_HEADROOM`, `BENCH_COMBO_PSTACK`, and `BENCH_COMBO_ALL`. The guide adds a Headroom compression check that reads proxy JSONL and verifies a token drop plus the surviving sentinel.
@@ -30,6 +34,9 @@
 - An OpenCode plugin entry that outlives its tree now reads as declared, so the install menu and doctor name the missing tree instead of the whole agent.
 
 ### Fixed
+- A Headroom route that another tool reset is put back automatically at the next session, so you no longer edit the gateway by hand.
+- The dashboard action button follows your accent colour instead of staying green.
+- The check icon on the Upstream page spins while a check runs.
 - A Headroom switch writes the provider block an agent keeps in its own catalog. Pi and PiG take the endpoint and models from `models-store.json`, so a provider with no `models.json` block is routed without a hand edit, and the same path serves omp.
 - Oh My Pi routes a model whose id names a provider it keeps built-in, such as `commandcode/...`. Tersio writes the block that provider needs and reads its real endpoint from omp's model cache, so the route chip no longer says `routed via magpie` while traffic leaves for the provider's own API.
 - A model that names its own endpoint is routed with its provider. Pi, PiG, and Oh My Pi read and write both.
