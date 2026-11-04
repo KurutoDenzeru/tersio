@@ -1,4 +1,4 @@
-# Tersio benchmark: Combo + Headroom + pstack
+# Tersio benchmark: 🧩 Combo + 🍃 Headroom + 🥔 pstack
 
 Protocol: [BENCHMARK.md](./BENCHMARK.md).
 
@@ -45,23 +45,6 @@ No run edited a test file.
 | Log, `/v1/compress` | 7397 | 377 | 7020 | 94.9% | `router:log:0.05` | pass |
 | Grep-style tool_result, proxy path | 13670 | 11282 | 2388 | 17.5% | `router:excluded:lossless_search` | pass in `request_messages` |
 
-## pstack quality
-
-| Case | Pass | Review rounds | Wrong turns | Test files edited |
-|---|---:|---:|---:|---:|
-| Combo `lite` + all | 1/1 | not measured | 0 | 0 |
-| Combo `balanced` + all | 1/1 | not measured | 0 | 0 |
-| Combo `max` + all | 1/1 | not measured | 0 | 0 |
-
-## Command surface
-
-| Command | Level | Path | Reply median | Δ Tokens | Δ% | Total median | Δ Net | Quality |
-|---|---|---|---:|---:|---:|---:|---:|---:|
-| (none) | — | — | | 0 | 0% | | 0 | /5 |
-| `/combo` | `lite` | slash | | | | | | /5 |
-| `/combo` | `balanced` | slash | | | | | | /5 |
-| `/combo` | `max` | slash | | | | | | /5 |
-
 ## Findings
 
 - The full stack costs 4,896 to 5,445 session tokens per prose case over base. No prose saving survives the Δ Net column.
@@ -69,7 +52,7 @@ No run edited a test file.
 - On the agentic task, `max` + all is the only arm below base, at 16.6% fewer tokens and the shortest wall time, 125.2s.
 - Every agentic run passes and leaves the test files alone.
 - Compression is unchanged by the stack: the same proxy evidence as [BENCH_COMBO_HEADROOM.md](./BENCH_COMBO_HEADROOM.md).
-- One run per preset cannot rank them, and review rounds were not instrumented.
+- One run per preset cannot rank them.
 
 ## Gates
 

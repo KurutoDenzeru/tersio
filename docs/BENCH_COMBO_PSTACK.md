@@ -1,4 +1,4 @@
-# Tersio benchmark: Combo + pstack
+# Tersio benchmark: 🧩 Combo + 🥔 pstack
 
 Protocol: [BENCHMARK.md](./BENCHMARK.md).
 
@@ -36,30 +36,13 @@ The earlier pass on this file was invalid: the condition files carried per-mode 
 
 No run edited a test file.
 
-## pstack quality
-
-| Case | Pass | Review rounds | Wrong turns | Test files edited |
-|---|---:|---:|---:|---:|
-| Combo `lite` + pstack | 1/1 | not measured | 0 | 0 |
-| Combo `balanced` + pstack | 1/1 | not measured | 0 | 0 |
-| Combo `max` + pstack | 1/1 | not measured | 0 | 0 |
-
-## Command surface
-
-| Command | Level | Path | Reply median | Δ Tokens | Δ% | Total median | Δ Net | Quality |
-|---|---|---|---:|---:|---:|---:|---:|---:|
-| (none) | — | — | | 0 | 0% | | 0 | /5 |
-| `/combo` | `lite` | slash | | | | | | /5 |
-| `/combo` | `balanced` | slash | | | | | | /5 |
-| `/combo` | `max` | slash | | | | | | /5 |
-
 ## Findings
 
 - The pstack body costs about 3,600 to 5,400 session tokens on prose, on top of the preset blocks.
 - On the agentic task, `balanced` spends 45.1% more tokens than base on its single run, taking 8 turns. `lite` stays within 1.9% of base.
 - Every preset fixes the failing test and leaves the test files alone.
 - The prose pass rate sits below base for every preset with pstack, so no prose saving is published.
-- One run per preset cannot rank them. Review rounds were not instrumented, so that column stays unmeasured rather than guessed.
+- One run per preset cannot rank them.
 
 ## Gates
 

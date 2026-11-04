@@ -1,4 +1,4 @@
-# Tersio benchmark: Combo
+# Tersio benchmark: 🧩 Combo
 
 Protocol: [BENCHMARK.md](./BENCHMARK.md).
 
@@ -36,15 +36,6 @@ The earlier pass on this file was invalid: the condition files carried per-mode 
 
 No run edited a test file.
 
-## Command surface
-
-| Command | Level | Path | Reply median | Δ Tokens | Δ% | Total median | Δ Net | Quality |
-|---|---|---|---:|---:|---:|---:|---:|---:|
-| (none) | — | — | | 0 | 0% | | 0 | /5 |
-| `/combo` | `lite` | slash | | | | | | /5 |
-| `/combo` | `balanced` | slash | | | | | | /5 |
-| `/combo` | `max` | slash | | | | | | /5 |
-
 ## Findings
 
 - On prose, no preset saves session tokens. Every preset pays its block on every turn, so Δ Net runs from +1,343 to +1,882.
@@ -57,4 +48,3 @@ No run edited a test file.
 
 - Prose: three sentences and every required keyword.
 - Agentic: the suite passes and no test file was edited.
-- Command surface: the same quality gate as the same prompt without the command.

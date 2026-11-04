@@ -1,4 +1,4 @@
-# Tersio benchmark: RTK
+# Tersio benchmark: 🗜️ RTK
 
 Protocol: [BENCHMARK.md](./BENCHMARK.md).
 

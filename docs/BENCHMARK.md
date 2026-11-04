@@ -71,37 +71,6 @@ from a byte count reads a little higher than the same body counted in characters
 Ponytail ships one body for all three levels and states the level in its header, so the three levels
 differ by that line rather than by size.
 
-### Command surface
-
-Run this surface when the question is "what does the command cost", not "what does the mode cost".
-One row per command **and level**, so `/caveman` alone is six rows.
-
-| Command | Every level to measure |
-|---|---|
-| `/caveman` | `lite`, `full`, `ultra`, `megacave-lite`, `megacave-full`, `megacave-ultra` |
-| `/ponytail` | `lite`, `full`, `ultra` |
-| `/pstack` | `on` |
-| `/combo` | `lite`, `balanced`, `max` |
-
-Procedure for one command case:
-
-1. Use the benchmark's one session, with every mode `off`.
-2. In that session, issue the command, then ask prompt P1.
-3. Record P1's reply and the turn's totals.
-4. Clear the context and repeat for the case's runs.
-5. The difference against a base turn that asked P1 with no command is the command's cost.
-
-A command and its prompt go in one turn, so the command's block lands on the turn that answers
-the prompt. Most harnesses accept a command and a prompt together in one non-interactive call, so
-this surface needs no interactive session. If your harness does not, use its interactive mode and
-read the totals from the session record.
-
-The block is injected once, so the command costs its body and not its body times the turns. Expect
-the session growth to land near the static size of the body.
-
-`/combo` is the expensive case by construction: it injects four blocks at once. Measure it, but
-report it separately from the single-mode commands, because it is a preset and not a mode.
-
 ## 2. Setup
 
 1. Install Tersio for your agent, then run the health check and confirm it passes.
@@ -214,7 +183,6 @@ surfaces. The matrix below is the full scope.
 | Code | Ponytail (3 levels) | 3 prompts, each asking for TypeScript functions. | Reply tokens |
 | Agentic | Combo (3), Combo stacks, pstack, RTK | Run the suite. Fix the failing test. Stop when it passes. | Total tokens, time, pass rate |
 | Command output | RTK | Run `bun run bench` over the committed fixtures. | Output bytes, time, fidelity |
-| Command surface | Every command and level | Issue one slash command, then ask P1. | Reply tokens, total tokens, quality |
 | Compression | Headroom | Send one fixed log and one fixed JSON payload through the proxy. | Tokens before, tokens after, transforms, sentinel survival |
 
 The prompt overhead of a mode is inside the Total median column, because a mode's block lands in the
@@ -263,9 +231,8 @@ A saving counts only when the output stays correct.
 - **Prose**: exactly three sentences, with every required keyword.
 - **Agentic**: the suite passes, and no test file was edited.
 - **Command output**: the failing test name, its assertion, its file, and its line remain, and the exit code matches.
-- **Command surface**: the reply after the command passes the same gate as the same prompt without it, and the session records which path was used.
 - **Headroom**: the proxy record shows `tokens_saved > 0`, a non-empty `transforms_applied`, and every required sentinel line or JSON key in the compressed messages. A configured switch with no proxy record is a failure.
-- **pstack**: score the agentic pass rate, the review rounds, and the wrong turns. A green suite with a wrong turn is a failure.
+- **pstack**: score the agentic pass rate and the wrong turns. A green suite with a wrong turn is a failure.
 
 Do not publish a saving for any mode whose pass rate is below base.
 
@@ -298,8 +265,8 @@ the columns given. Leave a cell blank until it is measured. Keep every row, incl
 measured nothing useful, because a skipped row is a hole in the file.
 
 Reply median and Total median are the two numbers a reader compares across agents. Δ Tokens and
-Δ Net are the two deltas against base. pstack is scored on quality and review rounds only, so its
-session columns stay `n/a`.
+Δ Net are the two deltas against base. pstack is scored on the agentic pass rate and the wrong
+turns, so its session columns stay `n/a`.
 
 ### Prose
 
@@ -341,31 +308,6 @@ records whether any test file was edited, in the text under the table, because t
 | Combo `max` | ___ | ___ | ___ | ___% | ___ | ___/5 |
 
 The base row's wall time is the baseline every other row subtracts from.
-
-### Command surface
-
-One row per command **and level**. Keep the path column filled in, because a saved default and a
-slash command are not comparable.
-
-| Command | Level | Path | Reply median | Δ Tokens | Δ% | Total median | Δ Net | Quality |
-|---|---|---|---:|---:|---:|---:|---:|---:|
-| (none) | — | — | ___ | 0 | 0% | ___ | 0 | ___/5 |
-| `/caveman` | `lite` | slash | ___ | ___ | ___% | ___ | ___ | ___/5 |
-| `/caveman` | `full` | slash | ___ | ___ | ___% | ___ | ___ | ___/5 |
-| `/caveman` | `ultra` | slash | ___ | ___ | ___% | ___ | ___ | ___/5 |
-| `/caveman` | `megacave-lite` | slash | ___ | ___ | ___% | ___ | ___ | ___/5 |
-| `/caveman` | `megacave-full` | slash | ___ | ___ | ___% | ___ | ___ | ___/5 |
-| `/caveman` | `megacave-ultra` | slash | ___ | ___ | ___% | ___ | ___ | ___/5 |
-| `/ponytail` | `lite` | slash | ___ | ___ | ___% | ___ | ___ | ___/5 |
-| `/ponytail` | `full` | slash | ___ | ___ | ___% | ___ | ___ | ___/5 |
-| `/ponytail` | `ultra` | slash | ___ | ___ | ___% | ___ | ___ | ___/5 |
-| `/pstack` | `on` | slash | ___ | ___ | ___% | ___ | ___ | ___/5 |
-| `/combo` | `lite` | slash | ___ | ___ | ___% | ___ | ___ | ___/5 |
-| `/combo` | `balanced` | slash | ___ | ___ | ___% | ___ | ___ | ___/5 |
-| `/combo` | `max` | slash | ___ | ___ | ___% | ___ | ___ | ___/5 |
-
-Report `/combo` rows separately from the single-mode commands. A preset injects every block at
-once, so its Δ Net is not comparable to one mode's.
 
 ### Command output
 
@@ -515,7 +457,7 @@ Write one file per mode or stack. Do not create a single `BENCHMARK_<AGENT>.md`.
 | [BENCH_PONYTAIL.md](./BENCH_PONYTAIL.md) | Ponytail, all three levels |
 | [BENCH_RTK.md](./BENCH_RTK.md) | RTK command output and the agentic row |
 | [BENCH_HEADROOM.md](./BENCH_HEADROOM.md) | Headroom compression |
-| [BENCH_PSTACK.md](./BENCH_PSTACK.md) | pstack quality and review rounds |
+| [BENCH_PSTACK.md](./BENCH_PSTACK.md) | pstack agentic quality |
 | [BENCH_COMBO.md](./BENCH_COMBO.md) | Combo `lite`, `balanced`, `max` |
 | [BENCH_COMBO_HEADROOM.md](./BENCH_COMBO_HEADROOM.md) | Combo plus Headroom |
 | [BENCH_COMBO_PSTACK.md](./BENCH_COMBO_PSTACK.md) | Combo plus pstack |
@@ -545,13 +487,13 @@ header under its own second-level agent heading. Use one mode or stack per file.
 
 Then include only the sections this mode or stack needs:
 
-- Caveman: Prose and Command surface.
-- Ponytail: Code and Command surface.
+- Caveman: Prose.
+- Ponytail: Code.
 - RTK: Command output and Agentic.
 - Headroom: Compression.
 - pstack: Agentic quality.
 - Combo, Combo + Headroom, Combo + pstack, Combo + everything: Prose, Agentic, and the matching
-  Headroom or pstack section. Add Command surface when the run measured the `/combo` command.
+  Headroom or pstack section.
 
 Keep every row, including levels that measured nothing useful, and keep the path column: a saved
 default and a slash command are different measurements.

@@ -1,4 +1,4 @@
-# Tersio benchmark: Caveman
+# Tersio benchmark: 🪨 Caveman
 
 Protocol: [BENCHMARK.md](./BENCHMARK.md).
 
@@ -28,20 +28,6 @@ A probe confirmed each level's body lands in the system prompt before any measur
 | Caveman `megacave-full` | 188 | 69 | 58.0% | 2460 | 844 | 0/15 |
 | Caveman `megacave-ultra` | 174 | 55 | 46.2% | 2405 | 789 | 4/15 |
 
-## Command surface
-
-| Command | Level | Path | Reply median | Δ Tokens | Δ% | Total median | Δ Net | Quality |
-|---|---|---|---:|---:|---:|---:|---:|---:|
-| (none) | — | — | | 0 | 0% | | 0 | /5 |
-| `/caveman` | `lite` | slash | | | | | | /5 |
-| `/caveman` | `full` | slash | | | | | | /5 |
-| `/caveman` | `ultra` | slash | | | | | | /5 |
-| `/caveman` | `megacave-lite` | slash | | | | | | /5 |
-| `/caveman` | `megacave-full` | slash | | | | | | /5 |
-| `/caveman` | `megacave-ultra` | slash | | | | | | /5 |
-
-The command surface was not run: it needs 5 runs per command and level.
-
 ## Findings
 
 - `ultra` is the strongest case: reply tokens −15.1%, quality 12/15, the only level above base quality, and Δ Net +612 is the smallest session cost of the six levels. Verdict: a small reply saving at a modest fixed prompt cost.
@@ -54,4 +40,3 @@ The command surface was not run: it needs 5 runs per command and level.
 ## Gates
 
 - Prose: three sentences and every required keyword.
-- Command surface: the same quality gate as the same prompt without the command.

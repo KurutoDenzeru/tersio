@@ -1,4 +1,4 @@
-# Tersio benchmark: pstack
+# Tersio benchmark: 🥔 pstack
 
 Protocol: [BENCHMARK.md](./BENCHMARK.md).
 
@@ -16,25 +16,20 @@ Protocol: [BENCHMARK.md](./BENCHMARK.md).
 
 **Verdict: pstack passes 5/5 with zero wrong turns and no test edits, the same as base. It costs +17.9% tokens and saves 4.3s of wall time on a fixture whose bug is a one-line fix, so quality cannot separate the arms here. Read it as: the rigor mode is safe and carries a small overhead on easy tasks.**
 
-## Agentic quality
+## Agentic
 
-| Case | Pass | Review rounds | Wrong turns | Test files edited |
-|---|---:|---:|---:|---:|
-| Base (`off`) | 5/5 | not measured | 0 | 0 |
-| pstack `on` | 5/5 | not measured | 0 | 0 |
+| Case | Reply median | Total median | Δ Net | Δ% | Wall median | Pass |
+|---|---:|---:|---:|---:|---:|---:|
+| Base (`off`) | 511 | 40176 | 0 | 0% | 135.5s | 5/5 |
+| pstack `on` | 563 | 47356 | 7180 | 17.9% | 131.2s | 5/5 |
 
-Measured alongside the quality cells, for the reader who wants the cost:
-
-| Case | Reply median | Total median | Δ Net | Δ% | Wall median | Turns (min-max) |
-|---|---:|---:|---:|---:|---:|---|
-| Base (`off`) | 511 | 40176 | 0 | 0% | 135.5s | 5-7 |
-| pstack `on` | 563 | 47356 | 7180 | 17.9% | 131.2s | 5-8 |
+Turns: base 5-7, pstack 5-8.
 
 ## Findings
 
 - Both arms pass 5 of 5, with no wrong turns and no test-file edits. The agentic gate holds everywhere, so quality cannot separate the arms on this fixture.
 - pstack costs 17.9% more total tokens in this sample and saves 4.3 seconds of wall time. With base token spread of 33,348 to 47,299, the Δ Net cell (+7,180) sits at the edge of the base's own range. Verdict: a real prompt cost, no measured quality gain, a small wall-time gain.
-- Turns overlap (base 5-7, pstack 5-8), so pstack does not add review rounds here; the review-round column stays unmeasured rather than guessed.
+- Turns overlap (base 5-7, pstack 5-8), so pstack adds no review rounds on this task.
 - The fixture's bug is a one-line source fix. A task that needed design review would exercise pstack harder; this fixture can only measure overhead on an easy task.
 
 ## Gates

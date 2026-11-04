@@ -1,4 +1,4 @@
-# Tersio benchmark: Combo + Headroom
+# Tersio benchmark: 🧩 Combo + 🍃 Headroom
 
 Protocol: [BENCHMARK.md](./BENCHMARK.md).
 
@@ -45,15 +45,6 @@ No run edited a test file.
 
 Request IDs `hr_1793705048_000001` and `hr_1793705186_000001`, measured once on a disposable proxy and independent of the preset. The agent's endpoint is `http://127.0.0.1:8787/v1` and the proxy upstream is `http://127.0.0.1:3425/v1`, so agent traffic reaches Headroom before the gateway.
 
-## Command surface
-
-| Command | Level | Path | Reply median | Δ Tokens | Δ% | Total median | Δ Net | Quality |
-|---|---|---|---:|---:|---:|---:|---:|---:|
-| (none) | — | — | | 0 | 0% | | 0 | /5 |
-| `/combo` | `lite` | slash | | | | | | /5 |
-| `/combo` | `balanced` | slash | | | | | | /5 |
-| `/combo` | `max` | slash | | | | | | /5 |
-
 ## Findings
 
 - Headroom adds no per-turn block beyond its instruction, so its prose Δ Net matches plain Combo within rounding.
@@ -66,4 +57,3 @@ Request IDs `hr_1793705048_000001` and `hr_1793705186_000001`, measured once on 
 
 - Prose: three sentences and every required keyword.
 - Headroom: `tokens_saved > 0`, a non-empty `transforms_applied`, the sentinel survives, and the agent endpoint points at the proxy.
-- Command surface: the same quality gate as the same prompt without the command.

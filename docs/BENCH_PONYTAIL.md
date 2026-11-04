@@ -1,4 +1,4 @@
-# Tersio benchmark: Ponytail
+# Tersio benchmark: 🧠 Ponytail
 
 Protocol: [BENCHMARK.md](./BENCHMARK.md).
 
@@ -35,17 +35,6 @@ Code size, from the same runs:
 | Ponytail `full` | 731 | 24.0 |
 | Ponytail `ultra` | 752 | 28.0 |
 
-## Command surface
-
-| Command | Level | Path | Reply median | Δ Tokens | Δ% | Total median | Δ Net | Quality |
-|---|---|---|---:|---:|---:|---:|---:|---:|
-| (none) | — | — | | 0 | 0% | | 0 | /5 |
-| `/ponytail` | `lite` | slash | | | | | | /5 |
-| `/ponytail` | `full` | slash | | | | | | /5 |
-| `/ponytail` | `ultra` | slash | | | | | | /5 |
-
-The command surface was not run.
-
 ## Findings
 
 - Token verdict: neutral. Δ Net spans −70 to +302, inside this sample's noise, and quality holds at base (13/15) or one sample below (12/15).
@@ -57,4 +46,3 @@ The command surface was not run.
 ## Gates
 
 - Code: strict type check, requested names present, and every run's code compiles.
-- Command surface: the same quality gate as the same prompt without the command.

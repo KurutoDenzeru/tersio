@@ -1,4 +1,4 @@
-# Tersio benchmark: Headroom
+# Tersio benchmark: 🍃 Headroom
 
 Protocol: [BENCHMARK.md](./BENCHMARK.md), section 9.
 
