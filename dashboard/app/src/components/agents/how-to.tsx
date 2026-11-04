@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/icon";
 import { usePending } from "@/hooks/use-pending";
 import { isFileExport } from "@/lib/data";
-import { fetchHealth } from "@/lib/data";
+import { fetchHealth, fetchWrapTargets } from "@/lib/data";
 import type { ModeState } from "./shell";
 import { useToast } from "../toaster";
 import { AddAgentDialog } from "./how-to-node-ui";
@@ -15,6 +15,7 @@ import type { HostAction, HostState, NodeId } from "./pipeline-model";
 export function HowToPage({ modes, onModesChanged }: { modes: ModeState | null; onModesChanged: () => void }) {
   const toast = useToast();
   const [hostState, setHostState] = useState<HostState>({ installed: {}, present: {}, versions: {} });
+  const [headroomRoutes, setHeadroomRoutes] = useState<Record<string, boolean>>({});
   const [busy, setBusy] = useState<NodeId | null>(null);
   const [hostsLoaded, setHostsLoaded] = useState(false);
   // An exported file has no server: /settings never answers, so the documented every-node-lit reading holds there instead of a permanent skeleton.
@@ -23,6 +24,12 @@ export function HowToPage({ modes, onModesChanged }: { modes: ModeState | null; 
   const [addOpen, setAddOpen] = useState(false);
 
   useEffect(() => {
+    const readRoutes = (): void => {
+      void fetchWrapTargets().then((state) => {
+        if (!state) return;
+        setHeadroomRoutes(Object.fromEntries(state.targets.map((target) => [target.name, target.installed === true])));
+      });
+    };
     void readHosts()
       .then((rows) => {
         if (rows) setHostState((s) => ({ ...s, installed: Object.fromEntries(rows.map((row) => [row.id, row.installed])) }));
@@ -35,6 +42,9 @@ export function HowToPage({ modes, onModesChanged }: { modes: ModeState | null; 
       const paths = { omp: report.ompPath, pi: report.piPath, pig: report.pigPath, opencode: report.opencodePath };
       setHostState((s) => ({ ...s, versions, present: Object.fromEntries(Object.entries(paths).map(([id, p]) => [id, Boolean(p)])) }));
     });
+    readRoutes();
+    window.addEventListener("tersio:wrap-changed", readRoutes);
+    return () => window.removeEventListener("tersio:wrap-changed", readRoutes);
   }, []);
 
   const save = (node: NodeId, field: string, value: string | boolean, host?: "omp" | "pi" | "pig" | "opencode" | "dsh"): void => {
@@ -92,6 +102,10 @@ export function HowToPage({ modes, onModesChanged }: { modes: ModeState | null; 
                 const version = versionOf(report[host as "omp" | "pi" | "pig" | "opencode"]);
                 if (version) setHostState((s) => ({ ...s, versions: { ...s.versions, [host]: version } }));
               });
+              void fetchWrapTargets().then((state) => {
+                if (!state) return;
+                setHeadroomRoutes(Object.fromEntries(state.targets.map((target) => [target.name, target.installed === true])));
+              });
               if (job?.code === 0) {
                 toast(`${host}: ${action} done`, "The agent list is up to date.", "check");
               } else if (job) {
@@ -127,6 +141,7 @@ export function HowToPage({ modes, onModesChanged }: { modes: ModeState | null; 
           <PipelineCanvas
             modes={modes}
             hostState={hostState}
+            headroomRoutes={headroomRoutes}
             onSet={save}
             onHostAction={hostAction}
             busy={busy}

@@ -20,7 +20,6 @@ import { Spinner } from "@/components/ui/spinner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "../toaster";
 import { cn } from "cn";
-import { UPCOMING_AGENTS } from "@/lib/agents";
 import { checkVendor, fetchHeadroomWraps, fetchHealth, fetchWrapTargets, type HeadroomWrapTarget, postHeadroomWrap, postHeadroomWraps, postVendorAction, readStoredWraps, storeWraps, type HealthReport, type VendorRow } from "@/lib/data";
 import {
   ABOUT, DEFAULT_ROWS_UI, HOSTS, MODES, OFF_DEFAULTS, PICKER, nodeGlyph, nodeTitle, nodeValue, versionOf,
@@ -538,13 +537,19 @@ export function wrapNotice(target: { label?: string; durable?: boolean } | undef
 }
 
 /** The headroom node opens the wrap drawer: one switch per installed tool, run by Tersio itself. */
-export function HeadroomDrawer({ open, onOpenChange, modes, busy, onSet, onSaved }: Omit<NodeSurfaceProps, "node" | "hostState" | "onHostAction">) {
+export function HeadroomDrawer({ open, onOpenChange, modes, hostState, busy, onSet, onHostAction, onSaved }: Omit<NodeSurfaceProps, "node">) {
   const toast = useToast();
   const [wrapTargets, setWrapTargets] = useState<Array<HeadroomWrapTarget> | null>(null);
+  const [endpoint, setEndpoint] = useState<string | null>(null);
 
   /** One tool row, shared by the durable list and the proxy list. */
   const renderRow = (target: HeadroomWrapTarget) => {
-    const on = wrapped[target.name] === true;
+    // The server's route wins; the stored record is only the optimistic gap before the next fetch.
+    const on = target.installed === true || (target.installed === undefined && wrapped[target.name] === true);
+    const present = target.agentPresent !== false;
+    const installed = target.agentInstalled === true;
+    // A route found by hand has no saved endpoint, so an on switch would have nothing to put back.
+    const editable = installed && !target.manual && (!target.route || !on || target.managed === true);
     return (
       <div
         key={target.name}
@@ -559,7 +564,22 @@ export function HeadroomDrawer({ open, onOpenChange, modes, busy, onSet, onSaved
             ? <AgentLogo host={target.name as "codex"} className="size-3.5 shrink-0" />
             : <BrandMark name={target.name} className={cn("size-3.5", on ? "" : "text-dim")} />}
         <span className={cn("mono min-w-0 flex-1 truncate text-[11px]", on ? "text-ink" : "text-dim")}>{target.label ?? target.name}</span>
-        {target.manual ? (
+        {!present ? (
+          <span className="mono shrink-0 rounded border border-line px-1.5 py-0.5 text-[9px] text-dim">
+            not installed
+          </span>
+        ) : !installed ? (
+          <span className="mono shrink-0 rounded border border-warn-border bg-warn-soft px-1.5 py-0.5 text-[9px] text-warn-text">
+            Tersio missing
+          </span>
+        ) : target.route ? (
+          <span
+            className={cn("mono shrink-0 rounded border px-1.5 py-0.5 text-[9px]", on ? "border-success/40 text-success" : "border-line text-dim")}
+            title={target.detail}
+          >
+            {on ? (editable ? "routed" : "routed by hand") : "off"}
+          </span>
+        ) : target.manual ? (
           <span
             className="mono shrink-0 rounded border border-line px-1.5 py-0.5 text-[9px] text-dim"
             title={target.headroomInstall
@@ -570,10 +590,21 @@ export function HeadroomDrawer({ open, onOpenChange, modes, busy, onSet, onSaved
           </span>
         ) : (
           <span className={cn("mono shrink-0 rounded border px-1 py-0.5 text-[9px]", on ? "border-success/40 text-success" : "border-line text-dim")}>
-            {on ? "durable" : "ready"}
+            {on ? "durable" : target.configured ? "configured" : "ready"}
           </span>
         )}
-        {target.manual ? null : (
+        {present && !installed ? (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={busy !== null}
+            onClick={() => onHostAction(`host-${target.name}` as NodeId, "install")}
+            className="h-6 shrink-0 gap-1 px-1.5 text-[10px]"
+          >
+            {busy === `host-${target.name}` ? <Spinner className="size-3" /> : <Icon name="plus" className="size-3" />}
+            Install
+          </Button>
+        ) : target.manual || !editable ? null : (
           <span className="relative inline-flex">
             <Switch
               size="sm"
@@ -591,9 +622,14 @@ export function HeadroomDrawer({ open, onOpenChange, modes, busy, onSet, onSaved
   // Which durable integrations the dashboard has installed; optimistic, kept across drawer opens.
   const [wrapped, setWrapped] = useState<Record<string, true>>(readStoredWraps);
   const [wrapBusy, setWrapBusy] = useState<string | null>(null);
+  // The installer updates the parent's host state, so a finished install re-reads the rows.
+  const hostKey = HOSTS.map((host) => `${host.id}:${hostState.installed[host.id] === true}:${hostState.present[host.id] === true}`).join(",");
   useEffect(() => {
     if (!open) return;
-    void fetchWrapTargets().then((state) => setWrapTargets(state?.targets ?? null));
+    void fetchWrapTargets().then((state) => {
+      setWrapTargets(state?.targets ?? null);
+      setEndpoint(state?.endpoint ?? null);
+    });
     void fetchHealth().then(setHealth);
     void fetchHeadroomWraps().then((server) => {
       if (!server || typeof server !== 'object') return;
@@ -606,7 +642,7 @@ export function HeadroomDrawer({ open, onOpenChange, modes, busy, onSet, onSaved
         void postHeadroomWraps(wrapped);
       }
     });
-  }, [open]);
+  }, [open, hostKey]);
   const headroomInstalled = health?.headroom?.present ?? false;
   const picker = PICKER.headroom;
   const current = nodeValue("headroom", "all", modes);
@@ -657,9 +693,9 @@ export function HeadroomDrawer({ open, onOpenChange, modes, busy, onSet, onSaved
               <span className="mono ml-auto shrink-0 rounded border border-accent/40 px-1.5 py-0.5 text-[9px] text-accent">recommended</span>
             </p>
             <p className="m-0 text-[10px] leading-relaxed text-dim">
-              A switch installs headroom's durable integration. A row marked "headroom install" has a durable
-              path through headroom's own install, which Tersio does not manage. "session only" has no durable
-              install at all.
+              Only Tersio agents appear here. A switch installs headroom's durable integration. A route switch
+              changes only the active provider endpoint and puts the old URL back. "Tersio missing" means the agent
+              is on this machine but its Tersio tree is not; Install writes it.
             </p>
             {wrapTargets === null ? (
               <Skeleton className="h-8 w-full rounded-md" />
@@ -670,6 +706,12 @@ export function HeadroomDrawer({ open, onOpenChange, modes, busy, onSet, onSaved
                 No supported agent was detected on this machine.
               </p>
             )}
+            {wrapTargets?.some((target) => target.route) && endpoint ? (
+              <p className="m-0 rounded-lg border border-line bg-track/40 px-2.5 py-2 text-[10px] leading-relaxed text-dim">
+                Pi, PiG, and DeepSeek Harness route through{" "}
+                <span className="mono text-ink">{endpoint}v1</span>. The switch saves the old endpoint and restores it.
+              </p>
+            ) : null}
 
             <p className="m-0 text-[13px] font-semibold">Session default</p>
             {health === null ? (
@@ -761,12 +803,11 @@ export function AddAgentDialog({
   const linked = HOSTS.filter((host) => hostState.present[host.id] !== false && hostState.installed[host.id] === true);
   const detected = HOSTS.filter((host) => hostState.present[host.id] !== false && hostState.installed[host.id] !== true);
   const absent = HOSTS.filter((host) => hostState.present[host.id] === false);
-  const unavailable = absent.length + UPCOMING_AGENTS.length;
-  // Opening the dialog always lands on what is actually added, then what this machine has.
+  // Opening the dialog always lands on the first group that has a row, so an empty fold never opens.
   useEffect(() => {
     if (!open) return;
-    setExpanded(linked.length > 0 ? "installed" : detected.length > 0 ? "detected" : "unavailable");
-  }, [open, linked.length, detected.length]);
+    setExpanded(linked.length > 0 ? "installed" : detected.length > 0 ? "detected" : absent.length > 0 ? "unavailable" : null);
+  }, [open, linked.length, detected.length, absent.length]);
   const row = (host: typeof HOSTS[number]) => {
     const isPresent = hostState.present[host.id] !== false;
     // Tersio's tree is what makes a host usable here, so a detected harness without it offers Install.
@@ -824,47 +865,36 @@ export function AddAgentDialog({
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-2">
-          <details className="group rounded-xl border border-line" open={expanded === "installed"} onToggle={(e) => { if ((e.target as HTMLDetailsElement).open) setExpanded("installed"); }}>
-            <summary className="mono flex cursor-pointer list-none items-center gap-2 pl-2.5 pr-5 py-2 text-[11px] font-semibold text-ink transition-colors hover:text-accent">
-              <Icon name="chevron-right" className="size-3 shrink-0 transition-transform group-open:rotate-90" />
-              Installed on this machine
-              <span className="mono ml-auto shrink-0 rounded border border-success/40 px-1.5 py-0.5 text-[9px] text-success">{linked.length}</span>
-            </summary>
-            <div className="grid gap-1 px-2.5 pb-2">
-              {linked.length > 0 ? linked.map(row) : <p className="mono m-0 px-1 py-2 text-[10px] text-dim">No agent is added here yet.</p>}
-            </div>
-          </details>
-          <details className="group rounded-xl border border-dashed border-line" open={expanded === "detected"} onToggle={(e) => { if ((e.target as HTMLDetailsElement).open) setExpanded("detected"); }}>
-            <summary className="mono flex cursor-pointer list-none items-center gap-2 pl-2.5 pr-5 py-2 text-[11px] font-semibold text-dim transition-colors hover:text-ink">
-              <Icon name="chevron-right" className="size-3 shrink-0 transition-transform group-open:rotate-90" />
-              Detected, not added
-              <span className="mono ml-auto shrink-0 rounded border border-line px-1.5 py-0.5 text-[9px] text-dim">{detected.length}</span>
-            </summary>
-            <div className="grid gap-1 px-2.5 pb-2">
-              {detected.length > 0 ? detected.map(row) : <p className="mono m-0 px-1 py-2 text-[10px] text-dim">Every detected agent is already added.</p>}
-            </div>
-          </details>
-          <details className="group rounded-xl border border-dashed border-line" open={expanded === "unavailable"} onToggle={(e) => { if ((e.target as HTMLDetailsElement).open) setExpanded("unavailable"); }}>
-            <summary className="mono flex cursor-pointer list-none items-center gap-2 pl-2.5 pr-5 py-2 text-[11px] font-semibold text-dim transition-colors hover:text-ink">
-              <Icon name="chevron-right" className="size-3 shrink-0 transition-transform group-open:rotate-90" />
-              Unavailable
-              <span className="mono ml-auto shrink-0 rounded border border-line px-1.5 py-0.5 text-[9px] text-dim">{unavailable}</span>
-            </summary>
-            <div className="grid gap-1 px-2.5 pb-2">
-              {absent.map(row)}
-              {UPCOMING_AGENTS.map((agent) => (
-                <div
-                  key={agent.id}
-                  aria-disabled="true"
-                  className="flex items-center gap-2 rounded-lg border border-dashed border-line px-2.5 py-2 opacity-55"
-                >
-                  <AgentLogo host={agent.id} className="size-4 shrink-0 grayscale" />
-                  <span className="min-w-0 flex-1 truncate text-[12px]">{agent.name}</span>
-                  <span className="mono shrink-0 rounded border border-line px-1.5 py-0.5 text-[9px] text-dim">coming soon</span>
-                </div>
-              ))}
-            </div>
-          </details>
+          {linked.length > 0 ? (
+            <details className="group rounded-xl border border-line" open={expanded === "installed"} onToggle={(e) => { if ((e.target as HTMLDetailsElement).open) setExpanded("installed"); }}>
+              <summary className="mono flex cursor-pointer list-none items-center gap-2 pl-2.5 pr-5 py-2 text-[11px] font-semibold text-ink transition-colors hover:text-accent">
+                <Icon name="chevron-right" className="size-3 shrink-0 transition-transform group-open:rotate-90" />
+                Installed on this machine
+                <span className="mono ml-auto shrink-0 rounded border border-success/40 px-1.5 py-0.5 text-[9px] text-success">{linked.length}</span>
+              </summary>
+              <div className="grid gap-1 px-2.5 pb-2">{linked.map(row)}</div>
+            </details>
+          ) : null}
+          {detected.length > 0 ? (
+            <details className="group rounded-xl border border-dashed border-line" open={expanded === "detected"} onToggle={(e) => { if ((e.target as HTMLDetailsElement).open) setExpanded("detected"); }}>
+              <summary className="mono flex cursor-pointer list-none items-center gap-2 pl-2.5 pr-5 py-2 text-[11px] font-semibold text-dim transition-colors hover:text-ink">
+                <Icon name="chevron-right" className="size-3 shrink-0 transition-transform group-open:rotate-90" />
+                Detected, not added
+                <span className="mono ml-auto shrink-0 rounded border border-line px-1.5 py-0.5 text-[9px] text-dim">{detected.length}</span>
+              </summary>
+              <div className="grid gap-1 px-2.5 pb-2">{detected.map(row)}</div>
+            </details>
+          ) : null}
+          {absent.length > 0 ? (
+            <details className="group rounded-xl border border-dashed border-line" open={expanded === "unavailable"} onToggle={(e) => { if ((e.target as HTMLDetailsElement).open) setExpanded("unavailable"); }}>
+              <summary className="mono flex cursor-pointer list-none items-center gap-2 pl-2.5 pr-5 py-2 text-[11px] font-semibold text-dim transition-colors hover:text-ink">
+                <Icon name="chevron-right" className="size-3 shrink-0 transition-transform group-open:rotate-90" />
+                Unavailable
+                <span className="mono ml-auto shrink-0 rounded border border-line px-1.5 py-0.5 text-[9px] text-dim">{absent.length}</span>
+              </summary>
+              <div className="grid gap-1 px-2.5 pb-2">{absent.map(row)}</div>
+            </details>
+          ) : null}
         </div>
       </DialogContent>
     </Dialog>

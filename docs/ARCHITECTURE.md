@@ -91,13 +91,15 @@ flowchart LR
   UNDO --> CFG
 ```
 
-- **Only detected tools appear.** Continue is discontinued, and ZCode keeps its settings in a desktop window, so both stay out.
+- **Only Tersio's five agents appear.** Extra Headroom tools never enter the drawer. A present agent without its Tersio tree reads as `Tersio missing` and offers Install. An absent agent reads as `not installed` with no switch.
 - **The runtime comes before the switch.** Tersio starts headroom's saved deployment, or headroom's proxy when none exists, and waits for health. Dashboard start restores an enabled runtime. The Tools page also carries a Start Headroom action.
-- **Only Oh My Pi and OpenCode are routed Tersio hosts.** pi, PiG, and DeepSeek Harness never receive a Headroom prompt, because their traffic has no Headroom route.
-- **A row states its own path.** A switch means a durable setup Tersio manages. `headroom install` means headroom's installer owns it. `session only` means no durable setup exists.
-- **Undo is always headroom's.** Tersio removes its own record only after `headroom unwrap` answers.
-- **The block requires a routed model.** Tersio reads omp's default `modelRoles` entry and OpenCode's active model, resolves the provider base URL, and keeps the block out when the model does not reach the proxy.
+- **Oh My Pi and OpenCode use Headroom's writers.** Pi, PiG, and DeepSeek Harness use Tersio's route writer. It changes only the active provider endpoint, saves that URL in the state row, and puts it back on off.
+- **A row states its own path.** A switch means a durable setup Tersio manages. `headroom install` means headroom's installer owns it. `routed by hand` means an endpoint Tersio found but cannot undo. `session only` means no durable setup exists.
+- **Undo belongs to the writer.** Headroom's own writers use `headroom unwrap`; Tersio's route writer restores the endpoint it saved.
+- **The block requires a routed model.** Tersio reads omp's default `modelRoles` entry, OpenCode's active model, Pi's default provider, and DeepSeek Harness's profile provider. It resolves the provider base URL and keeps the block out when the model does not reach the proxy.
 - **A local gateway is routed, not guessed.** When omp's OpenAI provider points at a loopback gateway, Tersio records the original URL in a marker, points the provider at the proxy, and starts Headroom with `--openai-api-url` set to that gateway. `headroom unwrap omp` restores the backup.
+- **A built-in provider is read, not guessed.** When the active model names a provider the agent keeps in its own catalog, Tersio takes the endpoint from that catalog: omp's `models.db` or Pi's `models-store.json`. The switch then routes the provider like any other, so a host with no block still gets one route, not a hand edit.
+- **The route record is the undo.** Tersio stores the file, provider, old URL, and written URL. The off switch restores the old URL only while the file still holds the written URL, so a newer edit survives.
 - **Retrieval is Tersio's.** A compression marker carries a hash. Tersio installs one MCP entry (`tersio mcp`) for every host it supports; `tersio_headroom` with `action: retrieve` reads the original from the proxy's store.
 - **The pill states configuration, the counters state traffic.** `/stats` supplies requests, compressed requests, and live tokens saved; the durable ledger supplies lifetime savings.
 

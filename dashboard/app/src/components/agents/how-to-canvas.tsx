@@ -27,6 +27,11 @@ function clusterBox(ids: NodeId[], boxes: Record<string, Box>): Box | null {
   return { x: left, y: top, w: right - left, h: bottom - top };
 }
 
+/** Two cards that share any area; a host added to an older layout can land on one already stored. */
+function boxesOverlap(a: Box, b: Box): boolean {
+  return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+}
+
 /** A framed band of nodes; its label is the grip that moves the whole band. */
 function ClusterFrame({
   label, ids, boxes, onPointerDown, onPointerMove, onPointerUp,
@@ -141,6 +146,7 @@ function NodeBadge({ on, label }: { on: boolean | null; label: string }) {
 export function PipelineCanvas({
   modes,
   hostState,
+  headroomRoutes,
   onSet,
   onHostAction,
   busy,
@@ -149,6 +155,7 @@ export function PipelineCanvas({
 }: {
   modes: ModeState | null;
   hostState: HostState;
+  headroomRoutes: Record<string, boolean>;
   onSet: (node: NodeId, field: string, value: string | boolean, host?: "omp" | "pi" | "pig" | "opencode" | "dsh") => void;
   onHostAction: (node: NodeId, action: HostAction) => void;
   busy: NodeId | null;
@@ -214,8 +221,11 @@ export function PipelineCanvas({
       // The user owns where a node sits; the size is ours, so a stored box never pins a stale height.
       merged[id] = stored[id] ? { ...defaults[id], x: stored[id].x, y: stored[id].y } : defaults[id] ?? { x: 40, y: 296, w: NODE_W, h: NODE_H };
     }
+    // A host added after the store was written can sit on a saved card. Reset the band to the current columns, so no host hides another.
+    const hostClash = hostIds.some((id, i) => hostIds.slice(i + 1).some((other) => boxesOverlap(merged[id], merged[other])));
+    if (hostClash) for (const id of hostIds) merged[id] = defaults[id] ?? merged[id];
     return merged;
-  }, [nodeIds, stored, installed]);
+  }, [nodeIds, stored, installed, hostIds]);
 
   const groupBoxes = useMemo(
     () => [clusterBox(modeIds, boxes), clusterBox(hostIds, boxes)].filter((b): b is Box => b !== null),
@@ -419,7 +429,6 @@ export function PipelineCanvas({
           <span className={header}>
             <Icon name="arrow-right" className="size-3.5 shrink-0 text-dim" />
             <span className="text-[12px] font-semibold">Output</span>
-            <NodeBadge on={true} label="on" />
           </span>
           <span className="mono flex flex-1 items-center px-3 py-1.5 text-[10px] text-dim">the turn's result</span>
         </>
@@ -436,13 +445,13 @@ export function PipelineCanvas({
             <span className="min-w-0 flex-1 text-[12px] font-semibold leading-tight">{host.label}</span>
             {off
               ? <NodeBadge on={false} label="not installed" />
-              : wrapped[host.id]
+              : headroomRoutes[host.id] === true || (headroomRoutes[host.id] === undefined && wrapped[host.id])
                 ? <NodeBadge on={true} label="🍃 wrapped" />
                 : <NodeBadge on={true} label={versionOf(hostState.versions[host.id]) ?? "installed"} />}
           </span>
           {!off ? (
             <span className="grid flex-1 grid-cols-2 content-center gap-x-3 gap-y-1 px-3.5 py-2.5">
-              {agentModeRows(host.id, modes).map((row) => (
+              {agentModeRows(host.id, modes, headroomRoutes[host.id]).map((row) => (
                 <span key={row.key} className={cn("mono flex items-center gap-1.5 text-[10px]", row.on ? "text-ink" : "text-dim")}>
                   <span aria-hidden="true" className={cn("size-1.5 shrink-0 rounded-full", row.on ? "bg-accent" : "bg-line")} />
                   {row.glyph} {row.label}
@@ -718,8 +727,10 @@ export function PipelineCanvas({
           open
           onOpenChange={(open) => { if (!open) setSelected(null); }}
           modes={modes}
+          hostState={hostState}
           busy={busy}
           onSet={onSet}
+          onHostAction={onHostAction}
           onSaved={onSaved}
         />
       ) : null}

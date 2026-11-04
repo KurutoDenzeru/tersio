@@ -11,6 +11,7 @@ export type SectionId =
   | "tools"
   | "projects"
   | "upstream"
+  | "benchmarks"
   | "logs"
   | "how-to";
 
@@ -69,6 +70,7 @@ export const NAV: readonly NavGroup[] = [
     heading: "Developer",
     items: [
       { id: "upstream", label: "Upstream", icon: "git-branch", hotkey: "s", agentOnly: false, devOnly: true },
+      { id: "benchmarks", label: "Benchmark", icon: "flask-conical", hotkey: "b", agentOnly: false, devOnly: true },
       { id: "logs", label: "Logs", icon: "scroll-text", hotkey: "l", agentOnly: false, devOnly: true },
     ],
   },

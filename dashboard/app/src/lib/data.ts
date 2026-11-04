@@ -317,17 +317,30 @@ export interface HeadroomWrapTarget {
   manual?: boolean;
   /** True when headroom's own install apply has a durable path Tersio does not manage. */
   headroomInstall?: boolean;
-  /** True when the durable block is already present in the tool's own config. */
+  /** True when the durable block is already present in the tool's own config, or the manual route points at the proxy. */
   installed?: boolean;
+  /** True when the host has no writer and routes through its own provider endpoint. */
+  route?: boolean;
+  /** The route's measured state, shown on the row. */
+  detail?: string;
+  /** True when Headroom's own config block exists, whether or not the active model uses it. */
+  configured?: boolean;
+  /** True when Tersio wrote this route and can put the old endpoint back. */
+  managed?: boolean;
+  /** True when Tersio's tree is installed for this agent. */
+  agentInstalled?: boolean;
+  /** True when the agent itself is on this machine, whatever state Tersio's tree is in. */
+  agentPresent?: boolean;
 }
 
 export interface HeadroomWrapState {
   targets: Array<HeadroomWrapTarget>;
+  endpoint?: string;
 }
 
 export async function fetchWrapTargets(): Promise<HeadroomWrapState | null> {
-  const body = await apiJson<{ targets?: Array<HeadroomWrapTarget> }>("/api/headroom/wrap");
-  return body?.targets ? { targets: body.targets } : null;
+  const body = await apiJson<{ targets?: Array<HeadroomWrapTarget>; endpoint?: string }>("/api/headroom/wrap");
+  return body?.targets ? { targets: body.targets, endpoint: body.endpoint } : null;
 }
 
 /** The canvas mirrors the wrap record in browser storage; the server copy stays the source of truth. */
@@ -446,12 +459,15 @@ export interface DoctorRow {
   ok: boolean;
   detail: string;
   group: string;
+  /** Informational row: visible, but never counted as an issue or shown as a fix. */
+  neutral?: boolean;
+  /** Agent brand mark, for the host rows. */
+  host?: string;
 }
 
 export interface DoctorReport {
   rows: DoctorRow[];
   checkedAt: number;
-  schedule: "manual" | "daily" | "weekly" | "monthly";
 }
 
 interface TersioSnap {
@@ -575,28 +591,13 @@ export async function fetchHealth(): Promise<HealthReport | null> {
   }
 }
 
-export async function fetchDoctor(fresh: boolean): Promise<DoctorReport | null> {
+export async function fetchDoctor(): Promise<DoctorReport | null> {
   const s = snap()?.doctor;
   if (isFileExport()) return s ?? null;
   try {
-    return await getJSON<DoctorReport>(fresh ? "doctor?fresh=1" : "doctor");
+    return await getJSON<DoctorReport>("doctor");
   } catch {
     return s ?? null;
-  }
-}
-
-export async function postDoctorSchedule(
-  schedule: DoctorReport["schedule"],
-): Promise<DoctorReport | null> {
-  try {
-    const res = await fetch("doctor", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ schedule }),
-    });
-    return (await res.json()) as DoctorReport;
-  } catch {
-    return null;
   }
 }
 

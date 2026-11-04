@@ -10,7 +10,6 @@
 
 Token saver & usage tracker for coding agents: terse caveman replies, compact RTK shell output, lean Ponytail code, Headroom compression, pstack rigor, and a gain dashboard — one-command combos over one shared extension tree.
 
-Measured savings per mode, the prompt overhead each one adds, and the rerun protocol: [docs/BENCHMARK_GUIDE.md](./docs/BENCHMARK_GUIDE.md).
 
 ## 🎯 What this is, and why you would use it
 
@@ -31,10 +30,6 @@ Tersio installs into Oh My Pi, Pi, Pi-in-go, OpenCode, and DeepSeek Harness, and
 | 🍃 **Headroom** | Headroom shrinks tool output, file reads, and history. Opt-in; Tersio reads its savings and never turns it on for you. |
 | 🧩 **Combo** | One command sets Caveman, RTK, and Ponytail, at three strengths. |
 | 📊 **Dashboard** | What you spent, per model and per day. |
-
-Every mode is a text block you can read in the repo. Measured savings and prompt overhead are published per mode in [docs/BENCHMARK_GUIDE.md](./docs/BENCHMARK_GUIDE.md). No total-bill claim: the tests measure reply tokens, prompt overhead, and command output only.
-
-Use an agent daily and pay per token? This is for you. Use one a few times a week? It is not worth installing.
 
 ## ⚡ Getting Started
 
@@ -94,6 +89,52 @@ npm exec --yes --prefer-online --package=@krtclcdy/tersio@latest -- tersio insta
 | Bun | Optional. Preferred when on PATH, npm otherwise; also supplies SQLite in process |
 | SQLite | Bun, Node 22.5+ `node:sqlite`, or the `sqlite3` binary on PATH |
 | OS | macOS, Linux, or Windows, native (`install.ps1`). WSL works too, installed from inside it |
+
+## 📊 Dashboard
+
+`tersio dashboard` opens a local page for usage, cost, tools, traces, and savings. Other pages cover Models, Providers, Costs, Carbon, Requests, Errors, Tools, and Projects.
+
+**Quick start (Recommended)** is the place to see the whole setup workflow: the modes, the agents, and how one turn moves from prompt to output.
+
+![Tersio Quick start dashboard](./docs/Quick%20Start.webp)
+
+**Overview** shows spend, requests, tokens, cache rate, and the latest calls.
+
+![Tersio Overview dashboard](./docs/Overview.webp)
+
+## 🧪 Benchmarks
+
+One model, `GLM-5.3-Flash`, five runs per prompt. Method: [docs/BENCHMARK.md](./docs/BENCHMARK.md).
+
+| Case | Reply Δ% | Δ Net | Quality | Agentic Δ% | Wall Δ |
+|---|---:|---:|---:|---:|---:|
+| Base | 0 | 0 | 11/15 | 0 | 0 |
+| Caveman `lite` | -10.9% | +1,044 | 8/15 | — | — |
+| Caveman `full` | -8.4% | +1,182 | 8/15 | — | — |
+| Caveman `ultra` | -15.1% | +612 | 12/15 | — | — |
+| Caveman `megacave-lite` | +8.4% | +817 | 2/15 | — | — |
+| Caveman `megacave-full` | +58.0% | +844 | 0/15 | — | — |
+| Caveman `megacave-ultra` | +46.2% | +789 | 4/15 | — | — |
+| Ponytail `lite` | +20.6% | -70 | 13/15 | — | — |
+| Ponytail `full` | +11.2% | +188 | 12/15 | — | — |
+| Ponytail `ultra` | +28.4% | +302 | 12/15 | — | — |
+| pstack `on` | — | — | 5/5 | +17.9% | -4.3s |
+| RTK `on` | -79.5% find, -10.5% grep | — | 3/3 | +152.3% | +108.5s |
+| Headroom `on` | -94.9% payload | — | sentinel | — | — |
+| Combo `lite` | -16.0% | +1,743 | 5/15 | -27.8% | -18.8s |
+| Combo `balanced` | -0.8% | +1,882 | 10/15 | -3.1% | +46.1s |
+| Combo `max` | +6.7% | +1,343 | 8/15 | -31.5% | -19.2s |
+| Combo + Headroom `lite` | -13.4% | +1,744 | 9/15 | +10.6% | +103.7s |
+| Combo + Headroom `balanced` | -7.6% | +1,874 | 9/15 | -27.6% | -12.2s |
+| Combo + Headroom `max` | +0.8% | +1,333 | 12/15 | -20.0% | -20.9s |
+| Combo + pstack `lite` | -0.8% | +5,337 | 9/15 | +1.9% | -27.2s |
+| Combo + pstack `balanced` | -7.6% | +5,452 | 6/15 | +45.1% | +6.7s |
+| Combo + pstack `max` | +0.8% | +4,909 | 9/15 | +15.2% | -22.0s |
+| Combo + all `lite` | -3.4% | +5,334 | 9/15 | +20.3% | -13.9s |
+| Combo + all `balanced` | -13.4% | +5,445 | 8/15 | +5.7% | +2.9s |
+| Combo + all `max` | -12.6% | +4,896 | 10/15 | -16.6% | -25.1s |
+
+Base: 119 reply tokens, 1,616 total, 11 of 15. Agentic base: 40,176 tokens at 135.5s (pstack, RTK) and 70,784 at 150.3s (combo stacks). Agentic rows rest on 1 to 5 runs, so read them as smoke tests; no bill savings are claimed. Per-mode files: [Caveman](./docs/BENCH_CAVEMAN.md), [Ponytail](./docs/BENCH_PONYTAIL.md), [pstack](./docs/BENCH_PSTACK.md), [RTK](./docs/BENCH_RTK.md), [Headroom](./docs/BENCH_HEADROOM.md), [Combo](./docs/BENCH_COMBO.md), [Combo + Headroom](./docs/BENCH_COMBO_HEADROOM.md), [Combo + pstack](./docs/BENCH_COMBO_PSTACK.md), [Combo + all](./docs/BENCH_COMBO_ALL.md).
 
 ## 🔌 MCP
 
@@ -167,27 +208,9 @@ Shared, and identical for every host:
 | Host scope | The same `usage.db` mirrors omp, pi, and OpenCode sessions, split by host and agent kind |
 | Snapshots | `~/.tersio/backups/` — one hashed `.snap` each, fourteen kept, carrying `usage.db` whole |
 
-Per host, written by `tersio install --host <omp|pi|opencode|pig|dsh>`:
-
-| Host | Extensions | Ponytail |
-|---|---|---|
-| Oh My Pi | `~/.omp/plugins/node_modules/@krtclcdy/tersio/extensions/`, loaded from the plugin manifest | vendored at `extensions/ponytail/`, so **Settings → Plugins** lists one row |
-| pi | `~/.pi/agent/extensions/{caveman,combo,commands,headroom,pstack,rtk,timing,shared}/`, auto-discovered | `~/.pi/agent/ponytail/` |
-| OpenCode | `~/.config/opencode/plugins/tersio/`, registered in `opencode.json` | bundled with Tersio |
-| PiG (Pi-in-go) | `~/.pig/agent/extensions/{caveman,combo,commands,headroom,pstack,rtk,timing,shared}/`, auto-discovered; `PIG_HOME` or `XDG_CONFIG_HOME` moves the root | `~/.pig/agent/ponytail/` |
-| DeepSeek Harness | `~/.dsh/profiles/<profile>/node_modules/@krtclcdy/tersio`, mounted as a dsh bundle in **every** profile (`web`, `desktop`) | inside the bundle |
-
-Tersio is agent-neutral: every host loads the same extensions and the same `shared/` modules from the same sources. Only the paths and the registration differ, and the installer owns those. No host is the target.
-
-Per host, in more words:
-
-- **Oh My Pi.** The plugin manifest and the directory OMP discovers by default merge, so Tersio keeps one copy of each file and clears what an older build left in `~/.omp/agent/extensions/`. A second copy would load twice, and one of the two cannot find its own rule bodies. The install also registers the package in `~/.omp/plugins`, so it shows under **Settings → Plugins**.
-- **pi, PiG, and OpenCode.** Their own install command registers what they need, so the table above is the whole story.
-- **DeepSeek Harness.** Tersio mounts itself as a dsh bundle through the `dsh` field in its own `package.json`, so one `dsh plugin add` per profile brings the modes, the six slash commands, the `rtk_run` tool, and Tersio's MCP server. The desktop app boots the `desktop` profile while `dsh web` boots `web`, so the installer covers both; a restart of the app loads it. Mode switches there are chat messages, because DeepSeek Harness has no status line.
-
 The installer writes `<file>.bak` before it replaces a source. `tersio doctor --fix extensions` restores a damaged tree, and `doctor --fix registrations` drops retired or duplicate `config.yml` entries.
 
-Settings -> **Data** holds the snapshots, the backup schedule, a retention window (7 days to Forever; older usage rows drop on the next sync, and transcripts are untouched), and the reset behind an Advanced toggle. A restore snapshots the current state first, then copies the chosen one over the live files; it never deletes, and a delete never touches the live data. Both ask first and name what they move, and a file a snapshot does not hold is left alone. The same pane clears the statistics behind a confirmation that names the ledger and RTK rows it would take, then empties the ledger and hides what it summarised. Session transcripts, rtk history, and prices stay on disk.
+Settings → **Data** holds snapshots, the backup schedule, retention (7 days to Forever; older usage rows drop on the next sync; transcripts stay), and Reset behind Advanced. Restore saves the current state first, then copies the snapshot over the live files; delete never touches live data. Both ask first, name what they change, and leave files outside the snapshot untouched. Reset confirms, clears the ledger and its RTK rows, hides the summary, and keeps transcripts, rtk history, and prices.
 
 Active modes reassert after Ponytail's prompt block on every top-level turn, including after history compaction.
 

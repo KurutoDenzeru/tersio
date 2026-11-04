@@ -3,10 +3,15 @@
 
 import type http from 'node:http';
 import { readHeadroomDoctor } from '../extensions/shared/headroom-gain.ts';
+import { hostCap } from '../extensions/shared/host-caps.ts';
 import {
-  DURABLE_CONFIG, discoverInitTargets, discoverWrapTargets, durableConfigInstalled,
-  headroomProxyPort, installDurableConfig, readOmpGateway, routeOmpGateway,
+  DURABLE_CONFIG, discoverInitTargets, durableConfigInstalled,
+  headroomHostDurable, headroomProxyPort, headroomProxyUrl, installDurableConfig, readOmpGateway, routeOmpGateway,
 } from '../extensions/shared/headroom-proxy.ts';
+import { ensureAgentProviderRoute } from '../extensions/shared/headroom-agent.ts';
+import { describeHeadroomRoute, readHeadroomRoute } from '../extensions/shared/headroom-routing.ts';
+import { hasNativeRoute, installNativeRoute, isNativeRouteHost, removeNativeRoute, routeDrifted } from '../extensions/shared/headroom-routes.ts';
+import { detectHosts } from './hosts.ts';
 import { mergeHeadroomWraps, readHeadroomWraps, setStoredWrap, writeHeadroomWraps } from '../extensions/shared/headroom-wraps.ts';
 import { ensureHeadroomRuntime } from './headroom-runtime.ts';
 import { resolveHeadroomBinary } from '../extensions/shared/utils.ts';
@@ -54,28 +59,45 @@ export async function handleHeadroomRoutes(
     ctx.json(res, 200, await ensureHeadroomRuntime(bin));
     return true;
   }
-  // Which headroom wrap targets exist on this machine. Only detected tools are listed.
+  // Tersio's five agents only. Headroom's own extra tools stay out of this drawer.
   if (req.url === '/api/headroom/wrap' && req.method === 'GET') {
     const bin = resolveHeadroomBinary();
-    const durableTargets = bin !== null ? await discoverInitTargets(bin) : null;
-    const discovered = bin !== null ? await discoverWrapTargets(bin) : null;
-    const discoveredLabels = new Map((discovered ?? []).map((entry) => [entry.name, entry.label.replace(/\.$/, '')]));
-    const durableNames = new Set<string>([...(durableTargets ?? []), ...DURABLE_CONFIG]);
-    const headroomInstall: Record<string, true> = { aider: true, cursor: true, 'grok-build': true };
-    const names = [...new Set([...(discovered ?? []).map((entry) => entry.name), ...(durableTargets ?? []), ...DURABLE_CONFIG, ...ctx.wrapTargets])]
-      .filter((name) => name !== 'continue' && name !== 'zcode');
-    const present = (await Promise.all(names.map(async (name) => [name, bin !== null && await ctx.wrapTargetPresent(name)] as const)))
-      .filter(([, available]) => available)
-      .map(([name]) => name);
-    const targets = present.map((name) => ({
-      name,
-      durable: durableNames.has(name),
-      manual: !durableNames.has(name),
-      headroomInstall: !durableNames.has(name) && headroomInstall[name] === true,
-      installed: durableConfigInstalled(name),
-      label: ctx.wrapLabels[name] ?? discoveredLabels.get(name) ?? name,
-    }));
-    ctx.json(res, 200, { ok: bin !== null, targets });
+    const hosts = detectHosts();
+    const present = await Promise.all(hosts.map((host) => ctx.wrapTargetPresent(host.id)));
+    const targets = hosts.map((host, i) => {
+      const agentPresent = present[i] === true;
+      if (headroomHostDurable(host.id)) {
+        const route = readHeadroomRoute(host.id);
+        return {
+          name: host.id,
+          label: host.label,
+          durable: true,
+          manual: false,
+          // The config block can exist while the active model bypasses it, so the row reads the route.
+          installed: route.routed,
+          configured: durableConfigInstalled(host.id),
+          agentInstalled: host.installed,
+          agentPresent,
+        };
+      }
+      const route = readHeadroomRoute(host.id);
+      const native = isNativeRouteHost(host.id);
+      return {
+        name: host.id,
+        label: host.label,
+        manual: !native,
+        durable: native,
+        route: true,
+        installed: route.routed,
+        // A route another tool reset reads as installed-but-drifted, so the drawer names the cause.
+        drifted: routeDrifted(host.id, route),
+        managed: isNativeRouteHost(host.id) ? hasNativeRoute(host.id) : undefined,
+        agentInstalled: host.installed,
+        agentPresent,
+        detail: describeHeadroomRoute(route),
+      };
+    });
+    ctx.json(res, 200, { ok: bin !== null, endpoint: headroomProxyUrl(), targets });
     return true;
   }
   // The automated durable install: one documented headroom command per tool, never a per-session wrap.
@@ -83,18 +105,20 @@ export async function handleHeadroomRoutes(
     const body = await ctx.bodyOf(req);
     const name = String(body.name ?? '');
     const bin = resolveHeadroomBinary();
-    if (!bin || !ctx.wrapTargets.includes(name)) {
+    const native = isNativeRouteHost(name);
+    const canConfig = (DURABLE_CONFIG as readonly string[]).includes(name);
+    const knownInit = bin ? (await discoverInitTargets(bin)) ?? [] : [];
+    if (!bin || (!ctx.wrapTargets.includes(name) && !canConfig && !native && !knownInit.includes(name))) {
       ctx.json(res, 400, { ok: false, error: 'unknown wrap target or no headroom binary' });
       return true;
     }
-    const canConfig = (DURABLE_CONFIG as readonly string[]).includes(name);
-    if (!canConfig && !(await discoverInitTargets(bin))?.includes(name)) {
+    if (!canConfig && !native && !knownInit.includes(name)) {
       ctx.json(res, 200, { ok: false, error: `${name} has no durable headroom integration; run headroom wrap ${name} yourself per session` });
       return true;
     }
     // A switch points the agent at the proxy, so the proxy must answer before the config is written.
     const port = headroomProxyPort();
-    const gateway = name === 'omp' ? readOmpGateway(port) : null;
+    const gateway = hostCap(name)?.headroomGateway ? readOmpGateway(port) : null;
     if (body.action !== 'unwrap') {
       const runtime = await ensureHeadroomRuntime(bin, gateway?.baseUrl);
       if (!runtime.ok) {
@@ -103,6 +127,12 @@ export async function handleHeadroomRoutes(
       }
     }
     if (body.action === 'unwrap') {
+      if (isNativeRouteHost(name)) {
+        const removed = removeNativeRoute(name);
+        if (removed.ok) setStoredWrap(name, false);
+        ctx.json(res, 200, removed.ok ? { ok: true, detail: removed.detail } : { ok: false, error: removed.detail });
+        return true;
+      }
       // One switch-off must not strand the other durable agents: headroom's unwrap stops the proxy by default.
       const run = await ctx.headroomRun(bin, ['unwrap', name, '--no-stop-proxy'], 120_000);
       setStoredWrap(name, false);
@@ -112,10 +142,37 @@ export async function handleHeadroomRoutes(
         : { ok: false, error: out || `the ${name} unwrap failed` });
       return true;
     }
+    if (isNativeRouteHost(name)) {
+      // A provider the host keeps in its own catalog needs a block before the endpoint can move.
+      const ensured = ensureAgentProviderRoute(name, port);
+      if (!ensured.ok) {
+        ctx.json(res, 200, { ok: false, error: ensured.detail });
+        return true;
+      }
+      const routed = installNativeRoute(name, headroomProxyUrl());
+      if (routed.ok) setStoredWrap(name, true);
+      ctx.json(res, 200, routed.ok ? { ok: true, detail: routed.detail } : { ok: false, error: routed.detail });
+      return true;
+    }
     if (canConfig) {
       // Headroom's own writer, so the marker, backup, and unwrap contract are headroom's.
       const wrote = await installDurableConfig(bin, name, port);
-      if (wrote && name === 'omp' && gateway) routeOmpGateway(gateway, port);
+      if (wrote && gateway && !routeOmpGateway(gateway, port)) {
+        ctx.json(res, 200, { ok: false, error: `headroom could not point ${gateway.provider} at the proxy` });
+        return true;
+      }
+      // A provider the agent keeps built in needs its own block; its catalog supplies the endpoint.
+      const ensured = wrote ? ensureAgentProviderRoute(name, port) : { ok: true, detail: '' };
+      if (!ensured.ok) {
+        ctx.json(res, 200, { ok: false, error: ensured.detail });
+        return true;
+      }
+      // The reader decides: a block the active model bypasses is not a route.
+      const route = readHeadroomRoute(name);
+      if (wrote && !route.routed) {
+        ctx.json(res, 200, { ok: false, error: `${name}: ${describeHeadroomRoute(route)}` });
+        return true;
+      }
       if (wrote) setStoredWrap(name, true);
       ctx.json(res, 200, wrote
         ? { ok: true, detail: `${name}: headroom config written for port ${port}; it survives restarts` }
@@ -142,7 +199,7 @@ export async function handleHeadroomRoutes(
       wraps = mergeHeadroomWraps(stored, doctor.checks, ctx.wrapTargets);
       try { writeHeadroomWraps(wraps); } catch { /* best effort */ }
     }
-    for (const name of DURABLE_CONFIG) if (durableConfigInstalled(name)) wraps[name] = true;
+    for (const name of DURABLE_CONFIG) if (readHeadroomRoute(name).routed) wraps[name] = true;
     ctx.json(res, 200, { ok: true, wraps });
     return true;
   }

@@ -198,8 +198,10 @@ export function edgePath(s: Box, t: Box, others: ReadonlyArray<Box>, groups: Rea
   return `M${sp[0]} ${sp[1]} C${pick.c1[0]} ${pick.c1[1]}, ${pick.c2[0]} ${pick.c2[1]}, ${tp[0]} ${tp[1]}`;
 }
 
-/** The default view: a 2x2 mode block (pstack/rtk over caveman/ponytail), headroom above, output right, hosts in a row below. */
+/** The default view: a 2x2 mode block (pstack/rtk over caveman/ponytail), headroom above, output right, hosts in three columns below. */
 export function defaultPositions(installedHosts: ReadonlyArray<string>): Record<string, Box> {
+  const HOST_COLUMNS = 3;
+  const HOST_ROW_STEP = NODE_H + 80;
   const positions: Record<string, Box> = {
     prompt: { x: 40, y: 320, w: NODE_W, h: NODE_H },
     caveman: { x: 320, y: 320, w: NODE_W, h: NODE_H },
@@ -209,9 +211,14 @@ export function defaultPositions(installedHosts: ReadonlyArray<string>): Record<
     headroom: { x: 464, y: 56, w: NODE_W, h: NODE_H },
     output: { x: 904, y: 320, w: NODE_W, h: NODE_H },
   };
-  // The agent band: the host card is taller because it lists its live modes.
+  // The agent band: the host card is taller because it lists its live modes, and a fourth host starts a new row under the first column.
   installedHosts.forEach((host, i) => {
-    positions[`host-${host}`] = { x: 320 + i * 272, y: 504, w: NODE_W, h: NODE_H + 48 };
+    positions[`host-${host}`] = {
+      x: 184 + (i % HOST_COLUMNS) * 272,
+      y: 496 + Math.floor(i / HOST_COLUMNS) * HOST_ROW_STEP,
+      w: NODE_W,
+      h: NODE_H + 48,
+    };
   });
   return positions;
 }
@@ -270,15 +277,19 @@ const HOST_FIELDS: Record<string, "cavemanDefault" | "rtkDefault" | "ponytailDef
 };
 
 /** What each mode reads to for one agent: its own section first, the shared store underneath. */
-export function agentModeRows(host: string, modes: ModeState | null): Array<{ key: string; glyph: string; label: string; on: boolean | null }> {
+export function agentModeRows(host: string, modes: ModeState | null, headroomRoute?: boolean): Array<{ key: string; glyph: string; label: string; on: boolean | null }> {
   if (!modes) return [];
   const section = (modes.hosts?.[host] ?? {}) as Partial<Record<string, string | boolean>>;
   const shared = modes as unknown as Partial<Record<string, string | boolean>>;
   const read = (key: string): string | boolean | undefined => section[HOST_FIELDS[key]] ?? shared[HOST_FIELDS[key]];
+  const headroom = String(read("headroom") ?? "off");
+  // The session default can say on while this host has no route to the proxy. Say that instead of claiming compression.
+  const headroomLabel = headroom !== "off" && headroomRoute === false ? "unrouted" : headroom;
+  const headroomOn = headroom !== "off" && headroomRoute !== false;
   return [
     { key: "caveman", glyph: "🪨", label: String(read("caveman") ?? "off"), on: String(read("caveman") ?? "off") !== "off" },
     { key: "rtk", glyph: "🗜️", label: read("rtk") === true ? "on" : "off", on: read("rtk") === true },
-    { key: "headroom", glyph: "🍃", label: String(read("headroom") ?? "off"), on: String(read("headroom") ?? "off") !== "off" },
+    { key: "headroom", glyph: "🍃", label: headroomLabel, on: headroomOn },
     { key: "ponytail", glyph: "🧠", label: String(read("ponytail") ?? "off"), on: String(read("ponytail") ?? "off") !== "off" },
     { key: "pstack", glyph: "🥔", label: String(read("pstack") ?? "off"), on: String(read("pstack") ?? "off") !== "off" },
   ];
@@ -297,8 +308,8 @@ export const PICKER: Record<"combo" | "caveman" | "rtk" | "ponytail" | "pstack" 
   combo: {
     field: "comboDefault",
     options: [
-      { id: "off", label: "Off" }, { id: "lite", label: "Lite" },
-      { id: "balanced", label: "Balanced" }, { id: "max", label: "Max" },
+      { id: "off", label: "Off" }, { id: "lite", label: "Lite (recommended)" },
+      { id: "balanced", label: "Balanced (not recommended)" }, { id: "max", label: "Max" },
     ],
   },
   caveman: {
@@ -340,8 +351,8 @@ export const DEFAULT_ROWS_UI: Array<{ field: keyof DefaultsPayload; label: strin
     hint: "Sets caveman, RTK and Ponytail together. pstack is separate.",
     options: [
       { id: "off", label: "Off" },
-      { id: "lite", label: "Lite" },
-      { id: "balanced", label: "Balanced (Recommended)" },
+      { id: "lite", label: "Lite (recommended)" },
+      { id: "balanced", label: "Balanced (not recommended)" },
       { id: "max", label: "Max" },
       { id: "custom", label: "Custom" },
     ],
@@ -460,7 +471,7 @@ export function nodeState(id: NodeId, modes: ModeState | null, hostState: HostSt
     const on = edgeLit(id, modes, hostState);
     return { label: isOff(on) ? "off" : "on", on };
   }
-  return { label: "on", on: true };
+  return { label: "", on: null };
 }
 
 export function nodeOff(id: NodeId, modes: ModeState | null, hostState: HostState): boolean {

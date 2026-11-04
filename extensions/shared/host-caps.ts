@@ -23,8 +23,12 @@ export interface HostCap {
   rtkPlugin?: boolean;
   /** rtk has no agent for this host, so copy the named host's hook. */
   rtkCopyFrom?: HostId;
-  /** Headroom can route this host. */
+  /** Headroom can route this host when its provider endpoint points at the proxy. */
   headroom: boolean;
+  /** Headroom ships a config writer Tersio can run for this host. */
+  headroomDurable?: boolean;
+  /** Headroom reaches this host through a local gateway, so its provider line moves too. */
+  headroomGateway?: boolean;
 }
 
 function ompAgentDir(): string {
@@ -45,31 +49,31 @@ export const HOST_CAPS: Record<HostId, HostCap> = {
     id: 'omp', label: 'Oh My Pi', bin: 'omp',
     installCmd: 'omp plugin install @krtclcdy/tersio', removeCmd: 'omp plugin remove @krtclcdy/tersio',
     mcp: 'mcpServers', mcpFile: () => path.join(ompAgentDir(), 'mcp.json'),
-    rtkAgent: 'omp', headroom: true,
+    rtkAgent: 'omp', headroom: true, headroomDurable: true, headroomGateway: true,
   },
   pi: {
     id: 'pi', label: 'Pi', bin: 'pi',
     installCmd: 'pi install npm:@krtclcdy/tersio', removeCmd: 'pi remove npm:@krtclcdy/tersio',
     mcp: 'mcpServers', mcpFile: () => path.join(piAgentDir(), 'mcp.json'),
-    rtkAgent: 'pi', headroom: false,
+    rtkAgent: 'pi', headroom: true,
   },
   opencode: {
     id: 'opencode', label: 'OpenCode', bin: 'opencode',
     installCmd: 'tersio install --host opencode', removeCmd: 'tersio uninstall --host opencode',
     mcp: 'mcp', mcpFile: opencodeConfig,
-    rtkAgent: null, rtkPlugin: true, headroom: true,
+    rtkAgent: null, rtkPlugin: true, headroom: true, headroomDurable: true,
   },
   pig: {
     id: 'pig', label: 'Pi-in-go', bin: 'pig',
     installCmd: 'pig install npm:@krtclcdy/tersio', removeCmd: 'pig remove npm:@krtclcdy/tersio',
     mcp: 'mcpServers', mcpFile: () => path.join(pigAgentDir(), 'mcp.json'),
-    rtkAgent: 'pi', rtkCopyFrom: 'pi', headroom: false,
+    rtkAgent: 'pi', rtkCopyFrom: 'pi', headroom: true,
   },
   dsh: {
     id: 'dsh', label: 'DeepSeek Harness', bin: 'dsh',
     installCmd: 'dsh plugin --profile web add npm:@krtclcdy/tersio', removeCmd: 'dsh plugin --profile web remove @krtclcdy/tersio',
     mcp: null, mcpFile: () => null,
-    rtkAgent: null, headroom: false,
+    rtkAgent: null, headroom: true,
   },
 };
 

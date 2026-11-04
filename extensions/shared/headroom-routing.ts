@@ -3,7 +3,11 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { headroomProxyUrl, ompConfigFile, ompModelsFile, opencodeConfigFiles } from './headroom-proxy.ts';
+import { defaultOmpModel, headroomProxyUrl, ompCachedEndpoint, ompConfigFile, ompModelsFile, ompProviderNames, opencodeConfigFiles } from './headroom-proxy.ts';
+import { piCatalogEndpoint } from './headroom-agent.ts';
+
+export { defaultOmpModel };
+import { homeDir, piAgentDir, pigAgentDir } from './utils.ts';
 
 export interface HeadroomRoute {
   /** True when a config was read far enough to answer. */
@@ -107,14 +111,27 @@ export function ompModelRoute(text: string, model: string): OmpEndpoint | null {
     }
   }
   finish();
-  return found;
+  if (found) return found;
+  // A provider-prefixed id resolves by the block's name even when the block lists no models of its own.
+  const prefix = bare.includes('/') ? bare.slice(0, bare.indexOf('/')) : '';
+  return prefix ? ompBlockEndpoint(text, prefix) : null;
 }
 
-/** omp's default role, with the effort suffix kept for display. */
-export function defaultOmpModel(text: string): string | null {
-  const block = text.match(/^modelRoles:\s*\n((?:[ \t]+[^\n]*\n?)+)/m)?.[1] ?? '';
-  const match = block.match(/^[ \t]+default:\s*(.+?)\s*$/m);
-  return match ? unquote(match[1]) : null;
+/** The provider-level baseUrl of one block, or null when the block names none. */
+export function ompBlockEndpoint(text: string, name: string): OmpEndpoint | null {
+  let provider: string | null = null;
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const indent = indentOf(line);
+    if (indent === 2 && /^[^:\s][^:]*:\s*$/.test(trimmed)) {
+      provider = unquote(trimmed.slice(0, -1));
+      continue;
+    }
+    if (provider !== name || indent !== 4 || !trimmed.startsWith('baseUrl:')) continue;
+    return { provider, baseUrl: valueOf(trimmed) };
+  }
+  return null;
 }
 
 /** Same scheme, port, and host; loopback spellings count as the same machine. */
@@ -130,6 +147,31 @@ export function sameProxyEndpoint(baseUrl: string, proxyUrl: string): boolean {
   } catch {
     return false;
   }
+}
+
+/** A provider or model block's endpoint, in the key spelling its host accepts. */
+export function jsonBaseUrl(record: Record<string, unknown>): string | null {
+  for (const key of ['baseUrl', 'baseURL', 'base_url']) {
+    if (typeof record[key] === 'string') return record[key] as string;
+  }
+  return null;
+}
+
+/** The entry an active model id names, so a model-level endpoint is never missed. */
+export function jsonModelEntry(record: Record<string, unknown>, model: string, provider: string): Record<string, unknown> | null {
+  const list = Array.isArray(record.models) ? record.models : [];
+  const ids = new Set([model, model.replace(/:[^:]+$/, '')]);
+  if (provider && model.startsWith(`${provider}/`)) {
+    const rest = model.slice(provider.length + 1);
+    ids.add(rest);
+    ids.add(rest.replace(/:[^:]+$/, ''));
+  }
+  for (const entry of list) {
+    if (!entry || typeof entry !== 'object') continue;
+    const item = entry as Record<string, unknown>;
+    if (typeof item.id === 'string' && ids.has(item.id)) return item;
+  }
+  return null;
 }
 
 export function stripJsonComments(text: string): string {
@@ -166,6 +208,22 @@ function emptyRoute(host: string, proxyUrl: string, failure: string): HeadroomRo
   return { measured: false, failure, host, proxyUrl, model: '', provider: null, baseUrl: null, routed: false };
 }
 
+/** The provider omp will call: a configured block wins, then its own cached catalog, then the block listing the id. */
+function ompResolvedEndpoint(models: string, model: string): OmpEndpoint | null {
+  const bare = model.replace(/:[^:]+$/, '');
+  const slash = bare.indexOf('/');
+  const prefix = slash > 0 ? bare.slice(0, slash) : '';
+  if (prefix && ompProviderNames(models).has(prefix)) {
+    const listed = ompModelRoute(models, model);
+    // A block that names the provider owns it; another block merely listing the id does not.
+    if (listed?.provider === prefix) return listed;
+    return ompBlockEndpoint(models, prefix) ?? listed;
+  }
+  const cached = ompCachedEndpoint(model);
+  if (cached) return { provider: cached.provider, baseUrl: cached.baseUrl };
+  return ompModelRoute(models, model);
+}
+
 /** The default omp role's provider endpoint. */
 function readOmpRoute(proxyUrl: string): HeadroomRoute {
   let config: string;
@@ -178,7 +236,7 @@ function readOmpRoute(proxyUrl: string): HeadroomRoute {
   }
   const model = defaultOmpModel(config);
   if (!model) return emptyRoute('omp', proxyUrl, `${ompConfigFile()} has no modelRoles.default`);
-  const endpoint = ompModelRoute(models, model);
+  const endpoint = ompResolvedEndpoint(models, model);
   if (!endpoint) return emptyRoute('omp', proxyUrl, `${model} is not in ${path.basename(ompModelsFile())}`);
   return {
     measured: true,
@@ -232,11 +290,199 @@ function readOpencodeRoute(proxyUrl: string): HeadroomRoute {
   return emptyRoute('opencode', proxyUrl, 'no opencode config found');
 }
 
+/** Pi and PiG keep the active provider beside the model list; both use the same shape. */
+export function piRouteFrom(settingsText: string, modelsText: string, host: string, proxyUrl: string): HeadroomRoute {
+  let settings: Record<string, unknown>;
+  let models: Record<string, unknown>;
+  try {
+    settings = JSON.parse(settingsText) as Record<string, unknown>;
+    models = JSON.parse(modelsText) as Record<string, unknown>;
+  } catch (e) {
+    return emptyRoute(host, proxyUrl, `settings are not valid JSON: ${(e as Error).message}`);
+  }
+  const model = typeof settings.defaultModel === 'string' ? settings.defaultModel : '';
+  const named = typeof settings.defaultProvider === 'string' ? settings.defaultProvider : '';
+  const provider = named || (model.includes('/') ? model.slice(0, model.indexOf('/')) : '');
+  if (!provider) return emptyRoute(host, proxyUrl, 'settings name no default provider');
+  const providers = models.providers && typeof models.providers === 'object' ? models.providers as Record<string, unknown> : {};
+  const entry = providers[provider];
+  const record = entry && typeof entry === 'object' ? entry as Record<string, unknown> : {};
+  const modelEntry = jsonModelEntry(record, model, provider);
+  const baseUrl = (modelEntry ? jsonBaseUrl(modelEntry) : null) ?? jsonBaseUrl(record);
+  return {
+    measured: true,
+    failure: '',
+    host,
+    proxyUrl,
+    model,
+    provider,
+    baseUrl,
+    routed: baseUrl ? sameProxyEndpoint(baseUrl, proxyUrl) : false,
+  };
+}
+
+export interface DshProvider {
+  name: string;
+  api: string;
+  baseUrl: string;
+  /** The zero-based line that holds `baseURL`, or -1 when the block has none. */
+  baseLine: number;
+}
+
+/** A small YAML read for dsh's provider blocks, in file order. */
+export function dshProviders(text: string): DshProvider[] {
+  const out: DshProvider[] = [];
+  const lines = text.split(/\r?\n/);
+  let inLlm = false;
+  let inProviders = false;
+  let providerIndent = -1;
+  let current: DshProvider | null = null;
+  let api = '';
+  const finish = (): void => {
+    if (current) out.push(current);
+    current = null;
+    api = '';
+  };
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i]!;
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const indent = indentOf(line);
+    if (trimmed.startsWith('- id:')) {
+      // The next loader entry ends this plugin's block.
+      if (inLlm && inProviders) break;
+      if (/^-\s*id:\s*llm-pi-ai\b/.test(trimmed)) inLlm = true;
+      continue;
+    }
+    if (!inLlm) {
+      if (trimmed === 'llm-pi-ai:') inLlm = true;
+      continue;
+    }
+    if (trimmed === 'providers:') {
+      inProviders = true;
+      providerIndent = indent + 2;
+      finish();
+      continue;
+    }
+    if (!inProviders) continue;
+    if (indent < providerIndent) {
+      finish();
+      inProviders = false;
+      continue;
+    }
+    if (indent === providerIndent && /^[^:\s][^:]*:\s*$/.test(trimmed)) {
+      finish();
+      current = { name: unquote(trimmed.slice(0, -1)), api: '', baseUrl: '', baseLine: -1 };
+      continue;
+    }
+    if (!current) continue;
+    if (indent === providerIndent + 2 && trimmed.startsWith('api:')) {
+      api = unquote(trimmed.slice('api:'.length).replace(/\s+#.*$/, '').trim());
+      current.api = api;
+    } else if (indent === providerIndent + 2 && trimmed.startsWith('baseURL:')) {
+      current.baseUrl = valueOf(trimmed)?.replace(/\s+#.*$/, '') ?? '';
+      current.baseLine = i;
+    }
+  }
+  finish();
+  return out;
+}
+
+/** A small YAML read for dsh's provider block: provider name to baseURL. */
+export function dshProviderBaseUrls(text: string): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const provider of dshProviders(text)) {
+    if (provider.baseUrl) out.set(provider.name, provider.baseUrl);
+  }
+  return out;
+}
+
+/** The provider and model the desktop or web profile starts with. */
+export function dshDefaultRoute(profileText: string): { provider: string; model: string } {
+  let active = false;
+  let provider = '';
+  let model = '';
+  for (const line of profileText.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('- id:')) {
+      active = trimmed.slice('- id:'.length).replace(/\s+#.*$/, '').trim() === 'agent-default-model';
+      continue;
+    }
+    if (!active) continue;
+    if (trimmed.startsWith('provider:')) provider = unquote(trimmed.slice('provider:'.length).replace(/\s+#.*$/, '').trim());
+    else if (trimmed.startsWith('model:')) model = unquote(trimmed.slice('model:'.length).replace(/\s+#.*$/, '').trim());
+  }
+  return { provider, model };
+}
+
+/** DeepSeek Harness reads one provider block and one profile default, both plain YAML. */
+export function dshRouteFrom(settingsText: string, profileText: string, proxyUrl: string): HeadroomRoute {
+  const providers = dshProviderBaseUrls(settingsText);
+  // A profile patch overrides the shared settings, so its provider blocks win.
+  for (const [name, baseUrl] of dshProviderBaseUrls(profileText)) providers.set(name, baseUrl);
+  if (providers.size === 0) return emptyRoute('dsh', proxyUrl, 'settings name no llm-pi-ai providers');
+  const { provider, model } = dshDefaultRoute(profileText);
+  if (!provider) return emptyRoute('dsh', proxyUrl, 'the active dsh profile names no default provider');
+  const baseUrl = providers.get(provider) ?? null;
+  return {
+    measured: true,
+    failure: '',
+    host: 'dsh',
+    proxyUrl,
+    model,
+    provider,
+    baseUrl,
+    routed: baseUrl ? sameProxyEndpoint(baseUrl, proxyUrl) : false,
+  };
+}
+
+function readPiRoute(host: 'pi' | 'pig', proxyUrl: string): HeadroomRoute {
+  const dir = host === 'pig' ? pigAgentDir() : piAgentDir();
+  try {
+    const route = piRouteFrom(
+      fs.readFileSync(path.join(dir, 'settings.json'), 'utf8'),
+      fs.readFileSync(path.join(dir, 'models.json'), 'utf8'),
+      host,
+      proxyUrl,
+    );
+    // A provider the host keeps in its own catalog still has a real endpoint, so the reader shows it.
+    if (!route.measured || route.baseUrl || !route.provider) return route;
+    const catalog = piCatalogEndpoint(dir, route.provider, route.model);
+    if (!catalog) return route;
+    return { ...route, baseUrl: catalog.baseUrl, routed: sameProxyEndpoint(catalog.baseUrl, proxyUrl) };
+  } catch (e) {
+    return emptyRoute(host, proxyUrl, (e as Error).message);
+  }
+}
+
+function readDshRoute(proxyUrl: string): HeadroomRoute {
+  let settings: string;
+  try {
+    settings = fs.readFileSync(path.join(homeDir(), '.dsh', 'settings.yaml'), 'utf8');
+  } catch (e) {
+    return emptyRoute('dsh', proxyUrl, (e as Error).message);
+  }
+  for (const profile of ['desktop', 'web']) {
+    const file = path.join(homeDir(), '.dsh', 'profiles', profile, 'cordis.patch.yml');
+    try {
+      return dshRouteFrom(settings, fs.readFileSync(file, 'utf8'), proxyUrl);
+    } catch { /* try the next profile */ }
+  }
+  return emptyRoute('dsh', proxyUrl, 'no dsh profile found');
+}
+
+const ROUTE_READERS: Record<string, (proxyUrl: string) => HeadroomRoute> = {
+  omp: readOmpRoute,
+  opencode: readOpencodeRoute,
+  pi: (proxyUrl) => readPiRoute('pi', proxyUrl),
+  pig: (proxyUrl) => readPiRoute('pig', proxyUrl),
+  dsh: readDshRoute,
+};
+
 /** Whether the host's active model reaches the proxy. Unmeasured beats a guessed yes. */
 export function readHeadroomRoute(host: string, proxyUrl: string = headroomProxyUrl()): HeadroomRoute {
-  if (host === 'omp') return readOmpRoute(proxyUrl);
-  if (host === 'opencode') return readOpencodeRoute(proxyUrl);
-  return emptyRoute(host, proxyUrl, `${host} has no headroom route`);
+  const reader = ROUTE_READERS[host];
+  return reader ? reader(proxyUrl) : emptyRoute(host, proxyUrl, `${host} has no headroom route`);
 }
 
 /** One line for the dashboard and the prompt block. */

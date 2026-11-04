@@ -7,6 +7,7 @@ import { readHeadroomDefault } from '../shared/plugin-settings.ts';
 import { resolveHeadroomBinary } from '../shared/utils.ts';
 import { headroomHostSupported, headroomProxyUrl } from '../shared/headroom-proxy.ts';
 import { describeHeadroomRoute, readHeadroomRoute } from '../shared/headroom-routing.ts';
+import { repairHeadroomRoute } from '../shared/headroom-routes.ts';
 import { ensureTersioMcp } from '../shared/mcp-config.ts';
 import type { HeadroomRoute } from '../shared/headroom-routing.ts';
 import type { ExtensionApi, ExtensionCtx, InputEvent, SessionEntry, SystemPromptEvent } from '../shared/types.ts';
@@ -50,11 +51,12 @@ function isOffCommand(text: unknown): boolean {
 
 export default function headroomSessionExtension(pi: ExtensionApi): void {
   const host = hostIdOf(pi);
-  // pi and PiG have no headroom route, so their block would promise compression their traffic never gets.
+  // A host without a known model route would get a promise its traffic never fulfils.
   const supported = headroomHostSupported(host);
   let currentMode = DEFAULT_MODE;
   let lastInjected: string | undefined = undefined;
   let unroutedNotified = false;
+  let repairAttempted = false;
 
   function setMode(mode: string, ctx?: ExtensionCtx): boolean {
     if (!supported) return false;
@@ -84,7 +86,7 @@ export default function headroomSessionExtension(pi: ExtensionApi): void {
     handler: async (args, ctx) => {
       const arg = String(args || '').trim().toLowerCase();
       if (!supported && arg !== 'status') {
-        ctx?.ui?.notify?.('Headroom does not support this agent. Its durable integration covers Oh My Pi and OpenCode.', 'warning');
+        ctx?.ui?.notify?.('Headroom has no route for this agent.', 'warning');
         return;
       }
       if (!arg || arg === 'on') {
@@ -112,6 +114,7 @@ export default function headroomSessionExtension(pi: ExtensionApi): void {
 
   function restoreMode(ctx?: ExtensionCtx): void {
     unroutedNotified = false;
+    repairAttempted = false;
     const entries = sessionEntries(ctx);
     // A subagent's branch has no Tersio entries; reconciling it would wipe shared state.
     if (hasModeState(entries)) reconcileSharedComboEntries(entries);
@@ -147,11 +150,24 @@ export default function headroomSessionExtension(pi: ExtensionApi): void {
     // The same rule applies to a binary with no runtime behind it: headroom's proxy is what compresses.
     if (!(await headroomProxyUp())) return;
     // A live proxy is not enough: the configured model must actually point at it.
-    const route = readHeadroomRoute(host);
+    let route = readHeadroomRoute(host);
+    // A model switcher that owns the provider block writes its own endpoint back on every switch,
+    // so put the route back once per session instead of warning on every turn.
+    if (!route.routed && !repairAttempted) {
+      repairAttempted = true;
+      const repaired = await repairHeadroomRoute(host);
+      if (repaired.ok) {
+        route = readHeadroomRoute(host);
+        ctx?.ui?.notify?.(`Headroom: another tool reset this agent's route. ${repaired.detail}. Reopen /model so this session uses it.`, 'info');
+      }
+    }
     if (!route.measured || !route.routed) {
       if (!unroutedNotified) {
         unroutedNotified = true;
-        ctx?.ui?.notify?.(`Headroom is on, but this agent does not route through it. ${describeHeadroomRoute(route)}.`, 'warning');
+        ctx?.ui?.notify?.(
+          `Headroom is on, but this agent does not route through it. ${describeHeadroomRoute(route)}. Route it with: tersio install --host ${host} --headroom-default on.`,
+          'warning',
+        );
       }
       return;
     }

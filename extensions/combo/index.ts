@@ -168,8 +168,8 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
       if (arg === 'help') {
         ctx?.ui?.notify?.(
           '/combo off      — disables caveman, rtk and ponytail. pstack keeps its own setting\n' +
-          '/combo lite     — light: caveman=lite, rtk=on, ponytail=lite\n' +
-          '/combo balanced — middle: caveman=full, rtk=on, ponytail=full\n' +
+          '/combo lite     — light, the recommended level: caveman=lite, rtk=on, ponytail=lite\n' +
+          '/combo balanced — middle, not recommended: caveman=full, rtk=on, ponytail=full\n' +
           '/combo max      — aggressive: caveman=ultra, rtk=on, ponytail=ultra\n' +
           'pstack is not part of a preset. Set it on its own with /pstack on|off\n' +
           'headroom is not part of a preset either. Set it on its own with /headroom on|off',
@@ -219,8 +219,8 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
     setupPrompted = true;
     const choice = await hostSelect(pi, ctx.ui, 'Session-start defaults — Combo preset', [
       { label: 'off', description: 'Keep caveman, RTK and Ponytail inactive' },
-      { label: 'lite', description: 'caveman=lite, rtk=on, ponytail=lite' },
-      { label: 'balanced', description: 'caveman=full, rtk=on, ponytail=full' },
+      { label: 'lite', description: 'Recommended. caveman=lite, rtk=on, ponytail=lite' },
+      { label: 'balanced', description: 'Not recommended. caveman=full, rtk=on, ponytail=full' },
       { label: 'max', description: 'caveman=ultra, rtk=on, ponytail=ultra' },
     ], { selectionMarker: 'radio', helpText: 'You can change this later with /tersio settings. pstack is separate.' });
     const level = choice || 'off';

@@ -23,6 +23,16 @@ Reviewed 2026-10-11. Each entry below is resolved in the repo, so its log entry 
 | Two edits rewrote a span they only half re-emitted | the same `tsc` step; the half-rewritten interface and the dropped field are compile errors |
 | Backticks nested inside a template-literal code generator | the generator is gone; no tracked script writes markdown from a template literal |
 
+## 2026-11-03 — A probe command changed the user's agent model
+**What happened:** to prove a switcher rewrites `~/.pi/agent/models.json`, I ran `magpie pi <model>`. The switcher read that as "take magpie out" and set Pi's `defaultProvider` to `commandcode`, so the route I had just installed read as bypassed.
+**Root cause:** a switcher's own CLI verb is not a read-only probe: `magpie <agent> <model>` also rewrites the agent's default provider.
+**Prevention rule:** test a config writer with a file-level fixture or a temp HOME, never with the live agent's CLI. When the live config is the only fixture, copy it first and restore the copy, then re-read the route.
+
+## 2026-11-03 — Benchmark combo conditions never applied the preset
+**What happened:** the first combo benchmark pass wrote `cavemanDefault`/`rtkDefault`/`ponytailDefault` keys beside `comboDefault` in each condition file. The extension resolves per-mode defaults over the preset, so every combo case ran with all modes off, and the results measured the flag itself.
+**Root cause:** I modeled the settings on the dashboard's stored shape (preset plus modes) without reading `savedModes` in `extensions/combo/index.ts`, which prefers any present per-mode key over the preset.
+**Prevention rule:** before benchmarking a config-driven behavior, prove the condition applied: run one probe turn and assert the expected block lands in the system prompt. When a resolver layering exists (host section, flat keys, preset), read it first and write the minimal shape.
+
 ## Format
 
 ```md
@@ -421,3 +431,18 @@ The entries below are editing and verification discipline. No test, lint rule, o
 **What happened:** two bash calls used `grep` over a downloaded file and `cat` over a temp file. The host blocked both, one for not respecting `.gitignore` and one outright, so the calls returned errors instead of results.
 **Root cause:** habit reached for the shell for text search and text read, where this session requires the dedicated tools.
 **Prevention rule:** search text with the `grep` tool and read files with the `read` tool; bash grep, rg, awk, and cat are blocked by the host and cost a round trip each time.
+
+## 2026-11-03 — A scripted edit anchored on guessed import order and wrote nothing
+**What happened:** a patch script replaced text by exact anchor. The import anchor listed two names from memory in the wrong order, so the match count was 0 and the script threw. The same script had already written an earlier file, so the change landed in two steps instead of one.
+**Root cause:** the anchor was written from the earlier read of a different file, not from the file being edited. A whole-file edit hid this, because the compiler caught nothing until the next build.
+**Prevention rule:** read the exact lines an anchor targets with a single `sed -n` in the same step, and make every script assert one match per anchor before it writes. Patch one file per run when the anchors come from different files.
+
+## 2026-11-03 — A model-level endpoint was read by the route and never written by it
+**What happened:** the Headroom route read the provider endpoint, and Pi's docs say a model entry's `baseUrl` overrides the provider's. A default model with its own endpoint was reported `routed` while its traffic bypassed the proxy.
+**Root cause:** the reader and the writer were written on different days. The reader learned the override rule first; the writer kept the provider-only assumption and no test compared the two.
+**Prevention rule:** when a config reader and its writer live apart, pin both with one fixture that sets every override level, and assert the route reads `routed` only after the write.
+
+## 2026-11-03 — An omp route was read from a block that does not own the model
+**What happened:** Tersio reported `routed: commandcode/deepseek/deepseek-v4.1-flash:high via magpie` while no chat completion reached the proxy. omp resolves that id to its built-in `commandcode` provider, so traffic left for `api.commandcode.ai` and the dashboard and doctor both read as routed.
+**Root cause:** the reader picked the first `models.yml` block that lists the model id. omp picks the provider from the selector's first segment, and the magpie block merely listed the same id. The config read and the agent's own catalog were never compared.
+**Prevention rule:** resolve a provider the way the agent resolves it, and prefer the agent's own catalog (omp's `models.db` model cache) over a block that only lists the id. Prove a route with a request in the proxy log, never with a config read alone.

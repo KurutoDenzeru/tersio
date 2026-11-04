@@ -14,6 +14,7 @@ import type { HostId } from '../extensions/shared/host-caps.ts';
 import { piAgentDir, pigAgentDir, readTextIfExists, resolveHeadroomBinary } from '../extensions/shared/utils.ts';
 import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
 import { removeTersioMcp } from '../extensions/shared/mcp-config.ts';
+import { NATIVE_ROUTE_HOSTS, isNativeRouteHost, removeNativeRoute } from '../extensions/shared/headroom-routes.ts';
 
 interface UninstallOptions {
   yes?: boolean;
@@ -177,6 +178,27 @@ async function removeUninstallTarget(target: string, shouldDryRun: boolean, recu
   }
 }
 
+/** Undo one agent's route before its tree leaves: Headroom's writer for two hosts, Tersio's for the rest. */
+async function restoreHeadroomRoute(host: HostId, shouldDryRun: boolean): Promise<void> {
+  if (isNativeRouteHost(host)) {
+    if (shouldDryRun) return;
+    const restored = removeNativeRoute(host);
+    if (restored.ok) sayTagged(`  [rm] Headroom endpoint: ${restored.detail}`);
+    return;
+  }
+  if (host !== 'omp' && host !== 'opencode') return;
+  if (shouldDryRun) {
+    sayTagged(`  [dry-run] would unwrap headroom for ${host}`);
+    return;
+  }
+  const bin = resolveHeadroomBinary();
+  if (!bin) return;
+  try {
+    await execP(bin, ['unwrap', host, '--no-stop-proxy'], { timeout: 90_000 });
+    sayTagged(`  [rm] Headroom unwrap: ${host}`);
+  } catch { /* not wrapped, or nothing to undo */ }
+}
+
 /** Removes the user's own Headroom install with whichever package manager installed it. */
 async function removeHeadroomBinary(shouldDryRun: boolean): Promise<void> {
   // Undo the agent-side wraps first: a removed binary behind a headroom-managed config strands the agent.
@@ -187,6 +209,11 @@ async function removeHeadroomBinary(shouldDryRun: boolean): Promise<void> {
         await execP(headroomBin, ['unwrap', target], { timeout: 90_000 });
         sayTagged(`  [rm] Headroom unwrap: ${target}`);
       } catch { /* not wrapped, or nothing to undo */ }
+    }
+    // Tersio's own routes have no headroom unwrap; put their endpoints back before the proxy leaves.
+    for (const target of NATIVE_ROUTE_HOSTS) {
+      const restored = removeNativeRoute(target);
+      if (restored.ok) sayTagged(`  [rm] Headroom endpoint: ${restored.detail}`);
     }
   }
   const dirs = (process.env.PATH ?? '').split(path.delimiter).filter(Boolean);
@@ -224,11 +251,12 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
     hosts = [options.host];
   } else if (tty() && !confirmed) {
     // One plain select: Enter picks the single thing to remove, no Space and no Done row.
-    const pick = await askInteractiveChoice('What should Tersio remove?', [
-      { value: 'agents', label: 'AI agents', hint: 'Oh My Pi, pi, PiG, OpenCode, DeepSeek Harness — pick one next' },
+    const targets = [
+      ...(installed.length > 0 ? [{ value: 'agents', label: 'AI agents', hint: `${installed.map((entry) => entry.label).join(', ')} — pick one next` }] : []),
       ...(shouldRemoveRtk ? [] : [{ value: 'rtk', label: 'RTK binary', hint: 'the rtk CLI the hooks call' }]),
       { value: 'headroom', label: 'Headroom binary', hint: 'uninstalls headroom-ai through uv or pip' },
-    ], 'agents');
+    ];
+    const pick = await askInteractiveChoice('What should Tersio remove?', targets, targets[0].value);
     if (pick.status !== 'selected') {
       closeRL();
       return false;
@@ -236,12 +264,12 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
     hosts = [];
     if (pick.value === 'rtk') shouldRemoveRtk = true;
     if (pick.value === 'headroom') shouldRemoveHeadroomBinary = true;
-    if (pick.value === 'agents') {
-      const agentPick = await askInteractiveChoice('Which agent?', allHosts.map((entry) => ({
+    if (pick.value === 'agents' && installed.length > 0) {
+      const agentPick = await askInteractiveChoice('Which agent?', installed.map((entry) => ({
         value: entry.id,
         label: entry.label,
-        hint: entry.installed ? 'tersio installed' : 'not installed',
-      })), installed[0]?.id ?? allHosts[0].id);
+        hint: entry.version ? `tersio ${entry.version}` : 'tersio installed',
+      })), installed[0].id);
       if (agentPick.status === 'selected') hosts = [agentPick.value as HostId];
     }
     if (hosts.length === 0 && !shouldRemoveRtk && !shouldRemoveHeadroomBinary) {
@@ -277,6 +305,7 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
   const results: boolean[] = [];
   for (const host of hosts) {
     const selected = allHosts.find((h) => h.id === host) as HostEntry;
+  await restoreHeadroomRoute(host, shouldDryRun);
   if (host === 'pi') {
     const removed = await removePiLayer(selected, shouldDryRun, shouldRemovePonytail, shouldRemoveRtk, confirmed, 'pi');
     if (removed) console.log('\nDone. Restart pi, then /combo lite.');
@@ -309,7 +338,9 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
         const raw = await readTextIfExists(configPath);
         const config = raw ? JSON.parse(raw) as { plugins?: unknown[] } : {};
         if (Array.isArray(config.plugins)) {
-          config.plugins = config.plugins.filter((p) => typeof p !== 'string' || !p.includes('/opencode/plugins/tersio/'));
+          // The installer writes the directory without a trailing slash, so compare the resolved paths.
+          const ours = new Set([path.resolve(dir), path.resolve(path.join(HOME, '.config', 'opencode', 'plugins', 'rtk.ts'))]);
+          config.plugins = config.plugins.filter((p) => typeof p !== 'string' || !ours.has(path.resolve(p)));
           await fs.writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, 'utf8');
         }
       } catch { /* config missing or not JSON; nothing to scrub */ }

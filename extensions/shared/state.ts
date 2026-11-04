@@ -18,6 +18,18 @@ export interface TersioState {
   updateSnoozeUntil?: number;
   rtkEligible?: { version?: string; heads?: string[]; sig?: string };
   diag?: unknown;
+  /** The endpoint each host had before Tersio routed it through Headroom. */
+  headroomRoutes?: Record<string, HeadroomRouteRecord[]>;
+}
+
+/** One config line Tersio changed: enough to put the endpoint back without touching newer edits. */
+export interface HeadroomRouteRecord {
+  file: string;
+  provider: string;
+  /** The model entry whose own endpoint was rewritten, when it was not the provider's. */
+  model?: string;
+  original: string;
+  written: string;
 }
 
 const STATE_KEY = 'state';
