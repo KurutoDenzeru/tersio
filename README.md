@@ -10,7 +10,6 @@
 
 Token saver & usage tracker for coding agents: terse caveman replies, compact RTK shell output, lean Ponytail code, Headroom compression, pstack rigor, and a gain dashboard — one-command combos over one shared extension tree.
 
-Measured savings per mode, the prompt overhead each one adds, and the rerun protocol: [docs/BENCHMARK.md](./docs/BENCHMARK.md).
 
 ## 🎯 What this is, and why you would use it
 
@@ -31,10 +30,6 @@ Tersio installs into Oh My Pi, Pi, Pi-in-go, OpenCode, and DeepSeek Harness, and
 | 🍃 **Headroom** | Headroom shrinks tool output, file reads, and history. Opt-in; Tersio reads its savings and never turns it on for you. |
 | 🧩 **Combo** | One command sets Caveman, RTK, and Ponytail, at three strengths. |
 | 📊 **Dashboard** | What you spent, per model and per day. |
-
-Every mode is a text block you can read in the repo. Measured savings and prompt overhead are published per mode in [docs/BENCHMARK.md](./docs/BENCHMARK.md). No total-bill claim: the tests measure reply tokens, prompt overhead, and command output only.
-
-Oh My Pi and OpenCode use Headroom's own writer. Pi, PiG, and DeepSeek Harness get a Tersio switch that saves the provider endpoint and puts it back when you turn Headroom off.
 
 ## ⚡ Getting Started
 
@@ -106,6 +101,40 @@ npm exec --yes --prefer-online --package=@krtclcdy/tersio@latest -- tersio insta
 **Overview** shows spend, requests, tokens, cache rate, and the latest calls.
 
 ![Tersio Overview dashboard](./docs/Overview.webp)
+
+## 🧪 Benchmarks
+
+One model, `GLM-5.3-Flash`, five runs per prompt. Method: [docs/BENCHMARK.md](./docs/BENCHMARK.md).
+
+| Case | Reply Δ% | Δ Net | Quality | Agentic Δ% | Wall Δ |
+|---|---:|---:|---:|---:|---:|
+| Base | 0 | 0 | 11/15 | 0 | 0 |
+| Caveman `lite` | -10.9% | +1,044 | 8/15 | — | — |
+| Caveman `full` | -8.4% | +1,182 | 8/15 | — | — |
+| Caveman `ultra` | -15.1% | +612 | 12/15 | — | — |
+| Caveman `megacave-lite` | +8.4% | +817 | 2/15 | — | — |
+| Caveman `megacave-full` | +58.0% | +844 | 0/15 | — | — |
+| Caveman `megacave-ultra` | +46.2% | +789 | 4/15 | — | — |
+| Ponytail `lite` | +20.6% | -70 | 13/15 | — | — |
+| Ponytail `full` | +11.2% | +188 | 12/15 | — | — |
+| Ponytail `ultra` | +28.4% | +302 | 12/15 | — | — |
+| pstack `on` | — | — | 5/5 | +17.9% | -4.3s |
+| RTK `on` | -79.5% find, -10.5% grep | — | 3/3 | +152.3% | +108.5s |
+| Headroom `on` | -94.9% payload | — | sentinel | — | — |
+| Combo `lite` | -16.0% | +1,743 | 5/15 | -27.8% | -18.8s |
+| Combo `balanced` | -0.8% | +1,882 | 10/15 | -3.1% | +46.1s |
+| Combo `max` | +6.7% | +1,343 | 8/15 | -31.5% | -19.2s |
+| Combo + Headroom `lite` | -13.4% | +1,744 | 9/15 | +10.6% | +103.7s |
+| Combo + Headroom `balanced` | -7.6% | +1,874 | 9/15 | -27.6% | -12.2s |
+| Combo + Headroom `max` | +0.8% | +1,333 | 12/15 | -20.0% | -20.9s |
+| Combo + pstack `lite` | -0.8% | +5,337 | 9/15 | +1.9% | -27.2s |
+| Combo + pstack `balanced` | -7.6% | +5,452 | 6/15 | +45.1% | +6.7s |
+| Combo + pstack `max` | +0.8% | +4,909 | 9/15 | +15.2% | -22.0s |
+| Combo + all `lite` | -3.4% | +5,334 | 9/15 | +20.3% | -13.9s |
+| Combo + all `balanced` | -13.4% | +5,445 | 8/15 | +5.7% | +2.9s |
+| Combo + all `max` | -12.6% | +4,896 | 10/15 | -16.6% | -25.1s |
+
+Base: 119 reply tokens, 1,616 total, 11 of 15. Agentic base: 40,176 tokens at 135.5s (pstack, RTK) and 70,784 at 150.3s (combo stacks). Agentic rows rest on 1 to 5 runs, so read them as smoke tests; no bill savings are claimed. Per-mode files: [Caveman](./docs/BENCH_CAVEMAN.md), [Ponytail](./docs/BENCH_PONYTAIL.md), [pstack](./docs/BENCH_PSTACK.md), [RTK](./docs/BENCH_RTK.md), [Headroom](./docs/BENCH_HEADROOM.md), [Combo](./docs/BENCH_COMBO.md), [Combo + Headroom](./docs/BENCH_COMBO_HEADROOM.md), [Combo + pstack](./docs/BENCH_COMBO_PSTACK.md), [Combo + all](./docs/BENCH_COMBO_ALL.md).
 
 ## 🔌 MCP
 
