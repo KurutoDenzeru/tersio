@@ -63,25 +63,29 @@ const STYLES = `
 .tersio-bar__icon { flex: none; opacity: .9; }
 .tersio-pop {
   position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(100% + 6px); z-index: 40;
-  min-width: min(420px, calc(100vw - 32px)); padding: 14px 16px;
+  width: max-content; max-width: min(340px, calc(100vw - 24px)); padding: 10px 12px;
   border: 0; border-radius: var(--dsw-radius-lg);
   --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);
   background: var(--dsw-specific-menu); backdrop-filter: var(--dsw-menu-backdrop-filter);
   box-shadow: var(--dsw-elevation-panel);
   color: var(--dsw-alias-label-secondary); font-size: 12px; line-height: 20px; text-align: left; white-space: normal;
 }
-.tersio-pop__row { display: flex; align-items: center; gap: 12px; min-width: 0; padding: 5px 0; }
-.tersio-pop__name { flex: none; width: 112px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tersio-pop__options { display: flex; flex-wrap: wrap; gap: 6px; }
-.tersio-pill {
-  padding: 3px 12px; border-radius: 999px; border: 1px solid var(--dsw-alias-border-l1);
-  background: transparent; color: var(--dsw-alias-label-secondary);
-  font: inherit; cursor: pointer;
+.tersio-pop__row { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 2px 0; }
+.tersio-pop__name { flex: none; width: 84px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+/* One track per row: a segmented control reads tighter than six separate buttons. */
+.tersio-pop__options {
+  display: inline-flex; gap: 2px; padding: 2px; border-radius: 999px;
+  background: var(--dsw-alias-interactive-bg-hover);
 }
-.tersio-pill:hover { border-color: var(--dsw-alias-border-l2); color: var(--dsw-alias-label-primary); }
+.tersio-pill {
+  padding: 2px 9px; border: 0; border-radius: 999px; background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit; font-size: 11px; line-height: 15px; cursor: pointer; white-space: nowrap;
+}
+.tersio-pill:hover { color: var(--dsw-alias-label-primary); }
 .tersio-pill[data-active='true'] {
-  background: var(--dsw-alias-bg-layer-2); border-color: var(--dsw-alias-border-l2);
-  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary);
+  box-shadow: 0 1px 2px rgb(0 0 0 / .18);
 }
 `;
 
