@@ -483,7 +483,10 @@ export function UpstreamPage() {
         description="Every mode Tersio ports, against the project it came from. A check reads each upstream repository, then names what moved and how each installed agent compares."
         actions={
           <Button size="sm" className="mono h-8 gap-1.5 rounded-xl" disabled={checking} onClick={check}>
-            <Icon name="rotate-ccw" className="size-3.5" />
+            <Icon
+              name={checking ? "loader-circle" : "rotate-ccw"}
+              className={`size-3.5 ${checking ? "animate-spin" : ""}`}
+            />
             <span>{checking ? "Checking upstream" : "Check upstream"}</span>
           </Button>
         }
