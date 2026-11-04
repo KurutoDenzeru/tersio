@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,6 +8,7 @@ import { readHeadroomRoute } from "../../extensions/shared/headroom-routing.ts";
 import comboToggleExtension from "../../extensions/combo/index.ts";
 import { getSharedComboState, resetSharedComboState } from "../../extensions/shared/session-state.ts";
 import { durableConfigInstalled } from "../../extensions/shared/headroom-proxy.ts";
+import { patchState } from "../../extensions/shared/state.ts";
 import { resolveHeadroomBinary } from "../../extensions/shared/utils.ts";
 import type { ExtensionApi, SessionEntry } from "../../extensions/shared/types.ts";
 import { fakeExecutable, withHome } from "../helpers/env.ts";
@@ -311,4 +312,55 @@ test("pi and PiG accept the mode but add no prompt without a route", async () =>
     ctx,
   ) as { systemPrompt?: string[] } | undefined;
   expect(prompt).toBeUndefined();
+});
+
+test("a route another tool reset is put back once, and the session says so", async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-headroom-bin-"));
+  fakeExecutable(dir, process.platform === "win32" ? "headroom.exe" : "headroom", "#!/bin/sh\nexit 0\n", "exit /b 0");
+  const server = createServer((_req, res) => { res.writeHead(200); res.end("ok"); });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const proxy = `http://127.0.0.1:${(server.address() as { port: number }).port}/`;
+  const previousUrl = process.env.TERSIO_HEADROOM_PROXY_URL;
+  process.env.TERSIO_HEADROOM_PROXY_URL = proxy;
+  try {
+    await withHome(async (home) => {
+      // Pi resolves its config under HOME, so the fixture lives where the route reader looks.
+      const agentDir = path.join(home, ".pi", "agent");
+      mkdirSync(agentDir, { recursive: true });
+      const models = path.join(agentDir, "models.json");
+      writeFileSync(path.join(agentDir, "settings.json"), JSON.stringify({
+        defaultProvider: "magpie",
+        defaultModel: "commandcode/deepseek/deepseek-v4.1-flash",
+      }), "utf8");
+      // A model switcher wrote its own endpoint back after Tersio routed the provider.
+      writeFileSync(models, JSON.stringify({
+        providers: { magpie: { api: "openai-completions", baseUrl: "http://127.0.0.1:3425/v1" } },
+      }, null, 2), "utf8");
+      const deploy = path.join(home, ".headroom", "deploy", "init");
+      mkdirSync(deploy, { recursive: true });
+      writeFileSync(path.join(deploy, "manifest.json"), JSON.stringify({
+        updated_at: "2026-01-01T00:00:00Z",
+        base_env: { OPENAI_TARGET_API_URL: "http://127.0.0.1:3425/v1" },
+      }), "utf8");
+      // The recorded write is what marks the reset as drift rather than a deliberate switch.
+      patchState({ headroomRoutes: {
+        pi: [{ file: models, provider: "magpie", original: "http://127.0.0.1:3425/v1", written: `${proxy}v1` }],
+      } });
+      await withPath(dir, async () => {
+        resetSharedComboState();
+        const entries: SessionEntry[] = [{ type: "custom", customType: "headroom-mode", data: { mode: "on" } }];
+        const { handlers, ctx } = harness(entries, "pi");
+        await handlers.get("session_start")!({}, ctx);
+        const prompt = await handlers.get("before_agent_start")!({ systemPrompt: "base" }, ctx) as { systemPrompt?: string } | undefined;
+        expect(ctx.notifications.some((line) => line.includes("another tool reset")), JSON.stringify(ctx.notifications)).toBe(true);
+        expect(JSON.parse(readFileSync(models, "utf8")).providers.magpie.baseUrl).toBe(`${proxy}v1`);
+        // The route is back, so the block is injected instead of the unrouted warning.
+        expect(prompt?.systemPrompt).toContain("🍃 HEADROOM MODE ACTIVE");
+      });
+    });
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    if (previousUrl === undefined) delete process.env.TERSIO_HEADROOM_PROXY_URL;
+    else process.env.TERSIO_HEADROOM_PROXY_URL = previousUrl;
+  }
 });

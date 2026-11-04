@@ -10,7 +10,7 @@ import {
 } from '../extensions/shared/headroom-proxy.ts';
 import { ensureAgentProviderRoute } from '../extensions/shared/headroom-agent.ts';
 import { describeHeadroomRoute, readHeadroomRoute } from '../extensions/shared/headroom-routing.ts';
-import { hasNativeRoute, installNativeRoute, isNativeRouteHost, removeNativeRoute } from '../extensions/shared/headroom-routes.ts';
+import { hasNativeRoute, installNativeRoute, isNativeRouteHost, removeNativeRoute, routeDrifted } from '../extensions/shared/headroom-routes.ts';
 import { detectHosts } from './hosts.ts';
 import { mergeHeadroomWraps, readHeadroomWraps, setStoredWrap, writeHeadroomWraps } from '../extensions/shared/headroom-wraps.ts';
 import { ensureHeadroomRuntime } from './headroom-runtime.ts';
@@ -89,6 +89,8 @@ export async function handleHeadroomRoutes(
         durable: native,
         route: true,
         installed: route.routed,
+        // A route another tool reset reads as installed-but-drifted, so the drawer names the cause.
+        drifted: routeDrifted(host.id, route),
         managed: isNativeRouteHost(host.id) ? hasNativeRoute(host.id) : undefined,
         agentInstalled: host.installed,
         agentPresent,

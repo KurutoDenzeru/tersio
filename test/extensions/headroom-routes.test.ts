@@ -5,6 +5,7 @@ import { withHome } from '../helpers/env.ts';
 import { readHeadroomRoute } from '../../extensions/shared/headroom-routing.ts';
 import {
   hasNativeRoute,
+  repairHeadroomRoute,
   installNativeRoute,
   nativeProxyUrl,
   removeNativeRoute,
@@ -205,4 +206,25 @@ describe('native headroom routes', () => {
     expect(removeNativeRoute('pi').ok).toBe(true);
     expect(JSON.parse(readFileSync(modelsFile, 'utf8')).providers.magpie.baseUrl).toBe('http://127.0.0.1:8787/v1');
   }));
+});
+
+test("a durable host with no headroom block is never invented by the repair", async () => {
+  await withHome(async (home) => {
+    const omp = path.join(home, ".omp", "agent");
+    mkdirSync(omp, { recursive: true });
+    // A gateway points the agent at itself and headroom never wrote a block here.
+    writeFileSync(path.join(omp, "models.yml"), "providers:\n  magpie:\n    baseUrl: http://127.0.0.1:3425/v1\n    models:\n    - id: demo-model\n", "utf8");
+    writeFileSync(path.join(omp, "config.yml"), "modelRoles:\n  default: magpie/demo-model\n", "utf8");
+    const previousUrl = process.env.TERSIO_HEADROOM_PROXY_URL;
+    process.env.TERSIO_HEADROOM_PROXY_URL = PROXY;
+    try {
+      const before = readFileSync(path.join(omp, "models.yml"), "utf8");
+      const result = await repairHeadroomRoute("omp");
+      expect(result.ok).toBe(false);
+      expect(readFileSync(path.join(omp, "models.yml"), "utf8")).toBe(before);
+    } finally {
+      if (previousUrl === undefined) delete process.env.TERSIO_HEADROOM_PROXY_URL;
+      else process.env.TERSIO_HEADROOM_PROXY_URL = previousUrl;
+    }
+  });
 });

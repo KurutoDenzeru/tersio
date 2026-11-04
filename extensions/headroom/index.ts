@@ -7,6 +7,7 @@ import { readHeadroomDefault } from '../shared/plugin-settings.ts';
 import { resolveHeadroomBinary } from '../shared/utils.ts';
 import { headroomHostSupported, headroomProxyUrl } from '../shared/headroom-proxy.ts';
 import { describeHeadroomRoute, readHeadroomRoute } from '../shared/headroom-routing.ts';
+import { repairHeadroomRoute } from '../shared/headroom-routes.ts';
 import { ensureTersioMcp } from '../shared/mcp-config.ts';
 import type { HeadroomRoute } from '../shared/headroom-routing.ts';
 import type { ExtensionApi, ExtensionCtx, InputEvent, SessionEntry, SystemPromptEvent } from '../shared/types.ts';
@@ -55,6 +56,7 @@ export default function headroomSessionExtension(pi: ExtensionApi): void {
   let currentMode = DEFAULT_MODE;
   let lastInjected: string | undefined = undefined;
   let unroutedNotified = false;
+  let repairAttempted = false;
 
   function setMode(mode: string, ctx?: ExtensionCtx): boolean {
     if (!supported) return false;
@@ -112,6 +114,7 @@ export default function headroomSessionExtension(pi: ExtensionApi): void {
 
   function restoreMode(ctx?: ExtensionCtx): void {
     unroutedNotified = false;
+    repairAttempted = false;
     const entries = sessionEntries(ctx);
     // A subagent's branch has no Tersio entries; reconciling it would wipe shared state.
     if (hasModeState(entries)) reconcileSharedComboEntries(entries);
@@ -147,7 +150,17 @@ export default function headroomSessionExtension(pi: ExtensionApi): void {
     // The same rule applies to a binary with no runtime behind it: headroom's proxy is what compresses.
     if (!(await headroomProxyUp())) return;
     // A live proxy is not enough: the configured model must actually point at it.
-    const route = readHeadroomRoute(host);
+    let route = readHeadroomRoute(host);
+    // A model switcher that owns the provider block writes its own endpoint back on every switch,
+    // so put the route back once per session instead of warning on every turn.
+    if (!route.routed && !repairAttempted) {
+      repairAttempted = true;
+      const repaired = await repairHeadroomRoute(host);
+      if (repaired.ok) {
+        route = readHeadroomRoute(host);
+        ctx?.ui?.notify?.(`Headroom: another tool reset this agent's route. ${repaired.detail}. Reopen /model so this session uses it.`, 'info');
+      }
+    }
     if (!route.measured || !route.routed) {
       if (!unroutedNotified) {
         unroutedNotified = true;

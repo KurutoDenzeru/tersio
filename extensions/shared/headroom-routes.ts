@@ -4,9 +4,14 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { headroomProxyUpstream, headroomProxyUrl } from './headroom-proxy.ts';
+import {
+  durableConfigInstalled, headroomProxyPort, installDurableConfig, readOmpGateway, routeOmpGateway,
+} from './headroom-proxy.ts';
 import { describeHeadroomRoute, dshDefaultRoute, dshProviders, jsonBaseUrl, jsonModelEntry, readHeadroomRoute, sameProxyEndpoint } from './headroom-routing.ts';
+import type { HeadroomRoute } from './headroom-routing.ts';
+import { hostCap } from './host-caps.ts';
 import { patchState, readState } from './state.ts';
-import { homeDir, piAgentDir, pigAgentDir } from './utils.ts';
+import { homeDir, piAgentDir, pigAgentDir, resolveHeadroomBinary } from './utils.ts';
 import type { HeadroomRouteRecord } from './state.ts';
 
 export type NativeRouteHost = 'pi' | 'pig' | 'dsh';
@@ -44,6 +49,17 @@ export function nativeRouteRecords(host: NativeRouteHost): HeadroomRouteRecord[]
 
 export function hasNativeRoute(host: NativeRouteHost): boolean {
   return nativeRouteRecords(host).length > 0;
+}
+
+/**
+ * True when a tool other than Tersio put the endpoint back. A model switcher that owns the provider
+ * block rewrites it on every switch, so the recorded route disappears without the user asking.
+ * Only the endpoint Tersio replaced counts: a newer edit of the user's own is left alone.
+ */
+export function routeDrifted(host: string, route: HeadroomRoute): boolean {
+  if (!isNativeRouteHost(host) || !route.measured || route.routed || !route.baseUrl) return false;
+  const current = route.baseUrl;
+  return nativeRouteRecords(host).some((record) => sameProxyEndpoint(current, record.original));
 }
 
 function saveRecords(host: NativeRouteHost, records: HeadroomRouteRecord[]): void {
@@ -255,6 +271,33 @@ export function installNativeRoute(host: NativeRouteHost, proxyUrl: string = hea
     ok: false,
     detail: `${host} still bypasses Headroom after the write (${describeHeadroomRoute(check)})${restored.ok ? ', endpoints restored' : ''}`,
   };
+}
+
+/**
+ * Put back a route a third-party writer replaced. A native host still has Tersio's record, so the
+ * recorded endpoint proves the drift. A durable host's block belongs to headroom, so its own writer
+ * restores it and no record is needed. Neither path touches the gateway that overwrote the route.
+ */
+export async function repairHeadroomRoute(host: string, proxyUrl: string = headroomProxyUrl()): Promise<NativeRouteResult> {
+  const route = readHeadroomRoute(host, proxyUrl);
+  if (!route.measured) return { ok: false, detail: describeHeadroomRoute(route) };
+  if (route.routed) return { ok: true, detail: `${host} already reaches Headroom` };
+  if (isNativeRouteHost(host)) {
+    if (!routeDrifted(host, route)) return { ok: false, detail: describeHeadroomRoute(route) };
+    return installNativeRoute(host, proxyUrl);
+  }
+  if (!hostCap(host)?.headroomDurable || !durableConfigInstalled(host)) return { ok: false, detail: describeHeadroomRoute(route) };
+  const bin = resolveHeadroomBinary();
+  if (!bin) return { ok: false, detail: `${host}: no headroom binary to rewrite its block` };
+  const port = headroomProxyPort();
+  if (!(await installDurableConfig(bin, host, port))) return { ok: false, detail: `${host}: headroom could not rewrite its block` };
+  // The omp gateway line moves with the block, or the block still points at the gateway.
+  const gateway = hostCap(host)?.headroomGateway ? readOmpGateway(port) : null;
+  if (gateway) routeOmpGateway(gateway, port);
+  const repaired = readHeadroomRoute(host, proxyUrl);
+  return repaired.routed
+    ? { ok: true, detail: `${host}: ${describeHeadroomRoute(repaired)}` }
+    : { ok: false, detail: describeHeadroomRoute(repaired) };
 }
 
 /** Put back the endpoint Tersio replaced, leaving any newer edit alone. */

@@ -17,6 +17,8 @@ import { usageDbPath } from '../extensions/shared/usage-store.ts';
 import { piAgentDir, pigAgentDir, readTextIfExists, resolveHeadroomBinary, resolveHostBinary, resolveRtkBinary, rtkPlatformSpec, ruleBodyProblem } from '../extensions/shared/utils.ts';
 import { sqliteScript, statsDbPath } from '../extensions/shared/agent-stats.ts';
 import { OMP_SUBAGENT_MARKER } from '../extensions/shared/session-state.ts';
+import { describeHeadroomRoute, readHeadroomRoute } from '../extensions/shared/headroom-routing.ts';
+import { hostCap } from '../extensions/shared/host-caps.ts';
 import { PI_PONYTAIL_FILES, PONYTAIL_BUNDLE_FILES, PONYTAIL_VERSION, TREE_PSTACK_FILES, isObsoleteTreeFile, treeFileText, treeFilesFor } from './manifest.ts';
 import { serviceRunning, serviceState } from './doctor-fix.ts';
 import { readState } from '../extensions/shared/state.ts';
@@ -328,6 +330,19 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   const headroomVersion = headroomVersionRaw?.match(/version\s+(\S+)/)?.[1] ?? headroomVersionRaw ?? '';
   if (headroomBin !== null) check('Headroom binary', true, headroomVersion);
   else console.log('  —  Headroom: not installed · optional: pip install "headroom-ai[all]", then /headroom on');
+  // A gateway that owns an agent's endpoint writes its own URL back, so the installed route reads as bypassed.
+  if (headroomBin !== null) {
+    const bypassed = hosts
+      .filter((host) => host.installed && hostCap(host.id)?.headroom === true)
+      .map((host) => ({ id: host.id, route: readHeadroomRoute(host.id) }))
+      .filter((entry) => entry.route.measured && !entry.route.routed);
+    if (bypassed.length === 0) check('Headroom route', true);
+    else {
+      warnLine('Headroom route',
+        `${bypassed.map((entry) => `${entry.id} ${describeHeadroomRoute(entry.route)}`).join(' · ')}`
+        + ' — the agent restores it on its next start; now: tersio install --host <host> --headroom-default on');
+    }
+  }
   const ponytailAge = ponytailMtime ? `(updated ${relTime(Date.now() - ponytailMtime.mtimeMs)} · ${absDate(ponytailMtime.mtimeMs)})` : '';
   check('Ponytail', ponytailPkgText !== null, [PONYTAIL_VERSION, ponytailAge].filter(Boolean).join(' '));
   if (ponytailStale.length > 0) {
