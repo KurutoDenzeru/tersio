@@ -203,16 +203,13 @@ function statusLevel(modes: ModeSnapshot): string {
   return 'custom';
 }
 
-/** Three letters per preset, so the whole line fits a narrow composer. */
-const LEVEL_ABBREVIATIONS: Record<string, string> = { off: 'OFF', lite: 'LTE', balanced: 'BAL', max: 'MAX', custom: 'CST' };
-
 /** The bar line: the preset, then one glyph per mode, short enough to fit a narrow composer. */
 function statusLine(store: Store, section: Store): string {
   const modes = readModes(store, section);
   const pstack = modes.pstack === true || modes.pstack === 'on' ? 'on' : 'off';
   const level = statusLevel(modes);
   if (level === 'off' && pstack === 'off' && modes.headroom === 'off') return '🧩 OFF';
-  const label = LEVEL_ABBREVIATIONS[level] ?? level.toUpperCase();
+  const label = level === 'off' || level === 'custom' ? 'CUSTOM' : level.toUpperCase();
   const value = (mode: string | boolean) => (mode === true || mode === 'on' ? 'ON' : mode === false || mode === 'off' ? 'OFF' : String(mode).toUpperCase());
   return `🧩 ${label} | ${MODE_GLYPHS.caveman} caveman:${value(modes.caveman)} | ${MODE_GLYPHS.rtk} rtk:${value(modes.rtk)} | ${MODE_GLYPHS.headroom} headroom:${value(modes.headroom)} | ${MODE_GLYPHS.ponytail} ponytail:${value(modes.ponytail)} | ${MODE_GLYPHS.pstack} pstack:${value(pstack)}`;
 }
