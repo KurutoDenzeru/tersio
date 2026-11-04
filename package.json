@@ -24,12 +24,20 @@
     "tersio": "dist/tersio.js"
   },
   "exports": {
+    ".": "./extensions/dsh/index.ts",
+    "./package.json": "./package.json",
     "./server": "./dist/extensions/server.js",
-    "./dsh-plugin": "./extensions/dsh/index.ts"
+    "./dsh-plugin": "./extensions/dsh/index.ts",
+    "./client": "./dist/extensions/dsh/client.js"
   },
   "dsh": {
     "bundle": {
       "patch": "./extensions/dsh/cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": ["@deepseek-ai/dsh-client-ui-conversation"]
     }
   },
   "pi": {

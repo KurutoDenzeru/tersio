@@ -1,12 +1,12 @@
 // Tersio on DeepSeek Harness: modes as always-on system-prompt sections; imports stay relative for Node type stripping.
 import { readFileSync, writeFileSync } from 'node:fs';
-import { randomUUID } from 'node:crypto';
 import { exec, execFile } from 'node:child_process';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { homeDir, resolveRtkBinary, tersioHome } from '../shared/utils.ts';
-import { buildModeNotice, formatModeLine, type ModeSnapshot } from '../shared/mode-notice.ts';
+import { formatModeLine, MODE_GLYPHS, type ModeSnapshot } from '../shared/mode-notice.ts';
 
 const execFileP = promisify(execFile);
 const execShellP = promisify(exec);
@@ -143,20 +143,27 @@ interface DshTools {
   }): () => void;
 }
 
+interface DshRoute {
+  kind: 'exact' | 'prefix';
+  path: string;
+  handler: (req: IncomingMessage, res: ServerResponse) => void | Promise<void>;
+}
+
 interface DshCtx {
   systemPrompt: {
     section(section: { name: string; order: number; text: string | ((context: unknown) => string); interpolate?: boolean }): () => void;
   };
   tools: DshTools;
   commands: DshCommands;
+  /** Present on the Web profile; a headless composition simply has no status bar to feed. */
+  webServer?: { register(route: DshRoute): () => void };
+  effect?: (callback: () => () => void) => () => void;
+  /** Optional dependency: the nested fiber waits for the carrier instead of blocking the whole plugin. */
+  inject?: (deps: string[], callback: (scoped: DshCtx) => void) => unknown;
 }
 
 interface DshAgent {
   id: string;
-  /** Sends a user message as a real chat turn: the UI shows the bubble and the assistant replies to it. */
-  followup?: (message: { id: string; role: 'user'; content: Array<{ type: 'text'; text: string }>; source: { kind: string } }) => void;
-  /** Fallback: append the message to the log when no turn can start. */
-  session?: { append?: (type: string, data: unknown, intent?: { surfaceOp: 'append' }) => unknown };
 }
 
 interface DshCommands {
@@ -187,32 +194,59 @@ function modeLine(store: Store, section: Store): string {
   return formatModeLine(readModes(store, section));
 }
 
-/** Sends the change as a real chat message: the UI shows the user bubble and the assistant answers it like any turn. */
-async function notice(agent: DshAgent, text: string): Promise<void> {
-  const message = { id: randomUUID(), role: 'user' as const, content: [{ type: 'text' as const, text }], source: { kind: 'user' } };
-  if (agent.followup) {
-    agent.followup(message);
-    if (process.env.TERSIO_DSH_DEBUG) console.log('[tersio-dsh] notice sent as a chat message');
-    return;
+/** The preset the three preset-owned modes add up to, or `custom` when they were mixed by hand. */
+function statusLevel(modes: ModeSnapshot): string {
+  for (const [level, preset] of Object.entries(COMBO_PRESETS)) {
+    if (preset.caveman === modes.caveman && preset.rtk === modes.rtk && preset.ponytail === modes.ponytail) return level;
   }
-  // No turn scheduler here: fall back to a surface append, which still renders as a message node.
-  const session = agent.session;
-  if (!session?.append) return;
-  try {
-    await session.append('user/message', { content: message.content, source: { kind: 'tersio-modes', form: 'notice', summary: text } }, { surfaceOp: 'append' });
-    if (process.env.TERSIO_DSH_DEBUG) console.log('[tersio-dsh] notice appended');
-  } catch (error) {
-    if (process.env.TERSIO_DSH_DEBUG) console.log(`[tersio-dsh] notice append failed: ${(error as Error)?.message ?? error}`);
-  }
+  return 'custom';
 }
 
-// Writes the dsh section, sends the change as a chat message, and returns the status line.
-async function applyModeChange(agent: DshAgent, mutate: (section: Record<string, unknown>) => void, label: string): Promise<string> {
+/** The footer line Pi and OMP paint, glyph order included, so the DSH bar cannot disagree with another host. */
+function statusLine(store: Store, section: Store): string {
+  const modes = readModes(store, section);
+  const pstack = modes.pstack === true || modes.pstack === 'on' ? 'on' : 'off';
+  const level = statusLevel(modes);
+  if (level === 'off' && pstack === 'off' && modes.headroom === 'off') return '🧩 COMBO OFF';
+  const label = level === 'off' || level === 'custom' ? 'CUSTOM' : level.toUpperCase();
+  const value = (mode: string | boolean) => String(mode === true ? 'on' : mode).toUpperCase();
+  return `🧩 COMBO ${label}: ${MODE_GLYPHS.caveman} caveman=${value(modes.caveman)} | ${MODE_GLYPHS.rtk} rtk=${value(modes.rtk)} | ${MODE_GLYPHS.headroom} headroom=${value(modes.headroom)} | ${MODE_GLYPHS.ponytail} ponytail=${value(modes.ponytail)} | ${MODE_GLYPHS.pstack} pstack=${value(pstack)}`;
+}
+
+/** `/tersio/modes` feeds the Web status bar: one GET, no session, so the client polls it while the page is open. */
+function registerStatusRoute(ctx: DshCtx): void {
+  if (!ctx.inject) return;
+  ctx.inject(['webServer'], (scoped) => {
+    const webServer = scoped.webServer;
+    if (!webServer) return;
+    const route: DshRoute = {
+      kind: 'exact',
+      path: '/tersio/modes',
+      handler: (req, res) => {
+        if (req.method !== 'GET' && req.method !== 'HEAD') {
+          res.writeHead(405, { allow: 'GET, HEAD' });
+          res.end();
+          return;
+        }
+        const store = readStore();
+        const section = hostSection(store);
+        const modes = readModes(store, section);
+        const body = JSON.stringify({ text: statusLine(store, section), level: statusLevel(modes), modes });
+        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
+        res.end(req.method === 'HEAD' ? undefined : body);
+      },
+    };
+    // The carrier throws on a duplicate (kind, path), so the nested fiber owns the disposer.
+    scoped.effect?.(() => webServer.register(route));
+  });
+}
+
+// Writes the dsh section and returns the status line; unlike the desktop hosts there is no chat message,
+// because the bar above the composer already shows the change.
+function applyModeChange(mutate: (section: Record<string, unknown>) => void): string {
   writeHostSection(mutate);
   const store = readStore();
-  const section = hostSection(store);
-  await notice(agent, buildModeNotice(label, readModes(store, section)));
-  return modeLine(store, section);
+  return modeLine(store, hostSection(store));
 }
 
 function registerCommands(ctx: DshCtx): void {
@@ -221,16 +255,16 @@ function registerCommands(ctx: DshCtx): void {
       name: 'combo',
       description: 'Set the Tersio Combo preset: off, lite, balanced, or max',
       input: { hint: 'off | lite | balanced | max' },
-      handler: async ({ agent, rawInput }) => {
+      handler: async ({ rawInput }) => {
         const level = String(rawInput || 'off').trim().toLowerCase();
         const preset = COMBO_PRESETS[level];
         if (!preset) return { kind: 'success', text: `Unknown combo level: ${level || '(none)'}. Levels: off, lite, balanced, max.` };
-        const modes = await applyModeChange(agent, (section) => {
+        const modes = applyModeChange((section) => {
           section.comboDefault = level;
           section.cavemanDefault = preset.caveman;
           section.rtkDefault = preset.rtk;
           section.ponytailDefault = preset.ponytail;
-        }, `Tersio combo set to ${level}`);
+        });
         return { kind: 'success', text: `Combo set to ${level}: ${modes}` };
       },
     },
@@ -238,11 +272,11 @@ function registerCommands(ctx: DshCtx): void {
       name: 'caveman',
       description: 'Set the Caveman voice level',
       input: { hint: 'off | lite | full | ultra | megacave-*' },
-      handler: async ({ agent, rawInput }) => {
+      handler: async ({ rawInput }) => {
         const level = String(rawInput || 'off').trim().toLowerCase();
         const mapped = RETIRED_CAVEMAN[level] ?? level;
         if (mapped !== 'off' && !CAVEMAN_RULE_FILES[mapped]) return { kind: 'success', text: `Unknown caveman level: ${level}. Levels: off, lite, full, ultra, megacave-lite, megacave-full, megacave-ultra.` };
-        const modes = await applyModeChange(agent, (section) => { section.cavemanDefault = mapped; }, `Tersio caveman set to ${mapped}`);
+        const modes = applyModeChange((section) => { section.cavemanDefault = mapped; });
         return { kind: 'success', text: mapped === 'off' ? `Caveman off. ${modes}` : `Caveman set to ${mapped}: ${modes}` };
       },
     },
@@ -250,11 +284,11 @@ function registerCommands(ctx: DshCtx): void {
       name: 'rtk',
       description: 'Turn the RTK shell condensation on or off',
       input: { hint: 'on | off' },
-      handler: async ({ agent, rawInput }) => {
+      handler: async ({ rawInput }) => {
         const raw = String(rawInput || '').trim().toLowerCase();
         const on = raw === '' ? null : ['on', 'enable', 'true'].includes(raw) ? true : ['off', 'disable', 'false'].includes(raw) ? false : null;
         if (on === null) return { kind: 'success', text: 'Usage: /rtk on | /rtk off' };
-        const modes = await applyModeChange(agent, (section) => { section.rtkDefault = on; }, `Tersio RTK turned ${on ? 'on' : 'off'}`);
+        const modes = applyModeChange((section) => { section.rtkDefault = on; });
         return { kind: 'success', text: `RTK ${on ? 'on' : 'off'}: ${modes}` };
       },
     },
@@ -262,10 +296,10 @@ function registerCommands(ctx: DshCtx): void {
       name: 'ponytail',
       description: 'Set the Ponytail level',
       input: { hint: 'off | lite | full | ultra' },
-      handler: async ({ agent, rawInput }) => {
+      handler: async ({ rawInput }) => {
         const level = String(rawInput || 'off').trim().toLowerCase();
         if (level !== 'off' && level !== 'lite' && level !== 'full' && level !== 'ultra') return { kind: 'success', text: `Unknown ponytail level: ${level}. Levels: off, lite, full, ultra.` };
-        const modes = await applyModeChange(agent, (section) => { section.ponytailDefault = level; }, `Tersio ponytail set to ${level}`);
+        const modes = applyModeChange((section) => { section.ponytailDefault = level; });
         return { kind: 'success', text: `Ponytail set to ${level}: ${modes}` };
       },
     },
@@ -273,11 +307,11 @@ function registerCommands(ctx: DshCtx): void {
       name: 'pstack',
       description: 'Turn the pstack rigor mode on or off',
       input: { hint: 'on | off' },
-      handler: async ({ agent, rawInput }) => {
+      handler: async ({ rawInput }) => {
         const raw = String(rawInput || 'off').trim().toLowerCase();
         const on = raw === 'on' ? true : raw === 'off' ? false : null;
         if (on === null) return { kind: 'success', text: 'Usage: /pstack on | /pstack off' };
-        const modes = await applyModeChange(agent, (section) => { section.pstackDefault = on ? 'on' : 'off'; }, `Tersio pstack turned ${on ? 'on' : 'off'}`);
+        const modes = applyModeChange((section) => { section.pstackDefault = on ? 'on' : 'off'; });
         return { kind: 'success', text: `pstack ${on ? 'on' : 'off'}: ${modes}` };
       },
     },
@@ -301,6 +335,7 @@ export function apply(ctx: DshCtx): void {
   console.log(`[tersio-dsh] armed: ${modeLine(store, section)}`);
 
   registerCommands(ctx);
+  registerStatusRoute(ctx);
 
   // A provider, not a static string: the store is re-read at every assembly, so a mode switch applies without a restart.
   ctx.systemPrompt.section({
