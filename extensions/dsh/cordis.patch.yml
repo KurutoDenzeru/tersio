@@ -1,6 +1,8 @@
 - insert:
     - id: tersio-dsh
-      name: '@krtclcdy/tersio/dsh-plugin'
+      # Bare package root, not the ./dsh-plugin subpath: client-modules only composes a client half
+      # for a row whose specifier names the package itself, and the status bar needs that row.
+      name: '@krtclcdy/tersio'
     # Tersio's own stdio MCP server, so its tools (usage, modes, headroom savings) ride into DeepSeek Harness
     # as mcp__tersio__* alongside the plugin's native tools. A missing binary only logs a failed
     # sync instead of blocking the boot.

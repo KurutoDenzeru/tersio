@@ -1,5 +1,19 @@
 ## Unreleased
 
+### Added
+- A small Tersio pill now sits under the message box in DeepSeek Harness. It shows the current Combo with a puzzle icon and the word Off, Lite, Balanced or Max.
+- Click the pill to open a card that switches the Combo, or any single mode on its own: Caveman, RTK, Headroom, Ponytail and pstack.
+- The Headroom switch in that card reads and writes the same saved setting the installer, the command line and the dashboard use, so the three agree.
+
+### Changed
+- Switching a mode in DeepSeek Harness no longer posts a message in the conversation. The pill is the only feedback, like the other agents.
+- The pill stays quiet until you hover over it or open it, and the card follows the app's own light and dark panels.
+- Status lines now read `🧩 LITE | 🪨 caveman:LITE | 🗜️ rtk:ON | …`: the word COMBO is gone, and every mode uses a colon instead of an equals sign. Pi, OpenCode, Oh My Pi, the command line and the dashboard all follow it.
+- Balanced no longer carries a "not recommended" note in the installer or the dashboard.
+
+### Fixed
+- Quick start agent cards now show the Headroom setting you saved instead of replacing it with "unrouted". Hovering the row still warns when that agent has no live route, so the card never claims compression it is not getting.
+
 ## v2.25.17
 
 ### Added

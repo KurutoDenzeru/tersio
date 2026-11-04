@@ -769,7 +769,7 @@ describe.skipIf(!havePyte)("menu layout", () => {
   test("the combo is a header line, not a menu option", () => {
     const lines = screenAt(30);
     const titleAt = lines.findIndex((l) => l.includes("what next?"));
-    const comboAt = lines.findIndex((l) => l.includes("COMBO "));
+    const comboAt = lines.findIndex((l) => l.includes("🧩 "));
     const firstOptionAt = lines.findIndex((l) => l.includes("Install plugin"));
 
     expect(titleAt, "title present").toBeGreaterThan(-1);

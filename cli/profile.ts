@@ -319,11 +319,11 @@ export function comboLevelOf(profile: Profile): string {
   return matches ? comboDefault : 'custom';
 }
 
-/** The status line the extensions print, read from the persisted profile. Lockstep with formatStatus in extensions/shared/status.ts. */
+/** The status line the CLI prints, read from the persisted profile. Same glyphs as formatStatus, without its COMBO word. */
 export function formatCliStatus(profile: Profile): string {
   const level = comboLevelOf(profile);
   const rtk = profile.rtkDefault ? 'on' : 'off';
-  if (level === 'off' && profile.cavemanDefault === 'off' && rtk === 'off' && profile.ponytailDefault === 'off' && profile.pstackDefault === 'off' && profile.headroomDefault === 'off') return '🧩 COMBO OFF';
+  if (level === 'off' && profile.cavemanDefault === 'off' && rtk === 'off' && profile.ponytailDefault === 'off' && profile.pstackDefault === 'off' && profile.headroomDefault === 'off') return '🧩 OFF';
   const label = level === 'off' || level === 'custom' ? 'CUSTOM' : level.toUpperCase();
-  return `🧩 COMBO ${label}: 🪨 caveman=${profile.cavemanDefault.toUpperCase()} | 🗜️ rtk=${rtk.toUpperCase()} | 🍃 headroom=${profile.headroomDefault.toUpperCase()} | 🧠 ponytail=${profile.ponytailDefault.toUpperCase()} | 🥔 pstack=${profile.pstackDefault.toUpperCase()}`;
+  return `🧩 ${label} | 🪨 caveman:${profile.cavemanDefault.toUpperCase()} | 🗜️ rtk:${rtk.toUpperCase()} | 🍃 headroom:${profile.headroomDefault.toUpperCase()} | 🧠 ponytail:${profile.ponytailDefault.toUpperCase()} | 🥔 pstack:${profile.pstackDefault.toUpperCase()}`;
 }

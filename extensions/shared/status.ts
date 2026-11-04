@@ -14,10 +14,10 @@ export interface StatusState {
 /** OFF collapses every mode into one word; a preset or a mix names itself. */
 export function formatStatus(state: StatusState): string {
   const { level, caveman, rtk, ponytail, pstack, headroom } = state;
-  if (level === 'off' && caveman === 'off' && rtk === 'off' && ponytail === 'off' && pstack === 'off' && headroom === 'off') return '🧩 COMBO OFF';
+  if (level === 'off' && caveman === 'off' && rtk === 'off' && ponytail === 'off' && pstack === 'off' && headroom === 'off') return '🧩 OFF';
   // A preset owns three modes, so pstack or headroom on its own is no preset: the line says CUSTOM rather than OFF.
   const label = level === 'off' || level === 'custom' ? 'CUSTOM' : level.toUpperCase();
-  return `🧩 COMBO ${label}: 🪨 caveman=${caveman.toUpperCase()} | 🗜️ rtk=${rtk.toUpperCase()} | 🍃 headroom=${headroom.toUpperCase()} | 🧠 ponytail=${ponytail.toUpperCase()} | 🥔 pstack=${pstack.toUpperCase()}`;
+  return `🧩 ${label} | 🪨 caveman:${caveman.toUpperCase()} | 🗜️ rtk:${rtk.toUpperCase()} | 🍃 headroom:${headroom.toUpperCase()} | 🧠 ponytail:${ponytail.toUpperCase()} | 🥔 pstack:${pstack.toUpperCase()}`;
 }
 
 // The string upstream's skill tells the model to relay for `/caveman status`; `off` is a mode, so it reads as one.

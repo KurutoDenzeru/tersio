@@ -69,8 +69,8 @@ async function withPath(headroomDir: string | null, run: () => Promise<void>): P
   }
 }
 
-const ON_LINE = "🧩 COMBO CUSTOM: 🪨 caveman=OFF | 🗜️ rtk=OFF | 🍃 headroom=ON | 🧠 ponytail=OFF | 🥔 pstack=OFF";
-const OFF_LINE = "🧩 COMBO OFF";
+const ON_LINE = "🧩 CUSTOM | 🪨 caveman:OFF | 🗜️ rtk:OFF | 🍃 headroom:ON | 🧠 ponytail:OFF | 🥔 pstack:OFF";
+const OFF_LINE = "🧩 OFF";
 const HINT = `Headroom binary not found on PATH. Install it yourself with: ${HEADROOM_INSTALL_HINT}`;
 
 test("/headroom on persists the mode, names it in the footer, and warns when the binary is absent", async () => {
