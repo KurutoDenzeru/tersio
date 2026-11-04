@@ -50,7 +50,7 @@ function labelOf(value: string): string {
 
 // Kept in the bundle so unmounting the module removes the styles with it.
 const STYLES = `
-.tersio-wrap { position: relative; display: inline-flex; justify-content: center; }
+.tersio-wrap { position: relative; z-index: 30; display: inline-flex; justify-content: center; }
 .tersio-bar {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 2px 10px 2px 8px; border: 0; border-radius: 999px; corner-shape: round;
@@ -62,9 +62,9 @@ const STYLES = `
 }
 .tersio-bar__icon { flex: none; opacity: .9; }
 .tersio-pop {
-  position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(100% + 6px); z-index: 40;
+  position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(100% + 6px); z-index: 9999;
   width: max-content; max-width: min(340px, calc(100vw - 24px)); padding: 10px 12px;
-  border: 0; border-radius: var(--dsw-radius-lg);
+  border: 0; border-radius: 8px;
   --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);
   background: var(--dsw-specific-menu); backdrop-filter: var(--dsw-menu-backdrop-filter);
   box-shadow: var(--dsw-elevation-panel);
