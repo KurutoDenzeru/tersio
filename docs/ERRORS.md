@@ -23,6 +23,16 @@ Reviewed 2026-10-11. Each entry below is resolved in the repo, so its log entry 
 | Two edits rewrote a span they only half re-emitted | the same `tsc` step; the half-rewritten interface and the dropped field are compile errors |
 | Backticks nested inside a template-literal code generator | the generator is gone; no tracked script writes markdown from a template literal |
 
+## 2026-11-03 — A probe command changed the user's agent model
+**What happened:** to prove a switcher rewrites `~/.pi/agent/models.json`, I ran `magpie pi <model>`. The switcher read that as "take magpie out" and set Pi's `defaultProvider` to `commandcode`, so the route I had just installed read as bypassed.
+**Root cause:** a switcher's own CLI verb is not a read-only probe: `magpie <agent> <model>` also rewrites the agent's default provider.
+**Prevention rule:** test a config writer with a file-level fixture or a temp HOME, never with the live agent's CLI. When the live config is the only fixture, copy it first and restore the copy, then re-read the route.
+
+## 2026-11-03 — Benchmark combo conditions never applied the preset
+**What happened:** the first combo benchmark pass wrote `cavemanDefault`/`rtkDefault`/`ponytailDefault` keys beside `comboDefault` in each condition file. The extension resolves per-mode defaults over the preset, so every combo case ran with all modes off, and the results measured the flag itself.
+**Root cause:** I modeled the settings on the dashboard's stored shape (preset plus modes) without reading `savedModes` in `extensions/combo/index.ts`, which prefers any present per-mode key over the preset.
+**Prevention rule:** before benchmarking a config-driven behavior, prove the condition applied: run one probe turn and assert the expected block lands in the system prompt. When a resolver layering exists (host section, flat keys, preset), read it first and write the minimal shape.
+
 ## Format
 
 ```md
