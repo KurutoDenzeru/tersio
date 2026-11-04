@@ -71,8 +71,49 @@ describe("WebDAV remote", () => {
     expect(askedAuth.startsWith("Basic ")).toBe(true);
   });
 
+  test("a transient 503 is retried instead of failing the listing", async () => {
+    let calls = 0;
+    const base = await wireServer((req) => {
+      if (req.method !== "PROPFIND") return { status: 405 };
+      calls += 1;
+      if (calls === 1) return { status: 503, body: "busy" };
+      return { status: 207, body: '<?xml version="1.0"?><d:multistatus xmlns:d="DAV:"/>', headers: { "content-type": "application/xml" } };
+    });
+    const remote = remoteFor(config({ webdav: { address: base, user: "", password: "" } }));
+    await expect(remote.list()).resolves.toEqual([]);
+    expect(calls).toBe(2);
+  });
+
   test("an address without http is refused before any request", () => {
     expect(() => remoteFor(config({ webdav: { address: "nas.local/dav", user: "", password: "" } }))).toThrow(/http/);
+  });
+});
+
+describe("S3 remote", () => {
+  test("keeps the endpoint's own base path and uses the bucket as a path segment", async () => {
+    const seen: string[] = [];
+    const base = await wireServer((req) => {
+      seen.push(`${req.method} ${req.url}`);
+      if (req.method === "PUT" || req.method === "DELETE") return { status: 200 };
+      return { status: 200, body: '<?xml version="1.0"?><ListBucketResult></ListBucketResult>', headers: { "content-type": "application/xml" } };
+    });
+    const remote = remoteFor(config({
+      mode: "s3",
+      s3: { endpoint: `${base}/base`, bucket: "backups", prefix: "nightly", region: "us-east-1", accessKey: "key", secret: "secret", sessionToken: "", pathStyle: true },
+    }));
+    await remote.put("data-1.tsb", Buffer.from("sealed"));
+    await remote.list();
+    expect(seen).toContain("PUT /base/backups/nightly/tersio/data-1.tsb");
+    const listing = seen.find((line) => line.startsWith("GET /base/backups/nightly/tersio/"));
+    expect(listing).toBeDefined();
+    expect(listing).toContain("list-type=2");
+    expect(listing).toContain("prefix=nightly%2Ftersio%2F");
+  });
+
+  test("temporary credentials sign with the session token header", () => {
+    const headers = sigV4("PUT", new URL("https://b.s3.amazonaws.com/x"), Buffer.from("a"), { region: "us-east-1", accessKey: "k", secret: "s", sessionToken: "token-123" }, {});
+    expect(headers["x-amz-security-token"]).toBe("token-123");
+    expect(headers.authorization).toContain("x-amz-security-token");
   });
 });
 
@@ -87,7 +128,8 @@ describe("GitHub remote", () => {
           const found = files.get(name);
           return found ? { status: 200, body: found.body } : { status: 404 };
         }
-        return { status: 200, body: JSON.stringify([...files.keys()].map((key) => ({ name: key, size: files.get(key)!.body.length, type: "file" }))), headers: { "content-type": "application/json" } };
+        // Deliberately unsorted: the remote decides nothing about order.
+        return { status: 200, body: JSON.stringify([{ name: "data-1.tsb", size: 5, type: "file" }, { name: "data-9.tsb", size: 5, type: "file" }]), headers: { "content-type": "application/json" } };
       }
       if (req.method === "PUT") {
         const payload = JSON.parse(body.toString()) as { content: string };
@@ -99,7 +141,7 @@ describe("GitHub remote", () => {
     process.env.TERSIO_GITHUB_API = base;
     const remote = remoteFor(config({ mode: "github", github: { repository: "me/backups", branch: "", folder: "", token: "tok" } }));
     await remote.put("data-2.tsb", Buffer.from("sealed-2"));
-    expect([...(await remote.list())].map((entry) => entry.name)).toEqual(["data-2.tsb"]);
+    expect([...(await remote.list())].map((entry) => entry.name)).toEqual(["data-9.tsb", "data-1.tsb"]);
     expect((await remote.get("data-2.tsb")).toString()).toBe("sealed-2");
   });
 

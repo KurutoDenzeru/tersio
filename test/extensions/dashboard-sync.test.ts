@@ -47,7 +47,15 @@ afterEach(() => {
 
 describe("connection test", () => {
   test("a usable WebDAV folder reports its backup count", async () => {
+    const writes: string[] = [];
     const server = createServer((req, res) => {
+      // The probe proves write and delete, so the fake must accept PUT and DELETE as well as listing.
+      if (req.method === "PUT" || req.method === "DELETE") {
+        writes.push(`${req.method} ${req.url}`);
+        res.writeHead(200);
+        res.end();
+        return;
+      }
       if (req.method !== "PROPFIND") {
         res.writeHead(405);
         res.end();
@@ -62,6 +70,8 @@ describe("connection test", () => {
     if (address === null || typeof address === "string") throw new Error("no port");
     const config = applyTarget("webdav", { address: `http://127.0.0.1:${address.port}`, user: "u", password: "p" }, emptyConfig());
     await expect(testTarget(config)).resolves.toEqual({ ok: true, count: 1 });
+    expect(writes).toContain("PUT /tersio/tersio-write-probe.tmp");
+    expect(writes).toContain("DELETE /tersio/tersio-write-probe.tmp");
   });
 
   test("an unusable target returns the reason instead of throwing at the caller", async () => {
