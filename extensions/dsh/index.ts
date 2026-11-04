@@ -203,6 +203,11 @@ function statusLevel(modes: ModeSnapshot): string {
   return 'custom';
 }
 
+/** ON/OFF never reaches the line as `true`/`false`, which read as a bug rather than a mode. */
+function modeValue(mode: string | boolean): string {
+  return mode === true || mode === 'on' ? 'ON' : mode === false || mode === 'off' ? 'OFF' : String(mode).toUpperCase();
+}
+
 /** The bar line: the preset, then one glyph per mode, short enough to fit a narrow composer. */
 function statusLine(store: Store, section: Store): string {
   const modes = readModes(store, section);
@@ -210,8 +215,7 @@ function statusLine(store: Store, section: Store): string {
   const level = statusLevel(modes);
   if (level === 'off' && pstack === 'off' && modes.headroom === 'off') return '🧩 OFF';
   const label = level === 'off' || level === 'custom' ? 'CUSTOM' : level.toUpperCase();
-  const value = (mode: string | boolean) => (mode === true || mode === 'on' ? 'ON' : mode === false || mode === 'off' ? 'OFF' : String(mode).toUpperCase());
-  return `🧩 ${label} | ${MODE_GLYPHS.caveman} caveman:${value(modes.caveman)} | ${MODE_GLYPHS.rtk} rtk:${value(modes.rtk)} | ${MODE_GLYPHS.headroom} headroom:${value(modes.headroom)} | ${MODE_GLYPHS.ponytail} ponytail:${value(modes.ponytail)} | ${MODE_GLYPHS.pstack} pstack:${value(pstack)}`;
+  return `🧩 ${label} | ${MODE_GLYPHS.caveman} caveman:${modeValue(modes.caveman)} | ${MODE_GLYPHS.rtk} rtk:${modeValue(modes.rtk)} | ${MODE_GLYPHS.headroom} headroom:${modeValue(modes.headroom)} | ${MODE_GLYPHS.ponytail} ponytail:${modeValue(modes.ponytail)} | ${MODE_GLYPHS.pstack} pstack:${modeValue(pstack)}`;
 }
 
 /** One payload for the bar: the rendered line, the preset level, and each mode's value. */

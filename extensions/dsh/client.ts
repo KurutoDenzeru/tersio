@@ -7,9 +7,9 @@ type Change = { combo?: string; mode?: string; value?: string };
 type Loader = { load(spec: { id: string; factory(require: (name: string) => unknown): unknown }): void };
 
 // The shell injects this facade before any bundle loads; the bar only registers through it.
-interface Window {
-  __ModuleLoader__: Loader;
-}
+// Read by string key: the identifier would dangle under the project's lint rules, and the file must stay a plain script.
+const loader = (globalThis as unknown as Record<string, Loader | undefined>)['__ModuleLoader__'];
+if (!loader) throw new Error('tersio: the client module loader is missing');
 
 const ENDPOINT = '/tersio/modes';
 const POLL_MS = 2000;
@@ -26,6 +26,12 @@ const PRESETS = [
   { key: 'balanced', label: 'Balanced' },
   { key: 'max', label: 'Max' },
 ] as const;
+
+function current(modes: Modes, key: string): string {
+  if (key === 'rtk') return modes.rtk ? 'on' : 'off';
+  if (key === 'pstack') return modes.pstack === true || modes.pstack === 'on' ? 'on' : 'off';
+  return String((modes as unknown as Record<string, unknown>)[key] ?? 'off');
+}
 
 const LEVEL_WORDS: Record<string, string> = { off: 'Off', lite: 'Lite', balanced: 'Balanced', max: 'Max', custom: 'Custom' };
 
@@ -79,7 +85,7 @@ const STYLES = `
 }
 `;
 
-window.__ModuleLoader__.load({
+loader?.load({
   id: '@krtclcdy/tersio',
   factory(require) {
     const React = require('react') as {
@@ -89,12 +95,6 @@ window.__ModuleLoader__.load({
       useRef: <T>(value: T) => { current: T };
     };
     const h = React.createElement;
-
-    function current(modes: Modes, key: string): string {
-      if (key === 'rtk') return modes.rtk ? 'on' : 'off';
-      if (key === 'pstack') return modes.pstack === true || modes.pstack === 'on' ? 'on' : 'off';
-      return String((modes as unknown as Record<string, unknown>)[key] ?? 'off');
-    }
 
     function TersioStatusBar(): unknown {
       const [payload, setPayload] = React.useState<StatusPayload | null>(null);

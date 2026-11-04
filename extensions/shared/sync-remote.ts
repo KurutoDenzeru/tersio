@@ -107,7 +107,7 @@ function webdav(config: WebDavConfig): Remote {
         const when = block.match(/<[^>]*getlastmodified>([^<]+)</)?.[1];
         entries.push({ name, bytes, mtime: when ? Date.parse(when) : 0 });
       }
-      return entries.sort(newestFirst);
+      return entries.toSorted(newestFirst);
     },
     async put(name, body) {
       // A folder that already exists answers 405; anything else is reported by the PUT below.
@@ -151,9 +151,9 @@ export function sigV4(method: string, url: URL, body: Buffer, config: Pick<S3Con
   const payloadHash = sha256Hex(body);
   const headers: Record<string, string> = { ...extraHeaders, host: url.host, 'x-amz-content-sha256': payloadHash, 'x-amz-date': amzDate };
   if (config.sessionToken) headers['x-amz-security-token'] = config.sessionToken;
-  const signed = Object.keys(headers).sort();
+  const signed = Object.keys(headers).toSorted();
   const canonicalHeaders = signed.map((name) => `${name}:${headers[name]}\n`).join('');
-  const canonicalQuery = [...url.searchParams.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+  const canonicalQuery = [...url.searchParams.entries()].toSorted(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
     .map(([name, value]) => `${encodeURIComponent(name)}=${encodeURIComponent(value)}`).join('&');
   const canonicalRequest = [method, canonicalPath(url.pathname), canonicalQuery, canonicalHeaders, signed.join(';'), payloadHash].join('\n');
   const scope = `${day}/${config.region || 'us-east-1'}/s3/aws4_request`;
@@ -208,7 +208,7 @@ function s3(config: S3Config): Remote {
         token = xml.match(/<NextContinuationToken>([^<]+)<\/NextContinuationToken>/)?.[1];
         if (!token) break;
       }
-      return entries.sort(newestFirst);
+      return entries.toSorted(newestFirst);
     },
     async put(name, body) {
       const url = target(name);
@@ -258,7 +258,7 @@ function github(config: GithubConfig): Remote {
       return rows
         .filter((row) => row.type === 'file' && (row.name ?? '').endsWith(REMOTE_EXT))
         .map((row) => ({ name: row.name ?? '', bytes: row.size ?? 0, mtime: 0 }))
-        .sort((a, b) => b.name.localeCompare(a.name));
+        .toSorted((a, b) => b.name.localeCompare(a.name));
     },
     async put(name, body) {
       // The contents API refuses a file above ~100 MB; say so instead of failing at the request.

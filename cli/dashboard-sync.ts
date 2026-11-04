@@ -141,7 +141,7 @@ export async function restoreSync(name: string): Promise<{ backup: string }> {
   const target = path.join(backupDir(), local);
   fs.mkdirSync(backupDir(), { recursive: true });
   fs.writeFileSync(target, body);
-  // describe() refuses a bad header, so the list is the validity check before anything is overwritten.
+  // The backup list reads each file header, so membership is the validity check before anything is overwritten.
   if (!listDataBackups().some((entry) => entry.name === local)) {
     fs.rmSync(target, { force: true });
     throw new Error('that backup is not a Tersio snapshot');
