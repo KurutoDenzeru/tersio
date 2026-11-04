@@ -721,8 +721,8 @@ function DataPane() {
                     type="button"
                     aria-pressed={checked}
                     className={cn(
-                      "group flex min-w-0 flex-1 items-center gap-3 py-2 text-left transition-colors hover:bg-track/40 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent",
-                      checked && "bg-accent-soft",
+                      "group flex min-w-0 flex-1 items-center gap-3 py-2 text-left transition-colors hover:bg-track/50 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent",
+                      checked && "bg-track hover:bg-track/80",
                     )}
                     onClick={() => toggleSelected(b.name)}
                   >
