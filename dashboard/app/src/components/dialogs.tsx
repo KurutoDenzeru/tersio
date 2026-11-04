@@ -100,11 +100,21 @@ interface SyncView {
   error: string | null;
 }
 
-const SYNC_MODES: Array<{ id: SyncMode; label: string; hint: string }> = [
-  { id: "webdav", label: "WebDAV", hint: "Any WebDAV address, such as a NAS or a hosted box." },
-  { id: "s3", label: "S3", hint: "AWS S3, Cloudflare R2, Backblaze B2, MinIO, and the like." },
+const SYNC_MODES: Array<{ id: SyncMode; label: string; icon?: string; hint: string }> = [
+  { id: "webdav", label: "WebDAV", icon: "globe", hint: "Any WebDAV address, such as a NAS or a hosted box." },
+  { id: "s3", label: "S3", icon: "database", hint: "AWS S3, Cloudflare R2, Backblaze B2, MinIO, and the like." },
+  // No lucide brand mark, so the tab renders GithubMark instead of an Icon name.
   { id: "github", label: "GitHub", hint: "A private repository. Each backup is one commit." },
 ];
+
+/** Lucide dropped brand marks, so the GitHub tab carries the mark itself. */
+function GithubMark({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true" className={className} fill="currentColor">
+      <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.42 7.42 0 0 1 2-.27c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z" />
+    </svg>
+  );
+}
 
 const SYNC_FIELDS: Record<SyncMode, Array<{ key: string; label: string; placeholder: string; secret?: boolean }>> = {
   webdav: [
@@ -145,6 +155,8 @@ function SyncPanel() {
   const [passphrase, setPassphrase] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [asking, setAsking] = useState<string | null>(null);
+  /** Which secret inputs are shown in clear; a revealed value is never sent anywhere different. */
+  const [revealed, setRevealed] = useState<Record<string, boolean>>({});
 
   const load = useCallback(() => {
     fetch("/api/sync")
@@ -170,6 +182,29 @@ function SyncPanel() {
     const saved = view?.fields?.[next] ?? {};
     setFields(Object.fromEntries(Object.entries(saved).map(([key, value]) => [key, typeof value === "string" ? value : ""])));
     setPathStyle(saved.pathStyle === true);
+  };
+
+  /** A probe runs before trusting a target: it lists the folder, which proves both the credentials and the path. */
+  const test = (): void => {
+    setBusy("test");
+    void post("/api/sync/test", { mode, target: { ...fields, pathStyle } })
+      .then((d) => {
+        const answer = d as { ok?: boolean; error?: string; count?: number } | null;
+        if (answer?.ok) toast("Connected", `${answer.count ?? 0} backup${answer.count === 1 ? "" : "s"} found there.`, "check");
+        else toast("Could not connect", answer?.error ?? "The remote did not answer.", "circle-alert");
+      })
+      .finally(() => setBusy(null));
+  };
+
+  const refresh = (): void => {
+    setBusy("refresh");
+    void fetch("/api/sync")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: SyncView | null) => {
+        if (d) setView(d);
+      })
+      .catch(() => toast("Refresh failed", "The dashboard server did not answer.", "circle-alert"))
+      .finally(() => setBusy(null));
   };
 
   const post = (url: string, body: unknown): Promise<{ ok?: boolean; error?: string; name?: string } | null> =>
@@ -235,7 +270,10 @@ function SyncPanel() {
             <Tabs value={mode} onValueChange={(v) => pick((v ?? "webdav") as SyncMode)}>
               <TabsList className="h-9 w-full justify-start gap-1 rounded-xl p-1">
                 {SYNC_MODES.map((entry) => (
-                  <TabsTrigger key={entry.id} value={entry.id} className="h-7 flex-1 px-4 text-[12px]">{entry.label}</TabsTrigger>
+                  <TabsTrigger key={entry.id} value={entry.id} className="h-7 flex-1 gap-1.5 px-4 text-[12px]">
+                    {entry.id === "github" ? <GithubMark className="size-3.5" /> : <Icon name={entry.icon ?? "globe"} className="size-3.5" />}
+                    <span>{entry.label}</span>
+                  </TabsTrigger>
                 ))}
               </TabsList>
             </Tabs>
@@ -244,12 +282,32 @@ function SyncPanel() {
           {rows.map((row) => (
             <label key={row.key} className="grid gap-1 text-[11px] text-dim">
               <span>{row.label}</span>
-              <Input
-                type={row.secret ? "password" : "text"}
-                value={fields[row.key] ?? ""}
-                placeholder={row.secret && view?.passphraseSet ? "saved" : row.placeholder}
-                onChange={(event) => setFields({ ...fields, [row.key]: event.target.value })}
-              />
+              {row.secret ? (
+                <span className="relative">
+                  <Input
+                    type={revealed[row.key] ? "text" : "password"}
+                    value={fields[row.key] ?? ""}
+                    placeholder={view?.passphraseSet ? "saved" : row.placeholder}
+                    className="pr-9"
+                    onChange={(event) => setFields({ ...fields, [row.key]: event.target.value })}
+                  />
+                  <button
+                    type="button"
+                    className="absolute inset-y-0 right-1 grid w-7 place-items-center rounded-md text-dim hover:text-ink"
+                    aria-label={revealed[row.key] ? `Hide ${row.label}` : `Show ${row.label}`}
+                    onClick={() => setRevealed({ ...revealed, [row.key]: !revealed[row.key] })}
+                  >
+                    <Icon name={revealed[row.key] ? "eye-off" : "eye"} className="size-3.5" />
+                  </button>
+                </span>
+              ) : (
+                <Input
+                  type="text"
+                  value={fields[row.key] ?? ""}
+                  placeholder={row.placeholder}
+                  onChange={(event) => setFields({ ...fields, [row.key]: event.target.value })}
+                />
+              )}
             </label>
           ))}
           {mode === "s3" && (
@@ -260,12 +318,23 @@ function SyncPanel() {
           )}
           <label className="grid gap-1 text-[11px] text-dim sm:col-span-2">
             <span>Passphrase</span>
-            <Input
-              type="password"
-              value={passphrase}
-              placeholder={view?.passphraseSet ? "saved — type to replace" : "the same on every computer"}
-              onChange={(event) => setPassphrase(event.target.value)}
-            />
+            <span className="relative">
+              <Input
+                type={revealed.passphrase ? "text" : "password"}
+                value={passphrase}
+                placeholder={view?.passphraseSet ? "saved — type to replace" : "the same on every computer"}
+                className="pr-9"
+                onChange={(event) => setPassphrase(event.target.value)}
+              />
+              <button
+                type="button"
+                className="absolute inset-y-0 right-1 grid w-7 place-items-center rounded-md text-dim hover:text-ink"
+                aria-label={revealed.passphrase ? "Hide the passphrase" : "Show the passphrase"}
+                onClick={() => setRevealed({ ...revealed, passphrase: !revealed.passphrase })}
+              >
+                <Icon name={revealed.passphrase ? "eye-off" : "eye"} className="size-3.5" />
+              </button>
+            </span>
           </label>
         </div>
         <p className="m-0 text-xs text-dim">
@@ -276,6 +345,10 @@ function SyncPanel() {
             {busy === "save" ? <Spinner className="size-3.5" /> : <Icon name="check" className="size-3.5" />}
             <span>Save target</span>
           </Button>
+          <Button size="sm" variant="outline" className="mono h-8 gap-1.5 rounded-xl" disabled={busy !== null} onClick={test}>
+            {busy === "test" ? <Spinner className="size-3.5" /> : <Icon name="plug-zap" className="size-3.5" />}
+            <span>Test connection</span>
+          </Button>
           <Button size="sm" variant="outline" className="mono h-8 gap-1.5 rounded-xl" disabled={busy !== null || !view?.configured} onClick={run}>
             {busy === "run" ? <Spinner className="size-3.5" /> : <Icon name="cloud-upload" className="size-3.5" />}
             <span>Back up to remote</span>
@@ -284,7 +357,13 @@ function SyncPanel() {
         </div>
         {view?.error && <p className="m-0 text-xs text-red-500">{view.error}</p>}
         <div className="grid gap-1">
-          <p className="m-0 text-[11px] text-dim">Versions on the remote</p>
+          <div className="flex items-center gap-2">
+            <p className="m-0 flex-1 text-[11px] text-dim">Versions on the remote</p>
+            <Button size="sm" variant="ghost" className="mono h-7 gap-1.5 rounded-lg px-2" disabled={busy !== null || !view?.configured} onClick={refresh}>
+              <Icon name="refresh-cw" className={cn("size-3.5", busy === "refresh" && "animate-spin")} />
+              <span>Refresh</span>
+            </Button>
+          </div>
           {(view?.versions ?? []).length === 0 && <p className="m-0 text-xs text-dim">Nothing there yet.</p>}
           {(view?.versions ?? []).map((version) => (
             <div key={version.name} className="flex items-center gap-2 rounded-lg border border-line px-2 py-1">
