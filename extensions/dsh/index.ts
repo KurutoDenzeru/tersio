@@ -123,10 +123,12 @@ function buildBlocks(): string {
   return parts.join('\n\n');
 }
 
-function runThroughRtk(command: string): Promise<{ content: string }> {
+async function runThroughRtk(command: string): Promise<{ content: string }> {
   const bin = resolveRtkBinary();
-  if (!bin) return Promise.resolve({ content: 'rtk is not installed. Run: tersio doctor --fix rtk' });
-  return execFileP(bin, ['run', command], { timeout: 600_000, maxBuffer: 16 * 1024 * 1024 })
+  if (!bin) return { content: 'rtk is not installed. Run: tersio doctor --fix rtk' };
+  // `rtk rewrite` picks the filter for the command; `rtk run` would only execute it.
+  const rewritten = await rewriteThroughRtk(command);
+  return execShellP(rewritten ?? command, { cwd: homeDir(), timeout: 600_000, maxBuffer: 16 * 1024 * 1024 })
     .then((r) => ({ content: `${r.stdout}\n${r.stderr}`.trim() || '(no output)' }))
     .catch((e: { stdout?: string; stderr?: string; message?: string }) => ({
       content: `${e.stdout ?? ''}\n${e.stderr ?? ''}\n${e.message ?? ''}`.trim() || 'the command failed without output',
@@ -160,6 +162,70 @@ interface DshCtx {
   effect?: (callback: () => () => void) => () => void;
   /** Optional dependency: the nested fiber waits for the carrier instead of blocking the whole plugin. */
   inject?: (deps: string[], callback: (scoped: DshCtx) => void) => unknown;
+  /** Cordis event listeners; the tools/execute waterfall is where a call can be rewritten before dispatch. */
+  on?: (name: string, listener: (...args: unknown[]) => unknown) => () => void;
+}
+
+/** The part of a tool execution the rewrite touches: the tool's name and its parsed arguments. */
+interface DshToolExecution {
+  name?: unknown;
+  arguments?: unknown;
+}
+
+/** Rewrite a bash command through `rtk rewrite`; null means "leave it alone". */
+async function rewriteThroughRtk(command: string): Promise<string | null> {
+  const bin = resolveRtkBinary();
+  if (!bin) return null;
+  try {
+    const result = await execFileP(bin, ['rewrite', command], {
+      timeout: 5000,
+      maxBuffer: 1 << 20,
+      env: { ...process.env, RTK_REWRITE_HOST: 'dsh' },
+    });
+    return result.stdout.trim() || null;
+  } catch (error) {
+    // 3 = rewrite with an approval rule; 1 and 2 mean passthrough or deny, so nothing is rewritten.
+    const failed = error as { code?: number; stdout?: string };
+    return failed.code === 3 && failed.stdout?.trim() ? failed.stdout.trim() : null;
+  }
+}
+
+/**
+ * One interception decision, kept pure so it can be tested without a binary: the hook's gate and the
+ * rewrite are injected, and only a bash call with a string command may be replaced.
+ */
+export async function interceptBashCall(
+  name: unknown,
+  args: unknown,
+  enabled: boolean,
+  rewrite: (command: string) => Promise<string | null>,
+): Promise<Record<string, unknown> | null> {
+  if (!enabled || name !== 'bash') return null;
+  if (!args || typeof args !== 'object') return null;
+  const command = (args as { command?: unknown }).command;
+  if (typeof command !== 'string' || command.trim() === '') return null;
+  // Already routed: a second prefix would nest rtk inside rtk.
+  if (/^rtk(?:\s|$)/.test(command.trim())) return null;
+  const rewritten = await rewrite(command).catch(() => null);
+  if (!rewritten || rewritten === command) return null;
+  return { ...(args as Record<string, unknown>), command: rewritten };
+}
+
+/** Automatic RTK routing for DSH: every eligible bash call is rewritten before the executor sees it. */
+function registerRtkInterception(ctx: DshCtx): void {
+  if (!ctx.on) return;
+  ctx.on('tools/execute', async (...params: unknown[]) => {
+    const next = params.at(-1) as (() => Promise<unknown>) | undefined;
+    const call = params[0] as DshToolExecution | undefined;
+    if (typeof next !== 'function') return undefined;
+    // Cheap gate first: the store read happens only for a bash call.
+    if (call?.name !== 'bash') return next();
+    const live = readStore();
+    const enabled = setting(live, hostSection(live), 'rtkDefault') === true;
+    const replaced = await interceptBashCall(call?.name, call?.arguments, enabled, rewriteThroughRtk);
+    if (replaced && call) (call as { arguments: unknown }).arguments = replaced;
+    return next();
+  });
 }
 
 interface DshAgent {
@@ -404,6 +470,7 @@ export function apply(ctx: DshCtx): void {
 
   registerCommands(ctx);
   registerStatusRoute(ctx);
+  registerRtkInterception(ctx);
 
   // A provider, not a static string: the store is re-read at every assembly, so a mode switch applies without a restart.
   ctx.systemPrompt.section({
