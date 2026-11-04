@@ -8,7 +8,7 @@
 ### Changed
 - Switching a mode in DeepSeek Harness no longer posts a message in the conversation. The pill is the only feedback, like the other agents.
 - The pill stays quiet until you hover over it or open it, and the card follows the app's own light and dark panels.
-- The command line summary no longer says COMBO; it reads `🧩 LITE: …`.
+- Status lines now read `🧩 LITE | 🪨 caveman:LITE | 🗜️ rtk:ON | …`: the word COMBO is gone, and every mode uses a colon instead of an equals sign. Pi, OpenCode, Oh My Pi, the command line and the dashboard all follow it.
 - Balanced no longer carries a "not recommended" note in the installer or the dashboard.
 
 ### Fixed
