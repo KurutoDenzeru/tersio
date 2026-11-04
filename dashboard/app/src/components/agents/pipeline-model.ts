@@ -277,19 +277,20 @@ const HOST_FIELDS: Record<string, "cavemanDefault" | "rtkDefault" | "ponytailDef
 };
 
 /** What each mode reads to for one agent: its own section first, the shared store underneath. */
-export function agentModeRows(host: string, modes: ModeState | null, headroomRoute?: boolean): Array<{ key: string; glyph: string; label: string; on: boolean | null }> {
+export function agentModeRows(host: string, modes: ModeState | null, headroomRoute?: boolean): Array<{ key: string; glyph: string; label: string; on: boolean | null; title?: string }> {
   if (!modes) return [];
   const section = (modes.hosts?.[host] ?? {}) as Partial<Record<string, string | boolean>>;
   const shared = modes as unknown as Partial<Record<string, string | boolean>>;
   const read = (key: string): string | boolean | undefined => section[HOST_FIELDS[key]] ?? shared[HOST_FIELDS[key]];
   const headroom = String(read("headroom") ?? "off");
-  // The session default can say on while this host has no route to the proxy. Say that instead of claiming compression.
-  const headroomLabel = headroom !== "off" && headroomRoute === false ? "unrouted" : headroom;
-  const headroomOn = headroom !== "off" && headroomRoute !== false;
+  // The saved default is what the user opted into, so the row shows it; a missing route is a title, not a different word.
+  const headroomTitle = headroom !== "off" && headroomRoute === false
+    ? "Saved on; this host has no live Headroom route yet."
+    : "Compresses traffic below the shell.";
   return [
     { key: "caveman", glyph: "🪨", label: String(read("caveman") ?? "off"), on: String(read("caveman") ?? "off") !== "off" },
     { key: "rtk", glyph: "🗜️", label: read("rtk") === true ? "on" : "off", on: read("rtk") === true },
-    { key: "headroom", glyph: "🍃", label: headroomLabel, on: headroomOn },
+    { key: "headroom", glyph: "🍃", label: headroom, on: headroom !== "off", title: headroomTitle },
     { key: "ponytail", glyph: "🧠", label: String(read("ponytail") ?? "off"), on: String(read("ponytail") ?? "off") !== "off" },
     { key: "pstack", glyph: "🥔", label: String(read("pstack") ?? "off"), on: String(read("pstack") ?? "off") !== "off" },
   ];
@@ -309,7 +310,7 @@ export const PICKER: Record<"combo" | "caveman" | "rtk" | "ponytail" | "pstack" 
     field: "comboDefault",
     options: [
       { id: "off", label: "Off" }, { id: "lite", label: "Lite (recommended)" },
-      { id: "balanced", label: "Balanced (not recommended)" }, { id: "max", label: "Max" },
+      { id: "balanced", label: "Balanced" }, { id: "max", label: "Max" },
     ],
   },
   caveman: {
@@ -352,7 +353,7 @@ export const DEFAULT_ROWS_UI: Array<{ field: keyof DefaultsPayload; label: strin
     options: [
       { id: "off", label: "Off" },
       { id: "lite", label: "Lite (recommended)" },
-      { id: "balanced", label: "Balanced (not recommended)" },
+      { id: "balanced", label: "Balanced" },
       { id: "max", label: "Max" },
       { id: "custom", label: "Custom" },
     ],

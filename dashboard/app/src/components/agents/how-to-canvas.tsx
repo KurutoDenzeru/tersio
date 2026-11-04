@@ -452,7 +452,7 @@ export function PipelineCanvas({
           {!off ? (
             <span className="grid flex-1 grid-cols-2 content-center gap-x-3 gap-y-1 px-3.5 py-2.5">
               {agentModeRows(host.id, modes, headroomRoutes[host.id]).map((row) => (
-                <span key={row.key} className={cn("mono flex items-center gap-1.5 text-[10px]", row.on ? "text-ink" : "text-dim")}>
+                <span key={row.key} title={row.title} className={cn("mono flex items-center gap-1.5 text-[10px]", row.on ? "text-ink" : "text-dim")}>
                   <span aria-hidden="true" className={cn("size-1.5 shrink-0 rounded-full", row.on ? "bg-accent" : "bg-line")} />
                   {row.glyph} {row.label}
                 </span>
