@@ -26,6 +26,7 @@ import { ErrorsPage } from "./components/agents/errors";
 import { TracesPage } from "./components/agents/traces";
 import { ToolsPage } from "./components/agents/tools";
 import { ProjectsPage } from "./components/agents/projects";
+import { BenchmarksPage } from "./components/agents/benchmarks";
 import { UpstreamPage } from "./components/agents/upstream";
 import { HowToPage } from "./components/agents/how-to";
 import { LogsPage } from "./components/agents/logs";
@@ -137,6 +138,11 @@ function useModeState(): readonly [ModeState | null, () => void, boolean] {
   return [modes, load, loaded] as const;
 }
 
+// The developer surfaces, read as plain strings: a route id compared against a union shape reports
+// no overlap the moment the rail gains an entry, which is a build failure for a correct page.
+type DevSection = 'upstream' | 'logs' | 'benchmarks';
+const isDevSection = (id: string): id is DevSection => id === 'upstream' || id === 'logs' || id === 'benchmarks';
+
 function Dashboard() {
   useDataThemeAttr();
   useReveal();
@@ -144,9 +150,9 @@ function Dashboard() {
   const { section: route, range, session, setSection, setRange, setSession } = useHashRoute();
   // Upstream and Logs are developer surfaces: the About switch hides them, and a bookmarked route lands on Overview.
   const dev = useDevMode();
-  const section = (route === "upstream" || route === "logs") && !dev ? "overview" : route;
+  const section = isDevSection(route) && !dev ? "overview" : route;
   // The smallest view still answers "is there an agent database". Upstream is not an agent view: the scorecard has its own store, and the hook keeps the shell uniform.
-  const view: AgentView = section === "upstream" || section === "how-to" || section === "logs" ? "all" : section;
+  const view: AgentView = section === "how-to" || isDevSection(section) ? "all" : section;
   // Only the request log pages through the range; every other view wants the newest rows.
   const [requestOffset, setRequestOffset] = useState(0);
   const { agent, loading, stale } = useAgentData(range, view, section === "requests" ? requestOffset : 0);
@@ -182,6 +188,7 @@ function Dashboard() {
     // The guide, the log, and the scorecard read their own sources, so none waits on an agent database.
     if (section === "how-to") return <HowToPage modes={modes} onModesChanged={reloadModes} />;
     if (section === "upstream") return <UpstreamPage />;
+    if ((section as string) === "benchmarks") return <BenchmarksPage />;
     if (section === "logs") return <LogsPage onClose={() => setSection("overview")} />;
     if (loading && !agent) {
       // A read that hangs stops holding the page skeleton after the cap: say it is still working and offer a retry, rather than the empty state pretending the database is missing.

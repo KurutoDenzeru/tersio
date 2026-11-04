@@ -18,6 +18,7 @@ import { isCurrencyCode } from './currency.ts';
 import type { CurrencyCode } from './currency.ts';
 import { qrTerminal } from './qr.ts';
 import { ensureHeadroomRuntime } from './headroom-runtime.ts';
+import { handleBenchRoutes } from './dashboard-bench.ts';
 import { handleHeadroomRoutes } from './dashboard-headroom.ts';
 import { handleVendorRoutes } from './dashboard-vendor.ts';
 import { handleHostRoutes } from './dashboard-hosts.ts';
@@ -1034,6 +1035,7 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
     })) return;
     if (await handleVendorRoutes(req, res, { json, bodyOf, spawnHeadroomInstall, isVendorTool })) return;
     if (await handleHostRoutes(req, res, { json, bodyOf, detectHosts, hostJobs, spawnCli })) return;
+    if (handleBenchRoutes(req, res, { json })) return;
     if (req.url === '/api/upstream' && req.method === 'GET') {
       json(res, 200, { card: await cachedScorecard(), history: await upstreamHistory() });
       return;

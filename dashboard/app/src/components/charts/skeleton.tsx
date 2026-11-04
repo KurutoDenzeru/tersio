@@ -78,6 +78,12 @@ const LAYOUT: Record<SectionId, readonly Block[]> = {
     { cards: [{ body: "chart" }] },
     { cards: [{ body: "table", rows: 4 }] },
   ],
+  // Benchmarks read the docs, not the agent store, so the shape only matters if the shell ever waits on them.
+  benchmarks: [
+    { strip: 4 },
+    { cards: [{ body: "chart" }, { body: "chart" }] },
+    { cards: [{ body: "table", rows: 6 }] },
+  ],
   logs: [
     { cards: [{ body: "table", rows: 10 }] },
   ],
