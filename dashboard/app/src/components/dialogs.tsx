@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { setDevMode, useDevMode } from "@/lib/dev-mode";
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useTheme, useResolvedTheme } from "@/components/theme-provider";
 import { AgentLogo } from "@/components/agent-logos";
@@ -85,6 +86,220 @@ function dataStamp(mtime: number): string {
 }
 
 /** The restore snapshots and their schedule; the list never restores alone, so a stray click cannot overwrite. */
+
+type SyncMode = "webdav" | "s3" | "github";
+interface SyncVersion { name: string; bytes: number; mtime: number }
+interface SyncView {
+  configured: boolean;
+  mode: SyncMode | null;
+  target: string;
+  passphraseSet: boolean;
+  fields: Record<string, Record<string, unknown>>;
+  versions: SyncVersion[];
+  error: string | null;
+}
+
+const SYNC_MODES: Array<{ id: SyncMode; label: string; hint: string }> = [
+  { id: "webdav", label: "WebDAV", hint: "Any WebDAV address, such as a NAS or a hosted box." },
+  { id: "s3", label: "S3", hint: "AWS S3, Cloudflare R2, Backblaze B2, MinIO, and the like." },
+  { id: "github", label: "GitHub", hint: "A private repository. Each backup is one commit." },
+];
+
+const SYNC_FIELDS: Record<SyncMode, Array<{ key: string; label: string; placeholder: string; secret?: boolean }>> = {
+  webdav: [
+    { key: "address", label: "Address", placeholder: "https://example.com/dav/" },
+    { key: "user", label: "User", placeholder: "user name" },
+    { key: "password", label: "Password", placeholder: "password or app password", secret: true },
+  ],
+  s3: [
+    { key: "endpoint", label: "Endpoint", placeholder: "https://<account>.r2.cloudflarestorage.com" },
+    { key: "bucket", label: "Bucket", placeholder: "bucket name" },
+    { key: "prefix", label: "Prefix", placeholder: "optional" },
+    { key: "region", label: "Region", placeholder: "us-east-1, or auto for R2" },
+    { key: "accessKey", label: "Access key", placeholder: "AKIA…" },
+    { key: "secret", label: "Secret", placeholder: "secret access key", secret: true },
+  ],
+  github: [
+    { key: "repository", label: "Repository", placeholder: "owner/repo" },
+    { key: "branch", label: "Branch", placeholder: "default branch" },
+    { key: "folder", label: "Folder", placeholder: "optional" },
+    { key: "token", label: "Token", placeholder: "fine-grained token with contents write", secret: true },
+  ],
+};
+
+function sizeText(bytes: number): string {
+  if (!bytes) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/** Settings → Data: where the sealed backups go, and every version that is already there. */
+function SyncPanel() {
+  const toast = useToast();
+  const [view, setView] = useState<SyncView | null>(null);
+  const [mode, setMode] = useState<SyncMode>("webdav");
+  const [fields, setFields] = useState<Record<string, string>>({});
+  const [pathStyle, setPathStyle] = useState(false);
+  const [passphrase, setPassphrase] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
+  const [asking, setAsking] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    fetch("/api/sync")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: SyncView | null) => {
+        if (!d) return;
+        setView(d);
+        const next = d.mode ?? "webdav";
+        setMode(next);
+        const saved = d.fields?.[next] ?? {};
+        setFields(Object.fromEntries(Object.entries(saved).map(([key, value]) => [key, typeof value === "string" ? value : ""])));
+        setPathStyle(saved.pathStyle === true);
+        setPassphrase("");
+      })
+      .catch(() => setView(null));
+  }, []);
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const pick = (next: SyncMode): void => {
+    setMode(next);
+    const saved = view?.fields?.[next] ?? {};
+    setFields(Object.fromEntries(Object.entries(saved).map(([key, value]) => [key, typeof value === "string" ? value : ""])));
+    setPathStyle(saved.pathStyle === true);
+  };
+
+  const post = (url: string, body: unknown): Promise<{ ok?: boolean; error?: string; name?: string } | null> =>
+    fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+      .then((r) => r.json())
+      .catch(() => null);
+
+  const save = (): void => {
+    setBusy("save");
+    void post("/api/sync", { mode, passphrase, target: { ...fields, pathStyle } })
+      .then((d) => {
+        if (d?.ok) {
+          toast("Sync target saved", "Passwords stay on this computer.", "check");
+          load();
+        } else toast("Could not save", d?.error ?? "The server refused the target.", "circle-alert");
+      })
+      .finally(() => setBusy(null));
+  };
+
+  const run = (): void => {
+    setBusy("run");
+    void post("/api/sync/run", {})
+      .then((d) => {
+        if (d?.ok) {
+          toast("Backed up to the remote", d.name ? `One sealed file: ${d.name}.` : "One sealed file.", "check");
+          load();
+        } else toast("Backup failed", d?.error ?? "The remote did not answer.", "circle-alert");
+      })
+      .finally(() => setBusy(null));
+  };
+
+  const restore = (name: string): void => {
+    setBusy("restore");
+    setAsking(null);
+    void post("/api/sync/restore", { name })
+      .then((d) => {
+        if (d?.ok) {
+          toast("Restored", "The state before the restore was kept as a snapshot.", "check");
+          requestReload();
+        } else toast("Restore failed", d?.error ?? "The backup could not be opened.", "circle-alert");
+      })
+      .finally(() => setBusy(null));
+  };
+
+  const rows = SYNC_FIELDS[mode];
+  const hint = SYNC_MODES.find((entry) => entry.id === mode)?.hint ?? "";
+
+  return (
+    <Card
+      title="Sync and backup"
+      icon="cloud"
+      description="Send each snapshot off this computer, sealed with your passphrase."
+      actions={<Badge variant="outline" className="mono h-6 rounded-lg border-line text-[10px] text-dim">{view?.configured ? "on" : "off"}</Badge>}
+    >
+      <div className="grid gap-3">
+        <Tabs value={mode} onValueChange={(v) => pick((v ?? "webdav") as SyncMode)}>
+          <TabsList>
+            {SYNC_MODES.map((entry) => (
+              <TabsTrigger key={entry.id} value={entry.id}>{entry.label}</TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+        <p className="m-0 text-xs text-dim">{hint}</p>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {rows.map((row) => (
+            <label key={row.key} className="grid gap-1 text-[11px] text-dim">
+              <span>{row.label}</span>
+              <Input
+                type={row.secret ? "password" : "text"}
+                value={fields[row.key] ?? ""}
+                placeholder={row.secret && view?.passphraseSet ? "saved" : row.placeholder}
+                onChange={(event) => setFields({ ...fields, [row.key]: event.target.value })}
+              />
+            </label>
+          ))}
+          {mode === "s3" && (
+            <label className="flex items-center gap-2 text-[11px] text-dim">
+              <input type="checkbox" checked={pathStyle} onChange={(event) => setPathStyle(event.target.checked)} />
+              <span>Path-style: the bucket in the path, not the host name</span>
+            </label>
+          )}
+          <label className="grid gap-1 text-[11px] text-dim sm:col-span-2">
+            <span>Passphrase</span>
+            <Input
+              type="password"
+              value={passphrase}
+              placeholder={view?.passphraseSet ? "saved — type to replace" : "the same on every computer"}
+              onChange={(event) => setPassphrase(event.target.value)}
+            />
+          </label>
+        </div>
+        <p className="m-0 text-xs text-dim">
+          The file is sealed on this computer; the remote only ever sees it sealed. Keep the passphrase: without it a backup cannot be opened.
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" className="mono h-8 gap-1.5 rounded-xl" disabled={busy !== null} onClick={save}>
+            {busy === "save" ? <Spinner className="size-3.5" /> : <Icon name="check" className="size-3.5" />}
+            <span>Save target</span>
+          </Button>
+          <Button size="sm" variant="outline" className="mono h-8 gap-1.5 rounded-xl" disabled={busy !== null || !view?.configured} onClick={run}>
+            {busy === "run" ? <Spinner className="size-3.5" /> : <Icon name="cloud-upload" className="size-3.5" />}
+            <span>Back up to remote</span>
+          </Button>
+          {view?.target && <span className="mono min-w-0 truncate text-[11px] text-dim">{view.target}</span>}
+        </div>
+        {view?.error && <p className="m-0 text-xs text-red-500">{view.error}</p>}
+        <div className="grid gap-1">
+          <p className="m-0 text-[11px] text-dim">Versions on the remote</p>
+          {(view?.versions ?? []).length === 0 && <p className="m-0 text-xs text-dim">Nothing there yet.</p>}
+          {(view?.versions ?? []).map((version) => (
+            <div key={version.name} className="flex items-center gap-2 rounded-lg border border-line px-2 py-1">
+              <span className="mono min-w-0 flex-1 truncate text-[11px]">{version.name}</span>
+              <span className="mono text-[11px] text-dim">{sizeText(version.bytes)}</span>
+              {asking === version.name ? (
+                <>
+                  <Button size="sm" variant="destructive" className="h-7 rounded-lg" disabled={busy !== null} onClick={() => restore(version.name)}>
+                    Restore
+                  </Button>
+                  <Button size="sm" variant="ghost" className="h-7 rounded-lg" onClick={() => setAsking(null)}>Cancel</Button>
+                </>
+              ) : (
+                <Button size="sm" variant="outline" className="h-7 rounded-lg" onClick={() => setAsking(version.name)}>Restore…</Button>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 function DataPane() {
   const toast = useToast();
   const [backups, setBackups] = useState<DataBackupRow[] | null>(null);
@@ -248,6 +463,7 @@ function DataPane() {
 
   return (
     <section aria-label="Data" className="grid gap-4">
+      <SyncPanel />
       <Card
         title="Backup schedule"
         icon="clock"
