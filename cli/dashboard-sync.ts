@@ -102,6 +102,16 @@ export async function runSync(): Promise<{ name: string; bytes: number }> {
   return { name, bytes: sealed.length };
 }
 
+/** Prove the saved credentials reach the remote and can read the folder, before anyone trusts a backup to it. */
+export async function testTarget(config: SyncConfig): Promise<{ ok: true; count: number } | { ok: false; error: string }> {
+  try {
+    const versions = await remoteFor(config).list();
+    return { ok: true, count: versions.length };
+  } catch (caught) {
+    return { ok: false, error: (caught as Error).message || 'the remote did not answer' };
+  }
+}
+
 export async function listSyncVersions(): Promise<RemoteEntry[]> {
   const saved = readSync();
   if (!saved.config) return [];

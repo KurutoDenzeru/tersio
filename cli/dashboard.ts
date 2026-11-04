@@ -39,7 +39,7 @@ import { checkHostTrees } from './host-tree.ts';
 import { findPackageRoot, homeDir, openCommand, resolveHeadroomBinary, resolveHostBinary, resolveRtkBinary, ruleBodyProblem, tersioHome } from '../extensions/shared/utils.ts';
 import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
 import { BACKUP_KEEP, backupDir, backupDiskBytes, createDataBackup, dataSources, deleteDataBackup, listDataBackups, restoreDataBackup } from '../extensions/shared/snapshots.ts';
-import { applyTarget, emptyConfig, listSyncVersions, publicFields, readSync, restoreSync, runSync, saveSync, syncTarget } from './dashboard-sync.ts';
+import { applyTarget, emptyConfig, listSyncVersions, publicFields, readSync, restoreSync, runSync, saveSync, syncTarget, testTarget } from './dashboard-sync.ts';
 import { remoteFor } from '../extensions/shared/sync-remote.ts';
 import { CAVEMAN_PIN, PSTACK_PIN, cachedScorecard, cachedScorecardSync, refreshScorecard, upstreamHistory } from './upstream.ts';
 import { resetCounts, resetStatistics } from './reset.ts';
@@ -1133,6 +1133,19 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
       }
       saveSync({ config, passphrase: String(body.passphrase ?? '') });
       json(res, 200, { ok: true, target: syncTarget(config) });
+      return;
+    }
+    if (req.url === '/api/sync/test' && req.method === 'POST') {
+      const body = await bodyOf(req);
+      const mode = String(body.mode ?? '');
+      if (mode !== 'webdav' && mode !== 's3' && mode !== 'github') {
+        json(res, 400, { ok: false, error: 'unknown sync target' });
+        return;
+      }
+      const target = body.target && typeof body.target === 'object' ? body.target as Record<string, unknown> : {};
+      const config = applyTarget(mode, target, readSync().config ?? emptyConfig());
+      const result = await testTarget(config);
+      json(res, result.ok ? 200 : 400, result);
       return;
     }
     if (req.url === '/api/sync/run' && req.method === 'POST') {
