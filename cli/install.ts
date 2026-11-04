@@ -513,7 +513,7 @@ async function resolveProfile(opts: { quiet?: boolean; host?: HostId | null } = 
     const choice = await askInteractiveChoice('Session-start defaults — Combo preset', [
       { value: 'off', label: 'off' },
       { value: 'lite', label: 'lite (recommended)', hint: 'caveman=lite, rtk=on, ponytail=lite' },
-      { value: 'balanced', label: 'balanced (not recommended)', hint: 'caveman=full, rtk=on, ponytail=full' },
+      { value: 'balanced', label: 'balanced', hint: 'caveman=full, rtk=on, ponytail=full' },
       { value: 'max', label: 'max', hint: 'caveman=ultra, rtk=on, ponytail=ultra' },
     ], profile.comboDefault);
     if (choice.status === 'selected') {
