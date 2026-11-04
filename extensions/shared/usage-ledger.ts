@@ -548,7 +548,11 @@ export interface SessionLineRow {
     model?: unknown;
     provider?: unknown;
     usage?: Record<string, unknown>;
-    message?: { role?: unknown; content?: Array<{ type?: unknown; name?: unknown }> };
+    turn?: number;
+    step?: number;
+    header?: { config?: { provider?: unknown; model?: unknown } };
+    stream?: Array<{ time?: number }>;
+    message?: { role?: unknown; id?: unknown; content?: Array<{ type?: unknown; name?: unknown }> };
   };
 }
 
@@ -564,12 +568,37 @@ export interface SessionLine {
   tools?: string[];
   toolFacts?: ToolFact[];
   ms?: number;
+  /** The host's own message id, when the transcript carries one. */
+  id?: string;
 }
 
-export function classifySessionLine(row: SessionLineRow, results?: ToolResults): SessionLine {
-  // DeepSeek Harness states the model once on `model/selection`; the usage sits on `assistant/message`.
+/** What a DeepSeek Harness transcript reveals across lines: the active model and each step's start. */
+export interface DshParseState {
+  model?: string;
+  provider?: string;
+  steps: Map<string, number>;
+}
+
+export function classifySessionLine(row: SessionLineRow, results?: ToolResults, dsh?: DshParseState): SessionLine {
+  // DeepSeek Harness states the model once on `model/selection`, and again on each request header.
   if (row.type === 'model/selection' && row.data && typeof row.data.model === 'string' && row.data.model) {
+    if (dsh) dsh.model = row.data.model;
     return { kind: 'dsh_model', model: row.data.model, provider: typeof row.data.provider === 'string' ? row.data.provider : undefined };
+  }
+  if (row.type === 'request/header' && row.data?.header?.config) {
+    const config = row.data.header.config;
+    if (typeof config.model === 'string' && config.model) {
+      if (dsh) {
+        dsh.model = config.model;
+        dsh.provider = typeof config.provider === 'string' ? config.provider : dsh.provider;
+      }
+      return { kind: 'dsh_model', model: config.model, provider: typeof config.provider === 'string' ? config.provider : undefined };
+    }
+  }
+  // The step's start turns the message's own time into a duration, and its first stream chunk into a TTFT.
+  if (row.type === 'step/start' && dsh && typeof row.time === 'number' && row.data) {
+    dsh.steps.set(`${row.data.turn}:${row.data.step}`, row.time);
+    return { kind: 'skip' };
   }
   if (row.type === 'assistant/message' && row.data?.usage) {
     const usage = row.data.usage;
@@ -584,7 +613,13 @@ export function classifySessionLine(row: SessionLineRow, results?: ToolResults):
       cacheWrite: usage['cacheWriteTokens'],
     };
     if (hasPositiveUsage(mapped)) {
-      return { kind: 'assistant_row', usage: mapped, tools, ms: row.time, run: { st: 'completed' } };
+      const start = dsh?.steps.get(`${row.data.turn}:${row.data.step}`);
+      const first = row.data.stream?.find((entry) => typeof entry.time === 'number')?.time;
+      const durMs = start !== undefined && typeof row.time === 'number' && row.time > start ? row.time - start : undefined;
+      const ttftMs = start !== undefined && first !== undefined && first > start ? first - start : undefined;
+      const id = typeof row.data.message?.id === 'string' ? row.data.message.id : undefined;
+      const provider = dsh?.provider;
+      return { kind: 'assistant_row', usage: mapped, tools, ms: row.time, durMs, ttftMs, id, provider, run: { st: 'completed' } };
     }
   }
   const payload = row.payload;
@@ -852,11 +887,10 @@ export function importSessionTokens(): SessionTokens {
     for (const row of readOpencodeDbRows(opencodeDbPath(), 0)) ingestOpencodeDbRow(accum, row);
   }
   const dshFiles = process.env.TERSIO_SESSIONS_DIR === undefined ? dshSessionFiles() : [];
-  const codexState = { codexProvider: null as string | null, codexModel: null as string | null, dshModel: null as string | null };
   for (const file of [...files, ...dshFiles]) {
     const text = readSessionText(file);
     if (text === null) continue;
-    processSessionText(accum, codexState, text, hostOfSessionFile(file), agentOfSessionText(text));
+    processSessionText(accum, { codexProvider: null, codexModel: null, dshModel: null }, text, hostOfSessionFile(file), agentOfSessionText(text));
   }
   accum.recent.sort((a, b) => b.t - a.t);
   return { messages: accum.messages, totals: accum.totals, byModel: accum.byModel, byDay: accum.byDay, byDayModel: accum.byDayModel, byTool: accum.byTool, byModelMessages: accum.byModelMessages, byHost: accum.byHost, byAgent: accum.byAgent, byAgentMessages: accum.byAgentMessages, byModelMeasured: accum.byModelMeasured, byModelCostMessages: accum.byModelCostMessages, costMeasured: accum.costMeasured, recent: accum.recent.slice(0, RECENT_LIMIT) };
@@ -1072,12 +1106,14 @@ export function readRtkAdoption(): RtkAdoption {
 export function processSessionText(accum: SessionAccum, state: { codexProvider: string | null; codexModel?: string | null; dshModel?: string | null }, text: string, host?: string, agent?: string): void {
   // A call's result arrives on a later line, so the whole file is scanned for results first.
   const results = collectToolResults(text);
+  // Per file: a transcript's model and step starts must not leak into the next file.
+  const dsh: DshParseState = { steps: new Map() };
   for (const line of text.split('\n')) {
     if (!line.trim()) continue;
     try {
       const row = JSON.parse(line) as SessionLineRow;
-      const parsed = classifySessionLine(row, results);
-      const rid = messageRowId(row);
+      const parsed = classifySessionLine(row, results, dsh);
+      const rid = parsed.id ?? messageRowId(row);
       if (parsed.kind === 'codex_provider') {
         if (parsed.provider) state.codexProvider = parsed.provider;
         continue;
