@@ -185,8 +185,9 @@ function readModes(store: Store, section: Store): ModeSnapshot {
     rtk: setting(store, section, 'rtkDefault') === true,
     ponytail: String(setting(store, section, 'ponytailDefault') ?? 'off'),
     pstack: setting(store, section, 'pstackDefault') as string | boolean ?? 'off',
-    // Headroom has no DeepSeek Harness route; the mode stays off instead of promising compression.
-    headroom: 'off',
+    // dsh is a native route host: the installer points the provider at Headroom's proxy, so the stored
+    // default is the truth and the bar reports it instead of promising a mode the host cannot honour.
+    headroom: setting(store, section, 'headroomDefault') === 'on' ? 'on' : 'off',
   };
 }
 
@@ -202,18 +203,77 @@ function statusLevel(modes: ModeSnapshot): string {
   return 'custom';
 }
 
-/** The footer line Pi and OMP paint, glyph order included, so the DSH bar cannot disagree with another host. */
+/** Three letters per preset, so the whole line fits a narrow composer. */
+const LEVEL_ABBREVIATIONS: Record<string, string> = { off: 'OFF', lite: 'LTE', balanced: 'BAL', max: 'MAX', custom: 'CST' };
+
+/** The bar line: the preset, then one glyph per mode, short enough to fit a narrow composer. */
 function statusLine(store: Store, section: Store): string {
   const modes = readModes(store, section);
   const pstack = modes.pstack === true || modes.pstack === 'on' ? 'on' : 'off';
   const level = statusLevel(modes);
-  if (level === 'off' && pstack === 'off' && modes.headroom === 'off') return '🧩 COMBO OFF';
-  const label = level === 'off' || level === 'custom' ? 'CUSTOM' : level.toUpperCase();
-  const value = (mode: string | boolean) => String(mode === true ? 'on' : mode).toUpperCase();
-  return `🧩 COMBO ${label}: ${MODE_GLYPHS.caveman} caveman=${value(modes.caveman)} | ${MODE_GLYPHS.rtk} rtk=${value(modes.rtk)} | ${MODE_GLYPHS.headroom} headroom=${value(modes.headroom)} | ${MODE_GLYPHS.ponytail} ponytail=${value(modes.ponytail)} | ${MODE_GLYPHS.pstack} pstack=${value(pstack)}`;
+  if (level === 'off' && pstack === 'off' && modes.headroom === 'off') return '🧩 OFF';
+  const label = LEVEL_ABBREVIATIONS[level] ?? level.toUpperCase();
+  const value = (mode: string | boolean) => (mode === true || mode === 'on' ? 'ON' : mode === false || mode === 'off' ? 'OFF' : String(mode).toUpperCase());
+  return `🧩 ${label}: ${MODE_GLYPHS.caveman}:${value(modes.caveman)} | ${MODE_GLYPHS.rtk}:${value(modes.rtk)} | ${MODE_GLYPHS.headroom}:${value(modes.headroom)} | ${MODE_GLYPHS.ponytail}:${value(modes.ponytail)} | ${MODE_GLYPHS.pstack}:${value(pstack)}`;
 }
 
-/** `/tersio/modes` feeds the Web status bar: one GET, no session, so the client polls it while the page is open. */
+/** One payload for the bar: the rendered line, the preset level, and each mode's value. */
+function statusPayload(): string {
+  const store = readStore();
+  const section = hostSection(store);
+  const modes = readModes(store, section);
+  return JSON.stringify({ text: statusLine(store, section), level: statusLevel(modes), modes });
+}
+
+/** Values the bar's popover may write; each maps onto the same host defaults the CLI and dashboard store. */
+const SWITCHABLE: Record<string, readonly string[]> = {
+  caveman: ['off', 'lite', 'full', 'ultra', 'megacave-lite', 'megacave-full', 'megacave-ultra'],
+  rtk: ['off', 'on'],
+  ponytail: ['off', 'lite', 'full', 'ultra'],
+  pstack: ['off', 'on'],
+  headroom: ['off', 'on'],
+};
+
+function applySwitch(mode: string, value: string): boolean {
+  if (!SWITCHABLE[mode]?.includes(value)) return false;
+  writeHostSection((section) => {
+    if (mode === 'rtk') section.rtkDefault = value === 'on';
+    else section[`${mode}Default`] = value;
+  });
+  return true;
+}
+
+function applyCombo(level: string): boolean {
+  const preset = COMBO_PRESETS[level];
+  if (!preset) return false;
+  writeHostSection((section) => {
+    section.comboDefault = level;
+    section.cavemanDefault = preset.caveman;
+    section.rtkDefault = preset.rtk;
+    section.ponytailDefault = preset.ponytail;
+  });
+  return true;
+}
+
+function readBody(req: IncomingMessage): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    req.on('data', (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > 4096) {
+        reject(new Error('body too large'));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+    req.on('error', reject);
+  });
+}
+
+/** `/tersio/modes` feeds the Web bar: GET renders it, POST switches a preset or one mode from the popover. */
 function registerStatusRoute(ctx: DshCtx): void {
   if (!ctx.inject) return;
   ctx.inject(['webServer'], (scoped) => {
@@ -222,18 +282,25 @@ function registerStatusRoute(ctx: DshCtx): void {
     const route: DshRoute = {
       kind: 'exact',
       path: '/tersio/modes',
-      handler: (req, res) => {
-        if (req.method !== 'GET' && req.method !== 'HEAD') {
-          res.writeHead(405, { allow: 'GET, HEAD' });
-          res.end();
-          return;
+      handler: async (req, res) => {
+        const send = (status: number, body: string) => {
+          res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
+          res.end(req.method === 'HEAD' ? undefined : body);
+        };
+        if (req.method === 'GET' || req.method === 'HEAD') return send(200, statusPayload());
+        if (req.method !== 'POST') return send(405, '{"error":"use GET or POST"}');
+        let change: { combo?: unknown; mode?: unknown; value?: unknown };
+        try {
+          change = JSON.parse(await readBody(req)) as typeof change;
+        } catch {
+          return send(400, '{"error":"invalid body"}');
         }
-        const store = readStore();
-        const section = hostSection(store);
-        const modes = readModes(store, section);
-        const body = JSON.stringify({ text: statusLine(store, section), level: statusLevel(modes), modes });
-        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
-        res.end(req.method === 'HEAD' ? undefined : body);
+        const applied = typeof change.combo === 'string'
+          ? applyCombo(change.combo)
+          : typeof change.mode === 'string' && typeof change.value === 'string'
+            ? applySwitch(change.mode, change.value)
+            : false;
+        return applied ? send(200, statusPayload()) : send(400, '{"error":"unknown mode change"}');
       },
     };
     // The carrier throws on a duplicate (kind, path), so the nested fiber owns the disposer.
