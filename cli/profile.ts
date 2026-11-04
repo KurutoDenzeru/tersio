@@ -325,5 +325,5 @@ export function formatCliStatus(profile: Profile): string {
   const rtk = profile.rtkDefault ? 'on' : 'off';
   if (level === 'off' && profile.cavemanDefault === 'off' && rtk === 'off' && profile.ponytailDefault === 'off' && profile.pstackDefault === 'off' && profile.headroomDefault === 'off') return '🧩 OFF';
   const label = level === 'off' || level === 'custom' ? 'CUSTOM' : level.toUpperCase();
-  return `🧩 ${label}: 🪨 caveman=${profile.cavemanDefault.toUpperCase()} | 🗜️ rtk=${rtk.toUpperCase()} | 🍃 headroom=${profile.headroomDefault.toUpperCase()} | 🧠 ponytail=${profile.ponytailDefault.toUpperCase()} | 🥔 pstack=${profile.pstackDefault.toUpperCase()}`;
+  return `🧩 ${label} | 🪨 caveman:${profile.cavemanDefault.toUpperCase()} | 🗜️ rtk:${rtk.toUpperCase()} | 🍃 headroom:${profile.headroomDefault.toUpperCase()} | 🧠 ponytail:${profile.ponytailDefault.toUpperCase()} | 🥔 pstack:${profile.pstackDefault.toUpperCase()}`;
 }

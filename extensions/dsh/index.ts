@@ -214,7 +214,7 @@ function statusLine(store: Store, section: Store): string {
   if (level === 'off' && pstack === 'off' && modes.headroom === 'off') return '🧩 OFF';
   const label = LEVEL_ABBREVIATIONS[level] ?? level.toUpperCase();
   const value = (mode: string | boolean) => (mode === true || mode === 'on' ? 'ON' : mode === false || mode === 'off' ? 'OFF' : String(mode).toUpperCase());
-  return `🧩 ${label}: ${MODE_GLYPHS.caveman}:${value(modes.caveman)} | ${MODE_GLYPHS.rtk}:${value(modes.rtk)} | ${MODE_GLYPHS.headroom}:${value(modes.headroom)} | ${MODE_GLYPHS.ponytail}:${value(modes.ponytail)} | ${MODE_GLYPHS.pstack}:${value(pstack)}`;
+  return `🧩 ${label} | ${MODE_GLYPHS.caveman} caveman:${value(modes.caveman)} | ${MODE_GLYPHS.rtk} rtk:${value(modes.rtk)} | ${MODE_GLYPHS.headroom} headroom:${value(modes.headroom)} | ${MODE_GLYPHS.ponytail} ponytail:${value(modes.ponytail)} | ${MODE_GLYPHS.pstack} pstack:${value(pstack)}`;
 }
 
 /** One payload for the bar: the rendered line, the preset level, and each mode's value. */
