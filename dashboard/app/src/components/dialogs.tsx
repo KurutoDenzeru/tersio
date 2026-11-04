@@ -12,6 +12,7 @@ import { setDevMode, useDevMode } from "@/lib/dev-mode";
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useTheme, useResolvedTheme } from "@/components/theme-provider";
 import { AgentLogo } from "@/components/agent-logos";
@@ -217,20 +218,27 @@ function SyncPanel() {
   const hint = SYNC_MODES.find((entry) => entry.id === mode)?.hint ?? "";
 
   return (
-    <Card
-      title="Sync and backup"
-      icon="cloud"
-      description="Send each snapshot off this computer, sealed with your passphrase."
-      actions={<Badge variant="outline" className="mono h-6 rounded-lg border-line text-[10px] text-dim">{view?.configured ? "on" : "off"}</Badge>}
-    >
-      <div className="grid gap-3">
-        <Tabs value={mode} onValueChange={(v) => pick((v ?? "webdav") as SyncMode)}>
-          <TabsList>
-            {SYNC_MODES.map((entry) => (
-              <TabsTrigger key={entry.id} value={entry.id}>{entry.label}</TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
+    <Accordion className="rounded-2xl border border-line bg-panel">
+      <AccordionItem value="sync" className="border-0">
+        <AccordionTrigger className="px-4 py-3 hover:no-underline">
+          <span className="grid gap-0.5 text-left">
+            <span className="flex items-center gap-2 text-[13px] font-semibold">
+              <Icon name="cloud" className="size-4" />
+              <span>Sync and backup</span>
+              <Badge variant="outline" className="mono h-5 rounded-md border-line px-1.5 text-[10px] text-dim">{view?.configured ? "on" : "off"}</Badge>
+            </span>
+            <span className="text-xs font-normal text-dim">Send each snapshot off this computer, sealed with your passphrase.</span>
+          </span>
+        </AccordionTrigger>
+        <AccordionContent className="pb-0">
+          <div className="grid gap-3 px-4 pb-4">
+            <Tabs value={mode} onValueChange={(v) => pick((v ?? "webdav") as SyncMode)}>
+              <TabsList className="h-9 w-full justify-start gap-1 rounded-xl p-1">
+                {SYNC_MODES.map((entry) => (
+                  <TabsTrigger key={entry.id} value={entry.id} className="h-7 flex-1 px-4 text-[12px]">{entry.label}</TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
         <p className="m-0 text-xs text-dim">{hint}</p>
         <div className="grid gap-2 sm:grid-cols-2">
           {rows.map((row) => (
@@ -295,8 +303,10 @@ function SyncPanel() {
             </div>
           ))}
         </div>
-      </div>
-    </Card>
+          </div>
+        </AccordionContent>
+      </AccordionItem>
+    </Accordion>
   );
 }
 
