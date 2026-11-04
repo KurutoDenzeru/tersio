@@ -1,5 +1,7 @@
 ## Unreleased
 
+## v2.25.17
+
 ### Added
 - A Benchmark page for developers: every measured result in one place, with charts, the raw tables, and the notes each run wrote.
 - A history window in Settings → Data. Keep usage for 7 days to a year, or forever.
