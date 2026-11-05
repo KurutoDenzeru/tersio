@@ -19,6 +19,7 @@ import { sqliteScript, statsDbPath } from '../extensions/shared/agent-stats.ts';
 import { OMP_SUBAGENT_MARKER } from '../extensions/shared/session-state.ts';
 import { describeHeadroomRoute, readHeadroomRoute } from '../extensions/shared/headroom-routing.ts';
 import { hostCap } from '../extensions/shared/host-caps.ts';
+import { tersioMcpConfigured } from '../extensions/shared/mcp-config.ts';
 import { PI_PONYTAIL_FILES, PONYTAIL_BUNDLE_FILES, PONYTAIL_VERSION, TREE_PSTACK_FILES, isObsoleteTreeFile, treeFileText, treeFilesFor } from './manifest.ts';
 import { serviceRunning, serviceState } from './doctor-fix.ts';
 import { readState } from '../extensions/shared/state.ts';
@@ -268,6 +269,10 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
     // One line per host, omp style: kind and version, no path echo.
     const kind = host.via === 'tree' ? 'extensions' : 'package';
     check(host.label, true, `${kind} ${PACKAGE_NAME}${host.version ? ` ${host.version}` : ''}`);
+    // The MCP entry is a second file an install writes; a tool that never appears starts here.
+    if (!tersioMcpConfigured(host.id)) {
+      warnLine(`${host.label} MCP`, hostCap(host.id)?.mcp != null ? `not wired — run: tersio install --host ${host.id}` : 'the bundle patch did not mount');
+    }
   }
 
   // A version apart means omp can load a tree of two releases.
