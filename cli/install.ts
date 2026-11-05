@@ -33,7 +33,7 @@ import { headroomHostSupported, headroomProxyPort, headroomProxyUrl, installDura
 import { ensureAgentProviderRoute } from '../extensions/shared/headroom-agent.ts';
 import { describeHeadroomRoute, readHeadroomRoute } from '../extensions/shared/headroom-routing.ts';
 import { installNativeRoute, isNativeRouteHost } from '../extensions/shared/headroom-routes.ts';
-import { ensureTersioMcp, tersioMcpSupported } from '../extensions/shared/mcp-config.ts';
+import { ensureTersioMcp, tersioMcpConfigured, tersioMcpSupported } from '../extensions/shared/mcp-config.ts';
 import { ensureHeadroomRuntime } from './headroom-runtime.ts';
 import type { HostDefaultField } from './profile.ts';
 import { formatCliStatus, saveHostDefaults, storedProfile, storedProfileSync, writePluginSettings } from './profile.ts';
@@ -619,7 +619,9 @@ async function maybeInstallMcp(host: HostId, quiet: boolean): Promise<boolean> {
     if (!quiet) sayTagged(`  [dry-run] would add the Tersio MCP server for ${hostEntry(host).label}`);
     return false;
   }
-  if (!tty() || assumeYes || applyUpdate) return true;
+  // An update refreshes what is there; it never opts a machine into the entry the install declined.
+  if (applyUpdate) return tersioMcpConfigured(host);
+  if (!tty() || assumeYes) return true;
   const answer = await askInteractiveConfirm(`Add the Tersio MCP server to ${hostEntry(host).label}? Gives the agent usage, modes and savings as tools (optional)`);
   if (answer.status === 'cancelled') {
     closeRL();
