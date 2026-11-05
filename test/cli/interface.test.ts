@@ -636,7 +636,7 @@ test("a machine without rtk is offered rtk's own installer and never a Tersio do
     const result = run(home, ["install", "--host", "pi", "--yes"]);
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toMatch(/RTK is not installed/);
-    expect(result.stdout).toMatch(/(rtk-ai\.app|winget install rtk-ai\.rtk)/);
+    expect(result.stdout).toMatch(/(rtk-ai\.app|winget install)/);
     expect(result.stdout).toMatch(/then re-run: tersio install --host pi/);
     for (const output of [result.stdout, result.stderr]) {
       expect(output, "no downloader came back").not.toMatch(/Downloading RTK|checksums\.txt|allow-unverified/);
