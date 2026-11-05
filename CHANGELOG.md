@@ -1,6 +1,9 @@
 ## Unreleased
 
 ### Added
+- The installer now asks before adding Tersio's MCP server to an agent. The question reads "Add the Tersio MCP server to … (optional)", so a machine that should stay untouched can say no.
+- Agents get two new MCP tools: one lists every supported agent with its version and whether Tersio is connected, the other lists the newest sessions with their cost and tokens.
+- An MCP client can read the saved settings and the agent list directly, without spending a tool call.
 - A small Tersio pill now sits under the message box in DeepSeek Harness. It shows the current Combo with a puzzle icon and the word Off, Lite, Balanced or Max.
 - Click the pill to open a card that switches the Combo, or any single mode on its own: Caveman, RTK, Headroom, Ponytail and pstack.
 - The Headroom switch in that card reads and writes the same saved setting the installer, the command line and the dashboard use, so the three agree.
@@ -10,6 +13,7 @@
 - RTK now works in DeepSeek Harness with nothing extra to install. Once RTK is on, shell commands are shortened for you.
 
 ### Changed
+- A mode change over MCP can now target one agent, the same way the dashboard and the installer already could.
 - Switching a mode in DeepSeek Harness no longer posts a message in the conversation. The pill is the only feedback, like the other agents.
 - The pill stays quiet until you hover over it or open it, and the card follows the app's own light and dark panels.
 - Status lines now read `🧩 LITE | 🪨 caveman:LITE | 🗜️ rtk:ON | …`: the word COMBO is gone, and every mode uses a colon instead of an equals sign. Pi, OpenCode, Oh My Pi, the command line and the dashboard all follow it.
@@ -20,6 +24,12 @@
 - The same RTK command rewriting now serves Pi, Pi-In-Go, Oh My Pi, and DeepSeek Harness from one shared piece, so a fix reaches all of them at once.
 
 ### Fixed
+- DeepSeek Harness no longer reports Tersio's MCP server as missing: its entry ships inside the plugin bundle, and the check now looks there.
+- Agents launched from the desktop now find Tersio's MCP server. The entry stores the full path when the command is findable, and keeps the short name as a fallback.
+- Adding the MCP entry to a commented OpenCode config no longer drops the comments.
+- A long Headroom eval no longer fails before it finishes; the DeepSeek Harness client now waits long enough.
+- Cancelling a tool call in the client now stops the work behind it.
+- `tersio doctor` names any installed agent whose MCP entry is missing, with the command that fixes it.
 - Quick start agent cards now show the Headroom setting you saved instead of replacing it with "unrouted". Hovering the row still warns when that agent has no live route, so the card never claims compression it is not getting.
 - Remote backups survive a brief server hiccup: a failed request retries on its own instead of losing the run.
 - A storage service hosted under a sub-path, a very long list of old copies, and a GitHub repository that does not sort its files are all handled now.

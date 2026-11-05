@@ -120,8 +120,11 @@ Caveman, pstack, ponytail, and rtk are ports. `cli/upstream.ts` records a pin fo
 
 - **The client starts it.** There is no daemon, port, or token.
 - **It reads the same store as the dashboard.** A dashboard figure and an MCP figure are the same figure.
-- **Its write path matches Settings.** A mode change lands in `settings.json` and in the activity log.
+- **Its write path matches Settings.** A mode change lands in `settings.json` and in the activity log. A `host` argument writes that agent's own `hosts.<id>` section instead, which is the same section the dashboard and `tersio install` write.
 - **stdout carries only the protocol.** Settings output is captured and returned as the tool's answer.
+- **The entry belongs to the host, not to this process.** `tersio install` asks before writing it, except for DeepSeek Harness, whose bundle patch carries it. The written command is an absolute path when the binary resolves, because a desktop-launched agent inherits no shell PATH.
+- **A `.jsonc` config is edited in place.** Only the `mcp` block is spliced, so the user's comments and layout survive a write that a JSON round-trip would flatten.
+- **Resources are static snapshots.** `tersio://settings` and `tersio://hosts` read on demand; there is no subscription or change notification.
 
 ## Limits
 
