@@ -1,7 +1,7 @@
 // One table of what each agent host supports. Install, MCP, RTK, and Headroom read this
 // instead of repeating the same host conditionals.
 
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { homeDir, piAgentDir, pigAgentDir } from './utils.ts';
 
@@ -17,6 +17,8 @@ export interface HostCap {
   mcp: 'mcpServers' | 'mcp' | null;
   /** The MCP file at call time, so a redirected HOME is honored. */
   mcpFile: () => string | null;
+  /** The MCP entry rides inside the plugin bundle, so read that instead of a config file. */
+  mcpBundle?: () => boolean;
   /** The rtk agent name; null when rtk has no binding or the plugin owns the rewrite. */
   rtkAgent: string | null;
   /** The Tersio plugin owns rtk's rewrite; no separate rtk entry exists. */
@@ -42,6 +44,27 @@ function opencodeConfig(): string {
     path.join(homeDir(), '.config', 'opencode', 'opencode.jsonc'),
   ];
   return candidates.find((file) => existsSync(file)) ?? candidates[0]!;
+}
+
+const TERSIO_PACKAGE = '@krtclcdy/tersio';
+
+/** The MCP entry ships in the bundle patch, so a profile that mounts the bundle already carries it. */
+function dshBundleMounted(): boolean {
+  const profiles = path.join(homeDir(), '.dsh', 'profiles');
+  try {
+    return readdirSync(profiles).some((name) => {
+      try {
+        const raw = readFileSync(path.join(profiles, name, 'package.json'), 'utf8');
+        const pkg = JSON.parse(raw) as { dsh?: { profile?: { bundles?: unknown } } };
+        const bundles = pkg.dsh?.profile?.bundles;
+        return Array.isArray(bundles) && bundles.includes(TERSIO_PACKAGE);
+      } catch {
+        return false;
+      }
+    });
+  } catch {
+    return false;
+  }
 }
 
 export const HOST_CAPS: Record<HostId, HostCap> = {
@@ -72,7 +95,7 @@ export const HOST_CAPS: Record<HostId, HostCap> = {
   dsh: {
     id: 'dsh', label: 'DeepSeek Harness', bin: 'dsh',
     installCmd: 'dsh plugin --profile web add npm:@krtclcdy/tersio', removeCmd: 'dsh plugin --profile web remove @krtclcdy/tersio',
-    mcp: null, mcpFile: () => null,
+    mcp: null, mcpFile: () => null, mcpBundle: dshBundleMounted,
     rtkAgent: null, headroom: true,
   },
 };
