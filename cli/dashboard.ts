@@ -38,6 +38,7 @@ import { detectHosts, hostExtensionsDir } from './hosts.ts';
 import { checkHostTrees } from './host-tree.ts';
 import { findPackageRoot, homeDir, openCommand, resolveHeadroomBinary, resolveHostBinary, resolveRtkBinary, ruleBodyProblem, tersioHome } from '../extensions/shared/utils.ts';
 import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
+import { tersioMcpConfigured, tersioMcpSupported } from '../extensions/shared/mcp-config.ts';
 import { BACKUP_KEEP, backupDir, backupDiskBytes, createDataBackup, dataSources, deleteDataBackup, listDataBackups, restoreDataBackup } from '../extensions/shared/snapshots.ts';
 import { applyTarget, emptyConfig, listSyncVersions, publicFields, readSync, restoreSync, runSync, saveSync, syncTarget, testTarget } from './dashboard-sync.ts';
 import { remoteFor } from '../extensions/shared/sync-remote.ts';
@@ -609,6 +610,10 @@ function computeDoctorRows(): DoctorRow[] {
     }
     const kind = host.via === 'tree' ? 'extensions' : 'package';
     row(true, `${kind} ${PACKAGE_NAME}${host.version ? ` ${host.version}` : ''}`);
+    // Declining the MCP entry at install is allowed, so this row informs without counting as a fault.
+    if (!tersioMcpConfigured(host.id)) {
+      row(false, tersioMcpSupported(host.id) ? `MCP server not wired — tersio install --host ${host.id}` : 'MCP entry missing from the bundle patch', true);
+    }
   }
   const scorecard = cachedScorecardSync();
   const upstreamPin = (source: string, fallback: string): string => {
