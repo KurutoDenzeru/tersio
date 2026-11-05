@@ -1,11 +1,10 @@
 // cli/install.ts — install flow and all setup steps.
 import { existsSync, promises as fs } from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import {
-  BUN_BIN_DIR, BUN_BIN, COMBO_PRESET_MODES, HOME, IS_WINDOWS, NPM_BIN, OMP_AGENT_DIR, OMP_PLUGINS_DIR, OMP_BIN,
-  PACKAGE_NAME, PACKAGE_VERSION, RTK_BINARY_NAME, args,
-  allowUnverified, applyUpdate, assumeYes, cavemanDefaultFlag, comboDefaultFlag, command, dryRun,
+  BUN_BIN, COMBO_PRESET_MODES, HOME, IS_WINDOWS, NPM_BIN, OMP_AGENT_DIR, OMP_PLUGINS_DIR, OMP_BIN,
+  PACKAGE_NAME, PACKAGE_VERSION, args,
+  applyUpdate, assumeYes, cavemanDefaultFlag, comboDefaultFlag, command, dryRun,
   ponytailDefaultFlag, pstackDefaultFlag, headroomDefaultFlag, profileFlagsGiven, rtkDefaultFlag, verbose, yes,
   dashboardExport, dashboardPort, currency,
   debug, ensurePonytailConfigValue,
@@ -14,7 +13,7 @@ import {
 } from './common.ts';
 import type { InstallOptions, WriteOptions } from './common.ts';
 import {
-  askInteractiveChoice, askInteractiveConfirm, closeRL, execNetwork, tty, withInteractiveTask, sayTagged } from './interactive.ts';
+  askInteractiveChoice, askInteractiveConfirm, closeRL, execNetwork, tty, sayTagged } from './interactive.ts';
 import { printWelcome } from './banner.ts';
 import { checkForUpdate, runLatestUpdate } from './update.ts';
 import { runUninstall } from './uninstall.ts';
@@ -22,11 +21,9 @@ import { runDoctor } from './doctor.ts';
 import { runDashboard } from './dashboard.ts';
 import { wireRtk } from './rtk-wiring.ts';
 import {
-  RTK_RELEASE_API, fetchJson, findFile, httpsGet,
-  httpsDownload, parseChecksum, piAgentDir, pigAgentDir, readTextIfExists, resolveHeadroomBinary, resolveHostBinary, resolveRtkBinary, rtkPlatformSpec, sha256File, shimCommand,
+  RTK_INSTALL_DOCS, piAgentDir, pigAgentDir, readTextIfExists, resolveHeadroomBinary, resolveHostBinary, resolveRtkBinary, shimCommand,
 } from '../extensions/shared/utils.ts';
 import { findPackageRoot, homeDir } from '../extensions/shared/utils.ts';
-import type { RtkRelease, RtkReleaseAsset } from '../extensions/shared/utils.ts';
 import { patchState } from '../extensions/shared/state.ts';
 import { CAVEMAN_PIN } from './upstream.ts';
 import { headroomHostSupported, headroomProxyPort, headroomProxyUrl, installDurableConfig, readOmpGateway, routeOmpGateway } from '../extensions/shared/headroom-proxy.ts';
@@ -137,100 +134,10 @@ async function stepSelfPlugin(pluginsDir: string, options: InstallOptions): Prom
   return true;
 }
 
-function resolveRtkTriple(): string | null {
-  const triple = rtkPlatformSpec()?.triple;
-  if (triple) return triple;
-  sayTagged(`  [fail] Unsupported platform: ${process.platform}/${process.arch}`);
-  console.log('  [hint] Manual: https://github.com/rtk-ai/rtk/releases');
-  return null;
-}
-
-function findRtkAsset(release: RtkRelease, triple: string): RtkReleaseAsset | null {
-  const assets = release.assets || [];
-  const asset = assets.find((a) => a.name === `rtk-${triple}.zip` || a.name === `rtk-${triple}.tar.gz`);
-  if (asset) return asset;
-  sayTagged(`  [fail] No rtk-${triple}.<zip|tar.gz> in release ${release.tag_name}`);
-  sayTagged(`  [hint] Available: ${assets.map((a) => a.name).filter((n) => n.startsWith('rtk-')).join(', ')}`);
-  return null;
-}
-
-async function downloadRtkChecksums(release: RtkRelease): Promise<string | null> {
-  const checksumsAsset = (release.assets || []).find((a) => a.name === 'checksums.txt');
-  if (!checksumsAsset) return null;
-  try {
-    return await httpsGet(checksumsAsset.browser_download_url);
-  } catch (e) {
-    debug(`Could not download checksums.txt: ${(e as Error).message}`);
-    return null;
-  }
-}
-
-// Fails closed: an unverifiable RTK binary runs with the user's privileges. `--allow-unverified` opts out.
-  const unverified = (reason: string): boolean => {
-    if (allowUnverified) {
-      sayTagged(`  [warn] ${reason} — installing anyway (--allow-unverified)`);
-      return true;
-    }
-    sayTagged(`  [fail] ${reason}`);
-    sayTagged('  [hint] RTK not installed. Retry with --allow-unverified to accept an unverified binary.');
-    return false;
-  };
-async function verifyRtkArchive(archivePath: string, assetName: string, checksumsText: string | null): Promise<boolean> {
-  if (!checksumsText) return unverified(`No checksums.txt published for ${assetName}`);
-  const expected = parseChecksum(checksumsText, assetName);
-  if (!expected) return unverified(`checksums.txt has no entry for ${assetName}`);
-  const actual = await sha256File(archivePath);
-  if (actual === expected) {
-    debug(`Checksum verified for ${assetName}`);
-    return true;
-  }
-  sayTagged(`  [fail] Checksum mismatch for ${assetName}`);
-  sayTagged(`  [fail] Expected: ${expected}`);
-  sayTagged(`  [fail] Got:      ${actual}`);
-  // Caller finally removes the temp dir.
-  return false;
-}
-
 function shortError(e: unknown): string {
   return (((e as Error & { stderr?: string }).stderr) || (e as Error).message || '').trim().slice(0, 200);
 }
 
-async function fileExists(p: string): Promise<boolean> {
-  try {
-    await fs.access(p);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function extractRtkArchive(archivePath: string, extractDir: string): Promise<boolean> {
-  await fs.mkdir(extractDir, { recursive: true });
-  if (archivePath.endsWith('.zip')) {
-    if (IS_WINDOWS) {
-      await execP('powershell', ['Expand-Archive', '-Path', archivePath, '-DestinationPath', extractDir, '-Force'], { timeout: 60000 });
-    } else {
-      await execP('unzip', [archivePath, '-d', extractDir], { timeout: 60000 });
-    }
-    return true;
-  }
-  if (archivePath.endsWith('.tar.gz') || archivePath.endsWith('.tgz')) {
-    try {
-      await execP('tar', ['xzf', archivePath, '-C', extractDir], { timeout: 60000 });
-      debug('tar xzf ok');
-    } catch (e) {
-      debug(`tar xzf failed: ${shortError(e)}`);
-      sayTagged(`  [fail] tar could not extract ${path.basename(archivePath)}`);
-      console.log('  [hint] Manual: https://github.com/rtk-ai/rtk/releases');
-      return false;
-    }
-    return true;
-  }
-  sayTagged(`  [fail] Unknown archive format: ${archivePath}`);
-  return false;
-}
-
-// A rule body found in a retired copy still resolves and loads twice, so drop the agent tree's extras.
 const RETIRED_OMP_AGENT_DIRS = [
   'caveman-session',
   'rtk-session',
@@ -260,95 +167,19 @@ async function stepRetireAgentCopies(extDir: string, options: InstallOptions): P
 }
 
 // The binary is machine-wide; hosts without a hook only rebind. `tersio update` still refreshes it.
-async function stepRtk(binDir: string, options: InstallOptions, target: HostId = 'omp'): Promise<void> {
-  const binDest = path.join(binDir, RTK_BINARY_NAME);
+async function stepRtk(options: InstallOptions, target: HostId = 'omp'): Promise<void> {
   const found = resolveRtkBinary();
-  const hostName = hostCap(target)?.label ?? target;
-  const bind = async (binary: string): Promise<void> => {
-    if (!(await fileExists(binary))) {
-      const hint = target === 'opencode' ? 'rtk init -g --opencode' : `rtk init -g --agent ${target === 'pig' ? 'pi' : target}`;
-      console.log(`  [skip] no rtk binary to wire — install rtk, then run: ${hint}`);
-      return;
-    }
-    await wireRtk(binary, target, options);
-  };
-
-  if (found && !applyUpdate) {
-    // The path only under --verbose: a plain run, and a dry run, stay free of real user paths.
+  if (!found) {
     if (!options.quiet) {
-      const where = verbose ? ` (${found})` : '';
-      console.log(`  RTK — already installed${where}, binding into ${hostName}`);
+      console.log(`  [skip] RTK is not installed — get it from ${RTK_INSTALL_DOCS}`);
+      sayTagged(`  [hint] then re-run: tersio install --host ${target}`);
     }
-    await bind(found);
     return;
   }
-
-  if (!options.quiet) console.log(`  RTK — download binary and wire into ${hostName}`);
-  // A failed download must not skip wiring: a pre-existing binary serves the host hook. Dry runs stay offline.
-  if (options.dryRun) {
-    if (verbose && !options.quiet) sayTagged(`  [dry-run] would download rtk binary and install to ${binDest}`);
-    await bind(found ?? binDest);
-    return;
-  }
-  try {
-    const triple = resolveRtkTriple();
-    if (!triple) return;
-    // One task with streamed sub-steps; non-TTY keeps the plain lines each step already prints.
-    await withInteractiveTask('Installing RTK', async (update) => {
-      const release = await fetchJson<RtkRelease>(RTK_RELEASE_API);
-      const asset = findRtkAsset(release, triple);
-      if (!asset) {
-        sayTagged(`  [fail] No rtk-${triple}.<zip|tar.gz> in release ${release.tag_name}`);
-        return;
-      }
-      const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'omp-rtk-'));
-      try {
-        const archivePath = path.join(tmpDir, asset.name);
-        update(`Downloading ${asset.name}`);
-        const [checksumsText] = await Promise.all([
-          downloadRtkChecksums(release),
-          httpsDownload(asset.browser_download_url, archivePath),
-        ]);
-        update('Verifying checksum');
-        if (!await verifyRtkArchive(archivePath, asset.name, checksumsText)) {
-          sayTagged('  [hint] RTK install skipped for this run');
-          return;
-        }
-        update('Extracting');
-        const extractDir = path.join(tmpDir, 'extracted');
-        if (!await extractRtkArchive(archivePath, extractDir)) {
-          sayTagged(`  [fail] Could not extract ${asset.name}`);
-          return;
-        }
-        update('Installing binary');
-        const binary = await findFile(extractDir, RTK_BINARY_NAME);
-        if (!binary) {
-          sayTagged(`  [fail] Could not find ${RTK_BINARY_NAME} in extracted archive`);
-          return;
-        }
-        await fs.mkdir(path.dirname(binDest), { recursive: true });
-        await fs.copyFile(binDest, `${binDest}.bak`).catch(() => { });
-        await fs.copyFile(binary, binDest);
-        if (!IS_WINDOWS) {
-          await fs.chmod(binDest, 0o755);
-          debug(`chmod 755 ${binDest}`);
-        }
-        try {
-          await execP(binDest, ['--version'], { timeout: 30000, shell: false });
-        } catch {
-          sayTagged(`  [hint] Verify manually: ${binDest} --version`);
-        }
-      } finally {
-        await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => { });
-      }
-    });
-  } catch (e) {
-    sayTagged(`  [fail] RTK: ${(e as Error).message}`);
-    console.log('  [hint] Manual: https://github.com/rtk-ai/rtk/releases');
-  }
-
-  // Wire rtk's tool_call extension: the binary alone never meters a session.
-  await bind(binDest);
+  const hostName = hostCap(target)?.label ?? target;
+  // The path only under --verbose: a plain run stays free of real user paths.
+  if (!options.quiet) console.log(`  RTK — binding into ${hostName}${verbose ? ` (${found})` : ''}`);
+  await wireRtk(found, target, options);
 }
 
 // First entry is required; the rest are optional companions.
@@ -1108,7 +939,7 @@ async function runInstall(forcedHost?: HostId): Promise<void> {
 
   if (targetHost === 'opencode') {
     await capture('opencode tree', () => stepOpencode(installOptions));
-    await capture('rtk', () => stepRtk(BUN_BIN_DIR, installOptions, 'opencode'));
+    await capture('rtk', () => stepRtk(installOptions, 'opencode'));
     await capture('headroom', () => lifecycleHeadroom(targetHost, headroomEnabled, profile, quiet));
     await capture('settings', () => writeHostSettings(headroomEnabled));
     finishHost(comboHint('OpenCode', profile.comboDefault));
@@ -1129,7 +960,7 @@ async function runInstall(forcedHost?: HostId): Promise<void> {
 
   if (targetHost === 'pi') {
     await capture('pi tree', () => stepPiLayer(installOptions));
-    await capture('rtk', () => stepRtk(BUN_BIN_DIR, installOptions, 'pi'));
+    await capture('rtk', () => stepRtk(installOptions, 'pi'));
     await capture('settings', () => writeHostSettings(headroomEnabled));
     finishHost(comboHint('pi', profile.comboDefault));
     return;
@@ -1137,7 +968,7 @@ async function runInstall(forcedHost?: HostId): Promise<void> {
 
   if (targetHost === 'pig') {
     await capture('pig tree', () => stepPigLayer(installOptions));
-    await capture('rtk', () => stepRtk(BUN_BIN_DIR, installOptions, 'pig'));
+    await capture('rtk', () => stepRtk(installOptions, 'pig'));
     await capture('settings', () => writeHostSettings(headroomEnabled, false));
     finishHost(comboHint('PiG', profile.comboDefault));
     return;
@@ -1146,7 +977,7 @@ async function runInstall(forcedHost?: HostId): Promise<void> {
   let selfPlugin = false;
   await capture('self-plugin', async () => { selfPlugin = await stepSelfPlugin(OMP_PLUGINS_DIR, installOptions); });
   await capture('ponytail', () => stepPonytail(OMP_PLUGINS_DIR, installOptions));
-  await capture('rtk', () => stepRtk(BUN_BIN_DIR, installOptions));
+  await capture('rtk', () => stepRtk(installOptions));
 
   // The plugin manifest owns every mode extension; only a failed registration falls back to the agent tree.
   const pluginExtDir = path.join(OMP_PLUGINS_DIR, 'node_modules', '@krtclcdy', 'tersio', 'extensions');
@@ -1178,4 +1009,4 @@ async function runInstall(forcedHost?: HostId): Promise<void> {
 
   closeRL();
 }
-export { runInstall, verifyRtkArchive };
+export { runInstall };
