@@ -7,6 +7,7 @@ import { readRtkDefault } from '../shared/plugin-settings.ts';
 import { getSharedComboState, lastCustomValue, sessionEntries } from '../shared/session-state.ts';
 import { appendUsage } from '../shared/usage-ledger.ts';
 import { hasToolLifecycle, isPiHost, isPigHost } from '../shared/host.ts';
+import { rewriteThroughRtk } from '../shared/rtk-rewrite.ts';
 import type { ExtensionApi, ExtensionCtx, SessionEntry, ToolResultEvent } from '../shared/types.ts';
 
 /** Tool name to `rtk pipe --filter` name. Exported so the OpenCode host reuses one map. */
@@ -88,21 +89,6 @@ interface BashCallEvent {
   input?: { command?: unknown };
 }
 
-/** Ask rtk for the rewritten command; null on any failure, so the original runs. */
-async function rewriteCommand(
-  exec: FilterExec,
-  bin: string,
-  command: string,
-  signal?: AbortSignal,
-): Promise<string | null> {
-  try {
-    const result = await exec(bin, ['rewrite', command], { timeout: FILTER_TIMEOUT_MS, signal });
-    const out = result.stdout.trim();
-    return out || null;
-  } catch {
-    return null;
-  }
-}
 
 export default function rtkFilterExtension(pi: ExtensionApi): void {
   const bin = resolveRtkBinary();
@@ -119,7 +105,15 @@ export default function rtkFilterExtension(pi: ExtensionApi): void {
     const command = input.command;
     if (typeof command !== 'string' || !command.trim() || command.startsWith('rtk ')) return;
     if (!rtkActive(sessionEntries(ctx))) return;
-    const rewritten = await rewriteCommand(exec, bin, command, ctx?.signal);
+    // The shared rewrite owns rtk's exit-code contract; this host only supplies its runner and the signal.
+    const rewritten = await rewriteThroughRtk(command, {
+      bin,
+      exec: (file, args, opts) => {
+        // This host's runner takes an abort signal, not a timeout, so the deadline rides the signal.
+        const deadline = AbortSignal.timeout(opts.timeout);
+        return exec(file, args, { signal: opts.signal ? AbortSignal.any([opts.signal, deadline]) : deadline });
+      },
+    });
     if (!rewritten || rewritten === command) return;
     input.command = rewritten;
     if (auditHost) appendUsage('rtk-audit', `${auditHost} ${command}`);

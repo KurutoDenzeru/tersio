@@ -1,14 +1,14 @@
 // Tersio on DeepSeek Harness: modes as always-on system-prompt sections; imports stay relative for Node type stripping.
 import { readFileSync, writeFileSync } from 'node:fs';
-import { exec, execFile } from 'node:child_process';
+import { exec } from 'node:child_process';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { homeDir, resolveRtkBinary, tersioHome } from '../shared/utils.ts';
 import { formatModeLine, MODE_GLYPHS, type ModeSnapshot } from '../shared/mode-notice.ts';
+import { rewriteThroughRtk, rewriteToolArguments } from '../shared/rtk-rewrite.ts';
 
-const execFileP = promisify(execFile);
 const execShellP = promisify(exec);
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -127,7 +127,7 @@ async function runThroughRtk(command: string): Promise<{ content: string }> {
   const bin = resolveRtkBinary();
   if (!bin) return { content: 'rtk is not installed. Run: tersio doctor --fix rtk' };
   // `rtk rewrite` picks the filter for the command; `rtk run` would only execute it.
-  const rewritten = await rewriteThroughRtk(command);
+  const rewritten = await rewriteThroughRtk(command, { host: 'dsh' });
   return execShellP(rewritten ?? command, { cwd: homeDir(), timeout: 600_000, maxBuffer: 16 * 1024 * 1024 })
     .then((r) => ({ content: `${r.stdout}\n${r.stderr}`.trim() || '(no output)' }))
     .catch((e: { stdout?: string; stderr?: string; message?: string }) => ({
@@ -172,45 +172,6 @@ interface DshToolExecution {
   arguments?: unknown;
 }
 
-/** Rewrite a bash command through `rtk rewrite`; null means "leave it alone". */
-async function rewriteThroughRtk(command: string): Promise<string | null> {
-  const bin = resolveRtkBinary();
-  if (!bin) return null;
-  try {
-    const result = await execFileP(bin, ['rewrite', command], {
-      timeout: 5000,
-      maxBuffer: 1 << 20,
-      env: { ...process.env, RTK_REWRITE_HOST: 'dsh' },
-    });
-    return result.stdout.trim() || null;
-  } catch (error) {
-    // 3 = rewrite with an approval rule; 1 and 2 mean passthrough or deny, so nothing is rewritten.
-    const failed = error as { code?: number; stdout?: string };
-    return failed.code === 3 && failed.stdout?.trim() ? failed.stdout.trim() : null;
-  }
-}
-
-/**
- * One interception decision, kept pure so it can be tested without a binary: the hook's gate and the
- * rewrite are injected, and only a bash call with a string command may be replaced.
- */
-export async function interceptBashCall(
-  name: unknown,
-  args: unknown,
-  enabled: boolean,
-  rewrite: (command: string) => Promise<string | null>,
-): Promise<Record<string, unknown> | null> {
-  if (!enabled || name !== 'bash') return null;
-  if (!args || typeof args !== 'object') return null;
-  const command = (args as { command?: unknown }).command;
-  if (typeof command !== 'string' || command.trim() === '') return null;
-  // Already routed: a second prefix would nest rtk inside rtk.
-  if (/^rtk(?:\s|$)/.test(command.trim())) return null;
-  const rewritten = await rewrite(command).catch(() => null);
-  if (!rewritten || rewritten === command) return null;
-  return { ...(args as Record<string, unknown>), command: rewritten };
-}
-
 /** Automatic RTK routing for DSH: every eligible bash call is rewritten before the executor sees it. */
 function registerRtkInterception(ctx: DshCtx): void {
   if (!ctx.on) return;
@@ -222,7 +183,7 @@ function registerRtkInterception(ctx: DshCtx): void {
     if (call?.name !== 'bash') return next();
     const live = readStore();
     const enabled = setting(live, hostSection(live), 'rtkDefault') === true;
-    const replaced = await interceptBashCall(call?.name, call?.arguments, enabled, rewriteThroughRtk);
+    const replaced = await rewriteToolArguments(['bash'], call?.name, call?.arguments, enabled, (command) => rewriteThroughRtk(command, { host: 'dsh' }));
     if (replaced && call) (call as { arguments: unknown }).arguments = replaced;
     return next();
   });
