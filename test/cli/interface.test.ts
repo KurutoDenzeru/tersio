@@ -629,18 +629,20 @@ test("an existing rtk binary is bound on both hosts, never downloaded", () => {
   }
 });
 
-test("a machine without rtk is offered rtk's own installer and never a Tersio download", () => {
+test("a machine without rtk runs rtk's own installer, and the rest of the install still lands", () => {
   const home = tempHome();
   try {
-    // --yes answers every Tersio prompt; installing a third-party package still needs a real terminal.
+    // No curl on this PATH, so the attempt fails and the run has to carry on with the hint.
     const result = run(home, ["install", "--host", "pi", "--yes"]);
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toMatch(/RTK is not installed/);
-    expect(result.stdout).toMatch(/(install\.sh|winget install|rtk-ai\.app)/);
+    expect(result.stdout).toMatch(/RTK — not installed; running/);
+    expect(result.stdout).toMatch(/RTK is not installed — run: .*(install\.sh|winget install)/);
     expect(result.stdout).toMatch(/then re-run: tersio install --host pi/);
     for (const output of [result.stdout, result.stderr]) {
       expect(output, "no downloader came back").not.toMatch(/Downloading RTK|checksums\.txt|allow-unverified/);
     }
+    // The rest of the install is not held hostage by a missing rtk.
+    expect(existsSync(path.join(home, ".pi", "agent", "extensions", "caveman", "index.ts"))).toBeTruthy();
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

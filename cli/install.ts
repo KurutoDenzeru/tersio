@@ -177,24 +177,21 @@ function rtkInstallRoute(): { cmd: string; args: string[]; label: string; displa
   return { cmd: 'sh', args: ['-c', RTK_INSTALL_SH], label: 'the rtk installer', display: RTK_INSTALL_SH };
 }
 
-/** Offers rtk's own package-manager install, then binds whatever it left on PATH. Never runs unattended. */
-async function offerRtkInstall(options: InstallOptions): Promise<string | null> {
+/** rtk is core to every mode Tersio ships, so a missing binary is installed, not offered. */
+async function installRtk(options: InstallOptions): Promise<string | null> {
   const route = rtkInstallRoute();
-  if (!tty() || assumeYes || options.dryRun || applyUpdate) return null;
-  const answer = await askInteractiveConfirm(`RTK is not installed. Install it with ${route.label}? (optional)`);
-  if (answer.status !== 'confirmed' || !answer.value) return null;
+  if (!options.quiet) console.log(`  RTK — not installed; running ${route.label}`);
   try {
     await execP(route.cmd, route.args, { timeout: 300_000 });
   } catch (e) {
-    sayTagged(`  [warn] ${route.label} install failed: ${shortError(e)}`);
+    sayTagged(`  [warn] ${route.label} failed: ${shortError(e)}`);
     return null;
   }
   const installed = resolveRtkBinary();
   if (!installed) return null;
   // rtk's hook calls the bare name, so a directory Tersio can reach but the shell cannot is still a dead hook.
   const dir = path.dirname(installed);
-  const onPath = (process.env.PATH ?? '').split(path.delimiter).includes(dir);
-  if (!onPath) {
+  if (!(process.env.PATH ?? '').split(path.delimiter).includes(dir)) {
     sayTagged(`  [note] rtk landed in ${dir}, which is not on PATH yet — the agent's hook needs it`);
     sayTagged(`  [hint] add it, then restart the agent: export PATH="${dir}:$PATH"  (in ~/.zshrc or ~/.bashrc)`);
   }
@@ -202,10 +199,11 @@ async function offerRtkInstall(options: InstallOptions): Promise<string | null> 
 }
 
 async function stepRtk(options: InstallOptions, target: HostId = 'omp'): Promise<void> {
-  const found = resolveRtkBinary() ?? await offerRtkInstall(options);
+  const found = resolveRtkBinary() ?? (options.dryRun ? null : await installRtk(options));
   if (!found) {
     if (!options.quiet) {
-      console.log(`  [skip] RTK is not installed — run: ${rtkInstallRoute().display}`);
+      if (options.dryRun) console.log(`  [dry-run] would install rtk with: ${rtkInstallRoute().display}`);
+      else console.log(`  [skip] RTK is not installed — run: ${rtkInstallRoute().display}`);
       sayTagged(`  [hint] then re-run: tersio install --host ${target} (or see ${RTK_INSTALL_DOCS})`);
     }
     return;

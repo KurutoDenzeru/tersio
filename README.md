@@ -222,7 +222,7 @@ Active modes reassert after Ponytail's prompt block on every top-level turn, inc
 
 **Ponytail or Combo command missing on OMP:** confirm `~/.omp/plugins/package.json` lists `@krtclcdy/tersio`, then run `tersio install`, restart OMP, and check `tersio doctor`. A damaged tree is repaired by `tersio doctor --fix extensions`.
 
-**RTK missing:** `tersio install` offers rtk's own quick install behind one prompt — `curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/master/install.sh | sh` on macOS/Linux, `winget install rtk-ai.rtk` on Windows — then binds it, reading `~/.local/bin` even before your shell picks it up. Decline and it prints rtk's install page — [rtk-ai.app/docs/getting-started/installation](https://www.rtk-ai.app/docs/getting-started/installation/) — and finishes everything else.
+**RTK missing:** rtk is part of Tersio, so `tersio install` runs rtk's own quick install for you — `curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/master/install.sh | sh` on macOS/Linux, `winget install rtk-ai.rtk` on Windows — then binds it, reading `~/.local/bin` even before your shell picks it up. If that install cannot run, it prints rtk's install page — [rtk-ai.app/docs/getting-started/installation](https://www.rtk-ai.app/docs/getting-started/installation/) — and finishes everything else.
 
 **RTK savings and adoption:** the Gain numbers read rtk's own `history.db` (`%LOCALAPPDATA%\rtk` on Windows), so pi and OpenCode runs are already in them. The adoption row counts executed Bash calls from the omp and pi transcripts and OpenCode's v2 sqlite or pre-v2 JSON tree. The eligible list comes from `rtk rewrite`, cached per binary version. Native tool calls (`read`/`edit`/`eval`) and exact bytes bypass RTK.
 
