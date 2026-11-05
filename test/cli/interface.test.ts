@@ -629,6 +629,23 @@ test("an existing rtk binary is bound on both hosts, never downloaded", () => {
   }
 });
 
+test("a machine without rtk is offered rtk's own installer and never a Tersio download", () => {
+  const home = tempHome();
+  try {
+    // --yes answers every Tersio prompt; installing a third-party package still needs a real terminal.
+    const result = run(home, ["install", "--host", "pi", "--yes"]);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/RTK is not installed/);
+    expect(result.stdout).toMatch(/(rtk-ai\.app|winget install rtk-ai\.rtk)/);
+    expect(result.stdout).toMatch(/then re-run: tersio install --host pi/);
+    for (const output of [result.stdout, result.stderr]) {
+      expect(output, "no downloader came back").not.toMatch(/Downloading RTK|checksums\.txt|allow-unverified/);
+    }
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 // menu-layout: Clack anchors to the cursor, so an over-tall welcome scrolls; proving it needs `pyte`, and skips without it.
 
 const PY = [

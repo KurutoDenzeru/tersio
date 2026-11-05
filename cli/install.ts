@@ -167,11 +167,35 @@ async function stepRetireAgentCopies(extDir: string, options: InstallOptions): P
 }
 
 // The binary is machine-wide; hosts without a hook only rebind. `tersio update` still refreshes it.
+/** rtk's published route per platform: a package manager when there is one, the docs link otherwise. */
+function rtkInstallRoute(): { cmd: string; args: string[]; label: string } | null {
+  if (IS_WINDOWS) return { cmd: 'winget', args: ['install', '--id', 'rtk-ai.rtk', '--exact', '--silent', '--accept-package-agreements', '--accept-source-agreements'], label: 'winget' };
+  const brew = resolveHostBinary('brew');
+  return brew ? { cmd: brew, args: ['install', 'rtk'], label: 'brew' } : null;
+}
+
+/** Offers rtk's own package-manager install, then binds whatever it left on PATH. Never runs unattended. */
+async function offerRtkInstall(options: InstallOptions): Promise<string | null> {
+  const route = rtkInstallRoute();
+  if (!route) return null;
+  if (!tty() || assumeYes || options.dryRun || applyUpdate) return null;
+  const answer = await askInteractiveConfirm(`RTK is not installed. Install it with ${route.label}? (optional)`);
+  if (answer.status !== 'confirmed' || !answer.value) return null;
+  try {
+    await execP(route.cmd, route.args, { timeout: 300_000 });
+  } catch (e) {
+    sayTagged(`  [warn] ${route.label} install failed: ${shortError(e)}`);
+    return null;
+  }
+  return resolveRtkBinary();
+}
+
 async function stepRtk(options: InstallOptions, target: HostId = 'omp'): Promise<void> {
-  const found = resolveRtkBinary();
+  const found = resolveRtkBinary() ?? await offerRtkInstall(options);
   if (!found) {
     if (!options.quiet) {
-      console.log(`  [skip] RTK is not installed — get it from ${RTK_INSTALL_DOCS}`);
+      const route = rtkInstallRoute();
+      console.log(`  [skip] RTK is not installed — ${route ? `run: ${route.cmd} ${route.args.join(' ')}` : RTK_INSTALL_DOCS}`);
       sayTagged(`  [hint] then re-run: tersio install --host ${target}`);
     }
     return;
