@@ -23,7 +23,7 @@ import { resetSharedComboState, setSharedComboMode } from "../../extensions/shar
 import type { ExtensionApi, ExtensionCtx, SessionEntry, ToolResultEvent } from "../../extensions/shared/types.ts";
 import { readRtkGain, readRtkGainByVerb, rtkDbPath, rtkGainFailure } from "../../extensions/shared/rtk-gain.ts";
 import { wireRtk } from "../../cli/rtk-wiring.ts";
-import { findFile, resolveRtkBinary, rtkPlatformSpec, shimCommand } from "../../extensions/shared/utils.ts";
+import { findFile, resolveRtkBinary, shimCommand } from "../../extensions/shared/utils.ts";
 import { sqliteExec } from "../../extensions/shared/sqlite.ts";
 import { fakeRtkBin, hasSqlite, withHome as inHome } from "../helpers/env.ts";
 
@@ -621,10 +621,6 @@ test("resolveRtkBinary falls back to the managed installer directory", () => {
     rmSync(managed, { recursive: true, force: true });
   }
 });
-test("rtkPlatformSpec returns null for unknown platforms", () => {
-  expect(rtkPlatformSpec("plan9", "x64")).toBe(null);
-});
-
 // ===== rtk-tool.test.ts =====
 
 // resolveRtkBinary checks PATH first, so each test must own PATH.

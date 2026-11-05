@@ -55,6 +55,8 @@ export function rtkDirs(): { data: string; config: string } {
 
 /** The RTK project, named once: the release feed and the release page both read it. */
 export const RTK_REPO = 'rtk-ai/rtk';
+/** rtk ships its own binary and installer; Tersio only ever binds the one a user already has. */
+export const RTK_INSTALL_DOCS = 'https://www.rtk-ai.app/docs/getting-started/installation/';
 export const RTK_RELEASE_API = `https://api.github.com/repos/${RTK_REPO}/releases/latest`;
 /** The Headroom project, read the same way: the binary's version against the latest release tag. */
 export const HEADROOM_REPO = 'headroomlabs-ai/headroom';
@@ -94,29 +96,9 @@ export function ruleBodyProblem(text: string): string | null {
   return null;
 }
 
-export interface RtkPlatformSpec {
-  triple: string;
-  ext: string;
-  binary: string;
-}
-
-export interface RtkReleaseAsset {
-  name: string;
-  browser_download_url: string;
-}
-
 export interface RtkRelease {
   tag_name?: string;
-  assets?: RtkReleaseAsset[];
 }
-
-const RTK_PLATFORM_SPECS: Record<string, RtkPlatformSpec> = {
-  'win32/x64': { triple: 'x86_64-pc-windows-msvc', ext: '.zip', binary: 'rtk.exe' },
-  'linux/x64': { triple: 'x86_64-unknown-linux-musl', ext: '.tar.gz', binary: 'rtk' },
-  'linux/arm64': { triple: 'aarch64-unknown-linux-gnu', ext: '.tar.gz', binary: 'rtk' },
-  'darwin/x64': { triple: 'x86_64-apple-darwin', ext: '.tar.gz', binary: 'rtk' },
-  'darwin/arm64': { triple: 'aarch64-apple-darwin', ext: '.tar.gz', binary: 'rtk' },
-};
 
 // First executable `name` on PATH, then any extra dirs, then the managed Bun bin dir.
 function firstExecutable(name: string, managedDir: string | null, extraDirs: ReadonlyArray<string> = []): string | null {
@@ -170,10 +152,6 @@ export function openCommand(target: string): [string, string[]] {
   // `start` is a cmd builtin, not an executable: spawning it by name fails with ENOENT.
   if (process.platform === 'win32') return [process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', 'start', '', target]];
   return ['xdg-open', [target]];
-}
-
-export function rtkPlatformSpec(platform: string = process.platform, arch: string = process.arch): RtkPlatformSpec | null {
-  return RTK_PLATFORM_SPECS[`${platform}/${arch}`] || null;
 }
 
 // Walk up to the nearest package.json; identical for the source and compiled trees.
