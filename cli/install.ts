@@ -604,6 +604,30 @@ async function maybeInstallHeadroom(profile: Profile, quiet: boolean, host: Host
   return true;
 }
 
+/**
+ * The MCP entry lives in the agent's own config file, not in this plugin tree, so the install asks
+ * before writing it. A cancelled prompt stops the run, like every other prompt here.
+ */
+async function maybeInstallMcp(host: HostId, quiet: boolean): Promise<boolean> {
+  if (!tersioMcpSupported(host)) {
+    if (!quiet && !dryRun && !applyUpdate) {
+      sayTagged('  [note] The Tersio MCP server rides inside the DeepSeek Harness bundle — nothing to add here');
+    }
+    return false;
+  }
+  if (dryRun) {
+    if (!quiet) sayTagged(`  [dry-run] would add the Tersio MCP server for ${hostEntry(host).label}`);
+    return false;
+  }
+  if (!tty() || assumeYes || applyUpdate) return true;
+  const answer = await askInteractiveConfirm(`Add the Tersio MCP server to ${hostEntry(host).label}? Gives the agent usage, modes and savings as tools (optional)`);
+  if (answer.status === 'cancelled') {
+    closeRL();
+    process.exit(130);
+  }
+  return answer.status === 'confirmed' && answer.value;
+}
+
 /** OMP's plugin manifest has no skills field, so the bundled skills join the user roots it does scan. */
 async function stepOmpSkills(packageRoot: string, options: InstallOptions): Promise<void> {
   const skillsDir = path.join(packageRoot, 'skills');
@@ -998,6 +1022,8 @@ async function runInstall(forcedHost?: HostId): Promise<void> {
     if (!chosenFields.includes('headroomDefault')) chosenFields.push('headroomDefault');
   }
   await lifecycleHeadroom(targetHost, headroomEnabled, profile, quiet);
+  // Asked here, written with the other config below, so the question lands before the final confirm.
+  const mcpWanted = await maybeInstallMcp(targetHost, quiet);
 
   const userDir = OMP_AGENT_DIR;
   const userExtDir = path.join(userDir, 'extensions');
@@ -1044,7 +1070,7 @@ async function runInstall(forcedHost?: HostId): Promise<void> {
     }
   }
   // One MCP server for every host: retrieval, modes, and stats share `tersio mcp`.
-  if (!dryRun && tersioMcpSupported(targetHost) && !ensureTersioMcp(targetHost) && !quiet) {
+  if (mcpWanted && !ensureTersioMcp(targetHost) && !quiet) {
     sayTagged(`  [warn] could not add the Tersio MCP entry for ${hostEntry(targetHost).label}`);
   }
   if (targetHost === 'dsh') {
