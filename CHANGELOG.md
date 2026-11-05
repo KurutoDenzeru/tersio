@@ -13,6 +13,9 @@
 - RTK now works in DeepSeek Harness with nothing extra to install. Once RTK is on, shell commands are shortened for you.
 
 ### Changed
+- Tersio no longer downloads, replaces, or removes the rtk program. `tersio install` uses the binary already on your machine, the way rtk's own docs describe; when rtk is missing it says where to get it and carries on with everything else.
+- `tersio doctor --fix` re-connects rtk instead of downloading it, and `tersio uninstall --remove-rtk` removes Tersio's connection but never your rtk program.
+- `/tersio update rtk` and the dashboard card now tell you when rtk has a newer release and point you at rtk's installer, instead of downloading it for you.
 - A mode change over MCP can now target one agent, the same way the dashboard and the installer already could.
 - Switching a mode in DeepSeek Harness no longer posts a message in the conversation. The pill is the only feedback, like the other agents.
 - The pill stays quiet until you hover over it or open it, and the card follows the app's own light and dark panels.

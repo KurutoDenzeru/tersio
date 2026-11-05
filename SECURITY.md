@@ -19,23 +19,14 @@ You can expect an acknowledgement within 3 working days and an assessment within
 
 ## What Tersio downloads, and how it is verified
 
-Tersio fetches two things from the network during install:
+Tersio fetches one thing from the network during install:
 
 | What | From | Verified by |
 |---|---|---|
 | `install.sh`, `install.ps1` | this repo's GitHub Release, `releases/latest/download/<file>` | HTTPS to `github.com` |
-| the `rtk` binary | the `rtk-ai/rtk` GitHub Release | SHA-256 against that release's `checksums.txt` |
 | the `ponytail` package | the npm registry | npm's integrity check on the published tarball |
 
-### Checksum verification fails closed
-
-An RTK binary runs with your privileges, so a download that cannot be verified is not installed. If `checksums.txt` is missing, has no entry for the asset, or the hash does not match, the install stops and says why.
-
-That rule applies on all three paths that install RTK: `tersio install`, `tersio doctor --fix`, and `/ai-addons update rtk`.
-
-To accept an unverified binary — only sensible on an air-gapped machine — pass `--allow-unverified`. The install then says so in its output.
-
-Upstream publishes `checksums.txt` alongside the binary in the same release, so this confirms the download did not change in transit — not that upstream's release was not compromised. It raises the cost of a tampered mirror or a corrupted transfer.
+Tersio does not download, replace, or delete the `rtk` binary. rtk ships its own installer and its own checksums; Tersio only detects the binary and binds it into an agent with rtk's own `rtk init` command. Install, `doctor --fix`, `uninstall`, and the dashboard therefore never write to a path rtk owns.
 
 ## Data
 
