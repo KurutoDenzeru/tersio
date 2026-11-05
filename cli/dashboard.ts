@@ -39,6 +39,8 @@ import { checkHostTrees } from './host-tree.ts';
 import { findPackageRoot, homeDir, openCommand, resolveHeadroomBinary, resolveHostBinary, resolveRtkBinary, ruleBodyProblem, tersioHome } from '../extensions/shared/utils.ts';
 import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
 import { BACKUP_KEEP, backupDir, backupDiskBytes, createDataBackup, dataSources, deleteDataBackup, listDataBackups, restoreDataBackup } from '../extensions/shared/snapshots.ts';
+import { applyTarget, emptyConfig, listSyncVersions, publicFields, readSync, restoreSync, runSync, saveSync, syncTarget, testTarget } from './dashboard-sync.ts';
+import { remoteFor } from '../extensions/shared/sync-remote.ts';
 import { CAVEMAN_PIN, PSTACK_PIN, cachedScorecard, cachedScorecardSync, refreshScorecard, upstreamHistory } from './upstream.ts';
 import { resetCounts, resetStatistics } from './reset.ts';
 
@@ -1082,6 +1084,12 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
           json(res, 200, { ok: true, ...done });
           return;
         }
+        if (action === 'delete' && Array.isArray(body.names)) {
+          const names = body.names.filter((entry): entry is string => typeof entry === 'string');
+          const deleted = names.filter((entry) => deleteDataBackup(entry));
+          json(res, 200, { ok: true, deleted });
+          return;
+        }
         if (action === 'delete') {
           const ok = deleteDataBackup(name);
           json(res, ok ? 200 : 400, ok ? { ok: true, name } : { ok: false, error: 'unknown snapshot' });
@@ -1092,6 +1100,82 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
         return;
       }
       json(res, 400, { ok: false, error: 'unknown action' });
+      return;
+    }
+    if (req.url === '/api/sync' && req.method === 'GET') {
+      const saved = readSync();
+      let versions: Awaited<ReturnType<typeof listSyncVersions>> = [];
+      let error: string | null = null;
+      if (saved.config) {
+        // A credential that stopped working must not blank the panel: the saved target still shows.
+        try { versions = await listSyncVersions(); } catch (caught) { error = (caught as Error).message; }
+      }
+      json(res, 200, {
+        configured: saved.config !== null,
+        mode: saved.config?.mode ?? null,
+        target: syncTarget(saved.config),
+        passphraseSet: saved.passphrase.trim() !== '',
+        fields: publicFields(saved.config),
+        versions,
+        error,
+      });
+      return;
+    }
+    if (req.url === '/api/sync' && req.method === 'POST') {
+      const body = await bodyOf(req);
+      const mode = String(body.mode ?? '');
+      if (mode !== 'webdav' && mode !== 's3' && mode !== 'github') {
+        json(res, 400, { ok: false, error: 'unknown sync target' });
+        return;
+      }
+      const target = body.target && typeof body.target === 'object' ? body.target as Record<string, unknown> : {};
+      const config = applyTarget(mode, target, readSync().config ?? emptyConfig());
+      try {
+        // The same constructor the upload uses, so an incomplete target fails here and not at 3 a.m.
+        remoteFor(config);
+      } catch (caught) {
+        json(res, 400, { ok: false, error: (caught as Error).message });
+        return;
+      }
+      saveSync({ config, passphrase: String(body.passphrase ?? '') });
+      json(res, 200, { ok: true, target: syncTarget(config) });
+      return;
+    }
+    if (req.url === '/api/sync/test' && req.method === 'POST') {
+      const body = await bodyOf(req);
+      const mode = String(body.mode ?? '');
+      if (mode !== 'webdav' && mode !== 's3' && mode !== 'github') {
+        json(res, 400, { ok: false, error: 'unknown sync target' });
+        return;
+      }
+      const target = body.target && typeof body.target === 'object' ? body.target as Record<string, unknown> : {};
+      const config = applyTarget(mode, target, readSync().config ?? emptyConfig());
+      const result = await testTarget(config);
+      json(res, result.ok ? 200 : 400, result);
+      return;
+    }
+    if (req.url === '/api/sync/run' && req.method === 'POST') {
+      try {
+        const made = await runSync();
+        json(res, 200, { ok: true, ...made });
+      } catch (caught) {
+        json(res, 400, { ok: false, error: (caught as Error).message });
+      }
+      return;
+    }
+    if (req.url === '/api/sync/restore' && req.method === 'POST') {
+      const body = await bodyOf(req);
+      const name = String(body.name ?? '');
+      if (!name.endsWith('.tsb')) {
+        json(res, 400, { ok: false, error: 'unknown backup name' });
+        return;
+      }
+      try {
+        const restored = await restoreSync(name);
+        json(res, 200, { ok: true, ...restored });
+      } catch (caught) {
+        json(res, 400, { ok: false, error: (caught as Error).message });
+      }
       return;
     }
     if (req.url?.startsWith('/api/mark?') && req.method === 'GET') {

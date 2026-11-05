@@ -200,14 +200,17 @@ export function AgentRequestDrawer({
               <AgentLogo host={host.host} className="size-3" />
               {host.label}
             </Chip>
-            <button
-              type="button"
-              onClick={() => onOpenSession(row.sessionFile)}
-              className="mono inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-line px-2 py-0.5 text-[11px] text-dim hover:border-accent hover:text-accent"
-            >
-              <Icon name="git-branch" className="size-3" />
-              Trace
-            </button>
+            {/* DeepSeek Harness keeps its own Trajectory page, so Tersio offers no trace for it. */}
+            {host.host !== "dsh" && (
+              <button
+                type="button"
+                onClick={() => onOpenSession(row.sessionFile)}
+                className="mono inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-line px-2 py-0.5 text-[11px] text-dim hover:border-accent hover:text-accent"
+              >
+                <Icon name="git-branch" className="size-3" />
+                Trace
+              </button>
+            )}
           </div>
         </SheetHeader>
 

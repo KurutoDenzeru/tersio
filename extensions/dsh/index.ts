@@ -1,14 +1,14 @@
 // Tersio on DeepSeek Harness: modes as always-on system-prompt sections; imports stay relative for Node type stripping.
 import { readFileSync, writeFileSync } from 'node:fs';
-import { exec, execFile } from 'node:child_process';
+import { exec } from 'node:child_process';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { homeDir, resolveRtkBinary, tersioHome } from '../shared/utils.ts';
 import { formatModeLine, MODE_GLYPHS, type ModeSnapshot } from '../shared/mode-notice.ts';
+import { rewriteThroughRtk, rewriteToolArguments } from '../shared/rtk-rewrite.ts';
 
-const execFileP = promisify(execFile);
 const execShellP = promisify(exec);
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -123,10 +123,12 @@ function buildBlocks(): string {
   return parts.join('\n\n');
 }
 
-function runThroughRtk(command: string): Promise<{ content: string }> {
+async function runThroughRtk(command: string): Promise<{ content: string }> {
   const bin = resolveRtkBinary();
-  if (!bin) return Promise.resolve({ content: 'rtk is not installed. Run: tersio doctor --fix rtk' });
-  return execFileP(bin, ['run', command], { timeout: 600_000, maxBuffer: 16 * 1024 * 1024 })
+  if (!bin) return { content: 'rtk is not installed. Run: tersio doctor --fix rtk' };
+  // `rtk rewrite` picks the filter for the command; `rtk run` would only execute it.
+  const rewritten = await rewriteThroughRtk(command, { host: 'dsh' });
+  return execShellP(rewritten ?? command, { cwd: homeDir(), timeout: 600_000, maxBuffer: 16 * 1024 * 1024 })
     .then((r) => ({ content: `${r.stdout}\n${r.stderr}`.trim() || '(no output)' }))
     .catch((e: { stdout?: string; stderr?: string; message?: string }) => ({
       content: `${e.stdout ?? ''}\n${e.stderr ?? ''}\n${e.message ?? ''}`.trim() || 'the command failed without output',
@@ -160,6 +162,31 @@ interface DshCtx {
   effect?: (callback: () => () => void) => () => void;
   /** Optional dependency: the nested fiber waits for the carrier instead of blocking the whole plugin. */
   inject?: (deps: string[], callback: (scoped: DshCtx) => void) => unknown;
+  /** Cordis event listeners; the tools/execute waterfall is where a call can be rewritten before dispatch. */
+  on?: (name: string, listener: (...args: unknown[]) => unknown) => () => void;
+}
+
+/** The part of a tool execution the rewrite touches: the tool's name and its parsed arguments. */
+interface DshToolExecution {
+  name?: unknown;
+  arguments?: unknown;
+}
+
+/** Automatic RTK routing for DSH: every eligible bash call is rewritten before the executor sees it. */
+function registerRtkInterception(ctx: DshCtx): void {
+  if (!ctx.on) return;
+  ctx.on('tools/execute', async (...params: unknown[]) => {
+    const next = params.at(-1) as (() => Promise<unknown>) | undefined;
+    const call = params[0] as DshToolExecution | undefined;
+    if (typeof next !== 'function') return undefined;
+    // Cheap gate first: the store read happens only for a bash call.
+    if (call?.name !== 'bash') return next();
+    const live = readStore();
+    const enabled = setting(live, hostSection(live), 'rtkDefault') === true;
+    const replaced = await rewriteToolArguments(['bash'], call?.name, call?.arguments, enabled, (command) => rewriteThroughRtk(command, { host: 'dsh' }));
+    if (replaced && call) (call as { arguments: unknown }).arguments = replaced;
+    return next();
+  });
 }
 
 interface DshAgent {
@@ -203,6 +230,11 @@ function statusLevel(modes: ModeSnapshot): string {
   return 'custom';
 }
 
+/** ON/OFF never reaches the line as `true`/`false`, which read as a bug rather than a mode. */
+function modeValue(mode: string | boolean): string {
+  return mode === true || mode === 'on' ? 'ON' : mode === false || mode === 'off' ? 'OFF' : String(mode).toUpperCase();
+}
+
 /** The bar line: the preset, then one glyph per mode, short enough to fit a narrow composer. */
 function statusLine(store: Store, section: Store): string {
   const modes = readModes(store, section);
@@ -210,8 +242,7 @@ function statusLine(store: Store, section: Store): string {
   const level = statusLevel(modes);
   if (level === 'off' && pstack === 'off' && modes.headroom === 'off') return '🧩 OFF';
   const label = level === 'off' || level === 'custom' ? 'CUSTOM' : level.toUpperCase();
-  const value = (mode: string | boolean) => (mode === true || mode === 'on' ? 'ON' : mode === false || mode === 'off' ? 'OFF' : String(mode).toUpperCase());
-  return `🧩 ${label} | ${MODE_GLYPHS.caveman} caveman:${value(modes.caveman)} | ${MODE_GLYPHS.rtk} rtk:${value(modes.rtk)} | ${MODE_GLYPHS.headroom} headroom:${value(modes.headroom)} | ${MODE_GLYPHS.ponytail} ponytail:${value(modes.ponytail)} | ${MODE_GLYPHS.pstack} pstack:${value(pstack)}`;
+  return `🧩 ${label} | ${MODE_GLYPHS.caveman} caveman:${modeValue(modes.caveman)} | ${MODE_GLYPHS.rtk} rtk:${modeValue(modes.rtk)} | ${MODE_GLYPHS.headroom} headroom:${modeValue(modes.headroom)} | ${MODE_GLYPHS.ponytail} ponytail:${modeValue(modes.ponytail)} | ${MODE_GLYPHS.pstack} pstack:${modeValue(pstack)}`;
 }
 
 /** One payload for the bar: the rendered line, the preset level, and each mode's value. */
@@ -400,6 +431,7 @@ export function apply(ctx: DshCtx): void {
 
   registerCommands(ctx);
   registerStatusRoute(ctx);
+  registerRtkInterception(ctx);
 
   // A provider, not a static string: the store is re-read at every assembly, so a mode switch applies without a restart.
   ctx.systemPrompt.section({

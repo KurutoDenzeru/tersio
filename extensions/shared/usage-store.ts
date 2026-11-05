@@ -15,6 +15,7 @@ import {
   hostOfSessionFile,
   ingestSessionRow,
   messageRowId,
+  type DshParseState,
   OPENCODE_DB_OVERLAP_MS,
   opencodeDbPath,
   opencodeSessionsDir,
@@ -22,6 +23,8 @@ import {
   opencodeToolNames,
   readOpencodeDbRows,
   sessionsDirs,
+  dshSessionFiles,
+  readSessionText,
   walkJsonl,
 } from './usage-ledger.ts';
 import { tersioDataPath } from './utils.ts';
@@ -70,7 +73,7 @@ function query(db: string, sql: string): string[][] {
 }
 
 // Bump on a parse change: unchanged transcripts are never re-read.
-const PARSER_VERSION = '14';
+const PARSER_VERSION = '16';
 
 /** OpenCode rows gained tool names; re-read by id, since a PARSER_VERSION bump drops rotated history. */
 const OPENCODE_TOOLS_VERSION = '1';
@@ -561,14 +564,17 @@ function parseFile(text: string, host?: string, file?: string, agent?: string): 
   } catch { /* JSONL */ }
   // A call's result arrives on a later line, so the whole file is scanned for results first.
   const results = collectToolResults(text);
+  // Per file: the DSH model and step starts must not outlive this transcript.
+  const dsh: DshParseState = { steps: new Map() };
   let codexProvider: string | null = null;
   let codexModel: string | null = null;
+  let dshModel: string | null = null;
   for (const line of text.split('\n')) {
     if (!line.trim()) continue;
     try {
       const row = JSON.parse(line) as SessionLineRow;
-      const rid = messageRowId(row);
-      const parsed = classifySessionLine(row, results);
+      const parsed = classifySessionLine(row, results, dsh);
+      const rid = parsed.id ?? messageRowId(row);
       if (parsed.kind === 'codex_provider') {
         if (parsed.provider) codexProvider = parsed.provider;
         continue;
@@ -577,7 +583,11 @@ function parseFile(text: string, host?: string, file?: string, agent?: string): 
         if (parsed.model) codexModel = parsed.model;
         continue;
       }
-      const ts = row.timestamp;
+      if (parsed.kind === 'dsh_model') {
+        if (parsed.model) dshModel = parsed.model;
+        continue;
+      }
+      const ts = row.timestamp ?? row.time;
       const ms = ts === undefined ? NaN : typeof ts === 'number' ? ts : Date.parse(ts);
       const t = Number.isFinite(ms) ? ms : null;
       if (parsed.kind === 'token_row') {
@@ -603,14 +613,16 @@ function parseFile(text: string, host?: string, file?: string, agent?: string): 
         });
         continue;
       }
-      if (parsed.kind !== 'assistant_row' || !parsed.model || !parsed.usage) continue;
+      // A DeepSeek Harness row names no model itself; the session's last model/selection does.
+      const model = parsed.model ?? (row.type === 'assistant/message' ? dshModel ?? undefined : undefined);
+      if (parsed.kind !== 'assistant_row' || !model || !parsed.usage) continue;
       const usage = parsed.usage;
       const dur = durOf(parsed.durMs);
       const runInfo = parsed.run ?? { st: 'completed' as RunStatus };
       const note = runInfo.note?.replace(/[\t\n\r]/g, ' ').slice(0, 180);
       rows.push({
         t,
-        model: canonicalModelId(parsed.model),
+        model: canonicalModelId(model),
         i: intOf(usage.input),
         o: intOf(usage.output),
         d: dur,
@@ -670,6 +682,8 @@ export function syncUsageDb(): boolean {
   const ocFiles: string[] = [];
   try {
     for (const dir of sessionsDirs()) walkJsonl(dir, files, 2000);
+    // DeepSeek Harness keeps zstd transcripts under its own tree, not the pi/omp JSONL dirs.
+    if (process.env.TERSIO_SESSIONS_DIR === undefined) files.push(...dshSessionFiles());
     // OpenCode stores one JSON document per message, not JSONL.
     if (process.env.TERSIO_SESSIONS_DIR === undefined || process.env.TERSIO_OPENCODE_DIR !== undefined) {
       walkJsonl(opencodeSessionsDir(), ocFiles, 5000, '.json');
@@ -736,7 +750,9 @@ export function syncUsageDb(): boolean {
   }
   try {
     for (const file of changed) {
-      const text = fs.readFileSync(file, 'utf8');
+      // zstd transcripts are decompressed here; a plain JSONL reads as its own bytes.
+      const text = readSessionText(file);
+      if (text === null) continue;
       for (const r of parseFile(text, hostOfSessionFile(file), file, agentOfSessionText(text))) {
         if (!push(insertSql(file, r))) return false;
       }

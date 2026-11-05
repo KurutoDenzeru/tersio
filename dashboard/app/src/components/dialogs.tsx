@@ -11,6 +11,8 @@ import { Switch } from "@/components/ui/switch";
 import { setDevMode, useDevMode } from "@/lib/dev-mode";
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useTheme, useResolvedTheme } from "@/components/theme-provider";
 import { AgentLogo } from "@/components/agent-logos";
@@ -85,14 +87,317 @@ function dataStamp(mtime: number): string {
 }
 
 /** The restore snapshots and their schedule; the list never restores alone, so a stray click cannot overwrite. */
+
+type SyncMode = "webdav" | "s3" | "github";
+interface SyncVersion { name: string; bytes: number; mtime: number }
+interface SyncView {
+  configured: boolean;
+  mode: SyncMode | null;
+  target: string;
+  passphraseSet: boolean;
+  fields: Record<string, Record<string, unknown>>;
+  versions: SyncVersion[];
+  error: string | null;
+}
+
+const SYNC_MODES: Array<{ id: SyncMode; label: string; icon?: string; hint: string }> = [
+  { id: "webdav", label: "WebDAV", icon: "globe", hint: "Any WebDAV address, such as a NAS or a hosted box." },
+  { id: "s3", label: "S3", icon: "database", hint: "AWS S3, Cloudflare R2, Backblaze B2, MinIO, and the like." },
+  // No lucide brand mark, so the tab renders GithubMark instead of an Icon name.
+  { id: "github", label: "GitHub", hint: "A private repository. Each backup is one commit." },
+];
+
+/** Lucide dropped brand marks, so the GitHub tab carries the mark itself. */
+function GithubMark({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true" className={className} fill="currentColor">
+      <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.42 7.42 0 0 1 2-.27c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z" />
+    </svg>
+  );
+}
+
+const SYNC_FIELDS: Record<SyncMode, Array<{ key: string; label: string; placeholder: string; secret?: boolean }>> = {
+  webdav: [
+    { key: "address", label: "Address", placeholder: "https://example.com/dav/" },
+    { key: "user", label: "User", placeholder: "user name" },
+    { key: "password", label: "Password", placeholder: "password or app password", secret: true },
+  ],
+  s3: [
+    { key: "endpoint", label: "Endpoint", placeholder: "https://<account>.r2.cloudflarestorage.com" },
+    { key: "bucket", label: "Bucket", placeholder: "bucket name" },
+    { key: "prefix", label: "Prefix", placeholder: "optional" },
+    { key: "region", label: "Region", placeholder: "us-east-1, or auto for R2" },
+    { key: "accessKey", label: "Access key", placeholder: "AKIA…" },
+    { key: "secret", label: "Secret", placeholder: "secret access key", secret: true },
+    { key: "sessionToken", label: "Session token", placeholder: "only for temporary credentials", secret: true },
+  ],
+  github: [
+    { key: "repository", label: "Repository", placeholder: "owner/repo" },
+    { key: "branch", label: "Branch", placeholder: "default branch" },
+    { key: "folder", label: "Folder", placeholder: "optional" },
+    { key: "token", label: "Token", placeholder: "fine-grained token with contents write", secret: true },
+  ],
+};
+
+function sizeText(bytes: number): string {
+  if (!bytes) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/** Settings → Data: where the sealed backups go, and every version that is already there. */
+function SyncPanel() {
+  const toast = useToast();
+  const [view, setView] = useState<SyncView | null>(null);
+  const [mode, setMode] = useState<SyncMode>("webdav");
+  const [fields, setFields] = useState<Record<string, string>>({});
+  const [pathStyle, setPathStyle] = useState(false);
+  const [passphrase, setPassphrase] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
+  const [asking, setAsking] = useState<string | null>(null);
+  /** Which secret inputs are shown in clear; a revealed value is never sent anywhere different. */
+  const [revealed, setRevealed] = useState<Record<string, boolean>>({});
+
+  const load = useCallback(() => {
+    fetch("/api/sync")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: SyncView | null) => {
+        if (!d) return;
+        setView(d);
+        const next = d.mode ?? "webdav";
+        setMode(next);
+        const saved = d.fields?.[next] ?? {};
+        setFields(Object.fromEntries(Object.entries(saved).map(([key, value]) => [key, typeof value === "string" ? value : ""])));
+        setPathStyle(saved.pathStyle === true);
+        setPassphrase("");
+      })
+      .catch(() => setView(null));
+  }, []);
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const pick = (next: SyncMode): void => {
+    setMode(next);
+    const saved = view?.fields?.[next] ?? {};
+    setFields(Object.fromEntries(Object.entries(saved).map(([key, value]) => [key, typeof value === "string" ? value : ""])));
+    setPathStyle(saved.pathStyle === true);
+  };
+
+  /** A probe runs before trusting a target: it lists the folder, which proves both the credentials and the path. */
+  const test = (): void => {
+    setBusy("test");
+    void post("/api/sync/test", { mode, target: { ...fields, pathStyle } })
+      .then((d) => {
+        const answer = d as { ok?: boolean; error?: string; count?: number } | null;
+        if (answer?.ok) toast("Connected", `${answer.count ?? 0} backup${answer.count === 1 ? "" : "s"} found there.`, "check");
+        else toast("Could not connect", answer?.error ?? "The remote did not answer.", "circle-alert");
+      })
+      .finally(() => setBusy(null));
+  };
+
+  const refresh = (): void => {
+    setBusy("refresh");
+    void fetch("/api/sync")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: SyncView | null) => {
+        if (d) setView(d);
+      })
+      .catch(() => toast("Refresh failed", "The dashboard server did not answer.", "circle-alert"))
+      .finally(() => setBusy(null));
+  };
+
+  const post = (url: string, body: unknown): Promise<{ ok?: boolean; error?: string; name?: string } | null> =>
+    fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+      .then((r) => r.json())
+      .catch(() => null);
+
+  const save = (): void => {
+    setBusy("save");
+    void post("/api/sync", { mode, passphrase, target: { ...fields, pathStyle } })
+      .then((d) => {
+        if (d?.ok) {
+          toast("Sync target saved", "Passwords stay on this computer.", "check");
+          load();
+        } else toast("Could not save", d?.error ?? "The server refused the target.", "circle-alert");
+      })
+      .finally(() => setBusy(null));
+  };
+
+  const run = (): void => {
+    setBusy("run");
+    void post("/api/sync/run", {})
+      .then((d) => {
+        if (d?.ok) {
+          toast("Backed up to the remote", d.name ? `One sealed file: ${d.name}.` : "One sealed file.", "check");
+          load();
+        } else toast("Backup failed", d?.error ?? "The remote did not answer.", "circle-alert");
+      })
+      .finally(() => setBusy(null));
+  };
+
+  const restore = (name: string): void => {
+    setBusy("restore");
+    setAsking(null);
+    void post("/api/sync/restore", { name })
+      .then((d) => {
+        if (d?.ok) {
+          toast("Restored", "The state before the restore was kept as a snapshot.", "check");
+          requestReload();
+        } else toast("Restore failed", d?.error ?? "The backup could not be opened.", "circle-alert");
+      })
+      .finally(() => setBusy(null));
+  };
+
+  const rows = SYNC_FIELDS[mode];
+  const hint = SYNC_MODES.find((entry) => entry.id === mode)?.hint ?? "";
+
+  return (
+    <Accordion className="rounded-2xl border border-line bg-panel">
+      <AccordionItem value="sync" className="border-0">
+        <AccordionTrigger className="px-4 py-3 hover:no-underline">
+          <span className="grid gap-0.5 text-left">
+            <span className="flex items-center gap-2 text-[13px] font-semibold">
+              <Icon name="cloud" className="size-4" />
+              <span>Sync and backup</span>
+              <Badge variant="outline" className="mono h-5 rounded-md border-line px-1.5 text-[10px] text-dim">{view?.configured ? "on" : "off"}</Badge>
+            </span>
+            <span className="text-xs font-normal text-dim">Send each snapshot off this computer, sealed with your passphrase.</span>
+          </span>
+        </AccordionTrigger>
+        <AccordionContent className="pb-0">
+          <div className="grid gap-3 px-4 pb-4">
+            <Tabs value={mode} onValueChange={(v) => pick((v ?? "webdav") as SyncMode)}>
+              <TabsList className="h-9 w-full justify-start gap-1 rounded-xl p-1">
+                {SYNC_MODES.map((entry) => (
+                  <TabsTrigger key={entry.id} value={entry.id} className="h-7 flex-1 gap-1.5 px-4 text-[12px]">
+                    {entry.id === "github" ? <GithubMark className="size-3.5" /> : <Icon name={entry.icon ?? "globe"} className="size-3.5" />}
+                    <span>{entry.label}</span>
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
+        <p className="m-0 text-xs text-dim">{hint}</p>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {rows.map((row) => (
+            <label key={row.key} className="grid gap-1 text-[11px] text-dim">
+              <span>{row.label}</span>
+              {row.secret ? (
+                <span className="relative">
+                  <Input
+                    type={revealed[row.key] ? "text" : "password"}
+                    value={fields[row.key] ?? ""}
+                    placeholder={view?.configured ? "saved" : row.placeholder}
+                    className="pr-9"
+                    onChange={(event) => setFields({ ...fields, [row.key]: event.target.value })}
+                  />
+                  <button
+                    type="button"
+                    className="absolute inset-y-0 right-1 grid w-7 place-items-center rounded-md text-dim hover:text-ink"
+                    aria-label={revealed[row.key] ? `Hide ${row.label}` : `Show ${row.label}`}
+                    onClick={() => setRevealed({ ...revealed, [row.key]: !revealed[row.key] })}
+                  >
+                    <Icon name={revealed[row.key] ? "eye-off" : "eye"} className="size-3.5" />
+                  </button>
+                </span>
+              ) : (
+                <Input
+                  type="text"
+                  value={fields[row.key] ?? ""}
+                  placeholder={row.placeholder}
+                  onChange={(event) => setFields({ ...fields, [row.key]: event.target.value })}
+                />
+              )}
+            </label>
+          ))}
+          {mode === "s3" && (
+            <label className="flex items-center gap-2 text-[11px] text-dim">
+              <input type="checkbox" checked={pathStyle} onChange={(event) => setPathStyle(event.target.checked)} />
+              <span>Path-style: the bucket in the path, not the host name</span>
+            </label>
+          )}
+          <label className="grid gap-1 text-[11px] text-dim sm:col-span-2">
+            <span>Passphrase</span>
+            <span className="relative">
+              <Input
+                type={revealed.passphrase ? "text" : "password"}
+                value={passphrase}
+                placeholder={view?.passphraseSet ? "saved — type to replace" : "the same on every computer"}
+                className="pr-9"
+                onChange={(event) => setPassphrase(event.target.value)}
+              />
+              <button
+                type="button"
+                className="absolute inset-y-0 right-1 grid w-7 place-items-center rounded-md text-dim hover:text-ink"
+                aria-label={revealed.passphrase ? "Hide the passphrase" : "Show the passphrase"}
+                onClick={() => setRevealed({ ...revealed, passphrase: !revealed.passphrase })}
+              >
+                <Icon name={revealed.passphrase ? "eye-off" : "eye"} className="size-3.5" />
+              </button>
+            </span>
+          </label>
+        </div>
+        <p className="m-0 text-xs text-dim">
+          The file is sealed on this computer; the remote only ever sees it sealed. Keep the passphrase: without it a backup cannot be opened.
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" className="mono h-8 gap-1.5 rounded-xl" disabled={busy !== null} onClick={save}>
+            {busy === "save" ? <Spinner className="size-3.5" /> : <Icon name="check" className="size-3.5" />}
+            <span>Save target</span>
+          </Button>
+          <Button size="sm" variant="outline" className="mono h-8 gap-1.5 rounded-xl" disabled={busy !== null} onClick={test}>
+            {busy === "test" ? <Spinner className="size-3.5" /> : <Icon name="plug-zap" className="size-3.5" />}
+            <span>Test connection</span>
+          </Button>
+          <Button size="sm" variant="outline" className="mono h-8 gap-1.5 rounded-xl" disabled={busy !== null || !view?.configured} onClick={run}>
+            {busy === "run" ? <Spinner className="size-3.5" /> : <Icon name="cloud-upload" className="size-3.5" />}
+            <span>Back up to remote</span>
+          </Button>
+          {view?.target && <span className="mono min-w-0 truncate text-[11px] text-dim">{view.target}</span>}
+        </div>
+        {view?.error && <p className="m-0 text-xs text-red-500">{view.error}</p>}
+        <div className="grid gap-1">
+          <div className="flex items-center gap-2">
+            <p className="m-0 flex-1 text-[11px] text-dim">Versions on the remote</p>
+            <Button size="sm" variant="ghost" className="mono h-7 gap-1.5 rounded-lg px-2" disabled={busy !== null || !view?.configured} onClick={refresh}>
+              <Icon name="refresh-cw" className={cn("size-3.5", busy === "refresh" && "animate-spin")} />
+              <span>Refresh</span>
+            </Button>
+          </div>
+          {(view?.versions ?? []).length === 0 && <p className="m-0 text-xs text-dim">Nothing there yet.</p>}
+          {(view?.versions ?? []).map((version) => (
+            <div key={version.name} className="flex items-center gap-2 rounded-lg border border-line px-2 py-1">
+              <span className="mono min-w-0 flex-1 truncate text-[11px]">{version.name}</span>
+              <span className="mono text-[11px] text-dim">{sizeText(version.bytes)}</span>
+              {asking === version.name ? (
+                <>
+                  <Button size="sm" variant="destructive" className="h-7 rounded-lg" disabled={busy !== null} onClick={() => restore(version.name)}>
+                    Restore
+                  </Button>
+                  <Button size="sm" variant="ghost" className="h-7 rounded-lg" onClick={() => setAsking(null)}>Cancel</Button>
+                </>
+              ) : (
+                <Button size="sm" variant="outline" className="h-7 rounded-lg" onClick={() => setAsking(version.name)}>Restore…</Button>
+              )}
+            </div>
+          ))}
+        </div>
+          </div>
+        </AccordionContent>
+      </AccordionItem>
+    </Accordion>
+  );
+}
+
 function DataPane() {
   const toast = useToast();
   const [backups, setBackups] = useState<DataBackupRow[] | null>(null);
   const [schedule, setSchedule] = useState("monthly");
   const [keep, setKeep] = useState(3);
   const [dir, setDir] = useState("");
-  /** The snapshot the footer works on. A name the list no longer holds reads as no pick. */
-  const [picked, setPicked] = useState<string | null>(null);
+  /** The one list of picks: selecting one enables Restore, selecting several enables Delete. */
+  const [selected, setSelected] = useState<string[]>([]);
   const [asking, setAsking] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -170,7 +475,6 @@ function DataPane() {
       .then((d: { ok?: boolean; name?: string; error?: string }) => {
         if (d?.ok) {
           toast("Snapshot taken", `One file: ${d.name}.`, "check");
-          if (d.name) setPicked(d.name);
           load();
           requestReload();
         } else toast("Backup failed", d?.error ?? "The server did not answer.", "circle-alert");
@@ -201,7 +505,7 @@ function DataPane() {
 
   const remove = (name: string): void => {
     setConfirming(null);
-    setPicked(null);
+    setSelected([]);
     void fetch("/api/data", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -216,6 +520,30 @@ function DataPane() {
         } else toast("Delete failed", d?.error ?? "Unknown snapshot", "circle-alert");
       })
       .catch(() => toast("Delete failed", "The dashboard server did not answer.", "circle-alert"));
+  };
+
+  const toggleSelected = (name: string): void => {
+    setSelected((current) => (current.includes(name) ? current.filter((entry) => entry !== name) : [...current, name]));
+  };
+
+  const deleteSelected = (): void => {
+    if (selected.length === 0) return;
+    setBusy(true);
+    void fetch("/api/data", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "delete", names: selected }),
+    })
+      .then((r) => r.json())
+      .then((d: { ok?: boolean; deleted?: string[]; error?: string }) => {
+        if (d?.ok) {
+          toast("Snapshots deleted", `${d.deleted?.length ?? selected.length} removed.`, "check");
+          setSelected([]);
+          load();
+        } else toast("Delete failed", d?.error ?? "The server did not answer.", "circle-alert");
+      })
+      .catch(() => toast("Delete failed", "The dashboard server did not answer.", "circle-alert"))
+      .finally(() => setBusy(false));
   };
 
   const doReset = (): void => {
@@ -239,8 +567,8 @@ function DataPane() {
 
   const target = (backups ?? []).find((b) => b.name === asking) ?? null;
   const doomed = (backups ?? []).find((b) => b.name === confirming) ?? null;
-  /** The footer works on the picked row, unless a restore confirm owns the screen. */
-  const chosen = (backups ?? []).find((b) => b.name === picked) ?? null;
+  /** One pick restores; several picks delete. Nothing else is selected implicitly. */
+  const chosen = selected.length === 1 ? (backups ?? []).find((b) => b.name === selected[0]) ?? null : null;
   const retentionLabel = RETENTION_OPTIONS.find((o) => o.id === retention)?.label ?? "Forever";
   const retentionHint = RETENTION_OPTIONS.find((o) => o.id === retention)?.hint ?? "";
   const scheduleLabel = SCHEDULE_OPTIONS.find((o) => o.id === schedule)?.label ?? "Monthly";
@@ -248,6 +576,7 @@ function DataPane() {
 
   return (
     <section aria-label="Data" className="grid gap-4">
+      <SyncPanel />
       <Card
         title="Backup schedule"
         icon="clock"
@@ -328,7 +657,9 @@ function DataPane() {
           (
             <>
               <span className="mono min-w-0 flex-1 truncate text-[11px] text-dim">
-                {chosen ? dataStamp(chosen.mtime) : "Pick a snapshot to restore or delete it."}
+                {selected.length > 1
+                  ? `${selected.length} selected`
+                  : chosen ? `${dataStamp(chosen.mtime)} · ${dataSize(chosen.bytes)}` : "Select one to restore, or several to delete."}
               </span>
               <Button
                 size="sm"
@@ -339,16 +670,29 @@ function DataPane() {
                 <Icon name="rotate-ccw" className="size-3.5" />
                 Restore
               </Button>
-              <Button
-                size="sm"
-                variant="destructive"
-                className="mono h-8 gap-1.5 rounded-xl"
-                disabled={!chosen}
-                onClick={() => chosen && setConfirming(chosen.name)}
-              >
-                <Icon name="trash" className="size-3.5" />
-                Delete
-              </Button>
+              {selected.length > 1 ? (
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  className="mono h-8 gap-1.5 rounded-xl"
+                  disabled={busy}
+                  onClick={deleteSelected}
+                >
+                  <Icon name="trash" className="size-3.5" />
+                  Delete {selected.length}
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  className="mono h-8 gap-1.5 rounded-xl"
+                  disabled={!chosen}
+                  onClick={() => chosen && setConfirming(chosen.name)}
+                >
+                  <Icon name="trash" className="size-3.5" />
+                  Delete
+                </Button>
+              )}
             </>
           )
         }
@@ -364,17 +708,24 @@ function DataPane() {
           <div className="max-h-[19rem] overflow-y-auto">
             <div className="divide-y divide-line">
               {backups.map((b) => {
-                const on = b.name === picked;
+                const checked = selected.includes(b.name);
                 return (
+                  <div key={b.name} className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    className="size-3.5 shrink-0 accent-accent"
+                    aria-label={`Select ${dataStamp(b.mtime)}`}
+                    checked={checked}
+                    onChange={() => toggleSelected(b.name)}
+                  />
                   <button
-                    key={b.name}
                     type="button"
-                    aria-pressed={on}
+                    aria-pressed={checked}
                     className={cn(
-                      "group flex w-full items-center gap-3 py-2 text-left transition-colors hover:bg-track/40 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent",
-                      on && "bg-accent-soft",
+                      "group flex min-w-0 flex-1 items-center gap-3 py-2 text-left transition-colors hover:bg-track/50 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent",
+                      checked && "bg-track hover:bg-track/80",
                     )}
-                    onClick={() => setPicked(on ? null : b.name)}
+                    onClick={() => toggleSelected(b.name)}
                   >
                     <div className="min-w-0 flex-1">
                       <HoverTip content={`${b.name} — ${b.members.map((f) => f.label).join(", ")}`}>
@@ -384,8 +735,8 @@ function DataPane() {
                         {dataSize(b.bytes)} · 1 file
                       </p>
                     </div>
-                    {on && <Icon name="check" className="mr-1.5 size-3.5 shrink-0 text-accent" />}
                   </button>
+                  </div>
                 );
               })}
             </div>

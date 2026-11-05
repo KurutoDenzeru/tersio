@@ -40,6 +40,7 @@ export const TREE_FILES: readonly string[] = [
   'shared/carbon.ts',
   'shared/utils.ts',
   'shared/rtk-eligible.ts',
+  'shared/rtk-rewrite.ts',
   'shared/updater.ts',
   'shared/headroom-proxy.ts',
   'shared/headroom-agent.ts',

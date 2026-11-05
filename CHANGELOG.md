@@ -4,15 +4,27 @@
 - A small Tersio pill now sits under the message box in DeepSeek Harness. It shows the current Combo with a puzzle icon and the word Off, Lite, Balanced or Max.
 - Click the pill to open a card that switches the Combo, or any single mode on its own: Caveman, RTK, Headroom, Ponytail and pstack.
 - The Headroom switch in that card reads and writes the same saved setting the installer, the command line and the dashboard use, so the three agree.
+- Settings → Data can now send an encrypted copy of your Tersio data to WebDAV, S3 storage, or a private GitHub repository. You choose the passphrase once; old copies are listed by date and can be restored from there.
+- A Test connection button proves the saved details can read, write, and delete in that account, so a storage service that only pretends to accept uploads is caught before you rely on it.
+- Tersio now records DeepSeek Harness usage like every other agent: tokens, request time, first-response time, and which request each row came from.
+- RTK now works in DeepSeek Harness with nothing extra to install. Once RTK is on, shell commands are shortened for you.
 
 ### Changed
 - Switching a mode in DeepSeek Harness no longer posts a message in the conversation. The pill is the only feedback, like the other agents.
 - The pill stays quiet until you hover over it or open it, and the card follows the app's own light and dark panels.
 - Status lines now read `🧩 LITE | 🪨 caveman:LITE | 🗜️ rtk:ON | …`: the word COMBO is gone, and every mode uses a colon instead of an equals sign. Pi, OpenCode, Oh My Pi, the command line and the dashboard all follow it.
 - Balanced no longer carries a "not recommended" note in the installer or the dashboard.
+- The DeepSeek Harness status card is sized to its content, with one row per mode and a single sliding highlight instead of separate buttons. It no longer hides behind the message box.
+- DeepSeek Harness sessions no longer show on the Traces page; that app keeps its own Trajectory view.
+- Snapshots in Settings → Data select one at a time, with softer highlight colours.
+- The same RTK command rewriting now serves Pi, Pi-In-Go, Oh My Pi, and DeepSeek Harness from one shared piece, so a fix reaches all of them at once.
 
 ### Fixed
 - Quick start agent cards now show the Headroom setting you saved instead of replacing it with "unrouted". Hovering the row still warns when that agent has no live route, so the card never claims compression it is not getting.
+- Remote backups survive a brief server hiccup: a failed request retries on its own instead of losing the run.
+- A storage service hosted under a sub-path, a very long list of old copies, and a GitHub repository that does not sort its files are all handled now.
+- A crash while saving sync settings can no longer wipe the saved passphrase.
+- WebDAV folders that do not exist yet are created during the first backup.
 
 ## v2.25.17
 

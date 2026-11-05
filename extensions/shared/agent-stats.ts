@@ -17,7 +17,7 @@ import { readRtkGainByVerb, rtkGainFailure } from './rtk-gain.ts';
 import { readHeadroomDoctor, readHeadroomSavings, readHeadroomStats } from './headroom-gain.ts';
 import { headroomProxyPort } from './headroom-proxy.ts';
 import { describeHeadroomRoute, readHeadroomRoute } from './headroom-routing.ts';
-import { readRtkAdoption } from './usage-ledger.ts';
+import { hostOfSessionFile, readRtkAdoption, readSessionText } from './usage-ledger.ts';
 import type { RtkAdoption } from './usage-ledger.ts';
 
 
@@ -556,9 +556,11 @@ function readStatsDb(db: string, cutoff: number, bucketMs: number, parts: Set<st
 }
 
 /** Fold every child transcript into its root session, or a row per file would show one row per subagent. */
-function foldTraces(rows: AgentTraceRow[]): AgentTraceRow[] {
+export function foldTraces(rows: AgentTraceRow[]): AgentTraceRow[] {
   const byRoot = new Map<string, AgentTraceRow>();
   for (const row of rows) {
+    // DeepSeek Harness ships its own Trajectory view; Tersio's flamegraph would only duplicate it.
+    if (hostOfSessionFile(row.sessionFile) === 'dsh') continue;
     const rootFile = rootSessionFile(row.sessionFile);
     const held = byRoot.get(rootFile);
     if (!held) {
@@ -1319,13 +1321,17 @@ export function readAgentRequestEntry(
   entryId: string,
 ): { entry: unknown; output: unknown; messageRole: string; agent: JournalAgent } {
   const empty = emptyRequestEntry();
-  if (!entryId || !sessionFile.endsWith('.jsonl') || !fs.existsSync(sessionFile)) return empty;
-  let text: string;
-  try {
-    text = fs.readFileSync(sessionFile, 'utf8');
-  } catch {
-    return empty;
-  }
+  // DeepSeek Harness keeps a zstd transcript; its entry id lives on the assistant message, not the line.
+  const packed = sessionFile.endsWith('.zstd');
+  if (!entryId || (!sessionFile.endsWith('.jsonl') && !packed) || !fs.existsSync(sessionFile)) return empty;
+  const text = packed ? readSessionText(sessionFile) : (() => {
+    try {
+      return fs.readFileSync(sessionFile, 'utf8');
+    } catch {
+      return null;
+    }
+  })();
+  if (text === null) return empty;
   const agent = { ...empty.agent };
   for (const line of text.split('\n')) {
     if (!line.trim()) continue;
@@ -1335,7 +1341,14 @@ export function readAgentRequestEntry(
     } catch {
       continue;
     }
-    if (String(parsed.id ?? '') !== entryId) {
+    const dshMessage = (parsed.data as { message?: Record<string, unknown> } | undefined)?.message;
+    const dshModel = (parsed.data as { model?: unknown } | undefined)?.model;
+    if (parsed.type === 'model/selection' && typeof dshModel === 'string') {
+      agent.model = dshModel;
+      continue;
+    }
+    const id = String(dshMessage?.id ?? parsed.id ?? '');
+    if (id !== entryId) {
       // A change entry updates the state every later request sees.
       if (parsed.type === 'model_change') {
         agent.model = String(parsed.model ?? '') || null;
@@ -1347,7 +1360,8 @@ export function readAgentRequestEntry(
       }
       continue;
     }
-    const message = (parsed.message ?? null) as Record<string, unknown> | null;
+    // The DSH message sits under `data`, so the drawer's payload shows it rather than the envelope.
+    const message = (parsed.message ?? (parsed.data as { message?: unknown } | undefined)?.message ?? null) as Record<string, unknown> | null;
     return { entry: parsed, output: message, messageRole: message ? String(message.role ?? '') : '', agent };
   }
   return empty;

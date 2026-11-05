@@ -7,9 +7,9 @@ type Change = { combo?: string; mode?: string; value?: string };
 type Loader = { load(spec: { id: string; factory(require: (name: string) => unknown): unknown }): void };
 
 // The shell injects this facade before any bundle loads; the bar only registers through it.
-interface Window {
-  __ModuleLoader__: Loader;
-}
+// Read by string key: the identifier would dangle under the project's lint rules, and the file must stay a plain script.
+const loader = (globalThis as unknown as Record<string, Loader | undefined>)['__ModuleLoader__'];
+if (!loader) throw new Error('tersio: the client module loader is missing');
 
 const ENDPOINT = '/tersio/modes';
 const POLL_MS = 2000;
@@ -26,6 +26,12 @@ const PRESETS = [
   { key: 'balanced', label: 'Balanced' },
   { key: 'max', label: 'Max' },
 ] as const;
+
+function current(modes: Modes, key: string): string {
+  if (key === 'rtk') return modes.rtk ? 'on' : 'off';
+  if (key === 'pstack') return modes.pstack === true || modes.pstack === 'on' ? 'on' : 'off';
+  return String((modes as unknown as Record<string, unknown>)[key] ?? 'off');
+}
 
 const LEVEL_WORDS: Record<string, string> = { off: 'Off', lite: 'Lite', balanced: 'Balanced', max: 'Max', custom: 'Custom' };
 
@@ -44,7 +50,7 @@ function labelOf(value: string): string {
 
 // Kept in the bundle so unmounting the module removes the styles with it.
 const STYLES = `
-.tersio-wrap { position: relative; display: inline-flex; justify-content: center; }
+.tersio-wrap { position: relative; z-index: 30; display: inline-flex; justify-content: center; }
 .tersio-bar {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 2px 10px 2px 8px; border: 0; border-radius: 999px; corner-shape: round;
@@ -56,30 +62,34 @@ const STYLES = `
 }
 .tersio-bar__icon { flex: none; opacity: .9; }
 .tersio-pop {
-  position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(100% + 6px); z-index: 40;
-  min-width: min(420px, calc(100vw - 32px)); padding: 14px 16px;
-  border: 0; border-radius: var(--dsw-radius-lg);
+  position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(100% + 6px); z-index: 9999;
+  width: max-content; max-width: min(340px, calc(100vw - 24px)); padding: 10px 12px;
+  border: 0; border-radius: 8px;
   --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);
   background: var(--dsw-specific-menu); backdrop-filter: var(--dsw-menu-backdrop-filter);
   box-shadow: var(--dsw-elevation-panel);
   color: var(--dsw-alias-label-secondary); font-size: 12px; line-height: 20px; text-align: left; white-space: normal;
 }
-.tersio-pop__row { display: flex; align-items: center; gap: 12px; min-width: 0; padding: 5px 0; }
-.tersio-pop__name { flex: none; width: 112px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tersio-pop__options { display: flex; flex-wrap: wrap; gap: 6px; }
-.tersio-pill {
-  padding: 3px 12px; border-radius: 999px; border: 1px solid var(--dsw-alias-border-l1);
-  background: transparent; color: var(--dsw-alias-label-secondary);
-  font: inherit; cursor: pointer;
+.tersio-pop__row { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 2px 0; }
+.tersio-pop__name { flex: none; width: 84px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+/* One track per row: a segmented control reads tighter than six separate buttons. */
+.tersio-pop__options {
+  display: inline-flex; gap: 2px; padding: 2px; border-radius: 999px;
+  background: var(--dsw-alias-interactive-bg-hover);
 }
-.tersio-pill:hover { border-color: var(--dsw-alias-border-l2); color: var(--dsw-alias-label-primary); }
+.tersio-pill {
+  padding: 2px 9px; border: 0; border-radius: 999px; background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit; font-size: 11px; line-height: 15px; cursor: pointer; white-space: nowrap;
+}
+.tersio-pill:hover { color: var(--dsw-alias-label-primary); }
 .tersio-pill[data-active='true'] {
-  background: var(--dsw-alias-bg-layer-2); border-color: var(--dsw-alias-border-l2);
-  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary);
+  box-shadow: 0 1px 2px rgb(0 0 0 / .18);
 }
 `;
 
-window.__ModuleLoader__.load({
+loader?.load({
   id: '@krtclcdy/tersio',
   factory(require) {
     const React = require('react') as {
@@ -89,12 +99,6 @@ window.__ModuleLoader__.load({
       useRef: <T>(value: T) => { current: T };
     };
     const h = React.createElement;
-
-    function current(modes: Modes, key: string): string {
-      if (key === 'rtk') return modes.rtk ? 'on' : 'off';
-      if (key === 'pstack') return modes.pstack === true || modes.pstack === 'on' ? 'on' : 'off';
-      return String((modes as unknown as Record<string, unknown>)[key] ?? 'off');
-    }
 
     function TersioStatusBar(): unknown {
       const [payload, setPayload] = React.useState<StatusPayload | null>(null);
