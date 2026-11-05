@@ -189,7 +189,16 @@ async function offerRtkInstall(options: InstallOptions): Promise<string | null> 
     sayTagged(`  [warn] ${route.label} install failed: ${shortError(e)}`);
     return null;
   }
-  return resolveRtkBinary();
+  const installed = resolveRtkBinary();
+  if (!installed) return null;
+  // rtk's hook calls the bare name, so a directory Tersio can reach but the shell cannot is still a dead hook.
+  const dir = path.dirname(installed);
+  const onPath = (process.env.PATH ?? '').split(path.delimiter).includes(dir);
+  if (!onPath) {
+    sayTagged(`  [note] rtk landed in ${dir}, which is not on PATH yet — the agent's hook needs it`);
+    sayTagged(`  [hint] add it, then restart the agent: export PATH="${dir}:$PATH"  (in ~/.zshrc or ~/.bashrc)`);
+  }
+  return installed;
 }
 
 async function stepRtk(options: InstallOptions, target: HostId = 'omp'): Promise<void> {

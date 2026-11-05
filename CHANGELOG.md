@@ -13,7 +13,7 @@
 - RTK now works in DeepSeek Harness with nothing extra to install. Once RTK is on, shell commands are shortened for you.
 
 ### Changed
-- Tersio no longer downloads, replaces, or removes the rtk program. `tersio install` uses the binary already on your machine, the way rtk's own docs describe. When rtk is missing it offers rtk's own quick install — their `install.sh` script on macOS and Linux, `winget install rtk-ai.rtk` on Windows — and points at rtk's install page when you decline.
+- Tersio no longer downloads, replaces, or removes the rtk program. `tersio install` uses the binary already on your machine, the way rtk's own docs describe. When rtk is missing it offers rtk's own quick install — their `install.sh` script on macOS and Linux, `winget install rtk-ai.rtk` on Windows — and points at rtk's install page when you decline. If the new rtk lands somewhere your shell cannot see yet, the install says exactly which line to add to your shell profile.
 - `tersio doctor --fix` re-connects rtk instead of downloading it, and `tersio uninstall --remove-rtk` removes Tersio's connection but never your rtk program.
 - `/tersio update rtk` and the dashboard card now tell you when rtk has a newer release and point you at rtk's installer, instead of downloading it for you.
 - A mode change over MCP can now target one agent, the same way the dashboard and the installer already could.
