@@ -139,7 +139,7 @@ function hostsText(): string {
 function sessionsText(range: RangeKey, limit: number): string {
   const stats = agentStats(range);
   if (!stats.available) return `No sessions for ${range} yet. Sessions appear once an agent runs with Tersio installed.`;
-  const rows = [...stats.traces].sort((a, b) => b.lastTs - a.lastTs).slice(0, limit);
+  const rows = stats.traces.toSorted((a, b) => b.lastTs - a.lastTs).slice(0, limit);
   if (rows.length === 0) return `No sessions in the last ${range}.`;
   const currency = readStoredCurrency();
   return rows.map((row) => {
