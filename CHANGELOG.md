@@ -24,6 +24,7 @@
 - The same RTK command rewriting now serves Pi, Pi-In-Go, Oh My Pi, and DeepSeek Harness from one shared piece, so a fix reaches all of them at once.
 
 ### Fixed
+- The Tersio pill in DeepSeek Harness no longer fails to come back after a page refresh or a plugin update. The page could not load the same file twice, so it now keeps its own names to itself.
 - DeepSeek Harness no longer reports Tersio's MCP server as missing: its entry ships inside the plugin bundle, and the check now looks there.
 - Agents launched from the desktop now find Tersio's MCP server. The entry stores the full path when the command is findable, and keeps the short name as a fallback.
 - Adding the MCP entry to a commented OpenCode config no longer drops the comments.
