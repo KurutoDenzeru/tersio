@@ -116,8 +116,9 @@ function firstExecutable(name: string, managedDir: string | null, extraDirs: Rea
   return null;
 }
 
+// rtk's own installer drops the binary in ~/.local/bin, which a fresh shell may not have on PATH yet.
 export function resolveRtkBinary(managedDir = path.join(homeDir(), '.bun', 'bin')): string | null {
-  return firstExecutable(process.platform === 'win32' ? 'rtk.exe' : 'rtk', managedDir);
+  return firstExecutable(process.platform === 'win32' ? 'rtk.exe' : 'rtk', managedDir, [path.join(homeDir(), '.local', 'bin')]);
 }
 
 // `pip install --user` drops console scripts in a directory that is usually not on PATH (macOS: ~/Library/Python/3.x/bin), so the probe reads python's own user base.
