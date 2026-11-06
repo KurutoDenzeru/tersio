@@ -7,7 +7,7 @@ import { headroomProxyUpstream, headroomProxyUrl } from './headroom-proxy.ts';
 import {
   durableConfigInstalled, headroomProxyPort, installDurableConfig, readOmpGateway, routeOmpGateway,
 } from './headroom-proxy.ts';
-import { describeHeadroomRoute, dshDefaultRoute, dshProviders, jsonBaseUrl, jsonModelEntry, readHeadroomRoute, sameProxyEndpoint } from './headroom-routing.ts';
+import { describeHeadroomRoute, dshDefaultRoute, dshProfileFiles, dshProviders, jsonBaseUrl, jsonModelEntry, readHeadroomRoute, sameProxyEndpoint } from './headroom-routing.ts';
 import type { HeadroomRoute } from './headroom-routing.ts';
 import { hostCap } from './host-caps.ts';
 import { patchState, readState } from './state.ts';
@@ -162,14 +162,15 @@ function piTargets(host: 'pi' | 'pig'): Target[] {
 function dshTargets(): Target[] {
   const root = path.join(homeDir(), '.dsh');
   const settingsFile = path.join(root, 'settings.yaml');
-  const profiles = ['desktop', 'web'].map((profile) => path.join(root, 'profiles', profile, 'cordis.patch.yml'));
-  const profile = profiles.find((file) => existsSync(file));
+  const profiles = dshProfileFiles(root);
+  const profile = profiles[0];
   if (!profile) return [];
   let provider = '';
   try { provider = dshDefaultRoute(readFileSync(profile, 'utf8')).provider; } catch { /* absent */ }
   if (!provider) return [];
   const targets: Target[] = [];
-  for (const file of [settingsFile, ...profiles]) {
+  // The active profile only: writing the other one would route an app that is not running.
+  for (const file of [settingsFile, profile]) {
     if (!existsSync(file)) continue;
     let text: string;
     try { text = readFileSync(file, 'utf8'); } catch { continue; }
