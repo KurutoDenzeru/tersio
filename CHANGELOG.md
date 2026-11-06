@@ -13,6 +13,7 @@
 - RTK now works in DeepSeek Harness with nothing extra to install. Once RTK is on, shell commands are shortened for you.
 
 ### Changed
+- The Headroom card in the dashboard is one switch per agent: it points that agent's provider at the local proxy and keeps it there across restarts. The separate wrapped-tools list and the saved record of which tool was wrapped when are gone.
 - Tersio no longer downloads, replaces, or removes the rtk program. `tersio install` uses the binary already on your machine, the way rtk's own docs describe. rtk is part of what Tersio ships, so a machine without it gets rtk's own quick install automatically — their `install.sh` script on macOS and Linux, `winget install rtk-ai.rtk` on Windows — with no question to answer. If the new rtk lands somewhere your shell cannot see yet, the install says exactly which line to add to your shell profile.
 - `tersio doctor --fix` re-connects rtk instead of downloading it, and `tersio uninstall --remove-rtk` removes Tersio's connection but never your rtk program.
 - `/tersio update rtk` and the dashboard card now tell you when rtk has a newer release and point you at rtk's installer, instead of downloading it for you.
