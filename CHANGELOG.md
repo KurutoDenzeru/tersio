@@ -29,6 +29,8 @@
 - The same RTK command rewriting now serves Pi, Pi-In-Go, Oh My Pi, and DeepSeek Harness from one shared piece, so a fix reaches all of them at once.
 
 ### Fixed
+- Headroom's proxy no longer piles up. A session that found the health check slow used to start a second proxy, and nothing ever stopped it; on this machine eleven copies were holding about seven gigabytes. A start is now serialised across processes, a proxy on another port is never duplicated, and `tersio doctor --fix headroom` stops the duplicates and starts one where the routes expect it.
+- A headroom binary that cannot be spawned no longer crashes the caller with an unhandled process error.
 - OpenCode and omp are routed without headroom's own writer, so the off switch restores the file Tersio changed instead of depending on a command that may not exist.
 - An omp model served by a gateway block (the usual magpie setup) is now routed under that block instead of failing with "not in the agent's catalog".
 - `tersio doctor` names an agent whose headroom route drifted, and names a route that is in place.
