@@ -19,13 +19,22 @@ function piHome(home: string): void {
   writeFileSync(path.join(dir, 'models.json'), JSON.stringify({
     providers: { magpie: { api: 'openai-completions', baseUrl: 'http://127.0.0.1:3425/v1' } },
   }, null, 2), 'utf8');
-  // The headroom binary must resolve, and its manifest must name the provider it forwards to.
-  const bin = path.join(home, '.local', 'bin');
-  mkdirSync(bin, { recursive: true });
-  const stub = path.join(bin, 'headroom');
+  headroomManifest(home);
+}
+
+/** A headroom binary the test controls, pinned by path so a machine without one behaves the same. */
+function pinHeadroom(home: string): () => void {
+  const dir = path.join(home, 'bin');
+  mkdirSync(dir, { recursive: true });
+  const stub = path.join(dir, 'headroom');
   writeFileSync(stub, '#!/bin/sh\nexit 0\n', 'utf8');
   chmodSync(stub, 0o755);
-  headroomManifest(home);
+  const previous = process.env.TERSIO_HEADROOM_BIN;
+  process.env.TERSIO_HEADROOM_BIN = stub;
+  return () => {
+    if (previous === undefined) delete process.env.TERSIO_HEADROOM_BIN;
+    else process.env.TERSIO_HEADROOM_BIN = previous;
+  };
 }
 
 /** What headroom's own deploy manifest records: the provider it forwards to. */
@@ -83,6 +92,8 @@ const fakeResponse = (): http.ServerResponse => ({ writeHead: () => undefined, e
 
 test('the route endpoint writes a route and takes it back', async () => {
   await withHome(async (home) => {
+    const release = pinHeadroom(home);
+    try {
     piHome(home);
     const { sent, ctx } = collector();
     const url = (): string => '/api/headroom/route';
@@ -98,11 +109,14 @@ test('the route endpoint writes a route and takes it back', async () => {
     const restored = readFileSync(path.join(home, '.pi', 'agent', 'models.json'), 'utf8');
     expect(restored).toContain('http://127.0.0.1:3425/v1');
     expect(restored).not.toContain(PROXY);
+    } finally { release(); }
   });
 });
 
 test('the route list is Tersio agents only, and a name outside it is refused', async () => {
   await withHome(async (home) => {
+    const release = pinHeadroom(home);
+    try {
     piHome(home);
     const { sent, ctx } = collector();
     await handleHeadroomRoutes(Object.assign(fakeMessage(), { url: '/api/headroom/route', method: 'GET' }), fakeResponse(), ctx);
@@ -113,6 +127,7 @@ test('the route list is Tersio agents only, and a name outside it is refused', a
     ctx.bodyOf = async () => ({ name: 'claude', on: true });
     await handleHeadroomRoutes(Object.assign(fakeMessage(), { url: '/api/headroom/route', method: 'POST' }), fakeResponse(), ctx);
     expect(sent[1]?.code).toBe(400);
+    } finally { release(); }
   });
 });
 
@@ -122,6 +137,8 @@ test('dsh routes the running profile, not the other one', async () => {
   process.env.DSH_PROFILE = 'web';
   try {
     await withHome(async (home) => {
+      const release = pinHeadroom(home);
+      try {
       bothDshProfiles(home);
       const { sent, ctx } = collector();
       ctx.bodyOf = async () => ({ name: 'dsh', on: true });
@@ -131,6 +148,7 @@ test('dsh routes the running profile, not the other one', async () => {
       const desktop = readFileSync(path.join(home, '.dsh', 'profiles', 'desktop', 'cordis.patch.yml'), 'utf8');
       expect(web).toContain(PROXY);
       expect(desktop).toContain('http://127.0.0.1:3425/v1');
+      } finally { release(); }
     });
   } finally {
     if (previous === undefined) delete process.env.DSH_PROFILE;

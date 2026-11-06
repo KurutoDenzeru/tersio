@@ -32,6 +32,7 @@
 - DeepSeek Harness is routed on the profile the app is actually running. The old code always wrote the desktop profile, even when `dsh web` was the one in use.
 - The first route for Pi, PiG or DeepSeek Harness now starts Headroom pointed at that agent's provider, instead of refusing with an instruction the user could not act on.
 - Switching omp's route off puts its gateway address back and removes the marker Tersio wrote.
+- A Headroom installed somewhere off `PATH` can be named with `TERSIO_HEADROOM_BIN`, instead of the install guessing.
 - The Tersio pill in DeepSeek Harness no longer fails to come back after a page refresh or a plugin update. The page could not load the same file twice, so it now keeps its own names to itself.
 - DeepSeek Harness no longer reports Tersio's MCP server as missing: its entry ships inside the plugin bundle, and the check now looks there.
 - Agents launched from the desktop now find Tersio's MCP server. The entry stores the full path when the command is findable, and keeps the short name as a fallback.

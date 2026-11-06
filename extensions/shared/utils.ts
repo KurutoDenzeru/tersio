@@ -137,6 +137,9 @@ function headroomUserScriptDir(): string | null {
 
 // Headroom ships as a pip/uv package whose console script often lands off PATH, so the probe walks python's user-script dir and ~/.local/bin (uv's tool bin) after PATH; no managed dir by default.
 export function resolveHeadroomBinary(managedDir: string | null = null): string | null {
+  // A pinned path wins: a uv or pipx install somewhere unusual, and the tests that need a known binary.
+  const pinned = (process.env.TERSIO_HEADROOM_BIN ?? '').trim();
+  if (pinned) return existsSync(pinned) && !statSync(pinned).isDirectory() ? pinned : null;
   const user = headroomUserScriptDir();
   const extraDirs = [user, path.join(homeDir(), '.local', 'bin')].filter((dir): dir is string => dir !== null);
   return firstExecutable(process.platform === 'win32' ? 'headroom.exe' : 'headroom', managedDir, extraDirs);
