@@ -350,9 +350,9 @@ export function isHeadroomWrapTarget(name: string): boolean {
   return (WRAP_TARGETS as readonly string[]).includes(name);
 }
 
-/** The two third-party binaries Tersio's footers manage; anything else is a bad request. */
-export function isVendorTool(tool: string): tool is 'headroom' | 'rtk' {
-  return tool === 'headroom' || tool === 'rtk';
+/** The third-party binary Tersio installs and removes; rtk manages its own, so anything else is a bad request. */
+export function isVendorTool(tool: string): tool is 'headroom' {
+  return tool === 'headroom';
 }
 
 /** The one Headroom install job, so the Tools page can poll until the binary appears or the pip run fails. */

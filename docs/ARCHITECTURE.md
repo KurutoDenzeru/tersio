@@ -106,6 +106,7 @@ flowchart LR
 ## Setup, update, and health
 
 - **One host table names every capability.** `extensions/shared/host-caps.ts` owns labels, commands, MCP shape, RTK binding, and Headroom support. Install, uninstall, MCP, and RTK read it instead of repeating host conditionals.
+- **rtk's binary is rtk's.** Tersio detects the binary and runs rtk's own `rtk init` binding; it never downloads, replaces, or deletes it. Install, `doctor --fix`, the updater, and uninstall all stop at detection and wiring, so a user's own rtk install is never overwritten or removed.
 - **Install writes one tree per agent and one manifest.** A second copy of the same file is treated as the bug.
 - **Doctor repairs or names the cleanup.** A partial tree reads as not installed. Legacy entries are removed.
 - **Update checks two sources.** The npm registry and the GitHub release feed are read together, and the newer version wins.

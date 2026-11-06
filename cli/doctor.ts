@@ -14,7 +14,7 @@ import { GENERATED_TREE_FILES } from './manifest.ts';
 import { askInteractiveChoice, askInteractiveConfirm, runInteractivePhase } from './interactive.ts';
 import { usageDbPath } from '../extensions/shared/usage-store.ts';
 
-import { piAgentDir, pigAgentDir, readTextIfExists, resolveHeadroomBinary, resolveHostBinary, resolveRtkBinary, rtkPlatformSpec, ruleBodyProblem } from '../extensions/shared/utils.ts';
+import { piAgentDir, pigAgentDir, readTextIfExists, resolveHeadroomBinary, resolveHostBinary, resolveRtkBinary, ruleBodyProblem } from '../extensions/shared/utils.ts';
 import { sqliteScript, statsDbPath } from '../extensions/shared/agent-stats.ts';
 import { OMP_SUBAGENT_MARKER } from '../extensions/shared/session-state.ts';
 import { describeHeadroomRoute, readHeadroomRoute } from '../extensions/shared/headroom-routing.ts';
@@ -243,14 +243,8 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
     console.log(`  ⚠️ ${label}: warn ${detail}`);
   }
 
-  // A Windows failure names its cause here: several rows below silently degrade when the platform has no rtk build, and a wrong home would move every one of them.
   section('Platform');
-  const rtkSpec = rtkPlatformSpec();
-  check('Platform', rtkSpec !== null, `${process.platform}/${process.arch}${rtkSpec ? ` · node ${process.version} · rtk ${rtkSpec.triple}` : ''}`);
-  if (rtkSpec === null) {
-    // Windows on ARM today: rtk publishes no build, so the RTK rows read as not installed.
-    console.log(`      rtk publishes no build for ${process.platform}/${process.arch}; every RTK row below reads as missing`);
-  }
+  check('Platform', true, `${process.platform}/${process.arch} · node ${process.version}`);
   console.log(`  Usage DB: ${usageDbPath()} (local only)`);
 
   section('Hosts');
@@ -509,7 +503,7 @@ async function runDoctorFix(tally: DoctorSummary): Promise<void> {
       { value: 'all', label: 'Fix everything', hint: `${tally.missing + tally.warn} rows` },
       { value: 'extensions', label: 'Missing extension files', hint: 'copy sources from this CLI' },
       { value: 'registrations', label: 'config.yml registrations', hint: 'remove stale entries; keep manifest-owned extensions out' },
-      { value: 'rtk', label: 'RTK binary + wiring', hint: 'download checksum-verified binary, rtk init' },
+      { value: 'rtk', label: 'RTK wiring', hint: 're-bind the installed rtk with rtk init' },
       { value: 'ponytail', label: 'Ponytail package', hint: 'bundled reinstall via tersio dep' },
       { value: 'cli', label: 'CLI update', hint: 'latest tersio + delegated refresh' },
       { value: 'service', label: 'OpenCode service', hint: 'stop an orphaned serve process, then start it' },

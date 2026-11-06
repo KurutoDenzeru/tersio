@@ -476,6 +476,22 @@ export function VendorFooter({
     onAfter();
   };
   const updateLabel = row?.upstream ? `Update to ${row.upstream}` : "Update";
+  // rtk owns its binary: this footer reports what upstream ships and never replaces it.
+  if (tool === "rtk") {
+    return (
+      <DrawerFooter className="border-t border-line px-6 pb-4 pt-3.5">
+        <div className="grid w-full gap-2">
+          <Button size="sm" variant="outline" disabled={phase === "checking"} onClick={() => void check()} className="w-full gap-1.5">
+            {phase === "checking" ? "Checking" : row ? "Check again" : "Check for updates"}
+            {phase === "checking" ? dots : <Icon name="refresh-cw" className="size-3.5" />}
+          </Button>
+          <p className="mb-0 mt-0 text-[11px] leading-4 text-dim">
+            rtk is its own install. Update it with rtk&apos;s installer; Tersio only binds it into this agent.
+          </p>
+        </div>
+      </DrawerFooter>
+    );
+  }
   return (
     <DrawerFooter className="border-t border-line px-6 pb-4 pt-3.5">
       {phase === "busy" ? <Progress value={null} className="w-full" /> : null}

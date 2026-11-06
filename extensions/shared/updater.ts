@@ -1,4 +1,4 @@
-// The in-session add-on updater behind /tersio update. Node built-ins only. RTK ships unsigned SHA256 checksums, so checksum-only it is.
+// The in-session add-on updater behind /tersio update. Node built-ins only. rtk's binary is its own to update.
 
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -12,23 +12,22 @@ import { patchState } from './state.ts';
 import {
   CAVEMAN_BODY_PATHS,
   CAVEMAN_RAW,
+  RTK_INSTALL_DOCS,
   RTK_RELEASE_API,
   cavemanRelease,
   fetchJson,
-  findFile,
   homeDir,
   httpsGet,
   httpsDownload,
   sha256Hex,
+  findFile,
   parseChecksum,
   normalizeRtkVersion,
   readTextIfExists,
-  rtkPlatformSpec,
   resolveRtkBinary,
 } from './utils.ts';
 import type { RtkRelease } from './utils.ts';
 
-const IS_WINDOWS = process.platform === 'win32';
 const EXTENSION_DIR = path.dirname(fileURLToPath(import.meta.url));
 
 const RTK_BINARY = resolveRtkBinary();
@@ -109,7 +108,7 @@ export async function runAddonUpdate(pi: { exec?: AddonUpdaterPi['exec'] }, ctx:
   const results: string[] = [];
   const updaters: Record<string, () => Promise<string>> = {
     ponytail: () => updatePonytail(pi, ctx, dryRun),
-    rtk: () => updateRtk(ctx, dryRun),
+    rtk: () => updateRtk(ctx),
     caveman: () => updateCaveman(ctx, dryRun),
   };
   if (target === 'all') {
@@ -186,123 +185,23 @@ async function updatePonytail(pi: AddonUpdaterPi, ctx: AddonUpdaterCtx, dryRun =
   }
 }
 
-async function fetchRelease(): Promise<RtkRelease> {
-  return fetchJson<RtkRelease>(RTK_RELEASE_API);
-}
-
-async function updateRtk(ctx: AddonUpdaterCtx, dryRun = false): Promise<string> {
-  let release: RtkRelease;
+/** rtk updates itself through its own installer; this reports whether one is waiting, and never touches the binary. */
+async function updateRtk(ctx: AddonUpdaterCtx): Promise<string> {
+  if (!RTK_BINARY) return report(ctx, `RTK: not installed — get it from ${RTK_INSTALL_DOCS}`, 'warning');
+  let local: string;
   try {
-    release = await fetchRelease();
+    local = normalizeRtkVersion(execFileSync(RTK_BINARY, ['--version'], { encoding: 'utf8', windowsHide: true, shell: false, timeout: 10000 }).trim());
   } catch (e) {
-    const m = `RTK: cannot fetch release info: ${(e as Error).message}`;
-    return report(ctx, m, 'warning');
+    return report(ctx, `RTK: ${RTK_BINARY} --version failed: ${(e as Error).message}`, 'warning');
   }
-  const tag = release.tag_name || 'unknown';
-  const assets = Array.isArray(release.assets) ? release.assets : [];
-  if (!RTK_BINARY) return report(ctx, 'RTK: executable not found in PATH', 'warning');
-
-  const PLATFORM = process.platform;
-  const ARCH = process.arch;
-  const spec = rtkPlatformSpec(PLATFORM, ARCH);
-  if (!spec) {
-    const m = `RTK: unsupported platform ${PLATFORM}/${ARCH}`;
-    return report(ctx, m, 'warning');
-  }
-  const { triple: assetTriple, ext: assetExt, binary: binaryName } = spec;
-
-  const asset = assets.find((a) => a.name === `rtk-${assetTriple}${assetExt}`);
-  const checksAsset = assets.find((a) => a.name === 'checksums.txt');
-  if (!asset || !checksAsset) {
-    const m = `RTK: required assets not found in release ${tag} (need rtk-${assetTriple}${assetExt} and checksums.txt)`;
-    return report(ctx, m, 'warning');
-  }
-
-  if (dryRun) {
-    const m = `RTK dry-run: would download ${asset.name} (${tag}), verify checksums.txt, and replace ${RTK_BINARY}.`;
-    return report(ctx, m, 'info');
-  }
-
-  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'rtk-update-'));
-  const archivePath = path.join(tmp, asset.name);
-  const checksPath = path.join(tmp, 'checksums.txt');
-
+  let latest: string;
   try {
-    notify(ctx, `RTK: downloading ${asset.name} (${tag})…`, 'info');
-    notify(ctx, 'RTK: downloading checksums.txt…', 'info');
-    await Promise.all([
-      httpsDownload(asset.browser_download_url, archivePath),
-      httpsDownload(checksAsset.browser_download_url, checksPath),
-    ]);
-    const checks = await fs.readFile(checksPath, 'utf8');
-    const expected = parseChecksum(checks, asset.name);
-    if (!expected) {
-      const m = `RTK: checksums.txt has no entry for ${asset.name}; not installing`;
-      return report(ctx, m, 'error');
-    }
-    const archiveBuf = await fs.readFile(archivePath);
-    const actual = createHash('sha256').update(archiveBuf).digest('hex').toLowerCase();
-    if (actual !== expected) {
-      const m = `RTK: checksum mismatch! expected=${expected.slice(0, 12)}… actual=${actual.slice(0, 12)}…; not installing`;
-      return report(ctx, m, 'error');
-    }
-    notify(ctx, 'RTK: checksum verified.', 'info');
-
-    const extractDir = path.join(tmp, 'extracted');
-    await fs.mkdir(extractDir, { recursive: true });
-
-    if (asset.name.endsWith('.zip')) {
-      if (IS_WINDOWS) {
-        execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
-          `Expand-Archive -LiteralPath '${archivePath}' -DestinationPath '${extractDir}' -Force`],
-          { encoding: 'utf8', windowsHide: true, shell: false });
-      } else {
-        execFileSync('unzip', [archivePath, '-d', extractDir], { encoding: 'utf8', shell: false });
-      }
-    } else if (asset.name.endsWith('.tar.gz') || asset.name.endsWith('.tgz')) {
-      try {
-        execFileSync('tar', ['xzf', archivePath, '-C', extractDir], { encoding: 'utf8', shell: false });
-      } catch (e) {
-        throw new Error(`tar could not extract ${asset.name}: ${(e as Error).message}`, { cause: e });
-      }
-    } else {
-      throw new Error(`Unknown archive format: ${asset.name}`);
-    }
-    const rtkExtracted = await findFile(extractDir, binaryName);
-    if (!rtkExtracted) {
-      const m = `RTK: ${binaryName} not found in extracted archive`;
-      return report(ctx, m, 'warning');
-    }
-    await fs.mkdir(path.dirname(RTK_BINARY), { recursive: true });
-    const backupPath = `${RTK_BINARY}.bak`;
-    const backedUp = await fs.copyFile(RTK_BINARY, backupPath).then(() => true, () => false);
-
-    await fs.copyFile(rtkExtracted, RTK_BINARY);
-
-    if (!IS_WINDOWS) {
-      await fs.chmod(RTK_BINARY, 0o755);
-    }
-
-    let versionOut = '';
-    try {
-      versionOut = execFileSync(RTK_BINARY, ['--version'], { encoding: 'utf8', windowsHide: true, shell: false, timeout: 10000 }).trim();
-    } catch (e) {
-      if (backedUp) await fs.copyFile(backupPath, RTK_BINARY);
-      throw new Error(`new ${binaryName} failed --version${backedUp ? '; restored backup' : ''}: ${(e as Error).message}`, { cause: e });
-    }
-    if (normalizeRtkVersion(versionOut) !== normalizeRtkVersion(tag)) {
-      if (backedUp) await fs.copyFile(backupPath, RTK_BINARY);
-      throw new Error(`new ${binaryName} reports ${versionOut}, expected ${tag}${backedUp ? '; restored backup' : ''}`);
-    }
-    const m = `RTK updated to ${tag} → ${RTK_BINARY}\nbackup=${backedUp ? backupPath : '—'}\n${RELOAD_MSG}`;
-    notify(ctx, 'RTK update finished. ' + RELOAD_MSG, 'info');
-    return m;
+    latest = normalizeRtkVersion((await fetchJson<RtkRelease>(RTK_RELEASE_API)).tag_name);
   } catch (e) {
-    const m = `RTK update failed: ${(e as Error).message}`;
-    return report(ctx, m, 'warning');
-  } finally {
-    fs.rm(tmp, { recursive: true, force: true }).catch(() => { });
+    return report(ctx, `RTK ${local}: cannot fetch release info: ${(e as Error).message}`, 'warning');
   }
+  if (!latest || latest === local) return report(ctx, `RTK ${local} is up to date.`, 'info');
+  return report(ctx, `RTK ${latest} is available (installed ${local}). Tersio does not install the binary — update it with the rtk installer: ${RTK_INSTALL_DOCS}`, 'info');
 }
 
 async function updateCaveman(ctx: AddonUpdaterCtx, dryRun = false): Promise<string> {
