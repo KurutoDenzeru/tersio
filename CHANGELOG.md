@@ -13,6 +13,7 @@
 - RTK now works in DeepSeek Harness with nothing extra to install. Once RTK is on, shell commands are shortened for you.
 
 ### Changed
+- Tersio now writes the headroom endpoint for every agent itself, including omp and OpenCode. Uninstalling, or switching a route off, puts the old endpoint back from Tersio's own record; Tersio no longer asks headroom to unwrap anything.
 - The Headroom card in the dashboard is one switch per agent: it points that agent's provider at the local proxy and keeps it there across restarts. The separate wrapped-tools list and the saved record of which tool was wrapped when are gone.
 - Tersio no longer downloads, replaces, or removes the rtk program. `tersio install` uses the binary already on your machine, the way rtk's own docs describe. rtk is part of what Tersio ships, so a machine without it gets rtk's own quick install automatically — their `install.sh` script on macOS and Linux, `winget install rtk-ai.rtk` on Windows — with no question to answer. If the new rtk lands somewhere your shell cannot see yet, the install says exactly which line to add to your shell profile.
 - `tersio doctor --fix` re-connects rtk instead of downloading it, and `tersio uninstall --remove-rtk` removes Tersio's connection but never your rtk program.
@@ -28,6 +29,10 @@
 - The same RTK command rewriting now serves Pi, Pi-In-Go, Oh My Pi, and DeepSeek Harness from one shared piece, so a fix reaches all of them at once.
 
 ### Fixed
+- OpenCode and omp are routed without headroom's own writer, so the off switch restores the file Tersio changed instead of depending on a command that may not exist.
+- An omp model served by a gateway block (the usual magpie setup) is now routed under that block instead of failing with "not in the agent's catalog".
+- `tersio doctor` names an agent whose headroom route drifted, and names a route that is in place.
+- The RTK install gives up after two minutes instead of five when the machine is offline.
 - Headroom's proxy now starts with the agent session, not only when the dashboard is open. A routed agent works after a reboot without anything else running first.
 - DeepSeek Harness is routed on the profile the app is actually running. The old code always wrote the desktop profile, even when `dsh web` was the one in use.
 - The first route for Pi, PiG or DeepSeek Harness now starts Headroom pointed at that agent's provider, instead of refusing with an instruction the user could not act on.
