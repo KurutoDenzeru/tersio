@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/icon";
 import { usePending } from "@/hooks/use-pending";
 import { isFileExport } from "@/lib/data";
-import { fetchHealth, fetchWrapTargets } from "@/lib/data";
+import { fetchHealth, fetchRoutes } from "@/lib/data";
 import type { ModeState } from "./shell";
 import { useToast } from "../toaster";
 import { AddAgentDialog } from "./how-to-node-ui";
@@ -25,9 +25,9 @@ export function HowToPage({ modes, onModesChanged }: { modes: ModeState | null; 
 
   useEffect(() => {
     const readRoutes = (): void => {
-      void fetchWrapTargets().then((state) => {
+      void fetchRoutes().then((state) => {
         if (!state) return;
-        setHeadroomRoutes(Object.fromEntries(state.targets.map((target) => [target.name, target.installed === true])));
+        setHeadroomRoutes(Object.fromEntries(state.targets.map((target) => [target.name, target.routed])));
       });
     };
     void readHosts()
@@ -102,9 +102,9 @@ export function HowToPage({ modes, onModesChanged }: { modes: ModeState | null; 
                 const version = versionOf(report[host as "omp" | "pi" | "pig" | "opencode"]);
                 if (version) setHostState((s) => ({ ...s, versions: { ...s.versions, [host]: version } }));
               });
-              void fetchWrapTargets().then((state) => {
+              void fetchRoutes().then((state) => {
                 if (!state) return;
-                setHeadroomRoutes(Object.fromEntries(state.targets.map((target) => [target.name, target.installed === true])));
+                setHeadroomRoutes(Object.fromEntries(state.targets.map((target) => [target.name, target.routed])));
               });
               if (job?.code === 0) {
                 toast(`${host}: ${action} done`, "The agent list is up to date.", "check");
