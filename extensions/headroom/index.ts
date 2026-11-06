@@ -14,6 +14,11 @@ import type { HeadroomRoute } from '../shared/headroom-routing.ts';
 import type { ExtensionApi, ExtensionCtx, InputEvent, SessionEntry, SystemPromptEvent } from '../shared/types.ts';
 
 const DEFAULT_MODE = 'off';
+
+/** True when this session needs the proxy: the mode compresses traffic, or a route points at it. */
+export function needsHeadroomProxy(mode: string, routed: boolean): boolean {
+  return mode === 'on' || routed;
+}
 export const HEADROOM_INSTALL_HINT = 'pip install "headroom-ai[all]"';
 
 // A successful probe holds for longer than a miss, so a turn never pays the timeout twice in a row.
@@ -134,7 +139,9 @@ export default function headroomSessionExtension(pi: ExtensionApi): void {
   // A route outlives a reboot; the proxy does not, and a route to a dead port fails the first request.
   // Fire-and-forget: the session starts now, and headroom answers within its own wait window.
   function startRuntime(): void {
-    if (currentMode !== 'on') return;
+    // A route is independent of the mode: the dashboard can point an agent at the proxy with the
+    // prompt block switched off, and that agent still needs something listening.
+    if (!needsHeadroomProxy(currentMode, readHeadroomRoute(host).routed)) return;
     const bin = resolveHeadroomBinary();
     if (!bin) return;
     // ensureHeadroomRuntime probes /readyz first, so a proxy that is already up costs one request.

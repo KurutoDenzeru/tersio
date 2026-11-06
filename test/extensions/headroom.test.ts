@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import headroomSessionExtension, { HEADROOM_INSTALL_HINT, headroomInstruction } from "../../extensions/headroom/index.ts";
+import headroomSessionExtension, { HEADROOM_INSTALL_HINT, headroomInstruction, needsHeadroomProxy } from "../../extensions/headroom/index.ts";
 import { readHeadroomRoute } from "../../extensions/shared/headroom-routing.ts";
 import comboToggleExtension from "../../extensions/combo/index.ts";
 import { getSharedComboState, resetSharedComboState } from "../../extensions/shared/session-state.ts";
@@ -363,4 +363,11 @@ test("a route another tool reset is put back once, and the session says so", asy
     if (previousUrl === undefined) delete process.env.TERSIO_HEADROOM_PROXY_URL;
     else process.env.TERSIO_HEADROOM_PROXY_URL = previousUrl;
   }
+});
+
+test("a route needs the proxy even with the prompt mode off", () => {
+  // The dashboard writes a route on its own, so the mode alone cannot decide whether to start it.
+  expect(needsHeadroomProxy("on", false)).toBe(true);
+  expect(needsHeadroomProxy("off", true)).toBe(true);
+  expect(needsHeadroomProxy("off", false)).toBe(false);
 });
