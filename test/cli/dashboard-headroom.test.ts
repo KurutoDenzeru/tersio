@@ -81,7 +81,6 @@ function collector(): { sent: Array<{ code: number; body: Record<string, unknown
     bodyOf: async () => body.value,
     spawnHeadroomInstall: () => false,
     headroomInstallState: () => ({ startedAt: 0, code: null, error: null }),
-    headroomRun: async () => ({ ok: true, lines: ['unwrapped'] }),
     ensureRuntime: async () => ({ ok: true, detail: 'started' }),
   };
   return { sent, ctx, body };
@@ -154,4 +153,74 @@ test('dsh routes the running profile, not the other one', async () => {
     if (previous === undefined) delete process.env.DSH_PROFILE;
     else process.env.DSH_PROFILE = previous;
   }
+});
+
+/** An OpenCode config with one provider the active model names. */
+function opencodeHome(home: string): void {
+  const dir = path.join(home, '.config', 'opencode');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(path.join(dir, 'opencode.json'), JSON.stringify({
+    model: 'magpie/deepseek-v4.1',
+    provider: { magpie: { options: { baseURL: 'http://127.0.0.1:3425/v1' } } },
+  }, null, 2), 'utf8');
+}
+
+/** omp keeps its provider blocks in a YAML file and the default role in another. */
+function ompHome(home: string): void {
+  const dir = path.join(home, '.omp', 'agent');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(path.join(dir, 'models.yml'), `providers:
+  magpie:
+    api: openai-completions
+    baseUrl: http://127.0.0.1:3425/v1
+    models:
+    - id: commandcode/deepseek/deepseek-v4.1-flash
+`, 'utf8');
+  writeFileSync(path.join(dir, 'config.yml'), `modelRoles:
+  default: commandcode/deepseek/deepseek-v4.1-flash:high
+`, 'utf8');
+}
+
+test('opencode gets our own route, and our own restore', async () => {
+  await withHome(async (home) => {
+    const release = pinHeadroom(home);
+    try {
+      opencodeHome(home);
+      const file = path.join(home, '.config', 'opencode', 'opencode.json');
+      const { sent, ctx } = collector();
+      ctx.bodyOf = async () => ({ name: 'opencode', on: true });
+      await handleHeadroomRoutes(Object.assign(fakeMessage(), { url: '/api/headroom/route', method: 'POST' }), fakeResponse(), ctx);
+      expect(sent[0]?.body.ok, String(sent[0]?.body.error)).toBe(true);
+      expect(readFileSync(file, 'utf8')).toContain(PROXY);
+
+      ctx.bodyOf = async () => ({ name: 'opencode', on: false });
+      await handleHeadroomRoutes(Object.assign(fakeMessage(), { url: '/api/headroom/route', method: 'POST' }), fakeResponse(), ctx);
+      expect(sent[1]?.body.ok, String(sent[1]?.body.error)).toBe(true);
+      const restored = readFileSync(file, 'utf8');
+      expect(restored).toContain('http://127.0.0.1:3425/v1');
+      expect(restored).not.toContain(PROXY);
+    } finally { release(); }
+  });
+});
+
+test('omp gets our own route, and our own restore', async () => {
+  await withHome(async (home) => {
+    const release = pinHeadroom(home);
+    try {
+      ompHome(home);
+      const file = path.join(home, '.omp', 'agent', 'models.yml');
+      const { sent, ctx } = collector();
+      ctx.bodyOf = async () => ({ name: 'omp', on: true });
+      await handleHeadroomRoutes(Object.assign(fakeMessage(), { url: '/api/headroom/route', method: 'POST' }), fakeResponse(), ctx);
+      expect(sent[0]?.body.ok, String(sent[0]?.body.error)).toBe(true);
+      expect(readFileSync(file, 'utf8')).toContain('http://127.0.0.1:8787/v1');
+
+      ctx.bodyOf = async () => ({ name: 'omp', on: false });
+      await handleHeadroomRoutes(Object.assign(fakeMessage(), { url: '/api/headroom/route', method: 'POST' }), fakeResponse(), ctx);
+      expect(sent[1]?.body.ok, String(sent[1]?.body.error)).toBe(true);
+      const restored = readFileSync(file, 'utf8');
+      expect(restored).toContain('http://127.0.0.1:3425/v1');
+      expect(restored).not.toContain('tersio-headroom-upstream');
+    } finally { release(); }
+  });
 });

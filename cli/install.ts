@@ -26,12 +26,10 @@ import {
 import { findPackageRoot, homeDir } from '../extensions/shared/utils.ts';
 import { patchState } from '../extensions/shared/state.ts';
 import { CAVEMAN_PIN } from './upstream.ts';
-import { headroomHostSupported, headroomProxyPort, headroomProxyUrl, installDurableConfig, readOmpGateway, routeOmpGateway } from '../extensions/shared/headroom-proxy.ts';
-import { ensureAgentProviderRoute } from '../extensions/shared/headroom-agent.ts';
-import { describeHeadroomRoute, readHeadroomRoute } from '../extensions/shared/headroom-routing.ts';
-import { installNativeRoute, isNativeRouteHost } from '../extensions/shared/headroom-routes.ts';
+import { headroomHostSupported, headroomProxyPort, headroomProxyUrl, readOmpGateway } from '../extensions/shared/headroom-proxy.ts';
 import { ensureTersioMcp, tersioMcpConfigured, tersioMcpSupported } from '../extensions/shared/mcp-config.ts';
 import { ensureHeadroomRuntime } from '../extensions/shared/headroom-runtime.ts';
+import { routeHostOn } from '../extensions/shared/headroom-routes.ts';
 import type { HostDefaultField } from './profile.ts';
 import { formatCliStatus, saveHostDefaults, storedProfile, storedProfileSync, writePluginSettings } from './profile.ts';
 import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
@@ -182,7 +180,7 @@ async function installRtk(options: InstallOptions): Promise<string | null> {
   const route = rtkInstallRoute();
   if (!options.quiet) console.log(`  RTK — not installed; running ${route.label}`);
   try {
-    await execP(route.cmd, route.args, { timeout: 300_000 });
+    await execP(route.cmd, route.args, { timeout: 120_000 });
   } catch (e) {
     sayTagged(`  [warn] ${route.label} failed: ${shortError(e)}`);
     return null;
@@ -532,24 +530,10 @@ async function lifecycleHeadroom(host: HostId, enabled: boolean, profile: Profil
     // The config points the agent at the proxy, so the runtime starts first.
     const runtime = await ensureHeadroomRuntime(bin, gateway?.baseUrl);
     if (!runtime.ok) throw new Error(runtime.detail);
-    if (isNativeRouteHost(host)) {
-      // A provider the host keeps in its own catalog needs a block before the endpoint can move.
-      const ensured = ensureAgentProviderRoute(host, port);
-      if (!ensured.ok) throw new Error(ensured.detail);
-      const routed = installNativeRoute(host, headroomProxyUrl());
-      if (!routed.ok) throw new Error(routed.detail);
-    } else {
-      if (!(await installDurableConfig(bin, host, port))) throw new Error('headroom could not write the config');
-      // headroom's own writer never touches a gateway's provider line, so Tersio moves it too.
-      if (gateway && !routeOmpGateway(gateway, port)) throw new Error(`headroom could not point ${gateway.provider} at the proxy`);
-      // A provider the agent keeps built in needs its own block; its catalog supplies the endpoint.
-      const ensured = ensureAgentProviderRoute(host, port);
-      if (!ensured.ok) throw new Error(ensured.detail);
-    }
-    // The reader decides: a config that still bypasses the proxy is a failure, not a routed host.
-    const route = readHeadroomRoute(host);
-    if (!route.routed) throw new Error(describeHeadroomRoute(route));
-    if (!quiet) sayTagged(`  Headroom — ${isNativeRouteHost(host) ? 'endpoint routed' : 'durable integration installed'} for ${hostEntry(host).label}`);
+    // One writer per agent, all of them Tersio's: the route is written and put back here.
+    const routed = await routeHostOn(host, headroomProxyUrl());
+    if (!routed.ok) throw new Error(routed.detail);
+    if (!quiet) sayTagged(`  Headroom — endpoint routed for ${hostEntry(host).label}`);
   } catch (e) {
     if (!quiet) sayTagged(`  Headroom — ${hostEntry(host).label} integration failed: ${(e as Error).message}`);
   }

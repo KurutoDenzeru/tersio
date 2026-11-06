@@ -1,10 +1,9 @@
 // Headroom's durable agent integrations: the config writers its own `init` does not cover, plus the
 // omp model route. Nothing here starts a proxy; headroom's own install does that.
-import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { homeDir } from './utils.ts';
-import { HOST_CAPS, hostCap } from './host-caps.ts';
+import { hostCap } from './host-caps.ts';
 import { sqliteRead } from './sqlite.ts';
 
 
@@ -58,17 +57,12 @@ export function headroomProxyPort(): number {
   return HEADROOM_PORT;
 }
 
-/** Headroom can write these two configs durably itself, though its `init` does not list them. */
-export const DURABLE_CONFIG = Object.values(HOST_CAPS)
-  .filter((cap) => cap.headroomDurable === true)
-  .map((cap) => cap.id) as ReadonlyArray<'omp' | 'opencode'>;
-
 /** The Tersio hosts headroom can route, with a writer or a hand-set provider endpoint. */
 export function headroomHostSupported(host: string): boolean {
   return hostCap(host)?.headroom === true;
 }
 
-/** True when the host has a writer Tersio can run; the rest need a manual endpoint. */
+/** True when the host's provider block lives in a file Tersio writes itself. */
 export function headroomHostDurable(host: string): boolean {
   return hostCap(host)?.headroomDurable === true;
 }
@@ -145,52 +139,6 @@ export function ompCachedEndpoint(model: string): OmpCachedEndpoint | null {
 /** OpenCode's config; the first that exists wins, matching headroom's own lookup order. */
 export function opencodeConfigFiles(): string[] {
   return [path.join(homeDir(), '.config', 'opencode', 'opencode.json'), path.join(homeDir(), '.config', 'opencode', 'opencode.jsonc')];
-}
-
-/** True when headroom's own writer already installed the durable block for this tool. */
-export function durableConfigInstalled(name: string): boolean {
-  try {
-    if (name === 'omp') return fs.readFileSync(ompModelsFile(), 'utf8').includes('managed by `headroom wrap omp`');
-    if (name === 'opencode') {
-      for (const file of opencodeConfigFiles()) {
-        try {
-          if (/"headroom"\s*:/.test(fs.readFileSync(file, 'utf8'))) return true;
-        } catch { /* try the next path */ }
-      }
-    }
-  } catch { /* absent */ }
-  return false;
-}
-
-/** The Python behind the headroom console script; its durable writers live in that package, not in the CLI. */
-function headroomPython(bin: string): string | null {
-  try {
-    const real = fs.realpathSync(bin);
-    for (const name of process.platform === 'win32' ? ['python.exe', 'python3.exe'] : ['python3', 'python']) {
-      const candidate = path.join(path.dirname(real), name);
-      if (fs.existsSync(candidate)) return candidate;
-    }
-  } catch { /* not a script with a sibling interpreter */ }
-  return null;
-}
-
-/** Writes the durable block headroom's own wrap would write, without launching the tool. */
-export async function installDurableConfig(bin: string, name: string, port: number = HEADROOM_PORT): Promise<boolean> {
-  const python = headroomPython(bin);
-  if (!python) return false;
-  const call = name === 'omp'
-    ? `from headroom.providers.omp.runtime import inject_models_override as f; f(${port})`
-    : name === 'opencode'
-      ? `from headroom.providers.opencode.config import inject_opencode_provider_config as f; f(${port})`
-      : null;
-  if (!call) return false;
-  try {
-    // Headroom's own module reads the same env and writes the same marker, backup, and unwrap record.
-    execFileSync(python, ['-c', call], { timeout: 60_000, cwd: homeDir(), stdio: 'ignore', windowsHide: true });
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 export interface OmpGatewayRoute {

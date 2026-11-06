@@ -28,6 +28,8 @@ export interface HeadroomRouteRecord {
   provider: string;
   /** The model entry whose own endpoint was rewritten, when it was not the provider's. */
   model?: string;
+  /** The dotted key inside the provider block that holds the endpoint, when it is nested. */
+  key?: string;
   original: string;
   written: string;
 }

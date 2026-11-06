@@ -545,7 +545,7 @@ test("uninstall --host opencode removes the plugin entries it wrote", () => {
   }
 });
 
-test.skipIf(process.platform === "win32")("uninstall --host opencode unwraps its headroom route first", () => {
+test.skipIf(process.platform === "win32")("uninstall never asks headroom to unwrap a route", () => {
   const home = tempHome();
   try {
     const dir = path.join(home, ".config", "opencode", "plugins", "tersio");
@@ -560,7 +560,10 @@ test.skipIf(process.platform === "win32")("uninstall --host opencode unwraps its
     chmodSync(bin, 0o755);
     const result = run(home, ["uninstall", "--host", "opencode", "--yes"]);
     expect(result.status, result.stderr).toBe(0);
-    expect(readFileSync(log, "utf8")).toContain("unwrap opencode --no-stop-proxy");
+    // Every endpoint Tersio wrote is one Tersio puts back; headroom is never asked to remove one.
+    const calls = existsSync(log) ? readFileSync(log, "utf8") : "";
+    expect(calls).not.toContain("unwrap");
+    expect(result.stdout).not.toMatch(/unwrap/i);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

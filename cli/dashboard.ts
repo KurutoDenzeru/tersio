@@ -22,7 +22,7 @@ import { handleHeadroomRoutes } from './dashboard-headroom.ts';
 import { handleVendorRoutes } from './dashboard-vendor.ts';
 import { handleHostRoutes } from './dashboard-hosts.ts';
 import {
-  OMP_AGENT_DIR, OMP_PLUGINS_DIR, PACKAGE_VERSION, execFileP,
+  OMP_AGENT_DIR, OMP_PLUGINS_DIR, PACKAGE_VERSION,
 } from './common.ts';
 import { BACKUP_SCHEDULES, applyComboPreset, clampSidebarWidth, comboLevelOf, formatCliStatus, RETENTION_DAYS, saveHostDefaults, storedProfile, writePluginSettings } from './profile.ts';
 import { readState } from '../extensions/shared/state.ts';
@@ -783,20 +783,6 @@ async function bodyOf(req: http.IncomingMessage): Promise<Record<string, unknown
   }
 }
 
-/** The last lines of a command's output, trimmed to non-empty ones. */
-const tail = (text: string): string[] => text.trim().split('\n').filter(Boolean);
-
-/** Runs a headroom command and returns its last lines; a failure carries the same tail. */
-async function headroomRun(bin: string, args: string[], timeout: number): Promise<{ ok: boolean; lines: string[] }> {
-  try {
-    // The home cwd keeps headroom's project-local artifacts (wrap locks in .claude) out of whatever directory the dashboard was launched from.
-    const run = await execFileP(bin, args, { timeout, cwd: homeDir() });
-    return { ok: true, lines: tail(`${run.stdout}\n${run.stderr}`) };
-  } catch (e) {
-    const err = e as { stdout?: string; stderr?: string };
-    return { ok: false, lines: tail(`${err.stdout ?? ''}\n${err.stderr ?? ''}`) };
-  }
-}
 
 function openBrowser(url: string): void {
   const [cmd, argv] = openCommand(url);
@@ -964,7 +950,7 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
       return;
     }
     if (await handleHeadroomRoutes(req, res, {
-      json, bodyOf, spawnHeadroomInstall, headroomInstallState, headroomRun,
+      json, bodyOf, spawnHeadroomInstall, headroomInstallState,
       ensureRuntime: ensureHeadroomRuntime,
     })) return;
     if (await handleVendorRoutes(req, res, { json, bodyOf, spawnHeadroomInstall, isVendorTool })) return;

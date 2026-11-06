@@ -3,19 +3,18 @@
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { headroomProxyUpstream, headroomProxyUrl } from './headroom-proxy.ts';
-import {
-  durableConfigInstalled, headroomProxyPort, installDurableConfig, readOmpGateway, routeOmpGateway,
-} from './headroom-proxy.ts';
-import { describeHeadroomRoute, dshDefaultRoute, dshProfileFiles, dshProviders, jsonBaseUrl, jsonModelEntry, readHeadroomRoute, sameProxyEndpoint } from './headroom-routing.ts';
+import { headroomProxyUpstream, headroomProxyUrl, opencodeConfigFiles } from './headroom-proxy.ts';
+import { headroomProxyPort, readOmpGateway, restoreOmpGateway, routeOmpDefaultModel, routeOmpGateway } from './headroom-proxy.ts';
+import { ensureAgentProviderRoute } from './headroom-agent.ts';
+import { describeHeadroomRoute, dshDefaultRoute, dshProfileFiles, dshProviders, jsonBaseUrl, jsonModelEntry, readHeadroomRoute, sameProxyEndpoint, stripJsonComments } from './headroom-routing.ts';
 import type { HeadroomRoute } from './headroom-routing.ts';
 import { hostCap } from './host-caps.ts';
 import { patchState, readState } from './state.ts';
-import { homeDir, piAgentDir, pigAgentDir, resolveHeadroomBinary } from './utils.ts';
+import { homeDir, piAgentDir, pigAgentDir } from './utils.ts';
 import type { HeadroomRouteRecord } from './state.ts';
 
-export type NativeRouteHost = 'pi' | 'pig' | 'dsh';
-export const NATIVE_ROUTE_HOSTS: ReadonlyArray<NativeRouteHost> = ['pi', 'pig', 'dsh'];
+export type NativeRouteHost = 'pi' | 'pig' | 'dsh' | 'opencode';
+export const NATIVE_ROUTE_HOSTS: ReadonlyArray<NativeRouteHost> = ['pi', 'pig', 'dsh', 'opencode'];
 
 export interface NativeRouteResult {
   ok: boolean;
@@ -77,6 +76,10 @@ interface Target {
   api: string;
   original: string;
   write: (url: string) => void;
+  /** A provider block that records no upstream to compare: its endpoint is set by hand today. */
+  skipUpstream?: boolean;
+  /** The dotted key inside the provider block, when the endpoint is nested. */
+  key?: string;
 }
 
 function readJson(file: string): Record<string, unknown> | null {
@@ -198,10 +201,77 @@ function dshTargets(): Target[] {
   return targets;
 }
 
+/** The dotted key an OpenCode provider keeps its endpoint under, or '' when it has none. */
+function opencodeEndpointKey(block: Record<string, unknown>): string {
+  const options = block.options && typeof block.options === 'object' ? block.options as Record<string, unknown> : null;
+  for (const key of ['baseURL', 'baseUrl', 'base_url']) {
+    if (options && typeof options[key] === 'string') return `options.${key}`;
+    if (typeof block[key] === 'string') return key;
+  }
+  return '';
+}
+
+function readDotted(record: Record<string, unknown>, key: string): unknown {
+  return key.split('.').reduce<unknown>((value, part) => (value && typeof value === 'object' ? (value as Record<string, unknown>)[part] : undefined), record);
+}
+
+function writeDotted(record: Record<string, unknown>, key: string, value: string): void {
+  const parts = key.split('.');
+  let cursor: Record<string, unknown> = record;
+  for (const part of parts.slice(0, -1)) {
+    const next = cursor[part];
+    if (!next || typeof next !== 'object') throw new Error(`${part} is not an object`);
+    cursor = next as Record<string, unknown>;
+  }
+  cursor[parts[parts.length - 1]!] = value;
+}
+
+/**
+ * OpenCode keeps its provider endpoint in its own JSON. A `.jsonc` file is left alone: rewriting it
+ * would drop the user's comments, so the row says to add the endpoint by hand instead.
+ */
+function opencodeTargets(): Target[] {
+  for (const file of opencodeConfigFiles()) {
+    if (!existsSync(file)) continue;
+    if (file.endsWith('.jsonc')) return [];
+    let data: Record<string, unknown>;
+    try { data = JSON.parse(stripJsonComments(readFileSync(file, 'utf8'))) as Record<string, unknown>; } catch { return []; }
+    const model = typeof data.model === 'string' ? data.model : '';
+    if (!model.includes('/')) return [];
+    const provider = model.slice(0, model.indexOf('/'));
+    const providers = data.provider && typeof data.provider === 'object' ? data.provider as Record<string, unknown> : {};
+    const block = providers[provider];
+    if (!block || typeof block !== 'object') return [];
+    const key = opencodeEndpointKey(block as Record<string, unknown>);
+    if (!key) return [];
+    const original = readDotted(block as Record<string, unknown>, key);
+    if (typeof original !== 'string') return [];
+    return [{
+      file,
+      provider,
+      // OpenCode's block names a package, not an API dialect, so there is no upstream to compare.
+      api: '',
+      skipUpstream: true,
+      key,
+      original,
+      write: (url: string) => {
+        const fresh = JSON.parse(stripJsonComments(readFileSync(file, 'utf8'))) as Record<string, unknown>;
+        const freshProviders = fresh.provider && typeof fresh.provider === 'object' ? fresh.provider as Record<string, unknown> : {};
+        const target = freshProviders[provider];
+        if (!target || typeof target !== 'object') throw new Error(`${provider} is not in ${file}`);
+        writeDotted(target as Record<string, unknown>, key, url);
+        writeFileSync(file, `${JSON.stringify(fresh, null, 2)}\n`, 'utf8');
+      },
+    }];
+  }
+  return [];
+}
+
 const TARGET_PLANNERS: Record<NativeRouteHost, () => Target[]> = {
   pi: () => piTargets('pi'),
   pig: () => piTargets('pig'),
   dsh: dshTargets,
+  opencode: opencodeTargets,
 };
 
 function targetsFor(host: NativeRouteHost): Target[] {
@@ -220,7 +290,7 @@ export function installNativeRoute(host: NativeRouteHost, proxyUrl: string = hea
   if (targets.length === 0) return { ok: false, detail: `no active provider endpoint found for ${host}` };
   // A route only makes sense when the proxy names the provider it replaces for this protocol.
   for (const target of targets) {
-    if (target.model) continue;
+    if (target.model || target.skipUpstream) continue;
     const upstream = headroomProxyUpstream(target.api);
     if (!upstream) {
       const flag = /anthropic/i.test(target.api) ? '--anthropic-api-url' : '--openai-api-url';
@@ -253,7 +323,7 @@ export function installNativeRoute(host: NativeRouteHost, proxyUrl: string = hea
       if (sameProxyEndpoint(target.original, url)) continue;
       target.write(url);
       applied.push(target);
-      records.push({ file: target.file, provider: target.provider, model: target.model, original: target.original, written: url });
+      records.push({ file: target.file, provider: target.provider, model: target.model, original: target.original, written: url, ...(target.key ? { key: target.key } : {}) });
     }
   } catch (e) {
     for (const target of applied) {
@@ -274,6 +344,34 @@ export function installNativeRoute(host: NativeRouteHost, proxyUrl: string = hea
   };
 }
 
+/** Point one agent at the proxy, through whichever writer that agent's config needs. */
+export async function routeHostOn(host: string, proxyUrl: string = headroomProxyUrl()): Promise<NativeRouteResult> {
+  const port = headroomProxyPort();
+  // A provider the host keeps in its own catalog needs a block before the endpoint can move.
+  const ensured = ensureAgentProviderRoute(host, port);
+  if (!ensured.ok) return { ok: false, detail: ensured.detail };
+  if (isNativeRouteHost(host)) return installNativeRoute(host, proxyUrl);
+  routeOmpDefaultModel(port);
+  // omp's provider line may already point at another local gateway, so that line moves too.
+  const gateway = hostCap(host)?.headroomGateway ? readOmpGateway(port) : null;
+  if (gateway && !routeOmpGateway(gateway, port)) return { ok: false, detail: `${host}: the gateway line could not be moved` };
+  const route = readHeadroomRoute(host, proxyUrl);
+  return route.routed
+    ? { ok: true, detail: `${host}: ${describeHeadroomRoute(route)}` }
+    : { ok: false, detail: describeHeadroomRoute(route) };
+}
+
+/** Put back every endpoint `routeHostOn` replaced, including the gateway line omp needs. */
+export function routeHostOff(host: string): NativeRouteResult {
+  if (isNativeRouteHost(host)) return removeNativeRoute(host);
+  if (hostCap(host)?.headroomGateway) {
+    return restoreOmpGateway(headroomProxyPort())
+      ? { ok: true, detail: `${host}: gateway endpoint restored` }
+      : { ok: false, detail: `${host} has no Tersio route to put back` };
+  }
+  return { ok: false, detail: `${host} has no Tersio route to put back` };
+}
+
 /**
  * Put back a route a third-party writer replaced. A native host still has Tersio's record, so the
  * recorded endpoint proves the drift. A durable host's block belongs to headroom, so its own writer
@@ -287,18 +385,18 @@ export async function repairHeadroomRoute(host: string, proxyUrl: string = headr
     if (!routeDrifted(host, route)) return { ok: false, detail: describeHeadroomRoute(route) };
     return installNativeRoute(host, proxyUrl);
   }
-  if (!hostCap(host)?.headroomDurable || !durableConfigInstalled(host)) return { ok: false, detail: describeHeadroomRoute(route) };
-  const bin = resolveHeadroomBinary();
-  if (!bin) return { ok: false, detail: `${host}: no headroom binary to rewrite its block` };
-  const port = headroomProxyPort();
-  if (!(await installDurableConfig(bin, host, port))) return { ok: false, detail: `${host}: headroom could not rewrite its block` };
-  // The omp gateway line moves with the block, or the block still points at the gateway.
-  const gateway = hostCap(host)?.headroomGateway ? readOmpGateway(port) : null;
-  if (gateway) routeOmpGateway(gateway, port);
-  const repaired = readHeadroomRoute(host, proxyUrl);
-  return repaired.routed
-    ? { ok: true, detail: `${host}: ${describeHeadroomRoute(repaired)}` }
-    : { ok: false, detail: describeHeadroomRoute(repaired) };
+  // omp: the marker beside the gateway line still holds the endpoint Tersio replaced.
+  if (hostCap(host)?.headroomGateway) {
+    const port = headroomProxyPort();
+    const gateway = readOmpGateway(port);
+    if (!gateway) return { ok: false, detail: describeHeadroomRoute(route) };
+    if (!routeOmpGateway(gateway, port)) return { ok: false, detail: `${host}: the gateway line could not be moved` };
+    const repaired = readHeadroomRoute(host, proxyUrl);
+    return repaired.routed
+      ? { ok: true, detail: `${host}: ${describeHeadroomRoute(repaired)}` }
+      : { ok: false, detail: describeHeadroomRoute(repaired) };
+  }
+  return { ok: false, detail: describeHeadroomRoute(route) };
 }
 
 /** Put back the endpoint Tersio replaced, leaving any newer edit alone. */
@@ -320,6 +418,16 @@ export function removeNativeRoute(host: NativeRouteHost): NativeRouteResult {
         const comment = line.match(/\s+#.*$/)?.[0] ?? '';
         lines[block.baseLine] = `${indent}baseURL: ${record.original}${comment}`;
         writeFileSync(record.file, lines.join(text.includes('\r\n') ? '\r\n' : '\n'), 'utf8');
+      } else if (host === 'opencode') {
+        const data = JSON.parse(text) as Record<string, unknown>;
+        const providers = data.provider && typeof data.provider === 'object' ? data.provider as Record<string, unknown> : {};
+        const block = providers[record.provider];
+        if (!block || typeof block !== 'object') continue;
+        if (!record.key) continue;
+        const current = readDotted(block as Record<string, unknown>, record.key);
+        if (typeof current !== 'string' || !sameProxyEndpoint(current, record.written)) continue;
+        writeDotted(block as Record<string, unknown>, record.key, record.original);
+        writeFileSync(`${record.file}`, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
       } else {
         const data = JSON.parse(text) as Record<string, unknown>;
         const providers = data.providers && typeof data.providers === 'object' ? data.providers as Record<string, unknown> : {};

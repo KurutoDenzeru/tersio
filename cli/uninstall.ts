@@ -11,10 +11,11 @@ import { askInteractiveChoice, closeRL, confirmDestructive, tty, sayTagged } fro
 import { detectHosts, dshCliProfiles, dshDesktopProfilePresent, dshPackageDir, dshRunner, parseHostArg } from './hosts.ts';
 import type { HostEntry } from './hosts.ts';
 import type { HostId } from '../extensions/shared/host-caps.ts';
-import { piAgentDir, pigAgentDir, readTextIfExists, resolveHeadroomBinary } from '../extensions/shared/utils.ts';
+import { piAgentDir, pigAgentDir, readTextIfExists } from '../extensions/shared/utils.ts';
 import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
 import { removeTersioMcp } from '../extensions/shared/mcp-config.ts';
 import { NATIVE_ROUTE_HOSTS, isNativeRouteHost, removeNativeRoute } from '../extensions/shared/headroom-routes.ts';
+import { restoreOmpGateway } from '../extensions/shared/headroom-proxy.ts';
 
 interface UninstallOptions {
   yes?: boolean;
@@ -184,31 +185,20 @@ async function restoreHeadroomRoute(host: HostId, shouldDryRun: boolean): Promis
     if (restored.ok) sayTagged(`  [rm] Headroom endpoint: ${restored.detail}`);
     return;
   }
-  if (host !== 'omp' && host !== 'opencode') return;
   if (shouldDryRun) {
-    sayTagged(`  [dry-run] would unwrap headroom for ${host}`);
+    sayTagged(`  [dry-run] would put ${host}'s endpoint back`);
     return;
   }
-  const bin = resolveHeadroomBinary();
-  if (!bin) return;
-  try {
-    await execP(bin, ['unwrap', host, '--no-stop-proxy'], { timeout: 90_000 });
-    sayTagged(`  [rm] Headroom unwrap: ${host}`);
-  } catch { /* not wrapped, or nothing to undo */ }
+  // Tersio wrote every endpoint it routes, so Tersio puts it back; headroom is not asked.
+  const restored = isNativeRouteHost(host) ? removeNativeRoute(host) : { ok: restoreOmpGateway(), detail: '' };
+  if (restored.ok) sayTagged(`  [rm] Headroom endpoint: ${host}`);
 }
 
 /** Removes the user's own Headroom install with whichever package manager installed it. */
 async function removeHeadroomBinary(shouldDryRun: boolean): Promise<void> {
-  // Undo the agent-side wraps first: a removed binary behind a headroom-managed config strands the agent.
-  const headroomBin = resolveHeadroomBinary();
-  if (headroomBin && !shouldDryRun) {
-    for (const target of ['omp', 'opencode']) {
-      try {
-        await execP(headroomBin, ['unwrap', target], { timeout: 90_000 });
-        sayTagged(`  [rm] Headroom unwrap: ${target}`);
-      } catch { /* not wrapped, or nothing to undo */ }
-    }
-    // Tersio's own routes have no headroom unwrap; put their endpoints back before the proxy leaves.
+  // Put every endpoint back before the proxy leaves: a removed binary behind a routed agent strands it.
+  if (!shouldDryRun) {
+    if (restoreOmpGateway()) sayTagged('  [rm] Headroom endpoint: omp');
     for (const target of NATIVE_ROUTE_HOSTS) {
       const restored = removeNativeRoute(target);
       if (restored.ok) sayTagged(`  [rm] Headroom endpoint: ${restored.detail}`);

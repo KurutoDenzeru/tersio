@@ -3,12 +3,9 @@
 
 import type http from 'node:http';
 import { hostCap } from '../extensions/shared/host-caps.ts';
-import {
-  headroomHostDurable, headroomProxyPort, headroomProxyUrl, installDurableConfig, readOmpGateway, restoreOmpGateway, routeOmpGateway,
-} from '../extensions/shared/headroom-proxy.ts';
-import { ensureAgentProviderRoute } from '../extensions/shared/headroom-agent.ts';
+import { headroomHostDurable, headroomProxyUrl } from '../extensions/shared/headroom-proxy.ts';
 import { describeHeadroomRoute, readHeadroomRoute } from '../extensions/shared/headroom-routing.ts';
-import { installNativeRoute, isNativeRouteHost, removeNativeRoute } from '../extensions/shared/headroom-routes.ts';
+import { routeHostOff, routeHostOn } from '../extensions/shared/headroom-routes.ts';
 import { detectHosts } from './hosts.ts';
 import { resolveHeadroomBinary, resolveHostBinary } from '../extensions/shared/utils.ts';
 
@@ -17,7 +14,6 @@ export interface HeadroomRouteCtx {
   bodyOf: (req: http.IncomingMessage) => Promise<Record<string, unknown>>;
   spawnHeadroomInstall: () => boolean;
   headroomInstallState: () => { startedAt: number; code: number | null; error: string | null };
-  headroomRun: (bin: string, args: string[], timeout: number) => Promise<{ ok: boolean; lines: string[] }>;
   ensureRuntime: (bin: string, openAiTarget?: string | null) => Promise<{ ok: boolean; detail: string }>;
 }
 
@@ -88,9 +84,8 @@ export async function handleHeadroomRoutes(
     }
     // A route points the agent at the proxy, so the proxy answers before the config is written.
     if (body.on !== false) {
-      const gateway = cap.headroomGateway ? readOmpGateway(headroomProxyPort()) : null;
-      // headroom forwards to one upstream; a native host's provider has to be that one, or the write is refused.
-      const upstream = gateway?.baseUrl ?? (isNativeRouteHost(name) ? readHeadroomRoute(name).baseUrl : null);
+      // headroom forwards to one upstream, and the agent's own endpoint is the only one it can be.
+      const upstream = readHeadroomRoute(name).baseUrl;
       const runtime = await ctx.ensureRuntime(bin, upstream);
       if (!runtime.ok) {
         ctx.json(res, 200, { ok: false, error: `headroom runtime did not start: ${runtime.detail}` });
@@ -98,56 +93,12 @@ export async function handleHeadroomRoutes(
       }
     }
     if (body.on === false) {
-      if (isNativeRouteHost(name)) {
-        const removed = removeNativeRoute(name);
-        ctx.json(res, 200, removed.ok ? { ok: true, detail: removed.detail } : { ok: false, error: removed.detail });
-        return true;
-      }
-      // One switch-off must not strand the other agents: headroom's unwrap stops the proxy by default.
-      const run = await ctx.headroomRun(bin, ['unwrap', name, '--no-stop-proxy'], 120_000);
-      const out = run.lines.slice(-2).join(' · ');
-      if (!run.ok) {
-        ctx.json(res, 200, { ok: false, error: out || `the ${name} unwrap failed` });
-        return true;
-      }
-      // headroom removes its own block; the gateway line Tersio moved is ours to put back.
-      if (cap.headroomGateway) restoreOmpGateway(headroomProxyPort());
-      ctx.json(res, 200, { ok: true, detail: out || `${name}: headroom route removed` });
+      const removed = routeHostOff(name);
+      ctx.json(res, 200, removed.ok ? { ok: true, detail: removed.detail } : { ok: false, error: removed.detail });
       return true;
     }
-    const port = headroomProxyPort();
-    if (isNativeRouteHost(name)) {
-      // A provider the agent keeps in its own catalog needs a block before the endpoint can move.
-      const ensured = ensureAgentProviderRoute(name, port);
-      if (!ensured.ok) {
-        ctx.json(res, 200, { ok: false, error: ensured.detail });
-        return true;
-      }
-      const routed = installNativeRoute(name, headroomProxyUrl());
-      ctx.json(res, 200, routed.ok ? { ok: true, detail: routed.detail } : { ok: false, error: routed.detail });
-      return true;
-    }
-    // omp and opencode keep their providers in headroom's own block: its writer, its markers, its unwrap.
-    const gateway = cap.headroomGateway ? readOmpGateway(port) : null;
-    if (!(await installDurableConfig(bin, name, port))) {
-      ctx.json(res, 200, { ok: false, error: `headroom could not write ${name}'s config` });
-      return true;
-    }
-    if (gateway && !routeOmpGateway(gateway, port)) {
-      ctx.json(res, 200, { ok: false, error: `headroom could not point ${gateway.provider} at the proxy` });
-      return true;
-    }
-    // A provider the agent keeps built in needs its own block; its catalog supplies the endpoint.
-    const ensured = ensureAgentProviderRoute(name, port);
-    if (!ensured.ok) {
-      ctx.json(res, 200, { ok: false, error: ensured.detail });
-      return true;
-    }
-    // The reader decides: a block the active model bypasses is not a route.
-    const route = readHeadroomRoute(name);
-    ctx.json(res, 200, route.routed
-      ? { ok: true, detail: `${name}: headroom config written for port ${port}; it survives restarts` }
-      : { ok: false, error: `${name}: ${describeHeadroomRoute(route)}` });
+    const routed = await routeHostOn(name, headroomProxyUrl());
+    ctx.json(res, 200, routed.ok ? { ok: true, detail: `${routed.detail}; it survives restarts` } : { ok: false, error: routed.detail });
     return true;
   }
   return false;
