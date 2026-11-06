@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { isCurrencyCode } from './currency.ts';
 import type { CurrencyCode } from './currency.ts';
 import { qrTerminal } from './qr.ts';
-import { ensureHeadroomRuntime } from './headroom-runtime.ts';
+import { ensureHeadroomRuntime } from '../extensions/shared/headroom-runtime.ts';
 import { handleBenchRoutes } from './dashboard-bench.ts';
 import { handleHeadroomRoutes } from './dashboard-headroom.ts';
 import { handleVendorRoutes } from './dashboard-vendor.ts';
@@ -965,6 +965,7 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
     }
     if (await handleHeadroomRoutes(req, res, {
       json, bodyOf, spawnHeadroomInstall, headroomInstallState, headroomRun,
+      ensureRuntime: ensureHeadroomRuntime,
     })) return;
     if (await handleVendorRoutes(req, res, { json, bodyOf, spawnHeadroomInstall, isVendorTool })) return;
     if (await handleHostRoutes(req, res, { json, bodyOf, detectHosts, hostJobs, spawnCli })) return;

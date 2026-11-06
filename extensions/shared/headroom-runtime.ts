@@ -4,8 +4,8 @@ import { execFile, spawn } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import { headroomProxyPort, headroomProxyUrl } from '../extensions/shared/headroom-proxy.ts';
-import { homeDir } from '../extensions/shared/utils.ts';
+import { headroomProxyPort, headroomProxyUrl } from './headroom-proxy.ts';
+import { homeDir } from './utils.ts';
 
 export { headroomProxyPort, headroomProxyUrl };
 
