@@ -31,7 +31,7 @@ import { ensureAgentProviderRoute } from '../extensions/shared/headroom-agent.ts
 import { describeHeadroomRoute, readHeadroomRoute } from '../extensions/shared/headroom-routing.ts';
 import { installNativeRoute, isNativeRouteHost } from '../extensions/shared/headroom-routes.ts';
 import { ensureTersioMcp, tersioMcpConfigured, tersioMcpSupported } from '../extensions/shared/mcp-config.ts';
-import { ensureHeadroomRuntime } from './headroom-runtime.ts';
+import { ensureHeadroomRuntime } from '../extensions/shared/headroom-runtime.ts';
 import type { HostDefaultField } from './profile.ts';
 import { formatCliStatus, saveHostDefaults, storedProfile, storedProfileSync, writePluginSettings } from './profile.ts';
 import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';

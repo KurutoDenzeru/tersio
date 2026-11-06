@@ -13,6 +13,7 @@
 - RTK now works in DeepSeek Harness with nothing extra to install. Once RTK is on, shell commands are shortened for you.
 
 ### Changed
+- The Headroom card in the dashboard is one switch per agent: it points that agent's provider at the local proxy and keeps it there across restarts. The separate wrapped-tools list and the saved record of which tool was wrapped when are gone.
 - Tersio no longer downloads, replaces, or removes the rtk program. `tersio install` uses the binary already on your machine, the way rtk's own docs describe. rtk is part of what Tersio ships, so a machine without it gets rtk's own quick install automatically — their `install.sh` script on macOS and Linux, `winget install rtk-ai.rtk` on Windows — with no question to answer. If the new rtk lands somewhere your shell cannot see yet, the install says exactly which line to add to your shell profile.
 - `tersio doctor --fix` re-connects rtk instead of downloading it, and `tersio uninstall --remove-rtk` removes Tersio's connection but never your rtk program.
 - `/tersio update rtk` and the dashboard card now tell you when rtk has a newer release and point you at rtk's installer, instead of downloading it for you.
@@ -27,6 +28,11 @@
 - The same RTK command rewriting now serves Pi, Pi-In-Go, Oh My Pi, and DeepSeek Harness from one shared piece, so a fix reaches all of them at once.
 
 ### Fixed
+- Headroom's proxy now starts with the agent session, not only when the dashboard is open. A routed agent works after a reboot without anything else running first.
+- DeepSeek Harness is routed on the profile the app is actually running. The old code always wrote the desktop profile, even when `dsh web` was the one in use.
+- The first route for Pi, PiG or DeepSeek Harness now starts Headroom pointed at that agent's provider, instead of refusing with an instruction the user could not act on.
+- Switching omp's route off puts its gateway address back and removes the marker Tersio wrote.
+- A Headroom installed somewhere off `PATH` can be named with `TERSIO_HEADROOM_BIN`, instead of the install guessing.
 - The Tersio pill in DeepSeek Harness no longer fails to come back after a page refresh or a plugin update. The page could not load the same file twice, so it now keeps its own names to itself.
 - DeepSeek Harness no longer reports Tersio's MCP server as missing: its entry ships inside the plugin bundle, and the check now looks there.
 - Agents launched from the desktop now find Tersio's MCP server. The entry stores the full path when the command is findable, and keeps the short name as a fallback.

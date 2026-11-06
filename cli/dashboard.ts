@@ -10,14 +10,13 @@ import net from 'node:net';
 import os from 'node:os';
 import type { Socket } from 'node:net';
 import { gzipSync } from 'node:zlib';
-import { DURABLE_CONFIG, durableConfigInstalled } from '../extensions/shared/headroom-proxy.ts';
-import { readHeadroomWraps } from '../extensions/shared/headroom-wraps.ts';
+import { readHeadroomRoute } from '../extensions/shared/headroom-routing.ts';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isCurrencyCode } from './currency.ts';
 import type { CurrencyCode } from './currency.ts';
 import { qrTerminal } from './qr.ts';
-import { ensureHeadroomRuntime } from './headroom-runtime.ts';
+import { ensureHeadroomRuntime } from '../extensions/shared/headroom-runtime.ts';
 import { handleBenchRoutes } from './dashboard-bench.ts';
 import { handleHeadroomRoutes } from './dashboard-headroom.ts';
 import { handleVendorRoutes } from './dashboard-vendor.ts';
@@ -49,73 +48,6 @@ import { readBackupSchedule, syncUsageDb } from '../extensions/shared/usage-stor
 import { agentDbPath, emptyRequestEntry, isAgentView, isRangeKey, readAgentRequestEntry, readAgentStats, readSessionTrace, statsDbPath } from '../extensions/shared/agent-stats.ts';
 import type { AgentStats, AgentView, RangeKey } from '../extensions/shared/agent-types.ts';
 
-/** The agents headroom's own compatibility table lists, minus Continue (service discontinued). */
-const WRAP_TARGETS = [
-  'omp', 'claude', 'codex', 'copilot', 'vscode', 'aider', 'vibe', 'grok', 'cursor', 'cline',
-  'goose', 'openhands', 'openclaw', 'opencode', 'kimi',
-  'bob', 'antigravity', 'grok-build', 'openclaude', 'vscode-claude',
-] as const;
-
-/** The wrap target names headroom's README compatibility table prints, so the drawer reads the same. */
-const WRAP_LABELS: Record<string, string> = {
-  omp: 'Oh My Pi', claude: 'Claude Code', codex: 'Codex', copilot: 'Copilot CLI',
-  vscode: 'VS Code Copilot', aider: 'Aider', vibe: 'Mistral Vibe', grok: 'Grok CLI',
-  cursor: 'Cursor', cline: 'Cline', goose: 'Goose', openhands: 'OpenHands',
-  openclaw: 'OpenClaw', opencode: 'OpenCode', kimi: 'Kimi CLI',
-  bob: 'IBM Bob', antigravity: 'Antigravity', 'grok-build': 'Grok Build',
-  openclaude: 'OpenClaude', 'vscode-claude': 'VS Code Claude',
-};
-
-const WRAP_BINARY: Record<string, string> = {
-  vscode: 'code', 'vscode-claude': 'code', cline: 'code', copilot: 'gh', 'grok-build': 'grok',
-};
-
-/** Whether a wrap target's binary resolves: PATH first, then the directory the installer owns for it. */
-const WRAP_MANAGED_DIR: Record<string, string> = {
-  omp: path.join(homeDir(), '.bun', 'bin'),
-  opencode: path.join(homeDir(), '.opencode', 'bin'),
-};
-
-async function binaryExists(name: string): Promise<boolean> {
-  return resolveHostBinary(WRAP_BINARY[name] ?? name, WRAP_MANAGED_DIR[name] ?? path.join(homeDir(), '.local', 'bin')) !== null;
-}
-
-/** Home-relative config markers per OS: an agent whose binary lives off PATH still shows when its config home exists. */
-const WRAP_CONFIG_MARKERS: Record<string, string> = {
-  claude: '.claude',
-  codex: '.codex',
-  cursor: '.cursor',
-  grok: '.grok',
-  aider: '.aider',
-  openclaw: '.openclaw',
-  openhands: '.openhands',
-  opencode: '.opencode',
-  omp: '.omp',
-  pi: '.pi',
-  pig: '.pig',
-  dsh: '.dsh',
-};
-
-/** A wrap target is present when its binary resolves or its config home exists on this OS. */
-async function wrapTargetPresent(name: string): Promise<boolean> {
-  // Copilot CLI is a gh extension, not a binary: the gh CLI alone must not count as installed.
-  if (name === 'copilot') {
-    try {
-      const gh = await execFileP('gh', ['extension', 'list'], { timeout: 4000 });
-      return String(gh.stdout ?? '').toLowerCase().includes('copilot');
-    } catch {
-      return false;
-    }
-  }
-  if (await binaryExists(name)) return true;
-  const marker = WRAP_CONFIG_MARKERS[name];
-  if (!marker) return false;
-  try {
-    return existsSync(path.join(homeDir(), marker));
-  } catch {
-    return false;
-  }
-}
 
 /** The listen address: every interface by default, so a phone can open it. `local` keeps it loopback. */
 export function resolveBind(bind?: string | null): string {
@@ -344,11 +276,6 @@ interface HostJob {
 
 /** The last command run per host, so the guide can stop waiting the moment it exits. */
 const hostJobs = new Map<string, HostJob>();
-
-/** Whether a name is one of headroom's wrapped tools, so a route never passes an arbitrary string to the binary. */
-export function isHeadroomWrapTarget(name: string): boolean {
-  return (WRAP_TARGETS as readonly string[]).includes(name);
-}
 
 /** The third-party binary Tersio installs and removes; rtk manages its own, so anything else is a bad request. */
 export function isVendorTool(tool: string): tool is 'headroom' {
@@ -1037,8 +964,8 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
       return;
     }
     if (await handleHeadroomRoutes(req, res, {
-      json, bodyOf, wrapTargetPresent, spawnHeadroomInstall, headroomInstallState, headroomRun,
-      wrapTargets: WRAP_TARGETS, wrapLabels: WRAP_LABELS,
+      json, bodyOf, spawnHeadroomInstall, headroomInstallState, headroomRun,
+      ensureRuntime: ensureHeadroomRuntime,
     })) return;
     if (await handleVendorRoutes(req, res, { json, bodyOf, spawnHeadroomInstall, isVendorTool })) return;
     if (await handleHostRoutes(req, res, { json, bodyOf, detectHosts, hostJobs, spawnCli })) return;
@@ -1440,7 +1367,7 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
       }
       // An enabled integration outlives a reboot, but its proxy does not. Restore the runtime the config expects.
       const runtimeBin = resolveHeadroomBinary();
-      if (runtimeBin && (Object.values(readHeadroomWraps()).some(Boolean) || DURABLE_CONFIG.some((name) => durableConfigInstalled(name)))) {
+      if (runtimeBin && detectHosts().some((host) => readHeadroomRoute(host.id).routed)) {
         void ensureHeadroomRuntime(runtimeBin);
       }
 

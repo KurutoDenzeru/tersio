@@ -224,6 +224,8 @@ Active modes reassert after Ponytail's prompt block on every top-level turn, inc
 
 **RTK missing:** rtk is part of Tersio, so `tersio install` runs rtk's own quick install for you — `curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/master/install.sh | sh` on macOS/Linux, `winget install rtk-ai.rtk` on Windows — then binds it, reading `~/.local/bin` even before your shell picks it up. If that install cannot run, it prints rtk's install page — [rtk-ai.app/docs/getting-started/installation](https://www.rtk-ai.app/docs/getting-started/installation/) — and finishes everything else.
 
+**Headroom installed somewhere unusual:** point Tersio at the binary with `TERSIO_HEADROOM_BIN=/path/to/headroom`; the install and the routing both read it.
+
 **RTK savings and adoption:** the Gain numbers read rtk's own `history.db` (`%LOCALAPPDATA%\rtk` on Windows), so pi and OpenCode runs are already in them. The adoption row counts executed Bash calls from the omp and pi transcripts and OpenCode's v2 sqlite or pre-v2 JSON tree. The eligible list comes from `rtk rewrite`, cached per binary version. Native tool calls (`read`/`edit`/`eval`) and exact bytes bypass RTK.
 
 **RTK update available:** `tersio update` and the dashboard report the version rtk upstream ships. Tersio never installs it; update rtk with its own installer.

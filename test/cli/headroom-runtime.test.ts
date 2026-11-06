@@ -1,7 +1,7 @@
 import http from 'node:http';
 import { afterEach, describe, expect, test } from 'vitest';
 import { headroomHostDurable, headroomHostSupported } from '../../extensions/shared/headroom-proxy.ts';
-import { headroomProxyPort, headroomProxyUrl, headroomRuntimeUp, proxyArgsForDeployment } from '../../cli/headroom-runtime.ts';
+import { headroomProxyPort, headroomProxyUrl, headroomRuntimeUp, proxyArgsForDeployment } from '../../extensions/shared/headroom-runtime.ts';
 
 describe('headroom runtime', () => {
   const before = process.env.TERSIO_HEADROOM_PROXY_URL;

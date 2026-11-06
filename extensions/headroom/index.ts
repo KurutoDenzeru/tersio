@@ -8,6 +8,7 @@ import { resolveHeadroomBinary } from '../shared/utils.ts';
 import { headroomHostSupported, headroomProxyUrl } from '../shared/headroom-proxy.ts';
 import { describeHeadroomRoute, readHeadroomRoute } from '../shared/headroom-routing.ts';
 import { repairHeadroomRoute } from '../shared/headroom-routes.ts';
+import { ensureHeadroomRuntime } from '../shared/headroom-runtime.ts';
 import { ensureTersioMcp } from '../shared/mcp-config.ts';
 import type { HeadroomRoute } from '../shared/headroom-routing.ts';
 import type { ExtensionApi, ExtensionCtx, InputEvent, SessionEntry, SystemPromptEvent } from '../shared/types.ts';
@@ -130,9 +131,20 @@ export default function headroomSessionExtension(pi: ExtensionApi): void {
     announceStatus(ctx);
   }
 
+  // A route outlives a reboot; the proxy does not, and a route to a dead port fails the first request.
+  // Fire-and-forget: the session starts now, and headroom answers within its own wait window.
+  function startRuntime(): void {
+    if (currentMode !== 'on') return;
+    const bin = resolveHeadroomBinary();
+    if (!bin) return;
+    // ensureHeadroomRuntime probes /readyz first, so a proxy that is already up costs one request.
+    void ensureHeadroomRuntime(bin).catch(() => { /* the next session retries */ });
+  }
+
   // Start, resume, and branch all land here, so every session type shows it.
   pi.on('session_start', async (_event, ctx) => {
     restoreMode(ctx);
+    startRuntime();
   });
 
   // The host adapter names the switch events it emits, so this stays free of any one host's naming.
