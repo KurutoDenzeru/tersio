@@ -455,6 +455,18 @@ function readPiRoute(host: 'pi' | 'pig', proxyUrl: string): HeadroomRoute {
   }
 }
 
+/**
+ * The profile files to read and write, most likely first. The running harness names its profile;
+ * otherwise the CLI profile wins, because the desktop app owns its own and refuses CLI writes.
+ */
+export function dshProfileFiles(root: string = path.join(homeDir(), '.dsh')): string[] {
+  const named = (process.env.DSH_PROFILE ?? '').trim();
+  const order = named === 'web' || named === 'desktop' ? [named, named === 'web' ? 'desktop' : 'web'] : ['web', 'desktop'];
+  return order
+    .map((profile) => path.join(root, 'profiles', profile, 'cordis.patch.yml'))
+    .filter((file) => fs.existsSync(file));
+}
+
 function readDshRoute(proxyUrl: string): HeadroomRoute {
   let settings: string;
   try {
@@ -462,8 +474,7 @@ function readDshRoute(proxyUrl: string): HeadroomRoute {
   } catch (e) {
     return emptyRoute('dsh', proxyUrl, (e as Error).message);
   }
-  for (const profile of ['desktop', 'web']) {
-    const file = path.join(homeDir(), '.dsh', 'profiles', profile, 'cordis.patch.yml');
+  for (const file of dshProfileFiles()) {
     try {
       return dshRouteFrom(settings, fs.readFileSync(file, 'utf8'), proxyUrl);
     } catch { /* try the next profile */ }

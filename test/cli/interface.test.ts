@@ -545,7 +545,7 @@ test("uninstall --host opencode removes the plugin entries it wrote", () => {
   }
 });
 
-test.skipIf(process.platform === "win32")("uninstall --host opencode unwraps its headroom route first", () => {
+test.skipIf(process.platform === "win32")("uninstall never asks headroom to unwrap a route", () => {
   const home = tempHome();
   try {
     const dir = path.join(home, ".config", "opencode", "plugins", "tersio");
@@ -560,7 +560,10 @@ test.skipIf(process.platform === "win32")("uninstall --host opencode unwraps its
     chmodSync(bin, 0o755);
     const result = run(home, ["uninstall", "--host", "opencode", "--yes"]);
     expect(result.status, result.stderr).toBe(0);
-    expect(readFileSync(log, "utf8")).toContain("unwrap opencode --no-stop-proxy");
+    // Every endpoint Tersio wrote is one Tersio puts back; headroom is never asked to remove one.
+    const calls = existsSync(log) ? readFileSync(log, "utf8") : "";
+    expect(calls).not.toContain("unwrap");
+    expect(result.stdout).not.toMatch(/unwrap/i);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }
@@ -611,18 +614,38 @@ test("an existing rtk binary is bound on both hosts, never downloaded", () => {
     seedRtk(home);
     const pi = run(home, ["install", "--host", "pi", "--yes"]);
     expect(pi.status, pi.stderr).toBe(0);
-    expect(pi.stdout).toMatch(/RTK — already installed.*binding into pi/i);
+    expect(pi.stdout).toMatch(/RTK — binding into pi/i);
 
     const omp = run(home, ["install", "--host", "omp", "--dry-run", "--verbose"]);
     expect(omp.status, omp.stderr).toBe(0);
-    expect(omp.stdout).toMatch(/RTK — already installed.*binding into (OMP|Oh My Pi)/i);
+    expect(omp.stdout).toMatch(/RTK — binding into (OMP|Oh My Pi)/i);
     expect(omp.stdout).not.toMatch(/would download rtk binary/);
+    expect(omp.stdout, "the dry run names the docs, not a download").not.toMatch(/Downloading/);
     const oc = run(home, ["install", "--host", "opencode", "--dry-run"]);
     expect(oc.status, oc.stderr).toBe(0);
-    expect(oc.stdout).toMatch(/RTK — already installed.*binding into OpenCode/);
+    expect(oc.stdout).toMatch(/RTK — binding into OpenCode/);
     for (const out of [pi.stdout, omp.stdout, oc.stdout]) {
       expect(out, "no registry probe, no download").not.toMatch(/Downloading RTK binary|Finding latest RTK release/);
     }
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("a machine without rtk runs rtk's own installer, and the rest of the install still lands", () => {
+  const home = tempHome();
+  try {
+    // No curl on this PATH, so the attempt fails and the run has to carry on with the hint.
+    const result = run(home, ["install", "--host", "pi", "--yes"]);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/RTK — not installed; running/);
+    expect(result.stdout).toMatch(/RTK is not installed — run: .*(install\.sh|winget install)/);
+    expect(result.stdout).toMatch(/then re-run: tersio install --host pi/);
+    for (const output of [result.stdout, result.stderr]) {
+      expect(output, "no downloader came back").not.toMatch(/Downloading RTK|checksums\.txt|allow-unverified/);
+    }
+    // The rest of the install is not held hostage by a missing rtk.
+    expect(existsSync(path.join(home, ".pi", "agent", "extensions", "caveman", "index.ts"))).toBeTruthy();
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

@@ -10,17 +10,14 @@ import { Progress } from "@/components/ui/progress";
 import {
   Drawer, DrawerContent, DrawerDescription, DrawerFooter, DrawerHeader, DrawerTitle,
 } from "@/components/ui/drawer";
-import { MarkGlyph } from "@/components/brand";
-import { imageMark, maskMark } from "@/lib/marks";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { luminance, MARK_BG } from "../../../../../extensions/shared/brand-marks.ts";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Spinner } from "@/components/ui/spinner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "../toaster";
 import { cn } from "cn";
-import { checkVendor, fetchHeadroomWraps, fetchHealth, fetchWrapTargets, type HeadroomWrapTarget, postHeadroomWrap, postHeadroomWraps, postVendorAction, readStoredWraps, storeWraps, type HealthReport, type VendorRow } from "@/lib/data";
+import { checkVendor, fetchHealth, fetchRoutes, type HeadroomRouteTarget, postRoute, postVendorAction, type HealthReport, type VendorRow } from "@/lib/data";
 import {
   ABOUT, DEFAULT_ROWS_UI, HOSTS, MODES, OFF_DEFAULTS, PICKER, nodeGlyph, nodeTitle, nodeValue, versionOf,
 } from "./pipeline-model";
@@ -391,35 +388,6 @@ export function HostDrawer({ node, open, onOpenChange, hostState, busy, onHostAc
   );
 }
 
-/** Agent ids AgentLogo renders natively, so wrap rows reuse the same marks the Upstream page shows. */
-const AGENT_LOGO_IDS: ReadonlySet<string> = new Set(["claude-code", "codex"]);
-
-/** The wrap targets the house mark system has a slug (and brand accent) for. */
-const WRAP_SLUGS: Record<string, string> = {
-  claude: "claudecode", copilot: "githubcopilot", cline: "cline",
-  codex: "openai",
-  commandcode: "commandcode", dsh: "deepseek",
-  vscode: "vscode", aider: "aider", vibe: "mistralai",
-  grok: "grok", cursor: "cursor",
-  goose: "goose", openhands: "openhands", openclaw: "openclaw",
-  kimi: "kimi", zcode: "zdotai",
-  bob: "ibm", antigravity: "google", "grok-build": "grok",
-  openclaude: "claudecode", "vscode-claude": "vscode",
-};
-
-function BrandMark({ name, className }: { name: string; className: string }) {
-  const slug = WRAP_SLUGS[name];
-  if (slug === undefined) return <Icon name="terminal" className={className} />;
-  const image = imageMark(slug);
-  if (image) return <img src={image} alt="" className={cn("shrink-0 object-contain", className)} />;
-  const mask = maskMark(slug);
-  if (!mask) return <Icon name="terminal" className={className} />;
-  // A brand color near black or white disappears on the theme, so those marks fall back to the row's ink.
-  const color = MARK_BG[slug];
-  const lum = color === undefined ? 0 : luminance(color);
-  return <MarkGlyph slug={slug} className={className} color={color !== undefined && lum >= 60 && lum <= 225 ? color : "currentColor"} />;
-}
-
 /** The footer under a vendor drawer: check the release feed, update, or remove the binary. */
 export function VendorFooter({
   tool, source, open, installed, onAfter,
@@ -476,6 +444,22 @@ export function VendorFooter({
     onAfter();
   };
   const updateLabel = row?.upstream ? `Update to ${row.upstream}` : "Update";
+  // rtk owns its binary: this footer reports what upstream ships and never replaces it.
+  if (tool === "rtk") {
+    return (
+      <DrawerFooter className="border-t border-line px-6 pb-4 pt-3.5">
+        <div className="grid w-full gap-2">
+          <Button size="sm" variant="outline" disabled={phase === "checking"} onClick={() => void check()} className="w-full gap-1.5">
+            {phase === "checking" ? "Checking" : row ? "Check again" : "Check for updates"}
+            {phase === "checking" ? dots : <Icon name="refresh-cw" className="size-3.5" />}
+          </Button>
+          <p className="mb-0 mt-0 text-[11px] leading-4 text-dim">
+            rtk is its own install. Update it with rtk&apos;s installer; Tersio only binds it into this agent.
+          </p>
+        </div>
+      </DrawerFooter>
+    );
+  }
   return (
     <DrawerFooter className="border-t border-line px-6 pb-4 pt-3.5">
       {phase === "busy" ? <Progress value={null} className="w-full" /> : null}
@@ -525,8 +509,8 @@ function VersionPill({ version }: { version: string | null }) {
   return <span className="mono ml-auto shrink-0 rounded border border-success/40 px-1.5 py-0.5 text-[9px] text-success">{version}</span>;
 }
 
-/** The plain-language announcement a switch flip makes: the integration changed, not how headroom did it. */
-export function wrapNotice(target: { label?: string; durable?: boolean } | undefined, name: string, on: boolean): { title: string; desc: string } {
+/** The plain-language announcement a switch flip makes: the route changed, not how headroom did it. */
+export function routeNotice(target: { label?: string; durable?: boolean } | undefined, name: string, on: boolean): { title: string; desc: string } {
   const label = target?.label ?? name;
   if (!on) {
     if (target?.durable) return { title: `${label} no longer has headroom built in.`, desc: "Its integration is undone." };
@@ -536,20 +520,52 @@ export function wrapNotice(target: { label?: string; durable?: boolean } | undef
   return { title: `${label} starts through headroom now.`, desc: "Its next session picks it up." };
 }
 
-/** The headroom node opens the wrap drawer: one switch per installed tool, run by Tersio itself. */
+/** The headroom node opens the route drawer: one switch per agent, pointing it at the local proxy. */
 export function HeadroomDrawer({ open, onOpenChange, modes, hostState, busy, onSet, onHostAction, onSaved }: Omit<NodeSurfaceProps, "node">) {
   const toast = useToast();
-  const [wrapTargets, setWrapTargets] = useState<Array<HeadroomWrapTarget> | null>(null);
+  const [routes, setRoutes] = useState<Array<HeadroomRouteTarget> | null>(null);
   const [endpoint, setEndpoint] = useState<string | null>(null);
+  const [health, setHealth] = useState<HealthReport | null>(null);
+  const [routeBusy, setRouteBusy] = useState<string | null>(null);
+  // The installer updates the parent's host state, so a finished install re-reads the rows.
+  const hostKey = HOSTS.map((host) => `${host.id}:${hostState.installed[host.id] === true}:${hostState.present[host.id] === true}`).join(",");
+  const headroomInstalled = health?.headroom?.present ?? false;
+  const picker = PICKER.headroom;
+  const current = nodeValue("headroom", "all", modes);
 
-  /** One tool row, shared by the durable list and the proxy list. */
-  const renderRow = (target: HeadroomWrapTarget) => {
-    // The server's route wins; the stored record is only the optimistic gap before the next fetch.
-    const on = target.installed === true || (target.installed === undefined && wrapped[target.name] === true);
+  const readRoutes = (): void => {
+    void fetchRoutes().then((state) => {
+      setRoutes(state?.targets ?? null);
+      setEndpoint(state?.endpoint ?? null);
+    });
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    readRoutes();
+    void fetchHealth().then(setHealth);
+  }, [open, hostKey]);
+
+  /** One switch flip: the server points the agent at the proxy and reports what it wrote. */
+  const toggleRoute = (name: string, on: boolean): void => {
+    setRouteBusy(name);
+    const notice = routeNotice(routes?.find((entry) => entry.name === name), name, on);
+    void postRoute(name, on)
+      .then((result) => {
+        if (result?.ok) toast(notice.title, notice.desc, "check");
+        else toast("The switch did not change.", result?.error ?? "The dashboard server did not answer.", "circle-alert");
+      })
+      .catch(() => toast("The switch did not change.", "The dashboard server did not answer.", "circle-alert"))
+      .finally(() => {
+        setRouteBusy(null);
+        readRoutes();
+      });
+  };
+
+  const renderRow = (target: HeadroomRouteTarget) => {
+    const on = target.routed;
     const present = target.agentPresent !== false;
     const installed = target.agentInstalled === true;
-    // A route found by hand has no saved endpoint, so an on switch would have nothing to put back.
-    const editable = installed && !target.manual && (!target.route || !on || target.managed === true);
     return (
       <div
         key={target.name}
@@ -558,39 +574,18 @@ export function HeadroomDrawer({ open, onOpenChange, modes, hostState, busy, onS
           on ? "border-success/30 bg-success/5" : "border-line",
         )}
       >
-        {HOSTS.some((h) => h.id === target.name)
-          ? <AgentLogo host={target.name as "omp"} className="size-3.5 shrink-0" />
-          : AGENT_LOGO_IDS.has(target.name)
-            ? <AgentLogo host={target.name as "codex"} className="size-3.5 shrink-0" />
-            : <BrandMark name={target.name} className={cn("size-3.5", on ? "" : "text-dim")} />}
-        <span className={cn("mono min-w-0 flex-1 truncate text-[11px]", on ? "text-ink" : "text-dim")}>{target.label ?? target.name}</span>
+        <AgentLogo host={target.name as "omp"} className="size-3.5 shrink-0" />
+        <span className={cn("mono min-w-0 flex-1 truncate text-[11px]", on ? "text-ink" : "text-dim")}>{target.label}</span>
         {!present ? (
-          <span className="mono shrink-0 rounded border border-line px-1.5 py-0.5 text-[9px] text-dim">
-            not installed
-          </span>
+          <span className="mono shrink-0 rounded border border-line px-1.5 py-0.5 text-[9px] text-dim">not installed</span>
         ) : !installed ? (
-          <span className="mono shrink-0 rounded border border-warn-border bg-warn-soft px-1.5 py-0.5 text-[9px] text-warn-text">
-            Tersio missing
-          </span>
-        ) : target.route ? (
+          <span className="mono shrink-0 rounded border border-warn-border bg-warn-soft px-1.5 py-0.5 text-[9px] text-warn-text">Tersio missing</span>
+        ) : (
           <span
             className={cn("mono shrink-0 rounded border px-1.5 py-0.5 text-[9px]", on ? "border-success/40 text-success" : "border-line text-dim")}
             title={target.detail}
           >
-            {on ? (editable ? "routed" : "routed by hand") : "off"}
-          </span>
-        ) : target.manual ? (
-          <span
-            className="mono shrink-0 rounded border border-line px-1.5 py-0.5 text-[9px] text-dim"
-            title={target.headroomInstall
-              ? "Durable through headroom's own install apply; Tersio does not manage it here"
-              : "No durable install exists; headroom runs this tool per session only"}
-          >
-            {target.headroomInstall ? "headroom install" : "session only"}
-          </span>
-        ) : (
-          <span className={cn("mono shrink-0 rounded border px-1 py-0.5 text-[9px]", on ? "border-success/40 text-success" : "border-line text-dim")}>
-            {on ? "durable" : target.configured ? "configured" : "ready"}
+            {on ? "routed" : "off"}
           </span>
         )}
         {present && !installed ? (
@@ -604,73 +599,19 @@ export function HeadroomDrawer({ open, onOpenChange, modes, hostState, busy, onS
             {busy === `host-${target.name}` ? <Spinner className="size-3" /> : <Icon name="plus" className="size-3" />}
             Install
           </Button>
-        ) : target.manual || !editable ? null : (
+        ) : !present ? null : (
           <span className="relative inline-flex">
             <Switch
               size="sm"
               checked={on}
-              disabled={wrapBusy !== null || !headroomInstalled}
-              onCheckedChange={(next: boolean) => toggleWrap(target.name, next)}
-              aria-label={"Install " + target.name + " for headroom"}
+              disabled={routeBusy !== null || !headroomInstalled}
+              onCheckedChange={(next: boolean) => toggleRoute(target.name, next)}
+              aria-label={"Route " + target.label + " through headroom"}
             />
           </span>
         )}
       </div>
     );
-  };
-  const [health, setHealth] = useState<HealthReport | null>(null);
-  // Which durable integrations the dashboard has installed; optimistic, kept across drawer opens.
-  const [wrapped, setWrapped] = useState<Record<string, true>>(readStoredWraps);
-  const [wrapBusy, setWrapBusy] = useState<string | null>(null);
-  // The installer updates the parent's host state, so a finished install re-reads the rows.
-  const hostKey = HOSTS.map((host) => `${host.id}:${hostState.installed[host.id] === true}:${hostState.present[host.id] === true}`).join(",");
-  useEffect(() => {
-    if (!open) return;
-    void fetchWrapTargets().then((state) => {
-      setWrapTargets(state?.targets ?? null);
-      setEndpoint(state?.endpoint ?? null);
-    });
-    void fetchHealth().then(setHealth);
-    void fetchHeadroomWraps().then((server) => {
-      if (!server || typeof server !== 'object') return;
-      const record = server as Record<string, true>;
-      if (Object.keys(record).length > 0) {
-        setWrapped(record);
-        storeWraps(record);
-      } else if (Object.keys(wrapped).length > 0) {
-        // A record from before the server copy existed moves up once.
-        void postHeadroomWraps(wrapped);
-      }
-    });
-  }, [open, hostKey]);
-  const headroomInstalled = health?.headroom?.present ?? false;
-  const picker = PICKER.headroom;
-  const current = nodeValue("headroom", "all", modes);
-
-  /** One switch flip: headroom's own command, then the shared record and every other browser. */
-  const toggleWrap = (name: string, on: boolean): void => {
-    setWrapBusy(name);
-    const target = wrapTargets?.find((entry) => entry.name === name);
-    const notice = wrapNotice(target, name, on);
-    void postHeadroomWrap(name, on ? "wrap" : "unwrap")
-      .then((result) => {
-        if (result?.ok) {
-          const next: Record<string, true> = { ...wrapped };
-          if (on) next[name] = true; else delete next[name];
-          setWrapped(next);
-          storeWraps(next);
-          void postHeadroomWraps(next);
-          toast(notice.title, notice.desc, "check");
-        } else {
-          // The server's own error text is the payload here; the fallback covers a silent server.
-          toast("The switch did not change.", result?.error ?? "The dashboard server did not answer.", "circle-alert");
-        }
-      })
-      .catch(() => toast("The switch did not change.", "The dashboard server did not answer.", "circle-alert"))
-      .finally(() => {
-        setWrapBusy(null);
-        void fetchWrapTargets().then((state) => setWrapTargets(state?.targets ?? null));
-      });
   };
 
   return (
@@ -693,20 +634,20 @@ export function HeadroomDrawer({ open, onOpenChange, modes, hostState, busy, onS
               <span className="mono ml-auto shrink-0 rounded border border-accent/40 px-1.5 py-0.5 text-[9px] text-accent">recommended</span>
             </p>
             <p className="m-0 text-[10px] leading-relaxed text-dim">
-              Only Tersio agents appear here. A switch installs headroom's durable integration. A route switch
-              changes only the active provider endpoint and puts the old URL back. "Tersio missing" means the agent
-              is on this machine but its Tersio tree is not; Install writes it.
+              Only Tersio agents appear here. A switch points that agent&apos;s provider endpoint at the local proxy
+              and keeps it there across restarts; switching off puts the old URL back. "Tersio missing" means the
+              agent is on this machine but its Tersio tree is not; Install writes it.
             </p>
-            {wrapTargets === null ? (
+            {routes === null ? (
               <Skeleton className="h-8 w-full rounded-md" />
-            ) : wrapTargets.length > 0 ? (
-              <div className="grid gap-1">{wrapTargets.map((target) => renderRow(target))}</div>
+            ) : routes.length > 0 ? (
+              <div className="grid gap-1">{routes.map((target) => renderRow(target))}</div>
             ) : (
               <p className="mono m-0 rounded-lg border border-dashed border-line px-2.5 py-2 text-[10px] text-dim">
                 No supported agent was detected on this machine.
               </p>
             )}
-            {wrapTargets?.some((target) => target.route) && endpoint ? (
+            {routes?.some((target) => !target.durable) && endpoint ? (
               <p className="m-0 rounded-lg border border-line bg-track/40 px-2.5 py-2 text-[10px] leading-relaxed text-dim">
                 Pi, PiG, and DeepSeek Harness route through{" "}
                 <span className="mono text-ink">{endpoint}v1</span>. The switch saves the old endpoint and restores it.

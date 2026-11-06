@@ -1,14 +1,11 @@
-// Headroom's durable agent integrations: the init targets headroom installs itself, plus the two config
-// writers its `init` omits. Nothing here starts a proxy; headroom's own install does that.
-import { execFile, execFileSync } from 'node:child_process';
+// Headroom's durable agent integrations: the config writers its own `init` does not cover, plus the
+// omp model route. Nothing here starts a proxy; headroom's own install does that.
 import fs from 'node:fs';
 import path from 'node:path';
-import { promisify } from 'node:util';
 import { homeDir } from './utils.ts';
-import { HOST_CAPS, hostCap } from './host-caps.ts';
+import { hostCap } from './host-caps.ts';
 import { sqliteRead } from './sqlite.ts';
 
-const execFileP = promisify(execFile);
 
 /** Headroom's default proxy port, written into the durable config of the tools its init omits. */
 export const HEADROOM_PORT = 8787;
@@ -60,52 +57,12 @@ export function headroomProxyPort(): number {
   return HEADROOM_PORT;
 }
 
-/** A headroom command's output, or an empty string: the caller decides what a failure means. */
-async function headroomText(bin: string, args: string[], timeoutMs: number): Promise<string> {
-  try {
-    const run = await execFileP(bin, args, { timeout: timeoutMs });
-    return String(run.stdout ?? '') + '\n' + String(run.stderr ?? '');
-  } catch (e) {
-    const err = e as { stdout?: string; stderr?: string };
-    return String(err.stdout ?? '') + '\n' + String(err.stderr ?? '');
-  }
-}
-
-/** The agents headroom integrates durably, read from its own init help so upstream additions appear unprompted. */
-export async function discoverInitTargets(bin: string, timeoutMs = 15_000): Promise<string[] | null> {
-  const text = await headroomText(bin, ['init', '--help'], timeoutMs);
-  // Scope from the Commands block on: option rows start with "-", so they cannot match.
-  const section = text.slice(text.indexOf('Commands:'));
-  const targets: string[] = [];
-  for (const line of section.split('\n')) {
-    const match = line.match(/^\s{2,}([a-z-]+)\s+Install\b/);
-    if (match) targets.push(match[1]);
-  }
-  return targets.length > 0 ? targets : null;
-}
-
-/** The tools whose `wrap --help` registers a subcommand; a name outside the catalog never shows. */
-export async function discoverWrapTargets(bin: string, timeoutMs = 15_000): Promise<Array<{ name: string; label: string }> | null> {
-  const text = await headroomText(bin, ['wrap', '--help'], timeoutMs);
-  const targets: Array<{ name: string; label: string }> = [];
-  for (const line of text.split('\n')) {
-    const match = line.match(/^\s{2,}headroom wrap ([a-z-]+)\s+#\s*(.+)$/);
-    if (match) targets.push({ name: match[1], label: match[2].trim() });
-  }
-  return targets.length > 0 ? targets : null;
-}
-
-/** Headroom can write these two configs durably itself, though its `init` does not list them. */
-export const DURABLE_CONFIG = Object.values(HOST_CAPS)
-  .filter((cap) => cap.headroomDurable === true)
-  .map((cap) => cap.id) as ReadonlyArray<'omp' | 'opencode'>;
-
 /** The Tersio hosts headroom can route, with a writer or a hand-set provider endpoint. */
 export function headroomHostSupported(host: string): boolean {
   return hostCap(host)?.headroom === true;
 }
 
-/** True when the host has a writer Tersio can run; the rest need a manual endpoint. */
+/** True when the host's provider block lives in a file Tersio writes itself. */
 export function headroomHostDurable(host: string): boolean {
   return hostCap(host)?.headroomDurable === true;
 }
@@ -182,52 +139,6 @@ export function ompCachedEndpoint(model: string): OmpCachedEndpoint | null {
 /** OpenCode's config; the first that exists wins, matching headroom's own lookup order. */
 export function opencodeConfigFiles(): string[] {
   return [path.join(homeDir(), '.config', 'opencode', 'opencode.json'), path.join(homeDir(), '.config', 'opencode', 'opencode.jsonc')];
-}
-
-/** True when headroom's own writer already installed the durable block for this tool. */
-export function durableConfigInstalled(name: string): boolean {
-  try {
-    if (name === 'omp') return fs.readFileSync(ompModelsFile(), 'utf8').includes('managed by `headroom wrap omp`');
-    if (name === 'opencode') {
-      for (const file of opencodeConfigFiles()) {
-        try {
-          if (/"headroom"\s*:/.test(fs.readFileSync(file, 'utf8'))) return true;
-        } catch { /* try the next path */ }
-      }
-    }
-  } catch { /* absent */ }
-  return false;
-}
-
-/** The Python behind the headroom console script; its durable writers live in that package, not in the CLI. */
-function headroomPython(bin: string): string | null {
-  try {
-    const real = fs.realpathSync(bin);
-    for (const name of process.platform === 'win32' ? ['python.exe', 'python3.exe'] : ['python3', 'python']) {
-      const candidate = path.join(path.dirname(real), name);
-      if (fs.existsSync(candidate)) return candidate;
-    }
-  } catch { /* not a script with a sibling interpreter */ }
-  return null;
-}
-
-/** Writes the durable block headroom's own wrap would write, without launching the tool. */
-export async function installDurableConfig(bin: string, name: string, port: number = HEADROOM_PORT): Promise<boolean> {
-  const python = headroomPython(bin);
-  if (!python) return false;
-  const call = name === 'omp'
-    ? `from headroom.providers.omp.runtime import inject_models_override as f; f(${port})`
-    : name === 'opencode'
-      ? `from headroom.providers.opencode.config import inject_opencode_provider_config as f; f(${port})`
-      : null;
-  if (!call) return false;
-  try {
-    // Headroom's own module reads the same env and writes the same marker, backup, and unwrap record.
-    execFileSync(python, ['-c', call], { timeout: 60_000, cwd: homeDir(), stdio: 'ignore', windowsHide: true });
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 export interface OmpGatewayRoute {
@@ -391,6 +302,44 @@ export function routeOmpGateway(route: OmpGatewayRoute, port: number = HEADROOM_
       lines[modelLine] = `${modelIndent}baseUrl: ${url}`;
     }
     fs.writeFileSync(file, lines.join('\n'), 'utf8');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Put back the endpoints Tersio moved in omp's models file and drop the markers it wrote. Only a line
+ * still pointing at this proxy is restored, so a provider the user changed afterwards is left alone.
+ */
+export function restoreOmpGateway(port: number = HEADROOM_PORT): boolean {
+  const file = ompModelsFile();
+  let text: string;
+  try { text = fs.readFileSync(file, 'utf8'); } catch { return false; }
+  const lines = text.split(/\r?\n/);
+  const proxy = `http://127.0.0.1:${port}/v1`;
+  const drop = new Set<number>();
+  let changed = false;
+  for (const block of ompProviderBlocks(text)) {
+    if (!block.marker || block.markerLine === null || block.baseLine < 0) continue;
+    if (block.baseUrl !== proxy) continue;
+    const indent = lines[block.baseLine]!.match(/^\s*/)?.[0] ?? '    ';
+    lines[block.baseLine] = `${indent}baseUrl: ${block.marker}`;
+    drop.add(block.markerLine);
+    // A model entry that names its own endpoint was moved too, and shares the marker's original.
+    for (let i = block.baseLine + 1; i < lines.length; i += 1) {
+      const raw = lines[i]!;
+      const trimmed = raw.trim();
+      if (trimmed !== '' && raw.length - raw.trimStart().length <= 2) break;
+      if (trimmed.startsWith('baseUrl:') && trimmed.endsWith('/v1') && trimmed.includes(`127.0.0.1:${port}`)) {
+        lines[i] = `${raw.match(/^\s*/)?.[0] ?? '      '}baseUrl: ${block.marker}`;
+      }
+    }
+    changed = true;
+  }
+  if (!changed) return false;
+  try {
+    fs.writeFileSync(file, lines.filter((_, index) => !drop.has(index)).join('\n'), 'utf8');
     return true;
   } catch {
     return false;

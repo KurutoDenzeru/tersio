@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { expect, test } from 'vitest';
-import { readOmpGateway, routeOmpGateway } from '../../extensions/shared/headroom-proxy.ts';
+import { readOmpGateway, restoreOmpGateway, routeOmpGateway } from '../../extensions/shared/headroom-proxy.ts';
 import { withHome } from '../helpers/env.ts';
 
 const MODELS = `providers:
@@ -72,6 +72,30 @@ test('the local OpenAI gateway is found and routed through Headroom', () => {
     // Reapplying is idempotent.
     expect(routeOmpGateway({ provider: 'magpie', baseUrl: 'http://127.0.0.1:3425/v1', model: null }, 8787)).toBe(true);
     expect((readFileSync(file, 'utf8').match(/tersio-headroom-upstream/g) ?? []).length).toBe(1);
+  });
+});
+
+test('turning the route off puts the gateway line back and drops the marker', () => {
+  withHome((home) => {
+    const file = writeOmp(home, MODELS);
+    expect(routeOmpGateway({ provider: 'magpie', baseUrl: 'http://127.0.0.1:3425/v1', model: null }, 8787)).toBe(true);
+    expect(restoreOmpGateway(8787)).toBe(true);
+    const restored = readFileSync(file, 'utf8');
+    expect(restored).toContain('baseUrl: http://127.0.0.1:3425/v1');
+    expect(restored).not.toContain('tersio-headroom-upstream');
+    // A second switch-off finds nothing of ours to move.
+    expect(restoreOmpGateway(8787)).toBe(false);
+  });
+});
+
+test('a gateway the user moved after routing is left alone', () => {
+  withHome((home) => {
+    const file = writeOmp(home, MODELS);
+    expect(routeOmpGateway({ provider: 'magpie', baseUrl: 'http://127.0.0.1:3425/v1', model: null }, 8787)).toBe(true);
+    // Something else rewrote the line after Tersio: the marker is stale, so the value wins.
+    writeFileSync(file, readFileSync(file, 'utf8').replace('baseUrl: http://127.0.0.1:8787/v1', 'baseUrl: http://127.0.0.1:5555/v1'), 'utf8');
+    expect(restoreOmpGateway(8787)).toBe(false);
+    expect(readFileSync(file, 'utf8')).toContain('http://127.0.0.1:5555/v1');
   });
 });
 

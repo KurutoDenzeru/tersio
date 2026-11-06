@@ -1,6 +1,9 @@
 ## Unreleased
 
 ### Added
+- The installer now asks before adding Tersio's MCP server to an agent. The question reads "Add the Tersio MCP server to … (optional)", so a machine that should stay untouched can say no.
+- Agents get two new MCP tools: one lists every supported agent with its version and whether Tersio is connected, the other lists the newest sessions with their cost and tokens.
+- An MCP client can read the saved settings and the agent list directly, without spending a tool call.
 - A small Tersio pill now sits under the message box in DeepSeek Harness. It shows the current Combo with a puzzle icon and the word Off, Lite, Balanced or Max.
 - Click the pill to open a card that switches the Combo, or any single mode on its own: Caveman, RTK, Headroom, Ponytail and pstack.
 - The Headroom switch in that card reads and writes the same saved setting the installer, the command line and the dashboard use, so the three agree.
@@ -10,6 +13,12 @@
 - RTK now works in DeepSeek Harness with nothing extra to install. Once RTK is on, shell commands are shortened for you.
 
 ### Changed
+- Tersio now writes the headroom endpoint for every agent itself, including omp and OpenCode. Uninstalling, or switching a route off, puts the old endpoint back from Tersio's own record; Tersio no longer asks headroom to unwrap anything.
+- The Headroom card in the dashboard is one switch per agent: it points that agent's provider at the local proxy and keeps it there across restarts. The separate wrapped-tools list and the saved record of which tool was wrapped when are gone.
+- Tersio no longer downloads, replaces, or removes the rtk program. `tersio install` uses the binary already on your machine, the way rtk's own docs describe. rtk is part of what Tersio ships, so a machine without it gets rtk's own quick install automatically — their `install.sh` script on macOS and Linux, `winget install rtk-ai.rtk` on Windows — with no question to answer. If the new rtk lands somewhere your shell cannot see yet, the install says exactly which line to add to your shell profile.
+- `tersio doctor --fix` re-connects rtk instead of downloading it, and `tersio uninstall --remove-rtk` removes Tersio's connection but never your rtk program.
+- `/tersio update rtk` and the dashboard card now tell you when rtk has a newer release and point you at rtk's installer, instead of downloading it for you.
+- A mode change over MCP can now target one agent, the same way the dashboard and the installer already could.
 - Switching a mode in DeepSeek Harness no longer posts a message in the conversation. The pill is the only feedback, like the other agents.
 - The pill stays quiet until you hover over it or open it, and the card follows the app's own light and dark panels.
 - Status lines now read `🧩 LITE | 🪨 caveman:LITE | 🗜️ rtk:ON | …`: the word COMBO is gone, and every mode uses a colon instead of an equals sign. Pi, OpenCode, Oh My Pi, the command line and the dashboard all follow it.
@@ -20,6 +29,22 @@
 - The same RTK command rewriting now serves Pi, Pi-In-Go, Oh My Pi, and DeepSeek Harness from one shared piece, so a fix reaches all of them at once.
 
 ### Fixed
+- OpenCode and omp are routed without headroom's own writer, so the off switch restores the file Tersio changed instead of depending on a command that may not exist.
+- An omp model served by a gateway block (the usual magpie setup) is now routed under that block instead of failing with "not in the agent's catalog".
+- `tersio doctor` names an agent whose headroom route drifted, and names a route that is in place.
+- The RTK install gives up after two minutes instead of five when the machine is offline.
+- Headroom's proxy now starts with the agent session, not only when the dashboard is open. A routed agent works after a reboot without anything else running first.
+- DeepSeek Harness is routed on the profile the app is actually running. The old code always wrote the desktop profile, even when `dsh web` was the one in use.
+- The first route for Pi, PiG or DeepSeek Harness now starts Headroom pointed at that agent's provider, instead of refusing with an instruction the user could not act on.
+- Switching omp's route off puts its gateway address back and removes the marker Tersio wrote.
+- A Headroom installed somewhere off `PATH` can be named with `TERSIO_HEADROOM_BIN`, instead of the install guessing.
+- The Tersio pill in DeepSeek Harness no longer fails to come back after a page refresh or a plugin update. The page could not load the same file twice, so it now keeps its own names to itself.
+- DeepSeek Harness no longer reports Tersio's MCP server as missing: its entry ships inside the plugin bundle, and the check now looks there.
+- Agents launched from the desktop now find Tersio's MCP server. The entry stores the full path when the command is findable, and keeps the short name as a fallback.
+- Adding the MCP entry to a commented OpenCode config no longer drops the comments.
+- A long Headroom eval no longer fails before it finishes; the DeepSeek Harness client now waits long enough.
+- Cancelling a tool call in the client now stops the work behind it.
+- `tersio doctor` names any installed agent whose MCP entry is missing, with the command that fixes it.
 - Quick start agent cards now show the Headroom setting you saved instead of replacing it with "unrouted". Hovering the row still warns when that agent has no live route, so the card never claims compression it is not getting.
 - Remote backups survive a brief server hiccup: a failed request retries on its own instead of losing the run.
 - A storage service hosted under a sub-path, a very long list of old copies, and a GitHub repository that does not sort its files are all handled now.

@@ -6,6 +6,10 @@ type Change = { combo?: string; mode?: string; value?: string };
 
 type Loader = { load(spec: { id: string; factory(require: (name: string) => unknown): unknown }): void };
 
+// One IIFE keeps every name in this file out of the page's global scope. The loader injects a
+// classic script, so a top-level `const` would collide with another plugin's, or with this same
+// file on a reload, and the collision throws before `load` runs.
+(() => {
 // The shell injects this facade before any bundle loads; the bar only registers through it.
 // Read by string key: the identifier would dangle under the project's lint rules, and the file must stay a plain script.
 const loader = (globalThis as unknown as Record<string, Loader | undefined>)['__ModuleLoader__'];
@@ -213,3 +217,4 @@ loader?.load({
     };
   },
 });
+})();

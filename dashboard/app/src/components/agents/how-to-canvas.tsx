@@ -3,7 +3,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AgentLogo } from "@/components/agent-logos";
 import { Icon } from "@/components/icon";
 import { Spinner } from "@/components/ui/spinner";
-import { fetchPipelinePositions, postPipelinePositions, readStoredWraps } from "@/lib/data";
+import { fetchPipelinePositions, postPipelinePositions } from "@/lib/data";
 import { cn } from "cn";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
@@ -172,16 +172,6 @@ export function PipelineCanvas({
   const [selected, setSelected] = useState<NodeId | null>(null);
   const [guides, setGuides] = useState<{ vertical: GuideLine[]; horizontal: GuideLine[] } | null>(null);
   const [stored, setStored] = useState<Record<string, Box>>(() => loadPositions() ?? {});
-  // Which tools the wrap drawer has integrated: the agent cards wear it, refreshed as a drawer closes.
-  const [wrapped, setWrapped] = useState<Record<string, true>>(readStoredWraps);
-  useEffect(() => {
-    const sync = (): void => {
-      setWrapped(readStoredWraps());
-    };
-    if (selected === null) sync();
-    window.addEventListener("tersio:wrap-changed", sync);
-    return () => window.removeEventListener("tersio:wrap-changed", sync);
-  }, [selected]);
   // The server copy wins over localStorage: the layout belongs to the machine, not to one origin, so a dashboard restart on a new port keeps every node where the user placed it.
   useEffect(() => {
     let cancelled = false;
@@ -445,8 +435,8 @@ export function PipelineCanvas({
             <span className="min-w-0 flex-1 text-[12px] font-semibold leading-tight">{host.label}</span>
             {off
               ? <NodeBadge on={false} label="not installed" />
-              : headroomRoutes[host.id] === true || (headroomRoutes[host.id] === undefined && wrapped[host.id])
-                ? <NodeBadge on={true} label="🍃 wrapped" />
+              : headroomRoutes[host.id] === true
+                ? <NodeBadge on={true} label="🍃 routed" />
                 : <NodeBadge on={true} label={versionOf(hostState.versions[host.id]) ?? "installed"} />}
           </span>
           {!off ? (

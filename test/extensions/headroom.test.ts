@@ -3,11 +3,10 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import headroomSessionExtension, { HEADROOM_INSTALL_HINT, headroomInstruction } from "../../extensions/headroom/index.ts";
+import headroomSessionExtension, { HEADROOM_INSTALL_HINT, headroomInstruction, needsHeadroomProxy } from "../../extensions/headroom/index.ts";
 import { readHeadroomRoute } from "../../extensions/shared/headroom-routing.ts";
 import comboToggleExtension from "../../extensions/combo/index.ts";
 import { getSharedComboState, resetSharedComboState } from "../../extensions/shared/session-state.ts";
-import { durableConfigInstalled } from "../../extensions/shared/headroom-proxy.ts";
 import { patchState } from "../../extensions/shared/state.ts";
 import { resolveHeadroomBinary } from "../../extensions/shared/utils.ts";
 import type { ExtensionApi, SessionEntry } from "../../extensions/shared/types.ts";
@@ -283,23 +282,6 @@ test("a live proxy does not inject when the agent's model bypasses it", async ()
   }
 });
 
-test("a durable config block reads as installed for omp and opencode", () => {
-  withHome((home) => {
-    const omp = path.join(home, ".omp", "agent", "models.yml");
-    mkdirSync(path.dirname(omp), { recursive: true });
-    writeFileSync(omp, "providers:\n  anthropic:\n    baseUrl: http://127.0.0.1:8787\n", "utf8");
-    expect(durableConfigInstalled("omp"), "no marker yet").toBe(false);
-    writeFileSync(omp, "# managed by `headroom wrap omp`\nproviders:\n  anthropic:\n    baseUrl: http://127.0.0.1:8787\n", "utf8");
-    expect(durableConfigInstalled("omp")).toBe(true);
-    const opencode = path.join(home, ".config", "opencode", "opencode.json");
-    mkdirSync(path.dirname(opencode), { recursive: true });
-    writeFileSync(opencode, "{\n  \"provider\": {}\n}\n", "utf8");
-    expect(durableConfigInstalled("opencode"), "no provider block yet").toBe(false);
-    writeFileSync(opencode, "{\n  \"provider\": {\n    \"headroom\": {}\n  }\n}\n", "utf8");
-    expect(durableConfigInstalled("opencode")).toBe(true);
-  });
-});
-
 test("pi and PiG accept the mode but add no prompt without a route", async () => {
   resetSharedComboState();
   const entries: SessionEntry[] = [];
@@ -363,4 +345,11 @@ test("a route another tool reset is put back once, and the session says so", asy
     if (previousUrl === undefined) delete process.env.TERSIO_HEADROOM_PROXY_URL;
     else process.env.TERSIO_HEADROOM_PROXY_URL = previousUrl;
   }
+});
+
+test("a route needs the proxy even with the prompt mode off", () => {
+  // The dashboard writes a route on its own, so the mode alone cannot decide whether to start it.
+  expect(needsHeadroomProxy("on", false)).toBe(true);
+  expect(needsHeadroomProxy("off", true)).toBe(true);
+  expect(needsHeadroomProxy("off", false)).toBe(false);
 });

@@ -23,10 +23,18 @@ describe('the MCP server protocol', () => {
     expect(sent).toHaveLength(1);
     // The collector holds raw wire objects; one cast names the answer's shape for the reads below.
     const answer = sent[0] as { result: { protocolVersion: string; capabilities: Record<string, unknown>; serverInfo: { name: string } } };
-    // The spec wants a version the server supports, not an echo of whatever the client asked.
-    expect(answer.result.protocolVersion).toBe('2025-06-18');
+    // A client asking for an older revision this server knows gets that revision back; anything else
+    // falls through to the version the server speaks.
+    expect(answer.result.protocolVersion).toBe('2025-03-26');
     expect(answer.result.capabilities.tools).toEqual({});
     expect(answer.result.serverInfo.name).toBe('tersio');
+  });
+
+  test('initialize answers an unknown revision with the version the server speaks', async () => {
+    const { sent, send } = collector();
+    await handleMessage(call(1, 'initialize', { protocolVersion: '1999-01-01' }), send);
+    const answer = sent[0] as { result: { protocolVersion: string } };
+    expect(answer.result.protocolVersion).toBe('2025-06-18');
   });
 
 
@@ -34,7 +42,20 @@ describe('the MCP server protocol', () => {
     const { sent, send } = collector();
     await handleMessage(call(2, 'tools/list'), send);
     const answer = sent[0] as { result: { tools: Array<{ name: string }> } };
-    expect(answer.result.tools.map((t) => t.name)).toEqual(['tersio_stats', 'tersio_activity', 'tersio_modes', 'tersio_headroom']);
+    expect(answer.result.tools.map((t) => t.name)).toEqual(['tersio_stats', 'tersio_activity', 'tersio_hosts', 'tersio_sessions', 'tersio_modes', 'tersio_headroom']);
+  });
+
+  test('resources list what a client can read without a tool call', async () => {
+    const { sent, send } = collector();
+    await handleMessage(call(20, 'resources/list'), send);
+    const list = sent[0] as { result: { resources: Array<{ uri: string }> } };
+    expect(list.result.resources.map((r) => r.uri)).toEqual(['tersio://settings', 'tersio://hosts']);
+    await handleMessage(call(21, 'resources/read', { uri: 'tersio://hosts' }), send);
+    const read = sent[1] as { result: { contents: Array<{ mimeType: string; text: string }> } };
+    expect(read.result.contents[0]?.mimeType).toBe('application/json');
+    expect(JSON.parse(read.result.contents[0]!.text)).toBeInstanceOf(Array);
+    await handleMessage(call(22, 'resources/read', { uri: 'tersio://nope' }), send);
+    expect((sent[2] as { error: { code: number } }).error.code).toBe(-32602);
   });
 
   test('a bad range and an unknown tool answer with invalid-params', async () => {
@@ -86,7 +107,7 @@ describe('the MCP server protocol', () => {
 
   test('an unknown method answers with method-not-found, and ping answers empty', async () => {
     const { sent, send } = collector();
-    await handleMessage(call(5, 'resources/list'), send);
+    await handleMessage(call(5, 'nonsense/method'), send);
     await handleMessage(call(6, 'ping'), send);
     const methodError = sent[0] as { error: { code: number } };
     const pong = sent[1] as { result: unknown };
@@ -133,6 +154,29 @@ describe('the MCP modes tool', () => {
       expect(read.text).toContain('rtk=on');
       const stored = JSON.parse(await readFile(path.join(home, 'settings.json'), 'utf8')) as { cavemanDefault: string };
       expect(stored.cavemanDefault).toBe('ultra');
+    } finally {
+      process.env.TERSIO_HOME = previousTersio;
+      process.env.XDG_CONFIG_HOME = previousXdg;
+    }
+  });
+
+  test('a host argument lands in that agent own section, not the shared store', async () => {
+    const home = await mkdtemp(path.join(tmpdir(), 'tersio-host-modes-'));
+    const previousTersio = process.env.TERSIO_HOME;
+    const previousXdg = process.env.XDG_CONFIG_HOME;
+    process.env.TERSIO_HOME = home;
+    process.env.XDG_CONFIG_HOME = path.join(home, 'config');
+    try {
+      const set = await modes({ rtk: 'on', host: 'pi' });
+      expect(set.text).toContain('Session defaults for pi saved');
+      const stored = JSON.parse(await readFile(path.join(home, 'settings.json'), 'utf8')) as { rtkDefault?: boolean; hosts?: Record<string, { rtkDefault?: boolean }> };
+      expect(stored.hosts?.pi?.rtkDefault).toBe(true);
+      expect(stored.rtkDefault).toBeUndefined();
+      const read = await modes({ host: 'pi' });
+      expect(read.text).toContain('Current session defaults for pi');
+      expect(read.text).toContain('rtk=on');
+      const bad = await modes({ host: 'nope' });
+      expect(bad.error?.message).toContain('host must be one of');
     } finally {
       process.env.TERSIO_HOME = previousTersio;
       process.env.XDG_CONFIG_HOME = previousXdg;

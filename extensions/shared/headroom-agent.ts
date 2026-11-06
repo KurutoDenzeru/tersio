@@ -12,6 +12,7 @@ import {
   HEADROOM_PORT, defaultOmpModel, ompCachedEndpoint, ompConfigFile, ompModelsFile, ompProviderNames, routeOmpDefaultModel,
 } from './headroom-proxy.ts';
 import { piAgentDir, pigAgentDir } from './utils.ts';
+import { readHeadroomRoute } from './headroom-routing.ts';
 
 /** The endpoint an agent's own catalog records for a provider the agent keeps built in. */
 export interface AgentEndpoint {
@@ -144,7 +145,9 @@ function ompAgentProviderRoute(port: number): AgentProviderRoute | null {
   }
   const model = defaultOmpModel(config);
   if (!model) return null;
-  const provider = providerOf(model, '');
+  // The block that lists the model owns it: a gateway (magpie, a local llm) serves models whose own
+  // prefix names another provider, so the prefix alone would look for a block that is not there.
+  const provider = readHeadroomRoute('omp').provider || providerOf(model, '');
   if (!provider) return null;
   const configured = ompProviderNames(models).has(provider);
   const cached = configured ? null : ompCachedEndpoint(model);

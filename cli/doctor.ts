@@ -14,11 +14,13 @@ import { GENERATED_TREE_FILES } from './manifest.ts';
 import { askInteractiveChoice, askInteractiveConfirm, runInteractivePhase } from './interactive.ts';
 import { usageDbPath } from '../extensions/shared/usage-store.ts';
 
-import { piAgentDir, pigAgentDir, readTextIfExists, resolveHeadroomBinary, resolveHostBinary, resolveRtkBinary, rtkPlatformSpec, ruleBodyProblem } from '../extensions/shared/utils.ts';
+import { piAgentDir, pigAgentDir, readTextIfExists, resolveHeadroomBinary, resolveHostBinary, resolveRtkBinary, ruleBodyProblem } from '../extensions/shared/utils.ts';
 import { sqliteScript, statsDbPath } from '../extensions/shared/agent-stats.ts';
 import { OMP_SUBAGENT_MARKER } from '../extensions/shared/session-state.ts';
 import { describeHeadroomRoute, readHeadroomRoute } from '../extensions/shared/headroom-routing.ts';
+import { hasNativeRoute } from '../extensions/shared/headroom-routes.ts';
 import { hostCap } from '../extensions/shared/host-caps.ts';
+import { tersioMcpConfigured } from '../extensions/shared/mcp-config.ts';
 import { PI_PONYTAIL_FILES, PONYTAIL_BUNDLE_FILES, PONYTAIL_VERSION, TREE_PSTACK_FILES, isObsoleteTreeFile, treeFileText, treeFilesFor } from './manifest.ts';
 import { serviceRunning, serviceState } from './doctor-fix.ts';
 import { readState } from '../extensions/shared/state.ts';
@@ -242,14 +244,8 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
     console.log(`  ⚠️ ${label}: warn ${detail}`);
   }
 
-  // A Windows failure names its cause here: several rows below silently degrade when the platform has no rtk build, and a wrong home would move every one of them.
   section('Platform');
-  const rtkSpec = rtkPlatformSpec();
-  check('Platform', rtkSpec !== null, `${process.platform}/${process.arch}${rtkSpec ? ` · node ${process.version} · rtk ${rtkSpec.triple}` : ''}`);
-  if (rtkSpec === null) {
-    // Windows on ARM today: rtk publishes no build, so the RTK rows read as not installed.
-    console.log(`      rtk publishes no build for ${process.platform}/${process.arch}; every RTK row below reads as missing`);
-  }
+  check('Platform', true, `${process.platform}/${process.arch} · node ${process.version}`);
   console.log(`  Usage DB: ${usageDbPath()} (local only)`);
 
   section('Hosts');
@@ -268,6 +264,16 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
     // One line per host, omp style: kind and version, no path echo.
     const kind = host.via === 'tree' ? 'extensions' : 'package';
     check(host.label, true, `${kind} ${PACKAGE_NAME}${host.version ? ` ${host.version}` : ''}`);
+    // The MCP entry is a second file an install writes; a tool that never appears starts here.
+    if (!tersioMcpConfigured(host.id)) {
+      warnLine(`${host.label} MCP`, hostCap(host.id)?.mcp != null ? `not wired — run: tersio install --host ${host.id}` : 'the bundle patch did not mount');
+    }
+    // A route Tersio recorded but no longer reads back was overwritten by another writer.
+    const headroomRoute = readHeadroomRoute(host.id);
+    if (headroomRoute.routed) check(`${host.label} Headroom`, true, describeHeadroomRoute(headroomRoute));
+    else if (hasNativeRoute(host.id as 'pi' | 'pig' | 'dsh' | 'opencode')) {
+      warnLine(`${host.label} Headroom`, `route drifted — run: tersio install --host ${host.id}`);
+    }
   }
 
   // A version apart means omp can load a tree of two releases.
@@ -504,7 +510,7 @@ async function runDoctorFix(tally: DoctorSummary): Promise<void> {
       { value: 'all', label: 'Fix everything', hint: `${tally.missing + tally.warn} rows` },
       { value: 'extensions', label: 'Missing extension files', hint: 'copy sources from this CLI' },
       { value: 'registrations', label: 'config.yml registrations', hint: 'remove stale entries; keep manifest-owned extensions out' },
-      { value: 'rtk', label: 'RTK binary + wiring', hint: 'download checksum-verified binary, rtk init' },
+      { value: 'rtk', label: 'RTK wiring', hint: 're-bind the installed rtk with rtk init' },
       { value: 'ponytail', label: 'Ponytail package', hint: 'bundled reinstall via tersio dep' },
       { value: 'cli', label: 'CLI update', hint: 'latest tersio + delegated refresh' },
       { value: 'service', label: 'OpenCode service', hint: 'stop an orphaned serve process, then start it' },

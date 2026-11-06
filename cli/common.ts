@@ -97,7 +97,6 @@ const assumeYes = args.includes('--yes') || args.includes('-y');
 const yes = assumeYes || install || update || applyUpdate;
 const verbose = args.includes('--verbose');
 // Off by default: an unverified RTK binary runs with the user's privileges.
-const allowUnverified = args.includes('--allow-unverified');
 const doctor = command === 'doctor' || args.includes('--doctor');
 const fix = args.includes('--fix') || args.some((a) => a.startsWith('--fix='));
 const dashboard = command === 'dashboard';
@@ -418,7 +417,6 @@ export {
   parseEnum, flagValue, COMMANDS, commandArg, command, unknownCommand, mcp,
   install, update, showVersion, showHelp, applyUpdate, args,
   dryRun, yes, assumeYes, verbose, doctor, fix, uninstall, dashboard, upstream,
-  allowUnverified,
   dashboardPort, dashboardBind, dashboardOpen, dashboardWatch, dashboardExport, currency, currencyGiven,
   removePonytail, keepPonytail, removeRtk,
   comboDefaultFlag, cavemanDefaultFlag, ponytailDefaultFlag, pstackDefaultFlag, headroomDefaultFlag, rtkDefaultFlag, profileFlagsGiven,

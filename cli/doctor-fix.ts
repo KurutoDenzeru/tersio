@@ -3,20 +3,15 @@ import { spawnSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import {
-  BUN_BIN_DIR, HOME, NPM_BIN, OMP_AGENT_DIR, OMP_PLUGINS_DIR,
-  PACKAGE_NAME, PACKAGE_VERSION, RTK_BINARY_NAME, removeExtensionFromConfig,
+  HOME, NPM_BIN, OMP_AGENT_DIR, OMP_PLUGINS_DIR,
+  PACKAGE_NAME, PACKAGE_VERSION, removeExtensionFromConfig,
   dryRun, verbose,
-  debug,
-  execP, readPluginsPackage,
+  readPluginsPackage,
   shimCommand,
 } from './common.ts';
 import { execNetwork, sayTagged } from './interactive.ts';
 import { wireRtk } from './rtk-wiring.ts';
-import {
-  RTK_RELEASE_API, fetchJson, findFile, httpsGet,
-  httpsDownload, parseChecksum, readTextIfExists, resolveHostBinary, rtkPlatformSpec, sha256File,
-} from '../extensions/shared/utils.ts';
-import type { RtkRelease } from '../extensions/shared/utils.ts';
+import { RTK_INSTALL_DOCS, readTextIfExists, resolveHostBinary, resolveRtkBinary } from '../extensions/shared/utils.ts';
 import { runLatestUpdate } from './update.ts';
 import { OPENCODE_ENTRY, PONYTAIL_PKG, TREE_FILES, isObsoleteTreeFile, syncPluginManifest, syncTreeFiles, treeFilesFor } from './manifest.ts';
 import { detectHosts, hostExtensionsDir } from './hosts.ts';
@@ -245,54 +240,18 @@ async function fixRegistrations(agentDir: string, pluginsDir: string): Promise<v
   }
 }
 
-async function fixRtk(binDir: string): Promise<void> {
-  console.log('  Doctor --fix: repairing RTK binary + wiring');
-  const binDest = path.join(binDir, RTK_BINARY_NAME);
-  if (dryRun) {
-    sayTagged(`  [dry-run] would download a checksum-verified rtk to ${binDest} and wire it into the installed hosts`);
-    return;
-  }
-  const spec = rtkPlatformSpec();
-  if (!spec) throw new Error(`unsupported platform ${process.platform}/${process.arch}`);
-  const release = await fetchJson<RtkRelease>(RTK_RELEASE_API);
-  const asset = (release.assets || []).find((a) => a.name === `rtk-${spec.triple}${spec.ext}`);
-  const checksAsset = (release.assets || []).find((a) => a.name === 'checksums.txt');
-  if (!asset || !checksAsset) throw new Error(`required assets missing in release ${release.tag_name}`);
-  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'tersio-doctor-rtk-'));
-  try {
-    const archivePath = path.join(tmpDir, asset.name);
-    const [checks] = await Promise.all([
-      httpsGet(checksAsset.browser_download_url).catch(() => null),
-      httpsDownload(asset.browser_download_url, archivePath),
-    ]);
-    // Same rule as the installer: an unverifiable binary is not installed.
-    const unverified = (why: string): Error => new Error(`${why} for ${asset.name}. Re-run with --allow-unverified to accept it`);
-    if (!checks) throw unverified('checksums.txt could not be downloaded');
-    const expected = parseChecksum(checks, asset.name);
-    if (!expected) throw unverified('checksums.txt has no entry');
-    if (await sha256File(archivePath) !== expected) throw new Error(`checksum mismatch for ${asset.name}`);
-    debug('RTK checksum verified');
-    const extractDir = path.join(tmpDir, 'extracted');
-    await fs.mkdir(extractDir, { recursive: true });
-    if (asset.name.endsWith('.zip')) await execP('powershell', ['Expand-Archive', '-Path', archivePath, '-DestinationPath', extractDir, '-Force'], { timeout: 60000 });
-    else await execP('tar', ['xzf', archivePath, '-C', extractDir], { timeout: 60000 });
-    const found = await findFile(extractDir, RTK_BINARY_NAME);
-    if (!found) throw new Error(`${RTK_BINARY_NAME} not found in ${asset.name}`);
-    await fs.mkdir(path.dirname(binDest), { recursive: true });
-    await fs.copyFile(binDest, `${binDest}.bak`).catch(() => { });
-    await fs.copyFile(found, binDest);
-    if (process.platform !== 'win32') await fs.chmod(binDest, 0o755);
-    await execP(binDest, ['--version'], { timeout: 30000, shell: false });
-  } finally {
-    await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => { });
-  }
+/** rtk ships its own binary and installer; the repair only re-binds the copy that is already here. */
+async function fixRtk(): Promise<void> {
+  const bin = resolveRtkBinary();
+  if (!bin) throw new Error(`rtk is not installed — get it from ${RTK_INSTALL_DOCS}, then re-run`);
+  console.log('  Doctor --fix: re-wiring RTK into the installed hosts');
   const home = process.env.HOME || process.env.USERPROFILE || os.homedir();
   const targets: Array<'omp' | 'pi' | 'pig' | 'opencode'> = ['omp'];
   if (existsSync(path.join(home, '.config', 'opencode', 'plugins', 'tersio'))) targets.push('opencode');
   if (existsSync(path.join(home, '.pi', 'agent', 'extensions'))) targets.push('pi');
   if (existsSync(path.join(home, '.pig', 'agent', 'extensions'))) targets.push('pig');
   // Fail-open: a missing host wire must not fail the repair.
-  for (const host of targets) await wireRtk(binDest, host, { dryRun, verbose });
+  for (const host of targets) await wireRtk(bin, host, { dryRun, verbose });
 }
 
 async function fixPonytail(pluginsDir: string): Promise<void> {
@@ -376,7 +335,7 @@ async function runDoctorRepairs(targets: FixRequest[]): Promise<string[]> {
   };
   if (want('extensions')) await attempt('extensions', () => fixExtensions(OMP_PLUGINS_DIR));
   if (want('registrations')) await attempt('registrations', () => fixRegistrations(OMP_AGENT_DIR, OMP_PLUGINS_DIR));
-  if (want('rtk')) await attempt('rtk', () => fixRtk(BUN_BIN_DIR));
+  if (want('rtk')) await attempt('rtk', () => fixRtk());
   if (want('ponytail')) await attempt('ponytail', () => fixPonytail(OMP_PLUGINS_DIR));
   if (want('cli')) await attempt('cli', fixCli);
   if (want('service')) await attempt('opencode service', fixOpencodeService);

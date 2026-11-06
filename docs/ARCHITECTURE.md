@@ -95,6 +95,8 @@ flowchart LR
 - **The runtime comes before the switch.** Tersio starts headroom's saved deployment, or headroom's proxy when none exists, and waits for health. Dashboard start restores an enabled runtime. The Tools page also carries a Start Headroom action.
 - **Oh My Pi and OpenCode use Headroom's writers.** Pi, PiG, and DeepSeek Harness use Tersio's route writer. It changes only the active provider endpoint, saves that URL in the state row, and puts it back on off.
 - **A row states its own path.** A switch means a durable setup Tersio manages. `headroom install` means headroom's installer owns it. `routed by hand` means an endpoint Tersio found but cannot undo. `session only` means no durable setup exists.
+- **One action per agent.** A route is written once and repaired if a third-party writer replaces it; there is no per-session wrap and no ledger of wrapped tools. Headroom's own durable writer still owns omp and opencode, whose providers live in its block.
+- **The route outlives the process, so the session starts it.** A config file still points at the proxy after a reboot; the proxy does not, so the headroom extension starts it at session start and the dashboard restores it on boot.
 - **Undo belongs to the writer.** Headroom's own writers use `headroom unwrap`; Tersio's route writer restores the endpoint it saved.
 - **The block requires a routed model.** Tersio reads omp's default `modelRoles` entry, OpenCode's active model, Pi's default provider, and DeepSeek Harness's profile provider. It resolves the provider base URL and keeps the block out when the model does not reach the proxy.
 - **A local gateway is routed, not guessed.** When omp's OpenAI provider points at a loopback gateway, Tersio records the original URL in a marker, points the provider at the proxy, and starts Headroom with `--openai-api-url` set to that gateway. `headroom unwrap omp` restores the backup.
@@ -106,6 +108,7 @@ flowchart LR
 ## Setup, update, and health
 
 - **One host table names every capability.** `extensions/shared/host-caps.ts` owns labels, commands, MCP shape, RTK binding, and Headroom support. Install, uninstall, MCP, and RTK read it instead of repeating host conditionals.
+- **rtk's binary is rtk's.** Tersio detects the binary and runs rtk's own `rtk init` binding; it never downloads, replaces, or deletes it. Install, `doctor --fix`, the updater, and uninstall all stop at detection and wiring, so a user's own rtk install is never overwritten or removed.
 - **Install writes one tree per agent and one manifest.** A second copy of the same file is treated as the bug.
 - **Doctor repairs or names the cleanup.** A partial tree reads as not installed. Legacy entries are removed.
 - **Update checks two sources.** The npm registry and the GitHub release feed are read together, and the newer version wins.
@@ -120,8 +123,11 @@ Caveman, pstack, ponytail, and rtk are ports. `cli/upstream.ts` records a pin fo
 
 - **The client starts it.** There is no daemon, port, or token.
 - **It reads the same store as the dashboard.** A dashboard figure and an MCP figure are the same figure.
-- **Its write path matches Settings.** A mode change lands in `settings.json` and in the activity log.
+- **Its write path matches Settings.** A mode change lands in `settings.json` and in the activity log. A `host` argument writes that agent's own `hosts.<id>` section instead, which is the same section the dashboard and `tersio install` write.
 - **stdout carries only the protocol.** Settings output is captured and returned as the tool's answer.
+- **The entry belongs to the host, not to this process.** `tersio install` asks before writing it, except for DeepSeek Harness, whose bundle patch carries it. The written command is an absolute path when the binary resolves, because a desktop-launched agent inherits no shell PATH.
+- **A `.jsonc` config is edited in place.** Only the `mcp` block is spliced, so the user's comments and layout survive a write that a JSON round-trip would flatten.
+- **Resources are static snapshots.** `tersio://settings` and `tersio://hosts` read on demand; there is no subscription or change notification.
 
 ## Limits
 

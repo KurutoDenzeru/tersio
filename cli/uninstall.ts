@@ -2,7 +2,7 @@
 import { existsSync, promises as fs } from 'node:fs';
 import path from 'node:path';
 import {
-  BUN_BIN_DIR, HOME, OMP_AGENT_DIR, OMP_PLUGINS_DIR, PACKAGE_NAME, RTK_BINARY_NAME,
+  HOME, OMP_AGENT_DIR, OMP_PLUGINS_DIR, PACKAGE_NAME,
   args, dryRun, keepPonytail, removePonytail, removeRtk, yes,
   debug, execP, writeConfigLines,
 } from './common.ts';
@@ -11,10 +11,11 @@ import { askInteractiveChoice, closeRL, confirmDestructive, tty, sayTagged } fro
 import { detectHosts, dshCliProfiles, dshDesktopProfilePresent, dshPackageDir, dshRunner, parseHostArg } from './hosts.ts';
 import type { HostEntry } from './hosts.ts';
 import type { HostId } from '../extensions/shared/host-caps.ts';
-import { piAgentDir, pigAgentDir, readTextIfExists, resolveHeadroomBinary } from '../extensions/shared/utils.ts';
+import { piAgentDir, pigAgentDir, readTextIfExists } from '../extensions/shared/utils.ts';
 import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
 import { removeTersioMcp } from '../extensions/shared/mcp-config.ts';
 import { NATIVE_ROUTE_HOSTS, isNativeRouteHost, removeNativeRoute } from '../extensions/shared/headroom-routes.ts';
+import { restoreOmpGateway } from '../extensions/shared/headroom-proxy.ts';
 
 interface UninstallOptions {
   yes?: boolean;
@@ -116,10 +117,8 @@ async function removePiLayer(host: HostEntry, shouldDryRun: boolean, shouldRemov
   }
   await Promise.all(targets.map((t) => removeUninstallTarget(t, shouldDryRun)));
   // rtk's wiring is a loose file, not a tree dir, so it survived --remove-rtk on pi while OMP removed its copy.
-  if (shouldRemoveRtk) {
-    await removeUninstallTarget(rtkWiring, shouldDryRun, false);
-    await removeUninstallTarget(path.join(BUN_BIN_DIR, RTK_BINARY_NAME), shouldDryRun, false);
-  }
+  // Only the wiring Tersio wrote; rtk's own binary belongs to the user's rtk install.
+  if (shouldRemoveRtk) await removeUninstallTarget(rtkWiring, shouldDryRun, false);
   if (!shouldDryRun) removeTersioMcp(targetHost);
   await clearSessionDefaults(shouldDryRun);
   return true;
@@ -186,31 +185,20 @@ async function restoreHeadroomRoute(host: HostId, shouldDryRun: boolean): Promis
     if (restored.ok) sayTagged(`  [rm] Headroom endpoint: ${restored.detail}`);
     return;
   }
-  if (host !== 'omp' && host !== 'opencode') return;
   if (shouldDryRun) {
-    sayTagged(`  [dry-run] would unwrap headroom for ${host}`);
+    sayTagged(`  [dry-run] would put ${host}'s endpoint back`);
     return;
   }
-  const bin = resolveHeadroomBinary();
-  if (!bin) return;
-  try {
-    await execP(bin, ['unwrap', host, '--no-stop-proxy'], { timeout: 90_000 });
-    sayTagged(`  [rm] Headroom unwrap: ${host}`);
-  } catch { /* not wrapped, or nothing to undo */ }
+  // Tersio wrote every endpoint it routes, so Tersio puts it back; headroom is not asked.
+  const restored = isNativeRouteHost(host) ? removeNativeRoute(host) : { ok: restoreOmpGateway(), detail: '' };
+  if (restored.ok) sayTagged(`  [rm] Headroom endpoint: ${host}`);
 }
 
 /** Removes the user's own Headroom install with whichever package manager installed it. */
 async function removeHeadroomBinary(shouldDryRun: boolean): Promise<void> {
-  // Undo the agent-side wraps first: a removed binary behind a headroom-managed config strands the agent.
-  const headroomBin = resolveHeadroomBinary();
-  if (headroomBin && !shouldDryRun) {
-    for (const target of ['omp', 'opencode']) {
-      try {
-        await execP(headroomBin, ['unwrap', target], { timeout: 90_000 });
-        sayTagged(`  [rm] Headroom unwrap: ${target}`);
-      } catch { /* not wrapped, or nothing to undo */ }
-    }
-    // Tersio's own routes have no headroom unwrap; put their endpoints back before the proxy leaves.
+  // Put every endpoint back before the proxy leaves: a removed binary behind a routed agent strands it.
+  if (!shouldDryRun) {
+    if (restoreOmpGateway()) sayTagged('  [rm] Headroom endpoint: omp');
     for (const target of NATIVE_ROUTE_HOSTS) {
       const restored = removeNativeRoute(target);
       if (restored.ok) sayTagged(`  [rm] Headroom endpoint: ${restored.detail}`);
@@ -286,17 +274,12 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
     }
   }
   // Binaries picked without an agent get their own confirmation and their own removal; with a host the host's dialog already lists them.
-  if (shouldRemoveHeadroomBinary || (shouldRemoveRtk && hosts.length === 0)) {
-    const plan = [
-      ...(shouldRemoveRtk && hosts.length === 0 ? ['the RTK binary'] : []),
-      ...(shouldRemoveHeadroomBinary ? ['the Headroom binary'] : []),
-    ].join(' and ');
-    if (!confirmed && !(await confirmDestructive(`Remove ${plan}?`))) {
+  if (shouldRemoveHeadroomBinary) {
+    if (!confirmed && !(await confirmDestructive('Remove the Headroom binary?'))) {
       closeRL();
       return false;
     }
-    if (shouldRemoveRtk && hosts.length === 0) await removeUninstallTarget(path.join(BUN_BIN_DIR, RTK_BINARY_NAME), shouldDryRun, false);
-    if (shouldRemoveHeadroomBinary) await removeHeadroomBinary(shouldDryRun);
+    await removeHeadroomBinary(shouldDryRun);
   }
   if (hosts.length === 0) {
     closeRL();
@@ -380,7 +363,6 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
 
   const extDir = path.join(OMP_AGENT_DIR, 'extensions');
   const configPath = path.join(OMP_AGENT_DIR, 'config.yml');
-  const rtkBin = path.join(BUN_BIN_DIR, RTK_BINARY_NAME);
   const pluginsDir = OMP_PLUGINS_DIR;
   const ponytailPkgDir = path.join(pluginsDir, 'node_modules', '@dietrichgebert', 'ponytail');
 
@@ -401,10 +383,7 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
     console.log(`  ${ponytailPkgDir} (ponytail plugin package)`);
   }
 
-  if (shouldRemoveRtk) {
-    console.log(`  ${rtkBin}`);
-    console.log(`  ${path.join(extDir, 'rtk.ts')} (rtk OMP wiring)`);
-  }
+  if (shouldRemoveRtk) console.log(`  ${path.join(extDir, 'rtk.ts')} (rtk OMP wiring)`);
 
   if (!confirmed && !(await confirmDestructive('Remove the listed Tersio files?'))) { results.push(false); continue; }
 
@@ -485,7 +464,6 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
 
   // Our rtk wiring goes too, or OMP keeps rewriting for a removed package.
   await removeUninstallTarget(path.join(extDir, 'rtk.ts'), shouldDryRun);
-  if (shouldRemoveRtk) await removeUninstallTarget(rtkBin, shouldDryRun, false);
 
   await clearSessionDefaults(shouldDryRun);
 

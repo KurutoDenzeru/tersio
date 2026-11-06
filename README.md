@@ -153,21 +153,25 @@ Add this entry under `mcpServers` in the client's MCP settings:
 }
 ```
 
-That is the whole setup. No extra command, no port, no token, and no process to keep alive. `tersio install` writes this same Tersio server entry into OMP, Pi, PiG, Deepseek Harness, and OpenCode, so there is no second MCP process. `tersio_headroom` carries savings, status, and retrieve for compressed content.
+That is the whole setup. No extra command, no port, no token, and no process to keep alive. `tersio install` writes this same Tersio server entry into OMP, Pi, PiG, and OpenCode, and asks first — the prompt reads `Add the Tersio MCP server to <agent>? … (optional)`, so a machine that should stay untouched can decline. DeepSeek Harness needs no file: its bundle patch carries the entry, and it is wired as soon as the plugin is mounted.
 
-Three tools become available: `tersio_stats` (requests, errors, tokens, cache rate, and cost for a range, in your display currency), `tersio_activity` (what Tersio changed, newest first), `tersio_modes` (read the session-start defaults, or set them: a Combo preset, or any single mode — caveman, rtk, ponytail, pstack, headroom — overriding its piece of the preset), and `tersio_headroom` (savings by default; `action: status` for live proxy counters and routing; `action: retrieve` with a marker hash; or `action: memory`, `evals`, and `dashboard` for the upstream commands Tersio does not reimplement).
+The entry names an absolute `tersio` path when the binary is findable at install time, because an agent launched from the desktop never reads a shell profile and would not see the bare name. The bare name stays as the fallback.
+
+Six tools become available: `tersio_stats` (requests, errors, tokens, cache rate, and cost for a range, in your display currency), `tersio_activity` (what Tersio changed, newest first), `tersio_hosts` (every supported agent, its installed version, and whether the MCP entry reaches it), `tersio_sessions` (the newest sessions with host, project, model, tokens, and cost), `tersio_modes` (read the session-start defaults, or set them: a Combo preset, or any single mode — caveman, rtk, ponytail, pstack, headroom — overriding its piece of the preset; pass `host` to scope the read or the write to one agent), and `tersio_headroom` (savings by default; `action: status` for live proxy counters and routing; `action: retrieve` with a marker hash; or `action: memory`, `evals`, and `dashboard` for the upstream commands Tersio does not reimplement).
+
+Two resources read without spending a tool call: `tersio://settings` (the stored profile) and `tersio://hosts` (the host table with live state). A client that cancels a request stops the tool with it, so a long `evals` run does not keep the process busy after the call is gone.
 
 ## 🖥️ CLI
 
 | Command | Purpose |
 |---|---|
 | `tersio install` | Install (user scope: all OMP sessions) |
-| `tersio update` | Update the Tersio CLI. `--host <agent>` also refreshes that agent's extensions and add-ons (RTK binary, Caveman rule, Headroom, Ponytail); no prompt is asked |
+| `tersio update` | Update the Tersio CLI. `--host <agent>` also refreshes that agent's extensions and add-ons (Caveman rule, Headroom, Ponytail) and reports a newer rtk release; no prompt is asked |
 | `tersio doctor` (Defaults row) | `tersio doctor` prints the shared defaults and each agent's overrides, so a value's source is visible without reading the store |
 | `tersio doctor` | Check OMP, extension, Ponytail, RTK, and OpenCode service health (`--fix` repairs, `--fix=<scope>` one scope, `--dry-run` previews) |
 | `tersio dashboard` | Open the Dashboard (`--open`, `--export <file>`, `--port <n>`, `--currency <code>`; serves localhost only) |
 | `tersio mcp` | Start the Tersio MCP server on stdio (see [MCP](#-mcp)) |
-| `tersio uninstall` | Remove extensions, registrations, the Ponytail plugin, and the `rtk.ts` OMP wiring (`--keep-ponytail` keeps Ponytail; `--remove-rtk` also removes the RTK binary) |
+| `tersio uninstall` | Remove extensions, registrations, the Ponytail plugin, and the `rtk.ts` OMP wiring (`--keep-ponytail` keeps Ponytail; `--remove-rtk` also removes that wiring, never the binary) |
 | `tersio version` | Print version |
 
 Flags: `--dry-run`, `--yes`/`-y`, `--verbose`, `--combo-default`/`--caveman-default`/`--rtk-default`/`--ponytail-default`/`--pstack-default`/`--headroom-default`, `--currency <code>` (usage/dashboard display currency; flag wins, then the dashboard's own default, then USD). Legacy `--doctor` / `--uninstall` forms still work.
@@ -202,7 +206,7 @@ Shared, and identical for every host:
 | What | Path |
 |---|---|
 | Session defaults | `~/.tersio/settings.json` — combo, caveman, rtk, ponytail, pstack, headroom, and currency. `hosts.<agent>` overrides one agent; `inherit` restores the shared value |
-| RTK binary | `~/.bun/bin/rtk` (`rtk.exe` on Windows); `PATH` wins when present |
+| RTK binary | Not Tersio's: whatever `rtk` resolves to on `PATH` (or `~/.bun/bin`). rtk installs and updates it |
 | Ledger and caches | `~/.tersio/usage.db` — usage rows, prices, scorecard, state, Headroom records, and layout. Local only |
 | Activity log | `~/.tersio/activity.jsonl` — one line per change, as the Logs page reads it |
 | Host scope | The same `usage.db` mirrors omp, pi, and OpenCode sessions, split by host and agent kind |
@@ -218,11 +222,13 @@ Active modes reassert after Ponytail's prompt block on every top-level turn, inc
 
 **Ponytail or Combo command missing on OMP:** confirm `~/.omp/plugins/package.json` lists `@krtclcdy/tersio`, then run `tersio install`, restart OMP, and check `tersio doctor`. A damaged tree is repaired by `tersio doctor --fix extensions`.
 
-**RTK missing or not executable:** run `tersio install`, then `tersio doctor`. On Linux/macOS: `chmod +x ~/.bun/bin/rtk`. On Windows the binary is `rtk.exe`, and rtk publishes no `aarch64-pc-windows` build, so a Windows-on-ARM host has no rtk to install. The doctor's Platform row names this directly.
+**RTK missing:** rtk is part of Tersio, so `tersio install` runs rtk's own quick install for you — `curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/master/install.sh | sh` on macOS/Linux, `winget install rtk-ai.rtk` on Windows — then binds it, reading `~/.local/bin` even before your shell picks it up. If that install cannot run, it prints rtk's install page — [rtk-ai.app/docs/getting-started/installation](https://www.rtk-ai.app/docs/getting-started/installation/) — and finishes everything else.
+
+**Headroom installed somewhere unusual:** point Tersio at the binary with `TERSIO_HEADROOM_BIN=/path/to/headroom`; the install and the routing both read it.
 
 **RTK savings and adoption:** the Gain numbers read rtk's own `history.db` (`%LOCALAPPDATA%\rtk` on Windows), so pi and OpenCode runs are already in them. The adoption row counts executed Bash calls from the omp and pi transcripts and OpenCode's v2 sqlite or pre-v2 JSON tree. The eligible list comes from `rtk rewrite`, cached per binary version. Native tool calls (`read`/`edit`/`eval`) and exact bytes bypass RTK.
 
-**Checksum warning or failure:** the installer aborts on RTK checksum mismatch but warns and continues when checksum metadata is unavailable; `/tersio update rtk` aborts when metadata is missing.
+**RTK update available:** `tersio update` and the dashboard report the version rtk upstream ships. Tersio never installs it; update rtk with its own installer.
 
 ## 🤝🏻 Contributing
 

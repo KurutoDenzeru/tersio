@@ -1,18 +1,18 @@
-// Vendor routes: update or remove the two third-party binaries the Tools page owns.
+// Vendor routes: update or remove the one third-party binary Tersio ships for — Headroom. rtk's
+// binary is its own install; Tersio only binds it into an agent.
 
 import { spawn } from 'node:child_process';
-import { existsSync, unlinkSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import type http from 'node:http';
 import { recordActivity } from './activity.ts';
-import { detectHosts } from './hosts.ts';
 import { homeDir, resolveHeadroomBinary } from '../extensions/shared/utils.ts';
 
 export interface VendorRouteCtx {
   json: (res: Pick<http.ServerResponse, 'writeHead' | 'end'>, code: number, body: unknown) => void;
   bodyOf: (req: http.IncomingMessage) => Promise<Record<string, unknown>>;
   spawnHeadroomInstall: () => boolean;
-  isVendorTool: (tool: string) => tool is 'headroom' | 'rtk';
+  isVendorTool: (tool: string) => tool is 'headroom';
 }
 
 /** True when the route was answered. */
@@ -44,17 +44,7 @@ export async function handleVendorRoutes(
       ctx.json(res, 200, { ok: true, detail: 'headroom updates in the background' });
       return true;
     }
-    const entry = process.argv[1];
-    const host = detectHosts().find((candidate) => candidate.installed)?.id;
-    if (!entry || !host) {
-      ctx.json(res, 400, { ok: false, error: 'no installed agent to refresh rtk through' });
-      return true;
-    }
-    const runtime = entry.endsWith('.ts') ? 'bun' : process.execPath;
-    const child = spawn(runtime, [entry, 'install', '--host', host, '--apply-update', '--yes'], { detached: true, stdio: 'ignore' });
-    child.unref();
-    recordActivity('agent', 'RTK update started');
-    ctx.json(res, 200, { ok: true, detail: `rtk updates through the ${host} refresh — running in the background` });
+    ctx.json(res, 400, { ok: false, error: 'rtk is not managed here' });
     return true;
   }
   if (req.url === '/api/vendor/uninstall' && req.method === 'POST') {
@@ -76,19 +66,7 @@ export async function handleVendorRoutes(
       ctx.json(res, 200, { ok: true, detail: `uninstalling headroom-ai with ${cmd} in the background` });
       return true;
     }
-    const found = dirs.map((dir) => path.join(dir, 'rtk')).find((candidate) => existsSync(candidate));
-    if (!found) {
-      ctx.json(res, 400, { ok: false, error: 'rtk is not installed' });
-      return true;
-    }
-    try {
-      if (existsSync(`${found}.bak`)) unlinkSync(`${found}.bak`);
-      unlinkSync(found);
-      recordActivity('agent', 'RTK uninstalled');
-      ctx.json(res, 200, { ok: true, detail: 'the rtk binary is removed — its hooks skip a missing rtk' });
-    } catch (e) {
-      ctx.json(res, 500, { ok: false, error: (e as Error).message || 'could not remove the rtk binary' });
-    }
+    ctx.json(res, 400, { ok: false, error: 'rtk is not managed here' });
     return true;
   }
   return false;

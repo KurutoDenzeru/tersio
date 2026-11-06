@@ -307,77 +307,40 @@ export async function postPipelinePositions(positions: Record<string, unknown>):
   return (await apiJson<{ ok?: boolean }>("/api/pipeline/positions", { positions }))?.ok === true;
 }
 
-/** Which headroom wrap targets are present on this machine, and which install durably. */
-export interface HeadroomWrapTarget {
+/** One agent Tersio can point at the local headroom proxy. */
+export interface HeadroomRouteTarget {
   name: string;
-  label?: string;
-  /** True when headroom's own init installs this tool, so the integration survives restarts. */
-  durable?: boolean;
-  /** True when the only setup is a per-session wrap; the row names it instead of offering a switch. */
-  manual?: boolean;
-  /** True when headroom's own install apply has a durable path Tersio does not manage. */
-  headroomInstall?: boolean;
-  /** True when the durable block is already present in the tool's own config, or the manual route points at the proxy. */
-  installed?: boolean;
-  /** True when the host has no writer and routes through its own provider endpoint. */
-  route?: boolean;
-  /** The route's measured state, shown on the row. */
+  label: string;
+  /** True when the route points the agent's provider endpoint at the proxy. */
+  routed: boolean;
+  /** True when the agent keeps its providers in headroom's own block, which headroom's writer edits. */
+  durable: boolean;
+  /** The measured route, shown on the row. */
   detail?: string;
-  /** True when Headroom's own config block exists, whether or not the active model uses it. */
-  configured?: boolean;
-  /** True when Tersio wrote this route and can put the old endpoint back. */
-  managed?: boolean;
   /** True when Tersio's tree is installed for this agent. */
   agentInstalled?: boolean;
   /** True when the agent itself is on this machine, whatever state Tersio's tree is in. */
   agentPresent?: boolean;
 }
 
-export interface HeadroomWrapState {
-  targets: Array<HeadroomWrapTarget>;
+export interface HeadroomRouteState {
+  targets: Array<HeadroomRouteTarget>;
   endpoint?: string;
 }
 
-export async function fetchWrapTargets(): Promise<HeadroomWrapState | null> {
-  const body = await apiJson<{ targets?: Array<HeadroomWrapTarget>; endpoint?: string }>("/api/headroom/wrap");
+export async function fetchRoutes(): Promise<HeadroomRouteState | null> {
+  const body = await apiJson<{ targets?: Array<HeadroomRouteTarget>; endpoint?: string }>("/api/headroom/route");
   return body?.targets ? { targets: body.targets, endpoint: body.endpoint } : null;
 }
 
-/** The canvas mirrors the wrap record in browser storage; the server copy stays the source of truth. */
-const WRAP_KEY = "tersio.headroom.wrap.v1";
-
-export function readStoredWraps(): Record<string, true> {
-  try {
-    return JSON.parse(localStorage.getItem(WRAP_KEY) ?? "{}") as Record<string, true>;
-  } catch {
-    return {};
-  }
-}
-
-/** Mirrors the record for the canvas, and tells it to redraw; a private-mode write just skips. */
-export function storeWraps(wraps: Record<string, true>): void {
-  try { localStorage.setItem(WRAP_KEY, JSON.stringify(wraps)); } catch { /* private mode */ }
-  window.dispatchEvent(new Event("tersio:wrap-changed"));
-}
-
-/** The wrap record, stored tersio-side so every browser sees the same switches. */
-export async function fetchHeadroomWraps(): Promise<Record<string, unknown> | null> {
-  const body = await apiJson<{ wraps?: Record<string, unknown> }>("/api/headroom/wraps");
-  return body ? body.wraps ?? {} : null;
-}
-
-export async function postHeadroomWraps(wraps: Record<string, unknown>): Promise<boolean> {
-  return (await apiJson<{ ok?: boolean }>("/api/headroom/wraps", { wraps }))?.ok === true;
-}
-
-/** Starts headroom's own runtime; a durable switch is useless while the proxy is down. */
+/** Starts headroom's own runtime; a route is useless while the proxy is down. */
 export async function postHeadroomRuntime(): Promise<{ ok: boolean; detail?: string; error?: string } | null> {
   return apiJson("/api/headroom/runtime", {});
 }
 
-/** Runs headroom's documented wrap command for one tool, detached. */
-export async function postHeadroomWrap(name: string, action: "wrap" | "unwrap" = "wrap"): Promise<{ ok: boolean; detail: string; error?: string } | null> {
-  return apiJson("/api/headroom/wrap", { name, action });
+/** Points one agent at the proxy, or puts its old endpoint back. */
+export async function postRoute(name: string, on: boolean): Promise<{ ok: boolean; detail: string; error?: string } | null> {
+  return apiJson("/api/headroom/route", { name, on });
 }
 
 /** One vendor row from the scorecard: the installed version against the latest release. */
