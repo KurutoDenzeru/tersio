@@ -4,13 +4,12 @@
 import type http from 'node:http';
 import { hostCap } from '../extensions/shared/host-caps.ts';
 import {
-  headroomHostDurable, headroomProxyPort, headroomProxyUrl, installDurableConfig, readOmpGateway, routeOmpGateway,
+  headroomHostDurable, headroomProxyPort, headroomProxyUrl, installDurableConfig, readOmpGateway, restoreOmpGateway, routeOmpGateway,
 } from '../extensions/shared/headroom-proxy.ts';
 import { ensureAgentProviderRoute } from '../extensions/shared/headroom-agent.ts';
 import { describeHeadroomRoute, readHeadroomRoute } from '../extensions/shared/headroom-routing.ts';
 import { installNativeRoute, isNativeRouteHost, removeNativeRoute } from '../extensions/shared/headroom-routes.ts';
 import { detectHosts } from './hosts.ts';
-import { ensureHeadroomRuntime } from './headroom-runtime.ts';
 import { resolveHeadroomBinary, resolveHostBinary } from '../extensions/shared/utils.ts';
 
 export interface HeadroomRouteCtx {
@@ -19,6 +18,7 @@ export interface HeadroomRouteCtx {
   spawnHeadroomInstall: () => boolean;
   headroomInstallState: () => { startedAt: number; code: number | null; error: string | null };
   headroomRun: (bin: string, args: string[], timeout: number) => Promise<{ ok: boolean; lines: string[] }>;
+  ensureRuntime: (bin: string, openAiTarget?: string | null) => Promise<{ ok: boolean; detail: string }>;
 }
 
 /** True when the route was answered. */
@@ -50,7 +50,7 @@ export async function handleHeadroomRoutes(
       ctx.json(res, 400, { ok: false, error: 'headroom is not installed' });
       return true;
     }
-    ctx.json(res, 200, await ensureHeadroomRuntime(bin));
+    ctx.json(res, 200, await ctx.ensureRuntime(bin));
     return true;
   }
   // Every Tersio agent, with the one fact a reader needs: does its traffic reach the proxy.
@@ -89,7 +89,9 @@ export async function handleHeadroomRoutes(
     // A route points the agent at the proxy, so the proxy answers before the config is written.
     if (body.on !== false) {
       const gateway = cap.headroomGateway ? readOmpGateway(headroomProxyPort()) : null;
-      const runtime = await ensureHeadroomRuntime(bin, gateway?.baseUrl);
+      // headroom forwards to one upstream; a native host's provider has to be that one, or the write is refused.
+      const upstream = gateway?.baseUrl ?? (isNativeRouteHost(name) ? readHeadroomRoute(name).baseUrl : null);
+      const runtime = await ctx.ensureRuntime(bin, upstream);
       if (!runtime.ok) {
         ctx.json(res, 200, { ok: false, error: `headroom runtime did not start: ${runtime.detail}` });
         return true;
@@ -104,9 +106,13 @@ export async function handleHeadroomRoutes(
       // One switch-off must not strand the other agents: headroom's unwrap stops the proxy by default.
       const run = await ctx.headroomRun(bin, ['unwrap', name, '--no-stop-proxy'], 120_000);
       const out = run.lines.slice(-2).join(' · ');
-      ctx.json(res, 200, run.ok
-        ? { ok: true, detail: out || `${name}: headroom route removed` }
-        : { ok: false, error: out || `the ${name} unwrap failed` });
+      if (!run.ok) {
+        ctx.json(res, 200, { ok: false, error: out || `the ${name} unwrap failed` });
+        return true;
+      }
+      // headroom removes its own block; the gateway line Tersio moved is ours to put back.
+      if (cap.headroomGateway) restoreOmpGateway(headroomProxyPort());
+      ctx.json(res, 200, { ok: true, detail: out || `${name}: headroom route removed` });
       return true;
     }
     const port = headroomProxyPort();

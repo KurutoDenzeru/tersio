@@ -360,6 +360,44 @@ export function routeOmpGateway(route: OmpGatewayRoute, port: number = HEADROOM_
   }
 }
 
+/**
+ * Put back the endpoints Tersio moved in omp's models file and drop the markers it wrote. Only a line
+ * still pointing at this proxy is restored, so a provider the user changed afterwards is left alone.
+ */
+export function restoreOmpGateway(port: number = HEADROOM_PORT): boolean {
+  const file = ompModelsFile();
+  let text: string;
+  try { text = fs.readFileSync(file, 'utf8'); } catch { return false; }
+  const lines = text.split(/\r?\n/);
+  const proxy = `http://127.0.0.1:${port}/v1`;
+  const drop = new Set<number>();
+  let changed = false;
+  for (const block of ompProviderBlocks(text)) {
+    if (!block.marker || block.markerLine === null || block.baseLine < 0) continue;
+    if (block.baseUrl !== proxy) continue;
+    const indent = lines[block.baseLine]!.match(/^\s*/)?.[0] ?? '    ';
+    lines[block.baseLine] = `${indent}baseUrl: ${block.marker}`;
+    drop.add(block.markerLine);
+    // A model entry that names its own endpoint was moved too, and shares the marker's original.
+    for (let i = block.baseLine + 1; i < lines.length; i += 1) {
+      const raw = lines[i]!;
+      const trimmed = raw.trim();
+      if (trimmed !== '' && raw.length - raw.trimStart().length <= 2) break;
+      if (trimmed.startsWith('baseUrl:') && trimmed.endsWith('/v1') && trimmed.includes(`127.0.0.1:${port}`)) {
+        lines[i] = `${raw.match(/^\s*/)?.[0] ?? '      '}baseUrl: ${block.marker}`;
+      }
+    }
+    changed = true;
+  }
+  if (!changed) return false;
+  try {
+    fs.writeFileSync(file, lines.filter((_, index) => !drop.has(index)).join('\n'), 'utf8');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Route the provider omp's default role calls; a built-in provider with no block gets an override block. */
 export function routeOmpDefaultModel(port: number = HEADROOM_PORT): boolean {
   let model: string | null = null;
