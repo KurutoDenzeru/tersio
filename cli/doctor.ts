@@ -398,8 +398,8 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   return tally;
 }
 
-type FixTarget = 'extensions' | 'registrations' | 'rtk' | 'ponytail' | 'cli' | 'service';
-type FixRequest = FixTarget | 'all';
+// One definition, in the module that runs the repairs, so the menu and the parser cannot drift.
+import type { FixTarget, FixRequest } from './doctor-fix.ts';
 
 function fixScope(): FixTarget | null {
   const eq = args.find((a) => a.startsWith('--fix='));
@@ -416,7 +416,7 @@ function fixScope(): FixTarget | null {
 }
 
 function checkFixScope(raw: string): FixTarget {
-  const valid: FixTarget[] = ['extensions', 'registrations', 'rtk', 'ponytail', 'cli', 'service'];
+  const valid: FixTarget[] = ['extensions', 'registrations', 'rtk', 'ponytail', 'cli', 'service', 'headroom'];
   if (!valid.includes(raw as FixTarget)) {
     console.error(`[fail] Invalid --fix scope: ${raw}. Valid: ${valid.join(', ')}`);
     process.exit(1);
@@ -513,6 +513,7 @@ async function runDoctorFix(tally: DoctorSummary): Promise<void> {
       { value: 'rtk', label: 'RTK wiring', hint: 're-bind the installed rtk with rtk init' },
       { value: 'ponytail', label: 'Ponytail package', hint: 'bundled reinstall via tersio dep' },
       { value: 'cli', label: 'CLI update', hint: 'latest tersio + delegated refresh' },
+      { value: 'headroom', label: 'Headroom proxy', hint: 'stop duplicate proxies, then start one on the routed port' },
       { value: 'service', label: 'OpenCode service', hint: 'stop an orphaned serve process, then start it' },
     ], 'all');
     if (picked.status !== 'selected') { process.exitCode = 130; return; }

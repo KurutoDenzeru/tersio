@@ -1,24 +1,28 @@
 // Headroom's runtime, not its configuration. A durable switch points an agent at the local proxy,
 // so the proxy has to answer before the switch is written; otherwise the agent talks to a dead port.
-import { execFile, spawn } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { execFile, execFileSync, spawn } from 'node:child_process';
+import { existsSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { headroomProxyPort, headroomProxyUrl } from './headroom-proxy.ts';
-import { homeDir } from './utils.ts';
+import { homeDir, tersioHome } from './utils.ts';
 
 export { headroomProxyPort, headroomProxyUrl };
 
 const execFileP = promisify(execFile);
-const PROXY_WAIT_MS = Number(process.env.TERSIO_HEADROOM_WAIT_MS ?? 20_000);
+/** The wait window, read per call so a test or a wrapper can shorten it. */
+function proxyWaitMs(): number {
+  const configured = Number(process.env.TERSIO_HEADROOM_WAIT_MS ?? '');
+  return Number.isFinite(configured) && configured > 0 ? configured : 20_000;
+}
 
 export interface HeadroomRuntimeResult {
   ok: boolean;
   detail: string;
 }
 
-/** True when headroom's own health endpoint answers, which means traffic has somewhere to go. */
-export async function headroomRuntimeUp(): Promise<boolean> {
+/** One health request; a busy proxy can miss a single 1.5s window under load. */
+async function proxyAnswers(): Promise<boolean> {
   try {
     const res = await fetch(new URL('/readyz', headroomProxyUrl()), {
       signal: AbortSignal.timeout(1_500),
@@ -27,6 +31,45 @@ export async function headroomRuntimeUp(): Promise<boolean> {
     return res.ok;
   } catch {
     return false;
+  }
+}
+
+/** True when headroom's own health endpoint answers, which means traffic has somewhere to go. */
+export async function headroomRuntimeUp(): Promise<boolean> {
+  if (await proxyAnswers()) return true;
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  return proxyAnswers();
+}
+
+/**
+ * Every live `headroom proxy` process. Each copy holds hundreds of megabytes, and only the one on
+ * this port serves the agents, so the list is what a stray is measured against.
+ */
+export function headroomProxyPids(): number[] {
+  // pgrep is POSIX-only; on Windows the health check alone decides, which is what it did before.
+  if (process.platform === 'win32') return [];
+  try {
+    const out = execFileSync('pgrep', ['-f', 'headroom.cli proxy'], { encoding: 'utf8', timeout: 3_000 });
+    return out.split('\n').map((line) => Number(line.trim())).filter((pid) => Number.isInteger(pid) && pid > 0);
+  } catch {
+    return [];
+  }
+}
+
+/** Stop proxies that answer nowhere useful: first politely, then for real. */
+export function reapProxies(pids: number[]): void {
+  for (const pid of pids) {
+    try { process.kill(pid, 'SIGTERM'); } catch { /* already gone */ }
+  }
+  const deadline = Date.now() + 2_000;
+  let alive = new Set(pids);
+  while (alive.size > 0 && Date.now() < deadline) {
+    const seen = new Set(headroomProxyPids());
+    alive = new Set(Array.from(alive).filter((pid) => seen.has(pid)));
+    if (alive.size > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100);
+  }
+  for (const pid of alive) {
+    try { process.kill(pid, 'SIGKILL'); } catch { /* gone */ }
   }
 }
 
@@ -121,7 +164,7 @@ function tailOf(text: string): string {
 }
 
 async function waitForRuntime(): Promise<boolean> {
-  const deadline = Date.now() + PROXY_WAIT_MS;
+  const deadline = Date.now() + proxyWaitMs();
   while (Date.now() < deadline) {
     if (await headroomRuntimeUp()) return true;
     await new Promise((resolve) => setTimeout(resolve, 300));
@@ -147,18 +190,47 @@ async function startRuntime(bin: string, openAiTarget?: string | null): Promise<
   }
   // No saved deployment, or it could not start: headroom's own proxy is still the runtime its config expects.
   // Reuse the newest manifest's flags, so a fallback start does not silently drift from its mode or backend.
+  let spawnFailure = '';
   try {
     const child = spawn(bin, ['proxy', ...proxyArgsForDeployment(profiles[0]?.proxyArgs ?? [], port, openAiTarget)], {
       detached: true,
       stdio: 'ignore',
       cwd: homeDir(),
     });
+    // A missing binary reports through the error event, not a throw; without this it crashes the caller.
+    child.on('error', (e: Error) => { spawnFailure = e.message; });
     child.unref();
   } catch (e) {
     return { ok: false, detail: failure || (e as Error).message };
   }
+  if (spawnFailure) return { ok: false, detail: spawnFailure };
   if (await waitForRuntime()) return { ok: true, detail: 'headroom proxy started' };
   return { ok: false, detail: failure || `headroom did not answer on ${headroomProxyUrl()}` };
+}
+
+/**
+ * One start at a time, across processes. Several agents launch together at login; without this, each
+ * one reaps and starts, and headroom's deployment manager answers a busy port with a second proxy.
+ */
+function startLockFile(): string {
+  return path.join(tersioHome(), 'headroom-start.lock');
+}
+
+function acquireStartLock(): boolean {
+  const file = startLockFile();
+  try { writeFileSync(file, String(process.pid), { flag: 'wx' }); return true; } catch { /* held */ }
+  try {
+    // A crashed start can leave the file behind; the wait window is the lifetime of a real start.
+    if (Date.now() - statSync(file).mtimeMs > 30_000) {
+      rmSync(file, { force: true });
+      return acquireStartLock();
+    }
+  } catch { /* vanished between the two calls: try once more */ }
+  return false;
+}
+
+function releaseStartLock(): void {
+  try { rmSync(startLockFile(), { force: true }); } catch { /* already gone */ }
 }
 
 let pending: Promise<HeadroomRuntimeResult> | null = null;
@@ -180,6 +252,22 @@ export async function ensureHeadroomRuntime(bin: string, openAiTarget?: string |
       : { ok: false, detail: `headroom did not answer on ${headroomProxyUrl()} after restart` };
   }
   if (pending) return pending;
-  pending = startRuntime(bin, openAiTarget).finally(() => { pending = null; });
-  return pending;
+  if (!acquireStartLock()) {
+    // Another Tersio process is starting it: wait for that one instead of racing into a second proxy.
+    return (await waitForRuntime())
+      ? { ok: true, detail: 'headroom proxy started by another tersio process' }
+      : { ok: false, detail: 'another tersio process is starting headroom' };
+  }
+  try {
+    // Nothing answers on this port. A proxy that exists anyway is someone's (another port, another
+    // tool), so it is never killed from here: starting a second one is what multiplies the memory.
+    if (await headroomRuntimeUp()) return { ok: true, detail: 'headroom proxy already running' };
+    if (headroomProxyPids().length > 0) {
+      return { ok: false, detail: `a headroom proxy is already running on another port — run: tersio doctor --fix headroom (${headroomProxyUrl()})` };
+    }
+    pending = startRuntime(bin, openAiTarget).finally(() => { pending = null; });
+    return await pending;
+  } finally {
+    releaseStartLock();
+  }
 }

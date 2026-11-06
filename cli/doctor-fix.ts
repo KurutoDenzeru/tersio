@@ -11,12 +11,15 @@ import {
 } from './common.ts';
 import { execNetwork, sayTagged } from './interactive.ts';
 import { wireRtk } from './rtk-wiring.ts';
-import { RTK_INSTALL_DOCS, readTextIfExists, resolveHostBinary, resolveRtkBinary } from '../extensions/shared/utils.ts';
+import { ensureHeadroomRuntime, headroomProxyPids, reapProxies } from '../extensions/shared/headroom-runtime.ts';
+import { HEADROOM_INSTALL_HINT } from '../extensions/headroom/index.ts';
+import { RTK_INSTALL_DOCS, readTextIfExists, resolveHeadroomBinary, resolveHostBinary, resolveRtkBinary } from '../extensions/shared/utils.ts';
+import { headroomProxyUrl } from '../extensions/shared/headroom-proxy.ts';
 import { runLatestUpdate } from './update.ts';
 import { OPENCODE_ENTRY, PONYTAIL_PKG, TREE_FILES, isObsoleteTreeFile, syncPluginManifest, syncTreeFiles, treeFilesFor } from './manifest.ts';
 import { detectHosts, hostExtensionsDir } from './hosts.ts';
 
-type FixTarget = 'extensions' | 'registrations' | 'rtk' | 'ponytail' | 'cli' | 'service';
+type FixTarget = 'extensions' | 'registrations' | 'rtk' | 'ponytail' | 'cli' | 'service' | 'headroom';
 type FixRequest = FixTarget | 'all';
 
 /** Pids of `opencode serve --service` processes whose service manager no longer tracks them. The orphan holds the managed port, so the next start exits 1. */
@@ -319,6 +322,27 @@ async function fixOpencodeService(): Promise<void> {
   });
 }
 
+/**
+ * Keep one case of headroom's proxy. Each copy holds hundreds of megabytes and only the one on this
+ * port serves the agents, so the rest are stopped and one is started where the routes expect it.
+ */
+async function fixHeadroomProxies(): Promise<void> {
+  const bin = resolveHeadroomBinary();
+  if (!bin) throw new Error(`headroom is not installed — get it from ${HEADROOM_INSTALL_HINT}`);
+  const pids = headroomProxyPids();
+  if (dryRun) {
+    sayTagged(`  [dry-run] would stop ${pids.length} headroom proxy process(es) and start one on ${headroomProxyUrl()}`);
+    return;
+  }
+  if (pids.length > 0) {
+    reapProxies(pids);
+    sayTagged(`  [rm] stopped ${pids.length} headroom proxy process(es)`);
+  }
+  const result = await ensureHeadroomRuntime(bin);
+  if (!result.ok) throw new Error(result.detail);
+  sayTagged(`  [write] headroom proxy on ${headroomProxyUrl()}`);
+}
+
 async function runDoctorRepairs(targets: FixRequest[]): Promise<string[]> {
   const all = targets.includes('all');
   const want = (t: FixTarget): boolean => all || targets.includes(t);
@@ -338,9 +362,10 @@ async function runDoctorRepairs(targets: FixRequest[]): Promise<string[]> {
   if (want('rtk')) await attempt('rtk', () => fixRtk());
   if (want('ponytail')) await attempt('ponytail', () => fixPonytail(OMP_PLUGINS_DIR));
   if (want('cli')) await attempt('cli', fixCli);
+  if (want('headroom')) await attempt('headroom', fixHeadroomProxies);
   if (want('service')) await attempt('opencode service', fixOpencodeService);
   return failed;
 }
 
 export { runDoctorRepairs };
-export type { FixTarget };
+export type { FixRequest, FixTarget };
