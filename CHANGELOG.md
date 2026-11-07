@@ -1,5 +1,7 @@
 ## Unreleased
 
+## v2.25.18
+
 ### Added
 - The installer now asks before adding Tersio's MCP server to an agent. The question reads "Add the Tersio MCP server to … (optional)", so a machine that should stay untouched can say no.
 - Agents get two new MCP tools: one lists every supported agent with its version and whether Tersio is connected, the other lists the newest sessions with their cost and tokens.
