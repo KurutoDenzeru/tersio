@@ -35,7 +35,7 @@ import { formatCliStatus, saveHostDefaults, storedProfile, storedProfileSync, wr
 import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
 import { EXT_DIR, PI_RTK_MANIFEST, PI_PONYTAIL_FILES, PONYTAIL_BUNDLE_FILES, PONYTAIL_DIR, PONYTAIL_PKG, filesUnder, reapObsoleteTreeDirs, rootFiles, sourcePath, syncPluginManifest, syncTreeFiles } from './manifest.ts';
 import type { Profile } from './profile.ts';
-import { detectHosts, dshCliProfiles, dshDesktopProfilePresent, dshHome, dshPresent, dshProfileBundles, dshRunner, hostOptions, parseHostArg, piTersioSource, pigTersioSource } from './hosts.ts';
+import { detectHosts, dshCliProfiles, dshDesktopProfilePresent, dshHome, dshPresent, dshProfileBundles, dshRunner, hostOptions, parseHostArg, piTersioSource, pigTersioSource, writeDshMcpCommand } from './hosts.ts';
 import type { HostEntry } from './hosts.ts';
 import { hostCap } from '../extensions/shared/host-caps.ts';
 import type { HostId } from '../extensions/shared/host-caps.ts';
@@ -793,6 +793,11 @@ async function stepDsh(installOptions: InstallOptions): Promise<void> {
         throw new Error(`the dsh ${profile} profile did not mount the tersio bundle — the installed release must ship the dsh bundle field`);
       }
       if (!installOptions.quiet) console.log(`  DeepSeek Harness — tersio bundle mounted in the ${profile} profile`);
+      // A GUI launch inherits no shell PATH, so the MCP row gets the binary that exists, not the name.
+      const binary = resolveHostBinary('tersio');
+      if (binary && writeDshMcpCommand(profile, binary) && !installOptions.quiet) {
+        console.log(`  DeepSeek Harness — MCP command pinned to ${verbose ? binary : path.basename(binary)}`);
+      }
     }
   }
   // The Electron app owns its desktop profile and refuses CLI writes; its Plugins pane is the install path.

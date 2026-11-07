@@ -1177,3 +1177,61 @@ test("dashboard --export bakes the agent empty states", () => {
   expect(body).toMatch(/"agent"/);
   rmSync(dir, { recursive: true, force: true });
 });
+
+test('the Harness MCP row is pinned to this machine, and removed again', () => {
+  const home = tempHome();
+  const previous = process.env.DSH_HOME;
+  // dshHome() reads this at call time, so a test can point it at a temp tree.
+  process.env.DSH_HOME = path.join(home, ".dsh");
+  try {
+    const profile = path.join(home, ".dsh", "profiles", "web");
+    mkdirSync(profile, { recursive: true });
+    const patch = path.join(profile, "cordis.patch.yml");
+    const { writeDshMcpCommand, removeDshMcpCommand } = require("../../cli/hosts.ts") as typeof import("../../cli/hosts.ts");
+
+    // The row lives in the bundle layer, so the profile gains a patch that targets it by id.
+    writeFileSync(patch, "- id: agent-default-model\n  config:\n    provider: magpie\n", "utf8");
+    expect(writeDshMcpCommand("web", "/opt/bin/tersio")).toBe(true);
+    expect(readFileSync(patch, "utf8")).toContain("- id: mcp-tersio");
+
+    // The bundle's row, as installing the bundle leaves it, plus the user's own entry.
+    writeFileSync(patch, [
+      "- id: agent-default-model",
+      "  config:",
+      "    provider: magpie",
+      "- id: mcp-tersio",
+      "  name: '@deepseek-ai/dsh-mcp-client'",
+      "  config:",
+      "    serverName: tersio",
+      "    transport: stdio",
+      "    command: tersio",
+      "    args: ['mcp']",
+      "    failOnStartupError: false",
+      "    toolCallTimeoutMs: 150000",
+      "",
+    ].join("\n"), "utf8");
+
+    expect(writeDshMcpCommand("web", "/opt/bin/tersio")).toBe(true);
+    const written = readFileSync(patch, "utf8");
+    // A patch with an id replaces the row wholesale, so every field the bundle sets is restated.
+    expect(written).toContain("- id: mcp-tersio");
+    expect(written).toContain("command: /opt/bin/tersio");
+    expect(written).toContain("args: ['mcp']");
+    expect(written).toContain("toolCallTimeoutMs: 150000");
+    expect(written).toContain("failOnStartupError: false");
+    expect(written).toContain("- id: agent-default-model");
+    // Idempotent: a second write changes nothing.
+    expect(writeDshMcpCommand("web", "/opt/bin/tersio")).toBe(false);
+
+    expect(removeDshMcpCommand("web")).toBe(true);
+    const removed = readFileSync(patch, "utf8");
+    expect(removed).not.toContain("mcp-tersio");
+    expect(removed).toContain("- id: agent-default-model");
+  } finally {
+    if (previous === undefined) delete process.env.DSH_HOME;
+    else process.env.DSH_HOME = previous;
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+

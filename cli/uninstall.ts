@@ -8,7 +8,7 @@ import {
 } from './common.ts';
 import { PONYTAIL_PKG } from './manifest.ts';
 import { askInteractiveChoice, closeRL, confirmDestructive, tty, sayTagged } from './interactive.ts';
-import { detectHosts, dshCliProfiles, dshDesktopProfilePresent, dshPackageDir, dshRunner, parseHostArg } from './hosts.ts';
+import { detectHosts, dshCliProfiles, dshDesktopProfilePresent, dshPackageDir, dshRunner, parseHostArg, removeDshMcpCommand } from './hosts.ts';
 import type { HostEntry } from './hosts.ts';
 import type { HostId } from '../extensions/shared/host-caps.ts';
 import { piAgentDir, pigAgentDir, readTextIfExists } from '../extensions/shared/utils.ts';
@@ -353,6 +353,8 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
     for (const profile of profiles) {
       const remove = [...runner, 'plugin', '--profile', profile, 'remove', '@krtclcdy/tersio'];
       await execP(remove[0], remove.slice(1), { timeout: 300_000 });
+      // The MCP override targets an id only the bundle supplies, so it goes with it.
+      if (removeDshMcpCommand(profile)) sayTagged(`  [rm] the pinned MCP command from the ${profile} profile`);
       sayTagged(`  [rm] the tersio bundle from the ${profile} profile`);
     }
     console.log('\nDone. Restart dsh web (or the desktop app) to drop the bundle.');

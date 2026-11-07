@@ -1,5 +1,5 @@
 // cli/hosts.ts — agent hosts Tersio installs into, and what is on disk. One detector shared by doctor and menus.
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { HOME, OMP_PLUGINS_DIR, PACKAGE_NAME, PACKAGE_VERSION } from './common.ts';
 import { treeFilesFor } from './manifest.ts';
@@ -104,6 +104,78 @@ export function dshProfileBundles(profile: string): string[] {
   } catch {
     return [];
   }
+}
+
+/**
+ * The MCP row DeepSeek Harness mounts, restated in full: a patch with an `id` replaces a row's config
+ * wholesale, so every field the bundle sets has to appear here or the row loses it.
+ */
+function dshMcpRow(command: string): string[] {
+  return [
+    '- id: mcp-tersio',
+    '  config:',
+    '    serverName: tersio',
+    '    transport: stdio',
+    `    command: ${command}`,
+    "    args: ['mcp']",
+    '    failOnStartupError: false',
+    '    toolCallTimeoutMs: 150000',
+  ];
+}
+
+/** The user's patch layer, split into lines with its trailing blanks dropped so a rewrite is exact. */
+function dshPatch(profile: string): { file: string; lines: string[]; text: string } | null {
+  const file = path.join(dshHome(), 'profiles', profile, 'cordis.patch.yml');
+  let text: string;
+  try {
+    text = readFileSync(file, 'utf8');
+  } catch {
+    return null;
+  }
+  const lines = text.split('\n');
+  while (lines.length > 0 && lines[lines.length - 1]!.trim() === '') lines.pop();
+  return { file, lines, text };
+}
+
+/** The row's line range in the patch: from its `- id:` line to the next entry or the end. */
+function dshRowRange(lines: string[]): { start: number; end: number } | null {
+  const start = lines.findIndex((line) => /^- id:\s*mcp-tersio\s*$/.test(line));
+  if (start < 0) return null;
+  let end = lines.length;
+  for (let i = start + 1; i < lines.length; i += 1) {
+    if (lines[i]!.startsWith('- ')) { end = i; break; }
+  }
+  return { start, end };
+}
+
+/** Rewrite the profile's MCP row, or drop it when `rows` is null. False when nothing changed. */
+function rewriteDshPatch(profile: string, rows: string[] | null): boolean {
+  const patch = dshPatch(profile);
+  if (!patch) return false;
+  const { file, lines, text } = patch;
+  const row = dshRowRange(lines);
+  if (row) lines.splice(row.start, row.end - row.start, ...(rows ?? []));
+  // The row lives in the bundle layer, which this patch targets by id; appending is how a profile
+  // gains the override in the first place.
+  else if (rows) lines.push(...rows);
+  else return false;
+  const next = `${lines.join('\n')}\n`;
+  if (next === text) return false;
+  writeFileSync(file, next, 'utf8');
+  return true;
+}
+
+/**
+ * Point the Harness MCP row at an absolute binary. A GUI launch inherits no shell PATH, so the bare
+ * `tersio` the bundle patch names can miss and the tools vanish with only a failed-sync line.
+ */
+export function writeDshMcpCommand(profile: string, command: string): boolean {
+  return rewriteDshPatch(profile, dshMcpRow(command));
+}
+
+/** Drop the override so a removed bundle leaves no row the loader warns about. */
+export function removeDshMcpCommand(profile: string): boolean {
+  return rewriteDshPatch(profile, null);
 }
 
 /** Every profile under the dsh home: the web and desktop profiles, plus any the user added. */
