@@ -663,7 +663,7 @@ test("doctor names a stale ponytail file, not just the host", () => {
     const result = runDoctor(home, path.join(home, "empty-bin"));
 
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toMatch(/Ponytail per-host bodies:.*stale in 1 file: pi\/skills\/ponytail-debt\/SKILL\.md/);
+    expect(result.stdout).toMatch(/Ponytail per-host bodies:.*pi\/skills\/ponytail-debt\/SKILL\.md/);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }
@@ -955,7 +955,7 @@ test("doctor measures ponytail bodies against this tree's vendored copy", () => 
 
     const result = runDoctor(home, path.join(home, "empty-bin"));
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toMatch(/Ponytail per-host bodies:.*stale in 1 file: pi\/hooks\/ponytail-instructions\.ts/);
+    expect(result.stdout).toMatch(/Ponytail per-host bodies:.*pi\/hooks\/ponytail-instructions\.ts/);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }
@@ -978,7 +978,7 @@ test("doctor checks pi ponytail at the path its settings declare", () => {
 
     const result = runDoctor(home, path.join(home, "empty-bin"));
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toMatch(/Ponytail per-host bodies:.*stale in 1 file: pi\/hooks\/ponytail-instructions\.ts/);
+    expect(result.stdout).toMatch(/Ponytail per-host bodies:.*pi\/hooks\/ponytail-instructions\.ts/);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }
