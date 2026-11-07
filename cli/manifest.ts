@@ -47,6 +47,7 @@ export const TREE_FILES: readonly string[] = [
   'shared/headroom-routing.ts',
   'shared/headroom-routes.ts',
   'shared/headroom-runtime.ts',
+  'shared/jsonc-edit.ts',
   'shared/host-caps.ts',
   'shared/mcp-config.ts',
   'shared/mode-notice.ts',
