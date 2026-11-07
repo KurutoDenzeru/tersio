@@ -353,3 +353,39 @@ test("a route needs the proxy even with the prompt mode off", () => {
   expect(needsHeadroomProxy("off", true)).toBe(true);
   expect(needsHeadroomProxy("off", false)).toBe(false);
 });
+
+test("the proxy is wanted when another agent is routed, even with every mode off", async () => {
+  await withHome(async (home) => {
+    const routes = await import("../../extensions/shared/headroom-routes.ts");
+    const { headroomWanted } = await import("../../extensions/headroom/index.ts");
+    const routeDir = mkdtempSync(path.join(os.tmpdir(), "tersio-headroom-wanted-"));
+    const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+    const previousPiProc = process.env.PI_CODING_AGENT;
+    // piAgentDir only honours the override from inside a pi process.
+    process.env.PI_CODING_AGENT = "true";
+    process.env.PI_CODING_AGENT_DIR = routeDir;
+    const proxy = "http://127.0.0.1:8787/v1";
+    writeFileSync(path.join(routeDir, "settings.json"), JSON.stringify({ defaultProvider: "local", defaultModel: "demo-model" }, null, 2), "utf8");
+    writeFileSync(path.join(routeDir, "models.json"), JSON.stringify({ providers: { local: { api: "openai-completions", baseUrl: "http://127.0.0.1:3425/v1", models: [{ id: "demo-model" }] } } }, null, 2), "utf8");
+    const deploy = path.join(home, ".headroom", "deploy", "init-user");
+    mkdirSync(deploy, { recursive: true });
+    writeFileSync(path.join(deploy, "manifest.json"), JSON.stringify({
+      port: 8787,
+      proxy_args: ["--openai-api-url", "http://127.0.0.1:3425/v1"],
+    }), "utf8");
+    try {
+      // Nothing routed, no saved default: nothing wants it.
+      expect(headroomWanted("omp")).toBe(false);
+      const installed = routes.installNativeRoute("pi", proxy);
+      expect(installed.ok, installed.detail).toBe(true);
+      // pi is routed now, so an omp session with every mode off still starts the proxy.
+      expect(headroomWanted("omp")).toBe(true);
+      expect(headroomWanted("dsh")).toBe(true);
+    } finally {
+      if (previousAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+      else process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+      if (previousPiProc === undefined) delete process.env.PI_CODING_AGENT;
+      else process.env.PI_CODING_AGENT = previousPiProc;
+    }
+  });
+});

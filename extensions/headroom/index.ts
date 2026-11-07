@@ -4,10 +4,11 @@ import { getSharedComboState, hasModeState, isOmpSubagentPrompt, lastCustomValue
 import { hostIdOf, injectPromptText, onHostEvent, sessionChangeEvents, setExtensionLabel } from '../shared/host.ts';
 import { announceStatus } from '../shared/status.ts';
 import { readHeadroomDefault } from '../shared/plugin-settings.ts';
+import type { HostScope } from '../shared/plugin-settings.ts';
 import { resolveHeadroomBinary } from '../shared/utils.ts';
 import { headroomHostSupported, headroomProxyUrl } from '../shared/headroom-proxy.ts';
 import { describeHeadroomRoute, readHeadroomRoute } from '../shared/headroom-routing.ts';
-import { repairHeadroomRoute } from '../shared/headroom-routes.ts';
+import { headroomRoutedHosts, repairHeadroomRoute } from '../shared/headroom-routes.ts';
 import { ensureHeadroomRuntime } from '../shared/headroom-runtime.ts';
 import { ensureTersioMcp } from '../shared/mcp-config.ts';
 import type { HeadroomRoute } from '../shared/headroom-routing.ts';
@@ -23,6 +24,17 @@ export const HEADROOM_INSTALL_HINT = 'pip install "headroom-ai[all]"';
 
 // A successful probe holds for longer than a miss, so a turn never pays the timeout twice in a row.
 const probeCache: { url: string; at: number; up: boolean } = { url: '', at: 0, up: false };
+
+/**
+ * True when anything on this machine expects the proxy: this host's route, any other agent's route,
+ * or a headroom default saved for any scope. One proxy serves them all, so any of them counts.
+ */
+export function headroomWanted(host: string): boolean {
+  if (readHeadroomRoute(host).routed || headroomRoutedHosts().length > 0) return true;
+  // The shared default plus every scope the settings store names; dsh inherits the shared one.
+  const scopes: Array<HostScope | null> = [null, 'omp', 'pi', 'pig', 'opencode'];
+  return scopes.some((id) => normalizeMode('headroom', readHeadroomDefault(id)) === 'on');
+}
 
 /** True when headroom's proxy answers: with none, no traffic compresses and the block would lie. */
 export async function headroomProxyUp(url: string = headroomProxyUrl(), budgetMs = 400): Promise<boolean> {
@@ -139,9 +151,9 @@ export default function headroomSessionExtension(pi: ExtensionApi): void {
   // A route outlives a reboot; the proxy does not, and a route to a dead port fails the first request.
   // Fire-and-forget: the session starts now, and headroom answers within its own wait window.
   function startRuntime(): void {
-    // A route is independent of the mode: the dashboard can point an agent at the proxy with the
-    // prompt block switched off, and that agent still needs something listening.
-    if (!needsHeadroomProxy(currentMode, readHeadroomRoute(host).routed)) return;
+    // One proxy serves the machine, so any reason it is wanted counts: this host's mode, this host's
+    // route, another agent's route, or a headroom default saved for some host.
+    if (!needsHeadroomProxy(currentMode, headroomWanted(host))) return;
     const bin = resolveHeadroomBinary();
     if (!bin) return;
     // ensureHeadroomRuntime probes /readyz first, so a proxy that is already up costs one request.
