@@ -250,15 +250,22 @@ function readOmpRoute(proxyUrl: string): HeadroomRoute {
   };
 }
 
+/**
+ * OpenCode V2 keeps the endpoint under `providers.<id>.settings`; V1 under `provider.<id>.api` or its
+ * `options`. Both are read, so a config that has not been migrated still reports its real endpoint.
+ */
 function opencodeBaseUrl(provider: unknown): string | null {
   if (!provider || typeof provider !== 'object') return null;
   const record = provider as Record<string, unknown>;
+  const settings = record.settings && typeof record.settings === 'object' ? record.settings as Record<string, unknown> : {};
   const options = record.options && typeof record.options === 'object' ? record.options as Record<string, unknown> : {};
+  if (typeof settings.baseURL === 'string') return settings.baseURL;
   for (const key of ['baseURL', 'baseUrl', 'base_url']) {
     if (typeof options[key] === 'string') return options[key] as string;
     if (typeof record[key] === 'string') return record[key] as string;
   }
-  return null;
+  // V1 names the endpoint `api`; it doubles as the dialect, which is why it is checked last.
+  return typeof record.api === 'string' ? record.api : null;
 }
 
 /** The active OpenCode model's provider endpoint. */
@@ -274,7 +281,8 @@ function readOpencodeRoute(proxyUrl: string): HeadroomRoute {
     const model = typeof data.model === 'string' ? data.model : '';
     if (!model.includes('/')) return emptyRoute('opencode', proxyUrl, `${path.basename(file)} names no active model`);
     const provider = model.slice(0, model.indexOf('/'));
-    const providers = data.provider && typeof data.provider === 'object' ? data.provider as Record<string, unknown> : {};
+    const map = data.providers ?? data.provider;
+    const providers = map && typeof map === 'object' ? map as Record<string, unknown> : {};
     const baseUrl = opencodeBaseUrl(providers[provider]);
     return {
       measured: true,

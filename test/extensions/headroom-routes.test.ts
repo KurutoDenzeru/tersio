@@ -4,6 +4,7 @@ import { describe, expect, test } from 'vitest';
 import { withHome } from '../helpers/env.ts';
 import { readHeadroomRoute } from '../../extensions/shared/headroom-routing.ts';
 import {
+  headroomRoutedHosts,
   hasNativeRoute,
   repairHeadroomRoute,
   installNativeRoute,
@@ -228,3 +229,14 @@ test("a durable host with no headroom block is never invented by the repair", as
     }
   });
 });
+
+test('the machine knows which agents a shared proxy is already serving', () => withHome((home) => {
+  piHome(home);
+  expect(headroomRoutedHosts()).toEqual([]);
+  expect(installNativeRoute('pi', PROXY).ok).toBe(true);
+  expect(headroomRoutedHosts()).toEqual(['pi']);
+  // A repointing change asks what it would break, not counting itself.
+  expect(headroomRoutedHosts('pi')).toEqual([]);
+  expect(removeNativeRoute('pi').ok).toBe(true);
+  expect(headroomRoutedHosts()).toEqual([]);
+}));

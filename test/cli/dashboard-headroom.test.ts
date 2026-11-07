@@ -155,7 +155,7 @@ test('dsh routes the running profile, not the other one', async () => {
   }
 });
 
-/** An OpenCode config with one provider the active model names. */
+/** A V1 OpenCode config: the provider map is singular and the endpoint sits under its options. */
 function opencodeHome(home: string): void {
   const dir = path.join(home, '.config', 'opencode');
   mkdirSync(dir, { recursive: true });
@@ -163,6 +163,26 @@ function opencodeHome(home: string): void {
     model: 'magpie/deepseek-v4.1',
     provider: { magpie: { options: { baseURL: 'http://127.0.0.1:3425/v1' } } },
   }, null, 2), 'utf8');
+}
+
+/** A V2 config in the format its docs use: `.jsonc`, `providers`, `settings.baseURL`, and comments. */
+function opencodeV2Home(home: string): string {
+  const dir = path.join(home, '.config', 'opencode');
+  mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, 'opencode.jsonc');
+  writeFileSync(file, `{
+  // the gateway this machine runs
+  "model": "magpie/deepseek-v4.1",
+  "providers": {
+    "magpie": {
+      "settings": {
+        "baseURL": "http://127.0.0.1:3425/v1" // points at magpie
+      }
+    }
+  }
+}
+`, 'utf8');
+  return file;
 }
 
 /** omp keeps its provider blocks in a YAML file and the default role in another. */
@@ -221,6 +241,74 @@ test('omp gets our own route, and our own restore', async () => {
       const restored = readFileSync(file, 'utf8');
       expect(restored).toContain('http://127.0.0.1:3425/v1');
       expect(restored).not.toContain('tersio-headroom-upstream');
+    } finally { release(); }
+  });
+});
+
+test('an OpenCode V2 .jsonc is routed in place, comments and all', async () => {
+  await withHome(async (home) => {
+    const release = pinHeadroom(home);
+    try {
+      const file = opencodeV2Home(home);
+      const { sent, ctx } = collector();
+      ctx.bodyOf = async () => ({ name: 'opencode', on: true });
+      await handleHeadroomRoutes(Object.assign(fakeMessage(), { url: '/api/headroom/route', method: 'POST' }), fakeResponse(), ctx);
+      expect(sent[0]?.body.ok, String(sent[0]?.body.error)).toBe(true);
+      const routed = readFileSync(file, 'utf8');
+      expect(routed).toContain(PROXY);
+      expect(routed).toContain('// the gateway this machine runs');
+      expect(routed).toContain('// points at magpie');
+
+      ctx.bodyOf = async () => ({ name: 'opencode', on: false });
+      await handleHeadroomRoutes(Object.assign(fakeMessage(), { url: '/api/headroom/route', method: 'POST' }), fakeResponse(), ctx);
+      expect(sent[1]?.body.ok, String(sent[1]?.body.error)).toBe(true);
+      const restored = readFileSync(file, 'utf8');
+      expect(restored).toContain('http://127.0.0.1:3425/v1');
+      expect(restored).toContain('// the gateway this machine runs');
+      expect(restored).not.toContain(PROXY);
+    } finally { release(); }
+  });
+});
+
+test('an OpenCode V1 config with the endpoint named api is routed too', async () => {
+  await withHome(async (home) => {
+    const release = pinHeadroom(home);
+    try {
+      const dir = path.join(home, '.config', 'opencode');
+      mkdirSync(dir, { recursive: true });
+      const file = path.join(dir, 'opencode.json');
+      writeFileSync(file, JSON.stringify({
+        model: 'magpie/deepseek-v4.1',
+        provider: { magpie: { api: 'http://127.0.0.1:3425/v1' } },
+      }, null, 2), 'utf8');
+      const { sent, ctx } = collector();
+      ctx.bodyOf = async () => ({ name: 'opencode', on: true });
+      await handleHeadroomRoutes(Object.assign(fakeMessage(), { url: '/api/headroom/route', method: 'POST' }), fakeResponse(), ctx);
+      expect(sent[0]?.body.ok, String(sent[0]?.body.error)).toBe(true);
+      expect(readFileSync(file, 'utf8')).toContain(PROXY);
+
+      ctx.bodyOf = async () => ({ name: 'opencode', on: false });
+      await handleHeadroomRoutes(Object.assign(fakeMessage(), { url: '/api/headroom/route', method: 'POST' }), fakeResponse(), ctx);
+      expect(readFileSync(file, 'utf8')).toContain('http://127.0.0.1:3425/v1');
+    } finally { release(); }
+  });
+});
+
+test('an OpenCode config with no readable endpoint is refused, not flattened', async () => {
+  await withHome(async (home) => {
+    const release = pinHeadroom(home);
+    try {
+      const dir = path.join(home, '.config', 'opencode');
+      mkdirSync(dir, { recursive: true });
+      const file = path.join(dir, 'opencode.jsonc');
+      const body = `{\n  // no model, so no provider to route\n  "theme": "dark"\n}\n`;
+      writeFileSync(file, body, 'utf8');
+      const { sent, ctx } = collector();
+      ctx.bodyOf = async () => ({ name: 'opencode', on: true });
+      await handleHeadroomRoutes(Object.assign(fakeMessage(), { url: '/api/headroom/route', method: 'POST' }), fakeResponse(), ctx);
+      expect(sent[0]?.body.ok).toBe(false);
+      // The file is untouched: a refusal never rewrites what it cannot undo.
+      expect(readFileSync(file, 'utf8')).toBe(body);
     } finally { release(); }
   });
 });

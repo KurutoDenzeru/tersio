@@ -7,8 +7,9 @@ import { headroomProxyUpstream, headroomProxyUrl, opencodeConfigFiles } from './
 import { headroomProxyPort, readOmpGateway, restoreOmpGateway, routeOmpDefaultModel, routeOmpGateway } from './headroom-proxy.ts';
 import { ensureAgentProviderRoute } from './headroom-agent.ts';
 import { describeHeadroomRoute, dshDefaultRoute, dshProfileFiles, dshProviders, jsonBaseUrl, jsonModelEntry, readHeadroomRoute, sameProxyEndpoint, stripJsonComments } from './headroom-routing.ts';
+import { splicePath } from './jsonc-edit.ts';
 import type { HeadroomRoute } from './headroom-routing.ts';
-import { hostCap } from './host-caps.ts';
+import { HOST_CAPS, hostCap } from './host-caps.ts';
 import { patchState, readState } from './state.ts';
 import { homeDir, piAgentDir, pigAgentDir } from './utils.ts';
 import type { HeadroomRouteRecord } from './state.ts';
@@ -201,14 +202,27 @@ function dshTargets(): Target[] {
   return targets;
 }
 
-/** The dotted key an OpenCode provider keeps its endpoint under, or '' when it has none. */
-function opencodeEndpointKey(block: Record<string, unknown>): string {
-  const options = block.options && typeof block.options === 'object' ? block.options as Record<string, unknown> : null;
-  for (const key of ['baseURL', 'baseUrl', 'base_url']) {
-    if (options && typeof options[key] === 'string') return `options.${key}`;
-    if (typeof block[key] === 'string') return key;
+/** Where OpenCode keeps the active provider's endpoint: V2 `providers.<id>.settings`, V1 `provider.<id>`. */
+function opencodeEndpoint(data: Record<string, unknown>, provider: string): { key: string; original: string } | null {
+  const map = data.providers && typeof data.providers === 'object' ? 'providers'
+    : data.provider && typeof data.provider === 'object' ? 'provider'
+      : '';
+  if (!map) return null;
+  const providers = data[map] as Record<string, unknown>;
+  const block = providers[provider];
+  if (!block || typeof block !== 'object') return null;
+  const record = block as Record<string, unknown>;
+  const settings = record.settings && typeof record.settings === 'object' ? record.settings as Record<string, unknown> : {};
+  const options = record.options && typeof record.options === 'object' ? record.options as Record<string, unknown> : {};
+  // V2 first: `settings.baseURL`. Then V1's `api`, then the spellings an older config may carry.
+  const candidates: Array<[string, unknown]> = map === 'providers'
+    ? [['settings.baseURL', settings.baseURL]]
+    : [['options.baseURL', options.baseURL], ['options.baseUrl', options.baseUrl], ['options.base_url', options.base_url],
+      ['baseURL', record.baseURL], ['baseUrl', record.baseUrl], ['base_url', record.base_url], ['api', record.api]];
+  for (const [key, value] of candidates) {
+    if (typeof value === 'string' && value.trim() !== '') return { key: `${map}.${provider}.${key}`, original: value };
   }
-  return '';
+  return null;
 }
 
 function readDotted(record: Record<string, unknown>, key: string): unknown {
@@ -226,42 +240,46 @@ function writeDotted(record: Record<string, unknown>, key: string, value: string
   cursor[parts[parts.length - 1]!] = value;
 }
 
+/** Write one OpenCode endpoint. A `.jsonc` file is edited in place, so its comments survive. */
+function writeOpencodeEndpoint(file: string, key: string, url: string): void {
+  if (file.toLowerCase().endsWith('.jsonc')) {
+    const next = splicePath(readFileSync(file, 'utf8'), key.split('.'), url);
+    if (next === null) throw new Error(`${key} is not in ${file}; add it by hand or run tersio install --host opencode`);
+    writeFileSync(file, next, 'utf8');
+    return;
+  }
+  const data = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>;
+  writeDotted(data, key, url);
+  writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
+}
+
 /**
- * OpenCode keeps its provider endpoint in its own JSON. A `.jsonc` file is left alone: rewriting it
- * would drop the user's comments, so the row says to add the endpoint by hand instead.
+ * OpenCode's active provider: V2 keeps the endpoint under `providers.<id>.settings`, V1 under its own
+ * options. A config with no endpoint to move is skipped rather than flattened to invent one.
  */
 function opencodeTargets(): Target[] {
   for (const file of opencodeConfigFiles()) {
     if (!existsSync(file)) continue;
-    if (file.endsWith('.jsonc')) return [];
+    let text: string;
     let data: Record<string, unknown>;
-    try { data = JSON.parse(stripJsonComments(readFileSync(file, 'utf8'))) as Record<string, unknown>; } catch { return []; }
+    try {
+      text = readFileSync(file, 'utf8');
+      data = JSON.parse(stripJsonComments(text)) as Record<string, unknown>;
+    } catch { return []; }
     const model = typeof data.model === 'string' ? data.model : '';
     if (!model.includes('/')) return [];
     const provider = model.slice(0, model.indexOf('/'));
-    const providers = data.provider && typeof data.provider === 'object' ? data.provider as Record<string, unknown> : {};
-    const block = providers[provider];
-    if (!block || typeof block !== 'object') return [];
-    const key = opencodeEndpointKey(block as Record<string, unknown>);
-    if (!key) return [];
-    const original = readDotted(block as Record<string, unknown>, key);
-    if (typeof original !== 'string') return [];
+    const endpoint = opencodeEndpoint(data, provider);
+    if (!endpoint) return [];
     return [{
       file,
       provider,
+      key: endpoint.key,
       // OpenCode's block names a package, not an API dialect, so there is no upstream to compare.
       api: '',
       skipUpstream: true,
-      key,
-      original,
-      write: (url: string) => {
-        const fresh = JSON.parse(stripJsonComments(readFileSync(file, 'utf8'))) as Record<string, unknown>;
-        const freshProviders = fresh.provider && typeof fresh.provider === 'object' ? fresh.provider as Record<string, unknown> : {};
-        const target = freshProviders[provider];
-        if (!target || typeof target !== 'object') throw new Error(`${provider} is not in ${file}`);
-        writeDotted(target as Record<string, unknown>, key, url);
-        writeFileSync(file, `${JSON.stringify(fresh, null, 2)}\n`, 'utf8');
-      },
+      original: endpoint.original,
+      write: (url: string) => writeOpencodeEndpoint(file, endpoint.key, url),
     }];
   }
   return [];
@@ -274,10 +292,6 @@ const TARGET_PLANNERS: Record<NativeRouteHost, () => Target[]> = {
   opencode: opencodeTargets,
 };
 
-function targetsFor(host: NativeRouteHost): Target[] {
-  return TARGET_PLANNERS[host]();
-}
-
 /** Point the active provider at Headroom and keep the URL it replaced. */
 export function installNativeRoute(host: NativeRouteHost, proxyUrl: string = headroomProxyUrl()): NativeRouteResult {
   // A provider change leaves the old record behind; put that endpoint back before recording a new one.
@@ -286,7 +300,7 @@ export function installNativeRoute(host: NativeRouteHost, proxyUrl: string = hea
     if (!restored.ok) return restored;
   }
   let targets: Target[];
-  try { targets = targetsFor(host); } catch (e) { return { ok: false, detail: (e as Error).message }; }
+  try { targets = TARGET_PLANNERS[host](); } catch (e) { return { ok: false, detail: (e as Error).message }; }
   if (targets.length === 0) return { ok: false, detail: `no active provider endpoint found for ${host}` };
   // A route only makes sense when the proxy names the provider it replaces for this protocol.
   for (const target of targets) {
@@ -300,9 +314,14 @@ export function installNativeRoute(host: NativeRouteHost, proxyUrl: string = hea
       };
     }
     if (!sameUpstream(upstream, target.original)) {
+      // One proxy forwards to one upstream; moving it for this agent would strand the others.
+      const others = headroomRoutedHosts(host);
+      const already = others.length > 0
+        ? ` Already routed through ${upstream}: ${others.join(', ')}; repointing the proxy would break ${others.length === 1 ? 'it' : 'them'}.`
+        : '';
       return {
         ok: false,
-        detail: `${host}: ${target.original} is not Headroom's upstream (${upstream}). Start Headroom with the provider URL first.`,
+        detail: `${host}: ${target.original} is not Headroom's upstream (${upstream}).${already} Start Headroom with ${target.original} first.`,
       };
     }
   }
@@ -342,6 +361,11 @@ export function installNativeRoute(host: NativeRouteHost, proxyUrl: string = hea
     ok: false,
     detail: `${host} still bypasses Headroom after the write (${describeHeadroomRoute(check)})${restored.ok ? ', endpoints restored' : ''}`,
   };
+}
+
+/** The agents routed at the proxy right now; without one, nothing needs a proxy at all. */
+export function headroomRoutedHosts(except?: string): string[] {
+  return Object.keys(HOST_CAPS).filter((id) => id !== except && readHeadroomRoute(id).routed);
 }
 
 /** Point one agent at the proxy, through whichever writer that agent's config needs. */
@@ -419,15 +443,10 @@ export function removeNativeRoute(host: NativeRouteHost): NativeRouteResult {
         lines[block.baseLine] = `${indent}baseURL: ${record.original}${comment}`;
         writeFileSync(record.file, lines.join(text.includes('\r\n') ? '\r\n' : '\n'), 'utf8');
       } else if (host === 'opencode') {
-        const data = JSON.parse(text) as Record<string, unknown>;
-        const providers = data.provider && typeof data.provider === 'object' ? data.provider as Record<string, unknown> : {};
-        const block = providers[record.provider];
-        if (!block || typeof block !== 'object') continue;
         if (!record.key) continue;
-        const current = readDotted(block as Record<string, unknown>, record.key);
+        const current = readDotted(JSON.parse(stripJsonComments(text)) as Record<string, unknown>, record.key);
         if (typeof current !== 'string' || !sameProxyEndpoint(current, record.written)) continue;
-        writeDotted(block as Record<string, unknown>, record.key, record.original);
-        writeFileSync(`${record.file}`, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
+        writeOpencodeEndpoint(record.file, record.key, record.original);
       } else {
         const data = JSON.parse(text) as Record<string, unknown>;
         const providers = data.providers && typeof data.providers === 'object' ? data.providers as Record<string, unknown> : {};
