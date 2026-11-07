@@ -45,12 +45,21 @@ export async function headroomRuntimeUp(): Promise<boolean> {
  * Every live `headroom proxy` process. Each copy holds hundreds of megabytes, and only the one on
  * this port serves the agents, so the list is what a stray is measured against.
  */
+function parsePids(text: string): number[] {
+  return text
+    .split(/\r?\n/)
+    .map((line) => Number(line.trim()))
+    .filter((pid) => Number.isInteger(pid) && pid > 0);
+}
+
 export function headroomProxyPids(): number[] {
-  // pgrep is POSIX-only; on Windows the health check alone decides, which is what it did before.
-  if (process.platform === 'win32') return [];
   try {
-    const out = execFileSync('pgrep', ['-f', 'headroom.cli proxy'], { encoding: 'utf8', timeout: 3_000 });
-    return out.split('\n').map((line) => Number(line.trim())).filter((pid) => Number.isInteger(pid) && pid > 0);
+    if (process.platform === 'win32') {
+      // No pgrep, and tasklist prints no command line; PowerShell can match on it.
+      const script = "Get-CimInstance Win32_Process | Where-Object { $_.Name -like 'python*' -and $_.CommandLine -like '*headroom.cli proxy*' } | ForEach-Object { $_.ProcessId }";
+      return parsePids(execFileSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', script], { encoding: 'utf8', timeout: 8_000, windowsHide: true }));
+    }
+    return parsePids(execFileSync('pgrep', ['-f', 'headroom.cli proxy'], { encoding: 'utf8', timeout: 3_000 }));
   } catch {
     return [];
   }

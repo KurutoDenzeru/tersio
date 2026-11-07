@@ -19,6 +19,7 @@ import { sqliteScript, statsDbPath } from '../extensions/shared/agent-stats.ts';
 import { OMP_SUBAGENT_MARKER } from '../extensions/shared/session-state.ts';
 import { describeHeadroomRoute, readHeadroomRoute } from '../extensions/shared/headroom-routing.ts';
 import { hasNativeRoute } from '../extensions/shared/headroom-routes.ts';
+import { headroomProxyUrl } from '../extensions/shared/headroom-proxy.ts';
 import { hostCap } from '../extensions/shared/host-caps.ts';
 import { tersioMcpConfigured } from '../extensions/shared/mcp-config.ts';
 import { PI_PONYTAIL_FILES, PONYTAIL_BUNDLE_FILES, PONYTAIL_VERSION, TREE_PSTACK_FILES, isObsoleteTreeFile, treeFileText, treeFilesFor } from './manifest.ts';
@@ -348,6 +349,8 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
         `${bypassed.map((entry) => `${entry.id} ${describeHeadroomRoute(entry.route)}`).join(' · ')}`
         + ' — the agent restores it on its next start; now: tersio install --host <host> --headroom-default on');
     }
+    // One proxy serves the machine, so a tool Tersio does not manage can share it when the upstream matches.
+    console.log(`  ·  Headroom endpoint: ${headroomProxyUrl()} — another tool points its base URL here when it uses the same upstream`);
   }
   const ponytailAge = ponytailMtime ? `(updated ${relTime(Date.now() - ponytailMtime.mtimeMs)} · ${absDate(ponytailMtime.mtimeMs)})` : '';
   check('Ponytail', ponytailPkgText !== null, [PONYTAIL_VERSION, ponytailAge].filter(Boolean).join(' '));
