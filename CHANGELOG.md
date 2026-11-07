@@ -13,6 +13,8 @@
 - RTK now works in DeepSeek Harness with nothing extra to install. Once RTK is on, shell commands are shortened for you.
 
 ### Changed
+- OpenCode is routed in both its versions. V2 keeps the endpoint under `providers.<id>.settings.baseURL` in `opencode.jsonc`, and V1 under `provider.<id>.api` or its options. A `.jsonc` file is edited in place, so its comments survive, and the route is refused rather than flattening a file it cannot put back.
+- DeepSeek Harness pins its MCP command to the installed binary, because a GUI launch inherits no shell `PATH`.
 - Tersio now writes the headroom endpoint for every agent itself, including omp and OpenCode. Uninstalling, or switching a route off, puts the old endpoint back from Tersio's own record; Tersio no longer asks headroom to unwrap anything.
 - The Headroom card in the dashboard is one switch per agent: it points that agent's provider at the local proxy and keeps it there across restarts. The separate wrapped-tools list and the saved record of which tool was wrapped when are gone.
 - Tersio no longer downloads, replaces, or removes the rtk program. `tersio install` uses the binary already on your machine, the way rtk's own docs describe. rtk is part of what Tersio ships, so a machine without it gets rtk's own quick install automatically — their `install.sh` script on macOS and Linux, `winget install rtk-ai.rtk` on Windows — with no question to answer. If the new rtk lands somewhere your shell cannot see yet, the install says exactly which line to add to your shell profile.
@@ -29,6 +31,9 @@
 - The same RTK command rewriting now serves Pi, Pi-In-Go, Oh My Pi, and DeepSeek Harness from one shared piece, so a fix reaches all of them at once.
 
 ### Fixed
+- An MCP row the Harness patch targets is restated in full, so an override no longer drops `failOnStartupError` or the tool timeout. `tersio uninstall --host dsh` removes it with the bundle.
+- Duplicate headroom proxies are found on Windows as well, so `tersio doctor --fix headroom` works there.
+- Three doctor tests failed on a working checkout because they counted stale files; they now name the file instead of the count.
 - Headroom's proxy no longer piles up. A session that found the health check slow used to start a second proxy, and nothing ever stopped it; on this machine eleven copies were holding about seven gigabytes. A start is now serialised across processes, a proxy on another port is never duplicated, and `tersio doctor --fix headroom` stops the duplicates and starts one where the routes expect it.
 - A headroom binary that cannot be spawned no longer crashes the caller with an unhandled process error.
 - OpenCode and omp are routed without headroom's own writer, so the off switch restores the file Tersio changed instead of depending on a command that may not exist.
