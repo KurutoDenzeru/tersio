@@ -33,7 +33,7 @@ export function isRangeKey(v: unknown): v is RangeKey {
 
 export const AGENT_VIEWS: readonly AgentView[] = [
   'all', 'overview', 'models', 'providers', 'costs', 'carbon', 'requests',
-  'errors', 'traces', 'tools', 'projects',
+  'errors', 'traces', 'tools', 'projects', 'summary',
 ];
 
 export function isAgentView(v: unknown): v is AgentView {
@@ -57,6 +57,9 @@ const VIEW_PARTS: Record<AgentView, readonly string[]> = {
   traces: ['traces'],
   tools: ['overall', 'tools'],
   projects: ['overall', 'byProject'],
+  // What the MCP server's two tools read: the totals, the two breakdowns, and the session rows. Building
+  // the dashboard's full `all` view here cost about 54MB of resident memory for a 0.1MB answer.
+  summary: ['overall', 'byModel', 'byProvider', 'traces'],
 };
 
 /** Window length in ms. `all` has no cutoff, so it reads as 0. */

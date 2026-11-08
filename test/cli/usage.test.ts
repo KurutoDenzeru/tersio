@@ -415,6 +415,40 @@ test.skipIf(!hasSqlite())("the reads the page needs are indexed", () => {
   }
 });
 
+test.skipIf(!hasSqlite())("the summary view answers what the MCP tools read, and skips the rest", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-summary-view-"));
+  try {
+    const at = "2026-03-01T10:00:00.000Z";
+    const file = path.join(dir, ".omp", "agent", "sessions", "-proj-a", "t.jsonl");
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, [
+      { type: "session", version: 3, id: "t", timestamp: at, cwd: "/tmp/project" },
+      { type: "message", id: "m1", timestamp: at, message: { role: "assistant", model: "commandcode/priced-model", usage: { input: 100, output: 50 }, timestamp: at, stopReason: "stop", content: [{ type: "text", text: "hi" }] } },
+    ].map((row) => JSON.stringify(row)).join("\n") + "\n", "utf8");
+
+    withHome(dir, () => {
+      expect(syncUsageDb()).toBe(true);
+      const summary = readAgentStats("all", "summary");
+      // What cli/mcp.ts reads: the totals, the two breakdowns, and the session rows.
+      expect(summary.available).toBe(true);
+      expect(summary.overall.requests).toBe(1);
+      expect(summary.byModel.length).toBeGreaterThan(0);
+      expect(summary.traces.length).toBeGreaterThan(0);
+      // The dashboard-only series stay empty, which is the memory the view exists to save.
+      expect(summary.series).toEqual([]);
+      expect(summary.errors).toEqual([]);
+      expect(summary.byProject).toEqual([]);
+      expect(summary.tools).toEqual([]);
+      // The same range through the full view still carries them.
+      const all = readAgentStats("all");
+      expect(all.overall.requests).toBe(1);
+      expect(all.traces.length).toBeGreaterThan(0);
+    });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test.skipIf(!hasSqlite())("a tool call keeps its argument and result sizes and its error flag", () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-toolfacts-"));
   try {

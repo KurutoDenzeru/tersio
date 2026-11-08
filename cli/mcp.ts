@@ -1,11 +1,10 @@
 // The MCP server: one stdio endpoint so any MCP client can read Tersio's data and steer its modes.
-import { spawn, spawnSync } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { readActivity } from './activity.ts';
-import { CAVEMAN_DEFAULTS, COMBO_DEFAULTS, HEADROOM_DEFAULTS, IS_WINDOWS, PACKAGE_VERSION, PONYTAIL_DEFAULTS, PSTACK_DEFAULTS, RTK_DEFAULTS, execFileP } from './common.ts';
+import { CAVEMAN_DEFAULTS, COMBO_DEFAULTS, HEADROOM_DEFAULTS, PACKAGE_VERSION, PONYTAIL_DEFAULTS, PSTACK_DEFAULTS, RTK_DEFAULTS, execFileP } from './common.ts';
 import { resolveHeadroomBinary } from '../extensions/shared/utils.ts';
 import { formatCurrency, readStoredCurrency } from './currency.ts';
-import { agentStats } from './dashboard.ts';
+import { agentStats } from '../extensions/shared/agent-snapshot.ts';
 import { detectHosts } from './hosts.ts';
 import { applyComboPreset, formatProfile, saveHostDefaults, storedProfile, writePluginSettings } from './profile.ts';
 import type { HostDefaultField } from './profile.ts';
@@ -87,7 +86,7 @@ async function captureLog<T>(fn: () => Promise<T>): Promise<{ value: T; text: st
 }
 
 function statsText(range: RangeKey): string {
-  const stats = agentStats(range);
+  const stats = agentStats(range, 'summary');
   if (!stats.available) return `No agent data for ${range} yet. Stats appear once sessions run with Tersio installed.`;
   const currency = readStoredCurrency();
   const o = stats.overall;
@@ -137,7 +136,7 @@ function hostsText(): string {
 
 /** The newest sessions behind the usage numbers, so an agent can see what it has been costing. */
 function sessionsText(range: RangeKey, limit: number): string {
-  const stats = agentStats(range);
+  const stats = agentStats(range, 'summary');
   if (!stats.available) return `No sessions for ${range} yet. Sessions appear once an agent runs with Tersio installed.`;
   const rows = stats.traces.toSorted((a, b) => b.lastTs - a.lastTs).slice(0, limit);
   if (rows.length === 0) return `No sessions in the last ${range}.`;
@@ -419,29 +418,6 @@ export async function handleMessage(message: WireMessage, send: (msg: unknown) =
   } finally {
     if (reply) inflight.delete(key);
   }
-}
-
-/** Re-runs this server under bun when bun is on PATH and node is the runtime now. The client spawns `tersio mcp`, so the switch happens once, here, before the stream is read. */
-export async function preferBun(): Promise<void> {
-  // The installed CLI runs under node, so a bun shebang alone would never take effect.
-  if (process.versions.bun) return;
-  // A marker stops a bun that cannot run this file from looping back into node.
-  if (process.env.TERSIO_MCP_RUNTIME) return;
-  const bun = spawnSync(IS_WINDOWS ? 'bun.cmd' : 'bun', ['--version'], { encoding: 'utf8', windowsHide: true, shell: false, timeout: 2000 });
-  if (bun.status !== 0 || !bun.stdout.trim()) return;
-  const self = process.argv[1];
-  if (!self) return;
-  // This process keeps the client's pipe and pumps it in: one reader, so the child sees EOF once and exits.
-  const child = spawn(IS_WINDOWS ? 'bun.exe' : 'bun', [self, 'mcp'], {
-    stdio: ['pipe', 'inherit', 'inherit'],
-    env: { ...process.env, TERSIO_MCP_RUNTIME: 'bun' },
-  });
-  process.stdin.pipe(child.stdin);
-  const { promise, resolve } = Promise.withResolvers<number | null>();
-  child.on('exit', (code) => resolve(code));
-  child.on('error', () => resolve(null));
-  const code = await promise;
-  process.exit(code ?? 1);
 }
 
 function mcpSend(msg: unknown): void {

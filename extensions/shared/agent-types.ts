@@ -14,7 +14,7 @@ export interface RtkRow {
 
 export type AgentView =
   | 'all' | 'overview' | 'models' | 'providers' | 'costs' | 'carbon' | 'requests'
-  | 'errors' | 'traces' | 'tools' | 'projects';
+  | 'errors' | 'traces' | 'tools' | 'projects' | 'summary';
 
 export interface AgentTokenMix {
   input: number;
