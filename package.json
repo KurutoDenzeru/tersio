@@ -190,7 +190,7 @@
   ],
   "scripts": {
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
-    "build": "tsc && bun run build:dashboard && node -e \"require('node:fs').cpSync('extensions/ponytail/skills','skills',{recursive:true})\"",
+    "build": "tsc && bun run build:dashboard && node -e \"require('node:fs').cpSync('extensions/ponytail/skills','skills',{recursive:true})\" && node -e \"require('node:fs').chmodSync('dist/tersio.js',0o755)\"",
     "build:dashboard": "bun install --cwd dashboard/app --frozen-lockfile && bun run --cwd dashboard/app build",
     "prepublishOnly": "bun run build",
     "check": "tsc --noEmit",

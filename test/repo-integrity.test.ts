@@ -1,7 +1,7 @@
 // An import target must be git-tracked, not merely on disk, or a fresh checkout fails at `tsc`.
 import { expect, test } from "vitest";
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -107,6 +107,14 @@ test("package declares a pi manifest that omits the OpenCode entry", () => {
     return readdirSync(dir).filter((n) => existsSync(path.join(dir, n, "SKILL.md"))).map((n) => path.join(dir, n));
   });
   expect(skillDirs.length, "at least one skill body must resolve under pi.skills").toBeGreaterThan(0);
+});
+
+// tsc emits 0644, so a build that forgets the chmod leaves the npm bin link unrunnable ("permission denied").
+test("the built bin keeps its execute bit", () => {
+  const pkg = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")) as { bin?: Record<string, string> };
+  const target = path.join(root, pkg.bin?.tersio ?? "");
+  if (!existsSync(target)) return; // dist/ is gitignored; `verify` builds before it tests
+  expect(statSync(target).mode & 0o111, `${pkg.bin?.tersio} is not executable — build must chmod it`).toBeTruthy();
 });
 
 // Recharts animates in JS on mount, so a byte comparison of two captures drifts; the entrance stays off.
