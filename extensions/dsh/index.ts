@@ -1,5 +1,5 @@
 // Tersio on DeepSeek Harness: modes as always-on system-prompt sections; imports stay relative for Node type stripping.
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { exec } from 'node:child_process';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { dirname, join } from 'node:path';
@@ -11,6 +11,18 @@ import { rewriteThroughRtk, rewriteToolArguments } from '../shared/rtk-rewrite.t
 
 const execShellP = promisify(exec);
 const HERE = dirname(fileURLToPath(import.meta.url));
+
+/**
+ * The extension tree that holds the rule bodies. The published entry is compiled into `dist/extensions/dsh`,
+ * so the tree beside it carries no .md file; the package root's own tree is the fallback there.
+ * A checkout resolves both to the same directory.
+ */
+function rulesRoot(): string {
+  const beside = join(HERE, '..');
+  if (existsSync(join(beside, 'caveman', 'rule.md'))) return beside;
+  const fromPackageRoot = join(HERE, '..', '..', '..', 'extensions');
+  return existsSync(join(fromPackageRoot, 'caveman', 'rule.md')) ? fromPackageRoot : beside;
+}
 
 // The level-to-file map caveman/index.ts uses; `megacave` and retired wenyan names fall back to `full`.
 const CAVEMAN_RULE_FILES: Record<string, string> = {
@@ -62,7 +74,7 @@ function setting(store: Store, section: Store, key: string): unknown {
 function cavemanBody(level: string): string {
   const name = CAVEMAN_RULE_FILES[level] ?? CAVEMAN_RULE_FILES.full;
   try {
-    return readFileSync(join(HERE, '..', 'caveman', name), 'utf8');
+    return readFileSync(join(rulesRoot(), 'caveman', name), 'utf8');
   } catch {
     return `Caveman ${level} requested, but ${name} is missing. Run: tersio doctor --fix extensions`;
   }
@@ -72,7 +84,7 @@ function ponytailBody(level: string): string {
   // The level filter is a compact copy of ponytail-instructions.ts until the installer stages a shared rules dir.
   let body: string;
   try {
-    body = readFileSync(join(HERE, '..', 'ponytail', 'skills', 'ponytail', 'SKILL.md'), 'utf8');
+    body = readFileSync(join(rulesRoot(), 'ponytail', 'skills', 'ponytail', 'SKILL.md'), 'utf8');
   } catch {
     return `Ponytail ${level} requested, but its SKILL.md is missing. Run: tersio doctor --fix ponytail`;
   }
@@ -91,7 +103,7 @@ function ponytailBody(level: string): string {
 }
 
 function pstackBlock(): string {
-  const dir = join(HERE, '..', 'pstack');
+  const dir = join(rulesRoot(), 'pstack');
   try {
     const body = readFileSync(join(dir, 'rule.md'), 'utf8');
     // The rule body names its files by relative path, so one line gives the directory they sit in.
@@ -123,17 +135,34 @@ function buildBlocks(): string {
   return parts.join('\n\n');
 }
 
-async function runThroughRtk(command: string): Promise<{ content: string }> {
+/** A failed run, which promisify(exec) rejects with: the output still matters more than the throw. */
+interface ExecFailure {
+  stdout?: string;
+  stderr?: string;
+  message?: string;
+}
+
+/** Runs a command and returns its combined output; a non-zero exit is text, not a throw. */
+async function execText(command: string): Promise<string> {
+  try {
+    const r = await execShellP(command, { cwd: homeDir(), timeout: 600_000, maxBuffer: 16 * 1024 * 1024 });
+    return `${r.stdout}\n${r.stderr}`.trim() || '(no output)';
+  } catch (e) {
+    const failed = e as ExecFailure;
+    return `${failed.stdout ?? ''}\n${failed.stderr ?? ''}\n${failed.message ?? ''}`.trim() || 'the command failed without output';
+  }
+}
+
+async function runThroughRtk(command: string): Promise<string> {
   const bin = resolveRtkBinary();
-  if (!bin) return { content: 'rtk is not installed. Run: tersio doctor --fix rtk' };
+  if (!bin) return 'rtk is not installed. Run: tersio doctor --fix rtk';
   // `rtk rewrite` picks the filter for the command; `rtk run` would only execute it.
   const rewritten = await rewriteThroughRtk(command, { host: 'dsh' });
-  return execShellP(rewritten ?? command, { cwd: homeDir(), timeout: 600_000, maxBuffer: 16 * 1024 * 1024 })
-    .then((r) => ({ content: `${r.stdout}\n${r.stderr}`.trim() || '(no output)' }))
-    .catch((e: { stdout?: string; stderr?: string; message?: string }) => ({
-      content: `${e.stdout ?? ''}\n${e.stderr ?? ''}\n${e.message ?? ''}`.trim() || 'the command failed without output',
-    }));
+  return execText(rewritten ?? command);
 }
+
+/** What `execute` hands back, which DSH checks against the tool's own `output.schema`. */
+type DshToolValue = string;
 
 interface DshTools {
   register(tool: {
@@ -141,7 +170,7 @@ interface DshTools {
     description: string;
     parameters: Record<string, unknown>;
     output: { schema: unknown; render?: (args: unknown, value: unknown) => Array<{ type: string; text: string }> };
-    execute: (args: Record<string, string>) => Promise<{ content: string }> | { content: string };
+    execute: (args: Record<string, string>) => Promise<DshToolValue> | DshToolValue;
   }): () => void;
 }
 
@@ -457,8 +486,7 @@ export function apply(ctx: DshCtx): void {
       const liveSection = hostSection(live);
       if (setting(live, liveSection, 'rtkDefault') === true && resolveRtkBinary() !== null) return runThroughRtk(command);
       // Same contract as the other hosts: with RTK off the command runs plainly.
-      const r = await execShellP(command, { cwd: homeDir(), timeout: 600_000, maxBuffer: 16 * 1024 * 1024 });
-      return { content: `${r.stdout}\n${r.stderr}`.trim() || '(no output)' };
+      return execText(command);
     },
   });
 }
