@@ -1,6 +1,6 @@
 // One settings file for every host; parse failure yields {} with per-caller defaults.
 
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { homeDir, tersioHome } from './utils.ts';
 
@@ -29,31 +29,30 @@ function legacyOmpSettings(): Record<string, unknown> | null {
 }
 
 // Every mode restore asks for six defaults, so one turn would read and parse the same file six times.
-// A stat is cheap next to a read plus a parse; the inode match catches an atomic replace that kept its mtime.
-let settingsCache: { file: string; ino: bigint; mtimeNs: bigint; value: Record<string, unknown> } | null = null;
+// The parse is what costs, so the text is compared and only a changed text is parsed again.
+// A stat cannot decide this: Windows reports a coarse timestamp, so a same-size rewrite inside one
+// tick looks unchanged and the previous parse would be served forever.
+let settingsCache: { file: string; text: string; value: Record<string, unknown> | null } | null = null;
 
 /** A missing or corrupt file is a miss this process re-checks, never a remembered value. */
 function readSettingsFile(): Record<string, unknown> | null {
   const p = tersioSettingsFile();
-  let ino: bigint;
-  let mtimeNs: bigint;
+  let text: string;
   try {
-    const stat = statSync(p, { bigint: true });
-    ino = stat.ino;
-    mtimeNs = stat.mtimeNs;
+    text = readFileSync(p, 'utf8');
   } catch {
     return null;
   }
-  if (settingsCache?.file === p && settingsCache.ino === ino && settingsCache.mtimeNs === mtimeNs) return settingsCache.value;
+  if (settingsCache?.file === p && settingsCache.text === text) return settingsCache.value;
+  let value: Record<string, unknown> | null = null;
   try {
-    const parsed = JSON.parse(readFileSync(p, 'utf8')) as Record<string, unknown>;
-    const value = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
-    if (!value) return null;
-    settingsCache = { file: p, ino, mtimeNs, value };
-    return value;
+    const parsed = JSON.parse(text) as Record<string, unknown>;
+    value = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
   } catch {
-    return null;
+    value = null;
   }
+  settingsCache = { file: p, text, value };
+  return value;
 }
 
 // The stored settings; {} when the file is missing or corrupt.

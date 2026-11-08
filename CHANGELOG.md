@@ -13,7 +13,7 @@
 - A machine under 2 GB of memory is not given the proxy. The install names the floor as the reason, and `TERSIO_HEADROOM_FORCE=1` overrides it.
 - Stopping the proxy only touches the port Tersio owns, so another tool running headroom on another port is left alone.
 - The installed `tersio` entry replaces its node process with bun in place, instead of keeping node alive to wait on a bun child, so a hand-off leaves one process instead of two.
-- The saved settings are parsed once and reused until the file changes, so restoring a session no longer reads and parses the same file six times. A restore costs 0.02ms instead of 0.16ms.
+- The saved settings are parsed once and reused until the text changes, so restoring a session no longer parses the same file six times. The file is still read on every check, because a stat cannot see a same-size rewrite on Windows.
 - RTK output filtering keeps one temporary directory for the life of the process, instead of creating and removing one for every filtered result.
 
 ### Fixed
@@ -21,6 +21,9 @@
 - A shell whose command line mentions `headroom.cli proxy` no longer counts as a proxy. `pgrep -f` matched the text, so a `tersio doctor` run could report one or refuse a start; only a Python interpreter counts now.
 - The proxy stops when the last agent session quits. Each session claims it, and a quit waits 2.5s before the stop so a restart does not race it. A session that dies without a quit stops refreshing its claim, which expires after 20 minutes.
 - A confirm prompt still reads its answer after the hand-off: the CLI opens its stdin reader when a prompt needs it, not when it boots.
+- The DSH plugin now activates from an npm install. The package root and `./dsh-plugin` export the compiled `dist/extensions/dsh/index.js` instead of raw TypeScript, which Node refuses to strip under `node_modules` (`ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`), so the entry never imported from the registry copy. Thanks to @nosidak (#91).
+- The DSH plugin reads its mode rules from the package root when it runs from `dist/`, so the caveman, Ponytail and pstack bodies no longer fall back to "rule is missing" on an npm install.
+- `rtk_run` in DeepSeek Harness answers the string its own schema declares. It returned `{ content }` against a `string` schema, so every call failed with `INVALID_TOOL_OUTPUT`. A command that exits non-zero now returns its output as text instead of throwing. Thanks to @nosidak (#93).
 
 ## v2.25.18
 

@@ -24,10 +24,10 @@
     "tersio": "dist/tersio.js"
   },
   "exports": {
-    ".": "./extensions/dsh/index.ts",
+    ".": "./dist/extensions/dsh/index.js",
     "./package.json": "./package.json",
     "./server": "./dist/extensions/server.js",
-    "./dsh-plugin": "./extensions/dsh/index.ts",
+    "./dsh-plugin": "./dist/extensions/dsh/index.js",
     "./client": "./dist/extensions/dsh/client.js"
   },
   "dsh": {

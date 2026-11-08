@@ -110,7 +110,8 @@ test("package declares a pi manifest that omits the OpenCode entry", () => {
 });
 
 // tsc emits 0644, so a build that forgets the chmod leaves the npm bin link unrunnable ("permission denied").
-test("the built bin keeps its execute bit", () => {
+// Windows has no POSIX mode bits, so there is no execute bit to check there.
+test.skipIf(process.platform === "win32")("the built bin keeps its execute bit", () => {
   const pkg = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")) as { bin?: Record<string, string> };
   const target = path.join(root, pkg.bin?.tersio ?? "");
   if (!existsSync(target)) return; // dist/ is gitignored; `verify` builds before it tests
