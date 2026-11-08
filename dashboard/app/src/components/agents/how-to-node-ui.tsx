@@ -649,7 +649,7 @@ export function HeadroomDrawer({ open, onOpenChange, modes, hostState, busy, onS
             )}
             {routes?.some((target) => !target.durable) && endpoint ? (
               <p className="m-0 rounded-lg border border-line bg-track/40 px-2.5 py-2 text-[10px] leading-relaxed text-dim">
-                Pi, PiG, and DeepSeek Harness route through{" "}
+                Pi, PiG, DeepSeek Harness, and Codex route through{" "}
                 <span className="mono text-ink">{endpoint}v1</span>. The switch saves the old endpoint and restores it.
               </p>
             ) : null}

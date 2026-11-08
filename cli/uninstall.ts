@@ -13,10 +13,10 @@ import type { HostEntry } from './hosts.ts';
 import type { HostId } from '../extensions/shared/host-caps.ts';
 import { hostCap } from '../extensions/shared/host-caps.ts';
 import { CODEX_MARKETPLACE_NAME, CODEX_PLUGIN_ID, CODEX_PROMPT_MARKER, CODEX_PROMPT_NAMES, codexLocalMarketplaceRoot, codexPromptsDir, installedCodexPlugin } from '../extensions/shared/codex-plugin.ts';
-import { piAgentDir, pigAgentDir, readTextIfExists, resolveHostBinary } from '../extensions/shared/utils.ts';
+import { piAgentDir, pigAgentDir, readTextIfExists, resolveCodexBinary } from '../extensions/shared/utils.ts';
 import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
 import { removeTersioMcp } from '../extensions/shared/mcp-config.ts';
-import { NATIVE_ROUTE_HOSTS, isNativeRouteHost, removeNativeRoute } from '../extensions/shared/headroom-routes.ts';
+import { NATIVE_ROUTE_HOSTS, isNativeRouteHost, removeNativeRoute, unwrapCodexHeadroom } from '../extensions/shared/headroom-routes.ts';
 import { restoreOmpGateway } from '../extensions/shared/headroom-proxy.ts';
 import { stopHeadroomRuntime } from '../extensions/shared/headroom-runtime.ts';
 
@@ -183,6 +183,15 @@ async function removeUninstallTarget(target: string, shouldDryRun: boolean, recu
 /** Undo one agent's route before its tree leaves: Headroom's writer for two hosts, Tersio's for the rest. */
 async function restoreHeadroomRoute(host: HostId, shouldDryRun: boolean): Promise<void> {
   if (!hostCap(host)?.headroom) return;
+  if (host === 'codex') {
+    if (shouldDryRun) {
+      sayTagged("  [dry-run] would run: headroom unwrap codex");
+      return;
+    }
+    const restored = await unwrapCodexHeadroom();
+    if (restored.ok) sayTagged(`  [rm] Headroom: ${restored.detail}`);
+    return;
+  }
   if (isNativeRouteHost(host)) {
     if (shouldDryRun) return;
     const restored = removeNativeRoute(host);
@@ -203,6 +212,8 @@ async function removeHeadroomBinary(shouldDryRun: boolean): Promise<void> {
   // Put every endpoint back before the proxy leaves: a removed binary behind a routed agent strands it.
   if (!shouldDryRun) {
     if (restoreOmpGateway()) sayTagged('  [rm] Headroom endpoint: omp');
+    const codex = await unwrapCodexHeadroom();
+    if (codex.ok) sayTagged('  [rm] Headroom: codex');
     for (const target of NATIVE_ROUTE_HOSTS) {
       const restored = removeNativeRoute(target);
       if (restored.ok) sayTagged(`  [rm] Headroom endpoint: ${restored.detail}`);
@@ -383,7 +394,7 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
     console.log(`  the ${CODEX_MARKETPLACE_NAME} marketplace source`);
     console.log('  Tersio plugin data under Codex is kept');
     if (!confirmed && !(await confirmDestructive('Remove the Tersio Codex plugin?'))) { results.push(false); continue; }
-    const codex = resolveHostBinary('codex');
+    const codex = resolveCodexBinary();
     if (shouldDryRun) {
       sayTagged(`  [dry-run] would run: codex plugin remove ${CODEX_PLUGIN_ID}`);
       sayTagged(`  [dry-run] would run: codex plugin marketplace remove ${CODEX_MARKETPLACE_NAME}`);

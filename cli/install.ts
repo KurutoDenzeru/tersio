@@ -21,7 +21,7 @@ import { runDoctor } from './doctor.ts';
 import { runDashboard } from './dashboard.ts';
 import { wireRtk } from './rtk-wiring.ts';
 import {
-  RTK_INSTALL_DOCS, piAgentDir, pigAgentDir, readTextIfExists, resolveHeadroomBinary, resolveHostBinary, resolveRtkBinary, shimCommand,
+  RTK_INSTALL_DOCS, piAgentDir, pigAgentDir, readTextIfExists, resolveCodexBinary, resolveHeadroomBinary, resolveHostBinary, resolveRtkBinary, shimCommand,
 } from '../extensions/shared/utils.ts';
 import { findPackageRoot, homeDir } from '../extensions/shared/utils.ts';
 import { patchState } from '../extensions/shared/state.ts';
@@ -824,7 +824,7 @@ async function stepDsh(installOptions: InstallOptions): Promise<void> {
  * makes an upgrade replace the cached files instead of reporting an already-installed plugin.
  */
 async function stepCodex(options: InstallOptions): Promise<void> {
-  const codex = resolveHostBinary('codex');
+  const codex = resolveCodexBinary();
   if (!codex) throw new Error('codex not found — install Codex CLI or the ChatGPT desktop app first');
   if (!existsSync(codexPackagedPluginDir())) throw new Error(`packaged Codex plugin missing: ${codexPackagedPluginDir()}`);
   const root = codexLocalMarketplaceRoot();

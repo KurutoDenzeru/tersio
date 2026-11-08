@@ -4,6 +4,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 import {
   defaultOmpModel,
+  codexRouteFrom,
   describeHeadroomRoute,
   dshProviderBaseUrls,
   dshRouteFrom,
@@ -130,6 +131,41 @@ describe('manual route parsing', () => {
     const route = dshRouteFrom('llm-pi-ai:\n  providers:\n    magpie:\n      baseURL: http://127.0.0.1:3425/v1\n', '', PROXY);
     expect(route.measured).toBe(false);
     expect(describeHeadroomRoute(route)).toContain('route unknown');
+  });
+});
+
+describe('Codex route parsing', () => {
+  const config = `model = "commandcode/deepseek/deepseek-v4.1-flash"
+openai_base_url = "http://127.0.0.1:3425/backend-api/codex"
+
+[model_providers.headroom]
+name = "OpenAI"
+base_url = "http://127.0.0.1:8787/v1"
+wire_api = "responses"
+`;
+
+  test('reads the active endpoint and recognizes the proxy', () => {
+    expect(codexRouteFrom(`model = "gpt-6-luna"
+model_provider = "headroom"
+openai_base_url = "http://127.0.0.1:8787/v1"
+
+[model_providers.headroom]
+name = "OpenAI"
+base_url = "http://127.0.0.1:8787/v1"
+wire_api = "responses"
+`, PROXY)).toMatchObject({
+      model: 'gpt-6-luna',
+      provider: 'headroom',
+      baseUrl: 'http://127.0.0.1:8787/v1',
+      routed: true,
+    });
+    const gateway = codexRouteFrom(config, PROXY);
+    expect(gateway).toMatchObject({
+      model: 'commandcode/deepseek/deepseek-v4.1-flash',
+      provider: 'commandcode',
+      baseUrl: 'http://127.0.0.1:3425/backend-api/codex',
+      routed: false,
+    });
   });
 });
 

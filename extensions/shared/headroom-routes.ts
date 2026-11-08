@@ -1,17 +1,20 @@
 // The endpoints Tersio writes itself, for every agent it can route. Only the active provider's
 // endpoint changes, so a later model edit stays intact and the off switch puts the old URL back.
 
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { execFile } from 'node:child_process';
 import path from 'node:path';
+import { promisify } from 'node:util';
 import { headroomProxyUpstream, headroomProxyUrl, opencodeConfigFiles } from './headroom-proxy.ts';
 import { headroomProxyPort, readOmpGateway, restoreOmpGateway, routeOmpDefaultModel, routeOmpGateway } from './headroom-proxy.ts';
 import { ensureAgentProviderRoute } from './headroom-agent.ts';
+import { codexConfigFile } from './codex-state.ts';
 import { describeHeadroomRoute, dshDefaultRoute, dshProfileFiles, dshProviders, jsonBaseUrl, jsonModelEntry, readHeadroomRoute, sameProxyEndpoint, stripJsonComments } from './headroom-routing.ts';
 import { splicePath } from './jsonc-edit.ts';
 import type { HeadroomRoute } from './headroom-routing.ts';
 import { HOST_CAPS, hostCap } from './host-caps.ts';
 import { patchState, readState } from './state.ts';
-import { homeDir, piAgentDir, pigAgentDir } from './utils.ts';
+import { homeDir, piAgentDir, pigAgentDir, resolveHeadroomBinary, tersioHome } from './utils.ts';
 import type { HeadroomRouteRecord } from './state.ts';
 
 export type NativeRouteHost = 'pi' | 'pig' | 'dsh' | 'opencode';
@@ -20,6 +23,220 @@ export const NATIVE_ROUTE_HOSTS: ReadonlyArray<NativeRouteHost> = ['pi', 'pig', 
 export interface NativeRouteResult {
   ok: boolean;
   detail: string;
+}
+
+const runHeadroom = promisify(execFile);
+const CODEX_HEADROOM_BACKUP = 'headroom-codex.json';
+
+export interface CodexRootBackup {
+  modelProvider: string | null;
+  modelProviderPresent: boolean;
+  openaiBaseUrl: string | null;
+  openaiBaseUrlPresent: boolean;
+  provider?: string | null;
+  providerBaseUrl?: string | null;
+  providerBaseUrlPresent?: boolean;
+}
+
+function codexConfigText(): string | null {
+  try {
+    return readFileSync(codexConfigFile(), 'utf8');
+  } catch {
+    return null;
+  }
+}
+
+/** The two root keys Headroom's Codex init replaces; absence is distinct from an empty value. */
+function codexRootValue(text: string, key: string): { value: string | null; present: boolean } {
+  let present = false;
+  let value: string | null = null;
+  for (const line of text.split(/\r?\n/)) {
+    if (/^\s*\[/.test(line)) break;
+    const match = line.match(new RegExp(`^\\s*${key}\\s*=\\s*(.*)$`));
+    if (!match) continue;
+    present = true;
+    value = match[1]!.replace(/\s+#.*$/, '').trim().replace(/^["']|["']$/g, '');
+  }
+  return { value, present };
+}
+
+function codexSectionValue(text: string, section: string, key: string): { value: string | null; present: boolean } {
+  let active = false;
+  let present = false;
+  let value: string | null = null;
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('[')) {
+      if (active) break;
+      active = trimmed === `[${section}]`;
+      continue;
+    }
+    if (!active) continue;
+    const match = trimmed.match(new RegExp(`^${key}\\s*=\\s*(.*)$`));
+    if (!match) continue;
+    present = true;
+    value = match[1]!.replace(/\s+#.*$/, '').trim().replace(/^["']|["']$/g, '');
+  }
+  return { value, present };
+}
+
+function readCodexBackup(): CodexRootBackup | null {
+  try {
+    const parsed = JSON.parse(readFileSync(path.join(tersioHome(), CODEX_HEADROOM_BACKUP), 'utf8')) as Partial<CodexRootBackup>;
+    return {
+      modelProvider: typeof parsed.modelProvider === 'string' ? parsed.modelProvider : null,
+      modelProviderPresent: parsed.modelProviderPresent === true,
+      openaiBaseUrl: typeof parsed.openaiBaseUrl === 'string' ? parsed.openaiBaseUrl : null,
+      openaiBaseUrlPresent: parsed.openaiBaseUrlPresent === true,
+      provider: typeof parsed.provider === 'string' ? parsed.provider : null,
+      providerBaseUrl: typeof parsed.providerBaseUrl === 'string' ? parsed.providerBaseUrl : null,
+      providerBaseUrlPresent: parsed.providerBaseUrlPresent === true,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeCodexBackup(backup: CodexRootBackup): void {
+  try {
+    const root = tersioHome();
+    mkdirSync(root, { recursive: true });
+    writeFileSync(path.join(root, CODEX_HEADROOM_BACKUP), `${JSON.stringify(backup, null, 2)}\n`, 'utf8');
+  } catch { /* the route still works; the next unwrap falls back to Headroom's manifest */ }
+}
+
+function removeCodexBackup(): void {
+  try {
+    const file = path.join(tersioHome(), CODEX_HEADROOM_BACKUP);
+    if (existsSync(file)) {
+      // This file is Tersio's own marker, not a host config.
+      rmSync(file, { force: true });
+    }
+  } catch { /* a missing marker is already clean */ }
+}
+
+/** Put the root provider keys back after Headroom's own unwrap removes its block. */
+export function restoreCodexRoot(text: string, backup: CodexRootBackup): string {
+  const lines = text.split(/\r?\n/);
+  const firstSection = lines.findIndex((line) => /^\s*\[/.test(line));
+  const end = firstSection < 0 ? lines.length : firstSection;
+  const root = lines.slice(0, end).filter((line) => !/^\s*(model_provider|openai_base_url)\s*=/.test(line));
+  const restored: string[] = [];
+  if (backup.modelProviderPresent && backup.modelProvider !== null) restored.push(`model_provider = ${JSON.stringify(backup.modelProvider)}`);
+  if (backup.openaiBaseUrlPresent && backup.openaiBaseUrl !== null) restored.push(`openai_base_url = ${JSON.stringify(backup.openaiBaseUrl)}`);
+  return [...root, ...restored, ...lines.slice(end)].join(text.includes('\r\n') ? '\r\n' : '\n');
+}
+
+export function setTomlSectionValue(text: string, section: string, key: string, value: string): string {
+  const lines = text.split(/\r?\n/);
+  const header = `[${section}]`;
+  const start = lines.findIndex((line) => line.trim() === header);
+  const rendered = `${key} = ${JSON.stringify(value)}`;
+  if (start < 0) return [...lines, '', header, rendered].join(text.includes('\r\n') ? '\r\n' : '\n');
+  let end = lines.length;
+  for (let i = start + 1; i < lines.length; i += 1) {
+    if (/^\s*\[/.test(lines[i]!)) {
+      end = i;
+      break;
+    }
+  }
+  const at = lines.findIndex((line, i) => i > start && i < end && new RegExp(`^\\s*${key}\\s*=`).test(line));
+  if (at >= 0) lines[at] = rendered;
+  else lines.splice(end, 0, rendered);
+  return lines.join(text.includes('\r\n') ? '\r\n' : '\n');
+}
+
+function inferCodexRootBackup(text: string): CodexRootBackup {
+  const upstream = headroomProxyUpstream('openai');
+  const modelProvider = codexRootValue(text, 'model_provider');
+  const provider = modelProvider.value === 'headroom' ? null : modelProvider.value || 'openai';
+  const providerBase = provider
+    ? codexSectionValue(text, `model_providers.${provider}`, 'base_url')
+    : { value: null, present: false };
+  if (modelProvider.value === 'headroom') {
+    return {
+      modelProvider: null,
+      modelProviderPresent: false,
+      openaiBaseUrl: upstream && upstream !== headroomProxyUrl() ? upstream : null,
+      openaiBaseUrlPresent: Boolean(upstream && upstream !== headroomProxyUrl()),
+      provider: null,
+      providerBaseUrl: null,
+      providerBaseUrlPresent: false,
+    };
+  }
+  const base = codexRootValue(text, 'openai_base_url');
+  return {
+    modelProvider: modelProvider.value,
+    modelProviderPresent: modelProvider.present,
+    openaiBaseUrl: base.value,
+    openaiBaseUrlPresent: base.present,
+    provider,
+    providerBaseUrl: providerBase.value,
+    providerBaseUrlPresent: providerBase.present,
+  };
+}
+
+async function headroomCommand(args: string[]): Promise<{ ok: boolean; detail: string }> {
+  const bin = resolveHeadroomBinary();
+  if (!bin) return { ok: false, detail: 'headroom is not installed' };
+  try {
+    const result = await runHeadroom(bin, args, { timeout: 120_000, maxBuffer: 1024 * 1024 });
+    return { ok: true, detail: result.stdout.trim() || result.stderr.trim() || `headroom ${args.join(' ')}` };
+  } catch (e) {
+    const error = e as { stdout?: string; stderr?: string; message?: string };
+    return { ok: false, detail: (error.stderr || error.stdout || error.message || `headroom ${args.join(' ')} failed`).trim() };
+  }
+}
+
+/** Headroom owns Codex's provider block and hooks, so its own init/unwrap commands write them. */
+export async function routeCodexHeadroom(proxyUrl: string = headroomProxyUrl()): Promise<NativeRouteResult> {
+  const before = codexConfigText();
+  if (before !== null) {
+    const inferred = inferCodexRootBackup(before);
+    const held = readCodexBackup();
+    writeCodexBackup(held ? {
+      ...inferred,
+      ...held,
+      provider: held.provider ?? inferred.provider,
+      providerBaseUrl: held.providerBaseUrl ?? inferred.providerBaseUrl,
+      providerBaseUrlPresent: held.providerBaseUrlPresent === true || inferred.providerBaseUrlPresent === true,
+      modelProviderPresent: held.modelProviderPresent === true || inferred.modelProviderPresent === true,
+      openaiBaseUrlPresent: held.openaiBaseUrlPresent === true || inferred.openaiBaseUrlPresent === true,
+    } : inferred);
+  }
+  const installed = await headroomCommand(['init', '-g', '--port', String(headroomProxyPort()), 'codex']);
+  if (!installed.ok) return installed;
+  const backup = readCodexBackup();
+  const after = codexConfigText();
+  if (backup && after !== null) {
+    let routed = restoreCodexRoot(after, { ...backup, openaiBaseUrl: proxyUrl, openaiBaseUrlPresent: true });
+    if (backup.provider && backup.provider !== 'headroom') {
+      routed = setTomlSectionValue(routed, `model_providers.${backup.provider}`, 'base_url', proxyUrl);
+    }
+    writeFileSync(codexConfigFile(), routed, 'utf8');
+  }
+  const route = readHeadroomRoute('codex', proxyUrl);
+  return route.routed
+    ? { ok: true, detail: `codex: ${describeHeadroomRoute(route)}` }
+    : { ok: false, detail: `codex: ${describeHeadroomRoute(route)}` };
+}
+
+export async function unwrapCodexHeadroom(): Promise<NativeRouteResult> {
+  const before = codexConfigText();
+  const backup = readCodexBackup() ?? (before ? inferCodexRootBackup(before) : null);
+  const result = await headroomCommand(['unwrap', 'codex']);
+  if (result.ok && backup) {
+    const text = codexConfigText();
+    if (text !== null) {
+      let restored = restoreCodexRoot(text, backup);
+      if (backup.provider && backup.provider !== 'headroom' && backup.providerBaseUrlPresent && backup.providerBaseUrl) {
+        restored = setTomlSectionValue(restored, `model_providers.${backup.provider}`, 'base_url', backup.providerBaseUrl);
+      }
+      writeFileSync(codexConfigFile(), restored, 'utf8');
+    }
+    removeCodexBackup();
+  }
+  return result;
 }
 
 export function isNativeRouteHost(host: string): host is NativeRouteHost {
@@ -371,6 +588,7 @@ export function headroomRoutedHosts(except?: string): string[] {
 /** Point one agent at the proxy, through whichever writer that agent's config needs. */
 export async function routeHostOn(host: string, proxyUrl: string = headroomProxyUrl()): Promise<NativeRouteResult> {
   const port = headroomProxyPort();
+  if (host === 'codex') return routeCodexHeadroom(proxyUrl);
   // A provider the host keeps in its own catalog needs a block before the endpoint can move.
   const ensured = ensureAgentProviderRoute(host, port);
   if (!ensured.ok) return { ok: false, detail: ensured.detail };
@@ -386,7 +604,8 @@ export async function routeHostOn(host: string, proxyUrl: string = headroomProxy
 }
 
 /** Put back every endpoint `routeHostOn` replaced, including the gateway line omp needs. */
-export function routeHostOff(host: string): NativeRouteResult {
+export async function routeHostOff(host: string): Promise<NativeRouteResult> {
+  if (host === 'codex') return unwrapCodexHeadroom();
   if (isNativeRouteHost(host)) return removeNativeRoute(host);
   if (hostCap(host)?.headroomGateway) {
     return restoreOmpGateway(headroomProxyPort())
@@ -405,6 +624,7 @@ export async function repairHeadroomRoute(host: string, proxyUrl: string = headr
   const route = readHeadroomRoute(host, proxyUrl);
   if (!route.measured) return { ok: false, detail: describeHeadroomRoute(route) };
   if (route.routed) return { ok: true, detail: `${host} already reaches Headroom` };
+  if (host === 'codex') return routeCodexHeadroom(proxyUrl);
   if (isNativeRouteHost(host)) {
     if (!routeDrifted(host, route)) return { ok: false, detail: describeHeadroomRoute(route) };
     return installNativeRoute(host, proxyUrl);

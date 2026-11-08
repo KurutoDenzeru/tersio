@@ -11,12 +11,13 @@ describe('headroom runtime', () => {
   });
 
   test('every host can route, while only Oh My Pi and OpenCode have writers', () => {
-    for (const host of ['omp', 'pi', 'opencode', 'pig', 'dsh']) expect(headroomHostSupported(host)).toBe(true);
+    for (const host of ['omp', 'pi', 'opencode', 'pig', 'dsh', 'codex']) expect(headroomHostSupported(host)).toBe(true);
     expect(headroomHostDurable('omp')).toBe(true);
     expect(headroomHostDurable('opencode')).toBe(true);
     expect(headroomHostDurable('pi')).toBe(false);
     expect(headroomHostDurable('pig')).toBe(false);
     expect(headroomHostDurable('dsh')).toBe(false);
+    expect(headroomHostDurable('codex')).toBe(true);
   });
 
   test('the proxy URL override moves both the reader and the durable port', () => {

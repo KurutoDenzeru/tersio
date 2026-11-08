@@ -35,7 +35,7 @@ import { ACCENT_DEFAULTS, CAVEMAN_DEFAULTS, COMBO_PRESET_MODES, HEADROOM_DEFAULT
 import { PACKAGE_NAME } from './common.ts';
 import { detectHosts, hostExtensionsDir } from './hosts.ts';
 import { checkHostTrees } from './host-tree.ts';
-import { findPackageRoot, homeDir, openCommand, resolveHeadroomBinary, resolveHostBinary, resolveRtkBinary, ruleBodyProblem, tersioHome } from '../extensions/shared/utils.ts';
+import { findPackageRoot, homeDir, openCommand, resolveCodexBinary, resolveHeadroomBinary, resolveHostBinary, resolveRtkBinary, ruleBodyProblem, tersioHome } from '../extensions/shared/utils.ts';
 import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
 import { codexHome } from '../extensions/shared/codex-state.ts';
 import { tersioMcpConfigured, tersioMcpSupported } from '../extensions/shared/mcp-config.ts';
@@ -275,7 +275,7 @@ function opencodePath(): string | null {
 }
 
 function codexPath(): string | null {
-  return resolveHostBinary('codex');
+  return resolveCodexBinary();
 }
 
 // omp prints `omp/18.4.1`, pi prints a bare `0.87.1`; both read as name/version.

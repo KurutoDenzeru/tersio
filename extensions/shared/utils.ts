@@ -150,6 +150,75 @@ export function resolveHostBinary(name: string, managedDir = path.join(homeDir()
   return firstExecutable(name, managedDir);
 }
 
+/**
+ * Known Codex CLI homes, including the copy bundled inside the desktop app. The desktop does not
+ * put that binary on PATH, so every platform needs its own app-resource candidates.
+ */
+export function codexBinaryCandidates(
+  platform: NodeJS.Platform = process.platform,
+  home = homeDir(),
+  env: NodeJS.ProcessEnv = process.env,
+): string[] {
+  const p = platform === 'win32' ? path.win32 : path.posix;
+  if (platform === 'darwin') {
+    return [
+      '/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex',
+      p.join(home, 'Applications', 'ChatGPT.app', 'Contents', 'Resources', 'codex-cli', 'CodexCLI.app', 'Contents', 'MacOS', 'codex'),
+      '/Applications/Codex.app/Contents/MacOS/codex',
+      p.join(home, 'Applications', 'Codex.app', 'Contents', 'MacOS', 'codex'),
+      '/Applications/OpenAI Codex.app/Contents/MacOS/codex',
+      p.join(home, '.local', 'bin', 'codex'),
+      '/opt/homebrew/bin/codex',
+      '/usr/local/bin/codex',
+    ];
+  }
+  if (platform === 'win32') {
+    const local = env.LOCALAPPDATA || p.join(home, 'AppData', 'Local');
+    const roaming = env.APPDATA || p.join(home, 'AppData', 'Roaming');
+    const programFiles = env.ProgramFiles || p.join(home, 'Program Files');
+    const app = (root: string, name: string): string[] => [
+      p.join(root, name, 'resources', 'codex-cli', 'codex.exe'),
+      p.join(root, name, 'resources', 'codex-cli', 'CodexCLI.exe'),
+      p.join(root, name, 'resources', 'app.asar.unpacked', 'codex-cli', 'codex.exe'),
+      p.join(root, name, 'codex.exe'),
+    ];
+    return [
+      ...app(p.join(local, 'Programs'), 'ChatGPT'),
+      ...app(p.join(local, 'Programs'), 'Codex'),
+      ...app(programFiles, 'ChatGPT'),
+      ...app(programFiles, 'Codex'),
+      p.join(roaming, 'npm', 'codex.cmd'),
+      p.join(roaming, 'npm', 'codex.ps1'),
+      p.join(home, '.bun', 'bin', 'codex.exe'),
+    ];
+  }
+  return [
+    p.join(home, '.local', 'bin', 'codex'),
+    p.join(home, '.npm-global', 'bin', 'codex'),
+    p.join(home, '.local', 'share', 'pnpm', 'codex'),
+    '/usr/local/bin/codex',
+    '/usr/bin/codex',
+    '/opt/ChatGPT/resources/codex-cli/codex',
+    '/opt/Codex/codex',
+    '/usr/lib/chatgpt/resources/codex-cli/codex',
+  ];
+}
+
+/** Codex may be bundled in the desktop app, so its CLI is not always on the launcher's PATH. */
+export function resolveCodexBinary(): string | null {
+  const pinned = (process.env.CODEX_CLI_PATH ?? '').trim();
+  if (pinned && existsSync(pinned)) return pinned;
+  const onPath = resolveHostBinary('codex');
+  if (onPath) return onPath;
+  return codexBinaryCandidates().find((candidate) => {
+    try {
+      return existsSync(candidate) && !statSync(candidate).isDirectory();
+    } catch {
+      return false;
+    }
+  }) ?? null;
+}
+
 // The platform's opener, as one command plus argv, shared by the CLI and the /tersio command.
 export function openCommand(target: string): [string, string[]] {
   if (process.platform === 'darwin') return ['open', [target]];

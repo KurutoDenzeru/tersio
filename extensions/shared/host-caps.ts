@@ -105,7 +105,7 @@ export const HOST_CAPS: Record<HostId, HostCap> = {
     id: 'codex', label: 'Codex', bin: 'codex',
     installCmd: 'tersio install --host codex', removeCmd: 'tersio uninstall --host codex',
     mcp: 'plugin', mcpFile: () => null, mcpBundle: codexPluginInstalled,
-    rtkAgent: null, headroom: false,
+    rtkAgent: null, headroom: true, headroomDurable: true,
   },
 };
 

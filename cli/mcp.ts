@@ -179,7 +179,9 @@ async function modesText(want: ModeWants, host: HostId | null): Promise<string> 
 function headroomStatusText(): string {
   const stats = readHeadroomStats();
   const gain = readHeadroomSavings();
-  const routing = ['omp', 'opencode'].map((host) => `${host}: ${describeHeadroomRoute(readHeadroomRoute(host))}`);
+  const routing = detectHosts()
+    .filter((host) => hostCap(host.id)?.headroom === true)
+    .map((host) => `${host.id}: ${describeHeadroomRoute(readHeadroomRoute(host.id))}`);
   const mcp = tersioMcpHosts().map((host) => `${host}: ${tersioMcpConfigured(host) ? 'wired' : 'not wired'}`);
   return [
     stats.measured
