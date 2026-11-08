@@ -160,7 +160,6 @@ Add this entry under `mcpServers` in the client's MCP settings:
 
 That is the whole setup. No extra command, no port, no token, and no process to keep alive. `tersio install` writes this same Tersio server entry into OMP, Pi, PiG, and OpenCode, and asks first — the prompt reads `Add the Tersio MCP server to <agent>? … (optional)`, so a machine that should stay untouched can decline. DeepSeek Harness needs no file: its bundle patch carries the entry, and it is wired as soon as the plugin is mounted.
 
-Codex needs no separate entry either: `plugins/tersio/mcp.json` carries the server, so installing the plugin wires the MCP tools in the same step.
 
 The entry names an absolute `tersio` path when the binary is findable at install time, because an agent launched from the desktop never reads a shell profile and would not see the bare name. The bare name stays as the fallback.
 
@@ -206,26 +205,6 @@ It is display-only — it never enters the model context, so it costs the sessio
 | `/tersio update <ponytail\|rtk\|caveman\|all> [--dry-run]` | Update add-ons. |
 | `/tersio dashboard` | Open the dashboard. |
 | `/tersio help` | This table. |
-
-### Codex slash commands
-
-Codex does not expose a plugin API for native slash aliases, argument autofill, or a plugin status bar. Tersio's `UserPromptSubmit` hook therefore recognizes literal mode commands such as `/combo lite`, stores the override for that Codex `session_id`, and blocks the command text from reaching the model. The same hook injects the active modes before every later prompt, so those modes apply throughout the session without changing the host or shared defaults. `/pstack`, `/rtk`, and `/headroom` are explanatory here; they never rewrite Codex behavior.
-
-The hook also returns `systemMessage` on every turn: the same `🧩 LITE | 🪨 caveman:LITE | …` line the DSH bar and the CLI print. Codex Desktop has no plugin surface to paint a bar into, so this hook line is the closest parity. Each prompt file names its values in `description`, because Codex renders `argument-hint` in the picker but never completes against it.
-
-The discoverable surface is the plugin's `$combo`, `$caveman`, `$ponytail`, `$pstack`, `$rtk`, and `$tersio` skills, which do appear in the composer after restarting Codex. `tersio install --host codex` also writes `/prompts:*` fallbacks to `$CODEX_HOME/prompts/`:
-
-| Command | Purpose |
-|---|---|
-| `/combo <off\|lite\|balanced\|max\|status>` | Apply or show the Combo preset; the hook blocks the command itself. |
-| `/caveman <level\|status>` | Apply or show Caveman. |
-| `/ponytail <level\|status>` | Apply or show Ponytail. |
-| `/pstack` | Explain that pstack is available through `$pstack` / `/prompts:pstack`. |
-| `/rtk` | Explain that Codex v1 does not wire RTK rewriting. |
-| `/headroom` | Point to the Headroom switch in the Tersio dashboard. |
-| `/prompts:*` | The fallback prompt commands, with the same mode values. |
-
-Codex custom prompts are deprecated upstream but still supported by the current CLI. The repo marketplace install adds the plugin, hooks, per-mode skills, and MCP server; use `tersio install --host codex` when you also want the `/prompts:*` fallbacks. `tersio uninstall --host codex` removes only prompt files carrying Tersio's managed marker.
 
 ## 🗂️ Files and backups
 
