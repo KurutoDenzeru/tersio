@@ -4,6 +4,21 @@ import { expect, test } from 'vitest';
 import { ensureTersioMcp, removeTersioMcp, spliceTopLevelKey, tersioMcpConfigured, tersioMcpFile, tersioMcpSupported } from '../../extensions/shared/mcp-config.ts';
 import { withHome } from '../helpers/env.ts';
 
+/**
+ * The entry, in whichever shape this machine produces: bun on PATH runs the entry point directly,
+ * and a machine without it gets the installed bin's node shebang.
+ */
+function expectTersioCommand(command: string, args: string[]): void {
+  if (/bun(\.exe)?$/.test(command)) {
+    expect(args).toHaveLength(2);
+    expect(args[0]).toMatch(/tersio\.js$/);
+    expect(args[1]).toBe('mcp');
+    return;
+  }
+  expect(command).toMatch(/tersio(\.cmd|\.exe|\.js)?$/);
+  expect(args).toEqual(['mcp']);
+}
+
 test('omp gets one Tersio MCP entry, and another server survives', () => {
   withHome((home) => {
     const file = path.join(home, '.omp', 'agent', 'mcp.json');
@@ -14,7 +29,9 @@ test('omp gets one Tersio MCP entry, and another server survives', () => {
     expect(tersioMcpConfigured('omp')).toBe(true);
     const data = JSON.parse(readFileSync(file, 'utf8')) as { mcpServers: Record<string, unknown> };
     expect(data.mcpServers.other).toEqual({ command: 'other' });
-    expect(data.mcpServers.tersio).toEqual({ command: expect.stringMatching(/tersio(\.cmd|\.exe|\.js)?$/), args: ['mcp'], enabled: true });
+    const tersio = data.mcpServers.tersio as { command: string; args: string[]; enabled: boolean };
+    expect(tersio.enabled).toBe(true);
+    expectTersioCommand(tersio.command, tersio.args);
     expect(tersioMcpFile('omp')).toBe(file);
     // A second install is idempotent.
     const before = readFileSync(file, 'utf8');
@@ -44,9 +61,11 @@ test('pi and pig share the same mcpServers shape', () => {
       expect(ensureTersioMcp('pig')).toBe(true);
       const pi = JSON.parse(readFileSync(tersioMcpFile('pi') as string, 'utf8')) as { mcpServers: Record<string, unknown> };
       const pig = JSON.parse(readFileSync(tersioMcpFile('pig') as string, 'utf8')) as { mcpServers: Record<string, unknown> };
-      const tersioEntry = { command: expect.stringMatching(/tersio(\.cmd|\.exe|\.js)?$/), args: ['mcp'], enabled: true };
-      expect(pi.mcpServers.tersio).toEqual(tersioEntry);
-      expect(pig.mcpServers.tersio).toEqual(tersioEntry);
+      for (const servers of [pi.mcpServers, pig.mcpServers]) {
+        const tersio = servers.tersio as { command: string; args: string[]; enabled: boolean };
+        expect(tersio.enabled).toBe(true);
+        expectTersioCommand(tersio.command, tersio.args);
+      }
     } finally {
       for (const [name, value] of Object.entries(saved)) {
         if (value === undefined) delete process.env[name];
@@ -77,7 +96,10 @@ test('opencode gets a local command entry but keeps its other servers', () => {
     expect(tersioMcpConfigured('opencode')).toBe(true);
     const data = JSON.parse(readFileSync(file, 'utf8')) as { mcp: Record<string, unknown> };
     expect(data.mcp.other).toBeDefined();
-    expect(data.mcp.tersio).toEqual({ type: 'local', command: [expect.stringMatching(/tersio(\.cmd|\.exe|\.js)?$/), 'mcp'], enabled: true });
+    const tersio = data.mcp.tersio as { type: string; command: string[]; enabled: boolean };
+    expect(tersio.type).toBe('local');
+    expect(tersio.enabled).toBe(true);
+    expectTersioCommand(tersio.command[0], tersio.command.slice(1));
     expect(removeTersioMcp('opencode')).toBe(true);
     expect(tersioMcpConfigured('opencode')).toBe(false);
   });

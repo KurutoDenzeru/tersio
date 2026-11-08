@@ -1,7 +1,7 @@
 // One MCP server for every Tersio host. Retrieval, modes, and stats live in `tersio mcp`; no
 // second Headroom MCP entry is installed.
 
-import fs from 'node:fs';
+import fs, { realpathSync } from 'node:fs';
 import path from 'node:path';
 import { HOST_CAPS, hostCap } from './host-caps.ts';
 import { stripJsonComments } from './headroom-routing.ts';
@@ -11,6 +11,7 @@ export { spliceTopLevelKey } from './jsonc-edit.ts';
 import { resolveHostBinary } from './utils.ts';
 
 const SERVER = 'tersio';
+const IS_WINDOWS = process.platform === 'win32';
 /** A separate Headroom entry an earlier build wrote; one MCP server is the point. */
 const LEGACY = 'headroom';
 
@@ -24,12 +25,33 @@ function readJson(file: string): Record<string, unknown> | null {
 }
 
 /**
+ * The installed bin names node in its shebang, so a bare launch boots node and pays a second boot
+ * once the CLI hands itself to bun. With bun on the machine and the entry point to run, the server
+ * starts under bun directly and the node image never exists.
+ */
+function bunLaunch(bin: string): { command: string; args: string[] } | null {
+  // The bin is a node script next to the tree it runs, and a symlink to it resolves to the same file.
+  let script = bin;
+  try {
+    script = realpathSync(bin);
+  } catch { /* keep the bin path: it may still be the script */ }
+  if (!script.endsWith('.js')) return null;
+  const bun = resolveHostBinary(IS_WINDOWS ? 'bun.exe' : 'bun');
+  return bun ? { command: bun, args: [script, 'mcp'] } : null;
+}
+
+/**
  * The client spawns this command with the PATH it inherited at launch, and a GUI-launched agent
  * never reads a shell profile. An absolute path is written whenever the binary is findable now;
  * the bare name stays the fallback so a moved install still starts.
  */
 function launch(): { command: string; args: string[] } {
-  return { command: resolveHostBinary('tersio') ?? 'tersio', args: ['mcp'] };
+  const bin = resolveHostBinary('tersio');
+  if (bin) {
+    const underBun = bunLaunch(bin);
+    if (underBun) return underBun;
+  }
+  return { command: bin ?? 'tersio', args: ['mcp'] };
 }
 
 function entry(host: string): Record<string, unknown> {
