@@ -91,9 +91,9 @@ flowchart LR
   UNDO --> CFG
 ```
 
-- **Only Tersio's five agents appear.** Extra Headroom tools never enter the drawer. A present agent without its Tersio tree reads as `Tersio missing` and offers Install. An absent agent reads as `not installed` with no switch.
+- **Only Tersio's supported agents appear.** Extra Headroom tools never enter the drawer. A present agent without its Tersio tree reads as `Tersio missing` and offers Install. An absent agent reads as `not installed` with no switch.
 - **The runtime comes before the switch.** Tersio starts headroom's saved deployment, or headroom's proxy when none exists, and waits for health. Dashboard start restores an enabled runtime. The Tools page also carries a Start Headroom action.
-- **Oh My Pi and OpenCode use Headroom's writers.** Pi, PiG, and DeepSeek Harness use Tersio's route writer. It changes only the active provider endpoint, saves that URL in the state row, and puts it back on off.
+- **Oh My Pi, OpenCode, and Codex use Headroom's writers.** Pi, PiG, and DeepSeek Harness use Tersio's route writer. It changes only the active provider endpoint, saves that URL in the state row, and puts it back on off. Codex delegates to `headroom init -g codex` and `headroom unwrap codex`.
 - **A row states its own path.** A switch means a durable setup Tersio manages. `headroom install` means headroom's installer owns it. `routed by hand` means an endpoint Tersio found but cannot undo. `session only` means no durable setup exists.
 - **One action per agent.** A route is written once and repaired if a third-party writer replaces it; there is no per-session wrap and no ledger of wrapped tools. Headroom's own durable writer still owns omp and opencode, whose providers live in its block.
 - **The route outlives the process, so the session starts it.** A config file still points at the proxy after a reboot; the proxy does not, so the headroom extension starts it at session start and the dashboard restores it on boot.
@@ -109,7 +109,7 @@ flowchart LR
 ## Setup, update, and health
 
 - **One host table names every capability.** `extensions/shared/host-caps.ts` owns labels, commands, MCP shape, RTK binding, and Headroom support. Install, uninstall, MCP, and RTK read it instead of repeating host conditionals.
-- **Codex is a plugin, not an extension tree.** `plugins/tersio/plugin.json` carries the manifest, `mcp.json` carries the server, and `hooks/hooks.json` injects the active mode rules before each prompt. `tersio install --host codex` materializes a local marketplace with absolute command paths, writes managed prompts under `$CODEX_HOME/prompts/`, and manages the plugin lifecycle.
+- **Codex is a plugin, not an extension tree.** `plugins/tersio/plugin.json` carries the manifest, `mcp.json` carries the server, per-mode `skills/` provide the composer shortcuts, and `hooks/hooks.json` applies literal `/combo`, `/caveman`, and `/ponytail` commands before injecting the active mode rules into later prompts. `tersio install --host codex` materializes a local marketplace with absolute command paths, writes `/prompts:*` fallbacks under `$CODEX_HOME/prompts/`, and manages the plugin lifecycle. Codex exposes no plugin API for native slash autocomplete.
 - **Codex rollout files are the usage source.** `extensions/shared/codex-transcript.ts` folds `session_meta`, `turn_context`, completed command and patch items, MCP calls, token records, and task timing into the same request rows every dashboard page reads. The session's real `cwd` drives Projects and Traces; Codex's date-based `sessions/<year>/<month>/<day>/` path is never mistaken for a subagent tree.
 - **rtk's binary is rtk's.** Tersio detects the binary and runs rtk's own `rtk init` binding; it never downloads, replaces, or deletes it. Install, `doctor --fix`, the updater, and uninstall all stop at detection and wiring, so a user's own rtk install is never overwritten or removed.
 - **Install writes one tree per agent and one manifest.** A second copy of the same file is treated as the bug.

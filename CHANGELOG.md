@@ -1,7 +1,7 @@
 ## Unreleased
 
 ### Added
-- Codex is now a Tersio host: `tersio install --host codex` materializes a local marketplace and installs the portable plugin with its bundled MCP server. A prompt hook keeps Caveman, Ponytail, and pstack active; managed prompts expose `/prompts:combo`, `caveman`, `ponytail`, `pstack`, `rtk`, and `tersio`. Codex rollout sessions feed every dashboard page with requests, models, providers, cost, errors, tools, real working-directory projects, and separate traces. RTK and Headroom remain out of the Codex v1 surface.
+- Codex is now a Tersio host: `tersio install --host codex` materializes a local marketplace and installs the portable plugin with its bundled MCP server. A prompt hook applies literal `/combo`, `/caveman`, and `/ponytail` commands and keeps those modes active for the session; per-mode skills expose `$combo`, `$caveman`, `$ponytail`, `$pstack`, `$rtk`, and `$tersio`, with `/prompts:*` fallbacks. Codex rollout sessions feed every dashboard page with requests, models, providers, API, payloads, errors, tools, real working-directory projects, and separate traces. Headroom routes Codex through its own `init codex` / `unwrap codex` commands and the dashboard detects CLI and desktop installs on macOS, Windows, and Linux; RTK remains out of the Codex v1 surface.
 
 ### Changed
 - Doctor groups advisory findings under a dedicated Warnings section and names Oh My Pi consistently. The Upstream check now compares Codex's generated hook and MCP files structurally, so absolute runtime paths no longer read as drift.

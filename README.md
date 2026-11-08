@@ -56,7 +56,7 @@ tersio install --host omp   # Oh My Pi, non-interactive
 tersio install --host opencode  # OpenCode, non-interactive
 tersio install --host pig   # Pi-in-go (PiG), non-interactive
 tersio install --host dsh   # DeepSeek Harness — mounts the bundle into every dsh profile
-tersio install --host codex # Codex — installs the portable plugin, MCP server, and slash prompts
+tersio install --host codex # Codex — installs the portable plugin, MCP server, skills, and prompt fallbacks
 ```
 
 Or let each host install the package itself:
@@ -73,11 +73,11 @@ codex plugin add tersio@tersio
 
 The DeepSeek Harness desktop app installs through its Plugins pane instead: **Add plugin** → paste `@krtclcdy/tersio`, or a local checkout path while the bundle field is unreleased → restart the app. `dsh plugin` refuses the `desktop` profile by design, and `tersio install --host dsh` never writes it.
 
-Codex v1 ships Caveman, Ponytail, pstack, Tersio MCP, slash prompts, and usage stats. It does not wire RTK or Headroom yet. After installing, restart Codex and review the Tersio hook in `/hooks`.
+Codex v1 ships Caveman, Ponytail, pstack, per-mode skills, Tersio MCP, usage stats, and Headroom routing through Headroom's own `init codex`. It does not wire RTK yet. After installing, restart Codex and review the Tersio hook in `/hooks`.
 
 Pick one install method per host, not both. Using both registers every command twice.
 
-OMP, pi, PiG, and OpenCode load the same extension tree; DeepSeek Harness mounts the package as a bundle; Codex loads the plugin hook, MCP server, skill, and prompts. Every host reads its session-start defaults from `~/.tersio/settings.json`.
+OMP, pi, PiG, and OpenCode load the same extension tree; DeepSeek Harness mounts the package as a bundle; Codex loads the plugin hooks, MCP server, per-mode skills, and prompt fallbacks. Every host reads its session-start defaults from `~/.tersio/settings.json`.
 
 One-off use without installing:
 
@@ -209,18 +209,21 @@ It is display-only — it never enters the model context, so it costs the sessio
 
 ### Codex slash commands
 
-`tersio install --host codex` writes managed prompts to `$CODEX_HOME/prompts/`. Codex exposes those files as:
+Codex does not expose a plugin API for native slash aliases or their composer hints. Tersio's `UserPromptSubmit` hook therefore recognizes literal mode commands such as `/combo lite`, applies them to the Codex host scope, and blocks the command text from reaching the model. The same hook injects the active modes before every later prompt, so those modes apply throughout the session. `/pstack`, `/rtk`, and `/headroom` are explanatory here; they never rewrite Codex behavior.
+
+The discoverable surface is the plugin's `$combo`, `$caveman`, `$ponytail`, `$pstack`, `$rtk`, and `$tersio` skills, which do appear in the composer after restarting Codex. `tersio install --host codex` also writes `/prompts:*` fallbacks to `$CODEX_HOME/prompts/`:
 
 | Command | Purpose |
 |---|---|
-| `/prompts:combo <off\|lite\|balanced\|max\|status>` | Set or show the Combo preset for Codex. |
-| `/prompts:caveman <level\|status>` | Set or show Caveman for Codex. |
-| `/prompts:ponytail <level\|status>` | Set or show Ponytail for Codex. |
-| `/prompts:pstack <on\|off\|status>` | Set or show pstack for Codex. |
-| `/prompts:rtk <on\|off\|status>` | Store the preference and report that Codex RTK rewriting is unavailable. |
-| `/prompts:tersio <status\|help\|update\|upstream\|dashboard>` | Show status, or run a Tersio command. |
+| `/combo <off\|lite\|balanced\|max\|status>` | Apply or show the Combo preset; the hook blocks the command itself. |
+| `/caveman <level\|status>` | Apply or show Caveman. |
+| `/ponytail <level\|status>` | Apply or show Ponytail. |
+| `/pstack` | Explain that pstack is available through `$pstack` / `/prompts:pstack`. |
+| `/rtk` | Explain that Codex v1 does not wire RTK rewriting. |
+| `/headroom` | Point to the Headroom switch in the Tersio dashboard. |
+| `/prompts:*` | The fallback prompt commands, with the same mode values. |
 
-Codex custom prompts are deprecated upstream but still supported by the current CLI. The repo marketplace install adds the plugin, hook, skill, and MCP server; use `tersio install --host codex` when you also want these slash prompts. `tersio uninstall --host codex` removes only prompt files carrying Tersio's managed marker.
+Codex custom prompts are deprecated upstream but still supported by the current CLI. The repo marketplace install adds the plugin, hooks, per-mode skills, and MCP server; use `tersio install --host codex` when you also want the `/prompts:*` fallbacks. `tersio uninstall --host codex` removes only prompt files carrying Tersio's managed marker.
 
 ## 🗂️ Files and backups
 
