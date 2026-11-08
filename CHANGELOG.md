@@ -1,5 +1,27 @@
 ## Unreleased
 
+### Changed
+- `tersio` now runs the command under bun whenever bun is installed, instead of the node its shebang names. The whole CLI follows, MCP server included, and `TERSIO_RUNTIME=node` keeps a machine on node. A real command spends about 15% less CPU; a command that only prints text pays roughly 30ms for the second boot.
+- The MCP server starts under bun directly when bun is installed, instead of booting node and then handing off to bun. Its process tree is one bun process at about 36 MB; a machine without bun stays on one node process at about 72 MB.
+- The MCP server no longer loads the whole dashboard to answer two tools. The agent-stats layer moved to its own module, so the server imports 30 files instead of 51.
+- The MCP server asks for a summary view instead of the dashboard full view. One `tersio_stats` call now costs about 18 MB of resident memory and 0.5s; it cost about 51 MB and 2s.
+- zlib is loaded when a cache row is first written or read, not at import, so a process that never caches never pays its 8 MB.
+- The proxy starts directly instead of through `headroom install start`, which kept a second 82 MB Python process alive for the life of the proxy.
+- A restart no longer brings that supervisor back either: the proxy is stopped and started directly with the upstream just written.
+- Uninstalling stops the proxy instead of leaving it serving a provider endpoint nothing points at.
+- Turning Headroom off for the last routed agent stops the proxy. One agent of two keeps it running.
+- A machine under 2 GB of memory is not given the proxy. The install names the floor as the reason, and `TERSIO_HEADROOM_FORCE=1` overrides it.
+- Stopping the proxy only touches the port Tersio owns, so another tool running headroom on another port is left alone.
+- The installed `tersio` entry replaces its node process with bun in place, instead of keeping node alive to wait on a bun child, so a hand-off leaves one process instead of two.
+- The saved settings are parsed once and reused until the file changes, so restoring a session no longer reads and parses the same file six times. A restore costs 0.02ms instead of 0.16ms.
+- RTK output filtering keeps one temporary directory for the life of the process, instead of creating and removing one for every filtered result.
+
+### Fixed
+- The proxy starts on the first agent session after a reboot. A proxy still binding its port was read as another tool's proxy, so the start was refused and the route pointed at a dead port. A proxy on Tersio's own port now waits instead of refusing.
+- A shell whose command line mentions `headroom.cli proxy` no longer counts as a proxy. `pgrep -f` matched the text, so a `tersio doctor` run could report one or refuse a start; only a Python interpreter counts now.
+- The proxy stops when the last agent session quits. Each session claims it, and a quit waits 2.5s before the stop so a restart does not race it. A session that dies without a quit stops refreshing its claim, which expires after 20 minutes.
+- A confirm prompt still reads its answer after the hand-off: the CLI opens its stdin reader when a prompt needs it, not when it boots.
+
 ## v2.25.18
 
 ### Added
