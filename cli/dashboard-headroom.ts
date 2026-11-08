@@ -5,7 +5,8 @@ import type http from 'node:http';
 import { hostCap } from '../extensions/shared/host-caps.ts';
 import { headroomHostDurable, headroomProxyUrl } from '../extensions/shared/headroom-proxy.ts';
 import { describeHeadroomRoute, readHeadroomRoute } from '../extensions/shared/headroom-routing.ts';
-import { routeHostOff, routeHostOn } from '../extensions/shared/headroom-routes.ts';
+import { headroomRoutedHosts, routeHostOff, routeHostOn } from '../extensions/shared/headroom-routes.ts';
+import { stopHeadroomRuntime } from '../extensions/shared/headroom-runtime.ts';
 import { detectHosts } from './hosts.ts';
 import { resolveHeadroomBinary, resolveHostBinary } from '../extensions/shared/utils.ts';
 
@@ -94,6 +95,8 @@ export async function handleHeadroomRoutes(
     }
     if (body.on === false) {
       const removed = routeHostOff(name);
+      // The last route is what makes the proxy worth its memory, so the daemon stops with it.
+      if (removed.ok && headroomRoutedHosts(name).length === 0) await stopHeadroomRuntime();
       ctx.json(res, 200, removed.ok ? { ok: true, detail: removed.detail } : { ok: false, error: removed.detail });
       return true;
     }

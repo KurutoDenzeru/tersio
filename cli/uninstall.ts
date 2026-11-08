@@ -16,6 +16,7 @@ import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
 import { removeTersioMcp } from '../extensions/shared/mcp-config.ts';
 import { NATIVE_ROUTE_HOSTS, isNativeRouteHost, removeNativeRoute } from '../extensions/shared/headroom-routes.ts';
 import { restoreOmpGateway } from '../extensions/shared/headroom-proxy.ts';
+import { stopHeadroomRuntime } from '../extensions/shared/headroom-runtime.ts';
 
 interface UninstallOptions {
   yes?: boolean;
@@ -203,6 +204,11 @@ async function removeHeadroomBinary(shouldDryRun: boolean): Promise<void> {
       const restored = removeNativeRoute(target);
       if (restored.ok) sayTagged(`  [rm] Headroom endpoint: ${restored.detail}`);
     }
+  }
+  // A route is put back above, so the proxy has nothing left to serve: stop it before the binary leaves.
+  if (!shouldDryRun) {
+    const stopped = await stopHeadroomRuntime();
+    if (stopped.ok) sayTagged(`  [rm] ${stopped.detail}`);
   }
   const dirs = (process.env.PATH ?? '').split(path.delimiter).filter(Boolean);
   dirs.push(path.join(HOME, '.local', 'bin'));

@@ -28,7 +28,7 @@ import { patchState } from '../extensions/shared/state.ts';
 import { CAVEMAN_PIN } from './upstream.ts';
 import { headroomHostSupported, headroomProxyPort, headroomProxyUrl, readOmpGateway } from '../extensions/shared/headroom-proxy.ts';
 import { ensureTersioMcp, tersioMcpConfigured, tersioMcpSupported } from '../extensions/shared/mcp-config.ts';
-import { ensureHeadroomRuntime } from '../extensions/shared/headroom-runtime.ts';
+import { ensureHeadroomRuntime, headroomFitsMachine } from '../extensions/shared/headroom-runtime.ts';
 import { routeHostOn } from '../extensions/shared/headroom-routes.ts';
 import type { HostDefaultField } from './profile.ts';
 import { formatCliStatus, saveHostDefaults, storedProfile, storedProfileSync, writePluginSettings } from './profile.ts';
@@ -421,6 +421,12 @@ async function resolveProfile(opts: { quiet?: boolean; host?: HostId | null } = 
 async function maybeInstallHeadroom(profile: Profile, quiet: boolean, host: HostId): Promise<boolean> {
   // Every Tersio host has a model route Headroom can take, with or without its own writer.
   if (!headroomHostSupported(host)) return false;
+  // A proxy that cannot fit is not offered: the measured floor is the reason, and it is printed.
+  const machine = headroomFitsMachine();
+  if (!machine.fits) {
+    if (!quiet) sayTagged(`  [note] Headroom skipped — ${machine.detail}. Set TERSIO_HEADROOM_FORCE=1 to install it anyway`);
+    return false;
+  }
   if (!tty() || dryRun || applyUpdate || assumeYes) {
     // No prompt to answer, but a fresh install still gets one line about the optional mode.
     if (!quiet && !dryRun && !applyUpdate && profile.headroomDefault !== 'on') {
