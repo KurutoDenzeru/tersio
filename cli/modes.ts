@@ -42,16 +42,13 @@ export async function runModes(argv: string[]): Promise<void> {
   const current = await storedProfile(host ?? null);
   const mode = words[0]?.toLowerCase() as ModeName | undefined;
   const value = words[1]?.toLowerCase();
-  if (!mode || !MODES.has(mode)) {
-    if (mode) {
-      console.error(`[fail] unknown mode: ${mode}`);
-      process.exitCode = 1;
-      return;
-    }
-    console.log(`Current session defaults${host ? ` for ${host}` : ''}: ${formatProfile(current)}`);
+  if (mode && !MODES.has(mode)) {
+    console.error(`[fail] unknown mode: ${mode}`);
+    process.exitCode = 1;
     return;
   }
-  if (!value || value === 'status') {
+  // A bare mode word, an absent one, and `status` all read the same line and write nothing.
+  if (!mode || !value || value === 'status') {
     console.log(`Current session defaults${host ? ` for ${host}` : ''}: ${formatProfile(current)}`);
     return;
   }
