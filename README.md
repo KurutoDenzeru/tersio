@@ -209,7 +209,9 @@ It is display-only — it never enters the model context, so it costs the sessio
 
 ### Codex slash commands
 
-Codex does not expose a plugin API for native slash aliases or their composer hints. Tersio's `UserPromptSubmit` hook therefore recognizes literal mode commands such as `/combo lite`, applies them to the Codex host scope, and blocks the command text from reaching the model. The same hook injects the active modes before every later prompt, so those modes apply throughout the session. `/pstack`, `/rtk`, and `/headroom` are explanatory here; they never rewrite Codex behavior.
+Codex does not expose a plugin API for native slash aliases, argument autofill, or a plugin status bar. Tersio's `UserPromptSubmit` hook therefore recognizes literal mode commands such as `/combo lite`, stores the override for that Codex `session_id`, and blocks the command text from reaching the model. The same hook injects the active modes before every later prompt, so those modes apply throughout the session without changing the host or shared defaults. `/pstack`, `/rtk`, and `/headroom` are explanatory here; they never rewrite Codex behavior.
+
+The hook also returns `systemMessage` on every turn: the same `🧩 LITE | 🪨 caveman:LITE | …` line the DSH bar and the CLI print. Codex Desktop has no plugin surface to paint a bar into, so this hook line is the closest parity. Each prompt file names its values in `description`, because Codex renders `argument-hint` in the picker but never completes against it.
 
 The discoverable surface is the plugin's `$combo`, `$caveman`, `$ponytail`, `$pstack`, `$rtk`, and `$tersio` skills, which do appear in the composer after restarting Codex. `tersio install --host codex` also writes `/prompts:*` fallbacks to `$CODEX_HOME/prompts/`:
 
