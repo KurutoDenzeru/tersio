@@ -413,6 +413,10 @@ export interface HealthReport {
   codexPath: string | null;
   /** Config root, e.g. ~/.codex */
   codexDir: string | null;
+  dsh: string | null;
+  dshPath: string | null;
+  /** Config root, e.g. ~/.dsh */
+  dshDir: string | null;
   provider: string | null;
   rtk: { present: boolean; version: string | null; path: string };
   headroom: { present: boolean; version: string | null; path: string };

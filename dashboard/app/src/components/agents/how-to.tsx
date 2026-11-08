@@ -37,9 +37,9 @@ export function HowToPage({ modes, onModesChanged }: { modes: ModeState | null; 
       .finally(() => setHostsLoaded(true));
     void fetchHealth().then((report) => {
       if (!report) return;
-      const versions = { omp: versionOf(report.omp), pi: versionOf(report.pi), pig: versionOf(report.pig), opencode: versionOf(report.opencode), codex: versionOf(report.codex) };
+      const versions = { omp: versionOf(report.omp), pi: versionOf(report.pi), pig: versionOf(report.pig), opencode: versionOf(report.opencode), dsh: versionOf(report.dsh), codex: versionOf(report.codex) };
       // Presence is the resolved binary, not the probe: a probe can fail while the harness is there.
-      const paths = { omp: report.ompPath, pi: report.piPath, pig: report.pigPath, opencode: report.opencodePath, codex: report.codexPath };
+      const paths = { omp: report.ompPath, pi: report.piPath, pig: report.pigPath, opencode: report.opencodePath, dsh: report.dshPath, codex: report.codexPath };
       setHostState((s) => ({ ...s, versions, present: Object.fromEntries(Object.entries(paths).map(([id, p]) => [id, Boolean(p)])) }));
     });
     readRoutes();

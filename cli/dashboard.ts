@@ -33,7 +33,7 @@ import type { BackupSchedule, HostDefaultField } from './profile.ts';
 import { normalizeComboLevel } from '../extensions/shared/session-state.ts';
 import { ACCENT_DEFAULTS, CAVEMAN_DEFAULTS, COMBO_PRESET_MODES, HEADROOM_DEFAULTS, PONYTAIL_DEFAULTS, PSTACK_DEFAULTS } from './common.ts';
 import { PACKAGE_NAME } from './common.ts';
-import { detectHosts, hostExtensionsDir } from './hosts.ts';
+import { detectHosts, dshHome, dshPresent, dshRunner, hostExtensionsDir } from './hosts.ts';
 import { checkHostTrees } from './host-tree.ts';
 import { findPackageRoot, homeDir, openCommand, resolveCodexBinary, resolveHeadroomBinary, resolveHostBinary, resolveRtkBinary, ruleBodyProblem, tersioHome } from '../extensions/shared/utils.ts';
 import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
@@ -278,6 +278,13 @@ function codexPath(): string | null {
   return resolveCodexBinary();
 }
 
+/** DeepSeek Harness may be a CLI, the desktop app's bundled runner, or only its home; one of them answers. */
+function dshPath(): string | null {
+  if (!dshPresent()) return null;
+  const runner = dshRunner()[0] ?? 'dsh';
+  return resolveHostBinary(runner, path.dirname(runner)) ?? runner;
+}
+
 // omp prints `omp/18.4.1`, pi prints a bare `0.87.1`; both read as name/version.
 function versionLabel(bin: string, raw: string): string {
   const out = raw.trim();
@@ -325,10 +332,11 @@ function ompDefaultModel(): string | null {
 }
 
 /** The config root per agent, for the health report. */
-const agentDir = (id: 'omp' | 'pi' | 'pig' | 'opencode' | 'codex'): string | null => {
+const agentDir = (id: 'omp' | 'pi' | 'pig' | 'opencode' | 'dsh' | 'codex'): string | null => {
   if (id === 'omp') return path.join(homeDir(), '.omp');
   if (id === 'pi') return path.join(homeDir(), '.pi');
   if (id === 'pig') return path.join(homeDir(), '.pig');
+  if (id === 'dsh') return dshHome();
   if (id === 'codex') return codexHome();
   return path.join(homeDir(), '.config', 'opencode');
 };
@@ -343,6 +351,7 @@ export function healthJson(): string {
   const detectedPigPath = pigPath();
   const detectedOpencodePath = opencodePath();
   const detectedCodexPath = codexPath();
+  const detectedDshPath = dshPath();
   return JSON.stringify({
     tersio: PACKAGE_VERSION,
     node: process.version,
@@ -362,6 +371,9 @@ export function healthJson(): string {
     codex: agentVersion(detectedCodexPath),
     codexPath: detectedCodexPath,
     codexDir: agentDir('codex'),
+    dsh: agentVersion(detectedDshPath),
+    dshPath: detectedDshPath,
+    dshDir: agentDir('dsh'),
     provider: ompDefaultModel(),
     rtk: { present: rtkPresent, version: rtkPresent ? rtkVersion(rtkBin as string) : null, path: rtkBin || 'not found in PATH' },
     headroom: { present: headroomPresent, version: headroomPresent ? headroomVersion(headroomBin as string) : null, path: headroomBin || 'not found in PATH' },

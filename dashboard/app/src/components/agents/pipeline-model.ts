@@ -255,12 +255,19 @@ export function savePositions(positions: Record<string, Box>): void {
   }
 }
 
-/** `/health` reports `omp/18.12.6` and `opencode/opencode v2.1.3`, so the node keeps only the version. */
+/** `/health` reports `omp/18.12.6` and `codex-cli 0.167.0-alpha.3.2`, so the node keeps only the version. */
 export function versionOf(raw: string | null | undefined): string | null {
   if (!raw) return null;
   const tail = raw.split("/").pop() ?? raw;
-  const version = tail.replace(/^(omp|pi|pig|opencode|dsh|codex)\s+/i, "").trim();
+  // Drop a leading tool name (`codex-cli `) and a leading `v` (`v2.1.3`), which is not part of a version.
+  const version = tail.replace(/^[a-z][a-z-]*\s+/i, "").replace(/^v(?=\d)/i, "").trim();
   return version || null;
+}
+
+/** A 224px node cannot hold a full prerelease tag, so the badge drops the build tail: `0.167.0`. */
+export function shortVersion(version: string | null): string | null {
+  if (!version) return null;
+  return version.replace(/-.*$/, "");
 }
 
 /** The hosts, in the order the installer writes them. */

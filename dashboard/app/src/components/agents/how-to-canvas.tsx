@@ -10,7 +10,7 @@ import { useGSAP } from "@gsap/react";
 import { HeadroomDrawer, HostDrawer, ModeDrawer, RtkDrawer } from "./how-to-node-ui";
 import {
   HOSTS, MODES, NODE_H, NODE_W, agentModeRows, alignDrag, defaultPositions, edgeLit, edgePath, edgePorts, isOff, loadPositions,
-  nodeOff, nodeState, nodeTitle, pipelineGraph, portPoint, savePositions, snapToGrid, versionOf,
+  nodeOff, nodeState, nodeTitle, pipelineGraph, portPoint, savePositions, shortVersion, snapToGrid, versionOf,
 } from "./pipeline-model";
 import type { Box, EdgeKey, HostAction, HostState, NodeId } from "./pipeline-model";
 import type { Alignment, GuideLine } from "./pipeline-model";
@@ -130,15 +130,17 @@ function NodeButton({
 /** The status badge every card carries: a dot plus the level, the way a service list reads. */
 function NodeBadge({ on, label }: { on: boolean | null; label: string }) {
   const off = isOff(on);
+  // A version can outrun the card, so the badge shrinks and ellipsizes instead of pushing the title out.
   return (
     <span
+      title={label}
       className={cn(
-        "mono ml-auto flex shrink-0 items-center gap-1 rounded border px-1 text-[9px] leading-none py-0.5",
+        "mono ml-auto flex min-w-0 shrink items-center gap-1 rounded border px-1 text-[9px] leading-none py-0.5",
         off ? "border-line text-dim" : "border-success/40 text-success",
       )}
     >
-      <span aria-hidden="true" className={cn("size-1.5 rounded-full", off ? "bg-dim" : "bg-success")} />
-      {label}
+      <span aria-hidden="true" className={cn("size-1.5 shrink-0 rounded-full", off ? "bg-dim" : "bg-success")} />
+      <span className="truncate">{label}</span>
     </span>
   );
 }
@@ -436,7 +438,7 @@ export function PipelineCanvas({
             <span className="min-w-0 flex-1 text-[12px] font-semibold leading-tight">{host.label}</span>
             {off
               ? <NodeBadge on={false} label="not installed" />
-              : version ? <NodeBadge on={true} label={version} /> : null}
+              : <NodeBadge on={true} label={version === null ? "" : shortVersion(version) ?? version} />}
           </span>
           {!off ? (
             <span className="grid flex-1 grid-cols-2 content-center gap-x-3 gap-y-1 px-3.5 py-2.5">
