@@ -9,7 +9,7 @@ import { resolveHeadroomBinary } from '../shared/utils.ts';
 import { headroomHostSupported, headroomProxyUrl } from '../shared/headroom-proxy.ts';
 import { describeHeadroomRoute, readHeadroomRoute } from '../shared/headroom-routing.ts';
 import { headroomRoutedHosts, repairHeadroomRoute } from '../shared/headroom-routes.ts';
-import { ensureHeadroomRuntime } from '../shared/headroom-runtime.ts';
+import { ensureHeadroomRuntime, releaseHeadroomLease, touchHeadroomLease } from '../shared/headroom-runtime.ts';
 import { ensureTersioMcp } from '../shared/mcp-config.ts';
 import type { HeadroomRoute } from '../shared/headroom-routing.ts';
 import type { ExtensionApi, ExtensionCtx, InputEvent, SessionEntry, SystemPromptEvent } from '../shared/types.ts';
@@ -90,6 +90,10 @@ export default function headroomSessionExtension(pi: ExtensionApi): void {
     return true;
   }
 
+  // One agent process holds one lease. A session that dies without a shutdown stops refreshing it,
+  // so the proxy is not held forever by a process that is gone.
+  const sessionId = String(process.pid);
+
   setExtensionLabel(pi, 'Headroom session toggle');
 
   // Adopt a /tersio or /combo switch at once, so the next turn needs no reload.
@@ -156,6 +160,8 @@ export default function headroomSessionExtension(pi: ExtensionApi): void {
     if (!needsHeadroomProxy(currentMode, headroomWanted(host))) return;
     const bin = resolveHeadroomBinary();
     if (!bin) return;
+    // The claim is written first, so a stop from another session sees this one and leaves the proxy up.
+    touchHeadroomLease(sessionId);
     // ensureHeadroomRuntime probes /readyz first, so a proxy that is already up costs one request.
     void ensureHeadroomRuntime(bin).catch(() => { /* the next session retries */ });
   }
@@ -172,6 +178,14 @@ export default function headroomSessionExtension(pi: ExtensionApi): void {
       restoreMode(ctx);
     });
   }
+
+  // The proxy is session-scoped: it stops on quit unless another agent still holds it. A reload keeps
+  // it, because the same process relaunches and claims it again.
+  pi.on('session_shutdown', async (event) => {
+    const reason = (event as { reason?: unknown } | undefined)?.reason;
+    if (reason === 'reload' || reason === 'new' || reason === 'resume' || reason === 'fork') return;
+    await releaseHeadroomLease(sessionId, resolveHeadroomBinary()).catch(() => { /* a stop that fails is retried by the next session */ });
+  });
 
   pi.on<SystemPromptEvent>('before_agent_start', async (event: SystemPromptEvent, ctx?: ExtensionCtx) => {
     const mode = isOmpSubagentPrompt(event.systemPrompt) ? getSharedComboState().headroom : currentMode;
