@@ -1,8 +1,15 @@
 // Machine caches live inside the usage ledger, beside the data they describe, so the data home keeps its loose files for user config and human reports.
+import { createRequire } from 'node:module';
 import path from 'node:path';
-import zlib from 'node:zlib';
 import { tersioHome } from './utils.ts';
 import { sqliteAvailable, sqliteExec, sqliteRead } from './sqlite.ts';
+
+/** zlib costs about 8MB of resident memory on bun, so a process that never caches never pays for it. */
+let zlibModule: typeof import('node:zlib') | null = null;
+function zlib(): typeof import('node:zlib') {
+  zlibModule ??= createRequire(import.meta.url)('node:zlib') as typeof import('node:zlib');
+  return zlibModule;
+}
 
 /** Keys are stable strings: `prices`, `upstream.scorecard`, `upstream.tree.<repo>@<ref>`. */
 const memory = new Map<string, Map<string, string>>();
@@ -32,12 +39,12 @@ function quote(value: string): string {
 
 /** Gzip before base64: these payloads are JSON, which halves twice over. `z:` marks a compressed row; older rows stay readable. */
 function encode(text: string): string {
-  return `z:${zlib.gzipSync(Buffer.from(text, 'utf8')).toString('base64')}`;
+  return `z:${zlib().gzipSync(Buffer.from(text, 'utf8')).toString('base64')}`;
 }
 
 function decode(stored: string): string {
   if (!stored.startsWith('z:')) return Buffer.from(stored, 'base64').toString('utf8');
-  return zlib.gunzipSync(Buffer.from(stored.slice(2), 'base64')).toString('utf8');
+  return zlib().gunzipSync(Buffer.from(stored.slice(2), 'base64')).toString('utf8');
 }
 
 function ensure(file: string): boolean {
