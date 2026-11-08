@@ -7,12 +7,15 @@ import { fileURLToPath } from 'node:url';
 
 import {
   CODEX_PLUGIN_FILES,
+  CODEX_ARGS_MARKER,
   CODEX_PROMPT_MARKER,
   CODEX_PROMPT_NAMES,
   applyCodexModePatch,
   codexLocalPluginFiles,
   codexModeContext,
+  codexManagedPrompt,
   codexPromptFiles,
+  codexStatusLine,
   codexStopPatch,
   installedCodexPlugin,
 } from '../../extensions/shared/codex-plugin.ts';
@@ -119,7 +122,9 @@ test('the installed prompts are Codex slash commands with managed markers', () =
     const body = prompts[name].replace(/\r\n/g, '\n');
     expect(body).toContain(CODEX_PROMPT_MARKER);
     expect(body).toMatch(new RegExp(`^---\\n[\\s\\S]*?description:[^\\n]+\\n[\\s\\S]*?---\\n`));
-    expect(body).toContain('text after this prompt');
+    // The command name and the args boundary let the hook answer without a model turn.
+    expect(body).toContain(`<!-- tersio-managed prompt: ${name} -->`);
+    expect(body).toContain(CODEX_ARGS_MARKER);
     expect(body).not.toContain('$ARGUMENTS');
   }
 });
@@ -171,7 +176,7 @@ test('Codex detects the enabled plugin cache and its bundled MCP entry', () => {
   }
 });
 
-test('Codex mode context follows its own host scope and stop phrases clear that scope', () => {
+test('Codex mode context follows host scope and a session stop phrase clears only that session', () => {
   withHome((home) => {
     const settings = path.join(home, '.tersio', 'settings.json');
     mkdirSync(path.dirname(settings), { recursive: true });
@@ -188,9 +193,13 @@ test('Codex mode context follows its own host scope and stop phrases clear that 
 
     const patch = codexStopPatch('normal mode.');
     expect(patch).toEqual({ cavemanDefault: 'off', ponytailDefault: 'off', pstackDefault: 'off' });
-    applyCodexModePatch(patch!);
+    expect(applyCodexModePatch('session-stop', patch!)).toBe(true);
+    const session = codexModeContext('session-stop');
+    expect(session).not.toMatch(/Caveman lite active/);
+    expect(session).not.toMatch(/PONYTAIL MODE ACTIVE/);
+    expect(session).not.toMatch(/pstack mode active/);
     const stored = JSON.parse(readFileSync(settings, 'utf8')) as { hosts?: { codex?: Record<string, string> } };
-    expect(stored.hosts?.codex).toMatchObject({ cavemanDefault: 'off', ponytailDefault: 'off', pstackDefault: 'off' });
+    expect(stored.hosts?.codex).toMatchObject({ cavemanDefault: 'lite', ponytailDefault: 'off', pstackDefault: 'off' });
     expect(codexStopPatch('add normal mode to the design')).toBeNull();
   });
 });
@@ -206,12 +215,14 @@ test('the Codex hook emits developer context and clears a stop phrase', () => {
     const hook = spawnSync(process.execPath, [installer, 'codex-hook', 'user-prompt-submit'], {
       encoding: 'utf8',
       env,
-      input: JSON.stringify({ prompt: 'normal mode' }),
+      input: JSON.stringify({ prompt: 'normal mode', session_id: 'session-stop' }),
     });
     expect(hook.status, hook.stderr).toBe(0);
-    expect(JSON.parse(hook.stdout)).toEqual({ continue: true });
+    // Every mode is off after the stop phrase, and the status line rides the hook result.
+    expect(JSON.parse(hook.stdout)).toEqual({ continue: true, systemMessage: '🧩 OFF' });
     const stored = JSON.parse(readFileSync(settings, 'utf8')) as { hosts?: { codex?: Record<string, string> } };
-    expect(stored.hosts?.codex?.cavemanDefault).toBe('off');
+    expect(stored.hosts?.codex?.cavemanDefault).toBe('lite');
+    expect(codexModeContext('session-stop')).not.toMatch(/Caveman lite active/);
   });
 });
 
@@ -221,10 +232,10 @@ test('the Codex hook executes a literal combo slash command without sending it t
     mkdirSync(path.dirname(settings), { recursive: true });
     writeFileSync(settings, JSON.stringify({ hosts: { codex: {} } }), 'utf8');
     const env = { ...cliEnv(home), TERSIO_RUNTIME: 'node' };
-    const hook = (prompt: string) => spawnSync(process.execPath, [installer, 'codex-hook', 'user-prompt-submit'], {
+    const hook = (prompt: string, sessionId = 'session-combo') => spawnSync(process.execPath, [installer, 'codex-hook', 'user-prompt-submit'], {
       encoding: 'utf8',
       env,
-      input: JSON.stringify({ prompt }),
+      input: JSON.stringify({ prompt, session_id: sessionId }),
     });
 
     const command = hook('/combo lite');
@@ -233,10 +244,12 @@ test('the Codex hook executes a literal combo slash command without sending it t
       decision: 'block',
       reason: 'Tersio Combo set to lite for Codex. It applies to the rest of this session.',
     });
-    const stored = JSON.parse(readFileSync(settings, 'utf8')) as {
-      hosts?: { codex?: Record<string, string | boolean> };
+    const stored = JSON.parse(readFileSync(settings, 'utf8')) as { hosts?: { codex?: Record<string, string | boolean> } };
+    expect(stored.hosts?.codex).toEqual({});
+    const session = JSON.parse(readFileSync(path.join(home, '.tersio', 'codex-session-modes.json'), 'utf8')) as {
+      'session-combo'?: Record<string, string | boolean>;
     };
-    expect(stored.hosts?.codex).toMatchObject({
+    expect(session['session-combo']).toMatchObject({
       comboDefault: 'lite',
       cavemanDefault: 'lite',
       rtkDefault: true,
@@ -245,8 +258,64 @@ test('the Codex hook executes a literal combo slash command without sending it t
 
     const next = hook('Continue the task.');
     expect(next.status, next.stderr).toBe(0);
-    expect(JSON.parse(next.stdout)).toMatchObject({ continue: true });
+    // The same one-line combo bar DSH paints, carried on the hook result.
+    expect(JSON.parse(next.stdout)).toMatchObject({
+      continue: true,
+      systemMessage: '🧩 LITE | 🪨 caveman:LITE | 🗜️ rtk:ON | 🍃 headroom:OFF | 🧠 ponytail:LITE | 🥔 pstack:OFF',
+    });
     expect(next.stdout).toContain('Caveman lite active for this session.');
+    expect(codexStatusLine('session-combo')).toBe('🧩 LITE | 🪨 caveman:LITE | 🗜️ rtk:ON | 🍃 headroom:OFF | 🧠 ponytail:LITE | 🥔 pstack:OFF');
+    expect(codexStatusLine('session-other')).toBe('🧩 OFF');
+    const other = hook('Continue elsewhere.', 'session-other');
+    expect(other.stdout).not.toContain('Caveman lite active for this session.');
+  });
+});
+
+test('a picked /prompts entry answers in the hook instead of at the model', () => {
+  withHome((home) => {
+    const settings = path.join(home, '.tersio', 'settings.json');
+    mkdirSync(path.dirname(settings), { recursive: true });
+    writeFileSync(settings, JSON.stringify({ hosts: { codex: {} } }), 'utf8');
+    const env = { ...cliEnv(home), TERSIO_RUNTIME: 'node' };
+    const hook = (prompt: string) => spawnSync(process.execPath, [installer, 'codex-hook', 'user-prompt-submit'], {
+      encoding: 'utf8',
+      env,
+      input: JSON.stringify({ prompt, session_id: 'session-managed' }),
+    });
+
+    // Codex sends the whole prompt body, then the argument the user typed.
+    const picked = hook(`${codexPromptFiles().combo}\nlite`);
+    expect(picked.status, picked.stderr).toBe(0);
+    expect(JSON.parse(picked.stdout)).toMatchObject({
+      decision: 'block',
+      systemMessage: '🧩 LITE | 🪨 caveman:LITE | 🗜️ rtk:ON | 🍃 headroom:OFF | 🧠 ponytail:LITE | 🥔 pstack:OFF',
+    });
+
+    // An empty submission arrives as the literal argument-hint placeholder.
+    const empty = hook(codexPromptFiles().combo);
+    expect(empty.status, empty.stderr).toBe(0);
+    expect(JSON.parse(empty.stdout).decision).toBe('block');
+    expect(codexManagedPrompt(codexPromptFiles().caveman)).toEqual({ command: 'caveman', value: '' });
+    expect(codexManagedPrompt('just a normal message')).toBeNull();
+    expect(codexManagedPrompt('/combo lite')).toBeNull();
+  });
+});
+
+test('the emitted CLI loads the real Ponytail rules, not the broken-install stub', () => {
+  withHome((home) => {
+    const settings = path.join(home, '.tersio', 'settings.json');
+    mkdirSync(path.dirname(settings), { recursive: true });
+    writeFileSync(settings, JSON.stringify({ hosts: { codex: { ponytailDefault: 'lite' } } }), 'utf8');
+    const env = { ...cliEnv(home), TERSIO_RUNTIME: 'node' };
+    const hook = spawnSync(process.execPath, [installer, 'codex-hook', 'user-prompt-submit'], {
+      encoding: 'utf8',
+      env,
+      input: JSON.stringify({ prompt: 'Continue the task.', session_id: 'session-ponytail' }),
+    });
+    expect(hook.status, hook.stderr).toBe(0);
+    // dist/ carries no skills tree, so the rules must come from the package instead of the repair stub.
+    expect(hook.stdout).toContain('PONYTAIL MODE ACTIVE — level: lite');
+    expect(hook.stdout).not.toContain('ruleset file is missing');
   });
 });
 

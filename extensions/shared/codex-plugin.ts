@@ -1,10 +1,11 @@
 // Codex loads Tersio as a plugin; this module owns its paths, installed state, and mode context.
-import { readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getPonytailInstructions } from '../ponytail/hooks/ponytail-instructions.ts';
-import { normalizeInputCommand, normalizeMode } from './session-state.ts';
-import { readPluginSettings, tersioSettingsFile } from './plugin-settings.ts';
+import { deriveLevel, normalizeInputCommand, normalizeMode } from './session-state.ts';
+import { formatStatus } from './status.ts';
+import { readPluginSettings } from './plugin-settings.ts';
 import { CODEX_PLUGIN_FILES, codexHome, codexPackagedPluginDir } from './codex-state.ts';
 import { ruleDir, tersioHome } from './utils.ts';
 export {
@@ -16,6 +17,14 @@ export type { CodexPluginState } from './codex-state.ts';
 
 const CAVEMAN_DIR = ruleDir('caveman', dirname(fileURLToPath(import.meta.url)));
 const PSTACK_DIR = ruleDir('pstack', dirname(fileURLToPath(import.meta.url)));
+const CODEX_SESSION_MODES_FILE = 'codex-session-modes.json';
+const CODEX_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const CODEX_SESSION_LIMIT = 100;
+
+type CodexModePatch = Record<string, string | boolean>;
+type CodexSessionModes = Record<string, string | boolean | number>;
+/** One stored mode value, as the settings file and the session map both hold it. */
+type SessionModeValue = string | boolean | number;
 
 /** The marketplace Tersio materializes for a GUI-launched Codex, where PATH is not the shell's. */
 export function codexLocalMarketplaceRoot(): string {
@@ -24,7 +33,10 @@ export function codexLocalMarketplaceRoot(): string {
 
 export const CODEX_PROMPT_NAMES = ['combo', 'caveman', 'rtk', 'ponytail', 'pstack', 'tersio'] as const;
 export type CodexPromptName = (typeof CODEX_PROMPT_NAMES)[number];
-export const CODEX_PROMPT_MARKER = '<!-- tersio-managed prompt -->';
+/** Prefix of the marker every managed prompt and uninstall check matches, with or without a command name. */
+export const CODEX_PROMPT_MARKER = '<!-- tersio-managed prompt';
+/** Ends a prompt body; Codex appends the typed argument (or the raw `argument-hint`) after it. */
+export const CODEX_ARGS_MARKER = '<!-- tersio-args -->';
 const CODEX_COMBO_PRESETS: Record<string, { caveman: string; rtk: boolean; ponytail: string }> = {
   off: { caveman: 'off', rtk: false, ponytail: 'off' },
   lite: { caveman: 'lite', rtk: true, ponytail: 'lite' },
@@ -43,6 +55,19 @@ export function codexPromptFiles(): Record<CodexPromptName, string> {
   ) as Record<CodexPromptName, string>;
 }
 
+/**
+ * A plugin JSON file this package ships. A broken one stops the install with a named file instead of
+ * a bare SyntaxError, so a half-written plugin is never registered.
+ */
+function readSourceJson<T>(rel: string): T {
+  const text = readSourcePlugin(rel);
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new Error(`Codex plugin file ${rel} is not valid JSON`);
+  }
+}
+
 function readSourcePlugin(rel: string): string {
   return readFileSync(join(codexPackagedPluginDir(), ...rel.split('/')), 'utf8');
 }
@@ -55,17 +80,17 @@ export function codexLocalPluginFiles(runtime = process.execPath, cli = process.
   if (!isAbsolute(cli)) throw new Error('Codex plugin needs an absolute CLI path');
   const cliPath = cli;
   const hookCommand = `"${runtime}" "${cliPath}" codex-hook user-prompt-submit`;
-  const mcp = JSON.parse(readSourcePlugin('mcp.json')) as {
+  const mcp = readSourceJson<{
     $schema?: string;
     mcpServers?: Record<string, Record<string, unknown>>;
-  };
+  }>('mcp.json');
   mcp.mcpServers ??= {};
   mcp.mcpServers.tersio = { ...mcp.mcpServers.tersio, type: 'stdio', command: runtime, args: [cliPath, 'mcp'] };
 
-  const hooks = JSON.parse(readSourcePlugin('hooks/hooks.json')) as {
+  const hooks = readSourceJson<{
     description?: string;
     hooks?: Record<string, Array<{ hooks?: Array<Record<string, unknown>> }>>;
-  };
+  }>('hooks/hooks.json');
   const handler = hooks.hooks?.UserPromptSubmit?.[0]?.hooks?.[0];
   if (handler) handler.command = hookCommand;
 
@@ -116,14 +141,64 @@ function pstackInstruction(): string {
   }
 }
 
+/** Every mode a slash command can override for one session. */
+const SESSION_MODE_KEYS = ['comboDefault', 'cavemanDefault', 'rtkDefault', 'ponytailDefault', 'pstackDefault', 'headroomDefault'] as const;
+type SessionModeKey = (typeof SESSION_MODE_KEYS)[number];
+
+function sessionKey(value: unknown): string | null {
+  const key = String(value ?? '').trim().replace(/[^a-zA-Z0-9._-]/g, '-').slice(0, 160);
+  return key || null;
+}
+
+function codexSessionFile(): string {
+  return join(tersioHome(), CODEX_SESSION_MODES_FILE);
+}
+
+function readCodexSessions(): Record<string, CodexSessionModes> {
+  try {
+    const parsed = JSON.parse(readFileSync(codexSessionFile(), 'utf8')) as Record<string, unknown>;
+    const out: Record<string, CodexSessionModes> = {};
+    for (const [key, value] of Object.entries(parsed)) {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
+      const row = value as Record<string, unknown>;
+      const entry: CodexSessionModes = { updatedAt: typeof row.updatedAt === 'number' ? row.updatedAt : 0 };
+      for (const mode of SESSION_MODE_KEYS) {
+        if (typeof row[mode] === 'string' || typeof row[mode] === 'boolean') entry[mode] = row[mode] as string | boolean;
+      }
+      out[key] = entry;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+function readSessionMode(sessionId: unknown, key: string): SessionModeValue | undefined {
+  const id = sessionKey(sessionId);
+  if (!id) return undefined;
+  return readCodexSessions()[id]?.[key];
+}
+
+/** Keep the session map bounded: old Codex sessions cannot apply a mode anymore. */
+function pruneCodexSessions(sessions: Record<string, CodexSessionModes>, now: number): void {
+  for (const [key, value] of Object.entries(sessions)) {
+    if (now - Number(value.updatedAt) > CODEX_SESSION_TTL_MS) delete sessions[key];
+  }
+  const keep = new Set(Object.entries(sessions)
+    .toSorted(([, a], [, b]) => Number(b.updatedAt) - Number(a.updatedAt))
+    .slice(0, CODEX_SESSION_LIMIT)
+    .map(([key]) => key));
+  for (const key of Object.keys(sessions)) if (!keep.has(key)) delete sessions[key];
+}
+
 /**
  * The developer context Codex receives before each prompt. Codex's own mode switches live
- * in the `hosts.codex` section, so a dashboard scope and the hook read the same value.
+ * in the `hosts.codex` section; a slash command overlays that per `session_id`.
  */
-export function codexModeContext(): string {
-  const caveman = normalizeMode('caveman', readMode('cavemanDefault'));
-  const ponytail = normalizeMode('ponytail', readMode('ponytailDefault'));
-  const pstack = normalizeMode('pstack', readMode('pstackDefault'));
+export function codexModeContext(sessionId?: unknown): string {
+  const caveman = normalizeMode('caveman', readMode('cavemanDefault', sessionId));
+  const ponytail = normalizeMode('ponytail', readMode('ponytailDefault', sessionId));
+  const pstack = normalizeMode('pstack', readMode('pstackDefault', sessionId));
   const blocks: string[] = [];
   if (caveman && caveman !== 'off') blocks.push(cavemanInstruction(caveman));
   if (ponytail && ponytail !== 'off') blocks.push(getPonytailInstructions(ponytail));
@@ -131,9 +206,27 @@ export function codexModeContext(): string {
   return blocks.join('\n\n');
 }
 
-function readMode(key: 'comboDefault' | 'cavemanDefault' | 'rtkDefault' | 'ponytailDefault' | 'pstackDefault'): unknown {
+/**
+ * The one combo line every Tersio surface renders, sent to Codex as its own `systemMessage`.
+ * Codex Desktop gives a plugin no status bar, so this hook line is the closest parity with DSH.
+ */
+export function codexStatusLine(sessionId?: unknown): string {
+  const modes = {
+    caveman: normalizeMode('caveman', readMode('cavemanDefault', sessionId)) ?? 'off',
+    rtk: normalizeMode('rtk', readMode('rtkDefault', sessionId)) ?? 'off',
+    ponytail: normalizeMode('ponytail', readMode('ponytailDefault', sessionId)) ?? 'off',
+    pstack: normalizeMode('pstack', readMode('pstackDefault', sessionId)) ?? 'off',
+    headroom: normalizeMode('headroom', readMode('headroomDefault', sessionId)) ?? 'off',
+  };
+  return formatStatus({ level: deriveLevel(modes), ...modes });
+}
+
+function readMode(key: SessionModeKey, sessionId?: unknown): SessionModeValue | undefined {
+  const session = readSessionMode(sessionId, key);
+  if (session !== undefined) return session;
   const scoped = (readPluginSettings().hosts as Record<string, Record<string, unknown>> | undefined)?.codex?.[key];
-  return scoped ?? readPluginSettings()[key];
+  const stored = scoped ?? readPluginSettings()[key];
+  return typeof stored === 'string' || typeof stored === 'boolean' || typeof stored === 'number' ? stored : undefined;
 }
 
 /** A stop phrase is the whole message, so "add normal mode to the design" changes nothing. */
@@ -146,28 +239,53 @@ export function codexStopPatch(prompt: unknown): Record<string, string> | null {
   return null;
 }
 
-/** Persist a mode change as a Codex-only override, so shared defaults cannot undo a session switch. */
-export function applyCodexModePatch(patch: Record<string, string | boolean>): void {
-  const file = tersioSettingsFile();
-  const stored = readPluginSettings();
-  const hosts = { ...(stored.hosts as Record<string, Record<string, unknown>> | undefined) };
-  hosts.codex = { ...hosts.codex, ...patch };
-  writeFileSync(file, `${JSON.stringify({ ...stored, hosts }, null, 2)}\n`, 'utf8');
+/** Persist a mode change for one Codex session, leaving the host and shared defaults untouched. */
+export function applyCodexModePatch(sessionId: unknown, patch: CodexModePatch): boolean {
+  const id = sessionKey(sessionId);
+  if (!id) return false;
+  const now = Date.now();
+  const sessions = readCodexSessions();
+  sessions[id] = { ...(sessions[id] ?? { updatedAt: now }), ...patch, updatedAt: now };
+  pruneCodexSessions(sessions, now);
+  try {
+    mkdirSync(tersioHome(), { recursive: true });
+    writeFileSync(codexSessionFile(), `${JSON.stringify(sessions, null, 2)}\n`, 'utf8');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Codex expands a custom prompt by sending its whole body, then the typed argument or the raw
+ * `argument-hint` text. Recognising that body here answers the command without a model turn.
+ */
+export function codexManagedPrompt(prompt: unknown): { command: string; value: string } | null {
+  const text = String(prompt ?? '').replace(/\r\n/g, '\n');
+  const marker = text.match(/<!-- tersio-managed prompt: ([a-z]+) -->/);
+  if (!marker || !text.includes(CODEX_ARGS_MARKER)) return null;
+  const raw = text.slice(text.lastIndexOf(CODEX_ARGS_MARKER) + CODEX_ARGS_MARKER.length).trim();
+  // An empty submission arrives as the literal placeholder, which is not a value.
+  return { command: marker[1]!, value: raw.startsWith('<') && raw.endsWith('>') ? '' : raw.toLowerCase() };
 }
 
 /** Commands typed literally when Codex does not own a native slash alias for them. */
-export function codexSlashCommand(prompt: unknown): { patch: Record<string, string | boolean>; message: string } | null {
+export function codexSlashCommand(
+  prompt: unknown,
+  sessionId?: unknown,
+): { patch: CodexModePatch; message: string } | null {
   const text = normalizeInputCommand(prompt);
   const match = text.match(/^\/(combo|caveman|ponytail|pstack|rtk|headroom|tersio)(?:\s+(.+))?$/);
   if (!match) return null;
   const command = match[1]!;
   const value = (match[2] ?? '').trim().toLowerCase();
   if (command === 'combo') {
+    if (value === 'help') return { patch: {}, message: 'Tersio Combo presets: off, lite, balanced, max. Use /combo <level>, or /combo status to read the current one.' };
     if (!value || value === 'status') {
-      const current = String(readMode('comboDefault') ?? 'custom');
-      const caveman = String(readMode('cavemanDefault') ?? 'off');
-      const rtk = readMode('rtkDefault') === true ? 'on' : 'off';
-      const ponytail = String(readMode('ponytailDefault') ?? 'off');
+      const current = String(readMode('comboDefault', sessionId) ?? 'custom');
+      const caveman = String(readMode('cavemanDefault', sessionId) ?? 'off');
+      const rtk = readMode('rtkDefault', sessionId) === true ? 'on' : 'off';
+      const ponytail = String(readMode('ponytailDefault', sessionId) ?? 'off');
       return {
         patch: {},
         message: `Tersio Combo is ${current} (caveman=${caveman}, rtk=${rtk}, ponytail=${ponytail}). Use /combo off, lite, balanced, or max.`,
@@ -183,7 +301,7 @@ export function codexSlashCommand(prompt: unknown): { patch: Record<string, stri
   if (command === 'caveman' || command === 'ponytail') {
     if (!value || value === 'status') {
       const key = command === 'caveman' ? 'cavemanDefault' : 'ponytailDefault';
-      const current = normalizeMode(command, readMode(key)) ?? 'off';
+      const current = normalizeMode(command, readMode(key, sessionId)) ?? 'off';
       return { patch: {}, message: `Tersio ${command} is ${current}. Use /${command} <level>.` };
     }
     const level = normalizeMode(command, value);
@@ -199,18 +317,17 @@ export function codexSlashCommand(prompt: unknown): { patch: Record<string, stri
   return { patch: {}, message: 'Tersio: use /combo, /caveman, /ponytail, /pstack, /rtk, or /headroom.' };
 }
 
-export function codexBlockOutput(message: string): Record<string, unknown> {
-  return { decision: 'block', reason: message, systemMessage: message };
+/** A blocked command answers with the status line, so a mode change paints the same bar DSH has. */
+export function codexBlockOutput(message: string, status?: string): Record<string, unknown> {
+  return { decision: 'block', reason: message, ...(status ? { systemMessage: status } : {}) };
 }
 
-/** The JSON output Codex expects from a prompt hook. An empty context is a successful no-op. */
-export function codexHookOutput(context: string): Record<string, unknown> {
-  if (context.trim() === '') return { continue: true };
-  return {
-    continue: true,
-    hookSpecificOutput: {
-      hookEventName: 'UserPromptSubmit',
-      additionalContext: context,
-    },
-  };
+/** The JSON Codex expects from a prompt hook. Empty context and no status is a successful no-op. */
+export function codexHookOutput(context: string, status?: string): Record<string, unknown> {
+  const output: Record<string, unknown> = { continue: true };
+  if (context.trim() !== '') {
+    output.hookSpecificOutput = { hookEventName: 'UserPromptSubmit', additionalContext: context };
+  }
+  if (status) output.systemMessage = status;
+  return output;
 }
