@@ -57,17 +57,40 @@ export function filterableText(parts: unknown): string | null {
   return parts.map((part) => (part as { text?: unknown } | null)?.text ?? '').join('\n');
 }
 
+/** One directory for the life of the process: a per-call mkdtemp and rmdir cost more than the pipe saves. */
+let pipeDir: string | null = null;
+
+/** The text parked where the redirect can read it; a stale file from an aborted call is simply overwritten. */
+function pipeFile(text: string): string | null {
+  try {
+    if (pipeDir === null) {
+      pipeDir = mkdtempSync(join(tmpdir(), 'tersio-rtk-'));
+      process.once('exit', () => { try { rmSync(pipeDir as string, { recursive: true, force: true }); } catch { /* already gone */ } });
+    }
+    const file = join(pipeDir, 'in.txt');
+    writeFileSync(file, text, 'utf8');
+    return file;
+  } catch {
+    return null;
+  }
+}
+
+/** The directory outlives the call, so this only drops the file. */
+function dropPipeFile(file: string): void {
+  try {
+    rmSync(file, { force: true });
+  } catch { /* best effort */ }
+}
+
 /** Pipe text through one rtk filter; null on any failure, so the caller keeps its original. */
 export async function filterThroughRtk(
   exec: FilterExec,
   request: { bin: string; filter: string; text: string; signal?: AbortSignal },
 ): Promise<string | null> {
   const { bin, filter, text, signal } = request;
-  let dir: string | undefined;
+  let file: string | null = null;
   try {
-    dir = mkdtempSync(join(tmpdir(), 'tersio-rtk-'));
-    const file = join(dir, 'in.txt');
-    writeFileSync(file, text, 'utf8');
+    file = pipeFile(text);
     // `rtk pipe` reads stdin only and execFile has no stdin, so one redirect through the platform shell.
     const { shell, flags, wrap } = filterShell();
     const line = `"${bin}" pipe -f ${filter} < "${file}"`;
@@ -79,7 +102,7 @@ export async function filterThroughRtk(
   } catch {
     return null;
   } finally {
-    if (dir) rmSync(dir, { recursive: true, force: true });
+    if (file) dropPipeFile(file);
   }
 }
 
