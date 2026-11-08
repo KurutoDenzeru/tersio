@@ -219,6 +219,37 @@ export function resolveCodexBinary(): string | null {
   }) ?? null;
 }
 
+/** Codex is present when its CLI, its config home, or its desktop app is on the machine. */
+export function codexPresent(): boolean {
+  if (resolveCodexBinary() !== null) return true;
+  const home = homeDir();
+  const codexHomeDir = (process.env.CODEX_HOME ?? '').trim() || path.join(home, '.codex');
+  if (existsSync(codexHomeDir)) return true;
+  const local = process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local');
+  const markers = process.platform === 'darwin'
+    ? [
+      '/Applications/ChatGPT.app',
+      path.join(home, 'Applications', 'ChatGPT.app'),
+      '/Applications/Codex.app',
+      path.join(home, 'Applications', 'Codex.app'),
+      path.join(home, 'Library', 'Application Support', 'ChatGPT'),
+    ]
+    : process.platform === 'win32'
+      ? [
+        path.join(local, 'Programs', 'ChatGPT'),
+        path.join(local, 'Programs', 'Codex'),
+        path.join(home, 'AppData', 'Roaming', 'ChatGPT'),
+      ]
+      : [
+        '/opt/ChatGPT',
+        '/opt/Codex',
+        '/usr/lib/chatgpt',
+        path.join(home, '.local', 'share', 'ChatGPT'),
+        path.join(home, '.config', 'ChatGPT'),
+      ];
+  return markers.some((marker) => existsSync(marker));
+}
+
 // The platform's opener, as one command plus argv, shared by the CLI and the /tersio command.
 export function openCommand(target: string): [string, string[]] {
   if (process.platform === 'darwin') return ['open', [target]];
