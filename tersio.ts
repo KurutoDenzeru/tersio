@@ -5,6 +5,7 @@ import {
   currency,
 } from './cli/common.ts';
 import { closeRL } from './cli/interactive.ts';
+import { preferBun } from './cli/runtime.ts';
 // Each command loads its own module: the installer never pays for the dashboard tree, and a version check never pays for the installer. The imports stay static here so a missing file fails loudly.
 
 function printHelp(): void {
@@ -41,10 +42,16 @@ Options:
   --export <file> (dashboard: write HTML file instead of serving)
   --currency <code> (dashboard: display currency; flag wins, then tersio settings default, then USD)
   --version, -v
-  --help, -h`);
+  --help, -h
+
+Environment:
+  TERSIO_RUNTIME=node (stay on node; the CLI uses bun when it is installed)`);
 }
 
 async function main(): Promise<void> {
+  // Every command, not just the server: bun boots faster than the node the shebang names.
+  await preferBun(process.argv.slice(2));
+
   if (showVersion) {
     console.log(PACKAGE_VERSION);
     closeRL();
@@ -73,9 +80,7 @@ async function main(): Promise<void> {
   }
 
   if (mcp) {
-    const { preferBun, runMcpServer } = await import('./cli/mcp.ts');
-    // Bun runs the server when it is on PATH; the client spawned node, so the hand-off happens here.
-    await preferBun();
+    const { runMcpServer } = await import('./cli/mcp.ts');
     await runMcpServer();
     closeRL();
     return;

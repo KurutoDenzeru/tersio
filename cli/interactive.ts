@@ -5,15 +5,16 @@ import type { SpinnerResult } from '@clack/prompts';
 import { execP } from './common.ts';
 import type { ExecOptions } from './common.ts';
 
-const RL = readline.createInterface({ input: process.stdin, output: process.stdout });
+// Opened on first use, never at import: the entry hands the run to bun, and a reader here would eat the child's stdin.
+let RL: readline.Interface | null = null;
 let rlOpen = true;
 function ask(q: string): Promise<string> {
   return new Promise<string>((resolve) => {
     if (!rlOpen) { resolve(''); return; }
-    try { RL.question(q, resolve); } catch { resolve(''); }
+    try { (RL ??= readline.createInterface({ input: process.stdin, output: process.stdout })).question(q, resolve); } catch { resolve(''); }
   });
 }
-function closeRL(): void { if (rlOpen) { RL.close(); rlOpen = false; } }
+function closeRL(): void { if (rlOpen) { RL?.close(); RL = null; rlOpen = false; } }
 
 function tty(): boolean {
   return Boolean(process.stdin.isTTY && process.stdout.isTTY);

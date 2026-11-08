@@ -33,6 +33,11 @@ Reviewed 2026-10-11. Each entry below is resolved in the repo, so its log entry 
 **Root cause:** I modeled the settings on the dashboard's stored shape (preset plus modes) without reading `savedModes` in `extensions/combo/index.ts`, which prefers any present per-mode key over the preset.
 **Prevention rule:** before benchmarking a config-driven behavior, prove the condition applied: run one probe turn and assert the expected block lands in the system prompt. When a resolver layering exists (host section, flat keys, preset), read it first and write the minimal shape.
 
+## 2026-11-07 — A second boot took the prompt's input with it
+**What happened:** after the entry started re-running every command under bun, two uninstall tests lost the `Proceed? [y/N]` prompt and went straight to `Aborted.` only on a machine with bun. Forcing `TERSIO_RUNTIME=node` made both pass.
+**Root cause:** `cli/interactive.ts` created its readline interface on `process.stdin` at import time. The node parent imported it before the hand-off, so the parent's reader consumed the piped answer and the bun child saw an empty stdin. The prompt itself was written by the child, which had already been handed an answer it never got.
+**Prevention rule:** a process that may hand its run to another runtime must not open a reader on stdin at import time; open it on first use. A test that pipes stdin covers the hand-off only when bun is installed on the machine running it, so force `TERSIO_RUNTIME=node` once to compare the two paths.
+
 ## Format
 
 ```md
