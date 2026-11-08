@@ -27,6 +27,8 @@ export interface NativeRouteResult {
 
 const runHeadroom = promisify(execFile);
 const CODEX_HEADROOM_BACKUP = 'headroom-codex.json';
+// Codex refuses a user block with this ID; the built-in provider is routed through `openai_base_url`.
+const CODEX_RESERVED_PROVIDERS = new Set(['openai']);
 
 export interface CodexRootBackup {
   modelProvider: string | null;
@@ -146,10 +148,33 @@ export function setTomlSectionValue(text: string, section: string, key: string, 
   return lines.join(text.includes('\r\n') ? '\r\n' : '\n');
 }
 
-function inferCodexRootBackup(text: string): CodexRootBackup {
+/** Drop a section a writer created; Codex treats `model_providers.openai` as an invalid override. */
+export function removeTomlSection(text: string, section: string): string {
+  const lines = text.split(/\r?\n/);
+  const header = `[${section}]`;
+  const start = lines.findIndex((line) => line.trim() === header);
+  if (start < 0) return text;
+  let end = lines.length;
+  for (let i = start + 1; i < lines.length; i += 1) {
+    if (/^\s*\[/.test(lines[i]!)) {
+      end = i;
+      break;
+    }
+  }
+  lines.splice(start, end - start);
+  return lines.join(text.includes('\r\n') ? '\r\n' : '\n');
+}
+
+function routableCodexProvider(value: string | null | undefined): string | null {
+  if (!value || value === 'headroom' || CODEX_RESERVED_PROVIDERS.has(value)) return null;
+  return value;
+}
+
+export function inferCodexRootBackup(text: string): CodexRootBackup {
   const upstream = headroomProxyUpstream('openai');
   const modelProvider = codexRootValue(text, 'model_provider');
-  const provider = modelProvider.value === 'headroom' ? null : modelProvider.value || 'openai';
+  // An absent provider is Codex's built-in OpenAI route, which only `openai_base_url` can move.
+  const provider = routableCodexProvider(modelProvider.value);
   const providerBase = provider
     ? codexSectionValue(text, `model_providers.${provider}`, 'base_url')
     : { value: null, present: false };
@@ -197,7 +222,7 @@ export async function routeCodexHeadroom(proxyUrl: string = headroomProxyUrl()):
     writeCodexBackup(held ? {
       ...inferred,
       ...held,
-      provider: held.provider ?? inferred.provider,
+      provider: routableCodexProvider(held.provider) ?? inferred.provider,
       providerBaseUrl: held.providerBaseUrl ?? inferred.providerBaseUrl,
       providerBaseUrlPresent: held.providerBaseUrlPresent === true || inferred.providerBaseUrlPresent === true,
       modelProviderPresent: held.modelProviderPresent === true || inferred.modelProviderPresent === true,
@@ -209,7 +234,8 @@ export async function routeCodexHeadroom(proxyUrl: string = headroomProxyUrl()):
   const backup = readCodexBackup();
   const after = codexConfigText();
   if (backup && after !== null) {
-    let routed = restoreCodexRoot(after, { ...backup, openaiBaseUrl: proxyUrl, openaiBaseUrlPresent: true });
+    let routed = removeTomlSection(after, 'model_providers.openai');
+    routed = restoreCodexRoot(routed, { ...backup, openaiBaseUrl: proxyUrl, openaiBaseUrlPresent: true });
     if (backup.provider && backup.provider !== 'headroom') {
       routed = setTomlSectionValue(routed, `model_providers.${backup.provider}`, 'base_url', proxyUrl);
     }
@@ -228,7 +254,8 @@ export async function unwrapCodexHeadroom(): Promise<NativeRouteResult> {
   if (result.ok && backup) {
     const text = codexConfigText();
     if (text !== null) {
-      let restored = restoreCodexRoot(text, backup);
+      let restored = removeTomlSection(text, 'model_providers.openai');
+      restored = restoreCodexRoot(restored, backup);
       if (backup.provider && backup.provider !== 'headroom' && backup.providerBaseUrlPresent && backup.providerBaseUrl) {
         restored = setTomlSectionValue(restored, `model_providers.${backup.provider}`, 'base_url', backup.providerBaseUrl);
       }
