@@ -13,7 +13,7 @@
 - A machine under 2 GB of memory is not given the proxy. The install names the floor as the reason, and `TERSIO_HEADROOM_FORCE=1` overrides it.
 - Stopping the proxy only touches the port Tersio owns, so another tool running headroom on another port is left alone.
 - The installed `tersio` entry replaces its node process with bun in place, instead of keeping node alive to wait on a bun child, so a hand-off leaves one process instead of two.
-- The saved settings are parsed once and reused until the file changes, so restoring a session no longer reads and parses the same file six times. A restore costs 0.02ms instead of 0.16ms.
+- The saved settings are parsed once and reused until the text changes, so restoring a session no longer parses the same file six times. The file is still read on every check, because a stat cannot see a same-size rewrite on Windows.
 - RTK output filtering keeps one temporary directory for the life of the process, instead of creating and removing one for every filtered result.
 
 ### Fixed

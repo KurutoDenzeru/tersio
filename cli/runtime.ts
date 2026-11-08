@@ -1,6 +1,6 @@
 // The installed bin's shebang names node, so every command boots under node. A machine that has bun gets the rest of the run there instead: it starts faster, and the dashboard already builds with it.
 import { spawn, spawnSync } from 'node:child_process';
-import { resolveHostBinary } from '../extensions/shared/utils.ts';
+import { resolveHostBinary, withResolvers } from '../extensions/shared/utils.ts';
 
 const IS_WINDOWS = process.platform === 'win32';
 /** Set on the bun child, so a bun that cannot run this file cannot loop back into node. */
@@ -13,6 +13,8 @@ function bunBinary(): string | null {
 
 /** Bun's doctor rejects a file that is not a script, so the probe names a harmless flag instead. */
 async function execveBun(bun: string, argv: readonly string[]): Promise<boolean> {
+  // Windows has no execve, and merely reading the property there prints an ExperimentalWarning on stderr.
+  if (IS_WINDOWS) return false;
   const execve = process.execve;
   const self = process.argv[1];
   if (!execve || !self) return false;
@@ -44,7 +46,7 @@ export async function preferBun(argv: readonly string[]): Promise<void> {
   if (await execveBun(bun, argv)) return;
   // The child inherits this terminal and its pipes, so a prompt or an MCP stream reaches it directly.
   const child = spawn(bun, [self, ...argv], { stdio: 'inherit', env: { ...process.env, [CHILD_MARKER]: '1' } });
-  const { promise, resolve } = Promise.withResolvers<number | null>();
+  const { promise, resolve } = withResolvers<number | null>();
   child.on('exit', (code) => resolve(code));
   child.on('error', () => resolve(null));
   process.exit((await promise) ?? 1);

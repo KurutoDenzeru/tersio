@@ -212,7 +212,7 @@ test("a settings write lands on the next read, and the parse is reused until the
     mkdirSync(home, { recursive: true });
     writeFileSync(file, JSON.stringify({ cavemanDefault: "lite" }), "utf8");
     expect(readCavemanDefault()).toBe("lite");
-    // A rewrite to the same size lands because the stat, not the length, decides.
+    // A same-size rewrite lands: Windows reports a coarse mtime, so the text decides, not a stat.
     writeFileSync(file, JSON.stringify({ cavemanDefault: "full" }), "utf8");
     expect(readCavemanDefault(), "a write after a read is visible").toBe("full");
     // A corrupt file is a miss, never a remembered value.
