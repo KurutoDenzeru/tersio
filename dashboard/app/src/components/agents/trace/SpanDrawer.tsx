@@ -126,6 +126,17 @@ function textBlocks(content: unknown): Array<{ kind: string; text: string }> {
 /** The call's own arguments, one line, for the tool's Args row. */
 function callArgs(output: unknown): string {
   const message = (output ?? null) as Record<string, unknown> | null;
+  if (message) {
+    for (const key of ["arguments", "input"]) {
+      const value = message[key];
+      if (typeof value === "string" && value.trim()) return value.replace(/\s+/g, " ").trim();
+      if (value && typeof value === "object") {
+        try { return JSON.stringify(value); } catch { /* fall through */ }
+      }
+    }
+    if (Array.isArray(message.command)) return message.command.map(String).join(" ");
+    if (typeof message.command === "string" && message.command.trim()) return message.command;
+  }
   const parts = Array.isArray(message?.content) ? (message.content as Array<Record<string, unknown>>) : [];
   for (const part of parts) {
     if (part?.type !== "toolCall") continue;
@@ -199,6 +210,7 @@ export function SpanDrawer({ sessionFile, span, track, money, onClose }: SpanDra
   const stopReason = String(message?.stopReason ?? span.stopped);
   const agentState = payload?.agent;
   const host = hostOfSession(sessionFile);
+  const api = String((payload?.output as { api?: unknown } | null)?.api ?? "");
   const tint = span.isError ? "var(--danger)" : undefined;
   const args = span.kind === "tool" ? callArgs(payload?.output) || span.detail : "";
   const isModel = span.kind === "model";
@@ -256,6 +268,7 @@ export function SpanDrawer({ sessionFile, span, track, money, onClose }: SpanDra
               </Kv>
             )}
             {isModel && <Kv label="Stop reason" mono>{stopReason}</Kv>}
+            {api && <Kv label="API" mono>{api}</Kv>}
             {isModel && <Kv label="Thinking" mono>{agentState?.thinkingLevel ?? "not recorded"}</Kv>}
             {isModel && <Kv label="Mode" mono>{agentState?.mode ?? "not recorded"}</Kv>}
             {isModel && (

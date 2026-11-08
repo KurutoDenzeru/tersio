@@ -12,6 +12,12 @@ export const CODEX_PLUGIN_FILES = [
   'plugin.json',
   'mcp.json',
   'hooks/hooks.json',
+  'skills/combo/SKILL.md',
+  'skills/caveman/SKILL.md',
+  'skills/ponytail/SKILL.md',
+  'skills/pstack/SKILL.md',
+  'skills/rtk/SKILL.md',
+  'skills/tersio/SKILL.md',
   'skills/tersio-modes/SKILL.md',
 ] as const;
 

@@ -6,6 +6,7 @@ description: Read or change Tersio's session-start modes and local usage stats i
 # Tersio modes
 
 Use Tersio's MCP tools instead of editing `~/.tersio/settings.json`.
+The `combo`, `caveman`, `ponytail`, `pstack`, `rtk`, and `tersio` skills are the discoverable per-command shortcuts in Codex.
 
 1. Call `tersio_modes` with no arguments to show the current defaults.
 2. To change a mode, pass exactly one of:

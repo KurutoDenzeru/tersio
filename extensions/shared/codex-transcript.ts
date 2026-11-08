@@ -215,7 +215,7 @@ export function parseCodexTranscript(text: string): CodexTranscript {
     && left.cacheRead === right.cacheRead
     && left.cacheWrite === right.cacheWrite;
 
-  const recordUsage = (usage: CodexUsage, ts: number, previousTs: number, source: 'record' | 'event'): void => {
+  const recordUsage = (usage: CodexUsage, ts: number, previousTs: number, source: 'record' | 'event', responseId = ''): void => {
     if (usage.input + usage.output + usage.cacheRead + usage.cacheWrite === 0) return;
     const startTs = modelStartTs ?? agentMessageTs ?? previousTs ?? ts;
     const endTs = agentMessageTs ?? ts;
@@ -253,7 +253,7 @@ export function parseCodexTranscript(text: string): CodexTranscript {
     }
     const identity = codexModelIdentity(model || 'codex', provider);
     requests.push({
-      id: `codex-${ts}`,
+      id: responseId || `codex-${ts}`,
       startTs,
       endTs,
       model: identity.model,
@@ -349,7 +349,7 @@ export function parseCodexTranscript(text: string): CodexTranscript {
       continue;
     }
     if (type === 'token_usage_record') {
-      recordUsage(usageOf(obj(payload.usage)), ts, previousTs, 'record');
+      recordUsage(usageOf(obj(payload.usage)), ts, previousTs, 'record', str(payload.response_id));
       continue;
     }
     if (type !== 'event_msg') continue;
@@ -427,7 +427,7 @@ export function parseCodexTranscript(text: string): CodexTranscript {
       const usage = payloadType === 'token_usage_record'
         ? usageOf(obj(payload.usage))
         : usageOf(obj(obj(payload.info).last_token_usage));
-      recordUsage(usage, ts, previousTs, 'event');
+      recordUsage(usage, ts, previousTs, 'event', str(payload.response_id));
       continue;
     }
     if (payloadType === 'error' || payloadType === 'stream_error') {

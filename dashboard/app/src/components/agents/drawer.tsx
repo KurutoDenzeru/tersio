@@ -177,7 +177,7 @@ export function AgentRequestDrawer({
   const tint = statusColor(state);
   const host = hostOfSession(row.sessionFile);
   // The journal carries the request's own API on the message; the stats row has no such column.
-  const api = String((entry.output as { api?: unknown } | null)?.api ?? "");
+  const api = row.api || String((entry.output as { api?: unknown } | null)?.api ?? "");
   const apiClass = apiClassOf(api);
 
   return (

@@ -1408,6 +1408,108 @@ export function emptyRequestEntry(): { entry: unknown; output: unknown; messageR
   return { entry: null, output: null, messageRole: '', agent: { model: null, thinkingLevel: null, mode: null, fallback: null } };
 }
 
+function codexRequestEntry(text: string, entryId: string): { entry: unknown; output: unknown; messageRole: string; agent: JournalAgent } | null {
+  if (!looksLikeCodexTranscript(text)) return null;
+  const parsed = parseCodexTranscript(text);
+  const assistants: Array<{ ts: number; message: Record<string, unknown> }> = [];
+  const tokens: Array<{ ts: number; id: string; row: Record<string, unknown> }> = [];
+  let direct: Record<string, unknown> | null = null;
+  let directPriority = -1;
+  let model = '';
+  for (const line of text.split('\n')) {
+    if (!line.trim()) continue;
+    let row: Record<string, unknown>;
+    try {
+      row = JSON.parse(line) as Record<string, unknown>;
+    } catch {
+      continue;
+    }
+    const payload = row.payload && typeof row.payload === 'object' ? row.payload as Record<string, unknown> : {};
+    const ts = typeof row.timestamp === 'string' ? Date.parse(row.timestamp) : 0;
+    const type = String(row.type ?? '');
+    if (type === 'turn_context' && typeof payload.model === 'string') model = payload.model;
+    const payloadType = String(payload.type ?? '');
+    const callId = String(payload.call_id ?? '');
+    const rowId = String(payload.id ?? row.id ?? '');
+    const item = payload.item && typeof payload.item === 'object' ? payload.item as Record<string, unknown> : {};
+    const itemId = String(item.id ?? '');
+    if (callId === entryId || rowId === entryId || itemId === entryId || String(payload.turn_id ?? '') === entryId) {
+      const priority = payloadType === 'item_completed' ? 3 : type === 'token_usage_record' ? 2 : 1;
+      if (priority >= directPriority) {
+        direct = row;
+        directPriority = priority;
+      }
+    }
+    if (type === 'response_item' && payloadType === 'message' && String(payload.role) === 'assistant' && Number.isFinite(ts)) {
+      assistants.push({ ts, message: payload });
+    }
+    if (type === 'event_msg' && payloadType === 'item_completed') {
+      const completedItem = payload.item && typeof payload.item === 'object' ? payload.item as Record<string, unknown> : {};
+      if (String(completedItem.type) === 'AgentMessage' && Number.isFinite(ts)) assistants.push({ ts, message: completedItem });
+    }
+    if ((type === 'token_usage_record' || payloadType === 'token_count') && Number.isFinite(ts)) {
+      tokens.push({ ts, id: String(payload.response_id ?? ''), row });
+    }
+  }
+  const index = parsed.requests.findIndex((request) => request.id === entryId)
+    >= 0
+    ? parsed.requests.findIndex((request) => request.id === entryId)
+    : parsed.requests.findIndex((request) => `codex-${request.endTs}` === entryId);
+  const request = index >= 0 ? parsed.requests[index] : undefined;
+  if (!request) {
+    if (!direct) return null;
+    const payload = direct.payload && typeof direct.payload === 'object' ? direct.payload as Record<string, unknown> : direct;
+    const item = payload.item && typeof payload.item === 'object' ? payload.item as Record<string, unknown> : {};
+    const output = Object.keys(item).length > 0 ? item : payload;
+    return {
+      entry: direct,
+      output,
+      messageRole: String(output.role ?? output.type ?? ''),
+      agent: { model: model || null, thinkingLevel: null, mode: 'codex', fallback: null },
+    };
+  }
+  const token = tokens.find((candidate) => candidate.id === entryId)
+    ?? tokens.find((candidate) => Math.abs(candidate.ts - request.endTs) < 2)
+    ?? tokens[index];
+  const previousEnd = index > 0 ? parsed.requests[index - 1]!.endTs : 0;
+  const message = assistants
+    .filter((candidate) => candidate.ts <= request.endTs + 2 && candidate.ts >= previousEnd)
+    .at(-1)
+    ?? assistants.filter((candidate) => candidate.ts <= request.endTs + 2).at(-1);
+  const usage = {
+    input: request.usage.input,
+    output: request.usage.output,
+    cacheRead: request.usage.cacheRead,
+    cacheWrite: request.usage.cacheWrite,
+    totalTokens: request.usage.input + request.usage.output + request.usage.cacheRead + request.usage.cacheWrite,
+  };
+  const output = message
+    ? {
+      ...message.message,
+      role: 'assistant',
+      api: 'responses',
+      model: request.model,
+      provider: request.provider,
+      usage,
+      stopReason: request.status,
+    }
+    : {
+      role: 'assistant',
+      api: 'responses',
+      model: request.model,
+      provider: request.provider,
+      usage,
+      stopReason: request.status,
+      content: [],
+    };
+  return {
+    entry: token?.row ?? { id: request.id, model: request.model, provider: request.provider, usage },
+    output,
+    messageRole: 'assistant',
+    agent: { model: request.model || null, thinkingLevel: null, mode: 'codex', fallback: null },
+  };
+}
+
 /** One request's journal payload; empty when the entry journals nothing or its session is gone. */
 export function readAgentRequestEntry(
   sessionFile: string,
@@ -1425,6 +1527,8 @@ export function readAgentRequestEntry(
     }
   })();
   if (text === null) return empty;
+  const codex = codexRequestEntry(text, entryId);
+  if (codex) return codex;
   const agent = { ...empty.agent };
   for (const line of text.split('\n')) {
     if (!line.trim()) continue;

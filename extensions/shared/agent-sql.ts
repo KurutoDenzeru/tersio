@@ -61,7 +61,7 @@ export const COL = {
   folder: folderExpr(true),
   model: 'm.model',
   provider: providerExpr('m.model', 'm.p'),
-  api: "''",
+  api: `CASE WHEN m.h = 'codex' THEN 'responses' ELSE '' END`,
   timestamp: 'm.t',
   bucket: `CAST(COALESCE(m.t, 0) AS INTEGER)`,
   duration: 'm.d',

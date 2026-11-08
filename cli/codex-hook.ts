@@ -1,5 +1,7 @@
-// Codex prompt hook: clear a stop phrase, then return the active mode blocks as developer context.
-import { applyCodexStopPatch, codexHookOutput, codexModeContext, codexStopPatch } from '../extensions/shared/codex-plugin.ts';
+// Codex prompt hook: apply mode commands, then return the active mode blocks as developer context.
+import {
+  applyCodexModePatch, codexBlockOutput, codexHookOutput, codexModeContext, codexSlashCommand, codexStopPatch,
+} from '../extensions/shared/codex-plugin.ts';
 
 async function readStdin(): Promise<string> {
   const chunks: Buffer[] = [];
@@ -20,8 +22,15 @@ function promptOf(raw: string): unknown {
 export async function runCodexHook(event: string | undefined): Promise<void> {
   const raw = await readStdin();
   if (event === 'user-prompt-submit') {
-    const patch = codexStopPatch(promptOf(raw));
-    if (patch) applyCodexStopPatch(patch);
+    const prompt = promptOf(raw);
+    const command = codexSlashCommand(prompt);
+    if (command) {
+      if (Object.keys(command.patch).length > 0) applyCodexModePatch(command.patch);
+      process.stdout.write(`${JSON.stringify(codexBlockOutput(command.message))}\n`);
+      return;
+    }
+    const patch = codexStopPatch(prompt);
+    if (patch) applyCodexModePatch(patch);
   }
   process.stdout.write(`${JSON.stringify(codexHookOutput(codexModeContext()))}\n`);
 }

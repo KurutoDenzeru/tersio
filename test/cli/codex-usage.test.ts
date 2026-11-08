@@ -3,7 +3,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 import { codexModelIdentity, parseCodexTranscript } from '../../extensions/shared/codex-transcript.ts';
-import { readAgentStats, readSessionTrace, rootSessionFile } from '../../extensions/shared/agent-stats.ts';
+import { readAgentRequestEntry, readAgentStats, readSessionTrace, rootSessionFile } from '../../extensions/shared/agent-stats.ts';
 import { readUsageDb, syncUsageDb } from '../../extensions/shared/usage-store.ts';
 import { hostOfSessionFile, sessionsDirs } from '../../extensions/shared/usage-ledger.ts';
 import { withHome } from '../helpers/env.ts';
@@ -46,6 +46,7 @@ test('Codex requests carry cwd, tools, timing, and status', () => {
   const parsed = parseCodexTranscript(codexFixture());
   expect(parsed.cwd).toBe(CWD);
   expect(parsed.requests).toHaveLength(2);
+  expect(parsed.requests[0]?.id).toBe('resp-1');
   expect(parsed.requests[0]).toMatchObject({
     usage: { input: 55, output: 10, cacheRead: 40, cacheWrite: 5 },
     model: 'gpt-6-luna',
@@ -113,6 +114,7 @@ test('the usage store feeds every Codex dashboard view', () => {
       expect.objectContaining({ durationMs: 7_000, ttftMs: 1_500 }),
       expect.objectContaining({ durationMs: 12_000, ttftMs: 3_000 }),
     ]);
+    expect(stats.recent.every((row) => row.api === 'responses')).toBe(true);
     expect(stats.errors).toHaveLength(1);
     expect(stats.errorGroups).toHaveLength(1);
     expect(stats.requestStats).toMatchObject({ requests: 2, failed: 1, shipped: 2 });
@@ -131,6 +133,22 @@ test('the usage store feeds every Codex dashboard view', () => {
       'bash:git', 'apply_patch', 'tool_search', 'mcp:codex_apps/github.fetch_issue',
     ]));
     expect(rootSessionFile(file)).toBe(file);
+
+    const entry = readAgentRequestEntry(file, 'resp-1');
+    expect(entry.entry).toMatchObject({ type: 'token_usage_record', payload: { response_id: 'resp-1' } });
+    expect(entry.output).toMatchObject({
+      role: 'assistant',
+      api: 'responses',
+      model: 'gpt-6-luna',
+      usage: { input: 55, output: 10, cacheRead: 40, cacheWrite: 5, totalTokens: 110 },
+    });
+    expect(JSON.stringify(entry.output)).toContain('Checking the repository.');
+    const tool = readAgentRequestEntry(file, 'call-bash');
+    expect(tool.output).toMatchObject({
+      type: 'CommandExecution',
+      command: ['/bin/zsh', '-lc', 'git status'],
+      exit_code: 1,
+    });
   });
 });
 

@@ -9,13 +9,14 @@ import {
   CODEX_PLUGIN_FILES,
   CODEX_PROMPT_MARKER,
   CODEX_PROMPT_NAMES,
-  applyCodexStopPatch,
+  applyCodexModePatch,
   codexLocalPluginFiles,
   codexModeContext,
   codexPromptFiles,
   codexStopPatch,
   installedCodexPlugin,
 } from '../../extensions/shared/codex-plugin.ts';
+import { codexBinaryCandidates } from '../../extensions/shared/utils.ts';
 import { sessionsDirs } from '../../extensions/shared/usage-ledger.ts';
 import { tersioMcpConfigured } from '../../extensions/shared/mcp-config.ts';
 import { cliEnv, fakeExecutable, withHome } from '../helpers/env.ts';
@@ -92,6 +93,24 @@ test('the repo marketplace and portable plugin agree with the package', () => {
   expect(mcp.mcpServers?.tersio).toMatchObject({ type: 'stdio', command: 'tersio', args: ['mcp'] });
 });
 
+test('Codex desktop CLI detection covers macOS, Windows, and Linux installs', () => {
+  const mac = codexBinaryCandidates('darwin', '/Users/example');
+  expect(mac).toContain('/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex');
+  expect(mac).toContain('/Users/example/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex');
+
+  const win = codexBinaryCandidates('win32', 'C:\\Users\\example', {
+    LOCALAPPDATA: 'C:\\Users\\example\\AppData\\Local',
+    APPDATA: 'C:\\Users\\example\\AppData\\Roaming',
+    ProgramFiles: 'C:\\Program Files',
+  });
+  expect(win.some((candidate) => candidate.endsWith('resources\\codex-cli\\codex.exe'))).toBe(true);
+  expect(win).toContain('C:\\Users\\example\\AppData\\Roaming\\npm\\codex.cmd');
+
+  const linux = codexBinaryCandidates('linux', '/home/example');
+  expect(linux).toContain('/home/example/.local/bin/codex');
+  expect(linux).toContain('/opt/ChatGPT/resources/codex-cli/codex');
+});
+
 test('the installed prompts are Codex slash commands with managed markers', () => {
   const prompts = codexPromptFiles();
   expect(Object.keys(prompts).toSorted()).toEqual([...CODEX_PROMPT_NAMES].toSorted());
@@ -100,8 +119,17 @@ test('the installed prompts are Codex slash commands with managed markers', () =
     const body = prompts[name].replace(/\r\n/g, '\n');
     expect(body).toContain(CODEX_PROMPT_MARKER);
     expect(body).toMatch(new RegExp(`^---\\n[\\s\\S]*?description:[^\\n]+\\n[\\s\\S]*?---\\n`));
-    expect(body).toContain('$ARGUMENTS');
-    if (name !== 'tersio') expect(body).toMatch(/\$1/);
+    expect(body).toContain('text after this prompt');
+    expect(body).not.toContain('$ARGUMENTS');
+  }
+});
+
+test('Codex exposes per-mode skills for composer hints', () => {
+  const files = codexLocalPluginFiles('/usr/bin/node', '/opt/tersio/dist/tersio.js');
+  for (const name of ['combo', 'caveman', 'ponytail', 'pstack', 'rtk', 'tersio']) {
+    const skill = files[`plugins/tersio/skills/${name}/SKILL.md`];
+    expect(skill, name).toContain(`name: ${name}`);
+    expect(skill, name).toContain(`$${name}`);
   }
 });
 
@@ -160,7 +188,7 @@ test('Codex mode context follows its own host scope and stop phrases clear that 
 
     const patch = codexStopPatch('normal mode.');
     expect(patch).toEqual({ cavemanDefault: 'off', ponytailDefault: 'off', pstackDefault: 'off' });
-    applyCodexStopPatch(patch!);
+    applyCodexModePatch(patch!);
     const stored = JSON.parse(readFileSync(settings, 'utf8')) as { hosts?: { codex?: Record<string, string> } };
     expect(stored.hosts?.codex).toMatchObject({ cavemanDefault: 'off', ponytailDefault: 'off', pstackDefault: 'off' });
     expect(codexStopPatch('add normal mode to the design')).toBeNull();
@@ -184,6 +212,41 @@ test('the Codex hook emits developer context and clears a stop phrase', () => {
     expect(JSON.parse(hook.stdout)).toEqual({ continue: true });
     const stored = JSON.parse(readFileSync(settings, 'utf8')) as { hosts?: { codex?: Record<string, string> } };
     expect(stored.hosts?.codex?.cavemanDefault).toBe('off');
+  });
+});
+
+test('the Codex hook executes a literal combo slash command without sending it to the model', () => {
+  withHome((home) => {
+    const settings = path.join(home, '.tersio', 'settings.json');
+    mkdirSync(path.dirname(settings), { recursive: true });
+    writeFileSync(settings, JSON.stringify({ hosts: { codex: {} } }), 'utf8');
+    const env = { ...cliEnv(home), TERSIO_RUNTIME: 'node' };
+    const hook = (prompt: string) => spawnSync(process.execPath, [installer, 'codex-hook', 'user-prompt-submit'], {
+      encoding: 'utf8',
+      env,
+      input: JSON.stringify({ prompt }),
+    });
+
+    const command = hook('/combo lite');
+    expect(command.status, command.stderr).toBe(0);
+    expect(JSON.parse(command.stdout)).toMatchObject({
+      decision: 'block',
+      reason: 'Tersio Combo set to lite for Codex. It applies to the rest of this session.',
+    });
+    const stored = JSON.parse(readFileSync(settings, 'utf8')) as {
+      hosts?: { codex?: Record<string, string | boolean> };
+    };
+    expect(stored.hosts?.codex).toMatchObject({
+      comboDefault: 'lite',
+      cavemanDefault: 'lite',
+      rtkDefault: true,
+      ponytailDefault: 'lite',
+    });
+
+    const next = hook('Continue the task.');
+    expect(next.status, next.stderr).toBe(0);
+    expect(JSON.parse(next.stdout)).toMatchObject({ continue: true });
+    expect(next.stdout).toContain('Caveman lite active for this session.');
   });
 });
 

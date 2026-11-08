@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { getPonytailInstructions } from '../ponytail/hooks/ponytail-instructions.ts';
 import { normalizeInputCommand, normalizeMode } from './session-state.ts';
 import { readPluginSettings, tersioSettingsFile } from './plugin-settings.ts';
-import { codexHome, codexPackagedPluginDir } from './codex-state.ts';
+import { CODEX_PLUGIN_FILES, codexHome, codexPackagedPluginDir } from './codex-state.ts';
 import { ruleDir, tersioHome } from './utils.ts';
 export {
   CODEX_MARKETPLACE_NAME, CODEX_PLUGIN_FILES, CODEX_PLUGIN_ID, CODEX_PLUGIN_NAME,
@@ -25,6 +25,12 @@ export function codexLocalMarketplaceRoot(): string {
 export const CODEX_PROMPT_NAMES = ['combo', 'caveman', 'rtk', 'ponytail', 'pstack', 'tersio'] as const;
 export type CodexPromptName = (typeof CODEX_PROMPT_NAMES)[number];
 export const CODEX_PROMPT_MARKER = '<!-- tersio-managed prompt -->';
+const CODEX_COMBO_PRESETS: Record<string, { caveman: string; rtk: boolean; ponytail: string }> = {
+  off: { caveman: 'off', rtk: false, ponytail: 'off' },
+  lite: { caveman: 'lite', rtk: true, ponytail: 'lite' },
+  balanced: { caveman: 'full', rtk: true, ponytail: 'full' },
+  max: { caveman: 'ultra', rtk: true, ponytail: 'ultra' },
+};
 
 /** Codex custom prompts are deprecated but remain the only local slash-command surface. */
 export function codexPromptsDir(): string {
@@ -63,7 +69,7 @@ export function codexLocalPluginFiles(runtime = process.execPath, cli = process.
   const handler = hooks.hooks?.UserPromptSubmit?.[0]?.hooks?.[0];
   if (handler) handler.command = hookCommand;
 
-  return {
+  const files: Record<string, string> = {
     '.agents/plugins/marketplace.json': `${JSON.stringify({
       name: 'tersio',
       interface: { displayName: 'Tersio' },
@@ -77,8 +83,11 @@ export function codexLocalPluginFiles(runtime = process.execPath, cli = process.
     'plugins/tersio/plugin.json': readSourcePlugin('plugin.json'),
     'plugins/tersio/mcp.json': `${JSON.stringify(mcp, null, 2)}\n`,
     'plugins/tersio/hooks/hooks.json': `${JSON.stringify(hooks, null, 2)}\n`,
-    'plugins/tersio/skills/tersio-modes/SKILL.md': readSourcePlugin('skills/tersio-modes/SKILL.md'),
   };
+  for (const rel of CODEX_PLUGIN_FILES) {
+    if (rel.startsWith('skills/')) files[`plugins/tersio/${rel}`] = readSourcePlugin(rel);
+  }
+  return files;
 }
 
 function cavemanInstruction(mode: string): string {
@@ -122,7 +131,7 @@ export function codexModeContext(): string {
   return blocks.join('\n\n');
 }
 
-function readMode(key: 'cavemanDefault' | 'ponytailDefault' | 'pstackDefault'): unknown {
+function readMode(key: 'comboDefault' | 'cavemanDefault' | 'rtkDefault' | 'ponytailDefault' | 'pstackDefault'): unknown {
   const scoped = (readPluginSettings().hosts as Record<string, Record<string, unknown>> | undefined)?.codex?.[key];
   return scoped ?? readPluginSettings()[key];
 }
@@ -137,13 +146,61 @@ export function codexStopPatch(prompt: unknown): Record<string, string> | null {
   return null;
 }
 
-/** Persist a stop phrase as a Codex-only override, so a later shared default cannot turn it back on. */
-export function applyCodexStopPatch(patch: Record<string, string>): void {
+/** Persist a mode change as a Codex-only override, so shared defaults cannot undo a session switch. */
+export function applyCodexModePatch(patch: Record<string, string | boolean>): void {
   const file = tersioSettingsFile();
   const stored = readPluginSettings();
   const hosts = { ...(stored.hosts as Record<string, Record<string, unknown>> | undefined) };
   hosts.codex = { ...hosts.codex, ...patch };
   writeFileSync(file, `${JSON.stringify({ ...stored, hosts }, null, 2)}\n`, 'utf8');
+}
+
+/** Commands typed literally when Codex does not own a native slash alias for them. */
+export function codexSlashCommand(prompt: unknown): { patch: Record<string, string | boolean>; message: string } | null {
+  const text = normalizeInputCommand(prompt);
+  const match = text.match(/^\/(combo|caveman|ponytail|pstack|rtk|headroom|tersio)(?:\s+(.+))?$/);
+  if (!match) return null;
+  const command = match[1]!;
+  const value = (match[2] ?? '').trim().toLowerCase();
+  if (command === 'combo') {
+    if (!value || value === 'status') {
+      const current = String(readMode('comboDefault') ?? 'custom');
+      const caveman = String(readMode('cavemanDefault') ?? 'off');
+      const rtk = readMode('rtkDefault') === true ? 'on' : 'off';
+      const ponytail = String(readMode('ponytailDefault') ?? 'off');
+      return {
+        patch: {},
+        message: `Tersio Combo is ${current} (caveman=${caveman}, rtk=${rtk}, ponytail=${ponytail}). Use /combo off, lite, balanced, or max.`,
+      };
+    }
+    const preset = CODEX_COMBO_PRESETS[value];
+    if (!preset) return { patch: {}, message: `Tersio Combo: unknown level "${value}". Use off, lite, balanced, or max.` };
+    return {
+      patch: { comboDefault: value, cavemanDefault: preset.caveman, rtkDefault: preset.rtk, ponytailDefault: preset.ponytail },
+      message: `Tersio Combo set to ${value} for Codex. It applies to the rest of this session.`,
+    };
+  }
+  if (command === 'caveman' || command === 'ponytail') {
+    if (!value || value === 'status') {
+      const key = command === 'caveman' ? 'cavemanDefault' : 'ponytailDefault';
+      const current = normalizeMode(command, readMode(key)) ?? 'off';
+      return { patch: {}, message: `Tersio ${command} is ${current}. Use /${command} <level>.` };
+    }
+    const level = normalizeMode(command, value);
+    if (!level) return { patch: {}, message: `Tersio ${command}: unknown level "${value}".` };
+    return {
+      patch: { [`${command}Default`]: level },
+      message: `Tersio ${command} set to ${level} for Codex. It applies to the rest of this session.`,
+    };
+  }
+  if (command === 'rtk') return { patch: {}, message: 'RTK is explanatory on Codex v1: Codex does not rewrite shell calls through Tersio.' };
+  if (command === 'pstack') return { patch: {}, message: 'pstack is available through $pstack or /prompts:pstack; the literal slash hook is explanatory only.' };
+  if (command === 'headroom') return { patch: {}, message: 'Headroom for Codex is controlled from the Tersio dashboard Headroom switch.' };
+  return { patch: {}, message: 'Tersio: use /combo, /caveman, /ponytail, /pstack, /rtk, or /headroom.' };
+}
+
+export function codexBlockOutput(message: string): Record<string, unknown> {
+  return { decision: 'block', reason: message, systemMessage: message };
 }
 
 /** The JSON output Codex expects from a prompt hook. An empty context is a successful no-op. */
