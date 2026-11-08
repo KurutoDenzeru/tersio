@@ -338,7 +338,7 @@ export function HostDrawer({ node, open, onOpenChange, hostState, busy, onHostAc
                 installed ? "border-success/40 text-success" : "border-line text-dim",
               )}
               >
-                {installed ? versionOf(hostState.versions[hostId]) ?? "installed" : "not installed"}
+                {installed ? versionOf(hostState.versions[hostId]) ?? "" : "not installed"}
               </span>
             </span>
           </DrawerTitle>
@@ -510,6 +510,11 @@ function VersionPill({ version }: { version: string | null }) {
 }
 
 /** The plain-language announcement a switch flip makes: the route changed, not how headroom did it. */
+/** Which install option this agent uses: headroom's own config block, or an endpoint swap Tersio owns. */
+function routeKind(target: { durable?: boolean }): string {
+  return target.durable ? "durable" : "routed";
+}
+
 export function routeNotice(target: { label?: string; durable?: boolean } | undefined, name: string, on: boolean): { title: string; desc: string } {
   const label = target?.label ?? name;
   if (!on) {
@@ -585,7 +590,7 @@ export function HeadroomDrawer({ open, onOpenChange, modes, hostState, busy, onS
             className={cn("mono shrink-0 rounded border px-1.5 py-0.5 text-[9px]", on ? "border-success/40 text-success" : "border-line text-dim")}
             title={target.detail}
           >
-            {on ? "routed" : "off"}
+            {on ? routeKind(target) : "off"}
           </span>
         )}
         {present && !installed ? (

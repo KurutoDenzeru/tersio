@@ -281,6 +281,7 @@ const HOST_FIELDS: Record<string, "cavemanDefault" | "rtkDefault" | "ponytailDef
 export function agentModeRows(host: string, modes: ModeState | null, headroomRoute?: boolean): Array<{ key: string; glyph: string; label: string; on: boolean | null; title?: string }> {
   if (!modes) return [];
   const section = (modes.hosts?.[host] ?? {}) as Partial<Record<string, string | boolean>>;
+  // SAFETY: ModeState carries the shared defaults at top level under these same field names, which its index signature does not declare.
   const shared = modes as unknown as Partial<Record<string, string | boolean>>;
   const read = (key: string): string | boolean | undefined => section[HOST_FIELDS[key]] ?? shared[HOST_FIELDS[key]];
   const headroom = String(read("headroom") ?? "off");
@@ -467,7 +468,8 @@ export function nodeState(id: NodeId, modes: ModeState | null, hostState: HostSt
   if (id.startsWith("host-")) {
     const key = id.slice(5);
     const on = edgeLit(key as EdgeKey, modes, hostState);
-    return { label: isOff(on) ? "not installed" : versionOf(hostState.versions[key]) ?? "installed", on };
+    // The version alone: "installed" and "routed" read as status, and a bar already shows the route.
+    return { label: isOff(on) ? "not installed" : versionOf(hostState.versions[key]) ?? "", on };
   }
   if (id === "caveman" || id === "ponytail") {
     const on = edgeLit(id, modes, hostState);

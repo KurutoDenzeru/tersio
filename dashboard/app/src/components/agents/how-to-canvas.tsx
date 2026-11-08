@@ -428,6 +428,7 @@ export function PipelineCanvas({
       const host = HOSTS.find((h) => `host-${h.id}` === id);
       if (!host) return null;
       const off = isOff(lit(host.id));
+      const version = versionOf(hostState.versions[host.id]);
       return (
         <>
           <span className={cn(header, "gap-2")}>
@@ -435,9 +436,7 @@ export function PipelineCanvas({
             <span className="min-w-0 flex-1 text-[12px] font-semibold leading-tight">{host.label}</span>
             {off
               ? <NodeBadge on={false} label="not installed" />
-              : headroomRoutes[host.id] === true
-                ? <NodeBadge on={true} label="🍃 routed" />
-                : <NodeBadge on={true} label={versionOf(hostState.versions[host.id]) ?? "installed"} />}
+              : version ? <NodeBadge on={true} label={version} /> : null}
           </span>
           {!off ? (
             <span className="grid flex-1 grid-cols-2 content-center gap-x-3 gap-y-1 px-3.5 py-2.5">
