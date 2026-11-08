@@ -25,6 +25,7 @@ import {
   sessionsDirs,
   dshSessionFiles,
   readSessionText,
+  usdCost,
   walkJsonl,
 } from './usage-ledger.ts';
 import { tersioDataPath } from './utils.ts';
@@ -32,6 +33,7 @@ import { createDataBackup, newestDataBackup, readSnapshotMember, restoreSnapshot
 import { MODEL_ALIASES } from './pricing.ts';
 import { readRetentionDays, tersioSettingsFile } from './plugin-settings.ts';
 import type { OpencodeClassification, OpencodeDbRow, OpencodeMessage, RunStatus, SessionLineRow, SessionTokens, ToolFact } from './usage-ledger.ts';
+import { codexModelIdentity, looksLikeCodexTranscript, parseCodexTranscript } from './codex-transcript.ts';
 
 export function usageDbPath(): string {
   const override = process.env.TERSIO_USAGE_DB;
@@ -73,7 +75,7 @@ function query(db: string, sql: string): string[][] {
 }
 
 // Bump on a parse change: unchanged transcripts are never re-read.
-const PARSER_VERSION = '16';
+const PARSER_VERSION = '17';
 
 /** OpenCode rows gained tool names; re-read by id, since a PARSER_VERSION bump drops rotated history. */
 const OPENCODE_TOOLS_VERSION = '1';
@@ -93,7 +95,7 @@ const SCHEMA_SQL =
   `CREATE TABLE IF NOT EXISTS files (id INTEGER PRIMARY KEY AUTOINCREMENT, path TEXT UNIQUE NOT NULL, mtime REAL NOT NULL, size INTEGER NOT NULL);` +
   `CREATE TABLE IF NOT EXISTS messages (file_id INTEGER NOT NULL REFERENCES files(id), t REAL, model TEXT NOT NULL,` +
   ` i INTEGER NOT NULL, o INTEGER NOT NULL, d REAL, tf REAL, cr INTEGER NOT NULL, cw INTEGER NOT NULL,` +
-  ` usd REAL, st TEXT NOT NULL, code REAL, note TEXT, tools TEXT NOT NULL DEFAULT '[]', h TEXT, a TEXT, id TEXT, tc TEXT, p TEXT);` +
+  ` usd REAL, st TEXT NOT NULL, code REAL, note TEXT, tools TEXT NOT NULL DEFAULT '[]', h TEXT, a TEXT, id TEXT, tc TEXT, p TEXT, cwd TEXT);` +
   // Every read filters or orders by one of these three; without them each sync and read scans the table.
   `CREATE INDEX IF NOT EXISTS idx_messages_file ON messages(file_id);` +
   `CREATE INDEX IF NOT EXISTS idx_messages_t ON messages(t);` +
@@ -157,7 +159,8 @@ function opencodeToolsBackfilled(db: string): boolean {
   try {
     const rows = query(db, `SELECT v FROM meta WHERE k='opencode_tools';`);
     return rows.length > 0 && rows[0][0] === OPENCODE_TOOLS_VERSION;
-  } catch {
+  } catch (error) {
+    if (process.env.TERSIO_DEBUG_SYNC) console.error('sync: preamble', error);
     return false;
   }
 }
@@ -185,7 +188,8 @@ function canMigrateInPlace(db: string): boolean {
   try {
     const names = query(db, `PRAGMA table_info(messages);`).map((r) => r[1]);
     return names.includes('file') && names.includes('h') && !names.includes('file_id');
-  } catch {
+  } catch (error) {
+    if (process.env.TERSIO_DEBUG_SYNC) console.error('sync: walk', error);
     return false;
   }
 }
@@ -199,7 +203,7 @@ function migrateInPlace(db: string, preCount: number): boolean {
       `INSERT INTO files_new (path, mtime, size) SELECT path, mtime, size FROM files;` +
       `CREATE TABLE messages_new (file_id INTEGER NOT NULL REFERENCES files_new(id), t REAL, model TEXT NOT NULL,` +
       ` i INTEGER NOT NULL, o INTEGER NOT NULL, d REAL, tf REAL, cr INTEGER NOT NULL, cw INTEGER NOT NULL,` +
-      ` usd REAL, st TEXT NOT NULL, code REAL, note TEXT, tools TEXT NOT NULL DEFAULT '[]', h TEXT, a TEXT, id TEXT, tc TEXT);` +
+      ` usd REAL, st TEXT NOT NULL, code REAL, note TEXT, tools TEXT NOT NULL DEFAULT '[]', h TEXT, a TEXT, id TEXT, tc TEXT, cwd TEXT);` +
       `INSERT INTO messages_new (file_id, ${cols}) SELECT (SELECT id FROM files_new WHERE files_new.path = messages.file), ${cols} FROM messages;` +
       `DROP TABLE messages;DROP TABLE files;` +
       `ALTER TABLE files_new RENAME TO files;ALTER TABLE messages_new RENAME TO messages;` +
@@ -260,11 +264,22 @@ const TTFT_VERSION = '1';
 
 /** Tool-facts marker: rows written before it carry names only, so one backfill fills sizes and errors. */
 const TOOL_FACTS_VERSION = '1';
+/** Codex facts gained cwd, tool timing, and request status; one transcript re-read fills them. */
+const CODEX_FACTS_VERSION = '2';
 
 function toolFactsBackfilled(db: string): boolean {
   try {
     const rows = query(db, `SELECT v FROM meta WHERE k='tool_facts';`);
     return rows.length > 0 && rows[0][0] === TOOL_FACTS_VERSION;
+  } catch {
+    return false;
+  }
+}
+
+function codexFactsBackfilled(db: string): boolean {
+  try {
+    const rows = query(db, `SELECT v FROM meta WHERE k='codex_facts';`);
+    return rows.length > 0 && rows[0][0] === CODEX_FACTS_VERSION;
   } catch {
     return false;
   }
@@ -354,6 +369,7 @@ const MESSAGE_COLUMNS: ReadonlyArray<readonly [string, string]> = [
   ['d', 'REAL'], ['tf', 'REAL'], ['usd', 'REAL'], ['code', 'REAL'], ['note', 'TEXT'],
   ['tools', "TEXT NOT NULL DEFAULT '[]'"], ['h', 'TEXT'], ['a', 'TEXT'], ['id', 'TEXT'],
   ['tc', 'TEXT'], ['p', 'TEXT'], ['cr', 'INTEGER NOT NULL DEFAULT 0'], ['cw', 'INTEGER NOT NULL DEFAULT 0'],
+  ['cwd', 'TEXT'],
 ];
 
 /** Adds each column the store is missing; returns true when one landed. */
@@ -400,7 +416,9 @@ function ensureSchema(db: string, forceWipe: boolean): void {
   if (stored === PARSER_VERSION) {
     // A store this build already wrote still gains a column added since, without a version bump.
     run(db, SCHEMA_SQL + rekeys);
-    if (addAdditiveColumns(db)) run(db, `INSERT OR REPLACE INTO meta (k, v) VALUES ('parser_version','${PARSER_VERSION}');`);
+    const added = addAdditiveColumns(db);
+    const missing = addMissingColumns(db);
+    if (added || missing) run(db, `INSERT OR REPLACE INTO meta (k, v) VALUES ('parser_version','${PARSER_VERSION}');`);
     return;
   }
   // A newer store keeps its rows: only an explicit force re-parse may wipe it.
@@ -422,6 +440,7 @@ function ensureSchema(db: string, forceWipe: boolean): void {
     }
     // Every additive column lands in one pass: an older store may miss more than one.
     if (stored !== null && addAdditiveColumns(db)) {
+      addMissingColumns(db);
       run(db, `INSERT OR REPLACE INTO meta (k, v) VALUES ('parser_version','${PARSER_VERSION}');`);
       return;
     }
@@ -519,6 +538,8 @@ interface StoredRow {
   /** `main` or `subagent`; null on a row written before the store carried it. */
   agent?: string | null;
   id?: string;
+  /** The session's working directory, from Codex's session metadata. */
+  cwd?: string;
   /** The gateway the transcript named, e.g. `commandcode`. Null on rows written before it was kept. */
   gateway?: string;
 }
@@ -562,6 +583,34 @@ function parseFile(text: string, host?: string, file?: string, agent?: string): 
       return rows;
     }
   } catch { /* JSONL */ }
+  if (looksLikeCodexTranscript(text)) {
+    const parsed = parseCodexTranscript(text);
+    return parsed.requests.map((request) => {
+      const identity = codexModelIdentity(request.model, request.provider);
+      const model = canonicalModelId(identity.model);
+      return {
+        t: request.endTs || null,
+        model,
+        i: request.usage.input,
+        o: request.usage.output,
+        d: durOf(request.durationMs),
+        tf: durOf(request.ttftMs),
+        cr: request.usage.cacheRead,
+        cw: request.usage.cacheWrite,
+        usd: usdCost(request.usage, model).usd,
+        st: request.status,
+        code: request.code,
+        note: request.note,
+        tools: request.tools,
+        toolFacts: request.toolFacts,
+        host: host ?? 'codex',
+        agent,
+        id: request.id,
+        gateway: identity.provider,
+        cwd: request.cwd,
+      };
+    });
+  }
   // A call's result arrives on a later line, so the whole file is scanned for results first.
   const results = collectToolResults(text);
   // Per file: the DSH model and step starts must not outlive this transcript.
@@ -646,11 +695,11 @@ function parseFile(text: string, host?: string, file?: string, agent?: string): 
 }
 
 function insertSql(file: string, r: StoredRow): string {
-  return `INSERT OR IGNORE INTO messages (file_id, t, model, i, o, d, tf, cr, cw, usd, st, code, note, tools, h, a, id, tc, p) VALUES (` +
+  return `INSERT OR IGNORE INTO messages (file_id, t, model, i, o, d, tf, cr, cw, usd, st, code, note, tools, h, a, id, tc, p, cwd) VALUES (` +
     `(SELECT id FROM files WHERE path=${esc(file)}),${r.t === null ? 'NULL' : String(r.t)},${esc(r.model)},${r.i},${r.o},` +
     `${nullNum(r.d)},${nullNum(r.tf)},${r.cr},${r.cw},${nullNum(r.usd)},${esc(r.st)},` +
     `${nullNum(r.code)},${nullStr(r.note)},${esc(JSON.stringify(r.tools))},${nullStr(r.host)},${nullStr(r.agent ?? undefined)},${nullStr(r.id)},` +
-    `${r.toolFacts && r.toolFacts.length > 0 ? esc(JSON.stringify(r.toolFacts)) : 'NULL'},${nullStr(r.gateway)});`;
+    `${r.toolFacts && r.toolFacts.length > 0 ? esc(JSON.stringify(r.toolFacts)) : 'NULL'},${nullStr(r.gateway)},${nullStr(r.cwd)});`;
 }
 
 // Unchanged transcripts are skipped via mtime+size; rows for deleted ones are kept so rotation never erases history.
@@ -671,7 +720,7 @@ export function syncUsageDb(): boolean {
     if (migrated && !forced) preWipe = countMessages(db);
     ensureSchema(db, forced);
     // One rewrite so the additive columns' NULL rows gain latency and tool facts; runs while a marker is absent.
-    if (!downgrade && (!ttftBackfilled(db) || !toolFactsBackfilled(db))) markTranscriptsDirty(db);
+    if (!downgrade && (!ttftBackfilled(db) || !toolFactsBackfilled(db) || !codexFactsBackfilled(db))) markTranscriptsDirty(db);
     maybeScheduledBackup();
     // Retention applies even on a sync with nothing new, so a quiet machine still lets old rows age out.
     pruneRetention(db);
@@ -781,6 +830,7 @@ export function syncUsageDb(): boolean {
   if (changed.length > 0) {
     if (!push(`INSERT OR REPLACE INTO meta (k, v) VALUES ('ttft_backfill','${TTFT_VERSION}');`)) return false;
     if (!push(`INSERT OR REPLACE INTO meta (k, v) VALUES ('tool_facts','${TOOL_FACTS_VERSION}');`)) return false;
+    if (!push(`INSERT OR REPLACE INTO meta (k, v) VALUES ('codex_facts','${CODEX_FACTS_VERSION}');`)) return false;
   }
   if (!flush()) return false;
   if (preWipe > 0) {

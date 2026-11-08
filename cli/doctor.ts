@@ -107,7 +107,7 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   // One hook cannot stand for the set: 5.1 and 5.2 ship the same instructions file and differ inside a skill.
   const ponytailStale: string[] = [];
   const ponytailSource = path.join(tersioPluginDir, 'extensions', 'ponytail');
-  for (const host of hosts.filter((h) => h.installed)) {
+  for (const host of hosts.filter((h) => h.installed && h.id !== 'codex')) {
     const copy = ponytailLoads[host.id];
     if (!copy) continue;
     for (const rel of copy.files) {
@@ -126,6 +126,7 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
     host.id === 'omp' ? path.join(tersioPluginDir, 'extensions') : hostExtensionsDir(host.id);
   // Only an install this build recognises is compared; a partial tree is debris, and the host row already names the command that clears it.
   for (const host of hosts.filter((h) => h.installed)) {
+    if (host.id === 'codex') continue;
     const treeId = host.id === 'omp' ? 'opencode' : host.id;
     const base = treeBaseFor(host);
     let onDisk = new Set(hostTreeFiles(base).filter((rel) => path.extname(rel) !== '.js'));
@@ -154,6 +155,7 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   const unwrittenTreeFiles = async (): Promise<string[]> => {
     const out: string[] = [];
     for (const host of hosts.filter((h) => h.installed)) {
+      if (host.id === 'codex') continue;
       const treeId = host.id === 'omp' ? 'opencode' : host.id;
       const base = treeBaseFor(host);
       for (const rel of treeFilesFor(treeId)) {
@@ -236,13 +238,19 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
 
   // Success rows stay quiet (no path echoes); failures print the expected path or fix so they stay actionable.
   const tally = { ok: 0, missing: 0, warn: 0 };
+  const warnings: Array<{ label: string; detail: string }> = [];
   function check(label: string, ok: boolean, detail = ''): void {
     if (ok) { tally.ok++; console.log(`  ✅ ${label}: ok${detail ? ` ${detail}` : ''}`); }
     else { tally.missing++; console.log(`  ❌ ${label}: MISSING${detail ? ` ${detail}` : ''}`); }
   }
   function warnLine(label: string, detail: string): void {
     tally.warn++;
-    console.log(`  ⚠️ ${label}: warn ${detail}`);
+    warnings.push({ label, detail });
+  }
+  function flushWarnings(): void {
+    if (warnings.length === 0) return;
+    section('Warnings');
+    for (const warning of warnings) console.log(`  ⚠️ ${warning.label}: warn ${warning.detail}`);
   }
 
   section('Platform');
@@ -253,7 +261,7 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   for (const host of hosts) {
     if (!host.installed) {
       // A partial tree is debris, not an install: the host reads as missing, and the same row names the cleanup.
-      const leftover = host.id !== 'dsh' && existsSync(hostExtensionsDir(host.id));
+      const leftover = host.id !== 'dsh' && host.id !== 'codex' && existsSync(hostExtensionsDir(host.id));
       if (leftover) {
         reportUnused(host.label, `· leftover files — tersio uninstall --host ${host.id}`);
         continue;
@@ -263,8 +271,9 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
       continue;
     }
     // One line per host, omp style: kind and version, no path echo.
-    const kind = host.via === 'tree' ? 'extensions' : 'package';
-    check(host.label, true, `${kind} ${PACKAGE_NAME}${host.version ? ` ${host.version}` : ''}`);
+    const kind = host.via === 'tree' ? 'extensions' : host.via === 'plugin' ? 'plugin' : 'package';
+    const name = host.via === 'plugin' ? 'tersio' : PACKAGE_NAME;
+    check(host.label, true, `${kind} ${name}${host.version ? ` ${host.version}` : ''}`);
     // The MCP entry is a second file an install writes; a tool that never appears starts here.
     if (!tersioMcpConfigured(host.id)) {
       warnLine(`${host.label} MCP`, hostCap(host.id)?.mcp != null ? `not wired — run: tersio install --host ${host.id}` : 'the bundle patch did not mount');
@@ -277,10 +286,10 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
     }
   }
 
-  // A version apart means omp can load a tree of two releases.
+  // A version apart means Oh My Pi can load a tree of two releases.
   const ompHost = hosts.find((host) => host.id === 'omp');
   if (ompHost?.version && ompHost.version !== PACKAGE_VERSION) {
-    warnLine('OMP plugin package', `v${ompHost.version} while this CLI is v${PACKAGE_VERSION} — run: tersio install --host omp`);
+    warnLine('Oh My Pi plugin version', `v${ompHost.version} while this CLI is v${PACKAGE_VERSION} — run: tersio install --host omp`);
   }
 
   // A healthy service adds no row: the host row already names the install, and this row only shows when the manager's report and the live process disagree.
@@ -295,7 +304,7 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
 
   // Pages read omp's own index, which advances only while an omp process owns it, so a stall reads as empty.
   const indexLag = statsIndexLag();
-  if (indexLag) warnLine('omp stats index', indexLag);
+  if (indexLag) warnLine('Oh My Pi stats index', indexLag);
 
   section('Add-ons');
   const ruleAge = ruleMtime ? `(updated ${relTime(Date.now() - ruleMtime.mtimeMs)} · ${absDate(ruleMtime.mtimeMs)})` : '';
@@ -365,30 +374,30 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
 
   // A count of pairs compared cannot show a file that is absent from disk and absent from the declaration, so assert every declared file landed.
   const unwritten = await unwrittenTreeFiles();
-  // The section is a live issue list, so a clean run has no section at all.
-  if (treeStale.length > 0 || treeMissing.length > 0 || treeOrphan.length > 0 || unwritten.length > 0) {
+  // A missing check is an issue; a drifting or stale tree is a warning in its own category.
+  if (unwritten.length > 0) {
     section('Issues');
-    // A tree on an older body serves until its install step runs; debris needs the sweeper instead.
-    if (treeStale.length > 0) {
-      warnLine('Per-host add-on files',
-        `stale in ${treeStale.length} file${treeStale.length === 1 ? '' : 's'}: ${treeStale.slice(0, 6).join(', ')}` +
-        `${treeStale.length > 6 ? ` +${treeStale.length - 6} more` : ''} — ${cavemanBodyHint()}`);
-    }
-    if (treeMissing.length > 0) {
-      warnLine('Per-host add-on files',
-        `never installed in ${treeMissing.length} file${treeMissing.length === 1 ? '' : 's'}: ${treeMissing.join(', ')}` +
-        ` — run: tersio install --host <host>`);
-    }
-    if (treeOrphan.length > 0) {
-      warnLine('Per-host add-on files',
-        `orphaned in ${treeOrphan.length} file${treeOrphan.length === 1 ? '' : 's'}: ${treeOrphan.join(', ')}` +
-        ` — run: tersio doctor --fix extensions`);
-    }
-    if (unwritten.length > 0) {
-      check('Add-on tree content', false,
-        `${unwritten.length} declared file${unwritten.length === 1 ? '' : 's'} not written for a host reading as installed: ${unwritten.slice(0, 6).join(', ')}${unwritten.length > 6 ? ` +${unwritten.length - 6} more` : ''} — run: tersio doctor --fix extensions`);
-    }
+    check('Add-on tree content', false,
+      `${unwritten.length} declared file${unwritten.length === 1 ? '' : 's'} not written for a host reading as installed: ${unwritten.slice(0, 6).join(', ')}${unwritten.length > 6 ? ` +${unwritten.length - 6} more` : ''} — run: tersio doctor --fix extensions`);
   }
+  // A tree on an older body serves until its install step runs; debris needs the sweeper instead.
+  if (treeStale.length > 0) {
+    warnLine('Per-host add-on files',
+      `stale in ${treeStale.length} file${treeStale.length === 1 ? '' : 's'}: ${treeStale.slice(0, 6).join(', ')}` +
+      `${treeStale.length > 6 ? ` +${treeStale.length - 6} more` : ''} — ${cavemanBodyHint()}`);
+  }
+  if (treeMissing.length > 0) {
+    warnLine('Per-host add-on files',
+      `never installed in ${treeMissing.length} file${treeMissing.length === 1 ? '' : 's'}: ${treeMissing.join(', ')}` +
+      ` — run: tersio install --host <host>`);
+  }
+  if (treeOrphan.length > 0) {
+    warnLine('Per-host add-on files',
+      `orphaned in ${treeOrphan.length} file${treeOrphan.length === 1 ? '' : 's'}: ${treeOrphan.join(', ')}` +
+      ` — run: tersio doctor --fix extensions`);
+  }
+
+  flushWarnings();
 
   const total = tally.ok + tally.missing + tally.warn;
   console.log(`\n  Summary: ${total} checks — ✅ ${tally.ok} ok, ⚠️ ${tally.warn} warn, ❌ ${tally.missing} missing`);

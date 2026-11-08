@@ -409,6 +409,10 @@ export interface HealthReport {
   opencodePath: string | null;
   /** Config root, e.g. ~/.config/opencode */
   opencodeDir: string | null;
+  codex: string | null;
+  codexPath: string | null;
+  /** Config root, e.g. ~/.codex */
+  codexDir: string | null;
   provider: string | null;
   rtk: { present: boolean; version: string | null; path: string };
   headroom: { present: boolean; version: string | null; path: string };
@@ -424,6 +428,8 @@ export interface DoctorRow {
   group: string;
   /** Informational row: visible, but never counted as an issue or shown as a fix. */
   neutral?: boolean;
+  /** Advisory row: needs attention, but is not a missing install or failed check. */
+  warn?: boolean;
   /** Agent brand mark, for the host rows. */
   host?: string;
 }

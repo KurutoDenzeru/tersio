@@ -6,7 +6,8 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { deflateRawSync } from "node:zlib";
-import { accuracyOf, cavemanAssetGap, driftOf, gapsOf, gateFails, gateReasons, gitBlobSha, hostBroken, hostFix, pstackUpstreamPath, scorecardMarkdown, skillRoot, uncarriedOf, vendoredVerdict, zipEntries } from "../../cli/upstream.ts";
+import { accuracyOf, cavemanAssetGap, codexRuntimeFileMatches, driftOf, gapsOf, gateFails, gateReasons, gitBlobSha, hostBroken, hostFix, pstackUpstreamPath, scorecardMarkdown, skillRoot, uncarriedOf, vendoredVerdict, zipEntries } from "../../cli/upstream.ts";
+import { codexLocalPluginFiles } from "../../extensions/shared/codex-plugin.ts";
 import type { HostRow, Scorecard, SourceRow, TreeResult } from "../../cli/upstream.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -26,6 +27,21 @@ test("gitBlobSha reproduces git's own blob id", () => {
   const result = spawnSync("git", ["hash-object", "--stdin"], { input: "hello", encoding: "utf8" });
   expect(result.status, result.stderr).toBe(0);
   expect(gitBlobSha("hello")).toBe(result.stdout.trim());
+});
+
+test("Codex's generated runtime paths do not read as upstream drift", () => {
+  const plugin = path.join(root, "plugins", "tersio");
+  const generated = codexLocalPluginFiles("/usr/bin/node", "/opt/tersio/dist/tersio.js");
+  const mcp = readFileSync(path.join(plugin, "mcp.json"), "utf8");
+  const hooks = readFileSync(path.join(plugin, "hooks", "hooks.json"), "utf8");
+  expect(codexRuntimeFileMatches("mcp.json", mcp, generated["plugins/tersio/mcp.json"]!)).toBe(true);
+  expect(codexRuntimeFileMatches("hooks/hooks.json", hooks, generated["plugins/tersio/hooks/hooks.json"]!)).toBe(true);
+
+  const changed = JSON.parse(generated["plugins/tersio/hooks/hooks.json"]!) as {
+    hooks: { UserPromptSubmit: Array<{ hooks: Array<Record<string, unknown>> }> };
+  };
+  changed.hooks.UserPromptSubmit[0]!.hooks[0]!.statusMessage = "changed";
+  expect(codexRuntimeFileMatches("hooks/hooks.json", hooks, JSON.stringify(changed))).toBe(false);
 });
 
 test("every shipped pstack body maps to an upstream path", () => {

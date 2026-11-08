@@ -38,6 +38,8 @@ import type { Profile } from './profile.ts';
 import { detectHosts, dshCliProfiles, dshDesktopProfilePresent, dshHome, dshPresent, dshProfileBundles, dshRunner, hostOptions, parseHostArg, piTersioSource, pigTersioSource, writeDshMcpCommand } from './hosts.ts';
 import type { HostEntry } from './hosts.ts';
 import { hostCap } from '../extensions/shared/host-caps.ts';
+import { CODEX_MARKETPLACE_NAME, CODEX_PLUGIN_ID, codexHome, codexLocalMarketplaceRoot, codexLocalPluginFiles, codexPluginInstalled, codexPromptFiles, codexPromptsDir, installedCodexPlugin } from '../extensions/shared/codex-plugin.ts';
+import { codexPackagedPluginDir } from '../extensions/shared/codex-state.ts';
 import type { HostId } from '../extensions/shared/host-caps.ts';
 
 async function stepPonytail(pluginsDir: string, options: InstallOptions): Promise<void> {
@@ -476,6 +478,12 @@ async function maybeInstallHeadroom(profile: Profile, quiet: boolean, host: Host
  * before writing it. A cancelled prompt stops the run, like every other prompt here.
  */
 async function maybeInstallMcp(host: HostId, quiet: boolean): Promise<boolean> {
+  if (hostCap(host)?.mcp === 'plugin') {
+    if (!quiet && !dryRun && !applyUpdate) {
+      sayTagged(`  [note] Tersio MCP rides inside the ${hostEntry(host).label} plugin — nothing to add here`);
+    }
+    return false;
+  }
   if (!tersioMcpSupported(host)) {
     if (!quiet && !dryRun && !applyUpdate) {
       sayTagged('  [note] The Tersio MCP server rides inside the DeepSeek Harness bundle — nothing to add here');
@@ -642,7 +650,6 @@ let targetHost: HostId = 'omp';
 // Hosts the menu advertises but cannot install yet; listed disabled so the roadmap stays visible.
 const SOON_HOSTS = [
   { value: 'claude', label: 'Claude Code', hint: 'Coming soon' },
-  { value: 'codex', label: 'Codex', hint: 'Coming soon' },
 ];
 
 async function chooseHost(title: string, only?: HostId[]): Promise<HostId> {
@@ -812,6 +819,56 @@ async function stepDsh(installOptions: InstallOptions): Promise<void> {
   }
 }
 
+/**
+ * Codex installs from a generated local marketplace with absolute command paths. Removing first
+ * makes an upgrade replace the cached files instead of reporting an already-installed plugin.
+ */
+async function stepCodex(options: InstallOptions): Promise<void> {
+  const codex = resolveHostBinary('codex');
+  if (!codex) throw new Error('codex not found — install Codex CLI or the ChatGPT desktop app first');
+  if (!existsSync(codexPackagedPluginDir())) throw new Error(`packaged Codex plugin missing: ${codexPackagedPluginDir()}`);
+  const root = codexLocalMarketplaceRoot();
+
+  const removePlugin = ['plugin', 'remove', CODEX_PLUGIN_ID, '--json'];
+  const removeMarketplace = ['plugin', 'marketplace', 'remove', CODEX_MARKETPLACE_NAME, '--json'];
+  const addMarketplace = ['plugin', 'marketplace', 'add', root, '--json'];
+  const addPlugin = ['plugin', 'add', CODEX_PLUGIN_ID, '--json'];
+  if (options.dryRun) {
+    if (!options.quiet) {
+      sayTagged(`  [dry-run] would materialize ${codexLocalMarketplaceRoot()}`);
+      sayTagged(`  [dry-run] would write Codex prompts to ${codexPromptsDir()}`);
+      sayTagged(`  [dry-run] would run: codex ${removePlugin.join(' ')}`);
+      sayTagged(`  [dry-run] would run: codex ${removeMarketplace.join(' ')}`);
+      sayTagged(`  [dry-run] would run: codex ${addMarketplace.join(' ')}`);
+      sayTagged(`  [dry-run] would run: codex ${addPlugin.join(' ')}`);
+    }
+    return;
+  }
+
+  if (!options.quiet) console.log(`  Codex — register the local marketplace (${root})`);
+  await fs.mkdir(codexHome(), { recursive: true });
+  for (const [rel, text] of Object.entries(codexLocalPluginFiles())) {
+    await writeIfChanged(path.join(root, ...rel.split('/')), text, options);
+  }
+  await fs.mkdir(codexPromptsDir(), { recursive: true });
+  for (const [name, text] of Object.entries(codexPromptFiles())) {
+    await writeIfChanged(path.join(codexPromptsDir(), `${name}.md`), text, options);
+  }
+  // Both removals are idempotent only in Tersio's intent, not in the CLI's exit code, so a miss is fine.
+  if (codexPluginInstalled() || installedCodexPlugin().complete) {
+    await execP(codex, removePlugin, { timeout: 120_000, cwd: homeDir() }).catch(() => undefined);
+  }
+  await execP(codex, removeMarketplace, { timeout: 120_000, cwd: homeDir() }).catch(() => undefined);
+  await execP(codex, addMarketplace, { timeout: 120_000, cwd: homeDir() });
+  await execP(codex, addPlugin, { timeout: 120_000, cwd: homeDir() });
+
+  const state = installedCodexPlugin();
+  if (!state.complete || !state.enabled) {
+    throw new Error(`Codex did not enable ${CODEX_PLUGIN_ID}${state.missing.length ? ` (missing: ${state.missing.join(', ')})` : ''}`);
+  }
+  if (!options.quiet) console.log(`  Codex — plugin ${state.version ?? 'installed'} enabled; review hooks in /hooks`);
+}
+
 async function runInstall(forcedHost?: HostId): Promise<void> {
   let hostChosen = false;
   if (command === null && tty() && !yes && !updatePromptDone) {
@@ -902,10 +959,12 @@ async function runInstall(forcedHost?: HostId): Promise<void> {
           ? path.join(HOME, '.config', 'opencode', 'plugins', 'tersio')
           : targetHost === 'dsh'
             ? path.join(dshHome(), 'profiles', 'web')
+            : targetHost === 'codex'
+              ? path.join(codexLocalMarketplaceRoot(), 'plugins', 'tersio')
             : path.join(OMP_AGENT_DIR, 'extensions');
     console.log(`\nWill install into ${target.label}:`);
     console.log(`  ${where}`);
-    console.log('  caveman · rtk · ponytail session modes');
+    console.log(targetHost === 'codex' ? '  caveman · ponytail · pstack session modes' : '  caveman · rtk · ponytail session modes');
     console.log(`  session defaults → ${tersioSettingsFile()}`);
     const go = await askInteractiveConfirm(`Are you sure you want to install Tersio into ${target.label}?`);
     if (go.status !== 'confirmed' || !go.value) {
@@ -915,11 +974,13 @@ async function runInstall(forcedHost?: HostId): Promise<void> {
     }
   }
 
-  try {
-    const v = (await execP(OMP_BIN, ['--version'])).stdout.trim();
-    if (verbose && !quiet) console.log(`  omp ${v}`);
-  } catch {
-    if (targetHost === 'omp') console.log('  [fail] omp not found — ensure it\'s installed');
+  if (targetHost !== 'codex') {
+    try {
+      const v = (await execP(OMP_BIN, ['--version'])).stdout.trim();
+      if (verbose && !quiet) console.log(`  omp ${v}`);
+    } catch {
+      if (targetHost === 'omp') console.log('  [fail] omp not found — ensure it\'s installed');
+    }
   }
   if (targetHost === 'pig') {
     try {
@@ -963,6 +1024,13 @@ async function runInstall(forcedHost?: HostId): Promise<void> {
     else console.log(hint);
     closeRL();
   };
+
+  if (targetHost === 'codex') {
+    await capture('codex plugin', () => stepCodex(installOptions));
+    await capture('settings', () => writeHostSettings(false));
+    finishHost('\nDone. Restart Codex and review the Tersio hooks in /hooks.');
+    return;
+  }
 
   if (targetHost === 'opencode') {
     await capture('opencode tree', () => stepOpencode(installOptions));

@@ -19,7 +19,7 @@ Coding agents bill you per token. Three of the costs you never asked for:
 - **Shell output is noise.** A failing test prints hundreds of lines to reach the four that matter.
 - **The rules repeat every turn.** Your agent re-reads its instructions on every single turn.
 
-Tersio installs into Oh My Pi, Pi, Pi-in-go, OpenCode, and DeepSeek Harness, and cuts those costs:
+Tersio installs into Oh My Pi, Pi, Pi-in-go, OpenCode, DeepSeek Harness, and Codex, and cuts those costs:
 
 | Mode | What it does for you |
 |---|---|
@@ -50,12 +50,13 @@ irm https://github.com/KurutoDenzeru/tersio/releases/latest/download/install.ps1
 Then run the CLI. Bare `tersio` opens a menu and asks which agent to install into:
 
 ```bash
-tersio                      # menu — picks Oh My Pi, pi, OpenCode, Pi-in-go, or DeepSeek Harness
+tersio                      # menu — picks Oh My Pi, pi, OpenCode, Pi-in-go, DeepSeek Harness, or Codex
 tersio install --host pi    # pi, non-interactive
 tersio install --host omp   # Oh My Pi, non-interactive
 tersio install --host opencode  # OpenCode, non-interactive
 tersio install --host pig   # Pi-in-go (PiG), non-interactive
 tersio install --host dsh   # DeepSeek Harness — mounts the bundle into every dsh profile
+tersio install --host codex # Codex — installs the portable plugin, MCP server, and slash prompts
 ```
 
 Or let each host install the package itself:
@@ -66,13 +67,17 @@ pi install npm:@krtclcdy/tersio
 opencode plugin add @krtclcdy/tersio
 pig install npm:@krtclcdy/tersio
 dsh plugin --profile web add npm:@krtclcdy/tersio
+codex plugin marketplace add KurutoDenzeru/tersio --sparse .agents/plugins --sparse plugins/tersio
+codex plugin add tersio@tersio
 ```
 
 The DeepSeek Harness desktop app installs through its Plugins pane instead: **Add plugin** → paste `@krtclcdy/tersio`, or a local checkout path while the bundle field is unreleased → restart the app. `dsh plugin` refuses the `desktop` profile by design, and `tersio install --host dsh` never writes it.
 
+Codex v1 ships Caveman, Ponytail, pstack, Tersio MCP, slash prompts, and usage stats. It does not wire RTK or Headroom yet. After installing, restart Codex and review the Tersio hook in `/hooks`.
+
 Pick one install method per host, not both. Using both registers every command twice.
 
-All hosts load the same six extensions from the same sources and read their session-start defaults from `~/.tersio/settings.json`. All six load always.
+OMP, pi, PiG, and OpenCode load the same extension tree; DeepSeek Harness mounts the package as a bundle; Codex loads the plugin hook, MCP server, skill, and prompts. Every host reads its session-start defaults from `~/.tersio/settings.json`.
 
 One-off use without installing:
 
@@ -84,7 +89,7 @@ npm exec --yes --prefer-online --package=@krtclcdy/tersio@latest -- tersio insta
 
 | Need | Detail |
 |---|---|
-| Host | [OMP](https://github.com/can1357/oh-my-pi), [pi](https://github.com/earendil-works/pi), [OpenCode](https://opencode.ai), [PiG](https://pi-in-go.dev), or [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) — `tersio install --host <omp\|pi\|opencode\|pig\|dsh>` |
+| Host | [OMP](https://github.com/can1357/oh-my-pi), [pi](https://github.com/earendil-works/pi), [OpenCode](https://opencode.ai), [PiG](https://pi-in-go.dev), [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness), or [Codex](https://github.com/openai/codex) — `tersio install --host <omp\|pi\|opencode\|pig\|dsh\|codex>` |
 | Node.js | 20.12+ with npm. The CLI runs under Node |
 | Bun | Optional. Preferred when on PATH, npm otherwise; also supplies SQLite in process |
 | SQLite | Bun, Node 22.5+ `node:sqlite`, or the `sqlite3` binary on PATH |
@@ -155,6 +160,8 @@ Add this entry under `mcpServers` in the client's MCP settings:
 
 That is the whole setup. No extra command, no port, no token, and no process to keep alive. `tersio install` writes this same Tersio server entry into OMP, Pi, PiG, and OpenCode, and asks first — the prompt reads `Add the Tersio MCP server to <agent>? … (optional)`, so a machine that should stay untouched can decline. DeepSeek Harness needs no file: its bundle patch carries the entry, and it is wired as soon as the plugin is mounted.
 
+Codex needs no separate entry either: `plugins/tersio/mcp.json` carries the server, so installing the plugin wires the MCP tools in the same step.
+
 The entry names an absolute `tersio` path when the binary is findable at install time, because an agent launched from the desktop never reads a shell profile and would not see the bare name. The bare name stays as the fallback.
 
 Six tools become available: `tersio_stats` (requests, errors, tokens, cache rate, and cost for a range, in your display currency), `tersio_activity` (what Tersio changed, newest first), `tersio_hosts` (every supported agent, its installed version, and whether the MCP entry reaches it), `tersio_sessions` (the newest sessions with host, project, model, tokens, and cost), `tersio_modes` (read the session-start defaults, or set them: a Combo preset, or any single mode — caveman, rtk, ponytail, pstack, headroom — overriding its piece of the preset; pass `host` to scope the read or the write to one agent), and `tersio_headroom` (savings by default; `action: status` for live proxy counters and routing; `action: retrieve` with a marker hash; or `action: memory`, `evals`, and `dashboard` for the upstream commands Tersio does not reimplement).
@@ -168,9 +175,10 @@ Two resources read without spending a tool call: `tersio://settings` (the stored
 | `tersio install` | Install (user scope: all OMP sessions) |
 | `tersio update` | Update the Tersio CLI. `--host <agent>` also refreshes that agent's extensions and add-ons (Caveman rule, Headroom, Ponytail) and reports a newer rtk release; no prompt is asked |
 | `tersio doctor` (Defaults row) | `tersio doctor` prints the shared defaults and each agent's overrides, so a value's source is visible without reading the store |
-| `tersio doctor` | Check OMP, extension, Ponytail, RTK, and OpenCode service health (`--fix` repairs, `--fix=<scope>` one scope, `--dry-run` previews) |
+| `tersio doctor` | Check each host, extension/plugin wiring, Ponytail, RTK, and OpenCode service health (`--fix` repairs, `--fix=<scope>` one scope, `--dry-run` previews) |
 | `tersio dashboard` | Open the Dashboard (`--open`, `--export <file>`, `--port <n>`, `--currency <code>`; serves localhost only) |
 | `tersio mcp` | Start the Tersio MCP server on stdio (see [MCP](#-mcp)) |
+| `tersio modes` | Read or set session defaults without a slash command; `--host <agent>` scopes the write |
 | `tersio uninstall` | Remove extensions, registrations, the Ponytail plugin, and the `rtk.ts` OMP wiring (`--keep-ponytail` keeps Ponytail; `--remove-rtk` also removes that wiring, never the binary) |
 | `tersio version` | Print version |
 
@@ -199,6 +207,21 @@ It is display-only — it never enters the model context, so it costs the sessio
 | `/tersio dashboard` | Open the dashboard. |
 | `/tersio help` | This table. |
 
+### Codex slash commands
+
+`tersio install --host codex` writes managed prompts to `$CODEX_HOME/prompts/`. Codex exposes those files as:
+
+| Command | Purpose |
+|---|---|
+| `/prompts:combo <off\|lite\|balanced\|max\|status>` | Set or show the Combo preset for Codex. |
+| `/prompts:caveman <level\|status>` | Set or show Caveman for Codex. |
+| `/prompts:ponytail <level\|status>` | Set or show Ponytail for Codex. |
+| `/prompts:pstack <on\|off\|status>` | Set or show pstack for Codex. |
+| `/prompts:rtk <on\|off\|status>` | Store the preference and report that Codex RTK rewriting is unavailable. |
+| `/prompts:tersio <status\|help\|update\|upstream\|dashboard>` | Show status, or run a Tersio command. |
+
+Codex custom prompts are deprecated upstream but still supported by the current CLI. The repo marketplace install adds the plugin, hook, skill, and MCP server; use `tersio install --host codex` when you also want these slash prompts. `tersio uninstall --host codex` removes only prompt files carrying Tersio's managed marker.
+
 ## 🗂️ Files and backups
 
 Shared, and identical for every host:
@@ -209,7 +232,7 @@ Shared, and identical for every host:
 | RTK binary | Not Tersio's: whatever `rtk` resolves to on `PATH` (or `~/.bun/bin`). rtk installs and updates it |
 | Ledger and caches | `~/.tersio/usage.db` — usage rows, prices, scorecard, state, Headroom records, and layout. Local only |
 | Activity log | `~/.tersio/activity.jsonl` — one line per change, as the Logs page reads it |
-| Host scope | The same `usage.db` mirrors omp, pi, and OpenCode sessions, split by host and agent kind |
+| Host scope | The same `usage.db` mirrors omp, pi, PiG, OpenCode, DeepSeek Harness, and Codex sessions, split by host and agent kind |
 | Snapshots | `~/.tersio/backups/` — one hashed `.snap` each, fourteen kept, carrying `usage.db` whole |
 
 The installer writes `<file>.bak` before it replaces a source. `tersio doctor --fix extensions` restores a damaged tree, and `doctor --fix registrations` drops retired or duplicate `config.yml` entries.

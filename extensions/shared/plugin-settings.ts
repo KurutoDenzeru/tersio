@@ -70,7 +70,7 @@ export function readRetentionDays(): number {
 }
 
 /** Which agent a session runs on; the settings readers scope the per-host layer with it. */
-export type HostScope = 'omp' | 'pi' | 'pig' | 'opencode';
+export type HostScope = 'omp' | 'pi' | 'pig' | 'opencode' | 'codex';
 
 /** The `hosts.<id>` section of the store, or nothing: the flat keys stay the shared fallback. */
 function hostDefaults(host?: HostScope | null): Record<string, unknown> {

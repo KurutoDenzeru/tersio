@@ -126,6 +126,7 @@ function editJsonc(file: string, edit: (text: string) => string | null): boolean
 
 /** Adds Tersio's MCP server, drops the legacy Headroom entry, and leaves other servers alone. */
 export function ensureTersioMcp(host: string): boolean {
+  if (hostCap(host)?.mcp === 'plugin') return tersioMcpConfigured(host);
   const file = mcpFile(host);
   if (!file) return false;
   const data = readJson(file);

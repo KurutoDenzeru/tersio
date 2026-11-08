@@ -1,0 +1,43 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "tersio",
+  "version": "2.25.18",
+  "description": "Token-saving modes and local usage stats for Codex.",
+  "author": {
+    "name": "KurutoDenzeru",
+    "url": "https://github.com/KurutoDenzeru"
+  },
+  "homepage": "https://github.com/KurutoDenzeru/tersio",
+  "repository": "https://github.com/KurutoDenzeru/tersio",
+  "license": "MIT",
+  "keywords": [
+    "token-saving",
+    "caveman",
+    "ponytail",
+    "pstack",
+    "usage"
+  ],
+  "extensions": {
+    "com.openai": {
+      "hooks": "./hooks/hooks.json",
+      "interface": {
+        "displayName": "Tersio",
+        "shortDescription": "Token-saving agent modes",
+        "longDescription": "Always-on Caveman, Ponytail, and pstack mode blocks plus Tersio's local usage and activity tools.",
+        "developerName": "KurutoDenzeru",
+        "category": "Developer Tools",
+        "capabilities": [
+          "Read",
+          "Write"
+        ],
+        "websiteURL": "https://github.com/KurutoDenzeru/tersio",
+        "defaultPrompt": [
+          "Show my Tersio mode status",
+          "Show my local agent usage",
+          "Set combo lite"
+        ],
+        "brandColor": "#D97706"
+      }
+    }
+  }
+}

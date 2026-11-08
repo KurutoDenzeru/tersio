@@ -1,6 +1,10 @@
 ## Unreleased
 
+### Added
+- Codex is now a Tersio host: `tersio install --host codex` materializes a local marketplace and installs the portable plugin with its bundled MCP server. A prompt hook keeps Caveman, Ponytail, and pstack active; managed prompts expose `/prompts:combo`, `caveman`, `ponytail`, `pstack`, `rtk`, and `tersio`. Codex rollout sessions feed every dashboard page with requests, models, providers, cost, errors, tools, real working-directory projects, and separate traces. RTK and Headroom remain out of the Codex v1 surface.
+
 ### Changed
+- Doctor groups advisory findings under a dedicated Warnings section and names Oh My Pi consistently. The Upstream check now compares Codex's generated hook and MCP files structurally, so absolute runtime paths no longer read as drift.
 - `tersio` now runs the command under bun whenever bun is installed, instead of the node its shebang names. The whole CLI follows, MCP server included, and `TERSIO_RUNTIME=node` keeps a machine on node. A real command spends about 15% less CPU; a command that only prints text pays roughly 30ms for the second boot.
 - The MCP server starts under bun directly when bun is installed, instead of booting node and then handing off to bun. Its process tree is one bun process at about 36 MB; a machine without bun stays on one node process at about 72 MB.
 - The MCP server no longer loads the whole dashboard to answer two tools. The agent-stats layer moved to its own module, so the server imports 30 files instead of 51.

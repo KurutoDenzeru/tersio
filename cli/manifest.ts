@@ -50,6 +50,8 @@ export const TREE_FILES: readonly string[] = [
   'shared/jsonc-edit.ts',
   'shared/host-caps.ts',
   'shared/mcp-config.ts',
+  'shared/codex-state.ts',
+  'shared/codex-transcript.ts',
   'shared/mode-notice.ts',
   'shared/cache-store.ts',
   'caveman/index.ts',

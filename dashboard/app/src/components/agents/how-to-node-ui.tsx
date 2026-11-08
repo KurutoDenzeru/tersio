@@ -24,7 +24,7 @@ import {
 import type { DefaultsPayload, HostAction, HostState, NodeId } from "./pipeline-model";
 import type { ModeState } from "./shell";
 
-type HostId = "omp" | "pi" | "pig" | "opencode" | "dsh";
+type HostId = "omp" | "pi" | "pig" | "opencode" | "dsh" | "codex";
 
 export interface NodeSurfaceProps {
   node: NodeId;

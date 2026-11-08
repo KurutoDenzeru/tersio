@@ -37,6 +37,7 @@ import { detectHosts, hostExtensionsDir } from './hosts.ts';
 import { checkHostTrees } from './host-tree.ts';
 import { findPackageRoot, homeDir, openCommand, resolveHeadroomBinary, resolveHostBinary, resolveRtkBinary, ruleBodyProblem, tersioHome } from '../extensions/shared/utils.ts';
 import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
+import { codexHome } from '../extensions/shared/codex-state.ts';
 import { tersioMcpConfigured, tersioMcpSupported } from '../extensions/shared/mcp-config.ts';
 import { BACKUP_KEEP, backupDir, backupDiskBytes, createDataBackup, dataSources, deleteDataBackup, listDataBackups, restoreDataBackup } from '../extensions/shared/snapshots.ts';
 import { applyTarget, emptyConfig, listSyncVersions, publicFields, readSync, restoreSync, runSync, saveSync, syncTarget, testTarget } from './dashboard-sync.ts';
@@ -273,6 +274,10 @@ function opencodePath(): string | null {
   return resolveHostBinary('opencode', path.join(homeDir(), '.opencode', 'bin'));
 }
 
+function codexPath(): string | null {
+  return resolveHostBinary('codex');
+}
+
 // omp prints `omp/18.4.1`, pi prints a bare `0.87.1`; both read as name/version.
 function versionLabel(bin: string, raw: string): string {
   const out = raw.trim();
@@ -320,10 +325,11 @@ function ompDefaultModel(): string | null {
 }
 
 /** The config root per agent, for the health report. */
-const agentDir = (id: 'omp' | 'pi' | 'pig' | 'opencode'): string | null => {
+const agentDir = (id: 'omp' | 'pi' | 'pig' | 'opencode' | 'codex'): string | null => {
   if (id === 'omp') return path.join(homeDir(), '.omp');
   if (id === 'pi') return path.join(homeDir(), '.pi');
   if (id === 'pig') return path.join(homeDir(), '.pig');
+  if (id === 'codex') return codexHome();
   return path.join(homeDir(), '.config', 'opencode');
 };
 
@@ -336,6 +342,7 @@ export function healthJson(): string {
   const detectedPiPath = piPath();
   const detectedPigPath = pigPath();
   const detectedOpencodePath = opencodePath();
+  const detectedCodexPath = codexPath();
   return JSON.stringify({
     tersio: PACKAGE_VERSION,
     node: process.version,
@@ -352,6 +359,9 @@ export function healthJson(): string {
     opencode: agentVersion(detectedOpencodePath),
     opencodePath: detectedOpencodePath,
     opencodeDir: agentDir('opencode'),
+    codex: agentVersion(detectedCodexPath),
+    codexPath: detectedCodexPath,
+    codexDir: agentDir('codex'),
     provider: ompDefaultModel(),
     rtk: { present: rtkPresent, version: rtkPresent ? rtkVersion(rtkBin as string) : null, path: rtkBin || 'not found in PATH' },
     headroom: { present: headroomPresent, version: headroomPresent ? headroomVersion(headroomBin as string) : null, path: headroomBin || 'not found in PATH' },
@@ -365,7 +375,7 @@ function tersioHomePath(): string {
   return path.join(homeDir(), '.tersio');
 }
 
-interface DoctorRow { label: string; ok: boolean; detail: string; group: string; neutral?: boolean; host?: string }
+interface DoctorRow { label: string; ok: boolean; detail: string; group: string; neutral?: boolean; warn?: boolean; host?: string }
 
 interface DoctorReport { rows: DoctorRow[]; checkedAt: number }
 
@@ -415,10 +425,14 @@ function listed(items: string[]): string {
 
 function computeDoctorRows(): DoctorRow[] {
   const rows: DoctorRow[] = [];
+  const warnings: DoctorRow[] = [];
   const rtkBin = resolveRtkBinary();
   const tersioPluginDir = path.join(OMP_PLUGINS_DIR, 'node_modules', ...PACKAGE_NAME.split('/'));
   const addon = (label: string, present: boolean, detail: string, group = 'Add-ons', neutral = false): void => {
     rows.push({ label, ok: present, detail, group, ...(neutral ? { neutral: true } : {}) });
+  };
+  const warning = (label: string, detail: string, host?: string): void => {
+    warnings.push({ label, ok: false, detail, group: 'Warnings', warn: true, ...(host ? { host } : {}) });
   };
   // A missing host is not a fault: it stays visible with no install command and no fix prompt.
   for (const host of detectHosts()) {
@@ -426,17 +440,21 @@ function computeDoctorRows(): DoctorRow[] {
       rows.push({ label: host.label, ok, detail, group: 'Hosts', host: host.id, ...(neutral ? { neutral: true } : {}) });
     };
     if (!host.installed) {
-      const leftover = host.id !== 'dsh' && existsSync(hostExtensionsDir(host.id));
+      const leftover = host.id !== 'dsh' && host.id !== 'codex' && existsSync(hostExtensionsDir(host.id));
       if (leftover) row(false, `leftover files — tersio uninstall --host ${host.id}`, true);
       else if (host.declared) row(false, `declared (${host.declared}) but not installed`);
       else row(false, 'not installed', true);
       continue;
     }
-    const kind = host.via === 'tree' ? 'extensions' : 'package';
-    row(true, `${kind} ${PACKAGE_NAME}${host.version ? ` ${host.version}` : ''}`);
+    const kind = host.via === 'tree' ? 'extensions' : host.via === 'plugin' ? 'plugin' : 'package';
+    const name = host.via === 'plugin' ? 'tersio' : PACKAGE_NAME;
+    row(true, `${kind} ${name}${host.version ? ` ${host.version}` : ''}`);
+    if (host.id === 'omp' && host.version && host.version !== PACKAGE_VERSION) {
+      warning('Oh My Pi plugin version', `v${host.version} while this CLI is v${PACKAGE_VERSION} — run: tersio install --host omp`, host.id);
+    }
     // Declining the MCP entry at install is allowed, so this row informs without counting as a fault.
     if (!tersioMcpConfigured(host.id)) {
-      row(false, tersioMcpSupported(host.id) ? `MCP server not wired — tersio install --host ${host.id}` : 'MCP entry missing from the bundle patch', true);
+      warning(`${host.label} MCP`, tersioMcpSupported(host.id) ? `MCP server not wired — tersio install --host ${host.id}` : 'MCP entry missing from the bundle patch', host.id);
     }
   }
   const scorecard = cachedScorecardSync();
@@ -475,11 +493,12 @@ function computeDoctorRows(): DoctorRow[] {
   const ponytailAge = ageStr(ponytailPkg);
   const ponytailAt = absTime(ponytailPkg);
   addon('🧠 Ponytail', ponytailVer !== null, ponytailVer && ponytailAge && ponytailAt ? `${ponytailVer} (updated ${ponytailAge} · ${ponytailAt})` : ponytailPkg);
-  const tree = checkHostTrees(detectHosts().filter((host) => host.installed), path.join(tersioPluginDir, 'extensions'));
-  if (tree.stale.length > 0) addon('Per-host add-on files', false, `stale in ${tree.stale.length} file${tree.stale.length === 1 ? '' : 's'}: ${listed(tree.stale)} — run: tersio install --host <host>`, 'Issues');
-  if (tree.missing.length > 0) addon('Per-host add-on files', false, `never installed in ${tree.missing.length} file${tree.missing.length === 1 ? '' : 's'}: ${listed(tree.missing)} — run: tersio install --host <host>`, 'Issues');
-  if (tree.orphan.length > 0) addon('Per-host add-on files', false, `orphaned in ${tree.orphan.length} file${tree.orphan.length === 1 ? '' : 's'}: ${listed(tree.orphan)} — run: tersio doctor --fix extensions`, 'Issues');
+  const tree = checkHostTrees(detectHosts().filter((host) => host.installed && host.id !== 'codex'), path.join(tersioPluginDir, 'extensions'));
+  if (tree.stale.length > 0) warning('Per-host add-on files', `stale in ${tree.stale.length} file${tree.stale.length === 1 ? '' : 's'}: ${listed(tree.stale)} — run: tersio install --host <host>`);
+  if (tree.missing.length > 0) warning('Per-host add-on files', `never installed in ${tree.missing.length} file${tree.missing.length === 1 ? '' : 's'}: ${listed(tree.missing)} — run: tersio install --host <host>`);
+  if (tree.orphan.length > 0) warning('Per-host add-on files', `orphaned in ${tree.orphan.length} file${tree.orphan.length === 1 ? '' : 's'}: ${listed(tree.orphan)} — run: tersio doctor --fix extensions`);
   if (tree.unwritten.length > 0) addon('Add-on tree content', false, `${tree.unwritten.length} declared file${tree.unwritten.length === 1 ? '' : 's'} not written for a host reading as installed: ${listed(tree.unwritten)} — run: tersio doctor --fix extensions`, 'Issues');
+  rows.push(...warnings);
   return rows;
 }
 
@@ -499,7 +518,7 @@ function saveDefaults(body: Record<string, unknown>): Promise<
   const run = async (): Promise<
     { ok: true; profile: Record<string, unknown> } | { ok: false; error: string }
   > => {
-  const HOST_SCOPES = ['omp', 'pi', 'opencode'] as const;
+  const HOST_SCOPES = ['omp', 'pi', 'opencode', 'pig', 'dsh', 'codex'] as const;
   const hostScope = typeof body.host === 'string' && (HOST_SCOPES as readonly string[]).includes(body.host)
     ? body.host as (typeof HOST_SCOPES)[number]
     : null;
