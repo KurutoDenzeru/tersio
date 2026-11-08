@@ -201,6 +201,34 @@ test("legacy plugin default normalizes to megacave-full and injects rules", asyn
   }
 });
 
+test("a settings write lands on the next read, and the parse is reused until then", () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-settings-cache-"));
+  const previous = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE, TERSIO_HOME: process.env.TERSIO_HOME };
+  process.env.HOME = home;
+  process.env.USERPROFILE = home;
+  process.env.TERSIO_HOME = home;
+  const file = path.join(home, "settings.json");
+  try {
+    mkdirSync(home, { recursive: true });
+    writeFileSync(file, JSON.stringify({ cavemanDefault: "lite" }), "utf8");
+    expect(readCavemanDefault()).toBe("lite");
+    // A rewrite to the same size lands because the stat, not the length, decides.
+    writeFileSync(file, JSON.stringify({ cavemanDefault: "full" }), "utf8");
+    expect(readCavemanDefault(), "a write after a read is visible").toBe("full");
+    // A corrupt file is a miss, never a remembered value.
+    writeFileSync(file, "{ not json", "utf8");
+    expect(readCavemanDefault()).toBe("off");
+    rmSync(file);
+    expect(readCavemanDefault(), "the last good parse is not served for a deleted file").toBe("off");
+  } finally {
+    for (const [name, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test("before_agent_start injects the per-mode instruction, nothing when off", async () => {
   for (const [mode, pattern] of [["lite", /Caveman lite active/], ["ultra", /Caveman ultra active/], ["megacave-full", /Caveman megacave-full active/i], ["megacave-lite", /Caveman megacave-lite active/i], ["megacave-ultra", /Caveman megacave-ultra active/i]] as const) {
     resetSharedComboState();

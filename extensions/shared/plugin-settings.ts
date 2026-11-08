@@ -1,6 +1,6 @@
 // One settings file for every host; parse failure yields {} with per-caller defaults.
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { homeDir, tersioHome } from './utils.ts';
 
@@ -28,12 +28,29 @@ function legacyOmpSettings(): Record<string, unknown> | null {
   return null;
 }
 
+// Every mode restore asks for six defaults, so one turn would read and parse the same file six times.
+// A stat is cheap next to a read plus a parse; the inode match catches an atomic replace that kept its mtime.
+let settingsCache: { file: string; ino: bigint; mtimeNs: bigint; value: Record<string, unknown> } | null = null;
+
+/** A missing or corrupt file is a miss this process re-checks, never a remembered value. */
 function readSettingsFile(): Record<string, unknown> | null {
   const p = tersioSettingsFile();
-  if (!existsSync(p)) return null;
+  let ino: bigint;
+  let mtimeNs: bigint;
+  try {
+    const stat = statSync(p, { bigint: true });
+    ino = stat.ino;
+    mtimeNs = stat.mtimeNs;
+  } catch {
+    return null;
+  }
+  if (settingsCache?.file === p && settingsCache.ino === ino && settingsCache.mtimeNs === mtimeNs) return settingsCache.value;
   try {
     const parsed = JSON.parse(readFileSync(p, 'utf8')) as Record<string, unknown>;
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+    const value = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+    if (!value) return null;
+    settingsCache = { file: p, ino, mtimeNs, value };
+    return value;
   } catch {
     return null;
   }
@@ -49,13 +66,8 @@ export const RETENTION_DAYS: ReadonlySet<number> = new Set([0, 7, 14, 30, 90, 18
 
 /** The retention window from settings. `0`, the default, means no pruning anywhere. */
 export function readRetentionDays(): number {
-  try {
-    const raw = JSON.parse(readFileSync(tersioSettingsFile(), 'utf8')) as { retentionDays?: unknown };
-    const days = Number(raw?.retentionDays);
-    return RETENTION_DAYS.has(days) ? days : 0;
-  } catch {
-    return 0;
-  }
+  const days = Number(readPluginSettings().retentionDays);
+  return RETENTION_DAYS.has(days) ? days : 0;
 }
 
 /** Which agent a session runs on; the settings readers scope the per-host layer with it. */
