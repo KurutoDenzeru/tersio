@@ -33,7 +33,7 @@ import type { BackupSchedule, HostDefaultField } from './profile.ts';
 import { normalizeComboLevel } from '../extensions/shared/session-state.ts';
 import { ACCENT_DEFAULTS, CAVEMAN_DEFAULTS, COMBO_PRESET_MODES, HEADROOM_DEFAULTS, PONYTAIL_DEFAULTS, PSTACK_DEFAULTS } from './common.ts';
 import { PACKAGE_NAME } from './common.ts';
-import { detectHosts, dshHome, dshPresent, dshRunner, hostExtensionsDir } from './hosts.ts';
+import { detectHosts, dshHome, dshPresent, dshVersionBinary, hostExtensionsDir } from './hosts.ts';
 import { checkHostTrees } from './host-tree.ts';
 import { findPackageRoot, homeDir, openCommand, resolveCodexBinary, resolveHeadroomBinary, resolveHostBinary, resolveRtkBinary, ruleBodyProblem, tersioHome } from '../extensions/shared/utils.ts';
 import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
@@ -281,8 +281,10 @@ function codexPath(): string | null {
 /** DeepSeek Harness may be a CLI, the desktop app's bundled runner, or only its home; one of them answers. */
 function dshPath(): string | null {
   if (!dshPresent()) return null;
-  const runner = dshRunner()[0] ?? 'dsh';
-  return resolveHostBinary(runner, path.dirname(runner)) ?? runner;
+  const runner = dshVersionBinary();
+  if (runner) return runner;
+  // Neither a CLI nor the app answers, so the harness is only its home directory; there is no version to ask for.
+  return null;
 }
 
 // omp prints `omp/18.4.1`, pi prints a bare `0.87.1`; both read as name/version.

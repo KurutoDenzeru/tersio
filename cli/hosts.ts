@@ -83,6 +83,15 @@ export function dshRunner(): string[] {
   return ['npx', '-y', '@deepseek-ai/dsh'];
 }
 
+/**
+ * The dsh binary a version probe should ask. A PATH wrapper can be a stub that refuses until the
+ * desktop app installs its runtime, so the app's own CLI wins when it is present.
+ */
+export function dshVersionBinary(): string | null {
+  if (process.platform === 'darwin' && existsSync(DSH_APP_CLI)) return DSH_APP_CLI;
+  return resolveHostBinary('dsh');
+}
+
 /** Whether DeepSeek Harness exists on this machine in any of its install forms. */
 export function dshPresent(): boolean {
   if (resolveHostBinary('dsh') !== null) return true;
