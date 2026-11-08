@@ -96,7 +96,8 @@ test('the installed prompts are Codex slash commands with managed markers', () =
   const prompts = codexPromptFiles();
   expect(Object.keys(prompts).toSorted()).toEqual([...CODEX_PROMPT_NAMES].toSorted());
   for (const name of CODEX_PROMPT_NAMES) {
-    const body = prompts[name];
+    // A Windows checkout may materialize the Markdown with CRLF.
+    const body = prompts[name].replace(/\r\n/g, '\n');
     expect(body).toContain(CODEX_PROMPT_MARKER);
     expect(body).toMatch(new RegExp(`^---\\n[\\s\\S]*?description:[^\\n]+\\n[\\s\\S]*?---\\n`));
     expect(body).toContain('$ARGUMENTS');
