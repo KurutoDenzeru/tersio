@@ -10,6 +10,7 @@
     "rtk-rust-token-killer",
     "ponytail",
     "extensions",
+    "codex",
     "pi",
     "pi-package"
   ],
@@ -178,6 +179,8 @@
     "dashboard/dist/**/*",
     "skills/**/*",
     "extensions/**/*.ts",
+    ".agents/plugins/marketplace.json",
+    "plugins/**/*",
     "extensions/caveman/rule.md",
     "extensions/caveman/rule-lite.md",
     "extensions/caveman/rule-megacave-lite.md",

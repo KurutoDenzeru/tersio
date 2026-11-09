@@ -3,7 +3,7 @@ import type { ModeState } from "./shell";
 
 export type Point = readonly [number, number];
 
-export type EdgeKey = "hosts" | "omp" | "pi" | "pig" | "opencode" | "dsh" | "combo" | "headroom" | "caveman" | "pstack" | "rtk" | "ponytail";
+export type EdgeKey = "hosts" | "omp" | "pi" | "pig" | "opencode" | "dsh" | "codex" | "combo" | "headroom" | "caveman" | "pstack" | "rtk" | "ponytail";
 
 export type HostAction = "install" | "uninstall" | "update";
 
@@ -255,12 +255,19 @@ export function savePositions(positions: Record<string, Box>): void {
   }
 }
 
-/** `/health` reports `omp/18.12.6` and `opencode/opencode v2.1.3`, so the node keeps only the version. */
+/** `/health` reports `omp/18.12.6` and `codex-cli 0.167.0-alpha.3.2`, so the node keeps only the version. */
 export function versionOf(raw: string | null | undefined): string | null {
   if (!raw) return null;
   const tail = raw.split("/").pop() ?? raw;
-  const version = tail.replace(/^(omp|pi|pig|opencode|dsh)\s+/i, "").trim();
+  // Drop a leading tool name (`codex-cli `) and a leading `v` (`v2.1.3`), which is not part of a version.
+  const version = tail.replace(/^[a-z][a-z-]*\s+/i, "").replace(/^v(?=\d)/i, "").trim();
   return version || null;
+}
+
+/** A 224px node cannot hold a full prerelease tag, so the badge drops the build tail: `0.167.0`. */
+export function shortVersion(version: string | null): string | null {
+  if (!version) return null;
+  return version.replace(/-.*$/, "");
 }
 
 /** The hosts, in the order the installer writes them. */
@@ -270,6 +277,7 @@ export const HOSTS = [
   { id: "pig", label: "PiG" },
   { id: "opencode", label: "OpenCode" },
   { id: "dsh", label: "DeepSeek Harness" },
+  { id: "codex", label: "Codex" },
 ] as const;
 
 const HOST_FIELDS: Record<string, "cavemanDefault" | "rtkDefault" | "ponytailDefault" | "pstackDefault" | "headroomDefault"> = {
@@ -280,6 +288,7 @@ const HOST_FIELDS: Record<string, "cavemanDefault" | "rtkDefault" | "ponytailDef
 export function agentModeRows(host: string, modes: ModeState | null, headroomRoute?: boolean): Array<{ key: string; glyph: string; label: string; on: boolean | null; title?: string }> {
   if (!modes) return [];
   const section = (modes.hosts?.[host] ?? {}) as Partial<Record<string, string | boolean>>;
+  // SAFETY: ModeState carries the shared defaults at top level under these same field names, which its index signature does not declare.
   const shared = modes as unknown as Partial<Record<string, string | boolean>>;
   const read = (key: string): string | boolean | undefined => section[HOST_FIELDS[key]] ?? shared[HOST_FIELDS[key]];
   const headroom = String(read("headroom") ?? "off");
@@ -408,6 +417,7 @@ export const ABOUT: Partial<Record<NodeId, string>> = {
   "host-pig": "PiG loads the same tree from its own agent directory, the way pi does.",
   "host-opencode": "OpenCode loads the tree as one plugin, registered in opencode.json.",
   "host-dsh": "DeepSeek Harness loads Tersio as a bundle plugin mounted into its web profile.",
+  "host-codex": "Codex loads Tersio's portable plugin, with MCP data and an always-on mode hook.",
   caveman: "Voice. Terse replies; code, commands, paths, and errors stay exact.",
   pstack: "Approach. Picks the playbook, the checks, and the design.",
   headroom: "Compresses tool outputs and history below the shell; Tersio tracks the savings.",
@@ -416,11 +426,19 @@ export const ABOUT: Partial<Record<NodeId, string>> = {
   output: "The turn's result: what the agent answers after every block applied.",
 };
 
+export interface ModeVersionRow {
+  installed: string | null;
+  upstream: string | null;
+  outdated: boolean | null;
+}
+
 export interface HostState {
   installed: Record<string, boolean>;
   /** The harness itself is on this machine, whatever state Tersio's tree is in. */
   present: Record<string, boolean>;
   versions: Record<string, string | null>;
+  /** Each mode's shipped version against upstream, for the mode badges. */
+  modeVersions: Record<string, ModeVersionRow>;
 }
 
 /** One definition of a node's live state, read by the canvas and the dialogs alike. */
@@ -439,6 +457,10 @@ export function edgeLit(key: EdgeKey, modes: ModeState | null, hostState: HostSt
   }
   if (key === "dsh") {
     const installed = hostState.installed.dsh;
+    return installed === undefined ? null : installed;
+  }
+  if (key === "codex") {
+    const installed = hostState.installed.codex;
     return installed === undefined ? null : installed;
   }
   if (!modes) return null;
@@ -461,7 +483,8 @@ export function nodeState(id: NodeId, modes: ModeState | null, hostState: HostSt
   if (id.startsWith("host-")) {
     const key = id.slice(5);
     const on = edgeLit(key as EdgeKey, modes, hostState);
-    return { label: isOff(on) ? "not installed" : versionOf(hostState.versions[key]) ?? "installed", on };
+    // The version alone: "installed" and "routed" read as status, and a bar already shows the route.
+    return { label: isOff(on) ? "not installed" : versionOf(hostState.versions[key]) ?? "", on };
   }
   if (id === "caveman" || id === "ponytail") {
     const on = edgeLit(id, modes, hostState);
@@ -484,7 +507,7 @@ export function nodeOff(id: NodeId, modes: ModeState | null, hostState: HostStat
 }
 
 /** What the node's control reads right now, in the scope the dialog writes to. */
-export function nodeValue(id: NodeId, scope: "all" | "omp" | "pi" | "pig" | "opencode" | "dsh", modes: ModeState | null): string | null {
+export function nodeValue(id: NodeId, scope: "all" | "omp" | "pi" | "pig" | "opencode" | "dsh" | "codex", modes: ModeState | null): string | null {
   if (!modes) return null;
   if (id === "caveman") {
     if (scope !== "all") {

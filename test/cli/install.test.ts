@@ -348,14 +348,14 @@ test("installer rejects a pstack level it does not have", () => {
 test("update rejects an unknown host before doing anything", () => {
   const home = mkdtempSync(path.join(os.tmpdir(), "tersio-update-host-"));
   try {
-    const result = spawnSync(process.execPath, [installer, "update", "--host", "codex", "--yes"], {
+    const result = spawnSync(process.execPath, [installer, "update", "--host", "claude", "--yes"], {
       cwd: root,
       encoding: "utf8",
       timeout: 15000,
       env: cliEnv(home),
     });
     expect(result.status).toBe(1);
-    expect(result.stderr).toMatch(/Invalid --host: codex/);
+    expect(result.stderr).toMatch(/Invalid --host: claude/);
   } finally {
     rmTree(home);
   }
@@ -1523,14 +1523,16 @@ const INSTALL_PTY_PY = [
   "        buf += d",
   "    return True",
   "pump(6)",
-  // Three prompts (agent, preset, Headroom) plus slack: send Enter on a cadence, since startup time varies with the registry check. The child can finish early, so a closed pty ends the loop.
-  "for _ in range(6):",
+  // Four prompts (preset, Headroom, MCP, then the final confirm) land at their own pace, so the
+  // driver answers on a cadence until the child exits. A fixed count is what a slow runner outran.
+  "deadline = time.time() + 45",
+  "while time.time() < deadline:",
   "    try:",
   "        os.write(fd, b'\\r')",
   "    except OSError:",
   "        break",
-  "    if not pump(3): break",
-  "pump(6)",
+  "    if not pump(1): break",
+  "pump(2)",
   "try: os.write(fd, b'\\x03')",
   "except OSError: pass",
   "sys.stdout.write(buf.decode('utf8', 'replace'))",
@@ -1572,4 +1574,4 @@ test.skipIf(process.platform === "win32")("a terminal install asks about Headroo
   } finally {
     rmSync(home, { recursive: true, force: true });
   }
-}, 60000);
+}, 90000);

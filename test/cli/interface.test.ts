@@ -459,9 +459,9 @@ test("install --host opencode bundles the ponytail ruleset beside the tree", () 
 test("install rejects an unknown host", () => {
   const home = tempHome();
   try {
-    const result = run(home, ["install", "--host", "codex"]);
+    const result = run(home, ["install", "--host", "claude"]);
     expect(result.status).toBe(1);
-    expect(result.stderr).toMatch(/Invalid --host: codex/);
+    expect(result.stderr).toMatch(/Invalid --host: claude/);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

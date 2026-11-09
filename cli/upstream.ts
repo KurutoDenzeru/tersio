@@ -4,11 +4,13 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, promises as fs, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { inflateRawSync } from 'node:zlib';
+import { isDeepStrictEqual } from 'node:util';
 import { PACKAGE_VERSION, args, flagValue, parseJsonObject } from './common.ts';
 import { newerThan } from './update.ts';
 import { checkBinarySource } from './upstream-binaries.ts';
 import { readState } from '../extensions/shared/state.ts';
 import { detectHosts, hostExtensionsDir } from './hosts.ts';
+import { CODEX_PLUGIN_FILES, codexPackagedPluginDir } from '../extensions/shared/codex-plugin.ts';
 import { cacheDelete, cacheGet, cacheKeys, cachePut, cacheStamp } from '../extensions/shared/cache-store.ts';
 import { readRetentionDays } from '../extensions/shared/plugin-settings.ts';
 import { EXT_DIR, PI_PONYTAIL_FILES, PONYTAIL_BUNDLE_FILES, PONYTAIL_DIR, PONYTAIL_PKG, PONYTAIL_VERSION, shippedOmpManifest, sourcePath, treeFileText, treeFilesFor } from './manifest.ts';
@@ -861,10 +863,87 @@ export function hostFix(id: string, version: string | null): string {
   return `run: tersio install --host ${id}`;
 }
 
+function recordOf(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+/** Codex rewrites the runtime and CLI paths inside these two files; every other field must still match. */
+export function codexRuntimeFileMatches(rel: string, expected: string, installed: string): boolean {
+  try {
+    const left = JSON.parse(expected) as Record<string, unknown>;
+    const right = JSON.parse(installed) as Record<string, unknown>;
+    if (rel === 'mcp.json') {
+      const leftServers = recordOf(left.mcpServers);
+      const rightServers = recordOf(right.mcpServers);
+      const strip = (row: unknown): Record<string, unknown> => {
+        const copy = { ...recordOf(row) };
+        delete copy.command;
+        delete copy.args;
+        return copy;
+      };
+      return isDeepStrictEqual(
+        { ...left, mcpServers: { ...leftServers, tersio: strip(leftServers.tersio) } },
+        { ...right, mcpServers: { ...rightServers, tersio: strip(rightServers.tersio) } },
+      );
+    }
+    if (rel === 'hooks/hooks.json') {
+      const strip = (root: Record<string, unknown>): Record<string, unknown> => {
+        const hooks = recordOf(root.hooks);
+        const submit = Array.isArray(hooks.UserPromptSubmit) ? hooks.UserPromptSubmit : [];
+        const first = recordOf(submit[0]);
+        const handlers = Array.isArray(first.hooks) ? first.hooks : [];
+        const handler = { ...recordOf(handlers[0]) };
+        delete handler.command;
+        return {
+          ...root,
+          hooks: {
+            ...hooks,
+            UserPromptSubmit: [{ ...first, hooks: [handler, ...handlers.slice(1)] }, ...submit.slice(1)],
+          },
+        };
+      };
+      return isDeepStrictEqual(strip(left), strip(right));
+    }
+  } catch {
+    return false;
+  }
+  return false;
+}
+
 /** Per host: does the tree each agent loads carry this build's bytes, and does its manifest load every entry? */
 async function checkHosts(): Promise<HostRow[]> {
   const rows: HostRow[] = [];
   for (const host of detectHosts()) {
+    if (host.id === 'codex') {
+      if (!host.installed || !host.dir) {
+        rows.push({ host: host.id, installed: false, files: CODEX_PLUGIN_FILES.length, matched: 0, stale: 0, missing: 0, staleFiles: [], missingFiles: [], unloaded: [], fix: '' });
+        continue;
+      }
+      let matched = 0;
+      const staleFiles: string[] = [];
+      const missingFiles: string[] = [];
+      for (const rel of CODEX_PLUGIN_FILES) {
+        const expected = await readTextIfExists(path.join(codexPackagedPluginDir(), ...rel.split('/')));
+        if (expected === null) continue;
+        const theirs = await readTextIfExists(path.join(host.dir, ...rel.split('/')));
+        if (theirs === null) missingFiles.push(rel);
+        else if (theirs === expected || codexRuntimeFileMatches(rel, expected, theirs)) matched++;
+        else staleFiles.push(rel);
+      }
+      rows.push({
+        host: host.id,
+        installed: true,
+        files: matched + staleFiles.length + missingFiles.length,
+        matched,
+        stale: staleFiles.length,
+        missing: missingFiles.length,
+        staleFiles: staleFiles.toSorted(),
+        missingFiles: missingFiles.toSorted(),
+        unloaded: [],
+        fix: hostFix(host.id, host.version),
+      });
+      continue;
+    }
     const treeId = host.id === 'omp' ? 'opencode' : host.id;
     const base = host.id === 'omp' ? (host.dir ? path.join(host.dir, 'extensions') : null) : hostExtensionsDir(host.id);
     if (!host.installed || !base) {

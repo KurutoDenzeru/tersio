@@ -97,7 +97,7 @@ export function parseBenchFile(id: string, text: string): BenchFile {
 export function readBenchmarks(): { files: BenchFile[]; dir: string } {
   let names: string[] = [];
   try {
-    names = fs.readdirSync(DOCS).filter((name) => /^BENCH_.*\.md$/.test(name)).sort();
+    names = fs.readdirSync(DOCS).filter((name) => /^BENCH_.*\.md$/.test(name)).toSorted();
   } catch {
     return { files: [], dir: DOCS };
   }

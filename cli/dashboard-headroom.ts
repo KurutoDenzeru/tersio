@@ -8,7 +8,7 @@ import { describeHeadroomRoute, readHeadroomRoute } from '../extensions/shared/h
 import { headroomRoutedHosts, routeHostOff, routeHostOn } from '../extensions/shared/headroom-routes.ts';
 import { stopHeadroomRuntime } from '../extensions/shared/headroom-runtime.ts';
 import { detectHosts } from './hosts.ts';
-import { resolveHeadroomBinary, resolveHostBinary } from '../extensions/shared/utils.ts';
+import { codexPresent, resolveHeadroomBinary, resolveHostBinary } from '../extensions/shared/utils.ts';
 
 export interface HeadroomRouteCtx {
   json: (res: Pick<http.ServerResponse, 'writeHead' | 'end'>, code: number, body: unknown) => void;
@@ -61,7 +61,7 @@ export async function handleHeadroomRoutes(
           name: host.id,
           label: host.label,
           agentInstalled: host.installed,
-          agentPresent: resolveHostBinary(host.bin) !== null,
+          agentPresent: host.id === 'codex' ? codexPresent() : resolveHostBinary(host.bin) !== null,
           routed: route.routed,
           durable: headroomHostDurable(host.id),
           detail: describeHeadroomRoute(route),
@@ -94,7 +94,7 @@ export async function handleHeadroomRoutes(
       }
     }
     if (body.on === false) {
-      const removed = routeHostOff(name);
+      const removed = await routeHostOff(name);
       // The last route is what makes the proxy worth its memory, so the daemon stops with it.
       if (removed.ok && headroomRoutedHosts(name).length === 0) await stopHeadroomRuntime();
       ctx.json(res, 200, removed.ok ? { ok: true, detail: removed.detail } : { ok: false, error: removed.detail });

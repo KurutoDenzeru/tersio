@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { sqliteRead } from './sqlite.ts';
-import { COL, SOURCE } from './agent-sql.ts';
+import { COL, SOURCE, folderExpr } from './agent-sql.ts';
 import type {
   AgentBucket, AgentCostMix, AgentErrorGroup, AgentErrorModelRow, AgentHeadroom,
   AgentModelPerformancePoint, AgentOverall, AgentProviderHour, AgentRequestRow, AgentRequestStats,
@@ -17,8 +17,9 @@ import { readRtkGainByVerb, rtkGainFailure } from './rtk-gain.ts';
 import { readHeadroomDoctor, readHeadroomSavings, readHeadroomStats } from './headroom-gain.ts';
 import { headroomProxyPort } from './headroom-proxy.ts';
 import { describeHeadroomRoute, readHeadroomRoute } from './headroom-routing.ts';
-import { hostOfSessionFile, readRtkAdoption, readSessionText } from './usage-ledger.ts';
+import { hostOfSessionFile, readRtkAdoption, readSessionText, usdCost } from './usage-ledger.ts';
 import type { RtkAdoption } from './usage-ledger.ts';
+import { codexModelIdentity, looksLikeCodexTranscript, parseCodexTranscript } from './codex-transcript.ts';
 
 
 
@@ -362,13 +363,15 @@ function messageFacts(): string {
   ].join(', ');
 }
 
-/** Column order of a recent or error row, matching `requestColumns` below. */
-const REQUEST_COLUMNS = [
-  COL.timestamp, COL.provider, COL.model, COL.folder, COL.api,
-  COL.input, COL.output, COL.cacheRead, COL.cacheWrite, COL.total,
-  COL.costTotal, COL.unpriced, COL.duration, COL.ttft, COL.stopReason, COL.errorMessage,
-  COL.agentType, COL.session, COL.entry,
-] as const;
+/** Column order of a recent or error row; the folder follows whichever columns the store carries. */
+function requestColumns(folder: string): string {
+  return [
+    COL.timestamp, COL.provider, COL.model, folder, COL.api,
+    COL.input, COL.output, COL.cacheRead, COL.cacheWrite, COL.total,
+    COL.costTotal, COL.unpriced, COL.duration, COL.ttft, COL.stopReason, COL.errorMessage,
+    COL.agentType, COL.session, COL.entry,
+  ].join(', ');
+}
 
 interface Facts {
   requests: number; failed: number;
@@ -482,7 +485,14 @@ function toRequestRows(rows: string[][]): AgentRequestRow[] {
   }));
 }
 
-function readStatsDb(db: string, cutoff: number, bucketMs: number, parts: Set<string>, offset = 0): Partial<AgentStats> {
+function readStatsDb(
+  db: string,
+  cutoff: number,
+  bucketMs: number,
+  parts: Set<string>,
+  offset = 0,
+  folder = COL.folder,
+): Partial<AgentStats> {
   const where = rangeWhere(cutoff, COL.timestamp);
   const errorWhere = `WHERE ${COL.stopReason} = 'error'${cutoff > 0 ? ` AND ${COL.timestamp} >= ${Math.floor(cutoff)}` : ''}`;
   const from = SOURCE;
@@ -492,16 +502,16 @@ function readStatsDb(db: string, cutoff: number, bucketMs: number, parts: Set<st
     ['byModel', `SELECT ${COL.model}, ${COL.provider}, ${messageFacts()} FROM ${from} ${where} GROUP BY 1, 2 ORDER BY 3 DESC`],
     ['byProvider', `SELECT ${COL.provider}, COUNT(DISTINCT ${COL.model}), ${messageFacts()} FROM ${from} ${where} GROUP BY 1 ORDER BY 3 DESC`],
     ['byAgentType', `SELECT ${COL.agentType}, ${messageFacts()} FROM ${from} ${where} GROUP BY 1 ORDER BY 2 DESC`],
-    ['byProject', `SELECT ${COL.folder}, ${messageFacts()} FROM ${from} ${where} GROUP BY 1 ORDER BY 2 DESC`],
+    ['byProject', `SELECT ${folder}, ${messageFacts()} FROM ${from} ${where} GROUP BY 1 ORDER BY 2 DESC`],
     ['series', `SELECT (${COL.bucket} / ${bucketMs}) * ${bucketMs}, COUNT(*),
         SUM(CASE WHEN ${COL.stopReason} = 'error' THEN 1 ELSE 0 END),
         SUM(${COL.total}), TOTAL(${COL.costTotal}) FROM ${from} ${where} GROUP BY 1 ORDER BY 1`],
     ['hourOfDay', `SELECT CAST(strftime('%H', ${COL.bucket} / 1000, 'unixepoch', 'localtime') AS INTEGER),
         COUNT(*), SUM(CASE WHEN ${COL.stopReason} = 'error' THEN 1 ELSE 0 END), SUM(${COL.total}), TOTAL(${COL.costTotal})
         FROM ${from} ${where} GROUP BY 1 ORDER BY 1`],
-    ['recent', `SELECT ${REQUEST_COLUMNS.join(', ')} FROM ${from} ${where} ORDER BY ${COL.timestamp} DESC LIMIT ${RECENT_LIMIT} OFFSET ${Math.max(0, Math.floor(offset))}`],
-    ['errors', `SELECT ${REQUEST_COLUMNS.join(', ')} FROM ${from} ${errorWhere} ORDER BY ${COL.timestamp} DESC LIMIT ${ERROR_LIMIT}`],
-    ['traces', `SELECT ${COL.session}, MAX(${COL.folder}),
+    ['recent', `SELECT ${requestColumns(folder)} FROM ${from} ${where} ORDER BY ${COL.timestamp} DESC LIMIT ${RECENT_LIMIT} OFFSET ${Math.max(0, Math.floor(offset))}`],
+    ['errors', `SELECT ${requestColumns(folder)} FROM ${from} ${errorWhere} ORDER BY ${COL.timestamp} DESC LIMIT ${ERROR_LIMIT}`],
+    ['traces', `SELECT ${COL.session}, MAX(${folder}),
         COUNT(*), SUM(${COL.total}), TOTAL(${COL.costTotal}), SUM(${COL.unpriced}),
         MIN(${COL.timestamp}), MAX(${COL.timestamp} + COALESCE(${COL.duration}, 0))
         FROM ${from} ${where} GROUP BY 1 ORDER BY 8 DESC LIMIT ${TRACE_LIMIT}`],
@@ -586,6 +596,8 @@ export function foldTraces(rows: AgentTraceRow[]): AgentTraceRow[] {
 
 /** The root session file for a transcript, which is itself when it is already a root. Splits on whichever separator the stored path uses: a Windows run writes `\`. */
 export function rootSessionFile(sessionFile: string): string {
+  // Codex lays sessions out as sessions/<year>/<month>/<day>/rollout-*.jsonl, not as a root/child tree.
+  if (hostOfSessionFile(sessionFile) === 'codex') return sessionFile;
   const marker = sessionFile.includes('/sessions/') ? '/sessions/' : '\\sessions\\';
   const at = sessionFile.indexOf(marker);
   if (at < 0) return sessionFile;
@@ -1108,6 +1120,7 @@ export function readSessionTrace(sessionFile: string, limit = TRACE_SPAN_LIMIT):
   } catch {
     return empty;
   }
+  if (looksLikeCodexTranscript(text)) return readCodexTrace(sessionFile, text, project, limit);
 
   // Pass one: pull each line into the shape the spans are cut from.
   type Raw = {
@@ -1238,6 +1251,83 @@ export function readSessionTrace(sessionFile: string, limit = TRACE_SPAN_LIMIT):
   };
 }
 
+/** Codex keeps its own event stream, so its trace comes from request, turn, and completed-tool events. */
+function readCodexTrace(sessionFile: string, text: string, fallbackProject: string, limit: number): AgentSessionTrace {
+  const parsed = parseCodexTranscript(text);
+  const spans: AgentTraceSpan[] = [];
+  const base = { model: parsed.model, provider: parsed.provider, tokens: 0, costUsd: 0, isError: false };
+  for (const turn of parsed.turns) {
+    spans.push({
+      ...base,
+      id: turn.id || `turn-${turn.startTs}`,
+      kind: 'turn',
+      label: 'Prompt',
+      detail: turn.detail,
+      start: turn.startTs,
+      end: turn.endTs,
+      tool: '',
+      stopped: 'completed',
+      entryId: turn.id,
+    });
+  }
+  for (const request of parsed.requests) {
+    const tokens = request.usage.input + request.usage.output + request.usage.cacheRead + request.usage.cacheWrite;
+    const identity = codexModelIdentity(request.model, request.provider);
+    const model = identity.model;
+    spans.push({
+      ...base,
+      id: request.id,
+      kind: 'model',
+      label: request.model || parsed.model || 'codex',
+      detail: request.status === 'completed' ? '' : (request.note ?? request.status),
+      start: request.startTs || request.endTs,
+      end: request.endTs || request.startTs,
+      model,
+      provider: identity.provider,
+      tokens,
+      costUsd: usdCost(request.usage, model).usd,
+      isError: request.status === 'error',
+      tool: '',
+      stopped: request.status === 'error' ? 'failed' : request.status === 'aborted' ? 'aborted' : 'completed',
+      entryId: request.id,
+    });
+  }
+  for (const tool of parsed.tools) {
+    spans.push({
+      ...base,
+      id: tool.id,
+      kind: 'tool',
+      label: tool.name,
+      detail: tool.detail,
+      start: tool.startTs,
+      end: tool.endTs,
+      tool: tool.name,
+      isError: tool.isError,
+      stopped: tool.isError ? 'failed' : 'completed',
+      entryId: tool.id,
+    });
+  }
+  spans.sort((a, b) => a.start - b.start);
+  const truncated = spans.length > limit;
+  const kept = truncated ? spans.slice(-limit) : spans;
+  const startedAt = kept.length ? Math.min(...kept.map((span) => span.start)) : parsed.startedAt;
+  const endedAt = kept.length ? Math.max(...kept.map((span) => span.end)) : parsed.endedAt;
+  const project = parsed.cwd.split(/[/\\]/).filter(Boolean).at(-1) || fallbackProject;
+  return {
+    sessionFile,
+    project,
+    title: parsed.title || project,
+    cwd: parsed.cwd || project,
+    startedAt,
+    endedAt,
+    tracks: [{ id: 'main', label: 'Main', parentId: null, spans: kept }],
+    markers: startedAt ? [{ id: `session-${startedAt}`, ts: startedAt, kind: 'session', label: 'session started' }] : [],
+    summary: summarizeTrace(kept, startedAt, endedAt),
+    toolStats: buildToolStats(kept),
+    truncated,
+  };
+}
+
 /** A non-message journal entry, when it marks a change worth a diamond on the timeline. */
 function markerFor(entryId: string, ts: number, parsed: Record<string, unknown>): AgentTraceMarker | null {
   const kind = String(parsed.type ?? '');
@@ -1318,6 +1408,108 @@ export function emptyRequestEntry(): { entry: unknown; output: unknown; messageR
   return { entry: null, output: null, messageRole: '', agent: { model: null, thinkingLevel: null, mode: null, fallback: null } };
 }
 
+function codexRequestEntry(text: string, entryId: string): { entry: unknown; output: unknown; messageRole: string; agent: JournalAgent } | null {
+  if (!looksLikeCodexTranscript(text)) return null;
+  const parsed = parseCodexTranscript(text);
+  const assistants: Array<{ ts: number; message: Record<string, unknown> }> = [];
+  const tokens: Array<{ ts: number; id: string; row: Record<string, unknown> }> = [];
+  let direct: Record<string, unknown> | null = null;
+  let directPriority = -1;
+  let model = '';
+  for (const line of text.split('\n')) {
+    if (!line.trim()) continue;
+    let row: Record<string, unknown>;
+    try {
+      row = JSON.parse(line) as Record<string, unknown>;
+    } catch {
+      continue;
+    }
+    const payload = row.payload && typeof row.payload === 'object' ? row.payload as Record<string, unknown> : {};
+    const ts = typeof row.timestamp === 'string' ? Date.parse(row.timestamp) : 0;
+    const type = String(row.type ?? '');
+    if (type === 'turn_context' && typeof payload.model === 'string') model = payload.model;
+    const payloadType = String(payload.type ?? '');
+    const callId = String(payload.call_id ?? '');
+    const rowId = String(payload.id ?? row.id ?? '');
+    const item = payload.item && typeof payload.item === 'object' ? payload.item as Record<string, unknown> : {};
+    const itemId = String(item.id ?? '');
+    if (callId === entryId || rowId === entryId || itemId === entryId || String(payload.turn_id ?? '') === entryId) {
+      const priority = payloadType === 'item_completed' ? 3 : type === 'token_usage_record' ? 2 : 1;
+      if (priority >= directPriority) {
+        direct = row;
+        directPriority = priority;
+      }
+    }
+    if (type === 'response_item' && payloadType === 'message' && String(payload.role) === 'assistant' && Number.isFinite(ts)) {
+      assistants.push({ ts, message: payload });
+    }
+    if (type === 'event_msg' && payloadType === 'item_completed') {
+      const completedItem = payload.item && typeof payload.item === 'object' ? payload.item as Record<string, unknown> : {};
+      if (String(completedItem.type) === 'AgentMessage' && Number.isFinite(ts)) assistants.push({ ts, message: completedItem });
+    }
+    if ((type === 'token_usage_record' || payloadType === 'token_count') && Number.isFinite(ts)) {
+      tokens.push({ ts, id: String(payload.response_id ?? ''), row });
+    }
+  }
+  const index = parsed.requests.findIndex((request) => request.id === entryId)
+    >= 0
+    ? parsed.requests.findIndex((request) => request.id === entryId)
+    : parsed.requests.findIndex((request) => `codex-${request.endTs}` === entryId);
+  const request = index >= 0 ? parsed.requests[index] : undefined;
+  if (!request) {
+    if (!direct) return null;
+    const payload = direct.payload && typeof direct.payload === 'object' ? direct.payload as Record<string, unknown> : direct;
+    const item = payload.item && typeof payload.item === 'object' ? payload.item as Record<string, unknown> : {};
+    const output = Object.keys(item).length > 0 ? item : payload;
+    return {
+      entry: direct,
+      output,
+      messageRole: String(output.role ?? output.type ?? ''),
+      agent: { model: model || null, thinkingLevel: null, mode: 'codex', fallback: null },
+    };
+  }
+  const token = tokens.find((candidate) => candidate.id === entryId)
+    ?? tokens.find((candidate) => Math.abs(candidate.ts - request.endTs) < 2)
+    ?? tokens[index];
+  const previousEnd = index > 0 ? parsed.requests[index - 1]!.endTs : 0;
+  const message = assistants
+    .filter((candidate) => candidate.ts <= request.endTs + 2 && candidate.ts >= previousEnd)
+    .at(-1)
+    ?? assistants.filter((candidate) => candidate.ts <= request.endTs + 2).at(-1);
+  const usage = {
+    input: request.usage.input,
+    output: request.usage.output,
+    cacheRead: request.usage.cacheRead,
+    cacheWrite: request.usage.cacheWrite,
+    totalTokens: request.usage.input + request.usage.output + request.usage.cacheRead + request.usage.cacheWrite,
+  };
+  const output = message
+    ? {
+      ...message.message,
+      role: 'assistant',
+      api: 'responses',
+      model: request.model,
+      provider: request.provider,
+      usage,
+      stopReason: request.status,
+    }
+    : {
+      role: 'assistant',
+      api: 'responses',
+      model: request.model,
+      provider: request.provider,
+      usage,
+      stopReason: request.status,
+      content: [],
+    };
+  return {
+    entry: token?.row ?? { id: request.id, model: request.model, provider: request.provider, usage },
+    output,
+    messageRole: 'assistant',
+    agent: { model: request.model || null, thinkingLevel: null, mode: 'codex', fallback: null },
+  };
+}
+
 /** One request's journal payload; empty when the entry journals nothing or its session is gone. */
 export function readAgentRequestEntry(
   sessionFile: string,
@@ -1335,6 +1527,8 @@ export function readAgentRequestEntry(
     }
   })();
   if (text === null) return empty;
+  const codex = codexRequestEntry(text, entryId);
+  if (codex) return codex;
   const agent = { ...empty.agent };
   for (const line of text.split('\n')) {
     if (!line.trim()) continue;
@@ -1390,7 +1584,7 @@ export function readAgentStats(range: RangeKey = '24h', view: AgentView = 'all',
   const [firstTs, lastTs] = bounds.get('bounds')?.[0] ?? [];
   stats.bucketMs = bucketSize(range, numOrNull(firstTs), numOrNull(lastTs));
 
-  Object.assign(stats, readStatsDb(db, cutoff, stats.bucketMs, parts, offset));
+  Object.assign(stats, readStatsDb(db, cutoff, stats.bucketMs, parts, offset, folderExpr(cols.has('cwd'))));
   if (parts.has('seriesByProvider')) stats.seriesByProvider = readProviderSeries(db, cutoff, stats.bucketMs);
   if (parts.has('modelSeries')) stats.modelSeries = readModelSeries(db, cutoff, stats.bucketMs);
   if (parts.has('modelPerformance')) stats.modelPerformance = readModelPerformance(db, cutoff, stats.bucketMs);

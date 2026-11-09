@@ -9,7 +9,7 @@ import { displayModel, fmt, fmtElapsed, fmtShort, projectLabel, relAge, stampLoc
 
 /** The last two segments of a path, the way the reference names a session's folder. */
 function shortFolder(path: string): string {
-  const parts = path.split("/").filter(Boolean);
+  const parts = path.split(/[/\\]/).filter(Boolean);
   return parts.slice(-2).join("/");
 }
 

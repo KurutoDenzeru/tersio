@@ -7,6 +7,8 @@ import { tersioStateFile } from './state.ts';
 import { eligibleHeads } from './rtk-eligible.ts';
 import { sqliteRead } from './sqlite.ts';
 import { patchState, readState, takeLegacy } from './state.ts';
+import { codexModelIdentity, looksLikeCodexTranscript, parseCodexTranscript } from './codex-transcript.ts';
+import { codexHome } from './codex-state.ts';
 
 export type UsageKind = 'command' | 'toggle' | 'install' | 'update' | 'rtk-audit';
 
@@ -200,6 +202,8 @@ export function sessionsDirs(): string[] {
     : isPiProcess()
       ? [path.join(piAgentDir(), 'sessions'), path.join(pigAgentDir(), 'sessions'), path.join(homeDir(), '.omp', 'agent', 'sessions')]
       : [path.join(homeDir(), '.omp', 'agent', 'sessions'), path.join(piAgentDir(), 'sessions'), path.join(pigAgentDir(), 'sessions')];
+  // Codex writes rollout JSONL under its own home; `CODEX_HOME` may relocate that tree.
+  dirs.push(path.join(codexHome(), 'sessions'));
   const found = dirs.filter((dir) => fs.existsSync(dir));
   return found.length > 0 ? found : [dirs[0]];
 }
@@ -899,9 +903,10 @@ export function importSessionTokens(): SessionTokens {
 // Which agent wrote a session file, from the directory it sits in.
 export function hostOfSessionFile(file: string): string {
   const norm = file.replace(/\\/g, '/');
+  const codexRoot = `${codexHome().replace(/\\/g, '/').replace(/\/+$/, '')}/sessions/`;
   if (norm.includes('/.dsh/')) return 'dsh';
   if (norm.includes('/.omp/')) return 'omp';
-  if (norm.includes('/.codex/')) return 'codex';
+  if (norm.includes('/.codex/') || norm.startsWith(codexRoot)) return 'codex';
   if (norm.includes('/opencode/')) return 'opencode';
   return 'pi';
 }
@@ -910,6 +915,19 @@ export function hostOfSessionFile(file: string): string {
 export function agentOfSessionText(text: string): string {
   // DeepSeek Harness marks a child by its delegation depth on the opening session event.
   if (/"delegationDepth"\s*:\s*[1-9]/.test(text.slice(0, 4000))) return 'subagent';
+  // Codex names a spawned thread's source on its session metadata instead of a parent-session field.
+  for (const line of text.slice(0, 8000).split('\n')) {
+    if (!line.includes('"session_meta"') && !line.includes('"turn_context"')) continue;
+    try {
+      const row = JSON.parse(line) as { payload?: { source?: unknown } };
+      const source = row.payload?.source;
+      if (typeof source === 'string' && (source === 'subagent' || source === 'delegated')) return 'subagent';
+      if (source && typeof source === 'object') {
+        const record = source as Record<string, unknown>;
+        if (record.subagent !== undefined || record.thread_spawn !== undefined) return 'subagent';
+      }
+    } catch { /* skip a corrupt line */ }
+  }
   if (!text.includes('parentSession')) return 'main';
   for (const line of text.split('\n')) {
     if (!line.includes('parentSession')) continue;
@@ -1104,6 +1122,26 @@ export function readRtkAdoption(): RtkAdoption {
   };
 }
 export function processSessionText(accum: SessionAccum, state: { codexProvider: string | null; codexModel?: string | null; dshModel?: string | null }, text: string, host?: string, agent?: string): void {
+  if (looksLikeCodexTranscript(text)) {
+    const parsed = parseCodexTranscript(text);
+    for (const request of parsed.requests) {
+      const { model } = codexModelIdentity(request.model, request.provider);
+      ingestSessionRow(
+        accum,
+        model,
+        request.usage as unknown as Record<string, unknown>,
+        request.endTs,
+        request.durationMs,
+        { st: request.status, code: request.code, note: request.note },
+        request.tools,
+        host ?? 'codex',
+        request.id,
+        agent,
+        request.ttftMs,
+      );
+    }
+    return;
+  }
   // A call's result arrives on a later line, so the whole file is scanned for results first.
   const results = collectToolResults(text);
   // Per file: a transcript's model and step starts must not leak into the next file.

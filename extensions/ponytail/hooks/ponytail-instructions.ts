@@ -2,11 +2,24 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { findPackageRoot } from '../../shared/utils.ts';
 import { DEFAULT_MODE, normalizeMode, normalizePersistedMode } from './ponytail-config.ts';
 
 // The one mode whose instructions live in a skill of its own instead of the shared SKILL.md table.
 const SKILL_ONLY_MODE = 'review';
-const SKILL_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'skills', 'ponytail', 'SKILL.md');
+const OWN_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)));
+
+// The compiled module sits in dist/, which the build never copies skills into, so a beside-the-module
+// read alone would report a broken install on every emitted CLI.
+function skillPath(): string {
+  const beside = path.join(OWN_DIR, '..', 'skills', 'ponytail', 'SKILL.md');
+  if (fs.existsSync(beside)) return beside;
+  try {
+    return path.join(findPackageRoot(OWN_DIR), 'extensions', 'ponytail', 'skills', 'ponytail', 'SKILL.md');
+  } catch {
+    return beside;
+  }
+}
 
 export function filterSkillBodyForMode(body: unknown, mode: unknown): string {
   const effectiveMode = normalizeMode(mode) || DEFAULT_MODE;
@@ -51,7 +64,7 @@ export function getPonytailInstructions(mode: unknown): string {
 
   try {
     return 'PONYTAIL MODE ACTIVE — level: ' + effectiveMode + '\n\n' +
-      filterSkillBodyForMode(fs.readFileSync(SKILL_PATH, 'utf8'), effectiveMode);
+      filterSkillBodyForMode(fs.readFileSync(skillPath(), 'utf8'), effectiveMode);
   } catch {
     return getFallbackInstructions(effectiveMode);
   }

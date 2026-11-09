@@ -296,10 +296,11 @@ export function providerMeta(provider: string): ProviderMeta {
 }
 
 /** The agent that recorded a session, from the transcript path, the row's only host marker; matches `AgentLogo`. Each pattern allows either separator: a Windows run writes `C:\...\.omp\agent\sessions\`. */
-export function hostOfSession(sessionFile: string): { label: string; host: "omp" | "pi" | "opencode" | "dsh" | "unknown" } {
+export function hostOfSession(sessionFile: string): { label: string; host: "omp" | "pi" | "opencode" | "dsh" | "codex" | "unknown" } {
   const file = String(sessionFile ?? "");
   // DeepSeek Harness writes one zstd transcript per session under its own tree.
   if (/[/\\]\.dsh[/\\]sessions[/\\]/.test(file)) return { label: "DeepSeek Harness", host: "dsh" };
+  if (/[/\\]\.codex[/\\]sessions[/\\]/.test(file)) return { label: "Codex", host: "codex" };
   // omp writes `~/.omp/agent/sessions/`; the older `.agent/agent/sessions/` spelling still counts.
   if (/[/\\]\.(?:omp|agent)[/\\]agent[/\\]sessions[/\\]/.test(file)) return { label: "OMP", host: "omp" };
   if (/[/\\]\.pi[/\\]agent[/\\]sessions[/\\]/.test(file)) return { label: "Pi", host: "pi" };
@@ -520,5 +521,7 @@ export function runStatusOf(stopReason: string): RunStatus {
 
 /** A project folder is the session's working directory, slugged. */
 export function projectLabel(folder: string): string {
-  return folder || "(none)";
+  const trimmed = folder.replace(/[/\\]+$/, "");
+  if (!trimmed) return "(none)";
+  return trimmed.split(/[/\\]/).pop() || trimmed;
 }

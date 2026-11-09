@@ -409,11 +409,21 @@ export interface HealthReport {
   opencodePath: string | null;
   /** Config root, e.g. ~/.config/opencode */
   opencodeDir: string | null;
+  codex: string | null;
+  codexPath: string | null;
+  /** Config root, e.g. ~/.codex */
+  codexDir: string | null;
+  dsh: string | null;
+  dshPath: string | null;
+  /** Config root, e.g. ~/.dsh */
+  dshDir: string | null;
   provider: string | null;
   rtk: { present: boolean; version: string | null; path: string };
   headroom: { present: boolean; version: string | null; path: string };
   /** The versions this build's own tree pins for the Tersio-forked modes; pstack has no upstream version. */
   modes: { caveman: string | null; ponytail: string | null; pstack: string | null };
+  /** Each mode's shipped version against the newest upstream the last check saw; null when unknown. */
+  modeVersions?: Record<string, { installed: string | null; upstream: string | null; outdated: boolean | null }>;
   home: string;
 }
 
@@ -424,6 +434,8 @@ export interface DoctorRow {
   group: string;
   /** Informational row: visible, but never counted as an issue or shown as a fix. */
   neutral?: boolean;
+  /** Advisory row: needs attention, but is not a missing install or failed check. */
+  warn?: boolean;
   /** Agent brand mark, for the host rows. */
   host?: string;
 }

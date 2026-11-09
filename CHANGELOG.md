@@ -1,6 +1,23 @@
 ## Unreleased
 
+### Added
+- Tersio registers its Codex prompt hook in `~/.codex/hooks.json`, beside rtk and headroom. Current Codex removed plugin-declared hooks, so the copy inside the plugin never ran and a literal `/combo lite` reached the model. Uninstall removes only Tersio's entry.
+- `/headroom on|off|status` is now a Codex slash command, with its own prompt file and `$headroom` skill. It stores the same `headroomDefault` the CLI writes and says the endpoint route applies at install or from the dashboard switch, because moving the route needs the running proxy.
+- A literal `/combo lite` answers in Tersio's prompt hook instead of the model: the mode applies and the command returns before a turn starts, with no network round trip.
+- Codex's prompt hook returns a `systemMessage` on every turn: the same `🧩 LITE | 🪨 caveman:LITE | …` combo line the DSH bar and the CLI print. Codex Desktop exposes no plugin status bar, so the hook result is the surface.
+- `/combo help` lists the presets and changes nothing.
+- Codex is now a Tersio host: `tersio install --host codex` materializes a local marketplace and installs the portable plugin with its bundled MCP server. A prompt hook applies literal `/combo`, `/caveman`, and `/ponytail` commands and keeps those modes active for the session; per-mode skills expose `$combo`, `$caveman`, `$ponytail`, `$pstack`, `$rtk`, and `$tersio`, with `/prompts:*` fallbacks. Codex rollout sessions feed every dashboard page with requests, models, providers, API, payloads, errors, tools, real working-directory projects, and separate traces. Headroom routes Codex through its own `init codex` / `unwrap codex` commands and the dashboard detects CLI and desktop installs on macOS, Windows, and Linux; RTK remains out of the Codex v1 surface.
+
 ### Changed
+- A blocked Codex command now prints the combo line under its confirmation, because Codex renders only `reason` and drops `systemMessage`.
+- Headroom's Codex route writes `openai_base_url` with the `/v1` path, so Codex upgrades `ws://…/v1/responses`. A root URL answered 403 on the WebSocket upgrade before every turn fell back to HTTPS, which read as an error on each run.
+- The Codex install now says that its prompt hook needs one approval in `/hooks`. Codex skips a hook whose recorded trust hash no longer matches, and the install re-adds the plugin, so a literal `/combo lite` reaches the model and reports the slow path instead of answering.
+- A quick start drawer now holds its header and footer on the same skeleton as its body. Install and Update were reachable while the first read was still in flight, and headroom and rtk defaulted to "not installed" until health answered, so the footer offered Install for a tool that was already there.
+- The canvas mode badges for caveman, pstack, Ponytail, RTK, and Headroom now carry the version, tinted green when it matches the newest upstream the last check saw and orange when it is behind. An unmeasured check stays gray instead of claiming either, and the tooltip names both versions.
+- The dashboard harness badge shows the version alone, shortened to the release, and the Headroom drawer names the install option: `durable` or `routed`. DeepSeek Harness gained a version badge: `/health` asked the PATH wrapper, which is a stub that exits before answering, so the probe now prefers the desktop app's own CLI and reports `0.2.2-rc.1` instead of nothing.
+- The Ponytail rules load from the package's `extensions/ponytail/skills` when the module sits in `dist/`, which the build never copies skills into. Every emitted CLI used to report the broken-install stub instead of the real rules.
+- The Codex prompt hook reads `session_id` from its payload, so a mode command applies to the session that sent it instead of the host defaults.
+- Doctor groups advisory findings under a dedicated Warnings section and names Oh My Pi consistently. The Upstream check now compares Codex's generated hook and MCP files structurally, so absolute runtime paths no longer read as drift.
 - `tersio` now runs the command under bun whenever bun is installed, instead of the node its shebang names. The whole CLI follows, MCP server included, and `TERSIO_RUNTIME=node` keeps a machine on node. A real command spends about 15% less CPU; a command that only prints text pays roughly 30ms for the second boot.
 - The MCP server starts under bun directly when bun is installed, instead of booting node and then handing off to bun. Its process tree is one bun process at about 36 MB; a machine without bun stays on one node process at about 72 MB.
 - The MCP server no longer loads the whole dashboard to answer two tools. The agent-stats layer moved to its own module, so the server imports 30 files instead of 51.

@@ -950,9 +950,12 @@ function DoctorPane() {
                     </div>
                   </TableCell>
                   <TableCell className="py-3 pr-3 text-right">
-                    <Badge variant={r.neutral ? "outline" : r.ok ? "success" : "destructive"}>
-                      {!r.neutral && <span className={`size-1.5 rounded-full ${r.ok ? "bg-accent" : "bg-danger"}`} />}
-                      {r.host ? (r.ok ? "Installed" : "Not installed") : r.neutral ? "—" : r.ok ? "Pass" : "Fix"}
+                    <Badge
+                      variant={r.warn || r.neutral ? "outline" : r.ok ? "success" : "destructive"}
+                      className={r.warn ? "mono border-[var(--warn-border)] text-[var(--warn-border)]" : undefined}
+                    >
+                      {!r.neutral && <span className={`size-1.5 rounded-full ${r.warn ? "bg-warn-border" : r.ok ? "bg-accent" : "bg-danger"}`} />}
+                      {r.warn ? "Warn" : r.host ? (r.ok ? "Installed" : "Not installed") : r.neutral ? "—" : r.ok ? "Pass" : "Fix"}
                     </Badge>
                   </TableCell>
                 </TableRow>

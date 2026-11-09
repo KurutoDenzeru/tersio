@@ -9,10 +9,8 @@ Tersio installs into an agent host. Pick the row for the host you use.
 | [pi](https://github.com/earendil-works/pi) | `tersio install --host pi` | `tersio update --host pi` | `tersio uninstall --host pi` |
 | [OpenCode](https://opencode.ai) | `tersio install --host opencode` | `tersio update --host opencode` | `tersio uninstall --host opencode` |
 | [Pi-in-go (PiG)](https://pi-in-go.dev) | `tersio install --host pig` | `tersio update --host pig` | `tersio uninstall --host pig` |
-
-Host-native equivalents, same code: `omp plugin install @krtclcdy/tersio`, `pi install npm:@krtclcdy/tersio`, `opencode plugin add @krtclcdy/tersio`, `pig install npm:@krtclcdy/tersio`. Never run both forms for one host, or every command registers twice.
-
-OpenCode users who installed via `opencode plugin add` update and remove through `opencode plugin update` / `opencode plugin remove` instead.
+| [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) | `tersio install --host dsh` | `tersio update --host dsh` | `tersio uninstall --host dsh` |
+| [Codex](https://github.com/openai/codex) | `tersio install --host codex` | `tersio update --host codex` | `tersio uninstall --host codex` |
 
 The default one-liner installs the CLI and runs the setup menus (scope + Combo preset) in the same pass:
 
@@ -32,11 +30,60 @@ Passing flags needs the download wrapped in a scriptblock, because `iex` cannot 
 & ([scriptblock]::Create((irm https://github.com/KurutoDenzeru/tersio/releases/latest/download/install.ps1))) --npm
 ```
 
-Each host loads its extensions from one place, so the same file never loads twice: `~/.omp/plugins/node_modules/@krtclcdy/tersio/extensions/` for OMP, `~/.pi/agent/extensions`, `~/.config/opencode/plugins/tersio`. The OMP agent tree keeps rtk's own `extensions/rtk.ts` wiring, which `config.yml` registers. `tersio update` without `--host` refreshes OMP.
+## Native installs
+
+Each host can install Tersio by itself, without the Tersio CLI. Pick one route per host, not both.
+
+**Oh My Pi**
+
+```bash
+omp plugin install @krtclcdy/tersio
+```
+
+**pi**
+
+```bash
+pi install npm:@krtclcdy/tersio
+```
+
+**OpenCode**
+
+```bash
+opencode plugin add @krtclcdy/tersio
+```
+
+Update with `opencode plugin update`, remove with `opencode plugin remove`.
+
+**Pi-in-go (PiG)**
+
+```bash
+pig install npm:@krtclcdy/tersio
+```
+
+**DeepSeek Harness**
+
+```bash
+dsh plugin --profile web add npm:@krtclcdy/tersio
+```
+
+The desktop app uses its own Plugins pane: **Add plugin** → paste `@krtclcdy/tersio` → restart the app.
+
+**Codex**
+
+```bash
+codex plugin marketplace add KurutoDenzeru/tersio
+codex plugin add tersio@tersio
+```
+
+In the Codex app, **Add plugin marketplace** asks for the same values: source `KurutoDenzeru/tersio`, Git ref `main`, sparse paths `.agents/plugins` and `plugins/tersio`.
+
+This route installs the plugin, its seven skills, and the MCP server. It installs no prompt hook, because current Codex dropped plugin-declared hooks, so `/combo lite` reaches the model there. Use `tersio install --host codex` when you want the slash commands to answer instantly, then approve the Tersio hook in `/hooks` after restarting.
+
+Codex does not wire RTK yet. Headroom is wired by `tersio install`, which runs `headroom init codex` for you.
 
 ## Requirements
 
-- OMP, pi, or OpenCode.
+- OMP, pi, OpenCode, PiG, DeepSeek Harness, or Codex.
 - Node.js 20.12+ with npm, or Bun. The installer prefers Bun when it is present.
 - SQLite runs in process where the runtime provides it (Bun, or Node 22.5+); an older Node uses the `sqlite3` binary instead.
 - macOS, Linux, or Windows. Install from the environment where the host runs.
@@ -74,6 +121,7 @@ Hosts
   ✅ Oh My Pi: ok package @krtclcdy/tersio 2.25.4
   ✅ Pi: ok extensions @krtclcdy/tersio 2.25.4
   ✅ OpenCode: ok extensions @krtclcdy/tersio 2.25.4
+  ✅ Codex: ok plugin tersio 2.25.4
 ```
 
 `extensions` means the tree install wrote the files into the host's own directory; `package` means the host registered the npm package. A host you do not use prints `not installed` with its install command and is not counted as a problem.

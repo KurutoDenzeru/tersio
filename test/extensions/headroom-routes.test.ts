@@ -8,8 +8,12 @@ import {
   hasNativeRoute,
   repairHeadroomRoute,
   installNativeRoute,
+  inferCodexRootBackup,
   nativeProxyUrl,
+  removeTomlSection,
   removeNativeRoute,
+  restoreCodexRoot,
+  setTomlSectionValue,
 } from '../../extensions/shared/headroom-routes.ts';
 
 const PROXY = 'http://127.0.0.1:8787/';
@@ -61,6 +65,55 @@ function dshHome(home: string): void {
 }
 
 describe('native headroom routes', () => {
+  test('Codex unwrap restores the provider keys Headroom replaced', () => {
+    const text = `model = "gpt-6-luna"
+
+# --- Headroom init provider ---
+model_provider = "headroom"
+openai_base_url = "http://127.0.0.1:8787/v1"
+
+[features]
+hooks = true
+`;
+    expect(restoreCodexRoot(text, {
+      modelProvider: null,
+      modelProviderPresent: false,
+      openaiBaseUrl: 'http://127.0.0.1:3425/backend-api/codex',
+      openaiBaseUrlPresent: true,
+    })).toBe(`model = "gpt-6-luna"
+
+# --- Headroom init provider ---
+
+openai_base_url = "http://127.0.0.1:3425/backend-api/codex"
+[features]
+hooks = true
+`);
+    expect(setTomlSectionValue(text, 'model_providers.magpie', 'base_url', 'http://127.0.0.1:8787/v1')).toContain(
+      '[model_providers.magpie]\nbase_url = "http://127.0.0.1:8787/v1"',
+    );
+  });
+
+  test('Codex never invents a reserved openai provider block', () => {
+    const text = `model = "commandcode/deepseek/deepseek-v4.1-flash"
+openai_base_url = "http://127.0.0.1:3425/backend-api/codex"
+
+[features]
+hooks = true
+`;
+    // No model_provider means Codex's built-in OpenAI route; `openai_base_url` is the only safe switch.
+    expect(inferCodexRootBackup(text)).toMatchObject({
+      modelProvider: null,
+      modelProviderPresent: false,
+      provider: null,
+      providerBaseUrl: null,
+    });
+    expect(inferCodexRootBackup(text.replace('model =', 'model_provider = "openai"\nmodel ='))).toMatchObject({
+      provider: null,
+    });
+    const invalid = `${text}\n[model_providers.openai]\nbase_url = "http://127.0.0.1:8787/v1"\n\n[features]\nhooks = true\n`;
+    expect(removeTomlSection(invalid, 'model_providers.openai')).not.toContain('[model_providers.openai]');
+  });
+
   test('routes Pi and puts the endpoint back', () => withHome((home) => {
     piHome(home);
     const routed = installNativeRoute('pi', PROXY);

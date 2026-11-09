@@ -11,10 +11,12 @@ import { askInteractiveChoice, closeRL, confirmDestructive, tty, sayTagged } fro
 import { detectHosts, dshCliProfiles, dshDesktopProfilePresent, dshPackageDir, dshRunner, parseHostArg, removeDshMcpCommand } from './hosts.ts';
 import type { HostEntry } from './hosts.ts';
 import type { HostId } from '../extensions/shared/host-caps.ts';
-import { piAgentDir, pigAgentDir, readTextIfExists } from '../extensions/shared/utils.ts';
+import { hostCap } from '../extensions/shared/host-caps.ts';
+import { CODEX_MARKETPLACE_NAME, CODEX_PLUGIN_ID, CODEX_PROMPT_MARKER, CODEX_PROMPT_NAMES, codexLocalMarketplaceRoot, codexPromptsDir, codexUserHooksFile, installedCodexPlugin, removeCodexUserHook } from '../extensions/shared/codex-plugin.ts';
+import { piAgentDir, pigAgentDir, readTextIfExists, resolveCodexBinary } from '../extensions/shared/utils.ts';
 import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
 import { removeTersioMcp } from '../extensions/shared/mcp-config.ts';
-import { NATIVE_ROUTE_HOSTS, isNativeRouteHost, removeNativeRoute } from '../extensions/shared/headroom-routes.ts';
+import { NATIVE_ROUTE_HOSTS, isNativeRouteHost, removeNativeRoute, unwrapCodexHeadroom } from '../extensions/shared/headroom-routes.ts';
 import { restoreOmpGateway } from '../extensions/shared/headroom-proxy.ts';
 import { stopHeadroomRuntime } from '../extensions/shared/headroom-runtime.ts';
 
@@ -180,6 +182,16 @@ async function removeUninstallTarget(target: string, shouldDryRun: boolean, recu
 
 /** Undo one agent's route before its tree leaves: Headroom's writer for two hosts, Tersio's for the rest. */
 async function restoreHeadroomRoute(host: HostId, shouldDryRun: boolean): Promise<void> {
+  if (!hostCap(host)?.headroom) return;
+  if (host === 'codex') {
+    if (shouldDryRun) {
+      sayTagged("  [dry-run] would run: headroom unwrap codex");
+      return;
+    }
+    const restored = await unwrapCodexHeadroom();
+    if (restored.ok) sayTagged(`  [rm] Headroom: ${restored.detail}`);
+    return;
+  }
   if (isNativeRouteHost(host)) {
     if (shouldDryRun) return;
     const restored = removeNativeRoute(host);
@@ -200,6 +212,8 @@ async function removeHeadroomBinary(shouldDryRun: boolean): Promise<void> {
   // Put every endpoint back before the proxy leaves: a removed binary behind a routed agent strands it.
   if (!shouldDryRun) {
     if (restoreOmpGateway()) sayTagged('  [rm] Headroom endpoint: omp');
+    const codex = await unwrapCodexHeadroom();
+    if (codex.ok) sayTagged('  [rm] Headroom: codex');
     for (const target of NATIVE_ROUTE_HOSTS) {
       const restored = removeNativeRoute(target);
       if (restored.ok) sayTagged(`  [rm] Headroom endpoint: ${restored.detail}`);
@@ -364,6 +378,48 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
       sayTagged(`  [rm] the tersio bundle from the ${profile} profile`);
     }
     console.log('\nDone. Restart dsh web (or the desktop app) to drop the bundle.');
+    results.push(true);
+    continue;
+  }
+  if (host === 'codex') {
+    const state = installedCodexPlugin();
+    const managedPromptLeft = CODEX_PROMPT_NAMES.some((name) => existsSync(path.join(codexPromptsDir(), `${name}.md`)));
+    if (!selected.installed && !selected.declared && !existsSync(codexLocalMarketplaceRoot()) && !managedPromptLeft) {
+      sayTagged(`  [skip] ${selected.label} — nothing installed (${selected.installCmd})`);
+      results.push(false);
+      continue;
+    }
+    console.log('Will remove:');
+    console.log(`  ${CODEX_PLUGIN_ID} (Codex plugin)${state.dir ? `\n  ${state.dir}` : ''}`);
+    console.log(`  the ${CODEX_MARKETPLACE_NAME} marketplace source`);
+    console.log('  Tersio plugin data under Codex is kept');
+    if (!confirmed && !(await confirmDestructive('Remove the Tersio Codex plugin?'))) { results.push(false); continue; }
+    const codex = resolveCodexBinary();
+    if (shouldDryRun) {
+      sayTagged(`  [dry-run] would run: codex plugin remove ${CODEX_PLUGIN_ID}`);
+      sayTagged(`  [dry-run] would run: codex plugin marketplace remove ${CODEX_MARKETPLACE_NAME}`);
+    } else if (!codex) {
+      sayTagged('  [warn] codex not found — remove Tersio from Codex Settings → Plugins');
+    } else {
+      await execP(codex, ['plugin', 'remove', CODEX_PLUGIN_ID, '--json'], { timeout: 120_000, cwd: HOME }).catch((e: unknown) => {
+        sayTagged(`  [warn] codex plugin remove: ${(e as Error).message}`);
+      });
+      await execP(codex, ['plugin', 'marketplace', 'remove', CODEX_MARKETPLACE_NAME, '--json'], { timeout: 120_000, cwd: HOME }).catch((e: unknown) => {
+        sayTagged(`  [warn] codex marketplace remove: ${(e as Error).message}`);
+      });
+    }
+    await removeUninstallTarget(codexLocalMarketplaceRoot(), shouldDryRun);
+    for (const name of CODEX_PROMPT_NAMES) {
+      const file = path.join(codexPromptsDir(), `${name}.md`);
+      const text = await readTextIfExists(file);
+      if (text?.includes(CODEX_PROMPT_MARKER)) await removeUninstallTarget(file, shouldDryRun, false);
+    }
+    // Only Tersio's entry leaves; every other tool's hook in this file stays.
+    const hook = removeCodexUserHook(codexUserHooksFile(), Boolean(shouldDryRun));
+    if (hook.changed) sayTagged(`  [rm] the Tersio prompt hook from ${codexUserHooksFile()}`);
+    else if (!hook.ok) sayTagged(`  [warn] could not clean ${codexUserHooksFile()}: ${hook.detail}`);
+    await clearSessionDefaults(shouldDryRun);
+    console.log('\nDone. Restart Codex to unload the plugin.');
     results.push(true);
     continue;
   }

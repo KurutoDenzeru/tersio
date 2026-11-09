@@ -5,6 +5,7 @@ import { HOME, OMP_PLUGINS_DIR, PACKAGE_NAME, PACKAGE_VERSION } from './common.t
 import { treeFilesFor } from './manifest.ts';
 import { piAgentDir, pigAgentDir, resolveHostBinary } from '../extensions/shared/utils.ts';
 import { HOST_CAPS } from '../extensions/shared/host-caps.ts';
+import { codexHome, installedCodexPlugin } from '../extensions/shared/codex-state.ts';
 import type { HostId } from '../extensions/shared/host-caps.ts';
 
 export interface HostEntry {
@@ -14,8 +15,8 @@ export interface HostEntry {
   installCmd: string;
   removeCmd: string;
   installed: boolean;
-  /** How it is installed: a written tree, or the npm package. */
-  via: 'tree' | 'package' | null;
+  /** How it is installed: a written tree, the npm package, or a Codex plugin cache. */
+  via: 'tree' | 'package' | 'plugin' | null;
   /** The pi source pi has declared, when the host keeps one. */
   declared: string | null;
   version: string | null;
@@ -31,12 +32,13 @@ export type DetectedHost = HostEntry;
 export function hostExtensionsDir(id: HostId, agentDir = id === 'pig' ? pigAgentDir() : piAgentDir()): string {
   if (id === 'omp') return path.join(HOME, '.omp', 'agent', 'extensions');
   if (id === 'opencode') return path.join(HOME, '.config', 'opencode', 'plugins', 'tersio');
+  if (id === 'codex') return installedCodexPlugin().dir ?? path.join(codexHome(), 'plugins', 'cache', 'tersio', 'tersio');
   // DeepSeek Harness mounts the whole tersio package as a bundle, so its tree base is the mounted package's extensions dir.
   if (id === 'dsh') return path.join(dshPackageDir(), 'extensions');
   return path.join(agentDir, 'extensions');
 }
 
-function missingTreeFiles(id: HostId, agentDir = id === 'pig' ? pigAgentDir() : piAgentDir()): string[] {
+function missingTreeFiles(id: Exclude<HostId, 'codex'>, agentDir = id === 'pig' ? pigAgentDir() : piAgentDir()): string[] {
   const dir = hostExtensionsDir(id, agentDir);
   return treeFilesFor(id).filter((file) => !existsSync(path.join(dir, file)));
 }
@@ -79,6 +81,15 @@ export function dshRunner(): string[] {
   if (resolveHostBinary('dsh') !== null) return ['dsh'];
   if (process.platform === 'darwin' && existsSync(DSH_APP_CLI)) return [DSH_APP_CLI];
   return ['npx', '-y', '@deepseek-ai/dsh'];
+}
+
+/**
+ * The dsh binary a version probe should ask. A PATH wrapper can be a stub that refuses until the
+ * desktop app installs its runtime, so the app's own CLI wins when it is present.
+ */
+export function dshVersionBinary(): string | null {
+  if (process.platform === 'darwin' && existsSync(DSH_APP_CLI)) return DSH_APP_CLI;
+  return resolveHostBinary('dsh');
 }
 
 /** Whether DeepSeek Harness exists on this machine in any of its install forms. */
@@ -304,12 +315,18 @@ function detect(agentDir = piAgentDir(), pigDir = pigAgentDir()): HostEntry[] {
             : null;
     const currentAgentDir = host.id === 'pig' ? pigDir : agentDir;
     const tree = hostExtensionsDir(host.id, currentAgentDir);
+    const codex = host.id === 'codex' ? installedCodexPlugin() : null;
     // A tree wins: the installer writes it and it carries no package.json, so its version is ours. OpenCode keeps no package to fall back to, so a present tree is the install and drift gets the per-host warning. DeepSeek Harness has no tree: the tersio package is mounted as a dsh bundle, and the mounted package dir is the install.
-    const via = host.id === 'dsh'
-      ? pkgDir && existsSync(pkgDir) ? 'package' : null
-      : missingTreeFiles(host.id, currentAgentDir).length === 0 || (host.id === 'opencode' && existsSync(tree))
-        ? 'tree'
-        : pkgDir && existsSync(pkgDir) ? 'package' : null;
+    let via: HostEntry['via'] = null;
+    if (host.id === 'codex') {
+      if (codex?.complete && codex.enabled) via = 'plugin';
+    } else if (host.id === 'dsh') {
+      if (pkgDir && existsSync(pkgDir)) via = 'package';
+    } else if (missingTreeFiles(host.id, currentAgentDir).length === 0 || (host.id === 'opencode' && existsSync(tree))) {
+      via = 'tree';
+    } else if (pkgDir && existsSync(pkgDir)) {
+      via = 'package';
+    }
     return {
       ...host,
       installed: via !== null,
@@ -322,9 +339,11 @@ function detect(agentDir = piAgentDir(), pigDir = pigAgentDir()): HostEntry[] {
             ? pigTersioSource(pigDir)
             : host.id === 'dsh'
               ? (pkgDir && existsSync(pkgDir) ? 'dsh bundle' : null)
-              : existsSync(tree) ? 'plugin tree' : opencodePluginDeclared() ? 'plugin entry' : null,
-      version: via === 'tree' ? PACKAGE_VERSION : via === 'package' && pkgDir ? packageVersion(pkgDir) : null,
-      dir: via === 'tree' ? tree : via === 'package' ? pkgDir : null,
+              : host.id === 'codex'
+                ? (codex?.dir ? codex.enabled ? 'Codex plugin' : 'Codex plugin cache (disabled)' : null)
+                : existsSync(tree) ? 'plugin tree' : opencodePluginDeclared() ? 'plugin entry' : null,
+      version: via === 'tree' ? PACKAGE_VERSION : via === 'package' && pkgDir ? packageVersion(pkgDir) : via === 'plugin' ? codex?.version ?? null : null,
+      dir: via === 'tree' ? tree : via === 'package' ? pkgDir : via === 'plugin' ? codex?.dir ?? null : null,
     };
   });
 }
@@ -339,7 +358,7 @@ export function hostLabel(host: HostEntry): string {
 
 // Hints render inline, so menus name the install and doctor keeps the path.
 export function hostHint(host: HostEntry): string {
-  if (host.installed && host.via) return host.via === 'tree' ? 'extension tree' : 'plugin package';
+  if (host.installed && host.via) return host.via === 'tree' ? 'extension tree' : host.via === 'plugin' ? 'Codex plugin' : 'plugin package';
   return host.installCmd;
 }
 
@@ -348,13 +367,13 @@ export function hostOptions(hosts: HostEntry[]): Array<{ value: string; label: s
   return hosts.map((host) => ({ value: host.id, label: hostLabel(host), hint: hostHint(host) }));
 }
 
-// `--host omp|pi|opencode|pig|dsh` from raw argv, undefined when absent; throws on an unknown value so the caller exits(1).
+// `--host omp|pi|opencode|pig|dsh|codex` from raw argv, undefined when absent; throws on an unknown value so the caller exits(1).
 export function parseHostArg(argv: string[]): HostId | undefined {
   const i = argv.indexOf('--host');
   const raw = (i === -1 ? undefined : argv[i + 1]) ?? argv.find((a) => a.startsWith('--host='))?.slice('--host='.length);
   if (raw === undefined) return undefined;
   const value = raw.trim().toLowerCase();
-  if (value !== 'omp' && value !== 'pi' && value !== 'opencode' && value !== 'pig' && value !== 'dsh') throw new Error(`Invalid --host: ${raw}. Valid: omp, pi, opencode, pig, dsh`);
+  if (value !== 'omp' && value !== 'pi' && value !== 'opencode' && value !== 'pig' && value !== 'dsh' && value !== 'codex') throw new Error(`Invalid --host: ${raw}. Valid: omp, pi, opencode, pig, dsh, codex`);
   return value;
 }
 

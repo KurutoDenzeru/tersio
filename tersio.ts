@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Install Tersio add-ons on any OMP device; see help for commands.
 import {
-  PACKAGE_BIN, PACKAGE_VERSION, applyUpdate, commandArg, dashboard, dashboardBind, dashboardExport, dashboardOpen, dashboardPort, dashboardWatch, doctor, mcp, showHelp, showVersion, uninstall, unknownCommand, update, upstream,
+  PACKAGE_BIN, PACKAGE_VERSION, applyUpdate, codexHook, commandArg, dashboard, dashboardBind, dashboardExport, dashboardOpen, dashboardPort, dashboardWatch, doctor, mcp, modes, showHelp, showVersion, uninstall, unknownCommand, update, upstream,
   currency,
 } from './cli/common.ts';
 import { closeRL } from './cli/interactive.ts';
@@ -12,11 +12,12 @@ function printHelp(): void {
   console.log(`Usage: ${PACKAGE_BIN} [command] [options]
 
 Commands:
-  install      Install the add-ons for one agent (--host omp|pi|opencode|pig, or ask at a terminal)
+  install      Install the add-ons for one agent (--host omp|pi|opencode|pig|dsh|codex, or ask at a terminal)
   update       Refresh the CLI and add-ons (RTK binary, Caveman rule, Ponytail; --host limits to one agent)
   doctor       Check the current installation (--fix repairs, --dry-run previews)
   dashboard     Open the Dashboard (every interface, so a phone can reach it)
   mcp           Start the Tersio MCP server on stdio, for any MCP client
+  modes         Read or set session defaults, scoped with --host
   uninstall    Remove the managed extensions
   version      Print the package version
   help         Show this help
@@ -24,7 +25,7 @@ Commands:
 Options:
   --fix (doctor: repairs all; --fix=<scope> repairs one of extensions, registrations, rtk, ponytail, cli, service)
   --scope user (legacy; accepted and ignored — user scope is the only scope)
-  --host omp|pi|opencode|pig (install|uninstall|update: target agent; a terminal asks instead)
+  --host omp|pi|opencode|pig|dsh|codex (install|uninstall|update: target agent; a terminal asks instead)
   --keep-ponytail (uninstall: keep the bundled Ponytail copy — removed by default)
   --remove-rtk (uninstall: also remove the RTK binary; its OMP wiring always goes)
   --combo-default off|lite|balanced|max (implies caveman, rtk, ponytail)
@@ -64,6 +65,12 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (codexHook) {
+    const { runCodexHook } = await import('./cli/codex-hook.ts');
+    await runCodexHook(process.argv[3]);
+    return;
+  }
+
   if (unknownCommand) {
     console.error(`Unknown command: ${commandArg}`);
     printHelp();
@@ -82,6 +89,13 @@ async function main(): Promise<void> {
   if (mcp) {
     const { runMcpServer } = await import('./cli/mcp.ts');
     await runMcpServer();
+    closeRL();
+    return;
+  }
+
+  if (modes) {
+    const { runModes } = await import('./cli/modes.ts');
+    await runModes(process.argv.slice(3));
     closeRL();
     return;
   }

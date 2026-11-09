@@ -47,14 +47,21 @@ function projectExpr(file: string): string {
   return `CASE WHEN ${at} > 0 THEN ${seg} ELSE ${dirBase} END`;
 }
 
+/** A Codex row names its working directory; stores written before that column fall back to the transcript path. */
+export function folderExpr(hasCwd: boolean): string {
+  return hasCwd
+    ? `CASE WHEN m.cwd IS NOT NULL AND m.cwd <> '' THEN m.cwd ELSE ${projectExpr(FILE_KEY)} END`
+    : projectExpr(FILE_KEY);
+}
+
 /** Every column a query reads, mapped to the store's schema in one place. */
 export const COL = {
   session: FILE_KEY,
   entry: `COALESCE(m.id, '')`,
-  folder: projectExpr(FILE_KEY),
+  folder: folderExpr(true),
   model: 'm.model',
   provider: providerExpr('m.model', 'm.p'),
-  api: "''",
+  api: `CASE WHEN m.h = 'codex' THEN 'responses' ELSE '' END`,
   timestamp: 'm.t',
   bucket: `CAST(COALESCE(m.t, 0) AS INTEGER)`,
   duration: 'm.d',

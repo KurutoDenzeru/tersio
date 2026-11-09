@@ -76,7 +76,7 @@ function flagValue(name: string): string | undefined {
   return args.find((arg) => arg.startsWith(prefix))?.slice(prefix.length);
 }
 
-const COMMANDS: Record<string, true> = { install: true, update: true, doctor: true, uninstall: true, dashboard: true, upstream: true, mcp: true, version: true, help: true };
+const COMMANDS: Record<string, true> = { install: true, update: true, doctor: true, uninstall: true, dashboard: true, upstream: true, mcp: true, modes: true, 'codex-hook': true, version: true, help: true };
 /** Flags whose next token is a value, so `--host omp` never reads `omp` as the command. */
 const VALUE_FLAGS = new Set([
   '--host', '--bind', '--port', '--export', '--currency', '--scope', '--write',
@@ -101,6 +101,8 @@ const doctor = command === 'doctor' || args.includes('--doctor');
 const fix = args.includes('--fix') || args.some((a) => a.startsWith('--fix='));
 const dashboard = command === 'dashboard';
 const mcp = command === 'mcp';
+const modes = command === 'modes';
+const codexHook = command === 'codex-hook';
 const upstream = command === 'upstream' || args.includes('--upstream');
 const dashboardPort = Number.parseInt(flagValue('--port') ?? '', 10) || 0;
 // The dashboard listens on loopback unless asked otherwise: `--lan`, `--bind <addr>`, or `--host lan`. `--host` names an agent for install, so only a value that is not an agent id reads as an address.
@@ -109,7 +111,7 @@ const dashboardBind = args.includes('--local')
   ? '127.0.0.1'
   : args.includes('--lan')
     ? 'lan'
-    : flagValue('--bind') ?? (hostArg && !['omp', 'pi', 'pig', 'opencode'].includes(hostArg) ? hostArg : null);
+    : flagValue('--bind') ?? (hostArg && !['omp', 'pi', 'pig', 'opencode', 'dsh', 'codex'].includes(hostArg) ? hostArg : null);
 const dashboardOpen = args.includes('--open');
 // Watch mode: the server supervises a child that restarts on source change, and vite rebuilds the UI.
 const dashboardWatch = args.includes('--watch');
@@ -414,7 +416,7 @@ export {
   IS_WINDOWS, RTK_BINARY_NAME, HOME, OMP_AGENT_DIR, OMP_PLUGINS_DIR, BUN_BIN_DIR, OMP_BIN, NPM_BIN, BUN_BIN,
   PACKAGE_NAME, PACKAGE_BIN, PACKAGE_VERSION,
   CAVEMAN_DEFAULTS, PONYTAIL_DEFAULTS, PSTACK_DEFAULTS, HEADROOM_DEFAULTS, RTK_DEFAULTS, COMBO_PRESET_MODES, COMBO_DEFAULTS, ACCENT_DEFAULTS,
-  parseEnum, flagValue, COMMANDS, commandArg, command, unknownCommand, mcp,
+  parseEnum, flagValue, COMMANDS, commandArg, command, unknownCommand, mcp, modes, codexHook,
   install, update, showVersion, showHelp, applyUpdate, args,
   dryRun, yes, assumeYes, verbose, doctor, fix, uninstall, dashboard, upstream,
   dashboardPort, dashboardBind, dashboardOpen, dashboardWatch, dashboardExport, currency, currencyGiven,

@@ -456,3 +456,8 @@ The entries below are editing and verification discipline. No test, lint rule, o
 **What happened:** the DSH status bar never mounted, and I told the user the Host had cached tersio's package metadata at boot and needed a restart. A restart did not fix it; the real cause was the Loader row naming `@krtclcdy/tersio/dsh-plugin`, a subpath.
 **Root cause:** `dsh-client-modules` composes a client half only from a row whose specifier names the package root. `exactPackageSpecifier()` returns `undefined` for a subpath, so metadata resolved to `null` and the row was skipped with no error. Reading the served boot graph (`clientModules.graph().entries`) proved the row was absent; the restart claim had no evidence behind it.
 **Prevention rule:** when a client plugin does not mount, read the live boot graph before proposing a restart. A plain-JS client bundle also needs the row to be the bare package name, so keep such a row on the package root and give the package a `"."` export.
+
+## 2026-11-08 — Codex was invoked before its config directory existed
+**What happened:** the first real `tersio install --host codex` run failed its plugin step because `CODEX_HOME` named a temporary directory that did not exist yet. Dry-run and the unit tests only checked the argv, so both passed.
+**Root cause:** the host CLI was treated as a command that creates the user home while running. Codex resolves `CODEX_HOME` before that and refuses a missing path.
+**Prevention rule:** for every host CLI, create or verify its config root before the first invocation, then run at least one non-dry-run lifecycle test under an empty temporary home.

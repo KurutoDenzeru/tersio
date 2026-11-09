@@ -1,0 +1,17 @@
+{
+  "description": "Inject Tersio's active mode rules before each Codex turn.",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "tersio codex-hook user-prompt-submit",
+            "statusMessage": "Refreshing Tersio modes",
+            "additionalContextLimit": 12000
+          }
+        ]
+      }
+    ]
+  }
+}

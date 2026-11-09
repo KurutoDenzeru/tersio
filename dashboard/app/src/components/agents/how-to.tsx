@@ -14,7 +14,7 @@ import type { HostAction, HostState, NodeId } from "./pipeline-model";
 
 export function HowToPage({ modes, onModesChanged }: { modes: ModeState | null; onModesChanged: () => void }) {
   const toast = useToast();
-  const [hostState, setHostState] = useState<HostState>({ installed: {}, present: {}, versions: {} });
+  const [hostState, setHostState] = useState<HostState>({ installed: {}, present: {}, versions: {}, modeVersions: {} });
   const [headroomRoutes, setHeadroomRoutes] = useState<Record<string, boolean>>({});
   const [busy, setBusy] = useState<NodeId | null>(null);
   const [hostsLoaded, setHostsLoaded] = useState(false);
@@ -37,17 +37,22 @@ export function HowToPage({ modes, onModesChanged }: { modes: ModeState | null; 
       .finally(() => setHostsLoaded(true));
     void fetchHealth().then((report) => {
       if (!report) return;
-      const versions = { omp: versionOf(report.omp), pi: versionOf(report.pi), pig: versionOf(report.pig), opencode: versionOf(report.opencode) };
+      const versions = { omp: versionOf(report.omp), pi: versionOf(report.pi), pig: versionOf(report.pig), opencode: versionOf(report.opencode), dsh: versionOf(report.dsh), codex: versionOf(report.codex) };
       // Presence is the resolved binary, not the probe: a probe can fail while the harness is there.
-      const paths = { omp: report.ompPath, pi: report.piPath, pig: report.pigPath, opencode: report.opencodePath };
-      setHostState((s) => ({ ...s, versions, present: Object.fromEntries(Object.entries(paths).map(([id, p]) => [id, Boolean(p)])) }));
+      const paths = { omp: report.ompPath, pi: report.piPath, pig: report.pigPath, opencode: report.opencodePath, dsh: report.dshPath, codex: report.codexPath };
+      setHostState((s) => ({
+        ...s,
+        versions,
+        present: Object.fromEntries(Object.entries(paths).map(([id, p]) => [id, Boolean(p)])),
+        modeVersions: report.modeVersions ?? {},
+      }));
     });
     readRoutes();
     window.addEventListener("tersio:wrap-changed", readRoutes);
     return () => window.removeEventListener("tersio:wrap-changed", readRoutes);
   }, []);
 
-  const save = (node: NodeId, field: string, value: string | boolean, host?: "omp" | "pi" | "pig" | "opencode" | "dsh"): void => {
+  const save = (node: NodeId, field: string, value: string | boolean, host?: "omp" | "pi" | "pig" | "opencode" | "dsh" | "codex"): void => {
     setBusy(node);
     void fetch("/settings", {
       method: "POST",
@@ -99,7 +104,7 @@ export function HowToPage({ modes, onModesChanged }: { modes: ModeState | null; 
               });
               void fetchHealth().then((report) => {
                 if (!report) return;
-                const version = versionOf(report[host as "omp" | "pi" | "pig" | "opencode"]);
+                const version = versionOf(report[host as "omp" | "pi" | "pig" | "opencode" | "codex"]);
                 if (version) setHostState((s) => ({ ...s, versions: { ...s.versions, [host]: version } }));
               });
               void fetchRoutes().then((state) => {
@@ -131,7 +136,7 @@ export function HowToPage({ modes, onModesChanged }: { modes: ModeState | null; 
           <h1 className="font-display text-lg leading-tight font-bold tracking-tight">Quick start</h1>
           <p className="mono mt-1 hidden text-[11px] leading-snug text-dim max-sm:block">drag to pan · pinch to zoom · tap a node for options</p>
           <p className="mono mt-1 text-[11px] leading-snug text-dim max-sm:hidden">
-            One package, four agents, five modes — the path a turn takes from your prompt to the reply.
+            One package, six agents, five modes — the path a turn takes from your prompt to the reply.
             Drag the nodes, and the flow follows; click one for its options. A dimmed node is off or uninstalled.
           </p>
         </div>
@@ -141,6 +146,7 @@ export function HowToPage({ modes, onModesChanged }: { modes: ModeState | null; 
           <PipelineCanvas
             modes={modes}
             hostState={hostState}
+            loaded={!pipelinePending}
             headroomRoutes={headroomRoutes}
             onSet={save}
             onHostAction={hostAction}
@@ -161,6 +167,7 @@ export function HowToPage({ modes, onModesChanged }: { modes: ModeState | null; 
         open={addOpen}
         onOpenChange={setAddOpen}
         hostState={hostState}
+        loaded={!pipelinePending}
         busy={busy}
         onInstall={(host) => hostAction(`host-${host}` as NodeId, "install")}
       />

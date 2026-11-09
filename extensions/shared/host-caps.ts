@@ -4,8 +4,11 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { homeDir, piAgentDir, pigAgentDir } from './utils.ts';
+import { codexPluginInstalled } from './codex-state.ts';
 
-export type HostId = 'omp' | 'pi' | 'opencode' | 'pig' | 'dsh';
+export type HostId = 'omp' | 'pi' | 'opencode' | 'pig' | 'dsh' | 'codex';
+
+type McpShape = 'mcpServers' | 'mcp' | 'plugin';
 
 export interface HostCap {
   id: HostId;
@@ -14,7 +17,7 @@ export interface HostCap {
   installCmd: string;
   removeCmd: string;
   /** The MCP config shape, or null when the host has none Tersio writes. */
-  mcp: 'mcpServers' | 'mcp' | null;
+  mcp: McpShape | null;
   /** The MCP file at call time, so a redirected HOME is honored. */
   mcpFile: () => string | null;
   /** The MCP entry rides inside the plugin bundle, so read that instead of a config file. */
@@ -97,6 +100,12 @@ export const HOST_CAPS: Record<HostId, HostCap> = {
     installCmd: 'dsh plugin --profile web add npm:@krtclcdy/tersio', removeCmd: 'dsh plugin --profile web remove @krtclcdy/tersio',
     mcp: null, mcpFile: () => null, mcpBundle: dshBundleMounted,
     rtkAgent: null, headroom: true,
+  },
+  codex: {
+    id: 'codex', label: 'Codex', bin: 'codex',
+    installCmd: 'tersio install --host codex', removeCmd: 'tersio uninstall --host codex',
+    mcp: 'plugin', mcpFile: () => null, mcpBundle: codexPluginInstalled,
+    rtkAgent: null, headroom: true, headroomDurable: true,
   },
 };
 

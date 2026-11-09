@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { defaultOmpModel, headroomProxyUrl, ompCachedEndpoint, ompConfigFile, ompModelsFile, ompProviderNames, opencodeConfigFiles } from './headroom-proxy.ts';
 import { piCatalogEndpoint } from './headroom-agent.ts';
+import { codexConfigFile } from './codex-state.ts';
 
 export { defaultOmpModel };
 import { homeDir, piAgentDir, pigAgentDir } from './utils.ts';
@@ -298,6 +299,75 @@ function readOpencodeRoute(proxyUrl: string): HeadroomRoute {
   return emptyRoute('opencode', proxyUrl, 'no opencode config found');
 }
 
+/** A TOML value from the small subset Codex's config uses: strings, with an optional trailing comment. */
+function tomlValue(raw: string): string {
+  let value = raw.trim();
+  let quote = '';
+  for (let i = 0; i < value.length; i += 1) {
+    const char = value[i];
+    if (quote) {
+      if (char === '\\') i += 1;
+      else if (char === quote) quote = '';
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      quote = char;
+      continue;
+    }
+    if (char === '#') {
+      value = value.slice(0, i).trim();
+      break;
+    }
+  }
+  return unquote(value);
+}
+
+/** Root keys and model-provider blocks from Codex's TOML config. */
+export function codexRouteFrom(text: string, proxyUrl: string): HeadroomRoute {
+  const root: Record<string, string> = {};
+  const blocks = new Map<string, Record<string, string>>();
+  let section = '';
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const header = trimmed.match(/^\[([^\]]+)]$/);
+    if (header) {
+      section = header[1]!;
+      if (!blocks.has(section)) blocks.set(section, {});
+      continue;
+    }
+    const at = trimmed.indexOf('=');
+    if (at < 0) continue;
+    const key = trimmed.slice(0, at).trim();
+    const value = tomlValue(trimmed.slice(at + 1));
+    if (section === '') root[key] = value;
+    else blocks.get(section)![key] = value;
+  }
+  const model = root.model ?? '';
+  const provider = root.model_provider
+    || (model.includes('/') ? model.slice(0, model.indexOf('/')) : 'openai');
+  const block = blocks.get(`model_providers.${provider}`) ?? {};
+  const baseUrl = block.base_url || root.openai_base_url || null;
+  return {
+    measured: true,
+    failure: '',
+    host: 'codex',
+    proxyUrl,
+    model,
+    provider,
+    baseUrl,
+    routed: baseUrl ? sameProxyEndpoint(baseUrl, proxyUrl) : false,
+  };
+}
+
+function readCodexRoute(proxyUrl: string): HeadroomRoute {
+  try {
+    return codexRouteFrom(fs.readFileSync(codexConfigFile(), 'utf8'), proxyUrl);
+  } catch (e) {
+    return emptyRoute('codex', proxyUrl, (e as Error).message);
+  }
+}
+
 /** Pi and PiG keep the active provider beside the model list; both use the same shape. */
 export function piRouteFrom(settingsText: string, modelsText: string, host: string, proxyUrl: string): HeadroomRoute {
   let settings: Record<string, unknown>;
@@ -496,6 +566,7 @@ const ROUTE_READERS: Record<string, (proxyUrl: string) => HeadroomRoute> = {
   pi: (proxyUrl) => readPiRoute('pi', proxyUrl),
   pig: (proxyUrl) => readPiRoute('pig', proxyUrl),
   dsh: readDshRoute,
+  codex: readCodexRoute,
 };
 
 /** Whether the host's active model reaches the proxy. Unmeasured beats a guessed yes. */
