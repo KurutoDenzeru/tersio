@@ -76,10 +76,15 @@ function readSourcePlugin(rel: string): string {
  * The local marketplace with absolute launch commands. The repo marketplace stays the distributable
  * copy; this one makes the plugin work when Codex is launched without a shell PATH.
  */
-export function codexLocalPluginFiles(runtime = process.execPath, cli = process.argv[1] ?? ''): Record<string, string> {
+/** The one command both hook surfaces run, so the plugin copy and the user-level copy cannot drift. */
+export function codexHookCommand(runtime = process.execPath, cli = process.argv[1] ?? ''): string {
   if (!isAbsolute(cli)) throw new Error('Codex plugin needs an absolute CLI path');
+  return `"${runtime}" "${cli}" codex-hook user-prompt-submit`;
+}
+
+export function codexLocalPluginFiles(runtime = process.execPath, cli = process.argv[1] ?? ''): Record<string, string> {
   const cliPath = cli;
-  const hookCommand = `"${runtime}" "${cliPath}" codex-hook user-prompt-submit`;
+  const hookCommand = codexHookCommand(runtime, cli);
   const mcp = readSourceJson<{
     $schema?: string;
     mcpServers?: Record<string, Record<string, unknown>>;

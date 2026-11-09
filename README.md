@@ -56,7 +56,7 @@ tersio install --host omp   # Oh My Pi, non-interactive
 tersio install --host opencode  # OpenCode, non-interactive
 tersio install --host pig   # Pi-in-go (PiG), non-interactive
 tersio install --host dsh   # DeepSeek Harness — mounts the bundle into every dsh profile
-tersio install --host codex # Codex — installs the portable plugin, MCP server, skills, and prompt fallbacks
+tersio install --host codex # Codex — plugin, MCP server, skills, prompt hook, and /prompts fallbacks
 ```
 
 Or let each host install the package itself:
@@ -73,11 +73,13 @@ codex plugin add tersio@tersio
 
 The DeepSeek Harness desktop app installs through its Plugins pane instead: **Add plugin** → paste `@krtclcdy/tersio`, or a local checkout path while the bundle field is unreleased → restart the app. `dsh plugin` refuses the `desktop` profile by design, and `tersio install --host dsh` never writes it.
 
-Codex v1 ships Caveman, Ponytail, pstack, per-mode skills, Tersio MCP, usage stats, and Headroom routing through Headroom's own `init codex`. It does not wire RTK yet. After installing, restart Codex and review the Tersio hook in `/hooks`.
+Codex v1 ships Caveman, Ponytail, pstack, Headroom, per-mode skills, Tersio MCP, usage stats, and Headroom routing through Headroom's own `init codex`. It does not wire RTK yet. After installing, restart Codex and approve the Tersio prompt hook in `/hooks`.
+
+The two Codex routes differ. `codex plugin add` installs the plugin, its skills, and the MCP server, but current Codex removed plugin-declared hooks, so the slash commands reach the model and cost a turn. `tersio install --host codex` writes the same plugin plus the prompt hook in `~/.codex/hooks.json`, which is what makes `/combo lite` answer instantly. Run that one if you want the slash commands.
 
 Pick one install method per host, not both. Using both registers every command twice.
 
-OMP, pi, PiG, and OpenCode load the same extension tree; DeepSeek Harness mounts the package as a bundle; Codex loads the plugin hooks, MCP server, per-mode skills, and prompt fallbacks. Every host reads its session-start defaults from `~/.tersio/settings.json`.
+OMP, pi, PiG, and OpenCode load the same extension tree; DeepSeek Harness mounts the package as a bundle; Codex loads the plugin, the prompt hook in `~/.codex/hooks.json`, MCP server, and per-mode skills. Every host reads its session-start defaults from `~/.tersio/settings.json`.
 
 One-off use without installing:
 
