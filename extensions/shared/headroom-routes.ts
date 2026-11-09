@@ -233,11 +233,14 @@ export async function routeCodexHeadroom(proxyUrl: string = headroomProxyUrl()):
   if (!installed.ok) return installed;
   const backup = readCodexBackup();
   const after = codexConfigText();
+  // Codex appends `/responses` to this URL, and the proxy only upgrades the `/v1` path to a
+  // WebSocket. A root URL answers 403 on the upgrade before Codex falls back to HTTPS.
+  const openaiBase = nativeProxyUrl('openai', proxyUrl);
   if (backup && after !== null) {
     let routed = removeTomlSection(after, 'model_providers.openai');
-    routed = restoreCodexRoot(routed, { ...backup, openaiBaseUrl: proxyUrl, openaiBaseUrlPresent: true });
+    routed = restoreCodexRoot(routed, { ...backup, openaiBaseUrl: openaiBase, openaiBaseUrlPresent: true });
     if (backup.provider && backup.provider !== 'headroom') {
-      routed = setTomlSectionValue(routed, `model_providers.${backup.provider}`, 'base_url', proxyUrl);
+      routed = setTomlSectionValue(routed, `model_providers.${backup.provider}`, 'base_url', openaiBase);
     }
     writeFileSync(codexConfigFile(), routed, 'utf8');
   }
