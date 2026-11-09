@@ -329,9 +329,13 @@ export function codexSlashCommand(
   return { patch: {}, message: 'Tersio: use /combo, /caveman, /ponytail, /pstack, /rtk, or /headroom.' };
 }
 
-/** A blocked command answers with the status line, so a mode change paints the same bar DSH has. */
+/**
+ * A blocked command answers with the status line, so a mode change paints the same bar DSH has.
+ * Codex renders `reason` for a blocked message and drops `systemMessage`, so the bar rides the
+ * reason: a second line is the only way it reaches the transcript.
+ */
 export function codexBlockOutput(message: string, status?: string): Record<string, unknown> {
-  return { decision: 'block', reason: message, ...(status ? { systemMessage: status } : {}) };
+  return { decision: 'block', reason: status ? `${message}\n\n${status}` : message };
 }
 
 /** The JSON Codex expects from a prompt hook. Empty context and no status is a successful no-op. */
