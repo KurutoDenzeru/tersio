@@ -4,14 +4,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CellBar, Page, PageHeader, PagedTable, Stat, StatGrid, TimeChart } from "@/components/charts";
 import type { Column } from "@/components/charts";
-import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import type { ChartConfig } from "@/components/ui/chart";
 import { EmptyState } from "@/components/common";
 import { Icon } from "@/components/icon";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePending } from "@/hooks/use-pending";
 import { AgentLogo } from "@/components/agent-logos";
-import { Bar, BarChart, CartesianGrid, PolarAngleAxis, PolarGrid, PolarRadiusAxis, Radar, RadarChart, XAxis, YAxis } from "recharts";
+import { PolarAngleAxis, PolarGrid, PolarRadiusAxis, Radar, RadarChart } from "recharts";
 import { fmt } from "@/lib/format";
 import { useToast } from "../toaster";
 
@@ -84,23 +84,6 @@ interface HistoryPoint {
 const GLYPH: Record<string, string> = { Caveman: "🪨", RTK: "🗜️", Ponytail: "🧠", pstack: "🥔", Headroom: "🍃" };
 
 const AGENT_NAME: Record<string, string> = { omp: "Oh My Pi", pi: "pi", pig: "PiG", opencode: "OpenCode", dsh: "DeepSeek Harness", codex: "Codex" };
-/** The chart axis labels rows by name, so the mark needs the way back. */
-const HOST_OF_LABEL: Record<string, string> = Object.fromEntries(
-  Object.entries(AGENT_NAME).map(([host, name]) => [name, host]),
-);
-
-/** A category tick that draws the agent's own mark: the caption and aria-label keep the names. */
-function AgentTick({ x = 0, y = 0, payload }: { x?: number; y?: number; payload?: { value?: string } }) {
-  return (
-    <g transform={`translate(${x},${y})`}>
-      <foreignObject x={-22} y={-9} width={18} height={18}>
-        <div className="flex size-full items-center justify-center">
-          <AgentLogo host={HOST_OF_LABEL[payload?.value ?? ""]} className="size-4" />
-        </div>
-      </foreignObject>
-    </g>
-  );
-}
 
 /** The name a row shows for a Tersio host. */
 function agentLabel(host: string): string {
@@ -118,11 +101,6 @@ const STATUS: Record<string, { variant: "success" | "outline" | "destructive"; c
 const BADGE_FALLBACK = { variant: "outline" as const, className: "mono border-line text-dim", label: "unmeasured" };
 
 const SCORE_CONFIG = { score: { label: "Accuracy", color: "var(--accent)" } } satisfies ChartConfig;
-const COPY_CONFIG = {
-  matched: { label: "Matches", color: "var(--accent)" },
-  stale: { label: "Stale", color: "var(--warn-border)" },
-  missing: { label: "Missing", color: "var(--danger)" },
-} satisfies ChartConfig;
 
 /** A port's pin, shortened to the seven characters a commit is named by. */
 function shortPin(row: SourceRow): string {
@@ -378,13 +356,17 @@ const AGENT_COLUMNS: Array<Column<HostRow>> = [
       </span>
     ),
   },
-  { key: "files", header: "Files", align: "right", sort: (r) => r.files, render: (r) => <span className="mono tabular-nums">{fmt(r.files)}</span> },
   {
-    key: "matched",
-    header: "Matched",
+    key: "carried",
+    header: "Carried",
     align: "right",
     sort: (r) => r.matched / Math.max(1, r.files),
-    render: (r) => <MatchCell value={r.matched} max={r.files} />,
+    render: (r) => (
+      <span className="flex items-center justify-end gap-2">
+        <span className="mono text-[11px] tabular-nums text-dim">{fmt(r.matched)}/{fmt(r.files)}</span>
+        <MatchCell value={r.matched} max={r.files} />
+      </span>
+    ),
   },
   {
     key: "state",
@@ -649,20 +631,35 @@ ${fmt(gaps.length)} local gaps · ${fmt(totalUncarried)} uncarried`}</pre>
               className="lg:col-span-2"
             >
               <figure className="m-0">
-                <ChartContainer config={COPY_CONFIG} className="h-[190px] w-full" role="img" aria-label="Files per agent, split by match, stale, and missing">
-                  <BarChart data={agentRows} layout="vertical" margin={{ top: 4, right: 12, bottom: 0, left: 4 }}>
-                    <CartesianGrid horizontal={false} stroke="var(--line)" />
-                    <XAxis type="number" tickLine={false} axisLine={false} allowDecimals={false} tick={{ fill: "var(--dim)", fontSize: 11 }} />
-                    <YAxis type="category" dataKey="label" width={30} tickLine={false} axisLine={false} tick={<AgentTick />} />
-                    <ChartTooltip content={<ChartTooltipContent />} />
-                    <Bar dataKey="matched" stackId="copies" fill="var(--color-matched)" isAnimationActive={false} />
-                    <Bar dataKey="stale" stackId="copies" fill="var(--color-stale)" isAnimationActive={false} />
-                    <Bar dataKey="missing" stackId="copies" fill="var(--color-missing)" radius={[0, 3, 3, 0]} isAnimationActive={false} />
-                    <ChartLegend content={<ChartLegendContent />} />
-                  </BarChart>
-                </ChartContainer>
-                <figcaption className="mono mt-1 text-[11px] text-dim">
-                  {agentRows.map((row) => `${row.label} ${row.matched}/${row.matched + row.stale + row.missing + row.rest}`).join(" · ")}
+                {/* Plain rows rather than an SVG chart: a masked brand mark cannot paint inside a
+                    foreignObject, and rows grow with the host table instead of a fixed plot height. */}
+                <ul className="m-0 grid list-none gap-1.5 p-0">
+                  {agentRows.map((row) => {
+                    const total = Math.max(1, row.matched + row.stale + row.missing + row.rest);
+                    return (
+                      <li key={row.host} title={row.label} className="flex items-center gap-2">
+                        <AgentLogo host={row.host} className="size-4 shrink-0" />
+                        <span
+                          className="flex h-4 min-w-0 flex-1 overflow-hidden rounded-sm bg-track/40"
+                          role="img"
+                          aria-label={`${row.label}: ${row.matched} of ${total} files match`}
+                        >
+                          <span className="bg-[var(--accent)]" style={{ width: `${(row.matched / total) * 100}%` }} />
+                          <span className="bg-[var(--warn-border)]" style={{ width: `${(row.stale / total) * 100}%` }} />
+                          <span className="bg-[var(--danger)]" style={{ width: `${(row.missing / total) * 100}%` }} />
+                        </span>
+                        <span className="mono w-24 shrink-0 text-right text-[11px] tabular-nums text-dim">
+                          {fmt(row.matched)}/{fmt(total)}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <figcaption className="mono mt-2 flex flex-wrap items-center gap-3 text-[11px] text-dim">
+                  <span className="flex items-center gap-1"><span aria-hidden="true" className="size-1.5 rounded-full bg-accent" />Matches</span>
+                  <span className="flex items-center gap-1"><span aria-hidden="true" className="size-1.5 rounded-full bg-[var(--warn-border)]" />Stale</span>
+                  <span className="flex items-center gap-1"><span aria-hidden="true" className="size-1.5 rounded-full bg-[var(--danger)]" />Missing</span>
+                  <span className="ml-auto">scored against each agent's own file count</span>
                 </figcaption>
               </figure>
             </Card>
