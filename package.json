@@ -1,7 +1,7 @@
 {
   "name": "@krtclcdy/tersio",
   "version": "2.25.19",
-  "description": "\u2702\ufe0f Token saver and usage tracker for coding agents: terse Caveman replies, compact RTK shell output, lean Ponytail code, pstack rigor, Headroom compression, and a gain dashboard \u2014 one-command combos over one shared extension tree.",
+  "description": "✂️ Token saver and usage tracker for coding agents: terse Caveman replies, compact RTK shell output, lean Ponytail code, pstack rigor, Headroom compression, and a gain dashboard — one-command combos over one shared extension tree.",
   "keywords": [
     "token-saving",
     "ai-tools",
@@ -38,7 +38,9 @@
     "client": {
       "platform": "web",
       "immediately": true,
-      "inject": ["@deepseek-ai/dsh-client-ui-conversation"]
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-conversation"
+      ]
     }
   },
   "pi": {
@@ -204,6 +206,8 @@
     "lint": "oxlint cli extensions test tersio.ts",
     "lint:dashboard": "bun run --cwd dashboard/app lint",
     "lint:fix": "oxlint cli extensions test tersio.ts --fix",
+    "format": "oxfmt cli extensions test bench tersio.ts",
+    "format:check": "oxfmt --check cli extensions test bench tersio.ts",
     "test": "vitest run",
     "bench": "vitest bench",
     "dev": "bun tersio.ts dashboard --watch"
