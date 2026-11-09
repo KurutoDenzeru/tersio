@@ -1,6 +1,7 @@
 ## Unreleased
 
 ### Added
+- `/headroom on|off|status` is now a Codex slash command, with its own prompt file and `$headroom` skill. It stores the same `headroomDefault` the CLI writes and says the endpoint route applies at install or from the dashboard switch, because moving the route needs the running proxy.
 - A literal `/combo lite` answers in Tersio's prompt hook instead of the model: the mode applies and the command returns before a turn starts, with no network round trip.
 - Codex's prompt hook returns a `systemMessage` on every turn: the same `🧩 LITE | 🪨 caveman:LITE | …` combo line the DSH bar and the CLI print. Codex Desktop exposes no plugin status bar, so the hook result is the surface.
 - `/combo help` lists the presets and changes nothing.

@@ -17,6 +17,7 @@ export const CODEX_PLUGIN_FILES = [
   'skills/ponytail/SKILL.md',
   'skills/pstack/SKILL.md',
   'skills/rtk/SKILL.md',
+  'skills/headroom/SKILL.md',
   'skills/tersio/SKILL.md',
   'skills/tersio-modes/SKILL.md',
 ] as const;

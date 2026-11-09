@@ -31,7 +31,7 @@ export function codexLocalMarketplaceRoot(): string {
   return join(tersioHome(), 'codex-marketplace');
 }
 
-export const CODEX_PROMPT_NAMES = ['combo', 'caveman', 'rtk', 'ponytail', 'pstack', 'tersio'] as const;
+export const CODEX_PROMPT_NAMES = ['combo', 'caveman', 'rtk', 'ponytail', 'pstack', 'headroom', 'tersio'] as const;
 export type CodexPromptName = (typeof CODEX_PROMPT_NAMES)[number];
 /** Prefix of the marker every managed prompt and uninstall check matches, with or without a command name. */
 export const CODEX_PROMPT_MARKER = '<!-- tersio-managed prompt';
@@ -313,7 +313,19 @@ export function codexSlashCommand(
   }
   if (command === 'rtk') return { patch: {}, message: 'RTK is explanatory on Codex v1: Codex does not rewrite shell calls through Tersio.' };
   if (command === 'pstack') return { patch: {}, message: 'pstack is available through $pstack or /prompts:pstack; the literal slash hook is explanatory only.' };
-  if (command === 'headroom') return { patch: {}, message: 'Headroom for Codex is controlled from the Tersio dashboard Headroom switch.' };
+  if (command === 'headroom') {
+    const key = 'headroomDefault';
+    if (!value || value === 'status') {
+      const current = normalizeMode('headroom', readMode(key, sessionId)) ?? 'off';
+      return { patch: {}, message: `Tersio headroom is ${current}. Use /headroom on or /headroom off.` };
+    }
+    const level = normalizeMode('headroom', value);
+    if (!level) return { patch: {}, message: `Tersio headroom: unknown value "${value}". Use on or off.` };
+    return {
+      patch: { [key]: level },
+      message: `Tersio headroom set to ${level} for Codex. The endpoint route applies at install or from the dashboard switch.`,
+    };
+  }
   return { patch: {}, message: 'Tersio: use /combo, /caveman, /ponytail, /pstack, /rtk, or /headroom.' };
 }
 
