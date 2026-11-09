@@ -427,15 +427,22 @@ export function VendorFooter({
   const updateReady = phase === "update";
   const confirming = phase === "confirm-uninstall";
   const dots = <Spinner aria-hidden="true" className="size-3.5" />;
-  const check = async (): Promise<void> => {
+  // A declaration, so the effect below can call it without a dependency-order problem.
+  async function check(silent = false): Promise<void> {
     setPhase("checking");
     const found = await checkVendor(source);
     setRow(found);
     setPhase(found?.upstream && found.pin !== found.upstream ? "update" : "idle");
-    // The answer reads as a toast: the footer no longer spends a permanent line on a transient fact.
+    // The answer reads as a toast, so a silent check leaves the footer to speak for itself.
+    if (silent) return;
     if (found?.pin) toast(`${source} ${found.pin}`, found.upstream && found.upstream !== found.pin ? `latest ${found.upstream}` : "up to date", "check");
     else toast(`${source} is not installed`, "Install it from the footer below.", "circle-alert");
-  };
+  }
+
+  // Opening the drawer checks the feed once, so an available update is a button rather than a hunt.
+  useEffect(() => {
+    if (open) void check(true);
+  }, [open]);
   const runVendor = async (action: "update" | "uninstall"): Promise<void> => {
     setBusyLabel(action === "uninstall" ? `Uninstalling ${tool}` : installed ? `Updating ${tool}` : `Installing ${tool}`);
     setPhase("busy");
@@ -449,7 +456,8 @@ export function VendorFooter({
     // The job is detached, so the bar rides a health poll: it ends when the binary state flips.
     const key = tool === "headroom" ? "headroom" : "rtk";
     const wasVersion = row?.pin ?? null;
-    for (let tick = 0; tick < 30; tick += 1) {
+    // uv tool upgrade downloads and relinks, so give it longer than a version flip usually takes.
+    for (let tick = 0; tick < 90; tick += 1) {
       await new Promise((resolve) => setTimeout(resolve, 2000));
       const report = await fetchHealth();
       const state = report?.[key];
@@ -685,7 +693,8 @@ export function HeadroomDrawer({ open, onOpenChange, modes, hostState, loaded, b
             )}
             {routes?.some((target) => !target.durable) && endpoint ? (
               <p className="m-0 rounded-lg border border-line bg-track/40 px-2.5 py-2 text-[10px] leading-relaxed text-dim">
-                Pi, PiG, DeepSeek Harness, and Codex route through{" "}
+                {/* Named from the routes, so a host that keeps headroom's own block never reads as an endpoint swap. */}
+                {routes.filter((target) => !target.durable).map((target) => target.label).join(", ")} route through{" "}
                 <span className="mono text-ink">{endpoint}v1</span>. The switch saves the old endpoint and restores it.
               </p>
             ) : null}
