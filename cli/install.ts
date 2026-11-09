@@ -866,7 +866,12 @@ async function stepCodex(options: InstallOptions): Promise<void> {
   if (!state.complete || !state.enabled) {
     throw new Error(`Codex did not enable ${CODEX_PLUGIN_ID}${state.missing.length ? ` (missing: ${state.missing.join(', ')})` : ''}`);
   }
-  if (!options.quiet) console.log(`  Codex — plugin ${state.version ?? 'installed'} enabled; review hooks in /hooks`);
+  if (!options.quiet) {
+    console.log(`  Codex — plugin ${state.version ?? 'installed'} enabled`);
+    // Codex skips a hook whose recorded trust hash no longer matches, and this install re-adds the
+    // plugin, so the approval is due again. Nothing else reports that the hook is not running.
+    console.log('  Codex — open /hooks once and approve the Tersio prompt hook, or the slash commands reach the model');
+  }
 }
 
 async function runInstall(forcedHost?: HostId): Promise<void> {
