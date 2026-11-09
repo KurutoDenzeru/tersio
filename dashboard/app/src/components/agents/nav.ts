@@ -47,20 +47,26 @@ export const NAV: readonly NavGroup[] = [
       { id: "models", label: "Models", icon: "cpu", hotkey: "m", agentOnly: false },
       { id: "providers", label: "Providers", icon: "plug-zap", hotkey: "p", agentOnly: true },
       { id: "costs", label: "Costs", icon: "coins", hotkey: "c", agentOnly: true },
-      { id: "carbon", label: "Carbon", icon: "leaf", hotkey: "f", agentOnly: true },
     ],
   },
   {
     heading: "Activity",
     items: [
       { id: "requests", label: "Requests", icon: "activity", hotkey: "r", agentOnly: false },
-      { id: "errors", label: "Errors", icon: "circle-exclamation-point", hotkey: "e", agentOnly: true },
+      {
+        id: "errors",
+        label: "Errors",
+        icon: "circle-exclamation-point",
+        hotkey: "e",
+        agentOnly: true,
+      },
       { id: "traces", label: "Traces", icon: "square-chart-gantt", hotkey: "t", agentOnly: true },
     ],
   },
   {
     heading: "Insights",
     items: [
+      { id: "carbon", label: "Carbon", icon: "leaf", hotkey: "f", agentOnly: true },
       { id: "tools", label: "Tools", icon: "wrench", hotkey: "l", agentOnly: false },
       { id: "projects", label: "Projects", icon: "folder-git-2", hotkey: "j", agentOnly: true },
     ],
