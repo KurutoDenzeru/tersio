@@ -27,14 +27,14 @@ jobs:
           - windows-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           persist-credentials: false
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: .bun-version
       - name: Cache Bun packages
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.bun/install/cache
           # Folded scalar: joins with one space, so the key string is
@@ -47,7 +47,7 @@ jobs:
       # trees are cached directly. A lockfile change produces a new key.
       - name: Cache installed packages
         if: runner.os == 'Windows'
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             node_modules
@@ -66,8 +66,9 @@ jobs:
       - name: Lint
         if: matrix.os == 'ubuntu-26.04'
         run: bun run lint
-      # Windows builds the dashboard too: the export and drawer tests read the
-      # single-file bundle, so skipping it only moves the failure into the suite.
+      # Windows builds the dashboard too: the export and drawer tests read
+      # the single-file bundle, so skipping it only moves the failure into the
+      # suite.
       - name: Type-check and test
         if: runner.os == 'Windows'
         run: bunx tsc && bun run build:dashboard && bun run test
@@ -82,14 +83,14 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           persist-credentials: false
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: .bun-version
       - name: Cache Bun packages
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.bun/install/cache
           key: >-
