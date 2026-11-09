@@ -133,12 +133,11 @@ jobs:
       # Windows builds the dashboard too: the export and drawer tests read
       # the single-file bundle, so skipping it only moves the failure into the
       # suite.
-      # No root tsc here: it type-checks the same sources the Linux leg already
-      # checked, and its verdict cannot differ by platform. The dashboard build
-      # is its own tsc -b, so the app tree is still verified here.
+      # root tsc emits dist/tersio.js, which the suite spawns; it is the build,
+      # not a separate type-check, so every platform runs it.
       - name: Type-check and test
         if: runner.os == 'Windows'
-        run: bun run build:dashboard && bun run test
+        run: bunx tsc && bun run build:dashboard && bun run test
       - name: Build and test
         if: runner.os != 'Windows'
         run: bun run build && bun run test
