@@ -83,6 +83,9 @@ jobs:
   check:
     needs: changes
     if: needs.changes.outputs.code == 'true'
+    # Named for the runner only. A matrix axis named in the default job name
+    # would read "check (ubuntu-26.04, false)" and rename the required checks.
+    name: check (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -95,7 +98,8 @@ jobs:
           - windows-latest
         # A string, not a boolean: exclude matches exactly, so 'false' can
         # never drift into a truthy value. The exclude drops the Windows leg
-        # when the scope job said this branch does not need it.
+        # when the scope job said this branch does not need it. The name keeps
+        # this axis out of the check name, which would read "check (os, false)".
         full:
           - ${{ needs.changes.outputs.full }}
         exclude:
