@@ -84,6 +84,23 @@ interface HistoryPoint {
 const GLYPH: Record<string, string> = { Caveman: "🪨", RTK: "🗜️", Ponytail: "🧠", pstack: "🥔", Headroom: "🍃" };
 
 const AGENT_NAME: Record<string, string> = { omp: "Oh My Pi", pi: "pi", pig: "PiG", opencode: "OpenCode", dsh: "DeepSeek Harness", codex: "Codex" };
+/** The chart axis labels rows by name, so the mark needs the way back. */
+const HOST_OF_LABEL: Record<string, string> = Object.fromEntries(
+  Object.entries(AGENT_NAME).map(([host, name]) => [name, host]),
+);
+
+/** A category tick that draws the agent's own mark: the caption and aria-label keep the names. */
+function AgentTick({ x = 0, y = 0, payload }: { x?: number; y?: number; payload?: { value?: string } }) {
+  return (
+    <g transform={`translate(${x},${y})`}>
+      <foreignObject x={-22} y={-9} width={18} height={18}>
+        <div className="flex size-full items-center justify-center">
+          <AgentLogo host={HOST_OF_LABEL[payload?.value ?? ""]} className="size-4" />
+        </div>
+      </foreignObject>
+    </g>
+  );
+}
 
 /** The name a row shows for a Tersio host. */
 function agentLabel(host: string): string {
@@ -636,7 +653,7 @@ ${fmt(gaps.length)} local gaps · ${fmt(totalUncarried)} uncarried`}</pre>
                   <BarChart data={agentRows} layout="vertical" margin={{ top: 4, right: 12, bottom: 0, left: 4 }}>
                     <CartesianGrid horizontal={false} stroke="var(--line)" />
                     <XAxis type="number" tickLine={false} axisLine={false} allowDecimals={false} tick={{ fill: "var(--dim)", fontSize: 11 }} />
-                    <YAxis type="category" dataKey="label" width={72} tickLine={false} axisLine={false} tick={{ fill: "var(--dim)", fontSize: 11 }} />
+                    <YAxis type="category" dataKey="label" width={30} tickLine={false} axisLine={false} tick={<AgentTick />} />
                     <ChartTooltip content={<ChartTooltipContent />} />
                     <Bar dataKey="matched" stackId="copies" fill="var(--color-matched)" isAnimationActive={false} />
                     <Bar dataKey="stale" stackId="copies" fill="var(--color-stale)" isAnimationActive={false} />
