@@ -1,5 +1,7 @@
 ## Unreleased
 
+## v2.25.19
+
 ### Added
 - Tersio registers its Codex prompt hook in `~/.codex/hooks.json`, beside rtk and headroom. Current Codex removed plugin-declared hooks, so the copy inside the plugin never ran and a literal `/combo lite` reached the model. Uninstall removes only Tersio's entry.
 - `/headroom on|off|status` is now a Codex slash command, with its own prompt file and `$headroom` skill. It stores the same `headroomDefault` the CLI writes and says the endpoint route applies at install or from the dashboard switch, because moving the route needs the running proxy.
@@ -37,6 +39,10 @@
 - RTK output filtering keeps one temporary directory for the life of the process, instead of creating and removing one for every filtered result.
 
 ### Fixed
+- The dashboard's Headroom update now passes `--yes`. Without the flag headroom asked a confirmation no TTY could answer, printed `Aborted!`, and left the binary where it was.
+- The Headroom drawer checks the release feed when it opens, so an available update is a button rather than a two-click hunt, and it waits three minutes for `uv tool upgrade` to finish instead of one.
+- The Headroom drawer names the agents that swap endpoints from the live routes. Codex and Oh My Pi keep headroom's own block, so they no longer read as endpoint swaps.
+- Quick start keeps its last read across navigation. Coming back paints the host state instead of a skeleton, and an install that was running when the page was left keeps its spinner, then reports its own result.
 - The proxy starts on the first agent session after a reboot. A proxy still binding its port was read as another tool's proxy, so the start was refused and the route pointed at a dead port. A proxy on Tersio's own port now waits instead of refusing.
 - A shell whose command line mentions `headroom.cli proxy` no longer counts as a proxy. `pgrep -f` matched the text, so a `tersio doctor` run could report one or refuse a start; only a Python interpreter counts now.
 - The proxy stops when the last agent session quits. Each session claims it, and a quit waits 2.5s before the stop so a restart does not race it. A session that dies without a quit stops refreshing its claim, which expires after 20 minutes.
