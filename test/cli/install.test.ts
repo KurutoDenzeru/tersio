@@ -518,6 +518,28 @@ test("the plugin package is pinned to this build, and a skewed tree is rewritten
   }
 });
 
+// Issue #97: node_modules can already carry this build while the manifest still pins the last one.
+test("a matching node_modules does not leave the manifest pin behind", () => {
+  const home = tempHome();
+  try {
+    pluginPresent(home);
+    const pluginsPkg = path.join(home, ".omp", "plugins", "package.json");
+    writeFileSync(pluginsPkg, JSON.stringify({
+      name: "omp-plugins",
+      private: true,
+      dependencies: { "@krtclcdy/tersio": "1.0.0" },
+    }, null, 2) + "\n", "utf8");
+    const stub = mkdtempSync(path.join(os.tmpdir(), "tersio-omp-drift-"));
+    fakeExecutable(stub, "npm", "exit 0", "exit /b 0");
+    const result = runOmpInstall(home, { PATH: [stub, process.env.PATH || ""].join(path.delimiter) }, "--yes");
+    expect(result.status, result.stderr).toBe(0);
+    const pkg = JSON.parse(readFileSync(pluginsPkg, "utf8"));
+    expect(pkg.dependencies["@krtclcdy/tersio"], "the pin follows this build").toBe(PACKAGE_VERSION);
+  } finally {
+    rmTree(home);
+  }
+});
+
 test("without the plugin the agent tree is the fallback and keeps its copies", () => {
   const home = tempHome();
   try {

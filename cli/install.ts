@@ -86,6 +86,8 @@ async function stepSelfPlugin(pluginsDir: string, options: InstallOptions): Prom
   if (!options.quiet) console.log('  Tersio — register plugin');
   const pkgPath = path.join(pluginsDir, 'package.json');
   const pkg = await readPluginsPackage(pkgPath);
+  // What the manifest held before this run, so a stale pin is visible after the assignment below.
+  const pinnedOnDisk = pkg.dependencies[PACKAGE_NAME];
   // The exact version: a range lets npm install a release this CLI never wrote.
   pkg.dependencies[PACKAGE_NAME] = PACKAGE_VERSION;
   for (const legacy of ['oh-my-pi-token-saver', 'tersio-omp']) {
@@ -101,11 +103,13 @@ async function stepSelfPlugin(pluginsDir: string, options: InstallOptions): Prom
     return false;
   }
 
-  // pkg.dependencies[PACKAGE_NAME] was assigned above, so only reinstall skips this fast path.
+  // A matching node_modules alone is not enough: a stale pin here is the version drift `omp plugin
+  // doctor` reports, so the manifest has to agree before this can skip the install.
   if (!options.reinstall) {
     const installedPkgRaw = await readTextIfExists(path.join(pluginsDir, 'node_modules', PACKAGE_NAME, 'package.json'));
-    if (parseJsonObject<{ version?: string }>(installedPkgRaw)?.version === PACKAGE_VERSION) {
-      debug(`${PACKAGE_NAME} already installed at v${PACKAGE_VERSION}; skipping npm install`);
+    const installedVersion = parseJsonObject<{ version?: string }>(installedPkgRaw)?.version;
+    if (installedVersion === PACKAGE_VERSION && pinnedOnDisk === PACKAGE_VERSION) {
+      debug(`${PACKAGE_NAME} already installed and pinned at v${PACKAGE_VERSION}; skipping npm install`);
       return true;
     }
   }
