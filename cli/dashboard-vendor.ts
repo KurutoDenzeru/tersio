@@ -38,7 +38,9 @@ export async function handleVendorRoutes(
         ctx.json(res, 200, { ok: true, detail: 'headroom installs in the background' });
         return true;
       }
-      const child = spawn(bin, ['update'], { detached: true, stdio: 'ignore', cwd: homeDir() });
+      // The reporter has no TTY, so headroom's own "Proceed with the upgrade?" prompt would answer
+      // itself with Aborted. --yes is what makes this run at all.
+      const child = spawn(bin, ['update', '--yes'], { detached: true, stdio: 'ignore', cwd: homeDir() });
       child.unref();
       recordActivity('agent', 'Headroom update started');
       ctx.json(res, 200, { ok: true, detail: 'headroom updates in the background' });
