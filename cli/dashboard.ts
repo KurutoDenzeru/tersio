@@ -88,10 +88,14 @@ function bare(value: string | null | undefined): string | null {
   return tail.trim() || null;
 }
 
+/** True when a value is a commit SHA short enough to be a prefix rather than a release. */
+function isShortSha(value: string): boolean {
+  return /^[0-9a-f]{7,}$/i.test(value);
+}
+
 function sameRelease(mine: string, theirs: string): boolean {
   if (mine === theirs) return true;
-  const short = (v: string): boolean => /^[0-9a-f]{7,}$/i.test(v);
-  return short(mine) && theirs.toLowerCase().startsWith(mine.toLowerCase());
+  return isShortSha(mine) && theirs.toLowerCase().startsWith(mine.toLowerCase());
 }
 
 /** A mode is outdated only when both sides are known and differ, so an offline check never paints a false orange. */
