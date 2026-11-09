@@ -1,13 +1,23 @@
 // Errors: failed requests in the range, grouped by signature, with the rows behind them.
-import { useMemo, useState } from "react";
-import { BarList, Card, MeterCell, PagedTable, Page, PageHeader, SearchInput, Stat, StatGrid } from "@/components/charts";
-import type { Column } from "@/components/charts";
-import { VendorMark } from "@/components/brand";
-import { EmptyState } from "@/components/common";
-import { Button } from "@/components/ui/button";
-import { Icon } from "@/components/icon";
-import { displayModel, fmt, fmtShort, projectLabel, relAge, whenStamp } from "@/lib/format";
-import type { AgentErrorGroup, AgentRequestRow, AgentStats } from "@/lib/data";
+import { useMemo, useState } from "react"
+import {
+  BarList,
+  Card,
+  MeterCell,
+  PagedTable,
+  Page,
+  PageHeader,
+  SearchInput,
+  Stat,
+  StatGrid,
+} from "@/components/charts"
+import type { Column } from "@/components/charts"
+import { VendorMark } from "@/components/brand"
+import { EmptyState } from "@/components/common"
+import { Button } from "@/components/ui/button"
+import { Icon } from "@/components/icon"
+import { displayModel, fmt, fmtShort, projectLabel, relAge, whenStamp } from "@/lib/format"
+import type { AgentErrorGroup, AgentRequestRow, AgentStats } from "@/lib/data"
 
 // The reference window phrases, so the page copy reads like the one it mirrors.
 const WINDOW: Record<AgentStats["range"], string> = {
@@ -17,32 +27,34 @@ const WINDOW: Record<AgentStats["range"], string> = {
   "30d": "the last 30 days",
   "90d": "the last 90 days",
   all: "all time",
-};
+}
 
-const UUID_RE = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
-const PREFIXED_ID_RE = /\b(?:req|msg|call|toolu|chatcmpl|resp|run|gen)[-_][A-Za-z0-9_-]{6,}/g;
-const HEX_RE = /\b[0-9a-f]{12,}\b/gi;
-const NUMBER_RE = /(?<![\w.-])\d+(?:\.\d+)?/g;
-const HTTP_STATUS_RE = /^[1-5]\d\d$/;
-const SIGNATURE_MAX = 180;
+const UUID_RE = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi
+const PREFIXED_ID_RE = /\b(?:req|msg|call|toolu|chatcmpl|resp|run|gen)[-_][A-Za-z0-9_-]{6,}/g
+const HEX_RE = /\b[0-9a-f]{12,}\b/gi
+const NUMBER_RE = /(?<![\w.-])\d+(?:\.\d+)?/g
+const HTTP_STATUS_RE = /^[1-5]\d\d$/
+const SIGNATURE_MAX = 180
 // The side card lists the models, not a page of them.
-const LIST_LIMIT = 12;
+const LIST_LIMIT = 12
 
 /** Mirrors extensions/shared/agent-stats.ts: the server ships groups, but a row has no signature, so bucket here. */
 function errorSignature(message: string | null): string {
-  if (!message?.trim()) return "Unknown error";
+  if (!message?.trim()) return "Unknown error"
   const normalized = message
     .replace(/\s+/g, " ")
     .trim()
     .replace(UUID_RE, "<id>")
     .replace(PREFIXED_ID_RE, "<id>")
     .replace(HEX_RE, "<hex>")
-    .replace(NUMBER_RE, (n) => (HTTP_STATUS_RE.test(n) ? n : "N"));
-  return normalized.length > SIGNATURE_MAX ? `${normalized.slice(0, SIGNATURE_MAX - 1)}…` : normalized;
+    .replace(NUMBER_RE, (n) => (HTTP_STATUS_RE.test(n) ? n : "N"))
+  return normalized.length > SIGNATURE_MAX
+    ? `${normalized.slice(0, SIGNATURE_MAX - 1)}…`
+    : normalized
 }
 
 function modelKey(row: Pick<AgentRequestRow, "model" | "provider">): string {
-  return `${row.model}\u0000${row.provider}`;
+  return `${row.model}\u0000${row.provider}`
 }
 
 export function ErrorsPage({
@@ -50,31 +62,33 @@ export function ErrorsPage({
   money,
   onOpenRequest,
 }: {
-  agent: AgentStats;
-  money: (v: number) => string;
-  onOpenRequest: (row: AgentRequestRow) => void;
+  agent: AgentStats
+  money: (v: number) => string
+  onOpenRequest: (row: AgentRequestRow) => void
 }) {
-  const [signatureFilter, setSignatureFilter] = useState<string | null>(null);
-  const [modelFilter, setModelFilter] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
-  const windowLabel = WINDOW[agent.range];
+  const [signatureFilter, setSignatureFilter] = useState<string | null>(null)
+  const [modelFilter, setModelFilter] = useState<string | null>(null)
+  const [search, setSearch] = useState("")
+  const windowLabel = WINDOW[agent.range]
   const rows = useMemo(
     () => agent.errors.map((row) => ({ row, signature: errorSignature(row.errorMessage) })),
     [agent.errors],
-  );
-  const newest = rows[0]?.row ?? null;
+  )
+  const newest = rows[0]?.row ?? null
   // The failure list is capped, so it covers the range only when it matches the range total.
-  const complete = rows.length >= agent.overall.failed;
-  const maxGroup = agent.errorGroups[0]?.count ?? 0;
+  const complete = rows.length >= agent.overall.failed
+  const maxGroup = agent.errorGroups[0]?.count ?? 0
 
   // Selections that no longer exist in this range's data are ignored.
-  const signature = agent.errorGroups.some((g) => g.signature === signatureFilter) ? signatureFilter : null;
-  const model = agent.errorModels.some((m) => modelKey(m) === modelFilter) ? modelFilter : null;
-  const selectedGroup = agent.errorGroups.find((g) => g.signature === signature) ?? null;
-  const selectedModel = agent.errorModels.find((m) => modelKey(m) === model) ?? null;
+  const signature = agent.errorGroups.some((g) => g.signature === signatureFilter)
+    ? signatureFilter
+    : null
+  const model = agent.errorModels.some((m) => modelKey(m) === modelFilter) ? modelFilter : null
+  const selectedGroup = agent.errorGroups.find((g) => g.signature === signature) ?? null
+  const selectedModel = agent.errorModels.find((m) => modelKey(m) === model) ?? null
 
   const filtered = useMemo(() => {
-    const needle = search.trim().toLowerCase();
+    const needle = search.trim().toLowerCase()
     return rows
       .filter(
         ({ row, signature: rowSignature }) =>
@@ -86,8 +100,8 @@ export function ErrorsPage({
             row.project.toLowerCase().includes(needle) ||
             (row.errorMessage ?? "").toLowerCase().includes(needle)),
       )
-      .map((entry) => entry.row);
-  }, [rows, signature, model, search]);
+      .map((entry) => entry.row)
+  }, [rows, signature, model, search])
 
   return (
     <Page>
@@ -106,9 +120,15 @@ export function ErrorsPage({
           label="Signatures"
           title="Distinct error messages after normalizing ids and numbers"
           value={fmt(agent.errorGroups.length)}
-          hint={agent.errorGroups[0] ? `top: ${fmt(agent.errorGroups[0].count)} failures` : undefined}
+          hint={
+            agent.errorGroups[0] ? `top: ${fmt(agent.errorGroups[0].count)} failures` : undefined
+          }
         />
-        <Stat label="Affected models" value={fmt(agent.errorModels.length)} hint={agent.errorModels[0]?.model} />
+        <Stat
+          label="Affected models"
+          value={fmt(agent.errorModels.length)}
+          hint={agent.errorModels[0]?.model}
+        />
         <Stat
           label="Last failure"
           value={newest ? relAge(newest.ts) : "–"}
@@ -118,7 +138,8 @@ export function ErrorsPage({
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
         <Card
-          title="Error signatures" icon="circle-alert"
+          title="Error signatures"
+          icon="circle-exclamation-point"
           description="Same message with ids and counters normalized. Select one to filter the failures below."
           flush
         >
@@ -126,7 +147,9 @@ export function ErrorsPage({
             columns={GROUP_COLUMNS(maxGroup)}
             rows={agent.errorGroups}
             rowKey={(group) => group.signature}
-            onRowClick={(group) => setSignatureFilter(signature === group.signature ? null : group.signature)}
+            onRowClick={(group) =>
+              setSignatureFilter(signature === group.signature ? null : group.signature)
+            }
             perPage={12}
             ariaLabel="Error signatures"
             empty={
@@ -142,7 +165,11 @@ export function ErrorsPage({
 
         <Card title="By model" icon="table" description="Failures per model. Select one to filter.">
           {agent.errorModels.length === 0 ? (
-            <EmptyState icon="circle-slash" title="No affected models" desc="No model failed in this window." />
+            <EmptyState
+              icon="circle-slash"
+              title="No affected models"
+              desc="No model failed in this window."
+            />
           ) : (
             <BarList
               rows={agent.errorModels.slice(0, LIST_LIMIT).map((row) => ({
@@ -155,7 +182,10 @@ export function ErrorsPage({
                 ),
                 title: `${displayModel(row.model)} · ${row.provider || "–"}`,
                 value: row.count,
-                color: model === modelKey(row) ? "var(--danger)" : "color-mix(in srgb, var(--danger) 45%, transparent)",
+                color:
+                  model === modelKey(row)
+                    ? "var(--danger)"
+                    : "color-mix(in srgb, var(--danger) 45%, transparent)",
               }))}
               money={fmt}
               onSelect={(key) => setModelFilter(model === key ? null : key)}
@@ -165,7 +195,7 @@ export function ErrorsPage({
       </div>
 
       <Card
-        icon="circle-alert"
+        icon="circle-exclamation-point"
         title="Failures"
         description={`${fmt(filtered.length)} of ${fmt(rows.length)} failures, newest first`}
         actions={
@@ -193,7 +223,12 @@ export function ErrorsPage({
                 <Icon name="x" className="size-3" />
               </Button>
             )}
-            <SearchInput label="Search failures" value={search} onChange={setSearch} placeholder="Message, model or project" />
+            <SearchInput
+              label="Search failures"
+              value={search}
+              onChange={setSearch}
+              placeholder="Message, model or project"
+            />
           </>
         }
         flush
@@ -210,18 +245,23 @@ export function ErrorsPage({
             <EmptyState
               icon="circle-slash"
               title={rows.length === 0 ? `No failures in ${windowLabel}` : "No failures match"}
-              desc={rows.length === 0 ? "Every request succeeded or was aborted." : "Clear the search or the selected filters."}
+              desc={
+                rows.length === 0
+                  ? "Every request succeeded or was aborted."
+                  : "Clear the search or the selected filters."
+              }
             />
           }
         />
         {!complete && (
           <p className="mono m-0 border-t border-line px-3.5 py-2.5 text-[11px] text-dim">
-            Showing the latest {fmt(rows.length)} failures in {windowLabel}; older ones are not loaded.
+            Showing the latest {fmt(rows.length)} failures in {windowLabel}; older ones are not
+            loaded.
           </p>
         )}
       </Card>
     </Page>
-  );
+  )
 }
 
 function GROUP_COLUMNS(maxCount: number): Array<Column<AgentErrorGroup>> {
@@ -231,7 +271,10 @@ function GROUP_COLUMNS(maxCount: number): Array<Column<AgentErrorGroup>> {
       header: "Signature",
       sort: (group) => group.signature,
       render: (group) => (
-        <span className="mono w-[400px] text-xs leading-relaxed whitespace-normal wrap-anywhere line-clamp-2" title={group.latest.errorMessage ?? undefined}>
+        <span
+          className="mono w-[400px] text-xs leading-relaxed whitespace-normal wrap-anywhere line-clamp-2"
+          title={group.latest.errorMessage ?? undefined}
+        >
           {group.signature}
         </span>
       ),
@@ -245,9 +288,13 @@ function GROUP_COLUMNS(maxCount: number): Array<Column<AgentErrorGroup>> {
           <span className="flex min-w-0 items-center gap-2">
             <VendorMark model={group.models[0]?.model ?? ""} tiny />
             <span className="min-w-0">
-              <span className="mono block truncate">{group.models[0] ? displayModel(group.models[0].model) : "–"}</span>
+              <span className="mono block truncate">
+                {group.models[0] ? displayModel(group.models[0].model) : "–"}
+              </span>
               <span className="block truncate text-[11px] text-dim">
-                {group.models.length > 1 ? `+${group.models.length - 1} more` : group.models[0]?.provider}
+                {group.models.length > 1
+                  ? `+${group.models.length - 1} more`
+                  : group.models[0]?.provider}
               </span>
             </span>
           </span>
@@ -273,18 +320,23 @@ function GROUP_COLUMNS(maxCount: number): Array<Column<AgentErrorGroup>> {
       render: (group) => (
         <span className="flex items-center justify-end gap-2">
           <span className="mono text-xs tabular-nums">{fmt(group.count)}</span>
-          <MeterCell value={group.count} max={maxCount} color="var(--danger)" label={`${fmt(group.count)} failures`} />
+          <MeterCell
+            value={group.count}
+            max={maxCount}
+            color="var(--danger)"
+            label={`${fmt(group.count)} failures`}
+          />
         </span>
       ),
     },
-  ];
+  ]
 }
 function SignatureDetail({
   group,
   onOpenRequest,
 }: {
-  group: AgentErrorGroup;
-  onOpenRequest: (row: AgentRequestRow) => void;
+  group: AgentErrorGroup
+  onOpenRequest: (row: AgentRequestRow) => void
 }) {
   return (
     <div className="border-t border-line px-3.5 py-3">
@@ -293,9 +345,15 @@ function SignatureDetail({
       </pre>
       <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2">
         <span className="text-[11px] text-dim">
-          {fmt(group.count)} failures · first {whenStamp(group.firstSeen)} · last {whenStamp(group.lastSeen)}
+          {fmt(group.count)} failures · first {whenStamp(group.firstSeen)} · last{" "}
+          {whenStamp(group.lastSeen)}
         </span>
-        <Button variant="outline" size="sm" className="border-line" onClick={() => onOpenRequest(group.latest)}>
+        <Button
+          variant="outline"
+          size="sm"
+          className="border-line"
+          onClick={() => onOpenRequest(group.latest)}
+        >
           Open latest
           <Icon name="arrow-up-right" className="size-3.5" />
         </Button>
@@ -312,62 +370,71 @@ function SignatureDetail({
         ))}
       </div>
     </div>
-  );
+  )
 }
 
 function buildFailureColumns(money: (v: number) => string): Array<Column<AgentRequestRow>> {
   return [
-  {
-    key: "time",
-    header: "When",
-    width: 120,
-    sort: (row) => row.ts,
-    render: (row) => (
-      <span className="text-dim" title={whenStamp(row.ts)}>
-        {relAge(row.ts)}
-      </span>
-    ),
-  },
-  {
-    key: "model",
-    header: "Model",
-    sort: (row) => row.model,
-    render: (row) => (
-      <span className="flex min-w-0 items-center gap-2">
-        <VendorMark model={row.model} tiny />
-        <span className="mono truncate">{displayModel(row.model)}</span>
-      </span>
-    ),
-  },
-  {
-    key: "error",
-    header: "Error",
-    width: 520,
-    sort: (row) => row.errorMessage ?? "",
-    render: (row) => (
-      <span className="mono block w-[520px] truncate text-xs" title={row.errorMessage ?? undefined}>
-        {row.errorMessage ?? "Unknown error"}
-      </span>
-    ),
-  },
-  {
-    key: "project",
-    header: "Project",
-    sort: (row) => row.project,
-    render: (row) => (
-      <span className="mono text-dim" title={row.project}>
-        {projectLabel(row.project)}
-      </span>
-    ),
-  },
-  { key: "tokens", header: "Tokens", align: "right", sort: (row) => row.totalTokens, render: (row) => fmt(row.totalTokens) },
-  {
-    key: "cost",
-    header: "Cost",
-    title: "API-equivalent estimate",
-    align: "right",
-    sort: (row) => row.costUsd,
-    render: (row) => money(row.costUsd),
-  },
-  ];
+    {
+      key: "time",
+      header: "When",
+      width: 120,
+      sort: (row) => row.ts,
+      render: (row) => (
+        <span className="text-dim" title={whenStamp(row.ts)}>
+          {relAge(row.ts)}
+        </span>
+      ),
+    },
+    {
+      key: "model",
+      header: "Model",
+      sort: (row) => row.model,
+      render: (row) => (
+        <span className="flex min-w-0 items-center gap-2">
+          <VendorMark model={row.model} tiny />
+          <span className="mono truncate">{displayModel(row.model)}</span>
+        </span>
+      ),
+    },
+    {
+      key: "error",
+      header: "Error",
+      width: 520,
+      sort: (row) => row.errorMessage ?? "",
+      render: (row) => (
+        <span
+          className="mono block w-[520px] truncate text-xs"
+          title={row.errorMessage ?? undefined}
+        >
+          {row.errorMessage ?? "Unknown error"}
+        </span>
+      ),
+    },
+    {
+      key: "project",
+      header: "Project",
+      sort: (row) => row.project,
+      render: (row) => (
+        <span className="mono text-dim" title={row.project}>
+          {projectLabel(row.project)}
+        </span>
+      ),
+    },
+    {
+      key: "tokens",
+      header: "Tokens",
+      align: "right",
+      sort: (row) => row.totalTokens,
+      render: (row) => fmt(row.totalTokens),
+    },
+    {
+      key: "cost",
+      header: "Cost",
+      title: "API-equivalent estimate",
+      align: "right",
+      sort: (row) => row.costUsd,
+      render: (row) => money(row.costUsd),
+    },
+  ]
 }

@@ -1,54 +1,92 @@
 // Node option surfaces: shadcn dialogs for the mode levels, side drawers for hosts and the wrap center. Every control that used to live in the fold panel or the Modes tab lands here.
-import { useCallback, useEffect, useState } from "react";
-import { AgentLogo } from "@/components/agent-logos";
-import { Icon } from "@/components/icon";
-import { Button } from "@/components/ui/button";
+import { useCallback, useEffect, useState } from "react"
+import { AgentLogo } from "@/components/agent-logos"
+import { Icon } from "@/components/icon"
+import { Button } from "@/components/ui/button"
 import {
-  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
-} from "@/components/ui/dialog";
-import { Progress } from "@/components/ui/progress";
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Progress } from "@/components/ui/progress"
 import {
-  Drawer, DrawerContent, DrawerDescription, DrawerFooter, DrawerHeader, DrawerTitle,
-} from "@/components/ui/drawer";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
-import { Spinner } from "@/components/ui/spinner";
-import { Skeleton } from "@/components/ui/skeleton";
-import { useToast } from "../toaster";
-import { cn } from "cn";
-import { checkVendor, fetchHealth, fetchRoutes, type HeadroomRouteTarget, postRoute, postVendorAction, type HealthReport, type VendorRow } from "@/lib/data";
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import {
-  ABOUT, DEFAULT_ROWS_UI, HOSTS, MODES, OFF_DEFAULTS, PICKER, nodeGlyph, nodeTitle, nodeValue, versionOf,
-} from "./pipeline-model";
-import type { DefaultsPayload, HostAction, HostState, NodeId } from "./pipeline-model";
-import type { ModeState } from "./shell";
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
+import { Spinner } from "@/components/ui/spinner"
+import { Skeleton } from "@/components/ui/skeleton"
+import { useToast } from "../toaster"
+import { cn } from "cn"
+import {
+  checkVendor,
+  fetchHealth,
+  fetchRoutes,
+  type HeadroomRouteTarget,
+  postRoute,
+  postVendorAction,
+  type HealthReport,
+  type VendorRow,
+} from "@/lib/data"
+import {
+  ABOUT,
+  DEFAULT_ROWS_UI,
+  HOSTS,
+  MODES,
+  OFF_DEFAULTS,
+  PICKER,
+  nodeGlyph,
+  nodeTitle,
+  nodeValue,
+  versionOf,
+} from "./pipeline-model"
+import type { DefaultsPayload, HostAction, HostState, NodeId } from "./pipeline-model"
+import type { ModeState } from "./shell"
 
-type HostId = "omp" | "pi" | "pig" | "opencode" | "dsh" | "codex";
+type HostId = "omp" | "pi" | "pig" | "opencode" | "dsh" | "codex"
 
 export interface NodeSurfaceProps {
-  node: NodeId;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  modes: ModeState | null;
-  hostState: HostState;
+  node: NodeId
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  modes: ModeState | null
+  hostState: HostState
   /** False while the page still reads its first state; every drawer section waits on the same signal. */
-  loaded: boolean;
-  busy: NodeId | null;
-  onSet: (node: NodeId, field: string, value: string | boolean, host?: HostId) => void;
-  onHostAction: (node: NodeId, action: HostAction) => void;
-  onSaved: () => void;
+  loaded: boolean
+  busy: NodeId | null
+  onSet: (node: NodeId, field: string, value: string | boolean, host?: HostId) => void
+  onHostAction: (node: NodeId, action: HostAction) => void
+  onSaved: () => void
 }
 
 /** One selectable level card: label, optional hint, and a check that pops in on select. */
 function LevelCard({
-  label, hint, active, disabled, onClick,
+  label,
+  hint,
+  active,
+  disabled,
+  onClick,
 }: {
-  label: string;
-  hint?: string;
-  active: boolean;
-  disabled?: boolean;
-  onClick: () => void;
+  label: string
+  hint?: string
+  active: boolean
+  disabled?: boolean
+  onClick: () => void
 }) {
   return (
     <button
@@ -64,7 +102,14 @@ function LevelCard({
         disabled && "cursor-default opacity-50 hover:translate-y-0",
       )}
     >
-      <span className={cn("mono truncate text-[11px] font-semibold", active ? "text-ink" : "text-dim group-hover:text-ink")}>{label}</span>
+      <span
+        className={cn(
+          "mono truncate text-[11px] font-semibold",
+          active ? "text-ink" : "text-dim group-hover:text-ink",
+        )}
+      >
+        {label}
+      </span>
       {hint ? <span className="mono truncate text-[9px] text-dim">{hint}</span> : null}
       <span
         aria-hidden="true"
@@ -76,18 +121,22 @@ function LevelCard({
         <Icon name="check" className="size-2.5" />
       </span>
     </button>
-  );
+  )
 }
 
 /** A settings row: the title and hint on the left, a switch on the right. */
 function ToggleRow({
-  title, hint, checked, disabled, onCheckedChange,
+  title,
+  hint,
+  checked,
+  disabled,
+  onCheckedChange,
 }: {
-  title: string;
-  hint: string;
-  checked: boolean;
-  disabled?: boolean;
-  onCheckedChange: (on: boolean) => void;
+  title: string
+  hint: string
+  checked: boolean
+  disabled?: boolean
+  onCheckedChange: (on: boolean) => void
 }) {
   return (
     <div className="flex items-center justify-between gap-4 rounded-lg border border-line bg-track/20 px-3.5 py-3">
@@ -97,66 +146,88 @@ function ToggleRow({
       </div>
       <Switch size="sm" checked={checked} onCheckedChange={onCheckedChange} disabled={disabled} />
     </div>
-  );
+  )
 }
 
 /** Shown when a vendor binary is not on the machine: configure nothing, install from the footer. */
 function NotInstalledNote({ tool }: { tool: string }) {
   return (
     <Alert>
-      <Icon name="circle-alert" className="size-4" />
+      <Icon name="circle-exclamation-point" className="size-4" />
       <AlertTitle className="mono text-[11px]">{tool} is not installed</AlertTitle>
       <AlertDescription className="text-[10px] leading-snug">
         Install it from the footer below to configure it and see its version.
       </AlertDescription>
     </Alert>
-  );
+  )
 }
 
 function SurfaceHeader({ node, version }: { node: NodeId; version?: string | null }) {
-  const glyph = nodeGlyph(node);
+  const glyph = nodeGlyph(node)
   return (
     <span className="flex items-center gap-2">
-      {glyph ? <span aria-hidden="true" className="text-[13px] leading-none">{glyph}</span> : null}
+      {glyph ? (
+        <span aria-hidden="true" className="text-[13px] leading-none">
+          {glyph}
+        </span>
+      ) : null}
       <span className="min-w-0 truncate text-sm font-semibold">{nodeTitle(node)}</span>
-      {version ? <span className="mono ml-auto shrink-0 rounded border border-success/40 px-1.5 py-0.5 text-[9px] leading-none text-success">{version}</span> : null}
+      {version ? (
+        <span className="mono ml-auto shrink-0 rounded border border-success/40 px-1.5 py-0.5 text-[9px] leading-none text-success">
+          {version}
+        </span>
+      ) : null}
     </span>
-  );
+  )
 }
 
 /** The mode levels for one agent's own section, which wins over the shared store it inherits from. */
 function AgentModes({ host, onSaved }: { host: HostId; onSaved: () => void }) {
-  const toast = useToast();
-  const [current, setCurrent] = useState<DefaultsPayload>(OFF_DEFAULTS);
-  const [loaded, setLoaded] = useState(false);
+  const toast = useToast()
+  const [current, setCurrent] = useState<DefaultsPayload>(OFF_DEFAULTS)
+  const [loaded, setLoaded] = useState(false)
 
   const load = useCallback(() => {
     fetch("/settings")
       .then((r) => (r.ok ? r.json() : null))
-      .then((d: (Partial<DefaultsPayload> & { hosts?: Record<string, Partial<Record<string, string | boolean>>> }) | null) => {
-        if (!d) return;
-        const section: Partial<Record<string, string | boolean>> = d.hosts?.[host] ?? {};
-        const pick = (key: keyof DefaultsPayload, fallback: string | boolean): string | boolean => section[key] ?? (d as Partial<Record<string, string | boolean>>)[key] ?? fallback;
-        setCurrent({
-          comboDefault: String(pick("comboDefault", "off")),
-          comboLevel: "custom",
-          cavemanDefault: String(pick("cavemanDefault", "off")),
-          rtkDefault: typeof pick("rtkDefault", false) === "boolean" ? Boolean(pick("rtkDefault", false)) : false,
-          ponytailDefault: String(pick("ponytailDefault", "off")),
-          pstackDefault: String(pick("pstackDefault", "off")),
-          headroomDefault: String(pick("headroomDefault", "off")),
-        });
+      .then(
+        (
+          d:
+            | (Partial<DefaultsPayload> & {
+                hosts?: Record<string, Partial<Record<string, string | boolean>>>
+              })
+            | null,
+        ) => {
+          if (!d) return
+          const section: Partial<Record<string, string | boolean>> = d.hosts?.[host] ?? {}
+          const pick = (key: keyof DefaultsPayload, fallback: string | boolean): string | boolean =>
+            section[key] ?? (d as Partial<Record<string, string | boolean>>)[key] ?? fallback
+          setCurrent({
+            comboDefault: String(pick("comboDefault", "off")),
+            comboLevel: "custom",
+            cavemanDefault: String(pick("cavemanDefault", "off")),
+            rtkDefault:
+              typeof pick("rtkDefault", false) === "boolean"
+                ? Boolean(pick("rtkDefault", false))
+                : false,
+            ponytailDefault: String(pick("ponytailDefault", "off")),
+            pstackDefault: String(pick("pstackDefault", "off")),
+            headroomDefault: String(pick("headroomDefault", "off")),
+          })
+        },
+      )
+      .catch(() => {
+        /* keep what is on screen; the rows still save */
       })
-      .catch(() => { /* keep what is on screen; the rows still save */ })
-      .finally(() => setLoaded(true));
-  }, [host]);
+      .finally(() => setLoaded(true))
+  }, [host])
   useEffect(() => {
-    load();
-  }, [load]);
+    load()
+  }, [load])
 
   const save = (row: (typeof DEFAULT_ROWS_UI)[number], id: string): void => {
-    const value: string | boolean = row.field === "rtkDefault" ? id === "on" : id;
-    setCurrent((c) => ({ ...c, [row.field]: value }));
+    const value: string | boolean = row.field === "rtkDefault" ? id === "on" : id
+    setCurrent((c) => ({ ...c, [row.field]: value }))
     void fetch("/settings", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -166,29 +237,34 @@ function AgentModes({ host, onSaved }: { host: HostId; onSaved: () => void }) {
       .then((d: { ok?: boolean; error?: string }) => {
         if (d?.ok) {
           // A preset rewrites the three modes it owns, and the combo row reads the derived level; read the saved state back.
-          load();
-          onSaved();
-          toast(`${row.label} saved`, `Applies to new ${host} sessions`, "check");
+          load()
+          onSaved()
+          toast(`${row.label} saved`, `Applies to new ${host} sessions`, "check")
         } else {
-          toast("Could not save", d?.error ?? "Unknown level", "circle-alert");
+          toast("Could not save", d?.error ?? "Unknown level", "circle-exclamation-point")
         }
       })
-      .catch(() => toast("Could not save", "The dashboard server did not answer.", "circle-alert"));
-  };
+      .catch(() =>
+        toast("Could not save", "The dashboard server did not answer.", "circle-exclamation-point"),
+      )
+  }
 
   return (
     <div className="grid gap-5">
       {DEFAULT_ROWS_UI.map((row) => {
-        const raw = current[row.field];
-        const isRtk = row.field === "rtkDefault";
-        const value = String(raw ?? "off");
-        const locked = !loaded;
+        const raw = current[row.field]
+        const isRtk = row.field === "rtkDefault"
+        const value = String(raw ?? "off")
+        const locked = !loaded
         if (isRtk) {
           return (
             <div key={row.field} className="flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <p className="m-0 text-[13px] font-semibold">
-                  <span aria-hidden="true" className="mr-1.5">{row.glyph}</span>{row.label}
+                  <span aria-hidden="true" className="mr-1.5">
+                    {row.glyph}
+                  </span>
+                  {row.label}
                 </p>
                 <p className="mt-0.5 mb-0 text-xs text-dim">{row.hint}</p>
               </div>
@@ -200,20 +276,29 @@ function AgentModes({ host, onSaved }: { host: HostId; onSaved: () => void }) {
                 aria-label={`${row.label} default for ${host}`}
               />
             </div>
-          );
+          )
         }
         return (
           <div key={row.field} className="flex items-center justify-between gap-3">
             <div className="min-w-0">
               <p className="m-0 text-[13px] font-semibold">
-                <span aria-hidden="true" className="mr-1.5">{row.glyph}</span>{row.label}
+                <span aria-hidden="true" className="mr-1.5">
+                  {row.glyph}
+                </span>
+                {row.label}
               </p>
               <p className="mt-0.5 mb-0 text-xs text-dim">{row.hint}</p>
             </div>
             <Select value={value} onValueChange={(v) => save(row, v ?? "off")} disabled={locked}>
-              <SelectTrigger size="sm" className="w-[132px] shrink-0" aria-label={`${row.label} default for ${host}`}>
+              <SelectTrigger
+                size="sm"
+                className="w-[132px] shrink-0"
+                aria-label={`${row.label} default for ${host}`}
+              >
                 {/* SelectValue needs children or it shows the raw value. */}
-                <SelectValue placeholder="Off">{row.options.find((o) => o.id === value)?.label ?? "Off"}</SelectValue>
+                <SelectValue placeholder="Off">
+                  {row.options.find((o) => o.id === value)?.label ?? "Off"}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectGroup>
@@ -227,54 +312,90 @@ function AgentModes({ host, onSaved }: { host: HostId; onSaved: () => void }) {
               </SelectContent>
             </Select>
           </div>
-        );
+        )
       })}
       <p className="mono m-0 text-[10px] text-dim">
         Rows left off inherit the shared default — only what you set here belongs to {host}.
       </p>
     </div>
-  );
+  )
 }
 
 /** Mode nodes open a side drawer: the level list, and the scope the level writes to. */
-export function ModeDrawer({ node, open, onOpenChange, modes, hostState, loaded, busy, onSet }: NodeSurfaceProps) {
-  const [health, setHealth] = useState<HealthReport | null>(null);
+export function ModeDrawer({
+  node,
+  open,
+  onOpenChange,
+  modes,
+  hostState,
+  loaded,
+  busy,
+  onSet,
+}: NodeSurfaceProps) {
+  const [health, setHealth] = useState<HealthReport | null>(null)
   useEffect(() => {
-    if (open) void fetchHealth().then(setHealth);
-  }, [open]);
-  const key = (MODES.find((m) => m.key === node)?.key ?? "headroom") as keyof typeof PICKER;
-  const picker = PICKER[key];
-  const installed = HOSTS.filter((h) => hostState.installed[h.id] !== false).map((h) => h.id as HostId);
-  const [scope, setScope] = useState<HostId | "all">("all");
+    if (open) void fetchHealth().then(setHealth)
+  }, [open])
+  const key = (MODES.find((m) => m.key === node)?.key ?? "headroom") as keyof typeof PICKER
+  const picker = PICKER[key]
+  const installed = HOSTS.filter((h) => hostState.installed[h.id] !== false).map(
+    (h) => h.id as HostId,
+  )
+  const [scope, setScope] = useState<HostId | "all">("all")
   useEffect(() => {
-    if (open) setScope("all");
-  }, [open]);
-  const current = nodeValue(node, scope, modes);
-  const picked = picker.options.some((option) => option.id === current) ? current : null;
+    if (open) setScope("all")
+  }, [open])
+  const current = nodeValue(node, scope, modes)
+  const picked = picker.options.some((option) => option.id === current) ? current : null
   // A scope without its own section inherits the shared value, so the row says so.
-  const section = scope !== "all" ? (modes?.hosts?.[scope] ?? {}) as Partial<Record<string, string | boolean>> : undefined;
-  const inherited = modes !== null && section !== undefined && section[picker.field as "comboDefault"] === undefined;
+  const section =
+    scope !== "all"
+      ? ((modes?.hosts?.[scope] ?? {}) as Partial<Record<string, string | boolean>>)
+      : undefined
+  const inherited =
+    modes !== null && section !== undefined && section[picker.field as "comboDefault"] === undefined
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange} swipeDirection="right">
       <DrawerContent>
         <DrawerHeader className="border-b border-line pb-3.5 px-6 pt-4">
-          <DrawerTitle><SurfaceHeader node={node} version={loaded ? health?.modes?.[node as "caveman"] ?? null : null} /></DrawerTitle>
-          <DrawerDescription className="text-[11px] leading-relaxed">{ABOUT[node] ?? ""}</DrawerDescription>
+          <DrawerTitle>
+            <SurfaceHeader
+              node={node}
+              version={loaded ? (health?.modes?.[node as "caveman"] ?? null) : null}
+            />
+          </DrawerTitle>
+          <DrawerDescription className="text-[11px] leading-relaxed">
+            {ABOUT[node] ?? ""}
+          </DrawerDescription>
         </DrawerHeader>
         <div className="grid min-h-0 flex-1 content-start gap-1.5 overflow-y-auto px-6 py-4 pb-5">
           <div className="mb-1 flex items-center gap-2">
             <span className="mono text-[10px] tracking-[0.1em] text-dim uppercase">scope</span>
-            <Select value={scope} onValueChange={(v) => setScope(v as HostId | "all")} disabled={!loaded}>
-              <SelectTrigger size="sm" className="ml-auto w-[170px]" aria-label="Who this level applies to">
+            <Select
+              value={scope}
+              onValueChange={(v) => setScope(v as HostId | "all")}
+              disabled={!loaded}
+            >
+              <SelectTrigger
+                size="sm"
+                className="ml-auto w-[170px]"
+                aria-label="Who this level applies to"
+              >
                 {/* SelectValue needs children or it shows the raw value. */}
-                <SelectValue>{scope === "all" ? "All agents (shared)" : `${HOSTS.find((x) => x.id === scope)?.label ?? scope} only`}</SelectValue>
+                <SelectValue>
+                  {scope === "all"
+                    ? "All agents (shared)"
+                    : `${HOSTS.find((x) => x.id === scope)?.label ?? scope} only`}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectGroup>
                   <SelectItem value="all">All agents (shared)</SelectItem>
                   {installed.map((h) => (
-                    <SelectItem key={h} value={h}>{HOSTS.find((x) => x.id === h)?.label ?? h} only</SelectItem>
+                    <SelectItem key={h} value={h}>
+                      {HOSTS.find((x) => x.id === h)?.label ?? h} only
+                    </SelectItem>
                   ))}
                 </SelectGroup>
               </SelectContent>
@@ -294,7 +415,14 @@ export function ModeDrawer({ node, open, onOpenChange, modes, hostState, loaded,
                   hint={inherited && current === option.id ? "inherited" : undefined}
                   active={current === option.id}
                   disabled={busy !== null || option.id === "custom"}
-                  onClick={() => onSet(node, picker.field, picker.field === "rtkDefault" ? option.id === "on" : option.id, scope === "all" ? undefined : scope)}
+                  onClick={() =>
+                    onSet(
+                      node,
+                      picker.field,
+                      picker.field === "rtkDefault" ? option.id === "on" : option.id,
+                      scope === "all" ? undefined : scope,
+                    )
+                  }
                 />
               ))}
             </div>
@@ -306,27 +434,36 @@ export function ModeDrawer({ node, open, onOpenChange, modes, hostState, loaded,
         </div>
       </DrawerContent>
     </Drawer>
-  );
+  )
 }
 
 /** A host node opens the side drawer: install actions, then its own defaults rows. */
-export function HostDrawer({ node, open, onOpenChange, hostState, loaded, busy, onHostAction, onSaved }: NodeSurfaceProps) {
-  const hostId = node.slice("host-".length) as HostId;
-  const host = HOSTS.find((h) => h.id === hostId);
+export function HostDrawer({
+  node,
+  open,
+  onOpenChange,
+  hostState,
+  loaded,
+  busy,
+  onHostAction,
+  onSaved,
+}: NodeSurfaceProps) {
+  const hostId = node.slice("host-".length) as HostId
+  const host = HOSTS.find((h) => h.id === hostId)
   // Unread state is not "installed": the buttons wait instead of offering the wrong action.
-  const installed = hostState.installed[hostId] === true;
-  const [running, setRunning] = useState<HostAction | null>(null);
-  const [confirming, setConfirming] = useState(false);
+  const installed = hostState.installed[hostId] === true
+  const [running, setRunning] = useState<HostAction | null>(null)
+  const [confirming, setConfirming] = useState(false)
   useEffect(() => {
-    if (busy !== node) setRunning(null);
-  }, [busy, node]);
+    if (busy !== node) setRunning(null)
+  }, [busy, node])
   useEffect(() => {
-    if (open) setConfirming(false);
-  }, [open, node]);
+    if (open) setConfirming(false)
+  }, [open, node])
   const start = (action: HostAction): void => {
-    setRunning(action);
-    onHostAction(node, action);
-  };
+    setRunning(action)
+    onHostAction(node, action)
+  }
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange} swipeDirection="right">
@@ -337,17 +474,22 @@ export function HostDrawer({ node, open, onOpenChange, hostState, loaded, busy, 
               <AgentLogo host={hostId} className="size-4 shrink-0" />
               <span className="min-w-0 truncate">{host?.label ?? hostId}</span>
               {loaded ? (
-                <span className={cn(
-                  "mono ml-auto shrink-0 rounded border px-1.5 py-0.5 text-[9px]",
-                  installed ? "border-success/40 text-success" : "border-line text-dim",
-                )}
+                <span
+                  className={cn(
+                    "mono ml-auto shrink-0 rounded border px-1.5 py-0.5 text-[9px]",
+                    installed ? "border-success/40 text-success" : "border-line text-dim",
+                  )}
                 >
-                  {installed ? versionOf(hostState.versions[hostId]) ?? "" : "not installed"}
+                  {installed ? (versionOf(hostState.versions[hostId]) ?? "") : "not installed"}
                 </span>
-              ) : <Skeleton className="ml-auto h-3.5 w-12 rounded" />}
+              ) : (
+                <Skeleton className="ml-auto h-3.5 w-12 rounded" />
+              )}
             </span>
           </DrawerTitle>
-          <DrawerDescription className="text-[11px] leading-relaxed">{ABOUT[node] ?? ""}</DrawerDescription>
+          <DrawerDescription className="text-[11px] leading-relaxed">
+            {ABOUT[node] ?? ""}
+          </DrawerDescription>
         </DrawerHeader>
         <div className="grid min-h-0 flex-1 content-start gap-5 overflow-y-auto px-6 py-4">
           {!loaded ? (
@@ -361,7 +503,8 @@ export function HostDrawer({ node, open, onOpenChange, hostState, loaded, busy, 
             </div>
           ) : (
             <p className="m-0 text-[11px] leading-relaxed text-dim">
-              Install writes the Tersio tree for this agent; its own defaults rows appear here once it runs.
+              Install writes the Tersio tree for this agent; its own defaults rows appear here once
+              it runs.
             </p>
           )}
         </div>
@@ -371,105 +514,171 @@ export function HostDrawer({ node, open, onOpenChange, hostState, loaded, busy, 
               <Skeleton className="h-8 w-full rounded-md" />
             </div>
           ) : (
-          <div className={cn("grid w-full gap-2", installed && "grid-cols-2")}>
-            {installed ? (
-              <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => start("update")} className="w-full gap-1.5">
-                {busy === node && running === "update" ? <Spinner className="size-3 text-accent" /> : <Icon name="circle-arrow-up" className="size-3.5" />}
-                Update
-              </Button>
-            ) : (
-              <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => start("install")} className="w-full gap-1.5">
-                {busy === node && running === "install" ? <Spinner className="size-3 text-accent" /> : <Icon name="plus" className="size-3.5" />}
-                Install
-              </Button>
-            )}
-            {installed ? (
-              confirming ? (
-                <Button size="sm" variant="destructive" disabled={busy !== null} onClick={() => start("uninstall")} className="w-full gap-1.5">
-                  {busy === node && running === "uninstall" ? <Spinner className="size-3" /> : <Icon name="trash" className="size-3.5" />}
-                  Confirm uninstall
+            <div className={cn("grid w-full gap-2", installed && "grid-cols-2")}>
+              {installed ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={busy !== null}
+                  onClick={() => start("update")}
+                  className="w-full gap-1.5"
+                >
+                  {busy === node && running === "update" ? (
+                    <Spinner className="size-3 text-accent" />
+                  ) : (
+                    <Icon name="circle-arrow-up" className="size-3.5" />
+                  )}
+                  Update
                 </Button>
               ) : (
-                <Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => setConfirming(true)} className="w-full gap-1.5 text-dim">
-                  <Icon name="trash" className="size-3.5" />
-                  Uninstall
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={busy !== null}
+                  onClick={() => start("install")}
+                  className="w-full gap-1.5"
+                >
+                  {busy === node && running === "install" ? (
+                    <Spinner className="size-3 text-accent" />
+                  ) : (
+                    <Icon name="plus" className="size-3.5" />
+                  )}
+                  Install
                 </Button>
-              )
-            ) : null}
-          </div>
+              )}
+              {installed ? (
+                confirming ? (
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    disabled={busy !== null}
+                    onClick={() => start("uninstall")}
+                    className="w-full gap-1.5"
+                  >
+                    {busy === node && running === "uninstall" ? (
+                      <Spinner className="size-3" />
+                    ) : (
+                      <Icon name="trash" className="size-3.5" />
+                    )}
+                    Confirm uninstall
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={busy !== null}
+                    onClick={() => setConfirming(true)}
+                    className="w-full gap-1.5 text-dim"
+                  >
+                    <Icon name="trash" className="size-3.5" />
+                    Uninstall
+                  </Button>
+                )
+              ) : null}
+            </div>
           )}
         </DrawerFooter>
       </DrawerContent>
     </Drawer>
-  );
+  )
 }
 
 /** The footer under a vendor drawer: check the release feed, update, or remove the binary. */
 export function VendorFooter({
-  tool, source, open, installed, loaded, onAfter,
+  tool,
+  source,
+  open,
+  installed,
+  loaded,
+  onAfter,
 }: {
-  tool: "headroom" | "rtk";
-  source: "Headroom" | "RTK";
-  open: boolean;
-  installed: boolean;
+  tool: "headroom" | "rtk"
+  source: "Headroom" | "RTK"
+  open: boolean
+  installed: boolean
   /** False while health is still unread, so the footer never offers an action on a guess. */
-  loaded: boolean;
-  onAfter: () => void;
+  loaded: boolean
+  onAfter: () => void
 }) {
-  const toast = useToast();
-  const [phase, setPhase] = useState<"idle" | "checking" | "update" | "confirm-uninstall" | "busy">("idle");
-  const [busyLabel, setBusyLabel] = useState("");
-  const [row, setRow] = useState<VendorRow | null>(null);
+  const toast = useToast()
+  const [phase, setPhase] = useState<"idle" | "checking" | "update" | "confirm-uninstall" | "busy">(
+    "idle",
+  )
+  const [busyLabel, setBusyLabel] = useState("")
+  const [row, setRow] = useState<VendorRow | null>(null)
   useEffect(() => {
-    if (!open) { setPhase("idle"); setRow(null); }
-  }, [open]);
-  const busy = phase === "busy";
-  const updateReady = phase === "update";
-  const confirming = phase === "confirm-uninstall";
-  const dots = <Spinner aria-hidden="true" className="size-3.5" />;
+    if (!open) {
+      setPhase("idle")
+      setRow(null)
+    }
+  }, [open])
+  const busy = phase === "busy"
+  const updateReady = phase === "update"
+  const confirming = phase === "confirm-uninstall"
+  const dots = <Spinner aria-hidden="true" className="size-3.5" />
   // A declaration, so the effect below can call it without a dependency-order problem.
   async function check(silent = false): Promise<void> {
-    setPhase("checking");
-    const found = await checkVendor(source);
-    setRow(found);
-    setPhase(found?.upstream && found.pin !== found.upstream ? "update" : "idle");
+    setPhase("checking")
+    const found = await checkVendor(source)
+    setRow(found)
+    setPhase(found?.upstream && found.pin !== found.upstream ? "update" : "idle")
     // The answer reads as a toast, so a silent check leaves the footer to speak for itself.
-    if (silent) return;
-    if (found?.pin) toast(`${source} ${found.pin}`, found.upstream && found.upstream !== found.pin ? `latest ${found.upstream}` : "up to date", "check");
-    else toast(`${source} is not installed`, "Install it from the footer below.", "circle-alert");
+    if (silent) return
+    if (found?.pin)
+      toast(
+        `${source} ${found.pin}`,
+        found.upstream && found.upstream !== found.pin ? `latest ${found.upstream}` : "up to date",
+        "check",
+      )
+    else
+      toast(
+        `${source} is not installed`,
+        "Install it from the footer below.",
+        "circle-exclamation-point",
+      )
   }
 
   // Opening the drawer checks the feed once, so an available update is a button rather than a hunt.
   useEffect(() => {
-    if (open) void check(true);
-  }, [open]);
+    if (open) void check(true)
+  }, [open])
   const runVendor = async (action: "update" | "uninstall"): Promise<void> => {
-    setBusyLabel(action === "uninstall" ? `Uninstalling ${tool}` : installed ? `Updating ${tool}` : `Installing ${tool}`);
-    setPhase("busy");
-    const result = await postVendorAction(tool, action);
+    setBusyLabel(
+      action === "uninstall"
+        ? `Uninstalling ${tool}`
+        : installed
+          ? `Updating ${tool}`
+          : `Installing ${tool}`,
+    )
+    setPhase("busy")
+    const result = await postVendorAction(tool, action)
     if (!result?.ok) {
-      toast(result?.error ?? "the dashboard server did not answer", "Nothing changed.", "circle-alert");
-      setPhase("idle");
-      return;
+      toast(
+        result?.error ?? "the dashboard server did not answer",
+        "Nothing changed.",
+        "circle-exclamation-point",
+      )
+      setPhase("idle")
+      return
     }
-    toast(result.detail, "Runs in the background.", "check");
+    toast(result.detail, "Runs in the background.", "check")
     // The job is detached, so the bar rides a health poll: it ends when the binary state flips.
-    const key = tool === "headroom" ? "headroom" : "rtk";
-    const wasVersion = row?.pin ?? null;
+    const key = tool === "headroom" ? "headroom" : "rtk"
+    const wasVersion = row?.pin ?? null
     // uv tool upgrade downloads and relinks, so give it longer than a version flip usually takes.
     for (let tick = 0; tick < 90; tick += 1) {
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-      const report = await fetchHealth();
-      const state = report?.[key];
-      if (!state) continue;
-      if (action === "uninstall" && !state.present) break;
-      if (action === "update" && state.present && state.version !== wasVersion) break;
+      await new Promise((resolve) => setTimeout(resolve, 2000))
+      const report = await fetchHealth()
+      const state = report?.[key]
+      if (!state) continue
+      if (action === "uninstall" && !state.present) break
+      if (action === "update" && state.present && state.version !== wasVersion) break
     }
-    setPhase("idle");
-    setRow(null);
-    onAfter();
-  };
-  const updateLabel = row?.upstream ? `Update to ${row.upstream}` : "Update";
+    setPhase("idle")
+    setRow(null)
+    onAfter()
+  }
+  const updateLabel = row?.upstream ? `Update to ${row.upstream}` : "Update"
   // Health unread: the count is unknown, so the footer waits instead of offering an action on a guess.
   if (!loaded) {
     return (
@@ -479,23 +688,30 @@ export function VendorFooter({
           <Skeleton className="h-3 w-3/4 rounded" />
         </div>
       </DrawerFooter>
-    );
+    )
   }
   // rtk owns its binary: this footer reports what upstream ships and never replaces it.
   if (tool === "rtk") {
     return (
       <DrawerFooter className="border-t border-line px-6 pb-4 pt-3.5">
         <div className="grid w-full gap-2">
-          <Button size="sm" variant="outline" disabled={phase === "checking"} onClick={() => void check()} className="w-full gap-1.5">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={phase === "checking"}
+            onClick={() => void check()}
+            className="w-full gap-1.5"
+          >
             {phase === "checking" ? "Checking" : row ? "Check again" : "Check for updates"}
             {phase === "checking" ? dots : <Icon name="refresh-cw" className="size-3.5" />}
           </Button>
           <p className="mb-0 mt-0 text-[11px] leading-4 text-dim">
-            rtk is its own install. Update it with rtk&apos;s installer; Tersio only binds it into this agent.
+            rtk is its own install. Update it with rtk&apos;s installer; Tersio only binds it into
+            this agent.
           </p>
         </div>
       </DrawerFooter>
-    );
+    )
   }
   return (
     <DrawerFooter className="border-t border-line px-6 pb-4 pt-3.5">
@@ -503,24 +719,48 @@ export function VendorFooter({
       <div className="grid w-full grid-cols-2 gap-2">
         {installed ? (
           updateReady ? (
-            <Button size="sm" variant="outline" disabled={busy} onClick={() => void runVendor("update")} className="w-full gap-1.5 border-accent/40 text-accent">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={busy}
+              onClick={() => void runVendor("update")}
+              className="w-full gap-1.5 border-accent/40 text-accent"
+            >
               {busy ? busyLabel : updateLabel}
               {busy ? dots : <Icon name="circle-arrow-up" className="size-3.5" />}
             </Button>
           ) : (
-            <Button size="sm" variant="outline" disabled={busy || phase === "confirm-uninstall"} onClick={() => void check()} className="w-full gap-1.5">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={busy || phase === "confirm-uninstall"}
+              onClick={() => void check()}
+              className="w-full gap-1.5"
+            >
               {phase === "checking" ? "Checking" : row ? "Check again" : "Check for updates"}
               {phase === "checking" ? dots : <Icon name="refresh-cw" className="size-3.5" />}
             </Button>
           )
         ) : (
-          <Button size="sm" variant="outline" disabled={busy} onClick={() => void runVendor("update")} className="w-full gap-1.5">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={busy}
+            onClick={() => void runVendor("update")}
+            className="w-full gap-1.5"
+          >
             {busy ? busyLabel : "Install"}
             {busy ? dots : <Icon name="plus" className="size-3.5" />}
           </Button>
         )}
         {confirming ? (
-          <Button size="sm" variant="destructive" disabled={busy} onClick={() => void runVendor("uninstall")} className="w-full gap-1.5">
+          <Button
+            size="sm"
+            variant="destructive"
+            disabled={busy}
+            onClick={() => void runVendor("uninstall")}
+            className="w-full gap-1.5"
+          >
             {busy ? busyLabel : "Confirm uninstall"}
             {busy ? dots : <Icon name="trash" className="size-3.5" />}
           </Button>
@@ -529,7 +769,10 @@ export function VendorFooter({
             size="sm"
             variant="ghost"
             disabled={busy || !installed}
-            onClick={() => { setPhase("confirm-uninstall"); setRow(null); }}
+            onClick={() => {
+              setPhase("confirm-uninstall")
+              setRow(null)
+            }}
             className="w-full gap-1.5 text-dim"
           >
             <Icon name="trash" className="size-3.5" />
@@ -538,78 +781,122 @@ export function VendorFooter({
         )}
       </div>
     </DrawerFooter>
-  );
+  )
 }
 
 function VersionPill({ version }: { version: string | null }) {
-  if (!version) return null;
-  return <span className="mono ml-auto shrink-0 rounded border border-success/40 px-1.5 py-0.5 text-[9px] text-success">{version}</span>;
+  if (!version) return null
+  return (
+    <span className="mono ml-auto shrink-0 rounded border border-success/40 px-1.5 py-0.5 text-[9px] text-success">
+      {version}
+    </span>
+  )
 }
 
 /** The plain-language announcement a switch flip makes: the route changed, not how headroom did it. */
 /** Which install option this agent uses: headroom's own config block, or an endpoint swap Tersio owns. */
 function routeKind(target: { durable?: boolean }): string {
-  return target.durable ? "durable" : "routed";
+  return target.durable ? "durable" : "routed"
 }
 
-export function routeNotice(target: { label?: string; durable?: boolean } | undefined, name: string, on: boolean): { title: string; desc: string } {
-  const label = target?.label ?? name;
+export function routeNotice(
+  target: { label?: string; durable?: boolean } | undefined,
+  name: string,
+  on: boolean,
+): { title: string; desc: string } {
+  const label = target?.label ?? name
   if (!on) {
-    if (target?.durable) return { title: `${label} no longer has headroom built in.`, desc: "Its integration is undone." };
-    return { title: `${label} no longer starts through headroom.`, desc: "It launches the way it did before." };
+    if (target?.durable)
+      return {
+        title: `${label} no longer has headroom built in.`,
+        desc: "Its integration is undone.",
+      }
+    return {
+      title: `${label} no longer starts through headroom.`,
+      desc: "It launches the way it did before.",
+    }
   }
-  if (target?.durable) return { title: `${label} has headroom built in now.`, desc: "It stays on across restarts." };
-  return { title: `${label} starts through headroom now.`, desc: "Its next session picks it up." };
+  if (target?.durable)
+    return { title: `${label} has headroom built in now.`, desc: "It stays on across restarts." }
+  return { title: `${label} starts through headroom now.`, desc: "Its next session picks it up." }
 }
 
 /** The headroom node opens the route drawer: one switch per agent, pointing it at the local proxy. */
-export function HeadroomDrawer({ open, onOpenChange, modes, hostState, loaded, busy, onSet, onHostAction, onSaved }: Omit<NodeSurfaceProps, "node">) {
-  const toast = useToast();
-  const [routes, setRoutes] = useState<Array<HeadroomRouteTarget> | null>(null);
-  const [endpoint, setEndpoint] = useState<string | null>(null);
-  const [health, setHealth] = useState<HealthReport | null>(null);
-  const [routeBusy, setRouteBusy] = useState<string | null>(null);
+export function HeadroomDrawer({
+  open,
+  onOpenChange,
+  modes,
+  hostState,
+  loaded,
+  busy,
+  onSet,
+  onHostAction,
+  onSaved,
+}: Omit<NodeSurfaceProps, "node">) {
+  const toast = useToast()
+  const [routes, setRoutes] = useState<Array<HeadroomRouteTarget> | null>(null)
+  const [endpoint, setEndpoint] = useState<string | null>(null)
+  const [health, setHealth] = useState<HealthReport | null>(null)
+  const [routeBusy, setRouteBusy] = useState<string | null>(null)
   // The installer updates the parent's host state, so a finished install re-reads the rows.
-  const hostKey = HOSTS.map((host) => `${host.id}:${hostState.installed[host.id] === true}:${hostState.present[host.id] === true}`).join(",");
-  const headroomInstalled = health?.headroom?.present ?? false;
+  const hostKey = HOSTS.map(
+    (host) =>
+      `${host.id}:${hostState.installed[host.id] === true}:${hostState.present[host.id] === true}`,
+  ).join(",")
+  const headroomInstalled = health?.headroom?.present ?? false
   // The drawer re-reads health on open, so its own read is what the header and footer wait for.
-  const ready = loaded && health !== null;
-  const picker = PICKER.headroom;
-  const current = nodeValue("headroom", "all", modes);
+  const ready = loaded && health !== null
+  const picker = PICKER.headroom
+  const current = nodeValue("headroom", "all", modes)
 
   const readRoutes = (): void => {
     void fetchRoutes().then((state) => {
-      setRoutes(state?.targets ?? null);
-      setEndpoint(state?.endpoint ?? null);
-    });
-  };
+      setRoutes(state?.targets ?? null)
+      setEndpoint(state?.endpoint ?? null)
+    })
+  }
 
   useEffect(() => {
-    if (!open) return;
-    readRoutes();
-    void fetchHealth().then(setHealth);
-  }, [open, hostKey]);
+    if (!open) return
+    readRoutes()
+    void fetchHealth().then(setHealth)
+  }, [open, hostKey])
 
   /** One switch flip: the server points the agent at the proxy and reports what it wrote. */
   const toggleRoute = (name: string, on: boolean): void => {
-    setRouteBusy(name);
-    const notice = routeNotice(routes?.find((entry) => entry.name === name), name, on);
+    setRouteBusy(name)
+    const notice = routeNotice(
+      routes?.find((entry) => entry.name === name),
+      name,
+      on,
+    )
     void postRoute(name, on)
       .then((result) => {
-        if (result?.ok) toast(notice.title, notice.desc, "check");
-        else toast("The switch did not change.", result?.error ?? "The dashboard server did not answer.", "circle-alert");
+        if (result?.ok) toast(notice.title, notice.desc, "check")
+        else
+          toast(
+            "The switch did not change.",
+            result?.error ?? "The dashboard server did not answer.",
+            "circle-exclamation-point",
+          )
       })
-      .catch(() => toast("The switch did not change.", "The dashboard server did not answer.", "circle-alert"))
+      .catch(() =>
+        toast(
+          "The switch did not change.",
+          "The dashboard server did not answer.",
+          "circle-exclamation-point",
+        ),
+      )
       .finally(() => {
-        setRouteBusy(null);
-        readRoutes();
-      });
-  };
+        setRouteBusy(null)
+        readRoutes()
+      })
+  }
 
   const renderRow = (target: HeadroomRouteTarget) => {
-    const on = target.routed;
-    const present = target.agentPresent !== false;
-    const installed = target.agentInstalled === true;
+    const on = target.routed
+    const present = target.agentPresent !== false
+    const installed = target.agentInstalled === true
     return (
       <div
         key={target.name}
@@ -619,14 +906,25 @@ export function HeadroomDrawer({ open, onOpenChange, modes, hostState, loaded, b
         )}
       >
         <AgentLogo host={target.name as "omp"} className="size-3.5 shrink-0" />
-        <span className={cn("mono min-w-0 flex-1 truncate text-[11px]", on ? "text-ink" : "text-dim")}>{target.label}</span>
+        <span
+          className={cn("mono min-w-0 flex-1 truncate text-[11px]", on ? "text-ink" : "text-dim")}
+        >
+          {target.label}
+        </span>
         {!present ? (
-          <span className="mono shrink-0 rounded border border-line px-1.5 py-0.5 text-[9px] text-dim">not installed</span>
+          <span className="mono shrink-0 rounded border border-line px-1.5 py-0.5 text-[9px] text-dim">
+            not installed
+          </span>
         ) : !installed ? (
-          <span className="mono shrink-0 rounded border border-warn-border bg-warn-soft px-1.5 py-0.5 text-[9px] text-warn-text">Tersio missing</span>
+          <span className="mono shrink-0 rounded border border-warn-border bg-warn-soft px-1.5 py-0.5 text-[9px] text-warn-text">
+            Tersio missing
+          </span>
         ) : (
           <span
-            className={cn("mono shrink-0 rounded border px-1.5 py-0.5 text-[9px]", on ? "border-success/40 text-success" : "border-line text-dim")}
+            className={cn(
+              "mono shrink-0 rounded border px-1.5 py-0.5 text-[9px]",
+              on ? "border-success/40 text-success" : "border-line text-dim",
+            )}
             title={target.detail}
           >
             {on ? routeKind(target) : "off"}
@@ -640,7 +938,11 @@ export function HeadroomDrawer({ open, onOpenChange, modes, hostState, loaded, b
             onClick={() => onHostAction(`host-${target.name}` as NodeId, "install")}
             className="h-6 shrink-0 gap-1 px-1.5 text-[10px]"
           >
-            {busy === `host-${target.name}` ? <Spinner className="size-3" /> : <Icon name="plus" className="size-3" />}
+            {busy === `host-${target.name}` ? (
+              <Spinner className="size-3" />
+            ) : (
+              <Icon name="plus" className="size-3" />
+            )}
             Install
           </Button>
         ) : !present ? null : (
@@ -655,8 +957,8 @@ export function HeadroomDrawer({ open, onOpenChange, modes, hostState, loaded, b
           </span>
         )}
       </div>
-    );
-  };
+    )
+  }
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange} swipeDirection="right">
@@ -664,23 +966,34 @@ export function HeadroomDrawer({ open, onOpenChange, modes, hostState, loaded, b
         <DrawerHeader className="border-b border-line pb-3.5 px-6 pt-4">
           <DrawerTitle>
             <span className="flex items-center gap-2">
-              <span aria-hidden="true" className="text-[13px] leading-none">🍃</span>
+              <span aria-hidden="true" className="text-[13px] leading-none">
+                🍃
+              </span>
               <span className="min-w-0 truncate">headroom</span>
-              {ready ? <VersionPill version={health?.headroom?.version ?? null} /> : <Skeleton className="ml-auto h-3.5 w-12 rounded" />}
+              {ready ? (
+                <VersionPill version={health?.headroom?.version ?? null} />
+              ) : (
+                <Skeleton className="ml-auto h-3.5 w-12 rounded" />
+              )}
             </span>
           </DrawerTitle>
-          <DrawerDescription className="text-[11px] leading-relaxed">{ABOUT.headroom}</DrawerDescription>
+          <DrawerDescription className="text-[11px] leading-relaxed">
+            {ABOUT.headroom}
+          </DrawerDescription>
         </DrawerHeader>
         <div className="grid min-h-0 flex-1 content-start gap-5 overflow-y-auto px-6 py-4 pb-5">
           <div className="grid gap-1.5">
             <p className="flex items-center gap-1.5 text-[13px] font-semibold">
               <Icon name="package" className="size-3.5 text-dim" /> Supported agents
-              <span className="mono ml-auto shrink-0 rounded border border-accent/40 px-1.5 py-0.5 text-[9px] text-accent">recommended</span>
+              <span className="mono ml-auto shrink-0 rounded border border-accent/40 px-1.5 py-0.5 text-[9px] text-accent">
+                recommended
+              </span>
             </p>
             <p className="m-0 text-[10px] leading-relaxed text-dim">
-              Only Tersio agents appear here. A switch points that agent&apos;s provider endpoint at the local proxy
-              and keeps it there across restarts; switching off puts the old URL back. "Tersio missing" means the
-              agent is on this machine but its Tersio tree is not; Install writes it.
+              Only Tersio agents appear here. A switch points that agent&apos;s provider endpoint at
+              the local proxy and keeps it there across restarts; switching off puts the old URL
+              back. "Tersio missing" means the agent is on this machine but its Tersio tree is not;
+              Install writes it.
             </p>
             {routes === null ? (
               <Skeleton className="h-8 w-full rounded-md" />
@@ -694,8 +1007,12 @@ export function HeadroomDrawer({ open, onOpenChange, modes, hostState, loaded, b
             {routes?.some((target) => !target.durable) && endpoint ? (
               <p className="m-0 rounded-lg border border-line bg-track/40 px-2.5 py-2 text-[10px] leading-relaxed text-dim">
                 {/* Named from the routes, so a host that keeps headroom's own block never reads as an endpoint swap. */}
-                {routes.filter((target) => !target.durable).map((target) => target.label).join(", ")} route through{" "}
-                <span className="mono text-ink">{endpoint}v1</span>. The switch saves the old endpoint and restores it.
+                {routes
+                  .filter((target) => !target.durable)
+                  .map((target) => target.label)
+                  .join(", ")}{" "}
+                route through <span className="mono text-ink">{endpoint}v1</span>. The switch saves
+                the old endpoint and restores it.
               </p>
             ) : null}
 
@@ -712,41 +1029,67 @@ export function HeadroomDrawer({ open, onOpenChange, modes, hostState, loaded, b
                 hint="Tool outputs and history compress below the shell; Tersio tracks the savings."
                 checked={current === "on"}
                 disabled={busy !== null}
-                onCheckedChange={(on: boolean) => { onSet("headroom", picker.field, on ? "on" : "off"); onSaved(); }}
+                onCheckedChange={(on: boolean) => {
+                  onSet("headroom", picker.field, on ? "on" : "off")
+                  onSaved()
+                }}
               />
             )}
           </div>
         </div>
-        <VendorFooter tool="headroom" source="Headroom" open={open} installed={headroomInstalled} loaded={ready} onAfter={() => void fetchHealth().then(setHealth)} />
+        <VendorFooter
+          tool="headroom"
+          source="Headroom"
+          open={open}
+          installed={headroomInstalled}
+          loaded={ready}
+          onAfter={() => void fetchHealth().then(setHealth)}
+        />
       </DrawerContent>
     </Drawer>
-  );
+  )
 }
 
 /** The rtk node opens its own drawer: the on/off default plus the vendor release footer. */
-export function RtkDrawer({ open, onOpenChange, modes, loaded, busy, onSet, onSaved }: Omit<NodeSurfaceProps, "node" | "hostState" | "onHostAction">) {
-  const [health, setHealth] = useState<HealthReport | null>(null);
+export function RtkDrawer({
+  open,
+  onOpenChange,
+  modes,
+  loaded,
+  busy,
+  onSet,
+  onSaved,
+}: Omit<NodeSurfaceProps, "node" | "hostState" | "onHostAction">) {
+  const [health, setHealth] = useState<HealthReport | null>(null)
   useEffect(() => {
-    if (!open) return;
-    void fetchHealth().then(setHealth);
-  }, [open]);
-  const rtkInstalled = health?.rtk?.present ?? false;
+    if (!open) return
+    void fetchHealth().then(setHealth)
+  }, [open])
+  const rtkInstalled = health?.rtk?.present ?? false
   // Same rule as headroom: this drawer's own health read decides when its header and footer are real.
-  const ready = loaded && health !== null;
-  const picker = PICKER.rtk;
-  const current = nodeValue("rtk", "all", modes);
+  const ready = loaded && health !== null
+  const picker = PICKER.rtk
+  const current = nodeValue("rtk", "all", modes)
   return (
     <Drawer open={open} onOpenChange={onOpenChange} swipeDirection="right">
       <DrawerContent>
         <DrawerHeader className="border-b border-line pb-3.5 px-6 pt-4">
           <DrawerTitle>
             <span className="flex items-center gap-2">
-              <span aria-hidden="true" className="text-[13px] leading-none">🗜️</span>
+              <span aria-hidden="true" className="text-[13px] leading-none">
+                🗜️
+              </span>
               <span className="min-w-0 truncate">rtk</span>
-              {ready ? <VersionPill version={health?.rtk?.version ?? null} /> : <Skeleton className="ml-auto h-3.5 w-12 rounded" />}
+              {ready ? (
+                <VersionPill version={health?.rtk?.version ?? null} />
+              ) : (
+                <Skeleton className="ml-auto h-3.5 w-12 rounded" />
+              )}
             </span>
           </DrawerTitle>
-          <DrawerDescription className="text-[11px] leading-relaxed">{ABOUT.rtk ?? ""}</DrawerDescription>
+          <DrawerDescription className="text-[11px] leading-relaxed">
+            {ABOUT.rtk ?? ""}
+          </DrawerDescription>
         </DrawerHeader>
         <div className="grid min-h-0 flex-1 content-start gap-4 overflow-y-auto px-6 py-4 pb-5">
           {health === null ? (
@@ -764,45 +1107,74 @@ export function RtkDrawer({ open, onOpenChange, modes, loaded, busy, onSet, onSa
                   hint="Eligible shell calls are rewritten and their output condensed before the model sees it."
                   checked={current === "on"}
                   disabled={busy !== null}
-                  onCheckedChange={(on: boolean) => { onSet("rtk", picker.field, on); onSaved(); }}
+                  onCheckedChange={(on: boolean) => {
+                    onSet("rtk", picker.field, on)
+                    onSaved()
+                  }}
                 />
               )}
             </div>
           )}
         </div>
-        <VendorFooter tool="rtk" source="RTK" open={open} installed={rtkInstalled} loaded={ready} onAfter={() => void fetchHealth().then(setHealth)} />
+        <VendorFooter
+          tool="rtk"
+          source="RTK"
+          open={open}
+          installed={rtkInstalled}
+          loaded={ready}
+          onAfter={() => void fetchHealth().then(setHealth)}
+        />
       </DrawerContent>
     </Drawer>
-  );
+  )
 }
 
 /** The add-agent picker: installed harnesses first, then installable ones, then everything unavailable. */
 export function AddAgentDialog({
-  open, onOpenChange, hostState, loaded, busy, onInstall,
+  open,
+  onOpenChange,
+  hostState,
+  loaded,
+  busy,
+  onInstall,
 }: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  hostState: HostState;
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  hostState: HostState
   /** False while the page still reads its first state, so no row offers Install on a guess. */
-  loaded: boolean;
-  busy: NodeId | null;
-  onInstall: (host: HostId) => void;
+  loaded: boolean
+  busy: NodeId | null
+  onInstall: (host: HostId) => void
 }) {
-  const [expanded, setExpanded] = useState<"installed" | "detected" | "unavailable" | null>("installed");
+  const [expanded, setExpanded] = useState<"installed" | "detected" | "unavailable" | null>(
+    "installed",
+  )
   // A harness counts as installed only when Tersio's tree is there too; detected-but-absent gets its own fold.
-  const linked = HOSTS.filter((host) => hostState.present[host.id] !== false && hostState.installed[host.id] === true);
-  const detected = HOSTS.filter((host) => hostState.present[host.id] !== false && hostState.installed[host.id] !== true);
-  const absent = HOSTS.filter((host) => hostState.present[host.id] === false);
+  const linked = HOSTS.filter(
+    (host) => hostState.present[host.id] !== false && hostState.installed[host.id] === true,
+  )
+  const detected = HOSTS.filter(
+    (host) => hostState.present[host.id] !== false && hostState.installed[host.id] !== true,
+  )
+  const absent = HOSTS.filter((host) => hostState.present[host.id] === false)
   // Opening the dialog always lands on the first group that has a row, so an empty fold never opens.
   useEffect(() => {
-    if (!open) return;
-    setExpanded(linked.length > 0 ? "installed" : detected.length > 0 ? "detected" : absent.length > 0 ? "unavailable" : null);
-  }, [open, linked.length, detected.length, absent.length]);
-  const row = (host: typeof HOSTS[number]) => {
-    const isPresent = hostState.present[host.id] !== false;
+    if (!open) return
+    setExpanded(
+      linked.length > 0
+        ? "installed"
+        : detected.length > 0
+          ? "detected"
+          : absent.length > 0
+            ? "unavailable"
+            : null,
+    )
+  }, [open, linked.length, detected.length, absent.length])
+  const row = (host: (typeof HOSTS)[number]) => {
+    const isPresent = hostState.present[host.id] !== false
     // Tersio's tree is what makes a host usable here, so a detected harness without it offers Install.
-    const linked = hostState.installed[host.id] === true;
-    const installing = busy === `host-${host.id}`;
+    const linked = hostState.installed[host.id] === true
+    const installing = busy === `host-${host.id}`
     return (
       <div
         key={host.id}
@@ -812,10 +1184,15 @@ export function AddAgentDialog({
           isPresent ? "border-line" : "border-dashed border-line opacity-55",
         )}
       >
-        <AgentLogo host={host.id as "omp"} className={cn("size-4 shrink-0", !isPresent && "grayscale")} />
+        <AgentLogo
+          host={host.id as "omp"}
+          className={cn("size-4 shrink-0", !isPresent && "grayscale")}
+        />
         <span className="min-w-0 flex-1 truncate text-[12px]">{host.label}</span>
         {isPresent && !linked ? (
-          <span className="mono shrink-0 text-[9px] text-dim">{versionOf(hostState.versions[host.id]) ?? ""}</span>
+          <span className="mono shrink-0 text-[9px] text-dim">
+            {versionOf(hostState.versions[host.id]) ?? ""}
+          </span>
         ) : null}
         {!loaded ? (
           <Skeleton className="h-5 w-16 shrink-0 rounded" />
@@ -842,8 +1219,8 @@ export function AddAgentDialog({
           </span>
         )}
       </div>
-    );
-  };
+    )
+  }
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-sm">
@@ -853,36 +1230,70 @@ export function AddAgentDialog({
             Add an agent
           </DialogTitle>
           <DialogDescription className="text-[11px] leading-relaxed">
-            The agents installed on this machine open first; installable ones follow, and unavailable agents stay folded.
+            The agents installed on this machine open first; installable ones follow, and
+            unavailable agents stay folded.
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-2">
           {linked.length > 0 ? (
-            <details className="group rounded-xl border border-line" open={expanded === "installed"} onToggle={(e) => { if ((e.target as HTMLDetailsElement).open) setExpanded("installed"); }}>
+            <details
+              className="group rounded-xl border border-line"
+              open={expanded === "installed"}
+              onToggle={(e) => {
+                if ((e.target as HTMLDetailsElement).open) setExpanded("installed")
+              }}
+            >
               <summary className="mono flex cursor-pointer list-none items-center gap-2 pl-2.5 pr-5 py-2 text-[11px] font-semibold text-ink transition-colors hover:text-accent">
-                <Icon name="chevron-right" className="size-3 shrink-0 transition-transform group-open:rotate-90" />
+                <Icon
+                  name="chevron-right"
+                  className="size-3 shrink-0 transition-transform group-open:rotate-90"
+                />
                 Installed on this machine
-                <span className="mono ml-auto shrink-0 rounded border border-success/40 px-1.5 py-0.5 text-[9px] text-success">{linked.length}</span>
+                <span className="mono ml-auto shrink-0 rounded border border-success/40 px-1.5 py-0.5 text-[9px] text-success">
+                  {linked.length}
+                </span>
               </summary>
               <div className="grid gap-1 px-2.5 pb-2">{linked.map(row)}</div>
             </details>
           ) : null}
           {detected.length > 0 ? (
-            <details className="group rounded-xl border border-dashed border-line" open={expanded === "detected"} onToggle={(e) => { if ((e.target as HTMLDetailsElement).open) setExpanded("detected"); }}>
+            <details
+              className="group rounded-xl border border-dashed border-line"
+              open={expanded === "detected"}
+              onToggle={(e) => {
+                if ((e.target as HTMLDetailsElement).open) setExpanded("detected")
+              }}
+            >
               <summary className="mono flex cursor-pointer list-none items-center gap-2 pl-2.5 pr-5 py-2 text-[11px] font-semibold text-dim transition-colors hover:text-ink">
-                <Icon name="chevron-right" className="size-3 shrink-0 transition-transform group-open:rotate-90" />
+                <Icon
+                  name="chevron-right"
+                  className="size-3 shrink-0 transition-transform group-open:rotate-90"
+                />
                 Detected, not added
-                <span className="mono ml-auto shrink-0 rounded border border-line px-1.5 py-0.5 text-[9px] text-dim">{detected.length}</span>
+                <span className="mono ml-auto shrink-0 rounded border border-line px-1.5 py-0.5 text-[9px] text-dim">
+                  {detected.length}
+                </span>
               </summary>
               <div className="grid gap-1 px-2.5 pb-2">{detected.map(row)}</div>
             </details>
           ) : null}
           {absent.length > 0 ? (
-            <details className="group rounded-xl border border-dashed border-line" open={expanded === "unavailable"} onToggle={(e) => { if ((e.target as HTMLDetailsElement).open) setExpanded("unavailable"); }}>
+            <details
+              className="group rounded-xl border border-dashed border-line"
+              open={expanded === "unavailable"}
+              onToggle={(e) => {
+                if ((e.target as HTMLDetailsElement).open) setExpanded("unavailable")
+              }}
+            >
               <summary className="mono flex cursor-pointer list-none items-center gap-2 pl-2.5 pr-5 py-2 text-[11px] font-semibold text-dim transition-colors hover:text-ink">
-                <Icon name="chevron-right" className="size-3 shrink-0 transition-transform group-open:rotate-90" />
+                <Icon
+                  name="chevron-right"
+                  className="size-3 shrink-0 transition-transform group-open:rotate-90"
+                />
                 Unavailable
-                <span className="mono ml-auto shrink-0 rounded border border-line px-1.5 py-0.5 text-[9px] text-dim">{absent.length}</span>
+                <span className="mono ml-auto shrink-0 rounded border border-line px-1.5 py-0.5 text-[9px] text-dim">
+                  {absent.length}
+                </span>
               </summary>
               <div className="grid gap-1 px-2.5 pb-2">{absent.map(row)}</div>
             </details>
@@ -890,5 +1301,5 @@ export function AddAgentDialog({
         </div>
       </DialogContent>
     </Dialog>
-  );
+  )
 }
