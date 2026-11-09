@@ -74,6 +74,47 @@ export function lanUrls(port: number, host: string): string[] {
   return urls;
 }
 
+/** One mode's shipped version against the newest upstream the last check saw; null when no check ran. */
+interface ModeVersion { installed: string | null; upstream: string | null; outdated: boolean | null }
+
+/**
+ * The version inside a tool's own line: `rtk 1.1.0` and `v1.2.3` both read as `1.1.0` and `1.2.3`.
+ * A commit pin compares as its short SHA, so a scorecard's full SHA still matches.
+ */
+function bare(value: string | null | undefined): string | null {
+  if (!value || value === 'unknown' || value === 'HEAD') return null;
+  const tail = value.trim().replace(/^[a-z][a-z-]*\s+(?=\d)/i, '').replace(/^v(?=\d)/i, '');
+  // An installed value that is already a short SHA stays short; a full one is trimmed to compare.
+  return tail.trim() || null;
+}
+
+function sameRelease(mine: string, theirs: string): boolean {
+  if (mine === theirs) return true;
+  const short = (v: string): boolean => /^[0-9a-f]{7,}$/i.test(v);
+  return short(mine) && theirs.toLowerCase().startsWith(mine.toLowerCase());
+}
+
+/** A mode is outdated only when both sides are known and differ, so an offline check never paints a false orange. */
+function modeVersion(installed: string | null, upstream: string | null): ModeVersion {
+  const mine = bare(installed);
+  const theirs = bare(upstream);
+  return { installed: mine, upstream: theirs, outdated: mine !== null && theirs !== null ? !sameRelease(mine, theirs) : null };
+}
+
+/** The per-mode versions the canvas badges read, from the shipped pins and the last scorecard. */
+function modeVersions(rtk: string | null, headroom: string | null): Record<string, ModeVersion> {
+  const sources = cachedScorecardSync()?.sources ?? [];
+  const upstreamOf = (name: string): string | null => sources.find((row) => row.source === name)?.upstream ?? null;
+  return {
+    caveman: modeVersion(CAVEMAN_PIN, upstreamOf('Caveman')),
+    ponytail: modeVersion(ponytailVersion(), upstreamOf('Ponytail')),
+    // The scorecard pins pstack to a commit, so its readable version is the short SHA.
+    pstack: modeVersion(PSTACK_PIN.slice(0, 7), upstreamOf('pstack')),
+    rtk: modeVersion(rtk, upstreamOf('RTK')),
+    headroom: modeVersion(headroom, upstreamOf('Headroom')),
+  };
+}
+
 /** The ponytail version this build vendors, read from its package; null when the tree is absent. */
 function ponytailVersion(): string | null {
   try {
@@ -381,6 +422,10 @@ export function healthJson(): string {
     headroom: { present: headroomPresent, version: headroomPresent ? headroomVersion(headroomBin as string) : null, path: headroomBin || 'not found in PATH' },
     // The shipped-build pins: what this dashboard's own tree carries, not what upstream released.
     modes: { caveman: CAVEMAN_PIN.replace(/^v/, ''), ponytail: ponytailVersion(), pstack: null },
+    modeVersions: modeVersions(
+      rtkPresent ? rtkVersion(rtkBin as string) : null,
+      headroomPresent ? headroomVersion(headroomBin as string) : null,
+    ),
     home: tersioHomePath(),
   });
 }

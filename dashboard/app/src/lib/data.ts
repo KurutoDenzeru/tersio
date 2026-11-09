@@ -422,6 +422,8 @@ export interface HealthReport {
   headroom: { present: boolean; version: string | null; path: string };
   /** The versions this build's own tree pins for the Tersio-forked modes; pstack has no upstream version. */
   modes: { caveman: string | null; ponytail: string | null; pstack: string | null };
+  /** Each mode's shipped version against the newest upstream the last check saw; null when unknown. */
+  modeVersions?: Record<string, { installed: string | null; upstream: string | null; outdated: boolean | null }>;
   home: string;
 }
 

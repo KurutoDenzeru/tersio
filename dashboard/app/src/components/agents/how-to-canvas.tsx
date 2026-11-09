@@ -128,18 +128,24 @@ function NodeButton({
 }
 
 /** The status badge every card carries: a dot plus the level, the way a service list reads. */
-function NodeBadge({ on, label }: { on: boolean | null; label: string }) {
+function NodeBadge({ on, label, tone = "success", title }: {
+  on: boolean | null;
+  label: string;
+  tone?: "success" | "warn";
+  title?: string;
+}) {
   const off = isOff(on);
   // A version can outrun the card, so the badge shrinks and ellipsizes instead of pushing the title out.
+  const stale = !off && tone === "warn";
   return (
     <span
-      title={label}
+      title={title ?? label}
       className={cn(
         "mono ml-auto flex min-w-0 shrink items-center gap-1 rounded border px-1 text-[9px] leading-none py-0.5",
-        off ? "border-line text-dim" : "border-success/40 text-success",
+        off ? "border-line text-dim" : stale ? "border-warn-border bg-warn-soft text-warn-text" : "border-success/40 text-success",
       )}
     >
-      <span aria-hidden="true" className={cn("size-1.5 shrink-0 rounded-full", off ? "bg-dim" : "bg-success")} />
+      <span aria-hidden="true" className={cn("size-1.5 shrink-0 rounded-full", off ? "bg-dim" : stale ? "bg-warn-text" : "bg-success")} />
       <span className="truncate">{label}</span>
     </span>
   );
@@ -458,12 +464,23 @@ export function PipelineCanvas({
     const mode = MODES.find((m) => m.key === id);
     if (mode) {
       const off = isNodeOff(id);
+      const version = hostState.modeVersions[mode.key];
+      // rtk and headroom are tools of their own; the other three ship inside this build.
+      const versioned = version?.installed != null;
+      const stale = version?.outdated === true;
+      const title = versioned
+        ? `${version?.outdated ? "Behind upstream" : "Up to date"}: ${version?.installed}${version?.upstream ? ` (upstream ${version.upstream})` : ""}`
+        : "";
       return (
         <>
           <span className={header}>
             <span aria-hidden="true" className="text-[12px]">{mode.glyph}</span>
             <span className="text-[13px] font-semibold">{mode.name}</span>
-            <NodeBadge on={!off} label={off ? "off" : nodeState(id, modes, hostState).label} />
+            {off
+              ? <NodeBadge on={false} label="off" />
+              : versioned
+                ? <NodeBadge on={!off} label={version?.installed ?? ""} tone={stale ? "warn" : "success"} title={title} />
+                : <NodeBadge on={!off} label={nodeState(id, modes, hostState).label} />}
           </span>
           <span className="mono flex flex-1 items-start px-3 py-1.5 text-[10px] leading-snug text-dim">{mode.role} · {mode.note}</span>
         </>

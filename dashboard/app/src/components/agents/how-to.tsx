@@ -14,7 +14,7 @@ import type { HostAction, HostState, NodeId } from "./pipeline-model";
 
 export function HowToPage({ modes, onModesChanged }: { modes: ModeState | null; onModesChanged: () => void }) {
   const toast = useToast();
-  const [hostState, setHostState] = useState<HostState>({ installed: {}, present: {}, versions: {} });
+  const [hostState, setHostState] = useState<HostState>({ installed: {}, present: {}, versions: {}, modeVersions: {} });
   const [headroomRoutes, setHeadroomRoutes] = useState<Record<string, boolean>>({});
   const [busy, setBusy] = useState<NodeId | null>(null);
   const [hostsLoaded, setHostsLoaded] = useState(false);
@@ -40,7 +40,12 @@ export function HowToPage({ modes, onModesChanged }: { modes: ModeState | null; 
       const versions = { omp: versionOf(report.omp), pi: versionOf(report.pi), pig: versionOf(report.pig), opencode: versionOf(report.opencode), dsh: versionOf(report.dsh), codex: versionOf(report.codex) };
       // Presence is the resolved binary, not the probe: a probe can fail while the harness is there.
       const paths = { omp: report.ompPath, pi: report.piPath, pig: report.pigPath, opencode: report.opencodePath, dsh: report.dshPath, codex: report.codexPath };
-      setHostState((s) => ({ ...s, versions, present: Object.fromEntries(Object.entries(paths).map(([id, p]) => [id, Boolean(p)])) }));
+      setHostState((s) => ({
+        ...s,
+        versions,
+        present: Object.fromEntries(Object.entries(paths).map(([id, p]) => [id, Boolean(p)])),
+        modeVersions: report.modeVersions ?? {},
+      }));
     });
     readRoutes();
     window.addEventListener("tersio:wrap-changed", readRoutes);

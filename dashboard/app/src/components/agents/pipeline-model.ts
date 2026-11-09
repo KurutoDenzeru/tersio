@@ -426,11 +426,19 @@ export const ABOUT: Partial<Record<NodeId, string>> = {
   output: "The turn's result: what the agent answers after every block applied.",
 };
 
+export interface ModeVersionRow {
+  installed: string | null;
+  upstream: string | null;
+  outdated: boolean | null;
+}
+
 export interface HostState {
   installed: Record<string, boolean>;
   /** The harness itself is on this machine, whatever state Tersio's tree is in. */
   present: Record<string, boolean>;
   versions: Record<string, string | null>;
+  /** Each mode's shipped version against upstream, for the mode badges. */
+  modeVersions: Record<string, ModeVersionRow>;
 }
 
 /** One definition of a node's live state, read by the canvas and the dialogs alike. */
