@@ -12,20 +12,54 @@ concurrency:
 
 permissions:
   contents: read
+  # paths-filter reads the PR file list through the API.
+  pull-requests: read
 
 jobs:
-  check:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        # The arm leg is the project's only linux/arm64 coverage. The
-        # 26.04 labels are GA on GitHub (changelog 2026-09-17).
-        os:
-          - ubuntu-26.04
-          - ubuntu-26.04-arm
-          - windows-latest
-    timeout-minutes: 15
+  # A docs-only change reaches no compiler, so the whole matrix is skipped. This
+  # is the runner vite and next.js put in front of their matrices.
+  changes:
+    runs-on: ubuntu-slim
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+      full: ${{ steps.scope.outputs.full }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - id: filter
+        uses: dorny/paths-filter@v4
+        with:
+          filters: |
+            code:
+              - '**'
+              - '!**/*.md'
+              - '!docs/**'
+              - '!graphify-out/**'
+              - '!LICENSE'
+      # Windows and macOS cost minutes the Linux legs do not, so a feature
+      # branch runs them only when its PR asks with [ci-all]. main always runs
+      # everything. The gate is tailwindcss's.
+      - id: scope
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          if [ "$GITHUB_REF" = "refs/heads/main" ] ||
+             [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] ||
+             printf '%s' "$PR_BODY" | grep -qF '[ci-all]'; then
+            echo 'full=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'full=false' >> "$GITHUB_OUTPUT"
+          fi
+
+  # Lint needs no build, so it fails in about 30s on the cheap runner instead of
+  # waiting behind an install and a build in the matrix.
+  lint:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-slim
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v6
         with:
@@ -37,14 +71,59 @@ jobs:
         uses: actions/cache@v6
         with:
           path: ~/.bun/install/cache
-          # Folded scalar: joins with one space, so the key string is
-          # unchanged.
+          key: >-
+            bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('bun.lock',
+            'dashboard/app/bun.lock', '.bun-version') }}
+          restore-keys: bun-${{ runner.os }}-${{ runner.arch }}-
+      - name: Install
+        run: bun install --frozen-lockfile
+      - name: Lint
+        run: bun run lint
+
+  check:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # The arm leg is the project's only linux/arm64 coverage. The
+        # 26.04 labels are GA on GitHub (changelog 2026-09-17).
+        os:
+          - ubuntu-26.04
+          - ubuntu-26.04-arm
+          - windows-latest
+        # A string, not a boolean: exclude matches exactly, so 'false' can
+        # never drift into a truthy value. The exclude drops the Windows leg
+        # when the scope job said this branch does not need it.
+        full:
+          - ${{ needs.changes.outputs.full }}
+        exclude:
+          - full: 'false'
+            os: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      # Windows extracts 134 MB into ~/.bun/install/cache in about 100s, largely
+      # small-file writes, and the installed trees below already cover it. The
+      # Linux legs keep it: there the same archive lands in about 5s.
+      - name: Cache Bun packages
+        if: runner.os != 'Windows'
+        uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
           key: >-
             bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('bun.lock',
             'dashboard/app/bun.lock', '.bun-version') }}
           restore-keys: bun-${{ runner.os }}-${{ runner.arch }}-
       # Linking, not downloading, dominates Windows time, so the installed
-      # trees are cached directly. A lockfile change produces a new key.
+      # trees are cached directly. restore-keys keeps a lockfile change to an
+      # incremental install instead of a cold one.
       - name: Cache installed packages
         if: runner.os == 'Windows'
         uses: actions/cache@v6
@@ -55,17 +134,20 @@ jobs:
           key: >-
             modules-${{ runner.os }}-${{ hashFiles('bun.lock',
             'dashboard/app/bun.lock', '.bun-version') }}
+          restore-keys: modules-${{ runner.os }}-
+      # Both trees, once. build:dashboard installs the app tree itself, and a
+      # second install of an already-installed tree is the only reason it would
+      # appear to cost anything here.
       - name: Install
-        run: bun install --frozen-lockfile
+        run: |
+          bun install --frozen-lockfile
+          bun install --cwd dashboard/app --frozen-lockfile
       # The layout suite needs POSIX pty/termios, so pyte installs on Linux
       # only; it self-skips elsewhere.
       - name: Install pyte
         if: runner.os == 'Linux'
         # Pinned: upstream releases cannot break the layout suite.
         run: python3 -m pip install --quiet pyte==0.8.2
-      - name: Lint
-        if: matrix.os == 'ubuntu-26.04'
-        run: bun run lint
       # Windows builds the dashboard too: the export and drawer tests read
       # the single-file bundle, so skipping it only moves the failure into the
       # suite.
@@ -74,12 +156,17 @@ jobs:
         run: bunx tsc && bun run build:dashboard && bun run test
       - name: Build and test
         if: runner.os != 'Windows'
-        run: bun run verify
+        run: bun run build && bun run test
 
-  # macOS covers the darwin branches, but the primary developers run the
-  # suite locally, so it rides on pull requests only.
+  # macOS covers the darwin branches, but the primary developers run the suite
+  # locally, so it rides on pull requests and main instead of every branch.
   macos:
-    if: github.event_name == 'pull_request'
+    needs: [changes, check]
+    if: >-
+      needs.changes.outputs.code == 'true' &&
+      needs.changes.outputs.full == 'true' &&
+      (github.event_name == 'pull_request' ||
+       github.event_name == 'workflow_dispatch')
     runs-on: macos-latest
     timeout-minutes: 15
     steps:
@@ -101,3 +188,16 @@ jobs:
         run: bun install --frozen-lockfile
       - name: Build and test
         run: bun run verify
+
+  # One required check, stable across skips: a docs-only PR reports this job
+  # green instead of leaving the matrix names missing from branch protection.
+  gate:
+    if: always()
+    needs: [changes, lint, check, macos]
+    runs-on: ubuntu-slim
+    timeout-minutes: 2
+    steps:
+      - if: >-
+          contains(needs.*.result, 'failure') ||
+          contains(needs.*.result, 'cancelled')
+        run: exit 1
