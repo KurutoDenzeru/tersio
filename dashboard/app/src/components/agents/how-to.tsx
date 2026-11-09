@@ -9,17 +9,21 @@ import type { ModeState } from "./shell";
 import { useToast } from "../toaster";
 import { AddAgentDialog } from "./how-to-node-ui";
 import { PipelineCanvas, PipelineSkeleton } from "./how-to-canvas";
-import { readHosts, versionOf } from "./pipeline-model";
+import { quickStartLast, readHosts, versionOf } from "./pipeline-model";
 import type { HostAction, HostState, NodeId } from "./pipeline-model";
 
 export function HowToPage({ modes, onModesChanged }: { modes: ModeState | null; onModesChanged: () => void }) {
   const toast = useToast();
-  const [hostState, setHostState] = useState<HostState>({ installed: {}, present: {}, versions: {}, modeVersions: {} });
-  const [headroomRoutes, setHeadroomRoutes] = useState<Record<string, boolean>>({});
+  const [hostState, setHostState] = useState<HostState>(
+    () => quickStartLast.hostState ?? { installed: {}, present: {}, versions: {}, modeVersions: {} },
+  );
+  const [headroomRoutes, setHeadroomRoutes] = useState<Record<string, boolean>>(() => quickStartLast.routes ?? {});
   const [busy, setBusy] = useState<NodeId | null>(null);
-  const [hostsLoaded, setHostsLoaded] = useState(false);
+  const [hostsLoaded, setHostsLoaded] = useState(() => quickStartLast.hostState !== null);
+  // The last read stands in while this page re-asks, so returning here never flashes a skeleton.
+  const liveModes = modes ?? quickStartLast.modes;
   // An exported file has no server: /settings never answers, so the documented every-node-lit reading holds there instead of a permanent skeleton.
-  const pipelinePending = usePending(!hostsLoaded || (!isFileExport() && modes === null));
+  const pipelinePending = usePending(!hostsLoaded || (!isFileExport() && liveModes === null));
   // One picker serves both entries: the canvas's centered empty-state node, and the header button.
   const [addOpen, setAddOpen] = useState(false);
 
@@ -52,6 +56,24 @@ export function HowToPage({ modes, onModesChanged }: { modes: ModeState | null; 
     return () => window.removeEventListener("tersio:wrap-changed", readRoutes);
   }, []);
 
+  // Keep the last read for the next mount, so leaving Quick start and coming back paints data.
+  useEffect(() => { quickStartLast.hostState = hostState; }, [hostState]);
+  useEffect(() => { quickStartLast.routes = headroomRoutes; }, [headroomRoutes]);
+  useEffect(() => { if (modes) quickStartLast.modes = modes; }, [modes]);
+
+  // A child started before this page unmounted still runs on the server, so the row keeps its spinner.
+  useEffect(() => {
+    void fetch("/api/hosts/action")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((jobs: Array<{ host: string; action: HostAction; code: number | null }> | null) => {
+        const running = jobs?.find((job) => job.code === null);
+        if (!running) return;
+        setBusy(`host-${running.host}` as NodeId);
+        watchHostJob(running.host, running.action);
+      })
+      .catch(() => { /* the first read already covers an unreachable server */ });
+  }, []);
+
   const save = (node: NodeId, field: string, value: string | boolean, host?: "omp" | "pi" | "pig" | "opencode" | "dsh" | "codex"): void => {
     setBusy(node);
     void fetch("/settings", {
@@ -73,6 +95,44 @@ export function HowToPage({ modes, onModesChanged }: { modes: ModeState | null; 
   };
 
   // The CLI runs install, uninstall, and update in its own process, so the page asks the server whether that child is still running instead of guessing from the tree on disk.
+  /** Re-read what a finished job changed, so the row shows the new version without a reload. */
+  const refreshAfterJob = (host: string): void => {
+    void readHosts().then((rows) => {
+      if (rows) setHostState((s) => ({ ...s, installed: Object.fromEntries(rows.map((row) => [row.id, row.installed])) }));
+    });
+    void fetchHealth().then((report) => {
+      if (!report) return;
+      const version = versionOf(report[host as "omp" | "pi" | "pig" | "opencode" | "codex"]);
+      if (version) setHostState((s) => ({ ...s, versions: { ...s.versions, [host]: version } }));
+    });
+    void fetchRoutes().then((state) => {
+      if (!state) return;
+      setHeadroomRoutes(Object.fromEntries(state.targets.map((target) => [target.name, target.routed])));
+    });
+  };
+
+  // One watcher for a running job, so a page that unmounted mid-install can pick the same job back up.
+  const watchHostJob = (host: string, action: HostAction): void => {
+    const started = Date.now();
+    const timer = window.setInterval(() => {
+      void fetch("/api/hosts/action")
+        .then((r) => (r.ok ? r.json() : null))
+        .then((jobs: Array<{ host: string; action: string; code: number | null }> | null) => {
+          const job = jobs?.find((entry) => entry.host === host && entry.action === action && entry.code !== null);
+          // A child that never reports back still has to hand the menu back.
+          if (!job && Date.now() - started < 120_000) return;
+          window.clearInterval(timer);
+          setBusy(null);
+          refreshAfterJob(host);
+          if (job?.code === 0) toast(`${host}: ${action} done`, "The agent list is up to date.", "check");
+          else if (job) toast(`${host}: ${action} failed`, `The command exited with code ${job.code}.`, "circle-alert");
+          else toast(`${host}: ${action} is still running`, "Reload the page in a moment to see the result.", "circle-alert");
+        })
+        .catch(() => { /* the next tick tries again */ });
+    }, 1000);
+  };
+
+  // The CLI runs install, uninstall, and update in its own process, so the page asks the server whether that child is still running instead of guessing from the tree on disk.
   const hostAction = (node: NodeId, action: HostAction): void => {
     const host = node.slice("host-".length);
     setBusy(node);
@@ -89,38 +149,7 @@ export function HowToPage({ modes, onModesChanged }: { modes: ModeState | null; 
           return;
         }
         toast(`${host}: ${action} started`, "It runs in the background.", "check");
-        const started = Date.now();
-        const timer = window.setInterval(() => {
-          void fetch("/api/hosts/action")
-            .then((r) => (r.ok ? r.json() : null))
-            .then((jobs: Array<{ host: string; action: string; code: number | null }> | null) => {
-              const job = jobs?.find((entry) => entry.host === host && entry.action === action && entry.code !== null);
-              // A child that never reports back still has to hand the menu back.
-              if (!job && Date.now() - started < 120_000) return;
-              window.clearInterval(timer);
-              setBusy(null);
-              void readHosts().then((rows) => {
-                if (rows) setHostState((s) => ({ ...s, installed: Object.fromEntries(rows.map((row) => [row.id, row.installed])) }));
-              });
-              void fetchHealth().then((report) => {
-                if (!report) return;
-                const version = versionOf(report[host as "omp" | "pi" | "pig" | "opencode" | "codex"]);
-                if (version) setHostState((s) => ({ ...s, versions: { ...s.versions, [host]: version } }));
-              });
-              void fetchRoutes().then((state) => {
-                if (!state) return;
-                setHeadroomRoutes(Object.fromEntries(state.targets.map((target) => [target.name, target.routed])));
-              });
-              if (job?.code === 0) {
-                toast(`${host}: ${action} done`, "The agent list is up to date.", "check");
-              } else if (job) {
-                toast(`${host}: ${action} failed`, `The command exited with code ${job.code}.`, "circle-alert");
-              } else {
-                toast(`${host}: ${action} is still running`, "Reload the page in a moment to see the result.", "circle-alert");
-              }
-            })
-            .catch(() => { /* the next tick tries again */ });
-        }, 1000);
+        watchHostJob(host, action);
       })
       .catch(() => {
         toast(`Could not ${action} ${host}`, "The dashboard server did not answer. Restart it to load the host actions.", "circle-alert");
@@ -144,7 +173,7 @@ export function HowToPage({ modes, onModesChanged }: { modes: ModeState | null; 
       <div className="h-full">
         {pipelinePending ? <PipelineSkeleton /> : (
           <PipelineCanvas
-            modes={modes}
+            modes={liveModes}
             hostState={hostState}
             loaded={!pipelinePending}
             headroomRoutes={headroomRoutes}

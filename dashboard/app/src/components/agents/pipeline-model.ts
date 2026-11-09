@@ -441,6 +441,16 @@ export interface HostState {
   modeVersions: Record<string, ModeVersionRow>;
 }
 
+/**
+ * The last Quick start read, kept across unmount. Coming back from another page paints this instead
+ * of a skeleton, and the refresh below overwrites it as soon as the server answers.
+ */
+export const quickStartLast: {
+  hostState: HostState | null;
+  routes: Record<string, boolean> | null;
+  modes: ModeState | null;
+} = { hostState: null, routes: null, modes: null };
+
 /** One definition of a node's live state, read by the canvas and the dialogs alike. */
 export function edgeLit(key: EdgeKey, modes: ModeState | null, hostState: HostState): Lit {
   if (key === "hosts") {
