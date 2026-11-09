@@ -67,19 +67,9 @@ pi install npm:@krtclcdy/tersio
 opencode plugin add @krtclcdy/tersio
 pig install npm:@krtclcdy/tersio
 dsh plugin --profile web add npm:@krtclcdy/tersio
-codex plugin marketplace add KurutoDenzeru/tersio --sparse .agents/plugins --sparse plugins/tersio
+codex plugin marketplace add KurutoDenzeru/tersio
 codex plugin add tersio@tersio
 ```
-
-The DeepSeek Harness desktop app installs through its Plugins pane instead: **Add plugin** → paste `@krtclcdy/tersio`, or a local checkout path while the bundle field is unreleased → restart the app. `dsh plugin` refuses the `desktop` profile by design, and `tersio install --host dsh` never writes it.
-
-Codex v1 ships Caveman, Ponytail, pstack, Headroom, per-mode skills, Tersio MCP, usage stats, and Headroom routing through Headroom's own `init codex`. It does not wire RTK yet. After installing, restart Codex and approve the Tersio prompt hook in `/hooks`.
-
-The two Codex routes differ. `codex plugin add` installs the plugin, its skills, and the MCP server, but current Codex removed plugin-declared hooks, so the slash commands reach the model and cost a turn. `tersio install --host codex` writes the same plugin plus the prompt hook in `~/.codex/hooks.json`, which is what makes `/combo lite` answer instantly. Run that one if you want the slash commands.
-
-Pick one install method per host, not both. Using both registers every command twice.
-
-OMP, pi, PiG, and OpenCode load the same extension tree; DeepSeek Harness mounts the package as a bundle; Codex loads the plugin, the prompt hook in `~/.codex/hooks.json`, MCP server, and per-mode skills. Every host reads its session-start defaults from `~/.tersio/settings.json`.
 
 One-off use without installing:
 
@@ -160,14 +150,20 @@ Add this entry under `mcpServers` in the client's MCP settings:
 }
 ```
 
-That is the whole setup. No extra command, no port, no token, and no process to keep alive. `tersio install` writes this same Tersio server entry into OMP, Pi, PiG, and OpenCode, and asks first — the prompt reads `Add the Tersio MCP server to <agent>? … (optional)`, so a machine that should stay untouched can decline. DeepSeek Harness needs no file: its bundle patch carries the entry, and it is wired as soon as the plugin is mounted.
+That is all of it, with no port or token to set up. `tersio install` adds the same entry for OMP, Pi, PiG, and OpenCode, and asks before it touches anything. DeepSeek Harness already carries the entry in its bundle.
 
+Your agent then gets six tools:
 
-The entry names an absolute `tersio` path when the binary is findable at install time, because an agent launched from the desktop never reads a shell profile and would not see the bare name. The bare name stays as the fallback.
+| Tool | What it answers |
+|---|---|
+| `tersio_stats` | Requests, errors, tokens, and cost for a period. |
+| `tersio_activity` | What Tersio changed, newest first. |
+| `tersio_hosts` | Each agent, its version, and whether it reaches Tersio. |
+| `tersio_sessions` | Recent sessions with model, tokens, and cost. |
+| `tersio_modes` | The starting modes, shown or changed, for every agent or one. |
+| `tersio_headroom` | Savings, live status, stored originals, and its own commands. |
 
-Six tools become available: `tersio_stats` (requests, errors, tokens, cache rate, and cost for a range, in your display currency), `tersio_activity` (what Tersio changed, newest first), `tersio_hosts` (every supported agent, its installed version, and whether the MCP entry reaches it), `tersio_sessions` (the newest sessions with host, project, model, tokens, and cost), `tersio_modes` (read the session-start defaults, or set them: a Combo preset, or any single mode — caveman, rtk, ponytail, pstack, headroom — overriding its piece of the preset; pass `host` to scope the read or the write to one agent), and `tersio_headroom` (savings by default; `action: status` for live proxy counters and routing; `action: retrieve` with a marker hash; or `action: memory`, `evals`, and `dashboard` for the upstream commands Tersio does not reimplement).
-
-Two resources read without spending a tool call: `tersio://settings` (the stored profile) and `tersio://hosts` (the host table with live state). A client that cancels a request stops the tool with it, so a long `evals` run does not keep the process busy after the call is gone.
+Two resources answer without using a tool: `tersio://settings` and `tersio://hosts`.
 
 ## 🖥️ CLI
 
