@@ -12,14 +12,6 @@ Tersio installs into an agent host. Pick the row for the host you use.
 | [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) | `tersio install --host dsh` | `tersio update --host dsh` | `tersio uninstall --host dsh` |
 | [Codex](https://github.com/openai/codex) | `tersio install --host codex` | `tersio update --host codex` | `tersio uninstall --host codex` |
 
-Host-native equivalents, same code: `omp plugin install @krtclcdy/tersio`, `pi install npm:@krtclcdy/tersio`, `opencode plugin add @krtclcdy/tersio`, `pig install npm:@krtclcdy/tersio`. Codex can install the repo plugin with `codex plugin marketplace add KurutoDenzeru/tersio`, then `codex plugin add tersio@tersio`. In the Codex app, **Add plugin marketplace** asks for the same three values: source `KurutoDenzeru/tersio`, Git ref `main`, and sparse paths `.agents/plugins` and `plugins/tersio`, one per line. That route installs the plugin, per-mode skills, and MCP server, but not the prompt hook: current Codex removed plugin-declared hooks, so its slash commands reach the model. `tersio install --host codex` also writes the hook into `~/.codex/hooks.json`. Never run both forms for one host, or every command registers twice.
-
-Codex loads Tersio's modes from a `UserPromptSubmit` hook in `~/.codex/hooks.json`, beside rtk and headroom. Restart Codex after installing and approve the Tersio hook in `/hooks` (or **Settings → Hooks**). Codex v1 does not wire RTK. Headroom is wired through `headroom init codex`, which Tersio runs during install.
-
-The plugin ships seven discoverable skills: `$combo`, `$caveman`, `$headroom`, `$ponytail`, `$pstack`, `$rtk`, and `$tersio`. Literal commands such as `/combo lite`, `/caveman full`, and `/ponytail lite` are handled by that hook, which applies the mode, blocks the command from the model, and answers with the combo line. `/headroom on|off` sets the stored preference; the endpoint route itself comes from the dashboard switch or the next install. Codex does not autocomplete those literal commands.
-
-OpenCode users who installed via `opencode plugin add` update and remove through `opencode plugin update` / `opencode plugin remove` instead.
-
 The default one-liner installs the CLI and runs the setup menus (scope + Combo preset) in the same pass:
 
 ```bash
@@ -38,7 +30,56 @@ Passing flags needs the download wrapped in a scriptblock, because `iex` cannot 
 & ([scriptblock]::Create((irm https://github.com/KurutoDenzeru/tersio/releases/latest/download/install.ps1))) --npm
 ```
 
-Each host loads its extensions from one place, so the same file never loads twice: `~/.omp/plugins/node_modules/@krtclcdy/tersio/extensions/` for OMP, `~/.pi/agent/extensions`, `~/.config/opencode/plugins/tersio`. Codex loads the plugin cache under `$CODEX_HOME/plugins/cache/tersio/tersio/`. The OMP agent tree keeps rtk's own `extensions/rtk.ts` wiring, which `config.yml` registers. `tersio update` without `--host` refreshes OMP.
+## Native installs
+
+Each host can install Tersio by itself, without the Tersio CLI. Pick one route per host, not both.
+
+**Oh My Pi**
+
+```bash
+omp plugin install @krtclcdy/tersio
+```
+
+**pi**
+
+```bash
+pi install npm:@krtclcdy/tersio
+```
+
+**OpenCode**
+
+```bash
+opencode plugin add @krtclcdy/tersio
+```
+
+Update with `opencode plugin update`, remove with `opencode plugin remove`.
+
+**Pi-in-go (PiG)**
+
+```bash
+pig install npm:@krtclcdy/tersio
+```
+
+**DeepSeek Harness**
+
+```bash
+dsh plugin --profile web add npm:@krtclcdy/tersio
+```
+
+The desktop app uses its own Plugins pane: **Add plugin** → paste `@krtclcdy/tersio` → restart the app.
+
+**Codex**
+
+```bash
+codex plugin marketplace add KurutoDenzeru/tersio
+codex plugin add tersio@tersio
+```
+
+In the Codex app, **Add plugin marketplace** asks for the same values: source `KurutoDenzeru/tersio`, Git ref `main`, sparse paths `.agents/plugins` and `plugins/tersio`.
+
+This route installs the plugin, its seven skills, and the MCP server. It installs no prompt hook, because current Codex dropped plugin-declared hooks, so `/combo lite` reaches the model there. Use `tersio install --host codex` when you want the slash commands to answer instantly, then approve the Tersio hook in `/hooks` after restarting.
+
+Codex does not wire RTK yet. Headroom is wired by `tersio install`, which runs `headroom init codex` for you.
 
 ## Requirements
 
