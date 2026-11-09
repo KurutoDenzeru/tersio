@@ -60,7 +60,7 @@ const PSTACK_REPO = 'cursor/plugins';
 const PSTACK_PATH = 'pstack/skills/poteto-mode/';
 
 /** Pins are deliberate: bump one only after reviewing the upstream diff it names. */
-export const CAVEMAN_PIN = 'v4.0.1';
+export const CAVEMAN_PIN = 'v4.1.0';
 // c742dd6 is the newest commit that touched a body we track; every tracked pstack body was re-ported to it.
 export const PSTACK_PIN = 'c742dd61706fbacc1b95f1a20b7b988cf096ce6c';
 
