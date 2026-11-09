@@ -45,9 +45,11 @@ jobs:
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
         run: |
+          # The marker must stand alone on a line. A PR that merely documents
+          # it, like this one, would otherwise opt itself in.
           if [ "$GITHUB_REF" = "refs/heads/main" ] ||
              [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] ||
-             printf '%s' "$PR_BODY" | grep -qF '[ci-all]'; then
+             printf '%s' "$PR_BODY" | grep -qxF '[ci-all]'; then
             echo 'full=true' >> "$GITHUB_OUTPUT"
           else
             echo 'full=false' >> "$GITHUB_OUTPUT"
