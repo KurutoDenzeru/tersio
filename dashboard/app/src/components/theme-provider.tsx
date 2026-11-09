@@ -22,9 +22,7 @@ type ThemeProviderState = {
 const COLOR_SCHEME_QUERY = "(prefers-color-scheme: dark)"
 const THEME_VALUES: Theme[] = ["dark", "light", "system"]
 
-const ThemeProviderContext = React.createContext<
-  ThemeProviderState | undefined
->(undefined)
+const ThemeProviderContext = React.createContext<ThemeProviderState | undefined>(undefined)
 
 function isTheme(value: string | null): value is Theme {
   if (value === null) {
@@ -54,8 +52,8 @@ function disableTransitionsTemporarily() {
   const style = document.createElement("style")
   style.appendChild(
     document.createTextNode(
-      "*,*::before,*::after{-webkit-transition:none!important;transition:none!important}"
-    )
+      "*,*::before,*::after{-webkit-transition:none!important;transition:none!important}",
+    ),
   )
   document.head.appendChild(style)
 
@@ -78,9 +76,7 @@ function isEditableTarget(target: EventTarget | null) {
     return true
   }
 
-  const editableParent = target.closest(
-    "input, textarea, select, [contenteditable='true']"
-  )
+  const editableParent = target.closest("input, textarea, select, [contenteditable='true']")
   if (editableParent) {
     return true
   }
@@ -114,7 +110,7 @@ export function ThemeProvider({
       localStorage.setItem(storageKey, nextTheme)
       setThemeState(nextTheme)
     },
-    [storageKey]
+    [storageKey],
   )
 
   const setAccent = React.useCallback((nextAccent: AccentId) => {
@@ -125,7 +121,9 @@ export function ThemeProvider({
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ accent: nextAccent }),
-    }).catch(() => { /* an exported file has no server; the store still holds it */ })
+    }).catch(() => {
+      /* an exported file has no server; the store still holds it */
+    })
   }, [])
 
   // The saved accent wins over this browser's copy, so the choice survives a new port and a new browser.
@@ -139,18 +137,19 @@ export function ThemeProvider({
         localStorage.setItem(ACCENT_STORAGE_KEY, next)
         setAccentState((current) => (current === next ? current : next))
       })
-      .catch(() => { /* no server: keep the stored accent */ })
-    return () => { live = false }
+      .catch(() => {
+        /* no server: keep the stored accent */
+      })
+    return () => {
+      live = false
+    }
   }, [])
 
   const applyTheme = React.useCallback(
     (nextTheme: Theme) => {
       const root = document.documentElement
-      const resolvedTheme =
-        nextTheme === "system" ? getSystemTheme() : nextTheme
-      const restoreTransitions = disableTransitionOnChange
-        ? disableTransitionsTemporarily()
-        : null
+      const resolvedTheme = nextTheme === "system" ? getSystemTheme() : nextTheme
+      const restoreTransitions = disableTransitionOnChange ? disableTransitionsTemporarily() : null
 
       root.classList.remove("light", "dark")
       root.classList.add(resolvedTheme)
@@ -159,7 +158,7 @@ export function ThemeProvider({
         restoreTransitions()
       }
     },
-    [disableTransitionOnChange]
+    [disableTransitionOnChange],
   )
 
   // A pure colour choice, so it gets its own attribute and no transition.
@@ -259,7 +258,7 @@ export function ThemeProvider({
       accent,
       setAccent,
     }),
-    [theme, setTheme, accent, setAccent]
+    [theme, setTheme, accent, setAccent],
   )
 
   return (

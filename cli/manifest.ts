@@ -11,17 +11,17 @@ export const EXT_DIR = path.join(findPackageRoot(path.dirname(fileURLToPath(impo
 
 /** Every pstack leaf, playbook, and skill the index routes to. */
 function pstackTreeFiles(): string[] {
-  const root = path.join(EXT_DIR, "pstack");
+  const root = path.join(EXT_DIR, 'pstack');
   const out: string[] = [];
   const walk = (dir: string, rel: string): void => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       const child = path.join(dir, entry.name);
       const relChild = rel ? `${rel}/${entry.name}` : entry.name;
       if (entry.isDirectory()) walk(child, relChild);
-      else if (entry.name.endsWith(".md")) out.push(`pstack/${relChild}`);
+      else if (entry.name.endsWith('.md')) out.push(`pstack/${relChild}`);
     }
   };
-  walk(root, "");
+  walk(root, '');
   return out.toSorted();
 }
 export const TREE_PSTACK_FILES: readonly string[] = pstackTreeFiles();
@@ -123,10 +123,23 @@ export function treeFilesFor(id: 'omp' | 'pi' | 'opencode' | 'pig' | 'dsh'): rea
 }
 
 /** Obsolete install debris; explicit, not a sweep, because these trees are shared with tersio's other steps. */
-const OBSOLETE_DIRS = ['updater', 'caveman-session', 'rtk-filter', 'rtk-session', 'combo-toggle', 'tersio-commands', 'ai-addons-updater', 'lib', 'opencode'] as const;
+const OBSOLETE_DIRS = [
+  'updater',
+  'caveman-session',
+  'rtk-filter',
+  'rtk-session',
+  'combo-toggle',
+  'tersio-commands',
+  'ai-addons-updater',
+  'lib',
+  'opencode',
+] as const;
 
 /** Retired Ponytail `.js` modules; the fork ships `.ts` and every loader reads those. */
-const OBSOLETE_FILES = ['ponytail-bundle/hooks/ponytail-config.js', 'ponytail-bundle/hooks/ponytail-instructions.js'] as const;
+const OBSOLETE_FILES = [
+  'ponytail-bundle/hooks/ponytail-config.js',
+  'ponytail-bundle/hooks/ponytail-instructions.js',
+] as const;
 
 /** Debris test for a tree-relative path; one definition shared by detection and repair. */
 export function isObsoleteTreeFile(rel: string, id: 'omp' | 'pi' | 'opencode' | 'pig' | 'dsh'): boolean {
@@ -137,9 +150,16 @@ export function isObsoleteTreeFile(rel: string, id: 'omp' | 'pi' | 'opencode' | 
 }
 
 /** Drops the debris directories a written tree must never keep, and reports their names. */
-export async function reapObsoleteTreeDirs(dest: string, options: { dryRun?: boolean; verbose?: boolean }): Promise<string[]> {
+export async function reapObsoleteTreeDirs(
+  dest: string,
+  options: { dryRun?: boolean; verbose?: boolean },
+): Promise<string[]> {
   let entries;
-  try { entries = await fs.readdir(dest, { withFileTypes: true }); } catch { return []; }
+  try {
+    entries = await fs.readdir(dest, { withFileTypes: true });
+  } catch {
+    return [];
+  }
   const gone: string[] = [];
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
@@ -155,7 +175,11 @@ export async function reapObsoleteTreeDirs(dest: string, options: { dryRun?: boo
 export function treeFileText(file: string): string | null {
   const generated = GENERATED_TREE_FILES[file];
   if (generated !== undefined) return generated;
-  try { return readFileSync(sourcePath(file), 'utf8'); } catch { return null; }
+  try {
+    return readFileSync(sourcePath(file), 'utf8');
+  } catch {
+    return null;
+  }
 }
 
 /** The vendored Ponytail copy. Tersio ships it, so a host lists one plugin instead of two. */
@@ -167,14 +191,23 @@ export const PONYTAIL_PKG = '@dietrichgebert/ponytail';
 /** The vendored copy's own manifest holds the version, so the scorecard and the copy never drift. */
 export const PONYTAIL_VERSION: string = ((): string => {
   try {
-    return (JSON.parse(readFileSync(path.join(PONYTAIL_DIR, 'package.json'), 'utf8')) as { version?: string }).version ?? '';
+    return (
+      (JSON.parse(readFileSync(path.join(PONYTAIL_DIR, 'package.json'), 'utf8')) as { version?: string }).version ?? ''
+    );
   } catch {
     return '';
   }
 })();
 
 /** The ponytail ruleset this build ships, copied to every host that cannot install the package. */
-export const PONYTAIL_SKILL_NAMES = ['ponytail', 'ponytail-audit', 'ponytail-debt', 'ponytail-gain', 'ponytail-help', 'ponytail-review'] as const;
+export const PONYTAIL_SKILL_NAMES = [
+  'ponytail',
+  'ponytail-audit',
+  'ponytail-debt',
+  'ponytail-gain',
+  'ponytail-help',
+  'ponytail-review',
+] as const;
 
 /** The OpenCode bundle: no node_modules there, so the ruleset rides along as files. */
 export const PONYTAIL_BUNDLE_FILES = [
@@ -193,7 +226,7 @@ const MANIFEST_PATH = path.join(path.dirname(EXT_DIR), 'package.json');
 export function shippedOmpManifest(): Record<string, unknown> | null {
   try {
     const pkg = JSON.parse(readFileSync(MANIFEST_PATH, 'utf8')) as { omp?: unknown };
-    return typeof pkg.omp === 'object' && pkg.omp !== null ? pkg.omp as Record<string, unknown> : null;
+    return typeof pkg.omp === 'object' && pkg.omp !== null ? (pkg.omp as Record<string, unknown>) : null;
   } catch {
     return null;
   }

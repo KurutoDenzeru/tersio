@@ -3,22 +3,21 @@
 import * as React from "react"
 import { cn } from "cn"
 
-export const TooltipSurface = React.forwardRef<
-  HTMLDivElement,
-  React.ComponentProps<"div">
->(function TooltipSurface({ className, ...props }, ref) {
-  return (
-    <div
-      ref={ref}
-      data-slot="tooltip-surface"
-      className={cn(
-        "grid min-w-32 items-start gap-1.5 rounded-lg border border-border/50 bg-background px-2.5 py-1.5 text-xs shadow-xl",
-        className,
-      )}
-      {...props}
-    />
-  )
-})
+export const TooltipSurface = React.forwardRef<HTMLDivElement, React.ComponentProps<"div">>(
+  function TooltipSurface({ className, ...props }, ref) {
+    return (
+      <div
+        ref={ref}
+        data-slot="tooltip-surface"
+        className={cn(
+          "grid min-w-32 items-start gap-1.5 rounded-lg border border-border/50 bg-background px-2.5 py-1.5 text-xs shadow-xl",
+          className,
+        )}
+        {...props}
+      />
+    )
+  },
+)
 
 export function TooltipRow({
   label,
@@ -62,9 +61,7 @@ export function TooltipRow({
       <div className="flex min-w-0 flex-1 items-center justify-between gap-2 leading-none">
         <div className="min-w-0 text-muted-foreground">{label}</div>
         {value != null && (
-          <div className="shrink-0 font-mono font-medium text-foreground tabular-nums">
-            {value}
-          </div>
+          <div className="shrink-0 font-mono font-medium text-foreground tabular-nums">{value}</div>
         )}
       </div>
     </div>

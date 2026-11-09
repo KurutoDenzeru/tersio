@@ -27,7 +27,13 @@ export function findTopLevelKey(text: string, key: string): { keyStart: number; 
 }
 
 /** The same scan for one object's own keys, which sit at `depth` from the root. */
-function findKeyWithin(text: string, from: number, to: number, key: string, depth = 1): { keyStart: number; valueStart: number } | null {
+function findKeyWithin(
+  text: string,
+  from: number,
+  to: number,
+  key: string,
+  depth = 1,
+): { keyStart: number; valueStart: number } | null {
   let level = depth - 1;
   for (let i = from; i < to;) {
     const char = text[i]!;
@@ -74,7 +80,11 @@ function valueEnd(text: string, start: number): number {
       i = end;
       continue;
     }
-    if (char === '{' || char === '[') { depth++; i++; continue; }
+    if (char === '{' || char === '[') {
+      depth++;
+      i++;
+      continue;
+    }
     if (char === '}' || char === ']') {
       if (depth === 0) return i;
       depth--;
@@ -126,7 +136,10 @@ function indentAt(text: string, index: number): string {
 
 function indentBody(text: string, keyIndex: number, body: string): string {
   const pad = indentAt(text, keyIndex);
-  return body.split('\n').map((line, n) => (n === 0 ? line : pad + line)).join('\n');
+  return body
+    .split('\n')
+    .map((line, n) => (n === 0 ? line : pad + line))
+    .join('\n');
 }
 
 /** Cuts one key and its value, taking the comma that separated it so no stray `,` is left behind. */
@@ -200,7 +213,10 @@ export function spliceNestedKey(text: string, outer: string, inner: string, valu
   let inner_end = containerEnd - 1;
   while (inner_end > container.valueStart && /\s/.test(text[inner_end]!)) inner_end--;
   const empty = text[inner_end] === '{';
-  const block = `${JSON.stringify(inner)}: ${body.split('\n').map((line, n) => (n === 0 ? line : pad + line)).join('\n')}`;
+  const block = `${JSON.stringify(inner)}: ${body
+    .split('\n')
+    .map((line, n) => (n === 0 ? line : pad + line))
+    .join('\n')}`;
   return `${text.slice(0, container.valueStart + 1)}\n${pad}${block}${empty ? '' : ','}${text.slice(container.valueStart + 1)}`;
 }
 

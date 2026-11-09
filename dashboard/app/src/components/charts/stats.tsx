@@ -1,11 +1,11 @@
 // The page kit: header, card chrome, the stat band, meters. One look for every page.
-import { cn } from "cn";
-import type { ReactNode } from "react";
-import { Card as CardShell, CardContent } from "@/components/ui/card";
-import { Progress, ProgressIndicator, ProgressTrack } from "@/components/ui/progress";
-import { HoverTip } from "@/components/common";
-import { Sparkline } from "./series";
-import { Icon } from "@/components/icon";
+import { cn } from "cn"
+import type { ReactNode } from "react"
+import { Card as CardShell, CardContent } from "@/components/ui/card"
+import { Progress, ProgressIndicator, ProgressTrack } from "@/components/ui/progress"
+import { HoverTip } from "@/components/common"
+import { Sparkline } from "./series"
+import { Icon } from "@/components/icon"
 
 /** The page title block. */
 export function PageHeader({
@@ -13,9 +13,9 @@ export function PageHeader({
   description,
   actions,
 }: {
-  title: string;
-  description: React.ReactNode;
-  actions?: React.ReactNode;
+  title: string
+  description: React.ReactNode
+  actions?: React.ReactNode
 }) {
   return (
     <header className="flex flex-wrap items-end justify-between gap-3">
@@ -25,11 +25,12 @@ export function PageHeader({
       </div>
       {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
     </header>
-  );
+  )
 }
 
 /** Card chrome shared by the real card and its loading placeholder, so both reveal and sit the same way. */
-export const CARD_CHROME = "translate-y-[18px] gap-0 overflow-hidden border-line bg-panel opacity-0 transition-[opacity,transform] duration-500 ease-[cubic-bezier(.16,1,.3,1)] data-[reveal=in]:translate-y-0 data-[reveal=in]:opacity-100 dark:[color-scheme:dark]";
+export const CARD_CHROME =
+  "translate-y-[18px] gap-0 overflow-hidden border-line bg-panel opacity-0 transition-[opacity,transform] duration-500 ease-[cubic-bezier(.16,1,.3,1)] data-[reveal=in]:translate-y-0 data-[reveal=in]:opacity-100 dark:[color-scheme:dark]"
 
 /** A page block; `flush` drops body padding so a table spans the card, `footer` sits as one strip under the body. */
 export function Card({
@@ -43,16 +44,16 @@ export function Card({
   className,
   id,
 }: {
-  title: string;
+  title: string
   /** Lucide glyph beside the title, from the same set the drawer sections use. */
-  icon?: string;
-  description?: React.ReactNode;
-  actions?: React.ReactNode;
-  footer?: React.ReactNode;
-  flush?: boolean;
-  children: React.ReactNode;
-  className?: string;
-  id?: string;
+  icon?: string
+  description?: React.ReactNode
+  actions?: React.ReactNode
+  footer?: React.ReactNode
+  flush?: boolean
+  children: React.ReactNode
+  className?: string
+  id?: string
 }) {
   return (
     <CardShell
@@ -71,11 +72,15 @@ export function Card({
             {icon && <Icon name={icon} className="size-3.5 shrink-0 text-dim" />}
             <span className="truncate">{title}</span>
           </h2>
-          {description && <p className="mono mt-px text-[11px] leading-snug text-dim">{description}</p>}
+          {description && (
+            <p className="mono mt-px text-[11px] leading-snug text-dim">{description}</p>
+          )}
         </div>
         {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
       </div>
-      <CardContent className={cn("min-w-0", flush ? "px-0 py-0" : "px-3.5 pt-2.5 pb-2")}>{children}</CardContent>
+      <CardContent className={cn("min-w-0", flush ? "px-0 py-0" : "px-3.5 pt-2.5 pb-2")}>
+        {children}
+      </CardContent>
       {footer && (
         <div
           data-slot="card-footer"
@@ -85,7 +90,7 @@ export function Card({
         </div>
       )}
     </CardShell>
-  );
+  )
 }
 
 /** One labelled figure. `spark` draws its recent shape, `hint` explains it. */
@@ -100,16 +105,16 @@ export function Stat({
   className,
   icon,
 }: {
-  label: string;
-  title?: string;
-  value: React.ReactNode;
-  hint?: React.ReactNode;
-  spark?: number[];
-  tone?: "good" | "warn" | "bad";
-  size?: "md" | "sm";
-  className?: string;
+  label: string
+  title?: string
+  value: React.ReactNode
+  hint?: React.ReactNode
+  spark?: number[]
+  tone?: "good" | "warn" | "bad"
+  size?: "md" | "sm"
+  className?: string
   /** Leading glyph, matching the token strip on the ledger cards. */
-  icon?: string;
+  icon?: string
 }) {
   const body = (
     <div className={cn("min-w-0 px-4 py-3", size === "sm" && "py-2.5", className)}>
@@ -135,8 +140,8 @@ export function Stat({
       )}
       {hint && <p className="mono mt-1 truncate text-[11px] text-dim">{hint}</p>}
     </div>
-  );
-  return title ? <HoverTip content={title}>{body}</HoverTip> : body;
+  )
+  return title ? <HoverTip content={title}>{body}</HoverTip> : body
 }
 
 export function StatGrid({
@@ -144,9 +149,9 @@ export function StatGrid({
   children,
   className,
 }: {
-  cols?: 2 | 3 | 4 | 5 | 6 | 7;
-  children: React.ReactNode;
-  className?: string;
+  cols?: 2 | 3 | 4 | 5 | 6 | 7
+  children: React.ReactNode
+  className?: string
 }) {
   const sizes: Record<number, string> = {
     2: "grid-cols-2",
@@ -155,34 +160,42 @@ export function StatGrid({
     5: "grid-cols-2 sm:grid-cols-3 lg:grid-cols-5",
     6: "grid-cols-2 sm:grid-cols-3 lg:grid-cols-6",
     7: "grid-cols-2 sm:grid-cols-4 lg:grid-cols-7",
-  };
+  }
   // One solid band, a rule between cells everywhere: no translucent tiles, so a strip never falls back to loose tiles.
-  const cells = (Array.isArray(children) ? children : [children]).filter((c): c is ReactNode => Boolean(c));
-// Rules are written per column count, not from `cols`: Tailwind scans source at build time; a built name has no CSS.
+  const cells = (Array.isArray(children) ? children : [children]).filter((c): c is ReactNode =>
+    Boolean(c),
+  )
+  // Rules are written per column count, not from `cols`: Tailwind scans source at build time; a built name has no CSS.
   const RULES: Record<number, string> = {
     // A strip that stays two per row at every width needs no breakpoint.
     2: "[&>*:not(:nth-child(2n+1))]:border-l [&>*:nth-child(n+3)]:border-t",
-    3: "max-sm:[&>*:not(:nth-child(2n+1))]:border-l max-sm:[&>*:nth-child(n+3)]:border-t"
-      + " sm:max-lg:[&>*:not(:nth-child(3n+1))]:border-l sm:max-lg:[&>*:nth-child(n+4)]:border-t"
-      + " lg:[&>*:not(:nth-child(3n+1))]:border-l lg:[&>*:nth-child(n+4)]:border-t",
-    4: "max-sm:[&>*:not(:nth-child(2n+1))]:border-l max-sm:[&>*:nth-child(n+3)]:border-t"
-      + " sm:max-lg:[&>*:not(:nth-child(3n+1))]:border-l sm:max-lg:[&>*:nth-child(n+4)]:border-t"
-      + " lg:[&>*:not(:nth-child(4n+1))]:border-l lg:[&>*:nth-child(n+5)]:border-t",
-    5: "max-sm:[&>*:not(:nth-child(2n+1))]:border-l max-sm:[&>*:nth-child(n+3)]:border-t"
-      + " sm:max-lg:[&>*:not(:nth-child(3n+1))]:border-l sm:max-lg:[&>*:nth-child(n+4)]:border-t"
-      + " lg:[&>*:not(:nth-child(5n+1))]:border-l lg:[&>*:nth-child(n+6)]:border-t",
-    6: "max-sm:[&>*:not(:nth-child(2n+1))]:border-l max-sm:[&>*:nth-child(n+3)]:border-t"
-      + " sm:max-lg:[&>*:not(:nth-child(3n+1))]:border-l sm:max-lg:[&>*:nth-child(n+4)]:border-t"
-      + " lg:[&>*:not(:nth-child(6n+1))]:border-l lg:[&>*:nth-child(n+7)]:border-t",
+    3:
+      "max-sm:[&>*:not(:nth-child(2n+1))]:border-l max-sm:[&>*:nth-child(n+3)]:border-t" +
+      " sm:max-lg:[&>*:not(:nth-child(3n+1))]:border-l sm:max-lg:[&>*:nth-child(n+4)]:border-t" +
+      " lg:[&>*:not(:nth-child(3n+1))]:border-l lg:[&>*:nth-child(n+4)]:border-t",
+    4:
+      "max-sm:[&>*:not(:nth-child(2n+1))]:border-l max-sm:[&>*:nth-child(n+3)]:border-t" +
+      " sm:max-lg:[&>*:not(:nth-child(3n+1))]:border-l sm:max-lg:[&>*:nth-child(n+4)]:border-t" +
+      " lg:[&>*:not(:nth-child(4n+1))]:border-l lg:[&>*:nth-child(n+5)]:border-t",
+    5:
+      "max-sm:[&>*:not(:nth-child(2n+1))]:border-l max-sm:[&>*:nth-child(n+3)]:border-t" +
+      " sm:max-lg:[&>*:not(:nth-child(3n+1))]:border-l sm:max-lg:[&>*:nth-child(n+4)]:border-t" +
+      " lg:[&>*:not(:nth-child(5n+1))]:border-l lg:[&>*:nth-child(n+6)]:border-t",
+    6:
+      "max-sm:[&>*:not(:nth-child(2n+1))]:border-l max-sm:[&>*:nth-child(n+3)]:border-t" +
+      " sm:max-lg:[&>*:not(:nth-child(3n+1))]:border-l sm:max-lg:[&>*:nth-child(n+4)]:border-t" +
+      " lg:[&>*:not(:nth-child(6n+1))]:border-l lg:[&>*:nth-child(n+7)]:border-t",
     // The seven-wide strip holds four per row from `sm`, not three.
-    7: "max-sm:[&>*:not(:nth-child(2n+1))]:border-l max-sm:[&>*:nth-child(n+3)]:border-t"
-      + " sm:max-lg:[&>*:not(:nth-child(4n+1))]:border-l sm:max-lg:[&>*:nth-child(n+5)]:border-t"
-      + " lg:[&>*:not(:nth-child(7n+1))]:border-l lg:[&>*:nth-child(n+8)]:border-t",
-  };
+    7:
+      "max-sm:[&>*:not(:nth-child(2n+1))]:border-l max-sm:[&>*:nth-child(n+3)]:border-t" +
+      " sm:max-lg:[&>*:not(:nth-child(4n+1))]:border-l sm:max-lg:[&>*:nth-child(n+5)]:border-t" +
+      " lg:[&>*:not(:nth-child(7n+1))]:border-l lg:[&>*:nth-child(n+8)]:border-t",
+  }
   // Columns each tier draws; a short final row counts its leftover slots against this.
-  const perRow = [2, cols === 7 ? 4 : 3, cols];
+  const perRow = [2, cols === 7 ? 4 : 3, cols]
   // A row that fills leaves nothing to merge, so an even split spans one slot like any cell.
-  const mergeSpan = (slots: number): number => (cells.length % slots === 0 ? 1 : slots - (cells.length % slots) + 1);
+  const mergeSpan = (slots: number): number =>
+    cells.length % slots === 0 ? 1 : slots - (cells.length % slots) + 1
   return (
     <div
       data-reveal
@@ -194,25 +207,21 @@ export function StatGrid({
         className,
       )}
       // Merge spans arrive as custom properties: a class name built from a count is invisible to Tailwind's scanner.
-      style={{
-        "--stat-band-span-sm": mergeSpan(perRow[0]),
-        "--stat-band-span-md": mergeSpan(perRow[1]),
-        "--stat-band-span-lg": mergeSpan(perRow[2]),
-      } as React.CSSProperties}
+      style={
+        {
+          "--stat-band-span-sm": mergeSpan(perRow[0]),
+          "--stat-band-span-md": mergeSpan(perRow[1]),
+          "--stat-band-span-lg": mergeSpan(perRow[2]),
+        } as React.CSSProperties
+      }
     >
       {cells.map((cell, i) => (
-        <div
-          key={i}
-          className={cn(
-            "min-w-0",
-            i > 0 && "border-line",
-          )}
-        >
+        <div key={i} className={cn("min-w-0", i > 0 && "border-line")}>
           {cell}
         </div>
       ))}
     </div>
-  );
+  )
 }
 
 /** A share of a limit, with the exact figure beside it. */
@@ -222,12 +231,12 @@ export function MeterCell({
   color = "var(--accent)",
   label,
 }: {
-  value: number;
-  max: number;
-  color?: string;
-  label: string;
+  value: number
+  max: number
+  color?: string
+  label: string
 }) {
-  const pct = max > 0 ? Math.min(1, Math.max(0, value / max)) : 0;
+  const pct = max > 0 ? Math.min(1, Math.max(0, value / max)) : 0
   return (
     <div className="flex min-w-[92px] items-center gap-2">
       <Progress value={pct * 100} className="w-full gap-0" aria-label={label}>
@@ -235,13 +244,19 @@ export function MeterCell({
           <ProgressIndicator style={{ background: color }} />
         </ProgressTrack>
       </Progress>
-      <span className="mono shrink-0 text-[11px] tabular-nums text-dim">{(pct * 100).toFixed(0)}%</span>
+      <span className="mono shrink-0 text-[11px] tabular-nums text-dim">
+        {(pct * 100).toFixed(0)}%
+      </span>
     </div>
-  );
+  )
 }
 
 /** The page shell: header, then blocks stacked with one gap rhythm. */
 export function Page({ children }: { children: React.ReactNode }) {
   // The class replays its staggered jump whenever this shell mounts, which a route change does.
-  return <div className="page-jump mx-auto flex w-full max-w-[1400px] flex-col gap-4 px-4 py-5 sm:px-6">{children}</div>;
+  return (
+    <div className="page-jump mx-auto flex w-full max-w-[1400px] flex-col gap-4 px-4 py-5 sm:px-6">
+      {children}
+    </div>
+  )
 }

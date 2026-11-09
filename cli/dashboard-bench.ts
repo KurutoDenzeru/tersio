@@ -27,11 +27,7 @@ const DOCS = path.join(EXT_DIR, '..', 'docs');
 
 /** Inline markdown a table cell never needs on screen: code ticks and bold runs. */
 function plainCell(cell: string): string {
-  return cell
-    .replace(/`/g, '')
-    .replace(/\*\*/g, '')
-    .replace(/^-\s+/, '- ')
-    .trim();
+  return cell.replace(/`/g, '').replace(/\*\*/g, '').replace(/^-\s+/, '- ').trim();
 }
 
 function cellsOf(line: string): string[] {
@@ -45,7 +41,11 @@ function isSeparator(line: string): boolean {
 /** One file, split into its header bullets and the tables under each second-level heading. */
 export function parseBenchFile(id: string, text: string): BenchFile {
   const lines = text.split(/\r?\n/);
-  const title = lines.find((line) => line.startsWith('# '))?.slice(2).trim() ?? id;
+  const title =
+    lines
+      .find((line) => line.startsWith('# '))
+      ?.slice(2)
+      .trim() ?? id;
   const meta: Record<string, string> = {};
   const tables: BenchTable[] = [];
   const findings: string[] = [];
@@ -97,7 +97,10 @@ export function parseBenchFile(id: string, text: string): BenchFile {
 export function readBenchmarks(): { files: BenchFile[]; dir: string } {
   let names: string[] = [];
   try {
-    names = fs.readdirSync(DOCS).filter((name) => /^BENCH_.*\.md$/.test(name)).toSorted();
+    names = fs
+      .readdirSync(DOCS)
+      .filter((name) => /^BENCH_.*\.md$/.test(name))
+      .toSorted();
   } catch {
     return { files: [], dir: DOCS };
   }

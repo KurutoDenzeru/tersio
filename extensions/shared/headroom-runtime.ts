@@ -68,11 +68,19 @@ function rawProxyPids(): number[] {
   try {
     if (process.platform === 'win32') {
       // No pgrep, and tasklist prints no command line; PowerShell can match on it.
-      const script = "Get-CimInstance Win32_Process | Where-Object { $_.Name -like 'python*' -and $_.CommandLine -like '*headroom.cli proxy*' } | ForEach-Object { $_.ProcessId }";
-      return parsePids(execFileSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', script], { encoding: 'utf8', timeout: 8_000, windowsHide: true }));
+      const script =
+        "Get-CimInstance Win32_Process | Where-Object { $_.Name -like 'python*' -and $_.CommandLine -like '*headroom.cli proxy*' } | ForEach-Object { $_.ProcessId }";
+      return parsePids(
+        execFileSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', script], {
+          encoding: 'utf8',
+          timeout: 8_000,
+          windowsHide: true,
+        }),
+      );
     }
-    return parsePids(execFileSync('pgrep', ['-f', 'headroom.cli proxy'], { encoding: 'utf8', timeout: 3_000 }))
-      .filter(isPythonProcess);
+    return parsePids(execFileSync('pgrep', ['-f', 'headroom.cli proxy'], { encoding: 'utf8', timeout: 3_000 })).filter(
+      isPythonProcess,
+    );
   } catch {
     return [];
   }
@@ -91,9 +99,10 @@ function isPythonProcess(pid: number): boolean {
 /** The `--port` a proxy process was started with, or null when its argv does not say. */
 function proxyPortOf(pid: number): number | null {
   try {
-    const argv = process.platform === 'linux'
-      ? readFileSync(`/proc/${pid}/cmdline`, 'utf8').split('\u0000').join(' ')
-      : execFileSync('ps', ['-o', 'command=', '-p', String(pid)], { encoding: 'utf8', timeout: 3_000 });
+    const argv =
+      process.platform === 'linux'
+        ? readFileSync(`/proc/${pid}/cmdline`, 'utf8').split('\u0000').join(' ')
+        : execFileSync('ps', ['-o', 'command=', '-p', String(pid)], { encoding: 'utf8', timeout: 3_000 });
     const match = argv.match(/--port[\s=]+(\d+)/);
     const port = match ? Number(match[1]) : NaN;
     return Number.isFinite(port) && port > 0 ? port : null;
@@ -105,7 +114,11 @@ function proxyPortOf(pid: number): number | null {
 /** Stop proxies that answer nowhere useful: first politely, then for real. */
 export function reapProxies(pids: number[]): void {
   for (const pid of pids) {
-    try { process.kill(pid, 'SIGTERM'); } catch { /* already gone */ }
+    try {
+      process.kill(pid, 'SIGTERM');
+    } catch {
+      /* already gone */
+    }
   }
   const deadline = Date.now() + 2_000;
   let alive = new Set(pids);
@@ -115,7 +128,11 @@ export function reapProxies(pids: number[]): void {
     if (alive.size > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100);
   }
   for (const pid of alive) {
-    try { process.kill(pid, 'SIGKILL'); } catch { /* gone */ }
+    try {
+      process.kill(pid, 'SIGKILL');
+    } catch {
+      /* gone */
+    }
   }
 }
 
@@ -148,12 +165,15 @@ function deploymentProfiles(port: number): DeploymentProfile[] {
           ? manifest.proxy_args.filter((arg): arg is string => typeof arg === 'string')
           : [];
         found.push({
-          profile: typeof manifest.profile === 'string' && manifest.profile.trim() !== '' ? manifest.profile : entry.name,
+          profile:
+            typeof manifest.profile === 'string' && manifest.profile.trim() !== '' ? manifest.profile : entry.name,
           updated: typeof manifest.updated_at === 'string' ? manifest.updated_at : '',
           proxyArgs: args,
           manifestFile: file,
         });
-      } catch { /* a partial manifest is not a deployment we can start */ }
+      } catch {
+        /* a partial manifest is not a deployment we can start */
+      }
     }
   } catch {
     return [];
@@ -165,7 +185,10 @@ function deploymentProfiles(port: number): DeploymentProfile[] {
 function withFlag(args: string[], flag: string, value: string): string[] {
   const out: string[] = [];
   for (let i = 0; i < args.length; i += 1) {
-    if (args[i] === flag) { i += 1; continue; }
+    if (args[i] === flag) {
+      i += 1;
+      continue;
+    }
     if (args[i]!.startsWith(`${flag}=`)) continue;
     out.push(args[i]!);
   }
@@ -192,11 +215,17 @@ function totalMemoryMb(): number | null {
       return Number.isFinite(kb) && kb > 0 ? Math.round(kb / 1024) : null;
     }
     if (process.platform === 'win32') {
-      const out = execFileSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', '(Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory'], { encoding: 'utf8', timeout: 8_000, windowsHide: true });
+      const out = execFileSync(
+        'powershell',
+        ['-NoProfile', '-NonInteractive', '-Command', '(Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory'],
+        { encoding: 'utf8', timeout: 8_000, windowsHide: true },
+      );
       const bytes = Number(out.trim());
       return Number.isFinite(bytes) && bytes > 0 ? Math.round(bytes / 1048576) : null;
     }
-  } catch { /* an unreadable total is not a refusal */ }
+  } catch {
+    /* an unreadable total is not a refusal */
+  }
   return null;
 }
 
@@ -206,14 +235,16 @@ function totalMemoryMb(): number | null {
  */
 export function headroomFitsMachine(): { fits: boolean; detail: string; totalMb: number | null } {
   // An operator who knows their machine overrides the guess; the floor is still printed.
-  if (process.env.TERSIO_HEADROOM_FORCE === '1') return { fits: true, detail: 'forced on by TERSIO_HEADROOM_FORCE', totalMb: totalMemoryMb() };
+  if (process.env.TERSIO_HEADROOM_FORCE === '1')
+    return { fits: true, detail: 'forced on by TERSIO_HEADROOM_FORCE', totalMb: totalMemoryMb() };
   const totalMb = totalMemoryMb();
   if (totalMb === null) return { fits: true, detail: 'memory size unknown, so the proxy is allowed', totalMb };
   return {
     fits: totalMb >= 2048,
-    detail: totalMb >= 2048
-      ? `${totalMb}MB total memory carries a ${HEADROOM_FLOOR_MB}MB proxy`
-      : `${totalMb}MB total memory is too small for a ${HEADROOM_FLOOR_MB}MB proxy`,
+    detail:
+      totalMb >= 2048
+        ? `${totalMb}MB total memory carries a ${HEADROOM_FLOOR_MB}MB proxy`
+        : `${totalMb}MB total memory is too small for a ${HEADROOM_FLOOR_MB}MB proxy`,
     totalMb,
   };
 }
@@ -236,7 +267,8 @@ function configureDeployment(entry: DeploymentProfile, target: string): boolean 
   try {
     const manifest = JSON.parse(readFileSync(entry.manifestFile, 'utf8')) as Record<string, unknown>;
     const before = JSON.stringify(manifest);
-    const baseEnv = manifest.base_env && typeof manifest.base_env === 'object' ? manifest.base_env as Record<string, string> : {};
+    const baseEnv =
+      manifest.base_env && typeof manifest.base_env === 'object' ? (manifest.base_env as Record<string, string>) : {};
     baseEnv.OPENAI_TARGET_API_URL = target;
     manifest.base_env = baseEnv;
     manifest.proxy_args = withFlag(entry.proxyArgs.length ? entry.proxyArgs : [], '--openai-api-url', target);
@@ -259,7 +291,6 @@ async function waitForRuntime(): Promise<boolean> {
   return false;
 }
 
-
 /**
  * Start the proxy directly, not through `install start`. That command leaves a second Python
  * process running the profile for the life of the proxy, and it costs about 82MB to forward a
@@ -281,7 +312,9 @@ async function startRuntime(bin: string, openAiTarget?: string | null): Promise<
       cwd: homeDir(),
     });
     // A missing binary reports through the error event, not a throw; without this it crashes the caller.
-    child.on('error', (e: Error) => { spawnFailure = e.message; });
+    child.on('error', (e: Error) => {
+      spawnFailure = e.message;
+    });
     child.unref();
   } catch (e) {
     return { ok: false, detail: (e as Error).message };
@@ -295,7 +328,9 @@ async function startRuntime(bin: string, openAiTarget?: string | null): Promise<
   for (const entry of profiles) {
     try {
       await execFileP(bin, ['install', 'start', '--profile', entry.profile], { timeout: 30_000, cwd: homeDir() });
-    } catch { continue; }
+    } catch {
+      continue;
+    }
     if (await waitForRuntime()) return { ok: true, detail: `headroom deployment ${entry.profile} started` };
   }
   return { ok: false, detail: `headroom did not answer on ${headroomProxyUrl()}` };
@@ -312,20 +347,35 @@ function startLockFile(): string {
 function acquireStartLock(): boolean {
   const file = startLockFile();
   // The data home may not exist yet on a first run; `wx` above would fail with ENOENT and read as held.
-  try { mkdirSync(path.dirname(file), { recursive: true }); } catch { /* the write below reports the real problem */ }
-  try { writeFileSync(file, String(process.pid), { flag: 'wx' }); return true; } catch { /* held */ }
+  try {
+    mkdirSync(path.dirname(file), { recursive: true });
+  } catch {
+    /* the write below reports the real problem */
+  }
+  try {
+    writeFileSync(file, String(process.pid), { flag: 'wx' });
+    return true;
+  } catch {
+    /* held */
+  }
   try {
     // A crashed start can leave the file behind; the wait window is the lifetime of a real start.
     if (Date.now() - statSync(file).mtimeMs > 30_000) {
       rmSync(file, { force: true });
       return acquireStartLock();
     }
-  } catch { /* vanished between the two calls: try once more */ }
+  } catch {
+    /* vanished between the two calls: try once more */
+  }
   return false;
 }
 
 function releaseStartLock(): void {
-  try { rmSync(startLockFile(), { force: true }); } catch { /* already gone */ }
+  try {
+    rmSync(startLockFile(), { force: true });
+  } catch {
+    /* already gone */
+  }
 }
 
 /** Stop every proxy this machine runs. The routes are put back before this is called. */
@@ -334,7 +384,8 @@ export async function stopHeadroomRuntime(bin?: string | null): Promise<Headroom
   // Only a proxy this data home started, or one a deployment here owns, is Tersio's to stop. Another
   // tool's proxy on the same default port, or one from a different home, is left running.
   const deployments = deploymentProfiles(port);
-  if (deployments.length === 0 && !weStartedProxy(port)) return { ok: true, detail: 'no headroom proxy of ours to stop' };
+  if (deployments.length === 0 && !weStartedProxy(port))
+    return { ok: true, detail: 'no headroom proxy of ours to stop' };
   const pids = headroomProxyPids(port);
   if (pids.length === 0) return { ok: true, detail: 'no headroom proxy was running' };
   // headroom's own stop releases the deployment it recorded, so a later start keeps its manifest.
@@ -343,7 +394,9 @@ export async function stopHeadroomRuntime(bin?: string | null): Promise<Headroom
     for (const entry of deployments) {
       try {
         await execFileP(binPath, ['install', 'stop', '--profile', entry.profile], { timeout: 30_000, cwd: homeDir() });
-      } catch { /* the reaper below is the backstop */ }
+      } catch {
+        /* the reaper below is the backstop */
+      }
     }
   }
   const left = headroomProxyPids(port);
@@ -359,11 +412,19 @@ export async function stopHeadroomRuntime(bin?: string | null): Promise<Headroom
 const PROXY_RECORD_KEY = 'headroom.proxy';
 
 function recordStartedProxy(port: number): void {
-  try { cachePut(PROXY_RECORD_KEY, JSON.stringify({ port, at: Date.now(), pid: process.pid })); } catch { /* the stop path falls back to a deployment lookup */ }
+  try {
+    cachePut(PROXY_RECORD_KEY, JSON.stringify({ port, at: Date.now(), pid: process.pid }));
+  } catch {
+    /* the stop path falls back to a deployment lookup */
+  }
 }
 
 function clearProxyRecord(): void {
-  try { cachePut(PROXY_RECORD_KEY, ''); } catch { /* already gone */ }
+  try {
+    cachePut(PROXY_RECORD_KEY, '');
+  } catch {
+    /* already gone */
+  }
 }
 
 /** True when this data home started the proxy on that port, with or without a headroom deployment. */
@@ -393,14 +454,18 @@ function readLeases(): Record<string, number> {
   if (text === null) return {};
   try {
     const parsed: unknown = JSON.parse(text);
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, number> : {};
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, number>) : {};
   } catch {
     return {};
   }
 }
 
 function writeLeases(leases: Record<string, number>): void {
-  try { cachePut(LEASE_KEY, JSON.stringify(leases)); } catch { /* a claim that will not write only delays the stop */ }
+  try {
+    cachePut(LEASE_KEY, JSON.stringify(leases));
+  } catch {
+    /* a claim that will not write only delays the stop */
+  }
 }
 
 function writeLease(sessionId: string): void {
@@ -429,7 +494,9 @@ const STOP_GRACE_MS = 2_500;
 
 function otherSessionLive(sessionId: string): boolean {
   const now = Date.now();
-  return Object.entries(readLeases()).some(([id, at]) => id !== sessionId && Number.isFinite(at) && now - at <= LEASE_TTL_MS);
+  return Object.entries(readLeases()).some(
+    ([id, at]) => id !== sessionId && Number.isFinite(at) && now - at <= LEASE_TTL_MS,
+  );
 }
 
 /** Refresh this session's lease; a long session must not let it expire. */
@@ -445,7 +512,9 @@ export async function releaseHeadroomLease(sessionId: string, bin?: string | nul
   dropLease(sessionId);
   if (otherSessionLive(sessionId)) return { ok: true, detail: 'another agent session still uses the proxy' };
   // The wait covers an agent that quits and relaunches, and one that is starting right now.
-  await new Promise((resolve) => { setTimeout(resolve, STOP_GRACE_MS); });
+  await new Promise((resolve) => {
+    setTimeout(resolve, STOP_GRACE_MS);
+  });
   if (otherSessionLive(sessionId)) return { ok: true, detail: 'another agent session claimed the proxy' };
   return stopHeadroomRuntime(bin);
 }
@@ -457,7 +526,8 @@ export async function ensureHeadroomRuntime(bin: string, openAiTarget?: string |
   if (await headroomRuntimeUp()) {
     if (!openAiTarget) return { ok: true, detail: 'headroom proxy already running' };
     const entry = deploymentProfiles(headroomProxyPort())[0];
-    if (!entry || !configureDeployment(entry, openAiTarget)) return { ok: true, detail: 'headroom proxy already running' };
+    if (!entry || !configureDeployment(entry, openAiTarget))
+      return { ok: true, detail: 'headroom proxy already running' };
     // A restart through `install restart` would bring the 82MB supervisor back, so stop everything and
     // start the proxy directly with the upstream just written.
     await stopHeadroomRuntime(bin);
@@ -487,14 +557,19 @@ export async function ensureHeadroomRuntime(bin: string, openAiTarget?: string |
       return own !== null && own !== port;
     });
     if (elsewhere.length > 0) {
-      return { ok: false, detail: `a headroom proxy is already running on another port — run: tersio doctor --fix headroom (${headroomProxyUrl()})` };
+      return {
+        ok: false,
+        detail: `a headroom proxy is already running on another port — run: tersio doctor --fix headroom (${headroomProxyUrl()})`,
+      };
     }
     if (running.length > 0) {
       return (await waitForRuntime())
         ? { ok: true, detail: 'headroom proxy was already starting on this port' }
         : { ok: false, detail: `a headroom proxy on ${headroomProxyUrl()} never answered` };
     }
-    pending = startRuntime(bin, openAiTarget).finally(() => { pending = null; });
+    pending = startRuntime(bin, openAiTarget).finally(() => {
+      pending = null;
+    });
     return await pending;
   } finally {
     releaseStartLock();

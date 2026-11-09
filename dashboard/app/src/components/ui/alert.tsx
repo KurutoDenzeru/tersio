@@ -15,7 +15,7 @@ const alertVariants = cva(
     defaultVariants: {
       variant: "default",
     },
-  }
+  },
 )
 
 function Alert({
@@ -39,23 +39,20 @@ function AlertTitle({ className, ...props }: React.ComponentProps<"div">) {
       data-slot="alert-title"
       className={cn(
         "font-medium group-has-[>svg]/alert:col-start-2 [&_a]:underline [&_a]:underline-offset-3 [&_a]:hover:text-foreground",
-        className
+        className,
       )}
       {...props}
     />
   )
 }
 
-function AlertDescription({
-  className,
-  ...props
-}: React.ComponentProps<"div">) {
+function AlertDescription({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="alert-description"
       className={cn(
         "text-sm text-balance text-muted-foreground md:text-pretty [&_a]:underline [&_a]:underline-offset-3 [&_a]:hover:text-foreground [&_p:not(:last-child)]:mb-4",
-        className
+        className,
       )}
       {...props}
     />
@@ -64,11 +61,7 @@ function AlertDescription({
 
 function AlertAction({ className, ...props }: React.ComponentProps<"div">) {
   return (
-    <div
-      data-slot="alert-action"
-      className={cn("absolute top-2 right-2", className)}
-      {...props}
-    />
+    <div data-slot="alert-action" className={cn("absolute top-2 right-2", className)} {...props} />
   )
 }
 

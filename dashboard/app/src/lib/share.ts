@@ -5,23 +5,23 @@ export const SHARE_ORIGINS = {
   x: "https://x.com/intent/post",
   reddit: "https://www.reddit.com/submit",
   linkedin: "https://www.linkedin.com/feed/",
-} as const;
+} as const
 
-export type ShareTarget = keyof typeof SHARE_ORIGINS;
+export type ShareTarget = keyof typeof SHARE_ORIGINS
 
 // Checked at runtime: `keyof` only rejects a bad key at compile time. The `www.` prefixes are part of these hosts.
 const SHARE_HOSTS: Record<ShareTarget, string> = {
   x: "x.com",
   reddit: "www.reddit.com",
   linkedin: "www.linkedin.com",
-};
+}
 
 export function shareUrl(target: ShareTarget, params: Record<string, string> = {}): string {
-  const base = SHARE_ORIGINS[target];
+  const base = SHARE_ORIGINS[target]
   if (!base.startsWith(`https://${SHARE_HOSTS[target]}/`)) {
-    throw new Error(`Refusing to share to an unlisted host: ${base}`);
+    throw new Error(`Refusing to share to an unlisted host: ${base}`)
   }
   // URLSearchParams cannot fail, and the origin is vetted above.
-  const query = new URLSearchParams(params).toString();
-  return query ? `${base}?${query}` : base;
+  const query = new URLSearchParams(params).toString()
+  return query ? `${base}?${query}` : base
 }

@@ -1,40 +1,50 @@
 // Carbon page: usage to emissions via the shared EcoLogits port; only output tokens count, so a cache reads low.
-import { useMemo } from "react";
-import { BarList, Card, CellBar, ModelCell, Page, PageHeader, PagedTable, Stat, StatGrid } from "@/components/charts";
-import type { Column } from "@/components/charts";
-import { Icon } from "@/components/icon";
-import { VendorMark } from "@/components/brand";
-import { carbonReportForAgents, fmtCo2, fmtEnergy, type CarbonRow } from "@/lib/carbon";
-import { AGENT_RANGE_LABEL, type AgentStats } from "@/lib/data";
-import { co2Zone, fmt, fmtShort, pct, providerColor } from "@/lib/format";
+import { useMemo } from "react"
+import {
+  BarList,
+  Card,
+  CellBar,
+  ModelCell,
+  Page,
+  PageHeader,
+  PagedTable,
+  Stat,
+  StatGrid,
+} from "@/components/charts"
+import type { Column } from "@/components/charts"
+import { Icon } from "@/components/icon"
+import { VendorMark } from "@/components/brand"
+import { carbonReportForAgents, fmtCo2, fmtEnergy, type CarbonRow } from "@/lib/carbon"
+import { AGENT_RANGE_LABEL, type AgentStats } from "@/lib/data"
+import { co2Zone, fmt, fmtShort, pct, providerColor } from "@/lib/format"
 
 /** The bar list and the table read the ranked rows; past this count the rest fold into one line. */
-const LIST_LIMIT = 8;
+const LIST_LIMIT = 8
 
 /** Grams of CO2 per 1k output tokens: the number that compares two models directly. */
 function perKilo(gco2: number, output: number): number {
-  return output > 0 ? (gco2 / output) * 1000 : 0;
+  return output > 0 ? (gco2 / output) * 1000 : 0
 }
 
 function perKiloText(gco2: number, output: number): string {
-  if (output <= 0) return "–";
-  const v = perKilo(gco2, output);
-  return v < 1 ? `${v.toFixed(2)} g` : `${v.toFixed(1)} g`;
+  if (output <= 0) return "–"
+  const v = perKilo(gco2, output)
+  return v < 1 ? `${v.toFixed(2)} g` : `${v.toFixed(1)} g`
 }
 
-const TONE: Record<string, "good" | "warn" | "bad"> = { good: "good", warn: "warn", bad: "bad" };
+const TONE: Record<string, "good" | "warn" | "bad"> = { good: "good", warn: "warn", bad: "bad" }
 
 /** The Carbon page: what the usage in range would emit, in the same shape as the Costs page. */
 export function CarbonPage({ agent }: { agent: AgentStats }) {
-  const r = useMemo(() => carbonReportForAgents(agent), [agent]);
-  const zone = co2Zone(r.totalG);
-  const intensity = perKilo(r.totalG, r.outputTokens);
-  const top = r.all[0];
-  const range = AGENT_RANGE_LABEL[agent.range];
+  const r = useMemo(() => carbonReportForAgents(agent), [agent])
+  const zone = co2Zone(r.totalG)
+  const intensity = perKilo(r.totalG, r.outputTokens)
+  const top = r.all[0]
+  const range = AGENT_RANGE_LABEL[agent.range]
 
-  const shown = r.all.slice(0, LIST_LIMIT);
-  const hidden = r.all.slice(LIST_LIMIT);
-  const hiddenG = hidden.reduce((sum, row) => sum + row.gco2, 0);
+  const shown = r.all.slice(0, LIST_LIMIT)
+  const hidden = r.all.slice(LIST_LIMIT)
+  const hiddenG = hidden.reduce((sum, row) => sum + row.gco2, 0)
 
   const barRows = useMemo(
     () =>
@@ -47,7 +57,7 @@ export function CarbonPage({ agent }: { agent: AgentStats }) {
         mark: <VendorMark model={row.model} row />,
       })),
     [shown],
-  );
+  )
 
   const columns = useMemo<Array<Column<CarbonRow>>>(() => {
     return [
@@ -105,8 +115,8 @@ export function CarbonPage({ agent }: { agent: AgentStats }) {
         sort: (row) => perKilo(row.gco2, row.output),
         render: (row) => <span className="tabular-nums">{perKiloText(row.gco2, row.output)}</span>,
       },
-    ];
-  }, [r.totalG]);
+    ]
+  }, [r.totalG])
 
   return (
     <Page>
@@ -122,7 +132,10 @@ export function CarbonPage({ agent }: { agent: AgentStats }) {
           value={
             <span className="flex items-center gap-2">
               ~{fmtCo2(r.totalG)}
-              <Icon name={zone[0]} className={`size-3.5 shrink-0 ${zone[2] === "good" ? "text-accent" : zone[2] === "bad" ? "text-severe" : "text-warn-text"}`} />
+              <Icon
+                name={zone[0]}
+                className={`size-3.5 shrink-0 ${zone[2] === "good" ? "text-accent" : zone[2] === "bad" ? "text-severe" : "text-warn-text"}`}
+              />
             </span>
           }
           tone={TONE[zone[2]]}
@@ -137,7 +150,11 @@ export function CarbonPage({ agent }: { agent: AgentStats }) {
         <Stat
           label="Per 1k output tokens"
           title="Total CO2 divided by output tokens, so models and ranges compare directly"
-          value={r.outputTokens > 0 ? `${intensity < 1 ? intensity.toFixed(2) : intensity.toFixed(1)} g` : "–"}
+          value={
+            r.outputTokens > 0
+              ? `${intensity < 1 ? intensity.toFixed(2) : intensity.toFixed(1)} g`
+              : "–"
+          }
           hint="grams of CO2"
         />
         <Stat
@@ -149,62 +166,74 @@ export function CarbonPage({ agent }: { agent: AgentStats }) {
       </StatGrid>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-      <Card
-        title="Where the carbon sits" icon="leaf"
-        description={`Per model, top ${LIST_LIMIT} of ${fmt(r.all.length)}. Intensity folds the model's parameters, the provider grid mix, and serving concurrency into one figure.`}
-      >
-        {barRows.length === 0 ? (
-          <p className="text-xs text-dim">
-            Only output tokens carry a footprint, and this range wrote none. Sessions that answer without output
-            contribute nothing here.
-          </p>
-        ) : (
-          <div className="flex flex-col gap-3">
-            <BarList rows={barRows} money={fmtCo2} limit={LIST_LIMIT} />
-            <div className="flex items-center justify-between border-t border-line pt-2 text-xs">
-              <span className="text-dim">Total</span>
-              <span className="mono tabular-nums">~{fmtCo2(r.totalG)}</span>
+        <Card
+          title="Where the carbon sits"
+          icon="leaf"
+          description={`Per model, top ${LIST_LIMIT} of ${fmt(r.all.length)}. Intensity folds the model's parameters, the provider grid mix, and serving concurrency into one figure.`}
+        >
+          {barRows.length === 0 ? (
+            <p className="text-xs text-dim">
+              Only output tokens carry a footprint, and this range wrote none. Sessions that answer
+              without output contribute nothing here.
+            </p>
+          ) : (
+            <div className="flex flex-col gap-3">
+              <BarList rows={barRows} money={fmtCo2} limit={LIST_LIMIT} />
+              <div className="flex items-center justify-between border-t border-line pt-2 text-xs">
+                <span className="text-dim">Total</span>
+                <span className="mono tabular-nums">~{fmtCo2(r.totalG)}</span>
+              </div>
+              {hidden.length > 0 && (
+                <p className="mono text-[11px] text-dim">
+                  {fmt(hidden.length)} more model{hidden.length === 1 ? "" : "s"} hold the remaining
+                  ~{fmtCo2(hiddenG)}.
+                </p>
+              )}
             </div>
-            {hidden.length > 0 && (
-              <p className="mono text-[11px] text-dim">
-                {fmt(hidden.length)} more model{hidden.length === 1 ? "" : "s"} hold the remaining ~{fmtCo2(hiddenG)}.
-              </p>
-            )}
-          </div>
-        )}
-      </Card>
+          )}
+        </Card>
 
-      <Card
-        title="What that equals" icon="scale"
-        description="Published averages, each with the rate used, so the arithmetic can be redone. None of them describes your own life."
-      >
-        {r.comparisons.length === 0 ? (
-          <p className="text-xs text-dim">Nothing to compare yet.</p>
-        ) : (
-          /* Seven rows fill the card; the rest scroll on a plain div, since ScrollArea's `h-full` viewport needs a fixed height. */
-          <div className="max-h-[23.1875rem] overflow-y-auto">
-            <ul className="m-0 flex list-none flex-col p-0">
-              {r.comparisons.map((c) => (
-                <li key={c.label} className="flex items-baseline gap-3 border-b border-line py-2.5 last:border-b-0">
-                  <span className="flex min-w-0 flex-1 items-center gap-2">
-                    <Icon name={c.icon} className="size-3.5 shrink-0 text-dim" />
-                    <span className="truncate text-xs">{c.label}</span>
-                  </span>
-                  <span className="text-right">
-                    <span className="mono block text-lg font-bold leading-none tracking-tight tabular-nums">{c.value}</span>
-                    <span className="mono block text-[11px] leading-tight text-dim">{c.factor}</span>
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </Card>
+        <Card
+          title="What that equals"
+          icon="scale"
+          description="Published averages, each with the rate used, so the arithmetic can be redone. None of them describes your own life."
+        >
+          {r.comparisons.length === 0 ? (
+            <p className="text-xs text-dim">Nothing to compare yet.</p>
+          ) : (
+            /* Seven rows fill the card; the rest scroll on a plain div, since ScrollArea's `h-full` viewport needs a fixed height. */
+            <div className="max-h-[23.1875rem] overflow-y-auto">
+              <ul className="m-0 flex list-none flex-col p-0">
+                {r.comparisons.map((c) => (
+                  <li
+                    key={c.label}
+                    className="flex items-baseline gap-3 border-b border-line py-2.5 last:border-b-0"
+                  >
+                    <span className="flex min-w-0 flex-1 items-center gap-2">
+                      <Icon name={c.icon} className="size-3.5 shrink-0 text-dim" />
+                      <span className="truncate text-xs">{c.label}</span>
+                    </span>
+                    <span className="text-right">
+                      <span className="mono block text-lg font-bold leading-none tracking-tight tabular-nums">
+                        {c.value}
+                      </span>
+                      <span className="mono block text-[11px] leading-tight text-dim">
+                        {c.factor}
+                      </span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </Card>
       </div>
 
       <Card
-        title="By model" icon="table"
-        description="Every model with a footprint in range, with the parameter provenance beside it. Borrowed and default counts widen the error bars." flush
+        title="By model"
+        icon="table"
+        description="Every model with a footprint in range, with the parameter provenance beside it. Borrowed and default counts widen the error bars."
+        flush
       >
         <PagedTable
           columns={columns}
@@ -212,10 +241,12 @@ export function CarbonPage({ agent }: { agent: AgentStats }) {
           rowKey={(row) => row.model}
           initialSort={{ key: "co2", dir: "desc" }}
           perPage={20}
-          empty={<p className="p-4 text-xs text-dim">No model wrote output tokens in this range.</p>}
+          empty={
+            <p className="p-4 text-xs text-dim">No model wrote output tokens in this range.</p>
+          }
           ariaLabel="Estimated CO2 by model"
         />
       </Card>
     </Page>
-  );
+  )
 }

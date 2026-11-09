@@ -17,7 +17,20 @@ export const COMBO_LEVELS: Record<string, PresetModes> = Object.freeze({
 });
 
 const MODE_VALUES: Record<string, Set<string>> = {
-  caveman: new Set(['off', 'lite', 'full', 'ultra', 'megacave', 'megacave-lite', 'megacave-full', 'megacave-ultra', 'wenyan', 'wenyan-lite', 'wenyan-full', 'wenyan-ultra']),
+  caveman: new Set([
+    'off',
+    'lite',
+    'full',
+    'ultra',
+    'megacave',
+    'megacave-lite',
+    'megacave-full',
+    'megacave-ultra',
+    'wenyan',
+    'wenyan-lite',
+    'wenyan-full',
+    'wenyan-ultra',
+  ]),
   rtk: new Set(['off', 'on']),
   ponytail: new Set(['off', 'lite', 'full', 'ultra']),
   pstack: new Set(['off', 'on']),
@@ -40,8 +53,13 @@ const MODE_ENTRY_TYPES: Record<string, ModeName> = {
 
 /** True when the branch carries Tersio's own mode state; a subagent starts without it. */
 export function hasModeState(entries: SessionEntry[] | null | undefined): boolean {
-  return Array.isArray(entries) && entries.some((entry) => entry?.type === 'custom'
-    && (entry.customType === 'combo-level' || MODE_ENTRY_TYPES[entry.customType ?? '']));
+  return (
+    Array.isArray(entries) &&
+    entries.some(
+      (entry) =>
+        entry?.type === 'custom' && (entry.customType === 'combo-level' || MODE_ENTRY_TYPES[entry.customType ?? '']),
+    )
+  );
 }
 
 interface Bridge {
@@ -51,7 +69,9 @@ interface Bridge {
 
 export function normalizeMode(name: ModeName, value: unknown): string | null {
   if (name === 'rtk' && typeof value === 'boolean') return value ? 'on' : 'off';
-  const mode = String(value ?? '').trim().toLowerCase();
+  const mode = String(value ?? '')
+    .trim()
+    .toLowerCase();
   if (!MODE_VALUES[name]?.has(mode)) return null;
   if (name !== 'caveman') return mode;
   const canonical = mode.replace(CAVEMAN_LEGACY_PREFIX, 'megacave');
@@ -62,7 +82,8 @@ export function deriveLevel(modes: Modes | null | undefined): ComboLevel {
   // pstack is not part of a preset, so a level reads the three modes a preset owns and leaves pstack alone.
   for (const level of Object.keys(COMBO_LEVELS) as ComboLevel[]) {
     const preset = COMBO_LEVELS[level];
-    if (preset.caveman === modes?.caveman && preset.rtk === modes?.rtk && preset.ponytail === modes?.ponytail) return level;
+    if (preset.caveman === modes?.caveman && preset.rtk === modes?.rtk && preset.ponytail === modes?.ponytail)
+      return level;
   }
   return 'custom';
 }
@@ -75,7 +96,10 @@ function isKnownLevel(value: string): boolean {
   return value === 'custom' || isPresetLevel(value);
 }
 
-function normalizedState(modes: Partial<Modes> | null | undefined, level: ComboLevel = deriveLevel(modes as Modes)): Readonly<ComboState> {
+function normalizedState(
+  modes: Partial<Modes> | null | undefined,
+  level: ComboLevel = deriveLevel(modes as Modes),
+): Readonly<ComboState> {
   const state: Modes = {
     caveman: normalizeMode('caveman', modes?.caveman) || 'off',
     rtk: normalizeMode('rtk', modes?.rtk) || 'off',
@@ -101,7 +125,10 @@ function publish(state: Readonly<ComboState>): Readonly<ComboState> {
 }
 
 export function normalizeInputCommand(value: unknown): string {
-  return String(value || '').trim().toLowerCase().replace(/[.!?\s]+$/, '');
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[.!?\s]+$/, '');
 }
 
 export function asPromptArray(systemPrompt: string | string[]): string[] {
@@ -126,13 +153,19 @@ export function isOmpSubagentPrompt(systemPrompt: string | string[]): boolean {
 const COMBO_ALIASES: Record<string, ComboLevel> = { ultra: 'max', full: 'balanced', medium: 'lite' };
 
 export function normalizeComboLevel(value: unknown): ComboLevel | null {
-  const level = String(value || '').trim().toLowerCase();
+  const level = String(value || '')
+    .trim()
+    .toLowerCase();
   if (isPresetLevel(level)) return level;
   return COMBO_ALIASES[level] ?? null;
 }
 
 // Last-wins scan for a custom session entry; skips unparseable values so a corrupt write never shadows a valid one.
-export function lastCustomValue<T>(entries: SessionEntry[] | null | undefined, customType: string, pick: (data: SessionEntry['data']) => T | null | undefined): T | null {
+export function lastCustomValue<T>(
+  entries: SessionEntry[] | null | undefined,
+  customType: string,
+  pick: (data: SessionEntry['data']) => T | null | undefined,
+): T | null {
   if (!Array.isArray(entries)) return null;
   for (let i = entries.length - 1; i >= 0; i -= 1) {
     const entry = entries[i];
@@ -171,14 +204,22 @@ export function setSharedComboMode(name: ModeName, value: unknown): Readonly<Com
   return publish(normalizedState(modes));
 }
 
-export function setSharedComboModes(modes: { caveman?: unknown; rtk?: unknown; ponytail?: unknown; pstack?: unknown; headroom?: unknown }): Readonly<ComboState> {
-  return publish(normalizedState({
-    caveman: normalizeMode('caveman', modes.caveman) || 'off',
-    rtk: normalizeMode('rtk', modes.rtk) || 'off',
-    ponytail: normalizeMode('ponytail', modes.ponytail) || 'off',
-    pstack: normalizeMode('pstack', modes.pstack) || 'off',
-    headroom: normalizeMode('headroom', modes.headroom) || 'off',
-  }));
+export function setSharedComboModes(modes: {
+  caveman?: unknown;
+  rtk?: unknown;
+  ponytail?: unknown;
+  pstack?: unknown;
+  headroom?: unknown;
+}): Readonly<ComboState> {
+  return publish(
+    normalizedState({
+      caveman: normalizeMode('caveman', modes.caveman) || 'off',
+      rtk: normalizeMode('rtk', modes.rtk) || 'off',
+      ponytail: normalizeMode('ponytail', modes.ponytail) || 'off',
+      pstack: normalizeMode('pstack', modes.pstack) || 'off',
+      headroom: normalizeMode('headroom', modes.headroom) || 'off',
+    }),
+  );
 }
 
 export function reconcileSharedComboEntries(entries: SessionEntry[] | null | undefined): Readonly<ComboState> {
@@ -204,7 +245,13 @@ export function reconcileSharedComboEntries(entries: SessionEntry[] | null | und
 }
 
 // One-line session-wide mode summary for change confirmations.
-export function activeModesSummary(state: { caveman: string; rtk: string; ponytail: string; pstack: string; headroom: string }): string {
+export function activeModesSummary(state: {
+  caveman: string;
+  rtk: string;
+  ponytail: string;
+  pstack: string;
+  headroom: string;
+}): string {
   return `caveman=${state.caveman.toUpperCase()}, rtk=${state.rtk.toUpperCase()}, ponytail=${state.ponytail.toUpperCase()}, pstack=${state.pstack.toUpperCase()}, headroom=${state.headroom.toUpperCase()}`;
 }
 

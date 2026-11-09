@@ -91,18 +91,60 @@ export function writeUsageStore(file: string, fixture: { messages: MessageFixtur
   mkdirSync(path.dirname(file), { recursive: true });
   // One file row per distinct transcript, because the store holds the path once and joins on it.
   const paths = [...new Set(fixture.messages.map((m) => m.session))];
-  const script = [STORE_SCHEMA,
-    insert('files', ['path', 'mtime', 'size'], paths.map((p) => [p, 0, 0])),
-    ...paths.map((p, index) => insert('messages',
-      ['file_id', 't', 'model', 'i', 'o', 'd', 'tf', 'cr', 'cw', 'usd', 'st', 'note', 'tools', 'h', 'a', 'id', 'tc', 'p'],
-      fixture.messages.filter((m) => m.session === p).map((m) => [
-        index + 1, m.ts, m.model,
-        m.input ?? 0, m.output ?? 0, m.duration ?? null, m.ttft ?? null, m.cacheRead ?? 0, m.cacheWrite ?? 0,
-        m.cost ?? null, m.stop === 'stop' || m.stop === undefined ? 'completed' : m.stop, m.error ?? null,
-        JSON.stringify(m.tools ?? []), 'omp', m.agentType ?? 'main', m.entry,
-        m.toolFacts ? JSON.stringify(m.toolFacts) : null,
-        m.gateway ?? null,
-      ]))),
+  const script = [
+    STORE_SCHEMA,
+    insert(
+      'files',
+      ['path', 'mtime', 'size'],
+      paths.map((p) => [p, 0, 0]),
+    ),
+    ...paths.map((p, index) =>
+      insert(
+        'messages',
+        [
+          'file_id',
+          't',
+          'model',
+          'i',
+          'o',
+          'd',
+          'tf',
+          'cr',
+          'cw',
+          'usd',
+          'st',
+          'note',
+          'tools',
+          'h',
+          'a',
+          'id',
+          'tc',
+          'p',
+        ],
+        fixture.messages
+          .filter((m) => m.session === p)
+          .map((m) => [
+            index + 1,
+            m.ts,
+            m.model,
+            m.input ?? 0,
+            m.output ?? 0,
+            m.duration ?? null,
+            m.ttft ?? null,
+            m.cacheRead ?? 0,
+            m.cacheWrite ?? 0,
+            m.cost ?? null,
+            m.stop === 'stop' || m.stop === undefined ? 'completed' : m.stop,
+            m.error ?? null,
+            JSON.stringify(m.tools ?? []),
+            'omp',
+            m.agentType ?? 'main',
+            m.entry,
+            m.toolFacts ? JSON.stringify(m.toolFacts) : null,
+            m.gateway ?? null,
+          ]),
+      ),
+    ),
   ];
   sqliteExec(file, script.join('\n'));
   return file;
@@ -110,15 +152,38 @@ export function writeUsageStore(file: string, fixture: { messages: MessageFixtur
 
 export function writeQuotaDb(file: string, windows: WindowFixture[]): string {
   mkdirSync(path.dirname(file), { recursive: true });
-  const script = [QUOTA_SCHEMA, insert(
-    'usage_history',
-    ['recorded_at', 'provider', 'account_key', 'email', 'account_id', 'limit_id', 'label', 'window_label',
-      'used_fraction', 'status', 'resets_at'],
-    windows.map((w) => [
-      w.ts, w.provider, w.accountKey, w.email ?? null, w.accountId ?? null, w.limitId, w.label,
-      w.windowLabel ?? null, w.usedFraction ?? null, w.status ?? null, w.resetsAt ?? null,
-    ]),
-  )];
+  const script = [
+    QUOTA_SCHEMA,
+    insert(
+      'usage_history',
+      [
+        'recorded_at',
+        'provider',
+        'account_key',
+        'email',
+        'account_id',
+        'limit_id',
+        'label',
+        'window_label',
+        'used_fraction',
+        'status',
+        'resets_at',
+      ],
+      windows.map((w) => [
+        w.ts,
+        w.provider,
+        w.accountKey,
+        w.email ?? null,
+        w.accountId ?? null,
+        w.limitId,
+        w.label,
+        w.windowLabel ?? null,
+        w.usedFraction ?? null,
+        w.status ?? null,
+        w.resetsAt ?? null,
+      ]),
+    ),
+  ];
   sqliteExec(file, script.join('\n'));
   return file;
 }
@@ -127,7 +192,13 @@ export function writeQuotaDb(file: string, windows: WindowFixture[]): string {
 export function writeSessionFixture(file: string, messages: Array<Record<string, unknown>>): string {
   mkdirSync(path.dirname(file), { recursive: true });
   const lines = [
-    JSON.stringify({ type: 'session', version: 3, id: 'sess', timestamp: '2026-01-01T00:00:00.000Z', cwd: '/tmp/project' }),
+    JSON.stringify({
+      type: 'session',
+      version: 3,
+      id: 'sess',
+      timestamp: '2026-01-01T00:00:00.000Z',
+      cwd: '/tmp/project',
+    }),
     ...messages.map((message, index) => {
       const { timestamp, startedAt, ...body } = message;
       const line: Record<string, unknown> = {

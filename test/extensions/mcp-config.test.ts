@@ -1,7 +1,14 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { expect, test } from 'vitest';
-import { ensureTersioMcp, removeTersioMcp, spliceTopLevelKey, tersioMcpConfigured, tersioMcpFile, tersioMcpSupported } from '../../extensions/shared/mcp-config.ts';
+import {
+  ensureTersioMcp,
+  removeTersioMcp,
+  spliceTopLevelKey,
+  tersioMcpConfigured,
+  tersioMcpFile,
+  tersioMcpSupported,
+} from '../../extensions/shared/mcp-config.ts';
 import { withHome } from '../helpers/env.ts';
 
 /**
@@ -59,8 +66,12 @@ test('pi and pig share the same mcpServers shape', () => {
       expect(tersioMcpSupported('pig')).toBe(true);
       expect(ensureTersioMcp('pi')).toBe(true);
       expect(ensureTersioMcp('pig')).toBe(true);
-      const pi = JSON.parse(readFileSync(tersioMcpFile('pi') as string, 'utf8')) as { mcpServers: Record<string, unknown> };
-      const pig = JSON.parse(readFileSync(tersioMcpFile('pig') as string, 'utf8')) as { mcpServers: Record<string, unknown> };
+      const pi = JSON.parse(readFileSync(tersioMcpFile('pi') as string, 'utf8')) as {
+        mcpServers: Record<string, unknown>;
+      };
+      const pig = JSON.parse(readFileSync(tersioMcpFile('pig') as string, 'utf8')) as {
+        mcpServers: Record<string, unknown>;
+      };
       for (const servers of [pi.mcpServers, pig.mcpServers]) {
         const tersio = servers.tersio as { command: string; args: string[]; enabled: boolean };
         expect(tersio.enabled).toBe(true);
@@ -176,7 +187,11 @@ test('dsh reports the MCP entry its bundle already mounts', () => {
     expect(tersioMcpConfigured('dsh')).toBe(false);
     const file = path.join(home, '.dsh', 'profiles', 'web', 'package.json');
     mkdirSync(path.dirname(file), { recursive: true });
-    writeFileSync(file, JSON.stringify({ dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', '@krtclcdy/tersio'] } } }), 'utf8');
+    writeFileSync(
+      file,
+      JSON.stringify({ dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', '@krtclcdy/tersio'] } } }),
+      'utf8',
+    );
     expect(tersioMcpConfigured('dsh')).toBe(true);
   });
 });

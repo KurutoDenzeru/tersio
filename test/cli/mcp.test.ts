@@ -9,20 +9,37 @@ import { handleMessage } from '../../cli/mcp.ts';
 // One collector stands in for the wire, so the tests assert what a client receives.
 function collector(): { sent: unknown[]; send: (msg: unknown) => void } {
   const sent: unknown[] = [];
-  return { sent, send: (msg: unknown) => { sent.push(msg); } };
+  return {
+    sent,
+    send: (msg: unknown) => {
+      sent.push(msg);
+    },
+  };
 }
 
-const call = (id: number, method: string, params?: unknown): { jsonrpc: string; id: number; method: string; params?: unknown } => ({
-  jsonrpc: '2.0', id, method, ...(params === undefined ? {} : { params }),
+const call = (
+  id: number,
+  method: string,
+  params?: unknown,
+): { jsonrpc: string; id: number; method: string; params?: unknown } => ({
+  jsonrpc: '2.0',
+  id,
+  method,
+  ...(params === undefined ? {} : { params }),
 });
 
 describe('the MCP server protocol', () => {
   test('initialize answers with the server identity and the version the server speaks', async () => {
     const { sent, send } = collector();
-    await handleMessage(call(1, 'initialize', { protocolVersion: '2025-03-26', clientInfo: { name: 't', version: '0' } }), send);
+    await handleMessage(
+      call(1, 'initialize', { protocolVersion: '2025-03-26', clientInfo: { name: 't', version: '0' } }),
+      send,
+    );
     expect(sent).toHaveLength(1);
     // The collector holds raw wire objects; one cast names the answer's shape for the reads below.
-    const answer = sent[0] as { result: { protocolVersion: string; capabilities: Record<string, unknown>; serverInfo: { name: string } } };
+    const answer = sent[0] as {
+      result: { protocolVersion: string; capabilities: Record<string, unknown>; serverInfo: { name: string } };
+    };
     // A client asking for an older revision this server knows gets that revision back; anything else
     // falls through to the version the server speaks.
     expect(answer.result.protocolVersion).toBe('2025-03-26');
@@ -37,12 +54,18 @@ describe('the MCP server protocol', () => {
     expect(answer.result.protocolVersion).toBe('2025-06-18');
   });
 
-
   test('tools/list names every tool a client can call', async () => {
     const { sent, send } = collector();
     await handleMessage(call(2, 'tools/list'), send);
     const answer = sent[0] as { result: { tools: Array<{ name: string }> } };
-    expect(answer.result.tools.map((t) => t.name)).toEqual(['tersio_stats', 'tersio_activity', 'tersio_hosts', 'tersio_sessions', 'tersio_modes', 'tersio_headroom']);
+    expect(answer.result.tools.map((t) => t.name)).toEqual([
+      'tersio_stats',
+      'tersio_activity',
+      'tersio_hosts',
+      'tersio_sessions',
+      'tersio_modes',
+      'tersio_headroom',
+    ]);
   });
 
   test('resources list what a client can read without a tool call', async () => {
@@ -95,7 +118,10 @@ describe('the MCP server protocol', () => {
     process.env.TERSIO_HEADROOM_PROXY_URL = `http://127.0.0.1:${port}/`;
     try {
       const { sent, send } = collector();
-      await handleMessage(call(10, 'tools/call', { name: 'tersio_headroom', arguments: { action: 'retrieve', hash: 'abc123' } }), send);
+      await handleMessage(
+        call(10, 'tools/call', { name: 'tersio_headroom', arguments: { action: 'retrieve', hash: 'abc123' } }),
+        send,
+      );
       const answer = sent[0] as { result: { content: Array<{ text: string }> } };
       expect(answer.result.content[0].text).toBe('the original text');
     } finally {
@@ -169,7 +195,10 @@ describe('the MCP modes tool', () => {
     try {
       const set = await modes({ rtk: 'on', host: 'pi' });
       expect(set.text).toContain('Session defaults for pi saved');
-      const stored = JSON.parse(await readFile(path.join(home, 'settings.json'), 'utf8')) as { rtkDefault?: boolean; hosts?: Record<string, { rtkDefault?: boolean }> };
+      const stored = JSON.parse(await readFile(path.join(home, 'settings.json'), 'utf8')) as {
+        rtkDefault?: boolean;
+        hosts?: Record<string, { rtkDefault?: boolean }>;
+      };
       expect(stored.hosts?.pi?.rtkDefault).toBe(true);
       expect(stored.rtkDefault).toBeUndefined();
       const read = await modes({ host: 'pi' });

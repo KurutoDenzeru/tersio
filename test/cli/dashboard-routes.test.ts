@@ -1,5 +1,14 @@
 import { describe, expect, test } from 'vitest';
-import { agentJson, shouldAutoWatch, lanUrls, resolveBind, healthJson, isVendorTool, json, statusJson } from '../../cli/dashboard.ts';
+import {
+  agentJson,
+  shouldAutoWatch,
+  lanUrls,
+  resolveBind,
+  healthJson,
+  isVendorTool,
+  json,
+  statusJson,
+} from '../../cli/dashboard.ts';
 import { withHome } from '../helpers/env.ts';
 
 // The route handlers pass these names straight to a child process, so the guards are the boundary.

@@ -26,8 +26,12 @@ function rulesRoot(): string {
 
 // The level-to-file map caveman/index.ts uses; `megacave` and retired wenyan names fall back to `full`.
 const CAVEMAN_RULE_FILES: Record<string, string> = {
-  lite: 'rule-lite.md', full: 'rule.md', ultra: 'rule-ultra.md',
-  'megacave-lite': 'rule-megacave-lite.md', 'megacave-full': 'rule-megacave.md', 'megacave-ultra': 'rule-megacave-ultra.md',
+  lite: 'rule-lite.md',
+  full: 'rule.md',
+  ultra: 'rule-ultra.md',
+  'megacave-lite': 'rule-megacave-lite.md',
+  'megacave-full': 'rule-megacave.md',
+  'megacave-ultra': 'rule-megacave-ultra.md',
 };
 
 // The combo presets, copied from cli/common.ts so `/combo` matches the installer bug-for-bug.
@@ -39,28 +43,44 @@ const COMBO_PRESETS: Record<string, { caveman: string; rtk: boolean; ponytail: s
 };
 
 const RETIRED_CAVEMAN: Record<string, string> = {
-  wenyan: 'megacave-full', 'wenyan-lite': 'megacave-lite', 'wenyan-full': 'megacave-full', 'wenyan-ultra': 'megacave-ultra', megacave: 'megacave-full',
+  wenyan: 'megacave-full',
+  'wenyan-lite': 'megacave-lite',
+  'wenyan-full': 'megacave-full',
+  'wenyan-ultra': 'megacave-ultra',
+  megacave: 'megacave-full',
 };
 
-interface Store { [key: string]: unknown }
+interface Store {
+  [key: string]: unknown;
+}
 
 function readStore(): Store {
-  try { return JSON.parse(readFileSync(join(tersioHome(), 'settings.json'), 'utf8')) as Store; } catch { return {}; }
+  try {
+    return JSON.parse(readFileSync(join(tersioHome(), 'settings.json'), 'utf8')) as Store;
+  } catch {
+    return {};
+  }
 }
 
 /** Writes the dsh host's own section, so a mode switch here never rewrites another agent's defaults. */
 function writeHostSection(mutate: (section: Record<string, unknown>) => void): void {
   const file = join(tersioHome(), 'settings.json');
   let store: Store = {};
-  try { store = JSON.parse(readFileSync(file, 'utf8')) as Store; } catch { /* a missing or broken store starts fresh */ }
-  const hosts = (store.hosts && typeof store.hosts === 'object' ? store.hosts : {}) as Record<string, Record<string, unknown>>;
+  try {
+    store = JSON.parse(readFileSync(file, 'utf8')) as Store;
+  } catch {
+    /* a missing or broken store starts fresh */
+  }
+  const hosts = (store.hosts && typeof store.hosts === 'object' ? store.hosts : {}) as Record<
+    string,
+    Record<string, unknown>
+  >;
   const section = (hosts.dsh && typeof hosts.dsh === 'object' ? hosts.dsh : {}) as Record<string, unknown>;
   mutate(section);
   hosts.dsh = section;
   store.hosts = hosts;
   writeFileSync(file, `${JSON.stringify(store, null, 2)}\n`, 'utf8');
 }
-
 
 function hostSection(store: Store): Store {
   const hosts = store.hosts as Record<string, Store> | undefined;
@@ -119,15 +139,21 @@ function buildBlocks(): string {
   const section = hostSection(store);
   const parts: string[] = [];
 
-  const cavemanRaw = String(setting(store, section, 'cavemanDefault') ?? 'off').trim().toLowerCase();
+  const cavemanRaw = String(setting(store, section, 'cavemanDefault') ?? 'off')
+    .trim()
+    .toLowerCase();
   const caveman = cavemanRaw !== 'off' ? cavemanRaw : null;
   if (caveman) parts.push(`Caveman ${caveman} active for this session.\n${cavemanBody(caveman)}`);
 
   if (setting(store, section, 'rtkDefault') === true) {
-    parts.push('🗜️ RTK MODE ACTIVE — level: on.\nRun every shell command through the `rtk_run` tool; it condenses output automatically. What you run is condensed: searches (grep, rg), listings (ls, find), reads (cat, head, tail), package and test runs (bun, npm, pnpm, pytest, cargo), version control and forges (git, gh), containers (docker, kubectl), and cloud CLIs. A failing run keeps the failing test name, the assertion, and the file and line.');
+    parts.push(
+      '🗜️ RTK MODE ACTIVE — level: on.\nRun every shell command through the `rtk_run` tool; it condenses output automatically. What you run is condensed: searches (grep, rg), listings (ls, find), reads (cat, head, tail), package and test runs (bun, npm, pnpm, pytest, cargo), version control and forges (git, gh), containers (docker, kubectl), and cloud CLIs. A failing run keeps the failing test name, the assertion, and the file and line.',
+    );
   }
 
-  const ponytail = String(setting(store, section, 'ponytailDefault') ?? 'off').trim().toLowerCase();
+  const ponytail = String(setting(store, section, 'ponytailDefault') ?? 'off')
+    .trim()
+    .toLowerCase();
   if (ponytail !== 'off') parts.push(`PONYTAIL MODE ACTIVE — level: ${ponytail}\n\n${ponytailBody(ponytail)}`);
 
   if (setting(store, section, 'pstackDefault') === 'on') parts.push(pstackBlock());
@@ -149,7 +175,10 @@ async function execText(command: string): Promise<string> {
     return `${r.stdout}\n${r.stderr}`.trim() || '(no output)';
   } catch (e) {
     const failed = e as ExecFailure;
-    return `${failed.stdout ?? ''}\n${failed.stderr ?? ''}\n${failed.message ?? ''}`.trim() || 'the command failed without output';
+    return (
+      `${failed.stdout ?? ''}\n${failed.stderr ?? ''}\n${failed.message ?? ''}`.trim() ||
+      'the command failed without output'
+    );
   }
 }
 
@@ -182,7 +211,12 @@ interface DshRoute {
 
 interface DshCtx {
   systemPrompt: {
-    section(section: { name: string; order: number; text: string | ((context: unknown) => string); interpolate?: boolean }): () => void;
+    section(section: {
+      name: string;
+      order: number;
+      text: string | ((context: unknown) => string);
+      interpolate?: boolean;
+    }): () => void;
   };
   tools: DshTools;
   commands: DshCommands;
@@ -212,7 +246,9 @@ function registerRtkInterception(ctx: DshCtx): void {
     if (call?.name !== 'bash') return next();
     const live = readStore();
     const enabled = setting(live, hostSection(live), 'rtkDefault') === true;
-    const replaced = await rewriteToolArguments(['bash'], call?.name, call?.arguments, enabled, (command) => rewriteThroughRtk(command, { host: 'dsh' }));
+    const replaced = await rewriteToolArguments(['bash'], call?.name, call?.arguments, enabled, (command) =>
+      rewriteThroughRtk(command, { host: 'dsh' }),
+    );
     if (replaced && call) (call as { arguments: unknown }).arguments = replaced;
     return next();
   });
@@ -228,7 +264,11 @@ interface DshCommands {
     description: string;
     input?: { hint: string };
     recordInput?: boolean;
-    handler: (context: { agent: DshAgent; rawInput: string; signal: { throwIfAborted(): void } }) => Promise<{ kind: string; text: string }>;
+    handler: (context: {
+      agent: DshAgent;
+      rawInput: string;
+      signal: { throwIfAborted(): void };
+    }) => Promise<{ kind: string; text: string }>;
   }): () => void;
 }
 
@@ -240,7 +280,7 @@ function readModes(store: Store, section: Store): ModeSnapshot {
     caveman: String(setting(store, section, 'cavemanDefault') ?? 'off'),
     rtk: setting(store, section, 'rtkDefault') === true,
     ponytail: String(setting(store, section, 'ponytailDefault') ?? 'off'),
-    pstack: setting(store, section, 'pstackDefault') as string | boolean ?? 'off',
+    pstack: (setting(store, section, 'pstackDefault') as string | boolean) ?? 'off',
     // dsh is a native route host: the installer points the provider at Headroom's proxy, so the stored
     // default is the truth and the bar reports it instead of promising a mode the host cannot honour.
     headroom: setting(store, section, 'headroomDefault') === 'on' ? 'on' : 'off',
@@ -254,7 +294,8 @@ function modeLine(store: Store, section: Store): string {
 /** The preset the three preset-owned modes add up to, or `custom` when they were mixed by hand. */
 function statusLevel(modes: ModeSnapshot): string {
   for (const [level, preset] of Object.entries(COMBO_PRESETS)) {
-    if (preset.caveman === modes.caveman && preset.rtk === modes.rtk && preset.ponytail === modes.ponytail) return level;
+    if (preset.caveman === modes.caveman && preset.rtk === modes.rtk && preset.ponytail === modes.ponytail)
+      return level;
   }
   return 'custom';
 }
@@ -352,11 +393,12 @@ function registerStatusRoute(ctx: DshCtx): void {
         } catch {
           return send(400, '{"error":"invalid body"}');
         }
-        const applied = typeof change.combo === 'string'
-          ? applyCombo(change.combo)
-          : typeof change.mode === 'string' && typeof change.value === 'string'
-            ? applySwitch(change.mode, change.value)
-            : false;
+        const applied =
+          typeof change.combo === 'string'
+            ? applyCombo(change.combo)
+            : typeof change.mode === 'string' && typeof change.value === 'string'
+              ? applySwitch(change.mode, change.value)
+              : false;
         return applied ? send(200, statusPayload()) : send(400, '{"error":"unknown mode change"}');
       },
     };
@@ -380,9 +422,15 @@ function registerCommands(ctx: DshCtx): void {
       description: 'Set the Tersio Combo preset: off, lite, balanced, or max',
       input: { hint: 'off | lite | balanced | max' },
       handler: async ({ rawInput }) => {
-        const level = String(rawInput || 'off').trim().toLowerCase();
+        const level = String(rawInput || 'off')
+          .trim()
+          .toLowerCase();
         const preset = COMBO_PRESETS[level];
-        if (!preset) return { kind: 'success', text: `Unknown combo level: ${level || '(none)'}. Levels: off, lite, balanced, max.` };
+        if (!preset)
+          return {
+            kind: 'success',
+            text: `Unknown combo level: ${level || '(none)'}. Levels: off, lite, balanced, max.`,
+          };
         const modes = applyModeChange((section) => {
           section.comboDefault = level;
           section.cavemanDefault = preset.caveman;
@@ -397,11 +445,22 @@ function registerCommands(ctx: DshCtx): void {
       description: 'Set the Caveman voice level',
       input: { hint: 'off | lite | full | ultra | megacave-*' },
       handler: async ({ rawInput }) => {
-        const level = String(rawInput || 'off').trim().toLowerCase();
+        const level = String(rawInput || 'off')
+          .trim()
+          .toLowerCase();
         const mapped = RETIRED_CAVEMAN[level] ?? level;
-        if (mapped !== 'off' && !CAVEMAN_RULE_FILES[mapped]) return { kind: 'success', text: `Unknown caveman level: ${level}. Levels: off, lite, full, ultra, megacave-lite, megacave-full, megacave-ultra.` };
-        const modes = applyModeChange((section) => { section.cavemanDefault = mapped; });
-        return { kind: 'success', text: mapped === 'off' ? `Caveman off. ${modes}` : `Caveman set to ${mapped}: ${modes}` };
+        if (mapped !== 'off' && !CAVEMAN_RULE_FILES[mapped])
+          return {
+            kind: 'success',
+            text: `Unknown caveman level: ${level}. Levels: off, lite, full, ultra, megacave-lite, megacave-full, megacave-ultra.`,
+          };
+        const modes = applyModeChange((section) => {
+          section.cavemanDefault = mapped;
+        });
+        return {
+          kind: 'success',
+          text: mapped === 'off' ? `Caveman off. ${modes}` : `Caveman set to ${mapped}: ${modes}`,
+        };
       },
     },
     {
@@ -409,10 +468,21 @@ function registerCommands(ctx: DshCtx): void {
       description: 'Turn the RTK shell condensation on or off',
       input: { hint: 'on | off' },
       handler: async ({ rawInput }) => {
-        const raw = String(rawInput || '').trim().toLowerCase();
-        const on = raw === '' ? null : ['on', 'enable', 'true'].includes(raw) ? true : ['off', 'disable', 'false'].includes(raw) ? false : null;
+        const raw = String(rawInput || '')
+          .trim()
+          .toLowerCase();
+        const on =
+          raw === ''
+            ? null
+            : ['on', 'enable', 'true'].includes(raw)
+              ? true
+              : ['off', 'disable', 'false'].includes(raw)
+                ? false
+                : null;
         if (on === null) return { kind: 'success', text: 'Usage: /rtk on | /rtk off' };
-        const modes = applyModeChange((section) => { section.rtkDefault = on; });
+        const modes = applyModeChange((section) => {
+          section.rtkDefault = on;
+        });
         return { kind: 'success', text: `RTK ${on ? 'on' : 'off'}: ${modes}` };
       },
     },
@@ -421,9 +491,14 @@ function registerCommands(ctx: DshCtx): void {
       description: 'Set the Ponytail level',
       input: { hint: 'off | lite | full | ultra' },
       handler: async ({ rawInput }) => {
-        const level = String(rawInput || 'off').trim().toLowerCase();
-        if (level !== 'off' && level !== 'lite' && level !== 'full' && level !== 'ultra') return { kind: 'success', text: `Unknown ponytail level: ${level}. Levels: off, lite, full, ultra.` };
-        const modes = applyModeChange((section) => { section.ponytailDefault = level; });
+        const level = String(rawInput || 'off')
+          .trim()
+          .toLowerCase();
+        if (level !== 'off' && level !== 'lite' && level !== 'full' && level !== 'ultra')
+          return { kind: 'success', text: `Unknown ponytail level: ${level}. Levels: off, lite, full, ultra.` };
+        const modes = applyModeChange((section) => {
+          section.ponytailDefault = level;
+        });
         return { kind: 'success', text: `Ponytail set to ${level}: ${modes}` };
       },
     },
@@ -432,10 +507,14 @@ function registerCommands(ctx: DshCtx): void {
       description: 'Turn the pstack rigor mode on or off',
       input: { hint: 'on | off' },
       handler: async ({ rawInput }) => {
-        const raw = String(rawInput || 'off').trim().toLowerCase();
+        const raw = String(rawInput || 'off')
+          .trim()
+          .toLowerCase();
         const on = raw === 'on' ? true : raw === 'off' ? false : null;
         if (on === null) return { kind: 'success', text: 'Usage: /pstack on | /pstack off' };
-        const modes = applyModeChange((section) => { section.pstackDefault = on ? 'on' : 'off'; });
+        const modes = applyModeChange((section) => {
+          section.pstackDefault = on ? 'on' : 'off';
+        });
         return { kind: 'success', text: `pstack ${on ? 'on' : 'off'}: ${modes}` };
       },
     },
@@ -445,12 +524,16 @@ function registerCommands(ctx: DshCtx): void {
       handler: async () => {
         const store = readStore();
         const modes = modeLine(store, hostSection(store));
-        return { kind: 'success', text: `Tersio modes: ${modes}. Change them with /combo, /caveman, /rtk, /ponytail, or /pstack.` };
+        return {
+          kind: 'success',
+          text: `Tersio modes: ${modes}. Change them with /combo, /caveman, /rtk, /ponytail, or /pstack.`,
+        };
       },
     },
   ];
   for (const command of commands) ctx.commands.register(command);
-  if (process.env.TERSIO_DSH_DEBUG) console.log(`[tersio-dsh] commands registered: ${commands.map((c) => `/${c.name}`).join(' ')}`);
+  if (process.env.TERSIO_DSH_DEBUG)
+    console.log(`[tersio-dsh] commands registered: ${commands.map((c) => `/${c.name}`).join(' ')}`);
 }
 
 export function apply(ctx: DshCtx): void {
@@ -475,7 +558,8 @@ export function apply(ctx: DshCtx): void {
 
   ctx.tools.register({
     name: 'rtk_run',
-    description: 'Run a shell command through the rtk binary when RTK mode is on, and run it plainly when RTK mode is off.',
+    description:
+      'Run a shell command through the rtk binary when RTK mode is on, and run it plainly when RTK mode is off.',
     parameters: {
       command: { type: 'string', required: true },
     },
@@ -484,7 +568,8 @@ export function apply(ctx: DshCtx): void {
       // Re-read at call time, so a mode switch applies without remounting the plugin.
       const live = readStore();
       const liveSection = hostSection(live);
-      if (setting(live, liveSection, 'rtkDefault') === true && resolveRtkBinary() !== null) return runThroughRtk(command);
+      if (setting(live, liveSection, 'rtkDefault') === true && resolveRtkBinary() !== null)
+        return runThroughRtk(command);
       // Same contract as the other hosts: with RTK off the command runs plainly.
       return execText(command);
     },

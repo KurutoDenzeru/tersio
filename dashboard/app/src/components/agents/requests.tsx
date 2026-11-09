@@ -1,20 +1,43 @@
 // Requests: the range in six figures, then the request log with a search and a status filter.
-import { useMemo, useState } from "react";
-import { Card, ModelCell, PagedTable, Page, PageHeader, SearchInput, Segmented, Stat, StatGrid } from "@/components/charts";
-import type { Column } from "@/components/charts";
-import { EmptyState } from "@/components/common";
-import { fmt, fmtMs, fmtShort, pct, projectLabel, relAge, runStatusOf, whenStamp } from "@/lib/format";
-import type { AgentRequestRow, AgentStats } from "@/lib/data";
+import { useMemo, useState } from "react"
+import {
+  Card,
+  ModelCell,
+  PagedTable,
+  Page,
+  PageHeader,
+  SearchInput,
+  Segmented,
+  Stat,
+  StatGrid,
+} from "@/components/charts"
+import type { Column } from "@/components/charts"
+import { EmptyState } from "@/components/common"
+import {
+  fmt,
+  fmtMs,
+  fmtShort,
+  pct,
+  projectLabel,
+  relAge,
+  runStatusOf,
+  whenStamp,
+} from "@/lib/format"
+import type { AgentRequestRow, AgentStats } from "@/lib/data"
 
-type RowStatus = "completed" | "aborted" | "failed";
-type StatusFilter = "all" | RowStatus;
+type RowStatus = "completed" | "aborted" | "failed"
+type StatusFilter = "all" | RowStatus
 
-const STATUS_LABEL: Record<RowStatus, string> = { completed: "OK", aborted: "Aborted", failed: "Failed" };
+const STATUS_LABEL: Record<RowStatus, string> = {
+  completed: "OK",
+  aborted: "Aborted",
+  failed: "Failed",
+}
 const STATUS_TONE: Record<RowStatus, string> = {
   completed: "var(--accent)",
   aborted: "var(--warn-border)",
   failed: "var(--danger)",
-};
+}
 
 /** The reference window phrases, so the page copy reads like the one it mirrors. */
 const WINDOW: Record<AgentStats["range"], string> = {
@@ -24,12 +47,12 @@ const WINDOW: Record<AgentStats["range"], string> = {
   "30d": "the last 30 days",
   "90d": "the last 90 days",
   all: "all time",
-};
+}
 
 /** Only `error` is a failure; `aborted` still ran, so it keeps its own bucket. */
 function rowStatus(row: AgentRequestRow): RowStatus {
-  const st = runStatusOf(row.stopReason);
-  return st === "error" ? "failed" : st;
+  const st = runStatusOf(row.stopReason)
+  return st === "error" ? "failed" : st
 }
 
 export function RequestsPage({
@@ -39,31 +62,36 @@ export function RequestsPage({
   onOffset,
   onOpenRequest,
 }: {
-  agent: AgentStats;
-  money: (v: number) => string;
+  agent: AgentStats
+  money: (v: number) => string
   /** How many rows back from the newest the server started this payload. */
-  offset: number;
+  offset: number
   /** Paging into the range, in row-sized steps. */
-  onOffset: (offset: number) => void;
-  onOpenRequest: (row: AgentRequestRow) => void;
+  onOffset: (offset: number) => void
+  onOpenRequest: (row: AgentRequestRow) => void
 }) {
-  const [search, setSearch] = useState("");
-  const [status, setStatus] = useState<StatusFilter>("all");
-  const windowLabel = WINDOW[agent.range];
-  const stats = agent.requestStats;
-  const rows = agent.recent;
+  const [search, setSearch] = useState("")
+  const [status, setStatus] = useState<StatusFilter>("all")
+  const windowLabel = WINDOW[agent.range]
+  const stats = agent.requestStats
+  const rows = agent.recent
   // `shipped` is the page this payload covers. Anything older is one fetch away, not lost.
-  const step = Math.max(1, stats.shipped);
-  const older = offset + step < stats.requests;
+  const step = Math.max(1, stats.shipped)
+  const older = offset + step < stats.requests
 
   const counts = useMemo(() => {
-    const next: Record<StatusFilter, number> = { all: rows.length, completed: 0, aborted: 0, failed: 0 };
-    for (const row of rows) next[rowStatus(row)]++;
-    return next;
-  }, [rows]);
+    const next: Record<StatusFilter, number> = {
+      all: rows.length,
+      completed: 0,
+      aborted: 0,
+      failed: 0,
+    }
+    for (const row of rows) next[rowStatus(row)]++
+    return next
+  }, [rows])
 
   const filtered = useMemo(() => {
-    const needle = search.trim().toLowerCase();
+    const needle = search.trim().toLowerCase()
     return rows.filter(
       (row) =>
         (status === "all" || rowStatus(row) === status) &&
@@ -72,17 +100,17 @@ export function RequestsPage({
           row.provider.toLowerCase().includes(needle) ||
           row.project.toLowerCase().includes(needle) ||
           (row.errorMessage ?? "").toLowerCase().includes(needle)),
-    );
-  }, [rows, search, status]);
+    )
+  }, [rows, search, status])
 
   const statusOptions: ReadonlyArray<{ value: StatusFilter; label: string }> = (
     ["all", "completed", "aborted", "failed"] as const
   ).map((value) => ({
     value,
     label: `${value === "all" ? "All" : STATUS_LABEL[value]} ${fmtShort(counts[value])}`,
-  }));
+  }))
 
-  const oldest = rows.length > 0 ? Math.min(...rows.map((row) => row.ts)) : null;
+  const oldest = rows.length > 0 ? Math.min(...rows.map((row) => row.ts)) : null
 
   return (
     <Page>
@@ -106,7 +134,11 @@ export function RequestsPage({
           label="Tokens"
           title="Total tokens across every request in this window"
           value={fmtShort(stats.tokens)}
-          hint={stats.shipped < stats.requests ? `across all ${fmt(stats.requests)} requests` : undefined}
+          hint={
+            stats.shipped < stats.requests
+              ? `across all ${fmt(stats.requests)} requests`
+              : undefined
+          }
         />
         <Stat
           label="API-equivalent cost"
@@ -132,11 +164,17 @@ export function RequestsPage({
       </StatGrid>
 
       <Card
-        title="Request log" icon="list"
+        title="Request log"
+        icon="list"
         description={`${fmt(filtered.length)} of ${fmt(stats.requests)} requests in ${windowLabel}`}
         actions={
           <>
-            <SearchInput label="Search requests" value={search} onChange={setSearch} placeholder="Model, provider or project" />
+            <SearchInput
+              label="Search requests"
+              value={search}
+              onChange={setSearch}
+              placeholder="Model, provider or project"
+            />
             <Segmented label="Status" value={status} options={statusOptions} onChange={setStatus} />
           </>
         }
@@ -197,96 +235,107 @@ export function RequestsPage({
         </div>
       </Card>
     </Page>
-  );
+  )
 }
 
 function buildRequestColumns(money: (v: number) => string): Array<Column<AgentRequestRow>> {
   return [
-  {
-    key: "model",
-    header: "Model",
-    sort: (row) => row.model,
-    render: (row) => <ModelCell model={row.model} provider={row.provider} />,
-  },
-  {
-    key: "time",
-    header: "When",
-    sort: (row) => row.ts,
-    render: (row) => (
-      <span className="text-dim" title={whenStamp(row.ts)}>
-        {relAge(row.ts)}
-      </span>
-    ),
-  },
-  {
-    key: "project",
-    header: "Project",
-    sort: (row) => row.project,
-    render: (row) => (
-      <span className="mono block max-w-[180px] truncate text-dim" title={row.project}>
-        {projectLabel(row.project)}
-      </span>
-    ),
-  },
-  {
-    key: "input",
-    header: "Input",
-    title: "Uncached input tokens",
-    align: "right",
-    sort: (row) => row.input,
-    render: (row) => fmtShort(row.input),
-  },
-  {
-    key: "cache",
-    header: "Cache read",
-    title: "Cache read tokens (hover a cell for cache writes)",
-    align: "right",
-    sort: (row) => row.cacheRead,
-    render: (row) => <span title={`Cache write: ${fmt(row.cacheWrite)}`}>{fmtShort(row.cacheRead)}</span>,
-  },
-  { key: "output", header: "Output", align: "right", sort: (row) => row.output, render: (row) => fmtShort(row.output) },
-  {
-    key: "cost",
-    header: "Cost",
-    title: "API-equivalent estimate",
-    align: "right",
-    sort: (row) => row.costUsd,
-    render: (row) => money(row.costUsd),
-  },
-  {
-    key: "duration",
-    header: "Duration",
-    align: "right",
-    sort: (row) => row.durationMs ?? -1,
-    render: (row) => fmtMs(row.durationMs),
-  },
-  {
-    key: "ttft",
-    header: "TTFT",
-    title: "Time to first token",
-    align: "right",
-    sort: (row) => row.ttftMs ?? -1,
-    render: (row) => <span className="text-dim">{fmtMs(row.ttftMs)}</span>,
-  },
-  {
-    key: "status",
-    header: "Status",
-    sort: (row) => rowStatus(row),
-    render: (row) => {
-      const status = rowStatus(row);
-      // A failed or aborted row names its stop reason; any other reason is a normal end, so the cell keeps one line.
-      const detail = status === "completed" ? "" : row.stopReason || "";
-      return (
-        <span className="flex min-w-0 items-center gap-2" title={row.errorMessage ?? undefined}>
-          <span className="size-2 shrink-0 rounded-full" style={{ background: STATUS_TONE[status] }} />
-          <span className="min-w-0">
-            <span className="block">{STATUS_LABEL[status]}</span>
-            {/* `toolUse` is how a normal run stops, so it says nothing a second time. */}
-            {detail && <span className="mono block truncate text-[11px] text-dim">{detail}</span>}
-          </span>
-        </span>
-      );
+    {
+      key: "model",
+      header: "Model",
+      sort: (row) => row.model,
+      render: (row) => <ModelCell model={row.model} provider={row.provider} />,
     },
-  },
-  ];
+    {
+      key: "time",
+      header: "When",
+      sort: (row) => row.ts,
+      render: (row) => (
+        <span className="text-dim" title={whenStamp(row.ts)}>
+          {relAge(row.ts)}
+        </span>
+      ),
+    },
+    {
+      key: "project",
+      header: "Project",
+      sort: (row) => row.project,
+      render: (row) => (
+        <span className="mono block max-w-[180px] truncate text-dim" title={row.project}>
+          {projectLabel(row.project)}
+        </span>
+      ),
+    },
+    {
+      key: "input",
+      header: "Input",
+      title: "Uncached input tokens",
+      align: "right",
+      sort: (row) => row.input,
+      render: (row) => fmtShort(row.input),
+    },
+    {
+      key: "cache",
+      header: "Cache read",
+      title: "Cache read tokens (hover a cell for cache writes)",
+      align: "right",
+      sort: (row) => row.cacheRead,
+      render: (row) => (
+        <span title={`Cache write: ${fmt(row.cacheWrite)}`}>{fmtShort(row.cacheRead)}</span>
+      ),
+    },
+    {
+      key: "output",
+      header: "Output",
+      align: "right",
+      sort: (row) => row.output,
+      render: (row) => fmtShort(row.output),
+    },
+    {
+      key: "cost",
+      header: "Cost",
+      title: "API-equivalent estimate",
+      align: "right",
+      sort: (row) => row.costUsd,
+      render: (row) => money(row.costUsd),
+    },
+    {
+      key: "duration",
+      header: "Duration",
+      align: "right",
+      sort: (row) => row.durationMs ?? -1,
+      render: (row) => fmtMs(row.durationMs),
+    },
+    {
+      key: "ttft",
+      header: "TTFT",
+      title: "Time to first token",
+      align: "right",
+      sort: (row) => row.ttftMs ?? -1,
+      render: (row) => <span className="text-dim">{fmtMs(row.ttftMs)}</span>,
+    },
+    {
+      key: "status",
+      header: "Status",
+      sort: (row) => rowStatus(row),
+      render: (row) => {
+        const status = rowStatus(row)
+        // A failed or aborted row names its stop reason; any other reason is a normal end, so the cell keeps one line.
+        const detail = status === "completed" ? "" : row.stopReason || ""
+        return (
+          <span className="flex min-w-0 items-center gap-2" title={row.errorMessage ?? undefined}>
+            <span
+              className="size-2 shrink-0 rounded-full"
+              style={{ background: STATUS_TONE[status] }}
+            />
+            <span className="min-w-0">
+              <span className="block">{STATUS_LABEL[status]}</span>
+              {/* `toolUse` is how a normal run stops, so it says nothing a second time. */}
+              {detail && <span className="mono block truncate text-[11px] text-dim">{detail}</span>}
+            </span>
+          </span>
+        )
+      },
+    },
+  ]
 }

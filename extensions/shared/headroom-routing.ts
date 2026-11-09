@@ -3,7 +3,15 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { defaultOmpModel, headroomProxyUrl, ompCachedEndpoint, ompConfigFile, ompModelsFile, ompProviderNames, opencodeConfigFiles } from './headroom-proxy.ts';
+import {
+  defaultOmpModel,
+  headroomProxyUrl,
+  ompCachedEndpoint,
+  ompConfigFile,
+  ompModelsFile,
+  ompProviderNames,
+  opencodeConfigFiles,
+} from './headroom-proxy.ts';
 import { piCatalogEndpoint } from './headroom-agent.ts';
 import { codexConfigFile } from './codex-state.ts';
 
@@ -142,9 +150,21 @@ export function sameProxyEndpoint(baseUrl: string, proxyUrl: string): boolean {
     const proxy = new URL(proxyUrl);
     const basePort = base.port || (base.protocol === 'https:' ? '443' : '80');
     const proxyPort = proxy.port || (proxy.protocol === 'https:' ? '443' : '80');
-    const baseLoop = base.hostname === 'localhost' || base.hostname === '127.0.0.1' || base.hostname === '::1' || base.hostname === '[::1]';
-    const proxyLoop = proxy.hostname === 'localhost' || proxy.hostname === '127.0.0.1' || proxy.hostname === '::1' || proxy.hostname === '[::1]';
-    return base.protocol === proxy.protocol && basePort === proxyPort && (base.hostname === proxy.hostname || (baseLoop && proxyLoop));
+    const baseLoop =
+      base.hostname === 'localhost' ||
+      base.hostname === '127.0.0.1' ||
+      base.hostname === '::1' ||
+      base.hostname === '[::1]';
+    const proxyLoop =
+      proxy.hostname === 'localhost' ||
+      proxy.hostname === '127.0.0.1' ||
+      proxy.hostname === '::1' ||
+      proxy.hostname === '[::1]';
+    return (
+      base.protocol === proxy.protocol &&
+      basePort === proxyPort &&
+      (base.hostname === proxy.hostname || (baseLoop && proxyLoop))
+    );
   } catch {
     return false;
   }
@@ -159,7 +179,11 @@ export function jsonBaseUrl(record: Record<string, unknown>): string | null {
 }
 
 /** The entry an active model id names, so a model-level endpoint is never missed. */
-export function jsonModelEntry(record: Record<string, unknown>, model: string, provider: string): Record<string, unknown> | null {
+export function jsonModelEntry(
+  record: Record<string, unknown>,
+  model: string,
+  provider: string,
+): Record<string, unknown> | null {
   const list = Array.isArray(record.models) ? record.models : [];
   const ids = new Set([model, model.replace(/:[^:]+$/, '')]);
   if (provider && model.startsWith(`${provider}/`)) {
@@ -258,8 +282,10 @@ function readOmpRoute(proxyUrl: string): HeadroomRoute {
 function opencodeBaseUrl(provider: unknown): string | null {
   if (!provider || typeof provider !== 'object') return null;
   const record = provider as Record<string, unknown>;
-  const settings = record.settings && typeof record.settings === 'object' ? record.settings as Record<string, unknown> : {};
-  const options = record.options && typeof record.options === 'object' ? record.options as Record<string, unknown> : {};
+  const settings =
+    record.settings && typeof record.settings === 'object' ? (record.settings as Record<string, unknown>) : {};
+  const options =
+    record.options && typeof record.options === 'object' ? (record.options as Record<string, unknown>) : {};
   if (typeof settings.baseURL === 'string') return settings.baseURL;
   for (const key of ['baseURL', 'baseUrl', 'base_url']) {
     if (typeof options[key] === 'string') return options[key] as string;
@@ -283,7 +309,7 @@ function readOpencodeRoute(proxyUrl: string): HeadroomRoute {
     if (!model.includes('/')) return emptyRoute('opencode', proxyUrl, `${path.basename(file)} names no active model`);
     const provider = model.slice(0, model.indexOf('/'));
     const map = data.providers ?? data.provider;
-    const providers = map && typeof map === 'object' ? map as Record<string, unknown> : {};
+    const providers = map && typeof map === 'object' ? (map as Record<string, unknown>) : {};
     const baseUrl = opencodeBaseUrl(providers[provider]);
     return {
       measured: true,
@@ -344,8 +370,7 @@ export function codexRouteFrom(text: string, proxyUrl: string): HeadroomRoute {
     else blocks.get(section)![key] = value;
   }
   const model = root.model ?? '';
-  const provider = root.model_provider
-    || (model.includes('/') ? model.slice(0, model.indexOf('/')) : 'openai');
+  const provider = root.model_provider || (model.includes('/') ? model.slice(0, model.indexOf('/')) : 'openai');
   const block = blocks.get(`model_providers.${provider}`) ?? {};
   const baseUrl = block.base_url || root.openai_base_url || null;
   return {
@@ -382,9 +407,10 @@ export function piRouteFrom(settingsText: string, modelsText: string, host: stri
   const named = typeof settings.defaultProvider === 'string' ? settings.defaultProvider : '';
   const provider = named || (model.includes('/') ? model.slice(0, model.indexOf('/')) : '');
   if (!provider) return emptyRoute(host, proxyUrl, 'settings name no default provider');
-  const providers = models.providers && typeof models.providers === 'object' ? models.providers as Record<string, unknown> : {};
+  const providers =
+    models.providers && typeof models.providers === 'object' ? (models.providers as Record<string, unknown>) : {};
   const entry = providers[provider];
-  const record = entry && typeof entry === 'object' ? entry as Record<string, unknown> : {};
+  const record = entry && typeof entry === 'object' ? (entry as Record<string, unknown>) : {};
   const modelEntry = jsonModelEntry(record, model, provider);
   const baseUrl = (modelEntry ? jsonBaseUrl(modelEntry) : null) ?? jsonBaseUrl(record);
   return {
@@ -455,7 +481,12 @@ export function dshProviders(text: string): DshProvider[] {
     }
     if (!current) continue;
     if (indent === providerIndent + 2 && trimmed.startsWith('api:')) {
-      api = unquote(trimmed.slice('api:'.length).replace(/\s+#.*$/, '').trim());
+      api = unquote(
+        trimmed
+          .slice('api:'.length)
+          .replace(/\s+#.*$/, '')
+          .trim(),
+      );
       current.api = api;
     } else if (indent === providerIndent + 2 && trimmed.startsWith('baseURL:')) {
       current.baseUrl = valueOf(trimmed)?.replace(/\s+#.*$/, '') ?? '';
@@ -483,12 +514,28 @@ export function dshDefaultRoute(profileText: string): { provider: string; model:
   for (const line of profileText.split(/\r?\n/)) {
     const trimmed = line.trim();
     if (trimmed.startsWith('- id:')) {
-      active = trimmed.slice('- id:'.length).replace(/\s+#.*$/, '').trim() === 'agent-default-model';
+      active =
+        trimmed
+          .slice('- id:'.length)
+          .replace(/\s+#.*$/, '')
+          .trim() === 'agent-default-model';
       continue;
     }
     if (!active) continue;
-    if (trimmed.startsWith('provider:')) provider = unquote(trimmed.slice('provider:'.length).replace(/\s+#.*$/, '').trim());
-    else if (trimmed.startsWith('model:')) model = unquote(trimmed.slice('model:'.length).replace(/\s+#.*$/, '').trim());
+    if (trimmed.startsWith('provider:'))
+      provider = unquote(
+        trimmed
+          .slice('provider:'.length)
+          .replace(/\s+#.*$/, '')
+          .trim(),
+      );
+    else if (trimmed.startsWith('model:'))
+      model = unquote(
+        trimmed
+          .slice('model:'.length)
+          .replace(/\s+#.*$/, '')
+          .trim(),
+      );
   }
   return { provider, model };
 }
@@ -539,7 +586,8 @@ function readPiRoute(host: 'pi' | 'pig', proxyUrl: string): HeadroomRoute {
  */
 export function dshProfileFiles(root: string = path.join(homeDir(), '.dsh')): string[] {
   const named = (process.env.DSH_PROFILE ?? '').trim();
-  const order = named === 'web' || named === 'desktop' ? [named, named === 'web' ? 'desktop' : 'web'] : ['web', 'desktop'];
+  const order =
+    named === 'web' || named === 'desktop' ? [named, named === 'web' ? 'desktop' : 'web'] : ['web', 'desktop'];
   return order
     .map((profile) => path.join(root, 'profiles', profile, 'cordis.patch.yml'))
     .filter((file) => fs.existsSync(file));
@@ -555,7 +603,9 @@ function readDshRoute(proxyUrl: string): HeadroomRoute {
   for (const file of dshProfileFiles()) {
     try {
       return dshRouteFrom(settings, fs.readFileSync(file, 'utf8'), proxyUrl);
-    } catch { /* try the next profile */ }
+    } catch {
+      /* try the next profile */
+    }
   }
   return emptyRoute('dsh', proxyUrl, 'no dsh profile found');
 }

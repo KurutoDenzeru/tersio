@@ -101,7 +101,11 @@ export async function handleHeadroomRoutes(
       return true;
     }
     const routed = await routeHostOn(name, headroomProxyUrl());
-    ctx.json(res, 200, routed.ok ? { ok: true, detail: `${routed.detail}; it survives restarts` } : { ok: false, error: routed.detail });
+    ctx.json(
+      res,
+      200,
+      routed.ok ? { ok: true, detail: `${routed.detail}; it survives restarts` } : { ok: false, error: routed.detail },
+    );
     return true;
   }
   return false;

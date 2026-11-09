@@ -1,6 +1,18 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { getSharedComboState, hasModeState, isOmpSubagentPrompt, lastCustomValue, normalizeInputCommand, normalizeMode, reconcileSharedComboEntries, sessionEntries, setSharedComboListener, setSharedComboMode, systemPromptIncludes } from '../shared/session-state.ts';
+import {
+  getSharedComboState,
+  hasModeState,
+  isOmpSubagentPrompt,
+  lastCustomValue,
+  normalizeInputCommand,
+  normalizeMode,
+  reconcileSharedComboEntries,
+  sessionEntries,
+  setSharedComboListener,
+  setSharedComboMode,
+  systemPromptIncludes,
+} from '../shared/session-state.ts';
 import { dirname, join } from 'node:path';
 import { injectPromptText, onHostEvent, sessionChangeEvents, setExtensionLabel } from '../shared/host.ts';
 import { announceStatus, formatCavemanStatus } from '../shared/status.ts';
@@ -11,7 +23,14 @@ import type { ExtensionApi, ExtensionCtx, InputEvent, SessionEntry, SystemPrompt
 
 const CAVERN_DIR = ruleDir('caveman', dirname(fileURLToPath(import.meta.url)));
 // `rule.md`, `rule-ultra.md`, and `rule-megacave.md` track upstream and are refetched; `lite`, `megacave-lite`, and `megacave-ultra` are our forks and ship bundled.
-const RULE_FILES = { lite: 'rule-lite.md', full: 'rule.md', ultra: 'rule-ultra.md', 'megacave-lite': 'rule-megacave-lite.md', 'megacave-full': 'rule-megacave.md', 'megacave-ultra': 'rule-megacave-ultra.md' };
+const RULE_FILES = {
+  lite: 'rule-lite.md',
+  full: 'rule.md',
+  ultra: 'rule-ultra.md',
+  'megacave-lite': 'rule-megacave-lite.md',
+  'megacave-full': 'rule-megacave.md',
+  'megacave-ultra': 'rule-megacave-ultra.md',
+};
 
 const DEFAULT_MODE = 'off';
 
@@ -24,7 +43,9 @@ function buildInstruction(mode: string): string {
   const name = RULE_FILES[mode as keyof typeof RULE_FILES] ?? RULE_FILES.full;
   // Fail loud: a wrong rule reads to the model as the real one.
   let body: string;
-  try { body = readFileSync(join(CAVERN_DIR, name), 'utf8'); } catch {
+  try {
+    body = readFileSync(join(CAVERN_DIR, name), 'utf8');
+  } catch {
     return `Caveman ${mode} requested, but ${name} is missing. Run: tersio doctor --fix extensions`;
   }
   const instruction = `Caveman ${mode} active for this session.\n${body}`;
@@ -67,7 +88,9 @@ export default function cavemanSessionExtension(pi: ExtensionApi): void {
   pi.registerCommand?.('caveman', {
     description: 'Toggle terse caveman replies for this session',
     handler: async (args, ctx) => {
-      const arg = String(args || '').trim().toLowerCase();
+      const arg = String(args || '')
+        .trim()
+        .toLowerCase();
       if (!arg || arg === 'on') {
         setMode('full', ctx);
         return;
@@ -79,7 +102,10 @@ export default function cavemanSessionExtension(pi: ExtensionApi): void {
         return;
       }
       if (!setMode(arg, ctx)) {
-        ctx?.ui?.notify?.('Usage: /caveman [lite|full|ultra|megacave-lite|megacave-full|megacave-ultra|off|status]', 'warning');
+        ctx?.ui?.notify?.(
+          'Usage: /caveman [lite|full|ultra|megacave-lite|megacave-full|megacave-ultra|off|status]',
+          'warning',
+        );
       }
     },
   });
@@ -96,7 +122,8 @@ export default function cavemanSessionExtension(pi: ExtensionApi): void {
     // Persisted state wins, then a mode already chosen, then the default. `off` is the start value, not unset.
     const persisted = resolveMode(entries, '');
     const alreadyChosen = currentMode !== DEFAULT_MODE;
-    currentMode = persisted || (alreadyChosen ? currentMode : normalizeMode('caveman', readCavemanDefault(host))) || DEFAULT_MODE;
+    currentMode =
+      persisted || (alreadyChosen ? currentMode : normalizeMode('caveman', readCavemanDefault(host))) || DEFAULT_MODE;
     announceStatus(ctx);
   }
 

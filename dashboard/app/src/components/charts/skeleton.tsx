@@ -1,24 +1,26 @@
 // Section-shaped placeholders: a page draws its own blocks while its snapshot is on the way.
-import { cn } from "cn";
-import { Card as CardShell, CardContent } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
-import { navItem } from "@/components/agents/nav";
-import type { SectionId } from "@/components/agents/nav";
-import { CARD_CHROME, Page, PageHeader, StatGrid } from "./stats";
-import { ChartSkeleton } from "./controls";
-import { TableSkeleton } from "./table";
+import { cn } from "cn"
+import { Card as CardShell, CardContent } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
+import { navItem } from "@/components/agents/nav"
+import type { SectionId } from "@/components/agents/nav"
+import { CARD_CHROME, Page, PageHeader, StatGrid } from "./stats"
+import { ChartSkeleton } from "./controls"
+import { TableSkeleton } from "./table"
 
 /** The body a placeholder card stands in for. */
-type Body = "chart" | "bars" | "table";
+type Body = "chart" | "bars" | "table"
 
 interface CardSpec {
-  body: Body;
+  body: Body
   /** Rows a table or bar-list body draws. */
-  rows?: number;
+  rows?: number
 }
 
 /** One block of the page: a stat strip, or several cards sharing a `grid`. */
-type Block = { strip: 2 | 3 | 4 | 5 | 6 | 7; sm?: boolean } | { cards: readonly CardSpec[]; grid?: string };
+type Block =
+  | { strip: 2 | 3 | 4 | 5 | 6 | 7; sm?: boolean }
+  | { cards: readonly CardSpec[]; grid?: string }
 
 // The blocks of every page, in screen order. A page missing from this record fails to typecheck.
 const LAYOUT: Record<SectionId, readonly Block[]> = {
@@ -28,31 +30,42 @@ const LAYOUT: Record<SectionId, readonly Block[]> = {
     { grid: "lg:grid-cols-[minmax(0,1fr)_360px]", cards: [{ body: "chart" }, { body: "bars" }] },
     { cards: [{ body: "table", rows: 8 }] },
   ],
-  models: [
-    { strip: 4 },
-    { cards: [{ body: "chart" }] },
-    { cards: [{ body: "table", rows: 10 }] },
-  ],
+  models: [{ strip: 4 }, { cards: [{ body: "chart" }] }, { cards: [{ body: "table", rows: 10 }] }],
   providers: [
     { strip: 5 },
     { cards: [{ body: "table", rows: 8 }] },
-    { grid: "lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]", cards: [{ body: "chart" }, { body: "bars", rows: 5 }] },
+    {
+      grid: "lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]",
+      cards: [{ body: "chart" }, { body: "bars", rows: 5 }],
+    },
     { cards: [{ body: "table", rows: 6 }] },
   ],
   costs: [
     { strip: 4 },
-    { grid: "xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]", cards: [{ body: "chart" }, { body: "bars", rows: 5 }] },
+    {
+      grid: "xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]",
+      cards: [{ body: "chart" }, { body: "bars", rows: 5 }],
+    },
     { cards: [{ body: "table", rows: 8 }] },
   ],
   carbon: [
     { strip: 4 },
-    { grid: "xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]", cards: [{ body: "bars" }, { body: "bars", rows: 4 }] },
+    {
+      grid: "xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]",
+      cards: [{ body: "bars" }, { body: "bars", rows: 4 }],
+    },
     { cards: [{ body: "table", rows: 8 }] },
   ],
   requests: [{ strip: 6 }, { cards: [{ body: "table", rows: 12 }] }],
   errors: [
     { strip: 4 },
-    { grid: "lg:grid-cols-[minmax(0,1fr)_320px]", cards: [{ body: "table", rows: 6 }, { body: "bars", rows: 5 }] },
+    {
+      grid: "lg:grid-cols-[minmax(0,1fr)_320px]",
+      cards: [
+        { body: "table", rows: 6 },
+        { body: "bars", rows: 5 },
+      ],
+    },
     { cards: [{ body: "table", rows: 8 }] },
   ],
   traces: [{ cards: [{ body: "table", rows: 12 }] }],
@@ -70,24 +83,25 @@ const LAYOUT: Record<SectionId, readonly Block[]> = {
   ],
   projects: [
     { strip: 5 },
-    { grid: "md:grid-cols-2", cards: [{ body: "bars", rows: 5 }, { body: "bars", rows: 5 }] },
+    {
+      grid: "md:grid-cols-2",
+      cards: [
+        { body: "bars", rows: 5 },
+        { body: "bars", rows: 5 },
+      ],
+    },
     { cards: [{ body: "table", rows: 8 }] },
   ],
   // The guide reads no store, so it paints at once; the shapes below only matter if the shell ever waits on it.
-  "how-to": [
-    { cards: [{ body: "chart" }] },
-    { cards: [{ body: "table", rows: 4 }] },
-  ],
+  "how-to": [{ cards: [{ body: "chart" }] }, { cards: [{ body: "table", rows: 4 }] }],
   // Benchmarks read the docs, not the agent store, so the shape only matters if the shell ever waits on them.
   benchmarks: [
     { strip: 4 },
     { cards: [{ body: "chart" }, { body: "chart" }] },
     { cards: [{ body: "table", rows: 6 }] },
   ],
-  logs: [
-    { cards: [{ body: "table", rows: 10 }] },
-  ],
-};
+  logs: [{ cards: [{ body: "table", rows: 10 }] }],
+}
 
 /** One figure, in the shape `Stat` draws: a small label over a bold value. */
 function StatSkeleton({ sm }: { sm?: boolean }) {
@@ -97,7 +111,7 @@ function StatSkeleton({ sm }: { sm?: boolean }) {
       <Skeleton className={cn("mt-1.5", sm ? "h-3.5 w-14" : "h-4 w-16")} />
       {!sm && <Skeleton className="mt-1.5 h-2.5 w-24" />}
     </div>
-  );
+  )
 }
 
 /** A share list, in the shape `BarList` draws: a label and a figure over one track. */
@@ -112,7 +126,7 @@ function BarsSkeleton({ rows = 6 }: { rows?: number }) {
         </li>
       ))}
     </ul>
-  );
+  )
 }
 
 /** A card's shell with no text, so the placeholder reads as the card it replaces. */
@@ -130,7 +144,7 @@ function SkeletonCard({ body, rows }: CardSpec) {
         {body === "bars" && <BarsSkeleton rows={rows} />}
       </CardContent>
     </CardShell>
-  );
+  )
 }
 
 function BlockSkeleton({ block }: { block: Block }) {
@@ -141,10 +155,10 @@ function BlockSkeleton({ block }: { block: Block }) {
           <StatSkeleton key={i} sm={block.sm} />
         ))}
       </StatGrid>
-    );
+    )
   }
-  const cards = block.cards.map((spec, i) => <SkeletonCard key={i} {...spec} />);
-  return block.grid ? <div className={cn("grid gap-4", block.grid)}>{cards}</div> : <>{cards}</>;
+  const cards = block.cards.map((spec, i) => <SkeletonCard key={i} {...spec} />)
+  return block.grid ? <div className={cn("grid gap-4", block.grid)}>{cards}</div> : <>{cards}</>
 }
 
 /** The page while its snapshot is on the way, block for block the page it stands in for. */
@@ -156,7 +170,7 @@ export function PageSkeleton({ section }: { section: SectionId }) {
         <BlockSkeleton key={i} block={block} />
       ))}
     </Page>
-  );
+  )
 }
 
 /** The session trace while its transcript parses. Its container already stacks the blocks. */
@@ -171,5 +185,5 @@ export function TraceSkeleton() {
       <SkeletonCard body="chart" />
       <SkeletonCard body="table" rows={10} />
     </>
-  );
+  )
 }

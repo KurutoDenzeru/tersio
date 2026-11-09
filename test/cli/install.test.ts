@@ -1,5 +1,5 @@
-import { expect, test } from "vitest";
-import { execFileSync, spawnSync } from "node:child_process";
+import { expect, test } from 'vitest';
+import { execFileSync, spawnSync } from 'node:child_process';
 import {
   existsSync,
   mkdirSync,
@@ -9,107 +9,111 @@ import {
   rmSync,
   symlinkSync,
   writeFileSync,
-} from "node:fs";
-import os from "node:os";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+} from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-import {
-  ensureExtensionInConfig,
-  normalizeExtensionsKey,
-  removeExtensionFromConfig,
-} from "../../cli/common.ts";
-import { GENERATED_TREE_FILES, TREE_FILES, sourcePath, treeFilesFor } from "../../cli/manifest.ts";
-import { PACKAGE_VERSION } from "../../cli/common.ts";
+import { ensureExtensionInConfig, normalizeExtensionsKey, removeExtensionFromConfig } from '../../cli/common.ts';
+import { GENERATED_TREE_FILES, TREE_FILES, sourcePath, treeFilesFor } from '../../cli/manifest.ts';
+import { PACKAGE_VERSION } from '../../cli/common.ts';
 import {
   readCavemanDefault,
   readComboDefault,
   readPluginSettings,
   readRtkDefault,
   saveComboSetup,
-} from "../../extensions/shared/plugin-settings.ts";
-import { saveHostDefaults, storedProfileSync } from "../../cli/profile.ts";
-import type { HostDefaultField } from "../../cli/profile.ts";
-import { readUsageDb, syncUsageDb } from "../../extensions/shared/usage-store.ts";
-import { ruleBodyProblem } from "../../extensions/shared/utils.ts";
-import { sqliteExec } from "../../extensions/shared/sqlite.ts";
-import { cliEnv, fakeExecutable, fakeRtkBin, hasSqlite, isWindows, withHome } from "../helpers/env.ts";
+} from '../../extensions/shared/plugin-settings.ts';
+import { saveHostDefaults, storedProfileSync } from '../../cli/profile.ts';
+import type { HostDefaultField } from '../../cli/profile.ts';
+import { readUsageDb, syncUsageDb } from '../../extensions/shared/usage-store.ts';
+import { ruleBodyProblem } from '../../extensions/shared/utils.ts';
+import { sqliteExec } from '../../extensions/shared/sqlite.ts';
+import { cliEnv, fakeExecutable, fakeRtkBin, hasSqlite, isWindows, withHome } from '../helpers/env.ts';
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const installer = path.join(root, "dist", "tersio.js");
-const SELF = "@krtclcdy/tersio";
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const installer = path.join(root, 'dist', 'tersio.js');
+const SELF = '@krtclcdy/tersio';
 
 // Session defaults live in ~/.tersio/settings.json; callers pass the package-keyed shape the old lock used.
 function writeLock(home: string, settings: Record<string, unknown>): void {
-  const dir = path.join(home, ".tersio");
+  const dir = path.join(home, '.tersio');
   mkdirSync(dir, { recursive: true });
-  const values = (settings["@krtclcdy/tersio"] ?? settings) as Record<string, unknown>;
-  writeFileSync(path.join(dir, "settings.json"), JSON.stringify(values, null, 2), "utf8");
+  const values = (settings['@krtclcdy/tersio'] ?? settings) as Record<string, unknown>;
+  writeFileSync(path.join(dir, 'settings.json'), JSON.stringify(values, null, 2), 'utf8');
 }
 
-test("readPluginSettings seeds from the OMP lock an older install wrote", () => {
+test('readPluginSettings seeds from the OMP lock an older install wrote', () => {
   withHome((home) => {
-    const dir = path.join(home, ".omp", "plugins");
+    const dir = path.join(home, '.omp', 'plugins');
     mkdirSync(dir, { recursive: true });
-    writeFileSync(path.join(dir, "omp-plugins.lock.json"), JSON.stringify({
-      plugins: {},
-      settings: { "@krtclcdy/tersio": { comboDefault: "max", cavemanDefault: "wenyan", rtkDefault: true } },
-    }), "utf8");
-    expect(readComboDefault()).toBe("max");
-    expect(readCavemanDefault()).toBe("wenyan");
+    writeFileSync(
+      path.join(dir, 'omp-plugins.lock.json'),
+      JSON.stringify({
+        plugins: {},
+        settings: { '@krtclcdy/tersio': { comboDefault: 'max', cavemanDefault: 'wenyan', rtkDefault: true } },
+      }),
+      'utf8',
+    );
+    expect(readComboDefault()).toBe('max');
+    expect(readCavemanDefault()).toBe('wenyan');
     expect(readRtkDefault()).toBe(true);
   });
 });
 
-test("readPluginSettings prefers ~/.tersio/settings.json over the lock file", () => {
+test('readPluginSettings prefers ~/.tersio/settings.json over the lock file', () => {
   withHome((home) => {
-    writeLock(home, { "@krtclcdy/tersio": { comboDefault: "lite" } });
-    const dir = path.join(home, ".omp", "plugins");
+    writeLock(home, { '@krtclcdy/tersio': { comboDefault: 'lite' } });
+    const dir = path.join(home, '.omp', 'plugins');
     mkdirSync(dir, { recursive: true });
-    writeFileSync(path.join(dir, "omp-plugins.lock.json"), JSON.stringify({
-      plugins: {},
-      settings: { "@krtclcdy/tersio": { comboDefault: "max" } },
-    }), "utf8");
-    expect(readComboDefault()).toBe("lite");
+    writeFileSync(
+      path.join(dir, 'omp-plugins.lock.json'),
+      JSON.stringify({
+        plugins: {},
+        settings: { '@krtclcdy/tersio': { comboDefault: 'max' } },
+      }),
+      'utf8',
+    );
+    expect(readComboDefault()).toBe('lite');
   });
 });
 
-test("readPluginSettings returns defaults when no lock file exists", () => {
+test('readPluginSettings returns defaults when no lock file exists', () => {
   withHome(() => {
-    expect(readComboDefault()).toBe("off");
-    expect(readCavemanDefault()).toBe("off");
+    expect(readComboDefault()).toBe('off');
+    expect(readCavemanDefault()).toBe('off');
     expect(readRtkDefault()).toBe(false);
     expect(readPluginSettings()).toEqual({});
   });
 });
 
-test("readPluginSettings picks up values from ~/.tersio/settings.json", () => {
+test('readPluginSettings picks up values from ~/.tersio/settings.json', () => {
   withHome((home) => {
-    writeLock(home, { "@krtclcdy/tersio": { comboDefault: "max", cavemanDefault: "wenyan", rtkDefault: true } });
-    expect(readComboDefault()).toBe("max");
-    expect(readCavemanDefault()).toBe("wenyan");
+    writeLock(home, { '@krtclcdy/tersio': { comboDefault: 'max', cavemanDefault: 'wenyan', rtkDefault: true } });
+    expect(readComboDefault()).toBe('max');
+    expect(readCavemanDefault()).toBe('wenyan');
     expect(readRtkDefault()).toBe(true);
   });
 });
 
-test("readPluginSettings ignores invalid values and other plugins", () => {
+test('readPluginSettings ignores invalid values and other plugins', () => {
   withHome((home) => {
     writeLock(home, {
-      "other-plugin": { comboDefault: "max" },
-      "@krtclcdy/tersio": { comboDefault: "yolo", cavemanDefault: 42, rtkDefault: "yes" },
+      'other-plugin': { comboDefault: 'max' },
+      '@krtclcdy/tersio': { comboDefault: 'yolo', cavemanDefault: 42, rtkDefault: 'yes' },
     });
-    expect(readComboDefault()).toBe("off");
-    expect(readCavemanDefault()).toBe("off");
+    expect(readComboDefault()).toBe('off');
+    expect(readCavemanDefault()).toBe('off');
     expect(readRtkDefault()).toBe(false);
   });
 });
 
-test("readPluginSettings tolerates a corrupt lock file", () => {
+test('readPluginSettings tolerates a corrupt lock file', () => {
   withHome((home) => {
-    const dir = path.join(home, ".omp", "plugins");
+    const dir = path.join(home, '.omp', 'plugins');
     mkdirSync(dir, { recursive: true });
-    writeFileSync(path.join(dir, "omp-plugins.lock.json"), "{ not json", "utf8");
-    expect(readComboDefault()).toBe("off");
+    writeFileSync(path.join(dir, 'omp-plugins.lock.json'), '{ not json', 'utf8');
+    expect(readComboDefault()).toBe('off');
     expect(readPluginSettings()).toEqual({});
   });
 });
@@ -117,34 +121,39 @@ test("readPluginSettings tolerates a corrupt lock file", () => {
 test("a host's own section wins over the shared defaults, and other hosts keep them", () => {
   withHome((home) => {
     writeLock(home, {
-      "@krtclcdy/tersio": {
-        comboDefault: "lite", cavemanDefault: "lite", rtkDefault: true,
-        hosts: { pi: { comboDefault: "max", cavemanDefault: "ultra", rtkDefault: false }, codex: { comboDefault: "bogus" } },
+      '@krtclcdy/tersio': {
+        comboDefault: 'lite',
+        cavemanDefault: 'lite',
+        rtkDefault: true,
+        hosts: {
+          pi: { comboDefault: 'max', cavemanDefault: 'ultra', rtkDefault: false },
+          codex: { comboDefault: 'bogus' },
+        },
       },
     });
-    expect(readComboDefault("pi")).toBe("max");
-    expect(readCavemanDefault("pi")).toBe("ultra");
-    expect(readRtkDefault("pi")).toBe(false);
+    expect(readComboDefault('pi')).toBe('max');
+    expect(readCavemanDefault('pi')).toBe('ultra');
+    expect(readRtkDefault('pi')).toBe(false);
     // Another known host with no section inherits the flat keys.
-    expect(readComboDefault("omp")).toBe("lite");
-    expect(readCavemanDefault("omp")).toBe("lite");
-    expect(readRtkDefault("omp")).toBe(true);
+    expect(readComboDefault('omp')).toBe('lite');
+    expect(readCavemanDefault('omp')).toBe('lite');
+    expect(readRtkDefault('omp')).toBe(true);
     // An unknown section and a no-scope read never see the layer.
-    expect(readComboDefault("opencode")).toBe("lite");
-    expect(readComboDefault()).toBe("lite");
+    expect(readComboDefault('opencode')).toBe('lite');
+    expect(readComboDefault()).toBe('lite');
   });
 });
 
 test("saveComboSetup writes a host's preset into that host's own section", () => {
   withHome((home) => {
-    writeLock(home, { "@krtclcdy/tersio": { comboDefault: "lite", cavemanDefault: "lite", rtkDefault: true } });
-    expect(saveComboSetup("max", "pi")).toBe(true);
+    writeLock(home, { '@krtclcdy/tersio': { comboDefault: 'lite', cavemanDefault: 'lite', rtkDefault: true } });
+    expect(saveComboSetup('max', 'pi')).toBe(true);
     // The host section carries the preset; the flat keys and the other agents stay untouched.
-    expect(readComboDefault("pi")).toBe("max");
-    expect(readCavemanDefault("pi")).toBe("ultra");
-    expect(readComboDefault("omp")).toBe("lite");
-    expect(readComboDefault()).toBe("lite");
-    expect(JSON.parse(readFileSync(path.join(home, ".tersio", "settings.json"), "utf8")).comboSetupComplete).toBe(true);
+    expect(readComboDefault('pi')).toBe('max');
+    expect(readCavemanDefault('pi')).toBe('ultra');
+    expect(readComboDefault('omp')).toBe('lite');
+    expect(readComboDefault()).toBe('lite');
+    expect(JSON.parse(readFileSync(path.join(home, '.tersio', 'settings.json'), 'utf8')).comboSetupComplete).toBe(true);
   });
 });
 
@@ -152,56 +161,56 @@ type RunResult = { status: number | null; stdout: string; stderr: string };
 
 function run(...args: string[]): RunResult {
   // Missing home: user-scope dests never exist, so dry-run previews it all.
-  const missingHome = path.join(root, "test", "definitely-missing-home");
+  const missingHome = path.join(root, 'test', 'definitely-missing-home');
   const result = spawnSync(process.execPath, [installer, ...args], {
     cwd: root,
-    encoding: "utf8",
+    encoding: 'utf8',
     timeout: 15000,
     env: cliEnv(missingHome),
   });
-  return { status: result.status, stdout: result.stdout || "", stderr: result.stderr || "" };
+  return { status: result.status, stdout: result.stdout || '', stderr: result.stderr || '' };
 }
 
-test("installer accepts session-default flags and reports them", () => {
-  const result = run("install", "--dry-run", "--yes", "--combo-default", "lite");
+test('installer accepts session-default flags and reports them', () => {
+  const result = run('install', '--dry-run', '--yes', '--combo-default', 'lite');
   expect(result.status, result.stderr).toBe(0);
   expect(result.stdout).toMatch(/Defaults: combo=lite/);
   expect(result.stdout).toMatch(/RTK session — install session mode/);
   expect(result.stdout).toMatch(/Tersio commands — install \/tersio root command/);
 
   // A scripted flag written before the rename still lands on the lite preset.
-  const retired = run("install", "--dry-run", "--yes", "--combo-default", "medium");
+  const retired = run('install', '--dry-run', '--yes', '--combo-default', 'medium');
   expect(retired.status, retired.stderr).toBe(0);
   expect(retired.stdout).toMatch(/Defaults: combo=lite/);
   expect(retired.stdout).not.toMatch(/Invalid --combo-default/);
 });
 
-test("installer rejects invalid default values", () => {
-  const badCombo = run("install", "--dry-run", "--yes", "--combo-default", "ultra");
+test('installer rejects invalid default values', () => {
+  const badCombo = run('install', '--dry-run', '--yes', '--combo-default', 'ultra');
   expect(badCombo.status).toBe(1);
   expect(badCombo.stderr).toMatch(/Invalid --combo-default/);
 
-  const badRtk = run("install", "--dry-run", "--yes", "--rtk-default", "maybe");
+  const badRtk = run('install', '--dry-run', '--yes', '--rtk-default', 'maybe');
   expect(badRtk.status).toBe(1);
   expect(badRtk.stderr).toMatch(/Invalid --rtk-default/);
 
-  const badCaveman = run("install", "--dry-run", "--yes", "--caveman-default", "max");
+  const badCaveman = run('install', '--dry-run', '--yes', '--caveman-default', 'max');
   expect(badCaveman.status).toBe(1);
   expect(badCaveman.stderr).toMatch(/Invalid --caveman-default/);
 });
 
-test("installer rejects removed project/both scopes", () => {
-  for (const scope of ["project", "both", "bogus"]) {
-    const bad = run("install", "--dry-run", "--yes", "--scope", scope);
+test('installer rejects removed project/both scopes', () => {
+  for (const scope of ['project', 'both', 'bogus']) {
+    const bad = run('install', '--dry-run', '--yes', '--scope', scope);
     expect(bad.status, scope).toBe(1);
     expect(bad.stderr).toMatch(/Project scope was removed/);
   }
-  const legacy = run("install", "--dry-run", "--yes", "--scope", "user");
+  const legacy = run('install', '--dry-run', '--yes', '--scope', 'user');
   expect(legacy.status, legacy.stderr).toBe(0);
 });
 
-test("installer dry-run installs every user-scope extension", () => {
-  const result = run("install", "--dry-run", "--yes");
+test('installer dry-run installs every user-scope extension', () => {
+  const result = run('install', '--dry-run', '--yes');
   expect(result.status, result.stderr).toBe(0);
   expect(result.stdout).toMatch(/RTK session — install session mode/);
   expect(result.stdout).toMatch(/Caveman — install session mode and rule bodies/);
@@ -209,15 +218,15 @@ test("installer dry-run installs every user-scope extension", () => {
   expect(result.stdout).not.toMatch(/mode reinforcement/i);
 });
 
-test("installer does not add manifest-owned extensions to config.yml", () => {
-  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-install-registrations-"));
+test('installer does not add manifest-owned extensions to config.yml', () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), 'tersio-install-registrations-'));
   const previous = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE };
   process.env.HOME = home;
   process.env.USERPROFILE = home;
   try {
-    const result = spawnSync(process.execPath, [installer, "install", "--dry-run", "--yes"], {
+    const result = spawnSync(process.execPath, [installer, 'install', '--dry-run', '--yes'], {
       cwd: root,
-      encoding: "utf8",
+      encoding: 'utf8',
       timeout: 15000,
       env: cliEnv(home),
     });
@@ -232,8 +241,8 @@ test("installer does not add manifest-owned extensions to config.yml", () => {
   }
 });
 
-test("package manifest declares always-on extensions plus updater feature and settings", () => {
-  const manifest = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")) as {
+test('package manifest declares always-on extensions plus updater feature and settings', () => {
+  const manifest = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')) as {
     omp?: { extensions?: string[]; features?: Record<string, unknown>; settings?: Record<string, unknown> };
   };
   for (const ext of manifest.omp?.extensions ?? []) {
@@ -241,18 +250,18 @@ test("package manifest declares always-on extensions plus updater feature and se
     expect(existsSync(compiled), `always-on entry exists: ${ext}`).toBeTruthy();
   }
   expect(manifest.omp?.extensions).toEqual([
-    "./extensions/caveman/index.ts",
-    "./extensions/pstack/index.ts",
-    "./extensions/headroom/index.ts",
-    "./extensions/rtk/session.ts",
-    "./extensions/rtk/filter.ts",
-    "./extensions/combo/index.ts",
-    "./extensions/commands/index.ts",
+    './extensions/caveman/index.ts',
+    './extensions/pstack/index.ts',
+    './extensions/headroom/index.ts',
+    './extensions/rtk/session.ts',
+    './extensions/rtk/filter.ts',
+    './extensions/combo/index.ts',
+    './extensions/commands/index.ts',
   ]);
   const features = manifest.omp?.features ?? {};
-  expect(Object.keys(features)).toEqual(["updater"]);
+  expect(Object.keys(features)).toEqual(['updater']);
   const updater = features.updater as { default?: boolean; extensions?: string[] };
-  expect(updater.default, "updater defaults on").toBe(true);
+  expect(updater.default, 'updater defaults on').toBe(true);
   for (const ext of updater.extensions ?? []) {
     const compiled = path.join(root, ext);
     expect(existsSync(compiled), `updater entry exists: ${ext}`).toBeTruthy();
@@ -260,65 +269,67 @@ test("package manifest declares always-on extensions plus updater feature and se
   const settings = manifest.omp?.settings ?? {};
 
   const combo = settings.comboDefault as { type?: string; values?: string[]; default?: string };
-  expect(combo.type).toBe("enum");
-  expect(combo.values).toEqual(["inherit", "off", "lite", "balanced", "max"]);
-  expect(combo.default).toBe("inherit");
+  expect(combo.type).toBe('enum');
+  expect(combo.values).toEqual(['inherit', 'off', 'lite', 'balanced', 'max']);
+  expect(combo.default).toBe('inherit');
 
   const rtk = settings.rtkDefault as { type?: string; values?: string[]; default?: string };
-  expect(rtk.type).toBe("enum");
-  expect(rtk.values).toEqual(["inherit", "on", "off"]);
-  expect(rtk.default).toBe("inherit");
+  expect(rtk.type).toBe('enum');
+  expect(rtk.values).toEqual(['inherit', 'on', 'off']);
+  expect(rtk.default).toBe('inherit');
 
   const currency = settings.currency as { type?: string; values?: string[]; default?: string };
-  expect(currency.type).toBe("enum");
-  expect(currency.values).toEqual(["USD", "PHP", "EUR", "GBP", "JPY", "KRW", "SGD", "AUD", "CAD", "INR"]);
-  expect(currency.default).toBe("USD");
+  expect(currency.type).toBe('enum');
+  expect(currency.values).toEqual(['USD', 'PHP', 'EUR', 'GBP', 'JPY', 'KRW', 'SGD', 'AUD', 'CAD', 'INR']);
+  expect(currency.default).toBe('USD');
 });
 
 test("--combo-default inherit clears an agent's mode overrides", () => {
-  const result = run("install", "--host", "pi", "--combo-default", "inherit", "--dry-run", "--verbose");
+  const result = run('install', '--host', 'pi', '--combo-default', 'inherit', '--dry-run', '--verbose');
   expect(result.status, result.stderr).toBe(0);
   expect(result.stdout).toMatch(/Defaults for pi: combo=inherit \(caveman=inherit · rtk=inherit · ponytail=inherit/);
 });
 
-test("installer accepts --ponytail-default override and reports it", () => {
-  const result = run("install", "--dry-run", "--yes", "--ponytail-default", "full");
+test('installer accepts --ponytail-default override and reports it', () => {
+  const result = run('install', '--dry-run', '--yes', '--ponytail-default', 'full');
   expect(result.status, result.stderr).toBe(0);
   expect(result.stdout).toMatch(/ponytail=full/);
 });
 
-test("a pinned host scopes the printed defaults and the per-host write to that agent", () => {
-  const result = run("install", "--dry-run", "--yes", "--verbose", "--host", "pi", "--combo-default", "balanced");
+test('a pinned host scopes the printed defaults and the per-host write to that agent', () => {
+  const result = run('install', '--dry-run', '--yes', '--verbose', '--host', 'pi', '--combo-default', 'balanced');
   expect(result.status, result.stderr).toBe(0);
   expect(result.stdout).toMatch(/Defaults for pi: combo=balanced/);
   expect(result.stdout).toMatch(/would write session defaults for pi/);
 });
 
-test("a host save writes only the chosen fields, and one equal to the shared fallback is dropped", async () => {
+test('a host save writes only the chosen fields, and one equal to the shared fallback is dropped', async () => {
   await withHome(async (home) => {
-    writeLock(home, { "@krtclcdy/tersio": { comboDefault: "lite", cavemanDefault: "lite", rtkDefault: true, ponytailDefault: "lite" } });
-    const profile = storedProfileSync("pi");
+    writeLock(home, {
+      '@krtclcdy/tersio': { comboDefault: 'lite', cavemanDefault: 'lite', rtkDefault: true, ponytailDefault: 'lite' },
+    });
+    const profile = storedProfileSync('pi');
     // The operator picked only a preset for pi: the four fields it owns land, the opt-ins stay inherited.
-    const comboOnly: HostDefaultField[] = ["comboDefault", "cavemanDefault", "rtkDefault", "ponytailDefault"];
-    profile.comboDefault = "max";
-    profile.cavemanDefault = "ultra";
-    profile.ponytailDefault = "ultra";
-    await saveHostDefaults("pi", comboOnly, profile, {});
-    const stored = JSON.parse(readFileSync(path.join(home, ".tersio", "settings.json"), "utf8")) as Record<string, any>;
+    const comboOnly: HostDefaultField[] = ['comboDefault', 'cavemanDefault', 'rtkDefault', 'ponytailDefault'];
+    profile.comboDefault = 'max';
+    profile.cavemanDefault = 'ultra';
+    profile.ponytailDefault = 'ultra';
+    await saveHostDefaults('pi', comboOnly, profile, {});
+    const stored = JSON.parse(readFileSync(path.join(home, '.tersio', 'settings.json'), 'utf8')) as Record<string, any>;
     // rtkDefault stays out: it equals the shared value, so it is inheritance, not an override.
-    expect(stored.hosts.pi).toEqual({ comboDefault: "max", cavemanDefault: "ultra", ponytailDefault: "ultra" });
+    expect(stored.hosts.pi).toEqual({ comboDefault: 'max', cavemanDefault: 'ultra', ponytailDefault: 'ultra' });
     expect(stored.hosts.pi.pstackDefault).toBeUndefined();
     expect(stored.hosts.pi.headroomDefault).toBeUndefined();
     // A later save whose field equals the shared value is inheritance, not an override: the key drops, while the agent's own earlier overrides stand until a request chooses them otherwise.
-    await saveHostDefaults("pi", ["rtkDefault"], { ...profile, rtkDefault: true }, {});
-    const after = JSON.parse(readFileSync(path.join(home, ".tersio", "settings.json"), "utf8")) as Record<string, any>;
+    await saveHostDefaults('pi', ['rtkDefault'], { ...profile, rtkDefault: true }, {});
+    const after = JSON.parse(readFileSync(path.join(home, '.tersio', 'settings.json'), 'utf8')) as Record<string, any>;
     expect(after.hosts.pi.rtkDefault).toBeUndefined();
-    expect(after.hosts.pi).toEqual({ comboDefault: "max", cavemanDefault: "ultra", ponytailDefault: "ultra" });
+    expect(after.hosts.pi).toEqual({ comboDefault: 'max', cavemanDefault: 'ultra', ponytailDefault: 'ultra' });
   });
 });
 
-test("a bare pinned install never snapshots the shared defaults into a host section", () => {
-  const result = run("install", "--dry-run", "--yes", "--verbose", "--host", "pi");
+test('a bare pinned install never snapshots the shared defaults into a host section', () => {
+  const result = run('install', '--dry-run', '--yes', '--verbose', '--host', 'pi');
   expect(result.status, result.stderr).toBe(0);
   expect(result.stdout).toMatch(/Defaults for pi:/);
   // No choice was made, so pi keeps reading the shared store and later global changes still reach it.
@@ -327,30 +338,30 @@ test("a bare pinned install never snapshots the shared defaults into a host sect
   expect(result.stdout).not.toMatch(/optional token-saver/);
 });
 
-test("installer rejects review as a Ponytail default", () => {
-  const bad = run("install", "--dry-run", "--yes", "--ponytail-default", "review");
+test('installer rejects review as a Ponytail default', () => {
+  const bad = run('install', '--dry-run', '--yes', '--ponytail-default', 'review');
   expect(bad.status).toBe(1);
   expect(bad.stderr).toMatch(/Invalid --ponytail-default/);
 });
 
-test("installer accepts a --pstack-default override and reports it", () => {
-  const result = run("install", "--dry-run", "--yes", "--pstack-default", "on");
+test('installer accepts a --pstack-default override and reports it', () => {
+  const result = run('install', '--dry-run', '--yes', '--pstack-default', 'on');
   expect(result.status, result.stderr).toBe(0);
   expect(result.stdout).toMatch(/pstack=on/);
 });
 
-test("installer rejects a pstack level it does not have", () => {
-  const bad = run("install", "--dry-run", "--yes", "--pstack-default", "full");
+test('installer rejects a pstack level it does not have', () => {
+  const bad = run('install', '--dry-run', '--yes', '--pstack-default', 'full');
   expect(bad.status).toBe(1);
   expect(bad.stderr).toMatch(/Invalid --pstack-default/);
 });
 
-test("update rejects an unknown host before doing anything", () => {
-  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-update-host-"));
+test('update rejects an unknown host before doing anything', () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), 'tersio-update-host-'));
   try {
-    const result = spawnSync(process.execPath, [installer, "update", "--host", "claude", "--yes"], {
+    const result = spawnSync(process.execPath, [installer, 'update', '--host', 'claude', '--yes'], {
       cwd: root,
-      encoding: "utf8",
+      encoding: 'utf8',
       timeout: 15000,
       env: cliEnv(home),
     });
@@ -361,58 +372,62 @@ test("update rejects an unknown host before doing anything", () => {
   }
 });
 
-test("apply-update without flags preserves stored combo defaults", () => {
+test('apply-update without flags preserves stored combo defaults', () => {
   // Clobber regression: `tersio update` delegates to --apply-update with no flags, wiping the default.
-  const home = mkdtempSync(path.join(os.tmpdir(), "omp-preserve-test-"));
+  const home = mkdtempSync(path.join(os.tmpdir(), 'omp-preserve-test-'));
   try {
     writeLock(home, {
-      "@krtclcdy/tersio": {
-        comboDefault: "balanced",
-        cavemanDefault: "full",
+      '@krtclcdy/tersio': {
+        comboDefault: 'balanced',
+        cavemanDefault: 'full',
         rtkDefault: true,
-        ponytailDefault: "full",
-        pstackDefault: "on",
+        ponytailDefault: 'full',
+        pstackDefault: 'on',
       },
     });
-    const result = spawnSync(process.execPath, [installer, "--apply-update", "--dry-run", "--yes"], {
+    const result = spawnSync(process.execPath, [installer, '--apply-update', '--dry-run', '--yes'], {
       cwd: root,
-      encoding: "utf8",
+      encoding: 'utf8',
       timeout: 15000,
       env: cliEnv(home),
     });
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toMatch(/Defaults: combo=balanced \(caveman=full · rtk=on · ponytail=full · pstack=on · headroom=off\)/);
+    expect(result.stdout).toMatch(
+      /Defaults: combo=balanced \(caveman=full · rtk=on · ponytail=full · pstack=on · headroom=off\)/,
+    );
   } finally {
     rmTree(home);
   }
 });
 
 // The OMP agent tree holds rtk's wiring only; an install drops older extension copies omp would merge.
-const PACKAGE_VERSION = (JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")) as { version: string }).version;
-const agentExtDir = (home: string): string => path.join(home, ".omp", "agent", "extensions");
-const pluginExt = (home: string): string => path.join(home, ".omp", "plugins", "node_modules", "@krtclcdy", "tersio", "extensions");
+const PACKAGE_VERSION = (JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')) as { version: string })
+  .version;
+const agentExtDir = (home: string): string => path.join(home, '.omp', 'agent', 'extensions');
+const pluginExt = (home: string): string =>
+  path.join(home, '.omp', 'plugins', 'node_modules', '@krtclcdy', 'tersio', 'extensions');
 
 // These two track upstream, so a networked install may fetch a newer revision than the bundle holds.
-const UPSTREAM_BODIES = new Set(["caveman/rule-ultra.md", "caveman/rule-megacave.md"]);
+const UPSTREAM_BODIES = new Set(['caveman/rule-ultra.md', 'caveman/rule-megacave.md']);
 
 /** Every declared file must land byte-identical: a step that forgets a directory leaves the published copy in place, and doctor then reports it stale. */
 function expectTreeByteIdentical(base: string, files: readonly string[]): void {
   for (const rel of files) {
     if (GENERATED_TREE_FILES[rel] !== undefined) continue;
-    const at = path.join(base, ...rel.split("/"));
+    const at = path.join(base, ...rel.split('/'));
     expect(existsSync(at), `${rel} written`).toBe(true);
     if (UPSTREAM_BODIES.has(rel)) continue;
-    expect(readFileSync(at, "utf8"), `${rel} matches this build`).toBe(readFileSync(sourcePath(rel), "utf8"));
+    expect(readFileSync(at, 'utf8'), `${rel} matches this build`).toBe(readFileSync(sourcePath(rel), 'utf8'));
   }
 }
 
 // What an install before the single-owner fix left behind.
-const RETIRED = ["ai-addons-updater", "combo-toggle", "lib", "rtk-filter", "rtk-session", "shared", "tersio-commands"];
+const RETIRED = ['ai-addons-updater', 'combo-toggle', 'lib', 'rtk-filter', 'rtk-session', 'shared', 'tersio-commands'];
 
 function runOmpInstall(home: string, extraEnv: Record<string, string>, ...args: string[]) {
-  return spawnSync(process.execPath, [installer, "install", "--host", "omp", ...args], {
+  return spawnSync(process.execPath, [installer, 'install', '--host', 'omp', ...args], {
     cwd: root,
-    encoding: "utf8",
+    encoding: 'utf8',
     timeout: 30000,
     env: cliEnv(home, extraEnv),
   });
@@ -420,18 +435,18 @@ function runOmpInstall(home: string, extraEnv: Record<string, string>, ...args: 
 
 /** A throwaway home whose agent tree looks like the live one before the fix. */
 function tempHome(): string {
-  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-omp-owner-"));
+  const home = mkdtempSync(path.join(os.tmpdir(), 'tersio-omp-owner-'));
   const ext = agentExtDir(home);
-  mkdirSync(path.join(home, ".omp", "plugins"), { recursive: true });
+  mkdirSync(path.join(home, '.omp', 'plugins'), { recursive: true });
   for (const dir of RETIRED) {
     mkdirSync(path.join(ext, dir), { recursive: true });
-    writeFileSync(path.join(ext, dir, "index.ts"), "// retired copy\n", "utf8");
+    writeFileSync(path.join(ext, dir, 'index.ts'), '// retired copy\n', 'utf8');
   }
   // rtk's own wiring, which config.yml registers by path, and a foreign directory.
-  writeFileSync(path.join(ext, "rtk.ts"), "// rtk wiring\n", "utf8");
-  mkdirSync(path.join(ext, "herdr"), { recursive: true });
-  writeFileSync(path.join(ext, "herdr", "index.js"), "// not ours\n", "utf8");
-  writeFileSync(path.join(home, ".omp", "agent", "config.yml"), "extensions:\n  - /x/rtk.ts\n", "utf8");
+  writeFileSync(path.join(ext, 'rtk.ts'), '// rtk wiring\n', 'utf8');
+  mkdirSync(path.join(ext, 'herdr'), { recursive: true });
+  writeFileSync(path.join(ext, 'herdr', 'index.js'), '// not ours\n', 'utf8');
+  writeFileSync(path.join(home, '.omp', 'agent', 'config.yml'), 'extensions:\n  - /x/rtk.ts\n', 'utf8');
   return home;
 }
 
@@ -442,27 +457,31 @@ function rmTree(dir: string): void {
 
 /** The plugin state a successful install leaves, with a seeded rtk so no test downloads 18MB from GitHub. */
 function pluginPresent(home: string): void {
-  const pkg = path.join(home, ".omp", "plugins", "node_modules", "@krtclcdy", "tersio");
-  mkdirSync(path.join(pkg, "extensions"), { recursive: true });
-  writeFileSync(path.join(pkg, "package.json"), JSON.stringify({ name: "@krtclcdy/tersio", version: PACKAGE_VERSION }), "utf8");
-  fakeRtkBin(path.join(home, ".bun", "bin"));
+  const pkg = path.join(home, '.omp', 'plugins', 'node_modules', '@krtclcdy', 'tersio');
+  mkdirSync(path.join(pkg, 'extensions'), { recursive: true });
+  writeFileSync(
+    path.join(pkg, 'package.json'),
+    JSON.stringify({ name: '@krtclcdy/tersio', version: PACKAGE_VERSION }),
+    'utf8',
+  );
+  fakeRtkBin(path.join(home, '.bun', 'bin'));
 }
 
 /** Both package managers fail, so no plugin is registered and the agent tree is the fallback. */
 function noPackageManagers(home: string): Record<string, string> {
-  fakeRtkBin(path.join(home, ".bun", "bin"));
-  const stub = mkdtempSync(path.join(os.tmpdir(), "tersio-omp-nopm-"));
-  fakeExecutable(stub, "npm", "exit 1", "exit /b 1");
-  fakeExecutable(stub, "bun", "exit 1", "exit /b 1");
-  return { PATH: [stub, process.env.PATH || ""].join(path.delimiter) };
+  fakeRtkBin(path.join(home, '.bun', 'bin'));
+  const stub = mkdtempSync(path.join(os.tmpdir(), 'tersio-omp-nopm-'));
+  fakeExecutable(stub, 'npm', 'exit 1', 'exit /b 1');
+  fakeExecutable(stub, 'bun', 'exit 1', 'exit /b 1');
+  return { PATH: [stub, process.env.PATH || ''].join(path.delimiter) };
 }
 
-test("dry run reports the retired copies and removes nothing", () => {
+test('dry run reports the retired copies and removes nothing', () => {
   const home = tempHome();
   try {
     pluginPresent(home);
     const before = readdirSync(agentExtDir(home)).toSorted();
-    const result = runOmpInstall(home, {}, "--dry-run", "--yes", "--verbose");
+    const result = runOmpInstall(home, {}, '--dry-run', '--yes', '--verbose');
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toMatch(/Add-ons load from: the OMP plugin manifest/);
     expect(result.stdout).toMatch(/Retired agent copies — remove/);
@@ -474,106 +493,116 @@ test("dry run reports the retired copies and removes nothing", () => {
   }
 });
 
-test("a registered plugin writes the plugin tree and drops the agent copies", () => {
+test('a registered plugin writes the plugin tree and drops the agent copies', () => {
   const home = tempHome();
   try {
     pluginPresent(home);
-    const result = runOmpInstall(home, {}, "--yes");
+    const result = runOmpInstall(home, {}, '--yes');
     expect(result.status, result.stderr).toBe(0);
-    expect(existsSync(path.join(pluginExt(home), "combo", "index.ts")), "combo lands in the plugin tree").toBe(true);
-    expect(existsSync(path.join(pluginExt(home), "caveman", "index.ts")), "caveman lands in the plugin tree").toBe(true);
+    expect(existsSync(path.join(pluginExt(home), 'combo', 'index.ts')), 'combo lands in the plugin tree').toBe(true);
+    expect(existsSync(path.join(pluginExt(home), 'caveman', 'index.ts')), 'caveman lands in the plugin tree').toBe(
+      true,
+    );
     // omp loads no OpenCode entry, but the package ships one, so the install writes it as the repair does.
-    expect(existsSync(path.join(pluginExt(home), "server.ts")), "the package entry lands too").toBe(true);
+    expect(existsSync(path.join(pluginExt(home), 'server.ts')), 'the package entry lands too').toBe(true);
     for (const dir of RETIRED) {
       expect(existsSync(path.join(agentExtDir(home), dir)), `${dir} removed`).toBe(false);
     }
     // rtk's wiring and anything foreign survive, and the config keeps its entries.
-    expect(existsSync(path.join(agentExtDir(home), "rtk.ts")), "rtk wiring kept").toBe(true);
-    expect(existsSync(path.join(agentExtDir(home), "herdr")), "foreign dir kept").toBe(true);
-    expect(readFileSync(path.join(home, ".omp", "agent", "config.yml"), "utf8")).toMatch(/rtk\.ts/);
-    expectTreeByteIdentical(pluginExt(home), treeFilesFor("opencode"));
+    expect(existsSync(path.join(agentExtDir(home), 'rtk.ts')), 'rtk wiring kept').toBe(true);
+    expect(existsSync(path.join(agentExtDir(home), 'herdr')), 'foreign dir kept').toBe(true);
+    expect(readFileSync(path.join(home, '.omp', 'agent', 'config.yml'), 'utf8')).toMatch(/rtk\.ts/);
+    expectTreeByteIdentical(pluginExt(home), treeFilesFor('opencode'));
   } finally {
     rmTree(home);
   }
 });
 
 // One build, or the tree holds two releases and fails to load.
-test("the plugin package is pinned to this build, and a skewed tree is rewritten", () => {
+test('the plugin package is pinned to this build, and a skewed tree is rewritten', () => {
   const home = tempHome();
   try {
     pluginPresent(home);
-    const pkgDir = path.join(home, ".omp", "plugins", "node_modules", "@krtclcdy", "tersio");
-    writeFileSync(path.join(pkgDir, "package.json"), JSON.stringify({ name: "@krtclcdy/tersio", version: "99.0.0" }), "utf8");
-    mkdirSync(path.join(pkgDir, "extensions", "shared"), { recursive: true });
-    writeFileSync(path.join(pkgDir, "extensions", "shared", "utils.ts"), "// an older release\n", "utf8");
-    const stub = mkdtempSync(path.join(os.tmpdir(), "tersio-omp-npm-"));
-    fakeExecutable(stub, "npm", "exit 0", "exit /b 0");
-    const result = runOmpInstall(home, { PATH: [stub, process.env.PATH || ""].join(path.delimiter) }, "--yes");
+    const pkgDir = path.join(home, '.omp', 'plugins', 'node_modules', '@krtclcdy', 'tersio');
+    writeFileSync(
+      path.join(pkgDir, 'package.json'),
+      JSON.stringify({ name: '@krtclcdy/tersio', version: '99.0.0' }),
+      'utf8',
+    );
+    mkdirSync(path.join(pkgDir, 'extensions', 'shared'), { recursive: true });
+    writeFileSync(path.join(pkgDir, 'extensions', 'shared', 'utils.ts'), '// an older release\n', 'utf8');
+    const stub = mkdtempSync(path.join(os.tmpdir(), 'tersio-omp-npm-'));
+    fakeExecutable(stub, 'npm', 'exit 0', 'exit /b 0');
+    const result = runOmpInstall(home, { PATH: [stub, process.env.PATH || ''].join(path.delimiter) }, '--yes');
     expect(result.status, result.stderr).toBe(0);
-    const pkg = JSON.parse(readFileSync(path.join(home, ".omp", "plugins", "package.json"), "utf8"));
-    expect(pkg.dependencies["@krtclcdy/tersio"], "the plugin package is pinned to this build").toBe(PACKAGE_VERSION);
-    expectTreeByteIdentical(pluginExt(home), treeFilesFor("opencode"));
+    const pkg = JSON.parse(readFileSync(path.join(home, '.omp', 'plugins', 'package.json'), 'utf8'));
+    expect(pkg.dependencies['@krtclcdy/tersio'], 'the plugin package is pinned to this build').toBe(PACKAGE_VERSION);
+    expectTreeByteIdentical(pluginExt(home), treeFilesFor('opencode'));
   } finally {
     rmTree(home);
   }
 });
 
 // Issue #97: a stale pin used to survive a node_modules that already matched.
-test("a matching node_modules still repins the OMP manifest", () => {
+test('a matching node_modules still repins the OMP manifest', () => {
   const home = tempHome();
   try {
     pluginPresent(home);
-    const pluginsPkg = path.join(home, ".omp", "plugins", "package.json");
-    writeFileSync(pluginsPkg, JSON.stringify({ name: "omp-plugins", private: true, dependencies: { "@krtclcdy/tersio": "1.0.0" } }), "utf8");
-    const stub = mkdtempSync(path.join(os.tmpdir(), "tersio-omp-pin-"));
-    fakeExecutable(stub, "npm", "exit 0", "exit /b 0");
-    const result = runOmpInstall(home, { PATH: [stub, process.env.PATH || ""].join(path.delimiter) }, "--yes");
+    const pluginsPkg = path.join(home, '.omp', 'plugins', 'package.json');
+    writeFileSync(
+      pluginsPkg,
+      JSON.stringify({ name: 'omp-plugins', private: true, dependencies: { '@krtclcdy/tersio': '1.0.0' } }),
+      'utf8',
+    );
+    const stub = mkdtempSync(path.join(os.tmpdir(), 'tersio-omp-pin-'));
+    fakeExecutable(stub, 'npm', 'exit 0', 'exit /b 0');
+    const result = runOmpInstall(home, { PATH: [stub, process.env.PATH || ''].join(path.delimiter) }, '--yes');
     expect(result.status, result.stderr).toBe(0);
-    expect(JSON.parse(readFileSync(pluginsPkg, "utf8")).dependencies["@krtclcdy/tersio"]).toBe(PACKAGE_VERSION);
+    expect(JSON.parse(readFileSync(pluginsPkg, 'utf8')).dependencies['@krtclcdy/tersio']).toBe(PACKAGE_VERSION);
   } finally {
     rmTree(home);
   }
 });
 
-test("without the plugin the agent tree is the fallback and keeps its copies", () => {
+test('without the plugin the agent tree is the fallback and keeps its copies', () => {
   const home = tempHome();
   try {
-    const result = runOmpInstall(home, noPackageManagers(home), "--yes");
+    const result = runOmpInstall(home, noPackageManagers(home), '--yes');
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toMatch(/Add-ons load from: the agent tree/);
     for (const dir of RETIRED) {
       expect(existsSync(path.join(agentExtDir(home), dir)), `${dir} kept as the fallback`).toBe(true);
     }
-    expect(existsSync(path.join(agentExtDir(home), "rtk.ts")), "rtk wiring kept").toBe(true);
+    expect(existsSync(path.join(agentExtDir(home), 'rtk.ts')), 'rtk wiring kept').toBe(true);
   } finally {
     rmTree(home);
   }
 });
 
 // The normalizer lives in cli/common.ts (import-safe), so this exercises shared behavior directly.
-test("config writer normalizes `extensions: null` before appending list items", () => {
-  for (const candidate of ["extensions: null", "extensions: ~", "extensions: []", "extensions:"]) {
-    const lines = ["foo: 1", candidate, "bar: 2"];
+test('config writer normalizes `extensions: null` before appending list items', () => {
+  for (const candidate of ['extensions: null', 'extensions: ~', 'extensions: []', 'extensions:']) {
+    const lines = ['foo: 1', candidate, 'bar: 2'];
     expect(normalizeExtensionsKey(lines), candidate).toBe(true);
-    expect(lines[1], candidate).toBe("extensions:");
+    expect(lines[1], candidate).toBe('extensions:');
   }
-  const healthy = ["extensions: foo", "  - /x/y.js"];
+  const healthy = ['extensions: foo', '  - /x/y.js'];
   expect(normalizeExtensionsKey(healthy)).toBe(false);
-  expect(healthy).toEqual(["extensions: foo", "  - /x/y.js"]);
+  expect(healthy).toEqual(['extensions: foo', '  - /x/y.js']);
 });
 
 function withConfig(body: string): { dir: string; file: string } {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-config-"));
-  const file = path.join(dir, "config.yml");
-  writeFileSync(file, body, "utf8");
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'tersio-config-'));
+  const file = path.join(dir, 'config.yml');
+  writeFileSync(file, body, 'utf8');
   return { dir, file };
 }
 
-test("ensure drops the legacy compiled twin instead of duplicating it", async () => {
-  const { dir, file } = withConfig("extensions:\n  - /home/u/.omp/agent/extensions/combo-toggle/index.js\n");
+test('ensure drops the legacy compiled twin instead of duplicating it', async () => {
+  const { dir, file } = withConfig('extensions:\n  - /home/u/.omp/agent/extensions/combo-toggle/index.js\n');
   try {
-    await ensureExtensionInConfig(file, "/home/u/.omp/agent/extensions/combo-toggle/index.ts", "combo", {});
-    const body = readFileSync(file, "utf8");
+    await ensureExtensionInConfig(file, '/home/u/.omp/agent/extensions/combo-toggle/index.ts', 'combo', {});
+    const body = readFileSync(file, 'utf8');
     expect(body).toMatch(/combo-toggle\/index\.ts/);
     expect(body).not.toMatch(/combo-toggle\/index\.js/);
   } finally {
@@ -581,22 +610,38 @@ test("ensure drops the legacy compiled twin instead of duplicating it", async ()
   }
 });
 
-test("ensure leaves .js entries alone when the new path is also .js", async () => {
-  const { dir, file } = withConfig("extensions:\n  - /x/ponytail/pi-extension/index.js\n");
+test('ensure leaves .js entries alone when the new path is also .js', async () => {
+  const { dir, file } = withConfig('extensions:\n  - /x/ponytail/pi-extension/index.js\n');
   try {
-    await ensureExtensionInConfig(file, "/x/ponytail/pi-extension/index.js", "ponytail", {});
-    expect(readFileSync(file, "utf8")).toMatch(/pi-extension\/index\.js/);
+    await ensureExtensionInConfig(file, '/x/ponytail/pi-extension/index.js', 'ponytail', {});
+    expect(readFileSync(file, 'utf8')).toMatch(/pi-extension\/index\.js/);
   } finally {
     rmTree(dir);
   }
 });
 
-test("retired extension cleanup removes absolute and relative matching registrations", async () => {
-  const { dir, file } = withConfig("extensions:\n  - /x/agent/extensions/shared/mode-reinforcement.ts\n  - ./extensions/shared/mode-reinforcement.ts\n  - /x/read.ts\n");
+test('retired extension cleanup removes absolute and relative matching registrations', async () => {
+  const { dir, file } = withConfig(
+    'extensions:\n  - /x/agent/extensions/shared/mode-reinforcement.ts\n  - ./extensions/shared/mode-reinforcement.ts\n  - /x/read.ts\n',
+  );
   try {
-    expect(await removeExtensionFromConfig(file, "/x/agent/extensions/shared/mode-reinforcement.ts", "retired mode reinforcement", {})).toBe(true);
-    expect(readFileSync(file, "utf8")).toBe("extensions:\n  - /x/read.ts\n");
-    expect(await removeExtensionFromConfig(file, "/x/agent/extensions/shared/mode-reinforcement.ts", "retired mode reinforcement", {})).toBe(false);
+    expect(
+      await removeExtensionFromConfig(
+        file,
+        '/x/agent/extensions/shared/mode-reinforcement.ts',
+        'retired mode reinforcement',
+        {},
+      ),
+    ).toBe(true);
+    expect(readFileSync(file, 'utf8')).toBe('extensions:\n  - /x/read.ts\n');
+    expect(
+      await removeExtensionFromConfig(
+        file,
+        '/x/agent/extensions/shared/mode-reinforcement.ts',
+        'retired mode reinforcement',
+        {},
+      ),
+    ).toBe(false);
   } finally {
     rmTree(dir);
   }
@@ -604,165 +649,204 @@ test("retired extension cleanup removes absolute and relative matching registrat
 
 function home(prefix: string): string {
   const dir = mkdtempSync(path.join(os.tmpdir(), prefix));
-  const agent = path.join(dir, ".pi", "agent");
+  const agent = path.join(dir, '.pi', 'agent');
   mkdirSync(agent, { recursive: true });
-  writeFileSync(path.join(agent, "settings.json"), JSON.stringify({ packages: ["npm:pi-subagents", "npm:@dietrichgebert/ponytail"] }, null, 2));
+  writeFileSync(
+    path.join(agent, 'settings.json'),
+    JSON.stringify({ packages: ['npm:pi-subagents', 'npm:@dietrichgebert/ponytail'] }, null, 2),
+  );
   return dir;
 }
 
-const offline = (dir: string): NodeJS.ProcessEnv => cliEnv(dir, { PI_OFFLINE: "1" });
+const offline = (dir: string): NodeJS.ProcessEnv => cliEnv(dir, { PI_OFFLINE: '1' });
 
-test("pi install writes a local Ponytail package and drops the npm spec", () => {
-  const dir = home("tersio-pi-ponytail-");
+test('pi install writes a local Ponytail package and drops the npm spec', () => {
+  const dir = home('tersio-pi-ponytail-');
   try {
-    execFileSync(process.execPath, [installer, "install", "--host", "pi", "--yes"], {
-      cwd: root, encoding: "utf8", timeout: 120000, env: offline(dir),
+    execFileSync(process.execPath, [installer, 'install', '--host', 'pi', '--yes'], {
+      cwd: root,
+      encoding: 'utf8',
+      timeout: 120000,
+      env: offline(dir),
     });
 
-    const agent = path.join(dir, ".pi", "agent");
-    const pkg = JSON.parse(readFileSync(path.join(agent, "ponytail", "package.json"), "utf8")) as { pi?: { extensions: string[] } };
-    expect(pkg.pi?.extensions).toEqual(["./pi-extension/index.ts"]);
-    expect(readFileSync(path.join(agent, "ponytail", "pi-extension", "index.ts"), "utf8")).toMatch(/getPonytailInstructions/);
-    expect(readFileSync(path.join(agent, "ponytail", "skills", "ponytail", "SKILL.md"), "utf8")).toMatch(/lazy senior developer/i);
+    const agent = path.join(dir, '.pi', 'agent');
+    const pkg = JSON.parse(readFileSync(path.join(agent, 'ponytail', 'package.json'), 'utf8')) as {
+      pi?: { extensions: string[] };
+    };
+    expect(pkg.pi?.extensions).toEqual(['./pi-extension/index.ts']);
+    expect(readFileSync(path.join(agent, 'ponytail', 'pi-extension', 'index.ts'), 'utf8')).toMatch(
+      /getPonytailInstructions/,
+    );
+    expect(readFileSync(path.join(agent, 'ponytail', 'skills', 'ponytail', 'SKILL.md'), 'utf8')).toMatch(
+      /lazy senior developer/i,
+    );
 
     // A local path is what stops pi version-checking the package.
-    const settings = JSON.parse(readFileSync(path.join(agent, "settings.json"), "utf8")) as { packages: string[] };
-    expect(settings.packages).not.toContain("npm:@dietrichgebert/ponytail");
-    expect(settings.packages).toContain(path.join(agent, "ponytail"));
-    expect(settings.packages).toContain("npm:pi-subagents");
+    const settings = JSON.parse(readFileSync(path.join(agent, 'settings.json'), 'utf8')) as { packages: string[] };
+    expect(settings.packages).not.toContain('npm:@dietrichgebert/ponytail');
+    expect(settings.packages).toContain(path.join(agent, 'ponytail'));
+    expect(settings.packages).toContain('npm:pi-subagents');
   } finally {
     rmTree(dir);
   }
 }, 150000);
 
-test("pi install writes every Caveman rule body", () => {
-  const dir = home("tersio-pi-rules-");
+test('pi install writes every Caveman rule body', () => {
+  const dir = home('tersio-pi-rules-');
   try {
-    execFileSync(process.execPath, [installer, "install", "--host", "pi", "--yes"], {
-      cwd: root, encoding: "utf8", timeout: 120000, env: offline(dir),
+    execFileSync(process.execPath, [installer, 'install', '--host', 'pi', '--yes'], {
+      cwd: root,
+      encoding: 'utf8',
+      timeout: 120000,
+      env: offline(dir),
     });
-    const caveman = path.join(dir, ".pi", "agent", "extensions", "caveman");
+    const caveman = path.join(dir, '.pi', 'agent', 'extensions', 'caveman');
     // rule.md and rule-lite.md are our forks and ship verbatim; the other two track upstream, so byte equality would flake.
-    expect(readFileSync(path.join(caveman, "rule.md"), "utf8")).toBe(readFileSync(path.join(root, "extensions", "caveman", "rule.md"), "utf8"));
-    for (const name of ["rule-lite.md", "rule-megacave-lite.md", "rule-megacave-ultra.md"]) expect(readFileSync(path.join(caveman, name), "utf8")).toBe(readFileSync(path.join(root, "extensions", "caveman", name), "utf8"));
-    for (const name of ["rule-ultra.md", "rule-megacave.md"]) {
-      const body = readFileSync(path.join(caveman, name), "utf8");
+    expect(readFileSync(path.join(caveman, 'rule.md'), 'utf8')).toBe(
+      readFileSync(path.join(root, 'extensions', 'caveman', 'rule.md'), 'utf8'),
+    );
+    for (const name of ['rule-lite.md', 'rule-megacave-lite.md', 'rule-megacave-ultra.md'])
+      expect(readFileSync(path.join(caveman, name), 'utf8')).toBe(
+        readFileSync(path.join(root, 'extensions', 'caveman', name), 'utf8'),
+      );
+    for (const name of ['rule-ultra.md', 'rule-megacave.md']) {
+      const body = readFileSync(path.join(caveman, name), 'utf8');
       expect(ruleBodyProblem(body), `${name} must be a usable body`).toBeNull();
       expect(body, `${name} must keep its floor rules`).toMatch(/## Floor/);
     }
-    expectTreeByteIdentical(path.join(dir, ".pi", "agent", "extensions"), treeFilesFor("pi"));
+    expectTreeByteIdentical(path.join(dir, '.pi', 'agent', 'extensions'), treeFilesFor('pi'));
   } finally {
     rmTree(dir);
   }
 }, 150000);
 
-test("pi dry-run previews the local Ponytail package without writing", () => {
-  const dir = home("tersio-pi-dry-");
+test('pi dry-run previews the local Ponytail package without writing', () => {
+  const dir = home('tersio-pi-dry-');
   try {
-    const before = readFileSync(path.join(dir, ".pi", "agent", "settings.json"), "utf8");
-    const out = execFileSync(process.execPath, [installer, "install", "--host", "pi", "--dry-run", "--yes"], {
-      cwd: root, encoding: "utf8", timeout: 60000, env: offline(dir),
+    const before = readFileSync(path.join(dir, '.pi', 'agent', 'settings.json'), 'utf8');
+    const out = execFileSync(process.execPath, [installer, 'install', '--host', 'pi', '--dry-run', '--yes'], {
+      cwd: root,
+      encoding: 'utf8',
+      timeout: 60000,
+      env: offline(dir),
     });
     expect(out).toMatch(/Ponytail — write the local pi package/);
-    expect(readFileSync(path.join(dir, ".pi", "agent", "settings.json"), "utf8")).toBe(before);
+    expect(readFileSync(path.join(dir, '.pi', 'agent', 'settings.json'), 'utf8')).toBe(before);
   } finally {
     rmTree(dir);
   }
 }, 90000);
 
-test("pi uninstall removes the local Ponytail package and its settings entry", () => {
-  const dir = home("tersio-pi-uninstall-");
+test('pi uninstall removes the local Ponytail package and its settings entry', () => {
+  const dir = home('tersio-pi-uninstall-');
   try {
-    const agent = path.join(dir, ".pi", "agent");
+    const agent = path.join(dir, '.pi', 'agent');
     // Host detection needs a whole tree, so seed one before the uninstall runs.
     for (const rel of TREE_FILES) {
-      const to = path.join(agent, "extensions", ...rel.split("/"));
+      const to = path.join(agent, 'extensions', ...rel.split('/'));
       mkdirSync(path.dirname(to), { recursive: true });
-      writeFileSync(to, "");
+      writeFileSync(to, '');
     }
-    execFileSync(process.execPath, [installer, "uninstall", "--host", "pi", "--yes"], {
-      cwd: root, encoding: "utf8", timeout: 120000, env: offline(dir),
+    execFileSync(process.execPath, [installer, 'uninstall', '--host', 'pi', '--yes'], {
+      cwd: root,
+      encoding: 'utf8',
+      timeout: 120000,
+      env: offline(dir),
     });
 
-    const settings = JSON.parse(readFileSync(path.join(agent, "settings.json"), "utf8")) as { packages: string[] };
-    expect(settings.packages).not.toContain(path.join(agent, "ponytail"));
-    expect(existsSync(path.join(agent, "ponytail"))).toBe(false);
-    expect(readFileSync(path.join(agent, "settings.json"), "utf8")).not.toMatch(SELF);
+    const settings = JSON.parse(readFileSync(path.join(agent, 'settings.json'), 'utf8')) as { packages: string[] };
+    expect(settings.packages).not.toContain(path.join(agent, 'ponytail'));
+    expect(existsSync(path.join(agent, 'ponytail'))).toBe(false);
+    expect(readFileSync(path.join(agent, 'settings.json'), 'utf8')).not.toMatch(SELF);
   } finally {
     rmTree(dir);
   }
 }, 180000);
 
 function opencodePluginHome(): string {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-oc-plugin-"));
-  const cfg = path.join(dir, ".config", "opencode");
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'tersio-oc-plugin-'));
+  const cfg = path.join(dir, '.config', 'opencode');
   mkdirSync(cfg, { recursive: true });
-  writeFileSync(path.join(cfg, "opencode.json"), JSON.stringify({
-    plugins: ["/Users/me/.config/opencode/plugins/rtk.ts", "/Users/me/.config/opencode/plugins/herdr.js"],
-  }, null, 2));
+  writeFileSync(
+    path.join(cfg, 'opencode.json'),
+    JSON.stringify(
+      {
+        plugins: ['/Users/me/.config/opencode/plugins/rtk.ts', '/Users/me/.config/opencode/plugins/herdr.js'],
+      },
+      null,
+      2,
+    ),
+  );
   // A seeded rtk is what the wire step binds. Without one every install fetches 18MB from GitHub, and a rate-limited runner answers 403, which takes the run off the path these assertions cover.
-  fakeRtkBin(path.join(dir, ".bun", "bin"));
+  fakeRtkBin(path.join(dir, '.bun', 'bin'));
   return dir;
 }
 
 function opencodePluginRun(dir: string, args: string[]): string {
   return execFileSync(process.execPath, [installer, ...args], {
-    cwd: root, encoding: "utf8", timeout: 120000,
-    env: cliEnv(dir, { PI_OFFLINE: "1" }),
+    cwd: root,
+    encoding: 'utf8',
+    timeout: 120000,
+    env: cliEnv(dir, { PI_OFFLINE: '1' }),
   });
 }
 
-test("opencode install registers one plugin and drops the rtk entry", () => {
+test('opencode install registers one plugin and drops the rtk entry', () => {
   const dir = opencodePluginHome();
   try {
-    const out = opencodePluginRun(dir, ["install", "--host", "opencode", "--yes"]);
-    const config = JSON.parse(readFileSync(path.join(dir, ".config", "opencode", "opencode.json"), "utf8")) as { plugins: string[] };
+    const out = opencodePluginRun(dir, ['install', '--host', 'opencode', '--yes']);
+    const config = JSON.parse(readFileSync(path.join(dir, '.config', 'opencode', 'opencode.json'), 'utf8')) as {
+      plugins: string[];
+    };
     // Registered entries carry the host's own separator, so `\` on Windows.
     expect(config.plugins).toEqual([
       expect.stringMatching(/[\\/]opencode[\\/]plugins[\\/]herdr\.js$/),
       expect.stringMatching(/[\\/]opencode[\\/]plugins[\\/]tersio$/),
     ]);
-    expect(existsSync(path.join(dir, ".config", "opencode", "plugins", "rtk.ts"))).toBe(false);
+    expect(existsSync(path.join(dir, '.config', 'opencode', 'plugins', 'rtk.ts'))).toBe(false);
     expect(out).toMatch(/no separate entry/);
-    expectTreeByteIdentical(path.join(dir, ".config", "opencode", "plugins", "tersio"), treeFilesFor("opencode"));
+    expectTreeByteIdentical(path.join(dir, '.config', 'opencode', 'plugins', 'tersio'), treeFilesFor('opencode'));
   } finally {
     rmTree(dir);
   }
 }, 150000);
 
-test("doctor --fix also drops a leftover rtk plugin entry", () => {
+test('doctor --fix also drops a leftover rtk plugin entry', () => {
   const dir = opencodePluginHome();
   try {
-    const plugins = path.join(dir, ".config", "opencode", "plugins");
+    const plugins = path.join(dir, '.config', 'opencode', 'plugins');
     mkdirSync(plugins, { recursive: true });
-    writeFileSync(path.join(plugins, "rtk.ts"), "// stale rtk plugin\n", "utf8");
-    const nested = path.join(plugins, "tersio", "opencode");
+    writeFileSync(path.join(plugins, 'rtk.ts'), '// stale rtk plugin\n', 'utf8');
+    const nested = path.join(plugins, 'tersio', 'opencode');
     mkdirSync(nested, { recursive: true });
-    writeFileSync(path.join(nested, "server.ts"), "export default {}\n", "utf8");
-    opencodePluginRun(dir, ["doctor", "--fix", "extensions", "--yes"]);
-    expect(existsSync(path.join(plugins, "rtk.ts"))).toBe(false);
-    const config = JSON.parse(readFileSync(path.join(dir, ".config", "opencode", "opencode.json"), "utf8")) as { plugins: string[] };
-    expect(config.plugins.some((p) => p.endsWith("/plugins/rtk"))).toBe(false);
+    writeFileSync(path.join(nested, 'server.ts'), 'export default {}\n', 'utf8');
+    opencodePluginRun(dir, ['doctor', '--fix', 'extensions', '--yes']);
+    expect(existsSync(path.join(plugins, 'rtk.ts'))).toBe(false);
+    const config = JSON.parse(readFileSync(path.join(dir, '.config', 'opencode', 'opencode.json'), 'utf8')) as {
+      plugins: string[];
+    };
+    expect(config.plugins.some((p) => p.endsWith('/plugins/rtk'))).toBe(false);
   } finally {
     rmTree(dir);
   }
 }, 150000);
 // Same `-session`/`-toggle` leftovers the omp tree grew; install retires them, a rule body in them still resolves.
-test("opencode install retires the legacy `-session` and `-toggle` dirs", () => {
+test('opencode install retires the legacy `-session` and `-toggle` dirs', () => {
   const dir = opencodePluginHome();
   try {
-    const plugin = path.join(dir, ".config", "opencode", "plugins", "tersio");
-    for (const name of ["caveman-session", "rtk-session", "combo-toggle"]) {
+    const plugin = path.join(dir, '.config', 'opencode', 'plugins', 'tersio');
+    for (const name of ['caveman-session', 'rtk-session', 'combo-toggle']) {
       mkdirSync(path.join(plugin, name), { recursive: true });
-      writeFileSync(path.join(plugin, name, "rule.md"), "STALE\n", "utf8");
+      writeFileSync(path.join(plugin, name, 'rule.md'), 'STALE\n', 'utf8');
     }
-    opencodePluginRun(dir, ["install", "--host", "opencode", "--yes"]);
+    opencodePluginRun(dir, ['install', '--host', 'opencode', '--yes']);
 
-    for (const name of ["caveman-session", "rtk-session", "combo-toggle"]) {
-      expect(existsSync(path.join(plugin, name)), name + " must be retired").toBe(false);
+    for (const name of ['caveman-session', 'rtk-session', 'combo-toggle']) {
+      expect(existsSync(path.join(plugin, name)), name + ' must be retired').toBe(false);
     }
     // The current copies are written, so the tree is still complete.
-    expect(existsSync(path.join(plugin, "caveman", "rule.md"))).toBe(true);
+    expect(existsSync(path.join(plugin, 'caveman', 'rule.md'))).toBe(true);
   } finally {
     rmTree(dir);
   }
@@ -773,39 +857,43 @@ const SCHEMA = `CREATE TABLE message (id text PRIMARY KEY, session_id text NOT N
 CREATE TABLE session_message (id text PRIMARY KEY, session_id text NOT NULL, type text NOT NULL, seq integer NOT NULL, time_created integer NOT NULL, time_updated integer NOT NULL, data text NOT NULL);`;
 
 function seed(dir: string, rows: Array<{ id: string; created: number; data: Record<string, unknown> }>): string {
-  const db = path.join(dir, "opencode.db");
+  const db = path.join(dir, 'opencode.db');
   const sql = [SCHEMA];
   for (const r of rows) {
     sql.push(
       `INSERT INTO message VALUES ('${r.id}','ses_a',${r.created},${r.created},'${JSON.stringify(r.data).replace(/'/g, "''")}');`,
     );
   }
-  sqliteExec(db, sql.join(""));
+  sqliteExec(db, sql.join(''));
   return db;
 }
 
 // Same rows, current on-disk shape: role in `type`, model under data.model.
 function seedCurrent(dir: string, rows: Array<{ id: string; created: number; data: Record<string, unknown> }>): string {
-  const db = path.join(dir, "opencode-v2.db");
-  const sql = [SCHEMA.split("\n")[1]];
+  const db = path.join(dir, 'opencode-v2.db');
+  const sql = [SCHEMA.split('\n')[1]];
   for (const r of rows) {
-    const type = typeof r.data.role === "string" ? r.data.role : "assistant";
+    const type = typeof r.data.role === 'string' ? r.data.role : 'assistant';
     sql.push(
       `INSERT INTO session_message VALUES ('${r.id}','ses_a','${type}',1,${r.created},${r.created},'${JSON.stringify(r.data).replace(/'/g, "''")}');`,
     );
   }
-  sqliteExec(db, sql.join(""));
+  sqliteExec(db, sql.join(''));
   return db;
 }
 
 // Current on-disk shape: no `role` key, model under data.model.
-function assistantCurrent(id: string, created: number, tokens: Record<string, number>): { id: string; created: number; data: Record<string, unknown> } {
+function assistantCurrent(
+  id: string,
+  created: number,
+  tokens: Record<string, number>,
+): { id: string; created: number; data: Record<string, unknown> } {
   return {
     id,
     created,
     data: {
       id,
-      model: { id: "muse-spark-1.3-contributor-free", providerID: "opencode" },
+      model: { id: 'muse-spark-1.3-contributor-free', providerID: 'opencode' },
       tokens: { input: tokens.input, output: tokens.output, cache: { read: tokens.cacheRead, write: 0 } },
       time: { created, completed: created + 5000 },
     },
@@ -813,17 +901,27 @@ function assistantCurrent(id: string, created: number, tokens: Record<string, nu
 }
 
 // Current shape with tool calls, which live in the `content` parts rather than beside the tokens.
-function assistantWithTools(id: string, created: number, tools: string[]): { id: string; created: number; data: Record<string, unknown> } {
+function assistantWithTools(
+  id: string,
+  created: number,
+  tools: string[],
+): { id: string; created: number; data: Record<string, unknown> } {
   const content = [
-    { type: "text", text: "working" },
-    ...tools.map((name, i) => ({ type: "tool", id: `call_${i}`, name, state: { status: "completed" }, time: { created: created + i } })),
+    { type: 'text', text: 'working' },
+    ...tools.map((name, i) => ({
+      type: 'tool',
+      id: `call_${i}`,
+      name,
+      state: { status: 'completed' },
+      time: { created: created + i },
+    })),
   ];
   return {
     id,
     created,
     data: {
       id,
-      model: { id: "muse-spark-1.3-contributor-free", providerID: "opencode" },
+      model: { id: 'muse-spark-1.3-contributor-free', providerID: 'opencode' },
       tokens: { input: 100, output: 10, cache: { read: 0, write: 0 } },
       time: { created, completed: created + 5000 },
       content,
@@ -838,9 +936,9 @@ function withEnv(dir: string, fn: () => void): void {
     oc: process.env.TERSIO_OPENCODE_DB,
     reset: process.env.TERSIO_RESET_FILE,
   };
-  process.env.TERSIO_USAGE_DB = path.join(dir, "usage.db");
-  process.env.TERSIO_SESSIONS_DIR = path.join(dir, "sessions");
-  process.env.TERSIO_RESET_FILE = path.join(dir, "reset.json");
+  process.env.TERSIO_USAGE_DB = path.join(dir, 'usage.db');
+  process.env.TERSIO_SESSIONS_DIR = path.join(dir, 'sessions');
+  process.env.TERSIO_RESET_FILE = path.join(dir, 'reset.json');
   try {
     fn();
   } finally {
@@ -852,31 +950,39 @@ function withEnv(dir: string, fn: () => void): void {
 }
 
 // Chart keys fold the `-free` suffix away.
-const MODEL_KEY = "opencode/opencode/muse-spark-1.3-contributor";
+const MODEL_KEY = 'opencode/opencode/muse-spark-1.3-contributor';
 
-function assistant(id: string, created: number, tokens: Record<string, number>): { id: string; created: number; data: Record<string, unknown> } {
+function assistant(
+  id: string,
+  created: number,
+  tokens: Record<string, number>,
+): { id: string; created: number; data: Record<string, unknown> } {
   return {
     id,
     created,
     data: {
       id,
-      role: "assistant",
-      providerID: "opencode",
-      modelID: "muse-spark-1.3-contributor-free",
+      role: 'assistant',
+      providerID: 'opencode',
+      modelID: 'muse-spark-1.3-contributor-free',
       tokens: { input: tokens.input, output: tokens.output, cache: { read: tokens.cacheRead, write: 0 } },
       time: { created, completed: created + 5000 },
     },
   };
 }
 
-test.runIf(hasSqlite())("sqlite message rows land in the ledger under the opencode host", () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-oc-db-"));
+test.runIf(hasSqlite())('sqlite message rows land in the ledger under the opencode host', () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'tersio-oc-db-'));
   try {
-    mkdirSync(path.join(dir, "sessions"), { recursive: true });
+    mkdirSync(path.join(dir, 'sessions'), { recursive: true });
     const db = seed(dir, [
-      { id: "msg_user", created: 1789800000000, data: { id: "msg_user", role: "user", time: { created: 1789800000000 } } },
-      assistant("msg_a1", 1789800001000, { input: 100, output: 10, cacheRead: 500 }),
-      assistant("msg_a2", 1789800002000, { input: 200, output: 20, cacheRead: 0 }),
+      {
+        id: 'msg_user',
+        created: 1789800000000,
+        data: { id: 'msg_user', role: 'user', time: { created: 1789800000000 } },
+      },
+      assistant('msg_a1', 1789800001000, { input: 100, output: 10, cacheRead: 500 }),
+      assistant('msg_a2', 1789800002000, { input: 200, output: 20, cacheRead: 0 }),
     ]);
     withEnv(dir, () => {
       process.env.TERSIO_OPENCODE_DB = db;
@@ -885,7 +991,7 @@ test.runIf(hasSqlite())("sqlite message rows land in the ledger under the openco
       expect(tokens?.messages).toBe(2);
       expect(tokens?.byHost[MODEL_KEY]?.opencode?.input).toBe(300);
       // The msg id is the row primary key, so a request drawer can find the row.
-      expect(tokens?.recent.map((r: { id?: string }) => r.id).toSorted()).toEqual(["msg_a1", "msg_a2"]);
+      expect(tokens?.recent.map((r: { id?: string }) => r.id).toSorted()).toEqual(['msg_a1', 'msg_a2']);
       expect(tokens?.byModel[MODEL_KEY].input).toBe(300);
       // A second sync re-reads the overlap window only; the row count must not double.
       expect(syncUsageDb()).toBe(true);
@@ -896,13 +1002,13 @@ test.runIf(hasSqlite())("sqlite message rows land in the ledger under the openco
   }
 });
 
-test.runIf(hasSqlite())("session_message rows (current shape) land under the opencode host", () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-oc-db-v2-"));
+test.runIf(hasSqlite())('session_message rows (current shape) land under the opencode host', () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'tersio-oc-db-v2-'));
   try {
-    mkdirSync(path.join(dir, "sessions"), { recursive: true });
+    mkdirSync(path.join(dir, 'sessions'), { recursive: true });
     const db = seedCurrent(dir, [
-      { id: "msg_u", created: 1789800000000, data: { id: "msg_u", role: "user", time: { created: 1789800000000 } } },
-      assistantCurrent("msg_n1", 1789800001000, { input: 300, output: 30, cacheRead: 700 }),
+      { id: 'msg_u', created: 1789800000000, data: { id: 'msg_u', role: 'user', time: { created: 1789800000000 } } },
+      assistantCurrent('msg_n1', 1789800001000, { input: 300, output: 30, cacheRead: 700 }),
     ]);
     withEnv(dir, () => {
       process.env.TERSIO_OPENCODE_DB = db;
@@ -911,23 +1017,23 @@ test.runIf(hasSqlite())("session_message rows (current shape) land under the ope
       // The user row is skipped; one assistant row, id kept for the request drawer.
       expect(tokens?.messages).toBe(1);
       expect(tokens?.byModel[MODEL_KEY].input).toBe(300);
-      expect(tokens?.recent[0]?.id).toBe("msg_n1");
+      expect(tokens?.recent[0]?.id).toBe('msg_n1');
     });
   } finally {
     rmTree(dir);
   }
 });
 
-test.runIf(hasSqlite())("a zero-token message is skipped and a missing db is a no-op", () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-oc-db-empty-"));
+test.runIf(hasSqlite())('a zero-token message is skipped and a missing db is a no-op', () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'tersio-oc-db-empty-'));
   try {
-    mkdirSync(path.join(dir, "sessions"), { recursive: true });
-    const db = seed(dir, [assistant("msg_zero", 1789800001000, { input: 0, output: 0, cacheRead: 0 })]);
+    mkdirSync(path.join(dir, 'sessions'), { recursive: true });
+    const db = seed(dir, [assistant('msg_zero', 1789800001000, { input: 0, output: 0, cacheRead: 0 })]);
     withEnv(dir, () => {
       process.env.TERSIO_OPENCODE_DB = db;
       expect(syncUsageDb()).toBe(true);
       expect(readUsageDb()?.tokens.messages).toBe(0);
-      process.env.TERSIO_OPENCODE_DB = path.join(dir, "absent.db");
+      process.env.TERSIO_OPENCODE_DB = path.join(dir, 'absent.db');
       expect(syncUsageDb()).toBe(true);
       expect(readUsageDb()?.tokens.messages).toBe(0);
     });
@@ -937,56 +1043,60 @@ test.runIf(hasSqlite())("a zero-token message is skipped and a missing db is a n
 });
 
 // Output past 1MB was silently dropped.
-test.runIf(hasSqlite())("a session_message table past 1MB still syncs and reads back", {
-  // The store takes ~60s on a Windows runner and ~300s under load, so the budget is loose.
-  timeout: isWindows() ? 420000 : 30000,
-}, () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-oc-db-big-"));
-  try {
-    mkdirSync(path.join(dir, "sessions"), { recursive: true });
-    const db = path.join(dir, "opencode-big.db");
-    sqliteExec(db, SCHEMA.split("\n")[1]);
-    // Long model ids push each row past ~500 bytes, so 2500 rows clear 1MB.
-    const bigModel = `bench-${"m".repeat(400)}`;
-    const base = 1789800000000;
-    const rows: string[] = [];
-    for (let i = 0; i < 2500; i += 1) {
-      const id = `msg_big${String(i).padStart(5, "0")}`;
-      const created = base + i * 1000;
-      const data = JSON.stringify({
-        id,
-        model: { id: bigModel, providerID: "opencode" },
-        tokens: { input: 100 + i, output: 10, cache: { read: 0, write: 0 } },
-        time: { created, completed: created + 1000 },
-      }).replace(/'/g, "''");
-      rows.push(
-        `INSERT INTO session_message VALUES ('${id}','ses_a','assistant',${i + 1},${created},${created},'${data}');`,
-      );
-      if (rows.length >= 500) {
-        // Via stdin: Linux caps one argv string at 128KB (E2BIG), input has no such cap.
-        sqliteExec(db, rows.join(""));
-        rows.length = 0;
+test.runIf(hasSqlite())(
+  'a session_message table past 1MB still syncs and reads back',
+  {
+    // The store takes ~60s on a Windows runner and ~300s under load, so the budget is loose.
+    timeout: isWindows() ? 420000 : 30000,
+  },
+  () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'tersio-oc-db-big-'));
+    try {
+      mkdirSync(path.join(dir, 'sessions'), { recursive: true });
+      const db = path.join(dir, 'opencode-big.db');
+      sqliteExec(db, SCHEMA.split('\n')[1]);
+      // Long model ids push each row past ~500 bytes, so 2500 rows clear 1MB.
+      const bigModel = `bench-${'m'.repeat(400)}`;
+      const base = 1789800000000;
+      const rows: string[] = [];
+      for (let i = 0; i < 2500; i += 1) {
+        const id = `msg_big${String(i).padStart(5, '0')}`;
+        const created = base + i * 1000;
+        const data = JSON.stringify({
+          id,
+          model: { id: bigModel, providerID: 'opencode' },
+          tokens: { input: 100 + i, output: 10, cache: { read: 0, write: 0 } },
+          time: { created, completed: created + 1000 },
+        }).replace(/'/g, "''");
+        rows.push(
+          `INSERT INTO session_message VALUES ('${id}','ses_a','assistant',${i + 1},${created},${created},'${data}');`,
+        );
+        if (rows.length >= 500) {
+          // Via stdin: Linux caps one argv string at 128KB (E2BIG), input has no such cap.
+          sqliteExec(db, rows.join(''));
+          rows.length = 0;
+        }
       }
+      if (rows.length) sqliteExec(db, rows.join(''));
+      withEnv(dir, () => {
+        process.env.TERSIO_OPENCODE_DB = db;
+        expect(syncUsageDb()).toBe(true);
+        expect(readUsageDb()?.tokens.messages).toBe(2500);
+      });
+    } finally {
+      rmTree(dir);
     }
-    if (rows.length) sqliteExec(db, rows.join(""));
-    withEnv(dir, () => {
-      process.env.TERSIO_OPENCODE_DB = db;
-      expect(syncUsageDb()).toBe(true);
-      expect(readUsageDb()?.tokens.messages).toBe(2500);
-    });
-  } finally {
-    rmTree(dir);
-  }
-});
+  },
+);
 
 // Tool names ride in `content` parts the token query skips; the marker re-reads the table so old rows gain them.
-test.runIf(hasSqlite())("tool names are read from content parts and backfill a store that has none", () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-oc-tools-"));
+test.runIf(hasSqlite())('tool names are read from content parts and backfill a store that has none', () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'tersio-oc-tools-'));
   try {
-    mkdirSync(path.join(dir, "sessions"), { recursive: true });
+    mkdirSync(path.join(dir, 'sessions'), { recursive: true });
     const db = seedCurrent(dir, [
-      assistantCurrent("msg_plain", 1789800000000, { input: 100, output: 10, cacheRead: 0 }),
-      assistantWithTools("msg_tools", 1789800005000, ["shell", "read"]),
+      assistantCurrent('msg_plain', 1789800000000, { input: 100, output: 10, cacheRead: 0 }),
+      assistantWithTools('msg_tools', 1789800005000, ['shell', 'read']),
     ]);
     withEnv(dir, () => {
       process.env.TERSIO_OPENCODE_DB = db;
@@ -994,15 +1104,18 @@ test.runIf(hasSqlite())("tool names are read from content parts and backfill a s
       let tokens = readUsageDb()?.tokens;
       expect(tokens?.messages).toBe(2);
       // Names come from the parts, not from the row the tokens live on.
-      expect(Object.keys(tokens?.byTool ?? {}).toSorted()).toEqual(["read", "shell"]);
+      expect(Object.keys(tokens?.byTool ?? {}).toSorted()).toEqual(['read', 'shell']);
 
       // Pre-tools store: every row at `[]` and the marker cleared; one sync must re-read and not double any row.
       const usageDb = process.env.TERSIO_USAGE_DB as string;
-      sqliteExec(usageDb, `UPDATE messages SET tools='[]' WHERE h='opencode'; DELETE FROM meta WHERE k='opencode_tools';`);
+      sqliteExec(
+        usageDb,
+        `UPDATE messages SET tools='[]' WHERE h='opencode'; DELETE FROM meta WHERE k='opencode_tools';`,
+      );
       expect(syncUsageDb()).toBe(true);
       tokens = readUsageDb()?.tokens;
       expect(tokens?.messages).toBe(2);
-      expect(Object.keys(tokens?.byTool ?? {}).toSorted()).toEqual(["read", "shell"]);
+      expect(Object.keys(tokens?.byTool ?? {}).toSorted()).toEqual(['read', 'shell']);
     });
   } finally {
     rmTree(dir);
@@ -1012,29 +1125,29 @@ test.runIf(hasSqlite())("tool names are read from content parts and backfill a s
 // Each extensions/<base> import needs packed .js (CLI) and .ts (OMP); v2.20.0 shipped .ts only and crashed.
 function cliExtensionBases(): Set<string> {
   const bases = new Set<string>();
-  for (const file of readdirSync(path.join(root, "cli"))) {
-    if (!file.endsWith(".ts")) continue;
-    for (const line of readFileSync(path.join(root, "cli", file), "utf8").split("\n")) {
+  for (const file of readdirSync(path.join(root, 'cli'))) {
+    if (!file.endsWith('.ts')) continue;
+    for (const line of readFileSync(path.join(root, 'cli', file), 'utf8').split('\n')) {
       const trimmed = line.trim();
-      if (trimmed.startsWith("import type ")) continue;
+      if (trimmed.startsWith('import type ')) continue;
       const match = trimmed.match(/from ["']\.\.\/extensions\/([^"']+)["']/);
-      if (match) bases.add(match[1].replace(/\.ts$/, ""));
+      if (match) bases.add(match[1].replace(/\.ts$/, ''));
     }
   }
   return bases;
 }
 
 function packedFiles(): Set<string> {
-  const which = spawnSync("bun", ["--version"], { encoding: "utf8" });
-  expect(which.status, "bun is required to pack (run: bun install)").toBe(0);
+  const which = spawnSync('bun', ['--version'], { encoding: 'utf8' });
+  expect(which.status, 'bun is required to pack (run: bun install)').toBe(0);
   let out: string;
   try {
-    out = execFileSync("bun", ["pm", "pack", "--dry-run"], { cwd: root, encoding: "utf8" });
+    out = execFileSync('bun', ['pm', 'pack', '--dry-run'], { cwd: root, encoding: 'utf8' });
   } catch (e) {
     expect.fail(`bun pm pack --dry-run failed (run bun run build first): ${(e as Error).message}`);
   }
   const files = new Set<string>();
-  for (const line of out!.split("\n")) {
+  for (const line of out!.split('\n')) {
     const match = line.match(/^packed\s+\S+\s+(.+)$/);
     if (match) files.add(match[1].trim());
   }
@@ -1043,44 +1156,65 @@ function packedFiles(): Set<string> {
 
 // Packing needs built assets, and the release packs on Linux, so the pack
 // checks run there only; other platforms skip the dashboard build in CI.
-test.skipIf(process.platform !== "linux")("packed tarball carries both .js (CLI runtime) and .ts (OMP) for every CLI-used extension module", () => {
-  const bases = cliExtensionBases();
-  expect(bases.size > 0, "expected cli/*.ts to import extension modules").toBe(true);
-  const packed = packedFiles();
-  expect(packed).toContain("dashboard/dist/index.html");
-  expect(packed).toContain("dashboard/dist/brand.webp");
-  expect(packed).not.toContain("dashboard/app/src/App.tsx");
-  expect(packed).not.toContain("dashboard/legacy/template.html");
-  for (const base of [...bases].toSorted()) {
-    expect(packed, `missing compiled runtime: dist/extensions/${base}.js`).toContain(`dist/extensions/${base}.js`);
-    expect(packed, `missing OMP source: extensions/${base}.ts`).toContain(`extensions/${base}.ts`);
-  }
-});
+test.skipIf(process.platform !== 'linux')(
+  'packed tarball carries both .js (CLI runtime) and .ts (OMP) for every CLI-used extension module',
+  () => {
+    const bases = cliExtensionBases();
+    expect(bases.size > 0, 'expected cli/*.ts to import extension modules').toBe(true);
+    const packed = packedFiles();
+    expect(packed).toContain('dashboard/dist/index.html');
+    expect(packed).toContain('dashboard/dist/brand.webp');
+    expect(packed).not.toContain('dashboard/app/src/App.tsx');
+    expect(packed).not.toContain('dashboard/legacy/template.html');
+    for (const base of [...bases].toSorted()) {
+      expect(packed, `missing compiled runtime: dist/extensions/${base}.js`).toContain(`dist/extensions/${base}.js`);
+      expect(packed, `missing OMP source: extensions/${base}.ts`).toContain(`extensions/${base}.ts`);
+    }
+  },
+);
 
-test.skipIf(process.platform !== "linux")("packed tarball carries every Caveman rule body", () => {
+test.skipIf(process.platform !== 'linux')('packed tarball carries every Caveman rule body', () => {
   const packed = packedFiles();
-  for (const name of ["rule.md", "rule-lite.md", "rule-megacave-lite.md", "rule-megacave-ultra.md", "rule-ultra.md", "rule-megacave.md"]) {
+  for (const name of [
+    'rule.md',
+    'rule-lite.md',
+    'rule-megacave-lite.md',
+    'rule-megacave-ultra.md',
+    'rule-ultra.md',
+    'rule-megacave.md',
+  ]) {
     expect(packed, `manifest-loaded Caveman must receive ${name}`).toContain(`extensions/caveman/${name}`);
   }
   // Bodies load at runtime; each level is its own body; contract in test/extensions/modes.test.ts.
-  for (const name of ["rule.md", "rule-lite.md", "rule-megacave-lite.md", "rule-megacave-ultra.md", "rule-ultra.md", "rule-megacave.md"]) {
-    expect(ruleBodyProblem(readFileSync(path.join(root, "extensions", "caveman", name), "utf8")),
-      `${name} must pass the install-time body gate`).toBeNull();
+  for (const name of [
+    'rule.md',
+    'rule-lite.md',
+    'rule-megacave-lite.md',
+    'rule-megacave-ultra.md',
+    'rule-ultra.md',
+    'rule-megacave.md',
+  ]) {
+    expect(
+      ruleBodyProblem(readFileSync(path.join(root, 'extensions', 'caveman', name), 'utf8')),
+      `${name} must pass the install-time body gate`,
+    ).toBeNull();
   }
 });
 
 // A packed tree can list every file and still not boot, so run the packed CLI itself.
-test.skipIf(process.platform === "win32")("the packed tarball boots and reports its version", () => {
-  const version = (JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")) as { version: string }).version;
-  const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-pack-boot-"));
+test.skipIf(process.platform === 'win32')('the packed tarball boots and reports its version', () => {
+  const version = (JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')) as { version: string }).version;
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'tersio-pack-boot-'));
   try {
-    execFileSync("bun", ["pm", "pack", "--destination", dir, "--quiet"], { cwd: root, encoding: "utf8" });
-    const tarball = readdirSync(dir).find((name) => name.endsWith(".tgz"));
-    if (!tarball) expect.unreachable("bun pm pack wrote a tarball");
-    execFileSync("tar", ["-xzf", tarball, "-C", dir], { cwd: dir });
+    execFileSync('bun', ['pm', 'pack', '--destination', dir, '--quiet'], { cwd: root, encoding: 'utf8' });
+    const tarball = readdirSync(dir).find((name) => name.endsWith('.tgz'));
+    if (!tarball) expect.unreachable('bun pm pack wrote a tarball');
+    execFileSync('tar', ['-xzf', tarball, '-C', dir], { cwd: dir });
     // The repo's own node_modules stands in for an install, so no registry is needed.
-    symlinkSync(path.join(root, "node_modules"), path.join(dir, "package", "node_modules"), "dir");
-    const out = execFileSync(process.execPath, [path.join(dir, "package", "dist", "tersio.js"), "--version"], { encoding: "utf8" });
+    symlinkSync(path.join(root, 'node_modules'), path.join(dir, 'package', 'node_modules'), 'dir');
+    const out = execFileSync(process.execPath, [path.join(dir, 'package', 'dist', 'tersio.js'), '--version'], {
+      encoding: 'utf8',
+    });
     expect(out.trim()).toBe(version);
   } finally {
     rmTree(dir);
@@ -1088,7 +1222,7 @@ test.skipIf(process.platform === "win32")("the packed tarball boots and reports 
 });
 
 // An imported module missing from the manifest only fails at host load time.
-const rootPkg = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")) as {
+const rootPkg = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')) as {
   keywords: string[];
   omp: { extensions: string[]; skills: string[] };
   // Optional: pi loads the tree by convention; keywords make the package discoverable in the gallery.
@@ -1098,7 +1232,7 @@ const rootPkg = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")
 const entries = [...rootPkg.omp.extensions, ...(rootPkg.pi?.extensions ?? [])];
 
 function relativeImports(file: string): string[] {
-  const body = readFileSync(path.join(root, file), "utf8");
+  const body = readFileSync(path.join(root, file), 'utf8');
   const specs: string[] = [];
   for (const re of [
     /(?:import|export)[^'"]*?from\s*['"](\.[^'"]+)['"]/g,
@@ -1113,193 +1247,231 @@ function relativeImports(file: string): string[] {
 // The transitive closure of relative imports under extensions/.
 function importClosure(entry: string): string[] {
   const seen = new Set<string>();
-  const queue = [entry.replace(/^\.\//, "")];
+  const queue = [entry.replace(/^\.\//, '')];
   while (queue.length > 0) {
     const file = queue.pop() as string;
-    if (seen.has(file) || !file.startsWith("extensions/")) continue;
+    if (seen.has(file) || !file.startsWith('extensions/')) continue;
     seen.add(file);
     for (const spec of relativeImports(file)) {
-      queue.push(path.posix.normalize(path.posix.join(path.posix.dirname(file), spec)).replace(/\.(ts|js)$/, ".ts"));
+      queue.push(path.posix.normalize(path.posix.join(path.posix.dirname(file), spec)).replace(/\.(ts|js)$/, '.ts'));
     }
   }
   return [...seen];
 }
 
-test("the extension entries in both manifests exist", () => {
+test('the extension entries in both manifests exist', () => {
   for (const entry of entries) {
-    expect(() => readFileSync(path.join(root, entry), "utf8"), entry).not.toThrow();
+    expect(() => readFileSync(path.join(root, entry), 'utf8'), entry).not.toThrow();
   }
 });
 
-test("every module the extensions import is in the install manifest", () => {
+test('every module the extensions import is in the install manifest', () => {
   const installed = new Set(TREE_FILES);
   const missing: string[] = [];
   for (const entry of entries) {
     for (const file of importClosure(entry)) {
-      const dest = file.replace(/^extensions\//, "");
+      const dest = file.replace(/^extensions\//, '');
       if (!installed.has(dest)) missing.push(`${entry} imports ${file} → ${dest}`);
     }
   }
-  expect(missing, `the installed tree would fail to load:\n${missing.join("\n")}`).toEqual([]);
+  expect(missing, `the installed tree would fail to load:\n${missing.join('\n')}`).toEqual([]);
 });
 
-test("every manifest entry exists in the source tree", () => {
+test('every manifest entry exists in the source tree', () => {
   for (const file of TREE_FILES) {
     expect(existsSync(sourcePath(file)), file).toBe(true);
   }
 });
 
-test("every installed module pi scans exports a factory", async () => {
+test('every installed module pi scans exports a factory', async () => {
   // pi loads each `extensions/**/index.ts` in the agent tree and refuses the host when one has no default factory.
   // The manifest is the registry, so the list is runtime-selected: a new extension is covered without editing this test.
-  const scanned = treeFilesFor("pi").filter((file) => file.endsWith("/index.ts"));
+  const scanned = treeFilesFor('pi').filter((file) => file.endsWith('/index.ts'));
   expect(scanned.length).toBeGreaterThan(0);
   for (const file of scanned) {
     const mod = (await import(new URL(`../../extensions/${file}`, import.meta.url).href)) as { default?: unknown };
-    expect(typeof mod.default, `${file} must export a default factory`).toBe("function");
+    expect(typeof mod.default, `${file} must export a default factory`).toBe('function');
   }
 });
 
-test("the package keeps the pi keywords, so the gallery can find it", () => {
-  expect(rootPkg.keywords).toContain("pi");
-  expect(rootPkg.keywords).toContain("pi-package");
+test('the package keeps the pi keywords, so the gallery can find it', () => {
+  expect(rootPkg.keywords).toContain('pi');
+  expect(rootPkg.keywords).toContain('pi-package');
 });
 
-test("no manifest points at a dependency path, which npm hoists out of the package", () => {
+test('no manifest points at a dependency path, which npm hoists out of the package', () => {
   // The bundled ponytail declares its own skills; a path through node_modules never exists in an installed package.
   for (const entry of [...rootPkg.omp.extensions, ...(rootPkg.pi?.extensions ?? [])]) {
-    expect(entry, "manifest entries resolve inside the published package").not.toContain("node_modules/");
+    expect(entry, 'manifest entries resolve inside the published package').not.toContain('node_modules/');
   }
 });
 
-test("the first-token timer is installed for pi", () => {
+test('the first-token timer is installed for pi', () => {
   // pi records no first-token latency; every host tree carries the file, and pi's loader is what runs it.
-  expect(treeFilesFor("pi"), "pi loads the timer").toContain("timing/index.ts");
-  expect(TREE_FILES, "the shared tree carries it, so pi's install can write it").toContain("timing/index.ts");
+  expect(treeFilesFor('pi'), 'pi loads the timer').toContain('timing/index.ts');
+  expect(TREE_FILES, "the shared tree carries it, so pi's install can write it").toContain('timing/index.ts');
 });
 
 test("every host's tree declares the manifest entries it installs", () => {
   // A generated entry has no repo file, so the tree list, not TREE_FILES, is what each host must satisfy.
-  for (const id of ["omp", "pi", "opencode"] as const) {
+  for (const id of ['omp', 'pi', 'opencode'] as const) {
     const files = treeFilesFor(id);
     for (const file of files) {
       if (GENERATED_TREE_FILES[file] !== undefined) continue;
       expect(existsSync(sourcePath(file)), `${id} declares ${file}`).toBe(true);
     }
     // OpenCode alone loads server.ts; every other host must not receive it.
-    if (id !== "opencode") expect(files, `${id} must not receive the OpenCode entry`).not.toContain("server.ts");
-    if (id === "opencode") expect(files, "OpenCode needs its entry").toContain("server.ts");
+    if (id !== 'opencode') expect(files, `${id} must not receive the OpenCode entry`).not.toContain('server.ts');
+    if (id === 'opencode') expect(files, 'OpenCode needs its entry').toContain('server.ts');
   }
 });
 
-const PONYTAIL = "@dietrichgebert/ponytail";
+const PONYTAIL = '@dietrichgebert/ponytail';
 
 function uninstallRun(home: string, ...args: string[]) {
   return spawnSync(process.execPath, [installer, ...args], {
     cwd: root,
-    encoding: "utf8",
+    encoding: 'utf8',
     timeout: 15000,
     env: cliEnv(home),
   });
 }
 
 function uninstallSeed(home: string) {
-  const extDir = path.join(home, ".omp", "agent", "extensions");
-  for (const dir of ["caveman-session", "rtk-session", "combo-toggle", "shared", "lib", "aaa-combo-boot", "ai-addons-updater"]) {
+  const extDir = path.join(home, '.omp', 'agent', 'extensions');
+  for (const dir of [
+    'caveman-session',
+    'rtk-session',
+    'combo-toggle',
+    'shared',
+    'lib',
+    'aaa-combo-boot',
+    'ai-addons-updater',
+  ]) {
     mkdirSync(path.join(extDir, dir), { recursive: true });
-    writeFileSync(path.join(extDir, dir, "index.js"), "// seeded", "utf8");
+    writeFileSync(path.join(extDir, dir, 'index.js'), '// seeded', 'utf8');
   }
-  writeFileSync(path.join(extDir, "rtk.ts"), "// rtk omp wiring", "utf8");
+  writeFileSync(path.join(extDir, 'rtk.ts'), '// rtk omp wiring', 'utf8');
   writeFileSync(
-    path.join(home, ".omp", "agent", "config.yml"),
-    ["extensions:", "  - ./extensions/caveman-session/index.ts", "  - ./extensions/combo-toggle/index.ts", "  - ./extensions/shared/mode-reinforcement.ts", "  - ./extensions/rtk.ts", "  - /home/u/.omp/agent/extensions/rtk.ts", "  - ./extensions/ponytail-pi-extension/index.js", ""].join("\n"),
-    "utf8",
+    path.join(home, '.omp', 'agent', 'config.yml'),
+    [
+      'extensions:',
+      '  - ./extensions/caveman-session/index.ts',
+      '  - ./extensions/combo-toggle/index.ts',
+      '  - ./extensions/shared/mode-reinforcement.ts',
+      '  - ./extensions/rtk.ts',
+      '  - /home/u/.omp/agent/extensions/rtk.ts',
+      '  - ./extensions/ponytail-pi-extension/index.js',
+      '',
+    ].join('\n'),
+    'utf8',
   );
-  const pluginsDir = path.join(home, ".omp", "plugins");
-  mkdirSync(path.join(pluginsDir, "node_modules", PONYTAIL, "pi-extension"), { recursive: true });
-  mkdirSync(path.join(pluginsDir, "node_modules", SELF), { recursive: true });
-  writeFileSync(path.join(pluginsDir, "node_modules", PONYTAIL, "package.json"), "{}", "utf8");
-  writeFileSync(path.join(pluginsDir, "node_modules", SELF, "package.json"), "{}", "utf8");
+  const pluginsDir = path.join(home, '.omp', 'plugins');
+  mkdirSync(path.join(pluginsDir, 'node_modules', PONYTAIL, 'pi-extension'), { recursive: true });
+  mkdirSync(path.join(pluginsDir, 'node_modules', SELF), { recursive: true });
+  writeFileSync(path.join(pluginsDir, 'node_modules', PONYTAIL, 'package.json'), '{}', 'utf8');
+  writeFileSync(path.join(pluginsDir, 'node_modules', SELF, 'package.json'), '{}', 'utf8');
   writeFileSync(
-    path.join(pluginsDir, "package.json"),
-    JSON.stringify({ dependencies: { [PONYTAIL]: "x", [SELF]: "y" } }),
-    "utf8",
+    path.join(pluginsDir, 'package.json'),
+    JSON.stringify({ dependencies: { [PONYTAIL]: 'x', [SELF]: 'y' } }),
+    'utf8',
   );
   writeFileSync(
-    path.join(pluginsDir, "omp-plugins.lock.json"),
+    path.join(pluginsDir, 'omp-plugins.lock.json'),
     JSON.stringify({ plugins: { [PONYTAIL]: {}, [SELF]: {} }, settings: {} }),
-    "utf8",
+    'utf8',
   );
-  mkdirSync(path.join(home, ".bun", "bin"), { recursive: true });
+  mkdirSync(path.join(home, '.bun', 'bin'), { recursive: true });
   // Windows resolves and removes `rtk.exe`, so the seed carries the platform's own name.
-  writeFileSync(path.join(home, ".bun", "bin", isWindows() ? "rtk.exe" : "rtk"), "fake", "utf8");
-  writeFileSync(path.join(home, ".omp", "agent", "config.yml.bak"), "extensions: []\n", "utf8");
-  const pluginCaveman = path.join(pluginsDir, "node_modules", SELF, "extensions", "caveman");
+  writeFileSync(path.join(home, '.bun', 'bin', isWindows() ? 'rtk.exe' : 'rtk'), 'fake', 'utf8');
+  writeFileSync(path.join(home, '.omp', 'agent', 'config.yml.bak'), 'extensions: []\n', 'utf8');
+  const pluginCaveman = path.join(pluginsDir, 'node_modules', SELF, 'extensions', 'caveman');
   mkdirSync(pluginCaveman, { recursive: true });
-  writeFileSync(path.join(pluginCaveman, "rule.md"), "fetched rule", "utf8");
-  writeFileSync(path.join(pluginCaveman, "rule.md.bak"), "previous rule", "utf8");
-  writeFileSync(path.join(pluginCaveman, "rule-lite.md.bak"), "previous lite", "utf8");
-  writeFileSync(path.join(pluginCaveman, "rule-megacave-lite.md.bak"), "previous megacave lite", "utf8");
-  writeFileSync(path.join(pluginCaveman, "rule-megacave-ultra.md.bak"), "previous megacave ultra", "utf8");
-  writeFileSync(path.join(pluginCaveman, "rule-ultra.md.bak"), "previous ultra", "utf8");
-  writeFileSync(path.join(pluginCaveman, "rule-megacave.md.bak"), "previous wenyan", "utf8");
+  writeFileSync(path.join(pluginCaveman, 'rule.md'), 'fetched rule', 'utf8');
+  writeFileSync(path.join(pluginCaveman, 'rule.md.bak'), 'previous rule', 'utf8');
+  writeFileSync(path.join(pluginCaveman, 'rule-lite.md.bak'), 'previous lite', 'utf8');
+  writeFileSync(path.join(pluginCaveman, 'rule-megacave-lite.md.bak'), 'previous megacave lite', 'utf8');
+  writeFileSync(path.join(pluginCaveman, 'rule-megacave-ultra.md.bak'), 'previous megacave ultra', 'utf8');
+  writeFileSync(path.join(pluginCaveman, 'rule-ultra.md.bak'), 'previous ultra', 'utf8');
+  writeFileSync(path.join(pluginCaveman, 'rule-megacave.md.bak'), 'previous wenyan', 'utf8');
 }
 
-test("uninstall removes extension dirs, self registration, and combo config entries", () => {
-  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-uninstall-"));
+test('uninstall removes extension dirs, self registration, and combo config entries', () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), 'tersio-uninstall-'));
   try {
     uninstallSeed(home);
-    const result = uninstallRun(home, "uninstall", "--yes");
+    const result = uninstallRun(home, 'uninstall', '--yes');
 
     expect(result.status, result.stderr).toBe(0);
-    const extDir = path.join(home, ".omp", "agent", "extensions");
-    for (const dir of ["caveman-session", "rtk-session", "combo-toggle", "shared", "lib", "aaa-combo-boot", "ai-addons-updater"]) {
+    const extDir = path.join(home, '.omp', 'agent', 'extensions');
+    for (const dir of [
+      'caveman-session',
+      'rtk-session',
+      'combo-toggle',
+      'shared',
+      'lib',
+      'aaa-combo-boot',
+      'ai-addons-updater',
+    ]) {
       expect(!existsSync(path.join(extDir, dir)), `${dir} removed`).toBeTruthy();
     }
-    const pkg = JSON.parse(readFileSync(path.join(home, ".omp", "plugins", "package.json"), "utf8"));
-    expect(!(SELF in pkg.dependencies), "self dep removed").toBeTruthy();
-    expect(!existsSync(path.join(home, ".omp", "plugins", "node_modules", SELF)), "self package removed").toBeTruthy();
-    const config = readFileSync(path.join(home, ".omp", "agent", "config.yml"), "utf8");
+    const pkg = JSON.parse(readFileSync(path.join(home, '.omp', 'plugins', 'package.json'), 'utf8'));
+    expect(!(SELF in pkg.dependencies), 'self dep removed').toBeTruthy();
+    expect(!existsSync(path.join(home, '.omp', 'plugins', 'node_modules', SELF)), 'self package removed').toBeTruthy();
+    const config = readFileSync(path.join(home, '.omp', 'agent', 'config.yml'), 'utf8');
     expect(config).not.toMatch(/combo-toggle/);
     expect(config).not.toMatch(/mode-reinforcement/);
     expect(config).toMatch(/caveman-session/);
     // Ponytail ships with the presets, so a full uninstall removes it; the rtk binary stays.
-    expect(!existsSync(path.join(home, ".omp", "plugins", "node_modules", PONYTAIL)), "ponytail removed by default").toBeTruthy();
-    expect(existsSync(path.join(home, ".bun", "bin", isWindows() ? "rtk.exe" : "rtk")), "rtk binary kept").toBeTruthy();
+    expect(
+      !existsSync(path.join(home, '.omp', 'plugins', 'node_modules', PONYTAIL)),
+      'ponytail removed by default',
+    ).toBeTruthy();
+    expect(existsSync(path.join(home, '.bun', 'bin', isWindows() ? 'rtk.exe' : 'rtk')), 'rtk binary kept').toBeTruthy();
     // Wiring goes with the rest or OMP loads a hook for a gone package; the binary stays, shared on PATH.
-    expect(existsSync(path.join(extDir, "rtk.ts")), "rtk wiring removed").toBeFalsy();
+    expect(existsSync(path.join(extDir, 'rtk.ts')), 'rtk wiring removed').toBeFalsy();
     expect(config).not.toMatch(/rtk\.ts/);
     expect(config).not.toMatch(/ponytail/);
-    expect(!existsSync(path.join(home, ".omp", "agent", "config.yml.bak")), "config.yml backup removed").toBeTruthy();
+    expect(!existsSync(path.join(home, '.omp', 'agent', 'config.yml.bak')), 'config.yml backup removed').toBeTruthy();
   } finally {
     rmTree(home);
   }
 });
 
-test("uninstall removes the caveman rule backup from the plugin tree", () => {
-  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-uninstall-"));
+test('uninstall removes the caveman rule backup from the plugin tree', () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), 'tersio-uninstall-'));
   try {
     uninstallSeed(home);
-    const result = uninstallRun(home, "uninstall", "--yes");
+    const result = uninstallRun(home, 'uninstall', '--yes');
 
     expect(result.status, result.stderr).toBe(0);
-    const cavemanDir = path.join(home, ".omp", "plugins", "node_modules", SELF, "extensions", "caveman");
-    expect(!existsSync(cavemanDir), "plugin tree removed").toBeTruthy();
+    const cavemanDir = path.join(home, '.omp', 'plugins', 'node_modules', SELF, 'extensions', 'caveman');
+    expect(!existsSync(cavemanDir), 'plugin tree removed').toBeTruthy();
   } finally {
     rmTree(home);
   }
 });
 
-test("uninstall dry-run leaves backups in place", () => {
-  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-uninstall-"));
+test('uninstall dry-run leaves backups in place', () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), 'tersio-uninstall-'));
   try {
     uninstallSeed(home);
-    const cavemanDir = path.join(home, ".omp", "plugins", "node_modules", SELF, "extensions", "caveman");
-    const result = uninstallRun(home, "uninstall", "--yes", "--dry-run");
+    const cavemanDir = path.join(home, '.omp', 'plugins', 'node_modules', SELF, 'extensions', 'caveman');
+    const result = uninstallRun(home, 'uninstall', '--yes', '--dry-run');
 
     expect(result.status, result.stderr).toBe(0);
-    expect(existsSync(path.join(home, ".omp", "agent", "config.yml.bak")), "config.yml backup kept on dry run").toBeTruthy();
-    for (const name of ["rule.md.bak", "rule-lite.md.bak", "rule-megacave-lite.md.bak", "rule-megacave-ultra.md.bak", "rule-ultra.md.bak", "rule-megacave.md.bak"]) {
+    expect(
+      existsSync(path.join(home, '.omp', 'agent', 'config.yml.bak')),
+      'config.yml backup kept on dry run',
+    ).toBeTruthy();
+    for (const name of [
+      'rule.md.bak',
+      'rule-lite.md.bak',
+      'rule-megacave-lite.md.bak',
+      'rule-megacave-ultra.md.bak',
+      'rule-ultra.md.bak',
+      'rule-megacave.md.bak',
+    ]) {
       expect(existsSync(path.join(cavemanDir, name)), `${name} kept on dry run`).toBeTruthy();
     }
   } finally {
@@ -1307,161 +1479,166 @@ test("uninstall dry-run leaves backups in place", () => {
   }
 });
 
-test("uninstall removes the bundled ponytail copy even with no legacy dep entry", () => {
-  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-uninstall-"));
+test('uninstall removes the bundled ponytail copy even with no legacy dep entry', () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), 'tersio-uninstall-'));
   try {
     uninstallSeed(home);
     // Post-bundle state: no separate dep or lock entry, only the tersio-owned directory.
-    const pluginsDir = path.join(home, ".omp", "plugins");
+    const pluginsDir = path.join(home, '.omp', 'plugins');
+    writeFileSync(path.join(pluginsDir, 'package.json'), JSON.stringify({ dependencies: { [SELF]: 'y' } }), 'utf8');
     writeFileSync(
-      path.join(pluginsDir, "package.json"),
-      JSON.stringify({ dependencies: { [SELF]: "y" } }),
-      "utf8",
-    );
-    writeFileSync(
-      path.join(pluginsDir, "omp-plugins.lock.json"),
+      path.join(pluginsDir, 'omp-plugins.lock.json'),
       JSON.stringify({ plugins: { [SELF]: {} }, settings: {} }),
-      "utf8",
+      'utf8',
     );
-    const result = uninstallRun(home, "uninstall", "--yes");
+    const result = uninstallRun(home, 'uninstall', '--yes');
 
     expect(result.status, result.stderr).toBe(0);
-    expect(!existsSync(path.join(pluginsDir, "node_modules", PONYTAIL)), "bundled ponytail removed").toBeTruthy();
-    const config = readFileSync(path.join(home, ".omp", "agent", "config.yml"), "utf8");
+    expect(!existsSync(path.join(pluginsDir, 'node_modules', PONYTAIL)), 'bundled ponytail removed').toBeTruthy();
+    const config = readFileSync(path.join(home, '.omp', 'agent', 'config.yml'), 'utf8');
     expect(config).not.toMatch(/ponytail/);
   } finally {
     rmTree(home);
   }
 });
 
-test("uninstall --keep-ponytail keeps the plugin, dep, lock entry, and config line", () => {
-  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-uninstall-"));
+test('uninstall --keep-ponytail keeps the plugin, dep, lock entry, and config line', () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), 'tersio-uninstall-'));
   try {
     uninstallSeed(home);
-    const result = uninstallRun(home, "uninstall", "--yes", "--keep-ponytail");
+    const result = uninstallRun(home, 'uninstall', '--yes', '--keep-ponytail');
 
     expect(result.status, result.stderr).toBe(0);
-    expect(existsSync(path.join(home, ".omp", "plugins", "node_modules", PONYTAIL)), "ponytail package kept").toBeTruthy();
-    const pkg = JSON.parse(readFileSync(path.join(home, ".omp", "plugins", "package.json"), "utf8"));
-    expect(PONYTAIL in pkg.dependencies, "ponytail dep kept").toBeTruthy();
-    const lock = JSON.parse(readFileSync(path.join(home, ".omp", "plugins", "omp-plugins.lock.json"), "utf8"));
-    expect(PONYTAIL in lock.plugins, "ponytail lock entry kept").toBeTruthy();
-    const config = readFileSync(path.join(home, ".omp", "agent", "config.yml"), "utf8");
+    expect(
+      existsSync(path.join(home, '.omp', 'plugins', 'node_modules', PONYTAIL)),
+      'ponytail package kept',
+    ).toBeTruthy();
+    const pkg = JSON.parse(readFileSync(path.join(home, '.omp', 'plugins', 'package.json'), 'utf8'));
+    expect(PONYTAIL in pkg.dependencies, 'ponytail dep kept').toBeTruthy();
+    const lock = JSON.parse(readFileSync(path.join(home, '.omp', 'plugins', 'omp-plugins.lock.json'), 'utf8'));
+    expect(PONYTAIL in lock.plugins, 'ponytail lock entry kept').toBeTruthy();
+    const config = readFileSync(path.join(home, '.omp', 'agent', 'config.yml'), 'utf8');
     expect(config).toMatch(/ponytail/);
   } finally {
     rmTree(home);
   }
 });
 
-test("uninstall with removal flags drops ponytail, its lock entry, and the rtk wiring, never the binary", () => {
-  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-uninstall-"));
+test('uninstall with removal flags drops ponytail, its lock entry, and the rtk wiring, never the binary', () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), 'tersio-uninstall-'));
   try {
     uninstallSeed(home);
-    const result = uninstallRun(home, "uninstall", "--yes", "--remove-ponytail", "--remove-rtk");
+    const result = uninstallRun(home, 'uninstall', '--yes', '--remove-ponytail', '--remove-rtk');
 
     expect(result.status, result.stderr).toBe(0);
-    expect(!existsSync(path.join(home, ".omp", "plugins", "node_modules", PONYTAIL)), "ponytail package removed").toBeTruthy();
-    const pkg = JSON.parse(readFileSync(path.join(home, ".omp", "plugins", "package.json"), "utf8"));
-    expect(!(PONYTAIL in pkg.dependencies), "ponytail dep removed").toBeTruthy();
-    const lock = JSON.parse(readFileSync(path.join(home, ".omp", "plugins", "omp-plugins.lock.json"), "utf8"));
-    expect(!(PONYTAIL in lock.plugins), "ponytail lock entry removed").toBeTruthy();
+    expect(
+      !existsSync(path.join(home, '.omp', 'plugins', 'node_modules', PONYTAIL)),
+      'ponytail package removed',
+    ).toBeTruthy();
+    const pkg = JSON.parse(readFileSync(path.join(home, '.omp', 'plugins', 'package.json'), 'utf8'));
+    expect(!(PONYTAIL in pkg.dependencies), 'ponytail dep removed').toBeTruthy();
+    const lock = JSON.parse(readFileSync(path.join(home, '.omp', 'plugins', 'omp-plugins.lock.json'), 'utf8'));
+    expect(!(PONYTAIL in lock.plugins), 'ponytail lock entry removed').toBeTruthy();
     // rtk's binary is the user's own install; only the wiring Tersio wrote goes.
-    expect(existsSync(path.join(home, ".bun", "bin", isWindows() ? "rtk.exe" : "rtk")), "rtk binary kept").toBeTruthy();
-    expect(!existsSync(path.join(home, ".omp", "agent", "extensions", "rtk.ts")), "rtk OMP wiring removed").toBeTruthy();
-    const config = readFileSync(path.join(home, ".omp", "agent", "config.yml"), "utf8");
+    expect(existsSync(path.join(home, '.bun', 'bin', isWindows() ? 'rtk.exe' : 'rtk')), 'rtk binary kept').toBeTruthy();
+    expect(
+      !existsSync(path.join(home, '.omp', 'agent', 'extensions', 'rtk.ts')),
+      'rtk OMP wiring removed',
+    ).toBeTruthy();
+    const config = readFileSync(path.join(home, '.omp', 'agent', 'config.yml'), 'utf8');
     expect(config).not.toMatch(/ponytail/);
   } finally {
     rmTree(home);
   }
 });
 
-test("uninstall dry-run changes no files", () => {
-  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-uninstall-"));
+test('uninstall dry-run changes no files', () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), 'tersio-uninstall-'));
   try {
     uninstallSeed(home);
-    const pluginsPkg = path.join(home, ".omp", "plugins", "package.json");
-    const configPath = path.join(home, ".omp", "agent", "config.yml");
-    const beforePkg = readFileSync(pluginsPkg, "utf8");
-    const beforeConfig = readFileSync(configPath, "utf8");
-    const result = uninstallRun(home, "uninstall", "--yes", "--dry-run", "--remove-ponytail", "--remove-rtk");
+    const pluginsPkg = path.join(home, '.omp', 'plugins', 'package.json');
+    const configPath = path.join(home, '.omp', 'agent', 'config.yml');
+    const beforePkg = readFileSync(pluginsPkg, 'utf8');
+    const beforeConfig = readFileSync(configPath, 'utf8');
+    const result = uninstallRun(home, 'uninstall', '--yes', '--dry-run', '--remove-ponytail', '--remove-rtk');
 
     expect(result.status, result.stderr).toBe(0);
-    expect(readFileSync(pluginsPkg, "utf8")).toBe(beforePkg);
-    expect(readFileSync(configPath, "utf8")).toBe(beforeConfig);
-    expect(existsSync(path.join(home, ".omp", "agent", "extensions", "shared"))).toBeTruthy();
+    expect(readFileSync(pluginsPkg, 'utf8')).toBe(beforePkg);
+    expect(readFileSync(configPath, 'utf8')).toBe(beforeConfig);
+    expect(existsSync(path.join(home, '.omp', 'agent', 'extensions', 'shared'))).toBeTruthy();
   } finally {
     rmTree(home);
   }
 });
 
 // Install manifest is the source of truth: a hand-written copy drifted and made a complete install look absent.
-const PI_TREE = treeFilesFor("pi");
+const PI_TREE = treeFilesFor('pi');
 
 function seedPi(home: string): void {
-  const extDir = path.join(home, ".pi", "agent", "extensions");
+  const extDir = path.join(home, '.pi', 'agent', 'extensions');
   for (const rel of PI_TREE) {
     const target = path.join(extDir, rel);
     mkdirSync(path.dirname(target), { recursive: true });
-    writeFileSync(target, "// seeded", "utf8");
+    writeFileSync(target, '// seeded', 'utf8');
   }
-  mkdirSync(path.join(home, ".tersio"), { recursive: true });
-  writeFileSync(path.join(home, ".tersio", "settings.json"), "{}", "utf8");
+  mkdirSync(path.join(home, '.tersio'), { recursive: true });
+  writeFileSync(path.join(home, '.tersio', 'settings.json'), '{}', 'utf8');
 }
 
 function runPi(home: string, answer: string, ...args: string[]) {
   const result = spawnSync(process.execPath, [installer, ...args], {
     cwd: root,
-    encoding: "utf8",
+    encoding: 'utf8',
     timeout: 15000,
     env: cliEnv(home),
     input: `${answer}\n`,
   });
-  const extDir = path.join(home, ".pi", "agent", "extensions");
-  return { result, extDir, intact: existsSync(path.join(extDir, "caveman", "index.ts")) };
+  const extDir = path.join(home, '.pi', 'agent', 'extensions');
+  return { result, extDir, intact: existsSync(path.join(extDir, 'caveman', 'index.ts')) };
 }
 
-test("uninstall --host pi lists what it removes and aborts on a declined confirm", () => {
-  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-uninstall-pi-"));
+test('uninstall --host pi lists what it removes and aborts on a declined confirm', () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), 'tersio-uninstall-pi-'));
   try {
     seedPi(home);
-    const { result, extDir, intact } = runPi(home, "n", "uninstall", "--host", "pi");
+    const { result, extDir, intact } = runPi(home, 'n', 'uninstall', '--host', 'pi');
 
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toMatch(/Will remove:/);
     expect(result.stdout).toMatch(/Proceed\? \[y\/N\]/);
     expect(result.stdout).toMatch(/Aborted/);
-    expect(intact, "caveman-session kept after declining").toBeTruthy();
-    expect(existsSync(path.join(home, ".tersio", "settings.json")), "session defaults kept").toBeTruthy();
-    expect(existsSync(extDir), "the pi tree still exists").toBeTruthy();
+    expect(intact, 'caveman-session kept after declining').toBeTruthy();
+    expect(existsSync(path.join(home, '.tersio', 'settings.json')), 'session defaults kept').toBeTruthy();
+    expect(existsSync(extDir), 'the pi tree still exists').toBeTruthy();
   } finally {
     rmTree(home);
   }
 });
 
-test("uninstall --host pi proceeds when the confirm is accepted", () => {
-  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-uninstall-pi-"));
+test('uninstall --host pi proceeds when the confirm is accepted', () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), 'tersio-uninstall-pi-'));
   try {
     seedPi(home);
-    const { result, intact } = runPi(home, "y", "uninstall", "--host", "pi");
+    const { result, intact } = runPi(home, 'y', 'uninstall', '--host', 'pi');
 
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toMatch(/Proceed\? \[y\/N\]/);
-    expect(intact, "caveman-session removed after confirming").toBeFalsy();
-    expect(existsSync(path.join(home, ".tersio", "settings.json")), "session defaults removed").toBeFalsy();
+    expect(intact, 'caveman-session removed after confirming').toBeFalsy();
+    expect(existsSync(path.join(home, '.tersio', 'settings.json')), 'session defaults removed').toBeFalsy();
   } finally {
     rmTree(home);
   }
 });
 
-test("uninstall --host pi --yes removes without prompting", () => {
-  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-uninstall-pi-"));
+test('uninstall --host pi --yes removes without prompting', () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), 'tersio-uninstall-pi-'));
   try {
     seedPi(home);
-    const { result, intact } = runPi(home, "", "uninstall", "--host", "pi", "--yes");
+    const { result, intact } = runPi(home, '', 'uninstall', '--host', 'pi', '--yes');
 
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout, "no prompt when --yes is given").not.toMatch(/Proceed\?/);
-    expect(intact, "caveman-session removed").toBeFalsy();
+    expect(result.stdout, 'no prompt when --yes is given').not.toMatch(/Proceed\?/);
+    expect(intact, 'caveman-session removed').toBeFalsy();
   } finally {
     rmTree(home);
   }
@@ -1469,32 +1646,32 @@ test("uninstall --host pi --yes removes without prompting", () => {
 
 // Loose extensions/rtk.ts was a silent no-op for pi; preview must mention it.
 function seedPiRtk(home: string): string {
-  const wiring = path.join(home, ".pi", "agent", "extensions", "rtk.ts");
-  writeFileSync(wiring, "// rtk wiring", "utf8");
+  const wiring = path.join(home, '.pi', 'agent', 'extensions', 'rtk.ts');
+  writeFileSync(wiring, '// rtk wiring', 'utf8');
   return wiring;
 }
 
-test("uninstall --host pi --remove-rtk removes the rtk wiring file", () => {
-  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-uninstall-pi-"));
+test('uninstall --host pi --remove-rtk removes the rtk wiring file', () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), 'tersio-uninstall-pi-'));
   try {
     seedPi(home);
     const wiring = seedPiRtk(home);
-    const { result } = runPi(home, "", "uninstall", "--host", "pi", "--yes", "--remove-rtk");
+    const { result } = runPi(home, '', 'uninstall', '--host', 'pi', '--yes', '--remove-rtk');
 
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout, "preview lists the wiring file").toMatch(/rtk\.ts/);
-    expect(existsSync(wiring), "rtk wiring removed").toBeFalsy();
+    expect(result.stdout, 'preview lists the wiring file').toMatch(/rtk\.ts/);
+    expect(existsSync(wiring), 'rtk wiring removed').toBeFalsy();
   } finally {
     rmTree(home);
   }
 });
 
-test("uninstall --host pi keeps rtk wiring without --remove-rtk", () => {
-  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-uninstall-pi-"));
+test('uninstall --host pi keeps rtk wiring without --remove-rtk', () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), 'tersio-uninstall-pi-'));
   try {
     seedPi(home);
     const wiring = seedPiRtk(home);
-    const { result } = runPi(home, "", "uninstall", "--host", "pi", "--yes");
+    const { result } = runPi(home, '', 'uninstall', '--host', 'pi', '--yes');
 
     expect(result.status, result.stderr).toBe(0);
     expect(existsSync(wiring), "rtk is the user's, so it stays").toBeTruthy();
@@ -1503,16 +1680,16 @@ test("uninstall --host pi keeps rtk wiring without --remove-rtk", () => {
   }
 });
 
-test("uninstall --host pi --dry-run --remove-rtk leaves the wiring file in place", () => {
-  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-uninstall-pi-"));
+test('uninstall --host pi --dry-run --remove-rtk leaves the wiring file in place', () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), 'tersio-uninstall-pi-'));
   try {
     seedPi(home);
     const wiring = seedPiRtk(home);
-    const { result } = runPi(home, "", "uninstall", "--host", "pi", "--dry-run", "--remove-rtk");
+    const { result } = runPi(home, '', 'uninstall', '--host', 'pi', '--dry-run', '--remove-rtk');
 
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toMatch(/would remove/);
-    expect(existsSync(wiring), "dry run removes nothing").toBeTruthy();
+    expect(existsSync(wiring), 'dry run removes nothing').toBeTruthy();
   } finally {
     rmTree(home);
   }
@@ -1520,75 +1697,90 @@ test("uninstall --host pi --dry-run --remove-rtk leaves the wiring file in place
 
 // The install prompts are Clack's, so only a real terminal proves the chain: agent menu → preset menu → the optional Headroom question. Each step is an Enter on the highlighted row.
 const INSTALL_PTY_PY = [
-  "import os, pty, select, fcntl, termios, struct, time, sys",
-  "argv = sys.argv[1:]",
-  "pid, fd = pty.fork()",
-  "if pid == 0:",
+  'import os, pty, select, fcntl, termios, struct, time, sys',
+  'argv = sys.argv[1:]',
+  'pid, fd = pty.fork()',
+  'if pid == 0:',
   '    os.environ["TERM"] = "xterm-256color"',
-  "    os.execvp(argv[0], argv)",
+  '    os.execvp(argv[0], argv)',
   "fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack('HHHH', 60, 160, 0, 0))",
   "buf = b''",
-  "def pump(seconds):",
-  "    global buf",
-  "    end = time.time() + seconds",
-  "    while time.time() < end:",
-  "        r, _, _ = select.select([fd], [], [], 0.1)",
-  "        if not r: continue",
-  "        try: d = os.read(fd, 65536)",
-  "        except OSError: return False",
-  "        if not d: return False",
-  "        buf += d",
-  "    return True",
-  "pump(6)",
+  'def pump(seconds):',
+  '    global buf',
+  '    end = time.time() + seconds',
+  '    while time.time() < end:',
+  '        r, _, _ = select.select([fd], [], [], 0.1)',
+  '        if not r: continue',
+  '        try: d = os.read(fd, 65536)',
+  '        except OSError: return False',
+  '        if not d: return False',
+  '        buf += d',
+  '    return True',
+  'pump(6)',
   // Four prompts (preset, Headroom, MCP, then the final confirm) land at their own pace, so the
   // driver answers on a cadence until the child exits. A fixed count is what a slow runner outran.
-  "deadline = time.time() + 45",
-  "while time.time() < deadline:",
-  "    try:",
+  'deadline = time.time() + 45',
+  'while time.time() < deadline:',
+  '    try:',
   "        os.write(fd, b'\\r')",
-  "    except OSError:",
-  "        break",
-  "    if not pump(1): break",
-  "pump(2)",
+  '    except OSError:',
+  '        break',
+  '    if not pump(1): break',
+  'pump(2)',
   "try: os.write(fd, b'\\x03')",
-  "except OSError: pass",
+  'except OSError: pass',
   "sys.stdout.write(buf.decode('utf8', 'replace'))",
-].join("\n");
+].join('\n');
 
 // A registry and release feed that cannot answer, so no network is needed for the prompts.
 const DEAD_ENDPOINTS = {
-  TERSIO_UPDATE_URL: "http://127.0.0.1:1/latest",
-  TERSIO_RELEASES_URL: "http://127.0.0.1:1/releases/latest",
+  TERSIO_UPDATE_URL: 'http://127.0.0.1:1/latest',
+  TERSIO_RELEASES_URL: 'http://127.0.0.1:1/releases/latest',
 };
 
-test.skipIf(process.platform === "win32")("a terminal install asks about Headroom and persists the enable", () => {
-  const home = mkdtempSync(path.join(os.tmpdir(), "tersio-install-headroom-"));
-  try {
-    // A real (non-dry) install into a temp home: the plugin step is fast, and the prompts run first.
-    const binDir = path.join(home, "bin");
-    fakeExecutable(binDir, "headroom", "exit 0", "exit /b 0");
-    const installed = path.join(home, ".omp", "plugins", "node_modules", "@krtclcdy", "tersio");
-    mkdirSync(installed, { recursive: true });
-    writeFileSync(path.join(installed, "package.json"), JSON.stringify({ name: "@krtclcdy/tersio", version: PACKAGE_VERSION }), "utf8");
-    const result = spawnSync("python3", ["-c", INSTALL_PTY_PY, process.execPath, installer, "install", "--host", "omp"], {
-      cwd: root,
-      encoding: "utf8",
-      timeout: 40000,
-      env: {
-        ...cliEnv(home),
-        ...DEAD_ENDPOINTS,
-        TERSIO_HEADROOM_WAIT_MS: "500",
-        PATH: `${binDir}${path.delimiter}${process.env.PATH ?? ""}`,
-      },
-    });
-    expect(result.error, "python3 with pty is available").toBeUndefined();
-    const screen = result.stdout;
-    expect(screen, `Headroom prompt shown; screen:\n${screen}`).toMatch(/Headroom is already installed/);
-    // Enter on the confirm enables it; the enable lands in the store this install wrote.
-    const stored = JSON.parse(readFileSync(path.join(home, ".tersio", "settings.json"), "utf8")) as Record<string, unknown>;
-    const hosts = stored.hosts as Record<string, Record<string, unknown>> | undefined;
-    expect(hosts?.omp?.headroomDefault, `enabled for omp; store: ${JSON.stringify(stored)}`).toBe("on");
-  } finally {
-    rmSync(home, { recursive: true, force: true });
-  }
-}, 90000);
+test.skipIf(process.platform === 'win32')(
+  'a terminal install asks about Headroom and persists the enable',
+  () => {
+    const home = mkdtempSync(path.join(os.tmpdir(), 'tersio-install-headroom-'));
+    try {
+      // A real (non-dry) install into a temp home: the plugin step is fast, and the prompts run first.
+      const binDir = path.join(home, 'bin');
+      fakeExecutable(binDir, 'headroom', 'exit 0', 'exit /b 0');
+      const installed = path.join(home, '.omp', 'plugins', 'node_modules', '@krtclcdy', 'tersio');
+      mkdirSync(installed, { recursive: true });
+      writeFileSync(
+        path.join(installed, 'package.json'),
+        JSON.stringify({ name: '@krtclcdy/tersio', version: PACKAGE_VERSION }),
+        'utf8',
+      );
+      const result = spawnSync(
+        'python3',
+        ['-c', INSTALL_PTY_PY, process.execPath, installer, 'install', '--host', 'omp'],
+        {
+          cwd: root,
+          encoding: 'utf8',
+          timeout: 40000,
+          env: {
+            ...cliEnv(home),
+            ...DEAD_ENDPOINTS,
+            TERSIO_HEADROOM_WAIT_MS: '500',
+            PATH: `${binDir}${path.delimiter}${process.env.PATH ?? ''}`,
+          },
+        },
+      );
+      expect(result.error, 'python3 with pty is available').toBeUndefined();
+      const screen = result.stdout;
+      expect(screen, `Headroom prompt shown; screen:\n${screen}`).toMatch(/Headroom is already installed/);
+      // Enter on the confirm enables it; the enable lands in the store this install wrote.
+      const stored = JSON.parse(readFileSync(path.join(home, '.tersio', 'settings.json'), 'utf8')) as Record<
+        string,
+        unknown
+      >;
+      const hosts = stored.hosts as Record<string, Record<string, unknown>> | undefined;
+      expect(hosts?.omp?.headroomDefault, `enabled for omp; store: ${JSON.stringify(stored)}`).toBe('on');
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  },
+  90000,
+);

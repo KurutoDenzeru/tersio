@@ -6,7 +6,6 @@ import { homeDir } from './utils.ts';
 import { hostCap } from './host-caps.ts';
 import { sqliteRead } from './sqlite.ts';
 
-
 /** Headroom's default proxy port, written into the durable config of the tools its init omits. */
 export const HEADROOM_PORT = 8787;
 
@@ -27,15 +26,26 @@ export function headroomProxyUpstream(api: string, home: string = homeDir()): st
   let newest: { updated: string; manifest: Record<string, unknown> } | null = null;
   for (const profile of profiles) {
     try {
-      const manifest = JSON.parse(fs.readFileSync(path.join(dir, profile, 'manifest.json'), 'utf8')) as Record<string, unknown>;
-      const updated = typeof manifest.updated_at === 'string' ? manifest.updated_at : typeof manifest.created_at === 'string' ? manifest.created_at : '';
+      const manifest = JSON.parse(fs.readFileSync(path.join(dir, profile, 'manifest.json'), 'utf8')) as Record<
+        string,
+        unknown
+      >;
+      const updated =
+        typeof manifest.updated_at === 'string'
+          ? manifest.updated_at
+          : typeof manifest.created_at === 'string'
+            ? manifest.created_at
+            : '';
       if (!newest || updated > newest.updated) newest = { updated, manifest };
-    } catch { /* a broken profile cannot name an upstream */ }
+    } catch {
+      /* a broken profile cannot name an upstream */
+    }
   }
   if (!newest) return null;
-  const env = newest.manifest.base_env && typeof newest.manifest.base_env === 'object'
-    ? newest.manifest.base_env as Record<string, unknown>
-    : {};
+  const env =
+    newest.manifest.base_env && typeof newest.manifest.base_env === 'object'
+      ? (newest.manifest.base_env as Record<string, unknown>)
+      : {};
   const args = Array.isArray(newest.manifest.proxy_args)
     ? newest.manifest.proxy_args.filter((arg): arg is string => typeof arg === 'string')
     : [];
@@ -44,7 +54,7 @@ export function headroomProxyUpstream(api: string, home: string = homeDir()): st
   const envKey = anthropic ? 'ANTHROPIC_TARGET_API_URL' : 'OPENAI_TARGET_API_URL';
   const at = args.indexOf(flag);
   const fromArgs = at >= 0 ? args[at + 1] : null;
-  const fromEnv = typeof env[envKey] === 'string' ? env[envKey] as string : null;
+  const fromEnv = typeof env[envKey] === 'string' ? (env[envKey] as string) : null;
   return fromArgs || fromEnv || null;
 }
 
@@ -53,7 +63,9 @@ export function headroomProxyPort(): number {
   try {
     const port = new URL(headroomProxyUrl()).port;
     if (port) return Number(port);
-  } catch { /* an invalid override falls back to headroom's default */ }
+  } catch {
+    /* an invalid override falls back to headroom's default */
+  }
   return HEADROOM_PORT;
 }
 
@@ -121,7 +133,11 @@ export function ompCachedEndpoint(model: string): OmpCachedEndpoint | null {
   }
   if (!raw) return null;
   let catalog: unknown;
-  try { catalog = JSON.parse(raw.split('\t')[0]!); } catch { return null; }
+  try {
+    catalog = JSON.parse(raw.split('\t')[0]!);
+  } catch {
+    return null;
+  }
   if (!Array.isArray(catalog)) return null;
   for (const entry of catalog) {
     if (!entry || typeof entry !== 'object') continue;
@@ -138,7 +154,10 @@ export function ompCachedEndpoint(model: string): OmpCachedEndpoint | null {
 
 /** OpenCode's config; the first that exists wins, matching headroom's own lookup order. */
 export function opencodeConfigFiles(): string[] {
-  return [path.join(homeDir(), '.config', 'opencode', 'opencode.json'), path.join(homeDir(), '.config', 'opencode', 'opencode.jsonc')];
+  return [
+    path.join(homeDir(), '.config', 'opencode', 'opencode.json'),
+    path.join(homeDir(), '.config', 'opencode', 'opencode.jsonc'),
+  ];
 }
 
 export interface OmpGatewayRoute {
@@ -177,12 +196,23 @@ function ompProviderBlocks(text: string): OmpProviderBlock[] {
     const indent = line.length - line.trimStart().length;
     if (indent === 2 && /^[^:\s][^:]*:\s*$/.test(line.trim())) {
       finish();
-      current = { name: line.trim().slice(0, -1), api: '', baseUrl: '', marker: '', models: [], baseLine: -1, markerLine: null };
+      current = {
+        name: line.trim().slice(0, -1),
+        api: '',
+        baseUrl: '',
+        marker: '',
+        models: [],
+        baseLine: -1,
+        markerLine: null,
+      };
       continue;
     }
     // A model entry may sit at the provider's own indent, so a list item counts as one.
     if (current && (indent > 4 || line.trimStart().startsWith('- '))) {
-      const match = line.trim().replace(/^-\s*/, '').match(/^id:\s*(.+)$/);
+      const match = line
+        .trim()
+        .replace(/^-\s*/, '')
+        .match(/^id:\s*(.+)$/);
       if (match) current.models.push(match[1]!.trim().replace(/^['"]|['"]$/g, ''));
       continue;
     }
@@ -190,7 +220,10 @@ function ompProviderBlocks(text: string): OmpProviderBlock[] {
     const trimmed = line.trim();
     if (trimmed.startsWith('api:')) current.api = trimmed.slice(4).trim();
     else if (trimmed.startsWith('baseUrl:')) {
-      current.baseUrl = trimmed.slice(8).trim().replace(/^['"]|['"]$/g, '');
+      current.baseUrl = trimmed
+        .slice(8)
+        .trim()
+        .replace(/^['"]|['"]$/g, '');
       current.baseLine = i;
     } else if (trimmed.startsWith('# tersio-headroom-upstream:')) {
       current.marker = trimmed.slice('# tersio-headroom-upstream:'.length).trim();
@@ -226,13 +259,20 @@ export function readOmpGateway(port: number = HEADROOM_PORT): OmpGatewayRoute | 
   let model: string | null = null;
   try {
     blocks = ompProviderBlocks(fs.readFileSync(ompModelsFile(), 'utf8'));
-    try { model = defaultOmpModel(fs.readFileSync(ompConfigFile(), 'utf8')); } catch { /* no config */ }
+    try {
+      model = defaultOmpModel(fs.readFileSync(ompConfigFile(), 'utf8'));
+    } catch {
+      /* no config */
+    }
   } catch {
     return null;
   }
   // The role's own provider carries the traffic, so another local gateway is left alone.
   const active = ompModelProvider(blocks, model);
-  const ordered = [...blocks.filter((block) => block.name === active), ...blocks.filter((block) => block.name !== active)];
+  const ordered = [
+    ...blocks.filter((block) => block.name === active),
+    ...blocks.filter((block) => block.name !== active),
+  ];
   for (const block of ordered) {
     if (block.name === 'anthropic') continue;
     if (block.marker && block.baseUrl === `http://127.0.0.1:${port}/v1`) {
@@ -243,7 +283,9 @@ export function readOmpGateway(port: number = HEADROOM_PORT): OmpGatewayRoute | 
       const url = new URL(block.baseUrl);
       if (!loopbackHost(url.hostname) || Number(url.port || 80) === port) continue;
       return { provider: block.name, baseUrl: block.baseUrl, model };
-    } catch { /* not a URL: leave it alone */ }
+    } catch {
+      /* not a URL: leave it alone */
+    }
   }
   return null;
 }
@@ -315,7 +357,11 @@ export function routeOmpGateway(route: OmpGatewayRoute, port: number = HEADROOM_
 export function restoreOmpGateway(port: number = HEADROOM_PORT): boolean {
   const file = ompModelsFile();
   let text: string;
-  try { text = fs.readFileSync(file, 'utf8'); } catch { return false; }
+  try {
+    text = fs.readFileSync(file, 'utf8');
+  } catch {
+    return false;
+  }
   const lines = text.split(/\r?\n/);
   const proxy = `http://127.0.0.1:${port}/v1`;
   const drop = new Set<number>();
@@ -349,11 +395,19 @@ export function restoreOmpGateway(port: number = HEADROOM_PORT): boolean {
 /** Route the provider omp's default role calls; a built-in provider with no block gets an override block. */
 export function routeOmpDefaultModel(port: number = HEADROOM_PORT): boolean {
   let model: string | null = null;
-  try { model = defaultOmpModel(fs.readFileSync(ompConfigFile(), 'utf8')); } catch { return false; }
+  try {
+    model = defaultOmpModel(fs.readFileSync(ompConfigFile(), 'utf8'));
+  } catch {
+    return false;
+  }
   if (!model) return false;
   const file = ompModelsFile();
   let text: string;
-  try { text = fs.readFileSync(file, 'utf8'); } catch { return false; }
+  try {
+    text = fs.readFileSync(file, 'utf8');
+  } catch {
+    return false;
+  }
   const bare = model.replace(/:[^:]+$/, '');
   const slash = bare.indexOf('/');
   const provider = slash > 0 ? bare.slice(0, slash) : '';
@@ -364,7 +418,9 @@ export function routeOmpDefaultModel(port: number = HEADROOM_PORT): boolean {
   const lines = text.split(/\r?\n/);
   const at = lines.findIndex((line) => /^providers:\s*$/.test(line));
   if (at < 0) return false;
-  lines.splice(at + 1, 0,
+  lines.splice(
+    at + 1,
+    0,
     `  ${endpoint.provider}:`,
     '    api: openai-completions',
     `    # tersio-headroom-upstream: ${endpoint.baseUrl}`,

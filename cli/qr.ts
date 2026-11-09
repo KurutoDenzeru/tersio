@@ -114,7 +114,7 @@ function drawFinder(matrix: boolean[][], reserved: boolean[][], row: number, col
       if (y < 0 || x < 0 || y >= matrix.length || x >= matrix.length) continue;
       const edge = r === 0 || r === 6 || c === 0 || c === 6;
       const core = r >= 2 && r <= 4 && c >= 2 && c <= 4;
-      matrix[y][x] = (r >= 0 && r <= 6 && c >= 0 && c <= 6) && (edge || core);
+      matrix[y][x] = r >= 0 && r <= 6 && c >= 0 && c <= 6 && (edge || core);
       reserved[y][x] = true;
     }
   }
@@ -217,7 +217,7 @@ export function qrTerminal(text: string): string | null {
     for (let col = 0; col < size; col += 1) {
       const top = at(row, col);
       const bottom = row + 1 < size && at(row + 1, col);
-      line += top ? (bottom ? '\u2588' : '\u2580') : (bottom ? '\u2584' : ' ');
+      line += top ? (bottom ? '\u2588' : '\u2580') : bottom ? '\u2584' : ' ';
     }
     lines.push(line + '\x1b[0m');
   }

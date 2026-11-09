@@ -1,20 +1,24 @@
-import { expect, test } from "vitest";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import os from "node:os";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import headroomSessionExtension, { HEADROOM_INSTALL_HINT, headroomInstruction, needsHeadroomProxy } from "../../extensions/headroom/index.ts";
-import { readHeadroomRoute } from "../../extensions/shared/headroom-routing.ts";
-import comboToggleExtension from "../../extensions/combo/index.ts";
-import { getSharedComboState, resetSharedComboState } from "../../extensions/shared/session-state.ts";
-import { patchState } from "../../extensions/shared/state.ts";
-import { resolveHeadroomBinary } from "../../extensions/shared/utils.ts";
-import type { ExtensionApi, SessionEntry } from "../../extensions/shared/types.ts";
-import { fakeExecutable, withHome } from "../helpers/env.ts";
-import { createServer } from "node:http";
+import { expect, test } from 'vitest';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import headroomSessionExtension, {
+  HEADROOM_INSTALL_HINT,
+  headroomInstruction,
+  needsHeadroomProxy,
+} from '../../extensions/headroom/index.ts';
+import { readHeadroomRoute } from '../../extensions/shared/headroom-routing.ts';
+import comboToggleExtension from '../../extensions/combo/index.ts';
+import { getSharedComboState, resetSharedComboState } from '../../extensions/shared/session-state.ts';
+import { patchState } from '../../extensions/shared/state.ts';
+import { resolveHeadroomBinary } from '../../extensions/shared/utils.ts';
+import type { ExtensionApi, SessionEntry } from '../../extensions/shared/types.ts';
+import { fakeExecutable, withHome } from '../helpers/env.ts';
+import { createServer } from 'node:http';
 
 // fileURLToPath, not `.pathname`: a URL pathname on Windows is `/D:/...`, which path.join doubles into `D:\D:\...`.
-process.env.HOME = fileURLToPath(new URL("../definitely-missing-home/headroom", import.meta.url));
+process.env.HOME = fileURLToPath(new URL('../definitely-missing-home/headroom', import.meta.url));
 process.env.USERPROFILE = process.env.HOME;
 process.env.TERSIO_HOME = process.env.HOME;
 
@@ -29,7 +33,10 @@ interface TestCtx {
   ui: { setStatus(name: string, value: string | undefined): void; notify(message: string): void };
 }
 
-function harness(entries: SessionEntry[] = [], hostId: "omp" | "pi" | "pig" | "opencode" = "omp"): { handlers: Map<string, EventHandler>; commands: Map<string, CommandHandler>; ctx: TestCtx } {
+function harness(
+  entries: SessionEntry[] = [],
+  hostId: 'omp' | 'pi' | 'pig' | 'opencode' = 'omp',
+): { handlers: Map<string, EventHandler>; commands: Map<string, CommandHandler>; ctx: TestCtx } {
   const commands = new Map<string, CommandHandler>();
   const handlers = new Map<string, EventHandler>();
   const notifications: string[] = [];
@@ -37,10 +44,16 @@ function harness(entries: SessionEntry[] = [], hostId: "omp" | "pi" | "pig" | "o
   headroomSessionExtension({
     hostId,
     setLabel() {},
-    registerCommand(name: string, config: { handler: CommandHandler }) { commands.set(name, config.handler); },
+    registerCommand(name: string, config: { handler: CommandHandler }) {
+      commands.set(name, config.handler);
+    },
     registerTool() {},
-    appendEntry(customType: string, data: Record<string, unknown>) { entries.push({ type: "custom", customType, data }); },
-    on(event: string, handler: EventHandler) { handlers.set(event, handler); },
+    appendEntry(customType: string, data: Record<string, unknown>) {
+      entries.push({ type: 'custom', customType, data });
+    },
+    on(event: string, handler: EventHandler) {
+      handlers.set(event, handler);
+    },
   } as unknown as ExtensionApi);
   const ctx: TestCtx = {
     notifications,
@@ -49,8 +62,15 @@ function harness(entries: SessionEntry[] = [], hostId: "omp" | "pi" | "pig" | "o
     sessionManager: { getBranch: () => entries },
     ui: {
       // setStatus doubles as the status source, keyed like the host footer.
-      setStatus(name: string, v: string | undefined) { if (v !== undefined) { statuses.set(name, v); if (name === "tersio") notifications.push(v); } },
-      notify(message: string) { notifications.push(message); },
+      setStatus(name: string, v: string | undefined) {
+        if (v !== undefined) {
+          statuses.set(name, v);
+          if (name === 'tersio') notifications.push(v);
+        }
+      },
+      notify(message: string) {
+        notifications.push(message);
+      },
     },
   };
   return { handlers, commands, ctx };
@@ -59,7 +79,7 @@ function harness(entries: SessionEntry[] = [], hostId: "omp" | "pi" | "pig" | "o
 /** Runs the command with PATH narrowed so the headroom probe is deterministic. */
 async function withPath(headroomDir: string | null, run: () => Promise<void>): Promise<void> {
   const previousPath = process.env.PATH;
-  if (headroomDir === null) process.env.PATH = "/definitely-no-headroom-here";
+  if (headroomDir === null) process.env.PATH = '/definitely-no-headroom-here';
   else process.env.PATH = `${headroomDir}${path.delimiter}${previousPath}`;
   try {
     await run();
@@ -68,85 +88,89 @@ async function withPath(headroomDir: string | null, run: () => Promise<void>): P
   }
 }
 
-const ON_LINE = "🧩 CUSTOM | 🪨 caveman:OFF | 🗜️ rtk:OFF | 🍃 headroom:ON | 🧠 ponytail:OFF | 🥔 pstack:OFF";
-const OFF_LINE = "🧩 OFF";
+const ON_LINE = '🧩 CUSTOM | 🪨 caveman:OFF | 🗜️ rtk:OFF | 🍃 headroom:ON | 🧠 ponytail:OFF | 🥔 pstack:OFF';
+const OFF_LINE = '🧩 OFF';
 const HINT = `Headroom binary not found on PATH. Install it yourself with: ${HEADROOM_INSTALL_HINT}`;
 
-test("/headroom on persists the mode, names it in the footer, and warns when the binary is absent", async () => {
+test('/headroom on persists the mode, names it in the footer, and warns when the binary is absent', async () => {
   await withPath(null, async () => {
     resetSharedComboState();
     const entries: SessionEntry[] = [];
     const { commands, ctx } = harness(entries);
-    await commands.get("headroom")!("on", ctx);
-    expect(ctx.entries.at(-1)).toEqual({ type: "custom", customType: "headroom-mode", data: { mode: "on" } });
+    await commands.get('headroom')!('on', ctx);
+    expect(ctx.entries.at(-1)).toEqual({ type: 'custom', customType: 'headroom-mode', data: { mode: 'on' } });
     expect(ctx.notifications).toEqual([ON_LINE, HINT]);
-    expect(getSharedComboState().headroom).toBe("on");
+    expect(getSharedComboState().headroom).toBe('on');
     // The state keeps the preset level (all three owned modes are off); the CUSTOM wording is render-side.
-    expect(getSharedComboState().level).toBe("off");
+    expect(getSharedComboState().level).toBe('off');
   });
 });
 
-test("a present binary toggles without the install warning", async () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-headroom-bin-"));
-  fakeExecutable(dir, process.platform === "win32" ? "headroom.exe" : "headroom", "#!/bin/sh\nexit 0\n", "exit /b 0");
+test('a present binary toggles without the install warning', async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'tersio-headroom-bin-'));
+  fakeExecutable(dir, process.platform === 'win32' ? 'headroom.exe' : 'headroom', '#!/bin/sh\nexit 0\n', 'exit /b 0');
   await withPath(dir, async () => {
     resetSharedComboState();
     const { commands, ctx } = harness([]);
-    await commands.get("headroom")!("on", ctx);
+    await commands.get('headroom')!('on', ctx);
     expect(ctx.notifications).toEqual([ON_LINE]);
   });
 });
 
-test("/headroom off beside all-off modes collapses to COMBO OFF", async () => {
+test('/headroom off beside all-off modes collapses to COMBO OFF', async () => {
   await withPath(null, async () => {
     resetSharedComboState();
     const entries: SessionEntry[] = [];
     const { commands, ctx } = harness(entries);
-    await commands.get("headroom")!("on", ctx);
-    await commands.get("headroom")!("off", ctx);
+    await commands.get('headroom')!('on', ctx);
+    await commands.get('headroom')!('off', ctx);
     expect(ctx.notifications.at(-1)).toBe(OFF_LINE);
-    expect(getSharedComboState().headroom).toBe("off");
+    expect(getSharedComboState().headroom).toBe('off');
   });
 });
 
-test("/headroom status repaints the bar and an unknown arg warns usage", async () => {
+test('/headroom status repaints the bar and an unknown arg warns usage', async () => {
   await withPath(null, async () => {
     resetSharedComboState();
-    const entries: SessionEntry[] = [{ type: "custom", customType: "headroom-mode", data: { mode: "on" } }];
+    const entries: SessionEntry[] = [{ type: 'custom', customType: 'headroom-mode', data: { mode: 'on' } }];
     const { commands, handlers, ctx } = harness(entries);
-    await handlers.get("session_start")!({}, ctx);
-    await commands.get("headroom")!("status", ctx);
+    await handlers.get('session_start')!({}, ctx);
+    await commands.get('headroom')!('status', ctx);
     expect(ctx.notifications.at(-1)).toBe(ON_LINE);
-    await commands.get("headroom")!("bright", ctx);
-    expect(ctx.notifications.at(-1)).toBe("Usage: /headroom [on|off|status]");
+    await commands.get('headroom')!('bright', ctx);
+    expect(ctx.notifications.at(-1)).toBe('Usage: /headroom [on|off|status]');
   });
 });
 
-test("the shared off phrase clears the mode from the input hook", async () => {
+test('the shared off phrase clears the mode from the input hook', async () => {
   await withPath(null, async () => {
     resetSharedComboState();
     const entries: SessionEntry[] = [];
     const { handlers, commands, ctx } = harness(entries);
-    await commands.get("headroom")!("on", ctx);
-    await handlers.get("input")!({ text: "normal mode", source: "user" }, ctx);
-    expect(ctx.entries.at(-1)).toEqual({ type: "custom", customType: "headroom-mode", data: { mode: "off" } });
+    await commands.get('headroom')!('on', ctx);
+    await handlers.get('input')!({ text: 'normal mode', source: 'user' }, ctx);
+    expect(ctx.entries.at(-1)).toEqual({ type: 'custom', customType: 'headroom-mode', data: { mode: 'off' } });
     expect(ctx.notifications.at(-1)).toBe(OFF_LINE);
   });
 });
 
-test("a session_start restores the persisted mode", async () => {
+test('a session_start restores the persisted mode', async () => {
   resetSharedComboState();
-  const entries: SessionEntry[] = [{ type: "custom", customType: "headroom-mode", data: { mode: "on" } }];
+  const entries: SessionEntry[] = [{ type: 'custom', customType: 'headroom-mode', data: { mode: 'on' } }];
   const { handlers, ctx } = harness(entries);
-  await handlers.get("session_start")!({}, ctx);
+  await handlers.get('session_start')!({}, ctx);
   expect(ctx.notifications.at(-1)).toBe(ON_LINE);
 });
 
-test("the configured default starts a fresh session with headroom on", async () => {
+test('the configured default starts a fresh session with headroom on', async () => {
   await withHome(async (home) => {
-    mkdirSync(path.join(home, ".tersio"), { recursive: true });
-    writeFileSync(path.join(home, ".tersio", "settings.json"), `${JSON.stringify({ headroomDefault: "on" })}\n`, "utf8");
-    expect(existsSync(path.join(home, ".tersio", "settings.json"))).toBe(true);
+    mkdirSync(path.join(home, '.tersio'), { recursive: true });
+    writeFileSync(
+      path.join(home, '.tersio', 'settings.json'),
+      `${JSON.stringify({ headroomDefault: 'on' })}\n`,
+      'utf8',
+    );
+    expect(existsSync(path.join(home, '.tersio', 'settings.json'))).toBe(true);
     resetSharedComboState();
     // A default without session entries lands on the bar through the combo publish, exactly as pstack's does.
     const comboCommands = new Map<string, CommandHandler>();
@@ -154,31 +178,52 @@ test("the configured default starts a fresh session with headroom on", async () 
     const comboEntries: SessionEntry[] = [];
     comboToggleExtension({
       setLabel() {},
-      registerCommand(name: string, config: { handler: CommandHandler }) { comboCommands.set(name, config.handler); },
+      registerCommand(name: string, config: { handler: CommandHandler }) {
+        comboCommands.set(name, config.handler);
+      },
       registerTool() {},
-      appendEntry(customType: string, data: Record<string, unknown>) { comboEntries.push({ type: "custom", customType, data }); },
-      on(event: string, handler: EventHandler) { comboHandlers.set(event, handler); },
+      appendEntry(customType: string, data: Record<string, unknown>) {
+        comboEntries.push({ type: 'custom', customType, data });
+      },
+      on(event: string, handler: EventHandler) {
+        comboHandlers.set(event, handler);
+      },
     } as unknown as ExtensionApi);
     const comboCtx: TestCtx = {
-      notifications: [], statuses: new Map(), entries: comboEntries,
+      notifications: [],
+      statuses: new Map(),
+      entries: comboEntries,
       sessionManager: { getBranch: () => comboEntries },
-      ui: { setStatus(name: string, v: string | undefined) { if (v !== undefined) { comboCtx.statuses.set(name, v); if (name === "tersio") comboCtx.notifications.push(v); } }, notify() {} },
+      ui: {
+        setStatus(name: string, v: string | undefined) {
+          if (v !== undefined) {
+            comboCtx.statuses.set(name, v);
+            if (name === 'tersio') comboCtx.notifications.push(v);
+          }
+        },
+        notify() {},
+      },
     };
     const { handlers, ctx } = harness([]);
-    await handlers.get("session_start")!({}, ctx);
-    await comboHandlers.get("session_start")!({}, comboCtx);
+    await handlers.get('session_start')!({}, ctx);
+    await comboHandlers.get('session_start')!({}, comboCtx);
     expect(comboCtx.notifications.at(-1)).toBe(ON_LINE);
-    expect(getSharedComboState().headroom).toBe("on");
+    expect(getSharedComboState().headroom).toBe('on');
   });
 });
 
-test("a pip --user script dir that is off PATH still resolves, through the pinned home", async () => {
+test('a pip --user script dir that is off PATH still resolves, through the pinned home', async () => {
   await withHome(async (home) => {
     // pip's user scripts land here on Linux, and uv's tool shims land here everywhere.
-    const localBin = path.join(home, ".local", "bin");
-    const bin = fakeExecutable(localBin, process.platform === "win32" ? "headroom.exe" : "headroom", "#!/bin/sh\nexit 0\n", "exit /b 0");
+    const localBin = path.join(home, '.local', 'bin');
+    const bin = fakeExecutable(
+      localBin,
+      process.platform === 'win32' ? 'headroom.exe' : 'headroom',
+      '#!/bin/sh\nexit 0\n',
+      'exit /b 0',
+    );
     const previousPath = process.env.PATH;
-    process.env.PATH = "/definitely-no-headroom-here";
+    process.env.PATH = '/definitely-no-headroom-here';
     try {
       // A fresh HOME must not inherit a user base computed from the real one.
       expect(resolveHeadroomBinary()).toBe(bin);
@@ -188,32 +233,44 @@ test("a pip --user script dir that is off PATH still resolves, through the pinne
   });
 });
 
-test("an active mode injects one replaceable block only when the binary and its runtime are up", async () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-headroom-bin-"));
-  fakeExecutable(dir, process.platform === "win32" ? "headroom.exe" : "headroom", "#!/bin/sh\nexit 0\n", "exit /b 0");
-  const server = createServer((_req, res) => { res.writeHead(200); res.end("ok"); });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+test('an active mode injects one replaceable block only when the binary and its runtime are up', async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'tersio-headroom-bin-'));
+  fakeExecutable(dir, process.platform === 'win32' ? 'headroom.exe' : 'headroom', '#!/bin/sh\nexit 0\n', 'exit /b 0');
+  const server = createServer((_req, res) => {
+    res.writeHead(200);
+    res.end('ok');
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const port = (server.address() as { port: number }).port;
   const previousUrl = process.env.TERSIO_HEADROOM_PROXY_URL;
-  const routeDir = mkdtempSync(path.join(os.tmpdir(), "tersio-headroom-route-"));
+  const routeDir = mkdtempSync(path.join(os.tmpdir(), 'tersio-headroom-route-'));
   const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
   process.env.TERSIO_HEADROOM_PROXY_URL = `http://127.0.0.1:${port}/`;
   process.env.PI_CODING_AGENT_DIR = routeDir;
-  writeFileSync(path.join(routeDir, "config.yml"), "modelRoles:\n  default: demo-model:high\n", "utf8");
-  writeFileSync(path.join(routeDir, "models.yml"), `providers:\n  local:\n    baseUrl: http://127.0.0.1:${port}\n    models:\n    - id: demo-model\n`, "utf8");
+  writeFileSync(path.join(routeDir, 'config.yml'), 'modelRoles:\n  default: demo-model:high\n', 'utf8');
+  writeFileSync(
+    path.join(routeDir, 'models.yml'),
+    `providers:\n  local:\n    baseUrl: http://127.0.0.1:${port}\n    models:\n    - id: demo-model\n`,
+    'utf8',
+  );
   try {
     await withPath(dir, async () => {
       resetSharedComboState();
       const entries: SessionEntry[] = [];
       const { handlers, commands, ctx } = harness(entries);
-      await commands.get("headroom")!("on", ctx);
-      const prompt = { systemPrompt: ["base"] };
-      const first = await handlers.get("before_agent_start")!(prompt, undefined) as { systemPrompt?: string | string[] } | undefined;
+      await commands.get('headroom')!('on', ctx);
+      const prompt = { systemPrompt: ['base'] };
+      const first = (await handlers.get('before_agent_start')!(prompt, undefined)) as
+        | { systemPrompt?: string | string[] }
+        | undefined;
       // A pi host gets one string; OMP gets an array whose last block is ours.
-      const injected = typeof first?.systemPrompt === "string" ? first.systemPrompt : first?.systemPrompt?.at(-1);
-      expect(injected).toContain("🍃 HEADROOM MODE ACTIVE");
+      const injected = typeof first?.systemPrompt === 'string' ? first.systemPrompt : first?.systemPrompt?.at(-1);
+      expect(injected).toContain('🍃 HEADROOM MODE ACTIVE');
       // The same body is matched whole, so a re-presented prompt cannot stack it.
-      const second = await handlers.get("before_agent_start")!({ systemPrompt: [...(prompt.systemPrompt ?? []), headroomInstruction(readHeadroomRoute("omp"))] }, undefined);
+      const second = await handlers.get('before_agent_start')!(
+        { systemPrompt: [...(prompt.systemPrompt ?? []), headroomInstruction(readHeadroomRoute('omp'))] },
+        undefined,
+      );
       expect(second).toBeUndefined();
     });
   } finally {
@@ -226,21 +283,21 @@ test("an active mode injects one replaceable block only when the binary and its 
   // Without the binary the block would lie to the model, so the extension stays silent while the mode stays on.
   await withPath(null, async () => {
     resetSharedComboState();
-    const entries: SessionEntry[] = [{ type: "custom", customType: "headroom-mode", data: { mode: "on" } }];
+    const entries: SessionEntry[] = [{ type: 'custom', customType: 'headroom-mode', data: { mode: 'on' } }];
     const { handlers, ctx } = harness(entries);
-    await handlers.get("session_start")!({}, ctx);
-    const none = await handlers.get("before_agent_start")!({ systemPrompt: ["base"] }, undefined);
+    await handlers.get('session_start')!({}, ctx);
+    const none = await handlers.get('before_agent_start')!({ systemPrompt: ['base'] }, undefined);
     expect(none).toBeUndefined();
   });
   // A binary with no runtime behind it compresses nothing, so the block stays out.
-  process.env.TERSIO_HEADROOM_PROXY_URL = "http://127.0.0.1:1/";
+  process.env.TERSIO_HEADROOM_PROXY_URL = 'http://127.0.0.1:1/';
   try {
     await withPath(dir, async () => {
       resetSharedComboState();
-      const entries: SessionEntry[] = [{ type: "custom", customType: "headroom-mode", data: { mode: "on" } }];
+      const entries: SessionEntry[] = [{ type: 'custom', customType: 'headroom-mode', data: { mode: 'on' } }];
       const { handlers, ctx } = harness(entries);
-      await handlers.get("session_start")!({}, ctx);
-      const none = await handlers.get("before_agent_start")!({ systemPrompt: ["base"] }, undefined);
+      await handlers.get('session_start')!({}, ctx);
+      const none = await handlers.get('before_agent_start')!({ systemPrompt: ['base'] }, undefined);
       expect(none).toBeUndefined();
     });
   } finally {
@@ -250,28 +307,37 @@ test("an active mode injects one replaceable block only when the binary and its 
 });
 
 test("a live proxy does not inject when the agent's model bypasses it", async () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-headroom-bin-"));
-  fakeExecutable(dir, process.platform === "win32" ? "headroom.exe" : "headroom", "#!/bin/sh\nexit 0\n", "exit /b 0");
-  const server = createServer((_req, res) => { res.writeHead(200); res.end("ok"); });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'tersio-headroom-bin-'));
+  fakeExecutable(dir, process.platform === 'win32' ? 'headroom.exe' : 'headroom', '#!/bin/sh\nexit 0\n', 'exit /b 0');
+  const server = createServer((_req, res) => {
+    res.writeHead(200);
+    res.end('ok');
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const port = (server.address() as { port: number }).port;
-  const routeDir = mkdtempSync(path.join(os.tmpdir(), "tersio-headroom-route-"));
+  const routeDir = mkdtempSync(path.join(os.tmpdir(), 'tersio-headroom-route-'));
   const previousUrl = process.env.TERSIO_HEADROOM_PROXY_URL;
   const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
   process.env.TERSIO_HEADROOM_PROXY_URL = `http://127.0.0.1:${port}/`;
   process.env.PI_CODING_AGENT_DIR = routeDir;
-  writeFileSync(path.join(routeDir, "config.yml"), "modelRoles:\n  default: demo-model\n", "utf8");
+  writeFileSync(path.join(routeDir, 'config.yml'), 'modelRoles:\n  default: demo-model\n', 'utf8');
   // The provider points at another local service, which is exactly the current omp setup.
-  writeFileSync(path.join(routeDir, "models.yml"), "providers:\n  magpie:\n    baseUrl: http://127.0.0.1:3425\n    models:\n    - id: demo-model\n", "utf8");
+  writeFileSync(
+    path.join(routeDir, 'models.yml'),
+    'providers:\n  magpie:\n    baseUrl: http://127.0.0.1:3425\n    models:\n    - id: demo-model\n',
+    'utf8',
+  );
   try {
     await withPath(dir, async () => {
       resetSharedComboState();
-      const entries: SessionEntry[] = [{ type: "custom", customType: "headroom-mode", data: { mode: "on" } }];
+      const entries: SessionEntry[] = [{ type: 'custom', customType: 'headroom-mode', data: { mode: 'on' } }];
       const { handlers, ctx } = harness(entries);
-      await handlers.get("session_start")!({}, ctx);
-      const prompt = await handlers.get("before_agent_start")!({ systemPrompt: ["base"] }, ctx) as { systemPrompt?: string[] } | undefined;
+      await handlers.get('session_start')!({}, ctx);
+      const prompt = (await handlers.get('before_agent_start')!({ systemPrompt: ['base'] }, ctx)) as
+        | { systemPrompt?: string[] }
+        | undefined;
       expect(prompt).toBeUndefined();
-      expect(ctx.notifications.at(-1)).toContain("does not route through it");
+      expect(ctx.notifications.at(-1)).toContain('does not route through it');
     });
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
@@ -282,62 +348,87 @@ test("a live proxy does not inject when the agent's model bypasses it", async ()
   }
 });
 
-test("pi and PiG accept the mode but add no prompt without a route", async () => {
+test('pi and PiG accept the mode but add no prompt without a route', async () => {
   resetSharedComboState();
   const entries: SessionEntry[] = [];
-  const { commands, handlers, ctx } = harness(entries, "pi");
-  await commands.get("headroom")!("on", ctx);
+  const { commands, handlers, ctx } = harness(entries, 'pi');
+  await commands.get('headroom')!('on', ctx);
   expect(entries).toHaveLength(1);
-  expect(entries[0]).toMatchObject({ customType: "headroom-mode", data: { mode: "on" } });
-  const prompt = await handlers.get("before_agent_start")?.(
-    { systemPrompt: ["base"] },
-    ctx,
-  ) as { systemPrompt?: string[] } | undefined;
+  expect(entries[0]).toMatchObject({ customType: 'headroom-mode', data: { mode: 'on' } });
+  const prompt = (await handlers.get('before_agent_start')?.({ systemPrompt: ['base'] }, ctx)) as
+    | { systemPrompt?: string[] }
+    | undefined;
   expect(prompt).toBeUndefined();
 });
 
-test("a route another tool reset is put back once, and the session says so", async () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "tersio-headroom-bin-"));
-  fakeExecutable(dir, process.platform === "win32" ? "headroom.exe" : "headroom", "#!/bin/sh\nexit 0\n", "exit /b 0");
-  const server = createServer((_req, res) => { res.writeHead(200); res.end("ok"); });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+test('a route another tool reset is put back once, and the session says so', async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'tersio-headroom-bin-'));
+  fakeExecutable(dir, process.platform === 'win32' ? 'headroom.exe' : 'headroom', '#!/bin/sh\nexit 0\n', 'exit /b 0');
+  const server = createServer((_req, res) => {
+    res.writeHead(200);
+    res.end('ok');
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const proxy = `http://127.0.0.1:${(server.address() as { port: number }).port}/`;
   const previousUrl = process.env.TERSIO_HEADROOM_PROXY_URL;
   process.env.TERSIO_HEADROOM_PROXY_URL = proxy;
   try {
     await withHome(async (home) => {
       // Pi resolves its config under HOME, so the fixture lives where the route reader looks.
-      const agentDir = path.join(home, ".pi", "agent");
+      const agentDir = path.join(home, '.pi', 'agent');
       mkdirSync(agentDir, { recursive: true });
-      const models = path.join(agentDir, "models.json");
-      writeFileSync(path.join(agentDir, "settings.json"), JSON.stringify({
-        defaultProvider: "magpie",
-        defaultModel: "commandcode/deepseek/deepseek-v4.1-flash",
-      }), "utf8");
+      const models = path.join(agentDir, 'models.json');
+      writeFileSync(
+        path.join(agentDir, 'settings.json'),
+        JSON.stringify({
+          defaultProvider: 'magpie',
+          defaultModel: 'commandcode/deepseek/deepseek-v4.1-flash',
+        }),
+        'utf8',
+      );
       // A model switcher wrote its own endpoint back after Tersio routed the provider.
-      writeFileSync(models, JSON.stringify({
-        providers: { magpie: { api: "openai-completions", baseUrl: "http://127.0.0.1:3425/v1" } },
-      }, null, 2), "utf8");
-      const deploy = path.join(home, ".headroom", "deploy", "init");
+      writeFileSync(
+        models,
+        JSON.stringify(
+          {
+            providers: { magpie: { api: 'openai-completions', baseUrl: 'http://127.0.0.1:3425/v1' } },
+          },
+          null,
+          2,
+        ),
+        'utf8',
+      );
+      const deploy = path.join(home, '.headroom', 'deploy', 'init');
       mkdirSync(deploy, { recursive: true });
-      writeFileSync(path.join(deploy, "manifest.json"), JSON.stringify({
-        updated_at: "2026-01-01T00:00:00Z",
-        base_env: { OPENAI_TARGET_API_URL: "http://127.0.0.1:3425/v1" },
-      }), "utf8");
+      writeFileSync(
+        path.join(deploy, 'manifest.json'),
+        JSON.stringify({
+          updated_at: '2026-01-01T00:00:00Z',
+          base_env: { OPENAI_TARGET_API_URL: 'http://127.0.0.1:3425/v1' },
+        }),
+        'utf8',
+      );
       // The recorded write is what marks the reset as drift rather than a deliberate switch.
-      patchState({ headroomRoutes: {
-        pi: [{ file: models, provider: "magpie", original: "http://127.0.0.1:3425/v1", written: `${proxy}v1` }],
-      } });
+      patchState({
+        headroomRoutes: {
+          pi: [{ file: models, provider: 'magpie', original: 'http://127.0.0.1:3425/v1', written: `${proxy}v1` }],
+        },
+      });
       await withPath(dir, async () => {
         resetSharedComboState();
-        const entries: SessionEntry[] = [{ type: "custom", customType: "headroom-mode", data: { mode: "on" } }];
-        const { handlers, ctx } = harness(entries, "pi");
-        await handlers.get("session_start")!({}, ctx);
-        const prompt = await handlers.get("before_agent_start")!({ systemPrompt: "base" }, ctx) as { systemPrompt?: string } | undefined;
-        expect(ctx.notifications.some((line) => line.includes("another tool reset")), JSON.stringify(ctx.notifications)).toBe(true);
-        expect(JSON.parse(readFileSync(models, "utf8")).providers.magpie.baseUrl).toBe(`${proxy}v1`);
+        const entries: SessionEntry[] = [{ type: 'custom', customType: 'headroom-mode', data: { mode: 'on' } }];
+        const { handlers, ctx } = harness(entries, 'pi');
+        await handlers.get('session_start')!({}, ctx);
+        const prompt = (await handlers.get('before_agent_start')!({ systemPrompt: 'base' }, ctx)) as
+          | { systemPrompt?: string }
+          | undefined;
+        expect(
+          ctx.notifications.some((line) => line.includes('another tool reset')),
+          JSON.stringify(ctx.notifications),
+        ).toBe(true);
+        expect(JSON.parse(readFileSync(models, 'utf8')).providers.magpie.baseUrl).toBe(`${proxy}v1`);
         // The route is back, so the block is injected instead of the unrouted warning.
-        expect(prompt?.systemPrompt).toContain("🍃 HEADROOM MODE ACTIVE");
+        expect(prompt?.systemPrompt).toContain('🍃 HEADROOM MODE ACTIVE');
       });
     });
   } finally {
@@ -347,40 +438,60 @@ test("a route another tool reset is put back once, and the session says so", asy
   }
 });
 
-test("a route needs the proxy even with the prompt mode off", () => {
+test('a route needs the proxy even with the prompt mode off', () => {
   // The dashboard writes a route on its own, so the mode alone cannot decide whether to start it.
-  expect(needsHeadroomProxy("on", false)).toBe(true);
-  expect(needsHeadroomProxy("off", true)).toBe(true);
-  expect(needsHeadroomProxy("off", false)).toBe(false);
+  expect(needsHeadroomProxy('on', false)).toBe(true);
+  expect(needsHeadroomProxy('off', true)).toBe(true);
+  expect(needsHeadroomProxy('off', false)).toBe(false);
 });
 
-test("the proxy is wanted when another agent is routed, even with every mode off", async () => {
+test('the proxy is wanted when another agent is routed, even with every mode off', async () => {
   await withHome(async (home) => {
-    const routes = await import("../../extensions/shared/headroom-routes.ts");
-    const { headroomWanted } = await import("../../extensions/headroom/index.ts");
-    const routeDir = mkdtempSync(path.join(os.tmpdir(), "tersio-headroom-wanted-"));
+    const routes = await import('../../extensions/shared/headroom-routes.ts');
+    const { headroomWanted } = await import('../../extensions/headroom/index.ts');
+    const routeDir = mkdtempSync(path.join(os.tmpdir(), 'tersio-headroom-wanted-'));
     const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
     const previousPiProc = process.env.PI_CODING_AGENT;
     // piAgentDir only honours the override from inside a pi process.
-    process.env.PI_CODING_AGENT = "true";
+    process.env.PI_CODING_AGENT = 'true';
     process.env.PI_CODING_AGENT_DIR = routeDir;
-    const proxy = "http://127.0.0.1:8787/v1";
-    writeFileSync(path.join(routeDir, "settings.json"), JSON.stringify({ defaultProvider: "local", defaultModel: "demo-model" }, null, 2), "utf8");
-    writeFileSync(path.join(routeDir, "models.json"), JSON.stringify({ providers: { local: { api: "openai-completions", baseUrl: "http://127.0.0.1:3425/v1", models: [{ id: "demo-model" }] } } }, null, 2), "utf8");
-    const deploy = path.join(home, ".headroom", "deploy", "init-user");
+    const proxy = 'http://127.0.0.1:8787/v1';
+    writeFileSync(
+      path.join(routeDir, 'settings.json'),
+      JSON.stringify({ defaultProvider: 'local', defaultModel: 'demo-model' }, null, 2),
+      'utf8',
+    );
+    writeFileSync(
+      path.join(routeDir, 'models.json'),
+      JSON.stringify(
+        {
+          providers: {
+            local: { api: 'openai-completions', baseUrl: 'http://127.0.0.1:3425/v1', models: [{ id: 'demo-model' }] },
+          },
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    );
+    const deploy = path.join(home, '.headroom', 'deploy', 'init-user');
     mkdirSync(deploy, { recursive: true });
-    writeFileSync(path.join(deploy, "manifest.json"), JSON.stringify({
-      port: 8787,
-      proxy_args: ["--openai-api-url", "http://127.0.0.1:3425/v1"],
-    }), "utf8");
+    writeFileSync(
+      path.join(deploy, 'manifest.json'),
+      JSON.stringify({
+        port: 8787,
+        proxy_args: ['--openai-api-url', 'http://127.0.0.1:3425/v1'],
+      }),
+      'utf8',
+    );
     try {
       // Nothing routed, no saved default: nothing wants it.
-      expect(headroomWanted("omp")).toBe(false);
-      const installed = routes.installNativeRoute("pi", proxy);
+      expect(headroomWanted('omp')).toBe(false);
+      const installed = routes.installNativeRoute('pi', proxy);
       expect(installed.ok, installed.detail).toBe(true);
       // pi is routed now, so an omp session with every mode off still starts the proxy.
-      expect(headroomWanted("omp")).toBe(true);
-      expect(headroomWanted("dsh")).toBe(true);
+      expect(headroomWanted('omp')).toBe(true);
+      expect(headroomWanted('dsh')).toBe(true);
     } finally {
       if (previousAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
       else process.env.PI_CODING_AGENT_DIR = previousAgentDir;

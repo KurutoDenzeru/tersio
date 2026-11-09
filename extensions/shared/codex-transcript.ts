@@ -65,7 +65,7 @@ export interface CodexTranscript {
 type Row = Record<string, unknown>;
 
 function obj(value: unknown): Row {
-  return value && typeof value === 'object' ? value as Row : {};
+  return value && typeof value === 'object' ? (value as Row) : {};
 }
 
 function str(value: unknown): string {
@@ -90,10 +90,13 @@ function durationMs(value: unknown): number {
 function textOf(value: unknown): string {
   if (typeof value === 'string') return value;
   if (Array.isArray(value)) {
-    return value.map((entry) => {
-      const part = obj(entry);
-      return str(part.text) || str(part.content);
-    }).filter(Boolean).join('\n');
+    return value
+      .map((entry) => {
+        const part = obj(entry);
+        return str(part.text) || str(part.content);
+      })
+      .filter(Boolean)
+      .join('\n');
   }
   const record = obj(value);
   return str(record.text) || str(record.content);
@@ -140,9 +143,8 @@ function usageOf(usage: Row): CodexUsage {
     return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
   }
   // Codex's input bucket includes cached tokens; Tersio stores prompt, cache-read, and cache-write apart.
-  const input = total > 0
-    ? Math.max(0, total - output - cacheRead - cacheWrite)
-    : Math.max(0, inputTotal - cacheRead - cacheWrite);
+  const input =
+    total > 0 ? Math.max(0, total - output - cacheRead - cacheWrite) : Math.max(0, inputTotal - cacheRead - cacheWrite);
   return {
     input,
     output,
@@ -152,8 +154,10 @@ function usageOf(usage: Row): CodexUsage {
 }
 
 export function looksLikeCodexTranscript(text: string): boolean {
-  return /"type"\s*:\s*"(?:session_meta|turn_context|token_count|token_usage_record)"/.test(text)
-    && /"payload"\s*:\s*\{/.test(text);
+  return (
+    /"type"\s*:\s*"(?:session_meta|turn_context|token_count|token_usage_record)"/.test(text) &&
+    /"payload"\s*:\s*\{/.test(text)
+  );
 }
 
 /** The gateway is the model id's first segment when it names one; otherwise Codex's provider is all there is. */
@@ -210,12 +214,18 @@ export function parseCodexTranscript(text: string): CodexTranscript {
   };
 
   const sameUsage = (left: CodexUsage, right: CodexUsage): boolean =>
-    left.input === right.input
-    && left.output === right.output
-    && left.cacheRead === right.cacheRead
-    && left.cacheWrite === right.cacheWrite;
+    left.input === right.input &&
+    left.output === right.output &&
+    left.cacheRead === right.cacheRead &&
+    left.cacheWrite === right.cacheWrite;
 
-  const recordUsage = (usage: CodexUsage, ts: number, previousTs: number, source: 'record' | 'event', responseId = ''): void => {
+  const recordUsage = (
+    usage: CodexUsage,
+    ts: number,
+    previousTs: number,
+    source: 'record' | 'event',
+    responseId = '',
+  ): void => {
     if (usage.input + usage.output + usage.cacheRead + usage.cacheWrite === 0) return;
     const startTs = modelStartTs ?? agentMessageTs ?? previousTs ?? ts;
     const endTs = agentMessageTs ?? ts;
@@ -313,7 +323,7 @@ export function parseCodexTranscript(text: string): CodexTranscript {
       if (payloadType === 'function_call' || payloadType === 'custom_tool_call') {
         const args = payload.arguments ?? payload.input ?? '';
         const command = str(recordOf(args).cmd) || str(recordOf(args).command);
-        const detail = command ? command.slice(0, 300) : (typeof args === 'string' ? args.slice(0, 300) : '');
+        const detail = command ? command.slice(0, 300) : typeof args === 'string' ? args.slice(0, 300) : '';
         addTool(id, toolName(str(payload.name), command), ts, args, detail);
       } else if (payloadType === 'function_call_output' || payloadType === 'custom_tool_call_output') {
         const held = calls.get(str(payload.call_id));
@@ -424,9 +434,10 @@ export function parseCodexTranscript(text: string): CodexTranscript {
       continue;
     }
     if (payloadType === 'token_count' || payloadType === 'token_usage_record') {
-      const usage = payloadType === 'token_usage_record'
-        ? usageOf(obj(payload.usage))
-        : usageOf(obj(obj(payload.info).last_token_usage));
+      const usage =
+        payloadType === 'token_usage_record'
+          ? usageOf(obj(payload.usage))
+          : usageOf(obj(obj(payload.info).last_token_usage));
       recordUsage(usage, ts, previousTs, 'event', str(payload.response_id));
       continue;
     }

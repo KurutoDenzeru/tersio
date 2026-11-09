@@ -37,7 +37,9 @@ function trim(file: string): void {
     if (statSync(file).size < MAX_BYTES) return;
     const lines = readFileSync(file, 'utf8').split('\n').filter(Boolean).slice(-MAX_LINES);
     writeFileSync(file, `${lines.join('\n')}\n`, 'utf8');
-  } catch { /* the next write tries again */ }
+  } catch {
+    /* the next write tries again */
+  }
 }
 
 /** Appends one entry. A log line never fails the command that produced it. */
@@ -50,7 +52,9 @@ export function recordActivity(kind: ActivityKind, title: string, detail?: strin
     mkdirSync(path.dirname(file), { recursive: true });
     appendFileSync(file, `${JSON.stringify(entry)}\n`, 'utf8');
     trim(file);
-  } catch { /* a log line never fails the command */ }
+  } catch {
+    /* a log line never fails the command */
+  }
 }
 
 /** The retention cutoff in epoch ms, or 0 when the window is Forever. */
@@ -65,7 +69,9 @@ export function readActivity(limit = 500): ActivityEntry[] {
     const file = logFile();
     if (!existsSync(file)) return [];
     const cutoff = retentionCutoff();
-    const lines = readFileSync(file, 'utf8').split('\n').filter((line) => line.trim() !== '');
+    const lines = readFileSync(file, 'utf8')
+      .split('\n')
+      .filter((line) => line.trim() !== '');
     const kept: string[] = [];
     for (const line of lines) {
       try {
@@ -73,13 +79,22 @@ export function readActivity(limit = 500): ActivityEntry[] {
         if (typeof parsed.at !== 'number' || typeof parsed.title !== 'string') continue;
         if (cutoff > 0 && parsed.at < cutoff) continue;
         kept.push(line);
-      } catch { /* skip the damaged line */ }
+      } catch {
+        /* skip the damaged line */
+      }
     }
     // The page follows the window, so the file behind it does too; one rewrite when old lines are found.
     if (cutoff > 0 && kept.length !== lines.length) {
-      try { writeFileSync(file, kept.length > 0 ? `${kept.join('\n')}\n` : '', 'utf8'); } catch { /* the next read retries */ }
+      try {
+        writeFileSync(file, kept.length > 0 ? `${kept.join('\n')}\n` : '', 'utf8');
+      } catch {
+        /* the next read retries */
+      }
     }
-    return kept.slice(-limit).map((line) => JSON.parse(line) as ActivityEntry).toReversed();
+    return kept
+      .slice(-limit)
+      .map((line) => JSON.parse(line) as ActivityEntry)
+      .toReversed();
   } catch {
     return [];
   }

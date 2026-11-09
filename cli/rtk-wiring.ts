@@ -15,7 +15,9 @@ export interface WiringOptions {
 function shortError(e: unknown): string {
   const err = e as Error & { stderr?: string; code?: string | number; signal?: string };
   return [err.code !== undefined ? `code ${err.code}` : '', err.signal ?? '', err.stderr?.trim(), err.message]
-    .filter(Boolean).join(' · ').slice(0, 200);
+    .filter(Boolean)
+    .join(' · ')
+    .slice(0, 200);
 }
 
 function run(cmd: string, args: string[], timeout: number): Promise<void> {

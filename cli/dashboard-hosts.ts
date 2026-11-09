@@ -23,16 +23,24 @@ export async function handleHostRoutes(
   ctx: HostRouteCtx,
 ): Promise<boolean> {
   if (req.url === '/api/hosts' && req.method === 'GET') {
-    ctx.json(res, 200, ctx.detectHosts().map((host) => ({
-      id: host.id,
-      label: host.label,
-      installed: host.installed,
-      version: host.version,
-    })));
+    ctx.json(
+      res,
+      200,
+      ctx.detectHosts().map((host) => ({
+        id: host.id,
+        label: host.label,
+        installed: host.installed,
+        version: host.version,
+      })),
+    );
     return true;
   }
   if (req.url === '/api/hosts/action' && req.method === 'GET') {
-    ctx.json(res, 200, [...ctx.hostJobs].map(([host, job]) => ({ host, ...job })));
+    ctx.json(
+      res,
+      200,
+      [...ctx.hostJobs].map(([host, job]) => ({ host, ...job })),
+    );
     return true;
   }
   if (req.url === '/api/hosts/action' && req.method === 'POST') {

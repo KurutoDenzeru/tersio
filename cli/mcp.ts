@@ -1,7 +1,16 @@
 // The MCP server: one stdio endpoint so any MCP client can read Tersio's data and steer its modes.
 import { createInterface } from 'node:readline';
 import { readActivity } from './activity.ts';
-import { CAVEMAN_DEFAULTS, COMBO_DEFAULTS, HEADROOM_DEFAULTS, PACKAGE_VERSION, PONYTAIL_DEFAULTS, PSTACK_DEFAULTS, RTK_DEFAULTS, execFileP } from './common.ts';
+import {
+  CAVEMAN_DEFAULTS,
+  COMBO_DEFAULTS,
+  HEADROOM_DEFAULTS,
+  PACKAGE_VERSION,
+  PONYTAIL_DEFAULTS,
+  PSTACK_DEFAULTS,
+  RTK_DEFAULTS,
+  execFileP,
+} from './common.ts';
 import { resolveHeadroomBinary } from '../extensions/shared/utils.ts';
 import { formatCurrency, readStoredCurrency } from './currency.ts';
 import { agentStats } from '../extensions/shared/agent-snapshot.ts';
@@ -23,7 +32,10 @@ const PROTOCOL_VERSION = '2025-06-18';
 const SUPPORTED_PROTOCOLS: ReadonlySet<string> = new Set([PROTOCOL_VERSION, '2025-03-26', '2024-11-05']);
 
 class RpcError extends Error {
-  constructor(readonly code: number, message: string) {
+  constructor(
+    readonly code: number,
+    message: string,
+  ) {
     super(message);
   }
 }
@@ -76,7 +88,9 @@ interface ModeWants {
 async function captureLog<T>(fn: () => Promise<T>): Promise<{ value: T; text: string }> {
   const lines: string[] = [];
   const original = console.log;
-  console.log = (...args: unknown[]) => { lines.push(args.map(String).join(' ')); };
+  console.log = (...args: unknown[]) => {
+    lines.push(args.map(String).join(' '));
+  };
   try {
     const value = await fn();
     return { value, text: lines.join('\n') };
@@ -99,18 +113,31 @@ function statsText(range: RangeKey): string {
     lines.push(`Model ${model.key}: ${shortCount(model.total)} tokens, ${formatCurrency(model.costUsd, currency)}`);
   }
   for (const provider of stats.byProvider.slice(0, 3)) {
-    lines.push(`Provider ${provider.provider}: ${shortCount(provider.total)} tokens, ${formatCurrency(provider.costUsd, currency)}`);
+    lines.push(
+      `Provider ${provider.provider}: ${shortCount(provider.total)} tokens, ${formatCurrency(provider.costUsd, currency)}`,
+    );
   }
   return lines.join('\n');
 }
 
 function activityText(limit: number): string {
   const entries = readActivity(limit);
-  if (entries.length === 0) return 'No activity recorded yet. The log fills as Tersio changes modes, installs, or updates.';
-  return entries.map((e) => `${new Date(e.at).toISOString()} [${e.kind}] ${e.title}${e.detail ? ` — ${e.detail}` : ''}`).join('\n');
+  if (entries.length === 0)
+    return 'No activity recorded yet. The log fills as Tersio changes modes, installs, or updates.';
+  return entries
+    .map((e) => `${new Date(e.at).toISOString()} [${e.kind}] ${e.title}${e.detail ? ` — ${e.detail}` : ''}`)
+    .join('\n');
 }
 
-function hostRows(): Array<{ id: string; label: string; installed: boolean; version: string | null; mcp: boolean; supported: boolean; hint: string }> {
+function hostRows(): Array<{
+  id: string;
+  label: string;
+  installed: boolean;
+  version: string | null;
+  mcp: boolean;
+  supported: boolean;
+  hint: string;
+}> {
   return detectHosts().map((host) => ({
     id: host.id,
     label: host.label,
@@ -128,7 +155,11 @@ function hostsText(): string {
     `Tersio ${PACKAGE_VERSION} — ${rows.filter((row) => row.installed).length} of ${rows.length} agents installed`,
     ...rows.map((row) => {
       const state = row.installed ? `installed${row.version ? ` ${row.version}` : ''}` : 'not installed';
-      const mcp = row.mcp ? 'MCP wired' : row.supported ? 'MCP not wired — run `tersio install --host ' + row.id + '`' : 'MCP not wired';
+      const mcp = row.mcp
+        ? 'MCP wired'
+        : row.supported
+          ? 'MCP not wired — run `tersio install --host ' + row.id + '`'
+          : 'MCP not wired';
       return `${row.label} (${row.id}): ${state} · ${mcp}`;
     }),
   ].join('\n');
@@ -137,15 +168,18 @@ function hostsText(): string {
 /** The newest sessions behind the usage numbers, so an agent can see what it has been costing. */
 function sessionsText(range: RangeKey, limit: number): string {
   const stats = agentStats(range, 'summary');
-  if (!stats.available) return `No sessions for ${range} yet. Sessions appear once an agent runs with Tersio installed.`;
+  if (!stats.available)
+    return `No sessions for ${range} yet. Sessions appear once an agent runs with Tersio installed.`;
   const rows = stats.traces.toSorted((a, b) => b.lastTs - a.lastTs).slice(0, limit);
   if (rows.length === 0) return `No sessions in the last ${range}.`;
   const currency = readStoredCurrency();
-  return rows.map((row) => {
-    const when = new Date(row.lastTs).toISOString().slice(0, 16).replace('T', ' ');
-    const models = row.models.slice(0, 2).join(', ') || 'unknown model';
-    return `${when} · ${hostOfSessionFile(row.sessionFile)} · ${row.project} · ${models} · ${row.requests} req · ${shortCount(row.tokens)} tokens · ${formatCurrency(row.costUsd, currency)}${row.subagents > 0 ? ` · ${row.subagents} subagent(s)` : ''}`;
-  }).join('\n');
+  return rows
+    .map((row) => {
+      const when = new Date(row.lastTs).toISOString().slice(0, 16).replace('T', ' ');
+      const models = row.models.slice(0, 2).join(', ') || 'unknown model';
+      return `${when} · ${hostOfSessionFile(row.sessionFile)} · ${row.project} · ${models} · ${row.requests} req · ${shortCount(row.tokens)} tokens · ${formatCurrency(row.costUsd, currency)}${row.subagents > 0 ? ` · ${row.subagents} subagent(s)` : ''}`;
+    })
+    .join('\n');
 }
 
 async function modesText(want: ModeWants, host: HostId | null): Promise<string> {
@@ -169,10 +203,12 @@ async function modesText(want: ModeWants, host: HostId | null): Promise<string> 
     return `Current session defaults${scope}: ${formatProfile(next)}. Pass combo (${[...COMBO_DEFAULTS].join(', ')}) or any single mode — caveman, rtk, ponytail, pstack, headroom — to change them${host ? `, and host to scope them to one agent` : ''}.`;
   }
   // A host argument writes that agent's own section, which wins over the shared store at session start.
-  const { text } = await captureLog(() => (host
-    ? saveHostDefaults(host, fields, next, { quiet: true })
-    : writePluginSettings(next, { quiet: true })));
-  return [text, `Session defaults${host ? ` for ${host}` : ''} saved: ${formatProfile(next)}`].filter(Boolean).join('\n');
+  const { text } = await captureLog(() =>
+    host ? saveHostDefaults(host, fields, next, { quiet: true }) : writePluginSettings(next, { quiet: true }),
+  );
+  return [text, `Session defaults${host ? ` for ${host}` : ''} saved: ${formatProfile(next)}`]
+    .filter(Boolean)
+    .join('\n');
 }
 
 /** One combined read: live proxy counters, compression routing, durable savings, and MCP wiring. */
@@ -207,7 +243,8 @@ async function retrieveText(hash: string, signal?: AbortSignal): Promise<{ text:
       signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
     });
     const body = await response.text();
-    if (!response.ok) return { text: `Headroom retrieve failed (HTTP ${response.status}): ${body.trim() || hash}`, isError: true };
+    if (!response.ok)
+      return { text: `Headroom retrieve failed (HTTP ${response.status}): ${body.trim() || hash}`, isError: true };
     const parsed = JSON.parse(body) as Record<string, unknown>;
     const original = parsed.original_content ?? parsed.content;
     return { text: typeof original === 'string' ? original : JSON.stringify(parsed, null, 2), isError: false };
@@ -220,15 +257,23 @@ async function retrieveText(hash: string, signal?: AbortSignal): Promise<{ text:
 const TOOLS = [
   {
     name: 'tersio_stats',
-    description: 'Agent usage for a time range: requests, errors, tokens, cache rate, cost, and the top models and providers.',
+    description:
+      'Agent usage for a time range: requests, errors, tokens, cache rate, cost, and the top models and providers.',
     inputSchema: {
       type: 'object',
-      properties: { range: { type: 'string', enum: [...RANGES], description: `Time range, default 24h. One of ${RANGES.join(', ')}.` } },
+      properties: {
+        range: {
+          type: 'string',
+          enum: [...RANGES],
+          description: `Time range, default 24h. One of ${RANGES.join(', ')}.`,
+        },
+      },
     },
   },
   {
     name: 'tersio_activity',
-    description: 'What Tersio changed on this machine, newest first: mode switches, installs, updates, removals, doctor runs.',
+    description:
+      'What Tersio changed on this machine, newest first: mode switches, installs, updates, removals, doctor runs.',
     inputSchema: {
       type: 'object',
       properties: { limit: { type: 'number', description: 'Entries to return, 1-200, default 20.' } },
@@ -236,43 +281,76 @@ const TOOLS = [
   },
   {
     name: 'tersio_hosts',
-    description: 'Every agent Tersio supports, its installed version, and whether the Tersio MCP server is wired into it. The first call to reach for when a tool is missing or an install looks stale.',
+    description:
+      'Every agent Tersio supports, its installed version, and whether the Tersio MCP server is wired into it. The first call to reach for when a tool is missing or an install looks stale.',
     inputSchema: { type: 'object', properties: {} },
   },
   {
     name: 'tersio_sessions',
-    description: 'The newest agent sessions behind the usage numbers: when, which agent, project, model, requests, tokens, and cost.',
+    description:
+      'The newest agent sessions behind the usage numbers: when, which agent, project, model, requests, tokens, and cost.',
     inputSchema: {
       type: 'object',
       properties: {
-        range: { type: 'string', enum: [...RANGES], description: `Time range, default 24h. One of ${RANGES.join(', ')}.` },
+        range: {
+          type: 'string',
+          enum: [...RANGES],
+          description: `Time range, default 24h. One of ${RANGES.join(', ')}.`,
+        },
         limit: { type: 'number', description: 'Sessions to return, 1-50, default 10.' },
       },
     },
   },
   {
     name: 'tersio_modes',
-    description: 'Read the session-start mode defaults, or set them: combo applies a preset, and any single mode (caveman, rtk, ponytail, pstack, headroom) overrides its piece of that preset. Pass host to scope the change to one agent.',
+    description:
+      'Read the session-start mode defaults, or set them: combo applies a preset, and any single mode (caveman, rtk, ponytail, pstack, headroom) overrides its piece of that preset. Pass host to scope the change to one agent.',
     inputSchema: {
       type: 'object',
       properties: {
-        combo: { type: 'string', enum: [...COMBO_DEFAULTS], description: `Combo preset to apply: ${[...COMBO_DEFAULTS].join(', ')}.` },
-        caveman: { type: 'string', enum: [...CAVEMAN_DEFAULTS], description: `Caveman reply level: ${[...CAVEMAN_DEFAULTS].join(', ')}.` },
+        combo: {
+          type: 'string',
+          enum: [...COMBO_DEFAULTS],
+          description: `Combo preset to apply: ${[...COMBO_DEFAULTS].join(', ')}.`,
+        },
+        caveman: {
+          type: 'string',
+          enum: [...CAVEMAN_DEFAULTS],
+          description: `Caveman reply level: ${[...CAVEMAN_DEFAULTS].join(', ')}.`,
+        },
         rtk: { type: 'string', enum: [...RTK_DEFAULTS], description: 'Condensed shell output: on or off.' },
-        ponytail: { type: 'string', enum: [...PONYTAIL_DEFAULTS], description: `Lean-code level: ${[...PONYTAIL_DEFAULTS].join(', ')}.` },
+        ponytail: {
+          type: 'string',
+          enum: [...PONYTAIL_DEFAULTS],
+          description: `Lean-code level: ${[...PONYTAIL_DEFAULTS].join(', ')}.`,
+        },
         pstack: { type: 'string', enum: [...PSTACK_DEFAULTS], description: 'Rigor mode: on or off.' },
-        headroom: { type: 'string', enum: [...HEADROOM_DEFAULTS], description: 'Headroom token-saver mode: on or off. Opt-in; tracks the user\'s own Headroom install.' },
-        host: { type: 'string', enum: tersioMcpHosts(), description: 'Scope the read or the write to one agent. Omit it to read or write the shared defaults every agent inherits.' },
+        headroom: {
+          type: 'string',
+          enum: [...HEADROOM_DEFAULTS],
+          description: "Headroom token-saver mode: on or off. Opt-in; tracks the user's own Headroom install.",
+        },
+        host: {
+          type: 'string',
+          enum: tersioMcpHosts(),
+          description:
+            'Scope the read or the write to one agent. Omit it to read or write the shared defaults every agent inherits.',
+        },
       },
     },
   },
   {
     name: 'tersio_headroom',
-    description: 'Headroom, the token saver: savings by default, live proxy counters and routing with status, original content by hash with retrieve, or its memory store, an eval suite, and the savings dashboard. Unmeasured when Headroom is not installed.',
+    description:
+      'Headroom, the token saver: savings by default, live proxy counters and routing with status, original content by hash with retrieve, or its memory store, an eval suite, and the savings dashboard. Unmeasured when Headroom is not installed.',
     inputSchema: {
       type: 'object',
       properties: {
-        action: { type: 'string', enum: ['savings', 'status', 'retrieve', 'memory', 'evals', 'dashboard'], description: 'What to ask headroom for. savings is the default. retrieve needs hash.' },
+        action: {
+          type: 'string',
+          enum: ['savings', 'status', 'retrieve', 'memory', 'evals', 'dashboard'],
+          description: 'What to ask headroom for. savings is the default. retrieve needs hash.',
+        },
         suite: { type: 'string', description: 'With evals: the suite name, as `headroom evals --help` lists them.' },
         hash: { type: 'string', description: 'With retrieve: the hash from a <<ccr:HASH>> compression marker.' },
       },
@@ -280,12 +358,16 @@ const TOOLS = [
   },
 ] as const;
 
-async function callTool(params: unknown, signal?: AbortSignal): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
+async function callTool(
+  params: unknown,
+  signal?: AbortSignal,
+): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
   const call = (params ?? {}) as { name?: unknown; arguments?: unknown };
   const name = typeof call.name === 'string' ? call.name : null;
   const args = (call.arguments ?? {}) as StatsToolArgs & ActivityToolArgs & ModesToolArgs & HeadroomToolArgs;
   if (name === 'tersio_stats') {
-    if (args.range !== undefined && !isRangeKey(args.range)) throw new RpcError(-32602, `range must be one of ${RANGES.join(', ')}`);
+    if (args.range !== undefined && !isRangeKey(args.range))
+      throw new RpcError(-32602, `range must be one of ${RANGES.join(', ')}`);
     return { content: [{ type: 'text', text: statsText(isRangeKey(args.range) ? args.range : '24h') }] };
   }
   if (name === 'tersio_activity') {
@@ -295,7 +377,8 @@ async function callTool(params: unknown, signal?: AbortSignal): Promise<{ conten
   }
   if (name === 'tersio_hosts') return { content: [{ type: 'text', text: hostsText() }] };
   if (name === 'tersio_sessions') {
-    if (args.range !== undefined && !isRangeKey(args.range)) throw new RpcError(-32602, `range must be one of ${RANGES.join(', ')}`);
+    if (args.range !== undefined && !isRangeKey(args.range))
+      throw new RpcError(-32602, `range must be one of ${RANGES.join(', ')}`);
     const limit = args.limit === undefined ? 10 : Math.min(50, Math.max(1, Math.round(Number(args.limit))));
     if (!Number.isFinite(limit)) throw new RpcError(-32602, 'limit must be a number');
     return { content: [{ type: 'text', text: sessionsText(isRangeKey(args.range) ? args.range : '24h', limit) }] };
@@ -304,7 +387,8 @@ async function callTool(params: unknown, signal?: AbortSignal): Promise<{ conten
     // One validated value per mode; the sets are the same ones the CLI flags and Settings dialog use.
     const oneOf = (value: unknown, set: Set<string>, label: string): string | null => {
       if (value === undefined) return null;
-      if (typeof value !== 'string' || !set.has(value)) throw new RpcError(-32602, `${label} must be one of ${[...set].join(', ')}`);
+      if (typeof value !== 'string' || !set.has(value))
+        throw new RpcError(-32602, `${label} must be one of ${[...set].join(', ')}`);
       return value;
     };
     const rtkOrPstack = (value: unknown, set: Set<string>, label: string): 'on' | 'off' | null => {
@@ -320,14 +404,16 @@ async function callTool(params: unknown, signal?: AbortSignal): Promise<{ conten
       headroom: rtkOrPstack(args.headroom, HEADROOM_DEFAULTS, 'headroom'),
     };
     const asked = args.host === undefined ? null : String(args.host);
-    if (asked !== null && hostCap(asked) === null) throw new RpcError(-32602, `host must be one of ${tersioMcpHosts().join(', ')}`);
+    if (asked !== null && hostCap(asked) === null)
+      throw new RpcError(-32602, `host must be one of ${tersioMcpHosts().join(', ')}`);
     const host = asked as HostId | null;
     return { content: [{ type: 'text', text: await modesText(want, host) }] };
   }
   if (name === 'tersio_headroom') {
     // Upstream owns these surfaces; Tersio passes the command through and returns its tail.
     const action = args.action ?? 'savings';
-    if (!['savings', 'status', 'retrieve', 'memory', 'evals', 'dashboard'].includes(action)) throw new RpcError(-32602, 'action must be savings, status, retrieve, memory, evals, or dashboard');
+    if (!['savings', 'status', 'retrieve', 'memory', 'evals', 'dashboard'].includes(action))
+      throw new RpcError(-32602, 'action must be savings, status, retrieve, memory, evals, or dashboard');
     if (action === 'status') return { content: [{ type: 'text', text: headroomStatusText() }] };
     if (action === 'retrieve') {
       const hash = typeof args.hash === 'string' ? args.hash.trim() : '';
@@ -337,23 +423,53 @@ async function callTool(params: unknown, signal?: AbortSignal): Promise<{ conten
     }
     if (action !== 'savings') {
       const bin = resolveHeadroomBinary();
-      if (!bin) return { content: [{ type: 'text', text: 'Headroom: not installed — install it from the dashboard Tools page, or run pip install "headroom-ai[all]".' }] };
-      const argv = action === 'dashboard' ? ['dashboard'] : action === 'memory' ? ['memory', 'stats'] : ['evals', ...(typeof args.suite === 'string' && args.suite ? [args.suite] : [])];
+      if (!bin)
+        return {
+          content: [
+            {
+              type: 'text',
+              text: 'Headroom: not installed — install it from the dashboard Tools page, or run pip install "headroom-ai[all]".',
+            },
+          ],
+        };
+      const argv =
+        action === 'dashboard'
+          ? ['dashboard']
+          : action === 'memory'
+            ? ['memory', 'stats']
+            : ['evals', ...(typeof args.suite === 'string' && args.suite ? [args.suite] : [])];
       try {
         const run = await execFileP(bin, argv, { timeout: 120_000, signal });
-        return { content: [{ type: 'text', text: (`${run.stdout}\n${run.stderr}`.trim() || `headroom ${argv.join(' ')}: done`) }] };
+        return {
+          content: [
+            { type: 'text', text: `${run.stdout}\n${run.stderr}`.trim() || `headroom ${argv.join(' ')}: done` },
+          ],
+        };
       } catch (e) {
         const err = e as { stdout?: string; stderr?: string; message?: string };
         const said = `${err.stdout ?? ''}\n${err.stderr ?? ''}`.trim();
-        return { isError: true, content: [{ type: 'text', text: said || err.message || `headroom ${argv.join(' ')} failed` }] };
+        return {
+          isError: true,
+          content: [{ type: 'text', text: said || err.message || `headroom ${argv.join(' ')} failed` }],
+        };
       }
     }
     const gain = readHeadroomSavings();
-    if (!gain.measured) return { content: [{ type: 'text', text: `Headroom savings: not measured — ${gain.failure}. Install Headroom, then wrap your tools (headroom wrap <tool>, or the switch on the dashboard) so their traffic flows through it.` }] };
+    if (!gain.measured)
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Headroom savings: not measured — ${gain.failure}. Install Headroom, then wrap your tools (headroom wrap <tool>, or the switch on the dashboard) so their traffic flows through it.`,
+          },
+        ],
+      };
     const lines = [
       `Headroom savings — lifetime: ${gain.lifetime.tokensSaved.toLocaleString()} of ${gain.lifetime.tokensBefore.toLocaleString()} tokens (${gain.lifetime.savingsPercent.toFixed(1)}%), $${gain.lifetime.costUsd.toFixed(4)} avoided across ${gain.lifetime.calls} calls.`,
       `Today: ${gain.windows.today.tokensSaved.toLocaleString()} tokens · 7 days: ${gain.windows.last7Days.tokensSaved.toLocaleString()} · 30 days: ${gain.windows.last30Days.tokensSaved.toLocaleString()}.`,
-      ...gain.byClient.map((row) => `${row.client}: ${row.calls} calls · ${row.tokensSaved.toLocaleString()} tokens saved`),
+      ...gain.byClient.map(
+        (row) => `${row.client}: ${row.calls} calls · ${row.tokensSaved.toLocaleString()} tokens saved`,
+      ),
     ];
     return { content: [{ type: 'text', text: lines.join('\n') }] };
   }
@@ -367,12 +483,23 @@ const inflight = new Map<string, AbortController>();
 
 /** Read-only snapshots a client can pull without spending a tool call. */
 const RESOURCES = [
-  { uri: 'tersio://settings', name: 'Session defaults', description: 'The stored mode defaults, currency, and dashboard preferences.', mimeType: 'application/json' },
-  { uri: 'tersio://hosts', name: 'Agent hosts', description: 'Every supported agent, its installed version, and whether the Tersio MCP server is wired into it.', mimeType: 'application/json' },
+  {
+    uri: 'tersio://settings',
+    name: 'Session defaults',
+    description: 'The stored mode defaults, currency, and dashboard preferences.',
+    mimeType: 'application/json',
+  },
+  {
+    uri: 'tersio://hosts',
+    name: 'Agent hosts',
+    description: 'Every supported agent, its installed version, and whether the Tersio MCP server is wired into it.',
+    mimeType: 'application/json',
+  },
 ];
 
 async function readResource(uri: string): Promise<{ uri: string; mimeType: string; text: string }> {
-  if (uri === 'tersio://settings') return { uri, mimeType: 'application/json', text: JSON.stringify(await storedProfile(), null, 2) };
+  if (uri === 'tersio://settings')
+    return { uri, mimeType: 'application/json', text: JSON.stringify(await storedProfile(), null, 2) };
   if (uri === 'tersio://hosts') return { uri, mimeType: 'application/json', text: JSON.stringify(hostRows(), null, 2) };
   throw new RpcError(-32602, `unknown resource: ${uri}`);
 }
@@ -400,7 +527,8 @@ export async function handleMessage(message: WireMessage, send: (msg: unknown) =
         protocolVersion: typeof asked === 'string' && SUPPORTED_PROTOCOLS.has(asked) ? asked : PROTOCOL_VERSION,
         capabilities: { tools: {}, resources: {} },
         serverInfo: { name: 'tersio', version: PACKAGE_VERSION },
-        instructions: 'Tersio watches this machine\'s agent sessions. Ask for usage with tersio_stats, the newest sessions with tersio_sessions, recent changes with tersio_activity, which agents are wired with tersio_hosts, read or set session modes with tersio_modes, and Headroom compression savings with tersio_headroom.',
+        instructions:
+          "Tersio watches this machine's agent sessions. Ask for usage with tersio_stats, the newest sessions with tersio_sessions, recent changes with tersio_activity, which agents are wired with tersio_hosts, read or set session modes with tersio_modes, and Headroom compression savings with tersio_headroom.",
       };
     } else if (method === 'ping') result = {};
     else if (method === 'tools/list') result = { tools: TOOLS };
@@ -436,7 +564,9 @@ export async function runMcpServer(): Promise<void> {
     let message: WireMessage | null = null;
     try {
       message = JSON.parse(text) as WireMessage;
-    } catch { /* a malformed line is dropped; the client's own timeout surfaces it */ }
+    } catch {
+      /* a malformed line is dropped; the client's own timeout surfaces it */
+    }
     // A client may call tools in parallel, and the printing tools patch the console, so one handler at a time; an overlapping patch could leak a print onto the wire.
     if (message) queue = queue.then(() => handleMessage(message, mcpSend));
   });

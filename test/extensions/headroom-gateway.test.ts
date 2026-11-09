@@ -93,7 +93,11 @@ test('a gateway the user moved after routing is left alone', () => {
     const file = writeOmp(home, MODELS);
     expect(routeOmpGateway({ provider: 'magpie', baseUrl: 'http://127.0.0.1:3425/v1', model: null }, 8787)).toBe(true);
     // Something else rewrote the line after Tersio: the marker is stale, so the value wins.
-    writeFileSync(file, readFileSync(file, 'utf8').replace('baseUrl: http://127.0.0.1:8787/v1', 'baseUrl: http://127.0.0.1:5555/v1'), 'utf8');
+    writeFileSync(
+      file,
+      readFileSync(file, 'utf8').replace('baseUrl: http://127.0.0.1:8787/v1', 'baseUrl: http://127.0.0.1:5555/v1'),
+      'utf8',
+    );
     expect(restoreOmpGateway(8787)).toBe(false);
     expect(readFileSync(file, 'utf8')).toContain('http://127.0.0.1:5555/v1');
   });

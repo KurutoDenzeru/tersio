@@ -1,21 +1,29 @@
 // Traces: one row per root session, its subagent transcripts folded in. Opening one opens its flamegraph.
-import { useMemo, useState } from "react";
-import { Card, CellBar, PagedTable, Page, PageHeader, SearchInput } from "@/components/charts";
-import type { Column } from "@/components/charts";
-import { EmptyState } from "@/components/common";
-import { VendorMark } from "@/components/brand";
-import type { AgentStats, AgentTraceRow } from "@/lib/data";
-import { displayModel, fmt, fmtElapsed, fmtShort, projectLabel, relAge, stampLocal } from "@/lib/format";
+import { useMemo, useState } from "react"
+import { Card, CellBar, PagedTable, Page, PageHeader, SearchInput } from "@/components/charts"
+import type { Column } from "@/components/charts"
+import { EmptyState } from "@/components/common"
+import { VendorMark } from "@/components/brand"
+import type { AgentStats, AgentTraceRow } from "@/lib/data"
+import {
+  displayModel,
+  fmt,
+  fmtElapsed,
+  fmtShort,
+  projectLabel,
+  relAge,
+  stampLocal,
+} from "@/lib/format"
 
 /** The last two segments of a path, the way the reference names a session's folder. */
 function shortFolder(path: string): string {
-  const parts = path.split(/[/\\]/).filter(Boolean);
-  return parts.slice(-2).join("/");
+  const parts = path.split(/[/\\]/).filter(Boolean)
+  return parts.slice(-2).join("/")
 }
 
 /** The first model a session ran, with a count of the rest, and every name in a hover tip. */
 function ModelList({ models }: { models: string[] }) {
-  if (models.length === 0) return <span className="text-dim">-</span>;
+  if (models.length === 0) return <span className="text-dim">-</span>
   return (
     <span className="flex min-w-0 items-center gap-1.5" title={models.join("\n")}>
       <VendorMark model={models[0]} tiny />
@@ -26,7 +34,7 @@ function ModelList({ models }: { models: string[] }) {
         </span>
       )}
     </span>
-  );
+  )
 }
 
 export function TracesPage({
@@ -34,25 +42,25 @@ export function TracesPage({
   money,
   onOpenSession,
 }: {
-  agent: AgentStats;
-  money: (v: number) => string;
-  onOpenSession: (sessionFile: string) => void;
+  agent: AgentStats
+  money: (v: number) => string
+  onOpenSession: (sessionFile: string) => void
 }) {
-  const [filter, setFilter] = useState("");
+  const [filter, setFilter] = useState("")
 
   const filtered = useMemo(() => {
-    const needle = filter.trim().toLowerCase();
-    if (!needle) return agent.traces;
+    const needle = filter.trim().toLowerCase()
+    if (!needle) return agent.traces
     return agent.traces.filter(
       (row) =>
         (row.title ?? "").toLowerCase().includes(needle) ||
         (row.cwd || row.project).toLowerCase().includes(needle) ||
         row.sessionFile.toLowerCase().includes(needle) ||
         row.models.some((model) => model.toLowerCase().includes(needle)),
-    );
-  }, [agent.traces, filter]);
+    )
+  }, [agent.traces, filter])
 
-  const maxCost = useMemo(() => Math.max(0, ...filtered.map((row) => row.costUsd)), [filtered]);
+  const maxCost = useMemo(() => Math.max(0, ...filtered.map((row) => row.costUsd)), [filtered])
 
   const columns = useMemo<Array<Column<AgentTraceRow>>>(
     () => [
@@ -64,7 +72,10 @@ export function TracesPage({
             <span className="block truncate" title={row.sessionFile}>
               {row.title ?? row.sessionFile.split("/").pop() ?? row.sessionFile}
             </span>
-            <span className="mono block truncate text-[11px] text-dim" title={row.cwd || projectLabel(row.project)}>
+            <span
+              className="mono block truncate text-[11px] text-dim"
+              title={row.cwd || projectLabel(row.project)}
+            >
               {shortFolder(row.cwd || row.project)}
             </span>
           </span>
@@ -92,7 +103,9 @@ export function TracesPage({
         key: "duration",
         header: "Duration",
         align: "right",
-        render: (row) => <span className="mono text-xs tabular-nums">{fmtElapsed(row.lastTs - row.firstTs)}</span>,
+        render: (row) => (
+          <span className="mono text-xs tabular-nums">{fmtElapsed(row.lastTs - row.firstTs)}</span>
+        ),
         sort: (row) => row.lastTs - row.firstTs,
       },
       {
@@ -134,7 +147,10 @@ export function TracesPage({
         align: "right",
         width: 150,
         render: (row) => (
-          <span className="flex flex-col items-end gap-1" title={row.unpriced > 0 ? `${fmt(row.unpriced)} unpriced requests` : undefined}>
+          <span
+            className="flex flex-col items-end gap-1"
+            title={row.unpriced > 0 ? `${fmt(row.unpriced)} unpriced requests` : undefined}
+          >
             <span className="mono text-xs tabular-nums">
               {row.costUsd === 0 && row.unpriced > 0 ? "N/A" : money(row.costUsd)}
             </span>
@@ -145,9 +161,9 @@ export function TracesPage({
       },
     ],
     [maxCost, money],
-  );
+  )
 
-  const total = agent.traces.length;
+  const total = agent.traces.length
 
   return (
     <Page>
@@ -156,8 +172,13 @@ export function TracesPage({
         description="Recent sessions with subagent activity folded in. Open one to inspect its timeline."
       />
       <Card
-        title="Sessions" icon="square-chart-gantt"
-        description={filter.trim() ? `${fmt(filtered.length)} of ${fmt(total)} most recent` : `${fmt(total)} most recent`}
+        title="Sessions"
+        icon="square-chart-gantt"
+        description={
+          filter.trim()
+            ? `${fmt(filtered.length)} of ${fmt(total)} most recent`
+            : `${fmt(total)} most recent`
+        }
         actions={
           <SearchInput
             value={filter}
@@ -187,5 +208,5 @@ export function TracesPage({
         />
       </Card>
     </Page>
-  );
+  )
 }

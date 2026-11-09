@@ -58,9 +58,18 @@ function tempAgentDir(models: string, config: string): string {
 
 describe('omp route parsing', () => {
   test('reads provider and model-level base URLs for one model', () => {
-    expect(ompModelRoute(MODELS, 'commandcode/deepseek/deepseek-v4.1-flash')).toEqual({ provider: 'magpie', baseUrl: 'http://127.0.0.1:3425/v1' });
-    expect(ompModelRoute(MODELS, 'kiro/claude-haiku-4.5')).toEqual({ provider: 'magpie', baseUrl: 'http://127.0.0.1:3425' });
-    expect(ompModelRoute(MODELS, 'claude-sonnet-4-5')).toEqual({ provider: 'anthropic', baseUrl: 'http://127.0.0.1:8787' });
+    expect(ompModelRoute(MODELS, 'commandcode/deepseek/deepseek-v4.1-flash')).toEqual({
+      provider: 'magpie',
+      baseUrl: 'http://127.0.0.1:3425/v1',
+    });
+    expect(ompModelRoute(MODELS, 'kiro/claude-haiku-4.5')).toEqual({
+      provider: 'magpie',
+      baseUrl: 'http://127.0.0.1:3425',
+    });
+    expect(ompModelRoute(MODELS, 'claude-sonnet-4-5')).toEqual({
+      provider: 'anthropic',
+      baseUrl: 'http://127.0.0.1:8787',
+    });
   });
 
   test('reads the default role and strips an effort suffix only for lookup', () => {
@@ -78,7 +87,10 @@ describe('omp route parsing', () => {
 });
 
 describe('manual route parsing', () => {
-  const piSettings = JSON.stringify({ defaultProvider: 'magpie', defaultModel: 'commandcode/deepseek/deepseek-v4.1-flash' });
+  const piSettings = JSON.stringify({
+    defaultProvider: 'magpie',
+    defaultModel: 'commandcode/deepseek/deepseek-v4.1-flash',
+  });
   const piModels = JSON.stringify({ providers: { magpie: { baseUrl: 'http://127.0.0.1:3425/v1' } } });
 
   test('reads the Pi provider from its settings and model list', () => {
@@ -128,7 +140,11 @@ describe('manual route parsing', () => {
   });
 
   test('reports an unmeasured dsh route when the profile names no provider', () => {
-    const route = dshRouteFrom('llm-pi-ai:\n  providers:\n    magpie:\n      baseURL: http://127.0.0.1:3425/v1\n', '', PROXY);
+    const route = dshRouteFrom(
+      'llm-pi-ai:\n  providers:\n    magpie:\n      baseURL: http://127.0.0.1:3425/v1\n',
+      '',
+      PROXY,
+    );
     expect(route.measured).toBe(false);
     expect(describeHeadroomRoute(route)).toContain('route unknown');
   });
@@ -145,7 +161,9 @@ wire_api = "responses"
 `;
 
   test('reads the active endpoint and recognizes the proxy', () => {
-    expect(codexRouteFrom(`model = "gpt-6-luna"
+    expect(
+      codexRouteFrom(
+        `model = "gpt-6-luna"
 model_provider = "headroom"
 openai_base_url = "http://127.0.0.1:8787/v1"
 
@@ -153,7 +171,10 @@ openai_base_url = "http://127.0.0.1:8787/v1"
 name = "OpenAI"
 base_url = "http://127.0.0.1:8787/v1"
 wire_api = "responses"
-`, PROXY)).toMatchObject({
+`,
+        PROXY,
+      ),
+    ).toMatchObject({
       model: 'gpt-6-luna',
       provider: 'headroom',
       baseUrl: 'http://127.0.0.1:8787/v1',
@@ -203,10 +224,14 @@ describe('readHeadroomRoute', () => {
     process.env.USERPROFILE = home;
     try {
       mkdirSync(path.join(home, '.config', 'opencode'), { recursive: true });
-      writeFileSync(path.join(home, '.config', 'opencode', 'opencode.json'), JSON.stringify({
-        model: 'headroom/gpt-4o',
-        provider: { headroom: { options: { baseURL: 'http://127.0.0.1:8787/v1' } } },
-      }), 'utf8');
+      writeFileSync(
+        path.join(home, '.config', 'opencode', 'opencode.json'),
+        JSON.stringify({
+          model: 'headroom/gpt-4o',
+          provider: { headroom: { options: { baseURL: 'http://127.0.0.1:8787/v1' } } },
+        }),
+        'utf8',
+      );
       const route = readHeadroomRoute('opencode', PROXY);
       expect(route.measured).toBe(true);
       expect(route.routed).toBe(true);
@@ -231,7 +256,11 @@ describe('pi providers from the agent catalog', () => {
   function tempPiHome(providers: Record<string, unknown>): string {
     const home = mkdtempSync(path.join(os.tmpdir(), 'tersio-pi-catalog-'));
     mkdirSync(path.join(home, '.pi', 'agent'), { recursive: true });
-    writeFileSync(path.join(home, '.pi', 'agent', 'settings.json'), JSON.stringify({ defaultProvider: 'opencode', defaultModel: 'beam-free' }), 'utf8');
+    writeFileSync(
+      path.join(home, '.pi', 'agent', 'settings.json'),
+      JSON.stringify({ defaultProvider: 'opencode', defaultModel: 'beam-free' }),
+      'utf8',
+    );
     writeFileSync(path.join(home, '.pi', 'agent', 'models.json'), JSON.stringify({ providers }), 'utf8');
     writeFileSync(path.join(home, '.pi', 'agent', 'models-store.json'), CATALOG, 'utf8');
     process.env.HOME = home;

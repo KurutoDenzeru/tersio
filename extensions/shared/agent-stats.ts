@@ -4,12 +4,33 @@ import path from 'node:path';
 import { sqliteRead } from './sqlite.ts';
 import { COL, SOURCE, folderExpr } from './agent-sql.ts';
 import type {
-  AgentBucket, AgentCostMix, AgentErrorGroup, AgentErrorModelRow, AgentHeadroom,
-  AgentModelPerformancePoint, AgentOverall, AgentProviderHour, AgentRequestRow, AgentRequestStats,
-  AgentRow, AgentRtk, AgentSessionTrace, AgentStats, AgentTokenMix, AgentToolRow, AgentTraceMarker,
-  AgentTraceRow, AgentTraceSpan, AgentTraceSummary, AgentTraceToolStat,
-  AgentView, AgentWindowInsight, AgentWindowPoint, AgentWindowSeries,
-  JournalAgent, RangeKey,
+  AgentBucket,
+  AgentCostMix,
+  AgentErrorGroup,
+  AgentErrorModelRow,
+  AgentHeadroom,
+  AgentModelPerformancePoint,
+  AgentOverall,
+  AgentProviderHour,
+  AgentRequestRow,
+  AgentRequestStats,
+  AgentRow,
+  AgentRtk,
+  AgentSessionTrace,
+  AgentStats,
+  AgentTokenMix,
+  AgentToolRow,
+  AgentTraceMarker,
+  AgentTraceRow,
+  AgentTraceSpan,
+  AgentTraceSummary,
+  AgentTraceToolStat,
+  AgentView,
+  AgentWindowInsight,
+  AgentWindowPoint,
+  AgentWindowSeries,
+  JournalAgent,
+  RangeKey,
 } from './agent-types.ts';
 import { homeDir } from './utils.ts';
 import { usageDbPath } from './usage-store.ts';
@@ -21,8 +42,6 @@ import { hostOfSessionFile, readRtkAdoption, readSessionText, usdCost } from './
 import type { RtkAdoption } from './usage-ledger.ts';
 import { codexModelIdentity, looksLikeCodexTranscript, parseCodexTranscript } from './codex-transcript.ts';
 
-
-
 export const RANGES: readonly RangeKey[] = ['1h', '24h', '7d', '30d', '90d', 'all'];
 
 export function isRangeKey(v: unknown): v is RangeKey {
@@ -31,10 +50,19 @@ export function isRangeKey(v: unknown): v is RangeKey {
 
 /** A page fetches only the parts it renders, so a route payload stays small. */
 
-
 export const AGENT_VIEWS: readonly AgentView[] = [
-  'all', 'overview', 'models', 'providers', 'costs', 'carbon', 'requests',
-  'errors', 'traces', 'tools', 'projects', 'summary',
+  'all',
+  'overview',
+  'models',
+  'providers',
+  'costs',
+  'carbon',
+  'requests',
+  'errors',
+  'traces',
+  'tools',
+  'projects',
+  'summary',
 ];
 
 export function isAgentView(v: unknown): v is AgentView {
@@ -43,10 +71,36 @@ export function isAgentView(v: unknown): v is AgentView {
 
 /** Query group names, matching the blocks readStatsDb issues. */
 const VIEW_PARTS: Record<AgentView, readonly string[]> = {
-  all: ['overall', 'byModel', 'byProvider', 'byAgentType', 'byProject', 'series', 'hourOfDay', 'recent', 'errors', 'traces',
-    'seriesByProvider', 'modelSeries', 'modelPerformance', 'tools', 'windows', 'providerHourly'],
-  overview: ['overall', 'byModel', 'byProvider', 'byAgentType', 'byProject', 'series', 'hourOfDay', 'recent',
-    'seriesByProvider', 'modelSeries'],
+  all: [
+    'overall',
+    'byModel',
+    'byProvider',
+    'byAgentType',
+    'byProject',
+    'series',
+    'hourOfDay',
+    'recent',
+    'errors',
+    'traces',
+    'seriesByProvider',
+    'modelSeries',
+    'modelPerformance',
+    'tools',
+    'windows',
+    'providerHourly',
+  ],
+  overview: [
+    'overall',
+    'byModel',
+    'byProvider',
+    'byAgentType',
+    'byProject',
+    'series',
+    'hourOfDay',
+    'recent',
+    'seriesByProvider',
+    'modelSeries',
+  ],
   models: ['overall', 'byModel', 'modelSeries', 'modelPerformance', 'series'],
   providers: ['overall', 'byProvider', 'series', 'seriesByProvider', 'providerHourly', 'windows'],
   // `modelSeries` feeds the per-model stack, so the page's first paint is not an empty chart.
@@ -105,10 +159,6 @@ export function agentDbPath(): string {
   return process.env.TERSIO_AGENT_SESSIONS_DB ?? path.join(homeDir(), '.omp', 'agent', 'agent.db');
 }
 
-
-
-
-
 /** Output cost is the remainder: omp prices the whole request and the three cache-side parts. */
 function costMixOf(f: Facts): AgentCostMix {
   const input = f.costInput;
@@ -123,73 +173,46 @@ function costMixOf(f: Facts): AgentCostMix {
   };
 }
 
-
-
-
-
-
-
 /** Throughput and first-token latency for one model and provider in one bucket. */
-
-
-
-
-
-
-
-
-
-
-
 
 /** One session row on the Traces page: a root session with its child transcripts folded in. */
 
-
-
-
-
-
 /** The Requests page summary row: whole-range counts and totals; `shipped` counts rows that rode along. */
-
 
 /** Peak burn hours: one row per provider per local hour. */
 
-
 /** One account's utilization series inside one window. */
-
 
 /** What one subscription window costs in quota terms. */
 
-
 /** Kind of one trace span: a user turn, a model call, a tool call, or session metadata. */
-
 
 /** One span on the flamegraph: an interval with the identity and cost of the work it holds. */
 
-
 /** A mode or title change: drawn as a diamond on the timeline. */
-
 
 /** One flamegraph row: the main session, or a subagent's own row. */
 
-
 /** Duration totals for one tool across the session: total, mean, and the longest single call. */
-
 
 /** The nine headline figures the reference trace view opens with. */
 
-
-
-
-
-
 /** rtk's own savings, read from its history, plus how much of the bash work it took. */
-
 
 /** A read that never ran, so a page draws "not measured" rather than a row of zeros. */
 const EMPTY_RTK: AgentRtk = {
-  measured: false, failure: '', commands: 0, input: 0, saved: 0, avgPct: 0, byVerb: [],
-  bashCalls: 0, eligibleCalls: 0, rtkCalls: 0, missedCalls: 0, adoptionPct: 0,
+  measured: false,
+  failure: '',
+  commands: 0,
+  input: 0,
+  saved: 0,
+  avgPct: 0,
+  byVerb: [],
+  bashCalls: 0,
+  eligibleCalls: 0,
+  rtkCalls: 0,
+  missedCalls: 0,
+  adoptionPct: 0,
 };
 
 /** rtk's savings and adoption for one range. rtk's database is second, so its failure never fails the page. */
@@ -219,11 +242,19 @@ function readRtk(cutoff: number): AgentRtk {
 
 /** Headroom's durable compression savings, read through its own `savings --json`. */
 
-
 /** A read that never ran, so a page draws "not measured" rather than a row of zeros. */
 const EMPTY_HEADROOM: AgentHeadroom = {
-  measured: false, failure: '', tokensSaved: 0, tokensBefore: 0, costUsd: 0, calls: 0, savingsPercent: 0,
-  todayTokens: 0, last7Tokens: 0, last30Tokens: 0, byClient: [],
+  measured: false,
+  failure: '',
+  tokensSaved: 0,
+  tokensBefore: 0,
+  costUsd: 0,
+  calls: 0,
+  savingsPercent: 0,
+  todayTokens: 0,
+  last7Tokens: 0,
+  last30Tokens: 0,
+  byClient: [],
   proxy: { measured: false, failure: '', requests: 0, compressed: 0, tokensSaved: 0, avgCompressionPct: 0 },
   routes: [],
   routing: { measured: false, failure: '', proxyUp: false, routedAgents: 0, failing: [] },
@@ -261,7 +292,9 @@ function readHeadroom(): AgentHeadroom {
       measured: doctor.measured,
       failure: doctor.failure,
       proxyUp: proxy?.status === 'pass',
-      routedAgents: doctor.checks.filter((check) => check.status === 'pass' && check.name !== 'proxy' && check.name !== 'tls trust').length,
+      routedAgents: doctor.checks.filter(
+        (check) => check.status === 'pass' && check.name !== 'proxy' && check.name !== 'tls trust',
+      ).length,
       failing,
     },
   };
@@ -275,21 +308,61 @@ export function emptyAgentStats(range: RangeKey = '24h'): AgentStats {
     cutoff: 0,
     generatedAt: Date.now(),
     overall: {
-      requests: 0, failed: 0, successful: 0, errorRate: 0, cacheRate: 0,
-      costUsd: 0, unpricedRequests: 0,
-      avgDurationMs: 0, avgTtftMs: 0, avgTokensPerSecond: 0, maxDurationMs: null,
-      input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0,
+      requests: 0,
+      failed: 0,
+      successful: 0,
+      errorRate: 0,
+      cacheRate: 0,
+      costUsd: 0,
+      unpricedRequests: 0,
+      avgDurationMs: 0,
+      avgTtftMs: 0,
+      avgTokensPerSecond: 0,
+      maxDurationMs: null,
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      total: 0,
       costMix: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-      firstTs: null, lastTs: null,
+      firstTs: null,
+      lastTs: null,
     },
-    byModel: [], byProvider: [], byProject: [], byAgentType: [],
-    series: [], seriesByProvider: [], modelSeries: [], modelPerformance: [], hourOfDay: [], topModels: [],
-    recent: [], errorGroups: [], errorModels: [], traces: [],
-    tools: [], toolsByModel: [], toolSeries: [], rtk: EMPTY_RTK, headroom: EMPTY_HEADROOM,
-    usageSeries: [], windowInsights: [], providerHourly: [],
+    byModel: [],
+    byProvider: [],
+    byProject: [],
+    byAgentType: [],
+    series: [],
+    seriesByProvider: [],
+    modelSeries: [],
+    modelPerformance: [],
+    hourOfDay: [],
+    topModels: [],
+    recent: [],
+    errorGroups: [],
+    errorModels: [],
+    traces: [],
+    tools: [],
+    toolsByModel: [],
+    toolSeries: [],
+    rtk: EMPTY_RTK,
+    headroom: EMPTY_HEADROOM,
+    usageSeries: [],
+    windowInsights: [],
+    providerHourly: [],
     requestStats: {
-      requests: 0, failed: 0, aborted: 0, tokens: 0, costUsd: 0, unpriced: 0, shipped: 0,
-      medianDurationMs: 0, p95DurationMs: 0, medianTtftMs: 0, oldest: null, newest: null,
+      requests: 0,
+      failed: 0,
+      aborted: 0,
+      tokens: 0,
+      costUsd: 0,
+      unpriced: 0,
+      shipped: 0,
+      medianDurationMs: 0,
+      p95DurationMs: 0,
+      medianTtftMs: 0,
+      oldest: null,
+      newest: null,
     },
     errors: [],
   };
@@ -305,8 +378,16 @@ function readBlocks(db: string, queries: Array<[name: string, sql: string]>): Ma
   const map = new Map<string, string[][]>();
   for (const [name, sql] of queries) {
     try {
-      map.set(name, sqliteScript(db, sql).split('\n').filter((line) => line.trim()).map((line) => line.split('\t')));
-    } catch { /* an unavailable table leaves its key absent */ }
+      map.set(
+        name,
+        sqliteScript(db, sql)
+          .split('\n')
+          .filter((line) => line.trim())
+          .map((line) => line.split('\t')),
+      );
+    } catch {
+      /* an unavailable table leaves its key absent */
+    }
   }
   return map;
 }
@@ -314,7 +395,12 @@ function readBlocks(db: string, queries: Array<[name: string, sql: string]>): Ma
 function tableColumns(db: string, table: string): Set<string> {
   try {
     const out = sqliteScript(db, `SELECT name FROM pragma_table_info('${table}');\n`);
-    return new Set(out.split('\n').map((l) => l.trim()).filter(Boolean));
+    return new Set(
+      out
+        .split('\n')
+        .map((l) => l.trim())
+        .filter(Boolean),
+    );
   } catch {
     return new Set();
   }
@@ -366,36 +452,75 @@ function messageFacts(): string {
 /** Column order of a recent or error row; the folder follows whichever columns the store carries. */
 function requestColumns(folder: string): string {
   return [
-    COL.timestamp, COL.provider, COL.model, folder, COL.api,
-    COL.input, COL.output, COL.cacheRead, COL.cacheWrite, COL.total,
-    COL.costTotal, COL.unpriced, COL.duration, COL.ttft, COL.stopReason, COL.errorMessage,
-    COL.agentType, COL.session, COL.entry,
+    COL.timestamp,
+    COL.provider,
+    COL.model,
+    folder,
+    COL.api,
+    COL.input,
+    COL.output,
+    COL.cacheRead,
+    COL.cacheWrite,
+    COL.total,
+    COL.costTotal,
+    COL.unpriced,
+    COL.duration,
+    COL.ttft,
+    COL.stopReason,
+    COL.errorMessage,
+    COL.agentType,
+    COL.session,
+    COL.entry,
   ].join(', ');
 }
 
 interface Facts {
-  requests: number; failed: number;
-  input: number; output: number; cacheRead: number; cacheWrite: number; total: number;
+  requests: number;
+  failed: number;
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  total: number;
   costUsd: number;
-  costInput: number; costCacheRead: number; costCacheWrite: number;
+  costInput: number;
+  costCacheRead: number;
+  costCacheWrite: number;
   unpriced: number;
-  durationSum: number; durationN: number; ttftSum: number; ttftN: number;
-  tpsSum: number; tpsN: number;
+  durationSum: number;
+  durationN: number;
+  ttftSum: number;
+  ttftN: number;
+  tpsSum: number;
+  tpsN: number;
   maxDurationMs: number | null;
-  firstTs: number | null; lastTs: number | null;
+  firstTs: number | null;
+  lastTs: number | null;
 }
 
 function parseFacts(row: string[] | undefined, at: number): Facts {
   const g = (i: number): number => num(row?.[at + i]);
   return {
-    requests: g(0), failed: g(1),
-    input: g(2), output: g(3), cacheRead: g(4), cacheWrite: g(5), total: g(6),
+    requests: g(0),
+    failed: g(1),
+    input: g(2),
+    output: g(3),
+    cacheRead: g(4),
+    cacheWrite: g(5),
+    total: g(6),
     costUsd: g(7),
-    costInput: g(8), costCacheRead: g(9), costCacheWrite: g(10),
+    costInput: g(8),
+    costCacheRead: g(9),
+    costCacheWrite: g(10),
     unpriced: g(11),
-    durationSum: g(12), durationN: g(13), ttftSum: g(14), ttftN: g(15),
-    tpsSum: g(16), tpsN: g(17),
-    firstTs: numOrNull(row?.[at + 18]), lastTs: numOrNull(row?.[at + 19]),
+    durationSum: g(12),
+    durationN: g(13),
+    ttftSum: g(14),
+    ttftN: g(15),
+    tpsSum: g(16),
+    tpsN: g(17),
+    firstTs: numOrNull(row?.[at + 18]),
+    lastTs: numOrNull(row?.[at + 19]),
     maxDurationMs: numOrNull(row?.[at + 20]),
   };
 }
@@ -472,7 +597,11 @@ function toRequestRows(rows: string[][]): AgentRequestRow[] {
     model: r[2] ?? '',
     project: r[3] ?? '',
     api: r[4] ?? '',
-    input: num(r[5]), output: num(r[6]), cacheRead: num(r[7]), cacheWrite: num(r[8]), totalTokens: num(r[9]),
+    input: num(r[5]),
+    output: num(r[6]),
+    cacheRead: num(r[7]),
+    cacheWrite: num(r[8]),
+    totalTokens: num(r[9]),
     costUsd: num(r[10]),
     unpriced: num(r[11]) > 0,
     durationMs: numOrNull(r[12]),
@@ -497,40 +626,76 @@ function readStatsDb(
   const errorWhere = `WHERE ${COL.stopReason} = 'error'${cutoff > 0 ? ` AND ${COL.timestamp} >= ${Math.floor(cutoff)}` : ''}`;
   const from = SOURCE;
 
-  const out = readBlocks(db, [
-    ['overall', `SELECT ${messageFacts()} FROM ${from} ${where}`],
-    ['byModel', `SELECT ${COL.model}, ${COL.provider}, ${messageFacts()} FROM ${from} ${where} GROUP BY 1, 2 ORDER BY 3 DESC`],
-    ['byProvider', `SELECT ${COL.provider}, COUNT(DISTINCT ${COL.model}), ${messageFacts()} FROM ${from} ${where} GROUP BY 1 ORDER BY 3 DESC`],
-    ['byAgentType', `SELECT ${COL.agentType}, ${messageFacts()} FROM ${from} ${where} GROUP BY 1 ORDER BY 2 DESC`],
-    ['byProject', `SELECT ${folder}, ${messageFacts()} FROM ${from} ${where} GROUP BY 1 ORDER BY 2 DESC`],
-    ['series', `SELECT (${COL.bucket} / ${bucketMs}) * ${bucketMs}, COUNT(*),
+  const out = readBlocks(
+    db,
+    [
+      ['overall', `SELECT ${messageFacts()} FROM ${from} ${where}`],
+      [
+        'byModel',
+        `SELECT ${COL.model}, ${COL.provider}, ${messageFacts()} FROM ${from} ${where} GROUP BY 1, 2 ORDER BY 3 DESC`,
+      ],
+      [
+        'byProvider',
+        `SELECT ${COL.provider}, COUNT(DISTINCT ${COL.model}), ${messageFacts()} FROM ${from} ${where} GROUP BY 1 ORDER BY 3 DESC`,
+      ],
+      ['byAgentType', `SELECT ${COL.agentType}, ${messageFacts()} FROM ${from} ${where} GROUP BY 1 ORDER BY 2 DESC`],
+      ['byProject', `SELECT ${folder}, ${messageFacts()} FROM ${from} ${where} GROUP BY 1 ORDER BY 2 DESC`],
+      [
+        'series',
+        `SELECT (${COL.bucket} / ${bucketMs}) * ${bucketMs}, COUNT(*),
         SUM(CASE WHEN ${COL.stopReason} = 'error' THEN 1 ELSE 0 END),
-        SUM(${COL.total}), TOTAL(${COL.costTotal}) FROM ${from} ${where} GROUP BY 1 ORDER BY 1`],
-    ['hourOfDay', `SELECT CAST(strftime('%H', ${COL.bucket} / 1000, 'unixepoch', 'localtime') AS INTEGER),
+        SUM(${COL.total}), TOTAL(${COL.costTotal}) FROM ${from} ${where} GROUP BY 1 ORDER BY 1`,
+      ],
+      [
+        'hourOfDay',
+        `SELECT CAST(strftime('%H', ${COL.bucket} / 1000, 'unixepoch', 'localtime') AS INTEGER),
         COUNT(*), SUM(CASE WHEN ${COL.stopReason} = 'error' THEN 1 ELSE 0 END), SUM(${COL.total}), TOTAL(${COL.costTotal})
-        FROM ${from} ${where} GROUP BY 1 ORDER BY 1`],
-    ['recent', `SELECT ${requestColumns(folder)} FROM ${from} ${where} ORDER BY ${COL.timestamp} DESC LIMIT ${RECENT_LIMIT} OFFSET ${Math.max(0, Math.floor(offset))}`],
-    ['errors', `SELECT ${requestColumns(folder)} FROM ${from} ${errorWhere} ORDER BY ${COL.timestamp} DESC LIMIT ${ERROR_LIMIT}`],
-    ['traces', `SELECT ${COL.session}, MAX(${folder}),
+        FROM ${from} ${where} GROUP BY 1 ORDER BY 1`,
+      ],
+      [
+        'recent',
+        `SELECT ${requestColumns(folder)} FROM ${from} ${where} ORDER BY ${COL.timestamp} DESC LIMIT ${RECENT_LIMIT} OFFSET ${Math.max(0, Math.floor(offset))}`,
+      ],
+      [
+        'errors',
+        `SELECT ${requestColumns(folder)} FROM ${from} ${errorWhere} ORDER BY ${COL.timestamp} DESC LIMIT ${ERROR_LIMIT}`,
+      ],
+      [
+        'traces',
+        `SELECT ${COL.session}, MAX(${folder}),
         COUNT(*), SUM(${COL.total}), TOTAL(${COL.costTotal}), SUM(${COL.unpriced}),
         MIN(${COL.timestamp}), MAX(${COL.timestamp} + COALESCE(${COL.duration}, 0))
-        FROM ${from} ${where} GROUP BY 1 ORDER BY 8 DESC LIMIT ${TRACE_LIMIT}`],
-  ].filter(([name]) => parts.has(name)).map(([name, sql]) => [name, sql] as [string, string]));
+        FROM ${from} ${where} GROUP BY 1 ORDER BY 8 DESC LIMIT ${TRACE_LIMIT}`,
+      ],
+    ]
+      .filter(([name]) => parts.has(name))
+      .map(([name, sql]) => [name, sql] as [string, string]),
+  );
 
   // Models and tools are keyed by root, so a child outside the window still folds into its session.
   const traceModels = readTraceModels(db);
   const traceTools = readTraceToolCounts(db);
-  const traces = foldTraces((out.get('traces') ?? []).map((r) => {
-    // Both readers are keyed by root, so every file of a session reads the session's totals.
-    const root = rootSessionFile(r[0] ?? '');
-    return {
-      sessionFile: r[0] ?? '', project: r[1] ?? '', cwd: '', title: null,
-      requests: num(r[2]), tokens: num(r[3]), costUsd: num(r[4]), unpriced: num(r[5]),
-      models: traceModels.get(root) ?? [],
-      toolCalls: traceTools.get(root) ?? 0,
-      subagents: 0, firstTs: num(r[6]), lastTs: num(r[7]),
-    };
-  }));
+  const traces = foldTraces(
+    (out.get('traces') ?? []).map((r) => {
+      // Both readers are keyed by root, so every file of a session reads the session's totals.
+      const root = rootSessionFile(r[0] ?? '');
+      return {
+        sessionFile: r[0] ?? '',
+        project: r[1] ?? '',
+        cwd: '',
+        title: null,
+        requests: num(r[2]),
+        tokens: num(r[3]),
+        costUsd: num(r[4]),
+        unpriced: num(r[5]),
+        models: traceModels.get(root) ?? [],
+        toolCalls: traceTools.get(root) ?? 0,
+        subagents: 0,
+        firstTs: num(r[6]),
+        lastTs: num(r[7]),
+      };
+    }),
+  );
   applySessionMetadata(traces);
 
   const errorRows = toRequestRows(out.get('errors') ?? []);
@@ -542,8 +707,7 @@ function readStatsDb(
     else errorCounts.set(key, { model: row.model, provider: row.provider, count: 1 });
   }
 
-  const byModel = (out.get('byModel') ?? [])
-    .map((r) => rowOf(r[0] ?? '', parseFacts(r, 2), 0, r[1] ?? ''));
+  const byModel = (out.get('byModel') ?? []).map((r) => rowOf(r[0] ?? '', parseFacts(r, 2), 0, r[1] ?? ''));
 
   return {
     overall: overallOf(parseFacts(out.get('overall')?.[0], 0)),
@@ -555,10 +719,18 @@ function readStatsDb(
       return { ...mix(f), agentType: r[0] ?? '', requests: f.requests, costUsd: f.costUsd };
     }),
     series: (out.get('series') ?? []).map((r) => ({
-      ts: num(r[0]), requests: num(r[1]), errors: num(r[2]), tokens: num(r[3]), costUsd: num(r[4]),
+      ts: num(r[0]),
+      requests: num(r[1]),
+      errors: num(r[2]),
+      tokens: num(r[3]),
+      costUsd: num(r[4]),
     })),
     hourOfDay: (out.get('hourOfDay') ?? []).map((r) => ({
-      hour: num(r[0]), requests: num(r[1]), errors: num(r[2]), tokens: num(r[3]), costUsd: num(r[4]),
+      hour: num(r[0]),
+      requests: num(r[1]),
+      errors: num(r[2]),
+      tokens: num(r[3]),
+      costUsd: num(r[4]),
     })),
     recent: toRequestRows(out.get('recent') ?? []),
     errorGroups: groupErrors(errorRows),
@@ -636,7 +808,11 @@ function groupErrors(rows: AgentRequestRow[]): AgentErrorGroup[] {
     const hit = groups.get(signature);
     if (!hit) {
       groups.set(signature, {
-        signature, count: 1, firstSeen: row.ts, lastSeen: row.ts, latest: row,
+        signature,
+        count: 1,
+        firstSeen: row.ts,
+        lastSeen: row.ts,
+        latest: row,
         models: [{ model: row.model, provider: row.provider, count: 1 }],
       });
       continue;
@@ -654,10 +830,19 @@ function groupErrors(rows: AgentRequestRow[]): AgentErrorGroup[] {
     .toSorted((a, b) => b.count - a.count || b.lastSeen - a.lastSeen);
 }
 
-function readProviderSeries(db: string, cutoff: number, bucketMs: number): Array<{ provider: string; points: AgentBucket[] }> {
-  const out = readBlocks(db, [['providerSeries', `SELECT ${COL.provider}, (${COL.bucket} / ${bucketMs}) * ${bucketMs},
+function readProviderSeries(
+  db: string,
+  cutoff: number,
+  bucketMs: number,
+): Array<{ provider: string; points: AgentBucket[] }> {
+  const out = readBlocks(db, [
+    [
+      'providerSeries',
+      `SELECT ${COL.provider}, (${COL.bucket} / ${bucketMs}) * ${bucketMs},
       COUNT(*), SUM(${COL.total}), TOTAL(${COL.costTotal})
-      FROM ${SOURCE} ${rangeWhere(cutoff, COL.timestamp)} GROUP BY 1, 2 ORDER BY 1, 2`]]);
+      FROM ${SOURCE} ${rangeWhere(cutoff, COL.timestamp)} GROUP BY 1, 2 ORDER BY 1, 2`,
+    ],
+  ]);
   const perProvider = new Map<string, { cost: number; points: AgentBucket[] }>();
   for (const r of out.get('providerSeries') ?? []) {
     const provider = r[0] ?? '';
@@ -715,16 +900,25 @@ function readToolSeries(db: string, cutoff: number, bucketMs: number): Partial<A
     TOTAL(${failed})`;
   const out = readBlocks(db, [
     ['byTool', `SELECT ${facts} FROM ${from} ${where} GROUP BY 2 ORDER BY 5 DESC`],
-    ['byToolModel', `SELECT ${facts} FROM ${from} ${where} GROUP BY 2, 3, 4
-      ORDER BY 5 DESC LIMIT ${TOOL_MODEL_LIMIT}`],
-    ['toolSeries', `SELECT (${COL.bucket} / ${bucketMs}) * ${bucketMs}, ${name}, COUNT(*), TOTAL(${failed})
-      FROM ${from} ${where} GROUP BY 1, 2 ORDER BY 1`],
+    [
+      'byToolModel',
+      `SELECT ${facts} FROM ${from} ${where} GROUP BY 2, 3, 4
+      ORDER BY 5 DESC LIMIT ${TOOL_MODEL_LIMIT}`,
+    ],
+    [
+      'toolSeries',
+      `SELECT (${COL.bucket} / ${bucketMs}) * ${bucketMs}, ${name}, COUNT(*), TOTAL(${failed})
+      FROM ${from} ${where} GROUP BY 1, 2 ORDER BY 1`,
+    ],
   ]);
   return {
     tools: (out.get('byTool') ?? []).map(parseToolRow),
     toolsByModel: (out.get('byToolModel') ?? []).map(parseToolRow),
     toolSeries: (out.get('toolSeries') ?? []).map((r) => ({
-      ts: num(r[0]), tool: r[1] ?? '', calls: num(r[2]), errors: num(r[3]),
+      ts: num(r[0]),
+      tool: r[1] ?? '',
+      calls: num(r[2]),
+      errors: num(r[3]),
     })),
   };
 }
@@ -734,8 +928,10 @@ function readTraceToolCounts(db: string): Map<string, number> {
   const counts = new Map<string, number>();
   try {
     const names = `CASE WHEN m.tools LIKE '[%' THEN m.tools ELSE '[]' END`;
-    const out = sqliteScript(db,
-      `SELECT ${COL.session}, COUNT(*) FROM ${SOURCE}, json_each(${names}) te GROUP BY 1;\n`);
+    const out = sqliteScript(
+      db,
+      `SELECT ${COL.session}, COUNT(*) FROM ${SOURCE}, json_each(${names}) te GROUP BY 1;\n`,
+    );
     for (const line of out.split('\n')) {
       if (!line.trim()) continue;
       const [file, count] = line.split('\t');
@@ -743,7 +939,9 @@ function readTraceToolCounts(db: string): Map<string, number> {
       const root = rootSessionFile(file);
       counts.set(root, (counts.get(root) ?? 0) + num(count));
     }
-  } catch { /* no tool rows: keep zero */ }
+  } catch {
+    /* no tool rows: keep zero */
+  }
   return counts;
 }
 
@@ -760,7 +958,9 @@ function readTraceModels(db: string): Map<string, string[]> {
       set.add(model);
       models.set(rootSessionFile(file), set);
     }
-  } catch { /* an unreadable table leaves the list empty */ }
+  } catch {
+    /* an unreadable table leaves the list empty */
+  }
   return new Map([...models.entries()].map(([file, set]) => [file, [...set].toSorted()]));
 }
 
@@ -785,20 +985,30 @@ function applySessionMetadata(traces: AgentTraceRow[]): void {
         }
         if (trace.cwd && trace.title) break;
       }
-    } catch { /* a file that no longer reads keeps its empty metadata */ }
-    finally {
+    } catch {
+      /* a file that no longer reads keeps its empty metadata */
+    } finally {
       if (fd !== null) fs.closeSync(fd);
     }
   }
 }
 
 /** Daily tokens and cost for the busiest models: the Models table sparkline. */
-function readModelSeries(db: string, cutoff: number, bucketMs: number): Array<{ model: string; points: AgentBucket[] }> {
+function readModelSeries(
+  db: string,
+  cutoff: number,
+  bucketMs: number,
+): Array<{ model: string; points: AgentBucket[] }> {
   const scope = rangeWhere(cutoff, COL.timestamp);
   const top = `${COL.model} IN (SELECT ${COL.model} FROM ${SOURCE} ${scope} GROUP BY ${COL.model} ORDER BY COUNT(*) DESC LIMIT ${SERIES_MODELS})`;
   const clause = scope ? `${scope} AND ${top}` : `WHERE ${top}`;
-  const out = readBlocks(db, [['modelSeries', `SELECT ${COL.model}, (${COL.bucket} / ${bucketMs}) * ${bucketMs},
-      COUNT(*), SUM(${COL.total}), TOTAL(${COL.costTotal}) FROM ${SOURCE} ${clause} GROUP BY 1, 2 ORDER BY 1, 2`]]);
+  const out = readBlocks(db, [
+    [
+      'modelSeries',
+      `SELECT ${COL.model}, (${COL.bucket} / ${bucketMs}) * ${bucketMs},
+      COUNT(*), SUM(${COL.total}), TOTAL(${COL.costTotal}) FROM ${SOURCE} ${clause} GROUP BY 1, 2 ORDER BY 1, 2`,
+    ],
+  ]);
   const perModel = new Map<string, AgentBucket[]>();
   for (const r of out.get('modelSeries') ?? []) {
     const model = r[0] ?? '';
@@ -810,17 +1020,26 @@ function readModelSeries(db: string, cutoff: number, bucketMs: number): Array<{ 
 }
 
 /** Per-bucket throughput and ttft for the busiest models; a null average means no request carried timing. */
-function readModelPerformance(db: string, cutoff: number, bucketMs: number): Array<{ model: string; provider: string; points: AgentModelPerformancePoint[] }> {
+function readModelPerformance(
+  db: string,
+  cutoff: number,
+  bucketMs: number,
+): Array<{ model: string; provider: string; points: AgentModelPerformancePoint[] }> {
   const scope = rangeWhere(cutoff, COL.timestamp);
   const top = `${COL.model} IN (SELECT ${COL.model} FROM ${SOURCE} ${scope} GROUP BY ${COL.model} ORDER BY COUNT(*) DESC LIMIT ${SERIES_MODELS})`;
   const clause = scope ? `${scope} AND ${top}` : `WHERE ${top}`;
-  const out = readBlocks(db, [['modelPerformance', `SELECT ${COL.model}, ${COL.provider}, (${COL.bucket} / ${bucketMs}) * ${bucketMs},
+  const out = readBlocks(db, [
+    [
+      'modelPerformance',
+      `SELECT ${COL.model}, ${COL.provider}, (${COL.bucket} / ${bucketMs}) * ${bucketMs},
       COUNT(*),
       TOTAL(CASE WHEN ${COL.duration} > 0 THEN ${COL.output} * 1000.0 / ${COL.duration} END),
       COUNT(CASE WHEN ${COL.duration} > 0 THEN 1 END),
       TOTAL(${COL.ttft}),
       COUNT(${COL.ttft})
-      FROM ${SOURCE} ${clause} GROUP BY 1, 2, 3 ORDER BY 1, 2, 3`]]);
+      FROM ${SOURCE} ${clause} GROUP BY 1, 2, 3 ORDER BY 1, 2, 3`,
+    ],
+  ]);
   const groups = new Map<string, { model: string; provider: string; points: AgentModelPerformancePoint[] }>();
   for (const r of out.get('modelPerformance') ?? []) {
     const key = `${r[0] ?? ''}\u0000${r[1] ?? ''}`;
@@ -903,10 +1122,15 @@ function windowDisplayLabel(sample: WindowSample): string {
 function readWindowSamples(cutoff: number): WindowSample[] {
   const db = agentDbPath();
   if (!fs.existsSync(db) || tableColumns(db, 'usage_history').size === 0) return [];
-  const out = readBlocks(db, [['windows', `SELECT ${txt('provider')}, ${txt('account_key')},
+  const out = readBlocks(db, [
+    [
+      'windows',
+      `SELECT ${txt('provider')}, ${txt('account_key')},
       ${txt('email')}, ${txt('account_id')}, ${txt('limit_id')}, ${txt('label')}, ${txt('window_label')},
       used_fraction, status, recorded_at
-      FROM usage_history ${rangeWhere(cutoff, 'recorded_at')} ORDER BY recorded_at`]]);
+      FROM usage_history ${rangeWhere(cutoff, 'recorded_at')} ORDER BY recorded_at`,
+    ],
+  ]);
   return (out.get('windows') ?? []).map((r) => {
     const usedFraction = numOrNull(r[7]);
     const status = r[8] || null;
@@ -959,11 +1183,13 @@ function computeWindows(
         accountLabel: accountSamples[accountSamples.length - 1].accountLabel,
         windowKey: first.limitId,
         windowLabel,
-        points: downsampleWindow(accountSamples.map((sample) => ({
-          ts: sample.ts,
-          usedFraction: round4(sample.usedFraction),
-          exhausted: sample.exhausted,
-        }))),
+        points: downsampleWindow(
+          accountSamples.map((sample) => ({
+            ts: sample.ts,
+            usedFraction: round4(sample.usedFraction),
+            exhausted: sample.exhausted,
+          })),
+        ),
       });
 
       let previous: number | null = null;
@@ -1012,17 +1238,27 @@ function computeWindows(
 
 /** Tokens per provider over the range: the currency a window insight extrapolates in. */
 function readProviderTokens(db: string, cutoff: number): Map<string, number> {
-  const out = readBlocks(db, [['providerTokens', `SELECT ${COL.provider}, SUM(${COL.total})
-      FROM ${SOURCE} ${rangeWhere(cutoff, COL.timestamp)} GROUP BY 1`]]);
+  const out = readBlocks(db, [
+    [
+      'providerTokens',
+      `SELECT ${COL.provider}, SUM(${COL.total})
+      FROM ${SOURCE} ${rangeWhere(cutoff, COL.timestamp)} GROUP BY 1`,
+    ],
+  ]);
   return new Map((out.get('providerTokens') ?? []).map((r) => [r[0] ?? '', num(r[1])]));
 }
 
 /** Peak burn hours: one row per provider per local hour, the shape the reference charts. */
 function readProviderHourly(db: string, cutoff: number): AgentProviderHour[] {
-  const out = readBlocks(db, [['providerHourly', `SELECT ${COL.provider},
+  const out = readBlocks(db, [
+    [
+      'providerHourly',
+      `SELECT ${COL.provider},
       CAST(strftime('%H', ${COL.bucket} / 1000, 'unixepoch', 'localtime') AS INTEGER),
       SUM(${COL.total}), SUM(${COL.output}), COUNT(*)
-      FROM ${SOURCE} ${rangeWhere(cutoff, COL.timestamp)} GROUP BY 1, 2`]]);
+      FROM ${SOURCE} ${rangeWhere(cutoff, COL.timestamp)} GROUP BY 1, 2`,
+    ],
+  ]);
   return (out.get('providerHourly') ?? []).map((r) => ({
     provider: r[0] ?? '',
     hour: num(r[1]),
@@ -1043,8 +1279,11 @@ function median(values: Array<number | null | undefined>): number {
 /** Requests summary; percentiles stay over the capped slice, so a p95 of 200 of 2,400 describes those 200. */
 function computeRequestStats(rows: AgentRequestRow[], range?: AgentOverall): AgentRequestStats {
   const durations = rows.map((row) => row.durationMs);
-  const sorted = durations.filter((v): v is number => typeof v === 'number' && Number.isFinite(v)).toSorted((a, b) => a - b);
-  const pick = (q: number): number => (sorted.length === 0 ? 0 : sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))]);
+  const sorted = durations
+    .filter((v): v is number => typeof v === 'number' && Number.isFinite(v))
+    .toSorted((a, b) => a - b);
+  const pick = (q: number): number =>
+    sorted.length === 0 ? 0 : sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))];
   const times = rows.map((row) => row.ts);
   return {
     requests: range ? range.requests : rows.length,
@@ -1109,8 +1348,17 @@ export function readSessionTrace(sessionFile: string, limit = TRACE_SPAN_LIMIT):
   // Either separator: a Windows host writes `<drive>\...\.omp\agent\sessions\<project>\<file>`.
   const project = sessionFile.split(/[/\\]sessions[/\\]/)[1]?.split(/[/\\]/)[0] ?? '';
   const empty: AgentSessionTrace = {
-    sessionFile, project, title: '', cwd: project, startedAt: 0, endedAt: 0,
-    tracks: [], markers: [], summary: emptyTraceSummary(), toolStats: [], truncated: false,
+    sessionFile,
+    project,
+    title: '',
+    cwd: project,
+    startedAt: 0,
+    endedAt: 0,
+    tracks: [],
+    markers: [],
+    summary: emptyTraceSummary(),
+    toolStats: [],
+    truncated: false,
   };
   if (!sessionFile.endsWith('.jsonl') || !fs.existsSync(sessionFile)) return empty;
 
@@ -1124,10 +1372,21 @@ export function readSessionTrace(sessionFile: string, limit = TRACE_SPAN_LIMIT):
 
   // Pass one: pull each line into the shape the spans are cut from.
   type Raw = {
-    entryId: string; ts: number; role: string; tool: string; detail: string;
-    model: string; provider: string; tokens: number; costUsd: number;
-    durationMs: number | null; startAt: number | null; isError: boolean;
-    stopped: AgentTraceSpan['stopped']; callId: string; calls: Array<{ id: string; name: string; args: string }>;
+    entryId: string;
+    ts: number;
+    role: string;
+    tool: string;
+    detail: string;
+    model: string;
+    provider: string;
+    tokens: number;
+    costUsd: number;
+    durationMs: number | null;
+    startAt: number | null;
+    isError: boolean;
+    stopped: AgentTraceSpan['stopped'];
+    callId: string;
+    calls: Array<{ id: string; name: string; args: string }>;
   };
   const raw: Raw[] = [];
   const markers: AgentTraceMarker[] = [];
@@ -1153,7 +1412,7 @@ export function readSessionTrace(sessionFile: string, limit = TRACE_SPAN_LIMIT):
       continue;
     }
     const message = (parsed.message ?? {}) as Record<string, unknown>;
-    const content = Array.isArray(message.content) ? message.content as Array<Record<string, unknown>> : [];
+    const content = Array.isArray(message.content) ? (message.content as Array<Record<string, unknown>>) : [];
     const usage = (message.usage ?? {}) as Record<string, unknown>;
     const cost = (usage.cost ?? {}) as Record<string, unknown>;
     raw.push({
@@ -1194,42 +1453,97 @@ export function readSessionTrace(sessionFile: string, limit = TRACE_SPAN_LIMIT):
   let turnOpen: AgentTraceSpan | null = null;
   for (const row of raw) {
     const base = {
-      model: row.model, provider: row.provider, tokens: row.tokens, costUsd: row.costUsd,
-      isError: row.isError, entryId: row.entryId,
+      model: row.model,
+      provider: row.provider,
+      tokens: row.tokens,
+      costUsd: row.costUsd,
+      isError: row.isError,
+      entryId: row.entryId,
     };
     if (row.role === 'assistant') {
       // A model call runs from its own start stamp to the line's stamp; the duration is the cross-check.
-      const start = row.startAt !== null && row.startAt < row.ts ? row.startAt : row.durationMs && row.durationMs > 0 ? row.ts - row.durationMs : row.ts;
+      const start =
+        row.startAt !== null && row.startAt < row.ts
+          ? row.startAt
+          : row.durationMs && row.durationMs > 0
+            ? row.ts - row.durationMs
+            : row.ts;
       if (turnOpen) turnOpen.end = start;
       turnOpen = null;
-      built.push({ ...base, id: row.entryId || `model-${built.length}`, kind: 'model', label: row.model || 'assistant',
-        detail: row.detail, start, end: row.ts, tool: '', stopped: row.stopped });
+      built.push({
+        ...base,
+        id: row.entryId || `model-${built.length}`,
+        kind: 'model',
+        label: row.model || 'assistant',
+        detail: row.detail,
+        start,
+        end: row.ts,
+        tool: '',
+        stopped: row.stopped,
+      });
       row.calls.forEach((call, index) => {
         const result = call.id ? resultAt.get(call.id) : undefined;
         const end = result ? Math.max(result.ts, row.ts) : row.ts;
-        built.push({ ...base, id: `${row.entryId}#${index}`, kind: 'tool', label: call.name, detail: call.args || result?.detail || '',
-          start: row.ts, end, tool: call.name, isError: result ? result.isError : base.isError, stopped: 'completed',
+        built.push({
+          ...base,
+          id: `${row.entryId}#${index}`,
+          kind: 'tool',
+          label: call.name,
+          detail: call.args || result?.detail || '',
+          start: row.ts,
+          end,
+          tool: call.name,
+          isError: result ? result.isError : base.isError,
+          stopped: 'completed',
           // The result line is its own entry, so the drawer reads the tool's own output rather than the turn's.
-          entryId: result?.entryId || row.entryId });
+          entryId: result?.entryId || row.entryId,
+        });
       });
       continue;
     }
     if (row.role === 'toolResult') {
       // A result whose call was compacted away still ran: draw it as a point.
       if (row.callId && callIds.has(row.callId)) continue;
-      built.push({ ...base, id: row.entryId || `tool-${built.length}`, kind: 'tool', label: row.tool || 'tool',
-        detail: row.detail, start: row.ts, end: row.ts, tool: row.tool, stopped: 'completed' });
+      built.push({
+        ...base,
+        id: row.entryId || `tool-${built.length}`,
+        kind: 'tool',
+        label: row.tool || 'tool',
+        detail: row.detail,
+        start: row.ts,
+        end: row.ts,
+        tool: row.tool,
+        stopped: 'completed',
+      });
       continue;
     }
     if (row.role === 'user') {
       if (turnOpen) turnOpen.end = row.ts;
-      turnOpen = { ...base, id: `turn-${built.length}`, kind: 'turn', label: 'Prompt', detail: row.detail,
-        start: row.ts, end: row.ts, tool: '', stopped: 'completed' };
+      turnOpen = {
+        ...base,
+        id: `turn-${built.length}`,
+        kind: 'turn',
+        label: 'Prompt',
+        detail: row.detail,
+        start: row.ts,
+        end: row.ts,
+        tool: '',
+        stopped: 'completed',
+      };
       built.push(turnOpen);
       continue;
     }
-    built.push({ ...base, id: row.entryId || `bg-${built.length}`, kind: 'background', label: row.role || 'system',
-      detail: row.detail, start: row.ts, end: row.ts, tool: '', stopped: 'completed' });
+    built.push({
+      ...base,
+      id: row.entryId || `bg-${built.length}`,
+      kind: 'background',
+      label: row.role || 'system',
+      detail: row.detail,
+      start: row.ts,
+      end: row.ts,
+      tool: '',
+      stopped: 'completed',
+    });
   }
 
   const lastEnd = built.reduce((max, span) => Math.max(max, span.end), 0);
@@ -1242,7 +1556,12 @@ export function readSessionTrace(sessionFile: string, limit = TRACE_SPAN_LIMIT):
   const endedAt = spans.length ? Math.max(...spans.map((span) => span.end)) : 0;
 
   return {
-    sessionFile, project, title, cwd: project, startedAt, endedAt,
+    sessionFile,
+    project,
+    title,
+    cwd: project,
+    startedAt,
+    endedAt,
     tracks: [{ id: 'main', label: 'Main', parentId: null, spans }],
     markers: markers.toSorted((a, b) => a.ts - b.ts),
     summary: summarizeTrace(spans, startedAt, endedAt),
@@ -1321,7 +1640,9 @@ function readCodexTrace(sessionFile: string, text: string, fallbackProject: stri
     startedAt,
     endedAt,
     tracks: [{ id: 'main', label: 'Main', parentId: null, spans: kept }],
-    markers: startedAt ? [{ id: `session-${startedAt}`, ts: startedAt, kind: 'session', label: 'session started' }] : [],
+    markers: startedAt
+      ? [{ id: `session-${startedAt}`, ts: startedAt, kind: 'session', label: 'session started' }]
+      : [],
     summary: summarizeTrace(kept, startedAt, endedAt),
     toolStats: buildToolStats(kept),
     truncated,
@@ -1331,7 +1652,8 @@ function readCodexTrace(sessionFile: string, text: string, fallbackProject: stri
 /** A non-message journal entry, when it marks a change worth a diamond on the timeline. */
 function markerFor(entryId: string, ts: number, parsed: Record<string, unknown>): AgentTraceMarker | null {
   const kind = String(parsed.type ?? '');
-  if (kind === 'model_change') return { id: entryId || `model-${ts}`, ts, kind: 'model', label: String(parsed.model ?? 'model') };
+  if (kind === 'model_change')
+    return { id: entryId || `model-${ts}`, ts, kind: 'model', label: String(parsed.model ?? 'model') };
   if (kind === 'thinking_level_change') {
     return { id: entryId || `think-${ts}`, ts, kind: 'think', label: String(parsed.level ?? 'thinking') };
   }
@@ -1342,7 +1664,18 @@ function markerFor(entryId: string, ts: number, parsed: Record<string, unknown>)
 
 /** The empty summary, for a file that no longer reads. */
 function emptyTraceSummary(): AgentTraceSummary {
-  return { wallMs: 0, modelMs: 0, toolMs: 0, idleMs: 0, turns: 0, requests: 0, toolCalls: 0, agents: 0, totalTokens: 0, costUsd: 0 };
+  return {
+    wallMs: 0,
+    modelMs: 0,
+    toolMs: 0,
+    idleMs: 0,
+    turns: 0,
+    requests: 0,
+    toolCalls: 0,
+    agents: 0,
+    totalTokens: 0,
+    costUsd: 0,
+  };
 }
 
 /** The nine figures: wall time split into model, tool, and idle, then the work counts. */
@@ -1402,13 +1735,20 @@ function buildToolStats(spans: AgentTraceSpan[]): AgentTraceToolStat[] {
 
 /** The agent settings in force when a request ran, read from the journal's change entries. */
 
-
 /** The payload a request with no readable entry returns, so the route always answers with one shape. */
 export function emptyRequestEntry(): { entry: unknown; output: unknown; messageRole: string; agent: JournalAgent } {
-  return { entry: null, output: null, messageRole: '', agent: { model: null, thinkingLevel: null, mode: null, fallback: null } };
+  return {
+    entry: null,
+    output: null,
+    messageRole: '',
+    agent: { model: null, thinkingLevel: null, mode: null, fallback: null },
+  };
 }
 
-function codexRequestEntry(text: string, entryId: string): { entry: unknown; output: unknown; messageRole: string; agent: JournalAgent } | null {
+function codexRequestEntry(
+  text: string,
+  entryId: string,
+): { entry: unknown; output: unknown; messageRole: string; agent: JournalAgent } | null {
   if (!looksLikeCodexTranscript(text)) return null;
   const parsed = parseCodexTranscript(text);
   const assistants: Array<{ ts: number; message: Record<string, unknown> }> = [];
@@ -1424,14 +1764,14 @@ function codexRequestEntry(text: string, entryId: string): { entry: unknown; out
     } catch {
       continue;
     }
-    const payload = row.payload && typeof row.payload === 'object' ? row.payload as Record<string, unknown> : {};
+    const payload = row.payload && typeof row.payload === 'object' ? (row.payload as Record<string, unknown>) : {};
     const ts = typeof row.timestamp === 'string' ? Date.parse(row.timestamp) : 0;
     const type = String(row.type ?? '');
     if (type === 'turn_context' && typeof payload.model === 'string') model = payload.model;
     const payloadType = String(payload.type ?? '');
     const callId = String(payload.call_id ?? '');
     const rowId = String(payload.id ?? row.id ?? '');
-    const item = payload.item && typeof payload.item === 'object' ? payload.item as Record<string, unknown> : {};
+    const item = payload.item && typeof payload.item === 'object' ? (payload.item as Record<string, unknown>) : {};
     const itemId = String(item.id ?? '');
     if (callId === entryId || rowId === entryId || itemId === entryId || String(payload.turn_id ?? '') === entryId) {
       const priority = payloadType === 'item_completed' ? 3 : type === 'token_usage_record' ? 2 : 1;
@@ -1440,26 +1780,34 @@ function codexRequestEntry(text: string, entryId: string): { entry: unknown; out
         directPriority = priority;
       }
     }
-    if (type === 'response_item' && payloadType === 'message' && String(payload.role) === 'assistant' && Number.isFinite(ts)) {
+    if (
+      type === 'response_item' &&
+      payloadType === 'message' &&
+      String(payload.role) === 'assistant' &&
+      Number.isFinite(ts)
+    ) {
       assistants.push({ ts, message: payload });
     }
     if (type === 'event_msg' && payloadType === 'item_completed') {
-      const completedItem = payload.item && typeof payload.item === 'object' ? payload.item as Record<string, unknown> : {};
-      if (String(completedItem.type) === 'AgentMessage' && Number.isFinite(ts)) assistants.push({ ts, message: completedItem });
+      const completedItem =
+        payload.item && typeof payload.item === 'object' ? (payload.item as Record<string, unknown>) : {};
+      if (String(completedItem.type) === 'AgentMessage' && Number.isFinite(ts))
+        assistants.push({ ts, message: completedItem });
     }
     if ((type === 'token_usage_record' || payloadType === 'token_count') && Number.isFinite(ts)) {
       tokens.push({ ts, id: String(payload.response_id ?? ''), row });
     }
   }
-  const index = parsed.requests.findIndex((request) => request.id === entryId)
-    >= 0
-    ? parsed.requests.findIndex((request) => request.id === entryId)
-    : parsed.requests.findIndex((request) => `codex-${request.endTs}` === entryId);
+  const index =
+    parsed.requests.findIndex((request) => request.id === entryId) >= 0
+      ? parsed.requests.findIndex((request) => request.id === entryId)
+      : parsed.requests.findIndex((request) => `codex-${request.endTs}` === entryId);
   const request = index >= 0 ? parsed.requests[index] : undefined;
   if (!request) {
     if (!direct) return null;
-    const payload = direct.payload && typeof direct.payload === 'object' ? direct.payload as Record<string, unknown> : direct;
-    const item = payload.item && typeof payload.item === 'object' ? payload.item as Record<string, unknown> : {};
+    const payload =
+      direct.payload && typeof direct.payload === 'object' ? (direct.payload as Record<string, unknown>) : direct;
+    const item = payload.item && typeof payload.item === 'object' ? (payload.item as Record<string, unknown>) : {};
     const output = Object.keys(item).length > 0 ? item : payload;
     return {
       entry: direct,
@@ -1468,14 +1816,14 @@ function codexRequestEntry(text: string, entryId: string): { entry: unknown; out
       agent: { model: model || null, thinkingLevel: null, mode: 'codex', fallback: null },
     };
   }
-  const token = tokens.find((candidate) => candidate.id === entryId)
-    ?? tokens.find((candidate) => Math.abs(candidate.ts - request.endTs) < 2)
-    ?? tokens[index];
+  const token =
+    tokens.find((candidate) => candidate.id === entryId) ??
+    tokens.find((candidate) => Math.abs(candidate.ts - request.endTs) < 2) ??
+    tokens[index];
   const previousEnd = index > 0 ? parsed.requests[index - 1]!.endTs : 0;
-  const message = assistants
-    .filter((candidate) => candidate.ts <= request.endTs + 2 && candidate.ts >= previousEnd)
-    .at(-1)
-    ?? assistants.filter((candidate) => candidate.ts <= request.endTs + 2).at(-1);
+  const message =
+    assistants.filter((candidate) => candidate.ts <= request.endTs + 2 && candidate.ts >= previousEnd).at(-1) ??
+    assistants.filter((candidate) => candidate.ts <= request.endTs + 2).at(-1);
   const usage = {
     input: request.usage.input,
     output: request.usage.output,
@@ -1485,23 +1833,23 @@ function codexRequestEntry(text: string, entryId: string): { entry: unknown; out
   };
   const output = message
     ? {
-      ...message.message,
-      role: 'assistant',
-      api: 'responses',
-      model: request.model,
-      provider: request.provider,
-      usage,
-      stopReason: request.status,
-    }
+        ...message.message,
+        role: 'assistant',
+        api: 'responses',
+        model: request.model,
+        provider: request.provider,
+        usage,
+        stopReason: request.status,
+      }
     : {
-      role: 'assistant',
-      api: 'responses',
-      model: request.model,
-      provider: request.provider,
-      usage,
-      stopReason: request.status,
-      content: [],
-    };
+        role: 'assistant',
+        api: 'responses',
+        model: request.model,
+        provider: request.provider,
+        usage,
+        stopReason: request.status,
+        content: [],
+      };
   return {
     entry: token?.row ?? { id: request.id, model: request.model, provider: request.provider, usage },
     output,
@@ -1519,13 +1867,15 @@ export function readAgentRequestEntry(
   // DeepSeek Harness keeps a zstd transcript; its entry id lives on the assistant message, not the line.
   const packed = sessionFile.endsWith('.zstd');
   if (!entryId || (!sessionFile.endsWith('.jsonl') && !packed) || !fs.existsSync(sessionFile)) return empty;
-  const text = packed ? readSessionText(sessionFile) : (() => {
-    try {
-      return fs.readFileSync(sessionFile, 'utf8');
-    } catch {
-      return null;
-    }
-  })();
+  const text = packed
+    ? readSessionText(sessionFile)
+    : (() => {
+        try {
+          return fs.readFileSync(sessionFile, 'utf8');
+        } catch {
+          return null;
+        }
+      })();
   if (text === null) return empty;
   const codex = codexRequestEntry(text, entryId);
   if (codex) return codex;
@@ -1558,14 +1908,22 @@ export function readAgentRequestEntry(
       continue;
     }
     // The DSH message sits under `data`, so the drawer's payload shows it rather than the envelope.
-    const message = (parsed.message ?? (parsed.data as { message?: unknown } | undefined)?.message ?? null) as Record<string, unknown> | null;
+    const message = (parsed.message ?? (parsed.data as { message?: unknown } | undefined)?.message ?? null) as Record<
+      string,
+      unknown
+    > | null;
     return { entry: parsed, output: message, messageRole: message ? String(message.role ?? '') : '', agent };
   }
   return empty;
 }
 
 /** Reads the usage store; the caller runs `syncUsageDb`, so a poll never pays for a sync it did not start. */
-export function readAgentStats(range: RangeKey = '24h', view: AgentView = 'all', now = Date.now(), offset = 0): AgentStats {
+export function readAgentStats(
+  range: RangeKey = '24h',
+  view: AgentView = 'all',
+  now = Date.now(),
+  offset = 0,
+): AgentStats {
   const span = RANGE_MS[range];
   const cutoff = span > 0 ? now - span : 0;
   const parts = new Set(VIEW_PARTS[view]);
@@ -1580,7 +1938,12 @@ export function readAgentStats(range: RangeKey = '24h', view: AgentView = 'all',
   }
 
   // The bucket width depends on the span, so the bounds come first.
-  const bounds = readBlocks(db, [['bounds', `SELECT MIN(${COL.timestamp}), MAX(${COL.timestamp}) FROM ${SOURCE} ${rangeWhere(cutoff, COL.timestamp)}`]]);
+  const bounds = readBlocks(db, [
+    [
+      'bounds',
+      `SELECT MIN(${COL.timestamp}), MAX(${COL.timestamp}) FROM ${SOURCE} ${rangeWhere(cutoff, COL.timestamp)}`,
+    ],
+  ]);
   const [firstTs, lastTs] = bounds.get('bounds')?.[0] ?? [];
   stats.bucketMs = bucketSize(range, numOrNull(firstTs), numOrNull(lastTs));
 

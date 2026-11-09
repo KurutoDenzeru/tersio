@@ -32,7 +32,15 @@ import { tersioDataPath } from './utils.ts';
 import { createDataBackup, newestDataBackup, readSnapshotMember, restoreSnapshotMember } from './snapshots.ts';
 import { MODEL_ALIASES } from './pricing.ts';
 import { readRetentionDays, tersioSettingsFile } from './plugin-settings.ts';
-import type { OpencodeClassification, OpencodeDbRow, OpencodeMessage, RunStatus, SessionLineRow, SessionTokens, ToolFact } from './usage-ledger.ts';
+import type {
+  OpencodeClassification,
+  OpencodeDbRow,
+  OpencodeMessage,
+  RunStatus,
+  SessionLineRow,
+  SessionTokens,
+  ToolFact,
+} from './usage-ledger.ts';
 import { codexModelIdentity, looksLikeCodexTranscript, parseCodexTranscript } from './codex-transcript.ts';
 
 export function usageDbPath(): string {
@@ -106,15 +114,17 @@ const SCHEMA_SQL =
 
 /** WAL + a checkpoint: the write path avoids an fsync per commit, and usage.db alone holds every row. */
 function pragmas(db: string): void {
-  run(db,
+  run(
+    db,
     'PRAGMA journal_mode=WAL;' +
-    'PRAGMA synchronous=NORMAL;' +
-    'PRAGMA wal_autocheckpoint=256;' +
-    'PRAGMA cache_size=-8000;' +
-    'PRAGMA temp_store=MEMORY;' +
-    'PRAGMA mmap_size=268435456;' +
-    // Cheap unless the planner's statistics are stale, and it keeps range queries on the right index.
-    'PRAGMA optimize;');
+      'PRAGMA synchronous=NORMAL;' +
+      'PRAGMA wal_autocheckpoint=256;' +
+      'PRAGMA cache_size=-8000;' +
+      'PRAGMA temp_store=MEMORY;' +
+      'PRAGMA mmap_size=268435456;' +
+      // Cheap unless the planner's statistics are stale, and it keeps range queries on the right index.
+      'PRAGMA optimize;',
+  );
 }
 
 function storedParserVersion(db: string): string | null {
@@ -197,18 +207,20 @@ function canMigrateInPlace(db: string): boolean {
 function migrateInPlace(db: string, preCount: number): boolean {
   const cols = `t, model, i, o, d, cr, cw, usd, st, code, note, tools, h`;
   try {
-    run(db,
+    run(
+      db,
       `BEGIN;` +
-      `CREATE TABLE files_new (id INTEGER PRIMARY KEY AUTOINCREMENT, path TEXT UNIQUE NOT NULL, mtime REAL NOT NULL, size INTEGER NOT NULL);` +
-      `INSERT INTO files_new (path, mtime, size) SELECT path, mtime, size FROM files;` +
-      `CREATE TABLE messages_new (file_id INTEGER NOT NULL REFERENCES files_new(id), t REAL, model TEXT NOT NULL,` +
-      ` i INTEGER NOT NULL, o INTEGER NOT NULL, d REAL, tf REAL, cr INTEGER NOT NULL, cw INTEGER NOT NULL,` +
-      ` usd REAL, st TEXT NOT NULL, code REAL, note TEXT, tools TEXT NOT NULL DEFAULT '[]', h TEXT, a TEXT, id TEXT, tc TEXT, cwd TEXT);` +
-      `INSERT INTO messages_new (file_id, ${cols}) SELECT (SELECT id FROM files_new WHERE files_new.path = messages.file), ${cols} FROM messages;` +
-      `DROP TABLE messages;DROP TABLE files;` +
-      `ALTER TABLE files_new RENAME TO files;ALTER TABLE messages_new RENAME TO messages;` +
-      `CREATE INDEX idx_messages_file ON messages(file_id);` +
-      `COMMIT;`);
+        `CREATE TABLE files_new (id INTEGER PRIMARY KEY AUTOINCREMENT, path TEXT UNIQUE NOT NULL, mtime REAL NOT NULL, size INTEGER NOT NULL);` +
+        `INSERT INTO files_new (path, mtime, size) SELECT path, mtime, size FROM files;` +
+        `CREATE TABLE messages_new (file_id INTEGER NOT NULL REFERENCES files_new(id), t REAL, model TEXT NOT NULL,` +
+        ` i INTEGER NOT NULL, o INTEGER NOT NULL, d REAL, tf REAL, cr INTEGER NOT NULL, cw INTEGER NOT NULL,` +
+        ` usd REAL, st TEXT NOT NULL, code REAL, note TEXT, tools TEXT NOT NULL DEFAULT '[]', h TEXT, a TEXT, id TEXT, tc TEXT, cwd TEXT);` +
+        `INSERT INTO messages_new (file_id, ${cols}) SELECT (SELECT id FROM files_new WHERE files_new.path = messages.file), ${cols} FROM messages;` +
+        `DROP TABLE messages;DROP TABLE files;` +
+        `ALTER TABLE files_new RENAME TO files;ALTER TABLE messages_new RENAME TO messages;` +
+        `CREATE INDEX idx_messages_file ON messages(file_id);` +
+        `COMMIT;`,
+    );
   } catch {
     return false;
   }
@@ -338,7 +350,9 @@ function ttftBackfilled(db: string): boolean {
 function markTranscriptsDirty(db: string): void {
   try {
     run(db, `UPDATE files SET mtime = 0 WHERE path NOT LIKE '%#%';`);
-  } catch { /* a store with no files table yet, or a read-only file: nothing to backfill */ }
+  } catch {
+    /* a store with no files table yet, or a read-only file: nothing to backfill */
+  }
 }
 
 // v10 shape gains the message id with a bare ALTER: no rows move, so no re-parse and no guard trip.
@@ -360,15 +374,24 @@ function alterInPlace(db: string): boolean {
   return !canAlterInPlace(db);
 }
 
-
 /**
  * Every column the schema names, with the type an old store is missing. A bump adds these instead of
  * dropping the table, so rows whose transcript has rotated away survive the migration.
  */
 const MESSAGE_COLUMNS: ReadonlyArray<readonly [string, string]> = [
-  ['d', 'REAL'], ['tf', 'REAL'], ['usd', 'REAL'], ['code', 'REAL'], ['note', 'TEXT'],
-  ['tools', "TEXT NOT NULL DEFAULT '[]'"], ['h', 'TEXT'], ['a', 'TEXT'], ['id', 'TEXT'],
-  ['tc', 'TEXT'], ['p', 'TEXT'], ['cr', 'INTEGER NOT NULL DEFAULT 0'], ['cw', 'INTEGER NOT NULL DEFAULT 0'],
+  ['d', 'REAL'],
+  ['tf', 'REAL'],
+  ['usd', 'REAL'],
+  ['code', 'REAL'],
+  ['note', 'TEXT'],
+  ['tools', "TEXT NOT NULL DEFAULT '[]'"],
+  ['h', 'TEXT'],
+  ['a', 'TEXT'],
+  ['id', 'TEXT'],
+  ['tc', 'TEXT'],
+  ['p', 'TEXT'],
+  ['cr', 'INTEGER NOT NULL DEFAULT 0'],
+  ['cw', 'INTEGER NOT NULL DEFAULT 0'],
   ['cwd', 'TEXT'],
 ];
 
@@ -386,7 +409,9 @@ function addMissingColumns(db: string): boolean {
     try {
       run(db, `ALTER TABLE messages ADD COLUMN ${name} ${type};`);
       added = true;
-    } catch { /* a store that refuses the column keeps running on the ones it has */ }
+    } catch {
+      /* a store that refuses the column keeps running on the ones it has */
+    }
   }
   return added;
 }
@@ -394,9 +419,14 @@ function addMissingColumns(db: string): boolean {
  * inflates every total. Rows without an id are kept, since nothing proves they are the same call. */
 function dedupeMessages(db: string): void {
   try {
-    run(db, `DELETE FROM messages WHERE id IS NOT NULL AND rowid NOT IN (
-      SELECT MIN(rowid) FROM messages WHERE id IS NOT NULL GROUP BY id);`);
-  } catch { /* a store without the column keeps what it has */ }
+    run(
+      db,
+      `DELETE FROM messages WHERE id IS NOT NULL AND rowid NOT IN (
+      SELECT MIN(rowid) FROM messages WHERE id IS NOT NULL GROUP BY id);`,
+    );
+  } catch {
+    /* a store without the column keeps what it has */
+  }
 }
 
 function ensureSchema(db: string, forceWipe: boolean): void {
@@ -409,8 +439,12 @@ function ensureSchema(db: string, forceWipe: boolean): void {
   dedupeMessages(db);
   // Forced: the operator accepts the loss and asks for a clean rebuild from what is on disk.
   if (forceWipe) {
-    run(db, `DROP TABLE IF EXISTS messages;DROP TABLE IF EXISTS files;` + SCHEMA_SQL +
-      `INSERT OR REPLACE INTO meta (k,v) VALUES ('parser_version','${PARSER_VERSION}');`);
+    run(
+      db,
+      `DROP TABLE IF EXISTS messages;DROP TABLE IF EXISTS files;` +
+        SCHEMA_SQL +
+        `INSERT OR REPLACE INTO meta (k,v) VALUES ('parser_version','${PARSER_VERSION}');`,
+    );
     return;
   }
   if (stored === PARSER_VERSION) {
@@ -431,7 +465,11 @@ function ensureSchema(db: string, forceWipe: boolean): void {
     if (countMessages(db) > 0 && !newestBackupMatches(stored)) snapshotData();
     if (stored !== null && canMigrateInPlace(db) && migrateInPlace(db, countMessages(db))) {
       run(db, `INSERT OR REPLACE INTO meta (k,v) VALUES ('parser_version','${PARSER_VERSION}');`);
-      try { run(db, `VACUUM;`); } catch { /* best-effort */ }
+      try {
+        run(db, `VACUUM;`);
+      } catch {
+        /* best-effort */
+      }
       return;
     }
     if (stored !== null && canAlterInPlace(db) && alterInPlace(db)) {
@@ -450,7 +488,9 @@ function ensureSchema(db: string, forceWipe: boolean): void {
     addMissingColumns(db);
     markTranscriptsDirty(db);
     run(db, `INSERT OR REPLACE INTO meta (k,v) VALUES ('parser_version','${PARSER_VERSION}');`);
-  } catch { /* fresh db, nothing to invalidate */ }
+  } catch {
+    /* fresh db, nothing to invalidate */
+  }
 }
 
 /** Adds each missing additive column: the agent kind, the first-token latency, and the tool facts. */
@@ -467,7 +507,9 @@ function addAdditiveColumns(db: string): boolean {
 export function snapshotData(): void {
   try {
     createDataBackup();
-  } catch { /* a missing snapshot must not block the sync */ }
+  } catch {
+    /* a missing snapshot must not block the sync */
+  }
 }
 
 const SCHEDULE_MS: Record<string, number> = { daily: 86_400_000, weekly: 604_800_000, monthly: 2_592_000_000 };
@@ -489,7 +531,9 @@ function pruneRetention(db: string): void {
   const cutoff = Date.now() - days * 86_400_000;
   try {
     run(db, `DELETE FROM messages WHERE t IS NOT NULL AND t < ${cutoff};`);
-  } catch { /* a store without the table */ }
+  } catch {
+    /* a store without the table */
+  }
 }
 
 /** Snapshot on the schedule, skipping when the newest one is still fresh. */
@@ -512,7 +556,9 @@ function readFiles(db: string): Record<string, { mtime: number; size: number }> 
     for (const [p, mtime, size] of query(db, `SELECT path, mtime, size FROM files;`)) {
       known[p] = { mtime: Number(mtime) || 0, size: Number(size) || 0 };
     }
-  } catch { /* fresh db */ }
+  } catch {
+    /* fresh db */
+  }
   return known;
 }
 
@@ -579,10 +625,19 @@ function parseFile(text: string, host?: string, file?: string, agent?: string): 
     const message = JSON.parse(text) as OpencodeMessage;
     oc = classifyOpencodeMessage(message);
     if (oc) {
-      rows.push(opencodeStoredRow(oc, host, file ? path.basename(file).replace(/\.[^.]+$/, '') : undefined, opencodeToolNames(message)));
+      rows.push(
+        opencodeStoredRow(
+          oc,
+          host,
+          file ? path.basename(file).replace(/\.[^.]+$/, '') : undefined,
+          opencodeToolNames(message),
+        ),
+      );
       return rows;
     }
-  } catch { /* JSONL */ }
+  } catch {
+    /* JSONL */
+  }
   if (looksLikeCodexTranscript(text)) {
     const parsed = parseCodexTranscript(text);
     return parsed.requests.map((request) => {
@@ -644,7 +699,9 @@ function parseFile(text: string, host?: string, file?: string, agent?: string): 
         const usage = parsed.usage ?? {};
         rows.push({
           t,
-          model: canonicalModelId(provider ? (codexModel ? `codex/${provider}/${codexModel}` : `codex/${provider}`) : 'codex'),
+          model: canonicalModelId(
+            provider ? (codexModel ? `codex/${provider}/${codexModel}` : `codex/${provider}`) : 'codex',
+          ),
           i: intOf(usage.input),
           o: intOf(usage.output),
           d: undefined,
@@ -663,7 +720,7 @@ function parseFile(text: string, host?: string, file?: string, agent?: string): 
         continue;
       }
       // A DeepSeek Harness row names no model itself; the session's last model/selection does.
-      const model = parsed.model ?? (row.type === 'assistant/message' ? dshModel ?? undefined : undefined);
+      const model = parsed.model ?? (row.type === 'assistant/message' ? (dshModel ?? undefined) : undefined);
       if (parsed.kind !== 'assistant_row' || !model || !parsed.usage) continue;
       const usage = parsed.usage;
       const dur = durOf(parsed.durMs);
@@ -689,17 +746,21 @@ function parseFile(text: string, host?: string, file?: string, agent?: string): 
         id: rid,
         gateway: parsed.provider,
       });
-    } catch { /* skip corrupt lines */ }
+    } catch {
+      /* skip corrupt lines */
+    }
   }
   return rows;
 }
 
 function insertSql(file: string, r: StoredRow): string {
-  return `INSERT OR IGNORE INTO messages (file_id, t, model, i, o, d, tf, cr, cw, usd, st, code, note, tools, h, a, id, tc, p, cwd) VALUES (` +
+  return (
+    `INSERT OR IGNORE INTO messages (file_id, t, model, i, o, d, tf, cr, cw, usd, st, code, note, tools, h, a, id, tc, p, cwd) VALUES (` +
     `(SELECT id FROM files WHERE path=${esc(file)}),${r.t === null ? 'NULL' : String(r.t)},${esc(r.model)},${r.i},${r.o},` +
     `${nullNum(r.d)},${nullNum(r.tf)},${r.cr},${r.cw},${nullNum(r.usd)},${esc(r.st)},` +
     `${nullNum(r.code)},${nullStr(r.note)},${esc(JSON.stringify(r.tools))},${nullStr(r.host)},${nullStr(r.agent ?? undefined)},${nullStr(r.id)},` +
-    `${r.toolFacts && r.toolFacts.length > 0 ? esc(JSON.stringify(r.toolFacts)) : 'NULL'},${nullStr(r.gateway)},${nullStr(r.cwd)});`;
+    `${r.toolFacts && r.toolFacts.length > 0 ? esc(JSON.stringify(r.toolFacts)) : 'NULL'},${nullStr(r.gateway)},${nullStr(r.cwd)});`
+  );
 }
 
 // Unchanged transcripts are skipped via mtime+size; rows for deleted ones are kept so rotation never erases history.
@@ -716,11 +777,13 @@ export function syncUsageDb(): boolean {
     // A downgrade keeps its rows: the wipe below cannot rebuild them from rotated transcripts.
     const downgrade = !forced && isDowngrade(stored);
     migrated = stored !== null && stored !== PARSER_VERSION && !downgrade;
-    if (downgrade) guardReport = `store was written by a newer tersio (parser ${stored} > ${PARSER_VERSION}); kept its rows and skipped the re-parse`;
+    if (downgrade)
+      guardReport = `store was written by a newer tersio (parser ${stored} > ${PARSER_VERSION}); kept its rows and skipped the re-parse`;
     if (migrated && !forced) preWipe = countMessages(db);
     ensureSchema(db, forced);
     // One rewrite so the additive columns' NULL rows gain latency and tool facts; runs while a marker is absent.
-    if (!downgrade && (!ttftBackfilled(db) || !toolFactsBackfilled(db) || !codexFactsBackfilled(db))) markTranscriptsDirty(db);
+    if (!downgrade && (!ttftBackfilled(db) || !toolFactsBackfilled(db) || !codexFactsBackfilled(db)))
+      markTranscriptsDirty(db);
     maybeScheduledBackup();
     // Retention applies even on a sync with nothing new, so a quiet machine still lets old rows age out.
     pruneRetention(db);
@@ -791,11 +854,14 @@ export function syncUsageDb(): boolean {
   };
   for (const file of changed) {
     const entry = current[file];
-    if (!push(
-      `INSERT INTO files (path, mtime, size) VALUES (${esc(file)},${entry.mtime},${entry.size})` +
-      ` ON CONFLICT(path) DO UPDATE SET mtime=excluded.mtime,size=excluded.size;` +
-      `DELETE FROM messages WHERE file_id=(SELECT id FROM files WHERE path=${esc(file)});`,
-    )) return false;
+    if (
+      !push(
+        `INSERT INTO files (path, mtime, size) VALUES (${esc(file)},${entry.mtime},${entry.size})` +
+          ` ON CONFLICT(path) DO UPDATE SET mtime=excluded.mtime,size=excluded.size;` +
+          `DELETE FROM messages WHERE file_id=(SELECT id FROM files WHERE path=${esc(file)});`,
+      )
+    )
+      return false;
   }
   try {
     for (const file of changed) {
@@ -811,12 +877,15 @@ export function syncUsageDb(): boolean {
       if (!parsed) continue;
       // One synthetic path per row id, so the delete-and-reinsert that follows is idempotent.
       const key = `${ocDbPath}#${row.id}`;
-      if (!push(
-        `INSERT INTO files (path, mtime, size) VALUES (${esc(key)},${row.created},0)` +
-        ` ON CONFLICT(path) DO UPDATE SET mtime=excluded.mtime;` +
-        `DELETE FROM messages WHERE file_id=(SELECT id FROM files WHERE path=${esc(key)});` +
-        insertSql(key, opencodeStoredRow(parsed, 'opencode', row.id, opencodeToolNames(row.row, row.tools))),
-      )) return false;
+      if (
+        !push(
+          `INSERT INTO files (path, mtime, size) VALUES (${esc(key)},${row.created},0)` +
+            ` ON CONFLICT(path) DO UPDATE SET mtime=excluded.mtime;` +
+            `DELETE FROM messages WHERE file_id=(SELECT id FROM files WHERE path=${esc(key)});` +
+            insertSql(key, opencodeStoredRow(parsed, 'opencode', row.id, opencodeToolNames(row.row, row.tools))),
+        )
+      )
+        return false;
     }
   } catch {
     return false;
@@ -824,7 +893,8 @@ export function syncUsageDb(): boolean {
   if (!push(`INSERT OR REPLACE INTO meta (k, v) VALUES ('last_sync',${esc(String(Date.now()))});`)) return false;
   // Only once the rows are written, so a sync that fails midway widens the scan again.
   if (ocDbRows.length > 0) {
-    if (!push(`INSERT OR REPLACE INTO meta (k, v) VALUES ('opencode_tools','${OPENCODE_TOOLS_VERSION}');`)) return false;
+    if (!push(`INSERT OR REPLACE INTO meta (k, v) VALUES ('opencode_tools','${OPENCODE_TOOLS_VERSION}');`))
+      return false;
   }
   // Set only after the rewrite commits: a crash mid-backfill leaves mtimes cleared and the marker absent.
   if (changed.length > 0) {
@@ -846,10 +916,18 @@ export function syncUsageDb(): boolean {
   }
   // Reclaim the migration's DELETE storm so the file stays small.
   if (migrated) {
-    try { run(db, `VACUUM;`); } catch { /* best-effort */ }
+    try {
+      run(db, `VACUUM;`);
+    } catch {
+      /* best-effort */
+    }
   }
   // Fold the WAL back into the main file. Snapshots read through the WAL themselves, so this only keeps the ledger's own directory small.
-  try { run(db, `PRAGMA wal_checkpoint(TRUNCATE);`); } catch { /* best-effort */ }
+  try {
+    run(db, `PRAGMA wal_checkpoint(TRUNCATE);`);
+  } catch {
+    /* best-effort */
+  }
   return true;
 }
 
@@ -866,14 +944,19 @@ export function readUsageDb(): StoredUsage | null {
   try {
     const marked = query(db, `SELECT v FROM meta WHERE k='reset_at';`);
     if (marked.length) resetAt = Number(marked[0][0]) || 0;
-  } catch { /* a store with no meta row yet */ }
+  } catch {
+    /* a store with no meta row yet */
+  }
   try {
     // The wide `tools` column is read as one string and skipped in JS; a pre-agent store is read without it.
     const names = query(db, `PRAGMA table_info(messages);`).map((r) => r[1]);
     const agentCol = names.includes('a') ? 'a' : "''";
     // A store predating first-token latency has no `tf` column; read NULL so the row still loads.
     const tfCol = names.includes('tf') ? 'tf' : 'NULL';
-    rows = query(db, `SELECT t, model, i, o, d, cr, cw, usd, st, code, note, tools, h, ${agentCol}, id, ${tfCol} FROM messages${resetAt > 0 ? ` WHERE t IS NULL OR t >= ${resetAt}` : ''};`);
+    rows = query(
+      db,
+      `SELECT t, model, i, o, d, cr, cw, usd, st, code, note, tools, h, ${agentCol}, id, ${tfCol} FROM messages${resetAt > 0 ? ` WHERE t IS NULL OR t >= ${resetAt}` : ''};`,
+    );
   } catch {
     return null;
   }
@@ -885,7 +968,9 @@ export function readUsageDb(): StoredUsage | null {
       try {
         const parsed: unknown = JSON.parse(tools);
         if (Array.isArray(parsed)) toolNames = parsed.filter((x): x is string => typeof x === 'string');
-      } catch { /* keep empty */ }
+      } catch {
+        /* keep empty */
+      }
     }
     const usage: Record<string, unknown> = {
       input: Number(i) || 0,
@@ -920,7 +1005,9 @@ export function readUsageDb(): StoredUsage | null {
   try {
     const meta = query(db, `SELECT v FROM meta WHERE k='last_sync';`);
     if (meta.length) syncedAt = Number(meta[0][0]) || 0;
-  } catch { /* keep 0 */ }
+  } catch {
+    /* keep 0 */
+  }
   return {
     tokens: {
       messages: accum.messages,

@@ -1,5 +1,12 @@
 // `/prompts:*` and the shell fallback read and write the same session defaults as the MCP tool.
-import { COMBO_DEFAULTS, CAVEMAN_DEFAULTS, HEADROOM_DEFAULTS, PONYTAIL_DEFAULTS, PSTACK_DEFAULTS, RTK_DEFAULTS } from './common.ts';
+import {
+  COMBO_DEFAULTS,
+  CAVEMAN_DEFAULTS,
+  HEADROOM_DEFAULTS,
+  PONYTAIL_DEFAULTS,
+  PSTACK_DEFAULTS,
+  RTK_DEFAULTS,
+} from './common.ts';
 import { parseHostArg } from './hosts.ts';
 import { applyComboPreset, formatProfile, saveHostDefaults, storedProfile, writePluginSettings } from './profile.ts';
 import type { HostDefaultField, Profile } from './profile.ts';
@@ -25,7 +32,8 @@ function positional(argv: string[]): string[] {
 function booleanMode(value: string): 'on' | 'off' | null {
   const normalized = value.trim().toLowerCase();
   if (normalized === 'on' || normalized === 'true' || normalized === 'enable' || normalized === 'enabled') return 'on';
-  if (normalized === 'off' || normalized === 'false' || normalized === 'disable' || normalized === 'disabled') return 'off';
+  if (normalized === 'off' || normalized === 'false' || normalized === 'disable' || normalized === 'disabled')
+    return 'off';
   return null;
 }
 

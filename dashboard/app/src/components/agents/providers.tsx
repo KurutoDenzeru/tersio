@@ -1,8 +1,14 @@
 // Providers: burn, reliability, and subscription headroom per provider, plus what one usage window buys.
-import { useMemo, useState } from "react";
-import { Badge } from "@/components/ui/badge";
-import { AGENT_RANGE_LABEL } from "@/lib/data";
-import type { AgentProviderHour, AgentRow, AgentStats, AgentWindowSeries, AgentWindowInsight } from "@/lib/data";
+import { useMemo, useState } from "react"
+import { Badge } from "@/components/ui/badge"
+import { AGENT_RANGE_LABEL } from "@/lib/data"
+import type {
+  AgentProviderHour,
+  AgentRow,
+  AgentStats,
+  AgentWindowSeries,
+  AgentWindowInsight,
+} from "@/lib/data"
 import {
   Card,
   CellBar,
@@ -19,10 +25,10 @@ import {
   Stat,
   StatGrid,
   TimeChart,
-} from "@/components/charts";
-import type { Column, SeriesSpec } from "@/components/charts";
-import { EmptyState, Picker } from "@/components/common";
-import { TopUsedCards, type TopUsedEntry } from "./top-hero";
+} from "@/components/charts"
+import type { Column, SeriesSpec } from "@/components/charts"
+import { EmptyState, Picker } from "@/components/common"
+import { TopUsedCards, type TopUsedEntry } from "./top-hero"
 import {
   PALETTE,
   coverageNote,
@@ -36,59 +42,73 @@ import {
   tsFull,
   tsLabel,
   whenStamp,
-} from "@/lib/format";
+} from "@/lib/format"
 
-type BurnMetric = "tokens" | "cost" | "requests";
+type BurnMetric = "tokens" | "cost" | "requests"
 
 const BURN_OPTIONS = [
   { value: "tokens" as const, label: "Tokens" },
   { value: "cost" as const, label: "Cost" },
   { value: "requests" as const, label: "Requests" },
-];
+]
 
 /** Providers stacked individually in the burn chart; the rest fold into "Other". */
-const TOP_PROVIDERS = 6;
+const TOP_PROVIDERS = 6
 
-const SNAPSHOT_HINT = "Usage snapshots accumulate whenever usage limits are fetched (TUI footer, /usage, omp usage).";
+const SNAPSHOT_HINT =
+  "Usage snapshots accumulate whenever usage limits are fetched (TUI footer, /usage, omp usage)."
 
 interface WindowRef {
-  provider: string;
-  windowKey: string;
+  provider: string
+  windowKey: string
 }
 
-export function ProvidersPage({ agent, money }: { agent: AgentStats; money: (v: number) => string }) {
-  const [metric, setMetric] = useState<BurnMetric>("tokens");
-  const [hidden, setHidden] = useState<ReadonlySet<string>>(() => new Set<string>());
-  const [picked, setPicked] = useState<WindowRef | null>(null);
+export function ProvidersPage({
+  agent,
+  money,
+}: {
+  agent: AgentStats
+  money: (v: number) => string
+}) {
+  const [metric, setMetric] = useState<BurnMetric>("tokens")
+  const [hidden, setHidden] = useState<ReadonlySet<string>>(() => new Set<string>())
+  const [picked, setPicked] = useState<WindowRef | null>(null)
 
-  const selected = useMemo(() => resolveWindow(agent.windowInsights, picked), [agent.windowInsights, picked]);
+  const selected = useMemo(
+    () => resolveWindow(agent.windowInsights, picked),
+    [agent.windowInsights, picked],
+  )
 
   // One palette slot per provider, shared by both burn charts, so a provider keeps its color across buckets and hours.
   const colors = useMemo(() => {
     const top = [...agent.seriesByProvider]
       .toSorted(
         (a, b) =>
-          b.points.reduce((sum, p) => sum + p.costUsd, 0) - a.points.reduce((sum, p) => sum + p.costUsd, 0),
+          b.points.reduce((sum, p) => sum + p.costUsd, 0) -
+          a.points.reduce((sum, p) => sum + p.costUsd, 0),
       )
-      .slice(0, TOP_PROVIDERS);
-    const map = new Map<string, string>();
-    top.forEach((p, i) => map.set(p.provider, PALETTE[i % PALETTE.length]));
-    return map;
-  }, [agent.seriesByProvider]);
+      .slice(0, TOP_PROVIDERS)
+    const map = new Map<string, string>()
+    top.forEach((p, i) => map.set(p.provider, PALETTE[i % PALETTE.length]))
+    return map
+  }, [agent.seriesByProvider])
 
   const burn = useMemo(() => {
     const top = [...agent.seriesByProvider]
       .toSorted(
         (a, b) =>
-          b.points.reduce((sum, p) => sum + p.costUsd, 0) - a.points.reduce((sum, p) => sum + p.costUsd, 0),
+          b.points.reduce((sum, p) => sum + p.costUsd, 0) -
+          a.points.reduce((sum, p) => sum + p.costUsd, 0),
       )
-      .slice(0, TOP_PROVIDERS);
+      .slice(0, TOP_PROVIDERS)
     const spec: SeriesSpec[] = top.map((p, i) => ({
       key: `p${i}`,
       label: p.provider,
       color: colors.get(p.provider) ?? PALETTE[i % PALETTE.length],
-    }));
-    const stamps = [...new Set(top.flatMap((p) => p.points.map((point) => point.ts)))].toSorted((a, b) => a - b);
+    }))
+    const stamps = [...new Set(top.flatMap((p) => p.points.map((point) => point.ts)))].toSorted(
+      (a, b) => a - b,
+    )
     const byTs = top.map(
       (p) =>
         new Map(
@@ -96,46 +116,57 @@ export function ProvidersPage({ agent, money }: { agent: AgentStats; money: (v: 
             (point) =>
               [
                 point.ts,
-                metric === "cost" ? point.costUsd : metric === "requests" ? point.requests : point.tokens,
+                metric === "cost"
+                  ? point.costUsd
+                  : metric === "requests"
+                    ? point.requests
+                    : point.tokens,
               ] as const,
           ),
         ),
-    );
+    )
     const rows = stamps.map((ts) => {
-      const row: { ts: number } & Record<string, number> = { ts };
+      const row: { ts: number } & Record<string, number> = { ts }
       spec.forEach((s, i) => {
-        row[s.key] = byTs[i].get(ts) ?? 0;
-      });
-      return row;
-    });
+        row[s.key] = byTs[i].get(ts) ?? 0
+      })
+      return row
+    })
     // The legend reads each provider's total for the range, in the metric the chart plots.
     for (const [i, s] of spec.entries()) {
-      let total = 0;
-      for (const point of top[i].points) total += metric === "cost" ? point.costUsd : metric === "requests" ? point.requests : point.tokens;
-      s.value = total;
+      let total = 0
+      for (const point of top[i].points)
+        total +=
+          metric === "cost" ? point.costUsd : metric === "requests" ? point.requests : point.tokens
+      s.value = total
     }
-    return { spec, rows };
-  }, [agent.seriesByProvider, metric]);
+    return { spec, rows }
+  }, [agent.seriesByProvider, metric])
 
-  const shown = burn.spec.filter((s) => !hidden.has(s.key));
+  const shown = burn.spec.filter((s) => !hidden.has(s.key))
   const toggle = (key: string) =>
     setHidden((held) => {
-      const next = new Set(held);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
+      const next = new Set(held)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
 
-  const totals = agent.overall;
-  const unpriced = totals.unpricedRequests;
-  const burnFmt = metric === "cost" ? money : fmtShort;
-  const bucketWord = agent.bucketMs < 3_600_000 ? "5 minutes" : agent.bucketMs < 86_400_000 ? "hour" : "day";
+  const totals = agent.overall
+  const unpriced = totals.unpricedRequests
+  const burnFmt = metric === "cost" ? money : fmtShort
+  const bucketWord =
+    agent.bucketMs < 3_600_000 ? "5 minutes" : agent.bucketMs < 86_400_000 ? "hour" : "day"
   const topProvider = useMemo(
-    () => agent.byProvider.reduce<AgentRow | null>((top, p) => (top === null || p.total > top.total ? p : top), null),
+    () =>
+      agent.byProvider.reduce<AgentRow | null>(
+        (top, p) => (top === null || p.total > top.total ? p : top),
+        null,
+      ),
     [agent.byProvider],
-  );
+  )
   // A range wider than the store names where its records start.
-  const coverage = coverageNote(agent.byProvider, agent.cutoff);
+  const coverage = coverageNote(agent.byProvider, agent.cutoff)
   // The hero ranks by requests; its silhouette is the leader's own brand mark.
   const topEntries = useMemo<TopUsedEntry[]>(
     () =>
@@ -149,14 +180,16 @@ export function ProvidersPage({ agent, money }: { agent: AgentStats; money: (v: 
           share: p.requests / Math.max(1, totals.requests),
         })),
     [agent.byProvider, totals.requests],
-  );
+  )
 
   return (
     <Page>
       <PageHeader
         title="Providers"
-        description={`Burn, reliability and subscription headroom per provider over ${AGENT_RANGE_LABEL[agent.range]}.`
-          + (coverage ? ` · ${coverage}` : "")}
+        description={
+          `Burn, reliability and subscription headroom per provider over ${AGENT_RANGE_LABEL[agent.range]}.` +
+          (coverage ? ` · ${coverage}` : "")
+        }
       />
 
       <StatGrid cols={5}>
@@ -194,7 +227,8 @@ export function ProvidersPage({ agent, money }: { agent: AgentStats; money: (v: 
       <TopUsedCards kind="provider" entries={topEntries} />
 
       <Card
-        title="Provider totals" icon="plug-zap"
+        title="Provider totals"
+        icon="plug-zap"
         description={
           unpriced > 0
             ? `Cost is an API-equivalent estimate and excludes ${fmt(unpriced)} unpriced subscription request${unpriced === 1 ? "" : "s"}. Select a row for its token mix.`
@@ -207,7 +241,8 @@ export function ProvidersPage({ agent, money }: { agent: AgentStats; money: (v: 
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <Card
-          title="Burn by provider" icon="flame"
+          title="Burn by provider"
+          icon="flame"
           description={
             metric === "cost" && unpriced > 0
               ? `API-equivalent estimate per ${agent.bucketMs < 86_400_000 ? "hour" : "day"}; excludes unpriced subscription requests`
@@ -242,7 +277,12 @@ export function ProvidersPage({ agent, money }: { agent: AgentStats; money: (v: 
                 ariaLabel="Tokens, cost, or requests per bucket, stacked by provider"
                 summary={`The ${metric} burned per bucket across the ${burn.spec.length} busiest providers in range.`}
               />
-              <Legend items={burn.spec} active={new Set(shown.map((s) => s.key))} onToggle={toggle} valueFmt={burnFmt} />
+              <Legend
+                items={burn.spec}
+                active={new Set(shown.map((s) => s.key))}
+                onToggle={toggle}
+                valueFmt={burnFmt}
+              />
             </div>
           </QueryView>
         </Card>
@@ -251,7 +291,8 @@ export function ProvidersPage({ agent, money }: { agent: AgentStats; money: (v: 
       </div>
 
       <Card
-        title="Subscription windows" icon="gauge"
+        title="Subscription windows"
+        icon="gauge"
         description="What one usage window buys you and how many accounts peak demand needs. Select a row to chart it."
         flush
       >
@@ -265,19 +306,26 @@ export function ProvidersPage({ agent, money }: { agent: AgentStats; money: (v: 
         onSelect={setPicked}
       />
     </Page>
-  );
+  )
 }
 
 /** The charted window: the user's pick if it exists, else that provider's first window, else the most-burned. */
-function resolveWindow(insights: readonly AgentWindowInsight[], picked: WindowRef | null): WindowRef | null {
-  if (picked && insights.some((i) => i.provider === picked.provider && i.windowKey === picked.windowKey)) return picked;
+function resolveWindow(
+  insights: readonly AgentWindowInsight[],
+  picked: WindowRef | null,
+): WindowRef | null {
+  if (
+    picked &&
+    insights.some((i) => i.provider === picked.provider && i.windowKey === picked.windowKey)
+  )
+    return picked
   const fallback =
     (picked && insights.find((i) => i.provider === picked.provider)) ||
     insights.reduce<AgentWindowInsight | undefined>(
       (top, i) => (top === undefined || i.fractionConsumed > top.fractionConsumed ? i : top),
       undefined,
-    );
-  return fallback ? { provider: fallback.provider, windowKey: fallback.windowKey } : null;
+    )
+  return fallback ? { provider: fallback.provider, windowKey: fallback.windowKey } : null
 }
 
 // Provider totals
@@ -286,19 +334,19 @@ function ProviderTotalsTable({
   providers,
   money,
 }: {
-  providers: AgentRow[];
-  money: (v: number) => string;
+  providers: AgentRow[]
+  money: (v: number) => string
 }) {
-  const [open, setOpen] = useState<string | null>(null);
+  const [open, setOpen] = useState<string | null>(null)
 
   const columns = useMemo<Array<Column<AgentRow>>>(() => {
-    let maxRequests = 0;
-    let maxTokens = 0;
-    let grandTokens = 0;
+    let maxRequests = 0
+    let maxTokens = 0
+    let grandTokens = 0
     for (const p of providers) {
-      maxRequests = Math.max(maxRequests, p.requests);
-      maxTokens = Math.max(maxTokens, p.total);
-      grandTokens += p.total;
+      maxRequests = Math.max(maxRequests, p.requests)
+      maxTokens = Math.max(maxTokens, p.total)
+      grandTokens += p.total
     }
     return [
       {
@@ -328,7 +376,10 @@ function ProviderTotalsTable({
         render: (p) => (
           <span className="flex items-center justify-end gap-2">
             <span className="mono tabular-nums text-dim">{fmt(p.failed)}</span>
-            <ErrorRateBadge rate={p.errorRate} title={`${fmt(p.failed)} failed of ${fmt(p.requests)}`} />
+            <ErrorRateBadge
+              rate={p.errorRate}
+              title={`${fmt(p.failed)} failed of ${fmt(p.requests)}`}
+            />
           </span>
         ),
       },
@@ -393,8 +444,8 @@ function ProviderTotalsTable({
           </span>
         ),
       },
-    ];
-  }, [providers, money]);
+    ]
+  }, [providers, money])
 
   return (
     <PagedTable
@@ -407,9 +458,15 @@ function ProviderTotalsTable({
       initialSort={{ key: "tokens", dir: "desc" }}
       perPage={12}
       ariaLabel="Provider totals"
-      empty={<EmptyState icon="circle-slash" title="No requests in this range" desc="Try a longer range." />}
+      empty={
+        <EmptyState
+          icon="circle-slash"
+          title="No requests in this range"
+          desc="Try a longer range."
+        />
+      }
     />
-  );
+  )
 }
 
 const TOKEN_MIX: Array<{ label: string; color: string; pick: (p: AgentRow) => number }> = [
@@ -417,10 +474,10 @@ const TOKEN_MIX: Array<{ label: string; color: string; pick: (p: AgentRow) => nu
   { label: "Cache read", color: PALETTE[0], pick: (p) => p.cacheRead },
   { label: "Cache write", color: PALETTE[3], pick: (p) => p.cacheWrite },
   { label: "Output", color: PALETTE[4], pick: (p) => p.output },
-];
+]
 
 function TokenMix({ provider }: { provider: AgentRow }) {
-  const parts = TOKEN_MIX.map((m) => ({ label: m.label, color: m.color, value: m.pick(provider) }));
+  const parts = TOKEN_MIX.map((m) => ({ label: m.label, color: m.color, value: m.pick(provider) }))
   return (
     <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 px-3.5 py-2">
       {parts.map((part) => (
@@ -428,63 +485,86 @@ function TokenMix({ provider }: { provider: AgentRow }) {
           <span className="size-2 shrink-0 rounded-[2px]" style={{ background: part.color }} />
           <span>{part.label}</span>
           <span className="mono tabular-nums text-ink">
-            {fmtShort(part.value)} · {provider.total > 0 ? pct(part.value / provider.total, 0) : "-"}
+            {fmtShort(part.value)} ·{" "}
+            {provider.total > 0 ? pct(part.value / provider.total, 0) : "-"}
           </span>
         </span>
       ))}
-      <span className="flex h-1.5 min-w-[120px] flex-1 overflow-hidden rounded-full bg-track" aria-hidden="true">
+      <span
+        className="flex h-1.5 min-w-[120px] flex-1 overflow-hidden rounded-full bg-track"
+        aria-hidden="true"
+      >
         {parts.map((part) => (
-          <span key={part.label} style={{ width: `${provider.total > 0 ? (part.value / provider.total) * 100 : 0}%`, background: part.color }} />
+          <span
+            key={part.label}
+            style={{
+              width: `${provider.total > 0 ? (part.value / provider.total) * 100 : 0}%`,
+              background: part.color,
+            }}
+          />
         ))}
       </span>
     </div>
-  );
+  )
 }
 
 // Peak burn hours
 
 /** A sentinel, not an empty string: the select treats "" as no value and shows a blank trigger. */
-const ALL_PROVIDERS = "__all__";
+const ALL_PROVIDERS = "__all__"
 
-function PeakHoursCard({ hourly, providers, colors }: { hourly: AgentProviderHour[]; providers: AgentRow[]; colors: Map<string, string> }) {
-  const [provider, setProvider] = useState(ALL_PROVIDERS);
-  const current = provider === ALL_PROVIDERS || providers.some((p) => p.provider === provider) ? provider : ALL_PROVIDERS;
+function PeakHoursCard({
+  hourly,
+  providers,
+  colors,
+}: {
+  hourly: AgentProviderHour[]
+  providers: AgentRow[]
+  colors: Map<string, string>
+}) {
+  const [provider, setProvider] = useState(ALL_PROVIDERS)
+  const current =
+    provider === ALL_PROVIDERS || providers.some((p) => p.provider === provider)
+      ? provider
+      : ALL_PROVIDERS
 
   // One stacked bar per provider, same order and colors as the burn chart; a picked provider collapses to one bar.
   const shown = useMemo(() => {
-    const picked = current === ALL_PROVIDERS ? providers.map((p) => p.provider) : [current];
-    const names = picked.filter((name) => colors.has(name) || hourly.some((p) => p.provider === name));
-    return names.slice(0, TOP_PROVIDERS);
-  }, [current, providers, hourly, colors]);
+    const picked = current === ALL_PROVIDERS ? providers.map((p) => p.provider) : [current]
+    const names = picked.filter(
+      (name) => colors.has(name) || hourly.some((p) => p.provider === name),
+    )
+    return names.slice(0, TOP_PROVIDERS)
+  }, [current, providers, hourly, colors])
 
   const hours = useMemo(() => {
-    const output = Array.from({ length: 24 }, () => 0);
-    const requests = Array.from({ length: 24 }, () => 0);
-    const perHour: Record<string, number[]> = {};
-    for (const name of shown) perHour[name] = Array.from({ length: 24 }, () => 0);
+    const output = Array.from({ length: 24 }, () => 0)
+    const requests = Array.from({ length: 24 }, () => 0)
+    const perHour: Record<string, number[]> = {}
+    for (const name of shown) perHour[name] = Array.from({ length: 24 }, () => 0)
     for (const point of hourly) {
-      const stack = perHour[point.provider];
-      if (!stack) continue;
-      stack[point.hour] += point.totalTokens;
-      output[point.hour] += point.outputTokens;
-      requests[point.hour] += point.requests;
+      const stack = perHour[point.provider]
+      if (!stack) continue
+      stack[point.hour] += point.totalTokens
+      output[point.hour] += point.outputTokens
+      requests[point.hour] += point.requests
     }
-    let peak = 0;
-    const totals = perHour[Object.keys(perHour)[0] ?? ""] ?? Array.from({ length: 24 }, () => 0);
+    let peak = 0
+    const totals = perHour[Object.keys(perHour)[0] ?? ""] ?? Array.from({ length: 24 }, () => 0)
     for (let hour = 1; hour < 24; hour++) {
-      const sum = shown.reduce((acc, name) => acc + perHour[name][hour], 0);
-      const top = shown.reduce((acc, name) => acc + perHour[name][peak], 0);
-      if (sum > top) peak = hour;
+      const sum = shown.reduce((acc, name) => acc + perHour[name][hour], 0)
+      const top = shown.reduce((acc, name) => acc + perHour[name][peak], 0)
+      if (sum > top) peak = hour
     }
-    void totals;
-    const hasData = shown.some((name) => perHour[name][peak] > 0);
+    void totals
+    const hasData = shown.some((name) => perHour[name][peak] > 0)
     const rows = Array.from({ length: 24 }, (_, hour) => {
-      const row: Record<string, number> = { hour };
-      for (const name of shown) row[name] = perHour[name][hour];
-      return row;
-    });
-    return { rows, output, requests, peak, hasData, perHour };
-  }, [hourly, shown]);
+      const row: Record<string, number> = { hour }
+      for (const name of shown) row[name] = perHour[name][hour]
+      return row
+    })
+    return { rows, output, requests, peak, hasData, perHour }
+  }, [hourly, shown])
 
   const spec = useMemo<SeriesSpec[]>(
     () =>
@@ -495,19 +575,25 @@ function PeakHoursCard({ hourly, providers, colors }: { hourly: AgentProviderHou
         value: hours.perHour[name]?.reduce((total, v) => total + v, 0) ?? 0,
       })),
     [shown, colors, hours.perHour],
-  );
+  )
 
   return (
     <Card
-      title="Peak burn hours" icon="clock"
+      title="Peak burn hours"
+      icon="clock"
       description={
-        hours.hasData ? `Tokens by local hour of day; peak at ${hourLabel(hours.peak)}` : "Tokens by local hour of day"
+        hours.hasData
+          ? `Tokens by local hour of day; peak at ${hourLabel(hours.peak)}`
+          : "Tokens by local hour of day"
       }
       actions={
         <Picker
           label="Provider"
           value={current}
-          options={[{ value: ALL_PROVIDERS, label: "All providers" }, ...providers.map((p) => ({ value: p.provider, label: p.provider }))]}
+          options={[
+            { value: ALL_PROVIDERS, label: "All providers" },
+            ...providers.map((p) => ({ value: p.provider, label: p.provider })),
+          ]}
           onPick={setProvider}
         />
       }
@@ -531,7 +617,7 @@ function PeakHoursCard({ hourly, providers, colors }: { hourly: AgentProviderHou
           : "No activity in this range."}
       </p>
     </Card>
-  );
+  )
 }
 
 // Subscription window insights
@@ -540,8 +626,8 @@ function WindowInsightsTable({
   insights,
   onSelect,
 }: {
-  insights: AgentWindowInsight[];
-  onSelect: (ref: WindowRef) => void;
+  insights: AgentWindowInsight[]
+  onSelect: (ref: WindowRef) => void
 }) {
   return (
     <PagedTable
@@ -560,7 +646,7 @@ function WindowInsightsTable({
         />
       }
     />
-  );
+  )
 }
 
 const INSIGHT_COLUMNS: Array<Column<AgentWindowInsight>> = [
@@ -594,7 +680,8 @@ const INSIGHT_COLUMNS: Array<Column<AgentWindowInsight>> = [
   {
     key: "consumed",
     header: "Windows burned",
-    title: "Subscription-window equivalents consumed in range (sum of used-fraction increases across accounts)",
+    title:
+      "Subscription-window equivalents consumed in range (sum of used-fraction increases across accounts)",
     align: "right",
     sort: (i) => i.fractionConsumed,
     render: (i) => <span className="mono tabular-nums">{i.fractionConsumed.toFixed(2)}</span>,
@@ -617,7 +704,8 @@ const INSIGHT_COLUMNS: Array<Column<AgentWindowInsight>> = [
   {
     key: "peak",
     header: "Peak utilization",
-    title: "Peak of summed used fraction across accounts at any sampled instant; the bar is relative to fleet capacity",
+    title:
+      "Peak of summed used fraction across accounts at any sampled instant; the bar is relative to fleet capacity",
     align: "right",
     width: 170,
     sort: (i) => i.peakConcurrentFraction,
@@ -625,7 +713,11 @@ const INSIGHT_COLUMNS: Array<Column<AgentWindowInsight>> = [
       <MeterCell
         value={i.peakConcurrentFraction}
         max={i.accounts}
-        color={i.accounts > 0 && i.peakConcurrentFraction / i.accounts >= 0.9 ? "var(--warn-border)" : undefined}
+        color={
+          i.accounts > 0 && i.peakConcurrentFraction / i.accounts >= 0.9
+            ? "var(--warn-border)"
+            : undefined
+        }
         label={`${i.windowLabel} peak utilization`}
       />
     ),
@@ -655,13 +747,13 @@ const INSIGHT_COLUMNS: Array<Column<AgentWindowInsight>> = [
       </span>
     ),
   },
-];
+]
 
 // Window utilization
 
-const MINUTE_MS = 60_000;
-const HOUR_MS = 60 * MINUTE_MS;
-const DAY_MS = 24 * HOUR_MS;
+const MINUTE_MS = 60_000
+const HOUR_MS = 60 * MINUTE_MS
+const DAY_MS = 24 * HOUR_MS
 /** Candidate utilization bucket sizes; the finest one within {@link MAX_UTIL_SLOTS} wins. */
 const UTIL_STEPS = [
   5 * MINUTE_MS,
@@ -673,29 +765,29 @@ const UTIL_STEPS = [
   6 * HOUR_MS,
   12 * HOUR_MS,
   DAY_MS,
-];
-const MAX_UTIL_SLOTS = 240;
+]
+const MAX_UTIL_SLOTS = 240
 /** A reading holds until the next snapshot, but only this long; longer silences render as gaps, not plateaus. */
-const MAX_HOLD_MS = 6 * HOUR_MS;
+const MAX_HOLD_MS = 6 * HOUR_MS
 
 interface AccountRow {
-  series: AgentWindowSeries;
+  series: AgentWindowSeries
   /** Account label, numbered when another account shares it. */
-  name: string;
-  color: string | null;
-  latest: { fraction: number; exhausted: boolean; timestamp: number } | null;
-  peak: number | null;
-  samples: number;
+  name: string
+  color: string | null
+  latest: { fraction: number; exhausted: boolean; timestamp: number } | null
+  peak: number | null
+  samples: number
 }
 
 interface UtilizationChart {
-  rows: Array<{ ts: number } & Record<string, number | null>>;
-  series: SeriesSpec[];
+  rows: Array<{ ts: number } & Record<string, number | null>>
+  series: SeriesSpec[]
   /** Color assigned to each charted account, keyed by account key. */
-  colorByAccount: ReadonlyMap<string, string>;
-  stepMs: number;
-  first: number;
-  last: number;
+  colorByAccount: ReadonlyMap<string, string>
+  stepMs: number
+  first: number
+  last: number
 }
 
 function WindowUtilizationCard({
@@ -704,42 +796,42 @@ function WindowUtilizationCard({
   selected,
   onSelect,
 }: {
-  insights: AgentWindowInsight[];
+  insights: AgentWindowInsight[]
   /** Every provider's series; the card charts only the selected provider's window. */
-  series: AgentWindowSeries[];
-  selected: WindowRef | null;
-  onSelect: (ref: WindowRef) => void;
+  series: AgentWindowSeries[]
+  selected: WindowRef | null
+  onSelect: (ref: WindowRef) => void
 }) {
-  const [hidden, setHidden] = useState<ReadonlySet<string>>(() => new Set<string>());
+  const [hidden, setHidden] = useState<ReadonlySet<string>>(() => new Set<string>())
 
-  const providers = useMemo(() => [...new Set(insights.map((i) => i.provider))], [insights]);
+  const providers = useMemo(() => [...new Set(insights.map((i) => i.provider))], [insights])
   const windows = useMemo(
     () =>
       insights
         .filter((i) => i.provider === selected?.provider)
         .map((i) => ({ key: i.windowKey, label: i.windowLabel })),
     [insights, selected?.provider],
-  );
+  )
   const providerSeries = useMemo(
     () => series.filter((s) => s.provider === selected?.provider),
     [series, selected?.provider],
-  );
+  )
 
   // Distinct accounts can share a label (one email in two orgs): number the repeats.
   const names = useMemo(() => {
-    const keysByLabel = new Map<string, string[]>();
+    const keysByLabel = new Map<string, string[]>()
     for (const s of providerSeries) {
-      const keys = keysByLabel.get(s.accountLabel) ?? [];
-      if (!keys.includes(s.accountKey)) keys.push(s.accountKey);
-      keysByLabel.set(s.accountLabel, keys);
+      const keys = keysByLabel.get(s.accountLabel) ?? []
+      if (!keys.includes(s.accountKey)) keys.push(s.accountKey)
+      keysByLabel.set(s.accountLabel, keys)
     }
-    const out = new Map<string, string>();
+    const out = new Map<string, string>()
     for (const [label, keys] of keysByLabel) {
-      keys.sort();
-      keys.forEach((key, i) => out.set(key, keys.length > 1 ? `${label} #${i + 1}` : label));
+      keys.sort()
+      keys.forEach((key, i) => out.set(key, keys.length > 1 ? `${label} #${i + 1}` : label))
     }
-    return out;
-  }, [providerSeries]);
+    return out
+  }, [providerSeries])
 
   const chart = useMemo(
     () =>
@@ -748,30 +840,32 @@ function WindowUtilizationCard({
         names,
       ),
     [providerSeries, names, selected?.windowKey],
-  );
+  )
 
-  const shown = chart.series.filter((s) => !hidden.has(s.key));
+  const shown = chart.series.filter((s) => !hidden.has(s.key))
   const toggle = (key: string) =>
     setHidden((held) => {
-      const next = new Set(held);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
+      const next = new Set(held)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
 
   const rows = useMemo<AccountRow[]>(() => {
     return providerSeries
       .map((account) => {
-        let latest: AccountRow["latest"] = null;
-        let peak: number | null = null;
+        let latest: AccountRow["latest"] = null
+        let peak: number | null = null
         for (const p of account.points) {
-          if (p.usedFraction === null) continue;
-          peak = Math.max(peak ?? 0, p.usedFraction);
+          if (p.usedFraction === null) continue
+          peak = Math.max(peak ?? 0, p.usedFraction)
           if (!latest || p.ts >= latest.timestamp)
-            latest = { fraction: p.usedFraction, exhausted: p.exhausted, timestamp: p.ts };
+            latest = { fraction: p.usedFraction, exhausted: p.exhausted, timestamp: p.ts }
         }
         const color =
-          account.windowKey === selected?.windowKey ? (chart.colorByAccount.get(account.accountKey) ?? null) : null;
+          account.windowKey === selected?.windowKey
+            ? (chart.colorByAccount.get(account.accountKey) ?? null)
+            : null
         return {
           series: account,
           name: names.get(account.accountKey) ?? account.accountLabel,
@@ -779,21 +873,22 @@ function WindowUtilizationCard({
           latest,
           peak,
           samples: account.points.length,
-        };
+        }
       })
       .toSorted(
         (a, b) =>
           Number(b.color !== null) - Number(a.color !== null) ||
           a.series.windowLabel.localeCompare(b.series.windowLabel) ||
           (b.latest?.fraction ?? -1) - (a.latest?.fraction ?? -1),
-      );
-  }, [providerSeries, names, chart.colorByAccount, selected?.windowKey]);
+      )
+  }, [providerSeries, names, chart.colorByAccount, selected?.windowKey])
 
-  const windowLabel = windows.find((w) => w.key === selected?.windowKey)?.label;
+  const windowLabel = windows.find((w) => w.key === selected?.windowKey)?.label
 
   return (
     <Card
-      title="Window utilization" icon="chart-spline"
+      title="Window utilization"
+      icon="chart-spline"
       description={
         chart.rows.length > 0
           ? `${windowLabel ?? "Window"} used fraction per account, ${whenStamp(chart.first)} - ${whenStamp(chart.last)}`
@@ -807,8 +902,8 @@ function WindowUtilizationCard({
               value={selected.provider}
               options={providers.map((p) => ({ value: p, label: p }))}
               onPick={(next) => {
-                const first = insights.find((i) => i.provider === next);
-                if (first) onSelect({ provider: next, windowKey: first.windowKey });
+                const first = insights.find((i) => i.provider === next)
+                if (first) onSelect({ provider: next, windowKey: first.windowKey })
               }}
             />
             <Picker
@@ -822,7 +917,11 @@ function WindowUtilizationCard({
       }
     >
       {selected === null ? (
-        <EmptyState icon="circle-slash" title="No usage snapshots in this range" desc={SNAPSHOT_HINT} />
+        <EmptyState
+          icon="circle-slash"
+          title="No usage snapshots in this range"
+          desc={SNAPSHOT_HINT}
+        />
       ) : (
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-3">
@@ -840,75 +939,103 @@ function WindowUtilizationCard({
               summary="Each line is one account's recorded used fraction, so overlapping demand and exhaustion are visible."
             />
             {chart.series.length > 1 && (
-              <Legend items={chart.series} active={new Set(shown.map((s) => s.key))} onToggle={toggle} />
+              <Legend
+                items={chart.series}
+                active={new Set(shown.map((s) => s.key))}
+                onToggle={toggle}
+              />
             )}
           </div>
           <PagedTable
             rows={rows}
             rowKey={(r) => `${r.series.windowKey}::${r.series.accountKey}`}
             columns={ACCOUNT_COLUMNS}
-            onRowClick={(r) => onSelect({ provider: r.series.provider, windowKey: r.series.windowKey })}
+            onRowClick={(r) =>
+              onSelect({ provider: r.series.provider, windowKey: r.series.windowKey })
+            }
             perPage={16}
             ariaLabel="Accounts"
-            empty={<EmptyState icon="circle-slash" title="No accounts recorded" desc={SNAPSHOT_HINT} />}
+            empty={
+              <EmptyState icon="circle-slash" title="No accounts recorded" desc={SNAPSHOT_HINT} />
+            }
           />
         </div>
       )}
     </Card>
-  );
+  )
 }
 
 /** One line per account over a shared axis spanning the window's recorded snapshots. */
-function buildUtilization(accounts: AgentWindowSeries[], names: ReadonlyMap<string, string>): UtilizationChart {
-  let first = Number.POSITIVE_INFINITY;
-  let last = Number.NEGATIVE_INFINITY;
+function buildUtilization(
+  accounts: AgentWindowSeries[],
+  names: ReadonlyMap<string, string>,
+): UtilizationChart {
+  let first = Number.POSITIVE_INFINITY
+  let last = Number.NEGATIVE_INFINITY
   for (const account of accounts) {
     for (const p of account.points) {
-      if (p.ts < first) first = p.ts;
-      if (p.ts > last) last = p.ts;
+      if (p.ts < first) first = p.ts
+      if (p.ts > last) last = p.ts
     }
   }
-  if (!(last >= first)) return { rows: [], series: [], colorByAccount: new Map<string, string>(), stepMs: HOUR_MS, first: 0, last: 0 };
+  if (!(last >= first))
+    return {
+      rows: [],
+      series: [],
+      colorByAccount: new Map<string, string>(),
+      stepMs: HOUR_MS,
+      first: 0,
+      last: 0,
+    }
 
-  const span = last - first;
-  const stepMs = UTIL_STEPS.find((step) => span / step < MAX_UTIL_SLOTS) ?? DAY_MS;
-  const start = Math.floor(first / stepMs) * stepMs;
-  const buckets: number[] = [];
-  for (let ts = start; ts <= last; ts += stepMs) buckets.push(ts);
+  const span = last - first
+  const stepMs = UTIL_STEPS.find((step) => span / step < MAX_UTIL_SLOTS) ?? DAY_MS
+  const start = Math.floor(first / stepMs) * stepMs
+  const buckets: number[] = []
+  for (let ts = start; ts <= last; ts += stepMs) buckets.push(ts)
 
   const ordered = [...accounts].toSorted((a, b) =>
-    (names.get(a.accountKey) ?? a.accountLabel).localeCompare(names.get(b.accountKey) ?? b.accountLabel),
-  );
-  const rows = buckets.map((ts) => ({ ts }) as { ts: number } & Record<string, number | null>);
-  const colorByAccount = new Map<string, string>();
+    (names.get(a.accountKey) ?? a.accountLabel).localeCompare(
+      names.get(b.accountKey) ?? b.accountLabel,
+    ),
+  )
+  const rows = buckets.map((ts) => ({ ts }) as { ts: number } & Record<string, number | null>)
+  const colorByAccount = new Map<string, string>()
   const series = ordered.map((account, rank) => {
-    const color = PALETTE[rank % PALETTE.length];
-    colorByAccount.set(account.accountKey, color);
-    const key = `a${rank}`;
+    const color = PALETTE[rank % PALETTE.length]
+    colorByAccount.set(account.accountKey, color)
+    const key = `a${rank}`
     // Last reading in each bucket, then hold it forward across short silences.
-    const held = buckets.map(() => Number.NaN);
-    const readAt = buckets.map(() => 0);
+    const held = buckets.map(() => Number.NaN)
+    const readAt = buckets.map(() => 0)
     for (const p of account.points) {
-      const i = Math.floor((p.ts - start) / stepMs);
-      if (i < 0 || i >= buckets.length || p.usedFraction === null || p.ts < readAt[i]) continue;
-      held[i] = p.usedFraction;
-      readAt[i] = p.ts;
+      const i = Math.floor((p.ts - start) / stepMs)
+      if (i < 0 || i >= buckets.length || p.usedFraction === null || p.ts < readAt[i]) continue
+      held[i] = p.usedFraction
+      readAt[i] = p.ts
     }
-    let carry = Number.NaN;
-    let carryAt = 0;
+    let carry = Number.NaN
+    let carryAt = 0
     for (let i = 0; i < buckets.length; i++) {
       if (!Number.isNaN(held[i])) {
-        carry = held[i];
-        carryAt = readAt[i];
+        carry = held[i]
+        carryAt = readAt[i]
       } else if (!Number.isNaN(carry) && buckets[i] - carryAt <= MAX_HOLD_MS) {
-        held[i] = carry;
+        held[i] = carry
       }
-      rows[i][key] = Number.isNaN(held[i]) ? null : held[i];
+      rows[i][key] = Number.isNaN(held[i]) ? null : held[i]
     }
-    return { key, label: names.get(account.accountKey) ?? account.accountLabel, color };
-  });
+    return { key, label: names.get(account.accountKey) ?? account.accountLabel, color }
+  })
 
-  return { rows, series, colorByAccount, stepMs, first: buckets[0], last: buckets[buckets.length - 1] };
+  return {
+    rows,
+    series,
+    colorByAccount,
+    stepMs,
+    first: buckets[0],
+    last: buckets[buckets.length - 1],
+  }
 }
 
 const BADGE_BY_STATUS: Record<
@@ -917,9 +1044,13 @@ const BADGE_BY_STATUS: Record<
 > = {
   none: { variant: "outline", className: "mono border-line text-dim", label: "No reading" },
   exhausted: { variant: "destructive", className: "mono", label: "Exhausted" },
-  high: { variant: "outline", className: "mono border-[var(--warn-border)] text-[var(--warn-border)]", label: "High" },
+  high: {
+    variant: "outline",
+    className: "mono border-[var(--warn-border)] text-[var(--warn-border)]",
+    label: "High",
+  },
   ok: { variant: "success", className: "mono", label: "OK" },
-};
+}
 
 const ACCOUNT_COLUMNS: Array<Column<AccountRow>> = [
   {
@@ -928,7 +1059,10 @@ const ACCOUNT_COLUMNS: Array<Column<AccountRow>> = [
     sort: (r) => r.name,
     render: (r) => (
       <span className="flex min-w-0 items-center gap-2">
-        <span className="grid size-2 shrink-0 place-items-center rounded-[2px]" style={{ background: r.color ?? "transparent" }} />
+        <span
+          className="grid size-2 shrink-0 place-items-center rounded-[2px]"
+          style={{ background: r.color ?? "transparent" }}
+        />
         <span className="truncate" title={r.series.accountKey}>
           {r.name}
         </span>
@@ -972,13 +1106,19 @@ const ACCOUNT_COLUMNS: Array<Column<AccountRow>> = [
     render: (r) => {
       const badge =
         BADGE_BY_STATUS[
-          !r.latest ? "none" : r.latest.exhausted ? "exhausted" : r.latest.fraction >= 0.8 ? "high" : "ok"
-        ];
+          !r.latest
+            ? "none"
+            : r.latest.exhausted
+              ? "exhausted"
+              : r.latest.fraction >= 0.8
+                ? "high"
+                : "ok"
+        ]
       return (
         <Badge variant={badge.variant} className={badge.className}>
           {badge.label}
         </Badge>
-      );
+      )
     },
   },
   {
@@ -986,7 +1126,9 @@ const ACCOUNT_COLUMNS: Array<Column<AccountRow>> = [
     header: "Peak in range",
     align: "right",
     sort: (r) => r.peak ?? -1,
-    render: (r) => <span className="mono tabular-nums">{r.peak === null ? "-" : pct(r.peak, 0)}</span>,
+    render: (r) => (
+      <span className="mono tabular-nums">{r.peak === null ? "-" : pct(r.peak, 0)}</span>
+    ),
   },
   {
     key: "samples",
@@ -1009,4 +1151,4 @@ const ACCOUNT_COLUMNS: Array<Column<AccountRow>> = [
         <span className="text-dim">-</span>
       ),
   },
-];
+]

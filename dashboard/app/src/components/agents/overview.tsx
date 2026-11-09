@@ -1,11 +1,21 @@
 // Overview: the range in figures, one burn chart, the two mixes, and the newest requests.
-import { useState } from "react";
-import { Card, Legend, Page, PageHeader, PagedTable, Segmented, Stat, StatGrid, TimeChart } from "@/components/charts";
-import type { Column } from "@/components/charts";
-import { ProviderMark, VendorMark } from "@/components/brand";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Icon } from "@/components/icon";
+import { useState } from "react"
+import {
+  Card,
+  Legend,
+  Page,
+  PageHeader,
+  PagedTable,
+  Segmented,
+  Stat,
+  StatGrid,
+  TimeChart,
+} from "@/components/charts"
+import type { Column } from "@/components/charts"
+import { ProviderMark, VendorMark } from "@/components/brand"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Icon } from "@/components/icon"
 import {
   PALETTE,
   agentTypeLabel,
@@ -19,16 +29,16 @@ import {
   tsFull,
   tsLabel,
   whenStamp,
-} from "@/lib/format";
-import type { AgentRequestRow, AgentStats } from "@/lib/data";
+} from "@/lib/format"
+import type { AgentRequestRow, AgentStats } from "@/lib/data"
 
-type ActivityMetric = "requests" | "tokens" | "cost";
+type ActivityMetric = "requests" | "tokens" | "cost"
 
 const ACTIVITY_OPTIONS: ReadonlyArray<{ value: ActivityMetric; label: string }> = [
   { value: "requests", label: "Requests" },
   { value: "tokens", label: "Tokens" },
   { value: "cost", label: "Cost" },
-];
+]
 
 // The reference window phrases, so the page copy reads like the one it mirrors.
 const WINDOW: Record<AgentStats["range"], string> = {
@@ -38,19 +48,27 @@ const WINDOW: Record<AgentStats["range"], string> = {
   "30d": "the last 30 days",
   "90d": "the last 90 days",
   all: "all time",
-};
+}
 
-const MIX: ReadonlyArray<{ key: "input" | "cacheRead" | "cacheWrite" | "output"; label: string; color: string }> = [
+const MIX: ReadonlyArray<{
+  key: "input" | "cacheRead" | "cacheWrite" | "output"
+  label: string
+  color: string
+}> = [
   { key: "input", label: "Uncached input", color: PALETTE[1] },
   { key: "cacheRead", label: "Cache read", color: "var(--accent)" },
   { key: "cacheWrite", label: "Cache write", color: PALETTE[3] },
   { key: "output", label: "Output", color: PALETTE[2] },
-];
+]
 
 /** A stacked share of one total, the shape the reference draws above its legend. */
-function ShareBar({ segments }: { segments: Array<{ key: string; label: string; value: number; color: string }> }) {
-  const total = segments.reduce((sum, s) => sum + s.value, 0);
-  if (total <= 0) return null;
+function ShareBar({
+  segments,
+}: {
+  segments: Array<{ key: string; label: string; value: number; color: string }>
+}) {
+  const total = segments.reduce((sum, s) => sum + s.value, 0)
+  if (total <= 0) return null
   return (
     <div
       className="flex h-2 w-full overflow-hidden rounded-full bg-track"
@@ -61,7 +79,7 @@ function ShareBar({ segments }: { segments: Array<{ key: string; label: string; 
         <span key={s.key} style={{ width: `${(s.value / total) * 100}%`, background: s.color }} />
       ))}
     </div>
-  );
+  )
 }
 
 export function OverviewPage({
@@ -69,15 +87,16 @@ export function OverviewPage({
   money,
   onOpenRequest,
 }: {
-  agent: AgentStats;
-  money: (v: number) => string;
-  onOpenRequest: (row: AgentRequestRow) => void;
+  agent: AgentStats
+  money: (v: number) => string
+  onOpenRequest: (row: AgentRequestRow) => void
 }) {
-  const [metric, setMetric] = useState<ActivityMetric>("requests");
-  const o = agent.overall;
-  const windowLabel = WINDOW[agent.range];
-  const points = agent.series;
-  const bucket = agent.bucketMs < 3_600_000 ? "5 minutes" : agent.bucketMs < 86_400_000 ? "hour" : "day";
+  const [metric, setMetric] = useState<ActivityMetric>("requests")
+  const o = agent.overall
+  const windowLabel = WINDOW[agent.range]
+  const points = agent.series
+  const bucket =
+    agent.bucketMs < 3_600_000 ? "5 minutes" : agent.bucketMs < 86_400_000 ? "hour" : "day"
 
   const chartData = points.map((b) => ({
     ts: b.ts,
@@ -85,7 +104,7 @@ export function OverviewPage({
     err: b.errors,
     tokens: b.tokens,
     cost: b.costUsd,
-  }));
+  }))
   const series =
     metric === "requests"
       ? [
@@ -94,15 +113,18 @@ export function OverviewPage({
         ]
       : metric === "tokens"
         ? [{ key: "tokens", label: "Tokens", color: "var(--accent)" }]
-        : [{ key: "cost", label: "API-equivalent", color: PALETTE[1] }];
+        : [{ key: "cost", label: "API-equivalent", color: PALETTE[1] }]
 
-  const mix = { input: o.input, cacheRead: o.cacheRead, cacheWrite: o.cacheWrite, output: o.output };
-  const mixTotal = o.total;
-  const agentTotal = agent.byAgentType.reduce((sum, row) => sum + row.total, 0);
+  const mix = { input: o.input, cacheRead: o.cacheRead, cacheWrite: o.cacheWrite, output: o.output }
+  const mixTotal = o.total
+  const agentTotal = agent.byAgentType.reduce((sum, row) => sum + row.total, 0)
 
   return (
     <Page>
-      <PageHeader title="Overview" description={`Everything agent did across your sessions in ${windowLabel}.`} />
+      <PageHeader
+        title="Overview"
+        description={`Everything agent did across your sessions in ${windowLabel}.`}
+      />
 
       <StatGrid cols={5}>
         <Stat
@@ -139,21 +161,70 @@ export function OverviewPage({
       </StatGrid>
 
       <StatGrid cols={7}>
-        <Stat size="sm" icon="arrow-down-to-line" label="Uncached input" value={fmtShort(o.input)} hint={o.total > 0 ? pct(o.input / o.total) : "0%"} />
-        <Stat size="sm" icon="hard-drive-download" label="Cache read" value={fmtShort(o.cacheRead)} hint={o.total > 0 ? pct(o.cacheRead / o.total) : "0%"} />
-        <Stat size="sm" icon="hard-drive-upload" label="Cache write" value={fmtShort(o.cacheWrite)} hint={o.total > 0 ? pct(o.cacheWrite / o.total) : "0%"} />
-        <Stat size="sm" icon="arrow-up-from-line" label="Output" value={fmtShort(o.output)} hint={o.total > 0 ? pct(o.output / o.total) : "0%"} />
-        <Stat size="sm" icon="clock" label="Avg latency" value={fmtMs(o.avgDurationMs)} hint="wall clock per request" />
-        <Stat size="sm" icon="timer" label="Avg TTFT" value={fmtMs(o.avgTtftMs)} hint="time to first token" />
-        <Stat size="sm" icon="zap" label="Tokens/s" value={o.avgTokensPerSecond > 0 ? `${o.avgTokensPerSecond.toFixed(1)} tok/s` : "–"} hint="output tokens per second" />
+        <Stat
+          size="sm"
+          icon="arrow-down-to-line"
+          label="Uncached input"
+          value={fmtShort(o.input)}
+          hint={o.total > 0 ? pct(o.input / o.total) : "0%"}
+        />
+        <Stat
+          size="sm"
+          icon="hard-drive-download"
+          label="Cache read"
+          value={fmtShort(o.cacheRead)}
+          hint={o.total > 0 ? pct(o.cacheRead / o.total) : "0%"}
+        />
+        <Stat
+          size="sm"
+          icon="hard-drive-upload"
+          label="Cache write"
+          value={fmtShort(o.cacheWrite)}
+          hint={o.total > 0 ? pct(o.cacheWrite / o.total) : "0%"}
+        />
+        <Stat
+          size="sm"
+          icon="arrow-up-from-line"
+          label="Output"
+          value={fmtShort(o.output)}
+          hint={o.total > 0 ? pct(o.output / o.total) : "0%"}
+        />
+        <Stat
+          size="sm"
+          icon="clock"
+          label="Avg latency"
+          value={fmtMs(o.avgDurationMs)}
+          hint="wall clock per request"
+        />
+        <Stat
+          size="sm"
+          icon="timer"
+          label="Avg TTFT"
+          value={fmtMs(o.avgTtftMs)}
+          hint="time to first token"
+        />
+        <Stat
+          size="sm"
+          icon="zap"
+          label="Tokens/s"
+          value={o.avgTokensPerSecond > 0 ? `${o.avgTokensPerSecond.toFixed(1)} tok/s` : "–"}
+          hint="output tokens per second"
+        />
       </StatGrid>
-
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
         <Card
-          title="Activity" icon="activity"
+          title="Activity"
+          icon="activity"
           description={`Per ${bucket}`}
-          actions={<Segmented label="Activity metric" value={metric} options={ACTIVITY_OPTIONS} onChange={setMetric} />}
+          actions={
+            <Segmented
+              label="Activity metric"
+              value={metric}
+              options={ACTIVITY_OPTIONS}
+              onChange={setMetric}
+            />
+          }
         >
           <TimeChart
             data={chartData}
@@ -172,7 +243,12 @@ export function OverviewPage({
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-2.5">
               <ShareBar
-                segments={MIX.map((t) => ({ key: t.key, label: t.label, value: mix[t.key], color: t.color }))}
+                segments={MIX.map((t) => ({
+                  key: t.key,
+                  label: t.label,
+                  value: mix[t.key],
+                  color: t.color,
+                }))}
               />
               <Legend
                 items={MIX.map((t) => ({
@@ -193,7 +269,10 @@ export function OverviewPage({
                 }))}
               />
               {agent.byAgentType.map((row, i) => (
-                <div key={row.agentType} className="flex items-center justify-between gap-3 text-xs">
+                <div
+                  key={row.agentType}
+                  className="flex items-center justify-between gap-3 text-xs"
+                >
                   <span className="flex min-w-0 items-center gap-2">
                     <span
                       className="size-2 shrink-0 rounded-[2px]"
@@ -204,7 +283,9 @@ export function OverviewPage({
                   </span>
                   <span className="flex shrink-0 items-center gap-3">
                     <span className="mono text-dim">{fmtShort(row.total)}</span>
-                    <span className="mono tabular-nums">{agentTotal > 0 ? pct(row.total / agentTotal) : "–"}</span>
+                    <span className="mono tabular-nums">
+                      {agentTotal > 0 ? pct(row.total / agentTotal) : "–"}
+                    </span>
                   </span>
                 </div>
               ))}
@@ -214,10 +295,15 @@ export function OverviewPage({
       </div>
 
       <Card
-        title="Latest requests" icon="list"
+        title="Latest requests"
+        icon="list"
         description="Most recent model calls across every session"
         actions={
-          <Button variant="ghost" size="sm" render={<a href={`#/requests?range=${agent.range}`} aria-label="All requests" />}>
+          <Button
+            variant="ghost"
+            size="sm"
+            render={<a href={`#/requests?range=${agent.range}`} aria-label="All requests" />}
+          >
             All requests
             <Icon name="arrow-right" className="size-3.5" />
           </Button>
@@ -234,54 +320,54 @@ export function OverviewPage({
         />
       </Card>
     </Page>
-  );
+  )
 }
 
 function buildLatestColumns(money: (v: number) => string): Array<Column<AgentRequestRow>> {
   return [
-  {
-    key: "model",
-    header: "Model",
-    render: (row) => (
-      <span className="flex min-w-0 items-center gap-2">
-        <VendorMark model={row.model} tiny />
-        <span className="min-w-0">
-          <span className="mono block truncate">{displayModel(row.model)}</span>
-          <span className="flex items-center gap-1.5 text-[11px] text-dim">
-            <ProviderMark provider={row.provider} tiny />
-            <span className="truncate">{row.provider || "–"}</span>
+    {
+      key: "model",
+      header: "Model",
+      render: (row) => (
+        <span className="flex min-w-0 items-center gap-2">
+          <VendorMark model={row.model} tiny />
+          <span className="min-w-0">
+            <span className="mono block truncate">{displayModel(row.model)}</span>
+            <span className="flex items-center gap-1.5 text-[11px] text-dim">
+              <ProviderMark provider={row.provider} tiny />
+              <span className="truncate">{row.provider || "–"}</span>
+            </span>
           </span>
         </span>
-      </span>
-    ),
-  },
-  {
-    key: "time",
-    header: "When",
-    render: (row) => (
-      <span className="text-dim" title={whenStamp(row.ts)}>
-        {relAge(row.ts)}
-      </span>
-    ),
-  },
-  { key: "tokens", header: "Tokens", align: "right", render: (row) => fmt(row.totalTokens) },
-  {
-    key: "cost",
-    header: "Cost",
-    title: "API-equivalent estimate",
-    align: "right",
-    render: (row) => money(row.costUsd),
-  },
-  { key: "duration", header: "Duration", align: "right", render: (row) => fmtMs(row.durationMs) },
-  {
-    key: "status",
-    header: "Status",
-    render: (row) =>
-      runStatusOf(row.stopReason) === "error" ? (
-        <Badge variant="destructive">Failed</Badge>
-      ) : (
-        <Badge variant="success">OK</Badge>
       ),
-  },
-  ];
+    },
+    {
+      key: "time",
+      header: "When",
+      render: (row) => (
+        <span className="text-dim" title={whenStamp(row.ts)}>
+          {relAge(row.ts)}
+        </span>
+      ),
+    },
+    { key: "tokens", header: "Tokens", align: "right", render: (row) => fmt(row.totalTokens) },
+    {
+      key: "cost",
+      header: "Cost",
+      title: "API-equivalent estimate",
+      align: "right",
+      render: (row) => money(row.costUsd),
+    },
+    { key: "duration", header: "Duration", align: "right", render: (row) => fmtMs(row.durationMs) },
+    {
+      key: "status",
+      header: "Status",
+      render: (row) =>
+        runStatusOf(row.stopReason) === "error" ? (
+          <Badge variant="destructive">Failed</Badge>
+        ) : (
+          <Badge variant="success">OK</Badge>
+        ),
+    },
+  ]
 }

@@ -37,7 +37,17 @@ const CAVEMAN_SIBLING = (name: string): string => path.join(EXTENSION_DIR, '..',
 function cavemanRule(name: string): string {
   const beside = CAVEMAN_SIBLING(name);
   if (fsSync.existsSync(beside)) return beside;
-  const plugin = path.join(homeDir(), '.omp', 'plugins', 'node_modules', '@krtclcdy', 'tersio', 'extensions', 'caveman', name);
+  const plugin = path.join(
+    homeDir(),
+    '.omp',
+    'plugins',
+    'node_modules',
+    '@krtclcdy',
+    'tersio',
+    'extensions',
+    'caveman',
+    name,
+  );
   return fsSync.existsSync(plugin) ? plugin : beside;
 }
 
@@ -88,8 +98,15 @@ interface AddonUpdaterCtx {
 
 interface AddonUpdaterPi {
   setLabel?: (label: string) => void;
-  registerCommand?: (name: string, config: { description: string; handler: (args: string, ctx: AddonUpdaterCtx) => Promise<void> }) => void;
-  exec?: (cmd: string, args: string[], opts?: { cwd?: string }) => Promise<{ stdout: string; stderr: string; code: number }>;
+  registerCommand?: (
+    name: string,
+    config: { description: string; handler: (args: string, ctx: AddonUpdaterCtx) => Promise<void> },
+  ) => void;
+  exec?: (
+    cmd: string,
+    args: string[],
+    opts?: { cwd?: string },
+  ) => Promise<{ stdout: string; stderr: string; code: number }>;
   cwd?: string;
 }
 
@@ -104,7 +121,12 @@ function report(ctx: AddonUpdaterCtx | undefined, msg: string, level: NotifyLeve
   return msg;
 }
 
-export async function runAddonUpdate(pi: { exec?: AddonUpdaterPi['exec'] }, ctx: AddonUpdaterCtx, target: string, dryRun = false): Promise<string> {
+export async function runAddonUpdate(
+  pi: { exec?: AddonUpdaterPi['exec'] },
+  ctx: AddonUpdaterCtx,
+  target: string,
+  dryRun = false,
+): Promise<string> {
   const results: string[] = [];
   const updaters: Record<string, () => Promise<string>> = {
     ponytail: () => updatePonytail(pi, ctx, dryRun),
@@ -112,7 +134,11 @@ export async function runAddonUpdate(pi: { exec?: AddonUpdaterPi['exec'] }, ctx:
     caveman: () => updateCaveman(ctx, dryRun),
   };
   if (target === 'all') {
-    notify(ctx, `ai-addons update all${dryRun ? ' dry-run' : ''}: starting ponytail → rtk → caveman sequentially…`, 'info');
+    notify(
+      ctx,
+      `ai-addons update all${dryRun ? ' dry-run' : ''}: starting ponytail → rtk → caveman sequentially…`,
+      'info',
+    );
     for (const name of ['ponytail', 'rtk', 'caveman']) results.push(await updaters[name]());
     if (!dryRun) results.push(RELOAD_MSG);
     notify(ctx, `ai-addons update all ${dryRun ? 'dry-run ' : ''}complete.${dryRun ? '' : ` ${RELOAD_MSG}`}`, 'info');
@@ -132,7 +158,11 @@ async function updatePonytail(pi: AddonUpdaterPi, ctx: AddonUpdaterCtx, dryRun =
   void pi;
   const localPkg = ponytailLocal();
   let localVer: string | null = null;
-  try { localVer = localPkg ? parsePackageVersion(await readTextIfExists(localPkg)) : null; } catch { localVer = null; }
+  try {
+    localVer = localPkg ? parsePackageVersion(await readTextIfExists(localPkg)) : null;
+  } catch {
+    localVer = null;
+  }
   if (!localPkg) return report(ctx, 'Ponytail: package.json not found; reinstall with `tersio update`.', 'warning');
 
   let meta: { version?: string; dist?: { tarball?: string; shasum?: string } };
@@ -146,7 +176,12 @@ async function updatePonytail(pi: AddonUpdaterPi, ctx: AddonUpdaterCtx, dryRun =
   if (localVer === remoteVer) return report(ctx, `Ponytail up to date: local=${localVer} latest=${remoteVer}`, 'info');
   if (!meta.dist?.tarball) return report(ctx, 'Ponytail: npm metadata has no tarball.', 'warning');
 
-  if (dryRun) return report(ctx, `Ponytail dry-run: would install ${remoteVer} over ${localVer || '—'} at ${path.dirname(localPkg)}.`, 'info');
+  if (dryRun)
+    return report(
+      ctx,
+      `Ponytail dry-run: would install ${remoteVer} over ${localVer || '—'} at ${path.dirname(localPkg)}.`,
+      'info',
+    );
 
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'ponytail-update-'));
   try {
@@ -154,8 +189,15 @@ async function updatePonytail(pi: AddonUpdaterPi, ctx: AddonUpdaterCtx, dryRun =
     notify(ctx, `Ponytail: downloading ${remoteVer}…`, 'info');
     await httpsDownload(meta.dist.tarball, tarballPath);
     if (meta.dist.shasum) {
-      const actual = createHash('sha1').update(await fs.readFile(tarballPath)).digest('hex');
-      if (actual !== meta.dist.shasum) return report(ctx, `Ponytail: sha1 mismatch; expected ${meta.dist.shasum.slice(0, 12)}…, got ${actual.slice(0, 12)}…; not installing`, 'error');
+      const actual = createHash('sha1')
+        .update(await fs.readFile(tarballPath))
+        .digest('hex');
+      if (actual !== meta.dist.shasum)
+        return report(
+          ctx,
+          `Ponytail: sha1 mismatch; expected ${meta.dist.shasum.slice(0, 12)}…, got ${actual.slice(0, 12)}…; not installing`,
+          'error',
+        );
     }
     const extractDir = path.join(tmp, 'out');
     await fs.mkdir(extractDir, { recursive: true });
@@ -172,16 +214,16 @@ async function updatePonytail(pi: AddonUpdaterPi, ctx: AddonUpdaterCtx, dryRun =
       const written = parsePackageVersion(await readTextIfExists(path.join(destDir, 'package.json')));
       if (written !== remoteVer) throw new Error(`installed version ${written} !== ${remoteVer}`);
     } catch (e) {
-      await fs.rm(destDir, { recursive: true, force: true }).catch(() => { });
-      await fs.rename(backupDir, destDir).catch(() => { });
+      await fs.rm(destDir, { recursive: true, force: true }).catch(() => {});
+      await fs.rename(backupDir, destDir).catch(() => {});
       throw new Error(`${(e as Error).message}; restored backup`, { cause: e });
     }
-    await fs.rm(backupDir, { recursive: true, force: true }).catch(() => { });
+    await fs.rm(backupDir, { recursive: true, force: true }).catch(() => {});
     return report(ctx, `Ponytail updated → ${remoteVer} at ${destDir}\n${RELOAD_MSG}`, 'info');
   } catch (e) {
     return report(ctx, `Ponytail update failed: ${(e as Error).message}`, 'warning');
   } finally {
-    fs.rm(tmp, { recursive: true, force: true }).catch(() => { });
+    fs.rm(tmp, { recursive: true, force: true }).catch(() => {});
   }
 }
 
@@ -190,7 +232,14 @@ async function updateRtk(ctx: AddonUpdaterCtx): Promise<string> {
   if (!RTK_BINARY) return report(ctx, `RTK: not installed — get it from ${RTK_INSTALL_DOCS}`, 'warning');
   let local: string;
   try {
-    local = normalizeRtkVersion(execFileSync(RTK_BINARY, ['--version'], { encoding: 'utf8', windowsHide: true, shell: false, timeout: 10000 }).trim());
+    local = normalizeRtkVersion(
+      execFileSync(RTK_BINARY, ['--version'], {
+        encoding: 'utf8',
+        windowsHide: true,
+        shell: false,
+        timeout: 10000,
+      }).trim(),
+    );
   } catch (e) {
     return report(ctx, `RTK: ${RTK_BINARY} --version failed: ${(e as Error).message}`, 'warning');
   }
@@ -201,7 +250,11 @@ async function updateRtk(ctx: AddonUpdaterCtx): Promise<string> {
     return report(ctx, `RTK ${local}: cannot fetch release info: ${(e as Error).message}`, 'warning');
   }
   if (!latest || latest === local) return report(ctx, `RTK ${local} is up to date.`, 'info');
-  return report(ctx, `RTK ${latest} is available (installed ${local}). Tersio does not install the binary — update it with the rtk installer: ${RTK_INSTALL_DOCS}`, 'info');
+  return report(
+    ctx,
+    `RTK ${latest} is available (installed ${local}). Tersio does not install the binary — update it with the rtk installer: ${RTK_INSTALL_DOCS}`,
+    'info',
+  );
 }
 
 async function updateCaveman(ctx: AddonUpdaterCtx, dryRun = false): Promise<string> {
@@ -214,15 +267,22 @@ async function updateCaveman(ctx: AddonUpdaterCtx, dryRun = false): Promise<stri
   for (const { file, body, adapt } of CAVEMAN_TRACKED) {
     const name = path.basename(file);
     let remoteText: string;
-    try { remoteText = await httpsGet(cavemanBodyUrl(tag, body)); }
-    catch (e) { results.push(report(ctx, `Caveman ${name} update failed: ${(e as Error).message}`, 'warning')); continue; }
+    try {
+      remoteText = await httpsGet(cavemanBodyUrl(tag, body));
+    } catch (e) {
+      results.push(report(ctx, `Caveman ${name} update failed: ${(e as Error).message}`, 'warning'));
+      continue;
+    }
 
     // A tracked fork compares against the text it would write, so an adapted body still reads up to date.
     const nextText = adapt ? adapt(remoteText) : remoteText;
     const remoteHash = shortHash(nextText);
     const oldLocal = await readTextIfExists(file);
     const oldHash = oldLocal ? shortHash(oldLocal) : null;
-    if (oldHash === remoteHash) { results.push(`${name} up to date: ${remoteHash} (release ${tag})`); continue; }
+    if (oldHash === remoteHash) {
+      results.push(`${name} up to date: ${remoteHash} (release ${tag})`);
+      continue;
+    }
 
     if (dryRun) {
       results.push(`Caveman dry-run: would write ${file}\nold=${oldHash || '—'} new=${remoteHash}.`);
@@ -237,9 +297,13 @@ async function updateCaveman(ctx: AddonUpdaterCtx, dryRun = false): Promise<stri
       const writtenHash = shortHash(await fs.readFile(file, 'utf8'));
       if (writtenHash !== remoteHash) {
         if (oldLocal !== null) await fs.writeFile(file, oldLocal, 'utf8');
-        throw new Error(`written hash ${writtenHash} did not match remote ${remoteHash}${oldLocal !== null ? '; restored backup' : ''}`);
+        throw new Error(
+          `written hash ${writtenHash} did not match remote ${remoteHash}${oldLocal !== null ? '; restored backup' : ''}`,
+        );
       }
-      results.push(`Caveman ${name} updated → ${file}\nold=${oldHash || '—'} new=${remoteHash} release=${tag}\nbackup=${oldLocal !== null ? backupPath : '—'}\n${RELOAD_MSG}`);
+      results.push(
+        `Caveman ${name} updated → ${file}\nold=${oldHash || '—'} new=${remoteHash} release=${tag}\nbackup=${oldLocal !== null ? backupPath : '—'}\n${RELOAD_MSG}`,
+      );
     } catch (e) {
       results.push(`Caveman ${name} update failed: ${(e as Error).message}`);
     }

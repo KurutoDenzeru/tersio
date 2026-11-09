@@ -3,12 +3,27 @@ import { realpathSync } from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import {
-  BUN_BIN, HOME, IS_WINDOWS, NPM_BIN, OMP_PLUGINS_DIR,
-  PACKAGE_BIN, PACKAGE_NAME, PACKAGE_VERSION,
-  args, dryRun, execP, parseJsonObject, verbose,
+  BUN_BIN,
+  HOME,
+  IS_WINDOWS,
+  NPM_BIN,
+  OMP_PLUGINS_DIR,
+  PACKAGE_BIN,
+  PACKAGE_NAME,
+  PACKAGE_VERSION,
+  args,
+  dryRun,
+  execP,
+  parseJsonObject,
+  verbose,
 } from './common.ts';
 import { execNetwork, sayTagged } from './interactive.ts';
-import { readTextIfExists, resolveHeadroomBinary, resolveRtkBinary, tersioDataPath } from '../extensions/shared/utils.ts';
+import {
+  readTextIfExists,
+  resolveHeadroomBinary,
+  resolveRtkBinary,
+  tersioDataPath,
+} from '../extensions/shared/utils.ts';
 import { patchState, readState, takeLegacy } from '../extensions/shared/state.ts';
 import { refreshPrices } from '../extensions/shared/pricing.ts';
 import {
@@ -18,7 +33,9 @@ import {
   RTK_RELEASE_API,
   TERSIO_RELEASE_API,
   cavemanRelease,
-  httpsGet, normalizeRtkVersion, sha256Hex,
+  httpsGet,
+  normalizeRtkVersion,
+  sha256Hex,
 } from '../extensions/shared/utils.ts';
 import type { RtkRelease } from '../extensions/shared/utils.ts';
 import { parseHostArg } from './hosts.ts';
@@ -29,8 +46,14 @@ const UPDATE_CHECK_TTL_MS = 6 * 60 * 60 * 1000;
 const LATEST_TIMEOUT_MS = 3000;
 
 function newerThan(a: string, b: string): boolean {
-  const pa = a.replace(/^v/, '').split('.').map((n) => parseInt(n, 10) || 0);
-  const pb = b.replace(/^v/, '').split('.').map((n) => parseInt(n, 10) || 0);
+  const pa = a
+    .replace(/^v/, '')
+    .split('.')
+    .map((n) => parseInt(n, 10) || 0);
+  const pb = b
+    .replace(/^v/, '')
+    .split('.')
+    .map((n) => parseInt(n, 10) || 0);
   for (let i = 0; i < 3; i++) {
     if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) > (pb[i] || 0);
   }
@@ -89,7 +112,11 @@ export async function latestRelease(): Promise<LatestRelease | null> {
 
 // A newer version, null when up to date, 'unknown' when no source answered. Cached for a TTL unless force.
 async function checkForUpdate(force = false): Promise<string | null | 'unknown'> {
-  const cached = readState().updateCheck ?? takeLegacy(tersioDataPath('update-check.json', 'tersio-update-check.json'), (raw) => parseJsonObject<{ latest?: string; lastCheck?: number }>(raw));
+  const cached =
+    readState().updateCheck ??
+    takeLegacy(tersioDataPath('update-check.json', 'tersio-update-check.json'), (raw) =>
+      parseJsonObject<{ latest?: string; lastCheck?: number }>(raw),
+    );
   const cacheFresh = typeof cached?.lastCheck === 'number' && Date.now() - cached.lastCheck < UPDATE_CHECK_TTL_MS;
   if (!force && cacheFresh && cached?.latest) return newerThan(cached.latest, PACKAGE_VERSION) ? cached.latest : null;
 
@@ -107,8 +134,13 @@ async function settle<T>(work: Promise<T>, ms: number): Promise<T | null> {
   let timer: NodeJS.Timeout | undefined;
   try {
     return await Promise.race([
-      work.then((value) => value, () => null),
-      new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), ms); }),
+      work.then(
+        (value) => value,
+        () => null,
+      ),
+      new Promise<null>((resolve) => {
+        timer = setTimeout(() => resolve(null), ms);
+      }),
     ]);
   } finally {
     clearTimeout(timer);
@@ -128,13 +160,27 @@ async function execInherit(cmd: string, argv: string[]): Promise<void> {
 /** The real path when the file exists, else the resolved one: both sides of the prefix test must agree on symlinks. */
 function realOrResolved(target: string): string {
   const resolved = path.resolve(target);
-  try { return realpathSync(resolved); } catch { return resolved; }
+  try {
+    return realpathSync(resolved);
+  } catch {
+    return resolved;
+  }
 }
 
 /** The package manager that installed the running CLI; each keeps its own copy, so updating the wrong one leaves the old CLI in place. */
-export function installerManager(self = process.argv[1] ?? '', home = HOME): { cmd: string; args: (target: string) => string[]; label: string } {
+export function installerManager(
+  self = process.argv[1] ?? '',
+  home = HOME,
+): { cmd: string; args: (target: string) => string[]; label: string } {
   // `home` is a seam for tests: a runner has no installed copy, so the symlink there must be judged by the same rule.
-  const bunRoot = path.join(realOrResolved(home), '.bun', 'install', 'global', 'node_modules', ...PACKAGE_NAME.split('/'));
+  const bunRoot = path.join(
+    realOrResolved(home),
+    '.bun',
+    'install',
+    'global',
+    'node_modules',
+    ...PACKAGE_NAME.split('/'),
+  );
   // The bin is a symlink into the global tree, so argv[1] is the link path; the target is what says who installed it.
   const real = realOrResolved(self);
   if (real.startsWith(bunRoot)) {
@@ -142,9 +188,21 @@ export function installerManager(self = process.argv[1] ?? '', home = HOME): { c
   }
   return {
     cmd: IS_WINDOWS ? process.env.ComSpec || 'cmd.exe' : NPM_BIN,
-    args: (target) => (IS_WINDOWS
-      ? ['/d', '/s', '/c', NPM_BIN, 'install', '-g', `${PACKAGE_NAME}${target}`, '--no-audit', '--no-fund', '--prefer-online']
-      : ['install', '-g', `${PACKAGE_NAME}${target}`, '--no-audit', '--no-fund', '--prefer-online']),
+    args: (target) =>
+      IS_WINDOWS
+        ? [
+            '/d',
+            '/s',
+            '/c',
+            NPM_BIN,
+            'install',
+            '-g',
+            `${PACKAGE_NAME}${target}`,
+            '--no-audit',
+            '--no-fund',
+            '--prefer-online',
+          ]
+        : ['install', '-g', `${PACKAGE_NAME}${target}`, '--no-audit', '--no-fund', '--prefer-online'],
     label: 'npm',
   };
 }
@@ -164,7 +222,10 @@ interface UpdatePlan {
 
 /** `headroom, version 0.42.0` and its release tags `v0.42.0` read the same version. */
 function normalizeHeadroom(value: string | undefined): string | null {
-  const normalized = String(value ?? '').replace(/^headroom,\s*version\s*/i, '').replace(/^v/i, '').trim();
+  const normalized = String(value ?? '')
+    .replace(/^headroom,\s*version\s*/i, '')
+    .replace(/^v/i, '')
+    .trim();
   return normalized || null;
 }
 
@@ -180,28 +241,70 @@ async function cavemanRemoteRule(signal: AbortSignal): Promise<{ tag: string; ha
 }
 
 // Current → latest per add-on. Probes are capped and nullable; the plan prints `unknown` for anything unreachable. rule.md ships with the release; only the tracked bodies can go stale.
-const tersioRule = (name: string) => path.join(OMP_PLUGINS_DIR, 'node_modules', '@krtclcdy', 'tersio', 'extensions', 'caveman', name);
+const tersioRule = (name: string) =>
+  path.join(OMP_PLUGINS_DIR, 'node_modules', '@krtclcdy', 'tersio', 'extensions', 'caveman', name);
 
 async function probeUpdatePlan(release: LatestRelease | null): Promise<UpdatePlan> {
   const rtkBin = resolveRtkBinary();
   // Ponytail ships inside this package; the separate sibling the old probe read was removed on install.
-  const ponytailPkg = path.join(OMP_PLUGINS_DIR, 'node_modules', '@krtclcdy', 'tersio', 'extensions', 'ponytail', 'package.json');
+  const ponytailPkg = path.join(
+    OMP_PLUGINS_DIR,
+    'node_modules',
+    '@krtclcdy',
+    'tersio',
+    'extensions',
+    'ponytail',
+    'package.json',
+  );
   const controller = new AbortController();
   const headroomBin = resolveHeadroomBinary();
-  const [rtkLocal, rtkRelease, headroomLocal, headroomRelease, ruleLocal, ruleRemote, ponytailLocalText] = await Promise.all([
-    settle(rtkBin ? execP(rtkBin, ['--version'], { timeout: 5000 }).then((r) => normalizeRtkVersion(r.stdout.trim() || r.stderr.trim()) || null) : Promise.resolve(null), 6000),
-    settle(httpsGet(RTK_RELEASE_API, { signal: controller.signal }).then((text) => {
-      try { return normalizeRtkVersion((JSON.parse(text) as RtkRelease).tag_name) || null; } catch { return null; }
-    }), 1500),
-    settle(headroomBin ? execP(headroomBin, ['--version'], { timeout: 5000 }).then((r) => normalizeHeadroom(r.stdout.trim() || r.stderr.trim()) || null) : Promise.resolve(null), 6000),
-    settle(httpsGet(HEADROOM_RELEASE_API, { signal: controller.signal }).then((text) => {
-      try { return normalizeHeadroom((JSON.parse(text) as { tag_name?: string }).tag_name) || null; } catch { return null; }
-    }), 1500),
-    Promise.all([readTextIfExists(tersioRule('rule-ultra.md')), readTextIfExists(tersioRule('rule-megacave.md'))])
-      .then((texts) => (texts.every(Boolean) ? texts.map((t) => sha256Hex(t as string).slice(0, 8)).join('+') : null)),
-    settle(cavemanRemoteRule(controller.signal), 1500),
-    readTextIfExists(ponytailPkg),
-  ]);
+  const [rtkLocal, rtkRelease, headroomLocal, headroomRelease, ruleLocal, ruleRemote, ponytailLocalText] =
+    await Promise.all([
+      settle(
+        rtkBin
+          ? execP(rtkBin, ['--version'], { timeout: 5000 }).then(
+              (r) => normalizeRtkVersion(r.stdout.trim() || r.stderr.trim()) || null,
+            )
+          : Promise.resolve(null),
+        6000,
+      ),
+      settle(
+        httpsGet(RTK_RELEASE_API, { signal: controller.signal }).then((text) => {
+          try {
+            return normalizeRtkVersion((JSON.parse(text) as RtkRelease).tag_name) || null;
+          } catch {
+            return null;
+          }
+        }),
+        1500,
+      ),
+      settle(
+        headroomBin
+          ? execP(headroomBin, ['--version'], { timeout: 5000 }).then(
+              (r) => normalizeHeadroom(r.stdout.trim() || r.stderr.trim()) || null,
+            )
+          : Promise.resolve(null),
+        6000,
+      ),
+      settle(
+        httpsGet(HEADROOM_RELEASE_API, { signal: controller.signal }).then((text) => {
+          try {
+            return normalizeHeadroom((JSON.parse(text) as { tag_name?: string }).tag_name) || null;
+          } catch {
+            return null;
+          }
+        }),
+        1500,
+      ),
+      Promise.all([
+        readTextIfExists(tersioRule('rule-ultra.md')),
+        readTextIfExists(tersioRule('rule-megacave.md')),
+      ]).then((texts) =>
+        texts.every(Boolean) ? texts.map((t) => sha256Hex(t as string).slice(0, 8)).join('+') : null,
+      ),
+      settle(cavemanRemoteRule(controller.signal), 1500),
+      readTextIfExists(ponytailPkg),
+    ]);
   controller.abort();
   return {
     cli: release?.version ?? null,
@@ -211,7 +314,7 @@ async function probeUpdatePlan(release: LatestRelease | null): Promise<UpdatePla
     headroom: [headroomLocal, headroomRelease],
     ruleLocal,
     rule: ruleRemote,
-    ponytail: ponytailLocalText ? parseJsonObject<{ version?: string }>(ponytailLocalText)?.version ?? null : null,
+    ponytail: ponytailLocalText ? (parseJsonObject<{ version?: string }>(ponytailLocalText)?.version ?? null) : null,
   };
 }
 
@@ -237,7 +340,8 @@ function planLines(plan: UpdatePlan): { stale: string[]; status: string[] } {
   push('Headroom', plan.headroom[0], plan.headroom[1]);
   // The rule body carries no version, so the tag recorded at pull time names it; the pin covers a fresh install.
   const ruleCurrent = (readState().cavemanUpstream?.tag ?? CAVEMAN_PIN).replace(/^v/, '');
-  if (plan.ruleLocal && plan.rule && plan.ruleLocal === plan.rule.hashes) status.push(`Caveman rule: ${ruleCurrent} (up to date)`);
+  if (plan.ruleLocal && plan.rule && plan.ruleLocal === plan.rule.hashes)
+    status.push(`Caveman rule: ${ruleCurrent} (up to date)`);
   else if (plan.rule) {
     status.push(`Caveman rule: ${ruleCurrent} → ${plan.rule.tag.replace(/^v/, '')}`);
     stale.push(`Caveman rule: ${ruleCurrent} → ${plan.rule.tag.replace(/^v/, '')}`);
@@ -283,15 +387,23 @@ async function runLatestUpdate(hostOverride?: string | null): Promise<void> {
   if (dryRun) {
     console.log(`tersio update (dry-run):\n  ${status.join('\n  ')}`);
     sayTagged(`  [dry-run] would run: ${manager.label} install -g ${PACKAGE_NAME}${target}`);
-    if (pinned) sayTagged(`  [dry-run] would delegate: npm exec --yes --prefer-online --package=${PACKAGE_NAME}${target} -- tersio --apply-update ${forwardedArgs.join(' ')}`);
-    else sayTagged('  [dry-run] the CLI is the target; extensions and add-ons refresh per agent: tersio update --host <agent>');
+    if (pinned)
+      sayTagged(
+        `  [dry-run] would delegate: npm exec --yes --prefer-online --package=${PACKAGE_NAME}${target} -- tersio --apply-update ${forwardedArgs.join(' ')}`,
+      );
+    else
+      sayTagged(
+        '  [dry-run] the CLI is the target; extensions and add-ons refresh per agent: tersio update --host <agent>',
+      );
     return;
   }
   console.log(`Checking for updates:\n  ${status.join('\n  ')}`);
   if (!pinned && !cliStale) {
-    console.log(addonStale.length > 0
-      ? `tersio ${PACKAGE_VERSION} — the CLI is up to date; extensions and add-ons refresh per agent: tersio update --host <agent>`
-      : `tersio ${PACKAGE_VERSION} — up to date`);
+    console.log(
+      addonStale.length > 0
+        ? `tersio ${PACKAGE_VERSION} — the CLI is up to date; extensions and add-ons refresh per agent: tersio update --host <agent>`
+        : `tersio ${PACKAGE_VERSION} — up to date`,
+    );
     return;
   }
   if (!pinned) console.log(`Updating Tersio`);
@@ -302,7 +414,9 @@ async function runLatestUpdate(hostOverride?: string | null): Promise<void> {
     try {
       await execInherit(process.execPath, [sourceEntry, '--apply-update', ...forwardedArgs]);
       console.log(`Done — tersio ${PACKAGE_VERSION} and add-ons updated.`);
-      await refreshPrices().catch(() => { /* pricing is best-effort; update already succeeded */ });
+      await refreshPrices().catch(() => {
+        /* pricing is best-effort; update already succeeded */
+      });
     } catch (e) {
       console.error(`[fail] Could not run ${sourceEntry}: ${(e as Error).message}`);
       process.exitCode = 1;
@@ -312,7 +426,19 @@ async function runLatestUpdate(hostOverride?: string | null): Promise<void> {
 
   // Broken payloads (v2.20.0) crash on boot — smoke-check the target before touching anything installed.
   const smokeArgs = IS_WINDOWS
-    ? ['/d', '/s', '/c', 'npm', 'exec', '--yes', '--prefer-online', `--package=${PACKAGE_NAME}${target}`, '--', PACKAGE_BIN, '--version']
+    ? [
+        '/d',
+        '/s',
+        '/c',
+        'npm',
+        'exec',
+        '--yes',
+        '--prefer-online',
+        `--package=${PACKAGE_NAME}${target}`,
+        '--',
+        PACKAGE_BIN,
+        '--version',
+      ]
     : ['exec', '--yes', '--prefer-online', `--package=${PACKAGE_NAME}${target}`, '--', PACKAGE_BIN, '--version'];
   try {
     await execP(npmCommand, smokeArgs, {
@@ -322,22 +448,32 @@ async function runLatestUpdate(hostOverride?: string | null): Promise<void> {
       shell: false,
     });
   } catch (e) {
-    console.error(`[fail] Update payload ${PACKAGE_NAME}${target} failed its smoke check — staying on ${PACKAGE_VERSION}.`);
+    console.error(
+      `[fail] Update payload ${PACKAGE_NAME}${target} failed its smoke check — staying on ${PACKAGE_VERSION}.`,
+    );
     console.error(`[fail] ${(e as Error).message.split('\n')[0]}`);
-    if (release?.source === 'github') console.error(`[hint] The release feed has ${release.version}; npm may not serve it yet.`);
-    console.error(`[hint] Retry once released fixed; manual: npm install -g ${PACKAGE_NAME}@latest --no-audit --no-fund --prefer-online`);
+    if (release?.source === 'github')
+      console.error(`[hint] The release feed has ${release.version}; npm may not serve it yet.`);
+    console.error(
+      `[hint] Retry once released fixed; manual: npm install -g ${PACKAGE_NAME}@latest --no-audit --no-fund --prefer-online`,
+    );
     process.exitCode = 1;
     return;
   }
 
   // The npx delegation below only refreshes the host-side files; the global CLI keeps its old version until this runs.
   try {
-    const globalResult = await execNetwork(`Updating global Tersio CLI to ${PACKAGE_NAME}${target}`, manager.cmd, manager.args(target), {
-      timeout: 300000,
-      maxBuffer: 10 * 1024 * 1024,
-      windowsHide: true,
-      shell: false,
-    });
+    const globalResult = await execNetwork(
+      `Updating global Tersio CLI to ${PACKAGE_NAME}${target}`,
+      manager.cmd,
+      manager.args(target),
+      {
+        timeout: 300000,
+        maxBuffer: 10 * 1024 * 1024,
+        windowsHide: true,
+        shell: false,
+      },
+    );
     // The package manager echoes its own added/changed summary; only failures surface here.
     if (globalResult.stderr) process.stderr.write(globalResult.stderr);
   } catch (e) {
@@ -347,10 +483,14 @@ async function runLatestUpdate(hostOverride?: string | null): Promise<void> {
 
   // No host: the global install above is the whole run, and the add-ons stay as they are.
   if (!pinned) {
-    console.log(`Done — tersio ${plan.cli ?? PACKAGE_VERSION} updated. Extensions and add-ons refresh per agent: tersio update --host <agent>.`);
+    console.log(
+      `Done — tersio ${plan.cli ?? PACKAGE_VERSION} updated. Extensions and add-ons refresh per agent: tersio update --host <agent>.`,
+    );
     try {
       await refreshPrices();
-    } catch { /* pricing is best-effort; update already succeeded */ }
+    } catch {
+      /* pricing is best-effort; update already succeeded */
+    }
     return;
   }
 
@@ -373,7 +513,9 @@ async function runLatestUpdate(hostOverride?: string | null): Promise<void> {
     if (!dryRun) {
       try {
         await refreshPrices();
-      } catch { /* pricing is best-effort; update already succeeded */ }
+      } catch {
+        /* pricing is best-effort; update already succeeded */
+      }
     }
   } catch (e) {
     const err = e as Error;

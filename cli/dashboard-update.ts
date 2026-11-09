@@ -106,7 +106,9 @@ function installedVersion(): string {
     const file = path.join(findPackageRoot(path.dirname(fileURLToPath(import.meta.url))), 'package.json');
     const parsed = JSON.parse(readFileSync(file, 'utf8')) as { version?: unknown };
     if (typeof parsed.version === 'string' && parsed.version) return parsed.version;
-  } catch { /* a missing or unreadable manifest falls back to the running build */ }
+  } catch {
+    /* a missing or unreadable manifest falls back to the running build */
+  }
   return PACKAGE_VERSION;
 }
 

@@ -4,15 +4,7 @@
     "correctness": "warn",
     "suspicious": "warn"
   },
-  "plugins": [
-    "eslint",
-    "typescript",
-    "react",
-    "jsx-a11y",
-    "react-perf",
-    "import",
-    "unicorn"
-  ],
+  "plugins": ["eslint", "typescript", "react", "jsx-a11y", "react-perf", "import", "unicorn"],
   "env": {
     "browser": true,
     "es2026": true

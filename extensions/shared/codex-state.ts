@@ -81,8 +81,7 @@ export function codexPluginEnabled(pluginId = CODEX_PLUGIN_ID): boolean {
   const start = lines.findIndex((line) => line.trim() === header);
   if (start < 0) return false;
   const end = lines.findIndex((line, i) => i > start && /^\s*\[/.test(line));
-  return lines.slice(start + 1, end === -1 ? undefined : end)
-    .some((line) => /^\s*enabled\s*=\s*true\s*$/.test(line));
+  return lines.slice(start + 1, end === -1 ? undefined : end).some((line) => /^\s*enabled\s*=\s*true\s*$/.test(line));
 }
 
 export interface CodexPluginState {
@@ -94,7 +93,8 @@ export interface CodexPluginState {
 }
 
 export function codexPluginState(dir: string | null = versionDirs()[0] ?? null): CodexPluginState {
-  if (dir === null) return { dir: null, version: null, complete: false, enabled: false, missing: [...CODEX_PLUGIN_FILES] };
+  if (dir === null)
+    return { dir: null, version: null, complete: false, enabled: false, missing: [...CODEX_PLUGIN_FILES] };
   const missing = CODEX_PLUGIN_FILES.filter((file) => !existsSync(join(dir, ...file.split('/'))));
   return {
     dir,
@@ -107,7 +107,11 @@ export function codexPluginState(dir: string | null = versionDirs()[0] ?? null):
 
 /** The newest cached copy, with enough detail for the installer, doctor, and uninstall to agree. */
 export function installedCodexPlugin(): CodexPluginState {
-  return versionDirs().map((dir) => codexPluginState(dir)).find((state) => state.complete) ?? codexPluginState();
+  return (
+    versionDirs()
+      .map((dir) => codexPluginState(dir))
+      .find((state) => state.complete) ?? codexPluginState()
+  );
 }
 
 /** A complete and enabled plugin is the only state Codex actually loads. */

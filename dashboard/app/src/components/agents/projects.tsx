@@ -1,8 +1,8 @@
 // Projects: usage one session folder at a time, the working directory a session ran in.
-import { useCallback, useDeferredValue, useMemo, useState } from "react";
-import { Badge } from "@/components/ui/badge";
-import { AGENT_RANGE_LABEL } from "@/lib/data";
-import type { AgentRow, AgentStats } from "@/lib/data";
+import { useCallback, useDeferredValue, useMemo, useState } from "react"
+import { Badge } from "@/components/ui/badge"
+import { AGENT_RANGE_LABEL } from "@/lib/data"
+import type { AgentRow, AgentStats } from "@/lib/data"
 import {
   BarList,
   Card,
@@ -15,61 +15,67 @@ import {
   SearchInput,
   Stat,
   StatGrid,
-} from "@/components/charts";
-import type { Column } from "@/components/charts";
-import { EmptyState } from "@/components/common";
-import { PALETTE, fmt, fmtMs, fmtShort, pct, projectLabel, relAge, stampLocal } from "@/lib/format";
+} from "@/components/charts"
+import type { Column } from "@/components/charts"
+import { EmptyState } from "@/components/common"
+import { PALETTE, fmt, fmtMs, fmtShort, pct, projectLabel, relAge, stampLocal } from "@/lib/format"
 
 /** Bars shown in the two top lists. */
-const TOP_LIMIT = 8;
+const TOP_LIMIT = 8
 
 /** Session folders under a system temp location (`/tmp`, `/var/folders`), slugged into the key. */
-const TEMP_FOLDER_RE = /^\/?-?(?:private-)?(?:tmp|var-folders)(?:[-/]|$)/;
+const TEMP_FOLDER_RE = /^\/?-?(?:private-)?(?:tmp|var-folders)(?:[-/]|$)/
 
 interface FolderRow {
-  row: AgentRow;
-  requestShare: number;
-  costShare: number;
-  temporary: boolean;
+  row: AgentRow
+  requestShare: number
+  costShare: number
+  temporary: boolean
 }
 
-export function ProjectsPage({ agent, money }: { agent: AgentStats; money: (v: number) => string }) {
-  const [search, setSearch] = useState("");
+export function ProjectsPage({
+  agent,
+  money,
+}: {
+  agent: AgentStats
+  money: (v: number) => string
+}) {
+  const [search, setSearch] = useState("")
   // Benchmarks and scratch sessions can leave thousands of one-off temp folders; hide them by default.
-  const [hideTemporary, setHideTemporary] = useState(true);
+  const [hideTemporary, setHideTemporary] = useState(true)
 
   const view = useMemo(() => {
-    let totalRequests = 0;
-    let failedRequests = 0;
-    let totalCost = 0;
-    let unpricedRequests = 0;
-    let conversationTokens = 0;
-    let input = 0;
-    let cacheRead = 0;
-    let maxRequests = 0;
-    let maxCost = 0;
+    let totalRequests = 0
+    let failedRequests = 0
+    let totalCost = 0
+    let unpricedRequests = 0
+    let conversationTokens = 0
+    let input = 0
+    let cacheRead = 0
+    let maxRequests = 0
+    let maxCost = 0
     for (const row of agent.byProject) {
-      totalRequests += row.requests;
-      failedRequests += row.failed;
-      totalCost += row.costUsd;
-      unpricedRequests += row.unpricedRequests;
-      conversationTokens += row.total;
-      input += row.input;
-      cacheRead += row.cacheRead;
-      maxRequests = Math.max(maxRequests, row.requests);
-      maxCost = Math.max(maxCost, row.costUsd);
+      totalRequests += row.requests
+      failedRequests += row.failed
+      totalCost += row.costUsd
+      unpricedRequests += row.unpricedRequests
+      conversationTokens += row.total
+      input += row.input
+      cacheRead += row.cacheRead
+      maxRequests = Math.max(maxRequests, row.requests)
+      maxCost = Math.max(maxCost, row.costUsd)
     }
-    let temporaryCount = 0;
+    let temporaryCount = 0
     const rows: FolderRow[] = agent.byProject.map((row) => {
-      const temporary = TEMP_FOLDER_RE.test(row.key);
-      if (temporary) temporaryCount++;
+      const temporary = TEMP_FOLDER_RE.test(row.key)
+      if (temporary) temporaryCount++
       return {
         row,
         requestShare: totalRequests > 0 ? row.requests / totalRequests : 0,
         costShare: totalCost > 0 ? row.costUsd / totalCost : 0,
         temporary,
-      };
-    });
+      }
+    })
     return {
       rows,
       totalRequests,
@@ -81,8 +87,8 @@ export function ProjectsPage({ agent, money }: { agent: AgentStats; money: (v: n
       maxRequests,
       maxCost,
       temporaryCount,
-    };
-  }, [agent.byProject]);
+    }
+  }, [agent.byProject])
 
   // Meter scales follow the whole range so a bar's length does not change while filtering.
   const columns = useMemo<Array<Column<FolderRow>>>(
@@ -94,7 +100,10 @@ export function ProjectsPage({ agent, money }: { agent: AgentStats; money: (v: n
           <span className="flex min-w-0 items-center gap-2" title={row.key}>
             <span className="mono truncate">{projectLabel(row.key)}</span>
             {temporary && (
-              <Badge variant="outline" className="mono h-4 shrink-0 border-line px-1 text-[10px] text-dim">
+              <Badge
+                variant="outline"
+                className="mono h-4 shrink-0 border-line px-1 text-[10px] text-dim"
+              >
                 temp
               </Badge>
             )}
@@ -108,7 +117,10 @@ export function ProjectsPage({ agent, money }: { agent: AgentStats; money: (v: n
         align: "right",
         width: 150,
         render: ({ row, requestShare }) => (
-          <span className="flex flex-col items-end gap-1" title={`${pct(requestShare)} of all requests`}>
+          <span
+            className="flex flex-col items-end gap-1"
+            title={`${pct(requestShare)} of all requests`}
+          >
             <span className="mono tabular-nums">{fmt(row.requests)}</span>
             <CellBar value={row.requests} max={view.maxRequests} />
           </span>
@@ -183,32 +195,39 @@ export function ProjectsPage({ agent, money }: { agent: AgentStats; money: (v: n
       },
     ],
     [view.maxRequests, view.maxCost, money],
-  );
+  )
 
   const scoped = useMemo(
     () => (hideTemporary ? view.rows.filter((r) => !r.temporary) : view.rows),
     [view.rows, hideTemporary],
-  );
+  )
   // Filtering tens of thousands of folders should not block the keystroke that started it.
-  const query = useDeferredValue(search.trim().toLowerCase());
+  const query = useDeferredValue(search.trim().toLowerCase())
   const matching = useMemo(
     () =>
       query
         ? scoped.filter(
-            (r) => projectLabel(r.row.key).toLowerCase().includes(query) || r.row.key.toLowerCase().includes(query),
+            (r) =>
+              projectLabel(r.row.key).toLowerCase().includes(query) ||
+              r.row.key.toLowerCase().includes(query),
           )
         : scoped,
     [scoped, query],
-  );
+  )
 
   const topCost = useMemo(
     () =>
       [...scoped]
         .toSorted((a, b) => b.row.costUsd - a.row.costUsd)
         .slice(0, TOP_LIMIT)
-        .map((r) => ({ key: r.row.key, label: projectLabel(r.row.key), value: r.row.costUsd, color: PALETTE[1] })),
+        .map((r) => ({
+          key: r.row.key,
+          label: projectLabel(r.row.key),
+          value: r.row.costUsd,
+          color: PALETTE[1],
+        })),
     [scoped],
-  );
+  )
   const topRequests = useMemo(
     () =>
       [...scoped]
@@ -216,16 +235,18 @@ export function ProjectsPage({ agent, money }: { agent: AgentStats; money: (v: n
         .slice(0, TOP_LIMIT)
         .map((r) => ({ key: r.row.key, label: projectLabel(r.row.key), value: r.row.requests })),
     [scoped],
-  );
+  )
 
   const emptyTitle =
-    view.rows.length === 0 ? "No project folders in this range" : "Only temporary folders in this range";
+    view.rows.length === 0
+      ? "No project folders in this range"
+      : "Only temporary folders in this range"
 
   // Clicking a bar fills the Folders card's search, so the table narrows to that folder.
   const selectFolder = useCallback(
     (key: string) => setSearch((held) => (held === key ? "" : key)),
     [],
-  );
+  )
 
   return (
     <Page>
@@ -264,7 +285,11 @@ export function ProjectsPage({ agent, money }: { agent: AgentStats; money: (v: n
       </StatGrid>
 
       <div className="grid items-start gap-4 md:grid-cols-2">
-        <Card title="Top by cost" icon="coins" description="Share of API-equivalent cost. Select one to filter the folders below.">
+        <Card
+          title="Top by cost"
+          icon="coins"
+          description="Share of API-equivalent cost. Select one to filter the folders below."
+        >
           <QueryView
             empty={topCost.length === 0}
             emptyIcon="folder-git-2"
@@ -274,7 +299,11 @@ export function ProjectsPage({ agent, money }: { agent: AgentStats; money: (v: n
             <BarList rows={topCost} money={money} limit={TOP_LIMIT} onSelect={selectFolder} />
           </QueryView>
         </Card>
-        <Card title="Top by requests" icon="chart-no-axes-combined" description="Share of all requests. Select one to filter the folders below.">
+        <Card
+          title="Top by requests"
+          icon="chart-no-axes-combined"
+          description="Share of all requests. Select one to filter the folders below."
+        >
           <QueryView
             empty={topRequests.length === 0}
             emptyIcon="folder-git-2"
@@ -331,7 +360,9 @@ export function ProjectsPage({ agent, money }: { agent: AgentStats; money: (v: n
           empty={
             <EmptyState
               icon="folder-git-2"
-              title={view.rows.length === 0 ? "No project folders in this range" : "No folders match"}
+              title={
+                view.rows.length === 0 ? "No project folders in this range" : "No folders match"
+              }
               desc={
                 view.rows.length === 0
                   ? "Try a longer range."
@@ -344,5 +375,5 @@ export function ProjectsPage({ agent, money }: { agent: AgentStats; money: (v: n
         />
       </Card>
     </Page>
-  );
+  )
 }

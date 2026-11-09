@@ -1,13 +1,13 @@
 // Per-tool duration totals for one trace, longest first: calls, failed calls, total, mean, and longest duration.
-import { Card, CellBar, PagedTable } from "@/components/charts";
-import type { Column } from "@/components/charts";
-import { Badge } from "@/components/ui/badge";
-import { fmt, fmtElapsed } from "@/lib/format";
-import type { AgentTraceToolStat } from "@/lib/data";
+import { Card, CellBar, PagedTable } from "@/components/charts"
+import type { Column } from "@/components/charts"
+import { Badge } from "@/components/ui/badge"
+import { fmt, fmtElapsed } from "@/lib/format"
+import type { AgentTraceToolStat } from "@/lib/data"
 
 export function ToolAggregates({ toolStats }: { toolStats: AgentTraceToolStat[] }) {
-  if (toolStats.length === 0) return null;
-  const max = Math.max(...toolStats.map((stat) => stat.totalMs));
+  if (toolStats.length === 0) return null
+  const max = Math.max(...toolStats.map((stat) => stat.totalMs))
 
   const columns: Array<Column<AgentTraceToolStat>> = [
     {
@@ -16,7 +16,13 @@ export function ToolAggregates({ toolStats }: { toolStats: AgentTraceToolStat[] 
       render: (row) => <span className="mono truncate">{row.tool}</span>,
       sort: (row) => row.tool,
     },
-    { key: "calls", header: "Calls", align: "right", sort: (row) => row.calls, render: (row) => fmt(row.calls) },
+    {
+      key: "calls",
+      header: "Calls",
+      align: "right",
+      sort: (row) => row.calls,
+      render: (row) => fmt(row.calls),
+    },
     {
       key: "errors",
       header: "Errors",
@@ -45,12 +51,29 @@ export function ToolAggregates({ toolStats }: { toolStats: AgentTraceToolStat[] 
       ),
       sort: (row) => row.totalMs,
     },
-    { key: "avg", header: "Avg", align: "right", sort: (row) => row.avgMs, render: (row) => fmtElapsed(row.avgMs) },
-    { key: "max", header: "Max", align: "right", sort: (row) => row.maxMs, render: (row) => fmtElapsed(row.maxMs) },
-  ];
+    {
+      key: "avg",
+      header: "Avg",
+      align: "right",
+      sort: (row) => row.avgMs,
+      render: (row) => fmtElapsed(row.avgMs),
+    },
+    {
+      key: "max",
+      header: "Max",
+      align: "right",
+      sort: (row) => row.maxMs,
+      render: (row) => fmtElapsed(row.maxMs),
+    },
+  ]
 
   return (
-    <Card title="Tool aggregates" icon="wrench" description={`${fmt(toolStats.length)} tools, by total time`} flush>
+    <Card
+      title="Tool aggregates"
+      icon="wrench"
+      description={`${fmt(toolStats.length)} tools, by total time`}
+      flush
+    >
       <PagedTable
         columns={columns}
         rows={toolStats}
@@ -60,5 +83,5 @@ export function ToolAggregates({ toolStats }: { toolStats: AgentTraceToolStat[] 
         ariaLabel="Tool aggregates"
       />
     </Card>
-  );
+  )
 }

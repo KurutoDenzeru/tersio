@@ -23,7 +23,9 @@ function legacyOmpSettings(): Record<string, unknown> | null {
       const config = JSON.parse(readFileSync(p, 'utf8')) as { settings?: Record<string, Record<string, unknown>> };
       const values = config.settings?.[PLUGIN_NAME];
       if (values && typeof values === 'object' && !Array.isArray(values)) return values;
-    } catch { /* tolerate corrupt file */ }
+    } catch {
+      /* tolerate corrupt file */
+    }
   }
   return null;
 }
@@ -77,13 +79,26 @@ function hostDefaults(host?: HostScope | null): Record<string, unknown> {
   if (!host) return {};
   const hosts = readPluginSettings().hosts;
   const section = (hosts as Record<string, unknown> | undefined)?.[host];
-  return section && typeof section === 'object' && !Array.isArray(section) ? section as Record<string, unknown> : {};
+  return section && typeof section === 'object' && !Array.isArray(section) ? (section as Record<string, unknown>) : {};
 }
 
 const COMBO_LEVELS = new Set(['off', 'lite', 'balanced', 'max']);
 // A settings file written before the rename still names the preset `medium`.
 const RETIRED_COMBO_LEVELS = new Set(['medium']);
-const CAVEMAN_MODES = new Set(['off', 'lite', 'full', 'ultra', 'megacave', 'megacave-lite', 'megacave-full', 'megacave-ultra', 'wenyan', 'wenyan-lite', 'wenyan-full', 'wenyan-ultra']);
+const CAVEMAN_MODES = new Set([
+  'off',
+  'lite',
+  'full',
+  'ultra',
+  'megacave',
+  'megacave-lite',
+  'megacave-full',
+  'megacave-ultra',
+  'wenyan',
+  'wenyan-lite',
+  'wenyan-full',
+  'wenyan-ultra',
+]);
 const PONYTAIL_MODES = new Set(['off', 'lite', 'full', 'ultra']);
 // Opt-in only: no combo preset writes this, so it never reaches a user who did not ask for it.
 const PSTACK_MODES = new Set(['off', 'on']);
@@ -147,7 +162,13 @@ export function saveComboSetup(level: string, host?: HostScope | null): boolean 
   const stored = readPluginSettings();
   // A host scope writes its own section, so this agent's preset never becomes every agent's.
   const next = host
-    ? { ...stored, hosts: { ...(stored.hosts as Record<string, unknown> | undefined), [host]: { ...hostDefaults(host), ...patch } } }
+    ? {
+        ...stored,
+        hosts: {
+          ...(stored.hosts as Record<string, unknown> | undefined),
+          [host]: { ...hostDefaults(host), ...patch },
+        },
+      }
     : { ...stored, ...patch };
   writeFileSync(file, `${JSON.stringify({ ...next, comboSetupComplete: true }, null, 2)}\n`, 'utf8');
   return true;

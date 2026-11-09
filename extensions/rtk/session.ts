@@ -1,5 +1,22 @@
-import { getSharedComboState, hasModeState, isOmpSubagentPrompt, lastCustomValue, reconcileSharedComboEntries, sessionEntries, setSharedComboListener, setSharedComboMode, systemPromptIncludes } from '../shared/session-state.ts';
-import { injectPromptText, isOmpHost, onHostEvent, sessionChangeEvents, setExtensionLabel, stringArrayToolParams } from '../shared/host.ts';
+import {
+  getSharedComboState,
+  hasModeState,
+  isOmpSubagentPrompt,
+  lastCustomValue,
+  reconcileSharedComboEntries,
+  sessionEntries,
+  setSharedComboListener,
+  setSharedComboMode,
+  systemPromptIncludes,
+} from '../shared/session-state.ts';
+import {
+  injectPromptText,
+  isOmpHost,
+  onHostEvent,
+  sessionChangeEvents,
+  setExtensionLabel,
+  stringArrayToolParams,
+} from '../shared/host.ts';
 import { readRtkDefault } from '../shared/plugin-settings.ts';
 import { hostIdOf } from '../shared/host.ts';
 import { resolveRtkBinary, shimCommand } from '../shared/utils.ts';
@@ -30,7 +47,8 @@ const RTK_PROMPT_BASE = `RTK guidance active. What you run is condensed automati
 Call rtk directly for what the rewrite cannot express: \`rtk read <file> --level aggressive\` for an overview, \`--max-lines N\` for a preview, \`rtk smart <file>\` for a two-line summary, \`rtk summary <cmd>\` for a heuristic one, \`rtk err <cmd>\` for errors only, \`rtk log <file>\` to dedupe logs, \`rtk json <file>\` with \`--keys-only\` for shape, plus \`rtk deps\`, \`rtk diff\`, \`rtk env\`, \`rtk ast-grep\`, and \`rtk test <cmd>\` for a runner without its own form. A command with no condensed form passes through unchanged, so wrap it: \`rtk err node build.js\`, and \`rtk find -name '*.ts'\` in place of fd. Never type \`rtk\` in front of a command listed above. More rtk for what the rewrite cannot reach: \`rtk gain\` for what it saved, \`rtk discover\` for savings it missed, \`rtk session\` for adoption, \`rtk recall <hash>\` to get back an elided output, \`rtk bypass <cmd>\` to run unfiltered but tracked, \`rtk run <cmd>\` for an explicit shell, \`rtk format\` for the universal format check, \`rtk phpt\` for the PHP runner, \`rtk learn\` for corrections from the error history, \`rtk config\` for the settings, and \`rtk pipeline show\` or \`rtk methods list\` for the filter contracts.`;
 
 // The proxy daemon compresses the request traffic, one layer above the shell output. Of our three hosts only omp can point its model traffic at it, so the line goes only there.
-const RTK_PROXY_PROMPT = ' One layer above the shell: `rtk llm-proxy setup` reports whether the proxy daemon can serve this host, and `rtk llm-proxy start` runs it.';
+const RTK_PROXY_PROMPT =
+  ' One layer above the shell: `rtk llm-proxy setup` reports whether the proxy daemon can serve this host, and `rtk llm-proxy start` runs it.';
 
 export default function rtkSessionExtension(pi: ExtensionApi): void {
   const host = hostIdOf(pi);
@@ -59,7 +77,9 @@ export default function rtkSessionExtension(pi: ExtensionApi): void {
   pi.registerCommand?.('rtk', {
     description: 'Toggle RTK compact shell-output guidance for this session',
     handler: async (args, ctx) => {
-      const arg = String(args || '').trim().toLowerCase();
+      const arg = String(args || '')
+        .trim()
+        .toLowerCase();
       if (!arg || arg === 'status') {
         ctx?.ui?.notify?.(`RTK: ${enabled ? 'on' : 'off'}`, 'info');
         return;
@@ -79,7 +99,8 @@ export default function rtkSessionExtension(pi: ExtensionApi): void {
   pi.registerTool?.({
     name: 'rtk_run',
     label: 'RTK Run',
-    description: 'Run a shell command through the installed `rtk` binary when RTK mode is on, and run it plainly when RTK mode is off.',
+    description:
+      'Run a shell command through the installed `rtk` binary when RTK mode is on, and run it plainly when RTK mode is off.',
     parameters: stringArrayToolParams(pi, 'args', {
       minItems: 1,
       description: "Arguments passed to rtk, e.g. ['git','status'] or ['read','src/index.ts']",
@@ -93,7 +114,10 @@ export default function rtkSessionExtension(pi: ExtensionApi): void {
       const bin = rtkOn ? resolveRtkBinary() : null;
       if (rtkOn && bin === null) return fail('RTK mode is on but the rtk binary is not installed. Run: tersio update');
       const argv = params.args;
-      onUpdate?.({ content: [{ type: 'text', text: `${bin === null ? '' : 'rtk '}${argv.join(' ')}` }], details: { phase: 'start' } });
+      onUpdate?.({
+        content: [{ type: 'text', text: `${bin === null ? '' : 'rtk '}${argv.join(' ')}` }],
+        details: { phase: 'start' },
+      });
       try {
         // A GUI-launched host may lack ~/.bun/bin on PATH, so prefer the resolved path. A `.cmd` shim cannot be spawned directly on Windows, so it runs through the shell.
         const shim = shimCommand(bin ?? argv[0], argv);
