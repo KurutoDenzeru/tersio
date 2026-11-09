@@ -1,6 +1,7 @@
 ## Unreleased
 
 ### Added
+- Tersio registers its Codex prompt hook in `~/.codex/hooks.json`, beside rtk and headroom. Current Codex removed plugin-declared hooks, so the copy inside the plugin never ran and a literal `/combo lite` reached the model. Uninstall removes only Tersio's entry.
 - `/headroom on|off|status` is now a Codex slash command, with its own prompt file and `$headroom` skill. It stores the same `headroomDefault` the CLI writes and says the endpoint route applies at install or from the dashboard switch, because moving the route needs the running proxy.
 - A literal `/combo lite` answers in Tersio's prompt hook instead of the model: the mode applies and the command returns before a turn starts, with no network round trip.
 - Codex's prompt hook returns a `systemMessage` on every turn: the same `🧩 LITE | 🪨 caveman:LITE | …` combo line the DSH bar and the CLI print. Codex Desktop exposes no plugin status bar, so the hook result is the surface.
@@ -8,6 +9,7 @@
 - Codex is now a Tersio host: `tersio install --host codex` materializes a local marketplace and installs the portable plugin with its bundled MCP server. A prompt hook applies literal `/combo`, `/caveman`, and `/ponytail` commands and keeps those modes active for the session; per-mode skills expose `$combo`, `$caveman`, `$ponytail`, `$pstack`, `$rtk`, and `$tersio`, with `/prompts:*` fallbacks. Codex rollout sessions feed every dashboard page with requests, models, providers, API, payloads, errors, tools, real working-directory projects, and separate traces. Headroom routes Codex through its own `init codex` / `unwrap codex` commands and the dashboard detects CLI and desktop installs on macOS, Windows, and Linux; RTK remains out of the Codex v1 surface.
 
 ### Changed
+- Headroom's Codex route writes `openai_base_url` with the `/v1` path, so Codex upgrades `ws://…/v1/responses`. A root URL answered 403 on the WebSocket upgrade before every turn fell back to HTTPS, which read as an error on each run.
 - The Codex install now says that its prompt hook needs one approval in `/hooks`. Codex skips a hook whose recorded trust hash no longer matches, and the install re-adds the plugin, so a literal `/combo lite` reaches the model and reports the slow path instead of answering.
 - A quick start drawer now holds its header and footer on the same skeleton as its body. Install and Update were reachable while the first read was still in flight, and headroom and rtk defaulted to "not installed" until health answered, so the footer offered Install for a tool that was already there.
 - The canvas mode badges for caveman, pstack, Ponytail, RTK, and Headroom now carry the version, tinted green when it matches the newest upstream the last check saw and orange when it is behind. An unmeasured check stays gray instead of claiming either, and the tooltip names both versions.

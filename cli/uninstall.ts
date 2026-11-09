@@ -12,7 +12,7 @@ import { detectHosts, dshCliProfiles, dshDesktopProfilePresent, dshPackageDir, d
 import type { HostEntry } from './hosts.ts';
 import type { HostId } from '../extensions/shared/host-caps.ts';
 import { hostCap } from '../extensions/shared/host-caps.ts';
-import { CODEX_MARKETPLACE_NAME, CODEX_PLUGIN_ID, CODEX_PROMPT_MARKER, CODEX_PROMPT_NAMES, codexLocalMarketplaceRoot, codexPromptsDir, installedCodexPlugin } from '../extensions/shared/codex-plugin.ts';
+import { CODEX_MARKETPLACE_NAME, CODEX_PLUGIN_ID, CODEX_PROMPT_MARKER, CODEX_PROMPT_NAMES, codexLocalMarketplaceRoot, codexPromptsDir, codexUserHooksFile, installedCodexPlugin, removeCodexUserHook } from '../extensions/shared/codex-plugin.ts';
 import { piAgentDir, pigAgentDir, readTextIfExists, resolveCodexBinary } from '../extensions/shared/utils.ts';
 import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
 import { removeTersioMcp } from '../extensions/shared/mcp-config.ts';
@@ -414,6 +414,10 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
       const text = await readTextIfExists(file);
       if (text?.includes(CODEX_PROMPT_MARKER)) await removeUninstallTarget(file, shouldDryRun, false);
     }
+    // Only Tersio's entry leaves; every other tool's hook in this file stays.
+    const hook = removeCodexUserHook(codexUserHooksFile(), Boolean(shouldDryRun));
+    if (hook.changed) sayTagged(`  [rm] the Tersio prompt hook from ${codexUserHooksFile()}`);
+    else if (!hook.ok) sayTagged(`  [warn] could not clean ${codexUserHooksFile()}: ${hook.detail}`);
     await clearSessionDefaults(shouldDryRun);
     console.log('\nDone. Restart Codex to unload the plugin.');
     results.push(true);

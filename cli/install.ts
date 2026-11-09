@@ -38,7 +38,7 @@ import type { Profile } from './profile.ts';
 import { detectHosts, dshCliProfiles, dshDesktopProfilePresent, dshHome, dshPresent, dshProfileBundles, dshRunner, hostOptions, parseHostArg, piTersioSource, pigTersioSource, writeDshMcpCommand } from './hosts.ts';
 import type { HostEntry } from './hosts.ts';
 import { hostCap } from '../extensions/shared/host-caps.ts';
-import { CODEX_MARKETPLACE_NAME, CODEX_PLUGIN_ID, codexHome, codexLocalMarketplaceRoot, codexLocalPluginFiles, codexPluginInstalled, codexPromptFiles, codexPromptsDir, installedCodexPlugin } from '../extensions/shared/codex-plugin.ts';
+import { CODEX_MARKETPLACE_NAME, CODEX_PLUGIN_ID, codexHome, codexLocalMarketplaceRoot, codexLocalPluginFiles, codexPluginInstalled, codexPromptFiles, codexPromptsDir, codexUserHooksFile, ensureCodexUserHook, installedCodexPlugin } from '../extensions/shared/codex-plugin.ts';
 import { codexPackagedPluginDir } from '../extensions/shared/codex-state.ts';
 import type { HostId } from '../extensions/shared/host-caps.ts';
 
@@ -866,12 +866,30 @@ async function stepCodex(options: InstallOptions): Promise<void> {
   if (!state.complete || !state.enabled) {
     throw new Error(`Codex did not enable ${CODEX_PLUGIN_ID}${state.missing.length ? ` (missing: ${state.missing.join(', ')})` : ''}`);
   }
+  // Current Codex removed plugin-declared hooks, so the copy inside the plugin never runs. The
+  // user-level file is the only surface that does, and it is the one rtk and headroom also use.
+  const hook = await hookCommandFor();
+  const installed = ensureCodexUserHook(hook, codexUserHooksFile(), Boolean(options.dryRun));
   if (!options.quiet) {
     console.log(`  Codex — plugin ${state.version ?? 'installed'} enabled`);
-    // Codex skips a hook whose recorded trust hash no longer matches, and this install re-adds the
-    // plugin, so the approval is due again. Nothing else reports that the hook is not running.
-    console.log('  Codex — open /hooks once and approve the Tersio prompt hook, or the slash commands reach the model');
+    if (!installed.ok) {
+      sayTagged(`  [warn] could not write ${codexUserHooksFile()}: ${installed.detail}`);
+    } else if (options.dryRun) {
+      sayTagged(`  [dry-run] would add the Tersio prompt hook to ${codexUserHooksFile()}`);
+    } else {
+      console.log(`  Codex — prompt hook registered in ${codexUserHooksFile()} (approve it once in /hooks)`);
+    }
   }
+}
+
+/** The command the user-level hook runs, with the same absolute paths the plugin manifest uses. */
+async function hookCommandFor(): Promise<string> {
+  const files = codexLocalPluginFiles();
+  const hooks = JSON.parse(files['plugins/tersio/hooks/hooks.json'] ?? '{}') as {
+    hooks?: { UserPromptSubmit?: Array<{ hooks?: Array<{ command?: unknown }> }> };
+  };
+  const command = hooks.hooks?.UserPromptSubmit?.[0]?.hooks?.[0]?.command;
+  return typeof command === 'string' ? command : `"${process.execPath}" "${process.argv[1] ?? ''}" codex-hook user-prompt-submit`;
 }
 
 async function runInstall(forcedHost?: HostId): Promise<void> {

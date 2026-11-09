@@ -343,3 +343,100 @@ export function codexHookOutput(context: string, status?: string): Record<string
   if (status) output.systemMessage = status;
   return output;
 }
+
+/** Codex reads user-level hooks from this file; a plugin-declared hook no longer runs in current builds. */
+export function codexUserHooksFile(): string {
+  return join(codexHome(), 'hooks.json');
+}
+
+/** The one string that identifies Tersio's own hook, whatever runtime path it was written with. */
+export const CODEX_HOOK_MARKER = 'codex-hook user-prompt-submit';
+
+export interface CodexUserHookResult {
+  /** True when the file now carries the Tersio entry. */
+  ok: boolean;
+  /** True when this call changed the file. */
+  changed: boolean;
+  detail: string;
+}
+
+function hookGroups(value: unknown): Array<Record<string, unknown>> {
+  if (!Array.isArray(value)) return [];
+  return value.filter((group): group is Record<string, unknown> => Boolean(group) && typeof group === 'object');
+}
+
+/** True when this group's commands already carry Tersio's hook. */
+function isTersioGroup(group: Record<string, unknown>): boolean {
+  const hooks = Array.isArray(group.hooks) ? group.hooks : [];
+  return hooks.some((entry) => {
+    const command = (entry as Record<string, unknown> | null)?.command;
+    return typeof command === 'string' && command.includes(CODEX_HOOK_MARKER);
+  });
+}
+
+/**
+ * Add Tersio's prompt hook to `~/.codex/hooks.json`, beside rtk and headroom. Current Codex removed
+ * plugin hooks, so the copy inside the plugin never runs; this file is the surface that still does.
+ */
+export function ensureCodexUserHook(command: string, file = codexUserHooksFile(), dryRun = false): CodexUserHookResult {
+  let parsed: Record<string, unknown> = {};
+  try {
+    const text = readFileSync(file, 'utf8');
+    const value = JSON.parse(text) as unknown;
+    parsed = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  } catch {
+    // A missing file is the normal first install; a corrupt one is replaced, because Codex cannot read it either.
+    parsed = {};
+  }
+  const hooks = parsed.hooks && typeof parsed.hooks === 'object' && !Array.isArray(parsed.hooks)
+    ? parsed.hooks as Record<string, unknown>
+    : {};
+  const groups = hookGroups(hooks.UserPromptSubmit).filter((group) => !isTersioGroup(group));
+  groups.push({ hooks: [{ type: 'command', command, statusMessage: 'Refreshing Tersio modes' }] });
+  const next = { ...parsed, hooks: { ...hooks, UserPromptSubmit: groups } };
+  const text = `${JSON.stringify(next, null, 2)}\n`;
+  const existing = (() => {
+    try {
+      return readFileSync(file, 'utf8');
+    } catch {
+      return null;
+    }
+  })();
+  if (existing === text) return { ok: true, changed: false, detail: file };
+  if (dryRun) return { ok: true, changed: false, detail: file };
+  try {
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(file, text, 'utf8');
+    return { ok: true, changed: true, detail: file };
+  } catch (error) {
+    return { ok: false, changed: false, detail: (error as Error).message };
+  }
+}
+
+/** Drop only Tersio's own entry, leaving every other tool's hook in place. */
+export function removeCodexUserHook(file = codexUserHooksFile(), dryRun = false): CodexUserHookResult {
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>;
+  } catch {
+    return { ok: true, changed: false, detail: file };
+  }
+  const hooks = parsed.hooks && typeof parsed.hooks === 'object' && !Array.isArray(parsed.hooks)
+    ? parsed.hooks as Record<string, unknown>
+    : null;
+  if (!hooks) return { ok: true, changed: false, detail: file };
+  const groups = hookGroups(hooks.UserPromptSubmit);
+  const kept = groups.filter((group) => !isTersioGroup(group));
+  if (kept.length === groups.length) return { ok: true, changed: false, detail: file };
+  const nextHooks: Record<string, unknown> = { ...hooks };
+  if (kept.length > 0) nextHooks.UserPromptSubmit = kept;
+  else delete nextHooks.UserPromptSubmit;
+  const next = { ...parsed, hooks: nextHooks };
+  if (dryRun) return { ok: true, changed: false, detail: file };
+  try {
+    writeFileSync(file, `${JSON.stringify(next, null, 2)}\n`, 'utf8');
+    return { ok: true, changed: true, detail: file };
+  } catch (error) {
+    return { ok: false, changed: false, detail: (error as Error).message };
+  }
+}
