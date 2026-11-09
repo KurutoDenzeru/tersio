@@ -146,6 +146,7 @@ export function HowToPage({ modes, onModesChanged }: { modes: ModeState | null; 
           <PipelineCanvas
             modes={modes}
             hostState={hostState}
+            loaded={!pipelinePending}
             headroomRoutes={headroomRoutes}
             onSet={save}
             onHostAction={hostAction}
@@ -166,6 +167,7 @@ export function HowToPage({ modes, onModesChanged }: { modes: ModeState | null; 
         open={addOpen}
         onOpenChange={setAddOpen}
         hostState={hostState}
+        loaded={!pipelinePending}
         busy={busy}
         onInstall={(host) => hostAction(`host-${host}` as NodeId, "install")}
       />

@@ -160,10 +160,13 @@ export function PipelineCanvas({
   busy,
   onSaved,
   onAddAgent,
+  loaded,
 }: {
   modes: ModeState | null;
   hostState: HostState;
   headroomRoutes: Record<string, boolean>;
+  /** False while the page still reads its first state. */
+  loaded: boolean;
   onSet: (node: NodeId, field: string, value: string | boolean, host?: "omp" | "pi" | "pig" | "opencode" | "dsh" | "codex") => void;
   onHostAction: (node: NodeId, action: HostAction) => void;
   busy: NodeId | null;
@@ -736,6 +739,7 @@ export function PipelineCanvas({
           onOpenChange={(open) => { if (!open) setSelected(null); }}
           modes={modes}
           hostState={hostState}
+          loaded={loaded}
           busy={busy}
           onSet={onSet}
           onHostAction={onHostAction}
@@ -749,6 +753,7 @@ export function PipelineCanvas({
           onOpenChange={(open) => { if (!open) setSelected(null); }}
           modes={modes}
           hostState={hostState}
+          loaded={loaded}
           busy={busy}
           onSet={onSet}
           onHostAction={onHostAction}
@@ -760,6 +765,7 @@ export function PipelineCanvas({
           open
           onOpenChange={(open) => { if (!open) setSelected(null); }}
           modes={modes}
+          loaded={loaded}
           busy={busy}
           onSet={onSet}
           onSaved={onSaved}
@@ -772,6 +778,7 @@ export function PipelineCanvas({
           onOpenChange={(open) => { if (!open) setSelected(null); }}
           modes={modes}
           hostState={hostState}
+          loaded={loaded}
           busy={busy}
           onSet={onSet}
           onHostAction={onHostAction}

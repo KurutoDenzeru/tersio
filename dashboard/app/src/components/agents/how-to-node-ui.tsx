@@ -32,6 +32,8 @@ export interface NodeSurfaceProps {
   onOpenChange: (open: boolean) => void;
   modes: ModeState | null;
   hostState: HostState;
+  /** False while the page still reads its first state; every drawer section waits on the same signal. */
+  loaded: boolean;
   busy: NodeId | null;
   onSet: (node: NodeId, field: string, value: string | boolean, host?: HostId) => void;
   onHostAction: (node: NodeId, action: HostAction) => void;
@@ -235,7 +237,7 @@ function AgentModes({ host, onSaved }: { host: HostId; onSaved: () => void }) {
 }
 
 /** Mode nodes open a side drawer: the level list, and the scope the level writes to. */
-export function ModeDrawer({ node, open, onOpenChange, modes, hostState, busy, onSet }: NodeSurfaceProps) {
+export function ModeDrawer({ node, open, onOpenChange, modes, hostState, loaded, busy, onSet }: NodeSurfaceProps) {
   const [health, setHealth] = useState<HealthReport | null>(null);
   useEffect(() => {
     if (open) void fetchHealth().then(setHealth);
@@ -257,13 +259,13 @@ export function ModeDrawer({ node, open, onOpenChange, modes, hostState, busy, o
     <Drawer open={open} onOpenChange={onOpenChange} swipeDirection="right">
       <DrawerContent>
         <DrawerHeader className="border-b border-line pb-3.5 px-6 pt-4">
-          <DrawerTitle><SurfaceHeader node={node} version={health?.modes?.[node as "caveman"] ?? null} /></DrawerTitle>
+          <DrawerTitle><SurfaceHeader node={node} version={loaded ? health?.modes?.[node as "caveman"] ?? null : null} /></DrawerTitle>
           <DrawerDescription className="text-[11px] leading-relaxed">{ABOUT[node] ?? ""}</DrawerDescription>
         </DrawerHeader>
         <div className="grid min-h-0 flex-1 content-start gap-1.5 overflow-y-auto px-6 py-4 pb-5">
           <div className="mb-1 flex items-center gap-2">
             <span className="mono text-[10px] tracking-[0.1em] text-dim uppercase">scope</span>
-            <Select value={scope} onValueChange={(v) => setScope(v as HostId | "all")}>
+            <Select value={scope} onValueChange={(v) => setScope(v as HostId | "all")} disabled={!loaded}>
               <SelectTrigger size="sm" className="ml-auto w-[170px]" aria-label="Who this level applies to">
                 {/* SelectValue needs children or it shows the raw value. */}
                 <SelectValue>{scope === "all" ? "All agents (shared)" : `${HOSTS.find((x) => x.id === scope)?.label ?? scope} only`}</SelectValue>
@@ -278,7 +280,7 @@ export function ModeDrawer({ node, open, onOpenChange, modes, hostState, busy, o
               </SelectContent>
             </Select>
           </div>
-          {modes === null ? (
+          {!loaded || modes === null ? (
             <div className="grid gap-1.5" aria-busy="true" aria-hidden="true">
               <Skeleton className="h-8 w-full rounded-md" />
               <Skeleton className="h-8 w-full rounded-md" />
@@ -308,10 +310,11 @@ export function ModeDrawer({ node, open, onOpenChange, modes, hostState, busy, o
 }
 
 /** A host node opens the side drawer: install actions, then its own defaults rows. */
-export function HostDrawer({ node, open, onOpenChange, hostState, busy, onHostAction, onSaved }: NodeSurfaceProps) {
+export function HostDrawer({ node, open, onOpenChange, hostState, loaded, busy, onHostAction, onSaved }: NodeSurfaceProps) {
   const hostId = node.slice("host-".length) as HostId;
   const host = HOSTS.find((h) => h.id === hostId);
-  const installed = hostState.installed[hostId] !== false;
+  // Unread state is not "installed": the buttons wait instead of offering the wrong action.
+  const installed = hostState.installed[hostId] === true;
   const [running, setRunning] = useState<HostAction | null>(null);
   const [confirming, setConfirming] = useState(false);
   useEffect(() => {
@@ -333,19 +336,26 @@ export function HostDrawer({ node, open, onOpenChange, hostState, busy, onHostAc
             <span className="flex items-center gap-2">
               <AgentLogo host={hostId} className="size-4 shrink-0" />
               <span className="min-w-0 truncate">{host?.label ?? hostId}</span>
-              <span className={cn(
-                "mono ml-auto shrink-0 rounded border px-1.5 py-0.5 text-[9px]",
-                installed ? "border-success/40 text-success" : "border-line text-dim",
-              )}
-              >
-                {installed ? versionOf(hostState.versions[hostId]) ?? "" : "not installed"}
-              </span>
+              {loaded ? (
+                <span className={cn(
+                  "mono ml-auto shrink-0 rounded border px-1.5 py-0.5 text-[9px]",
+                  installed ? "border-success/40 text-success" : "border-line text-dim",
+                )}
+                >
+                  {installed ? versionOf(hostState.versions[hostId]) ?? "" : "not installed"}
+                </span>
+              ) : <Skeleton className="ml-auto h-3.5 w-12 rounded" />}
             </span>
           </DrawerTitle>
           <DrawerDescription className="text-[11px] leading-relaxed">{ABOUT[node] ?? ""}</DrawerDescription>
         </DrawerHeader>
         <div className="grid min-h-0 flex-1 content-start gap-5 overflow-y-auto px-6 py-4">
-          {installed ? (
+          {!loaded ? (
+            <div className="grid gap-1.5" aria-busy="true" aria-hidden="true">
+              <Skeleton className="h-8 w-full rounded-md" />
+              <Skeleton className="h-8 w-full rounded-md" />
+            </div>
+          ) : installed ? (
             <div className="rounded-lg bg-track/40 p-4">
               <AgentModes host={hostId} onSaved={onSaved} />
             </div>
@@ -356,6 +366,11 @@ export function HostDrawer({ node, open, onOpenChange, hostState, busy, onHostAc
           )}
         </div>
         <DrawerFooter className="border-t border-line px-6 pb-4 pt-3.5">
+          {!loaded ? (
+            <div className="grid w-full gap-2" aria-busy="true" aria-hidden="true">
+              <Skeleton className="h-8 w-full rounded-md" />
+            </div>
+          ) : (
           <div className={cn("grid w-full gap-2", installed && "grid-cols-2")}>
             {installed ? (
               <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => start("update")} className="w-full gap-1.5">
@@ -382,6 +397,7 @@ export function HostDrawer({ node, open, onOpenChange, hostState, busy, onHostAc
               )
             ) : null}
           </div>
+          )}
         </DrawerFooter>
       </DrawerContent>
     </Drawer>
@@ -390,12 +406,14 @@ export function HostDrawer({ node, open, onOpenChange, hostState, busy, onHostAc
 
 /** The footer under a vendor drawer: check the release feed, update, or remove the binary. */
 export function VendorFooter({
-  tool, source, open, installed, onAfter,
+  tool, source, open, installed, loaded, onAfter,
 }: {
   tool: "headroom" | "rtk";
   source: "Headroom" | "RTK";
   open: boolean;
   installed: boolean;
+  /** False while health is still unread, so the footer never offers an action on a guess. */
+  loaded: boolean;
   onAfter: () => void;
 }) {
   const toast = useToast();
@@ -444,6 +462,17 @@ export function VendorFooter({
     onAfter();
   };
   const updateLabel = row?.upstream ? `Update to ${row.upstream}` : "Update";
+  // Health unread: the count is unknown, so the footer waits instead of offering an action on a guess.
+  if (!loaded) {
+    return (
+      <DrawerFooter className="border-t border-line px-6 pb-4 pt-3.5">
+        <div className="grid w-full gap-2" aria-busy="true" aria-hidden="true">
+          <Skeleton className="h-8 w-full rounded-md" />
+          <Skeleton className="h-3 w-3/4 rounded" />
+        </div>
+      </DrawerFooter>
+    );
+  }
   // rtk owns its binary: this footer reports what upstream ships and never replaces it.
   if (tool === "rtk") {
     return (
@@ -526,7 +555,7 @@ export function routeNotice(target: { label?: string; durable?: boolean } | unde
 }
 
 /** The headroom node opens the route drawer: one switch per agent, pointing it at the local proxy. */
-export function HeadroomDrawer({ open, onOpenChange, modes, hostState, busy, onSet, onHostAction, onSaved }: Omit<NodeSurfaceProps, "node">) {
+export function HeadroomDrawer({ open, onOpenChange, modes, hostState, loaded, busy, onSet, onHostAction, onSaved }: Omit<NodeSurfaceProps, "node">) {
   const toast = useToast();
   const [routes, setRoutes] = useState<Array<HeadroomRouteTarget> | null>(null);
   const [endpoint, setEndpoint] = useState<string | null>(null);
@@ -535,6 +564,8 @@ export function HeadroomDrawer({ open, onOpenChange, modes, hostState, busy, onS
   // The installer updates the parent's host state, so a finished install re-reads the rows.
   const hostKey = HOSTS.map((host) => `${host.id}:${hostState.installed[host.id] === true}:${hostState.present[host.id] === true}`).join(",");
   const headroomInstalled = health?.headroom?.present ?? false;
+  // The drawer re-reads health on open, so its own read is what the header and footer wait for.
+  const ready = loaded && health !== null;
   const picker = PICKER.headroom;
   const current = nodeValue("headroom", "all", modes);
 
@@ -627,7 +658,7 @@ export function HeadroomDrawer({ open, onOpenChange, modes, hostState, busy, onS
             <span className="flex items-center gap-2">
               <span aria-hidden="true" className="text-[13px] leading-none">🍃</span>
               <span className="min-w-0 truncate">headroom</span>
-              <VersionPill version={health?.headroom?.version ?? null} />
+              {ready ? <VersionPill version={health?.headroom?.version ?? null} /> : <Skeleton className="ml-auto h-3.5 w-12 rounded" />}
             </span>
           </DrawerTitle>
           <DrawerDescription className="text-[11px] leading-relaxed">{ABOUT.headroom}</DrawerDescription>
@@ -677,20 +708,22 @@ export function HeadroomDrawer({ open, onOpenChange, modes, hostState, busy, onS
             )}
           </div>
         </div>
-        <VendorFooter tool="headroom" source="Headroom" open={open} installed={headroomInstalled} onAfter={() => void fetchHealth().then(setHealth)} />
+        <VendorFooter tool="headroom" source="Headroom" open={open} installed={headroomInstalled} loaded={ready} onAfter={() => void fetchHealth().then(setHealth)} />
       </DrawerContent>
     </Drawer>
   );
 }
 
 /** The rtk node opens its own drawer: the on/off default plus the vendor release footer. */
-export function RtkDrawer({ open, onOpenChange, modes, busy, onSet, onSaved }: Omit<NodeSurfaceProps, "node" | "hostState" | "onHostAction">) {
+export function RtkDrawer({ open, onOpenChange, modes, loaded, busy, onSet, onSaved }: Omit<NodeSurfaceProps, "node" | "hostState" | "onHostAction">) {
   const [health, setHealth] = useState<HealthReport | null>(null);
   useEffect(() => {
     if (!open) return;
     void fetchHealth().then(setHealth);
   }, [open]);
   const rtkInstalled = health?.rtk?.present ?? false;
+  // Same rule as headroom: this drawer's own health read decides when its header and footer are real.
+  const ready = loaded && health !== null;
   const picker = PICKER.rtk;
   const current = nodeValue("rtk", "all", modes);
   return (
@@ -701,7 +734,7 @@ export function RtkDrawer({ open, onOpenChange, modes, busy, onSet, onSaved }: O
             <span className="flex items-center gap-2">
               <span aria-hidden="true" className="text-[13px] leading-none">🗜️</span>
               <span className="min-w-0 truncate">rtk</span>
-              <VersionPill version={health?.rtk?.version ?? null} />
+              {ready ? <VersionPill version={health?.rtk?.version ?? null} /> : <Skeleton className="ml-auto h-3.5 w-12 rounded" />}
             </span>
           </DrawerTitle>
           <DrawerDescription className="text-[11px] leading-relaxed">{ABOUT.rtk ?? ""}</DrawerDescription>
@@ -728,7 +761,7 @@ export function RtkDrawer({ open, onOpenChange, modes, busy, onSet, onSaved }: O
             </div>
           )}
         </div>
-        <VendorFooter tool="rtk" source="RTK" open={open} installed={rtkInstalled} onAfter={() => void fetchHealth().then(setHealth)} />
+        <VendorFooter tool="rtk" source="RTK" open={open} installed={rtkInstalled} loaded={ready} onAfter={() => void fetchHealth().then(setHealth)} />
       </DrawerContent>
     </Drawer>
   );
@@ -736,11 +769,13 @@ export function RtkDrawer({ open, onOpenChange, modes, busy, onSet, onSaved }: O
 
 /** The add-agent picker: installed harnesses first, then installable ones, then everything unavailable. */
 export function AddAgentDialog({
-  open, onOpenChange, hostState, busy, onInstall,
+  open, onOpenChange, hostState, loaded, busy, onInstall,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   hostState: HostState;
+  /** False while the page still reads its first state, so no row offers Install on a guess. */
+  loaded: boolean;
   busy: NodeId | null;
   onInstall: (host: HostId) => void;
 }) {
@@ -773,7 +808,9 @@ export function AddAgentDialog({
         {isPresent && !linked ? (
           <span className="mono shrink-0 text-[9px] text-dim">{versionOf(hostState.versions[host.id]) ?? ""}</span>
         ) : null}
-        {linked ? (
+        {!loaded ? (
+          <Skeleton className="h-5 w-16 shrink-0 rounded" />
+        ) : linked ? (
           <span className="mono flex shrink-0 items-center gap-1 rounded border border-success/40 px-1.5 py-0.5 text-[9px] text-success">
             <span aria-hidden="true" className="size-1.5 rounded-full bg-success" />
             {versionOf(hostState.versions[host.id]) ?? "installed"}
