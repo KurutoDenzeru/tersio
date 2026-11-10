@@ -262,7 +262,7 @@ function zoneGlyphsIn(file: string): Array<string> {
 }
 
 const files = readdirSync(components)
-  .filter((f) => f.endsWith('.tsx') && f !== 'Icon.tsx')
+  .filter((f) => f.endsWith('.tsx') && f.toLowerCase() !== 'icon.tsx')
   .map((f) => path.join(components, f));
 
 const all = files.flatMap((f) => iconNamesIn(f).map((name) => ({ file: path.basename(f), name })));
@@ -275,6 +275,19 @@ test('every icon name resolves to a real lucide icon', () => {
     .filter(({ name }) => !(toPascal(name) in icons))
     .map(({ file, name }) => `${file}: "${name}" -> ${toPascal(name)} not in lucide`);
   expect(broken, broken.join('\n')).toEqual([]);
+});
+
+// Icon.tsx ships only the names it lists, so a name that lucide has but the registry omits renders the
+// fallback glyph. Catching it here keeps the bundle honest as pages are added.
+test('the icon registry lists every lucide name the app asks for', () => {
+  // The tracked name is lowercase; a case-sensitive checkout would miss 'Icon.tsx'.
+  const iconSrc = readFileSync(path.join(components, 'icon.tsx'), 'utf8');
+  const registry = new Set([...iconSrc.matchAll(/^\s{2}([A-Z][A-Za-z0-9]*),$/gm)].map((match) => match[1]));
+  const missing = [...all, ...dynamic]
+    // A layer value like "off" or an array tag like "idle" is not an icon name.
+    .filter(({ name }) => toPascal(name) in icons && !registry.has(toPascal(name)))
+    .map(({ file, name }) => `${file}: "${name}" -> ${toPascal(name)} missing from the registry`);
+  expect(missing, missing.join('\n')).toEqual([]);
 });
 
 const ROW: RecentRequestRow = {
