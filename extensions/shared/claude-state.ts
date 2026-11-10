@@ -17,6 +17,12 @@ export const CLAUDE_PLUGIN_FILES = [
   'hooks/register.js',
   // A registered command never reaches the slash menu; a commands/*.md file is what lists.
   'commands/tersio.md',
+  'commands/combo.md',
+  'commands/caveman.md',
+  'commands/rtk.md',
+  'commands/pstack.md',
+  'commands/ponytail.md',
+  'commands/headroom.md',
 ] as const;
 
 const ROOT = findPackageRoot(dirname(fileURLToPath(import.meta.url)));

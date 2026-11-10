@@ -19,6 +19,16 @@ function modeWord(value) {
   return String(value || 'off').toUpperCase()
 }
 
+/**
+ * The CLI writes per-host defaults under hosts.claude and keeps flat keys as the shared fallback, so
+ * the host section has to win here too. Reading only the flat keys reported OFF for a configured
+ * machine.
+ */
+function effectiveSettings(raw) {
+  const hosts = raw && typeof raw.hosts === 'object' ? raw.hosts : {}
+  const section = hosts && typeof hosts.claude === 'object' && hosts.claude ? hosts.claude : {}
+  return { ...raw, ...section }
+}
 /** One line: the combo, then each mode. Empty when nothing is on, so the band costs no rows. */
 function comboLine(settings) {
   const caveman = modeWord(settings.cavemanDefault)
@@ -78,18 +88,18 @@ export function register(on) {
   // entry resolves as tersio:tersio while an unqualified /tersio also reaches it.
   on('command.run', { command: 'tersio' }, async () => {
     if (cached.error) return { text: 'Tersio: could not read settings — ' + cached.error }
-    const line = comboLine(cached.settings || {})
+    const line = comboLine(effectiveSettings(cached.settings || {}))
     return { text: line || '🧩 OFF — no Tersio modes are on' }
   })
 
   on('command.run', { command: 'tersio:tersio' }, async () => {
     if (cached.error) return { text: 'Tersio: could not read settings — ' + cached.error }
-    const line = comboLine(cached.settings || {})
+    const line = comboLine(effectiveSettings(cached.settings || {}))
     return { text: line || '🧩 OFF — no Tersio modes are on' }
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    const line = comboLine(cached.settings || {})
+    const line = comboLine(effectiveSettings(cached.settings || {}))
     // Nothing on, or not read yet: draw nothing and let the band stay empty.
     if (!line) return next(e)
     const { Text } = $.ui.resolve(e)

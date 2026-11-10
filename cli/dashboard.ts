@@ -63,6 +63,7 @@ import {
 } from '../extensions/shared/utils.ts';
 import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
 import { codexHome } from '../extensions/shared/codex-state.ts';
+import { claudeHome } from '../extensions/shared/claude-state.ts';
 import { tersioMcpConfigured, tersioMcpSupported } from '../extensions/shared/mcp-config.ts';
 import {
   BACKUP_KEEP,
@@ -474,12 +475,13 @@ function ompDefaultModel(): string | null {
 }
 
 /** The config root per agent, for the health report. */
-const agentDir = (id: 'omp' | 'pi' | 'pig' | 'opencode' | 'dsh' | 'codex'): string | null => {
+const agentDir = (id: 'omp' | 'pi' | 'pig' | 'opencode' | 'dsh' | 'codex' | 'claude'): string | null => {
   if (id === 'omp') return path.join(homeDir(), '.omp');
   if (id === 'pi') return path.join(homeDir(), '.pi');
   if (id === 'pig') return path.join(homeDir(), '.pig');
   if (id === 'dsh') return dshHome();
   if (id === 'codex') return codexHome();
+  if (id === 'claude') return claudeHome();
   return path.join(homeDir(), '.config', 'opencode');
 };
 
@@ -753,7 +755,7 @@ function saveDefaults(
   body: Record<string, unknown>,
 ): Promise<{ ok: true; profile: Record<string, unknown> } | { ok: false; error: string }> {
   const run = async (): Promise<{ ok: true; profile: Record<string, unknown> } | { ok: false; error: string }> => {
-    const HOST_SCOPES = ['omp', 'pi', 'opencode', 'pig', 'dsh', 'codex'] as const;
+    const HOST_SCOPES = ['omp', 'pi', 'opencode', 'pig', 'dsh', 'codex', 'claude'] as const;
     const hostScope =
       typeof body.host === 'string' && (HOST_SCOPES as readonly string[]).includes(body.host)
         ? (body.host as (typeof HOST_SCOPES)[number])

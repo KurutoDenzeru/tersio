@@ -48,6 +48,12 @@ export function claudeLocalPluginFiles(): Record<string, string> {
     [`${CLAUDE_PLUGIN_NAME}/hooks/hooks.json`]: readPackaged('hooks/hooks.json'),
     [`${CLAUDE_PLUGIN_NAME}/hooks/register.js`]: readPackaged('hooks/register.js'),
     [`${CLAUDE_PLUGIN_NAME}/commands/tersio.md`]: readPackaged('commands/tersio.md'),
+    [`${CLAUDE_PLUGIN_NAME}/commands/combo.md`]: readPackaged('commands/combo.md'),
+    [`${CLAUDE_PLUGIN_NAME}/commands/caveman.md`]: readPackaged('commands/caveman.md'),
+    [`${CLAUDE_PLUGIN_NAME}/commands/rtk.md`]: readPackaged('commands/rtk.md'),
+    [`${CLAUDE_PLUGIN_NAME}/commands/pstack.md`]: readPackaged('commands/pstack.md'),
+    [`${CLAUDE_PLUGIN_NAME}/commands/ponytail.md`]: readPackaged('commands/ponytail.md'),
+    [`${CLAUDE_PLUGIN_NAME}/commands/headroom.md`]: readPackaged('commands/headroom.md'),
   };
 }
 
