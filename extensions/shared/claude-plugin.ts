@@ -47,6 +47,7 @@ export function claudeLocalPluginFiles(): Record<string, string> {
     [`${CLAUDE_PLUGIN_NAME}/.claude-plugin/plugin.json`]: readPackaged('.claude-plugin/plugin.json'),
     [`${CLAUDE_PLUGIN_NAME}/hooks/hooks.json`]: readPackaged('hooks/hooks.json'),
     [`${CLAUDE_PLUGIN_NAME}/hooks/register.js`]: readPackaged('hooks/register.js'),
+    [`${CLAUDE_PLUGIN_NAME}/commands/tersio.md`]: readPackaged('commands/tersio.md'),
   };
 }
 

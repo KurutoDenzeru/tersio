@@ -11,7 +11,13 @@ export const CLAUDE_MARKETPLACE_NAME = 'tersio';
 export const CLAUDE_PLUGIN_ID = `${CLAUDE_PLUGIN_NAME}@${CLAUDE_MARKETPLACE_NAME}`;
 
 /** Every file the packaged plugin must carry; a plugin with a manifest and no hooks module draws nothing. */
-export const CLAUDE_PLUGIN_FILES = ['.claude-plugin/plugin.json', 'hooks/hooks.json', 'hooks/register.js'] as const;
+export const CLAUDE_PLUGIN_FILES = [
+  '.claude-plugin/plugin.json',
+  'hooks/hooks.json',
+  'hooks/register.js',
+  // A registered command never reaches the slash menu; a commands/*.md file is what lists.
+  'commands/tersio.md',
+] as const;
 
 const ROOT = findPackageRoot(dirname(fileURLToPath(import.meta.url)));
 

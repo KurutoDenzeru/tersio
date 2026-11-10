@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { claudeLocalPluginFiles } from '../../extensions/shared/claude-plugin.ts';
-import { CLAUDE_PLUGIN_ID, installedClaudePlugin } from '../../extensions/shared/claude-state.ts';
+import { CLAUDE_PLUGIN_FILES, CLAUDE_PLUGIN_ID, installedClaudePlugin } from '../../extensions/shared/claude-state.ts';
 
 describe('claude plugin files', () => {
   test('the marketplace names the plugin and its relative source', () => {
@@ -57,7 +57,7 @@ describe('installed claude plugin state', () => {
     try {
       process.env.CLAUDE_CONFIG_DIR = home;
       const dir = path.join(home, 'cache', 'tersio');
-      for (const rel of ['.claude-plugin/plugin.json', 'hooks/hooks.json', 'hooks/register.js']) {
+      for (const rel of CLAUDE_PLUGIN_FILES) {
         const at = path.join(dir, ...rel.split('/'));
         mkdirSync(path.dirname(at), { recursive: true });
         writeFileSync(at, '{}', 'utf8');
@@ -113,7 +113,7 @@ describe('installed claude plugin state', () => {
     try {
       process.env.CLAUDE_CONFIG_DIR = home;
       const dir = path.join(home, 'cache', 'tersio');
-      for (const rel of ['.claude-plugin/plugin.json', 'hooks/hooks.json', 'hooks/register.js']) {
+      for (const rel of CLAUDE_PLUGIN_FILES) {
         const at = path.join(dir, ...rel.split('/'));
         mkdirSync(path.dirname(at), { recursive: true });
         writeFileSync(at, '{}', 'utf8');

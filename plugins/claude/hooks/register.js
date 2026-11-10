@@ -63,20 +63,26 @@ export function register(on) {
     } catch (err) {
       cached = { settings: {}, error: String(err) }
     }
-    // Registered last: a name Claude Code already owns makes register throw, and that would skip
-    // everything after it in this hook.
+    // Both, and each does one job. $.command.register makes a plain /tersio answer; the
+    // commands/tersio.md file is what puts the entry in the slash menu, which a registered name
+    // never does. Registered last: a taken name throws and would skip the rest of this hook.
     try {
-      await $.command.register({
-        name: 'tersio',
-        description: "Show Tersio's active modes",
-      })
+      await $.command.register({ name: 'tersio', description: "Show Tersio's active modes" })
     } catch {
       /* a built-in already owns the name */
     }
     return next(e)
   })
 
+  // Two matchers for one command: the plugin is named tersio and the command is tersio, so the file
+  // entry resolves as tersio:tersio while an unqualified /tersio also reaches it.
   on('command.run', { command: 'tersio' }, async () => {
+    if (cached.error) return { text: 'Tersio: could not read settings — ' + cached.error }
+    const line = comboLine(cached.settings || {})
+    return { text: line || '🧩 OFF — no Tersio modes are on' }
+  })
+
+  on('command.run', { command: 'tersio:tersio' }, async () => {
     if (cached.error) return { text: 'Tersio: could not read settings — ' + cached.error }
     const line = comboLine(cached.settings || {})
     return { text: line || '🧩 OFF — no Tersio modes are on' }
