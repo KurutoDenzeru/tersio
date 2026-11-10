@@ -41,7 +41,19 @@ import {
   installedCodexPlugin,
   removeCodexUserHook,
 } from '../extensions/shared/codex-plugin.ts';
-import { piAgentDir, pigAgentDir, readTextIfExists, resolveCodexBinary } from '../extensions/shared/utils.ts';
+import {
+  CLAUDE_MARKETPLACE_NAME,
+  CLAUDE_PLUGIN_ID,
+  installedClaudePlugin,
+  claudeLocalMarketplaceRoot,
+} from '../extensions/shared/claude-state.ts';
+import {
+  piAgentDir,
+  pigAgentDir,
+  readTextIfExists,
+  resolveCodexBinary,
+  resolveHostBinary,
+} from '../extensions/shared/utils.ts';
 import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
 import { removeTersioMcp } from '../extensions/shared/mcp-config.ts';
 import {
@@ -531,6 +543,48 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
       results.push(true);
       continue;
     }
+    if (host === 'claude') {
+      const state = installedClaudePlugin();
+      if (!selected.installed && !state.dir && !existsSync(claudeLocalMarketplaceRoot())) {
+        sayTagged(`  [skip] ${selected.label} — nothing installed (${selected.installCmd})`);
+        results.push(false);
+        continue;
+      }
+      console.log('Will remove:');
+      console.log(`  ${CLAUDE_PLUGIN_ID} (Claude Code plugin)${state.dir ? `\n  ${state.dir}` : ''}`);
+      console.log(`  the ${CLAUDE_MARKETPLACE_NAME} marketplace source`);
+      console.log('  Tersio plugin data under Claude Code is kept');
+      if (!confirmed && !(await confirmDestructive('Remove the Tersio Claude Code plugin?'))) {
+        results.push(false);
+        continue;
+      }
+      const claude = resolveHostBinary('claude');
+      if (shouldDryRun) {
+        sayTagged(`  [dry-run] would run: claude plugin uninstall ${CLAUDE_PLUGIN_ID}`);
+        sayTagged(`  [dry-run] would run: claude plugin marketplace remove ${CLAUDE_MARKETPLACE_NAME}`);
+      } else if (!claude) {
+        sayTagged('  [warn] claude not found — remove Tersio from Claude Code /plugin');
+      } else {
+        await execP(claude, ['plugin', 'uninstall', CLAUDE_PLUGIN_ID, '--scope', 'user'], {
+          timeout: 120_000,
+          cwd: HOME,
+        }).catch((e: unknown) => {
+          sayTagged(`  [warn] claude plugin uninstall: ${(e as Error).message}`);
+        });
+        await execP(claude, ['plugin', 'marketplace', 'remove', CLAUDE_MARKETPLACE_NAME], {
+          timeout: 120_000,
+          cwd: HOME,
+        }).catch((e: unknown) => {
+          sayTagged(`  [warn] claude marketplace remove: ${(e as Error).message}`);
+        });
+      }
+      await removeUninstallTarget(claudeLocalMarketplaceRoot(), shouldDryRun);
+      await clearSessionDefaults(shouldDryRun);
+      console.log('\nDone. Restart Claude Code to unload the plugin.');
+      results.push(true);
+      continue;
+    }
+
     if (!selected.installed)
       sayTagged(`  [note] ${selected.label} has no tersio install; removing what is left behind.`);
 

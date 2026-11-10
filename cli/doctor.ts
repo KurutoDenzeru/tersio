@@ -44,7 +44,7 @@ import { OMP_SUBAGENT_MARKER } from '../extensions/shared/session-state.ts';
 import { describeHeadroomRoute, readHeadroomRoute } from '../extensions/shared/headroom-routing.ts';
 import { hasNativeRoute } from '../extensions/shared/headroom-routes.ts';
 import { headroomProxyUrl } from '../extensions/shared/headroom-proxy.ts';
-import { hostCap } from '../extensions/shared/host-caps.ts';
+import { hostCap, isPluginHost } from '../extensions/shared/host-caps.ts';
 import { tersioMcpConfigured } from '../extensions/shared/mcp-config.ts';
 import {
   PI_PONYTAIL_FILES,
@@ -139,7 +139,7 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   // One hook cannot stand for the set: 5.1 and 5.2 ship the same instructions file and differ inside a skill.
   const ponytailStale: string[] = [];
   const ponytailSource = path.join(tersioPluginDir, 'extensions', 'ponytail');
-  for (const host of hosts.filter((h) => h.installed && h.id !== 'codex')) {
+  for (const host of hosts.filter((h) => h.installed && !isPluginHost(h.id))) {
     const copy = ponytailLoads[host.id];
     if (!copy) continue;
     for (const rel of copy.files) {
@@ -158,7 +158,7 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
     host.id === 'omp' ? path.join(tersioPluginDir, 'extensions') : hostExtensionsDir(host.id);
   // Only an install this build recognises is compared; a partial tree is debris, and the host row already names the command that clears it.
   for (const host of hosts.filter((h) => h.installed)) {
-    if (host.id === 'codex') continue;
+    if (isPluginHost(host.id)) continue;
     const treeId = host.id === 'omp' ? 'opencode' : host.id;
     const base = treeBaseFor(host);
     let onDisk = new Set(hostTreeFiles(base).filter((rel) => path.extname(rel) !== '.js'));
@@ -187,7 +187,7 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   const unwrittenTreeFiles = async (): Promise<string[]> => {
     const out: string[] = [];
     for (const host of hosts.filter((h) => h.installed)) {
-      if (host.id === 'codex') continue;
+      if (isPluginHost(host.id)) continue;
       const treeId = host.id === 'omp' ? 'opencode' : host.id;
       const base = treeBaseFor(host);
       for (const rel of treeFilesFor(treeId)) {

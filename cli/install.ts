@@ -41,6 +41,8 @@ import { askInteractiveChoice, askInteractiveConfirm, closeRL, execNetwork, tty,
 import { printWelcome } from './banner.ts';
 import { checkForUpdate, runLatestUpdate } from './update.ts';
 import { runUninstall } from './uninstall.ts';
+import { claudeLocalPluginFiles, claudeLocalMarketplaceRoot } from '../extensions/shared/claude-plugin.ts';
+import { CLAUDE_MARKETPLACE_NAME, CLAUDE_PLUGIN_ID, installedClaudePlugin } from '../extensions/shared/claude-state.ts';
 import { runDoctor } from './doctor.ts';
 import { runDashboard } from './dashboard.ts';
 import { wireRtk } from './rtk-wiring.ts';
@@ -1060,6 +1062,48 @@ async function stepCodex(options: InstallOptions): Promise<void> {
     }
   }
 }
+/**
+ * Claude Code installs from a local marketplace with relative plugin sources. Removing first makes an
+ * upgrade replace the cached copy instead of reporting an already-installed plugin.
+ */
+async function stepClaude(options: InstallOptions): Promise<void> {
+  const claude = resolveHostBinary('claude');
+  if (!claude) throw new Error('claude not found — install Claude Code first');
+  const root = claudeLocalMarketplaceRoot();
+
+  const removePlugin = ['plugin', 'uninstall', CLAUDE_PLUGIN_ID, '--scope', 'user'];
+  const removeMarketplace = ['plugin', 'marketplace', 'remove', CLAUDE_MARKETPLACE_NAME];
+  const addMarketplace = ['plugin', 'marketplace', 'add', root];
+  const addPlugin = ['plugin', 'install', CLAUDE_PLUGIN_ID, '--scope', 'user'];
+  if (options.dryRun) {
+    if (!options.quiet) {
+      sayTagged(`  [dry-run] would materialize ${root}`);
+      sayTagged(`  [dry-run] would run: claude ${removePlugin.join(' ')}`);
+      sayTagged(`  [dry-run] would run: claude ${removeMarketplace.join(' ')}`);
+      sayTagged(`  [dry-run] would run: claude ${addMarketplace.join(' ')}`);
+      sayTagged(`  [dry-run] would run: claude ${addPlugin.join(' ')}`);
+    }
+    return;
+  }
+
+  if (!options.quiet) console.log(`  Claude Code — write the local marketplace (${root})`);
+  for (const [rel, text] of Object.entries(claudeLocalPluginFiles())) {
+    await writeIfChanged(path.join(root, ...rel.split('/')), text, options);
+  }
+  // Both removals are idempotent only in Tersio's intent, not in the CLI's exit code, so a miss is fine.
+  await execP(claude, removePlugin, { timeout: 120_000, cwd: homeDir() }).catch(() => undefined);
+  await execP(claude, removeMarketplace, { timeout: 120_000, cwd: homeDir() }).catch(() => undefined);
+  await execP(claude, addMarketplace, { timeout: 120_000, cwd: homeDir() });
+  await execP(claude, addPlugin, { timeout: 120_000, cwd: homeDir() });
+
+  const state = installedClaudePlugin();
+  if (!state.complete || !state.enabled) {
+    const why = state.missing.length ? ` (missing: ${state.missing.join(', ')})` : state.enabled ? '' : ' (disabled)';
+    throw new Error(`Claude Code did not install ${CLAUDE_PLUGIN_ID}${why}`);
+  }
+  if (!options.quiet) console.log(`  Claude Code — plugin ${state.version ?? 'installed'} enabled`);
+  if (!options.quiet) console.log('  Claude Code — the combo strip draws above the prompt, and /tersio prints it');
+}
 
 async function runInstall(forcedHost?: HostId): Promise<void> {
   let hostChosen = false;
@@ -1236,6 +1280,13 @@ async function runInstall(forcedHost?: HostId): Promise<void> {
     await capture('codex plugin', () => stepCodex(installOptions));
     await capture('settings', () => writeHostSettings(false));
     finishHost('\nDone. Restart Codex and review the Tersio hooks in /hooks.');
+    return;
+  }
+
+  if (targetHost === 'claude') {
+    await capture('claude plugin', () => stepClaude(installOptions));
+    await capture('settings', () => writeHostSettings(false));
+    finishHost('\nDone. Start Claude Code and the combo strip draws above the prompt.');
     return;
   }
 

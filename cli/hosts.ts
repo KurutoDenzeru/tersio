@@ -6,6 +6,7 @@ import { treeFilesFor } from './manifest.ts';
 import { piAgentDir, pigAgentDir, resolveHostBinary } from '../extensions/shared/utils.ts';
 import { HOST_CAPS } from '../extensions/shared/host-caps.ts';
 import { codexHome, installedCodexPlugin } from '../extensions/shared/codex-state.ts';
+import { claudeHome, installedClaudePlugin } from '../extensions/shared/claude-state.ts';
 import type { HostId } from '../extensions/shared/host-caps.ts';
 
 export interface HostEntry {
@@ -32,13 +33,14 @@ export function hostExtensionsDir(id: HostId, agentDir = id === 'pig' ? pigAgent
   if (id === 'opencode') return path.join(HOME, '.config', 'opencode', 'plugins', 'tersio');
   if (id === 'codex')
     return installedCodexPlugin().dir ?? path.join(codexHome(), 'plugins', 'cache', 'tersio', 'tersio');
+  if (id === 'claude') return installedClaudePlugin().dir ?? path.join(claudeHome(), 'tersio-marketplace', 'tersio');
   // DeepSeek Harness mounts the whole tersio package as a bundle, so its tree base is the mounted package's extensions dir.
   if (id === 'dsh') return path.join(dshPackageDir(), 'extensions');
   return path.join(agentDir, 'extensions');
 }
 
 function missingTreeFiles(
-  id: Exclude<HostId, 'codex'>,
+  id: Exclude<HostId, 'codex' | 'claude'>,
   agentDir = id === 'pig' ? pigAgentDir() : piAgentDir(),
 ): string[] {
   const dir = hostExtensionsDir(id, agentDir);
@@ -338,10 +340,13 @@ function detect(agentDir = piAgentDir(), pigDir = pigAgentDir()): HostEntry[] {
     const currentAgentDir = host.id === 'pig' ? pigDir : agentDir;
     const tree = hostExtensionsDir(host.id, currentAgentDir);
     const codex = host.id === 'codex' ? installedCodexPlugin() : null;
+    const claude = host.id === 'claude' ? installedClaudePlugin() : null;
     // A tree wins: the installer writes it and it carries no package.json, so its version is ours. OpenCode keeps no package to fall back to, so a present tree is the install and drift gets the per-host warning. DeepSeek Harness has no tree: the tersio package is mounted as a dsh bundle, and the mounted package dir is the install.
     let via: HostEntry['via'] = null;
     if (host.id === 'codex') {
       if (codex?.complete && codex.enabled) via = 'plugin';
+    } else if (host.id === 'claude') {
+      if (claude?.complete && claude.enabled) via = 'plugin';
     } else if (host.id === 'dsh') {
       if (pkgDir && existsSync(pkgDir)) via = 'package';
     } else if (
@@ -420,16 +425,10 @@ export function parseHostArg(argv: string[]): HostId | undefined {
     (i === -1 ? undefined : argv[i + 1]) ?? argv.find((a) => a.startsWith('--host='))?.slice('--host='.length);
   if (raw === undefined) return undefined;
   const value = raw.trim().toLowerCase();
-  if (
-    value !== 'omp' &&
-    value !== 'pi' &&
-    value !== 'opencode' &&
-    value !== 'pig' &&
-    value !== 'dsh' &&
-    value !== 'codex'
-  )
-    throw new Error(`Invalid --host: ${raw}. Valid: omp, pi, opencode, pig, dsh, codex`);
-  return value;
+  // One list to keep current: a host added to HOST_CAPS is accepted here without a second edit.
+  const known = Object.keys(HOST_CAPS);
+  if (!known.includes(value)) throw new Error(`Invalid --host: ${raw}. Valid: ${known.join(', ')}`);
+  return value as HostId;
 }
 
 export { HOME, detect as detectHosts };

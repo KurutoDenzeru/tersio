@@ -1,0 +1,19 @@
+{
+  "name": "tersio",
+  "version": "2.25.19",
+  "description": "Tersio's token-saving modes drawn inside Claude Code, with a combo strip above the prompt.",
+  "author": {
+    "name": "KurutoDenzeru",
+    "url": "https://github.com/KurutoDenzeru"
+  },
+  "homepage": "https://github.com/KurutoDenzeru/tersio",
+  "repository": "https://github.com/KurutoDenzeru/tersio",
+  "license": "MIT",
+  "keywords": [
+    "token-saving",
+    "caveman",
+    "ponytail",
+    "pstack",
+    "usage"
+  ]
+}

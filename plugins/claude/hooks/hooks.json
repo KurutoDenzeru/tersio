@@ -1,0 +1,6 @@
+{
+  "description": "Tersio's combo strip: draws the active modes above the prompt and answers /tersio.",
+  "modules": [
+    "./register.js"
+  ]
+}

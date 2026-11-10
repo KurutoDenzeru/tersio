@@ -51,6 +51,8 @@ export const TREE_FILES: readonly string[] = [
   'shared/host-caps.ts',
   'shared/mcp-config.ts',
   'shared/codex-state.ts',
+  'shared/claude-state.ts',
+  'shared/claude-plugin.ts',
   'shared/codex-transcript.ts',
   'shared/mode-notice.ts',
   'shared/cache-store.ts',
