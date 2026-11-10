@@ -18,7 +18,15 @@ import {
   setSharedComboModes,
   systemPromptIncludes,
 } from '../shared/session-state.ts';
-import { hostIdOf, hostSelect, injectPromptText, isOpencodeHost, onHostEvent, sessionChangeEvents, setExtensionLabel } from '../shared/host.ts';
+import {
+  hostIdOf,
+  hostSelect,
+  injectPromptText,
+  isOpencodeHost,
+  onHostEvent,
+  sessionChangeEvents,
+  setExtensionLabel,
+} from '../shared/host.ts';
 import type { HostScope } from '../shared/plugin-settings.ts';
 import { announceStatus } from '../shared/status.ts';
 import {
@@ -41,14 +49,17 @@ const EXTENSION_DIR = path.dirname(fileURLToPath(import.meta.url));
 function piHasUpstreamPonytail(): boolean {
   for (const agentDir of [piAgentDir(), pigAgentDir()]) {
     // The fork ships index.ts; an older install's package still holds index.js, so both count as present.
-    if (['index.ts', 'index.js'].some((base) => existsSync(path.join(agentDir, 'ponytail', 'pi-extension', base)))) return true;
+    if (['index.ts', 'index.js'].some((base) => existsSync(path.join(agentDir, 'ponytail', 'pi-extension', base))))
+      return true;
     try {
       const raw = readFileSync(path.join(agentDir, 'settings.json'), 'utf8');
       const settings = JSON.parse(raw) as { packages?: unknown };
       const list = Array.isArray(settings.packages) ? settings.packages : [];
       // An npm spec names the package; the installer's local copy is a bare `.../ponytail` dir.
       if (list.some((p) => typeof p === 'string' && /ponytail/.test(p))) return true;
-    } catch { /* continue checking next agent dir */ }
+    } catch {
+      /* continue checking next agent dir */
+    }
   }
   return false;
 }
@@ -62,50 +73,71 @@ const PONYTAIL_FALLBACK_INTENSITY: Record<string, string> = {
 
 // Fallback text when Ponytail cannot be found; exported for its own test.
 export function ponytailFallback(mode: string): string {
-  const intensity = PONYTAIL_FALLBACK_INTENSITY[mode] ?? 'Use the minimum correct solution. Delete or reuse before adding.';
+  const intensity =
+    PONYTAIL_FALLBACK_INTENSITY[mode] ?? 'Use the minimum correct solution. Delete or reuse before adding.';
   return `🧠 PONYTAIL MODE ACTIVE — level: ${mode}\n${intensity} Understand the path first and fix root causes, not symptoms. Prefer the standard library and YAGNI. Avoid speculative abstractions and dependencies. Preserve correctness. Verify changed behavior.`;
 }
-
 
 // Ponytail is hoisted, so one upward walk covers every layout. jiti and Bun both load TypeScript, so the module's named exports arrive directly.
 async function loadPonytailInstructions(mode: string): Promise<string> {
   // Ponytail rides inside this tree; the OpenCode layout bundles the ruleset beside the extensions.
   const vendored = path.join(EXTENSION_DIR, '..', 'ponytail', 'hooks', 'ponytail-instructions.ts');
   const bundled = path.join(EXTENSION_DIR, '..', 'ponytail-bundle', 'hooks', 'ponytail-instructions.ts');
-  const treeLocal = existsSync(vendored) ? vendored : (existsSync(bundled) ? bundled : null);
+  const treeLocal = existsSync(vendored) ? vendored : existsSync(bundled) ? bundled : null;
   if (treeLocal) {
     try {
-      const loaded = await import(pathToFileURL(treeLocal).href) as {
+      const loaded = (await import(pathToFileURL(treeLocal).href)) as {
         getPonytailInstructions?: (level: string) => string;
         default?: { getPonytailInstructions?: (level: string) => string };
       };
       const build = loaded.getPonytailInstructions ?? loaded.default?.getPonytailInstructions;
       if (build) return build(mode);
-    } catch { /* fall through to the built-in text */ }
+    } catch {
+      /* fall through to the built-in text */
+    }
   }
   return ponytailFallback(mode);
 }
 
 // What a fresh session starts from: a stored per-mode default wins, and with none the Combo preset supplies the three it owns. pstackDefault and headroomDefault count as their own defaults, so a session that stores only one still honors it instead of losing it to the preset. A host's own section wins over the shared keys, and a host that stores only a preset gets that preset's three modes rather than a mix of its preset and the shared levels.
-function savedModes(host: HostScope): { caveman: string; rtk: string; ponytail: string; pstack: string; headroom: string } {
+function savedModes(host: HostScope): {
+  caveman: string;
+  rtk: string;
+  ponytail: string;
+  pstack: string;
+  headroom: string;
+} {
   const settings = readPluginSettings();
   const own = (settings.hosts as Record<string, Record<string, unknown>> | undefined)?.[host] ?? {};
-  const hasOwnModes = ['cavemanDefault', 'rtkDefault', 'ponytailDefault', 'pstackDefault', 'headroomDefault'].some((key) => key in own);
+  const hasOwnModes = ['cavemanDefault', 'rtkDefault', 'ponytailDefault', 'pstackDefault', 'headroomDefault'].some(
+    (key) => key in own,
+  );
   if (!hasOwnModes && 'comboDefault' in own) {
     const preset = COMBO_LEVELS[readComboDefault(host)] ?? COMBO_LEVELS.off;
     return { ...preset, pstack: readPstackDefault(host), headroom: readHeadroomDefault(host) };
   }
-  const hasModeDefaults = ['cavemanDefault', 'rtkDefault', 'ponytailDefault', 'pstackDefault', 'headroomDefault'].some((key) => key in settings);
+  const hasModeDefaults = ['cavemanDefault', 'rtkDefault', 'ponytailDefault', 'pstackDefault', 'headroomDefault'].some(
+    (key) => key in settings,
+  );
   const preset = COMBO_LEVELS[readComboDefault(host)];
   return hasModeDefaults
-    ? { caveman: readCavemanDefault(host), rtk: readRtkDefault(host) ? 'on' : 'off', ponytail: readPonytailDefault(host), pstack: readPstackDefault(host), headroom: readHeadroomDefault(host) }
+    ? {
+        caveman: readCavemanDefault(host),
+        rtk: readRtkDefault(host) ? 'on' : 'off',
+        ponytail: readPonytailDefault(host),
+        pstack: readPstackDefault(host),
+        headroom: readHeadroomDefault(host),
+      }
     : { ...preset, pstack: 'off', headroom: 'off' };
 }
 
 // Registers the shared-state listener for this session's UI; the factory calls it per context.
 function listen(ctx?: ExtensionCtx): void {
   if (!ctx?.hasUI) return;
-  setSharedComboListener('combo', (state) => { announceStatus(ctx); return state; });
+  setSharedComboListener('combo', (state) => {
+    announceStatus(ctx);
+    return state;
+  });
 }
 
 export default function comboToggleExtension(pi: ExtensionApi): void {
@@ -130,7 +162,14 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
     const preset = COMBO_LEVELS[combo];
     const modes = savedModes(host);
     setSharedComboModes(modes);
-    if (modes.caveman === 'off' && modes.rtk === 'off' && modes.ponytail === 'off' && modes.pstack === 'off' && modes.headroom === 'off') return;
+    if (
+      modes.caveman === 'off' &&
+      modes.rtk === 'off' &&
+      modes.ponytail === 'off' &&
+      modes.pstack === 'off' &&
+      modes.headroom === 'off'
+    )
+      return;
     pi.appendEntry?.('caveman-mode', { mode: modes.caveman });
     pi.appendEntry?.('rtk-mode', { enabled: modes.rtk === 'on' });
     pi.appendEntry?.('ponytail-mode', { mode: modes.ponytail });
@@ -140,7 +179,6 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
       pi.appendEntry?.('combo-level', { level: combo });
     }
   }
-
 
   function reconcile(ctx?: ExtensionCtx, resetEmpty = false): Readonly<ComboState> {
     if (!ctx?.hasUI && !(resetEmpty && OPENCODE)) return getSharedComboState();
@@ -157,7 +195,9 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
     description: 'Toggle caveman, RTK and Ponytail at once. Usage: /combo <off|lite|balanced|max|status>',
     handler: async (args, ctx) => {
       listen(ctx);
-      const arg = String(args || '').trim().toLowerCase();
+      const arg = String(args || '')
+        .trim()
+        .toLowerCase();
 
       if (!arg || arg === 'status') {
         reconcile(ctx);
@@ -168,22 +208,19 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
       if (arg === 'help') {
         ctx?.ui?.notify?.(
           '/combo off      — disables caveman, rtk and ponytail. pstack keeps its own setting\n' +
-          '/combo lite     — light, the recommended level: caveman=lite, rtk=on, ponytail=lite\n' +
-          '/combo balanced — middle, not recommended: caveman=full, rtk=on, ponytail=full\n' +
-          '/combo max      — aggressive: caveman=ultra, rtk=on, ponytail=ultra\n' +
-          'pstack is not part of a preset. Set it on its own with /pstack on|off\n' +
-          'headroom is not part of a preset either. Set it on its own with /headroom on|off',
-          'info'
+            '/combo lite     — light, the recommended level: caveman=lite, rtk=on, ponytail=lite\n' +
+            '/combo balanced — middle, not recommended: caveman=full, rtk=on, ponytail=full\n' +
+            '/combo max      — aggressive: caveman=ultra, rtk=on, ponytail=ultra\n' +
+            'pstack is not part of a preset. Set it on its own with /pstack on|off\n' +
+            'headroom is not part of a preset either. Set it on its own with /headroom on|off',
+          'info',
         );
         return;
       }
 
       const level = normalizeComboLevel(arg);
       if (!level) {
-        ctx?.ui?.notify?.(
-          `Unknown combo level: ${arg}. Use: off | lite | balanced | max`,
-          'warning'
-        );
+        ctx?.ui?.notify?.(`Unknown combo level: ${arg}. Use: off | lite | balanced | max`, 'warning');
         return;
       }
 
@@ -194,41 +231,53 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
   });
 
   // Upstream owns /ponytail on pi; this tree registers it only where nothing else does.
-  if (!(isPiLikeProcess() && piHasUpstreamPonytail())) pi.registerCommand?.('ponytail', {
-    description: 'Switch Ponytail intensity (off|lite|full|ultra). Usage: /ponytail [level|status]',
-    handler: async (args, ctx) => {
-      listen(ctx);
-      const arg = String(args || '').trim().toLowerCase();
-      if (!arg || arg === 'status') {
+  if (!(isPiLikeProcess() && piHasUpstreamPonytail()))
+    pi.registerCommand?.('ponytail', {
+      description: 'Switch Ponytail intensity (off|lite|full|ultra). Usage: /ponytail [level|status]',
+      handler: async (args, ctx) => {
+        listen(ctx);
+        const arg = String(args || '')
+          .trim()
+          .toLowerCase();
+        if (!arg || arg === 'status') {
+          announceStatus(ctx);
+          return;
+        }
+        const mode = normalizeMode('ponytail', arg);
+        if (!mode) {
+          ctx?.ui?.notify?.(`Unknown Ponytail level: ${arg}. Use: off | lite | full | ultra`, 'warning');
+          return;
+        }
+        pi.appendEntry?.('ponytail-mode', { mode });
+        setSharedComboMode('ponytail', mode);
         announceStatus(ctx);
-        return;
-      }
-      const mode = normalizeMode('ponytail', arg);
-      if (!mode) {
-        ctx?.ui?.notify?.(`Unknown Ponytail level: ${arg}. Use: off | lite | full | ultra`, 'warning');
-        return;
-      }
-      pi.appendEntry?.('ponytail-mode', { mode });
-      setSharedComboMode('ponytail', mode);
-      announceStatus(ctx);
-    },
-  });
+      },
+    });
 
   async function runFirstRunSetup(ctx?: ExtensionCtx): Promise<void> {
     if (setupPrompted || !ctx?.hasUI || !ctx.ui?.select || isComboSetupComplete()) return;
     setupPrompted = true;
-    const choice = await hostSelect(pi, ctx.ui, 'Session-start defaults — Combo preset', [
-      { label: 'off', description: 'Keep caveman, RTK and Ponytail inactive' },
-      { label: 'lite', description: 'Recommended. caveman=lite, rtk=on, ponytail=lite' },
-      { label: 'balanced', description: 'Not recommended. caveman=full, rtk=on, ponytail=full' },
-      { label: 'max', description: 'caveman=ultra, rtk=on, ponytail=ultra' },
-    ], { selectionMarker: 'radio', helpText: 'You can change this later with /tersio settings. pstack is separate.' });
+    const choice = await hostSelect(
+      pi,
+      ctx.ui,
+      'Session-start defaults — Combo preset',
+      [
+        { label: 'off', description: 'Keep caveman, RTK and Ponytail inactive' },
+        { label: 'lite', description: 'Recommended. caveman=lite, rtk=on, ponytail=lite' },
+        { label: 'balanced', description: 'Not recommended. caveman=full, rtk=on, ponytail=full' },
+        { label: 'max', description: 'caveman=ultra, rtk=on, ponytail=ultra' },
+      ],
+      { selectionMarker: 'radio', helpText: 'You can change this later with /tersio settings. pstack is separate.' },
+    );
     const level = choice || 'off';
     // The first-run prompt stays machine-wide: it runs before any per-host choice exists, and a host-scoped write here would strand the other agents on off.
     if (saveComboSetup(level) && level !== 'off') {
       persistPreset(level);
       setSharedComboLevel(level);
-      ctx.ui.notify?.(`Combo default saved: ${level} — ${activeModesSummary(getSharedComboState())} will activate on fresh sessions.`, 'info');
+      ctx.ui.notify?.(
+        `Combo default saved: ${level} — ${activeModesSummary(getSharedComboState())} will activate on fresh sessions.`,
+        'info',
+      );
     }
   }
 
@@ -241,7 +290,13 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
     else if (!hasModeState(entries)) {
       // A headless root session has no UI to publish the bridge, so Ponytail never loaded; publish the saved modes only while the bridge is clear, or a subagent branch stops inheriting.
       const shared = getSharedComboState();
-      if (shared.caveman === 'off' && shared.rtk === 'off' && shared.ponytail === 'off' && shared.pstack === 'off' && shared.headroom === 'off') {
+      if (
+        shared.caveman === 'off' &&
+        shared.rtk === 'off' &&
+        shared.ponytail === 'off' &&
+        shared.pstack === 'off' &&
+        shared.headroom === 'off'
+      ) {
         setSharedComboModes(savedModes(host));
       }
     }

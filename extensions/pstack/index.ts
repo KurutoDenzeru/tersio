@@ -3,7 +3,19 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { getSharedComboState, hasModeState, isOmpSubagentPrompt, lastCustomValue, normalizeInputCommand, normalizeMode, reconcileSharedComboEntries, sessionEntries, setSharedComboListener, setSharedComboMode, systemPromptIncludes } from '../shared/session-state.ts';
+import {
+  getSharedComboState,
+  hasModeState,
+  isOmpSubagentPrompt,
+  lastCustomValue,
+  normalizeInputCommand,
+  normalizeMode,
+  reconcileSharedComboEntries,
+  sessionEntries,
+  setSharedComboListener,
+  setSharedComboMode,
+  systemPromptIncludes,
+} from '../shared/session-state.ts';
 import { injectPromptText, onHostEvent, sessionChangeEvents, setExtensionLabel } from '../shared/host.ts';
 import { announceStatus } from '../shared/status.ts';
 import { readPstackDefault } from '../shared/plugin-settings.ts';
@@ -22,7 +34,9 @@ function buildInstruction(): string {
   if (cachedInstruction) return cachedInstruction;
   // Fail loud: a missing body would otherwise read to the model as an active mode.
   let body: string;
-  try { body = readFileSync(join(PSTACK_DIR, RULE_FILE), 'utf8'); } catch {
+  try {
+    body = readFileSync(join(PSTACK_DIR, RULE_FILE), 'utf8');
+  } catch {
     return `pstack mode requested, but ${RULE_FILE} is missing. Run: tersio doctor --fix extensions`;
   }
   // The rule body names the files by relative path, so one line gives the directory they sit in.
@@ -67,7 +81,9 @@ export default function pstackSessionExtension(pi: ExtensionApi): void {
   pi.registerCommand?.('pstack', {
     description: 'Toggle the pstack rigor mode for this session',
     handler: async (args, ctx) => {
-      const arg = String(args || '').trim().toLowerCase();
+      const arg = String(args || '')
+        .trim()
+        .toLowerCase();
       if (!arg || arg === 'on') {
         setMode('on', ctx);
         return;
@@ -94,7 +110,8 @@ export default function pstackSessionExtension(pi: ExtensionApi): void {
     // Persisted state wins, then a mode already chosen, then the configured default. `off` is the start value, not unset.
     const persisted = resolveMode(entries, '');
     const alreadyChosen = currentMode !== DEFAULT_MODE;
-    currentMode = persisted || (alreadyChosen ? currentMode : normalizeMode('pstack', readPstackDefault(host))) || DEFAULT_MODE;
+    currentMode =
+      persisted || (alreadyChosen ? currentMode : normalizeMode('pstack', readPstackDefault(host))) || DEFAULT_MODE;
     announceStatus(ctx);
   }
 

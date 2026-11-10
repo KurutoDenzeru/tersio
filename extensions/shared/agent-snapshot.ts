@@ -8,7 +8,6 @@ import type { AgentStats, AgentView, RangeKey } from './agent-types.ts';
 import { tersioHome } from './utils.ts';
 import { syncUsageDb } from './usage-store.ts';
 
-
 /** The range a page opens on, matching the reference dashboard. */
 export const DEFAULT_AGENT_RANGE: RangeKey = '24h';
 
@@ -18,7 +17,14 @@ const AGENT_REFRESH_MS = 30_000;
 /** A sync walks every transcript, so it runs at most this often even while a poll outruns it. */
 const AGENT_SYNC_MS = 60_000;
 
-let agentMemo: { range: RangeKey; view: AgentView; offset: number; stamp: string; at: number; value: AgentStats } | null = null;
+let agentMemo: {
+  range: RangeKey;
+  view: AgentView;
+  offset: number;
+  stamp: string;
+  at: number;
+  value: AgentStats;
+} | null = null;
 
 let lastSyncAt = 0;
 
@@ -53,10 +59,16 @@ function migrateAgentCache(): void {
   try {
     for (const name of readdirSync(dir)) {
       if (!name.endsWith('.json')) continue;
-      try { cachePut(`dashboard.agent.${name.slice(0, -5)}`, readFileSync(path.join(dir, name), 'utf8')); } catch { /* one unreadable file costs one rebuild */ }
+      try {
+        cachePut(`dashboard.agent.${name.slice(0, -5)}`, readFileSync(path.join(dir, name), 'utf8'));
+      } catch {
+        /* one unreadable file costs one rebuild */
+      }
     }
     rmSync(path.join(tersioHome(), 'cache'), { recursive: true, force: true });
-  } catch { /* no legacy cache */ }
+  } catch {
+    /* no legacy cache */
+  }
 }
 
 /** A cached payload is reused only while the store it was built from is unchanged. */
@@ -88,7 +100,14 @@ function pruneAgentCache(): void {
 export function agentStats(range: RangeKey, view: AgentView = 'all', offset = 0): AgentStats {
   const stamp = storeStamp();
   const held = agentMemo;
-  if (held && held.range === range && held.view === view && held.offset === offset && held.stamp === stamp && Date.now() - held.at < AGENT_REFRESH_MS) {
+  if (
+    held &&
+    held.range === range &&
+    held.view === view &&
+    held.offset === offset &&
+    held.stamp === stamp &&
+    Date.now() - held.at < AGENT_REFRESH_MS
+  ) {
     return held.value;
   }
   // A payload built from this exact store is reused across restarts, so a page never waits for the scan again.
@@ -103,7 +122,9 @@ export function agentStats(range: RangeKey, view: AgentView = 'all', offset = 0)
     lastSyncAt = Date.now();
     try {
       syncUsageDb();
-    } catch { /* a store that will not write still reads the rows it already holds */ }
+    } catch {
+      /* a store that will not write still reads the rows it already holds */
+    }
   }
   const value = readAgentStats(range, view, Date.now(), offset);
   const builtStamp = storeStamp();

@@ -8,9 +8,9 @@ export interface ModelCarbon {
 }
 
 // EcoLogits 0.11.3 constants — kWh, kgCO2eq, seconds, GB.
-const E_ALPHA = 1.1665273170451914e-06;
+const E_ALPHA = 1.1665273170451914e-6;
 const E_BETA = -0.011205921025579175;
-const E_GAMMA = 4.052928146734005e-05;
+const E_GAMMA = 4.052928146734005e-5;
 const L_ALPHA = 0.0006785088094353663;
 const L_BETA = 0.0003119310311688259;
 const L_GAMMA = 0.019473717579473387;
@@ -82,7 +82,12 @@ export function carbonParamsFor(model: string): ModelCarbon {
       return { activeB: row.active, totalB: row.total, provider: row.provider, source: row.source };
     }
   }
-  return { activeB: DEFAULT_ENTRY.active, totalB: DEFAULT_ENTRY.total, provider: DEFAULT_ENTRY.provider, source: 'default' };
+  return {
+    activeB: DEFAULT_ENTRY.active,
+    totalB: DEFAULT_ENTRY.total,
+    provider: DEFAULT_ENTRY.provider,
+    source: 'default',
+  };
 }
 
 export interface Footprint {
@@ -94,7 +99,13 @@ export interface Footprint {
   paramSource: 'registry' | 'borrowed' | 'default';
 }
 
-function impacts(activeB: number, totalB: number, outTokens: number, batch: number, gridKg: number): { energyKwh: number; gco2: number } {
+function impacts(
+  activeB: number,
+  totalB: number,
+  outTokens: number,
+  batch: number,
+  gridKg: number,
+): { energyKwh: number; gco2: number } {
   // Per-token GPU energy follows EcoLogits' batch-dependent regression.
   const gpuEnergy = outTokens * ((E_ALPHA * Math.exp(E_BETA * batch) * activeB + E_GAMMA) / 1000);
   const latency = outTokens * (L_ALPHA * activeB + L_BETA * batch + L_GAMMA);

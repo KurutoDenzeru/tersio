@@ -461,3 +461,18 @@ The entries below are editing and verification discipline. No test, lint rule, o
 **What happened:** the first real `tersio install --host codex` run failed its plugin step because `CODEX_HOME` named a temporary directory that did not exist yet. Dry-run and the unit tests only checked the argv, so both passed.
 **Root cause:** the host CLI was treated as a command that creates the user home while running. Codex resolves `CODEX_HOME` before that and refuses a missing path.
 **Prevention rule:** for every host CLI, create or verify its config root before the first invocation, then run at least one non-dry-run lifecycle test under an empty temporary home.
+
+## 2026-11-09 — A 2-second probe timeout read as a broken bun, so the CLI silently stayed on node
+**What happened:** `test/cli/runtime.test.ts` failed only under a loaded machine, and passed alone. It took about 2070ms on every failure. `preferBun` spawns `bun --version` with a 2000ms timeout and treats a timeout as a broken bun, so the run stayed on node and printed the version instead of handing off.
+**Root cause:** the probe timeout was sized for a native binary on an idle machine. Under CPU contention a shell shim takes over 2 seconds, and the fallback path is silent, so the only signal was the missing hand-off.
+**Prevention rule:** size a probe timeout for a loaded machine, and never let a timeout pick the silent fallback without a test that runs under contention. Reproduce with two concurrent `bun run test` runs.
+
+## 2026-11-09 — A test wrote a shared repo path, so two concurrent suites raced
+**What happened:** running two `bun run test` processes at once failed `test/extensions/session.test.ts: the opencode entry registers the bundled ponytail skills` with an empty skill list. The test seeds `extensions/ponytail-bundle/skills` inside the repo and removes it in `finally`.
+**Root cause:** a fixture lived at a fixed path in the working tree instead of under the test's own temp home. The second process deleted the tree the first was still reading.
+**Prevention rule:** seed a fixture under `mkdtemp` and point the entry at it with an env var, never at a fixed path inside the repo. Run the suite once when verifying, and treat a second concurrent run as unsupported.
+
+## 2026-11-09 — A restore of one lockfile reverted unrelated dependency work
+**What happened:** to drop a stray lockfile write, I ran `git checkout -- bun.lock`. That also reverted the `oxfmt` and `oxlint` entries the dependency update had added, so `oxfmt` stayed installed on disk but was absent from the lock.
+**Root cause:** one lockfile carried two unrelated changes, so a path-level restore could not separate them.
+**Prevention rule:** restore a lockfile only when its diff holds nothing you mean to keep. Re-run install and confirm the expected package appears in the lock before moving on.

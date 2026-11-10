@@ -3,9 +3,15 @@ import { spawnSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import {
-  HOME, NPM_BIN, OMP_AGENT_DIR, OMP_PLUGINS_DIR,
-  PACKAGE_NAME, PACKAGE_VERSION, removeExtensionFromConfig,
-  dryRun, verbose,
+  HOME,
+  NPM_BIN,
+  OMP_AGENT_DIR,
+  OMP_PLUGINS_DIR,
+  PACKAGE_NAME,
+  PACKAGE_VERSION,
+  removeExtensionFromConfig,
+  dryRun,
+  verbose,
   readPluginsPackage,
   shimCommand,
 } from './common.ts';
@@ -13,10 +19,24 @@ import { execNetwork, sayTagged } from './interactive.ts';
 import { wireRtk } from './rtk-wiring.ts';
 import { ensureHeadroomRuntime, headroomProxyPids, reapProxies } from '../extensions/shared/headroom-runtime.ts';
 import { HEADROOM_INSTALL_HINT } from '../extensions/headroom/index.ts';
-import { RTK_INSTALL_DOCS, readTextIfExists, resolveHeadroomBinary, resolveHostBinary, resolveRtkBinary } from '../extensions/shared/utils.ts';
+import {
+  RTK_INSTALL_DOCS,
+  readTextIfExists,
+  resolveHeadroomBinary,
+  resolveHostBinary,
+  resolveRtkBinary,
+} from '../extensions/shared/utils.ts';
 import { headroomProxyUrl } from '../extensions/shared/headroom-proxy.ts';
 import { runLatestUpdate } from './update.ts';
-import { OPENCODE_ENTRY, PONYTAIL_PKG, TREE_FILES, isObsoleteTreeFile, syncPluginManifest, syncTreeFiles, treeFilesFor } from './manifest.ts';
+import {
+  OPENCODE_ENTRY,
+  PONYTAIL_PKG,
+  TREE_FILES,
+  isObsoleteTreeFile,
+  syncPluginManifest,
+  syncTreeFiles,
+  treeFilesFor,
+} from './manifest.ts';
 import { detectHosts, hostExtensionsDir } from './hosts.ts';
 
 type FixTarget = 'extensions' | 'registrations' | 'rtk' | 'ponytail' | 'cli' | 'service' | 'headroom';
@@ -38,9 +58,14 @@ export function serviceOrphanPids(): string[] {
   let out = '';
   try {
     out = spawnSync(grepShim.cmd, grepShim.args, { encoding: 'utf8' }).stdout ?? '';
-  } catch { return []; }
+  } catch {
+    return [];
+  }
   // Only digits: the value comes from another process, and `process.kill` throws on anything else.
-  return out.split(/[\s,]+/).filter((line: string) => /^\d+$/.test(line.trim())).map((line: string) => line.trim());
+  return out
+    .split(/[\s,]+/)
+    .filter((line: string) => /^\d+$/.test(line.trim()))
+    .map((line: string) => line.trim());
 }
 
 /** Whether OpenCode reports its service running, and whether a serve process is alive. */
@@ -60,7 +85,9 @@ export function serviceState(): { status: string; live: boolean } | null {
     const grepShim = shimCommand('pgrep', ['-f', 'opencode serve --service']);
     const out = spawnSync(grepShim.cmd, grepShim.args, { encoding: 'utf8' }).stdout ?? '';
     live = out.split(/[\s,]+/).some((line: string) => /^\d+$/.test(line.trim()));
-  } catch { live = false; }
+  } catch {
+    live = false;
+  }
   return { status, live };
 }
 
@@ -75,12 +102,19 @@ async function obsoleteFiles(dest: string, id: 'omp' | 'pi' | 'opencode' | 'pig'
   const out: string[] = [];
   const walk = async (dir: string, rel: string): Promise<void> => {
     let entries;
-    try { entries = await fs.readdir(dir, { withFileTypes: true }); } catch { return; }
+    try {
+      entries = await fs.readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
     for (const entry of entries) {
       if (entry.name === 'node_modules' || entry.name === '.git') continue;
       const child = rel ? `${rel}/${entry.name}` : entry.name;
       const at = path.join(dir, entry.name);
-      if (entry.isDirectory()) { await walk(at, child); continue; }
+      if (entry.isDirectory()) {
+        await walk(at, child);
+        continue;
+      }
       if (keep.has(child)) continue;
       if (isObsoleteTreeFile(child, id)) out.push(child);
     }
@@ -93,7 +127,11 @@ async function obsoleteFiles(dest: string, id: 'omp' | 'pi' | 'opencode' | 'pig'
 async function obsoleteDirs(dest: string, id: 'omp' | 'pi' | 'opencode' | 'pig'): Promise<string[]> {
   const out: string[] = [];
   let entries;
-  try { entries = await fs.readdir(dest, { withFileTypes: true }); } catch { return out; }
+  try {
+    entries = await fs.readdir(dest, { withFileTypes: true });
+  } catch {
+    return out;
+  }
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
     if (isObsoleteTreeFile(entry.name, id)) out.push(entry.name);
@@ -102,17 +140,20 @@ async function obsoleteDirs(dest: string, id: 'omp' | 'pi' | 'opencode' | 'pig')
 }
 
 // A written tree is the install for both hosts, so --fix restores it for whichever hosts have it.
-  const forHost = (id: string): readonly string[] => treeFilesFor(id as 'omp' | 'pi' | 'opencode' | 'pig');
-  // Older trees nested the entry; a repair under the old filter may have left it at the root, so remove both strays.
-  const scrubOpencodeEntry = async (dest: string): Promise<void> => {
-    for (const target of [path.join(dest, OPENCODE_ENTRY), path.join(dest, 'opencode')]) {
-      if (!existsSync(target)) continue;
-      if (dryRun) { sayTagged(`  [dry-run] would remove foreign ${target}`); continue; }
-      await fs.rm(target, { recursive: true, force: true });
-      sayTagged(`  [rm] foreign ${target}`);
+const forHost = (id: string): readonly string[] => treeFilesFor(id as 'omp' | 'pi' | 'opencode' | 'pig');
+// Older trees nested the entry; a repair under the old filter may have left it at the root, so remove both strays.
+const scrubOpencodeEntry = async (dest: string): Promise<void> => {
+  for (const target of [path.join(dest, OPENCODE_ENTRY), path.join(dest, 'opencode')]) {
+    if (!existsSync(target)) continue;
+    if (dryRun) {
+      sayTagged(`  [dry-run] would remove foreign ${target}`);
+      continue;
     }
-  };
-  const ruleFile = (f: string): boolean => /^caveman\/rule.*\.md$/.test(f);
+    await fs.rm(target, { recursive: true, force: true });
+    sayTagged(`  [rm] foreign ${target}`);
+  }
+};
+const ruleFile = (f: string): boolean => /^caveman\/rule.*\.md$/.test(f);
 
 async function fixExtensionTrees(): Promise<void> {
   // The entry imports @opencode/plugin, which pi, pig and omp lack, so one shared filter keeps repairs out of their trees.
@@ -133,13 +174,19 @@ async function fixExtensionTrees(): Promise<void> {
     const debris = (await obsoleteFiles(dest, host.id as 'omp' | 'pi' | 'opencode' | 'pig')).toSorted();
     for (const rel of debris) {
       const at = path.join(dest, ...rel.split('/'));
-      if (dryRun) { sayTagged(`  [dry-run] would remove debris ${at}`); continue; }
+      if (dryRun) {
+        sayTagged(`  [dry-run] would remove debris ${at}`);
+        continue;
+      }
       await fs.rm(at, { force: true });
       sayTagged(`  [rm] debris ${at}`);
     }
     for (const rel of await obsoleteDirs(dest, host.id as 'omp' | 'pi' | 'opencode' | 'pig')) {
       const at = path.join(dest, ...rel.split('/'));
-      if (dryRun) { sayTagged(`  [dry-run] would remove debris dir ${at}`); continue; }
+      if (dryRun) {
+        sayTagged(`  [dry-run] would remove debris dir ${at}`);
+        continue;
+      }
       await fs.rm(at, { recursive: true, force: true });
       sayTagged(`  [rm] debris dir ${at}`);
     }
@@ -155,19 +202,30 @@ async function fixOpencodeEntry(): Promise<void> {
   // The loader resolves <pluginDir>/server.ts: an entry at the extensions root leaves a shim to a nested copy.
   const nested = path.join(dir, 'opencode');
   const staleNested = (await readTextIfExists(path.join(nested, 'server.ts'))) !== null;
-  await syncTreeFiles(dir, TREE_FILES.filter((file) => !file.includes('/')), { dryRun, verbose });
+  await syncTreeFiles(
+    dir,
+    TREE_FILES.filter((file) => !file.includes('/')),
+    { dryRun, verbose },
+  );
   if (staleNested && !dryRun) await fs.rm(nested, { recursive: true, force: true }).catch(() => {});
   if (dryRun) sayTagged(`  [dry-run] would remove the redundant rtk plugin entry`);
   else await fs.rm(path.join(HOME, '.config', 'opencode', 'plugins', 'rtk.ts'), { force: true }).catch(() => {});
   const raw = await readTextIfExists(configPath);
   let config: Record<string, unknown> = {};
-  try { config = raw ? JSON.parse(raw) as Record<string, unknown> : {}; } catch { return; }
-  const plugins = Array.isArray(config.plugins) ? [...config.plugins] as unknown[] : [];
+  try {
+    config = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+  } catch {
+    return;
+  }
+  const plugins = Array.isArray(config.plugins) ? ([...config.plugins] as unknown[]) : [];
   const kept = plugins.filter((p) => typeof p !== 'string' || !p.endsWith('/opencode/plugins/rtk.ts'));
   if (kept.length === plugins.length && kept.includes(dir)) return;
   kept.push(dir);
   config.plugins = kept;
-  if (dryRun) { sayTagged(`  [dry-run] would register tersio in ${configPath}`); return; }
+  if (dryRun) {
+    sayTagged(`  [dry-run] would register tersio in ${configPath}`);
+    return;
+  }
   await fs.mkdir(path.dirname(configPath), { recursive: true });
   await fs.writeFile(configPath, JSON.stringify(config, null, 2) + '\n', 'utf8');
   sayTagged(`  [ok] OpenCode plugin entry: ${configPath}`);
@@ -185,20 +243,31 @@ async function fixExtensions(pluginsDir: string): Promise<void> {
   await fs.mkdir(pluginExtDir, { recursive: true });
 
   // Rule bodies are never overwritten: they can be newer upstream fetches.
-  const missing = await syncTreeFiles(pluginExtDir, TREE_FILES, { dryRun, verbose }, (file: string) => ruleFile(file) && existsSync(path.join(pluginExtDir, ...file.split('/'))));
+  const missing = await syncTreeFiles(
+    pluginExtDir,
+    TREE_FILES,
+    { dryRun, verbose },
+    (file: string) => ruleFile(file) && existsSync(path.join(pluginExtDir, ...file.split('/'))),
+  );
   for (const from of missing) sayTagged(`  [warn] bundled source missing: ${from}`);
 
   // omp loads this tree, so its debris is what doctor reports: the package tree, compared against every entry.
   const debris = (await obsoleteFiles(pluginExtDir, 'opencode')).toSorted();
   for (const rel of debris) {
     const at = path.join(pluginExtDir, ...rel.split('/'));
-    if (dryRun) { sayTagged(`  [dry-run] would remove debris ${at}`); continue; }
+    if (dryRun) {
+      sayTagged(`  [dry-run] would remove debris ${at}`);
+      continue;
+    }
     await fs.rm(at, { force: true });
     sayTagged(`  [rm] debris ${at}`);
   }
   for (const rel of await obsoleteDirs(pluginExtDir, 'opencode')) {
     const at = path.join(pluginExtDir, ...rel.split('/'));
-    if (dryRun) { sayTagged(`  [dry-run] would remove debris dir ${at}`); continue; }
+    if (dryRun) {
+      sayTagged(`  [dry-run] would remove debris dir ${at}`);
+      continue;
+    }
     await fs.rm(at, { recursive: true, force: true });
     sayTagged(`  [rm] debris dir ${at}`);
   }
@@ -224,12 +293,32 @@ async function fixRegistrations(agentDir: string, pluginsDir: string): Promise<v
     }
   }
   const extDir = path.join(agentDir, 'extensions');
-  const ponytailExtPath = path.join(pluginsDir, 'node_modules', '@dietrichgebert', 'ponytail', 'pi-extension', 'index.js');
+  const ponytailExtPath = path.join(
+    pluginsDir,
+    'node_modules',
+    '@dietrichgebert',
+    'ponytail',
+    'pi-extension',
+    'index.js',
+  );
   // A tree from before the fold still names `combo-toggle`; both lines name the same module.
-  await removeExtensionFromConfig(configPath, path.join(extDir, 'combo', 'index.ts'), 'manifest-loaded combo', { dryRun, verbose });
-  await removeExtensionFromConfig(configPath, path.join(extDir, 'combo-toggle', 'index.ts'), 'retired manifest-loaded combo', { dryRun, verbose });
+  await removeExtensionFromConfig(configPath, path.join(extDir, 'combo', 'index.ts'), 'manifest-loaded combo', {
+    dryRun,
+    verbose,
+  });
+  await removeExtensionFromConfig(
+    configPath,
+    path.join(extDir, 'combo-toggle', 'index.ts'),
+    'retired manifest-loaded combo',
+    { dryRun, verbose },
+  );
   await removeExtensionFromConfig(configPath, ponytailExtPath, 'manifest-loaded ponytail', { dryRun, verbose });
-  await removeExtensionFromConfig(configPath, path.join(extDir, 'shared', 'mode-reinforcement.ts'), 'retired mode reinforcement', { dryRun, verbose });
+  await removeExtensionFromConfig(
+    configPath,
+    path.join(extDir, 'shared', 'mode-reinforcement.ts'),
+    'retired mode reinforcement',
+    { dryRun, verbose },
+  );
   const pkgPath = path.join(pluginsDir, 'package.json');
   const pkg = await readPluginsPackage(pkgPath);
   // The exact version: a range lets npm install a release this CLI never wrote.
@@ -267,7 +356,7 @@ async function fixPonytail(pluginsDir: string): Promise<void> {
   const hadEntry = PONYTAIL_PKG in pkg.dependencies;
   delete pkg.dependencies[PONYTAIL_PKG];
   if (typeof pkg.overrides === 'object' && pkg.overrides !== null) {
-    const overrides = { ...pkg.overrides as Record<string, string> };
+    const overrides = { ...(pkg.overrides as Record<string, string>) };
     delete overrides[PONYTAIL_PKG];
     if (Object.keys(overrides).length === 0) delete pkg.overrides;
     else pkg.overrides = overrides;
@@ -275,20 +364,25 @@ async function fixPonytail(pluginsDir: string): Promise<void> {
   const sibling = path.join(pluginsDir, 'node_modules', '@dietrichgebert', 'ponytail');
   if (dryRun) {
     if (hadEntry) sayTagged(`  [dry-run] would drop ${PONYTAIL_PKG} from ${pkgPath}, and ${sibling} when present`);
-    console.log('  [dry-run] would write the plugin manifest, then run: npm install --no-audit --no-fund (in plugins dir)');
+    console.log(
+      '  [dry-run] would write the plugin manifest, then run: npm install --no-audit --no-fund (in plugins dir)',
+    );
     return;
   }
   if (hadEntry) console.log(`  [migrate] dropped ${PONYTAIL_PKG} (now bundled in tersio)`);
   await fs.writeFile(pkgPath, JSON.stringify(pkg, null, 2) + '\n', 'utf8');
   await fs.rm(sibling, { recursive: true, force: true }).catch(() => undefined);
-  await execNetwork('Restoring bundled Ponytail', NPM_BIN, ['install', '--no-audit', '--no-fund'], { cwd: pluginsDir, timeout: 180000 }).catch((e) => {
+  await execNetwork('Restoring bundled Ponytail', NPM_BIN, ['install', '--no-audit', '--no-fund'], {
+    cwd: pluginsDir,
+    timeout: 180000,
+  }).catch((e) => {
     throw new Error(`bundled ponytail restore failed: ${(e as Error).message}`);
   });
 }
 
 /** The decisive line of a failed command, so one [warn] line carries the reason. */
 function shortError(e: unknown): string {
-  return (((e as Error & { stderr?: string }).stderr) || (e as Error).message || '').trim().slice(0, 200);
+  return ((e as Error & { stderr?: string }).stderr || (e as Error).message || '').trim().slice(0, 200);
 }
 
 async function fixCli(): Promise<void> {
@@ -304,7 +398,10 @@ async function fixOpencodeService(): Promise<void> {
     return;
   }
   for (const pid of orphans) {
-    if (dryRun) { sayTagged(`  [dry-run] would stop the orphaned serve process (pid ${pid})`); continue; }
+    if (dryRun) {
+      sayTagged(`  [dry-run] would stop the orphaned serve process (pid ${pid})`);
+      continue;
+    }
     try {
       process.kill(Number(pid), 'SIGTERM');
       sayTagged(`  [ok] stopped the orphaned serve process (pid ${pid})`);
@@ -315,7 +412,10 @@ async function fixOpencodeService(): Promise<void> {
   if (dryRun) return;
   await new Promise((resolve) => setTimeout(resolve, 500));
   const bin = resolveHostBinary('opencode', path.join(HOME, '.opencode', 'bin'));
-  if (!bin) { sayTagged('  [warn] opencode not found on PATH; start it with `opencode service start`'); return; }
+  if (!bin) {
+    sayTagged('  [warn] opencode not found on PATH; start it with `opencode service start`');
+    return;
+  }
   const shim = shimCommand(bin, ['service', 'start']);
   await execNetwork('Starting the OpenCode service', shim.cmd, shim.args, { timeout: 60000 }).catch((e) => {
     throw new Error(`service start failed: ${shortError(e)}`);
@@ -331,7 +431,9 @@ async function fixHeadroomProxies(): Promise<void> {
   if (!bin) throw new Error(`headroom is not installed — get it from ${HEADROOM_INSTALL_HINT}`);
   const pids = headroomProxyPids();
   if (dryRun) {
-    sayTagged(`  [dry-run] would stop ${pids.length} headroom proxy process(es) and start one on ${headroomProxyUrl()}`);
+    sayTagged(
+      `  [dry-run] would stop ${pids.length} headroom proxy process(es) and start one on ${headroomProxyUrl()}`,
+    );
     return;
   }
   if (pids.length > 0) {

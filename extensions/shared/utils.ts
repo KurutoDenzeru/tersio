@@ -21,7 +21,10 @@ export interface HttpOptions {
 export function withResolvers<T>(): PromiseWithResolvers<T> {
   let resolve!: (value: T | PromiseLike<T>) => void;
   let reject!: (reason?: unknown) => void;
-  const promise = new Promise<T>((res, rej) => { resolve = res; reject = rej; });
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
   return { promise, resolve, reject };
 }
 
@@ -75,7 +78,10 @@ export async function cavemanRelease(): Promise<string | null> {
   try {
     // The release feed is rate-limited without a token, so the environment's token is used when there is one.
     const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
-    const json = await fetchJson<{ tag_name?: string }>(CAVEMAN_RELEASES, token ? { headers: { Authorization: `Bearer ${token}` } } : {});
+    const json = await fetchJson<{ tag_name?: string }>(
+      CAVEMAN_RELEASES,
+      token ? { headers: { Authorization: `Bearer ${token}` } } : {},
+    );
     return json.tag_name ?? null;
   } catch {
     return null;
@@ -101,24 +107,33 @@ export interface RtkRelease {
 }
 
 // First executable `name` on PATH, then any extra dirs, then the managed Bun bin dir.
-function firstExecutable(name: string, managedDir: string | null, extraDirs: ReadonlyArray<string> = []): string | null {
+function firstExecutable(
+  name: string,
+  managedDir: string | null,
+  extraDirs: ReadonlyArray<string> = [],
+): string | null {
   const ext = process.platform === 'win32' ? '.cmd' : '';
-  const candidates = [...(process.env.PATH || '').split(path.delimiter).filter(Boolean), ...extraDirs]
-    .flatMap((dir) => [path.join(dir, name + ext), path.join(dir, name)]);
+  const candidates = [...(process.env.PATH || '').split(path.delimiter).filter(Boolean), ...extraDirs].flatMap(
+    (dir) => [path.join(dir, name + ext), path.join(dir, name)],
+  );
   if (managedDir) candidates.push(path.join(managedDir, name + ext), path.join(managedDir, name));
   for (const candidate of candidates) {
     try {
       if (!statSync(candidate).isFile()) continue;
       accessSync(candidate, constants.X_OK);
       return candidate;
-    } catch { /* keep searching */ }
+    } catch {
+      /* keep searching */
+    }
   }
   return null;
 }
 
 // rtk's own installer drops the binary in ~/.local/bin, which a fresh shell may not have on PATH yet.
 export function resolveRtkBinary(managedDir = path.join(homeDir(), '.bun', 'bin')): string | null {
-  return firstExecutable(process.platform === 'win32' ? 'rtk.exe' : 'rtk', managedDir, [path.join(homeDir(), '.local', 'bin')]);
+  return firstExecutable(process.platform === 'win32' ? 'rtk.exe' : 'rtk', managedDir, [
+    path.join(homeDir(), '.local', 'bin'),
+  ]);
 }
 
 // `pip install --user` drops console scripts in a directory that is usually not on PATH (macOS: ~/Library/Python/3.x/bin), so the probe reads python's own user base.
@@ -128,9 +143,15 @@ function headroomUserScriptDir(): string | null {
   if (headroomUserDir?.home === home) return headroomUserDir.dir;
   let dir: string | null = null;
   try {
-    const base = execFileSync('python3', ['-m', 'site', '--user-base'], { encoding: 'utf8', timeout: 3000, windowsHide: true }).trim();
+    const base = execFileSync('python3', ['-m', 'site', '--user-base'], {
+      encoding: 'utf8',
+      timeout: 3000,
+      windowsHide: true,
+    }).trim();
     if (base) dir = path.join(base, process.platform === 'win32' ? 'Scripts' : 'bin');
-  } catch { /* no python3 on PATH: the static candidates still stand */ }
+  } catch {
+    /* no python3 on PATH: the static candidates still stand */
+  }
   headroomUserDir = { home, dir };
   return dir;
 }
@@ -163,7 +184,18 @@ export function codexBinaryCandidates(
   if (platform === 'darwin') {
     return [
       '/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex',
-      p.join(home, 'Applications', 'ChatGPT.app', 'Contents', 'Resources', 'codex-cli', 'CodexCLI.app', 'Contents', 'MacOS', 'codex'),
+      p.join(
+        home,
+        'Applications',
+        'ChatGPT.app',
+        'Contents',
+        'Resources',
+        'codex-cli',
+        'CodexCLI.app',
+        'Contents',
+        'MacOS',
+        'codex',
+      ),
       '/Applications/Codex.app/Contents/MacOS/codex',
       p.join(home, 'Applications', 'Codex.app', 'Contents', 'MacOS', 'codex'),
       '/Applications/OpenAI Codex.app/Contents/MacOS/codex',
@@ -210,13 +242,15 @@ export function resolveCodexBinary(): string | null {
   if (pinned && existsSync(pinned)) return pinned;
   const onPath = resolveHostBinary('codex');
   if (onPath) return onPath;
-  return codexBinaryCandidates().find((candidate) => {
-    try {
-      return existsSync(candidate) && !statSync(candidate).isDirectory();
-    } catch {
-      return false;
-    }
-  }) ?? null;
+  return (
+    codexBinaryCandidates().find((candidate) => {
+      try {
+        return existsSync(candidate) && !statSync(candidate).isDirectory();
+      } catch {
+        return false;
+      }
+    }) ?? null
+  );
 }
 
 /** Codex is present when its CLI, its config home, or its desktop app is on the machine. */
@@ -226,27 +260,28 @@ export function codexPresent(): boolean {
   const codexHomeDir = (process.env.CODEX_HOME ?? '').trim() || path.join(home, '.codex');
   if (existsSync(codexHomeDir)) return true;
   const local = process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local');
-  const markers = process.platform === 'darwin'
-    ? [
-      '/Applications/ChatGPT.app',
-      path.join(home, 'Applications', 'ChatGPT.app'),
-      '/Applications/Codex.app',
-      path.join(home, 'Applications', 'Codex.app'),
-      path.join(home, 'Library', 'Application Support', 'ChatGPT'),
-    ]
-    : process.platform === 'win32'
+  const markers =
+    process.platform === 'darwin'
       ? [
-        path.join(local, 'Programs', 'ChatGPT'),
-        path.join(local, 'Programs', 'Codex'),
-        path.join(home, 'AppData', 'Roaming', 'ChatGPT'),
-      ]
-      : [
-        '/opt/ChatGPT',
-        '/opt/Codex',
-        '/usr/lib/chatgpt',
-        path.join(home, '.local', 'share', 'ChatGPT'),
-        path.join(home, '.config', 'ChatGPT'),
-      ];
+          '/Applications/ChatGPT.app',
+          path.join(home, 'Applications', 'ChatGPT.app'),
+          '/Applications/Codex.app',
+          path.join(home, 'Applications', 'Codex.app'),
+          path.join(home, 'Library', 'Application Support', 'ChatGPT'),
+        ]
+      : process.platform === 'win32'
+        ? [
+            path.join(local, 'Programs', 'ChatGPT'),
+            path.join(local, 'Programs', 'Codex'),
+            path.join(home, 'AppData', 'Roaming', 'ChatGPT'),
+          ]
+        : [
+            '/opt/ChatGPT',
+            '/opt/Codex',
+            '/usr/lib/chatgpt',
+            path.join(home, '.local', 'share', 'ChatGPT'),
+            path.join(home, '.config', 'ChatGPT'),
+          ];
   return markers.some((marker) => existsSync(marker));
 }
 
@@ -272,7 +307,11 @@ export function findPackageRoot(fromDir: string): string {
 /** Where a mode's rule bodies sit: beside the module, else the package's own `extensions/<name>`. */
 export function ruleDir(name: string, ownDir: string): string {
   if (existsSync(path.join(ownDir, 'rule.md'))) return ownDir;
-  try { return path.join(findPackageRoot(ownDir), 'extensions', name); } catch { return ownDir; }
+  try {
+    return path.join(findPackageRoot(ownDir), 'extensions', name);
+  } catch {
+    return ownDir;
+  }
 }
 
 // The 3xx+location redirect rule shared by httpsGet/httpsDownload.
@@ -316,21 +355,35 @@ export function isPiLikeProcess(): boolean {
 export function httpsGet(url: string, opts: HttpOptions = {}): Promise<string> {
   const { promise, resolve, reject } = withResolvers<string>();
   const maxRedirects = opts.maxRedirects ?? 5;
-  const req = https.get(url, { headers: { 'User-Agent': 'tersio', Accept: 'application/json,*/*', ...opts.headers }, signal: opts.signal }, (res) => {
-    const next = redirectNext(res, url);
-    if (next) {
-      if (maxRedirects <= 0) { res.resume(); reject(new Error(`Too many redirects fetching ${url}`)); return; }
-      res.resume();
-      resolve(httpsGet(next, { maxRedirects: maxRedirects - 1, signal: opts.signal }));
-      return;
-    }
-    if (res.statusCode !== 200) { res.resume(); reject(new Error(`HTTP ${res.statusCode} for ${url}`)); return; }
-    let body = '';
-    // Streamed accumulation: fine for tens of KB.
-    res.setEncoding('utf8');
-    res.on('data', (chunk) => { body += chunk; });
-    res.on('end', () => resolve(body));
-  });
+  const req = https.get(
+    url,
+    { headers: { 'User-Agent': 'tersio', Accept: 'application/json,*/*', ...opts.headers }, signal: opts.signal },
+    (res) => {
+      const next = redirectNext(res, url);
+      if (next) {
+        if (maxRedirects <= 0) {
+          res.resume();
+          reject(new Error(`Too many redirects fetching ${url}`));
+          return;
+        }
+        res.resume();
+        resolve(httpsGet(next, { maxRedirects: maxRedirects - 1, signal: opts.signal }));
+        return;
+      }
+      if (res.statusCode !== 200) {
+        res.resume();
+        reject(new Error(`HTTP ${res.statusCode} for ${url}`));
+        return;
+      }
+      let body = '';
+      // Streamed accumulation: fine for tens of KB.
+      res.setEncoding('utf8');
+      res.on('data', (chunk) => {
+        body += chunk;
+      });
+      res.on('end', () => resolve(body));
+    },
+  );
   req.on('error', reject);
   req.setTimeout(opts.timeout ?? 30000, () => req.destroy(new Error(`Timeout fetching ${url}`)));
   return promise;
@@ -339,19 +392,33 @@ export function httpsGet(url: string, opts: HttpOptions = {}): Promise<string> {
 export function httpsGetBuffer(url: string, opts: HttpOptions = {}): Promise<Buffer> {
   const { promise, resolve, reject } = withResolvers<Buffer>();
   const maxRedirects = opts.maxRedirects ?? 5;
-  const req = https.get(url, { headers: { 'User-Agent': 'tersio', Accept: '*/*', ...opts.headers }, signal: opts.signal }, (res) => {
-    const next = redirectNext(res, url);
-    if (next) {
-      if (maxRedirects <= 0) { res.resume(); reject(new Error(`Too many redirects downloading ${url}`)); return; }
-      res.resume();
-      resolve(httpsGetBuffer(next, { ...opts, maxRedirects: maxRedirects - 1 }));
-      return;
-    }
-    if (res.statusCode !== 200) { res.resume(); reject(new Error(`HTTP ${res.statusCode} for ${url}`)); return; }
-    const chunks: Buffer[] = [];
-    res.on('data', (chunk: Buffer) => { chunks.push(chunk); });
-    res.on('end', () => resolve(Buffer.concat(chunks)));
-  });
+  const req = https.get(
+    url,
+    { headers: { 'User-Agent': 'tersio', Accept: '*/*', ...opts.headers }, signal: opts.signal },
+    (res) => {
+      const next = redirectNext(res, url);
+      if (next) {
+        if (maxRedirects <= 0) {
+          res.resume();
+          reject(new Error(`Too many redirects downloading ${url}`));
+          return;
+        }
+        res.resume();
+        resolve(httpsGetBuffer(next, { ...opts, maxRedirects: maxRedirects - 1 }));
+        return;
+      }
+      if (res.statusCode !== 200) {
+        res.resume();
+        reject(new Error(`HTTP ${res.statusCode} for ${url}`));
+        return;
+      }
+      const chunks: Buffer[] = [];
+      res.on('data', (chunk: Buffer) => {
+        chunks.push(chunk);
+      });
+      res.on('end', () => resolve(Buffer.concat(chunks)));
+    },
+  );
   req.on('error', reject);
   req.setTimeout(opts.timeout ?? 30000, () => req.destroy(new Error(`Timeout fetching ${url}`)));
   return promise;
@@ -363,12 +430,20 @@ export function httpsDownload(url: string, dest: string, opts: HttpOptions = {})
   const req = https.get(url, { headers: { 'User-Agent': 'tersio', Accept: '*/*' } }, (res) => {
     const next = redirectNext(res, url);
     if (next) {
-      if (maxRedirects <= 0) { res.resume(); reject(new Error(`Too many redirects downloading ${url}`)); return; }
+      if (maxRedirects <= 0) {
+        res.resume();
+        reject(new Error(`Too many redirects downloading ${url}`));
+        return;
+      }
       res.resume();
       resolve(httpsDownload(next, dest, { maxRedirects: maxRedirects - 1 }));
       return;
     }
-    if (res.statusCode !== 200) { res.resume(); reject(new Error(`HTTP ${res.statusCode} for ${url}`)); return; }
+    if (res.statusCode !== 200) {
+      res.resume();
+      reject(new Error(`HTTP ${res.statusCode} for ${url}`));
+      return;
+    }
     const file = createWriteStream(dest);
     res.pipe(file);
     file.on('finish', () => file.close(() => resolve()));
@@ -429,12 +504,18 @@ export async function findFile(dir: string, name: string): Promise<string | null
         }
       }
     }
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   return null;
 }
 
 export async function readTextIfExists(p: string): Promise<string | null> {
-  try { return await fs.readFile(p, 'utf8'); } catch { return null; }
+  try {
+    return await fs.readFile(p, 'utf8');
+  } catch {
+    return null;
+  }
 }
 
 // Chunked: a 200 MiB binary never fits memory. `tail` keeps needle.length-1 bytes in case a match spans chunks.
@@ -460,7 +541,7 @@ export async function fileContains(filePath: string, needleText: string): Promis
   } catch {
     return false;
   } finally {
-    await handle?.close().catch(() => { });
+    await handle?.close().catch(() => {});
   }
 }
 
@@ -486,11 +567,16 @@ export function tersioDataPath(name: string, legacy: string): string {
           renameSync(src, dest);
         }
       }
-    } catch { /* best-effort; callers tolerate a missing file */ }
+    } catch {
+      /* best-effort; callers tolerate a missing file */
+    }
   }
   return dest;
 }
 
 export function normalizeRtkVersion(value: string | undefined): string {
-  return String(value || '').replace(/^rtk\s+/i, '').replace(/^v/i, '').trim();
+  return String(value || '')
+    .replace(/^rtk\s+/i, '')
+    .replace(/^v/i, '')
+    .trim();
 }

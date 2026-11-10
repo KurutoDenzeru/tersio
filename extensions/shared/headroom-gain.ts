@@ -68,7 +68,11 @@ export function parseHeadroomSavings(raw: string): HeadroomGain {
     },
     byClient: clients.map((row) => {
       const r = (row ?? {}) as Record<string, unknown>;
-      return { client: String(r.client ?? 'unknown'), calls: num(r.calls), tokensSaved: num(r.tokens_saved ?? r.tokens) };
+      return {
+        client: String(r.client ?? 'unknown'),
+        calls: num(r.calls),
+        tokensSaved: num(r.tokens_saved ?? r.tokens),
+      };
     }),
     byModel: models.map((row) => {
       const r = (row ?? {}) as Record<string, unknown>;
@@ -151,8 +155,15 @@ export function resetHeadroomGainMemo(): void {
   MEMOS.clear();
 }
 
-function runProbe<T>(probe: 'savings' | 'doctor', binary: string, budgetMs: number, memoMs: number,
-  parse: (raw: string) => T, blank: (failure: string) => T, port?: number): T {
+function runProbe<T>(
+  probe: 'savings' | 'doctor',
+  binary: string,
+  budgetMs: number,
+  memoMs: number,
+  parse: (raw: string) => T,
+  blank: (failure: string) => T,
+  port?: number,
+): T {
   const label = `headroom ${probe}`;
   const hit = MEMOS.get(probe);
   if (hit && Date.now() - hit.at < memoMs) return hit.value as T;
@@ -178,16 +189,24 @@ function runProbe<T>(probe: 'savings' | 'doctor', binary: string, budgetMs: numb
       return value;
     }
     MEMOS.delete(probe);
-    return blank(err.killed ? `${label} timed out` : (err.stderr?.trim() || err.message || `${label} failed`));
+    return blank(err.killed ? `${label} timed out` : err.stderr?.trim() || err.message || `${label} failed`);
   }
 }
 
 /** Headroom's routing check; it exits 2 on a failing check and still prints JSON, so a non-zero exit is a reading. */
 export function readHeadroomDoctor(options: HeadroomGainOptions = {}): HeadroomDoctor {
   const binary = options.binary !== undefined ? options.binary : resolveHeadroomBinary();
-  if (!binary) return { measured: false, failure: 'headroom binary not found in PATH', exitCode: null, version: null, checks: [] };
-  return runProbe('doctor', binary, options.budgetMs ?? 8000, 15000, parseHeadroomDoctor,
-    (failure) => ({ measured: false, failure, exitCode: null, version: null, checks: [] }), options.port);
+  if (!binary)
+    return { measured: false, failure: 'headroom binary not found in PATH', exitCode: null, version: null, checks: [] };
+  return runProbe(
+    'doctor',
+    binary,
+    options.budgetMs ?? 8000,
+    15000,
+    parseHeadroomDoctor,
+    (failure) => ({ measured: false, failure, exitCode: null, version: null, checks: [] }),
+    options.port,
+  );
 }
 
 export function readHeadroomSavings(options: HeadroomGainOptions = {}): HeadroomGain {
@@ -217,6 +236,8 @@ export function readHeadroomStats(options: { url?: string; budgetMs?: number } =
   } catch (e) {
     const err = e as { stderr?: string; message?: string; killed?: boolean };
     MEMOS.delete('stats');
-    return emptyHeadroomStats(err.killed ? 'headroom stats timed out' : (err.stderr?.trim() || err.message || 'headroom stats failed'));
+    return emptyHeadroomStats(
+      err.killed ? 'headroom stats timed out' : err.stderr?.trim() || err.message || 'headroom stats failed',
+    );
   }
 }

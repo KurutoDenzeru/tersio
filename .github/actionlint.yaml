@@ -1,0 +1,6 @@
+# Labels GitHub serves but actionlint's bundled list predates: the
+# ubuntu/26.04 image shipped 2026-09-17 and these legs ran green on it.
+self-hosted-runner:
+  labels:
+    - ubuntu-26.04
+    - ubuntu-26.04-arm

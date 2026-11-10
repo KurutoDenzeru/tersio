@@ -1,21 +1,21 @@
 // Logs page: every change Tersio made on this machine, newest first, in a terminal window.
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Page, PageHeader, PagedTable, Segmented } from "@/components/charts";
-import type { Column } from "@/components/charts";
-import { EmptyState } from "@/components/common";
-import { Icon } from "@/components/icon";
-import { Skeleton } from "@/components/ui/skeleton";
-import { usePending } from "@/hooks/use-pending";
-import { cn } from "cn";
+import { useCallback, useEffect, useMemo, useState } from "react"
+import { Page, PageHeader, PagedTable, Segmented } from "@/components/charts"
+import type { Column } from "@/components/charts"
+import { EmptyState } from "@/components/common"
+import { Icon } from "@/components/icon"
+import { Skeleton } from "@/components/ui/skeleton"
+import { usePending } from "@/hooks/use-pending"
+import { cn } from "cn"
 
-type Kind = "mode" | "agent" | "file" | "doctor";
+type Kind = "mode" | "agent" | "file" | "doctor"
 
 interface Entry {
-  at: number;
-  kind: Kind;
-  title: string;
-  detail?: string;
-  ok?: boolean;
+  at: number
+  kind: Kind
+  title: string
+  detail?: string
+  ok?: boolean
 }
 
 const KIND_LABEL: Record<Kind, string> = {
@@ -23,7 +23,7 @@ const KIND_LABEL: Record<Kind, string> = {
   agent: "agent",
   file: "file",
   doctor: "doctor",
-};
+}
 
 const FILTERS: ReadonlyArray<{ value: "all" | Kind; label: string }> = [
   { value: "all", label: "All" },
@@ -31,64 +31,77 @@ const FILTERS: ReadonlyArray<{ value: "all" | Kind; label: string }> = [
   { value: "agent", label: "Agents" },
   { value: "file", label: "Files" },
   { value: "doctor", label: "Doctor" },
-];
+]
 
 /** The window controls, in the order macOS draws them. Each one does something real here. */
 const TRAFFIC = [
   { key: "close", color: "#ff5f57", glyph: "x", label: "Close the log" },
   { key: "minimize", color: "#febc2e", glyph: "minus", label: "Collapse the log" },
   { key: "zoom", color: "#28c840", glyph: "plus", label: "Larger text" },
-] as const;
+] as const
 
 function clock(at: number): string {
-  return new Date(at).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+  return new Date(at).toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  })
 }
 
 function stamp(at: number): string {
-  const d = new Date(at);
-  const date = d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
-  const time = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", second: "2-digit" });
-  return `${date} · ${time}`;
+  const d = new Date(at)
+  const date = d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })
+  const time = d.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+  })
+  return `${date} · ${time}`
 }
 
 /** How long ago, so a wall of timestamps also reads as recent or old at a glance. */
 function ago(at: number): string {
-  const seconds = Math.max(0, Math.round((Date.now() - at) / 1000));
-  if (seconds < 60) return `${seconds}s ago`;
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.round(hours / 24)}d ago`;
+  const seconds = Math.max(0, Math.round((Date.now() - at) / 1000))
+  if (seconds < 60) return `${seconds}s ago`
+  const minutes = Math.round(seconds / 60)
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.round(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  return `${Math.round(hours / 24)}d ago`
 }
 
 export function LogsPage({ onClose }: { onClose: () => void }) {
-  const [entries, setEntries] = useState<Entry[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<"all" | Kind>("all");
-  const [collapsed, setCollapsed] = useState(false);
-  const [large, setLarge] = useState(false);
-  const pending = usePending(loading && entries.length === 0);
+  const [entries, setEntries] = useState<Entry[]>([])
+  const [loading, setLoading] = useState(true)
+  const [filter, setFilter] = useState<"all" | Kind>("all")
+  const [collapsed, setCollapsed] = useState(false)
+  const [large, setLarge] = useState(false)
+  const pending = usePending(loading && entries.length === 0)
 
   const load = useCallback((): void => {
     void fetch("/api/logs?limit=500")
       .then((r) => (r.ok ? r.json() : null))
-      .then((rows: Entry[] | null) => { if (Array.isArray(rows)) setEntries(rows); })
-      .catch(() => { /* keep what is on screen */ })
-      .finally(() => setLoading(false));
-  }, []);
+      .then((rows: Entry[] | null) => {
+        if (Array.isArray(rows)) setEntries(rows)
+      })
+      .catch(() => {
+        /* keep what is on screen */
+      })
+      .finally(() => setLoading(false))
+  }, [])
 
   useEffect(() => {
-    load();
+    load()
     // The CLI writes to the same file from another process, so the page rereads it while open.
-    const timer = window.setInterval(load, 10_000);
-    return () => window.clearInterval(timer);
-  }, [load]);
+    const timer = window.setInterval(load, 10_000)
+    return () => window.clearInterval(timer)
+  }, [load])
 
   const rows = useMemo(
     () => (filter === "all" ? entries : entries.filter((entry) => entry.kind === filter)),
     [entries, filter],
-  );
+  )
 
   const filters = (
     <Segmented
@@ -97,7 +110,7 @@ export function LogsPage({ onClose }: { onClose: () => void }) {
       options={FILTERS.map((option) => ({ value: option.value, label: option.label }))}
       label="Filter the log"
     />
-  );
+  )
 
   const columns: Array<Column<Entry>> = [
     {
@@ -106,7 +119,9 @@ export function LogsPage({ onClose }: { onClose: () => void }) {
       width: 232,
       sort: (row) => row.at,
       render: (row) => (
-        <span className="whitespace-nowrap text-dim" title={ago(row.at)}>{stamp(row.at)}</span>
+        <span className="whitespace-nowrap text-dim" title={ago(row.at)}>
+          {stamp(row.at)}
+        </span>
       ),
     },
     {
@@ -115,9 +130,7 @@ export function LogsPage({ onClose }: { onClose: () => void }) {
       width: 76,
       // A phone keeps time and the event; the kind and the path would only truncate there.
       className: "hidden sm:table-cell",
-      render: (row) => (
-        <span className="text-dim">{KIND_LABEL[row.kind] ?? row.kind}</span>
-      ),
+      render: (row) => <span className="text-dim">{KIND_LABEL[row.kind] ?? row.kind}</span>,
     },
     {
       key: "status",
@@ -125,7 +138,11 @@ export function LogsPage({ onClose }: { onClose: () => void }) {
       width: 74,
       className: "hidden sm:table-cell",
       render: (row) => (
-        <span className={cn(row.ok === false ? "text-destructive" : row.ok === true ? "text-success" : "text-dim")}>
+        <span
+          className={cn(
+            row.ok === false ? "text-destructive" : row.ok === true ? "text-success" : "text-dim",
+          )}
+        >
           {row.ok === false ? "failed" : row.ok === true ? "ok" : "—"}
         </span>
       ),
@@ -135,7 +152,9 @@ export function LogsPage({ onClose }: { onClose: () => void }) {
       header: "event",
       sort: (row) => row.title,
       render: (row) => (
-        <span className={cn("block truncate", row.ok === false ? "text-destructive" : "text-ink")}>{row.title}</span>
+        <span className={cn("block truncate", row.ok === false ? "text-destructive" : "text-ink")}>
+          {row.title}
+        </span>
       ),
     },
     {
@@ -143,10 +162,12 @@ export function LogsPage({ onClose }: { onClose: () => void }) {
       header: "detail",
       className: "hidden md:table-cell",
       render: (row) => (
-        <span className="block truncate text-dim" title={row.detail}>{row.detail ?? ""}</span>
+        <span className="block truncate text-dim" title={row.detail}>
+          {row.detail ?? ""}
+        </span>
       ),
     },
-  ];
+  ]
 
   return (
     <Page>
@@ -166,9 +187,9 @@ export function LogsPage({ onClose }: { onClose: () => void }) {
                 title={light.label}
                 aria-pressed={light.key === "zoom" ? large : undefined}
                 onClick={() => {
-                  if (light.key === "close") onClose();
-                  if (light.key === "minimize") setCollapsed((open) => !open);
-                  if (light.key === "zoom") setLarge((big) => !big);
+                  if (light.key === "close") onClose()
+                  if (light.key === "minimize") setCollapsed((open) => !open)
+                  if (light.key === "zoom") setLarge((big) => !big)
                 }}
                 className="group grid size-3 cursor-pointer place-items-center rounded-full shadow-[inset_0_0_0_0.5px_rgb(0_0_0/0.2)]"
                 style={{ backgroundColor: light.color }}
@@ -226,18 +247,18 @@ export function LogsPage({ onClose }: { onClose: () => void }) {
               rowKey={(row) => `${row.at}:${row.kind}:${row.title}:${row.detail ?? ""}`}
               initialSort={{ key: "at", dir: "desc" }}
               perPage={25}
-              empty={(
+              empty={
                 <EmptyState
                   icon="scroll-text"
                   title="No activity yet"
                   desc="Change a mode, install or update an agent, or run the doctor. Every change lands here."
                 />
-              )}
+              }
               ariaLabel="Tersio activity"
             />
           </div>
         )}
       </section>
     </Page>
-  );
+  )
 }

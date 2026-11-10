@@ -3,18 +3,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
 
-const CURRENCY_CODES = [
-  'USD',
-  'PHP',
-  'EUR',
-  'GBP',
-  'JPY',
-  'KRW',
-  'SGD',
-  'AUD',
-  'CAD',
-  'INR',
-] as const;
+const CURRENCY_CODES = ['USD', 'PHP', 'EUR', 'GBP', 'JPY', 'KRW', 'SGD', 'AUD', 'CAD', 'INR'] as const;
 
 type CurrencyCode = (typeof CURRENCY_CODES)[number];
 
@@ -98,7 +87,12 @@ function formatCurrency(usd: number, currency: CurrencyCode): string {
 }
 
 export {
-  CURRENCY_CODES, DEFAULT_CURRENCY,
-  convertUsd, formatCurrency, isCurrencyCode, parseCurrencyFlag, readStoredCurrency,
+  CURRENCY_CODES,
+  DEFAULT_CURRENCY,
+  convertUsd,
+  formatCurrency,
+  isCurrencyCode,
+  parseCurrencyFlag,
+  readStoredCurrency,
 };
 export type { CurrencyCode };

@@ -39,7 +39,12 @@ interface HostAdapter {
   sessionChanges: readonly string[];
   /** True when the host emits `tool_call` and `tool_result`, so a shell hook can rewrite and filter there. */
   toolLifecycle: boolean;
-  select(ui: UiApi | undefined, title: string, options: SelectOption[], dialogOptions?: Record<string, unknown>): Promise<string | undefined>;
+  select(
+    ui: UiApi | undefined,
+    title: string,
+    options: SelectOption[],
+    dialogOptions?: Record<string, unknown>,
+  ): Promise<string | undefined>;
   inject(event: SystemPromptEvent, block: PromptBlock): PromptInjection | undefined;
   stringArray(pi: ExtensionApi, name: string, spec: StringArraySpec): ToolParams;
 }
@@ -47,7 +52,9 @@ interface HostAdapter {
 /** The stale block is dropped by its marker, then the new block is appended as its own prompt part. */
 function appendBlock(event: SystemPromptEvent, block: PromptBlock): PromptInjection {
   const marker = block.staleMarker?.replace(/^[^\w]+/, '').trim();
-  const kept = marker ? asPromptArray(event.systemPrompt).filter((part) => !part.includes(marker)) : asPromptArray(event.systemPrompt);
+  const kept = marker
+    ? asPromptArray(event.systemPrompt).filter((part) => !part.includes(marker))
+    : asPromptArray(event.systemPrompt);
   return { systemPrompt: [...kept, block.text] };
 }
 
@@ -61,7 +68,9 @@ function jsonArrayParams(name: string, spec: StringArraySpec): ToolParams {
 
 // pi reports a branch switch as session_tree and emits no session_branch.
 const piAdapter: HostAdapter = {
-  label() { /* no label surface */ },
+  label() {
+    /* no label surface */
+  },
   on(pi, event, handler) {
     if (event === 'session_branch') return;
     pi.on(event, handler);
@@ -86,7 +95,10 @@ const piAdapter: HostAdapter = {
       return undefined;
     }
     if (options && typeof options.appendSystemPrompt === 'string') {
-      options.appendSystemPrompt = dropStale([options.appendSystemPrompt]).concat(block.text).filter(Boolean).join('\n\n');
+      options.appendSystemPrompt = dropStale([options.appendSystemPrompt])
+        .concat(block.text)
+        .filter(Boolean)
+        .join('\n\n');
       return undefined;
     }
     return { systemPrompt: `${dropStale(asPromptArray(event.systemPrompt)).join('\n\n')}\n\n${block.text}` };
@@ -98,8 +110,12 @@ const piAdapter: HostAdapter = {
 
 // OMP emits every switch event, including session_branch and its own session_tree.
 const ompAdapter: HostAdapter = {
-  label(pi, text) { pi.setLabel?.(text); },
-  on(pi, event, handler) { pi.on(event, handler); },
+  label(pi, text) {
+    pi.setLabel?.(text);
+  },
+  on(pi, event, handler) {
+    pi.on(event, handler);
+  },
   sessionChanges: ['session_tree', 'session_branch', 'session_switch', 'session_compact'],
   toolLifecycle: true,
   async select(ui, title, options, dialogOptions) {
@@ -119,8 +135,12 @@ const ompAdapter: HostAdapter = {
 
 // OpenCode drives one session per hook payload, so only the start event is replayed for an unseen session.
 const opencodeAdapter: HostAdapter = {
-  label() { /* no label surface */ },
-  on(pi, event, handler) { pi.on(event, handler); },
+  label() {
+    /* no label surface */
+  },
+  on(pi, event, handler) {
+    pi.on(event, handler);
+  },
   sessionChanges: [],
   // server.ts drives its own before/after tool hooks, so these events never reach an extension here.
   toolLifecycle: false,
@@ -183,7 +203,11 @@ export function setExtensionLabel(pi: HostHandle, text: string): void {
   adapterFor(pi).label(pi, text);
 }
 
-export function onHostEvent<E>(pi: ExtensionApi, event: string, handler: (event: E, ctx: ExtensionCtx) => unknown): void {
+export function onHostEvent<E>(
+  pi: ExtensionApi,
+  event: string,
+  handler: (event: E, ctx: ExtensionCtx) => unknown,
+): void {
   adapterFor(pi).on<E>(pi, event, handler);
 }
 
@@ -214,7 +238,11 @@ export interface PromptBlock {
   staleMarker?: string;
 }
 
-export function injectPromptText(pi: HostHandle, event: SystemPromptEvent, block: PromptBlock): PromptInjection | undefined {
+export function injectPromptText(
+  pi: HostHandle,
+  event: SystemPromptEvent,
+  block: PromptBlock,
+): PromptInjection | undefined {
   return adapterFor(pi).inject(event, block);
 }
 

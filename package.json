@@ -1,18 +1,18 @@
 {
   "name": "@krtclcdy/tersio",
   "version": "2.25.19",
-  "description": "\u2702\ufe0f Token saver and usage tracker for coding agents: terse Caveman replies, compact RTK shell output, lean Ponytail code, pstack rigor, Headroom compression, and a gain dashboard \u2014 one-command combos over one shared extension tree.",
+  "description": "✂️ Token saver and usage tracker for coding agents: terse Caveman replies, compact RTK shell output, lean Ponytail code, pstack rigor, Headroom compression, and a gain dashboard — one-command combos over one shared extension tree.",
   "keywords": [
-    "token-saving",
     "ai-tools",
-    "developer-tools",
     "caveman-mode",
-    "rtk-rust-token-killer",
-    "ponytail",
-    "extensions",
     "codex",
+    "developer-tools",
+    "extensions",
     "pi",
-    "pi-package"
+    "pi-package",
+    "ponytail",
+    "rtk-rust-token-killer",
+    "token-saving"
   ],
   "license": "MIT",
   "author": "KurutoDenzeru",
@@ -20,16 +20,68 @@
     "type": "git",
     "url": "git+https://github.com/KurutoDenzeru/tersio.git"
   },
-  "type": "module",
   "bin": {
     "tersio": "dist/tersio.js"
   },
+  "files": [
+    "dist/**/*.js",
+    "dashboard/dist/**/*",
+    "skills/**/*",
+    "extensions/**/*.ts",
+    ".agents/plugins/marketplace.json",
+    "plugins/**/*",
+    "extensions/caveman/rule.md",
+    "extensions/caveman/rule-lite.md",
+    "extensions/caveman/rule-megacave-lite.md",
+    "extensions/caveman/rule-megacave-ultra.md",
+    "extensions/caveman/rule-ultra.md",
+    "extensions/caveman/rule-megacave.md",
+    "extensions/pstack/**/*.md",
+    "extensions/dsh/**/*",
+    "extensions/ponytail/**/*"
+  ],
+  "type": "module",
   "exports": {
     ".": "./dist/extensions/dsh/index.js",
     "./package.json": "./package.json",
     "./server": "./dist/extensions/server.js",
     "./dsh-plugin": "./dist/extensions/dsh/index.js",
     "./client": "./dist/extensions/dsh/client.js"
+  },
+  "scripts": {
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "build": "tsc && bun run build:dashboard && node -e \"require('node:fs').cpSync('extensions/ponytail/skills','skills',{recursive:true})\" && node -e \"require('node:fs').chmodSync('dist/tersio.js',0o755)\"",
+    "build:dashboard": "bun install --cwd dashboard/app --frozen-lockfile && bun run --cwd dashboard/app build",
+    "prepublishOnly": "bun run build",
+    "check": "tsc --noEmit",
+    "verify": "bun install --frozen-lockfile && bun run build && bun run test",
+    "doctor": "node dist/tersio.js --doctor",
+    "upstream": "node dist/tersio.js upstream",
+    "dry-run": "node dist/tersio.js --dry-run --scope user --yes",
+    "lint": "oxlint cli extensions test tersio.ts",
+    "lint:dashboard": "bun run --cwd dashboard/app lint",
+    "lint:fix": "oxlint cli extensions test tersio.ts --fix",
+    "format": "oxfmt cli extensions test bench tersio.ts",
+    "format:check": "oxfmt --check cli extensions test bench tersio.ts",
+    "test": "vitest run",
+    "bench": "vitest bench",
+    "dev": "bun tersio.ts dashboard --watch"
+  },
+  "dependencies": {
+    "@clack/core": "^1.5.1",
+    "@clack/prompts": "^1.8.1"
+  },
+  "devDependencies": {
+    "@opencode/plugin": "^2.2.6",
+    "@types/node": "^26.6.6",
+    "happy-dom": "^21.0.4",
+    "oxfmt": "0.77.0",
+    "oxlint": "^1.92.0",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0"
+  },
+  "engines": {
+    "node": ">=20.12.0"
   },
   "dsh": {
     "bundle": {
@@ -38,23 +90,10 @@
     "client": {
       "platform": "web",
       "immediately": true,
-      "inject": ["@deepseek-ai/dsh-client-ui-conversation"]
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-conversation"
+      ]
     }
-  },
-  "pi": {
-    "extensions": [
-      "./extensions/caveman/caveman.ts",
-      "./extensions/pstack/pstack.ts",
-      "./extensions/headroom/headroom.ts",
-      "./extensions/rtk/session.ts",
-      "./extensions/rtk/filter.ts",
-      "./extensions/timing/timing.ts",
-      "./extensions/combo/combo.ts",
-      "./extensions/commands/commands.ts"
-    ],
-    "skills": [
-      "./extensions/ponytail/skills"
-    ]
   },
   "omp": {
     "name": "Tersio",
@@ -174,53 +213,19 @@
       }
     }
   },
-  "files": [
-    "dist/**/*.js",
-    "dashboard/dist/**/*",
-    "skills/**/*",
-    "extensions/**/*.ts",
-    ".agents/plugins/marketplace.json",
-    "plugins/**/*",
-    "extensions/caveman/rule.md",
-    "extensions/caveman/rule-lite.md",
-    "extensions/caveman/rule-megacave-lite.md",
-    "extensions/caveman/rule-megacave-ultra.md",
-    "extensions/caveman/rule-ultra.md",
-    "extensions/caveman/rule-megacave.md",
-    "extensions/pstack/**/*.md",
-    "extensions/dsh/**/*",
-    "extensions/ponytail/**/*"
-  ],
-  "scripts": {
-    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
-    "build": "tsc && bun run build:dashboard && node -e \"require('node:fs').cpSync('extensions/ponytail/skills','skills',{recursive:true})\" && node -e \"require('node:fs').chmodSync('dist/tersio.js',0o755)\"",
-    "build:dashboard": "bun install --cwd dashboard/app --frozen-lockfile && bun run --cwd dashboard/app build",
-    "prepublishOnly": "bun run build",
-    "check": "tsc --noEmit",
-    "verify": "bun install --frozen-lockfile && bun run build && bun run test",
-    "doctor": "node dist/tersio.js --doctor",
-    "upstream": "node dist/tersio.js upstream",
-    "dry-run": "node dist/tersio.js --dry-run --scope user --yes",
-    "lint": "oxlint cli extensions test tersio.ts",
-    "lint:dashboard": "bun run --cwd dashboard/app lint",
-    "lint:fix": "oxlint cli extensions test tersio.ts --fix",
-    "test": "vitest run",
-    "bench": "vitest bench",
-    "dev": "bun tersio.ts dashboard --watch"
-  },
-  "engines": {
-    "node": ">=20.12.0"
-  },
-  "devDependencies": {
-    "@opencode/plugin": "^2.2.1",
-    "@types/node": "^26.6.6",
-    "happy-dom": "^20.14.6",
-    "oxlint": "^1.90.0",
-    "typescript": "^7.0.2",
-    "vitest": "^5.0.5"
-  },
-  "dependencies": {
-    "@clack/core": "^1.5.1",
-    "@clack/prompts": "^1.8.1"
+  "pi": {
+    "extensions": [
+      "./extensions/caveman/caveman.ts",
+      "./extensions/pstack/pstack.ts",
+      "./extensions/headroom/headroom.ts",
+      "./extensions/rtk/session.ts",
+      "./extensions/rtk/filter.ts",
+      "./extensions/timing/timing.ts",
+      "./extensions/combo/combo.ts",
+      "./extensions/commands/commands.ts"
+    ],
+    "skills": [
+      "./extensions/ponytail/skills"
+    ]
   }
 }

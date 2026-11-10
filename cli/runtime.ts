@@ -40,7 +40,8 @@ export async function preferBun(argv: readonly string[]): Promise<void> {
   const bun = bunBinary();
   if (!bun) return;
   // An installed but broken bun must not take the whole CLI down with it.
-  const probe = spawnSync(bun, ['--version'], { encoding: 'utf8', timeout: 2000, windowsHide: true });
+  // Under CPU contention a shell shim can take over 2s to answer; a timeout here reads as a broken bun and silently stays on node.
+  const probe = spawnSync(bun, ['--version'], { encoding: 'utf8', timeout: 10000, windowsHide: true });
   if (probe.status !== 0 || !probe.stdout.trim()) return;
   // Replace this image when the platform allows it: a node parent waiting on a bun child is the memory the swap removes.
   if (await execveBun(bun, argv)) return;

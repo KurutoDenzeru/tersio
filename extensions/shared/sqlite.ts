@@ -45,16 +45,36 @@ function engine(): Engine | null {
   cached = null;
   if (asked === 'cli') return cached;
   try {
-    const { Database } = requireOptional('bun:sqlite') as { Database: new (db: string, opts?: { readonly?: boolean }) => BunDatabase };
+    const { Database } = requireOptional('bun:sqlite') as {
+      Database: new (db: string, opts?: { readonly?: boolean }) => BunDatabase;
+    };
     cached = {
       kind: 'bun',
-      read: (db, sql) => { const d = new Database(db, { readonly: true }); try { return d.query(sql).values(); } finally { d.close(); } },
-      exec: (db, sql) => { const d = new Database(db); try { d.exec(sql); } finally { d.close(); } },
+      read: (db, sql) => {
+        const d = new Database(db, { readonly: true });
+        try {
+          return d.query(sql).values();
+        } finally {
+          d.close();
+        }
+      },
+      exec: (db, sql) => {
+        const d = new Database(db);
+        try {
+          d.exec(sql);
+        } finally {
+          d.close();
+        }
+      },
     };
     return cached;
-  } catch { /* not Bun, or no SQLite in this build */ }
+  } catch {
+    /* not Bun, or no SQLite in this build */
+  }
   try {
-    const { DatabaseSync } = requireOptional('node:sqlite') as { DatabaseSync: new (db: string, opts?: { readOnly?: boolean }) => NodeDatabase };
+    const { DatabaseSync } = requireOptional('node:sqlite') as {
+      DatabaseSync: new (db: string, opts?: { readOnly?: boolean }) => NodeDatabase;
+    };
     // Rows arrive keyed by column name unless the statement returns arrays: a duplicate name collapses its key and shifts every later cell, so a Node that cannot return arrays is no engine.
     const probe = new DatabaseSync(':memory:');
     try {
@@ -70,12 +90,23 @@ function engine(): Engine | null {
           const st = d.prepare(sql);
           st.setReturnArrays?.(true);
           return st.all();
-        } finally { d.close(); }
+        } finally {
+          d.close();
+        }
       },
-      exec: (db, sql) => { const d = new DatabaseSync(db); try { d.exec(sql); } finally { d.close(); } },
+      exec: (db, sql) => {
+        const d = new DatabaseSync(db);
+        try {
+          d.exec(sql);
+        } finally {
+          d.close();
+        }
+      },
     };
     return cached;
-  } catch { /* Node older than 22.5, or one built without SQLite or positional rows */ }
+  } catch {
+    /* Node older than 22.5, or one built without SQLite or positional rows */
+  }
   return cached;
 }
 
@@ -92,7 +123,9 @@ function findBinary(): string | null {
         fs.accessSync(at, fs.constants.X_OK);
         binary = at;
         return binary;
-      } catch { /* not here */ }
+      } catch {
+        /* not here */
+      }
     }
   }
   return binary;
@@ -115,14 +148,24 @@ function toTsv(rows: unknown[][]): string {
 }
 
 function cliRead(db: string, sql: string): string {
-  const opts = { encoding: 'utf8' as const, timeout: TIMEOUT, stdio: ['pipe', 'pipe', 'ignore'] as ['pipe', 'pipe', 'ignore'], maxBuffer: SQLITE_READ_BUFFER, input: sql };
+  const opts = {
+    encoding: 'utf8' as const,
+    timeout: TIMEOUT,
+    stdio: ['pipe', 'pipe', 'ignore'] as ['pipe', 'pipe', 'ignore'],
+    maxBuffer: SQLITE_READ_BUFFER,
+    input: sql,
+  };
   try {
     return execFileSync('sqlite3', ['-separator', '\t', '-readonly', db], opts);
-  } catch { /* the side files may be gone; try the next rung */ }
+  } catch {
+    /* the side files may be gone; try the next rung */
+  }
   if (!fs.existsSync(`${db}-wal`)) {
     try {
       return execFileSync('sqlite3', ['-separator', '\t', `file:${db}?immutable=1`], opts);
-    } catch { /* fall through to the copy */ }
+    } catch {
+      /* fall through to the copy */
+    }
   }
   // A live database cannot be read without its write-ahead log, so copy the set and read the copy.
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tersio-sqlite-'));
@@ -164,7 +207,9 @@ export function sqliteRead(db: string, sql: string): string {
   if (e !== null) {
     try {
       return toTsv(engineRead(e, db, sql));
-    } catch { /* the engine may lack a feature the CLI has; the CLI gets the last word */ }
+    } catch {
+      /* the engine may lack a feature the CLI has; the CLI gets the last word */
+    }
   }
   return cliRead(db, sql);
 }

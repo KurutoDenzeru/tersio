@@ -73,10 +73,13 @@ export interface InputEvent {
 
 export interface ExtensionApi {
   setLabel?: (label: string) => void;
-  registerCommand?: (name: string, config: {
-    description: string;
-    handler: (args: string, ctx: ExtensionCtx) => Promise<void>;
-  }) => void;
+  registerCommand?: (
+    name: string,
+    config: {
+      description: string;
+      handler: (args: string, ctx: ExtensionCtx) => Promise<void>;
+    },
+  ) => void;
   registerTool?: (tool: {
     name: string;
     label: string;
@@ -95,7 +98,11 @@ export interface ExtensionApi {
     }>;
   }) => void;
   appendEntry?: (customType: string, data: Record<string, unknown>) => void;
-  exec?: (cmd: string, args: string[], opts?: { signal?: AbortSignal; cwd?: string }) => Promise<{
+  exec?: (
+    cmd: string,
+    args: string[],
+    opts?: { signal?: AbortSignal; cwd?: string },
+  ) => Promise<{
     stdout: string;
     stderr: string;
     code: number;
@@ -104,4 +111,5 @@ export interface ExtensionApi {
   cwd?: string;
   zod?: { z: unknown };
   hostId?: 'pi' | 'omp' | 'opencode';
-  on<E>(event: string, handler: (event: E, ctx: ExtensionCtx) => unknown): void;}
+  on<E>(event: string, handler: (event: E, ctx: ExtensionCtx) => unknown): void;
+}

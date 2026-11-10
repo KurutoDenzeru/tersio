@@ -1,71 +1,72 @@
 // Toast notifications: bottom-right stack, moving bottom-left only while a right-side drawer is open. Accent icon, title + description.
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Icon } from "./icon";
+import { createContext, useCallback, useContext, useEffect, useState } from "react"
+import { Button } from "@/components/ui/button"
+import { Icon } from "./icon"
 
 export interface ToastAction {
-  label: string;
+  label: string
   /** `primary` fills the button; the rest stay outlined. */
-  variant?: "primary" | "outline";
-  onClick: () => void;
+  variant?: "primary" | "outline"
+  onClick: () => void
 }
 
 export interface ToastSpec {
   /** Reusing an id replaces that toast in place, so a poll cannot stack copies of one notice. */
-  id: string;
-  title: string;
-  desc: string;
-  icon?: string;
-  actions?: ToastAction[];
+  id: string
+  title: string
+  desc: string
+  icon?: string
+  actions?: ToastAction[]
 }
 
 interface Item extends ToastSpec {
-  key: string;
+  key: string
 }
 
-type PushToast = (title: string, desc: string, icon?: string) => void;
-type PushAction = (spec: ToastSpec) => void;
-type DismissToast = (id: string) => void;
+type PushToast = (title: string, desc: string, icon?: string) => void
+type PushAction = (spec: ToastSpec) => void
+type DismissToast = (id: string) => void
 
-const ToastCtx = createContext<PushToast>(() => {});
-const ActionCtx = createContext<PushAction>(() => {});
-const DismissCtx = createContext<DismissToast>(() => {});
+const ToastCtx = createContext<PushToast>(() => {})
+const ActionCtx = createContext<PushAction>(() => {})
+const DismissCtx = createContext<DismissToast>(() => {})
 
-export const useToast = (): PushToast => useContext(ToastCtx);
-export const useActionToast = (): PushAction => useContext(ActionCtx);
-export const useDismissToast = (): DismissToast => useContext(DismissCtx);
+export const useToast = (): PushToast => useContext(ToastCtx)
+export const useActionToast = (): PushAction => useContext(ActionCtx)
+export const useDismissToast = (): DismissToast => useContext(DismissCtx)
 
-const AUTO_MS = 4200;
-let nextId = 1;
+const AUTO_MS = 4200
+let nextId = 1
 
 export function ToasterProvider({ children }: { children: React.ReactNode }) {
-  const [items, setItems] = useState<Item[]>([]);
+  const [items, setItems] = useState<Item[]>([])
   // A right-side drawer would cover the default corner, so the stack moves left while one is mounted.
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false)
   useEffect(() => {
-    const sync = (): void => setDrawerOpen(document.querySelector("[data-slot=drawer-popup][data-open]") !== null);
-    const observer = new MutationObserver(sync);
-    observer.observe(document.body, { childList: true, subtree: true });
-    sync();
-    return () => observer.disconnect();
-  }, []);
+    const sync = (): void =>
+      setDrawerOpen(document.querySelector("[data-slot=drawer-popup][data-open]") !== null)
+    const observer = new MutationObserver(sync)
+    observer.observe(document.body, { childList: true, subtree: true })
+    sync()
+    return () => observer.disconnect()
+  }, [])
 
   const push = useCallback<PushToast>((title, desc, icon = "check") => {
-    const key = `simple-${nextId++}`;
-    setItems((prev) => [...prev, { key, id: key, title, desc, icon }]);
+    const key = `simple-${nextId++}`
+    setItems((prev) => [...prev, { key, id: key, title, desc, icon }])
     setTimeout(() => {
-      setItems((prev) => prev.filter((t) => t.key !== key));
-    }, AUTO_MS);
-  }, []);
+      setItems((prev) => prev.filter((t) => t.key !== key))
+    }, AUTO_MS)
+  }, [])
 
   const pushAction = useCallback<PushAction>((spec) => {
-    const key = `action-${spec.id}`;
-    setItems((prev) => [...prev.filter((t) => t.key !== key), { ...spec, key }]);
-  }, []);
+    const key = `action-${spec.id}`
+    setItems((prev) => [...prev.filter((t) => t.key !== key), { ...spec, key }])
+  }, [])
 
   const dismiss = useCallback<DismissToast>((id) => {
-    setItems((prev) => prev.filter((t) => t.key !== `action-${id}`));
-  }, []);
+    setItems((prev) => prev.filter((t) => t.key !== `action-${id}`))
+  }, [])
 
   return (
     <ToastCtx.Provider value={push}>
@@ -80,7 +81,7 @@ export function ToasterProvider({ children }: { children: React.ReactNode }) {
             >
               {items.map((t) => {
                 // Actions take their own row: three of them never fit beside the text legibly.
-                const actions = t.actions && t.actions.length > 0 ? t.actions : null;
+                const actions = t.actions && t.actions.length > 0 ? t.actions : null
                 return (
                   <div
                     key={t.key}
@@ -115,8 +116,8 @@ export function ToasterProvider({ children }: { children: React.ReactNode }) {
                             variant={action.variant === "primary" ? "default" : "outline"}
                             className="mono h-7 rounded-lg px-2.5 text-[11px]"
                             onClick={() => {
-                              dismiss(t.id);
-                              action.onClick();
+                              dismiss(t.id)
+                              action.onClick()
                             }}
                           >
                             {action.label}
@@ -125,12 +126,12 @@ export function ToasterProvider({ children }: { children: React.ReactNode }) {
                       </div>
                     )}
                   </div>
-                );
+                )
               })}
             </div>
           )}
         </DismissCtx.Provider>
       </ActionCtx.Provider>
     </ToastCtx.Provider>
-  );
+  )
 }

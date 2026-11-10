@@ -52,7 +52,11 @@ export function pricesOverridePath(): string {
 function readCacheText(): string | null {
   const file = process.env.TERSIO_PRICES_FILE;
   if (file) {
-    try { return fs.readFileSync(file, 'utf8'); } catch { return null; }
+    try {
+      return fs.readFileSync(file, 'utf8');
+    } catch {
+      return null;
+    }
   }
   const stored = cacheGet(PRICES_KEY);
   if (stored !== null) return stored;
@@ -71,7 +75,12 @@ function readCacheText(): string | null {
 function cacheToken(): string | number {
   const file = process.env.TERSIO_PRICES_FILE;
   if (file) {
-    try { const s = fs.statSync(file); return `${s.mtimeMs}:${s.size}`; } catch { return 'missing'; }
+    try {
+      const s = fs.statSync(file);
+      return `${s.mtimeMs}:${s.size}`;
+    } catch {
+      return 'missing';
+    }
   }
   return cacheStamp(PRICES_KEY);
 }
@@ -83,7 +92,9 @@ function writeCacheText(text: string): boolean {
       fs.mkdirSync(path.dirname(file), { recursive: true });
       fs.writeFileSync(file, text, 'utf8');
       return true;
-    } catch { return false; }
+    } catch {
+      return false;
+    }
   }
   return cachePut(PRICES_KEY, text);
 }
@@ -92,12 +103,21 @@ function writeCacheText(text: string): boolean {
 function overrideSource(): { text: string | null; stamp: number } {
   const envFile = process.env.TERSIO_PRICES_OVERRIDE_FILE;
   if (envFile) {
-    try { const s = fs.statSync(envFile); return { text: fs.readFileSync(envFile, 'utf8'), stamp: s.mtimeMs }; } catch { return { text: null, stamp: 0 }; }
+    try {
+      const s = fs.statSync(envFile);
+      return { text: fs.readFileSync(envFile, 'utf8'), stamp: s.mtimeMs };
+    } catch {
+      return { text: null, stamp: 0 };
+    }
   }
   const block = readPluginSettings().prices;
   if (block && typeof block === 'object' && !Array.isArray(block)) {
     let stamp = 0;
-    try { stamp = fs.statSync(tersioSettingsFile()).mtimeMs; } catch { stamp = 0; }
+    try {
+      stamp = fs.statSync(tersioSettingsFile()).mtimeMs;
+    } catch {
+      stamp = 0;
+    }
     return { text: JSON.stringify(block), stamp };
   }
   const legacy = pricesOverridePath();
@@ -108,10 +128,16 @@ function overrideSource(): { text: string | null; stamp: number } {
       savePricesOverride(parsed);
       fs.rmSync(legacy, { force: true });
       let stamp = 0;
-      try { stamp = fs.statSync(tersioSettingsFile()).mtimeMs; } catch { stamp = 0; }
+      try {
+        stamp = fs.statSync(tersioSettingsFile()).mtimeMs;
+      } catch {
+        stamp = 0;
+      }
       return { text, stamp };
     }
-  } catch { /* no legacy overrides */ }
+  } catch {
+    /* no legacy overrides */
+  }
   return { text: null, stamp: 0 };
 }
 
@@ -132,15 +158,25 @@ export function savePricesOverride(prices: Record<string, unknown>): boolean {
 function overrideStamp(): number {
   const envFile = process.env.TERSIO_PRICES_OVERRIDE_FILE;
   if (envFile) {
-    try { return fs.statSync(envFile).mtimeMs; } catch { return 0; }
+    try {
+      return fs.statSync(envFile).mtimeMs;
+    } catch {
+      return 0;
+    }
   }
-  try { return fs.statSync(tersioSettingsFile()).mtimeMs; } catch { return 0; }
+  try {
+    return fs.statSync(tersioSettingsFile()).mtimeMs;
+  } catch {
+    return 0;
+  }
 }
 
 let overrideCache: { stamp: number; exact: Map<string, ModelPrice>; tails: Array<[string, ModelPrice]> } | null = null;
 
 /** Reads the override file, keeping a `*`-prefixed entry as a suffix matcher. */
-function loadOverrides(stamp = overrideStamp()): { exact: Map<string, ModelPrice>; tails: Array<[string, ModelPrice]> } | null {
+function loadOverrides(
+  stamp = overrideStamp(),
+): { exact: Map<string, ModelPrice>; tails: Array<[string, ModelPrice]> } | null {
   if (overrideCache && overrideCache.stamp === stamp) return overrideCache;
   const exact = new Map<string, ModelPrice>();
   const tails: Array<[string, ModelPrice]> = [];
@@ -154,7 +190,9 @@ function loadOverrides(stamp = overrideStamp()): { exact: Map<string, ModelPrice
       if (id.startsWith('*')) tails.push([id.slice(1).toLowerCase(), price]);
       else exact.set(id, price);
     }
-  } catch { /* an unreadable override is empty, not fatal */ }
+  } catch {
+    /* an unreadable override is empty, not fatal */
+  }
   overrideCache = { stamp, exact, tails };
   return overrideCache;
 }
@@ -181,7 +219,11 @@ function asPrice(v: unknown): ModelPrice | null {
   }
   if (v && typeof v === 'object') {
     const o = v as Record<string, unknown>;
-    if (['input', 'output', 'cacheRead', 'cacheWrite'].every((k) => typeof o[k] === 'number' && Number.isFinite(o[k]) && (o[k] as number) >= 0)) {
+    if (
+      ['input', 'output', 'cacheRead', 'cacheWrite'].every(
+        (k) => typeof o[k] === 'number' && Number.isFinite(o[k]) && (o[k] as number) >= 0,
+      )
+    ) {
       // SAFETY: the line above verified all four keys are finite numbers >= 0, which is the whole of ModelPrice.
       return o as unknown as ModelPrice;
     }
@@ -213,7 +255,9 @@ function readLivePrices(): LivePrices | null {
     }
     if (!Object.keys(exact).length) return null;
     // Stale entries stay usable; refreshPricesIfStale refreshes in background.
-    const deprecated = Array.isArray(parsed.deprecated) ? (parsed.deprecated as unknown[]).filter((d): d is string => typeof d === 'string') : [];
+    const deprecated = Array.isArray(parsed.deprecated)
+      ? (parsed.deprecated as unknown[]).filter((d): d is string => typeof d === 'string')
+      : [];
     return { fetchedAt: parsed.fetchedAt, exact, deprecated };
   } catch {
     return null;
@@ -232,7 +276,10 @@ export const MODEL_ALIASES: ReadonlyArray<{ id: string; feed: string }> = [
 export function canonicalPriceId(model: string): string {
   const key = model.toLowerCase();
   // Suffix match: gateways prefix the id (opencode/kilo/stealth/space-bunny-alpha).
-  return MODEL_ALIASES.find((a) => a.id === key || a.feed === key || key.endsWith(`/${a.id}`) || key.endsWith(`/${a.feed}`))?.id ?? key;
+  return (
+    MODEL_ALIASES.find((a) => a.id === key || a.feed === key || key.endsWith(`/${a.id}`) || key.endsWith(`/${a.feed}`))
+      ?.id ?? key
+  );
 }
 
 export function priceFor(model: string, live?: LivePrices | null): PriceHit {

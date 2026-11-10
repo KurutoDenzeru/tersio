@@ -8,7 +8,13 @@ import cavemanSessionExtension from './caveman/index.ts';
 import pstackSessionExtension from './pstack/index.ts';
 import headroomSessionExtension from './headroom/index.ts';
 import rtkSessionExtension from './rtk/session.ts';
-import rtkFilterExtension, { FILTER_BY_TOOL, MIN_FILTER_BYTES, filterThroughRtk, filterableText, rtkActive } from './rtk/filter.ts';
+import rtkFilterExtension, {
+  FILTER_BY_TOOL,
+  MIN_FILTER_BYTES,
+  filterThroughRtk,
+  filterableText,
+  rtkActive,
+} from './rtk/filter.ts';
 import comboToggleExtension from './combo/index.ts';
 import tersioCommandsExtension from './commands/index.ts';
 import { getSharedComboState } from './shared/session-state.ts';
@@ -71,28 +77,31 @@ const plugin: Plugin.Plugin = {
     const stubCtx = (sid?: string): ExtensionCtx => ({
       hasUI: false,
       cwd: ctx.location.directory,
-      sessionManager: sid === undefined
-        ? { getBranch: () => [], getEntries: () => [] }
-        : {
-          getBranch: () => sessionEntriesOf(sid),
-          getEntries: () => sessionEntriesOf(sid),
-        },
+      sessionManager:
+        sid === undefined
+          ? { getBranch: () => [], getEntries: () => [] }
+          : {
+              getBranch: () => sessionEntriesOf(sid),
+              getEntries: () => sessionEntriesOf(sid),
+            },
     });
     // Starts are chained so appends land in the calling session.
     let startQueue = Promise.resolve();
     const runSessionStart = (sid: string): void => {
       const prev = started.get(sid);
       if (prev) return;
-      const run = startQueue.then(async () => {
-        for (const row of await loadEntries(sid)) sessionEntriesOf(sid).push(row);
-        activeSid = sid;
-        try {
-          for (const handler of lifecycle.get('session_start') ?? []) await handler({}, stubCtx(sid));
-        } finally {
-          persist(sid);
-          activeSid = undefined;
-        }
-      }).catch(() => {});
+      const run = startQueue
+        .then(async () => {
+          for (const row of await loadEntries(sid)) sessionEntriesOf(sid).push(row);
+          activeSid = sid;
+          try {
+            for (const handler of lifecycle.get('session_start') ?? []) await handler({}, stubCtx(sid));
+          } finally {
+            persist(sid);
+            activeSid = undefined;
+          }
+        })
+        .catch(() => {});
       started.set(sid, run);
       startQueue = run;
     };
@@ -109,30 +118,56 @@ const plugin: Plugin.Plugin = {
     const host: ExtensionApi = {
       hostId: 'opencode',
       setLabel() {},
-      registerCommand(name, config) { commands.set(name, config); },
-      registerTool(tool) { tools.set(tool.name, tool as ToolConfig); },
+      registerCommand(name, config) {
+        commands.set(name, config);
+      },
+      registerTool(tool) {
+        tools.set(tool.name, tool as ToolConfig);
+      },
       appendEntry(type, data) {
         if (activeSid === undefined) return;
         sessionEntriesOf(activeSid).push({ type: 'custom', customType: type, data });
         persist(activeSid);
       },
-      exec: (cmd, args, opts) => new Promise((resolve) => {
-        execFile(cmd, args, { signal: opts?.signal, cwd: opts?.cwd }, (error, stdout, stderr) => {
-          const code = error && typeof (error as { code?: unknown }).code === 'number' ? (error as { code: number }).code : 0;
-          resolve({ stdout: stdout ?? '', stderr: stderr ?? '', code, killed: !!(error as { killed?: boolean } | null)?.killed });
-        });
-      }),
+      exec: (cmd, args, opts) =>
+        new Promise((resolve) => {
+          execFile(cmd, args, { signal: opts?.signal, cwd: opts?.cwd }, (error, stdout, stderr) => {
+            const code =
+              error && typeof (error as { code?: unknown }).code === 'number' ? (error as { code: number }).code : 0;
+            resolve({
+              stdout: stdout ?? '',
+              stderr: stderr ?? '',
+              code,
+              killed: !!(error as { killed?: boolean } | null)?.killed,
+            });
+          });
+        }),
       cwd: ctx.location.directory,
       on: (event, handler) => {
-        if (event === 'before_agent_start') { beforeStart.push(handler as (event: SystemPromptEvent, ctx: ExtensionCtx) => unknown); return; }
-        if (event === 'input') { inputHandlers.push(handler as (event: InputEvent) => unknown); return; }
+        if (event === 'before_agent_start') {
+          beforeStart.push(handler as (event: SystemPromptEvent, ctx: ExtensionCtx) => unknown);
+          return;
+        }
+        if (event === 'input') {
+          inputHandlers.push(handler as (event: InputEvent) => unknown);
+          return;
+        }
         const list = lifecycle.get(event) ?? [];
         list.push(handler as (event: unknown, ctx: ExtensionCtx) => unknown);
         lifecycle.set(event, list);
       },
     };
 
-    for (const extension of [cavemanSessionExtension, pstackSessionExtension, headroomSessionExtension, rtkSessionExtension, rtkFilterExtension, comboToggleExtension, tersioCommandsExtension]) extension(host);
+    for (const extension of [
+      cavemanSessionExtension,
+      pstackSessionExtension,
+      headroomSessionExtension,
+      rtkSessionExtension,
+      rtkFilterExtension,
+      comboToggleExtension,
+      tersioCommandsExtension,
+    ])
+      extension(host);
 
     await ctx.command.transform((editor) => {
       for (const [name, config] of commands) {
@@ -149,7 +184,11 @@ const plugin: Plugin.Plugin = {
             const cmdCtx: ExtensionCtx = {
               ...stubCtx(sid),
               hasUI: true,
-              ui: { notify: (message: string) => { notes.push(message); } },
+              ui: {
+                notify: (message: string) => {
+                  notes.push(message);
+                },
+              },
             };
             const prev = activeSid;
             activeSid = sid;
@@ -172,7 +211,7 @@ const plugin: Plugin.Plugin = {
           description: tool.description,
           input: tool.parameters as { type: 'object'; properties: Record<string, unknown>; required?: string[] },
           execute: async (input) => {
-            const args = Array.isArray((input as { args?: unknown }).args) ? ((input as { args: string[] }).args) : [];
+            const args = Array.isArray((input as { args?: unknown }).args) ? (input as { args: string[] }).args : [];
             const result = await tool.execute('t', { args }, undefined, undefined, stubCtx());
             return { content: result.content.map((part) => part.text).join('\n') };
           },
@@ -196,11 +235,12 @@ const plugin: Plugin.Plugin = {
       for (const handler of beforeStart) {
         const result = await handler({ systemPrompt: [...systemParts] } as SystemPromptEvent, stubCtx(sid));
         if (!result || typeof result !== 'object' || !('systemPrompt' in result)) continue;
-        const parts = typeof (result as { systemPrompt: unknown }).systemPrompt === 'string'
-          ? [(result as { systemPrompt: string }).systemPrompt]
-          : Array.isArray((result as { systemPrompt: unknown }).systemPrompt)
-            ? (result as { systemPrompt: string[] }).systemPrompt
-            : [];
+        const parts =
+          typeof (result as { systemPrompt: unknown }).systemPrompt === 'string'
+            ? [(result as { systemPrompt: string }).systemPrompt]
+            : Array.isArray((result as { systemPrompt: unknown }).systemPrompt)
+              ? (result as { systemPrompt: string[] }).systemPrompt
+              : [];
         for (const part of parts) {
           if (!systemParts.includes(part)) event.system.push({ type: 'text', text: part });
         }
@@ -220,7 +260,10 @@ const plugin: Plugin.Plugin = {
       const input = event.input as { command?: unknown } | null | undefined;
       if (typeof input?.command !== 'string' || !input.command) return;
       // /rtk off must stop the rewrite too, or the mode switch only silences the prompt block.
-      const sid = typeof (event as { sessionID?: unknown }).sessionID === 'string' ? (event as { sessionID: string }).sessionID : activeSid;
+      const sid =
+        typeof (event as { sessionID?: unknown }).sessionID === 'string'
+          ? (event as { sessionID: string }).sessionID
+          : activeSid;
       if (sid !== undefined) await ensureSession(sid);
       if (!rtkActive(sid === undefined ? undefined : sessionEntriesOf(sid))) return;
       // The session's directory is where OpenCode's own rules live, so the hook judges the rewrite there.
@@ -258,17 +301,29 @@ const plugin: Plugin.Plugin = {
 };
 
 /** execFile with the promise shape `filterThroughRtk` expects. */
-function execRtk(cmd: string, args: string[], opts?: { signal?: AbortSignal; timeout?: number }): Promise<{ stdout: string; code: number }> {
+function execRtk(
+  cmd: string,
+  args: string[],
+  opts?: { signal?: AbortSignal; timeout?: number },
+): Promise<{ stdout: string; code: number }> {
   const { promise, resolve } = Promise.withResolvers<{ stdout: string; code: number }>();
   // cmd.exe parses its own quoting, so the command string must reach it verbatim: Node's default escaping turns the inner quotes into `\"` and the redirect then fails.
   const shim = shimCommand(cmd, args);
-  execFile(shim.cmd, shim.args, { signal: opts?.signal, timeout: opts?.timeout, windowsVerbatimArguments: process.platform === 'win32' }, (error, stdout) => {
-    const out = stdout ?? '';
-    if (!error) { resolve({ stdout: out, code: 0 }); return; }
-    // A non-numeric code is a spawn failure (ENOENT, EACCES, killed) and must not read as success.
-    const raw = (error as { code?: unknown }).code;
-    resolve({ stdout: out, code: typeof raw === 'number' ? raw : 1 });
-  });
+  execFile(
+    shim.cmd,
+    shim.args,
+    { signal: opts?.signal, timeout: opts?.timeout, windowsVerbatimArguments: process.platform === 'win32' },
+    (error, stdout) => {
+      const out = stdout ?? '';
+      if (!error) {
+        resolve({ stdout: out, code: 0 });
+        return;
+      }
+      // A non-numeric code is a spawn failure (ENOENT, EACCES, killed) and must not read as success.
+      const raw = (error as { code?: unknown }).code;
+      resolve({ stdout: out, code: typeof raw === 'number' ? raw : 1 });
+    },
+  );
   return promise;
 }
 
@@ -276,9 +331,15 @@ function execRtk(cmd: string, args: string[], opts?: { signal?: AbortSignal; tim
 const PONYTAIL_BUNDLE_SKILLS = join(dirname(fileURLToPath(import.meta.url)), 'ponytail-bundle', 'skills');
 
 /** Frontmatter a SKILL.md carries: flat keys only, the shape every bundled skill uses. */
-function parseSkillFile(file: string): { id: string; name: string; description: string; path: string; content: string } | null {
+function parseSkillFile(
+  file: string,
+): { id: string; name: string; description: string; path: string; content: string } | null {
   let raw: string;
-  try { raw = readFileSync(file, 'utf8'); } catch { return null; }
+  try {
+    raw = readFileSync(file, 'utf8');
+  } catch {
+    return null;
+  }
   const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---[^\S\n]*\r?\n?([\s\S]*)$/);
   if (!match) return null;
   const field = (key: string): string | undefined => {
@@ -303,7 +364,11 @@ function parseSkillFile(file: string): { id: string; name: string; description: 
 /** Every bundled skill, or an empty list when the installer has not bundled them. */
 function bundledSkills(): ReturnType<typeof parseSkillFile>[] {
   let entries;
-  try { entries = readdirSync(PONYTAIL_BUNDLE_SKILLS, { withFileTypes: true }); } catch { return []; }
+  try {
+    entries = readdirSync(PONYTAIL_BUNDLE_SKILLS, { withFileTypes: true });
+  } catch {
+    return [];
+  }
   const out: ReturnType<typeof parseSkillFile>[] = [];
   for (const entry of entries.toSorted((a, b) => a.name.localeCompare(b.name))) {
     if (!entry.isDirectory()) continue;
@@ -322,7 +387,10 @@ function rewriteCommand(command: string, cwd?: string): Promise<string | null> {
   execFile(shim.cmd, shim.args, { timeout: 5000, cwd }, (error, stdout) => {
     // A kill or timeout means untrustworthy output; pass the command through.
     const err = error as { killed?: boolean; signal?: unknown } | null;
-    if (err && (err.killed || err.signal)) { resolve(null); return; }
+    if (err && (err.killed || err.signal)) {
+      resolve(null);
+      return;
+    }
     try {
       const parsed = JSON.parse(String(stdout)) as { command?: unknown };
       const rewritten = parsed.command;
@@ -342,10 +410,16 @@ function plainRewrite(bin: string, command: string, cwd?: string): Promise<strin
   const shim = shimCommand(bin, ['rewrite', command]);
   execFile(shim.cmd, shim.args, { timeout: 5000, cwd }, (error, stdout) => {
     const err = error as { killed?: boolean; signal?: unknown; code?: unknown } | null;
-    if (err && (err.killed || err.signal)) { resolve(null); return; }
+    if (err && (err.killed || err.signal)) {
+      resolve(null);
+      return;
+    }
     const code = typeof err?.code === 'number' ? err.code : 0;
     // Exit 1 is the only "no equivalent" answer, so anything else with output rewrites.
-    if (code === 1) { resolve(null); return; }
+    if (code === 1) {
+      resolve(null);
+      return;
+    }
     const out = String(stdout).trim();
     resolve(out && out !== command && (code === 0 || code === 3) ? out : null);
   });

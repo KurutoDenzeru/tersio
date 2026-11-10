@@ -1,9 +1,15 @@
 // Side drawer for one recent request: recorded fields only, never guessed.
-import { useState } from "react";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Icon } from "./icon";
-import { AgentLogo } from "./agent-logos";
-import { VendorMark } from "./brand";
+import { useState } from "react"
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet"
+import { Icon } from "./icon"
+import { AgentLogo } from "./agent-logos"
+import { VendorMark } from "./brand"
 import {
   costIsMeasured,
   displayCost,
@@ -15,11 +21,11 @@ import {
   statusLabel,
   vendorOf,
   whenStamp,
-} from "@/lib/format";
-import type { RecentRequestRow } from "@/lib/data";
+} from "@/lib/format"
+import type { RecentRequestRow } from "@/lib/data"
 
 export function requestDetailJson(r: RecentRequestRow): Record<string, unknown> {
-  const tps = r.d !== undefined && r.d > 0 ? r.o / (r.d / 1000) : null;
+  const tps = r.d !== undefined && r.d > 0 ? r.o / (r.d / 1000) : null
   return {
     id: r.id ?? null,
     model: displayModel(r.m),
@@ -38,7 +44,7 @@ export function requestDetailJson(r: RecentRequestRow): Record<string, unknown> 
     elapsedMs: r.d ?? null,
     tokensPerSecond: tps,
     time: new Date(r.t).toISOString(),
-  };
+  }
 }
 
 function Stat({ label, value, tint }: { label: string; value: string; tint: string }) {
@@ -49,58 +55,79 @@ function Stat({ label, value, tint }: { label: string; value: string; tint: stri
         {value}
       </p>
     </div>
-  );
+  )
 }
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex min-w-0 items-baseline gap-3 text-[13px]">
-      <span className="mono w-20 shrink-0 text-[11px] tracking-[0.1em] text-dim uppercase">{label}</span>
+      <span className="mono w-20 shrink-0 text-[11px] tracking-[0.1em] text-dim uppercase">
+        {label}
+      </span>
       <span className="mono min-w-0 flex-1 text-right [overflow-wrap:break-word]">{children}</span>
     </div>
-  );
+  )
 }
 
-export function RequestDrawer({ row: r, money, onClose }: { row: RecentRequestRow; money: (v: number) => string; onClose: () => void }) {
-  const [copied, setCopied] = useState(false);
-  const measured = costIsMeasured(r);
-  const total = r.i + r.o + (r.cr ?? 0) + (r.cw ?? 0);
-  const json = (): string => JSON.stringify(requestDetailJson(r), null, 2);
+export function RequestDrawer({
+  row: r,
+  money,
+  onClose,
+}: {
+  row: RecentRequestRow
+  money: (v: number) => string
+  onClose: () => void
+}) {
+  const [copied, setCopied] = useState(false)
+  const measured = costIsMeasured(r)
+  const total = r.i + r.o + (r.cr ?? 0) + (r.cw ?? 0)
+  const json = (): string => JSON.stringify(requestDetailJson(r), null, 2)
 
   async function copyJson(): Promise<void> {
-    const text = json();
+    const text = json()
     try {
-      await navigator.clipboard.writeText(text);
+      await navigator.clipboard.writeText(text)
     } catch {
-      const ta = document.createElement("textarea");
-      ta.value = text;
-      document.body.appendChild(ta);
-      ta.select();
-      document.execCommand("copy");
-      ta.remove();
+      const ta = document.createElement("textarea")
+      ta.value = text
+      document.body.appendChild(ta)
+      ta.select()
+      document.execCommand("copy")
+      ta.remove()
     }
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
   }
 
   function downloadJson(): void {
-    const blob = new Blob([json()], { type: "application/json" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `tersio-request-${r.t}.json`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    const blob = new Blob([json()], { type: "application/json" })
+    const a = document.createElement("a")
+    a.href = URL.createObjectURL(blob)
+    a.download = `tersio-request-${r.t}.json`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000)
   }
 
   return (
-    <Sheet open onOpenChange={(open) => { if (!open) onClose(); }}>
-      <SheetContent side="right" className="w-[min(430px,calc(100vw-2rem))] gap-0 overflow-y-auto p-0 sm:max-w-[430px]" aria-describedby={undefined}>
+    <Sheet
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose()
+      }}
+    >
+      <SheetContent
+        side="right"
+        className="w-[min(430px,calc(100vw-2rem))] gap-0 overflow-y-auto p-0 sm:max-w-[430px]"
+        aria-describedby={undefined}
+      >
         <SheetHeader className="border-b border-line">
           <div className="flex items-center gap-2.5">
             <VendorMark model={r.m} small />
-            <SheetTitle className="font-display pr-8 text-lg tracking-tight">{displayModel(r.m)}</SheetTitle>
+            <SheetTitle className="font-display pr-8 text-lg tracking-tight">
+              {displayModel(r.m)}
+            </SheetTitle>
           </div>
           <SheetDescription>
             {whenStamp(r.t)}
@@ -111,7 +138,9 @@ export function RequestDrawer({ row: r, money, onClose }: { row: RecentRequestRo
           <div className="flex items-end justify-between gap-3">
             <div className="min-w-0">
               <p className="mono m-0 text-[10px] tracking-[0.14em] text-dim uppercase">Tokens</p>
-              <p className="font-display m-0 text-4xl font-bold tracking-tight tabular-nums">{fmt(total)}</p>
+              <p className="font-display m-0 text-4xl font-bold tracking-tight tabular-nums">
+                {fmt(total)}
+              </p>
             </div>
             <div className="shrink-0 pb-1 text-right">
               <span
@@ -122,7 +151,8 @@ export function RequestDrawer({ row: r, money, onClose }: { row: RecentRequestRo
                 {statusLabel(r)}
               </span>
               <p className="mono m-0 mt-1.5 text-sm font-bold tabular-nums text-accent">
-                {measured ? "" : "~"}{money(displayCost(r))}
+                {measured ? "" : "~"}
+                {money(displayCost(r))}
               </p>
             </div>
           </div>
@@ -133,11 +163,18 @@ export function RequestDrawer({ row: r, money, onClose }: { row: RecentRequestRo
             <Stat label="Cache write" value={fmt(r.cw ?? 0)} tint="var(--dim)" />
           </div>
           <section aria-label="Request" className="grid gap-2">
-            <Row label="Status">{r.st}{r.code ? ` ${r.code}` : ""}</Row>
+            <Row label="Status">
+              {r.st}
+              {r.code ? ` ${r.code}` : ""}
+            </Row>
             <Row label="Agent">
               <span className="inline-flex items-center justify-end gap-1.5">
                 {hostMeta(r.h).label}
-                <span className="grid size-4 place-items-center text-ink" role="img" aria-label={hostMeta(r.h).label}>
+                <span
+                  className="grid size-4 place-items-center text-ink"
+                  role="img"
+                  aria-label={hostMeta(r.h).label}
+                >
                   <AgentLogo host={r.h} />
                 </span>
               </span>
@@ -171,5 +208,5 @@ export function RequestDrawer({ row: r, money, onClose }: { row: RecentRequestRo
         </div>
       </SheetContent>
     </Sheet>
-  );
+  )
 }

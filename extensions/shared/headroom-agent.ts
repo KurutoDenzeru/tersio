@@ -9,7 +9,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { hostCap, type HostId } from './host-caps.ts';
 import {
-  HEADROOM_PORT, defaultOmpModel, ompCachedEndpoint, ompConfigFile, ompModelsFile, ompProviderNames, routeOmpDefaultModel,
+  HEADROOM_PORT,
+  defaultOmpModel,
+  ompCachedEndpoint,
+  ompConfigFile,
+  ompModelsFile,
+  ompProviderNames,
+  routeOmpDefaultModel,
 } from './headroom-proxy.ts';
 import { piAgentDir, pigAgentDir } from './utils.ts';
 import { readHeadroomRoute } from './headroom-routing.ts';
@@ -41,7 +47,7 @@ export interface AgentRouteResult {
 function readJson(file: string): Record<string, unknown> | null {
   try {
     const value: unknown = JSON.parse(fs.readFileSync(file, 'utf8'));
-    return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
+    return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
   } catch {
     return null;
   }
@@ -77,12 +83,15 @@ export function piCatalogEndpoint(dir: string, provider: string, model: string):
   const list = (entry as Record<string, unknown>).models;
   if (!Array.isArray(list) || list.length === 0) return null;
   const bare = model.replace(/:[^:]+$/, '');
-  const match = list.find((item) => item && typeof item === 'object' && (item as Record<string, unknown>).id === bare)
-    ?? list.find((item) => item && typeof item === 'object' && `${provider}/${(item as Record<string, unknown>).id}` === bare)
-    ?? list[0];
-  const record = match && typeof match === 'object' ? match as Record<string, unknown> : {};
-  const baseUrl = typeof record.baseUrl === 'string' ? record.baseUrl
-    : typeof record.baseURL === 'string' ? record.baseURL : '';
+  const match =
+    list.find((item) => item && typeof item === 'object' && (item as Record<string, unknown>).id === bare) ??
+    list.find(
+      (item) => item && typeof item === 'object' && `${provider}/${(item as Record<string, unknown>).id}` === bare,
+    ) ??
+    list[0];
+  const record = match && typeof match === 'object' ? (match as Record<string, unknown>) : {};
+  const baseUrl =
+    typeof record.baseUrl === 'string' ? record.baseUrl : typeof record.baseURL === 'string' ? record.baseURL : '';
   if (!baseUrl) return null;
   return {
     api: typeof record.api === 'string' ? record.api : 'openai-completions',
@@ -95,9 +104,8 @@ export function piCatalogEndpoint(dir: string, provider: string, model: string):
 function writePiProvider(dir: string, provider: string, endpoint: AgentEndpoint): boolean {
   const file = path.join(dir, 'models.json');
   const data = readJson(file) ?? {};
-  const providers = data.providers && typeof data.providers === 'object'
-    ? data.providers as Record<string, unknown>
-    : {};
+  const providers =
+    data.providers && typeof data.providers === 'object' ? (data.providers as Record<string, unknown>) : {};
   providers[provider] = {
     api: endpoint.api,
     baseUrl: endpoint.baseUrl,
@@ -121,9 +129,8 @@ function piAgentProviderRoute(host: 'pi' | 'pig'): AgentProviderRoute | null {
   const provider = providerOf(model, named);
   if (!provider) return null;
   const models = readJson(path.join(dir, 'models.json'));
-  const providers = models?.providers && typeof models.providers === 'object'
-    ? models.providers as Record<string, unknown>
-    : {};
+  const providers =
+    models?.providers && typeof models.providers === 'object' ? (models.providers as Record<string, unknown>) : {};
   const configured = Boolean(providers[provider]);
   return {
     model,
@@ -165,10 +172,14 @@ function ompAgentProviderRoute(port: number): AgentProviderRoute | null {
 export function agentProviderRoute(host: string, port: number = HEADROOM_PORT): AgentProviderRoute | null {
   if (!hostCap(host)?.headroom) return null;
   switch (host as HostId) {
-    case 'omp': return ompAgentProviderRoute(port);
-    case 'pi': return piAgentProviderRoute('pi');
-    case 'pig': return piAgentProviderRoute('pig');
-    default: return null;
+    case 'omp':
+      return ompAgentProviderRoute(port);
+    case 'pi':
+      return piAgentProviderRoute('pi');
+    case 'pig':
+      return piAgentProviderRoute('pig');
+    default:
+      return null;
   }
 }
 
@@ -184,8 +195,12 @@ export function ensureAgentProviderRoute(host: string, port: number = HEADROOM_P
   if (!route.add) return { ok: false, detail: `${host}: ${route.provider} has no block and this host has no writer` };
   if (!route.catalog) return { ok: false, detail: `${host}: ${route.provider} is not in the agent's catalog` };
   if (!route.catalog.api.startsWith('openai')) {
-    return { ok: false, detail: `${host}: ${route.provider} speaks ${route.catalog.api}, which the proxy route does not rewrite` };
+    return {
+      ok: false,
+      detail: `${host}: ${route.provider} speaks ${route.catalog.api}, which the proxy route does not rewrite`,
+    };
   }
-  if (!route.add(route.catalog)) return { ok: false, detail: `${host}: headroom could not write the ${route.provider} block` };
+  if (!route.add(route.catalog))
+    return { ok: false, detail: `${host}: headroom could not write the ${route.provider} block` };
   return { ok: true, detail: `${host}: ${route.provider} written from its catalog` };
 }

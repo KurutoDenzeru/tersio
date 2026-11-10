@@ -27,18 +27,20 @@ export interface HostEntry {
 /** One detected host, as `detectHosts` returns it. */
 export type DetectedHost = HostEntry;
 
-
-
 export function hostExtensionsDir(id: HostId, agentDir = id === 'pig' ? pigAgentDir() : piAgentDir()): string {
   if (id === 'omp') return path.join(HOME, '.omp', 'agent', 'extensions');
   if (id === 'opencode') return path.join(HOME, '.config', 'opencode', 'plugins', 'tersio');
-  if (id === 'codex') return installedCodexPlugin().dir ?? path.join(codexHome(), 'plugins', 'cache', 'tersio', 'tersio');
+  if (id === 'codex')
+    return installedCodexPlugin().dir ?? path.join(codexHome(), 'plugins', 'cache', 'tersio', 'tersio');
   // DeepSeek Harness mounts the whole tersio package as a bundle, so its tree base is the mounted package's extensions dir.
   if (id === 'dsh') return path.join(dshPackageDir(), 'extensions');
   return path.join(agentDir, 'extensions');
 }
 
-function missingTreeFiles(id: Exclude<HostId, 'codex'>, agentDir = id === 'pig' ? pigAgentDir() : piAgentDir()): string[] {
+function missingTreeFiles(
+  id: Exclude<HostId, 'codex'>,
+  agentDir = id === 'pig' ? pigAgentDir() : piAgentDir(),
+): string[] {
   const dir = hostExtensionsDir(id, agentDir);
   return treeFilesFor(id).filter((file) => !existsSync(path.join(dir, file)));
 }
@@ -110,7 +112,9 @@ export function dshPresent(): boolean {
 /** The web profile's mounted bundle list, from its own package manifest. */
 export function dshProfileBundles(profile: string): string[] {
   try {
-    const parsed = JSON.parse(readFileSync(path.join(dshHome(), 'profiles', profile, 'package.json'), 'utf8')) as { dsh?: { profile?: { bundles?: string[] } } };
+    const parsed = JSON.parse(readFileSync(path.join(dshHome(), 'profiles', profile, 'package.json'), 'utf8')) as {
+      dsh?: { profile?: { bundles?: string[] } };
+    };
     return parsed.dsh?.profile?.bundles ?? [];
   } catch {
     return [];
@@ -154,7 +158,10 @@ function dshRowRange(lines: string[]): { start: number; end: number } | null {
   if (start < 0) return null;
   let end = lines.length;
   for (let i = start + 1; i < lines.length; i += 1) {
-    if (lines[i]!.startsWith('- ')) { end = i; break; }
+    if (lines[i]!.startsWith('- ')) {
+      end = i;
+      break;
+    }
   }
   return { start, end };
 }
@@ -218,10 +225,17 @@ export function piPonytailPackageDir(agentDir = piAgentDir()): string {
   let packages: unknown[] = [];
   try {
     const parsed: unknown = JSON.parse(readFileSync(piSettingsFile(agentDir), 'utf8'));
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && Array.isArray((parsed as { packages?: unknown }).packages)) {
+    if (
+      parsed &&
+      typeof parsed === 'object' &&
+      !Array.isArray(parsed) &&
+      Array.isArray((parsed as { packages?: unknown }).packages)
+    ) {
       packages = (parsed as { packages: unknown[] }).packages;
     }
-  } catch { /* no settings file, or unreadable */ }
+  } catch {
+    /* no settings file, or unreadable */
+  }
   for (const entry of packages) {
     const source = typeof entry === 'string' ? entry : (entry as { source?: unknown } | null)?.source;
     if (typeof source !== 'string') continue;
@@ -284,7 +298,9 @@ export function pigTersioSource(agentDir = pigAgentDir()): string | null {
   return null;
 }
 
-const HOSTS: Array<Omit<HostEntry, 'installed' | 'via' | 'declared' | 'version' | 'dir'>> = Object.values(HOST_CAPS).map((cap) => ({
+const HOSTS: Array<Omit<HostEntry, 'installed' | 'via' | 'declared' | 'version' | 'dir'>> = Object.values(
+  HOST_CAPS,
+).map((cap) => ({
   id: cap.id,
   label: cap.label,
   bin: cap.bin,
@@ -294,25 +310,31 @@ const HOSTS: Array<Omit<HostEntry, 'installed' | 'via' | 'declared' | 'version' 
 
 /** A plugin entry can outlive its tree, so the host is declared even when the directory is gone. */
 function opencodePluginDeclared(): boolean {
-  for (const file of [path.join(HOME, '.config', 'opencode', 'opencode.json'), path.join(HOME, '.config', 'opencode', 'opencode.jsonc')]) {
+  for (const file of [
+    path.join(HOME, '.config', 'opencode', 'opencode.json'),
+    path.join(HOME, '.config', 'opencode', 'opencode.jsonc'),
+  ]) {
     try {
       if (readFileSync(file, 'utf8').includes('/opencode/plugins/tersio')) return true;
-    } catch { /* try the next file */ }
+    } catch {
+      /* try the next file */
+    }
   }
   return false;
 }
 
 function detect(agentDir = piAgentDir(), pigDir = pigAgentDir()): HostEntry[] {
   return HOSTS.map((host) => {
-    const pkgDir = host.id === 'omp'
-      ? ompPackageDir()
-      : host.id === 'pi'
-        ? piPackageDir(agentDir)
-        : host.id === 'pig'
-          ? pigPackageDir(pigDir)
-          : host.id === 'dsh'
-            ? dshPackageDir()
-            : null;
+    const pkgDir =
+      host.id === 'omp'
+        ? ompPackageDir()
+        : host.id === 'pi'
+          ? piPackageDir(agentDir)
+          : host.id === 'pig'
+            ? pigPackageDir(pigDir)
+            : host.id === 'dsh'
+              ? dshPackageDir()
+              : null;
     const currentAgentDir = host.id === 'pig' ? pigDir : agentDir;
     const tree = hostExtensionsDir(host.id, currentAgentDir);
     const codex = host.id === 'codex' ? installedCodexPlugin() : null;
@@ -322,7 +344,10 @@ function detect(agentDir = piAgentDir(), pigDir = pigAgentDir()): HostEntry[] {
       if (codex?.complete && codex.enabled) via = 'plugin';
     } else if (host.id === 'dsh') {
       if (pkgDir && existsSync(pkgDir)) via = 'package';
-    } else if (missingTreeFiles(host.id, currentAgentDir).length === 0 || (host.id === 'opencode' && existsSync(tree))) {
+    } else if (
+      missingTreeFiles(host.id, currentAgentDir).length === 0 ||
+      (host.id === 'opencode' && existsSync(tree))
+    ) {
       via = 'tree';
     } else if (pkgDir && existsSync(pkgDir)) {
       via = 'package';
@@ -331,19 +356,39 @@ function detect(agentDir = piAgentDir(), pigDir = pigAgentDir()): HostEntry[] {
       ...host,
       installed: via !== null,
       via,
-      declared: host.id === 'omp'
-        ? (pkgDir && existsSync(pkgDir) ? `plugin ${PACKAGE_NAME}` : null)
-        : host.id === 'pi'
-          ? piTersioSource(agentDir)
-          : host.id === 'pig'
-            ? pigTersioSource(pigDir)
-            : host.id === 'dsh'
-              ? (pkgDir && existsSync(pkgDir) ? 'dsh bundle' : null)
-              : host.id === 'codex'
-                ? (codex?.dir ? codex.enabled ? 'Codex plugin' : 'Codex plugin cache (disabled)' : null)
-                : existsSync(tree) ? 'plugin tree' : opencodePluginDeclared() ? 'plugin entry' : null,
-      version: via === 'tree' ? PACKAGE_VERSION : via === 'package' && pkgDir ? packageVersion(pkgDir) : via === 'plugin' ? codex?.version ?? null : null,
-      dir: via === 'tree' ? tree : via === 'package' ? pkgDir : via === 'plugin' ? codex?.dir ?? null : null,
+      declared:
+        host.id === 'omp'
+          ? pkgDir && existsSync(pkgDir)
+            ? `plugin ${PACKAGE_NAME}`
+            : null
+          : host.id === 'pi'
+            ? piTersioSource(agentDir)
+            : host.id === 'pig'
+              ? pigTersioSource(pigDir)
+              : host.id === 'dsh'
+                ? pkgDir && existsSync(pkgDir)
+                  ? 'dsh bundle'
+                  : null
+                : host.id === 'codex'
+                  ? codex?.dir
+                    ? codex.enabled
+                      ? 'Codex plugin'
+                      : 'Codex plugin cache (disabled)'
+                    : null
+                  : existsSync(tree)
+                    ? 'plugin tree'
+                    : opencodePluginDeclared()
+                      ? 'plugin entry'
+                      : null,
+      version:
+        via === 'tree'
+          ? PACKAGE_VERSION
+          : via === 'package' && pkgDir
+            ? packageVersion(pkgDir)
+            : via === 'plugin'
+              ? (codex?.version ?? null)
+              : null,
+      dir: via === 'tree' ? tree : via === 'package' ? pkgDir : via === 'plugin' ? (codex?.dir ?? null) : null,
     };
   });
 }
@@ -358,7 +403,8 @@ export function hostLabel(host: HostEntry): string {
 
 // Hints render inline, so menus name the install and doctor keeps the path.
 export function hostHint(host: HostEntry): string {
-  if (host.installed && host.via) return host.via === 'tree' ? 'extension tree' : host.via === 'plugin' ? 'Codex plugin' : 'plugin package';
+  if (host.installed && host.via)
+    return host.via === 'tree' ? 'extension tree' : host.via === 'plugin' ? 'Codex plugin' : 'plugin package';
   return host.installCmd;
 }
 
@@ -370,10 +416,19 @@ export function hostOptions(hosts: HostEntry[]): Array<{ value: string; label: s
 // `--host omp|pi|opencode|pig|dsh|codex` from raw argv, undefined when absent; throws on an unknown value so the caller exits(1).
 export function parseHostArg(argv: string[]): HostId | undefined {
   const i = argv.indexOf('--host');
-  const raw = (i === -1 ? undefined : argv[i + 1]) ?? argv.find((a) => a.startsWith('--host='))?.slice('--host='.length);
+  const raw =
+    (i === -1 ? undefined : argv[i + 1]) ?? argv.find((a) => a.startsWith('--host='))?.slice('--host='.length);
   if (raw === undefined) return undefined;
   const value = raw.trim().toLowerCase();
-  if (value !== 'omp' && value !== 'pi' && value !== 'opencode' && value !== 'pig' && value !== 'dsh' && value !== 'codex') throw new Error(`Invalid --host: ${raw}. Valid: omp, pi, opencode, pig, dsh, codex`);
+  if (
+    value !== 'omp' &&
+    value !== 'pi' &&
+    value !== 'opencode' &&
+    value !== 'pig' &&
+    value !== 'dsh' &&
+    value !== 'codex'
+  )
+    throw new Error(`Invalid --host: ${raw}. Valid: omp, pi, opencode, pig, dsh, codex`);
   return value;
 }
 

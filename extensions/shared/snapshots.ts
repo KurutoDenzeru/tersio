@@ -265,9 +265,7 @@ export function snapshotMember(backup: DataBackup, name: string): BackupMember |
 export function readSnapshotMember(backup: DataBackup, name: string): Buffer | null {
   const wanted = snapshotMember(backup, name);
   if (!wanted) return null;
-  const staged = backup.legacy
-    ? [{ member: wanted, body: fs.readFileSync(backup.path) }]
-    : readBodies(backup.path);
+  const staged = backup.legacy ? [{ member: wanted, body: fs.readFileSync(backup.path) }] : readBodies(backup.path);
   if (!staged) return null;
   return staged.find((entry) => entry.member.name === name)?.body ?? null;
 }
@@ -276,9 +274,7 @@ export function readSnapshotMember(backup: DataBackup, name: string): Buffer | n
 export function restoreSnapshotMember(backup: DataBackup, name: string): boolean {
   const wanted = snapshotMember(backup, name);
   if (!wanted) return false;
-  const staged = backup.legacy
-    ? [{ member: wanted, body: fs.readFileSync(backup.path) }]
-    : readBodies(backup.path);
+  const staged = backup.legacy ? [{ member: wanted, body: fs.readFileSync(backup.path) }] : readBodies(backup.path);
   const found = staged?.find((entry) => entry.member.name === name);
   if (!found) return false;
   return writeMember(found.member, found.body);
@@ -294,7 +290,11 @@ function writeMember(entry: BackupMember, body: Buffer): boolean {
     fs.renameSync(tmp, entry.target);
     // VACUUM INTO writes the delete journal; the store wants its own mode back.
     if (entry.name.endsWith('.db')) {
-      try { sqliteExec(entry.target, 'PRAGMA journal_mode=WAL;'); } catch { /* not a database: the copy is all there is */ }
+      try {
+        sqliteExec(entry.target, 'PRAGMA journal_mode=WAL;');
+      } catch {
+        /* not a database: the copy is all there is */
+      }
     }
     return true;
   } catch {
@@ -335,7 +335,10 @@ function migrateDirectories(): void {
       const stored = path.join(dir, path.basename(source));
       if (!fs.existsSync(stored)) continue;
       const body = fs.readFileSync(stored);
-      staged.push({ member: member(path.basename(source), String(record.label ?? path.basename(source)), source, source, body), body });
+      staged.push({
+        member: member(path.basename(source), String(record.label ?? path.basename(source)), source, source, body),
+        body,
+      });
     }
     if (staged.length === 0) continue;
     const file = path.join(backupDir(), `${name}${EXT}`);
@@ -345,7 +348,11 @@ function migrateDirectories(): void {
       continue;
     }
     // Keep the directory's own stamp, so the pane's order does not jump on the upgrade.
-    try { fs.utimesSync(file, new Date(), new Date(stat.mtimeMs)); } catch { /* order only */ }
+    try {
+      fs.utimesSync(file, new Date(), new Date(stat.mtimeMs));
+    } catch {
+      /* order only */
+    }
     fs.rmSync(dir, { recursive: true, force: true });
   }
 }
@@ -374,8 +381,16 @@ export function createDataBackup(): DataBackup {
     throw new Error('the snapshot failed its own hash check, so it was removed');
   }
   pruneBackups();
-  return describe(file, path.basename(file), Date.now(), sizeOf(file), false)
-    ?? { name: path.basename(file), path: file, mtime: Date.now(), bytes: sizeOf(file), members: staged.map((entry) => entry.member), legacy: false };
+  return (
+    describe(file, path.basename(file), Date.now(), sizeOf(file), false) ?? {
+      name: path.basename(file),
+      path: file,
+      mtime: Date.now(),
+      bytes: sizeOf(file),
+      members: staged.map((entry) => entry.member),
+      legacy: false,
+    }
+  );
 }
 
 /** Keep the newest {@link BACKUP_KEEP} readable snapshots, drop the rest, and retire superseded mirrors. */
@@ -404,7 +419,10 @@ export function pruneBackups(): void {
       // A listing reads the header alone, but a snapshot whose body fails its hash cannot be restored,
       // so it never counts against the keep limit. Prune runs on a create, so the read cost lands there.
       if (entry && readBodies(full)) readable.push(entry);
-      else { surplus.push(full); broken.push(full); }
+      else {
+        surplus.push(full);
+        broken.push(full);
+      }
     } else if (LEGACY.test(name)) {
       mirrors.push(name);
     }
@@ -415,7 +433,8 @@ export function pruneBackups(): void {
   for (const entry of readable) if (!keep.has(entry.name)) surplus.push(entry.path);
   for (const file of surplus) fs.rmSync(file, { force: true });
   // A corrupted snapshot is gone for good, so the loss must not be silent.
-  if (broken.length > 0) console.warn(`tersio: removed ${broken.length} unreadable snapshot file(s) from ${backupDir()}`);
+  if (broken.length > 0)
+    console.warn(`tersio: removed ${broken.length} unreadable snapshot file(s) from ${backupDir()}`);
   const newest = kept[0];
   // A mirror is the ledger alone, so only a snapshot that carries the ledger and is at least as new retires it.
   const ledger = path.basename(usageDbPath());

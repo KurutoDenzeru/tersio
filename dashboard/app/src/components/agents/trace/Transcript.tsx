@@ -1,30 +1,31 @@
 // Every span in order, one row each, synced with the timeline; the list is windowed, a session can hold thousands.
 
-import { memo, useEffect, useRef, useState } from "react";
-import { VendorMark } from "@/components/brand";
-import { Icon } from "@/components/icon";
-import { toolIcon } from "@/components/common";
-import type { AgentTraceSpan, AgentTraceSpanKind, AgentTraceTrack } from "@/lib/data";
-import { fmtSecs, stampLocal } from "@/lib/format";
-import { formatOffset } from "./scale";
-import { useTraceTheme } from "./theme";
+import { memo, useEffect, useRef, useState } from "react"
+import { VendorMark } from "@/components/brand"
+import { Icon } from "@/components/icon"
+import { toolIcon } from "@/components/common"
+import type { AgentTraceSpan, AgentTraceSpanKind, AgentTraceTrack } from "@/lib/data"
+import { fmtSecs, stampLocal } from "@/lib/format"
+import { formatOffset } from "./scale"
+import { useTraceTheme } from "./theme"
 
 export interface TranscriptRow {
-  key: string;
-  time: number;
-  span: AgentTraceSpan;
-  track: AgentTraceTrack;
+  key: string
+  time: number
+  span: AgentTraceSpan
+  track: AgentTraceTrack
 }
 
 /** One row's height. The list is windowed against it, so it must stay fixed. */
-const ROW_H = 28;
-const OVERSCAN = 12;
-const LIST_H = 360;
+const ROW_H = 28
+const OVERSCAN = 12
+const LIST_H = 360
 
 export function buildTranscriptRows(tracks: AgentTraceTrack[]): TranscriptRow[] {
-  const rows: TranscriptRow[] = [];
-  for (const track of tracks) for (const span of track.spans) rows.push({ key: span.id, time: span.start, span, track });
-  return rows.toSorted((a, b) => a.time - b.time);
+  const rows: TranscriptRow[] = []
+  for (const track of tracks)
+    for (const span of track.spans) rows.push({ key: span.id, time: span.start, span, track })
+  return rows.toSorted((a, b) => a.time - b.time)
 }
 
 export const TranscriptList = memo(function TranscriptList({
@@ -36,35 +37,35 @@ export const TranscriptList = memo(function TranscriptList({
   search,
   matchIds,
 }: {
-  rows: TranscriptRow[];
-  traceStart: number;
-  traceEnd: number;
-  selection: string | null;
-  onSelect: (span: AgentTraceSpan) => void;
-  search: string;
-  matchIds: ReadonlySet<string> | null;
+  rows: TranscriptRow[]
+  traceStart: number
+  traceEnd: number
+  selection: string | null
+  onSelect: (span: AgentTraceSpan) => void
+  search: string
+  matchIds: ReadonlySet<string> | null
 }) {
-  const theme = useTraceTheme();
-  const boxRef = useRef<HTMLDivElement | null>(null);
-  const [scrollTop, setScrollTop] = useState(0);
+  const theme = useTraceTheme()
+  const boxRef = useRef<HTMLDivElement | null>(null)
+  const [scrollTop, setScrollTop] = useState(0)
 
   // Follow the timeline's selection into view when it moves from outside the list.
   useEffect(() => {
-    const box = boxRef.current;
-    if (!box || !selection) return;
-    const index = rows.findIndex((row) => row.key === selection);
-    if (index < 0) return;
-    const top = index * ROW_H;
+    const box = boxRef.current
+    if (!box || !selection) return
+    const index = rows.findIndex((row) => row.key === selection)
+    if (index < 0) return
+    const top = index * ROW_H
     if (top < box.scrollTop || top > box.scrollTop + box.clientHeight - ROW_H) {
-      box.scrollTop = Math.max(0, top - box.clientHeight / 2);
+      box.scrollTop = Math.max(0, top - box.clientHeight / 2)
     }
-  }, [selection, rows]);
+  }, [selection, rows])
 
-  const first = Math.max(0, Math.floor(scrollTop / ROW_H) - OVERSCAN);
-  const last = Math.min(rows.length, Math.ceil((scrollTop + LIST_H) / ROW_H) + OVERSCAN);
-  const shown = rows.slice(first, last);
-  const needle = search.trim().toLowerCase();
-  const multiDay = traceEnd - traceStart > 24 * 3600_000;
+  const first = Math.max(0, Math.floor(scrollTop / ROW_H) - OVERSCAN)
+  const last = Math.min(rows.length, Math.ceil((scrollTop + LIST_H) / ROW_H) + OVERSCAN)
+  const shown = rows.slice(first, last)
+  const needle = search.trim().toLowerCase()
+  const multiDay = traceEnd - traceStart > 24 * 3600_000
 
   return (
     <div
@@ -78,10 +79,10 @@ export const TranscriptList = memo(function TranscriptList({
       <div style={{ height: rows.length * ROW_H, position: "relative" }}>
         <div style={{ position: "absolute", top: first * ROW_H, left: 0, right: 0 }}>
           {shown.map((row) => {
-            const span = row.span;
-            const held = fmtSecs(span.end - span.start);
-            const color = theme.category[span.kind as AgentTraceSpanKind];
-            const dim = needle.length > 0 && !matchIds?.has(span.id);
+            const span = row.span
+            const held = fmtSecs(span.end - span.start)
+            const color = theme.category[span.kind as AgentTraceSpanKind]
+            const dim = needle.length > 0 && !matchIds?.has(span.id)
             return (
               <button
                 key={row.key}
@@ -94,7 +95,11 @@ export const TranscriptList = memo(function TranscriptList({
               >
                 <span
                   className="mono w-[46px] shrink-0 rounded-full border px-1 py-0.5 text-center text-[9px] leading-none uppercase"
-                  style={{ borderColor: color, backgroundColor: theme.badge[span.kind as AgentTraceSpanKind], color: theme.panel }}
+                  style={{
+                    borderColor: color,
+                    backgroundColor: theme.badge[span.kind as AgentTraceSpanKind],
+                    color: theme.panel,
+                  }}
                   title={span.kind}
                 >
                   {span.kind === "background" ? "bg" : span.kind}
@@ -102,12 +107,18 @@ export const TranscriptList = memo(function TranscriptList({
                 {span.kind === "model" && span.model ? (
                   <VendorMark model={span.model} tiny />
                 ) : (
-                  <Icon name={toolIcon(span.tool ?? span.label)} className="size-3 shrink-0 text-dim" />
+                  <Icon
+                    name={toolIcon(span.tool ?? span.label)}
+                    className="size-3 shrink-0 text-dim"
+                  />
                 )}
                 <span className="w-[168px] shrink-0 truncate" title={span.label}>
                   {span.kind === "turn" ? "Prompt" : span.label}
                 </span>
-                <span className={`min-w-0 flex-1 truncate ${dim ? "opacity-50" : "text-dim"}`} title={span.detail}>
+                <span
+                  className={`min-w-0 flex-1 truncate ${dim ? "opacity-50" : "text-dim"}`}
+                  title={span.detail}
+                >
                   {span.detail}
                 </span>
                 <span className="flex shrink-0 items-center gap-2.5 text-dim">
@@ -121,10 +132,10 @@ export const TranscriptList = memo(function TranscriptList({
                   </span>
                 </span>
               </button>
-            );
+            )
           })}
         </div>
       </div>
     </div>
-  );
-});
+  )
+})

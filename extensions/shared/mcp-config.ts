@@ -34,7 +34,9 @@ function bunLaunch(bin: string): { command: string; args: string[] } | null {
   let script = bin;
   try {
     script = realpathSync(bin);
-  } catch { /* keep the bin path: it may still be the script */ }
+  } catch {
+    /* keep the bin path: it may still be the script */
+  }
   if (!script.endsWith('.js')) return null;
   const bun = resolveHostBinary(IS_WINDOWS ? 'bun.exe' : 'bun');
   return bun ? { command: bun, args: [script, 'mcp'] } : null;
@@ -83,7 +85,7 @@ function mcpKey(host: string): 'mcpServers' | 'mcp' {
 
 function serverMap(host: string, data: Record<string, unknown>): Record<string, unknown> {
   const section = data[mcpKey(host)];
-  return section && typeof section === 'object' ? section as Record<string, unknown> : {};
+  return section && typeof section === 'object' ? (section as Record<string, unknown>) : {};
 }
 
 /** True when this host has an MCP config Tersio knows how to write. */
@@ -147,7 +149,8 @@ export function ensureTersioMcp(host: string): boolean {
       : spliceTopLevelKey(text, key, { [SERVER]: entry(host) });
     if (next === null) return null;
     next = spliceNestedKey(next, key, LEGACY, null) ?? next;
-    if (Array.isArray(data.disabledServers)) next = spliceTopLevelKey(next, 'disabledServers', data.disabledServers) ?? next;
+    if (Array.isArray(data.disabledServers))
+      next = spliceTopLevelKey(next, 'disabledServers', data.disabledServers) ?? next;
     return next;
   });
 }
@@ -170,7 +173,6 @@ export function removeTersioMcp(host: string): boolean {
     return next === null ? null : spliceNestedKey(next, key, LEGACY, null);
   });
 }
-
 
 /** Where the entry lives, for a dashboard or a doctor row. */
 export function tersioMcpFile(host: string): string | null {

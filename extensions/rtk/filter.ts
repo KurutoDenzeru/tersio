@@ -65,7 +65,13 @@ function pipeFile(text: string): string | null {
   try {
     if (pipeDir === null) {
       pipeDir = mkdtempSync(join(tmpdir(), 'tersio-rtk-'));
-      process.once('exit', () => { try { rmSync(pipeDir as string, { recursive: true, force: true }); } catch { /* already gone */ } });
+      process.once('exit', () => {
+        try {
+          rmSync(pipeDir as string, { recursive: true, force: true });
+        } catch {
+          /* already gone */
+        }
+      });
     }
     const file = join(pipeDir, 'in.txt');
     writeFileSync(file, text, 'utf8');
@@ -79,7 +85,9 @@ function pipeFile(text: string): string | null {
 function dropPipeFile(file: string): void {
   try {
     rmSync(file, { force: true });
-  } catch { /* best effort */ }
+  } catch {
+    /* best effort */
+  }
 }
 
 /** Pipe text through one rtk filter; null on any failure, so the caller keeps its original. */
@@ -111,7 +119,6 @@ interface BashCallEvent {
   toolName?: unknown;
   input?: { command?: unknown };
 }
-
 
 export default function rtkFilterExtension(pi: ExtensionApi): void {
   const bin = resolveRtkBinary();

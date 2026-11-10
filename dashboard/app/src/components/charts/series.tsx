@@ -1,91 +1,114 @@
 // Chart primitives: one palette, tooltip, and empty look, so no page draws its own; rest wraps shadcn chart pieces.
-import { useMemo } from "react";
-import { cn } from "cn";
-import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
-import type { ChartConfig } from "@/components/ui/chart";
-import { Area, AreaChart, Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
-import { fmtShort } from "@/lib/format";
+import { useMemo } from "react"
+import { cn } from "cn"
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
+import type { ChartConfig } from "@/components/ui/chart"
+import { Area, AreaChart, Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts"
+import { fmtShort } from "@/lib/format"
 
 export interface SeriesSpec {
-  key: string;
-  label: string;
-  color: string;
+  key: string
+  label: string
+  color: string
   /** A second scale on the right edge, for a unit the left axis does not share. */
-  axis?: "left" | "right";
+  axis?: "left" | "right"
   /** The series total for the range, shown after the label. Omitted when the caller has none. */
-  value?: number;
+  value?: number
 }
 
-const AXIS = { stroke: "var(--line)", tickLine: false, axisLine: false } as const;
-const TICK_STYLE = { fill: "var(--dim)", fontSize: 11 } as const;
+const AXIS = { stroke: "var(--line)", tickLine: false, axisLine: false } as const
+const TICK_STYLE = { fill: "var(--dim)", fontSize: 11 } as const
 
 export interface SeriesChartProps<T extends object> {
-  data: T[];
-  series: SeriesSpec[];
-  xKey: string;
-  tick?: (value: number) => string;
+  data: T[]
+  series: SeriesSpec[]
+  xKey: string
+  tick?: (value: number) => string
   /** Tooltip title for the hovered bucket. */
-  label?: (value: number) => string;
-  height?: number;
-  mode?: "area" | "bar";
-  stacked?: boolean;
-  valueFmt?: (value: number) => string;
+  label?: (value: number) => string
+  height?: number
+  mode?: "area" | "bar"
+  stacked?: boolean
+  valueFmt?: (value: number) => string
   /** Tick format for the right axis, when a series asks for one. */
-  rightFmt?: (value: number) => string;
+  rightFmt?: (value: number) => string
   /** Plain-text alternative: what the chart shows, read out to a screen reader. */
-  summary: string;
-  ariaLabel: string;
-  className?: string;
+  summary: string
+  ariaLabel: string
+  className?: string
 }
 
 function SeriesChart<T extends object>({
-  data, series, xKey, tick, label, height = 220, mode = "area", stacked = false,
-  valueFmt = fmtShort, summary, ariaLabel, className, rightFmt,
+  data,
+  series,
+  xKey,
+  tick,
+  label,
+  height = 220,
+  mode = "area",
+  stacked = false,
+  valueFmt = fmtShort,
+  summary,
+  ariaLabel,
+  className,
+  rightFmt,
 }: SeriesChartProps<T>) {
   const config: ChartConfig = Object.fromEntries(
     series.map((s) => [s.key, { label: s.label, color: s.color }]),
-  );
+  )
   // Recharts resets the stack at a null, so a stacked series reads zero where it lacks data; a lone series keeps nulls.
   const plotted = useMemo(() => {
-    if (!stacked) return data;
-    const keys = series.map((s) => s.key);
+    if (!stacked) return data
+    const keys = series.map((s) => s.key)
     return data.map((row) => {
-      const filled = { ...row } as Record<string, unknown>;
+      const filled = { ...row } as Record<string, unknown>
       for (const key of keys) {
-        const held = filled[key];
-        if (held === null || held === undefined || (typeof held === "number" && Number.isNaN(held))) filled[key] = 0;
+        const held = filled[key]
+        if (held === null || held === undefined || (typeof held === "number" && Number.isNaN(held)))
+          filled[key] = 0
       }
-      return filled as T;
-    });
-  }, [data, series, stacked]);
-  const hasRight = series.some((s) => s.axis === "right");
+      return filled as T
+    })
+  }, [data, series, stacked])
+  const hasRight = series.some((s) => s.axis === "right")
   const common = {
     data: plotted,
     margin: { top: 8, right: 8, bottom: 0, left: 0 },
-  };
+  }
   const children = (
     <>
       <CartesianGrid vertical={false} stroke="var(--line)" strokeDasharray="3 3" />
       <XAxis dataKey={xKey} {...AXIS} tick={TICK_STYLE} tickFormatter={tick} minTickGap={28} />
       <YAxis {...AXIS} yAxisId="left" tick={TICK_STYLE} width={46} tickFormatter={valueFmt} />
       {hasRight && (
-        <YAxis {...AXIS} yAxisId="right" orientation="right" tick={TICK_STYLE} width={54} tickFormatter={rightFmt ?? valueFmt} />
+        <YAxis
+          {...AXIS}
+          yAxisId="right"
+          orientation="right"
+          tick={TICK_STYLE}
+          width={54}
+          tickFormatter={rightFmt ?? valueFmt}
+        />
       )}
       <ChartTooltip
         content={
           <ChartTooltipContent
             // Recharts hands the tooltip a tick's text or the series name, so the title comes from the hovered row's category.
             labelFormatter={(value, payload) => {
-              const row = payload?.[0]?.payload as Record<string, unknown> | undefined;
-              const raw = row ? row[xKey] : value;
-              const num = Number(raw);
-              if (label && Number.isFinite(num)) return label(num);
-              return String(raw ?? value);
+              const row = payload?.[0]?.payload as Record<string, unknown> | undefined
+              const raw = row ? row[xKey] : value
+              const num = Number(raw)
+              if (label && Number.isFinite(num)) return label(num)
+              return String(raw ?? value)
             }}
             formatter={(value, name, item) => (
               <span className="flex flex-1 items-center justify-between gap-2 leading-none">
                 <span className="flex items-center gap-2 text-dim">
-                  <span className="size-2.5 shrink-0 rounded-[2px]" style={{ background: item?.color }} aria-hidden="true" />
+                  <span
+                    className="size-2.5 shrink-0 rounded-[2px]"
+                    style={{ background: item?.color }}
+                    aria-hidden="true"
+                  />
                   {String(name)}
                 </span>
                 <span className="mono font-medium tabular-nums">{valueFmt(Number(value))}</span>
@@ -123,10 +146,16 @@ function SeriesChart<T extends object>({
         ),
       )}
     </>
-  );
+  )
   return (
     <figure className={cn("min-w-0", className)}>
-      <ChartContainer config={config} className="w-full" style={{ height }} role="img" aria-label={ariaLabel}>
+      <ChartContainer
+        config={config}
+        className="w-full"
+        style={{ height }}
+        role="img"
+        aria-label={ariaLabel}
+      >
         {mode === "bar" ? (
           <BarChart {...common}>{children}</BarChart>
         ) : (
@@ -135,34 +164,58 @@ function SeriesChart<T extends object>({
       </ChartContainer>
       <figcaption className="sr-only">{summary}</figcaption>
     </figure>
-  );
+  )
 }
 
 /** A time series: buckets on a UTC-aligned axis. */
-export function TimeChart<T extends object>(props: SeriesChartProps<T> & { mode?: "area" | "bar" }) {
-  return <SeriesChart {...props} mode={props.mode ?? "area"} />;
+export function TimeChart<T extends object>(
+  props: SeriesChartProps<T> & { mode?: "area" | "bar" },
+) {
+  return <SeriesChart {...props} mode={props.mode ?? "area"} />
 }
 
 /** A categorical series, such as hour of day. */
 export function Chart<T extends object>(props: SeriesChartProps<T> & { mode?: "area" | "bar" }) {
-  return <SeriesChart {...props} mode={props.mode ?? "bar"} />;
+  return <SeriesChart {...props} mode={props.mode ?? "bar"} />
 }
 
 /** One row's shape over time. Plain SVG: a table can hold hundreds of these. */
-export function Sparkline({ values, color = "var(--accent)", className }: { values: number[]; color?: string; className?: string }) {
-  const points = values.filter((v) => Number.isFinite(v));
-  if (points.length < 2) return <span className={cn("mono text-xs text-dim", className)}>–</span>;
-  const max = Math.max(...points);
-  const min = Math.min(...points);
-  const span = max - min || 1;
+export function Sparkline({
+  values,
+  color = "var(--accent)",
+  className,
+}: {
+  values: number[]
+  color?: string
+  className?: string
+}) {
+  const points = values.filter((v) => Number.isFinite(v))
+  if (points.length < 2) return <span className={cn("mono text-xs text-dim", className)}>–</span>
+  const max = Math.max(...points)
+  const min = Math.min(...points)
+  const span = max - min || 1
   const path = points
-    .map((v, i) => `${((i / (points.length - 1)) * 100).toFixed(1)},${(28 - ((v - min) / span) * 26).toFixed(1)}`)
-    .join(" ");
+    .map(
+      (v, i) =>
+        `${((i / (points.length - 1)) * 100).toFixed(1)},${(28 - ((v - min) / span) * 26).toFixed(1)}`,
+    )
+    .join(" ")
   return (
-    <svg viewBox="0 0 100 30" preserveAspectRatio="none" className={cn("h-7 w-full", className)} aria-hidden="true">
-      <polyline points={path} fill="none" stroke={color} strokeWidth={1.4} vectorEffect="non-scaling-stroke" />
+    <svg
+      viewBox="0 0 100 30"
+      preserveAspectRatio="none"
+      className={cn("h-7 w-full", className)}
+      aria-hidden="true"
+    >
+      <polyline
+        points={path}
+        fill="none"
+        stroke={color}
+        strokeWidth={1.4}
+        vectorEffect="non-scaling-stroke"
+      />
     </svg>
-  );
+  )
 }
 
 /** Series toggles. A clicked key drops out of `active`. */
@@ -173,21 +226,24 @@ export function Legend({
   valueFmt,
   className,
 }: {
-  items: SeriesSpec[];
-  active?: Set<string>;
-  onToggle?: (key: string) => void;
+  items: SeriesSpec[]
+  active?: Set<string>
+  onToggle?: (key: string) => void
   /** Formats each series total. A series with no `value` shows none. */
-  valueFmt?: (value: number) => string;
-  className?: string;
+  valueFmt?: (value: number) => string
+  className?: string
 }) {
-  if (items.length === 0) return null;
+  if (items.length === 0) return null
   return (
     <ul className={cn("flex flex-wrap items-center gap-x-3 gap-y-1.5", className)}>
       {items.map((s) => {
-        const on = !active || active.has(s.key);
+        const on = !active || active.has(s.key)
         const label = (
           <>
-            <span className="size-2 shrink-0 rounded-[2px]" style={{ background: on ? s.color : "var(--track)" }} />
+            <span
+              className="size-2 shrink-0 rounded-[2px]"
+              style={{ background: on ? s.color : "var(--track)" }}
+            />
             <span className={on ? "" : "line-through"}>{s.label}</span>
             {s.value !== undefined && (
               <span className={cn("tabular-nums", on ? "text-ink" : "text-dim")}>
@@ -195,7 +251,7 @@ export function Legend({
               </span>
             )}
           </>
-        );
+        )
         return (
           <li key={s.key} className="flex items-center gap-1.5 text-[11px] text-dim">
             {onToggle ? (
@@ -211,14 +267,22 @@ export function Legend({
               label
             )}
           </li>
-        );
+        )
       })}
     </ul>
-  );
+  )
 }
 
 /** One row of a bar list: the label, its figure, and a bar of its share. */
-function BarRow({ row, max, money }: { row: BarListItem; max: number; money: (v: number) => string }) {
+function BarRow({
+  row,
+  max,
+  money,
+}: {
+  row: BarListItem
+  max: number
+  money: (v: number) => string
+}) {
   return (
     <>
       <div className="flex min-w-0 items-center gap-2">
@@ -234,20 +298,26 @@ function BarRow({ row, max, money }: { row: BarListItem; max: number; money: (v:
         )}
       </div>
       <span className="mono shrink-0 text-xs tabular-nums text-dim">{money(row.value)}</span>
-      <div className="col-span-2 h-1.5 w-full overflow-hidden rounded-full bg-track" aria-hidden="true">
-        <div className="h-full rounded-full" style={{ width: `${(row.value / max) * 100}%`, background: row.color ?? "var(--accent)" }} />
+      <div
+        className="col-span-2 h-1.5 w-full overflow-hidden rounded-full bg-track"
+        aria-hidden="true"
+      >
+        <div
+          className="h-full rounded-full"
+          style={{ width: `${(row.value / max) * 100}%`, background: row.color ?? "var(--accent)" }}
+        />
       </div>
     </>
-  );
+  )
 }
 
 interface BarListItem {
-  key: string;
-  label: string | React.ReactNode;
-  title?: string;
-  value: number;
-  color?: string;
-  mark?: React.ReactNode;
+  key: string
+  label: string | React.ReactNode
+  title?: string
+  value: number
+  color?: string
+  mark?: React.ReactNode
 }
 
 /** A single horizontal bar for a list row: volume against the largest value. */
@@ -258,15 +328,15 @@ export function BarList({
   limit = 0,
   onSelect,
 }: {
-  rows: BarListItem[];
-  money: (v: number) => string;
-  className?: string;
-  limit?: number;
-  onSelect?: (key: string) => void;
+  rows: BarListItem[]
+  money: (v: number) => string
+  className?: string
+  limit?: number
+  onSelect?: (key: string) => void
 }) {
-  const shown = limit > 0 ? rows.slice(0, limit) : rows;
-  const max = Math.max(1, ...shown.map((r) => r.value));
-  if (shown.length === 0) return null;
+  const shown = limit > 0 ? rows.slice(0, limit) : rows
+  const max = Math.max(1, ...shown.map((r) => r.value))
+  if (shown.length === 0) return null
   return (
     <ul className={cn("flex flex-col gap-2", className)}>
       {shown.map((r) => (
@@ -285,14 +355,25 @@ export function BarList({
         </li>
       ))}
     </ul>
-  );
+  )
 }
 
 /** A coloured cell for a one-value table row: the shape of a share, at a glance. */
-export function CellBar({ value, max, color = "var(--accent)" }: { value: number; max: number; color?: string }) {
+export function CellBar({
+  value,
+  max,
+  color = "var(--accent)",
+}: {
+  value: number
+  max: number
+  color?: string
+}) {
   return (
     <span className="block h-1.5 w-full overflow-hidden rounded-full bg-track" aria-hidden="true">
-      <span className="block h-full rounded-full" style={{ width: `${max > 0 ? Math.min(100, (value / max) * 100) : 0}%`, background: color }} />
+      <span
+        className="block h-full rounded-full"
+        style={{ width: `${max > 0 ? Math.min(100, (value / max) * 100) : 0}%`, background: color }}
+      />
     </span>
-  );
+  )
 }

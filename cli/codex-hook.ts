@@ -1,7 +1,13 @@
 // Codex prompt hook: apply mode commands, then return the active mode blocks as developer context.
 import {
-  applyCodexModePatch, codexBlockOutput, codexHookOutput, codexManagedPrompt, codexModeContext, codexSlashCommand,
-  codexStatusLine, codexStopPatch,
+  applyCodexModePatch,
+  codexBlockOutput,
+  codexHookOutput,
+  codexManagedPrompt,
+  codexModeContext,
+  codexSlashCommand,
+  codexStatusLine,
+  codexStopPatch,
 } from '../extensions/shared/codex-plugin.ts';
 
 async function readStdin(): Promise<string> {
@@ -14,9 +20,7 @@ function payloadOf(raw: string): Record<string, unknown> {
   if (raw.trim() === '') return {};
   try {
     const parsed = JSON.parse(raw) as unknown;
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-      ? parsed as Record<string, unknown>
-      : {};
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
   } catch {
     return {};
   }
@@ -30,9 +34,10 @@ export async function runCodexHook(event: string | undefined): Promise<void> {
     const sessionId = payload.session_id;
     // A picked /prompts:* entry arrives as its whole body, so it answers here instead of at the model.
     const managed = codexManagedPrompt(prompt);
-    const command = managed && managed.command !== 'tersio'
-      ? codexSlashCommand(`/${managed.command} ${managed.value}`, sessionId)
-      : codexSlashCommand(prompt, sessionId);
+    const command =
+      managed && managed.command !== 'tersio'
+        ? codexSlashCommand(`/${managed.command} ${managed.value}`, sessionId)
+        : codexSlashCommand(prompt, sessionId);
     if (command) {
       if (Object.keys(command.patch).length > 0) applyCodexModePatch(sessionId, command.patch);
       // Codex Desktop has no plugin status bar, so the status line rides the hook result.
@@ -41,7 +46,9 @@ export async function runCodexHook(event: string | undefined): Promise<void> {
     }
     const patch = codexStopPatch(prompt);
     if (patch) applyCodexModePatch(sessionId, patch);
-    process.stdout.write(`${JSON.stringify(codexHookOutput(codexModeContext(sessionId), codexStatusLine(sessionId)))}\n`);
+    process.stdout.write(
+      `${JSON.stringify(codexHookOutput(codexModeContext(sessionId), codexStatusLine(sessionId)))}\n`,
+    );
     return;
   }
   process.stdout.write(`${JSON.stringify(codexHookOutput(codexModeContext(), codexStatusLine()))}\n`);

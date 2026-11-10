@@ -44,14 +44,19 @@ function encode(text: string): string {
 
 function decode(stored: string): string {
   if (!stored.startsWith('z:')) return Buffer.from(stored, 'base64').toString('utf8');
-  return zlib().gunzipSync(Buffer.from(stored.slice(2), 'base64')).toString('utf8');
+  return zlib()
+    .gunzipSync(Buffer.from(stored.slice(2), 'base64'))
+    .toString('utf8');
 }
 
 function ensure(file: string): boolean {
   if (ready.has(file)) return true;
   if (!sqliteAvailable()) return false;
   try {
-    sqliteExec(file, 'CREATE TABLE IF NOT EXISTS cache (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER NOT NULL);');
+    sqliteExec(
+      file,
+      'CREATE TABLE IF NOT EXISTS cache (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER NOT NULL);',
+    );
     ready.add(file);
     return true;
   } catch {
@@ -83,7 +88,10 @@ export function cachePut(key: string, value: string): boolean {
   fallback().set(key, value);
   if (!ensure(file)) return false;
   try {
-    sqliteExec(file, `INSERT OR REPLACE INTO cache (key, value, updated_at) VALUES (${quote(key)}, ${quote(encode(value))}, ${Date.now()});`);
+    sqliteExec(
+      file,
+      `INSERT OR REPLACE INTO cache (key, value, updated_at) VALUES (${quote(key)}, ${quote(encode(value))}, ${Date.now()});`,
+    );
     return true;
   } catch {
     // A database that vanished under the process gets one fresh attempt on the next call.
@@ -98,7 +106,9 @@ export function cacheDelete(key: string): void {
   if (!ensure(file)) return;
   try {
     sqliteExec(file, `DELETE FROM cache WHERE key = ${quote(key)};`);
-  } catch { /* a missing table is already the desired state */ }
+  } catch {
+    /* a missing table is already the desired state */
+  }
 }
 
 /** The write time in milliseconds, so a reader can tell a hit from a stale entry. */
@@ -120,7 +130,10 @@ export function cacheKeys(prefix: string): string[] {
   if (!ensure(file)) return [...fallback().keys()].filter((name) => name.startsWith(prefix));
   try {
     const rows = sqliteRead(file, `SELECT key FROM cache WHERE key LIKE ${quote(`${prefix}%`)}`);
-    return rows.split('\n').map((row) => row.split('\t')[0]).filter((name) => name !== '');
+    return rows
+      .split('\n')
+      .map((row) => row.split('\t')[0])
+      .filter((name) => name !== '');
   } catch {
     return [...fallback().keys()].filter((name) => name.startsWith(prefix));
   }

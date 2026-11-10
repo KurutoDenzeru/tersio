@@ -23,7 +23,9 @@ const BUN_BIN = IS_WINDOWS ? 'bun.cmd' : 'bun';
 
 const PACKAGE_NAME = '@krtclcdy/tersio';
 const PACKAGE_BIN = 'tersio';
-const { version: PACKAGE_VERSION } = createRequire(import.meta.url)(path.join(findPackageRoot(path.dirname(fileURLToPath(import.meta.url))), 'package.json')) as { version: string };
+const { version: PACKAGE_VERSION } = createRequire(import.meta.url)(
+  path.join(findPackageRoot(path.dirname(fileURLToPath(import.meta.url))), 'package.json'),
+) as { version: string };
 
 interface InstallOptions {
   dryRun: boolean;
@@ -76,11 +78,34 @@ function flagValue(name: string): string | undefined {
   return args.find((arg) => arg.startsWith(prefix))?.slice(prefix.length);
 }
 
-const COMMANDS: Record<string, true> = { install: true, update: true, doctor: true, uninstall: true, dashboard: true, upstream: true, mcp: true, modes: true, 'codex-hook': true, version: true, help: true };
+const COMMANDS: Record<string, true> = {
+  install: true,
+  update: true,
+  doctor: true,
+  uninstall: true,
+  dashboard: true,
+  upstream: true,
+  mcp: true,
+  modes: true,
+  'codex-hook': true,
+  version: true,
+  help: true,
+};
 /** Flags whose next token is a value, so `--host omp` never reads `omp` as the command. */
 const VALUE_FLAGS = new Set([
-  '--host', '--bind', '--port', '--export', '--currency', '--scope', '--write',
-  '--combo-default', '--caveman-default', '--ponytail-default', '--pstack-default', '--headroom-default', '--rtk-default',
+  '--host',
+  '--bind',
+  '--port',
+  '--export',
+  '--currency',
+  '--scope',
+  '--write',
+  '--combo-default',
+  '--caveman-default',
+  '--ponytail-default',
+  '--pstack-default',
+  '--headroom-default',
+  '--rtk-default',
 ]);
 const args = process.argv.slice(2);
 const commandArg = args.find((arg, i) => !arg.startsWith('-') && !VALUE_FLAGS.has(args[i - 1]));
@@ -111,7 +136,8 @@ const dashboardBind = args.includes('--local')
   ? '127.0.0.1'
   : args.includes('--lan')
     ? 'lan'
-    : flagValue('--bind') ?? (hostArg && !['omp', 'pi', 'pig', 'opencode', 'dsh', 'codex'].includes(hostArg) ? hostArg : null);
+    : (flagValue('--bind') ??
+      (hostArg && !['omp', 'pi', 'pig', 'opencode', 'dsh', 'codex'].includes(hostArg) ? hostArg : null));
 const dashboardOpen = args.includes('--open');
 // Watch mode: the server supervises a child that restarts on source change, and vite rebuilds the UI.
 const dashboardWatch = args.includes('--watch');
@@ -145,8 +171,14 @@ const pstackDefaultFlag = parseModeFlag('--pstack-default', PSTACK_DEFAULTS);
 const headroomDefaultFlag = parseModeFlag('--headroom-default', HEADROOM_DEFAULTS);
 const rtkDefaultFlag = parseModeFlag('--rtk-default', RTK_DEFAULTS);
 
-const profileFlagsGiven = [comboDefaultFlag, cavemanDefaultFlag, rtkDefaultFlag, ponytailDefaultFlag, pstackDefaultFlag, headroomDefaultFlag]
-  .some((flag) => flag !== undefined);
+const profileFlagsGiven = [
+  comboDefaultFlag,
+  cavemanDefaultFlag,
+  rtkDefaultFlag,
+  ponytailDefaultFlag,
+  pstackDefaultFlag,
+  headroomDefaultFlag,
+].some((flag) => flag !== undefined);
 
 function debug(...a: unknown[]): void {
   if (verbose) console.log('  [debug]', ...a);
@@ -230,14 +262,24 @@ function normalizeExtensionsKey(lines: string[]): boolean {
   return true;
 }
 
-async function writeConfigLines(configPath: string, lines: string[], logMsg: string, options: WriteOptions = {}): Promise<void> {
+async function writeConfigLines(
+  configPath: string,
+  lines: string[],
+  logMsg: string,
+  options: WriteOptions = {},
+): Promise<void> {
   await fs.mkdir(path.dirname(configPath), { recursive: true });
-  await fs.copyFile(configPath, `${configPath}.bak`).catch(() => { });
+  await fs.copyFile(configPath, `${configPath}.bak`).catch(() => {});
   await fs.writeFile(configPath, lines.join('\n'), 'utf8');
   if (verbose && !options.quiet) console.log(logMsg);
 }
 
-async function ensureExtensionInConfig(configPath: string, extensionPath: string, label: string, options: WriteOptions = {}): Promise<boolean> {
+async function ensureExtensionInConfig(
+  configPath: string,
+  extensionPath: string,
+  label: string,
+  options: WriteOptions = {},
+): Promise<boolean> {
   const normalizedPath = extensionPath.replace(/\\/g, '/');
   const line = `  - ${normalizedPath}`;
 
@@ -250,15 +292,30 @@ async function ensureExtensionInConfig(configPath: string, extensionPath: string
     lines = lines.filter((l) => !l.trim().replace(/^\.\//, '').endsWith(legacyTail));
   }
 
-  const matchingEntries = lines.filter((entry) => entry.trim().replace(/^-\s*/, '').replace(/^['"]|['"]$/g, '') === normalizedPath);
+  const matchingEntries = lines.filter(
+    (entry) =>
+      entry
+        .trim()
+        .replace(/^-\s*/, '')
+        .replace(/^['"]|['"]$/g, '') === normalizedPath,
+  );
   if (matchingEntries.length > 1) {
     if (options.dryRun) {
-      if (verbose && !options.quiet) console.log(`  [dry-run] would remove ${matchingEntries.length - 1} duplicate ${label} registration${matchingEntries.length === 2 ? '' : 's'}`);
+      if (verbose && !options.quiet)
+        console.log(
+          `  [dry-run] would remove ${matchingEntries.length - 1} duplicate ${label} registration${matchingEntries.length === 2 ? '' : 's'}`,
+        );
       return true;
     }
     let kept = false;
     lines = lines.filter((entry) => {
-      if (entry.trim().replace(/^-\s*/, '').replace(/^['"]|['"]$/g, '') !== normalizedPath) return true;
+      if (
+        entry
+          .trim()
+          .replace(/^-\s*/, '')
+          .replace(/^['"]|['"]$/g, '') !== normalizedPath
+      )
+        return true;
       if (kept) return false;
       kept = true;
       return true;
@@ -292,7 +349,12 @@ async function ensureExtensionInConfig(configPath: string, extensionPath: string
   return true;
 }
 
-async function removeExtensionFromConfig(configPath: string, extensionPath: string, label: string, options: WriteOptions = {}): Promise<boolean> {
+async function removeExtensionFromConfig(
+  configPath: string,
+  extensionPath: string,
+  label: string,
+  options: WriteOptions = {},
+): Promise<boolean> {
   const normalizedPath = extensionPath.replace(/\\/g, '/').replace(/^\.\//, '');
   const extensionSuffix = normalizedPath.includes('/extensions/')
     ? normalizedPath.slice(normalizedPath.indexOf('/extensions/') + 1)
@@ -301,14 +363,20 @@ async function removeExtensionFromConfig(configPath: string, extensionPath: stri
   if (raw === null) return false;
   const lines = raw.split('\n');
   const matches = (entry: string): boolean => {
-    const value = entry.trim().replace(/^-\s*/, '').replace(/^['"]|['"]$/g, '').replace(/\\/g, '/').replace(/^\.\//, '');
+    const value = entry
+      .trim()
+      .replace(/^-\s*/, '')
+      .replace(/^['"]|['"]$/g, '')
+      .replace(/\\/g, '/')
+      .replace(/^\.\//, '');
     return value === extensionSuffix || value.endsWith(`/${extensionSuffix}`);
   };
   const kept = lines.filter((entry) => !matches(entry));
   const removed = lines.length - kept.length;
   if (removed === 0) return false;
   if (options.dryRun) {
-    if (verbose && !options.quiet) console.log(`  [dry-run] would remove ${label} registration${removed === 1 ? '' : 's'}`);
+    if (verbose && !options.quiet)
+      console.log(`  [dry-run] would remove ${label} registration${removed === 1 ? '' : 's'}`);
     return true;
   }
   await writeConfigLines(configPath, kept, `  [write] Removed duplicate ${label} registration`, options);
@@ -365,13 +433,20 @@ async function patchPonytailConfig(
 }
 
 async function ensurePonytailConfigValue<K extends keyof PonytailConfig>(
-  key: K, value: PonytailConfig[K], options: WriteOptions = {},
+  key: K,
+  value: PonytailConfig[K],
+  options: WriteOptions = {},
 ): Promise<void> {
-  await patchPonytailConfig((cfg) => {
-    if (cfg[key] === value) return false;
-    cfg[key] = value;
-    return true;
-  }, `would set Ponytail ${key}=${value}`, `Set Ponytail ${key}=${value}`, options);
+  await patchPonytailConfig(
+    (cfg) => {
+      if (cfg[key] === value) return false;
+      cfg[key] = value;
+      return true;
+    },
+    `would set Ponytail ${key}=${value}`,
+    `Set Ponytail ${key}=${value}`,
+    options,
+  );
 }
 
 // Read plugins/package.json tolerantly; a corrupt or missing file starts fresh with installer-managed defaults.
@@ -398,12 +473,9 @@ function pad(s: string, n: number): string {
 
 // Box-drawing table, plain text (piped-safe, byte-stable). Numbers right-align; long cells truncate with an ellipsis.
 function textTable(headers: string[], rows: string[][], right: boolean[] = [], maxW = 32): string[] {
-  const cells = [headers, ...rows].map((r) =>
-    r.map((c) => (c.length > maxW ? c.slice(0, maxW - 1) + '…' : c)),
-  );
+  const cells = [headers, ...rows].map((r) => r.map((c) => (c.length > maxW ? c.slice(0, maxW - 1) + '…' : c)));
   const widths = headers.map((_, i) => Math.max(...cells.map((r) => r[i].length)));
-  const line = (l: string, m: string, r: string): string =>
-    l + widths.map((w) => '─'.repeat(w + 2)).join(m) + r;
+  const line = (l: string, m: string, r: string): string => l + widths.map((w) => '─'.repeat(w + 2)).join(m) + r;
   const row = (cs: string[]): string =>
     '│ ' + cs.map((c, i) => (right[i] ? c.padStart(widths[i]) : pad(c, widths[i]))).join(' │ ') + ' │';
   const out = [line('┌', '┬', '┐'), row(cells[0]), line('├', '┼', '┤')];
@@ -413,18 +485,82 @@ function textTable(headers: string[], rows: string[][], right: boolean[] = [], m
 }
 
 export {
-  IS_WINDOWS, RTK_BINARY_NAME, HOME, OMP_AGENT_DIR, OMP_PLUGINS_DIR, BUN_BIN_DIR, OMP_BIN, NPM_BIN, BUN_BIN,
-  PACKAGE_NAME, PACKAGE_BIN, PACKAGE_VERSION,
-  CAVEMAN_DEFAULTS, PONYTAIL_DEFAULTS, PSTACK_DEFAULTS, HEADROOM_DEFAULTS, RTK_DEFAULTS, COMBO_PRESET_MODES, COMBO_DEFAULTS, ACCENT_DEFAULTS,
-  parseEnum, flagValue, COMMANDS, commandArg, command, unknownCommand, mcp, modes, codexHook,
-  install, update, showVersion, showHelp, applyUpdate, args,
-  dryRun, yes, assumeYes, verbose, doctor, fix, uninstall, dashboard, upstream,
-  dashboardPort, dashboardBind, dashboardOpen, dashboardWatch, dashboardExport, currency, currencyGiven,
-  removePonytail, keepPonytail, removeRtk,
-  comboDefaultFlag, cavemanDefaultFlag, ponytailDefaultFlag, pstackDefaultFlag, headroomDefaultFlag, rtkDefaultFlag, profileFlagsGiven,
-  debug, execFileP, execP, writeIfChanged, normalizeExtensionsKey,
-  writeConfigLines, ensureExtensionInConfig, removeExtensionFromConfig,
-  readPonytailConfig, parseJsonObject, parsePonytailConfig, patchPonytailConfig,
-  ensurePonytailConfigValue, readPluginsPackage, relTime, textTable,
+  IS_WINDOWS,
+  RTK_BINARY_NAME,
+  HOME,
+  OMP_AGENT_DIR,
+  OMP_PLUGINS_DIR,
+  BUN_BIN_DIR,
+  OMP_BIN,
+  NPM_BIN,
+  BUN_BIN,
+  PACKAGE_NAME,
+  PACKAGE_BIN,
+  PACKAGE_VERSION,
+  CAVEMAN_DEFAULTS,
+  PONYTAIL_DEFAULTS,
+  PSTACK_DEFAULTS,
+  HEADROOM_DEFAULTS,
+  RTK_DEFAULTS,
+  COMBO_PRESET_MODES,
+  COMBO_DEFAULTS,
+  ACCENT_DEFAULTS,
+  parseEnum,
+  flagValue,
+  COMMANDS,
+  commandArg,
+  command,
+  unknownCommand,
+  mcp,
+  modes,
+  codexHook,
+  install,
+  update,
+  showVersion,
+  showHelp,
+  applyUpdate,
+  args,
+  dryRun,
+  yes,
+  assumeYes,
+  verbose,
+  doctor,
+  fix,
+  uninstall,
+  dashboard,
+  upstream,
+  dashboardPort,
+  dashboardBind,
+  dashboardOpen,
+  dashboardWatch,
+  dashboardExport,
+  currency,
+  currencyGiven,
+  removePonytail,
+  keepPonytail,
+  removeRtk,
+  comboDefaultFlag,
+  cavemanDefaultFlag,
+  ponytailDefaultFlag,
+  pstackDefaultFlag,
+  headroomDefaultFlag,
+  rtkDefaultFlag,
+  profileFlagsGiven,
+  debug,
+  execFileP,
+  execP,
+  writeIfChanged,
+  normalizeExtensionsKey,
+  writeConfigLines,
+  ensureExtensionInConfig,
+  removeExtensionFromConfig,
+  readPonytailConfig,
+  parseJsonObject,
+  parsePonytailConfig,
+  patchPonytailConfig,
+  ensurePonytailConfigValue,
+  readPluginsPackage,
+  relTime,
+  textTable,
 };
 export type { InstallOptions, PluginsPackage, PonytailConfig, WriteOptions };

@@ -18,7 +18,11 @@ function hostTreeFiles(base: string): string[] {
   const out: string[] = [];
   const walk = (dir: string, rel: string): void => {
     let entries;
-    try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
     for (const entry of entries) {
       if (entry.name === 'node_modules' || entry.name === '.DS_Store') continue;
       const child = rel ? `${rel}/${entry.name}` : entry.name;

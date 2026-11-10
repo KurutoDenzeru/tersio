@@ -1,43 +1,50 @@
 // The one table for every page: column defs, sorting, row selection, and a scroll body.
-import { Fragment, useMemo, useState } from "react";
-import { cn } from "cn";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Skeleton } from "@/components/ui/skeleton";
-import { HoverTip, PageButtons, PerPage, usePager } from "@/components/common";
-import { Icon } from "@/components/icon";
+import { Fragment, useMemo, useState } from "react"
+import { cn } from "cn"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import { Skeleton } from "@/components/ui/skeleton"
+import { HoverTip, PageButtons, PerPage, usePager } from "@/components/common"
+import { Icon } from "@/components/icon"
 
 export interface Column<T> {
-  key: string;
-  header: string;
+  key: string
+  header: string
   /** Hover tip explaining the number. */
-  title?: string;
-  align?: "left" | "right";
+  title?: string
+  align?: "left" | "right"
   /** Fixed width in px. */
-  width?: number;
+  width?: number
   /** Applied to the header and every cell, for hiding a column at a narrow width. */
-  className?: string;
+  className?: string
   /** Sort value. A column without one is not sortable. */
-  sort?: (row: T) => number | string;
-  render: (row: T) => React.ReactNode;
+  sort?: (row: T) => number | string
+  render: (row: T) => React.ReactNode
 }
 
 export interface DataTableProps<T> {
-  columns: Array<Column<T>>;
-  rows: T[];
-  rowKey: (row: T) => string;
-  onRowClick?: (row: T) => void;
-  initialSort?: { key: string; dir: "asc" | "desc" };
+  columns: Array<Column<T>>
+  rows: T[]
+  rowKey: (row: T) => string
+  onRowClick?: (row: T) => void
+  initialSort?: { key: string; dir: "asc" | "desc" }
   /** Render rows from this index, one page's worth. */
-  offset?: number;
+  offset?: number
   /** Rows rendered before the pager takes over. */
-  limit?: number;
+  limit?: number
   /** Detail drawn under a row across every column; returning null draws nothing, so some rows can have none. */
-  detail?: (row: T) => React.ReactNode | null;
+  detail?: (row: T) => React.ReactNode | null
   /** Which row currently shows its detail. Controls the row's open state for assistive tech. */
-  detailOpenFor?: (row: T) => boolean;
-  empty?: React.ReactNode;
-  className?: string;
-  ariaLabel?: string;
+  detailOpenFor?: (row: T) => boolean
+  empty?: React.ReactNode
+  className?: string
+  ariaLabel?: string
 }
 
 export function DataTable<T>({
@@ -54,56 +61,84 @@ export function DataTable<T>({
   className,
   ariaLabel,
 }: DataTableProps<T>) {
-  const [sort, setSort] = useState(initialSort ?? null);
+  const [sort, setSort] = useState(initialSort ?? null)
 
   const ordered = useMemo(() => {
-    const column = sort ? columns.find((c) => c.key === sort.key) : undefined;
-    const compare = column?.sort;
+    const column = sort ? columns.find((c) => c.key === sort.key) : undefined
+    const compare = column?.sort
     const all = compare
       ? [...rows].toSorted((a, b) => {
-          const av = compare(a);
-          const bv = compare(b);
-          const diff = typeof av === "string" || typeof bv === "string" ? String(av).localeCompare(String(bv)) : av - bv;
-          return sort!.dir === "desc" ? -diff : diff;
+          const av = compare(a)
+          const bv = compare(b)
+          const diff =
+            typeof av === "string" || typeof bv === "string"
+              ? String(av).localeCompare(String(bv))
+              : av - bv
+          return sort!.dir === "desc" ? -diff : diff
         })
-      : rows;
-    const capped = limit && limit > 0 ? all.slice(offset, offset + limit) : offset > 0 ? all.slice(offset) : all;
-    return capped;
-  }, [rows, columns, sort, offset, limit]);
+      : rows
+    const capped =
+      limit && limit > 0 ? all.slice(offset, offset + limit) : offset > 0 ? all.slice(offset) : all
+    return capped
+  }, [rows, columns, sort, offset, limit])
 
   const toggle = (column: Column<T>): void => {
-    if (!column.sort) return;
-    setSort((held) => (held?.key === column.key ? { key: column.key, dir: held.dir === "desc" ? "asc" : "desc" } : { key: column.key, dir: "desc" }));
-  };
+    if (!column.sort) return
+    setSort((held) =>
+      held?.key === column.key
+        ? { key: column.key, dir: held.dir === "desc" ? "asc" : "desc" }
+        : { key: column.key, dir: "desc" },
+    )
+  }
 
-  if (rows.length === 0 && empty) return <>{empty}</>;
+  if (rows.length === 0 && empty) return <>{empty}</>
 
   return (
-// A page table chains its wheel to the page, so `overscroll-contain` stays off, or the page above stops scrolling.
-    <div className={cn("overflow-auto [scrollbar-color:var(--line)_transparent] [scrollbar-width:thin]", className)}>
+    // A page table chains its wheel to the page, so `overscroll-contain` stays off, or the page above stops scrolling.
+    <div
+      className={cn(
+        "overflow-auto [scrollbar-color:var(--line)_transparent] [scrollbar-width:thin]",
+        className,
+      )}
+    >
       <Table className="mono text-[13px]" aria-label={ariaLabel}>
         <TableHeader className="sticky top-0 z-10 bg-panel [&_tr]:border-line [&_tr]:text-left [&_tr]:text-[11px] [&_tr]:uppercase [&_tr]:tracking-[0.14em] [&_tr]:text-dim">
           <TableRow>
             {columns.map((column) => {
-              const active = sort?.key === column.key;
+              const active = sort?.key === column.key
               const head = (
-                <span className={cn("inline-flex items-center gap-1", column.align === "right" && "w-full justify-end")}>
+                <span
+                  className={cn(
+                    "inline-flex items-center gap-1",
+                    column.align === "right" && "w-full justify-end",
+                  )}
+                >
                   {column.header}
                   {column.sort && (
                     <Icon
-                      name={active ? (sort?.dir === "asc" ? "chevron-up" : "chevron-down") : "chevrons-up-down"}
+                      name={
+                        active
+                          ? sort?.dir === "asc"
+                            ? "chevron-up"
+                            : "chevron-down"
+                          : "chevrons-up-down"
+                      }
                       className={cn("size-3", active ? "text-accent" : "opacity-40")}
                     />
                   )}
                 </span>
-              );
+              )
               return (
                 <TableHead
                   key={column.key}
                   scope="col"
                   style={column.width ? { width: column.width } : undefined}
                   aria-sort={active ? (sort?.dir === "asc" ? "ascending" : "descending") : "none"}
-                  className={cn("relative h-9 px-3", column.align === "right" && "text-right", column.className)}
+                  className={cn(
+                    "relative h-9 px-3",
+                    column.align === "right" && "text-right",
+                    column.className,
+                  )}
                 >
                   {column.title ? <HoverTip content={column.title}>{head}</HoverTip> : head}
                   {column.sort && (
@@ -115,18 +150,21 @@ export function DataTable<T>({
                     />
                   )}
                 </TableHead>
-              );
+              )
             })}
           </TableRow>
         </TableHeader>
         <TableBody>
           {ordered.map((row) => {
-            const extra = detail ? detail(row) : null;
-            const open = detailOpenFor ? detailOpenFor(row) : false;
+            const extra = detail ? detail(row) : null
+            const open = detailOpenFor ? detailOpenFor(row) : false
             return (
               <Fragment key={rowKey(row)}>
                 <TableRow
-                  className={cn("border-line", (onRowClick || extra) && "cursor-pointer hover:bg-track")}
+                  className={cn(
+                    "border-line",
+                    (onRowClick || extra) && "cursor-pointer hover:bg-track",
+                  )}
                   onClick={onRowClick ? () => onRowClick(row) : undefined}
                   aria-expanded={extra ? open : undefined}
                   data-detail={extra ? (open ? "open" : "closed") : undefined}
@@ -134,7 +172,11 @@ export function DataTable<T>({
                   {columns.map((column) => (
                     <TableCell
                       key={column.key}
-                      className={cn("px-3 py-2 align-middle", column.align === "right" && "text-right tabular-nums", column.className)}
+                      className={cn(
+                        "px-3 py-2 align-middle",
+                        column.align === "right" && "text-right tabular-nums",
+                        column.className,
+                      )}
                     >
                       {column.render(row)}
                     </TableCell>
@@ -148,22 +190,26 @@ export function DataTable<T>({
                   </TableRow>
                 )}
               </Fragment>
-            );
+            )
           })}
         </TableBody>
       </Table>
     </div>
-  );
+  )
 }
 
 export function TableSkeleton({ rows = 8, className }: { rows?: number; className?: string }) {
   return (
-    <div className={cn("flex flex-col gap-2 p-3.5", className)} aria-busy="true" aria-label="Loading table">
+    <div
+      className={cn("flex flex-col gap-2 p-3.5", className)}
+      aria-busy="true"
+      aria-label="Loading table"
+    >
       {Array.from({ length: rows }, (_, i) => (
         <Skeleton key={i} className="h-6 w-full" />
       ))}
     </div>
-  );
+  )
 }
 
 /** A long table, one page at a time; the page size lives here, so the footer carries the count, not a clip. */
@@ -182,20 +228,33 @@ export function PagedTable<T>({
   ariaLabel,
 }: Omit<DataTableProps<T>, "limit" | "offset"> & {
   /** Rows per page before the reader asks for more. */
-  perPage?: number;
-  perPageOptions?: number[];
+  perPage?: number
+  perPageOptions?: number[]
 }) {
-  const [per, setPer] = useState(perPage);
-  const [page, setPage] = useState(1);
-  const { pages, page: current, range } = usePager(rows.length, per, page);
-  const short = rows.length <= per;
+  const [per, setPer] = useState(perPage)
+  const [page, setPage] = useState(1)
+  const { pages, page: current, range } = usePager(rows.length, per, page)
+  const short = rows.length <= per
   const footer = (
     <div className="mono flex items-center gap-3 border-t border-line px-3.5 py-1.5 text-[11px] text-dim">
       <span>{range}</span>
-      <PerPage options={perPageOptions} value={per} onPick={(n) => { setPer(n); setPage(1); }} label="Rows per page" />
-      <PageButtons pages={pages} page={current} onPick={setPage} label={ariaLabel ?? "Table pages"} />
+      <PerPage
+        options={perPageOptions}
+        value={per}
+        onPick={(n) => {
+          setPer(n)
+          setPage(1)
+        }}
+        label="Rows per page"
+      />
+      <PageButtons
+        pages={pages}
+        page={current}
+        onPick={setPage}
+        label={ariaLabel ?? "Table pages"}
+      />
     </div>
-  );
+  )
   return (
     <div className="flex flex-col">
       <DataTable
@@ -214,5 +273,5 @@ export function PagedTable<T>({
       />
       {!short && footer}
     </div>
-  );
+  )
 }

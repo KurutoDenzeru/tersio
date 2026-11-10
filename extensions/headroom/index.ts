@@ -1,6 +1,18 @@
 // /headroom session mode: tracks the user's Headroom (headroomlabs-ai) install. Opt-in, so no preset turns it on.
 
-import { getSharedComboState, hasModeState, isOmpSubagentPrompt, lastCustomValue, normalizeInputCommand, normalizeMode, reconcileSharedComboEntries, sessionEntries, setSharedComboListener, setSharedComboMode, systemPromptIncludes } from '../shared/session-state.ts';
+import {
+  getSharedComboState,
+  hasModeState,
+  isOmpSubagentPrompt,
+  lastCustomValue,
+  normalizeInputCommand,
+  normalizeMode,
+  reconcileSharedComboEntries,
+  sessionEntries,
+  setSharedComboListener,
+  setSharedComboMode,
+  systemPromptIncludes,
+} from '../shared/session-state.ts';
 import { hostIdOf, injectPromptText, onHostEvent, sessionChangeEvents, setExtensionLabel } from '../shared/host.ts';
 import { announceStatus } from '../shared/status.ts';
 import { readHeadroomDefault } from '../shared/plugin-settings.ts';
@@ -45,7 +57,9 @@ export async function headroomProxyUp(url: string = headroomProxyUrl(), budgetMs
     const res = await fetch(url, { signal: AbortSignal.timeout(budgetMs) });
     await res.body?.cancel();
     up = true;
-  } catch { /* refused or too slow: the runtime is down */ }
+  } catch {
+    /* refused or too slow: the runtime is down */
+  }
   probeCache.url = url;
   probeCache.at = now;
   probeCache.up = up;
@@ -54,7 +68,9 @@ export async function headroomProxyUp(url: string = headroomProxyUrl(), budgetMs
 
 // The proxy compresses traffic below the shell layer, so the block only tells the model what changes and how to recover detail.
 export function headroomInstruction(route?: HeadroomRoute): string {
-  const scope = route?.routed ? `Compression applies to ${route.model} via ${route.provider ?? 'its provider'}.` : 'Headroom compression is enabled for this session.';
+  const scope = route?.routed
+    ? `Compression applies to ${route.model} via ${route.provider ?? 'its provider'}.`
+    : 'Headroom compression is enabled for this session.';
   return `🍃 HEADROOM MODE ACTIVE — level: on\n${scope} Tool outputs, file reads, and history may be compressed before reaching you. A compressed result can elide details; treat its elision markers as real. Recover the original by hash with the tersio_headroom MCP tool ({action:"retrieve", hash:"<HASH>"}). If that tool is not available, re-run the source command or re-read the file.`;
 }
 
@@ -106,7 +122,9 @@ export default function headroomSessionExtension(pi: ExtensionApi): void {
   pi.registerCommand?.('headroom', {
     description: 'Toggle the Headroom token-saver mode for this session',
     handler: async (args, ctx) => {
-      const arg = String(args || '').trim().toLowerCase();
+      const arg = String(args || '')
+        .trim()
+        .toLowerCase();
       if (!supported && arg !== 'status') {
         ctx?.ui?.notify?.('Headroom has no route for this agent.', 'warning');
         return;
@@ -115,7 +133,10 @@ export default function headroomSessionExtension(pi: ExtensionApi): void {
         setMode('on', ctx);
         // The mode can be on while the tool is absent; never silent about it, never installing on our own.
         if (!resolveHeadroomBinary()) {
-          ctx?.ui?.notify?.(`Headroom binary not found on PATH. Install it yourself with: ${HEADROOM_INSTALL_HINT}`, 'warning');
+          ctx?.ui?.notify?.(
+            `Headroom binary not found on PATH. Install it yourself with: ${HEADROOM_INSTALL_HINT}`,
+            'warning',
+          );
         }
         return;
       }
@@ -148,7 +169,8 @@ export default function headroomSessionExtension(pi: ExtensionApi): void {
     }
     const persisted = resolveMode(entries, '');
     const alreadyChosen = currentMode !== DEFAULT_MODE;
-    currentMode = persisted || (alreadyChosen ? currentMode : normalizeMode('headroom', readHeadroomDefault(host))) || DEFAULT_MODE;
+    currentMode =
+      persisted || (alreadyChosen ? currentMode : normalizeMode('headroom', readHeadroomDefault(host))) || DEFAULT_MODE;
     announceStatus(ctx);
   }
 
@@ -163,7 +185,9 @@ export default function headroomSessionExtension(pi: ExtensionApi): void {
     // The claim is written first, so a stop from another session sees this one and leaves the proxy up.
     touchHeadroomLease(sessionId);
     // ensureHeadroomRuntime probes /readyz first, so a proxy that is already up costs one request.
-    void ensureHeadroomRuntime(bin).catch(() => { /* the next session retries */ });
+    void ensureHeadroomRuntime(bin).catch(() => {
+      /* the next session retries */
+    });
   }
 
   // Start, resume, and branch all land here, so every session type shows it.
@@ -184,7 +208,9 @@ export default function headroomSessionExtension(pi: ExtensionApi): void {
   pi.on('session_shutdown', async (event) => {
     const reason = (event as { reason?: unknown } | undefined)?.reason;
     if (reason === 'reload' || reason === 'new' || reason === 'resume' || reason === 'fork') return;
-    await releaseHeadroomLease(sessionId, resolveHeadroomBinary()).catch(() => { /* a stop that fails is retried by the next session */ });
+    await releaseHeadroomLease(sessionId, resolveHeadroomBinary()).catch(() => {
+      /* a stop that fails is retried by the next session */
+    });
   });
 
   pi.on<SystemPromptEvent>('before_agent_start', async (event: SystemPromptEvent, ctx?: ExtensionCtx) => {
@@ -203,7 +229,10 @@ export default function headroomSessionExtension(pi: ExtensionApi): void {
       const repaired = await repairHeadroomRoute(host);
       if (repaired.ok) {
         route = readHeadroomRoute(host);
-        ctx?.ui?.notify?.(`Headroom: another tool reset this agent's route. ${repaired.detail}. Reopen /model so this session uses it.`, 'info');
+        ctx?.ui?.notify?.(
+          `Headroom: another tool reset this agent's route. ${repaired.detail}. Reopen /model so this session uses it.`,
+          'info',
+        );
       }
     }
     if (!route.measured || !route.routed) {

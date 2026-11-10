@@ -32,7 +32,9 @@ export async function checkBinarySource(spec: BinarySourceSpec, ctx: BinarySourc
   if (bin) {
     try {
       const shim = shimCommand(bin, ['--version']);
-      local = spec.normalize(execFileSync(shim.cmd, shim.args, { encoding: 'utf8', timeout: 5000, windowsHide: true })) || null;
+      local =
+        spec.normalize(execFileSync(shim.cmd, shim.args, { encoding: 'utf8', timeout: 5000, windowsHide: true })) ||
+        null;
     } catch {
       local = null;
     }
@@ -68,6 +70,12 @@ export async function checkBinarySource(spec: BinarySourceSpec, ctx: BinarySourc
     pinnedAt: null,
     candidate: behind ? latest : null,
     preview: [],
-    note: failure ? failure.reason : behind ? `installed ${local} is behind ${latest}` : local === null ? 'binary not on PATH' : '',
+    note: failure
+      ? failure.reason
+      : behind
+        ? `installed ${local} is behind ${latest}`
+        : local === null
+          ? 'binary not on PATH'
+          : '',
   };
 }

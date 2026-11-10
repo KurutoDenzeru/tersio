@@ -1,19 +1,36 @@
 // One agent request, in full: recorded fields only, never a guessed value.
-import { useState } from "react";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { displayModel, fmt, fmtMs, hostOfSession, statusColor, statusLabel, tokensPerSecond, whenClock, whenShort, whenStamp } from "@/lib/format";
-import type { AgentRequestRow } from "@/lib/data";
-import { useAgentRequestEntry } from "@/lib/data";
-import { VendorMark } from "@/components/brand";
-import { AgentLogo } from "@/components/agent-logos";
-import { Icon } from "@/components/icon";
+import { useState } from "react"
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet"
+import {
+  displayModel,
+  fmt,
+  fmtMs,
+  hostOfSession,
+  statusColor,
+  statusLabel,
+  tokensPerSecond,
+  whenClock,
+  whenShort,
+  whenStamp,
+} from "@/lib/format"
+import type { AgentRequestRow } from "@/lib/data"
+import { useAgentRequestEntry } from "@/lib/data"
+import { VendorMark } from "@/components/brand"
+import { AgentLogo } from "@/components/agent-logos"
+import { Icon } from "@/components/icon"
 
 /** The API family a wire name belongs to, named the way the request itself reports it. */
 function apiClassOf(api: string): string {
-  const name = api.trim();
-  if (!name) return "not recorded";
+  const name = api.trim()
+  if (!name) return "not recorded"
   // The class is the family before the first dash: `openai-completions` is the OpenAI completions API.
-  const family = name.split("-")[0];
+  const family = name.split("-")[0]
   const known: Record<string, string> = {
     openai: "OpenAI",
     anthropic: "Anthropic",
@@ -27,8 +44,8 @@ function apiClassOf(api: string): string {
     azure: "Azure",
     ollama: "Ollama",
     openrouter: "OpenRouter",
-  };
-  return known[family] ?? name;
+  }
+  return known[family] ?? name
 }
 
 function SectionLabel({ icon, children }: { icon?: string; children: React.ReactNode }) {
@@ -37,7 +54,7 @@ function SectionLabel({ icon, children }: { icon?: string; children: React.React
       {icon && <Icon name={icon} className="size-3.5" />}
       {children}
     </p>
-  );
+  )
 }
 
 function DrawerStat({ label, value, hint }: { label: string; value: string; hint?: string }) {
@@ -47,19 +64,29 @@ function DrawerStat({ label, value, hint }: { label: string; value: string; hint
       <p className="mono m-0 mt-1 truncate text-lg font-bold tabular-nums">{value}</p>
       {hint && <p className="mono m-0 mt-0.5 truncate text-[10px] text-dim">{hint}</p>}
     </div>
-  );
+  )
 }
 
 function DetailRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex min-w-0 items-baseline gap-3 text-[13px]">
-      <span className="mono w-28 shrink-0 text-[11px] tracking-[0.1em] text-dim uppercase">{label}</span>
+      <span className="mono w-28 shrink-0 text-[11px] tracking-[0.1em] text-dim uppercase">
+        {label}
+      </span>
       <span className="mono min-w-0 flex-1 text-right [overflow-wrap:break-word]">{children}</span>
     </div>
-  );
+  )
 }
 
-function Chip({ children, tint, title }: { children: React.ReactNode; tint?: string; title?: string }) {
+function Chip({
+  children,
+  tint,
+  title,
+}: {
+  children: React.ReactNode
+  tint?: string
+  title?: string
+}) {
   return (
     <span
       title={title}
@@ -68,20 +95,22 @@ function Chip({ children, tint, title }: { children: React.ReactNode; tint?: str
     >
       {children}
     </span>
-  );
+  )
 }
 
 /** One block of raw JSON, with the byte count for size and one click to copy. */
 function JsonBlock({ title, data, copy }: { title: string; data: unknown; copy?: string }) {
-  const [copied, setCopied] = useState(false);
-  const body = data === null || data === undefined ? "" : JSON.stringify(data, null, 2);
-  const text = copy ?? body;
+  const [copied, setCopied] = useState(false)
+  const body = data === null || data === undefined ? "" : JSON.stringify(data, null, 2)
+  const text = copy ?? body
   return (
     <div className="grid gap-1.5 rounded-xl border border-line px-3.5 pt-3 pb-2">
       <div className="flex items-center gap-2">
         <SectionLabel>{title}</SectionLabel>
         {body && (
-          <span className="mono text-[10px] text-dim">{(new TextEncoder().encode(body).length / 1024).toFixed(1)} KB</span>
+          <span className="mono text-[10px] text-dim">
+            {(new TextEncoder().encode(body).length / 1024).toFixed(1)} KB
+          </span>
         )}
         {text && (
           <button
@@ -89,11 +118,11 @@ function JsonBlock({ title, data, copy }: { title: string; data: unknown; copy?:
             onClick={() => {
               void navigator.clipboard.writeText(text).then(
                 () => {
-                  setCopied(true);
-                  setTimeout(() => setCopied(false), 1500);
+                  setCopied(true)
+                  setTimeout(() => setCopied(false), 1500)
                 },
                 () => undefined,
-              );
+              )
             }}
             aria-label={`Copy ${title}`}
             className="mono ml-auto inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-line px-2 py-1 text-[11px] text-dim hover:border-accent hover:text-accent"
@@ -104,23 +133,28 @@ function JsonBlock({ title, data, copy }: { title: string; data: unknown; copy?:
         )}
       </div>
       {body ? (
-        <pre className="mono m-0 max-h-[420px] max-w-full overflow-auto rounded-lg border border-line bg-track/40 p-3 text-xs leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere]">{body}</pre>
+        <pre className="mono m-0 max-h-[420px] max-w-full overflow-auto rounded-lg border border-line bg-track/40 p-3 text-xs leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere]">
+          {body}
+        </pre>
       ) : (
         <p className="mono m-0 text-[11px] text-dim">No payload recorded for this entry.</p>
       )}
     </div>
-  );
+  )
 }
 
 /** One raw JSON payload behind a fold; its summary carries the name and byte count, so expanding shows the text. */
 function JsonFold({ title, data, copy }: { title: string; data: unknown; copy?: string }) {
-  const [copied, setCopied] = useState(false);
-  const body = data === null || data === undefined ? "" : JSON.stringify(data, null, 2);
-  const text = copy ?? body;
+  const [copied, setCopied] = useState(false)
+  const body = data === null || data === undefined ? "" : JSON.stringify(data, null, 2)
+  const text = copy ?? body
   return (
     <details className="group rounded-xl border border-line">
       <summary className="mono flex cursor-pointer list-none items-center gap-2 px-3.5 py-2.5 text-[10px] tracking-[0.14em] text-dim uppercase hover:text-ink">
-        <Icon name="chevron-right" className="size-3 shrink-0 transition-transform group-open:rotate-90" />
+        <Icon
+          name="chevron-right"
+          className="size-3 shrink-0 transition-transform group-open:rotate-90"
+        />
         <span className="min-w-0 flex-1 truncate">{title}</span>
         {body && (
           <span className="mono shrink-0 text-[10px] text-dim">
@@ -131,14 +165,14 @@ function JsonFold({ title, data, copy }: { title: string; data: unknown; copy?: 
           <button
             type="button"
             onClick={(event) => {
-              event.preventDefault();
+              event.preventDefault()
               void navigator.clipboard.writeText(text).then(
                 () => {
-                  setCopied(true);
-                  setTimeout(() => setCopied(false), 1500);
+                  setCopied(true)
+                  setTimeout(() => setCopied(false), 1500)
                 },
                 () => undefined,
-              );
+              )
             }}
             aria-label={`Copy ${title}`}
             className="mono inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-line px-2 py-1 text-[11px] text-dim hover:border-accent hover:text-accent"
@@ -149,12 +183,16 @@ function JsonFold({ title, data, copy }: { title: string; data: unknown; copy?: 
         )}
       </summary>
       {body ? (
-        <pre className="mono m-0 max-h-[420px] max-w-full overflow-auto border-t border-line bg-track/40 p-3 text-xs leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere]">{body}</pre>
+        <pre className="mono m-0 max-h-[420px] max-w-full overflow-auto border-t border-line bg-track/40 p-3 text-xs leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere]">
+          {body}
+        </pre>
       ) : (
-        <p className="mono m-0 px-3.5 pb-2.5 text-[11px] text-dim">No payload recorded for this entry.</p>
+        <p className="mono m-0 px-3.5 pb-2.5 text-[11px] text-dim">
+          No payload recorded for this entry.
+        </p>
       )}
     </details>
-  );
+  )
 }
 
 export function AgentRequestDrawer({
@@ -163,30 +201,41 @@ export function AgentRequestDrawer({
   onClose,
   onOpenSession,
 }: {
-  row: AgentRequestRow | null;
-  money: (v: number) => string;
-  onClose: () => void;
-  onOpenSession: (sessionFile: string) => void;
+  row: AgentRequestRow | null
+  money: (v: number) => string
+  onClose: () => void
+  onOpenSession: (sessionFile: string) => void
 }) {
-  const { entry } = useAgentRequestEntry(row?.sessionFile ?? null, row?.entryId ?? null);
-  if (!row) return null;
-  const tps = tokensPerSecond(row.output, row.durationMs);
-  const cost = row.unpriced ? null : row.costUsd;
-  const perOutput = cost !== null && row.output > 0 ? cost / row.output : null;
-  const state = row.stopReason === "error" ? "error" : row.stopReason;
-  const tint = statusColor(state);
-  const host = hostOfSession(row.sessionFile);
+  const { entry } = useAgentRequestEntry(row?.sessionFile ?? null, row?.entryId ?? null)
+  if (!row) return null
+  const tps = tokensPerSecond(row.output, row.durationMs)
+  const cost = row.unpriced ? null : row.costUsd
+  const perOutput = cost !== null && row.output > 0 ? cost / row.output : null
+  const state = row.stopReason === "error" ? "error" : row.stopReason
+  const tint = statusColor(state)
+  const host = hostOfSession(row.sessionFile)
   // The journal carries the request's own API on the message; the stats row has no such column.
-  const api = row.api || String((entry.output as { api?: unknown } | null)?.api ?? "");
-  const apiClass = apiClassOf(api);
+  const api = row.api || String((entry.output as { api?: unknown } | null)?.api ?? "")
+  const apiClass = apiClassOf(api)
 
   return (
-    <Sheet open onOpenChange={(open) => { if (!open) onClose(); }}>
-      <SheetContent side="right" className="w-[760px]! max-w-[calc(100vw-2rem)]! gap-0 overflow-y-auto p-0" aria-describedby={undefined}>
+    <Sheet
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose()
+      }}
+    >
+      <SheetContent
+        side="right"
+        className="w-[760px]! max-w-[calc(100vw-2rem)]! gap-0 overflow-y-auto p-0"
+        aria-describedby={undefined}
+      >
         <SheetHeader className="border-b border-line">
           <div className="flex items-center gap-2.5">
             <VendorMark model={row.model} small />
-            <SheetTitle className="font-display pr-8 text-lg tracking-tight">{displayModel(row.model)}</SheetTitle>
+            <SheetTitle className="font-display pr-8 text-lg tracking-tight">
+              {displayModel(row.model)}
+            </SheetTitle>
           </div>
           <SheetDescription className="mono text-xs text-dim">
             {whenStamp(row.ts)} · {row.provider}, {apiClass}
@@ -218,7 +267,9 @@ export function AgentRequestDrawer({
           <div className="flex items-end justify-between gap-3">
             <div className="min-w-0">
               <SectionLabel icon="coins">Tokens</SectionLabel>
-              <p className="font-display m-0 text-4xl font-bold tracking-tight tabular-nums">{fmt(row.totalTokens)}</p>
+              <p className="font-display m-0 text-4xl font-bold tracking-tight tabular-nums">
+                {fmt(row.totalTokens)}
+              </p>
             </div>
             <div className="mono grid shrink-0 gap-0.5 text-right text-[11px] text-dim">
               <span>{fmt(row.input)} in</span>
@@ -230,7 +281,11 @@ export function AgentRequestDrawer({
           <section className="grid gap-2.5">
             <SectionLabel icon="timer">Timing</SectionLabel>
             <div className="grid grid-cols-2 gap-2.5">
-              <DrawerStat label="Started" value={whenClock(row.ts)} hint={`${whenShort(row.ts)}, local time`} />
+              <DrawerStat
+                label="Started"
+                value={whenClock(row.ts)}
+                hint={`${whenShort(row.ts)}, local time`}
+              />
               <DrawerStat label="Duration" value={fmtMs(row.durationMs)} />
               <DrawerStat label="Time to first token" value={fmtMs(row.ttftMs)} />
               <DrawerStat label="Output tokens/s" value={tps > 0 ? `${tps.toFixed(1)}/s` : "n/a"} />
@@ -240,12 +295,56 @@ export function AgentRequestDrawer({
           <section className="grid gap-2.5">
             <SectionLabel icon="coins">Tokens</SectionLabel>
             <div className="grid grid-cols-2 gap-2.5">
-              <DrawerStat label="Uncached input" value={fmt(row.input)} hint={row.totalTokens > 0 ? `${((row.input / row.totalTokens) * 100).toFixed(1)}% of the row` : undefined} />
-              <DrawerStat label="Cache read" value={fmt(row.cacheRead)} hint={row.totalTokens > 0 ? `${((row.cacheRead / row.totalTokens) * 100).toFixed(1)}% of the row` : undefined} />
-              <DrawerStat label="Cache write" value={fmt(row.cacheWrite)} hint={row.totalTokens > 0 ? `${((row.cacheWrite / row.totalTokens) * 100).toFixed(1)}% of the row` : undefined} />
-              <DrawerStat label="Output" value={fmt(row.output)} hint={row.totalTokens > 0 ? `${((row.output / row.totalTokens) * 100).toFixed(1)}% of the row` : undefined} />
-              <DrawerStat label="Total" value={fmt(row.totalTokens)} hint="the four buckets summed" />
-              <DrawerStat label="Cache hit rate" value={row.input + row.cacheRead > 0 ? `${((row.cacheRead / (row.input + row.cacheRead)) * 100).toFixed(1)}%` : "n/a"} hint="reads over read + input" />
+              <DrawerStat
+                label="Uncached input"
+                value={fmt(row.input)}
+                hint={
+                  row.totalTokens > 0
+                    ? `${((row.input / row.totalTokens) * 100).toFixed(1)}% of the row`
+                    : undefined
+                }
+              />
+              <DrawerStat
+                label="Cache read"
+                value={fmt(row.cacheRead)}
+                hint={
+                  row.totalTokens > 0
+                    ? `${((row.cacheRead / row.totalTokens) * 100).toFixed(1)}% of the row`
+                    : undefined
+                }
+              />
+              <DrawerStat
+                label="Cache write"
+                value={fmt(row.cacheWrite)}
+                hint={
+                  row.totalTokens > 0
+                    ? `${((row.cacheWrite / row.totalTokens) * 100).toFixed(1)}% of the row`
+                    : undefined
+                }
+              />
+              <DrawerStat
+                label="Output"
+                value={fmt(row.output)}
+                hint={
+                  row.totalTokens > 0
+                    ? `${((row.output / row.totalTokens) * 100).toFixed(1)}% of the row`
+                    : undefined
+                }
+              />
+              <DrawerStat
+                label="Total"
+                value={fmt(row.totalTokens)}
+                hint="the four buckets summed"
+              />
+              <DrawerStat
+                label="Cache hit rate"
+                value={
+                  row.input + row.cacheRead > 0
+                    ? `${((row.cacheRead / (row.input + row.cacheRead)) * 100).toFixed(1)}%`
+                    : "n/a"
+                }
+                hint="reads over read + input"
+              />
             </div>
           </section>
 
@@ -253,7 +352,11 @@ export function AgentRequestDrawer({
             <SectionLabel icon="coins">API-equivalent cost</SectionLabel>
             <div className="grid grid-cols-2 gap-2.5">
               <DrawerStat label="Total" value={row.unpriced ? "unpriced" : money(row.costUsd)} />
-              <DrawerStat label="Per output token" value={perOutput === null ? "n/a" : `$${perOutput.toFixed(5)}`} hint="total over output" />
+              <DrawerStat
+                label="Per output token"
+                value={perOutput === null ? "n/a" : `$${perOutput.toFixed(5)}`}
+                hint="total over output"
+              />
             </div>
           </section>
 
@@ -269,8 +372,14 @@ export function AgentRequestDrawer({
           </section>
 
           {row.errorMessage && (
-            <div className="grid gap-2 rounded-xl border px-3.5 pt-3 pb-2" style={{ borderColor: "var(--danger-border)", background: "var(--danger-soft)" }}>
-              <p className="mono m-0 text-[10px] tracking-[0.14em] uppercase" style={{ color: "var(--danger)" }}>
+            <div
+              className="grid gap-2 rounded-xl border px-3.5 pt-3 pb-2"
+              style={{ borderColor: "var(--danger-border)", background: "var(--danger-soft)" }}
+            >
+              <p
+                className="mono m-0 text-[10px] tracking-[0.14em] uppercase"
+                style={{ color: "var(--danger)" }}
+              >
                 {state === "aborted" ? "Aborted" : "Error"}
               </p>
               <p className="mono m-0 text-xs [overflow-wrap:anywhere]">{row.errorMessage}</p>
@@ -311,5 +420,5 @@ export function AgentRequestDrawer({
         </div>
       </SheetContent>
     </Sheet>
-  );
+  )
 }

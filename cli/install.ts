@@ -2,18 +2,42 @@
 import { existsSync, promises as fs } from 'node:fs';
 import path from 'node:path';
 import {
-  BUN_BIN, COMBO_PRESET_MODES, HOME, IS_WINDOWS, NPM_BIN, OMP_AGENT_DIR, OMP_PLUGINS_DIR, OMP_BIN,
-  PACKAGE_NAME, PACKAGE_VERSION, args,
-  applyUpdate, assumeYes, cavemanDefaultFlag, comboDefaultFlag, command, dryRun,
-  ponytailDefaultFlag, pstackDefaultFlag, headroomDefaultFlag, profileFlagsGiven, rtkDefaultFlag, verbose, yes,
-  dashboardExport, dashboardPort, currency,
-  debug, ensurePonytailConfigValue,
-  execP, parseJsonObject, readPluginsPackage,
+  BUN_BIN,
+  COMBO_PRESET_MODES,
+  HOME,
+  IS_WINDOWS,
+  NPM_BIN,
+  OMP_AGENT_DIR,
+  OMP_PLUGINS_DIR,
+  OMP_BIN,
+  PACKAGE_NAME,
+  PACKAGE_VERSION,
+  args,
+  applyUpdate,
+  assumeYes,
+  cavemanDefaultFlag,
+  comboDefaultFlag,
+  command,
+  dryRun,
+  ponytailDefaultFlag,
+  pstackDefaultFlag,
+  headroomDefaultFlag,
+  profileFlagsGiven,
+  rtkDefaultFlag,
+  verbose,
+  yes,
+  dashboardExport,
+  dashboardPort,
+  currency,
+  debug,
+  ensurePonytailConfigValue,
+  execP,
+  parseJsonObject,
+  readPluginsPackage,
   writeIfChanged,
 } from './common.ts';
 import type { InstallOptions, WriteOptions } from './common.ts';
-import {
-  askInteractiveChoice, askInteractiveConfirm, closeRL, execNetwork, tty, sayTagged } from './interactive.ts';
+import { askInteractiveChoice, askInteractiveConfirm, closeRL, execNetwork, tty, sayTagged } from './interactive.ts';
 import { printWelcome } from './banner.ts';
 import { checkForUpdate, runLatestUpdate } from './update.ts';
 import { runUninstall } from './uninstall.ts';
@@ -21,24 +45,76 @@ import { runDoctor } from './doctor.ts';
 import { runDashboard } from './dashboard.ts';
 import { wireRtk } from './rtk-wiring.ts';
 import {
-  RTK_INSTALL_DOCS, piAgentDir, pigAgentDir, readTextIfExists, resolveCodexBinary, resolveHeadroomBinary, resolveHostBinary, resolveRtkBinary, shimCommand,
+  RTK_INSTALL_DOCS,
+  piAgentDir,
+  pigAgentDir,
+  readTextIfExists,
+  resolveCodexBinary,
+  resolveHeadroomBinary,
+  resolveHostBinary,
+  resolveRtkBinary,
+  shimCommand,
 } from '../extensions/shared/utils.ts';
 import { findPackageRoot, homeDir } from '../extensions/shared/utils.ts';
 import { patchState } from '../extensions/shared/state.ts';
 import { CAVEMAN_PIN } from './upstream.ts';
-import { headroomHostSupported, headroomProxyPort, headroomProxyUrl, readOmpGateway } from '../extensions/shared/headroom-proxy.ts';
+import {
+  headroomHostSupported,
+  headroomProxyPort,
+  headroomProxyUrl,
+  readOmpGateway,
+} from '../extensions/shared/headroom-proxy.ts';
 import { ensureTersioMcp, tersioMcpConfigured, tersioMcpSupported } from '../extensions/shared/mcp-config.ts';
 import { ensureHeadroomRuntime, headroomFitsMachine } from '../extensions/shared/headroom-runtime.ts';
 import { routeHostOn } from '../extensions/shared/headroom-routes.ts';
 import type { HostDefaultField } from './profile.ts';
 import { formatCliStatus, saveHostDefaults, storedProfile, storedProfileSync, writePluginSettings } from './profile.ts';
 import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
-import { EXT_DIR, PI_RTK_MANIFEST, PI_PONYTAIL_FILES, PONYTAIL_BUNDLE_FILES, PONYTAIL_DIR, PONYTAIL_PKG, filesUnder, reapObsoleteTreeDirs, rootFiles, sourcePath, syncPluginManifest, syncTreeFiles } from './manifest.ts';
+import {
+  EXT_DIR,
+  PI_RTK_MANIFEST,
+  PI_PONYTAIL_FILES,
+  PONYTAIL_BUNDLE_FILES,
+  PONYTAIL_DIR,
+  PONYTAIL_PKG,
+  filesUnder,
+  reapObsoleteTreeDirs,
+  rootFiles,
+  sourcePath,
+  syncPluginManifest,
+  syncTreeFiles,
+} from './manifest.ts';
 import type { Profile } from './profile.ts';
-import { detectHosts, dshCliProfiles, dshDesktopProfilePresent, dshHome, dshPresent, dshProfileBundles, dshRunner, hostOptions, parseHostArg, piTersioSource, pigTersioSource, writeDshMcpCommand } from './hosts.ts';
+import {
+  detectHosts,
+  dshCliProfiles,
+  dshDesktopProfilePresent,
+  dshHome,
+  dshPresent,
+  dshProfileBundles,
+  dshRunner,
+  hostOptions,
+  parseHostArg,
+  piTersioSource,
+  pigTersioSource,
+  writeDshMcpCommand,
+} from './hosts.ts';
 import type { HostEntry } from './hosts.ts';
 import { hostCap } from '../extensions/shared/host-caps.ts';
-import { CODEX_MARKETPLACE_NAME, CODEX_PLUGIN_ID, codexHome, codexLocalMarketplaceRoot, codexLocalPluginFiles, codexPluginInstalled, codexHookCommand, codexPromptFiles, codexPromptsDir, codexUserHooksFile, ensureCodexUserHook, installedCodexPlugin } from '../extensions/shared/codex-plugin.ts';
+import {
+  CODEX_MARKETPLACE_NAME,
+  CODEX_PLUGIN_ID,
+  codexHome,
+  codexLocalMarketplaceRoot,
+  codexLocalPluginFiles,
+  codexPluginInstalled,
+  codexHookCommand,
+  codexPromptFiles,
+  codexPromptsDir,
+  codexUserHooksFile,
+  ensureCodexUserHook,
+  installedCodexPlugin,
+} from '../extensions/shared/codex-plugin.ts';
 import { codexPackagedPluginDir } from '../extensions/shared/codex-state.ts';
 import type { HostId } from '../extensions/shared/host-caps.ts';
 
@@ -53,7 +129,7 @@ async function stepPonytail(pluginsDir: string, options: InstallOptions): Promis
     migrated = true;
   }
   const overrides: Record<string, string> =
-    typeof pkg.overrides === 'object' && pkg.overrides !== null ? { ...pkg.overrides as Record<string, string> } : {};
+    typeof pkg.overrides === 'object' && pkg.overrides !== null ? { ...(pkg.overrides as Record<string, string>) } : {};
   if (PONYTAIL_PKG in overrides) {
     delete overrides[PONYTAIL_PKG];
     if (Object.keys(overrides).length === 0) delete pkg.overrides;
@@ -95,7 +171,8 @@ async function stepSelfPlugin(pluginsDir: string, options: InstallOptions): Prom
 
   if (options.dryRun) {
     if (verbose && !options.quiet) sayTagged(`  [dry-run] would add ${PACKAGE_NAME}@${PACKAGE_VERSION} to ${pkgPath}`);
-    if (verbose && !options.quiet) sayTagged(`  [dry-run] would run: npm install --no-audit --no-fund (in ${pluginsDir})`);
+    if (verbose && !options.quiet)
+      sayTagged(`  [dry-run] would run: npm install --no-audit --no-fund (in ${pluginsDir})`);
     return false;
   }
 
@@ -117,13 +194,21 @@ async function stepSelfPlugin(pluginsDir: string, options: InstallOptions): Prom
   await fs.writeFile(pkgPath, JSON.stringify(pkg, null, 2) + '\n', 'utf8');
 
   try {
-    await execNetwork('Installing Tersio plugin dependencies', NPM_BIN, ['install', '--no-audit', '--no-fund'], { cwd: pluginsDir, timeout: 180000 });
+    await execNetwork('Installing Tersio plugin dependencies', NPM_BIN, ['install', '--no-audit', '--no-fund'], {
+      cwd: pluginsDir,
+      timeout: 180000,
+    });
   } catch {
     try {
-      await execNetwork('Installing Tersio plugin dependencies', BUN_BIN, ['install'], { cwd: pluginsDir, timeout: 180000 });
+      await execNetwork('Installing Tersio plugin dependencies', BUN_BIN, ['install'], {
+        cwd: pluginsDir,
+        timeout: 180000,
+      });
     } catch (e) {
       sayTagged(`  [fail] Could not install ${PACKAGE_NAME} into plugins dir: ${(e as Error).message}`);
-      sayTagged(`  [hint] Manual: cd ~/.omp/plugins && npm install ${PACKAGE_NAME}@^${PACKAGE_VERSION} --save --no-audit --no-fund`);
+      sayTagged(
+        `  [hint] Manual: cd ~/.omp/plugins && npm install ${PACKAGE_NAME}@^${PACKAGE_VERSION} --save --no-audit --no-fund`,
+      );
       return false;
     }
   }
@@ -138,7 +223,7 @@ async function stepSelfPlugin(pluginsDir: string, options: InstallOptions): Prom
 }
 
 function shortError(e: unknown): string {
-  return (((e as Error & { stderr?: string }).stderr) || (e as Error).message || '').trim().slice(0, 200);
+  return ((e as Error & { stderr?: string }).stderr || (e as Error).message || '').trim().slice(0, 200);
 }
 
 const RETIRED_OMP_AGENT_DIRS = [
@@ -172,10 +257,24 @@ async function stepRetireAgentCopies(extDir: string, options: InstallOptions): P
 // The binary is machine-wide; hosts without a hook only rebind. `tersio update` still refreshes it.
 /** Upstream's own quick installs: the curl script for macOS/Linux, winget for Windows. */
 const RTK_INSTALL_SH = 'curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/master/install.sh | sh';
-const RTK_INSTALL_WINGET = ['install', '--id', 'rtk-ai.rtk', '--exact', '--silent', '--accept-package-agreements', '--accept-source-agreements'];
+const RTK_INSTALL_WINGET = [
+  'install',
+  '--id',
+  'rtk-ai.rtk',
+  '--exact',
+  '--silent',
+  '--accept-package-agreements',
+  '--accept-source-agreements',
+];
 
 function rtkInstallRoute(): { cmd: string; args: string[]; label: string; display: string } {
-  if (IS_WINDOWS) return { cmd: 'winget', args: RTK_INSTALL_WINGET, label: 'winget', display: `winget ${RTK_INSTALL_WINGET.join(' ')}` };
+  if (IS_WINDOWS)
+    return {
+      cmd: 'winget',
+      args: RTK_INSTALL_WINGET,
+      label: 'winget',
+      display: `winget ${RTK_INSTALL_WINGET.join(' ')}`,
+    };
   // The script installs to ~/.local/bin, which resolveRtkBinary now checks even when PATH has not caught up.
   return { cmd: 'sh', args: ['-c', RTK_INSTALL_SH], label: 'the rtk installer', display: RTK_INSTALL_SH };
 }
@@ -218,7 +317,12 @@ async function stepRtk(options: InstallOptions, target: HostId = 'omp'): Promise
 }
 
 // First entry is required; the rest are optional companions.
-async function copySources(extDir: string, files: Array<[string, string]>, skipLabel: string, options: WriteOptions): Promise<boolean> {
+async function copySources(
+  extDir: string,
+  files: Array<[string, string]>,
+  skipLabel: string,
+  options: WriteOptions,
+): Promise<boolean> {
   const src = await readTextIfExists(files[0][0]);
   if (!src) {
     if (!options.quiet && options.dryRun) sayTagged(`  [skip] ${skipLabel} not found in repo`);
@@ -275,7 +379,12 @@ async function stepCaveman(extDir: string, options: WriteOptions): Promise<void>
   }
   if (!options.dryRun) patchState({ cavemanUpstream: { tag: CAVEMAN_PIN, at: Date.now() } });
 
-  await copySources(extDir, filesUnder('caveman').filter(([, to]) => to.endsWith('.ts')), 'caveman/index.ts', options);
+  await copySources(
+    extDir,
+    filesUnder('caveman').filter(([, to]) => to.endsWith('.ts')),
+    'caveman/index.ts',
+    options,
+  );
 
   // Renamed body: drop the stale copy an older install left behind.
   if (!options.dryRun) await fs.rm(path.join(cavemanDir, 'rule-wenyan.md'), { force: true });
@@ -317,7 +426,8 @@ async function stepHeadroom(extDir: string, options: InstallOptions): Promise<vo
 async function stepPonytailBundle(treeDir: string, options: InstallOptions): Promise<void> {
   const root = PONYTAIL_DIR;
   if (!existsSync(root)) {
-    if (!options.quiet) console.log('  [skip] Ponytail package not found next to the CLI — OpenCode keeps the built-in text');
+    if (!options.quiet)
+      console.log('  [skip] Ponytail package not found next to the CLI — OpenCode keeps the built-in text');
     return;
   }
   if (!options.quiet) console.log('  Ponytail — bundle the full ruleset for OpenCode');
@@ -355,7 +465,11 @@ async function stepOpencode(options: InstallOptions): Promise<void> {
 
   const configPath = path.join(HOME, '.config', 'opencode', 'opencode.json');
   let config: Record<string, unknown> = {};
-  try { config = JSON.parse((await readTextIfExists(configPath)) ?? '{}') as Record<string, unknown>; } catch { return; }
+  try {
+    config = JSON.parse((await readTextIfExists(configPath)) ?? '{}') as Record<string, unknown>;
+  } catch {
+    return;
+  }
   const plugins = Array.isArray(config.plugins) ? [...config.plugins] : [];
   // The tree ships the rtk rewrite, so its own plugin entry is redundant.
   const kept = plugins.filter((p) => typeof p !== 'string' || !p.endsWith('/opencode/plugins/rtk.ts'));
@@ -369,19 +483,25 @@ async function stepOpencode(options: InstallOptions): Promise<void> {
   await writeIfChanged(configPath, `${JSON.stringify(config, null, 2)}\n`, { ...options, backup: true });
 }
 
-async function resolveProfile(opts: { quiet?: boolean; host?: HostId | null } = {}): Promise<{ profile: Profile; choseDefaults: boolean; chosenFields: HostDefaultField[] }> {
+async function resolveProfile(
+  opts: { quiet?: boolean; host?: HostId | null } = {},
+): Promise<{ profile: Profile; choseDefaults: boolean; chosenFields: HostDefaultField[] }> {
   // Seed from the stored defaults so flag-less runs keep them; a named host reads its own section first.
   const profile = await storedProfile(opts.host);
 
   // The chosen preset owns all three modes.
   let comboChosen = comboDefaultFlag !== undefined;
   if (tty() && !profileFlagsGiven && !applyUpdate) {
-    const choice = await askInteractiveChoice('Session-start defaults — Combo preset', [
-      { value: 'off', label: 'off' },
-      { value: 'lite', label: 'lite (recommended)', hint: 'caveman=lite, rtk=on, ponytail=lite' },
-      { value: 'balanced', label: 'balanced', hint: 'caveman=full, rtk=on, ponytail=full' },
-      { value: 'max', label: 'max', hint: 'caveman=ultra, rtk=on, ponytail=ultra' },
-    ], profile.comboDefault);
+    const choice = await askInteractiveChoice(
+      'Session-start defaults — Combo preset',
+      [
+        { value: 'off', label: 'off' },
+        { value: 'lite', label: 'lite (recommended)', hint: 'caveman=lite, rtk=on, ponytail=lite' },
+        { value: 'balanced', label: 'balanced', hint: 'caveman=full, rtk=on, ponytail=full' },
+        { value: 'max', label: 'max', hint: 'caveman=ultra, rtk=on, ponytail=ultra' },
+      ],
+      profile.comboDefault,
+    );
     if (choice.status === 'selected') {
       profile.comboDefault = choice.value;
       comboChosen = true;
@@ -404,19 +524,24 @@ async function resolveProfile(opts: { quiet?: boolean; host?: HostId | null } = 
     profile.ponytailDefault = preset.ponytail;
   }
   if (cavemanDefaultFlag !== undefined) mutable.cavemanDefault = cavemanDefaultFlag;
-  if (rtkDefaultFlag !== undefined) mutable.rtkDefault = rtkDefaultFlag === 'on' ? true : rtkDefaultFlag === 'off' ? false : 'inherit';
+  if (rtkDefaultFlag !== undefined)
+    mutable.rtkDefault = rtkDefaultFlag === 'on' ? true : rtkDefaultFlag === 'off' ? false : 'inherit';
   if (ponytailDefaultFlag !== undefined) mutable.ponytailDefault = ponytailDefaultFlag;
   if (pstackDefaultFlag !== undefined) profile.pstackDefault = pstackDefaultFlag;
   if (headroomDefaultFlag !== undefined) profile.headroomDefault = headroomDefaultFlag;
 
   const rtkLabel = mutable.rtkDefault === 'inherit' ? 'inherit' : profile.rtkDefault ? 'on' : 'off';
-  if ((!opts.quiet && verbose) || dryRun) console.log(`  Defaults${opts.host ? ` for ${opts.host}` : ''}: combo=${profile.comboDefault} (caveman=${profile.cavemanDefault} · rtk=${rtkLabel} · ponytail=${profile.ponytailDefault} · pstack=${profile.pstackDefault} · headroom=${profile.headroomDefault})`);
+  if ((!opts.quiet && verbose) || dryRun)
+    console.log(
+      `  Defaults${opts.host ? ` for ${opts.host}` : ''}: combo=${profile.comboDefault} (caveman=${profile.cavemanDefault} · rtk=${rtkLabel} · ponytail=${profile.ponytailDefault} · pstack=${profile.pstackDefault} · headroom=${profile.headroomDefault})`,
+    );
   // Only a run that actually chose (a preset pick or a per-mode flag) may write a host's own section, and only the fields it chose.
   const chosenFields: HostDefaultField[] = [];
   if (comboChosen) chosenFields.push('comboDefault', 'cavemanDefault', 'rtkDefault', 'ponytailDefault');
   if (cavemanDefaultFlag !== undefined && !chosenFields.includes('cavemanDefault')) chosenFields.push('cavemanDefault');
   if (rtkDefaultFlag !== undefined && !chosenFields.includes('rtkDefault')) chosenFields.push('rtkDefault');
-  if (ponytailDefaultFlag !== undefined && !chosenFields.includes('ponytailDefault')) chosenFields.push('ponytailDefault');
+  if (ponytailDefaultFlag !== undefined && !chosenFields.includes('ponytailDefault'))
+    chosenFields.push('ponytailDefault');
   if (pstackDefaultFlag !== undefined) chosenFields.push('pstackDefault');
   if (headroomDefaultFlag !== undefined) chosenFields.push('headroomDefault');
   return { profile, choseDefaults: comboChosen || profileFlagsGiven, chosenFields };
@@ -429,7 +554,8 @@ async function maybeInstallHeadroom(profile: Profile, quiet: boolean, host: Host
   // A proxy that cannot fit is not offered: the measured floor is the reason, and it is printed.
   const machine = headroomFitsMachine();
   if (!machine.fits) {
-    if (!quiet) sayTagged(`  [note] Headroom skipped — ${machine.detail}. Set TERSIO_HEADROOM_FORCE=1 to install it anyway`);
+    if (!quiet)
+      sayTagged(`  [note] Headroom skipped — ${machine.detail}. Set TERSIO_HEADROOM_FORCE=1 to install it anyway`);
     return false;
   }
   if (!tty() || dryRun || applyUpdate || assumeYes) {
@@ -440,7 +566,9 @@ async function maybeInstallHeadroom(profile: Profile, quiet: boolean, host: Host
     return false;
   }
   if (resolveHeadroomBinary() !== null) {
-    const answer = await askInteractiveConfirm('Headroom is already installed — enable it for new sessions? (optional)');
+    const answer = await askInteractiveConfirm(
+      'Headroom is already installed — enable it for new sessions? (optional)',
+    );
     if (answer.status !== 'confirmed' || !answer.value) return false;
     console.log('  Headroom — enabled');
     return true;
@@ -455,10 +583,14 @@ async function maybeInstallHeadroom(profile: Profile, quiet: boolean, host: Host
       ? ['install', '--user', 'headroom-ai[all]']
       : ['-m', 'pip', 'install', '--user', 'headroom-ai[all]'];
   const installCommand = [cmd, ...installArgs].join(' ');
-  const answer = await askInteractiveChoice('🍃 Headroom — optional token-saver (compresses tool output and history)', [
-    { value: 'install', label: `Install now (${via})`, hint: `runs: ${installCommand}` },
-    { value: 'skip', label: 'Skip (optional)', hint: 'enable later with /headroom on or the dashboard' },
-  ], 'skip');
+  const answer = await askInteractiveChoice(
+    '🍃 Headroom — optional token-saver (compresses tool output and history)',
+    [
+      { value: 'install', label: `Install now (${via})`, hint: `runs: ${installCommand}` },
+      { value: 'skip', label: 'Skip (optional)', hint: 'enable later with /headroom on or the dashboard' },
+    ],
+    'skip',
+  );
   if (answer.status !== 'selected' || answer.value !== 'install') return false;
   console.log(`  Headroom — installing with ${via} (this can take a minute)…`);
   try {
@@ -500,7 +632,9 @@ async function maybeInstallMcp(host: HostId, quiet: boolean): Promise<boolean> {
   // An update refreshes what is there; it never opts a machine into the entry the install declined.
   if (applyUpdate) return tersioMcpConfigured(host);
   if (!tty() || assumeYes) return true;
-  const answer = await askInteractiveConfirm(`Add the Tersio MCP server to ${hostEntry(host).label}? Gives the agent usage, modes and savings as tools (optional)`);
+  const answer = await askInteractiveConfirm(
+    `Add the Tersio MCP server to ${hostEntry(host).label}? Gives the agent usage, modes and savings as tools (optional)`,
+  );
   if (answer.status === 'cancelled') {
     closeRL();
     process.exit(130);
@@ -518,13 +652,18 @@ async function stepOmpSkills(packageRoot: string, options: InstallOptions): Prom
   const dirs = Array.isArray(skills.customDirectories) ? (skills.customDirectories as string[]).slice() : [];
   const at = dirs.findIndex((dir) => typeof dir === 'string' && dir.includes('tersio') && dir.endsWith('skills'));
   if (at >= 0 && dirs[at] === skillsDir) return;
-  if (at >= 0) dirs[at] = skillsDir; else dirs.push(skillsDir);
+  if (at >= 0) dirs[at] = skillsDir;
+  else dirs.push(skillsDir);
   if (options.dryRun) {
     if (verbose && !options.quiet) sayTagged(`  [dry-run] would register ${skillsDir} as an OMP skill directory`);
     return;
   }
   await fs.mkdir(path.dirname(settingsPath), { recursive: true });
-  await writeIfChanged(settingsPath, `${JSON.stringify({ ...before, skills: { ...skills, customDirectories: dirs } }, null, 2)}\n`, options);
+  await writeIfChanged(
+    settingsPath,
+    `${JSON.stringify({ ...before, skills: { ...skills, customDirectories: dirs } }, null, 2)}\n`,
+    options,
+  );
   if (!options.quiet) sayTagged(`  Skills — registered ${skillsDir} for /skill commands`);
 }
 
@@ -564,7 +703,9 @@ async function runCommandMenu(): Promise<void> {
   // Interactive launches always check; scripts use the cached verdict.
   const newer = await checkForUpdate(true);
   if (typeof newer === 'string' && !dryRun) {
-    const answer = await askInteractiveConfirm(`tersio ${newer} is available (installed ${PACKAGE_VERSION}). Install it now?`);
+    const answer = await askInteractiveConfirm(
+      `tersio ${newer} is available (installed ${PACKAGE_VERSION}). Install it now?`,
+    );
     if (answer.status === 'confirmed' && answer.value) {
       await runLatestUpdate();
       closeRL();
@@ -579,16 +720,25 @@ async function runCommandMenu(): Promise<void> {
   updatePromptDone = true;
   // The menu reads the check it just ran: a pending release names its version beside the update row, and the install row says up front that the optional Headroom step comes with it.
   const updateLabel = typeof newer === 'string' ? `Update (${newer} available)` : 'Update';
-  const updateHint = typeof newer === 'string'
-    ? `CLI ${PACKAGE_VERSION} → ${newer}; add-ons refresh per agent with --host`
-    : 'download the newest CLI; add-ons refresh per agent with --host';
-  const choice = await askInteractiveChoice(`Tersio — what next?\n${formatCliStatus(storedProfileSync())}`, [
-    { value: 'install', label: 'Install plugin (Headroom optional)', hint: 'user scope + combo defaults; the Headroom install is offered next' },
-    { value: 'update', label: updateLabel, hint: updateHint },
-    { value: 'doctor', label: 'Doctor', hint: 'verify the installation' },
-    { value: 'dashboard', label: 'Dashboard', hint: 'open the report in your browser' },
-    { value: 'uninstall', label: 'Uninstall', hint: 'remove tersio and the add-ons you pick' },
-  ], 'install');
+  const updateHint =
+    typeof newer === 'string'
+      ? `CLI ${PACKAGE_VERSION} → ${newer}; add-ons refresh per agent with --host`
+      : 'download the newest CLI; add-ons refresh per agent with --host';
+  const choice = await askInteractiveChoice(
+    `Tersio — what next?\n${formatCliStatus(storedProfileSync())}`,
+    [
+      {
+        value: 'install',
+        label: 'Install plugin (Headroom optional)',
+        hint: 'user scope + combo defaults; the Headroom install is offered next',
+      },
+      { value: 'update', label: updateLabel, hint: updateHint },
+      { value: 'doctor', label: 'Doctor', hint: 'verify the installation' },
+      { value: 'dashboard', label: 'Dashboard', hint: 'open the report in your browser' },
+      { value: 'uninstall', label: 'Uninstall', hint: 'remove tersio and the add-ons you pick' },
+    ],
+    'install',
+  );
   if (choice.status !== 'selected') {
     closeRL();
     process.exit(130);
@@ -603,9 +753,16 @@ async function runCommandMenu(): Promise<void> {
       else console.log(`  tersio ${PACKAGE_VERSION} is the latest`);
       // The CLI is the target; `--host` is the only way this run also touches an agent.
       const pinned = (() => {
-        try { return parseHostArg(args) ?? null; } catch { return null; }
+        try {
+          return parseHostArg(args) ?? null;
+        } catch {
+          return null;
+        }
       })();
-      const label = pinned === null ? '' : ` + ${detectHosts().find((entry) => entry.id === pinned)?.label ?? pinned}'s extensions and add-ons`;
+      const label =
+        pinned === null
+          ? ''
+          : ` + ${detectHosts().find((entry) => entry.id === pinned)?.label ?? pinned}'s extensions and add-ons`;
       const go = await askInteractiveConfirm(`Update now — tersio CLI${label}?`);
       if (go.status === 'confirmed' && go.value) {
         await runLatestUpdate(pinned);
@@ -651,9 +808,7 @@ async function runCommandMenu(): Promise<void> {
 let targetHost: HostId = 'omp';
 
 // Hosts the menu advertises but cannot install yet; listed disabled so the roadmap stays visible.
-const SOON_HOSTS = [
-  { value: 'claude', label: 'Claude Code', hint: 'Coming soon' },
-];
+const SOON_HOSTS = [{ value: 'claude', label: 'Claude Code', hint: 'Coming soon' }];
 
 async function chooseHost(title: string, only?: HostId[]): Promise<HostId> {
   const hosts = detectHosts().filter((host) => !only || only.includes(host.id));
@@ -682,7 +837,10 @@ async function stepPiLayer(options: InstallOptions): Promise<void> {
   const agentDir = piAgentDir();
   const extDir = path.join(agentDir, 'extensions');
   const declared = piTersioSource(agentDir);
-  if (declared) sayTagged(`  [note] pi also has a tersio package (${declared}) — remove one, or both copies load: pi remove npm:${PACKAGE_NAME}`);
+  if (declared)
+    sayTagged(
+      `  [note] pi also has a tersio package (${declared}) — remove one, or both copies load: pi remove npm:${PACKAGE_NAME}`,
+    );
 
   if (!options.quiet) console.log(`  Pi — write the extension tree (${extDir})`);
   await stepSharedSessionState(extDir, options);
@@ -704,7 +862,10 @@ async function stepPigLayer(options: InstallOptions): Promise<void> {
   const agentDir = pigAgentDir();
   const extDir = path.join(agentDir, 'extensions');
   const declared = pigTersioSource(agentDir);
-  if (declared) sayTagged(`  [note] pig also has a tersio package (${declared}) — remove one, or both copies load: pig remove npm:${PACKAGE_NAME}`);
+  if (declared)
+    sayTagged(
+      `  [note] pig also has a tersio package (${declared}) — remove one, or both copies load: pig remove npm:${PACKAGE_NAME}`,
+    );
 
   if (!options.quiet) console.log(`  PiG — write the extension tree (${extDir})`);
   await stepSharedSessionState(extDir, options);
@@ -749,7 +910,9 @@ async function stepPonytailForPi(agentDir: string, options: InstallOptions, host
   const declared = await piDeclaredPackages(agentDir);
   if (declared.some(isNpmPonytailPackage)) {
     try {
-      await execNetwork(`Removing the ${host} npm copy of Ponytail`, host, ['remove', 'npm:@dietrichgebert/ponytail'], { timeout: 120000 });
+      await execNetwork(`Removing the ${host} npm copy of Ponytail`, host, ['remove', 'npm:@dietrichgebert/ponytail'], {
+        timeout: 120000,
+      });
     } catch (e) {
       sayTagged(`  [warn] ${host} remove ponytail: ${shortError(e)}`);
     }
@@ -760,7 +923,10 @@ async function stepPonytailForPi(agentDir: string, options: InstallOptions, host
 // pi declares its package sources in settings.json; [] when the file is absent or unreadable.
 async function piDeclaredPackages(agentDir: string): Promise<unknown[]> {
   try {
-    const settings = JSON.parse(await fs.readFile(path.join(agentDir, 'settings.json'), 'utf8')) as Record<string, unknown>;
+    const settings = JSON.parse(await fs.readFile(path.join(agentDir, 'settings.json'), 'utf8')) as Record<
+      string,
+      unknown
+    >;
     return Array.isArray(settings.packages) ? settings.packages : [];
   } catch {
     return [];
@@ -789,7 +955,9 @@ async function registerPiLocalPonytail(agentDir: string, dest: string, options: 
 
 // Name the preset this run actually chose, instead of a hardcoded level.
 function comboHint(host: string, comboDefault: string): string {
-  return comboDefault === 'off' ? `\nDone — restart ${host}.` : `\nDone — restart ${host}, then /combo ${comboDefault}.`;
+  return comboDefault === 'off'
+    ? `\nDone — restart ${host}.`
+    : `\nDone — restart ${host}, then /combo ${comboDefault}.`;
 }
 
 /** DeepSeek Harness mounts the tersio package itself as a bundle: one add per profile, and reconcile keeps each layer mounted. */
@@ -800,13 +968,17 @@ async function stepDsh(installOptions: InstallOptions): Promise<void> {
   const spec = fromCheckout ? `link:${root}` : `npm:${PACKAGE_NAME}@${PACKAGE_VERSION}`;
   const profiles = dshCliProfiles();
   if (installOptions.dryRun) {
-    console.log(`  [dry-run] would run: dsh plugin --profile <${profiles.join(',') || 'none'}> add ${spec} for every CLI profile`);
+    console.log(
+      `  [dry-run] would run: dsh plugin --profile <${profiles.join(',') || 'none'}> add ${spec} for every CLI profile`,
+    );
   } else {
     for (const profile of profiles) {
       const mount = [...dshRunner(), 'plugin', '--profile', profile, 'add', spec];
       await execP(mount[0], mount.slice(1), { timeout: 300_000, cwd: homeDir() });
       if (!dshProfileBundles(profile).includes(PACKAGE_NAME)) {
-        throw new Error(`the dsh ${profile} profile did not mount the tersio bundle — the installed release must ship the dsh bundle field`);
+        throw new Error(
+          `the dsh ${profile} profile did not mount the tersio bundle — the installed release must ship the dsh bundle field`,
+        );
       }
       if (!installOptions.quiet) console.log(`  DeepSeek Harness — tersio bundle mounted in the ${profile} profile`);
       // A GUI launch inherits no shell PATH, so the MCP row gets the binary that exists, not the name.
@@ -818,7 +990,9 @@ async function stepDsh(installOptions: InstallOptions): Promise<void> {
   }
   // The Electron app owns its desktop profile and refuses CLI writes; its Plugins pane is the install path.
   if (dshDesktopProfilePresent() && !installOptions.quiet) {
-    console.log(`  DeepSeek Harness (desktop app) — add ${PACKAGE_NAME} from Plugins → Add plugin, then restart the app`);
+    console.log(
+      `  DeepSeek Harness (desktop app) — add ${PACKAGE_NAME} from Plugins → Add plugin, then restart the app`,
+    );
   }
 }
 
@@ -829,7 +1003,8 @@ async function stepDsh(installOptions: InstallOptions): Promise<void> {
 async function stepCodex(options: InstallOptions): Promise<void> {
   const codex = resolveCodexBinary();
   if (!codex) throw new Error('codex not found — install Codex CLI or the ChatGPT desktop app first');
-  if (!existsSync(codexPackagedPluginDir())) throw new Error(`packaged Codex plugin missing: ${codexPackagedPluginDir()}`);
+  if (!existsSync(codexPackagedPluginDir()))
+    throw new Error(`packaged Codex plugin missing: ${codexPackagedPluginDir()}`);
   const root = codexLocalMarketplaceRoot();
 
   const removePlugin = ['plugin', 'remove', CODEX_PLUGIN_ID, '--json'];
@@ -867,7 +1042,9 @@ async function stepCodex(options: InstallOptions): Promise<void> {
 
   const state = installedCodexPlugin();
   if (!state.complete || !state.enabled) {
-    throw new Error(`Codex did not enable ${CODEX_PLUGIN_ID}${state.missing.length ? ` (missing: ${state.missing.join(', ')})` : ''}`);
+    throw new Error(
+      `Codex did not enable ${CODEX_PLUGIN_ID}${state.missing.length ? ` (missing: ${state.missing.join(', ')})` : ''}`,
+    );
   }
   // Current Codex removed plugin-declared hooks, so the copy inside the plugin never runs. The
   // user-level file is the only surface that does, and it is the one rtk and headroom also use.
@@ -924,7 +1101,9 @@ async function runInstall(forcedHost?: HostId): Promise<void> {
     if (typeof newer === 'string') {
       // Update pending: offer it here; yes runs the full update and stops.
       if (command === null && !dryRun && !yes && !updatePromptDone) {
-        const answer = await askInteractiveConfirm(`tersio ${newer} is available (installed ${PACKAGE_VERSION}). Install it now?`);
+        const answer = await askInteractiveConfirm(
+          `tersio ${newer} is available (installed ${PACKAGE_VERSION}). Install it now?`,
+        );
         if (answer.status === 'confirmed' && answer.value) {
           await runLatestUpdate();
           closeRL();
@@ -942,7 +1121,10 @@ async function runInstall(forcedHost?: HostId): Promise<void> {
   }
 
   // Resolve session defaults: flags > interactive prompt > defaults; a named host reads its own section first.
-  const { profile, choseDefaults, chosenFields } = await resolveProfile({ quiet, host: hostExplicit ? targetHost : null });
+  const { profile, choseDefaults, chosenFields } = await resolveProfile({
+    quiet,
+    host: hostExplicit ? targetHost : null,
+  });
   // The optional Headroom prompt comes right after the combo preset. With a chosen host the enable rides that agent's own section; a bare install has no section to ride, so the shared default carries it.
   const headroomEnabled = await maybeInstallHeadroom(profile, quiet, targetHost);
   if (headroomEnabled) {
@@ -966,20 +1148,25 @@ async function runInstall(forcedHost?: HostId): Promise<void> {
   // Point of no return: disk writes start here; pipes stay unattended.
   if (!yes && !dryRun && !applyUpdate && tty()) {
     const target = hostEntry(targetHost);
-    const where = targetHost === 'pi'
-      ? path.join(piAgentDir(), 'extensions')
-      : targetHost === 'pig'
-        ? path.join(pigAgentDir(), 'extensions')
-        : targetHost === 'opencode'
-          ? path.join(HOME, '.config', 'opencode', 'plugins', 'tersio')
-          : targetHost === 'dsh'
-            ? path.join(dshHome(), 'profiles', 'web')
-            : targetHost === 'codex'
-              ? path.join(codexLocalMarketplaceRoot(), 'plugins', 'tersio')
-            : path.join(OMP_AGENT_DIR, 'extensions');
+    const where =
+      targetHost === 'pi'
+        ? path.join(piAgentDir(), 'extensions')
+        : targetHost === 'pig'
+          ? path.join(pigAgentDir(), 'extensions')
+          : targetHost === 'opencode'
+            ? path.join(HOME, '.config', 'opencode', 'plugins', 'tersio')
+            : targetHost === 'dsh'
+              ? path.join(dshHome(), 'profiles', 'web')
+              : targetHost === 'codex'
+                ? path.join(codexLocalMarketplaceRoot(), 'plugins', 'tersio')
+                : path.join(OMP_AGENT_DIR, 'extensions');
     console.log(`\nWill install into ${target.label}:`);
     console.log(`  ${where}`);
-    console.log(targetHost === 'codex' ? '  caveman · ponytail · pstack session modes' : '  caveman · rtk · ponytail session modes');
+    console.log(
+      targetHost === 'codex'
+        ? '  caveman · ponytail · pstack session modes'
+        : '  caveman · rtk · ponytail session modes',
+    );
     console.log(`  session defaults → ${tersioSettingsFile()}`);
     const go = await askInteractiveConfirm(`Are you sure you want to install Tersio into ${target.label}?`);
     if (go.status !== 'confirmed' || !go.value) {
@@ -994,7 +1181,7 @@ async function runInstall(forcedHost?: HostId): Promise<void> {
       const v = (await execP(OMP_BIN, ['--version'])).stdout.trim();
       if (verbose && !quiet) console.log(`  omp ${v}`);
     } catch {
-      if (targetHost === 'omp') console.log('  [fail] omp not found — ensure it\'s installed');
+      if (targetHost === 'omp') console.log("  [fail] omp not found — ensure it's installed");
     }
   }
   if (targetHost === 'pig') {
@@ -1002,7 +1189,7 @@ async function runInstall(forcedHost?: HostId): Promise<void> {
       const v = (await execP('pig', ['--version'])).stdout.trim();
       if (verbose && !quiet) console.log(`  pig ${v}`);
     } catch {
-      console.log('  [fail] pig not found — ensure it\'s installed');
+      console.log("  [fail] pig not found — ensure it's installed");
     }
   }
   // One MCP server for every host: retrieval, modes, and stats share `tersio mcp`.
@@ -1031,7 +1218,12 @@ async function runInstall(forcedHost?: HostId): Promise<void> {
   const writeHostSettings = async (headroomOn: boolean, saveDefaults = true): Promise<void> => {
     await writePluginSettings(profile, installOptions, { keepSharedModes: hostExplicit });
     if (saveDefaults && hostExplicit && (choseDefaults || headroomEnabled)) {
-      await saveHostDefaults(targetHost, chosenFields, headroomOn ? { ...profile, headroomDefault: 'on' } : profile, installOptions);
+      await saveHostDefaults(
+        targetHost,
+        chosenFields,
+        headroomOn ? { ...profile, headroomDefault: 'on' } : profile,
+        installOptions,
+      );
     }
   };
   const finishHost = (hint: string): void => {
@@ -1058,7 +1250,9 @@ async function runInstall(forcedHost?: HostId): Promise<void> {
 
   if (targetHost === 'dsh') {
     if (!dshPresent()) {
-      console.log('  [fail] DeepSeek Harness not found — install its CLI (dsh), the desktop app, or use npx @deepseek-ai/dsh');
+      console.log(
+        '  [fail] DeepSeek Harness not found — install its CLI (dsh), the desktop app, or use npx @deepseek-ai/dsh',
+      );
       closeRL();
       return;
     }
@@ -1085,7 +1279,9 @@ async function runInstall(forcedHost?: HostId): Promise<void> {
   }
 
   let selfPlugin = false;
-  await capture('self-plugin', async () => { selfPlugin = await stepSelfPlugin(OMP_PLUGINS_DIR, installOptions); });
+  await capture('self-plugin', async () => {
+    selfPlugin = await stepSelfPlugin(OMP_PLUGINS_DIR, installOptions);
+  });
   await capture('ponytail', () => stepPonytail(OMP_PLUGINS_DIR, installOptions));
   await capture('rtk', () => stepRtk(installOptions));
 
@@ -1093,7 +1289,10 @@ async function runInstall(forcedHost?: HostId): Promise<void> {
   const pluginExtDir = path.join(OMP_PLUGINS_DIR, 'node_modules', '@krtclcdy', 'tersio', 'extensions');
   const ownsTree = selfPlugin || dryRun;
   const extDir = ownsTree ? pluginExtDir : userExtDir;
-  if (!quiet) console.log(`  Add-ons load from: ${ownsTree ? 'the OMP plugin manifest' : 'the agent tree (plugin registration failed)'}`);
+  if (!quiet)
+    console.log(
+      `  Add-ons load from: ${ownsTree ? 'the OMP plugin manifest' : 'the agent tree (plugin registration failed)'}`,
+    );
 
   await capture('shared', () => stepSharedSessionState(extDir, installOptions));
   await capture('rtk session', () => stepRtkSession(extDir, installOptions));
@@ -1112,9 +1311,14 @@ async function runInstall(forcedHost?: HostId): Promise<void> {
   if (selfPlugin) await capture('settings', () => writeHostSettings(headroomEnabled));
 
   if (quiet) {
-    if (failures.length > 0) console.log(`  add-ons: ${failures.length} failed (${failures.join(', ')}) — see [fail] lines above`);
+    if (failures.length > 0)
+      console.log(`  add-ons: ${failures.length} failed (${failures.join(', ')}) — see [fail] lines above`);
   } else {
-    console.log(failures.length === 0 ? comboHint('OMP', profile.comboDefault) : `\nDone with ${failures.length} failure(s) — see [fail] lines above.`);
+    console.log(
+      failures.length === 0
+        ? comboHint('OMP', profile.comboDefault)
+        : `\nDone with ${failures.length} failure(s) — see [fail] lines above.`,
+    );
   }
 
   closeRL();

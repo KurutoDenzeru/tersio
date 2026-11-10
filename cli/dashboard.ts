@@ -21,40 +21,97 @@ import { handleBenchRoutes } from './dashboard-bench.ts';
 import { handleHeadroomRoutes } from './dashboard-headroom.ts';
 import { handleVendorRoutes } from './dashboard-vendor.ts';
 import { handleHostRoutes } from './dashboard-hosts.ts';
+import { OMP_AGENT_DIR, OMP_PLUGINS_DIR, PACKAGE_VERSION } from './common.ts';
 import {
-  OMP_AGENT_DIR, OMP_PLUGINS_DIR, PACKAGE_VERSION,
-} from './common.ts';
-import { BACKUP_SCHEDULES, applyComboPreset, clampSidebarWidth, comboLevelOf, formatCliStatus, RETENTION_DAYS, saveHostDefaults, storedProfile, writePluginSettings } from './profile.ts';
+  BACKUP_SCHEDULES,
+  applyComboPreset,
+  clampSidebarWidth,
+  comboLevelOf,
+  formatCliStatus,
+  RETENTION_DAYS,
+  saveHostDefaults,
+  storedProfile,
+  writePluginSettings,
+} from './profile.ts';
 import { readState } from '../extensions/shared/state.ts';
 import { REMOTE_MARKS } from '../extensions/shared/brand-marks.ts';
 import { setUpdatePrefs, startApply, startCheck, startUpdateWatch, updateView } from './dashboard-update.ts';
 import type { UpdatePrefs } from './dashboard-update.ts';
 import type { BackupSchedule, HostDefaultField } from './profile.ts';
 import { normalizeComboLevel } from '../extensions/shared/session-state.ts';
-import { ACCENT_DEFAULTS, CAVEMAN_DEFAULTS, COMBO_PRESET_MODES, HEADROOM_DEFAULTS, PONYTAIL_DEFAULTS, PSTACK_DEFAULTS } from './common.ts';
+import {
+  ACCENT_DEFAULTS,
+  CAVEMAN_DEFAULTS,
+  COMBO_PRESET_MODES,
+  HEADROOM_DEFAULTS,
+  PONYTAIL_DEFAULTS,
+  PSTACK_DEFAULTS,
+} from './common.ts';
 import { PACKAGE_NAME } from './common.ts';
 import { detectHosts, dshHome, dshPresent, dshVersionBinary, hostExtensionsDir } from './hosts.ts';
 import { checkHostTrees } from './host-tree.ts';
-import { findPackageRoot, homeDir, openCommand, resolveCodexBinary, resolveHeadroomBinary, resolveHostBinary, resolveRtkBinary, ruleBodyProblem, tersioHome } from '../extensions/shared/utils.ts';
+import {
+  findPackageRoot,
+  homeDir,
+  openCommand,
+  resolveCodexBinary,
+  resolveHeadroomBinary,
+  resolveHostBinary,
+  resolveRtkBinary,
+  ruleBodyProblem,
+  tersioHome,
+} from '../extensions/shared/utils.ts';
 import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
 import { codexHome } from '../extensions/shared/codex-state.ts';
 import { tersioMcpConfigured, tersioMcpSupported } from '../extensions/shared/mcp-config.ts';
-import { BACKUP_KEEP, backupDir, backupDiskBytes, createDataBackup, dataSources, deleteDataBackup, listDataBackups, restoreDataBackup } from '../extensions/shared/snapshots.ts';
-import { applyTarget, emptyConfig, listSyncVersions, publicFields, readSync, restoreSync, runSync, saveSync, syncTarget, testTarget } from './dashboard-sync.ts';
+import {
+  BACKUP_KEEP,
+  backupDir,
+  backupDiskBytes,
+  createDataBackup,
+  dataSources,
+  deleteDataBackup,
+  listDataBackups,
+  restoreDataBackup,
+} from '../extensions/shared/snapshots.ts';
+import {
+  applyTarget,
+  emptyConfig,
+  listSyncVersions,
+  publicFields,
+  readSync,
+  restoreSync,
+  runSync,
+  saveSync,
+  syncTarget,
+  testTarget,
+} from './dashboard-sync.ts';
 import { remoteFor } from '../extensions/shared/sync-remote.ts';
-import { CAVEMAN_PIN, PSTACK_PIN, cachedScorecard, cachedScorecardSync, refreshScorecard, upstreamHistory } from './upstream.ts';
+import {
+  CAVEMAN_PIN,
+  PSTACK_PIN,
+  cachedScorecard,
+  cachedScorecardSync,
+  refreshScorecard,
+  upstreamHistory,
+} from './upstream.ts';
 import { resetCounts, resetStatistics } from './reset.ts';
 
 import { readBackupSchedule } from '../extensions/shared/usage-store.ts';
-import { emptyRequestEntry, isAgentView, isRangeKey, readAgentRequestEntry, readSessionTrace } from '../extensions/shared/agent-stats.ts';
+import {
+  emptyRequestEntry,
+  isAgentView,
+  isRangeKey,
+  readAgentRequestEntry,
+  readSessionTrace,
+} from '../extensions/shared/agent-stats.ts';
 import { agentStats, DEFAULT_AGENT_RANGE } from '../extensions/shared/agent-snapshot.ts';
 import type { AgentView, RangeKey } from '../extensions/shared/agent-types.ts';
-
 
 /** The listen address: every interface by default, so a phone can open it. `local` keeps it loopback. */
 export function resolveBind(bind?: string | null): string {
   const value = (bind ?? '').trim().toLowerCase();
-  if (value === '' ) return '0.0.0.0';
+  if (value === '') return '0.0.0.0';
   if (value === 'local' || value === 'loopback' || value === 'localhost' || value === '127.0.0.1') return '127.0.0.1';
   if (value === 'lan' || value === 'all' || value === '*' || value === '0.0.0.0') return '0.0.0.0';
   if (value === '::' || value === '::1') return value;
@@ -75,7 +132,11 @@ export function lanUrls(port: number, host: string): string[] {
 }
 
 /** One mode's shipped version against the newest upstream the last check saw; null when no check ran. */
-interface ModeVersion { installed: string | null; upstream: string | null; outdated: boolean | null }
+interface ModeVersion {
+  installed: string | null;
+  upstream: string | null;
+  outdated: boolean | null;
+}
 
 /**
  * The version inside a tool's own line: `rtk 1.1.0` and `v1.2.3` both read as `1.1.0` and `1.2.3`.
@@ -83,7 +144,10 @@ interface ModeVersion { installed: string | null; upstream: string | null; outda
  */
 function bare(value: string | null | undefined): string | null {
   if (!value || value === 'unknown' || value === 'HEAD') return null;
-  const tail = value.trim().replace(/^[a-z][a-z-]*\s+(?=\d)/i, '').replace(/^v(?=\d)/i, '');
+  const tail = value
+    .trim()
+    .replace(/^[a-z][a-z-]*\s+(?=\d)/i, '')
+    .replace(/^v(?=\d)/i, '');
   // An installed value that is already a short SHA stays short; a full one is trimmed to compare.
   return tail.trim() || null;
 }
@@ -102,7 +166,11 @@ function sameRelease(mine: string, theirs: string): boolean {
 function modeVersion(installed: string | null, upstream: string | null): ModeVersion {
   const mine = bare(installed);
   const theirs = bare(upstream);
-  return { installed: mine, upstream: theirs, outdated: mine !== null && theirs !== null ? !sameRelease(mine, theirs) : null };
+  return {
+    installed: mine,
+    upstream: theirs,
+    outdated: mine !== null && theirs !== null ? !sameRelease(mine, theirs) : null,
+  };
 }
 
 /** The per-mode versions the canvas badges read, from the shipped pins and the last scorecard. */
@@ -122,7 +190,12 @@ function modeVersions(rtk: string | null, headroom: string | null): Record<strin
 /** The ponytail version this build vendors, read from its package; null when the tree is absent. */
 function ponytailVersion(): string | null {
   try {
-    const pkg = path.join(findPackageRoot(path.dirname(fileURLToPath(import.meta.url))), 'extensions', 'ponytail', 'package.json');
+    const pkg = path.join(
+      findPackageRoot(path.dirname(fileURLToPath(import.meta.url))),
+      'extensions',
+      'ponytail',
+      'package.json',
+    );
     return (JSON.parse(readFileSync(pkg, 'utf8')) as { version?: string }).version ?? null;
   } catch {
     return null;
@@ -171,7 +244,12 @@ async function brandDataUri(): Promise<string> {
 
 /** `?range=` on any of the omp routes; an unknown value falls back to the default. */
 function queryParam(url: string, name: string): string | null {
-  return (url.split('?')[1] ?? '').split('&').find((part) => part.startsWith(`${name}=`))?.slice(name.length + 1) ?? null;
+  return (
+    (url.split('?')[1] ?? '')
+      .split('&')
+      .find((part) => part.startsWith(`${name}=`))
+      ?.slice(name.length + 1) ?? null
+  );
 }
 
 function rangeFrom(url: string): RangeKey {
@@ -226,7 +304,11 @@ export function isVendorTool(tool: string): tool is 'headroom' {
 }
 
 /** The one Headroom install job, so the Tools page can poll until the binary appears or the pip run fails. */
-const headroomJob: { startedAt: number; code: number | null; error: string | null } = { startedAt: 0, code: null, error: null };
+const headroomJob: { startedAt: number; code: number | null; error: string | null } = {
+  startedAt: 0,
+  code: null,
+  error: null,
+};
 /** pip's stderr stays in memory for this run, then its tail lands in the activity log a failure reads. */
 const HEADROOM_LOG_CAP = 16 * 1024;
 let headroomStderr = '';
@@ -270,7 +352,12 @@ function spawnHeadroomInstall(): boolean {
       // The failing output is the one thing worth keeping, so it goes where the Logs page already reads.
       recordActivity('agent', 'Headroom install output', headroomJob.error.slice(-1500), false);
     }
-    recordActivity('agent', `Headroom install ${ok ? 'finished' : 'failed'}`, ok ? undefined : headroomJob.error?.split('\n')[0], ok);
+    recordActivity(
+      'agent',
+      `Headroom install ${ok ? 'finished' : 'failed'}`,
+      ok ? undefined : headroomJob.error?.split('\n')[0],
+      ok,
+    );
   });
   child.on('error', (error) => {
     headroomJob.code = -1;
@@ -343,7 +430,11 @@ function agentVersion(bin: string | null): string | null {
   try {
     if (process.platform === 'win32') {
       const exe = process.env.ComSpec || 'cmd.exe';
-      const out = execFileSync(exe, ['/d', '/s', '/c', bin, '--version'], { encoding: 'utf8', timeout: 5000, windowsHide: true });
+      const out = execFileSync(exe, ['/d', '/s', '/c', bin, '--version'], {
+        encoding: 'utf8',
+        timeout: 5000,
+        windowsHide: true,
+      });
       return out.trim() ? versionLabel(path.basename(bin), out) : null;
     }
     const out = execFileSync(bin, ['--version'], { encoding: 'utf8', timeout: 5000, windowsHide: true });
@@ -355,7 +446,11 @@ function agentVersion(bin: string | null): string | null {
 
 function rtkVersion(bin: string): string | null {
   try {
-    return execFileSync(bin, ['--version'], { encoding: 'utf8', timeout: 5000, windowsHide: true }).trim().split(/\r?\n/)[0] || null;
+    return (
+      execFileSync(bin, ['--version'], { encoding: 'utf8', timeout: 5000, windowsHide: true })
+        .trim()
+        .split(/\r?\n/)[0] || null
+    );
   } catch {
     return null;
   }
@@ -422,8 +517,16 @@ export function healthJson(): string {
     dshPath: detectedDshPath,
     dshDir: agentDir('dsh'),
     provider: ompDefaultModel(),
-    rtk: { present: rtkPresent, version: rtkPresent ? rtkVersion(rtkBin as string) : null, path: rtkBin || 'not found in PATH' },
-    headroom: { present: headroomPresent, version: headroomPresent ? headroomVersion(headroomBin as string) : null, path: headroomBin || 'not found in PATH' },
+    rtk: {
+      present: rtkPresent,
+      version: rtkPresent ? rtkVersion(rtkBin as string) : null,
+      path: rtkBin || 'not found in PATH',
+    },
+    headroom: {
+      present: headroomPresent,
+      version: headroomPresent ? headroomVersion(headroomBin as string) : null,
+      path: headroomBin || 'not found in PATH',
+    },
     // The shipped-build pins: what this dashboard's own tree carries, not what upstream released.
     modes: { caveman: CAVEMAN_PIN.replace(/^v/, ''), ponytail: ponytailVersion(), pstack: null },
     modeVersions: modeVersions(
@@ -438,9 +541,20 @@ function tersioHomePath(): string {
   return path.join(homeDir(), '.tersio');
 }
 
-interface DoctorRow { label: string; ok: boolean; detail: string; group: string; neutral?: boolean; warn?: boolean; host?: string }
+interface DoctorRow {
+  label: string;
+  ok: boolean;
+  detail: string;
+  group: string;
+  neutral?: boolean;
+  warn?: boolean;
+  host?: string;
+}
 
-interface DoctorReport { rows: DoctorRow[]; checkedAt: number }
+interface DoctorReport {
+  rows: DoctorRow[];
+  checkedAt: number;
+}
 
 function ageStr(p: string): string | null {
   try {
@@ -500,7 +614,14 @@ function computeDoctorRows(): DoctorRow[] {
   // A missing host is not a fault: it stays visible with no install command and no fix prompt.
   for (const host of detectHosts()) {
     const row = (ok: boolean, detail: string, neutral = false): void => {
-      rows.push({ label: host.label, ok, detail, group: 'Hosts', host: host.id, ...(neutral ? { neutral: true } : {}) });
+      rows.push({
+        label: host.label,
+        ok,
+        detail,
+        group: 'Hosts',
+        host: host.id,
+        ...(neutral ? { neutral: true } : {}),
+      });
     };
     if (!host.installed) {
       const leftover = host.id !== 'dsh' && host.id !== 'codex' && existsSync(hostExtensionsDir(host.id));
@@ -513,11 +634,21 @@ function computeDoctorRows(): DoctorRow[] {
     const name = host.via === 'plugin' ? 'tersio' : PACKAGE_NAME;
     row(true, `${kind} ${name}${host.version ? ` ${host.version}` : ''}`);
     if (host.id === 'omp' && host.version && host.version !== PACKAGE_VERSION) {
-      warning('Oh My Pi plugin version', `v${host.version} while this CLI is v${PACKAGE_VERSION} — run: tersio install --host omp`, host.id);
+      warning(
+        'Oh My Pi plugin version',
+        `v${host.version} while this CLI is v${PACKAGE_VERSION} — run: tersio install --host omp`,
+        host.id,
+      );
     }
     // Declining the MCP entry at install is allowed, so this row informs without counting as a fault.
     if (!tersioMcpConfigured(host.id)) {
-      warning(`${host.label} MCP`, tersioMcpSupported(host.id) ? `MCP server not wired — tersio install --host ${host.id}` : 'MCP entry missing from the bundle patch', host.id);
+      warning(
+        `${host.label} MCP`,
+        tersioMcpSupported(host.id)
+          ? `MCP server not wired — tersio install --host ${host.id}`
+          : 'MCP entry missing from the bundle patch',
+        host.id,
+      );
     }
   }
   const scorecard = cachedScorecardSync();
@@ -532,18 +663,34 @@ function computeDoctorRows(): DoctorRow[] {
   // The body carries no version, so the release it came from is the number: the pinned one, or the one a pull recorded.
   const cavemanRelease = (readState().cavemanUpstream?.tag ?? CAVEMAN_PIN).replace(/^v/, '');
   const cavemanPin = upstreamPin('Caveman', cavemanRelease);
-  addon('🪨 Caveman rule', ruleAge !== null, ruleAge && ruleAt ? `${cavemanPin} (updated ${ruleAge} · ${ruleAt})` : rule);
+  addon(
+    '🪨 Caveman rule',
+    ruleAge !== null,
+    ruleAge && ruleAt ? `${cavemanPin} (updated ${ruleAge} · ${ruleAt})` : rule,
+  );
   // The pstack body is a Tersio fork with no remote, so this row proves it is usable, not current.
   const pstackRule = path.join(tersioPluginDir, 'extensions', 'pstack', 'rule.md');
   let pstackProblem: string | null = 'missing — run: tersio install';
-  try { pstackProblem = ruleBodyProblem(readFileSync(pstackRule, 'utf8')); } catch { /* missing stays */ }
+  try {
+    pstackProblem = ruleBodyProblem(readFileSync(pstackRule, 'utf8'));
+  } catch {
+    /* missing stays */
+  }
   const pstackAge = ageStr(pstackRule);
   const pstackAt = absTime(pstackRule);
-  addon('🥔 pstack', pstackProblem === null, pstackProblem ?? `${upstreamPin('pstack', PSTACK_PIN.slice(0, 7))} (updated ${pstackAge} · ${pstackAt})`);
+  addon(
+    '🥔 pstack',
+    pstackProblem === null,
+    pstackProblem ?? `${upstreamPin('pstack', PSTACK_PIN.slice(0, 7))} (updated ${pstackAge} · ${pstackAt})`,
+  );
   const rtkVer = rtkBin ? rtkVersion(rtkBin) : null;
   const rtkAge = rtkBin ? ageStr(rtkBin) : null;
   const rtkAt = rtkBin ? absTime(rtkBin) : null;
-  addon('🗜️ RTK binary', rtkVer !== null, rtkVer && rtkAge && rtkAt ? `${rtkVer} (updated ${rtkAge} · ${rtkAt})` : rtkBin || 'not found in PATH');
+  addon(
+    '🗜️ RTK binary',
+    rtkVer !== null,
+    rtkVer && rtkAge && rtkAt ? `${rtkVer} (updated ${rtkAge} · ${rtkAt})` : rtkBin || 'not found in PATH',
+  );
   // Opt-in and user-owned: the row reports the binary when it exists and stays quiet when it does not.
   const headroomBin = resolveHeadroomBinary();
   if (headroomBin) addon('🍃 Headroom binary', true, headroomVersion(headroomBin) ?? headroomBin);
@@ -552,15 +699,42 @@ function computeDoctorRows(): DoctorRow[] {
   let ponytailVer: string | null = null;
   try {
     ponytailVer = (JSON.parse(readFileSync(ponytailPkg, 'utf8')) as { version?: string }).version ?? null;
-  } catch { ponytailVer = null; }
+  } catch {
+    ponytailVer = null;
+  }
   const ponytailAge = ageStr(ponytailPkg);
   const ponytailAt = absTime(ponytailPkg);
-  addon('🧠 Ponytail', ponytailVer !== null, ponytailVer && ponytailAge && ponytailAt ? `${ponytailVer} (updated ${ponytailAge} · ${ponytailAt})` : ponytailPkg);
-  const tree = checkHostTrees(detectHosts().filter((host) => host.installed && host.id !== 'codex'), path.join(tersioPluginDir, 'extensions'));
-  if (tree.stale.length > 0) warning('Per-host add-on files', `stale in ${tree.stale.length} file${tree.stale.length === 1 ? '' : 's'}: ${listed(tree.stale)} — run: tersio install --host <host>`);
-  if (tree.missing.length > 0) warning('Per-host add-on files', `never installed in ${tree.missing.length} file${tree.missing.length === 1 ? '' : 's'}: ${listed(tree.missing)} — run: tersio install --host <host>`);
-  if (tree.orphan.length > 0) warning('Per-host add-on files', `orphaned in ${tree.orphan.length} file${tree.orphan.length === 1 ? '' : 's'}: ${listed(tree.orphan)} — run: tersio doctor --fix extensions`);
-  if (tree.unwritten.length > 0) addon('Add-on tree content', false, `${tree.unwritten.length} declared file${tree.unwritten.length === 1 ? '' : 's'} not written for a host reading as installed: ${listed(tree.unwritten)} — run: tersio doctor --fix extensions`, 'Issues');
+  addon(
+    '🧠 Ponytail',
+    ponytailVer !== null,
+    ponytailVer && ponytailAge && ponytailAt ? `${ponytailVer} (updated ${ponytailAge} · ${ponytailAt})` : ponytailPkg,
+  );
+  const tree = checkHostTrees(
+    detectHosts().filter((host) => host.installed && host.id !== 'codex'),
+    path.join(tersioPluginDir, 'extensions'),
+  );
+  if (tree.stale.length > 0)
+    warning(
+      'Per-host add-on files',
+      `stale in ${tree.stale.length} file${tree.stale.length === 1 ? '' : 's'}: ${listed(tree.stale)} — run: tersio install --host <host>`,
+    );
+  if (tree.missing.length > 0)
+    warning(
+      'Per-host add-on files',
+      `never installed in ${tree.missing.length} file${tree.missing.length === 1 ? '' : 's'}: ${listed(tree.missing)} — run: tersio install --host <host>`,
+    );
+  if (tree.orphan.length > 0)
+    warning(
+      'Per-host add-on files',
+      `orphaned in ${tree.orphan.length} file${tree.orphan.length === 1 ? '' : 's'}: ${listed(tree.orphan)} — run: tersio doctor --fix extensions`,
+    );
+  if (tree.unwritten.length > 0)
+    addon(
+      'Add-on tree content',
+      false,
+      `${tree.unwritten.length} declared file${tree.unwritten.length === 1 ? '' : 's'} not written for a host reading as installed: ${listed(tree.unwritten)} — run: tersio doctor --fix extensions`,
+      'Issues',
+    );
   rows.push(...warnings);
   return rows;
 }
@@ -575,127 +749,141 @@ function getDoctorReport(): DoctorReport {
 // Writes serialize: every call re-reads the profile inside the queue, so two overlapping requests (a sidebar drag racing a toggle) can never write whole profiles from stale snapshots.
 let profileWriteQueue: Promise<unknown> = Promise.resolve();
 
-function saveDefaults(body: Record<string, unknown>): Promise<
-  { ok: true; profile: Record<string, unknown> } | { ok: false; error: string }
-> {
-  const run = async (): Promise<
-    { ok: true; profile: Record<string, unknown> } | { ok: false; error: string }
-  > => {
-  const HOST_SCOPES = ['omp', 'pi', 'opencode', 'pig', 'dsh', 'codex'] as const;
-  const hostScope = typeof body.host === 'string' && (HOST_SCOPES as readonly string[]).includes(body.host)
-    ? body.host as (typeof HOST_SCOPES)[number]
-    : null;
-  if (body.host !== undefined && hostScope === null) return { ok: false, error: 'unknown host scope' };
-  const profile = await storedProfile(hostScope);
-  const events: string[] = [];
-  // A host scope carries only the mode fields the request changed; non-mode fields stay global-only.
-  const changedFields: HostDefaultField[] = [];
-  // `inherit` describes one agent's section; a shared write has nothing to hand the value back to.
-  const inherited = ['comboDefault', 'cavemanDefault', 'rtkDefault', 'ponytailDefault', 'pstackDefault', 'headroomDefault']
-    .filter((key) => String(body[key]) === 'inherit');
-  if (inherited.length > 0 && !body.host) return { ok: false, error: 'inherit applies to one agent — pass a host' };
-  if (String(body.comboDefault) === 'inherit') {
-    // SAFETY: the typed profile omits 'inherit', but the request validated it above and the shared store accepts it.
-    Object.assign(profile as unknown as Record<string, unknown>, { comboDefault: 'inherit', cavemanDefault: 'inherit', rtkDefault: 'inherit', ponytailDefault: 'inherit' });
-    events.push('Combo back to the shared defaults');
-    changedFields.push('comboDefault', 'cavemanDefault', 'rtkDefault', 'ponytailDefault');
-  } else if (body.comboDefault !== undefined) {
-    const level = normalizeComboLevel(body.comboDefault);
-    // A preset level only: `custom` is what the three modes say, never a level to write.
-    if (!level || !Object.hasOwn(COMBO_PRESET_MODES, level)) return { ok: false, error: 'unknown combo level' };
-    Object.assign(profile, applyComboPreset(profile, level));
-    events.push(`Combo preset to ${level}`);
-    changedFields.push('comboDefault', 'cavemanDefault', 'rtkDefault', 'ponytailDefault');
-  }
-  if (body.cavemanDefault !== undefined) {
-    const v = String(body.cavemanDefault);
-    if (v !== 'inherit' && !CAVEMAN_DEFAULTS.has(v)) return { ok: false, error: 'unknown caveman level' };
-    profile.cavemanDefault = v;
-    events.push(`Caveman to ${v}`);
-    if (!changedFields.includes('cavemanDefault')) changedFields.push('cavemanDefault');
-  }
-  if (body.ponytailDefault !== undefined) {
-    const v = String(body.ponytailDefault);
-    if (v !== 'inherit' && !PONYTAIL_DEFAULTS.has(v)) return { ok: false, error: 'unknown ponytail level' };
-    profile.ponytailDefault = v;
-    events.push(`Ponytail to ${v}`);
-    if (!changedFields.includes('ponytailDefault')) changedFields.push('ponytailDefault');
-  }
-  if (body.pstackDefault !== undefined) {
-    const v = String(body.pstackDefault);
-    if (v !== 'inherit' && !PSTACK_DEFAULTS.has(v)) return { ok: false, error: 'unknown pstack level' };
-    profile.pstackDefault = v;
-    events.push(`pstack to ${v}`);
-    changedFields.push('pstackDefault');
-  }
-  if (body.headroomDefault !== undefined) {
-    const v = String(body.headroomDefault);
-    if (v !== 'inherit' && !HEADROOM_DEFAULTS.has(v)) return { ok: false, error: 'unknown headroom level' };
-    profile.headroomDefault = v;
-    events.push(`Headroom to ${v}`);
-    changedFields.push('headroomDefault');
-  }
-  if (body.backupSchedule !== undefined) {
-    const v = String(body.backupSchedule);
-    if (!BACKUP_SCHEDULES.has(v)) return { ok: false, error: 'unknown backup schedule' };
-    profile.backupSchedule = v as BackupSchedule;
-  }
-  if (body.retentionDays !== undefined) {
-    const v = Number(body.retentionDays);
-    if (!RETENTION_DAYS.has(v)) return { ok: false, error: 'unknown retention window' };
-    profile.retentionDays = v;
-  }
-  if (body.rtkDefault !== undefined) {
-    if (body.rtkDefault !== 'inherit' && typeof body.rtkDefault !== 'boolean') return { ok: false, error: 'rtk default must be true, false, or inherit' };
-    // SAFETY: rtkDefault is validated above as a boolean or the literal 'inherit', which the store accepts.
-    (profile as unknown as Record<string, unknown>).rtkDefault = body.rtkDefault;
-    events.push(body.rtkDefault === 'inherit' ? 'RTK back to the shared default' : `RTK to ${body.rtkDefault ? 'on' : 'off'}`);
-    changedFields.push('rtkDefault');
-  }
-  if (body.devTools !== undefined) {
-    if (typeof body.devTools !== 'boolean') return { ok: false, error: 'devTools must be true or false' };
-    profile.devTools = body.devTools;
-  }
-  if (body.accent !== undefined) {
-    const v = String(body.accent);
-    if (!ACCENT_DEFAULTS.has(v)) return { ok: false, error: 'unknown accent' };
-    profile.accent = v;
-    events.push(`Accent to ${v}`);
-  }
-  if (body.sidebarOpen !== undefined) {
-    if (typeof body.sidebarOpen !== 'boolean') return { ok: false, error: 'sidebarOpen must be true or false' };
-    profile.sidebarOpen = body.sidebarOpen;
-  }
-  if (body.sidebarWidth !== undefined) {
-    if (typeof body.sidebarWidth !== 'number') return { ok: false, error: 'sidebarWidth must be a number' };
-    // A drag changes it often, so it is saved without an activity line.
-    profile.sidebarWidth = clampSidebarWidth(body.sidebarWidth);
-  }
-  // A host scope writes only the mode fields the request changed; non-mode fields are global-only and never host-scoped.
-  if (hostScope) {
-    if (changedFields.length > 0) await saveHostDefaults(hostScope, changedFields, profile, {});
-  } else {
-    await writePluginSettings(profile, {});
-  }
-  for (const title of events) recordActivity('mode', title, hostScope ? `Applies to new ${hostScope} sessions.` : 'Applies to new sessions.');
-  return {
-    ok: true,
-    profile: {
-      comboDefault: profile.comboDefault,
-      cavemanDefault: profile.cavemanDefault,
-      rtkDefault: profile.rtkDefault,
-      ponytailDefault: profile.ponytailDefault,
-      pstackDefault: profile.pstackDefault,
-      headroomDefault: profile.headroomDefault,
-      backupSchedule: profile.backupSchedule,
-      retentionDays: profile.retentionDays,
-      devTools: profile.devTools,
-      accent: profile.accent,
-      sidebarWidth: profile.sidebarWidth,
-      sidebarOpen: profile.sidebarOpen,
-    },
+function saveDefaults(
+  body: Record<string, unknown>,
+): Promise<{ ok: true; profile: Record<string, unknown> } | { ok: false; error: string }> {
+  const run = async (): Promise<{ ok: true; profile: Record<string, unknown> } | { ok: false; error: string }> => {
+    const HOST_SCOPES = ['omp', 'pi', 'opencode', 'pig', 'dsh', 'codex'] as const;
+    const hostScope =
+      typeof body.host === 'string' && (HOST_SCOPES as readonly string[]).includes(body.host)
+        ? (body.host as (typeof HOST_SCOPES)[number])
+        : null;
+    if (body.host !== undefined && hostScope === null) return { ok: false, error: 'unknown host scope' };
+    const profile = await storedProfile(hostScope);
+    const events: string[] = [];
+    // A host scope carries only the mode fields the request changed; non-mode fields stay global-only.
+    const changedFields: HostDefaultField[] = [];
+    // `inherit` describes one agent's section; a shared write has nothing to hand the value back to.
+    const inherited = [
+      'comboDefault',
+      'cavemanDefault',
+      'rtkDefault',
+      'ponytailDefault',
+      'pstackDefault',
+      'headroomDefault',
+    ].filter((key) => String(body[key]) === 'inherit');
+    if (inherited.length > 0 && !body.host) return { ok: false, error: 'inherit applies to one agent — pass a host' };
+    if (String(body.comboDefault) === 'inherit') {
+      // SAFETY: the typed profile omits 'inherit', but the request validated it above and the shared store accepts it.
+      Object.assign(profile as unknown as Record<string, unknown>, {
+        comboDefault: 'inherit',
+        cavemanDefault: 'inherit',
+        rtkDefault: 'inherit',
+        ponytailDefault: 'inherit',
+      });
+      events.push('Combo back to the shared defaults');
+      changedFields.push('comboDefault', 'cavemanDefault', 'rtkDefault', 'ponytailDefault');
+    } else if (body.comboDefault !== undefined) {
+      const level = normalizeComboLevel(body.comboDefault);
+      // A preset level only: `custom` is what the three modes say, never a level to write.
+      if (!level || !Object.hasOwn(COMBO_PRESET_MODES, level)) return { ok: false, error: 'unknown combo level' };
+      Object.assign(profile, applyComboPreset(profile, level));
+      events.push(`Combo preset to ${level}`);
+      changedFields.push('comboDefault', 'cavemanDefault', 'rtkDefault', 'ponytailDefault');
+    }
+    if (body.cavemanDefault !== undefined) {
+      const v = String(body.cavemanDefault);
+      if (v !== 'inherit' && !CAVEMAN_DEFAULTS.has(v)) return { ok: false, error: 'unknown caveman level' };
+      profile.cavemanDefault = v;
+      events.push(`Caveman to ${v}`);
+      if (!changedFields.includes('cavemanDefault')) changedFields.push('cavemanDefault');
+    }
+    if (body.ponytailDefault !== undefined) {
+      const v = String(body.ponytailDefault);
+      if (v !== 'inherit' && !PONYTAIL_DEFAULTS.has(v)) return { ok: false, error: 'unknown ponytail level' };
+      profile.ponytailDefault = v;
+      events.push(`Ponytail to ${v}`);
+      if (!changedFields.includes('ponytailDefault')) changedFields.push('ponytailDefault');
+    }
+    if (body.pstackDefault !== undefined) {
+      const v = String(body.pstackDefault);
+      if (v !== 'inherit' && !PSTACK_DEFAULTS.has(v)) return { ok: false, error: 'unknown pstack level' };
+      profile.pstackDefault = v;
+      events.push(`pstack to ${v}`);
+      changedFields.push('pstackDefault');
+    }
+    if (body.headroomDefault !== undefined) {
+      const v = String(body.headroomDefault);
+      if (v !== 'inherit' && !HEADROOM_DEFAULTS.has(v)) return { ok: false, error: 'unknown headroom level' };
+      profile.headroomDefault = v;
+      events.push(`Headroom to ${v}`);
+      changedFields.push('headroomDefault');
+    }
+    if (body.backupSchedule !== undefined) {
+      const v = String(body.backupSchedule);
+      if (!BACKUP_SCHEDULES.has(v)) return { ok: false, error: 'unknown backup schedule' };
+      profile.backupSchedule = v as BackupSchedule;
+    }
+    if (body.retentionDays !== undefined) {
+      const v = Number(body.retentionDays);
+      if (!RETENTION_DAYS.has(v)) return { ok: false, error: 'unknown retention window' };
+      profile.retentionDays = v;
+    }
+    if (body.rtkDefault !== undefined) {
+      if (body.rtkDefault !== 'inherit' && typeof body.rtkDefault !== 'boolean')
+        return { ok: false, error: 'rtk default must be true, false, or inherit' };
+      // SAFETY: rtkDefault is validated above as a boolean or the literal 'inherit', which the store accepts.
+      (profile as unknown as Record<string, unknown>).rtkDefault = body.rtkDefault;
+      events.push(
+        body.rtkDefault === 'inherit' ? 'RTK back to the shared default' : `RTK to ${body.rtkDefault ? 'on' : 'off'}`,
+      );
+      changedFields.push('rtkDefault');
+    }
+    if (body.devTools !== undefined) {
+      if (typeof body.devTools !== 'boolean') return { ok: false, error: 'devTools must be true or false' };
+      profile.devTools = body.devTools;
+    }
+    if (body.accent !== undefined) {
+      const v = String(body.accent);
+      if (!ACCENT_DEFAULTS.has(v)) return { ok: false, error: 'unknown accent' };
+      profile.accent = v;
+      events.push(`Accent to ${v}`);
+    }
+    if (body.sidebarOpen !== undefined) {
+      if (typeof body.sidebarOpen !== 'boolean') return { ok: false, error: 'sidebarOpen must be true or false' };
+      profile.sidebarOpen = body.sidebarOpen;
+    }
+    if (body.sidebarWidth !== undefined) {
+      if (typeof body.sidebarWidth !== 'number') return { ok: false, error: 'sidebarWidth must be a number' };
+      // A drag changes it often, so it is saved without an activity line.
+      profile.sidebarWidth = clampSidebarWidth(body.sidebarWidth);
+    }
+    // A host scope writes only the mode fields the request changed; non-mode fields are global-only and never host-scoped.
+    if (hostScope) {
+      if (changedFields.length > 0) await saveHostDefaults(hostScope, changedFields, profile, {});
+    } else {
+      await writePluginSettings(profile, {});
+    }
+    for (const title of events)
+      recordActivity('mode', title, hostScope ? `Applies to new ${hostScope} sessions.` : 'Applies to new sessions.');
+    return {
+      ok: true,
+      profile: {
+        comboDefault: profile.comboDefault,
+        cavemanDefault: profile.cavemanDefault,
+        rtkDefault: profile.rtkDefault,
+        ponytailDefault: profile.ponytailDefault,
+        pstackDefault: profile.pstackDefault,
+        headroomDefault: profile.headroomDefault,
+        backupSchedule: profile.backupSchedule,
+        retentionDays: profile.retentionDays,
+        devTools: profile.devTools,
+        accent: profile.accent,
+        sidebarWidth: profile.sidebarWidth,
+        sidebarOpen: profile.sidebarOpen,
+      },
+    };
   };
-  }
 
   const result = profileWriteQueue.then(run, run);
   profileWriteQueue = result.catch(() => null);
@@ -715,16 +903,23 @@ async function saveDashboardCurrency(raw: unknown): Promise<CurrencyCode | null>
 function readBody(req: http.IncomingMessage): Promise<string> {
   return new Promise((resolve) => {
     let body = '';
-    req.on('data', (chunk: unknown) => { body += String(chunk); });
-    req.on('end', () => { resolve(body); });
-    req.on('error', () => { resolve(''); });
+    req.on('data', (chunk: unknown) => {
+      body += String(chunk);
+    });
+    req.on('end', () => {
+      resolve(body);
+    });
+    req.on('error', () => {
+      resolve('');
+    });
   });
 }
 
 /** One JSON reply: every route answers this shape, so the header is set in one place. */
 export function json(res: Pick<http.ServerResponse, 'writeHead' | 'end'>, code: number, body: unknown): void {
   // A string here would be serialized twice; the routes that build their own text call jsonText.
-  if (typeof body === 'string') throw new Error('json() takes a value, not text: use jsonText() for a serialized payload');
+  if (typeof body === 'string')
+    throw new Error('json() takes a value, not text: use jsonText() for a serialized payload');
   res.writeHead(code, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify(body));
 }
@@ -762,7 +957,6 @@ async function bodyOf(req: http.IncomingMessage): Promise<Record<string, unknown
   }
 }
 
-
 function openBrowser(url: string): void {
   const [cmd, argv] = openCommand(url);
   spawn(cmd, argv, { detached: true, stdio: 'ignore' }).unref();
@@ -795,10 +989,20 @@ async function exportDashboard(exportFile: string, currency: CurrencyCode): Prom
   // atob yields one byte per char, so a Uint8Array is needed or bytes >= 0x80 double and corrupt the webp.
   const brandBytes = `(() => { const c = atob(${JSON.stringify(b64)}); const v = new Uint8Array(c.length); for (let i = 0; i < c.length; i++) v[i] = c.charCodeAt(i); return v; })()`;
   const inline = bundle
-    .replace('window.__TERSIO_SNAP = null;', () => `window.__TERSIO_SNAP = ${escapeInline(JSON.stringify({ currency, agent: agentStats(DEFAULT_AGENT_RANGE), health: parseOwnJson(healthJson(), 'health'), doctor: getDoctorReport() }))};`)
+    .replace(
+      'window.__TERSIO_SNAP = null;',
+      () =>
+        `window.__TERSIO_SNAP = ${escapeInline(JSON.stringify({ currency, agent: agentStats(DEFAULT_AGENT_RANGE), health: parseOwnJson(healthJson(), 'health'), doctor: getDoctorReport() }))};`,
+    )
     // A mark is an HTML attribute or JSX prop; match every quote or the file keeps an unresolvable reference.
-    .replace(/((?:src|href)[=:][ \t]*)([`"'])brand\.webp\2/g, (_all, head: string, quote: string) => `${head}${quote}${icon}${quote}`)
-    .replace(/fetch\(([`"])brand\.webp\1\)/g, () => `Promise.resolve({ ok: true, blob: async () => new Blob([${brandBytes}], { type: "image/webp" }) })`);
+    .replace(
+      /((?:src|href)[=:][ \t]*)([`"'])brand\.webp\2/g,
+      (_all, head: string, quote: string) => `${head}${quote}${icon}${quote}`,
+    )
+    .replace(
+      /fetch\(([`"])brand\.webp\1\)/g,
+      () => `Promise.resolve({ ok: true, blob: async () => new Blob([${brandBytes}], { type: "image/webp" }) })`,
+    );
   await fs.writeFile(exportFile, inline, 'utf8');
   console.log(`[ok] Dashboard exported → ${exportFile}`);
 }
@@ -853,8 +1057,14 @@ async function runDashboardWatch(options: DashboardOptions): Promise<void> {
     });
     child.on('exit', () => {
       if (stopping) return;
-      if (pendingRestart) { pendingRestart = false; setTimeout(spawnChild, 300); return; }
-      setTimeout(() => { if (!stopping) spawnChild(); }, 500);
+      if (pendingRestart) {
+        pendingRestart = false;
+        setTimeout(spawnChild, 300);
+        return;
+      }
+      setTimeout(() => {
+        if (!stopping) spawnChild();
+      }, 500);
     });
   };
   const restart = (): void => {
@@ -871,9 +1081,7 @@ async function runDashboardWatch(options: DashboardOptions): Promise<void> {
     cwd: appDir,
   });
   // Watch only the trees the server reads; recursing the repo root would carry node_modules and .git.
-  const watched = ['cli', 'extensions']
-    .map((dir) => path.join(root, dir))
-    .filter((dir) => existsSync(dir));
+  const watched = ['cli', 'extensions'].map((dir) => path.join(root, dir)).filter((dir) => existsSync(dir));
   try {
     const onChange = (_event: string, file: string | null): void => {
       if (stopping || !file) return;
@@ -886,11 +1094,21 @@ async function runDashboardWatch(options: DashboardOptions): Promise<void> {
     for (const dir of watched) watch(dir, { recursive: true }, onChange);
     const entryFile = path.join(root, 'tersio.ts');
     if (existsSync(entryFile)) watch(entryFile, onChange);
-  } catch { /* a platform without recursive watch simply skips auto-restart */ }
+  } catch {
+    /* a platform without recursive watch simply skips auto-restart */
+  }
   const stop = (code: number): void => {
     stopping = true;
-    try { child?.kill('SIGTERM'); } catch { /* gone */ }
-    try { vite?.kill('SIGTERM'); } catch { /* gone */ }
+    try {
+      child?.kill('SIGTERM');
+    } catch {
+      /* gone */
+    }
+    try {
+      vite?.kill('SIGTERM');
+    } catch {
+      /* gone */
+    }
     process.exit(code);
   };
   process.once('SIGINT', () => stop(130));
@@ -906,7 +1124,10 @@ export function shouldAutoWatch(hasSource: boolean, tty: boolean, env: NodeJS.Pr
 async function runDashboard(options: DashboardOptions): Promise<void> {
   const hasSource = existsSync(path.join(findPackageRoot(path.dirname(fileURLToPath(import.meta.url))), 'tersio.ts'));
   const tty = Boolean(process.stdin.isTTY && process.stdout.isTTY);
-  if ((options.watch || (shouldAutoWatch(hasSource, tty) && !options.exportFile)) && process.env.TERSIO_DASHBOARD_CHILD !== '1') {
+  if (
+    (options.watch || (shouldAutoWatch(hasSource, tty) && !options.exportFile)) &&
+    process.env.TERSIO_DASHBOARD_CHILD !== '1'
+  ) {
     await runDashboardWatch(options);
     return;
   }
@@ -923,15 +1144,23 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
       try {
         const stat = statSync(DASHBOARD_INDEX);
         id = `${Math.floor(stat.mtimeMs)}-${stat.size}`;
-      } catch { /* no bundle yet */ }
+      } catch {
+        /* no bundle yet */
+      }
       res.setHeader('Cache-Control', 'no-store');
       json(res, 200, { id });
       return;
     }
-    if (await handleHeadroomRoutes(req, res, {
-      json, bodyOf, spawnHeadroomInstall, headroomInstallState,
-      ensureRuntime: ensureHeadroomRuntime,
-    })) return;
+    if (
+      await handleHeadroomRoutes(req, res, {
+        json,
+        bodyOf,
+        spawnHeadroomInstall,
+        headroomInstallState,
+        ensureRuntime: ensureHeadroomRuntime,
+      })
+    )
+      return;
     if (await handleVendorRoutes(req, res, { json, bodyOf, spawnHeadroomInstall, isVendorTool })) return;
     if (await handleHostRoutes(req, res, { json, bodyOf, detectHosts, hostJobs, spawnCli })) return;
     if (handleBenchRoutes(req, res, { json })) return;
@@ -1005,7 +1234,11 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
       let error: string | null = null;
       if (saved.config) {
         // A credential that stopped working must not blank the panel: the saved target still shows.
-        try { versions = await listSyncVersions(); } catch (caught) { error = (caught as Error).message; }
+        try {
+          versions = await listSyncVersions();
+        } catch (caught) {
+          error = (caught as Error).message;
+        }
       }
       json(res, 200, {
         configured: saved.config !== null,
@@ -1025,7 +1258,7 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
         json(res, 400, { ok: false, error: 'unknown sync target' });
         return;
       }
-      const target = body.target && typeof body.target === 'object' ? body.target as Record<string, unknown> : {};
+      const target = body.target && typeof body.target === 'object' ? (body.target as Record<string, unknown>) : {};
       const config = applyTarget(mode, target, readSync().config ?? emptyConfig());
       try {
         // The same constructor the upload uses, so an incomplete target fails here and not at 3 a.m.
@@ -1045,7 +1278,7 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
         json(res, 400, { ok: false, error: 'unknown sync target' });
         return;
       }
-      const target = body.target && typeof body.target === 'object' ? body.target as Record<string, unknown> : {};
+      const target = body.target && typeof body.target === 'object' ? (body.target as Record<string, unknown>) : {};
       const config = applyTarget(mode, target, readSync().config ?? emptyConfig());
       const result = await testTarget(config);
       json(res, result.ok ? 200 : 400, result);
@@ -1091,7 +1324,10 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
         const type = answer.headers.get('content-type')?.split(';')[0]?.trim() ?? '';
         if (!type.startsWith('image/')) throw new Error(`unexpected type ${type}`);
         const bytes = Buffer.from(await answer.arrayBuffer());
-        res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'public, max-age=604800, stale-while-revalidate=86400' });
+        res.writeHead(200, {
+          'Content-Type': type,
+          'Cache-Control': 'public, max-age=604800, stale-while-revalidate=86400',
+        });
         res.end(bytes);
       } catch {
         res.writeHead(502, { 'Content-Type': 'text/plain', 'Cache-Control': 'no-store' });
@@ -1115,10 +1351,16 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
           raw = readFileSync(path.join(tersioHome(), 'pipeline-positions.json'), 'utf8');
           cachePut('dashboard.pipeline', raw);
           rmSync(path.join(tersioHome(), 'pipeline-positions.json'), { force: true });
-        } catch { raw = null; }
+        } catch {
+          raw = null;
+        }
       }
       let positions: unknown = {};
-      try { if (raw !== null) positions = JSON.parse(raw) as unknown; } catch { /* a damaged record reads empty */ }
+      try {
+        if (raw !== null) positions = JSON.parse(raw) as unknown;
+      } catch {
+        /* a damaged record reads empty */
+      }
       json(res, 200, { ok: true, positions: positions && typeof positions === 'object' ? positions : {} });
       return;
     }
@@ -1138,8 +1380,12 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
         // The per-host sections ride along, so the canvas can show and set one agent's own defaults.
         let hosts: Record<string, unknown> = {};
         try {
-          hosts = (JSON.parse(readFileSync(tersioSettingsFile(), 'utf8') ?? '{}') as { hosts?: Record<string, unknown> }).hosts ?? {};
-        } catch { /* no store yet: every host reads the flat defaults */ }
+          hosts =
+            (JSON.parse(readFileSync(tersioSettingsFile(), 'utf8') ?? '{}') as { hosts?: Record<string, unknown> })
+              .hosts ?? {};
+        } catch {
+          /* no store yet: every host reads the flat defaults */
+        }
         json(res, 200, {
           comboDefault: profile.comboDefault,
           cavemanDefault: profile.cavemanDefault,
@@ -1174,7 +1420,9 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
       let code: unknown = null;
       try {
         code = (JSON.parse(await readBody(req)) as { currency?: unknown }).currency ?? null;
-      } catch { code = null; }
+      } catch {
+        code = null;
+      }
       const saved = await saveDashboardCurrency(code);
       if (saved === null) {
         json(res, 400, { ok: false, error: 'unknown currency' });
@@ -1191,7 +1439,9 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
       let prefs: UpdatePrefs = {};
       try {
         prefs = (JSON.parse(await readBody(req)) as UpdatePrefs) ?? {};
-      } catch { prefs = {}; }
+      } catch {
+        prefs = {};
+      }
       json(res, 200, setUpdatePrefs(prefs));
       return;
     }
@@ -1210,14 +1460,32 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
     }
     if (req.url?.startsWith('/api/agent/session')) {
       const file = decodeURIComponent(queryParam(req.url, 'file') ?? '');
-      const body = file ? readSessionTrace(file) : {
-        sessionFile: '', project: '', title: '', cwd: '', startedAt: 0, endedAt: 0,
-        tracks: [], markers: [], summary: {
-          wallMs: 0, modelMs: 0, toolMs: 0, idleMs: 0, turns: 0, requests: 0, toolCalls: 0, agents: 0,
-          totalTokens: 0, costUsd: 0,
-        },
-        toolStats: [], truncated: false,
-      };
+      const body = file
+        ? readSessionTrace(file)
+        : {
+            sessionFile: '',
+            project: '',
+            title: '',
+            cwd: '',
+            startedAt: 0,
+            endedAt: 0,
+            tracks: [],
+            markers: [],
+            summary: {
+              wallMs: 0,
+              modelMs: 0,
+              toolMs: 0,
+              idleMs: 0,
+              turns: 0,
+              requests: 0,
+              toolCalls: 0,
+              agents: 0,
+              totalTokens: 0,
+              costUsd: 0,
+            },
+            toolStats: [],
+            truncated: false,
+          };
       json(res, 200, body);
       return;
     }
@@ -1243,7 +1511,12 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
       try {
         const { runDoctorRepairs } = await import('./doctor-fix.ts');
         const failed = await runDoctorRepairs(['extensions', 'registrations', 'ponytail']);
-        recordActivity('doctor', 'Doctor repair', failed.length === 0 ? 'Extensions, registrations, and Ponytail checked.' : `${failed.length} step(s) failed.`, failed.length === 0);
+        recordActivity(
+          'doctor',
+          'Doctor repair',
+          failed.length === 0 ? 'Extensions, registrations, and Ponytail checked.' : `${failed.length} step(s) failed.`,
+          failed.length === 0,
+        );
         getDoctorReport();
         json(res, 200, { ok: failed.length === 0, failed });
       } catch (e) {
@@ -1264,14 +1537,20 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
         res.writeHead(200, { 'Content-Type': contentType(file), 'Cache-Control': 'no-store' });
         res.end(body);
         return;
-      } catch { /* fall through to index */ }
+      } catch {
+        /* fall through to index */
+      }
     }
     // A watch restart can land before Vite writes its first bundle; retry on the next reload instead of throwing.
     let index: string;
     try {
       index = await readSegment(DASHBOARD_INDEX);
     } catch {
-      res.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', 'Retry-After': '1' });
+      res.writeHead(503, {
+        'Content-Type': 'text/plain; charset=utf-8',
+        'Cache-Control': 'no-store',
+        'Retry-After': '1',
+      });
       res.end('Dashboard is building. Reload in a moment.');
       return;
     }
@@ -1285,7 +1564,10 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
     // A browser tab holds keep-alive sockets, and a close that waits for them never releases the port.
     const sockets = new Set<Socket>();
     const settle = (): void => {
-      if (!settled) { settled = true; resolve(); }
+      if (!settled) {
+        settled = true;
+        resolve();
+      }
     };
     const rejectOnce = (err: Error): void => {
       if (!stopping) reject(err);
@@ -1294,18 +1576,42 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
       signals += 1;
       // A second Ctrl-C skips the grace: the operator asked twice.
       if (signals > 1) {
-        try { server.closeAllConnections(); } catch { /* a runtime without the call */ }
-        for (const socket of sockets) { try { socket.destroy(); } catch { /* gone */ } }
+        try {
+          server.closeAllConnections();
+        } catch {
+          /* a runtime without the call */
+        }
+        for (const socket of sockets) {
+          try {
+            socket.destroy();
+          } catch {
+            /* gone */
+          }
+        }
         process.exit(130);
       }
       if (stopping) return;
       stopping = true;
       server.close(settle);
-      try { server.closeIdleConnections(); } catch { /* a runtime without the call */ }
+      try {
+        server.closeIdleConnections();
+      } catch {
+        /* a runtime without the call */
+      }
       // A request still in flight gets a moment; after that every socket is cut and the port is free.
       const cut = setTimeout(() => {
-        try { server.closeAllConnections(); } catch { /* a runtime without the call */ }
-        for (const socket of sockets) { try { socket.destroy(); } catch { /* gone */ } }
+        try {
+          server.closeAllConnections();
+        } catch {
+          /* a runtime without the call */
+        }
+        for (const socket of sockets) {
+          try {
+            socket.destroy();
+          } catch {
+            /* gone */
+          }
+        }
         settle();
       }, 300);
       cut.unref();
@@ -1319,7 +1625,11 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
     process.once('SIGTERM', stop);
     server.once('error', rejectOnce);
     server.listen(options.port, listenHost, () => {
-      try { process.title = 'tersio dashboard'; } catch { /* non-POSIX shells keep node */ }
+      try {
+        process.title = 'tersio dashboard';
+      } catch {
+        /* non-POSIX shells keep node */
+      }
       const address = server.address();
       const port = typeof address === 'object' && address ? address.port : options.port;
       const url = `http://127.0.0.1:${port}`;
@@ -1344,7 +1654,11 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
       const warmNext = (index: number): void => {
         const range = warm[index];
         if (!range) return;
-        try { agentStats(range); } catch { /* the request path retries it */ }
+        try {
+          agentStats(range);
+        } catch {
+          /* the request path retries it */
+        }
         setTimeout(() => warmNext(index + 1), 800);
       };
       setTimeout(() => warmNext(0), 250);

@@ -3,9 +3,27 @@ import { createHash, createHmac } from 'node:crypto';
 
 export type SyncMode = 'webdav' | 's3' | 'github';
 
-export interface WebDavConfig { address: string; user: string; password: string }
-export interface S3Config { endpoint: string; bucket: string; prefix: string; region: string; accessKey: string; secret: string; sessionToken: string; pathStyle: boolean }
-export interface GithubConfig { repository: string; branch: string; folder: string; token: string }
+export interface WebDavConfig {
+  address: string;
+  user: string;
+  password: string;
+}
+export interface S3Config {
+  endpoint: string;
+  bucket: string;
+  prefix: string;
+  region: string;
+  accessKey: string;
+  secret: string;
+  sessionToken: string;
+  pathStyle: boolean;
+}
+export interface GithubConfig {
+  repository: string;
+  branch: string;
+  folder: string;
+  token: string;
+}
 
 export interface SyncConfig {
   mode: SyncMode;
@@ -14,7 +32,11 @@ export interface SyncConfig {
   github: GithubConfig;
 }
 
-export interface RemoteEntry { name: string; bytes: number; mtime: number }
+export interface RemoteEntry {
+  name: string;
+  bytes: number;
+  mtime: number;
+}
 
 export interface Remote {
   /** Sealed files this account already holds, newest first. */
@@ -69,11 +91,22 @@ function webdav(config: WebDavConfig): Remote {
   if (!/^https?:\/\//.test(base)) throw new Error('WebDAV needs an http(s) address');
   const dir = `${base}/${FOLDER}/`;
   const auth = `Basic ${Buffer.from(`${config.user}:${config.password}`).toString('base64')}`;
-  const call = (method: string, url: string, body?: BodyInit, headers: Record<string, string> = {}, timeoutMs = 30_000) => request(url, {
-    method,
-    body,
-    headers: { authorization: auth, ...headers },
-  }, timeoutMs);
+  const call = (
+    method: string,
+    url: string,
+    body?: BodyInit,
+    headers: Record<string, string> = {},
+    timeoutMs = 30_000,
+  ) =>
+    request(
+      url,
+      {
+        method,
+        body,
+        headers: { authorization: auth, ...headers },
+      },
+      timeoutMs,
+    );
 
   /** Some boxes accept a PUT into an existing folder but not the folder itself, so every parent is tried. */
   const ensureParents = async (): Promise<void> => {
@@ -89,10 +122,15 @@ function webdav(config: WebDavConfig): Remote {
 
   return {
     async list() {
-      const answer = await call('PROPFIND', dir, '<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:getcontentlength/><d:getlastmodified/></d:prop></d:propfind>', {
-        depth: '1',
-        'content-type': 'application/xml',
-      });
+      const answer = await call(
+        'PROPFIND',
+        dir,
+        '<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:getcontentlength/><d:getlastmodified/></d:prop></d:propfind>',
+        {
+          depth: '1',
+          'content-type': 'application/xml',
+        },
+      );
       if (answer.status === 404) return [];
       if (!answer.ok) throw fail('WebDAV listing', answer.status, await answer.text());
       const xml = await answer.text();
@@ -112,7 +150,13 @@ function webdav(config: WebDavConfig): Remote {
     async put(name, body) {
       // A folder that already exists answers 405; anything else is reported by the PUT below.
       await ensureParents();
-      const answer = await call('PUT', `${dir}${name}`, body as unknown as BodyInit, { 'content-type': 'application/octet-stream' }, 120_000);
+      const answer = await call(
+        'PUT',
+        `${dir}${name}`,
+        body as unknown as BodyInit,
+        { 'content-type': 'application/octet-stream' },
+        120_000,
+      );
       if (!answer.ok) throw fail('WebDAV upload', answer.status, await answer.text());
     },
     async get(name) {
@@ -137,28 +181,57 @@ function hmac(key: Buffer | string, data: string): Buffer {
 
 /** Each path segment is encoded on its own, so the slashes stay and spaces become %20. */
 function canonicalPath(pathname: string): string {
-  return pathname.split('/').map((part) => encodeURIComponent(part).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`)).join('/');
+  return pathname
+    .split('/')
+    .map((part) =>
+      encodeURIComponent(part).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`),
+    )
+    .join('/');
 }
 
 /**
  * SigV4 for one S3 request: the same algorithm every S3-compatible host accepts.
  * Exported so the AWS documentation example can pin it.
  */
-export function sigV4(method: string, url: URL, body: Buffer, config: Pick<S3Config, 'region' | 'accessKey' | 'secret'> & { sessionToken?: string }, extraHeaders: Record<string, string> = {}, at: Date = new Date()): Record<string, string> {
+export function sigV4(
+  method: string,
+  url: URL,
+  body: Buffer,
+  config: Pick<S3Config, 'region' | 'accessKey' | 'secret'> & { sessionToken?: string },
+  extraHeaders: Record<string, string> = {},
+  at: Date = new Date(),
+): Record<string, string> {
   const now = at;
   const amzDate = `${now.toISOString().replace(/[:-]|\.\d{3}/g, '')}`;
   const day = amzDate.slice(0, 8);
   const payloadHash = sha256Hex(body);
-  const headers: Record<string, string> = { ...extraHeaders, host: url.host, 'x-amz-content-sha256': payloadHash, 'x-amz-date': amzDate };
+  const headers: Record<string, string> = {
+    ...extraHeaders,
+    host: url.host,
+    'x-amz-content-sha256': payloadHash,
+    'x-amz-date': amzDate,
+  };
   if (config.sessionToken) headers['x-amz-security-token'] = config.sessionToken;
   const signed = Object.keys(headers).toSorted();
   const canonicalHeaders = signed.map((name) => `${name}:${headers[name]}\n`).join('');
-  const canonicalQuery = [...url.searchParams.entries()].toSorted(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-    .map(([name, value]) => `${encodeURIComponent(name)}=${encodeURIComponent(value)}`).join('&');
-  const canonicalRequest = [method, canonicalPath(url.pathname), canonicalQuery, canonicalHeaders, signed.join(';'), payloadHash].join('\n');
+  const canonicalQuery = [...url.searchParams.entries()]
+    .toSorted(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([name, value]) => `${encodeURIComponent(name)}=${encodeURIComponent(value)}`)
+    .join('&');
+  const canonicalRequest = [
+    method,
+    canonicalPath(url.pathname),
+    canonicalQuery,
+    canonicalHeaders,
+    signed.join(';'),
+    payloadHash,
+  ].join('\n');
   const scope = `${day}/${config.region || 'us-east-1'}/s3/aws4_request`;
   const stringToSign = ['AWS4-HMAC-SHA256', amzDate, scope, sha256Hex(canonicalRequest)].join('\n');
-  const signingKey = hmac(hmac(hmac(hmac(`AWS4${config.secret}`, day), config.region || 'us-east-1'), 's3'), 'aws4_request');
+  const signingKey = hmac(
+    hmac(hmac(hmac(`AWS4${config.secret}`, day), config.region || 'us-east-1'), 's3'),
+    'aws4_request',
+  );
   const signature = createHmac('sha256', signingKey).update(stringToSign).digest('hex');
   return {
     ...headers,
@@ -166,8 +239,13 @@ export function sigV4(method: string, url: URL, body: Buffer, config: Pick<S3Con
   };
 }
 
-const authorize = (method: string, url: URL, body: Buffer, config: S3Config, extraHeaders: Record<string, string>): Record<string, string> =>
-  sigV4(method, url, body, config, extraHeaders);
+const authorize = (
+  method: string,
+  url: URL,
+  body: Buffer,
+  config: S3Config,
+  extraHeaders: Record<string, string>,
+): Record<string, string> => sigV4(method, url, body, config, extraHeaders);
 
 function s3(config: S3Config): Remote {
   if (!config.bucket.trim()) throw new Error('S3 needs a bucket');
@@ -212,11 +290,15 @@ function s3(config: S3Config): Remote {
     },
     async put(name, body) {
       const url = target(name);
-      const answer = await request(url, {
-        method: 'PUT',
-        body: body as unknown as BodyInit,
-        headers: authorize('PUT', url, body, config, { 'content-type': 'application/octet-stream' }),
-      }, 120_000);
+      const answer = await request(
+        url,
+        {
+          method: 'PUT',
+          body: body as unknown as BodyInit,
+          headers: authorize('PUT', url, body, config, { 'content-type': 'application/octet-stream' }),
+        },
+        120_000,
+      );
       if (!answer.ok) throw fail('S3 upload', answer.status, await answer.text());
     },
     async get(name) {
@@ -227,7 +309,10 @@ function s3(config: S3Config): Remote {
     },
     async remove(name) {
       const url = target(name);
-      const answer = await request(url, { method: 'DELETE', headers: authorize('DELETE', url, Buffer.alloc(0), config, {}) });
+      const answer = await request(url, {
+        method: 'DELETE',
+        headers: authorize('DELETE', url, Buffer.alloc(0), config, {}),
+      });
       if (!answer.ok && answer.status !== 404) throw fail('S3 delete', answer.status, await answer.text());
     },
   };
@@ -298,7 +383,11 @@ function github(config: GithubConfig): Remote {
       const answer = await request(url, {
         method: 'DELETE',
         headers: { ...headers, 'content-type': 'application/json' },
-        body: JSON.stringify({ message: `tersio: remove ${name}`, sha, ...(config.branch.trim() ? { branch: config.branch.trim() } : {}) }),
+        body: JSON.stringify({
+          message: `tersio: remove ${name}`,
+          sha,
+          ...(config.branch.trim() ? { branch: config.branch.trim() } : {}),
+        }),
       });
       if (!answer.ok && answer.status !== 404) throw fail('GitHub delete', answer.status, await answer.text());
     },

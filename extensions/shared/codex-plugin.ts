@@ -9,9 +9,20 @@ import { readPluginSettings } from './plugin-settings.ts';
 import { CODEX_PLUGIN_FILES, codexHome, codexPackagedPluginDir } from './codex-state.ts';
 import { ruleDir, tersioHome } from './utils.ts';
 export {
-  CODEX_MARKETPLACE_NAME, CODEX_PLUGIN_FILES, CODEX_PLUGIN_ID, CODEX_PLUGIN_NAME,
-  codexConfigFile, codexHome, codexMarketplaceFile, codexMarketplaceRoot, codexPackagedPluginDir,
-  codexPluginEnabled, codexPluginInstalled, codexPluginState, codexPluginVersion, installedCodexPlugin,
+  CODEX_MARKETPLACE_NAME,
+  CODEX_PLUGIN_FILES,
+  CODEX_PLUGIN_ID,
+  CODEX_PLUGIN_NAME,
+  codexConfigFile,
+  codexHome,
+  codexMarketplaceFile,
+  codexMarketplaceRoot,
+  codexPackagedPluginDir,
+  codexPluginEnabled,
+  codexPluginInstalled,
+  codexPluginState,
+  codexPluginVersion,
+  installedCodexPlugin,
 } from './codex-state.ts';
 export type { CodexPluginState } from './codex-state.ts';
 
@@ -50,9 +61,10 @@ export function codexPromptsDir(): string {
 }
 
 export function codexPromptFiles(): Record<CodexPromptName, string> {
-  return Object.fromEntries(
-    CODEX_PROMPT_NAMES.map((name) => [name, readSourcePlugin(`prompts/${name}.md`)]),
-  ) as Record<CodexPromptName, string>;
+  return Object.fromEntries(CODEX_PROMPT_NAMES.map((name) => [name, readSourcePlugin(`prompts/${name}.md`)])) as Record<
+    CodexPromptName,
+    string
+  >;
 }
 
 /**
@@ -100,16 +112,22 @@ export function codexLocalPluginFiles(runtime = process.execPath, cli = process.
   if (handler) handler.command = hookCommand;
 
   const files: Record<string, string> = {
-    '.agents/plugins/marketplace.json': `${JSON.stringify({
-      name: 'tersio',
-      interface: { displayName: 'Tersio' },
-      plugins: [{
+    '.agents/plugins/marketplace.json': `${JSON.stringify(
+      {
         name: 'tersio',
-        source: { source: 'local', path: './plugins/tersio' },
-        policy: { installation: 'AVAILABLE', authentication: 'ON_USE', products: ['CODEX'] },
-        category: 'Developer Tools',
-      }],
-    }, null, 2)}\n`,
+        interface: { displayName: 'Tersio' },
+        plugins: [
+          {
+            name: 'tersio',
+            source: { source: 'local', path: './plugins/tersio' },
+            policy: { installation: 'AVAILABLE', authentication: 'ON_USE', products: ['CODEX'] },
+            category: 'Developer Tools',
+          },
+        ],
+      },
+      null,
+      2,
+    )}\n`,
     'plugins/tersio/plugin.json': readSourcePlugin('plugin.json'),
     'plugins/tersio/mcp.json': `${JSON.stringify(mcp, null, 2)}\n`,
     'plugins/tersio/hooks/hooks.json': `${JSON.stringify(hooks, null, 2)}\n`,
@@ -147,11 +165,21 @@ function pstackInstruction(): string {
 }
 
 /** Every mode a slash command can override for one session. */
-const SESSION_MODE_KEYS = ['comboDefault', 'cavemanDefault', 'rtkDefault', 'ponytailDefault', 'pstackDefault', 'headroomDefault'] as const;
+const SESSION_MODE_KEYS = [
+  'comboDefault',
+  'cavemanDefault',
+  'rtkDefault',
+  'ponytailDefault',
+  'pstackDefault',
+  'headroomDefault',
+] as const;
 type SessionModeKey = (typeof SESSION_MODE_KEYS)[number];
 
 function sessionKey(value: unknown): string | null {
-  const key = String(value ?? '').trim().replace(/[^a-zA-Z0-9._-]/g, '-').slice(0, 160);
+  const key = String(value ?? '')
+    .trim()
+    .replace(/[^a-zA-Z0-9._-]/g, '-')
+    .slice(0, 160);
   return key || null;
 }
 
@@ -168,7 +196,8 @@ function readCodexSessions(): Record<string, CodexSessionModes> {
       const row = value as Record<string, unknown>;
       const entry: CodexSessionModes = { updatedAt: typeof row.updatedAt === 'number' ? row.updatedAt : 0 };
       for (const mode of SESSION_MODE_KEYS) {
-        if (typeof row[mode] === 'string' || typeof row[mode] === 'boolean') entry[mode] = row[mode] as string | boolean;
+        if (typeof row[mode] === 'string' || typeof row[mode] === 'boolean')
+          entry[mode] = row[mode] as string | boolean;
       }
       out[key] = entry;
     }
@@ -189,10 +218,12 @@ function pruneCodexSessions(sessions: Record<string, CodexSessionModes>, now: nu
   for (const [key, value] of Object.entries(sessions)) {
     if (now - Number(value.updatedAt) > CODEX_SESSION_TTL_MS) delete sessions[key];
   }
-  const keep = new Set(Object.entries(sessions)
-    .toSorted(([, a], [, b]) => Number(b.updatedAt) - Number(a.updatedAt))
-    .slice(0, CODEX_SESSION_LIMIT)
-    .map(([key]) => key));
+  const keep = new Set(
+    Object.entries(sessions)
+      .toSorted(([, a], [, b]) => Number(b.updatedAt) - Number(a.updatedAt))
+      .slice(0, CODEX_SESSION_LIMIT)
+      .map(([key]) => key),
+  );
   for (const key of Object.keys(sessions)) if (!keep.has(key)) delete sessions[key];
 }
 
@@ -285,7 +316,12 @@ export function codexSlashCommand(
   const command = match[1]!;
   const value = (match[2] ?? '').trim().toLowerCase();
   if (command === 'combo') {
-    if (value === 'help') return { patch: {}, message: 'Tersio Combo presets: off, lite, balanced, max. Use /combo <level>, or /combo status to read the current one.' };
+    if (value === 'help')
+      return {
+        patch: {},
+        message:
+          'Tersio Combo presets: off, lite, balanced, max. Use /combo <level>, or /combo status to read the current one.',
+      };
     if (!value || value === 'status') {
       const current = String(readMode('comboDefault', sessionId) ?? 'custom');
       const caveman = String(readMode('cavemanDefault', sessionId) ?? 'off');
@@ -297,9 +333,15 @@ export function codexSlashCommand(
       };
     }
     const preset = CODEX_COMBO_PRESETS[value];
-    if (!preset) return { patch: {}, message: `Tersio Combo: unknown level "${value}". Use off, lite, balanced, or max.` };
+    if (!preset)
+      return { patch: {}, message: `Tersio Combo: unknown level "${value}". Use off, lite, balanced, or max.` };
     return {
-      patch: { comboDefault: value, cavemanDefault: preset.caveman, rtkDefault: preset.rtk, ponytailDefault: preset.ponytail },
+      patch: {
+        comboDefault: value,
+        cavemanDefault: preset.caveman,
+        rtkDefault: preset.rtk,
+        ponytailDefault: preset.ponytail,
+      },
       message: `Tersio Combo set to ${value} for Codex. It applies to the rest of this session.`,
     };
   }
@@ -316,8 +358,13 @@ export function codexSlashCommand(
       message: `Tersio ${command} set to ${level} for Codex. It applies to the rest of this session.`,
     };
   }
-  if (command === 'rtk') return { patch: {}, message: 'RTK is explanatory on Codex v1: Codex does not rewrite shell calls through Tersio.' };
-  if (command === 'pstack') return { patch: {}, message: 'pstack is available through $pstack or /prompts:pstack; the literal slash hook is explanatory only.' };
+  if (command === 'rtk')
+    return { patch: {}, message: 'RTK is explanatory on Codex v1: Codex does not rewrite shell calls through Tersio.' };
+  if (command === 'pstack')
+    return {
+      patch: {},
+      message: 'pstack is available through $pstack or /prompts:pstack; the literal slash hook is explanatory only.',
+    };
   if (command === 'headroom') {
     const key = 'headroomDefault';
     if (!value || value === 'status') {
@@ -392,14 +439,15 @@ export function ensureCodexUserHook(command: string, file = codexUserHooksFile()
   try {
     const text = readFileSync(file, 'utf8');
     const value = JSON.parse(text) as unknown;
-    parsed = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+    parsed = value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
   } catch {
     // A missing file is the normal first install; a corrupt one is replaced, because Codex cannot read it either.
     parsed = {};
   }
-  const hooks = parsed.hooks && typeof parsed.hooks === 'object' && !Array.isArray(parsed.hooks)
-    ? parsed.hooks as Record<string, unknown>
-    : {};
+  const hooks =
+    parsed.hooks && typeof parsed.hooks === 'object' && !Array.isArray(parsed.hooks)
+      ? (parsed.hooks as Record<string, unknown>)
+      : {};
   const groups = hookGroups(hooks.UserPromptSubmit).filter((group) => !isTersioGroup(group));
   groups.push({ hooks: [{ type: 'command', command, statusMessage: 'Refreshing Tersio modes' }] });
   const next = { ...parsed, hooks: { ...hooks, UserPromptSubmit: groups } };
@@ -430,9 +478,10 @@ export function removeCodexUserHook(file = codexUserHooksFile(), dryRun = false)
   } catch {
     return { ok: true, changed: false, detail: file };
   }
-  const hooks = parsed.hooks && typeof parsed.hooks === 'object' && !Array.isArray(parsed.hooks)
-    ? parsed.hooks as Record<string, unknown>
-    : null;
+  const hooks =
+    parsed.hooks && typeof parsed.hooks === 'object' && !Array.isArray(parsed.hooks)
+      ? (parsed.hooks as Record<string, unknown>)
+      : null;
   if (!hooks) return { ok: true, changed: false, detail: file };
   const groups = hookGroups(hooks.UserPromptSubmit);
   const kept = groups.filter((group) => !isTersioGroup(group));

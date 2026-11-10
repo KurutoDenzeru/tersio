@@ -1,17 +1,17 @@
 // Accent catalog: index.css owns the live token values; keep these swatches equal to its `html[data-accent=...]`.
 
-export const ACCENT_IDS = ["emerald", "violet", "slate", "cyan", "rose", "amber", "orange"] as const;
+export const ACCENT_IDS = ["emerald", "violet", "slate", "cyan", "rose", "amber", "orange"] as const
 
-export type AccentId = (typeof ACCENT_IDS)[number];
+export type AccentId = (typeof ACCENT_IDS)[number]
 
-export const DEFAULT_ACCENT: AccentId = "emerald";
+export const DEFAULT_ACCENT: AccentId = "emerald"
 
-export const ACCENT_STORAGE_KEY = "tersio-accent";
+export const ACCENT_STORAGE_KEY = "tersio-accent"
 
 interface Accent {
-  label: string;
-  light: string;
-  dark: string;
+  label: string
+  light: string
+  dark: string
 }
 
 // `satisfies` keeps the literal keys while still failing if one is missing.
@@ -23,14 +23,14 @@ export const ACCENTS = {
   rose: { label: "Rose", light: "#be123c", dark: "#fb7185" },
   amber: { label: "Amber", light: "#b45309", dark: "#fbbf24" },
   orange: { label: "Orange", light: "#c2410c", dark: "#fb923c" },
-} satisfies Record<AccentId, Accent>;
+} satisfies Record<AccentId, Accent>
 
 export function isAccentId(value: unknown): value is AccentId {
-  return typeof value === "string" && Object.hasOwn(ACCENTS, value);
+  return typeof value === "string" && Object.hasOwn(ACCENTS, value)
 }
 
 /** The hex a chip should paint: the ones this accent's tokens resolve to. */
 export function accentSwatch(id: AccentId, dark: boolean): string {
-  const accent = ACCENTS[id];
-  return dark ? accent.dark : accent.light;
+  const accent = ACCENTS[id]
+  return dark ? accent.dark : accent.light
 }

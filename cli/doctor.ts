@@ -3,18 +3,42 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, statSync, promises as fs } from 'node:fs';
 import path from 'node:path';
 import {
-  HOME, OMP_AGENT_DIR, PACKAGE_NAME, PACKAGE_VERSION,
-  args, dryRun, fix, yes,
-  BUN_BIN_DIR, OMP_BIN,
-  execP, relTime, shimCommand,
+  HOME,
+  OMP_AGENT_DIR,
+  PACKAGE_NAME,
+  PACKAGE_VERSION,
+  args,
+  dryRun,
+  fix,
+  yes,
+  BUN_BIN_DIR,
+  OMP_BIN,
+  execP,
+  relTime,
+  shimCommand,
 } from './common.ts';
-import { detectHosts, dshPackageDir, hostExtensionsDir, ompPackageDir, piPonytailPackageDir, pigPonytailPackageDir } from './hosts.ts';
+import {
+  detectHosts,
+  dshPackageDir,
+  hostExtensionsDir,
+  ompPackageDir,
+  piPonytailPackageDir,
+  pigPonytailPackageDir,
+} from './hosts.ts';
 import type { DetectedHost } from './hosts.ts';
 import { GENERATED_TREE_FILES } from './manifest.ts';
 import { askInteractiveChoice, askInteractiveConfirm, runInteractivePhase } from './interactive.ts';
 import { usageDbPath } from '../extensions/shared/usage-store.ts';
 
-import { piAgentDir, pigAgentDir, readTextIfExists, resolveHeadroomBinary, resolveHostBinary, resolveRtkBinary, ruleBodyProblem } from '../extensions/shared/utils.ts';
+import {
+  piAgentDir,
+  pigAgentDir,
+  readTextIfExists,
+  resolveHeadroomBinary,
+  resolveHostBinary,
+  resolveRtkBinary,
+  ruleBodyProblem,
+} from '../extensions/shared/utils.ts';
 import { sqliteScript, statsDbPath } from '../extensions/shared/agent-stats.ts';
 import { OMP_SUBAGENT_MARKER } from '../extensions/shared/session-state.ts';
 import { describeHeadroomRoute, readHeadroomRoute } from '../extensions/shared/headroom-routing.ts';
@@ -22,7 +46,15 @@ import { hasNativeRoute } from '../extensions/shared/headroom-routes.ts';
 import { headroomProxyUrl } from '../extensions/shared/headroom-proxy.ts';
 import { hostCap } from '../extensions/shared/host-caps.ts';
 import { tersioMcpConfigured } from '../extensions/shared/mcp-config.ts';
-import { PI_PONYTAIL_FILES, PONYTAIL_BUNDLE_FILES, PONYTAIL_VERSION, TREE_PSTACK_FILES, isObsoleteTreeFile, treeFileText, treeFilesFor } from './manifest.ts';
+import {
+  PI_PONYTAIL_FILES,
+  PONYTAIL_BUNDLE_FILES,
+  PONYTAIL_VERSION,
+  TREE_PSTACK_FILES,
+  isObsoleteTreeFile,
+  treeFileText,
+  treeFilesFor,
+} from './manifest.ts';
 import { serviceRunning, serviceState } from './doctor-fix.ts';
 import { readState } from '../extensions/shared/state.ts';
 import { CAVEMAN_PIN } from './upstream.ts';
@@ -82,10 +114,10 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   const tersioPluginDir = ompPackageDir();
 
   // Ponytail rides inside this tree: one vendored copy, and the fork ships index.ts while an older package holds index.js.
-  const ponytailIndex = ['index.ts', 'index.js']
-    .map((base) => path.join(tersioPluginDir, 'extensions', 'ponytail', 'pi-extension', base))
-    .find((at) => existsSync(at))
-    ?? path.join(tersioPluginDir, 'extensions', 'ponytail', 'pi-extension', 'index.ts');
+  const ponytailIndex =
+    ['index.ts', 'index.js']
+      .map((base) => path.join(tersioPluginDir, 'extensions', 'ponytail', 'pi-extension', base))
+      .find((at) => existsSync(at)) ?? path.join(tersioPluginDir, 'extensions', 'ponytail', 'pi-extension', 'index.ts');
   const cavemanIndex = path.join(tersioPluginDir, 'extensions', 'caveman', 'index.ts');
   const cavemanRule = (name: string) => path.join(tersioPluginDir, 'extensions', 'caveman', name);
   // The pstack body is a Tersio fork with no remote, so the check proves it is usable, not current.
@@ -180,7 +212,7 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
     cavemanMegacaveText: readTextIfExists(cavemanRule('rule-megacave.md')),
     pstackRuleText: readTextIfExists(pstackRule),
     pstackTreeFiles: Promise.all(
-      TREE_PSTACK_FILES.map((rel) => readTextIfExists(path.join(tersioPluginDir, "extensions", ...rel.split("/")))),
+      TREE_PSTACK_FILES.map((rel) => readTextIfExists(path.join(tersioPluginDir, 'extensions', ...rel.split('/')))),
     ),
     rtkIndexText: readTextIfExists(rtkIndex),
     updaterIndexText: readTextIfExists(updaterIndex),
@@ -188,60 +220,83 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
     ruleMtime: fs.stat(cavemanRule('rule.md')).catch(() => null),
     ponytailMtime: fs.stat(ponytailIndex).catch(() => null),
   };
-  const rtkVersionProbe: Promise<string | null> = rtkBin ? execP(rtkBin, ['--version'], { timeout: 5000 }).then(
-    (r) => r.stdout.trim() || r.stderr.trim() || null,
-    (e) => {
-      const err = e as { stdout?: string; stderr?: string };
-      return err.stdout?.trim() || err.stderr?.trim() || null;
-    },
-  ) : Promise.resolve(null);
-  const headroomVersionProbe: Promise<string | null> = headroomBin ? execP(headroomBin, ['--version'], { timeout: 5000 }).then(
-    (r) => r.stdout.trim() || r.stderr.trim() || null,
-    (e) => {
-      const err = e as { stdout?: string; stderr?: string };
-      return err.stdout?.trim() || err.stderr?.trim() || null;
-    },
-  ) : Promise.resolve(null);
+  const rtkVersionProbe: Promise<string | null> = rtkBin
+    ? execP(rtkBin, ['--version'], { timeout: 5000 }).then(
+        (r) => r.stdout.trim() || r.stderr.trim() || null,
+        (e) => {
+          const err = e as { stdout?: string; stderr?: string };
+          return err.stdout?.trim() || err.stderr?.trim() || null;
+        },
+      )
+    : Promise.resolve(null);
+  const headroomVersionProbe: Promise<string | null> = headroomBin
+    ? execP(headroomBin, ['--version'], { timeout: 5000 }).then(
+        (r) => r.stdout.trim() || r.stderr.trim() || null,
+        (e) => {
+          const err = e as { stdout?: string; stderr?: string };
+          return err.stdout?.trim() || err.stderr?.trim() || null;
+        },
+      )
+    : Promise.resolve(null);
   // A manager that lost its daemonized process reads stopped, while the orphan still holds the port.
   const opencodeServiceProbe: Promise<{ status: string; live: boolean } | null> = opencodeBin
     ? Promise.resolve(serviceState())
     : Promise.resolve(null);
-  const [[_ompPkgText, _configText], [_cavemanIndexText, _rtkIndexText, _updaterIndexText, ponytailPkgText], [cavemanRuleText, cavemanLiteText, cavemanMegacaveLiteText, cavemanMegacaveUltraText, cavemanUltraText, cavemanMegacaveText, pstackRuleText, pstackTreeFiles, ruleMtime, rtkBinText, rtkMtime, rtkVersion, ponytailMtime, headroomVersionRaw], opencodeService] = await runInteractivePhase('Checking installation', () => Promise.all([
+  const [
+    [_ompPkgText, _configText],
+    [_cavemanIndexText, _rtkIndexText, _updaterIndexText, ponytailPkgText],
+    [
+      cavemanRuleText,
+      cavemanLiteText,
+      cavemanMegacaveLiteText,
+      cavemanMegacaveUltraText,
+      cavemanUltraText,
+      cavemanMegacaveText,
+      pstackRuleText,
+      pstackTreeFiles,
+      ruleMtime,
+      rtkBinText,
+      rtkMtime,
+      rtkVersion,
+      ponytailMtime,
+      headroomVersionRaw,
+    ],
+    opencodeService,
+  ] = await runInteractivePhase('Checking installation', () =>
     Promise.all([
-      probes.ompPkgText,
-      probes.configText,
+      Promise.all([probes.ompPkgText, probes.configText]),
+      Promise.all([probes.cavemanIndexText, probes.rtkIndexText, probes.updaterIndexText, probes.ponytailPkgText]),
+      Promise.all([
+        probes.cavemanRuleText,
+        probes.cavemanLiteText,
+        probes.cavemanMegacaveLiteText,
+        probes.cavemanMegacaveUltraText,
+        probes.cavemanUltraText,
+        probes.cavemanMegacaveText,
+        probes.pstackRuleText,
+        probes.pstackTreeFiles,
+        probes.ruleMtime,
+        probes.rtkBinText,
+        probes.rtkMtime,
+        rtkVersionProbe,
+        probes.ponytailMtime,
+        headroomVersionProbe,
+      ]),
+      opencodeServiceProbe,
     ]),
-    Promise.all([
-      probes.cavemanIndexText,
-      probes.rtkIndexText,
-      probes.updaterIndexText,
-      probes.ponytailPkgText,
-    ]),
-    Promise.all([
-      probes.cavemanRuleText,
-      probes.cavemanLiteText,
-      probes.cavemanMegacaveLiteText,
-      probes.cavemanMegacaveUltraText,
-      probes.cavemanUltraText,
-      probes.cavemanMegacaveText,
-      probes.pstackRuleText,
-      probes.pstackTreeFiles,
-      probes.ruleMtime,
-      probes.rtkBinText,
-      probes.rtkMtime,
-      rtkVersionProbe,
-      probes.ponytailMtime,
-      headroomVersionProbe,
-    ]),
-    opencodeServiceProbe,
-  ]));
+  );
 
   // Success rows stay quiet (no path echoes); failures print the expected path or fix so they stay actionable.
   const tally = { ok: 0, missing: 0, warn: 0 };
   const warnings: Array<{ label: string; detail: string }> = [];
   function check(label: string, ok: boolean, detail = ''): void {
-    if (ok) { tally.ok++; console.log(`  ✅ ${label}: ok${detail ? ` ${detail}` : ''}`); }
-    else { tally.missing++; console.log(`  ❌ ${label}: MISSING${detail ? ` ${detail}` : ''}`); }
+    if (ok) {
+      tally.ok++;
+      console.log(`  ✅ ${label}: ok${detail ? ` ${detail}` : ''}`);
+    } else {
+      tally.missing++;
+      console.log(`  ❌ ${label}: MISSING${detail ? ` ${detail}` : ''}`);
+    }
   }
   function warnLine(label: string, detail: string): void {
     tally.warn++;
@@ -276,7 +331,12 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
     check(host.label, true, `${kind} ${name}${host.version ? ` ${host.version}` : ''}`);
     // The MCP entry is a second file an install writes; a tool that never appears starts here.
     if (!tersioMcpConfigured(host.id)) {
-      warnLine(`${host.label} MCP`, hostCap(host.id)?.mcp != null ? `not wired — run: tersio install --host ${host.id}` : 'the bundle patch did not mount');
+      warnLine(
+        `${host.label} MCP`,
+        hostCap(host.id)?.mcp != null
+          ? `not wired — run: tersio install --host ${host.id}`
+          : 'the bundle patch did not mount',
+      );
     }
     // A route Tersio recorded but no longer reads back was overwritten by another writer.
     const headroomRoute = readHeadroomRoute(host.id);
@@ -289,16 +349,25 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   // A version apart means Oh My Pi can load a tree of two releases.
   const ompHost = hosts.find((host) => host.id === 'omp');
   if (ompHost?.version && ompHost.version !== PACKAGE_VERSION) {
-    warnLine('Oh My Pi plugin version', `v${ompHost.version} while this CLI is v${PACKAGE_VERSION} — run: tersio install --host omp`);
+    warnLine(
+      'Oh My Pi plugin version',
+      `v${ompHost.version} while this CLI is v${PACKAGE_VERSION} — run: tersio install --host omp`,
+    );
   }
 
   // A healthy service adds no row: the host row already names the install, and this row only shows when the manager's report and the live process disagree.
   if (opencodeService) {
     const running = serviceRunning(opencodeService.status);
     if (!running && opencodeService.live) {
-      warnLine('OpenCode service', `a serve process is alive but the service reads ${opencodeService.status} — run: tersio doctor --fix service`);
+      warnLine(
+        'OpenCode service',
+        `a serve process is alive but the service reads ${opencodeService.status} — run: tersio doctor --fix service`,
+      );
     } else if (running && !opencodeService.live) {
-      warnLine('OpenCode service', 'the service reports running but no serve process is alive — run: tersio doctor --fix service');
+      warnLine(
+        'OpenCode service',
+        'the service reports running but no serve process is alive — run: tersio doctor --fix service',
+      );
     }
   }
 
@@ -307,12 +376,25 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   if (indexLag) warnLine('Oh My Pi stats index', indexLag);
 
   section('Add-ons');
-  const ruleAge = ruleMtime ? `(updated ${relTime(Date.now() - ruleMtime.mtimeMs)} · ${absDate(ruleMtime.mtimeMs)})` : '';
-  const cavemanRules = [['rule.md', cavemanRuleText], ['rule-lite.md', cavemanLiteText], ['rule-megacave-lite.md', cavemanMegacaveLiteText], ['rule-megacave-ultra.md', cavemanMegacaveUltraText], ['rule-ultra.md', cavemanUltraText], ['rule-megacave.md', cavemanMegacaveText]];
+  const ruleAge = ruleMtime
+    ? `(updated ${relTime(Date.now() - ruleMtime.mtimeMs)} · ${absDate(ruleMtime.mtimeMs)})`
+    : '';
+  const cavemanRules = [
+    ['rule.md', cavemanRuleText],
+    ['rule-lite.md', cavemanLiteText],
+    ['rule-megacave-lite.md', cavemanMegacaveLiteText],
+    ['rule-megacave-ultra.md', cavemanMegacaveUltraText],
+    ['rule-ultra.md', cavemanUltraText],
+    ['rule-megacave.md', cavemanMegacaveText],
+  ];
   const missingRules = cavemanRules.filter(([, text]) => text === null).map(([name]) => name);
   // The body carries no version, so the release it came from is the number: the pinned one, or the one a pull recorded.
   const cavemanRelease = (readState().cavemanUpstream?.tag ?? CAVEMAN_PIN).replace(/^v/, '');
-  check('Caveman rule', missingRules.length === 0, missingRules.length ? `missing: ${missingRules.join(', ')}` : [cavemanRelease, ruleAge].filter(Boolean).join(' '));
+  check(
+    'Caveman rule',
+    missingRules.length === 0,
+    missingRules.length ? `missing: ${missingRules.join(', ')}` : [cavemanRelease, ruleAge].filter(Boolean).join(' '),
+  );
   for (const [name, text] of cavemanRules) {
     if (text === null) continue;
     const problem = ruleBodyProblem(text);
@@ -329,18 +411,28 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   TREE_PSTACK_FILES.forEach((rel: string, i: number) => {
     if (pstackTreeFiles[i] !== null) pstackOnDisk[rel] = true;
   });
-  const pstackMissing = TREE_PSTACK_FILES.filter((rel: string) => !pstackOnDisk[rel]).map((rel: string) => rel.replace(/^pstack\//, ''));
+  const pstackMissing = TREE_PSTACK_FILES.filter((rel: string) => !pstackOnDisk[rel]).map((rel: string) =>
+    rel.replace(/^pstack\//, ''),
+  );
   if (pstackMissing.length > 0) {
-    warnLine('pstack tree', `missing ${pstackMissing.length} file${pstackMissing.length === 1 ? '' : 's'}: ${pstackMissing.slice(0, 6).join(', ')}${pstackMissing.length > 6 ? ` +${pstackMissing.length - 6} more` : ''} — run: tersio install`);
+    warnLine(
+      'pstack tree',
+      `missing ${pstackMissing.length} file${pstackMissing.length === 1 ? '' : 's'}: ${pstackMissing.slice(0, 6).join(', ')}${pstackMissing.length > 6 ? ` +${pstackMissing.length - 6} more` : ''} — run: tersio install`,
+    );
   }
   // A verbatim sentence read out of omp's own prompt, so a re-worded release stops Caveman reaching subagents.
   const subagentGap = subagentMarkerStatus(ompBinary());
   if (subagentGap) warnLine('Caveman subagent marker', subagentGap);
   const rtkAge = rtkMtime ? `(updated ${relTime(Date.now() - rtkMtime.mtimeMs)} · ${absDate(rtkMtime.mtimeMs)})` : '';
-  check('RTK binary', rtkBin !== null, rtkBinText === null ? 'not found in PATH' : [rtkVersion, rtkAge].filter(Boolean).join(' '));
+  check(
+    'RTK binary',
+    rtkBin !== null,
+    rtkBinText === null ? 'not found in PATH' : [rtkVersion, rtkAge].filter(Boolean).join(' '),
+  );
   // rtk_run needs a host exec API, which doctor cannot assume.
   if (rtkBin === null) reportUnused('RTK exec', '· install Tersio to place rtk in ~/.bun/bin');
-  else if (!hosts.some((host) => host.installed && (host.id === 'omp' || host.id === 'opencode'))) warnLine('RTK exec', 'no installed host exposes an exec API — rtk_run is unavailable; call rtk from bash instead');
+  else if (!hosts.some((host) => host.installed && (host.id === 'omp' || host.id === 'opencode')))
+    warnLine('RTK exec', 'no installed host exposes an exec API — rtk_run is unavailable; call rtk from bash instead');
   if (rtkBinText !== null && !rtkVersion) warnLine('RTK version', 'unavailable — binary may not be executable');
   // Headroom is the user's own opt-in install, so only its binary is reported here.
   const headroomVersion = headroomVersionRaw?.match(/version\s+(\S+)/)?.[1] ?? headroomVersionRaw ?? '';
@@ -354,47 +446,65 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
       .filter((entry) => entry.route.measured && !entry.route.routed);
     if (bypassed.length === 0) check('Headroom route', true);
     else {
-      warnLine('Headroom route',
-        `${bypassed.map((entry) => `${entry.id} ${describeHeadroomRoute(entry.route)}`).join(' · ')}`
-        + ' — the agent restores it on its next start; now: tersio install --host <host> --headroom-default on');
+      warnLine(
+        'Headroom route',
+        `${bypassed.map((entry) => `${entry.id} ${describeHeadroomRoute(entry.route)}`).join(' · ')}` +
+          ' — the agent restores it on its next start; now: tersio install --host <host> --headroom-default on',
+      );
     }
     // One proxy serves the machine, so a tool Tersio does not manage can share it when the upstream matches.
-    console.log(`  ·  Headroom endpoint: ${headroomProxyUrl()} — another tool points its base URL here when it uses the same upstream`);
+    console.log(
+      `  ·  Headroom endpoint: ${headroomProxyUrl()} — another tool points its base URL here when it uses the same upstream`,
+    );
   }
-  const ponytailAge = ponytailMtime ? `(updated ${relTime(Date.now() - ponytailMtime.mtimeMs)} · ${absDate(ponytailMtime.mtimeMs)})` : '';
+  const ponytailAge = ponytailMtime
+    ? `(updated ${relTime(Date.now() - ponytailMtime.mtimeMs)} · ${absDate(ponytailMtime.mtimeMs)})`
+    : '';
   check('Ponytail', ponytailPkgText !== null, [PONYTAIL_VERSION, ponytailAge].filter(Boolean).join(' '));
   if (ponytailStale.length > 0) {
-    warnLine('Ponytail per-host bodies',
+    warnLine(
+      'Ponytail per-host bodies',
       `stale in ${ponytailStale.length} file${ponytailStale.length === 1 ? '' : 's'}: ${ponytailStale.slice(0, 6).join(', ')}` +
-      `${ponytailStale.length > 6 ? ` +${ponytailStale.length - 6} more` : ''} — run: tersio install --host <host>`);
+        `${ponytailStale.length > 6 ? ` +${ponytailStale.length - 6} more` : ''} — run: tersio install --host <host>`,
+    );
   }
   // Offline-safe: the registry call is best-effort, and silence means no row rather than a stale one.
   const ponytailVersionGap = await ponytailLatestGap(PONYTAIL_VERSION);
-  if (ponytailVersionGap) warnLine('Ponytail version', `${ponytailVersionGap} — run: tersio update --apply-update --yes`);
+  if (ponytailVersionGap)
+    warnLine('Ponytail version', `${ponytailVersionGap} — run: tersio update --apply-update --yes`);
 
   // A count of pairs compared cannot show a file that is absent from disk and absent from the declaration, so assert every declared file landed.
   const unwritten = await unwrittenTreeFiles();
   // A missing check is an issue; a drifting or stale tree is a warning in its own category.
   if (unwritten.length > 0) {
     section('Issues');
-    check('Add-on tree content', false,
-      `${unwritten.length} declared file${unwritten.length === 1 ? '' : 's'} not written for a host reading as installed: ${unwritten.slice(0, 6).join(', ')}${unwritten.length > 6 ? ` +${unwritten.length - 6} more` : ''} — run: tersio doctor --fix extensions`);
+    check(
+      'Add-on tree content',
+      false,
+      `${unwritten.length} declared file${unwritten.length === 1 ? '' : 's'} not written for a host reading as installed: ${unwritten.slice(0, 6).join(', ')}${unwritten.length > 6 ? ` +${unwritten.length - 6} more` : ''} — run: tersio doctor --fix extensions`,
+    );
   }
   // A tree on an older body serves until its install step runs; debris needs the sweeper instead.
   if (treeStale.length > 0) {
-    warnLine('Per-host add-on files',
+    warnLine(
+      'Per-host add-on files',
       `stale in ${treeStale.length} file${treeStale.length === 1 ? '' : 's'}: ${treeStale.slice(0, 6).join(', ')}` +
-      `${treeStale.length > 6 ? ` +${treeStale.length - 6} more` : ''} — ${cavemanBodyHint()}`);
+        `${treeStale.length > 6 ? ` +${treeStale.length - 6} more` : ''} — ${cavemanBodyHint()}`,
+    );
   }
   if (treeMissing.length > 0) {
-    warnLine('Per-host add-on files',
+    warnLine(
+      'Per-host add-on files',
       `never installed in ${treeMissing.length} file${treeMissing.length === 1 ? '' : 's'}: ${treeMissing.join(', ')}` +
-      ` — run: tersio install --host <host>`);
+        ` — run: tersio install --host <host>`,
+    );
   }
   if (treeOrphan.length > 0) {
-    warnLine('Per-host add-on files',
+    warnLine(
+      'Per-host add-on files',
       `orphaned in ${treeOrphan.length} file${treeOrphan.length === 1 ? '' : 's'}: ${treeOrphan.join(', ')}` +
-      ` — run: tersio doctor --fix extensions`);
+        ` — run: tersio doctor --fix extensions`,
+    );
   }
 
   flushWarnings();
@@ -468,7 +578,11 @@ function hostTreeFiles(base: string): string[] {
   const out: string[] = [];
   const walk = (dir: string, rel: string): void => {
     let entries;
-    try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
     for (const entry of entries) {
       if (entry.name === 'node_modules' || entry.name === '.DS_Store') continue;
       const child = rel ? `${rel}/${entry.name}` : entry.name;
@@ -486,8 +600,9 @@ function subagentMarkerStatus(ompBin: string | null): string | null {
   let haystack: string;
   try {
     const shim = shimCommand(ompBin, ['--version']);
-    haystack = execFileSync(shim.cmd, shim.args, { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'pipe'] })
-      + readFileSync(ompBin, 'utf8');
+    haystack =
+      execFileSync(shim.cmd, shim.args, { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'pipe'] }) +
+      readFileSync(ompBin, 'utf8');
   } catch {
     // A binary that will not run is the version row's problem, not this one's.
     return null;
@@ -509,37 +624,62 @@ async function runDoctorFix(tally: DoctorSummary): Promise<void> {
   }
   // A dry run still reaches the repairs: each write is guarded, so the flag only skips prompts a preview cannot ask.
   if (dryRun) {
-    console.log(`\n  [dry-run] would repair ${problems.join(' + ') || 'nothing'} (extensions, stale config.yml entries, rtk wiring, ponytail refresh, CLI update, opencode service)`);
+    console.log(
+      `\n  [dry-run] would repair ${problems.join(' + ') || 'nothing'} (extensions, stale config.yml entries, rtk wiring, ponytail refresh, CLI update, opencode service)`,
+    );
     const { runDoctorRepairs } = await import('./doctor-fix.ts');
     await runDoctorRepairs(targets);
     return;
   }
   if (scoped && !yes) {
     const go = await askInteractiveConfirm(`Repair "${scoped}" now?`);
-    if (go.status !== 'confirmed' || !go.value) { process.exitCode = 130; return; }
+    if (go.status !== 'confirmed' || !go.value) {
+      process.exitCode = 130;
+      return;
+    }
   } else if (!scoped && !yes) {
-    const picked = await askInteractiveChoice('Doctor — what should I repair?', [
-      { value: 'all', label: 'Fix everything', hint: `${tally.missing + tally.warn} rows` },
-      { value: 'extensions', label: 'Missing extension files', hint: 'copy sources from this CLI' },
-      { value: 'registrations', label: 'config.yml registrations', hint: 'remove stale entries; keep manifest-owned extensions out' },
-      { value: 'rtk', label: 'RTK wiring', hint: 're-bind the installed rtk with rtk init' },
-      { value: 'ponytail', label: 'Ponytail package', hint: 'bundled reinstall via tersio dep' },
-      { value: 'cli', label: 'CLI update', hint: 'latest tersio + delegated refresh' },
-      { value: 'headroom', label: 'Headroom proxy', hint: 'stop duplicate proxies, then start one on the routed port' },
-      { value: 'service', label: 'OpenCode service', hint: 'stop an orphaned serve process, then start it' },
-    ], 'all');
-    if (picked.status !== 'selected') { process.exitCode = 130; return; }
+    const picked = await askInteractiveChoice(
+      'Doctor — what should I repair?',
+      [
+        { value: 'all', label: 'Fix everything', hint: `${tally.missing + tally.warn} rows` },
+        { value: 'extensions', label: 'Missing extension files', hint: 'copy sources from this CLI' },
+        {
+          value: 'registrations',
+          label: 'config.yml registrations',
+          hint: 'remove stale entries; keep manifest-owned extensions out',
+        },
+        { value: 'rtk', label: 'RTK wiring', hint: 're-bind the installed rtk with rtk init' },
+        { value: 'ponytail', label: 'Ponytail package', hint: 'bundled reinstall via tersio dep' },
+        { value: 'cli', label: 'CLI update', hint: 'latest tersio + delegated refresh' },
+        {
+          value: 'headroom',
+          label: 'Headroom proxy',
+          hint: 'stop duplicate proxies, then start one on the routed port',
+        },
+        { value: 'service', label: 'OpenCode service', hint: 'stop an orphaned serve process, then start it' },
+      ],
+      'all',
+    );
+    if (picked.status !== 'selected') {
+      process.exitCode = 130;
+      return;
+    }
     if (picked.value === 'all') targets = ['all'];
     else {
       const go = await askInteractiveConfirm(`Repair "${picked.value}" now?`);
-      if (go.status !== 'confirmed' || !go.value) { process.exitCode = 130; return; }
+      if (go.status !== 'confirmed' || !go.value) {
+        process.exitCode = 130;
+        return;
+      }
       targets = [picked.value as FixTarget];
     }
   }
   const { runDoctorRepairs } = await import('./doctor-fix.ts');
   const failed = await runDoctorRepairs(targets);
   if (failed.length > 0) {
-    console.log(`\n  Doctor --fix: ${failed.length} repair(s) failed (${failed.join(', ')}) — rerun or see [fail] lines above.`);
+    console.log(
+      `\n  Doctor --fix: ${failed.length} repair(s) failed (${failed.join(', ')}) — rerun or see [fail] lines above.`,
+    );
     process.exitCode = 1;
     return;
   }

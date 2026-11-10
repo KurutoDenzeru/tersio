@@ -48,7 +48,9 @@ function current(): TersioState {
     try {
       const parsed: unknown = JSON.parse(text);
       if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed as TersioState;
-    } catch { /* a damaged row reads empty */ }
+    } catch {
+      /* a damaged row reads empty */
+    }
     return {};
   }
   try {
@@ -59,7 +61,9 @@ function current(): TersioState {
       rmSync(tersioStateFile(), { force: true });
       return parsed as TersioState;
     }
-  } catch { /* none yet */ }
+  } catch {
+    /* none yet */
+  }
   return {};
 }
 
@@ -106,7 +110,9 @@ export function patchState(patch: Partial<TersioState>): void {
   try {
     const next = { ...current(), ...patch };
     cachePut(STATE_KEY, JSON.stringify(next));
-  } catch { /* state is best-effort; never break the caller */ }
+  } catch {
+    /* state is best-effort; never break the caller */
+  }
 }
 
 /** The old per-key file, read once and then removed, so a stale copy never wins later. */

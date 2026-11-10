@@ -1,41 +1,52 @@
 // Canvas palette read from the dashboard's CSS tokens, so the flamegraph follows the active theme and accent.
 
-import { useEffect, useState } from "react";
+import { useEffect, useState } from "react"
 
 /** One colour per lane, plus the marks the axes and the selection need. */
 export interface TraceTheme {
   /** Span fill per span kind. */
-  category: Record<"turn" | "model" | "tool" | "background", string>;
+  category: Record<"turn" | "model" | "tool" | "background", string>
   /** Solid badge fill per span kind: opaque, so a pill reads as a filled chip. */
-  badge: Record<"turn" | "model" | "tool" | "background", string>;
+  badge: Record<"turn" | "model" | "tool" | "background", string>
   /** Left edge of a span that failed. */
-  error: string;
+  error: string
   /** Marker diamond fill. */
-  marker: string;
+  marker: string
   /** Alternating band behind a turn. */
-  turnBand: string;
+  turnBand: string
   /** Ruler and lane hairlines. */
-  grid: string;
+  grid: string
   /** Ruler tick labels. */
-  tick: string;
+  tick: string
   /** Span label drawn inside a block. */
-  spanText: string;
-  selection: string;
+  spanText: string
+  selection: string
   /** Canvas backdrop. */
-  panel: string;
-  fonts: { sans: string; mono: string };
+  panel: string
+  fonts: { sans: string; mono: string }
 }
 
 /** Which token paints each span kind is fixed in `readTheme`; a turn reads as the surface, a model as the accent. */
 const TOKEN_NAMES = [
-  "--track", "--dim", "--accent", "--warn-border", "--warn-soft", "--line",
-  "--danger", "--ink", "--grid", "--panel", "--font-sans", "--font-mono",
-] as const;
+  "--track",
+  "--dim",
+  "--accent",
+  "--warn-border",
+  "--warn-soft",
+  "--line",
+  "--danger",
+  "--ink",
+  "--grid",
+  "--panel",
+  "--font-sans",
+  "--font-mono",
+] as const
 
 /** Read the tokens once. The app swaps theme and accent on the root element, so the read is cached. */
 function readTheme(): TraceTheme {
-  const styles = getComputedStyle(document.documentElement);
-  const token = (name: string, fallback: string): string => styles.getPropertyValue(name).trim() || fallback;
+  const styles = getComputedStyle(document.documentElement)
+  const token = (name: string, fallback: string): string =>
+    styles.getPropertyValue(name).trim() || fallback
   return {
     category: {
       turn: token("--dim", "#52525b"),
@@ -62,27 +73,27 @@ function readTheme(): TraceTheme {
       sans: token("--font-sans", "system-ui, sans-serif"),
       mono: token("--font-mono", "ui-monospace, monospace"),
     },
-  };
+  }
 }
 
 /** The current palette, re-read whenever the theme or the accent changes. */
 export function useTraceTheme(): TraceTheme {
-  const [palette, setPalette] = useState<TraceTheme>(() => readTheme());
+  const [palette, setPalette] = useState<TraceTheme>(() => readTheme())
 
   // Tokens land on the root element, so watching it catches the settings dialog, the shortcut, and the system theme.
   useEffect(() => {
-    const read = (): void => setPalette(readTheme());
-    read();
-    const observer = new MutationObserver(read);
+    const read = (): void => setPalette(readTheme())
+    read()
+    const observer = new MutationObserver(read)
     observer.observe(document.documentElement, {
       attributes: true,
       attributeFilter: ["data-theme", "data-accent", "class"],
-    });
-    return () => observer.disconnect();
-  }, []);
+    })
+    return () => observer.disconnect()
+  }, [])
 
-  return palette;
+  return palette
 }
 
 /** Tokens this palette reads, listed for tests and for a future token audit. */
-export const TRACE_THEME_TOKENS: readonly string[] = TOKEN_NAMES;
+export const TRACE_THEME_TOKENS: readonly string[] = TOKEN_NAMES

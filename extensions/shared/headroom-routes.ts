@@ -6,10 +6,26 @@ import { execFile } from 'node:child_process';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { headroomProxyUpstream, headroomProxyUrl, opencodeConfigFiles } from './headroom-proxy.ts';
-import { headroomProxyPort, readOmpGateway, restoreOmpGateway, routeOmpDefaultModel, routeOmpGateway } from './headroom-proxy.ts';
+import {
+  headroomProxyPort,
+  readOmpGateway,
+  restoreOmpGateway,
+  routeOmpDefaultModel,
+  routeOmpGateway,
+} from './headroom-proxy.ts';
 import { ensureAgentProviderRoute } from './headroom-agent.ts';
 import { codexConfigFile } from './codex-state.ts';
-import { describeHeadroomRoute, dshDefaultRoute, dshProfileFiles, dshProviders, jsonBaseUrl, jsonModelEntry, readHeadroomRoute, sameProxyEndpoint, stripJsonComments } from './headroom-routing.ts';
+import {
+  describeHeadroomRoute,
+  dshDefaultRoute,
+  dshProfileFiles,
+  dshProviders,
+  jsonBaseUrl,
+  jsonModelEntry,
+  readHeadroomRoute,
+  sameProxyEndpoint,
+  stripJsonComments,
+} from './headroom-routing.ts';
 import { splicePath } from './jsonc-edit.ts';
 import type { HeadroomRoute } from './headroom-routing.ts';
 import { HOST_CAPS, hostCap } from './host-caps.ts';
@@ -57,7 +73,10 @@ function codexRootValue(text: string, key: string): { value: string | null; pres
     const match = line.match(new RegExp(`^\\s*${key}\\s*=\\s*(.*)$`));
     if (!match) continue;
     present = true;
-    value = match[1]!.replace(/\s+#.*$/, '').trim().replace(/^["']|["']$/g, '');
+    value = match[1]!
+      .replace(/\s+#.*$/, '')
+      .trim()
+      .replace(/^["']|["']$/g, '');
   }
   return { value, present };
 }
@@ -77,14 +96,19 @@ function codexSectionValue(text: string, section: string, key: string): { value:
     const match = trimmed.match(new RegExp(`^${key}\\s*=\\s*(.*)$`));
     if (!match) continue;
     present = true;
-    value = match[1]!.replace(/\s+#.*$/, '').trim().replace(/^["']|["']$/g, '');
+    value = match[1]!
+      .replace(/\s+#.*$/, '')
+      .trim()
+      .replace(/^["']|["']$/g, '');
   }
   return { value, present };
 }
 
 function readCodexBackup(): CodexRootBackup | null {
   try {
-    const parsed = JSON.parse(readFileSync(path.join(tersioHome(), CODEX_HEADROOM_BACKUP), 'utf8')) as Partial<CodexRootBackup>;
+    const parsed = JSON.parse(
+      readFileSync(path.join(tersioHome(), CODEX_HEADROOM_BACKUP), 'utf8'),
+    ) as Partial<CodexRootBackup>;
     return {
       modelProvider: typeof parsed.modelProvider === 'string' ? parsed.modelProvider : null,
       modelProviderPresent: parsed.modelProviderPresent === true,
@@ -104,7 +128,9 @@ function writeCodexBackup(backup: CodexRootBackup): void {
     const root = tersioHome();
     mkdirSync(root, { recursive: true });
     writeFileSync(path.join(root, CODEX_HEADROOM_BACKUP), `${JSON.stringify(backup, null, 2)}\n`, 'utf8');
-  } catch { /* the route still works; the next unwrap falls back to Headroom's manifest */ }
+  } catch {
+    /* the route still works; the next unwrap falls back to Headroom's manifest */
+  }
 }
 
 function removeCodexBackup(): void {
@@ -114,7 +140,9 @@ function removeCodexBackup(): void {
       // This file is Tersio's own marker, not a host config.
       rmSync(file, { force: true });
     }
-  } catch { /* a missing marker is already clean */ }
+  } catch {
+    /* a missing marker is already clean */
+  }
 }
 
 /** Put the root provider keys back after Headroom's own unwrap removes its block. */
@@ -124,8 +152,10 @@ export function restoreCodexRoot(text: string, backup: CodexRootBackup): string 
   const end = firstSection < 0 ? lines.length : firstSection;
   const root = lines.slice(0, end).filter((line) => !/^\s*(model_provider|openai_base_url)\s*=/.test(line));
   const restored: string[] = [];
-  if (backup.modelProviderPresent && backup.modelProvider !== null) restored.push(`model_provider = ${JSON.stringify(backup.modelProvider)}`);
-  if (backup.openaiBaseUrlPresent && backup.openaiBaseUrl !== null) restored.push(`openai_base_url = ${JSON.stringify(backup.openaiBaseUrl)}`);
+  if (backup.modelProviderPresent && backup.modelProvider !== null)
+    restored.push(`model_provider = ${JSON.stringify(backup.modelProvider)}`);
+  if (backup.openaiBaseUrlPresent && backup.openaiBaseUrl !== null)
+    restored.push(`openai_base_url = ${JSON.stringify(backup.openaiBaseUrl)}`);
   return [...root, ...restored, ...lines.slice(end)].join(text.includes('\r\n') ? '\r\n' : '\n');
 }
 
@@ -209,7 +239,10 @@ async function headroomCommand(args: string[]): Promise<{ ok: boolean; detail: s
     return { ok: true, detail: result.stdout.trim() || result.stderr.trim() || `headroom ${args.join(' ')}` };
   } catch (e) {
     const error = e as { stdout?: string; stderr?: string; message?: string };
-    return { ok: false, detail: (error.stderr || error.stdout || error.message || `headroom ${args.join(' ')} failed`).trim() };
+    return {
+      ok: false,
+      detail: (error.stderr || error.stdout || error.message || `headroom ${args.join(' ')} failed`).trim(),
+    };
   }
 }
 
@@ -219,15 +252,19 @@ export async function routeCodexHeadroom(proxyUrl: string = headroomProxyUrl()):
   if (before !== null) {
     const inferred = inferCodexRootBackup(before);
     const held = readCodexBackup();
-    writeCodexBackup(held ? {
-      ...inferred,
-      ...held,
-      provider: routableCodexProvider(held.provider) ?? inferred.provider,
-      providerBaseUrl: held.providerBaseUrl ?? inferred.providerBaseUrl,
-      providerBaseUrlPresent: held.providerBaseUrlPresent === true || inferred.providerBaseUrlPresent === true,
-      modelProviderPresent: held.modelProviderPresent === true || inferred.modelProviderPresent === true,
-      openaiBaseUrlPresent: held.openaiBaseUrlPresent === true || inferred.openaiBaseUrlPresent === true,
-    } : inferred);
+    writeCodexBackup(
+      held
+        ? {
+            ...inferred,
+            ...held,
+            provider: routableCodexProvider(held.provider) ?? inferred.provider,
+            providerBaseUrl: held.providerBaseUrl ?? inferred.providerBaseUrl,
+            providerBaseUrlPresent: held.providerBaseUrlPresent === true || inferred.providerBaseUrlPresent === true,
+            modelProviderPresent: held.modelProviderPresent === true || inferred.modelProviderPresent === true,
+            openaiBaseUrlPresent: held.openaiBaseUrlPresent === true || inferred.openaiBaseUrlPresent === true,
+          }
+        : inferred,
+    );
   }
   const installed = await headroomCommand(['init', '-g', '--port', String(headroomProxyPort()), 'codex']);
   if (!installed.ok) return installed;
@@ -259,8 +296,18 @@ export async function unwrapCodexHeadroom(): Promise<NativeRouteResult> {
     if (text !== null) {
       let restored = removeTomlSection(text, 'model_providers.openai');
       restored = restoreCodexRoot(restored, backup);
-      if (backup.provider && backup.provider !== 'headroom' && backup.providerBaseUrlPresent && backup.providerBaseUrl) {
-        restored = setTomlSectionValue(restored, `model_providers.${backup.provider}`, 'base_url', backup.providerBaseUrl);
+      if (
+        backup.provider &&
+        backup.provider !== 'headroom' &&
+        backup.providerBaseUrlPresent &&
+        backup.providerBaseUrl
+      ) {
+        restored = setTomlSectionValue(
+          restored,
+          `model_providers.${backup.provider}`,
+          'base_url',
+          backup.providerBaseUrl,
+        );
       }
       writeFileSync(codexConfigFile(), restored, 'utf8');
     }
@@ -333,7 +380,7 @@ interface Target {
 function readJson(file: string): Record<string, unknown> | null {
   try {
     const value: unknown = JSON.parse(readFileSync(file, 'utf8'));
-    return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
+    return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
   } catch {
     return null;
   }
@@ -357,10 +404,13 @@ function sameOrigin(a: string, b: string): boolean {
 function writeJsonEndpoint(file: string, provider: string, model: string | null, key: string, url: string): void {
   const fresh = readJson(file);
   if (!fresh) throw new Error(`${file} is not valid JSON`);
-  const list = fresh.providers && typeof fresh.providers === 'object' ? fresh.providers as Record<string, unknown> : {};
+  const list =
+    fresh.providers && typeof fresh.providers === 'object' ? (fresh.providers as Record<string, unknown>) : {};
   const block = list[provider];
   if (!block || typeof block !== 'object') throw new Error(`${provider} is not in ${file}`);
-  const target = model ? jsonModelEntry(block as Record<string, unknown>, model, provider) : block as Record<string, unknown>;
+  const target = model
+    ? jsonModelEntry(block as Record<string, unknown>, model, provider)
+    : (block as Record<string, unknown>);
   if (!target) throw new Error(`${model} is not in ${file}`);
   target[key] = url;
   writeFileSync(file, `${JSON.stringify(fresh, null, 2)}\n`, 'utf8');
@@ -376,9 +426,10 @@ function piTargets(host: 'pi' | 'pig'): Target[] {
   const named = typeof settings.defaultProvider === 'string' ? settings.defaultProvider : '';
   const provider = named || (model.includes('/') ? model.slice(0, model.indexOf('/')) : '');
   if (!provider) return [];
-  const providers = models.providers && typeof models.providers === 'object' ? models.providers as Record<string, unknown> : {};
+  const providers =
+    models.providers && typeof models.providers === 'object' ? (models.providers as Record<string, unknown>) : {};
   const entry = providers[provider];
-  const record = entry && typeof entry === 'object' ? entry as Record<string, unknown> : null;
+  const record = entry && typeof entry === 'object' ? (entry as Record<string, unknown>) : null;
   if (!record) return [];
   const api = typeof record.api === 'string' ? record.api : '';
   const targets: Target[] = [];
@@ -417,14 +468,22 @@ function dshTargets(): Target[] {
   const profile = profiles[0];
   if (!profile) return [];
   let provider = '';
-  try { provider = dshDefaultRoute(readFileSync(profile, 'utf8')).provider; } catch { /* absent */ }
+  try {
+    provider = dshDefaultRoute(readFileSync(profile, 'utf8')).provider;
+  } catch {
+    /* absent */
+  }
   if (!provider) return [];
   const targets: Target[] = [];
   // The active profile only: writing the other one would route an app that is not running.
   for (const file of [settingsFile, profile]) {
     if (!existsSync(file)) continue;
     let text: string;
-    try { text = readFileSync(file, 'utf8'); } catch { continue; }
+    try {
+      text = readFileSync(file, 'utf8');
+    } catch {
+      continue;
+    }
     const block = dshProviders(text).find((entry) => entry.name === provider && entry.baseLine >= 0);
     if (!block || !block.baseUrl) continue;
     targets.push({
@@ -451,21 +510,34 @@ function dshTargets(): Target[] {
 
 /** Where OpenCode keeps the active provider's endpoint: V2 `providers.<id>.settings`, V1 `provider.<id>`. */
 function opencodeEndpoint(data: Record<string, unknown>, provider: string): { key: string; original: string } | null {
-  const map = data.providers && typeof data.providers === 'object' ? 'providers'
-    : data.provider && typeof data.provider === 'object' ? 'provider'
-      : '';
+  const map =
+    data.providers && typeof data.providers === 'object'
+      ? 'providers'
+      : data.provider && typeof data.provider === 'object'
+        ? 'provider'
+        : '';
   if (!map) return null;
   const providers = data[map] as Record<string, unknown>;
   const block = providers[provider];
   if (!block || typeof block !== 'object') return null;
   const record = block as Record<string, unknown>;
-  const settings = record.settings && typeof record.settings === 'object' ? record.settings as Record<string, unknown> : {};
-  const options = record.options && typeof record.options === 'object' ? record.options as Record<string, unknown> : {};
+  const settings =
+    record.settings && typeof record.settings === 'object' ? (record.settings as Record<string, unknown>) : {};
+  const options =
+    record.options && typeof record.options === 'object' ? (record.options as Record<string, unknown>) : {};
   // V2 first: `settings.baseURL`. Then V1's `api`, then the spellings an older config may carry.
-  const candidates: Array<[string, unknown]> = map === 'providers'
-    ? [['settings.baseURL', settings.baseURL]]
-    : [['options.baseURL', options.baseURL], ['options.baseUrl', options.baseUrl], ['options.base_url', options.base_url],
-      ['baseURL', record.baseURL], ['baseUrl', record.baseUrl], ['base_url', record.base_url], ['api', record.api]];
+  const candidates: Array<[string, unknown]> =
+    map === 'providers'
+      ? [['settings.baseURL', settings.baseURL]]
+      : [
+          ['options.baseURL', options.baseURL],
+          ['options.baseUrl', options.baseUrl],
+          ['options.base_url', options.base_url],
+          ['baseURL', record.baseURL],
+          ['baseUrl', record.baseUrl],
+          ['base_url', record.base_url],
+          ['api', record.api],
+        ];
   for (const [key, value] of candidates) {
     if (typeof value === 'string' && value.trim() !== '') return { key: `${map}.${provider}.${key}`, original: value };
   }
@@ -473,7 +545,12 @@ function opencodeEndpoint(data: Record<string, unknown>, provider: string): { ke
 }
 
 function readDotted(record: Record<string, unknown>, key: string): unknown {
-  return key.split('.').reduce<unknown>((value, part) => (value && typeof value === 'object' ? (value as Record<string, unknown>)[part] : undefined), record);
+  return key
+    .split('.')
+    .reduce<unknown>(
+      (value, part) => (value && typeof value === 'object' ? (value as Record<string, unknown>)[part] : undefined),
+      record,
+    );
 }
 
 function writeDotted(record: Record<string, unknown>, key: string, value: string): void {
@@ -491,7 +568,8 @@ function writeDotted(record: Record<string, unknown>, key: string, value: string
 function writeOpencodeEndpoint(file: string, key: string, url: string): void {
   if (file.toLowerCase().endsWith('.jsonc')) {
     const next = splicePath(readFileSync(file, 'utf8'), key.split('.'), url);
-    if (next === null) throw new Error(`${key} is not in ${file}; add it by hand or run tersio install --host opencode`);
+    if (next === null)
+      throw new Error(`${key} is not in ${file}; add it by hand or run tersio install --host opencode`);
     writeFileSync(file, next, 'utf8');
     return;
   }
@@ -512,22 +590,26 @@ function opencodeTargets(): Target[] {
     try {
       text = readFileSync(file, 'utf8');
       data = JSON.parse(stripJsonComments(text)) as Record<string, unknown>;
-    } catch { return []; }
+    } catch {
+      return [];
+    }
     const model = typeof data.model === 'string' ? data.model : '';
     if (!model.includes('/')) return [];
     const provider = model.slice(0, model.indexOf('/'));
     const endpoint = opencodeEndpoint(data, provider);
     if (!endpoint) return [];
-    return [{
-      file,
-      provider,
-      key: endpoint.key,
-      // OpenCode's block names a package, not an API dialect, so there is no upstream to compare.
-      api: '',
-      skipUpstream: true,
-      original: endpoint.original,
-      write: (url: string) => writeOpencodeEndpoint(file, endpoint.key, url),
-    }];
+    return [
+      {
+        file,
+        provider,
+        key: endpoint.key,
+        // OpenCode's block names a package, not an API dialect, so there is no upstream to compare.
+        api: '',
+        skipUpstream: true,
+        original: endpoint.original,
+        write: (url: string) => writeOpencodeEndpoint(file, endpoint.key, url),
+      },
+    ];
   }
   return [];
 }
@@ -547,7 +629,11 @@ export function installNativeRoute(host: NativeRouteHost, proxyUrl: string = hea
     if (!restored.ok) return restored;
   }
   let targets: Target[];
-  try { targets = TARGET_PLANNERS[host](); } catch (e) { return { ok: false, detail: (e as Error).message }; }
+  try {
+    targets = TARGET_PLANNERS[host]();
+  } catch (e) {
+    return { ok: false, detail: (e as Error).message };
+  }
   if (targets.length === 0) return { ok: false, detail: `no active provider endpoint found for ${host}` };
   // A route only makes sense when the proxy names the provider it replaces for this protocol.
   for (const target of targets) {
@@ -563,9 +649,10 @@ export function installNativeRoute(host: NativeRouteHost, proxyUrl: string = hea
     if (!sameUpstream(upstream, target.original)) {
       // One proxy forwards to one upstream; moving it for this agent would strand the others.
       const others = headroomRoutedHosts(host);
-      const already = others.length > 0
-        ? ` Already routed through ${upstream}: ${others.join(', ')}; repointing the proxy would break ${others.length === 1 ? 'it' : 'them'}.`
-        : '';
+      const already =
+        others.length > 0
+          ? ` Already routed through ${upstream}: ${others.join(', ')}; repointing the proxy would break ${others.length === 1 ? 'it' : 'them'}.`
+          : '';
       return {
         ok: false,
         detail: `${host}: ${target.original} is not Headroom's upstream (${upstream}).${already} Start Headroom with ${target.original} first.`,
@@ -575,10 +662,15 @@ export function installNativeRoute(host: NativeRouteHost, proxyUrl: string = hea
   // A model's own endpoint may spell its path differently, so only the service has to match.
   for (const target of targets) {
     if (!target.model) continue;
-    const provider = targets.find((entry) => !entry.model && entry.file === target.file && entry.provider === target.provider);
+    const provider = targets.find(
+      (entry) => !entry.model && entry.file === target.file && entry.provider === target.provider,
+    );
     const expected = provider ? provider.original : target.original;
     if (!sameOrigin(target.original, expected)) {
-      return { ok: false, detail: `${host}: ${target.original} is a different service from ${expected}. Route ${target.model} by hand.` };
+      return {
+        ok: false,
+        detail: `${host}: ${target.original} is a different service from ${expected}. Route ${target.model} by hand.`,
+      };
     }
   }
   const records: HeadroomRouteRecord[] = [];
@@ -589,11 +681,22 @@ export function installNativeRoute(host: NativeRouteHost, proxyUrl: string = hea
       if (sameProxyEndpoint(target.original, url)) continue;
       target.write(url);
       applied.push(target);
-      records.push({ file: target.file, provider: target.provider, model: target.model, original: target.original, written: url, ...(target.key ? { key: target.key } : {}) });
+      records.push({
+        file: target.file,
+        provider: target.provider,
+        model: target.model,
+        original: target.original,
+        written: url,
+        ...(target.key ? { key: target.key } : {}),
+      });
     }
   } catch (e) {
     for (const target of applied) {
-      try { target.write(target.original); } catch { /* best effort */ }
+      try {
+        target.write(target.original);
+      } catch {
+        /* best effort */
+      }
     }
     return { ok: false, detail: (e as Error).message };
   }
@@ -601,7 +704,10 @@ export function installNativeRoute(host: NativeRouteHost, proxyUrl: string = hea
   saveRecords(host, records);
   const check = readHeadroomRoute(host, proxyUrl);
   if (check.routed) {
-    return { ok: true, detail: `${host}: ${records.length} endpoint${records.length === 1 ? '' : 's'} routed through Headroom` };
+    return {
+      ok: true,
+      detail: `${host}: ${records.length} endpoint${records.length === 1 ? '' : 's'} routed through Headroom`,
+    };
   }
   const restored = removeNativeRoute(host);
   return {
@@ -626,7 +732,8 @@ export async function routeHostOn(host: string, proxyUrl: string = headroomProxy
   routeOmpDefaultModel(port);
   // omp's provider line may already point at another local gateway, so that line moves too.
   const gateway = hostCap(host)?.headroomGateway ? readOmpGateway(port) : null;
-  if (gateway && !routeOmpGateway(gateway, port)) return { ok: false, detail: `${host}: the gateway line could not be moved` };
+  if (gateway && !routeOmpGateway(gateway, port))
+    return { ok: false, detail: `${host}: the gateway line could not be moved` };
   const route = readHeadroomRoute(host, proxyUrl);
   return route.routed
     ? { ok: true, detail: `${host}: ${describeHeadroomRoute(route)}` }
@@ -650,7 +757,10 @@ export async function routeHostOff(host: string): Promise<NativeRouteResult> {
  * recorded endpoint proves the drift. A durable host's block belongs to headroom, so its own writer
  * restores it and no record is needed. Neither path touches the gateway that overwrote the route.
  */
-export async function repairHeadroomRoute(host: string, proxyUrl: string = headroomProxyUrl()): Promise<NativeRouteResult> {
+export async function repairHeadroomRoute(
+  host: string,
+  proxyUrl: string = headroomProxyUrl(),
+): Promise<NativeRouteResult> {
   const route = readHeadroomRoute(host, proxyUrl);
   if (!route.measured) return { ok: false, detail: describeHeadroomRoute(route) };
   if (route.routed) return { ok: true, detail: `${host} already reaches Headroom` };
@@ -699,7 +809,8 @@ export function removeNativeRoute(host: NativeRouteHost): NativeRouteResult {
         writeOpencodeEndpoint(record.file, record.key, record.original);
       } else {
         const data = JSON.parse(text) as Record<string, unknown>;
-        const providers = data.providers && typeof data.providers === 'object' ? data.providers as Record<string, unknown> : {};
+        const providers =
+          data.providers && typeof data.providers === 'object' ? (data.providers as Record<string, unknown>) : {};
         const block = providers[record.provider];
         if (!block || typeof block !== 'object') continue;
         const recordBlock = block as Record<string, unknown>;
@@ -718,5 +829,8 @@ export function removeNativeRoute(host: NativeRouteHost): NativeRouteResult {
   saveRecords(host, failed);
   return failed.length === 0
     ? { ok: true, detail: `${host}: endpoint restored` }
-    : { ok: false, detail: `${host}: ${failed.length} endpoint${failed.length === 1 ? '' : 's'} could not be restored` };
+    : {
+        ok: false,
+        detail: `${host}: ${failed.length} endpoint${failed.length === 1 ? '' : 's'} could not be restored`,
+      };
 }

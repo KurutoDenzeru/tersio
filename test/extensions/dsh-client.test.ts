@@ -10,7 +10,11 @@ const BUNDLE = path.join(process.cwd(), 'dist', 'extensions', 'dsh', 'client.js'
 test('the client bundle registers through the loader and leaks no globals', () => {
   const ids: string[] = [];
   const context = vm.createContext({
-    __ModuleLoader__: { load: (spec: { id: string }) => { ids.push(spec.id); } },
+    __ModuleLoader__: {
+      load: (spec: { id: string }) => {
+        ids.push(spec.id);
+      },
+    },
     console,
   });
   const code = readFileSync(BUNDLE, 'utf8');

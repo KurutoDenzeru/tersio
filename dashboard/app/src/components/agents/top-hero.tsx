@@ -1,27 +1,41 @@
 // The "most used" heroes: one stat-band strip, three cells, each over a faded silhouette of its own brand.
-import { BrandSilhouette, ProviderMark, VendorMark } from "@/components/brand";
-import { fmt, fmtShort, pct, providerColor } from "@/lib/format";
+import { BrandSilhouette, ProviderMark, VendorMark } from "@/components/brand"
+import { fmt, fmtShort, pct, providerColor } from "@/lib/format"
 
 export interface TopUsedEntry {
   /** Model id when kind is "model", provider id when it is "provider". */
-  name: string;
+  name: string
   /** The second line under the name: a model row names its provider, a provider row its volume. */
-  detail?: string;
-  requests: number;
+  detail?: string
+  requests: number
   /** Tokens the row moved; the headline number, since the request count rides the line under it. */
-  tokens: number;
+  tokens: number
   /** The row's share of the range's requests, 0..1. */
-  share: number;
+  share: number
   /** Ink for the rank rule; a page passes its own chart color so the cell matches the charts. */
-  color?: string;
+  color?: string
 }
 
-export function TopUsedCards({ kind, entries }: { kind: "model" | "provider"; entries: TopUsedEntry[] }) {
-  if (entries.length === 0) return null;
+export function TopUsedCards({
+  kind,
+  entries,
+}: {
+  kind: "model" | "provider"
+  entries: TopUsedEntry[]
+}) {
+  if (entries.length === 0) return null
   // Fewer than three entries merges the band: one entry spans full width, two split it in half.
-  const cols = entries.length === 1 ? "grid-cols-1" : entries.length === 2 ? "sm:grid-cols-2" : "sm:grid-cols-3";
+  const cols =
+    entries.length === 1
+      ? "grid-cols-1"
+      : entries.length === 2
+        ? "sm:grid-cols-2"
+        : "sm:grid-cols-3"
   return (
-    <div className={`shine grid overflow-hidden rounded-xl border border-line bg-panel ${cols}`} data-reveal>
+    <div
+      className={`shine grid overflow-hidden rounded-xl border border-line bg-panel ${cols}`}
+      data-reveal
+    >
       {entries.map((entry, rank) => (
         <section
           key={entry.name}
@@ -31,7 +45,11 @@ export function TopUsedCards({ kind, entries }: { kind: "model" | "provider"; en
           }
           aria-label={`Rank ${rank + 1} ${kind}`}
         >
-          {kind === "model" ? <BrandSilhouette model={entry.name} /> : <BrandSilhouette provider={entry.name} />}
+          {kind === "model" ? (
+            <BrandSilhouette model={entry.name} />
+          ) : (
+            <BrandSilhouette provider={entry.name} />
+          )}
           <div className="relative px-4 py-3">
             <p className="mono m-0 flex min-w-0 items-center gap-2 text-[11px] uppercase tracking-[0.12em] text-dim">
               <span
@@ -45,7 +63,11 @@ export function TopUsedCards({ kind, entries }: { kind: "model" | "provider"; en
             </p>
             <div className="mt-2 flex items-center justify-between gap-3">
               <span className="flex min-w-0 items-center gap-2.5">
-                {kind === "model" ? <VendorMark model={entry.name} row /> : <ProviderMark provider={entry.name} row />}
+                {kind === "model" ? (
+                  <VendorMark model={entry.name} row />
+                ) : (
+                  <ProviderMark provider={entry.name} row />
+                )}
                 <span className="min-w-0">
                   <span className="block truncate text-sm font-semibold" title={entry.name}>
                     {entry.name}
@@ -69,5 +91,5 @@ export function TopUsedCards({ kind, entries }: { kind: "model" | "provider"; en
         </section>
       ))}
     </div>
-  );
+  )
 }

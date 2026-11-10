@@ -13,23 +13,23 @@ export type SectionId =
   | "upstream"
   | "benchmarks"
   | "logs"
-  | "how-to";
+  | "how-to"
 
 export interface NavItem {
-  id: SectionId;
-  label: string;
-  icon: string;
+  id: SectionId
+  label: string
+  icon: string
   /** Second key of the `g <key>` jump. */
-  hotkey: string;
+  hotkey: string
   /** True when the section only has content with an agent stats database. */
-  agentOnly: boolean;
+  agentOnly: boolean
   /** True when the section is a developer surface: Settings > About gates it. */
-  devOnly?: boolean;
+  devOnly?: boolean
 }
 
 export interface NavGroup {
-  heading: string;
-  items: readonly NavItem[];
+  heading: string
+  items: readonly NavItem[]
 }
 
 export const NAV: readonly NavGroup[] = [
@@ -47,20 +47,26 @@ export const NAV: readonly NavGroup[] = [
       { id: "models", label: "Models", icon: "cpu", hotkey: "m", agentOnly: false },
       { id: "providers", label: "Providers", icon: "plug-zap", hotkey: "p", agentOnly: true },
       { id: "costs", label: "Costs", icon: "coins", hotkey: "c", agentOnly: true },
-      { id: "carbon", label: "Carbon", icon: "leaf", hotkey: "f", agentOnly: true },
     ],
   },
   {
     heading: "Activity",
     items: [
       { id: "requests", label: "Requests", icon: "activity", hotkey: "r", agentOnly: false },
-      { id: "errors", label: "Errors", icon: "circle-alert", hotkey: "e", agentOnly: true },
+      {
+        id: "errors",
+        label: "Errors",
+        icon: "circle-exclamation-point",
+        hotkey: "e",
+        agentOnly: true,
+      },
       { id: "traces", label: "Traces", icon: "square-chart-gantt", hotkey: "t", agentOnly: true },
     ],
   },
   {
     heading: "Insights",
     items: [
+      { id: "carbon", label: "Carbon", icon: "leaf", hotkey: "f", agentOnly: true },
       { id: "tools", label: "Tools", icon: "wrench", hotkey: "l", agentOnly: false },
       { id: "projects", label: "Projects", icon: "folder-git-2", hotkey: "j", agentOnly: true },
     ],
@@ -69,24 +75,45 @@ export const NAV: readonly NavGroup[] = [
     // The developer surfaces sit last and read as their own category; the rail drops the heading with the last item, so an operator who never flips the About switch never sees it.
     heading: "Developer",
     items: [
-      { id: "upstream", label: "Upstream", icon: "git-branch", hotkey: "s", agentOnly: false, devOnly: true },
-      { id: "benchmarks", label: "Benchmark", icon: "flask-conical", hotkey: "b", agentOnly: false, devOnly: true },
-      { id: "logs", label: "Logs", icon: "scroll-text", hotkey: "l", agentOnly: false, devOnly: true },
+      {
+        id: "upstream",
+        label: "Upstream",
+        icon: "git-branch",
+        hotkey: "s",
+        agentOnly: false,
+        devOnly: true,
+      },
+      {
+        id: "benchmarks",
+        label: "Benchmark",
+        icon: "flask-conical",
+        hotkey: "b",
+        agentOnly: false,
+        devOnly: true,
+      },
+      {
+        id: "logs",
+        label: "Logs",
+        icon: "scroll-text",
+        hotkey: "l",
+        agentOnly: false,
+        devOnly: true,
+      },
     ],
   },
-];
+]
 
 /** Every item, in screen order. */
-export const NAV_ITEMS: readonly NavItem[] = NAV.flatMap((group) => group.items);
+export const NAV_ITEMS: readonly NavItem[] = NAV.flatMap((group) => group.items)
 
 /** Page ids, in screen order: the router validates against these. */
-export const SECTIONS: readonly SectionId[] = NAV_ITEMS.map((item) => item.id);
+export const SECTIONS: readonly SectionId[] = NAV_ITEMS.map((item) => item.id)
 
 export function isSectionId(v: unknown): v is SectionId {
-  return typeof v === "string" && (SECTIONS as readonly string[]).includes(v);
+  return typeof v === "string" && (SECTIONS as readonly string[]).includes(v)
 }
 
 /** The rail entry for a section, for the page title. */
 export function navItem(section: SectionId): NavItem {
-  return NAV_ITEMS.find((item) => item.id === section) ?? NAV_ITEMS[0];
+  return NAV_ITEMS.find((item) => item.id === section) ?? NAV_ITEMS[0]
 }

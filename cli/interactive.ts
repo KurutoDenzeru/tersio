@@ -1,6 +1,13 @@
 // cli/interactive.ts — TTY layer: readline, Clack spinners, selects, task phases.
 import readline from 'node:readline';
-import { cancel as clackCancel, confirm as clackConfirm, log as clackLog, select as clackSelect, spinner as clackSpinner, tasks as clackTasks } from '@clack/prompts';
+import {
+  cancel as clackCancel,
+  confirm as clackConfirm,
+  log as clackLog,
+  select as clackSelect,
+  spinner as clackSpinner,
+  tasks as clackTasks,
+} from '@clack/prompts';
 import type { SpinnerResult } from '@clack/prompts';
 import { execP } from './common.ts';
 import type { ExecOptions } from './common.ts';
@@ -10,11 +17,24 @@ let RL: readline.Interface | null = null;
 let rlOpen = true;
 function ask(q: string): Promise<string> {
   return new Promise<string>((resolve) => {
-    if (!rlOpen) { resolve(''); return; }
-    try { (RL ??= readline.createInterface({ input: process.stdin, output: process.stdout })).question(q, resolve); } catch { resolve(''); }
+    if (!rlOpen) {
+      resolve('');
+      return;
+    }
+    try {
+      (RL ??= readline.createInterface({ input: process.stdin, output: process.stdout })).question(q, resolve);
+    } catch {
+      resolve('');
+    }
   });
 }
-function closeRL(): void { if (rlOpen) { RL?.close(); RL = null; rlOpen = false; } }
+function closeRL(): void {
+  if (rlOpen) {
+    RL?.close();
+    RL = null;
+    rlOpen = false;
+  }
+}
 
 function tty(): boolean {
   return Boolean(process.stdin.isTTY && process.stdout.isTTY);
@@ -27,22 +47,31 @@ type InteractiveConfirm = { status: 'confirmed'; value: boolean } | { status: 'c
 let spinnerDepth = 0;
 
 // Clack's spinner stop writes an extra newline under CI, shifting later output by a row.
-async function withInteractiveSpinner<T>(message: string, work: (update: (message: string) => void) => Promise<T>): Promise<T> {
-  if (!tty() || spinnerDepth > 0 || process.env.CI === 'true') return work(() => { });
+async function withInteractiveSpinner<T>(
+  message: string,
+  work: (update: (message: string) => void) => Promise<T>,
+): Promise<T> {
+  if (!tty() || spinnerDepth > 0 || process.env.CI === 'true') return work(() => {});
   // Clack manages stdin itself. Close the legacy question interface first; non-interactive callers skip it.
   closeRL();
   const active: SpinnerResult = clackSpinner({ indicator: 'timer' });
   active.start(message);
   spinnerDepth += 1;
   try {
-    return await work((next: string) => { active.message(next); });
+    return await work((next: string) => {
+      active.message(next);
+    });
   } finally {
     active.clear();
     spinnerDepth -= 1;
   }
 }
 
-async function askInteractiveChoice(message: string, options: Array<{ value: string; label: string; hint?: string; disabled?: boolean }>, initialValue: string): Promise<InteractiveChoice> {
+async function askInteractiveChoice(
+  message: string,
+  options: Array<{ value: string; label: string; hint?: string; disabled?: boolean }>,
+  initialValue: string,
+): Promise<InteractiveChoice> {
   if (!tty()) return { status: 'unavailable' };
   closeRL();
   try {
@@ -100,7 +129,14 @@ async function runInteractivePhase<T>(title: string, collect: () => Promise<T>):
   closeRL();
   let result!: T;
   try {
-    await clackTasks([{ title, task: async () => { result = await collect(); } }]);
+    await clackTasks([
+      {
+        title,
+        task: async () => {
+          result = await collect();
+        },
+      },
+    ]);
   } finally {
   }
   return result;
@@ -108,8 +144,16 @@ async function runInteractivePhase<T>(title: string, collect: () => Promise<T>):
 // Tagged lines log on TTY but stay byte-identical when piped.
 type SayKind = 'info' | 'success' | 'warn' | 'error' | 'step' | 'message';
 const TAG_KIND: Record<string, SayKind> = {
-  fail: 'error', warn: 'warn', hint: 'info', ok: 'success', note: 'message',
-  write: 'step', rm: 'step', migrate: 'step', skip: 'info', 'dry-run': 'info',
+  fail: 'error',
+  warn: 'warn',
+  hint: 'info',
+  ok: 'success',
+  note: 'message',
+  write: 'step',
+  rm: 'step',
+  migrate: 'step',
+  skip: 'info',
+  'dry-run': 'info',
 };
 function sayTagged(line: string): void {
   const m = /^\s*\[([\w-]+)\]\s?([\s\S]*)$/.exec(line);
@@ -118,8 +162,11 @@ function sayTagged(line: string): void {
   else console.log(line);
 }
 // One live-updating task line instead of a spinner per step.
-async function withInteractiveTask<T>(title: string, work: (update: (message: string) => void) => Promise<T>): Promise<T> {
-  if (!tty()) return work(() => { });
+async function withInteractiveTask<T>(
+  title: string,
+  work: (update: (message: string) => void) => Promise<T>,
+): Promise<T> {
+  if (!tty()) return work(() => {});
   closeRL();
   let result!: T;
   const spin = clackSpinner();
@@ -138,12 +185,26 @@ function shortSpinnerError(e: unknown): string {
   const msg = e instanceof Error ? e.message : String(e);
   return (msg.split('\n')[0] || 'failed').slice(0, 120);
 }
-async function execNetwork(label: string, cmd: string, args: string[], opts: ExecOptions = {}): Promise<{ stdout: string; stderr: string }> {
+async function execNetwork(
+  label: string,
+  cmd: string,
+  args: string[],
+  opts: ExecOptions = {},
+): Promise<{ stdout: string; stderr: string }> {
   return withInteractiveSpinner(label, () => execP(cmd, args, opts));
 }
 
 export {
-  ask, closeRL, tty, withInteractiveSpinner, withInteractiveTask, execNetwork, sayTagged,
-  askInteractiveChoice, askInteractiveConfirm, confirmDestructive, runInteractivePhase,
+  ask,
+  closeRL,
+  tty,
+  withInteractiveSpinner,
+  withInteractiveTask,
+  execNetwork,
+  sayTagged,
+  askInteractiveChoice,
+  askInteractiveConfirm,
+  confirmDestructive,
+  runInteractivePhase,
 };
 export type { SayKind, InteractiveChoice, InteractiveConfirm };

@@ -1,68 +1,73 @@
 // Pure per-report CO2 totals; depth lives in the shared EcoLogits port, fed by the agent statistics database.
-import { ECOLOGITS_VERSION, SERVING_CONCURRENCY, carbonParamsFor, footprintFor } from "../../../../extensions/shared/carbon.ts";
-import { displayModel } from "./format";
-import type { AgentStats } from "./data";
+import {
+  ECOLOGITS_VERSION,
+  SERVING_CONCURRENCY,
+  carbonParamsFor,
+  footprintFor,
+} from "../../../../extensions/shared/carbon.ts"
+import { displayModel } from "./format"
+import type { AgentStats } from "./data"
 
 // Published per-unit averages, each printed beside its result so a reader can redo the arithmetic.
-const KG_PER_KM_DRIVEN = 0.24; // EPA: 4.6 t/yr over 12,000 mi
-const G_PER_FLIGHT_KM = 0.09; // ICAO: ~90 g per passenger-km, short haul
-const WH_PER_PHONE_CHARGE = 15; // ~12 Wh cell plus charging losses
-const G_PER_STREAM_HOUR = 10; // Netflix, per hour of playback
-const WH_PER_HOUSEHOLD_DAY = 29_600; // EIA: ~10,800 kWh/yr, residential
-const G_PER_SEARCH = 0.3; // widely cited per-query estimate
-const G_PER_EMAIL = 4; // a plain text email, no attachment
-const G_PER_TREE_DAY = 60; // a mature tree absorbs ~21 kg a year
-const WH_PER_LAPTOP_HOUR = 50; // a 50 W laptop under a mixed load
-const WH_PER_LED_HOUR = 9; // a 9 W LED bulb
+const KG_PER_KM_DRIVEN = 0.24 // EPA: 4.6 t/yr over 12,000 mi
+const G_PER_FLIGHT_KM = 0.09 // ICAO: ~90 g per passenger-km, short haul
+const WH_PER_PHONE_CHARGE = 15 // ~12 Wh cell plus charging losses
+const G_PER_STREAM_HOUR = 10 // Netflix, per hour of playback
+const WH_PER_HOUSEHOLD_DAY = 29_600 // EIA: ~10,800 kWh/yr, residential
+const G_PER_SEARCH = 0.3 // widely cited per-query estimate
+const G_PER_EMAIL = 4 // a plain text email, no attachment
+const G_PER_TREE_DAY = 60 // a mature tree absorbs ~21 kg a year
+const WH_PER_LAPTOP_HOUR = 50 // a 50 W laptop under a mixed load
+const WH_PER_LED_HOUR = 9 // a 9 W LED bulb
 
 /** Above this the tail folds into one row, the way Activity folds its models. */
-const MAX_ROWS = 5;
+const MAX_ROWS = 5
 
 export interface CarbonRow {
   /** Raw model key, the identity a table sorts on. */
-  model: string;
-  label: string;
+  model: string
+  label: string
   /** The routing service, when the source knows it; else the provider the port attributes. */
-  provider: string;
+  provider: string
   /** Output tokens behind this row's emissions. */
-  output: number;
-  gco2: number;
+  output: number
+  gco2: number
   /** Energy for this row, in Wh. */
-  energyWh: number;
+  energyWh: number
   /** Fraction of the total, 0 to 1. */
-  share: number;
+  share: number
   /** Where the parameter count came from, so a reader can weigh the row. */
-  paramSource: "registry" | "borrowed" | "default";
+  paramSource: "registry" | "borrowed" | "default"
 }
 
 /** One model's output tokens, from either source. */
 interface CarbonModel {
-  key: string;
-  output: number;
+  key: string
+  output: number
   /** The routing service, empty when the source groups by model only. */
-  provider?: string;
+  provider?: string
 }
 
 export interface Comparison {
-  label: string;
-  icon: string;
-  value: string;
-  factor: string;
+  label: string
+  icon: string
+  value: string
+  factor: string
 }
 
 export interface CarbonReport {
-  totalG: number;
-  energyWh: number;
-  outputTokens: number;
+  totalG: number
+  energyWh: number
+  outputTokens: number
   /** Every model with emissions, ranked. A page lists these; a dialog folds the tail. */
-  all: CarbonRow[];
-  rows: CarbonRow[];
-  otherG: number;
-  otherCount: number;
-  comparisons: Comparison[];
-  ecologits: string;
+  all: CarbonRow[]
+  rows: CarbonRow[]
+  otherG: number
+  otherCount: number
+  comparisons: Comparison[]
+  ecologits: string
   /** The concurrency every figure is amortized over, so a UI can print it. */
-  servingConcurrency: number;
+  servingConcurrency: number
 }
 
 const EMPTY: CarbonReport = {
@@ -76,38 +81,38 @@ const EMPTY: CarbonReport = {
   comparisons: [],
   ecologits: ECOLOGITS_VERSION,
   servingConcurrency: SERVING_CONCURRENCY,
-};
+}
 
 export function fmtCo2(g: number): string {
-  if (!(g > 0)) return "0 g";
-  if (g < 1) return "<1 g";
-  if (g < 1000) return `${g.toFixed(1)} g`;
-  return `${(g / 1000).toFixed(2)} kg`;
+  if (!(g > 0)) return "0 g"
+  if (g < 1) return "<1 g"
+  if (g < 1000) return `${g.toFixed(1)} g`
+  return `${(g / 1000).toFixed(2)} kg`
 }
 
 export function fmtEnergy(wh: number): string {
-  if (!(wh > 0)) return "0 Wh";
-  if (wh < 1000) return `${wh.toFixed(1)} Wh`;
-  return `${(wh / 1000).toFixed(2)} kWh`;
+  if (!(wh > 0)) return "0 Wh"
+  if (wh < 1000) return `${wh.toFixed(1)} Wh`
+  return `${(wh / 1000).toFixed(2)} kWh`
 }
 
 function fmtKm(km: number): string {
-  if (!(km > 0)) return "0 km";
-  if (km < 1) return `${Math.round(km * 1000)} m`;
-  if (km < 100) return `${km.toFixed(1)} km`;
-  return `${Math.round(km).toLocaleString("en-US")} km`;
+  if (!(km > 0)) return "0 km"
+  if (km < 1) return `${Math.round(km * 1000)} m`
+  if (km < 100) return `${km.toFixed(1)} km`
+  return `${Math.round(km).toLocaleString("en-US")} km`
 }
 
 function fmtCount(n: number): string {
-  if (!(n > 0)) return "0";
-  if (n < 1) return "<1";
-  if (n < 100) return n.toFixed(1);
-  return Math.round(n).toLocaleString("en-US");
+  if (!(n > 0)) return "0"
+  if (n < 1) return "<1"
+  if (n < 100) return n.toFixed(1)
+  return Math.round(n).toLocaleString("en-US")
 }
 
 function comparisonsFor(totalG: number, energyWh: number): Comparison[] {
   // Nothing to compare, so the caller shows its empty state; a missing report and an empty one share a shape.
-  if (!(totalG > 0) && !(energyWh > 0)) return [];
+  if (!(totalG > 0) && !(energyWh > 0)) return []
   // "at X per Y" keeps each tile to one short sentence, and short enough not to clip.
   return [
     {
@@ -172,14 +177,14 @@ function comparisonsFor(totalG: number, energyWh: number): Comparison[] {
       value: fmtCount(totalG / G_PER_TREE_DAY),
       factor: `a mature tree absorbs ~${G_PER_TREE_DAY} g a day`,
     },
-  ];
+  ]
 }
 
 function buildReport(models: readonly CarbonModel[]): CarbonReport {
   // Only output tokens are billed, so a model with none contributes nothing.
   const ranked = models
     .map((m) => {
-      const f = footprintFor(m.key, m.output);
+      const f = footprintFor(m.key, m.output)
       return {
         model: m.key,
         label: displayModel(m.key),
@@ -188,15 +193,15 @@ function buildReport(models: readonly CarbonModel[]): CarbonReport {
         gco2: f.gco2,
         energyWh: f.energyWh,
         paramSource: carbonParamsFor(m.key).source,
-      };
+      }
     })
     .filter((r) => r.gco2 > 0)
-    .sort((a, b) => b.gco2 - a.gco2);
+    .sort((a, b) => b.gco2 - a.gco2)
 
-  const totalG = ranked.reduce((sum, r) => sum + r.gco2, 0);
-  const energyWh = ranked.reduce((sum, r) => sum + r.energyWh, 0);
-  const all = ranked.map((r) => ({ ...r, share: totalG ? r.gco2 / totalG : 0 }));
-  const rest = all.slice(MAX_ROWS);
+  const totalG = ranked.reduce((sum, r) => sum + r.gco2, 0)
+  const energyWh = ranked.reduce((sum, r) => sum + r.energyWh, 0)
+  const all = ranked.map((r) => ({ ...r, share: totalG ? r.gco2 / totalG : 0 }))
+  const rest = all.slice(MAX_ROWS)
 
   return {
     totalG,
@@ -209,11 +214,13 @@ function buildReport(models: readonly CarbonModel[]): CarbonReport {
     comparisons: comparisonsFor(totalG, energyWh),
     ecologits: ECOLOGITS_VERSION,
     servingConcurrency: SERVING_CONCURRENCY,
-  };
+  }
 }
 
 /** The Carbon page: the agent statistics database, where every row names its provider. */
 export function carbonReportForAgents(agent: AgentStats | null): CarbonReport {
-  if (!agent) return EMPTY;
-  return buildReport(agent.byModel.map((row) => ({ key: row.key, output: row.output, provider: row.provider })));
+  if (!agent) return EMPTY
+  return buildReport(
+    agent.byModel.map((row) => ({ key: row.key, output: row.output, provider: row.provider })),
+  )
 }
