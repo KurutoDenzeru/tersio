@@ -17,6 +17,7 @@ import { sqliteRead } from './sqlite.ts';
 import { patchState, readState, takeLegacy } from './state.ts';
 import { codexModelIdentity, looksLikeCodexTranscript, parseCodexTranscript } from './codex-transcript.ts';
 import { codexHome } from './codex-state.ts';
+import { claudeHome } from './claude-state.ts';
 
 export type UsageKind = 'command' | 'toggle' | 'install' | 'update' | 'rtk-audit';
 
@@ -237,6 +238,8 @@ export function sessionsDirs(): string[] {
         ];
   // Codex writes rollout JSONL under its own home; `CODEX_HOME` may relocate that tree.
   dirs.push(path.join(codexHome(), 'sessions'));
+  // Claude Code writes one JSONL per session under a per-project slug; CLAUDE_CONFIG_DIR may relocate it.
+  dirs.push(path.join(claudeHome(), 'projects'));
   const found = dirs.filter((dir) => fs.existsSync(dir));
   return found.length > 0 ? found : [dirs[0]];
 }
@@ -833,12 +836,28 @@ export function classifySessionLine(row: SessionLineRow, results?: ToolResults, 
     kind: 'assistant_row',
     model,
     provider,
-    usage: msg.usage,
+    usage: normaliseUsage(msg.usage),
     durMs: typeof msg.duration === 'number' ? msg.duration : computedDur,
     ttftMs: typeof msg.ttft === 'number' ? msg.ttft : undefined,
     run: statusOf(msg),
     tools,
     toolFacts,
+  };
+}
+/**
+ * Claude Code writes usage as input_tokens/cache_read_input_tokens. Every other host uses the short
+ * names the accumulator reads, so a Claude row is translated at the parse boundary instead of teaching
+ * the accumulator a second vocabulary.
+ */
+function normaliseUsage(usage: Record<string, unknown>): Record<string, unknown> {
+  const hasClaudeKeys =
+    'input_tokens' in usage || 'output_tokens' in usage || 'cache_read_input_tokens' in usage;
+  if (!hasClaudeKeys) return usage;
+  return {
+    input: usage['input_tokens'],
+    output: usage['output_tokens'],
+    cacheRead: usage['cache_read_input_tokens'],
+    cacheWrite: usage['cache_creation_input_tokens'],
   };
 }
 // True when at least one token bucket holds a positive finite count.
@@ -1138,6 +1157,7 @@ export function hostOfSessionFile(file: string): string {
   if (norm.includes('/.dsh/')) return 'dsh';
   if (norm.includes('/.omp/')) return 'omp';
   if (norm.includes('/.codex/') || norm.startsWith(codexRoot)) return 'codex';
+  if (norm.includes('/.claude/projects/')) return 'claude';
   if (norm.includes('/opencode/')) return 'opencode';
   return 'pi';
 }
