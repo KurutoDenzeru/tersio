@@ -249,6 +249,25 @@ export function headroomFitsMachine(): { fits: boolean; detail: string; totalMb:
   };
 }
 
+/**
+ * The bundled Kompress ONNX model costs about 326MB, and it loads at startup whether or not a turn ever
+ * reaches it: measured on this machine, footprint falls from 600MB to 274MB with it off, and threads from
+ * 23 to 9. The work is largely done by the cheaper engines that stay on: Code-Aware AST compression,
+ * the compression cache, and CCR. One of 131 learned patterns had routed through Kompress, so the default
+ * trades a model almost never used for a footprint every user pays. An explicit flag still wins.
+ */
+const HEADROOM_MEMORY_DEFAULTS: ReadonlyArray<{ flag: string; value: string; unless: readonly string[] }> = [
+  // Turning the model back on is the opposite flag, so it has to count as "already chosen".
+  { flag: '--disable-kompress', value: '', unless: ['--disable-kompress', '--enable-kompress'] },
+];
+
+/** Adds a bound only when the deployment has not already chosen, either way, so an explicit choice wins. */
+function withDefaultFlag(args: string[], flag: string, value: string, unless: readonly string[]): string[] {
+  const present = unless.some((name) => args.some((arg) => arg === name || arg.startsWith(`${name}=`)));
+  if (present) return args;
+  return value === '' ? [...args, flag] : [...args, flag, value];
+}
+
 /** Reuse the deployment's own flags, so a fallback start keeps its mode, backend, and limits. */
 export function proxyArgsForDeployment(proxyArgs: string[], port: number, openAiTarget?: string | null): string[] {
   let base = proxyArgs.length ? [...proxyArgs] : ['--host', '127.0.0.1', '--port', String(port)];
@@ -259,6 +278,7 @@ export function proxyArgsForDeployment(proxyArgs: string[], port: number, openAi
   if (!base.some((arg) => arg === '--port' || arg.startsWith('--port='))) base.push('--port', String(port));
   if (!base.some((arg) => arg === '--host' || arg.startsWith('--host='))) base.push('--host', '127.0.0.1');
   if (openAiTarget) base = withFlag(base, '--openai-api-url', openAiTarget);
+  for (const bound of HEADROOM_MEMORY_DEFAULTS) base = withDefaultFlag(base, bound.flag, bound.value, bound.unless);
   return base;
 }
 

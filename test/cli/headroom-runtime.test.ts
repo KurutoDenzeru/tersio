@@ -42,8 +42,18 @@ describe('headroom runtime', () => {
         ['--host', '127.0.0.1', '--port', '8787', '--mode', 'token', '--backend', 'anthropic'],
         9911,
       ),
-    ).toEqual(['--host', '127.0.0.1', '--port', '9911', '--mode', 'token', '--backend', 'anthropic']);
-    expect(proxyArgsForDeployment([], 9911)).toEqual(['--host', '127.0.0.1', '--port', '9911']);
+    ).toEqual([
+      '--host',
+      '127.0.0.1',
+      '--port',
+      '9911',
+      '--mode',
+      'token',
+      '--backend',
+      'anthropic',
+      '--disable-kompress',
+    ]);
+    expect(proxyArgsForDeployment([], 9911)).toEqual(['--host', '127.0.0.1', '--port', '9911', '--disable-kompress']);
     expect(proxyArgsForDeployment(['--mode', 'token'], 9911, 'http://127.0.0.1:3425/v1')).toEqual([
       '--mode',
       'token',
@@ -53,7 +63,15 @@ describe('headroom runtime', () => {
       '127.0.0.1',
       '--openai-api-url',
       'http://127.0.0.1:3425/v1',
+      '--disable-kompress',
     ]);
+  });
+
+  // The model is off by default, not forced off: a deployment that turned Kompress back on keeps it.
+  test('a deployment that enables kompress keeps it', () => {
+    const args = proxyArgsForDeployment(['--mode', 'token', '--enable-kompress'], 9911);
+    expect(args).toContain('--enable-kompress');
+    expect(args).not.toContain('--disable-kompress');
   });
 
   test('a shell that only mentions the pattern is not counted as a proxy', () => {
