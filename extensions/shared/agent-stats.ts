@@ -471,6 +471,7 @@ function requestColumns(folder: string): string {
     COL.agentType,
     COL.session,
     COL.entry,
+    COL.host,
   ].join(', ');
 }
 
@@ -611,6 +612,7 @@ function toRequestRows(rows: string[][]): AgentRequestRow[] {
     agentType: r[16] ?? '',
     sessionFile: r[17] ?? '',
     entryId: r[18] ?? '',
+    host: r[19] ?? '',
   }));
 }
 

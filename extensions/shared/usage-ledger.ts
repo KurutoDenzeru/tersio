@@ -850,8 +850,7 @@ export function classifySessionLine(row: SessionLineRow, results?: ToolResults, 
  * the accumulator a second vocabulary.
  */
 function normaliseUsage(usage: Record<string, unknown>): Record<string, unknown> {
-  const hasClaudeKeys =
-    'input_tokens' in usage || 'output_tokens' in usage || 'cache_read_input_tokens' in usage;
+  const hasClaudeKeys = 'input_tokens' in usage || 'output_tokens' in usage || 'cache_read_input_tokens' in usage;
   if (!hasClaudeKeys) return usage;
   return {
     input: usage['input_tokens'],
