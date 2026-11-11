@@ -32,7 +32,7 @@ import type {
   JournalAgent,
   RangeKey,
 } from './agent-types.ts';
-import { homeDir } from './utils.ts';
+import { homeDir, isRecord } from './utils.ts';
 import { usageDbPath } from './usage-store.ts';
 import { readRtkGainByVerb, rtkGainFailure } from './rtk-gain.ts';
 import { readHeadroomDoctorAsync, readHeadroomSavingsAsync, readHeadroomStats } from './headroom-gain.ts';
@@ -1346,10 +1346,240 @@ function stopState(stopReason: string): AgentTraceSpan['stopped'] {
 /** Tool names that hand the work to another agent, for the Agents figure. */
 const AGENT_TOOLS = new Set(['task', 'subagent']);
 
+/** Claude Code writes its own event stream: api-request starts, assistant rows, and tool results. */
+function looksLikeClaudeTranscript(text: string): boolean {
+  for (const line of text.split('\n', 60)) {
+    if (!line.trim()) continue;
+    try {
+      const parsed = JSON.parse(line) as Record<string, unknown>;
+      if (
+        parsed.type === 'api-request'
+          ? typeof parsed.id === 'string'
+          : (typeof parsed.sessionId === 'string' &&
+              (parsed.type === 'assistant' || parsed.type === 'user' || parsed.type === 'custom-title')) ||
+            (parsed.type === 'assistant' && isRecord(parsed.message) && parsed.message.role === 'assistant')
+      )
+        return true;
+    } catch {
+      /* a partial line is not this host */
+    }
+  }
+  return false;
+}
+
+interface ClaudeCall {
+  id: string;
+  name: string;
+  args: string;
+  start: number;
+  end: number;
+  isError: boolean;
+  entryId: string;
+}
+
+interface ClaudeRequest {
+  id: string;
+  start: number;
+  end: number;
+  model: string;
+  detail: string;
+  tokens: number;
+  costUsd: number;
+  stopped: AgentTraceSpan['stopped'];
+  entryId: string;
+  calls: Map<string, ClaudeCall>;
+}
+
+function claudeUsage(usage: unknown): { input: number; output: number; cacheRead: number; cacheWrite: number } {
+  if (!isRecord(usage)) return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+  const count = (key: string): number => {
+    const value = usage[key];
+    return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+  };
+  return {
+    input: count('input_tokens'),
+    output: count('output_tokens'),
+    cacheRead: count('cache_read_input_tokens'),
+    cacheWrite: count('cache_creation_input_tokens'),
+  };
+}
+
+/** One Claude transcript as spans: turns, one model span per API request, and each tool call. */
+function readClaudeTrace(sessionFile: string, text: string, fallbackProject: string, limit: number): AgentSessionTrace {
+  const starts = new Map<string, number>();
+  const requests = new Map<string, ClaudeRequest>();
+  const turns: Array<{ ts: number; detail: string; entryId: string }> = [];
+  let title = '';
+  let cwd = '';
+  let firstTs = 0;
+  for (const line of text.split('\n')) {
+    if (!line.trim()) continue;
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(line) as Record<string, unknown>;
+    } catch {
+      continue;
+    }
+    const ts = Date.parse(String(parsed.timestamp ?? '')) || 0;
+    if (ts && (!firstTs || ts < firstTs)) firstTs = ts;
+    if (typeof parsed.cwd === 'string' && !cwd) cwd = parsed.cwd;
+    if (parsed.type === 'custom-title' && typeof parsed.customTitle === 'string') title = parsed.customTitle;
+    if (parsed.type === 'api-request' && typeof parsed.id === 'string') starts.set(parsed.id, ts);
+    if (parsed.type !== 'assistant' && parsed.type !== 'user') continue;
+    const message = isRecord(parsed.message) ? parsed.message : {};
+    const content = Array.isArray(message.content)
+      ? message.content
+      : typeof message.content === 'string'
+        ? [{ type: 'text', text: message.content }]
+        : [];
+    if (parsed.type === 'user') {
+      const hasResult = content.some((part) => isRecord(part) && part.type === 'tool_result');
+      for (const part of content) {
+        if (!isRecord(part) || part.type !== 'tool_result') continue;
+        const id = String(part.tool_use_id ?? '');
+        const call = id ? findClaudeCall(requests, id) : undefined;
+        if (call) {
+          call.end = ts || call.end;
+          call.isError = part.is_error === true;
+          call.entryId = String(parsed.uuid ?? call.entryId);
+        }
+      }
+      if (hasResult) continue;
+      const detail = firstLine(content.filter(isRecord));
+      if (detail && !detail.startsWith('<system-reminder>'))
+        turns.push({ ts, detail, entryId: String(parsed.uuid ?? '') });
+      continue;
+    }
+    const ref = String(parsed.requestRef ?? message.id ?? parsed.uuid ?? '');
+    if (!ref) continue;
+    const start = starts.get(ref) ?? ts;
+    const usage = claudeUsage(message.usage);
+    const tokens = usage.input + usage.output + usage.cacheRead + usage.cacheWrite;
+    const request = requests.get(ref) ?? {
+      id: ref,
+      start,
+      end: ts,
+      model: '',
+      detail: '',
+      tokens: 0,
+      costUsd: 0,
+      stopped: 'completed' as const,
+      entryId: '',
+      calls: new Map<string, ClaudeCall>(),
+    };
+    request.start = Math.min(request.start, start);
+    request.end = Math.max(request.end, ts);
+    if (message.model) request.model = String(message.model);
+    // Claude repeats usage on every assistant row for one request; a row without it must not erase the count.
+    if (tokens > 0) {
+      request.tokens = tokens;
+      request.costUsd = usdCost(usage, request.model || undefined).usd;
+    }
+    request.stopped = stopState(String(message.stop_reason ?? ''));
+    request.entryId = String(parsed.uuid ?? request.entryId);
+    const detail = firstLine(content.filter(isRecord));
+    if (detail) request.detail = detail;
+    for (const part of content) {
+      if (!isRecord(part) || part.type !== 'tool_use') continue;
+      const id = String(part.id ?? '');
+      if (!id) continue;
+      request.calls.set(id, {
+        id,
+        name: String(part.name ?? 'tool'),
+        args: argSummary(part.input),
+        start: ts,
+        end: ts,
+        isError: false,
+        entryId: String(parsed.uuid ?? request.entryId),
+      });
+    }
+    requests.set(ref, request);
+  }
+
+  const base = { model: '', provider: '', tokens: 0, costUsd: 0, isError: false };
+  const spans: AgentTraceSpan[] = [];
+  for (const turn of turns) {
+    spans.push({
+      ...base,
+      id: turn.entryId || `turn-${turn.ts}`,
+      kind: 'turn',
+      label: 'Prompt',
+      detail: turn.detail,
+      start: turn.ts,
+      end: turn.ts,
+      tool: '',
+      stopped: 'completed',
+      entryId: turn.entryId,
+    });
+  }
+  for (const request of requests.values()) {
+    spans.push({
+      ...base,
+      id: request.id,
+      kind: 'model',
+      label: request.model || 'claude',
+      detail: request.detail,
+      start: request.start || request.end,
+      end: request.end || request.start,
+      model: request.model,
+      provider: 'anthropic',
+      tokens: request.tokens,
+      costUsd: request.costUsd,
+      stopped: request.stopped,
+      tool: '',
+      entryId: request.entryId,
+    });
+    for (const call of request.calls.values()) {
+      spans.push({
+        ...base,
+        id: `${request.id}#${call.id}`,
+        kind: 'tool',
+        label: call.name,
+        detail: call.args,
+        start: call.start,
+        end: call.end || call.start,
+        tool: call.name,
+        isError: call.isError,
+        stopped: call.isError ? 'failed' : 'completed',
+        entryId: call.entryId,
+      });
+    }
+  }
+  const trimmed = spans.length > limit ? spans.slice(-limit) : spans;
+  const ordered = trimmed.toSorted((a, b) => a.start - b.start);
+  const startedAt = ordered.length ? Math.min(...ordered.map((span) => span.start)) : 0;
+  const endedAt = ordered.length ? Math.max(...ordered.map((span) => span.end)) : 0;
+  return {
+    sessionFile,
+    project: fallbackProject,
+    title,
+    cwd: cwd || fallbackProject,
+    startedAt,
+    endedAt,
+    tracks: [{ id: 'main', label: 'Main', parentId: null, spans: ordered }],
+    markers: startedAt ? [{ id: 'session', ts: startedAt, kind: 'session', label: 'session started' }] : [],
+    summary: summarizeTrace(ordered, startedAt, endedAt),
+    toolStats: buildToolStats(ordered),
+    truncated: spans.length > limit,
+  };
+}
+
+/** A tool result names its call; the call can sit in any request, so search the request map. */
+function findClaudeCall(requests: Map<string, ClaudeRequest>, id: string): ClaudeCall | undefined {
+  for (const request of requests.values()) {
+    const call = request.calls.get(id);
+    if (call) return call;
+  }
+  return undefined;
+}
+
 /** One transcript as spans, tracks and markers: a model span runs `ts - duration` to `ts`. */
 export function readSessionTrace(sessionFile: string, limit = TRACE_SPAN_LIMIT): AgentSessionTrace {
   // Either separator: a Windows host writes `<drive>\...\.omp\agent\sessions\<project>\<file>`.
-  const project = sessionFile.split(/[/\\]sessions[/\\]/)[1]?.split(/[/\\]/)[0] ?? '';
+  const project =
+    sessionFile.split(/[/\\]sessions[/\\]/)[1]?.split(/[/\\]/)[0] ??
+    sessionFile.split(/[/\\]projects[/\\]/)[1]?.split(/[/\\]/)[0] ??
+    '';
   const empty: AgentSessionTrace = {
     sessionFile,
     project,
@@ -1372,6 +1602,7 @@ export function readSessionTrace(sessionFile: string, limit = TRACE_SPAN_LIMIT):
     return empty;
   }
   if (looksLikeCodexTranscript(text)) return readCodexTrace(sessionFile, text, project, limit);
+  if (looksLikeClaudeTranscript(text)) return readClaudeTrace(sessionFile, text, project, limit);
 
   // Pass one: pull each line into the shape the spans are cut from.
   type Raw = {
