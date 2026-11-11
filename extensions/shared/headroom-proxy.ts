@@ -182,6 +182,11 @@ interface OmpProviderBlock {
   markerLine: number | null;
 }
 
+/** The path an API expects after the proxy root: Anthropic clients append /v1/messages, OpenAI /v1. */
+export function proxyApiPath(api: string): '' | '/v1' {
+  return /anthropic/i.test(api) ? '' : '/v1';
+}
+
 /** The provider blocks in omp's models.yml, with line numbers for a surgical baseUrl rewrite. */
 function ompProviderBlocks(text: string): OmpProviderBlock[] {
   const lines = text.split(/\r?\n/);
@@ -253,6 +258,11 @@ function ompModelProvider(blocks: OmpProviderBlock[], model: string | null): str
   return owner ? owner.name : prefixed ? prefixed.name : '';
 }
 
+/** The API a block speaks; the official Anthropic block may omit it. */
+function ompBlockApi(block: { name: string; api: string }): string {
+  return block.api || (block.name === 'anthropic' ? 'anthropic-messages' : '');
+}
+
 /** The local gateway the active model uses, or a route Tersio already wrote. */
 export function readOmpGateway(port: number = HEADROOM_PORT): OmpGatewayRoute | null {
   let blocks: OmpProviderBlock[];
@@ -274,12 +284,12 @@ export function readOmpGateway(port: number = HEADROOM_PORT): OmpGatewayRoute | 
     ...blocks.filter((block) => block.name !== active),
   ];
   for (const block of ordered) {
-    const anthropic = block.name === 'anthropic' || block.api.startsWith('anthropic');
-    const proxy = anthropic ? `http://127.0.0.1:${port}` : `http://127.0.0.1:${port}/v1`;
+    const api = ompBlockApi(block);
+    const proxy = `http://127.0.0.1:${port}${proxyApiPath(api)}`;
     if (block.marker && block.baseUrl === proxy) {
       return { provider: block.name, baseUrl: block.marker, model };
     }
-    if ((!anthropic && !block.api.startsWith('openai')) || !block.baseUrl) continue;
+    if (!/^(?:openai|anthropic)/.test(api) || !block.baseUrl) continue;
     try {
       const url = new URL(block.baseUrl);
       if (!loopbackHost(url.hostname) || Number(url.port || 80) === port) continue;
@@ -333,9 +343,7 @@ export function routeOmpGateway(route: OmpGatewayRoute, port: number = HEADROOM_
     const block = ompProviderBlocks(lines.join('\n')).find((entry) => entry.name === route.provider);
     if (!block || block.baseLine < 0) return false;
     const indent = lines[block.baseLine]!.match(/^\s*/)?.[0] ?? '    ';
-    const anthropic = block.name === 'anthropic' || block.api.startsWith('anthropic');
-    // Anthropic clients append /v1/messages themselves; OpenAI clients append /chat/completions.
-    const url = anthropic ? `http://127.0.0.1:${port}` : `http://127.0.0.1:${port}/v1`;
+    const url = `http://127.0.0.1:${port}${proxyApiPath(ompBlockApi(block))}`;
     const fresh = block.marker !== route.baseUrl && block.markerLine === null;
     if (fresh) lines.splice(block.baseLine, 0, `${indent}# tersio-headroom-upstream: ${route.baseUrl}`);
     const baseLine = block.baseLine + (fresh ? 1 : 0);
@@ -370,8 +378,7 @@ export function restoreOmpGateway(port: number = HEADROOM_PORT): boolean {
   let changed = false;
   for (const block of ompProviderBlocks(text)) {
     if (!block.marker || block.markerLine === null || block.baseLine < 0) continue;
-    const anthropic = block.name === 'anthropic' || block.api.startsWith('anthropic');
-    const proxy = anthropic ? `http://127.0.0.1:${port}` : `http://127.0.0.1:${port}/v1`;
+    const proxy = `http://127.0.0.1:${port}${proxyApiPath(ompBlockApi(block))}`;
     if (block.baseUrl !== proxy) continue;
     const indent = lines[block.baseLine]!.match(/^\s*/)?.[0] ?? '    ';
     lines[block.baseLine] = `${indent}baseUrl: ${block.marker}`;
@@ -423,8 +430,7 @@ export function routeOmpDefaultModel(port: number = HEADROOM_PORT): boolean {
   const lines = text.split(/\r?\n/);
   const at = lines.findIndex((line) => /^providers:\s*$/.test(line));
   if (at < 0) return false;
-  // Anthropic clients append /v1/messages themselves; OpenAI clients append /chat/completions.
-  const baseUrl = anthropic ? `http://127.0.0.1:${port}` : `http://127.0.0.1:${port}/v1`;
+  const baseUrl = `http://127.0.0.1:${port}${proxyApiPath(endpoint.api)}`;
   lines.splice(
     at + 1,
     0,
