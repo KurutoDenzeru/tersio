@@ -715,11 +715,25 @@ let updatePromptDone = false;
 // Bare `tersio` at a terminal picks a command; scripts and flags install.
 async function runCommandMenu(): Promise<void> {
   printWelcome();
-  // Interactive launches always check; scripts use the cached verdict.
-  const newer = await checkForUpdate(true);
+  // Interactive launches read the cached verdict; a six-hour-old cache refreshes here, so the prompt is occasional.
+  const newer = await withInteractiveSpinner('Checking npm and GitHub for updates', () => checkForUpdate());
+  const hasNewer = typeof newer === 'string' && newer !== 'unknown';
+  if (hasNewer && !dryRun) {
+    const answer = await askInteractiveConfirm(
+      `tersio ${newer} is available (installed ${PACKAGE_VERSION}). Update the Tersio CLI now?`,
+    );
+    if (answer.status === 'confirmed' && answer.value) {
+      await runLatestUpdate();
+      closeRL();
+      return;
+    }
+    if (answer.status === 'cancelled') {
+      closeRL();
+      process.exit(130);
+    }
+  }
   updatePromptDone = true;
   // The menu reads the check it just ran: a pending release names its version beside the update row, and the install row says up front that the optional Headroom step comes with it.
-  const hasNewer = typeof newer === 'string' && newer !== 'unknown';
   const updateLabel = hasNewer ? `Update (${newer} available)` : 'Update';
   const updateHint = hasNewer
     ? `CLI ${PACKAGE_VERSION} → ${newer}; choose all agents or one`
@@ -1170,11 +1184,11 @@ async function runInstall(forcedHost?: HostId): Promise<void> {
   // Nudge about a newer release; silent without a TTY.
   if (tty() && !applyUpdate && command !== 'uninstall') {
     const newer = await checkForUpdate();
-    if (typeof newer === 'string') {
+    if (typeof newer === 'string' && newer !== 'unknown') {
       // Update pending: offer it here; yes runs the full update and stops.
       if (command === null && !dryRun && !yes && !updatePromptDone) {
         const answer = await askInteractiveConfirm(
-          `tersio ${newer} is available (installed ${PACKAGE_VERSION}). Install it now?`,
+          `tersio ${newer} is available (installed ${PACKAGE_VERSION}). Update the Tersio CLI now?`,
         );
         if (answer.status === 'confirmed' && answer.value) {
           await runLatestUpdate();

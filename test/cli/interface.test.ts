@@ -910,7 +910,7 @@ describe.skipIf(!havePyte)('menu layout', () => {
     ).toBe(false);
   }, 20000);
 
-  // The welcome prints before the update check: on a 20-row screen the tips used to scroll off. The menu names the pending release instead of asking a second prompt.
+  // The welcome prints before the update prompt; on a 20-row screen the tips used to scroll off.
   test('an available update does not scroll the tips off a 20-row screen', () => {
     const lines = screenAtUpdate(20);
     expect(
@@ -918,8 +918,8 @@ describe.skipIf(!havePyte)('menu layout', () => {
       `tips visible; screen:\n${lines.join('\n')}`,
     ).toBe(true);
     expect(
-      lines.some((l) => l.includes('99.0.0 available')),
-      'update label on screen',
+      lines.some((l) => l.includes('is available')),
+      'update prompt on screen',
     ).toBe(true);
   }, 30000);
 
