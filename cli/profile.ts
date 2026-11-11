@@ -19,6 +19,7 @@ import type { CurrencyCode } from './currency.ts';
 import type { HostId } from '../extensions/shared/host-caps.ts';
 import { readTextIfExists } from '../extensions/shared/utils.ts';
 import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
+import { setClaudeRtkHook } from '../extensions/shared/claude-state.ts';
 
 function readTextIfExistsSync(file: string): string | null {
   try {
@@ -294,6 +295,8 @@ export async function saveHostDefaults(
   }
   await fs.mkdir(path.dirname(file), { recursive: true });
   await fs.writeFile(file, `${JSON.stringify(next, null, 2)}\n`, 'utf8');
+  // Claude's RTK hook is a settings entry, not a mode body, so the stored toggle has to move it.
+  if (host === 'claude' && fields.includes('rtkDefault')) setClaudeRtkHook(profile.rtkDefault);
   recordActivity('mode', `Session defaults for ${host} saved`, formatProfile(profile));
   if (!options.quiet) console.log(`  [write] Session defaults for ${host} in ${file}`);
 }

@@ -42,7 +42,12 @@ import { printWelcome } from './banner.ts';
 import { checkForUpdate, runLatestUpdate } from './update.ts';
 import { runUninstall } from './uninstall.ts';
 import { claudeLocalPluginFiles, claudeLocalMarketplaceRoot } from '../extensions/shared/claude-plugin.ts';
-import { CLAUDE_MARKETPLACE_NAME, CLAUDE_PLUGIN_ID, installedClaudePlugin } from '../extensions/shared/claude-state.ts';
+import {
+  CLAUDE_MARKETPLACE_NAME,
+  CLAUDE_PLUGIN_ID,
+  installedClaudePlugin,
+  setClaudeRtkHook,
+} from '../extensions/shared/claude-state.ts';
 import { runDoctor } from './doctor.ts';
 import { runDashboard } from './dashboard.ts';
 import { wireRtk } from './rtk-wiring.ts';
@@ -71,7 +76,7 @@ import { ensureHeadroomRuntime, headroomFitsMachine } from '../extensions/shared
 import { routeHostOn } from '../extensions/shared/headroom-routes.ts';
 import type { HostDefaultField } from './profile.ts';
 import { formatCliStatus, saveHostDefaults, storedProfile, storedProfileSync, writePluginSettings } from './profile.ts';
-import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
+import { readRtkDefault, tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
 import {
   EXT_DIR,
   PI_RTK_MANIFEST,
@@ -809,14 +814,9 @@ async function runCommandMenu(): Promise<void> {
 // Which host this run targets. --host pins it; scripts and --yes keep the default of Oh My Pi.
 let targetHost: HostId = 'omp';
 
-// Hosts the menu advertises but cannot install yet; listed disabled so the roadmap stays visible.
-const SOON_HOSTS = [{ value: 'claude', label: 'Claude Code', hint: 'Coming soon' }];
-
 async function chooseHost(title: string, only?: HostId[]): Promise<HostId> {
   const hosts = detectHosts().filter((host) => !only || only.includes(host.id));
   const options: Array<{ value: string; label: string; hint?: string; disabled?: boolean }> = hostOptions(hosts);
-  // A scoped menu (uninstall --host) lists only real hosts.
-  if (!only) options.push(...SOON_HOSTS.map((h) => ({ ...h, disabled: true })));
   const choice = await askInteractiveChoice(title, options, targetHost);
   if (choice.status !== 'selected') {
     closeRL();
@@ -1103,6 +1103,8 @@ async function stepClaude(options: InstallOptions): Promise<void> {
   }
   if (!options.quiet) console.log(`  Claude Code — plugin ${state.version ?? 'installed'} enabled`);
   await stepRtk(options, 'claude');
+  // rtk init always writes the hook; the stored Claude preference decides whether it stays.
+  setClaudeRtkHook(readRtkDefault('claude'));
   if (!options.quiet) console.log('  Claude Code — the combo strip draws above the prompt, and /tersio prints it');
 }
 
