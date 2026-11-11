@@ -323,12 +323,12 @@ function planLines(plan: UpdatePlan): { stale: string[]; status: string[] } {
   const stale: string[] = [];
   const status: string[] = [];
   const push = (name: string, current: string | null, latest: string | null): void => {
-    if (!current && !latest) status.push(`${name}: unknown`);
-    else if (!latest) status.push(`${name}: ${current} (latest unknown)`);
+    if (!current) status.push(`${name}: not installed`);
+    else if (!latest) status.push(`${name}: ${current}`);
     else if (current === latest) status.push(`${name}: ${current} (up to date)`);
     else {
-      status.push(`${name}: ${current ?? 'missing'} → ${latest}`);
-      stale.push(`${name}: ${current ?? 'missing'} → ${latest}`);
+      status.push(`${name}: ${current} → ${latest}`);
+      stale.push(`${name}: ${current} → ${latest}`);
     }
   };
   push('Tersio', PACKAGE_VERSION, plan.cli);
@@ -336,8 +336,8 @@ function planLines(plan: UpdatePlan): { stale: string[]; status: string[] } {
   if (plan.cliSource === 'github' && plan.npm && plan.cli && newerThan(plan.cli, plan.npm)) {
     status.push(`npm serves ${plan.npm}; the release feed has ${plan.cli}`);
   }
-  push('RTK', plan.rtk[0], plan.rtk[1]);
-  push('Headroom', plan.headroom[0], plan.headroom[1]);
+  push('RTK binary', plan.rtk[0], plan.rtk[1]);
+  push('Headroom binary', plan.headroom[0], plan.headroom[1]);
   // The rule body carries no version, so the tag recorded at pull time names it; the pin covers a fresh install.
   const ruleCurrent = (readState().cavemanUpstream?.tag ?? CAVEMAN_PIN).replace(/^v/, '');
   if (plan.ruleLocal && plan.rule && plan.ruleLocal === plan.rule.hashes)
@@ -345,8 +345,8 @@ function planLines(plan: UpdatePlan): { stale: string[]; status: string[] } {
   else if (plan.rule) {
     status.push(`Caveman rule: ${ruleCurrent} → ${plan.rule.tag.replace(/^v/, '')}`);
     stale.push(`Caveman rule: ${ruleCurrent} → ${plan.rule.tag.replace(/^v/, '')}`);
-  } else if (plan.ruleLocal) status.push(`Caveman rule: ${ruleCurrent} (latest unknown)`);
-  else status.push('Caveman rule: unknown');
+  } else if (plan.ruleLocal) status.push(`Caveman rule: ${ruleCurrent}`);
+  else status.push('Caveman rule: not installed');
   if (plan.ponytail) status.push(`Ponytail: ${plan.ponytail} (bundled with tersio)`);
   else {
     status.push('Ponytail: missing → bundled reinstall');
@@ -355,20 +355,23 @@ function planLines(plan: UpdatePlan): { stale: string[]; status: string[] } {
   return { stale, status };
 }
 
-async function runLatestUpdate(hostOverride?: string | null): Promise<void> {
+async function runLatestUpdate(hostOverride?: string | string[] | null): Promise<void> {
   const forwardedArgs = ['--yes'];
   if (dryRun) forwardedArgs.push('--dry-run');
   if (verbose) forwardedArgs.push('--verbose');
-  let pinned: string | undefined = hostOverride ?? undefined;
+  const requested = Array.isArray(hostOverride) ? hostOverride : hostOverride ? [hostOverride] : [];
+  let fromArgs: string[] = [];
   try {
-    pinned = pinned ?? parseHostArg(args);
+    const host = parseHostArg(args);
+    if (host) fromArgs = [host];
   } catch (e) {
     console.error(`[fail] ${(e as Error).message}`);
     process.exitCode = 1;
     return;
   }
+  const targets = requested.length > 0 ? requested : fromArgs;
+  const applyArgs = (host: string): string[] => [...forwardedArgs, '--host', host];
   // `--host` is the only way an update touches an agent; a bare run stops at the CLI.
-  if (pinned) forwardedArgs.push('--host', pinned);
 
   const npmCommand = IS_WINDOWS ? process.env.ComSpec || 'cmd.exe' : 'npm';
   // Refresh the copy that is actually running, or the old CLI stays on PATH and offers this again.
@@ -387,33 +390,37 @@ async function runLatestUpdate(hostOverride?: string | null): Promise<void> {
   if (dryRun) {
     console.log(`tersio update (dry-run):\n  ${status.join('\n  ')}`);
     sayTagged(`  [dry-run] would run: ${manager.label} install -g ${PACKAGE_NAME}${target}`);
-    if (pinned)
-      sayTagged(
-        `  [dry-run] would delegate: npm exec --yes --prefer-online --package=${PACKAGE_NAME}${target} -- tersio --apply-update ${forwardedArgs.join(' ')}`,
-      );
-    else
+    if (targets.length > 0) {
+      for (const host of targets)
+        sayTagged(
+          `  [dry-run] would delegate: npm exec --yes --prefer-online --package=${PACKAGE_NAME}${target} -- tersio --apply-update ${applyArgs(host).join(' ')}`,
+        );
+    } else {
       sayTagged(
         '  [dry-run] the CLI is the target; extensions and add-ons refresh per agent: tersio update --host <agent>',
       );
+    }
     return;
   }
-  console.log(`Checking for updates:\n  ${status.join('\n  ')}`);
-  if (!pinned && !cliStale) {
-    console.log(
-      addonStale.length > 0
-        ? `tersio ${PACKAGE_VERSION} — the CLI is up to date; extensions and add-ons refresh per agent: tersio update --host <agent>`
-        : `tersio ${PACKAGE_VERSION} — up to date`,
-    );
+  console.log(status.join('\n'));
+  if (targets.length === 0 && !cliStale) {
+    if (addonStale.length > 0)
+      console.log('The CLI is up to date; extensions and add-ons refresh per agent: tersio update --host <agent>.');
     return;
   }
-  if (!pinned) console.log(`Updating Tersio`);
+  if (targets.length === 0) console.log('Updating Tersio');
 
   // A checkout runs its own entry: the published CLI cannot carry unshipped changes, and the global install would replace the tree this copy lives in.
   const sourceEntry = process.argv[1]?.endsWith('.ts') ? process.argv[1] : null;
   if (sourceEntry) {
     try {
-      await execInherit(process.execPath, [sourceEntry, '--apply-update', ...forwardedArgs]);
-      console.log(`Done — tersio ${PACKAGE_VERSION} and add-ons updated.`);
+      for (const host of targets)
+        await execInherit(process.execPath, [sourceEntry, '--apply-update', ...applyArgs(host)]);
+      console.log(
+        targets.length > 0
+          ? `Done — tersio ${PACKAGE_VERSION} and add-ons updated for ${targets.length} agent${targets.length === 1 ? '' : 's'}.`
+          : `Done — tersio ${PACKAGE_VERSION} updated.`,
+      );
       await refreshPrices().catch(() => {
         /* pricing is best-effort; update already succeeded */
       });
@@ -482,7 +489,7 @@ async function runLatestUpdate(hostOverride?: string | null): Promise<void> {
   }
 
   // No host: the global install above is the whole run, and the add-ons stay as they are.
-  if (!pinned) {
+  if (targets.length === 0) {
     console.log(
       `Done — tersio ${plan.cli ?? PACKAGE_VERSION} updated. Extensions and add-ons refresh per agent: tersio update --host <agent>.`,
     );
@@ -494,22 +501,25 @@ async function runLatestUpdate(hostOverride?: string | null): Promise<void> {
     return;
   }
 
-  const npmArgs = [
-    'exec',
-    '--yes',
-    '--prefer-online',
-    `--package=${PACKAGE_NAME}${target}`,
-    '--',
-    PACKAGE_BIN,
-    '--apply-update',
-    ...forwardedArgs,
-  ];
-  const npmCommandArgs = IS_WINDOWS ? ['/d', '/s', '/c', 'npm', ...npmArgs] : npmArgs;
-
   // Inherited stdio, no outer spinner; the quiet installer runs, so this parent owns the plan line and closing summary.
   try {
-    await execInherit(npmCommand, npmCommandArgs);
-    console.log(`Done — tersio ${plan.cli ?? PACKAGE_VERSION} and add-ons updated.`);
+    for (const host of targets) {
+      const npmArgs = [
+        'exec',
+        '--yes',
+        '--prefer-online',
+        `--package=${PACKAGE_NAME}${target}`,
+        '--',
+        PACKAGE_BIN,
+        '--apply-update',
+        ...applyArgs(host),
+      ];
+      const npmCommandArgs = IS_WINDOWS ? ['/d', '/s', '/c', 'npm', ...npmArgs] : npmArgs;
+      await execInherit(npmCommand, npmCommandArgs);
+    }
+    console.log(
+      `Done — tersio ${plan.cli ?? PACKAGE_VERSION} and add-ons updated for ${targets.length} agent${targets.length === 1 ? '' : 's'}.`,
+    );
     if (!dryRun) {
       try {
         await refreshPrices();

@@ -39,7 +39,7 @@ import {
 import type { InstallOptions, WriteOptions } from './common.ts';
 import { askInteractiveChoice, askInteractiveConfirm, closeRL, execNetwork, tty, sayTagged } from './interactive.ts';
 import { printWelcome } from './banner.ts';
-import { checkForUpdate, runLatestUpdate } from './update.ts';
+import { checkForUpdate, newerThan, runLatestUpdate } from './update.ts';
 import { runUninstall } from './uninstall.ts';
 import { claudeLocalPluginFiles, claudeLocalMarketplaceRoot } from '../extensions/shared/claude-plugin.ts';
 import {
@@ -709,28 +709,13 @@ async function runCommandMenu(): Promise<void> {
   printWelcome();
   // Interactive launches always check; scripts use the cached verdict.
   const newer = await checkForUpdate(true);
-  if (typeof newer === 'string' && !dryRun) {
-    const answer = await askInteractiveConfirm(
-      `tersio ${newer} is available (installed ${PACKAGE_VERSION}). Install it now?`,
-    );
-    if (answer.status === 'confirmed' && answer.value) {
-      await runLatestUpdate();
-      closeRL();
-      return;
-    }
-    if (answer.status === 'cancelled') {
-      closeRL();
-      process.exit(130);
-    }
-    console.log(`\n  [update] staying on ${PACKAGE_VERSION} — run \`tersio update\` anytime`);
-  }
   updatePromptDone = true;
   // The menu reads the check it just ran: a pending release names its version beside the update row, and the install row says up front that the optional Headroom step comes with it.
   const updateLabel = typeof newer === 'string' ? `Update (${newer} available)` : 'Update';
   const updateHint =
     typeof newer === 'string'
-      ? `CLI ${PACKAGE_VERSION} → ${newer}; add-ons refresh per agent with --host`
-      : 'download the newest CLI; add-ons refresh per agent with --host';
+      ? `CLI ${PACKAGE_VERSION} → ${newer}; choose all agents or one`
+      : 'choose all agents or one; the CLI refreshes with the update';
   const choice = await askInteractiveChoice(
     `Tersio — what next?\n${formatCliStatus(storedProfileSync())}`,
     [
@@ -755,10 +740,6 @@ async function runCommandMenu(): Promise<void> {
       await runInstall();
       break;
     case 'update': {
-      // Version check already ran above, so report it and offer the refresh here — no second "update" quiz.
-      if (typeof newer === 'string') console.log(`  tersio ${newer} available (installed ${PACKAGE_VERSION})`);
-      else console.log(`  tersio ${PACKAGE_VERSION} is the latest`);
-      // The CLI is the target; `--host` is the only way this run also touches an agent.
       const pinned = (() => {
         try {
           return parseHostArg(args) ?? null;
@@ -766,19 +747,43 @@ async function runCommandMenu(): Promise<void> {
           return null;
         }
       })();
-      const label =
-        pinned === null
-          ? ''
-          : ` + ${detectHosts().find((entry) => entry.id === pinned)?.label ?? pinned}'s extensions and add-ons`;
-      const go = await askInteractiveConfirm(`Update now — tersio CLI${label}?`);
-      if (go.status === 'confirmed' && go.value) {
-        await runLatestUpdate(pinned);
-      } else if (go.status === 'cancelled') {
+      if (pinned !== null) {
+        await runLatestUpdate([pinned]);
+        closeRL();
+        break;
+      }
+      const latest = typeof newer === 'string' ? newer : PACKAGE_VERSION;
+      const installed = detectHosts().filter((host) => host.installed);
+      const outdated = installed.filter((host) => host.version !== null && newerThan(latest, host.version));
+      const options: Array<{ value: string; label: string; hint?: string }> = [];
+      if (installed.length > 0) {
+        options.push({
+          value: 'all',
+          label: `All installed agents${outdated.length > 0 ? ` (${outdated.length} outdated)` : ''}`,
+          hint: `Tersio CLI + ${installed.length} agent${installed.length === 1 ? '' : 's'}`,
+        });
+      }
+      for (const host of installed) {
+        const isOutdated = host.version !== null && newerThan(latest, host.version);
+        options.push({
+          value: host.id,
+          label: `${host.label}${isOutdated ? ` (${host.version} outdated)` : ''}`,
+          hint: host.version ? `installed ${host.version}` : 'installed',
+        });
+      }
+      options.push({ value: 'cli', label: 'Tersio CLI only', hint: 'leave agent extensions as they are' });
+      const choiceHost = await askInteractiveChoice('Update what?', options, installed.length > 0 ? 'all' : 'cli');
+      if (choiceHost.status !== 'selected') {
         closeRL();
         process.exit(130);
-      } else {
-        console.log(`  staying on ${PACKAGE_VERSION} — run \`tersio update\` anytime`);
       }
+      const hosts =
+        choiceHost.value === 'all'
+          ? installed.map((host) => host.id)
+          : choiceHost.value === 'cli'
+            ? []
+            : [choiceHost.value];
+      await runLatestUpdate(hosts);
       closeRL();
       break;
     }

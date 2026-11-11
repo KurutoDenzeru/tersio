@@ -261,9 +261,10 @@ test('update refreshes the globally installed CLI before delegating', () => {
     });
 
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toMatch(/Checking for updates:/);
+    expect(result.stdout).toMatch(/Tersio: /);
+    expect(result.stdout).toMatch(/RTK binary: /);
     expect(result.stdout).toMatch(/fake-npm exec --yes --prefer-online --package=@krtclcdy\/tersio@99\.0\.0/);
-    expect(result.stdout).toMatch(/Done — tersio .* and add-ons updated\./);
+    expect(result.stdout).toMatch(/Done — tersio .* and add-ons updated/);
     expect(result.stdout).not.toMatch(/Restart OMP/);
   } finally {
     rmSync(fakeBin, { recursive: true, force: true });
