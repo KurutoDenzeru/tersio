@@ -93,7 +93,7 @@ function absDate(ms: number): string {
 
 // An unused host is not a fault: out of the tally, carrying only the agent version when one answers.
 function reportHost(label: string, detail: string): void {
-  console.log(`  —  ${label}${detail ? `: ${detail}` : ''}`);
+  console.log(`  —  ${label}${detail ? `: ${detail}` : ''} (not installed)`);
 }
 
 // A missing optional tool keeps the old spelling; its detail names the manual install.
@@ -322,7 +322,7 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
       reportHost(host.label, agentDetail);
       continue;
     }
-    check(host.label, true, agentDetail);
+    check(host.label, true, [agentDetail, '(installed)'].filter(Boolean).join(' '));
     // The MCP entry is a second file an install writes; a tool that never appears starts here.
     if (!tersioMcpConfigured(host.id)) {
       warnLine(
