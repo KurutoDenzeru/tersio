@@ -47,31 +47,17 @@ curl -fsSL https://github.com/KurutoDenzeru/tersio/releases/latest/download/inst
 irm https://github.com/KurutoDenzeru/tersio/releases/latest/download/install.ps1 | iex
 ```
 
-Then run the CLI. Bare `tersio` opens a menu and asks which agent to install into:
+Then run the CLI. Bare `tersio` opens a menu and asks which host to install into. Install one host directly, or let the host install the package itself:
 
-```bash
-tersio                      # menu — picks Oh My Pi, pi, OpenCode, Pi-in-go, DeepSeek Harness, Codex, or Claude Code
-tersio install --host pi    # pi, non-interactive
-tersio install --host omp   # Oh My Pi, non-interactive
-tersio install --host opencode  # OpenCode, non-interactive
-tersio install --host pig   # Pi-in-go (PiG), non-interactive
-tersio install --host dsh   # DeepSeek Harness — mounts the bundle into every dsh profile
-tersio install --host codex # Codex — plugin, MCP server, skills, prompt hook, and /prompts fallbacks
-tersio install --host claude # Claude Code — plugin whose mod draws the combo strip, plus slash commands
-```
-
-Or let each host install the package itself:
-
-```bash
-omp plugin install @krtclcdy/tersio
-pi install npm:@krtclcdy/tersio
-opencode plugin add @krtclcdy/tersio
-pig install npm:@krtclcdy/tersio
-dsh plugin --profile web add npm:@krtclcdy/tersio
-codex plugin marketplace add KurutoDenzeru/tersio
-codex plugin add tersio@tersio
-claude plugin marketplace add /path/to/tersio-marketplace  # or run tersio install --host claude
-```
+| Host | Tersio install | Host-native install |
+|---|---|---|
+| [Codex](https://github.com/openai/codex) | `tersio install --host codex` | `codex plugin marketplace add KurutoDenzeru/tersio`<br>`codex plugin add tersio@tersio` |
+| [Claude Code](https://code.claude.com) | `tersio install --host claude` | `tersio install --host claude` |
+| [OpenCode](https://opencode.ai) | `tersio install --host opencode` | `opencode plugin add @krtclcdy/tersio` |
+| [Oh My Pi](https://github.com/can1357/oh-my-pi) | `tersio install --host omp` | `omp plugin install @krtclcdy/tersio` |
+| [pi](https://github.com/earendil-works/pi) | `tersio install --host pi` | `pi install npm:@krtclcdy/tersio` |
+| [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) | `tersio install --host dsh` | `dsh plugin --profile web add npm:@krtclcdy/tersio` |
+| [Pi-in-Go (PiG)](https://pi-in-go.dev) | `tersio install --host pig` | `pig install npm:@krtclcdy/tersio` |
 
 One-off use without installing:
 
