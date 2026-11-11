@@ -104,6 +104,7 @@ import {
   isAgentView,
   isRangeKey,
   readAgentRequestEntry,
+  readHeadroomReport,
   readSessionTrace,
 } from '../extensions/shared/agent-stats.ts';
 import { agentStats, DEFAULT_AGENT_RANGE } from '../extensions/shared/agent-snapshot.ts';
@@ -496,6 +497,7 @@ export function healthJson(): string {
   const detectedOpencodePath = opencodePath();
   const detectedCodexPath = codexPath();
   const detectedDshPath = dshPath();
+  const detectedClaudePath = resolveHostBinary('claude', path.join(homeDir(), '.local', 'bin'));
   return JSON.stringify({
     tersio: PACKAGE_VERSION,
     node: process.version,
@@ -515,6 +517,9 @@ export function healthJson(): string {
     codex: agentVersion(detectedCodexPath),
     codexPath: detectedCodexPath,
     codexDir: agentDir('codex'),
+    claude: agentVersion(detectedClaudePath),
+    claudePath: detectedClaudePath,
+    claudeDir: agentDir('claude'),
     dsh: agentVersion(detectedDshPath),
     dshPath: detectedDshPath,
     dshDir: agentDir('dsh'),
@@ -990,11 +995,13 @@ async function exportDashboard(exportFile: string, currency: CurrencyCode): Prom
   const b64 = icon.split(',')[1] ?? '';
   // atob yields one byte per char, so a Uint8Array is needed or bytes >= 0x80 double and corrupt the webp.
   const brandBytes = `(() => { const c = atob(${JSON.stringify(b64)}); const v = new Uint8Array(c.length); for (let i = 0; i < c.length; i++) v[i] = c.charCodeAt(i); return v; })()`;
+  // The exported Tools page has no server to read Headroom's CLI, so the snapshot carries what it said now.
+  const headroom = await readHeadroomReport();
   const inline = bundle
     .replace(
       'window.__TERSIO_SNAP = null;',
       () =>
-        `window.__TERSIO_SNAP = ${escapeInline(JSON.stringify({ currency, agent: agentStats(DEFAULT_AGENT_RANGE), health: parseOwnJson(healthJson(), 'health'), doctor: getDoctorReport() }))};`,
+        `window.__TERSIO_SNAP = ${escapeInline(JSON.stringify({ currency, agent: agentStats(DEFAULT_AGENT_RANGE), headroom, health: parseOwnJson(healthJson(), 'health'), doctor: getDoctorReport() }))};`,
     )
     // A mark is an HTML attribute or JSX prop; match every quote or the file keeps an unresolvable reference.
     .replace(
@@ -1651,13 +1658,13 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
       // The cadence only matters while a server is up, so the watch starts with it.
       startUpdateWatch();
       // The first page load should not pay for a cold read: warm the default range once the port is up.
-      // Warm the two ranges a page opens on, one per tick so the port stays responsive.
+      // Warm the overview each range opens on, one per tick so the port stays responsive.
       const warm: RangeKey[] = process.env.TERSIO_WARM === '0' ? [] : ['24h', '7d', 'all'];
       const warmNext = (index: number): void => {
         const range = warm[index];
         if (!range) return;
         try {
-          agentStats(range);
+          agentStats(range, 'overview');
         } catch {
           /* the request path retries it */
         }

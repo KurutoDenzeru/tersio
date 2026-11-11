@@ -25,8 +25,14 @@ import {
 } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
 import { Icon } from "@/components/icon"
-import type { AgentStats, AgentToolRow, HealthReport, RtkVerbRow } from "@/lib/data"
-import { AGENT_RANGE_LABEL, fetchHealth, installHeadroom, postHeadroomRuntime } from "@/lib/data"
+import type { AgentHeadroom, AgentStats, AgentToolRow, HealthReport, RtkVerbRow } from "@/lib/data"
+import {
+  AGENT_RANGE_LABEL,
+  fetchHeadroomGain,
+  fetchHealth,
+  installHeadroom,
+  postHeadroomRuntime,
+} from "@/lib/data"
 import { PALETTE, fmt, fmtShort, pct, relAge, tsFull, tsLabel } from "@/lib/format"
 import { cn } from "cn"
 import { Spinner } from "@/components/ui/spinner"
@@ -495,8 +501,10 @@ export function ToolsPage({ agent, money }: { agent: AgentStats; money: (v: numb
   )
   // rtk's own numbers. A read that failed draws "not measured"; it never draws a zero.
   const rtk = agent.rtk
-  // Headroom is opt-in, so the card also carries the install offer when the binary is absent.
-  const headroom = agent.headroom
+  // Headroom's CLI is slow, so its ledger arrives after the usage rows; the card owns that wait.
+  const [headroomReport, setHeadroomReport] = useState<AgentHeadroom | null>(null)
+  const [headroomLoading, setHeadroomLoading] = useState(true)
+  const headroom = headroomReport ?? agent.headroom
   const [health, setHealth] = useState<HealthReport | null>(null)
   const [installing, setInstalling] = useState(false)
   const [installError, setInstallError] = useState<string | null>(null)
@@ -508,6 +516,19 @@ export function ToolsPage({ agent, money }: { agent: AgentStats; money: (v: numb
     void fetchHealth()
       .then(setHealth)
       .catch(() => {})
+  }, [])
+  useEffect(() => {
+    let live = true
+    void fetchHeadroomGain()
+      .then((report) => {
+        if (live) setHeadroomReport(report)
+      })
+      .finally(() => {
+        if (live) setHeadroomLoading(false)
+      })
+    return () => {
+      live = false
+    }
   }, [])
   function startInstall(): void {
     setInstalling(true)
@@ -666,11 +687,19 @@ export function ToolsPage({ agent, money }: { agent: AgentStats; money: (v: numb
           <Stat
             label="Saved by Headroom"
             title="Tokens Headroom's compression kept out of context, from its own savings ledger"
-            value={headroom.measured ? fmtShort(headroom.tokensSaved) : "not measured"}
+            value={
+              headroomLoading
+                ? "…"
+                : headroom.measured
+                  ? fmtShort(headroom.tokensSaved)
+                  : "not measured"
+            }
             hint={
-              headroom.measured
-                ? `${pct(headroom.savingsPercent / 100, 1)} of ${fmtShort(headroom.tokensBefore)} across ${fmt(headroom.calls)} calls`
-                : "install Headroom and wrap a tool to record savings"
+              headroomLoading
+                ? "reading Headroom's ledger"
+                : headroom.measured
+                  ? `${pct(headroom.savingsPercent / 100, 1)} of ${fmtShort(headroom.tokensBefore)} across ${fmt(headroom.calls)} calls`
+                  : "install Headroom and wrap a tool to record savings"
             }
           />
         </StatGrid>
@@ -876,15 +905,17 @@ export function ToolsPage({ agent, money }: { agent: AgentStats; money: (v: numb
         title="Headroom"
         icon="leaf"
         description={
-          headroom.measured
-            ? `Tokens Headroom's compression kept out of context, from its durable ledger. Today: ${fmtShort(headroom.todayTokens)} · 7 days: ${fmtShort(headroom.last7Tokens)} · 30 days: ${fmtShort(headroom.last30Tokens)}.`
-            : headroomPresent
-              ? `Headroom ${health?.headroom?.version ? `(${health.headroom.version}) ` : ""}is installed, but no savings are recorded yet. Run \`headroom wrap <tool>\` — or flip the switch on the Quick start canvas — so traffic flows through it.`
-              : "Headroom is not installed. Installing adds the headroom CLI; nothing is enabled on its own."
+          headroomLoading
+            ? "Reading Headroom's durable ledger…"
+            : headroom.measured
+              ? `Tokens Headroom's compression kept out of context, from its durable ledger. Today: ${fmtShort(headroom.todayTokens)} · 7 days: ${fmtShort(headroom.last7Tokens)} · 30 days: ${fmtShort(headroom.last30Tokens)}.`
+              : headroomPresent
+                ? `Headroom ${health?.headroom?.version ? `(${health.headroom.version}) ` : ""}is installed, but no savings are recorded yet. Run \`headroom wrap <tool>\` — or flip the switch on the Quick start canvas — so traffic flows through it.`
+                : "Headroom is not installed. Installing adds the headroom CLI; nothing is enabled on its own."
         }
         flush
         actions={
-          !headroomPresent && !headroom.measured ? (
+          !headroomLoading && !headroomPresent && !headroom.measured ? (
             <Button
               size="sm"
               className="mono h-8 gap-1.5 rounded-xl"
@@ -907,7 +938,12 @@ export function ToolsPage({ agent, money }: { agent: AgentStats; money: (v: numb
           ) : undefined
         }
       >
-        {headroom.measured ? (
+        {headroomLoading ? (
+          <p className="mono flex items-center gap-2 p-4 text-xs text-dim">
+            <Spinner className="size-3.5" />
+            Reading Headroom's ledger…
+          </p>
+        ) : headroom.measured ? (
           <div className="mono flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-line px-3.5 py-2 text-[11px] text-dim">
             <span>
               lifetime <span className="text-ink">{fmtShort(headroom.tokensSaved)}</span> of{" "}
@@ -938,7 +974,7 @@ export function ToolsPage({ agent, money }: { agent: AgentStats; money: (v: numb
           </p>
         )}
         {/* Routing is what separates "installed and idle" from "installed and working". */}
-        {headroomPresent ? (
+        {headroomPresent && !headroomLoading ? (
           <div className="border-t border-line px-3.5 py-2">
             {headroom.routing.measured ? (
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1">

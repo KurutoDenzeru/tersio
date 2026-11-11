@@ -1,9 +1,12 @@
 // Headroom's savings read through its own CLI: measured=false plus a failure, never a zero that reads as data, and a memo so a poll does not shell out each render.
 
-import { execFileSync } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
+import { promisify } from 'node:util';
 import { headroomProxyUrl } from './headroom-proxy.ts';
 import { resolveHeadroomBinary, shimCommand } from './utils.ts';
 import type { HeadroomClientRow, HeadroomProxyStats } from './agent-types.ts';
+
+const execFileP = promisify(execFile);
 
 export interface HeadroomWindow {
   tokensSaved: number;
@@ -193,6 +196,43 @@ function runProbe<T>(
   }
 }
 
+/** The same probe through an async child, so a route can read it without blocking other requests. */
+async function runProbeAsync<T>(
+  probe: 'savings' | 'doctor',
+  binary: string,
+  budgetMs: number,
+  memoMs: number,
+  parse: (raw: string) => T,
+  blank: (failure: string) => T,
+  port?: number,
+): Promise<T> {
+  const label = `headroom ${probe}`;
+  const hit = MEMOS.get(probe);
+  if (hit && Date.now() - hit.at < memoMs) return hit.value as T;
+  try {
+    const shim = shimCommand(binary, [probe, '--json']);
+    const { stdout } = await execFileP(shim.cmd, shim.args, {
+      timeout: budgetMs,
+      maxBuffer: 4 * 1024 * 1024,
+      windowsHide: true,
+      encoding: 'utf8',
+      env: port ? { ...process.env, HEADROOM_PORT: String(port) } : process.env,
+    });
+    const value = parse(String(stdout));
+    MEMOS.set(probe, { at: Date.now(), value });
+    return value;
+  } catch (e) {
+    const err = e as { stdout?: string; stderr?: string; message?: string; killed?: boolean };
+    if (probe === 'doctor' && typeof err.stdout === 'string' && err.stdout.trim().startsWith('{')) {
+      const value = parse(err.stdout);
+      MEMOS.set(probe, { at: Date.now(), value });
+      return value;
+    }
+    MEMOS.delete(probe);
+    return blank(err.killed ? `${label} timed out` : err.stderr?.trim() || err.message || `${label} failed`);
+  }
+}
+
 /** Headroom's routing check; it exits 2 on a failing check and still prints JSON, so a non-zero exit is a reading. */
 export function readHeadroomDoctor(options: HeadroomGainOptions = {}): HeadroomDoctor {
   const binary = options.binary !== undefined ? options.binary : resolveHeadroomBinary();
@@ -212,7 +252,30 @@ export function readHeadroomDoctor(options: HeadroomGainOptions = {}): HeadroomD
 export function readHeadroomSavings(options: HeadroomGainOptions = {}): HeadroomGain {
   const binary = options.binary !== undefined ? options.binary : resolveHeadroomBinary();
   if (!binary) return emptyHeadroomGain('headroom binary not found in PATH');
-  return runProbe('savings', binary, options.budgetMs ?? 5000, 5000, parseHeadroomSavings, emptyHeadroomGain);
+  return runProbe('savings', binary, options.budgetMs ?? 5000, 60_000, parseHeadroomSavings, emptyHeadroomGain);
+}
+
+/** The same savings probe without blocking the dashboard's event loop. */
+export async function readHeadroomSavingsAsync(options: HeadroomGainOptions = {}): Promise<HeadroomGain> {
+  const binary = options.binary !== undefined ? options.binary : resolveHeadroomBinary();
+  if (!binary) return emptyHeadroomGain('headroom binary not found in PATH');
+  return runProbeAsync('savings', binary, options.budgetMs ?? 5000, 60_000, parseHeadroomSavings, emptyHeadroomGain);
+}
+
+/** The same routing check without blocking the dashboard's event loop. */
+export async function readHeadroomDoctorAsync(options: HeadroomGainOptions = {}): Promise<HeadroomDoctor> {
+  const binary = options.binary !== undefined ? options.binary : resolveHeadroomBinary();
+  if (!binary)
+    return { measured: false, failure: 'headroom binary not found in PATH', exitCode: null, version: null, checks: [] };
+  return runProbeAsync(
+    'doctor',
+    binary,
+    options.budgetMs ?? 8000,
+    30_000,
+    parseHeadroomDoctor,
+    (failure) => ({ measured: false, failure, exitCode: null, version: null, checks: [] }),
+    options.port,
+  );
 }
 
 /** The proxy's live counters. The CLI has no stats command, so this reads the same HTTP endpoint the dashboard uses. */

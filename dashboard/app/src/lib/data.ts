@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { FX_SNAPSHOT, fxMoney, isCurrencyCode } from "./format"
 import type {
+  AgentHeadroom,
   AgentSessionTrace,
   AgentStats,
   AgentView,
@@ -349,6 +350,15 @@ export async function fetchRoutes(): Promise<HeadroomRouteState | null> {
   return body?.targets ? { targets: body.targets, endpoint: body.endpoint } : null
 }
 
+/** The Tools page reads Headroom's ledger after its usage rows, so a slow CLI never holds the table. */
+export async function fetchHeadroomGain(): Promise<AgentHeadroom | null> {
+  const baked = snap()?.headroom
+  if (baked) return baked
+  if (isFileExport()) return null
+  const body = await apiJson<{ headroom?: AgentHeadroom }>("/api/headroom/gain")
+  return body?.headroom ?? null
+}
+
 /** Starts headroom's own runtime; a route is useless while the proxy is down. */
 export async function postHeadroomRuntime(): Promise<{
   ok: boolean
@@ -457,6 +467,11 @@ export interface HealthReport {
   codexPath: string | null
   /** Config root, e.g. ~/.codex */
   codexDir: string | null
+  /** The Claude Code binary's version, when it is installed. */
+  claude: string | null
+  claudePath: string | null
+  /** Config root, e.g. ~/.claude */
+  claudeDir: string | null
   dsh: string | null
   dshPath: string | null
   /** Config root, e.g. ~/.dsh */
@@ -496,6 +511,7 @@ interface TersioSnap {
   /** Display currency baked by --currency or the stored default. */
   currency?: string
   agent?: AgentStats
+  headroom?: AgentHeadroom
   health?: HealthReport
   doctor?: DoctorReport
 }

@@ -35,7 +35,7 @@ import type {
 import { homeDir } from './utils.ts';
 import { usageDbPath } from './usage-store.ts';
 import { readRtkGainByVerb, rtkGainFailure } from './rtk-gain.ts';
-import { readHeadroomDoctor, readHeadroomSavings, readHeadroomStats } from './headroom-gain.ts';
+import { readHeadroomDoctorAsync, readHeadroomSavingsAsync, readHeadroomStats } from './headroom-gain.ts';
 import { headroomProxyPort } from './headroom-proxy.ts';
 import { describeHeadroomRoute, readHeadroomRoute } from './headroom-routing.ts';
 import { hostOfSessionFile, readRtkAdoption, readSessionText, usdCost } from './usage-ledger.ts';
@@ -261,15 +261,16 @@ const EMPTY_HEADROOM: AgentHeadroom = {
 };
 
 /** Headroom's savings for the ledger's own windows; it aggregates, so no cutoff of ours applies. */
-function readHeadroom(): AgentHeadroom {
-  const gain = readHeadroomSavings();
+export async function readHeadroomReport(): Promise<AgentHeadroom> {
+  const [gain, doctor] = await Promise.all([
+    readHeadroomSavingsAsync(),
+    readHeadroomDoctorAsync({ port: headroomProxyPort() }),
+  ]);
   const proxyStats = readHeadroomStats();
   const routes = ['omp', 'opencode'].map((host) => {
     const route = readHeadroomRoute(host);
     return { host, measured: route.measured, routed: route.routed, text: describeHeadroomRoute(route) };
   });
-  // Headroom's doctor is the only source that says whether traffic actually flows; a proxy-down install otherwise reads as "installed and idle" with no way to tell the difference.
-  const doctor = readHeadroomDoctor({ port: headroomProxyPort() });
   const failing = doctor.checks
     .filter((check) => check.status === 'fail' || check.status === 'warn')
     .map((check) => ({ name: check.name, status: check.status, summary: check.summary, hint: check.hint }));
@@ -1896,7 +1897,7 @@ export function readAgentRequestEntry(
       agent.model = dshModel;
       continue;
     }
-    const id = String(dshMessage?.id ?? parsed.id ?? '');
+    const id = String(dshMessage?.id ?? parsed.id ?? parsed.uuid ?? '');
     if (id !== entryId) {
       // A change entry updates the state every later request sees.
       if (parsed.type === 'model_change') {
@@ -1914,7 +1915,14 @@ export function readAgentRequestEntry(
       string,
       unknown
     > | null;
-    return { entry: parsed, output: message, messageRole: message ? String(message.role ?? '') : '', agent };
+    // Claude Code speaks the Anthropic messages API and names the turn by `uuid`; its entry carries both.
+    const output = message && parsed.type === 'assistant' ? { api: 'anthropic-messages', ...message } : message;
+    return {
+      entry: parsed,
+      output,
+      messageRole: output ? String(output.role ?? '') : '',
+      agent,
+    };
   }
   return empty;
 }
@@ -1957,8 +1965,6 @@ export function readAgentStats(
     Object.assign(stats, readToolSeries(db, cutoff, stats.bucketMs));
     // rtk's own database is second, so a Tools page never fails on it.
     stats.rtk = readRtk(cutoff);
-    // Headroom aggregates its own ledger and only reports when its CLI is present.
-    stats.headroom = readHeadroom();
   }
   if (stats.byModel.length > 0) stats.topModels = stats.byModel.slice(0, 12);
   if (parts.has('providerHourly')) stats.providerHourly = readProviderHourly(db, cutoff);
