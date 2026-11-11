@@ -752,37 +752,49 @@ async function runCommandMenu(): Promise<void> {
         closeRL();
         break;
       }
-      const latest = typeof newer === 'string' ? newer : PACKAGE_VERSION;
+      // Refresh the npm/GitHub verdict before the choice, so the outdated markers are current.
+      const fresh = await checkForUpdate(true);
+      const latest = typeof fresh === 'string' ? fresh : PACKAGE_VERSION;
       const installed = detectHosts().filter((host) => host.installed);
       const outdated = installed.filter((host) => host.version !== null && newerThan(latest, host.version));
-      const options: Array<{ value: string; label: string; hint?: string }> = [];
-      if (installed.length > 0) {
-        options.push({
-          value: 'all',
-          label: `All installed agents${outdated.length > 0 ? ` (${outdated.length} outdated)` : ''}`,
-          hint: `Tersio CLI + ${installed.length} agent${installed.length === 1 ? '' : 's'}`,
-        });
-      }
-      for (const host of installed) {
-        const isOutdated = host.version !== null && newerThan(latest, host.version);
-        options.push({
-          value: host.id,
-          label: `${host.label}${isOutdated ? ` (${host.version} outdated)` : ''}`,
-          hint: host.version ? `installed ${host.version}` : 'installed',
-        });
-      }
-      options.push({ value: 'cli', label: 'Tersio CLI only', hint: 'leave agent extensions as they are' });
-      const choiceHost = await askInteractiveChoice('Update what?', options, installed.length > 0 ? 'all' : 'cli');
-      if (choiceHost.status !== 'selected') {
+      const targets: Array<{ value: string; label: string; hint?: string }> = [
+        ...(installed.length > 0
+          ? [
+              {
+                value: 'agents',
+                label: 'AI agents',
+                hint: `${installed.map((host) => host.label).join(', ')} — pick one next`,
+              },
+            ]
+          : []),
+        { value: 'cli', label: 'Tersio CLI only', hint: 'leave agent extensions as they are' },
+      ];
+      const pick = await askInteractiveChoice('Update what?', targets, targets[0].value);
+      if (pick.status !== 'selected') {
         closeRL();
         process.exit(130);
       }
-      const hosts =
-        choiceHost.value === 'all'
-          ? installed.map((host) => host.id)
-          : choiceHost.value === 'cli'
-            ? []
-            : [choiceHost.value];
+      let hosts: string[] = [];
+      if (pick.value === 'agents') {
+        const agents = [
+          {
+            value: 'all',
+            label: `All installed agents${outdated.length > 0 ? ` (${outdated.length} outdated)` : ''}`,
+            hint: `Tersio CLI + ${installed.length} agent${installed.length === 1 ? '' : 's'}`,
+          },
+          ...installed.map((host) => ({
+            value: host.id,
+            label: `${host.label}${host.version !== null && newerThan(latest, host.version) ? ` (${host.version} outdated)` : ''}`,
+            hint: host.version ? `installed ${host.version}` : 'installed',
+          })),
+        ];
+        const agentPick = await askInteractiveChoice('Which AI agents?', agents, 'all');
+        if (agentPick.status !== 'selected') {
+          closeRL();
+          process.exit(130);
+        }
+        hosts = agentPick.value === 'all' ? installed.map((host) => host.id) : [agentPick.value];
+      }
       await runLatestUpdate(hosts);
       closeRL();
       break;
