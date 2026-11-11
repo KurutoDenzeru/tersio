@@ -1,5 +1,18 @@
 ## Unreleased
 
+### Added
+- Claude Code now ships Tersio's MCP server in the plugin bundle, so Headroom recovery and stats tools are reachable from Claude. The host check reads the bundled `.mcp.json` instead of assuming the plugin carries one.
+- The Claude plugin carries pstack's playbooks, skills, principles, and references, and prints the absolute skill directory in the injected rule.
+- Claude slash commands gain `/tersio:update` and `/tersio:help`.
+- Claude mode stop phrases (`normal mode`, `stop caveman`, `caveman off`, `stop ponytail`, `ponytail off`, `pstack off`) turn the matching modes off and tell the model that earlier rules no longer apply.
+- Claude transcript traces now render turns, one model span per request, and tool spans with their results.
+
+### Fixed
+- `tersio uninstall --host claude` unwraps Headroom's Claude route instead of restoring the OMP gateway and leaving Claude pointed at a stopped proxy.
+- Claude's RTK toggle now adds or removes the `rtk hook claude` entry in `~/.claude/settings.json`; the stored preference was previously a label only.
+- The Claude plugin reads `TERSIO_HOME` and `CLAUDE_CONFIG_DIR` instead of assuming `~/.tersio` and `~/.claude`.
+- The host menu no longer lists a disabled “Claude Code — Coming soon” entry beside the real host.
+
 ### Changed
 - The Headroom proxy no longer loads its Kompress ONNX model at startup. Footprint falls from about 600MB to 274MB and threads from 23 to 9, measured on the same machine. The cheaper engines still run every turn: Code-Aware AST compression, the compression cache, and CCR, which between them carried the work; one of 131 learned routing patterns had used the model. A deployment that passes `--enable-kompress` keeps it.
 - The dashboard ships the 97 Lucide icons it names instead of all 2,029, cutting the bundle every user downloads from 2,616 kB to 1,964 kB, and from 872 kB to 705 kB gzipped.

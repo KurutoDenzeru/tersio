@@ -89,13 +89,15 @@ tersio install --host claude
 
 This writes a local marketplace under `~/.claude/tersio-marketplace`, registers it, and installs `tersio@tersio`. No network fetch is needed, because the plugin ships inside the package.
 
-The plugin is a **mod**: it runs inside Claude Code, draws the combo line above the prompt, and injects the active Caveman, Ponytail, and pstack bodies on each prompt. It costs no rows when every mode is off.
+The plugin is a **mod**: it runs inside Claude Code, draws the combo line above the prompt, and injects the active Caveman, Ponytail, and pstack bodies on each prompt. It costs no rows when every mode is off. Pstack ships its playbooks, skills, principles, and references beside the plugin, so the rule can open every file it names.
 
-Seven slash commands apply the modes without leaving the session: `/tersio:combo`, `/tersio:caveman`, `/tersio:ponytail`, `/tersio:pstack`, `/tersio:rtk`, `/tersio:headroom`, and `/tersio` for the current line. Each carries `allowed-tools` for its own `tersio modes` call, so applying a mode needs no second approval.
+The plugin also bundles Tersio's MCP server. Claude Code reaches the same stats and Headroom recovery tools the other hosts get.
+
+Nine slash commands apply the modes without leaving the session: `/tersio:combo`, `/tersio:caveman`, `/tersio:ponytail`, `/tersio:pstack`, `/tersio:rtk`, `/tersio:headroom`, `/tersio:update`, `/tersio:help`, and `/tersio` for the current line. Each carries `allowed-tools` for its own CLI call, so applying a mode needs no second approval. Say `normal mode` to turn the style modes off.
 
 The strip draws in the terminal, the Desktop app's Code tab, and the VS Code extension (2.1.299+). `claude -p` runs the commands but draws nothing, which is what `/tersio` is for.
 
-Claude Code is wired for RTK at install with `rtk init -g --agent claude`. Headroom uses Headroom's own durable `init claude` and `unwrap claude` commands, so a routed host keeps its hooks across restarts.
+Claude Code is wired for RTK at install with `rtk init -g --agent claude`. `/tersio:rtk off` removes that hook again. Headroom uses Headroom's own durable `init claude` and `unwrap claude` commands, so a routed host keeps its hooks across restarts.
 
 ## Requirements
 
