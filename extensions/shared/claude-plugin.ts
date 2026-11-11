@@ -1,7 +1,8 @@
 // The Claude Code plugin Tersio writes into a local marketplace, and the files it must carry.
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { findPackageRoot } from './utils.ts';
+import { tersioMcpLaunch } from './mcp-config.ts';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -48,7 +49,10 @@ const HEADROOM_CONTEXT =
 export function claudeModeContext(): Record<string, unknown> {
   const pstack = (() => {
     try {
-      return readFileSync(join(ROOT, 'extensions', 'pstack', 'rule.md'), 'utf8');
+      const rule = readFileSync(join(ROOT, 'extensions', 'pstack', 'rule.md'), 'utf8');
+      const base = join(claudeLocalMarketplaceRoot(), CLAUDE_PLUGIN_NAME, 'skills', 'pstack');
+      // The rule points at sibling files by bare name; the absolute base is what the model can open.
+      return `${rule}\n\nThe pstack files are under \`${base}\`. Read them from there.`;
     } catch {
       return 'pstack mode requested, but rule.md is missing. Run: tersio doctor --fix extensions';
     }
@@ -68,6 +72,33 @@ export function claudeModeContext(): Record<string, unknown> {
 /** The plugin manifest and its hooks module, read from the packaged copy beside this build. */
 function readPackaged(rel: string): string {
   return readFileSync(join(ROOT, 'plugins', CLAUDE_PLUGIN_DIR, ...rel.split('/')), 'utf8');
+}
+
+/** The MCP entry Claude reads from the plugin's `.mcp.json`. */
+function mcpJson(): string {
+  const { command, args } = tersioMcpLaunch();
+  return `${JSON.stringify({ mcpServers: { tersio: { command, args } } }, null, 2)}\n`;
+}
+
+/** Pstack's rule and its playbooks, skills, principles, and references, keyed under the skill dir. */
+function pstackPluginFiles(): Record<string, string> {
+  const root = join(ROOT, 'extensions', 'pstack');
+  const keep: Record<string, true> = { principles: true, playbooks: true, skills: true, references: true };
+  const out: Record<string, string> = {};
+  const walk = (rel: string): void => {
+    for (const entry of readdirSync(rel ? join(root, rel) : root, { withFileTypes: true })) {
+      if (entry.name.startsWith('.')) continue;
+      const child = rel ? `${rel}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) {
+        if (!rel && !keep[entry.name]) continue;
+        walk(child);
+      } else if (entry.isFile() && entry.name.endsWith('.md') && (rel !== '' || entry.name === 'rule.md')) {
+        out[child] = readFileSync(join(root, child), 'utf8');
+      }
+    }
+  };
+  walk('');
+  return out;
 }
 
 /**
@@ -94,9 +125,10 @@ function marketplaceJson(): string {
 
 /** Every file the local marketplace needs, keyed by its path under the marketplace root. */
 export function claudeLocalPluginFiles(): Record<string, string> {
-  return {
+  const files: Record<string, string> = {
     '.claude-plugin/marketplace.json': marketplaceJson(),
     [`${CLAUDE_PLUGIN_NAME}/.claude-plugin/plugin.json`]: readPackaged('.claude-plugin/plugin.json'),
+    [`${CLAUDE_PLUGIN_NAME}/.mcp.json`]: mcpJson(),
     [`${CLAUDE_PLUGIN_NAME}/hooks/hooks.json`]: readPackaged('hooks/hooks.json'),
     [`${CLAUDE_PLUGIN_NAME}/hooks/register.ts`]: readPackaged('hooks/register.ts'),
     [`${CLAUDE_PLUGIN_NAME}/hooks/mode-context.json`]: `${JSON.stringify(claudeModeContext(), null, 2)}\n`,
@@ -107,7 +139,13 @@ export function claudeLocalPluginFiles(): Record<string, string> {
     [`${CLAUDE_PLUGIN_NAME}/commands/pstack.md`]: readPackaged('commands/pstack.md'),
     [`${CLAUDE_PLUGIN_NAME}/commands/ponytail.md`]: readPackaged('commands/ponytail.md'),
     [`${CLAUDE_PLUGIN_NAME}/commands/headroom.md`]: readPackaged('commands/headroom.md'),
+    [`${CLAUDE_PLUGIN_NAME}/commands/help.md`]: readPackaged('commands/help.md'),
+    [`${CLAUDE_PLUGIN_NAME}/commands/update.md`]: readPackaged('commands/update.md'),
   };
+  for (const [rel, text] of Object.entries(pstackPluginFiles())) {
+    files[`${CLAUDE_PLUGIN_NAME}/skills/pstack/${rel === 'rule.md' ? 'SKILL.md' : rel}`] = text;
+  }
+  return files;
 }
 
 export { claudeLocalMarketplaceRoot };

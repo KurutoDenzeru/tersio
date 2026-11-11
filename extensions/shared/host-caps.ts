@@ -5,7 +5,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { homeDir, piAgentDir, pigAgentDir } from './utils.ts';
 import { codexPluginInstalled } from './codex-state.ts';
-import { claudePluginInstalled } from './claude-state.ts';
+import { claudeMcpConfigured } from './claude-state.ts';
 
 export type HostId = 'omp' | 'pi' | 'opencode' | 'pig' | 'dsh' | 'codex' | 'claude';
 
@@ -155,7 +155,7 @@ export const HOST_CAPS: Record<HostId, HostCap> = {
     // The MCP entry rides inside the plugin bundle, the way Codex's does.
     mcp: 'plugin',
     mcpFile: () => null,
-    mcpBundle: claudePluginInstalled,
+    mcpBundle: claudeMcpConfigured,
     // rtk's own Claude hook rewrites Bash tool calls; `rtk init -g --agent claude` binds it.
     rtkAgent: 'claude',
     // Headroom's own `init claude` writes the durable hooks and provider routing.

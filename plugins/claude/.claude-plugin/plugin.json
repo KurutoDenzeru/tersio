@@ -2,6 +2,7 @@
   "name": "tersio",
   "version": "2.25.19",
   "description": "Tersio's token-saving modes drawn inside Claude Code, with a combo strip above the prompt.",
+  "mcpServers": "./.mcp.json",
   "author": {
     "name": "KurutoDenzeru",
     "url": "https://github.com/KurutoDenzeru"

@@ -1,8 +1,8 @@
 // Claude Code plugin paths and installed state, without the mode bodies or any extension runtime imports.
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { findPackageRoot, homeDir } from './utils.ts';
+import { findPackageRoot, homeDir, isRecord } from './utils.ts';
 
 export const CLAUDE_PLUGIN_NAME = 'tersio';
 /** The directory under plugins/. The plugin's own name is tersio, which the Codex plugin already uses. */
@@ -13,9 +13,11 @@ export const CLAUDE_PLUGIN_ID = `${CLAUDE_PLUGIN_NAME}@${CLAUDE_MARKETPLACE_NAME
 /** Every file the packaged plugin must carry; a plugin with a manifest and no hooks module draws nothing. */
 export const CLAUDE_PLUGIN_FILES = [
   '.claude-plugin/plugin.json',
+  '.mcp.json',
   'hooks/hooks.json',
   'hooks/register.ts',
   'hooks/mode-context.json',
+  'skills/pstack/SKILL.md',
   // A registered command never reaches the slash menu; a commands/*.md file is what lists.
   'commands/tersio.md',
   'commands/combo.md',
@@ -24,6 +26,8 @@ export const CLAUDE_PLUGIN_FILES = [
   'commands/pstack.md',
   'commands/ponytail.md',
   'commands/headroom.md',
+  'commands/help.md',
+  'commands/update.md',
 ] as const;
 
 const ROOT = findPackageRoot(dirname(fileURLToPath(import.meta.url)));
@@ -101,4 +105,76 @@ export function claudePluginEnabled(): boolean {
 export function claudePluginInstalled(): boolean {
   const state = installedClaudePlugin();
   return state.complete && state.enabled;
+}
+
+/** The plugin's bundled `.mcp.json` is what makes the Tersio MCP tools reachable. */
+export function claudeMcpConfigured(): boolean {
+  const dir = installedClaudePlugin().dir;
+  if (!dir) return false;
+  try {
+    const data = JSON.parse(readFileSync(join(dir, '.mcp.json'), 'utf8')) as {
+      mcpServers?: Record<string, unknown>;
+    };
+    return Boolean(data.mcpServers?.tersio);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * RTK's Claude hook lives in `~/.claude/settings.json`. Tersio's rtk mode has to add or remove
+ * that exact entry, or the stored preference is only a label.
+ */
+export function setClaudeRtkHook(enabled: boolean): boolean {
+  const file = join(claudeHome(), 'settings.json');
+  let data: Record<string, unknown> = {};
+  if (existsSync(file)) {
+    try {
+      data = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>;
+    } catch {
+      return false;
+    }
+  }
+  const hooks = isRecord(data.hooks) ? data.hooks : {};
+  const groups = hooks.PreToolUse;
+  if (groups !== undefined && !Array.isArray(groups)) return false;
+  const isRtk = (value: unknown): boolean =>
+    isRecord(value) && /\brtk\s+hook\s+claude\b/.test(String(value.command ?? ''));
+  const hookList = (group: Record<string, unknown>): unknown[] => (Array.isArray(group.hooks) ? group.hooks : []);
+  let changed = false;
+  const next: Array<Record<string, unknown>> = [];
+  for (const raw of Array.isArray(groups) ? groups : []) {
+    if (!isRecord(raw)) continue;
+    const entries = hookList(raw);
+    const kept = entries.filter((entry) => !isRtk(entry));
+    if (kept.length !== entries.length) {
+      changed = true;
+      if (kept.length === 0) continue;
+    }
+    next.push(kept.length === entries.length ? raw : { ...raw, hooks: kept });
+  }
+  const hasRtk = next.some((group) => hookList(group).some(isRtk));
+  if (enabled && !hasRtk) {
+    const bash = next.find((group) => group.matcher === 'Bash' && Array.isArray(group.hooks));
+    if (bash) {
+      const entries = hookList(bash);
+      entries.push({ type: 'command', command: 'rtk hook claude' });
+      bash.hooks = entries;
+    } else {
+      next.push({ matcher: 'Bash', hooks: [{ type: 'command', command: 'rtk hook claude' }] });
+    }
+    changed = true;
+  }
+  if (!changed) return true;
+  if (next.length > 0) hooks.PreToolUse = next;
+  else delete hooks.PreToolUse;
+  if (Object.keys(hooks).length > 0) data.hooks = hooks;
+  else delete data.hooks;
+  try {
+    mkdirSync(claudeHome(), { recursive: true });
+    writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
+    return true;
+  } catch {
+    return false;
+  }
 }
