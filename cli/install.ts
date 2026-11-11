@@ -37,7 +37,15 @@ import {
   writeIfChanged,
 } from './common.ts';
 import type { InstallOptions, WriteOptions } from './common.ts';
-import { askInteractiveChoice, askInteractiveConfirm, closeRL, execNetwork, tty, sayTagged } from './interactive.ts';
+import {
+  askInteractiveChoice,
+  askInteractiveConfirm,
+  closeRL,
+  execNetwork,
+  tty,
+  sayTagged,
+  withInteractiveSpinner,
+} from './interactive.ts';
 import { printWelcome } from './banner.ts';
 import { checkForUpdate, newerThan, runLatestUpdate } from './update.ts';
 import { runUninstall } from './uninstall.ts';
@@ -711,11 +719,11 @@ async function runCommandMenu(): Promise<void> {
   const newer = await checkForUpdate(true);
   updatePromptDone = true;
   // The menu reads the check it just ran: a pending release names its version beside the update row, and the install row says up front that the optional Headroom step comes with it.
-  const updateLabel = typeof newer === 'string' ? `Update (${newer} available)` : 'Update';
-  const updateHint =
-    typeof newer === 'string'
-      ? `CLI ${PACKAGE_VERSION} → ${newer}; choose all agents or one`
-      : 'choose all agents or one; the CLI refreshes with the update';
+  const hasNewer = typeof newer === 'string' && newer !== 'unknown';
+  const updateLabel = hasNewer ? `Update (${newer} available)` : 'Update';
+  const updateHint = hasNewer
+    ? `CLI ${PACKAGE_VERSION} → ${newer}; choose all agents or one`
+    : 'choose all agents or one; the CLI refreshes with the update';
   const choice = await askInteractiveChoice(
     `Tersio — what next?\n${formatCliStatus(storedProfileSync())}`,
     [
@@ -753,8 +761,8 @@ async function runCommandMenu(): Promise<void> {
         break;
       }
       // Refresh the npm/GitHub verdict before the choice, so the outdated markers are current.
-      const fresh = await checkForUpdate(true);
-      const latest = typeof fresh === 'string' ? fresh : PACKAGE_VERSION;
+      const fresh = await withInteractiveSpinner('Checking npm and GitHub for updates', () => checkForUpdate(true));
+      const latest = typeof fresh === 'string' && fresh !== 'unknown' ? fresh : PACKAGE_VERSION;
       const installed = detectHosts().filter((host) => host.installed);
       const outdated = installed.filter((host) => host.version !== null && newerThan(latest, host.version));
       const targets: Array<{ value: string; label: string; hint?: string }> = [
