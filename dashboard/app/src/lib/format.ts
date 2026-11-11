@@ -244,6 +244,7 @@ export function hostMeta(host?: string): HostMeta {
   if (host === "opencode") return { label: "OpenCode", icon: "box", color: "#fb923c" }
   if (host === "codex") return { label: "Codex", icon: "terminal", color: "#34d399" }
   if (host === "dsh") return { label: "DeepSeek Harness", icon: "terminal", color: "#4d6bfe" }
+  if (host === "claude") return { label: "Claude Code", icon: "asterisk", color: "#d97757" }
   return { label: "pi", icon: "circle-dot", color: "#22d3ee" }
 }
 
@@ -311,12 +312,14 @@ export function providerMeta(provider: string): ProviderMeta {
 /** The agent that recorded a session, from the transcript path, the row's only host marker; matches `AgentLogo`. Each pattern allows either separator: a Windows run writes `C:\...\.omp\agent\sessions\`. */
 export function hostOfSession(sessionFile: string): {
   label: string
-  host: "omp" | "pi" | "opencode" | "dsh" | "codex" | "unknown"
+  host: "omp" | "pi" | "opencode" | "dsh" | "codex" | "claude" | "unknown"
 } {
   const file = String(sessionFile ?? "")
   // DeepSeek Harness writes one zstd transcript per session under its own tree.
   if (/[/\\]\.dsh[/\\]sessions[/\\]/.test(file)) return { label: "DeepSeek Harness", host: "dsh" }
   if (/[/\\]\.codex[/\\]sessions[/\\]/.test(file)) return { label: "Codex", host: "codex" }
+  // Claude Code writes one JSONL per session under a per-project slug, with no `sessions/` segment.
+  if (/[/\\]\.claude[/\\]projects[/\\]/.test(file)) return { label: "Claude Code", host: "claude" }
   // omp writes `~/.omp/agent/sessions/`; the older `.agent/agent/sessions/` spelling still counts.
   if (/[/\\]\.(?:omp|agent)[/\\]agent[/\\]sessions[/\\]/.test(file))
     return { label: "OMP", host: "omp" }

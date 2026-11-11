@@ -213,7 +213,7 @@ export function PipelineCanvas({
     node: NodeId,
     field: string,
     value: string | boolean,
-    host?: "omp" | "pi" | "pig" | "opencode" | "dsh" | "codex",
+    host?: "omp" | "pi" | "pig" | "opencode" | "dsh" | "codex" | "claude",
   ) => void
   onHostAction: (node: NodeId, action: HostAction) => void
   busy: NodeId | null
@@ -611,9 +611,9 @@ export function PipelineCanvas({
               {mode.glyph}
             </span>
             <span className="text-[13px] font-semibold">{mode.name}</span>
-            {off ? (
-              <NodeBadge on={false} label="off" />
-            ) : versioned ? (
+            // The pinned version is the fact worth showing; off is already carried by the dimmed
+            card.
+            {versioned ? (
               <NodeBadge
                 on={!off}
                 label={version?.installed ?? ""}
@@ -621,7 +621,7 @@ export function PipelineCanvas({
                 title={title}
               />
             ) : (
-              <NodeBadge on={!off} label={nodeState(id, modes, hostState).label} />
+              <NodeBadge on={!off} label={off ? "off" : nodeState(id, modes, hostState).label} />
             )}
           </span>
           <span className="mono flex flex-1 items-start px-3 py-1.5 text-[10px] leading-snug text-dim">

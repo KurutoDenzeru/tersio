@@ -14,6 +14,7 @@ import {
 } from './headroom-proxy.ts';
 import { piCatalogEndpoint } from './headroom-agent.ts';
 import { codexConfigFile } from './codex-state.ts';
+import { claudeHome } from './claude-state.ts';
 
 export { defaultOmpModel };
 import { homeDir, piAgentDir, pigAgentDir } from './utils.ts';
@@ -610,6 +611,36 @@ function readDshRoute(proxyUrl: string): HeadroomRoute {
   return emptyRoute('dsh', proxyUrl, 'no dsh profile found');
 }
 
+/**
+ * Claude Code reaches a gateway through ANTHROPIC_BASE_URL, set either in the shell or in the
+ * `env` block of ~/.claude/settings.json. Reading the settings file covers a launch that inherits
+ * no shell environment, which is how the desktop app starts.
+ */
+function readClaudeRoute(proxyUrl: string): HeadroomRoute {
+  let settings: Record<string, unknown> = {};
+  try {
+    settings = JSON.parse(fs.readFileSync(path.join(claudeHome(), 'settings.json'), 'utf8')) as Record<string, unknown>;
+  } catch {
+    // No settings file is normal: Claude Code writes one only after a preference changes.
+  }
+  const env = (settings.env && typeof settings.env === 'object' ? settings.env : {}) as Record<string, unknown>;
+  const fromFile = typeof env.ANTHROPIC_BASE_URL === 'string' ? env.ANTHROPIC_BASE_URL : '';
+  const fromShell = typeof process.env.ANTHROPIC_BASE_URL === 'string' ? process.env.ANTHROPIC_BASE_URL : '';
+  const baseUrl = fromFile || fromShell;
+  if (!baseUrl)
+    return emptyRoute('claude', proxyUrl, 'ANTHROPIC_BASE_URL is not set, so Claude Code calls Anthropic directly');
+  const routed = baseUrl.replace(/\/+$/, '') === proxyUrl.replace(/\/+$/, '');
+  return {
+    measured: true,
+    failure: '',
+    host: 'claude',
+    proxyUrl,
+    model: baseUrl,
+    provider: 'anthropic',
+    baseUrl,
+    routed,
+  };
+}
 const ROUTE_READERS: Record<string, (proxyUrl: string) => HeadroomRoute> = {
   omp: readOmpRoute,
   opencode: readOpencodeRoute,
@@ -617,6 +648,7 @@ const ROUTE_READERS: Record<string, (proxyUrl: string) => HeadroomRoute> = {
   pig: (proxyUrl) => readPiRoute('pig', proxyUrl),
   dsh: readDshRoute,
   codex: readCodexRoute,
+  claude: readClaudeRoute,
 };
 
 /** Whether the host's active model reaches the proxy. Unmeasured beats a guessed yes. */

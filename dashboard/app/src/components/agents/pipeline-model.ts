@@ -11,6 +11,7 @@ export type EdgeKey =
   | "opencode"
   | "dsh"
   | "codex"
+  | "claude"
   | "combo"
   | "headroom"
   | "caveman"
@@ -326,6 +327,7 @@ export const HOSTS = [
   { id: "opencode", label: "OpenCode" },
   { id: "dsh", label: "DeepSeek Harness" },
   { id: "codex", label: "Codex" },
+  { id: "claude", label: "Claude Code" },
 ] as const
 
 const HOST_FIELDS: Record<
@@ -692,7 +694,7 @@ export function nodeOff(id: NodeId, modes: ModeState | null, hostState: HostStat
 /** What the node's control reads right now, in the scope the dialog writes to. */
 export function nodeValue(
   id: NodeId,
-  scope: "all" | "omp" | "pi" | "pig" | "opencode" | "dsh" | "codex",
+  scope: "all" | "omp" | "pi" | "pig" | "opencode" | "dsh" | "codex" | "claude",
   modes: ModeState | null,
 ): string | null {
   if (!modes) return null

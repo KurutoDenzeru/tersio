@@ -157,8 +157,9 @@ export const HOST_CAPS: Record<HostId, HostCap> = {
     mcpFile: () => null,
     mcpBundle: claudePluginInstalled,
     rtkAgent: null,
-    // No Claude Code route writer ships yet, so claiming Headroom support would install nothing.
-    headroom: false,
+    // Readable through ANTHROPIC_BASE_URL. Tersio reads the route but does not write it, so the
+    // drawer offers the switch and reports what the settings file says.
+    headroom: true,
   },
 };
 

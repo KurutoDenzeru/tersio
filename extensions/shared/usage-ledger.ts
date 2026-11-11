@@ -658,6 +658,10 @@ export function collectToolResults(text: string): ToolResults {
 export interface SessionLineRow {
   timestamp?: string | number;
   type?: unknown;
+  /** Claude Code names each turn; the drawer shows it as the entry id. */
+  uuid?: unknown;
+  /** Claude Code states how long it thought before the first token. */
+  thinkingDurationMs?: unknown;
   message?: {
     role?: unknown;
     model?: unknown;
@@ -666,6 +670,8 @@ export interface SessionLineRow {
     duration?: unknown;
     ttft?: unknown;
     completedAt?: unknown;
+    /** Claude Code puts the turn id on the row and the response id on the message. */
+    id?: unknown;
     timestamp?: unknown;
     stopReason?: unknown;
     errorStatus?: unknown;
@@ -838,10 +844,18 @@ export function classifySessionLine(row: SessionLineRow, results?: ToolResults, 
     provider,
     usage: normaliseUsage(msg.usage),
     durMs: typeof msg.duration === 'number' ? msg.duration : computedDur,
-    ttftMs: typeof msg.ttft === 'number' ? msg.ttft : undefined,
+    // Claude records how long it thought before the first token; every other host states ttft directly.
+    ttftMs:
+      typeof msg.ttft === 'number'
+        ? msg.ttft
+        : typeof row.thinkingDurationMs === 'number'
+          ? row.thinkingDurationMs
+          : undefined,
     run: statusOf(msg),
     tools,
     toolFacts,
+    // Claude names the turn on the row and the response on the message; either is a stable entry id.
+    id: typeof row.uuid === 'string' && row.uuid ? row.uuid : typeof msg.id === 'string' && msg.id ? msg.id : undefined,
   };
 }
 /**

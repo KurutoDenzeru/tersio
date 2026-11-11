@@ -115,7 +115,7 @@ export function HowToPage({
     node: NodeId,
     field: string,
     value: string | boolean,
-    host?: "omp" | "pi" | "pig" | "opencode" | "dsh" | "codex",
+    host?: "omp" | "pi" | "pig" | "opencode" | "dsh" | "codex" | "claude",
   ): void => {
     setBusy(node)
     void fetch("/settings", {
