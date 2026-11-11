@@ -5,7 +5,6 @@ import path from 'node:path';
 import {
   HOME,
   OMP_AGENT_DIR,
-  PACKAGE_NAME,
   PACKAGE_VERSION,
   args,
   dryRun,
@@ -20,6 +19,7 @@ import {
 import {
   detectHosts,
   dshPackageDir,
+  hostAgentInfo,
   hostExtensionsDir,
   ompPackageDir,
   piPonytailPackageDir,
@@ -41,9 +41,6 @@ import {
 } from '../extensions/shared/utils.ts';
 import { sqliteScript, statsDbPath } from '../extensions/shared/agent-stats.ts';
 import { OMP_SUBAGENT_MARKER } from '../extensions/shared/session-state.ts';
-import { describeHeadroomRoute, readHeadroomRoute } from '../extensions/shared/headroom-routing.ts';
-import { hasNativeRoute } from '../extensions/shared/headroom-routes.ts';
-import { headroomProxyUrl } from '../extensions/shared/headroom-proxy.ts';
 import { hostCap, isPluginHost } from '../extensions/shared/host-caps.ts';
 import { tersioMcpConfigured } from '../extensions/shared/mcp-config.ts';
 import {
@@ -94,7 +91,12 @@ function absDate(ms: number): string {
   return `${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}-${d.getFullYear()}, ${pad2(h24 % 12 || 12)}:${pad2(d.getMinutes())} ${h24 >= 12 ? 'PM' : 'AM'}`;
 }
 
-// An unused host is not a fault: out of the tally, carrying only the one line that installs it.
+// An unused host is not a fault: out of the tally, carrying only the agent version when one answers.
+function reportHost(label: string, detail: string): void {
+  console.log(`  —  ${label}${detail ? `: ${detail}` : ''}`);
+}
+
+// A missing optional tool keeps the old spelling; its detail names the manual install.
 function reportUnused(label: string, detail: string): void {
   console.log(`  —  ${label}: not installed ${detail}`);
 }
@@ -314,21 +316,13 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
 
   section('Hosts');
   for (const host of hosts) {
+    const agent = hostAgentInfo(host.id);
+    const agentDetail = agent.version ? `v${agent.version}` : '';
     if (!host.installed) {
-      // A partial tree is debris, not an install: the host reads as missing, and the same row names the cleanup.
-      const leftover = host.id !== 'dsh' && host.id !== 'codex' && existsSync(hostExtensionsDir(host.id));
-      if (leftover) {
-        reportUnused(host.label, `· leftover files — tersio uninstall --host ${host.id}`);
-        continue;
-      }
-      if (host.declared) check(host.label, false, `declared (${host.declared}) but not installed`);
-      else reportUnused(host.label, `· ${host.installCmd}`);
+      reportHost(host.label, agentDetail);
       continue;
     }
-    // One line per host, omp style: kind and version, no path echo.
-    const kind = host.via === 'tree' ? 'extensions' : host.via === 'plugin' ? 'plugin' : 'package';
-    const name = host.via === 'plugin' ? 'tersio' : PACKAGE_NAME;
-    check(host.label, true, `${kind} ${name}${host.version ? ` ${host.version}` : ''}`);
+    check(host.label, true, agentDetail);
     // The MCP entry is a second file an install writes; a tool that never appears starts here.
     if (!tersioMcpConfigured(host.id)) {
       warnLine(
@@ -337,12 +331,6 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
           ? `not wired — run: tersio install --host ${host.id}`
           : 'the bundle patch did not mount',
       );
-    }
-    // A route Tersio recorded but no longer reads back was overwritten by another writer.
-    const headroomRoute = readHeadroomRoute(host.id);
-    if (headroomRoute.routed) check(`${host.label} Headroom`, true, describeHeadroomRoute(headroomRoute));
-    else if (hasNativeRoute(host.id as 'pi' | 'pig' | 'dsh' | 'opencode')) {
-      warnLine(`${host.label} Headroom`, `route drifted — run: tersio install --host ${host.id}`);
     }
   }
 
@@ -438,25 +426,6 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   const headroomVersion = headroomVersionRaw?.match(/version\s+(\S+)/)?.[1] ?? headroomVersionRaw ?? '';
   if (headroomBin !== null) check('Headroom binary', true, headroomVersion);
   else console.log('  —  Headroom: not installed · optional: pip install "headroom-ai[all]", then /headroom on');
-  // A gateway that owns an agent's endpoint writes its own URL back, so the installed route reads as bypassed.
-  if (headroomBin !== null) {
-    const bypassed = hosts
-      .filter((host) => host.installed && hostCap(host.id)?.headroom === true)
-      .map((host) => ({ id: host.id, route: readHeadroomRoute(host.id) }))
-      .filter((entry) => entry.route.measured && !entry.route.routed);
-    if (bypassed.length === 0) check('Headroom route', true);
-    else {
-      warnLine(
-        'Headroom route',
-        `${bypassed.map((entry) => `${entry.id} ${describeHeadroomRoute(entry.route)}`).join(' · ')}` +
-          ' — the agent restores it on its next start; now: tersio install --host <host> --headroom-default on',
-      );
-    }
-    // One proxy serves the machine, so a tool Tersio does not manage can share it when the upstream matches.
-    console.log(
-      `  ·  Headroom endpoint: ${headroomProxyUrl()} — another tool points its base URL here when it uses the same upstream`,
-    );
-  }
   const ponytailAge = ponytailMtime
     ? `(updated ${relTime(Date.now() - ponytailMtime.mtimeMs)} · ${absDate(ponytailMtime.mtimeMs)})`
     : '';

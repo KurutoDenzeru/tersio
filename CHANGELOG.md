@@ -15,6 +15,8 @@
 - The host menu no longer lists a disabled “Claude Code — Coming soon” entry beside the real host.
 
 ### Changed
+- Doctor and the Settings diagnosis list each agent's own version instead of the Tersio package version. A host whose agent binary is absent dims and stops hovering; the install badge carries the state, so the redundant “not installed” and leftover-file lines are gone.
+- Doctor no longer reports a per-host Headroom route or the shared proxy endpoint. The Headroom binary row stays.
 - The Headroom proxy no longer loads its Kompress ONNX model at startup. Footprint falls from about 600MB to 274MB and threads from 23 to 9, measured on the same machine. The cheaper engines still run every turn: Code-Aware AST compression, the compression cache, and CCR, which between them carried the work; one of 131 learned routing patterns had used the model. A deployment that passes `--enable-kompress` keeps it.
 - The dashboard ships the 97 Lucide icons it names instead of all 2,029, cutting the bundle every user downloads from 2,616 kB to 1,964 kB, and from 872 kB to 705 kB gzipped.
 - Carbon moves from Usage to the Insights group in the dashboard rail, above Tools and Projects, because it reads as an impact figure rather than a usage one. The section id and the `f` hotkey are unchanged.

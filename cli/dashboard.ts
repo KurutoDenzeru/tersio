@@ -48,7 +48,7 @@ import {
   PSTACK_DEFAULTS,
 } from './common.ts';
 import { PACKAGE_NAME } from './common.ts';
-import { detectHosts, dshHome, dshPresent, dshVersionBinary, hostExtensionsDir } from './hosts.ts';
+import { detectHosts, dshHome, dshPresent, dshVersionBinary, hostAgentInfo, hostExtensionsDir } from './hosts.ts';
 import { checkHostTrees } from './host-tree.ts';
 import {
   findPackageRoot,
@@ -556,6 +556,8 @@ interface DoctorRow {
   neutral?: boolean;
   warn?: boolean;
   host?: string;
+  /** False when the agent itself is not on this machine, so the row can dim and stop hovering. */
+  agentPresent?: boolean;
 }
 
 interface DoctorReport {
@@ -620,6 +622,8 @@ function computeDoctorRows(): DoctorRow[] {
   };
   // A missing host is not a fault: it stays visible with no install command and no fix prompt.
   for (const host of detectHosts()) {
+    const agent = hostAgentInfo(host.id);
+    const agentDetail = agent.version ? `v${agent.version}` : '';
     const row = (ok: boolean, detail: string, neutral = false): void => {
       rows.push({
         label: host.label,
@@ -627,19 +631,15 @@ function computeDoctorRows(): DoctorRow[] {
         detail,
         group: 'Hosts',
         host: host.id,
+        agentPresent: agent.present,
         ...(neutral ? { neutral: true } : {}),
       });
     };
     if (!host.installed) {
-      const leftover = host.id !== 'dsh' && host.id !== 'codex' && existsSync(hostExtensionsDir(host.id));
-      if (leftover) row(false, `leftover files — tersio uninstall --host ${host.id}`, true);
-      else if (host.declared) row(false, `declared (${host.declared}) but not installed`);
-      else row(false, 'not installed', true);
+      row(false, agentDetail, true);
       continue;
     }
-    const kind = host.via === 'tree' ? 'extensions' : host.via === 'plugin' ? 'plugin' : 'package';
-    const name = host.via === 'plugin' ? 'tersio' : PACKAGE_NAME;
-    row(true, `${kind} ${name}${host.version ? ` ${host.version}` : ''}`);
+    row(true, agentDetail);
     if (host.id === 'omp' && host.version && host.version !== PACKAGE_VERSION) {
       warning(
         'Oh My Pi plugin version',

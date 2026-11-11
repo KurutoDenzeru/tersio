@@ -55,8 +55,8 @@ test('doctor reports MISSING components against an empty home', () => {
     });
 
     expect(result.status, result.stderr).toBe(0);
-    for (const line of ['—  Oh My Pi: not installed', '—  Pi: not installed', '❌ RTK binary: MISSING']) {
-      expect(result.stdout).toMatch(new RegExp(line.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    for (const line of ['—  Oh My Pi', '—  Pi', '❌ RTK binary: MISSING']) {
+      expect(result.stdout).toContain(line);
     }
     // Categorized output: merged section headers plus a closing tally.
     for (const sectionName of ['Platform', 'Hosts', 'Add-ons']) {
@@ -75,7 +75,7 @@ test('doctor reports MISSING components against an empty home', () => {
   }
 });
 
-test('doctor names both hosts with the command that installs each', () => {
+test('doctor lists uninstalled hosts without the old not-installed tail', () => {
   const home = missingHome();
   try {
     const result = spawnSync(process.execPath, [installer, 'doctor'], {
@@ -86,8 +86,9 @@ test('doctor names both hosts with the command that installs each', () => {
     });
 
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toMatch(/— {2}Oh My Pi: not installed · omp plugin install @krtclcdy\/tersio/);
-    expect(result.stdout).toMatch(/— {2}Pi: not installed · pi install npm:@krtclcdy\/tersio/);
+    expect(result.stdout).toMatch(/— {2}Oh My Pi\b/);
+    expect(result.stdout).toMatch(/— {2}Pi\b/);
+    expect(result.stdout).not.toMatch(/not installed · (omp|pi) plugin/);
     // The retired rows and the Node banner are gone.
     for (const gone of ['Environment', 'Installation', 'Shared session bridge', 'RTK OMP wiring', 'Node:']) {
       expect(result.stdout, gone).not.toContain(gone);
@@ -129,14 +130,14 @@ test('doctor reports each host that has tersio installed', () => {
     });
 
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toMatch(/✅ Oh My Pi: ok package @krtclcdy\/tersio 2\.23\.0/);
-    expect(result.stdout).toMatch(/✅ Pi: ok package @krtclcdy\/tersio 2\.23\.0/);
+    expect(result.stdout).toMatch(/✅ Oh My Pi: ok\b/);
+    expect(result.stdout).toMatch(/✅ Pi: ok\b/);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }
 });
 
-test('doctor counts a pi declaration without a package directory as missing', () => {
+test('doctor leaves a pi declaration without a package directory out of the failure tally', () => {
   const home = missingHome();
   try {
     const piDir = path.join(home, '.pi', 'agent');
@@ -155,7 +156,8 @@ test('doctor counts a pi declaration without a package directory as missing', ()
     });
 
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toMatch(/❌ Pi: MISSING declared \(npm:@krtclcdy\/tersio\) but not installed/);
+    expect(result.stdout).toMatch(/— {2}Pi\b/);
+    expect(result.stdout).not.toMatch(/❌ Pi:/);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }
@@ -296,7 +298,7 @@ test('doctor leaves the extension-tree section out, even with a half-written tre
     expect(result.status, result.stderr).toBe(0);
     // The section is gone by design; the host row still names the install it found.
     expect(result.stdout).not.toContain('Extension tree');
-    expect(result.stdout).toMatch(/Oh My Pi: ok package/);
+    expect(result.stdout).toMatch(/Oh My Pi: ok\b/);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

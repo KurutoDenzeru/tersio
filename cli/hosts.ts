@@ -1,9 +1,16 @@
 // cli/hosts.ts — agent hosts Tersio installs into, and what is on disk. One detector shared by doctor and menus.
+import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { HOME, OMP_PLUGINS_DIR, PACKAGE_NAME, PACKAGE_VERSION } from './common.ts';
 import { treeFilesFor } from './manifest.ts';
-import { piAgentDir, pigAgentDir, resolveHostBinary } from '../extensions/shared/utils.ts';
+import {
+  piAgentDir,
+  pigAgentDir,
+  resolveCodexBinary,
+  resolveHostBinary,
+  shimCommand,
+} from '../extensions/shared/utils.ts';
 import { HOST_CAPS } from '../extensions/shared/host-caps.ts';
 import { codexHome, installedCodexPlugin } from '../extensions/shared/codex-state.ts';
 import { claudeHome, installedClaudePlugin } from '../extensions/shared/claude-state.ts';
@@ -109,6 +116,34 @@ export function dshPresent(): boolean {
     return existsSync(path.join(local, 'Programs', 'dsh-desktop'));
   }
   return false;
+}
+
+/** The bare version a host binary prints; `omp/18.12.6` and `codex-cli 0.167.0` both resolve. */
+function agentVersionOf(raw: string): string | null {
+  const line = raw.trim().split(/\r?\n/)[0]?.trim() ?? '';
+  if (!line) return null;
+  return line.match(/\d+\.\d+(?:\.\d+)?(?:[-+][0-9A-Za-z.-]+)?/)?.[0] ?? line;
+}
+
+/** Whether the agent itself is on this machine, and the version its own binary reports. */
+export function hostAgentInfo(id: HostId): { present: boolean; version: string | null } {
+  const bin =
+    id === 'dsh'
+      ? dshVersionBinary()
+      : id === 'codex'
+        ? resolveCodexBinary()
+        : id === 'opencode'
+          ? resolveHostBinary('opencode', path.join(HOME, '.opencode', 'bin'))
+          : resolveHostBinary(HOST_CAPS[id].bin);
+  const present = id === 'dsh' ? dshPresent() : bin !== null;
+  if (!bin) return { present, version: null };
+  try {
+    const shim = shimCommand(bin, ['--version']);
+    const out = execFileSync(shim.cmd, shim.args, { encoding: 'utf8', timeout: 5000, windowsHide: true });
+    return { present, version: agentVersionOf(out) };
+  } catch {
+    return { present, version: null };
+  }
 }
 
 /** The web profile's mounted bundle list, from its own package manifest. */

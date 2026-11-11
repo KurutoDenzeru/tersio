@@ -500,6 +500,8 @@ export interface DoctorRow {
   warn?: boolean
   /** Agent brand mark, for the host rows. */
   host?: string
+  /** False when the agent itself is not on this machine; the row dims and stops hovering. */
+  agentPresent?: boolean
 }
 
 export interface DoctorReport {
