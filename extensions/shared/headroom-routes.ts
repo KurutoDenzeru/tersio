@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { execFile } from 'node:child_process';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import { headroomProxyUpstream, headroomProxyUrl, opencodeConfigFiles, proxyApiPath } from './headroom-proxy.ts';
+import { headroomProxyUpstream, headroomProxyUrl, opencodeConfigFiles } from './headroom-proxy.ts';
 import {
   headroomProxyPort,
   readOmpGateway,
@@ -340,10 +340,10 @@ export function isNativeRouteHost(host: string): host is NativeRouteHost {
   return (NATIVE_ROUTE_HOSTS as ReadonlyArray<string>).includes(host);
 }
 
-/** The URL the host's protocol needs: Anthropic clients use the root, OpenAI clients add `/v1`. */
+/** The URL the host's protocol needs: OpenAI clients add `/v1`, Anthropic clients use the root. */
 export function nativeProxyUrl(api: string, proxyUrl: string = headroomProxyUrl()): string {
   const root = proxyUrl.replace(/\/+$/, '');
-  return `${root}${proxyApiPath(api)}`;
+  return /anthropic/i.test(api) ? root : `${root}/v1`;
 }
 
 /** The same upstream, path included: a proxy pointed at another provider must not take this route. */

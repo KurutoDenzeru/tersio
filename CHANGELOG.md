@@ -6,6 +6,7 @@
 - Carbon moves from Usage to the Insights group in the dashboard rail, above Tools and Projects, because it reads as an impact figure rather than a usage one. The section id and the `f` hotkey are unchanged.
 
 ### Fixed
+- Headroom routes Anthropic-compatible providers at the proxy root and OpenAI providers under `/v1`. Thanks to @FrancoStino (#102).
 - The bun hand-off probe allows 10s instead of 2s. Under load the probe timed out, the CLI read that as a broken bun, stayed on node, and the runtime test failed with no stated cause.
 - The error icons render again. lucide 1.70 renamed `circle-alert` to `circle-exclamation-point` and `triangle-alert` to `triangle-exclamation-point` and dropped both old keys, which eleven files still named; a missing name falls back to a question-mark glyph, so the build stayed green.
 - `happy-dom` moves to 21.0.4 for CVE-2026-33943, a high-severity advisory where an unsanitized import alias reached host code. A devDependency, so the shipped bundle is unchanged.

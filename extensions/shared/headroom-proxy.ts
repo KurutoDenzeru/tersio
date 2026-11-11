@@ -183,7 +183,7 @@ interface OmpProviderBlock {
 }
 
 /** The path an API expects after the proxy root: Anthropic clients append /v1/messages, OpenAI /v1. */
-export function proxyApiPath(api: string): '' | '/v1' {
+function proxyApiPath(api: string): '' | '/v1' {
   return /anthropic/i.test(api) ? '' : '/v1';
 }
 

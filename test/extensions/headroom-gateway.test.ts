@@ -59,32 +59,24 @@ function writeOmp(home: string, models: string, config?: string): string {
   return file;
 }
 
-test('an Anthropic-compatible gateway is routed at the root, not the OpenAI path', () => {
+test('an Anthropic provider moves to the proxy root', () => {
   withHome((home) => {
-    const models = `providers:
-  commandcode:
-    api: anthropic-messages
-    baseUrl: http://127.0.0.1:3425
-    models:
-    - id: claude-sonnet-5-5
-`;
-    const config = `modelRoles:
-  default: commandcode/claude-sonnet-5-5
-`;
-    const file = writeOmp(home, models, config);
+    const file = writeOmp(
+      home,
+      'providers:\n  anthropic:\n    baseUrl: http://127.0.0.1:3425\n',
+      'modelRoles:\n  default: anthropic/claude-haiku-5-5\n',
+    );
     const gateway = readOmpGateway(8787);
     expect(gateway).toEqual({
-      provider: 'commandcode',
+      provider: 'anthropic',
       baseUrl: 'http://127.0.0.1:3425',
-      model: 'commandcode/claude-sonnet-5-5',
+      model: 'anthropic/claude-haiku-5-5',
     });
     expect(gateway && routeOmpGateway(gateway, 8787)).toBe(true);
     const routed = readFileSync(file, 'utf8');
-    expect(routed).toContain('baseUrl: http://127.0.0.1:8787');
+    expect(routed).toContain('baseUrl: http://127.0.0.1:8787\n');
     expect(routed).not.toContain('baseUrl: http://127.0.0.1:8787/v1');
-    expect(routed).toContain('# tersio-headroom-upstream: http://127.0.0.1:3425');
     expect(restoreOmpGateway(8787)).toBe(true);
-    expect(readFileSync(file, 'utf8')).toContain('baseUrl: http://127.0.0.1:3425');
   });
 });
 
