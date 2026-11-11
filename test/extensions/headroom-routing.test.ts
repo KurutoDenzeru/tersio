@@ -332,4 +332,16 @@ insert into model_cache (provider_id, version, updated_at, models) values ('comm
     expect(written).toContain('# tersio-headroom-upstream: https://api.commandcode.ai/provider/v1');
     expect(readHeadroomRoute('omp', PROXY).routed).toBe(true);
   });
+
+  test('accepts an Anthropic-compatible catalog provider', () => {
+    if (!sqliteAvailable()) return;
+    const dir = tempAgentDir(MODELS, CONFIG);
+    sqliteExec(path.join(dir, 'models.db'), CACHE_SCHEMA.replace('openai-completions', 'anthropic-messages'));
+    const result = ensureAgentProviderRoute('omp', 8787);
+    expect(result.ok, result.detail).toBe(true);
+    const written = readFileSync(path.join(dir, 'models.yml'), 'utf8');
+    expect(written).toContain('api: anthropic-messages');
+    expect(written).toContain('baseUrl: http://127.0.0.1:8787\n');
+    expect(written).not.toContain('baseUrl: http://127.0.0.1:8787/v1');
+  });
 });

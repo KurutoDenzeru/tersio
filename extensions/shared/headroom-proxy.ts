@@ -182,6 +182,11 @@ interface OmpProviderBlock {
   markerLine: number | null;
 }
 
+/** The path an API expects after the proxy root: Anthropic clients append /v1/messages, OpenAI /v1. */
+function proxyApiPath(api: string): '' | '/v1' {
+  return /anthropic/i.test(api) ? '' : '/v1';
+}
+
 /** The provider blocks in omp's models.yml, with line numbers for a surgical baseUrl rewrite. */
 function ompProviderBlocks(text: string): OmpProviderBlock[] {
   const lines = text.split(/\r?\n/);
@@ -253,6 +258,11 @@ function ompModelProvider(blocks: OmpProviderBlock[], model: string | null): str
   return owner ? owner.name : prefixed ? prefixed.name : '';
 }
 
+/** The API a block speaks; the official Anthropic block may omit it. */
+function ompBlockApi(block: { name: string; api: string }): string {
+  return block.api || (block.name === 'anthropic' ? 'anthropic-messages' : '');
+}
+
 /** The local gateway the active model uses, or a route Tersio already wrote. */
 export function readOmpGateway(port: number = HEADROOM_PORT): OmpGatewayRoute | null {
   let blocks: OmpProviderBlock[];
@@ -274,11 +284,12 @@ export function readOmpGateway(port: number = HEADROOM_PORT): OmpGatewayRoute | 
     ...blocks.filter((block) => block.name !== active),
   ];
   for (const block of ordered) {
-    if (block.name === 'anthropic') continue;
-    if (block.marker && block.baseUrl === `http://127.0.0.1:${port}/v1`) {
+    const api = ompBlockApi(block);
+    const proxy = `http://127.0.0.1:${port}${proxyApiPath(api)}`;
+    if (block.marker && block.baseUrl === proxy) {
       return { provider: block.name, baseUrl: block.marker, model };
     }
-    if (!block.api.startsWith('openai') || !block.baseUrl) continue;
+    if (!/^(?:openai|anthropic)/.test(api) || !block.baseUrl) continue;
     try {
       const url = new URL(block.baseUrl);
       if (!loopbackHost(url.hostname) || Number(url.port || 80) === port) continue;
@@ -332,7 +343,7 @@ export function routeOmpGateway(route: OmpGatewayRoute, port: number = HEADROOM_
     const block = ompProviderBlocks(lines.join('\n')).find((entry) => entry.name === route.provider);
     if (!block || block.baseLine < 0) return false;
     const indent = lines[block.baseLine]!.match(/^\s*/)?.[0] ?? '    ';
-    const url = `http://127.0.0.1:${port}/v1`;
+    const url = `http://127.0.0.1:${port}${proxyApiPath(ompBlockApi(block))}`;
     const fresh = block.marker !== route.baseUrl && block.markerLine === null;
     if (fresh) lines.splice(block.baseLine, 0, `${indent}# tersio-headroom-upstream: ${route.baseUrl}`);
     const baseLine = block.baseLine + (fresh ? 1 : 0);
@@ -363,11 +374,11 @@ export function restoreOmpGateway(port: number = HEADROOM_PORT): boolean {
     return false;
   }
   const lines = text.split(/\r?\n/);
-  const proxy = `http://127.0.0.1:${port}/v1`;
   const drop = new Set<number>();
   let changed = false;
   for (const block of ompProviderBlocks(text)) {
     if (!block.marker || block.markerLine === null || block.baseLine < 0) continue;
+    const proxy = `http://127.0.0.1:${port}${proxyApiPath(ompBlockApi(block))}`;
     if (block.baseUrl !== proxy) continue;
     const indent = lines[block.baseLine]!.match(/^\s*/)?.[0] ?? '    ';
     lines[block.baseLine] = `${indent}baseUrl: ${block.marker}`;
@@ -377,7 +388,7 @@ export function restoreOmpGateway(port: number = HEADROOM_PORT): boolean {
       const raw = lines[i]!;
       const trimmed = raw.trim();
       if (trimmed !== '' && raw.length - raw.trimStart().length <= 2) break;
-      if (trimmed.startsWith('baseUrl:') && trimmed.endsWith('/v1') && trimmed.includes(`127.0.0.1:${port}`)) {
+      if (trimmed.startsWith('baseUrl:') && trimmed.includes(`127.0.0.1:${port}`)) {
         lines[i] = `${raw.match(/^\s*/)?.[0] ?? '      '}baseUrl: ${block.marker}`;
       }
     }
@@ -414,17 +425,19 @@ export function routeOmpDefaultModel(port: number = HEADROOM_PORT): boolean {
   // A configured block is what routeOmpGateway moves; only a provider omp keeps built-in needs a new one.
   if (!provider || ompProviderNames(text).has(provider)) return true;
   const endpoint = ompCachedEndpoint(model);
-  if (!endpoint || !endpoint.api.startsWith('openai')) return false;
+  const anthropic = endpoint?.api.startsWith('anthropic') === true;
+  if (!endpoint || (!anthropic && !endpoint.api.startsWith('openai'))) return false;
   const lines = text.split(/\r?\n/);
   const at = lines.findIndex((line) => /^providers:\s*$/.test(line));
   if (at < 0) return false;
+  const baseUrl = `http://127.0.0.1:${port}${proxyApiPath(endpoint.api)}`;
   lines.splice(
     at + 1,
     0,
     `  ${endpoint.provider}:`,
-    '    api: openai-completions',
+    `    api: ${endpoint.api}`,
     `    # tersio-headroom-upstream: ${endpoint.baseUrl}`,
-    `    baseUrl: http://127.0.0.1:${port}/v1`,
+    `    baseUrl: ${baseUrl}`,
   );
   try {
     fs.writeFileSync(file, lines.join('\n'), 'utf8');
