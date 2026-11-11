@@ -46,6 +46,7 @@ import {
   CLAUDE_PLUGIN_ID,
   installedClaudePlugin,
   claudeLocalMarketplaceRoot,
+  setClaudeRtkHook,
 } from '../extensions/shared/claude-state.ts';
 import {
   piAgentDir,
@@ -60,6 +61,7 @@ import {
   NATIVE_ROUTE_HOSTS,
   isNativeRouteHost,
   removeNativeRoute,
+  unwrapClaudeHeadroom,
   unwrapCodexHeadroom,
 } from '../extensions/shared/headroom-routes.ts';
 import { restoreOmpGateway } from '../extensions/shared/headroom-proxy.ts';
@@ -258,6 +260,15 @@ async function restoreHeadroomRoute(host: HostId, shouldDryRun: boolean): Promis
     if (restored.ok) sayTagged(`  [rm] Headroom: ${restored.detail}`);
     return;
   }
+  if (host === 'claude') {
+    if (shouldDryRun) {
+      sayTagged('  [dry-run] would run: headroom unwrap claude');
+      return;
+    }
+    const restored = await unwrapClaudeHeadroom();
+    if (restored.ok) sayTagged(`  [rm] Headroom: ${restored.detail}`);
+    return;
+  }
   if (isNativeRouteHost(host)) {
     if (shouldDryRun) return;
     const restored = removeNativeRoute(host);
@@ -269,8 +280,7 @@ async function restoreHeadroomRoute(host: HostId, shouldDryRun: boolean): Promis
     return;
   }
   // Tersio wrote every endpoint it routes, so Tersio puts it back; headroom is not asked.
-  const restored = isNativeRouteHost(host) ? removeNativeRoute(host) : { ok: restoreOmpGateway(), detail: '' };
-  if (restored.ok) sayTagged(`  [rm] Headroom endpoint: ${host}`);
+  if (restoreOmpGateway()) sayTagged(`  [rm] Headroom endpoint: ${host}`);
 }
 
 /** Removes the user's own Headroom install with whichever package manager installed it. */
@@ -579,6 +589,7 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
         });
       }
       await removeUninstallTarget(claudeLocalMarketplaceRoot(), shouldDryRun);
+      if (shouldRemoveRtk && !shouldDryRun) setClaudeRtkHook(false);
       await clearSessionDefaults(shouldDryRun);
       console.log('\nDone. Restart Claude Code to unload the plugin.');
       results.push(true);
