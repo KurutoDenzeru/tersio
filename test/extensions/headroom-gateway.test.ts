@@ -59,6 +59,35 @@ function writeOmp(home: string, models: string, config?: string): string {
   return file;
 }
 
+test('an Anthropic-compatible gateway is routed at the root, not the OpenAI path', () => {
+  withHome((home) => {
+    const models = `providers:
+  commandcode:
+    api: anthropic-messages
+    baseUrl: http://127.0.0.1:3425
+    models:
+    - id: claude-sonnet-5-5
+`;
+    const config = `modelRoles:
+  default: commandcode/claude-sonnet-5-5
+`;
+    const file = writeOmp(home, models, config);
+    const gateway = readOmpGateway(8787);
+    expect(gateway).toEqual({
+      provider: 'commandcode',
+      baseUrl: 'http://127.0.0.1:3425',
+      model: 'commandcode/claude-sonnet-5-5',
+    });
+    expect(gateway && routeOmpGateway(gateway, 8787)).toBe(true);
+    const routed = readFileSync(file, 'utf8');
+    expect(routed).toContain('baseUrl: http://127.0.0.1:8787');
+    expect(routed).not.toContain('baseUrl: http://127.0.0.1:8787/v1');
+    expect(routed).toContain('# tersio-headroom-upstream: http://127.0.0.1:3425');
+    expect(restoreOmpGateway(8787)).toBe(true);
+    expect(readFileSync(file, 'utf8')).toContain('baseUrl: http://127.0.0.1:3425');
+  });
+});
+
 test('the local OpenAI gateway is found and routed through Headroom', () => {
   withHome((home) => {
     const file = writeOmp(home, MODELS);

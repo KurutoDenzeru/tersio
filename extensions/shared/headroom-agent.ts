@@ -194,10 +194,11 @@ export function ensureAgentProviderRoute(host: string, port: number = HEADROOM_P
   if (route.configured) return { ok: true, detail: '' };
   if (!route.add) return { ok: false, detail: `${host}: ${route.provider} has no block and this host has no writer` };
   if (!route.catalog) return { ok: false, detail: `${host}: ${route.provider} is not in the agent's catalog` };
-  if (!route.catalog.api.startsWith('openai')) {
+  const api = route.catalog.api;
+  if (!api.startsWith('openai') && !api.startsWith('anthropic')) {
     return {
       ok: false,
-      detail: `${host}: ${route.provider} speaks ${route.catalog.api}, which the proxy route does not rewrite`,
+      detail: `${host}: ${route.provider} speaks ${api}, which the proxy route does not rewrite`,
     };
   }
   if (!route.add(route.catalog))

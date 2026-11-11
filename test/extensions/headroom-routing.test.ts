@@ -332,4 +332,27 @@ insert into model_cache (provider_id, version, updated_at, models) values ('comm
     expect(written).toContain('# tersio-headroom-upstream: https://api.commandcode.ai/provider/v1');
     expect(readHeadroomRoute('omp', PROXY).routed).toBe(true);
   });
+
+  test('writes an Anthropic-compatible built-in provider at the proxy root', () => {
+    if (!sqliteAvailable()) return;
+    const dir = tempAgentDir(MODELS, `modelRoles:\n  default: commandcode/claude-sonnet-5-5:medium\n`);
+    sqliteExec(
+      path.join(dir, 'models.db'),
+      `create table model_cache (
+  provider_id text primary key, version integer not null, updated_at integer not null,
+  authoritative integer not null default 0, static_fingerprint text not null default '',
+  models text not null, header_omitted_model_ids text not null default '[]',
+  unrestorable_header_model_ids text not null default '[]', header_restore_version integer not null default 0,
+  materialization_policy text not null default '', models_hash text not null default '');
+insert into model_cache (provider_id, version, updated_at, models) values ('commandcode', 1, 0,
+  '[{"id":"claude-sonnet-5-5","provider":"commandcode","api":"anthropic-messages","baseUrl":"https://api.commandcode.example"}]');`,
+    );
+    const result = ensureAgentProviderRoute('omp', 8787);
+    expect(result.ok, result.detail).toBe(true);
+    const written = readFileSync(path.join(dir, 'models.yml'), 'utf8');
+    expect(written).toContain('api: anthropic-messages');
+    expect(written).toContain('baseUrl: http://127.0.0.1:8787\n');
+    expect(written).not.toContain('baseUrl: http://127.0.0.1:8787/v1');
+    expect(readHeadroomRoute('omp', PROXY).routed).toBe(true);
+  });
 });
