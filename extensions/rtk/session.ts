@@ -17,7 +17,7 @@ import {
   setExtensionLabel,
   stringArrayToolParams,
 } from '../shared/host.ts';
-import { readRtkDefault } from '../shared/plugin-settings.ts';
+import { readRtkDefault, saveModeState } from '../shared/plugin-settings.ts';
 import { hostIdOf } from '../shared/host.ts';
 import { resolveRtkBinary, shimCommand } from '../shared/utils.ts';
 import { announceStatus } from '../shared/status.ts';
@@ -62,6 +62,7 @@ export default function rtkSessionExtension(pi: ExtensionApi): void {
     enabled = Boolean(next);
     pi.appendEntry?.('rtk-mode', { enabled });
     setSharedComboMode('rtk', enabled);
+    saveModeState(host, getSharedComboState());
     setRtkProcessEnabled(enabled);
     announceStatus(ctx);
   }

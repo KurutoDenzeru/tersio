@@ -206,6 +206,19 @@ test('opencode sessions restore modes independently', async () => {
     const offReply = await runCommand(commands, prompts, 'ses-a', '/combo off');
     expect(offReply).toMatch(/OFF/);
 
+    // A new session starts from the saved default, so restore the fixture after ses-a changed it.
+    writeFileSync(
+      path.join(process.env.TERSIO_HOME!, 'settings.json'),
+      JSON.stringify({
+        comboDefault: 'balanced',
+        cavemanDefault: 'full',
+        rtkDefault: true,
+        ponytailDefault: 'full',
+        pstackDefault: 'on',
+      }),
+      'utf8',
+    );
+
     await fire(hooks, 'prompt', { sessionID: 'ses-b', prompt: { text: 'hi' } });
     const statusReply = await runCommand(commands, prompts, 'ses-b', '/combo status');
     expect(statusReply).toMatch(/BALANCED/);
@@ -642,6 +655,19 @@ test('an unmarked headless prompt does not make caveman or rtk inherit', async (
   resetSharedComboState();
   const parent = instantiate(comboToggleExtension);
   await command(parent, 'combo', 'max', context([], true));
+  // A headless child reads the saved default, so keep this test about the marker with defaults off.
+  writeFileSync(
+    path.join(process.env.TERSIO_HOME!, 'settings.json'),
+    JSON.stringify({
+      comboDefault: 'off',
+      cavemanDefault: 'off',
+      rtkDefault: false,
+      ponytailDefault: 'off',
+      pstackDefault: 'off',
+      headroomDefault: 'off',
+    }),
+    'utf8',
+  );
 
   // Caveman and rtk stay gated on the marker, so an unmarked prompt inherits nothing.
   for (const factory of [cavemanSessionExtension, rtkSessionExtension]) {
@@ -681,7 +707,7 @@ test('headless child session_start cannot reset the parent bridge', async () => 
   expect(instruction(await inject(childCombo, MARKED_PROMPT))).toMatch(/level: ultra/);
 });
 
-test('interactive top-level session_start with no entries resets bridge off', async () => {
+test('interactive top-level session_start with no entries restores the saved default', async () => {
   resetSharedComboState();
   const parent = instantiate(comboToggleExtension);
   await command(parent, 'combo', 'max', context([], true));
@@ -689,9 +715,13 @@ test('interactive top-level session_start with no entries resets bridge off', as
 
   await nextSession.handlers.get('session_start')!({}, context([], true));
 
-  expect(getSharedComboState().level).toBe('off');
-  for (const factory of [cavemanSessionExtension, rtkSessionExtension, comboToggleExtension]) {
-    expect(await inject(instantiate(factory), MARKED_PROMPT)).toBe(undefined);
+  expect(getSharedComboState().level).toBe('max');
+  for (const [factory, expected] of [
+    [cavemanSessionExtension, /Caveman ultra active/],
+    [rtkSessionExtension, /RTK guidance active/],
+    [comboToggleExtension, /PONYTAIL MODE ACTIVE/],
+  ] as const) {
+    expect(instruction(await inject(instantiate(factory), MARKED_PROMPT))).toMatch(expected);
   }
 });
 

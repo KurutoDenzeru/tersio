@@ -154,6 +154,49 @@ const COMBO_MODE_DEFAULTS = {
   max: { cavemanDefault: 'ultra', rtkDefault: true, ponytailDefault: 'ultra' },
 } as const;
 
+export interface SavedModeState {
+  level: string;
+  caveman: string;
+  rtk: string;
+  ponytail: string;
+  pstack: string;
+  headroom: string;
+}
+
+/**
+ * A session change becomes the next session's default. The host section keeps this agent's choice,
+ * and the flat keys move too so the dashboard banner and a host without its own section agree.
+ */
+export function saveModeState(host: HostScope, state: SavedModeState): boolean {
+  const file = tersioSettingsFile();
+  try {
+    mkdirSync(path.dirname(file), { recursive: true });
+    const stored = readPluginSettings();
+    const patch: Record<string, unknown> = {
+      cavemanDefault: state.caveman,
+      rtkDefault: state.rtk === 'on',
+      ponytailDefault: state.ponytail,
+      pstackDefault: state.pstack,
+      headroomDefault: state.headroom,
+    };
+    // `custom` is derived from the three modes; storing it would make the preset reader fall back to off.
+    if (state.level !== 'custom') patch.comboDefault = state.level;
+    const next = {
+      ...stored,
+      ...patch,
+      comboSetupComplete: true,
+      hosts: {
+        ...(stored.hosts as Record<string, unknown> | undefined),
+        [host]: { ...hostDefaults(host), ...patch },
+      },
+    };
+    writeFileSync(file, `${JSON.stringify(next, null, 2)}\n`, 'utf8');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function saveComboSetup(level: string, host?: HostScope | null): boolean {
   if (!(level in COMBO_MODE_DEFAULTS)) return false;
   const file = tersioSettingsFile();

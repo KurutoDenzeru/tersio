@@ -56,12 +56,10 @@ test('normal mode writes the off defaults and tells the model', async () => {
       },
     };
     const handlers: Record<string, unknown> = {};
-    register(
-      ((event: string, matcherOrHook: unknown, maybeHook?: unknown) => {
-        const handler = typeof maybeHook === 'function' ? maybeHook : matcherOrHook;
-        if (typeof handler === 'function') handlers[event] = handler;
-      }) as never,
-    );
+    register(((event: string, matcherOrHook: unknown, maybeHook?: unknown) => {
+      const handler = typeof maybeHook === 'function' ? maybeHook : matcherOrHook;
+      if (typeof handler === 'function') handlers[event] = handler;
+    }) as never);
     const prompt = handlers['prompt.submit'] as (
       dollar: FakeDollar,
       event: Record<string, unknown>,

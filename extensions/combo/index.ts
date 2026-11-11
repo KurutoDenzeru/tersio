@@ -39,6 +39,7 @@ import {
   readPstackDefault,
   readRtkDefault,
   saveComboSetup,
+  saveModeState,
 } from '../shared/plugin-settings.ts';
 import { isPiLikeProcess, pigAgentDir, piAgentDir } from '../shared/utils.ts';
 import type { ComboState, ExtensionApi, ExtensionCtx, SystemPromptEvent } from '../shared/types.ts';
@@ -226,6 +227,7 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
 
       persistPreset(level);
       setSharedComboLevel(level);
+      saveModeState(host, getSharedComboState());
       announceStatus(ctx);
     },
   });
@@ -250,6 +252,7 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
         }
         pi.appendEntry?.('ponytail-mode', { mode });
         setSharedComboMode('ponytail', mode);
+        saveModeState(host, getSharedComboState());
         announceStatus(ctx);
       },
     });
