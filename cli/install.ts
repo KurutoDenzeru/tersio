@@ -1102,6 +1102,7 @@ async function stepClaude(options: InstallOptions): Promise<void> {
     throw new Error(`Claude Code did not install ${CLAUDE_PLUGIN_ID}${why}`);
   }
   if (!options.quiet) console.log(`  Claude Code — plugin ${state.version ?? 'installed'} enabled`);
+  await stepRtk(options, 'claude');
   if (!options.quiet) console.log('  Claude Code — the combo strip draws above the prompt, and /tersio prints it');
 }
 

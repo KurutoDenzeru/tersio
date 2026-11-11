@@ -338,10 +338,11 @@ async function fixRtk(): Promise<void> {
   if (!bin) throw new Error(`rtk is not installed — get it from ${RTK_INSTALL_DOCS}, then re-run`);
   console.log('  Doctor --fix: re-wiring RTK into the installed hosts');
   const home = process.env.HOME || process.env.USERPROFILE || os.homedir();
-  const targets: Array<'omp' | 'pi' | 'pig' | 'opencode'> = ['omp'];
+  const targets: Array<'omp' | 'pi' | 'pig' | 'opencode' | 'claude'> = ['omp'];
   if (existsSync(path.join(home, '.config', 'opencode', 'plugins', 'tersio'))) targets.push('opencode');
   if (existsSync(path.join(home, '.pi', 'agent', 'extensions'))) targets.push('pi');
   if (existsSync(path.join(home, '.pig', 'agent', 'extensions'))) targets.push('pig');
+  if (existsSync(path.join(home, '.claude', 'settings.json'))) targets.push('claude');
   // Fail-open: a missing host wire must not fail the repair.
   for (const host of targets) await wireRtk(bin, host, { dryRun, verbose });
 }

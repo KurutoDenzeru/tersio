@@ -156,10 +156,11 @@ export const HOST_CAPS: Record<HostId, HostCap> = {
     mcp: 'plugin',
     mcpFile: () => null,
     mcpBundle: claudePluginInstalled,
-    rtkAgent: null,
-    // Readable through ANTHROPIC_BASE_URL. Tersio reads the route but does not write it, so the
-    // drawer offers the switch and reports what the settings file says.
+    // rtk's own Claude hook rewrites Bash tool calls; `rtk init -g --agent claude` binds it.
+    rtkAgent: 'claude',
+    // Headroom's own `init claude` writes the durable hooks and provider routing.
     headroom: true,
+    headroomDurable: true,
   },
 };
 

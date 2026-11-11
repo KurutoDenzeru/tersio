@@ -208,7 +208,7 @@ export default function headroomSessionExtension(pi: ExtensionApi): void {
   pi.on('session_shutdown', async (event) => {
     const reason = (event as { reason?: unknown } | undefined)?.reason;
     if (reason === 'reload' || reason === 'new' || reason === 'resume' || reason === 'fork') return;
-    await releaseHeadroomLease(sessionId, resolveHeadroomBinary()).catch(() => {
+    await releaseHeadroomLease(sessionId, resolveHeadroomBinary(), { fast: true }).catch(() => {
       /* a stop that fails is retried by the next session */
     });
   });

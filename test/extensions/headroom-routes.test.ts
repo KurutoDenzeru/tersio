@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, test } from 'vitest';
-import { withHome } from '../helpers/env.ts';
+import { withHome, fakeExecutable } from '../helpers/env.ts';
 import { readHeadroomRoute } from '../../extensions/shared/headroom-routing.ts';
 import {
   headroomRoutedHosts,
@@ -13,6 +13,8 @@ import {
   removeTomlSection,
   removeNativeRoute,
   restoreCodexRoot,
+  routeHostOn,
+  routeHostOff,
   setTomlSectionValue,
 } from '../../extensions/shared/headroom-routes.ts';
 
@@ -337,3 +339,55 @@ test('the machine knows which agents a shared proxy is already serving', () =>
     expect(removeNativeRoute('pi').ok).toBe(true);
     expect(headroomRoutedHosts()).toEqual([]);
   }));
+
+test.skipIf(process.platform === 'win32')('Claude Code uses Headroom own durable writer, not an endpoint swap', () =>
+  withHome(async (home) => {
+    const dir = path.join(home, '.claude');
+    mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, 'settings.json');
+    writeFileSync(file, JSON.stringify({ env: {} }, null, 2), 'utf8');
+    const omp = path.join(home, '.omp', 'agent');
+    mkdirSync(omp, { recursive: true });
+    const models = path.join(omp, 'models.yml');
+    writeFileSync(
+      models,
+      'providers:\n  magpie:\n    baseUrl: http://127.0.0.1:3425/v1\n    models:\n    - id: demo-model\n',
+      'utf8',
+    );
+    writeFileSync(path.join(omp, 'config.yml'), 'modelRoles:\n  default: magpie/demo-model\n', 'utf8');
+    const before = readFileSync(models, 'utf8');
+    const bin = fakeExecutable(
+      path.join(home, 'fake-bin'),
+      'headroom',
+      `case "$1" in
+  init)
+    port=""
+    while [ $# -gt 0 ]; do if [ "$1" = "--port" ]; then shift; port="$1"; fi; shift; done
+    mkdir -p "$HOME/.claude"
+    printf '{"env":{"ANTHROPIC_BASE_URL":"http://127.0.0.1:%s"}}\\n' "$port" > "$HOME/.claude/settings.json"
+    ;;
+  unwrap)
+    printf '{"env":{}}\\n' > "$HOME/.claude/settings.json"
+    ;;
+esac
+exit 0`,
+      'exit /b 0',
+    );
+    const previous = process.env.TERSIO_HEADROOM_BIN;
+    process.env.TERSIO_HEADROOM_BIN = bin;
+    try {
+      const on = await routeHostOn('claude', PROXY);
+      expect(on.ok, on.detail).toBe(true);
+      expect(readHeadroomRoute('claude', PROXY).routed).toBe(true);
+      expect(readFileSync(models, 'utf8')).toBe(before);
+
+      const off = await routeHostOff('claude');
+      expect(off.ok, off.detail).toBe(true);
+      expect(readHeadroomRoute('claude', PROXY).routed).toBe(false);
+      expect(JSON.parse(readFileSync(file, 'utf8')).env.ANTHROPIC_BASE_URL).toBeUndefined();
+    } finally {
+      if (previous === undefined) delete process.env.TERSIO_HEADROOM_BIN;
+      else process.env.TERSIO_HEADROOM_BIN = previous;
+    }
+  }),
+);
