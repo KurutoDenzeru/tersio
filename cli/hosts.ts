@@ -391,9 +391,16 @@ function detect(agentDir = piAgentDir(), pigDir = pigAgentDir()): HostEntry[] {
           : via === 'package' && pkgDir
             ? packageVersion(pkgDir)
             : via === 'plugin'
-              ? (codex?.version ?? null)
+              ? (codex?.version ?? claude?.version ?? null)
               : null,
-      dir: via === 'tree' ? tree : via === 'package' ? pkgDir : via === 'plugin' ? (codex?.dir ?? null) : null,
+      dir:
+        via === 'tree'
+          ? tree
+          : via === 'package'
+            ? pkgDir
+            : via === 'plugin'
+              ? (codex?.dir ?? claude?.dir ?? null)
+              : null,
     };
   });
 }

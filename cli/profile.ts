@@ -244,7 +244,7 @@ async function writePluginSettings(
       (key) => before[key as keyof StoredSettings] !== values[key as keyof typeof values],
     );
   if (modesChanged) recordActivity('mode', 'Session defaults saved', formatProfile(profile));
-  console.log(`  [write] Session defaults in ${file}`);
+  if (!options.quiet) console.log(`  [write] Session defaults in ${file}`);
   await mirrorPonytailDefault(profile.ponytailDefault, options);
 }
 
@@ -279,8 +279,8 @@ export async function saveHostDefaults(
     ...section,
   };
   for (const field of new Set(fields)) {
-    // `inherit` is a removal, not a value this section stores.
-    if (profile[field] === 'inherit') delete merged[field];
+    // `inherit` is a removal, and so is a value the shared store already holds: neither is an override.
+    if (profile[field] === 'inherit' || flat[field] === profile[field]) delete merged[field];
   }
   for (const key of Object.keys(merged)) {
     if (merged[key] === flat[key]) delete merged[key];
@@ -295,11 +295,12 @@ export async function saveHostDefaults(
   await fs.mkdir(path.dirname(file), { recursive: true });
   await fs.writeFile(file, `${JSON.stringify(next, null, 2)}\n`, 'utf8');
   recordActivity('mode', `Session defaults for ${host} saved`, formatProfile(profile));
-  console.log(`  [write] Session defaults for ${host} in ${file}`);
+  if (!options.quiet) console.log(`  [write] Session defaults for ${host} in ${file}`);
 }
 
 function formatProfile(profile: Profile): string {
-  return `combo=${profile.comboDefault} (caveman=${profile.cavemanDefault} · rtk=${profile.rtkDefault ? 'on' : 'off'} · ponytail=${profile.ponytailDefault} · pstack=${profile.pstackDefault} · headroom=${profile.headroomDefault}) · currency=${profile.currency}`;
+  // A hand-set mode no longer matches its preset, so the label says custom instead of a level it lost.
+  return `combo=${comboLevelOf(profile)} (caveman=${profile.cavemanDefault} · rtk=${profile.rtkDefault ? 'on' : 'off'} · ponytail=${profile.ponytailDefault} · pstack=${profile.pstackDefault} · headroom=${profile.headroomDefault})`;
 }
 
 /** The mode keys a harness exposes, in the order the status line prints them. */

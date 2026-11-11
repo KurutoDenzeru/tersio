@@ -611,8 +611,7 @@ export function PipelineCanvas({
               {mode.glyph}
             </span>
             <span className="text-[13px] font-semibold">{mode.name}</span>
-            // The pinned version is the fact worth showing; off is already carried by the dimmed
-            card.
+            {/* The pinned version is the fact worth showing; the dimmed card already carries off. */}
             {versioned ? (
               <NodeBadge
                 on={!off}

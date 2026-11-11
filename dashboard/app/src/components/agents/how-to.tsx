@@ -63,6 +63,7 @@ export function HowToPage({
         opencode: versionOf(report.opencode),
         dsh: versionOf(report.dsh),
         codex: versionOf(report.codex),
+        claude: versionOf(report.claude),
       }
       // Presence is the resolved binary, not the probe: a probe can fail while the harness is there.
       const paths = {
@@ -72,6 +73,7 @@ export function HowToPage({
         opencode: report.opencodePath,
         dsh: report.dshPath,
         codex: report.codexPath,
+        claude: report.claudePath,
       }
       setHostState((s) => ({
         ...s,
@@ -158,7 +160,9 @@ export function HowToPage({
     })
     void fetchHealth().then((report) => {
       if (!report) return
-      const version = versionOf(report[host as "omp" | "pi" | "pig" | "opencode" | "codex"])
+      const version = versionOf(
+        report[host as "omp" | "pi" | "pig" | "opencode" | "codex" | "claude"],
+      )
       if (version) setHostState((s) => ({ ...s, versions: { ...s.versions, [host]: version } }))
     })
     void fetchRoutes().then((state) => {
