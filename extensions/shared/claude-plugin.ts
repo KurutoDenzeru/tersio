@@ -46,7 +46,7 @@ export function claudeLocalPluginFiles(): Record<string, string> {
     '.claude-plugin/marketplace.json': marketplaceJson(),
     [`${CLAUDE_PLUGIN_NAME}/.claude-plugin/plugin.json`]: readPackaged('.claude-plugin/plugin.json'),
     [`${CLAUDE_PLUGIN_NAME}/hooks/hooks.json`]: readPackaged('hooks/hooks.json'),
-    [`${CLAUDE_PLUGIN_NAME}/hooks/register.js`]: readPackaged('hooks/register.js'),
+    [`${CLAUDE_PLUGIN_NAME}/hooks/register.ts`]: readPackaged('hooks/register.ts'),
     [`${CLAUDE_PLUGIN_NAME}/commands/tersio.md`]: readPackaged('commands/tersio.md'),
     [`${CLAUDE_PLUGIN_NAME}/commands/combo.md`]: readPackaged('commands/combo.md'),
     [`${CLAUDE_PLUGIN_NAME}/commands/caveman.md`]: readPackaged('commands/caveman.md'),

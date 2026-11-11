@@ -14,7 +14,7 @@ export const CLAUDE_PLUGIN_ID = `${CLAUDE_PLUGIN_NAME}@${CLAUDE_MARKETPLACE_NAME
 export const CLAUDE_PLUGIN_FILES = [
   '.claude-plugin/plugin.json',
   'hooks/hooks.json',
-  'hooks/register.js',
+  'hooks/register.ts',
   // A registered command never reaches the slash menu; a commands/*.md file is what lists.
   'commands/tersio.md',
   'commands/combo.md',

@@ -20,12 +20,12 @@ describe('claude plugin files', () => {
 
   test('every file the installed plugin needs is written', () => {
     const files = claudeLocalPluginFiles();
-    for (const rel of ['tersio/.claude-plugin/plugin.json', 'tersio/hooks/hooks.json', 'tersio/hooks/register.js']) {
+    for (const rel of ['tersio/.claude-plugin/plugin.json', 'tersio/hooks/hooks.json', 'tersio/hooks/register.ts']) {
       expect(files[rel], rel).toBeTruthy();
     }
     // A hooks module is what makes it a mod; a manifest alone draws nothing.
     const hooks = JSON.parse(files['tersio/hooks/hooks.json'] ?? '{}');
-    expect(hooks.modules).toEqual(['./register.js']);
+    expect(hooks.modules).toEqual(['./register.ts']);
   });
 
   test('the version in the manifest is this build', () => {

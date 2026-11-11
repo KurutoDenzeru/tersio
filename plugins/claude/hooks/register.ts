@@ -7,16 +7,26 @@
 
 const SEP = ' | '
 
-/** The settings file the CLI, the dashboard, and every extension already share. */
-function settingsPath(home) {
-  return home + '/.tersio/settings.json'
+/** The settings keys this strip reads; every one is optional in a fresh install. */
+interface TersioSettings {
+  comboDefault?: string
+  cavemanDefault?: string
+  rtkDefault?: string | boolean
+  headroomDefault?: string
+  ponytailDefault?: string
+  pstackDefault?: string
+  /** The per-host section the CLI writes; it wins over the flat keys. */
+  hosts?: Record<string, TersioSettings | undefined>
 }
 
-/** A boolean is the rtk shape; everything else is already a mode word. */
-function modeWord(value) {
-  if (value === true) return 'ON'
-  if (value === false) return 'OFF'
-  return String(value || 'off').toUpperCase()
+interface Cached {
+  settings: TersioSettings
+  error: string | null
+}
+
+/** The settings file the CLI, the dashboard, and every extension already share. */
+function settingsPath(home: string): string {
+  return home + '/.tersio/settings.json'
 }
 
 /**
@@ -24,13 +34,20 @@ function modeWord(value) {
  * the host section has to win here too. Reading only the flat keys reported OFF for a configured
  * machine.
  */
-function effectiveSettings(raw) {
-  const hosts = raw && typeof raw.hosts === 'object' ? raw.hosts : {}
-  const section = hosts && typeof hosts.claude === 'object' && hosts.claude ? hosts.claude : {}
-  return { ...raw, ...section }
+function effectiveSettings(raw: TersioSettings): TersioSettings {
+  const section = raw.hosts?.claude
+  return section && typeof section === 'object' ? { ...raw, ...section } : raw
 }
+
+/** A boolean is the rtk shape; everything else is already a mode word. */
+function modeWord(value: string | boolean | undefined): string {
+  if (value === true) return 'ON'
+  if (value === false) return 'OFF'
+  return String(value || 'off').toUpperCase()
+}
+
 /** One line: the combo, then each mode. Empty when nothing is on, so the band costs no rows. */
-function comboLine(settings) {
+function comboLine(settings: TersioSettings): string {
   const caveman = modeWord(settings.cavemanDefault)
   const rtk = modeWord(settings.rtkDefault)
   const headroom = modeWord(settings.headroomDefault)
@@ -40,9 +57,8 @@ function comboLine(settings) {
     caveman === 'OFF' && rtk === 'OFF' && headroom === 'OFF' && ponytail === 'OFF' && pstack === 'OFF'
   if (allOff) return ''
   const level = String(settings.comboDefault || 'off')
-  const label = level === 'off' || level === 'custom' ? level.toUpperCase() : level.toUpperCase()
   return [
-    '🧩 ' + label,
+    '🧩 ' + level.toUpperCase(),
     '🪨 caveman:' + caveman,
     '🗜️ rtk:' + rtk,
     '🍃 headroom:' + headroom,
@@ -52,24 +68,30 @@ function comboLine(settings) {
 }
 
 /** Parses the text a hook read, or reports why it could not. A half-written file must not end a session. */
-function parseSettings(text) {
+function parseSettings(text: string): Cached {
   try {
-    return { settings: JSON.parse(text), error: null }
+    return { settings: JSON.parse(text) as TersioSettings, error: null }
   } catch (err) {
     return { settings: {}, error: String(err) }
   }
 }
 
 /** The last read, so a redraw does not re-parse the same text. */
-let cached = { settings: {}, error: null }
+let cached: Cached = { settings: {}, error: null }
 
-export function register(on) {
-  on('session.start', async ($, e, next) => {
+/** Every hook Claude Code can call: `on(event, hook)` or `on(event, matcher, hook)`. */
+type Hook = (...args: any[]) => unknown
+type On = (event: string, matcherOrHook: unknown, maybeHook?: Hook) => void
+
+export function register(on: On): void {
+  on('session.start', async ($: any, e: any, next: (x: unknown) => unknown) => {
     try {
       const home = await $.env.get('HOME')
-      const path = settingsPath(home)
+      const path = settingsPath(String(home))
       // A machine that never ran the installer has no file; the strip stays off rather than erroring.
-      cached = (await $.fs.exists(path)) ? parseSettings(String(await $.fs.read(path))) : { settings: {}, error: null }
+      cached = (await $.fs.exists(path))
+        ? parseSettings(String(await $.fs.read(path)))
+        : { settings: {}, error: null }
     } catch (err) {
       cached = { settings: {}, error: String(err) }
     }
@@ -88,18 +110,18 @@ export function register(on) {
   // entry resolves as tersio:tersio while an unqualified /tersio also reaches it.
   on('command.run', { command: 'tersio' }, async () => {
     if (cached.error) return { text: 'Tersio: could not read settings — ' + cached.error }
-    const line = comboLine(effectiveSettings(cached.settings || {}))
+    const line = comboLine(effectiveSettings(cached.settings))
     return { text: line || '🧩 OFF — no Tersio modes are on' }
   })
 
   on('command.run', { command: 'tersio:tersio' }, async () => {
     if (cached.error) return { text: 'Tersio: could not read settings — ' + cached.error }
-    const line = comboLine(effectiveSettings(cached.settings || {}))
+    const line = comboLine(effectiveSettings(cached.settings))
     return { text: line || '🧩 OFF — no Tersio modes are on' }
   })
 
-  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    const line = comboLine(effectiveSettings(cached.settings || {}))
+  on('ui.render', { component: 'AbovePrompt' }, async ($: any, e: any, next: (x: unknown) => unknown) => {
+    const line = comboLine(effectiveSettings(cached.settings))
     // Nothing on, or not read yet: draw nothing and let the band stay empty.
     if (!line) return next(e)
     const { Text } = $.ui.resolve(e)
