@@ -51,7 +51,7 @@ Then run the CLI. Bare `tersio` opens a menu and asks which host to install into
 
 | Host | Tersio install | Host-native install |
 |---|---|---|
-| [Codex](https://github.com/openai/codex) | `tersio install --host codex` | `codex plugin marketplace add KurutoDenzeru/tersio`<br>`codex plugin add tersio@tersio` |
+| [Codex](https://github.com/openai/codex) | `tersio install --host codex` | `codex plugin marketplace add KurutoDenzeru/tersio`<br>or `codex plugin add tersio@tersio` |
 | [Claude Code](https://code.claude.com) | `tersio install --host claude` | `tersio install --host claude` |
 | [OpenCode](https://opencode.ai) | `tersio install --host opencode` | `opencode plugin add @krtclcdy/tersio` |
 | [Oh My Pi](https://github.com/can1357/oh-my-pi) | `tersio install --host omp` | `omp plugin install @krtclcdy/tersio` |
@@ -171,7 +171,7 @@ Flags: `--dry-run`, `--yes`/`-y`, `--verbose`, `--combo-default`/`--caveman-defa
 
 ## ⌨️ Commands reference
 
-Mode switches live on their own commands; bare `/tersio` prints status. Every mode command, and every session start, prints the status line:
+Mode switches live on their own commands; bare `/tersio` prints status. A switch also saves the default for the next session, while reopening a session restores the entries that session already carries. Every mode command, and every session start, prints the status line:
 
 ```
 🧩 COMBO MAX: 🪨 caveman=ULTRA | 🗜️ rtk=ON | 🍃 headroom=ON | 🧠 ponytail=ULTRA | 🥔 pstack=ON
