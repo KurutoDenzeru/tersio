@@ -221,7 +221,7 @@ Active modes reassert after Ponytail's prompt block on every top-level turn, inc
 
 **RTK savings and adoption:** the Gain numbers read rtk's own `history.db` (`%LOCALAPPDATA%\rtk` on Windows), so pi and OpenCode runs are already in them. The adoption row counts executed Bash calls from the omp and pi transcripts and OpenCode's v2 sqlite or pre-v2 JSON tree. The eligible list comes from `rtk rewrite`, cached per binary version. Native tool calls (`read`/`edit`/`eval`) and exact bytes bypass RTK.
 
-**RTK update available:** `tersio update` and the dashboard report the version rtk upstream ships. Tersio never installs it; update rtk with its own installer.
+**RTK update available:** `tersio update`, `tersio doctor`, and the dashboard report the version rtk upstream ships. Tersio never installs it; update rtk with its own installer.
 
 ## 🤝🏻 Contributing
 

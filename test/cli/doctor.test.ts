@@ -19,9 +19,13 @@ import {
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const installer = path.join(root, 'dist', 'tersio.js');
 
-// The Ponytail feed is advisory, and a live answer would add a row these counts do not expect.
+// The Ponytail feed is advisory, and a live answer would add a row these counts do not expect. The rtk feed is stubbed dead for the same reason: it only speaks when a newer release exists.
 const doctorEnv = (home: string, extra: Record<string, string> = {}): NodeJS.ProcessEnv =>
-  cliEnv(home, { TERSIO_PONYTAIL_URL: registryUrl(PONYTAIL_VERSION), ...extra });
+  cliEnv(home, {
+    TERSIO_PONYTAIL_URL: registryUrl(PONYTAIL_VERSION),
+    TERSIO_RTK_URL: 'http://127.0.0.1:1/rtk',
+    ...extra,
+  });
 
 // Empty home keeps probes MISSING; the seeded cache is ignored by doctor but used by install/update.
 function missingHome(): string {
@@ -566,7 +570,11 @@ test('doctor warns when the ponytail feed reports a newer version', () => {
       cwd: root,
       encoding: 'utf8',
       timeout: 15000,
-      env: cliEnv(home, { PATH: path.join(home, 'empty-bin'), TERSIO_PONYTAIL_URL: registryUrl('99.0.0') }),
+      env: cliEnv(home, {
+        PATH: path.join(home, 'empty-bin'),
+        TERSIO_PONYTAIL_URL: registryUrl('99.0.0'),
+        TERSIO_RTK_URL: 'http://127.0.0.1:1/rtk',
+      }),
     });
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toMatch(/Ponytail version: warn [\d.]+ installed, 99\.0\.0 is the latest/);
