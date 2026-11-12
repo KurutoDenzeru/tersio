@@ -475,9 +475,13 @@ function tempHome(): string {
   return home;
 }
 
-/** Windows keeps a handle on a just-touched tree for a moment, so the removal retries instead of throwing EBUSY out of a test's `finally` block. */
+/** Windows keeps a handle on a just-touched tree while Defender scans it, so the removal retries and then gives up: a leftover temp dir must not fail a test whose assertions passed. */
 function rmTree(dir: string): void {
-  rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
+  try {
+    rmSync(dir, { recursive: true, force: true, maxRetries: 40, retryDelay: 250 });
+  } catch (e) {
+    if (!/EBUSY|EPERM|ENOTEMPTY/.test(String(e))) throw e;
+  }
 }
 
 /** The plugin state a successful install leaves, with a seeded rtk so no test downloads 18MB from GitHub. */
