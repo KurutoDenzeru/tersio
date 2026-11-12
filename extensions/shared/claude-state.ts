@@ -121,6 +121,16 @@ export function claudeMcpConfigured(): boolean {
   }
 }
 
+/** An RTK Claude hook entry, matched by the command it runs. */
+function isRtk(value: unknown): boolean {
+  return isRecord(value) && /\brtk\s+hook\s+claude\b/.test(String(value.command ?? ''));
+}
+
+/** The entries under one `matcher` group; a group with no `hooks` array carries none. */
+function hookList(group: Record<string, unknown>): unknown[] {
+  return Array.isArray(group.hooks) ? group.hooks : [];
+}
+
 /**
  * RTK's Claude hook lives in `~/.claude/settings.json`. Tersio's rtk mode has to add or remove
  * that exact entry, or the stored preference is only a label.
@@ -138,9 +148,6 @@ export function setClaudeRtkHook(enabled: boolean): boolean {
   const hooks = isRecord(data.hooks) ? data.hooks : {};
   const groups = hooks.PreToolUse;
   if (groups !== undefined && !Array.isArray(groups)) return false;
-  const isRtk = (value: unknown): boolean =>
-    isRecord(value) && /\brtk\s+hook\s+claude\b/.test(String(value.command ?? ''));
-  const hookList = (group: Record<string, unknown>): unknown[] => (Array.isArray(group.hooks) ? group.hooks : []);
   let changed = false;
   const next: Array<Record<string, unknown>> = [];
   for (const raw of Array.isArray(groups) ? groups : []) {

@@ -52,7 +52,15 @@ jobs:
 
   check:
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    # A merge commit from a pull request already ran this exact tree on the PR,
+    # so the post-merge run only repeats it. Direct pushes, local branch merges,
+    # and force pushes still run: their message does not match the PR prefix.
+    # This repo merges with "Merge pull request #N from ...", so the test is
+    # exact; a squash merge falls through to a run, which is the safe side.
+    if: >-
+      needs.changes.outputs.code == 'true' &&
+      !(github.event_name == 'push' &&
+        startsWith(github.event.head_commit.message, 'Merge pull request #'))
     name: check (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
