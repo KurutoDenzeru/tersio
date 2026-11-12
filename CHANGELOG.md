@@ -1,10 +1,5 @@
 ## Unreleased
 
-## v2.25.21
-
-### Fixed
-- `test/cli/claude-hook.test.ts` keys its fake filesystem on one separator. The hook joins paths with `/` because a mod cannot import `node:path`, and the fake map kept Windows backslashes, so every read missed and the assertion failed only on `windows-latest`.
-
 ## v2.25.20
 
 ### Added
@@ -18,10 +13,16 @@
 - Claude transcript traces now render turns, one model span per request, and tool spans with their results.
 
 ### Fixed
+- `test/cli/claude-hook.test.ts` keys its fake filesystem on one separator, so the Windows runner reads the same paths the hook builds. A Claude mod may not import `node:path`, and the fake map kept backslashes.
+- The menu layout tests pin the update feed. A publish that lands before `npm view` catches up made `dist/tersio.js` print an update prompt instead of the menu, and seven captures failed on a clean tree.
 - `tersio uninstall --host claude` unwraps Headroom's Claude route instead of restoring the OMP gateway and leaving Claude pointed at a stopped proxy.
 - Claude's RTK toggle now adds or removes the `rtk hook claude` entry in `~/.claude/settings.json`; the stored preference was previously a label only.
 - The Claude plugin reads `TERSIO_HOME` and `CLAUDE_CONFIG_DIR` instead of assuming `~/.tersio` and `~/.claude`.
 - The host menu no longer lists a disabled “Claude Code — Coming soon” entry beside the real host.
+- Headroom routes Anthropic-compatible providers at the proxy root and OpenAI providers under `/v1`. Thanks to @FrancoStino (#102).
+- The bun hand-off probe allows 10s instead of 2s. Under load the probe timed out, the CLI read that as a broken bun, stayed on node, and the runtime test failed with no stated cause.
+- The error icons render again. lucide 1.70 renamed `circle-alert` to `circle-exclamation-point` and `triangle-alert` to `triangle-exclamation-point` and dropped both old keys, which eleven files still named; a missing name falls back to a question-mark glyph, so the build stayed green.
+- `happy-dom` moves to 21.0.4 for CVE-2026-33943, a high-severity advisory where an unsanitized import alias reached host code. A devDependency, so the shipped bundle is unchanged.
 
 ### Changed
 - The bare `tersio` launch shows a spinner while its six-hour update cache refreshes from npm and GitHub, and prompts a yes/no CLI update when one is pending. The update row then tucks the installed agents under an `AI agents` choice like Uninstall. The submenu updates all agents or one, and marks outdated hosts with their version. The update plan labels `RTK binary` and `Headroom binary`, omits `latest unknown`, and drops the duplicate closing Tersio line.
@@ -30,12 +31,6 @@
 - The Headroom proxy no longer loads its Kompress ONNX model at startup. Footprint falls from about 600MB to 274MB and threads from 23 to 9, measured on the same machine. The cheaper engines still run every turn: Code-Aware AST compression, the compression cache, and CCR, which between them carried the work; one of 131 learned routing patterns had used the model. A deployment that passes `--enable-kompress` keeps it.
 - The dashboard ships the 97 Lucide icons it names instead of all 2,029, cutting the bundle every user downloads from 2,616 kB to 1,964 kB, and from 872 kB to 705 kB gzipped.
 - Carbon moves from Usage to the Insights group in the dashboard rail, above Tools and Projects, because it reads as an impact figure rather than a usage one. The section id and the `f` hotkey are unchanged.
-
-### Fixed
-- Headroom routes Anthropic-compatible providers at the proxy root and OpenAI providers under `/v1`. Thanks to @FrancoStino (#102).
-- The bun hand-off probe allows 10s instead of 2s. Under load the probe timed out, the CLI read that as a broken bun, stayed on node, and the runtime test failed with no stated cause.
-- The error icons render again. lucide 1.70 renamed `circle-alert` to `circle-exclamation-point` and `triangle-alert` to `triangle-exclamation-point` and dropped both old keys, which eleven files still named; a missing name falls back to a question-mark glyph, so the build stayed green.
-- `happy-dom` moves to 21.0.4 for CVE-2026-33943, a high-severity advisory where an unsanitized import alias reached host code. A devDependency, so the shipped bundle is unchanged.
 
 ### Removed
 - `date-fns` and `simple-icons` leave the dashboard workspace. Neither had a single import; together they cost 52MB of installed tree and nothing in the bundle.

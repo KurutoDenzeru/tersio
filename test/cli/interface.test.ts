@@ -818,7 +818,14 @@ function screenAt(rows: number): string[] {
     cwd: root,
     encoding: 'utf8',
     timeout: 30000,
-    env: { ...process.env, TERM: 'xterm-256color', TERSIO_HOME: mkdtempSync(path.join(os.tmpdir(), 'tersio-screen-')) },
+    env: {
+      ...process.env,
+      TERM: 'xterm-256color',
+      TERSIO_HOME: mkdtempSync(path.join(os.tmpdir(), 'tersio-screen-')),
+      // Pin the update feed: an available update turns the layout capture into an update prompt.
+      TERSIO_UPDATE_URL: registryUrl(version),
+      TERSIO_RELEASES_URL: releasesUrl(version),
+    },
   });
   expect(result.status, result.stderr).toBe(0);
   const lines = JSON.parse(result.stdout) as string[];
