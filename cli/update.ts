@@ -329,7 +329,8 @@ function planLines(plan: UpdatePlan): { stale: string[]; status: string[] } {
   }
   // rtk updates through its own installer, so the drift is news, not a step this run performs.
   const [rtkNow, rtkNew] = plan.rtk;
-  if (rtkNow && rtkNew && rtkNow !== rtkNew) status.push(`RTK binary: ${rtkNow}; ${rtkNew} is out — rtk updates itself`);
+  if (rtkNow && rtkNew && rtkNow !== rtkNew)
+    status.push(`RTK binary: ${rtkNow}; ${rtkNew} is out — rtk updates itself`);
   else push('RTK binary', rtkNow, rtkNew);
   push('Headroom binary', plan.headroom[0], plan.headroom[1]);
   // The rule body carries no version, so the tag recorded at pull time names it; the pin covers a fresh install.

@@ -446,8 +446,7 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
     );
   }
   // Offline-safe: the registry call is best-effort, and silence means no row rather than a stale one.
-  const ponytailUrl =
-    process.env.TERSIO_PONYTAIL_URL || 'https://registry.npmjs.org/@dietrichgebert/ponytail/latest';
+  const ponytailUrl = process.env.TERSIO_PONYTAIL_URL || 'https://registry.npmjs.org/@dietrichgebert/ponytail/latest';
   const ponytailVersionGap = await latestGap(ponytailUrl, PONYTAIL_VERSION, 'version');
   if (ponytailVersionGap)
     warnLine('Ponytail version', `${ponytailVersionGap} — run: tersio update --apply-update --yes`);
@@ -542,7 +541,7 @@ async function latestGap(url: string, local: string, key: 'version' | 'tag_name'
   try {
     // Advisory, with a short budget; `TERSIO_RTK_URL` and `TERSIO_PONYTAIL_URL` point these at a stub.
     const res = await fetch(url, { signal: AbortSignal.timeout(2500), headers: { accept: 'application/json' } });
-    const remote = normalizeRtkVersion((await res.json() as Record<string, string | undefined>)[key]);
+    const remote = normalizeRtkVersion(((await res.json()) as Record<string, string | undefined>)[key]);
     return remote && remote !== local ? `${local} installed, ${remote} is the latest` : null;
   } catch {
     return null;
