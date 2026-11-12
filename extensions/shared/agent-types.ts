@@ -130,6 +130,8 @@ export interface AgentRequestRow {
   agentType: string;
   sessionFile: string;
   entryId: string;
+  /** Which agent wrote the row: omp, pi, opencode, dsh, codex, or claude. */
+  host: string;
 }
 
 export interface AgentErrorGroup {

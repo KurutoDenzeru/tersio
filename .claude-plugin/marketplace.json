@@ -1,0 +1,13 @@
+{
+  "name": "tersio",
+  "owner": {
+    "name": "KurutoDenzeru"
+  },
+  "plugins": [
+    {
+      "name": "tersio",
+      "source": "./plugins/claude",
+      "description": "Tersio's token-saving modes drawn inside Claude Code."
+    }
+  ]
+}

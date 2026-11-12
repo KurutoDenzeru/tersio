@@ -156,7 +156,8 @@ test('the route list is Tersio agents only, and a name outside it is refused', a
       expect(targets.map((target) => target.name)).toContain('pi');
       expect(targets.find((target) => target.name === 'pi')?.routed).toBe(false);
 
-      ctx.bodyOf = async () => ({ name: 'claude', on: true });
+      // Not claude: that is a real host now, so the test names one that never will be.
+      ctx.bodyOf = async () => ({ name: 'nonsense', on: true });
       await handleHeadroomRoutes(
         Object.assign(fakeMessage(), { url: '/api/headroom/route', method: 'POST' }),
         fakeResponse(),

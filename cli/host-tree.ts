@@ -5,6 +5,7 @@ import path from 'node:path';
 import type { DetectedHost } from './hosts.ts';
 import { hostExtensionsDir } from './hosts.ts';
 import { GENERATED_TREE_FILES, isObsoleteTreeFile, treeFileText, treeFilesFor } from './manifest.ts';
+import { isPluginHost } from '../extensions/shared/host-caps.ts';
 
 export interface HostTreeIssues {
   stale: string[];
@@ -49,7 +50,7 @@ export function checkHostTrees(hosts: DetectedHost[], pluginExtDir: string): Hos
   const orphan: string[] = [];
   const unwritten: string[] = [];
   for (const host of hosts.filter((entry) => entry.installed)) {
-    if (host.id === 'codex') continue;
+    if (isPluginHost(host.id)) continue;
     const treeId = host.id === 'omp' ? 'opencode' : host.id;
     const base = host.id === 'omp' ? pluginExtDir : hostExtensionsDir(host.id);
     let onDisk = new Set(hostTreeFiles(base).filter((rel) => path.extname(rel) !== '.js'));

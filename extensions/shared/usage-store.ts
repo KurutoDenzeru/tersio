@@ -16,6 +16,7 @@ import {
   ingestSessionRow,
   messageRowId,
   type DshParseState,
+  type ClaudeParseState,
   OPENCODE_DB_OVERLAP_MS,
   opencodeDbPath,
   opencodeSessionsDir,
@@ -83,7 +84,7 @@ function query(db: string, sql: string): string[][] {
 }
 
 // Bump on a parse change: unchanged transcripts are never re-read.
-const PARSER_VERSION = '17';
+const PARSER_VERSION = '18';
 
 /** OpenCode rows gained tool names; re-read by id, since a PARSER_VERSION bump drops rotated history. */
 const OPENCODE_TOOLS_VERSION = '1';
@@ -670,6 +671,7 @@ function parseFile(text: string, host?: string, file?: string, agent?: string): 
   const results = collectToolResults(text);
   // Per file: the DSH model and step starts must not outlive this transcript.
   const dsh: DshParseState = { steps: new Map() };
+  const claude: ClaudeParseState = { requests: new Map() };
   let codexProvider: string | null = null;
   let codexModel: string | null = null;
   let dshModel: string | null = null;
@@ -677,7 +679,7 @@ function parseFile(text: string, host?: string, file?: string, agent?: string): 
     if (!line.trim()) continue;
     try {
       const row = JSON.parse(line) as SessionLineRow;
-      const parsed = classifySessionLine(row, results, dsh);
+      const parsed = classifySessionLine(row, results, dsh, claude);
       const rid = parsed.id ?? messageRowId(row);
       if (parsed.kind === 'codex_provider') {
         if (parsed.provider) codexProvider = parsed.provider;

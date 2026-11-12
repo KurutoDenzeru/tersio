@@ -63,6 +63,11 @@ function entry(host: string): Record<string, unknown> {
     : { command, args, enabled: true };
 }
 
+/** The command a plugin-host manifest points at; Claude Code reads command and args, not `enabled`. */
+export function tersioMcpLaunch(): { command: string; args: string[] } {
+  return launch();
+}
+
 function writeIfChanged(file: string, data: Record<string, unknown>): boolean {
   const next = `${JSON.stringify(data, null, 2)}\n`;
   try {

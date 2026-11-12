@@ -48,7 +48,7 @@ import {
   PSTACK_DEFAULTS,
 } from './common.ts';
 import { PACKAGE_NAME } from './common.ts';
-import { detectHosts, dshHome, dshPresent, dshVersionBinary, hostExtensionsDir } from './hosts.ts';
+import { detectHosts, dshHome, dshPresent, dshVersionBinary, hostAgentInfo, hostExtensionsDir } from './hosts.ts';
 import { checkHostTrees } from './host-tree.ts';
 import {
   findPackageRoot,
@@ -63,6 +63,7 @@ import {
 } from '../extensions/shared/utils.ts';
 import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
 import { codexHome } from '../extensions/shared/codex-state.ts';
+import { claudeHome } from '../extensions/shared/claude-state.ts';
 import { tersioMcpConfigured, tersioMcpSupported } from '../extensions/shared/mcp-config.ts';
 import {
   BACKUP_KEEP,
@@ -103,6 +104,7 @@ import {
   isAgentView,
   isRangeKey,
   readAgentRequestEntry,
+  readHeadroomReport,
   readSessionTrace,
 } from '../extensions/shared/agent-stats.ts';
 import { agentStats, DEFAULT_AGENT_RANGE } from '../extensions/shared/agent-snapshot.ts';
@@ -474,12 +476,13 @@ function ompDefaultModel(): string | null {
 }
 
 /** The config root per agent, for the health report. */
-const agentDir = (id: 'omp' | 'pi' | 'pig' | 'opencode' | 'dsh' | 'codex'): string | null => {
+const agentDir = (id: 'omp' | 'pi' | 'pig' | 'opencode' | 'dsh' | 'codex' | 'claude'): string | null => {
   if (id === 'omp') return path.join(homeDir(), '.omp');
   if (id === 'pi') return path.join(homeDir(), '.pi');
   if (id === 'pig') return path.join(homeDir(), '.pig');
   if (id === 'dsh') return dshHome();
   if (id === 'codex') return codexHome();
+  if (id === 'claude') return claudeHome();
   return path.join(homeDir(), '.config', 'opencode');
 };
 
@@ -494,6 +497,7 @@ export function healthJson(): string {
   const detectedOpencodePath = opencodePath();
   const detectedCodexPath = codexPath();
   const detectedDshPath = dshPath();
+  const detectedClaudePath = resolveHostBinary('claude', path.join(homeDir(), '.local', 'bin'));
   return JSON.stringify({
     tersio: PACKAGE_VERSION,
     node: process.version,
@@ -513,6 +517,9 @@ export function healthJson(): string {
     codex: agentVersion(detectedCodexPath),
     codexPath: detectedCodexPath,
     codexDir: agentDir('codex'),
+    claude: agentVersion(detectedClaudePath),
+    claudePath: detectedClaudePath,
+    claudeDir: agentDir('claude'),
     dsh: agentVersion(detectedDshPath),
     dshPath: detectedDshPath,
     dshDir: agentDir('dsh'),
@@ -549,6 +556,8 @@ interface DoctorRow {
   neutral?: boolean;
   warn?: boolean;
   host?: string;
+  /** False when the agent itself is not on this machine, so the row can dim and stop hovering. */
+  agentPresent?: boolean;
 }
 
 interface DoctorReport {
@@ -613,6 +622,8 @@ function computeDoctorRows(): DoctorRow[] {
   };
   // A missing host is not a fault: it stays visible with no install command and no fix prompt.
   for (const host of detectHosts()) {
+    const agent = hostAgentInfo(host.id);
+    const agentDetail = agent.version ? `v${agent.version}` : '';
     const row = (ok: boolean, detail: string, neutral = false): void => {
       rows.push({
         label: host.label,
@@ -620,19 +631,15 @@ function computeDoctorRows(): DoctorRow[] {
         detail,
         group: 'Hosts',
         host: host.id,
+        agentPresent: agent.present,
         ...(neutral ? { neutral: true } : {}),
       });
     };
     if (!host.installed) {
-      const leftover = host.id !== 'dsh' && host.id !== 'codex' && existsSync(hostExtensionsDir(host.id));
-      if (leftover) row(false, `leftover files — tersio uninstall --host ${host.id}`, true);
-      else if (host.declared) row(false, `declared (${host.declared}) but not installed`);
-      else row(false, 'not installed', true);
+      row(false, agentDetail, true);
       continue;
     }
-    const kind = host.via === 'tree' ? 'extensions' : host.via === 'plugin' ? 'plugin' : 'package';
-    const name = host.via === 'plugin' ? 'tersio' : PACKAGE_NAME;
-    row(true, `${kind} ${name}${host.version ? ` ${host.version}` : ''}`);
+    row(true, agentDetail);
     if (host.id === 'omp' && host.version && host.version !== PACKAGE_VERSION) {
       warning(
         'Oh My Pi plugin version',
@@ -753,7 +760,7 @@ function saveDefaults(
   body: Record<string, unknown>,
 ): Promise<{ ok: true; profile: Record<string, unknown> } | { ok: false; error: string }> {
   const run = async (): Promise<{ ok: true; profile: Record<string, unknown> } | { ok: false; error: string }> => {
-    const HOST_SCOPES = ['omp', 'pi', 'opencode', 'pig', 'dsh', 'codex'] as const;
+    const HOST_SCOPES = ['omp', 'pi', 'opencode', 'pig', 'dsh', 'codex', 'claude'] as const;
     const hostScope =
       typeof body.host === 'string' && (HOST_SCOPES as readonly string[]).includes(body.host)
         ? (body.host as (typeof HOST_SCOPES)[number])
@@ -988,11 +995,13 @@ async function exportDashboard(exportFile: string, currency: CurrencyCode): Prom
   const b64 = icon.split(',')[1] ?? '';
   // atob yields one byte per char, so a Uint8Array is needed or bytes >= 0x80 double and corrupt the webp.
   const brandBytes = `(() => { const c = atob(${JSON.stringify(b64)}); const v = new Uint8Array(c.length); for (let i = 0; i < c.length; i++) v[i] = c.charCodeAt(i); return v; })()`;
+  // The exported Tools page has no server to read Headroom's CLI, so the snapshot carries what it said now.
+  const headroom = await readHeadroomReport();
   const inline = bundle
     .replace(
       'window.__TERSIO_SNAP = null;',
       () =>
-        `window.__TERSIO_SNAP = ${escapeInline(JSON.stringify({ currency, agent: agentStats(DEFAULT_AGENT_RANGE), health: parseOwnJson(healthJson(), 'health'), doctor: getDoctorReport() }))};`,
+        `window.__TERSIO_SNAP = ${escapeInline(JSON.stringify({ currency, agent: agentStats(DEFAULT_AGENT_RANGE), headroom, health: parseOwnJson(healthJson(), 'health'), doctor: getDoctorReport() }))};`,
     )
     // A mark is an HTML attribute or JSX prop; match every quote or the file keeps an unresolvable reference.
     .replace(
@@ -1649,13 +1658,13 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
       // The cadence only matters while a server is up, so the watch starts with it.
       startUpdateWatch();
       // The first page load should not pay for a cold read: warm the default range once the port is up.
-      // Warm the two ranges a page opens on, one per tick so the port stays responsive.
+      // Warm the overview each range opens on, one per tick so the port stays responsive.
       const warm: RangeKey[] = process.env.TERSIO_WARM === '0' ? [] : ['24h', '7d', 'all'];
       const warmNext = (index: number): void => {
         const range = warm[index];
         if (!range) return;
         try {
-          agentStats(range);
+          agentStats(range, 'overview');
         } catch {
           /* the request path retries it */
         }

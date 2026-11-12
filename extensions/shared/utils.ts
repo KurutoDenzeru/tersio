@@ -28,6 +28,11 @@ export function withResolvers<T>(): PromiseWithResolvers<T> {
   return { promise, resolve, reject };
 }
 
+/** True for a non-null, non-array object from JSON; fields stay `unknown`. */
+export function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
 // os.homedir() can ignore a runtime HOME, so a redirected home would read the real one.
 export function homeDir(): string {
   const home = process.env.HOME || process.env.USERPROFILE;

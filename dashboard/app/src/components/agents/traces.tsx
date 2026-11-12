@@ -1,6 +1,14 @@
 // Traces: one row per root session, its subagent transcripts folded in. Opening one opens its flamegraph.
 import { useMemo, useState } from "react"
-import { Card, CellBar, PagedTable, Page, PageHeader, SearchInput } from "@/components/charts"
+import {
+  AgentCell,
+  Card,
+  CellBar,
+  PagedTable,
+  Page,
+  PageHeader,
+  SearchInput,
+} from "@/components/charts"
 import type { Column } from "@/components/charts"
 import { EmptyState } from "@/components/common"
 import { VendorMark } from "@/components/brand"
@@ -10,6 +18,8 @@ import {
   fmt,
   fmtElapsed,
   fmtShort,
+  hostName,
+  hostOfSession,
   projectLabel,
   relAge,
   stampLocal,
@@ -56,6 +66,7 @@ export function TracesPage({
         (row.title ?? "").toLowerCase().includes(needle) ||
         (row.cwd || row.project).toLowerCase().includes(needle) ||
         row.sessionFile.toLowerCase().includes(needle) ||
+        hostName(hostOfSession(row.sessionFile).host).toLowerCase().includes(needle) ||
         row.models.some((model) => model.toLowerCase().includes(needle)),
     )
   }, [agent.traces, filter])
@@ -81,6 +92,12 @@ export function TracesPage({
           </span>
         ),
         sort: (row) => (row.title ?? row.sessionFile).toLowerCase(),
+      },
+      {
+        key: "agent",
+        header: "Agent",
+        render: (row) => <AgentCell host={hostOfSession(row.sessionFile).host} />,
+        sort: (row) => hostOfSession(row.sessionFile).host,
       },
       {
         key: "models",

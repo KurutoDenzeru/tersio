@@ -1233,52 +1233,59 @@ function DoctorPane() {
                 </TableRow>,
                 ...(report?.rows ?? [])
                   .filter((r) => (r.group || "Other") === g)
-                  .map((r, index) => (
-                    <TableRow key={`${r.label}-${index}`}>
-                      <TableCell className="py-3 pl-3">
-                        <div className="flex min-w-0 items-center gap-2">
-                          {r.host && <AgentLogo host={r.host} className="size-4 shrink-0" />}
-                          <div className="min-w-0">
-                            <p className="m-0 font-semibold text-ink">{r.label}</p>
-                            {r.detail && (
-                              <p className="mono mt-0.5 mb-0 max-w-full truncate text-xs text-dim">
-                                {r.detail}
-                              </p>
-                            )}
+                  .map((r, index) => {
+                    const inactive =
+                      r.host !== undefined && !r.warn && (!r.ok || r.agentPresent === false)
+                    return (
+                      <TableRow
+                        key={`${r.label}-${index}`}
+                        className={inactive ? "pointer-events-none opacity-45" : undefined}
+                      >
+                        <TableCell className="py-3 pl-3">
+                          <div className="flex min-w-0 items-center gap-2">
+                            {r.host && <AgentLogo host={r.host} className="size-4 shrink-0" />}
+                            <div className="min-w-0">
+                              <p className="m-0 font-semibold text-ink">{r.label}</p>
+                              {r.detail && (
+                                <p className="mono mt-0.5 mb-0 max-w-full truncate text-xs text-dim">
+                                  {r.detail}
+                                </p>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      </TableCell>
-                      <TableCell className="py-3 pr-3 text-right">
-                        <Badge
-                          variant={
-                            r.warn || r.neutral ? "outline" : r.ok ? "success" : "destructive"
-                          }
-                          className={
-                            r.warn
-                              ? "mono border-[var(--warn-border)] text-[var(--warn-border)]"
-                              : undefined
-                          }
-                        >
-                          {!r.neutral && (
-                            <span
-                              className={`size-1.5 rounded-full ${r.warn ? "bg-warn-border" : r.ok ? "bg-accent" : "bg-danger"}`}
-                            />
-                          )}
-                          {r.warn
-                            ? "Warn"
-                            : r.host
-                              ? r.ok
-                                ? "Installed"
-                                : "Not installed"
-                              : r.neutral
-                                ? "—"
-                                : r.ok
-                                  ? "Pass"
-                                  : "Fix"}
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
-                  )),
+                        </TableCell>
+                        <TableCell className="py-3 pr-3 text-right">
+                          <Badge
+                            variant={
+                              r.warn || r.neutral ? "outline" : r.ok ? "success" : "destructive"
+                            }
+                            className={
+                              r.warn
+                                ? "mono border-[var(--warn-border)] text-[var(--warn-border)]"
+                                : undefined
+                            }
+                          >
+                            {!r.neutral && (
+                              <span
+                                className={`size-1.5 rounded-full ${r.warn ? "bg-warn-border" : r.ok ? "bg-accent" : "bg-danger"}`}
+                              />
+                            )}
+                            {r.warn
+                              ? "Warn"
+                              : r.host
+                                ? r.ok
+                                  ? "Installed"
+                                  : "Not installed"
+                                : r.neutral
+                                  ? "—"
+                                  : r.ok
+                                    ? "Pass"
+                                    : "Fix"}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  }),
               ])}
             </TableBody>
           </Table>

@@ -18,7 +18,7 @@ import {
 } from '../shared/session-state.ts';
 import { injectPromptText, onHostEvent, sessionChangeEvents, setExtensionLabel } from '../shared/host.ts';
 import { announceStatus } from '../shared/status.ts';
-import { readPstackDefault } from '../shared/plugin-settings.ts';
+import { readPstackDefault, saveModeState } from '../shared/plugin-settings.ts';
 import { hostIdOf } from '../shared/host.ts';
 import { ruleDir } from '../shared/utils.ts';
 import type { ExtensionApi, ExtensionCtx, InputEvent, SessionEntry, SystemPromptEvent } from '../shared/types.ts';
@@ -65,6 +65,7 @@ export default function pstackSessionExtension(pi: ExtensionApi): void {
     currentMode = normalized;
     pi.appendEntry?.('pstack-mode', { mode: normalized });
     setSharedComboMode('pstack', normalized);
+    saveModeState(host, getSharedComboState());
     announceStatus(ctx);
     return true;
   }

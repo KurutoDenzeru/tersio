@@ -316,6 +316,26 @@ export async function unwrapCodexHeadroom(): Promise<NativeRouteResult> {
   return result;
 }
 
+/** Claude Code has a durable Headroom init: its own hooks and provider routing in settings.json. */
+export async function routeClaudeHeadroom(proxyUrl: string = headroomProxyUrl()): Promise<NativeRouteResult> {
+  const installed = await headroomCommand(['init', '-g', '--port', String(headroomProxyPort()), 'claude']);
+  if (!installed.ok) return installed;
+  const route = readHeadroomRoute('claude', proxyUrl);
+  return route.routed
+    ? { ok: true, detail: `claude: ${describeHeadroomRoute(route)}` }
+    : { ok: false, detail: `claude: ${describeHeadroomRoute(route)}` };
+}
+
+/** Undo Headroom's Claude setup, but leave the proxy running: the caller stops it when no route is left. */
+export async function unwrapClaudeHeadroom(): Promise<NativeRouteResult> {
+  const result = await headroomCommand(['unwrap', 'claude', '--no-stop-proxy']);
+  if (!result.ok) return result;
+  const route = readHeadroomRoute('claude');
+  return route.routed
+    ? { ok: false, detail: `claude: ${describeHeadroomRoute(route)}` }
+    : { ok: true, detail: 'claude: Headroom routing removed' };
+}
+
 export function isNativeRouteHost(host: string): host is NativeRouteHost {
   return (NATIVE_ROUTE_HOSTS as ReadonlyArray<string>).includes(host);
 }
@@ -638,15 +658,18 @@ export function installNativeRoute(host: NativeRouteHost, proxyUrl: string = hea
   // A route only makes sense when the proxy names the provider it replaces for this protocol.
   for (const target of targets) {
     if (target.model || target.skipUpstream) continue;
+    const anthropic = /anthropic/i.test(target.api);
+    // A host with no endpoint of its own still has a public default the proxy must name.
+    const expected = target.original || (anthropic ? 'https://api.anthropic.com' : '');
     const upstream = headroomProxyUpstream(target.api);
     if (!upstream) {
-      const flag = /anthropic/i.test(target.api) ? '--anthropic-api-url' : '--openai-api-url';
+      const flag = anthropic ? '--anthropic-api-url' : '--openai-api-url';
       return {
         ok: false,
-        detail: `${host}: Headroom names no upstream for ${target.api || 'OpenAI'} traffic. Start it with ${flag} ${target.original} first.`,
+        detail: `${host}: Headroom names no upstream for ${target.api || 'OpenAI'} traffic. Start it with ${flag} ${expected} first.`,
       };
     }
-    if (!sameUpstream(upstream, target.original)) {
+    if (expected && !sameUpstream(upstream, expected)) {
       // One proxy forwards to one upstream; moving it for this agent would strand the others.
       const others = headroomRoutedHosts(host);
       const already =
@@ -655,7 +678,7 @@ export function installNativeRoute(host: NativeRouteHost, proxyUrl: string = hea
           : '';
       return {
         ok: false,
-        detail: `${host}: ${target.original} is not Headroom's upstream (${upstream}).${already} Start Headroom with ${target.original} first.`,
+        detail: `${host}: ${expected} is not Headroom's upstream (${upstream}).${already} Start Headroom with ${expected} first.`,
       };
     }
   }
@@ -725,6 +748,7 @@ export function headroomRoutedHosts(except?: string): string[] {
 export async function routeHostOn(host: string, proxyUrl: string = headroomProxyUrl()): Promise<NativeRouteResult> {
   const port = headroomProxyPort();
   if (host === 'codex') return routeCodexHeadroom(proxyUrl);
+  if (host === 'claude') return routeClaudeHeadroom(proxyUrl);
   // A provider the host keeps in its own catalog needs a block before the endpoint can move.
   const ensured = ensureAgentProviderRoute(host, port);
   if (!ensured.ok) return { ok: false, detail: ensured.detail };
@@ -743,6 +767,7 @@ export async function routeHostOn(host: string, proxyUrl: string = headroomProxy
 /** Put back every endpoint `routeHostOn` replaced, including the gateway line omp needs. */
 export async function routeHostOff(host: string): Promise<NativeRouteResult> {
   if (host === 'codex') return unwrapCodexHeadroom();
+  if (host === 'claude') return unwrapClaudeHeadroom();
   if (isNativeRouteHost(host)) return removeNativeRoute(host);
   if (hostCap(host)?.headroomGateway) {
     return restoreOmpGateway(headroomProxyPort())
@@ -765,6 +790,7 @@ export async function repairHeadroomRoute(
   if (!route.measured) return { ok: false, detail: describeHeadroomRoute(route) };
   if (route.routed) return { ok: true, detail: `${host} already reaches Headroom` };
   if (host === 'codex') return routeCodexHeadroom(proxyUrl);
+  if (host === 'claude') return routeClaudeHeadroom(proxyUrl);
   if (isNativeRouteHost(host)) {
     if (!routeDrifted(host, route)) return { ok: false, detail: describeHeadroomRoute(route) };
     return installNativeRoute(host, proxyUrl);

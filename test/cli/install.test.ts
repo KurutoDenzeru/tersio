@@ -23,6 +23,7 @@ import {
   readPluginSettings,
   readRtkDefault,
   saveComboSetup,
+  saveModeState,
 } from '../../extensions/shared/plugin-settings.ts';
 import { saveHostDefaults, storedProfileSync } from '../../cli/profile.ts';
 import type { HostDefaultField } from '../../cli/profile.ts';
@@ -141,6 +142,28 @@ test("a host's own section wins over the shared defaults, and other hosts keep t
     // An unknown section and a no-scope read never see the layer.
     expect(readComboDefault('opencode')).toBe('lite');
     expect(readComboDefault()).toBe('lite');
+  });
+});
+
+test('saveModeState keeps a session change for the next session', () => {
+  withHome((home) => {
+    writeLock(home, { '@krtclcdy/tersio': { comboDefault: 'lite', cavemanDefault: 'lite', rtkDefault: true } });
+    expect(
+      saveModeState('omp', {
+        level: 'custom',
+        caveman: 'ultra',
+        rtk: 'off',
+        ponytail: 'full',
+        pstack: 'on',
+        headroom: 'off',
+      }),
+    ).toBe(true);
+    expect(readCavemanDefault('omp')).toBe('ultra');
+    expect(readRtkDefault('omp')).toBe(false);
+    expect(readComboDefault('omp')).toBe('lite');
+    // The flat keys move too, so the banner and a host without a section agree.
+    expect(readCavemanDefault('pi')).toBe('ultra');
+    expect(JSON.parse(readFileSync(path.join(home, '.tersio', 'settings.json'), 'utf8')).comboSetupComplete).toBe(true);
   });
 });
 
@@ -359,14 +382,15 @@ test('installer rejects a pstack level it does not have', () => {
 test('update rejects an unknown host before doing anything', () => {
   const home = mkdtempSync(path.join(os.tmpdir(), 'tersio-update-host-'));
   try {
-    const result = spawnSync(process.execPath, [installer, 'update', '--host', 'claude', '--yes'], {
+    // Not claude: that is a real host now, so the test names one that never will be.
+    const result = spawnSync(process.execPath, [installer, 'update', '--host', 'nonsense', '--yes'], {
       cwd: root,
       encoding: 'utf8',
       timeout: 15000,
       env: cliEnv(home),
     });
     expect(result.status).toBe(1);
-    expect(result.stderr).toMatch(/Invalid --host: claude/);
+    expect(result.stderr).toMatch(/Invalid --host: nonsense/);
   } finally {
     rmTree(home);
   }

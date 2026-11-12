@@ -11,6 +11,7 @@ Tersio installs into an agent host. Pick the row for the host you use.
 | [Pi-in-go (PiG)](https://pi-in-go.dev) | `tersio install --host pig` | `tersio update --host pig` | `tersio uninstall --host pig` |
 | [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) | `tersio install --host dsh` | `tersio update --host dsh` | `tersio uninstall --host dsh` |
 | [Codex](https://github.com/openai/codex) | `tersio install --host codex` | `tersio update --host codex` | `tersio uninstall --host codex` |
+| [Claude Code](https://code.claude.com) | `tersio install --host claude` | `tersio update --host claude` | `tersio uninstall --host claude` |
 
 The default one-liner installs the CLI and runs the setup menus (scope + Combo preset) in the same pass:
 
@@ -81,9 +82,37 @@ This route installs the plugin, its seven skills, and the MCP server. It install
 
 Codex does not wire RTK yet. Headroom is wired by `tersio install`, which runs `headroom init codex` for you.
 
+**Claude Code**
+
+Run these two lines inside Claude Code:
+
+```text
+/plugin marketplace add KurutoDenzeru/tersio
+/plugin install tersio@tersio
+```
+
+The same two steps as commands, for a script:
+
+```bash
+claude plugin marketplace add KurutoDenzeru/tersio
+claude plugin install tersio@tersio --scope user
+```
+
+Claude Code reads `.claude-plugin/marketplace.json` at the repo root. The plugin it installs is `./plugins/claude`.
+
+How it works: the plugin lives inside Claude Code. It draws one line above your prompt with the modes that are on, and it draws nothing when every mode is off. On each prompt it adds the rules for the active Caveman, Ponytail, and pstack modes. Pstack carries its playbooks, skills, principles, and references beside the plugin, so every file the rule names can be opened. The plugin also bundles Tersio's MCP server, so Claude Code gets the same stats and Headroom recovery tools as the other hosts.
+
+Nine slash commands set the modes inside the session: `/tersio:combo`, `/tersio:caveman`, `/tersio:ponytail`, `/tersio:pstack`, `/tersio:rtk`, `/tersio:headroom`, `/tersio:update`, `/tersio:help`, and `/tersio` for the current line. Each one carries `allowed-tools` for its own CLI call, so a mode change needs no second approval. Say `normal mode` to turn the style modes off.
+
+The line draws in the terminal, in the Code tab of the Desktop app, and in the VS Code extension (2.1.299+). `claude -p` runs the commands and draws nothing, so use `/tersio` there.
+
+This route does not connect RTK or route Headroom. Run `tersio install --host claude` for both. That route writes its own local copy at `~/.claude/tersio-marketplace`, so it fetches nothing from the network. `/tersio:rtk off` removes the RTK hook that route adds.
+
+Update with `claude plugin marketplace update tersio`, then reinstall from `/plugin`.
+
 ## Requirements
 
-- OMP, pi, OpenCode, PiG, DeepSeek Harness, or Codex.
+- OMP, pi, OpenCode, PiG, DeepSeek Harness, Codex, or Claude Code.
 - Node.js 20.12+ with npm, or Bun. The installer prefers Bun when it is present.
 - SQLite runs in process where the runtime provides it (Bun, or Node 22.5+); an older Node uses the `sqlite3` binary instead.
 - macOS, Linux, or Windows. Install from the environment where the host runs.

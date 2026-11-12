@@ -11,6 +11,7 @@ export type EdgeKey =
   | "opencode"
   | "dsh"
   | "codex"
+  | "claude"
   | "combo"
   | "headroom"
   | "caveman"
@@ -308,6 +309,8 @@ export function versionOf(raw: string | null | undefined): string | null {
   const version = tail
     .replace(/^[a-z][a-z-]*\s+/i, "")
     .replace(/^v(?=\d)/i, "")
+    // Claude prints `<version> (Claude Code)`; the badge keeps the bare version.
+    .replace(/\s*\([^)]*\)$/, "")
     .trim()
   return version || null
 }
@@ -326,6 +329,7 @@ export const HOSTS = [
   { id: "opencode", label: "OpenCode" },
   { id: "dsh", label: "DeepSeek Harness" },
   { id: "codex", label: "Codex" },
+  { id: "claude", label: "Claude Code" },
 ] as const
 
 const HOST_FIELDS: Record<
@@ -581,6 +585,8 @@ export const ABOUT: Partial<Record<NodeId, string>> = {
   "host-opencode": "OpenCode loads the tree as one plugin, registered in opencode.json.",
   "host-dsh": "DeepSeek Harness loads Tersio as a bundle plugin mounted into its web profile.",
   "host-codex": "Codex loads Tersio's portable plugin, with MCP data and an always-on mode hook.",
+  "host-claude":
+    "Claude Code loads Tersio's portable plugin, with slash commands and an always-on mode hook.",
   caveman: "Voice. Terse replies; code, commands, paths, and errors stay exact.",
   pstack: "Approach. Picks the playbook, the checks, and the design.",
   headroom: "Compresses tool outputs and history below the shell; Tersio tracks the savings.",
@@ -632,8 +638,8 @@ export function edgeLit(key: EdgeKey, modes: ModeState | null, hostState: HostSt
     const installed = hostState.installed.dsh
     return installed === undefined ? null : installed
   }
-  if (key === "codex") {
-    const installed = hostState.installed.codex
+  if (key === "codex" || key === "claude") {
+    const installed = hostState.installed[key]
     return installed === undefined ? null : installed
   }
   if (!modes) return null
@@ -692,7 +698,7 @@ export function nodeOff(id: NodeId, modes: ModeState | null, hostState: HostStat
 /** What the node's control reads right now, in the scope the dialog writes to. */
 export function nodeValue(
   id: NodeId,
-  scope: "all" | "omp" | "pi" | "pig" | "opencode" | "dsh" | "codex",
+  scope: "all" | "omp" | "pi" | "pig" | "opencode" | "dsh" | "codex" | "claude",
   modes: ModeState | null,
 ): string | null {
   if (!modes) return null

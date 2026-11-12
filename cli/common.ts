@@ -137,7 +137,7 @@ const dashboardBind = args.includes('--local')
   : args.includes('--lan')
     ? 'lan'
     : (flagValue('--bind') ??
-      (hostArg && !['omp', 'pi', 'pig', 'opencode', 'dsh', 'codex'].includes(hostArg) ? hostArg : null));
+      (hostArg && !['omp', 'pi', 'pig', 'opencode', 'dsh', 'codex', 'claude'].includes(hostArg) ? hostArg : null));
 const dashboardOpen = args.includes('--open');
 // Watch mode: the server supervises a child that restarts on source change, and vite rebuilds the UI.
 const dashboardWatch = args.includes('--watch');

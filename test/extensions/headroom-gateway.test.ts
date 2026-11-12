@@ -59,6 +59,27 @@ function writeOmp(home: string, models: string, config?: string): string {
   return file;
 }
 
+test('an Anthropic provider moves to the proxy root', () => {
+  withHome((home) => {
+    const file = writeOmp(
+      home,
+      'providers:\n  anthropic:\n    baseUrl: http://127.0.0.1:3425\n',
+      'modelRoles:\n  default: anthropic/claude-haiku-5-5\n',
+    );
+    const gateway = readOmpGateway(8787);
+    expect(gateway).toEqual({
+      provider: 'anthropic',
+      baseUrl: 'http://127.0.0.1:3425',
+      model: 'anthropic/claude-haiku-5-5',
+    });
+    expect(gateway && routeOmpGateway(gateway, 8787)).toBe(true);
+    const routed = readFileSync(file, 'utf8');
+    expect(routed).toContain('baseUrl: http://127.0.0.1:8787\n');
+    expect(routed).not.toContain('baseUrl: http://127.0.0.1:8787/v1');
+    expect(restoreOmpGateway(8787)).toBe(true);
+  });
+});
+
 test('the local OpenAI gateway is found and routed through Headroom', () => {
   withHome((home) => {
     const file = writeOmp(home, MODELS);

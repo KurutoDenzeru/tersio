@@ -84,7 +84,7 @@ export function PigLogo({ className = "size-full" }: { className?: string }) {
 export function AgentLogo({ host, className }: { host?: string; className?: string }) {
   if (host === "omp") return <OmpLogo className={className} />
   // Claude's own terracotta, not the theme ink: the brand color is the whole point of the mark.
-  if (host === "claude-code")
+  if (host === "claude" || host === "claude-code")
     return <MarkGlyph slug="claudecode" className={className ?? "size-full"} color="#d97757" />
   if (host === "codex") return <CodexLogo className={className} />
   if (host === "opencode") return <OpencodeLogo className={className} />

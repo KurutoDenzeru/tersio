@@ -1,11 +1,19 @@
 // cli/hosts.ts — agent hosts Tersio installs into, and what is on disk. One detector shared by doctor and menus.
+import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { HOME, OMP_PLUGINS_DIR, PACKAGE_NAME, PACKAGE_VERSION } from './common.ts';
 import { treeFilesFor } from './manifest.ts';
-import { piAgentDir, pigAgentDir, resolveHostBinary } from '../extensions/shared/utils.ts';
+import {
+  piAgentDir,
+  pigAgentDir,
+  resolveCodexBinary,
+  resolveHostBinary,
+  shimCommand,
+} from '../extensions/shared/utils.ts';
 import { HOST_CAPS } from '../extensions/shared/host-caps.ts';
 import { codexHome, installedCodexPlugin } from '../extensions/shared/codex-state.ts';
+import { claudeHome, installedClaudePlugin } from '../extensions/shared/claude-state.ts';
 import type { HostId } from '../extensions/shared/host-caps.ts';
 
 export interface HostEntry {
@@ -32,13 +40,14 @@ export function hostExtensionsDir(id: HostId, agentDir = id === 'pig' ? pigAgent
   if (id === 'opencode') return path.join(HOME, '.config', 'opencode', 'plugins', 'tersio');
   if (id === 'codex')
     return installedCodexPlugin().dir ?? path.join(codexHome(), 'plugins', 'cache', 'tersio', 'tersio');
+  if (id === 'claude') return installedClaudePlugin().dir ?? path.join(claudeHome(), 'tersio-marketplace', 'tersio');
   // DeepSeek Harness mounts the whole tersio package as a bundle, so its tree base is the mounted package's extensions dir.
   if (id === 'dsh') return path.join(dshPackageDir(), 'extensions');
   return path.join(agentDir, 'extensions');
 }
 
 function missingTreeFiles(
-  id: Exclude<HostId, 'codex'>,
+  id: Exclude<HostId, 'codex' | 'claude'>,
   agentDir = id === 'pig' ? pigAgentDir() : piAgentDir(),
 ): string[] {
   const dir = hostExtensionsDir(id, agentDir);
@@ -107,6 +116,34 @@ export function dshPresent(): boolean {
     return existsSync(path.join(local, 'Programs', 'dsh-desktop'));
   }
   return false;
+}
+
+/** The bare version a host binary prints; `omp/18.12.6` and `codex-cli 0.167.0` both resolve. */
+function agentVersionOf(raw: string): string | null {
+  const line = raw.trim().split(/\r?\n/)[0]?.trim() ?? '';
+  if (!line) return null;
+  return line.match(/\d+\.\d+(?:\.\d+)?(?:[-+][0-9A-Za-z.-]+)?/)?.[0] ?? line;
+}
+
+/** Whether the agent itself is on this machine, and the version its own binary reports. */
+export function hostAgentInfo(id: HostId): { present: boolean; version: string | null } {
+  const bin =
+    id === 'dsh'
+      ? dshVersionBinary()
+      : id === 'codex'
+        ? resolveCodexBinary()
+        : id === 'opencode'
+          ? resolveHostBinary('opencode', path.join(HOME, '.opencode', 'bin'))
+          : resolveHostBinary(HOST_CAPS[id].bin);
+  const present = id === 'dsh' ? dshPresent() : bin !== null;
+  if (!bin) return { present, version: null };
+  try {
+    const shim = shimCommand(bin, ['--version']);
+    const out = execFileSync(shim.cmd, shim.args, { encoding: 'utf8', timeout: 5000, windowsHide: true });
+    return { present, version: agentVersionOf(out) };
+  } catch {
+    return { present, version: null };
+  }
 }
 
 /** The web profile's mounted bundle list, from its own package manifest. */
@@ -338,10 +375,13 @@ function detect(agentDir = piAgentDir(), pigDir = pigAgentDir()): HostEntry[] {
     const currentAgentDir = host.id === 'pig' ? pigDir : agentDir;
     const tree = hostExtensionsDir(host.id, currentAgentDir);
     const codex = host.id === 'codex' ? installedCodexPlugin() : null;
+    const claude = host.id === 'claude' ? installedClaudePlugin() : null;
     // A tree wins: the installer writes it and it carries no package.json, so its version is ours. OpenCode keeps no package to fall back to, so a present tree is the install and drift gets the per-host warning. DeepSeek Harness has no tree: the tersio package is mounted as a dsh bundle, and the mounted package dir is the install.
     let via: HostEntry['via'] = null;
     if (host.id === 'codex') {
       if (codex?.complete && codex.enabled) via = 'plugin';
+    } else if (host.id === 'claude') {
+      if (claude?.complete && claude.enabled) via = 'plugin';
     } else if (host.id === 'dsh') {
       if (pkgDir && existsSync(pkgDir)) via = 'package';
     } else if (
@@ -386,9 +426,16 @@ function detect(agentDir = piAgentDir(), pigDir = pigAgentDir()): HostEntry[] {
           : via === 'package' && pkgDir
             ? packageVersion(pkgDir)
             : via === 'plugin'
-              ? (codex?.version ?? null)
+              ? (codex?.version ?? claude?.version ?? null)
               : null,
-      dir: via === 'tree' ? tree : via === 'package' ? pkgDir : via === 'plugin' ? (codex?.dir ?? null) : null,
+      dir:
+        via === 'tree'
+          ? tree
+          : via === 'package'
+            ? pkgDir
+            : via === 'plugin'
+              ? (codex?.dir ?? claude?.dir ?? null)
+              : null,
     };
   });
 }
@@ -420,16 +467,10 @@ export function parseHostArg(argv: string[]): HostId | undefined {
     (i === -1 ? undefined : argv[i + 1]) ?? argv.find((a) => a.startsWith('--host='))?.slice('--host='.length);
   if (raw === undefined) return undefined;
   const value = raw.trim().toLowerCase();
-  if (
-    value !== 'omp' &&
-    value !== 'pi' &&
-    value !== 'opencode' &&
-    value !== 'pig' &&
-    value !== 'dsh' &&
-    value !== 'codex'
-  )
-    throw new Error(`Invalid --host: ${raw}. Valid: omp, pi, opencode, pig, dsh, codex`);
-  return value;
+  // One list to keep current: a host added to HOST_CAPS is accepted here without a second edit.
+  const known = Object.keys(HOST_CAPS);
+  if (!known.includes(value)) throw new Error(`Invalid --host: ${raw}. Valid: ${known.join(', ')}`);
+  return value as HostId;
 }
 
 export { HOME, detect as detectHosts };

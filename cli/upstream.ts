@@ -11,6 +11,7 @@ import { checkBinarySource } from './upstream-binaries.ts';
 import { readState } from '../extensions/shared/state.ts';
 import { detectHosts, hostExtensionsDir } from './hosts.ts';
 import { CODEX_PLUGIN_FILES, codexPackagedPluginDir } from '../extensions/shared/codex-plugin.ts';
+import { CLAUDE_PLUGIN_FILES, claudePackagedPluginDir } from '../extensions/shared/claude-state.ts';
 import { cacheDelete, cacheGet, cacheKeys, cachePut, cacheStamp } from '../extensions/shared/cache-store.ts';
 import { readRetentionDays } from '../extensions/shared/plugin-settings.ts';
 import {
@@ -1098,6 +1099,48 @@ async function checkHosts(): Promise<HostRow[]> {
         const theirs = await readTextIfExists(path.join(host.dir, ...rel.split('/')));
         if (theirs === null) missingFiles.push(rel);
         else if (theirs === expected || codexRuntimeFileMatches(rel, expected, theirs)) matched++;
+        else staleFiles.push(rel);
+      }
+      rows.push({
+        host: host.id,
+        installed: true,
+        files: matched + staleFiles.length + missingFiles.length,
+        matched,
+        stale: staleFiles.length,
+        missing: missingFiles.length,
+        staleFiles: staleFiles.toSorted(),
+        missingFiles: missingFiles.toSorted(),
+        unloaded: [],
+        fix: hostFix(host.id, host.version),
+      });
+      continue;
+    }
+    // Claude Code is a plugin host too: its files live in the plugin bundle, not an extension tree.
+    if (host.id === 'claude') {
+      if (!host.installed || !host.dir) {
+        rows.push({
+          host: host.id,
+          installed: false,
+          files: CLAUDE_PLUGIN_FILES.length,
+          matched: 0,
+          stale: 0,
+          missing: 0,
+          staleFiles: [],
+          missingFiles: [],
+          unloaded: [],
+          fix: '',
+        });
+        continue;
+      }
+      let matched = 0;
+      const staleFiles: string[] = [];
+      const missingFiles: string[] = [];
+      for (const rel of CLAUDE_PLUGIN_FILES) {
+        const expected = await readTextIfExists(path.join(claudePackagedPluginDir(), ...rel.split('/')));
+        if (expected === null) continue;
+        const theirs = await readTextIfExists(path.join(host.dir, ...rel.split('/')));
+        if (theirs === null) missingFiles.push(rel);
+        else if (theirs === expected) matched++;
         else staleFiles.push(rel);
       }
       rows.push({

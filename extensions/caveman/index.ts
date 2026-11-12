@@ -16,7 +16,7 @@ import {
 import { dirname, join } from 'node:path';
 import { injectPromptText, onHostEvent, sessionChangeEvents, setExtensionLabel } from '../shared/host.ts';
 import { announceStatus, formatCavemanStatus } from '../shared/status.ts';
-import { readCavemanDefault } from '../shared/plugin-settings.ts';
+import { readCavemanDefault, saveModeState } from '../shared/plugin-settings.ts';
 import { hostIdOf } from '../shared/host.ts';
 import { ruleDir } from '../shared/utils.ts';
 import type { ExtensionApi, ExtensionCtx, InputEvent, SessionEntry, SystemPromptEvent } from '../shared/types.ts';
@@ -73,6 +73,7 @@ export default function cavemanSessionExtension(pi: ExtensionApi): void {
     currentMode = normalized;
     pi.appendEntry?.('caveman-mode', { mode: normalized });
     setSharedComboMode('caveman', normalized);
+    saveModeState(host, getSharedComboState());
     announceStatus(ctx);
     return true;
   }

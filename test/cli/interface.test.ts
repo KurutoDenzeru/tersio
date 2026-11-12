@@ -558,9 +558,10 @@ test('install --host opencode bundles the ponytail ruleset beside the tree', () 
 test('install rejects an unknown host', () => {
   const home = tempHome();
   try {
-    const result = run(home, ['install', '--host', 'claude']);
+    // Not claude: that is a real host now, so the test names one that never will be.
+    const result = run(home, ['install', '--host', 'nonsense']);
     expect(result.status).toBe(1);
-    expect(result.stderr).toMatch(/Invalid --host: claude/);
+    expect(result.stderr).toMatch(/Invalid --host: nonsense/);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }
@@ -909,7 +910,7 @@ describe.skipIf(!havePyte)('menu layout', () => {
     ).toBe(false);
   }, 20000);
 
-  // The welcome prints before the update prompt and the spinner sits above it: on a 20-row screen the tips used to scroll off. The menu waits behind the prompt, so the tips are what must fit.
+  // The welcome prints before the update prompt; on a 20-row screen the tips used to scroll off.
   test('an available update does not scroll the tips off a 20-row screen', () => {
     const lines = screenAtUpdate(20);
     expect(

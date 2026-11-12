@@ -17,6 +17,7 @@ import { sqliteRead } from './sqlite.ts';
 import { patchState, readState, takeLegacy } from './state.ts';
 import { codexModelIdentity, looksLikeCodexTranscript, parseCodexTranscript } from './codex-transcript.ts';
 import { codexHome } from './codex-state.ts';
+import { claudeHome } from './claude-state.ts';
 
 export type UsageKind = 'command' | 'toggle' | 'install' | 'update' | 'rtk-audit';
 
@@ -237,6 +238,8 @@ export function sessionsDirs(): string[] {
         ];
   // Codex writes rollout JSONL under its own home; `CODEX_HOME` may relocate that tree.
   dirs.push(path.join(codexHome(), 'sessions'));
+  // Claude Code writes one JSONL per session under a per-project slug; CLAUDE_CONFIG_DIR may relocate it.
+  dirs.push(path.join(claudeHome(), 'projects'));
   const found = dirs.filter((dir) => fs.existsSync(dir));
   return found.length > 0 ? found : [dirs[0]];
 }
@@ -655,6 +658,16 @@ export function collectToolResults(text: string): ToolResults {
 export interface SessionLineRow {
   timestamp?: string | number;
   type?: unknown;
+  /** Claude Code names each turn; the drawer shows it as the entry id. */
+  uuid?: unknown;
+  /** Claude Code writes a request row before the response; this pairs the two for a duration. */
+  requestRef?: unknown;
+  /** The gateway alias Claude Code asked for, when the served model id cannot name it. */
+  requestedModel?: unknown;
+  /** A host row's own id: a Claude request id, a pi message id, or an OpenAI response id. */
+  id?: unknown;
+  /** Claude Code states how long it thought before the first token. */
+  thinkingDurationMs?: unknown;
   message?: {
     role?: unknown;
     model?: unknown;
@@ -663,6 +676,8 @@ export interface SessionLineRow {
     duration?: unknown;
     ttft?: unknown;
     completedAt?: unknown;
+    /** Claude Code puts the turn id on the row and the response id on the message. */
+    id?: unknown;
     timestamp?: unknown;
     stopReason?: unknown;
     errorStatus?: unknown;
@@ -713,7 +728,23 @@ export interface DshParseState {
   steps: Map<string, number>;
 }
 
-export function classifySessionLine(row: SessionLineRow, results?: ToolResults, dsh?: DshParseState): SessionLine {
+/** What a Claude Code transcript reveals before the response: each API request's start time. */
+export interface ClaudeParseState {
+  requests: Map<string, number>;
+}
+
+export function classifySessionLine(
+  row: SessionLineRow,
+  results?: ToolResults,
+  dsh?: DshParseState,
+  claude?: ClaudeParseState,
+): SessionLine {
+  // Claude Code logs the request before its response; the pair is the only duration the transcript carries.
+  if (row.type === 'api-request' && claude && typeof row.id === 'string') {
+    const start = stampMs(row.timestamp);
+    if (start !== undefined) claude.requests.set(row.id, start);
+    return { kind: 'skip' };
+  }
   // DeepSeek Harness states the model once on `model/selection`, and again on each request header.
   if (row.type === 'model/selection' && row.data && typeof row.data.model === 'string' && row.data.model) {
     if (dsh) dsh.model = row.data.model;
@@ -815,6 +846,10 @@ export function classifySessionLine(row: SessionLineRow, results?: ToolResults, 
   const startMs = typeof msg.timestamp === 'number' ? msg.timestamp : undefined;
   const endMs = typeof msg.completedAt === 'number' ? msg.completedAt : stampMs(row.timestamp);
   const computedDur = startMs !== undefined && Number.isFinite(endMs) && endMs > startMs ? endMs - startMs : undefined;
+  // Claude pairs the response row with its request row, so the gap is the request's wall time.
+  const requestStart = typeof row.requestRef === 'string' && claude ? claude.requests.get(row.requestRef) : undefined;
+  const requestDur =
+    requestStart !== undefined && Number.isFinite(endMs) && endMs > requestStart ? endMs - requestStart : undefined;
   const tools: string[] = [];
   const toolFacts: ToolFact[] = [];
   for (const part of msg.content ?? []) {
@@ -828,17 +863,58 @@ export function classifySessionLine(row: SessionLineRow, results?: ToolResults, 
     toolFacts.push({ n: name, a: jsonChars(part.arguments), r: result?.chars ?? 0, e: result?.error ? 1 : 0 });
   }
   // The gateway that served the turn: `commandcode` for `deepseek/...`, which the model id cannot show.
-  const provider = typeof msg.provider === 'string' && msg.provider ? msg.provider : undefined;
+  const provider =
+    typeof msg.provider === 'string' && msg.provider
+      ? msg.provider
+      : row.type === 'assistant'
+        ? claudeProviderOf(row.requestedModel, model)
+        : undefined;
   return {
     kind: 'assistant_row',
     model,
     provider,
-    usage: msg.usage,
-    durMs: typeof msg.duration === 'number' ? msg.duration : computedDur,
-    ttftMs: typeof msg.ttft === 'number' ? msg.ttft : undefined,
+    usage: normaliseUsage(msg.usage),
+    durMs: typeof msg.duration === 'number' ? msg.duration : (computedDur ?? requestDur),
+    // Claude records how long it thought before the first token; every other host states ttft directly.
+    ttftMs:
+      typeof msg.ttft === 'number'
+        ? msg.ttft
+        : typeof row.thinkingDurationMs === 'number'
+          ? row.thinkingDurationMs
+          : undefined,
     run: statusOf(msg),
     tools,
     toolFacts,
+    // Claude names the turn on the row and the response on the message; either is a stable entry id.
+    id: typeof row.uuid === 'string' && row.uuid ? row.uuid : typeof msg.id === 'string' && msg.id ? msg.id : undefined,
+  };
+}
+/**
+ * Claude Code's request alias can name the gateway that served it; a native Claude id names Anthropic.
+ * `mythos-magpie-2429134043` is the magpie route of a minimax model, so the alias is the only hint.
+ */
+const CLAUDE_GATEWAYS = ['magpie', 'commandcode', 'openrouter', 'kilo', 'gmicloud', 'charmhyper'];
+function claudeProviderOf(requested: unknown, model: string): string | undefined {
+  const alias = typeof requested === 'string' ? requested.toLowerCase() : '';
+  const gateway = CLAUDE_GATEWAYS.find((id) => alias.includes(id));
+  if (gateway) return gateway;
+  // A native Claude id on either side means the request went to Anthropic, not through a gateway.
+  return /^claude[-_]/i.test(model) || /^claude[-_]/i.test(alias) ? 'anthropic' : undefined;
+}
+
+/**
+ * Claude Code writes usage as input_tokens/cache_read_input_tokens. Every other host uses the short
+ * names the accumulator reads, so a Claude row is translated at the parse boundary instead of teaching
+ * the accumulator a second vocabulary.
+ */
+function normaliseUsage(usage: Record<string, unknown>): Record<string, unknown> {
+  const hasClaudeKeys = 'input_tokens' in usage || 'output_tokens' in usage || 'cache_read_input_tokens' in usage;
+  if (!hasClaudeKeys) return usage;
+  return {
+    input: usage['input_tokens'],
+    output: usage['output_tokens'],
+    cacheRead: usage['cache_read_input_tokens'],
+    cacheWrite: usage['cache_creation_input_tokens'],
   };
 }
 // True when at least one token bucket holds a positive finite count.
@@ -1138,6 +1214,7 @@ export function hostOfSessionFile(file: string): string {
   if (norm.includes('/.dsh/')) return 'dsh';
   if (norm.includes('/.omp/')) return 'omp';
   if (norm.includes('/.codex/') || norm.startsWith(codexRoot)) return 'codex';
+  if (norm.includes('/.claude/projects/')) return 'claude';
   if (norm.includes('/opencode/')) return 'opencode';
   return 'pi';
 }
@@ -1400,11 +1477,12 @@ export function processSessionText(
   const results = collectToolResults(text);
   // Per file: a transcript's model and step starts must not leak into the next file.
   const dsh: DshParseState = { steps: new Map() };
+  const claude: ClaudeParseState = { requests: new Map() };
   for (const line of text.split('\n')) {
     if (!line.trim()) continue;
     try {
       const row = JSON.parse(line) as SessionLineRow;
-      const parsed = classifySessionLine(row, results, dsh);
+      const parsed = classifySessionLine(row, results, dsh, claude);
       const rid = parsed.id ?? messageRowId(row);
       if (parsed.kind === 'codex_provider') {
         if (parsed.provider) state.codexProvider = parsed.provider;

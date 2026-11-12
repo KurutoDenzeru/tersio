@@ -1,4 +1,4 @@
-import { expect, test } from 'vitest';
+import { afterAll, afterEach, expect, test } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
@@ -22,10 +22,13 @@ import { readCavemanDefault } from '../../extensions/shared/plugin-settings.ts';
 import { ruleBodyProblem, ruleDir } from '../../extensions/shared/utils.ts';
 import { cliEnv, withHome } from '../helpers/env.ts';
 
-// fileURLToPath, not `.pathname`: a URL pathname on Windows is `/D:/...`, which path.join doubles into `D:\D:\...`.
-process.env.HOME = fileURLToPath(new URL('../definitely-missing-home/modes', import.meta.url));
-process.env.USERPROFILE = process.env.HOME;
-process.env.TERSIO_HOME = process.env.HOME;
+// A fresh home per run: mode setters persist defaults, so a shared fixture would leak one test into the next.
+const TEST_HOME = mkdtempSync(path.join(os.tmpdir(), 'tersio-modes-'));
+process.env.HOME = TEST_HOME;
+process.env.USERPROFILE = TEST_HOME;
+process.env.TERSIO_HOME = TEST_HOME;
+afterEach(() => rmSync(path.join(TEST_HOME, 'settings.json'), { force: true }));
+afterAll(() => rmSync(TEST_HOME, { recursive: true, force: true }));
 
 type CommandHandler = (args: string, ctx: TestCtx) => Promise<void>;
 type EventHandler = (event: unknown, ctx: TestCtx | undefined) => Promise<unknown>;
@@ -932,14 +935,18 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const installer = path.join(root, 'dist', 'tersio.js');
 
 function run(...args: string[]) {
-  const missingHome = path.join(root, 'test', 'definitely-missing-home', 'modes');
-  const result = spawnSync(process.execPath, [installer, ...args], {
-    cwd: root,
-    encoding: 'utf8',
-    timeout: 15000,
-    env: cliEnv(missingHome),
-  });
-  return { status: result.status, stdout: result.stdout || '', stderr: result.stderr || '' };
+  const missingHome = mkdtempSync(path.join(os.tmpdir(), 'tersio-modes-install-'));
+  try {
+    const result = spawnSync(process.execPath, [installer, ...args], {
+      cwd: root,
+      encoding: 'utf8',
+      timeout: 15000,
+      env: { ...cliEnv(missingHome), TERSIO_HOME: path.join(missingHome, '.tersio') },
+    });
+    return { status: result.status, stdout: result.stdout || '', stderr: result.stderr || '' };
+  } finally {
+    rmSync(missingHome, { recursive: true, force: true });
+  }
 }
 
 test('combo preset implies caveman, rtk, and ponytail defaults, and leaves pstack off', () => {

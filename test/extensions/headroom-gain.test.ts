@@ -7,6 +7,7 @@ import {
   parseHeadroomSavings,
   parseHeadroomStats,
   readHeadroomSavings,
+  readHeadroomSavingsAsync,
   readHeadroomStats,
   resetHeadroomGainMemo,
 } from '../../extensions/shared/headroom-gain.ts';
@@ -115,6 +116,15 @@ test('a fake headroom binary answers through its own CLI', () => {
   expect(gain.byClient[0].client).toBe('claude-code');
 });
 
+test('the async probe parses the same ledger without blocking', async () => {
+  resetHeadroomGainMemo();
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'tersio-headroom-gain-async-'));
+  const bin = fakeExecutable(dir, 'headroom', `echo '${FIXTURE}'`, `echo ${FIXTURE}`);
+  const gain = await readHeadroomSavingsAsync({ binary: bin });
+  expect(gain.measured).toBe(true);
+  expect(gain.lifetime.calls).toBe(12);
+});
+
 test('a failing or missing binary reads unmeasured, never zero-as-data', () => {
   resetHeadroomGainMemo();
   const dir = mkdtempSync(path.join(os.tmpdir(), 'tersio-headroom-gain-fail-'));
@@ -154,7 +164,7 @@ test('the memo serves the same gain until a test resets it', () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), 'tersio-headroom-gain-memo-'));
   const bin = fakeExecutable(dir, 'headroom', `echo '${FIXTURE}'`, `echo ${FIXTURE}`);
   const first = readHeadroomSavings({ binary: bin });
-  // A different binary would answer differently, but the 5s memo holds the first read.
+  // A different binary would answer differently, but the memo holds the first read.
   const second = readHeadroomSavings({ binary: '/definitely-other-headroom' });
   expect(second).toBe(first);
   resetHeadroomGainMemo();

@@ -15,8 +15,9 @@ import { Bar, BarChart, XAxis, YAxis } from "recharts"
 import { TooltipSurface } from "@/components/ui/tooltip-surface"
 import { Badge } from "@/components/ui/badge"
 import { ProviderMark, VendorMark } from "@/components/brand"
+import { AgentLogo } from "@/components/agent-logos"
 import { Icon } from "./icon"
-import { displayModel, errorRateTone, pct } from "@/lib/format"
+import { displayModel, errorRateTone, hostName, pct, vendorOf } from "@/lib/format"
 
 /** One chip for an error rate: severity in the chip, figure in ink, so a tinted number never drops under AA. */
 const ERROR_CHIP = {
@@ -87,6 +88,8 @@ export function ProviderCell({ provider }: { provider: string }) {
 /** One cell for a model with its provider beneath: the author's mark beside it, the router's mark and name below. */
 export function ModelCell({ model, provider }: { model: string; provider: string }) {
   const name = displayModel(model)
+  // The provider line names the router. When the router is the model's own vendor, it repeats the name above.
+  const ownProvider = provider !== "" && vendorOf(model).slug === provider.toLowerCase()
   return (
     <span className="flex min-w-0 items-center gap-2">
       <VendorMark model={model} tiny />
@@ -94,10 +97,26 @@ export function ModelCell({ model, provider }: { model: string; provider: string
         <span className="mono block truncate" title={`${name}${provider ? ` (${provider})` : ""}`}>
           {name}
         </span>
-        <span className="flex items-center gap-1.5 text-[11px] text-dim">
-          <ProviderMark provider={provider} tiny />
-          <span className="truncate">{provider || "unknown provider"}</span>
-        </span>
+        {ownProvider ? null : (
+          <span className="flex items-center gap-1.5 text-[11px] text-dim">
+            <ProviderMark provider={provider} tiny />
+            <span className="truncate">{provider || "unknown provider"}</span>
+          </span>
+        )}
+      </span>
+    </span>
+  )
+}
+
+/** The harness that produced a row: its own mark and name, the way the drawer names it. */
+export function AgentCell({ host }: { host: string }) {
+  const known = host !== "" && host !== "unknown"
+  const label = hostName(host)
+  return (
+    <span className="flex min-w-0 items-center gap-2">
+      {known && <AgentLogo host={host} className="size-3.5 shrink-0" />}
+      <span className="mono min-w-0 truncate" title={label}>
+        {label}
       </span>
     </span>
   )

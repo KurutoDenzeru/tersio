@@ -5,8 +5,9 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { homeDir, piAgentDir, pigAgentDir } from './utils.ts';
 import { codexPluginInstalled } from './codex-state.ts';
+import { claudeMcpConfigured } from './claude-state.ts';
 
-export type HostId = 'omp' | 'pi' | 'opencode' | 'pig' | 'dsh' | 'codex';
+export type HostId = 'omp' | 'pi' | 'opencode' | 'pig' | 'dsh' | 'codex' | 'claude';
 
 type McpShape = 'mcpServers' | 'mcp' | 'plugin';
 
@@ -145,7 +146,31 @@ export const HOST_CAPS: Record<HostId, HostCap> = {
     headroom: true,
     headroomDurable: true,
   },
+  claude: {
+    id: 'claude',
+    label: 'Claude Code',
+    bin: 'claude',
+    installCmd: 'tersio install --host claude',
+    removeCmd: 'tersio uninstall --host claude',
+    // The MCP entry rides inside the plugin bundle, the way Codex's does.
+    mcp: 'plugin',
+    mcpFile: () => null,
+    mcpBundle: claudeMcpConfigured,
+    // rtk's own Claude hook rewrites Bash tool calls; `rtk init -g --agent claude` binds it.
+    rtkAgent: 'claude',
+    // Headroom's own `init claude` writes the durable hooks and provider routing.
+    headroom: true,
+    headroomDurable: true,
+  },
 };
+
+/**
+ * A plugin host ships its files inside a plugin bundle, so it has no extension tree Tersio writes.
+ * Every tree check skips these; one predicate keeps "is a tree host" from being spelled nineteen ways.
+ */
+export function isPluginHost(id: HostId): id is 'codex' | 'claude' {
+  return id === 'codex' || id === 'claude';
+}
 
 export function hostCap(id: string): HostCap | null {
   return (HOST_CAPS as Record<string, HostCap>)[id] ?? null;

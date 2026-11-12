@@ -38,6 +38,11 @@ Reviewed 2026-10-11. Each entry below is resolved in the repo, so its log entry 
 **Root cause:** `cli/interactive.ts` created its readline interface on `process.stdin` at import time. The node parent imported it before the hand-off, so the parent's reader consumed the piped answer and the bun child saw an empty stdin. The prompt itself was written by the child, which had already been handed an answer it never got.
 **Prevention rule:** a process that may hand its run to another runtime must not open a reader on stdin at import time; open it on first use. A test that pipes stdin covers the hand-off only when bun is installed on the machine running it, so force `TERSIO_RUNTIME=node` once to compare the two paths.
 
+## 2026-11-12 — The Claude native route was documented as the CLI route
+**What happened:** INSTALL.md and README.md listed `tersio install --host claude` as Claude Code's own install command, so the host-native column named no native route. Claude Code has one: `/plugin marketplace add` plus `/plugin install`.
+**Root cause:** the Claude section was written from Tersio's local-marketplace writer only. The Codex section was checked against `codex plugin marketplace add`, and Claude Code was not checked the same way.
+**Prevention rule:** before documenting a host install row, list the host's own plugin subcommands and name the one that ships Tersio. A native route needs a manifest in the repo it points at; `.claude-plugin/marketplace.json` is now tracked, and `test/repo-integrity.test.ts` fails when it or its `package.json` files entry is missing.
+
 ## Format
 
 ```md

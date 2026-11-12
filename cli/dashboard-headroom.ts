@@ -7,6 +7,7 @@ import { headroomHostDurable, headroomProxyUrl } from '../extensions/shared/head
 import { describeHeadroomRoute, readHeadroomRoute } from '../extensions/shared/headroom-routing.ts';
 import { headroomRoutedHosts, routeHostOff, routeHostOn } from '../extensions/shared/headroom-routes.ts';
 import { stopHeadroomRuntime } from '../extensions/shared/headroom-runtime.ts';
+import { readHeadroomReport } from '../extensions/shared/agent-stats.ts';
 import { detectHosts } from './hosts.ts';
 import { codexPresent, resolveHeadroomBinary, resolveHostBinary } from '../extensions/shared/utils.ts';
 
@@ -26,6 +27,11 @@ export async function handleHeadroomRoutes(
 ): Promise<boolean> {
   if (req.url === '/api/headroom/install' && req.method === 'GET') {
     ctx.json(res, 200, { ok: true, present: resolveHeadroomBinary() !== null, ...ctx.headroomInstallState() });
+    return true;
+  }
+  // The Tools page reads this after its ledger rows, so a slow savings CLI never holds the table.
+  if (req.url === '/api/headroom/gain' && req.method === 'GET') {
+    ctx.json(res, 200, { ok: true, headroom: await readHeadroomReport() });
     return true;
   }
   if (req.url === '/api/headroom/install' && req.method === 'POST') {

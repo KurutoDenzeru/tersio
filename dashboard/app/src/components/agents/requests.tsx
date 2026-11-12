@@ -1,6 +1,7 @@
 // Requests: the range in six figures, then the request log with a search and a status filter.
 import { useMemo, useState } from "react"
 import {
+  AgentCell,
   Card,
   ModelCell,
   PagedTable,
@@ -17,6 +18,7 @@ import {
   fmt,
   fmtMs,
   fmtShort,
+  hostName,
   pct,
   projectLabel,
   relAge,
@@ -99,6 +101,7 @@ export function RequestsPage({
           row.model.toLowerCase().includes(needle) ||
           row.provider.toLowerCase().includes(needle) ||
           row.project.toLowerCase().includes(needle) ||
+          hostName(row.host).toLowerCase().includes(needle) ||
           (row.errorMessage ?? "").toLowerCase().includes(needle)),
     )
   }, [rows, search, status])
@@ -245,6 +248,12 @@ function buildRequestColumns(money: (v: number) => string): Array<Column<AgentRe
       header: "Model",
       sort: (row) => row.model,
       render: (row) => <ModelCell model={row.model} provider={row.provider} />,
+    },
+    {
+      key: "agent",
+      header: "Agent",
+      sort: (row) => row.host,
+      render: (row) => <AgentCell host={row.host} />,
     },
     {
       key: "time",

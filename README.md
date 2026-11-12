@@ -19,7 +19,7 @@ Coding agents bill you per token. Three of the costs you never asked for:
 - **Shell output is noise.** A failing test prints hundreds of lines to reach the four that matter.
 - **The rules repeat every turn.** Your agent re-reads its instructions on every single turn.
 
-Tersio installs into Oh My Pi, Pi, Pi-in-go, OpenCode, DeepSeek Harness, and Codex, and cuts those costs:
+Tersio installs into Oh My Pi, Pi, Pi-in-go, OpenCode, DeepSeek Harness, Codex, and Claude Code, and cuts those costs:
 
 | Mode | What it does for you |
 |---|---|
@@ -47,29 +47,17 @@ curl -fsSL https://github.com/KurutoDenzeru/tersio/releases/latest/download/inst
 irm https://github.com/KurutoDenzeru/tersio/releases/latest/download/install.ps1 | iex
 ```
 
-Then run the CLI. Bare `tersio` opens a menu and asks which agent to install into:
+Then run the CLI. Bare `tersio` opens a menu and asks which host to install into. Install one host directly, or let the host install the package itself:
 
-```bash
-tersio                      # menu — picks Oh My Pi, pi, OpenCode, Pi-in-go, DeepSeek Harness, or Codex
-tersio install --host pi    # pi, non-interactive
-tersio install --host omp   # Oh My Pi, non-interactive
-tersio install --host opencode  # OpenCode, non-interactive
-tersio install --host pig   # Pi-in-go (PiG), non-interactive
-tersio install --host dsh   # DeepSeek Harness — mounts the bundle into every dsh profile
-tersio install --host codex # Codex — plugin, MCP server, skills, prompt hook, and /prompts fallbacks
-```
-
-Or let each host install the package itself:
-
-```bash
-omp plugin install @krtclcdy/tersio
-pi install npm:@krtclcdy/tersio
-opencode plugin add @krtclcdy/tersio
-pig install npm:@krtclcdy/tersio
-dsh plugin --profile web add npm:@krtclcdy/tersio
-codex plugin marketplace add KurutoDenzeru/tersio
-codex plugin add tersio@tersio
-```
+| Host | Tersio install | Host-native install |
+|---|---|---|
+| [Codex](https://github.com/openai/codex) | `tersio install --host codex` | `codex plugin marketplace add KurutoDenzeru/tersio`<br>or `codex plugin add tersio@tersio` |
+| [Claude Code](https://code.claude.com) | `/plugin marketplace add KurutoDenzeru/tersio`<br>then `/plugin install tersio@tersio` | `tersio install --host claude` |
+| [OpenCode](https://opencode.ai) | `tersio install --host opencode` | `opencode plugin add @krtclcdy/tersio` |
+| [Oh My Pi](https://github.com/can1357/oh-my-pi) | `tersio install --host omp` | `omp plugin install @krtclcdy/tersio` |
+| [pi](https://github.com/earendil-works/pi) | `tersio install --host pi` | `pi install npm:@krtclcdy/tersio` |
+| [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) | `tersio install --host dsh` | `dsh plugin --profile web add npm:@krtclcdy/tersio` |
+| [Pi-in-Go (PiG)](https://pi-in-go.dev) | `tersio install --host pig` | `pig install npm:@krtclcdy/tersio` |
 
 One-off use without installing:
 
@@ -81,7 +69,7 @@ npm exec --yes --prefer-online --package=@krtclcdy/tersio@latest -- tersio insta
 
 | Need | Detail |
 |---|---|
-| Host | [OMP](https://github.com/can1357/oh-my-pi), [pi](https://github.com/earendil-works/pi), [OpenCode](https://opencode.ai), [PiG](https://pi-in-go.dev), [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness), or [Codex](https://github.com/openai/codex) — `tersio install --host <omp\|pi\|opencode\|pig\|dsh\|codex>` |
+| Host | [OMP](https://github.com/can1357/oh-my-pi), [pi](https://github.com/earendil-works/pi), [OpenCode](https://opencode.ai), [PiG](https://pi-in-go.dev), [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness), Codex, or [Claude Code](https://code.claude.com) — `tersio install --host <omp\|pi\|opencode\|pig\|dsh\|codex\|claude>` |
 | Node.js | 20.12+ with npm. The CLI runs under Node |
 | Bun | Optional. Preferred when on PATH, npm otherwise; also supplies SQLite in process |
 | SQLite | Bun, Node 22.5+ `node:sqlite`, or the `sqlite3` binary on PATH |
@@ -183,7 +171,7 @@ Flags: `--dry-run`, `--yes`/`-y`, `--verbose`, `--combo-default`/`--caveman-defa
 
 ## ⌨️ Commands reference
 
-Mode switches live on their own commands; bare `/tersio` prints status. Every mode command, and every session start, prints the status line:
+Mode switches live on their own commands; bare `/tersio` prints status. A switch also saves the default for the next session, while reopening a session restores the entries that session already carries. Every mode command, and every session start, prints the status line:
 
 ```
 🧩 COMBO MAX: 🪨 caveman=ULTRA | 🗜️ rtk=ON | 🍃 headroom=ON | 🧠 ponytail=ULTRA | 🥔 pstack=ON
@@ -214,7 +202,7 @@ Shared, and identical for every host:
 | RTK binary | Not Tersio's: whatever `rtk` resolves to on `PATH` (or `~/.bun/bin`). rtk installs and updates it |
 | Ledger and caches | `~/.tersio/usage.db` — usage rows, prices, scorecard, state, Headroom records, and layout. Local only |
 | Activity log | `~/.tersio/activity.jsonl` — one line per change, as the Logs page reads it |
-| Host scope | The same `usage.db` mirrors omp, pi, PiG, OpenCode, DeepSeek Harness, and Codex sessions, split by host and agent kind |
+| Host scope | The same `usage.db` mirrors omp, pi, PiG, OpenCode, DeepSeek Harness, Codex, and Claude Code sessions, split by host and agent kind |
 | Snapshots | `~/.tersio/backups/` — one hashed `.snap` each, fourteen kept, carrying `usage.db` whole |
 
 The installer writes `<file>.bak` before it replaces a source. `tersio doctor --fix extensions` restores a damaged tree, and `doctor --fix registrations` drops retired or duplicate `config.yml` entries.

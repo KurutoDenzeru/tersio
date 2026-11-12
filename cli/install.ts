@@ -37,10 +37,25 @@ import {
   writeIfChanged,
 } from './common.ts';
 import type { InstallOptions, WriteOptions } from './common.ts';
-import { askInteractiveChoice, askInteractiveConfirm, closeRL, execNetwork, tty, sayTagged } from './interactive.ts';
+import {
+  askInteractiveChoice,
+  askInteractiveConfirm,
+  closeRL,
+  execNetwork,
+  tty,
+  sayTagged,
+  withInteractiveSpinner,
+} from './interactive.ts';
 import { printWelcome } from './banner.ts';
-import { checkForUpdate, runLatestUpdate } from './update.ts';
+import { checkForUpdate, newerThan, runLatestUpdate } from './update.ts';
 import { runUninstall } from './uninstall.ts';
+import { claudeLocalPluginFiles, claudeLocalMarketplaceRoot } from '../extensions/shared/claude-plugin.ts';
+import {
+  CLAUDE_MARKETPLACE_NAME,
+  CLAUDE_PLUGIN_ID,
+  installedClaudePlugin,
+  setClaudeRtkHook,
+} from '../extensions/shared/claude-state.ts';
 import { runDoctor } from './doctor.ts';
 import { runDashboard } from './dashboard.ts';
 import { wireRtk } from './rtk-wiring.ts';
@@ -69,7 +84,7 @@ import { ensureHeadroomRuntime, headroomFitsMachine } from '../extensions/shared
 import { routeHostOn } from '../extensions/shared/headroom-routes.ts';
 import type { HostDefaultField } from './profile.ts';
 import { formatCliStatus, saveHostDefaults, storedProfile, storedProfileSync, writePluginSettings } from './profile.ts';
-import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
+import { readRtkDefault, tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
 import {
   EXT_DIR,
   PI_RTK_MANIFEST,
@@ -700,11 +715,12 @@ let updatePromptDone = false;
 // Bare `tersio` at a terminal picks a command; scripts and flags install.
 async function runCommandMenu(): Promise<void> {
   printWelcome();
-  // Interactive launches always check; scripts use the cached verdict.
-  const newer = await checkForUpdate(true);
-  if (typeof newer === 'string' && !dryRun) {
+  // Interactive launches read the cached verdict; a six-hour-old cache refreshes here, so the prompt is occasional.
+  const newer = await withInteractiveSpinner('Checking npm and GitHub for updates', () => checkForUpdate());
+  const hasNewer = typeof newer === 'string' && newer !== 'unknown';
+  if (hasNewer && !dryRun) {
     const answer = await askInteractiveConfirm(
-      `tersio ${newer} is available (installed ${PACKAGE_VERSION}). Install it now?`,
+      `tersio ${newer} is available (installed ${PACKAGE_VERSION}). Update the Tersio CLI now?`,
     );
     if (answer.status === 'confirmed' && answer.value) {
       await runLatestUpdate();
@@ -715,15 +731,13 @@ async function runCommandMenu(): Promise<void> {
       closeRL();
       process.exit(130);
     }
-    console.log(`\n  [update] staying on ${PACKAGE_VERSION} — run \`tersio update\` anytime`);
   }
   updatePromptDone = true;
   // The menu reads the check it just ran: a pending release names its version beside the update row, and the install row says up front that the optional Headroom step comes with it.
-  const updateLabel = typeof newer === 'string' ? `Update (${newer} available)` : 'Update';
-  const updateHint =
-    typeof newer === 'string'
-      ? `CLI ${PACKAGE_VERSION} → ${newer}; add-ons refresh per agent with --host`
-      : 'download the newest CLI; add-ons refresh per agent with --host';
+  const updateLabel = hasNewer ? `Update (${newer} available)` : 'Update';
+  const updateHint = hasNewer
+    ? `CLI ${PACKAGE_VERSION} → ${newer}; choose all agents or one`
+    : 'choose all agents or one; the CLI refreshes with the update';
   const choice = await askInteractiveChoice(
     `Tersio — what next?\n${formatCliStatus(storedProfileSync())}`,
     [
@@ -748,10 +762,6 @@ async function runCommandMenu(): Promise<void> {
       await runInstall();
       break;
     case 'update': {
-      // Version check already ran above, so report it and offer the refresh here — no second "update" quiz.
-      if (typeof newer === 'string') console.log(`  tersio ${newer} available (installed ${PACKAGE_VERSION})`);
-      else console.log(`  tersio ${PACKAGE_VERSION} is the latest`);
-      // The CLI is the target; `--host` is the only way this run also touches an agent.
       const pinned = (() => {
         try {
           return parseHostArg(args) ?? null;
@@ -759,19 +769,55 @@ async function runCommandMenu(): Promise<void> {
           return null;
         }
       })();
-      const label =
-        pinned === null
-          ? ''
-          : ` + ${detectHosts().find((entry) => entry.id === pinned)?.label ?? pinned}'s extensions and add-ons`;
-      const go = await askInteractiveConfirm(`Update now — tersio CLI${label}?`);
-      if (go.status === 'confirmed' && go.value) {
-        await runLatestUpdate(pinned);
-      } else if (go.status === 'cancelled') {
+      if (pinned !== null) {
+        await runLatestUpdate([pinned]);
+        closeRL();
+        break;
+      }
+      // Refresh the npm/GitHub verdict before the choice, so the outdated markers are current.
+      const fresh = await withInteractiveSpinner('Checking npm and GitHub for updates', () => checkForUpdate(true));
+      const latest = typeof fresh === 'string' && fresh !== 'unknown' ? fresh : PACKAGE_VERSION;
+      const installed = detectHosts().filter((host) => host.installed);
+      const outdated = installed.filter((host) => host.version !== null && newerThan(latest, host.version));
+      const targets: Array<{ value: string; label: string; hint?: string }> = [
+        ...(installed.length > 0
+          ? [
+              {
+                value: 'agents',
+                label: 'AI agents',
+                hint: `${installed.map((host) => host.label).join(', ')} — pick one next`,
+              },
+            ]
+          : []),
+        { value: 'cli', label: 'Tersio CLI only', hint: 'leave agent extensions as they are' },
+      ];
+      const pick = await askInteractiveChoice('Update what?', targets, targets[0].value);
+      if (pick.status !== 'selected') {
         closeRL();
         process.exit(130);
-      } else {
-        console.log(`  staying on ${PACKAGE_VERSION} — run \`tersio update\` anytime`);
       }
+      let hosts: string[] = [];
+      if (pick.value === 'agents') {
+        const agents = [
+          {
+            value: 'all',
+            label: `All installed agents${outdated.length > 0 ? ` (${outdated.length} outdated)` : ''}`,
+            hint: `Tersio CLI + ${installed.length} agent${installed.length === 1 ? '' : 's'}`,
+          },
+          ...installed.map((host) => ({
+            value: host.id,
+            label: `${host.label}${host.version !== null && newerThan(latest, host.version) ? ` (${host.version} outdated)` : ''}`,
+            hint: host.version ? `installed ${host.version}` : 'installed',
+          })),
+        ];
+        const agentPick = await askInteractiveChoice('Which AI agents?', agents, 'all');
+        if (agentPick.status !== 'selected') {
+          closeRL();
+          process.exit(130);
+        }
+        hosts = agentPick.value === 'all' ? installed.map((host) => host.id) : [agentPick.value];
+      }
+      await runLatestUpdate(hosts);
       closeRL();
       break;
     }
@@ -807,14 +853,9 @@ async function runCommandMenu(): Promise<void> {
 // Which host this run targets. --host pins it; scripts and --yes keep the default of Oh My Pi.
 let targetHost: HostId = 'omp';
 
-// Hosts the menu advertises but cannot install yet; listed disabled so the roadmap stays visible.
-const SOON_HOSTS = [{ value: 'claude', label: 'Claude Code', hint: 'Coming soon' }];
-
 async function chooseHost(title: string, only?: HostId[]): Promise<HostId> {
   const hosts = detectHosts().filter((host) => !only || only.includes(host.id));
   const options: Array<{ value: string; label: string; hint?: string; disabled?: boolean }> = hostOptions(hosts);
-  // A scoped menu (uninstall --host) lists only real hosts.
-  if (!only) options.push(...SOON_HOSTS.map((h) => ({ ...h, disabled: true })));
   const choice = await askInteractiveChoice(title, options, targetHost);
   if (choice.status !== 'selected') {
     closeRL();
@@ -1060,6 +1101,51 @@ async function stepCodex(options: InstallOptions): Promise<void> {
     }
   }
 }
+/**
+ * Claude Code installs from a local marketplace with relative plugin sources. Removing first makes an
+ * upgrade replace the cached copy instead of reporting an already-installed plugin.
+ */
+async function stepClaude(options: InstallOptions): Promise<void> {
+  const claude = resolveHostBinary('claude');
+  if (!claude) throw new Error('claude not found — install Claude Code first');
+  const root = claudeLocalMarketplaceRoot();
+
+  const removePlugin = ['plugin', 'uninstall', CLAUDE_PLUGIN_ID, '--scope', 'user'];
+  const removeMarketplace = ['plugin', 'marketplace', 'remove', CLAUDE_MARKETPLACE_NAME];
+  const addMarketplace = ['plugin', 'marketplace', 'add', root];
+  const addPlugin = ['plugin', 'install', CLAUDE_PLUGIN_ID, '--scope', 'user'];
+  if (options.dryRun) {
+    if (!options.quiet) {
+      sayTagged(`  [dry-run] would materialize ${root}`);
+      sayTagged(`  [dry-run] would run: claude ${removePlugin.join(' ')}`);
+      sayTagged(`  [dry-run] would run: claude ${removeMarketplace.join(' ')}`);
+      sayTagged(`  [dry-run] would run: claude ${addMarketplace.join(' ')}`);
+      sayTagged(`  [dry-run] would run: claude ${addPlugin.join(' ')}`);
+    }
+    return;
+  }
+
+  if (!options.quiet) console.log(`  Claude Code — write the local marketplace (${root})`);
+  for (const [rel, text] of Object.entries(claudeLocalPluginFiles())) {
+    await writeIfChanged(path.join(root, ...rel.split('/')), text, options);
+  }
+  // Both removals are idempotent only in Tersio's intent, not in the CLI's exit code, so a miss is fine.
+  await execP(claude, removePlugin, { timeout: 120_000, cwd: homeDir() }).catch(() => undefined);
+  await execP(claude, removeMarketplace, { timeout: 120_000, cwd: homeDir() }).catch(() => undefined);
+  await execP(claude, addMarketplace, { timeout: 120_000, cwd: homeDir() });
+  await execP(claude, addPlugin, { timeout: 120_000, cwd: homeDir() });
+
+  const state = installedClaudePlugin();
+  if (!state.complete || !state.enabled) {
+    const why = state.missing.length ? ` (missing: ${state.missing.join(', ')})` : state.enabled ? '' : ' (disabled)';
+    throw new Error(`Claude Code did not install ${CLAUDE_PLUGIN_ID}${why}`);
+  }
+  if (!options.quiet) console.log(`  Claude Code — plugin ${state.version ?? 'installed'} enabled`);
+  await stepRtk(options, 'claude');
+  // rtk init always writes the hook; the stored Claude preference decides whether it stays.
+  setClaudeRtkHook(readRtkDefault('claude'));
+  if (!options.quiet) console.log('  Claude Code — the combo strip draws above the prompt, and /tersio prints it');
+}
 
 async function runInstall(forcedHost?: HostId): Promise<void> {
   let hostChosen = false;
@@ -1098,11 +1184,11 @@ async function runInstall(forcedHost?: HostId): Promise<void> {
   // Nudge about a newer release; silent without a TTY.
   if (tty() && !applyUpdate && command !== 'uninstall') {
     const newer = await checkForUpdate();
-    if (typeof newer === 'string') {
+    if (typeof newer === 'string' && newer !== 'unknown') {
       // Update pending: offer it here; yes runs the full update and stops.
       if (command === null && !dryRun && !yes && !updatePromptDone) {
         const answer = await askInteractiveConfirm(
-          `tersio ${newer} is available (installed ${PACKAGE_VERSION}). Install it now?`,
+          `tersio ${newer} is available (installed ${PACKAGE_VERSION}). Update the Tersio CLI now?`,
         );
         if (answer.status === 'confirmed' && answer.value) {
           await runLatestUpdate();
@@ -1236,6 +1322,13 @@ async function runInstall(forcedHost?: HostId): Promise<void> {
     await capture('codex plugin', () => stepCodex(installOptions));
     await capture('settings', () => writeHostSettings(false));
     finishHost('\nDone. Restart Codex and review the Tersio hooks in /hooks.');
+    return;
+  }
+
+  if (targetHost === 'claude') {
+    await capture('claude plugin', () => stepClaude(installOptions));
+    await capture('settings', () => writeHostSettings(false));
+    finishHost('\nDone. Start Claude Code and the combo strip draws above the prompt.');
     return;
   }
 

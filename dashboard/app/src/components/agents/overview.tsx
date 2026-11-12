@@ -11,15 +11,14 @@ import {
   StatGrid,
   TimeChart,
 } from "@/components/charts"
+import { AgentCell, ModelCell } from "@/components/charts"
 import type { Column } from "@/components/charts"
-import { ProviderMark, VendorMark } from "@/components/brand"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Icon } from "@/components/icon"
 import {
   PALETTE,
   agentTypeLabel,
-  displayModel,
   fmt,
   fmtMs,
   fmtShort,
@@ -328,18 +327,13 @@ function buildLatestColumns(money: (v: number) => string): Array<Column<AgentReq
     {
       key: "model",
       header: "Model",
-      render: (row) => (
-        <span className="flex min-w-0 items-center gap-2">
-          <VendorMark model={row.model} tiny />
-          <span className="min-w-0">
-            <span className="mono block truncate">{displayModel(row.model)}</span>
-            <span className="flex items-center gap-1.5 text-[11px] text-dim">
-              <ProviderMark provider={row.provider} tiny />
-              <span className="truncate">{row.provider || "–"}</span>
-            </span>
-          </span>
-        </span>
-      ),
+      render: (row) => <ModelCell model={row.model} provider={row.provider} />,
+    },
+    {
+      key: "agent",
+      header: "Agent",
+      render: (row) => <AgentCell host={row.host} />,
+      sort: (row) => row.host,
     },
     {
       key: "time",

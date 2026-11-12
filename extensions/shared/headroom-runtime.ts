@@ -112,7 +112,7 @@ function proxyPortOf(pid: number): number | null {
 }
 
 /** Stop proxies that answer nowhere useful: first politely, then for real. */
-export function reapProxies(pids: number[]): void {
+export function reapProxies(pids: number[], waitMs = 2_000): void {
   for (const pid of pids) {
     try {
       process.kill(pid, 'SIGTERM');
@@ -120,7 +120,7 @@ export function reapProxies(pids: number[]): void {
       /* already gone */
     }
   }
-  const deadline = Date.now() + 2_000;
+  const deadline = Date.now() + waitMs;
   let alive = new Set(pids);
   while (alive.size > 0 && Date.now() < deadline) {
     const seen = new Set(headroomProxyPids());
@@ -399,7 +399,10 @@ function releaseStartLock(): void {
 }
 
 /** Stop every proxy this machine runs. The routes are put back before this is called. */
-export async function stopHeadroomRuntime(bin?: string | null): Promise<HeadroomRuntimeResult> {
+export async function stopHeadroomRuntime(
+  bin?: string | null,
+  options: { fast?: boolean } = {},
+): Promise<HeadroomRuntimeResult> {
   const port = headroomProxyPort();
   // Only a proxy this data home started, or one a deployment here owns, is Tersio's to stop. Another
   // tool's proxy on the same default port, or one from a different home, is left running.
@@ -409,8 +412,9 @@ export async function stopHeadroomRuntime(bin?: string | null): Promise<Headroom
   const pids = headroomProxyPids(port);
   if (pids.length === 0) return { ok: true, detail: 'no headroom proxy was running' };
   // headroom's own stop releases the deployment it recorded, so a later start keeps its manifest.
+  // A session quit has a 2s handler budget, so it skips the launcher and lets the reaper do the work.
   const binPath = bin === undefined ? resolveHeadroomBinary() : bin;
-  if (binPath) {
+  if (binPath && !options.fast) {
     for (const entry of deployments) {
       try {
         await execFileP(binPath, ['install', 'stop', '--profile', entry.profile], { timeout: 30_000, cwd: homeDir() });
@@ -420,7 +424,7 @@ export async function stopHeadroomRuntime(bin?: string | null): Promise<Headroom
     }
   }
   const left = headroomProxyPids(port);
-  if (left.length > 0) reapProxies(left);
+  if (left.length > 0) reapProxies(left, options.fast ? 400 : 2_000);
   const remaining = headroomProxyPids(port).length;
   if (remaining === 0) clearProxyRecord();
   return remaining === 0
@@ -528,9 +532,15 @@ export function touchHeadroomLease(sessionId: string): void {
  * Release this session's claim. The proxy stops only when no other session holds one, so two agents
  * opened together keep one proxy, and closing one of them leaves it running for the other.
  */
-export async function releaseHeadroomLease(sessionId: string, bin?: string | null): Promise<HeadroomRuntimeResult> {
+export async function releaseHeadroomLease(
+  sessionId: string,
+  bin?: string | null,
+  options: { fast?: boolean } = {},
+): Promise<HeadroomRuntimeResult> {
   dropLease(sessionId);
   if (otherSessionLive(sessionId)) return { ok: true, detail: 'another agent session still uses the proxy' };
+  // A session quit has a 2s handler budget, so it stops at once instead of waiting for a relaunch.
+  if (options.fast) return stopHeadroomRuntime(bin, { fast: true });
   // The wait covers an agent that quits and relaunches, and one that is starting right now.
   await new Promise((resolve) => {
     setTimeout(resolve, STOP_GRACE_MS);

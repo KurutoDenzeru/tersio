@@ -15,7 +15,7 @@ import {
 } from '../shared/session-state.ts';
 import { hostIdOf, injectPromptText, onHostEvent, sessionChangeEvents, setExtensionLabel } from '../shared/host.ts';
 import { announceStatus } from '../shared/status.ts';
-import { readHeadroomDefault } from '../shared/plugin-settings.ts';
+import { readHeadroomDefault, saveModeState } from '../shared/plugin-settings.ts';
 import type { HostScope } from '../shared/plugin-settings.ts';
 import { resolveHeadroomBinary } from '../shared/utils.ts';
 import { headroomHostSupported, headroomProxyUrl } from '../shared/headroom-proxy.ts';
@@ -100,6 +100,7 @@ export default function headroomSessionExtension(pi: ExtensionApi): void {
     unroutedNotified = false;
     pi.appendEntry?.('headroom-mode', { mode: normalized });
     setSharedComboMode('headroom', normalized);
+    saveModeState(host, getSharedComboState());
     // Turning the mode on is the moment the agent needs the retrieve tool; wiring is idempotent.
     if (normalized === 'on') ensureTersioMcp(host);
     announceStatus(ctx);
@@ -208,7 +209,7 @@ export default function headroomSessionExtension(pi: ExtensionApi): void {
   pi.on('session_shutdown', async (event) => {
     const reason = (event as { reason?: unknown } | undefined)?.reason;
     if (reason === 'reload' || reason === 'new' || reason === 'resume' || reason === 'fork') return;
-    await releaseHeadroomLease(sessionId, resolveHeadroomBinary()).catch(() => {
+    await releaseHeadroomLease(sessionId, resolveHeadroomBinary(), { fast: true }).catch(() => {
       /* a stop that fails is retried by the next session */
     });
   });

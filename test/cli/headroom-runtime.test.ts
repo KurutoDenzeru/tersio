@@ -20,14 +20,16 @@ describe('headroom runtime', () => {
     else process.env.TERSIO_HEADROOM_PROXY_URL = before;
   });
 
-  test('every host can route, while only Oh My Pi and OpenCode have writers', () => {
-    for (const host of ['omp', 'pi', 'opencode', 'pig', 'dsh', 'codex']) expect(headroomHostSupported(host)).toBe(true);
+  test('every host can route, while only the durable hosts keep their own block', () => {
+    for (const host of ['omp', 'pi', 'opencode', 'pig', 'dsh', 'codex', 'claude'])
+      expect(headroomHostSupported(host)).toBe(true);
     expect(headroomHostDurable('omp')).toBe(true);
     expect(headroomHostDurable('opencode')).toBe(true);
     expect(headroomHostDurable('pi')).toBe(false);
     expect(headroomHostDurable('pig')).toBe(false);
     expect(headroomHostDurable('dsh')).toBe(false);
     expect(headroomHostDurable('codex')).toBe(true);
+    expect(headroomHostDurable('claude')).toBe(true);
   });
 
   test('the proxy URL override moves both the reader and the durable port', () => {
@@ -118,6 +120,35 @@ describe('headroom runtime', () => {
       rmSync(home, { recursive: true, force: true });
     }
   }, 20_000);
+
+  test('a fast release skips the quit grace, so the shutdown handler returns in time', async () => {
+    const { mkdtempSync, rmSync } = await import('node:fs');
+    const os = await import('node:os');
+    const path = await import('node:path');
+    const home = mkdtempSync(path.join(os.tmpdir(), 'tersio-fast-lease-'));
+    const previous = {
+      HOME: process.env.HOME,
+      TERSIO_HOME: process.env.TERSIO_HOME,
+      URL: process.env.TERSIO_HEADROOM_PROXY_URL,
+    };
+    process.env.HOME = home;
+    process.env.TERSIO_HOME = path.join(home, '.tersio');
+    process.env.TERSIO_HEADROOM_PROXY_URL = 'http://127.0.0.1:1/';
+    try {
+      const started = Date.now();
+      const result = await releaseHeadroomLease('agent-fast', null, { fast: true });
+      expect(result.ok).toBe(true);
+      // The normal quit path waits 2.5s, which is longer than the host's 2s handler budget.
+      expect(Date.now() - started).toBeLessThan(1_500);
+    } finally {
+      for (const [name, value] of Object.entries(previous)) {
+        const key = name === 'URL' ? 'TERSIO_HEADROOM_PROXY_URL' : name;
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+      rmSync(home, { recursive: true, force: true });
+    }
+  }, 5_000);
 
   test('a machine too small for the proxy is reported, and the override wins', () => {
     const savedForce = process.env.TERSIO_HEADROOM_FORCE;

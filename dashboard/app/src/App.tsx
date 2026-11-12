@@ -139,6 +139,18 @@ function useModeState(): readonly [ModeState | null, () => void, boolean] {
   useEffect(() => {
     load()
   }, [load])
+  // A slash command writes ~/.tersio while the tab sits in the background, so returning to the tab re-reads it.
+  useEffect(() => {
+    const onVisible = (): void => {
+      if (document.visibilityState === "visible") load()
+    }
+    document.addEventListener("visibilitychange", onVisible)
+    window.addEventListener("focus", onVisible)
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible)
+      window.removeEventListener("focus", onVisible)
+    }
+  }, [load])
 
   return [modes, load, loaded] as const
 }

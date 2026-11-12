@@ -41,13 +41,27 @@ import {
   installedCodexPlugin,
   removeCodexUserHook,
 } from '../extensions/shared/codex-plugin.ts';
-import { piAgentDir, pigAgentDir, readTextIfExists, resolveCodexBinary } from '../extensions/shared/utils.ts';
+import {
+  CLAUDE_MARKETPLACE_NAME,
+  CLAUDE_PLUGIN_ID,
+  installedClaudePlugin,
+  claudeLocalMarketplaceRoot,
+  setClaudeRtkHook,
+} from '../extensions/shared/claude-state.ts';
+import {
+  piAgentDir,
+  pigAgentDir,
+  readTextIfExists,
+  resolveCodexBinary,
+  resolveHostBinary,
+} from '../extensions/shared/utils.ts';
 import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
 import { removeTersioMcp } from '../extensions/shared/mcp-config.ts';
 import {
   NATIVE_ROUTE_HOSTS,
   isNativeRouteHost,
   removeNativeRoute,
+  unwrapClaudeHeadroom,
   unwrapCodexHeadroom,
 } from '../extensions/shared/headroom-routes.ts';
 import { restoreOmpGateway } from '../extensions/shared/headroom-proxy.ts';
@@ -246,6 +260,15 @@ async function restoreHeadroomRoute(host: HostId, shouldDryRun: boolean): Promis
     if (restored.ok) sayTagged(`  [rm] Headroom: ${restored.detail}`);
     return;
   }
+  if (host === 'claude') {
+    if (shouldDryRun) {
+      sayTagged('  [dry-run] would run: headroom unwrap claude');
+      return;
+    }
+    const restored = await unwrapClaudeHeadroom();
+    if (restored.ok) sayTagged(`  [rm] Headroom: ${restored.detail}`);
+    return;
+  }
   if (isNativeRouteHost(host)) {
     if (shouldDryRun) return;
     const restored = removeNativeRoute(host);
@@ -257,8 +280,7 @@ async function restoreHeadroomRoute(host: HostId, shouldDryRun: boolean): Promis
     return;
   }
   // Tersio wrote every endpoint it routes, so Tersio puts it back; headroom is not asked.
-  const restored = isNativeRouteHost(host) ? removeNativeRoute(host) : { ok: restoreOmpGateway(), detail: '' };
-  if (restored.ok) sayTagged(`  [rm] Headroom endpoint: ${host}`);
+  if (restoreOmpGateway()) sayTagged(`  [rm] Headroom endpoint: ${host}`);
 }
 
 /** Removes the user's own Headroom install with whichever package manager installed it. */
@@ -531,6 +553,49 @@ async function runUninstall(options: UninstallOptions = {}): Promise<boolean> {
       results.push(true);
       continue;
     }
+    if (host === 'claude') {
+      const state = installedClaudePlugin();
+      if (!selected.installed && !state.dir && !existsSync(claudeLocalMarketplaceRoot())) {
+        sayTagged(`  [skip] ${selected.label} — nothing installed (${selected.installCmd})`);
+        results.push(false);
+        continue;
+      }
+      console.log('Will remove:');
+      console.log(`  ${CLAUDE_PLUGIN_ID} (Claude Code plugin)${state.dir ? `\n  ${state.dir}` : ''}`);
+      console.log(`  the ${CLAUDE_MARKETPLACE_NAME} marketplace source`);
+      console.log('  Tersio plugin data under Claude Code is kept');
+      if (!confirmed && !(await confirmDestructive('Remove the Tersio Claude Code plugin?'))) {
+        results.push(false);
+        continue;
+      }
+      const claude = resolveHostBinary('claude');
+      if (shouldDryRun) {
+        sayTagged(`  [dry-run] would run: claude plugin uninstall ${CLAUDE_PLUGIN_ID}`);
+        sayTagged(`  [dry-run] would run: claude plugin marketplace remove ${CLAUDE_MARKETPLACE_NAME}`);
+      } else if (!claude) {
+        sayTagged('  [warn] claude not found — remove Tersio from Claude Code /plugin');
+      } else {
+        await execP(claude, ['plugin', 'uninstall', CLAUDE_PLUGIN_ID, '--scope', 'user'], {
+          timeout: 120_000,
+          cwd: HOME,
+        }).catch((e: unknown) => {
+          sayTagged(`  [warn] claude plugin uninstall: ${(e as Error).message}`);
+        });
+        await execP(claude, ['plugin', 'marketplace', 'remove', CLAUDE_MARKETPLACE_NAME], {
+          timeout: 120_000,
+          cwd: HOME,
+        }).catch((e: unknown) => {
+          sayTagged(`  [warn] claude marketplace remove: ${(e as Error).message}`);
+        });
+      }
+      await removeUninstallTarget(claudeLocalMarketplaceRoot(), shouldDryRun);
+      if (shouldRemoveRtk && !shouldDryRun) setClaudeRtkHook(false);
+      await clearSessionDefaults(shouldDryRun);
+      console.log('\nDone. Restart Claude Code to unload the plugin.');
+      results.push(true);
+      continue;
+    }
+
     if (!selected.installed)
       sayTagged(`  [note] ${selected.label} has no tersio install; removing what is left behind.`);
 
