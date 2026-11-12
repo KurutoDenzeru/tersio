@@ -95,6 +95,20 @@ test('package exports a loadable opencode server entrypoint', () => {
   expect(existsSync(path.join(root, tracked)), `${tracked} must exist for a fresh checkout`).toBe(true);
 });
 
+// A native Claude Code install reads the repo root marketplace, so the shipped package must carry both.
+test('the git marketplace points at the Claude plugin and ships in the package', () => {
+  const market = JSON.parse(readFileSync(path.join(root, '.claude-plugin', 'marketplace.json'), 'utf8')) as {
+    plugins?: Array<{ name?: string; source?: string }>;
+  };
+  const entry = market.plugins?.find((plugin) => plugin.name === 'tersio');
+  expect(entry?.source, '.claude-plugin/marketplace.json must name the tersio plugin source').toBe('./plugins/claude');
+  expect(existsSync(path.join(root, 'plugins', 'claude', '.claude-plugin', 'plugin.json'))).toBe(true);
+  const pkg = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')) as { files?: string[] };
+  expect(pkg.files, 'package.json files must carry the marketplace for a GitHub repo install').toContain(
+    '.claude-plugin/**/*',
+  );
+});
+
 // `pi` manifest (prevents fallback to `extensions/*.ts` -> error "does not export a valid factory function")
 test('package declares a pi manifest that omits the OpenCode entry', () => {
   const pkg = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')) as {

@@ -29,6 +29,7 @@
     "skills/**/*",
     "extensions/**/*.ts",
     ".agents/plugins/marketplace.json",
+    ".claude-plugin/**/*",
     "plugins/**/*",
     "extensions/caveman/rule.md",
     "extensions/caveman/rule-lite.md",
