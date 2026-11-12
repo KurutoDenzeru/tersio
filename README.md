@@ -52,7 +52,7 @@ Then run the CLI. Bare `tersio` opens a menu and asks which host to install into
 | Host | Tersio install | Host-native install |
 |---|---|---|
 | [Codex](https://github.com/openai/codex) | `tersio install --host codex` | `codex plugin marketplace add KurutoDenzeru/tersio`<br>or `codex plugin add tersio@tersio` |
-| [Claude Code](https://code.claude.com) | `/plugin marketplace add KurutoDenzeru/tersio`<br>then `/plugin install tersio@tersio` | `tersio install --host claude` |
+| [Claude Code](https://code.claude.com) | `tersio install --host claude` | `/plugin marketplace add KurutoDenzeru/tersio`<br>then `/plugin install tersio@tersio` |
 | [OpenCode](https://opencode.ai) | `tersio install --host opencode` | `opencode plugin add @krtclcdy/tersio` |
 | [Oh My Pi](https://github.com/can1357/oh-my-pi) | `tersio install --host omp` | `omp plugin install @krtclcdy/tersio` |
 | [pi](https://github.com/earendil-works/pi) | `tersio install --host pi` | `pi install npm:@krtclcdy/tersio` |
@@ -221,7 +221,7 @@ Active modes reassert after Ponytail's prompt block on every top-level turn, inc
 
 **RTK savings and adoption:** the Gain numbers read rtk's own `history.db` (`%LOCALAPPDATA%\rtk` on Windows), so pi and OpenCode runs are already in them. The adoption row counts executed Bash calls from the omp and pi transcripts and OpenCode's v2 sqlite or pre-v2 JSON tree. The eligible list comes from `rtk rewrite`, cached per binary version. Native tool calls (`read`/`edit`/`eval`) and exact bytes bypass RTK.
 
-**RTK update available:** `tersio update` and the dashboard report the version rtk upstream ships. Tersio never installs it; update rtk with its own installer.
+**RTK update available:** `tersio update`, `tersio doctor`, and the dashboard report the version rtk upstream ships. Tersio never installs it; update rtk with its own installer.
 
 ## 🤝🏻 Contributing
 

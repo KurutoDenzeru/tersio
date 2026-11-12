@@ -38,6 +38,8 @@ import {
   resolveHostBinary,
   resolveRtkBinary,
   ruleBodyProblem,
+  normalizeRtkVersion,
+  RTK_RELEASE_API,
 } from '../extensions/shared/utils.ts';
 import { sqliteScript, statsDbPath } from '../extensions/shared/agent-stats.ts';
 import { OMP_SUBAGENT_MARKER } from '../extensions/shared/session-state.ts';
@@ -311,7 +313,9 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   }
 
   section('Platform');
-  check('Platform', true, `${process.platform}/${process.arch} · node ${process.version}`);
+  // The CLI boots on node, then hands off to bun; bun reports its compat number in process.version, so a bare `node vX` would name the wrong runtime.
+  const runtime = process.versions.bun ? `bun ${process.versions.bun}` : `node ${process.version}`;
+  check('Platform', true, `${process.platform}/${process.arch} · ${runtime}`);
   console.log(`  Usage DB: ${usageDbPath()} (local only)`);
 
   section('Hosts');
@@ -422,6 +426,10 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   else if (!hosts.some((host) => host.installed && (host.id === 'omp' || host.id === 'opencode')))
     warnLine('RTK exec', 'no installed host exposes an exec API — rtk_run is unavailable; call rtk from bash instead');
   if (rtkBinText !== null && !rtkVersion) warnLine('RTK version', 'unavailable — binary may not be executable');
+  // Present and runnable is not the same as current. A plain row, not a warning: rtk updates itself, so `--fix` cannot repair it.
+  const rtkUrl = process.env.TERSIO_RTK_URL || RTK_RELEASE_API;
+  const rtkGap = await latestGap(rtkUrl, normalizeRtkVersion(rtkVersion ?? undefined), 'tag_name');
+  if (rtkGap) console.log(`  —  RTK version: ${rtkGap} · update it with rtk's own installer`);
   // Headroom is the user's own opt-in install, so only its binary is reported here.
   const headroomVersion = headroomVersionRaw?.match(/version\s+(\S+)/)?.[1] ?? headroomVersionRaw ?? '';
   if (headroomBin !== null) check('Headroom binary', true, headroomVersion);
@@ -438,7 +446,8 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
     );
   }
   // Offline-safe: the registry call is best-effort, and silence means no row rather than a stale one.
-  const ponytailVersionGap = await ponytailLatestGap(PONYTAIL_VERSION);
+  const ponytailUrl = process.env.TERSIO_PONYTAIL_URL || 'https://registry.npmjs.org/@dietrichgebert/ponytail/latest';
+  const ponytailVersionGap = await latestGap(ponytailUrl, PONYTAIL_VERSION, 'version');
   if (ponytailVersionGap)
     warnLine('Ponytail version', `${ponytailVersionGap} — run: tersio update --apply-update --yes`);
 
@@ -526,17 +535,14 @@ function ompBinary(): string | null {
   return existsSync(managed) ? managed : null;
 }
 
-/** `"installed < latest"` when npm answers, else null: silence means "no row", not "stale". */
-async function ponytailLatestGap(local: string): Promise<string | null> {
+/** `<local> installed, <latest> is the latest` when the feed answers, else null: silence means "no row", not "stale". */
+async function latestGap(url: string, local: string, key: 'version' | 'tag_name'): Promise<string | null> {
   if (!local) return null;
   try {
-    // Advisory, with a short budget; `TERSIO_PONYTAIL_URL` points it at a stub, as the update check does.
-    const url = process.env.TERSIO_PONYTAIL_URL || 'https://registry.npmjs.org/@dietrichgebert/ponytail/latest';
+    // Advisory, with a short budget; `TERSIO_RTK_URL` and `TERSIO_PONYTAIL_URL` point these at a stub.
     const res = await fetch(url, { signal: AbortSignal.timeout(2500), headers: { accept: 'application/json' } });
-    const meta = (await res.json()) as { version?: string };
-    const remote = meta?.version;
-    if (!remote || remote === local) return null;
-    return `${local} installed, ${remote} is the latest`;
+    const remote = normalizeRtkVersion(((await res.json()) as Record<string, string | undefined>)[key]);
+    return remote && remote !== local ? `${local} installed, ${remote} is the latest` : null;
   } catch {
     return null;
   }

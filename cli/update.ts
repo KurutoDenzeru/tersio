@@ -37,7 +37,6 @@ import {
   normalizeRtkVersion,
   sha256Hex,
 } from '../extensions/shared/utils.ts';
-import type { RtkRelease } from '../extensions/shared/utils.ts';
 import { parseHostArg } from './hosts.ts';
 import { CAVEMAN_PIN } from './upstream.ts';
 
@@ -268,16 +267,8 @@ async function probeUpdatePlan(release: LatestRelease | null): Promise<UpdatePla
           : Promise.resolve(null),
         6000,
       ),
-      settle(
-        httpsGet(RTK_RELEASE_API, { signal: controller.signal }).then((text) => {
-          try {
-            return normalizeRtkVersion((JSON.parse(text) as RtkRelease).tag_name) || null;
-          } catch {
-            return null;
-          }
-        }),
-        1500,
-      ),
+      // `TERSIO_RTK_URL` points this at a stub, the same seam the update check and the doctor row use.
+      settle(fetchLatestVersion(process.env.TERSIO_RTK_URL || RTK_RELEASE_API, 'tag_name'), 1500),
       settle(
         headroomBin
           ? execP(headroomBin, ['--version'], { timeout: 5000 }).then(
@@ -336,7 +327,11 @@ function planLines(plan: UpdatePlan): { stale: string[]; status: string[] } {
   if (plan.cliSource === 'github' && plan.npm && plan.cli && newerThan(plan.cli, plan.npm)) {
     status.push(`npm serves ${plan.npm}; the release feed has ${plan.cli}`);
   }
-  push('RTK binary', plan.rtk[0], plan.rtk[1]);
+  // rtk updates through its own installer, so the drift is news, not a step this run performs.
+  const [rtkNow, rtkNew] = plan.rtk;
+  if (rtkNow && rtkNew && rtkNow !== rtkNew)
+    status.push(`RTK binary: ${rtkNow}; ${rtkNew} is out — rtk updates itself`);
+  else push('RTK binary', rtkNow, rtkNew);
   push('Headroom binary', plan.headroom[0], plan.headroom[1]);
   // The rule body carries no version, so the tag recorded at pull time names it; the pin covers a fresh install.
   const ruleCurrent = (readState().cavemanUpstream?.tag ?? CAVEMAN_PIN).replace(/^v/, '');
