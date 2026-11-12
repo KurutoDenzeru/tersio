@@ -327,13 +327,12 @@ function planLines(plan: UpdatePlan): { stale: string[]; status: string[] } {
   if (plan.cliSource === 'github' && plan.npm && plan.cli && newerThan(plan.cli, plan.npm)) {
     status.push(`npm serves ${plan.npm}; the release feed has ${plan.cli}`);
   }
-  // rtk updates through its own installer; Tersio only reports the drift, so the line says so and never claims the upgrade.
-  const [rtkCurrent, rtkLatest] = plan.rtk;
-  if (!rtkCurrent) status.push('RTK binary: not installed');
-  else if (!rtkLatest) status.push(`RTK binary: ${rtkCurrent}`);
-  else if (rtkCurrent === rtkLatest) status.push(`RTK binary: ${rtkCurrent} (up to date)`);
-  else status.push(`RTK binary: ${rtkCurrent}; ${rtkLatest} is out — rtk updates itself`);
+  // rtk updates through its own installer, so the drift is news, not a step this run performs.
+  const [rtkNow, rtkNew] = plan.rtk;
+  if (rtkNow && rtkNew && rtkNow !== rtkNew) status.push(`RTK binary: ${rtkNow}; ${rtkNew} is out — rtk updates itself`);
+  else push('RTK binary', rtkNow, rtkNew);
   push('Headroom binary', plan.headroom[0], plan.headroom[1]);
+  // The rule body carries no version, so the tag recorded at pull time names it; the pin covers a fresh install.
   const ruleCurrent = (readState().cavemanUpstream?.tag ?? CAVEMAN_PIN).replace(/^v/, '');
   if (plan.ruleLocal && plan.rule && plan.ruleLocal === plan.rule.hashes)
     status.push(`Caveman rule: ${ruleCurrent} (up to date)`);
