@@ -90,6 +90,21 @@ export function ompModelsFile(): string {
   return path.join(ompAgentDir(), 'models.yml');
 }
 
+/** Create a minimal models.yml when omp has none, so headroom routing has a file to write into. */
+export function ensureOmpModelsFile(): string {
+  const file = ompModelsFile();
+  try {
+    return fs.readFileSync(file, 'utf8');
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
+  }
+  const dir = path.dirname(file);
+  fs.mkdirSync(dir, { recursive: true });
+  const scaffold = 'providers:\n';
+  fs.writeFileSync(file, scaffold, 'utf8');
+  return scaffold;
+}
+
 /** omp's model cache: the catalog it resolves a selector against, including its built-in providers. */
 export function ompModelsDb(): string {
   return path.join(ompAgentDir(), 'models.db');
@@ -415,15 +430,25 @@ export function routeOmpDefaultModel(port: number = HEADROOM_PORT): boolean {
   const file = ompModelsFile();
   let text: string;
   try {
-    text = fs.readFileSync(file, 'utf8');
+    text = ensureOmpModelsFile();
   } catch {
     return false;
   }
   const bare = model.replace(/:[^:]+$/, '');
   const slash = bare.indexOf('/');
   const provider = slash > 0 ? bare.slice(0, slash) : '';
-  // A configured block is what routeOmpGateway moves; only a provider omp keeps built-in needs a new one.
-  if (!provider || ompProviderNames(text).has(provider)) return true;
+  // When the provider block already exists, re-route its baseUrl if it is not already pointed at the proxy.
+  if (!provider) return true;
+  if (ompProviderNames(text).has(provider)) {
+    const block = ompProviderBlocks(text).find((b) => b.name === provider);
+    if (block && block.baseUrl && block.baseLine >= 0) {
+      const proxy = `http://127.0.0.1:${port}${proxyApiPath(ompBlockApi(block))}`;
+      if (block.baseUrl !== proxy) {
+        return routeOmpGateway({ provider, baseUrl: block.marker || block.baseUrl, model }, port);
+      }
+    }
+    return true;
+  }
   const endpoint = ompCachedEndpoint(model);
   const anthropic = endpoint?.api.startsWith('anthropic') === true;
   if (!endpoint || (!anthropic && !endpoint.api.startsWith('openai'))) return false;

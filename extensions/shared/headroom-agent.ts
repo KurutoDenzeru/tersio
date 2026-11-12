@@ -11,9 +11,9 @@ import { hostCap, type HostId } from './host-caps.ts';
 import {
   HEADROOM_PORT,
   defaultOmpModel,
+  ensureOmpModelsFile,
   ompCachedEndpoint,
   ompConfigFile,
-  ompModelsFile,
   ompProviderNames,
   routeOmpDefaultModel,
 } from './headroom-proxy.ts';
@@ -146,7 +146,7 @@ function ompAgentProviderRoute(port: number): AgentProviderRoute | null {
   let models: string;
   try {
     config = fs.readFileSync(ompConfigFile(), 'utf8');
-    models = fs.readFileSync(ompModelsFile(), 'utf8');
+    models = ensureOmpModelsFile();
   } catch {
     return null;
   }

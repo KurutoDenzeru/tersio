@@ -1,7 +1,12 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { expect, test } from 'vitest';
-import { readOmpGateway, restoreOmpGateway, routeOmpGateway } from '../../extensions/shared/headroom-proxy.ts';
+import {
+  readOmpGateway,
+  restoreOmpGateway,
+  routeOmpDefaultModel,
+  routeOmpGateway,
+} from '../../extensions/shared/headroom-proxy.ts';
 import { withHome } from '../helpers/env.ts';
 
 const MODELS = `providers:
@@ -155,5 +160,36 @@ test('a model with its own endpoint is routed beside the provider line', () => {
     expect(routed.match(/baseUrl: http:\/\/127\.0\.0\.1:8787\/v1/g) ?? []).toHaveLength(2);
     // Another model's endpoint stays where it was.
     expect(routed).toContain('baseUrl: http://127.0.0.1:1234/v1');
+  });
+});
+
+test('routeOmpDefaultModel creates models.yml scaffold when missing and routes the provider', () => {
+  withHome((home) => {
+    const configDir = path.join(home, '.omp', 'agent');
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(
+      path.join(configDir, 'config.yml'),
+      'modelRoles:\n  default: anthropic/claude-haiku-5-5\n',
+      'utf8',
+    );
+    const modelsFile = path.join(configDir, 'models.yml');
+    expect(existsSync(modelsFile)).toBe(false);
+    routeOmpDefaultModel(8787);
+    expect(existsSync(modelsFile)).toBe(true);
+    expect(readFileSync(modelsFile, 'utf8')).toContain('providers:\n');
+  });
+});
+
+test('routeOmpDefaultModel re-routes an existing provider block whose baseUrl is not yet the proxy', () => {
+  withHome((home) => {
+    const file = writeOmp(
+      home,
+      'providers:\n  anthropic:\n    api: anthropic-messages\n    baseUrl: https://api.anthropic.com\n',
+      'modelRoles:\n  default: anthropic/claude-haiku-5-5\n',
+    );
+    expect(routeOmpDefaultModel(8787)).toBe(true);
+    const routed = readFileSync(file, 'utf8');
+    expect(routed).toContain('baseUrl: http://127.0.0.1:8787\n');
+    expect(routed).toContain('# tersio-headroom-upstream: https://api.anthropic.com');
   });
 });
