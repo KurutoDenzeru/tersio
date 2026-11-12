@@ -48,7 +48,7 @@ import {
   PSTACK_DEFAULTS,
 } from './common.ts';
 import { PACKAGE_NAME } from './common.ts';
-import { detectHosts, dshHome, dshPresent, dshVersionBinary, hostAgentInfo, hostExtensionsDir } from './hosts.ts';
+import { detectHosts, dshHome, dshPresent, dshVersionBinary, hostAgentInfo } from './hosts.ts';
 import { checkHostTrees } from './host-tree.ts';
 import {
   findPackageRoot,
