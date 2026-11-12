@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { cliEnv } from '../helpers/env.ts';
+import { cliEnv, fakeRtkBin } from '../helpers/env.ts';
 import { registryUrl, releasesUrl } from '../helpers/registry.ts';
 import { installerManager } from '../../cli/update.ts';
 
@@ -534,6 +534,33 @@ test('the delegated form parses --host instead of taking it for a command', () =
 
     expect(result.stderr).not.toMatch(/Unknown command/);
     expect(result.status, result.stderr).toBe(0);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+// The plan printed `1.1.0 → 1.2.0` for rtk in the same shape as an add-on it upgrades, so the update read as done.
+test('the plan says rtk updates itself instead of printing an arrow it never runs', () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), 'tersio-update-rtk-'));
+  try {
+    const binDir = path.join(home, '.bun', 'bin');
+    fakeRtkBin(binDir, ['echo "rtk 1.1.0"']);
+
+    const result = spawnSync(process.execPath, [installer, 'update', '--dry-run'], {
+      cwd: root,
+      encoding: 'utf8',
+      env: cliEnv(home, {
+        ...deadRegistry,
+        ...deadReleases,
+        TERSIO_RTK_URL: releasesUrl('1.2.0'),
+        PATH: `${binDir}${path.delimiter}${process.env.PATH ?? ''}`,
+      }),
+      timeout: 15000,
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/RTK binary: 1\.1\.0; 1\.2\.0 is out — rtk updates itself/);
+    expect(result.stdout).not.toMatch(/RTK binary: 1\.1\.0 →/);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

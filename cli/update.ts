@@ -37,7 +37,6 @@ import {
   normalizeRtkVersion,
   sha256Hex,
 } from '../extensions/shared/utils.ts';
-import type { RtkRelease } from '../extensions/shared/utils.ts';
 import { parseHostArg } from './hosts.ts';
 import { CAVEMAN_PIN } from './upstream.ts';
 
@@ -268,16 +267,8 @@ async function probeUpdatePlan(release: LatestRelease | null): Promise<UpdatePla
           : Promise.resolve(null),
         6000,
       ),
-      settle(
-        httpsGet(RTK_RELEASE_API, { signal: controller.signal }).then((text) => {
-          try {
-            return normalizeRtkVersion((JSON.parse(text) as RtkRelease).tag_name) || null;
-          } catch {
-            return null;
-          }
-        }),
-        1500,
-      ),
+      // `TERSIO_RTK_URL` points this at a stub, the same seam the update check and the doctor row use.
+      settle(fetchLatestVersion(process.env.TERSIO_RTK_URL || RTK_RELEASE_API, 'tag_name'), 1500),
       settle(
         headroomBin
           ? execP(headroomBin, ['--version'], { timeout: 5000 }).then(
@@ -336,9 +327,13 @@ function planLines(plan: UpdatePlan): { stale: string[]; status: string[] } {
   if (plan.cliSource === 'github' && plan.npm && plan.cli && newerThan(plan.cli, plan.npm)) {
     status.push(`npm serves ${plan.npm}; the release feed has ${plan.cli}`);
   }
-  push('RTK binary', plan.rtk[0], plan.rtk[1]);
+  // rtk updates through its own installer; Tersio only reports the drift, so the line says so and never claims the upgrade.
+  const [rtkCurrent, rtkLatest] = plan.rtk;
+  if (!rtkCurrent) status.push('RTK binary: not installed');
+  else if (!rtkLatest) status.push(`RTK binary: ${rtkCurrent}`);
+  else if (rtkCurrent === rtkLatest) status.push(`RTK binary: ${rtkCurrent} (up to date)`);
+  else status.push(`RTK binary: ${rtkCurrent}; ${rtkLatest} is out — rtk updates itself`);
   push('Headroom binary', plan.headroom[0], plan.headroom[1]);
-  // The rule body carries no version, so the tag recorded at pull time names it; the pin covers a fresh install.
   const ruleCurrent = (readState().cavemanUpstream?.tag ?? CAVEMAN_PIN).replace(/^v/, '');
   if (plan.ruleLocal && plan.rule && plan.ruleLocal === plan.rule.hashes)
     status.push(`Caveman rule: ${ruleCurrent} (up to date)`);
