@@ -23,6 +23,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       code: ${{ steps.filter.outputs.code }}
+      macos: ${{ steps.scope.outputs.macos }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -37,6 +38,17 @@ jobs:
               - '!docs/**'
               - '!graphify-out/**'
               - '!LICENSE'
+      # The marker must stand alone on a line. A PR that merely documents it,
+      # like the one that introduced this gate, would otherwise opt itself in.
+      - id: scope
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          if printf '%s' "$PR_BODY" | grep -qxF '[ci-macos]'; then
+            echo 'macos=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'macos=false' >> "$GITHUB_OUTPUT"
+          fi
 
   check:
     needs: changes
@@ -120,13 +132,15 @@ jobs:
 
   # The primary developers run the suite on macOS itself, so darwin is covered
   # before a push. This leg costs 2m46s plus arm64 queue time, so it runs only
-  # when asked: a dispatch, or [ci-macos] in a PR body.
+  # when asked: a dispatch, or `[ci-macos]` alone on a line in a PR body. The
+  # marker check is exact for the same reason: naming it in prose must not
+  # cost a runner.
   macos:
     needs: [changes]
     if: >-
       needs.changes.outputs.code == 'true' &&
       (github.event_name == 'workflow_dispatch' ||
-       contains(github.event.pull_request.body || '', '[ci-macos]'))
+       needs.changes.outputs.macos == 'true')
     runs-on: macos-latest
     timeout-minutes: 15
     steps:
