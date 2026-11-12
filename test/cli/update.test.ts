@@ -544,7 +544,7 @@ test('the plan says rtk updates itself instead of printing an arrow it never run
   const home = mkdtempSync(path.join(os.tmpdir(), 'tersio-update-rtk-'));
   try {
     const binDir = path.join(home, '.bun', 'bin');
-    fakeRtkBin(binDir, ['echo "rtk 1.1.0"']);
+    fakeRtkBin(binDir, ['echo "rtk 1.1.0"'], 'echo rtk 1.1.0');
 
     const result = spawnSync(process.execPath, [installer, 'update', '--dry-run'], {
       cwd: root,
