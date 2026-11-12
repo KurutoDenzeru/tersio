@@ -173,6 +173,29 @@ async function stepPonytail(pluginsDir: string, options: InstallOptions): Promis
 }
 
 // Registers the package so OMP lists it under Settings → Plugins.
+/** Update omp-plugins.lock.json so `omp plugin doctor` sees no version drift after an update. */
+async function syncOmpPluginLock(pluginsDir: string, pkgName: string, version: string): Promise<void> {
+  const lockPath = path.join(pluginsDir, 'omp-plugins.lock.json');
+  try {
+    const raw = await readTextIfExists(lockPath);
+    if (!raw) return;
+    const data = JSON.parse(raw) as Record<string, unknown>;
+    const plugins = (data.plugins && typeof data.plugins === 'object' ? data.plugins : {}) as Record<string, unknown>;
+    const existing =
+      plugins[pkgName] && typeof plugins[pkgName] === 'object' ? (plugins[pkgName] as Record<string, unknown>) : null;
+    if (existing) {
+      if (existing.version === version) return;
+      existing.version = version;
+    } else {
+      plugins[pkgName] = { version, enabledFeatures: null, enabled: true };
+    }
+    data.plugins = plugins;
+    await fs.writeFile(lockPath, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
+  } catch {
+    /* lockfile update is best-effort; a missing or unparseable file is left alone */
+  }
+}
+
 async function stepSelfPlugin(pluginsDir: string, options: InstallOptions): Promise<boolean> {
   if (!options.quiet) console.log('  Tersio — register plugin');
   const pkgPath = path.join(pluginsDir, 'package.json');
@@ -233,6 +256,7 @@ async function stepSelfPlugin(pluginsDir: string, options: InstallOptions): Prom
     sayTagged(`  [warn] ${PACKAGE_NAME} not found in plugins/node_modules after install`);
     return false;
   }
+  await syncOmpPluginLock(pluginsDir, PACKAGE_NAME, PACKAGE_VERSION);
   debug('tersio listed in OMP plugins');
   return true;
 }
@@ -492,7 +516,7 @@ async function stepOpencode(options: InstallOptions): Promise<void> {
   config.plugins = kept;
   if (!options.dryRun) {
     await fs.mkdir(path.dirname(configPath), { recursive: true });
-    await fs.rm(path.join(HOME, '.config', 'opencode', 'plugins', 'rtk.ts'), { force: true }).catch(() => {});
+    await fs.rm(path.join(HOME, '.config', 'opencode', 'plugins', 'rtk.ts'), { force: true }).catch(() => { });
   }
   // The user's own config, so keep the previous copy beside it.
   await writeIfChanged(configPath, `${JSON.stringify(config, null, 2)}\n`, { ...options, backup: true });
@@ -785,12 +809,12 @@ async function runCommandMenu(): Promise<void> {
       const targets: Array<{ value: string; label: string; hint?: string }> = [
         ...(installed.length > 0
           ? [
-              {
-                value: 'agents',
-                label: 'AI agents',
-                hint: `${installed.map((host) => host.label).join(', ')} — pick one next`,
-              },
-            ]
+            {
+              value: 'agents',
+              label: 'AI agents',
+              hint: `${installed.map((host) => host.label).join(', ')} — pick one next`,
+            },
+          ]
           : []),
         { value: 'cli', label: 'Tersio CLI only', hint: 'leave agent extensions as they are' },
       ];
