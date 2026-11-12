@@ -233,6 +233,18 @@ export function vendorOf(model: string): Vendor {
   return { name: "Other", slug: "", color: "#71717a" }
 }
 
+/** One name per harness, so a row, a chip, and a table agree. */
+export function hostName(host?: string): string {
+  if (host === "omp" || host === "agent") return "Oh My Pi"
+  if (host === "pi") return "pi"
+  if (host === "pig") return "Pi-in-Go"
+  if (host === "opencode") return "OpenCode"
+  if (host === "dsh") return "DeepSeek Harness"
+  if (host === "codex") return "Codex"
+  if (host === "claude" || host === "claude-code") return "Claude Code"
+  return "Unknown"
+}
+
 // Host glyph identifies the agent without opening the row.
 export interface HostMeta {
   label: string

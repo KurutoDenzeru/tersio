@@ -1,6 +1,7 @@
 ## Unreleased
 
 ### Added
+- The dashboard's Latest requests, Requests, and Traces tables carry an Agent column: each harness's brand mark and name, sortable and searchable like the other cells.
 - Mode switches now save the next session's defaults. `/combo`, `/caveman`, `/rtk`, `/ponytail`, `/pstack`, `/headroom`, and the stop phrases write the current state to the host section and the shared defaults, so a new session starts where the last one ended.
 - Claude Code now ships Tersio's MCP server in the plugin bundle, so Headroom recovery and stats tools are reachable from Claude. The host check reads the bundled `.mcp.json` instead of assuming the plugin carries one.
 - The Claude plugin carries pstack's playbooks, skills, principles, and references, and prints the absolute skill directory in the injected rule.

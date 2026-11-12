@@ -11,7 +11,7 @@ import {
   StatGrid,
   TimeChart,
 } from "@/components/charts"
-import { ModelCell } from "@/components/charts"
+import { AgentCell, ModelCell } from "@/components/charts"
 import type { Column } from "@/components/charts"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -328,6 +328,12 @@ function buildLatestColumns(money: (v: number) => string): Array<Column<AgentReq
       key: "model",
       header: "Model",
       render: (row) => <ModelCell model={row.model} provider={row.provider} />,
+    },
+    {
+      key: "agent",
+      header: "Agent",
+      render: (row) => <AgentCell host={row.host} />,
+      sort: (row) => row.host,
     },
     {
       key: "time",
