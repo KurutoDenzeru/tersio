@@ -340,7 +340,29 @@ async function installRtk(options: InstallOptions): Promise<string | null> {
 }
 
 async function stepRtk(options: InstallOptions, target: HostId = 'omp'): Promise<void> {
-  const found = resolveRtkBinary() ?? (options.dryRun ? null : await installRtk(options));
+  let found = resolveRtkBinary();
+  if (applyUpdate && !dryRun && found) {
+    try {
+      const updated = await installRtk(options);
+      if (updated) {
+        found = updated;
+        sayTagged('  RTK — updated to the latest release');
+        // If a stale binary remains in ~/.bun/bin shadowing ~/.local/bin, clean it up.
+        const bunBinRtk = path.join(homeDir(), '.bun', 'bin', IS_WINDOWS ? 'rtk.exe' : 'rtk');
+        if (bunBinRtk !== updated && existsSync(bunBinRtk)) {
+          try {
+            await fs.unlink(bunBinRtk);
+          } catch {
+            /* ignore if unable to unlink */
+          }
+        }
+      }
+    } catch (e) {
+      sayTagged(`  [warn] RTK update failed: ${shortError(e)} — update manually with: ${rtkInstallRoute().display}`);
+    }
+  } else if (!found && !options.dryRun) {
+    found = await installRtk(options);
+  }
   if (!found) {
     if (!options.quiet) {
       if (options.dryRun) console.log(`  [dry-run] would install rtk with: ${rtkInstallRoute().display}`);
