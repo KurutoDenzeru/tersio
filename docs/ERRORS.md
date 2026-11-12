@@ -43,6 +43,14 @@ Reviewed 2026-10-11. Each entry below is resolved in the repo, so its log entry 
 **Root cause:** the Claude section was written from Tersio's local-marketplace writer only. The Codex section was checked against `codex plugin marketplace add`, and Claude Code was not checked the same way.
 **Prevention rule:** before documenting a host install row, list the host's own plugin subcommands and name the one that ships Tersio. A native route needs a manifest in the repo it points at; `.claude-plugin/marketplace.json` is now tracked, and `test/repo-integrity.test.ts` fails when it or its `package.json` files entry is missing.
 
+## 2026-11-12 — The rtk plan test passed on macOS and failed after merge
+
+**What happened:** the regression test added in #105 called `fakeRtkBin(binDir, ['echo "rtk 1.1.0"'])` and asserted the plan printed `1.1.0`. It passed locally and on the ubuntu legs. The push to `main` then ran `check (windows-latest)` for the first time on that code, where the plan printed `RTK binary: not installed` and the test failed.
+
+**Root cause:** `fakeRtkBin` writes a POSIX script from the second argument and a `.cmd` from the third. The third defaults to `exit /b 0`, so on Windows the stub exited 0 with no output, the version probe read nothing, and rtk looked absent. The `[ci-all]` gate kept Windows off the PR, so the first Windows run of that test was after the merge.
+
+**Prevention rule:** a test that seeds a binary through `fakeRtkBin` passes its `cmdBody` whenever the assertion reads the stub's output. Windows now runs on every PR, so the leg answers before the merge instead of after.
+
 ## Format
 
 ```md

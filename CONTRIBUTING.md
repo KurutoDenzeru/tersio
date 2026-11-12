@@ -68,3 +68,5 @@ bun run test
 ```
 
 Please ensure that the tests are passing when submitting a pull request. If you're adding new components or features, creating tests would be appreciated.
+
+A pull request runs the suite on Linux (x64 and arm64) and Windows. The macOS leg is opt-in, because the primary developers already run the suite on darwin before a push: put `[ci-macos]` alone on its own line in the pull request body to add it. Naming the marker in a sentence does not add the leg.

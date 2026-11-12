@@ -23,7 +23,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       code: ${{ steps.filter.outputs.code }}
-      full: ${{ steps.scope.outputs.full }}
+      macos: ${{ steps.scope.outputs.macos }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -38,28 +38,21 @@ jobs:
               - '!docs/**'
               - '!graphify-out/**'
               - '!LICENSE'
-      # Windows and macOS cost minutes the Linux legs do not, so a feature
-      # branch runs them only when its PR asks with [ci-all]. main always runs
-      # everything. The gate is tailwindcss's.
+      # The marker must stand alone on a line. A PR that merely documents it,
+      # like the one that introduced this gate, would otherwise opt itself in.
       - id: scope
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
         run: |
-          # The marker must stand alone on a line. A PR that merely documents
-          # it, like this one, would otherwise opt itself in.
-          if [ "$GITHUB_REF" = "refs/heads/main" ] ||
-             [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] ||
-             printf '%s' "$PR_BODY" | grep -qxF '[ci-all]'; then
-            echo 'full=true' >> "$GITHUB_OUTPUT"
+          if printf '%s' "$PR_BODY" | grep -qxF '[ci-macos]'; then
+            echo 'macos=true' >> "$GITHUB_OUTPUT"
           else
-            echo 'full=false' >> "$GITHUB_OUTPUT"
+            echo 'macos=false' >> "$GITHUB_OUTPUT"
           fi
 
   check:
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    # Named for the runner only. A matrix axis named in the default job name
-    # would read "check (ubuntu-26.04, false)" and rename the required checks.
     name: check (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
@@ -67,19 +60,12 @@ jobs:
       matrix:
         # The arm leg is the project's only linux/arm64 coverage. The
         # 26.04 labels are GA on GitHub (changelog 2026-09-17).
+        # Windows is on every run: it is the leg that catches drive-letter
+        # paths and locked-file teardown, and it used to run only after merge.
         os:
           - ubuntu-26.04
           - ubuntu-26.04-arm
           - windows-latest
-        # A string, not a boolean: exclude matches exactly, so 'false' can
-        # never drift into a truthy value. The exclude drops the Windows leg
-        # when the scope job said this branch does not need it. The name keeps
-        # this axis out of the check name, which would read "check (os, false)".
-        full:
-          - ${{ needs.changes.outputs.full }}
-        exclude:
-          - full: 'false'
-            os: windows-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
@@ -146,13 +132,15 @@ jobs:
 
   # The primary developers run the suite on macOS itself, so darwin is covered
   # before a push. This leg costs 2m46s plus arm64 queue time, so it runs only
-  # when asked: a dispatch, or [ci-macos] in a PR body.
+  # when asked: a dispatch, or `[ci-macos]` alone on a line in a PR body. The
+  # marker check is exact for the same reason: naming it in prose must not
+  # cost a runner.
   macos:
     needs: [changes]
     if: >-
       needs.changes.outputs.code == 'true' &&
       (github.event_name == 'workflow_dispatch' ||
-       contains(github.event.pull_request.body || '', '[ci-macos]'))
+       needs.changes.outputs.macos == 'true')
     runs-on: macos-latest
     timeout-minutes: 15
     steps:
