@@ -23,15 +23,17 @@ test('normal mode writes the off defaults and tells the model', async () => {
     mkdirSync(tersio, { recursive: true });
     mkdirSync(path.join(plugin, 'hooks'), { recursive: true });
     const settingsFile = path.join(tersio, 'settings.json');
+    // The hook joins with '/', because a mod may not import node:path; key the map the same way.
+    const key = (file: string): string => file.replace(/\\/g, '/');
     const files = new Map<string, string>([
       [
-        settingsFile,
+        key(settingsFile),
         JSON.stringify({
           hosts: { claude: { cavemanDefault: 'full', ponytailDefault: 'full', pstackDefault: 'on' } },
         }),
       ],
       [
-        path.join(plugin, 'hooks', 'mode-context.json'),
+        key(path.join(plugin, 'hooks', 'mode-context.json')),
         JSON.stringify({
           caveman: { full: 'CAVEMAN RULES' },
           ponytail: { full: 'PONYTAIL RULES' },
@@ -48,10 +50,10 @@ test('normal mode writes the off defaults and tells the model', async () => {
     const dollar: FakeDollar = {
       env: { get: async (name) => env[name] },
       fs: {
-        exists: async (file) => files.has(file),
-        read: async (file) => files.get(file),
+        exists: async (file) => files.has(key(file)),
+        read: async (file) => files.get(key(file)),
         write: async (file, text) => {
-          files.set(file, text);
+          files.set(key(file), text);
         },
       },
     };
@@ -69,7 +71,7 @@ test('normal mode writes the off defaults and tells the model', async () => {
     expect(JSON.stringify(first)).toContain('CAVEMAN RULES');
     const second = await prompt(dollar, { text: 'normal mode' }, (value) => value);
     expect(JSON.stringify(second)).toContain('now off');
-    const saved = JSON.parse(files.get(settingsFile) ?? '{}') as {
+    const saved = JSON.parse(files.get(key(settingsFile)) ?? '{}') as {
       hosts?: { claude?: Record<string, string> };
     };
     expect(saved.hosts?.claude?.cavemanDefault).toBe('off');
