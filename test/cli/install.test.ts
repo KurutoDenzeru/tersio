@@ -2,6 +2,7 @@ import { expect, test } from 'vitest';
 import { execFileSync, spawnSync } from 'node:child_process';
 import {
   existsSync,
+  chmodSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -1807,4 +1808,39 @@ test.skipIf(process.platform === 'win32')(
     }
   },
   90000,
+);
+
+// `headroom update` confirms before upgrading; a piped stdin saw EOF and aborted, so the delegated update never ran.
+test.skipIf(isWindows())(
+  'an update delegates headroom with --yes so the upgrade answers its own prompt',
+  () => {
+    const home = mkdtempSync(path.join(os.tmpdir(), 'tersio-update-headroom-'));
+    try {
+      const binDir = path.join(home, 'bin');
+      const headroom = path.join(binDir, 'headroom');
+      const argsFile = path.join(home, 'headroom-args');
+      mkdirSync(binDir, { recursive: true });
+      // A stub that records the argv it was given, since the flag is the whole fix.
+      writeFileSync(headroom, `#!/bin/sh\nprintf '%s\\n' "$@" > "${argsFile}"\n`, 'utf8');
+      chmodSync(headroom, 0o755);
+
+      const result = spawnSync(process.execPath, [installer, '--apply-update', '--yes', '--host', 'pi'], {
+        cwd: root,
+        encoding: 'utf8',
+        env: cliEnv(home, {
+          ...DEAD_ENDPOINTS,
+          TERSIO_HEADROOM_BIN: headroom,
+          PATH: `${binDir}${path.delimiter}${process.env.PATH ?? ''}`,
+        }),
+        timeout: 30000,
+      });
+
+      expect(result.status, result.stderr).toBe(0);
+      // Without --yes the child reads EOF on the confirm and exits 1, which is the reported bug.
+      expect(readFileSync(argsFile, 'utf8').trim().split('\n').join(' '), result.stdout).toBe('update --yes');
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  },
+  60000,
 );

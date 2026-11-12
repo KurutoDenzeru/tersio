@@ -688,10 +688,13 @@ async function lifecycleHeadroom(host: HostId, enabled: boolean, profile: Profil
   if (!bin) return;
   if (applyUpdate && !dryRun) {
     try {
-      await execP(bin, ['update'], { timeout: 300_000, cwd: homeDir() });
+      // `headroom update` asks before it upgrades; a piped stdin reads EOF and aborts, so `--yes` answers for it.
+      await execP(bin, ['update', '--yes'], { timeout: 300_000, cwd: homeDir() });
       sayTagged('  Headroom — updated to the latest release');
-    } catch {
-      sayTagged('  [warn] Headroom update failed — run: headroom update');
+    } catch (e) {
+      // A partial update is not a success: the exit code tells a script what the summary line cannot.
+      process.exitCode = 1;
+      sayTagged(`  [warn] Headroom update failed: ${shortError(e)} — run: headroom update`);
     }
   }
   if (dryRun || !headroomHostSupported(host) || (!enabled && profile.headroomDefault !== 'on')) return;
@@ -1298,6 +1301,8 @@ async function runInstall(forcedHost?: HostId): Promise<void> {
       await work();
     } catch (e) {
       failures.push(label);
+      // The summary says "failure(s)", so a scripted run reads the same verdict from the exit code.
+      process.exitCode = 1;
       sayTagged(`  [fail] ${label}: ${shortError(e)}`);
     }
   };
