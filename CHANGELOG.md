@@ -1,5 +1,10 @@
 ## Unreleased
 
+## v2.25.21
+
+### Fixed
+- `test/cli/claude-hook.test.ts` keys its fake filesystem on one separator. The hook joins paths with `/` because a mod cannot import `node:path`, and the fake map kept Windows backslashes, so every read missed and the assertion failed only on `windows-latest`.
+
 ## v2.25.20
 
 ### Added
@@ -369,6 +374,5 @@
 ## v2.25.7
 
 ### Added
- - Caveman `lite` is a real level now. It used to load `full`'s rules, so a light run cost the same and read the same body. Measured through the host: `lite` 1,062 tokens, `full` 1,187, `ultra` 638.
 
-[Showing lines 1-372 of 375 (50.0KB limit). Use offset=373 to continue.]
+[Showing lines 1-376 of 379 (50.0KB limit). Use offset=377 to continue.]
