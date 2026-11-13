@@ -1,13 +1,13 @@
 // Data contract mirroring cli/usage.ts; snapshots ride window.__TERSIO_SNAP for file://.
-import { useCallback, useEffect, useState } from "react"
-import { FX_SNAPSHOT, fxMoney, isCurrencyCode } from "./format"
+import {useCallback, useEffect, useState} from "react"
+import {FX_SNAPSHOT, fxMoney, isCurrencyCode} from "./format"
 import type {
-  AgentHeadroom,
-  AgentSessionTrace,
-  AgentStats,
-  AgentView,
-  RangeKey,
-  RtkRow,
+    AgentHeadroom,
+    AgentSessionTrace,
+    AgentStats,
+    AgentView,
+    RangeKey,
+    RtkRow,
 } from "../../../../extensions/shared/agent-types.ts"
 
 // The API contract is defined once in the backend; the dashboard re-exports it as its public type surface.
@@ -167,6 +167,7 @@ export function useAgentData(
   stale: boolean
 } {
   const key = `${range}|${view}|${offset}`
+  const [currentKey, setCurrentKey] = useState(key)
   const [agent, setAgent] = useState<AgentStats | null>(
     () => snapAgent() ?? agentCache.get(key) ?? null,
   )
@@ -174,6 +175,13 @@ export function useAgentData(
     () => !isFileExport() && !agentCache.has(key) && !snapAgent(),
   )
   const [stale, setStale] = useState(false)
+
+  if (currentKey !== key) {
+    setCurrentKey(key)
+    const held = snapAgent() ?? agentCache.get(key) ?? null
+    setAgent(held)
+    setLoading(!isFileExport() && !held)
+  }
 
   useEffect(() => {
     if (isFileExport()) return
@@ -301,10 +309,10 @@ async function apiJson<T>(path: string, body?: unknown): Promise<T | null> {
       body === undefined
         ? undefined
         : {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(body),
-          },
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        },
     )
     return (await r.json()) as T
   } catch {
@@ -420,15 +428,15 @@ export async function installHeadroom(
     if (start && start.ok === false)
       return { present: false, error: start.error ?? "the install could not start" }
     const started = Date.now()
-    for (;;) {
+    for (; ;) {
       await new Promise((resolve) => setTimeout(resolve, 3000))
       const job = (await fetch("/api/headroom/install")
         .then((r) => r.json())
         .catch(() => null)) as {
-        present?: boolean
-        code?: number | null
-        error?: string | null
-      } | null
+          present?: boolean
+          code?: number | null
+          error?: string | null
+        } | null
       if (job?.present) return { present: true, error: null }
       if (job && job.code !== null && job.code !== undefined)
         return { present: false, error: job.error || "the pip run failed" }
