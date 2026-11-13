@@ -221,6 +221,7 @@ async function stepSelfPlugin(pluginsDir: string, options: InstallOptions): Prom
     const installed = parseJsonObject<{ version?: string }>(installedPkgRaw)?.version;
     if (installed === PACKAGE_VERSION && pkg.dependencies[PACKAGE_NAME] === PACKAGE_VERSION) {
       debug(`${PACKAGE_NAME} already installed at v${PACKAGE_VERSION}; skipping npm install`);
+      await syncOmpPluginLock(pluginsDir, PACKAGE_NAME, PACKAGE_VERSION);
       return true;
     }
   }
@@ -349,13 +350,15 @@ async function stepRtk(options: InstallOptions, target: HostId = 'omp'): Promise
         sayTagged('  RTK — updated to the latest release');
         // If a stale binary remains in ~/.bun/bin shadowing ~/.local/bin, clean it up.
         const bunBinRtk = path.join(homeDir(), '.bun', 'bin', IS_WINDOWS ? 'rtk.exe' : 'rtk');
-        if (bunBinRtk !== updated && existsSync(bunBinRtk)) {
+        const localBinRtk = path.join(homeDir(), '.local', 'bin', IS_WINDOWS ? 'rtk.exe' : 'rtk');
+        if (bunBinRtk !== localBinRtk && existsSync(bunBinRtk)) {
           try {
             await fs.unlink(bunBinRtk);
           } catch {
             /* ignore if unable to unlink */
           }
         }
+        found = (existsSync(localBinRtk) ? localBinRtk : null) ?? resolveRtkBinary() ?? updated;
       }
     } catch (e) {
       sayTagged(`  [warn] RTK update failed: ${shortError(e)} — update manually with: ${rtkInstallRoute().display}`);

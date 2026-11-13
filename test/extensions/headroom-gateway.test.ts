@@ -164,7 +164,7 @@ test('a model with its own endpoint is routed beside the provider line', () => {
   });
 });
 
-test('routeOmpDefaultModel creates models.yml scaffold when missing and routes the provider', () => {
+test('routeOmpDefaultModel creates models.yml scaffold when missing', () => {
   withHome((home) => {
     const configDir = path.join(home, '.omp', 'agent');
     mkdirSync(configDir, { recursive: true });

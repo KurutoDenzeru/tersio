@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
+  <component name="AgentCommitMessageProject"><![CDATA[{
+  "mode": "CUSTOM",
+  "instruction": "Write a commit message in the Conventional Commits format. Use the structure:\n<type>(<optional scope>): <short description>\n\n    <optional body>\n\n    <optional footer>\n\nExample types: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert\nOptionally, include a body for more details in bullet points.\nOptionally, in the footer, use BREAKING CHANGE: followed by a detailed explanation of the breaking change.\n\nJust return the commit message, do not include any other text."
+}]]></component>
   <component name="VcsDirectoryMappings">
     <mapping directory="" vcs="Git" />
   </component>

@@ -223,8 +223,9 @@ export default function headroomSessionExtension(pi: ExtensionApi): void {
     // A live proxy is not enough: the configured model must actually point at it.
     let route = readHeadroomRoute(host);
     // When the active model is not routed yet, route it automatically on the fly.
-    if (!route.routed && route.model !== lastRepairedModel) {
-      lastRepairedModel = route.model;
+    const repairKey = `${route.provider ?? ''}:${route.model ?? ''}`;
+    if (!route.routed && repairKey !== lastRepairedModel) {
+      lastRepairedModel = repairKey;
       const repaired = await repairHeadroomRoute(host);
       if (repaired.ok) {
         route = readHeadroomRoute(host);

@@ -1666,6 +1666,13 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
     };
 
     let attemptPort = options.port;
+    server.once('listening', () => {
+      server.on('error', rejectOnce);
+      const address = server.address();
+      const port = typeof address === 'object' && address ? address.port : attemptPort;
+      onListening(port);
+    });
+
     const tryListen = (): void => {
       const errorHandler = (err: NodeJS.ErrnoException): void => {
         server.removeListener('error', errorHandler);
@@ -1677,13 +1684,7 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
         }
       };
       server.once('error', errorHandler);
-      server.listen(attemptPort, listenHost, () => {
-        server.removeListener('error', errorHandler);
-        server.on('error', rejectOnce);
-        const address = server.address();
-        const port = typeof address === 'object' && address ? address.port : attemptPort;
-        onListening(port);
-      });
+      server.listen(attemptPort, listenHost);
     };
     tryListen();
   });

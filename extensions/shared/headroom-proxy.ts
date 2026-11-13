@@ -101,8 +101,15 @@ export function ensureOmpModelsFile(): string {
   const dir = path.dirname(file);
   fs.mkdirSync(dir, { recursive: true });
   const scaffold = 'providers:\n';
-  fs.writeFileSync(file, scaffold, 'utf8');
-  return scaffold;
+  try {
+    fs.writeFileSync(file, scaffold, { flag: 'wx', encoding: 'utf8' });
+    return scaffold;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'EEXIST') {
+      return fs.readFileSync(file, 'utf8');
+    }
+    throw err;
+  }
 }
 
 /** omp's model cache: the catalog it resolves a selector against, including its built-in providers. */
@@ -183,8 +190,9 @@ export function ompCachedProviderEndpoint(provider: string): OmpCachedEndpoint |
   }
   if (!raw) return null;
   const parts = raw.split('\t');
+  const matchedProviderId = parts.length > 1 ? parts[0] : '';
+  if (matchedProviderId && matchedProviderId !== safe && !matchedProviderId.startsWith(`${safe}:`)) return null;
   const catalogJson = parts.length > 1 ? parts[1] : parts[0];
-  if (!catalogJson) return null;
   try {
     const catalog = JSON.parse(catalogJson);
     if (!Array.isArray(catalog) || catalog.length === 0) return null;
@@ -513,9 +521,6 @@ export function routeOmpDefaultModel(port: number = HEADROOM_PORT): boolean {
 export function routeOmpModel(model: string, port: number = HEADROOM_PORT): boolean {
   const bare = model.replace(/:[^:]+$/, '');
   const slash = bare.indexOf('/');
-  const provider = slash > 0 ? bare.slice(0, slash) : bare;
-  if (!provider) return false;
-
   const file = ompModelsFile();
   let text: string;
   try {
@@ -524,10 +529,14 @@ export function routeOmpModel(model: string, port: number = HEADROOM_PORT): bool
     return false;
   }
 
+  const provider = slash > 0 ? bare.slice(0, slash) : bare;
+  if (!provider) return false;
   if (ompProviderNames(text).has(provider)) {
     const block = ompProviderBlocks(text).find((b) => b.name === provider);
     if (block && block.baseUrl && block.baseLine >= 0) {
-      const proxy = `http://127.0.0.1:${port}${proxyApiPath(ompBlockApi(block))}`;
+      const api = ompBlockApi(block);
+      if (!isHeadroomCompatibleApi(api)) return false;
+      const proxy = `http://127.0.0.1:${port}${proxyApiPath(api)}`;
       if (block.baseUrl !== proxy) {
         return routeOmpGateway({ provider, baseUrl: block.marker || block.baseUrl, model: slash > 0 ? model : null }, port);
       }
