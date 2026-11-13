@@ -90,8 +90,7 @@ export default function headroomSessionExtension(pi: ExtensionApi): void {
   let currentMode = DEFAULT_MODE;
   let lastInjected: string | undefined = undefined;
   let unroutedNotified = false;
-  let repairAttempted = false;
-
+  let lastRepairedModel = '';
   function setMode(mode: string, ctx?: ExtensionCtx): boolean {
     if (!supported) return false;
     const normalized = normalizeMode('headroom', mode);
@@ -158,7 +157,7 @@ export default function headroomSessionExtension(pi: ExtensionApi): void {
 
   function restoreMode(ctx?: ExtensionCtx): void {
     unroutedNotified = false;
-    repairAttempted = false;
+    lastRepairedModel = '';
     const entries = sessionEntries(ctx);
     // A subagent's branch has no Tersio entries; reconciling it would wipe shared state.
     if (hasModeState(entries)) reconcileSharedComboEntries(entries);
@@ -223,10 +222,9 @@ export default function headroomSessionExtension(pi: ExtensionApi): void {
     if (!(await headroomProxyUp())) return;
     // A live proxy is not enough: the configured model must actually point at it.
     let route = readHeadroomRoute(host);
-    // A model switcher that owns the provider block writes its own endpoint back on every switch,
-    // so put the route back once per session instead of warning on every turn.
-    if (!route.routed && !repairAttempted) {
-      repairAttempted = true;
+    // When the active model is not routed yet, route it automatically on the fly.
+    if (!route.routed && route.model !== lastRepairedModel) {
+      lastRepairedModel = route.model;
       const repaired = await repairHeadroomRoute(host);
       if (repaired.ok) {
         route = readHeadroomRoute(host);

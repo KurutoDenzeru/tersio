@@ -167,6 +167,37 @@ export function ompCachedEndpoint(model: string): OmpCachedEndpoint | null {
   return null;
 }
 
+
+/** Resolves the default endpoint for an entire provider directly from omp's model cache. */
+export function ompCachedProviderEndpoint(provider: string): OmpCachedEndpoint | null {
+  const safe = provider.replace(/[^A-Za-z0-9._-]/g, '');
+  if (!safe) return null;
+  let raw: string;
+  try {
+    raw = sqliteRead(
+      ompModelsDb(),
+      `select provider_id, models from model_cache where provider_id = '${safe}' or provider_id like '${safe}:%' limit 1`,
+    ).trim();
+  } catch {
+    return null;
+  }
+  if (!raw) return null;
+  const parts = raw.split('\t');
+  const catalogJson = parts.length > 1 ? parts[1] : parts[0];
+  if (!catalogJson) return null;
+  try {
+    const catalog = JSON.parse(catalogJson);
+    if (!Array.isArray(catalog) || catalog.length === 0) return null;
+    const first = catalog[0];
+    const baseUrl = typeof first?.baseUrl === 'string' ? first.baseUrl : '';
+    if (!baseUrl) return null;
+    const api = typeof first?.api === 'string' ? first.api : 'openai-completions';
+    return { provider, api, baseUrl };
+  } catch {
+    return null;
+  }
+}
+
 /** OpenCode's config; the first that exists wins, matching headroom's own lookup order. */
 export function opencodeConfigFiles(): string[] {
   return [
@@ -180,6 +211,29 @@ export interface OmpGatewayRoute {
   baseUrl: string;
   /** The active role's model, whose own endpoint beats the provider's when it names one. */
   model: string | null;
+}
+
+/** Returns true when a provider offers models under more than one API dialect. */
+export function ompProviderIsMultiDialect(provider: string): boolean {
+  const safe = provider.replace(/[^A-Za-z0-9._-]/g, '');
+  if (!safe) return false;
+  try {
+    const raw = sqliteRead(
+      ompModelsDb(),
+      `select models from model_cache where provider_id = '${safe}' or provider_id like '${safe}:%' limit 1`,
+    ).trim();
+    if (!raw) return false;
+    const parts = raw.split('\t');
+    const catalogJson = parts.length > 1 ? parts[1] : parts[0];
+    if (!catalogJson) return false;
+    const catalog = JSON.parse(catalogJson);
+    if (!Array.isArray(catalog)) return false;
+    const apis = new Set(catalog.map((m) => (typeof m?.api === 'string' ? m.api : '')));
+    apis.delete('');
+    return apis.size > 1;
+  } catch {
+    return false;
+  }
 }
 
 function loopbackHost(host: string): boolean {
@@ -197,11 +251,14 @@ interface OmpProviderBlock {
   markerLine: number | null;
 }
 
-/** The path an API expects after the proxy root: Anthropic clients append /v1/messages, OpenAI /v1. */
+/** The path an API expects after the proxy root: Anthropic and Google Antigravity clients use root, OpenAI /v1. */
 function proxyApiPath(api: string): '' | '/v1' {
-  return /anthropic/i.test(api) ? '' : '/v1';
+  return /anthropic|google-gemini-cli/i.test(api) ? '' : '/v1';
 }
 
+export function isHeadroomCompatibleApi(api: string): boolean {
+  return /anthropic|openai|google-gemini-cli/i.test(api);
+}
 /** The provider blocks in omp's models.yml, with line numbers for a surgical baseUrl rewrite. */
 function ompProviderBlocks(text: string): OmpProviderBlock[] {
   const lines = text.split(/\r?\n/);
@@ -304,7 +361,7 @@ export function readOmpGateway(port: number = HEADROOM_PORT): OmpGatewayRoute | 
     if (block.marker && block.baseUrl === proxy) {
       return { provider: block.name, baseUrl: block.marker, model };
     }
-    if (!/^(?:openai|anthropic)/.test(api) || !block.baseUrl) continue;
+    if ((!isHeadroomCompatibleApi(api) && !/^(?:openai|anthropic)/.test(api)) || !block.baseUrl) continue;
     try {
       const url = new URL(block.baseUrl);
       if (!loopbackHost(url.hostname) || Number(url.port || 80) === port) continue;
@@ -418,15 +475,44 @@ export function restoreOmpGateway(port: number = HEADROOM_PORT): boolean {
   }
 }
 
-/** Route the provider omp's default role calls; a built-in provider with no block gets an override block. */
+/** Route the providers omp calls across roles and fallbacks; built-in providers with no block get override blocks. */
 export function routeOmpDefaultModel(port: number = HEADROOM_PORT): boolean {
-  let model: string | null = null;
+  let configText = '';
   try {
-    model = defaultOmpModel(fs.readFileSync(ompConfigFile(), 'utf8'));
+    configText = fs.readFileSync(ompConfigFile(), 'utf8');
   } catch {
     return false;
   }
-  if (!model) return false;
+  const defaultModel = defaultOmpModel(configText);
+  if (!defaultModel) return false;
+  try {
+    ensureOmpModelsFile();
+  } catch {
+    return false;
+  }
+
+  // Collect all models referenced across modelRoles and fallback chains, default first
+  const models = [defaultModel];
+  const matches = configText.matchAll(/(?:^|\n)\s*(?:[a-zA-Z0-9_-]+:|-)\s*['"]?([a-zA-Z0-9_-]+\/[a-zA-Z0-9._:/-]+)['"]?/g);
+  for (const m of matches) {
+    const val = m[1]?.trim();
+    if (val && !models.includes(val)) models.push(val);
+  }
+
+  let routedAny = false;
+  for (const model of models) {
+    if (routeOmpModel(model, port)) routedAny = true;
+  }
+  return routedAny;
+}
+
+/** Route any given omp model or provider to Headroom, discovering its endpoint dynamically from the catalog. */
+export function routeOmpModel(model: string, port: number = HEADROOM_PORT): boolean {
+  const bare = model.replace(/:[^:]+$/, '');
+  const slash = bare.indexOf('/');
+  const provider = slash > 0 ? bare.slice(0, slash) : bare;
+  if (!provider) return false;
+
   const file = ompModelsFile();
   let text: string;
   try {
@@ -434,40 +520,39 @@ export function routeOmpDefaultModel(port: number = HEADROOM_PORT): boolean {
   } catch {
     return false;
   }
-  const bare = model.replace(/:[^:]+$/, '');
-  const slash = bare.indexOf('/');
-  const provider = slash > 0 ? bare.slice(0, slash) : '';
-  // When the provider block already exists, re-route its baseUrl if it is not already pointed at the proxy.
-  if (!provider) return true;
+
   if (ompProviderNames(text).has(provider)) {
     const block = ompProviderBlocks(text).find((b) => b.name === provider);
     if (block && block.baseUrl && block.baseLine >= 0) {
       const proxy = `http://127.0.0.1:${port}${proxyApiPath(ompBlockApi(block))}`;
       if (block.baseUrl !== proxy) {
-        return routeOmpGateway({ provider, baseUrl: block.marker || block.baseUrl, model }, port);
+        return routeOmpGateway({ provider, baseUrl: block.marker || block.baseUrl, model: slash > 0 ? model : null }, port);
       }
     }
     return true;
   }
-  const endpoint = ompCachedEndpoint(model);
-  const anthropic = endpoint?.api.startsWith('anthropic') === true;
-  if (!endpoint || (!anthropic && !endpoint.api.startsWith('openai'))) return false;
+
+  const endpoint = (slash > 0 ? ompCachedEndpoint(model) : null) ?? ompCachedProviderEndpoint(provider);
+  if (!endpoint || !isHeadroomCompatibleApi(endpoint.api)) return false;
+
   const lines = text.split(/\r?\n/);
   const at = lines.findIndex((line) => /^providers:\s*$/.test(line));
   if (at < 0) return false;
   const baseUrl = `http://127.0.0.1:${port}${proxyApiPath(endpoint.api)}`;
-  lines.splice(
-    at + 1,
-    0,
-    `  ${endpoint.provider}:`,
-    `    api: ${endpoint.api}`,
+  const blockLines = [`  ${endpoint.provider}:`];
+  // Omit provider-level api override when the provider serves multiple dialects (e.g. commandcode, openai).
+  if (!ompProviderIsMultiDialect(endpoint.provider)) {
+    blockLines.push(`    api: ${endpoint.api}`);
+  }
+  blockLines.push(
     `    # tersio-headroom-upstream: ${endpoint.baseUrl}`,
     `    baseUrl: ${baseUrl}`,
   );
+  lines.splice(at + 1, 0, ...blockLines);
   try {
     fs.writeFileSync(file, lines.join('\n'), 'utf8');
+    return true;
   } catch {
     return false;
   }
-  return true;
 }

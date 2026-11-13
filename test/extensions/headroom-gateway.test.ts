@@ -6,6 +6,7 @@ import {
   restoreOmpGateway,
   routeOmpDefaultModel,
   routeOmpGateway,
+  routeOmpModel,
 } from '../../extensions/shared/headroom-proxy.ts';
 import { withHome } from '../helpers/env.ts';
 
@@ -191,5 +192,81 @@ test('routeOmpDefaultModel re-routes an existing provider block whose baseUrl is
     const routed = readFileSync(file, 'utf8');
     expect(routed).toContain('baseUrl: http://127.0.0.1:8787\n');
     expect(routed).toContain('# tersio-headroom-upstream: https://api.anthropic.com');
+  });
+});
+
+test('routeOmpDefaultModel universally routes across dialects: gemini-cli, anthropic, openai-completions, openai-responses', () => {
+  withHome((home) => {
+    const file = writeOmp(
+      home,
+      `providers:
+  google-antigravity:
+    api: google-gemini-cli
+    baseUrl: https://daily-cloudcode-pa.googleapis.com
+  commandcode:
+    api: anthropic-messages
+    baseUrl: https://api.commandcode.ai/provider
+  kilo:
+    api: openai-completions
+    baseUrl: https://api.kilo.ai/api/gateway
+  opencode-go:
+    api: openai-responses
+    baseUrl: https://opencode.ai/zen/go/v1
+`,
+      `modelRoles:
+  default: commandcode/claude-sonnet-5-5:medium
+  image: google-antigravity/gemini-3.8-flash
+  code: kilo/claude-3-7-sonnet
+  fast: opencode-go/deepseek-r1
+`,
+    );
+    expect(routeOmpDefaultModel(8787)).toBe(true);
+    const routed = readFileSync(file, 'utf8');
+    // Anthropic and Gemini route to proxy root (empty proxy path)
+    expect(routed).toContain('# tersio-headroom-upstream: https://daily-cloudcode-pa.googleapis.com');
+    expect(routed).toContain('# tersio-headroom-upstream: https://api.commandcode.ai/provider');
+    expect((routed.match(/baseUrl: http:\/\/127\.0\.0\.1:8787\n/g) ?? []).length).toBe(2);
+    // OpenAI-completions and OpenAI-responses route to /v1
+    expect(routed).toContain('# tersio-headroom-upstream: https://api.kilo.ai/api/gateway');
+    expect(routed).toContain('# tersio-headroom-upstream: https://opencode.ai/zen/go/v1');
+    expect((routed.match(/baseUrl: http:\/\/127\.0\.0\.1:8787\/v1\n/g) ?? []).length).toBe(2);
+
+    // Restore puts all four upstream URLs back and drops all markers
+    expect(restoreOmpGateway(8787)).toBe(true);
+    const restored = readFileSync(file, 'utf8');
+    expect(restored).toContain('baseUrl: https://daily-cloudcode-pa.googleapis.com');
+    expect(restored).toContain('baseUrl: https://api.commandcode.ai/provider');
+    expect(restored).toContain('baseUrl: https://api.kilo.ai/api/gateway');
+    expect(restored).toContain('baseUrl: https://opencode.ai/zen/go/v1');
+    expect(restored).not.toContain('tersio-headroom-upstream');
+  });
+});
+
+test('routeOmpModel routes an ad-hoc model on demand without touching config.yml', () => {
+  withHome((home) => {
+    const file = writeOmp(
+      home,
+      `providers:
+  commandcode:
+    api: anthropic-messages
+    baseUrl: http://127.0.0.1:8787
+`,
+    );
+    // An ad-hoc model from a provider not yet in models.yml
+    expect(routeOmpModel('kilo/any-future-model', 8787)).toBe(false); // models.db is empty in test fixture without seeding
+    // But with an existing block, it safely re-routes to proxy
+    writeFileSync(
+      file,
+      `providers:
+  new-provider:
+    api: openai-completions
+    baseUrl: https://api.future-provider.ai/v1
+`,
+      'utf8',
+    );
+    expect(routeOmpModel('new-provider/some-model', 8787)).toBe(true);
+    const routed = readFileSync(file, 'utf8');
+    expect(routed).toContain('baseUrl: http://127.0.0.1:8787/v1\n');
+    expect(routed).toContain('# tersio-headroom-upstream: https://api.future-provider.ai/v1');
   });
 });
