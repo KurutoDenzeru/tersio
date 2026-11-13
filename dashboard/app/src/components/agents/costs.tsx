@@ -1,22 +1,22 @@
 // Costs page: usage in range priced at public API rates, an estimate from a rate card, never a bill.
-import { useMemo, useState } from "react"
+import {useMemo, useState} from "react"
+import type {Column, SeriesSpec} from "@/components/charts"
 import {
   Card,
   CellBar,
   Chart,
-  ModelCell,
-  PagedTable,
   Legend,
+  ModelCell,
   Page,
+  PagedTable,
   PageHeader,
   Segmented,
   Stat,
   StatGrid,
 } from "@/components/charts"
-import type { Column, SeriesSpec } from "@/components/charts"
-import type { AgentCostMix, AgentRow, AgentStats } from "@/lib/data"
-import { AGENT_RANGE_LABEL } from "@/lib/data"
-import { PALETTE, fmt, fmtShort, pct, tsFull, tsLabel } from "@/lib/format"
+import type {AgentCostMix, AgentRow, AgentStats} from "@/lib/data"
+import {AGENT_RANGE_LABEL} from "@/lib/data"
+import {fmt, fmtShort, PALETTE, pct, tsFull, tsLabel} from "@/lib/format"
 
 type SplitMode = "model" | "total"
 
@@ -43,11 +43,11 @@ const COST_PARTS: ReadonlyArray<{
   key: "input" | "output" | "cacheRead" | "cacheWrite"
   label: string
 }> = [
-  { key: "input", label: "Input" },
-  { key: "output", label: "Output" },
-  { key: "cacheRead", label: "Cache read" },
-  { key: "cacheWrite", label: "Cache write" },
-]
+    { key: "input", label: "Input" },
+    { key: "output", label: "Output" },
+    { key: "cacheRead", label: "Cache read" },
+    { key: "cacheWrite", label: "Cache write" },
+  ]
 
 /** One part of the estimate, with its share, for the "Where it went" breakdown. */
 function costParts(
@@ -114,6 +114,11 @@ interface CostsView {
   totalValues: Array<number | null>
   modelSeries: Array<{ spec: SeriesSpec; values: Array<number | null> }>
   totalCost: number
+  unoptimizedCost: number
+  totalSaved: number
+  savingsPct: number
+  cacheSaved: number
+  headroomSaved: number
   unpricedRequests: number
   requests: number
   pricedRequests: number
@@ -171,6 +176,13 @@ function buildView(agent: AgentStats): CostsView {
       values: rest.map((v) => (v > 0 ? v : null)),
     })
   }
+  const cacheSaved = overall.savedCost ?? rows.reduce((acc, r) => acc + (r.savedCost ?? 0), 0)
+  const headroomSaved = agent.headroom?.measured ? agent.headroom.costUsd : 0
+  const totalSaved = cacheSaved + headroomSaved
+  const unoptimizedCost = overall.unoptimizedCost
+    ? overall.unoptimizedCost + headroomSaved
+    : overall.costUsd + totalSaved
+  const savingsPct = unoptimizedCost > 0 ? totalSaved / unoptimizedCost : 0
 
   const days = new Set(agent.series.map((bucket) => Math.floor(bucket.ts / DAY_MS)))
 
@@ -184,6 +196,11 @@ function buildView(agent: AgentStats): CostsView {
     totalValues: dailyCost.map((v) => (v > 0 ? v : null)),
     modelSeries,
     totalCost: overall.costUsd,
+    unoptimizedCost,
+    totalSaved,
+    savingsPct,
+    cacheSaved,
+    headroomSaved,
     unpricedRequests: overall.unpricedRequests,
     requests: overall.requests,
     pricedRequests,
@@ -311,33 +328,29 @@ export function CostsPage({ agent, money }: { agent: AgentStats; money: (v: numb
 
       <StatGrid cols={4}>
         <Stat
-          label="API-equivalent estimate"
-          title="What this usage would cost at public API rates"
+          label="Actual cost"
+          title="Actual API-equivalent cost after caching and Headroom compression"
           value={money(view.totalCost)}
-          hint={`${fmt(view.requests)} requests`}
+          hint={`${fmt(view.requests)} requests · ${fmt(view.pricedRequests)} priced`}
           spark={view.dailyCost}
+        />
+        <Stat
+          label="Unoptimized baseline"
+          title="Theoretical cost without prompt caching and Headroom compression"
+          value={money(view.unoptimizedCost)}
+          hint="Baseline at full un-cached rate"
+        />
+        <Stat
+          label="Total saved"
+          title="Monetary difference saved through prompt caching and Headroom"
+          value={money(view.totalSaved)}
+          hint={view.unoptimizedCost > 0 ? `${pct(view.savingsPct, 1)} saved vs baseline` : "No savings recorded yet"}
         />
         <Stat
           label="Average per day"
           title="Estimate / days with any usage"
           value={money(view.avgDailyCost)}
           hint={`over ${fmt(view.activeDays)} active day${view.activeDays === 1 ? "" : "s"}`}
-        />
-        <Stat
-          label="Top model"
-          title={view.top ? `${view.top.key} (${view.top.provider})` : undefined}
-          value={view.top ? view.top.key : "–"}
-          hint={
-            view.top
-              ? `${money(view.top.costUsd)} · ${pct(view.top.costUsd / Math.max(1, view.totalCost))} of estimate`
-              : "Nothing priced yet"
-          }
-        />
-        <Stat
-          label="Per priced request"
-          title="Estimate / requests that have a public price"
-          value={view.pricedRequests > 0 ? money(view.totalCost / view.pricedRequests) : "–"}
-          hint={`${fmt(view.pricedRequests)} priced`}
         />
       </StatGrid>
 
@@ -391,15 +404,28 @@ export function CostsPage({ agent, money }: { agent: AgentStats; money: (v: numb
         </Card>
 
         <Card
-          title="Where it went"
+          title="Where it went & Savings"
           icon="split"
-          description="Estimate by billing component, priced per component from the same records."
+          description="Billed components alongside effective savings from cache and Headroom."
         >
           <div className="flex flex-col gap-3">
             <CostBreakdown mix={agent.overall.costMix} money={money} />
-            <p className="mono mt-auto border-t border-line pt-2 text-[11px] text-dim">
-              Each part is priced from the same records as the estimate, so the four add up to it.
-            </p>
+            <div className="mt-auto border-t border-line pt-2 text-[11px]">
+              <div className="flex justify-between py-0.5 text-dim">
+                <span>Prompt cache savings:</span>
+                <span className="mono font-medium text-ink">{money(view.cacheSaved)}</span>
+              </div>
+              <div className="flex justify-between py-0.5 text-dim">
+                <span>Headroom savings:</span>
+                <span className="mono font-medium text-ink">{money(view.headroomSaved)}</span>
+              </div>
+              <div className="flex justify-between border-t border-line/60 py-1 font-medium text-ink">
+                <span>Net savings:</span>
+                <span className="mono text-emerald-500">
+                  {money(view.totalSaved)} ({pct(view.savingsPct, 1)})
+                </span>
+              </div>
+            </div>
           </div>
         </Card>
       </div>

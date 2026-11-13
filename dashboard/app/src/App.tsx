@@ -1,38 +1,38 @@
 // Every page of the agent-stats dashboard, one hash route each.
-import { Fragment, useCallback, useEffect, useRef, useState } from "react"
-import { useTheme } from "@/components/theme-provider"
-import { isFileExport, useFx, useAgentData } from "@/lib/data"
-import type { AgentRequestRow, AgentView } from "@/lib/data"
-import { useStuckPending } from "@/hooks/use-pending"
-import { useDevMode } from "@/lib/dev-mode"
-import { useHashRoute } from "@/lib/route"
-import { useUpdate } from "@/lib/update-watch"
-import { EmptyState } from "@/components/common"
-import { Button } from "@/components/ui/button"
-import { Icon } from "@/components/icon"
-import { Page, PageHeader, PageSkeleton } from "@/components/charts"
-import { Shell, useShortcuts } from "./components/agents/shell"
-import type { ModeState } from "./components/agents/shell"
-import { navItem } from "./components/agents/nav"
-import { AgentRequestDrawer } from "./components/agents/drawer"
-import { SessionTrace } from "./components/agents/session"
-import { OverviewPage } from "./components/agents/overview"
-import { ModelsPage } from "./components/agents/models"
-import { ProvidersPage } from "./components/agents/providers"
-import { CostsPage } from "./components/agents/costs"
-import { CarbonPage } from "./components/agents/carbon"
-import { RequestsPage } from "./components/agents/requests"
-import { ErrorsPage } from "./components/agents/errors"
-import { TracesPage } from "./components/agents/traces"
-import { ToolsPage } from "./components/agents/tools"
-import { ProjectsPage } from "./components/agents/projects"
-import { BenchmarksPage } from "./components/agents/benchmarks"
-import { UpstreamPage } from "./components/agents/upstream"
-import { HowToPage } from "./components/agents/how-to"
-import { LogsPage } from "./components/agents/logs"
-import { SettingsDialog } from "@/components/dialogs"
-import { ShareDialog } from "@/components/agents/share-dialog"
-import { ToasterProvider } from "@/components/toaster"
+import {Fragment, useCallback, useEffect, useRef, useState} from "react"
+import {useTheme} from "@/components/theme-provider"
+import type {AgentRequestRow, AgentView} from "@/lib/data"
+import {isFileExport, useAgentData, useFx} from "@/lib/data"
+import {useStuckPending} from "@/hooks/use-pending"
+import {useDevMode} from "@/lib/dev-mode"
+import {useHashRoute} from "@/lib/route"
+import {useUpdate} from "@/lib/update-watch"
+import {EmptyState} from "@/components/common"
+import {Button} from "@/components/ui/button"
+import {Icon} from "@/components/icon"
+import {Page, PageHeader, PageSkeleton} from "@/components/charts"
+import type {ModeState} from "./components/agents/shell"
+import {Shell, useShortcuts} from "./components/agents/shell"
+import {navItem} from "./components/agents/nav"
+import {AgentRequestDrawer} from "./components/agents/drawer"
+import {SessionTrace} from "./components/agents/session"
+import {OverviewPage} from "./components/agents/overview"
+import {ModelsPage} from "./components/agents/models"
+import {ProvidersPage} from "./components/agents/providers"
+import {CostsPage} from "./components/agents/costs"
+import {CarbonPage} from "./components/agents/carbon"
+import {RequestsPage} from "./components/agents/requests"
+import {ErrorsPage} from "./components/agents/errors"
+import {TracesPage} from "./components/agents/traces"
+import {ToolsPage} from "./components/agents/tools"
+import {ProjectsPage} from "./components/agents/projects"
+import {BenchmarksPage} from "./components/agents/benchmarks"
+import {UpstreamPage} from "./components/agents/upstream"
+import {HowToPage} from "./components/agents/how-to"
+import {LogsPage} from "./components/agents/logs"
+import {SettingsDialog} from "@/components/dialogs"
+import {ShareDialog} from "@/components/agents/share-dialog"
+import {ToasterProvider} from "@/components/toaster"
 
 function useDataThemeAttr(): void {
   const { theme } = useTheme()
@@ -185,10 +185,8 @@ function Dashboard() {
   const [request, setRequest] = useState<AgentRequestRow | null>(null)
   // The session-start modes the navbar's banner names, reloaded when Settings closes.
   const [modes, reloadModes, modesLoaded] = useModeState()
-  // The rail draws its own skeleton until the first data answer, so its items do not pop in.
+  // The rail draws its skeleton only on initial load, keeping sidebar navigation stable across tab changes.
   const readStuck = useStuckPending(loading && !agent, 6000)
-  const agentPending = loading && !agent && !readStuck
-
   useShortcuts({ onRange: setRange, onSection: setSection })
   // A new range renumbers the log, so a page held across the switch would point at different rows.
   useEffect(() => {
@@ -316,7 +314,6 @@ function Dashboard() {
         modes={modes}
         modesLoaded={modesLoaded}
         agentAvailable={agentAvailable}
-        agentPending={agentPending}
         onSettings={() => setSettingsOpen(true)}
         onShare={() => setShareOpen(true)}
       >

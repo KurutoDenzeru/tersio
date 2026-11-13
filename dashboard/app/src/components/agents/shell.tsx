@@ -1,5 +1,5 @@
 // The shell: a glass topbar (brand, mode banner, range, theme) over a page-jumping rail whose footer holds Settings.
-import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from "react"
+import { Fragment, type ReactNode, useCallback, useEffect, useRef, useState } from "react"
 import { cn } from "cn"
 import {
   Sidebar,
@@ -9,28 +9,27 @@ import {
   SidebarGroupContent,
   SidebarGroupLabel,
   SidebarHeader,
+  SidebarInset,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarProvider,
-  SidebarInset,
-  SidebarTrigger,
   SidebarRail,
+  SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar"
 import { Badge } from "@/components/ui/badge"
 import { Segmented } from "@/components/charts"
 import { Icon } from "@/components/icon"
-import { Skeleton } from "@/components/ui/skeleton"
 import { SocialLinks } from "@/components/brand"
 import { useTheme } from "@/components/theme-provider"
-import { AGENT_RANGES, isFileExport } from "@/lib/data"
 import type { AgentRange } from "@/lib/data"
+import { AGENT_RANGES, isFileExport } from "@/lib/data"
 import { useDevMode } from "@/lib/dev-mode"
 import { useIsMobile } from "@/hooks/use-mobile"
-import { NAV, NAV_ITEMS } from "./nav"
 import type { SectionId } from "./nav"
-
+import { NAV, NAV_ITEMS } from "./nav"
+import brandLogo from "@/assets/brand.webp"
 export const DEFAULT_RANGE: AgentRange = "24h"
 
 /** The rail's drag handle; browser storage bridges a reload, tersio settings bridge a new port. */
@@ -158,11 +157,10 @@ export function ModeBanner({
     return (
       <span
         aria-hidden="true"
-        className="mono flex h-8 w-[284px] max-w-[45vw] shrink-0 items-center gap-2 rounded-lg border border-line bg-panel/60 px-2.5"
+        className="mono flex h-8 w-[284px] max-w-[45vw] shrink-0 items-center gap-2 rounded-lg border border-line bg-panel/60 px-2.5 text-xs text-dim opacity-75"
       >
-        <Skeleton className="size-3.5 shrink-0 rounded-[4px]" />
-        <Skeleton className="h-3 w-16" />
-        <Skeleton className="h-3 w-28" />
+        <span className="size-2 rounded-full bg-accent animate-pulse" />
+        <span>Loading modes…</span>
       </span>
     )
   }
@@ -321,7 +319,6 @@ export function AppSidebar({
   section,
   onSection,
   agentAvailable,
-  agentPending,
   modes,
   modesLoaded,
   onQuickStart,
@@ -331,7 +328,6 @@ export function AppSidebar({
   section: SectionId
   onSection: (section: SectionId) => void
   agentAvailable: boolean
-  agentPending: boolean
   modes: ModeState | null
   modesLoaded: boolean
   onQuickStart: () => void
@@ -356,7 +352,7 @@ export function AppSidebar({
         {/* The drawer keeps the brand row the fixed topbar shows on desktop. */}
         <div className="relative flex h-full items-center gap-2.5 md:hidden">
           <img
-            src="brand.webp"
+            src={brandLogo}
             alt=""
             width="24"
             height="24"
@@ -376,8 +372,6 @@ export function AppSidebar({
         {NAV.map((group, groupIndex) => {
           // Every item stays visible: an item whose agent data is still missing renders dimmed and unclickable instead of vanishing, so the rail never degrades to bare labels and lines.
           const items = group.items.filter((item) => dev || !item.devOnly)
-          // A pending read draws the full count this rail would have, so no item arrives late.
-          const pending = group.items.filter((item) => dev || !item.devOnly)
           if (items.length === 0) return null
           return (
             <Fragment key={group.heading}>
@@ -387,58 +381,46 @@ export function AppSidebar({
                 className={cn(
                   "pb-1",
                   groupIndex > 0 &&
-                    "group-data-[collapsible=icon]:mt-2 group-data-[collapsible=icon]:border-t group-data-[collapsible=icon]:border-line group-data-[collapsible=icon]:pt-2",
+                  "group-data-[collapsible=icon]:mt-2 group-data-[collapsible=icon]:border-t group-data-[collapsible=icon]:border-line group-data-[collapsible=icon]:pt-2",
                 )}
               >
-                <SidebarGroupLabel className="mono text-[10px] uppercase tracking-[0.16em] text-dim">
+                <SidebarGroupLabel className="h-7 px-2 pt-3 pb-1 text-[11px] font-bold uppercase tracking-wider text-ink/75">
                   {group.heading}
                 </SidebarGroupLabel>
                 <SidebarGroupContent>
                   <SidebarMenu>
-                    {agentPending
-                      ? pending.map((item) => (
-                          <SidebarMenuItem key={item.id}>
-                            <div
-                              aria-hidden="true"
-                              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
-                            >
-                              <Skeleton className="size-4 shrink-0 rounded-[4px]" />
-                              <Skeleton className="h-3 w-20 group-data-[collapsible=icon]:hidden" />
-                            </div>
-                          </SidebarMenuItem>
-                        ))
-                      : items.map((item) => {
-                          const dimmed = !agentAvailable && item.agentOnly
-                          return (
-                            <SidebarMenuItem key={item.id}>
-                              <SidebarMenuButton
-                                isActive={!dimmed && section === item.id}
-                                tooltip={
-                                  dimmed ? `${item.label} — waiting for agent data` : item.label
-                                }
-                                disabled={dimmed}
-                                onClick={() => {
-                                  if (!dimmed) onSection(item.id)
-                                }}
-                                className={cn(
-                                  "mono text-[13px] text-dim hover:bg-track hover:text-ink data-[active]:bg-track data-[active]:font-bold data-[active]:text-ink",
-                                  // The collapsed rail is 64px while the button is 32px, so it centers instead of hugging the left.
-                                  "group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:!pl-1.5",
-                                  dimmed && "cursor-default opacity-40 hover:bg-transparent",
-                                )}
-                              >
-                                <Icon
-                                  name={item.icon}
-                                  className="size-4 group-data-[collapsible=icon]:size-5"
-                                />
-                                <span className="truncate">{item.label}</span>
-                                <kbd className="mono ml-auto hidden shrink-0 text-[10px] opacity-70 group-data-[collapsible=offcanvas]:inline">
-                                  G {item.hotkey.toUpperCase()}
-                                </kbd>
-                              </SidebarMenuButton>
-                            </SidebarMenuItem>
-                          )
-                        })}
+                    {items.map((item) => {
+                      const dimmed = !agentAvailable && item.agentOnly
+                      return (
+                        <SidebarMenuItem key={item.id}>
+                          <SidebarMenuButton
+                            isActive={!dimmed && section === item.id}
+                            tooltip={
+                              dimmed ? `${item.label} — waiting for agent data` : item.label
+                            }
+                            disabled={dimmed}
+                            onClick={() => {
+                              if (!dimmed) onSection(item.id)
+                            }}
+                            className={cn(
+                              "mono text-[13px] text-dim hover:bg-track hover:text-ink data-[active]:bg-track data-[active]:font-bold data-[active]:text-ink",
+                              // The collapsed rail is 64px while the button is 32px, so it centers instead of hugging the left.
+                              "group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:!pl-1.5",
+                              dimmed && "cursor-default opacity-40 hover:bg-transparent",
+                            )}
+                          >
+                            <Icon
+                              name={item.icon}
+                              className="size-4 group-data-[collapsible=icon]:size-5"
+                            />
+                            <span className="truncate">{item.label}</span>
+                            <kbd className="mono ml-auto hidden shrink-0 text-[10px] opacity-70 group-data-[collapsible=offcanvas]:inline">
+                              G {item.hotkey.toUpperCase()}
+                            </kbd>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                      )
+                    })}
                   </SidebarMenu>
                 </SidebarGroupContent>
               </SidebarGroup>
@@ -451,31 +433,11 @@ export function AppSidebar({
         <div className="md:hidden">
           <ModeBanner modes={modes} onOpen={onQuickStart} loading={!modesLoaded} full />
         </div>
-        {agentPending ? (
-          <div aria-hidden="true" className="flex h-8 items-center gap-2 rounded-md px-2">
-            <Skeleton className="size-4 shrink-0 rounded-[4px]" />
-            <Skeleton className="h-3 w-16" />
-          </div>
-        ) : (
-          <SidebarAction icon="settings" label="Settings" onClick={onSettings} />
-        )}
-        {/* The collapsed rail is an icon strip, so the credits, the marks, and the shortcut hint
-            hide there. Each of them would run past the 48 pixel rail and clip mid-word. */}
-        {agentPending ? (
-          <div aria-hidden="true" className="flex items-center gap-1 px-1">
-            <Skeleton className="h-3 w-24" />
-            <span className="ml-auto flex items-center gap-0.5">
-              <Skeleton className="size-3 rounded-[3px]" />
-              <Skeleton className="size-3 rounded-[3px]" />
-              <Skeleton className="size-3 rounded-[3px]" />
-            </span>
-          </div>
-        ) : (
-          <div className="mono flex items-center gap-1 px-1 text-[10px] text-dim group-data-[collapsible=icon]:hidden">
-            <span className="truncate">© 2026 Tersio</span>
-            <SocialLinks className="ml-auto flex items-center gap-0.5 text-ink" />
-          </div>
-        )}
+        <SidebarAction icon="settings" label="Settings" onClick={onSettings} />
+        <div className="mono flex items-center gap-1 px-1 text-[10px] text-dim group-data-[collapsible=icon]:hidden">
+          <span className="truncate">© 2026 Tersio</span>
+          <SocialLinks className="ml-auto flex items-center gap-0.5 text-ink" />
+        </div>
         <p className="mono hidden px-1 text-[10px] leading-relaxed text-dim group-data-[collapsible=offcanvas]:block">
           <kbd>1</kbd>-<kbd>6</kbd> window · <kbd>G</kbd> then a letter to jump
         </p>
@@ -526,7 +488,7 @@ export function Topbar({
           // The rail shows the mark; hovering swaps it for the expand control, the way Loom's rail behaves.
           <div className="group/rail relative grid size-8 shrink-0 place-items-center">
             <img
-              src="brand.webp"
+              src={brandLogo}
               alt=""
               width="24"
               height="24"
@@ -540,32 +502,24 @@ export function Topbar({
         ) : (
           <>
             <img
-              src="brand.webp"
+              src={brandLogo}
               alt=""
               width="24"
               height="24"
               className="size-6 shrink-0 rounded-[8px]"
             />
-            {modesLoaded ? (
-              <span
-                className={cn(
-                  "min-w-0 truncate text-sm font-semibold tracking-tight",
-                  isMobile && "hidden",
-                )}
-              >
-                Tersio <span className="font-normal text-dim">Dashboard</span>
-              </span>
-            ) : (
-              <Skeleton className={cn("h-3.5 w-28 rounded-[4px]", isMobile && "hidden")} />
-            )}
-            {modesLoaded ? (
-              <SidebarTrigger
-                className="ml-auto size-8 shrink-0 text-dim hover:text-ink"
-                aria-label="Collapse navigation"
-              />
-            ) : (
-              <Skeleton className="ml-auto size-8 shrink-0 rounded-lg" />
-            )}
+            <span
+              className={cn(
+                "min-w-0 truncate text-sm font-semibold tracking-tight",
+                isMobile && "hidden",
+              )}
+            >
+              Tersio <span className="font-normal text-dim">Dashboard</span>
+            </span>
+            <SidebarTrigger
+              className="ml-auto size-8 shrink-0 text-dim hover:text-ink"
+              aria-label="Collapse navigation"
+            />
           </>
         )}
       </div>
@@ -577,25 +531,17 @@ export function Topbar({
       {/* The right group never shrinks: it holds the three buttons a narrow viewport still needs,
           and the banner truncates instead. */}
       <div className="ml-auto flex shrink-0 items-center gap-2">
-        {modesLoaded ? (
-          <RangePicker range={range} onPick={onRange} />
-        ) : (
-          <Skeleton className="h-7 w-44 rounded-lg" />
-        )}
-        {modesLoaded ? (
-          <button
-            type="button"
-            onClick={onShare}
-            aria-label="Share usage"
-            title="Share usage"
-            className="grid size-8 shrink-0 cursor-pointer place-items-center rounded-lg border border-line text-ink transition-[background] duration-200 hover:bg-accent-soft"
-          >
-            <Icon name="share-2" className="size-4" />
-          </button>
-        ) : (
-          <Skeleton className="size-8 rounded-lg" />
-        )}
-        {modesLoaded ? <ThemeToggle /> : <Skeleton className="size-8 rounded-lg" />}
+        <RangePicker range={range} onPick={onRange} />
+        <button
+          type="button"
+          onClick={onShare}
+          aria-label="Share usage"
+          title="Share usage"
+          className="grid size-8 shrink-0 cursor-pointer place-items-center rounded-lg border border-line text-ink transition-[background] duration-200 hover:bg-accent-soft"
+        >
+          <Icon name="share-2" className="size-4" />
+        </button>
+        <ThemeToggle />
       </div>
     </header>
   )
@@ -610,7 +556,6 @@ export function Shell({
   modes,
   modesLoaded,
   agentAvailable,
-  agentPending,
   onSettings,
   onShare,
   children,
@@ -622,7 +567,6 @@ export function Shell({
   modes: ModeState | null
   modesLoaded: boolean
   agentAvailable: boolean
-  agentPending: boolean
   onSettings: () => void
   onShare: () => void
   children: React.ReactNode
@@ -708,7 +652,6 @@ export function Shell({
         section={section}
         onSection={onSection}
         agentAvailable={agentAvailable}
-        agentPending={agentPending || !modesLoaded}
         modes={modes}
         modesLoaded={modesLoaded}
         onQuickStart={() => onSection("how-to")}
@@ -748,7 +691,7 @@ export function Shell({
             className="pointer-events-none absolute inset-0 [background-image:linear-gradient(var(--grid)_1px,transparent_1px),linear-gradient(90deg,var(--grid)_1px,transparent_1px)] [background-size:44px_44px] [mask-image:radial-gradient(ellipse_90%_80%_at_50%_0%,black_40%,transparent_88%)]"
             aria-hidden="true"
           />
-          <main className="relative w-full max-w-full overflow-x-clip">{children}</main>
+          <div className="relative w-full max-w-full overflow-x-clip">{children}</div>
           <div aria-hidden="true" className={cn("noise-veil", section === "how-to" && "hidden")} />
         </div>
       </SidebarInset>
