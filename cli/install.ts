@@ -348,10 +348,10 @@ async function stepRtk(options: InstallOptions, target: HostId = 'omp'): Promise
       if (updated) {
         found = updated;
         sayTagged('  RTK — updated to the latest release');
-        // If a stale binary remains in ~/.bun/bin shadowing ~/.local/bin, clean it up.
+        // If a stale binary remains in ~/.bun/bin shadowing ~/.local/bin, clean it up only if the local binary is confirmed.
         const bunBinRtk = path.join(homeDir(), '.bun', 'bin', IS_WINDOWS ? 'rtk.exe' : 'rtk');
         const localBinRtk = path.join(homeDir(), '.local', 'bin', IS_WINDOWS ? 'rtk.exe' : 'rtk');
-        if (bunBinRtk !== localBinRtk && existsSync(bunBinRtk)) {
+        if (existsSync(localBinRtk) && bunBinRtk !== localBinRtk && existsSync(bunBinRtk)) {
           try {
             await fs.unlink(bunBinRtk);
           } catch {
