@@ -255,14 +255,14 @@ export async function routeCodexHeadroom(proxyUrl: string = headroomProxyUrl()):
     writeCodexBackup(
       held
         ? {
-            ...inferred,
-            ...held,
-            provider: routableCodexProvider(held.provider) ?? inferred.provider,
-            providerBaseUrl: held.providerBaseUrl ?? inferred.providerBaseUrl,
-            providerBaseUrlPresent: held.providerBaseUrlPresent === true || inferred.providerBaseUrlPresent === true,
-            modelProviderPresent: held.modelProviderPresent === true || inferred.modelProviderPresent === true,
-            openaiBaseUrlPresent: held.openaiBaseUrlPresent === true || inferred.openaiBaseUrlPresent === true,
-          }
+          ...inferred,
+          ...held,
+          provider: routableCodexProvider(held.provider) ?? inferred.provider,
+          providerBaseUrl: held.providerBaseUrl ?? inferred.providerBaseUrl,
+          providerBaseUrlPresent: held.providerBaseUrlPresent === true || inferred.providerBaseUrlPresent === true,
+          modelProviderPresent: held.modelProviderPresent === true || inferred.modelProviderPresent === true,
+          openaiBaseUrlPresent: held.openaiBaseUrlPresent === true || inferred.openaiBaseUrlPresent === true,
+        }
         : inferred,
     );
   }
@@ -340,10 +340,10 @@ export function isNativeRouteHost(host: string): host is NativeRouteHost {
   return (NATIVE_ROUTE_HOSTS as ReadonlyArray<string>).includes(host);
 }
 
-/** The URL the host's protocol needs: OpenAI clients add `/v1`, Anthropic clients use the root. */
+/** The URL the host's protocol needs: Anthropic and Gemini Antigravity clients use the root, OpenAI /v1. */
 export function nativeProxyUrl(api: string, proxyUrl: string = headroomProxyUrl()): string {
   const root = proxyUrl.replace(/\/+$/, '');
-  return /anthropic/i.test(api) ? root : `${root}/v1`;
+  return /anthropic|google-gemini-cli/i.test(api) ? root : `${root}/v1`;
 }
 
 /** The same upstream, path included: a proxy pointed at another provider must not take this route. */
@@ -550,14 +550,14 @@ function opencodeEndpoint(data: Record<string, unknown>, provider: string): { ke
     map === 'providers'
       ? [['settings.baseURL', settings.baseURL]]
       : [
-          ['options.baseURL', options.baseURL],
-          ['options.baseUrl', options.baseUrl],
-          ['options.base_url', options.base_url],
-          ['baseURL', record.baseURL],
-          ['baseUrl', record.baseUrl],
-          ['base_url', record.base_url],
-          ['api', record.api],
-        ];
+        ['options.baseURL', options.baseURL],
+        ['options.baseUrl', options.baseUrl],
+        ['options.base_url', options.base_url],
+        ['baseURL', record.baseURL],
+        ['baseUrl', record.baseUrl],
+        ['base_url', record.base_url],
+        ['api', record.api],
+      ];
   for (const [key, value] of candidates) {
     if (typeof value === 'string' && value.trim() !== '') return { key: `${map}.${provider}.${key}`, original: value };
   }
@@ -856,7 +856,7 @@ export function removeNativeRoute(host: NativeRouteHost): NativeRouteResult {
   return failed.length === 0
     ? { ok: true, detail: `${host}: endpoint restored` }
     : {
-        ok: false,
-        detail: `${host}: ${failed.length} endpoint${failed.length === 1 ? '' : 's'} could not be restored`,
-      };
+      ok: false,
+      detail: `${host}: ${failed.length} endpoint${failed.length === 1 ? '' : 's'} could not be restored`,
+    };
 }

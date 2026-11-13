@@ -330,9 +330,12 @@ function ompModelProvider(blocks: OmpProviderBlock[], model: string | null): str
   return owner ? owner.name : prefixed ? prefixed.name : '';
 }
 
-/** The API a block speaks; the official Anthropic block may omit it. */
+/** The API a block speaks; the official Anthropic block may omit it, and cached providers resolve from the catalog. */
 function ompBlockApi(block: { name: string; api: string }): string {
-  return block.api || (block.name === 'anthropic' ? 'anthropic-messages' : '');
+  if (block.api) return block.api;
+  const cached = ompCachedProviderEndpoint(block.name)?.api;
+  if (cached) return cached;
+  return block.name === 'anthropic' ? 'anthropic-messages' : '';
 }
 
 /** The local gateway the active model uses, or a route Tersio already wrote. */
