@@ -1,35 +1,35 @@
 // The shell: a glass topbar (brand, mode banner, range, theme) over a page-jumping rail whose footer holds Settings.
-import {Fragment, type ReactNode, useCallback, useEffect, useRef, useState} from "react"
-import {cn} from "cn"
+import { Fragment, type ReactNode, useCallback, useEffect, useRef, useState } from "react"
+import { cn } from "cn"
 import {
-    Sidebar,
-    SidebarContent,
-    SidebarFooter,
-    SidebarGroup,
-    SidebarGroupContent,
-    SidebarGroupLabel,
-    SidebarHeader,
-    SidebarInset,
-    SidebarMenu,
-    SidebarMenuButton,
-    SidebarMenuItem,
-    SidebarProvider,
-    SidebarRail,
-    SidebarTrigger,
-    useSidebar,
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarRail,
+  SidebarTrigger,
+  useSidebar,
 } from "@/components/ui/sidebar"
-import {Badge} from "@/components/ui/badge"
-import {Segmented} from "@/components/charts"
-import {Icon} from "@/components/icon"
-import {SocialLinks} from "@/components/brand"
-import {useTheme} from "@/components/theme-provider"
-import type {AgentRange} from "@/lib/data"
-import {AGENT_RANGES, isFileExport} from "@/lib/data"
-import {useDevMode} from "@/lib/dev-mode"
-import {useIsMobile} from "@/hooks/use-mobile"
-import type {SectionId} from "./nav"
-import {NAV, NAV_ITEMS} from "./nav"
-
+import { Badge } from "@/components/ui/badge"
+import { Segmented } from "@/components/charts"
+import { Icon } from "@/components/icon"
+import { SocialLinks } from "@/components/brand"
+import { useTheme } from "@/components/theme-provider"
+import type { AgentRange } from "@/lib/data"
+import { AGENT_RANGES, isFileExport } from "@/lib/data"
+import { useDevMode } from "@/lib/dev-mode"
+import { useIsMobile } from "@/hooks/use-mobile"
+import type { SectionId } from "./nav"
+import { NAV, NAV_ITEMS } from "./nav"
+import brandLogo from "@/assets/brand.webp"
 export const DEFAULT_RANGE: AgentRange = "24h"
 
 /** The rail's drag handle; browser storage bridges a reload, tersio settings bridge a new port. */
@@ -352,7 +352,7 @@ export function AppSidebar({
         {/* The drawer keeps the brand row the fixed topbar shows on desktop. */}
         <div className="relative flex h-full items-center gap-2.5 md:hidden">
           <img
-            src="brand.webp"
+            src={brandLogo}
             alt=""
             width="24"
             height="24"
@@ -488,7 +488,7 @@ export function Topbar({
           // The rail shows the mark; hovering swaps it for the expand control, the way Loom's rail behaves.
           <div className="group/rail relative grid size-8 shrink-0 place-items-center">
             <img
-              src="brand.webp"
+              src={brandLogo}
               alt=""
               width="24"
               height="24"
@@ -502,7 +502,7 @@ export function Topbar({
         ) : (
           <>
             <img
-              src="brand.webp"
+              src={brandLogo}
               alt=""
               width="24"
               height="24"
