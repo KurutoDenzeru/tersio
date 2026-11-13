@@ -1445,7 +1445,7 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
       return;
     }
     if (req.url === '/api/update' && req.method === 'POST') {
-      let prefs: UpdatePrefs = {};
+      let prefs: UpdatePrefs;
       try {
         prefs = (JSON.parse(await readBody(req)) as UpdatePrefs) ?? {};
       } catch {

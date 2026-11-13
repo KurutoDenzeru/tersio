@@ -256,7 +256,7 @@ async function writeIfChanged(dest: string, content: string, options: WriteOptio
 
 // omp ships 'extensions: null'; normalize it to a mapping key first, or YAML rejects the list items.
 const EXTENSIONS_KEY_RE = /^\s*extensions\s*:/i;
-const EXTENSIONS_NULL_RE = /^\s*extensions\s*:\s*(?:\[\s*\]|null|~)?\s*$/i;
+const EXTENSIONS_NULL_RE = /^\s*extensions\s*:\s*(?:\[\s*]|null|~)?\s*$/i;
 
 function normalizeExtensionsKey(lines: string[]): boolean {
   const idx = lines.findIndex((l) => EXTENSIONS_NULL_RE.test(l));

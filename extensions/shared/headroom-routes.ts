@@ -260,8 +260,8 @@ export async function routeCodexHeadroom(proxyUrl: string = headroomProxyUrl()):
           provider: routableCodexProvider(held.provider) ?? inferred.provider,
           providerBaseUrl: held.providerBaseUrl ?? inferred.providerBaseUrl,
           providerBaseUrlPresent: held.providerBaseUrlPresent === true || inferred.providerBaseUrlPresent === true,
-          modelProviderPresent: held.modelProviderPresent === true || inferred.modelProviderPresent === true,
-          openaiBaseUrlPresent: held.openaiBaseUrlPresent === true || inferred.openaiBaseUrlPresent === true,
+          modelProviderPresent: held.modelProviderPresent || inferred.modelProviderPresent,
+          openaiBaseUrlPresent: held.openaiBaseUrlPresent || inferred.openaiBaseUrlPresent,
         }
         : inferred,
     );
