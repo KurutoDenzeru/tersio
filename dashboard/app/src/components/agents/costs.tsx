@@ -2,17 +2,17 @@
 import {useMemo, useState} from "react"
 import type {Column, SeriesSpec} from "@/components/charts"
 import {
-  Card,
-  CellBar,
-  Chart,
-  Legend,
-  ModelCell,
-  Page,
-  PagedTable,
-  PageHeader,
-  Segmented,
-  Stat,
-  StatGrid,
+    Card,
+    CellBar,
+    Chart,
+    Legend,
+    ModelCell,
+    Page,
+    PagedTable,
+    PageHeader,
+    Segmented,
+    Stat,
+    StatGrid,
 } from "@/components/charts"
 import type {AgentCostMix, AgentRow, AgentStats} from "@/lib/data"
 import {AGENT_RANGE_LABEL} from "@/lib/data"
@@ -118,7 +118,6 @@ interface CostsView {
   totalSaved: number
   savingsPct: number
   cacheSaved: number
-  headroomSaved: number
   unpricedRequests: number
   requests: number
   pricedRequests: number
@@ -177,11 +176,8 @@ function buildView(agent: AgentStats): CostsView {
     })
   }
   const cacheSaved = overall.savedCost ?? rows.reduce((acc, r) => acc + (r.savedCost ?? 0), 0)
-  const headroomSaved = agent.headroom?.measured ? agent.headroom.costUsd : 0
-  const totalSaved = cacheSaved + headroomSaved
-  const unoptimizedCost = overall.unoptimizedCost
-    ? overall.unoptimizedCost + headroomSaved
-    : overall.costUsd + totalSaved
+  const totalSaved = cacheSaved
+  const unoptimizedCost = overall.unoptimizedCost ?? (overall.costUsd + totalSaved)
   const savingsPct = unoptimizedCost > 0 ? totalSaved / unoptimizedCost : 0
 
   const days = new Set(agent.series.map((bucket) => Math.floor(bucket.ts / DAY_MS)))
@@ -200,7 +196,6 @@ function buildView(agent: AgentStats): CostsView {
     totalSaved,
     savingsPct,
     cacheSaved,
-    headroomSaved,
     unpricedRequests: overall.unpricedRequests,
     requests: overall.requests,
     pricedRequests,
@@ -406,7 +401,7 @@ export function CostsPage({ agent, money }: { agent: AgentStats; money: (v: numb
         <Card
           title="Where it went & Savings"
           icon="split"
-          description="Billed components alongside effective savings from cache and Headroom."
+          description="Billed components alongside effective savings from prompt cache."
         >
           <div className="flex flex-col gap-3">
             <CostBreakdown mix={agent.overall.costMix} money={money} />
@@ -414,10 +409,6 @@ export function CostsPage({ agent, money }: { agent: AgentStats; money: (v: numb
               <div className="flex justify-between py-0.5 text-dim">
                 <span>Prompt cache savings:</span>
                 <span className="mono font-medium text-ink">{money(view.cacheSaved)}</span>
-              </div>
-              <div className="flex justify-between py-0.5 text-dim">
-                <span>Headroom savings:</span>
-                <span className="mono font-medium text-ink">{money(view.headroomSaved)}</span>
               </div>
               <div className="flex justify-between border-t border-line/60 py-1 font-medium text-ink">
                 <span>Net savings:</span>
