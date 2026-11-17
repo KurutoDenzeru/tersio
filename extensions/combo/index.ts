@@ -28,7 +28,7 @@ import {
   setExtensionLabel,
 } from '../shared/host.ts';
 import type { HostScope } from '../shared/plugin-settings.ts';
-import { announceStatus } from '../shared/status.ts';
+import { announceStatus, bindStatusHost } from '../shared/status.ts';
 import {
   isComboSetupComplete,
   readCavemanDefault,
@@ -143,6 +143,7 @@ function listen(ctx?: ExtensionCtx): void {
 
 export default function comboToggleExtension(pi: ExtensionApi): void {
   const host = hostIdOf(pi);
+  bindStatusHost(host);
   setExtensionLabel(pi, 'Combo session toggle (caveman, RTK, Ponytail)');
 
   let setupPrompted = false;

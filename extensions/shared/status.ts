@@ -1,5 +1,7 @@
 // One status string every surface renders: host footer, CLI title, dashboard banner. Nothing else formats mode state.
 import { getSharedComboState } from './session-state.ts';
+import { readStatusVisible } from './plugin-settings.ts';
+import type { HostScope } from './plugin-settings.ts';
 import type { ExtensionCtx, UiApi } from './types.ts';
 
 export interface StatusState {
@@ -47,11 +49,17 @@ function statusUi(ctx: ExtensionCtx | undefined): UiApi | undefined {
 let remembered: ExtensionCtx | undefined;
 let lastText: string | undefined;
 let lastUi: UiApi | undefined;
+let statusHost: HostScope | null = null;
 
+/** The host whose `statusVisible` setting gates the bar. */
+export function bindStatusHost(host: HostScope): void {
+  statusHost = host;
+}
 // Paint the host footer bar; same text on the same UI is skipped. One key only: the combo line already names the caveman mode, and a second key renders as a second footer line.
 export function announceStatus(ctx: ExtensionCtx | undefined): void {
   const state = getSharedComboState();
-  const text = formatStatus(state);
+  // Hidden clears the key; the cache is dropped so showing again repaints.
+  const text = readStatusVisible(statusHost) ? formatStatus(state) : undefined;
   const ui = statusUi(ctx) ?? statusUi(remembered);
   if (statusUi(ctx)) remembered = ctx;
   if (!ui) return;
