@@ -143,6 +143,34 @@ export function readHeadroomDefault(host?: HostScope | null): string {
   return readStringDefault('headroomDefault', HEADROOM_MODES, host);
 }
 
+/** Whether the footer status line shows; on unless a host section or the flat key says false. */
+export function readStatusVisible(host?: HostScope | null): boolean {
+  const scoped = hostDefaults(host).statusVisible;
+  if (typeof scoped === 'boolean') return scoped;
+  const raw = readPluginSettings().statusVisible;
+  return typeof raw === 'boolean' ? raw : true;
+}
+
+/** Persist this host's choice only; another agent keeps its own. */
+export function saveStatusVisible(host: HostScope, visible: boolean): boolean {
+  const file = tersioSettingsFile();
+  try {
+    mkdirSync(path.dirname(file), { recursive: true });
+    const stored = readPluginSettings();
+    const next = {
+      ...stored,
+      hosts: {
+        ...(stored.hosts as Record<string, unknown> | undefined),
+        [host]: { ...hostDefaults(host), statusVisible: visible },
+      },
+    };
+    writeFileSync(file, `${JSON.stringify(next, null, 2)}\n`, 'utf8');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function isComboSetupComplete(): boolean {
   return readPluginSettings().comboSetupComplete === true;
 }
