@@ -5,6 +5,7 @@
 - The Costs page reads actual cost against an unoptimized baseline, and names what prompt caching and Headroom compression saved. Thanks to @FrancoStino (#108).
 
 ### Changed
+- Snapshots rotate by date instead of one flat cap. The newest 14 are kept, then the newest of each earlier day for 30 days, then the newest of each month for a year. A run of restores used to drop every trace of last week within minutes. `BACKUP_DAILY_DAYS` and `BACKUP_MONTHLY_MONTHS` name the two windows, and the Data pane states them.
 - `tersio update` refreshes RTK through RTK's own installer, so one command covers every component Tersio manages. Tersio still writes no update logic of its own. Thanks to @FrancoStino (#108).
 - The dashboard listens on port `3456` by default, or `$TERSIO_DASHBOARD_PORT`, so a bookmark survives a restart. A busy port walks up to ten ports before the start fails. Thanks to @FrancoStino (#108).
 - Headroom routes every omp model a role or a fallback chain names, not only the default one. A provider with no block gets one built from omp's model cache. Thanks to @FrancoStino (#108).

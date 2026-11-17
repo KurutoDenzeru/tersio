@@ -1850,6 +1850,34 @@ describe('data backups', () => {
     expect(stamps).toEqual([...stamps].toSorted((a, b) => b.localeCompare(a)));
   });
 
+  test('one snapshot per older day and per older month survives a burst of new ones', () => {
+    const day = 86_400_000;
+    const backdate = (name: string, at: number): void => {
+      const when = new Date(at);
+      utimesSync(path.join(backupDir(), name), when, when);
+    };
+    // Two on one day inside the daily window: the newer of the two is the one that survives.
+    const oldA = createDataBackup().name;
+    const oldB = createDataBackup().name;
+    backdate(oldA, Date.now() - 20 * day);
+    backdate(oldB, Date.now() - 20 * day + 60_000);
+    // One inside the monthly window, past the daily one.
+    const oldC = createDataBackup().name;
+    backdate(oldC, Date.now() - 60 * day);
+    // One past both windows, so the rotation drops it.
+    const ancient = createDataBackup().name;
+    backdate(ancient, Date.now() - 400 * day);
+
+    for (let i = 0; i < BACKUP_KEEP; i += 1) createDataBackup();
+
+    const kept = listDataBackups().map((entry) => entry.name);
+    expect(kept.length, 'recent set plus two older buckets').toBe(BACKUP_KEEP + 2);
+    expect(kept).toContain(oldB);
+    expect(kept).toContain(oldC);
+    expect(kept).not.toContain(oldA);
+    expect(kept).not.toContain(ancient);
+  });
+
   test('a damaged snapshot never displaces a readable one', () => {
     const bad = createDataBackup();
     const bytes = readFileSync(bad.path);

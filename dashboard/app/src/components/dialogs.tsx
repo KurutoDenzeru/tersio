@@ -596,7 +596,9 @@ function DataPane() {
   const toast = useToast()
   const [backups, setBackups] = useState<DataBackupRow[] | null>(null)
   const [schedule, setSchedule] = useState("monthly")
-  const [keep, setKeep] = useState(3)
+  const [keep, setKeep] = useState(14)
+  const [keepDaily, setKeepDaily] = useState(30)
+  const [keepMonthly, setKeepMonthly] = useState(12)
   const [dir, setDir] = useState("")
   /** The one list of picks: selecting one enables Restore, selecting several enables Delete. */
   const [selected, setSelected] = useState<string[]>([])
@@ -618,6 +620,8 @@ function DataPane() {
             backups?: DataBackupRow[]
             schedule?: string
             keep?: number
+            keepDailyDays?: number
+            keepMonthlyMonths?: number
             dir?: string
             reset?: { rows: number; rtk: number }
           } | null,
@@ -626,6 +630,8 @@ function DataPane() {
           setCounts(d?.reset ?? null)
           if (d?.schedule) setSchedule(d.schedule)
           if (typeof d?.keep === "number") setKeep(d.keep)
+          if (typeof d?.keepDailyDays === "number") setKeepDaily(d.keepDailyDays)
+          if (typeof d?.keepMonthlyMonths === "number") setKeepMonthly(d.keepMonthlyMonths)
           if (d?.dir) setDir(d.dir)
         },
       )
@@ -832,7 +838,7 @@ function DataPane() {
       <Card
         title="Backup schedule"
         icon="clock"
-        description={`Every file Tersio keeps. The newest ${keep} are kept.`}
+        description={`Every file Tersio keeps. The newest ${keep} are kept, then one a day for ${keepDaily} days, then one a month for ${keepMonthly} months.`}
         actions={
           <Select value={schedule} onValueChange={(v) => saveSchedule(v ?? "monthly")}>
             <SelectTrigger size="sm" className="w-[132px]" aria-label="Snapshot schedule">
@@ -1088,7 +1094,7 @@ function DataPane() {
             <AlertDialogTitle>Delete this snapshot?</AlertDialogTitle>
             <AlertDialogDescription>
               {doomed
-                ? `One file goes with it — ${doomed.members.map((f) => f.label).join(", ")}. The live data stays as it is, and the backup schedule only keeps ${keep} snapshots, so this one has to be taken by hand next time.`
+                ? `One file goes with it — ${doomed.members.map((f) => f.label).join(", ")}. The live data stays as it is, and the backup schedule keeps the newest ${keep}, so this one has to be taken by hand next time.`
                 : "That snapshot is no longer in the list."}
             </AlertDialogDescription>
           </AlertDialogHeader>

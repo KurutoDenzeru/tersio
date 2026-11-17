@@ -14,6 +14,10 @@ import { tersioHome } from './utils.ts';
 
 /** Snapshots kept on disk, newest first; six fills past one screen so the pane scrolls. */
 export const BACKUP_KEEP = 14;
+/** Beyond the recent set, one snapshot survives for each earlier day inside this window. */
+export const BACKUP_DAILY_DAYS = 30;
+/** Past that window, one snapshot survives for each month inside this window. */
+export const BACKUP_MONTHLY_MONTHS = 12;
 
 const EXT = '.snap';
 const LEGACY = /^usage-\d{14}\.db$/;
@@ -393,7 +397,48 @@ export function createDataBackup(): DataBackup {
   );
 }
 
-/** Keep the newest {@link BACKUP_KEEP} readable snapshots, drop the rest, and retire superseded mirrors. */
+/** A local calendar key, so one day is one bucket whatever the hour. */
+function dayKey(at: Date): string {
+  return `${at.getFullYear()}-${at.getMonth()}-${at.getDate()}`;
+}
+
+function monthKey(at: Date): string {
+  return `${at.getFullYear()}-${at.getMonth()}`;
+}
+
+/**
+ * Which snapshots survive a prune: the newest {@link BACKUP_KEEP}, then the newest of each earlier day
+ * inside {@link BACKUP_DAILY_DAYS}, then the newest of each month inside {@link BACKUP_MONTHLY_MONTHS}.
+ * A flat cap alone loses every trace of last week after a burst of restores.
+ */
+export function rotationKeeps(readable: DataBackup[]): Set<string> {
+  const sorted = readable.toSorted((a, b) => b.mtime - a.mtime);
+  const kept = sorted.slice(0, BACKUP_KEEP);
+  const chosen = new Set(kept.map((entry) => entry.name));
+  const days = new Set(kept.map((entry) => dayKey(new Date(entry.mtime))));
+  const months = new Set(kept.map((entry) => monthKey(new Date(entry.mtime))));
+  const dailyCutoff = Date.now() - BACKUP_DAILY_DAYS * 86_400_000;
+  const oldest = new Date();
+  oldest.setMonth(oldest.getMonth() - BACKUP_MONTHLY_MONTHS);
+  for (const entry of sorted.slice(BACKUP_KEEP)) {
+    const at = new Date(entry.mtime);
+    if (entry.mtime >= dailyCutoff) {
+      const day = dayKey(at);
+      if (days.has(day)) continue;
+      days.add(day);
+      chosen.add(entry.name);
+      continue;
+    }
+    if (at < oldest) continue;
+    const month = monthKey(at);
+    if (months.has(month)) continue;
+    months.add(month);
+    chosen.add(entry.name);
+  }
+  return chosen;
+}
+
+/** Keep the rotated set of readable snapshots, drop the rest, and retire superseded mirrors. */
 export function pruneBackups(): void {
   let names: string[] = [];
   try {
@@ -427,8 +472,8 @@ export function pruneBackups(): void {
       mirrors.push(name);
     }
   }
-  const kept = readable.toSorted((a, b) => b.mtime - a.mtime).slice(0, BACKUP_KEEP);
-  const keep = new Set(kept.map((entry) => entry.name));
+  const keep = rotationKeeps(readable);
+  const kept = readable.filter((entry) => keep.has(entry.name)).toSorted((a, b) => b.mtime - a.mtime);
   // An unreadable file carries nothing, so it never displaces a snapshot that does.
   for (const entry of readable) if (!keep.has(entry.name)) surplus.push(entry.path);
   for (const file of surplus) fs.rmSync(file, { force: true });
