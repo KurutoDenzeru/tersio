@@ -129,7 +129,10 @@ const mcp = command === 'mcp';
 const modes = command === 'modes';
 const codexHook = command === 'codex-hook';
 const upstream = command === 'upstream' || args.includes('--upstream');
-const dashboardPort = Number.parseInt(flagValue('--port') ?? '', 10) || 0;
+export const DEFAULT_DASHBOARD_PORT = 3456;
+const rawPort = flagValue('--port');
+const envPort = Number.parseInt(process.env.TERSIO_DASHBOARD_PORT ?? '', 10) || 0;
+const dashboardPort = rawPort !== undefined ? (Number.parseInt(rawPort, 10) || 0) : (envPort || DEFAULT_DASHBOARD_PORT);
 // The dashboard listens on loopback unless asked otherwise: `--lan`, `--bind <addr>`, or `--host lan`. `--host` names an agent for install, so only a value that is not an agent id reads as an address.
 const hostArg = flagValue('--host');
 const dashboardBind = args.includes('--local')
@@ -253,7 +256,7 @@ async function writeIfChanged(dest: string, content: string, options: WriteOptio
 
 // omp ships 'extensions: null'; normalize it to a mapping key first, or YAML rejects the list items.
 const EXTENSIONS_KEY_RE = /^\s*extensions\s*:/i;
-const EXTENSIONS_NULL_RE = /^\s*extensions\s*:\s*(?:\[\s*\]|null|~)?\s*$/i;
+const EXTENSIONS_NULL_RE = /^\s*extensions\s*:\s*(?:\[\s*]|null|~)?\s*$/i;
 
 function normalizeExtensionsKey(lines: string[]): boolean {
   const idx = lines.findIndex((l) => EXTENSIONS_NULL_RE.test(l));
@@ -269,7 +272,7 @@ async function writeConfigLines(
   options: WriteOptions = {},
 ): Promise<void> {
   await fs.mkdir(path.dirname(configPath), { recursive: true });
-  await fs.copyFile(configPath, `${configPath}.bak`).catch(() => {});
+  await fs.copyFile(configPath, `${configPath}.bak`).catch(() => { });
   await fs.writeFile(configPath, lines.join('\n'), 'utf8');
   if (verbose && !options.quiet) console.log(logMsg);
 }

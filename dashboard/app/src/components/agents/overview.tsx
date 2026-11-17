@@ -1,35 +1,36 @@
 // Overview: the range in figures, one burn chart, the two mixes, and the newest requests.
-import { useState } from "react"
+import {useState} from "react"
+import type {Column} from "@/components/charts"
 import {
-  Card,
-  Legend,
-  Page,
-  PageHeader,
-  PagedTable,
-  Segmented,
-  Stat,
-  StatGrid,
-  TimeChart,
+    AgentCell,
+    Card,
+    Legend,
+    ModelCell,
+    Page,
+    PagedTable,
+    PageHeader,
+    Segmented,
+    Stat,
+    StatGrid,
+    TimeChart,
 } from "@/components/charts"
-import { AgentCell, ModelCell } from "@/components/charts"
-import type { Column } from "@/components/charts"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Icon } from "@/components/icon"
+import {Badge} from "@/components/ui/badge"
+import {Button} from "@/components/ui/button"
+import {Icon} from "@/components/icon"
 import {
-  PALETTE,
-  agentTypeLabel,
-  fmt,
-  fmtMs,
-  fmtShort,
-  pct,
-  relAge,
-  runStatusOf,
-  tsFull,
-  tsLabel,
-  whenStamp,
+    agentTypeLabel,
+    fmt,
+    fmtMs,
+    fmtShort,
+    PALETTE,
+    pct,
+    relAge,
+    runStatusOf,
+    tsFull,
+    tsLabel,
+    whenStamp,
 } from "@/lib/format"
-import type { AgentRequestRow, AgentStats } from "@/lib/data"
+import type {AgentRequestRow, AgentStats} from "@/lib/data"
 
 type ActivityMetric = "requests" | "tokens" | "cost"
 
@@ -54,11 +55,11 @@ const MIX: ReadonlyArray<{
   label: string
   color: string
 }> = [
-  { key: "input", label: "Uncached input", color: PALETTE[1] },
-  { key: "cacheRead", label: "Cache read", color: "var(--accent)" },
-  { key: "cacheWrite", label: "Cache write", color: PALETTE[3] },
-  { key: "output", label: "Output", color: PALETTE[2] },
-]
+    { key: "input", label: "Uncached input", color: PALETTE[1] },
+    { key: "cacheRead", label: "Cache read", color: "var(--accent)" },
+    { key: "cacheWrite", label: "Cache write", color: PALETTE[3] },
+    { key: "output", label: "Output", color: PALETTE[2] },
+  ]
 
 /** A stacked share of one total, the shape the reference draws above its legend. */
 function ShareBar({
@@ -107,9 +108,9 @@ export function OverviewPage({
   const series =
     metric === "requests"
       ? [
-          { key: "ok", label: "Succeeded", color: "var(--accent)" },
-          { key: "err", label: "Failed", color: "var(--danger)" },
-        ]
+        { key: "ok", label: "Succeeded", color: "var(--accent)" },
+        { key: "err", label: "Failed", color: "var(--danger)" },
+      ]
       : metric === "tokens"
         ? [{ key: "tokens", label: "Tokens", color: "var(--accent)" }]
         : [{ key: "cost", label: "API-equivalent", color: PALETTE[1] }]
@@ -127,10 +128,10 @@ export function OverviewPage({
 
       <StatGrid cols={5}>
         <Stat
-          label="API-equivalent cost"
-          title="What this usage would cost at public API rates"
+          label="Actual cost"
+          title="Actual API-equivalent cost after prompt caching"
           value={money(o.costUsd)}
-          hint={o.unpricedRequests > 0 ? `${fmt(o.unpricedRequests)} unpriced` : undefined}
+          hint={o.unpricedRequests > 0 ? `${fmt(o.unpricedRequests)} unpriced` : "Billed after cache"}
           spark={points.map((b) => b.costUsd)}
         />
         <Stat

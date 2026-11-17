@@ -77,7 +77,7 @@ npm exec --yes --prefer-online --package=@krtclcdy/tersio@latest -- tersio insta
 
 ## 📊 Dashboard
 
-`tersio dashboard` opens a local page for usage, cost, tools, traces, and savings. Other pages cover Models, Providers, Costs, Carbon, Requests, Errors, Tools, and Projects.
+`tersio dashboard` opens a local page (defaults to port `3456`, or `$TERSIO_DASHBOARD_PORT`) for usage, cost, tools, traces, and savings. Other pages cover Models, Providers, Costs, Carbon, Requests, Errors, Tools, and Projects.
 
 **Quick start (Recommended)** is the place to see the whole setup workflow: the modes, the agents, and how one turn moves from prompt to output.
 
@@ -161,7 +161,7 @@ Two resources answer without using a tool: `tersio://settings` and `tersio://hos
 | `tersio update` | Update the Tersio CLI. `--host <agent>` also refreshes that agent's extensions and add-ons (Caveman rule, Headroom, Ponytail) and reports a newer rtk release; no prompt is asked |
 | `tersio doctor` (Defaults row) | `tersio doctor` prints the shared defaults and each agent's overrides, so a value's source is visible without reading the store |
 | `tersio doctor` | Check each host, extension/plugin wiring, Ponytail, RTK, and OpenCode service health (`--fix` repairs, `--fix=<scope>` one scope, `--dry-run` previews) |
-| `tersio dashboard` | Open the Dashboard (`--open`, `--export <file>`, `--port <n>`, `--currency <code>`; serves localhost only) |
+| `tersio dashboard` | Open the Dashboard (`--open`, `--export <file>`, `--port <n>` (defaults to `3456` or `$TERSIO_DASHBOARD_PORT`), `--currency <code>`; serves localhost only) |
 | `tersio mcp` | Start the Tersio MCP server on stdio (see [MCP](#-mcp)) |
 | `tersio modes` | Read or set session defaults without a slash command; `--host <agent>` scopes the write |
 | `tersio uninstall` | Remove extensions, registrations, the Ponytail plugin, and the `rtk.ts` OMP wiring (`--keep-ponytail` keeps Ponytail; `--remove-rtk` also removes that wiring, never the binary) |

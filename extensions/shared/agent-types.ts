@@ -51,6 +51,8 @@ export interface AgentOverall extends AgentTokenMix {
   errorRate: number;
   cacheRate: number;
   costUsd: number;
+  savedCost?: number;
+  unoptimizedCost?: number;
   unpricedRequests: number;
   avgDurationMs: number;
   avgTtftMs: number;
@@ -71,6 +73,8 @@ export interface AgentRow extends AgentTokenMix {
   errorRate: number;
   cacheRate: number;
   costUsd: number;
+  savedCost?: number;
+  unoptimizedCost?: number;
   unpricedRequests: number;
   avgDurationMs: number;
   avgTtftMs: number;

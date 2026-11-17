@@ -1445,7 +1445,7 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
       return;
     }
     if (req.url === '/api/update' && req.method === 'POST') {
-      let prefs: UpdatePrefs = {};
+      let prefs: UpdatePrefs;
       try {
         prefs = (JSON.parse(await readBody(req)) as UpdatePrefs) ?? {};
       } catch {
@@ -1472,29 +1472,29 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
       const body = file
         ? readSessionTrace(file)
         : {
-            sessionFile: '',
-            project: '',
-            title: '',
-            cwd: '',
-            startedAt: 0,
-            endedAt: 0,
-            tracks: [],
-            markers: [],
-            summary: {
-              wallMs: 0,
-              modelMs: 0,
-              toolMs: 0,
-              idleMs: 0,
-              turns: 0,
-              requests: 0,
-              toolCalls: 0,
-              agents: 0,
-              totalTokens: 0,
-              costUsd: 0,
-            },
-            toolStats: [],
-            truncated: false,
-          };
+          sessionFile: '',
+          project: '',
+          title: '',
+          cwd: '',
+          startedAt: 0,
+          endedAt: 0,
+          tracks: [],
+          markers: [],
+          summary: {
+            wallMs: 0,
+            modelMs: 0,
+            toolMs: 0,
+            idleMs: 0,
+            turns: 0,
+            requests: 0,
+            toolCalls: 0,
+            agents: 0,
+            totalTokens: 0,
+            costUsd: 0,
+          },
+          toolStats: [],
+          truncated: false,
+        };
       json(res, 200, body);
       return;
     }
@@ -1632,33 +1632,24 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
     });
     process.once('SIGINT', stop);
     process.once('SIGTERM', stop);
-    server.once('error', rejectOnce);
-    server.listen(options.port, listenHost, () => {
+    const onListening = (boundPort: number): void => {
       try {
         process.title = 'tersio dashboard';
       } catch {
         /* non-POSIX shells keep node */
       }
-      const address = server.address();
-      const port = typeof address === 'object' && address ? address.port : options.port;
-      const url = `http://127.0.0.1:${port}`;
+      const url = `http://127.0.0.1:${boundPort}`;
       console.log(`[ok] Dashboard live → ${url} (Ctrl-C to stop)`);
-      for (const lan of lanUrls(port, listenHost)) {
+      for (const lan of lanUrls(boundPort, listenHost)) {
         console.log(`[lan] ${lan}`);
-        // A phone scans this; skip it when the output is piped or color is disabled.
         const qr = process.stdout.isTTY && !process.env.NO_COLOR ? qrTerminal(lan) : null;
         if (qr) console.log(qr);
       }
-      // An enabled integration outlives a reboot, but its proxy does not. Restore the runtime the config expects.
       const runtimeBin = resolveHeadroomBinary();
       if (runtimeBin && detectHosts().some((host) => readHeadroomRoute(host.id).routed)) {
         void ensureHeadroomRuntime(runtimeBin);
       }
-
-      // The cadence only matters while a server is up, so the watch starts with it.
       startUpdateWatch();
-      // The first page load should not pay for a cold read: warm the default range once the port is up.
-      // Warm the overview each range opens on, one per tick so the port stays responsive.
       const warm: RangeKey[] = process.env.TERSIO_WARM === '0' ? [] : ['24h', '7d', 'all'];
       const warmNext = (index: number): void => {
         const range = warm[index];
@@ -1672,7 +1663,30 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
       };
       setTimeout(() => warmNext(0), 250);
       if (options.open) openBrowser(url);
+    };
+
+    let attemptPort = options.port;
+    server.once('listening', () => {
+      server.on('error', rejectOnce);
+      const address = server.address();
+      const port = typeof address === 'object' && address ? address.port : attemptPort;
+      onListening(port);
     });
+
+    const tryListen = (): void => {
+      const errorHandler = (err: NodeJS.ErrnoException): void => {
+        server.removeListener('error', errorHandler);
+        if (err.code === 'EADDRINUSE' && options.port > 0 && attemptPort < options.port + 10) {
+          attemptPort += 1;
+          tryListen();
+        } else {
+          rejectOnce(err);
+        }
+      };
+      server.once('error', errorHandler);
+      server.listen(attemptPort, listenHost);
+    };
+    tryListen();
   });
 }
 

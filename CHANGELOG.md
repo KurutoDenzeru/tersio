@@ -2,6 +2,16 @@
 
 ### Added
 - `/tersio status on|off|toggle` shows or hides the footer status line and saves the choice as that agent's default (`statusVisible` in `~/.tersio/settings.json`, shared key or `hosts.<agent>`). The line is on unless a stored value says otherwise. The Claude, Codex, and dsh surfaces are unchanged. Thanks to @chxrlie (#109).
+- The Costs page reads actual cost against an unoptimized baseline, and names what prompt caching and Headroom compression saved. Thanks to @FrancoStino (#108).
+
+### Changed
+- `tersio update` refreshes RTK through RTK's own installer, so one command covers every component Tersio manages. Tersio still writes no update logic of its own. Thanks to @FrancoStino (#108).
+- The dashboard listens on port `3456` by default, or `$TERSIO_DASHBOARD_PORT`, so a bookmark survives a restart. A busy port walks up to ten ports before the start fails. Thanks to @FrancoStino (#108).
+- Headroom routes every omp model a role or a fallback chain names, not only the default one. A provider with no block gets one built from omp's model cache. Thanks to @FrancoStino (#108).
+
+### Fixed
+- `tersio install` keeps `omp-plugins.lock.json` level with the installed version, so `omp plugin doctor` no longer reports version drift. Thanks to @FrancoStino (#108).
+- Gemini Antigravity clients use the proxy root beside Anthropic, instead of the OpenAI `/v1` path. Thanks to @FrancoStino (#108).
 
 ## v2.25.20
 

@@ -1,46 +1,47 @@
 // Read-only aggregate over the usage store; missing SQLite, table, or metric reads as zeros.
 import fs from 'node:fs';
 import path from 'node:path';
-import { sqliteRead } from './sqlite.ts';
-import { COL, SOURCE, folderExpr } from './agent-sql.ts';
+import {sqliteRead} from './sqlite.ts';
+import {COL, folderExpr, SOURCE} from './agent-sql.ts';
 import type {
-  AgentBucket,
-  AgentCostMix,
-  AgentErrorGroup,
-  AgentErrorModelRow,
-  AgentHeadroom,
-  AgentModelPerformancePoint,
-  AgentOverall,
-  AgentProviderHour,
-  AgentRequestRow,
-  AgentRequestStats,
-  AgentRow,
-  AgentRtk,
-  AgentSessionTrace,
-  AgentStats,
-  AgentTokenMix,
-  AgentToolRow,
-  AgentTraceMarker,
-  AgentTraceRow,
-  AgentTraceSpan,
-  AgentTraceSummary,
-  AgentTraceToolStat,
-  AgentView,
-  AgentWindowInsight,
-  AgentWindowPoint,
-  AgentWindowSeries,
-  JournalAgent,
-  RangeKey,
+    AgentBucket,
+    AgentCostMix,
+    AgentErrorGroup,
+    AgentErrorModelRow,
+    AgentHeadroom,
+    AgentModelPerformancePoint,
+    AgentOverall,
+    AgentProviderHour,
+    AgentRequestRow,
+    AgentRequestStats,
+    AgentRow,
+    AgentRtk,
+    AgentSessionTrace,
+    AgentStats,
+    AgentTokenMix,
+    AgentToolRow,
+    AgentTraceMarker,
+    AgentTraceRow,
+    AgentTraceSpan,
+    AgentTraceSummary,
+    AgentTraceToolStat,
+    AgentView,
+    AgentWindowInsight,
+    AgentWindowPoint,
+    AgentWindowSeries,
+    JournalAgent,
+    RangeKey,
 } from './agent-types.ts';
-import { homeDir, isRecord } from './utils.ts';
-import { usageDbPath } from './usage-store.ts';
-import { readRtkGainByVerb, rtkGainFailure } from './rtk-gain.ts';
-import { readHeadroomDoctorAsync, readHeadroomSavingsAsync, readHeadroomStats } from './headroom-gain.ts';
-import { headroomProxyPort } from './headroom-proxy.ts';
-import { describeHeadroomRoute, readHeadroomRoute } from './headroom-routing.ts';
-import { hostOfSessionFile, readRtkAdoption, readSessionText, usdCost } from './usage-ledger.ts';
-import type { RtkAdoption } from './usage-ledger.ts';
-import { codexModelIdentity, looksLikeCodexTranscript, parseCodexTranscript } from './codex-transcript.ts';
+import {homeDir, isRecord} from './utils.ts';
+import {priceFor} from './pricing.ts';
+import {usageDbPath} from './usage-store.ts';
+import {readRtkGainByVerb, rtkGainFailure} from './rtk-gain.ts';
+import {readHeadroomDoctorAsync, readHeadroomSavingsAsync, readHeadroomStats} from './headroom-gain.ts';
+import {headroomProxyPort} from './headroom-proxy.ts';
+import {describeHeadroomRoute, readHeadroomRoute} from './headroom-routing.ts';
+import type {RtkAdoption} from './usage-ledger.ts';
+import {hostOfSessionFile, readRtkAdoption, readSessionText, usdCost} from './usage-ledger.ts';
+import {codexModelIdentity, looksLikeCodexTranscript, parseCodexTranscript} from './codex-transcript.ts';
 
 export const RANGES: readonly RangeKey[] = ['1h', '24h', '7d', '30d', '90d', 'all'];
 
@@ -533,7 +534,7 @@ function mix(f: Facts): AgentTokenMix {
 
 const cacheRateOf = (f: Facts): number => (f.input + f.cacheRead > 0 ? f.cacheRead / (f.input + f.cacheRead) : 0);
 
-function overallOf(f: Facts): AgentOverall {
+function overallOf(f: Facts, savedCost = 0): AgentOverall {
   return {
     ...mix(f),
     costMix: costMixOf(f),
@@ -543,6 +544,8 @@ function overallOf(f: Facts): AgentOverall {
     errorRate: f.requests > 0 ? f.failed / f.requests : 0,
     cacheRate: cacheRateOf(f),
     costUsd: f.costUsd,
+    savedCost,
+    unoptimizedCost: f.costUsd + savedCost,
     unpricedRequests: f.unpriced,
     avgDurationMs: f.durationN > 0 ? f.durationSum / f.durationN : 0,
     avgTtftMs: f.ttftN > 0 ? f.ttftSum / f.ttftN : 0,
@@ -554,6 +557,12 @@ function overallOf(f: Facts): AgentOverall {
 }
 
 function rowOf(key: string, f: Facts, models: number, provider = ''): AgentRow {
+  let savedCost = 0;
+  if (f.costUsd > 0 && f.cacheRead > 0) {
+    const p = priceFor(key).price;
+    savedCost = (f.cacheRead * Math.max(0, p.input - p.cacheRead)) / 1_000_000;
+  }
+  const unoptimizedCost = f.costUsd + savedCost;
   return {
     ...mix(f),
     key,
@@ -564,6 +573,8 @@ function rowOf(key: string, f: Facts, models: number, provider = ''): AgentRow {
     errorRate: f.requests > 0 ? f.failed / f.requests : 0,
     cacheRate: cacheRateOf(f),
     costUsd: f.costUsd,
+    savedCost,
+    unoptimizedCost,
     unpricedRequests: f.unpriced,
     avgDurationMs: f.durationN > 0 ? f.durationSum / f.durationN : 0,
     avgTtftMs: f.ttftN > 0 ? f.ttftSum / f.ttftN : 0,
@@ -712,8 +723,9 @@ function readStatsDb(
 
   const byModel = (out.get('byModel') ?? []).map((r) => rowOf(r[0] ?? '', parseFacts(r, 2), 0, r[1] ?? ''));
 
+  const savedCost = byModel.reduce((acc, r) => acc + (r.savedCost ?? 0), 0);
   return {
-    overall: overallOf(parseFacts(out.get('overall')?.[0], 0)),
+    overall: overallOf(parseFacts(out.get('overall')?.[0], 0), savedCost),
     byModel,
     byProvider: (out.get('byProvider') ?? []).map((r) => rowOf(r[0] ?? '', parseFacts(r, 2), num(r[1]), r[0] ?? '')),
     byProject: (out.get('byProject') ?? []).map((r) => rowOf(r[0] ?? '', parseFacts(r, 1), 0)),
@@ -1356,8 +1368,8 @@ function looksLikeClaudeTranscript(text: string): boolean {
         parsed.type === 'api-request'
           ? typeof parsed.id === 'string'
           : (typeof parsed.sessionId === 'string' &&
-              (parsed.type === 'assistant' || parsed.type === 'user' || parsed.type === 'custom-title')) ||
-            (parsed.type === 'assistant' && isRecord(parsed.message) && parsed.message.role === 'assistant')
+            (parsed.type === 'assistant' || parsed.type === 'user' || parsed.type === 'custom-title')) ||
+          (parsed.type === 'assistant' && isRecord(parsed.message) && parsed.message.role === 'assistant')
       )
         return true;
     } catch {
@@ -2067,23 +2079,23 @@ function codexRequestEntry(
   };
   const output = message
     ? {
-        ...message.message,
-        role: 'assistant',
-        api: 'responses',
-        model: request.model,
-        provider: request.provider,
-        usage,
-        stopReason: request.status,
-      }
+      ...message.message,
+      role: 'assistant',
+      api: 'responses',
+      model: request.model,
+      provider: request.provider,
+      usage,
+      stopReason: request.status,
+    }
     : {
-        role: 'assistant',
-        api: 'responses',
-        model: request.model,
-        provider: request.provider,
-        usage,
-        stopReason: request.status,
-        content: [],
-      };
+      role: 'assistant',
+      api: 'responses',
+      model: request.model,
+      provider: request.provider,
+      usage,
+      stopReason: request.status,
+      content: [],
+    };
   return {
     entry: token?.row ?? { id: request.id, model: request.model, provider: request.provider, usage },
     output,
@@ -2104,12 +2116,12 @@ export function readAgentRequestEntry(
   const text = packed
     ? readSessionText(sessionFile)
     : (() => {
-        try {
-          return fs.readFileSync(sessionFile, 'utf8');
-        } catch {
-          return null;
-        }
-      })();
+      try {
+        return fs.readFileSync(sessionFile, 'utf8');
+      } catch {
+        return null;
+      }
+    })();
   if (text === null) return empty;
   const codex = codexRequestEntry(text, entryId);
   if (codex) return codex;
