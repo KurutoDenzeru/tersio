@@ -11,6 +11,9 @@
 - Headroom routes every omp model a role or a fallback chain names, not only the default one. A provider with no block gets one built from omp's model cache. Thanks to @FrancoStino (#108).
 
 ### Fixed
+- Every pi extension loads again. `codex-state.ts`, `claude-state.ts`, and `claude-plugin.ts` walked to a package root at import time, and the pi tree has no `package.json` above it, so `/tersio`, `/headroom`, and the rtk filter each failed with `package root not found`. The walk now runs on first use.
+- The pi Ponytail package loads again. `ponytail-instructions.ts` imported `../../shared/utils.ts`, which sits outside the package pi copies, so `/ponytail` failed with `Cannot find module`. The helper is now local to that package.
+- A regression test installs into an empty home and imports each pi entry, so a parent import or an import-time root walk fails the suite instead of pi's startup.
 - `tersio install` keeps `omp-plugins.lock.json` level with the installed version, so `omp plugin doctor` no longer reports version drift. Thanks to @FrancoStino (#108).
 - Gemini Antigravity clients use the proxy root beside Anthropic, instead of the OpenAI `/v1` path. Thanks to @FrancoStino (#108).
 

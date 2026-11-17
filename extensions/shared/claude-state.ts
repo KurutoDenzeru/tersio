@@ -30,7 +30,10 @@ export const CLAUDE_PLUGIN_FILES = [
   'commands/update.md',
 ] as const;
 
-const ROOT = findPackageRoot(dirname(fileURLToPath(import.meta.url)));
+/** The pi extension tree has no package.json above it, so this walk runs at use, never at import. */
+function resolveRoot(): string {
+  return findPackageRoot(dirname(fileURLToPath(import.meta.url)));
+}
 
 /** Claude Code keeps its user state here; CLAUDE_CONFIG_DIR is the documented override. */
 export function claudeHome(): string {
@@ -39,7 +42,7 @@ export function claudeHome(): string {
 }
 
 /** The portable plugin directory inside this package. */
-export function claudePackagedPluginDir(root = ROOT): string {
+export function claudePackagedPluginDir(root = resolveRoot()): string {
   return join(root, 'plugins', CLAUDE_PLUGIN_DIR);
 }
 

@@ -22,7 +22,10 @@ export const CODEX_PLUGIN_FILES = [
   'skills/tersio-modes/SKILL.md',
 ] as const;
 
-const ROOT = findPackageRoot(dirname(fileURLToPath(import.meta.url)));
+/** The pi extension tree has no package.json above it, so this walk runs at use, never at import. */
+function resolveRoot(): string {
+  return findPackageRoot(dirname(fileURLToPath(import.meta.url)));
+}
 
 /** Codex keeps its user state here; `CODEX_HOME` is the supported relocation override. */
 export function codexHome(): string {
@@ -35,12 +38,12 @@ export function codexConfigFile(): string {
 }
 
 /** The repository marketplace the plugin ships beside. */
-export function codexMarketplaceFile(root = ROOT): string {
+export function codexMarketplaceFile(root = resolveRoot()): string {
   return join(root, '.agents', 'plugins', 'marketplace.json');
 }
 
 /** The portable plugin directory inside this package. */
-export function codexPackagedPluginDir(root = ROOT): string {
+export function codexPackagedPluginDir(root = resolveRoot()): string {
   return join(root, 'plugins', CODEX_PLUGIN_NAME);
 }
 
@@ -122,5 +125,5 @@ export function codexPluginInstalled(): boolean {
 
 /** The absolute directory a local marketplace registration should name. */
 export function codexMarketplaceRoot(): string {
-  return resolve(ROOT);
+  return resolve(resolveRoot());
 }

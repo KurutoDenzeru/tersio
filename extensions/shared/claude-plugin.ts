@@ -13,7 +13,10 @@ import {
 } from './claude-state.ts';
 import { getPonytailInstructions } from '../ponytail/hooks/ponytail-instructions.ts';
 
-const ROOT = findPackageRoot(dirname(fileURLToPath(import.meta.url)));
+/** The pi extension tree has no package.json above it, so this walk runs at use, never at import. */
+function resolveRoot(): string {
+  return findPackageRoot(dirname(fileURLToPath(import.meta.url)));
+}
 
 const CAVEMAN_RULES: Record<string, string> = {
   lite: 'rule-lite.md',
@@ -30,7 +33,7 @@ function cavemanContext(): Record<string, string> {
   for (const [mode, file] of Object.entries(CAVEMAN_RULES)) {
     try {
       out[mode] =
-        `Caveman ${mode} active for this session.\n${readFileSync(join(ROOT, 'extensions', 'caveman', file), 'utf8')}`;
+        `Caveman ${mode} active for this session.\n${readFileSync(join(resolveRoot(), 'extensions', 'caveman', file), 'utf8')}`;
     } catch {
       out[mode] = `Caveman ${mode} requested, but ${file} is missing. Run: tersio doctor --fix extensions`;
     }
@@ -49,7 +52,7 @@ const HEADROOM_CONTEXT =
 export function claudeModeContext(): Record<string, unknown> {
   const pstack = (() => {
     try {
-      const rule = readFileSync(join(ROOT, 'extensions', 'pstack', 'rule.md'), 'utf8');
+      const rule = readFileSync(join(resolveRoot(), 'extensions', 'pstack', 'rule.md'), 'utf8');
       const base = join(claudeLocalMarketplaceRoot(), CLAUDE_PLUGIN_NAME, 'skills', 'pstack');
       // The rule points at sibling files by bare name; the absolute base is what the model can open.
       return `${rule}\n\nThe pstack files are under \`${base}\`. Read them from there.`;
@@ -71,7 +74,7 @@ export function claudeModeContext(): Record<string, unknown> {
 
 /** The plugin manifest and its hooks module, read from the packaged copy beside this build. */
 function readPackaged(rel: string): string {
-  return readFileSync(join(ROOT, 'plugins', CLAUDE_PLUGIN_DIR, ...rel.split('/')), 'utf8');
+  return readFileSync(join(resolveRoot(), 'plugins', CLAUDE_PLUGIN_DIR, ...rel.split('/')), 'utf8');
 }
 
 /** The MCP entry Claude reads from the plugin's `.mcp.json`. */
@@ -82,7 +85,7 @@ function mcpJson(): string {
 
 /** Pstack's rule and its playbooks, skills, principles, and references, keyed under the skill dir. */
 function pstackPluginFiles(): Record<string, string> {
-  const root = join(ROOT, 'extensions', 'pstack');
+  const root = join(resolveRoot(), 'extensions', 'pstack');
   const keep: Record<string, true> = { principles: true, playbooks: true, skills: true, references: true };
   const out: Record<string, string> = {};
   const walk = (rel: string): void => {
