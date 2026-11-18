@@ -109,8 +109,14 @@ if (-not $tersio) { throw 'tersio installer: tersio is not on PATH after the ins
 Write-Host ''
 Write-Host 'Running the main installer...'
 # A broken payload crashes on boot, so smoke-check before `tersio install` runs.
-& $tersio --version *> $null
-if ($LASTEXITCODE -ne 0) { throw 'tersio installer: the installed CLI did not answer --version' }
+$smoke = & $tersio --version 2>&1
+if ($LASTEXITCODE -ne 0) {
+  $reason = ($smoke | Out-String).Trim()
+  if (-not (Test-Command 'node')) {
+    throw "tersio installer: the installed CLI did not answer --version ($reason). Node.js is required: the bin starts with '#!/usr/bin/env node'. Install Node.js 20.12+ (https://nodejs.org), then run: tersio install"
+  }
+  throw "tersio installer: the installed CLI did not answer --version ($reason)"
+}
 
 # An interactive PowerShell session gets the scope and Combo preset menus; a
 # piped install (irm | iex) passes --yes and takes the user-scope defaults.

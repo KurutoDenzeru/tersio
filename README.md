@@ -70,7 +70,7 @@ npm exec --yes --prefer-online --package=@krtclcdy/tersio@latest -- tersio insta
 | Need | Detail |
 |---|---|
 | Host | [OMP](https://github.com/can1357/oh-my-pi), [pi](https://github.com/earendil-works/pi), [OpenCode](https://opencode.ai), [PiG](https://pi-in-go.dev), [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness), Codex, or [Claude Code](https://code.claude.com) — `tersio install --host <omp\|pi\|opencode\|pig\|dsh\|codex\|claude>` |
-| Node.js | 20.12+ with npm. The CLI runs under Node |
+| Node.js | 20.12+ with npm. The installed bin starts with `#!/usr/bin/env node`, so the CLI needs Node.js even when Bun runs it |
 | Bun | Optional. Preferred when on PATH, npm otherwise; also supplies SQLite in process |
 | SQLite | Bun, Node 22.5+ `node:sqlite`, or the `sqlite3` binary on PATH |
 | OS | macOS, Linux, or Windows, native (`install.ps1`). WSL works too, installed from inside it |
