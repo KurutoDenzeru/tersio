@@ -1,16 +1,16 @@
-import { describe, expect, test } from 'vitest';
-import { spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {describe, expect, test} from 'vitest';
+import {spawnSync} from 'node:child_process';
+import {chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { createRequire } from 'node:module';
+import {fileURLToPath} from 'node:url';
+import {createRequire} from 'node:module';
 
-import { bannerLines, bannerTier } from '../../cli/banner.ts';
-import { detectHosts, hostLabel } from '../../cli/hosts.ts';
-import type { HostEntry } from '../../cli/hosts.ts';
-import { cliEnv, fakeRtkBin } from '../helpers/env.ts';
-import { registryUrl, releasesUrl } from '../helpers/registry.ts';
+import {bannerLines, bannerTier} from '../../cli/banner.ts';
+import type {HostEntry} from '../../cli/hosts.ts';
+import {detectHosts, hostLabel} from '../../cli/hosts.ts';
+import {cliEnv, fakeRtkBin} from '../helpers/env.ts';
+import {registryUrl, releasesUrl} from '../helpers/registry.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const installer = path.join(root, 'dist', 'tersio.js');
@@ -288,7 +288,7 @@ function run(home: string, args: string[]): { status: number | null; stdout: str
     cwd: root,
     encoding: 'utf8',
     timeout: 30000,
-    env: cliEnv(home, { PATH: path.join(home, 'empty-bin') }),
+    env: cliEnv(home, { PATH: path.join(home, 'empty-bin'), PI_OFFLINE: '1' }),
   });
   return { status: result.status, stdout: result.stdout, stderr: result.stderr };
 }
@@ -375,6 +375,7 @@ test('install --host pig writes the pig tree and no OMP files', () => {
     expect(result.stdout).toMatch(
       /\[dry-run\] would write .*\.pig[\\/]agent[\\/]extensions[\\/]shared[\\/]session-state\.ts/,
     );
+    expect(result.stdout).toMatch(/\[dry-run\] would write .*\.pig[\\/]agent[\\/]ponytail[\\/]package\.json/);
     expect(result.stdout).toMatch(/\[dry-run\] would write session defaults to .*\.tersio[\\/]settings\.json/);
     expect(result.stdout, 'OMP extension tree must stay untouched').not.toMatch(/\.omp[\\/]agent[\\/]extensions/);
     expect(result.stdout).toMatch(/Done — restart PiG/);

@@ -1,48 +1,49 @@
 // /combo session toggle: off | lite | balanced | max.
 
 import path from 'node:path';
-import { existsSync, readFileSync } from 'node:fs';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import {existsSync, readFileSync} from 'node:fs';
+import {fileURLToPath, pathToFileURL} from 'node:url';
 import {
-  activeModesSummary,
-  COMBO_LEVELS,
-  getSharedComboState,
-  hasModeState,
-  normalizeComboLevel,
-  normalizeMode,
-  reconcileSharedComboEntries,
-  sessionEntries,
-  setSharedComboLevel,
-  setSharedComboListener,
-  setSharedComboMode,
-  setSharedComboModes,
-  systemPromptIncludes,
+    activeModesSummary,
+    COMBO_LEVELS,
+    getSharedComboState,
+    hasModeState,
+    normalizeComboLevel,
+    normalizeMode,
+    reconcileSharedComboEntries,
+    sessionEntries,
+    setSharedComboLevel,
+    setSharedComboListener,
+    setSharedComboMode,
+    setSharedComboModes,
+    systemPromptIncludes,
 } from '../shared/session-state.ts';
 import {
-  hostIdOf,
-  hostSelect,
-  injectPromptText,
-  isOpencodeHost,
-  onHostEvent,
-  sessionChangeEvents,
-  setExtensionLabel,
+    hostIdOf,
+    hostSelect,
+    injectPromptText,
+    isOpencodeHost,
+    onHostEvent,
+    sessionChangeEvents,
+    setExtensionLabel,
 } from '../shared/host.ts';
-import type { HostScope } from '../shared/plugin-settings.ts';
-import { announceStatus } from '../shared/status.ts';
+import type {HostScope} from '../shared/plugin-settings.ts';
 import {
-  isComboSetupComplete,
-  readCavemanDefault,
-  readComboDefault,
-  readHeadroomDefault,
-  readPluginSettings,
-  readPonytailDefault,
-  readPstackDefault,
-  readRtkDefault,
-  saveComboSetup,
-  saveModeState,
+    isComboSetupComplete,
+    readCavemanDefault,
+    readCodegraphDefault,
+    readComboDefault,
+    readHeadroomDefault,
+    readPluginSettings,
+    readPonytailDefault,
+    readPstackDefault,
+    readRtkDefault,
+    saveComboSetup,
+    saveModeState,
 } from '../shared/plugin-settings.ts';
-import { isPiLikeProcess, pigAgentDir, piAgentDir } from '../shared/utils.ts';
-import type { ComboState, ExtensionApi, ExtensionCtx, SystemPromptEvent } from '../shared/types.ts';
+import {announceStatus} from '../shared/status.ts';
+import {isPiLikeProcess, piAgentDir, pigAgentDir} from '../shared/utils.ts';
+import type {ComboState, ExtensionApi, ExtensionCtx, SystemPromptEvent} from '../shared/types.ts';
 
 const EXTENSION_DIR = path.dirname(fileURLToPath(import.meta.url));
 
@@ -107,29 +108,33 @@ function savedModes(host: HostScope): {
   ponytail: string;
   pstack: string;
   headroom: string;
+  codegraph: string;
 } {
   const settings = readPluginSettings();
   const own = (settings.hosts as Record<string, Record<string, unknown>> | undefined)?.[host] ?? {};
+  // CodeGraph is not part of a preset, so its own default applies regardless of the preset.
+  const independent = { codegraph: readCodegraphDefault(host) };
   const hasOwnModes = ['cavemanDefault', 'rtkDefault', 'ponytailDefault', 'pstackDefault', 'headroomDefault'].some(
     (key) => key in own,
   );
   if (!hasOwnModes && 'comboDefault' in own) {
     const preset = COMBO_LEVELS[readComboDefault(host)] ?? COMBO_LEVELS.off;
-    return { ...preset, pstack: readPstackDefault(host), headroom: readHeadroomDefault(host) };
+    return { ...preset, pstack: readPstackDefault(host), headroom: readHeadroomDefault(host), ...independent };
   }
   const hasModeDefaults = ['cavemanDefault', 'rtkDefault', 'ponytailDefault', 'pstackDefault', 'headroomDefault'].some(
-    (key) => key in settings,
+    (key) => key in settings || key in own,
   );
   const preset = COMBO_LEVELS[readComboDefault(host)];
   return hasModeDefaults
     ? {
-        caveman: readCavemanDefault(host),
-        rtk: readRtkDefault(host) ? 'on' : 'off',
-        ponytail: readPonytailDefault(host),
-        pstack: readPstackDefault(host),
-        headroom: readHeadroomDefault(host),
-      }
-    : { ...preset, pstack: 'off', headroom: 'off' };
+      caveman: readCavemanDefault(host),
+      rtk: readRtkDefault(host) ? 'on' : 'off',
+      ponytail: readPonytailDefault(host),
+      pstack: readPstackDefault(host),
+      headroom: readHeadroomDefault(host),
+      ...independent,
+    }
+    : { ...preset, pstack: 'off', headroom: 'off', ...independent };
 }
 
 // Registers the shared-state listener for this session's UI; the factory calls it per context.
@@ -168,7 +173,8 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
       modes.rtk === 'off' &&
       modes.ponytail === 'off' &&
       modes.pstack === 'off' &&
-      modes.headroom === 'off'
+      modes.headroom === 'off' &&
+      modes.codegraph === 'off'
     )
       return;
     pi.appendEntry?.('caveman-mode', { mode: modes.caveman });
@@ -176,6 +182,7 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
     pi.appendEntry?.('ponytail-mode', { mode: modes.ponytail });
     if (modes.pstack !== 'off') pi.appendEntry?.('pstack-mode', { mode: modes.pstack });
     if (modes.headroom !== 'off') pi.appendEntry?.('headroom-mode', { mode: modes.headroom });
+    if (modes.codegraph !== 'off') pi.appendEntry?.('codegraph-mode', { mode: modes.codegraph });
     if (preset && modes.caveman === preset.caveman && modes.rtk === preset.rtk && modes.ponytail === preset.ponytail) {
       pi.appendEntry?.('combo-level', { level: combo });
     }
@@ -209,11 +216,11 @@ export default function comboToggleExtension(pi: ExtensionApi): void {
       if (arg === 'help') {
         ctx?.ui?.notify?.(
           '/combo off      — disables caveman, rtk and ponytail. pstack keeps its own setting\n' +
-            '/combo lite     — light, the recommended level: caveman=lite, rtk=on, ponytail=lite\n' +
-            '/combo balanced — middle, not recommended: caveman=full, rtk=on, ponytail=full\n' +
-            '/combo max      — aggressive: caveman=ultra, rtk=on, ponytail=ultra\n' +
-            'pstack is not part of a preset. Set it on its own with /pstack on|off\n' +
-            'headroom is not part of a preset either. Set it on its own with /headroom on|off',
+          '/combo lite     — light, the recommended level: caveman=lite, rtk=on, ponytail=lite\n' +
+          '/combo balanced — middle, not recommended: caveman=full, rtk=on, ponytail=full\n' +
+          '/combo max      — aggressive: caveman=ultra, rtk=on, ponytail=ultra\n' +
+          'pstack is not part of a preset. Set it on its own with /pstack on|off\n' +
+          'headroom is not part of a preset either. Set it on its own with /headroom on|off',
           'info',
         );
         return;

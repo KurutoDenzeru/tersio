@@ -1,15 +1,18 @@
-import { describe, expect, test } from 'vitest';
+import {describe, expect, test} from 'vitest';
+import http from 'node:http';
+import net from 'node:net';
 import {
-  agentJson,
-  shouldAutoWatch,
-  lanUrls,
-  resolveBind,
-  healthJson,
-  isVendorTool,
-  json,
-  statusJson,
+    agentJson,
+    dashboardRequestAllowed,
+    healthJson,
+    isVendorTool,
+    json,
+    lanUrls,
+    resolveBind,
+    shouldAutoWatch,
+    statusJson,
 } from '../../cli/dashboard.ts';
-import { withHome } from '../helpers/env.ts';
+import {withHome} from '../helpers/env.ts';
 
 // The route handlers pass these names straight to a child process, so the guards are the boundary.
 describe('dashboard route guards', () => {
@@ -48,18 +51,57 @@ test('json refuses a pre-serialized string, so a folded route cannot double-enco
   expect(() => json(res, 200, healthJson())).toThrow(/jsonText/);
 });
 
-// Every interface is the default, so a phone can open it; `local` is the opt-out.
-test('the dashboard binds every interface unless loopback is asked for', () => {
-  expect(resolveBind(null)).toBe('0.0.0.0');
-  expect(resolveBind('')).toBe('0.0.0.0');
+// Local-only by default; LAN reads require an explicit bind.
+test('the dashboard binds loopback unless a network address is requested', () => {
+  expect(resolveBind(null)).toBe('127.0.0.1');
+  expect(resolveBind('')).toBe('127.0.0.1');
   expect(resolveBind('lan')).toBe('0.0.0.0');
   expect(resolveBind('0.0.0.0')).toBe('0.0.0.0');
   expect(resolveBind('192.168.1.20')).toBe('192.168.1.20');
-  expect(resolveBind('not an address')).toBe('0.0.0.0');
+  expect(resolveBind('not an address')).toBe('127.0.0.1');
   expect(resolveBind('local')).toBe('127.0.0.1');
   expect(resolveBind('localhost')).toBe('127.0.0.1');
   expect(lanUrls(8080, '127.0.0.1')).toEqual([]);
   expect(lanUrls(8080, '192.168.1.20')).toEqual(['http://192.168.1.20:8080']);
+});
+
+test('dashboard rejects cross-origin writes and DNS rebinding', async () => {
+  const server = http.createServer((req, res) => {
+    res.writeHead(dashboardRequestAllowed(req) ? 200 : 403);
+    res.end();
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address();
+  if (!address || typeof address === 'string') throw new Error('Missing test server address');
+  const base = `http://127.0.0.1:${address.port}`;
+  try {
+    expect((await fetch(`${base}/settings`, { method: 'POST', headers: { Origin: base } })).status).toBe(200);
+    expect((await fetch(`${base}/settings`, { method: 'POST', headers: { Origin: 'https://attacker.example' } })).status).toBe(403);
+    const rebound = await new Promise<number>((resolve, reject) => {
+      const request = http.get(`${base}/settings`, { headers: { Host: `attacker.example:${address.port}` } }, (response) => {
+        response.resume();
+        resolve(response.statusCode ?? 0);
+      });
+      request.on('error', reject);
+    });
+    expect(rebound).toBe(403);
+    expect((await fetch(`${base}/settings`, { method: 'POST', headers: { 'Sec-Fetch-Site': 'cross-site' } })).status).toBe(403);
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
+test('explicit LAN access is read-only', () => {
+  const socket = new net.Socket();
+  Object.defineProperty(socket, 'localAddress', { value: '192.0.2.10' });
+  Object.defineProperty(socket, 'remoteAddress', { value: '192.0.2.20' });
+  const req = new http.IncomingMessage(socket);
+  req.headers.host = '192.0.2.10:3456';
+  req.method = 'GET';
+  expect(dashboardRequestAllowed(req)).toBe(true);
+  req.method = 'POST';
+  expect(dashboardRequestAllowed(req)).toBe(false);
+  socket.destroy();
 });
 
 // A source checkout on a terminal should hot-reload without a flag; exports and CI must not.

@@ -489,3 +489,63 @@ The entries below are editing and verification discipline. No test, lint rule, o
 **What happened:** to drop a stray lockfile write, I ran `git checkout -- bun.lock`. That also reverted the `oxfmt` and `oxlint` entries the dependency update had added, so `oxfmt` stayed installed on disk but was absent from the lock.
 **Root cause:** one lockfile carried two unrelated changes, so a path-level restore could not separate them.
 **Prevention rule:** restore a lockfile only when its diff holds nothing you mean to keep. Re-run install and confirm the expected package appears in the lock before moving on.
+
+## 2026-11-16 — A saved startup model was mistaken for the live OMP selection
+**What happened:** selecting Codex with `/model` left Headroom checking the saved CommandCode default, so no Codex provider route appeared and a routed-default status could misdescribe the current request.
+**Root cause:** session hooks reused the dashboard's disk-based reader instead of `ctx.models.current()` or `ctx.model`. A successful response or a healthy dashboard was also treated as proof of compression without checking traffic counters.
+**Prevention rule:** test a live model switch with an unchanged saved default, verify the selected model's actual endpoint, and distinguish proxy readiness, upstream authentication, and measured compression. Keep Codex OAuth routing separate from ordinary OpenAI upstream settings.
+
+## 2026-11-16 — A group label still covered its connector after the SVG was raised
+**What happened:** the Harness connector disappeared where it crossed the group label even after the SVG had `z-10` and node cards had `z-20`.
+**Root cause:** the frame had `z-index: auto`, so the label's own `z-20` participated in the same stacking context as the SVG. Inspecting only the frame and SVG missed that child.
+**Prevention rule:** inspect the overlapping descendants as well as their containers. Give the group frame its own `z-0` stacking context so connectors paint above the entire frame while node cards remain above connectors.
+
+## 2026-11-16. Headroom stopped while model endpoints still referenced it.
+**What happened:** model fallback chains repeatedly failed with connection refused on port 8787. Other requests reached an incompatible global upstream and returned authentication errors.
+**Root cause:** the last session lease could stop the shared proxy without restoring persistent endpoints. A route conflict returned `routed: false` without changing the live endpoint. Original endpoints written as YAML keys were ignored by a comment-only parser, and one provider-level backup could overwrite distinct model-level URLs.
+**Prevention rule:** keep the shared proxy alive while persistent routes reference it, ensure readiness on every provider attempt, route each selected or fallback model through its own upstream header, and preserve both provider and model originals. Verify the live OMP fallback path with an isolated local gateway, not only a configuration read.
+
+## 2026-11-16. Extension documentation was mistaken for an executable SDK contract.
+**What happened:** a settings-registry subpath documented for extensions could not be imported by the installed OMP binary. Re-registering existing models also required fresh provider authentication, and runtime `modelOverrides` did not apply.
+**Root cause:** structural local types and documented examples were treated as proof of runtime support.
+**Prevention rule:** probe APIs in a disposable native OMP session before depending on them. Use the exposed settings readers and model setter, and repair native fallback events without replacing provider registrations or credentials.
+
+## 2026-11-17. CodeGraph tests passed while OMP could not load the engine.
+**What happened:** the local test suite passed, but a disposable OMP session reported `Cannot find module 'web-tree-sitter'` and did not create an index.
+**Root cause:** the tests loaded the upstream bundle in a regular Node process with an existing user installation. OMP's bundled runtime could not resolve the bundle's dependencies.
+**Prevention rule:** test extensions in the actual host with an isolated home and repository. Run the upstream engine in its bundled Node runtime, then verify automatic indexing, file synchronization, and status from a separate process.
+
+## 2026-11-17. Line-number edits damaged an IPC client during development.
+**What happened:** patches selected folded line ranges and removed parts of the request handler. The syntax probe caught the mistakes.
+**Root cause:** line numbers were reused after a snapshot changed or the relevant lines had not been displayed in full.
+**Prevention rule:** read the exact current range before a hashline edit. Keep unrelated operations in separate hunks and inspect any automatic syntax repair before continuing.
+
+## 2026-11-17. An OMP-specific CodeGraph opt-out was ignored.
+**What happened:** a disposable OMP session initialized CodeGraph even with its host-specific default set to `off`.
+**Root cause:** the adapter treated the absent native `hostId` property as no host. Native OMP exposes the zod factory instead.
+**Prevention rule:** use the shared host detector for per-host defaults and test both an enabled and a disabled host override.
+
+## 2026-11-17. Removing a dashboard mode also removed shared control state.
+**What happened:** the dashboard build failed because the remaining default controls still referenced `value` and `locked`.
+**Root cause:** a removal patch included declarations shared by the other controls.
+**Prevention rule:** trace uses outside the removed branch and run the dashboard build after changing its controls.
+
+## 2026-11-17. A removed extension left an empty source directory.
+**What happened:** the uninstall parity test still detected `extensions/routing` after its managed files were deleted.
+**Root cause:** deleting each source file did not remove the empty directory.
+**Prevention rule:** remove empty directories left by a retired extension before running tree-discovery tests.
+
+## 2026-11-17. An isolated OMP probe reached a real provider.
+**What happened:** an OMP test with a temporary home and dummy key ignored the intended localhost endpoint and received an OpenAI 401 response.
+**Root cause:** the probe assumed that its model configuration constrained network traffic without verifying the actual endpoint or enforcing network isolation.
+**Prevention rule:** deny external network access before starting provider probes. If the host cannot enforce isolation, verify the hook without starting a provider request.
+
+## 2026-11-17. CodeGraph worker startup was attributed to an old session without a native probe.
+**What happened:** no CodeGraph worker was running, and a fresh isolated OMP session also failed with `Cannot find module .../worker.js`.
+**Root cause:** OMP exposed a transformed `.js` module URL for a source extension, while the installed extension shipped `worker.ts`. Selecting the worker suffix from `import.meta.url` chose a file that did not exist.
+**Prevention rule:** reproduce extension startup in the native host before attributing an absent worker to a stale process. Select the worker from the files actually shipped and test both source and compiled layouts.
+
+## 2026-11-18. Local verification masked a missing CodeGraph test prerequisite.
+**What happened:** the full verification passed with an installed CodeGraph bundle, but engine and dashboard tests failed in a clean home.
+**Root cause:** the tests depended on a machine-local runtime that the CI install does not provide.
+**Prevention rule:** run the affected tests both with the real installed runtime and with an isolated home that has no external bundle.

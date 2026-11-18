@@ -1,37 +1,40 @@
-import { afterEach, expect, test } from 'vitest';
-import fs, { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {afterEach, expect, test} from 'vitest';
+import fs, {existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
 import os from 'node:os';
-import path, { dirname, join } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import path, {dirname, join} from 'node:path';
+import {fileURLToPath, pathToFileURL} from 'node:url';
 
 import cavemanSessionExtension from '../../extensions/caveman/index.ts';
 import comboToggleExtension from '../../extensions/combo/index.ts';
 import tersioCommandsExtension from '../../extensions/commands/index.ts';
 import rtkSessionExtension from '../../extensions/rtk/session.ts';
+import {stopWatching} from '../../extensions/codegraph/client.ts';
+import {getCodeGraph} from '../../extensions/codegraph/shared.ts';
+import {createCodeGraphTestFixture} from '../helpers/codegraph.ts';
 import plugin from '../../extensions/server.ts';
 import {
-  hasToolLifecycle,
-  hostSelect,
-  injectPromptText,
-  isOmpHost,
-  isOpencodeHost,
-  isPiHost,
-  onHostEvent,
-  sessionChangeEvents,
-  setExtensionLabel,
-  stringArrayToolParams,
+    hasToolLifecycle,
+    hostSelect,
+    injectPromptText,
+    isOmpHost,
+    isOpencodeHost,
+    isPiHost,
+    onHostEvent,
+    sessionChangeEvents,
+    setExtensionLabel,
+    stringArrayToolParams,
 } from '../../extensions/shared/host.ts';
 import {
-  OMP_SUBAGENT_MARKER,
-  getSharedComboState,
-  isOmpSubagentPrompt,
-  resetSharedComboState,
-  setSharedComboListener,
-  setSharedComboMode,
+    getSharedComboState,
+    isOmpSubagentPrompt,
+    OMP_SUBAGENT_MARKER,
+    resetSharedComboState,
+    setSharedComboListener,
+    setSharedComboMode,
 } from '../../extensions/shared/session-state.ts';
-import { formatStatus } from '../../extensions/shared/status.ts';
-import type { ExtensionApi, ExtensionCtx, SessionEntry, SystemPromptEvent } from '../../extensions/shared/types.ts';
-import { fakeRtkBin, withHome as inHome } from '../helpers/env.ts';
+import {formatStatus} from '../../extensions/shared/status.ts';
+import type {ExtensionApi, ExtensionCtx, SessionEntry, SystemPromptEvent} from '../../extensions/shared/types.ts';
+import {fakeRtkBin, withHome as inHome} from '../helpers/env.ts';
 
 // ponytail: hermetic HOME — session-start fallbacks read the real lock file, so the suite must not use it. fileURLToPath, not `.pathname`: a URL pathname on Windows is `/D:/...`, which path.join turns into `D:\D:\...`.
 process.env.HOME = fileURLToPath(new URL('../definitely-missing-home/session', import.meta.url));
@@ -69,16 +72,18 @@ async function withFakeRtk(script: string | null, cmdScript: string, work: () =>
   }
 }
 
-function fakeCtx(): {
+function fakeCtx(cwd = path.join(os.tmpdir(), 'tersio-oc-work')): {
   ctx: unknown;
   hooks: Record<string, Array<(event: never) => unknown>>;
   commands: Map<string, { execute: (input: never) => Promise<void> }>;
+  tools: Map<string, { execute: (input: unknown) => Promise<{ content: string }> }>;
   prompts: Array<{ sessionID: string; text: string }>;
   store: Map<string, unknown>;
   skills: Array<{ id: string; name: string; description: string; path: string; content: string }>;
 } {
   const hooks: Record<string, Array<(event: never) => unknown>> = {};
   const commands = new Map<string, { execute: (input: never) => Promise<void> }>();
+  const tools = new Map<string, { execute: (input: unknown) => Promise<{ content: string }> }>();
   const prompts: Array<{ sessionID: string; text: string }> = [];
   const store = new Map<string, unknown>();
   const skills: Array<{ id: string; name: string; description: string; path: string; content: string }> = [];
@@ -89,7 +94,7 @@ function fakeCtx(): {
         store.set(key, value);
       },
     },
-    location: { directory: path.join(os.tmpdir(), 'tersio-oc-work') },
+    location: { directory: cwd },
     command: {
       transform: async (fn: (editor: { add: (cmd: never) => void }) => void): Promise<void> => {
         fn({ add: (cmd: never) => commands.set((cmd as { name: string }).name, cmd as never) });
@@ -101,7 +106,9 @@ function fakeCtx(): {
       },
     },
     tool: {
-      transform: async (): Promise<void> => {},
+      transform: async (fn: (editor: { add: (tool: never) => void }) => void): Promise<void> => {
+        fn({ add: (tool: never) => tools.set((tool as { name: string }).name, tool as never) });
+      },
       hook: async (name: string, fn: (event: never) => unknown): Promise<void> => {
         (hooks[name] ??= []).push(fn);
       },
@@ -115,7 +122,7 @@ function fakeCtx(): {
       },
     },
   };
-  return { ctx, hooks, commands, prompts, store, skills };
+  return { ctx, hooks, commands, tools, prompts, store, skills };
 }
 
 async function fire(
@@ -373,6 +380,30 @@ test('the bash hook leaves other tools and rtk-less hosts alone', async () => {
   });
 });
 
+test('OpenCode forwards named tool inputs to shared extensions', async () => {
+  const fixture = createCodeGraphTestFixture();
+  try {
+    mkdirSync(path.join(fixture.projectRoot, '.git'), { recursive: true });
+    writeFileSync(path.join(fixture.projectRoot, 'adapter.ts'), 'export function adapterVisibleSymbol(): void {}');
+    const graph = await getCodeGraph(fixture.projectRoot, true);
+    try {
+      await graph.indexAll();
+    } finally {
+      graph.close();
+    }
+
+    const { ctx, tools } = fakeCtx(fixture.projectRoot);
+    await setup(ctx);
+    const explore = tools.get('codegraph_explore');
+    expect(explore).toBeDefined();
+    const result = await explore!.execute({ query: 'adapterVisibleSymbol' });
+    expect(result.content).toContain('function adapterVisibleSymbol');
+  } finally {
+    await stopWatching(fixture.projectRoot);
+    fixture.cleanup();
+  }
+});
+
 // OpenCode shares the omp extension code, so the mode bodies must land here too; nothing asserted it before.
 test('the context hook injects the Caveman, Ponytail, and RTK bodies', async () => {
   const home = mkdtempSync(path.join(os.tmpdir(), 'tersio-oc-inject-'));
@@ -505,11 +536,11 @@ function fakePi(sessionEntries: SessionEntry[] = []): TestPi {
     commands,
     handlers,
     zod: { z: { object: (shape) => shape, array: () => chain, string: () => chain } },
-    setLabel() {},
+    setLabel() { },
     registerCommand(name, config) {
       commands.set(name, config.handler);
     },
-    registerTool() {},
+    registerTool() { },
     on(event, handler) {
       handlers.set(event, handler);
     },
@@ -534,7 +565,7 @@ function context(entries: SessionEntry[] = [], hasUI = false): TestCtx {
         if (v !== undefined) notifications.push(v);
       },
     },
-    async reload() {},
+    async reload() { },
   };
 }
 
@@ -598,6 +629,7 @@ test('parent Combo max is inherited by separately instantiated marked children',
     ponytail: 'ultra',
     pstack: 'off',
     headroom: 'off',
+    codegraph: 'off',
   });
   expect(instruction(await inject(childCaveman, MARKED_PROMPT))).toMatch(/Caveman ultra active/);
   expect(instruction(await inject(childRtk, MARKED_PROMPT))).toMatch(/RTK guidance active/);
@@ -623,6 +655,7 @@ test('lite maps to Caveman lite, RTK on, and Ponytail lite', async () => {
     ponytail: 'lite',
     pstack: 'off',
     headroom: 'off',
+    codegraph: 'off',
   });
   expect(instruction(await inject(instantiate(cavemanSessionExtension), prompt))).toMatch(/Caveman lite active/);
   expect(instruction(await inject(instantiate(rtkSessionExtension), prompt))).toMatch(/RTK guidance active/);
@@ -645,6 +678,7 @@ test('Combo off gives marked children no inherited guidance', async () => {
     ponytail: 'off',
     pstack: 'off',
     headroom: 'off',
+    codegraph: 'off',
   });
   for (const factory of [cavemanSessionExtension, rtkSessionExtension, comboToggleExtension]) {
     expect(await inject(instantiate(factory), MARKED_PROMPT)).toBe(undefined);
@@ -742,9 +776,10 @@ test('individual Caveman change immediately makes Combo CUSTOM and children inhe
     ponytail: 'ultra',
     pstack: 'off',
     headroom: 'off',
+    codegraph: 'off',
   });
   expect(status(comboCtx.notifications)).toBe(
-    '🧩 CUSTOM | 🪨 caveman:LITE | 🗜️ rtk:ON | 🍃 headroom:OFF | 🧠 ponytail:ULTRA | 🥔 pstack:OFF',
+    '🧩 CUSTOM | 🪨 caveman:LITE | 🗜️ rtk:ON | 🍃 headroom:OFF | 🧠 ponytail:ULTRA | 🥔 pstack:OFF | 🕸️ codegraph:OFF',
   );
   expect(instruction(await inject(instantiate(cavemanSessionExtension), MARKED_PROMPT))).toMatch(/Caveman lite active/);
   expect(instruction(await inject(instantiate(rtkSessionExtension), MARKED_PROMPT))).toMatch(/RTK guidance active/);
@@ -753,7 +788,7 @@ test('individual Caveman change immediately makes Combo CUSTOM and children inhe
   await command(caveman, 'caveman', 'ultra', context(entries, true));
   expect(getSharedComboState().level).toBe('max');
   expect(status(comboCtx.notifications)).toBe(
-    '🧩 MAX | 🪨 caveman:ULTRA | 🗜️ rtk:ON | 🍃 headroom:OFF | 🧠 ponytail:ULTRA | 🥔 pstack:OFF',
+    '🧩 MAX | 🪨 caveman:ULTRA | 🗜️ rtk:ON | 🍃 headroom:OFF | 🧠 ponytail:ULTRA | 🥔 pstack:OFF | 🕸️ codegraph:OFF',
   );
 });
 
@@ -774,16 +809,17 @@ test('individual RTK change returns Combo to its preset when values realign', as
     ponytail: 'ultra',
     pstack: 'off',
     headroom: 'off',
+    codegraph: 'off',
   });
   expect(status(comboCtx.notifications)).toBe(
-    '🧩 CUSTOM | 🪨 caveman:ULTRA | 🗜️ rtk:OFF | 🍃 headroom:OFF | 🧠 ponytail:ULTRA | 🥔 pstack:OFF',
+    '🧩 CUSTOM | 🪨 caveman:ULTRA | 🗜️ rtk:OFF | 🍃 headroom:OFF | 🧠 ponytail:ULTRA | 🥔 pstack:OFF | 🕸️ codegraph:OFF',
   );
   expect(await inject(instantiate(rtkSessionExtension), MARKED_PROMPT)).toBe(undefined);
 
   await command(rtk, 'rtk', 'on', context(entries, true));
   expect(getSharedComboState().level).toBe('max');
   expect(status(comboCtx.notifications)).toBe(
-    '🧩 MAX | 🪨 caveman:ULTRA | 🗜️ rtk:ON | 🍃 headroom:OFF | 🧠 ponytail:ULTRA | 🥔 pstack:OFF',
+    '🧩 MAX | 🪨 caveman:ULTRA | 🗜️ rtk:ON | 🍃 headroom:OFF | 🧠 ponytail:ULTRA | 🥔 pstack:OFF | 🕸️ codegraph:OFF',
   );
 });
 
@@ -808,9 +844,10 @@ test('individually matching preset values activates Combo', async () => {
     ponytail: 'ultra',
     pstack: 'on',
     headroom: 'off',
+    codegraph: 'off',
   });
   expect(status(comboCtx.notifications)).toBe(
-    '🧩 MAX | 🪨 caveman:ULTRA | 🗜️ rtk:ON | 🍃 headroom:OFF | 🧠 ponytail:ULTRA | 🥔 pstack:ON',
+    '🧩 MAX | 🪨 caveman:ULTRA | 🗜️ rtk:ON | 🍃 headroom:OFF | 🧠 ponytail:ULTRA | 🥔 pstack:ON | 🕸️ codegraph:OFF',
   );
 });
 
@@ -831,9 +868,10 @@ test('Combo status restores the preset indicator when persisted modes realign', 
     ponytail: 'lite',
     pstack: 'off',
     headroom: 'off',
+    codegraph: 'off',
   });
   expect(status(ctx.notifications)).toBe(
-    '🧩 CUSTOM | 🪨 caveman:ULTRA | 🗜️ rtk:ON | 🍃 headroom:OFF | 🧠 ponytail:LITE | 🥔 pstack:OFF',
+    '🧩 CUSTOM | 🪨 caveman:ULTRA | 🗜️ rtk:ON | 🍃 headroom:OFF | 🧠 ponytail:LITE | 🥔 pstack:OFF | 🕸️ codegraph:OFF',
   );
   expect(instruction(await inject(instantiate(comboToggleExtension), MARKED_PROMPT))).toMatch(/level: lite/);
 
@@ -846,9 +884,10 @@ test('Combo status restores the preset indicator when persisted modes realign', 
     ponytail: 'ultra',
     pstack: 'off',
     headroom: 'off',
+    codegraph: 'off',
   });
   expect(status(ctx.notifications)).toBe(
-    '🧩 MAX | 🪨 caveman:ULTRA | 🗜️ rtk:ON | 🍃 headroom:OFF | 🧠 ponytail:ULTRA | 🥔 pstack:OFF',
+    '🧩 MAX | 🪨 caveman:ULTRA | 🗜️ rtk:ON | 🍃 headroom:OFF | 🧠 ponytail:ULTRA | 🥔 pstack:OFF | 🕸️ codegraph:OFF',
   );
 });
 
@@ -870,9 +909,10 @@ test('redundant trailing entries do not drop a matching preset (#21)', async () 
     ponytail: 'ultra',
     pstack: 'off',
     headroom: 'off',
+    codegraph: 'off',
   });
   expect(status(ctx.notifications)).toBe(
-    '🧩 MAX | 🪨 caveman:ULTRA | 🗜️ rtk:ON | 🍃 headroom:OFF | 🧠 ponytail:ULTRA | 🥔 pstack:OFF',
+    '🧩 MAX | 🪨 caveman:ULTRA | 🗜️ rtk:ON | 🍃 headroom:OFF | 🧠 ponytail:ULTRA | 🥔 pstack:OFF | 🕸️ codegraph:OFF',
   );
   resetSharedComboState();
 });
@@ -884,19 +924,19 @@ test('mode commands confirm the session-wide active set', async () => {
   const ctx = context(entries, true);
   await command(combo, 'combo', 'max', ctx);
   expect(status(ctx.notifications)).toBe(
-    '🧩 MAX | 🪨 caveman:ULTRA | 🗜️ rtk:ON | 🍃 headroom:OFF | 🧠 ponytail:ULTRA | 🥔 pstack:OFF',
+    '🧩 MAX | 🪨 caveman:ULTRA | 🗜️ rtk:ON | 🍃 headroom:OFF | 🧠 ponytail:ULTRA | 🥔 pstack:OFF | 🕸️ codegraph:OFF',
   );
   const caveman = instantiate(cavemanSessionExtension, entries);
   const cavemanCtx = context(entries, true);
   await command(caveman, 'caveman', 'full', cavemanCtx);
   expect(status(cavemanCtx.notifications)).toBe(
-    '🧩 CUSTOM | 🪨 caveman:FULL | 🗜️ rtk:ON | 🍃 headroom:OFF | 🧠 ponytail:ULTRA | 🥔 pstack:OFF',
+    '🧩 CUSTOM | 🪨 caveman:FULL | 🗜️ rtk:ON | 🍃 headroom:OFF | 🧠 ponytail:ULTRA | 🥔 pstack:OFF | 🕸️ codegraph:OFF',
   );
   const rtk = instantiate(rtkSessionExtension, entries);
   const rtkCtx = context(entries, true);
   await command(rtk, 'rtk', 'off', rtkCtx);
   expect(status(rtkCtx.notifications)).toBe(
-    '🧩 CUSTOM | 🪨 caveman:FULL | 🗜️ rtk:OFF | 🍃 headroom:OFF | 🧠 ponytail:ULTRA | 🥔 pstack:OFF',
+    '🧩 CUSTOM | 🪨 caveman:FULL | 🗜️ rtk:OFF | 🍃 headroom:OFF | 🧠 ponytail:ULTRA | 🥔 pstack:OFF | 🕸️ codegraph:OFF',
   );
   resetSharedComboState();
 });
@@ -909,13 +949,13 @@ test('Combo status names the preset, and a later mode entry moves it to CUSTOM',
 
   await command(combo, 'combo', 'lite', ctx);
   expect(status(ctx.notifications)).toBe(
-    '🧩 LITE | 🪨 caveman:LITE | 🗜️ rtk:ON | 🍃 headroom:OFF | 🧠 ponytail:LITE | 🥔 pstack:OFF',
+    '🧩 LITE | 🪨 caveman:LITE | 🗜️ rtk:ON | 🍃 headroom:OFF | 🧠 ponytail:LITE | 🥔 pstack:OFF | 🕸️ codegraph:OFF',
   );
 
   entries.push({ type: 'custom', customType: 'ponytail-mode', data: { mode: 'ultra' } });
   await command(combo, 'combo', 'status', ctx);
   expect(status(ctx.notifications)).toBe(
-    '🧩 CUSTOM | 🪨 caveman:LITE | 🗜️ rtk:ON | 🍃 headroom:OFF | 🧠 ponytail:ULTRA | 🥔 pstack:OFF',
+    '🧩 CUSTOM | 🪨 caveman:LITE | 🗜️ rtk:ON | 🍃 headroom:OFF | 🧠 ponytail:ULTRA | 🥔 pstack:OFF | 🕸️ codegraph:OFF',
   );
 });
 
@@ -1096,15 +1136,15 @@ function mini(): Mini & { api: ExtensionApi } {
   const commands = new Map<string, Command>();
   const handlers = new Map<string, Handler>();
   const api = {
-    setLabel: () => {},
+    setLabel: () => { },
     registerCommand: (name: string, config: { handler: Command }) => {
       commands.set(name, config.handler);
     },
-    registerTool: () => {},
+    registerTool: () => { },
     on: (event: string, handler: Handler) => {
       handlers.set(event, handler);
     },
-    appendEntry: () => {},
+    appendEntry: () => { },
     exec: async () => ({ stdout: '', stderr: '', code: 0 }),
     zod: {
       z: {
@@ -1154,7 +1194,7 @@ test('/combo max syncs sibling mirrors with no reload', async () => {
 
   expect(reloaded()).toBe(0);
   expect(notifications.filter((n) => n.startsWith('🧩 '))).toContain(
-    '🧩 MAX | 🪨 caveman:ULTRA | 🗜️ rtk:ON | 🍃 headroom:OFF | 🧠 ponytail:ULTRA | 🥔 pstack:OFF',
+    '🧩 MAX | 🪨 caveman:ULTRA | 🗜️ rtk:ON | 🍃 headroom:OFF | 🧠 ponytail:ULTRA | 🥔 pstack:OFF | 🕸️ codegraph:OFF',
   );
   const cave = (await caveman.handlers.get('before_agent_start')!(MAIN_PROMPT, ctx)) as { systemPrompt: string[] };
   expect(cave.systemPrompt.join('\n')).toMatch(/Caveman ultra/);
@@ -1182,11 +1222,11 @@ test('/tersio no longer duplicates mode switches', async () => {
 function instance(): ExtensionApi {
   const chain = { min: () => chain, describe: () => chain };
   return {
-    setLabel() {},
-    registerCommand() {},
-    registerTool() {},
-    appendEntry() {},
-    on() {},
+    setLabel() { },
+    registerCommand() { },
+    registerTool() { },
+    appendEntry() { },
+    on() { },
     zod: { z: { object: (shape: Record<string, unknown>) => shape, array: () => chain, string: () => chain } },
   } as unknown as ExtensionApi;
 }
@@ -1269,7 +1309,7 @@ interface FakePi {
 
 const createPi = (): FakePi => {
   const commands = new Map<string, handlerReturnsHandler>();
-  const noop = (): void => {};
+  const noop = (): void => { };
   return {
     commands,
     registerCommand(name, config) {
@@ -1289,7 +1329,7 @@ const createPi = (): FakePi => {
   };
 };
 
-const ctx = { hasUI: false, ui: { notify: (): void => {} }, cwd: root, sessionManager: { getBranch: () => [] } };
+const ctx = { hasUI: false, ui: { notify: (): void => { } }, cwd: root, sessionManager: { getBranch: () => [] } };
 
 // A resolved value starts a model turn, so a handler that already printed everything must resolve undefined.
 test('no tersio command handler resolves a value', async () => {
@@ -1342,7 +1382,7 @@ test('a combo change is persisted before the host is told about it', async () =>
   ]);
   const notices = order.slice(4);
   expect(notices).toEqual([
-    'setstatus:🧩 BALANCED | 🪨 caveman:FULL | 🗜️ rtk:ON | 🍃 headroom:OFF | 🧠 ponytail:FULL | 🥔 pstack:OFF',
+    'setstatus:🧩 BALANCED | 🪨 caveman:FULL | 🗜️ rtk:ON | 🍃 headroom:OFF | 🧠 ponytail:FULL | 🥔 pstack:OFF | 🕸️ codegraph:OFF',
   ]);
 });
 
@@ -1613,10 +1653,10 @@ function harness(_entries: SessionEntry[]): { handlers: Map<string, restoreEvent
   const notifications: string[] = [];
   const chain = { min: () => chain, describe: () => chain };
   rtkSessionExtension({
-    setLabel() {},
-    registerCommand() {},
-    registerTool() {},
-    appendEntry() {},
+    setLabel() { },
+    registerCommand() { },
+    registerTool() { },
+    appendEntry() { },
     on(event: string, handler: restoreEventHandler) {
       handlers.set(event, handler);
     },
@@ -1650,7 +1690,7 @@ test('restore skips a corrupt latest rtk-mode entry and uses the older valid one
   await handlers.get('session_start')!({}, restoreContext(entries, notifications));
   // The corrupt trailing entry is skipped, so the branch restores rtk:on.
   expect(notifications.at(-1)).toBe(
-    '🧩 CUSTOM | 🪨 caveman:OFF | 🗜️ rtk:ON | 🍃 headroom:OFF | 🧠 ponytail:OFF | 🥔 pstack:OFF',
+    '🧩 CUSTOM | 🪨 caveman:OFF | 🗜️ rtk:ON | 🍃 headroom:OFF | 🧠 ponytail:OFF | 🥔 pstack:OFF | 🕸️ codegraph:OFF',
   );
 });
 
@@ -1672,9 +1712,9 @@ function firstRunHarness(
   const pi = {
     // The injected zod is how the extensions recognise an OMP host.
     zod: { z: {} },
-    setLabel: () => {},
-    registerCommand: () => {},
-    registerTool: () => {},
+    setLabel: () => { },
+    registerCommand: () => { },
+    registerTool: () => { },
     on: (event: string, handler: (event: unknown, ctx: ExtensionCtx) => Promise<unknown>) => {
       handlers.set(event, handler);
     },
@@ -1690,8 +1730,8 @@ function firstRunHarness(
         prompts.push(title);
         return selection;
       },
-      setStatus: () => {},
-      notify: () => {},
+      setStatus: () => { },
+      notify: () => { },
     },
   } as unknown as ExtensionCtx;
   comboToggleExtension(pi);
@@ -1941,11 +1981,11 @@ function statusFakePi(entries: SessionEntry[] = []): statusTestPi {
     handlers,
     // Present `zod` marks this as the OMP host; without it the fake reads as pi and skips the shared events.
     zod: { z: { object: (shape) => shape, array: () => chain, string: () => chain } },
-    setLabel() {},
+    setLabel() { },
     registerCommand(name, config) {
       commands.set(name, config.handler);
     },
-    registerTool() {},
+    registerTool() { },
     on(event, handler) {
       handlers.set(event, handler);
     },
@@ -1969,7 +2009,7 @@ function statusContext(entries: SessionEntry[] = [], hasUI = true): statusTestCt
         if (value !== undefined) notifications.push(value);
       },
     },
-    async reload() {},
+    async reload() { },
   };
 }
 
@@ -2002,7 +2042,7 @@ test('a new session announces the status', async () => {
   const resumed = statusContext(entries);
   await statusFire(pi2, 'session_start', resumed);
   expect(statuses(resumed.notifications)).toEqual([
-    '🧩 MAX | 🪨 caveman:ULTRA | 🗜️ rtk:ON | 🍃 headroom:OFF | 🧠 ponytail:ULTRA | 🥔 pstack:OFF',
+    '🧩 MAX | 🪨 caveman:ULTRA | 🗜️ rtk:ON | 🍃 headroom:OFF | 🧠 ponytail:ULTRA | 🥔 pstack:OFF | 🕸️ codegraph:OFF',
   ]);
 });
 
@@ -2018,7 +2058,7 @@ test('every session event announces the status, and an unchanged state stays sil
     const worker = statusInstantiate(comboToggleExtension, entries);
     await statusFire(worker, event, fresh);
     expect(statuses(fresh.notifications), `${event} announces`).toEqual([
-      '🧩 BALANCED | 🪨 caveman:FULL | 🗜️ rtk:ON | 🍃 headroom:OFF | 🧠 ponytail:FULL | 🥔 pstack:OFF',
+      '🧩 BALANCED | 🪨 caveman:FULL | 🗜️ rtk:ON | 🍃 headroom:OFF | 🧠 ponytail:FULL | 🥔 pstack:OFF | 🕸️ codegraph:OFF',
     ]);
 
     // A second restore of the same state repaints nothing new on the bar.
@@ -2038,7 +2078,7 @@ test('a /new session switch restores the configured defaults', async () => {
   const fresh = statusContext(entries);
   await statusFire(pi, 'session_switch', fresh);
   expect(statuses(fresh.notifications)).toEqual([
-    '🧩 BALANCED | 🪨 caveman:FULL | 🗜️ rtk:ON | 🍃 headroom:OFF | 🧠 ponytail:FULL | 🥔 pstack:OFF',
+    '🧩 BALANCED | 🪨 caveman:FULL | 🗜️ rtk:ON | 🍃 headroom:OFF | 🧠 ponytail:FULL | 🥔 pstack:OFF | 🕸️ codegraph:ON',
   ]);
 });
 
@@ -2054,7 +2094,7 @@ test('a subagent session announces the inherited status', async () => {
     const workerCtx = statusContext([], false);
     await statusFire(worker, 'session_start', workerCtx);
     expect(statuses(workerCtx.notifications)).toEqual([
-      '🧩 MAX | 🪨 caveman:ULTRA | 🗜️ rtk:ON | 🍃 headroom:OFF | 🧠 ponytail:ULTRA | 🥔 pstack:OFF',
+      '🧩 MAX | 🪨 caveman:ULTRA | 🗜️ rtk:ON | 🍃 headroom:OFF | 🧠 ponytail:ULTRA | 🥔 pstack:OFF | 🕸️ codegraph:OFF',
     ]);
   }
 });
@@ -2071,7 +2111,7 @@ test('the status survives compaction and still matches the live state', async ()
   await statusFire(worker, 'session_compact', afterCompact);
 
   expect(statuses(afterCompact.notifications)).toEqual([
-    '🧩 LITE | 🪨 caveman:LITE | 🗜️ rtk:ON | 🍃 headroom:OFF | 🧠 ponytail:LITE | 🥔 pstack:OFF',
+    '🧩 LITE | 🪨 caveman:LITE | 🗜️ rtk:ON | 🍃 headroom:OFF | 🧠 ponytail:LITE | 🥔 pstack:OFF | 🕸️ codegraph:OFF',
   ]);
   expect(formatStatus(getSharedComboState())).toBe(statuses(afterCompact.notifications)[0]);
 });
@@ -2090,7 +2130,7 @@ test('persisted entries win over the configured default', async () => {
 
   // HOME points at a missing dir, so any default read here is "off".
   expect(statuses(statusCtx.notifications)).toEqual([
-    '🧩 MAX | 🪨 caveman:ULTRA | 🗜️ rtk:ON | 🍃 headroom:OFF | 🧠 ponytail:ULTRA | 🥔 pstack:OFF',
+    '🧩 MAX | 🪨 caveman:ULTRA | 🗜️ rtk:ON | 🍃 headroom:OFF | 🧠 ponytail:ULTRA | 🥔 pstack:OFF | 🕸️ codegraph:OFF',
   ]);
 });
 
@@ -2101,14 +2141,14 @@ test('a mode command reports the new state, and /tersio status agrees', async ()
   const statusCtx = statusContext(entries);
   await combo.commands.get('combo')!('max', statusCtx);
   expect(statuses(statusCtx.notifications)).toEqual([
-    '🧩 MAX | 🪨 caveman:ULTRA | 🗜️ rtk:ON | 🍃 headroom:OFF | 🧠 ponytail:ULTRA | 🥔 pstack:OFF',
+    '🧩 MAX | 🪨 caveman:ULTRA | 🗜️ rtk:ON | 🍃 headroom:OFF | 🧠 ponytail:ULTRA | 🥔 pstack:OFF | 🕸️ codegraph:OFF',
   ]);
 
   const tersio = statusInstantiate(tersioCommandsExtension, entries);
   const asked = statusContext(entries);
   await tersio.commands.get('tersio')!('status', asked);
   expect(statuses(asked.notifications)).toEqual([
-    '🧩 MAX | 🪨 caveman:ULTRA | 🗜️ rtk:ON | 🍃 headroom:OFF | 🧠 ponytail:ULTRA | 🥔 pstack:OFF',
+    '🧩 MAX | 🪨 caveman:ULTRA | 🗜️ rtk:ON | 🍃 headroom:OFF | 🧠 ponytail:ULTRA | 🥔 pstack:OFF | 🕸️ codegraph:OFF',
   ]);
 });
 
@@ -2142,13 +2182,23 @@ test('a marked subagent prompt still injects guidance and stays consistent with 
   };
   expect(injected?.systemPrompt?.at(-1)).toMatch(/Caveman ultra active/);
   expect(formatStatus(getSharedComboState())).toBe(
-    '🧩 MAX | 🪨 caveman:ULTRA | 🗜️ rtk:ON | 🍃 headroom:OFF | 🧠 ponytail:ULTRA | 🥔 pstack:OFF',
+    '🧩 MAX | 🪨 caveman:ULTRA | 🗜️ rtk:ON | 🍃 headroom:OFF | 🧠 ponytail:ULTRA | 🥔 pstack:OFF | 🕸️ codegraph:OFF',
   );
 });
 test('the combo line names every mode, so every other surface keeps its text', () => {
   expect(
-    formatStatus({ level: 'balanced', caveman: 'full', rtk: 'on', ponytail: 'full', pstack: 'off', headroom: 'off' }),
-  ).toBe('🧩 BALANCED | 🪨 caveman:FULL | 🗜️ rtk:ON | 🍃 headroom:OFF | 🧠 ponytail:FULL | 🥔 pstack:OFF');
+    formatStatus({
+      level: 'balanced',
+      caveman: 'full',
+      rtk: 'on',
+      ponytail: 'full',
+      pstack: 'off',
+      headroom: 'off',
+      codegraph: 'on',
+    }),
+  ).toBe(
+    '🧩 BALANCED | 🪨 caveman:FULL | 🗜️ rtk:ON | 🍃 headroom:OFF | 🧠 ponytail:FULL | 🥔 pstack:OFF | 🕸️ codegraph:ON',
+  );
 });
 
 const tersioDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tersio-router-'));
@@ -2159,13 +2209,13 @@ type tersioHandler = (args: string, ctx: ExtensionCtx) => Promise<void>;
 function tersioHarness(
   execImpl?: (cmd: string, args: string[]) => Promise<{ stdout: string; stderr: string; code: number }>,
 ) {
-  let capturedHandler: tersioHandler = async () => {};
+  let capturedHandler: tersioHandler = async () => { };
   const appended: Array<{ type: string; data: Record<string, unknown> }> = [];
   const notifications: string[] = [];
   const execCalls: Array<{ cmd: string; args: string[] }> = [];
   let reloaded = 0;
   tersioCommandsExtension({
-    setLabel() {},
+    setLabel() { },
     registerCommand(_name: string, config: { handler: tersioHandler }) {
       capturedHandler = config.handler;
     },
@@ -2182,7 +2232,7 @@ function tersioHarness(
     hasUI: true,
     sessionManager: { getBranch: () => [] },
     ui: {
-      setStatus() {},
+      setStatus() { },
       notify(m: string) {
         notifications.push(m);
       },

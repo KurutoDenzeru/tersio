@@ -160,18 +160,9 @@ export function agentDbPath(): string {
   return process.env.TERSIO_AGENT_SESSIONS_DB ?? path.join(homeDir(), '.omp', 'agent', 'agent.db');
 }
 
-/** Output cost is the remainder: omp prices the whole request and the three cache-side parts. */
+/** The usage store records whole-request cost, not its billing-component split. */
 function costMixOf(f: Facts): AgentCostMix {
-  const input = f.costInput;
-  const cacheRead = f.costCacheRead;
-  const cacheWrite = f.costCacheWrite;
-  return {
-    input,
-    cacheRead,
-    cacheWrite,
-    output: Math.max(0, f.costUsd - input - cacheRead - cacheWrite),
-    total: f.costUsd,
-  };
+  return { input: null, output: null, cacheRead: null, cacheWrite: null, total: f.costUsd };
 }
 
 /** Throughput and first-token latency for one model and provider in one bucket. */
@@ -326,7 +317,7 @@ export function emptyAgentStats(range: RangeKey = '24h'): AgentStats {
       cacheRead: 0,
       cacheWrite: 0,
       total: 0,
-      costMix: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      costMix: { input: null, output: null, cacheRead: null, cacheWrite: null, total: 0 },
       firstTs: null,
       lastTs: null,
     },
@@ -435,9 +426,6 @@ function messageFacts(): string {
     `SUM(${COL.cacheWrite})`,
     `SUM(${COL.total})`,
     `TOTAL(${COL.costTotal})`,
-    `TOTAL(${COL.costInput})`,
-    `TOTAL(${COL.costCacheRead})`,
-    `TOTAL(${COL.costCacheWrite})`,
     `SUM(${COL.unpriced})`,
     `TOTAL(${COL.duration})`,
     `COUNT(${COL.duration})`,
@@ -486,9 +474,6 @@ interface Facts {
   cacheWrite: number;
   total: number;
   costUsd: number;
-  costInput: number;
-  costCacheRead: number;
-  costCacheWrite: number;
   unpriced: number;
   durationSum: number;
   durationN: number;
@@ -512,19 +497,16 @@ function parseFacts(row: string[] | undefined, at: number): Facts {
     cacheWrite: g(5),
     total: g(6),
     costUsd: g(7),
-    costInput: g(8),
-    costCacheRead: g(9),
-    costCacheWrite: g(10),
-    unpriced: g(11),
-    durationSum: g(12),
-    durationN: g(13),
-    ttftSum: g(14),
-    ttftN: g(15),
-    tpsSum: g(16),
-    tpsN: g(17),
-    firstTs: numOrNull(row?.[at + 18]),
-    lastTs: numOrNull(row?.[at + 19]),
-    maxDurationMs: numOrNull(row?.[at + 20]),
+    unpriced: g(8),
+    durationSum: g(9),
+    durationN: g(10),
+    ttftSum: g(11),
+    ttftN: g(12),
+    tpsSum: g(13),
+    tpsN: g(14),
+    firstTs: numOrNull(row?.[at + 15]),
+    lastTs: numOrNull(row?.[at + 16]),
+    maxDurationMs: numOrNull(row?.[at + 17]),
   };
 }
 
@@ -604,28 +586,38 @@ function bucketSize(range: RangeKey, firstTs: number | null, lastTs: number | nu
 
 /** A request row from its SQL column order. */
 function toRequestRows(rows: string[][]): AgentRequestRow[] {
-  return rows.map((r) => ({
-    ts: num(r[0]),
-    provider: r[1] ?? '',
-    model: r[2] ?? '',
-    project: r[3] ?? '',
-    api: r[4] ?? '',
-    input: num(r[5]),
-    output: num(r[6]),
-    cacheRead: num(r[7]),
-    cacheWrite: num(r[8]),
-    totalTokens: num(r[9]),
-    costUsd: num(r[10]),
-    unpriced: num(r[11]) > 0,
-    durationMs: numOrNull(r[12]),
-    ttftMs: numOrNull(r[13]),
-    stopReason: r[14] ?? '',
-    errorMessage: r[15] || null,
-    agentType: r[16] ?? '',
-    sessionFile: r[17] ?? '',
-    entryId: r[18] ?? '',
-    host: r[19] ?? '',
-  }));
+  return rows.map((r) => {
+    const costUsd = num(r[10]);
+    const cacheRead = num(r[7]);
+    const rate = priceFor(r[2] ?? '');
+    const savedCost = !rate.known || num(r[11]) > 0
+      ? null
+      : costUsd > 0 ? (cacheRead * Math.max(0, rate.price.input - rate.price.cacheRead)) / 1_000_000 : 0;
+    return {
+      ts: num(r[0]),
+      provider: r[1] ?? '',
+      model: r[2] ?? '',
+      project: r[3] ?? '',
+      api: r[4] ?? '',
+      input: num(r[5]),
+      output: num(r[6]),
+      cacheRead,
+      cacheWrite: num(r[8]),
+      totalTokens: num(r[9]),
+      costUsd,
+      savedCost,
+      unoptimizedCost: savedCost === null ? null : costUsd + savedCost,
+      unpriced: num(r[11]) > 0,
+      durationMs: numOrNull(r[12]),
+      ttftMs: numOrNull(r[13]),
+      stopReason: r[14] ?? '',
+      errorMessage: r[15] || null,
+      agentType: r[16] ?? '',
+      sessionFile: r[17] ?? '',
+      entryId: r[18] ?? '',
+      host: r[19] ?? '',
+    };
+  });
 }
 
 function readStatsDb(
@@ -1088,6 +1080,7 @@ interface WindowSample {
   windowLabel: string;
   ts: number;
   usedFraction: number | null;
+  baseline: boolean;
   exhausted: boolean;
 }
 
@@ -1114,7 +1107,7 @@ function downsampleWindow(points: AgentWindowPoint[]): AgentWindowPoint[] {
 
 /** Peak summed quota across accounts, forward-filling last known fractions (1.7 = 1.7 windows held). */
 function peakConcurrent(samples: WindowSample[]): number {
-  const events = samples.filter((sample) => sample.usedFraction !== null).toSorted((a, b) => a.ts - b.ts);
+  const events = samples.filter((sample) => !sample.baseline && sample.usedFraction !== null).toSorted((a, b) => a.ts - b.ts);
   const current = new Map<string, number>();
   let sum = 0;
   let peak = 0;
@@ -1133,19 +1126,37 @@ function windowDisplayLabel(sample: WindowSample): string {
   return `${sample.label} · ${sample.windowLabel}`;
 }
 
-/** Quota snapshots from agent.db, oldest first. Windows group by provider and limit id. */
+/** Quota snapshots from agent.db, oldest first, with one pre-range sample per active account/window. */
 function readWindowSamples(cutoff: number): WindowSample[] {
   const db = agentDbPath();
   if (!fs.existsSync(db) || tableColumns(db, 'usage_history').size === 0) return [];
-  const out = readBlocks(db, [
-    [
-      'windows',
-      `SELECT ${txt('provider')}, ${txt('account_key')},
-      ${txt('email')}, ${txt('account_id')}, ${txt('limit_id')}, ${txt('label')}, ${txt('window_label')},
-      used_fraction, status, recorded_at
-      FROM usage_history ${rangeWhere(cutoff, 'recorded_at')} ORDER BY recorded_at`,
-    ],
-  ]);
+  const fields = `${txt('provider')}, ${txt('account_key')}, ${txt('email')}, ${txt('account_id')},
+    ${txt('limit_id')}, ${txt('label')}, ${txt('window_label')}, used_fraction, status`;
+  const query = cutoff > 0
+    ? `WITH active AS (
+        SELECT DISTINCT provider, account_key, limit_id
+        FROM usage_history ${rangeWhere(cutoff, 'recorded_at')}
+      ), samples AS (
+        SELECT id, provider, account_key, email, account_id, limit_id, label, window_label,
+          used_fraction, status, 0 AS baseline, recorded_at
+        FROM usage_history ${rangeWhere(cutoff, 'recorded_at')}
+        UNION ALL
+        SELECT previous.id, previous.provider, previous.account_key, previous.email, previous.account_id,
+          previous.limit_id, previous.label, previous.window_label, previous.used_fraction, previous.status,
+          1 AS baseline, previous.recorded_at
+        FROM active
+        JOIN usage_history AS previous ON previous.id = (
+          SELECT candidate.id
+          FROM usage_history AS candidate
+          WHERE candidate.provider = active.provider AND candidate.account_key = active.account_key
+            AND candidate.limit_id = active.limit_id AND candidate.recorded_at < ${Math.floor(cutoff)}
+          ORDER BY candidate.recorded_at DESC, candidate.id DESC
+          LIMIT 1
+        )
+      )
+      SELECT ${fields}, baseline, recorded_at, id FROM samples ORDER BY recorded_at, id`
+    : `SELECT ${fields}, 0 AS baseline, recorded_at, id FROM usage_history ORDER BY recorded_at, id`;
+  const out = readBlocks(db, [['windows', query]]);
   return (out.get('windows') ?? []).map((r) => {
     const usedFraction = numOrNull(r[7]);
     const status = r[8] || null;
@@ -1156,9 +1167,10 @@ function readWindowSamples(cutoff: number): WindowSample[] {
       limitId: r[4] ?? '',
       label: r[5] ?? '',
       windowLabel: r[6] ?? '',
-      ts: num(r[9]),
       usedFraction,
       exhausted: status === 'exhausted' || (usedFraction !== null && usedFraction >= WINDOW_EXHAUSTED),
+      baseline: num(r[9]) === 1,
+      ts: num(r[10]),
     };
   });
 }
@@ -1188,28 +1200,27 @@ function computeWindows(
       else accounts.set(sample.accountKey, [sample]);
     }
 
+    let activeAccounts = 0;
     let fractionConsumed = 0;
     let cycles = 0;
     let exhaustedEvents = 0;
     for (const [accountKey, accountSamples] of accounts) {
-      usageSeries.push({
-        provider: first.provider,
-        accountKey,
-        accountLabel: accountSamples[accountSamples.length - 1].accountLabel,
-        windowKey: first.limitId,
-        windowLabel,
-        points: downsampleWindow(
-          accountSamples.map((sample) => ({
-            ts: sample.ts,
-            usedFraction: round4(sample.usedFraction),
-            exhausted: sample.exhausted,
-          })),
-        ),
-      });
-
+      const points: AgentWindowPoint[] = [];
       let previous: number | null = null;
       let wasExhausted = false;
+      let hasRangeSample = false;
       for (const sample of accountSamples) {
+        if (sample.baseline) {
+          previous = sample.usedFraction;
+          wasExhausted = sample.exhausted;
+          continue;
+        }
+        hasRangeSample = true;
+        points.push({
+          ts: sample.ts,
+          usedFraction: round4(sample.usedFraction),
+          exhausted: sample.exhausted,
+        });
         if (sample.exhausted && !wasExhausted) exhaustedEvents += 1;
         wasExhausted = sample.exhausted;
         if (sample.usedFraction === null) continue;
@@ -1220,7 +1231,18 @@ function computeWindows(
         }
         previous = sample.usedFraction;
       }
+      if (!hasRangeSample) continue;
+      activeAccounts += 1;
+      usageSeries.push({
+        provider: first.provider,
+        accountKey,
+        accountLabel: accountSamples[accountSamples.length - 1].accountLabel,
+        windowKey: first.limitId,
+        windowLabel,
+        points: downsampleWindow(points),
+      });
     }
+    if (activeAccounts === 0) continue;
 
     const providerTokens = tokensByProvider.get(first.provider) ?? 0;
     const peak = peakConcurrent(group);
@@ -1228,7 +1250,7 @@ function computeWindows(
       provider: first.provider,
       windowKey: first.limitId,
       windowLabel,
-      accounts: accounts.size,
+      accounts: activeAccounts,
       cycles,
       fractionConsumed,
       estTokensPerWindow:
@@ -1251,13 +1273,13 @@ function computeWindows(
   return { usageSeries, windowInsights };
 }
 
-/** Tokens per provider over the range: the currency a window insight extrapolates in. */
+/** OMP-host tokens per provider over the range: the currency a window insight extrapolates in. */
 function readProviderTokens(db: string, cutoff: number): Map<string, number> {
   const out = readBlocks(db, [
     [
       'providerTokens',
       `SELECT ${COL.provider}, SUM(${COL.total})
-      FROM ${SOURCE} ${rangeWhere(cutoff, COL.timestamp)} GROUP BY 1`,
+      FROM ${SOURCE} WHERE ${COL.host} = 'omp'${cutoff > 0 ? ` AND ${COL.timestamp} >= ${Math.floor(cutoff)}` : ''} GROUP BY 1`,
     ],
   ]);
   return new Map((out.get('providerTokens') ?? []).map((r) => [r[0] ?? '', num(r[1])]));

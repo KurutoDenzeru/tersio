@@ -1,31 +1,34 @@
 // The MCP server: one stdio endpoint so any MCP client can read Tersio's data and steer its modes.
-import { createInterface } from 'node:readline';
-import { readActivity } from './activity.ts';
+import {createInterface} from 'node:readline';
+import {readActivity} from './activity.ts';
 import {
-  CAVEMAN_DEFAULTS,
-  COMBO_DEFAULTS,
-  HEADROOM_DEFAULTS,
-  PACKAGE_VERSION,
-  PONYTAIL_DEFAULTS,
-  PSTACK_DEFAULTS,
-  RTK_DEFAULTS,
-  execFileP,
+    CAVEMAN_DEFAULTS,
+    CODEGRAPH_DEFAULTS,
+    COMBO_DEFAULTS,
+    execFileP,
+    HEADROOM_DEFAULTS,
+    PACKAGE_VERSION,
+    PONYTAIL_DEFAULTS,
+    PSTACK_DEFAULTS,
+    RTK_DEFAULTS,
 } from './common.ts';
-import { resolveHeadroomBinary } from '../extensions/shared/utils.ts';
-import { formatCurrency, readStoredCurrency } from './currency.ts';
-import { agentStats } from '../extensions/shared/agent-snapshot.ts';
-import { detectHosts } from './hosts.ts';
-import { applyComboPreset, formatProfile, saveHostDefaults, storedProfile, writePluginSettings } from './profile.ts';
-import type { HostDefaultField } from './profile.ts';
-import { isRangeKey, RANGES } from '../extensions/shared/agent-stats.ts';
-import type { RangeKey } from '../extensions/shared/agent-types.ts';
-import { readHeadroomSavings, readHeadroomStats } from '../extensions/shared/headroom-gain.ts';
-import { headroomProxyUrl } from '../extensions/shared/headroom-proxy.ts';
-import { describeHeadroomRoute, readHeadroomRoute } from '../extensions/shared/headroom-routing.ts';
-import { hostCap } from '../extensions/shared/host-caps.ts';
-import type { HostId } from '../extensions/shared/host-caps.ts';
-import { tersioMcpConfigured, tersioMcpHosts } from '../extensions/shared/mcp-config.ts';
-import { hostOfSessionFile } from '../extensions/shared/usage-ledger.ts';
+import {CODEGRAPH_SYNC_MODES, type CodegraphSyncMode} from '../extensions/shared/plugin-settings.ts';
+import {resolveHeadroomBinary} from '../extensions/shared/utils.ts';
+import {formatCurrency, readStoredCurrency} from './currency.ts';
+import {agentStats} from '../extensions/shared/agent-snapshot.ts';
+import {detectHosts} from './hosts.ts';
+import type {HostDefaultField} from './profile.ts';
+import {applyComboPreset, formatProfile, saveHostDefaults, storedProfile, writePluginSettings} from './profile.ts';
+import {isRangeKey, RANGES} from '../extensions/shared/agent-stats.ts';
+import type {RangeKey} from '../extensions/shared/agent-types.ts';
+import {readHeadroomSavings, readHeadroomStats} from '../extensions/shared/headroom-gain.ts';
+import {headroomProxyUrl} from '../extensions/shared/headroom-proxy.ts';
+import {describeHeadroomRoute, readHeadroomRoute} from '../extensions/shared/headroom-routing.ts';
+import type {HostId} from '../extensions/shared/host-caps.ts';
+import {hostCap} from '../extensions/shared/host-caps.ts';
+import {tersioMcpConfigured, tersioMcpHosts} from '../extensions/shared/mcp-config.ts';
+import {hostOfSessionFile} from '../extensions/shared/usage-ledger.ts';
+import {exploreSymbol, getCodeGraphStatus, syncCodeGraph} from '../extensions/codegraph/client.ts';
 
 /** The spec version this server speaks; a client asking for an older one it knows gets that back. */
 const PROTOCOL_VERSION = '2025-06-18';
@@ -63,6 +66,10 @@ interface HeadroomToolArgs {
   hash?: unknown;
 }
 
+interface CodegraphToolArgs {
+  query?: unknown;
+  action?: string;
+}
 interface ModesToolArgs {
   combo?: unknown;
   caveman?: unknown;
@@ -70,6 +77,8 @@ interface ModesToolArgs {
   ponytail?: unknown;
   pstack?: unknown;
   headroom?: unknown;
+  codegraph?: unknown;
+  codegraphSync?: unknown;
   /** One agent's own section, so a mode can differ per host. */
   host?: unknown;
 }
@@ -82,6 +91,8 @@ interface ModeWants {
   ponytail: string | null;
   pstack: 'on' | 'off' | null;
   headroom: 'on' | 'off' | null;
+  codegraph: 'on' | 'off' | null;
+  codegraphSync: CodegraphSyncMode | null;
 }
 
 /** The only stdout a client ever sees is the protocol, so a tool that prints (the settings save line) is captured and its text becomes the tool's answer. */
@@ -191,6 +202,8 @@ async function modesText(want: ModeWants, host: HostId | null): Promise<string> 
   if (want.ponytail !== null) next = { ...next, ponytailDefault: want.ponytail };
   if (want.pstack !== null) next = { ...next, pstackDefault: want.pstack };
   if (want.headroom !== null) next = { ...next, headroomDefault: want.headroom };
+  if (want.codegraph !== null) next = { ...next, codegraphDefault: want.codegraph };
+  if (want.codegraphSync !== null) next = { ...next, codegraphSync: want.codegraphSync };
   const fields: HostDefaultField[] = [];
   if (want.combo !== null) fields.push('comboDefault', 'cavemanDefault', 'rtkDefault', 'ponytailDefault');
   if (want.caveman !== null) fields.push('cavemanDefault');
@@ -198,9 +211,11 @@ async function modesText(want: ModeWants, host: HostId | null): Promise<string> 
   if (want.ponytail !== null) fields.push('ponytailDefault');
   if (want.pstack !== null) fields.push('pstackDefault');
   if (want.headroom !== null) fields.push('headroomDefault');
-  if (fields.length === 0) {
+  if (want.codegraph !== null) fields.push('codegraphDefault');
+  // The sync interval is one schedule for every agent, so it lives in the flat store, never in a host section.
+  if (fields.length === 0 && want.codegraphSync === null) {
     const scope = host ? ` for ${host}` : '';
-    return `Current session defaults${scope}: ${formatProfile(next)}. Pass combo (${[...COMBO_DEFAULTS].join(', ')}) or any single mode — caveman, rtk, ponytail, pstack, headroom — to change them${host ? `, and host to scope them to one agent` : ''}.`;
+    return `Current session defaults${scope}: ${formatProfile(next)}. Pass combo (${[...COMBO_DEFAULTS].join(', ')}) or any single mode — caveman, rtk, ponytail, pstack, headroom, codegraph — to change them, or codegraphSync for the CodeGraph sync interval${host ? `, and host to scope a mode to one agent` : ''}.`;
   }
   // A host argument writes that agent's own section, which wins over the shared store at session start.
   const { text } = await captureLog(() =>
@@ -304,7 +319,7 @@ const TOOLS = [
   {
     name: 'tersio_modes',
     description:
-      'Read the session-start mode defaults, or set them: combo applies a preset, and any single mode (caveman, rtk, ponytail, pstack, headroom) overrides its piece of that preset. Pass host to scope the change to one agent.',
+      'Read the session-start mode defaults, or set them: combo applies a preset; each single mode (caveman, rtk, ponytail, pstack, headroom, codegraph) sets one mode; codegraphSync sets the CodeGraph sync interval for every agent. Pass host to scope a mode to one agent.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -329,6 +344,16 @@ const TOOLS = [
           type: 'string',
           enum: [...HEADROOM_DEFAULTS],
           description: "Headroom token-saver mode: on or off. Opt-in; tracks the user's own Headroom install.",
+        },
+        codegraph: {
+          type: 'string',
+          enum: [...CODEGRAPH_DEFAULTS],
+          description: 'CodeGraph code index: on or off. On by default; tracks the local CodeGraph index.',
+        },
+        codegraphSync: {
+          type: 'string',
+          enum: [...CODEGRAPH_SYNC_MODES],
+          description: 'CodeGraph sync: live (file watcher), 5m, 15m, 1h, or manual.',
         },
         host: {
           type: 'string',
@@ -356,6 +381,25 @@ const TOOLS = [
       },
     },
   },
+  {
+    name: 'tersio_codegraph',
+    description:
+      'CodeGraph: explore code structure, symbol definitions, callers, dependencies, and blast radius across the indexed codebase.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: 'Symbol name, function name, class, or search query to explore.',
+        },
+        action: {
+          type: 'string',
+          enum: ['explore', 'sync', 'status'],
+          description: 'Action to perform: explore (default), sync, or status.',
+        },
+      },
+    },
+  },
 ] as const;
 
 async function callTool(
@@ -364,7 +408,11 @@ async function callTool(
 ): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
   const call = (params ?? {}) as { name?: unknown; arguments?: unknown };
   const name = typeof call.name === 'string' ? call.name : null;
-  const args = (call.arguments ?? {}) as StatsToolArgs & ActivityToolArgs & ModesToolArgs & HeadroomToolArgs;
+  const args = (call.arguments ?? {}) as StatsToolArgs &
+    ActivityToolArgs &
+    ModesToolArgs &
+    HeadroomToolArgs &
+    CodegraphToolArgs;
   if (name === 'tersio_stats') {
     if (args.range !== undefined && !isRangeKey(args.range))
       throw new RpcError(-32602, `range must be one of ${RANGES.join(', ')}`);
@@ -402,10 +450,14 @@ async function callTool(
       ponytail: oneOf(args.ponytail, PONYTAIL_DEFAULTS, 'ponytail'),
       pstack: rtkOrPstack(args.pstack, PSTACK_DEFAULTS, 'pstack'),
       headroom: rtkOrPstack(args.headroom, HEADROOM_DEFAULTS, 'headroom'),
+      codegraph: rtkOrPstack(args.codegraph, CODEGRAPH_DEFAULTS, 'codegraph'),
+      codegraphSync: oneOf(args.codegraphSync, new Set(CODEGRAPH_SYNC_MODES), 'codegraphSync') as CodegraphSyncMode | null,
     };
     const asked = args.host === undefined ? null : String(args.host);
     if (asked !== null && hostCap(asked) === null)
       throw new RpcError(-32602, `host must be one of ${tersioMcpHosts().join(', ')}`);
+    if (asked !== null && want.codegraphSync !== null)
+      throw new RpcError(-32602, 'codegraphSync applies to every agent; omit host');
     const host = asked as HostId | null;
     return { content: [{ type: 'text', text: await modesText(want, host) }] };
   }
@@ -471,6 +523,70 @@ async function callTool(
         (row) => `${row.client}: ${row.calls} calls · ${row.tokensSaved.toLocaleString()} tokens saved`,
       ),
     ];
+    return { content: [{ type: 'text', text: lines.join('\n') }] };
+  }
+  if (name === 'tersio_codegraph') {
+    const action = typeof args.action === 'string' ? args.action : 'explore';
+    const projectRoot = process.cwd();
+
+    if (action === 'status') {
+      const status = await getCodeGraphStatus(projectRoot);
+      if (status.error) {
+        return { isError: true, content: [{ type: 'text', text: `CodeGraph error: ${status.error}` }] };
+      }
+      if (!status.initialized) {
+        return { content: [{ type: 'text', text: `CodeGraph: Not initialized in ${projectRoot}.` }] };
+      }
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `CodeGraph status for ${projectRoot}: ${status.nodeCount} symbols, ${status.edgeCount} edges, ${status.fileCount} files.`,
+          },
+        ],
+      };
+    }
+
+    if (action === 'sync') {
+      const stats = await syncCodeGraph(projectRoot);
+      if (!stats) throw new Error('CodeGraph sync returned no statistics.');
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `CodeGraph sync complete: ${stats.nodeCount} nodes, ${stats.edgeCount} edges across ${stats.fileCount} files.`,
+          },
+        ],
+      };
+    }
+
+    const query = typeof args.query === 'string' ? args.query : '';
+    if (!query) {
+      return {
+        content: [{ type: 'text', text: 'Error: missing query argument for codegraph exploration.' }],
+        isError: true,
+      };
+    }
+
+    const result = await exploreSymbol(query, projectRoot);
+    if (result.symbols.length === 0) {
+      return {
+        content: [{ type: 'text', text: `CodeGraph: No symbols found matching "${query}".` }],
+      };
+    }
+
+    const lines = [`# CodeGraph Explore: "${query}"`, `Found ${result.symbols.length} symbol(s):`];
+    for (const s of result.symbols) {
+      lines.push(`\n## ${s.node.kind} ${s.node.qualifiedName ?? s.node.name} (${s.node.filePath}:${s.node.startLine})`);
+      if (s.node.signature) lines.push(`Signature: \`${s.node.signature}\``);
+      lines.push(`Blast radius: ${s.blastRadius.affectedNodes} nodes across ${s.blastRadius.affectedFiles} file(s)`);
+      if (s.callers.length > 0) {
+        lines.push(`Callers (${s.callers.length}):`);
+        for (const c of s.callers.slice(0, 5)) {
+          lines.push(`  - ${c.node.qualifiedName ?? c.node.name} in ${c.node.filePath}:${c.node.startLine}`);
+        }
+      }
+    }
     return { content: [{ type: 'text', text: lines.join('\n') }] };
   }
   throw new RpcError(-32602, `unknown tool: ${name}`);

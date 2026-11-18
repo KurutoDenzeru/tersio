@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'vitest';
-import { isRtkCommand, rewriteThroughRtk, rewriteToolArguments } from '../../extensions/shared/rtk-rewrite.ts';
+import {describe, expect, test} from 'vitest';
+import {isRtkCommand, rewriteThroughRtk, rewriteToolArguments} from '../../extensions/shared/rtk-rewrite.ts';
 
 const rewriteTo = (next: string) => async () => next;
 
@@ -50,11 +50,13 @@ describe('rtk rewrite adapter', () => {
     ).resolves.toBeNull();
   });
 
-  test('a failed rewrite leaves the command alone', async () => {
+  test('a rewrite failure propagates instead of becoming passthrough', async () => {
     const broken = async () => {
       throw new Error('rtk is missing');
     };
-    await expect(rewriteToolArguments(['bash'], 'bash', { command: 'git status' }, true, broken)).resolves.toBeNull();
+    await expect(
+      rewriteToolArguments(['bash'], 'bash', { command: 'git status' }, true, broken),
+    ).rejects.toThrow('rtk is missing');
   });
 });
 
@@ -68,16 +70,27 @@ describe('asking rtk for a rewrite', () => {
     await expect(rewriteThroughRtk('git status', { bin: '/bin/rtk', exec, host: 'h' })).resolves.toBe('rtk git status');
   });
 
-  test('treats passthrough, deny and absence as no rewrite', async () => {
+  test('exit 1 is passthrough, exit 2 denies, and missing RTK fails closed', async () => {
     const pass = async () => {
-      throw Object.assign(new Error('none'), { code: 1, stdout: '' });
+      throw Object.assign(new Error('no equivalent'), { code: 1, stdout: '' });
     };
     const deny = async () => {
-      throw Object.assign(new Error('deny'), { code: 2, stdout: '' });
+      throw Object.assign(new Error('deny'), { code: 2, stdout: 'blocked by RTK' });
     };
-    await expect(rewriteThroughRtk('git status', { bin: '/bin/rtk', exec: pass })).resolves.toBeNull();
-    await expect(rewriteThroughRtk('git status', { bin: '/bin/rtk', exec: deny })).resolves.toBeNull();
-    await expect(rewriteThroughRtk('git status', { bin: null })).resolves.toBeNull();
+    const hostPass = async () => ({ stdout: '', code: 1 });
+    const hostDeny = async () => ({ stdout: 'blocked by RTK', code: 2 });
+    await expect(rewriteThroughRtk('journalctl -u nginx', { bin: '/bin/rtk', exec: pass })).resolves.toBeNull();
+    await expect(rewriteThroughRtk('journalctl -u nginx', { bin: '/bin/rtk', exec: hostPass })).resolves.toBeNull();
+    await expect(rewriteThroughRtk('git status', { bin: '/bin/rtk', exec: deny })).rejects.toThrow('blocked by RTK');
+    await expect(rewriteThroughRtk('git status', { bin: '/bin/rtk', exec: hostDeny })).rejects.toThrow('blocked by RTK');
+    await expect(rewriteThroughRtk('git status', { bin: null })).rejects.toThrow('rtk is not installed');
+  });
+
+  test('rejects execution errors rather than silently running the original command', async () => {
+    const failed = async () => {
+      throw new Error('spawn rtk ENOENT');
+    };
+    await expect(rewriteThroughRtk('git status', { bin: '/bin/rtk', exec: failed })).rejects.toThrow('ENOENT');
   });
 
   test("passes the host id to rtk's rules and never rewrites an already-routed command", async () => {
@@ -89,7 +102,7 @@ describe('asking rtk for a rewrite', () => {
     await expect(rewriteThroughRtk('git status', { bin: '/bin/rtk', exec, host: 'sample' })).resolves.toBe(
       'rtk git status',
     );
-    expect(seen).toMatchObject(host, { RTK_REWRITE_HOST: 'sample' });
+    expect(seen).toMatchObject(host);
     await expect(rewriteThroughRtk('rtk git status', { bin: '/bin/rtk', exec })).resolves.toBeNull();
   });
 });

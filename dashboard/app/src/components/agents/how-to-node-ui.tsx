@@ -1,62 +1,51 @@
 // Node option surfaces: shadcn dialogs for the mode levels, side drawers for hosts and the wrap center. Every control that used to live in the fold panel or the Modes tab lands here.
-import { useCallback, useEffect, useState } from "react"
-import { AgentLogo } from "@/components/agent-logos"
-import { Icon } from "@/components/icon"
-import { Button } from "@/components/ui/button"
+import {useCallback, useEffect, useState} from "react"
+import {AgentLogo} from "@/components/agent-logos"
+import {Icon} from "@/components/icon"
+import {Button} from "@/components/ui/button"
+import {Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,} from "@/components/ui/dialog"
+import {Progress} from "@/components/ui/progress"
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
-import { Progress } from "@/components/ui/progress"
-import {
-  Drawer,
-  DrawerContent,
-  DrawerDescription,
-  DrawerFooter,
-  DrawerHeader,
-  DrawerTitle,
+    Drawer,
+    DrawerContent,
+    DrawerDescription,
+    DrawerFooter,
+    DrawerHeader,
+    DrawerTitle,
 } from "@/components/ui/drawer"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import {Alert, AlertDescription, AlertTitle} from "@/components/ui/alert"
+import {Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue,} from "@/components/ui/select"
+import {Switch} from "@/components/ui/switch"
+import {Spinner} from "@/components/ui/spinner"
+import {Skeleton} from "@/components/ui/skeleton"
+import {useToast} from "../toaster"
+import {cn} from "cn"
 import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import { Switch } from "@/components/ui/switch"
-import { Spinner } from "@/components/ui/spinner"
-import { Skeleton } from "@/components/ui/skeleton"
-import { useToast } from "../toaster"
-import { cn } from "cn"
-import {
-  checkVendor,
-  fetchHealth,
-  fetchRoutes,
-  type HeadroomRouteTarget,
-  postRoute,
-  postVendorAction,
-  type HealthReport,
-  type VendorRow,
+    checkVendor,
+    fetchHealth,
+    fetchRoutes,
+    type HeadroomRouteTarget,
+    type HealthReport,
+    postRoute,
+    postVendorAction,
+    type VendorRow,
 } from "@/lib/data"
+import type {DefaultsPayload, HostAction, HostState, NodeId} from "./pipeline-model"
 import {
-  ABOUT,
-  DEFAULT_ROWS_UI,
-  HOSTS,
-  MODES,
-  OFF_DEFAULTS,
-  PICKER,
-  nodeGlyph,
-  nodeTitle,
-  nodeValue,
-  versionOf,
+    ABOUT,
+    CODEGRAPH_SYNC_OPTIONS,
+    DEFAULT_ROWS_UI,
+    HOSTS,
+    MODES,
+    NO_EXTENSION_HOSTS,
+    nodeGlyph,
+    nodeTitle,
+    nodeValue,
+    OFF_DEFAULTS,
+    PICKER,
+    versionOf,
 } from "./pipeline-model"
-import type { DefaultsPayload, HostAction, HostState, NodeId } from "./pipeline-model"
-import type { ModeState } from "./shell"
+import type {ModeState} from "./shell"
 
 type HostId = "omp" | "pi" | "pig" | "opencode" | "dsh" | "codex" | "claude"
 
@@ -194,8 +183,8 @@ function AgentModes({ host, onSaved }: { host: HostId; onSaved: () => void }) {
         (
           d:
             | (Partial<DefaultsPayload> & {
-                hosts?: Record<string, Partial<Record<string, string | boolean>>>
-              })
+              hosts?: Record<string, Partial<Record<string, string | boolean>>>
+            })
             | null,
         ) => {
           if (!d) return
@@ -213,6 +202,8 @@ function AgentModes({ host, onSaved }: { host: HostId; onSaved: () => void }) {
             ponytailDefault: String(pick("ponytailDefault", "off")),
             pstackDefault: String(pick("pstackDefault", "off")),
             headroomDefault: String(pick("headroomDefault", "off")),
+            codegraphDefault: String(pick("codegraphDefault", "on")),
+            codegraphSync: typeof d.codegraphSync === "string" ? d.codegraphSync : "live",
           })
         },
       )
@@ -249,9 +240,33 @@ function AgentModes({ host, onSaved }: { host: HostId; onSaved: () => void }) {
       )
   }
 
+  // The sync interval is one schedule for every agent, so it is saved without a host.
+  const saveSync = (id: string): void => {
+    setCurrent((c) => ({ ...c, codegraphSync: id }))
+    void fetch("/settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ codegraphSync: id }),
+    })
+      .then((r) => r.json())
+      .then((d: { ok?: boolean; error?: string }) => {
+        if (d?.ok) {
+          load()
+          onSaved()
+          toast("CodeGraph sync saved", "Applies to every agent", "check")
+        } else {
+          toast("Could not save", d?.error ?? "Unknown sync mode", "circle-exclamation-point")
+        }
+      })
+      .catch(() =>
+        toast("Could not save", "The dashboard server did not answer.", "circle-exclamation-point"),
+      )
+  }
+
   return (
     <div className="grid gap-5">
       {DEFAULT_ROWS_UI.map((row) => {
+        if (row.field === "codegraphDefault" && NO_EXTENSION_HOSTS[host]) return null
         const raw = current[row.field]
         const isRtk = row.field === "rtkDefault"
         const value = String(raw ?? "off")
@@ -314,6 +329,33 @@ function AgentModes({ host, onSaved }: { host: HostId; onSaved: () => void }) {
           </div>
         )
       })}
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="m-0 text-[13px] font-semibold">
+            <span aria-hidden="true" className="mr-1.5">
+              🕸️
+            </span>
+            CodeGraph sync
+          </p>
+          <p className="mt-0.5 mb-0 text-xs text-dim">How the index follows file changes. Shared by every agent.</p>
+        </div>
+        <Select value={current.codegraphSync} onValueChange={(v) => saveSync(v ?? "live")} disabled={!loaded}>
+          <SelectTrigger size="sm" className="w-[132px] shrink-0" aria-label="CodeGraph sync for every agent">
+            <SelectValue placeholder="Live (watcher)">
+              {CODEGRAPH_SYNC_OPTIONS.find((o) => o.id === current.codegraphSync)?.label ?? "Live (watcher)"}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              {CODEGRAPH_SYNC_OPTIONS.map((o) => (
+                <SelectItem key={o.id} value={o.id}>
+                  {o.label}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+      </div>
       <p className="mono m-0 text-[10px] text-dim">
         Rows left off inherit the shared default — only what you set here belongs to {host}.
       </p>
@@ -338,9 +380,9 @@ export function ModeDrawer({
   }, [open])
   const key = (MODES.find((m) => m.key === node)?.key ?? "headroom") as keyof typeof PICKER
   const picker = PICKER[key]
-  const installed = HOSTS.filter((h) => hostState.installed[h.id] !== false).map(
-    (h) => h.id as HostId,
-  )
+  const installed = HOSTS.filter(
+    (h) => hostState.installed[h.id] !== false && (node !== "codegraph" || !NO_EXTENSION_HOSTS[h.id]),
+  ).map((h) => h.id as HostId)
   const [scope, setScope] = useState<HostId | "all">("all")
   useEffect(() => {
     if (open) setScope("all")

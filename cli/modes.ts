@@ -1,20 +1,38 @@
 // `/prompts:*` and the shell fallback read and write the same session defaults as the MCP tool.
 import {
-  COMBO_DEFAULTS,
-  CAVEMAN_DEFAULTS,
-  HEADROOM_DEFAULTS,
-  PONYTAIL_DEFAULTS,
-  PSTACK_DEFAULTS,
-  RTK_DEFAULTS,
+    CAVEMAN_DEFAULTS,
+    CODEGRAPH_DEFAULTS,
+    COMBO_DEFAULTS,
+    HEADROOM_DEFAULTS,
+    PONYTAIL_DEFAULTS,
+    PSTACK_DEFAULTS,
+    RTK_DEFAULTS,
 } from './common.ts';
-import { parseHostArg } from './hosts.ts';
-import { applyComboPreset, formatProfile, saveHostDefaults, storedProfile, writePluginSettings } from './profile.ts';
-import type { HostDefaultField, Profile } from './profile.ts';
-import { normalizeMode } from '../extensions/shared/session-state.ts';
-import type { HostId } from '../extensions/shared/host-caps.ts';
+import {parseHostArg} from './hosts.ts';
+import type {HostDefaultField, Profile} from './profile.ts';
+import {applyComboPreset, formatProfile, saveHostDefaults, storedProfile, writePluginSettings} from './profile.ts';
+import {normalizeMode} from '../extensions/shared/session-state.ts';
+import type {HostId} from '../extensions/shared/host-caps.ts';
+import {CODEGRAPH_SYNC_MODES, type CodegraphSyncMode} from '../extensions/shared/plugin-settings.ts';
 
-type ModeName = 'combo' | 'caveman' | 'rtk' | 'ponytail' | 'pstack' | 'headroom';
-const MODES = new Set<ModeName>(['combo', 'caveman', 'rtk', 'ponytail', 'pstack', 'headroom']);
+const CODEGRAPH_HOSTS: Readonly<Partial<Record<HostId, true>>> = {
+  omp: true,
+  pi: true,
+  pig: true,
+  opencode: true,
+};
+
+type ModeName = 'combo' | 'caveman' | 'rtk' | 'ponytail' | 'pstack' | 'headroom' | 'codegraph' | 'codegraph-sync';
+const MODES = new Set<ModeName>([
+  'combo',
+  'caveman',
+  'rtk',
+  'ponytail',
+  'pstack',
+  'headroom',
+  'codegraph',
+  'codegraph-sync',
+]);
 
 function positional(argv: string[]): string[] {
   const out: string[] = [];
@@ -52,6 +70,11 @@ export async function runModes(argv: string[]): Promise<void> {
   const value = words[1]?.toLowerCase();
   if (mode && !MODES.has(mode)) {
     console.error(`[fail] unknown mode: ${mode}`);
+    process.exitCode = 1;
+    return;
+  }
+  if (mode === 'codegraph' && host && !CODEGRAPH_HOSTS[host]) {
+    console.error(`[fail] codegraph is not supported for ${host}`);
     process.exitCode = 1;
     return;
   }
@@ -94,9 +117,29 @@ export async function runModes(argv: string[]): Promise<void> {
     }
     next = { ...current, ponytailDefault: normalized };
     fields.push('ponytailDefault');
-  } else if (mode === 'rtk' || mode === 'pstack' || mode === 'headroom') {
+  } else if (mode === 'codegraph-sync') {
+    if (!(CODEGRAPH_SYNC_MODES as readonly string[]).includes(value)) {
+      console.error(`[fail] invalid codegraph-sync value: ${value}. Valid: ${CODEGRAPH_SYNC_MODES.join(', ')}`);
+      process.exitCode = 1;
+      return;
+    }
+    // One project-wide watcher schedule, so no agent section can hold it.
+    if (host) {
+      console.error('[fail] codegraph-sync applies to every agent; drop --host');
+      process.exitCode = 1;
+      return;
+    }
+    next = { ...current, codegraphSync: value as CodegraphSyncMode };
+  } else if (['rtk', 'pstack', 'headroom', 'codegraph'].includes(mode)) {
     const toggled = booleanMode(value);
-    const valid = mode === 'rtk' ? RTK_DEFAULTS : mode === 'pstack' ? PSTACK_DEFAULTS : HEADROOM_DEFAULTS;
+    const valid =
+      mode === 'rtk'
+        ? RTK_DEFAULTS
+        : mode === 'pstack'
+          ? PSTACK_DEFAULTS
+          : mode === 'codegraph'
+            ? CODEGRAPH_DEFAULTS
+            : HEADROOM_DEFAULTS;
     if (!toggled || !valid.has(toggled)) {
       console.error(`[fail] invalid ${mode} value: ${value}`);
       process.exitCode = 1;
@@ -104,8 +147,17 @@ export async function runModes(argv: string[]): Promise<void> {
     }
     if (mode === 'rtk') next = { ...current, rtkDefault: toggled === 'on' };
     else if (mode === 'pstack') next = { ...current, pstackDefault: toggled };
+    else if (mode === 'codegraph') next = { ...current, codegraphDefault: toggled };
     else next = { ...current, headroomDefault: toggled };
-    fields.push(mode === 'rtk' ? 'rtkDefault' : mode === 'pstack' ? 'pstackDefault' : 'headroomDefault');
+    fields.push(
+      mode === 'rtk'
+        ? 'rtkDefault'
+        : mode === 'pstack'
+          ? 'pstackDefault'
+          : mode === 'codegraph'
+            ? 'codegraphDefault'
+            : 'headroomDefault',
+    );
   }
 
   if (host) await saveHostDefaults(host, fields, next, { quiet: true });

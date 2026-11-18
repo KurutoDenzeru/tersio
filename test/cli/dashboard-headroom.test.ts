@@ -1,10 +1,18 @@
-import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {chmodSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import type http from 'node:http';
-import { expect, test } from 'vitest';
-import { withHome } from '../helpers/env.ts';
-import { handleHeadroomRoutes } from '../../cli/dashboard-headroom.ts';
-import type { HeadroomRouteCtx } from '../../cli/dashboard-headroom.ts';
+import {expect, test, vi} from 'vitest';
+import {withHome} from '../helpers/env.ts';
+import type {HeadroomRouteCtx} from '../../cli/dashboard-headroom.ts';
+import {handleHeadroomRoutes} from '../../cli/dashboard-headroom.ts';
+import type * as HeadroomRuntime from '../../extensions/shared/headroom-runtime.ts';
+
+// Runtime availability is measured separately from request-local provider routing.
+vi.mock('../../extensions/shared/headroom-runtime.ts', async (importOriginal) => ({
+  ...(await importOriginal<typeof HeadroomRuntime>()),
+  liveHeadroomUpstreams: () => ({ openai: 'http://127.0.0.1:3425/v1' }),
+  headroomRuntimeUp: async () => true,
+}));
 
 const PROXY = 'http://127.0.0.1:8787/v1';
 
@@ -42,10 +50,14 @@ function pinHeadroom(home: string): () => void {
   writeFileSync(stub, '#!/bin/sh\nexit 0\n', 'utf8');
   chmodSync(stub, 0o755);
   const previous = process.env.TERSIO_HEADROOM_BIN;
+  const previousUrl = process.env.TERSIO_HEADROOM_PROXY_URL;
   process.env.TERSIO_HEADROOM_BIN = stub;
+  process.env.TERSIO_HEADROOM_PROXY_URL = 'http://127.0.0.1:8787/';
   return () => {
     if (previous === undefined) delete process.env.TERSIO_HEADROOM_BIN;
     else process.env.TERSIO_HEADROOM_BIN = previous;
+    if (previousUrl === undefined) delete process.env.TERSIO_HEADROOM_PROXY_URL;
+    else process.env.TERSIO_HEADROOM_PROXY_URL = previousUrl;
   };
 }
 
@@ -56,6 +68,7 @@ function headroomManifest(home: string): void {
   writeFileSync(
     path.join(deploy, 'manifest.json'),
     JSON.stringify({
+      port: 8787,
       updated_at: '2026-01-01T00:00:00Z',
       base_env: { OPENAI_TARGET_API_URL: 'http://127.0.0.1:3425/v1' },
     }),
@@ -217,6 +230,7 @@ function opencodeHome(home: string): void {
     ),
     'utf8',
   );
+  headroomManifest(home);
 }
 
 /** A V2 config in the format its docs use: `.jsonc`, `providers`, `settings.baseURL`, and comments. */
@@ -240,6 +254,7 @@ function opencodeV2Home(home: string): string {
 `,
     'utf8',
   );
+  headroomManifest(home);
   return file;
 }
 
@@ -370,6 +385,7 @@ test('an OpenCode V1 config with the endpoint named api is routed too', async ()
   await withHome(async (home) => {
     const release = pinHeadroom(home);
     try {
+      headroomManifest(home);
       const dir = path.join(home, '.config', 'opencode');
       mkdirSync(dir, { recursive: true });
       const file = path.join(dir, 'opencode.json');

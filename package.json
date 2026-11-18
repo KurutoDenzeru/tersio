@@ -106,7 +106,8 @@
       "./extensions/rtk/session.ts",
       "./extensions/rtk/filter.ts",
       "./extensions/combo/index.ts",
-      "./extensions/commands/index.ts"
+      "./extensions/commands/index.ts",
+      "./extensions/codegraph/index.ts"
     ],
     "skills": [
       "./extensions/ponytail/skills"
@@ -195,6 +196,27 @@
         ],
         "default": "inherit"
       },
+      "codegraphDefault": {
+        "type": "enum",
+        "description": "CodeGraph code index: auto-index and keep it in sync inside git repositories",
+        "values": [
+          "off",
+          "on"
+        ],
+        "default": "on"
+      },
+      "codegraphSync": {
+        "type": "enum",
+        "description": "How CodeGraph stays in sync: live file watcher, a fixed interval, or manual only",
+        "values": [
+          "live",
+          "5m",
+          "15m",
+          "1h",
+          "manual"
+        ],
+        "default": "live"
+      },
       "currency": {
         "type": "enum",
         "description": "Display currency for usage/dashboard reports (--currency overrides per run)",
@@ -223,7 +245,8 @@
       "./extensions/rtk/filter.ts",
       "./extensions/timing/timing.ts",
       "./extensions/combo/combo.ts",
-      "./extensions/commands/commands.ts"
+      "./extensions/commands/commands.ts",
+      "./extensions/codegraph/codegraph.ts"
     ],
     "skills": [
       "./extensions/ponytail/skills"

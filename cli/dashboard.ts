@@ -1,124 +1,151 @@
+import {
+    CODEGRAPH_SYNC_MODES,
+    type CodegraphSyncMode,
+    tersioSettingsFile
+} from '../extensions/shared/plugin-settings.ts';
 // Dashboard server + usage APIs. Binds 127.0.0.1; --export writes a file. No Promise.withResolvers (Node 20.12).
-import { spawn, type ChildProcess } from 'node:child_process';
-import { readActivity, recordActivity } from './activity.ts';
-import { cacheGet, cachePut } from '../extensions/shared/cache-store.ts';
-import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, rmSync, statSync, watch } from 'node:fs';
-import { promises as fs } from 'node:fs';
+import {type ChildProcess, execFileSync, spawn} from 'node:child_process';
+import {readActivity, recordActivity} from './activity.ts';
+import {cacheGet, cachePut} from '../extensions/shared/cache-store.ts';
+import {existsSync, promises as fs, readFileSync, rmSync, statSync, watch} from 'node:fs';
 import http from 'node:http';
+import type {Socket} from 'node:net';
 import net from 'node:net';
 import os from 'node:os';
-import type { Socket } from 'node:net';
-import { gzipSync } from 'node:zlib';
-import { readHeadroomRoute } from '../extensions/shared/headroom-routing.ts';
+import {gzipSync} from 'node:zlib';
+import {readHeadroomRoute} from '../extensions/shared/headroom-routing.ts';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { isCurrencyCode } from './currency.ts';
-import type { CurrencyCode } from './currency.ts';
-import { qrTerminal } from './qr.ts';
-import { ensureHeadroomRuntime } from '../extensions/shared/headroom-runtime.ts';
-import { handleBenchRoutes } from './dashboard-bench.ts';
-import { handleHeadroomRoutes } from './dashboard-headroom.ts';
-import { handleVendorRoutes } from './dashboard-vendor.ts';
-import { handleHostRoutes } from './dashboard-hosts.ts';
-import { OMP_AGENT_DIR, OMP_PLUGINS_DIR, PACKAGE_VERSION } from './common.ts';
+import {fileURLToPath} from 'node:url';
+import type {CurrencyCode} from './currency.ts';
+import {isCurrencyCode} from './currency.ts';
+import {qrTerminal} from './qr.ts';
+import {ensureHeadroomRuntime} from '../extensions/shared/headroom-runtime.ts';
+import {handleBenchRoutes} from './dashboard-bench.ts';
+import {handleCodeGraphRoutes} from './dashboard-codegraph.ts';
+import {handleHeadroomRoutes} from './dashboard-headroom.ts';
+import {handleVendorRoutes} from './dashboard-vendor.ts';
+import {handleHostRoutes} from './dashboard-hosts.ts';
 import {
-  BACKUP_SCHEDULES,
-  applyComboPreset,
-  clampSidebarWidth,
-  comboLevelOf,
-  formatCliStatus,
-  RETENTION_DAYS,
-  saveHostDefaults,
-  storedProfile,
-  writePluginSettings,
-} from './profile.ts';
-import { readState } from '../extensions/shared/state.ts';
-import { REMOTE_MARKS } from '../extensions/shared/brand-marks.ts';
-import { setUpdatePrefs, startApply, startCheck, startUpdateWatch, updateView } from './dashboard-update.ts';
-import type { UpdatePrefs } from './dashboard-update.ts';
-import type { BackupSchedule, HostDefaultField } from './profile.ts';
-import { normalizeComboLevel } from '../extensions/shared/session-state.ts';
-import {
-  ACCENT_DEFAULTS,
-  CAVEMAN_DEFAULTS,
-  COMBO_PRESET_MODES,
-  HEADROOM_DEFAULTS,
-  PONYTAIL_DEFAULTS,
-  PSTACK_DEFAULTS,
+    ACCENT_DEFAULTS,
+    CAVEMAN_DEFAULTS,
+    CODEGRAPH_DEFAULTS,
+    COMBO_PRESET_MODES,
+    HEADROOM_DEFAULTS,
+    OMP_AGENT_DIR,
+    OMP_PLUGINS_DIR,
+    PACKAGE_NAME,
+    PACKAGE_VERSION,
+    PONYTAIL_DEFAULTS,
+    PSTACK_DEFAULTS
 } from './common.ts';
-import { PACKAGE_NAME } from './common.ts';
-import { detectHosts, dshHome, dshPresent, dshVersionBinary, hostAgentInfo } from './hosts.ts';
-import { checkHostTrees } from './host-tree.ts';
+import type {BackupSchedule, HostDefaultField} from './profile.ts';
 import {
-  findPackageRoot,
-  homeDir,
-  openCommand,
-  resolveCodexBinary,
-  resolveHeadroomBinary,
-  resolveHostBinary,
-  resolveRtkBinary,
-  ruleBodyProblem,
-  tersioHome,
+    applyComboPreset,
+    BACKUP_SCHEDULES,
+    clampSidebarWidth,
+    comboLevelOf,
+    formatCliStatus,
+    RETENTION_DAYS,
+    saveHostDefaults,
+    storedProfile,
+    writePluginSettings,
+} from './profile.ts';
+import {readState} from '../extensions/shared/state.ts';
+import {REMOTE_MARKS} from '../extensions/shared/brand-marks.ts';
+import type {UpdatePrefs} from './dashboard-update.ts';
+import {setUpdatePrefs, startApply, startCheck, startUpdateWatch, updateView} from './dashboard-update.ts';
+import {normalizeComboLevel} from '../extensions/shared/session-state.ts';
+import {detectHosts, dshHome, dshPresent, dshVersionBinary, hostAgentInfo} from './hosts.ts';
+import {checkHostTrees} from './host-tree.ts';
+import {
+    findPackageRoot,
+    homeDir,
+    openCommand,
+    resolveCodexBinary,
+    resolveHeadroomBinary,
+    resolveHostBinary,
+    resolveRtkBinary,
+    ruleBodyProblem,
+    tersioHome,
 } from '../extensions/shared/utils.ts';
-import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
-import { codexHome } from '../extensions/shared/codex-state.ts';
-import { claudeHome } from '../extensions/shared/claude-state.ts';
-import { tersioMcpConfigured, tersioMcpSupported } from '../extensions/shared/mcp-config.ts';
+import {codexHome} from '../extensions/shared/codex-state.ts';
+import {claudeHome} from '../extensions/shared/claude-state.ts';
+import {tersioMcpConfigured, tersioMcpSupported} from '../extensions/shared/mcp-config.ts';
 import {
-  BACKUP_KEEP,
-  backupDir,
-  backupDiskBytes,
-  createDataBackup,
-  dataSources,
-  deleteDataBackup,
-  listDataBackups,
-  restoreDataBackup,
+    BACKUP_KEEP,
+    backupDir,
+    backupDiskBytes,
+    createDataBackup,
+    dataSources,
+    deleteDataBackup,
+    listDataBackups,
+    restoreDataBackup,
 } from '../extensions/shared/snapshots.ts';
 import {
-  applyTarget,
-  emptyConfig,
-  listSyncVersions,
-  publicFields,
-  readSync,
-  restoreSync,
-  runSync,
-  saveSync,
-  syncTarget,
-  testTarget,
+    applyTarget,
+    emptyConfig,
+    listSyncVersions,
+    publicFields,
+    readSync,
+    restoreSync,
+    runSync,
+    saveSync,
+    syncTarget,
+    testTarget,
 } from './dashboard-sync.ts';
-import { remoteFor } from '../extensions/shared/sync-remote.ts';
+import {remoteFor} from '../extensions/shared/sync-remote.ts';
 import {
-  CAVEMAN_PIN,
-  PSTACK_PIN,
-  cachedScorecard,
-  cachedScorecardSync,
-  refreshScorecard,
-  upstreamHistory,
+    cachedScorecard,
+    cachedScorecardSync,
+    CAVEMAN_PIN,
+    PSTACK_PIN,
+    refreshScorecard,
+    upstreamHistory,
 } from './upstream.ts';
-import { resetCounts, resetStatistics } from './reset.ts';
+import {resetCounts, resetStatistics} from './reset.ts';
 
-import { readBackupSchedule } from '../extensions/shared/usage-store.ts';
+import {readBackupSchedule} from '../extensions/shared/usage-store.ts';
 import {
-  emptyRequestEntry,
-  isAgentView,
-  isRangeKey,
-  readAgentRequestEntry,
-  readHeadroomReport,
-  readSessionTrace,
+    emptyRequestEntry,
+    isAgentView,
+    isRangeKey,
+    readAgentRequestEntry,
+    readHeadroomReport,
+    readSessionTrace,
 } from '../extensions/shared/agent-stats.ts';
-import { agentStats, DEFAULT_AGENT_RANGE } from '../extensions/shared/agent-snapshot.ts';
-import type { AgentView, RangeKey } from '../extensions/shared/agent-types.ts';
+import {agentStats, DEFAULT_AGENT_RANGE} from '../extensions/shared/agent-snapshot.ts';
+import type {AgentView, RangeKey} from '../extensions/shared/agent-types.ts';
 
-/** The listen address: every interface by default, so a phone can open it. `local` keeps it loopback. */
+/** The listen address: loopback by default; LAN access requires an explicit bind. */
 export function resolveBind(bind?: string | null): string {
   const value = (bind ?? '').trim().toLowerCase();
-  if (value === '') return '0.0.0.0';
-  if (value === 'local' || value === 'loopback' || value === 'localhost' || value === '127.0.0.1') return '127.0.0.1';
+  if (value === '' || value === 'local' || value === 'loopback' || value === 'localhost' || value === '127.0.0.1') return '127.0.0.1';
   if (value === 'lan' || value === 'all' || value === '*' || value === '0.0.0.0') return '0.0.0.0';
   if (value === '::' || value === '::1') return value;
-  // A value that is neither an address nor a known word keeps the default: every interface.
-  return /^[0-9a-f:.]+$/i.test(value) ? value : '0.0.0.0';
+  return net.isIP(value) ? value : '127.0.0.1';
+}
+
+function isLoopback(address: string): boolean {
+  return address === '::1' || address.startsWith('127.');
+}
+
+/** Reject DNS rebinding and allow state changes only from same-origin local clients. */
+export function dashboardRequestAllowed(req: http.IncomingMessage): boolean {
+  const local = req.socket.localAddress?.replace(/^::ffff:/, '');
+  const remote = req.socket.remoteAddress?.replace(/^::ffff:/, '');
+  const host = req.headers.host;
+  if (!local || !remote || !host) return false;
+  try {
+    const target = new URL(`http://${host}`);
+    const hostname = target.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+    if (hostname !== local && !(hostname === 'localhost' && isLoopback(local))) return false;
+    if (req.method === 'GET' || req.method === 'HEAD') return true;
+    if (!isLoopback(remote)) return false;
+    if (req.headers['sec-fetch-site'] === 'cross-site') return false;
+    return !req.headers.origin || new URL(req.headers.origin).origin === target.origin;
+  } catch {
+    return false;
+  }
 }
 
 /** Every address a phone on this network can type, printed beside the loopback one. */
@@ -205,7 +232,7 @@ function ponytailVersion(): string | null {
 }
 export interface DashboardOptions {
   port: number;
-  /** Listen address: absent means every interface, `local` means loopback. */
+  /** Listen address: absent means loopback; `lan` exposes reads on the network. */
   bind?: string | null;
   /** Supervise the server in a child that restarts on source change. */
   watch?: boolean;
@@ -286,6 +313,8 @@ export async function statusJson(): Promise<string> {
     ponytail: profile.ponytailDefault,
     pstack: profile.pstackDefault,
     headroom: profile.headroomDefault,
+    codegraph: profile.codegraphDefault,
+    codegraphSync: profile.codegraphSync,
   });
 }
 
@@ -751,6 +780,13 @@ function getDoctorReport(): DoctorReport {
   return { rows: computeDoctorRows(), checkedAt: Date.now() };
 }
 
+const CODEGRAPH_HOSTS: Readonly<Record<string, true | undefined>> = {
+  omp: true,
+  pi: true,
+  pig: true,
+  opencode: true,
+};
+
 // One field per call, validated against the same sets the CLI uses. A body with a `host` writes that
 // agent's own section, so one agent's preset never becomes every agent's.
 // Writes serialize: every call re-reads the profile inside the queue, so two overlapping requests (a sidebar drag racing a toggle) can never write whole profiles from stale snapshots.
@@ -766,6 +802,9 @@ function saveDefaults(
         ? (body.host as (typeof HOST_SCOPES)[number])
         : null;
     if (body.host !== undefined && hostScope === null) return { ok: false, error: 'unknown host scope' };
+    if (body.codegraphDefault !== undefined && hostScope && !CODEGRAPH_HOSTS[hostScope]) {
+      return { ok: false, error: `CodeGraph is not supported for ${hostScope}` };
+    }
     const profile = await storedProfile(hostScope);
     const events: string[] = [];
     // A host scope carries only the mode fields the request changed; non-mode fields stay global-only.
@@ -778,6 +817,7 @@ function saveDefaults(
       'ponytailDefault',
       'pstackDefault',
       'headroomDefault',
+      'codegraphDefault',
     ].filter((key) => String(body[key]) === 'inherit');
     if (inherited.length > 0 && !body.host) return { ok: false, error: 'inherit applies to one agent — pass a host' };
     if (String(body.comboDefault) === 'inherit') {
@@ -825,6 +865,21 @@ function saveDefaults(
       profile.headroomDefault = v;
       events.push(`Headroom to ${v}`);
       changedFields.push('headroomDefault');
+    }
+    if (body.codegraphDefault !== undefined) {
+      const v = String(body.codegraphDefault);
+      if (v !== 'inherit' && !CODEGRAPH_DEFAULTS.has(v)) return { ok: false, error: 'unknown codegraph value' };
+      profile.codegraphDefault = v;
+      events.push(`CodeGraph to ${v}`);
+      changedFields.push('codegraphDefault');
+    }
+    if (body.codegraphSync !== undefined) {
+      // The sync interval is one schedule for every agent, so a host-scoped request cannot set it.
+      if (hostScope) return { ok: false, error: 'CodeGraph sync applies to every agent; drop the host' };
+      const v = String(body.codegraphSync);
+      if (!(CODEGRAPH_SYNC_MODES as readonly string[]).includes(v)) return { ok: false, error: 'unknown codegraph sync mode' };
+      profile.codegraphSync = v as CodegraphSyncMode;
+      events.push(`CodeGraph sync to ${v}`);
     }
     if (body.backupSchedule !== undefined) {
       const v = String(body.backupSchedule);
@@ -882,6 +937,8 @@ function saveDefaults(
         ponytailDefault: profile.ponytailDefault,
         pstackDefault: profile.pstackDefault,
         headroomDefault: profile.headroomDefault,
+        codegraphDefault: profile.codegraphDefault,
+        codegraphSync: profile.codegraphSync,
         backupSchedule: profile.backupSchedule,
         retentionDays: profile.retentionDays,
         devTools: profile.devTools,
@@ -1147,6 +1204,10 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
   }
   requireDashboardBundle();
   const server = http.createServer(async (req, res) => {
+    if (!dashboardRequestAllowed(req)) {
+      json(res, 403, { ok: false, error: 'Dashboard request is not authorized.' });
+      return;
+    }
     // The bundle's own build id: an open tab reloads itself after vite rewrites dist, with no manual refresh.
     if (req.url === '/api/build' && req.method === 'GET') {
       let id = '0';
@@ -1173,6 +1234,7 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
     if (await handleVendorRoutes(req, res, { json, bodyOf, spawnHeadroomInstall, isVendorTool })) return;
     if (await handleHostRoutes(req, res, { json, bodyOf, detectHosts, hostJobs, spawnCli })) return;
     if (handleBenchRoutes(req, res, { json })) return;
+    if (await handleCodeGraphRoutes(req, res, { json, bodyOf })) return;
     if (req.url === '/api/upstream' && req.method === 'GET') {
       json(res, 200, { card: await cachedScorecard(), history: await upstreamHistory() });
       return;
@@ -1395,6 +1457,9 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
         } catch {
           /* no store yet: every host reads the flat defaults */
         }
+        for (const section of Object.values(hosts)) {
+          if (section && typeof section === 'object') delete (section as Record<string, unknown>).routingDefault;
+        }
         json(res, 200, {
           comboDefault: profile.comboDefault,
           cavemanDefault: profile.cavemanDefault,
@@ -1402,6 +1467,8 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
           ponytailDefault: profile.ponytailDefault,
           pstackDefault: profile.pstackDefault,
           headroomDefault: profile.headroomDefault,
+          codegraphDefault: profile.codegraphDefault,
+          codegraphSync: profile.codegraphSync,
           hosts,
           comboLevel: comboLevelOf(profile),
           backupSchedule: profile.backupSchedule,

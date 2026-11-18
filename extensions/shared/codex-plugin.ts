@@ -1,13 +1,14 @@
 // Codex loads Tersio as a plugin; this module owns its paths, installed state, and mode context.
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, isAbsolute, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { getPonytailInstructions } from '../ponytail/hooks/ponytail-instructions.ts';
-import { deriveLevel, normalizeInputCommand, normalizeMode } from './session-state.ts';
-import { formatStatus } from './status.ts';
-import { readPluginSettings } from './plugin-settings.ts';
-import { CODEX_PLUGIN_FILES, codexHome, codexPackagedPluginDir } from './codex-state.ts';
-import { ruleDir, tersioHome } from './utils.ts';
+import {mkdirSync, readFileSync, writeFileSync} from 'node:fs';
+import {dirname, isAbsolute, join} from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {getPonytailInstructions} from '../ponytail/hooks/ponytail-instructions.ts';
+import {deriveLevel, normalizeInputCommand, normalizeMode} from './session-state.ts';
+import {formatStatus} from './status.ts';
+import {readPluginSettings} from './plugin-settings.ts';
+import {CODEX_PLUGIN_FILES, codexHome, codexPackagedPluginDir} from './codex-state.ts';
+import {ruleDir, tersioHome} from './utils.ts';
+
 export {
   CODEX_MARKETPLACE_NAME,
   CODEX_PLUGIN_FILES,
@@ -253,6 +254,8 @@ export function codexStatusLine(sessionId?: unknown): string {
     ponytail: normalizeMode('ponytail', readMode('ponytailDefault', sessionId)) ?? 'off',
     pstack: normalizeMode('pstack', readMode('pstackDefault', sessionId)) ?? 'off',
     headroom: normalizeMode('headroom', readMode('headroomDefault', sessionId)) ?? 'off',
+    // Codex does not load the CodeGraph extension, so it reads as off here.
+    codegraph: 'off',
   };
   return formatStatus({ level: deriveLevel(modes), ...modes });
 }

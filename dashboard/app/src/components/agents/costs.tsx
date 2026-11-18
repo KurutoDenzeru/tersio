@@ -52,13 +52,16 @@ const COST_PARTS: ReadonlyArray<{
 /** One part of the estimate, with its share, for the "Where it went" breakdown. */
 function costParts(
   mix: AgentCostMix,
-): Array<{ key: string; label: string; value: number; share: number }> {
-  return COST_PARTS.map((part) => ({
-    key: part.key,
-    label: part.label,
-    value: mix[part.key],
-    share: mix.total > 0 ? mix[part.key] / mix.total : 0,
-  }))
+): Array<{ key: string; label: string; value: number | null; share: number | null }> {
+  return COST_PARTS.map((part) => {
+    const value = mix[part.key]
+    return {
+      key: part.key,
+      label: part.label,
+      value,
+      share: value !== null && mix.total > 0 ? value / mix.total : null,
+    }
+  })
 }
 
 /** The color of one billing component, so a bar, a chip, and a row all read the same. */
@@ -70,13 +73,24 @@ function partColor(key: string): string {
 export function CostBreakdown({ mix, money }: { mix: AgentCostMix; money: (v: number) => string }) {
   const parts = costParts(mix)
   if (mix.total <= 0) return <p className="text-xs text-dim">No priced usage in this range.</p>
+  if (parts.every((part) => part.value === null)) {
+    return (
+      <div className="flex flex-col gap-2.5">
+        <p className="m-0 text-xs text-dim">Component breakdown unavailable.</p>
+        <div className="flex items-center justify-between border-t border-line pt-2 text-xs">
+          <span className="font-bold">Total</span>
+          <span className="mono font-bold tabular-nums">{money(mix.total)}</span>
+        </div>
+      </div>
+    )
+  }
   return (
     <div className="flex flex-col gap-2.5">
       <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-track" aria-hidden="true">
         {parts.map((part) => (
           <span
             key={part.key}
-            style={{ width: `${part.share * 100}%`, background: partColor(part.key) }}
+            style={{ width: `${(part.share ?? 0) * 100}%`, background: partColor(part.key) }}
           />
         ))}
       </div>
@@ -88,9 +102,11 @@ export function CostBreakdown({ mix, money }: { mix: AgentCostMix; money: (v: nu
               style={{ background: partColor(part.key) }}
             />
             <span className="min-w-0 flex-1 truncate">{part.label}</span>
-            <span className="mono tabular-nums">{money(part.value)}</span>
+            <span className="mono tabular-nums">
+              {part.value === null ? "Not reported" : money(part.value)}
+            </span>
             <span className="mono w-12 shrink-0 text-right tabular-nums text-dim">
-              {pct(part.share)}
+              {part.share === null ? "Not reported" : pct(part.share)}
             </span>
           </li>
         ))}
@@ -323,21 +339,21 @@ export function CostsPage({ agent, money }: { agent: AgentStats; money: (v: numb
 
       <StatGrid cols={4}>
         <Stat
-          label="Actual cost"
-          title="Actual API-equivalent cost after caching and Headroom compression"
+          label="API-equivalent cost"
+          title="Recorded cost estimate for the resulting requests, not your invoice"
           value={money(view.totalCost)}
           hint={`${fmt(view.requests)} requests · ${fmt(view.pricedRequests)} priced`}
           spark={view.dailyCost}
         />
         <Stat
-          label="Unoptimized baseline"
-          title="Theoretical cost without prompt caching and Headroom compression"
+          label="Without cache reads"
+          title="The same requests with cache-read tokens billed at the full input rate; not an uncompressed-prompt estimate"
           value={money(view.unoptimizedCost)}
-          hint="Baseline at full un-cached rate"
+          hint="Output and cache writes unchanged"
         />
         <Stat
           label="Total saved"
-          title="Monetary difference saved through prompt caching and Headroom"
+          title="Estimated discount from prompt-cache reads only; excludes unmeasured per-request compression"
           value={money(view.totalSaved)}
           hint={view.unoptimizedCost > 0 ? `${pct(view.savingsPct, 1)} saved vs baseline` : "No savings recorded yet"}
         />
@@ -348,6 +364,11 @@ export function CostsPage({ agent, money }: { agent: AgentStats; money: (v: numb
           hint={`over ${fmt(view.activeDays)} active day${view.activeDays === 1 ? "" : "s"}`}
         />
       </StatGrid>
+      <p className="m-0 text-xs text-dim">
+        Compare the baseline, cost and cache-read savings for each call in{" "}
+        <a className="text-accent underline underline-offset-2" href={`#/requests?range=${agent.range}`}>Requests</a>.
+        {" "}Per-request Headroom savings are not recorded.
+      </p>
 
       {/* The 2fr / 1fr split matches the Providers page, where the burn chart carries the pair.
           The row stretches both cards to one height, so the pair reads as one block. */}
@@ -399,9 +420,9 @@ export function CostsPage({ agent, money }: { agent: AgentStats; money: (v: numb
         </Card>
 
         <Card
-          title="Where it went & Savings"
+          title="Cost and cache savings"
           icon="split"
-          description="Billed components alongside effective savings from prompt cache."
+          description="Source-reported component amounts and estimated discount from cache reads."
         >
           <div className="flex flex-col gap-3">
             <CostBreakdown mix={agent.overall.costMix} money={money} />

@@ -1,21 +1,23 @@
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {mkdirSync, mkdtempSync, readFileSync, writeFileSync} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, test } from 'vitest';
+import {afterEach, describe, expect, test} from 'vitest';
+import {withHome} from '../helpers/env.ts';
 import {
-  defaultOmpModel,
-  codexRouteFrom,
-  describeHeadroomRoute,
-  dshProviderBaseUrls,
-  dshRouteFrom,
-  ompModelRoute,
-  piRouteFrom,
-  readHeadroomRoute,
-  sameProxyEndpoint,
+    codexRouteFrom,
+    defaultOmpModel,
+    describeHeadroomRoute,
+    dshProviderBaseUrls,
+    dshRouteFrom,
+    ompModelRoute,
+    piRouteFrom,
+    readHeadroomRoute,
+    sameProxyEndpoint,
 } from '../../extensions/shared/headroom-routing.ts';
-import { routeOmpDefaultModel } from '../../extensions/shared/headroom-proxy.ts';
-import { ensureAgentProviderRoute } from '../../extensions/shared/headroom-agent.ts';
-import { sqliteAvailable, sqliteExec } from '../../extensions/shared/sqlite.ts';
+import {routeOmpDefaultModel, routeOmpModel} from '../../extensions/shared/headroom-proxy.ts';
+import {headroomRouteUpstreams} from '../../extensions/shared/headroom-routes.ts';
+import {ensureAgentProviderRoute} from '../../extensions/shared/headroom-agent.ts';
+import {sqliteAvailable, sqliteExec} from '../../extensions/shared/sqlite.ts';
 
 const PROXY = 'http://127.0.0.1:8787/';
 const MODELS = `providers:
@@ -216,6 +218,21 @@ describe('readHeadroomRoute', () => {
     expect(describeHeadroomRoute(route)).toContain('route unknown');
   });
 
+  test('recognizes Claude localhost as the Headroom proxy endpoint', () =>
+    withHome((home) => {
+      const previousBaseUrl = process.env.ANTHROPIC_BASE_URL;
+      const previousClaudeDir = process.env.CLAUDE_CONFIG_DIR;
+      process.env.ANTHROPIC_BASE_URL = 'http://localhost:8787';
+      process.env.CLAUDE_CONFIG_DIR = path.join(home, '.claude');
+      try {
+        expect(readHeadroomRoute('claude', PROXY).routed).toBe(true);
+      } finally {
+        if (previousBaseUrl === undefined) delete process.env.ANTHROPIC_BASE_URL;
+        else process.env.ANTHROPIC_BASE_URL = previousBaseUrl;
+        if (previousClaudeDir === undefined) delete process.env.CLAUDE_CONFIG_DIR;
+        else process.env.CLAUDE_CONFIG_DIR = previousClaudeDir;
+      }
+    }));
   test('reads the active OpenCode model and its provider base URL', () => {
     const home = mkdtempSync(path.join(os.tmpdir(), 'tersio-opencode-route-'));
     const previousHome = process.env.HOME;
@@ -343,5 +360,26 @@ insert into model_cache (provider_id, version, updated_at, models) values ('comm
     expect(written).toContain('api: anthropic-messages');
     expect(written).toContain('baseUrl: http://127.0.0.1:8787\n');
     expect(written).not.toContain('baseUrl: http://127.0.0.1:8787/v1');
+  });
+  test('keeps catalog dialect selection while routing a mixed-dialect provider', () => {
+    if (!sqliteAvailable()) return;
+    const models = `providers:
+  commandcode:
+    baseUrl: https://api.commandcode.ai/provider/v1
+    models:
+    - id: deepseek/deepseek-v4.1-flash
+`;
+    const dir = tempAgentDir(models, CONFIG);
+    const mixedCatalog = CACHE_SCHEMA.replace(
+      '"baseUrl":"https://api.commandcode.ai/provider/v1"}]',
+      '"baseUrl":"https://api.commandcode.ai/provider/v1"},{"id":"claude/claude-sonnet-5","provider":"commandcode","api":"anthropic-messages","baseUrl":"https://api.commandcode.ai/provider"}]',
+    );
+    sqliteExec(path.join(dir, 'models.db'), mixedCatalog);
+    expect(headroomRouteUpstreams('omp')).toEqual({});
+    expect(routeOmpModel('commandcode/deepseek/deepseek-v4.1-flash', 8787)).toBe(true);
+    const written = readFileSync(path.join(dir, 'models.yml'), 'utf8');
+    expect(written).toContain('# tersio-headroom-upstream: https://api.commandcode.ai/provider/v1');
+    expect(written).toContain('baseUrl: http://127.0.0.1:8787/v1');
+    expect(written).not.toContain('api: openai-completions');
   });
 });

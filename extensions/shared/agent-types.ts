@@ -35,15 +35,15 @@ export interface AgentTokenMix {
 }
 
 export interface AgentCostMix {
-  input: number;
-  output: number;
-  cacheRead: number;
-  cacheWrite: number;
+  input: number | null;
+  output: number | null;
+  cacheRead: number | null;
+  cacheWrite: number | null;
   total: number;
 }
 
 export interface AgentOverall extends AgentTokenMix {
-  /** The estimate split the way a bill splits it: input, output, cache read, cache write. */
+  /** Component amounts are null when the source reports only a whole-request total. */
   costMix: AgentCostMix;
   requests: number;
   failed: number;
@@ -126,6 +126,10 @@ export interface AgentRequestRow {
   cacheWrite: number;
   totalTokens: number;
   costUsd: number;
+  /** API-equivalent cache-read discount; null/absent when the rate is unavailable. */
+  savedCost?: number | null;
+  /** Same recorded request with cache reads billed at the full input rate. */
+  unoptimizedCost?: number | null;
   unpriced: boolean;
   durationMs: number | null;
   ttftMs: number | null;

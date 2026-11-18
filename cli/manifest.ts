@@ -1,11 +1,11 @@
 // Single list of install writes, shared by installer, doctor, and tests.
 import path from 'node:path';
 import fs from 'node:fs/promises';
-import { readdirSync, readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { findPackageRoot, readTextIfExists } from '../extensions/shared/utils.ts';
-import { writeIfChanged } from './common.ts';
-import type { WriteOptions } from './common.ts';
+import {readdirSync, readFileSync} from 'node:fs';
+import {fileURLToPath} from 'node:url';
+import {findPackageRoot, readTextIfExists} from '../extensions/shared/utils.ts';
+import type {WriteOptions} from './common.ts';
+import {writeIfChanged} from './common.ts';
 
 export const EXT_DIR = path.join(findPackageRoot(path.dirname(fileURLToPath(import.meta.url))), 'extensions');
 
@@ -78,6 +78,16 @@ export const TREE_FILES: readonly string[] = [
   'combo/combo.ts',
   'commands/index.ts',
   'commands/commands.ts',
+  'codegraph/git-hooks.ts',
+  'codegraph/codegraph.ts',
+  'codegraph/client.ts',
+  'codegraph/install.ts',
+  'codegraph/index.ts',
+  'codegraph/omp.ts',
+  'codegraph/shared.ts',
+  'codegraph/status-file.ts',
+  'codegraph/types.ts',
+  'codegraph/worker.ts',
   'server.ts',
 ];
 
@@ -137,10 +147,15 @@ const OBSOLETE_DIRS = [
   'opencode',
 ] as const;
 
-/** Retired Ponytail `.js` modules; the fork ships `.ts` and every loader reads those. */
+/** Explicit retired files, so cleanup never sweeps user-owned neighbors. */
 const OBSOLETE_FILES = [
   'ponytail-bundle/hooks/ponytail-config.js',
   'ponytail-bundle/hooks/ponytail-instructions.js',
+  'codegraph/wordpress-resolver.ts',
+  'routing/index.ts',
+  'routing/omp.ts',
+  'routing/stage-router.ts',
+  'routing/task-router.ts',
 ] as const;
 
 /** Debris test for a tree-relative path; one definition shared by detection and repair. */
@@ -151,7 +166,7 @@ export function isObsoleteTreeFile(rel: string, id: 'omp' | 'pi' | 'opencode' | 
   return rel === 'server.ts' && id !== 'opencode';
 }
 
-/** Drops the debris directories a written tree must never keep, and reports their names. */
+/** Drops explicitly retired directories and files from an installed tree. */
 export async function reapObsoleteTreeDirs(
   dest: string,
   options: { dryRun?: boolean; verbose?: boolean },
@@ -168,6 +183,17 @@ export async function reapObsoleteTreeDirs(
     if (!OBSOLETE_DIRS.includes(entry.name as (typeof OBSOLETE_DIRS)[number])) continue;
     if (!options.dryRun) await fs.rm(path.join(dest, entry.name), { recursive: true, force: true });
     gone.push(entry.name);
+  }
+  for (const rel of OBSOLETE_FILES) {
+    const file = path.join(dest, rel);
+    try {
+      const stat = await fs.lstat(file);
+      if (stat.isDirectory()) continue;
+    } catch {
+      continue;
+    }
+    if (!options.dryRun) await fs.rm(file, { force: true });
+    gone.push(rel);
   }
   if (gone.length > 0 && options.verbose) console.log(`  Retired debris — remove ${gone.join(', ')}`);
   return gone;

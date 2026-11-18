@@ -1,14 +1,15 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {existsSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
-import { expect, test } from 'vitest';
+import {expect, test} from 'vitest';
 import {
-  readOmpGateway,
-  restoreOmpGateway,
-  routeOmpDefaultModel,
-  routeOmpGateway,
-  routeOmpModel,
+    ompProviderUpstream,
+    readOmpGateway,
+    restoreOmpGateway,
+    routeOmpDefaultModel,
+    routeOmpGateway,
+    routeOmpModel,
 } from '../../extensions/shared/headroom-proxy.ts';
-import { withHome } from '../helpers/env.ts';
+import {withHome} from '../helpers/env.ts';
 
 const MODELS = `providers:
   magpie:
@@ -161,6 +162,9 @@ test('a model with its own endpoint is routed beside the provider line', () => {
     expect(routed.match(/baseUrl: http:\/\/127\.0\.0\.1:8787\/v1/g) ?? []).toHaveLength(2);
     // Another model's endpoint stays where it was.
     expect(routed).toContain('baseUrl: http://127.0.0.1:1234/v1');
+    expect(ompProviderUpstream('magpie', 8787, 'magpie/commandcode/deepseek/deepseek-v4.1-flash')?.url).toBe('http://127.0.0.1:3425');
+    expect(restoreOmpGateway(8787)).toBe(true);
+    expect(readFileSync(file, 'utf8')).toBe(MODEL_OVERRIDE);
   });
 });
 
@@ -268,5 +272,14 @@ test('routeOmpModel routes an ad-hoc model on demand without touching config.yml
     const routed = readFileSync(file, 'utf8');
     expect(routed).toContain('baseUrl: http://127.0.0.1:8787/v1\n');
     expect(routed).toContain('# tersio-headroom-upstream: https://api.future-provider.ai/v1');
+  });
+});
+
+test('legacy YAML upstream markers restore a routed provider without losing its original URL', () => {
+  withHome((home) => {
+    const file = writeOmp(home, 'providers:\n  commandcode:\n    api: openai-completions\n    tersio-headroom-upstream: https://api.commandcode.ai/provider\n    baseUrl: http://127.0.0.1:8787/v1\n');
+    expect(ompProviderUpstream('commandcode')?.url).toBe('https://api.commandcode.ai/provider');
+    expect(restoreOmpGateway()).toBe(true);
+    expect(readFileSync(file, 'utf8')).toBe('providers:\n  commandcode:\n    api: openai-completions\n    baseUrl: https://api.commandcode.ai/provider\n');
   });
 });

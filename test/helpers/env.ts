@@ -1,10 +1,10 @@
 // Pins the pi agent vars with a temp HOME, so a spawned CLI cannot delete the real ~/.pi/agent.
-import { spawnSync } from 'node:child_process';
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {spawnSync} from 'node:child_process';
+import {chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { sqliteAvailable } from '../../extensions/shared/sqlite.ts';
+import {sqliteAvailable} from '../../extensions/shared/sqlite.ts';
 
 /** The store reads SQLite in process, or falls back to the binary; tests skip when neither exists. */
 export function hasSqlite(): boolean {
@@ -45,11 +45,12 @@ export function cliEnv(home: string, extra: Record<string, string> = {}): NodeJS
     ...process.env,
     HOME: home,
     USERPROFILE: home,
+    TERSIO_HOME: path.join(home, '.tersio'),
     PI_CODING_AGENT: 'true',
     PI_CODING_AGENT_DIR: path.join(home, '.pi', 'agent'),
   };
   // A runner that sets PiG's own root variables would move the host trees out of the fixture home, so the home above is the whole story unless a test sets one of them itself.
-  for (const name of ['XDG_CONFIG_HOME', 'PIG_HOME', 'PIG_CODING_AGENT_DIR', 'PIG_USE_PI_DIRS', 'PIG_CODING_AGENT'])
+  for (const name of ['XDG_CONFIG_HOME', 'PIG_HOME', 'PIG_CODING_AGENT_DIR', 'PIG_USE_PI_DIRS', 'PIG_CODING_AGENT', 'CODEGRAPH_LIB_PATH'])
     delete env[name];
   return { ...env, ...extra };
 }

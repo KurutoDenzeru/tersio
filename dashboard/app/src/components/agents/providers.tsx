@@ -1,47 +1,41 @@
 // Providers: burn, reliability, and subscription headroom per provider, plus what one usage window buys.
-import { useMemo, useState } from "react"
-import { Badge } from "@/components/ui/badge"
-import { AGENT_RANGE_LABEL } from "@/lib/data"
-import type {
-  AgentProviderHour,
-  AgentRow,
-  AgentStats,
-  AgentWindowSeries,
-  AgentWindowInsight,
-} from "@/lib/data"
+import {useMemo, useState} from "react"
+import {Badge} from "@/components/ui/badge"
+import type {AgentProviderHour, AgentRow, AgentStats, AgentWindowInsight, AgentWindowSeries,} from "@/lib/data"
+import {AGENT_RANGE_LABEL} from "@/lib/data"
+import type {Column, SeriesSpec} from "@/components/charts"
 import {
-  Card,
-  CellBar,
-  Chart,
-  ErrorRateBadge,
-  ProviderCell,
-  PagedTable,
-  Legend,
-  MeterCell,
-  Page,
-  PageHeader,
-  QueryView,
-  Segmented,
-  Stat,
-  StatGrid,
-  TimeChart,
+    Card,
+    CellBar,
+    Chart,
+    ErrorRateBadge,
+    Legend,
+    MeterCell,
+    Page,
+    PagedTable,
+    PageHeader,
+    ProviderCell,
+    QueryView,
+    Segmented,
+    Stat,
+    StatGrid,
+    TimeChart,
 } from "@/components/charts"
-import type { Column, SeriesSpec } from "@/components/charts"
-import { EmptyState, Picker } from "@/components/common"
-import { TopUsedCards, type TopUsedEntry } from "./top-hero"
+import {EmptyState, Picker} from "@/components/common"
+import {TopUsedCards, type TopUsedEntry} from "./top-hero"
 import {
-  PALETTE,
-  coverageNote,
-  fmt,
-  fmtShort,
-  hourLabel,
-  pct,
-  providerColor,
-  relAge,
-  stampLocal,
-  tsFull,
-  tsLabel,
-  whenStamp,
+    coverageNote,
+    fmt,
+    fmtShort,
+    hourLabel,
+    PALETTE,
+    pct,
+    providerColor,
+    relAge,
+    stampLocal,
+    tsFull,
+    tsLabel,
+    whenStamp,
 } from "@/lib/format"
 
 type BurnMetric = "tokens" | "cost" | "requests"
@@ -293,7 +287,7 @@ export function ProvidersPage({
       <Card
         title="Subscription windows"
         icon="gauge"
-        description="What one usage window buys you and how many accounts peak demand needs. Select a row to chart it."
+        description="Provider-wide estimate: OMP-host tokens ÷ summed snapshot utilization. It may include usage from OMP accounts without snapshots, and cannot identify which account used the tokens. Select a row to chart it."
         flush
       >
         <WindowInsightsTable insights={agent.windowInsights} onSelect={setPicked} />
@@ -689,7 +683,7 @@ const INSIGHT_COLUMNS: Array<Column<AgentWindowInsight>> = [
   {
     key: "capacity",
     header: "Tokens / window",
-    title: "Provider tokens burned in range ÷ windows burned, what one full window is worth",
+    title: "OMP-host provider tokens burned ÷ summed snapshot fractions. May include accounts without snapshots; not attributable per account.",
     align: "right",
     sort: (i) => i.estTokensPerWindow ?? -1,
     render: (i) =>
@@ -1106,13 +1100,13 @@ const ACCOUNT_COLUMNS: Array<Column<AccountRow>> = [
     render: (r) => {
       const badge =
         BADGE_BY_STATUS[
-          !r.latest
-            ? "none"
-            : r.latest.exhausted
-              ? "exhausted"
-              : r.latest.fraction >= 0.8
-                ? "high"
-                : "ok"
+        !r.latest
+          ? "none"
+          : r.latest.exhausted
+            ? "exhausted"
+            : r.latest.fraction >= 0.8
+              ? "high"
+              : "ok"
         ]
       return (
         <Badge variant={badge.variant} className={badge.className}>

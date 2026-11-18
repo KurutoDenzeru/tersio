@@ -1,8 +1,8 @@
 // One settings file for every host; parse failure yields {} with per-caller defaults.
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {existsSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
-import { homeDir, tersioHome } from './utils.ts';
+import {homeDir, tersioHome} from './utils.ts';
 
 export const PLUGIN_NAME = '@krtclcdy/tersio';
 
@@ -143,6 +143,24 @@ export function readHeadroomDefault(host?: HostScope | null): string {
   return readStringDefault('headroomDefault', HEADROOM_MODES, host);
 }
 
+function readChoice<T extends string>(key: string, valid: readonly T[], fallback: T, host?: HostScope | null): T {
+  const pick = (value: unknown): T | undefined => valid.find((v) => v === value);
+  return pick(hostDefaults(host)[key]) ?? pick(readPluginSettings()[key]) ?? fallback;
+}
+
+// Zero-manual indexing is the feature, so CodeGraph is on unless the user turns it off.
+export function readCodegraphDefault(host?: HostScope | null): 'on' | 'off' {
+  return readChoice('codegraphDefault', ['on', 'off'], 'on', host);
+}
+
+export type CodegraphSyncMode = 'live' | '5m' | '15m' | '1h' | 'manual';
+export const CODEGRAPH_SYNC_MODES: readonly CodegraphSyncMode[] = ['live', '5m', '15m', '1h', 'manual'];
+
+// Global, not per-host: one index per repository serves every agent that opens it.
+export function readCodegraphSync(): CodegraphSyncMode {
+  return readChoice('codegraphSync', CODEGRAPH_SYNC_MODES, 'live');
+}
+
 export function isComboSetupComplete(): boolean {
   return readPluginSettings().comboSetupComplete === true;
 }
@@ -206,12 +224,12 @@ export function saveComboSetup(level: string, host?: HostScope | null): boolean 
   // A host scope writes its own section, so this agent's preset never becomes every agent's.
   const next = host
     ? {
-        ...stored,
-        hosts: {
-          ...(stored.hosts as Record<string, unknown> | undefined),
-          [host]: { ...hostDefaults(host), ...patch },
-        },
-      }
+      ...stored,
+      hosts: {
+        ...(stored.hosts as Record<string, unknown> | undefined),
+        [host]: { ...hostDefaults(host), ...patch },
+      },
+    }
     : { ...stored, ...patch };
   writeFileSync(file, `${JSON.stringify({ ...next, comboSetupComplete: true }, null, 2)}\n`, 'utf8');
   return true;

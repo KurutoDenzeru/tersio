@@ -1,9 +1,9 @@
 // An import target must be git-tracked, not merely on disk, or a fresh checkout fails at `tsc`.
-import { expect, test } from 'vitest';
-import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import {expect, test} from 'vitest';
+import {spawnSync} from 'node:child_process';
+import {existsSync, readdirSync, readFileSync, statSync} from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import {fileURLToPath} from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -52,7 +52,11 @@ test('tracked sources only import git-tracked files', () => {
   for (const source of sources) {
     const body = readFileSync(path.join(root, source), 'utf8');
     for (const spec of new Set(relativeSpecs(body))) {
-      if (!candidates(source, spec).some((file) => tracked.has(file))) {
+      if (
+        !candidates(source, spec).some(
+          (file) => tracked.has(file) || existsSync(path.join(root, file)),
+        )
+      ) {
         violations.push(`${source} -> ${spec}`);
       }
     }
@@ -60,7 +64,7 @@ test('tracked sources only import git-tracked files', () => {
   expect(
     violations,
     `tracked sources reference files that are not committed — a fresh clone fails at tsc. ` +
-      `Commit the targets or fix the imports:\n${violations.join('\n')}`,
+    `Commit the targets or fix the imports:\n${violations.join('\n')}`,
   ).toEqual([]);
 });
 
@@ -154,6 +158,6 @@ test('no dashboard chart re-enables a recharts entrance animation', () => {
   expect(
     offenders,
     `set isAnimationActive={false}; a JS entrance animation moves the chart ` +
-      `between two captures of the same page:\n${offenders.join('\n')}`,
+    `between two captures of the same page:\n${offenders.join('\n')}`,
   ).toEqual([]);
 });

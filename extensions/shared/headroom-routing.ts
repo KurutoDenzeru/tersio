@@ -4,20 +4,20 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {
-  defaultOmpModel,
-  headroomProxyUrl,
-  ompCachedEndpoint,
-  ompConfigFile,
-  ompModelsFile,
-  ompProviderNames,
-  opencodeConfigFiles,
+    defaultOmpModel,
+    headroomProxyUrl,
+    ompCachedEndpoint,
+    ompConfigFile,
+    ompModelsFile,
+    ompProviderNames,
+    opencodeConfigFiles,
 } from './headroom-proxy.ts';
-import { piCatalogEndpoint } from './headroom-agent.ts';
-import { codexConfigFile } from './codex-state.ts';
-import { claudeHome } from './claude-state.ts';
+import {piCatalogEndpoint} from './headroom-agent.ts';
+import {codexConfigFile} from './codex-state.ts';
+import {claudeHome} from './claude-state.ts';
+import {homeDir, piAgentDir, pigAgentDir} from './utils.ts';
 
 export { defaultOmpModel };
-import { homeDir, piAgentDir, pigAgentDir } from './utils.ts';
 
 export interface HeadroomRoute {
   /** True when a config was read far enough to answer. */
@@ -629,7 +629,7 @@ function readClaudeRoute(proxyUrl: string): HeadroomRoute {
   const baseUrl = fromFile || fromShell;
   if (!baseUrl)
     return emptyRoute('claude', proxyUrl, 'ANTHROPIC_BASE_URL is not set, so Claude Code calls Anthropic directly');
-  const routed = baseUrl.replace(/\/+$/, '') === proxyUrl.replace(/\/+$/, '');
+  const routed = sameProxyEndpoint(baseUrl, proxyUrl);
   return {
     measured: true,
     failure: '',

@@ -1,44 +1,45 @@
 // cli/update.ts — update check, per-add-on plan, latest-installer run.
-import { realpathSync } from 'node:fs';
+import {realpathSync} from 'node:fs';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
+import {spawn} from 'node:child_process';
 import {
-  BUN_BIN,
-  HOME,
-  IS_WINDOWS,
-  NPM_BIN,
-  OMP_PLUGINS_DIR,
-  PACKAGE_BIN,
-  PACKAGE_NAME,
-  PACKAGE_VERSION,
-  args,
-  dryRun,
-  execP,
-  parseJsonObject,
-  verbose,
+    args,
+    BUN_BIN,
+    dryRun,
+    execP,
+    HOME,
+    IS_WINDOWS,
+    NPM_BIN,
+    OMP_PLUGINS_DIR,
+    PACKAGE_BIN,
+    PACKAGE_NAME,
+    PACKAGE_VERSION,
+    parseJsonObject,
+    verbose,
 } from './common.ts';
-import { execNetwork, sayTagged } from './interactive.ts';
+import {execNetwork, sayTagged} from './interactive.ts';
 import {
-  readTextIfExists,
-  resolveHeadroomBinary,
-  resolveRtkBinary,
-  tersioDataPath,
+    CAVEMAN_BODY_PATHS,
+    CAVEMAN_RAW,
+    cavemanRelease,
+    HEADROOM_RELEASE_API,
+    httpsGet,
+    normalizeRtkVersion,
+    readTextIfExists,
+    resolveHeadroomBinary,
+    resolveRtkBinary,
+    RTK_RELEASE_API,
+    sha256Hex,
+    TERSIO_RELEASE_API,
+    tersioDataPath,
 } from '../extensions/shared/utils.ts';
-import { patchState, readState, takeLegacy } from '../extensions/shared/state.ts';
-import { refreshPrices } from '../extensions/shared/pricing.ts';
-import {
-  CAVEMAN_BODY_PATHS,
-  CAVEMAN_RAW,
-  HEADROOM_RELEASE_API,
-  RTK_RELEASE_API,
-  TERSIO_RELEASE_API,
-  cavemanRelease,
-  httpsGet,
-  normalizeRtkVersion,
-  sha256Hex,
-} from '../extensions/shared/utils.ts';
-import { parseHostArg } from './hosts.ts';
-import { CAVEMAN_PIN } from './upstream.ts';
+import {patchState, readState, takeLegacy} from '../extensions/shared/state.ts';
+import {refreshPrices} from '../extensions/shared/pricing.ts';
+import {parseHostArg} from './hosts.ts';
+import {CODEGRAPH_NPM_LATEST, installedCodegraphVersion} from './codegraph-bundle.ts';
+import {installCodeGraphBundle} from '../extensions/codegraph/install.ts';
+import {readCodegraphDefault} from '../extensions/shared/plugin-settings.ts';
+import {CAVEMAN_PIN} from './upstream.ts';
 
 const UPDATE_CHECK_TTL_MS = 6 * 60 * 60 * 1000;
 /** How long one source gets before the check gives up on it. */
@@ -190,17 +191,17 @@ export function installerManager(
     args: (target) =>
       IS_WINDOWS
         ? [
-            '/d',
-            '/s',
-            '/c',
-            NPM_BIN,
-            'install',
-            '-g',
-            `${PACKAGE_NAME}${target}`,
-            '--no-audit',
-            '--no-fund',
-            '--prefer-online',
-          ]
+          '/d',
+          '/s',
+          '/c',
+          NPM_BIN,
+          'install',
+          '-g',
+          `${PACKAGE_NAME}${target}`,
+          '--no-audit',
+          '--no-fund',
+          '--prefer-online',
+        ]
         : ['install', '-g', `${PACKAGE_NAME}${target}`, '--no-audit', '--no-fund', '--prefer-online'],
     label: 'npm',
   };
@@ -212,6 +213,7 @@ interface UpdatePlan {
   npm: string | null;
   rtk: [string | null, string | null];
   headroom: [string | null, string | null];
+  codegraph: [string | null, string | null];
   ruleLocal: string | null;
   // The rule bodies at the newest release; the tag names them, the hashes only decide staleness.
   rule: { tag: string; hashes: string } | null;
@@ -257,13 +259,15 @@ async function probeUpdatePlan(release: LatestRelease | null): Promise<UpdatePla
   );
   const controller = new AbortController();
   const headroomBin = resolveHeadroomBinary();
+  // Probed beside the other add-ons; a missing or older bundle can be installed into Tersio's own cache.
+  const codegraphLatest = settle(fetchLatestVersion(CODEGRAPH_NPM_LATEST, 'version'), 1500);
   const [rtkLocal, rtkRelease, headroomLocal, headroomRelease, ruleLocal, ruleRemote, ponytailLocalText] =
     await Promise.all([
       settle(
         rtkBin
           ? execP(rtkBin, ['--version'], { timeout: 5000 }).then(
-              (r) => normalizeRtkVersion(r.stdout.trim() || r.stderr.trim()) || null,
-            )
+            (r) => normalizeRtkVersion(r.stdout.trim() || r.stderr.trim()) || null,
+          )
           : Promise.resolve(null),
         6000,
       ),
@@ -272,8 +276,8 @@ async function probeUpdatePlan(release: LatestRelease | null): Promise<UpdatePla
       settle(
         headroomBin
           ? execP(headroomBin, ['--version'], { timeout: 5000 }).then(
-              (r) => normalizeHeadroom(r.stdout.trim() || r.stderr.trim()) || null,
-            )
+            (r) => normalizeHeadroom(r.stdout.trim() || r.stderr.trim()) || null,
+          )
           : Promise.resolve(null),
         6000,
       ),
@@ -303,6 +307,7 @@ async function probeUpdatePlan(release: LatestRelease | null): Promise<UpdatePla
     npm: release?.npm ?? null,
     rtk: [rtkLocal, rtkRelease],
     headroom: [headroomLocal, headroomRelease],
+    codegraph: [installedCodegraphVersion(), await codegraphLatest],
     ruleLocal,
     rule: ruleRemote,
     ponytail: ponytailLocalText ? (parseJsonObject<{ version?: string }>(ponytailLocalText)?.version ?? null) : null,
@@ -333,6 +338,11 @@ function planLines(plan: UpdatePlan): { stale: string[]; status: string[] } {
     status.push(`RTK binary: ${rtkNow}; ${rtkNew} is out — rtk updates itself`);
   else push('RTK binary', rtkNow, rtkNew);
   push('Headroom binary', plan.headroom[0], plan.headroom[1]);
+  const [codegraphNow, codegraphNew] = plan.codegraph;
+  if (!codegraphNow) status.push('CodeGraph bundle: not installed');
+  else if (codegraphNew && newerThan(codegraphNew, codegraphNow))
+    status.push(`CodeGraph bundle: ${codegraphNow} → ${codegraphNew}`);
+  else status.push(`CodeGraph bundle: ${codegraphNow}${codegraphNew ? ' (up to date)' : ''}`);
   // The rule body carries no version, so the tag recorded at pull time names it; the pin covers a fresh install.
   const ruleCurrent = (readState().cavemanUpstream?.tag ?? CAVEMAN_PIN).replace(/^v/, '');
   if (plan.ruleLocal && plan.rule && plan.ruleLocal === plan.rule.hashes)
@@ -382,8 +392,27 @@ async function runLatestUpdate(hostOverride?: string | string[] | null): Promise
   const newerTarget = plan.cli ?? plan.npm;
   const cliStale = newerTarget !== null && newerThan(newerTarget, PACKAGE_VERSION);
   const addonStale = stale.filter((line) => !line.startsWith('Tersio'));
+  const graphHosts = ['omp', 'pi', 'pig', 'opencode'] as const;
+  const graphEnabled = targets.length === 0
+    ? readCodegraphDefault() === 'on'
+    : targets.some((host) => graphHosts.some((name) => name === host && readCodegraphDefault(name) === 'on'));
+  const [graphCurrent, graphLatest] = plan.codegraph;
+  const graphVersion = graphLatest && /^\d+\.\d+\.\d+$/.test(graphLatest) ? graphLatest : undefined;
+  const graphUpdate = graphEnabled && process.env.PI_OFFLINE !== '1' && !process.env.CODEGRAPH_LIB_PATH &&
+    (!graphCurrent || (graphVersion !== undefined && newerThan(graphVersion, graphCurrent)));
+  const updateCodegraph = async (): Promise<void> => {
+    if (!graphUpdate) return;
+    try {
+      const installed = await installCodeGraphBundle(graphVersion);
+      console.log(`CodeGraph runtime ${installed} installed`);
+    } catch (error) {
+      console.error(`[fail] CodeGraph runtime: ${(error as Error).message}`);
+      process.exitCode = 1;
+    }
+  };
   if (dryRun) {
     console.log(`tersio update (dry-run):\n  ${status.join('\n  ')}`);
+    if (graphUpdate) sayTagged(`  [dry-run] would install CodeGraph runtime ${graphVersion ?? 'latest'}`);
     sayTagged(`  [dry-run] would run: ${manager.label} install -g ${PACKAGE_NAME}${target}`);
     if (targets.length > 0) {
       for (const host of targets)
@@ -399,6 +428,7 @@ async function runLatestUpdate(hostOverride?: string | string[] | null): Promise
   }
   console.log(status.join('\n'));
   if (targets.length === 0 && !cliStale) {
+    await updateCodegraph();
     if (addonStale.length > 0)
       console.log('The CLI is up to date; extensions and add-ons refresh per agent: tersio update --host <agent>.');
     return;
@@ -411,6 +441,7 @@ async function runLatestUpdate(hostOverride?: string | string[] | null): Promise
     try {
       for (const host of targets)
         await execInherit(process.execPath, [sourceEntry, '--apply-update', ...applyArgs(host)]);
+      await updateCodegraph();
       console.log(
         targets.length > 0
           ? `Done — tersio ${PACKAGE_VERSION} and add-ons updated for ${targets.length} agent${targets.length === 1 ? '' : 's'}.`
@@ -429,18 +460,18 @@ async function runLatestUpdate(hostOverride?: string | string[] | null): Promise
   // Broken payloads (v2.20.0) crash on boot — smoke-check the target before touching anything installed.
   const smokeArgs = IS_WINDOWS
     ? [
-        '/d',
-        '/s',
-        '/c',
-        'npm',
-        'exec',
-        '--yes',
-        '--prefer-online',
-        `--package=${PACKAGE_NAME}${target}`,
-        '--',
-        PACKAGE_BIN,
-        '--version',
-      ]
+      '/d',
+      '/s',
+      '/c',
+      'npm',
+      'exec',
+      '--yes',
+      '--prefer-online',
+      `--package=${PACKAGE_NAME}${target}`,
+      '--',
+      PACKAGE_BIN,
+      '--version',
+    ]
     : ['exec', '--yes', '--prefer-online', `--package=${PACKAGE_NAME}${target}`, '--', PACKAGE_BIN, '--version'];
   try {
     await execP(npmCommand, smokeArgs, {
@@ -482,6 +513,7 @@ async function runLatestUpdate(hostOverride?: string | string[] | null): Promise
     sayTagged(`  [warn] Global CLI update skipped: ${(e as Error).message}`);
     sayTagged(`  [hint] Manual: ${manager.label} install -g ${PACKAGE_NAME}${target}`);
   }
+  await updateCodegraph();
 
   // No host: the global install above is the whole run, and the add-ons stay as they are.
   if (targets.length === 0) {

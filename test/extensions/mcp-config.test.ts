@@ -1,15 +1,16 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
-import { expect, test } from 'vitest';
+import {fileURLToPath} from 'node:url';
+import {expect, test} from 'vitest';
 import {
-  ensureTersioMcp,
-  removeTersioMcp,
-  spliceTopLevelKey,
-  tersioMcpConfigured,
-  tersioMcpFile,
-  tersioMcpSupported,
+    ensureTersioMcp,
+    removeTersioMcp,
+    spliceTopLevelKey,
+    tersioMcpConfigured,
+    tersioMcpFile,
+    tersioMcpSupported,
 } from '../../extensions/shared/mcp-config.ts';
-import { withHome } from '../helpers/env.ts';
+import {withHome} from '../helpers/env.ts';
 
 /**
  * The entry, in whichever shape this machine produces: bun on PATH runs the entry point directly,
@@ -18,7 +19,7 @@ import { withHome } from '../helpers/env.ts';
 function expectTersioCommand(command: string, args: string[]): void {
   if (/bun(\.exe)?$/.test(command)) {
     expect(args).toHaveLength(2);
-    expect(args[0]).toMatch(/tersio\.js$/);
+    expect(args[0]).toMatch(/tersio\.(js|ts)$/);
     expect(args[1]).toBe('mcp');
     return;
   }
@@ -193,5 +194,31 @@ test('dsh reports the MCP entry its bundle already mounts', () => {
       'utf8',
     );
     expect(tersioMcpConfigured('dsh')).toBe(true);
+  });
+});
+
+test('a source checkout registers its own MCP entry instead of the global installation', () => {
+  withHome((home) => {
+    const binDir = path.join(home, 'bin');
+    mkdirSync(binDir, { recursive: true });
+    const bun = path.join(binDir, process.platform === 'win32' ? 'bun.exe' : 'bun');
+    writeFileSync(bun, '', { mode: 0o755 });
+    const previousPath = process.env.PATH;
+    process.env.PATH = binDir;
+    try {
+      expect(ensureTersioMcp('omp')).toBe(true);
+      const file = path.join(home, '.omp', 'agent', 'mcp.json');
+      const config = JSON.parse(readFileSync(file, 'utf8')) as {
+        mcpServers: { tersio: { command: string; args: string[] } };
+      };
+      expect(config.mcpServers.tersio.command).toBe(bun);
+      expect(config.mcpServers.tersio.args).toEqual([
+        fileURLToPath(new URL('../../tersio.ts', import.meta.url)),
+        'mcp',
+      ]);
+    } finally {
+      if (previousPath === undefined) delete process.env.PATH;
+      else process.env.PATH = previousPath;
+    }
   });
 });

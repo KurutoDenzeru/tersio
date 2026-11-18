@@ -1,37 +1,36 @@
-import { expect, test } from 'vitest';
-import { execFileSync, spawnSync } from 'node:child_process';
+import {expect, test} from 'vitest';
+import {execFileSync, spawnSync} from 'node:child_process';
 import {
-  existsSync,
-  chmodSync,
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-  symlinkSync,
-  writeFileSync,
+    chmodSync,
+    existsSync,
+    mkdirSync,
+    mkdtempSync,
+    readdirSync,
+    readFileSync,
+    rmSync,
+    symlinkSync,
+    writeFileSync,
 } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import {fileURLToPath} from 'node:url';
 
-import { ensureExtensionInConfig, normalizeExtensionsKey, removeExtensionFromConfig } from '../../cli/common.ts';
-import { GENERATED_TREE_FILES, TREE_FILES, sourcePath, treeFilesFor } from '../../cli/manifest.ts';
-import { PACKAGE_VERSION } from '../../cli/common.ts';
+import {ensureExtensionInConfig, normalizeExtensionsKey, removeExtensionFromConfig} from '../../cli/common.ts';
+import {GENERATED_TREE_FILES, sourcePath, TREE_FILES, treeFilesFor} from '../../cli/manifest.ts';
 import {
-  readCavemanDefault,
-  readComboDefault,
-  readPluginSettings,
-  readRtkDefault,
-  saveComboSetup,
-  saveModeState,
+    readCavemanDefault,
+    readComboDefault,
+    readPluginSettings,
+    readRtkDefault,
+    saveComboSetup,
+    saveModeState,
 } from '../../extensions/shared/plugin-settings.ts';
-import { saveHostDefaults, storedProfileSync } from '../../cli/profile.ts';
-import type { HostDefaultField } from '../../cli/profile.ts';
-import { readUsageDb, syncUsageDb } from '../../extensions/shared/usage-store.ts';
-import { ruleBodyProblem } from '../../extensions/shared/utils.ts';
-import { sqliteExec } from '../../extensions/shared/sqlite.ts';
-import { cliEnv, fakeExecutable, fakeRtkBin, hasSqlite, isWindows, withHome } from '../helpers/env.ts';
+import type {HostDefaultField} from '../../cli/profile.ts';
+import {saveHostDefaults, storedProfileSync} from '../../cli/profile.ts';
+import {readUsageDb, syncUsageDb} from '../../extensions/shared/usage-store.ts';
+import {ruleBodyProblem} from '../../extensions/shared/utils.ts';
+import {sqliteExec} from '../../extensions/shared/sqlite.ts';
+import {cliEnv, fakeExecutable, fakeRtkBin, hasSqlite, isWindows, withHome} from '../helpers/env.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const installer = path.join(root, 'dist', 'tersio.js');
@@ -281,6 +280,7 @@ test('package manifest declares always-on extensions plus updater feature and se
     './extensions/rtk/filter.ts',
     './extensions/combo/index.ts',
     './extensions/commands/index.ts',
+    './extensions/codegraph/index.ts',
   ]);
   const features = manifest.omp?.features ?? {};
   expect(Object.keys(features)).toEqual(['updater']);
@@ -349,6 +349,28 @@ test('a host save writes only the chosen fields, and one equal to the shared fal
     const after = JSON.parse(readFileSync(path.join(home, '.tersio', 'settings.json'), 'utf8')) as Record<string, any>;
     expect(after.hosts.pi.rtkDefault).toBeUndefined();
     expect(after.hosts.pi).toEqual({ comboDefault: 'max', cavemanDefault: 'ultra', ponytailDefault: 'ultra' });
+  });
+});
+
+test('saving host defaults removes retired routing settings without changing other hosts', async () => {
+  await withHome(async (home) => {
+    writeLock(home, {
+      routingDefault: 'on',
+      headroomDefault: 'on',
+      hosts: {
+        omp: { routingDefault: 'on', headroomDefault: 'on' },
+        pi: { routingDefault: 'off', codegraphDefault: 'off' },
+      },
+    });
+    await saveHostDefaults('pi', ['codegraphDefault'], storedProfileSync('pi'), { quiet: true });
+    const saved: unknown = JSON.parse(readFileSync(path.join(home, '.tersio', 'settings.json'), 'utf8'));
+    expect(saved).toEqual({
+      headroomDefault: 'on',
+      hosts: {
+        omp: { headroomDefault: 'on' },
+        pi: { codegraphDefault: 'off' },
+      },
+    });
   });
 });
 
@@ -454,7 +476,7 @@ function runOmpInstall(home: string, extraEnv: Record<string, string>, ...args: 
     cwd: root,
     encoding: 'utf8',
     timeout: 30000,
-    env: cliEnv(home, extraEnv),
+    env: cliEnv(home, { PI_OFFLINE: '1', ...extraEnv }),
   });
 }
 
@@ -1792,6 +1814,7 @@ test.skipIf(process.platform === 'win32')(
           env: {
             ...cliEnv(home),
             ...DEAD_ENDPOINTS,
+            PI_OFFLINE: '1',
             TERSIO_HEADROOM_WAIT_MS: '500',
             PATH: `${binDir}${path.delimiter}${process.env.PATH ?? ''}`,
           },
@@ -1833,6 +1856,7 @@ test.skipIf(isWindows())(
         encoding: 'utf8',
         env: cliEnv(home, {
           ...DEAD_ENDPOINTS,
+          PI_OFFLINE: '1',
           TERSIO_HEADROOM_BIN: headroom,
           PATH: `${binDir}${path.delimiter}${process.env.PATH ?? ''}`,
         }),

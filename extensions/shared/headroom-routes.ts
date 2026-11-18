@@ -1,37 +1,43 @@
 // The endpoints Tersio writes itself, for every agent it can route. Only the active provider's
 // endpoint changes, so a later model edit stays intact and the off switch puts the old URL back.
 
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { execFile } from 'node:child_process';
+import {existsSync, mkdirSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
+import {execFile} from 'node:child_process';
 import path from 'node:path';
-import { promisify } from 'node:util';
-import { headroomProxyUpstream, headroomProxyUrl, opencodeConfigFiles } from './headroom-proxy.ts';
+import {promisify} from 'node:util';
+import type {HeadroomUpstreams, UpstreamDialect} from './headroom-proxy.ts';
 import {
-  headroomProxyPort,
-  readOmpGateway,
-  restoreOmpGateway,
-  routeOmpDefaultModel,
-  routeOmpGateway,
+    headroomProxyPort,
+    headroomProxyUpstream,
+    headroomProxyUrl,
+    liveUpstream,
+    opencodeConfigFiles,
+    readOmpGateway,
+    restoreOmpGateway,
+    routeOmpDefaultModel,
+    routeOmpGateway,
+    upstreamMismatches
 } from './headroom-proxy.ts';
-import { ensureAgentProviderRoute } from './headroom-agent.ts';
-import { codexConfigFile } from './codex-state.ts';
+import {headroomRuntimeUp} from './headroom-runtime.ts';
+import {ensureAgentProviderRoute} from './headroom-agent.ts';
+import {codexConfigFile} from './codex-state.ts';
+import type {HeadroomRoute} from './headroom-routing.ts';
 import {
-  describeHeadroomRoute,
-  dshDefaultRoute,
-  dshProfileFiles,
-  dshProviders,
-  jsonBaseUrl,
-  jsonModelEntry,
-  readHeadroomRoute,
-  sameProxyEndpoint,
-  stripJsonComments,
+    describeHeadroomRoute,
+    dshDefaultRoute,
+    dshProfileFiles,
+    dshProviders,
+    jsonBaseUrl,
+    jsonModelEntry,
+    readHeadroomRoute,
+    sameProxyEndpoint,
+    stripJsonComments,
 } from './headroom-routing.ts';
-import { splicePath } from './jsonc-edit.ts';
-import type { HeadroomRoute } from './headroom-routing.ts';
-import { HOST_CAPS, hostCap } from './host-caps.ts';
-import { patchState, readState } from './state.ts';
-import { homeDir, piAgentDir, pigAgentDir, resolveHeadroomBinary, tersioHome } from './utils.ts';
-import type { HeadroomRouteRecord } from './state.ts';
+import {splicePath} from './jsonc-edit.ts';
+import {HOST_CAPS, hostCap} from './host-caps.ts';
+import type {HeadroomRouteRecord} from './state.ts';
+import {patchState, readState} from './state.ts';
+import {homeDir, piAgentDir, pigAgentDir, resolveHeadroomBinary, tersioHome} from './utils.ts';
 
 export type NativeRouteHost = 'pi' | 'pig' | 'dsh' | 'opencode';
 export const NATIVE_ROUTE_HOSTS: ReadonlyArray<NativeRouteHost> = ['pi', 'pig', 'dsh', 'opencode'];
@@ -200,8 +206,8 @@ function routableCodexProvider(value: string | null | undefined): string | null 
   return value;
 }
 
-export function inferCodexRootBackup(text: string): CodexRootBackup {
-  const upstream = headroomProxyUpstream('openai');
+export function inferCodexRootBackup(text: string, proxyUrl: string = headroomProxyUrl()): CodexRootBackup {
+  const upstream = headroomProxyUpstream('openai', undefined, headroomProxyPort(proxyUrl));
   const modelProvider = codexRootValue(text, 'model_provider');
   // An absent provider is Codex's built-in OpenAI route, which only `openai_base_url` can move.
   const provider = routableCodexProvider(modelProvider.value);
@@ -250,7 +256,7 @@ async function headroomCommand(args: string[]): Promise<{ ok: boolean; detail: s
 export async function routeCodexHeadroom(proxyUrl: string = headroomProxyUrl()): Promise<NativeRouteResult> {
   const before = codexConfigText();
   if (before !== null) {
-    const inferred = inferCodexRootBackup(before);
+    const inferred = inferCodexRootBackup(before, proxyUrl);
     const held = readCodexBackup();
     writeCodexBackup(
       held
@@ -266,7 +272,7 @@ export async function routeCodexHeadroom(proxyUrl: string = headroomProxyUrl()):
         : inferred,
     );
   }
-  const installed = await headroomCommand(['init', '-g', '--port', String(headroomProxyPort()), 'codex']);
+  const installed = await headroomCommand(['init', '-g', '--port', String(headroomProxyPort(proxyUrl)), 'codex']);
   if (!installed.ok) return installed;
   const backup = readCodexBackup();
   const after = codexConfigText();
@@ -391,8 +397,6 @@ interface Target {
   api: string;
   original: string;
   write: (url: string) => void;
-  /** A provider block that records no upstream to compare: its endpoint is set by hand today. */
-  skipUpstream?: boolean;
   /** The dotted key inside the provider block, when the endpoint is nested. */
   key?: string;
 }
@@ -597,6 +601,17 @@ function writeOpencodeEndpoint(file: string, key: string, url: string): void {
   writeDotted(data, key, url);
   writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
 }
+function opencodeApi(data: Record<string, unknown>, provider: string): string {
+  const map = data.providers ?? data.provider;
+  const entry = map && typeof map === 'object' ? (map as Record<string, unknown>)[provider] : null;
+  if (!entry || typeof entry !== 'object') return 'openai-completions';
+  const record = entry as Record<string, unknown>;
+  const identity = [record.package, record.npm, record.canonical, record.api, provider]
+    .filter((value): value is string => typeof value === 'string')
+    .join(' ');
+  if (/anthropic/i.test(identity)) return 'anthropic-messages';
+  return 'openai-completions';
+}
 
 /**
  * OpenCode's active provider: V2 keeps the endpoint under `providers.<id>.settings`, V1 under its own
@@ -618,14 +633,13 @@ function opencodeTargets(): Target[] {
     const provider = model.slice(0, model.indexOf('/'));
     const endpoint = opencodeEndpoint(data, provider);
     if (!endpoint) return [];
+    const api = opencodeApi(data, provider);
     return [
       {
         file,
         provider,
         key: endpoint.key,
-        // OpenCode's block names a package, not an API dialect, so there is no upstream to compare.
-        api: '',
-        skipUpstream: true,
+        api,
         original: endpoint.original,
         write: (url: string) => writeOpencodeEndpoint(file, endpoint.key, url),
       },
@@ -655,33 +669,6 @@ export function installNativeRoute(host: NativeRouteHost, proxyUrl: string = hea
     return { ok: false, detail: (e as Error).message };
   }
   if (targets.length === 0) return { ok: false, detail: `no active provider endpoint found for ${host}` };
-  // A route only makes sense when the proxy names the provider it replaces for this protocol.
-  for (const target of targets) {
-    if (target.model || target.skipUpstream) continue;
-    const anthropic = /anthropic/i.test(target.api);
-    // A host with no endpoint of its own still has a public default the proxy must name.
-    const expected = target.original || (anthropic ? 'https://api.anthropic.com' : '');
-    const upstream = headroomProxyUpstream(target.api);
-    if (!upstream) {
-      const flag = anthropic ? '--anthropic-api-url' : '--openai-api-url';
-      return {
-        ok: false,
-        detail: `${host}: Headroom names no upstream for ${target.api || 'OpenAI'} traffic. Start it with ${flag} ${expected} first.`,
-      };
-    }
-    if (expected && !sameUpstream(upstream, expected)) {
-      // One proxy forwards to one upstream; moving it for this agent would strand the others.
-      const others = headroomRoutedHosts(host);
-      const already =
-        others.length > 0
-          ? ` Already routed through ${upstream}: ${others.join(', ')}; repointing the proxy would break ${others.length === 1 ? 'it' : 'them'}.`
-          : '';
-      return {
-        ok: false,
-        detail: `${host}: ${expected} is not Headroom's upstream (${upstream}).${already} Start Headroom with ${expected} first.`,
-      };
-    }
-  }
   // A model's own endpoint may spell its path differently, so only the service has to match.
   for (const target of targets) {
     if (!target.model) continue;
@@ -693,6 +680,33 @@ export function installNativeRoute(host: NativeRouteHost, proxyUrl: string = hea
       return {
         ok: false,
         detail: `${host}: ${target.original} is a different service from ${expected}. Route ${target.model} by hand.`,
+      };
+    }
+  }
+  // A route only makes sense when the proxy names the provider it replaces for this protocol.
+  for (const target of targets) {
+    const anthropic = /anthropic/i.test(target.api);
+    // A host with no endpoint of its own still has a public default the proxy must name.
+    const expected = target.original || (anthropic ? 'https://api.anthropic.com' : '');
+    const upstream = headroomProxyUpstream(target.api, undefined, headroomProxyPort(proxyUrl));
+    if (!upstream) {
+      const flag = anthropic ? '--anthropic-api-url' : '--openai-api-url';
+      return {
+        ok: false,
+        detail: `${host}: Headroom names no upstream for ${target.api || 'OpenAI'} traffic. Start it with ${flag} ${expected} first.`,
+      };
+    }
+    const matches = target.model ? sameOrigin(upstream, expected) : sameUpstream(upstream, expected);
+    if (expected && !matches) {
+      // One proxy forwards to one upstream; moving it for this agent would strand the others.
+      const others = headroomRoutedHosts(host);
+      const already =
+        others.length > 0
+          ? ` Already routed through ${upstream}: ${others.join(', ')}; repointing the proxy would break ${others.length === 1 ? 'it' : 'them'}.`
+          : '';
+      return {
+        ok: false,
+        detail: `${host}: ${expected} is not Headroom's upstream (${upstream}).${already} Start Headroom with ${expected} first.`,
       };
     }
   }
@@ -744,11 +758,48 @@ export function headroomRoutedHosts(except?: string): string[] {
   return Object.keys(HOST_CAPS).filter((id) => id !== except && readHeadroomRoute(id).routed);
 }
 
+/**
+ * Global upstreams needed by a route. OMP selects its upstream in each model's request headers,
+ * so switching its providers never repoints the process shared by other sessions.
+ */
+export function headroomRouteUpstreams(host: string): HeadroomUpstreams {
+  if (hostCap(host)?.headroomGateway) return {};
+  const route = readHeadroomRoute(host);
+  return route.baseUrl && !route.routed ? { openai: route.baseUrl } : {};
+}
+
+function forwardsOf(live: HeadroomUpstreams, dialects: UpstreamDialect[]): string {
+  return dialects.map((dialect) => `${dialect} traffic to ${liveUpstream(live, dialect)}`).join(' and ');
+}
+
+/**
+ * Why repointing the running proxy would strand another routed agent, or null. A proxy that is not running
+ * has nothing to repoint, and a proxy already forwarding the wanted upstreams needs no restart.
+ */
+export function headroomRestartConflict(
+  host: string,
+  wanted: HeadroomUpstreams,
+  live: HeadroomUpstreams | null,
+): string | null {
+  if (live === null) return null;
+  const mismatched = upstreamMismatches(wanted, live);
+  const others = mismatched.length > 0 ? headroomRoutedHosts(host) : [];
+  if (others.length === 0) return null;
+  return `${host}: the running Headroom forwards ${forwardsOf(live, mismatched)}; repointing it would break ${others.join(', ')}.`;
+}
+
 /** Point one agent at the proxy, through whichever writer that agent's config needs. */
-export async function routeHostOn(host: string, proxyUrl: string = headroomProxyUrl()): Promise<NativeRouteResult> {
-  const port = headroomProxyPort();
+export async function routeHostOn(
+  host: string,
+  proxyUrl: string = headroomProxyUrl(),
+  live?: HeadroomUpstreams | null,
+): Promise<NativeRouteResult> {
+  const port = headroomProxyPort(proxyUrl);
   if (host === 'codex') return routeCodexHeadroom(proxyUrl);
   if (host === 'claude') return routeClaudeHeadroom(proxyUrl);
+  if (hostCap(host)?.headroomGateway && (live === null || (live === undefined && !(await headroomRuntimeUp())))) {
+    return { ok: false, detail: `${host}: Headroom is not ready on ${proxyUrl}; no model endpoint was changed` };
+  }
   // A provider the host keeps in its own catalog needs a block before the endpoint can move.
   const ensured = ensureAgentProviderRoute(host, port);
   if (!ensured.ok) return { ok: false, detail: ensured.detail };
@@ -797,7 +848,10 @@ export async function repairHeadroomRoute(
   }
   // omp: the marker beside the gateway line still holds the endpoint Tersio replaced.
   if (hostCap(host)?.headroomGateway) {
-    const port = headroomProxyPort();
+    const port = headroomProxyPort(proxyUrl);
+    if (!(await headroomRuntimeUp())) {
+      return { ok: false, detail: `${host}: Headroom is not ready on ${proxyUrl}; no model endpoint was changed` };
+    }
     const gateway = readOmpGateway(port);
     if (!gateway) return { ok: false, detail: describeHeadroomRoute(route) };
     if (!routeOmpGateway(gateway, port)) return { ok: false, detail: `${host}: the gateway line could not be moved` };

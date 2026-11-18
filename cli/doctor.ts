@@ -1,63 +1,67 @@
 // cli/doctor.ts — installation health checks.
-import { execFileSync } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync, statSync, promises as fs } from 'node:fs';
+import {execFileSync} from 'node:child_process';
+import {existsSync, promises as fs, readdirSync, readFileSync, statSync} from 'node:fs';
 import path from 'node:path';
 import {
-  HOME,
-  OMP_AGENT_DIR,
-  PACKAGE_VERSION,
-  args,
-  dryRun,
-  fix,
-  yes,
-  BUN_BIN_DIR,
-  OMP_BIN,
-  execP,
-  relTime,
-  shimCommand,
+    args,
+    BUN_BIN_DIR,
+    dryRun,
+    execP,
+    fix,
+    HOME,
+    OMP_AGENT_DIR,
+    OMP_BIN,
+    PACKAGE_VERSION,
+    relTime,
+    shimCommand,
+    yes,
 } from './common.ts';
+import {CODEGRAPH_NPM_LATEST, installedCodegraphVersion} from './codegraph-bundle.ts';
+import {readCodegraphDefault, readCodegraphSync} from '../extensions/shared/plugin-settings.ts';
+import type {DetectedHost} from './hosts.ts';
 import {
-  detectHosts,
-  dshPackageDir,
-  hostAgentInfo,
-  hostExtensionsDir,
-  ompPackageDir,
-  piPonytailPackageDir,
-  pigPonytailPackageDir,
+    detectHosts,
+    dshPackageDir,
+    hostAgentInfo,
+    hostExtensionsDir,
+    ompPackageDir,
+    pigPonytailPackageDir,
+    piPonytailPackageDir,
 } from './hosts.ts';
-import type { DetectedHost } from './hosts.ts';
-import { GENERATED_TREE_FILES } from './manifest.ts';
-import { askInteractiveChoice, askInteractiveConfirm, runInteractivePhase } from './interactive.ts';
-import { usageDbPath } from '../extensions/shared/usage-store.ts';
+import {
+    GENERATED_TREE_FILES,
+    isObsoleteTreeFile,
+    PI_PONYTAIL_FILES,
+    PONYTAIL_BUNDLE_FILES,
+    PONYTAIL_VERSION,
+    TREE_PSTACK_FILES,
+    treeFilesFor,
+    treeFileText
+} from './manifest.ts';
+import {askInteractiveChoice, askInteractiveConfirm, runInteractivePhase} from './interactive.ts';
+import {usageDbPath} from '../extensions/shared/usage-store.ts';
 
 import {
-  piAgentDir,
-  pigAgentDir,
-  readTextIfExists,
-  resolveHeadroomBinary,
-  resolveHostBinary,
-  resolveRtkBinary,
-  ruleBodyProblem,
-  normalizeRtkVersion,
-  RTK_RELEASE_API,
+    normalizeRtkVersion,
+    piAgentDir,
+    pigAgentDir,
+    readTextIfExists,
+    resolveHeadroomBinary,
+    resolveHostBinary,
+    resolveRtkBinary,
+    RTK_RELEASE_API,
+    ruleBodyProblem,
 } from '../extensions/shared/utils.ts';
-import { sqliteScript, statsDbPath } from '../extensions/shared/agent-stats.ts';
-import { OMP_SUBAGENT_MARKER } from '../extensions/shared/session-state.ts';
-import { hostCap, isPluginHost } from '../extensions/shared/host-caps.ts';
-import { tersioMcpConfigured } from '../extensions/shared/mcp-config.ts';
-import {
-  PI_PONYTAIL_FILES,
-  PONYTAIL_BUNDLE_FILES,
-  PONYTAIL_VERSION,
-  TREE_PSTACK_FILES,
-  isObsoleteTreeFile,
-  treeFileText,
-  treeFilesFor,
-} from './manifest.ts';
-import { serviceRunning, serviceState } from './doctor-fix.ts';
-import { readState } from '../extensions/shared/state.ts';
-import { CAVEMAN_PIN } from './upstream.ts';
-import { newerThan } from './update.ts';
+import {sqliteScript, statsDbPath} from '../extensions/shared/agent-stats.ts';
+import {OMP_SUBAGENT_MARKER} from '../extensions/shared/session-state.ts';
+import {hostCap, isPluginHost} from '../extensions/shared/host-caps.ts';
+import {tersioMcpConfigured} from '../extensions/shared/mcp-config.ts';
+// One definition, in the module that runs the repairs, so the menu and the parser cannot drift.
+import type {FixRequest, FixTarget} from './doctor-fix.ts';
+import {serviceRunning, serviceState} from './doctor-fix.ts';
+import {readState} from '../extensions/shared/state.ts';
+import {CAVEMAN_PIN} from './upstream.ts';
+import {newerThan} from './update.ts';
 
 /** Bytes at the scale a transcript gap reads in: `5.6M`, not `5571992`. */
 function shortBytes(bytes: number): string {
@@ -226,21 +230,21 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   };
   const rtkVersionProbe: Promise<string | null> = rtkBin
     ? execP(rtkBin, ['--version'], { timeout: 5000 }).then(
-        (r) => r.stdout.trim() || r.stderr.trim() || null,
-        (e) => {
-          const err = e as { stdout?: string; stderr?: string };
-          return err.stdout?.trim() || err.stderr?.trim() || null;
-        },
-      )
+      (r) => r.stdout.trim() || r.stderr.trim() || null,
+      (e) => {
+        const err = e as { stdout?: string; stderr?: string };
+        return err.stdout?.trim() || err.stderr?.trim() || null;
+      },
+    )
     : Promise.resolve(null);
   const headroomVersionProbe: Promise<string | null> = headroomBin
     ? execP(headroomBin, ['--version'], { timeout: 5000 }).then(
-        (r) => r.stdout.trim() || r.stderr.trim() || null,
-        (e) => {
-          const err = e as { stdout?: string; stderr?: string };
-          return err.stdout?.trim() || err.stderr?.trim() || null;
-        },
-      )
+      (r) => r.stdout.trim() || r.stderr.trim() || null,
+      (e) => {
+        const err = e as { stdout?: string; stderr?: string };
+        return err.stdout?.trim() || err.stderr?.trim() || null;
+      },
+    )
     : Promise.resolve(null);
   // A manager that lost its daemonized process reads stopped, while the orphan still holds the port.
   const opencodeServiceProbe: Promise<{ status: string; live: boolean } | null> = opencodeBin
@@ -434,6 +438,22 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   const headroomVersion = headroomVersionRaw?.match(/version\s+(\S+)/)?.[1] ?? headroomVersionRaw ?? '';
   if (headroomBin !== null) check('Headroom binary', true, headroomVersion);
   else console.log('  —  Headroom: not installed · optional: pip install "headroom-ai[all]", then /headroom on');
+  // CodeGraph is on by default, so a missing bundle is a warning: the index it builds is the feature.
+  const codegraphVersion = installedCodegraphVersion();
+  if (readCodegraphDefault() !== 'on') reportUnused('CodeGraph', '· off in session defaults; enable with: tersio modes codegraph on');
+  else if (codegraphVersion !== null) {
+    check('CodeGraph bundle', true, `${codegraphVersion} · sync ${readCodegraphSync()}`);
+    const codegraphGap = await latestGap(CODEGRAPH_NPM_LATEST, codegraphVersion, 'version');
+    if (codegraphGap) warnLine('CodeGraph version', `${codegraphGap} — run: npm i -g @colbymchenry/codegraph`);
+  } else warnLine('CodeGraph bundle', 'not found · install once: npm i -g @colbymchenry/codegraph');
+  // The index belongs to one repository, so the row reports the one the working directory is in.
+  const cwdIndex = path.join(process.cwd(), '.codegraph');
+  if (readCodegraphDefault() === 'on') {
+    if (existsSync(cwdIndex)) check('CodeGraph index', true, cwdIndex);
+    else if (existsSync(path.join(process.cwd(), '.git')))
+      warnLine('CodeGraph index', 'not built for this repository · run: tersio codegraph init');
+    else console.log('  —  CodeGraph index: no git repository in the working directory');
+  }
   const ponytailAge = ponytailMtime
     ? `(updated ${relTime(Date.now() - ponytailMtime.mtimeMs)} · ${absDate(ponytailMtime.mtimeMs)})`
     : '';
@@ -442,7 +462,7 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
     warnLine(
       'Ponytail per-host bodies',
       `stale in ${ponytailStale.length} file${ponytailStale.length === 1 ? '' : 's'}: ${ponytailStale.slice(0, 6).join(', ')}` +
-        `${ponytailStale.length > 6 ? ` +${ponytailStale.length - 6} more` : ''} — run: tersio install --host <host>`,
+      `${ponytailStale.length > 6 ? ` +${ponytailStale.length - 6} more` : ''} — run: tersio install --host <host>`,
     );
   }
   // Offline-safe: the registry call is best-effort, and silence means no row rather than a stale one.
@@ -467,21 +487,21 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
     warnLine(
       'Per-host add-on files',
       `stale in ${treeStale.length} file${treeStale.length === 1 ? '' : 's'}: ${treeStale.slice(0, 6).join(', ')}` +
-        `${treeStale.length > 6 ? ` +${treeStale.length - 6} more` : ''} — ${cavemanBodyHint()}`,
+      `${treeStale.length > 6 ? ` +${treeStale.length - 6} more` : ''} — ${cavemanBodyHint()}`,
     );
   }
   if (treeMissing.length > 0) {
     warnLine(
       'Per-host add-on files',
       `never installed in ${treeMissing.length} file${treeMissing.length === 1 ? '' : 's'}: ${treeMissing.join(', ')}` +
-        ` — run: tersio install --host <host>`,
+      ` — run: tersio install --host <host>`,
     );
   }
   if (treeOrphan.length > 0) {
     warnLine(
       'Per-host add-on files',
       `orphaned in ${treeOrphan.length} file${treeOrphan.length === 1 ? '' : 's'}: ${treeOrphan.join(', ')}` +
-        ` — run: tersio doctor --fix extensions`,
+      ` — run: tersio doctor --fix extensions`,
     );
   }
 
@@ -497,9 +517,6 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   }
   return tally;
 }
-
-// One definition, in the module that runs the repairs, so the menu and the parser cannot drift.
-import type { FixTarget, FixRequest } from './doctor-fix.ts';
 
 function fixScope(): FixTarget | null {
   const eq = args.find((a) => a.startsWith('--fix='));

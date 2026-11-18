@@ -1,41 +1,37 @@
 // Tools page: which tools the agent called, how often they failed, and what they cost.
-import { useEffect, useMemo, useState } from "react"
+import {useEffect, useMemo, useState} from "react"
+import type {Column, SeriesSpec} from "@/components/charts"
 import {
-  Card,
-  CellBar,
-  ErrorRateBadge,
-  PagedTable,
-  Legend,
-  Page,
-  PageHeader,
-  Segmented,
-  Sparkline,
-  Stat,
-  StatGrid,
-  TimeChart,
+    Card,
+    CellBar,
+    ErrorRateBadge,
+    Legend,
+    Page,
+    PagedTable,
+    PageHeader,
+    Segmented,
+    Sparkline,
+    Stat,
+    StatGrid,
+    TimeChart,
 } from "@/components/charts"
-import type { Column, SeriesSpec } from "@/components/charts"
+import {Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue,} from "@/components/ui/select"
+import {Button} from "@/components/ui/button"
+import {Icon} from "@/components/icon"
+import {CODEGRAPH_SYNC_OPTIONS} from "./pipeline-model"
+import type {AgentHeadroom, AgentStats, AgentToolRow, CodeGraphStatusData, HealthReport, RtkVerbRow} from "@/lib/data"
 import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import { Button } from "@/components/ui/button"
-import { Icon } from "@/components/icon"
-import type { AgentHeadroom, AgentStats, AgentToolRow, HealthReport, RtkVerbRow } from "@/lib/data"
-import {
-  AGENT_RANGE_LABEL,
-  fetchHeadroomGain,
-  fetchHealth,
-  installHeadroom,
-  postHeadroomRuntime,
+    AGENT_RANGE_LABEL,
+    fetchCodeGraphStatus,
+    fetchHeadroomGain,
+    fetchHealth,
+    installHeadroom,
+    postCodeGraphSync,
+    postHeadroomRuntime,
 } from "@/lib/data"
-import { PALETTE, fmt, fmtShort, pct, relAge, tsFull, tsLabel } from "@/lib/format"
-import { cn } from "cn"
-import { Spinner } from "@/components/ui/spinner"
+import {fmt, fmtShort, PALETTE, pct, relAge, tsFull, tsLabel} from "@/lib/format"
+import {cn} from "cn"
+import {Spinner} from "@/components/ui/spinner"
 
 type CallMetric = "calls" | "errors"
 
@@ -515,7 +511,7 @@ export function ToolsPage({ agent, money }: { agent: AgentStats; money: (v: numb
   useEffect(() => {
     void fetchHealth()
       .then(setHealth)
-      .catch(() => {})
+      .catch(() => { })
   }, [])
   useEffect(() => {
     let live = true
@@ -530,6 +526,48 @@ export function ToolsPage({ agent, money }: { agent: AgentStats; money: (v: numb
       live = false
     }
   }, [])
+  const [codeGraph, setCodeGraph] = useState<CodeGraphStatusData | null>(null)
+  const [cgLoading, setCgLoading] = useState(true)
+  const [cgSyncing, setCgSyncing] = useState(false)
+  const [cgSyncError, setCgSyncError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let live = true
+    const load = (): void => {
+      void fetchCodeGraphStatus()
+        .then((status) => {
+          if (live) setCodeGraph(status)
+        })
+        .finally(() => {
+          if (live) setCgLoading(false)
+        })
+    }
+    load()
+    const id = setInterval(() => {
+      if (!document.hidden) load()
+    }, 15_000)
+    return () => {
+      live = false
+      clearInterval(id)
+    }
+  }, [])
+
+  async function syncCodeGraph(): Promise<void> {
+    setCgSyncing(true)
+    setCgSyncError(null)
+    try {
+      const res = await postCodeGraphSync()
+      if (!res?.ok) {
+        setCgSyncError(res?.error ?? "Could not reach CodeGraph sync endpoint.")
+        return
+      }
+      setCodeGraph(await fetchCodeGraphStatus())
+    } catch (error) {
+      setCgSyncError(error instanceof Error ? error.message : "CodeGraph sync failed.")
+    } finally {
+      setCgSyncing(false)
+    }
+  }
   function startInstall(): void {
     setInstalling(true)
     setInstallError(null)
@@ -539,7 +577,7 @@ export function ToolsPage({ agent, money }: { agent: AgentStats; money: (v: numb
       if (result.present)
         void fetchHealth()
           .then(setHealth)
-          .catch(() => {})
+          .catch(() => { })
     })
   }
   function startRuntime(): void {
@@ -1057,6 +1095,101 @@ export function ToolsPage({ agent, money }: { agent: AgentStats; money: (v: numb
               </span>
             )}
           </div>
+        ) : null}
+      </Card>
+      <Card
+        title="CodeGraph Index"
+        icon="network"
+        description={
+          cgLoading
+            ? "Reading CodeGraph index status…"
+            : !codeGraph
+              ? "CodeGraph status unavailable. Index state could not be read."
+              : codeGraph.enabled === false
+                ? "CodeGraph is off in the session defaults. Turn it on in Quick start to keep an index."
+                : codeGraph.error
+                  ? `Index status error: ${codeGraph.error}`
+                  : codeGraph.initialized
+                    ? `Index available: ${fmt(codeGraph.nodeCount)} symbol${codeGraph.nodeCount === 1 ? "" : "s"}, ${fmt(codeGraph.edgeCount)} edge${codeGraph.edgeCount === 1 ? "" : "s"}, ${fmt(codeGraph.fileCount)} file${codeGraph.fileCount === 1 ? "" : "s"}.`
+                    : "Index not initialized for this project."
+        }
+        flush
+        actions={
+          <Button
+            size="sm"
+            variant="outline"
+            className="mono h-8 gap-1.5 rounded-xl text-xs"
+            disabled={cgLoading || cgSyncing}
+            onClick={syncCodeGraph}
+          >
+            {cgSyncing ? <Spinner className="size-3.5" /> : <Icon name="refresh-cw" className="size-3.5" />}
+            <span>{cgSyncing ? "Syncing index…" : "Sync Now"}</span>
+          </Button>
+        }
+      >
+        {cgLoading ? (
+          <p className="mono flex items-center gap-2 p-4 text-xs text-dim">
+            <Spinner className="size-3.5" />
+            Reading CodeGraph status…
+          </p>
+        ) : !codeGraph ? (
+          <p className="p-4 text-xs text-dim">
+            CodeGraph status unavailable. Project and index state could not be read.
+          </p>
+        ) : (
+          <>
+            <div className="mono flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-line px-3.5 py-2 text-[11px] text-dim">
+              {codeGraph.root ? (
+                <span>
+                  project <span className="text-ink">{codeGraph.root}</span>
+                </span>
+              ) : null}
+              {codeGraph.error ? <span className="text-danger">Index error: {codeGraph.error}</span> : null}
+              {codeGraph.isIndexing ? (
+                <span className="text-accent animate-pulse">indexing in progress…</span>
+              ) : null}
+              {codeGraph.enabled === false ? (
+                <span>Index disabled in session defaults.</span>
+              ) : codeGraph.initialized ? (
+                <>
+                  <span>
+                    symbols <span className="text-ink">{fmt(codeGraph.nodeCount)}</span>
+                  </span>
+                  <span>
+                    edges <span className="text-ink">{fmt(codeGraph.edgeCount)}</span>
+                  </span>
+                  <span>
+                    files <span className="text-ink">{fmt(codeGraph.fileCount)}</span>
+                  </span>
+                  <span>
+                    db size <span className="text-ink">{(codeGraph.dbSizeBytes / 1024).toFixed(1)} KB</span>
+                  </span>
+                  <span className="rounded border border-line px-1.5 py-0.5 text-[10px]">
+                    Configured sync {codeGraph.syncMode === "live"
+                      ? "Live"
+                      : CODEGRAPH_SYNC_OPTIONS.find((o) => o.id === codeGraph.syncMode)?.label ?? "Not reported"}
+                  </span>
+                  <span>
+                    {codeGraph.watcherObserved
+                      ? `watcher ${codeGraph.isWatching ? "active" : "inactive"}`
+                      : "watcher status unavailable"}
+                  </span>
+                  {codeGraph.lastUpdated ? (
+                    <span title="When the index last changed on disk">
+                      updated <span className="text-ink">{relAge(codeGraph.lastUpdated)}</span>
+                    </span>
+                  ) : null}
+                </>
+              ) : (
+                <span>Index not initialized for this project.</span>
+              )}
+            </div>
+          </>
+        )}
+        {cgSyncError ? (
+          <p className="mono border-t border-line px-3.5 py-2 text-[11px] text-danger">
+            Sync failed: {cgSyncError}
+          </p>
         ) : null}
       </Card>
     </Page>
