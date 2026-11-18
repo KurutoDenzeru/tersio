@@ -1,5 +1,7 @@
 ## Unreleased
 
+## v2.25.22
+
 ### Added
 - `/tersio status on|off|toggle` shows or hides the footer status line and saves the choice as that agent's default (`statusVisible` in `~/.tersio/settings.json`, shared key or `hosts.<agent>`). The line is on unless a stored value says otherwise. The Claude, Codex, and dsh surfaces are unchanged. Thanks to @chxrlie (#109).
 - The Costs page reads actual cost against an unoptimized baseline, and names what prompt caching and Headroom compression saved. Thanks to @FrancoStino (#108).
