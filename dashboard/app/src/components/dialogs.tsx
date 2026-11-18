@@ -46,7 +46,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { useTheme, useResolvedTheme } from "@/components/theme-provider"
 import { AgentLogo } from "@/components/agent-logos"
 import { ACCENTS, ACCENT_IDS, accentSwatch, type AccentId } from "@/lib/accent"
-import { FLAGS, FX_SNAPSHOT, relAge } from "@/lib/format"
+import { FLAGS, FX_SNAPSHOT, relAge, relDay, snapshotGroup } from "@/lib/format"
 import {
   fetchDoctor,
   isFileExport,
@@ -972,11 +972,19 @@ function DataPane() {
         ) : (
           // Six rows at a time; the cap is a max-height, so a long history scrolls in the card and a short list stays tight.
           <div className="max-h-[19rem] overflow-y-auto">
-            <div className="divide-y divide-line">
-              {backups.map((b) => {
-                const checked = selected.includes(b.name)
-                return (
-                  <div key={b.name} className="flex items-center gap-2">
+            {backups.map((b, index) => {
+              const checked = selected.includes(b.name)
+              // A new heading whenever the age bucket changes; the list arrives newest first.
+              const group = snapshotGroup(b.mtime)
+              const opensGroup = index === 0 || snapshotGroup(backups[index - 1].mtime) !== group
+              return (
+                <div key={b.name}>
+                  {opensGroup && (
+                    <p className="m-0 border-t border-line py-1.5 mono text-[10px] tracking-wide text-dim uppercase first:border-t-0">
+                      {group}
+                    </p>
+                  )}
+                  <div className="flex items-center gap-2">
                     <input
                       type="checkbox"
                       className="size-3.5 shrink-0 accent-accent"
@@ -1000,14 +1008,14 @@ function DataPane() {
                           <p className="mono m-0 truncate text-xs text-ink">{dataStamp(b.mtime)}</p>
                         </HoverTip>
                         <p className="mono mt-0.5 mb-0 text-[11px] text-dim">
-                          {dataSize(b.bytes)} · 1 file
+                          {relDay(b.mtime)} · {dataSize(b.bytes)} · 1 file
                         </p>
                       </div>
                     </button>
                   </div>
-                )
-              })}
-            </div>
+                </div>
+              )
+            })}
           </div>
         )}
       </Card>

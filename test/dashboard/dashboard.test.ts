@@ -7,7 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { carbonReportForAgents } from '../../dashboard/app/src/lib/carbon.ts';
-import { displayModel, errorRateTone, hostOfSession, vendorOf } from '../../dashboard/app/src/lib/format.ts';
+import { displayModel, errorRateTone, hostOfSession, relDay, snapshotGroup, vendorOf } from '../../dashboard/app/src/lib/format.ts';
 import { graphOf, graphWeeks, streaksOf, stripOf } from '../../dashboard/app/src/lib/graph.ts';
 import { requestDetailJson } from '../../dashboard/app/src/components/request-drawer.tsx';
 import type { AgentOverall, AgentRow, AgentStats, RecentRequestRow } from '../../dashboard/app/src/lib/data.ts';
@@ -543,4 +543,47 @@ test('a window with no activity has neither a streak nor a peak', () => {
   expect(s.activeDays).toBe(0);
   expect(s.peakTokens).toBe(0);
   expect(s.peakTs).toBe(null);
+});
+
+// The snapshot list groups by age and labels each row, so a reader sees "a week ago" or "2 years ago".
+const dayMs = 86_400_000;
+const daysAgo = (days: number): number => Date.now() - days * dayMs;
+
+test('a snapshot age reads as days, weeks, months, then years', () => {
+  expect([relDay(daysAgo(0)), relDay(daysAgo(1)), relDay(daysAgo(4))]).toEqual([
+    'today',
+    'yesterday',
+    '4 days ago',
+  ]);
+  // 13 days rounds to two weeks; a fortnight reading "a week ago" would be worse than either.
+  expect([relDay(daysAgo(7)), relDay(daysAgo(13)), relDay(daysAgo(29))]).toEqual([
+    'a week ago',
+    '2 weeks ago',
+    '4 weeks ago',
+  ]);
+  // 364 days is the last month; past it a reader expects a year, not "12 months ago".
+  expect([relDay(daysAgo(30)), relDay(daysAgo(120)), relDay(daysAgo(364))]).toEqual([
+    'a month ago',
+    '4 months ago',
+    'a year ago',
+  ]);
+  expect([relDay(daysAgo(365)), relDay(daysAgo(730)), relDay(daysAgo(1500))]).toEqual([
+    'a year ago',
+    '2 years ago',
+    '4 years ago',
+  ]);
+});
+
+test('a snapshot age lands in one bucket, and a year bucket names its year', () => {
+  expect([snapshotGroup(daysAgo(0)), snapshotGroup(daysAgo(1)), snapshotGroup(daysAgo(3))]).toEqual([
+    'Today',
+    'Yesterday',
+    'This week',
+  ]);
+  expect([snapshotGroup(daysAgo(10)), snapshotGroup(daysAgo(100))]).toEqual([
+    'This month',
+    'This year',
+  ]);
+  // Past a year the bucket is the year itself, so two old years never share a heading.
+  expect(snapshotGroup(daysAgo(800))).toBe(String(new Date(daysAgo(800)).getFullYear()));
 });

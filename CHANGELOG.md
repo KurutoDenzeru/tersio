@@ -5,6 +5,7 @@
 - The Costs page reads actual cost against an unoptimized baseline, and names what prompt caching and Headroom compression saved. Thanks to @FrancoStino (#108).
 
 ### Changed
+- The snapshot list groups by age: `Today`, `Yesterday`, `This week`, `This month`, `This year`, then the year itself, and each row carries its age in words (`today`, `yesterday`, `3 days ago`, `a week ago`, `2 months ago`, `a year ago`). A list of raw stamps made a week-old file and a year-old file read alike.
 - Snapshots rotate by date instead of one flat cap. The newest 14 are kept, then the newest of each earlier day for 30 days, then the newest of each month for a year, then the newest of each year for 5 years. A run of restores used to drop every trace of last week within minutes, and a flat monthly cap dropped every trace of last year. `BACKUP_DAILY_DAYS`, `BACKUP_MONTHLY_MONTHS`, and `BACKUP_YEARLY_YEARS` name the three windows, and the Data pane states them.
 - `tersio update` refreshes RTK through RTK's own installer, so one command covers every component Tersio manages. Tersio still writes no update logic of its own. Thanks to @FrancoStino (#108).
 - The dashboard listens on port `3456` by default, or `$TERSIO_DASHBOARD_PORT`, so a bookmark survives a restart. A busy port walks up to ten ports before the start fails. Thanks to @FrancoStino (#108).

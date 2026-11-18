@@ -494,6 +494,37 @@ export function relAge(ts: number): string {
   return Math.floor(s / 86400) + "d ago"
 }
 
+/** A snapshot's age in words: `today`, `yesterday`, `3 days ago`, `2 weeks ago`, `5 months ago`, `2 years ago`. */
+export function relDay(ts: number): string {
+  const days = Math.max(0, Math.floor((Date.now() - ts) / 86_400_000))
+  if (days === 0) return "today"
+  if (days === 1) return "yesterday"
+  if (days < 7) return `${days} days ago`
+  // Round, so 10 days reads as a week and 13 as two, never "a week ago" for a fortnight.
+  if (days < 30) {
+    const weeks = Math.round(days / 7)
+    return weeks === 1 ? "a week ago" : `${weeks} weeks ago`
+  }
+  // 360 days is the last month: past it a reader expects a year, not "12 months ago".
+  if (days < 360) {
+    const months = Math.min(11, Math.floor(days / 30))
+    return months === 1 ? "a month ago" : `${months} months ago`
+  }
+  const years = Math.max(1, Math.round(days / 365))
+  return years === 1 ? "a year ago" : `${years} years ago`
+}
+
+/** The bucket a snapshot's age falls in, newest first, as the list groups it. */
+export function snapshotGroup(ts: number): string {
+  const days = Math.max(0, Math.floor((Date.now() - ts) / 86_400_000))
+  if (days === 0) return "Today"
+  if (days === 1) return "Yesterday"
+  if (days < 7) return "This week"
+  if (days < 30) return "This month"
+  if (days < 365) return "This year"
+  return `${new Date(ts).getFullYear()}`
+}
+
 // Seconds precision for the Models "Last run" column.
 export function relAgePrecise(ts: number): string {
   const s = Math.max(0, Math.round((Date.now() - ts) / 1000))
