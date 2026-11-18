@@ -134,12 +134,19 @@ fi
 echo
 echo "Running the main installer..."
 # A broken payload crashes on boot — smoke-check before `tersio install` runs.
-"$TERSIO" --version >/dev/null 2>&1 || {
+# The reason is kept: a missing node reads the same as a broken payload otherwise.
+if ! SMOKE="$("$TERSIO" --version 2>&1)"; then
   echo "tersio installer: the installed tersio failed its smoke check (--version)." >&2
+  [ -n "$SMOKE" ] && echo "  $SMOKE" >&2
+  if ! command -v node >/dev/null 2>&1; then
+    echo "Node.js is required: the installed bin starts with '#!/usr/bin/env node'." >&2
+    echo "Install Node.js 20.12+ (https://nodejs.org), then run: tersio install" >&2
+    exit 1
+  fi
   echo "The release payload may be broken — retry once fixed, or pin a known-good version:" >&2
   echo "  npm install -g @krtclcdy/tersio@latest --no-audit --no-fund" >&2
   exit 1
-}
+fi
 # Interactive shells get the scope + Combo preset menus; piped installs read
 # the prompts from the controlling terminal when one can be opened (the
 # subshell probe matters: dash aborts the whole script when a special builtin

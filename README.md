@@ -71,7 +71,7 @@ npm exec --yes --prefer-online --package=@krtclcdy/tersio@latest -- tersio insta
 | Need | Detail |
 |---|---|
 | Host | [OMP](https://github.com/can1357/oh-my-pi), [pi](https://github.com/earendil-works/pi), [OpenCode](https://opencode.ai), [PiG](https://pi-in-go.dev), [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness), Codex, or [Claude Code](https://code.claude.com) — `tersio install --host <omp\|pi\|opencode\|pig\|dsh\|codex\|claude>` |
-| Node.js | 20.12+ with npm. The CLI runs under Node |
+| Node.js | 20.12+ with npm. The installed bin starts with `#!/usr/bin/env node`, so the CLI needs Node.js even when Bun runs it |
 | Bun | Optional. Preferred when on PATH, npm otherwise; also supplies SQLite in process |
 | SQLite | Bun, Node 22.5+ `node:sqlite`, or the `sqlite3` binary on PATH |
 | OS | macOS, Linux, or Windows, native (`install.ps1`). WSL works too, installed from inside it |
@@ -213,7 +213,7 @@ It is display-only — it never enters the model context, so it costs the sessio
 | `/pstack on\|off\|status` | [pstack](https://github.com/cursor/plugins/tree/main/pstack) rigor mode. Opt-in; `normal mode` clears it. |
 | `/headroom on\|off\|status` | [Headroom](https://github.com/headroomlabs-ai/headroom) compression. Opt-in; Tersio reads its savings and never installs it silently. |
 | `tersio modes codegraph on\|off`, `tersio modes codegraph-sync <mode>` | CodeGraph defaults and sync interval. `--host <agent>` scopes on/off to one agent; sync is shared. |
-| `/tersio status` | Active modes and combo level. |
+| `/tersio status [on\|off\|toggle]` | Active modes and combo level. `on`, `off`, or `toggle` shows or hides the footer status line and saves the choice for this agent. |
 | `/tersio update <ponytail\|rtk\|caveman\|all> [--dry-run]` | Update add-ons. |
 | `/tersio dashboard` | Open the dashboard. |
 | `/tersio help` | This table. |
@@ -228,7 +228,7 @@ Shared, and identical for every host:
 
 | What | Path |
 |---|---|
-| Session defaults | `~/.tersio/settings.json` — combo, caveman, rtk, ponytail, pstack, headroom, and currency. `hosts.<agent>` overrides one agent; `inherit` restores the shared value |
+| Session defaults | `~/.tersio/settings.json` — combo, caveman, rtk, ponytail, pstack, headroom, status line (`statusVisible`), and currency. `hosts.<agent>` overrides one agent; `inherit` restores the shared value |
 | RTK binary | Not Tersio's: whatever `rtk` resolves to on `PATH` (or `~/.bun/bin`). rtk installs and updates it |
 | Ledger and caches | `~/.tersio/usage.db` — usage rows, prices, scorecard, state, Headroom records, and layout. Local only |
 | Activity log | `~/.tersio/activity.jsonl` — one line per change, as the Logs page reads it |

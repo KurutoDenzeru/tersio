@@ -72,7 +72,10 @@ import {codexHome} from '../extensions/shared/codex-state.ts';
 import {claudeHome} from '../extensions/shared/claude-state.ts';
 import {tersioMcpConfigured, tersioMcpSupported} from '../extensions/shared/mcp-config.ts';
 import {
-    BACKUP_KEEP,
+    BACKUP_DAILY_DAYS,
+  BACKUP_KEEP,
+  BACKUP_MONTHLY_MONTHS,
+  BACKUP_YEARLY_YEARS,
     backupDir,
     backupDiskBytes,
     createDataBackup,
@@ -1252,6 +1255,9 @@ async function runDashboard(options: DashboardOptions): Promise<void> {
       json(res, 200, {
         dir: backupDir(),
         keep: BACKUP_KEEP,
+        keepDailyDays: BACKUP_DAILY_DAYS,
+        keepMonthlyMonths: BACKUP_MONTHLY_MONTHS,
+        keepYearlyYears: BACKUP_YEARLY_YEARS,
         sources: dataSources(),
         backups: listDataBackups(),
         schedule: readBackupSchedule(),

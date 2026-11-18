@@ -1,7 +1,14 @@
 // Data contract mirroring cli/usage.ts; snapshots ride window.__TERSIO_SNAP for file://.
 import {useCallback, useEffect, useState} from "react"
 import {FX_SNAPSHOT, fxMoney, isCurrencyCode} from "./format"
-import type {RangeKey, RtkRow,} from "../../../../extensions/shared/agent-types.ts"
+import type {
+  AgentHeadroom,
+  AgentSessionTrace,
+  AgentStats,
+  AgentView,
+  RangeKey,
+  RtkRow,
+} from "../../../../extensions/shared/agent-types.ts"
 
 // The API contract is defined once in the backend; the dashboard re-exports it as its public type surface.
 export type {

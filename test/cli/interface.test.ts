@@ -172,6 +172,49 @@ const TARBALL_FALLBACK = 'env TERSIO_TARBALL_URL=file:///nonexistent/tersio-npm.
   },
 );
 
+(process.platform === 'win32' ? test.skip : test)(
+  'curl bootstrap names Node.js when the bin cannot start without it',
+  () => {
+    const bin = mkdtempSync(path.join(os.tmpdir(), 'tersio-curl-bin-'));
+    const prefix = mkdtempSync(path.join(os.tmpdir(), 'tersio-curl-prefix-'));
+    mkdirSync(path.join(prefix, 'bin'), { recursive: true });
+    writeFileSync(
+      path.join(bin, 'npm'),
+      '#!/bin/sh\nif [ "$1" = "prefix" ]; then echo "' + prefix + '"; else echo "fake-npm $*"; fi\n',
+      'utf8',
+    );
+    chmodSync(path.join(bin, 'npm'), 0o755);
+    // The published bin starts with `#!/usr/bin/env node`, so a machine without node fails here.
+    writeFileSync(
+      path.join(prefix, 'bin', 'tersio'),
+      '#!/bin/sh\necho "env: node: No such file or directory" >&2\nexit 127\n',
+      'utf8',
+    );
+    chmodSync(path.join(prefix, 'bin', 'tersio'), 0o755);
+
+    try {
+      // A PATH with no node directory on it, so the branch is chosen by the machine, not the runner.
+      const result = spawnSync(
+        '/bin/sh',
+        ['-c', `${TARBALL_FALLBACK} PATH="${bin}:/usr/bin:/bin" sh "${script}" --npm --dry-run`],
+        {
+          cwd: root,
+          encoding: 'utf8',
+          timeout: 15000,
+          env: { ...process.env, PATH: `${bin}${path.delimiter}/usr/bin${path.delimiter}/bin` },
+        },
+      );
+
+      expect(result.status).toBe(1);
+      expect(result.stderr).toMatch(/Node\.js is required/);
+      expect(result.stderr).toMatch(/env: node: No such file or directory/);
+      expect(result.stderr).not.toMatch(/release payload may be broken/);
+    } finally {
+      cleanup(bin, prefix);
+    }
+  },
+);
+
 (process.platform === 'win32' ? test.skip : test)('curl bootstrap fails with a hint when npm is missing', () => {
   const emptyBin = mkdtempSync(path.join(os.tmpdir(), 'tersio-curl-empty-'));
 

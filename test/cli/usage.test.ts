@@ -2046,6 +2046,60 @@ describe('data backups', () => {
     expect(stamps).toEqual([...stamps].toSorted((a, b) => b.localeCompare(a)));
   });
 
+  test('one snapshot per older day, month, and year survives a burst of new ones', () => {
+    const day = 86_400_000;
+    const backdate = (name: string, at: number): void => {
+      const when = new Date(at);
+      utimesSync(path.join(backupDir(), name), when, when);
+    };
+    // Two on one day inside the daily window: the newer of the two is the one that survives.
+    const oldA = createDataBackup().name;
+    const oldB = createDataBackup().name;
+    backdate(oldA, Date.now() - 20 * day);
+    backdate(oldB, Date.now() - 20 * day + 60_000);
+    // One inside the monthly window, past the daily one.
+    const oldC = createDataBackup().name;
+    backdate(oldC, Date.now() - 60 * day);
+    // One inside the yearly window, past the monthly one.
+    const oldD = createDataBackup().name;
+    backdate(oldD, Date.now() - 800 * day);
+    // One past every window, so the rotation drops it.
+    const ancient = createDataBackup().name;
+    backdate(ancient, Date.now() - 4000 * day);
+
+    for (let i = 0; i < BACKUP_KEEP; i += 1) createDataBackup();
+
+    const kept = listDataBackups().map((entry) => entry.name);
+    expect(kept.length, 'recent set plus three older buckets').toBe(BACKUP_KEEP + 3);
+    expect(kept).toContain(oldB);
+    expect(kept).toContain(oldC);
+    expect(kept).toContain(oldD);
+    expect(kept).not.toContain(oldA);
+    expect(kept).not.toContain(ancient);
+  });
+
+  test('a store of nothing but old snapshots still keeps the newest set', () => {
+    const day = 86_400_000;
+    // Every file sits past the yearly window, so no tier claims one and only the recent set applies.
+    for (let i = 0; i < BACKUP_KEEP + 3; i += 1) {
+      const made = createDataBackup();
+      const when = new Date(Date.now() - (4000 + i) * day);
+      utimesSync(made.path, when, when);
+    }
+    pruneBackups();
+    expect(listDataBackups().length, 'the recent set is never emptied').toBe(BACKUP_KEEP);
+  });
+
+  test('a snapshot two years back survives a burst whatever today is', () => {
+    const day = 86_400_000;
+    // Two years back lands in the yearly tier on any calendar date, leap day and month end included.
+    const old = createDataBackup();
+    const when = new Date(Date.now() - 730 * day);
+    utimesSync(old.path, when, when);
+    for (let i = 0; i < BACKUP_KEEP; i += 1) createDataBackup();
+    expect(listDataBackups().map((entry) => entry.name)).toContain(old.name);
+  });
+
   test('a damaged snapshot never displaces a readable one', () => {
     const bad = createDataBackup();
     const bytes = readFileSync(bad.path);

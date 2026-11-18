@@ -30,7 +30,7 @@ import {saveHostDefaults, storedProfileSync} from '../../cli/profile.ts';
 import {readUsageDb, syncUsageDb} from '../../extensions/shared/usage-store.ts';
 import {ruleBodyProblem} from '../../extensions/shared/utils.ts';
 import {sqliteExec} from '../../extensions/shared/sqlite.ts';
-import {cliEnv, fakeExecutable, fakeRtkBin, hasSqlite, isWindows, withHome} from '../helpers/env.ts';
+import {cliEnv, fakeExecutable, fakeRtkBin, hasBun, hasSqlite, isWindows, withHome} from '../helpers/env.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const installer = path.join(root, 'dist', 'tersio.js');
@@ -1872,3 +1872,48 @@ test.skipIf(isWindows())(
   },
   60000,
 );
+
+// The pi tree carries no package.json above it, so any import-time package-root walk killed every
+// extension with "package root not found". ponytail/ is its own package, so a parent import broke it too.
+const PI_LOAD_ENTRIES = [
+  '.pi/agent/extensions/commands/index.ts',
+  '.pi/agent/extensions/headroom/index.ts',
+  '.pi/agent/extensions/rtk/filter.ts',
+  '.pi/agent/ponytail/pi-extension/index.ts',
+] as const;
+
+test.skipIf(!hasBun())('every pi extension entry loads from an installed tree alone', () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), 'tersio-pi-load-'));
+  try {
+    const install = spawnSync(process.execPath, [installer, 'install', '--host', 'pi', '--yes'], {
+      cwd: root,
+      encoding: 'utf8',
+      env: cliEnv(home),
+      timeout: 120_000,
+    });
+    expect(install.status, install.stderr).toBe(0);
+
+    // Load each entry the way pi's jiti loader does, from the copied tree and nothing beside it.
+    const script = [
+      'const targets = JSON.parse(process.argv[1]);',
+      'for (const target of targets) {',
+      '  try { await import(target); }',
+      '  catch (error) {',
+      '    console.log(`${target}: ${error.message.split("\\n")[0]}`);',
+      '    process.exitCode = 1;',
+      '  }',
+      '}',
+    ].join('\n');
+    const targets = PI_LOAD_ENTRIES.map((rel) => path.join(home, rel));
+    const load = spawnSync('bun', ['-e', script, JSON.stringify(targets)], {
+      encoding: 'utf8',
+      env: cliEnv(home),
+      timeout: 120_000,
+    });
+    // A failure names the entry and the message, so the report says which import broke.
+    expect(load.stdout.trim(), load.stderr).toBe('');
+    expect(load.status, load.stderr).toBe(0);
+  } finally {
+    rmTree(home);
+  }
+}, 240_000);

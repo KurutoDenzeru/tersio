@@ -14,6 +14,12 @@ import { tersioHome } from './utils.ts';
 
 /** Snapshots kept on disk, newest first; six fills past one screen so the pane scrolls. */
 export const BACKUP_KEEP = 14;
+/** Beyond the recent set, one snapshot survives for each earlier day inside this window. */
+export const BACKUP_DAILY_DAYS = 30;
+/** Past that window, one snapshot survives for each month inside this window. */
+export const BACKUP_MONTHLY_MONTHS = 12;
+/** Past that window, one snapshot survives for each year inside this window. */
+export const BACKUP_YEARLY_YEARS = 5;
 
 const EXT = '.snap';
 const LEGACY = /^usage-\d{14}\.db$/;
@@ -393,7 +399,66 @@ export function createDataBackup(): DataBackup {
   );
 }
 
-/** Keep the newest {@link BACKUP_KEEP} readable snapshots, drop the rest, and retire superseded mirrors. */
+/** A local calendar key, so one day is one bucket whatever the hour. */
+function dayKey(at: Date): string {
+  return `${at.getFullYear()}-${at.getMonth()}-${at.getDate()}`;
+}
+
+function monthKey(at: Date): string {
+  return `${at.getFullYear()}-${at.getMonth()}`;
+}
+
+function yearKey(at: Date): string {
+  return `${at.getFullYear()}`;
+}
+
+/** One older-than-recent tier: a bucket key and how far back it reaches. */
+interface Tier {
+  key: (at: Date) => string;
+  since: number;
+}
+
+/**
+ * Which snapshots survive a prune: the newest {@link BACKUP_KEEP}, then the newest of each earlier day
+ * inside {@link BACKUP_DAILY_DAYS}, then one a month for {@link BACKUP_MONTHLY_MONTHS}, then one a year
+ * for {@link BACKUP_YEARLY_YEARS}. A flat cap alone loses every trace of last week after a burst of
+ * restores, and a monthly cap alone loses every trace of last year.
+ */
+export function rotationKeeps(readable: DataBackup[]): Set<string> {
+  const sorted = readable.toSorted((a, b) => b.mtime - a.mtime);
+  const kept = sorted.slice(0, BACKUP_KEEP);
+  const chosen = new Set(kept.map((entry) => entry.name));
+  // Shift from the first of the month: a 31st or a Feb 29 overflows into the next month otherwise,
+  // and a window that starts a few days early only keeps more.
+  const monthly = new Date();
+  monthly.setDate(1);
+  monthly.setMonth(monthly.getMonth() - BACKUP_MONTHLY_MONTHS);
+  const yearly = new Date();
+  yearly.setDate(1);
+  yearly.setMonth(0, 1);
+  yearly.setFullYear(yearly.getFullYear() - BACKUP_YEARLY_YEARS);
+  const tiers: Tier[] = [
+    { key: dayKey, since: Date.now() - BACKUP_DAILY_DAYS * 86_400_000 },
+    { key: monthKey, since: monthly.getTime() },
+    { key: yearKey, since: yearly.getTime() },
+  ];
+  // The recent set already covers its own day, month, and year, so a tier never duplicates them.
+  const seen = tiers.map((tier) => new Set(kept.map((entry) => tier.key(new Date(entry.mtime)))));
+  for (const entry of sorted.slice(BACKUP_KEEP)) {
+    const at = new Date(entry.mtime);
+    // The first tier whose window still covers it: day, then month, then year.
+    const tier = tiers.findIndex((candidate) => entry.mtime >= candidate.since);
+    if (tier < 0) continue;
+    // A bucket a newer snapshot already fills is redundant, so the file drops rather than widening the set.
+    const bucket = tiers[tier].key(at);
+    if (seen[tier].has(bucket)) continue;
+    seen[tier].add(bucket);
+    chosen.add(entry.name);
+  }
+  return chosen;
+}
+
+/** Keep the rotated set of readable snapshots, drop the rest, and retire superseded mirrors. */
 export function pruneBackups(): void {
   let names: string[] = [];
   try {
@@ -427,8 +492,8 @@ export function pruneBackups(): void {
       mirrors.push(name);
     }
   }
-  const kept = readable.toSorted((a, b) => b.mtime - a.mtime).slice(0, BACKUP_KEEP);
-  const keep = new Set(kept.map((entry) => entry.name));
+  const keep = rotationKeeps(readable);
+  const kept = readable.filter((entry) => keep.has(entry.name)).toSorted((a, b) => b.mtime - a.mtime);
   // An unreadable file carries nothing, so it never displaces a snapshot that does.
   for (const entry of readable) if (!keep.has(entry.name)) surplus.push(entry.path);
   for (const file of surplus) fs.rmSync(file, { force: true });

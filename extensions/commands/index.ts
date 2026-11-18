@@ -1,7 +1,8 @@
 // Root command plus mode switches; sibling mirrors sync with no reload.
 import { reconcileSharedComboEntries, sessionEntries } from '../shared/session-state.ts';
-import { announceStatus } from '../shared/status.ts';
-import { setExtensionLabel } from '../shared/host.ts';
+import { announceStatus, bindStatusHost } from '../shared/status.ts';
+import { hostIdOf, setExtensionLabel } from '../shared/host.ts';
+import { readStatusVisible, saveStatusVisible } from '../shared/plugin-settings.ts';
 import os from 'node:os';
 import path from 'node:path';
 import { appendUsage } from '../shared/usage-ledger.ts';
@@ -10,7 +11,7 @@ import { openCommand } from '../shared/utils.ts';
 import type { ExtensionApi, ExtensionCtx } from '../shared/types.ts';
 
 const HELP = [
-  '/tersio status — active modes + combo level',
+  '/tersio status [on|off|toggle] — show state; on/off/toggle sets the footer line and saves it as default',
   '/tersio update <ponytail|rtk|caveman|all> [--dry-run]',
   '/tersio dashboard — open the Dashboard',
   '/tersio help — this table',
@@ -88,6 +89,19 @@ export default function tersioCommandsExtension(pi: ExtensionApi): void {
       appendUsage('command', `/tersio ${parts.join(' ')}`.trim());
 
       if (!sub || sub === 'status') {
+        const arg = parts[1];
+        if (arg === 'on' || arg === 'off' || arg === 'toggle') {
+          const host = hostIdOf(pi);
+          const next = arg === 'toggle' ? !readStatusVisible(host) : arg === 'on';
+          if (!saveStatusVisible(host, next)) {
+            ctx?.ui?.notify?.('Could not save the status setting.', 'warning');
+            return;
+          }
+          bindStatusHost(host);
+          announceStatus(ctx);
+          ctx?.ui?.notify?.(`Status line ${next ? 'shown' : 'hidden'} (saved as default for ${host}).`, 'info');
+          return;
+        }
         if (ctx?.hasUI) reconcileSharedComboEntries(sessionEntries(ctx));
         announceStatus(ctx);
         return;

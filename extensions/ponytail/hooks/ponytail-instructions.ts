@@ -2,23 +2,31 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { findPackageRoot } from '../../shared/utils.ts';
 import { DEFAULT_MODE, normalizeMode, normalizePersistedMode } from './ponytail-config.ts';
 
 // The one mode whose instructions live in a skill of its own instead of the shared SKILL.md table.
 const SKILL_ONLY_MODE = 'review';
 const OWN_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)));
 
+// pi copies this folder alone into `~/.pi/agent/ponytail`, so a parent import breaks that copy.
+// The walk stays local for the same reason: the pi package has its own package.json beside the hooks.
+function packageRoot(fromDir: string): string {
+  let dir = fromDir;
+  for (;;) {
+    if (fs.existsSync(path.join(dir, 'package.json'))) return dir;
+    const parent = path.dirname(dir);
+    if (parent === dir) return fromDir;
+    dir = parent;
+  }
+}
+
 // The compiled module sits in dist/, which the build never copies skills into, so a beside-the-module
 // read alone would report a broken install on every emitted CLI.
 function skillPath(): string {
   const beside = path.join(OWN_DIR, '..', 'skills', 'ponytail', 'SKILL.md');
   if (fs.existsSync(beside)) return beside;
-  try {
-    return path.join(findPackageRoot(OWN_DIR), 'extensions', 'ponytail', 'skills', 'ponytail', 'SKILL.md');
-  } catch {
-    return beside;
-  }
+  const fromPackage = path.join(packageRoot(OWN_DIR), 'extensions', 'ponytail', 'skills', 'ponytail', 'SKILL.md');
+  return fs.existsSync(fromPackage) ? fromPackage : beside;
 }
 
 export function filterSkillBodyForMode(body: unknown, mode: unknown): string {

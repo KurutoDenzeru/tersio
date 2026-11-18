@@ -113,7 +113,7 @@ Update with `claude plugin marketplace update tersio`, then reinstall from `/plu
 ## Requirements
 
 - OMP, pi, OpenCode, PiG, DeepSeek Harness, Codex, or Claude Code.
-- Node.js 20.12+ with npm, or Bun. The installer prefers Bun when it is present.
+- Node.js 20.12+ with npm, or Bun. The installer prefers Bun when it is present, but the installed `tersio` bin starts with `#!/usr/bin/env node`, so Node.js is required either way.
 - SQLite runs in process where the runtime provides it (Bun, or Node 22.5+); an older Node uses the `sqlite3` binary instead.
 - macOS, Linux, or Windows. Install from the environment where the host runs.
 
