@@ -43,6 +43,11 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+} from "@/components/ui/pagination"
 import { useTheme, useResolvedTheme } from "@/components/theme-provider"
 import { AgentLogo } from "@/components/agent-logos"
 import { ACCENTS, ACCENT_IDS, accentSwatch, type AccentId } from "@/lib/accent"
@@ -58,7 +63,7 @@ import type { DoctorReport, UpdateSchedule } from "@/lib/data"
 import type { UpdateFeed } from "@/lib/update-watch"
 import { useToast } from "./toaster"
 import { cn } from "cn"
-import { HoverTip } from "./common"
+import { HoverTip, usePager } from "./common"
 import { SocialLinks } from "./brand"
 import { Icon } from "./icon"
 import { Card } from "./charts/stats"
@@ -80,6 +85,9 @@ interface DataBackupRow {
   bytes: number
   members: DataFile[]
 }
+
+/** Snapshots a page holds: enough to see a month, short enough that the card never scrolls. */
+const SNAPSHOTS_PER_PAGE = 8
 
 const SCHEDULE_OPTIONS: ReadonlyArray<{ id: string; label: string; hint: string }> = [
   { id: "monthly", label: "Monthly", hint: "one a month" },
@@ -611,6 +619,8 @@ function DataPane() {
   const [counts, setCounts] = useState<{ rows: number; rtk: number } | null>(null)
   const [retention, setRetention] = useState(0)
   const [advanced, setAdvanced] = useState(false)
+  /** One page of snapshots at a time, so a long history never scrolls inside the card. */
+  const [page, setPage] = useState(1)
 
   const load = useCallback(() => {
     fetch("/api/data")
@@ -834,6 +844,15 @@ function DataPane() {
   const retentionHint = RETENTION_OPTIONS.find((o) => o.id === retention)?.hint ?? ""
   const scheduleLabel = SCHEDULE_OPTIONS.find((o) => o.id === schedule)?.label ?? "Monthly"
   const scheduleHint = SCHEDULE_OPTIONS.find((o) => o.id === schedule)?.hint ?? ""
+  // One page of snapshots, so a long history pages instead of scrolling inside the card.
+  const total = backups?.length ?? 0
+  const { pages, page: current, range } = usePager(total, SNAPSHOTS_PER_PAGE, page)
+  const pageRows = (backups ?? []).slice((current - 1) * SNAPSHOTS_PER_PAGE, current * SNAPSHOTS_PER_PAGE)
+  const pageNums: Array<number | "…"> = []
+  for (let p = 1; p <= pages; p += 1) {
+    if (p === 1 || p === pages || Math.abs(p - current) <= 1) pageNums.push(p)
+    else if (pageNums[pageNums.length - 1] !== "…") pageNums.push("…")
+  }
 
   return (
     <section aria-label="Data" className="grid gap-4">
@@ -970,53 +989,108 @@ function DataPane() {
             No snapshots yet. Take one above, or let the schedule take it.
           </p>
         ) : (
-          // Six rows at a time; the cap is a max-height, so a long history scrolls in the card and a short list stays tight.
-          <div className="max-h-[19rem] overflow-y-auto">
-            {backups.map((b, index) => {
-              const checked = selected.includes(b.name)
-              // A new heading whenever the age bucket changes; the list arrives newest first.
-              const group = snapshotGroup(b.mtime)
-              const opensGroup = index === 0 || snapshotGroup(backups[index - 1].mtime) !== group
-              return (
-                <div key={b.name}>
-                  {opensGroup && (
-                    <p className="m-0 border-t border-line py-1.5 mono text-[10px] tracking-wide text-dim uppercase first:border-t-0">
-                      {group}
-                    </p>
-                  )}
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      className="size-3.5 shrink-0 accent-accent"
-                      aria-label={`Select ${dataStamp(b.mtime)}`}
-                      checked={checked}
-                      onChange={() => toggleSelected(b.name)}
-                    />
-                    <button
-                      type="button"
-                      aria-pressed={checked}
-                      className={cn(
-                        "group flex min-w-0 flex-1 items-center gap-3 py-2 text-left transition-colors hover:bg-track/50 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent",
-                        checked && "bg-track hover:bg-track/80",
-                      )}
-                      onClick={() => toggleSelected(b.name)}
-                    >
-                      <div className="min-w-0 flex-1">
-                        <HoverTip
-                          content={`${b.name} — ${b.members.map((f) => f.label).join(", ")}`}
-                        >
-                          <p className="mono m-0 truncate text-xs text-ink">{dataStamp(b.mtime)}</p>
-                        </HoverTip>
-                        <p className="mono mt-0.5 mb-0 text-[11px] text-dim">
-                          {relDay(b.mtime)} · {dataSize(b.bytes)} · 1 file
-                        </p>
-                      </div>
-                    </button>
+          <>
+            <div>
+              {pageRows.map((b, index) => {
+                const checked = selected.includes(b.name)
+                // A new heading whenever the age bucket changes; each page carries the bucket its first row opens.
+                const group = snapshotGroup(b.mtime)
+                const previous = index > 0 ? pageRows[index - 1] : null
+                const opensGroup = !previous || snapshotGroup(previous.mtime) !== group
+                return (
+                  <div key={b.name}>
+                    {opensGroup && (
+                      <p className="m-0 border-t border-line py-1.5 mono text-[10px] tracking-wide text-dim uppercase first:border-t-0">
+                        {group}
+                      </p>
+                    )}
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        className="size-3.5 shrink-0 accent-accent"
+                        aria-label={`Select ${dataStamp(b.mtime)}`}
+                        checked={checked}
+                        onChange={() => toggleSelected(b.name)}
+                      />
+                      <button
+                        type="button"
+                        aria-pressed={checked}
+                        className={cn(
+                          "group flex min-w-0 flex-1 items-center gap-3 py-2 text-left transition-colors hover:bg-track/50 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent",
+                          checked && "bg-track hover:bg-track/80",
+                        )}
+                        onClick={() => toggleSelected(b.name)}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <HoverTip
+                            content={`${b.name} — ${b.members.map((f) => f.label).join(", ")}`}
+                          >
+                            <p className="mono m-0 truncate text-xs text-ink">
+                              {dataStamp(b.mtime)}
+                            </p>
+                          </HoverTip>
+                          <p className="mono mt-0.5 mb-0 text-[11px] text-dim">
+                            {relDay(b.mtime)} · {dataSize(b.bytes)} · 1 file
+                          </p>
+                        </div>
+                      </button>
+                    </div>
                   </div>
-                </div>
-              )
-            })}
-          </div>
+                )
+              })}
+            </div>
+            {/* The pager only earns its room on a long history; one page reads as nothing to page through. */}
+            {pages > 1 && (
+              <div className="mono flex items-center gap-3 border-t border-line py-1.5 text-[11px] text-dim">
+                <span>{range}</span>
+                <Pagination className="mx-0 ml-auto w-auto">
+                  <PaginationContent>
+                    <PaginationItem>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="Previous page"
+                        disabled={current === 1}
+                        onClick={() => setPage(current - 1)}
+                      >
+                        ‹
+                      </Button>
+                    </PaginationItem>
+                    {pageNums.map((p, i) =>
+                      p === "…" ? (
+                        <PaginationItem key={`e${i}`}>
+                          <span className="px-1 text-dim">…</span>
+                        </PaginationItem>
+                      ) : (
+                        <PaginationItem key={p}>
+                          <Button
+                            variant={p === current ? "outline" : "ghost"}
+                            size="icon-sm"
+                            aria-label={`Page ${p}`}
+                            aria-current={p === current ? "page" : undefined}
+                            onClick={() => setPage(p)}
+                          >
+                            {p}
+                          </Button>
+                        </PaginationItem>
+                      ),
+                    )}
+                    <PaginationItem>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="Next page"
+                        disabled={current === pages}
+                        onClick={() => setPage(current + 1)}
+                      >
+                        ›
+                      </Button>
+                    </PaginationItem>
+                  </PaginationContent>
+                </Pagination>
+              </div>
+            )}
+          </>
         )}
       </Card>
 
