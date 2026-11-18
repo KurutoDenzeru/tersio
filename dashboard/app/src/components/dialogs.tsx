@@ -599,6 +599,7 @@ function DataPane() {
   const [keep, setKeep] = useState(14)
   const [keepDaily, setKeepDaily] = useState(30)
   const [keepMonthly, setKeepMonthly] = useState(12)
+  const [keepYearly, setKeepYearly] = useState(5)
   const [dir, setDir] = useState("")
   /** The one list of picks: selecting one enables Restore, selecting several enables Delete. */
   const [selected, setSelected] = useState<string[]>([])
@@ -622,6 +623,7 @@ function DataPane() {
             keep?: number
             keepDailyDays?: number
             keepMonthlyMonths?: number
+            keepYearlyYears?: number
             dir?: string
             reset?: { rows: number; rtk: number }
           } | null,
@@ -632,6 +634,7 @@ function DataPane() {
           if (typeof d?.keep === "number") setKeep(d.keep)
           if (typeof d?.keepDailyDays === "number") setKeepDaily(d.keepDailyDays)
           if (typeof d?.keepMonthlyMonths === "number") setKeepMonthly(d.keepMonthlyMonths)
+          if (typeof d?.keepYearlyYears === "number") setKeepYearly(d.keepYearlyYears)
           if (d?.dir) setDir(d.dir)
         },
       )
@@ -838,7 +841,7 @@ function DataPane() {
       <Card
         title="Backup schedule"
         icon="clock"
-        description={`Every file Tersio keeps. The newest ${keep} are kept, then one a day for ${keepDaily} days, then one a month for ${keepMonthly} months.`}
+        description={`Every file Tersio keeps. The newest ${keep} are kept, then one a day for ${keepDaily} days, then one a month for ${keepMonthly} months, then one a year for ${keepYearly} years.`}
         actions={
           <Select value={schedule} onValueChange={(v) => saveSchedule(v ?? "monthly")}>
             <SelectTrigger size="sm" className="w-[132px]" aria-label="Snapshot schedule">
