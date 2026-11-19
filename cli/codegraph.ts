@@ -105,6 +105,7 @@ export async function runCodegraph(args: string[]): Promise<void> {
         console.log(`Git hooks configured in ${projectRoot}/.git/hooks:`);
         for (const h of result.installed) console.log(`  + installed ${h}`);
         for (const s of result.skipped) console.log(`  = already configured ${s}`);
+        for (const h of result.incompatible) console.log(`  ! left ${h} alone: it is not a shell script`);
       } else {
         console.log(`Skipped: ${result.skipped.join(', ')}`);
       }

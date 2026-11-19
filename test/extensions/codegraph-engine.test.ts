@@ -165,6 +165,25 @@ export function helper(): void {}`,
     const rerun = installGitHooks(fakeRepo);
     expect(rerun.skipped.length).toBe(3);
   });
+
+  test('installGitHooks runs before an existing hook that exits early and leaves non-shell hooks alone', () => {
+    const fakeRepo = fs.mkdtempSync(path.join(os.tmpdir(), 'test-git-hooks-existing-'));
+    const hooks = path.join(fakeRepo, '.git', 'hooks');
+    fs.mkdirSync(hooks, { recursive: true });
+    fs.writeFileSync(path.join(hooks, 'post-commit'), '#!/bin/sh\necho mine\nexit 0\n', { mode: 0o755 });
+    const node = '#!/usr/bin/env node\nconsole.log(1);\n';
+    fs.writeFileSync(path.join(hooks, 'post-merge'), node, { mode: 0o755 });
+
+    const result = installGitHooks(fakeRepo);
+    expect(result.incompatible).toEqual(['post-merge']);
+    expect(result.installed).toEqual(['post-commit', 'post-checkout']);
+
+    const commit = fs.readFileSync(path.join(hooks, 'post-commit'), 'utf8');
+    expect(commit.startsWith('#!/bin/sh\n# Tersio CodeGraph')).toBe(true);
+    expect(commit.indexOf('tersio codegraph sync')).toBeLessThan(commit.indexOf('exit 0'));
+    expect(commit).toContain('echo mine');
+    expect(fs.readFileSync(path.join(hooks, 'post-merge'), 'utf8')).toBe(node);
+  });
 });
 
 describe('findRepoRoot', () => {
