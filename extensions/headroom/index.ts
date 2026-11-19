@@ -311,6 +311,7 @@ export default function headroomSessionExtension(pi: ExtensionApi): void {
     announceStatus(ctx);
   }
 
+  let runtimeStarting: Promise<void> | undefined;
   // A route outlives a reboot; the proxy does not, and a route to a dead port fails the first request.
   // Fire-and-forget: the session starts now, and headroom answers within its own wait window.
   function startRuntime(ctx?: ExtensionCtx): void {
@@ -337,9 +338,10 @@ export default function headroomSessionExtension(pi: ExtensionApi): void {
     // The claim is written first, so a stop from another session sees this one and leaves the proxy up.
     touchHeadroomLease(sessionId);
     // Preserve routed providers' per-dialect upstreams across proxy restarts and machine reboots.
-    void ensureHeadroomRuntime(bin, upstreams).catch(() => {
-      /* the next session retries */
-    });
+    runtimeStarting = ensureHeadroomRuntime(bin, upstreams).then(
+      () => undefined,
+      () => undefined /* the next session retries */,
+    );
   }
 
   // Start, resume, and branch all land here, so every session type shows it.
@@ -414,6 +416,8 @@ export default function headroomSessionExtension(pi: ExtensionApi): void {
     if (!mode || mode === 'off') return;
     // Nothing is compressed when the tool is absent, so the block would lie to the model.
     if (!resolveHeadroomBinary()) return;
+    // The proxy this session's start began must be settled before the route is judged, or a slow start reads as a dead proxy.
+    await runtimeStarting;
     const sessionRoute = ctx ? await prepareSessionRoute(ctx) : undefined;
     // A live proxy is not enough: the selected model must actually point at it.
     if (!(await headroomProxyUp())) return;
