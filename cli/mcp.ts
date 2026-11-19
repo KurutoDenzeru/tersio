@@ -409,6 +409,20 @@ const TOOLS = [
 type ToolResult = { content: Array<{ type: 'text'; text: string }>; isError?: boolean };
 
 const CODEGRAPH_ACTIONS = ['explore', 'sync', 'status'];
+const CODEGRAPH_SYNC_TIMEOUT_MS = 120_000;
+
+/** A sync that never answers must not hold the MCP server's one request loop. */
+async function withTimeout<T>(work: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  const limit = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} did not finish within ${ms / 1000}s.`)), ms);
+  });
+  try {
+    return await Promise.race([work, limit]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 /** A CodeGraph runtime failure (no git repo, no bundle, a sync that returned nothing) is a tool result the model can read, not a protocol error. */
 async function codegraphTool(args: CodegraphToolArgs): Promise<ToolResult> {
@@ -446,7 +460,7 @@ async function runCodegraphAction(action: string, args: CodegraphToolArgs): Prom
   }
 
   if (action === 'sync') {
-    const stats = await syncCodeGraph(projectRoot);
+    const stats = await withTimeout(syncCodeGraph(projectRoot), CODEGRAPH_SYNC_TIMEOUT_MS, 'CodeGraph sync');
     if (!stats) throw new Error('CodeGraph sync returned no statistics.');
     return {
       content: [

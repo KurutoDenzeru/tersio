@@ -2,12 +2,13 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { codegraphRegistry } from '../extensions/codegraph/install.ts';
 import { resolveCodeGraphLibrary } from '../extensions/codegraph/shared.ts';
 
 const UPSTREAM_PACKAGE = '@colbymchenry/codegraph';
 
 /** The npm registry's newest upstream release, read the same way the other add-ons are read. */
-export const CODEGRAPH_NPM_LATEST = 'https://registry.npmjs.org/@colbymchenry/codegraph/latest';
+export const CODEGRAPH_NPM_LATEST = `${codegraphRegistry()}/@colbymchenry/codegraph/latest`;
 
 /** The version of the resolved bundle, from its own package.json; null when there is none or it is not CodeGraph's. */
 export function installedCodegraphVersion(): string | null {

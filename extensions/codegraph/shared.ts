@@ -172,6 +172,11 @@ export async function getCodeGraph(projectRoot = process.cwd(), autoInit = true)
  * Explore a symbol or query across the codebase.
  */
 export async function exploreSymbol(query: string, projectRoot = process.cwd()): Promise<ExploreResult> {
+  // Half an index answers with half the callers and a wrong blast radius; say so instead.
+  const building = activeWatchers.get(requireRepoRoot(projectRoot));
+  if (building && building.status !== 'ready') {
+    throw new Error('CodeGraph is still building its first index for this repository; try again shortly.');
+  }
   const cg = await getCodeGraph(projectRoot, true);
   try {
     let nodes = await cg.getNodesByName(query);
@@ -505,9 +510,12 @@ export async function syncCodeGraph(projectRoot = process.cwd()): Promise<CodeGr
     await syncEntry(entry);
     return await entry.cg.getStats();
   }
+  // A repository with no index yet has nothing to sync against; build it instead of reporting zero nodes.
+  const hadIndex = hasCodeGraphIndex(root);
   const cg = await getCodeGraph(root, true);
   try {
-    await cg.sync();
+    if (hadIndex) await cg.sync();
+    else await cg.indexAll();
     return await cg.getStats();
   } finally {
     cg.close();

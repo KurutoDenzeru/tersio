@@ -90,6 +90,12 @@ const path = require('node:path');
   return metadata.version;
 }
 
+/** The registry the bundle comes from: npmjs unless TERSIO_CODEGRAPH_REGISTRY names a mirror (for networks that block npmjs). */
+export function codegraphRegistry(): string {
+  const custom = process.env.TERSIO_CODEGRAPH_REGISTRY?.trim().replace(/\/+$/, '');
+  return custom && /^https?:\/\//.test(custom) ? custom : 'https://registry.npmjs.org';
+}
+
 export async function installCodeGraphBundle(version?: string, signal?: AbortSignal): Promise<string> {
   if (!SUPPORTED_PLATFORMS.includes(process.platform) || !SUPPORTED_ARCHITECTURES.includes(process.arch)) {
     throw new Error(`Unsupported CodeGraph platform: ${process.platform}-${process.arch}`);
@@ -119,7 +125,7 @@ export async function installCodeGraphBundle(version?: string, signal?: AbortSig
       '--no-audit',
       '--no-fund',
       '--no-progress',
-      '--registry=https://registry.npmjs.org',
+      `--registry=${codegraphRegistry()}`,
       `${packageName}@${version ?? 'latest'}`,
     ];
     const npm = shimCommand(process.platform === 'win32' ? 'npm.cmd' : 'npm', npmArgs);

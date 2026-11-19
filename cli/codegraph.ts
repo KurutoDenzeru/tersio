@@ -73,8 +73,24 @@ export async function runCodegraph(args: string[]): Promise<void> {
     } else {
       console.log(`CodeGraph watcher initialized (sync mode: ${syncMode}). Press Ctrl+C to exit.`);
     }
-    const keepAlive = setInterval(() => {}, 2 ** 30);
     const { promise, resolve, reject } = withResolvers<void>();
+    // The worker is a separate process: if it dies the next request starts an empty one, so check that it still watches.
+    const keepAlive = setInterval(() => {
+      void (async () => {
+        try {
+          const current = await getCodeGraphStatus(projectRoot);
+          if (current.isWatching || current.isIndexing) return;
+          if (!(await ensureInitializedAndWatching(projectRoot))) throw new Error('the watcher could not be restarted');
+        } catch (error) {
+          console.error(`CodeGraph watcher stopped: ${(error as Error).message}`);
+          process.exitCode = 1;
+          process.off('SIGINT', onSigint);
+          process.off('SIGTERM', onSigterm);
+          clearInterval(keepAlive);
+          resolve();
+        }
+      })();
+    }, 30_000);
     const onExit = async (signal: 'SIGINT' | 'SIGTERM') => {
       process.off('SIGINT', onSigint);
       process.off('SIGTERM', onSigterm);

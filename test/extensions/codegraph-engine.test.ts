@@ -15,6 +15,7 @@ import {
   syncCodeGraph,
 } from '../../extensions/codegraph/shared.ts';
 import { installGitHooks } from '../../extensions/codegraph/git-hooks.ts';
+import { codegraphRegistry } from '../../extensions/codegraph/install.ts';
 import { type CodeGraphTestFixture, createCodeGraphTestFixture } from '../helpers/codegraph.ts';
 
 describe('CodeGraph Engine & Concurrency', () => {
@@ -233,6 +234,38 @@ export function helper(): void {}`,
       expect(installGitHooks(fakeRepo).skipped.length).toBe(3);
     } finally {
       fs.rmSync(fakeRepo, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('syncCodeGraph on a repository with no index', () => {
+  test('builds the index instead of reporting an empty sync', async () => {
+    const fixture = createCodeGraphTestFixture();
+    try {
+      fs.mkdirSync(path.join(fixture.projectRoot, '.git'), { recursive: true });
+      fs.writeFileSync(path.join(fixture.projectRoot, 'fresh.ts'), 'export function fresh() { return 1; }');
+      const stats = await syncCodeGraph(fixture.projectRoot);
+      expect(stats?.nodeCount ?? 0).toBeGreaterThan(0);
+    } finally {
+      stopAllWatchers();
+      fixture.cleanup();
+    }
+  });
+});
+
+describe('codegraphRegistry', () => {
+  test('defaults to npmjs and honours a mirror from the environment', () => {
+    const previous = process.env.TERSIO_CODEGRAPH_REGISTRY;
+    try {
+      delete process.env.TERSIO_CODEGRAPH_REGISTRY;
+      expect(codegraphRegistry()).toBe('https://registry.npmjs.org');
+      process.env.TERSIO_CODEGRAPH_REGISTRY = 'https://npm.example.test/';
+      expect(codegraphRegistry()).toBe('https://npm.example.test');
+      process.env.TERSIO_CODEGRAPH_REGISTRY = 'not-a-url';
+      expect(codegraphRegistry()).toBe('https://registry.npmjs.org');
+    } finally {
+      if (previous === undefined) delete process.env.TERSIO_CODEGRAPH_REGISTRY;
+      else process.env.TERSIO_CODEGRAPH_REGISTRY = previous;
     }
   });
 });
