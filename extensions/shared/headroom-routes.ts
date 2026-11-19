@@ -18,7 +18,7 @@ import {
   routeOmpGateway,
   upstreamMismatches,
 } from './headroom-proxy.ts';
-import { headroomRuntimeUp } from './headroom-runtime.ts';
+import { headroomRuntimeUp, liveHeadroomUpstreams } from './headroom-runtime.ts';
 import { ensureAgentProviderRoute } from './headroom-agent.ts';
 import { codexConfigFile } from './codex-state.ts';
 import type { HeadroomRoute } from './headroom-routing.ts';
@@ -688,7 +688,12 @@ export function installNativeRoute(host: NativeRouteHost, proxyUrl: string = hea
     const anthropic = /anthropic/i.test(target.api);
     // A host with no endpoint of its own still has a public default the proxy must name.
     const expected = target.original || (anthropic ? 'https://api.anthropic.com' : '');
-    const upstream = headroomProxyUpstream(target.api, undefined, headroomProxyPort(proxyUrl));
+    // The saved deployment is one source; a proxy the dashboard started directly names its upstream only in its live flags.
+    const port = headroomProxyPort(proxyUrl);
+    const upstream =
+      headroomProxyUpstream(target.api, undefined, port) ??
+      liveHeadroomUpstreams(port)?.[anthropic ? 'anthropic' : 'openai'] ??
+      null;
     if (!upstream) {
       const flag = anthropic ? '--anthropic-api-url' : '--openai-api-url';
       return {

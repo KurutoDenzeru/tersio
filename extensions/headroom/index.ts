@@ -107,6 +107,10 @@ function isOffCommand(text: unknown): boolean {
   return normalizeInputCommand(text) === 'normal mode';
 }
 
+function hasUpstreamHeader(model: AgentModel): boolean {
+  return Object.keys(model.headers ?? {}).some((name) => name.toLowerCase() === 'x-headroom-base-url');
+}
+
 export default function headroomSessionExtension(pi: ExtensionApi): void {
   const host = hostIdOf(pi);
   // A host without a known model route would get a promise its traffic never fulfils.
@@ -341,8 +345,19 @@ export default function headroomSessionExtension(pi: ExtensionApi): void {
   // Start, resume, and branch all land here, so every session type shows it.
   pi.on('session_start', async (_event, ctx) => {
     restoreMode(ctx);
-    if (currentMode !== 'off' && ctx && (ctx.model || ctx.models)) await prepareSessionRoute(ctx);
-    else startRuntime(ctx);
+    const model = ctx?.models?.current() ?? ctx?.model;
+    // Only OMP routes per model; every other host just needs the proxy up. A model saved with the proxy
+    // endpoint needs its upstream header even when the mode is off, or its requests reach the proxy's global upstream.
+    const proxied = host === 'omp' && model !== undefined && sameProxyEndpoint(model.baseUrl, headroomProxyUrl());
+    if (host === 'omp' && ctx && model && currentMode !== 'off') await prepareSessionRoute(ctx);
+    else if (proxied && ctx) {
+      try {
+        await prepareSessionRoute(ctx);
+      } catch (error) {
+        warnRoute(error instanceof Error ? error.message : String(error), ctx);
+        startRuntime(ctx);
+      }
+    } else startRuntime(ctx);
   });
 
   // The host adapter names the switch events it emits, so this stays free of any one host's naming.
@@ -368,6 +383,8 @@ export default function headroomSessionExtension(pi: ExtensionApi): void {
     }
     if (!routed) return;
     try {
+      // A saved proxy endpoint from an earlier session carries no upstream header; add it before the request leaves.
+      if (host === 'omp' && currentMode !== 'on' && model && !hasUpstreamHeader(model)) await prepareSessionRoute(ctx);
       touchHeadroomLease(sessionId);
       const bin = resolveHeadroomBinary();
       if (!bin) {
