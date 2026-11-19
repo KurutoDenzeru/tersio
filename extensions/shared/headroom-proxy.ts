@@ -15,7 +15,11 @@ export function headroomProxyUrl(): string {
 }
 
 /** The upstream Headroom's saved deployment forwards to, or null when no manifest names one. */
-export function headroomProxyUpstream(api: string, home: string = homeDir()): string | null {
+export function headroomProxyUpstream(
+  api: string,
+  home: string = homeDir(),
+  port: number = headroomProxyPort(),
+): string | null {
   const dir = path.join(home, '.headroom', 'deploy');
   let profiles: string[];
   try {
@@ -30,6 +34,9 @@ export function headroomProxyUpstream(api: string, home: string = homeDir()): st
         string,
         unknown
       >;
+      // shortcut: port-less profiles map to the default port, upgrade when Headroom writes their port.
+      const manifestPort = manifest.port === undefined ? HEADROOM_PORT : manifest.port;
+      if (manifestPort !== port) continue;
       const updated =
         typeof manifest.updated_at === 'string'
           ? manifest.updated_at
@@ -58,10 +65,66 @@ export function headroomProxyUpstream(api: string, home: string = homeDir()): st
   return fromArgs || fromEnv || null;
 }
 
-/** The port the rest of the system must write into a durable config. */
-export function headroomProxyPort(): number {
+/** The API dialects headroom forwards, each to its own upstream. */
+export type UpstreamDialect = 'anthropic' | 'openai';
+export const UPSTREAM_DIALECTS: readonly UpstreamDialect[] = ['anthropic', 'openai'];
+export const HEADROOM_UPSTREAM_FLAG: Record<UpstreamDialect, string> = {
+  anthropic: '--anthropic-api-url',
+  openai: '--openai-api-url',
+};
+export const HEADROOM_UPSTREAM_ENV: Record<UpstreamDialect, string> = {
+  anthropic: 'ANTHROPIC_TARGET_API_URL',
+  openai: 'OPENAI_TARGET_API_URL',
+};
+/** Where headroom forwards a dialect whose flag is absent: the vendor's public API. */
+const HEADROOM_PUBLIC_UPSTREAM: Record<UpstreamDialect, string> = {
+  anthropic: 'https://api.anthropic.com',
+  openai: 'https://api.openai.com',
+};
+
+/** The upstream per dialect; an absent dialect is one the request does not need the proxy to know. */
+export type HeadroomUpstreams = Partial<Record<UpstreamDialect, string>>;
+
+/** The dialects a set of upstreams names, in flag order. */
+export function upstreamEntries(upstreams: HeadroomUpstreams): Array<[UpstreamDialect, string]> {
+  const out: Array<[UpstreamDialect, string]> = [];
+  for (const dialect of UPSTREAM_DIALECTS) {
+    const url = upstreams[dialect];
+    if (url) out.push([dialect, url]);
+  }
+  return out;
+}
+
+/** The upstream a running proxy forwards a dialect to: its flag, or headroom's public default when the flag is absent. */
+export function liveUpstream(live: HeadroomUpstreams, dialect: UpstreamDialect): string {
+  return live[dialect] ?? HEADROOM_PUBLIC_UPSTREAM[dialect];
+}
+
+/** The same upstream, path included: a proxy pointed at another provider must not take this route. */
+export function sameUpstream(a: string, b: string): boolean {
   try {
-    const port = new URL(headroomProxyUrl()).port;
+    const left = new URL(a);
+    const right = new URL(b);
+    return left.origin === right.origin && left.pathname.replace(/\/+$/, '') === right.pathname.replace(/\/+$/, '');
+  } catch {
+    return a.replace(/\/+$/, '') === b.replace(/\/+$/, '');
+  }
+}
+
+/**
+ * The dialects whose live upstream is not the wanted one. No live reading proves nothing, so every
+ * wanted dialect counts as a mismatch.
+ */
+export function upstreamMismatches(wanted: HeadroomUpstreams, live: HeadroomUpstreams | null): UpstreamDialect[] {
+  return upstreamEntries(wanted)
+    .filter(([dialect, url]) => !live || !sameUpstream(liveUpstream(live, dialect), url))
+    .map(([dialect]) => dialect);
+}
+
+/** The port the rest of the system must write into a durable config. */
+export function headroomProxyPort(proxyUrl: string = headroomProxyUrl()): number {
+  try {
+    const port = new URL(proxyUrl).port;
     if (port) return Number(port);
   } catch {
     /* an invalid override falls back to headroom's default */
@@ -174,7 +237,6 @@ export function ompCachedEndpoint(model: string): OmpCachedEndpoint | null {
   return null;
 }
 
-
 /** Resolves the default endpoint for an entire provider directly from omp's model cache. */
 export function ompCachedProviderEndpoint(provider: string): OmpCachedEndpoint | null {
   const safe = provider.replace(/[^A-Za-z0-9._-]/g, '');
@@ -183,27 +245,32 @@ export function ompCachedProviderEndpoint(provider: string): OmpCachedEndpoint |
   try {
     raw = sqliteRead(
       ompModelsDb(),
-      `select provider_id, models from model_cache where provider_id = '${safe}' or provider_id like '${safe}:%' limit 1`,
+      `select provider_id, models from model_cache where provider_id = '${safe}' or provider_id like '${safe}:%' order by case when provider_id = '${safe}' then 0 else 1 end, provider_id`,
     ).trim();
   } catch {
     return null;
   }
   if (!raw) return null;
-  const parts = raw.split('\t');
-  const matchedProviderId = parts.length > 1 ? parts[0] : '';
-  if (matchedProviderId && matchedProviderId !== safe && !matchedProviderId.startsWith(`${safe}:`)) return null;
-  const catalogJson = parts.length > 1 ? parts[1] : parts[0];
-  try {
-    const catalog = JSON.parse(catalogJson);
-    if (!Array.isArray(catalog) || catalog.length === 0) return null;
-    const first = catalog[0];
-    const baseUrl = typeof first?.baseUrl === 'string' ? first.baseUrl : '';
-    if (!baseUrl) return null;
-    const api = typeof first?.api === 'string' ? first.api : 'openai-completions';
-    return { provider, api, baseUrl };
-  } catch {
-    return null;
+  for (const row of raw.split(/\r?\n/)) {
+    const parts = row.split('\t');
+    const matchedProviderId = parts.length > 1 ? parts[0] : '';
+    if (matchedProviderId && matchedProviderId !== safe && !matchedProviderId.startsWith(`${safe}:`)) continue;
+    const catalogJson = parts.length > 1 ? parts[1] : parts[0];
+    try {
+      const catalog: unknown = JSON.parse(catalogJson ?? '');
+      if (!Array.isArray(catalog)) continue;
+      for (const entry of catalog) {
+        if (!entry || typeof entry !== 'object') continue;
+        const baseUrl = 'baseUrl' in entry && typeof entry.baseUrl === 'string' ? entry.baseUrl : '';
+        if (!baseUrl || pointsToProxy(baseUrl, headroomProxyPort())) continue;
+        const api = 'api' in entry && typeof entry.api === 'string' ? entry.api : 'openai-completions';
+        return { provider, api, baseUrl };
+      }
+    } catch {
+      /* another catalog snapshot may still contain the original endpoint */
+    }
   }
+  return null;
 }
 
 /** OpenCode's config; the first that exists wins, matching headroom's own lookup order. */
@@ -246,6 +313,16 @@ export function ompProviderIsMultiDialect(provider: string): boolean {
 
 function loopbackHost(host: string): boolean {
   return host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]';
+}
+
+/** Both API roots belong to the same proxy; a mixed-dialect provider may legitimately use /v1. */
+function pointsToProxy(baseUrl: string, port: number): boolean {
+  try {
+    const url = new URL(baseUrl);
+    return loopbackHost(url.hostname) && Number(url.port || 80) === port;
+  } catch {
+    return false;
+  }
 }
 
 interface OmpProviderBlock {
@@ -310,8 +387,8 @@ function ompProviderBlocks(text: string): OmpProviderBlock[] {
         .trim()
         .replace(/^['"]|['"]$/g, '');
       current.baseLine = i;
-    } else if (trimmed.startsWith('# tersio-headroom-upstream:')) {
-      current.marker = trimmed.slice('# tersio-headroom-upstream:'.length).trim();
+    } else if (/^(?:#\s*)?tersio-headroom-upstream:/.test(trimmed)) {
+      current.marker = trimmed.replace(/^(?:#\s*)?tersio-headroom-upstream:\s*/, '').replace(/^['"]|['"]$/g, '');
       current.markerLine = i;
     }
   }
@@ -384,6 +461,52 @@ export function readOmpGateway(port: number = HEADROOM_PORT): OmpGatewayRoute | 
   return null;
 }
 
+/**
+ * The endpoint omp's provider forwards to: the marker Tersio wrote once the provider is routed, else the
+ * block's own endpoint. A provider with no block takes omp's catalog endpoint.
+ */
+export function ompProviderUpstream(
+  provider: string,
+  port: number = HEADROOM_PORT,
+  model?: string,
+): { api: string; url: string } | null {
+  let text = '';
+  try {
+    text = fs.readFileSync(ompModelsFile(), 'utf8');
+  } catch {
+    /* no models file: only the catalog can answer */
+  }
+  const block = ompProviderBlocks(text).find((entry) => entry.name === provider);
+  if (!block) {
+    const modelEndpoint = model ? ompCachedEndpoint(model) : null;
+    const cached =
+      modelEndpoint && !pointsToProxy(modelEndpoint.baseUrl, port)
+        ? modelEndpoint
+        : ompCachedProviderEndpoint(provider);
+    return cached ? { api: cached.api, url: cached.baseUrl } : null;
+  }
+  const api = ompBlockApi(block);
+  if (model && block.baseLine >= 0) {
+    const lines = text.split(/\r?\n/);
+    const line = ompModelBaseLine(lines, block.baseLine, model);
+    if (line !== null) {
+      const marker = lines[line - 1]?.trim().match(/^# tersio-headroom-upstream:\s*(.+)$/)?.[1];
+      const original = (marker ?? lines[line]!.trim().slice('baseUrl:'.length).trim()).replace(/^['"]|['"]$/g, '');
+      if (original && !pointsToProxy(original, port)) return { api, url: original };
+    }
+  }
+  // A localhost override without our comment cannot identify its original upstream; recover only
+  // from the host's authoritative catalog, never forward the proxy back into itself.
+  const cached = ompCachedProviderEndpoint(provider);
+  const catalogUrl = cached
+    ? ompProviderIsMultiDialect(provider)
+      ? cached.baseUrl.replace(/\/v1\/?$/, '')
+      : cached.baseUrl
+    : '';
+  const url = block.marker || (block.baseUrl && !pointsToProxy(block.baseUrl, port) ? block.baseUrl : catalogUrl);
+  return url && !pointsToProxy(url, port) ? { api, url } : null;
+}
+
 /** The line holding one model's own baseUrl inside the provider block, or null when it names none. */
 function ompModelBaseLine(lines: string[], providerLine: number, model: string | null): number | null {
   if (!model) return null;
@@ -391,15 +514,19 @@ function ompModelBaseLine(lines: string[], providerLine: number, model: string |
   const ids = new Set([model, model.replace(/:[^:]+$/, ''), bare, bare.replace(/:[^:]+$/, '')]);
   const ranges: Array<[number, number]> = [];
   let start = -1;
+  let end = lines.length;
   for (let i = providerLine + 1; i < lines.length; i += 1) {
     const raw = lines[i]!;
     const trimmed = raw.trim();
-    if (trimmed !== '' && raw.length - raw.trimStart().length <= 2) break;
+    if (trimmed !== '' && raw.length - raw.trimStart().length <= 2) {
+      end = i;
+      break;
+    }
     if (!trimmed.startsWith('- ')) continue;
     if (start >= 0) ranges.push([start, i]);
     start = i;
   }
-  if (start >= 0) ranges.push([start, lines.length]);
+  if (start >= 0) ranges.push([start, end]);
   // A model block may name its endpoint before its id, so each entry is read whole.
   for (const [from, to] of ranges) {
     let id = '';
@@ -435,7 +562,13 @@ export function routeOmpGateway(route: OmpGatewayRoute, port: number = HEADROOM_
     const modelLine = ompModelBaseLine(lines, baseLine, route.model);
     if (modelLine !== null) {
       const modelIndent = lines[modelLine]!.match(/^\s*/)?.[0] ?? '      ';
-      lines[modelLine] = `${modelIndent}baseUrl: ${url}`;
+      const original = lines[modelLine]!.trim()
+        .slice('baseUrl:'.length)
+        .trim()
+        .replace(/^['"]|['"]$/g, '');
+      const freshModel = original && !pointsToProxy(original, port);
+      if (freshModel) lines.splice(modelLine, 0, `${modelIndent}# tersio-headroom-upstream: ${original}`);
+      lines[modelLine + (freshModel ? 1 : 0)] = `${modelIndent}baseUrl: ${url}`;
     }
     fs.writeFileSync(file, lines.join('\n'), 'utf8');
     return true;
@@ -472,7 +605,9 @@ export function restoreOmpGateway(port: number = HEADROOM_PORT): boolean {
       const trimmed = raw.trim();
       if (trimmed !== '' && raw.length - raw.trimStart().length <= 2) break;
       if (trimmed.startsWith('baseUrl:') && trimmed.includes(`127.0.0.1:${port}`)) {
-        lines[i] = `${raw.match(/^\s*/)?.[0] ?? '      '}baseUrl: ${block.marker}`;
+        const marker = lines[i - 1]?.trim().match(/^# tersio-headroom-upstream:\s*(.+)$/)?.[1];
+        lines[i] = `${raw.match(/^\s*/)?.[0] ?? '      '}baseUrl: ${marker ?? block.marker}`;
+        if (marker) drop.add(i - 1);
       }
     }
     changed = true;
@@ -504,7 +639,9 @@ export function routeOmpDefaultModel(port: number = HEADROOM_PORT): boolean {
 
   // Collect all models referenced across modelRoles and fallback chains, default first
   const models = [defaultModel];
-  const matches = configText.matchAll(/(?:^|\n)\s*(?:[a-zA-Z0-9_-]+:|-)\s*['"]?([a-zA-Z0-9_-]+\/[a-zA-Z0-9._:/-]+)['"]?/g);
+  const matches = configText.matchAll(
+    /(?:^|\n)\s*(?:[a-zA-Z0-9_-]+:|-)\s*['"]?([a-zA-Z0-9_-]+\/[a-zA-Z0-9._:/-]+)['"]?/g,
+  );
   for (const m of matches) {
     const val = m[1]?.trim();
     if (val && !models.includes(val)) models.push(val);
@@ -536,10 +673,11 @@ export function routeOmpModel(model: string, port: number = HEADROOM_PORT): bool
     if (block && block.baseUrl && block.baseLine >= 0) {
       const api = ompBlockApi(block);
       if (!isHeadroomCompatibleApi(api)) return false;
-      const proxy = `http://127.0.0.1:${port}${proxyApiPath(api)}`;
-      if (block.baseUrl !== proxy) {
-        return routeOmpGateway({ provider, baseUrl: block.marker || block.baseUrl, model: slash > 0 ? model : null }, port);
-      }
+      const original =
+        block.marker ||
+        (!pointsToProxy(block.baseUrl, port) ? block.baseUrl : ompProviderUpstream(provider, port)?.url);
+      if (!original) return false;
+      return routeOmpGateway({ provider, baseUrl: original, model: slash > 0 ? model : null }, port);
     }
     return true;
   }
@@ -547,19 +685,14 @@ export function routeOmpModel(model: string, port: number = HEADROOM_PORT): bool
   const endpoint = (slash > 0 ? ompCachedEndpoint(model) : null) ?? ompCachedProviderEndpoint(provider);
   if (!endpoint || !isHeadroomCompatibleApi(endpoint.api)) return false;
 
+  const baseUrl = `http://127.0.0.1:${port}${proxyApiPath(endpoint.api)}`;
+  const blockLines = [`  ${endpoint.provider}:`];
+  // A mixed-dialect provider must keep model-level API selection from its catalog.
+  if (!ompProviderIsMultiDialect(endpoint.provider)) blockLines.push(`    api: ${endpoint.api}`);
+  blockLines.push(`    # tersio-headroom-upstream: ${endpoint.baseUrl}`, `    baseUrl: ${baseUrl}`);
   const lines = text.split(/\r?\n/);
   const at = lines.findIndex((line) => /^providers:\s*$/.test(line));
   if (at < 0) return false;
-  const baseUrl = `http://127.0.0.1:${port}${proxyApiPath(endpoint.api)}`;
-  const blockLines = [`  ${endpoint.provider}:`];
-  // Omit provider-level api override when the provider serves multiple dialects (e.g. commandcode, openai).
-  if (!ompProviderIsMultiDialect(endpoint.provider)) {
-    blockLines.push(`    api: ${endpoint.api}`);
-  }
-  blockLines.push(
-    `    # tersio-headroom-upstream: ${endpoint.baseUrl}`,
-    `    baseUrl: ${baseUrl}`,
-  );
   lines.splice(at + 1, 0, ...blockLines);
   try {
     fs.writeFileSync(file, lines.join('\n'), 'utf8');

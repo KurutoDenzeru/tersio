@@ -76,8 +76,5 @@ export const COL = {
   costTotal: 'COALESCE(m.usd, 0)',
   agentType: `COALESCE(m.a, 'main')`,
   host: `COALESCE(m.h, '')`,
-  costInput: '0',
-  costCacheRead: '0',
-  costCacheWrite: '0',
-  unpriced: '0',
+  unpriced: 'CASE WHEN m.usd IS NULL THEN 1 ELSE 0 END',
 } as const;

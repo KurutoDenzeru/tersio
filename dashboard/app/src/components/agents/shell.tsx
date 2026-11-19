@@ -1,35 +1,36 @@
 // The shell: a glass topbar (brand, mode banner, range, theme) over a page-jumping rail whose footer holds Settings.
-import { Fragment, type ReactNode, useCallback, useEffect, useRef, useState } from "react"
-import { cn } from "cn"
+import {Fragment, type ReactNode, useCallback, useEffect, useRef, useState} from "react"
+import {cn} from "cn"
 import {
-  Sidebar,
-  SidebarContent,
-  SidebarFooter,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
-  SidebarHeader,
-  SidebarInset,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarProvider,
-  SidebarRail,
-  SidebarTrigger,
-  useSidebar,
+    Sidebar,
+    SidebarContent,
+    SidebarFooter,
+    SidebarGroup,
+    SidebarGroupContent,
+    SidebarGroupLabel,
+    SidebarHeader,
+    SidebarInset,
+    SidebarMenu,
+    SidebarMenuButton,
+    SidebarMenuItem,
+    SidebarProvider,
+    SidebarRail,
+    SidebarTrigger,
+    useSidebar,
 } from "@/components/ui/sidebar"
-import { Badge } from "@/components/ui/badge"
-import { Segmented } from "@/components/charts"
-import { Icon } from "@/components/icon"
-import { SocialLinks } from "@/components/brand"
-import { useTheme } from "@/components/theme-provider"
-import type { AgentRange } from "@/lib/data"
-import { AGENT_RANGES, isFileExport } from "@/lib/data"
-import { useDevMode } from "@/lib/dev-mode"
-import { useIsMobile } from "@/hooks/use-mobile"
-import type { SectionId } from "./nav"
-import { NAV, NAV_ITEMS } from "./nav"
+import {Badge} from "@/components/ui/badge"
+import {Segmented} from "@/components/charts"
+import {Icon} from "@/components/icon"
+import {SocialLinks} from "@/components/brand"
+import {useTheme} from "@/components/theme-provider"
+import type {AgentRange} from "@/lib/data"
+import {AGENT_RANGES, isFileExport} from "@/lib/data"
+import {useDevMode} from "@/lib/dev-mode"
+import {useIsMobile} from "@/hooks/use-mobile"
+import type {SectionId} from "./nav"
+import {NAV, NAV_ITEMS} from "./nav"
 import brandLogo from "@/assets/brand.webp"
+
 export const DEFAULT_RANGE: AgentRange = "24h"
 
 /** The rail's drag handle; browser storage bridges a reload, tersio settings bridge a new port. */
@@ -78,7 +79,7 @@ export function ThemeToggle() {
   )
 }
 
-/** The six session-start mode fields the banner reads, plus the per-host sections the folders write. */
+/** Session-start mode fields the banner reads, plus per-host sections the folders write. */
 export interface ModeState {
   comboDefault: string
   /** The level the banner may claim: `custom` once the three modes stop matching the preset. */
@@ -88,10 +89,12 @@ export interface ModeState {
   ponytailDefault: string
   pstackDefault: string
   headroomDefault: string
+  codegraphDefault: string
+  codegraphSync: string
   hosts?: Record<string, Record<string, string | boolean>>
 }
 
-/** One glyph and one short name per mode, in the order the combo names them; the opt-in modes trail the three. */
+/** One glyph and short label per mode; opt-in modes trail the preset modes. */
 const MODE_GLYPHS = [
   {
     key: "caveman",
@@ -117,6 +120,12 @@ const MODE_GLYPHS = [
     glyph: "🥔",
     label: "pstack",
     level: (m: ModeState) => (m.pstackDefault ?? "off").toUpperCase(),
+  },
+  {
+    key: "codegraph",
+    glyph: "🕸️",
+    label: "codegraph",
+    level: (m: ModeState) => (m.codegraphDefault ?? "off").toUpperCase(),
   },
 ] as const
 
@@ -152,7 +161,7 @@ export function ModeBanner({
     observer.observe(box)
     return () => observer.disconnect()
   }, [modes])
-  // The five modes are unknown until /settings answers; a strip of OFF would read as a real state.
+  // Mode fields are unknown until /settings answers; a strip of OFF would read as a real state.
   if (loading) {
     return (
       <span

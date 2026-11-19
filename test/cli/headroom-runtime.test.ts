@@ -1,6 +1,9 @@
 import http from 'node:http';
+import { existsSync, readFileSync } from 'node:fs';
+import { execFileSync, spawn } from 'node:child_process';
 import { afterEach, describe, expect, test } from 'vitest';
 import { headroomHostDurable, headroomHostSupported } from '../../extensions/shared/headroom-proxy.ts';
+import { cacheGet } from '../../extensions/shared/cache-store.ts';
 import {
   headroomFitsMachine,
   headroomProxyPids,
@@ -56,7 +59,7 @@ describe('headroom runtime', () => {
       '--disable-kompress',
     ]);
     expect(proxyArgsForDeployment([], 9911)).toEqual(['--host', '127.0.0.1', '--port', '9911', '--disable-kompress']);
-    expect(proxyArgsForDeployment(['--mode', 'token'], 9911, 'http://127.0.0.1:3425/v1')).toEqual([
+    expect(proxyArgsForDeployment(['--mode', 'token'], 9911, { openai: 'http://127.0.0.1:3425/v1' })).toEqual([
       '--mode',
       'token',
       '--port',
@@ -76,17 +79,18 @@ describe('headroom runtime', () => {
     expect(args).not.toContain('--disable-kompress');
   });
 
-  test('a shell that only mentions the pattern is not counted as a proxy', () => {
-    // `pgrep -f` matches any command line containing the text, so a shell running this very test did
-    // count as a proxy. Every pid must be a Python interpreter.
+  test.skipIf(process.platform === 'win32')('a shell that only mentions the pattern is not counted as a proxy', () => {
+    // The launcher can set `comm` to `headroom`; argv must still name Python and the proxy command.
     for (const pid of headroomProxyPids()) {
-      const { execFileSync } = require('node:child_process') as typeof import('node:child_process');
-      const comm = execFileSync('ps', ['-o', 'comm=', '-p', String(pid)], { encoding: 'utf8' }).trim();
-      expect(comm).toMatch(/python/i);
+      const argv =
+        process.platform === 'linux'
+          ? readFileSync(`/proc/${pid}/cmdline`, 'utf8').split('\u0000').join(' ')
+          : execFileSync('ps', ['-o', 'command=', '-p', String(pid)], { encoding: 'utf8' });
+      expect(argv).toMatch(/python.*headroom(?:\.cli)? proxy/i);
     }
   });
 
-  test('a second agent session keeps the proxy, and the last one releases it', async () => {
+  test('releasing either session preserves the proxy for persistent model routes', async () => {
     const { mkdtempSync, rmSync } = await import('node:fs');
     const os = await import('node:os');
     const path = await import('node:path');
@@ -104,13 +108,10 @@ describe('headroom runtime', () => {
       // Two agents claim the proxy, like a Pi and a dsh session opened together.
       touchHeadroomLease('agent-a');
       touchHeadroomLease('agent-b');
-      // The first to quit must leave it running for the other.
-      const first = await releaseHeadroomLease('agent-a');
-      expect(first.ok).toBe(true);
-      expect(first.detail).toContain('another agent session');
-      // The last one releases it, so the stop path runs instead of the early return.
-      const last = await releaseHeadroomLease('agent-b');
-      expect(last.detail).not.toContain('another agent session');
+      await releaseHeadroomLease('agent-a');
+      expect(Object.keys(JSON.parse(cacheGet('headroom.leases') ?? '{}'))).toEqual(['agent-b']);
+      await releaseHeadroomLease('agent-b');
+      expect(JSON.parse(cacheGet('headroom.leases') ?? '{}')).toEqual({});
     } finally {
       for (const [name, value] of Object.entries(previous)) {
         const key = name === 'URL' ? 'TERSIO_HEADROOM_PROXY_URL' : name;
@@ -121,7 +122,7 @@ describe('headroom runtime', () => {
     }
   }, 20_000);
 
-  test('a fast release skips the quit grace, so the shutdown handler returns in time', async () => {
+  test('releasing a session returns within the shutdown handler budget without stopping the shared proxy', async () => {
     const { mkdtempSync, rmSync } = await import('node:fs');
     const os = await import('node:os');
     const path = await import('node:path');
@@ -136,9 +137,9 @@ describe('headroom runtime', () => {
     process.env.TERSIO_HEADROOM_PROXY_URL = 'http://127.0.0.1:1/';
     try {
       const started = Date.now();
-      const result = await releaseHeadroomLease('agent-fast', null, { fast: true });
+      const result = await releaseHeadroomLease('agent-fast');
       expect(result.ok).toBe(true);
-      // The normal quit path waits 2.5s, which is longer than the host's 2s handler budget.
+      // The host allows only two seconds for its shutdown handler.
       expect(Date.now() - started).toBeLessThan(1_500);
     } finally {
       for (const [name, value] of Object.entries(previous)) {
@@ -188,28 +189,35 @@ describe('headroom runtime', () => {
   });
 });
 
-test.skipIf(process.platform === 'win32')('a stray proxy is found and stopped', async () => {
-  // A process whose argv names headroom's proxy: exactly what the scan looks for, at no cost.
-  const { spawn } = await import('node:child_process');
-  const stray = spawn('python3', ['-c', 'import time; time.sleep(30)', 'headroom.cli proxy', '--port', '65000'], {
+test.skipIf(process.platform === 'win32')('finds module and console-script proxy launchers', async () => {
+  // Both invocations run under Python but expose different argv spellings.
+  const moduleProxy = spawn('python3', ['-c', 'import time; time.sleep(30)', 'headroom.cli proxy', '--port', '65000'], {
     stdio: 'ignore',
   });
+  const scriptProxy = spawn('python3', ['-c', 'import time; time.sleep(30)', 'headroom proxy', '--port=65001'], {
+    stdio: 'ignore',
+  });
+  const pids = [moduleProxy.pid, scriptProxy.pid].filter((pid): pid is number => pid !== undefined);
   try {
-    expect(stray.pid).toBeTruthy();
-    const found = headroomProxyPids();
-    expect(found).toContain(stray.pid as number);
-    reapProxies([stray.pid as number]);
-    expect(headroomProxyPids()).not.toContain(stray.pid as number);
+    expect(pids).toHaveLength(2);
+    expect(headroomProxyPids()).toEqual(expect.arrayContaining(pids));
+    expect(headroomProxyPids(65000)).toContain(moduleProxy.pid);
+    expect(headroomProxyPids(65000)).not.toContain(scriptProxy.pid);
+    expect(headroomProxyPids(65001)).toContain(scriptProxy.pid);
+    reapProxies(pids);
+    expect(headroomProxyPids()).not.toEqual(expect.arrayContaining(pids));
   } finally {
-    try {
-      stray.kill('SIGKILL');
-    } catch {
-      /* already stopped by the reap */
+    for (const proxy of [moduleProxy, scriptProxy]) {
+      try {
+        proxy.kill('SIGKILL');
+      } catch {
+        /* already stopped by the reap */
+      }
     }
   }
 });
 
-test('a held start lock is respected, and a stale one is taken over', async () => {
+test('a live start lock survives an old timestamp, orphaned reclaimer gates fail closed, and cleanup preserves replacements', async () => {
   const { mkdirSync, rmSync, utimesSync, writeFileSync } = await import('node:fs');
   const os = await import('node:os');
   const path = await import('node:path');
@@ -223,24 +231,73 @@ test('a held start lock is respected, and a stale one is taken over', async () =
   process.env.HOME = home;
   process.env.TERSIO_HOME = path.join(home, '.tersio');
   process.env.TERSIO_HEADROOM_WAIT_MS = '120';
-  // Port 1 refuses instantly, so the wait window is the only thing a test pays for.
-  process.env.TERSIO_HEADROOM_PROXY_URL = 'http://127.0.0.1:1/';
+  const lock = path.join(process.env.TERSIO_HOME, 'headroom-start.lock');
+  let replaceOwner = false;
+  let requests = 0;
+  const server = http.createServer((_req, res) => {
+    requests += 1;
+    let contents = '';
+    try {
+      contents = readFileSync(lock, 'utf8');
+    } catch {
+      /* preflight can run before a lock exists */
+    }
+    if (contents.startsWith(`${process.pid}:`)) {
+      if (replaceOwner) {
+        writeFileSync(lock, `${process.ppid}:replacement-owner`, 'utf8');
+        replaceOwner = false;
+      }
+      res.writeHead(200, { 'content-type': 'application/json', connection: 'close' });
+      res.end('{"ready":true}');
+      return;
+    }
+    res.writeHead(503, { connection: 'close' });
+    res.end();
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address();
+  const port = typeof address === 'object' && address ? address.port : 0;
+  expect(port).toBeGreaterThan(0);
+  process.env.TERSIO_HEADROOM_PROXY_URL = `http://127.0.0.1:${port}/`;
   try {
     const { ensureHeadroomRuntime } = await import('../../extensions/shared/headroom-runtime.ts');
-    const lock = path.join(process.env.TERSIO_HOME, 'headroom-start.lock');
     mkdirSync(path.dirname(lock), { recursive: true });
-    writeFileSync(lock, '999999', 'utf8');
-    // node exits at once on an unknown script: a start that answers nothing, at no cost.
+    const old = new Date(Date.now() - 120_000);
+
+    writeFileSync(lock, String(process.pid), 'utf8');
+    utimesSync(lock, old, old);
+    const requestsBeforeWait = requests;
     const held = await ensureHeadroomRuntime(process.execPath);
+    expect(requests - requestsBeforeWait).toBeGreaterThanOrEqual(3);
     expect(held.ok).toBe(false);
     expect(held.detail).toContain('another tersio process');
+    expect(readFileSync(lock, 'utf8')).toBe(String(process.pid));
 
-    // Time, not content, decides staleness: an old file is a crashed start.
-    const old = new Date(Date.now() - 120_000);
+    const staleOwner = String(Number.MAX_SAFE_INTEGER);
+    const reclaim = `${lock}.reclaim`;
+    writeFileSync(lock, staleOwner, 'utf8');
     utimesSync(lock, old, old);
-    const taken = await ensureHeadroomRuntime(process.execPath);
-    expect(taken.detail).not.toContain('another tersio process');
+    mkdirSync(reclaim);
+    writeFileSync(path.join(reclaim, 'owner'), staleOwner, 'utf8');
+    utimesSync(reclaim, old, old);
+    const gated = await ensureHeadroomRuntime(process.execPath);
+    expect(gated.ok).toBe(false);
+    expect(gated.detail).toContain(`headroom recovery is blocked by ${reclaim}`);
+    expect(readFileSync(lock, 'utf8')).toBe(staleOwner);
+    expect(readFileSync(path.join(reclaim, 'owner'), 'utf8')).toBe(staleOwner);
+    rmSync(reclaim, { recursive: true, force: true });
+
+    const recovered = await ensureHeadroomRuntime(process.execPath);
+    expect(recovered.ok).toBe(true);
+    expect(existsSync(lock)).toBe(false);
+    expect(existsSync(reclaim)).toBe(false);
+
+    replaceOwner = true;
+    const replaced = await ensureHeadroomRuntime(process.execPath);
+    expect(replaced.ok).toBe(true);
+    expect(readFileSync(lock, 'utf8')).toBe(`${process.ppid}:replacement-owner`);
   } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
     for (const [name, value] of Object.entries(previous)) {
       const key = name === 'WAIT' ? 'TERSIO_HEADROOM_WAIT_MS' : name === 'URL' ? 'TERSIO_HEADROOM_PROXY_URL' : name;
       if (value === undefined) delete process.env[key];
@@ -248,4 +305,4 @@ test('a held start lock is respected, and a stale one is taken over', async () =
     }
     rmSync(home, { recursive: true, force: true });
   }
-});
+}, 20_000);

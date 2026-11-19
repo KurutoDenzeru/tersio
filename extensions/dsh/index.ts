@@ -284,6 +284,8 @@ function readModes(store: Store, section: Store): ModeSnapshot {
     // dsh is a native route host: the installer points the provider at Headroom's proxy, so the stored
     // default is the truth and the bar reports it instead of promising a mode the host cannot honour.
     headroom: setting(store, section, 'headroomDefault') === 'on' ? 'on' : 'off',
+    // DSH does not load the CodeGraph extension, so it reads as off here.
+    codegraph: 'off',
   };
 }
 
@@ -312,7 +314,7 @@ function statusLine(store: Store, section: Store): string {
   const level = statusLevel(modes);
   if (level === 'off' && pstack === 'off' && modes.headroom === 'off') return '🧩 OFF';
   const label = level === 'off' || level === 'custom' ? 'CUSTOM' : level.toUpperCase();
-  return `🧩 ${label} | ${MODE_GLYPHS.caveman} caveman:${modeValue(modes.caveman)} | ${MODE_GLYPHS.rtk} rtk:${modeValue(modes.rtk)} | ${MODE_GLYPHS.headroom} headroom:${modeValue(modes.headroom)} | ${MODE_GLYPHS.ponytail} ponytail:${modeValue(modes.ponytail)} | ${MODE_GLYPHS.pstack} pstack:${modeValue(pstack)}`;
+  return `🧩 ${label} | ${MODE_GLYPHS.caveman} caveman:${modeValue(modes.caveman)} | ${MODE_GLYPHS.rtk} rtk:${modeValue(modes.rtk)} | ${MODE_GLYPHS.headroom} headroom:${modeValue(modes.headroom)} | ${MODE_GLYPHS.ponytail} ponytail:${modeValue(modes.ponytail)} | ${MODE_GLYPHS.pstack} pstack:${modeValue(pstack)} | ${MODE_GLYPHS.codegraph} codegraph:${modeValue(modes.codegraph)}`;
 }
 
 /** One payload for the bar: the rendered line, the preset level, and each mode's value. */

@@ -1,22 +1,28 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { describe, expect, test } from 'vitest';
-import { withHome, fakeExecutable } from '../helpers/env.ts';
+import { describe, expect, test, vi } from 'vitest';
+import { fakeExecutable, withHome } from '../helpers/env.ts';
+import { liveHeadroomUpstreams } from '../../extensions/shared/headroom-runtime.ts';
 import { readHeadroomRoute } from '../../extensions/shared/headroom-routing.ts';
 import {
-  headroomRoutedHosts,
   hasNativeRoute,
-  repairHeadroomRoute,
-  installNativeRoute,
+  headroomRoutedHosts,
   inferCodexRootBackup,
+  installNativeRoute,
   nativeProxyUrl,
-  removeTomlSection,
   removeNativeRoute,
+  removeTomlSection,
+  repairHeadroomRoute,
   restoreCodexRoot,
-  routeHostOn,
   routeHostOff,
+  routeHostOn,
   setTomlSectionValue,
 } from '../../extensions/shared/headroom-routes.ts';
+
+vi.mock('../../extensions/shared/headroom-runtime.ts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../extensions/shared/headroom-runtime.ts')>()),
+  liveHeadroomUpstreams: vi.fn<() => ReturnType<typeof liveHeadroomUpstreams>>(() => null),
+}));
 
 const PROXY = 'http://127.0.0.1:8787/';
 
@@ -43,11 +49,11 @@ function piLikeHome(dir: string): void {
   );
 }
 
-function headroomManifest(home: string, env: Record<string, string>): string {
+function headroomManifest(home: string, env: Record<string, string>, port = 8787): string {
   const deploy = path.join(home, '.headroom', 'deploy', 'init');
   mkdirSync(deploy, { recursive: true });
   const file = path.join(deploy, 'manifest.json');
-  writeFileSync(file, JSON.stringify({ updated_at: '2026-01-01T00:00:00Z', base_env: env }), 'utf8');
+  writeFileSync(file, JSON.stringify({ port, updated_at: '2026-01-01T00:00:00Z', base_env: env }), 'utf8');
   return file;
 }
 
@@ -193,6 +199,109 @@ hooks = true
       expect(JSON.parse(readFileSync(modelsFile, 'utf8')).providers.magpie.baseUrl).toBe('http://127.0.0.1:3425/v1');
     }));
 
+  test('refuses a Pi model-only endpoint when Headroom forwards elsewhere', () =>
+    withHome((home) => {
+      piHome(home);
+      const modelsFile = path.join(home, '.pi', 'agent', 'models.json');
+      const data = JSON.parse(readFileSync(modelsFile, 'utf8'));
+      delete data.providers.magpie.baseUrl;
+      data.providers.magpie.models = [
+        { id: 'commandcode/deepseek/deepseek-v4.1-flash', baseUrl: 'http://127.0.0.1:3425/v1' },
+      ];
+      writeFileSync(modelsFile, JSON.stringify(data, null, 2), 'utf8');
+      headroomManifest(home, { OPENAI_TARGET_API_URL: 'http://127.0.0.1:9999/v1' });
+      const before = readFileSync(modelsFile, 'utf8');
+
+      const refused = installNativeRoute('pi', PROXY);
+      expect(refused.ok).toBe(false);
+      expect(refused.detail).toContain('not Headroom');
+      expect(readFileSync(modelsFile, 'utf8')).toBe(before);
+    }));
+
+  test('routes OpenCode from the live proxy flags when no deployment is saved, and prefers them to a stale one', () =>
+    withHome((home) => {
+      const file = path.join(home, '.config', 'opencode', 'opencode.json');
+      mkdirSync(path.dirname(file), { recursive: true });
+      writeFileSync(
+        file,
+        JSON.stringify({
+          model: 'anthropic/claude-sonnet-4-5',
+          providers: {
+            anthropic: {
+              package: '@opencode/ai/providers/anthropic',
+              settings: { baseURL: 'https://api.anthropic.com' },
+            },
+          },
+        }),
+        'utf8',
+      );
+      // The running proxy names no Anthropic flag, so it forwards to the public API.
+      vi.mocked(liveHeadroomUpstreams).mockReturnValue({});
+      try {
+        // A saved deployment that disagrees must not outweigh the proxy that is actually running.
+        headroomManifest(home, { ANTHROPIC_TARGET_API_URL: 'https://stale.example.test' });
+        expect(installNativeRoute('opencode', PROXY).ok).toBe(true);
+      } finally {
+        vi.mocked(liveHeadroomUpstreams).mockReturnValue(null);
+      }
+    }));
+
+  test('validates OpenCode Anthropic package against the Anthropic upstream', () =>
+    withHome((home) => {
+      const file = path.join(home, '.config', 'opencode', 'opencode.json');
+      mkdirSync(path.dirname(file), { recursive: true });
+      writeFileSync(
+        file,
+        JSON.stringify({
+          model: 'anthropic/claude-sonnet-4-5',
+          providers: {
+            anthropic: {
+              package: '@opencode/ai/providers/anthropic',
+              settings: { baseURL: 'https://api.anthropic.com' },
+            },
+          },
+        }),
+        'utf8',
+      );
+      headroomManifest(home, { OPENAI_TARGET_API_URL: 'http://127.0.0.1:3425/v1' });
+      const before = readFileSync(file, 'utf8');
+
+      const refused = installNativeRoute('opencode', PROXY);
+      expect(refused.ok).toBe(false);
+      expect(refused.detail).toContain('--anthropic-api-url');
+      expect(readFileSync(file, 'utf8')).toBe(before);
+    }));
+
+  test('selects the Headroom deployment matching the configured proxy port', () =>
+    withHome((home) => {
+      const proxyUrl = 'http://127.0.0.1:9911/';
+      const previousUrl = process.env.TERSIO_HEADROOM_PROXY_URL;
+      process.env.TERSIO_HEADROOM_PROXY_URL = 'http://127.0.0.1:8787/';
+      try {
+        piLikeHome(path.join(home, '.pi', 'agent'));
+        headroomManifest(home, { OPENAI_TARGET_API_URL: 'http://127.0.0.1:3425/v1' }, 9911);
+        const otherProfile = path.join(home, '.headroom', 'deploy', 'other');
+        mkdirSync(otherProfile, { recursive: true });
+        writeFileSync(
+          path.join(otherProfile, 'manifest.json'),
+          JSON.stringify({
+            port: 8787,
+            updated_at: '2027-01-01T00:00:00Z',
+            base_env: { OPENAI_TARGET_API_URL: 'http://127.0.0.1:9999/v1' },
+          }),
+          'utf8',
+        );
+
+        const routed = installNativeRoute('pi', proxyUrl);
+        expect(routed.ok, routed.detail).toBe(true);
+        expect(
+          JSON.parse(readFileSync(path.join(home, '.pi', 'agent', 'models.json'), 'utf8')).providers.magpie.baseUrl,
+        ).toBe('http://127.0.0.1:9911/v1');
+      } finally {
+        if (previousUrl === undefined) delete process.env.TERSIO_HEADROOM_PROXY_URL;
+        else process.env.TERSIO_HEADROOM_PROXY_URL = previousUrl;
+      }
+    }));
   test('a rewrite by another writer clears the record instead of fighting it', () =>
     withHome((home) => {
       piHome(home);
@@ -327,6 +436,20 @@ test('a durable host with no headroom block is never invented by the repair', as
     }
   });
 });
+
+test('omp routing does not depend on the shared proxy global upstream', () =>
+  withHome(async (home) => {
+    // The running proxy may serve another provider; OMP selects this provider through request headers.
+    const omp = path.join(home, '.omp', 'agent');
+    mkdirSync(omp, { recursive: true });
+    const models =
+      'providers:\n  commandcode:\n    api: anthropic-messages\n    # tersio-headroom-upstream: https://api.commandcode.ai/provider\n    baseUrl: http://127.0.0.1:8787\n    models:\n    - id: claude-demo\n';
+    writeFileSync(path.join(omp, 'models.yml'), models, 'utf8');
+    writeFileSync(path.join(omp, 'config.yml'), 'modelRoles:\n  default: commandcode/claude-demo\n', 'utf8');
+    const result = await routeHostOn('omp', PROXY, {});
+    expect(result.ok, result.detail).toBe(true);
+    expect(readFileSync(path.join(omp, 'models.yml'), 'utf8')).toBe(models);
+  }));
 
 test('the machine knows which agents a shared proxy is already serving', () =>
   withHome((home) => {

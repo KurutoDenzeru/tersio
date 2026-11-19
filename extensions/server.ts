@@ -1,6 +1,6 @@
 // OpenCode plugin entry: maps its plugin API onto the shared ExtensionApi the mode extensions consume.
 import { execFile } from 'node:child_process';
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Plugin } from '@opencode/plugin';
@@ -10,13 +10,15 @@ import headroomSessionExtension from './headroom/index.ts';
 import rtkSessionExtension from './rtk/session.ts';
 import rtkFilterExtension, {
   FILTER_BY_TOOL,
-  MIN_FILTER_BYTES,
-  filterThroughRtk,
   filterableText,
+  filterThroughRtk,
+  MIN_FILTER_BYTES,
   rtkActive,
 } from './rtk/filter.ts';
 import comboToggleExtension from './combo/index.ts';
 import tersioCommandsExtension from './commands/index.ts';
+import codegraphSessionExtension from './codegraph/index.ts';
+import { onToolFinished } from './codegraph/client.ts';
 import { getSharedComboState } from './shared/session-state.ts';
 import { formatStatus } from './shared/status.ts';
 import { resolveRtkBinary, shimCommand } from './shared/utils.ts';
@@ -39,7 +41,7 @@ interface ToolConfig {
   parameters: unknown;
   execute: (
     toolCallId: string,
-    params: { args: string[] },
+    params: { args: string[]; [key: string]: unknown },
     signal: AbortSignal | undefined,
     onUpdate: ((data: unknown) => void) | undefined,
     ctx: ExtensionCtx | undefined,
@@ -166,9 +168,9 @@ const plugin: Plugin.Plugin = {
       rtkFilterExtension,
       comboToggleExtension,
       tersioCommandsExtension,
+      codegraphSessionExtension,
     ])
       extension(host);
-
     await ctx.command.transform((editor) => {
       for (const [name, config] of commands) {
         editor.add({
@@ -211,8 +213,9 @@ const plugin: Plugin.Plugin = {
           description: tool.description,
           input: tool.parameters as { type: 'object'; properties: Record<string, unknown>; required?: string[] },
           execute: async (input) => {
-            const args = Array.isArray((input as { args?: unknown }).args) ? (input as { args: string[] }).args : [];
-            const result = await tool.execute('t', { args }, undefined, undefined, stubCtx());
+            const params = input !== null && typeof input === 'object' ? (input as Record<string, unknown>) : {};
+            const args = Array.isArray(params.args) ? (params.args as string[]) : [];
+            const result = await tool.execute('t', { ...params, args }, undefined, undefined, stubCtx());
             return { content: result.content.map((part) => part.text).join('\n') };
           },
         });
@@ -281,13 +284,16 @@ const plugin: Plugin.Plugin = {
       await ctx.tool.hook('execute.after', async (event) => {
         const hook = event as { tool?: unknown; status?: unknown; sessionID?: unknown; result?: { content?: unknown } };
         if (hook.status !== 'completed') return;
-        const filter = FILTER_BY_TOOL.get(String(hook.tool ?? '').toLowerCase());
+        const toolName = String(hook.tool ?? '').toLowerCase();
+        const sid = typeof hook.sessionID === 'string' ? hook.sessionID : activeSid;
+        if (sid !== undefined) await ensureSession(sid);
+        // A completed call did not fail, so the codegraph gating only has to read the tool name and settings.
+        onToolFinished(toolName, false, ctx.location.directory, 'opencode');
+        const filter = FILTER_BY_TOOL.get(toolName);
         if (!filter || !hook.result) return;
         const text = filterableText(hook.result.content);
         if (text === null || text.length < MIN_FILTER_BYTES) return;
         // Read the mode from the payload's own session, not the last one to run a start hook.
-        const sid = typeof hook.sessionID === 'string' ? hook.sessionID : activeSid;
-        if (sid !== undefined) await ensureSession(sid);
         if (!rtkActive(sid === undefined ? undefined : sessionEntriesOf(sid))) return;
         const bin = resolveRtkBinary();
         if (!bin) return;

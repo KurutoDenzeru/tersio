@@ -128,6 +128,8 @@ function useModeState(): readonly [ModeState | null, () => void, boolean] {
           ponytailDefault: typeof d.ponytailDefault === "string" ? d.ponytailDefault : "off",
           pstackDefault: typeof d.pstackDefault === "string" ? d.pstackDefault : "off",
           headroomDefault: typeof d.headroomDefault === "string" ? d.headroomDefault : "off",
+          codegraphDefault: typeof d.codegraphDefault === "string" ? d.codegraphDefault : "on",
+          codegraphSync: typeof d.codegraphSync === "string" ? d.codegraphSync : "live",
           hosts: d.hosts && typeof d.hosts === "object" ? (d.hosts as ModeState["hosts"]) : {},
         })
       })

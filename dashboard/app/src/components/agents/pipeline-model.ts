@@ -1,5 +1,5 @@
 // Quick start data model: the pipeline graph, its tables, and every derivation the canvas and the dialogs read. No JSX here, so the host surfaces stay in the component modules.
-import type { ModeState } from "./shell"
+import type {ModeState} from "./shell"
 
 export type Point = readonly [number, number]
 
@@ -18,7 +18,7 @@ export type EdgeKey =
   | "pstack"
   | "rtk"
   | "ponytail"
-
+  | "codegraph";
 export type HostAction = "install" | "uninstall" | "update"
 
 /** `null` means this page has no answer yet: an exported file reads no settings, so it draws every node as lit. */
@@ -41,16 +41,15 @@ export type NodeId =
   | "headroom"
   | "rtk"
   | "ponytail"
-  | `host-${string}`
-
+  | "codegraph"
+  | `host-${string}`;
 export interface GraphEdge {
   from: NodeId
   to: NodeId
 }
 
 /** The injection order: each block appends to the prompt in this sequence. */
-export const CHAIN = ["caveman", "pstack", "rtk", "ponytail"] as const
-
+export const CHAIN = ["caveman", "pstack", "rtk", "ponytail", "codegraph"] as const
 /** The turn order the chains read; each installed host hangs its agent node off the output. */
 export function pipelineGraph(installedHosts: ReadonlyArray<string>): {
   nodes: NodeId[]
@@ -61,7 +60,7 @@ export function pipelineGraph(installedHosts: ReadonlyArray<string>): {
   const edges: GraphEdge[] = [
     { from: "prompt", to: "caveman" },
     ...CHAIN.slice(0, -1).map((id, i) => ({ from: id, to: CHAIN[i + 1] as NodeId })),
-    { from: "ponytail", to: "output" },
+    { from: "codegraph", to: "output" },
     { from: "prompt", to: "headroom" },
     { from: "headroom", to: "output" },
   ]
@@ -190,21 +189,8 @@ function curveClears(
   return true
 }
 
-const hits = (b: Box, boxes: ReadonlyArray<Box>, pad: number): boolean =>
-  boxes.some(
-    (o) =>
-      b.x < o.x + o.w + pad &&
-      b.x + b.w > o.x - pad &&
-      b.y < o.y + o.h + pad &&
-      b.y + b.h > o.y - pad,
-  )
 
-export function edgePath(
-  s: Box,
-  t: Box,
-  others: ReadonlyArray<Box>,
-  groups: ReadonlyArray<Box> = [],
-): string {
+export function edgePath(s: Box, t: Box, others: ReadonlyArray<Box>): string {
   const ports = edgePorts(s, t)
   const sp = portPoint(s, ports.from)
   const tp = portPoint(t, ports.to)
@@ -223,24 +209,19 @@ export function edgePath(
     c1: [sp[0] + outFrom[0] * reach + nx * lift, sp[1] + outFrom[1] * reach + ny * lift],
     c2: [tp[0] + outTo[0] * reach + nx * lift, tp[1] + outTo[1] * reach + ny * lift],
   })
-  // A line must miss every card, and should miss every folder band it does not belong to. The first lift that clears both wins; failing that, the first that clears the cards; failing that, the widest.
-  const foreign = groups.filter((g) => !hits(s, [g], 0) && !hits(t, [g], 0))
+  // Use the nearest curve that clears cards; routing around decorative group frames created oversized loops.
   const lifts = [0, 36, -36, 72, -72, 108, -108, 144, -144, 180, -180, 216, -216]
-  let cardSafe: { c1: Point; c2: Point } | null = null
   let chosen = at(0)
   for (const lift of lifts) {
     const curve = at(lift)
     chosen = curve
     const points = curveSamples(sp, curve.c1, curve.c2, tp, 28)
-    if (!curveClears(points, others, 14)) continue
-    cardSafe = curve
-    if (curveClears(points, foreign, 6)) break
+    if (curveClears(points, others, 14)) break
   }
-  const pick = cardSafe ?? chosen
-  return `M${sp[0]} ${sp[1]} C${pick.c1[0]} ${pick.c1[1]}, ${pick.c2[0]} ${pick.c2[1]}, ${tp[0]} ${tp[1]}`
+  return `M${sp[0]} ${sp[1]} C${chosen.c1[0]} ${chosen.c1[1]}, ${chosen.c2[0]} ${chosen.c2[1]}, ${tp[0]} ${tp[1]}`
 }
 
-/** The default view: a 2x2 mode block (pstack/rtk over caveman/ponytail), headroom above, output right, hosts in three columns below. */
+/** The default view: a mode block in the center, headroom above, output right, hosts below. */
 export function defaultPositions(installedHosts: ReadonlyArray<string>): Record<string, Box> {
   const HOST_COLUMNS = 3
   const HOST_ROW_STEP = NODE_H + 80
@@ -250,8 +231,9 @@ export function defaultPositions(installedHosts: ReadonlyArray<string>): Record<
     pstack: { x: 320, y: 200, w: NODE_W, h: NODE_H },
     rtk: { x: 592, y: 200, w: NODE_W, h: NODE_H },
     ponytail: { x: 592, y: 320, w: NODE_W, h: NODE_H },
-    headroom: { x: 464, y: 56, w: NODE_W, h: NODE_H },
-    output: { x: 904, y: 320, w: NODE_W, h: NODE_H },
+    codegraph: { x: 864, y: 200, w: NODE_W, h: NODE_H },
+    headroom: { x: 592, y: 56, w: NODE_W, h: NODE_H },
+    output: { x: 1136, y: 320, w: NODE_W, h: NODE_H },
   }
   // The agent band: the host card is taller because it lists its live modes, and a fourth host starts a new row under the first column.
   installedHosts.forEach((host, i) => {
@@ -332,15 +314,22 @@ export const HOSTS = [
   { id: "claude", label: "Claude Code" },
 ] as const
 
+export const NO_EXTENSION_HOSTS: Readonly<Record<string, true | undefined>> = {
+  codex: true,
+  dsh: true,
+  claude: true,
+}
+
 const HOST_FIELDS: Record<
   string,
-  "cavemanDefault" | "rtkDefault" | "ponytailDefault" | "pstackDefault" | "headroomDefault"
+  "cavemanDefault" | "rtkDefault" | "ponytailDefault" | "pstackDefault" | "headroomDefault" | "codegraphDefault"
 > = {
   caveman: "cavemanDefault",
   rtk: "rtkDefault",
   headroom: "headroomDefault",
   ponytail: "ponytailDefault",
   pstack: "pstackDefault",
+  codegraph: "codegraphDefault",
 }
 
 /** What each mode reads to for one agent: its own section first, the shared store underneath. */
@@ -387,6 +376,12 @@ export function agentModeRows(
       label: String(read("pstack") ?? "off"),
       on: String(read("pstack") ?? "off") !== "off",
     },
+    {
+      key: "codegraph",
+      glyph: "🕸️",
+      label: NO_EXTENSION_HOSTS[host] ? "n/a" : String(read("codegraph") ?? "on"),
+      on: !NO_EXTENSION_HOSTS[host] && String(read("codegraph") ?? "on") === "on",
+    },
   ]
 }
 
@@ -426,11 +421,17 @@ export const MODES = [
     role: "size",
     note: "smallest complete change",
   },
+  {
+    key: "codegraph",
+    glyph: "🕸️",
+    name: "codegraph",
+    role: "graph",
+    note: "index for symbol search and blast radius",
+  },
 ] as const
-
 /** The nodes a click can set, the field each writes, and the levels that field takes. Every per-agent preset shares the combo entry. */
 export const PICKER: Record<
-  "combo" | "caveman" | "rtk" | "ponytail" | "pstack" | "headroom",
+  "combo" | "caveman" | "rtk" | "ponytail" | "pstack" | "headroom" | "codegraph",
   { field: string; options: ReadonlyArray<{ id: string; label: string }> }
 > = {
   combo: {
@@ -484,7 +485,23 @@ export const PICKER: Record<
       { id: "on", label: "On" },
     ],
   },
+  codegraph: {
+    field: "codegraphDefault",
+    options: [
+      { id: "off", label: "Off" },
+      { id: "on", label: "On (auto-sync)" },
+    ],
+  },
 }
+
+/** The sync intervals the CodeGraph index can follow; `live` is the file watcher, the rest are timers. */
+export const CODEGRAPH_SYNC_OPTIONS = [
+  { id: "live", label: "Live (watcher)" },
+  { id: "5m", label: "Every 5 min" },
+  { id: "15m", label: "Every 15 min" },
+  { id: "1h", label: "Hourly" },
+  { id: "manual", label: "Manual" },
+] as const
 
 /** The session-start defaults one scope carries; `comboLevel` exists only on the shared store. */
 export interface DefaultsPayload {
@@ -495,6 +512,8 @@ export interface DefaultsPayload {
   ponytailDefault: string
   pstackDefault: string
   headroomDefault: string
+  codegraphDefault: string
+  codegraphSync: string
 }
 
 export const DEFAULT_ROWS_UI: Array<{
@@ -504,67 +523,77 @@ export const DEFAULT_ROWS_UI: Array<{
   hint: string
   options: Array<{ id: string; label: string }>
 }> = [
-  {
-    field: "comboDefault",
-    label: "Combo preset",
-    glyph: "🧩",
-    hint: "Sets caveman, RTK and Ponytail together. pstack is separate.",
-    options: [
-      { id: "off", label: "Off" },
-      { id: "lite", label: "Lite (recommended)" },
-      { id: "balanced", label: "Balanced" },
-      { id: "max", label: "Max" },
-      { id: "custom", label: "Custom" },
-    ],
-  },
-  {
-    field: "cavemanDefault",
-    label: "Caveman",
-    glyph: "🪨",
-    hint: "Terse-reply mode for a new or resumed session.",
-    options: [
-      { id: "off", label: "Off" },
-      { id: "lite", label: "Lite" },
-      { id: "full", label: "Full" },
-      { id: "ultra", label: "Ultra" },
-      { id: "megacave-lite", label: "Megacave lite" },
-      { id: "megacave-full", label: "Megacave full" },
-      { id: "megacave-ultra", label: "Megacave ultra" },
-    ],
-  },
-  {
-    field: "rtkDefault",
-    label: "RTK",
-    glyph: "🗜️",
-    hint: "Rewrite eligible Bash calls through rtk.",
-    options: [
-      { id: "on", label: "On" },
-      { id: "off", label: "Off" },
-    ],
-  },
-  {
-    field: "ponytailDefault",
-    label: "Ponytail",
-    glyph: "🧠",
-    hint: "Lazy-code mode for a new or resumed session.",
-    options: [
-      { id: "off", label: "Off" },
-      { id: "lite", label: "Lite" },
-      { id: "full", label: "Full" },
-      { id: "ultra", label: "Ultra" },
-    ],
-  },
-  {
-    field: "pstackDefault",
-    label: "pstack",
-    glyph: "🥔",
-    hint: "Rigor mode. Opt-in, so no preset turns it on or off.",
-    options: [
-      { id: "off", label: "Off" },
-      { id: "on", label: "On" },
-    ],
-  },
-]
+    {
+      field: "comboDefault",
+      label: "Combo preset",
+      glyph: "🧩",
+      hint: "Sets caveman, RTK and Ponytail together. pstack is separate.",
+      options: [
+        { id: "off", label: "Off" },
+        { id: "lite", label: "Lite (recommended)" },
+        { id: "balanced", label: "Balanced" },
+        { id: "max", label: "Max" },
+        { id: "custom", label: "Custom" },
+      ],
+    },
+    {
+      field: "cavemanDefault",
+      label: "Caveman",
+      glyph: "🪨",
+      hint: "Terse-reply mode for a new or resumed session.",
+      options: [
+        { id: "off", label: "Off" },
+        { id: "lite", label: "Lite" },
+        { id: "full", label: "Full" },
+        { id: "ultra", label: "Ultra" },
+        { id: "megacave-lite", label: "Megacave lite" },
+        { id: "megacave-full", label: "Megacave full" },
+        { id: "megacave-ultra", label: "Megacave ultra" },
+      ],
+    },
+    {
+      field: "rtkDefault",
+      label: "RTK",
+      glyph: "🗜️",
+      hint: "Rewrite eligible Bash calls through rtk.",
+      options: [
+        { id: "on", label: "On" },
+        { id: "off", label: "Off" },
+      ],
+    },
+    {
+      field: "ponytailDefault",
+      label: "Ponytail",
+      glyph: "🧠",
+      hint: "Lazy-code mode for a new or resumed session.",
+      options: [
+        { id: "off", label: "Off" },
+        { id: "lite", label: "Lite" },
+        { id: "full", label: "Full" },
+        { id: "ultra", label: "Ultra" },
+      ],
+    },
+    {
+      field: "pstackDefault",
+      label: "pstack",
+      glyph: "🥔",
+      hint: "Rigor mode. Opt-in, so no preset turns it on or off.",
+      options: [
+        { id: "off", label: "Off" },
+        { id: "on", label: "On" },
+      ],
+    },
+    {
+      field: "codegraphDefault",
+      label: "CodeGraph",
+      glyph: "🕸️",
+      hint: "On creates and syncs the local index. Off disables automatic indexing; manual CodeGraph tools remain available.",
+      options: [
+        { id: "off", label: "Off" },
+        { id: "on", label: "On" },
+      ],
+    },
+  ]
 
 export const OFF_DEFAULTS: DefaultsPayload = {
   comboDefault: "off",
@@ -574,6 +603,8 @@ export const OFF_DEFAULTS: DefaultsPayload = {
   ponytailDefault: "off",
   pstackDefault: "off",
   headroomDefault: "off",
+  codegraphDefault: "on",
+  codegraphSync: "live",
 }
 
 /** What the option surface says about a node. */
@@ -593,6 +624,7 @@ export const ABOUT: Partial<Record<NodeId, string>> = {
   rtk: "Tooling. Rewrites a shell command and condenses its output before the model sees it.",
   ponytail: "Size. Caps the diff at the smallest complete change.",
   output: "The turn's result: what the agent answers after every block applied.",
+  codegraph: "Indexes code structure for symbol search and blast-radius analysis; sync schedule is configured separately.",
 }
 
 export interface ModeVersionRow {
@@ -647,6 +679,7 @@ export function edgeLit(key: EdgeKey, modes: ModeState | null, hostState: HostSt
   if (key === "caveman") return modes.cavemanDefault !== "off"
   if (key === "ponytail") return modes.ponytailDefault !== "off"
   if (key === "headroom") return modes.headroomDefault !== "off"
+  if (key === "codegraph") return modes.codegraphDefault !== "off"
   return modes.pstackDefault !== "off"
 }
 
@@ -666,7 +699,6 @@ export function nodeState(
   if (id.startsWith("host-")) {
     const key = id.slice(5)
     const on = edgeLit(key as EdgeKey, modes, hostState)
-    // The version alone: "installed" and "routed" read as status, and a bar already shows the route.
     return { label: isOff(on) ? "not installed" : (versionOf(hostState.versions[key]) ?? ""), on }
   }
   if (id === "caveman" || id === "ponytail") {
@@ -675,6 +707,10 @@ export function nodeState(
     return { label: isOff(on) ? "off" : level || "on", on }
   }
   if (id === "pstack" || id === "headroom" || id === "rtk") {
+    const on = edgeLit(id, modes, hostState)
+    return { label: isOff(on) ? "off" : "on", on }
+  }
+  if (id === "codegraph") {
     const on = edgeLit(id, modes, hostState)
     return { label: isOff(on) ? "off" : "on", on }
   }
@@ -688,7 +724,8 @@ export function nodeOff(id: NodeId, modes: ModeState | null, hostState: HostStat
     id === "pstack" ||
     id === "headroom" ||
     id === "rtk" ||
-    id === "ponytail"
+    id === "ponytail" ||
+    id === "codegraph"
   ) {
     return isOff(edgeLit(id, modes, hostState))
   }
@@ -737,6 +774,13 @@ export function nodeValue(
     }
     return modes.rtkDefault ? "on" : "off"
   }
+  if (id === "codegraph") {
+    if (scope !== "all") {
+      const own = modes.hosts?.[scope]?.codegraphDefault
+      if (typeof own === "string") return own
+    }
+    return modes.codegraphDefault
+  }
   return null
 }
 
@@ -745,10 +789,9 @@ export function nodeGlyph(id: NodeId): string | null {
   if (id === "output") return null
   return MODES.find((mm) => mm.key === id)?.glyph ?? null
 }
-
-/** An exported file has no server, so a failed read leaves the hosts unknown and every node lit. */
 export function readHosts(): Promise<Array<{ id: string; installed: boolean }> | null> {
   return fetch("/api/hosts")
     .then((r) => (r.ok ? r.json() : null))
     .catch(() => null)
 }
+

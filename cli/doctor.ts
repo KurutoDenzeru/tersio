@@ -1,59 +1,64 @@
 // cli/doctor.ts — installation health checks.
 import { execFileSync } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync, statSync, promises as fs } from 'node:fs';
+import { existsSync, promises as fs, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import {
+  args,
+  BUN_BIN_DIR,
+  dryRun,
+  execP,
+  fix,
   HOME,
   OMP_AGENT_DIR,
-  PACKAGE_VERSION,
-  args,
-  dryRun,
-  fix,
-  yes,
-  BUN_BIN_DIR,
   OMP_BIN,
-  execP,
+  PACKAGE_VERSION,
   relTime,
   shimCommand,
+  yes,
 } from './common.ts';
+import { CODEGRAPH_NPM_LATEST, installedCodegraphVersion } from './codegraph-bundle.ts';
+import { CODEGRAPH_HOSTS, readCodegraphDefault, readCodegraphSync } from '../extensions/shared/plugin-settings.ts';
+import { findRepoRoot } from '../extensions/codegraph/shared.ts';
+import type { DetectedHost } from './hosts.ts';
 import {
   detectHosts,
   dshPackageDir,
   hostAgentInfo,
   hostExtensionsDir,
   ompPackageDir,
-  piPonytailPackageDir,
   pigPonytailPackageDir,
+  piPonytailPackageDir,
 } from './hosts.ts';
-import type { DetectedHost } from './hosts.ts';
-import { GENERATED_TREE_FILES } from './manifest.ts';
+import {
+  GENERATED_TREE_FILES,
+  isObsoleteTreeFile,
+  PI_PONYTAIL_FILES,
+  PONYTAIL_BUNDLE_FILES,
+  PONYTAIL_VERSION,
+  TREE_PSTACK_FILES,
+  treeFilesFor,
+  treeFileText,
+} from './manifest.ts';
 import { askInteractiveChoice, askInteractiveConfirm, runInteractivePhase } from './interactive.ts';
 import { usageDbPath } from '../extensions/shared/usage-store.ts';
 
 import {
+  normalizeRtkVersion,
   piAgentDir,
   pigAgentDir,
   readTextIfExists,
   resolveHeadroomBinary,
   resolveHostBinary,
   resolveRtkBinary,
-  ruleBodyProblem,
-  normalizeRtkVersion,
   RTK_RELEASE_API,
+  ruleBodyProblem,
 } from '../extensions/shared/utils.ts';
 import { sqliteScript, statsDbPath } from '../extensions/shared/agent-stats.ts';
 import { OMP_SUBAGENT_MARKER } from '../extensions/shared/session-state.ts';
 import { hostCap, isPluginHost } from '../extensions/shared/host-caps.ts';
 import { tersioMcpConfigured } from '../extensions/shared/mcp-config.ts';
-import {
-  PI_PONYTAIL_FILES,
-  PONYTAIL_BUNDLE_FILES,
-  PONYTAIL_VERSION,
-  TREE_PSTACK_FILES,
-  isObsoleteTreeFile,
-  treeFileText,
-  treeFilesFor,
-} from './manifest.ts';
+// One definition, in the module that runs the repairs, so the menu and the parser cannot drift.
+import type { FixRequest, FixTarget } from './doctor-fix.ts';
 import { serviceRunning, serviceState } from './doctor-fix.ts';
 import { readState } from '../extensions/shared/state.ts';
 import { CAVEMAN_PIN } from './upstream.ts';
@@ -434,6 +439,24 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   const headroomVersion = headroomVersionRaw?.match(/version\s+(\S+)/)?.[1] ?? headroomVersionRaw ?? '';
   if (headroomBin !== null) check('Headroom binary', true, headroomVersion);
   else console.log('  —  Headroom: not installed · optional: pip install "headroom-ai[all]", then /headroom on');
+  // CodeGraph is on by default, so a missing bundle is a warning: the index it builds is the feature.
+  const codegraphVersion = installedCodegraphVersion();
+  const graphOn = CODEGRAPH_HOSTS.some((name) => readCodegraphDefault(name) === 'on');
+  if (!graphOn) reportUnused('CodeGraph', '· off in session defaults; enable with: tersio modes codegraph on');
+  else if (codegraphVersion !== null) {
+    check('CodeGraph bundle', true, `${codegraphVersion} · sync ${readCodegraphSync()}`);
+    const codegraphGap = await latestGap(CODEGRAPH_NPM_LATEST, codegraphVersion, 'version');
+    if (codegraphGap) warnLine('CodeGraph version', `${codegraphGap} — run: tersio update`);
+  } else warnLine('CodeGraph bundle', 'not found · install it with: tersio update');
+  // The index belongs to one repository, so the row reports the one the working directory is in.
+  const graphRoot = findRepoRoot(process.cwd());
+  if (graphOn) {
+    const cwdIndex = path.join(graphRoot ?? process.cwd(), '.codegraph');
+    if (existsSync(cwdIndex)) check('CodeGraph index', true, cwdIndex);
+    else if (graphRoot !== null)
+      warnLine('CodeGraph index', 'not built for this repository · run: tersio codegraph init');
+    else console.log('  —  CodeGraph index: no git repository in the working directory');
+  }
   const ponytailAge = ponytailMtime
     ? `(updated ${relTime(Date.now() - ponytailMtime.mtimeMs)} · ${absDate(ponytailMtime.mtimeMs)})`
     : '';
@@ -497,9 +520,6 @@ async function runDoctor(recheck = false): Promise<DoctorSummary> {
   }
   return tally;
 }
-
-// One definition, in the module that runs the repairs, so the menu and the parser cannot drift.
-import type { FixTarget, FixRequest } from './doctor-fix.ts';
 
 function fixScope(): FixTarget | null {
   const eq = args.find((a) => a.startsWith('--fix='));

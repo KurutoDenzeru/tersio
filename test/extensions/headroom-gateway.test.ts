@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { expect, test } from 'vitest';
 import {
+  ompProviderUpstream,
   readOmpGateway,
   restoreOmpGateway,
   routeOmpDefaultModel,
@@ -161,6 +162,11 @@ test('a model with its own endpoint is routed beside the provider line', () => {
     expect(routed.match(/baseUrl: http:\/\/127\.0\.0\.1:8787\/v1/g) ?? []).toHaveLength(2);
     // Another model's endpoint stays where it was.
     expect(routed).toContain('baseUrl: http://127.0.0.1:1234/v1');
+    expect(ompProviderUpstream('magpie', 8787, 'magpie/commandcode/deepseek/deepseek-v4.1-flash')?.url).toBe(
+      'http://127.0.0.1:3425',
+    );
+    expect(restoreOmpGateway(8787)).toBe(true);
+    expect(readFileSync(file, 'utf8')).toBe(MODEL_OVERRIDE);
   });
 });
 
@@ -168,11 +174,7 @@ test('routeOmpDefaultModel creates models.yml scaffold when missing', () => {
   withHome((home) => {
     const configDir = path.join(home, '.omp', 'agent');
     mkdirSync(configDir, { recursive: true });
-    writeFileSync(
-      path.join(configDir, 'config.yml'),
-      'modelRoles:\n  default: anthropic/claude-haiku-5-5\n',
-      'utf8',
-    );
+    writeFileSync(path.join(configDir, 'config.yml'), 'modelRoles:\n  default: anthropic/claude-haiku-5-5\n', 'utf8');
     const modelsFile = path.join(configDir, 'models.yml');
     expect(existsSync(modelsFile)).toBe(false);
     routeOmpDefaultModel(8787);
@@ -268,5 +270,19 @@ test('routeOmpModel routes an ad-hoc model on demand without touching config.yml
     const routed = readFileSync(file, 'utf8');
     expect(routed).toContain('baseUrl: http://127.0.0.1:8787/v1\n');
     expect(routed).toContain('# tersio-headroom-upstream: https://api.future-provider.ai/v1');
+  });
+});
+
+test('legacy YAML upstream markers restore a routed provider without losing its original URL', () => {
+  withHome((home) => {
+    const file = writeOmp(
+      home,
+      'providers:\n  commandcode:\n    api: openai-completions\n    tersio-headroom-upstream: https://api.commandcode.ai/provider\n    baseUrl: http://127.0.0.1:8787/v1\n',
+    );
+    expect(ompProviderUpstream('commandcode')?.url).toBe('https://api.commandcode.ai/provider');
+    expect(restoreOmpGateway()).toBe(true);
+    expect(readFileSync(file, 'utf8')).toBe(
+      'providers:\n  commandcode:\n    api: openai-completions\n    baseUrl: https://api.commandcode.ai/provider\n',
+    );
   });
 });
