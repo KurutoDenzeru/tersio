@@ -8,7 +8,7 @@ import cavemanSessionExtension from '../../extensions/caveman/index.ts';
 import comboToggleExtension from '../../extensions/combo/index.ts';
 import tersioCommandsExtension from '../../extensions/commands/index.ts';
 import rtkSessionExtension from '../../extensions/rtk/session.ts';
-import { stopWatching } from '../../extensions/codegraph/client.ts';
+import { shutdownCodeGraphWorker, stopWatching } from '../../extensions/codegraph/client.ts';
 import { getCodeGraph } from '../../extensions/codegraph/shared.ts';
 import { createCodeGraphTestFixture } from '../helpers/codegraph.ts';
 import plugin from '../../extensions/server.ts';
@@ -400,6 +400,7 @@ test('OpenCode forwards named tool inputs to shared extensions', async () => {
     expect(result.content).toContain('function adapterVisibleSymbol');
   } finally {
     await stopWatching(fixture.projectRoot);
+    await shutdownCodeGraphWorker();
     fixture.cleanup();
   }
 });

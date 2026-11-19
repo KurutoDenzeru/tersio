@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
 import { handleCodeGraphRoutes } from '../../cli/dashboard-codegraph.ts';
-import { stopWatching } from '../../extensions/codegraph/client.ts';
+import { shutdownCodeGraphWorker, stopWatching } from '../../extensions/codegraph/client.ts';
 import { type CodeGraphTestFixture, createCodeGraphTestFixture } from '../helpers/codegraph.ts';
 
 describe('dashboard CodeGraph routes', () => {
@@ -18,6 +18,7 @@ describe('dashboard CodeGraph routes', () => {
   });
   afterAll(async () => {
     await stopWatching(tmpDir);
+    await shutdownCodeGraphWorker();
     fixture.cleanup();
   });
 

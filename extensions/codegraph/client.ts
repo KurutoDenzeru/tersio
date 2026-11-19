@@ -249,6 +249,25 @@ export async function stopWatching(root = process.cwd()): Promise<void> {
   if (worker?.child.connected) await request({ op: 'stop', root });
 }
 
+/** Close the worker process and wait for it to exit, so the bundle's node binary is no longer held open. */
+export async function shutdownCodeGraphWorker(): Promise<void> {
+  const instance = worker;
+  if (!instance) return;
+  const { child } = instance;
+  const exited = new Promise<void>((resolve) => {
+    if (child.exitCode !== null || child.signalCode !== null) resolve();
+    else child.once('exit', () => resolve());
+  });
+  // The worker exits when its channel closes; the kill is only a backstop for one that is stuck.
+  if (child.connected) child.disconnect();
+  const backstop = setTimeout(() => child.kill(), 5_000);
+  try {
+    await exited;
+  } finally {
+    clearTimeout(backstop);
+  }
+}
+
 export function onToolFinished(tool: string, isError: boolean, root: string, host?: HostScope | null): void {
   if (isError || readCodegraphDefault(host) !== 'on' || readCodegraphSync() !== 'live') return;
   const name = tool.toLowerCase();
