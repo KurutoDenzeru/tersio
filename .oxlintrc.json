@@ -9,7 +9,7 @@
     "node": true,
     "es2026": true
   },
-  "ignorePatterns": ["dashboard/dist/**", "graphify-out/**", "node_modules/**", "coverage/**", "extensions/ponytail/**"],
+  "ignorePatterns": ["dashboard/dist/**", "node_modules/**", "coverage/**", "extensions/ponytail/**"],
   "rules": {
     "vitest/valid-expect": "off"
   },

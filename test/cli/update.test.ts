@@ -231,6 +231,7 @@ const installer = path.join(root, 'dist', 'tersio.js');
 // `tersio update` refreshes the price cache; a dead port and temp file keep it off the spawn timeout.
 const deadPricesEnv = (): Record<string, string> => ({
   TERSIO_PRICES_URL: 'http://127.0.0.1:1/prices.json',
+  PI_OFFLINE: '1',
   TERSIO_PRICES_FILE: path.join(mkdtempSync(path.join(os.tmpdir(), 'tersio-update-prices-')), 'prices.json'),
 });
 

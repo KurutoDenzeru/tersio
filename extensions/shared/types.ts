@@ -7,6 +7,7 @@ export interface ComboState {
   ponytail: string;
   pstack: string;
   headroom: string;
+  codegraph: string;
 }
 
 export type ComboLevel = 'off' | 'lite' | 'balanced' | 'max' | 'custom';
@@ -35,10 +36,25 @@ export interface UiApi {
   };
 }
 
+/** Model metadata exposed by the host; other catalog fields survive a session-local endpoint override. */
+export interface AgentModel {
+  id: string;
+  provider: string;
+  api: string;
+  baseUrl: string;
+  headers?: Record<string, string>;
+  resolveHeaders?: (signal?: AbortSignal) => Promise<Record<string, string> | undefined>;
+  [key: string]: unknown;
+}
+
 export interface ExtensionCtx {
   hasUI?: boolean;
   cwd?: string;
   signal?: AbortSignal;
+  model?: AgentModel;
+  models?: {
+    current(): AgentModel | undefined;
+  };
   sessionManager?: {
     getBranch?: () => SessionEntry[];
     getEntries?: () => SessionEntry[];
@@ -111,5 +127,8 @@ export interface ExtensionApi {
   cwd?: string;
   zod?: { z: unknown };
   hostId?: 'pi' | 'omp' | 'opencode';
+  setModel?: (model: AgentModel) => Promise<boolean>;
+  getThinkingLevel?: () => string | undefined;
+  setThinkingLevel?: (level: string) => Promise<void> | void;
   on<E>(event: string, handler: (event: E, ctx: ExtensionCtx) => unknown): void;
 }

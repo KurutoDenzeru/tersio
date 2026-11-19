@@ -1,39 +1,38 @@
 // The pipeline canvas: an infinite pan/zoom viewport of draggable node cards with bezier connectors, laid out in positions tersio stores so a restart keeps them.
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
-import { AgentLogo } from "@/components/agent-logos"
-import { Icon } from "@/components/icon"
-import { Spinner } from "@/components/ui/spinner"
-import { fetchPipelinePositions, postPipelinePositions } from "@/lib/data"
-import { cn } from "cn"
+import {useEffect, useLayoutEffect, useMemo, useRef, useState} from "react"
+import {AgentLogo} from "@/components/agent-logos"
+import {Icon} from "@/components/icon"
+import {Spinner} from "@/components/ui/spinner"
+import {fetchPipelinePositions, postPipelinePositions} from "@/lib/data"
+import {cn} from "cn"
 import gsap from "gsap"
-import { useGSAP } from "@gsap/react"
-import { HeadroomDrawer, HostDrawer, ModeDrawer, RtkDrawer } from "./how-to-node-ui"
+import {useGSAP} from "@gsap/react"
+import {HeadroomDrawer, HostDrawer, ModeDrawer, RtkDrawer} from "./how-to-node-ui"
+import type {Alignment, Box, EdgeKey, GuideLine, HostAction, HostState, NodeId} from "./pipeline-model"
 import {
-  HOSTS,
-  MODES,
-  NODE_H,
-  NODE_W,
-  agentModeRows,
-  alignDrag,
-  defaultPositions,
-  edgeLit,
-  edgePath,
-  edgePorts,
-  isOff,
-  loadPositions,
-  nodeOff,
-  nodeState,
-  nodeTitle,
-  pipelineGraph,
-  portPoint,
-  savePositions,
-  shortVersion,
-  snapToGrid,
-  versionOf,
+    agentModeRows,
+    alignDrag,
+    defaultPositions,
+    edgeLit,
+    edgePath,
+    edgePorts,
+    HOSTS,
+    isOff,
+    loadPositions,
+    MODES,
+    NODE_H,
+    NODE_W,
+    nodeOff,
+    nodeState,
+    nodeTitle,
+    pipelineGraph,
+    portPoint,
+    savePositions,
+    shortVersion,
+    snapToGrid,
+    versionOf,
 } from "./pipeline-model"
-import type { Box, EdgeKey, HostAction, HostState, NodeId } from "./pipeline-model"
-import type { Alignment, GuideLine } from "./pipeline-model"
-import type { ModeState } from "./shell"
+import type {ModeState} from "./shell"
 
 /** The rect a cluster frame draws: the band's nodes plus room for its label. */
 function clusterBox(ids: NodeId[], boxes: Record<string, Box>): Box | null {
@@ -72,14 +71,14 @@ function ClusterFrame({
   return (
     <div
       aria-hidden="true"
-      className="pointer-events-none absolute rounded-2xl border border-dashed border-line bg-card"
+      className="pointer-events-none absolute z-0 rounded-2xl border border-dashed border-line bg-card"
       style={{ left: frame.x, top: frame.y, width: frame.w, height: frame.h }}
     >
       <span
         role="button"
         aria-label={`Move the ${label} group`}
         title={`Drag to move the ${label} group`}
-        className="mono pointer-events-auto absolute left-2 top-1.5 flex cursor-grab touch-none items-center gap-1 rounded-md border border-line bg-panel px-1.5 py-0.5 text-[9px] uppercase tracking-[0.12em] text-dim active:cursor-grabbing"
+        className="mono pointer-events-auto absolute z-20 left-2 top-1.5 flex cursor-grab touch-none items-center gap-1 rounded-md border border-line bg-panel px-1.5 py-0.5 text-[9px] uppercase tracking-[0.12em] text-dim active:cursor-grabbing"
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
@@ -140,10 +139,10 @@ function NodeButton({
       }}
       style={{ left: box.x, top: box.y, width: box.w, height: box.h }}
       className={cn(
-        "howto-node absolute flex cursor-pointer flex-col overflow-hidden rounded-xl border border-line bg-panel text-left outline-none active:cursor-grabbing",
+        "howto-node absolute z-20 flex cursor-pointer flex-col overflow-hidden rounded-xl border border-line bg-panel text-left outline-none active:cursor-grabbing",
         "hover:border-accent/50 focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40",
         dashed &&
-          "items-center border-2 border-dashed bg-panel text-dim hover:border-accent/50 hover:text-ink",
+        "items-center border-2 border-dashed bg-panel text-dim hover:border-accent/50 hover:text-ink",
         off && "border-2 border-dashed opacity-55",
         accent && "border-accent/40",
         selected && "border-accent ring-2 ring-accent/30",
@@ -296,6 +295,14 @@ export function PipelineCanvas({
         ? { ...defaults[id], x: stored[id].x, y: stored[id].y }
         : (defaults[id] ?? { x: 40, y: 296, w: NODE_W, h: NODE_H })
     }
+    // Older saved layouts placed CodeGraph on the fallback coordinate. Reset it and Output if they overlap.
+    const newGraphIds = ["codegraph"].filter((id) => nodeIds.includes(id as NodeId))
+    const graphNodeClash = newGraphIds.some((id) =>
+      nodeIds.some((other) => other !== id && boxesOverlap(merged[id]!, merged[other]!)),
+    )
+    if (graphNodeClash) {
+      for (const id of [...newGraphIds, "output"]) merged[id] = defaults[id]!
+    }
     // A host added after the store was written can sit on a saved card. Reset the band to the current columns, so no host hides another.
     const hostClash = hostIds.some((id, i) =>
       hostIds.slice(i + 1).some((other) => boxesOverlap(merged[id], merged[other])),
@@ -304,11 +311,6 @@ export function PipelineCanvas({
     return merged
   }, [nodeIds, stored, installed, hostIds])
 
-  const groupBoxes = useMemo(
-    () =>
-      [clusterBox(modeIds, boxes), clusterBox(hostIds, boxes)].filter((b): b is Box => b !== null),
-    [modeIds, hostIds, boxes],
-  )
 
   // The add-agent node rides the canvas center when no agent exists yet, so the empty state reads as an invitation instead of an empty grid.
   const addBox = useMemo<Box>(() => {
@@ -352,9 +354,9 @@ export function PipelineCanvas({
       narrow
         ? { x: 16 - minX * scaleToUse, y: topInset - minY * scaleToUse }
         : {
-            x: (containerW - worldW * fit) / 2 - minX * fit,
-            y: topInset + (containerH - topInset - worldH * fit) / 2 - minY * fit,
-          },
+          x: (containerW - worldW * fit) / 2 - minX * fit,
+          y: topInset + (containerH - topInset - worldH * fit) / 2 - minY * fit,
+        },
     )
   }, [containerW, containerH, installedKey, nodeIds, boxes, addBox, noAgents])
 
@@ -602,7 +604,9 @@ export function PipelineCanvas({
       const versioned = version?.installed != null
       const stale = version?.outdated === true
       const title = versioned
-        ? `${version?.outdated ? "Behind upstream" : "Up to date"}: ${version?.installed}${version?.upstream ? ` (upstream ${version.upstream})` : ""}`
+        ? version.outdated === null
+          ? `Upstream version unavailable: ${version.installed}`
+          : `${stale ? "Behind upstream" : "Up to date"}: ${version.installed}${version.upstream ? ` (upstream ${version.upstream})` : ""}${stale && mode.key === "pstack" ? ". Pinned in Tersio; upstream changes require review before a Tersio release." : ""}`
         : ""
       return (
         <>
@@ -749,7 +753,7 @@ export function PipelineCanvas({
             onPointerUp={onGroupPointerUp}
           />
           <svg
-            className="pointer-events-none absolute inset-0"
+            className="pointer-events-none absolute inset-0 z-10"
             width={worldW}
             height={worldH}
             viewBox={`0 0 ${worldW} ${worldH}`}
@@ -772,7 +776,7 @@ export function PipelineCanvas({
                 return (
                   <g key={`${edge.from}->${edge.to}`}>
                     <path
-                      d={edgePath(from, to, others, groupBoxes)}
+                      d={edgePath(from, to, others)}
                       className="howto-link"
                       stroke="var(--dim)"
                       strokeWidth={2.5}
@@ -780,7 +784,7 @@ export function PipelineCanvas({
                     />
                     {/* Every connector is a network cable; the moving dash runs only where the source is on. */}
                     <path
-                      d={edgePath(from, to, others, groupBoxes)}
+                      d={edgePath(from, to, others)}
                       className="flow-line howto-link"
                       stroke="var(--accent)"
                       strokeWidth={1.5}
@@ -809,23 +813,23 @@ export function PipelineCanvas({
 
           {guides
             ? [
-                ...guides.vertical.map((line) => (
-                  <div
-                    key={`vg${line.at}`}
-                    aria-hidden="true"
-                    className="pointer-events-none absolute w-px bg-accent/70"
-                    style={{ left: line.at, top: line.from, height: line.to - line.from }}
-                  />
-                )),
-                ...guides.horizontal.map((line) => (
-                  <div
-                    key={`hg${line.at}`}
-                    aria-hidden="true"
-                    className="pointer-events-none absolute h-px bg-accent/70"
-                    style={{ top: line.at, left: line.from, width: line.to - line.from }}
-                  />
-                )),
-              ]
+              ...guides.vertical.map((line) => (
+                <div
+                  key={`vg${line.at}`}
+                  aria-hidden="true"
+                  className="pointer-events-none absolute w-px bg-accent/70"
+                  style={{ left: line.at, top: line.from, height: line.to - line.from }}
+                />
+              )),
+              ...guides.horizontal.map((line) => (
+                <div
+                  key={`hg${line.at}`}
+                  aria-hidden="true"
+                  className="pointer-events-none absolute h-px bg-accent/70"
+                  style={{ top: line.at, left: line.from, width: line.to - line.from }}
+                />
+              )),
+            ]
             : null}
 
           {nodeIds.map((id) => {
@@ -963,11 +967,11 @@ export function PipelineCanvas({
         />
       ) : null}
       {selected !== null &&
-      selected !== "headroom" &&
-      selected !== "rtk" &&
-      !selected.startsWith("host-") &&
-      selected !== "prompt" &&
-      selected !== "output" ? (
+        selected !== "headroom" &&
+        selected !== "rtk" &&
+        !selected.startsWith("host-") &&
+        selected !== "prompt" &&
+        selected !== "output" ? (
         <ModeDrawer
           node={selected}
           open

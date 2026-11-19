@@ -1,3 +1,4 @@
+import { CODEGRAPH_SYNC_MODES } from '../extensions/shared/plugin-settings.ts';
 // cli/common.ts — shared foundation: CLI flags, paths, exec, file/config helpers.
 import { execFile } from 'node:child_process';
 import { existsSync, promises as fs } from 'node:fs';
@@ -6,9 +7,9 @@ import { promisify } from 'node:util';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { findPackageRoot, readTextIfExists } from '../extensions/shared/utils.ts';
+import type { CurrencyCode } from './currency.ts';
 import { parseCurrencyFlag, readStoredCurrency } from './currency.ts';
 import { recordActivity, shortPath } from './activity.ts';
-import type { CurrencyCode } from './currency.ts';
 
 const IS_WINDOWS = process.platform === 'win32';
 const RTK_BINARY_NAME = IS_WINDOWS ? 'rtk.exe' : 'rtk';
@@ -49,6 +50,7 @@ const PONYTAIL_DEFAULTS = new Set(['off', 'lite', 'full', 'ultra']);
 const PSTACK_DEFAULTS = new Set(['off', 'on']);
 const HEADROOM_DEFAULTS = new Set(['off', 'on']);
 const RTK_DEFAULTS = new Set(['on', 'off']);
+const CODEGRAPH_DEFAULTS = new Set(['on', 'off']);
 
 // Mirrors COMBO_LEVELS in extensions/shared/session-state.ts: a preset owns three modes, and pstack stays opt-in.
 const COMBO_PRESET_MODES: Record<string, { caveman: string; rtk: boolean; ponytail: string }> = {
@@ -87,9 +89,8 @@ const COMMANDS: Record<string, true> = {
   upstream: true,
   mcp: true,
   modes: true,
+  codegraph: true,
   'codex-hook': true,
-  version: true,
-  help: true,
 };
 /** Flags whose next token is a value, so `--host omp` never reads `omp` as the command. */
 const VALUE_FLAGS = new Set([
@@ -106,6 +107,8 @@ const VALUE_FLAGS = new Set([
   '--pstack-default',
   '--headroom-default',
   '--rtk-default',
+  '--codegraph-default',
+  '--codegraph-sync',
 ]);
 const args = process.argv.slice(2);
 const commandArg = args.find((arg, i) => !arg.startsWith('-') && !VALUE_FLAGS.has(args[i - 1]));
@@ -128,11 +131,12 @@ const dashboard = command === 'dashboard';
 const mcp = command === 'mcp';
 const modes = command === 'modes';
 const codexHook = command === 'codex-hook';
+const codegraph = command === 'codegraph';
 const upstream = command === 'upstream' || args.includes('--upstream');
 export const DEFAULT_DASHBOARD_PORT = 3456;
 const rawPort = flagValue('--port');
 const envPort = Number.parseInt(process.env.TERSIO_DASHBOARD_PORT ?? '', 10) || 0;
-const dashboardPort = rawPort !== undefined ? (Number.parseInt(rawPort, 10) || 0) : (envPort || DEFAULT_DASHBOARD_PORT);
+const dashboardPort = rawPort !== undefined ? Number.parseInt(rawPort, 10) || 0 : envPort || DEFAULT_DASHBOARD_PORT;
 // The dashboard listens on loopback unless asked otherwise: `--lan`, `--bind <addr>`, or `--host lan`. `--host` names an agent for install, so only a value that is not an agent id reads as an address.
 const hostArg = flagValue('--host');
 const dashboardBind = args.includes('--local')
@@ -173,6 +177,8 @@ const ponytailDefaultFlag = parseModeFlag('--ponytail-default', PONYTAIL_DEFAULT
 const pstackDefaultFlag = parseModeFlag('--pstack-default', PSTACK_DEFAULTS);
 const headroomDefaultFlag = parseModeFlag('--headroom-default', HEADROOM_DEFAULTS);
 const rtkDefaultFlag = parseModeFlag('--rtk-default', RTK_DEFAULTS);
+const codegraphDefaultFlag = parseModeFlag('--codegraph-default', CODEGRAPH_DEFAULTS);
+const codegraphSyncFlag = parseEnum(flagValue('--codegraph-sync'), new Set(CODEGRAPH_SYNC_MODES), '--codegraph-sync');
 
 const profileFlagsGiven = [
   comboDefaultFlag,
@@ -181,6 +187,8 @@ const profileFlagsGiven = [
   ponytailDefaultFlag,
   pstackDefaultFlag,
   headroomDefaultFlag,
+  codegraphDefaultFlag,
+  codegraphSyncFlag,
 ].some((flag) => flag !== undefined);
 
 function debug(...a: unknown[]): void {
@@ -272,7 +280,7 @@ async function writeConfigLines(
   options: WriteOptions = {},
 ): Promise<void> {
   await fs.mkdir(path.dirname(configPath), { recursive: true });
-  await fs.copyFile(configPath, `${configPath}.bak`).catch(() => { });
+  await fs.copyFile(configPath, `${configPath}.bak`).catch(() => {});
   await fs.writeFile(configPath, lines.join('\n'), 'utf8');
   if (verbose && !options.quiet) console.log(logMsg);
 }
@@ -505,6 +513,7 @@ export {
   PSTACK_DEFAULTS,
   HEADROOM_DEFAULTS,
   RTK_DEFAULTS,
+  CODEGRAPH_DEFAULTS,
   COMBO_PRESET_MODES,
   COMBO_DEFAULTS,
   ACCENT_DEFAULTS,
@@ -516,6 +525,7 @@ export {
   unknownCommand,
   mcp,
   modes,
+  codegraph,
   codexHook,
   install,
   update,
@@ -548,6 +558,8 @@ export {
   pstackDefaultFlag,
   headroomDefaultFlag,
   rtkDefaultFlag,
+  codegraphDefaultFlag,
+  codegraphSyncFlag,
   profileFlagsGiven,
   debug,
   execFileP,

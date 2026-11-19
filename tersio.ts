@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 // Install Tersio add-ons on any OMP device; see help for commands.
 import {
-  PACKAGE_BIN,
-  PACKAGE_VERSION,
   applyUpdate,
+  codegraph,
   codexHook,
   commandArg,
+  currency,
   dashboard,
   dashboardBind,
   dashboardExport,
@@ -15,16 +15,18 @@ import {
   doctor,
   mcp,
   modes,
+  PACKAGE_BIN,
+  PACKAGE_VERSION,
   showHelp,
   showVersion,
   uninstall,
   unknownCommand,
   update,
   upstream,
-  currency,
 } from './cli/common.ts';
 import { closeRL } from './cli/interactive.ts';
 import { preferBun } from './cli/runtime.ts';
+
 // Each command loads its own module: the installer never pays for the dashboard tree, and a version check never pays for the installer. The imports stay static here so a missing file fails loudly.
 
 function printHelp(): void {
@@ -34,9 +36,10 @@ Commands:
   install      Install the add-ons for one agent (--host omp|pi|opencode|pig|dsh|codex, or ask at a terminal)
   update       Refresh the CLI and add-ons (RTK binary, Caveman rule, Ponytail; --host limits to one agent)
   doctor       Check the current installation (--fix repairs, --dry-run previews)
-  dashboard     Open the Dashboard (every interface, so a phone can reach it)
+  dashboard     Open the Dashboard on loopback (--bind lan permits LAN reads)
   mcp           Start the Tersio MCP server on stdio, for any MCP client
   modes         Read or set session defaults, scoped with --host
+  codegraph    Index and query the codebase (status, init, sync, watch, hooks install, explore <symbol>)
   uninstall    Remove the managed extensions
   version      Print the package version
   help         Show this help
@@ -58,7 +61,7 @@ Options:
   --open (dashboard: open browser)
   --local (dashboard: listen on loopback only)
   --watch (dashboard: restart on source change and rebuild the UI on save; automatic in a source checkout)
-  --bind <addr> (dashboard: listen address; default every interface, so a phone can open it)
+  --bind <addr> (dashboard: listen address; default loopback, lan enables LAN reads)
   --export <file> (dashboard: write HTML file instead of serving)
   --currency <code> (dashboard: display currency; flag wins, then tersio settings default, then USD)
   --version, -v
@@ -119,6 +122,12 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (codegraph) {
+    const { runCodegraph } = await import('./cli/codegraph.ts');
+    await runCodegraph(process.argv.slice(3));
+    closeRL();
+    return;
+  }
   if (doctor) {
     const { runDoctor } = await import('./cli/doctor.ts');
     await runDoctor();

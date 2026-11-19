@@ -35,12 +35,13 @@ const MODE_VALUES: Record<string, Set<string>> = {
   ponytail: new Set(['off', 'lite', 'full', 'ultra']),
   pstack: new Set(['off', 'on']),
   headroom: new Set(['off', 'on']),
+  codegraph: new Set(['off', 'on']),
 };
 
 // Upstream renamed wenyan to megacave and kept the old spelling as an alias.
 const CAVEMAN_LEGACY_PREFIX = /^wenyan/;
 
-type ModeName = 'caveman' | 'rtk' | 'ponytail' | 'pstack' | 'headroom';
+type ModeName = 'caveman' | 'rtk' | 'ponytail' | 'pstack' | 'headroom' | 'codegraph';
 type Modes = Record<ModeName, string>;
 
 const MODE_ENTRY_TYPES: Record<string, ModeName> = {
@@ -49,6 +50,7 @@ const MODE_ENTRY_TYPES: Record<string, ModeName> = {
   'ponytail-mode': 'ponytail',
   'pstack-mode': 'pstack',
   'headroom-mode': 'headroom',
+  'codegraph-mode': 'codegraph',
 };
 
 /** True when the branch carries Tersio's own mode state; a subagent starts without it. */
@@ -106,6 +108,7 @@ function normalizedState(
     ponytail: normalizeMode('ponytail', modes?.ponytail) || 'off',
     pstack: normalizeMode('pstack', modes?.pstack) || 'off',
     headroom: normalizeMode('headroom', modes?.headroom) || 'off',
+    codegraph: normalizeMode('codegraph', modes?.codegraph) || 'off',
   };
   return Object.freeze({ level: isKnownLevel(level) ? level : deriveLevel(state), ...state });
 }
@@ -193,7 +196,12 @@ export function setSharedComboLevel(value: unknown): Readonly<ComboState> {
   const level = normalizeComboLevel(value) || 'off';
   // A preset writes the three modes it owns and leaves the opt-in modes where the session already had them.
   const shared = getSharedComboState();
-  return publish(normalizedState({ ...COMBO_LEVELS[level], pstack: shared.pstack, headroom: shared.headroom }, level));
+  return publish(
+    normalizedState(
+      { ...COMBO_LEVELS[level], pstack: shared.pstack, headroom: shared.headroom, codegraph: shared.codegraph },
+      level,
+    ),
+  );
 }
 
 export function setSharedComboMode(name: ModeName, value: unknown): Readonly<ComboState> {
@@ -210,6 +218,7 @@ export function setSharedComboModes(modes: {
   ponytail?: unknown;
   pstack?: unknown;
   headroom?: unknown;
+  codegraph?: unknown;
 }): Readonly<ComboState> {
   return publish(
     normalizedState({
@@ -218,12 +227,13 @@ export function setSharedComboModes(modes: {
       ponytail: normalizeMode('ponytail', modes.ponytail) || 'off',
       pstack: normalizeMode('pstack', modes.pstack) || 'off',
       headroom: normalizeMode('headroom', modes.headroom) || 'off',
+      codegraph: normalizeMode('codegraph', modes.codegraph) || 'off',
     }),
   );
 }
 
 export function reconcileSharedComboEntries(entries: SessionEntry[] | null | undefined): Readonly<ComboState> {
-  let modes: Modes = { ...COMBO_LEVELS.off, pstack: 'off', headroom: 'off' };
+  let modes: Modes = { ...COMBO_LEVELS.off, pstack: 'off', headroom: 'off', codegraph: 'off' };
   if (Array.isArray(entries)) {
     for (const entry of entries) {
       if (entry?.type !== 'custom') continue;
@@ -251,8 +261,9 @@ export function activeModesSummary(state: {
   ponytail: string;
   pstack: string;
   headroom: string;
+  codegraph: string;
 }): string {
-  return `caveman=${state.caveman.toUpperCase()}, rtk=${state.rtk.toUpperCase()}, ponytail=${state.ponytail.toUpperCase()}, pstack=${state.pstack.toUpperCase()}, headroom=${state.headroom.toUpperCase()}`;
+  return `caveman=${state.caveman.toUpperCase()}, rtk=${state.rtk.toUpperCase()}, ponytail=${state.ponytail.toUpperCase()}, pstack=${state.pstack.toUpperCase()}, headroom=${state.headroom.toUpperCase()}, codegraph=${state.codegraph.toUpperCase()}`;
 }
 
 // Keyed registration drops stale closures; hosts offer no teardown hook.
@@ -262,5 +273,5 @@ export function setSharedComboListener(key: string, listener: (state: Readonly<C
 
 export function resetSharedComboState(): Readonly<ComboState> {
   // A preset keeps pstack, but a reset clears the bridge, so it writes every mode off.
-  return publish(normalizedState({ ...COMBO_LEVELS.off, pstack: 'off', headroom: 'off' }, 'off'));
+  return publish(normalizedState({ ...COMBO_LEVELS.off, pstack: 'off', headroom: 'off', codegraph: 'off' }, 'off'));
 }

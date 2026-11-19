@@ -3,36 +3,6 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { sqliteExec, sqliteRead } from './sqlite.ts';
-import {
-  RECENT_LIMIT,
-  canonicalModelId,
-  classifySessionLine,
-  classifyOpencodeMessage,
-  collectToolResults,
-  costOf,
-  durOf,
-  agentOfSessionText,
-  hostOfSessionFile,
-  ingestSessionRow,
-  messageRowId,
-  type DshParseState,
-  type ClaudeParseState,
-  OPENCODE_DB_OVERLAP_MS,
-  opencodeDbPath,
-  opencodeSessionsDir,
-  newSessionAccum,
-  opencodeToolNames,
-  readOpencodeDbRows,
-  sessionsDirs,
-  dshSessionFiles,
-  readSessionText,
-  usdCost,
-  walkJsonl,
-} from './usage-ledger.ts';
-import { tersioDataPath } from './utils.ts';
-import { createDataBackup, newestDataBackup, readSnapshotMember, restoreSnapshotMember } from './snapshots.ts';
-import { MODEL_ALIASES } from './pricing.ts';
-import { readRetentionDays, tersioSettingsFile } from './plugin-settings.ts';
 import type {
   OpencodeClassification,
   OpencodeDbRow,
@@ -42,6 +12,36 @@ import type {
   SessionTokens,
   ToolFact,
 } from './usage-ledger.ts';
+import {
+  agentOfSessionText,
+  canonicalModelId,
+  classifyOpencodeMessage,
+  classifySessionLine,
+  type ClaudeParseState,
+  collectToolResults,
+  costOf,
+  type DshParseState,
+  dshSessionFiles,
+  durOf,
+  hostOfSessionFile,
+  ingestSessionRow,
+  messageRowId,
+  newSessionAccum,
+  OPENCODE_DB_OVERLAP_MS,
+  opencodeDbPath,
+  opencodeSessionsDir,
+  opencodeToolNames,
+  readOpencodeDbRows,
+  readSessionText,
+  RECENT_LIMIT,
+  sessionsDirs,
+  usdCost,
+  walkJsonl,
+} from './usage-ledger.ts';
+import { tersioDataPath } from './utils.ts';
+import { createDataBackup, newestDataBackup, readSnapshotMember, restoreSnapshotMember } from './snapshots.ts';
+import { MODEL_ALIASES } from './pricing.ts';
+import { readRetentionDays, tersioSettingsFile } from './plugin-settings.ts';
 import { codexModelIdentity, looksLikeCodexTranscript, parseCodexTranscript } from './codex-transcript.ts';
 
 export function usageDbPath(): string {
@@ -84,7 +84,7 @@ function query(db: string, sql: string): string[][] {
 }
 
 // Bump on a parse change: unchanged transcripts are never re-read.
-const PARSER_VERSION = '18';
+const PARSER_VERSION = '19';
 
 /** OpenCode rows gained tool names; re-read by id, since a PARSER_VERSION bump drops rotated history. */
 const OPENCODE_TOOLS_VERSION = '1';
@@ -104,7 +104,7 @@ const SCHEMA_SQL =
   `CREATE TABLE IF NOT EXISTS files (id INTEGER PRIMARY KEY AUTOINCREMENT, path TEXT UNIQUE NOT NULL, mtime REAL NOT NULL, size INTEGER NOT NULL);` +
   `CREATE TABLE IF NOT EXISTS messages (file_id INTEGER NOT NULL REFERENCES files(id), t REAL, model TEXT NOT NULL,` +
   ` i INTEGER NOT NULL, o INTEGER NOT NULL, d REAL, tf REAL, cr INTEGER NOT NULL, cw INTEGER NOT NULL,` +
-  ` usd REAL, st TEXT NOT NULL, code REAL, note TEXT, tools TEXT NOT NULL DEFAULT '[]', h TEXT, a TEXT, id TEXT, tc TEXT, p TEXT, cwd TEXT);` +
+  ` usd REAL, usd_estimated INTEGER NOT NULL DEFAULT 0, st TEXT NOT NULL, code REAL, note TEXT, tools TEXT NOT NULL DEFAULT '[]', h TEXT, a TEXT, id TEXT, tc TEXT, p TEXT, cwd TEXT);` +
   // Every read filters or orders by one of these three; without them each sync and read scans the table.
   `CREATE INDEX IF NOT EXISTS idx_messages_file ON messages(file_id);` +
   `CREATE INDEX IF NOT EXISTS idx_messages_t ON messages(t);` +
@@ -215,7 +215,7 @@ function migrateInPlace(db: string, preCount: number): boolean {
         `INSERT INTO files_new (path, mtime, size) SELECT path, mtime, size FROM files;` +
         `CREATE TABLE messages_new (file_id INTEGER NOT NULL REFERENCES files_new(id), t REAL, model TEXT NOT NULL,` +
         ` i INTEGER NOT NULL, o INTEGER NOT NULL, d REAL, tf REAL, cr INTEGER NOT NULL, cw INTEGER NOT NULL,` +
-        ` usd REAL, st TEXT NOT NULL, code REAL, note TEXT, tools TEXT NOT NULL DEFAULT '[]', h TEXT, a TEXT, id TEXT, tc TEXT, cwd TEXT);` +
+        ` usd REAL, usd_estimated INTEGER NOT NULL DEFAULT 0, st TEXT NOT NULL, code REAL, note TEXT, tools TEXT NOT NULL DEFAULT '[]', h TEXT, a TEXT, id TEXT, tc TEXT, cwd TEXT);` +
         `INSERT INTO messages_new (file_id, ${cols}) SELECT (SELECT id FROM files_new WHERE files_new.path = messages.file), ${cols} FROM messages;` +
         `DROP TABLE messages;DROP TABLE files;` +
         `ALTER TABLE files_new RENAME TO files;ALTER TABLE messages_new RENAME TO messages;` +
@@ -279,6 +279,7 @@ const TTFT_VERSION = '1';
 const TOOL_FACTS_VERSION = '1';
 /** Codex facts gained cwd, tool timing, and request status; one transcript re-read fills them. */
 const CODEX_FACTS_VERSION = '2';
+const USD_ESTIMATE_VERSION = '1';
 
 function toolFactsBackfilled(db: string): boolean {
   try {
@@ -296,6 +297,50 @@ function codexFactsBackfilled(db: string): boolean {
   } catch {
     return false;
   }
+}
+
+function usdEstimatesBackfilled(db: string): boolean {
+  try {
+    const rows = query(db, `SELECT v FROM meta WHERE k='usd_estimates';`);
+    return rows.length > 0 && rows[0][0] === USD_ESTIMATE_VERSION;
+  } catch {
+    return false;
+  }
+}
+
+// Codex stores only tokens; OpenCode rows without reported costs may use a known rate, never the default.
+function backfillUsdEstimates(db: string): void {
+  const rows = query(
+    db,
+    `SELECT rowid, model, i, o, cr, cw FROM messages WHERE h='codex' OR (h='opencode' AND usd IS NULL);`,
+  );
+  const statements: string[] = [];
+  let statementBytes = 0;
+  const flush = (): void => {
+    if (!statements.length) return;
+    run(db, `BEGIN;${statements.join('')}COMMIT;`);
+    statements.length = 0;
+    statementBytes = 0;
+  };
+  for (const row of rows) {
+    const rowid = Number(row[0]);
+    if (!Number.isSafeInteger(rowid)) continue;
+    const price = usdCost(
+      {
+        input: intOf(Number(row[2])),
+        output: intOf(Number(row[3])),
+        cacheRead: intOf(Number(row[4])),
+        cacheWrite: intOf(Number(row[5])),
+      },
+      row[1] ?? '',
+    );
+    const statement = `UPDATE messages SET usd=${price.priced ? String(price.usd) : 'NULL'},usd_estimated=${price.priced ? 1 : 0} WHERE rowid=${rowid};`;
+    statements.push(statement);
+    statementBytes += statement.length;
+    if (statementBytes >= 100_000) flush();
+  }
+  flush();
+  run(db, `INSERT OR REPLACE INTO meta (k, v) VALUES ('usd_estimates','${USD_ESTIMATE_VERSION}');`);
 }
 
 // The tool facts are additive too: a bare ALTER, then one transcript re-read fills them.
@@ -383,6 +428,7 @@ const MESSAGE_COLUMNS: ReadonlyArray<readonly [string, string]> = [
   ['d', 'REAL'],
   ['tf', 'REAL'],
   ['usd', 'REAL'],
+  ['usd_estimated', 'INTEGER NOT NULL DEFAULT 0'],
   ['code', 'REAL'],
   ['note', 'TEXT'],
   ['tools', "TEXT NOT NULL DEFAULT '[]'"],
@@ -575,6 +621,7 @@ interface StoredRow {
   cr: number;
   cw: number;
   usd: number | undefined;
+  usdEstimated: boolean;
   st: RunStatus;
   code: number | undefined;
   note: string | undefined;
@@ -598,16 +645,26 @@ function opencodeStoredRow(
   id: string | undefined,
   tools: string[],
 ): StoredRow {
+  const model = canonicalModelId(oc.model);
+  const usage = {
+    input: intOf(oc.usage.input),
+    output: intOf(oc.usage.output),
+    cacheRead: intOf(oc.usage.cacheRead),
+    cacheWrite: intOf(oc.usage.cacheWrite),
+  };
+  const measured = costOf(oc.usage);
+  const priced = measured === undefined ? usdCost(usage, model) : undefined;
   return {
     t: oc.ms ?? null,
-    model: canonicalModelId(oc.model),
-    i: intOf(oc.usage.input),
-    o: intOf(oc.usage.output),
+    model,
+    i: usage.input,
+    o: usage.output,
     d: durOf(oc.durMs),
     tf: durOf(oc.ttftMs),
-    cr: intOf(oc.usage.cacheRead),
-    cw: intOf(oc.usage.cacheWrite),
-    usd: costOf(oc.usage),
+    cr: usage.cacheRead,
+    cw: usage.cacheWrite,
+    usd: measured ?? (priced?.priced ? priced.usd : undefined),
+    usdEstimated: measured === undefined && priced?.priced === true,
     st: 'completed',
     code: undefined,
     note: undefined,
@@ -644,6 +701,7 @@ function parseFile(text: string, host?: string, file?: string, agent?: string): 
     return parsed.requests.map((request) => {
       const identity = codexModelIdentity(request.model, request.provider);
       const model = canonicalModelId(identity.model);
+      const price = usdCost(request.usage, model);
       return {
         t: request.endTs || null,
         model,
@@ -653,7 +711,8 @@ function parseFile(text: string, host?: string, file?: string, agent?: string): 
         tf: durOf(request.ttftMs),
         cr: request.usage.cacheRead,
         cw: request.usage.cacheWrite,
-        usd: usdCost(request.usage, model).usd,
+        usd: price.priced ? price.usd : undefined,
+        usdEstimated: price.priced,
         st: request.status,
         code: request.code,
         note: request.note,
@@ -711,6 +770,7 @@ function parseFile(text: string, host?: string, file?: string, agent?: string): 
           cr: intOf(usage.cacheRead),
           cw: intOf(usage.cacheWrite),
           usd: costOf(usage),
+          usdEstimated: false,
           st: 'completed',
           code: undefined,
           note: undefined,
@@ -738,6 +798,7 @@ function parseFile(text: string, host?: string, file?: string, agent?: string): 
         cr: intOf(usage.cacheRead),
         cw: intOf(usage.cacheWrite),
         usd: costOf(usage),
+        usdEstimated: false,
         st: runInfo.st,
         code: runInfo.code,
         note,
@@ -757,9 +818,9 @@ function parseFile(text: string, host?: string, file?: string, agent?: string): 
 
 function insertSql(file: string, r: StoredRow): string {
   return (
-    `INSERT OR IGNORE INTO messages (file_id, t, model, i, o, d, tf, cr, cw, usd, st, code, note, tools, h, a, id, tc, p, cwd) VALUES (` +
+    `INSERT OR IGNORE INTO messages (file_id, t, model, i, o, d, tf, cr, cw, usd, usd_estimated, st, code, note, tools, h, a, id, tc, p, cwd) VALUES (` +
     `(SELECT id FROM files WHERE path=${esc(file)}),${r.t === null ? 'NULL' : String(r.t)},${esc(r.model)},${r.i},${r.o},` +
-    `${nullNum(r.d)},${nullNum(r.tf)},${r.cr},${r.cw},${nullNum(r.usd)},${esc(r.st)},` +
+    `${nullNum(r.d)},${nullNum(r.tf)},${r.cr},${r.cw},${nullNum(r.usd)},${r.usdEstimated ? 1 : 0},${esc(r.st)},` +
     `${nullNum(r.code)},${nullStr(r.note)},${esc(JSON.stringify(r.tools))},${nullStr(r.host)},${nullStr(r.agent ?? undefined)},${nullStr(r.id)},` +
     `${r.toolFacts && r.toolFacts.length > 0 ? esc(JSON.stringify(r.toolFacts)) : 'NULL'},${nullStr(r.gateway)},${nullStr(r.cwd)});`
   );
@@ -783,6 +844,10 @@ export function syncUsageDb(): boolean {
       guardReport = `store was written by a newer tersio (parser ${stored} > ${PARSER_VERSION}); kept its rows and skipped the re-parse`;
     if (migrated && !forced) preWipe = countMessages(db);
     ensureSchema(db, forced);
+    if (!downgrade && !usdEstimatesBackfilled(db)) {
+      if (!forced && !migrated && countMessages(db) > 0) snapshotData();
+      backfillUsdEstimates(db);
+    }
     // One rewrite so the additive columns' NULL rows gain latency and tool facts; runs while a marker is absent.
     if (!downgrade && (!ttftBackfilled(db) || !toolFactsBackfilled(db) || !codexFactsBackfilled(db)))
       markTranscriptsDirty(db);
@@ -955,15 +1020,16 @@ export function readUsageDb(): StoredUsage | null {
     const agentCol = names.includes('a') ? 'a' : "''";
     // A store predating first-token latency has no `tf` column; read NULL so the row still loads.
     const tfCol = names.includes('tf') ? 'tf' : 'NULL';
+    const usdEstimatedCol = names.includes('usd_estimated') ? 'usd_estimated' : '0';
     rows = query(
       db,
-      `SELECT t, model, i, o, d, cr, cw, usd, st, code, note, tools, h, ${agentCol}, id, ${tfCol} FROM messages${resetAt > 0 ? ` WHERE t IS NULL OR t >= ${resetAt}` : ''};`,
+      `SELECT t, model, i, o, d, cr, cw, usd, ${usdEstimatedCol}, st, code, note, tools, h, ${agentCol}, id, ${tfCol} FROM messages${resetAt > 0 ? ` WHERE t IS NULL OR t >= ${resetAt}` : ''};`,
     );
   } catch {
     return null;
   }
   const accum = newSessionAccum();
-  for (const [t, model, i, o, d, cr, cw, usd, st, code, note, tools, h, a, id, tf] of rows) {
+  for (const [t, model, i, o, d, cr, cw, usd, usdEstimated, st, code, note, tools, h, a, id, tf] of rows) {
     const ts = t === '' ? undefined : Number(t);
     let toolNames: string[] = [];
     if (tools && tools !== '[]' && tools !== '') {
@@ -980,7 +1046,7 @@ export function readUsageDb(): StoredUsage | null {
       cacheRead: Number(cr) || 0,
       cacheWrite: Number(cw) || 0,
     };
-    if (usd !== '') {
+    if (usd !== '' && usdEstimated !== '1') {
       const measured = Number(usd);
       if (Number.isFinite(measured)) usage.cost = measured;
     }

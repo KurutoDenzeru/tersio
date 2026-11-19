@@ -65,6 +65,7 @@ describe('the MCP server protocol', () => {
       'tersio_sessions',
       'tersio_modes',
       'tersio_headroom',
+      'tersio_codegraph',
     ]);
   });
 

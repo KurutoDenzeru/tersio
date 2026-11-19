@@ -3,10 +3,16 @@
 
 import type http from 'node:http';
 import { hostCap } from '../extensions/shared/host-caps.ts';
-import { headroomHostDurable, headroomProxyUrl } from '../extensions/shared/headroom-proxy.ts';
+import { headroomHostDurable, headroomProxyUrl, type HeadroomUpstreams } from '../extensions/shared/headroom-proxy.ts';
 import { describeHeadroomRoute, readHeadroomRoute } from '../extensions/shared/headroom-routing.ts';
-import { headroomRoutedHosts, routeHostOff, routeHostOn } from '../extensions/shared/headroom-routes.ts';
-import { stopHeadroomRuntime } from '../extensions/shared/headroom-runtime.ts';
+import {
+  headroomRestartConflict,
+  headroomRoutedHosts,
+  headroomRouteUpstreams,
+  routeHostOff,
+  routeHostOn,
+} from '../extensions/shared/headroom-routes.ts';
+import { liveHeadroomUpstreams, stopHeadroomRuntime } from '../extensions/shared/headroom-runtime.ts';
 import { readHeadroomReport } from '../extensions/shared/agent-stats.ts';
 import { detectHosts } from './hosts.ts';
 import { codexPresent, resolveHeadroomBinary, resolveHostBinary } from '../extensions/shared/utils.ts';
@@ -16,7 +22,7 @@ export interface HeadroomRouteCtx {
   bodyOf: (req: http.IncomingMessage) => Promise<Record<string, unknown>>;
   spawnHeadroomInstall: () => boolean;
   headroomInstallState: () => { startedAt: number; code: number | null; error: string | null };
-  ensureRuntime: (bin: string, openAiTarget?: string | null) => Promise<{ ok: boolean; detail: string }>;
+  ensureRuntime: (bin: string, upstreams?: HeadroomUpstreams) => Promise<{ ok: boolean; detail: string }>;
 }
 
 /** True when the route was answered. */
@@ -91,9 +97,14 @@ export async function handleHeadroomRoutes(
     }
     // A route points the agent at the proxy, so the proxy answers before the config is written.
     if (body.on !== false) {
-      // headroom forwards to one upstream, and the agent's own endpoint is the only one it can be.
-      const upstream = readHeadroomRoute(name).baseUrl;
-      const runtime = await ctx.ensureRuntime(bin, upstream);
+      // Headroom forwards each dialect to one upstream; a restart that would strand another routed agent is refused first.
+      const wanted = headroomRouteUpstreams(name);
+      const conflict = headroomRestartConflict(name, wanted, liveHeadroomUpstreams());
+      if (conflict) {
+        ctx.json(res, 200, { ok: false, error: conflict });
+        return true;
+      }
+      const runtime = await ctx.ensureRuntime(bin, wanted);
       if (!runtime.ok) {
         ctx.json(res, 200, { ok: false, error: `headroom runtime did not start: ${runtime.detail}` });
         return true;

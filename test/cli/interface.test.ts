@@ -7,8 +7,8 @@ import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 
 import { bannerLines, bannerTier } from '../../cli/banner.ts';
-import { detectHosts, hostLabel } from '../../cli/hosts.ts';
 import type { HostEntry } from '../../cli/hosts.ts';
+import { detectHosts, hostLabel } from '../../cli/hosts.ts';
 import { cliEnv, fakeRtkBin } from '../helpers/env.ts';
 import { registryUrl, releasesUrl } from '../helpers/registry.ts';
 
@@ -331,7 +331,7 @@ function run(home: string, args: string[]): { status: number | null; stdout: str
     cwd: root,
     encoding: 'utf8',
     timeout: 30000,
-    env: cliEnv(home, { PATH: path.join(home, 'empty-bin') }),
+    env: cliEnv(home, { PATH: path.join(home, 'empty-bin'), PI_OFFLINE: '1' }),
   });
   return { status: result.status, stdout: result.stdout, stderr: result.stderr };
 }
@@ -418,6 +418,7 @@ test('install --host pig writes the pig tree and no OMP files', () => {
     expect(result.stdout).toMatch(
       /\[dry-run\] would write .*\.pig[\\/]agent[\\/]extensions[\\/]shared[\\/]session-state\.ts/,
     );
+    expect(result.stdout).toMatch(/\[dry-run\] would write .*\.pig[\\/]agent[\\/]ponytail[\\/]package\.json/);
     expect(result.stdout).toMatch(/\[dry-run\] would write session defaults to .*\.tersio[\\/]settings\.json/);
     expect(result.stdout, 'OMP extension tree must stay untouched').not.toMatch(/\.omp[\\/]agent[\\/]extensions/);
     expect(result.stdout).toMatch(/Done — restart PiG/);

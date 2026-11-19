@@ -2,22 +2,23 @@
 import { existsSync, promises as fs } from 'node:fs';
 import path from 'node:path';
 import {
+  args,
+  debug,
+  dryRun,
+  execP,
   HOME,
+  keepPonytail,
   OMP_AGENT_DIR,
   OMP_PLUGINS_DIR,
   PACKAGE_NAME,
-  args,
-  dryRun,
-  keepPonytail,
   removePonytail,
   removeRtk,
-  yes,
-  debug,
-  execP,
   writeConfigLines,
+  yes,
 } from './common.ts';
 import { PONYTAIL_PKG } from './manifest.ts';
-import { askInteractiveChoice, closeRL, confirmDestructive, tty, sayTagged } from './interactive.ts';
+import { askInteractiveChoice, closeRL, confirmDestructive, sayTagged, tty } from './interactive.ts';
+import type { HostEntry } from './hosts.ts';
 import {
   detectHosts,
   dshCliProfiles,
@@ -27,7 +28,6 @@ import {
   parseHostArg,
   removeDshMcpCommand,
 } from './hosts.ts';
-import type { HostEntry } from './hosts.ts';
 import type { HostId } from '../extensions/shared/host-caps.ts';
 import { hostCap } from '../extensions/shared/host-caps.ts';
 import {
@@ -44,8 +44,8 @@ import {
 import {
   CLAUDE_MARKETPLACE_NAME,
   CLAUDE_PLUGIN_ID,
-  installedClaudePlugin,
   claudeLocalMarketplaceRoot,
+  installedClaudePlugin,
   setClaudeRtkHook,
 } from '../extensions/shared/claude-state.ts';
 import {
@@ -58,8 +58,8 @@ import {
 import { tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
 import { removeTersioMcp } from '../extensions/shared/mcp-config.ts';
 import {
-  NATIVE_ROUTE_HOSTS,
   isNativeRouteHost,
+  NATIVE_ROUTE_HOSTS,
   removeNativeRoute,
   unwrapClaudeHeadroom,
   unwrapCodexHeadroom,
@@ -80,6 +80,7 @@ interface UninstallOptions {
 /** Every extension dir an install writes; a removal that misses one strands an extension on a shared file it deleted. */
 export const SHIPPED_TREE_DIRS = [
   'caveman',
+  'codegraph',
   'combo',
   'commands',
   'headroom',
@@ -100,6 +101,10 @@ const LEGACY_TREE_DIRS = [
   'tersio-commands',
   'lib',
   'aaa-combo-boot',
+  'routing/index.ts',
+  'routing/omp.ts',
+  'routing/stage-router.ts',
+  'routing/task-router.ts',
 ] as const;
 
 export const PI_TREE_DIRS = [

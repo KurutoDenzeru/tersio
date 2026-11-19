@@ -143,6 +143,24 @@ export function readHeadroomDefault(host?: HostScope | null): string {
   return readStringDefault('headroomDefault', HEADROOM_MODES, host);
 }
 
+function readChoice<T extends string>(key: string, valid: readonly T[], fallback: T, host?: HostScope | null): T {
+  const pick = (value: unknown): T | undefined => valid.find((v) => v === value);
+  return pick(hostDefaults(host)[key]) ?? pick(readPluginSettings()[key]) ?? fallback;
+}
+
+// Zero-manual indexing is the feature, so CodeGraph is on unless the user turns it off.
+export function readCodegraphDefault(host?: HostScope | null): 'on' | 'off' {
+  return readChoice('codegraphDefault', ['on', 'off'], 'on', host);
+}
+
+export type CodegraphSyncMode = 'live' | '5m' | '15m' | '1h' | 'manual';
+export const CODEGRAPH_SYNC_MODES: readonly CodegraphSyncMode[] = ['live', '5m', '15m', '1h', 'manual'];
+
+// Global, not per-host: one index per repository serves every agent that opens it.
+export function readCodegraphSync(): CodegraphSyncMode {
+  return readChoice('codegraphSync', CODEGRAPH_SYNC_MODES, 'live');
+}
+
 /** Whether the footer status line shows; on unless a host section or the flat key says false. */
 export function readStatusVisible(host?: HostScope | null): boolean {
   const scoped = hostDefaults(host).statusVisible;
@@ -243,4 +261,11 @@ export function saveComboSetup(level: string, host?: HostScope | null): boolean 
     : { ...stored, ...patch };
   writeFileSync(file, `${JSON.stringify({ ...next, comboSetupComplete: true }, null, 2)}\n`, 'utf8');
   return true;
+}
+
+/** The agents that load the CodeGraph extension; one list for the CLI, the dashboard, MCP and the installer. */
+export const CODEGRAPH_HOSTS = ['omp', 'pi', 'pig', 'opencode'] as const;
+
+export function supportsCodegraph(host: string): boolean {
+  return (CODEGRAPH_HOSTS as readonly string[]).includes(host);
 }

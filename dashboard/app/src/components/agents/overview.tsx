@@ -128,10 +128,10 @@ export function OverviewPage({
 
       <StatGrid cols={5}>
         <Stat
-          label="Actual cost"
-          title="Actual API-equivalent cost after prompt caching"
-          value={money(o.costUsd)}
-          hint={o.unpricedRequests > 0 ? `${fmt(o.unpricedRequests)} unpriced` : "Billed after cache"}
+          label="Reported / estimated cost"
+          title="Host-reported amount or known-rate estimate after prompt caching; not an invoice"
+          value={o.requests > 0 && o.unpricedRequests === o.requests ? "N/A" : money(o.costUsd)}
+          hint={o.unpricedRequests > 0 ? `${fmt(o.unpricedRequests)} unpriced` : "No unpriced requests"}
           spark={points.map((b) => b.costUsd)}
         />
         <Stat

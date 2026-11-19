@@ -36,7 +36,6 @@ jobs:
               - '**'
               - '!**/*.md'
               - '!docs/**'
-              - '!graphify-out/**'
               - '!LICENSE'
       # The marker must stand alone on a line. A PR that merely documents it,
       # like the one that introduced this gate, would otherwise opt itself in.

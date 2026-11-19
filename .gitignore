@@ -11,7 +11,6 @@ node_modules
 /dist/
 dashboard/dist/
 /skills/
-graphify-out/
 temp/
 
 # Tests point HOME here and expect it to be absent; an install run once
@@ -24,3 +23,5 @@ test/definitely-missing-home/.omp/logs/
 
 # Project-specific files
 website
+/.omp/
+/.idea/

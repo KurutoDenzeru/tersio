@@ -1,55 +1,57 @@
 // cli/install.ts — install flow and all setup steps.
 import { existsSync, promises as fs } from 'node:fs';
 import path from 'node:path';
+import type { InstallOptions, WriteOptions } from './common.ts';
 import {
+  applyUpdate,
+  args,
+  assumeYes,
   BUN_BIN,
+  cavemanDefaultFlag,
+  codegraphDefaultFlag,
+  codegraphSyncFlag,
   COMBO_PRESET_MODES,
+  comboDefaultFlag,
+  command,
+  currency,
+  dashboardExport,
+  dashboardPort,
+  debug,
+  dryRun,
+  ensurePonytailConfigValue,
+  execP,
+  headroomDefaultFlag,
   HOME,
   IS_WINDOWS,
   NPM_BIN,
   OMP_AGENT_DIR,
-  OMP_PLUGINS_DIR,
   OMP_BIN,
+  OMP_PLUGINS_DIR,
   PACKAGE_NAME,
   PACKAGE_VERSION,
-  args,
-  applyUpdate,
-  assumeYes,
-  cavemanDefaultFlag,
-  comboDefaultFlag,
-  command,
-  dryRun,
+  parseJsonObject,
   ponytailDefaultFlag,
-  pstackDefaultFlag,
-  headroomDefaultFlag,
   profileFlagsGiven,
+  pstackDefaultFlag,
+  readPluginsPackage,
   rtkDefaultFlag,
   verbose,
-  yes,
-  dashboardExport,
-  dashboardPort,
-  currency,
-  debug,
-  ensurePonytailConfigValue,
-  execP,
-  parseJsonObject,
-  readPluginsPackage,
   writeIfChanged,
+  yes,
 } from './common.ts';
-import type { InstallOptions, WriteOptions } from './common.ts';
 import {
   askInteractiveChoice,
   askInteractiveConfirm,
   closeRL,
   execNetwork,
-  tty,
   sayTagged,
+  tty,
   withInteractiveSpinner,
 } from './interactive.ts';
 import { printWelcome } from './banner.ts';
 import { checkForUpdate, newerThan, runLatestUpdate } from './update.ts';
 import { runUninstall } from './uninstall.ts';
-import { claudeLocalPluginFiles, claudeLocalMarketplaceRoot } from '../extensions/shared/claude-plugin.ts';
+import { claudeLocalMarketplaceRoot, claudeLocalPluginFiles } from '../extensions/shared/claude-plugin.ts';
 import {
   CLAUDE_MARKETPLACE_NAME,
   CLAUDE_PLUGIN_ID,
@@ -60,7 +62,8 @@ import { runDoctor } from './doctor.ts';
 import { runDashboard } from './dashboard.ts';
 import { wireRtk } from './rtk-wiring.ts';
 import {
-  RTK_INSTALL_DOCS,
+  findPackageRoot,
+  homeDir,
   piAgentDir,
   pigAgentDir,
   readTextIfExists,
@@ -68,38 +71,37 @@ import {
   resolveHeadroomBinary,
   resolveHostBinary,
   resolveRtkBinary,
+  RTK_INSTALL_DOCS,
   shimCommand,
 } from '../extensions/shared/utils.ts';
-import { findPackageRoot, homeDir } from '../extensions/shared/utils.ts';
 import { patchState } from '../extensions/shared/state.ts';
 import { CAVEMAN_PIN } from './upstream.ts';
-import {
-  headroomHostSupported,
-  headroomProxyPort,
-  headroomProxyUrl,
-  readOmpGateway,
-} from '../extensions/shared/headroom-proxy.ts';
+import { headroomHostSupported, headroomProxyUrl } from '../extensions/shared/headroom-proxy.ts';
 import { ensureTersioMcp, tersioMcpConfigured, tersioMcpSupported } from '../extensions/shared/mcp-config.ts';
 import { ensureHeadroomRuntime, headroomFitsMachine } from '../extensions/shared/headroom-runtime.ts';
-import { routeHostOn } from '../extensions/shared/headroom-routes.ts';
-import type { HostDefaultField } from './profile.ts';
+import { resolveCodeGraphLibrary } from '../extensions/codegraph/shared.ts';
+import { installCodeGraphBundle } from '../extensions/codegraph/install.ts';
+import { headroomRouteUpstreams, routeHostOn } from '../extensions/shared/headroom-routes.ts';
+import type { HostDefaultField, Profile } from './profile.ts';
 import { formatCliStatus, saveHostDefaults, storedProfile, storedProfileSync, writePluginSettings } from './profile.ts';
+import type { CodegraphSyncMode } from '../extensions/shared/plugin-settings.ts';
+import { supportsCodegraph } from '../extensions/shared/plugin-settings.ts';
 import { readRtkDefault, tersioSettingsFile } from '../extensions/shared/plugin-settings.ts';
 import {
   EXT_DIR,
-  PI_RTK_MANIFEST,
+  filesUnder,
   PI_PONYTAIL_FILES,
+  PI_RTK_MANIFEST,
   PONYTAIL_BUNDLE_FILES,
   PONYTAIL_DIR,
   PONYTAIL_PKG,
-  filesUnder,
   reapObsoleteTreeDirs,
   rootFiles,
   sourcePath,
   syncPluginManifest,
   syncTreeFiles,
 } from './manifest.ts';
-import type { Profile } from './profile.ts';
+import type { HostEntry } from './hosts.ts';
 import {
   detectHosts,
   dshCliProfiles,
@@ -110,20 +112,20 @@ import {
   dshRunner,
   hostOptions,
   parseHostArg,
-  piTersioSource,
   pigTersioSource,
+  piTersioSource,
   writeDshMcpCommand,
 } from './hosts.ts';
-import type { HostEntry } from './hosts.ts';
+import type { HostId } from '../extensions/shared/host-caps.ts';
 import { hostCap } from '../extensions/shared/host-caps.ts';
 import {
   CODEX_MARKETPLACE_NAME,
   CODEX_PLUGIN_ID,
   codexHome,
+  codexHookCommand,
   codexLocalMarketplaceRoot,
   codexLocalPluginFiles,
   codexPluginInstalled,
-  codexHookCommand,
   codexPromptFiles,
   codexPromptsDir,
   codexUserHooksFile,
@@ -131,7 +133,6 @@ import {
   installedCodexPlugin,
 } from '../extensions/shared/codex-plugin.ts';
 import { codexPackagedPluginDir } from '../extensions/shared/codex-state.ts';
-import type { HostId } from '../extensions/shared/host-caps.ts';
 
 async function stepPonytail(pluginsDir: string, options: InstallOptions): Promise<void> {
   // Ponytail rides inside this package now. An older install carried it as its own dependency, which a host then listed as a second plugin, so drop that entry and its sibling copy.
@@ -486,6 +487,11 @@ async function stepHeadroom(extDir: string, options: InstallOptions): Promise<vo
   await copySources(extDir, filesUnder('headroom'), 'headroom/index.ts', options);
 }
 
+async function stepCodegraph(extDir: string, options: InstallOptions): Promise<void> {
+  if (!options.quiet) console.log('  CodeGraph — install knowledge graph extension');
+  await copySources(extDir, filesUnder('codegraph'), 'codegraph/index.ts', options);
+}
+
 // The tree ships no node_modules, so the ruleset rides along as files. Both hosts need the same six.
 async function stepPonytailBundle(treeDir: string, options: InstallOptions): Promise<void> {
   const root = PONYTAIL_DIR;
@@ -522,9 +528,9 @@ async function stepOpencode(options: InstallOptions): Promise<void> {
   await stepCombo(dir, options);
   await stepPstack(dir, options);
   await stepHeadroom(dir, options);
+  await stepCodegraph(dir, options);
   await copySources(dir, filesUnder('commands'), 'commands/index.ts', options);
   await stepPonytailBundle(dir, options);
-  // The loader resolves <pluginDir>/server.ts, and the entry is that file: copy it in place.
   await copySources(dir, rootFiles(), 'server.ts', options);
 
   const configPath = path.join(HOME, '.config', 'opencode', 'opencode.json');
@@ -541,7 +547,7 @@ async function stepOpencode(options: InstallOptions): Promise<void> {
   config.plugins = kept;
   if (!options.dryRun) {
     await fs.mkdir(path.dirname(configPath), { recursive: true });
-    await fs.rm(path.join(HOME, '.config', 'opencode', 'plugins', 'rtk.ts'), { force: true }).catch(() => { });
+    await fs.rm(path.join(HOME, '.config', 'opencode', 'plugins', 'rtk.ts'), { force: true }).catch(() => {});
   }
   // The user's own config, so keep the previous copy beside it.
   await writeIfChanged(configPath, `${JSON.stringify(config, null, 2)}\n`, { ...options, backup: true });
@@ -593,11 +599,14 @@ async function resolveProfile(
   if (ponytailDefaultFlag !== undefined) mutable.ponytailDefault = ponytailDefaultFlag;
   if (pstackDefaultFlag !== undefined) profile.pstackDefault = pstackDefaultFlag;
   if (headroomDefaultFlag !== undefined) profile.headroomDefault = headroomDefaultFlag;
+  if (codegraphDefaultFlag !== undefined) mutable.codegraphDefault = codegraphDefaultFlag;
+  // The sync interval is shared by every agent, so it is written with the shared store on any install.
+  if (codegraphSyncFlag !== undefined) profile.codegraphSync = codegraphSyncFlag as CodegraphSyncMode;
 
   const rtkLabel = mutable.rtkDefault === 'inherit' ? 'inherit' : profile.rtkDefault ? 'on' : 'off';
   if ((!opts.quiet && verbose) || dryRun)
     console.log(
-      `  Defaults${opts.host ? ` for ${opts.host}` : ''}: combo=${profile.comboDefault} (caveman=${profile.cavemanDefault} · rtk=${rtkLabel} · ponytail=${profile.ponytailDefault} · pstack=${profile.pstackDefault} · headroom=${profile.headroomDefault})`,
+      `  Defaults${opts.host ? ` for ${opts.host}` : ''}: combo=${profile.comboDefault} (caveman=${profile.cavemanDefault} · rtk=${rtkLabel} · ponytail=${profile.ponytailDefault} · pstack=${profile.pstackDefault} · headroom=${profile.headroomDefault}) · codegraph=${profile.codegraphDefault} · codegraph sync=${profile.codegraphSync}`,
     );
   // Only a run that actually chose (a preset pick or a per-mode flag) may write a host's own section, and only the fields it chose.
   const chosenFields: HostDefaultField[] = [];
@@ -608,6 +617,7 @@ async function resolveProfile(
     chosenFields.push('ponytailDefault');
   if (pstackDefaultFlag !== undefined) chosenFields.push('pstackDefault');
   if (headroomDefaultFlag !== undefined) chosenFields.push('headroomDefault');
+  if (codegraphDefaultFlag !== undefined) chosenFields.push('codegraphDefault');
   return { profile, choseDefaults: comboChosen || profileFlagsGiven, chosenFields };
 }
 
@@ -748,10 +758,8 @@ async function lifecycleHeadroom(host: HostId, enabled: boolean, profile: Profil
   }
   if (dryRun || !headroomHostSupported(host) || (!enabled && profile.headroomDefault !== 'on')) return;
   try {
-    const port = headroomProxyPort();
-    const gateway = hostCap(host)?.headroomGateway ? readOmpGateway(port) : null;
-    // The config points the agent at the proxy, so the runtime starts first.
-    const runtime = await ensureHeadroomRuntime(bin, gateway?.baseUrl);
+    // The config points the agent at the proxy, so the runtime starts first, forwarding what the route needs.
+    const runtime = await ensureHeadroomRuntime(bin, headroomRouteUpstreams(host));
     if (!runtime.ok) throw new Error(runtime.detail);
     // One writer per agent, all of them Tersio's: the route is written and put back here.
     const routed = await routeHostOn(host, headroomProxyUrl());
@@ -834,12 +842,12 @@ async function runCommandMenu(): Promise<void> {
       const targets: Array<{ value: string; label: string; hint?: string }> = [
         ...(installed.length > 0
           ? [
-            {
-              value: 'agents',
-              label: 'AI agents',
-              hint: `${installed.map((host) => host.label).join(', ')} — pick one next`,
-            },
-          ]
+              {
+                value: 'agents',
+                label: 'AI agents',
+                hint: `${installed.map((host) => host.label).join(', ')} — pick one next`,
+              },
+            ]
           : []),
         { value: 'cli', label: 'Tersio CLI only', hint: 'leave agent extensions as they are' },
       ];
@@ -946,6 +954,7 @@ async function stepPiLayer(options: InstallOptions): Promise<void> {
   await stepCombo(extDir, options);
   await stepPstack(extDir, options);
   await stepHeadroom(extDir, options);
+  await stepCodegraph(extDir, options);
   await stepTersioCommands(extDir, options);
   await stepPonytailForPi(agentDir, options, 'pi');
   await reapObsoleteTreeDirs(extDir, options);
@@ -970,6 +979,7 @@ async function stepPigLayer(options: InstallOptions): Promise<void> {
   await stepCombo(extDir, options);
   await stepPstack(extDir, options);
   await stepHeadroom(extDir, options);
+  await stepCodegraph(extDir, options);
   await stepTersioCommands(extDir, options);
   await stepPonytailForPi(agentDir, options, 'pig');
   await reapObsoleteTreeDirs(extDir, options);
@@ -1371,6 +1381,20 @@ async function runInstall(forcedHost?: HostId): Promise<void> {
     else console.log(hint);
     closeRL();
   };
+  if (supportsCodegraph(targetHost) && profile.codegraphDefault === 'on' && !resolveCodeGraphLibrary()) {
+    await capture('CodeGraph runtime', async () => {
+      if (dryRun) {
+        if (!quiet) sayTagged('  [dry-run] would install the CodeGraph runtime');
+        return;
+      }
+      if (process.env.PI_OFFLINE === '1') {
+        if (!quiet) sayTagged('  [warn] CodeGraph runtime is unavailable while offline.');
+        return;
+      }
+      const version = await installCodeGraphBundle();
+      if (!quiet) console.log(`  CodeGraph runtime ${version} installed`);
+    });
+  }
 
   if (targetHost === 'codex') {
     await capture('codex plugin', () => stepCodex(installOptions));
@@ -1449,9 +1473,9 @@ async function runInstall(forcedHost?: HostId): Promise<void> {
   await capture('combo', () => stepCombo(extDir, installOptions));
   await capture('pstack', () => stepPstack(extDir, installOptions));
   await capture('headroom', () => stepHeadroom(extDir, installOptions));
+  await capture('codegraph', () => stepCodegraph(extDir, installOptions));
   await capture('commands', () => stepTersioCommands(extDir, installOptions));
   await capture('skills', () => stepOmpSkills(path.dirname(pluginExtDir), installOptions));
-  // One package, one file set: the repair writes every tree file here, so the install does too.
   if (ownsTree) await capture('plugin entry', () => stepPluginEntry(extDir, installOptions));
   if (ownsTree) await capture('plugin manifest', () => syncPluginManifest(path.dirname(pluginExtDir), installOptions));
   if (ownsTree) await capture('retired agent copies', () => stepRetireAgentCopies(userExtDir, installOptions));

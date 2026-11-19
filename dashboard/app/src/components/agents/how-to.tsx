@@ -1,16 +1,15 @@
 // Quick start: the pipeline as one canvas, drawn the way a workflow tool lays it out. Everything here mirrors docs/ARCHITECTURE.md: the hosts, the block order, and the turn it produces.
-import { useEffect, useState } from "react"
-import { Button } from "@/components/ui/button"
-import { Icon } from "@/components/icon"
-import { usePending } from "@/hooks/use-pending"
-import { isFileExport } from "@/lib/data"
-import { fetchHealth, fetchRoutes } from "@/lib/data"
-import type { ModeState } from "./shell"
-import { useToast } from "../toaster"
-import { AddAgentDialog } from "./how-to-node-ui"
-import { PipelineCanvas, PipelineSkeleton } from "./how-to-canvas"
-import { quickStartLast, readHosts, versionOf } from "./pipeline-model"
-import type { HostAction, HostState, NodeId } from "./pipeline-model"
+import {useEffect, useState} from "react"
+import {Button} from "@/components/ui/button"
+import {Icon} from "@/components/icon"
+import {usePending} from "@/hooks/use-pending"
+import {fetchHealth, fetchRoutes, isFileExport} from "@/lib/data"
+import type {ModeState} from "./shell"
+import {useToast} from "../toaster"
+import {AddAgentDialog} from "./how-to-node-ui"
+import {PipelineCanvas, PipelineSkeleton} from "./how-to-canvas"
+import type {HostAction, HostState, NodeId} from "./pipeline-model"
+import {quickStartLast, readHosts, versionOf} from "./pipeline-model"
 
 export function HowToPage({
   modes,
@@ -254,7 +253,7 @@ export function HowToPage({
             drag to pan · pinch to zoom · tap a node for options
           </p>
           <p className="mono mt-1 text-[11px] leading-snug text-dim max-sm:hidden">
-            One package, six agents, five modes — the path a turn takes from your prompt to the
+            One package, every supported host, and the path a turn takes from your prompt to the
             reply. Drag the nodes, and the flow follows; click one for its options. A dimmed node is
             off or uninstalled.
           </p>

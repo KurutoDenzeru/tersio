@@ -6,7 +6,7 @@ import { resolveRtkBinary } from '../shared/utils.ts';
 import { readRtkDefault } from '../shared/plugin-settings.ts';
 import { getSharedComboState, lastCustomValue, sessionEntries } from '../shared/session-state.ts';
 import { appendUsage } from '../shared/usage-ledger.ts';
-import { hasToolLifecycle, isPiHost, isPigHost } from '../shared/host.ts';
+import { hasToolLifecycle, isPigHost, isPiHost } from '../shared/host.ts';
 import { rewriteThroughRtk } from '../shared/rtk-rewrite.ts';
 import type { ExtensionApi, ExtensionCtx, SessionEntry, ToolResultEvent } from '../shared/types.ts';
 
@@ -57,38 +57,8 @@ export function filterableText(parts: unknown): string | null {
   return parts.map((part) => (part as { text?: unknown } | null)?.text ?? '').join('\n');
 }
 
-/** One directory for the life of the process: a per-call mkdtemp and rmdir cost more than the pipe saves. */
+/** The parent enables exit cleanup; each filter invocation owns a unique child directory. */
 let pipeDir: string | null = null;
-
-/** The text parked where the redirect can read it; a stale file from an aborted call is simply overwritten. */
-function pipeFile(text: string): string | null {
-  try {
-    if (pipeDir === null) {
-      pipeDir = mkdtempSync(join(tmpdir(), 'tersio-rtk-'));
-      process.once('exit', () => {
-        try {
-          rmSync(pipeDir as string, { recursive: true, force: true });
-        } catch {
-          /* already gone */
-        }
-      });
-    }
-    const file = join(pipeDir, 'in.txt');
-    writeFileSync(file, text, 'utf8');
-    return file;
-  } catch {
-    return null;
-  }
-}
-
-/** The directory outlives the call, so this only drops the file. */
-function dropPipeFile(file: string): void {
-  try {
-    rmSync(file, { force: true });
-  } catch {
-    /* best effort */
-  }
-}
 
 /** Pipe text through one rtk filter; null on any failure, so the caller keeps its original. */
 export async function filterThroughRtk(
@@ -96,9 +66,22 @@ export async function filterThroughRtk(
   request: { bin: string; filter: string; text: string; signal?: AbortSignal },
 ): Promise<string | null> {
   const { bin, filter, text, signal } = request;
-  let file: string | null = null;
+  let directory: string | null = null;
   try {
-    file = pipeFile(text);
+    if (pipeDir === null) {
+      pipeDir = mkdtempSync(join(tmpdir(), 'tersio-rtk-'));
+      const parent = pipeDir;
+      process.once('exit', () => {
+        try {
+          rmSync(parent, { recursive: true, force: true });
+        } catch {
+          /* best effort */
+        }
+      });
+    }
+    directory = mkdtempSync(join(pipeDir, 'call-'));
+    const file = join(directory, 'in.txt');
+    writeFileSync(file, text, 'utf8');
     // `rtk pipe` reads stdin only and execFile has no stdin, so one redirect through the platform shell.
     const { shell, flags, wrap } = filterShell();
     const line = `"${bin}" pipe -f ${filter} < "${file}"`;
@@ -110,7 +93,13 @@ export async function filterThroughRtk(
   } catch {
     return null;
   } finally {
-    if (file) dropPipeFile(file);
+    if (directory) {
+      try {
+        rmSync(directory, { recursive: true, force: true });
+      } catch {
+        /* best effort */
+      }
+    }
   }
 }
 
@@ -124,7 +113,7 @@ export default function rtkFilterExtension(pi: ExtensionApi): void {
   const bin = resolveRtkBinary();
   const exec = pi.exec;
   // A host that drives its own tool hooks never fires these events, so a handler here would be dead weight.
-  if (!bin || !exec || !hasToolLifecycle(pi)) return;
+  if (!hasToolLifecycle(pi)) return;
   // omp records the post-hook command in its transcript, so only pi leaves an audit row here: an omp row would double-count, and OpenCode never reaches this hook at all.
   const auditHost = isPiHost(pi) || isPigHost(pi) ? 'pi' : null;
   // Registered synchronously, unlike the rtk-init hook, whose async version probe can miss the first call of a fast session.
@@ -136,18 +125,30 @@ export default function rtkFilterExtension(pi: ExtensionApi): void {
     if (typeof command !== 'string' || !command.trim() || command.startsWith('rtk ')) return;
     if (!rtkActive(sessionEntries(ctx))) return;
     // The shared rewrite owns rtk's exit-code contract; this host only supplies its runner and the signal.
-    const rewritten = await rewriteThroughRtk(command, {
-      bin,
-      exec: (file, args, opts) => {
-        // This host's runner takes an abort signal, not a timeout, so the deadline rides the signal.
-        const deadline = AbortSignal.timeout(opts.timeout);
-        return exec(file, args, { signal: opts.signal ? AbortSignal.any([opts.signal, deadline]) : deadline });
-      },
-    });
-    if (!rewritten || rewritten === command) return;
-    input.command = rewritten;
-    if (auditHost) appendUsage('rtk-audit', `${auditHost} ${command}`);
+    try {
+      const rewritten = await rewriteThroughRtk(command, {
+        bin,
+        signal: ctx?.signal,
+        ...(exec
+          ? {
+              exec: (file, args, opts) => {
+                const deadline = AbortSignal.timeout(opts.timeout);
+                return exec(file, args, {
+                  signal: opts.signal ? AbortSignal.any([opts.signal, deadline]) : deadline,
+                });
+              },
+            }
+          : {}),
+      });
+      if (!rewritten || rewritten === command) return;
+      input.command = rewritten;
+      if (auditHost) appendUsage('rtk-audit', `${auditHost} ${command}`);
+      return { input };
+    } catch (error) {
+      return { block: true, reason: error instanceof Error ? error.message : 'RTK rewrite failed' };
+    }
   });
+  if (!bin || !exec) return;
   pi.on<ToolResultEvent>('tool_result', async (event, ctx: ExtensionCtx) => {
     const filter = FILTER_BY_TOOL.get(String(event?.toolName ?? '').toLowerCase());
     if (!filter || event?.isError) return;
